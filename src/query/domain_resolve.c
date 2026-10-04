@@ -52,13 +52,40 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+/* Whether pr_clear_value (object_primitive.c) frees anything of a value: one with need_clear (a NULL's it reads for an
+ * Oracle-style empty string), a collection or a VOBJ, whose set it frees whatever need_clear says, and a string whose
+ * compressed string is its own (compressed_need_clear). It frees nothing else - a JSON, MIDXKEY, LOB or ENUM payload
+ * only with need_clear - and makes the value NULL, which a value in a block freed next does not need. Most of
+ * resolve_domains' values are a bind's shared copy (qexec_share_value) or a literal's as fetched: nothing to free. */
+static inline bool
+qexec_value_needs_clear (const DB_VALUE * value)
+{
+  if (value->need_clear)
+    {
+      return true;
+    }
+  if (DB_IS_NULL (value))
+    {
+      return false;
+    }
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+  if (TP_IS_SET_TYPE (type) || type == DB_TYPE_VOBJ)
+    {
+      return true;
+    }
+  return TP_IS_CHAR_TYPE (type) && value->data.ch.info.compressed_need_clear != 0;
+}
+
 /* Releases one execution's resolutions for an ALL/SOME term: resolve_domains' values and arrays are the owner's. */
 static void
 qexec_clear_elements (THREAD_ENTRY * thread_p, DOMAIN_ELEMENTS * elements)
 {
   for (int i = 0; elements->value != NULL && i < elements->n; i++)
     {
-      pr_clear_value (&elements->value[i]);
+      if (qexec_value_needs_clear (&elements->value[i]))
+	{
+	  pr_clear_value (&elements->value[i]);
+	}
     }
   if (elements->value != NULL)
     {
@@ -2246,7 +2273,10 @@ qexec_clear_index_keys (THREAD_ENTRY * thread_p, RESOLVED_INDEX_KEYS * out)
 {
   for (int i = 0; out->elements != NULL && i < out->n_elements; i++)
     {
-      pr_clear_value (&out->elements[i].value);
+      if (qexec_value_needs_clear (&out->elements[i].value))
+	{
+	  pr_clear_value (&out->elements[i].value);
+	}
     }
   if (out->elements != NULL)
     {
@@ -3090,9 +3120,14 @@ qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
     {
       qexec_clear_index_keys (thread_p, &resolved.indexes[k]);
     }
+  /* only a value with something to free: the block goes next (qexec_value_needs_clear is pr_clear_value's own
+   * condition, so a skipped value is one it would only make NULL) */
   for (int i = 0; i < resolved.n_vals; i++)
     {
-      pr_clear_value (&resolved.vals[i]);
+      if (qexec_value_needs_clear (&resolved.vals[i]))
+	{
+	  pr_clear_value (&resolved.vals[i]);
+	}
     }
   if (resolved.vals != NULL)
     {
@@ -3104,7 +3139,10 @@ qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
     {
       for (int h = 0; h < execution.n_temporaries; h++)
 	{
-	  pr_clear_value (&execution.temporaries[h].value);
+	  if (qexec_value_needs_clear (&execution.temporaries[h].value))
+	    {
+	      pr_clear_value (&execution.temporaries[h].value);
+	    }
 	}
       db_private_free (thread_p, execution.temporaries);
     }
