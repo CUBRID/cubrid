@@ -179,8 +179,8 @@ const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value i
 const int REGU_VARIABLE_VARIABLE_DOMAIN = 0x8000;	/* load-derived: the regu's compiled domain is variable, so the
 					 * inline fetch_peek_dbval () peeks it only once it took its domain in this
 					 * execution (qexec_node_domain_is_set). Set exactly when the regu's plan item
-					 * carries DOMAIN_PLAN_VARIABLE or DOMAIN_PLAN_VARIABLE_POSITION (asserted at
-					 * the end of stx_build_domain_plan); regu_is_variable_pos () is the
+					 * carries DOMAIN_PLAN_VARIABLE or DOMAIN_PLAN_VARIABLE_POSITION (asserted when
+					 * stx_build_domain_plan publishes the item); regu_is_variable_pos () is the
 					 * compile-time view - a TYPE_POS_VALUE whose domain is DB_TYPE_VARIABLE -
 					 * which implies the flag for such a regu */
 

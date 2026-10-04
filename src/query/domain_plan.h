@@ -26,7 +26,7 @@
  * execution, before qexec_execute_mainblock, into XASL_STATE (resolved_domain, domain_execution). The rows only read
  * the plan and the resolutions; what they change is domain_execution.
  *
- * Index spaces, as they are at this commit:
+ * Index spaces:
  *   item.resolved_index         -> resolved_domain.domains[]       0-based, -1 none
  *   item.ref                    -> resolved_domain.vals[]          0-based, -1 none; a bind's value slot, which is not
  *                                  always its val_pos (DOMAIN_PLAN_ITEM_COLD.val_pos), or a constant expression's or
