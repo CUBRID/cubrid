@@ -4209,7 +4209,6 @@ domain_stream_arith_compares (DOMAIN_STREAM_CONTEXT * ctx, ARITH_TYPE * arith)
 {
   if (arith->plan_item != NULL)
     {
-      assert ((arith->plan_item->flags & DOMAIN_PLAN_ITEM_COMPARES) != 0);
       return (arith->plan_item->flags & DOMAIN_PLAN_ITEM_COMPARES) ? arith->plan_item->compares : NULL;
     }
   const DOMAIN_COMPARE_PLAN **compares = domain_arith_compares (ctx->thread_p, arith->opcode, &ctx->failed);
