@@ -162,13 +162,14 @@ qexec_copy_elements (THREAD_ENTRY * thread_p, const DOMAIN_ELEMENTS * src, DOMAI
 static void qexec_clear_index_keys (THREAD_ENTRY * thread_p, RESOLVED_INDEX_KEYS * out);
 static int qexec_copy_index_keys (THREAD_ENTRY * thread_p, const RESOLVED_INDEX_KEYS * src, RESOLVED_INDEX_KEYS * dest);
 
-/* Allocate the values, the resolved domain table's arrays and the node state's arrays (domain_execution) as one
- * owner-local block, whose address is resolved_domain.vals. Every value starts as NULL so the common error exit can
- * clear a partial fill. */
+/* Allocate the values, the resolved domain table's arrays and the node state's arrays (domain_execution), the
+ * execution temporaries and the scope generations as one owner-local block, whose address is resolved_domain.vals.
+ * Every value starts as NULL so the common error exit can clear a partial fill. Temporaries without scopes, or scopes
+ * without temporaries, are none: nothing converts once per scope then. */
 static int
 qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolved, int n_compares, int n_elements,
 			      int n_indexes, int n_node_domains, int n_operand_types, int n_interpolation_list_domains,
-			      XASL_STATE * xasl_state)
+			      int n_temporaries, int n_scopes, XASL_STATE * xasl_state)
 {
   RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved_domain;
   DOMAIN_EXECUTION_STATE & execution = xasl_state->domain_execution;
@@ -177,6 +178,12 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   /* the load numbers the nodes that keep a list domain or an operand type first (DOMAIN_PLAN.n_operand_types) */
   assert (0 <= n_interpolation_list_domains && n_interpolation_list_domains <= n_operand_types
 	  && n_operand_types <= n_node_domains);
+  assert (execution.temporaries == NULL && execution.scope_generations == NULL);
+  if (n_temporaries <= 0 || n_scopes <= 0)
+    {
+      n_temporaries = 0;
+      n_scopes = 0;
+    }
   static_assert (sizeof (DB_VALUE) % alignof (RESOLVED_DOMAIN) == 0, "gate table alignment");
   static_assert (sizeof (RESOLVED_DOMAIN) % alignof (DOMAIN_COMPARE) == 0, "comparison decisions alignment");
   static_assert (sizeof (DB_VALUE) % alignof (DOMAIN_COMPARE) == 0, "comparison decisions alignment");
@@ -192,12 +199,24 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   static_assert (sizeof (DOMAIN_COMPARE) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
   static_assert (sizeof (RESOLVED_DOMAIN) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
   static_assert (sizeof (DB_VALUE) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
+  static_assert (sizeof (const TP_DOMAIN *) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
+  static_assert (sizeof (RESOLVED_INDEX_KEYS) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
+  static_assert (sizeof (DOMAIN_ELEMENTS) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
+  static_assert (sizeof (DOMAIN_COMPARE) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
+  static_assert (sizeof (RESOLVED_DOMAIN) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
+  static_assert (sizeof (DB_VALUE) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
+  static_assert (sizeof (DOMAIN_EXECUTION_TEMPORARY) % alignof (unsigned long long) == 0, "generations alignment");
+  static_assert (sizeof (const TP_DOMAIN *) % alignof (unsigned long long) == 0, "generations alignment");
+  static_assert (sizeof (unsigned long long) % alignof (int) == 0, "operand types alignment");
+  static_assert (sizeof (const TP_DOMAIN *) % alignof (int) == 0, "operand types alignment");
   /* values, resolved domain table, comparison resolutions, ALL/SOME resolutions, key resolutions, the nodes' execution
-   * domains, list domains and operand types, then the constant flags */
+   * domains and list domains, the execution temporaries and the scopes' generations, the operand types, then the
+   * constant flags */
   const size_t bytes = sizeof (DB_VALUE) * (size_t) n_vals + sizeof (RESOLVED_DOMAIN) * (size_t) n_resolved
     + sizeof (DOMAIN_COMPARE) * (size_t) n_compares + sizeof (DOMAIN_ELEMENTS) * (size_t) n_elements
     + sizeof (RESOLVED_INDEX_KEYS) * (size_t) n_indexes
     + sizeof (const TP_DOMAIN *) * ((size_t) n_node_domains + (size_t) n_interpolation_list_domains)
+    + sizeof (DOMAIN_EXECUTION_TEMPORARY) * (size_t) n_temporaries + sizeof (unsigned long long) * (size_t) n_scopes
     + sizeof (int) * (size_t) n_operand_types + (size_t) n_vals;
   if (bytes == 0)
     {
@@ -221,6 +240,8 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   execution.n_node_domains = n_node_domains;
   execution.n_operand_types = n_operand_types;
   execution.n_interpolation_list_domains = n_interpolation_list_domains;
+  execution.n_temporaries = n_temporaries;
+  execution.n_scopes = n_scopes;
   char *next = (char *) (resolved.vals + n_vals);
   if (n_resolved != 0)
     {
@@ -260,6 +281,14 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
 	      sizeof (*execution.interpolation_list_domains) * n_interpolation_list_domains);
       next += sizeof (*execution.interpolation_list_domains) * n_interpolation_list_domains;
     }
+  /* initialized by qexec_init_execution_temporaries, once the block is made */
+  if (n_temporaries != 0)
+    {
+      execution.temporaries = (DOMAIN_EXECUTION_TEMPORARY *) next;
+      next += sizeof (*execution.temporaries) * n_temporaries;
+      execution.scope_generations = (unsigned long long *) next;
+      next += sizeof (*execution.scope_generations) * n_scopes;
+    }
   if (n_operand_types != 0)
     {
       execution.operand_types = (int *) next;
@@ -274,41 +303,23 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   return NO_ERROR;
 }
 
-/* The values an execution converts once per scope and the scopes' generations: none converted yet; the execution's
- * scope is entered from the start, a block's when its scan starts. temporary_scope: the plan's scope of each value,
- * which the value keeps for its reads. */
-static int
-qexec_alloc_execution_temporaries (THREAD_ENTRY * thread_p, int n_temporaries, const int *temporary_scope, int n_scopes,
-				   DOMAIN_EXECUTION_STATE & execution)
+/* The values an execution converts once per scope and the scopes' generations, in the block
+ * qexec_alloc_resolved_domains made (none when it made none): none converted yet; the execution's scope is entered from
+ * the start, a block's when its scan starts. temporary_scope: the plan's scope of each value, which the value keeps for
+ * its reads. */
+static void
+qexec_init_execution_temporaries (const int *temporary_scope, DOMAIN_EXECUTION_STATE & execution)
 {
-  assert (execution.temporaries == NULL && execution.scope_generations == NULL);
-  if (n_temporaries <= 0 || n_scopes <= 0)
+  if (execution.n_temporaries == 0)
     {
-      return NO_ERROR;
+      assert (execution.temporaries == NULL && execution.scope_generations == NULL && execution.n_scopes == 0);
+      return;
     }
+  assert (execution.temporaries != NULL && execution.scope_generations != NULL && execution.n_scopes > 0);
   assert (temporary_scope != NULL);
-  execution.temporaries =
-    (DOMAIN_EXECUTION_TEMPORARY *) db_private_alloc (thread_p,
-						     sizeof (*execution.temporaries) * (size_t) n_temporaries);
-  execution.scope_generations =
-    (unsigned long long *) db_private_alloc (thread_p, sizeof (*execution.scope_generations) * (size_t) n_scopes);
-  if (execution.temporaries == NULL || execution.scope_generations == NULL)
+  for (int h = 0; h < execution.n_temporaries; h++)
     {
-      if (execution.temporaries != NULL)
-	{
-	  db_private_free_and_init (thread_p, execution.temporaries);
-	}
-      if (execution.scope_generations != NULL)
-	{
-	  db_private_free_and_init (thread_p, execution.scope_generations);
-	}
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sizeof (*execution.temporaries) * (size_t) n_temporaries);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  for (int h = 0; h < n_temporaries; h++)
-    {
-      assert (temporary_scope[h] >= 0 && temporary_scope[h] < n_scopes);
+      assert (temporary_scope[h] >= 0 && temporary_scope[h] < execution.n_scopes);
       execution.temporaries[h].generation = 0;
       execution.temporaries[h].converted = NULL;
       execution.temporaries[h].scope = temporary_scope[h];
@@ -318,11 +329,8 @@ qexec_alloc_execution_temporaries (THREAD_ENTRY * thread_p, int n_temporaries, c
       execution.temporaries[h].target = NULL;
 #endif
     }
-  memset (execution.scope_generations, 0, sizeof (*execution.scope_generations) * (size_t) n_scopes);
+  memset (execution.scope_generations, 0, sizeof (*execution.scope_generations) * (size_t) execution.n_scopes);
   execution.scope_generations[DOMAIN_SCOPE_EXECUTION] = 1;
-  execution.n_temporaries = n_temporaries;
-  execution.n_scopes = n_scopes;
-  return NO_ERROR;
 }
 
 /*
@@ -347,19 +355,13 @@ qexec_copy_resolved_domains (THREAD_ENTRY * thread_p, const XASL_STATE * from, X
   if (qexec_alloc_resolved_domains
       (thread_p, src.n_vals, src.n_resolved, src.n_compare_indexes, src.n_elements, src.n_indexes,
        src_execution.n_node_domains, src_execution.n_operand_types, src_execution.n_interpolation_list_domains,
-       to) != NO_ERROR)
+       src_execution.n_temporaries, src_execution.n_scopes, to) != NO_ERROR)
     {
       return ER_FAILED;
     }
   resolved.owner = thread_p;
   /* the worker converts its own values once per scope, and enters a block's scope when its own scan starts */
-  if (qexec_alloc_execution_temporaries
-      (thread_p, src_execution.n_temporaries, src_execution.n_temporaries > 0 ? src.plan->temporary_scope : NULL,
-       src_execution.n_scopes, execution) != NO_ERROR)
-    {
-      qexec_clear_resolved_domains (thread_p, to);
-      return ER_FAILED;
-    }
+  qexec_init_execution_temporaries (src_execution.n_temporaries > 0 ? src.plan->temporary_scope : NULL, execution);
   for (int k = 0; k < src.n_elements; k++)
     {
       if (qexec_copy_elements (thread_p, &src.elements[k], &resolved.elements[k]) != NO_ERROR)
@@ -443,15 +445,17 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
   const int n_node_domains = plan == NULL ? 0 : plan->n_node_domains;
   const int n_operand_types = plan == NULL ? 0 : plan->n_operand_types;
   const int n_list_domains = plan == NULL ? 0 : plan->n_interpolation_list_domains;
+  const int n_temporaries = plan == NULL ? 0 : plan->n_temporaries;
+  const int n_scopes = plan == NULL ? 0 : plan->n_scopes;
   const int error =
     qexec_alloc_resolved_domains (thread_p, n_vals, n_resolved, n_compares, n_elements, n_indexes, n_node_domains,
-				  n_operand_types, n_list_domains, xasl_state);
+				  n_operand_types, n_list_domains, n_temporaries, n_scopes, xasl_state);
   if (error != NO_ERROR || plan == NULL)
     {
       return error;
     }
-  return qexec_alloc_execution_temporaries (thread_p, plan->n_temporaries, plan->temporary_scope, plan->n_scopes,
-					    xasl_state->domain_execution);
+  qexec_init_execution_temporaries (plan->temporary_scope, xasl_state->domain_execution);
+  return NO_ERROR;
 }
 
 /* What resolve_domains failed at below a constant branch: it raises the failure at its end if a row reaches it. */
@@ -3129,26 +3133,18 @@ qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 	  pr_clear_value (&resolved.vals[i]);
 	}
     }
+  for (int h = 0; h < execution.n_temporaries; h++)
+    {
+      if (qexec_value_needs_clear (&execution.temporaries[h].value))
+	{
+	  pr_clear_value (&execution.temporaries[h].value);
+	}
+    }
   if (resolved.vals != NULL)
     {
-      /* the block holds the node state's arrays too */
+      /* the block holds the node state's arrays, the temporaries and the scope generations too */
       db_private_free (thread_p, resolved.vals);
       xasl_state->vd.dbval_ptr = const_cast < DB_VALUE * >(resolved.in);
-    }
-  if (execution.temporaries != NULL)
-    {
-      for (int h = 0; h < execution.n_temporaries; h++)
-	{
-	  if (qexec_value_needs_clear (&execution.temporaries[h].value))
-	    {
-	      pr_clear_value (&execution.temporaries[h].value);
-	    }
-	}
-      db_private_free (thread_p, execution.temporaries);
-    }
-  if (execution.scope_generations != NULL)
-    {
-      db_private_free (thread_p, execution.scope_generations);
     }
   memset (&resolved, 0, sizeof (resolved));
   memset (&execution, 0, sizeof (execution));

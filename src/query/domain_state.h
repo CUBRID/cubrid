@@ -42,10 +42,10 @@ struct tp_domain;
  *   execution. XASL_STATE.resolved_domain. The rows read it and change none of it; what they change is
  *   XASL_STATE.domain_execution.
  *
- * The owner allocates vals and every array of the table and of domain_execution's node state as one block, whose
- * address is vals (qexec_alloc_resolved_domains): only vals is freed. An ALL/SOME term's and an index scan's own
- * blocks are theirs to free; the domains are cached domains, never freed here. A PX worker's copy has blocks and values
- * of its own (qexec_copy_resolved_domains).
+ * The owner allocates vals and every array of the table and of domain_execution (its node state, its temporaries and
+ * the scope generations) as one block, whose address is vals (qexec_alloc_resolved_domains): only vals is freed. An
+ * ALL/SOME term's and an index scan's own blocks are theirs to free; the domains are cached domains, never freed here.
+ * A PX worker's copy has blocks and values of its own (qexec_copy_resolved_domains).
  */
 struct RESOLVED_DOMAIN_TABLE
 {
@@ -95,8 +95,8 @@ struct DOMAIN_EXECUTION_STATE
   int n_operand_types;		/* the load numbers the aggregates and analytic functions' execution domains first,
 				 * MEDIAN / PERCENTILE aggregates first among them (DOMAIN_PLAN.n_operand_types) */
   int n_interpolation_list_domains;
-  /* the values converted once per scope and each scope's generation, allocations of their own: the execution's scope
-   * is entered from the start, a block's when its scan starts (qexec_enter_temporary_scope) */
+  /* the values converted once per scope and each scope's generation, part of resolved_domain.vals' block: the
+   * execution's scope is entered from the start, a block's when its scan starts (qexec_enter_temporary_scope) */
   DOMAIN_EXECUTION_TEMPORARY *temporaries;	/* [n_temporaries] */
   unsigned long long *scope_generations;	/* [n_scopes] */
   int n_temporaries;
