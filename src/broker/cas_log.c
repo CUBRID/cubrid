@@ -124,8 +124,20 @@ static CAS_LOG_FD scratch_log_fd = { -1, sql_log_buffer, SQL_LOG_BUFFER_SIZE, 0,
 
 #define CAS_LOG_COMPILER_BARRIER() __asm__ __volatile__ ("" ::: "memory")
 /* the barriers keep the compiler from moving buffer accesses across the flag update */
-#define CAS_LOG_SET_WRITING(v) \
-  do { CAS_LOG_COMPILER_BARRIER (); sql_log_writing = (v); CAS_LOG_COMPILER_BARRIER (); } while (0)
+#define CAS_LOG_WRITING_BEGIN() \
+  do { CAS_LOG_COMPILER_BARRIER (); sql_log_writing = 1; CAS_LOG_COMPILER_BARRIER (); } while (0)
+/* clear the flag first, then flush what the handler deferred while it was set */
+#define CAS_LOG_WRITING_END() \
+  do { \
+    CAS_LOG_COMPILER_BARRIER (); \
+    sql_log_writing = 0; \
+    CAS_LOG_COMPILER_BARRIER (); \
+    if (sql_log_write_flush_pending) \
+      { \
+	sql_log_write_flush_pending = 0; \
+	cas_fflush (&sql_log_fd); \
+      } \
+  } while (0)
 #define CAS_LOG_SET_UNMASKED(v) \
   do { CAS_LOG_COMPILER_BARRIER (); sql_log_unmasked = (v); CAS_LOG_COMPILER_BARRIER (); } while (0)
 
@@ -394,7 +406,7 @@ cas_log_close (bool flag)
 void
 cas_log_flush_on_exit (void)
 {
-  CAS_LOG_SET_WRITING (1);
+  CAS_LOG_WRITING_BEGIN ();
   if (sql_log_fd.fd >= 0 && !sql_log_unmasked)
     {
       (void) cas_fflush (&sql_log_fd);
@@ -1000,10 +1012,10 @@ cas_log_compile_end_internal (char *query, bool newline, HIDE_PWD_INFO_PTR hide_
 
   if (sql_log_unmask_flush_pending)
     {
-      CAS_LOG_SET_WRITING (1);
+      CAS_LOG_WRITING_BEGIN ();
       cas_fflush (&sql_log_fd);
       sql_log_unmask_flush_pending = 0;
-      CAS_LOG_SET_WRITING (0);
+      CAS_LOG_WRITING_END ();
     }
 }
 
@@ -1720,7 +1732,7 @@ cas_fwrite (const void *ptr, size_t size, size_t nmemb, CAS_LOG_FD * lfd)
   buf_overflow = (lfd->buf_used + (int) n > lfd->buf_capacity);
   oversized_log_data = ((INT64) n > (INT64) lfd->buf_capacity);
 
-  CAS_LOG_SET_WRITING (1);
+  CAS_LOG_WRITING_BEGIN ();
 
   if (buf_overflow)
     {
@@ -1763,12 +1775,7 @@ cas_fwrite (const void *ptr, size_t size, size_t nmemb, CAS_LOG_FD * lfd)
     }
 
 done:
-  if (sql_log_write_flush_pending)
-    {
-      cas_fflush (&sql_log_fd);
-      sql_log_write_flush_pending = 0;
-    }
-  CAS_LOG_SET_WRITING (0);
+  CAS_LOG_WRITING_END ();
   return result;
 }
 
