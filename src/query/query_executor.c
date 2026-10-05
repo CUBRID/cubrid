@@ -727,6 +727,10 @@ static UPDDEL_MVCC_COND_REEVAL *qexec_mvcc_cond_reev_set_scan_order (XASL_NODE *
 static void qexec_clear_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNAL * classes, int count);
 static bool qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p,
 						   UPDDEL_CLASS_INFO_INTERNAL * internal_class, const OID * class_oid);
+static LOCATOR_LOCK_POLICY qexec_make_lock_policy_transient (THREAD_ENTRY * thread_p, LOCATOR_LOCK_POLICY base_policy,
+							     bool statement_ends_locks,
+							     UPDDEL_CLASS_INFO_INTERNAL * internal_class,
+							     const OID * class_oid);
 static int qexec_upddel_setup_current_class (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * class_,
 					     UPDDEL_CLASS_INFO_INTERNAL * class_info, int op_type, OID * current_oid);
 static int qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
@@ -10871,23 +10875,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 			}
 		    }
 
-		  /* Row-lock lifetime is the class's, not the row's -- decided per class here (see
-		   * qexec_class_ends_locks_with_statement). */
-		  lock_policy = base_lock_policy;
-		  if (statement_ends_locks
-		      && qexec_class_ends_locks_with_statement (thread_p, internal_class, class_oid))
-		    {
-		      if (lock_policy == LOCATOR_LOCK_AT_FORCE)
-			{
-			  lock_policy = LOCATOR_LOCK_AT_FORCE_TRANSIENT;
-			}
-		      else if (lock_policy == LOCATOR_LOCK_AT_SELECT)
-			{
-			  /* the select phase took a request on this row for this statement; it ends with the
-			   * statement as well, so the row is not held past it just because the scan locked it */
-			  lock_policy = LOCATOR_LOCK_AT_SELECT_TRANSIENT;
-			}
-		    }
+		  lock_policy =
+		    qexec_make_lock_policy_transient (thread_p, base_lock_policy, statement_ends_locks, internal_class,
+						      class_oid);
 
 		  force_count = 0;
 		  error =
@@ -11072,23 +11062,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	      mvcc_upddel_reev_data.curr_assigns = internal_class->mvcc_reev_assigns;
 	      mvcc_upddel_reev_data.curr_attrinfo = &internal_class->attr_info;
 
-	      /* Row-lock lifetime is the class's, not the row's -- decided per class here (see
-	       * qexec_class_ends_locks_with_statement). */
-	      lock_policy = base_lock_policy;
-	      if (statement_ends_locks
-		  && qexec_class_ends_locks_with_statement (thread_p, internal_class, internal_class->class_oid))
-		{
-		  if (lock_policy == LOCATOR_LOCK_AT_FORCE)
-		    {
-		      lock_policy = LOCATOR_LOCK_AT_FORCE_TRANSIENT;
-		    }
-		  else if (lock_policy == LOCATOR_LOCK_AT_SELECT)
-		    {
-		      /* the select phase took a request on this row for this statement; it ends with the
-		       * statement as well, so the row is not held past it just because the scan locked it */
-		      lock_policy = LOCATOR_LOCK_AT_SELECT_TRANSIENT;
-		    }
-		}
+	      lock_policy =
+		qexec_make_lock_policy_transient (thread_p, base_lock_policy, statement_ends_locks, internal_class,
+						  internal_class->class_oid);
 	      error =
 		locator_attribute_info_force (thread_p, internal_class->class_hfid, oid, &internal_class->attr_info,
 					      &upd_cls->att_id[internal_class->subclass_idx * upd_cls->num_attrs],
@@ -11684,22 +11660,9 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	      oid = internal_class->oid;
 	      class_oid = internal_class->class_oid;
 
-	      /* Row-lock lifetime is the class's, not the row's -- decided per class here (a multi-class
-	       * DELETE gets a different answer for each; see qexec_class_ends_locks_with_statement). */
-	      lock_policy = base_lock_policy;
-	      if (statement_ends_locks && qexec_class_ends_locks_with_statement (thread_p, internal_class, class_oid))
-		{
-		  if (lock_policy == LOCATOR_LOCK_AT_FORCE)
-		    {
-		      lock_policy = LOCATOR_LOCK_AT_FORCE_TRANSIENT;
-		    }
-		  else if (lock_policy == LOCATOR_LOCK_AT_SELECT)
-		    {
-		      /* the select phase took a request on this row for this statement; it ends with the
-		       * statement as well, so the row is not held past it just because the scan locked it */
-		      lock_policy = LOCATOR_LOCK_AT_SELECT_TRANSIENT;
-		    }
-		}
+	      lock_policy =
+		qexec_make_lock_policy_transient (thread_p, base_lock_policy, statement_ends_locks, internal_class,
+						  class_oid);
 
 	      if (mvcc_reev_class_cnt && mvcc_reev_classes[mvcc_reev_class_idx].class_index == class_oid_idx)
 		{
@@ -26877,6 +26840,41 @@ qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INF
     }
 
   return internal_class->is_mvcc_class && !internal_class->has_online_index;
+}
+
+/*
+ * qexec_make_lock_policy_transient () - Turn the statement's row lock policy transient for a class whose row
+ *					 locks end with the statement
+ *   return: the transient form of base_policy, or base_policy itself when the locks are kept to commit
+ *   thread_p(in): thread entry
+ *   base_policy(in): where the statement locks its rows, LOCATOR_LOCK_AT_SELECT or LOCATOR_LOCK_AT_FORCE
+ *   statement_ends_locks(in): whether the statement's row locks end with it -- the outermost statement, at
+ *			       READ COMMITTED
+ *   internal_class(in/out): the class the force phase is on
+ *   class_oid(in): its OID
+ *
+ * Note: decided per class, not per row; see qexec_class_ends_locks_with_statement ().  A row the select phase
+ *	 locked turns transient too: its request ends with the statement, so the scan's lock does not keep the row
+ *	 past it.
+ */
+static LOCATOR_LOCK_POLICY
+qexec_make_lock_policy_transient (THREAD_ENTRY * thread_p, LOCATOR_LOCK_POLICY base_policy, bool statement_ends_locks,
+				  UPDDEL_CLASS_INFO_INTERNAL * internal_class, const OID * class_oid)
+{
+  if (!statement_ends_locks || !qexec_class_ends_locks_with_statement (thread_p, internal_class, class_oid))
+    {
+      return base_policy;
+    }
+
+  switch (base_policy)
+    {
+    case LOCATOR_LOCK_AT_FORCE:
+      return LOCATOR_LOCK_AT_FORCE_TRANSIENT;
+    case LOCATOR_LOCK_AT_SELECT:
+      return LOCATOR_LOCK_AT_SELECT_TRANSIENT;
+    default:
+      return base_policy;
+    }
 }
 
 /*
