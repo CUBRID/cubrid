@@ -206,6 +206,18 @@ db_unregister_sub_client (void)
       db_Is_sub_client_registered = false;
     }
 }
+
+/*
+ * db_get_num_sub_clients () - get the number of alive sub-clients
+ *   return: number of sub-clients registered by db_restart_sub () and not shut down yet
+ */
+int
+db_get_num_sub_clients (void)
+{
+  std::lock_guard < std::mutex > lock (g_sub_client_mutex);
+
+  return g_num_sub_clients;
+}
 #endif
 
 /*

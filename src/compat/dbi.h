@@ -93,6 +93,7 @@ extern "C"
   extern void db_shutdown_without_request_to_server (void);
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
   extern int db_shutdown_sub ();
+  extern int db_get_num_sub_clients (void);
 #endif
   extern int db_ping_server (int client_val, int *server_val);
 #if !defined(SERVER_MODE)

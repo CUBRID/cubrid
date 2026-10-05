@@ -160,6 +160,7 @@ static int boot_Process_id = -1;
 static int boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isolation);
 static int install_system_metadata (void);
 static void boot_shutdown_client_at_exit (void);
+static int boot_shutdown_client_internal (bool is_er_final, bool finalize_modules);
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 static void boot_finalize_client_sub (void);
 #endif
@@ -1721,6 +1722,20 @@ boot_finalize_client_sub (void)
 int
 boot_shutdown_client (bool is_er_final)
 {
+  return boot_shutdown_client_internal (is_er_final, true);
+}
+
+/*
+ * boot_shutdown_client_internal () - shutdown client
+ *
+ * returns : NO_ERROR
+ *
+ *   is_er_final(in) :
+ *   finalize_modules(in) : false to leave the client modules not finalized (see boot_shutdown_client_at_exit ())
+ */
+static int
+boot_shutdown_client_internal (bool is_er_final, bool finalize_modules)
+{
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
       /*
@@ -1763,7 +1778,10 @@ boot_shutdown_client (bool is_er_final)
 #endif /* !CS_MODE */
 	}
 
-      boot_client_all_finalize (is_er_final ? ALL_FINALIZATION : EXCEPT_ER_FINALIZATION);
+      if (finalize_modules)
+	{
+	  boot_client_all_finalize (is_er_final ? ALL_FINALIZATION : EXCEPT_ER_FINALIZATION);
+	}
     }
 
   return NO_ERROR;
@@ -1792,6 +1810,29 @@ boot_shutdown_client_at_exit (void)
 	  // we need error manager initialized
 	  er_init (NULL, ER_NEVER_EXIT);
 	}
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+      if (boot_Is_sub_client)
+	{
+	  /*
+	   * exit () is called on a sub-client thread. Shut down only this sub-client; the main client and
+	   * the shared client modules are still used by the other threads and are left to the process exit.
+	   */
+	  (void) boot_shutdown_client_sub ();
+	  return;
+	}
+
+      if (db_get_num_sub_clients () > 0)
+	{
+	  /*
+	   * The sub-clients are still alive. Finish and unregister the main client, but do not finalize
+	   * the client modules shared with them (they would use freed memory). The process exit releases them.
+	   * The server aborts the transactions of the sub-clients when their connections are closed by the exit.
+	   */
+	  (void) boot_shutdown_client_internal (true, false);
+	  return;
+	}
+#endif
 
       (void) boot_shutdown_client (true);
     }
