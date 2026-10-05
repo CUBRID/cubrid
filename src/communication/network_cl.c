@@ -35,6 +35,9 @@
 #endif /* !WINDDOWS */
 
 #include <vector>
+#if defined(MULTI_CONN_TO_A_SERVER)
+#include <mutex>
+#endif
 
 #include "network.h"
 #include "network_interface_cl.h"
@@ -117,8 +120,16 @@ static CUB_THREAD_LOCAL char net_Server_host[CUB_MAXHOSTNAMELEN + 1] = { 0x00, }
 static CUB_THREAD_LOCAL char net_Server_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };
 
 #if defined(MULTI_CONN_TO_A_SERVER)
-static char *g_server_host_name = NULL;
-static char *g_server_db_name = NULL;
+/*
+ * The server host/name connected by the main client, which the sub-clients connect to.
+ * net_Server_host/net_Server_name are thread-local and may be cleared or changed by the main client thread
+ * (e.g., server failure, HA failover), so they are copied here and protected by g_server_name_mutex.
+ */
+static char g_server_host_name[CUB_MAXHOSTNAMELEN + 1] = { 0x00, };
+static char g_server_db_name[DB_MAX_IDENTIFIER_LENGTH + 1] = { 0x00, };
+/* *INDENT-OFF* */
+static std::mutex g_server_name_mutex;
+/* *INDENT-ON* */
 #endif
 
 static void return_error_to_server (char *host, unsigned int eid);
@@ -3666,8 +3677,10 @@ end:
 #if defined(MULTI_CONN_TO_A_SERVER)
   else
     {
-      g_server_host_name = net_Server_host;
-      g_server_db_name = net_Server_name;
+      std::lock_guard < std::mutex > lock (g_server_name_mutex);
+
+      strcpy (g_server_host_name, net_Server_host);
+      strcpy (g_server_db_name, net_Server_name);
     }
 #endif
 
@@ -3680,14 +3693,16 @@ net_client_sub_init ()
 {
   int error = NO_ERROR;
 
-  if (g_server_host_name && g_server_host_name[0])
+  {
+    std::lock_guard < std::mutex > lock (g_server_name_mutex);
+
+    strcpy (net_Server_host, g_server_host_name);
+    strcpy (net_Server_name, g_server_db_name);
+  }
+
+  if (net_Server_host[0] != '\0')
     {
-      strcpy (net_Server_host, g_server_host_name);
-      if (g_server_db_name && g_server_db_name[0])
-	{
-	  strcpy (net_Server_name, g_server_db_name);
-	}
-      else
+      if (net_Server_name[0] == '\0')
 	{
 	  error = ER_NET_INVALID_SERVER_NAME;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "");
