@@ -231,7 +231,7 @@ static void pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node)
 static bool pt_is_int_value_at_least (PT_NODE * node, DB_BIGINT min_value);
 static bool pt_exists_limit_is_removable (PT_NODE * node);
 static void pt_remove_exists_limit (PARSER_CONTEXT * parser, PT_NODE * node);
-static bool pt_query_has_limit (PT_NODE * node);
+static bool pt_query_has_intersect_or_difference (PT_NODE * node);
 static bool pt_is_able_to_determine_return_type (const PT_OP_TYPE op);
 static PT_NODE *pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_opt_type (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -8248,40 +8248,30 @@ pt_exists_limit_is_removable (PT_NODE * node)
       return false;
     }
 
-  if (node->node_type != PT_UNION)
-    {
-      /* whether INTERSECT or EXCEPT returns a row depends on the rows of its operands, not only on their existence */
-      return !pt_query_has_limit (node->info.query.q.union_.arg1) && !pt_query_has_limit (node->info.query.q.union_.arg2);
-    }
-
   return (pt_exists_limit_is_removable (node->info.query.q.union_.arg1)
 	  && pt_exists_limit_is_removable (node->info.query.q.union_.arg2));
 }
 
 /*
- * pt_query_has_limit () - check if the query or any of its set operands has LIMIT or FOR ORDERBY_NUM()
+ * pt_query_has_intersect_or_difference () - check if the query is or has as a set operand INTERSECT or EXCEPT
  *   return: true if found
  *   node(in): query
  */
 static bool
-pt_query_has_limit (PT_NODE * node)
+pt_query_has_intersect_or_difference (PT_NODE * node)
 {
-  if (!pt_is_query (node))
+  if (!pt_is_query (node) || node->node_type == PT_SELECT)
     {
       return false;
     }
 
-  if (node->info.query.limit != NULL || node->info.query.orderby_for != NULL)
+  if (node->node_type != PT_UNION)
     {
       return true;
     }
 
-  if (node->node_type != PT_SELECT)
-    {
-      return pt_query_has_limit (node->info.query.q.union_.arg1) || pt_query_has_limit (node->info.query.q.union_.arg2);
-    }
-
-  return false;
+  return (pt_query_has_intersect_or_difference (node->info.query.q.union_.arg1)
+	  || pt_query_has_intersect_or_difference (node->info.query.q.union_.arg2));
 }
 
 /*
@@ -8325,6 +8315,13 @@ pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   if (pt_is_query (node))
     {
+      if (pt_query_has_intersect_or_difference (node))
+	{
+	  /* INTERSECT and EXCEPT compare whole rows of their operands, so neither their select lists nor LIMIT can be
+	   * changed. The select lists of the other set operands must be kept too, to match the number of columns. */
+	  return;
+	}
+
       if (!pt_exists_limit_is_removable (node))
 	{
 	  /* LIMIT (FOR ORDERBY_NUM()) decides whether a row is returned, so ORDER BY can not be removed. Also the
