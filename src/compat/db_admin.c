@@ -137,6 +137,20 @@ static BOOT_CLIENT_CREDENTIAL gv_client_credential;
 // *INDENT-OFF* 
 static  std::atomic <bool> g_ready_to_sub = false; // flag indicating successful connection in db_restart()
 // *INDENT-ON*
+/* thread of the main client which succeeded in db_restart (); valid while g_ready_to_sub is true */
+static pthread_t gv_main_client_thread;
+
+/*
+ * db_is_main_client_thread () - whether the calling thread holds the main client
+ *   return: true if the calling thread succeeded in db_restart () and has not called db_shutdown () yet
+ *
+ * Note: It is true even after the server failure, while BOOT_IS_CLIENT_RESTARTED () is false.
+ */
+static bool
+db_is_main_client_thread (void)
+{
+  return (g_ready_to_sub.load (std::memory_order_acquire) && pthread_self () == gv_main_client_thread);
+}
 #endif
 
 /*
@@ -977,6 +991,7 @@ db_restart (const char *program, int print_version, const char *volume)
 #endif /* !WINDOWS */
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 	  gv_client_credential = client_credential;
+	  gv_main_client_thread = pthread_self ();
 	  (void) g_ready_to_sub.store (true, std::memory_order_release);
 #endif
 	}
@@ -1012,7 +1027,7 @@ db_restart_sub (int sub_index)
       return ER_FAILED;
     }
 
-  if (BOOT_IS_CLIENT_RESTARTED () && !boot_is_sub_client ())
+  if (db_is_main_client_thread ())
     {
       /* the main client thread cannot be restarted as a sub-client */
       assert (false);
@@ -1157,10 +1172,19 @@ db_shutdown_without_request_to_server (void)
  * return : error code
  *
  * Note: It must be called by the thread which called db_restart_sub (), before the thread exits.
+ *       It must not be called by the main client thread; db_shutdown () must be used for the main client.
+ *       Calling it on a thread without any client (e.g., after db_restart_sub () failed) is harmless.
  */
 int
 db_shutdown_sub ()
 {
+  if (db_is_main_client_thread ())
+    {
+      /* the main client must not be shut down as a sub-client */
+      assert (false);
+      return ER_FAILED;
+    }
+
   (void) db_end_session ();
   db_Disable_modifications = 0;
 
