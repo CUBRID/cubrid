@@ -807,24 +807,3 @@ css_ha_server_state (void)
   return boot_change_ha_mode (HA_SERVER_STATE_NA, false, 0);
 }
 
-#if !defined(NDEBUG) || defined(MULTI_CONN_TO_A_SERVER)
-pthread_t gv_main_tid;
-CUB_THREAD_LOCAL pthread_t gv_current_tid = (pthread_t) -1;
-
-__attribute__ ((constructor))
-static void
-get_main_thread_id ()
-{
-  gv_main_tid = pthread_self ();
-}
-#endif
-
-pthread_t
-css_get_thread_id ()
-{
-  static THREAD_LOCAL pthread_t tid = pthread_self ();
-#if !defined(NDEBUG) || defined(MULTI_CONN_TO_A_SERVER)
-  gv_current_tid = tid;
-#endif
-  return tid;
-}

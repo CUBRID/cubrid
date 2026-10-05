@@ -72,28 +72,6 @@ extern "C"
 #endif
 
 
-#if !defined(SERVER_MODE)
-  extern pthread_t css_get_thread_id ();
-
-#if !defined(NDEBUG) || defined(MULTI_CONN_TO_A_SERVER)
-  extern CUB_THREAD_LOCAL pthread_t gv_current_tid;
-  extern pthread_t gv_main_tid;
-#define  CHECK_MAIN_THREAD()   assert (pthread_equal (gv_main_tid, css_get_thread_id ()))
-#else
-#define  CHECK_MAIN_THREAD()
-#endif
-
-// *INDENT-OFF* 
-#if defined(MULTI_CONN_TO_A_SERVER)
-#  define CS_Lock(mutex)   pthread_mutex_lock(mutex)
-#  define CS_UnLock(mutex) pthread_mutex_unlock(mutex)
-#else
-#  define CS_Lock(mutex)
-#  define CS_UnLock(mutex)
-#endif
-// *INDENT-ON*
-
-#endif				// #if !defined(SERVER_MODE)
 
 #ifdef __cplusplus
 }
