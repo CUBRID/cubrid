@@ -119,7 +119,9 @@ void
 area_final (void)
 {
   AREA *area, *next;
+  int rv;
 
+  rv = pthread_mutex_lock (&area_List_lock);
   for (area = area_List, next = NULL; area != NULL; area = next)
     {
       next = area->next;
@@ -127,10 +129,14 @@ area_final (void)
       free_and_init (area);
     }
   area_List = NULL;
+  pthread_mutex_unlock (&area_List_lock);
 
   set_area_reset ();
 
+#if defined (SERVER_MODE)
+  /* on the client, the statically initialized mutex is reused by the next area_init () (e.g., db_restart ()) */
   pthread_mutex_destroy (&area_List_lock);
+#endif
 }
 
 /*

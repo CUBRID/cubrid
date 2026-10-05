@@ -32,6 +32,9 @@
 #include <ctype.h>
 #include <assert.h>
 #include <signal.h>
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+#include <mutex>
+#endif
 
 #include "authenticate.h"
 #include "client_support.h"
@@ -150,6 +153,58 @@ static bool
 db_is_main_client_thread (void)
 {
   return (g_ready_to_sub.load (std::memory_order_acquire) && pthread_self () == gv_main_client_thread);
+}
+
+/*
+ * g_sub_client_mutex protects the changes of g_ready_to_sub, g_num_sub_clients and gv_client_credential, so that
+ * the main client is not restarted or shut down while a sub-client is starting or alive.
+ */
+/* *INDENT-OFF* */
+static std::mutex g_sub_client_mutex;
+/* *INDENT-ON* */
+static int g_num_sub_clients = 0;	/* number of sub-clients registered by db_register_sub_client () */
+static CUB_THREAD_LOCAL bool db_Is_sub_client_registered = false;
+
+/*
+ * db_register_sub_client () - register the calling thread as a sub-client
+ *   return: NO_ERROR, or ER_FAILED if the main client is not ready
+ *   client_credential(out): copy of the credential of the main client
+ */
+static int
+db_register_sub_client (BOOT_CLIENT_CREDENTIAL * client_credential)
+{
+  std::lock_guard < std::mutex > lock (g_sub_client_mutex);
+
+  assert (db_Is_sub_client_registered == false);
+
+  if (g_ready_to_sub.load (std::memory_order_acquire) == false)
+    {
+      // TODO: Assign independent error codes.
+      return ER_FAILED;
+    }
+
+  *client_credential = gv_client_credential;
+  g_num_sub_clients++;
+  db_Is_sub_client_registered = true;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_unregister_sub_client () - unregister the calling thread, if it is registered as a sub-client
+ *   return: none
+ */
+static void
+db_unregister_sub_client (void)
+{
+  std::lock_guard < std::mutex > lock (g_sub_client_mutex);
+
+  if (db_Is_sub_client_registered)
+    {
+      assert (g_num_sub_clients > 0);
+      g_num_sub_clients--;
+      db_Is_sub_client_registered = false;
+    }
 }
 #endif
 
@@ -950,6 +1005,19 @@ db_restart (const char *program, int print_version, const char *volume)
   int error = NO_ERROR;
   BOOT_CLIENT_CREDENTIAL client_credential;
 
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  {
+    std::lock_guard < std::mutex > lock (g_sub_client_mutex);
+
+    if (g_num_sub_clients > 0)
+      {
+	/* restarting the main client finalizes the client modules shared with the alive sub-clients */
+	er_log_debug (ARG_FILE_LINE, "db_restart: %d sub-clients are still alive\n", g_num_sub_clients);
+	return ER_FAILED;
+      }
+  }
+#endif
+
   if (program == NULL || volume == NULL)
     {
       error = ER_OBJ_INVALID_ARGUMENTS;
@@ -990,9 +1058,13 @@ db_restart (const char *program, int print_version, const char *volume)
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
 #endif /* !WINDOWS */
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-	  gv_client_credential = client_credential;
-	  gv_main_client_thread = pthread_self ();
-	  (void) g_ready_to_sub.store (true, std::memory_order_release);
+	  {
+	    std::lock_guard < std::mutex > lock (g_sub_client_mutex);
+
+	    gv_client_credential = client_credential;
+	    gv_main_client_thread = pthread_self ();
+	    (void) g_ready_to_sub.store (true, std::memory_order_release);
+	  }
 #endif
 	}
     }
@@ -1009,8 +1081,8 @@ db_restart (const char *program, int print_version, const char *volume)
  * Note: The sub-client is bound to the calling thread. db_shutdown_sub () must be called
  *       by the same thread before the thread exits. Otherwise, the transaction and the locks
  *       of the sub-client remain in the server until the process exits.
- *       db_shutdown () of the main client must be called after all sub-clients are shut down,
- *       because it finalizes the client modules shared with the sub-clients.
+ *       db_shutdown () and db_restart () of the main client fail while a sub-client is alive,
+ *       because they finalize the client modules shared with the sub-clients.
  *       If it fails, the resources of the sub-client are released by itself, so db_shutdown_sub ()
  *       does not need to be called (calling it is harmless).
  */
@@ -1020,12 +1092,6 @@ db_restart_sub (int sub_index)
   int error = NO_ERROR;
   BOOT_CLIENT_CREDENTIAL client_credential;
   char program_name[512];
-
-  if (g_ready_to_sub.load (std::memory_order_acquire) == false)
-    {
-      // TODO: Assign independent error codes.
-      return ER_FAILED;
-    }
 
   if (db_is_main_client_thread ())
     {
@@ -1050,14 +1116,21 @@ db_restart_sub (int sub_index)
       (void) db_shutdown_sub ();
     }
 
-  error =
-    snprintf (program_name, sizeof (program_name), "%s(%d)", gv_client_credential.get_program_name (), sub_index + 1);
-  if (error < 0 || error >= (int) sizeof (program_name))
+  /* register as a sub-client, so that the main client is not restarted or shut down while this one is alive */
+  error = db_register_sub_client (&client_credential);
+  if (error != NO_ERROR)
     {
-      return ER_FAILED;
+      return error;
     }
 
-  client_credential = gv_client_credential;
+  error =
+    snprintf (program_name, sizeof (program_name), "%s(%d)", client_credential.get_program_name (), sub_index + 1);
+  if (error < 0 || error >= (int) sizeof (program_name))
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+
   client_credential.program_name = program_name;
 
   /* 
@@ -1088,6 +1161,7 @@ error:
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
   db_Disable_modifications = 0;
   au_ctx_destructor ();
+  db_unregister_sub_client ();
 
   return error;
 }
@@ -1141,6 +1215,22 @@ db_shutdown (void)
 {
   int error = NO_ERROR;
 
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  {
+    std::lock_guard < std::mutex > lock (g_sub_client_mutex);
+
+    if (g_num_sub_clients > 0)
+      {
+	/* shutting down the main client finalizes the client modules shared with the alive sub-clients */
+	er_log_debug (ARG_FILE_LINE, "db_shutdown: %d sub-clients are still alive\n", g_num_sub_clients);
+	return ER_FAILED;
+      }
+
+    /* no more sub-clients can be started from now on */
+    (void) g_ready_to_sub.store (false, std::memory_order_release);
+  }
+#endif
+
   (void) db_end_session ();
 
   error = boot_shutdown_client (true);
@@ -1153,9 +1243,6 @@ db_shutdown (void)
   db_Disable_modifications = 0;
 
   db_free_execution_plan ();
-#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
-  (void) g_ready_to_sub.store (false, std::memory_order_release);
-#endif
 
   return (error);
 }
@@ -1194,6 +1281,7 @@ db_shutdown_sub ()
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 
   au_ctx_destructor ();
+  db_unregister_sub_client ();
   return NO_ERROR;
 }
 #endif
