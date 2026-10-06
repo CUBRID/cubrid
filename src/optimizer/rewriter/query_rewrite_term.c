@@ -1547,8 +1547,8 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
 	  continue;
 	}
 
-      /* search if there's a term that make this IS NULL/IS NOT NULL node meaningless; that is, a term that has the
-       * same attribute */
+      /* Find a sibling that proves this NULL test redundant or contradictory. Referencing the same
+       * attribute is not enough: a value function or NOT IN over an empty set may accept NULL. */
       found = false;
       for (sibling = *wherep; sibling; sibling = sibling->next)
 	{
@@ -1574,6 +1574,28 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
 	  if (pt_check_path_eq (parser, node_prior, sibling_prior) == 0
 	      || pt_check_path_eq (parser, node_prior, sibling->info.expr.arg2) == 0)
 	    {
+	      if (sibling->info.expr.op != PT_IS_NULL && sibling->info.expr.op != PT_IS_NOT_NULL
+		  && sibling->info.expr.op != PT_NULLSAFE_EQ)
+		{
+		  PT_NODE *save_next;
+		  bool has_subquery = false;
+
+		  if (!pt_is_comp_op (sibling->info.expr.op) || qo_check_nullable_op (sibling))
+		    {
+		      continue;
+		    }
+
+		  save_next = sibling->next;
+		  sibling->next = NULL;
+		  (void) parser_walk_tree (parser, sibling, pt_check_subquery_pre, NULL,
+					   pt_check_subquery_post, &has_subquery);
+		  sibling->next = save_next;
+		  if (has_subquery)
+		    {
+		      continue;
+		    }
+		}
+
 	      found = true;
 	      break;
 	    }
