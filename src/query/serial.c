@@ -1546,10 +1546,11 @@ serial_flush_cache_pool_replicated (THREAD_ENTRY * thread_p)
  *   old_cur(in)    : its cur_val
  *   new_cur(in)    : the image's cur_val
  *   backwards(out) :
+ *   cyclic(out)    : the serial is cyclic
  */
 static int
 serial_repl_moves_backwards (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * old_info, DB_VALUE * old_cur,
-			     DB_VALUE * new_cur, bool * backwards)
+			     DB_VALUE * new_cur, bool * backwards, bool * cyclic)
 {
   ATTR_ID attrid;
   DB_VALUE *val;
@@ -1557,6 +1558,7 @@ serial_repl_moves_backwards (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * old_
   int positive;
 
   *backwards = false;
+  *cyclic = false;
 
   if (serial_get_attrid (thread_p, SERIAL_ATTR_CYCLIC_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
     {
@@ -1570,6 +1572,7 @@ serial_repl_moves_backwards (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * old_
   if (db_get_int (val) != 0)
     {
       *backwards = true;
+      *cyclic = true;
       return NO_ERROR;
     }
 
@@ -1590,6 +1593,19 @@ serial_repl_moves_backwards (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * old_
   *backwards = positive ? (db_get_int (&cmp_result) < 0) : (db_get_int (&cmp_result) > 0);
 
   return NO_ERROR;
+}
+
+/*
+ * serial_repl_value_print () - a numeric value for the skip notification, or "-" when there is none
+ */
+static const char *
+serial_repl_value_print (const DB_VALUE * value, char *buf)
+{
+  if (value == NULL || DB_IS_NULL (value) || DB_VALUE_TYPE (value) != DB_TYPE_NUMERIC)
+    {
+      return "-";
+    }
+  return numeric_db_value_print (value, buf);
 }
 #endif /* SERVER_MODE */
 
@@ -1612,7 +1628,7 @@ serial_repl_moves_backwards (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * old_
  * master's tail can arrive after the promotion; a cyclic serial has no direction, so an active node leaves
  * its row alone. One that cannot be checked is taken.
  *
- * A skipped image is logged as a notification, unless it could not be checked.
+ * Every skipped image is logged as a notification with the reason.
  *
  * The row on this node is read here instead of being taken from the caller: the caller reads it with
  * a scan cache that does not keep the page fixed, so its record points into an unfixed page. The
@@ -1634,9 +1650,11 @@ serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, con
   ATTR_ID attrid;
   DB_VALUE *name = NULL, *old_cur = NULL, *new_cur = NULL;
   DB_VALUE cmp_result;
-  bool has_cache_entry = false;
+  bool has_cache_entry = false, cyclic = false;
   bool skip_unchecked = (prior_val != NULL);
-  char old_str[NUMERIC_MAX_STRING_SIZE], new_str[NUMERIC_MAX_STRING_SIZE];
+  const char *reason = NULL;
+  char name_str[32], old_str[NUMERIC_MAX_STRING_SIZE], new_str[NUMERIC_MAX_STRING_SIZE];
+  char prior_str[NUMERIC_MAX_STRING_SIZE];
 
   if (!oid_is_serial (class_oidp))
     {
@@ -1653,7 +1671,8 @@ serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, con
     }
   if (!serial_Cache_initialized || serial_Num_attrs < 0)
     {
-      return skip_unchecked;
+      failed = true;
+      goto exit;
     }
   if (prior_val != NULL)
     {
@@ -1723,27 +1742,33 @@ serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, con
 	  goto exit;
 	}
       stale = has_cache_entry || db_get_int (&cmp_result) != 0;
+      reason = has_cache_entry ? "this node holds a cache block of the serial" : "current_val is not the block end";
       goto exit;
     }
 
-  if (serial_repl_moves_backwards (thread_p, &old_info, old_cur, new_cur, &stale) != NO_ERROR)
+  if (serial_repl_moves_backwards (thread_p, &old_info, old_cur, new_cur, &stale, &cyclic) != NO_ERROR)
     {
       failed = true;
     }
+  reason = cyclic ? "the serial is cyclic" : "the image moves current_val backwards";
 
 exit:
   if (failed)
     {
       er_clear ();
       stale = skip_unchecked;
+      reason = "the image could not be checked";
     }
-  else if (stale)
+  if (stale)
     {
-      /* By design, so not the applier's error: report it as a notification and leave the error area as it
-       * was, and the object still counts as applied. */
+      /* Not the applier's error: report it as a notification and leave the error area as it was, and the
+       * object still counts as applied. */
+      snprintf (name_str, sizeof (name_str), "(%d|%d|%d)", OID_AS_ARGS (serial_oidp));
       er_stack_push ();
-      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_SERIAL_IMAGE_SKIPPED, 3, db_get_string (name),
-	      numeric_db_value_print (old_cur, old_str), numeric_db_value_print (new_cur, new_str));
+      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_REPL_SERIAL_IMAGE_SKIPPED, 5,
+	      (name == NULL || DB_IS_NULL (name)) ? name_str : db_get_string (name), reason,
+	      serial_repl_value_print (old_cur, old_str), serial_repl_value_print (new_cur, new_str),
+	      serial_repl_value_print (prior_val, prior_str));
       er_stack_pop ();
     }
   if (new_started)

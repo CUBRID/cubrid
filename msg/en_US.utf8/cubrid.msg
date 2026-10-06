@@ -1489,7 +1489,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1381 System metadata is incompatible with this CUBRID version. Run 'cubrid upgradedb'.
 1382 System metadata version is newer than the current CUBRID version supports; downgrade is not supported.
-1383 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this node, which keeps its own row: current_val %2$s, image %3$s.
+1383 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this node (%2$s), which keeps its own row: current_val %3$s, image %4$s, block end %5$s.
 
 1384 Last Error
 
