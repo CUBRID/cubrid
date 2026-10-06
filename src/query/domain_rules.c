@@ -2619,12 +2619,15 @@ enum DOMAIN_CHAR_PRECISION
 
 struct DOMAIN_CHAR_RULE
 {
-  DB_TYPE type;			/* DB_TYPE_NULL: the first character operand's type (UPPER, LOWER keep CHAR) */
+  DB_TYPE type;			/* DB_TYPE_NULL: the first character operand's type (UPPER, LOWER keep CHAR);
+				 * DB_TYPE_VARIABLE: the compiled type (NVL, COALESCE and the other common values) */
   unsigned char source;		/* DOMAIN_CHAR_SOURCE */
   unsigned char precision;	/* DOMAIN_CHAR_PRECISION */
 };
 
-/* The rule of a character operator; an operator not listed makes a string from its character operands, merged. */
+/* The rule of a character operator. An operator not listed makes a new string from its character operands, merged
+ * (db_string_concatenate, db_string_pad, db_string_replace); every operator that returns one of its operands is listed
+ * (the branches, the common values). */
 /* *INDENT-OFF* */
 static DOMAIN_CHAR_RULE
 domain_character_rule (int opcode)
@@ -2689,6 +2692,16 @@ domain_character_rule (int opcode)
     case T_QPRIOR:
     case F_ELT:
       return DOMAIN_CHAR_RULE { DB_TYPE_NULL, DOMAIN_CHAR_BRANCH, DOMAIN_PREC_SOURCE };
+    case T_NVL:
+    case T_NVL2:
+    case T_IFNULL:
+    case T_COALESCE:
+    case T_NULLIF:
+    case T_LEAST:
+    case T_GREATEST:
+      /* the row casts the operand it returns to the node's compiled domain (fetch_cast_operand), as develop does: a
+       * CHAR stays a CHAR and compares as one; the operands' collations merge */
+      return DOMAIN_CHAR_RULE { DB_TYPE_VARIABLE, DOMAIN_CHAR_MERGE, DOMAIN_PREC_COMPILED };
     default:
       return DOMAIN_CHAR_RULE { DB_TYPE_VARCHAR, DOMAIN_CHAR_MERGE, DOMAIN_PREC_FLOATING };
     }
@@ -2870,6 +2883,11 @@ domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_oper
       if (type == DB_TYPE_NULL)
 	{
 	  type = first != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (first)) ? TP_DOMAIN_TYPE (first) : DB_TYPE_VARCHAR;
+	}
+      else if (type == DB_TYPE_VARIABLE)
+	{
+	  type = compiled != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (compiled)) ? TP_DOMAIN_TYPE (compiled)
+	    : DB_TYPE_VARCHAR;
 	}
       int precision = TP_FLOATING_PRECISION_VALUE;
       switch (rule.precision)
