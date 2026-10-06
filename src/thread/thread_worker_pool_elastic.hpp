@@ -91,9 +91,8 @@ namespace cubthread
 
       // true if any core still has work that could not be dispatched
       bool has_queued_tasks (void) const;
-      // true if the core a given connection's tasks are pushed to still has work
-      // that could not be dispatched
-      bool has_queued_task (std::size_t core_hash) const;
+      // true if the core that core_hash maps to still has work that could not be dispatched
+      bool has_queued_task_on_core (std::size_t core_hash) const;
 
       void check_progress (void);
 
@@ -649,19 +648,6 @@ namespace cubthread
 
   template <stats_t Stats>
   bool
-  worker_pool_elastic<Stats>::has_queued_task (std::size_t core_hash) const
-  {
-    if (!this->is_running () || this->m_cores.empty ())
-      {
-	return false;
-      }
-    std::size_t index = core_hash % this->m_cores.size ();
-
-    return static_cast<const core_elastic *> (this->m_cores[index].get ())->has_queued_task ();
-  }
-
-  template <stats_t Stats>
-  bool
   worker_pool_elastic<Stats>::has_queued_tasks (void) const
   {
     if (!this->is_running ())
@@ -677,6 +663,19 @@ namespace cubthread
 	  }
       }
     return false;
+  }
+
+  template <stats_t Stats>
+  bool
+  worker_pool_elastic<Stats>::has_queued_task_on_core (std::size_t core_hash) const
+  {
+    if (!this->is_running () || this->m_cores.empty ())
+      {
+	return false;
+      }
+    std::size_t index = this->get_core_index (core_hash);
+
+    return static_cast<const core_elastic *> (this->m_cores[index].get ())->has_queued_task ();
   }
 
   template <stats_t Stats>

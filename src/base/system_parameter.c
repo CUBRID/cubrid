@@ -802,7 +802,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_CSS_RECV_BUDGET_PER_CONNECTION "recv_budget_per_connection"
 #define PRM_NAME_CSS_SEND_BUDGET_PER_CONNECTION "send_budget_per_connection"
-#define PRM_NAME_CSS_EAGER_RECEIVE_WINDOW_MS "eager_receive_window_ms"
 
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
@@ -821,6 +820,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_STATISTICS_SAMPLE_PAGES "statistics_sample_pages"
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
+
+#define PRM_NAME_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS "eager_receive_window_in_msecs"
 
 // #endregion
 
@@ -5403,18 +5404,6 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  {PRM_ID_CSS_EAGER_RECEIVE_WINDOW_MS,
-   PRM_NAME_CSS_EAGER_RECEIVE_WINDOW_MS,
-   (PRM_FOR_SERVER),
-   PRM_INTEGER,
-   PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 2}},		/* ms a transaction thread waits on its socket for the next request */
-   {false, {.i = 2}},
-   {false, {.i = 50}},
-   {false, {.i = 0}},		/* 0 disables */
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
   {PRM_ID_PAGE_LATCH_TIMEOUT_IN_MSECS,
    PRM_NAME_PAGE_LATCH_TIMEOUT_IN_MSECS,
    (PRM_FOR_SERVER | PRM_HIDDEN),
@@ -5592,6 +5581,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.b = false}},
    NULL_SYSPRM_PARAM_VALUE,
    NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS,
+   PRM_NAME_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 2}},		/* ms a transaction thread waits on its socket for the next request */
+   {false, {.i = 2}},
+   {false, {.i = 50}},
+   {false, {.i = 0}},		/* 0 disables */
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

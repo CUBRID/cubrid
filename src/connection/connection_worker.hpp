@@ -275,6 +275,8 @@ namespace cubconn::connection
       uint64_t get_time_ns (clockid_t type);
 
       void push_task_into_worker_pool (context *ctx);
+      void eager_abort (context *ctx);
+      void eager_flush_counted_to_pool (context *ctx, int count);
       void purge_stale_contexts ();
       void wakeup_blocked_worker (std::shared_ptr<message_blocker> handle);
 
@@ -327,13 +329,6 @@ namespace cubconn::connection
       bool validate_message_generation (const message &item, context *ctx) const;
       bool forward_message_to_successor (queue_type type, message &item, context *ctx);
 
-      void eager_abort (context *ctx);
-      void eager_flush_counted_to_pool (context *ctx, int count);
-
-      bool claim_reading (context *ctx, bool from_edge);
-      void release_reading (context *ctx);
-      result eager_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out);
-
       bool handle_message_queue_release_packet (message &item);
       bool handle_message_queue_recv_recheck (message &item);
 
@@ -376,6 +371,9 @@ namespace cubconn::connection
        * and never the connection-close path. */
       result handle_packet (context *ctx, cubbase::span<std::byte> &packet);
       result handle_reception (context *ctx, bool in_exhausted);
+      bool claim_reading (context *ctx, bool from_edge);
+      void release_reading (context *ctx);
+      result eager_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out);
 
       /* --------------------------------------------------------------------------- */
       /* transmission								     */

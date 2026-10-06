@@ -179,10 +179,10 @@ namespace cubconn::connection
        * under m_conn->cmutex, so the two can never both take it; the flag is
        * atomic because its owner clears it without retaking the lock. */
       std::atomic<bool> m_recv_busy { false };
-      /* while m_inline is set, a complete request is counted in m_inline_count
+      /* while m_eager_draining is set, a complete request is counted in m_eager_counted
        * instead of being pushed as a task; the eager receiver runs it itself */
-      bool m_inline { false };
-      int m_inline_count { 0 };
+      bool m_eager_draining { false };
+      int m_eager_counted { 0 };
       /* the worker met an EPOLLIN edge while the eager receiver owned this socket
        * and dropped it; guarded by m_conn->cmutex like m_recv_busy's transitions */
       bool m_missed_edge { false };

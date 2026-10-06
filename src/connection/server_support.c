@@ -199,8 +199,9 @@ static int css_get_master_request (SOCKET master_fd);
 static void css_process_shutdown_request (SOCKET master_fd);
 
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static std::size_t css_get_core_hash (const CSS_CONN_ENTRY & conn_ref);
 static void css_run_one_request (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
-static void css_recycle_between_inline_requests (THREAD_ENTRY & thread_ref);
+static void css_recycle_between_eager_requests (THREAD_ENTRY & thread_ref);
 static void css_eager_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 
@@ -2054,6 +2055,18 @@ css_get_current_conn_entry (void)
 
 // *INDENT-OFF*
 /*
+ * css_get_core_hash() - core hash of the worker pool core that this
+ *                       connection's tasks are pushed to
+ *   return: core hash
+ *   conn_ref(in):
+ */
+static std::size_t
+css_get_core_hash (const CSS_CONN_ENTRY &conn_ref)
+{
+  return static_cast<std::size_t> (conn_ref.idx);
+}
+
+/*
  * css_push_server_task () - push a task on server request worker pool
  *
  * return          : void
@@ -2075,7 +2088,7 @@ css_push_server_task (CSS_CONN_ENTRY &conn_ref, cubthread::task_submission_optio
   conn_ref.add_working_task ();
 
   thread_get_manager ()->push_task_on_core (css_Server_request_worker_pool, new css_server_task (conn_ref),
-					    static_cast<size_t> (conn_ref.idx), options);
+					    css_get_core_hash (conn_ref), options);
 }
 
 void
@@ -2123,7 +2136,7 @@ css_run_one_request (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
 }
 
 /*
- * css_recycle_between_inline_requests() - apply the reset the worker pool puts
+ * css_recycle_between_eager_requests() - apply the reset the worker pool puts
  *                                         between two tasks
  *   return: void
  *   thread_ref(in):
@@ -2135,7 +2148,7 @@ css_run_one_request (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
  *       recycle_context ().
  */
 static void
-css_recycle_between_inline_requests (THREAD_ENTRY & thread_ref)
+css_recycle_between_eager_requests (THREAD_ENTRY & thread_ref)
 {
   bool was_shutdown = thread_ref.shutdown;
 
@@ -2154,7 +2167,7 @@ css_recycle_between_inline_requests (THREAD_ENTRY & thread_ref)
  *   thread_ref(in):
  *   conn_ref(in):
  *
- * Note: The window is eager_receive_window_ms and 0 disables the loop.
+ * Note: The window is eager_receive_window_in_msecs and 0 disables the loop.
  *       worker::eager_poll_and_receive () owns the socket protocol; this loop
  *       only decides whether to keep waiting and runs what came in.
  *
@@ -2170,7 +2183,7 @@ css_eager_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
   int window_ms, received, i;
   bool handed_back;
 
-  window_ms = prm_get_integer_value (PRM_ID_CSS_EAGER_RECEIVE_WINDOW_MS);
+  window_ms = prm_get_integer_value (PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS);
   if (window_ms <= 0 || css_Server_request_worker_pool == NULL)
     {
       return;
@@ -2183,7 +2196,7 @@ css_eager_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
 	{
 	  return;
 	}
-      if (css_Server_request_worker_pool->has_queued_task (static_cast<std::size_t> (conn_ref.idx)))
+      if (css_Server_request_worker_pool->has_queued_task_on_core (css_get_core_hash (conn_ref)))
 	{
 	  /* the core this connection's tasks go to has work waiting; that work
 	   * outranks this thread's wait, so give the thread back */
@@ -2199,7 +2212,7 @@ css_eager_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
        * parsed and counted, and each one owes a start_request (). */
       for (i = 0; i < received; i++)
 	{
-	  css_recycle_between_inline_requests (thread_ref);
+	  css_recycle_between_eager_requests (thread_ref);
 	  css_run_one_request (thread_ref, conn_ref);
 	}
 
