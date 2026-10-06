@@ -16,28 +16,47 @@
  *
  */
 
-// heap_pending_oos_values - ownership of serialized values awaiting OOS insertion
+// heap_pending_record - a compact record and its retained OOS values
 
 #include "config.h"
 
-#include "heap_pending_oos_values.hpp"
+#include "heap_pending_record.hpp"
 
 #include "error_code.h"
 #include "error_manager.h"
 #include "memory_alloc.h"
 
 #include <new>
+#include <utility>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-heap_pending_oos_values::~heap_pending_oos_values ()
+heap_pending_record::heap_pending_record ()
+  : m_record (cubmem::STANDARD_BLOCK_ALLOCATOR)
 {
-  discard_since (0);
+  m_record.set_external_buffer (nullptr, 0);
+}
+
+heap_pending_record::heap_pending_record (heap_pending_record &&other) noexcept
+  : m_record (std::move (other.m_record))
+  , m_bytes (other.m_bytes)
+{
+  m_values.swap (other.m_values);
+  other.m_bytes = 0;
+}
+
+heap_pending_record::~heap_pending_record ()
+{
+  for (auto &value : m_values)
+    {
+      char *data = value.data ();
+      free_and_init (data);
+    }
 }
 
 int
-heap_pending_oos_values::retain (oos_buffer value)
+heap_pending_record::retain (oos_buffer value)
 {
   try
     {
@@ -51,16 +70,3 @@ heap_pending_oos_values::retain (oos_buffer value)
   m_bytes += value.size ();
   return NO_ERROR;
 }
-
-void
-heap_pending_oos_values::discard_since (std::size_t count)
-{
-  while (m_values.size () > count)
-    {
-      char *data = m_values.back ().data ();
-      m_bytes -= m_values.back ().size ();
-      free_and_init (data);
-      m_values.pop_back ();
-    }
-}
-

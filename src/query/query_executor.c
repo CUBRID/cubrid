@@ -58,7 +58,7 @@
 #include "elo.h"
 #include "db_elo.h"
 #include "locator_sr.h"
-#include "heap_pending_oos_values.hpp"
+#include "heap_pending_record.hpp"
 #include "log_lsa.hpp"
 #include "log_volids.hpp"
 #include "xserver_interface.h"
@@ -12048,9 +12048,8 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 				     PRUNING_CONTEXT * pcontext, int *removed_count)
 {
   /* *INDENT-OFF* */
-  heap_pending_oos_values pending;
+  heap_pending_record pending;
   /* *INDENT-ON* */
-  LC_COPYAREA *copyarea = NULL;
   RECDES new_recdes;
   int i = 0;
   int error_code = NO_ERROR;
@@ -12078,13 +12077,13 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       goto error_exit;
     }
 
-  copyarea =
-    locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, LOB_FLAG_EXCLUDE_LOB,
-					     &pending);
-  if (copyarea == NULL)
+  if (heap_attrinfo_prepare_record (thread_p, attr_info, NULL, &pending, false) != S_SUCCESS)
     {
       goto error_exit;
     }
+  /* *INDENT-OFF* */
+  new_recdes = pending.get_recdes ();
+  /* *INDENT-ON* */
 
   if (idx_info->has_single_col)
     {
@@ -12229,14 +12228,6 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 	}
     }
 
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      new_recdes.data = NULL;
-      new_recdes.area_size = 0;
-    }
-
   return NO_ERROR;
 
 error_exit:
@@ -12244,14 +12235,6 @@ error_exit:
     {
       pr_clear_value (&dbvalue);
       key_dbvalue = NULL;
-    }
-
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      new_recdes.data = NULL;
-      new_recdes.area_size = 0;
     }
 
   return ER_FAILED;
@@ -12285,9 +12268,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 				   int pruning_type, PRUNING_CONTEXT * pcontext, OID * unique_oid_p, int op_type)
 {
   /* *INDENT-OFF* */
-  heap_pending_oos_values pending;
+  heap_pending_record pending;
   /* *INDENT-ON* */
-  LC_COPYAREA *copyarea = NULL;
   RECDES recdes;
   int i = 0;
   int error_code = NO_ERROR;
@@ -12321,12 +12303,13 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       goto error_exit;
     }
 
-  copyarea =
-    locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, LOB_FLAG_INCLUDE_LOB, &pending);
-  if (copyarea == NULL)
+  if (heap_attrinfo_prepare_record (thread_p, attr_info, NULL, &pending, true) != S_SUCCESS)
     {
       goto error_exit;
     }
+  /* *INDENT-OFF* */
+  recdes = pending.get_recdes ();
+  /* *INDENT-ON* */
 
   if (idx_info->has_single_col)
     {
@@ -12445,14 +12428,6 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 	}
     }
 
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      recdes.data = NULL;
-      recdes.area_size = 0;
-    }
-
   return NO_ERROR;
 
 error_exit:
@@ -12460,14 +12435,6 @@ error_exit:
     {
       pr_clear_value (&dbvalue);
       key_dbvalue = NULL;
-    }
-
-  if (copyarea != NULL)
-    {
-      locator_free_copy_area (copyarea);
-      copyarea = NULL;
-      recdes.data = NULL;
-      recdes.area_size = 0;
     }
 
   return ER_FAILED;

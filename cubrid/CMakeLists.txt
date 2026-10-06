@@ -534,7 +534,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/ftab_set.cpp
   ${STORAGE_DIR}/heap_file.c
   ${STORAGE_DIR}/heap_oos.cpp
-  ${STORAGE_DIR}/heap_pending_oos_values.cpp
+  ${STORAGE_DIR}/heap_pending_record.cpp
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/oos_file.cpp
   ${STORAGE_DIR}/oos_util.cpp

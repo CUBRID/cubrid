@@ -26,7 +26,7 @@
 
 #include "record_descriptor.hpp"
 #include "heap_oos.hpp"
-#include "heap_pending_oos_values.hpp"
+#include "heap_pending_record.hpp"
 #include "packer.hpp"
 #include "locator_sr.h"
 #include "class_object.h"
@@ -473,6 +473,47 @@ TEST_F (OosSqlShow, RawClientInsertOwnsDestinationOos)
   db_query_end (result);
 }
 
+TEST_F (OosSqlShow, WorkspacePartitionInsertAndMovementOwnDestination)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT, data_col BIT VARYING) "
+		       "PARTITION BY RANGE (id) (PARTITION p0 VALUES LESS THAN (10), "
+		       "PARTITION p1 VALUES LESS THAN MAXVALUE)"), 0);
+  // Public db_create/db_put reject partition access; exercise the internal workspace flush path.
+  DB_OBJECT *row = db_create_internal (db_find_class ("t_oos_show_part"));
+  ASSERT_NE (row, nullptr);
+  DB_VALUE value;
+  db_make_int (&value, 1);
+  ASSERT_EQ (db_put_internal (row, "id", &value), NO_ERROR);
+  std::string payload (50000, '\xAB');
+  db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, payload.data (), payload.size () * 8);
+  ASSERT_EQ (db_put_internal (row, "data_col", &value), NO_ERROR);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p0 WHERE id=1 AND "
+			       "data_col=CAST(REPEAT('AB',50000) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  db_make_int (&value, 11);
+  ASSERT_EQ (db_put_internal (row, "id", &value), NO_ERROR);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p1 WHERE id=11 AND "
+			       "data_col=CAST(REPEAT('AB',50000) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_part__p__p0", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 0);
+
+  const char *queries[] = { "SHOW HEAP OOS OF t_oos_show_part", "SHOW HEAP OOS OF t_oos_show_part__p__p1" };
+  for (int i = 0; i < 2; ++i)
+    {
+      DB_QUERY_RESULT *result = nullptr;
+      ASSERT_EQ (show_heap_oos_query (queries[i], &result), NO_ERROR);
+      int has_oos = -1;
+      EXPECT_EQ (get_int_column (result, COL_HAS_OOS_FILE, &has_oos), NO_ERROR);
+      EXPECT_EQ (has_oos, i);
+      db_query_end (result);
+    }
+}
+
 TEST_F (OosSqlShow, RedistributionRewritesMultichunkValuesAtDestination)
 {
   ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT, data_col BIT VARYING) "
@@ -529,9 +570,8 @@ TEST_F (OosSqlShow, RawCopyAreaRoutesInsertAndMovementWithoutChangingPayload)
       db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, bytes.data (), bytes.size () * 8);
       ASSERT_EQ (heap_attrinfo_set (nullptr, db_attribute_id (db_get_attribute (cls, "data_col")), &value, &attrs),
 		 NO_ERROR);
-      heap_pending_oos_values supplied_values;
-      record_descriptor supplied;
-      ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &supplied, &supplied_values), S_SUCCESS);
+      heap_pending_record supplied;
+      ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &supplied), S_SUCCESS);
       RECDES supplied_record = supplied.get_recdes ();
       heap_attrinfo_end (thread_p, &attrs);
       ASSERT_EQ (heap_oos_finalize_record (thread_p, &source, &supplied_record), NO_ERROR);
@@ -648,8 +688,7 @@ TEST_F (OosSqlShow, PendingReferencesResolveAndFinalizeInPlace)
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   DB_OBJECT *cls = db_find_class ("t_oos_show_yes");
   OID class_oid = *db_identifier (cls);
-  heap_pending_oos_values pending;
-  record_descriptor storage;
+  heap_pending_record storage;
   int locations[2];
   {
     HEAP_CACHE_ATTRINFO attrs;
@@ -672,15 +711,15 @@ TEST_F (OosSqlShow, PendingReferencesResolveAndFinalizeInPlace)
 	      }
 	  }
       }
-    ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &storage, &pending), S_SUCCESS);
+    ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &storage), S_SUCCESS);
     heap_attrinfo_end (thread_p, &attrs);
   }
-  ASSERT_EQ (pending.size (), 2u);
+  EXPECT_GE (storage.retained_bytes (), 100000u);
   // Reject transport before writing any descriptor or pointer-bearing bytes, including release builds.
   std::vector<char> transport (storage.get_recdes ().length + 32, '\x5A');
   const std::vector<char> untouched = transport;
   cubpacking::packer packer (transport.data (), transport.size ());
-  storage.pack (packer);
+  storage.record ().pack (packer);
   EXPECT_EQ (er_errid (), ER_GENERIC_ERROR);
   EXPECT_EQ (packer.get_current_size (), 0u);
   EXPECT_EQ (transport, untouched);
@@ -714,7 +753,12 @@ TEST_F (OosSqlShow, PendingReferencesResolveAndFinalizeInPlace)
   EXPECT_EQ (record.data, original_buffer);
   EXPECT_EQ (record.length, original_length);
   EXPECT_EQ (record.type, REC_HOME);
-  pending.discard_since (0);
+  // Keep the finalized bytes while destroying the row and all retained memory values.
+  record_descriptor persisted (record);
+  {
+    heap_pending_record retired (std::move (storage));
+  }
+  record = persisted.get_recdes ();
   for (int i = 0; i < 2; ++i)
     {
       heap_oos_value_ref ref;
@@ -739,8 +783,7 @@ TEST_F (OosSqlShow, SerializedPreparationPreservesMvccAndOutlivesSource)
   THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
   DB_OBJECT *cls = db_find_class ("t_oos_show_yes");
   OID class_oid = *db_identifier (cls);
-  heap_pending_oos_values adapted_values;
-  record_descriptor adapted;
+  heap_pending_record adapted;
   MVCC_REC_HEADER expected = MVCC_REC_HEADER_INITIALIZER;
   {
     HEAP_CACHE_ATTRINFO attrs;
@@ -750,9 +793,8 @@ TEST_F (OosSqlShow, SerializedPreparationPreservesMvccAndOutlivesSource)
     db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, payload.data (), payload.size () * 8);
     ASSERT_EQ (heap_attrinfo_set (nullptr, db_attribute_id (db_get_attribute (cls, "data_col")), &value, &attrs),
 	       NO_ERROR);
-    heap_pending_oos_values source_values;
-    record_descriptor source;
-    ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &source, &source_values), S_SUCCESS);
+    heap_pending_record source;
+    ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &source), S_SUCCESS);
     RECDES source_record = source.get_recdes ();
     heap_attrinfo_end (thread_p, &attrs);
     ASSERT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &source_record), NO_ERROR);
@@ -764,10 +806,10 @@ TEST_F (OosSqlShow, SerializedPreparationPreservesMvccAndOutlivesSource)
     expected.prev_version_lsa.offset = 4;
     ASSERT_EQ (or_mvcc_set_header (&source_record, &expected), NO_ERROR);
     const std::string original (source_record.data, source_record.length);
-    ASSERT_EQ (heap_prepare_oos_record (thread_p, &class_oid, &source_record, &adapted, &adapted_values), NO_ERROR);
+    ASSERT_EQ (heap_prepare_oos_record (thread_p, &class_oid, &source_record, &adapted), NO_ERROR);
     EXPECT_EQ (std::string (source_record.data, source_record.length), original);
   }
-  record_descriptor moved (std::move (adapted));
+  heap_pending_record moved (std::move (adapted));
   RECDES moved_record = moved.get_recdes ();
   ASSERT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &moved_record), NO_ERROR);
   MVCC_REC_HEADER actual;
@@ -991,8 +1033,7 @@ TEST_F (OosSqlShow, LoaderQueueRetainsClearedInputsAndRollsBackBulkFailure)
   const std::string payload (50000, static_cast<char> (0xab));
   for (int attempt = 0; attempt < 2; ++attempt)
     {
-      std::vector<record_descriptor> rows;
-      heap_pending_oos_values pending;
+      std::vector<heap_pending_record> rows;
       HEAP_CACHE_ATTRINFO attrs;
       ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, -1, nullptr, &attrs), NO_ERROR);
       for (int id = 0; id < 64; ++id)
@@ -1003,16 +1044,15 @@ TEST_F (OosSqlShow, LoaderQueueRetainsClearedInputsAndRollsBackBulkFailure)
 	  db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, payload.data (), payload.size () * 8);
 	  ASSERT_EQ (heap_attrinfo_set (nullptr, payload_attr, &value, &attrs), NO_ERROR);
 
-	  record_descriptor row;
-	  ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &row, &pending, false), S_SUCCESS);
-	  EXPECT_GE (pending.retained_bytes (), payload.size ());
+	  heap_pending_record row;
+	  ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &row, false), S_SUCCESS);
+	  EXPECT_GE (row.retained_bytes (), payload.size ());
 	  EXPECT_LT (row.get_recdes ().length, 1000);
 	  rows.push_back (std::move (row));
 	  db_value_clear (&value);
 	  heap_attrinfo_clear_dbvalues (&attrs);
 	}
       heap_attrinfo_end (thread_p, &attrs);
-      EXPECT_GE (pending.retained_bytes (), rows.size () * payload.size ());
       HEAP_SCANCACHE cache;
       ASSERT_EQ (heap_scancache_start_modify (thread_p, &cache, &hfid, &class_oid, MULTI_ROW_INSERT, nullptr), NO_ERROR);
       int force_count = 0;
