@@ -114,6 +114,15 @@ struct expr_step
   int jump_to;			/* jump kernels: the step the row continues at; -1 otherwise */
   int alias_of;			/* a step that writes ANOTHER step's slot (the NULL check of a lazy
 				 * arithmetic node, the ELSE publisher of a CASE): that step; -1 otherwise */
+  /* An OPEN step: its domain, and the type its kernel was chosen for, came from the gate's
+   * resolution of a node the compiler left variable (step->regu).  The resolution is
+   * remade every execution, so the step re-reads it at every execution entry
+   * (expr_prog_refill_open ()): the same type keeps the kernel and takes the new domain
+   * (a NUMERIC's precision, a string's collation); another type means the program's
+   * shape no longer fits and the consumer recompiles.  A step with a fixed domain is
+   * never open. */
+  bool open;
+  DB_TYPE open_type;		/* the type the open step was compiled for */
 };
 
 struct expr_prog
@@ -225,6 +234,10 @@ extern TP_DOMAIN *expr_regu_exec_domain (const VAL_DESCR * vd, REGU_VARIABLE * r
  * per row. */
 extern bool expr_prog_signature_matches (const EXPR_PROG * prog, const val_descr * vd);
 
+/* re-read the gate's resolution into every open step for this execution; false when a node's
+ * type changed, so the consumer must recompile (expr_prog_signature_ok () calls it) */
+extern bool expr_prog_refill_open (EXPR_PROG * prog, const val_descr * vd);
+
 /* end of an execution: release the slot values and re-arm the prologues, keep the program
  * for the clone's next execution (see the lifetime note on struct expr_prog) */
 extern void expr_prog_reset (EXPR_PROG * prog);
@@ -246,7 +259,7 @@ expr_prog_signature_ok (EXPR_PROG * prog, const val_descr * vd, unsigned long lo
     {
       return true;
     }
-  if (!expr_prog_signature_matches (prog, vd))
+  if (!expr_prog_signature_matches (prog, vd) || !expr_prog_refill_open (prog, vd))
     {
       return false;
     }

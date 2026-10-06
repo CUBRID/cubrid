@@ -3138,6 +3138,10 @@ expr_scan_pred_signature_ok (void *compiled, const val_descr * vd, unsigned long
 	    }
 	}
     }
+  if (root->prog != NULL && !expr_prog_refill_open (root->prog, vd))
+    {
+      return false;
+    }
   root->sig_stamp = exec_stamp;
   root->sig_stamp_valid = (exec_stamp != 0);
   return true;
@@ -3448,10 +3452,66 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
       bctx->depth_exceeded = true;
       return -1;
     }
+  const int first_step = bctx->n_steps;
+
   bctx->depth++;
   cell = expr_compile_node_arith (bctx, regu, compiled_something);
   bctx->depth--;
+  if (cell >= 0 && regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
+    {
+      /* a node the compiler left variable: its steps took their domain and kernel type from the gate's
+       * resolution of this execution -- mark them open so every later execution re-reads it */
+      const TP_DOMAIN *exec_domain = expr_arith_exec_domain (bctx->vd, regu);
+      int j;
+
+      for (j = first_step; j < bctx->n_steps; j++)
+	{
+	  if (bctx->steps[j].regu == regu)
+	    {
+	      bctx->steps[j].open = true;
+	      bctx->steps[j].open_type = exec_domain != NULL ? TP_DOMAIN_TYPE (exec_domain) : DB_TYPE_UNKNOWN;
+	    }
+	}
+    }
   return cell;
+}
+
+/*
+ * expr_prog_refill_open () - give every open step the gate's resolution of this execution
+ *   return: true when every open node kept its type (the kernels still fit; the domains are
+ *	     refreshed), false when one changed -- the consumer recompiles
+ *
+ * The gate resolves a variable node anew for each execution.  A program kept with the clone
+ * was compiled against one execution's resolution, so before its steps run again each open
+ * step reads the current one: the same type keeps the kernel the table gave the step and
+ * takes the domain (a NUMERIC's precision and scale, a string's collation) as the row would
+ * read it through fetch_peek_arith ().  No step is rebuilt here.
+ */
+bool
+expr_prog_refill_open (EXPR_PROG * prog, const val_descr * vd)
+{
+  int i;
+
+  for (i = 0; i < prog->n_steps; i++)
+    {
+      EXPR_STEP *step = &prog->steps[i];
+      TP_DOMAIN *domain;
+
+      if (!step->open)
+	{
+	  continue;
+	}
+      domain = expr_arith_exec_domain (vd, step->regu);
+      if (domain == NULL || TP_DOMAIN_TYPE (domain) != step->open_type)
+	{
+	  return false;
+	}
+      if (step->domain != NULL)
+	{
+	  step->domain = domain;
+	}
+    }
+  return true;
 }
 
 /* an arithmetic node, under the depth guard of expr_compile_node () */
@@ -4979,6 +5039,14 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
       if (step->domain != NULL)
 	{
 	  fprintf (fp, " dom=%s", pr_type_name (TP_DOMAIN_TYPE (step->domain)));
+	  if (TP_DOMAIN_TYPE (step->domain) == DB_TYPE_NUMERIC)
+	    {
+	      fprintf (fp, "(%d,%d)", step->domain->precision, step->domain->scale);
+	    }
+	}
+      if (step->open)
+	{
+	  fprintf (fp, " open:%s", pr_type_name (step->open_type));
 	}
       if (step->alias_of >= 0)
 	{
