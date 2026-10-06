@@ -326,7 +326,11 @@ record_descriptor::is_mutable () const
 void
 record_descriptor::pack (cubpacking::packer &packer) const
 {
-  assert_release (m_recdes.type != REC_OOS_PENDING);
+  if (m_recdes.type == REC_OOS_PENDING)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return;
+    }
   packer.pack_short (m_recdes.type);
   packer.pack_buffer_with_length (m_recdes.data, m_recdes.length);
 }
