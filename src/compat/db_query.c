@@ -1320,19 +1320,28 @@ db_clear_client_query_result (int notify_server, bool end_holdable)
 
 #if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
 /*
- * db_final_client_query_result () - free the query result table of the connection of this thread
+ * db_final_client_query_result () - end the remaining query results and free the query result table of the
+ *				     connection of this thread
  * return : none
  *
- * Note: Called when a sub-client is shut down. The table is kept if a query result is still open (not ended by
- *       db_query_end ()), because the result refers to its entry.
+ * Note: Called when a sub-client is shut down, after its connection is closed and before its workspace is finalized
+ *       (the values of the results are freed with the memory areas of the workspace).
+ *       The results still open (e.g., holdable ones, ones not ended by db_query_end (), or ones of a transaction
+ *       not ended because nothing was updated) are ended here; the caller must not use them any more.
+ *       The server is not notified, since it ends the queries of a connection when the connection is closed.
  */
 void
 db_final_client_query_result (void)
 {
   DB_QUERY_RESULT *q_res;
 
+  /* end every remaining result, including the holdable ones */
+  db_clear_client_query_result (false, true);
+
   if (Qres_table.qres_cnt > 0)
     {
+      /* safe-guard: db_clear_client_query_result () removes every result from the table */
+      assert (false);
       return;
     }
 

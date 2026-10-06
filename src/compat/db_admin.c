@@ -1296,8 +1296,7 @@ db_shutdown_sub ()
   (void) boot_shutdown_client_sub ();
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
 
-  /* the query result table and the execution plan of this connection (thread-local) */
-  db_final_client_query_result ();
+  /* the execution plan of this connection (thread-local); the query results are ended in boot_shutdown_client_sub () */
   db_free_execution_plan ();
 
   au_ctx_destructor ();
