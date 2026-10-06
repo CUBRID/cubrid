@@ -145,6 +145,8 @@ static int locator_guess_sub_classes (THREAD_ENTRY * thread_p, LC_LOCKHINT ** lo
 static int locator_repl_prepare_force (THREAD_ENTRY * thread_p, LC_COPYAREA_ONEOBJ * obj, RECDES * old_recdes,
 				       RECDES * recdes, DB_VALUE * key_value, HEAP_SCANCACHE * force_scancache);
 static int locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force_area, LC_COPYAREA_ONEOBJ * obj);
+static int locator_repl_get_prior_value (DB_VALUE * prior_value, LC_COPYAREA * force_area, LC_COPYAREA_ONEOBJ * obj,
+					 int key_length);
 static void locator_repl_add_error_to_copyarea (LC_COPYAREA ** copy_area, RECDES * recdes, LC_COPYAREA_ONEOBJ * obj,
 						DB_VALUE * key_value, int err_code, const char *err_msg);
 static int locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID * oid, RECDES * ikdrecdes,
@@ -6918,6 +6920,33 @@ locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force_area, LC_C
 }
 
 /*
+ * locator_repl_get_prior_value () - read the value a _db_serial write-back replaced, packed after the key
+ *
+ * return: length of unpacked value, or -1 if it cannot be read
+ *
+ *   prior_value(out): the cur_val the write-back replaced on the other node
+ *   force_area(in):
+ *   obj(in): object whose flag says the value is there
+ *   key_length(in): length of the key value before it
+ *
+ */
+static int
+locator_repl_get_prior_value (DB_VALUE * prior_value, LC_COPYAREA * force_area, LC_COPYAREA_ONEOBJ * obj,
+			      int key_length)
+{
+  char *ptr, *start_ptr;
+
+  start_ptr = ptr = force_area->mem + obj->offset + key_length;
+  ptr = or_unpack_mem_value (ptr, prior_value);
+  if (ptr == NULL)
+    {
+      return -1;
+    }
+
+  return (int) (ptr - start_ptr);
+}
+
+/*
  * xlocator_force () - Updates objects sent by log applier
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -6944,6 +6973,8 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
   int pruning_type = 0;
   int num_continue_on_error = 0;
   DB_VALUE key_value;
+  DB_VALUE prior_value;
+  bool has_prior_value;
   int packed_key_value_len;
   HFID prev_hfid = HFID_INITIALIZER;
   int has_index;
@@ -6962,6 +6993,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 
   HFID_SET_NULL (&prev_hfid);
   db_value_put_null (&key_value);
+  db_make_null (&prior_value);
 
   LC_RECDES_IN_COPYAREA (*reply_area, &reply_recdes);
 
@@ -6972,6 +7004,23 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
       obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
 
       packed_key_value_len = locator_repl_get_key_value (&key_value, force_area, obj);
+      has_prior_value = LC_ONEOBJ_HAS_PRIOR_VALUE (obj);
+      if (has_prior_value)
+	{
+	  int packed_prior_value_len = locator_repl_get_prior_value (&prior_value, force_area, obj,
+								     packed_key_value_len);
+	  if (packed_prior_value_len < 0)
+	    {
+	      /* fail this object only, as a failed force does below */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      locator_repl_add_error_to_copyarea (reply_area, &reply_recdes, obj, &key_value, er_errid (), er_msg ());
+	      num_continue_on_error++;
+	      pr_clear_value (&key_value);
+	      pr_clear_value (&prior_value);
+	      continue;
+	    }
+	  packed_key_value_len += packed_prior_value_len;
+	}
 
       LC_REPL_RECDES_FOR_ONEOBJ (force_area, obj, packed_key_value_len, &recdes);
 
@@ -7032,9 +7081,10 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	    case LC_FLUSH_UPDATE:
 	    case LC_FLUSH_UPDATE_PRUNE:
 	    case LC_FLUSH_UPDATE_PRUNE_VERIFY:
-	      if (serial_repl_image_is_stale (thread_p, &obj->class_oid, &obj->oid, &recdes))
+	      if (serial_repl_image_is_stale (thread_p, &obj->class_oid, &obj->oid, &recdes,
+					      has_prior_value ? &prior_value : NULL))
 		{
-		  break;	/* the row on this node is newer; the object counts as applied */
+		  break;	/* not this node's to take; the object counts as applied */
 		}
 	      pruning_type = locator_area_op_to_pruning_type (obj->operation);
 	      error_code =
@@ -7089,6 +7139,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	  (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ATTACH_TO_OUTER, &oneobj_lsa);
 	}
       pr_clear_value (&key_value);
+      pr_clear_value (&prior_value);
     }
 
   if (force_scancache != NULL)
@@ -7112,6 +7163,7 @@ exit_on_error:
     {
       pr_clear_value (&key_value);
     }
+  pr_clear_value (&prior_value);
 
   if (force_scancache != NULL)
     {

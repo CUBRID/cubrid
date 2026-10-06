@@ -163,13 +163,13 @@ static int xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * 
 					    int num_alloc, SERIAL_CACHE_ENTRY * claimed_entry);
 static int serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
 static int serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB_VALUE * store_val,
-					   int num_alloc, bool log_supplemental);
+					   int num_alloc, bool log_supplemental, DB_VALUE * prior_val);
 static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
 static int serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
 static void serial_flush_entry_best_effort (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
 static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc,
 					HEAP_CACHE_ATTRINFO * attr_info, const OID * serial_class_oidp,
-					const OID * serial_oidp, DB_VALUE * key_val);
+					const OID * serial_oidp, DB_VALUE * key_val, DB_VALUE * prior_val);
 static int serial_get_nth_value_internal (DB_VALUE * inc_val, DB_VALUE * cur_val, DB_VALUE * min_val,
 					  DB_VALUE * max_val, DB_VALUE * cyclic, int nth, DB_VALUE * result_val,
 					  bool clamp_block);
@@ -612,10 +612,11 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
  *   log_supplemental(in) : append the supplemental (CDC) record. It is a
  *                          "SELECT SERIAL_NEXT_VALUE (name, num_alloc)" statement, so only a write
  *                          that hands values out may append it.
+ *   prior_val(in)        : NULL, or the cur_val a write-back replaces (see serial_repl_image_is_stale)
  */
 static int
 serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB_VALUE * store_val,
-				int num_alloc, bool log_supplemental)
+				int num_alloc, bool log_supplemental, DB_VALUE * prior_val)
 {
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
@@ -690,7 +691,7 @@ serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
 
   ret =
     serial_update_serial_object (thread_p, scan_cache.page_watcher.pgptr, &recdesc, attr_info_p, oid_Serial_class_oid,
-				 &entry->oid, &key_val);
+				 &entry->oid, &key_val, prior_val);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -745,7 +746,7 @@ exit_on_error:
 static int
 serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc)
 {
-  return serial_store_cur_val_of_serial (thread_p, entry, &entry->last_cached_val, num_alloc, true);
+  return serial_store_cur_val_of_serial (thread_p, entry, &entry->last_cached_val, num_alloc, true, NULL);
 }
 
 /*
@@ -813,7 +814,7 @@ serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
       return NO_ERROR;
     }
 
-  return serial_store_cur_val_of_serial (thread_p, entry, &entry->cur_val, 0, false);
+  return serial_store_cur_val_of_serial (thread_p, entry, &entry->cur_val, 0, false, &entry->last_cached_val);
 }
 
 /*
@@ -1047,7 +1048,7 @@ xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num,
 
   ret =
     serial_update_serial_object (thread_p, scan_cache.page_watcher.pgptr, &recdesc, attr_info_p, oid_Serial_class_oid,
-				 serial_oidp, &key_val);
+				 serial_oidp, &key_val, NULL);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -1148,10 +1149,12 @@ exit_on_error:
  *   serial_class_oidp(in)   :
  *   serial_oidp(in)   :
  *   key_val(in)       :
+ *   prior_val(in)     : NULL, or the cur_val a write-back replaces
  */
 static int
 serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc, HEAP_CACHE_ATTRINFO * attr_info,
-			     const OID * serial_class_oidp, const OID * serial_oidp, DB_VALUE * key_val)
+			     const OID * serial_class_oidp, const OID * serial_oidp, DB_VALUE * key_val,
+			     DB_VALUE * prior_val)
 {
   // *INDENT-OFF*
   cubmem::stack_block<IO_MAX_PAGE_SIZE> copyarea;
@@ -1212,9 +1215,16 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
   /* make replication log for the special type of update for serial */
   if (!LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
     {
-      repl_log_insert (thread_p, serial_class_oidp, serial_oidp, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, key_val,
-		       REPL_INFO_TYPE_RBR_NORMAL);
-      repl_add_update_lsa (thread_p, serial_oidp);
+      if (prior_val == NULL)
+	{
+	  repl_log_insert (thread_p, serial_class_oidp, serial_oidp, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, key_val,
+			   REPL_INFO_TYPE_RBR_NORMAL);
+	  repl_add_update_lsa (thread_p, serial_oidp);
+	}
+      else
+	{
+	  repl_log_insert_serial_write_back (thread_p, serial_oidp, key_val, prior_val);
+	}
 
       if (lock_mode != X_LOCK)
 	{
@@ -1516,19 +1526,82 @@ serial_flush_cache_pool_replicated (THREAD_ENTRY * thread_p)
 }
 #endif /* SERVER_MODE */
 
+#if defined (SERVER_MODE)
+/*
+ * serial_repl_moves_backwards () - whether an image moves this node's cur_val against the serial's
+ *                direction; any image of a cyclic serial does, as it has no direction.
+ *   return: NO_ERROR, or ER_FAILED when the row cannot be read
+ *   old_info(in)   : this node's row
+ *   old_cur(in)    : its cur_val
+ *   new_cur(in)    : the image's cur_val
+ *   backwards(out) :
+ */
+static int
+serial_repl_moves_backwards (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * old_info, DB_VALUE * old_cur,
+			     DB_VALUE * new_cur, bool * backwards)
+{
+  ATTR_ID attrid;
+  DB_VALUE *val;
+  DB_VALUE cmp_result;
+  int positive;
+
+  *backwards = false;
+
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_CYCLIC_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
+    {
+      return ER_FAILED;
+    }
+  val = heap_attrinfo_access (attrid, old_info);
+  if (val == NULL || DB_IS_NULL (val))
+    {
+      return ER_FAILED;
+    }
+  if (db_get_int (val) != 0)
+    {
+      *backwards = true;
+      return NO_ERROR;
+    }
+
+  if (serial_get_attrid (thread_p, SERIAL_ATTR_INCREMENT_VAL_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
+    {
+      return ER_FAILED;
+    }
+  val = heap_attrinfo_access (attrid, old_info);
+  positive = (val == NULL) ? ER_FAILED : numeric_db_value_is_positive (val);
+  if (positive < 0)
+    {
+      return ER_FAILED;
+    }
+  if (numeric_db_value_compare (new_cur, old_cur, &cmp_result) != NO_ERROR || DB_IS_NULL (&cmp_result))
+    {
+      return ER_FAILED;
+    }
+  *backwards = positive ? (db_get_int (&cmp_result) < 0) : (db_get_int (&cmp_result) > 0);
+
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
+
 /*
  * serial_repl_image_is_stale () - whether a row image the log applier brings is a _db_serial row that
- *                would move cur_val against the serial's direction on a node that issues values itself.
+ *                this node must not take.
  *   return: true when the image must not be applied here
  *   class_oidp(in)  : class of the row; rows of other classes are never stale
  *   serial_oidp(in) : OID of the row
  *   new_recdes(in)  : the image from the other node
+ *   prior_val(in)   : NULL, or the cur_val the other node's write-back replaced
  *
- * A standby follows every image, so a promotion resumes at the master's last issued value. A leaving
- * master's log tail is applied after the promotion, so an active node takes an image only if it does
- * not move cur_val backwards: below what this node has issued, it would re-issue those values. A
- * cyclic serial has no direction, and an active node leaves its row alone. A skipped image is reported
- * in the server log as a notification.
+ * A maintenance node takes every image.
+ *
+ * A write-back is taken only while this node's row still holds the block end it replaced and this node
+ * holds no cache block of the serial, whose end can be that same value; otherwise this node, standby as
+ * much as active, could re-issue values another node has issued. One that cannot be checked is not taken.
+ *
+ * Any other image is taken, but an active node rejects one that moves cur_val backwards: a leaving
+ * master's tail can arrive after the promotion; a cyclic serial has no direction, so an active node leaves
+ * its row alone. One that cannot be checked is taken.
+ *
+ * A skipped image is logged as a notification, unless it could not be checked.
  *
  * The row on this node is read here instead of being taken from the caller: the caller reads it with
  * a scan cache that does not keep the page fixed, so its record points into an unfixed page. The
@@ -1536,7 +1609,7 @@ serial_flush_cache_pool_replicated (THREAD_ENTRY * thread_p)
  */
 bool
 serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, const OID * serial_oidp,
-			    RECDES * new_recdes)
+			    RECDES * new_recdes, DB_VALUE * prior_val)
 {
 #if !defined (SERVER_MODE)
   /* the log applier forces rows into a server only */
@@ -1548,9 +1621,10 @@ serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, con
   bool scan_started = false, old_started = false, new_started = false, failed = false, stale = false;
   HA_SERVER_STATE state;
   ATTR_ID attrid;
-  DB_VALUE *val, *name = NULL, *old_cur = NULL, *new_cur = NULL;
+  DB_VALUE *name = NULL, *old_cur = NULL, *new_cur = NULL;
   DB_VALUE cmp_result;
-  int positive;
+  bool has_cache_entry = false;
+  bool skip_unchecked = (prior_val != NULL);
   char old_str[NUMERIC_MAX_STRING_SIZE], new_str[NUMERIC_MAX_STRING_SIZE];
 
   if (!oid_is_serial (class_oidp))
@@ -1558,13 +1632,29 @@ serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, con
       return false;
     }
   state = css_ha_server_state ();
-  if (state != HA_SERVER_STATE_ACTIVE && state != HA_SERVER_STATE_TO_BE_STANDBY)
+  if (state == HA_SERVER_STATE_MAINTENANCE)
+    {
+      return false;
+    }
+  if (prior_val == NULL && state != HA_SERVER_STATE_ACTIVE && state != HA_SERVER_STATE_TO_BE_STANDBY)
     {
       return false;
     }
   if (!serial_Cache_initialized || serial_Num_attrs < 0)
     {
-      return false;
+      return skip_unchecked;
+    }
+  if (prior_val != NULL)
+    {
+      /* before any page is fixed: the entry mutex comes before the page latch */
+      OID key = *serial_oidp;
+      SERIAL_CACHE_ENTRY *entry = serial_Cache_hashmap.find (thread_p, key);
+
+      if (entry != NULL)
+	{
+	  pthread_mutex_unlock (&entry->mutex);
+	  has_cache_entry = true;
+	}
     }
   heap_scancache_quick_start_with_class_oid (thread_p, &scan_cache, oid_Serial_class_oid);
   scan_started = true;
@@ -1613,47 +1703,28 @@ serial_repl_image_is_stale (THREAD_ENTRY * thread_p, const OID * class_oidp, con
       goto exit;
     }
 
-  if (serial_get_attrid (thread_p, SERIAL_ATTR_CYCLIC_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
+  if (prior_val != NULL)
     {
-      failed = true;
-      goto exit;
-    }
-  val = heap_attrinfo_access (attrid, &old_info);
-  if (val == NULL || DB_IS_NULL (val))
-    {
-      failed = true;
-      goto exit;
-    }
-  if (db_get_int (val) != 0)
-    {
-      stale = true;
+      if (DB_IS_NULL (prior_val) || numeric_db_value_compare (old_cur, prior_val, &cmp_result) != NO_ERROR
+	  || DB_IS_NULL (&cmp_result))
+	{
+	  failed = true;
+	  goto exit;
+	}
+      stale = has_cache_entry || db_get_int (&cmp_result) != 0;
       goto exit;
     }
 
-  if (serial_get_attrid (thread_p, SERIAL_ATTR_INCREMENT_VAL_INDEX, attrid) != NO_ERROR || attrid == NOT_FOUND)
+  if (serial_repl_moves_backwards (thread_p, &old_info, old_cur, new_cur, &stale) != NO_ERROR)
     {
       failed = true;
-      goto exit;
     }
-  val = heap_attrinfo_access (attrid, &old_info);
-  positive = (val == NULL) ? ER_FAILED : numeric_db_value_is_positive (val);
-  if (positive < 0)
-    {
-      failed = true;
-      goto exit;
-    }
-
-  if (numeric_db_value_compare (new_cur, old_cur, &cmp_result) != NO_ERROR || DB_IS_NULL (&cmp_result))
-    {
-      failed = true;
-      goto exit;
-    }
-  stale = positive ? (db_get_int (&cmp_result) < 0) : (db_get_int (&cmp_result) > 0);
 
 exit:
   if (failed)
     {
       er_clear ();
+      stale = skip_unchecked;
     }
   else if (stale)
     {
