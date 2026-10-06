@@ -464,16 +464,21 @@ au_check_serial_authorization (MOP serial_object)
 {
   DB_VALUE creator_val;
   int ret_val;
+  int save;
+
+  AU_SAVE_AND_DISABLE (save);
 
   ret_val = db_get (serial_object, "owner", &creator_val);
   if (ret_val != NO_ERROR)
     {
+      AU_RESTORE (save);
       return ret_val;
     }
 
   assert (!DB_IS_NULL (&creator_val));
 
   ret_val = au_check_owner (&creator_val);
+  AU_RESTORE (save);
   if (ret_val != NO_ERROR)
     {
       ret_val = ER_QPROC_CANNOT_UPDATE_SERIAL;

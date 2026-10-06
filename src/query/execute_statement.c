@@ -1578,8 +1578,11 @@ do_get_serial_cached_num (int *cached_num, MOP serial_obj)
 {
   DB_VALUE cached_num_val;
   int error;
+  int save;
 
+  AU_SAVE_AND_DISABLE (save);
   error = db_get (serial_obj, SERIAL_ATTR_CACHED_NUM, &cached_num_val);
+  AU_RESTORE (save);
   if (error != NO_ERROR)
     {
       return error;
@@ -2485,6 +2488,9 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
       goto end;
     }
 
+  AU_SAVE_AND_DISABLE (save);
+  au_disable_flag = true;
+
   /* get current value */
   error = db_get (serial_mop, SERIAL_ATTR_CURRENT_VAL, &current_val);
   if (error < 0)
@@ -2540,9 +2546,6 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
     }
 
   /* update serial object in _db_serial */
-  AU_SAVE_AND_DISABLE (save);
-  au_disable_flag = true;
-
   obj_tmpl = dbt_edit_object (serial_mop);
   if (obj_tmpl == NULL)
     {

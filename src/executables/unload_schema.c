@@ -1467,7 +1467,9 @@ extract_schema (extract_context & ctxt, print_output & schema_output_ctx)
     }
 
 
-  if (ctxt.classes != NULL && (emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_CLASS), er_errid () != NO_ERROR))
+  if (ctxt.classes != NULL
+      && (emit_class_query_spec (ctxt, schema_output_ctx, EXTRACT_CLASS), er_errid () != NO_ERROR
+	  || ctxt.emit_err_count > 0))
     {
       err_count++;
     }
@@ -3083,7 +3085,8 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
 
   if (emit_autoincrement_def (output_ctx, attribute) != NO_ERROR)
     {
-      ;				/* just continue */
+      fprintf (stderr, "%s\n", db_error_string (3));
+      ctxt.emit_err_count++;
     }
 
   if (qualifier == SHARED_ATTRIBUTE)
@@ -4056,19 +4059,23 @@ emit_autoincrement_def (print_output & output_ctx, DB_ATTRIBUTE * attribute)
   int error = NO_ERROR;
   DB_VALUE min_val, inc_val;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
+  int save;
 
   if (attribute->auto_increment != NULL)
     {
       db_make_null (&min_val);
       db_make_null (&inc_val);
 
+      AU_SAVE_AND_DISABLE (save);
       error = db_get (attribute->auto_increment, "min_val", &min_val);
       if (error < 0)
 	{
+	  AU_RESTORE (save);
 	  return error;
 	}
 
       error = db_get (attribute->auto_increment, "increment_val", &inc_val);
+      AU_RESTORE (save);
       if (error < 0)
 	{
 	  pr_clear_value (&min_val);
@@ -5559,7 +5566,7 @@ extract_class (extract_context & ctxt)
     }
 
   emit_class_query_spec (ctxt, output_ctx, EXTRACT_CLASS);
-  if (er_errid () == ER_FAILED)
+  if (er_errid () == ER_FAILED || ctxt.emit_err_count > 0)
     {
       err = ER_FAILED;
       goto end_class;
