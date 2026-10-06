@@ -623,7 +623,7 @@ namespace cubconn::connection
       {
 	if ((ctx->m_recv.m_command_flags & NET_HEADER_FLAG_METHOD_MODE) == 0)
 	  {
-	    /* the sticky receiver runs this request itself */
+	    /* the eager receiver runs this request itself */
 	    ctx->m_conn->add_pending_request ();
 	    ctx->m_recv.m_inline_count++;
 	    ctx->m_recv.m_command_flags = 0;
@@ -633,7 +633,7 @@ namespace cubconn::connection
 	/* A method-mode packet needs the pool's admission, so it takes the pool
 	 * path -- and so must every request after it in this drain, or the two
 	 * would pop from conn->request_queue against each other. Clearing the flag
-	 * here is what worker::sticky_drain () reads afterwards. */
+	 * here is what worker::eager_drain () reads afterwards. */
 	ctx->m_recv.m_inline = false;
       }
 
@@ -650,7 +650,7 @@ namespace cubconn::connection
 
   /* give back the add_pending_request () of each counted request. Caller holds
    * m_conn->rmutex. */
-  void worker::sticky_inline_abort (context *ctx)
+  void worker::eager_abort (context *ctx)
   {
     for (int i = 0; i < ctx->m_recv.m_inline_count; i++)
       {
@@ -662,7 +662,7 @@ namespace cubconn::connection
 
   /* css_push_server_task () takes its own add_pending_request (), so the counted
    * one is given back first. Caller holds m_conn->rmutex. */
-  void worker::sticky_flush_counted_to_pool (context *ctx, int count)
+  void worker::eager_flush_counted_to_pool (context *ctx, int count)
   {
     for (int i = 0; i < count; i++)
       {
@@ -701,7 +701,7 @@ namespace cubconn::connection
   }
 
   /*
-   * worker::sticky_poll_and_receive () - claim this connection's socket, wait up
+   * worker::eager_poll_and_receive () - claim this connection's socket, wait up
    *   to window_ms for the next request, receive it on the calling thread and give
    *   the socket back. count_out is how many complete requests the caller must
    *   run, handed_back_out whether the socket went back to the worker and this
@@ -710,8 +710,8 @@ namespace cubconn::connection
    *   Static because conn.worker is only stable under conn.cmutex, which this
    *   function takes anyway.
    */
-  result worker::sticky_poll_and_receive (css_conn_entry &conn, cubthread::entry *entry, int window_ms, int &count_out,
-					  bool &handed_back_out)
+  result worker::eager_poll_and_receive (css_conn_entry &conn, cubthread::entry *entry, int window_ms, int &count_out,
+					 bool &handed_back_out)
   {
     worker *self;
     context *ctx;
@@ -757,7 +757,7 @@ namespace cubconn::connection
 
     if (n > 0 && (po.revents & POLLIN) != 0)
       {
-	status = self->sticky_drain (ctx, entry, count_out, more_data);
+	status = self->eager_drain (ctx, entry, count_out, more_data);
 	hand_back = (status != result::Ok) || more_data;
       }
     else if (n > 0 || (n < 0 && errno != EINTR))
@@ -805,13 +805,13 @@ namespace cubconn::connection
   }
 
   /*
-   * worker::sticky_drain () - the reception steps of handle_reception (), run on a
+   * worker::eager_drain () - the reception steps of handle_reception (), run on a
    *   transaction thread that owns the socket. It writes no worker-private state,
-   *   so the worker's m_stats do not count what a sticky receiver takes.
+   *   so the worker's m_stats do not count what an eager receiver takes.
    *   LAST_ACTIVE_NS is left alone for the same reason: the worker updates it
    *   without m_conn->cmutex, so a write from here would race.
    */
-  result worker::sticky_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out)
+  result worker::eager_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out)
   {
     std::vector<cubbase::span<std::byte>> *packets;
     result status, io_status;
@@ -820,7 +820,7 @@ namespace cubconn::connection
     count_out = 0;
     more_data_out = false;
 
-    /* the same steps as handle_reception, on the sticky thread: no worker-private
+    /* the same steps as handle_reception, on the eager receiver: no worker-private
      * state (m_stats, m_exhausted, m_entry) and no connection close from here.
      * The caller has already checked the connection under cmutex, so the state is
      * re-checked only inside the lock this function needs anyway.
@@ -832,7 +832,7 @@ namespace cubconn::connection
     io_status = ctx->m_recv.m_receiver.drain (ctx->m_conn->fd, m_recv_budget);
     if (io_status == result::PeerReset || io_status == result::Error)
       {
-	er_log_conn (__FILE__, __LINE__, "connection::worker->sticky_drain: status = %d\n", io_status);
+	er_log_conn (__FILE__, __LINE__, "connection::worker->eager_drain: status = %d\n", io_status);
 	return result::Error;
       }
 
@@ -872,8 +872,8 @@ namespace cubconn::connection
 	  }
 	else if (status == result::ClosedConnection || status == result::Error)
 	  {
-	    er_log_conn (__FILE__, __LINE__, "connection::worker->sticky_drain: handle_packet status = %d\n", status);
-	    this->sticky_inline_abort (ctx);
+	    er_log_conn (__FILE__, __LINE__, "connection::worker->eager_drain: handle_packet status = %d\n", status);
+	    this->eager_abort (ctx);
 	    r = rmutex_unlock (entry, &ctx->m_conn->rmutex);
 	    assert (r == NO_ERROR);
 	    return status;
@@ -888,7 +888,7 @@ namespace cubconn::connection
 	/* push_task_into_worker_pool () met a method-mode packet and turned inline
 	 * execution off for the rest of this drain; the requests counted before it
 	 * have to follow it to the pool */
-	this->sticky_flush_counted_to_pool (ctx, count);
+	this->eager_flush_counted_to_pool (ctx, count);
 	count = 0;
       }
     ctx->m_recv.m_inline = false;
@@ -955,15 +955,15 @@ namespace cubconn::connection
   }
 
   /*
-   * worker::is_sticky_receiving () - true while a transaction thread may be waiting
+   * worker::is_eager_receiving () - true while a transaction thread may be waiting
    *   on this connection's socket. The waiting thread carries no transaction index,
    *   so only the working task count can see it. The caller owes the shutdown
    *   guard: during shutdown that count stays positive because retired tasks never
    *   call end_working_task ().
    */
-  bool worker::is_sticky_receiving (context *ctx)
+  bool worker::is_eager_receiving (context *ctx)
   {
-    return prm_get_integer_value (PRM_ID_CSS_STICKY_RECEIVE_WINDOW_MS) > 0 && ctx->m_conn->has_working_task ();
+    return prm_get_integer_value (PRM_ID_CSS_EAGER_RECEIVE_WINDOW_MS) > 0 && ctx->m_conn->has_working_task ();
   }
 
   bool worker::has_remaining_tasks (context *ctx)
@@ -1148,10 +1148,10 @@ namespace cubconn::connection
     /* Not during shutdown: stop_execution () retires queued tasks instead of running
      * them, so their end_working_task () never comes and the count stays positive --
      * the same reason net_server_active_workers () guards its own check this way. */
-    if (m_status != status::TERMINATING && !css_is_shutdowning_server () && this->is_sticky_receiving (ctx))
+    if (m_status != status::TERMINATING && !css_is_shutdowning_server () && this->is_eager_receiving (ctx))
       {
 	er_log_conn (__FILE__, __LINE__,
-		     "connection::worker->handle_connection_close: sticky receiver holds conn = %p, fd = %d\n", ctx->m_conn,
+		     "connection::worker->handle_connection_close: eager receiver holds conn = %p, fd = %d\n", ctx->m_conn,
 		     ctx->m_conn->fd);
 	goto retry;
       }
@@ -1166,8 +1166,8 @@ namespace cubconn::connection
 	goto retry;
       }
 
-    /* has_remaining_tasks () pumps the IMMEDIATE queue, where a RECV_RECHECK from a
-     * sticky receiver can close this very context on the way. Going on would retire
+    /* has_remaining_tasks () pumps the IMMEDIATE queue, where a RECV_RECHECK from an
+     * eager receiver can close this very context on the way. Going on would retire
      * it twice. */
     if (ctx->m_removed)
       {

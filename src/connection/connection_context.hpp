@@ -180,10 +180,10 @@ namespace cubconn::connection
        * atomic because its owner clears it without retaking the lock. */
       std::atomic<bool> m_recv_busy { false };
       /* while m_inline is set, a complete request is counted in m_inline_count
-       * instead of being pushed as a task; the sticky thread runs it itself */
+       * instead of being pushed as a task; the eager receiver runs it itself */
       bool m_inline { false };
       int m_inline_count { 0 };
-      /* the worker met an EPOLLIN edge while the sticky thread owned this socket
+      /* the worker met an EPOLLIN edge while the eager receiver owned this socket
        * and dropped it; guarded by m_conn->cmutex like m_recv_busy's transitions */
       bool m_missed_edge { false };
     } m_recv;

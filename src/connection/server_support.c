@@ -201,7 +201,7 @@ static void css_process_shutdown_request (SOCKET master_fd);
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static void css_run_one_request (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static void css_recycle_between_inline_requests (THREAD_ENTRY & thread_ref);
-static void css_sticky_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static void css_eager_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 
 static bool css_check_ha_log_applier_done (void);
@@ -2091,7 +2091,7 @@ css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
  *   thread_ref(in):
  *   conn_ref(in):
  *
- * Note: Shared by css_server_task::execute () and css_sticky_receive_loop ()
+ * Note: Shared by css_server_task::execute () and css_eager_receive_loop ()
  *       so that the two cannot drift apart.
  */
 static void
@@ -2147,15 +2147,15 @@ css_recycle_between_inline_requests (THREAD_ENTRY & thread_ref)
 }
 
 /*
- * css_sticky_receive_loop() - having answered a request, wait on this
- *                             connection's socket for the next one and run it
- *                             on this thread
+ * css_eager_receive_loop() - having answered a request, wait on this
+ *                            connection's socket for the next one and run it
+ *                            on this thread
  *   return: void
  *   thread_ref(in):
  *   conn_ref(in):
  *
- * Note: The window is sticky_receive_window_ms and 0 disables the loop.
- *       worker::sticky_poll_and_receive () owns the socket protocol; this loop
+ * Note: The window is eager_receive_window_ms and 0 disables the loop.
+ *       worker::eager_poll_and_receive () owns the socket protocol; this loop
  *       only decides whether to keep waiting and runs what came in.
  *
  *       The connection cannot close underneath the loop. The task that opened
@@ -2164,13 +2164,13 @@ css_recycle_between_inline_requests (THREAD_ENTRY & thread_ref)
  *       working.
  */
 static void
-css_sticky_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
+css_eager_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
 {
   cubconn::result status;
   int window_ms, received, i;
   bool handed_back;
 
-  window_ms = prm_get_integer_value (PRM_ID_CSS_STICKY_RECEIVE_WINDOW_MS);
+  window_ms = prm_get_integer_value (PRM_ID_CSS_EAGER_RECEIVE_WINDOW_MS);
   if (window_ms <= 0 || css_Server_request_worker_pool == NULL)
     {
       return;
@@ -2192,7 +2192,7 @@ css_sticky_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
 
       received = 0;
       handed_back = false;
-      status = cubconn::connection::worker::sticky_poll_and_receive (conn_ref, &thread_ref, window_ms, received,
+      status = cubconn::connection::worker::eager_poll_and_receive (conn_ref, &thread_ref, window_ms, received,
 	       handed_back);
 
       /* Run what was received before reacting to status: the requests are already
@@ -2214,7 +2214,7 @@ void
 css_server_task::execute (context_type &thread_ref)
 {
   css_run_one_request (thread_ref, m_conn);
-  css_sticky_receive_loop (thread_ref, m_conn);
+  css_eager_receive_loop (thread_ref, m_conn);
 
   thread_ref.conn_entry = NULL;
   thread_ref.m_status = cubthread::entry::status::TS_FREE;

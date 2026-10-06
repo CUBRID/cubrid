@@ -123,7 +123,7 @@ namespace cubconn::connection
 	TAKEOVER_CLIENT,
 	SHUTDOWN_CLIENT, /* lazy queue */
 	RELEASE_PACKET,
-	RECV_RECHECK, /* a sticky receiver left data behind: receive from this context again */
+	RECV_RECHECK, /* an eager receiver left data behind: receive from this context again */
 
 	TYPE_COUNT
       };
@@ -203,8 +203,8 @@ namespace cubconn::connection
       /* Claim this connection's socket, wait up to window_ms for the next request,
        * receive it on the calling (transaction) thread and give the socket back.
        * count_out gets the number of complete requests the caller must run. */
-      static result sticky_poll_and_receive (css_conn_entry &conn, cubthread::entry *entry, int window_ms,
-					     int &count_out, bool &handed_back_out);
+      static result eager_poll_and_receive (css_conn_entry &conn, cubthread::entry *entry, int window_ms,
+					    int &count_out, bool &handed_back_out);
 
       /* used for control from other threads */
       void enqueue (queue_type type, message &&item);
@@ -283,7 +283,7 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       bool requires_client_info (context *ctx);
       bool is_registering_client (context *ctx);
-      bool is_sticky_receiving (context *ctx);
+      bool is_eager_receiving (context *ctx);
 
       bool has_remaining_tasks (context *ctx);
 
@@ -327,12 +327,12 @@ namespace cubconn::connection
       bool validate_message_generation (const message &item, context *ctx) const;
       bool forward_message_to_successor (queue_type type, message &item, context *ctx);
 
-      void sticky_inline_abort (context *ctx);
-      void sticky_flush_counted_to_pool (context *ctx, int count);
+      void eager_abort (context *ctx);
+      void eager_flush_counted_to_pool (context *ctx, int count);
 
       bool claim_reading (context *ctx, bool from_edge);
       void release_reading (context *ctx);
-      result sticky_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out);
+      result eager_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out);
 
       bool handle_message_queue_release_packet (message &item);
       bool handle_message_queue_recv_recheck (message &item);
@@ -369,7 +369,7 @@ namespace cubconn::connection
       result handle_header_packet (context *ctx, cubbase::span<std::byte> &packet);
 
       /* reception */
-      /* Runs on the worker thread and, through worker::sticky_drain (), on a
+      /* Runs on the worker thread and, through worker::eager_drain (), on a
        * transaction thread that owns the socket. Everything below it may therefore
        * touch only the context and the connection, never worker-private state
        * (m_stats, m_exhausted, m_entry, m_context, m_events, the message queues)
