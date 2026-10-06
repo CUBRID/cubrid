@@ -79,15 +79,20 @@ namespace cubxasl
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 
+  /* An aggregate's accumulator domains in one execution, kept in the execution state and not in the plan node
+   * (domain_execution.accumulator_domains[], by the function's node_domain_index, qexec_accumulator_domain): the setup
+   * writes them before the first row. An analytic SUM / AVG uses operand_coercion alone. */
   struct aggregate_accumulator_domain
   {
     tp_domain *value_dom;		/* domain of value */
     tp_domain *value2_dom;	/* domain of value2 */
     DOMAIN_OPERAND_COERCION operand_coercion;	/* SUM / AVG: the operand coercion of value + a value, set with
-						 * value_dom */
+						 * value_dom (an analytic function's per partition) */
     int temporary;			/* SUM / AVG: the domain_execution.temporaries index of a value added after the
 				 * first that a scope fixes and operand_coercion converts; -1 none. Set with
 				 * operand_coercion (qexec_setup_aggregate_accumulators) */
+    bool first_value_waits;	/* a MEDIAN / PERCENTILE over a string whose first value is not checked yet: the
+				 * interpolation first-value check (qexec_interpolation_first_value) */
   };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
@@ -105,9 +110,6 @@ namespace cubxasl
     SORT_LIST *sort_list;		/* for sorting elements before aggregation; used by GROUP_CONCAT */
     aggregate_specific_function_info info;	/* variables for specific functions */
     aggregate_accumulator accumulator;	/* holds runtime values, only for evaluation */
-#if defined (SERVER_MODE) || defined (SA_MODE)
-    aggregate_accumulator_domain accumulator_domain;	/* holds domain info on accumulator */
-#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
     struct
     {
       bool agg_optimized;	/* true, if the aggregate is optimized */

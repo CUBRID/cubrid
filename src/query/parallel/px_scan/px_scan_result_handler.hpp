@@ -293,6 +293,7 @@ namespace parallel_scan
       thread_local static OUTPTR_LIST *tl_outptr_list_p;
       thread_local static VAL_DESCR *tl_vd;
       thread_local static xasl_node *tl_xasl_p;
+      thread_local static int tl_agg_domains_resolved;	/* the clone's interpolation first-value check is done */
       thread_local static QFILE_TUPLE_RECORD tl_tpl_buf;
       thread_local static OR_BUF tl_or_buf;
   };

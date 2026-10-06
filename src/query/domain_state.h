@@ -35,6 +35,10 @@ struct RESOLVED_INDEX_KEYS;
 struct DOMAIN_EXECUTION_TEMPORARY;
 struct domain_plan;
 struct tp_domain;
+namespace cubxasl
+{
+  struct aggregate_accumulator_domain;
+}
 
 /*
  * RESOLVED_DOMAIN_TABLE - what resolve_domains (qexec_resolve_domains) resolved for one execution before its first row:
@@ -77,7 +81,8 @@ struct RESOLVED_DOMAIN_TABLE
 
 /*
  * DOMAIN_EXECUTION_STATE - what an execution's rows change of its domain state: the domain, list domain and operand
- *   type each node took, and the values converted once per scope. XASL_STATE.domain_execution. Only the owner
+ *   type each node took, the aggregates' accumulator domains, and the values converted once per scope.
+ *   XASL_STATE.domain_execution. Only the owner
  *   (resolved_domain.owner) writes it. A PX worker's copy (qexec_copy_resolved_domains) takes the node state of the
  *   leader's nodes it runs, or starts it anew over its own load, and starts with no value converted.
  */
@@ -85,16 +90,22 @@ struct DOMAIN_EXECUTION_STATE
 {
   /* [n_node_domains] the domain each node with an execution domain took in this execution, kept here and not in the
    * plan node (which the XASL clear would have to restore): a resolved domain read at the node's first computation or
-   * at its consumer's setup; NULL until taken. The three node arrays are part of resolved_domain.vals' block. */
+   * at its consumer's setup; NULL until taken. These arrays are part of resolved_domain.vals' block. */
   const struct tp_domain **node_domains;
   const struct tp_domain **interpolation_list_domains;	/* [n_interpolation_list_domains] the domain a MEDIAN / PERCENTILE list
 							 * holds and its key sorts (qexec_setup_interpolation_list); NULL */
   int *operand_types;		/* [n_operand_types] an aggregate's or analytic function's operand type (opr_dbtype);
 				 * -1 */
+  cubxasl::aggregate_accumulator_domain *accumulator_domains;	/* [n_operand_types] an aggregate's accumulator
+								 * domains, an analytic SUM / AVG's operand coercion
+								 * (qexec_accumulator_domain) */
+  unsigned char *first_value_pending;	/* [n_first_value_blocks] whether a block's interpolation first-value check
+					 * is still to run (its g_agg_first_value_block / agg_first_value_block) */
   int n_node_domains;
   int n_operand_types;		/* the load numbers the aggregates and analytic functions' execution domains first,
 				 * MEDIAN / PERCENTILE aggregates first among them (DOMAIN_PLAN.n_operand_types) */
   int n_interpolation_list_domains;
+  int n_first_value_blocks;
   /* the values converted once per scope and each scope's generation, part of resolved_domain.vals' block: the
    * execution's scope is entered from the start, a block's when its scan starts (qexec_enter_temporary_scope) */
   DOMAIN_EXECUTION_TEMPORARY *temporaries;	/* [n_temporaries] */

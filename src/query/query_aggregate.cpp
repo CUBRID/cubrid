@@ -802,7 +802,7 @@ qdata_agg_is_plain_sum_avg (const cubxasl::aggregate_list_node *agg_p)
  *   return: true for a plain SUM/AVG over a single referenced value or arithmetic expression
  */
 static inline bool
-qdata_agg_may_share_accumulator (const cubxasl::aggregate_list_node *agg_p)
+qdata_agg_may_share_accumulator (const cubxasl::aggregate_list_node *agg_p, const VAL_DESCR *vd)
 {
   /* qdata_agg_is_plain_sum_avg () also guarantees operands != NULL.
    * Keep agg_optimized as a runtime check: it can skip aggregate evaluation,
@@ -810,7 +810,7 @@ qdata_agg_may_share_accumulator (const cubxasl::aggregate_list_node *agg_p)
    * is checked by qdata_agg_share_args_equal (). */
   return (qdata_agg_is_plain_sum_avg (agg_p) && !agg_p->flag.agg_optimized
 	  && (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_INARITH)
-	  && agg_p->accumulator_domain.value_dom != NULL);
+	  && qexec_accumulator_domain (vd, agg_p->plan_item)->value_dom != NULL);
 }
 
 /*
@@ -896,7 +896,7 @@ qdata_agg_share_args_equal (const regu_variable_node *arg, const regu_variable_n
  * accumulator domain. The domains must already be resolved before this runs.
  */
 void
-qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list)
+qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list, const VAL_DESCR *vd)
 {
   cubxasl::aggregate_list_node *agg_p, *acc_owner_p;
   int index, acc_owner_index;
@@ -905,7 +905,7 @@ qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list)
     {
       agg_p->accumulator.shared_from = 0;
 
-      if (!qdata_agg_may_share_accumulator (agg_p))
+      if (!qdata_agg_may_share_accumulator (agg_p, vd))
 	{
 	  continue;
 	}
@@ -913,8 +913,9 @@ qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list)
       for (acc_owner_p = agg_list, acc_owner_index = 0; acc_owner_p != agg_p;
 	   acc_owner_p = acc_owner_p->next, acc_owner_index++)
 	{
-	  if (acc_owner_p->accumulator.shared_from == 0 && qdata_agg_may_share_accumulator (acc_owner_p)
-	      && acc_owner_p->accumulator_domain.value_dom == agg_p->accumulator_domain.value_dom
+	  if (acc_owner_p->accumulator.shared_from == 0 && qdata_agg_may_share_accumulator (acc_owner_p, vd)
+	      && qexec_accumulator_domain (vd, acc_owner_p->plan_item)->value_dom
+	      == qexec_accumulator_domain (vd, agg_p->plan_item)->value_dom
 	      && qdata_agg_share_args_equal (&acc_owner_p->operands->value, &agg_p->operands->value))
 	    {
 	      agg_p->accumulator.shared_from = acc_owner_index + 1;
@@ -1075,12 +1076,12 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	  /* a value a scope fixes is converted once per scope for the operand coercion of the add;
 	   * the first value is the accumulator's as it is. The setup fixed whether it is one. */
-	  const cubxasl::aggregate_accumulator_domain *acc_dom = &agg_p->accumulator_domain;
+	  cubxasl::aggregate_accumulator_domain *acc_dom = qexec_accumulator_domain (val_desc_p, agg_p->plan_item);
 	  const DOMAIN_OPERAND_COERCION *coercion = &acc_dom->operand_coercion;
 	  const DB_VALUE *temporary = acc_dom->temporary >= 0 && accumulator->curr_cnt >= 1
 				      ? qexec_execution_temporary (thread_p, val_desc_p, acc_dom->temporary,
 					  coercion->conv[1], coercion->operand_domain[1], peek_val) : NULL;
-	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
+	  error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, acc_dom,
 		  agg_p->function, qexec_get_node_domain (val_desc_p, agg_p->domain, agg_p->plan_item),
 		  peek_val, false, temporary);
 	  if (error != NO_ERROR)
@@ -1416,8 +1417,9 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       else
 	{
 	  /* aggregate value */
-	  error = qdata_aggregate_multiple_values_to_accumulator (thread_p, accumulator, &agg_p->accumulator_domain,
-		  agg_p->function, agg_domain, stack_values, n_values);
+	  error = qdata_aggregate_multiple_values_to_accumulator (thread_p, accumulator,
+		  qexec_accumulator_domain (val_desc_p, agg_p->plan_item), agg_p->function, agg_domain,
+		  stack_values, n_values);
 
 	  /* increment tuple count */
 	  accumulator->curr_cnt++;
@@ -1967,7 +1969,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		      const bool sum_or_avg = agg_p->function == PT_SUM || agg_p->function == PT_AVG;
 		      const TP_DOMAIN *column = list_id_p->type_list.domp[0];
 		      const TP_DOMAIN *sum_domain = agg_p->function == PT_AVG && TP_DOMAIN_TYPE (column) == DB_TYPE_NUMERIC
-						    ? column : agg_p->accumulator_domain.value_dom;
+						    ? column
+						    : qexec_accumulator_domain (vd, agg_p->plan_item)->value_dom;
 		      DOMAIN_OPERAND_COERCION coerce_second = {}, coerce_later = {};
 		      if (sum_or_avg && sum_domain != NULL)
 			{
@@ -2149,7 +2152,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				{
 
 				  TP_DOMAIN *domain_ptr =
-					  tmp_domain_ptr != NULL ? tmp_domain_ptr : agg_p->accumulator_domain.value_dom;
+					  tmp_domain_ptr != NULL ? tmp_domain_ptr
+					  : qexec_accumulator_domain (vd, agg_p->plan_item)->value_dom;
 				  /* accumulator domain should be used instead of agg_p->domain for SUM/AVG evaluation
 				   * at the end cast the result to agg_p->domain */
 				  if ((agg_p->function == PT_AVG)
@@ -2209,7 +2213,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	   * held as it is - resolved from the sum's domain */
 	  (void) pr_clear_value (&dbval);
 	  db_make_double (&dbval, agg_p->accumulator.curr_cnt);
-	  const TP_DOMAIN *sum_domain = raw_domain != NULL ? raw_domain : agg_p->accumulator_domain.value_dom;
+	  const TP_DOMAIN *sum_domain =
+		  raw_domain != NULL ? raw_domain : qexec_accumulator_domain (vd, agg_p->plan_item)->value_dom;
 	  DOMAIN_OPERAND_COERCION operand_coercion = {};
 	  if (sum_domain != NULL)
 	    {
@@ -2329,7 +2334,7 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       /* Resolve the final result of aggregate function. Since the evaluation value might be changed to keep the
        * precision during the aggregate function evaluation, for example, use DOUBLE instead FLOAT, we need to cast the
        * result to the original domain. */
-      if (agg_p->function == PT_SUM && agg_domain != agg_p->accumulator_domain.value_dom)
+      if (agg_p->function == PT_SUM && agg_domain != qexec_accumulator_domain (vd, agg_p->plan_item)->value_dom)
 	{
 	  /* cast value */
 	  error = db_value_coerce (agg_p->accumulator.value, agg_p->accumulator.value, agg_domain);

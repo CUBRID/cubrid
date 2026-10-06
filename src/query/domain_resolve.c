@@ -169,12 +169,12 @@ static int qexec_copy_index_keys (THREAD_ENTRY * thread_p, const RESOLVED_INDEX_
 static int
 qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolved, int n_compares, int n_elements,
 			      int n_indexes, int n_node_domains, int n_operand_types, int n_interpolation_list_domains,
-			      int n_temporaries, int n_scopes, XASL_STATE * xasl_state)
+			      int n_first_value_blocks, int n_temporaries, int n_scopes, XASL_STATE * xasl_state)
 {
   RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved_domain;
   DOMAIN_EXECUTION_STATE & execution = xasl_state->domain_execution;
   assert (resolved.vals == NULL && n_vals >= 0 && n_resolved >= 0 && n_compares >= 0 && n_elements >= 0
-	  && n_indexes >= 0 && n_node_domains >= 0);
+	  && n_indexes >= 0 && n_node_domains >= 0 && n_first_value_blocks >= 0);
   /* the load numbers the nodes that keep a list domain or an operand type first (DOMAIN_PLAN.n_operand_types) */
   assert (0 <= n_interpolation_list_domains && n_interpolation_list_domains <= n_operand_types
 	  && n_operand_types <= n_node_domains);
@@ -199,6 +199,10 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   static_assert (sizeof (DOMAIN_COMPARE) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
   static_assert (sizeof (RESOLVED_DOMAIN) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
   static_assert (sizeof (DB_VALUE) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
+  static_assert (alignof (AGGREGATE_ACCUMULATOR_DOMAIN) <= alignof (const TP_DOMAIN *), "accumulators alignment");
+  static_assert (sizeof (AGGREGATE_ACCUMULATOR_DOMAIN) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0,
+		 "temporaries alignment");
+  static_assert (sizeof (AGGREGATE_ACCUMULATOR_DOMAIN) % alignof (int) == 0, "operand types alignment");
   static_assert (sizeof (const TP_DOMAIN *) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
   static_assert (sizeof (RESOLVED_INDEX_KEYS) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
   static_assert (sizeof (DOMAIN_ELEMENTS) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
@@ -210,14 +214,15 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   static_assert (sizeof (unsigned long long) % alignof (int) == 0, "operand types alignment");
   static_assert (sizeof (const TP_DOMAIN *) % alignof (int) == 0, "operand types alignment");
   /* values, resolved domain table, comparison resolutions, ALL/SOME resolutions, key resolutions, the nodes' execution
-   * domains and list domains, the execution temporaries and the scopes' generations, the operand types, then the
-   * constant flags */
+   * domains and list domains, the functions' accumulator domains, the execution temporaries and the scopes'
+   * generations, the operand types, then the constant flags and the blocks' first-value flags */
   const size_t bytes = sizeof (DB_VALUE) * (size_t) n_vals + sizeof (RESOLVED_DOMAIN) * (size_t) n_resolved
     + sizeof (DOMAIN_COMPARE) * (size_t) n_compares + sizeof (DOMAIN_ELEMENTS) * (size_t) n_elements
     + sizeof (RESOLVED_INDEX_KEYS) * (size_t) n_indexes
     + sizeof (const TP_DOMAIN *) * ((size_t) n_node_domains + (size_t) n_interpolation_list_domains)
+    + sizeof (AGGREGATE_ACCUMULATOR_DOMAIN) * (size_t) n_operand_types
     + sizeof (DOMAIN_EXECUTION_TEMPORARY) * (size_t) n_temporaries + sizeof (unsigned long long) * (size_t) n_scopes
-    + sizeof (int) * (size_t) n_operand_types + (size_t) n_vals;
+    + sizeof (int) * (size_t) n_operand_types + (size_t) n_vals + (size_t) n_first_value_blocks;
   if (bytes == 0)
     {
       return NO_ERROR;
@@ -240,6 +245,7 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   execution.n_node_domains = n_node_domains;
   execution.n_operand_types = n_operand_types;
   execution.n_interpolation_list_domains = n_interpolation_list_domains;
+  execution.n_first_value_blocks = n_first_value_blocks;
   execution.n_temporaries = n_temporaries;
   execution.n_scopes = n_scopes;
   char *next = (char *) (resolved.vals + n_vals);
@@ -281,6 +287,17 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
 	      sizeof (*execution.interpolation_list_domains) * n_interpolation_list_domains);
       next += sizeof (*execution.interpolation_list_domains) * n_interpolation_list_domains;
     }
+  /* no accumulator domain set up yet; a SUM or AVG converts no value once per scope yet */
+  if (n_operand_types != 0)
+    {
+      execution.accumulator_domains = (AGGREGATE_ACCUMULATOR_DOMAIN *) next;
+      for (int i = 0; i < n_operand_types; i++)
+	{
+	  execution.accumulator_domains[i] = AGGREGATE_ACCUMULATOR_DOMAIN ();
+	  execution.accumulator_domains[i].temporary = -1;
+	}
+      next += sizeof (*execution.accumulator_domains) * n_operand_types;
+    }
   /* initialized by qexec_init_execution_temporaries, once the block is made */
   if (n_temporaries != 0)
     {
@@ -299,6 +316,12 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
     {
       resolved.value_states = (unsigned char *) next;
       memset (resolved.value_states, DOMAIN_VALUE_PENDING, (size_t) n_vals);
+      next += n_vals;
+    }
+  if (n_first_value_blocks != 0)
+    {
+      execution.first_value_pending = (unsigned char *) next;
+      memset (execution.first_value_pending, 0, (size_t) n_first_value_blocks);
     }
   return NO_ERROR;
 }
@@ -355,7 +378,7 @@ qexec_copy_resolved_domains (THREAD_ENTRY * thread_p, const XASL_STATE * from, X
   if (qexec_alloc_resolved_domains
       (thread_p, src.n_vals, src.n_resolved, src.n_compare_indexes, src.n_elements, src.n_indexes,
        src_execution.n_node_domains, src_execution.n_operand_types, src_execution.n_interpolation_list_domains,
-       src_execution.n_temporaries, src_execution.n_scopes, to) != NO_ERROR)
+       src_execution.n_first_value_blocks, src_execution.n_temporaries, src_execution.n_scopes, to) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -413,6 +436,14 @@ qexec_copy_resolved_domains (THREAD_ENTRY * thread_p, const XASL_STATE * from, X
 	{
 	  memcpy (execution.operand_types, src_execution.operand_types,
 		  sizeof (*execution.operand_types) * src_execution.n_operand_types);
+	  /* the leader's aggregates were set up before its scan: the worker reads their accumulator domains */
+	  memcpy (execution.accumulator_domains, src_execution.accumulator_domains,
+		  sizeof (*execution.accumulator_domains) * src_execution.n_operand_types);
+	}
+      if (src_execution.n_first_value_blocks != 0)
+	{
+	  memcpy (execution.first_value_pending, src_execution.first_value_pending,
+		  (size_t) src_execution.n_first_value_blocks);
 	}
     }
   resolved.in = src.in;
@@ -445,11 +476,13 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
   const int n_node_domains = plan == NULL ? 0 : plan->n_node_domains;
   const int n_operand_types = plan == NULL ? 0 : plan->n_operand_types;
   const int n_list_domains = plan == NULL ? 0 : plan->n_interpolation_list_domains;
+  const int n_first_value_blocks = plan == NULL ? 0 : plan->n_first_value_blocks;
   const int n_temporaries = plan == NULL ? 0 : plan->n_temporaries;
   const int n_scopes = plan == NULL ? 0 : plan->n_scopes;
   const int error =
     qexec_alloc_resolved_domains (thread_p, n_vals, n_resolved, n_compares, n_elements, n_indexes, n_node_domains,
-				  n_operand_types, n_list_domains, n_temporaries, n_scopes, xasl_state);
+				  n_operand_types, n_list_domains, n_first_value_blocks, n_temporaries, n_scopes,
+				  xasl_state);
   if (error != NO_ERROR || plan == NULL)
     {
       return error;
@@ -3358,14 +3391,15 @@ qexec_finish_group_by_domains (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * build
   /* treat case with only NULL values */
   for (agg_p = buildlist->g_agg_list; agg_p; agg_p = agg_p->next)
     {
-      if (agg_p->accumulator_domain.value_dom == NULL)
+      AGGREGATE_ACCUMULATOR_DOMAIN *accumulator = qexec_accumulator_domain (vd, agg_p->plan_item);
+      if (accumulator->value_dom == NULL)
 	{
-	  agg_p->accumulator_domain.value_dom = &tp_Null_domain;
+	  accumulator->value_dom = &tp_Null_domain;
 	}
 
-      if (agg_p->accumulator_domain.value2_dom == NULL)
+      if (accumulator->value2_dom == NULL)
 	{
-	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	  accumulator->value2_dom = &tp_Null_domain;
 	}
     }
 
@@ -3507,15 +3541,23 @@ qexec_interpolation_sees_nulls (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg
   return domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL;
 }
 
-/* Whether a MEDIAN / PERCENTILE over a string waits for its first value (qexec_aggregate_first_values): a string column
- * or expression is cast to its DOUBLE there, and a value resolve_domains could not type is rejected. A value
- * resolve_domains typed is set up. */
+/* Whether a MEDIAN / PERCENTILE takes the interpolation first-value check: its operand is neither a number nor a date
+ * and it sees values. A string column or expression is cast to its DOUBLE there, and a value resolve_domains could not
+ * type is rejected; a value resolve_domains typed is set up instead. */
+static bool
+qexec_interpolation_checks_first_value (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
+{
+  const DB_TYPE operand_type = qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->plan_item);
+  return !TP_IS_NUMERIC_TYPE (operand_type) && !TP_IS_DATE_OR_TIME_TYPE (operand_type)
+    && !qexec_interpolation_sees_nulls (vd, agg_p);
+}
+
+/* Whether the interpolation first-value check of a MEDIAN / PERCENTILE is still to run
+ * (qexec_aggregate_first_values) */
 static bool
 qexec_interpolation_waits (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
 {
-  const DB_TYPE operand_type = qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->plan_item);
-  return agg_p->accumulator_domain.value_dom == NULL && !TP_IS_NUMERIC_TYPE (operand_type)
-    && !TP_IS_DATE_OR_TIME_TYPE (operand_type) && !qexec_interpolation_sees_nulls (vd, agg_p);
+  return qexec_accumulator_domain (vd, agg_p->plan_item)->first_value_waits;
 }
 
 /*
@@ -3552,23 +3594,24 @@ static int
 qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const TP_DOMAIN * accumulator)
 {
   TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
-  memset (&agg_p->accumulator_domain.operand_coercion, 0, sizeof (agg_p->accumulator_domain.operand_coercion));
-  agg_p->accumulator_domain.temporary = -1;
+  AGGREGATE_ACCUMULATOR_DOMAIN *accumulator_domain = qexec_accumulator_domain (vd, agg_p->plan_item);
+  memset (&accumulator_domain->operand_coercion, 0, sizeof (accumulator_domain->operand_coercion));
+  accumulator_domain->temporary = -1;
   switch (agg_p->function)
     {
     case PT_AGG_BIT_AND:
     case PT_AGG_BIT_OR:
     case PT_AGG_BIT_XOR:
       /* qdata_bit_and/or/xor_dbval always produce a BIGINT accumulator; describe what's actually stored */
-      agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
-      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+      accumulator_domain->value_dom = &tp_Bigint_domain;
+      accumulator_domain->value2_dom = &tp_Null_domain;
       break;
 
     case PT_MIN:
     case PT_MAX:
     case PT_GROUP_CONCAT:
-      agg_p->accumulator_domain.value_dom = domain;
-      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+      accumulator_domain->value_dom = domain;
+      accumulator_domain->value2_dom = &tp_Null_domain;
       break;
 
     case PT_AVG:
@@ -3578,8 +3621,8 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
 	{
 	  return qexec_domain_unresolved (vd, agg_p->plan_item, agg_p->domain);
 	}
-      agg_p->accumulator_domain.value_dom = (TP_DOMAIN *) accumulator;
-      agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+      accumulator_domain->value_dom = (TP_DOMAIN *) accumulator;
+      accumulator_domain->value2_dom = &tp_Null_domain;
       {
 	/* a value added after the first takes the addition's operand coercion for its type - a string into the
 	 * DOUBLE accumulator - resolved here from the argument's domain in this execution */
@@ -3591,15 +3634,15 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
 	      {accumulator, TP_DOMAIN_TYPE (accumulator), -1, false},
 	      {argument, TP_DOMAIN_TYPE (argument), -1, false}
 	    };
-	    domain_resolve_operand_coercion (T_ADD, operands, &agg_p->accumulator_domain.operand_coercion);
+	    domain_resolve_operand_coercion (T_ADD, operands, &accumulator_domain->operand_coercion);
 	  }
 	/* a value a scope fixes, which that operand coercion converts, is converted once per scope
 	 * (qexec_execution_temporary): the rows read the index set here, not the plan item and the operand coercion */
 	const DOMAIN_PLAN_ITEM *item = agg_p->plan_item;
 	assert (item == NULL || !(item->flags & DOMAIN_PLAN_ITEM_COMPARES));
-	if (item != NULL && item->temporaries[1] >= 0 && agg_p->accumulator_domain.operand_coercion.conv[1] != NULL)
+	if (item != NULL && item->temporaries[1] >= 0 && accumulator_domain->operand_coercion.conv[1] != NULL)
 	  {
-	    agg_p->accumulator_domain.temporary = item->temporaries[1];
+	    accumulator_domain->temporary = item->temporaries[1];
 	  }
       }
       break;
@@ -3610,18 +3653,32 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
     case PT_VARIANCE:
     case PT_VAR_POP:
     case PT_VAR_SAMP:
-      agg_p->accumulator_domain.value_dom = &tp_Double_domain;
-      agg_p->accumulator_domain.value2_dom = &tp_Double_domain;
+      accumulator_domain->value_dom = &tp_Double_domain;
+      accumulator_domain->value2_dom = &tp_Double_domain;
       break;
 
     case PT_MEDIAN:
     case PT_PERCENTILE_CONT:
     case PT_PERCENTILE_DISC:
-      if (qexec_interpolation_waits (vd, agg_p) && agg_p->plan_item != NULL
-	  && (agg_p->plan_item->flags & DOMAIN_PLAN_VALUE_ARGUMENT) && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE)
+      if (qexec_interpolation_checks_first_value (vd, agg_p))
 	{
-	  agg_p->accumulator_domain.value_dom = domain;
-	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	  const bool value_argument = agg_p->plan_item != NULL
+	    && (agg_p->plan_item->flags & DOMAIN_PLAN_VALUE_ARGUMENT);
+	  if (value_argument && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE)
+	    {
+	      accumulator_domain->value_dom = domain;
+	      accumulator_domain->value2_dom = &tp_Null_domain;
+	      break;
+	    }
+	  /* a string column or expression has its type (DOUBLE) now; the cast of its first value is checked at the
+	   * first row (qexec_interpolation_first_value), where the accumulator takes that type. A value argument
+	   * without a type is rejected there. */
+	  accumulator_domain->first_value_waits = true;
+	  if (!value_argument && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
+	    {
+	      accumulator_domain->value_dom = domain;
+	      accumulator_domain->value2_dom = &tp_Null_domain;
+	    }
 	}
       break;
 
@@ -3629,16 +3686,21 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
       break;
     }
 
-  if (agg_p->accumulator.value != NULL && agg_p->accumulator_domain.value_dom != NULL
+  if (accumulator_domain->first_value_waits)
+    {
+      /* the accumulator takes its type with the first value checked, as before the first row */
+      return NO_ERROR;
+    }
+  if (agg_p->accumulator.value != NULL && accumulator_domain->value_dom != NULL
       && DB_VALUE_TYPE (agg_p->accumulator.value) == DB_TYPE_NULL
-      && db_value_domain_init (agg_p->accumulator.value, TP_DOMAIN_TYPE (agg_p->accumulator_domain.value_dom),
+      && db_value_domain_init (agg_p->accumulator.value, TP_DOMAIN_TYPE (accumulator_domain->value_dom),
 			       DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
     {
       return ER_FAILED;
     }
-  if (agg_p->accumulator.value2 != NULL && agg_p->accumulator_domain.value2_dom != NULL
+  if (agg_p->accumulator.value2 != NULL && accumulator_domain->value2_dom != NULL
       && DB_VALUE_TYPE (agg_p->accumulator.value2) == DB_TYPE_NULL
-      && db_value_domain_init (agg_p->accumulator.value2, TP_DOMAIN_TYPE (agg_p->accumulator_domain.value2_dom),
+      && db_value_domain_init (agg_p->accumulator.value2, TP_DOMAIN_TYPE (accumulator_domain->value2_dom),
 			       DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
     {
       return ER_FAILED;
@@ -3740,6 +3802,10 @@ qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd, 
   for (AGGREGATE_TYPE * agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next)
     {
       int error;
+      /* every block execution sets its aggregates up anew: none of the last execution's accumulator domains stays */
+      AGGREGATE_ACCUMULATOR_DOMAIN *accumulator_domain = qexec_accumulator_domain (vd, agg_p->plan_item);
+      *accumulator_domain = AGGREGATE_ACCUMULATOR_DOMAIN ();
+      accumulator_domain->temporary = -1;
       switch (agg_p->function)
 	{
 	case PT_CUME_DIST:
@@ -3748,14 +3814,14 @@ qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd, 
 
 	case PT_JSON_ARRAYAGG:
 	case PT_JSON_OBJECTAGG:
-	  agg_p->accumulator_domain.value_dom = &tp_Json_domain;
-	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	  accumulator_domain->value_dom = &tp_Json_domain;
+	  accumulator_domain->value2_dom = &tp_Null_domain;
 	  continue;
 
 	case PT_GROUPBY_NUM:
 	  /* no argument: the GROUP BY numbers its groups (the setup used to leave the block to its rows) */
-	  agg_p->accumulator_domain.value_dom = &tp_Null_domain;
-	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	  accumulator_domain->value_dom = &tp_Null_domain;
+	  accumulator_domain->value2_dom = &tp_Null_domain;
 	  continue;
 
 	default:
@@ -3763,8 +3829,8 @@ qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd, 
 	}
       if (agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR)
 	{
-	  agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
-	  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+	  accumulator_domain->value_dom = &tp_Bigint_domain;
+	  accumulator_domain->value2_dom = &tp_Null_domain;
 	  error = qexec_setup_aggregate_lists (vd, agg_p, NULL);
 	  if (error != NO_ERROR)
 	    {
@@ -3886,8 +3952,10 @@ qexec_interpolation_first_value (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, c
     {
       er_clear ();
     }
-  agg_p->accumulator_domain.value_dom = domain;
-  agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
+  AGGREGATE_ACCUMULATOR_DOMAIN *accumulator_domain = qexec_accumulator_domain (vd, agg_p->plan_item);
+  accumulator_domain->value_dom = domain;
+  accumulator_domain->value2_dom = &tp_Null_domain;
+  accumulator_domain->first_value_waits = false;
   if (agg_p->accumulator.value != NULL && DB_VALUE_TYPE (agg_p->accumulator.value) == DB_TYPE_NULL
       && db_value_domain_init (agg_p->accumulator.value, TP_DOMAIN_TYPE (domain), DB_DEFAULT_PRECISION,
 			       DB_DEFAULT_SCALE) != NO_ERROR)

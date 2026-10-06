@@ -1195,21 +1195,23 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	  GOTO_EXIT_ON_ERROR;
 	}
 
-      /* what the aggregates still take from their first values (qexec_aggregate_first_values) */
-      if (xasl->type == BUILDLIST_PROC && xasl->proc.buildlist.g_agg_list != NULL
-	  && !xasl->proc.buildlist.g_agg_domains_resolved)
+      /* the interpolation first-value check of the block's MEDIAN / PERCENTILE, until its first values come
+       * (qexec_aggregate_first_values); a block without one never asks */
+      if (xasl->type == BUILDLIST_PROC
+	  && qexec_first_value_pending (&xasl_state->vd, xasl->proc.buildlist.g_agg_first_value_block))
 	{
+	  int resolved;
 	  if (qexec_aggregate_first_values (thread_p, xasl->proc.buildlist.g_agg_list, &xasl_state->vd, tplrec,
-					    xasl->proc.buildlist.g_scan_regu_list,
-					    &xasl->proc.buildlist.g_agg_domains_resolved) != NO_ERROR)
+					    xasl->proc.buildlist.g_scan_regu_list, &resolved) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
-	  if (xasl->proc.buildlist.g_agg_domains_resolved)
+	  if (resolved)
 	    {
+	      qexec_set_first_value_pending (&xasl_state->vd, xasl->proc.buildlist.g_agg_first_value_block, false);
 	      /* Sharing needs the resolved accumulator domains, so it is linked here. */
-	      qdata_link_shared_accumulators (xasl->proc.buildlist.g_agg_list);
+	      qdata_link_shared_accumulators (xasl->proc.buildlist.g_agg_list, &xasl_state->vd);
 	    }
 	}
 
@@ -1309,19 +1311,20 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
     {
       if (xasl->proc.buildvalue.agg_list != NULL)
 	{
-	  if (xasl->proc.buildvalue.agg_list != NULL && !xasl->proc.buildvalue.agg_domains_resolved)
+	  if (qexec_first_value_pending (&xasl_state->vd, xasl->proc.buildvalue.agg_first_value_block))
 	    {
+	      int resolved;
 	      if (qexec_aggregate_first_values
-		  (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd, tplrec, NULL,
-		   &xasl->proc.buildvalue.agg_domains_resolved) != NO_ERROR)
+		  (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd, tplrec, NULL, &resolved) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
 
-	      if (xasl->proc.buildvalue.agg_domains_resolved)
+	      if (resolved)
 		{
+		  qexec_set_first_value_pending (&xasl_state->vd, xasl->proc.buildvalue.agg_first_value_block, false);
 		  /* Sharing needs the resolved accumulator domains, so it is linked here. */
-		  qdata_link_shared_accumulators (xasl->proc.buildvalue.agg_list);
+		  qdata_link_shared_accumulators (xasl->proc.buildvalue.agg_list, &xasl_state->vd);
 		}
 	    }
 
@@ -5037,7 +5040,9 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	    {
 	      rc =
 		qdata_aggregate_accumulator_to_accumulator (thread_p, &context->curr_part_value->accumulators[i],
-							    &agg_list->accumulator_domain, agg_list->function,
+							    qexec_accumulator_domain (&state->xasl_state->vd,
+										      agg_list->plan_item),
+							    agg_list->function,
 							    qexec_get_node_domain (&state->xasl_state->vd,
 										   agg_list->domain,
 										   agg_list->plan_item),
@@ -5329,8 +5334,12 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 			    {
 			      TP_DOMAIN *ru_domain = qexec_get_node_domain (&info->xasl_state->vd, ru_agg_list->domain,
 									    ru_agg_list->plan_item);
+			      /* a rollup dimension's copy keeps its aggregate's plan item, so its accumulator
+			       * domains */
+			      AGGREGATE_ACCUMULATOR_DOMAIN *ru_accumulator_domain =
+				qexec_accumulator_domain (&info->xasl_state->vd, ru_agg_list->plan_item);
 			      if (qdata_aggregate_accumulator_to_accumulator (thread_p, &ru_agg_list->accumulator,
-									      &ru_agg_list->accumulator_domain,
+									      ru_accumulator_domain,
 									      ru_agg_list->function, ru_domain,
 									      &acc[j]) != NO_ERROR)
 				{
@@ -15523,7 +15532,7 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
    * serial path). */
   if (buildvalue->agg_list != NULL)
     {
-      qdata_link_shared_accumulators (buildvalue->agg_list);
+      qdata_link_shared_accumulators (buildvalue->agg_list, &xasl_state->vd);
     }
 
   if (buildvalue->agg_list
@@ -16386,30 +16395,24 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		}
 	    }
 
-	  /* nullify domains */
-	  for (agg_p = xasl->proc.buildlist.g_agg_list; agg_p != NULL; agg_p = agg_p->next)
-	    {
-	      agg_p->accumulator_domain.value_dom = NULL;
-	      agg_p->accumulator_domain.value2_dom = NULL;
-	    }
-
-	  /* domains not resolved */
-	  xasl->proc.buildlist.g_agg_domains_resolved = 0;
-
-	  /* the plan sets the aggregates up before the scan; the accumulators are shared once they
-	   * are set. The aggregate-only operand expressions are marked at load (domain_mark_aggregate_operands). */
+	  /* the plan sets the aggregates up before the scan, each accumulator domain anew; the accumulators are shared
+	   * once they are set. The aggregate-only operand expressions are marked at load
+	   * (domain_mark_aggregate_operands). */
 	  if (xasl->proc.buildlist.g_agg_list != NULL)
 	    {
-	      if (qexec_setup_aggregate_domains (xasl->proc.buildlist.g_agg_list, &xasl_state->vd,
-						 &xasl->proc.buildlist.g_agg_domains_resolved) != NO_ERROR)
+	      int resolved;
+	      if (qexec_setup_aggregate_domains (xasl->proc.buildlist.g_agg_list, &xasl_state->vd, &resolved)
+		  != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
+	      assert (resolved || xasl->proc.buildlist.g_agg_first_value_block >= 0);
+	      qexec_set_first_value_pending (&xasl_state->vd, xasl->proc.buildlist.g_agg_first_value_block, !resolved);
 	      /* the hash aggregation writes partial results during the scan: its lists take their domains now */
 	      qexec_setup_hash_aggregate_lists (&xasl_state->vd, &xasl->proc.buildlist);
-	      if (xasl->proc.buildlist.g_agg_domains_resolved)
+	      if (resolved)
 		{
-		  qdata_link_shared_accumulators (xasl->proc.buildlist.g_agg_list);
+		  qdata_link_shared_accumulators (xasl->proc.buildlist.g_agg_list, &xasl_state->vd);
 		}
 	    }
 
@@ -16423,32 +16426,24 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
       else if (xasl->type == BUILDVALUE_PROC)
 	{
-	  AGGREGATE_TYPE *agg_p;
-
-	  /* nullify domains */
-	  for (agg_p = xasl->proc.buildvalue.agg_list; agg_p != NULL; agg_p = agg_p->next)
-	    {
-	      agg_p->accumulator_domain.value_dom = NULL;
-	      agg_p->accumulator_domain.value2_dom = NULL;
-	    }
-
-	  /* domains not resolved */
-	  xasl->proc.buildvalue.agg_domains_resolved = 0;
-
-	  /* the plan sets the aggregates up before the scan; the accumulators are shared once they
-	   * are set. The aggregate operand expressions are marked at load (domain_mark_aggregate_operands). */
+	  /* the plan sets the aggregates up before the scan, each accumulator domain anew; the accumulators are shared
+	   * once they are set. The aggregate operand expressions are marked at load
+	   * (domain_mark_aggregate_operands). */
 	  if (xasl->proc.buildvalue.agg_list != NULL)
 	    {
-	      if (qexec_setup_aggregate_domains (xasl->proc.buildvalue.agg_list, &xasl_state->vd,
-						 &xasl->proc.buildvalue.agg_domains_resolved) != NO_ERROR)
+	      int resolved;
+	      if (qexec_setup_aggregate_domains (xasl->proc.buildvalue.agg_list, &xasl_state->vd, &resolved)
+		  != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
+	      assert (resolved || xasl->proc.buildvalue.agg_first_value_block >= 0);
+	      qexec_set_first_value_pending (&xasl_state->vd, xasl->proc.buildvalue.agg_first_value_block, !resolved);
 	      /* the output columns over an accumulator take the plan's resolution before the first row */
 	      qexec_type_accumulator_outputs (&xasl_state->vd, xasl);
-	      if (xasl->proc.buildvalue.agg_domains_resolved)
+	      if (resolved)
 		{
-		  qdata_link_shared_accumulators (xasl->proc.buildvalue.agg_list);
+		  qdata_link_shared_accumulators (xasl->proc.buildvalue.agg_list, &xasl_state->vd);
 		}
 	    }
 	}
@@ -27854,7 +27849,9 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
       for (i = 0; i < proc->g_func_count; i++, agg_list = agg_list->next)
 	{
 	  assert (agg_list);
-	  proc->agg_hash_context->accumulator_domains[i] = &agg_list->accumulator_domain;
+	  /* the execution's entry: the setup writes it before the scan, the context reads it through this pointer */
+	  proc->agg_hash_context->accumulator_domains[i] =
+	    qexec_accumulator_domain (&xasl_state->vd, agg_list->plan_item);
 	}
     }
 

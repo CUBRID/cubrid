@@ -99,8 +99,9 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
     {
       /* a value a SUM / AVG adds after the first takes the addition's operand coercion for its type - a string into
        * the sum the first value became - resolved here from the function's domain and its argument's in this
-       * execution. It is the function's union member: another function's info stays as it is. */
-      func_p->info.sum_avg.operand_coercion = DOMAIN_OPERAND_COERCION ();
+       * execution, and kept in the execution state (qexec_accumulator_domain) */
+      DOMAIN_OPERAND_COERCION *coercion = &qexec_accumulator_domain (vd, func_p->plan_item)->operand_coercion;
+      *coercion = DOMAIN_OPERAND_COERCION ();
       const TP_DOMAIN *argument = qexec_value_domain (vd, &func_p->operand);
       const TP_DOMAIN *function = qexec_resolved_domain (vd, func_p->plan_item);
       if (function == NULL)
@@ -116,7 +117,7 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
 	  {
 	    {sum, TP_DOMAIN_TYPE (sum), -1, false}, {argument, TP_DOMAIN_TYPE (argument), -1, false}
 	  };
-	  domain_resolve_operand_coercion (T_ADD, operands, &func_p->info.sum_avg.operand_coercion);
+	  domain_resolve_operand_coercion (T_ADD, operands, coercion);
 	}
     }
   if (fcode == PT_COUNT_STAR || fcode == PT_COUNT)
@@ -493,7 +494,8 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
 	  result_domain = ((type == DB_TYPE_NUMERIC) ? NULL : domain);
 	  /* after the operand coercion the partition resolved for a value */
-	  const DOMAIN_OPERAND_COERCION *coercion = &func_p->info.sum_avg.operand_coercion;
+	  const DOMAIN_OPERAND_COERCION *coercion =
+		  &qexec_accumulator_domain (val_desc_p, func_p->plan_item)->operand_coercion;
 	  if (qdata_coerce_arith_operands (T_ADD, coercion->conv, coercion->operand_domain, func_p->value,
 					   &dbval, func_p->value, result_domain) != NO_ERROR)
 	    {

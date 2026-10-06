@@ -53,6 +53,7 @@ namespace parallel_scan
   thread_local OUTPTR_LIST *result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_outptr_list_p;
   thread_local VAL_DESCR *result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_vd;
   thread_local xasl_node *result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_xasl_p;
+  thread_local int result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_agg_domains_resolved;
   thread_local QFILE_TUPLE_RECORD result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_tpl_buf;
   thread_local OR_BUF result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_or_buf;
 
@@ -307,13 +308,8 @@ namespace parallel_scan
 	tl.g_agg_domains_resolved = TRUE;
 	if (m_.g_hash_eligible)
 	  {
-	    /* the worker aggregates into its own clone, whose accumulator domains are the last execution's; empty
-	     * them as the leader does before its scan (see the BUILDVALUE write_initialize) */
-	    for (AGGREGATE_TYPE *agg_p = curr_xasl->proc.buildlist.g_agg_list; agg_p != NULL; agg_p = agg_p->next)
-	      {
-		agg_p->accumulator_domain.value_dom = NULL;
-		agg_p->accumulator_domain.value2_dom = NULL;
-	      }
+	    /* the worker aggregates into its own clone; its accumulator domains are its own state, which the setup
+	     * below makes anew (see the BUILDVALUE write_initialize) */
 	    if (qexec_alloc_agg_hash_context_buildlist_xasl (thread_p, curr_xasl, vd->xasl_state, true) != NO_ERROR)
 	      {
 		m_err_messages_p->move_top_error_message_to_this();
@@ -333,7 +329,7 @@ namespace parallel_scan
 	    qexec_setup_hash_aggregate_lists (vd, &curr_xasl->proc.buildlist);
 	    if (tl.g_agg_domains_resolved)
 	      {
-		qdata_link_shared_accumulators (curr_xasl->proc.buildlist.g_agg_list);
+		qdata_link_shared_accumulators (curr_xasl->proc.buildlist.g_agg_list, vd);
 	      }
 	  }
 	/* setup failure leaves curr_xasl->topn_items NULL; worker falls back to plain BUILDLIST and final ORDER BY+LIMIT runs on main's concat list_id via qexec_orderby_distinct_by_sorting. */
@@ -1002,7 +998,7 @@ namespace parallel_scan
 		    if (tl.g_agg_domains_resolved)
 		      {
 			/* Sharing needs the accumulator domains, so it is linked once they are set. */
-			qdata_link_shared_accumulators (tl.xasl->proc.buildlist.g_agg_list);
+			qdata_link_shared_accumulators (tl.xasl->proc.buildlist.g_agg_list, tl.vd);
 		      }
 		  }
 		if (qexec_hash_gby_agg_tuple_public (thread_p, tl.xasl, tl.vd->xasl_state, &tl.tpl_buf,
@@ -1190,11 +1186,7 @@ namespace parallel_scan
   {
     for (AGGREGATE_TYPE *orig_agg_p = m_orig_agg_list; orig_agg_p != NULL; orig_agg_p = orig_agg_p->next)
       {
-	if (orig_agg_p->function == PT_COUNT_STAR || orig_agg_p->function == PT_COUNT)
-	  {
-	    orig_agg_p->accumulator_domain.value_dom = &tp_Bigint_domain;
-	    orig_agg_p->accumulator_domain.value2_dom = &tp_Null_domain;
-	  }
+	/* the leader's COUNT has its BIGINT accumulator domain from its setup before the scan */
 	if (orig_agg_p->list_id != nullptr)
 	  {
 	    qfile_close_list (thread_p, orig_agg_p->list_id);
@@ -1601,27 +1593,19 @@ namespace parallel_scan
     tl_xasl_p = xasl_p;
     tl_tpl_buf.tpl = (char *)db_private_alloc (thread_p, DB_PAGESIZE);
     tl_tpl_buf.size = DB_PAGESIZE;
-    tl_xasl_p->proc.buildvalue.agg_domains_resolved = 0;
-    for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
-      {
-	/* a worker's clone comes from the pool the leaders use and keeps the accumulator domains of the execution
-	 * that used it last (CBRD-27484). Empty them as the leader does before its scan, so this execution's binds and
-	 * resolved domains set them. */
-	agg_node->accumulator_domain.value_dom = NULL;
-	agg_node->accumulator_domain.value2_dom = NULL;
-      }
-    /* set up from the plan resolutions the clone copied from the leader before its lists open (initialize_node) */
-    if (qexec_setup_parallel_aggregates (tl_xasl_p, vd, &tl_xasl_p->proc.buildvalue.agg_domains_resolved)
-	!= NO_ERROR)
+    /* set up from the plan resolutions the clone copied from the leader before its lists open (initialize_node). The
+     * accumulator domains are the worker's own state, set up anew: a clone from the pool the leaders use keeps none of
+     * the execution that used it last (CBRD-27484). */
+    if (qexec_setup_parallel_aggregates (tl_xasl_p, vd, &tl_agg_domains_resolved) != NO_ERROR)
       {
 	m_err_messages_p->move_top_error_message_to_this ();
 	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	return;
       }
-    if (tl_xasl_p->proc.buildvalue.agg_domains_resolved)
+    if (tl_agg_domains_resolved)
       {
 	/* Sharing needs the accumulator domains, so it is linked once they are set. */
-	qdata_link_shared_accumulators (tl_xasl_p->proc.buildvalue.agg_list);
+	qdata_link_shared_accumulators (tl_xasl_p->proc.buildvalue.agg_list, vd);
       }
     for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
       {
@@ -1715,7 +1699,7 @@ namespace parallel_scan
       DB_VALUE *db_value_p)
   {
     AGGREGATE_ACCUMULATOR *acc = &agg_node->accumulator;
-    AGGREGATE_ACCUMULATOR_DOMAIN *acc_dom = &agg_node->accumulator_domain;
+    AGGREGATE_ACCUMULATOR_DOMAIN *acc_dom = qexec_accumulator_domain (tl_vd, agg_node->plan_item);
 
     /* the setup gives every function that sees a value its accumulator domain before the first row
      * (qexec_setup_parallel_aggregates); a function without one sees only NULLs. MEDIAN, PERCENTILE_CONT/DISC and
@@ -2100,21 +2084,20 @@ namespace parallel_scan
 
   bool result_handler<RESULT_TYPE::BUILDVALUE_OPT>::write (THREAD_ENTRY *thread_p)
   {
-    if (!tl_xasl_p->proc.buildvalue.agg_domains_resolved)
+    if (!tl_agg_domains_resolved)
       {
-	/* what the clone's aggregates still take from their first values */
-	if (qexec_parallel_aggregate_first_values (thread_p, tl_xasl_p, tl_vd,
-	    &tl_xasl_p->proc.buildvalue.agg_domains_resolved) != NO_ERROR)
+	/* the interpolation first-value check of the clone's aggregates */
+	if (qexec_parallel_aggregate_first_values (thread_p, tl_xasl_p, tl_vd, &tl_agg_domains_resolved) != NO_ERROR)
 	  {
 	    return false;
 	  }
 
-	if (tl_xasl_p->proc.buildvalue.agg_domains_resolved)
+	if (tl_agg_domains_resolved)
 	  {
 	    /* Sharing needs the accumulator domains, so it is linked once they are set. Any rows accumulated into a
 	     * sharer before are overwritten during propagation; this only adds work, not a correctness issue.
 	     */
-	    qdata_link_shared_accumulators (tl_xasl_p->proc.buildvalue.agg_list);
+	    qdata_link_shared_accumulators (tl_xasl_p->proc.buildvalue.agg_list, tl_vd);
 	  }
       }
     for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
@@ -2555,17 +2538,11 @@ namespace parallel_scan
       }
     else
       {
-	if (orig_agg_p->accumulator_domain.value_dom == NULL && cur_agg_p->accumulator_domain.value_dom != NULL)
-	  {
-	    orig_agg_p->accumulator_domain.value_dom = cur_agg_p->accumulator_domain.value_dom;
-	    orig_agg_p->accumulator_domain.value2_dom = cur_agg_p->accumulator_domain.value2_dom;
-	  }
-
 	HL_HEAPID prev_heap_id = db_change_private_heap (thread_p, 0);
-	/* the worker's state holds the leader's aggregate's domain under the same execution domain index: the worker
-	 * set its clone up from the resolutions it copied from the leader, as the leader did */
+	/* the worker's state holds the leader's aggregate's domains under the same execution domain index: the worker
+	 * set its clone up from the resolutions it copied from the leader, as the leader did before its scan */
 	int err = qdata_aggregate_accumulator_to_accumulator (thread_p, &orig_agg_p->accumulator,
-		  &orig_agg_p->accumulator_domain, orig_agg_p->function,
+		  qexec_accumulator_domain (tl_vd, orig_agg_p->plan_item), orig_agg_p->function,
 		  qexec_get_node_domain (tl_vd, orig_agg_p->domain, orig_agg_p->plan_item), &cur_agg_p->accumulator);
 	db_change_private_heap (thread_p, prev_heap_id);
 	if (err != NO_ERROR)

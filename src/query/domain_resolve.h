@@ -31,6 +31,7 @@
 #include "domain_plan.h"
 #include "query_executor.h"
 #include "regu_var.hpp"
+#include "xasl_aggregate.hpp"
 
 // forward definitions
 namespace cubxasl
@@ -263,6 +264,37 @@ qexec_take_operand_type (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, DB
     }
   assert (node_domain_index < vd->xasl_state->domain_execution.n_operand_types);
   vd->xasl_state->domain_execution.operand_types[node_domain_index] = type == compiled ? -1 : (int) type;
+}
+
+/* An aggregate's accumulator domains, or an analytic SUM / AVG's operand coercion, in this execution: the entry under
+ * the function's execution domain index (the load numbers every aggregate and analytic function there). The setup
+ * writes it before the first row; the rows read it. */
+inline AGGREGATE_ACCUMULATOR_DOMAIN *
+qexec_accumulator_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
+{
+  assert (vd != NULL && vd->xasl_state != NULL && item != NULL && qexec_owns_node_domain (*vd->xasl_state, item)
+	  && item->node_domain_index >= 0
+	  && item->node_domain_index < vd->xasl_state->domain_execution.n_operand_types);
+  return &vd->xasl_state->domain_execution.accumulator_domains[item->node_domain_index];
+}
+
+/* Whether the interpolation first-value check of a block is still to run: block is the block's
+ * g_agg_first_value_block or agg_first_value_block, -1 for a block without MEDIAN or PERCENTILE */
+inline bool
+qexec_first_value_pending (const VAL_DESCR * vd, int block)
+{
+  assert (block < 0 || block < vd->xasl_state->domain_execution.n_first_value_blocks);
+  return block >= 0 && vd->xasl_state->domain_execution.first_value_pending[block] != 0;
+}
+
+inline void
+qexec_set_first_value_pending (const VAL_DESCR * vd, int block, bool pending)
+{
+  if (block >= 0)
+    {
+      assert (block < vd->xasl_state->domain_execution.n_first_value_blocks);
+      vd->xasl_state->domain_execution.first_value_pending[block] = pending ? 1 : 0;
+    }
 }
 
 extern const TP_DOMAIN *qexec_resolved_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item);

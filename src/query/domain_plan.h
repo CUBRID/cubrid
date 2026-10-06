@@ -37,8 +37,10 @@
  *                                  always its val_pos (DOMAIN_PLAN_ITEM_COLD.val_pos), or a constant expression's or
  *                                  a converted constant's
  *   item.node_domain_index      -> domain_execution.node_domains[] 0-based, -1 none; the first n_operand_types
- *                                  entries are also operand_types[], and the first n_interpolation_list_domains of
- *                                  those interpolation_list_domains[]
+ *                                  entries are also operand_types[] and accumulator_domains[], and the first
+ *                                  n_interpolation_list_domains of those interpolation_list_domains[]
+ *   g_agg_first_value_block, agg_first_value_block (a BUILDLIST's or BUILDVALUE's aggregates)
+ *                               -> domain_execution.first_value_pending[] 0-based, -1 none
  *   DOMAIN_COMPARE.compare_index -> resolved_domain.compares[]     0-based, -1 none
  *   item.temporaries[] and a comparison term's temporaries[] (a SUM or AVG's accumulator temporary is its
  *   item.temporaries[1])        -> domain_execution.temporaries[]  0-based, -1 none
@@ -431,6 +433,8 @@ struct domain_plan
 				 * whose executions also record an operand type */
   int n_interpolation_list_domains;	/* the first of those: the MEDIAN / PERCENTILE aggregates, whose executions
 					 * also record the domain their list holds */
+  int n_first_value_blocks;	/* the blocks whose aggregates hold a MEDIAN or PERCENTILE, which may take the
+				 * interpolation first-value check */
   int n_session_variables;
   DOMAIN_SESSION_VARIABLE *session_variables;	/* the session variables the statement reads */
   int n_constant_branches;
