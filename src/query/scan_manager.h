@@ -377,6 +377,8 @@ static_assert (offsetof (INDX_SCAN_ID, indx_cov)         == offsetof (PARALLEL_I
 static_assert (offsetof (INDX_SCAN_ID, multi_range_opt)  == offsetof (PARALLEL_INDEX_SCAN_ID, multi_range_opt),  "pisid mirror: multi_range_opt");
 static_assert (offsetof (INDX_SCAN_ID, iss)              == offsetof (PARALLEL_INDEX_SCAN_ID, iss),              "pisid mirror: iss");
 static_assert (offsetof (INDX_SCAN_ID, iscan_oid_order)  == offsetof (PARALLEL_INDEX_SCAN_ID, iscan_oid_order),  "pisid mirror: iscan_oid_order");
+static_assert (offsetof (INDX_SCAN_ID, key_plan)         == offsetof (PARALLEL_INDEX_SCAN_ID, key_plan),         "pisid mirror: key_plan");
+static_assert (offsetof (INDX_SCAN_ID, resolved_keys)    == offsetof (PARALLEL_INDEX_SCAN_ID, resolved_keys),    "pisid mirror: resolved_keys");
 static_assert (offsetof (INDX_SCAN_ID, key_state)        == offsetof (PARALLEL_INDEX_SCAN_ID, key_state),        "pisid mirror: key_state");
 static_assert (offsetof (INDX_SCAN_ID, parallel_pending) == offsetof (PARALLEL_INDEX_SCAN_ID, parallel_pending), "pisid mirror: parallel_pending");
 #if !WINDOWS

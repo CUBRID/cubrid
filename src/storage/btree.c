@@ -23499,7 +23499,8 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
       const domain_plan_index *key_plan = bts->index_scan_idp != NULL ? bts->index_scan_idp->key_plan : NULL;
       if (key_plan == NULL)
 	{
-	  /* the unresolved-domain check (execution): every index scan has its key plan */
+	  /* the unresolved-domain check (execution): every index scan has its key plan - scan_open_index_key_plan
+	   * refuses to open one without it; this block runs once per scan, when the sort columns' domains are made */
 	  error = domain_unresolved_error ("", -1, DB_TYPE_MIDXKEY);
 	  goto exit;
 	}

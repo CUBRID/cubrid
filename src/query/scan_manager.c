@@ -2563,6 +2563,7 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
   const int n_ranges = iscan_id->key_plan->n_ranges;
   const bool fetch_range = key_ranges == &iscan_id->indx_info->iss_range;
   assert (fetch_range || (key_range_idx >= 0 && key_range_idx < n_ranges));
+  const int bound = fetch_range ? 2 * n_ranges : 2 * key_range_idx;
 
   if (iscan_id->bt_attrs_prefix_length && iscan_id->bt_num_attrs == 1)
     {
@@ -2619,14 +2620,14 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key1, &indexable, btree_domainp,
 				    key_val_range->num_index_term, key_ranges->key1, vd, key_minmax, iscan_id->iss.use,
-				    iscan_id, fetch_range ? 2 * n_ranges : 2 * key_range_idx);
+				    iscan_id, bound);
 	}
       else
 	{
 	  ret = fetch_copy_dbval (thread_p, key_ranges->key1, vd, NULL, NULL, NULL, &key_val_range->key1);
 	  if (ret == NO_ERROR)
 	    {
-	      ret = scan_key_single_column (iscan_id, 2 * key_range_idx, &key_val_range->key1);
+	      ret = scan_key_single_column (iscan_id, bound, &key_val_range->key1);
 	    }
 	  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key1);
 
@@ -2671,14 +2672,14 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	  ret =
 	    scan_dbvals_to_midxkey (thread_p, &key_val_range->key2, &indexable, btree_domainp,
 				    key_val_range->num_index_term, key_ranges->key2, vd, key_minmax, iscan_id->iss.use,
-				    iscan_id, fetch_range ? 2 * n_ranges : 2 * key_range_idx + 1);
+				    iscan_id, fetch_range ? bound : bound + 1);
 	}
       else
 	{
 	  ret = fetch_copy_dbval (thread_p, key_ranges->key2, vd, NULL, NULL, NULL, &key_val_range->key2);
 	  if (ret == NO_ERROR)
 	    {
-	      ret = scan_key_single_column (iscan_id, 2 * key_range_idx + 1, &key_val_range->key2);
+	      ret = scan_key_single_column (iscan_id, fetch_range ? bound : bound + 1, &key_val_range->key2);
 	    }
 
 	  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key2);
