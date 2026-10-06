@@ -8468,6 +8468,14 @@ qexec_execute_sa_anti_survive (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 {
   SCAN_CODE xs_scan;
 
+  /* the surviving outer goes on without this scan reading a row, so clear the correlated subqueries here as the scan
+   * does for each row it reads (CBRD-27567). A select-list subquery, which the plan attaches to the innermost scan, is
+   * otherwise read for this outer with the result computed for an earlier outer row of the same root row. */
+  if (xasl->dptr_list != NULL && qexec_execute_dptr_list (thread_p, xasl->dptr_list, xasl_state, true) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+
   if (xasl->curr_spec != NULL)
     {
       xasl->curr_spec->s_id.single_fetched = true;
@@ -8538,15 +8546,6 @@ qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_su
     }
   if (*is_memoize_succeed)
     {
-      /* a replayed row skips the scan, so clear the correlated subqueries here as the scan does for each row it reads
-       * (CBRD-27567). A subquery only this node's predicates read is not run again: the replayed row already passed
-       * them. A subquery a consumer of the row reads, such as a select-list subquery attached to the innermost scan,
-       * runs again for the replayed row instead of handing out the previous row's result. */
-      if (xasl->dptr_list != NULL && qexec_execute_dptr_list (thread_p, xasl->dptr_list, xasl_state, true) != NO_ERROR)
-	{
-	  return S_ERROR;
-	}
-
       if (is_memoize_ended)
 	{
 	  if (xasl->curr_spec != NULL)
@@ -8588,6 +8587,17 @@ qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_su
 	}
       else
 	{
+	  /* a replayed row skips the scan, so clear the correlated subqueries here as the scan does for each row it
+	   * reads (CBRD-27567). A subquery only this node's predicates read is not run again: the replayed row already
+	   * passed them. A subquery a consumer of the row reads, such as a select-list subquery attached to the innermost
+	   * scan, runs again for the replayed row instead of handing out the previous row's result. A cached "no match"
+	   * of an ANTI inner is cleared in qexec_execute_sa_anti_survive (). */
+	  if (xasl->dptr_list != NULL
+	      && qexec_execute_dptr_list (thread_p, xasl->dptr_list, xasl_state, true) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+
 	  if (!xasl->scan_ptr)
 	    {
 	      /* no scan procedure block */
