@@ -70,9 +70,21 @@ namespace parallel_query
 	  goto error_exit;
 	}
 
+      error = hjoin_init_part_spools (&thread_ref, manager, split_info, task_cnt);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_start (&thread_ref, &start_stats);
+	}
+
+      error = hjoin_init_part_staging (&thread_ref, &shared_info.staging, manager->context_cnt);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
 	}
 
       /* collect data page sectors for outer relation */
@@ -90,6 +102,13 @@ namespace parallel_query
 
       task_manager.join ();
 
+      if (!task_manager.has_error ())
+	{
+	  error = hjoin_flush_part_staging (&thread_ref, &shared_info.staging, outer->part_list_id,
+					    manager->part_spools[0]);
+	}
+      hjoin_clear_part_staging (&shared_info.staging);
+
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
@@ -101,9 +120,20 @@ namespace parallel_query
 	  goto error_exit;
 	}
 
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_start (&thread_ref, &start_stats);
+	}
+
+      error = hjoin_init_part_staging (&thread_ref, &shared_info.staging, manager->context_cnt);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
 	}
 
       /* collect data page sectors for inner relation
@@ -122,6 +152,13 @@ namespace parallel_query
 
       task_manager.join ();
 
+      if (!task_manager.has_error ())
+	{
+	  error = hjoin_flush_part_staging (&thread_ref, &shared_info.staging, inner->part_list_id,
+					    manager->part_spools[0]);
+	}
+      hjoin_clear_part_staging (&shared_info.staging);
+
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
@@ -133,9 +170,15 @@ namespace parallel_query
 	  goto error_exit;
 	}
 
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
+      hjoin_clear_part_staging (&shared_info.staging);
       hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
 
       return error;
@@ -181,6 +224,13 @@ error_exit:
       task_manager task_manager (manager->px_worker_manager, *main_thread_p);
       join_task *task = nullptr;
 
+      shared_info.result_list_ids = (QFILE_LIST_ID **) calloc (task_cnt, sizeof (QFILE_LIST_ID *));
+      if (shared_info.result_list_ids == nullptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, task_cnt * sizeof (QFILE_LIST_ID *));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_start (&thread_ref, &start_stats);
@@ -193,6 +243,29 @@ error_exit:
 	}
 
       task_manager.join ();
+
+      /* merge the result list of each task, or destroy them if a task failed */
+      for (task_index = 0; task_index < task_cnt; task_index++)
+	{
+	  if (shared_info.result_list_ids[task_index] == nullptr)
+	    {
+	      continue;
+	    }
+
+	  if (!task_manager.has_error () && error == NO_ERROR)
+	    {
+	      error = hjoin_merge_qlist_into (&thread_ref, manager, &manager->single_context.list_id,
+					      &shared_info.result_list_ids[task_index]);
+	    }
+
+	  if (shared_info.result_list_ids[task_index] != nullptr)
+	    {
+	      qfile_close_list (&thread_ref, shared_info.result_list_ids[task_index]);
+	      qfile_destroy_list (&thread_ref, shared_info.result_list_ids[task_index]);
+	      QFILE_FREE_AND_INIT_LIST_ID (shared_info.result_list_ids[task_index]);
+	    }
+	}
+      free_and_init (shared_info.result_list_ids);
 
       if (thread_is_on_trace (&thread_ref))
 	{
@@ -210,6 +283,11 @@ error_exit:
 	  assert_release_error (er_errid () != NO_ERROR);
 	  task_manager.clear_interrupt (thread_ref);
 	  return er_errid ();
+	}
+
+      if (error != NO_ERROR)
+	{
+	  return error;
 	}
 
       for (context_index = 0; context_index < manager->context_cnt; context_index++)
