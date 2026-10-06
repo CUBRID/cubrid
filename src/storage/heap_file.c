@@ -918,7 +918,7 @@ static SCAN_CODE heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, cons
 						   HEAP_PREV_VERSION_WALK * walk, RECDES * recdes);
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
-						    int has_chn);
+						    int has_chn, HEAP_GET_CONTEXT * release_context);
 static int heap_try_refix_home_page (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context);
 static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * home_pg_watcher,
 					 PGBUF_WATCHER * fwd_pg_watcher, LOG_LSA * prev_version_lsa);
@@ -25786,10 +25786,12 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
  *   recdes (out): Record descriptor.
  *   previous_version_lsa (in): Log address of previous version.
  *   scan_cache(in): Heap scan cache.
+ *   release_context(in): Heap get context whose pages are released once the walk goes past the first version,
+ *			   or NULL.
  */
 static SCAN_CODE
 heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG_LSA * previous_version_lsa,
-				   HEAP_SCANCACHE * scan_cache, int has_chn)
+				   HEAP_SCANCACHE * scan_cache, int has_chn, HEAP_GET_CONTEXT * release_context)
 {
   LOG_LSA process_lsa;
   SCAN_CODE scan_code = S_SUCCESS;
@@ -25866,6 +25868,15 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	  /* continue with previous version */
 	  assert (LSA_LT (&MVCC_GET_PREV_VERSION_LSA (&mvcc_header), &process_lsa));
 	  LSA_COPY (&process_lsa, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header));
+	  if (release_context != NULL && release_context->home_page_watcher.pgptr != NULL && !LSA_ISNULL (&process_lsa))
+	    {
+	      /* The rest of the walk reads only the log, so writers of the heap pages need not wait for it. */
+	      if (release_context->fwd_page_watcher.pgptr != NULL)
+		{
+		  pgbuf_ordered_unfix (thread_p, &release_context->fwd_page_watcher);
+		}
+	      pgbuf_ordered_unfix (thread_p, &release_context->home_page_watcher);
+	    }
 	  continue;
 	}
     }
@@ -26124,18 +26135,12 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
       snapshot_res = mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot);
       if (snapshot_res == TOO_NEW_FOR_SNAPSHOT)
 	{
-	  /* The walk reads only the log from the header copied above, so writers of this page need not wait for it. */
-	  if (context->fwd_page_watcher.pgptr != NULL)
-	    {
-	      pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
-	    }
-	  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
-
-	  /* current version is not visible, check previous versions from log and skip record get from heap */
+	  /* current version is not visible, check previous versions from log and skip record get from heap.
+	   * The walk releases the pages when it goes past the first previous version. */
 	  scan =
 	    heap_get_visible_version_from_log (thread_p, context->recdes_p, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header),
-					       context->scan_cache, context->old_chn);
-	  if (scan != S_ERROR && context->scan_cache->cache_last_fix_page
+					       context->scan_cache, context->old_chn, context);
+	  if (context->home_page_watcher.pgptr == NULL && scan != S_ERROR && context->scan_cache->cache_last_fix_page
 	      && heap_try_refix_home_page (thread_p, context) != NO_ERROR)
 	    {
 	      scan = S_ERROR;
