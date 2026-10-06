@@ -185,42 +185,15 @@ namespace cubconn::connection
 
     for (;;)
       {
-	std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now ();
+	std::chrono::steady_clock::time_point now;
 	std::chrono::milliseconds remaining;
 	std::chrono::milliseconds turn;
 
-	if (now >= deadline)
-	  {
-	    return room_wait_result::TIMED_OUT;
-	  }
-
-	/* A turn is how long the sender goes without re-reading the connection, not an addition to
-	 * the budget: never sleep past the deadline. */
-	remaining = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
-	turn = (remaining < SEND_QUEUE_ROOM_WAIT_TURN) ? remaining : SEND_QUEUE_ROOM_WAIT_TURN;
-
-	std::shared_ptr<message_blocker> waiter = ctx->m_send.m_room;
-
-	/* A woken signal is not ours to wait on -- every waker moves it out of the context. */
-	if (waiter == nullptr || waiter->done)
-	  {
-	    waiter = std::make_shared<message_blocker> ();
-	    waiter->done = false;
-	    ctx->m_send.m_room = waiter;
-	  }
-
-	r = rmutex_unlock (NULL, &conn->cmutex);
-	assert (r == NO_ERROR);
-
-	{
-	  std::unique_lock<std::mutex> lock (waiter->m);
-	  waiter->cv.wait_for (lock, turn, [&waiter] { return waiter->done; });
-	}
-
-	r = rmutex_lock (NULL, &conn->cmutex);
-	assert (r == NO_ERROR);
-
-	/* A handoff changes only which worker drains this connection, so adopt the new owner rather
+	/* These tests come before each sleep, not only after one. Teardown wakes the senders already
+	 * waiting; a sender that arrives after that would otherwise sleep a whole turn on a connection
+	 * that is already closing. On the first pass the generation tests hold trivially.
+	 *
+	 * A handoff changes only which worker drains this connection, so adopt the new owner rather
 	 * than dropping a healthy one. Anything else leaves these bytes nowhere to go in order.
 	 *
 	 * The order of the tests is load-bearing: the pointer comparison comes before any dereference
@@ -252,6 +225,38 @@ namespace cubconn::connection
 	  {
 	    return room_wait_result::ROOM_AVAILABLE;
 	  }
+
+	now = std::chrono::steady_clock::now ();
+	if (now >= deadline)
+	  {
+	    return room_wait_result::TIMED_OUT;
+	  }
+
+	/* A turn is how long the sender goes without re-reading the connection, not an addition to
+	 * the budget: never sleep past the deadline. */
+	remaining = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
+	turn = (remaining < SEND_QUEUE_ROOM_WAIT_TURN) ? remaining : SEND_QUEUE_ROOM_WAIT_TURN;
+
+	std::shared_ptr<message_blocker> waiter = ctx->m_send.m_room;
+
+	/* A woken signal is not ours to wait on -- every waker moves it out of the context. */
+	if (waiter == nullptr || waiter->done)
+	  {
+	    waiter = std::make_shared<message_blocker> ();
+	    waiter->done = false;
+	    ctx->m_send.m_room = waiter;
+	  }
+
+	r = rmutex_unlock (NULL, &conn->cmutex);
+	assert (r == NO_ERROR);
+
+	{
+	  std::unique_lock<std::mutex> lock (waiter->m);
+	  waiter->cv.wait_for (lock, turn, [&waiter] { return waiter->done; });
+	}
+
+	r = rmutex_lock (NULL, &conn->cmutex);
+	assert (r == NO_ERROR);
       }
   }
 
@@ -266,6 +271,7 @@ namespace cubconn::connection
     std::array<cubbase::span<std::byte>, MAX_DIRECT_PACKET_COUNT * 2> pending;
     std::array<std::byte *, MAX_DIRECT_PACKET_COUNT * 2> allocated {};
     std::shared_ptr<message_blocker> failed_waiter;
+    std::shared_ptr<message_blocker> failed_room;
     std::shared_ptr<message_blocker> waiter;
     struct msghdr msg = {};
     worker *owner;
@@ -455,10 +461,10 @@ namespace cubconn::connection
 
 		if (waited == room_wait_result::CONNECTION_GONE)
 		  {
-		    /* The same facts as the check on entry to this function, which drops the message and
+		    /* Answered like the check on entry to this function, which drops the message and
 		     * returns without asking for a shutdown. The connection this thread was sending on is
-		     * gone, and the slot it used may already belong to another client, so conn is not
-		     * ours to close. */
+		     * gone, or is already being closed by someone else, and the slot it used may already
+		     * belong to another client, so conn is not ours to close. */
 		    return NO_ERROR;
 		  }
 
@@ -533,6 +539,7 @@ namespace cubconn::connection
       {
 	ctx->m_send.m_transmitter.clear ();
 	failed_waiter = std::move (ctx->m_send.m_blocker);
+	failed_room = std::move (ctx->m_send.m_room);
 	r = rmutex_unlock (NULL, &conn->cmutex);
 	assert (r == NO_ERROR);
 	if (!retain_deleter && deleter)
@@ -540,6 +547,7 @@ namespace cubconn::connection
 	    deleter ();
 	  }
 	owner->wakeup_blocked_worker (failed_waiter);
+	owner->wakeup_blocked_worker (failed_room);
 	css_request_shutdown_conn (conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
 	return INTERNAL_CSS_ERROR;
       }
@@ -975,6 +983,7 @@ namespace cubconn::connection
   {
     std::chrono::time_point<std::chrono::steady_clock> start, end;
     std::shared_ptr<message_blocker> transmission_blocker;
+    std::shared_ptr<message_blocker> room;
     int tran_index, client_id;
     int status;
 
@@ -1056,6 +1065,15 @@ namespace cubconn::connection
 
 	net_server_wakeup_workers (m_entry, tran_index, client_id);
       }
+
+    /* A sender waiting for room is one of the workers counted below, so the clear further down,
+     * reached only once they are gone, is too late to wake it. CONN_CLOSING is set by now: under
+     * cmutex, a sender is either already waiting and woken here, or reads CONN_CLOSING before it
+     * would sleep. */
+    rmutex_lock (m_entry, &ctx->m_conn->cmutex);
+    room = std::move (ctx->m_send.m_room);
+    rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+    this->wakeup_blocked_worker (room);
 
     /* retry until the worker related to the connection is complete */
 
@@ -2283,6 +2301,7 @@ respond:
   {
     std::chrono::time_point<std::chrono::steady_clock> start, end;
     std::shared_ptr<message_blocker> transmission_blocker;
+    std::shared_ptr<message_blocker> room;
     std::vector<cubbase::span<std::byte>> *packets;
     result status, io_status;
     int mtx;
@@ -2303,8 +2322,10 @@ respond:
 	rmutex_lock (m_entry, &ctx->m_conn->cmutex);
 	ctx->m_send.m_transmitter.clear ();
 	transmission_blocker = std::move (ctx->m_send.m_blocker);
+	room = std::move (ctx->m_send.m_room);
 	rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
 	this->wakeup_blocked_worker (transmission_blocker);
+	this->wakeup_blocked_worker (room);
 	this->handle_connection_close (ctx);
 	return io_status == result::PeerReset ? result::PeerReset : result::ClosedConnection;
       }
@@ -2397,6 +2418,7 @@ respond:
 	/* ctx will be forcibly removed */
 	ctx->m_ignore = ignore_level::IGNORE_ALL;
 	blocker = std::move (ctx->m_send.m_blocker);
+	room = std::move (ctx->m_send.m_room);
 
 	r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
 	assert (r == NO_ERROR);
@@ -2409,10 +2431,14 @@ respond:
 
     assert (status == result::Ok || status == result::Pending || status == result::BudgetExhausted);
 
-    /* Only when there is actually room: a drain that advances inside the first iovec frees no slot,
-     * because prepare_append reclaims only the fully consumed prefix. Teardown does not signal
-     * here; a waiter re-reads the connection each turn. */
-    if (ctx->m_send.m_transmitter.prepare_append (1))
+    /* Only when a sender is waiting, so that with nobody waiting -- always, at
+     * send_queue_room_wait_msecs = 0 -- this path is the one from before CBRD-27287. No wakeup is
+     * lost: a sender registers m_room in the same cmutex hold as the prepare_append that failed
+     * for it, so a null m_room here means no sender is between those two steps.
+     *
+     * And only when there is actually room: a drain that advances inside the first iovec frees no
+     * slot, because prepare_append reclaims only the fully consumed prefix. */
+    if (ctx->m_send.m_room != nullptr && ctx->m_send.m_transmitter.prepare_append (1))
       {
 	room = std::move (ctx->m_send.m_room);
       }

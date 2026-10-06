@@ -3072,6 +3072,10 @@ logtb_is_interrupted (THREAD_ENTRY * thread_p, bool clear, bool * continue_check
  *       the interrupt as its way out has to tell the two apart, because in the second case that way
  *       out does not exist. This answers that question and nothing else; it neither reads nor
  *       clears the flag.
+ *
+ *       The condition mirrors the early return in logtb_is_interrupted_tdes, not
+ *       logtb_is_current_active, though the two compute the same thing today: if what makes an
+ *       interrupt reportable changes there, it has to change here.
  */
 bool
 logtb_is_interruptible (THREAD_ENTRY * thread_p)

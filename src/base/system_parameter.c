@@ -5414,7 +5414,10 @@ SYSPRM_PARAM prm_Def[] = {
     * Being too short costs the connection, which is the defect this bounds, so it keeps margin. */
    {false, {.i = 1000}},
    {false, {.i = 1000}},
-   {false, {.i = 3600000}},	/* an hour, for a deliberately patient setting */
+   /* Five seconds, fixed at connection_timeout's default (a client parameter, not read here): the
+    * waiting worker holds the heap page it is scanning, so it should not wait on a peer longer than
+    * CUBRID by default takes to decide that peer has stopped talking. */
+   {false, {.i = 5000}},
    {false, {.i = 0}},		/* 0: drop the connection at once, as before CBRD-27287 */
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
