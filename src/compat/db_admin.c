@@ -3142,6 +3142,14 @@ db_chn (DB_OBJECT * obj, DB_FETCH_MODE purpose)
  * return    : error code
  * data (in) : string with new parameter values defined as:
  *	       "param1=new_val1; param2=new_val2; ..."
+ *
+ * TODO: With multiple connections (MULTI_CONN_TO_A_SERVER), the client copy of the parameter values (prm_Def)
+ *	 is process-wide. A change of a session parameter by a sub-client (e.g., SET SYSTEM PARAMETERS, or
+ *	 db_set_system_parameters_for_ha_repl () of applylogdb) is applied to its server session only, but on the
+ *	 client it is visible to the main client and the other sub-clients, and a string value may be freed while
+ *	 another thread reads it. Keep the session parameter values per connection on the client (a thread-local
+ *	 copy used by prm_get_* (), as the server does with session_get_session_parameter ()), or apply such
+ *	 changes on one thread only.
  */
 int
 db_set_system_parameters (const char *data)
