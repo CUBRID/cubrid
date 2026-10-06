@@ -4526,7 +4526,6 @@ perfmon_er_log_current_stats (THREAD_ENTRY * thread_p)
   _er_log_debug (ARG_FILE_LINE, "%s\n", strbuf);
 
   delete[] strbuf;
-  free_and_init (stats);
 }
 #endif // SERVER_MODE || SA_MODE
 // *INDENT-ON*

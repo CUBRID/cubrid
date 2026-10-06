@@ -631,17 +631,17 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
   endif()
 
   # libstdc++ implements std::atomic<T> for a class type T through the generic
-  # __atomic_* builtins, which take a size argument. GCC lowers those inline at
-  # every optimisation level; Clang only does so once optimisation is on, and at
-  # -O0 it leaves a call to __atomic_compare_exchange behind (bestspace.hpp does
-  # this with its 8 byte L1/L2/L3 types). A Clang debug build therefore needs
-  # libatomic at link time or it fails with an undefined reference.
+  # __atomic_* builtins, which take a size argument (bestspace.hpp does this with
+  # its 8 byte L1/L2/L3 types). GCC lowers those inline; Clang emits a call to
+  # __atomic_compare_exchange, which lives in libatomic, and it does so in an
+  # optimised build as well as a debug one - cubridsa fails to link without it at
+  # -O2. Several targets are affected, so the library is added for all of them.
   if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     find_library(LIBATOMIC_LIBRARY NAMES atomic libatomic.so.1)
     if(LIBATOMIC_LIBRARY)
       link_libraries(${LIBATOMIC_LIBRARY})
     else()
-      message(WARNING "libatomic was not found; a Clang debug build may fail to link.")
+      message(WARNING "libatomic was not found; a Clang build will fail to link.")
     endif()
   endif()
  
