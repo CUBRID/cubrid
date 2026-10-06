@@ -419,7 +419,7 @@ namespace
   }
 
   /* record counts either side of the MSD small-bucket cutoff and of a full 256-way split, plus a few that recurse */
-  const int TEST_SIZES[] = { 0, 1, 2, 3, 23, 24, 25, 63, 255, 256, 257, 1000, 4096 };
+  const int TEST_SIZES[] = { 0, 1, 2, 3, 23, 24, 25, 63, 64, 65, 129, 255, 256, 257, 1000, 4096 };
 
   /* an index build packs a second OID into the record when it is unique, which moves the key */
   const bool UNIQUE_MODES[] = { false, true };
@@ -442,6 +442,10 @@ namespace
     SHAPE_EXTREMES,
     SHAPE_ASC_DUP,
     SHAPE_DESC_DUP,
+    SHAPE_TRAIL_SHARED,
+    SHAPE_INTERIOR_SHARED,
+    SHAPE_TRAIL_FEW,
+    SHAPE_MIXED_SIGN,
     SHAPE_COUNT
   };
 
@@ -449,7 +453,10 @@ namespace
   shape_name (int shape)
   {
     static const char *const names[] =
-    { "random", "all-equal", "few-distinct", "ascending", "descending", "narrow", "extremes", "asc-dup", "desc-dup" };
+    {
+      "random", "all-equal", "few-distinct", "ascending", "descending", "narrow", "extremes", "asc-dup", "desc-dup",
+      "trail-shared", "interior-shared", "trail-few", "mixed-sign"
+    };
 
     return names[shape];
   }
@@ -476,6 +483,14 @@ namespace
 	return (unsigned long long) (i / 4);
       case SHAPE_DESC_DUP:
 	return (unsigned long long) ((n - 1 - i) / 4);
+      case SHAPE_TRAIL_SHARED:
+	return (rng() % 37) << 8;	/* the low byte shared, ties left to the OID */
+      case SHAPE_INTERIOR_SHARED:
+	return ((rng() % 7) << 24) | (rng() % 200);	/* shared bytes between moving ones */
+      case SHAPE_TRAIL_FEW:
+	return (rng() % 3) << 8;	/* ranges above the cutoff reach the last key byte */
+      case SHAPE_MIXED_SIGN:
+	return (unsigned long long) ((long long) (rng() % 601) - 300);
       case SHAPE_RANDOM:
       default:
 	return rng();
@@ -510,6 +525,14 @@ namespace
 	return (double) (i / 4);
       case SHAPE_DESC_DUP:
 	return (double) ((n - 1 - i) / 4);
+      case SHAPE_TRAIL_SHARED:
+	return (double) (rng() % 37) * 1024.0;	/* integral: the low mantissa bytes shared */
+      case SHAPE_INTERIOR_SHARED:
+	return (double) (rng() % 7) * 65536.0 + (double) (rng() % 200);
+      case SHAPE_TRAIL_FEW:
+	return (double) (rng() % 3) - 1.0;
+      case SHAPE_MIXED_SIGN:
+	return (double) ((long long) (rng() % 601) - 300) / 4.0;	/* the negative flip moves the shared bytes */
       case SHAPE_RANDOM:
       default:
 	return ldexp ((double) (long long) (rng() % 2000001) / 1000000.0 - 1.0, (int) (rng() % 120) - 60);

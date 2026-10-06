@@ -602,6 +602,7 @@ oid_to_order (UINT64 word)
  *   slots(in):
  *   record_count(in):
  *   radix_words(out): one word of WORD_WIDTH bytes per slot
+ *   varying_bits(out): the bits the radix words differ in
  *
  * Note: The key is read big-endian field by field. Flipping the bits its format names puts its bytes in unsigned
  *       order, and flipping every bit of a descending key's word turns that order round. A word is built in a
@@ -610,13 +611,13 @@ oid_to_order (UINT64 word)
 template <int WORD_WIDTH, RADIX_KEY_FORMAT FORMAT>
 static void
 encode_radix_words (const RADIX_KEY_ENCODING *encoding, const char *rec_base, const BTSORT_RUN_SLOT *slots,
-		    int record_count, unsigned char *radix_words)
+		    int record_count, unsigned char *radix_words, UINT64 *varying_bits)
 {
   const radix_word<WORD_WIDTH> sign_bit = word_sign_bit<WORD_WIDTH> ();
   const radix_word<WORD_WIDTH> desc_flip = encoding->is_desc ? (radix_word<WORD_WIDTH>) ~0ULL : 0;
   constexpr RADIX_KEY_FORMAT format = FORMAT;
   const char *rec;
-  radix_word<WORD_WIDTH> word;
+  radix_word<WORD_WIDTH> word, any_set = 0, all_set = (radix_word<WORD_WIDTH>) ~0ULL;
   int rec_index;
 
   assert (encoding->word_width == WORD_WIDTH);
@@ -652,36 +653,49 @@ encode_radix_words (const RADIX_KEY_ENCODING *encoding, const char *rec_base, co
       word ^= desc_flip;
 
       memcpy (radix_words + rec_index * WORD_WIDTH, &word, WORD_WIDTH);
+
+      /* a bit set in some radix words but not all marks a byte the run varies in */
+      any_set |= word;
+      all_set &= word;
     }
+
+  *varying_bits = any_set ^ all_set;
 }
 
 /* the run's format as the constant the radix words are encoded with */
 template <int WORD_WIDTH>
 static void
 encode_radix_words (const RADIX_KEY_ENCODING *encoding, const char *rec_base, const BTSORT_RUN_SLOT *slots,
-		    int record_count, unsigned char *radix_words)
+		    int record_count, unsigned char *radix_words, UINT64 *varying_bits)
 {
   switch (encoding->format)
     {
     case RADIX_KEY_UNSIGNED:
-      encode_radix_words<WORD_WIDTH, RADIX_KEY_UNSIGNED> (encoding, rec_base, slots, record_count, radix_words);
+      encode_radix_words<WORD_WIDTH, RADIX_KEY_UNSIGNED> (encoding, rec_base, slots, record_count, radix_words,
+	  varying_bits);
       break;
     case RADIX_KEY_DATETIME:
-      encode_radix_words<WORD_WIDTH, RADIX_KEY_DATETIME> (encoding, rec_base, slots, record_count, radix_words);
+      encode_radix_words<WORD_WIDTH, RADIX_KEY_DATETIME> (encoding, rec_base, slots, record_count, radix_words,
+	  varying_bits);
       break;
     case RADIX_KEY_SIGNED:
-      encode_radix_words<WORD_WIDTH, RADIX_KEY_SIGNED> (encoding, rec_base, slots, record_count, radix_words);
+      encode_radix_words<WORD_WIDTH, RADIX_KEY_SIGNED> (encoding, rec_base, slots, record_count, radix_words,
+	  varying_bits);
       break;
     case RADIX_KEY_IEEE:
-      encode_radix_words<WORD_WIDTH, RADIX_KEY_IEEE> (encoding, rec_base, slots, record_count, radix_words);
+      encode_radix_words<WORD_WIDTH, RADIX_KEY_IEEE> (encoding, rec_base, slots, record_count, radix_words,
+	  varying_bits);
       break;
     case RADIX_KEY_OID:
-      encode_radix_words<WORD_WIDTH, RADIX_KEY_OID> (encoding, rec_base, slots, record_count, radix_words);
+      encode_radix_words<WORD_WIDTH, RADIX_KEY_OID> (encoding, rec_base, slots, record_count, radix_words,
+	  varying_bits);
       break;
     case RADIX_KEY_MONETARY:
-      encode_radix_words<WORD_WIDTH, RADIX_KEY_MONETARY> (encoding, rec_base, slots, record_count, radix_words);
+      encode_radix_words<WORD_WIDTH, RADIX_KEY_MONETARY> (encoding, rec_base, slots, record_count, radix_words,
+	  varying_bits);
       break;
     default:
+      *varying_bits = 0;
       assert (false);
       break;
     }
@@ -718,7 +732,8 @@ namespace
   {
     public:
       msd_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, BTSORT_RUN_SLOT *slots_spare, unsigned char *radix_words,
-		unsigned char *radix_words_spare, int record_count, msd_range *stack, int stack_entries);
+		unsigned char *radix_words_spare, int record_count, UINT64 varying_bits, msd_range *stack,
+		int stack_entries);
 
       void sort ();	/* the result ends in the home slots */
 
@@ -728,13 +743,15 @@ namespace
       void count_buckets (const msd_range &range, bucket_counts &bucket_count) const;
       bool is_all_in_one (const msd_range &range, const bucket_counts &bucket_count) const;
       void move_to_buckets (const msd_range &range, const bucket_counts &bucket_count);
-      int push_buckets (const msd_range &range, const bucket_counts &bucket_count, int stack_top);
+      int push_buckets (const msd_range &range, const bucket_counts &bucket_count, UINT8 next_byte_index,
+			int stack_top);
       void finish_range (const msd_range &range);
 
       const char *m_rec_base;	/* the sort buffer the slots are offsets into */
       BTSORT_RUN_SLOT *m_slots[2];	/* by side */
       unsigned char *m_radix_words[2];	/* radix words by side, in step with the slots */
       int m_record_count;	/* two or more, see radix_sort_run () */
+      UINT64 m_varying_bits;	/* the bits the radix words differ in, from encode_radix_words () */
       msd_range *m_stack;
       int m_stack_entries;
   };
@@ -802,6 +819,7 @@ radix_sort_run (const RADIX_KEY_ENCODING *encoding, const char *rec_base, BTSORT
   unsigned char *radix_words, *radix_words_spare;
   msd_range *stack;
   int stack_entries;
+  UINT64 varying_bits;
 
   assert (word_width >= 1);
   assert (record_count >= 0 && record_count <= INT_MAX / word_width);
@@ -825,18 +843,18 @@ radix_sort_run (const RADIX_KEY_ENCODING *encoding, const char *rec_base, BTSORT
   switch (word_width)
     {
     case 2:
-      encode_radix_words<2> (encoding, rec_base, slots, record_count, radix_words);
-      msd_sort<2> (rec_base, slots, slots_spare, radix_words, radix_words_spare, record_count, stack,
+      encode_radix_words<2> (encoding, rec_base, slots, record_count, radix_words, &varying_bits);
+      msd_sort<2> (rec_base, slots, slots_spare, radix_words, radix_words_spare, record_count, varying_bits, stack,
 		   stack_entries).sort ();
       break;
     case 4:
-      encode_radix_words<4> (encoding, rec_base, slots, record_count, radix_words);
-      msd_sort<4> (rec_base, slots, slots_spare, radix_words, radix_words_spare, record_count, stack,
+      encode_radix_words<4> (encoding, rec_base, slots, record_count, radix_words, &varying_bits);
+      msd_sort<4> (rec_base, slots, slots_spare, radix_words, radix_words_spare, record_count, varying_bits, stack,
 		   stack_entries).sort ();
       break;
     case 8:
-      encode_radix_words<8> (encoding, rec_base, slots, record_count, radix_words);
-      msd_sort<8> (rec_base, slots, slots_spare, radix_words, radix_words_spare, record_count, stack,
+      encode_radix_words<8> (encoding, rec_base, slots, record_count, radix_words, &varying_bits);
+      msd_sort<8> (rec_base, slots, slots_spare, radix_words, radix_words_spare, record_count, varying_bits, stack,
 		   stack_entries).sort ();
       break;
     default:
@@ -849,14 +867,44 @@ radix_sort_run (const RADIX_KEY_ENCODING *encoding, const char *rec_base, BTSORT
 template <int WORD_WIDTH>
 msd_sort<WORD_WIDTH>::msd_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, BTSORT_RUN_SLOT *slots_spare,
 				unsigned char *radix_words, unsigned char *radix_words_spare, int record_count,
-				msd_range *stack, int stack_entries)
+				UINT64 varying_bits, msd_range *stack, int stack_entries)
   : m_rec_base (rec_base)
   , m_slots { slots, slots_spare }
   , m_radix_words { radix_words, radix_words_spare }
   , m_record_count (record_count)
+  , m_varying_bits (varying_bits)
   , m_stack (stack)
   , m_stack_entries (stack_entries)
 {
+}
+
+/*
+ * find_varying_bytes () - Works out the key byte to split on at or after each byte
+ *   return: WORD_WIDTH + 1 entries, WORD_WIDTH when no byte is left
+ *   varying_bits(in): from encode_radix_words ()
+ *
+ * Note: A byte the whole run shares puts every range in one bucket, so the walk steps over it without counting.
+ */
+template <int WORD_WIDTH>
+static std::array<UINT8, WORD_WIDTH + 1>
+find_varying_bytes (UINT64 varying_bits)
+{
+  using word = radix_word<WORD_WIDTH>;
+  const word varying_word = (word) varying_bits;
+  unsigned char varying_bytes[WORD_WIDTH];
+  std::array<UINT8, WORD_WIDTH + 1> next_byte;
+  int byte_index;
+
+  /* by word byte, as the host lays a radix word out */
+  memcpy (varying_bytes, &varying_word, WORD_WIDTH);
+
+  next_byte[WORD_WIDTH] = WORD_WIDTH;
+  for (byte_index = WORD_WIDTH - 1; byte_index >= 0; byte_index--)
+    {
+      next_byte[byte_index] = (varying_bytes[byte_index] != 0) ? byte_index : next_byte[byte_index + 1];
+    }
+
+  return next_byte;
 }
 
 /*
@@ -864,7 +912,7 @@ msd_sort<WORD_WIDTH>::msd_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, BT
  *   return: void
  *
  * Note: Each range is finished or split 256 ways on its current byte, and an explicit stack holds the pending ones.
- *       A run the keys already order, either way, skips the walk.
+ *       A run the keys already order, either way, skips the walk, and the walk skips the bytes the run shares.
  */
 template <int WORD_WIDTH>
 void
@@ -873,6 +921,7 @@ msd_sort<WORD_WIDTH>::sort ()
   int stack_top = 0;
   msd_range range;
   bucket_counts bucket_count;	/* a count fits an int, see radix_sort_run () */
+  std::array<UINT8, WORD_WIDTH + 1> next_byte;
   bool is_descending, has_ties;
 
   if (is_ordered (&is_descending, &has_ties))
@@ -881,7 +930,10 @@ msd_sort<WORD_WIDTH>::sort ()
       return;
     }
 
-  m_stack[stack_top++] = { 0, m_record_count, 0, HOME };
+  /* the byte to split on at or after each, or WORD_WIDTH when none is left */
+  next_byte = find_varying_bytes<WORD_WIDTH> (m_varying_bits);
+
+  m_stack[stack_top++] = { 0, m_record_count, next_byte[0], HOME };
 
   while (stack_top > 0)
     {
@@ -889,7 +941,7 @@ msd_sort<WORD_WIDTH>::sort ()
 
       assert (range.byte_index <= WORD_WIDTH);
 
-      /* too few records to pay for a counting pass, or no key byte left */
+      /* too few records to pay for a counting pass, or no key byte left to split on */
       if (range.record_count <= RADIX_MSD_CUTOFF || range.byte_index >= WORD_WIDTH)
 	{
 	  finish_range (range);
@@ -901,13 +953,13 @@ msd_sort<WORD_WIDTH>::sort ()
       /* every record shares this byte: descend without moving anything */
       if (is_all_in_one (range, bucket_count))
 	{
-	  range.byte_index++;
+	  range.byte_index = next_byte[range.byte_index + 1];
 	  m_stack[stack_top++] = range;
 	  continue;
 	}
 
       move_to_buckets (range, bucket_count);
-      stack_top = push_buckets (range, bucket_count, stack_top);
+      stack_top = push_buckets (range, bucket_count, next_byte[range.byte_index + 1], stack_top);
     }
 }
 
@@ -1082,13 +1134,15 @@ msd_sort<WORD_WIDTH>::move_to_buckets (const msd_range &range, const bucket_coun
  *   return: the new stack top
  *   range(in):
  *   bucket_count(in):
+ *   next_byte_index(in): the byte_index of the buckets, from next_byte
  *   stack_top(in):
  *
  * Note: A bucket of one record is final and only has to come home.
  */
 template <int WORD_WIDTH>
 int
-msd_sort<WORD_WIDTH>::push_buckets (const msd_range &range, const bucket_counts &bucket_count, int stack_top)
+msd_sort<WORD_WIDTH>::push_buckets (const msd_range &range, const bucket_counts &bucket_count, UINT8 next_byte_index,
+				    int stack_top)
 {
   const side to = other (range.where);
   int bucket_start = range.start;
@@ -1103,11 +1157,11 @@ msd_sort<WORD_WIDTH>::push_buckets (const msd_range &range, const bucket_counts 
 	  if (bucket_count[byte_value] > RADIX_MSD_CUTOFF)
 	    {
 	      assert (stack_top < m_stack_entries);
-	      m_stack[stack_top++] = { bucket_start, bucket_count[byte_value], (UINT8) (range.byte_index + 1), to };
+	      m_stack[stack_top++] = { bucket_start, bucket_count[byte_value], next_byte_index, to };
 	    }
 	  else
 	    {
-	      finish_range ({ bucket_start, bucket_count[byte_value], (UINT8) (range.byte_index + 1), to });
+	      finish_range ({ bucket_start, bucket_count[byte_value], next_byte_index, to });
 	    }
 	}
       else if (bucket_count[byte_value] == 1 && to != HOME)
