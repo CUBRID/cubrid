@@ -45,11 +45,233 @@
 #endif
 #include <cassert>
 #include <cstring>
+#include <cstdint>
 #include <new>
 #include <vector>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+heap_pending_oos_values::~heap_pending_oos_values ()
+{
+  discard_since (0);
+}
+
+int
+heap_pending_oos_values::retain (oos_buffer value)
+{
+  try
+    {
+      m_values.push_back (value);
+    }
+  catch (const std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (oos_buffer));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  m_bytes += value.size ();
+  return NO_ERROR;
+}
+
+void
+heap_pending_oos_values::discard_since (std::size_t count)
+{
+  while (m_values.size () > count)
+    {
+      char *data = m_values.back ().data ();
+      m_bytes -= m_values.back ().size ();
+      free_and_init (data);
+      m_values.pop_back ();
+    }
+}
+
+void
+heap_oos_value_ref::encode_memory (char *stub, oos_buffer value)
+{
+  static_assert (sizeof (std::uintptr_t) <= sizeof (DB_BIGINT), "OOS accessor must fit its packed field");
+  OR_BUF buf;
+  or_init (&buf, stub, OR_OOS_INLINE_SIZE);
+  or_put_oid (&buf, &oid_Null_oid);
+  or_put_bigint (&buf, (DB_BIGINT) value.size ());
+  or_put_bigint (&buf, (DB_BIGINT) reinterpret_cast<std::uintptr_t> (value.data ()));
+}
+
+int
+heap_oos_value_ref::decode (const RECDES &record, int location, heap_oos_value_ref &ref)
+{
+  char *stub = nullptr;
+  DB_BIGINT length = 0;
+  OID head = OID_INITIALIZER;
+  if (heap_recdes_get_oos_inline_stub (&record, location, &stub) != NO_ERROR)
+    {
+      goto invalid;
+    }
+  OR_GET_OID (stub, &head);
+  OR_GET_BIGINT (stub + OR_OID_SIZE, &length);
+  if (length <= 0 || length > DB_MAX_STRING_LENGTH)
+    {
+      goto invalid;
+    }
+  ref.m_length = (std::size_t) length;
+  if (OID_ISNULL (&head))
+    {
+      /* Only a descriptor constructed locally by the pending serializer may
+       * carry a memory alternative. Fetched and received records stay disk-only. */
+      DB_BIGINT address = 0;
+      if (record.type != REC_OOS_PENDING)
+	{
+	  goto invalid;
+	}
+      OR_GET_BIGINT (stub + OR_OID_SIZE + OR_BIGINT_SIZE, &address);
+      if (address == 0)
+	{
+	  goto invalid;
+	}
+      ref.m_kind = kind::memory;
+      ref.m_value.memory = reinterpret_cast<const char *> ((std::uintptr_t) address);
+      return NO_ERROR;
+    }
+  {
+    oos_chain_ref disk;
+    int error = heap_oos_parse_inline_ref (&record, location, &disk, &length);
+    if (error == NO_ERROR)
+      {
+	ref.m_value.disk = disk;
+	ref.m_kind = kind::disk;
+      }
+    return error;
+  }
+
+invalid:
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&head));
+  return ER_HEAP_OOS_BAD_INLINE_HEADER;
+}
+
+int
+heap_oos_value_ref::read_into (THREAD_ENTRY *thread_p, oos_buffer destination) const
+{
+  if (destination.size () != m_length || destination.data () == nullptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  switch (m_kind)
+    {
+    case kind::memory:
+      std::memcpy (destination.data (), m_value.memory, m_length);
+      return NO_ERROR;
+    case kind::disk:
+      return oos_read (thread_p, m_value.disk, destination);
+    }
+  return ER_FAILED;
+}
+
+int
+heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record)
+{
+  if (record->type != REC_OOS_PENDING)
+    {
+      return NO_ERROR;
+    }
+  if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+    {
+      return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+    }
+  if (!heap_recdes_contains_oos (record))
+    {
+      record->type = REC_HOME;
+      return NO_ERROR;
+    }
+
+  int cache_index = -1;
+  OR_CLASSREP *repr = heap_classrepr_get (thread_p, destination, nullptr, or_rep_id (record), &cache_index);
+  if (repr == nullptr)
+    {
+      return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+    }
+  std::vector<oos_chain_ref> refs;
+  std::vector<oos_insert_request> requests;
+  std::vector<char *> stubs;
+  int error = NO_ERROR;
+  try
+    {
+      refs.resize (repr->n_variable);
+      requests.reserve (repr->n_variable);
+      stubs.reserve (repr->n_variable);
+      for (int i = 0; i < repr->n_attributes; ++i)
+	{
+	  OR_ATTRIBUTE &attr = repr->attributes[i];
+	  if (attr.is_fixed)
+	    {
+	      continue;
+	    }
+	  int entry = 0;
+	  error = heap_recdes_get_var_offset_entry (record, attr.location, &entry);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	  if (!OR_IS_OOS (entry))
+	    {
+	      continue;
+	    }
+	  heap_oos_value_ref ref;
+	  error = heap_oos_value_ref::decode (*record, attr.location, ref);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	  if (ref.m_kind != heap_oos_value_ref::kind::memory)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      error = ER_GENERIC_ERROR;
+	      break;
+	    }
+	  char *stub = nullptr;
+	  error = heap_recdes_get_oos_inline_stub (record, attr.location, &stub);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	  oos_chain_ref &chain = refs[requests.size ()];
+	  requests.push_back ({ oos_buffer (const_cast<char *> (ref.m_value.memory), ref.length ()),
+				&chain.head_oid, &chain.identity_stamp });
+	  stubs.push_back (stub);
+	}
+      if (error == NO_ERROR)
+	{
+	  cubbase::span<oos_insert_request> batch { requests.data (), requests.size () };
+	  if (heap_oos_insert_serialized_values (thread_p, destination, batch) != S_SUCCESS)
+	    {
+	      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+	    }
+	}
+      if (error == NO_ERROR)
+	{
+	  for (std::size_t i = 0; i < requests.size (); ++i)
+	    {
+	      OR_BUF buf;
+	      or_init (&buf, stubs[i], OR_OOS_INLINE_SIZE);
+	      or_put_oid (&buf, &refs[i].head_oid);
+	      or_put_bigint (&buf, (DB_BIGINT) requests[i].src.size ());
+	      or_put_bigint (&buf, oos_pack_identity_stamp (refs[i].identity_stamp));
+	    }
+	  record->type = REC_HOME;
+	}
+    }
+  catch (const std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (std::size_t) repr->n_variable * (sizeof (oos_chain_ref) + sizeof (oos_insert_request) + sizeof (char *)));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  heap_classrepr_free_and_init (repr, &cache_index);
+  if (error != NO_ERROR)
+    {
+      (void) heap_oos_begin_insert_publication (thread_p);
+    }
+  return error;
+}
 
 /*
  * State shared across heap_record_replace_oos_oids() sub-functions.
@@ -554,15 +776,16 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
 
   for (i = 0; i < attr_info->num_values && error == NO_ERROR; i++)
     {
-      oos_chain_ref oos_ref;
-      DB_BIGINT oos_len;
+      heap_oos_value_ref ref;
+      std::size_t oos_len = 0;
 
       if (!heap_oos_attr_has_inline_ref (recdes, &attr_info->values[i]))
 	{
 	  continue;		/* not OOS here: the per-attribute reader handles it */
 	}
 
-      error = heap_oos_parse_inline_ref (recdes, attr_info->values[i].read_attrepr->location, &oos_ref, &oos_len);
+      error = heap_oos_value_ref::decode (*recdes, attr_info->values[i].read_attrepr->location, ref);
+      oos_len = ref.length ();
       if (error == NO_ERROR && recdes_allocate_data_area (&oos_payloads[i], (int) oos_len) != NO_ERROR)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) oos_len);
@@ -571,12 +794,19 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
       if (error == NO_ERROR)
 	{
 	  oos_payloads[i].length = (int) oos_len;
-	  oos_read_request request = { oos_ref, oos_buffer (oos_payloads[i].data, (std::size_t) oos_len) };
-	  requests.push_back (request);
+	  oos_buffer dest (oos_payloads[i].data, oos_len);
+	  if (ref.m_kind == heap_oos_value_ref::kind::memory)
+	    {
+	      error = ref.read_into (thread_p, dest);
+	    }
+	  else
+	    {
+	      requests.push_back ({ ref.m_value.disk, dest });
+	    }
 	}
     }
 
-  if (error == NO_ERROR)
+  if (error == NO_ERROR && !requests.empty ())
     {
       error = oos_read_many (thread_p, cubbase::span<oos_read_request> (requests.data (), requests.size ()));
     }

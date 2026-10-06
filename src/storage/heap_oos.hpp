@@ -29,6 +29,66 @@
 
 #include <vector>
 
+/* Owns only serialized values selected for OOS. Records borrow these allocations
+ * until their last reader/finalizer returns; record copies do not transfer ownership. */
+class heap_pending_oos_values
+{
+  public:
+    ~heap_pending_oos_values ();
+    heap_pending_oos_values () = default;
+    heap_pending_oos_values (const heap_pending_oos_values &) = delete;
+    heap_pending_oos_values &operator= (const heap_pending_oos_values &) = delete;
+    int retain (oos_buffer value);
+    std::size_t size () const
+    {
+      return m_values.size ();
+    }
+    std::size_t retained_bytes () const
+    {
+      return m_bytes + m_values.capacity () * sizeof (oos_buffer);
+    }
+    void discard_since (std::size_t count);
+
+  private:
+    std::vector<oos_buffer> m_values;
+    std::size_t m_bytes = 0;
+};
+
+/* Decoded reference, not the packed record format. Both alternatives copy into
+ * caller-owned storage; callers never borrow a pending payload or a page. */
+class heap_oos_value_ref
+{
+  public:
+    heap_oos_value_ref () : m_kind (kind::disk), m_length (0), m_value () {}
+    static int decode (const RECDES &record, int location, heap_oos_value_ref &ref);
+    static void encode_memory (char *stub, oos_buffer value);
+    std::size_t length () const
+    {
+      return m_length;
+    }
+    int read_into (THREAD_ENTRY *thread_p, oos_buffer destination) const;
+
+  private:
+    enum class kind { memory, disk };
+    kind m_kind;
+    std::size_t m_length;
+    union value
+    {
+      const char *memory;
+      oos_chain_ref disk;
+      value () : disk {} {}
+    } m_value;
+    friend int heap_oos_read_grouped_payloads (THREAD_ENTRY *, RECDES *, HEAP_CACHE_ATTRINFO *,
+	std::vector<RECDES> &, bool *);
+    friend int heap_oos_finalize_record (THREAD_ENTRY *, const OID *, RECDES *);
+};
+
+/* Finalize a locally prepared record in place after routing, before heap/index
+ * writes. A failed call must be rolled back; it is not a retryable insertion. */
+extern int heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record);
+extern int heap_prepare_oos_record (THREAD_ENTRY *thread_p, const OID *source_class, RECDES *source,
+				    record_descriptor *record, heap_pending_oos_values *pending);
+
 enum heap_oos_demote_priority
 {
   HEAP_OOS_DEMOTE_NORMAL = 0,
@@ -92,6 +152,8 @@ extern SCAN_CODE heap_oos_insert_serialized_values (THREAD_ENTRY *thread_p, cons
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 /* One-shot failure seam immediately before the OOS VFID lookup owned by the heap insert wrapper. */
+extern void heap_oos_test_fail_preparation_once ();
+extern void heap_oos_test_fail_heap_insert_once ();
 extern void heap_oos_test_fail_before_vfid_lookup_once ();
 extern void heap_oos_test_disarm_fail_before_vfid_lookup ();
 #endif

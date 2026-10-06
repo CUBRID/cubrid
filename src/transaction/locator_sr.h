@@ -81,9 +81,14 @@ extern int locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * h
 					 FUNC_PRED_UNPACK_INFO * func_preds, MVCC_REEV_DATA * mvcc_reev_data,
 					 UPDATE_INPLACE_STYLE force_update_inplace, RECDES * rec_descriptor,
 					 bool need_locking);
+
+/* *INDENT-OFF* */
 extern LC_COPYAREA *locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							     RECDES * old_recdes, RECDES * new_recdes,
-							     const int copyarea_length_hint, int lob_create_flag);
+							     const int copyarea_length_hint, int lob_create_flag,
+							     heap_pending_oos_values * pending = nullptr);
+/* *INDENT-ON* */
+
 extern int locator_other_insert_delete (THREAD_ENTRY * thread_p, HFID * hfid, OID * oid, BTID * btid,
 					bool btid_dup_key_locked, HFID * newhfid, OID * newoid,
 					HEAP_CACHE_ATTRINFO * attr_info, HEAP_SCANCACHE * scan_cache, int *force_count,
@@ -138,7 +143,7 @@ extern int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * cla
 extern int locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes);
  // *INDENT-OFF*
 extern int locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
-				       const std::vector<record_descriptor> &recdes, int has_index, int op_type,
+				       std::vector<record_descriptor> &recdes, int has_index, int op_type,
 				       HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,
 				       PRUNING_CONTEXT * pcontext, FUNC_PRED_UNPACK_INFO * func_preds,
 				       UPDATE_INPLACE_STYLE force_in_place, bool dont_check_fk);

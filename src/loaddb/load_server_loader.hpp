@@ -26,6 +26,8 @@
 #include "dbtype_def.h"
 #include "heap_attrinfo.h"
 #include "heap_file.h"
+#include "heap_oos.hpp"
+#include "record_descriptor.hpp"
 #include "load_common.hpp"
 #include "memory_private_allocator.hpp"
 
@@ -112,6 +114,9 @@ namespace cubload
       heap_cache_attrinfo m_attrinfo;
       std::vector<db_value> m_db_values;
       std::vector<record_descriptor> m_recdes_collected;
+      heap_pending_oos_values m_pending_oos_values;
+      std::size_t m_retained_bytes;
+      int m_pruning_type;
 
       bool m_scancache_started;
       heap_scancache m_scancache;
