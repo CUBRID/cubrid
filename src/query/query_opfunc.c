@@ -1170,9 +1170,11 @@ qdata_add_bigint_to_utime (DB_VALUE * utime_val_p, DB_BIGINT bi, DB_VALUE * resu
 
   u1 = bi;
   u2 = *utime;
-  utmp = u1 + u2;
-
-  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || INT_MAX < utmp)
+  /* u1 and u2 are DB_BIGINT, so this addition is signed. The sum used to be formed
+   * with a plain + and then inspected with OR_CHECK_UNS_ADD_OVERFLOW, an unsigned
+   * wraparound test: forming it is itself the overflow, which is undefined, and the
+   * compiler may drop the test along with it. The builtin decides beforehand. */
+  if (OR_ADD_OVERFLOW (u1, u2, &utmp) || INT_MAX < utmp)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;
@@ -1436,9 +1438,11 @@ qdata_add_bigint_to_timestamptz (DB_VALUE * ts_tz_val_p, DB_BIGINT bi, DB_VALUE 
 
   u1 = bi;
   u2 = utime;
-  utmp = u1 + u2;
-
-  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || INT_MAX < utmp)
+  /* u1 and u2 are DB_BIGINT, so this addition is signed. The sum used to be formed
+   * with a plain + and then inspected with OR_CHECK_UNS_ADD_OVERFLOW, an unsigned
+   * wraparound test: forming it is itself the overflow, which is undefined, and the
+   * compiler may drop the test along with it. The builtin decides beforehand. */
+  if (OR_ADD_OVERFLOW (u1, u2, &utmp) || INT_MAX < utmp)
     {
       err = ER_QPROC_OVERFLOW_ADDITION;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
@@ -1661,9 +1665,11 @@ qdata_add_bigint_to_date (DB_VALUE * date_val_p, DB_BIGINT bi, DB_VALUE * result
 
   u1 = bi;
   u2 = *date;
-  utmp = u1 + u2;
-
-  if (OR_CHECK_UNS_ADD_OVERFLOW (u1, u2, utmp) || utmp > DB_DATE_MAX)
+  /* u1 and u2 are DB_BIGINT, so this addition is signed. The sum used to be formed
+   * with a plain + and then inspected with OR_CHECK_UNS_ADD_OVERFLOW, an unsigned
+   * wraparound test: forming it is itself the overflow, which is undefined, and the
+   * compiler may drop the test along with it. The builtin decides beforehand. */
+  if (OR_ADD_OVERFLOW (u1, u2, &utmp) || utmp > DB_DATE_MAX)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OVERFLOW_ADDITION, 0);
       return ER_QPROC_OVERFLOW_ADDITION;

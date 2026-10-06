@@ -55,6 +55,19 @@ if grep -rn 'OR_CHECK_INT_OVERFLOW (db_get_float\|OR_CHECK_BIGINT_OVERFLOW (db_g
   report "an integer limit is compared against a floating point value; use the *_FROM_FP form."
 fi
 
+# R7 the date and time arithmetic in these two files must not go back to forming a
+# signed sum and then handing it to the unsigned wraparound test. A general rule is not
+# possible here: the same macro is correct for the genuinely unsigned callers that remain,
+# and telling the two apart needs the operand types, not the text. What is checkable is
+# that the places that were converted stay converted, so this pins the files where no
+# correct use is left. The general case belongs to a sanitiser build, not to grep.
+if grep -n 'OR_CHECK_UNS_ADD_OVERFLOW' src/parser/type_checking.c | grep -vE ':[[:space:]]*\*|/\*'; then
+  report "type_checking.c forms a signed sum and checks it with the unsigned test again; use OR_ADD_OVERFLOW / OR_SUB_OVERFLOW."
+fi
+if grep -rn 'bi &= bi - 1\|i &= i - 1\|s &= s - 1' src/query/arithmetic.c; then
+  report "arithmetic.c clears the low bit on a signed value again; that is undefined at the type minimum."
+fi
+
 # R5 Clang leaves __atomic_* libcalls behind at -O0.
 if ! grep -q 'LIBATOMIC_LIBRARY' CMakeLists.txt; then
   report "CMakeLists.txt no longer looks for libatomic; a Clang debug build will not link."

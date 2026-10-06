@@ -14096,6 +14096,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_TIMESTAMPLTZ:
 	      {
 		DB_UTIME *utime, result_utime;
+		DB_BIGINT utime_sum;
 		DB_VALUE *other;
 		DB_BIGINT bi;
 
@@ -14159,11 +14160,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  }
 		else
 		  {
-		    result_utime = (DB_UTIME) (*utime + bi);
-		    if (OR_CHECK_UNS_ADD_OVERFLOW (*utime, bi, result_utime) || INT_MAX < result_utime)
+		    DB_BIGINT utime_sum;
+
+		    /* The sum was formed with a plain + and then inspected with
+		     * OR_CHECK_UNS_ADD_OVERFLOW, an unsigned wraparound test. bi is a DB_BIGINT,
+		     * so the addition is signed, and forming it is itself the overflow: undefined
+		     * behaviour the compiler may assume away, taking the test with it. The builtin
+		     * decides before the sum exists. */
+		    if (OR_ADD_OVERFLOW ((DB_BIGINT) *utime, bi, &utime_sum) || INT_MAX < utime_sum)
 		      {
 			goto overflow;
 		      }
+		    result_utime = (DB_UTIME) utime_sum;
 		  }
 
 		if (typ == DB_TYPE_TIMESTAMPLTZ)
@@ -14246,11 +14254,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  }
 		else
 		  {
-		    result_utime = (DB_UTIME) (utime + bi);
-		    if (OR_CHECK_UNS_ADD_OVERFLOW (utime, bi, result_utime) || INT_MAX < result_utime)
+		    DB_BIGINT utime_sum;
+
+		    /* The sum was formed with a plain + and then inspected with
+		     * OR_CHECK_UNS_ADD_OVERFLOW, an unsigned wraparound test. bi is a DB_BIGINT,
+		     * so the addition is signed, and forming it is itself the overflow: undefined
+		     * behaviour the compiler may assume away, taking the test with it. The builtin
+		     * decides before the sum exists. */
+		    if (OR_ADD_OVERFLOW ((DB_BIGINT) utime, bi, &utime_sum) || INT_MAX < utime_sum)
 		      {
 			goto overflow;
 		      }
+		    result_utime = (DB_UTIME) utime_sum;
 		  }
 
 		ts_tz_res.timestamp = result_utime;
@@ -14310,10 +14325,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		bi1 = ((DB_BIGINT) datetime->date) * MILLISECONDS_OF_ONE_DAY + datetime->time;
 
-		/* bi2 == DB_BIGINT_MIN is rejected separately: bi1 is non negative, so
-		 * bi1 + DB_BIGINT_MIN still fits in a DB_BIGINT and the builtin would not
-		 * report it, while the code this replaced treated it as an overflow. */
-		if (bi2 == DB_BIGINT_MIN || OR_ADD_OVERFLOW (bi1, bi2, &result_bi))
+		/* bi1 is a millisecond count and is never negative, so a negative bi2 cannot
+		 * make the sum wrap. The code this replaced still ran a check on that branch,
+		 * but with bi1 >= 0 > bi2 it reduced to "the sum came out negative", which the
+		 * tmp_bi < DB_DATE_MIN test below rejects anyway. Only a positive bi2 can
+		 * actually overflow, and that is what the builtin reports. */
+		if (OR_ADD_OVERFLOW (bi1, bi2, &result_bi))
 		  {
 		    goto overflow;
 		  }
@@ -14384,10 +14401,12 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		bi1 = ((DB_BIGINT) datetime.date) * MILLISECONDS_OF_ONE_DAY + datetime.time;
 
-		/* bi2 == DB_BIGINT_MIN is rejected separately: bi1 is non negative, so
-		 * bi1 + DB_BIGINT_MIN still fits in a DB_BIGINT and the builtin would not
-		 * report it, while the code this replaced treated it as an overflow. */
-		if (bi2 == DB_BIGINT_MIN || OR_ADD_OVERFLOW (bi1, bi2, &result_bi))
+		/* bi1 is a millisecond count and is never negative, so a negative bi2 cannot
+		 * make the sum wrap. The code this replaced still ran a check on that branch,
+		 * but with bi1 >= 0 > bi2 it reduced to "the sum came out negative", which the
+		 * tmp_bi < DB_DATE_MIN test below rejects anyway. Only a positive bi2 can
+		 * actually overflow, and that is what the builtin reports. */
+		if (OR_ADD_OVERFLOW (bi1, bi2, &result_bi))
 		  {
 		    goto overflow;
 		  }
@@ -14472,11 +14491,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  }
 		else
 		  {
-		    result_date = (DB_DATE) (*date + bi);
-		    if (OR_CHECK_UNS_ADD_OVERFLOW (*date, bi, result_date) || result_date > DB_DATE_MAX)
+		    DB_BIGINT date_sum;
+
+		    /* The sum was formed with a plain + and then inspected with
+		     * OR_CHECK_UNS_ADD_OVERFLOW, an unsigned wraparound test. bi is a DB_BIGINT,
+		     * so the addition is signed, and forming it is itself the overflow: undefined
+		     * behaviour the compiler may assume away, taking the test with it. The builtin
+		     * decides before the sum exists. */
+		    if (OR_ADD_OVERFLOW ((DB_BIGINT) *date, bi, &date_sum) || date_sum > DB_DATE_MAX)
 		      {
 			goto overflow;
 		      }
+		    result_date = (DB_DATE) date_sum;
 		  }
 
 		db_value_put_encoded_date (result, &result_date);
@@ -14780,11 +14806,20 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		if (bi < 0)
 		  {
 		    /* we're adding */
-		    result_utime = (DB_UTIME) (utime - bi);
-		    if (OR_CHECK_UNS_ADD_OVERFLOW (utime, -bi, result_utime) || INT_MAX < result_utime)
+		    DB_BIGINT utime_sum;
+
+		    /* The sum was formed with a plain + and then inspected with
+		     * OR_CHECK_UNS_ADD_OVERFLOW, an unsigned wraparound test. bi is a DB_BIGINT,
+		     * so the addition is signed, and forming it is itself the overflow: undefined
+		     * behaviour the compiler may assume away, taking the test with it. The builtin
+		     * decides before the sum exists. */
+		    /* bi may be DB_BIGINT_MIN here, which made the -bi in the old test undefined
+		     * on its own. OR_SUB_OVERFLOW needs neither the negation nor the sum. */
+		    if (OR_SUB_OVERFLOW ((DB_BIGINT) utime, bi, &utime_sum) || INT_MAX < utime_sum)
 		      {
 			goto overflow;
 		      }
+		    result_utime = (DB_UTIME) utime_sum;
 		  }
 		else
 		  {
@@ -14926,11 +14961,20 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		if (bi < 0)
 		  {
 		    /* we're adding */
-		    result_date = (DB_DATE) (*date - bi);
-		    if (OR_CHECK_UNS_ADD_OVERFLOW (*date, -bi, result_date) || result_date > DB_DATE_MAX)
+		    DB_BIGINT date_sum;
+
+		    /* The sum was formed with a plain + and then inspected with
+		     * OR_CHECK_UNS_ADD_OVERFLOW, an unsigned wraparound test. bi is a DB_BIGINT,
+		     * so the addition is signed, and forming it is itself the overflow: undefined
+		     * behaviour the compiler may assume away, taking the test with it. The builtin
+		     * decides before the sum exists. */
+		    /* bi may be DB_BIGINT_MIN here, which made the -bi in the old test undefined
+		     * on its own. OR_SUB_OVERFLOW needs neither the negation nor the sum. */
+		    if (OR_SUB_OVERFLOW ((DB_BIGINT) *date, bi, &date_sum) || date_sum > DB_DATE_MAX)
 		      {
 			goto overflow;
 		      }
+		    result_date = (DB_DATE) date_sum;
 		  }
 		else
 		  {
