@@ -1048,6 +1048,7 @@ extern void logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info
 extern int logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count);
 extern void logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_LSA * log_lsa,
 				 LOG_PAGE * log_pgptr);
+extern bool logpb_copy_from_log_if_buffered (char *area, int length, LOG_LSA * log_lsa);
 extern int logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				       const char *prefix_logname);
 extern bool logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
