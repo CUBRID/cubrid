@@ -68,8 +68,15 @@ struct setobj;
 #if defined (__GNUC__) || defined (__clang__)
 #define OR_MULT_OVERFLOW(a, b, r) __builtin_mul_overflow ((a), (b), (r))
 #else
+/* Same reasoning as the OR_ADD_OVERFLOW fallback below: the product must not be
+ * formed with a signed *, because that is itself the undefined behaviour the check
+ * is meant to catch. It is formed in unsigned arithmetic, which wraps in a well
+ * defined way, and OR_CHECK_MULT_OVERFLOW then reads the overflow off the wrapped
+ * value. That macro special cases b == 0 and b == -1, so the division it ends with
+ * can never be DB_BIGINT_MIN / -1. */
 #define OR_MULT_OVERFLOW(a, b, r) \
-  (*(r) = (a) * (b), OR_CHECK_MULT_OVERFLOW ((a), (b), *(r)))
+  (*(r) = (long long) ((unsigned long long) (a) * (unsigned long long) (b)), \
+   OR_CHECK_MULT_OVERFLOW ((a), (b), *(r)))
 #endif
 
 /* Signed integer addition and subtraction with overflow detection.
@@ -91,12 +98,18 @@ struct setobj;
 #define OR_ADD_OVERFLOW(a, b, r) __builtin_add_overflow ((a), (b), (r))
 #define OR_SUB_OVERFLOW(a, b, r) __builtin_sub_overflow ((a), (b), (r))
 #else
+/* The branch for a compiler without the builtins, which in practice means MSVC.
+ * It must not compute the result with a signed + or -, because that is the very
+ * undefined behaviour this pair of macros exists to avoid. The arithmetic is done
+ * in unsigned, which wraps in a well defined way, and the overflow is read off the
+ * signs afterwards. Both operands are expected to have the type of *(r), which
+ * holds at every call site, and each is evaluated more than once. */
 #define OR_ADD_OVERFLOW(a, b, r) \
-  (*(r) = (__typeof__ (*(r))) ((long long) (a) + (long long) (b)), \
-   (long long) *(r) != (long long) (a) + (long long) (b))
+  (*(r) = (long long) ((unsigned long long) (a) + (unsigned long long) (b)), \
+   (((a) < 0) == ((b) < 0)) && ((*(r) < 0) != ((a) < 0)))
 #define OR_SUB_OVERFLOW(a, b, r) \
-  (*(r) = (__typeof__ (*(r))) ((long long) (a) - (long long) (b)), \
-   (long long) *(r) != (long long) (a) - (long long) (b))
+  (*(r) = (long long) ((unsigned long long) (a) - (unsigned long long) (b)), \
+   (((a) < 0) != ((b) < 0)) && ((*(r) < 0) != ((a) < 0)))
 #endif
 #define OR_CHECK_SHORT_DIV_OVERFLOW(a, b) \
   ((a) == DB_INT16_MIN && (b) == -1)
