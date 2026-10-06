@@ -29,6 +29,7 @@
 #include "xasl_cache.h"
 #include "xasl_iteration.hpp"
 #include "query_executor.h"
+#include "domain_plan.h"
 #include "stream_to_xasl.h"
 #include "xasl_unpack_info.hpp"
 #include "memoize.hpp"
@@ -660,6 +661,11 @@ namespace parallel_scan
 	  }
 	return ER_FAILED;
       }
+    /* the worker's own load numbers its items and resolved indexes as the leader's plan does: it reads the leader's
+     * resolutions with its own items (copied_from_leader) */
+    assert (m_xasl->domain_plan == nullptr || m_xasl_state->resolved_domain.plan == nullptr
+	    || (m_xasl->domain_plan->n_items == m_xasl_state->resolved_domain.plan->n_items
+		&& m_xasl->domain_plan->n_resolved == m_xasl_state->resolved_domain.plan->n_resolved));
     m_vd = &m_xasl_state->vd;
     return NO_ERROR;
   }

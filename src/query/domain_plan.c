@@ -287,9 +287,10 @@ static void
 domain_set_links (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry, REGU_VARIABLE * const *operands,
 		  int n_operands, const TP_DOMAIN * consumer)
 {
+  /* called once per load entry: the test below asks whether the links are still the inline three, not whether an
+   * array already made is large enough */
+  assert (load_entry->n_link == 0 && load_entry->link == load_entry->link_inline);
   load_entry->n_link = 0;
-  /* called once per load entry: the test asks whether the links are still the inline three, not whether an array
-   * already made is large enough */
   if (n_operands > 3 && load_entry->link == load_entry->link_inline)
     {
       DOMAIN_PLAN_ITEM **link = (DOMAIN_PLAN_ITEM **) db_private_alloc (ctx->thread_p, n_operands * sizeof (*link));
@@ -2501,6 +2502,8 @@ domain_link_source (DOMAIN_PLAN_ITEM * item)
 	}
       item = &load_entry->producer->item;
     }
+  /* a chain longer than DOMAIN_CHAIN_MAX_DEPTH: the operand resolves from a link in the middle */
+  assert (item == NULL);
   return item;
 }
 
@@ -3064,6 +3067,8 @@ domain_reads_double_aggregate (const DOMAIN_LOAD_ENTRY * load_entry)
 	}
       load_entry = load_entry->producer;
     }
+  /* a chain longer than DOMAIN_CHAIN_MAX_DEPTH: a reader of AVG, STDDEV or VARIANCE would be missed */
+  assert (load_entry == NULL);
   return false;
 }
 

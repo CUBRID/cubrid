@@ -319,7 +319,12 @@ domain_value_domains_differ (const DB_VALUE * value1, const DB_VALUE * value2)
     {
       return true;
     }
-  return TP_IS_CHAR_TYPE (type) && db_get_string_collation (value1) != db_get_string_collation (value2);
+  /* the collation is part of a value's key as domain_compare_key_of_value makes it: a string's or an ENUM's */
+  if (TP_IS_CHAR_TYPE (type))
+    {
+      return db_get_string_collation (value1) != db_get_string_collation (value2);
+    }
+  return type == DB_TYPE_ENUMERATION && db_get_enum_collation (value1) != db_get_enum_collation (value2);
 }
 
 /* The cached domain tp_domain_resolve_value (value, NULL) gives a value, found without the transient domain that

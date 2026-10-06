@@ -6964,6 +6964,12 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VALUE_LIST *
 	  stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
 	  goto error;
 	}
+      if (get_xasl_unpack_info_ptr (thread_p)->index_stream && regu_is_variable_pos (regu))
+	{
+	  /* the second maker of a REGU_VARIABLE checks as stx_build_regu_variable does: a filter or function index
+	   * stream has no resolve_domains to resolve it (stx_index_stream_rejected) */
+	  get_xasl_unpack_info_ptr (thread_p)->index_stream_late_bind = true;
+	}
       ptr = stx_unpack_regu_variable_value (thread_p, ptr, regu);
       if (ptr == NULL)
 	{

@@ -821,6 +821,7 @@ fetch_constant_evaluated (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
     }
   /* an item with a value slot (ref) belongs to a plan resolve_domains resolved, so its descriptor holds that state;
    * a descriptor without one (a predicate stream's) meets bare items, whose ref is -1 */
+  assert (vd->xasl_state != NULL);
   const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved_domain;
   assert (resolved.value_states != NULL && item->ref < resolved.n_vals);
   return resolved.value_states[item->ref] == DOMAIN_VALUE_EVALUATED;
