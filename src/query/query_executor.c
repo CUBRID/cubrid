@@ -727,6 +727,8 @@ static UPDDEL_MVCC_COND_REEVAL *qexec_mvcc_cond_reev_set_scan_order (XASL_NODE *
 static void qexec_clear_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNAL * classes, int count);
 static bool qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p,
 						   UPDDEL_CLASS_INFO_INTERNAL * internal_class, const OID * class_oid);
+static bool qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p);
+static LOCATOR_LOCK_POLICY qexec_base_lock_policy (const UPDDEL_CLASS_INSTANCE_LOCK_INFO * lock_info);
 static LOCATOR_LOCK_POLICY qexec_make_lock_policy_transient (THREAD_ENTRY * thread_p, LOCATOR_LOCK_POLICY base_policy,
 							     bool statement_ends_locks,
 							     UPDDEL_CLASS_INFO_INTERNAL * internal_class,
@@ -10516,18 +10518,12 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
   LOCATOR_LOCK_POLICY base_lock_policy;	/* what the select phase left for the force phase to do */
-  bool outermost_transient_scope;	/* a statement nested in another one keeps its locks to commit */
   bool statement_ends_locks;	/* whether this statement's row locks end with it */
   LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* the same, narrowed by the current class */
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
-  /* from here every exit runs through one of the two lock_transient_scope_end () calls below.  The scope
-   * opens either way so the nesting stays balanced; whether the locks end with the statement is the
-   * narrower question -- a statement nested in another one keeps them to commit, and so does one above
-   * READ COMMITTED.  qexec_open_scan () gates the select phase on the same two facts, and the two phases
-   * of one statement must not disagree about which of them the locks belong to. */
-  outermost_transient_scope = lock_transient_scope_start (thread_p);	/* raises the scope depth */
-  statement_ends_locks = (outermost_transient_scope && logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
+  /* from here every exit runs through one of the two lock_transient_scope_end () calls below */
+  statement_ends_locks = qexec_start_statement_lock_scope (thread_p);
 
   thread_p->no_logging = (bool) update->no_logging;
 
@@ -10583,16 +10579,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)
-    {
-      /* already locked in select phase. Avoid locking again the same instances at update phase */
-      base_lock_policy = LOCATOR_LOCK_AT_SELECT;
-    }
-  else
-    {
-      /* not locked in select phase, need locking at update phase */
-      base_lock_policy = LOCATOR_LOCK_AT_FORCE;
-    }
+  base_lock_policy = qexec_base_lock_policy (p_class_instance_lock_info);
 
   /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
    * type list. */
@@ -11408,7 +11395,6 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   LOCATOR_LOCK_POLICY base_lock_policy;	/* what the select phase left for the force phase to do */
-  bool outermost_transient_scope;	/* a statement nested in another one keeps its locks to commit */
   bool statement_ends_locks;	/* whether this statement's row locks end with it */
   LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* the same, narrowed by the current class */
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
@@ -11421,10 +11407,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       return qexec_execute_remote_delete_subquery (thread_p, xasl, xasl_state);
     }
 
-  /* from here every exit runs through one of the two lock_transient_scope_end () calls below.  See
-   * qexec_execute_update () for why the scope and the lifetime question are not the same test. */
-  outermost_transient_scope = lock_transient_scope_start (thread_p);	/* raises the scope depth */
-  statement_ends_locks = (outermost_transient_scope && logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
+  /* from here every exit runs through one of the two lock_transient_scope_end () calls below */
+  statement_ends_locks = qexec_start_statement_lock_scope (thread_p);
 
   thread_p->no_logging = (bool) delete_->no_logging;
 
@@ -11480,20 +11464,10 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (p_class_instance_lock_info && p_class_instance_lock_info->instances_locked)
-    {
-      /* already locked in select phase. Avoid locking again the same instances at delete phase. */
-      base_lock_policy = LOCATOR_LOCK_AT_SELECT;
-    }
-  else
-    {
-      /* not locked in select phase, need locking at update phase */
-      base_lock_policy = LOCATOR_LOCK_AT_FORCE;
-
-      /* No reevaluation class means no predicate to re-check -- pt_to_delete_xasl () keeps the
-       * select-phase lock for one it cannot replay -- so a changed version is deleted, not skipped.
-       * The skip below is for the subclass that turns out to carry no access spec. */
-    }
+  base_lock_policy = qexec_base_lock_policy (p_class_instance_lock_info);
+  /* Locking at force, no reevaluation class means no predicate to re-check -- pt_to_delete_xasl () keeps the
+   * select-phase lock for one it cannot replay -- so a changed version is deleted, not skipped.  The skip below
+   * is for the subclass that turns out to carry no access spec. */
 
   /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
    * type list. */
@@ -26840,6 +26814,36 @@ qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INF
     }
 
   return internal_class->is_mvcc_class && !internal_class->has_online_index;
+}
+
+/*
+ * qexec_start_statement_lock_scope () - Open the transient lock scope of a DELETE or UPDATE
+ *   return: whether the statement's row locks end with it
+ *   thread_p(in): thread entry
+ *
+ * Note: the scope opens either way, so the nesting stays balanced; every exit closes it with
+ *	 lock_transient_scope_end ().  The row locks end with the statement only for the outermost statement at
+ *	 READ COMMITTED -- a nested statement, and one above READ COMMITTED, keeps them to commit.
+ *	 qexec_open_scan () decides the select phase on the same two facts, so both phases agree whose locks
+ *	 they are.
+ */
+static bool
+qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p)
+{
+  bool outermost = lock_transient_scope_start (thread_p);
+
+  return outermost && logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED;
+}
+
+/*
+ * qexec_base_lock_policy () - Where a DELETE or UPDATE takes its row locks
+ *   return: LOCATOR_LOCK_AT_SELECT when the select phase locked the rows, LOCATOR_LOCK_AT_FORCE otherwise
+ *   lock_info(in): what qexec_execute_mainblock () reported for the target class, or NULL
+ */
+static LOCATOR_LOCK_POLICY
+qexec_base_lock_policy (const UPDDEL_CLASS_INSTANCE_LOCK_INFO * lock_info)
+{
+  return (lock_info != NULL && lock_info->instances_locked) ? LOCATOR_LOCK_AT_SELECT : LOCATOR_LOCK_AT_FORCE;
 }
 
 /*
