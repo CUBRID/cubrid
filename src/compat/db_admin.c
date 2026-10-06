@@ -1128,6 +1128,12 @@ db_restart_sub (int sub_index)
       (void) db_shutdown_sub ();
     }
 
+  /*
+   * The error context of this thread. It is created after the shutdown above, which destroys the previous one.
+   * It is kept after a failure, so that the caller can get the error.
+   */
+  er_init_sub_client_context ();
+
   /* register as a sub-client, so that the main client is not restarted or shut down while this one is alive */
   error = db_register_sub_client (&client_credential);
   if (error != NO_ERROR)
@@ -1294,6 +1300,9 @@ db_shutdown_sub ()
 
   au_ctx_destructor ();
   db_unregister_sub_client ();
+
+  /* the error context of this thread (see er_init_sub_client_context () in db_restart_sub ()) */
+  er_final_sub_client_context ();
   return NO_ERROR;
 }
 #endif
