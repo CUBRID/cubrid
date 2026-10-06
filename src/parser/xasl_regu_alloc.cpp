@@ -273,7 +273,6 @@ regu_init (cubxasl::pred_expr &pr)
   pr.scan_prog_gen = 0;
   /* the same four runtime fields stx_build_pred_expr () sets: the packing buffer is not zeroed,
    * so an unset defer count would start the host-variable deferral at a garbage value in SA mode */
-  pr.scan_prog_defer = 0;
 }
 
 void

@@ -4256,9 +4256,6 @@ stx_build_outptr_list (THREAD_ENTRY * thread_p, char *ptr, OUTPTR_LIST * outptr_
   outptr_list->eval_prog = NULL;
   outptr_list->eval_prog_idx = NULL;
   outptr_list->eval_prog_state = 0;
-  outptr_list->eval_prog_defer = 0;
-  outptr_list->eval_prog_dom_any = false;
-  outptr_list->eval_prog_dom_stamp = 0;
   outptr_list->eval_prog_row_ready = false;
   outptr_list->eval_prog_share_spec = NULL;
 
@@ -4327,7 +4324,6 @@ stx_build_pred_expr (THREAD_ENTRY * thread_p, char *ptr, PRED_EXPR * pred_expr)
   pred_expr->scan_prog = NULL;
   pred_expr->scan_prog_state = 0;
   pred_expr->scan_prog_gen = 0;
-  pred_expr->scan_prog_defer = 0;
 
   switch (pred_expr->type)
     {

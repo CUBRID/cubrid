@@ -3524,25 +3524,14 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
 	  expr_scan_pred_free (pred_root->scan_prog);
 	  pred_root->scan_prog = NULL;
 	  pred_root->scan_prog_state = 0;
-	  /* a recompile starts its own deferral budget (see below) */
-	  pred_root->scan_prog_defer = 0;
 	}
       if (unlikely (pred_root->scan_prog_state == 0))
 	{
-	  /* An arithmetic operand over a host variable has no resolved result domain until
-	   * the interpreted path evaluates it once (expr_compile.h).  Stay untried for this
-	   * row so pr_eval_fnc runs and resolves it, and compile on a later row against the
-	   * domain the interpreter chose. */
-	  if (pred_root->scan_prog_defer < EXPR_DOMAIN_DEFER_ROWS && expr_pred_domain_unresolved (pred_root, 0))
-	    {
-	      pred_root->scan_prog_defer++;
-	    }
-	  else
-	    {
-	      pred_root->scan_prog = expr_scan_pred_compile (thread_p, pred_root, filterp->val_descr);
-	      pred_root->scan_prog_state = (pred_root->scan_prog != NULL) ? 1 : 2;
-	      pred_root->scan_prog_gen++;
-	    }
+	  /* resolve_domains resolved every variable domain before the main block: compile on
+	   * the first row (expr_compile.c, domains in this execution) */
+	  pred_root->scan_prog = expr_scan_pred_compile (thread_p, pred_root, filterp->val_descr);
+	  pred_root->scan_prog_state = (pred_root->scan_prog != NULL) ? 1 : 2;
+	  pred_root->scan_prog_gen++;
 	}
       if (pred_root->scan_prog_state == 1)
 	{
