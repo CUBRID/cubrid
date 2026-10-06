@@ -216,6 +216,10 @@ extern EXPR_PROG *expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VAR
 					   val_descr * vd, bool allow_fallback_roots, bool allow_wired_only,
 					   bool only_compute_roots, int *root_idx_out, const void *share_spec);
 
+/* the execution domain of a compiled arithmetic node (NULL: no value in this execution), set as the
+ * node's execution domain for the consumers that read it (qexec_get_node_domain) */
+extern TP_DOMAIN *expr_regu_exec_domain (const VAL_DESCR * vd, REGU_VARIABLE * regu);
+
 /* true when the program's recorded host-variable type signature matches vd.  Walks every
  * bound value, so consumers call it through expr_prog_signature_ok () below rather than
  * per row. */

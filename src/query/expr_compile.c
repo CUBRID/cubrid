@@ -2132,10 +2132,8 @@ expr_pos_value_index (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
  * program kept across executions must not bake in (a session variable's type, a source a
  * fetch never caches: plan->resolved_non_cacheable). */
 static const RESOLVED_DOMAIN *
-expr_item_resolution (const EXPR_BUILD_CTX * bctx, const DOMAIN_PLAN_ITEM * item)
+expr_item_resolution (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 {
-  const VAL_DESCR *vd = bctx != NULL ? bctx->vd : NULL;
-
   if (vd == NULL || vd->xasl_state == NULL || item == NULL || !(item->flags & DOMAIN_PLAN_LATE_BIND))
     {
       return NULL;
@@ -2153,7 +2151,7 @@ expr_item_resolution (const EXPR_BUILD_CTX * bctx, const DOMAIN_PLAN_ITEM * item
  * NULL: the node takes no value (a CAST into a variable target, a resolution of type NULL)
  * or has no resolution the program may use -- the node is declined. */
 static TP_DOMAIN *
-expr_arith_exec_domain (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
+expr_arith_exec_domain (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
 {
   TP_DOMAIN *domain = regu->domain;
   const ARITH_TYPE *arith = regu->value.arithptr;
@@ -2171,13 +2169,46 @@ expr_arith_exec_domain (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
       /* a target the compiler left variable casts no value */
       return NULL;
     }
-  const RESOLVED_DOMAIN *resolved = expr_item_resolution (bctx, arith->plan_item);
+  const RESOLVED_DOMAIN *resolved = expr_item_resolution (vd, arith->plan_item);
   if (resolved == NULL || resolved->domain == NULL || TP_DOMAIN_TYPE (resolved->domain) == DB_TYPE_NULL
       || TP_DOMAIN_TYPE (resolved->domain) == DB_TYPE_VARIABLE)
     {
       return NULL;
     }
   return (TP_DOMAIN *) resolved->domain;
+}
+
+/*
+ * expr_regu_exec_domain () - the domain a compiled arithmetic node has in this execution, taken as the
+ *			      node's execution domain the way fetch_peek_arith () takes it on the node's
+ *			      first computation (qexec_set_node_domain) -- a program-served node never
+ *			      reaches that fetch, so its consumer takes it here
+ *   return: the domain, or NULL when the node takes no value in this execution (every row NULL)
+ */
+TP_DOMAIN *
+expr_regu_exec_domain (const VAL_DESCR * vd, REGU_VARIABLE * regu)
+{
+  TP_DOMAIN *domain = qexec_get_node_domain (vd, regu->domain, regu->plan_item);
+
+  if (domain == NULL || TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE)
+    {
+      return domain;
+    }
+  if (regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH)
+    {
+      return NULL;
+    }
+  domain = expr_arith_exec_domain (vd, regu);
+  if (domain != NULL && vd != NULL && vd->xasl_state != NULL)
+    {
+      ARITH_TYPE *arith = regu->value.arithptr;
+      qexec_set_node_domain (vd, regu->plan_item, regu->domain, domain);
+      if (arith->plan_item != regu->plan_item)
+	{
+	  qexec_set_node_domain (vd, arith->plan_item, arith->domain, domain);
+	}
+    }
+  return domain;
 }
 
 /* Whether the operand coercion planned for a binary arithmetic node converts neither
@@ -2196,7 +2227,7 @@ expr_arith_operands_unconverted (const EXPR_BUILD_CTX * bctx, const ARITH_TYPE *
     }
   if ((item->flags & DOMAIN_PLAN_LATE_BIND) && !(item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION))
     {
-      plan = expr_item_resolution (bctx, item);
+      plan = expr_item_resolution (bctx->vd, item);
     }
   else
     {
@@ -2232,7 +2263,7 @@ expr_node_type (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu)
 {
   if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
     {
-      const TP_DOMAIN *domain = expr_arith_exec_domain (bctx, regu);
+      const TP_DOMAIN *domain = expr_arith_exec_domain (bctx->vd, regu);
       return (domain != NULL) ? TP_DOMAIN_TYPE (domain) : DB_TYPE_UNKNOWN;
     }
   return expr_leaf_type (bctx, regu);
@@ -2314,7 +2345,7 @@ expr_scan_operand_type (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
     }
   if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
     {
-      const TP_DOMAIN *domain = expr_arith_exec_domain (bctx, regu);
+      const TP_DOMAIN *domain = expr_arith_exec_domain (bctx->vd, regu);
       return (domain != NULL) ? TP_DOMAIN_TYPE (domain) : DB_TYPE_UNKNOWN;
     }
   if (regu->domain == NULL)
@@ -3435,7 +3466,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
    * (expr_arith_exec_domain ()).  Any other node still variable here has nothing the
    * program may read: decline it and let the interpreter run it. */
   if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE && regu->type != TYPE_POS_VALUE
-      && ((regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH) || expr_arith_exec_domain (bctx, regu) == NULL))
+      && ((regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH) || expr_arith_exec_domain (bctx->vd, regu) == NULL))
     {
       return -1;
     }
@@ -3567,7 +3598,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	int c1, c2;
 
 	/* the node's domain in this execution: compiled, or the gate's resolution of a variable one */
-	TP_DOMAIN *const exec_domain = expr_arith_exec_domain (bctx, regu);
+	TP_DOMAIN *const exec_domain = expr_arith_exec_domain (bctx->vd, regu);
 
 	if (arith == NULL || exec_domain == NULL)
 	  {

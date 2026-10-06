@@ -533,12 +533,14 @@ qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valp
  *				  qdata_get_dbval_from_constant_regu_variable ()
  */
 static DB_VALUE *
-qdata_get_dbval_from_prog (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p, EXPR_PROG * prog, int root_idx)
+qdata_get_dbval_from_prog (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p, EXPR_PROG * prog, int root_idx,
+			   const val_descr * val_desc_p)
 {
   DB_VALUE *peek_value_p = expr_prog_value (prog, root_idx);
   DB_TYPE dom_type, val_type;
   TP_DOMAIN_STATUS dom_status;
   HL_HEAPID save_heapid = 0;
+  TP_DOMAIN *domain;
 
   assert (regu_var_p != NULL);
   assert (regu_var_p->domain != NULL);
@@ -546,10 +548,20 @@ qdata_get_dbval_from_prog (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p, 
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_UPD_INS_LIST));
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_ANALYTIC_WINDOW));
 
+  /* the column's domain in this execution: the gate's resolution of a variable one, taken as the node's execution
+   * domain here since the program, not fetch_peek_arith (), computed the node (expr_regu_exec_domain) */
+  domain = TP_DOMAIN_TYPE (regu_var_p->domain) == DB_TYPE_VARIABLE
+    ? expr_regu_exec_domain (val_desc_p, regu_var_p) : regu_var_p->domain;
+  if (domain == NULL)
+    {
+      /* a node that takes no value in this execution: nothing to enforce */
+      return peek_value_p;
+    }
+
   if (!DB_IS_NULL (peek_value_p))
     {
       val_type = DB_VALUE_TYPE (peek_value_p);
-      dom_type = TP_DOMAIN_TYPE (regu_var_p->domain);
+      dom_type = TP_DOMAIN_TYPE (domain);
 
       if (dom_type != DB_TYPE_NULL)
 	{
@@ -559,22 +571,22 @@ qdata_get_dbval_from_prog (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p, 
 	    }
 	  else if (val_type != dom_type
 		   || (val_type == DB_TYPE_NUMERIC
-		       && (peek_value_p->domain.numeric_info.precision != regu_var_p->domain->precision
-			   || peek_value_p->domain.numeric_info.scale != regu_var_p->domain->scale)))
+		       && (peek_value_p->domain.numeric_info.precision != domain->precision
+			   || peek_value_p->domain.numeric_info.scale != domain->scale)))
 	    {
 	      if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
 		{
 		  save_heapid = db_change_private_heap (thread_p, 0);
 		}
 
-	      dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, regu_var_p->domain);
+	      dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, domain);
 	      if (save_heapid != 0)
 		{
 		  (void) db_change_private_heap (thread_p, save_heapid);
 		}
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, regu_var_p->domain);
+		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, domain);
 		  return NULL;
 		}
 	      assert (dom_type == DB_VALUE_TYPE (peek_value_p)
@@ -646,7 +658,7 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
       if (eval_prog != NULL && valptr_list_p->eval_prog_idx[k] >= 0)
 	{
 	  /* the program owns the cell: a column cast into its domain is cast in place */
-	  vals[n] = qdata_get_dbval_from_prog (thread_p, &reg_var_p->value, eval_prog, valptr_list_p->eval_prog_idx[k]);
+	  vals[n] = qdata_get_dbval_from_prog (thread_p, &reg_var_p->value, eval_prog, valptr_list_p->eval_prog_idx[k], val_desc_p);
 	}
       else
 	{
@@ -840,7 +852,7 @@ qdata_collect_tuple_values (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
       if (eval_prog != NULL && valptr_list_p->eval_prog_idx[i] >= 0)
 	{
 	  /* the program owns the cell: a column cast into its domain is cast in place */
-	  value = qdata_get_dbval_from_prog (thread_p, regu_var_p, eval_prog, valptr_list_p->eval_prog_idx[i]);
+	  value = qdata_get_dbval_from_prog (thread_p, regu_var_p, eval_prog, valptr_list_p->eval_prog_idx[i], val_desc_p);
 	}
       else
 	{
