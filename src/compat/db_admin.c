@@ -1027,6 +1027,13 @@ db_restart (const char *program, int print_version, const char *volume)
 	er_log_debug (ARG_FILE_LINE, "db_restart: %d sub-clients are still alive\n", g_num_sub_clients);
 	return ER_FAILED;
       }
+
+    /*
+     * No more sub-clients can be started until this restart succeeds, since it finalizes and initializes the client
+     * modules shared with them. It is still true if the main client is restarted without db_shutdown ()
+     * (e.g., after a server failure). If the restart fails, it is left false: there is no main client to share.
+     */
+    (void) g_ready_to_sub.store (false, std::memory_order_release);
   }
 #endif
 
@@ -1288,6 +1295,17 @@ db_shutdown_sub ()
       /* the main client must not be shut down as a sub-client */
       assert (false);
       return ER_FAILED;
+    }
+
+  if (db_Is_sub_client_registered == false)
+    {
+      /*
+       * No sub-client on this thread (e.g., db_restart_sub () failed and released it by itself). Release only the
+       * error context, and do not touch the client modules: the main client may be finalizing or initializing them
+       * in db_restart () or db_shutdown (), which is allowed only while no sub-client is registered.
+       */
+      er_final_sub_client_context ();
+      return NO_ERROR;
     }
 
   (void) db_end_session ();
