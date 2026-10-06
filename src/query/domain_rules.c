@@ -2752,8 +2752,9 @@ domain_first_character_operand (const DOMAIN_OPERAND * operands, int n_operands)
   return NULL;
 }
 
-/* CAST, CAST_WRAP, CAST_NOFAIL to a character target: tp_value_cast_internal. ENFORCE keeps a character
- * source's type and precision under the target's collation, and leaves any other value as it is; LEAVE makes the
+/* CAST, CAST_WRAP, CAST_NOFAIL to a character target: tp_value_cast_internal. ENFORCE coerces a character source
+ * into the value it initialized with the target type and precision, under the target's collation (the domain it
+ * then makes from the source gives the converter alone), and leaves any other value as it is; LEAVE makes the
  * target type and precision under a character source's collation, or the target's own for any other source. */
 static const TP_DOMAIN *
 domain_character_cast (const DOMAIN_OPERAND * source, const TP_DOMAIN * compiled)
@@ -2766,13 +2767,7 @@ domain_character_cast (const DOMAIN_OPERAND * source, const TP_DOMAIN * compiled
 	{
 	  return from;
 	}
-      if (from->codeset != compiled->codeset)
-	{
-	  /* a string recoded into the target codeset comes out in the target type (CTP _07_session_var: an
-	   * iso88591 or binary CHAR bind cast to a utf8 VARCHAR) */
-	  return domain_character_domain (TP_DOMAIN_TYPE (compiled), compiled->precision, compiled->collation_id);
-	}
-      return domain_character_domain (TP_DOMAIN_TYPE (from), from->precision, compiled->collation_id);
+      return domain_character_domain (TP_DOMAIN_TYPE (compiled), compiled->precision, compiled->collation_id);
     }
   /* neither the domain cache nor a string conversion reads a string domain's scale */
   return domain_character_domain (TP_DOMAIN_TYPE (compiled), compiled->precision,

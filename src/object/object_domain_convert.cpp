@@ -3169,17 +3169,6 @@ tp_value_convert_varchar_to_varchar (const DB_VALUE *src, DB_VALUE *target, cons
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
   DB_DATA_STATUS data_stat = DATA_STATUS_OK;
 
-  if (DB_VALUE_PRECISION (src) == desired_domain->precision
-      && (desired_domain->collation_flag == TP_DOMAIN_COLL_LEAVE
-	  || db_get_string_codeset (src) == TP_DOMAIN_CODESET (desired_domain)))
-    {
-      pr_clone_value (src, target);
-      if (desired_domain->collation_flag != TP_DOMAIN_COLL_LEAVE)
-	db_string_put_cs_and_collation (target, TP_DOMAIN_CODESET (desired_domain),
-					TP_DOMAIN_COLLATION (desired_domain));
-      return DOMAIN_COMPATIBLE;
-    }
-
   if (db_char_string_coerce (src, target, &data_stat) != NO_ERROR)
     {
       status = DOMAIN_INCOMPATIBLE;
