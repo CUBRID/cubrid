@@ -212,7 +212,8 @@ qexec_set_node_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, cons
 /* The domain a MEDIAN / PERCENTILE list holds and its sort key sorts in this execution
  * (qexec_setup_interpolation_list): the key's compiled domain until the setup gives the function its type. The key
  * shares the function's item, so the list domain has execution domains of its own. Only a MEDIAN / PERCENTILE
- * aggregate has one: the load numbers those first. */
+ * aggregate has one: the load numbers those first, and only their items come here. The assert checks that numbering;
+ * the rows do not check per row what the load fixed. */
 inline TP_DOMAIN *
 qexec_interpolation_list_domain (const VAL_DESCR * vd, TP_DOMAIN * compiled, const DOMAIN_PLAN_ITEM * item)
 {
@@ -238,7 +239,7 @@ qexec_take_interpolation_list_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_IT
 
 /* An aggregate's or an analytic function's operand type now in this execution: the one it took, or
  * its compiled opr_dbtype. The load numbers the functions' execution domains first, so theirs are the operand types'
- * indexes. */
+ * indexes; only the functions' own items come here, and the rows do not check the bound the assert checks. */
 inline DB_TYPE
 qexec_node_operand_type (const VAL_DESCR * vd, DB_TYPE compiled, const DOMAIN_PLAN_ITEM * item)
 {

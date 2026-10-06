@@ -40,6 +40,7 @@
 #include "object_representation.h"
 #include "set_object.h"
 #if defined (SERVER_MODE) || defined (SA_MODE)
+/* domain_compare_by_type_pair: the server compares collection elements by the type pair comparison table */
 #include "domain_rules.h"
 #endif
 

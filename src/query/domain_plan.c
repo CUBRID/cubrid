@@ -288,6 +288,8 @@ domain_set_links (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry, REG
 		  int n_operands, const TP_DOMAIN * consumer)
 {
   load_entry->n_link = 0;
+  /* called once per load entry: the test asks whether the links are still the inline three, not whether an array
+   * already made is large enough */
   if (n_operands > 3 && load_entry->link == load_entry->link_inline)
     {
       DOMAIN_PLAN_ITEM **link = (DOMAIN_PLAN_ITEM **) db_private_alloc (ctx->thread_p, n_operands * sizeof (*link));
@@ -2480,13 +2482,17 @@ domain_reads_group_concat_value (const DOMAIN_LOAD_ENTRY * reader, const DOMAIN_
 
 static void domain_resolve_record (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry);
 
+/* How far domain_link_source and domain_reads_double_aggregate follow a chain of producers or aliases: a guard
+ * against a cycle, beyond any chain a compiled tree makes. */
+static const int DOMAIN_CHAIN_MAX_DEPTH = 256;
+
 /* The item a node's operand is resolved from: through value pointers, list positions and wrappers that share a resolved
  * domain table entry to the bind or node owning it, so resolve_domains sees a bind's value (a value-dependent argument
  * type). */
 static DOMAIN_PLAN_ITEM *
 domain_link_source (DOMAIN_PLAN_ITEM * item)
 {
-  for (int constant_branch = 0; item != NULL && constant_branch < 256; constant_branch++)
+  for (int depth = 0; item != NULL && depth < DOMAIN_CHAIN_MAX_DEPTH; depth++)
     {
       DOMAIN_LOAD_ENTRY *load_entry = domain_owner_load_entry (domain_load_entry_of (item));
       if (!load_entry->follows_producer || load_entry->producer == NULL)
@@ -3025,7 +3031,7 @@ domain_plan_add_session_variables (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT 
 static bool
 domain_reads_double_aggregate (const DOMAIN_LOAD_ENTRY * load_entry)
 {
-  for (int constant_branch = 0; load_entry != NULL && constant_branch < 256; constant_branch++)
+  for (int depth = 0; load_entry != NULL && depth < DOMAIN_CHAIN_MAX_DEPTH; depth++)
     {
       if (load_entry->alias != NULL)
 	{
@@ -4178,6 +4184,7 @@ domain_stream_elements (DOMAIN_STREAM_CONTEXT * ctx, const REGU_VARIABLE * elem)
       return comparison;
     }
   comparison->kind = DOMAIN_ELEMENTS_ROW;
+  domain_stream_by_keys (&comparison->pair.fixed);
   comparison->row = domain_compare_key_row (&item);
   return comparison;
 }

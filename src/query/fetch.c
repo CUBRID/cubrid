@@ -819,6 +819,8 @@ fetch_constant_evaluated (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
     {
       return false;
     }
+  /* an item with a value slot (ref) belongs to a plan resolve_domains resolved, so its descriptor holds that state;
+   * a descriptor without one (a predicate stream's) meets bare items, whose ref is -1 */
   const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved_domain;
   assert (resolved.value_states != NULL && item->ref < resolved.n_vals);
   return resolved.value_states[item->ref] == DOMAIN_VALUE_EVALUATED;
@@ -980,7 +982,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
    * type group (128-bit words, int64, or double) and packs one result.
    *
    * This path is limited to aggregate operands, and its shape is settled at
-   * marking time (qexec_mark_aggregate_operand_expressions ()).
+   * load time (domain_mark_aggregate_operands (), once per XASL load).
    *
    * The result is written where the general path would write it, so all consumers
    * remain unchanged. NULL result domains stay on the general path. */

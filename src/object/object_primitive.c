@@ -48,6 +48,7 @@
 #include "system_parameter.h"
 #include "tz_support.h"
 #if defined (SERVER_MODE) || defined (SA_MODE)
+/* domain_compare_by_type_pair: the server compares two JSON scalars by the type pair comparison table */
 #include "domain_rules.h"
 #endif
 

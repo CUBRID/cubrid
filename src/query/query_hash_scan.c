@@ -515,7 +515,9 @@ enum hash_scan_key_rule
 				 * its scalar converts, or a string domain whose collation is the values' (LEAVE,
 				 * ENFORCE) */
   HASH_SCAN_KEY_FAIL		/* the probe key's domain is variable (a node not computed yet in this execution):
-				 * a coercion into it refuses every value (ER_TP_CANT_COERCE) */
+				 * a coercion into it refuses every value (ER_TP_CANT_COERCE). This is develop's answer
+				 * and timing (the first non-NULL build value), kept as a user error: not the
+				 * unresolved-domain error, which would make it an internal one */
 };
 
 typedef struct hash_scan_key_entry HASH_SCAN_KEY_ENTRY;

@@ -209,6 +209,8 @@ eval_resolved_comparison (const DOMAIN_COMPARE_PLAN * comparison, const val_desc
     {
       if (vd == NULL || vd->xasl_state == NULL || vd->xasl_state->resolved_domain.compares == NULL)
 	{
+	  /* a term evaluated without resolve_domains' state: the values answer, and the unresolved-domain check
+	   * (execution) stops a pair whose values would resolve a domain */
 	  return &eval_Compare_values;
 	}
       const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved_domain;
@@ -378,8 +380,9 @@ eval_compare_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, 
     case DOMAIN_COMPARE_OBJECT:
     case DOMAIN_COMPARE_KEYS:
       /* an object side meets OIDs on the server, and a collection's elements are its data: the key pair table's
-       * comparison of the two values' keys */
-      return domain_compare_by_type_pair (dbval1, dbval2, 1, total_order, can_compare);
+       * comparison of the two values' keys. Neither method converts a constant side once (qexec_resolve_compare
+       * returns before value[] is set), so value[] are the row's values; they are read like DIRECT's */
+      return domain_compare_by_type_pair (value[0], value[1], 1, total_order, can_compare);
 
     default:
       /* RANK, COLLATIONS */

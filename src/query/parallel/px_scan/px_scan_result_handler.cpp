@@ -62,6 +62,8 @@ namespace parallel_scan
   /* A worker's list opens with the plan's domains (qdata_get_valptr_type_list): no column waits for a first tuple to
    * type it - PX keeps session variable reads off (px_scan_checker) and resolve_domains resolves every other column.
    * A variable column here fails the unresolved-domain check (execution). */
+  /* Whether a column of a worker's list has no domain; the first such column sets the unresolved-domain error
+   * (ER_QPROC_DOMAIN_UNRESOLVED), which the caller moves to the leader. */
   static bool list_columns_unresolved (const qfile_tuple_value_type_list &type_list)
   {
     for (int i = 0; i < type_list.type_cnt; i++)

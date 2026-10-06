@@ -159,6 +159,11 @@ typedef DB_LOGICAL (*DOMAIN_COMPARE_OPERATOR_FUNCTION) (const DOMAIN_COMPARE * c
  *   side becomes what (tp_value_compare_common_domain and the implicit coercion rules), the type whose cmpval compares,
  *   the collation, and the outcome it gives when a conversion fails. The row runs the resolved converters and
  *   cmpval; it resolves nothing. A comparison term's resolved comparison names the operator functions its row runs.
+ *
+ * A release row of the DIRECT and CONVERT methods does not check that its values have the types resolve_domains
+ * resolved: a check per row would cost what the resolution saves. The optdebug cross-checks
+ * (eval_assert_resolved_sides, the key pair table's tp_value_compare_with_error replay) assert it, and the optdebug
+ * CTP is what verifies it.
  */
 struct DOMAIN_COMPARE
 {

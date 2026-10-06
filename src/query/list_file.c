@@ -899,6 +899,9 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p,
       type1 = TP_DOMAIN_TYPE (list_id1_p->type_list.domp[i]);
       type2 = TP_DOMAIN_TYPE (list_id2_p->type_list.domp[i]);
 
+      /* An empty side skips the collation flag check below as well: its column opened with the plan's domain, and
+       * the load check keeps a plan domain NORMAL (a string whose collation the values give is resolved before the
+       * execution) */
       if (type1 == DB_TYPE_VARIABLE || (list1_empty && list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
 	{
 	  /* list1 holds no value of this column: its tuples store only NULL (0 bytes) there, so list2's domain reads them */

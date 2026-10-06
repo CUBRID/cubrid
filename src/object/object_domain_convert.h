@@ -81,9 +81,13 @@ TP_VALUE_CONVERTER tp_value_find_converter (DB_TYPE src_type, const TP_DOMAIN * 
 /*
  * tp_value_convert () - run a converter the caller found before its rows
  *   return: the converter's status; a date or time conversion that failed with an error is DOMAIN_INCOMPATIBLE:
- *	     only a cast (tp_value_cast_internal) publishes that error
+ *	     only a cast (tp_value_cast_internal) publishes that error. DOMAIN_TRUNCATED comes back as it is: the
+ *	     acceptance of a truncation (TP_FORCE_COERCION, allow_truncated_string) is the cast's, so a caller here
+ *	     refuses it like any other status but DOMAIN_COMPATIBLE (tp_domain_status_er_set: ER_IT_DATA_OVERFLOW)
  *   converter(in): not NULL
  *   target(in): the domain result takes
+ *   result(out): a value that holds nothing (a fresh DB_VALUE, or one the caller cleared): it is initialized to the
+ *		  target domain here, not cleared; it is not source
  *
  * Inline: the rows of a resolved conversion call it for every value.
  */

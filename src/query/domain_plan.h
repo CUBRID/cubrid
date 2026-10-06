@@ -26,6 +26,11 @@
  * execution, before qexec_execute_mainblock, into XASL_STATE (resolved_domain, domain_execution). The rows only read
  * the plan and the resolutions; what they change is domain_execution.
  *
+ * Why at execution and not at compile: the compiler sees no bind types (a PREPARE carries none; a bind-peek replan
+ * changes the plan's shape, not its domains), one cached XASL serves executions with different bind types, and the
+ * XASL cache key carries no types. So the compile fixes what it can and resolve_domains, once per execution, fixes the
+ * rest; pinning every domain at compile would need typed prepares or a cache keyed by bind types.
+ *
  * Index spaces:
  *   item.resolved_index         -> resolved_domain.domains[]       0-based, -1 none
  *   item.ref                    -> resolved_domain.vals[]          0-based, -1 none; a bind's value slot, which is not
@@ -250,7 +255,8 @@ enum DOMAIN_ELEMENTS_KIND
 struct DOMAIN_ELEMENT_COMPARE_PLAN
 {
   DOMAIN_COMPARE_PLAN pair;	/* side 0 the item, side 1 the list's column or the right side; PAIR: their resolved
-				 * comparison */
+				 * comparison, which only a PAIR reads (a stream's ROW marks it by keys, the load's
+				 * other kinds leave it zero) */
   int row;			/* ROW: the item's row (domain_compare_key_row); -1: the item's key has none, and each
 				 * element compares by the two values' keys */
   int resolved_elements_index;	/* LATE_BIND: resolved_domain.elements index; -1 */

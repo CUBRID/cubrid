@@ -646,7 +646,9 @@ dblink_bind_param (int conn_handle, int stmt_handle, VAL_DESCR * vd, DBLINK_HOST
   for (n = 0; n < host_vars->count; n++)
     {
       i = host_vars->index[n];
-      /* The remote server binds the original value, not resolve_domains' converted one. */
+      /* The remote server binds the original value, not resolve_domains' converted one. `in` is read-only and shared
+       * with the PX workers' copies: dblink_bind_dbval_to_param only reads its value (its parameter is not const
+       * because of the develop helpers it calls). */
       ret =
 	dblink_bind_dbval_to_param (conn_handle, stmt_handle, n + 1,
 				    (DB_VALUE *) & vd->xasl_state->resolved_domain.in[i]);
