@@ -1775,12 +1775,25 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    }
 	}
 
+      /* without a memory buffer, a fixed last page per partition exhausts the page buffer; no-op with membuf */
+      if (qfile_reopen_list_as_append_mode (thread_p, temp_part_list_id[part_id]) != NO_ERROR)
+	{
+	  break;		/* error_exit */
+	}
+
       error = qfile_add_tuple_to_list (thread_p, temp_part_list_id[part_id], tuple_record.tpl);
+
+      /* close before the error check so that the list is closed on every path */
+      qfile_close_list (thread_p, temp_part_list_id[part_id]);
+
       if (error != NO_ERROR)
 	{
 	  break;		/* error_exit */
 	}
-      assert (VFID_ISNULL (&temp_part_list_id[part_id]->tfile_vfid->temp_vfid));
+
+      /* without a memory buffer, the page is in the temp file */
+      assert (temp_part_list_id[part_id]->tfile_vfid->membuf_npages == 0
+	      || VFID_ISNULL (&temp_part_list_id[part_id]->tfile_vfid->temp_vfid));
     }				/* while (qfile_scan_list_next (list_scan_id)) */
 
   /* After qfile_open_list_scan, if an error occurs,

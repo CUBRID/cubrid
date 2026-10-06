@@ -434,7 +434,20 @@ namespace parallel_query
 		    }
 		}
 
+	      /* without a memory buffer, a fixed last page per partition exhausts the page buffer; no-op with membuf */
+	      if (qfile_reopen_list_as_append_mode (&thread_ref, temp_part_list_id[part_id]) != NO_ERROR)
+		{
+		  assert_release_error (er_errid () != NO_ERROR);
+		  m_task_manager.handle_error (thread_ref);
+		  has_error = true;
+		  break;
+		}
+
 	      error = qfile_add_tuple_to_list (&thread_ref, temp_part_list_id[part_id], tuple_record.tpl);
+
+	      /* close before the error check so that the list is closed on every path */
+	      qfile_close_list (&thread_ref, temp_part_list_id[part_id]);
+
 	      if (error != NO_ERROR)
 		{
 		  assert_release_error (er_errid () != NO_ERROR);
@@ -442,7 +455,10 @@ namespace parallel_query
 		  has_error = true;
 		  break;
 		}
-	      assert (VFID_ISNULL (&temp_part_list_id[part_id]->tfile_vfid->temp_vfid));
+
+	      /* without a memory buffer, the page is in the temp file */
+	      assert (temp_part_list_id[part_id]->tfile_vfid->membuf_npages == 0
+		      || VFID_ISNULL (&temp_part_list_id[part_id]->tfile_vfid->temp_vfid));
 	    }
 	  while (true);		/* next tuple */
 
