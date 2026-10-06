@@ -723,6 +723,8 @@ namespace
       void sort ();	/* the result ends in the home slots */
 
     private:
+      bool is_ordered (bool *is_descending, bool *has_ties) const;
+      void finish_ordered (bool is_descending, bool has_ties);
       void count_buckets (const msd_range &range, bucket_counts &bucket_count) const;
       bool is_all_in_one (const msd_range &range, const bucket_counts &bucket_count) const;
       void move_to_buckets (const msd_range &range, const bucket_counts &bucket_count);
@@ -862,6 +864,7 @@ msd_sort<WORD_WIDTH>::msd_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, BT
  *   return: void
  *
  * Note: Each range is finished or split 256 ways on its current byte, and an explicit stack holds the pending ones.
+ *       A run the keys already order, either way, skips the walk.
  */
 template <int WORD_WIDTH>
 void
@@ -870,6 +873,13 @@ msd_sort<WORD_WIDTH>::sort ()
   int stack_top = 0;
   msd_range range;
   bucket_counts bucket_count;	/* a count fits an int, see radix_sort_run () */
+  bool is_descending, has_ties;
+
+  if (is_ordered (&is_descending, &has_ties))
+    {
+      finish_ordered (is_descending, has_ties);
+      return;
+    }
 
   m_stack[stack_top++] = { 0, m_record_count, 0, HOME };
 
@@ -898,6 +908,93 @@ msd_sort<WORD_WIDTH>::sort ()
 
       move_to_buckets (range, bucket_count);
       stack_top = push_buckets (range, bucket_count, stack_top);
+    }
+}
+
+/*
+ * msd_sort::is_ordered () - Whether the keys of the run already run one way, up or down
+ *   return: false at the first record that contradicts both directions
+ *   is_descending(out): the keys run down
+ *   has_ties(out): two neighbouring keys are equal
+ */
+template <int WORD_WIDTH>
+bool
+msd_sort<WORD_WIDTH>::is_ordered (bool *is_descending, bool *has_ties) const
+{
+  const unsigned char *radix_words = m_radix_words[HOME];
+  radix_word<WORD_WIDTH> prev_integer, cur_integer;
+  bool rising = false, falling = false, tied = false;
+  int rec_index;
+
+  prev_integer = word_from_bytes<WORD_WIDTH> (radix_words);
+  for (rec_index = 1; rec_index < m_record_count; rec_index++)
+    {
+      cur_integer = word_from_bytes<WORD_WIDTH> (radix_words + rec_index * WORD_WIDTH);
+
+      rising |= (prev_integer < cur_integer);
+      falling |= (prev_integer > cur_integer);
+      tied |= (prev_integer == cur_integer);
+
+      /* a shuffled run gets this far within a few records */
+      if (rising && falling)
+	{
+	  return false;
+	}
+
+      prev_integer = cur_integer;
+    }
+
+  *is_descending = falling;
+  *has_ties = tied;
+
+  return true;
+}
+
+/*
+ * msd_sort::finish_ordered () - Finishes a run is_ordered () accepts
+ *   return: void
+ *   is_descending(in):
+ *   has_ties(in):
+ *
+ * Note: Ordered input arrives descending, as accept () fills the slots from their far end.
+ */
+template <int WORD_WIDTH>
+void
+msd_sort<WORD_WIDTH>::finish_ordered (bool is_descending, bool has_ties)
+{
+  BTSORT_RUN_SLOT *slots = m_slots[HOME];
+  const unsigned char *radix_words = m_radix_words[HOME];
+  radix_word<WORD_WIDTH> group_integer;
+  int group_start, group_end, first;
+
+  if (is_descending)
+    {
+      std::reverse (slots, slots + m_record_count);
+    }
+
+  if (!has_ties)
+    {
+      return;
+    }
+
+  /* each group of equal keys, neighbours in an ordered run, still owes the OID order */
+  for (group_start = 0; group_start < m_record_count; group_start = group_end)
+    {
+      group_integer = word_from_bytes<WORD_WIDTH> (radix_words + group_start * WORD_WIDTH);
+      for (group_end = group_start + 1; group_end < m_record_count; group_end++)
+	{
+	  if (word_from_bytes<WORD_WIDTH> (radix_words + group_end * WORD_WIDTH) != group_integer)
+	    {
+	      break;
+	    }
+	}
+
+      if (group_end - group_start > 1)
+	{
+	  /* the radix words were not reversed with the slots, so a descending run holds the group at the mirror place */
+	  first = is_descending ? m_record_count - group_end : group_start;
+	  sort_by_oid (m_rec_base, slots + first, group_end - group_start);
+	}
     }
 }
 
