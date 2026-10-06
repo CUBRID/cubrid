@@ -2051,6 +2051,9 @@ qo_modify_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
 {
   RESET_LOCATION_INFO *infop = (RESET_LOCATION_INFO *) arg;
 
+  /* PT_LIST_WALK set on a subquery below is still in force when the walk reaches the next conjunct */
+  *continue_walk = PT_CONTINUE_WALK;
+
   if (PT_IS_QUERY (node))
     {
       *continue_walk = PT_LIST_WALK;
