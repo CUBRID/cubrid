@@ -3087,9 +3087,11 @@ domain_reads_double_aggregate (const DOMAIN_LOAD_ENTRY * load_entry)
 	}
       load_entry = load_entry->producer;
     }
-  /* the bound reached: a cycle, and no aggregate is on one - a CONNECT BY over a join reads its list's column through a
-   * position (regu_list_pred) whose producer, the column (outptr_list), is a value pointer to what that position
-   * fetches */
+  /* the bound reached: a cycle, and no aggregate is on one. A list scan over a block whose own spec is a set
+   * (TARGET_SET: a CONNECT BY over a join or a partition, a no-follow join of two object-constant terms) reads its
+   * column through a position whose slot no load entry writes but the position itself (the set scan fills it
+   * positionally, vfetch_to NULL): the column's value pointer aliases to the position and the position's producer is
+   * that value pointer */
   return false;
 }
 
