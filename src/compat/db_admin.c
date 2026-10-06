@@ -1293,10 +1293,12 @@ db_shutdown_sub ()
   (void) db_end_session ();
   db_Disable_modifications = 0;
 
-  // db_free_execution_plan ();
-
   (void) boot_shutdown_client_sub ();
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+
+  /* the query result table and the execution plan of this connection (thread-local) */
+  db_final_client_query_result ();
+  db_free_execution_plan ();
 
   au_ctx_destructor ();
   db_unregister_sub_client ();
