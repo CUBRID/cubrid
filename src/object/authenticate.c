@@ -255,13 +255,13 @@ au_dump_auth (FILE * fp)
   DB_QUERY_ERROR query_error;
   int error;
   DB_VALUE user_val;
-  const char *qp1 = "select [%s] from [%s];";
+  const char *qp1 = "select [%s] from [%s] where [name] in (select [name] from [%s]);";
 
-  query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2);
+  query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2 + strlen (CTV_USER_NAME));
 
   if (query)
     {
-      sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
+      sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME, CTV_USER_NAME);
 
       error = db_compile_and_execute_local (query, &query_result, &query_error);
       /* error is row count if not negative. */
@@ -383,18 +383,21 @@ au_dump_to_file (FILE * fp)
   DB_QUERY_ERROR query_error;
   int error = NO_ERROR;
   DB_VALUE user_val;
-  const char *qp1 = "select [%s] from [%s];";
+  const char *qp1 = "select [%s] from [%s] where [name] in (select [name] from [%s]);";
+  int save;
 
   /* NOTE: We should be getting the real user name here ! */
 
   fprintf (fp, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_CURRENT_USER),
 	   Au_user_name);
 
-  query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2);
+  AU_SAVE_AND_DISABLE (save);
+
+  query = (char *) malloc (strlen (qp1) + strlen (AU_USER_CLASS_NAME) * 2 + strlen (CTV_USER_NAME));
 
   if (query)
     {
-      sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME);
+      sprintf (query, qp1, AU_USER_CLASS_NAME, AU_USER_CLASS_NAME, CTV_USER_NAME);
 
       error = db_compile_and_execute_local (query, &query_result, &query_error);
       /* error is row count if not negative. */
@@ -441,6 +444,8 @@ au_dump_to_file (FILE * fp)
 
   fprintf (fp, "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_AUTHORIZATION, MSGCAT_AUTH_AUTH_TITLE));
   au_dump_auth (fp);
+
+  AU_RESTORE (save);
 }
 
 /*
