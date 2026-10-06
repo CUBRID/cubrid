@@ -2451,9 +2451,8 @@ pt_get_end_path_node (PT_NODE * node)
  * pt_where_rejects_column_null () - true if some conjunct of the CNF WHERE list already rejects NULL
  *     values of the given column, mirroring the criteria qo_fold_is_and_not_null () uses to fold a
  *     user-written "col IS NOT NULL" away: a single-predicate term (no or_next) of the WHERE location
- *     whose first argument or right-hand side is that column. Only a comparison operator counts, because a
- *     comparison turns UNKNOWN on a NULL operand; IS NULL, <=> and a value function used as a condition
- *     (ISNULL (), NVL () ...) can be true on NULL.
+ *     whose first argument or right-hand side is that column, with a comparison operator that cannot be true
+ *     on a NULL operand (qo_check_nullable_op ()).
  *   return: bool
  *   parser(in): context
  *   where(in): CNF WHERE list
@@ -2476,10 +2475,9 @@ pt_where_rejects_column_null (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE 
 	  continue;
 	}
 
-      if (!pt_is_comp_op (term->info.expr.op) || term->info.expr.op == PT_IS_NULL
-	  || term->info.expr.op == PT_NULLSAFE_EQ)
+      if (!pt_is_comp_op (term->info.expr.op) || qo_check_nullable_op (term))
 	{
-	  /* not a comparison, or one that is true on a NULL operand */
+	  /* not a comparison, or one that can be true on a NULL operand */
 	  continue;
 	}
 
