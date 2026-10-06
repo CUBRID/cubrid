@@ -326,6 +326,7 @@ record_descriptor::is_mutable () const
 void
 record_descriptor::pack (cubpacking::packer &packer) const
 {
+  assert_release (m_recdes.type != REC_OOS_PENDING);
   packer.pack_short (m_recdes.type);
   packer.pack_buffer_with_length (m_recdes.data, m_recdes.length);
 }
@@ -337,6 +338,10 @@ record_descriptor::unpack (cubpacking::unpacker &unpacker)
   m_data_source = data_source::COPIED;
 
   unpacker.unpack_short (m_recdes.type);
+  if (m_recdes.type == REC_OOS_PENDING)
+    {
+      m_recdes.type = REC_UNKNOWN;
+    }
   unpacker.peek_unpack_buffer_length (m_recdes.length);
   resize_buffer (m_recdes.length);
   unpacker.unpack_buffer_with_length (m_recdes.data, m_recdes.length);

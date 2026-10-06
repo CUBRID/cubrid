@@ -58,6 +58,7 @@
 #include "elo.h"
 #include "db_elo.h"
 #include "locator_sr.h"
+#include "heap_oos.hpp"
 #include "log_lsa.hpp"
 #include "log_volids.hpp"
 #include "xserver_interface.h"
@@ -12046,6 +12047,9 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 				     const HEAP_IDX_ELEMENTS_INFO * idx_info, int op_type, int pruning_type,
 				     PRUNING_CONTEXT * pcontext, int *removed_count)
 {
+  /* *INDENT-OFF* */
+  heap_pending_oos_values pending;
+  /* *INDENT-ON* */
   LC_COPYAREA *copyarea = NULL;
   RECDES new_recdes;
   int i = 0;
@@ -12074,7 +12078,9 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, LOB_FLAG_EXCLUDE_LOB);
+  copyarea =
+    locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &new_recdes, -1, LOB_FLAG_EXCLUDE_LOB,
+					     &pending);
   if (copyarea == NULL)
     {
       goto error_exit;
@@ -12278,6 +12284,9 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 				   HEAP_CACHE_ATTRINFO * index_attr_info, const HEAP_IDX_ELEMENTS_INFO * idx_info,
 				   int pruning_type, PRUNING_CONTEXT * pcontext, OID * unique_oid_p, int op_type)
 {
+  /* *INDENT-OFF* */
+  heap_pending_oos_values pending;
+  /* *INDENT-ON* */
   LC_COPYAREA *copyarea = NULL;
   RECDES recdes;
   int i = 0;
@@ -12312,7 +12321,8 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       goto error_exit;
     }
 
-  copyarea = locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, LOB_FLAG_INCLUDE_LOB);
+  copyarea =
+    locator_allocate_copy_area_by_attr_info (thread_p, attr_info, NULL, &recdes, -1, LOB_FLAG_INCLUDE_LOB, &pending);
   if (copyarea == NULL)
     {
       goto error_exit;
