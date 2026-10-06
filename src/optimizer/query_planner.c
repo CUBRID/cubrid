@@ -329,6 +329,7 @@ static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index
 static int qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 							   int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
@@ -14648,9 +14649,34 @@ qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
 }
 
 /*
+ * qo_check_next_value () - parser_walk_tree callback looking for a serial NEXT_VALUE
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when a NEXT_VALUE is found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_next_value = (bool *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (tree != NULL && tree->node_type == PT_EXPR && tree->info.expr.op == PT_NEXT_VALUE)
+    {
+      *has_next_value = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+/*
  * qo_check_method_call_parallel_eligibility () - parser_walk_tree callback looking for a
- *   PT_METHOD_CALL node that may not run inside a parallel hash join worker: a method, or
- *   a stored procedure without the PARALLEL_ENABLE declaration
+ *   PT_METHOD_CALL node that may not run inside a parallel hash join worker: a method, a
+ *   stored procedure without the PARALLEL_ENABLE declaration, or one whose arguments hold a
+ *   serial NEXT_VALUE
  *   return:
  *   parser(in):
  *   tree(in):
@@ -14690,6 +14716,22 @@ qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tr
 	{
 	  *has_ineligible = true;
 	  *continue_walk = PT_STOP_WALK;
+	}
+      else
+	{
+	  /* CBRD-27561: a worker evaluates the arguments after it registers in the PL session, so
+	   * a NEXT_VALUE there opens the serial update's system operation with a registered owner
+	   * of rmutex_topop, and log_tdes::lock_topop () lets the other workers re-enter that
+	   * mutex instead of waiting. A NEXT_VALUE outside the arguments runs unregistered. */
+	  bool has_next_value = false;
+
+	  (void) parser_walk_tree (parser, tree->info.method_call.arg_list, qo_check_next_value, &has_next_value,
+				   NULL, NULL);
+	  if (has_next_value)
+	    {
+	      *has_ineligible = true;
+	      *continue_walk = PT_STOP_WALK;
+	    }
 	}
       /* eligible: keep walking, an argument may hold another method call */
     }

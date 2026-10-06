@@ -68,6 +68,10 @@ namespace parallel_query_execute
       std::set<XASL_NODE *> m_sp_dirty_set;
       XASL_NODE *m_owner=nullptr;
       bool m_is_parallel_executable=true;
+      /* an SP/method call and a serial NEXT_VALUE in one statement disable it as a whole;
+       * see is_parallel_executable () */
+      bool m_has_pl_call=false;
+      bool m_has_next_value=false;
   };
 
   std::set<XASL_NODE *> xasl_checker::get_child_xasl_set_recursive (XASL_NODE *xasl)
@@ -178,11 +182,16 @@ namespace parallel_query_execute
 	  {
 	    m_is_parallel_executable = false;
 	  }
+	if (regu_var->value.arithptr->opcode == T_NEXT_VALUE)
+	  {
+	    m_has_next_value = true;
+	  }
 	check_regu_var (regu_var->value.arithptr->leftptr);
 	check_regu_var (regu_var->value.arithptr->rightptr);
 	check_regu_var (regu_var->value.arithptr->thirdptr);
 	break;
       case TYPE_SP:
+	m_has_pl_call = true;
 	if (px_sp_is_parallel_eligible (regu_var->value.sp_ptr->sig))
 	  {
 	    /* declared PARALLEL_ENABLE: the SP may run inside a px worker, so it does not dirty
@@ -456,6 +465,7 @@ namespace parallel_query_execute
       }
       break;
       case TARGET_METHOD:
+	m_has_pl_call = true;
 	/* exclude only the owning block from parallel execution, not the whole statement */
 	if (m_owner)
 	  {
@@ -692,6 +702,20 @@ namespace parallel_query_execute
     try
       {
 	add_xasl_recursive (xasl);
+	/* CBRD-27561: NEXT_VALUE updates the serial in a system operation, which holds the
+	 * transaction's rmutex_topop until it ends. While a thread runs an SP or method call it is
+	 * registered in the PL session, and log_tdes::lock_topop () lets any other thread of the
+	 * transaction re-enter rmutex_topop through a registered owner instead of waiting (the
+	 * CBRD-25641 workaround). A NEXT_VALUE evaluated during such a call (an SP argument, or a
+	 * subquery an argument runs) therefore loses mutual exclusion against every px job of the
+	 * statement that also opens a system operation. Marking only the owning block is not
+	 * enough: a block run inline on the main thread can still overlap px jobs once the shared
+	 * worker task has started. So a statement with both runs its subqueries serially, which is
+	 * never more restrictive than before CBRD-27299, when any SP call did the same. */
+	if (m_has_pl_call && m_has_next_value)
+	  {
+	    m_is_parallel_executable = false;
+	  }
 	if (!m_is_parallel_executable)
 	  {
 	    return false;
