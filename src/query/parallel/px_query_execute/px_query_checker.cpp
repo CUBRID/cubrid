@@ -192,23 +192,26 @@ namespace parallel_query_execute
 	break;
       case TYPE_SP:
 	m_has_pl_call = true;
-	if (px_sp_is_parallel_eligible (regu_var->value.sp_ptr->sig))
+	/* CBRD-27561: the arguments are checked whether or not the SP is PARALLEL_ENABLE. Either
+	 * way the thread evaluates them after it registers in the PL session, so a NEXT_VALUE there
+	 * must reach the statement-wide check of is_parallel_executable (), and a session variable
+	 * there disables the statement as it does anywhere else. */
+	check_regu_var_list (regu_var->value.sp_ptr->args);
+	/* declared PARALLEL_ENABLE: the SP may run inside a px worker, so it does not dirty its
+	 * owning block */
+	if (!px_sp_is_parallel_eligible (regu_var->value.sp_ptr->sig))
 	  {
-	    /* declared PARALLEL_ENABLE: the SP may run inside a px worker, so it does not dirty
-	     * its owning block. Its arguments are evaluated in the worker too, so they are
-	     * still checked. */
-	    check_regu_var_list (regu_var->value.sp_ptr->args);
-	  }
-	/* ineligible: exclude only the owning block from parallel execution, not the whole
-	 * statement (a block mixing eligible and ineligible SPs stays blocked — conservative AND) */
-	else if (m_owner)
-	  {
-	    m_sp_dirty_set.insert (m_owner);
-	  }
-	else
-	  {
-	    assert (0);
-	    m_is_parallel_executable = false;
+	    /* ineligible: exclude only the owning block from parallel execution, not the whole
+	     * statement (a block mixing eligible and ineligible SPs stays blocked — conservative AND) */
+	    if (m_owner)
+	      {
+		m_sp_dirty_set.insert (m_owner);
+	      }
+	    else
+	      {
+		assert (0);
+		m_is_parallel_executable = false;
+	      }
 	  }
 	break;
       default:
