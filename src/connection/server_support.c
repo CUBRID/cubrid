@@ -199,6 +199,10 @@ static int css_get_master_request (SOCKET master_fd);
 static void css_process_shutdown_request (SOCKET master_fd);
 
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static std::size_t css_get_core_hash (const CSS_CONN_ENTRY & conn_ref);
+static void css_run_one_request (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static void css_recycle_between_eager_requests (THREAD_ENTRY & thread_ref);
+static void css_eager_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 
 static bool css_check_ha_log_applier_done (void);
@@ -2051,6 +2055,18 @@ css_get_current_conn_entry (void)
 
 // *INDENT-OFF*
 /*
+ * css_get_core_hash() - core hash of the worker pool core that this
+ *                       connection's tasks are pushed to
+ *   return: core hash
+ *   conn_ref(in):
+ */
+static std::size_t
+css_get_core_hash (const CSS_CONN_ENTRY &conn_ref)
+{
+  return static_cast<std::size_t> (conn_ref.idx);
+}
+
+/*
  * css_push_server_task () - push a task on server request worker pool
  *
  * return          : void
@@ -2072,7 +2088,7 @@ css_push_server_task (CSS_CONN_ENTRY &conn_ref, cubthread::task_submission_optio
   conn_ref.add_working_task ();
 
   thread_get_manager ()->push_task_on_core (css_Server_request_worker_pool, new css_server_task (conn_ref),
-					    static_cast<size_t> (conn_ref.idx), options);
+					    css_get_core_hash (conn_ref), options);
 }
 
 void
@@ -2081,15 +2097,25 @@ css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
   thread_get_manager ()->push_task (css_Server_request_worker_pool, new css_server_external_task (conn, task));
 }
 
-void
-css_server_task::execute (context_type &thread_ref)
+/*
+ * css_run_one_request() - put the thread in the state a task starts in, then
+ *                         run one request on this connection
+ *   return: void
+ *   thread_ref(in):
+ *   conn_ref(in):
+ *
+ * Note: Shared by css_server_task::execute () and css_eager_receive_loop ()
+ *       so that the two cannot drift apart.
+ */
+static void
+css_run_one_request (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
 {
   session_state *session_p;
 
-  thread_ref.conn_entry = &m_conn;
-  session_p = thread_ref.conn_entry->session_p;
+  thread_ref.conn_entry = &conn_ref;
+  session_p = conn_ref.session_p;
 
-  m_conn.start_request ();
+  conn_ref.start_request ();
 
   if (session_p != NULL)
     {
@@ -2106,7 +2132,102 @@ css_server_task::execute (context_type &thread_ref)
   // TODO: we lock tran_index_lock because css_internal_request_handler expects it to be locked. however, I am not
   //       convinced we really need this
   pthread_mutex_lock (&thread_ref.tran_index_lock);
-  (void) css_internal_request_handler (thread_ref, m_conn);
+  (void) css_internal_request_handler (thread_ref, conn_ref);
+}
+
+/*
+ * css_recycle_between_eager_requests() - apply the reset the worker pool puts
+ *                                         between two tasks
+ *   return: void
+ *   thread_ref(in):
+ *
+ * Note: recycle_context () also clears entry::shutdown, which inside one task
+ *       would drop a stop the pool has already asked for, so this puts that
+ *       one field back. The write is conditional because worker_pool::
+ *       stop_execution () may raise the same flag while this thread is inside
+ *       recycle_context ().
+ */
+static void
+css_recycle_between_eager_requests (THREAD_ENTRY & thread_ref)
+{
+  bool was_shutdown = thread_ref.shutdown;
+
+  css_Server_request_worker_pool->get_entry_manager ().recycle_context (thread_ref);
+  if (was_shutdown)
+    {
+      thread_ref.shutdown = true;
+    }
+}
+
+/*
+ * css_eager_receive_loop() - having answered a request, wait on this
+ *                            connection's socket for the next one and run it
+ *                            on this thread
+ *   return: void
+ *   thread_ref(in):
+ *   conn_ref(in):
+ *
+ * Note: The window is eager_receive_window_in_msecs and 0 disables the loop.
+ *       worker::eager_poll_and_receive () owns the socket protocol; this loop
+ *       only decides whether to keep waiting and runs what came in.
+ *
+ *       The connection cannot close underneath the loop. The task that opened
+ *       it has not called end_working_task () yet, and
+ *       worker::handle_connection_close () defers the close while a task is
+ *       working.
+ */
+static void
+css_eager_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref)
+{
+  cubconn::result status;
+  int window_ms, received, i;
+  bool handed_back;
+
+  window_ms = prm_get_integer_value (PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS);
+  if (window_ms <= 0 || css_Server_request_worker_pool == NULL)
+    {
+      return;
+    }
+
+  for (;;)
+    {
+      /* the connection's own state is checked under cmutex by the claim below */
+      if (thread_ref.shutdown)
+	{
+	  return;
+	}
+      if (css_Server_request_worker_pool->has_queued_task_on_core (css_get_core_hash (conn_ref)))
+	{
+	  /* the core this connection's tasks go to has work waiting; that work
+	   * outranks this thread's wait, so give the thread back */
+	  return;
+	}
+
+      received = 0;
+      handed_back = false;
+      status = cubconn::connection::worker::eager_poll_and_receive (conn_ref, &thread_ref, window_ms, received,
+	       handed_back);
+
+      /* Run what was received before reacting to status: the requests are already
+       * parsed and counted, and each one owes a start_request (). */
+      for (i = 0; i < received; i++)
+	{
+	  css_recycle_between_eager_requests (thread_ref);
+	  css_run_one_request (thread_ref, conn_ref);
+	}
+
+      if (handed_back || status != cubconn::result::Ok || received == 0)
+	{
+	  return;
+	}
+    }
+}
+
+void
+css_server_task::execute (context_type &thread_ref)
+{
+  css_run_one_request (thread_ref, m_conn);
+  css_eager_receive_loop (thread_ref, m_conn);
 
   thread_ref.conn_entry = NULL;
   thread_ref.m_status = cubthread::entry::status::TS_FREE;

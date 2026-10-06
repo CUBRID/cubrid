@@ -123,6 +123,7 @@ namespace cubconn::connection
 	TAKEOVER_CLIENT,
 	SHUTDOWN_CLIENT, /* lazy queue */
 	RELEASE_PACKET,
+	RECV_RECHECK, /* an eager receiver left data behind: receive from this context again */
 
 	TYPE_COUNT
       };
@@ -199,6 +200,12 @@ namespace cubconn::connection
 				       std::size_t packet_count, const bool *retain_packet,
 				       std::function<void ()> &&deleter, int wait_time);
 
+      /* Claim this connection's socket, wait up to window_ms for the next request,
+       * receive it on the calling (transaction) thread and give the socket back.
+       * count_out gets the number of complete requests the caller must run. */
+      static result eager_poll_and_receive (css_conn_entry &conn, cubthread::entry *entry, int window_ms,
+					    int &count_out, bool &handed_back_out);
+
       /* used for control from other threads */
       void enqueue (queue_type type, message &&item);
       bool notify ();
@@ -268,6 +275,8 @@ namespace cubconn::connection
       uint64_t get_time_ns (clockid_t type);
 
       void push_task_into_worker_pool (context *ctx);
+      void eager_abort (context *ctx);
+      void eager_flush_counted_to_pool (context *ctx, int count);
       void purge_stale_contexts ();
       void wakeup_blocked_worker (std::shared_ptr<message_blocker> handle);
 
@@ -276,6 +285,7 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       bool requires_client_info (context *ctx);
       bool is_registering_client (context *ctx);
+      bool is_eager_receiving (context *ctx);
 
       bool has_remaining_tasks (context *ctx);
 
@@ -320,6 +330,7 @@ namespace cubconn::connection
       bool forward_message_to_successor (queue_type type, message &item, context *ctx);
 
       bool handle_message_queue_release_packet (message &item);
+      bool handle_message_queue_recv_recheck (message &item);
 
       bool handle_message_queue_new_client (message &item);
       bool handle_message_queue_handoff_client (message &item);
@@ -353,8 +364,16 @@ namespace cubconn::connection
       result handle_header_packet (context *ctx, cubbase::span<std::byte> &packet);
 
       /* reception */
+      /* Runs on the worker thread and, through worker::eager_drain (), on a
+       * transaction thread that owns the socket. Everything below it may therefore
+       * touch only the context and the connection, never worker-private state
+       * (m_stats, m_exhausted, m_entry, m_context, m_events, the message queues)
+       * and never the connection-close path. */
       result handle_packet (context *ctx, cubbase::span<std::byte> &packet);
       result handle_reception (context *ctx, bool in_exhausted);
+      bool claim_reading (context *ctx, bool from_edge);
+      void release_reading (context *ctx);
+      result eager_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out);
 
       /* --------------------------------------------------------------------------- */
       /* transmission								     */
