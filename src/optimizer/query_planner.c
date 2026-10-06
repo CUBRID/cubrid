@@ -6848,6 +6848,7 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
 {
   QO_ENV *env = planner->env;
   QO_NODE *node;
+  QO_NODE_INDEX *node_index;
   QO_INFO *node_info, *distinct_info;
   QO_PLAN *node_plan, *distinct_plan;
   QO_TERM *term;
@@ -6855,7 +6856,7 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
   BITSET_ITERATOR si;
   double distinct_rows;
   bool ndv_known, eligible;
-  int i, t, sg;
+  int i, j, t, sg;
 
   if (planner->distinct_info == NULL)
     {
@@ -6869,6 +6870,18 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
   if (QO_ENV_PT_TREE (env)->info.query.q.select.hint & (PT_HINT_ORDERED | PT_HINT_LEADING))
     {
       return;
+    }
+
+  for (i = 0; i < (signed) planner->N; i++)
+    {
+      node_index = QO_NODE_INDEXES (&planner->node[i]);
+      for (j = 0; node_index != NULL && j < QO_NI_N (node_index); j++)
+	{
+	  if (QO_NI_ENTRY (node_index, j)->head->key_limit != NULL)
+	    {
+	      return;
+	    }
+	}
     }
 
   for (i = 0; i < (signed) planner->N; i++)

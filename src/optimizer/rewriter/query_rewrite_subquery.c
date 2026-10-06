@@ -125,10 +125,14 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
 
   /* USING INDEX travels to the enclosing SELECT. Every named form keeps applying to the spec moving up, but
    * USING INDEX NONE names no table and no index, applies to every table in scope, and lifted out would
-   * silence the outer tables too; reject only that one. */
+   * silence the outer tables too; reject that one and KEYLIMIT. */
   for (hint = subq->info.query.q.select.using_index; hint != NULL; hint = hint->next)
     {
       if (hint->info.name.original == NULL && hint->info.name.resolved == NULL)
+	{
+	  return false;
+	}
+      if (hint->info.name.indx_key_limit != NULL)
 	{
 	  return false;
 	}
@@ -479,7 +483,7 @@ exit:
 void
 qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *prev, *cnf_node, *next, *subq, *inner_spec, *spec, *after, *on_conds;
+  PT_NODE *prev, *cnf_node, *next, *subq, *inner_spec, *spec, *after, *on_conds, *hint;
   QO_UNNEST_INFO info;
   short loc;
 
@@ -606,6 +610,14 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
       if (spec->info.spec.join_type == PT_JOIN_SEMI || spec->info.spec.join_type == PT_JOIN_ANTI)
 	{
 	  mq_regenerate_if_ambiguous (parser, spec, node, node->info.query.q.select.from);
+	}
+    }
+
+  for (hint = node->info.query.q.select.using_index; hint != NULL; hint = hint->next)
+    {
+      if (hint->info.name.indx_key_limit != NULL)
+	{
+	  return;
 	}
     }
 
