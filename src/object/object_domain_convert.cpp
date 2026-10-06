@@ -7447,6 +7447,73 @@ tp_value_convert_collection (const DB_VALUE *src, DB_VALUE *target, const TP_DOM
  * Every pair that converts is named once, grouped by its target. The mode picks within a case: COMPARE and
  * OPERAND take the strict converters, IMPLICIT is ASSIGN but for the pairs implicit coercion refuses and the
  * collection targets, which coerce the elements implicitly.
+ *
+ * The whole policy, one character per pair, read from this switch by calling it for every (src, dst, mode) at run
+ * time (SA build; the server build differs in the six object cells OBJECT <- OBJECT, POINTER, VOBJ, OID and
+ * VOBJ <- OBJECT, OID <- OID, which are '.' there). Row = dst, column = src, both in DB_TYPE order, so a cell is
+ * indexable as well as readable. When a case changes, change its character.
+ *
+ *    .  the pair does not convert in any mode     =  the same type: nullptr, nothing to convert
+ *    o  one converter in every mode (the collection targets: IMPLICIT takes the variant coercing the elements)
+ *    c  converts in every mode; COMPARE and OPERAND take the strict converter, which refuses a result the value
+ *       does not equal - a fraction into an integer, a time of day dropped from a date, DOUBLE or MONETARY
+ *       narrowed to FLOAT (an overflow is refused in every mode)
+ *    a  ASSIGN and IMPLICIT convert; COMPARE and OPERAND refuse the pair (the conversion drops a part of the
+ *       value or parses a name, so it cannot stand as an equivalence between operands; a CAST may)
+ *    upper case (O C A): IMPLICIT refuses it as well (TP_IMPLICIT_COERCION_NOT_ALLOWED): a string only to
+ *       string, date/time, number or ENUM; only a string or an ENUM to a string; a LOB never. 'A' is then
+ *       ASSIGN only.
+ *
+ *                            NIFDVOSMSETTDMVSPESVODNBVCNVRMTBDBCETTDDJ
+ *                            UNLOABEUELIIAOAUORHOIBUIAHCAEIAIALLNIIAAS
+ *                            LTOURJTLQOMMTNRBIROBD_MTRAHRSDBGTOOUMMTTO
+ *                                      1111111111222222222233333333334
+ *                            01234567890123456789012345678901234567890   src ->
+ *  NULL                 0  =........................................
+ *  INTEGER              1  .=ccc........c....c...c..c.....c...o....o
+ *  FLOAT                2  .c=cc........c....c...c..c.....c...o....o
+ *  DOUBLE               3  .cc=c........c....c...c..c.....c...o....o
+ *  VARCHAR              4  .OOOo.....OOOO....O...OOOo.....OO.AoOOOOO
+ *  OBJECT               5  .....o..........o..oo....................
+ *  SET                  6  ......ooo................................
+ *  MULTISET             7  ......ooo................................
+ *  SEQUENCE             8  ......ooo................................
+ *  ELO                  9  .........=...............................
+ *  TIME                10  .aaac.....=a.a....a......c.....aa..aaaaao
+ *  TIMESTAMP           11  .aaac......=ca....a...a..c.....ac..acccco
+ *  DATE                12  ....c......c=............c......c..acccco
+ *  MONETARY            13  .cccc........=....c...c..c.....c...o....o
+ *  VARIABLE            14  .........................................
+ *  SUB                 15  .........................................
+ *  POINTER             16  ................=........................
+ *  ERROR               17  .................=.......................
+ *  SHORT               18  .cccc........c....=...c..c.....c...o....o
+ *  VOBJ                19  .....o.............oo....................
+ *  OID                 20  ....................o....................
+ *  DB_VALUE            21  .........................................
+ *  NUMERIC             22  .cccc........c....c...c..c.....c...o....o
+ *  BIT                 23  ....O..................ooO.......A.o....o
+ *  VARBIT              24  ....O..................ooO.......A.o....o
+ *  CHAR                25  .OOOo.....OOOO....O...OOOo.....OO.AoOOOOO
+ *  NCHAR_DEPRECATED    26  .........................................
+ *  VARNCHAR_DEPRECATED 27  .........................................
+ *  RESULTSET           28  ............................=............
+ *  MIDXKEY             29  .........................................
+ *  TABLE               30  .........................................
+ *  BIGINT              31  .cccc........c....c...c..c.....=...o....o
+ *  DATETIME            32  ....c......cc............c......=..acccco
+ *  BLOB                33  ....A..................AAA.......=.A....O
+ *  CLOB                34  ....A....................A........=A....O
+ *  ENUMERATION         35  .oooo.....oooo....o...oooo.....ooAAoooooo
+ *  TIMESTAMPTZ         36  .aaac......cca....a...a..c.....ac..a=ccco
+ *  TIMESTAMPLTZ        37  .aaac......cca....a...a..c.....ac..ac=cco
+ *  DATETIMETZ          38  ....c......cc............c......c..acc=co
+ *  DATETIMELTZ         39  ....c......cc............c......c..accc=o
+ *  JSON                40  .oooO.............o...o..O.....o........o
+ *
+ *  125 o, 115 c, 55 a (58 cells upper case), 21 =, 1365 '.'. JSON is one column but several inside:
+ *  tp_value_convert_json_scalar_to_<dst> accepts some scalar kinds only (a DATE takes DB_JSON_STRING alone); a kind not
+ *  listed is DOMAIN_INCOMPATIBLE at the value.
  */
 template <DOMAIN_CONVERT_MODE MODE>
 static TP_VALUE_CONVERTER
