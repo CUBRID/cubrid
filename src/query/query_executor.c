@@ -8392,15 +8392,20 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
  *
  * Rewind a partitioned scan driven per outer row to its first partition for
  * the next outer row: a nested-loop SEMI/ANTI inner, or a following join after
- * one that has more than one partition left (CBRD-27493; with a single
- * partition the current-block reset is already a rewind).  Other inners keep
- * the normal current-block reset.
+ * one (CBRD-27493).  A following join with a single partition left keeps the
+ * current-block reset, and is reopened on that partition only when the block
+ * iterator's close path has cleared its curr_spec (and curent): left alone,
+ * qexec_next_scan_block would open the root class, whose heap is empty, and no
+ * block iteration moves a following join on to its partition.  Other inners
+ * keep the normal current-block reset.
  */
 SCAN_CODE
 qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner)
 {
   if ((XASL_IS_NL_SEMI_OR_ANTI (inner) && inner->spec_list != NULL && inner->spec_list->parts != NULL)
-      || (XASL_IS_FLAGED (inner, XASL_NL_FOLLOWING_JOIN) && QEXEC_IS_MULTI_PARTITION_SPEC (inner->spec_list)))
+      || (XASL_IS_FLAGED (inner, XASL_NL_FOLLOWING_JOIN)
+	  && (QEXEC_IS_MULTI_PARTITION_SPEC (inner->spec_list)
+	      || (inner->curr_spec == NULL && inner->spec_list != NULL && inner->spec_list->parts != NULL))))
     {
       ACCESS_SPEC_TYPE *spec = inner->curr_spec;
       SCAN_CODE part_scan;
