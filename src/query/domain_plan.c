@@ -102,6 +102,7 @@ struct DOMAIN_LOAD_ENTRY
    * scope ([1]: the value an aggregate adds), and for a correlated one the block whose scans fix it */
   REGU_VARIABLE *temporary_operand[2];
   XASL_NODE *temporary_scope[2];
+  const AGGREGATE_TYPE *temporary_aggregate;	/* a SUM or AVG: the function */
 };
 struct DOMAIN_LOAD_BINDING
 {
@@ -1819,6 +1820,7 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 		  /* the value SUM and AVG add, when a scope fixes it (domain_plan_add_temporaries) */
 		  load_entry->temporary_operand[1] = operand;
 		  load_entry->temporary_scope[1] = domain_outer_scope (ctx, operand);
+		  load_entry->temporary_aggregate = agg;
 		}
 	    }
 	}
@@ -3734,6 +3736,52 @@ domain_plan_add_temporaries (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx,
       return false;
     }
   memcpy (plan->temporary_scope, ctx->temporary_scopes, sizeof (*plan->temporary_scope) * plan->n_temporaries);
+  /* the constants among them, which resolve_domains converts before the main block */
+  for (int pass = 0; pass < 2; pass++)
+    {
+      int n = 0;
+      for (DOMAIN_LOAD_ENTRY * r = ctx->head; r != NULL; r = r->next)
+	{
+	  /* the entries the loop above gave temporaries: any other item's union holds no temporaries */
+	  if (r->alias != NULL || (r->temporary_operand[0] == NULL && r->temporary_operand[1] == NULL))
+	    {
+	      continue;
+	    }
+	  const DOMAIN_PLAN_ITEM *item = &plan->items[r->index];
+	  assert (!(item->flags & DOMAIN_PLAN_ITEM_COMPARES));
+	  for (int i = 0; i < 2; i++)
+	    {
+	      if (item->temporaries[i] < 0 || ctx->temporary_scopes[item->temporaries[i]] != DOMAIN_SCOPE_EXECUTION)
+		{
+		  continue;
+		}
+	      if (pass == 1)
+		{
+		  DOMAIN_PLAN_CONSTANT_OPERAND *constant = &plan->constant_operands[n];
+		  constant->item = item;
+		  constant->operand = r->temporary_operand[i];
+		  constant->aggregate = r->cold.ctx == DOMAIN_CTX_AGG ? r->temporary_aggregate : NULL;
+		  constant->operand_index = i;
+		  constant->temporary = item->temporaries[i];
+		}
+	      n++;
+	    }
+	}
+      if (pass == 0)
+	{
+	  if (n == 0)
+	    {
+	      break;
+	    }
+	  plan->constant_operands =
+	    (DOMAIN_PLAN_CONSTANT_OPERAND *) domain_plan_alloc (thread_p, n, sizeof (*plan->constant_operands));
+	  if (plan->constant_operands == NULL)
+	    {
+	      return false;
+	    }
+	  plan->n_constant_operands = n;
+	}
+    }
   return true;
 }
 

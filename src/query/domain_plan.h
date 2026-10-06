@@ -70,6 +70,7 @@ struct regu_variable_node;
 namespace cubxasl
 {
   struct pred_expr;
+  struct aggregate_list_node;
 }
 
 enum DOMAIN_OPERAND_CLASS
@@ -310,6 +311,18 @@ struct DOMAIN_PLAN_CONSTANT_EXPRESSION
   struct regu_variable_node *regu;
 };
 
+/* A constant an addition, subtraction, multiplication or division converts for its operand coercion, or the constant a
+ * SUM or AVG converts for the values it adds after the first: an execution temporary of the execution's scope, which
+ * resolve_domains converts before the main block (qexec_convert_constant_operands). */
+struct DOMAIN_PLAN_CONSTANT_OPERAND
+{
+  const DOMAIN_PLAN_ITEM *item;	/* the arithmetic node's, or the aggregate's */
+  const struct regu_variable_node *operand;	/* the constant: a literal, a bind or a constant expression */
+  const cubxasl::aggregate_list_node *aggregate;	/* the SUM or AVG; NULL for an arithmetic node */
+  int operand_index;		/* the arithmetic node's operand, 0 or 1; 1 for an aggregate */
+  int temporary;		/* its domain_execution.temporaries index */
+};
+
 /* One column of one bound of a key range. */
 struct domain_plan_key_elem
 {
@@ -446,6 +459,9 @@ struct domain_plan
   int n_temporaries;
   int *temporary_scope;		/* [n_temporaries] */
   int n_scopes;			/* the execution's and one per such block */
+  int n_constant_operands;
+  DOMAIN_PLAN_CONSTANT_OPERAND *constant_operands;	/* the temporaries of the execution's scope, which
+							 * resolve_domains converts */
 };
 
 /* The scope a constant is fixed in: the execution */
@@ -454,8 +470,10 @@ const int DOMAIN_SCOPE_EXECUTION = 0;
 /*
  * A value converted once for a scope: the row converts it only when the scope has not been
  * entered or the conversion failed, and the outcome follows from the row's own conversion. A scope's generation
- * grows at each entry, so a value converted in an earlier one is not read. The first read in an generation converts it,
- * every other read takes converted after one comparison of generations (qexec_execution_temporary).
+ * grows at each entry, so a value converted in an earlier one is not read. A constant's (the execution's scope) is
+ * converted by resolve_domains before the main block, its failure resolve_domains' error; a correlated value's by the
+ * first read in a generation. Every other read takes converted after one comparison of generations
+ * (qexec_execution_temporary).
  */
 struct DOMAIN_EXECUTION_TEMPORARY
 {

@@ -41,8 +41,10 @@
 #include "qfile_tuple_layout.h"
 #include "query_aggregate.hpp"
 #include "query_evaluator.h"
+#include "query_opfunc.h"
 #include "session.h"
 #include "set_object.h"
+#include "system_parameter.h"
 #include "thread_entry.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -360,7 +362,7 @@ qexec_init_execution_temporaries (const int *temporary_scope, DOMAIN_EXECUTION_S
  * qexec_copy_resolved_domains () - the resolved domain table and the execution domain state of a PX worker's copy of an
  *   execution state, the part of qexec_deep_copy_xasl_state that copies what the leader's execution resolved: the
  *   resolutions and the values as the worker's own, the node state of the leader's nodes the worker runs (none over
- *   its own load), no value converted once per scope yet
+ *   its own load), the constants converted for the execution and no other value converted once per scope yet
  *   return: NO_ERROR or ER_FAILED; on ER_FAILED the copy holds nothing to free
  *   from(in): the leader's execution state, its domains resolved
  *   to(out): the copy whose table this fills
@@ -383,8 +385,29 @@ qexec_copy_resolved_domains (THREAD_ENTRY * thread_p, const XASL_STATE * from, X
       return ER_FAILED;
     }
   resolved.owner = thread_p;
-  /* the worker converts its own values once per scope, and enters a block's scope when its own scan starts */
+  /* the worker converts its own values once per scope, and enters a block's scope when its own scan starts; the
+   * constants resolve_domains converted are its copies */
   qexec_init_execution_temporaries (src_execution.n_temporaries > 0 ? src.plan->temporary_scope : NULL, execution);
+  for (int h = 0; h < src_execution.n_temporaries; h++)
+    {
+      const DOMAIN_EXECUTION_TEMPORARY & from_entry = src_execution.temporaries[h];
+      if (from_entry.scope != DOMAIN_SCOPE_EXECUTION || from_entry.converted == NULL)
+	{
+	  continue;
+	}
+      DOMAIN_EXECUTION_TEMPORARY & entry = execution.temporaries[h];
+      if (pr_clone_value (&from_entry.value, &entry.value) != NO_ERROR)
+	{
+	  qexec_clear_resolved_domains (thread_p, to);
+	  return ER_FAILED;
+	}
+      entry.generation = execution.scope_generations[DOMAIN_SCOPE_EXECUTION];
+      entry.converted = &entry.value;
+#if !defined (NDEBUG)
+      entry.conv = from_entry.conv;
+      entry.target = from_entry.target;
+#endif
+    }
   for (int k = 0; k < src.n_elements; k++)
     {
       if (qexec_copy_elements (thread_p, &src.elements[k], &resolved.elements[k]) != NO_ERROR)
@@ -499,7 +522,10 @@ enum DOMAIN_DEFERRED_ERROR_KIND
   DOMAIN_DEFERRED_ERROR_COMPARE,	/* a term's constant conversion: compare, failed, comparison.key_range */
   DOMAIN_DEFERRED_ERROR_KEY,	/* a key constant no index key holds: key.first, key.second = the two types of the key
 				 * search's -181 in its order */
-  DOMAIN_DEFERRED_ERROR_ARGUMENT_TYPE	/* a MEDIAN / PERCENTILE value without an argument type: argument_type.function */
+  DOMAIN_DEFERRED_ERROR_ARGUMENT_TYPE,	/* a MEDIAN / PERCENTILE value without an argument type:
+					 * argument_type.function */
+  DOMAIN_DEFERRED_ERROR_OPERAND	/* a constant operand's conversion: index = plan->constant_operands index,
+				 * failed = its TP_DOMAIN_STATUS */
 };
 
 struct DOMAIN_DEFERRED_ERROR
@@ -523,7 +549,8 @@ struct DOMAIN_DEFERRED_ERROR
     } argument_type;
   };				/* what the kind's error needs */
   unsigned char kind;		/* DOMAIN_DEFERRED_ERROR_KIND */
-  unsigned char failed;		/* COMPARE: bit i, constant side i does not convert */
+  unsigned char failed;		/* COMPARE: bit i, constant side i does not convert; OPERAND: the conversion's
+				 * status */
 };
 static_assert (sizeof (DOMAIN_DEFERRED_ERROR) <= 32, "deferred error layout");
 
@@ -2627,6 +2654,139 @@ qexec_constant_branch_reached (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
   return reached ? 1 : 0;
 }
 
+static const TP_DOMAIN *qexec_aggregate_accumulator (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p);
+static void qexec_sum_avg_operand_coercion (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p,
+					    const TP_DOMAIN * accumulator, DOMAIN_OPERAND_COERCION * coercion);
+
+/*
+ * qexec_constant_operand_conversion () - what converts a constant operand, as the row reads it: the arithmetic node's
+ *   operand coercion (fetch_arith_binary's plan), or the one a SUM or AVG's setup resolves for the values it adds after
+ *   the first (qexec_setup_aggregate_accumulators)
+ *   return: the constant's value; NULL when nothing converts it - no converter, a NULL, a constant expression whose
+ *	     computation failed below a constant branch, an aggregate its setup refuses
+ *   conv(out), target(out): the converter and its target
+ */
+static const DB_VALUE *
+qexec_constant_operand_conversion (const VAL_DESCR * vd, const DOMAIN_PLAN_CONSTANT_OPERAND * constant,
+				   TP_VALUE_CONVERTER * conv, const TP_DOMAIN ** target)
+{
+  const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved_domain;
+  const DOMAIN_PLAN_ITEM *item = constant->item;
+  *conv = NULL;
+  *target = NULL;
+  if (constant->aggregate == NULL)
+    {
+      const RESOLVED_DOMAIN *plan = (item->flags & DOMAIN_PLAN_LATE_BIND)
+	&& !(item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION) ? qexec_late_bind_domain (vd, item) : &item->fixed;
+      if (plan != NULL)
+	{
+	  *conv = plan->conv[constant->operand_index];
+	  *target = plan->operand_domain[constant->operand_index];
+	}
+    }
+  else
+    {
+      const TP_DOMAIN *accumulator = qexec_aggregate_accumulator (vd, constant->aggregate);
+      if (accumulator != NULL && TP_DOMAIN_TYPE (accumulator) != DB_TYPE_VARIABLE
+	  && TP_DOMAIN_TYPE (accumulator) != DB_TYPE_NULL)
+	{
+	  DOMAIN_OPERAND_COERCION coercion = { };
+	  qexec_sum_avg_operand_coercion (vd, constant->aggregate, accumulator, &coercion);
+	  *conv = coercion.conv[1];
+	  *target = coercion.operand_domain[1];
+	}
+    }
+  if (*conv == NULL)
+    {
+      return NULL;
+    }
+  /* the value the row reads: a literal's own, a bind's reference value, a constant expression's once evaluated */
+  const REGU_VARIABLE *operand = constant->operand;
+  if (operand->type == TYPE_DBVAL)
+    {
+      return DB_IS_NULL (&operand->value.dbval) ? NULL : &operand->value.dbval;
+    }
+  const DOMAIN_PLAN_ITEM *source = (operand->type == TYPE_INARITH || operand->type == TYPE_OUTARITH)
+    ? operand->value.arithptr->plan_item : operand->plan_item;
+  if (source == NULL || source->ref < 0
+      || (operand->type != TYPE_POS_VALUE && resolved.value_states[source->ref] != DOMAIN_VALUE_EVALUATED))
+    {
+      return NULL;
+    }
+  return DB_IS_NULL (&resolved.vals[source->ref]) ? NULL : &resolved.vals[source->ref];
+}
+
+/*
+ * qexec_convert_constant_operands () - resolve_domains' constant operand step: each constant an arithmetic node or a
+ *   SUM or AVG converts (plan->constant_operands) converted once into its execution temporary, before any row
+ *   return: NO_ERROR, or the constant's conversion error
+ *
+ * A failure is resolve_domains' error, as a constant's conversion is everywhere else: whether any row reaches the node
+ * does not matter. Under return_null_on_function_errors the value is NULL with no error, which the row's own
+ * conversion gave too; below a constant branch, the error waits for qexec_raise_deferred_errors. The parameter is read
+ * only when a conversion fails.
+ */
+static int
+qexec_convert_constant_operands (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, DOMAIN_DEFERRED_ERRORS & deferred)
+{
+  const DOMAIN_PLAN *plan = xasl_state->resolved_domain.plan;
+  DOMAIN_EXECUTION_STATE & execution = xasl_state->domain_execution;
+  for (int k = 0; plan != NULL && k < plan->n_constant_operands; k++)
+    {
+      const DOMAIN_PLAN_CONSTANT_OPERAND *constant = &plan->constant_operands[k];
+      TP_VALUE_CONVERTER conv;
+      const TP_DOMAIN *target;
+      const DB_VALUE *value = qexec_constant_operand_conversion (&xasl_state->vd, constant, &conv, &target);
+      if (value == NULL)
+	{
+	  continue;
+	}
+      DOMAIN_EXECUTION_TEMPORARY *entry = &execution.temporaries[constant->temporary];
+      assert (entry->scope == DOMAIN_SCOPE_EXECUTION);
+      if (entry->generation == execution.scope_generations[DOMAIN_SCOPE_EXECUTION])
+	{
+	  /* the constant expression step evaluated the node over this constant (it is a constant expression itself)
+	   * and converted the constant through the row's read: that step's outcome stands */
+	  continue;
+	}
+      er_stack_push ();
+      const TP_DOMAIN_STATUS status = tp_value_convert (conv, target, value, &entry->value);
+      er_stack_pop ();
+      if (status != DOMAIN_COMPATIBLE)
+	{
+	  pr_clear_value (&entry->value);
+	  const int constant_branch = plan->items_cold[constant->item - plan->items].constant_branch;
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	    {
+	      db_make_null (&entry->value);
+	    }
+	  else if (constant_branch >= 0)
+	    {
+	      /* no row reaches an unreached branch's node: the entry stays unconverted */
+	      const DOMAIN_DEFERRED_ERROR deferred_error =
+		qexec_deferred_error (NULL, constant_branch, k, DOMAIN_DEFERRED_ERROR_OPERAND, (unsigned char) status);
+	      const int error = qexec_defer_constant_error (thread_p, deferred, deferred_error);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	      continue;
+	    }
+	  else
+	    {
+	      return qdata_operand_coercion_error (status, value, target);
+	    }
+	}
+      entry->generation = execution.scope_generations[DOMAIN_SCOPE_EXECUTION];
+      entry->converted = &entry->value;
+#if !defined (NDEBUG)
+      entry->conv = conv;
+      entry->target = target;
+#endif
+    }
+  return NO_ERROR;
+}
+
 /*
  * qexec_raise_deferred_errors () - resolve_domains' end: the first failure below constant branches a row reaches is
  *   the execution's error, raised again as it happened; the others lie where no data reaches, and no row raises
@@ -2682,6 +2842,17 @@ qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, c
 		  "DOUBLE, DATETIME or TIME");
 	  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	  break;
+	case DOMAIN_DEFERRED_ERROR_OPERAND:
+	  {
+	    TP_VALUE_CONVERTER conv;
+	    const TP_DOMAIN *target;
+	    const DB_VALUE *value =
+	      qexec_constant_operand_conversion (&xasl_state->vd, &plan->constant_operands[deferred_error->index], &conv,
+						 &target);
+	    assert (value != NULL);
+	    error = qdata_operand_coercion_error ((TP_DOMAIN_STATUS) deferred_error->failed, value, target);
+	  }
+	  break;
 	default:
 	  assert (false);
 	  break;
@@ -2721,6 +2892,8 @@ qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, c
  *   qexec_resolve_session_variables    each session variable's type for the statement, then the resolutions over its
  *                                      reads
  *   qexec_resolve_index_keys           the index scans' key elements and key comparison tables
+ *   qexec_convert_constant_operands    the constants arithmetic nodes and SUM / AVG convert, into their execution
+ *                                      temporaries
  *   qexec_raise_deferred_errors        the failures below constant branches, raised if a row reaches them
  */
 static int
@@ -2981,6 +3154,13 @@ qexec_resolve_domains_internal (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_
 	{
 	  return error;
 	}
+    }
+
+  /* the constant operand step: after every resolution its operand coercions read */
+  error = qexec_convert_constant_operands (thread_p, xasl_state, deferred);
+  if (error != NO_ERROR)
+    {
+      return error;
     }
 
   /* the failures below constant branches are resolve_domains' errors if the constant conditions around them let
@@ -3529,7 +3709,48 @@ qexec_apply_aggregate_resolved_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * ag
 	}
     }
   qexec_set_node_domain (vd, agg_p->plan_item, agg_p->domain, resolved);
-  return late_bind_node->operand_domain[0] != NULL ? late_bind_node->operand_domain[0] : resolved;
+  return qexec_aggregate_accumulator (vd, agg_p);
+}
+
+/*
+ * qexec_aggregate_accumulator () - the accumulator domain an aggregate's setup derives from its argument's
+ *   (qexec_setup_aggregate_domains), read without setting anything up: resolve_domains converts the constant a SUM or
+ *   AVG adds before any setup (qexec_convert_constant_operands)
+ *   return: the resolved operand domain or the resolved domain of a function resolve_domains resolves, the compiled
+ *	     accumulator of one it does not; NULL for a function that sees only NULLs or has none
+ */
+static const TP_DOMAIN *
+qexec_aggregate_accumulator (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
+{
+  const DOMAIN_PLAN_ITEM *item = agg_p->plan_item;
+  const RESOLVED_DOMAIN *late_bind_node = qexec_late_bind_domain (vd, item);
+  if (late_bind_node != NULL)
+    {
+      const TP_DOMAIN *resolved = qexec_resolved_domain (vd, item);
+      return resolved == NULL
+	|| late_bind_node->operand_domain[0] == NULL ? resolved : late_bind_node->operand_domain[0];
+    }
+  return item != NULL && (item->flags & DOMAIN_PLAN_ACCUMULATOR) ? item->fixed.operand_domain[0] : NULL;
+}
+
+/*
+ * qexec_sum_avg_operand_coercion () - the operand coercion of a value a SUM or AVG adds after the first - a string into
+ *   the DOUBLE accumulator - from the accumulator and the argument's domain in this execution; none when the argument
+ *   has no type
+ */
+static void
+qexec_sum_avg_operand_coercion (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p, const TP_DOMAIN * accumulator,
+				DOMAIN_OPERAND_COERCION * coercion)
+{
+  const TP_DOMAIN *argument = qexec_value_domain (vd, agg_p->operands != NULL ? &agg_p->operands->value : NULL);
+  if (argument != NULL && TP_DOMAIN_TYPE (argument) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL)
+    {
+      const DOMAIN_OPERAND operands[2] = {
+	{accumulator, TP_DOMAIN_TYPE (accumulator), -1, false},
+	{argument, TP_DOMAIN_TYPE (argument), -1, false}
+      };
+      domain_resolve_operand_coercion (T_ADD, operands, coercion);
+    }
 }
 
 /* Whether a MEDIAN / PERCENTILE argument holds only NULLs: resolve_domains resolved it has no value - a session
@@ -3624,20 +3845,11 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
       accumulator_domain->value_dom = (TP_DOMAIN *) accumulator;
       accumulator_domain->value2_dom = &tp_Null_domain;
       {
-	/* a value added after the first takes the addition's operand coercion for its type - a string into the
-	 * DOUBLE accumulator - resolved here from the argument's domain in this execution */
-	const TP_DOMAIN *argument = qexec_value_domain (vd, agg_p->operands != NULL ? &agg_p->operands->value : NULL);
-	if (argument != NULL && TP_DOMAIN_TYPE (argument) != DB_TYPE_VARIABLE
-	    && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL)
-	  {
-	    const DOMAIN_OPERAND operands[2] = {
-	      {accumulator, TP_DOMAIN_TYPE (accumulator), -1, false},
-	      {argument, TP_DOMAIN_TYPE (argument), -1, false}
-	    };
-	    domain_resolve_operand_coercion (T_ADD, operands, &accumulator_domain->operand_coercion);
-	  }
+	/* a value added after the first takes the addition's operand coercion for its type */
+	qexec_sum_avg_operand_coercion (vd, agg_p, accumulator, &accumulator_domain->operand_coercion);
 	/* a value a scope fixes, which that operand coercion converts, is converted once per scope
-	 * (qexec_execution_temporary): the rows read the index set here, not the plan item and the operand coercion */
+	 * (qexec_execution_temporary; a constant by resolve_domains): the rows read the index set here, not the plan
+	 * item and the operand coercion */
 	const DOMAIN_PLAN_ITEM *item = agg_p->plan_item;
 	assert (item == NULL || !(item->flags & DOMAIN_PLAN_ITEM_COMPARES));
 	if (item != NULL && item->temporaries[1] >= 0 && accumulator_domain->operand_coercion.conv[1] != NULL)

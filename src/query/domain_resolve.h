@@ -331,8 +331,9 @@ extern const DB_VALUE *qexec_convert_execution_temporary (THREAD_ENTRY * thread_
  *   conv(in), target(in): the converter the row would run, and its target: the execution's, the same at every read
  *   value(in): the value, not NULL
  *
- * The first read in the scope's generation converts the value (qexec_convert_execution_temporary). Every other read is
- * one comparison of generations and the pointer that read left, which is NULL in a scope never entered: no owner,
+ * resolve_domains converted a constant before the main block (qexec_convert_constant_operands); the first read in the
+ * scope's generation converts a correlated value (qexec_convert_execution_temporary). Every other read is one
+ * comparison of generations and the pointer that conversion left, which is NULL in a scope never entered: no owner,
  * converter or target is compared on the row. Only the thread that owns the execution's state reads it.
  */
 inline const DB_VALUE *

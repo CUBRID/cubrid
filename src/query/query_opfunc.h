@@ -75,6 +75,8 @@ extern int qdata_divide_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * 
 extern int qdata_unary_minus_dbval (DB_VALUE * res, DB_VALUE * dbval1);
 extern int qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval, DB_VALUE * res, tp_domain * domain);
 extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
+/* The error of an operand coercion that fails, as tp_value_auto_cast sets it */
+extern int qdata_operand_coercion_error (TP_DOMAIN_STATUS status, const DB_VALUE * value, const TP_DOMAIN * target);
 /* T_ADD, T_SUB, T_MUL or T_DIV over its operands' operand coercion, resolved before any row
  * (domain_resolve_operand_coercion): conv[i] converts operand i into operand_domain[i] - a RESOLVED_DOMAIN's arrays
  * or a DOMAIN_OPERAND_COERCION's; conv NULL converts nothing; temporaries[i]: operand i converted once for its scope

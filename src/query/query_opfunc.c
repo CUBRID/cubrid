@@ -2349,7 +2349,7 @@ qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domai
 
 /* The error of an operand coercion that fails, as tp_value_auto_cast sets it: it names the value the cast took - for an
  * ENUM added to a string, its name, which is cast to VARCHAR first */
-static int
+int
 qdata_operand_coercion_error (TP_DOMAIN_STATUS status, const DB_VALUE * value, const TP_DOMAIN * target)
 {
   if (DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_ENUMERATION)
