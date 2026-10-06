@@ -339,6 +339,10 @@ uc_start (char *err_msg)
     }
 
   admin_log_write (admin_log_file, "start");
+  if (admin_warn_msg[0] != '\0')
+    {
+      admin_log_write (admin_log_file, admin_warn_msg);
+    }
 
   return 0;
 }
@@ -462,6 +466,10 @@ uc_on (const char *br_name, char *err_msg)
 
   sprintf (msg_buf, "%s on", br_name);
   admin_log_write (admin_log_file, msg_buf);
+  if (admin_warn_msg[0] != '\0')
+    {
+      admin_log_write (admin_log_file, admin_warn_msg);
+    }
 
   return 0;
 }
