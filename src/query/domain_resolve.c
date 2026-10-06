@@ -2847,7 +2847,8 @@ qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, c
 	    TP_VALUE_CONVERTER conv;
 	    const TP_DOMAIN *target;
 	    const DB_VALUE *value =
-	      qexec_constant_operand_conversion (&xasl_state->vd, &plan->constant_operands[deferred_error->index], &conv,
+	      qexec_constant_operand_conversion (&xasl_state->vd, &plan->constant_operands[deferred_error->index],
+						 &conv,
 						 &target);
 	    assert (value != NULL);
 	    error = qdata_operand_coercion_error ((TP_DOMAIN_STATUS) deferred_error->failed, value, target);

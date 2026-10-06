@@ -96,9 +96,11 @@ struct DOMAIN_EXECUTION_STATE
 							 * holds and its key sorts (qexec_setup_interpolation_list); NULL */
   int *operand_types;		/* [n_operand_types] an aggregate's or analytic function's operand type (opr_dbtype);
 				 * -1 */
+  // *INDENT-OFF*
   cubxasl::aggregate_accumulator_domain *accumulator_domains;	/* [n_operand_types] an aggregate's accumulator
 								 * domains, an analytic SUM / AVG's operand coercion
 								 * (qexec_accumulator_domain) */
+  // *INDENT-ON*
   unsigned char *first_value_pending;	/* [n_first_value_blocks] whether a block's interpolation first-value check
 					 * is still to run (its g_agg_first_value_block / agg_first_value_block) */
   int n_node_domains;

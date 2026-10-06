@@ -318,7 +318,9 @@ struct DOMAIN_PLAN_CONSTANT_OPERAND
 {
   const DOMAIN_PLAN_ITEM *item;	/* the arithmetic node's, or the aggregate's */
   const struct regu_variable_node *operand;	/* the constant: a literal, a bind or a constant expression */
+  // *INDENT-OFF*
   const cubxasl::aggregate_list_node *aggregate;	/* the SUM or AVG; NULL for an arithmetic node */
+  // *INDENT-ON*
   int operand_index;		/* the arithmetic node's operand, 0 or 1; 1 for an aggregate */
   int temporary;		/* its domain_execution.temporaries index */
 };
