@@ -570,6 +570,7 @@ qo_plan_malloc (QO_ENV * env)
   plan->need_final_sort = false;
   plan->limit_nljoin_guessed_card = 0.0;
   plan->iscan_index_rows = 0.0;
+  plan->iscan_range_rows = 0.0;
   plan->iscan_heap_io = 0.0;
   plan->iscan_descent_cpu = 0.0;
 
@@ -2522,6 +2523,9 @@ qo_iscan_cost (QO_PLAN * planp)
 	}
     }
 
+  /* rows in the key range per probe, covering or not; a SEMI / ANTI idx-join inner stops on the first one */
+  planp->iscan_range_rows = MAX (1.0, (double) QO_NODE_NCARD (nodep) * sel);
+
   /* IO cost to fetch objects.  A covering scan fetches no heap page, so it contributes no
    * per-probe object IO here: its pages are the leaf pages charged below as `leaves` (the
    * landing leaf on the fixed side, the rest per probe), exactly like the non-covering scan's
@@ -3825,7 +3829,7 @@ qo_nljoin_cost (QO_PLAN * planp)
 {
   QO_PLAN *inner, *outer;
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
-  double guessed_result_cardinality, limit_val, outer_card, required_card, inner_scan_card;
+  double guessed_result_cardinality, limit_val, outer_card, required_card, inner_scan_card, inner_fetch_rows;
 
   inner = planp->plan_un.join.inner;
 
@@ -3897,14 +3901,16 @@ qo_nljoin_cost (QO_PLAN * planp)
     }
 
   inner_scan_card = guessed_result_cardinality;
+  inner_fetch_rows = guessed_result_cardinality * MAX (1.0, inner->iscan_index_rows);
 
-  if (planp->plan_un.join.join_type == JOIN_INNER && qo_plan_semi_anti_join_type (inner) != PT_JOIN_NONE
-      && inner->iscan_index_rows > 0.0)
+  if (planp->plan_un.join.join_type == JOIN_INNER && planp->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN
+      && qo_plan_semi_anti_join_type (inner) != PT_JOIN_NONE && inner->iscan_range_rows > 0.0)
     {
-      /* the key range holds matching rows only, so the row the scan stops on is the first one it reads
-       * whichever of the iscan_index_rows it is, and an outer row whose key is absent from the index reads
-       * none at all.  hit_prob is the share of outer rows the inner matches (qo_get_term_hit_prob ()) */
-      inner_scan_card = guessed_result_cardinality * (outer->info)->hit_prob / MAX (1.0, inner->iscan_index_rows);
+      /* the key range of an idx-join inner is the join term, so every row in it matches and the scan stops on
+       * the first one it reads; an outer row whose key is absent from the index reads none at all.  hit_prob is
+       * the share of outer rows the inner matches (qo_get_term_hit_prob ()) */
+      inner_scan_card = guessed_result_cardinality * (outer->info)->hit_prob / inner->iscan_range_rows;
+      inner_fetch_rows = guessed_result_cardinality * (outer->info)->hit_prob;
     }
 
   /* iscan_descent_cpu is the per-probe root-to-leaf descent (zero for non-iscan inners):
@@ -3928,8 +3934,9 @@ qo_nljoin_cost (QO_PLAN * planp)
       /* probes x rows matching the index conditions per probe (BEFORE non-index filters --
        * those rows' pages are fetched regardless of whether the filter later rejects them).
        * Using the filtered join cardinality here under-counted the fetches of strongly-filtered
-       * joins and made orders containing them look too cheap. */
-      N = inner_scan_card * MAX (1.0, inner->iscan_index_rows);
+       * joins and made orders containing them look too cheap.  A SEMI / ANTI idx-join inner fetches
+       * one row per matching outer row (inner_fetch_rows above). */
+      N = inner_fetch_rows;
 
       /* Saturate the heap side and the leaf side separately, each against its own object size:
        * the heap share (iscan_heap_io, recorded by qo_iscan_cost) against the inner table's

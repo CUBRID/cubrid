@@ -247,6 +247,9 @@ struct qo_plan
   double limit_nljoin_guessed_card;
   double iscan_index_rows;	/* index-condition-only rows per probe (before non-index filters); set by
 				   qo_iscan_cost, consumed by qo_nljoin_cost for the repeated-probe N */
+  double iscan_range_rows;	/* rows in the key range per probe, covering scans included; set by
+				   qo_iscan_cost, consumed by qo_nljoin_cost for a SEMI / ANTI idx-join inner,
+				   which stops on the first row of the range */
   double iscan_heap_io;		/* heap-page share of variable_io_cost per probe (0 for covering scans);
 				   set by qo_iscan_cost. qo_nljoin_cost saturates only this share with the
 				   repeated-probe (Mackert-Lohman) correction -- the correction models heap
