@@ -96,8 +96,13 @@
  * ISCAN_OID_ACCESS_OVERHEAD if either is recalibrated. */
 #define BTREE_DESCENT_PAGE_OVERHEAD 50
 #define MJ_CPU_OVERHEAD_FACTOR 20
-#define HJ_BUILD_CPU_OVERHEAD_FACTOR 40
-#define HJ_PROBE_CPU_OVERHEAD_FACTOR 20
+/* Per-row hash join CPU weights, in QO_CPU_WEIGHT units. Re-chosen together with the real buffer size
+ * in the repeated-probe saturation (CBRD-27474): once large-table nested-loop probes are no longer
+ * priced as uncached reads, 40/20 (and the spill surcharge below) priced every large-input hash join
+ * far above its measured cost, so the cheap probes won chains they should lose (JOB 8c/8d/19d).
+ * Chosen by a plan-space search over JOB 113 + TPC-H SF1 on a 16G buffer. */
+#define HJ_BUILD_CPU_OVERHEAD_FACTOR 20
+#define HJ_PROBE_CPU_OVERHEAD_FACTOR 5
 /* Fixed set-up cost of one hash join (hash table allocation, partition bookkeeping), in the
  * same unit as the per-row terms above.  Calibrated on the release build against a
  * buffer-resident 10,000-row table (cbrd_25060 data): a hash join of 1,000 x 1,000 rows took
@@ -120,7 +125,8 @@
  * nested loop (22,415 + 2 * (C - 100) > 23,032 needs C > 408).  Re-measure JOB when either
  * bound moves. */
 #define HJ_MEM_ALLOC_CONSTANT 800
-#define HJ_FILE_IO_WEIGHT 0.5	/* per-row IO weight for partitioned hash-join spill */
+#define HJ_FILE_IO_WEIGHT 0	/* per-row IO weight for partitioned hash-join spill; 0 since CBRD-27474: any
+				   nonzero value kept JOB 19d on a 60s nested loop, the build weight carries it */
 #define HJ_PARTITION_FILL_FACTOR 0.8	/* must match PARTITION_FILL_FACTOR in query_hash_join.c:
 					   the executor spills to a partitioned hash join once the build
 					   entries exceed mem_limit * fill-factor, not the raw mem_limit */
@@ -129,10 +135,10 @@
 					   SERVER/SA-only (query_hash_scan.h) so it cannot be sizeof'd in the
 					   client-side optimizer; a static_assert there guards against drift. */
 #define ISCAN_IO_HIT_RATIO 0.5
-#define QO_EFFECTIVE_CACHE_PAGES 32768.0	/* pages assumed cachable for the repeated-probe (Mackert-Lohman)
-						   correction in qo_nljoin_cost (); matches the data_buffer_pages
-						   default (512M / 16K). The real parameter is server-only, so the
-						   client-side optimizer cannot read it. */
+#define QO_EFFECTIVE_CACHE_PAGES 32768.0	/* floor (pages) of the cache assumed by the repeated-probe
+						   (Mackert-Lohman) correction in qo_nljoin_cost (): the
+						   data_buffer_pages default (512M / 16K). The real buffer size is
+						   used when larger; see qo_mackert_lohman_pages () */
 #define SORT_MERGE_FAN_IN 4.0	/* the executor merges at most SORT_MAX_HALF_FILES (4) runs per pass
 				   (external_sort.c); that file is server-only, so the value cannot be
 				   included here -- keep in sync manually. */
@@ -3725,9 +3731,11 @@ qo_can_apply_limit_card (QO_ENV * env)
 static double
 qo_mackert_lohman_pages (double T, double N)
 {
-  /* effective cache: matches the data_buffer_pages default (server-only parameter, not
-   * visible to the client-side optimizer) */
-  double b = QO_EFFECTIVE_CACHE_PAGES;
+  /* effective cache: the data buffer pool size in pages (data_buffer_pages, the value pgbuf sizes the
+   * pool with). The parameter is server-only and carries PRM_FORCE_SERVER, so the client-side optimizer
+   * receives the server's value at connect (sysprm_tune_client_parameters ()). The compile-time default
+   * stays as the floor, so buffers up to 512MB keep the previous costs (CBRD-27474). */
+  double b = MAX (QO_EFFECTIVE_CACHE_PAGES, (double) prm_get_integer_value (PRM_ID_PB_NBUFFERS));
   double lim, pages_fetched;
 
   T = MAX (1.0, T);
