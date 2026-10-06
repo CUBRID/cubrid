@@ -47,6 +47,7 @@
 #include "filter_pred_cache.h"
 #include "heap_file.h"
 #include "heap_oos.hpp"
+#include "heap_pending_oos_values.hpp"
 #include "oos_file.hpp"
 #include "list_file.h"
 #include "log_lsa.hpp"

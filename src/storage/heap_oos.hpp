@@ -29,30 +29,7 @@
 
 #include <vector>
 
-/* Owns only serialized values selected for OOS. Records borrow these allocations
- * until their last reader/finalizer returns; record copies do not transfer ownership. */
-class heap_pending_oos_values
-{
-  public:
-    ~heap_pending_oos_values ();
-    heap_pending_oos_values () = default;
-    heap_pending_oos_values (const heap_pending_oos_values &) = delete;
-    heap_pending_oos_values &operator= (const heap_pending_oos_values &) = delete;
-    int retain (oos_buffer value);
-    std::size_t size () const
-    {
-      return m_values.size ();
-    }
-    std::size_t retained_bytes () const
-    {
-      return m_bytes + m_values.capacity () * sizeof (oos_buffer);
-    }
-    void discard_since (std::size_t count);
-
-  private:
-    std::vector<oos_buffer> m_values;
-    std::size_t m_bytes = 0;
-};
+class heap_pending_oos_values;
 
 /* Decoded reference, not the packed record format. Both alternatives copy into
  * caller-owned storage; callers never borrow a pending payload or a page. */

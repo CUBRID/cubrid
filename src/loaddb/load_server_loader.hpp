@@ -26,7 +26,7 @@
 #include "dbtype_def.h"
 #include "heap_attrinfo.h"
 #include "heap_file.h"
-#include "heap_oos.hpp"
+#include "heap_pending_oos_values.hpp"
 #include "record_descriptor.hpp"
 #include "load_common.hpp"
 #include "memory_private_allocator.hpp"
