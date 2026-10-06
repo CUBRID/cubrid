@@ -39,6 +39,7 @@ set(SA_MODE_TESTS
   test_oos_record_flags
   test_byte_span_writer
   test_oos_tde_gate
+  test_oos_workspace
 )
 
 foreach(test_name ${SA_MODE_TESTS})
@@ -200,15 +201,7 @@ set_tests_properties(
 
 add_subdirectory(sql)
 
-# Exercise the actual SA loader and CSQL workspace routes, which in-process SQL tests do not cover.
-# Like the database setup fixture, this test requires an installed CUBRID on PATH.
-option(UNIT_TEST_OOS_WORKSPACE_CLI "Enable the OOS workspace CLI regression (requires Python 3.7+)" OFF)
-if(UNIT_TEST_OOS_WORKSPACE_CLI)
-  find_package(Python3 3.7 REQUIRED COMPONENTS Interpreter)
-  add_test(NAME test_oos_workspace_cli
-    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/scripts/test_workspace_oos.py"
-  )
-  set_tests_properties(test_oos_workspace_cli PROPERTIES RUN_SERIAL TRUE TIMEOUT 240)
-else()
-  message(STATUS "OOS workspace CLI regression disabled; enable with -DUNIT_TEST_OOS_WORKSPACE_CLI=ON")
-endif()
+# Real standalone loader/workspace routes require installed utilities, like the DB fixtures.
+# Each GoogleTest case owns a private registry and database; never use shared unittestdb here.
+add_test(NAME test_oos_workspace COMMAND test_oos_workspace)
+set_tests_properties(test_oos_workspace PROPERTIES RUN_SERIAL TRUE TIMEOUT 240)
