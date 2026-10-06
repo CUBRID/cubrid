@@ -2315,11 +2315,20 @@ domain_search_key_compare (DOMAIN_SEARCH_KEYS keys, int column, DB_VALUE * value
 	}
       return domain_compare_values (compare, value1, value2, total_order, can_compare);
     }
+  if (keys == DOMAIN_SEARCH_KEYS_OTHER && pairs == NULL)
+    {
+      /* no table (no memory at boot and since): tp_value_compare_with_error answers, as for the other comparisons
+       * that read the table (domain_compare_by_type_pair, domain_resolve_comparison) */
+      return tp_value_compare_with_error (value1, value2, do_coercion, total_order, can_compare);
+    }
   /* the unresolved-domain check (execution): the plan knows whether a column's values take a key other than its own */
   assert (false);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", column,
 	  pr_type_name (key[0].type));
-  *can_compare = false;
+  if (can_compare != NULL)
+    {
+      *can_compare = false;
+    }
   return DB_UNK;
 }
 

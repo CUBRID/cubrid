@@ -7532,7 +7532,6 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const i
     }
 
   assert (status != DOMAIN_ERROR);
-  assert (status != DOMAIN_TRUNCATED);
 
   switch (status)
     {
@@ -7543,6 +7542,7 @@ tp_domain_status_er_set (TP_DOMAIN_STATUS status, const char *file_name, const i
       break;
 
     case DOMAIN_OVERFLOW:
+    case DOMAIN_TRUNCATED:	/* a converter's truncation that no cast accepted: refused as the cast refuses it */
       error = ER_IT_DATA_OVERFLOW;
       er_set (ER_ERROR_SEVERITY, file_name, line_no, error, 1, pr_type_name (TP_DOMAIN_TYPE (domain)));
       break;

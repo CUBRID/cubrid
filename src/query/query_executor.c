@@ -5440,6 +5440,9 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       db_make_bigint (buildlist->g_grbynum_val, 0);
     }
 
+  /* a failure before qexec_initialize_groupby_state leaves through wrapup, which clears the state */
+  memset (&gbstate, 0, sizeof (gbstate));
+
   /* the GROUP BY reads the plan's domains; its aggregates were set up before the scan */
   if (xasl->outptr_list != NULL)
     {
@@ -21634,6 +21637,9 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 
   /* fetch regulist and outlist */
   a_outptr_list = (is_last ? buildlist->a_outptr_list : buildlist->a_outptr_list_interm);
+
+  /* a failure before qexec_initialize_analytic_state leaves through exit_on_error and wrapup, which read the state */
+  memset (&analytic_state, 0, sizeof (analytic_state));
 
   /* the analytic sort keys the compiler left variable: the plan's domains, in a copy the execution owns */
   if (qexec_plan_sort_list_domains (thread_p, &xasl_state->vd, analytic_eval->sort_list, &sort_list) != NO_ERROR)

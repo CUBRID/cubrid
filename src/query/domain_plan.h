@@ -475,6 +475,6 @@ int stx_build_domain_plan (THREAD_ENTRY * thread_p, xasl_node * root, xasl_unpac
  * every comparison its predicate or its expression makes a resolved comparison, two literals resolved from their values
  * and any other side by the key pair table. */
 int domain_plan_stream_compares (THREAD_ENTRY * thread_p, cubxasl::pred_expr * pred, regu_variable_node * regu);
-bool domain_plan_validate (const DOMAIN_PLAN * plan);
+int domain_plan_validate (const DOMAIN_PLAN * plan);
 
 #endif /* _DOMAIN_PLAN_H_ */

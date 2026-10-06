@@ -764,12 +764,11 @@ fetch_convert_to_branch_value (const val_descr * vd, const DOMAIN_PLAN_ITEM * it
       return domain_unresolved_error ("", qexec_item_index (vd, item), type);
     }
   DB_VALUE converted;
-  if (tp_value_convert (converter, resolved_domain->domain, value, &converted) != DOMAIN_COMPATIBLE)
+  const TP_DOMAIN_STATUS status = tp_value_convert (converter, resolved_domain->domain, value, &converted);
+  if (status != DOMAIN_COMPATIBLE)
     {
       pr_clear_value (&converted);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (type),
-	      pr_type_name (TP_DOMAIN_TYPE (resolved_domain->domain)));
-      return ER_TP_CANT_COERCE;
+      return tp_domain_status_er_set (status, ARG_FILE_LINE, value, resolved_domain->domain);
     }
   pr_clear_value (value);
   *value = converted;

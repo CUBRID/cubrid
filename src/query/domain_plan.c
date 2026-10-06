@@ -2717,8 +2717,9 @@ domain_resolve_record (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry
 }
 
 /* The unresolved-domain check (load): both axes are strict: an item resolve_domains does not resolve has a fixed
- * type, and a fixed string whose collation the values give is a variable POS recording its bound value's domain. */
-bool
+ * type, and a fixed string whose collation the values give is a variable POS recording its bound value's domain.
+ *   return: -1, or the index of the first item that breaks it (the unresolved-domain error names it) */
+int
 domain_plan_validate (const DOMAIN_PLAN * plan)
 {
   for (int i = 0; i < plan->n_items; i++)
@@ -2731,14 +2732,14 @@ domain_plan_validate (const DOMAIN_PLAN * plan)
 	}
       if (!domain_type_is_fixed (item->fixed.domain))
 	{
-	  return false;
+	  return i;
 	}
       if (domain_character_is_variable (item->fixed.domain) && !(item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION))
 	{
-	  return false;
+	  return i;
 	}
     }
-  return true;
+  return -1;
 }
 
 static void *
@@ -4960,10 +4961,12 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  plan->const_ref_pos[i] = plan->items_cold[plan->const_refs[i] - plan->items].val_pos;
 	}
     }
-  if (!domain_plan_validate (plan))
+  const int unresolved = domain_plan_validate (plan);
+  if (unresolved >= 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "load",
-	      root->query_alias != NULL ? root->query_alias : "", plan->n_items, pr_type_name (DB_TYPE_VARIABLE));
+	      root->query_alias != NULL ? root->query_alias : "", unresolved,
+	      pr_type_name (TP_DOMAIN_TYPE (plan->items[unresolved].fixed.domain)));
       return ER_QPROC_DOMAIN_UNRESOLVED;
     }
   return NO_ERROR;
