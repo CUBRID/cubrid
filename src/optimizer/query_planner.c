@@ -266,6 +266,7 @@ static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 
 static void qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms);
+static bool qo_node_is_multi_class (QO_NODE * node);
 static double qo_seg_ndv (QO_SEGMENT * seg);
 static double qo_node_filtered_rows (QO_NODE * node);
 static QO_SEGMENT *qo_term_seg_of_node (QO_TERM * term, QO_NODE * node, QO_SEGMENT ** other);
@@ -3594,9 +3595,24 @@ qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms)
 }
 
 /*
+ * qo_node_is_multi_class () - whether a node scans more than one class (a class hierarchy)
+ *   return:
+ *   node(in):
+ */
+static bool
+qo_node_is_multi_class (QO_NODE * node)
+{
+  return QO_NODE_INFO (node) != NULL && QO_NODE_INFO_N (node) > 1;
+}
+
+/*
  * qo_seg_ndv () - NDV of a column from statistics
  *   return: the NDV, 0 if unknown
  *   seg(in):
+ *
+ * The NDV of a class hierarchy is the sum of its classes' NDVs (qo_get_attr_info ()), which counts a
+ * value held by two classes twice, so it is left unknown. A partitioned class is one class whose NDV
+ * merges its partitions' sketches.
  */
 static double
 qo_seg_ndv (QO_SEGMENT * seg)
@@ -3604,7 +3620,7 @@ qo_seg_ndv (QO_SEGMENT * seg)
   QO_ATTR_INFO *info = QO_SEG_INFO (seg);
   double ndv;
 
-  if (info == NULL || info->ndv <= 0)
+  if (info == NULL || info->ndv <= 0 || qo_node_is_multi_class (QO_SEG_HEAD (seg)))
     {
       return 0.0;
     }
@@ -3694,8 +3710,9 @@ qo_node_matches_at_most_once (QO_ENV * env, QO_NODE * node, BITSET * from)
   int i, j, t;
   bool covered;
 
-  if (node_indexp == NULL)
+  if (node_indexp == NULL || qo_node_is_multi_class (node))
     {
+      /* the unique index of one class of a hierarchy says nothing about the other classes */
       return false;
     }
 
