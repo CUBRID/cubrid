@@ -80,8 +80,8 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* below this a counting pass costs more than a few compares; 24 measured best of 8/16/20/24/28/32/64 */
-#define RADIX_MSD_CUTOFF 24
+/* below this a counting pass costs more than a few compares; 64 measured best of 16/24/32/48/64/96/128 */
+#define RADIX_MSD_CUTOFF 64
 
 /*
  * 1. SORTER: THE HOOKS
@@ -479,6 +479,18 @@ big_endian_to_host (UINT64 word)
   return swap64 (word);
 }
 
+/* a radix word read as one unsigned integer: its bytes are big-endian, so the integers compare as the radix words do */
+template <int WORD_WIDTH>
+static inline radix_word<WORD_WIDTH>
+word_from_bytes (const unsigned char *bytes)
+{
+  radix_word<WORD_WIDTH> word;
+
+  memcpy (&word, bytes, WORD_WIDTH);
+
+  return big_endian_to_host (word);
+}
+
 /* one field of a value, which the index image keeps in host order, put big-endian */
 template <typename FIELD>
 static inline void
@@ -572,7 +584,7 @@ oid_to_order (UINT64 word)
   assert (OR_OID_SIZE == 8);
 
   /* a NULL OID is a NULL key, which never reaches the sort */
-  assert ((swap64 (word) & 0x8000000080008000ULL) == 0);
+  assert ((big_endian_to_host (word) & 0x8000000080008000ULL) == 0);
 
   /* the last two bytes, the volume, move to the front: one rotation of the word */
 #if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
@@ -728,11 +740,11 @@ namespace
 
 /* a range split no further: its key bytes left, then the OID tie-break (section 4) */
 template <int WORD_WIDTH>
-static void insertion_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, unsigned char *radix_words, int record_count,
-			    int from_byte);
+static void insertion_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, unsigned char *radix_words, int record_count);
 static void sort_by_oid (const char *rec_base, BTSORT_RUN_SLOT *slots, int record_count);
 static inline bool oid_less (const char *rec_base, BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right);
 
+/* the side a split moves a range into */
 static inline side
 other (side s)
 {
@@ -1029,7 +1041,7 @@ msd_sort<WORD_WIDTH>::finish_range (const msd_range &range)
       if (range.byte_index < WORD_WIDTH)
 	{
 	  /* at most RADIX_MSD_CUTOFF records: by the key bytes left, then by OID within equal keys */
-	  insertion_sort<WORD_WIDTH> (m_rec_base, slots, radix_words, range.record_count, range.byte_index);
+	  insertion_sort<WORD_WIDTH> (m_rec_base, slots, radix_words, range.record_count);
 	}
       else
 	{
@@ -1048,44 +1060,51 @@ msd_sort<WORD_WIDTH>::finish_range (const msd_range &range)
  * 4. FINISH RANGE: THE KEY BYTES LEFT, THEN THE OID TIE-BREAK
  */
 
+/*
+ * insertion_sort () - Orders a range by its radix words, then by OID within equal keys
+ *   return: void
+ *   rec_base(in): the sort buffer the slots are offsets into
+ *   slots(in/out): the range's slots
+ *   radix_words(in/out): the range's radix words, in step with the slots
+ *   record_count(in):
+ */
 template <int WORD_WIDTH>
 static void
-insertion_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, unsigned char *radix_words, int record_count,
-		int from_byte)
+insertion_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, unsigned char *radix_words, int record_count)
 {
-  const size_t tail_bytes = (size_t) (WORD_WIDTH - from_byte);
-  radix_word<WORD_WIDTH> taken_word;
-  int taken, hole, place, c;
+  using word = radix_word<WORD_WIDTH>;
+  word taken_integer, hole_integer, taken_word;
+  int taken, hole;
   BTSORT_RUN_SLOT taken_slot;
 
   for (taken = 1; taken < record_count; taken++)
     {
+      /* the record being placed waits in words while the records it passes shift up */
+      taken_integer = word_from_bytes<WORD_WIDTH> (radix_words + taken * WORD_WIDTH);
+      taken_slot = slots[taken];
+      memcpy (&taken_word, radix_words + taken * WORD_WIDTH, WORD_WIDTH);
+
       for (hole = taken - 1; hole >= 0; hole--)
 	{
-	  /* the bytes before from_byte are already equal across the range, so only the bytes after are compared */
-	  c = memcmp (radix_words + hole * WORD_WIDTH + from_byte, radix_words + taken * WORD_WIDTH + from_byte, tail_bytes);
+	  /* whole radix words compare as the bytes left do, the bytes before being equal across the range */
+	  hole_integer = word_from_bytes<WORD_WIDTH> (radix_words + hole * WORD_WIDTH);
 
 	  /* equal radix words hold equal keys, so a key tie goes by OID */
-	  if (c < 0 || (c == 0 && oid_less (rec_base, slots[hole], slots[taken])))
+	  if (hole_integer < taken_integer
+	      || (hole_integer == taken_integer && oid_less (rec_base, slots[hole], taken_slot)))
 	    {
 	      break;
 	    }
+
+	  memcpy (radix_words + (hole + 1) * WORD_WIDTH, radix_words + hole * WORD_WIDTH, WORD_WIDTH);
+	  slots[hole + 1] = slots[hole];
 	}
 
-      place = hole + 1;
-      if (place == taken)
+      if (hole + 1 != taken)
 	{
-	  continue;
+	  memcpy (radix_words + (hole + 1) * WORD_WIDTH, &taken_word, WORD_WIDTH);
+	  slots[hole + 1] = taken_slot;
 	}
-
-      /* the word being placed waits in a word while the radix words between shift up */
-      taken_slot = slots[taken];
-      memcpy (&taken_word, radix_words + taken * WORD_WIDTH, WORD_WIDTH);
-      memmove (radix_words + (place + 1) * WORD_WIDTH, radix_words + place * WORD_WIDTH,
-	       (size_t) (taken - place) * WORD_WIDTH);
-      memmove (slots + place + 1, slots + place, (size_t) (taken - place) * sizeof (BTSORT_RUN_SLOT));
-      memcpy (radix_words + place * WORD_WIDTH, &taken_word, WORD_WIDTH);
-      slots[place] = taken_slot;
     }
 }
 

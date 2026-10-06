@@ -574,7 +574,7 @@ namespace
   }
 
   /* more than RADIX_MSD_CUTOFF records, so a bucket this large is stacked */
-  const int STACKED_BUCKET_RECORDS = 49;
+  const int STACKED_BUCKET_RECORDS = 65;
 
   /* unsigned keys that fill the MSD stack: STACKED_BUCKET_RECORDS records under every leading byte, or with along_key
    * 255 such siblings at every key byte on the way down the 0xFF path, which fills it to the key's bound */
