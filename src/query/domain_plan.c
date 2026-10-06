@@ -3085,8 +3085,9 @@ domain_reads_double_aggregate (const DOMAIN_LOAD_ENTRY * load_entry)
 	}
       load_entry = load_entry->producer;
     }
-  /* a chain longer than DOMAIN_CHAIN_MAX_DEPTH: a reader of AVG, STDDEV or VARIANCE would be missed */
-  assert (load_entry == NULL);
+  /* the bound reached: a cycle, and no aggregate is on one - a CONNECT BY over a join reads its list's column through a
+   * position (regu_list_pred) whose producer, the column (outptr_list), is a value pointer to what that position
+   * fetches */
   return false;
 }
 
