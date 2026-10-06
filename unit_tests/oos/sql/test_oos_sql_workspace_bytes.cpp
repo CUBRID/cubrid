@@ -23,8 +23,11 @@
 #include "log_manager.h"
 #include "log_impl.h"
 #include "memory_alloc.h"
+#include "object_domain.h"
+#include "object_primitive.h"
 #include "object_representation.h"
 #include "record_descriptor.hpp"
+#include "scope_exit.hpp"
 #include "transform_cl.h"
 #include "work_space.h"
 
@@ -54,11 +57,12 @@ class OosWorkspaceBytes : public ::testing::Test
       db_commit_transaction ();
     }
 
-    void compare (const RECDES &a, const RECDES &b, int n_var)
+    void compare (const RECDES &a, const RECDES &b, const std::vector<const TP_DOMAIN *> &domains,
+		  bool logical_collections = false)
     {
       auto *thread = thread_get_thread_entry_info ();
       EXPECT_EQ (OR_RECORD_HAS_OOS (a.data), OR_RECORD_HAS_OOS (b.data));
-      for (int i = 0; i < n_var; ++i)
+      for (size_t i = 0; i < domains.size (); ++i)
 	{
 	  SCOPED_TRACE (i);
 	  std::vector<char> values[2];
@@ -86,7 +90,31 @@ class OosWorkspaceBytes : public ::testing::Test
 		}
 	    }
 	  EXPECT_EQ (selected[0], selected[1]);
-	  EXPECT_EQ (values[0], values[1]);
+	  if (logical_collections && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (domains[i])))
+	    {
+	      // Collection writers may include or omit the optional domain. Decode
+	      // with the schema domain to compare their logical values.
+	      DB_VALUE decoded[2];
+	      db_make_null (&decoded[0]);
+	      db_make_null (&decoded[1]);
+	      scope_exit clear_values ([&] ()
+	      {
+		db_value_clear (&decoded[0]);
+		db_value_clear (&decoded[1]);
+	      });
+	      for (int j = 0; j < 2; ++j)
+		{
+		  OR_BUF buf;
+		  or_init (&buf, values[j].data (), values[j].size ());
+		  ASSERT_EQ (domains[i]->type->data_readval (&buf, &decoded[j], domains[i], values[j].size (),
+			     true, nullptr, 0), NO_ERROR);
+		}
+	      EXPECT_EQ (tp_value_compare (&decoded[0], &decoded[1], 0, 1), DB_EQ);
+	    }
+	  else
+	    {
+	      EXPECT_EQ (values[0], values[1]);
+	    }
 	}
     }
 
@@ -151,6 +179,15 @@ class OosWorkspaceBytes : public ::testing::Test
       HEAP_CACHE_ATTRINFO attrinfo;
       ASSERT_EQ (heap_attrinfo_start (thread, &class_oid, -1, nullptr, &attrinfo), NO_ERROR);
       const int n_var = attrinfo.last_classrepr->n_variable;
+      std::vector<const TP_DOMAIN *> domains (n_var);
+      for (int i = 0; i < attrinfo.last_classrepr->n_attributes; ++i)
+	{
+	  const OR_ATTRIBUTE &attribute = attrinfo.last_classrepr->attributes[i];
+	  if (!attribute.is_fixed)
+	    {
+	      domains[attribute.location] = attribute.domain;
+	    }
+	}
       const int read_error = heap_attrinfo_read_dbvalues_without_oid (thread, &source, &attrinfo);
       if (read_error != NO_ERROR)
 	{
@@ -163,10 +200,10 @@ class OosWorkspaceBytes : public ::testing::Test
       ASSERT_EQ (transformed, S_SUCCESS);
       ASSERT_EQ (heap_oos_demote_workspace_record (thread, &class_oid, &source, &demoted), NO_ERROR);
       const RECDES &actual = demoted.data == nullptr ? source : demoted;
-      ASSERT_NO_FATAL_FAILURE (compare (actual, reference.get_recdes (), n_var));
+      ASSERT_NO_FATAL_FAILURE (compare (actual, reference.get_recdes (), domains));
       if (alter == nullptr)
 	{
-	  ASSERT_NO_FATAL_FAILURE (compare (actual, stored, n_var));
+	  ASSERT_NO_FATAL_FAILURE (compare (actual, stored, domains, true));
 	}
       if (demoted.data != nullptr)
 	{
