@@ -360,6 +360,7 @@ static LOG_PRIOR_NODE *prior_lsa_remove_prior_list (THREAD_ENTRY * thread_p);
 static int logpb_append_prior_lsa_list (THREAD_ENTRY * thread_p, LOG_PRIOR_NODE * list);
 static int logpb_copy_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_CS_ACCESS_MODE access_mode,
 			    LOG_PAGE * log_pgptr);
+static bool logpb_copy_area_if_buffered (LOG_PAGEID pageid, int offset, int length, char *dest);
 
 static void logpb_fatal_error_internal (THREAD_ENTRY * thread_p, bool log_exit, bool need_flush, const char *file_name,
 					const int lineno, const char *fmt, va_list ap);
@@ -881,6 +882,8 @@ logpb_locate_page (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, PAGE_FETCH_MODE f
 	}
 
       log_bufptr->pageid = NULL_PAGEID;	/* invalidate buffer */
+      /* A reader copying out of the slot without LOG_CS must see the invalidation before any new content. */
+      std::atomic_thread_fence (std::memory_order_release);
       perfmon_inc_stat (thread_p, PSTAT_LOG_NUM_REPLACEMENTS);
     }
 
@@ -6913,6 +6916,104 @@ logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_LSA * 
 	  log_lsa->offset += copy_length;
 	}
     }
+}
+
+/*
+ * logpb_copy_area_if_buffered - copy part of a page out of the log page buffer, without LOG_CS
+ *
+ * return: true if dest holds those bytes; on false its content is garbage
+ *
+ *   pageid(in): Page identifier
+ *   offset(in), length(in): Part of the page area to copy
+ *   dest(out): Destination
+ *
+ * NOTE: A slot is invalidated before it is refilled and, after restart, its pageid only grows, so the same
+ *       pageid before and after the copy means no other page came through the slot in between.
+ */
+static bool
+logpb_copy_area_if_buffered (LOG_PAGEID pageid, int offset, int length, char *dest)
+{
+  LOG_BUFFER *log_bufptr;
+
+  assert (offset >= 0 && length >= 0 && offset + length <= (int) LOGAREA_SIZE);
+
+  if (pageid < 0)
+    {
+      /* NULL_PAGEID and the header page have no slot here */
+      return false;
+    }
+
+  log_bufptr = &log_Pb.buffers[logpb_get_log_buffer_index (pageid)];
+  if (log_bufptr->pageid != pageid)
+    {
+      return false;
+    }
+
+  std::atomic_thread_fence (std::memory_order_acquire);
+  memcpy (dest, (char *) log_bufptr->logpage->area + offset, length);
+  std::atomic_thread_fence (std::memory_order_acquire);
+
+  if (log_bufptr->pageid != pageid)
+    {
+#if !defined (NDEBUG)
+      /* so that a run using it anyway holds garbage, not a plausible record */
+      memset (dest, 0xa5, length);
+#endif /* !NDEBUG */
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * logpb_copy_from_log_if_buffered - copy a run of log bytes below copied_lsa, which may cross pages, out of the
+ *                                   log page buffer as logpb_copy_from_log () does, if every page is there
+ *
+ * return: true if area holds the whole run; on false its content is garbage and log_lsa undefined
+ *
+ *   area(out): Destination
+ *   length(in): Length to copy
+ *   log_lsa(in/out): Start of the run; past its end on success
+ */
+bool
+logpb_copy_from_log_if_buffered (char *area, int length, LOG_LSA * log_lsa)
+{
+  assert (length >= 0);
+
+  /* Before restart a slot can be refilled with an older page, which the pageid check would take for its own. */
+  if (!LOG_ISRESTARTED ())
+    {
+      return false;
+    }
+
+  while (length > 0)
+    {
+      int copy_length;
+
+      if (log_lsa->offset >= (int) LOGAREA_SIZE)
+	{
+	  log_lsa->pageid++;
+	  log_lsa->offset = 0;
+	}
+
+      copy_length = MIN (length, (int) LOGAREA_SIZE - (int) log_lsa->offset);
+      if (!logpb_copy_area_if_buffered (log_lsa->pageid, log_lsa->offset, copy_length, area))
+	{
+	  return false;
+	}
+      area += copy_length;
+      length -= copy_length;
+      log_lsa->offset += copy_length;
+    }
+
+#if !defined (NDEBUG)
+  {
+    /* bytes at or past copied_lsa may still be written while they are copied */
+    LOG_LSA copied_lsa = log_Gl.append.get_copied_lsa ();
+    assert (LSA_LE (log_lsa, &copied_lsa));
+  }
+#endif /* !NDEBUG */
+  return true;
 }
 
 /*

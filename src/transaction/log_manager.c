@@ -306,6 +306,12 @@ static void log_rollback (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const LOG_LS
 static int log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_PAGE * log_pgptr);
 static void log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa);
 
+static bool log_get_prev_version_header_layout (LOG_RECTYPE type, int *size, int *ulength_offset);
+static void log_lsa_add_align (LOG_LSA * lsa, int add);
+static void log_lsa_advance_when_doesnt_fit (LOG_LSA * lsa, int length);
+static bool log_get_undo_image_from_buffer (THREAD_ENTRY * thread_p, LOG_LSA * lsa, int udata_length,
+					    RECDES * recdes, SCAN_CODE * scan_out) __attribute__ ((noinline));
+
 static void log_cleanup_modified_class (const tx_transient_class_entry & t, bool & stop);
 static void log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_LSA * savept_lsa,
 					     bool release, bool decache_classrepr);
@@ -9970,6 +9976,202 @@ log_get_undo_record_from_inflight (THREAD_ENTRY * thread_p, const LOG_LSA * lsa,
   log_prior_inflight_unpin (pin);
 
   return true;
+}
+
+/*
+ * log_get_prev_version_header_layout () - layout of the data header of a log record type a version chain points at
+ *   return: false for any other type
+ *
+ * size (out): size of the data header
+ * ulength_offset (out): where in it the undo length, zip flag included, is recorded
+ *
+ * NOTE: Not only the MVCC types: an overflow record's previous version is logged by RVHF_MVCC_UPDATE_OVERFLOW and a
+ *       relocated one's by RVHF_UPDATE or RVHF_DELETE, none of which is an MVCC operation.
+ */
+static bool
+log_get_prev_version_header_layout (LOG_RECTYPE type, int *size, int *ulength_offset)
+{
+  switch (type)
+    {
+    case LOG_MVCC_UNDO_DATA:
+      *size = sizeof (LOG_REC_MVCC_UNDO);
+      *ulength_offset = offsetof (LOG_REC_MVCC_UNDO, undo.length);
+      return true;
+    case LOG_MVCC_UNDOREDO_DATA:
+    case LOG_MVCC_DIFF_UNDOREDO_DATA:
+      *size = sizeof (LOG_REC_MVCC_UNDOREDO);
+      *ulength_offset = offsetof (LOG_REC_MVCC_UNDOREDO, undoredo.ulength);
+      return true;
+    case LOG_UNDO_DATA:
+      *size = sizeof (LOG_REC_UNDO);
+      *ulength_offset = offsetof (LOG_REC_UNDO, length);
+      return true;
+    case LOG_UNDOREDO_DATA:
+    case LOG_DIFF_UNDOREDO_DATA:
+      *size = sizeof (LOG_REC_UNDOREDO);
+      *ulength_offset = offsetof (LOG_REC_UNDOREDO, ulength);
+      return true;
+    default:
+      return false;
+    }
+}
+
+/* One confirmed copy of this many bytes at a record covers both headers and, when it is small, the undo image. */
+#define LOG_PREV_VERSION_HEAD_SIZE 256
+static_assert (DB_ALIGN (sizeof (LOG_RECORD_HEADER), DOUBLE_ALIGNMENT)
+	       + MAX (MAX (sizeof (LOG_REC_MVCC_UNDO), sizeof (LOG_REC_MVCC_UNDOREDO)),
+		      MAX (sizeof (LOG_REC_UNDO), sizeof (LOG_REC_UNDOREDO))) <= LOG_PREV_VERSION_HEAD_SIZE,
+	       "the head window must hold a record header and any data header log_get_prev_version_header_layout () knows");
+
+/* LOG_READ_ADD_ALIGN without the page fetch */
+static void
+log_lsa_add_align (LOG_LSA * lsa, int add)
+{
+  lsa->offset = DB_ALIGN (lsa->offset + add, DOUBLE_ALIGNMENT);
+  while (lsa->offset >= (int) LOGAREA_SIZE)
+    {
+      lsa->pageid++;
+      lsa->offset = DB_ALIGN (lsa->offset - LOGAREA_SIZE, DOUBLE_ALIGNMENT);
+    }
+}
+
+/* LOG_READ_ADVANCE_WHEN_DOESNT_FIT without the page fetch */
+static void
+log_lsa_advance_when_doesnt_fit (LOG_LSA * lsa, int length)
+{
+  if (lsa->offset + length >= (int) LOGAREA_SIZE)
+    {
+      lsa->pageid++;
+      lsa->offset = 0;
+    }
+}
+
+/*
+ * log_get_undo_record_from_buffer () - read the undo image a version chain points at in place, out of the log
+ *   page buffer, without a page copy
+ *   return: whether the hop is settled here, scan_out then carrying what log_get_undo_record () would return;
+ *           false leaves it to the copy path, with no error set and recdes untouched
+ *
+ * lsa (in): address of the log record
+ * copied_lsa (in): copied_lsa as the caller loaded it, with acquire; lsa must be below it
+ * recdes (out): destination record
+ * scan_out (out): S_SUCCESS / S_DOESNT_FIT / S_ERROR
+ *
+ * NOTE: Nothing copied out of the buffer is interpreted before its copy is confirmed.
+ */
+bool
+log_get_undo_record_from_buffer (THREAD_ENTRY * thread_p, const LOG_LSA * lsa, const LOG_LSA * copied_lsa,
+				 RECDES * recdes, SCAN_CODE * scan_out)
+{
+  alignas (MAX_ALIGNMENT) char head[LOG_PREV_VERSION_HEAD_SIZE];
+  int head_length;
+  LOG_LSA process_lsa, field_lsa;
+  LOG_RECORD_HEADER log_rec_header;
+  int data_header_size, ulength_offset;
+  int udata_length, udata_size;
+
+  if (!LSA_LT (lsa, copied_lsa))
+    {
+      return false;
+    }
+
+  /* Cut at the page end, where this slot ends, and at copied_lsa, past which bytes may still be written. */
+  head_length = MIN ((int) sizeof (head), (int) LOGAREA_SIZE - (int) lsa->offset);
+  if (copied_lsa->pageid == lsa->pageid)
+    {
+      head_length = MIN (head_length, (int) (copied_lsa->offset - lsa->offset));
+    }
+  field_lsa = *lsa;
+  if (!logpb_copy_from_log_if_buffered (head, head_length, &field_lsa))
+    {
+      return false;
+    }
+  assert (head_length >= (int) sizeof (log_rec_header));
+  memcpy (&log_rec_header, head, sizeof (log_rec_header));
+
+  if (!log_get_prev_version_header_layout (log_rec_header.type, &data_header_size, &ulength_offset))
+    {
+      return false;
+    }
+
+  process_lsa = *lsa;
+  log_lsa_add_align (&process_lsa, sizeof (log_rec_header));
+  log_lsa_advance_when_doesnt_fit (&process_lsa, data_header_size);
+  if (process_lsa.pageid == lsa->pageid)
+    {
+      int ulength_at = (int) (process_lsa.offset - lsa->offset) + ulength_offset;
+
+      assert (ulength_at + (int) sizeof (udata_length) <= head_length);
+      memcpy (&udata_length, head + ulength_at, sizeof (udata_length));
+    }
+  else
+    {
+      field_lsa = process_lsa;
+      field_lsa.offset += ulength_offset;
+      if (!logpb_copy_from_log_if_buffered ((char *) &udata_length, sizeof (udata_length), &field_lsa))
+	{
+	  return false;
+	}
+    }
+  log_lsa_add_align (&process_lsa, data_header_size);
+  udata_size = (int) GET_ZIP_LEN (udata_length);
+
+  if (process_lsa.pageid == lsa->pageid && udata_size <= head_length - (int) (process_lsa.offset - lsa->offset))
+    {
+      /* the image came with the headers */
+      *scan_out = log_get_undo_record_from_data (thread_p, head + (process_lsa.offset - lsa->offset), udata_size,
+						 ZIP_CHECK (udata_length), recdes);
+      return true;
+    }
+
+  return log_get_undo_image_from_buffer (thread_p, &process_lsa, udata_length, recdes, scan_out);
+}
+
+/*
+ * log_get_undo_image_from_buffer () - the rest of log_get_undo_record_from_buffer (): copy the undo image out
+ *   of the log page buffer and hand it to log_get_undo_record_from_data ()
+ *
+ * NOTE: Out of line, so that a hop deferring on the headers does not set up the page-sized scratch area.
+ */
+static bool
+log_get_undo_image_from_buffer (THREAD_ENTRY * thread_p, LOG_LSA * lsa, int udata_length, RECDES * recdes,
+				SCAN_CODE * scan_out)
+{
+  char log_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
+  int udata_size = (int) GET_ZIP_LEN (udata_length);
+  char *area;
+  bool area_was_mallocated = false;
+  bool is_copied;
+
+  if (udata_size <= IO_MAX_PAGE_SIZE)
+    {
+      area = PTR_ALIGN (log_buf, MAX_ALIGNMENT);
+    }
+  else
+    {
+      area = (char *) malloc (udata_size);
+      if (area == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, udata_size);
+	  *scan_out = S_ERROR;
+	  return true;
+	}
+      area_was_mallocated = true;
+    }
+
+  /* confirmed as a whole: a zipped image carries the size log_unzip () allocates for */
+  is_copied = logpb_copy_from_log_if_buffered (area, udata_size, lsa);
+  if (is_copied)
+    {
+      *scan_out = log_get_undo_record_from_data (thread_p, area, udata_size, ZIP_CHECK (udata_length), recdes);
+    }
+
+  if (area_was_mallocated)
+    {
+      free_and_init (area);
+    }
+
+  return is_copied;
 }
 
 /*
