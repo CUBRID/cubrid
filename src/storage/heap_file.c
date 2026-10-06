@@ -39,6 +39,7 @@
 #include "bestspace.hpp"
 #include "heap_file.h"
 #include "heap_oos.hpp"
+#include "heap_pending_oos_values.hpp"
 #include "heap_show_scan_context.hpp"
 #include "oos_file.hpp"
 #include "oos_util.hpp"

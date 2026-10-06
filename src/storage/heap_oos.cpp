@@ -52,39 +52,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-heap_pending_oos_values::~heap_pending_oos_values ()
-{
-  discard_since (0);
-}
-
-int
-heap_pending_oos_values::retain (oos_buffer value)
-{
-  try
-    {
-      m_values.push_back (value);
-    }
-  catch (const std::bad_alloc &)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (oos_buffer));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  m_bytes += value.size ();
-  return NO_ERROR;
-}
-
-void
-heap_pending_oos_values::discard_since (std::size_t count)
-{
-  while (m_values.size () > count)
-    {
-      char *data = m_values.back ().data ();
-      m_bytes -= m_values.back ().size ();
-      free_and_init (data);
-      m_values.pop_back ();
-    }
-}
-
 void
 heap_oos_value_ref::encode_memory (char *stub, oos_buffer value)
 {

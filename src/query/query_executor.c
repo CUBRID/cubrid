@@ -58,7 +58,7 @@
 #include "elo.h"
 #include "db_elo.h"
 #include "locator_sr.h"
-#include "heap_oos.hpp"
+#include "heap_pending_oos_values.hpp"
 #include "log_lsa.hpp"
 #include "log_volids.hpp"
 #include "xserver_interface.h"
