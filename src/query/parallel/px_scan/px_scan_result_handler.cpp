@@ -53,7 +53,6 @@ namespace parallel_scan
   thread_local OUTPTR_LIST *result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_outptr_list_p;
   thread_local VAL_DESCR *result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_vd;
   thread_local xasl_node *result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_xasl_p;
-  thread_local int result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_agg_domains_resolved;
   thread_local QFILE_TUPLE_RECORD result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_tpl_buf;
   thread_local OR_BUF result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_or_buf;
 
@@ -81,8 +80,7 @@ namespace parallel_scan
 
   template <RESULT_TYPE result_type>
   result_handler<result_type>::result_handler (QUERY_ID query_id, interrupt *interrupt_p,
-      err_messages_with_lock *err_messages_p, int parallelism, bool g_agg_domain_resolve_need,
-      XASL_NODE *orig_xasl_tree_for_domain_resolve)
+      err_messages_with_lock *err_messages_p, int parallelism, XASL_NODE *orig_xasl_tree_for_domain_resolve)
   {
     m_parallelism = parallelism;
     m_query_id = query_id;
@@ -305,7 +303,6 @@ namespace parallel_scan
 	  }
 	tl.instnum_quota_done = false;	/* tls outlives the scan; a reused worker must not inherit it */
 	tl.agg_hash_state = HS_NONE;
-	tl.g_agg_domains_resolved = TRUE;
 	if (m_.g_hash_eligible)
 	  {
 	    /* the worker aggregates into its own clone; its accumulator domains are its own state, which the setup
@@ -319,7 +316,7 @@ namespace parallel_scan
 	    tl.agg_hash_state = HS_ACCEPT_ALL;
 	    /* the clone's aggregates are set up from the plan resolutions it copied from the leader, before its first
 	     * row */
-	    if (qexec_setup_parallel_aggregates (curr_xasl, vd, &tl.g_agg_domains_resolved) != NO_ERROR)
+	    if (qexec_setup_parallel_aggregates (curr_xasl, vd) != NO_ERROR)
 	      {
 		m_err_messages_p->move_top_error_message_to_this();
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
@@ -327,10 +324,6 @@ namespace parallel_scan
 	      }
 	    /* the worker's partial list is written at its finalize: it takes its domains as the leader's does */
 	    qexec_setup_hash_aggregate_lists (vd, &curr_xasl->proc.buildlist);
-	    if (tl.g_agg_domains_resolved)
-	      {
-		qdata_link_shared_accumulators (curr_xasl->proc.buildlist.g_agg_list, vd);
-	      }
 	  }
 	/* setup failure leaves curr_xasl->topn_items NULL; worker falls back to plain BUILDLIST and final ORDER BY+LIMIT runs on main's concat list_id via qexec_orderby_distinct_by_sorting. */
 	tl.is_topn = false;
@@ -985,22 +978,6 @@ namespace parallel_scan
 	    bool output_tuple = true;
 	    if (tl.agg_hash_state == HS_ACCEPT_ALL)
 	      {
-		if (unlikely (!tl.g_agg_domains_resolved))
-		  {
-		    /* what the clone's aggregates still take from their first values */
-		    if (qexec_parallel_aggregate_first_values (thread_p, tl.xasl, tl.vd, &tl.g_agg_domains_resolved)
-			!= NO_ERROR)
-		      {
-			m_err_messages_p->move_top_error_message_to_this();
-			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-			return false;
-		      }
-		    if (tl.g_agg_domains_resolved)
-		      {
-			/* Sharing needs the accumulator domains, so it is linked once they are set. */
-			qdata_link_shared_accumulators (tl.xasl->proc.buildlist.g_agg_list, tl.vd);
-		      }
-		  }
 		if (qexec_hash_gby_agg_tuple_public (thread_p, tl.xasl, tl.vd->xasl_state, &tl.tpl_buf,
 						     & (tl.writer_result_p->tpl_descr), tl.writer_result_p, &output_tuple) != NO_ERROR)
 		  {
@@ -1596,16 +1573,11 @@ namespace parallel_scan
     /* set up from the plan resolutions the clone copied from the leader before its lists open (initialize_node). The
      * accumulator domains are the worker's own state, set up anew: a clone from the pool the leaders use keeps none of
      * the execution that used it last (CBRD-27484). */
-    if (qexec_setup_parallel_aggregates (tl_xasl_p, vd, &tl_agg_domains_resolved) != NO_ERROR)
+    if (qexec_setup_parallel_aggregates (tl_xasl_p, vd) != NO_ERROR)
       {
 	m_err_messages_p->move_top_error_message_to_this ();
 	m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	return;
-      }
-    if (tl_agg_domains_resolved)
-      {
-	/* Sharing needs the accumulator domains, so it is linked once they are set. */
-	qdata_link_shared_accumulators (tl_xasl_p->proc.buildvalue.agg_list, vd);
       }
     for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
       {
@@ -2084,22 +2056,6 @@ namespace parallel_scan
 
   bool result_handler<RESULT_TYPE::BUILDVALUE_OPT>::write (THREAD_ENTRY *thread_p)
   {
-    if (!tl_agg_domains_resolved)
-      {
-	/* the interpolation first-value check of the clone's aggregates */
-	if (qexec_parallel_aggregate_first_values (thread_p, tl_xasl_p, tl_vd, &tl_agg_domains_resolved) != NO_ERROR)
-	  {
-	    return false;
-	  }
-
-	if (tl_agg_domains_resolved)
-	  {
-	    /* Sharing needs the accumulator domains, so it is linked once they are set. Any rows accumulated into a
-	     * sharer before are overwritten during propagation; this only adds work, not a correctness issue.
-	     */
-	    qdata_link_shared_accumulators (tl_xasl_p->proc.buildvalue.agg_list, tl_vd);
-	  }
-      }
     for (AGGREGATE_TYPE *agg_node = tl_xasl_p->proc.buildvalue.agg_list; agg_node != NULL; agg_node = agg_node->next)
       {
 	AGGREGATE_ACCUMULATOR *acc = &agg_node->accumulator;

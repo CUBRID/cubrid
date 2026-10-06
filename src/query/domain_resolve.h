@@ -278,24 +278,6 @@ qexec_accumulator_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
   return &vd->xasl_state->domain_execution.accumulator_domains[item->node_domain_index];
 }
 
-/* Whether the interpolation first-value check of a block is still to run: block is the block's
- * g_agg_first_value_block or agg_first_value_block, -1 for a block without MEDIAN or PERCENTILE */
-inline bool
-qexec_first_value_pending (const VAL_DESCR * vd, int block)
-{
-  assert (block < 0 || block < vd->xasl_state->domain_execution.n_first_value_blocks);
-  return block >= 0 && vd->xasl_state->domain_execution.first_value_pending[block] != 0;
-}
-
-inline void
-qexec_set_first_value_pending (const VAL_DESCR * vd, int block, bool pending)
-{
-  if (block >= 0)
-    {
-      assert (block < vd->xasl_state->domain_execution.n_first_value_blocks);
-      vd->xasl_state->domain_execution.first_value_pending[block] = pending ? 1 : 0;
-    }
-}
 
 extern const TP_DOMAIN *qexec_resolved_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item);
 extern const TP_DOMAIN *qexec_null_bind_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item);
@@ -379,13 +361,8 @@ extern int qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR
 					SORT_LIST ** resolved_groupby);
 extern void qexec_finish_group_by_domains (const VAL_DESCR * vd, buildlist_proc_node * buildlist);
 extern void qexec_setup_hash_aggregate_lists (const VAL_DESCR * vd, buildlist_proc_node * buildlist);
-extern int qexec_setup_aggregate_domains (cubxasl::aggregate_list_node * agg_list, const VAL_DESCR * vd, int *resolved);
-extern int qexec_aggregate_first_values (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list,
-					 VAL_DESCR * vd, QFILE_TUPLE_RECORD * tplrec,
-					 regu_variable_list_node * regu_list, int *resolved);
+extern int qexec_setup_aggregate_domains (cubxasl::aggregate_list_node * agg_list, const VAL_DESCR * vd);
 extern void qexec_type_accumulator_outputs (const VAL_DESCR * vd, xasl_node * xasl);
-extern int qexec_setup_parallel_aggregates (xasl_node * xasl, const VAL_DESCR * vd, int *resolved);
-extern int qexec_parallel_aggregate_first_values (THREAD_ENTRY * thread_p, xasl_node * xasl, VAL_DESCR * vd,
-						  int *resolved);
+extern int qexec_setup_parallel_aggregates (xasl_node * xasl, const VAL_DESCR * vd);
 
 #endif /* _DOMAIN_RESOLVE_H_ */

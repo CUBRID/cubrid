@@ -171,12 +171,12 @@ static int qexec_copy_index_keys (THREAD_ENTRY * thread_p, const RESOLVED_INDEX_
 static int
 qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolved, int n_compares, int n_elements,
 			      int n_indexes, int n_node_domains, int n_operand_types, int n_interpolation_list_domains,
-			      int n_first_value_blocks, int n_temporaries, int n_scopes, XASL_STATE * xasl_state)
+			      int n_temporaries, int n_scopes, XASL_STATE * xasl_state)
 {
   RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved_domain;
   DOMAIN_EXECUTION_STATE & execution = xasl_state->domain_execution;
   assert (resolved.vals == NULL && n_vals >= 0 && n_resolved >= 0 && n_compares >= 0 && n_elements >= 0
-	  && n_indexes >= 0 && n_node_domains >= 0 && n_first_value_blocks >= 0);
+	  && n_indexes >= 0 && n_node_domains >= 0);
   /* the load numbers the nodes that keep a list domain or an operand type first (DOMAIN_PLAN.n_operand_types) */
   assert (0 <= n_interpolation_list_domains && n_interpolation_list_domains <= n_operand_types
 	  && n_operand_types <= n_node_domains);
@@ -217,14 +217,14 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   static_assert (sizeof (const TP_DOMAIN *) % alignof (int) == 0, "operand types alignment");
   /* values, resolved domain table, comparison resolutions, ALL/SOME resolutions, key resolutions, the nodes' execution
    * domains and list domains, the functions' accumulator domains, the execution temporaries and the scopes'
-   * generations, the operand types, then the constant flags and the blocks' first-value flags */
+   * generations, the operand types, then the constant flags */
   const size_t bytes = sizeof (DB_VALUE) * (size_t) n_vals + sizeof (RESOLVED_DOMAIN) * (size_t) n_resolved
     + sizeof (DOMAIN_COMPARE) * (size_t) n_compares + sizeof (DOMAIN_ELEMENTS) * (size_t) n_elements
     + sizeof (RESOLVED_INDEX_KEYS) * (size_t) n_indexes
     + sizeof (const TP_DOMAIN *) * ((size_t) n_node_domains + (size_t) n_interpolation_list_domains)
     + sizeof (AGGREGATE_ACCUMULATOR_DOMAIN) * (size_t) n_operand_types
     + sizeof (DOMAIN_EXECUTION_TEMPORARY) * (size_t) n_temporaries + sizeof (unsigned long long) * (size_t) n_scopes
-    + sizeof (int) * (size_t) n_operand_types + (size_t) n_vals + (size_t) n_first_value_blocks;
+    + sizeof (int) * (size_t) n_operand_types + (size_t) n_vals;
   if (bytes == 0)
     {
       return NO_ERROR;
@@ -247,7 +247,6 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   execution.n_node_domains = n_node_domains;
   execution.n_operand_types = n_operand_types;
   execution.n_interpolation_list_domains = n_interpolation_list_domains;
-  execution.n_first_value_blocks = n_first_value_blocks;
   execution.n_temporaries = n_temporaries;
   execution.n_scopes = n_scopes;
   char *next = (char *) (resolved.vals + n_vals);
@@ -320,11 +319,6 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
       memset (resolved.value_states, DOMAIN_VALUE_PENDING, (size_t) n_vals);
       next += n_vals;
     }
-  if (n_first_value_blocks != 0)
-    {
-      execution.first_value_pending = (unsigned char *) next;
-      memset (execution.first_value_pending, 0, (size_t) n_first_value_blocks);
-    }
   return NO_ERROR;
 }
 
@@ -380,7 +374,7 @@ qexec_copy_resolved_domains (THREAD_ENTRY * thread_p, const XASL_STATE * from, X
   if (qexec_alloc_resolved_domains
       (thread_p, src.n_vals, src.n_resolved, src.n_compare_indexes, src.n_elements, src.n_indexes,
        src_execution.n_node_domains, src_execution.n_operand_types, src_execution.n_interpolation_list_domains,
-       src_execution.n_first_value_blocks, src_execution.n_temporaries, src_execution.n_scopes, to) != NO_ERROR)
+       src_execution.n_temporaries, src_execution.n_scopes, to) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -463,11 +457,6 @@ qexec_copy_resolved_domains (THREAD_ENTRY * thread_p, const XASL_STATE * from, X
 	  memcpy (execution.accumulator_domains, src_execution.accumulator_domains,
 		  sizeof (*execution.accumulator_domains) * src_execution.n_operand_types);
 	}
-      if (src_execution.n_first_value_blocks != 0)
-	{
-	  memcpy (execution.first_value_pending, src_execution.first_value_pending,
-		  (size_t) src_execution.n_first_value_blocks);
-	}
     }
   resolved.in = src.in;
   resolved.plan = src.plan;
@@ -499,12 +488,11 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
   const int n_node_domains = plan == NULL ? 0 : plan->n_node_domains;
   const int n_operand_types = plan == NULL ? 0 : plan->n_operand_types;
   const int n_list_domains = plan == NULL ? 0 : plan->n_interpolation_list_domains;
-  const int n_first_value_blocks = plan == NULL ? 0 : plan->n_first_value_blocks;
   const int n_temporaries = plan == NULL ? 0 : plan->n_temporaries;
   const int n_scopes = plan == NULL ? 0 : plan->n_scopes;
   const int error =
     qexec_alloc_resolved_domains (thread_p, n_vals, n_resolved, n_compares, n_elements, n_indexes, n_node_domains,
-				  n_operand_types, n_list_domains, n_first_value_blocks, n_temporaries, n_scopes,
+				  n_operand_types, n_list_domains, n_temporaries, n_scopes,
 				  xasl_state);
   if (error != NO_ERROR || plan == NULL)
     {
@@ -3763,24 +3751,6 @@ qexec_interpolation_sees_nulls (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg
   return domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL;
 }
 
-/* Whether a MEDIAN / PERCENTILE takes the interpolation first-value check: its operand is neither a number nor a date
- * and it sees values. A string column or expression is cast to its DOUBLE there, and a value resolve_domains could not
- * type is rejected; a value resolve_domains typed is set up instead. */
-static bool
-qexec_interpolation_checks_first_value (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
-{
-  const DB_TYPE operand_type = qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->plan_item);
-  return !TP_IS_NUMERIC_TYPE (operand_type) && !TP_IS_DATE_OR_TIME_TYPE (operand_type)
-    && !qexec_interpolation_sees_nulls (vd, agg_p);
-}
-
-/* Whether the interpolation first-value check of a MEDIAN / PERCENTILE is still to run
- * (qexec_aggregate_first_values) */
-static bool
-qexec_interpolation_waits (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
-{
-  return qexec_accumulator_domain (vd, agg_p->plan_item)->first_value_waits;
-}
 
 /*
  * qexec_setup_aggregate_accumulators () - the accumulator domains of an aggregate whose function domain is set
@@ -3789,9 +3759,8 @@ qexec_interpolation_waits (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
  *
  * They are the ones the first non-NULL value would give: the accumulator follows the function (or, for SUM and AVG, the
  * argument). A MEDIAN / PERCENTILE over a number or a date leaves them unset, as the first value did; over
- * a string, the type resolve_domains gave a value sets them, and anything else waits for the first value
- * (qexec_interpolation_waits). SUM and AVG also get the operand coercion of a value added after the first and
- * the execution temporary of that value where a scope fixes it.
+ * a string, the type the setup or resolve_domains gave sets them. SUM and AVG also get the operand coercion of a
+ * value added after the first and the execution temporary of that value where a scope fixes it.
  */
 /*
  * qexec_value_domain () - the domain a regu gives its values in this execution: its compiled domain when that
@@ -3873,37 +3842,25 @@ qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p
     case PT_MEDIAN:
     case PT_PERCENTILE_CONT:
     case PT_PERCENTILE_DISC:
-      if (qexec_interpolation_checks_first_value (vd, agg_p))
-	{
-	  const bool value_argument = agg_p->plan_item != NULL
-	    && (agg_p->plan_item->flags & DOMAIN_PLAN_VALUE_ARGUMENT);
-	  if (value_argument && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE)
-	    {
-	      accumulator_domain->value_dom = domain;
-	      accumulator_domain->value2_dom = &tp_Null_domain;
-	      break;
-	    }
-	  /* a string column or expression has its type (DOUBLE) now; the cast of its first value is checked at the
-	   * first row (qexec_interpolation_first_value), where the accumulator takes that type. A value argument
-	   * without a type is rejected there. */
-	  accumulator_domain->first_value_waits = true;
-	  if (!value_argument && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
-	    {
-	      accumulator_domain->value_dom = domain;
-	      accumulator_domain->value2_dom = &tp_Null_domain;
-	    }
-	}
+      {
+	/* a number or a date keeps the accumulator unset, as develop's first value left it; a string column,
+	 * expression or value argument whose type is set (DOUBLE for a string column: qexec_setup_aggregate_domains,
+	 * resolve_domains' for a value argument) takes it now, and every value is cast to it at the row. One that
+	 * sees only NULLs has none. */
+	const DB_TYPE operand_type = qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->plan_item);
+	if (!TP_IS_NUMERIC_TYPE (operand_type) && !TP_IS_DATE_OR_TIME_TYPE (operand_type)
+	    && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
+	  {
+	    accumulator_domain->value_dom = domain;
+	    accumulator_domain->value2_dom = &tp_Null_domain;
+	  }
+      }
       break;
 
     default:
       break;
     }
 
-  if (accumulator_domain->first_value_waits)
-    {
-      /* the accumulator takes its type with the first value checked, as before the first row */
-      return NO_ERROR;
-    }
   if (agg_p->accumulator.value != NULL && accumulator_domain->value_dom != NULL
       && DB_VALUE_TYPE (agg_p->accumulator.value) == DB_TYPE_NULL
       && db_value_domain_init (agg_p->accumulator.value, TP_DOMAIN_TYPE (accumulator_domain->value_dom),
@@ -3999,19 +3956,17 @@ qexec_setup_interpolation_list (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
  *	     plan should have resolved
  *   agg_list(in/out): the block's aggregates, their accumulator domains just emptied
  *   vd(in): the execution's value descriptor
- *   resolved(out): 0 while an aggregate waits for its first value (qexec_aggregate_first_values)
  *
  * The domains are the ones the first non-NULL value would give: the resolved domain for a function resolve_domains
  * resolves (its accumulator is the resolver's), the compiled function and the accumulator the load derived from the
  * argument for a compiled one. A function whose resolution has no value (a NULL bind, a node over one) sees only NULLs:
  * its accumulators stay unset, as no value resolves them. A MEDIAN / PERCENTILE list takes its domain here too
- * (qexec_setup_interpolation_list). What waits for a first value: a MEDIAN / PERCENTILE string, whose first value is
- * checked (qexec_interpolation_waits). No row resolves an aggregate's domain.
+ * (qexec_setup_interpolation_list). No row resolves an aggregate's domain, and the shared accumulators are linked
+ * here, once the domains are set.
  */
 int
-qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd, int *resolved)
+qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd)
 {
-  *resolved = 1;
   for (AGGREGATE_TYPE * agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next)
     {
       int error;
@@ -4088,7 +4043,7 @@ qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd, 
 	}
       /* a MEDIAN / PERCENTILE resolve_domains gave no type: it sees only NULLs (no value), or its first value is
        * rejected (a value resolve_domains could not type). A string column or expression without a type is a number all
-       * the same: its values are cast to DOUBLE, the first one checked (qexec_interpolation_first_value). */
+       * the same: its values are cast to DOUBLE at the row. */
       if (interpolation && accumulator == NULL && !(agg_p->plan_item->flags & DOMAIN_PLAN_VALUE_ARGUMENT)
 	  && (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item)) == DB_TYPE_VARIABLE
 	      || TP_DOMAIN_TYPE (qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item)) == DB_TYPE_NULL)
@@ -4109,120 +4064,12 @@ qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd, 
       if (interpolation)
 	{
 	  qexec_setup_interpolation_list (vd, agg_p);
-	  if (qexec_interpolation_waits (vd, agg_p))
-	    {
-	      *resolved = 0;
-	    }
 	}
     }
+  qdata_link_shared_accumulators (agg_list, vd);
   return NO_ERROR;
 }
 
-/*
- * qexec_interpolation_first_value () - a MEDIAN / PERCENTILE string's first non-NULL value
- *   return: error code or NO_ERROR
- *
- * The function's domain and its list's were set before the first row (qexec_setup_aggregate_domains): the first value
- * checks them. A string column or expression is cast to its DOUBLE: a first value that does not convert
- * reports ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN (-1118) here, while a later one fails as the row's conversion
- * does (-181). A literal, a bind or a session variable read resolve_domains could not type is the
- * resolve_domains' -1118 before any row, and one it typed was set up before the first row. The cast goes
- * into a value of its own: the operand may be a shared bind or a cached column value.
- */
-static int
-qexec_interpolation_first_value (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const DB_VALUE * dbval)
-{
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
-  const bool argument_type_resolved = TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
-    && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL;
-  if (agg_p->plan_item == NULL || !(agg_p->plan_item->flags & DOMAIN_PLAN_VALUE_ARGUMENT))
-    {
-      /* the compiled DOUBLE, resolve_domains' for a late-binding string, or the setup's for a string without a type */
-      if (!argument_type_resolved)
-	{
-	  return qexec_domain_unresolved (vd, agg_p->plan_item, agg_p->domain);
-	}
-      DB_VALUE cast_value;
-      db_make_null (&cast_value);
-      const TP_DOMAIN_STATUS status =
-	tp_value_cast (dbval, &cast_value, tp_domain_resolve_default (TP_DOMAIN_TYPE (domain)), false);
-      pr_clear_value (&cast_value);
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
-		  fcode_get_uppercase_name (agg_p->function), "DOUBLE");
-	  return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-	}
-    }
-  else
-    {
-      /* a value argument: resolve_domains typed it, setting it up before the first row
-       * (qexec_setup_aggregate_accumulators), or raised -1118 */
-      return qexec_domain_unresolved (vd, agg_p->plan_item, agg_p->domain);
-    }
-  /* clear errors from failed casts once one succeeds */
-  if (er_errid () != NO_ERROR)
-    {
-      er_clear ();
-    }
-  AGGREGATE_ACCUMULATOR_DOMAIN *accumulator_domain = qexec_accumulator_domain (vd, agg_p->plan_item);
-  accumulator_domain->value_dom = domain;
-  accumulator_domain->value2_dom = &tp_Null_domain;
-  accumulator_domain->first_value_waits = false;
-  if (agg_p->accumulator.value != NULL && DB_VALUE_TYPE (agg_p->accumulator.value) == DB_TYPE_NULL
-      && db_value_domain_init (agg_p->accumulator.value, TP_DOMAIN_TYPE (domain), DB_DEFAULT_PRECISION,
-			       DB_DEFAULT_SCALE) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  return NO_ERROR;
-}
-
-/*
- * qexec_aggregate_first_values () - the check a block's MEDIAN / PERCENTILE strings still give their first non-NULL
- *   value once the plan set them up (qexec_setup_aggregate_domains)
- *   return: error code or NO_ERROR
- *   agg_list(in/out): the block's aggregates
- *   vd(in): the execution's value descriptor
- *   tplrec(in): the row's tuple, for regu_list
- *   regu_list(in): the regus that fetch the aggregates' operands from the row; NULL for none
- *   resolved(out): 1 when no aggregate waits for its first value any more
- */
-int
-qexec_aggregate_first_values (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * agg_list, VAL_DESCR * vd,
-			      QFILE_TUPLE_RECORD * tplrec, REGU_VARIABLE_LIST regu_list, int *resolved)
-{
-  if (regu_list != NULL && fetch_val_list (thread_p, regu_list, vd, NULL, NULL, tplrec, true) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  *resolved = 1;
-  for (AGGREGATE_TYPE * agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next)
-    {
-      if (!QPROC_IS_INTERPOLATION_FUNC (agg_p) || !qexec_interpolation_waits (vd, agg_p))
-	{
-	  continue;
-	}
-
-      DB_VALUE *dbval;
-      if (fetch_peek_dbval (thread_p, &agg_p->operands->value, vd, NULL, NULL, NULL, &dbval) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-      if (dbval == NULL || DB_IS_NULL (dbval))
-	{
-	  *resolved = 0;
-	  continue;
-	}
-      const int error = qexec_interpolation_first_value (vd, agg_p, dbval);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-    }
-  return NO_ERROR;
-}
 
 /*
  * qexec_type_accumulator_outputs () - the output columns of a BUILDVALUE block that read an accumulator take its
@@ -4262,25 +4109,11 @@ qexec_type_accumulator_outputs (const VAL_DESCR * vd, XASL_NODE * xasl)
  * qexec_setup_parallel_aggregates () - a PX worker's clone: its aggregates' domains from the plan resolutions it
  *   copied from the leader, set before the worker's first row
  *   return: error code or NO_ERROR
- *   resolved(out): 0 while an aggregate waits for its first value (qexec_parallel_aggregate_first_values)
  */
 int
-qexec_setup_parallel_aggregates (XASL_NODE * xasl, const VAL_DESCR * vd, int *resolved)
+qexec_setup_parallel_aggregates (XASL_NODE * xasl, const VAL_DESCR * vd)
 {
   AGGREGATE_TYPE *agg_list = xasl->type == BUILDLIST_PROC ? xasl->proc.buildlist.g_agg_list
     : xasl->proc.buildvalue.agg_list;
-  return qexec_setup_aggregate_domains (agg_list, vd, resolved);
-}
-
-/* A PX block's aggregates at its first rows: qexec_aggregate_first_values. */
-int
-qexec_parallel_aggregate_first_values (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd, int *resolved)
-{
-  QFILE_TUPLE_RECORD tpl = QFILE_TUPLE_RECORD_INITIALIZER;
-  if (xasl->type == BUILDLIST_PROC)
-    {
-      return qexec_aggregate_first_values (thread_p, xasl->proc.buildlist.g_agg_list, vd, &tpl,
-					   xasl->proc.buildlist.g_scan_regu_list, resolved);
-    }
-  return qexec_aggregate_first_values (thread_p, xasl->proc.buildvalue.agg_list, vd, &tpl, NULL, resolved);
+  return qexec_setup_aggregate_domains (agg_list, vd);
 }

@@ -61,7 +61,7 @@ namespace parallel_scan
       using tls = std::conditional_t<result_type == RESULT_TYPE::MERGEABLE_LIST, mergeable_list_tls, xasl_snapshot_tls>;
     public:
       result_handler (QUERY_ID query_id, interrupt *interrupt_p, err_messages_with_lock *err_messages_p, int parallelism,
-		      bool g_agg_domain_resolve_need, XASL_NODE *orig_xasl_tree_for_domain_resolve);
+		      XASL_NODE *orig_xasl_tree_for_domain_resolve);
       void read_initialize (THREAD_ENTRY *thread_p);
       SCAN_CODE read (THREAD_ENTRY *thread_p, read_dest_type *dest);
       void read_finalize (THREAD_ENTRY *thread_p);
@@ -124,7 +124,6 @@ namespace parallel_scan
 	  xasl (nullptr),
 	  val_list_domain_resolved (false),
 	  agg_hash_state (HS_NONE),
-	  g_agg_domains_resolved (TRUE),
 	  is_topn (false),
 	  write_initialized (false) {}
       ~mergeable_list_tls() = default;
@@ -135,7 +134,6 @@ namespace parallel_scan
       std::vector<DB_VALUE> dbvals_for_domain_resolve;
       bool val_list_domain_resolved;
       AGGREGATE_HASH_STATE agg_hash_state;
-      int g_agg_domains_resolved;
       /* per-worker mirror of (xasl->topn_items != nullptr); avoids hot-path pointer chase on every row. */
       bool is_topn;
       /* write_initialize () went through; write_finalize () may use xasl and the hash context. */
@@ -293,7 +291,6 @@ namespace parallel_scan
       thread_local static OUTPTR_LIST *tl_outptr_list_p;
       thread_local static VAL_DESCR *tl_vd;
       thread_local static xasl_node *tl_xasl_p;
-      thread_local static int tl_agg_domains_resolved;	/* the clone's interpolation first-value check is done */
       thread_local static QFILE_TUPLE_RECORD tl_tpl_buf;
       thread_local static OR_BUF tl_or_buf;
   };

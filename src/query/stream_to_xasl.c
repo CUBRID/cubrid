@@ -2792,7 +2792,6 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 
   stx_build_list_proc->output_columns = (DB_VALUE **) 0;
   stx_build_list_proc->upddel_oid_locator_ehids = NULL;
-  stx_build_list_proc->g_agg_first_value_block = -1;	/* the domain plan's load numbers it */
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -3124,7 +3123,6 @@ stx_build_buildvalue_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDVALUE_PROC_N
   int offset;
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
-  stx_build_value_proc->agg_first_value_block = -1;	/* the domain plan's load numbers it */
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {

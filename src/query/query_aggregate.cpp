@@ -1342,9 +1342,9 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		      assert (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_DBVAL
 			      || agg_p->operands->value.type == TYPE_POS_VALUE);
 
-		      /* the setup gave the function the type resolve_domains took from this value - a value it
-		       * could not type was rejected at the first value (qexec_interpolation_first_value) - so the value
-		       * converts to that type; no cascade resolves it here */
+		      /* the setup gave the function its type (DOUBLE for a string; resolve_domains' for a value
+		       * argument, which it rejected before any row when it could not type it), so the value converts
+		       * to that type; no cascade resolves it here */
 		      if (TP_DOMAIN_TYPE (agg_domain) != DB_TYPE_DOUBLE && TP_DOMAIN_TYPE (agg_domain) != DB_TYPE_DATETIME
 			  && TP_DOMAIN_TYPE (agg_domain) != DB_TYPE_TIME)
 			{

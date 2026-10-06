@@ -74,7 +74,6 @@ namespace parallel_scan
 	  m_is_grouped (is_grouped),
 	  m_is_cached_scan (is_cached_scan),
 	  m_uses_xasl_clone (false),
-	  m_g_agg_domain_resolve_need (false),
 	  m_list_id (list_id),
 	  m_indx_info (indx_info)
       {}
@@ -122,7 +121,6 @@ namespace parallel_scan
       bool m_is_grouped;
       bool m_is_cached_scan;	/* cached-scan activation for the driving scan, decided in qexec_open_scan () */
       bool m_uses_xasl_clone;
-      bool m_g_agg_domain_resolve_need;
       QFILE_LIST_ID *m_list_id;
       INDX_INFO *m_indx_info;
   };

@@ -91,8 +91,6 @@ namespace cubxasl
     int temporary;			/* SUM / AVG: the domain_execution.temporaries index of a value added after the
 				 * first that a scope fixes and operand_coercion converts; -1 none. Set with
 				 * operand_coercion (qexec_setup_aggregate_accumulators) */
-    bool first_value_waits;	/* a MEDIAN / PERCENTILE over a string whose first value is not checked yet: the
-				 * interpolation first-value check (qexec_interpolation_first_value) */
   };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 

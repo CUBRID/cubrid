@@ -101,13 +101,10 @@ struct DOMAIN_EXECUTION_STATE
 								 * domains, an analytic SUM / AVG's operand coercion
 								 * (qexec_accumulator_domain) */
   // *INDENT-ON*
-  unsigned char *first_value_pending;	/* [n_first_value_blocks] whether a block's interpolation first-value check
-					 * is still to run (its g_agg_first_value_block / agg_first_value_block) */
   int n_node_domains;
   int n_operand_types;		/* the load numbers the aggregates and analytic functions' execution domains first,
 				 * MEDIAN / PERCENTILE aggregates first among them (DOMAIN_PLAN.n_operand_types) */
   int n_interpolation_list_domains;
-  int n_first_value_blocks;
   /* the values converted once per scope and each scope's generation, part of resolved_domain.vals' block: the
    * execution's scope is entered from the start, a block's when its scan starts (qexec_enter_temporary_scope) */
   DOMAIN_EXECUTION_TEMPORARY *temporaries;	/* [n_temporaries] */

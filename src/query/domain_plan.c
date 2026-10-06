@@ -2176,20 +2176,6 @@ domain_add_merge_compares (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
     }
 }
 
-/* The block's index among those whose aggregates hold a MEDIAN or PERCENTILE, which the interpolation first-value
- * check may hold up (domain_execution.first_value_pending); -1: the rows of the block never ask */
-static int
-domain_first_value_block (DOMAIN_PLAN * plan, const AGGREGATE_TYPE * agg_list)
-{
-  for (const AGGREGATE_TYPE * agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next)
-    {
-      if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
-	{
-	  return plan->n_first_value_blocks++;
-	}
-    }
-  return -1;
-}
 
 static void
 domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
@@ -2373,7 +2359,6 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 	domain_walk_list (ctx, b->g_scan_regu_list);
 	domain_walk_position_list (ctx, b->g_regu_list, NULL, scan_columns);
 	domain_walk_agg (ctx, b->g_agg_list);
-	b->g_agg_first_value_block = domain_first_value_block (ctx->plan, b->g_agg_list);
 	domain_walk_out (ctx, b->g_outptr_list);
 	domain_walk_position_list (ctx, b->g_hk_sort_regu_list, NULL, scan_columns);
 	domain_walk_list (ctx, b->g_hk_scan_regu_list);
@@ -2392,8 +2377,6 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
       break;
     case BUILDVALUE_PROC:
       domain_walk_agg (ctx, xasl->proc.buildvalue.agg_list);
-      xasl->proc.buildvalue.agg_first_value_block =
-	domain_first_value_block (ctx->plan, xasl->proc.buildvalue.agg_list);
       domain_walk_arith (ctx, xasl->proc.buildvalue.outarith_list);
       domain_walk_pred (ctx, xasl->proc.buildvalue.having_pred);
       domain_mark_aggregate_operands (xasl);

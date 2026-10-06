@@ -255,10 +255,9 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  if (QPROC_IS_INTERPOLATION_FUNC (func_p) && TP_IS_CHAR_TYPE (value_type)
 	      && (func_p->plan_item == NULL || ! (func_p->plan_item->flags & DOMAIN_PLAN_VALUE_ARGUMENT)))
 	    {
-	      /* a string resolve_domains typed by its type (DOUBLE) whose first value does not convert
-	       * reports ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, as the aggregate's first value does
-	       * (qexec_interpolation_first_value); a later value fails as the row's conversion does.
-	       * A value argument keeps the conversion's error. */
+	      /* a string resolve_domains typed by its type (DOUBLE) whose value does not convert reports
+	       * ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, as the aggregate's row cast does; a value argument
+	       * keeps the conversion's error. */
 	      er_clear ();
 	      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (func_p->function), "DOUBLE");
