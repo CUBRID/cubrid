@@ -4072,6 +4072,75 @@ qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd)
 
 
 /*
+ * qexec_setup_analytic_domains () - the domains of a block's analytic functions, settled before its scan: a function
+ *   whose operand type the plan left variable (or whose collation the values give) takes resolve_domains' resolution
+ *   as its execution domain and operand type (develop's first binding, which converted no value: the operand keeps
+ *   its own type, and the function converts what it reads where it always did); one whose resolution has no value (a
+ *   NULL bind) sees only NULLs and keeps its domains. A MEDIAN / PERCENTILE whose function
+ *   domain is still variable takes resolve_domains' type for a value argument (a literal, a bind: DOUBLE, DATETIME or
+ *   TIME, as the first value would have cast), else the type its operand's domain gives (DOUBLE for a number, the
+ *   operand's own type for PERCENTILE_DISC and a constant operand, a date or time type's own, the compiled DOUBLE for
+ *   a string). No value is read.
+ *   return: NO_ERROR
+ */
+int
+qexec_setup_analytic_domains (const VAL_DESCR * vd, ANALYTIC_EVAL_TYPE * eval_list)
+{
+  for (ANALYTIC_EVAL_TYPE * eval = eval_list; eval != NULL; eval = eval->next)
+    {
+      for (ANALYTIC_TYPE * func_p = eval->head; func_p != NULL; func_p = func_p->next)
+	{
+	  TP_DOMAIN *domain = qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
+	  const DB_TYPE opr_type = qexec_node_operand_type (vd, func_p->opr_dbtype, func_p->plan_item);
+	  if (opr_type == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+	    {
+	      const TP_DOMAIN *resolved = qexec_resolved_domain (vd, func_p->plan_item);
+	      if (resolved != NULL)
+		{
+		  domain = (TP_DOMAIN *) resolved;
+		  qexec_set_node_domain (vd, func_p->plan_item, func_p->domain, domain);
+		  qexec_take_operand_type (vd, func_p->plan_item, func_p->opr_dbtype, TP_DOMAIN_TYPE (domain));
+		}
+	    }
+	  if (QPROC_IS_INTERPOLATION_FUNC (func_p) && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+	    {
+	      const TP_DOMAIN *resolved = qexec_resolved_domain (vd, func_p->plan_item);
+	      const TP_DOMAIN *operand = qexec_value_domain (vd, &func_p->operand);
+	      const DB_TYPE type = operand != NULL ? TP_DOMAIN_TYPE (operand) : DB_TYPE_NULL;
+	      const TP_DOMAIN *settled;
+	      if (resolved != NULL)
+		{
+		  /* a value argument resolve_domains typed by its value (a date string is DATETIME) */
+		  settled = resolved;
+		}
+	      else if (TP_IS_NUMERIC_TYPE (type))
+		{
+		  settled = func_p->is_const_operand || func_p->function == PT_PERCENTILE_DISC
+		    ? tp_domain_resolve_default (type) : tp_domain_resolve_default (DB_TYPE_DOUBLE);
+		}
+	      else if (TP_IS_DATE_OR_TIME_TYPE (type))
+		{
+		  settled = tp_domain_resolve_default (type);
+		}
+	      else if (func_p->plan_item != NULL && func_p->plan_item->fixed.domain != NULL
+		       && TP_DOMAIN_TYPE (func_p->plan_item->fixed.domain) != DB_TYPE_VARIABLE)
+		{
+		  /* a string column or expression: the compiled DOUBLE */
+		  settled = tp_domain_resolve_default (TP_DOMAIN_TYPE (func_p->plan_item->fixed.domain));
+		}
+	      else
+		{
+		  /* only NULLs (a value resolve_domains could not type was its -1118 before any row) */
+		  settled = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+		}
+	      qexec_set_node_domain (vd, func_p->plan_item, func_p->domain, settled);
+	    }
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * qexec_type_accumulator_outputs () - the output columns of a BUILDVALUE block that read an accumulator take its
  *   function's domain once the function has one
  *   xasl(in/out): the BUILDVALUE block

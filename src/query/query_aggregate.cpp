@@ -3389,9 +3389,9 @@ qdata_aggregate_list_domain (const VAL_DESCR *vd, const cubxasl::aggregate_list_
 /*
  * qdata_update_agg_interpolation_func_value_and_domain () - a MEDIAN / PERCENTILE value converted to the function's
  *   domain before it goes into the function's list
- *   return: NO_ERROR, the conversion's error (a later value of a string that does not convert: -181), or
- *	     ER_QPROC_DOMAIN_UNRESOLVED (the unresolved-domain check (execution)) where the function or its list has no
- *	     type
+ *   return: NO_ERROR, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN for a string the function cannot take, another
+ *	     conversion's error, or ER_QPROC_DOMAIN_UNRESOLVED (the unresolved-domain check (execution)) where the
+ *	     function or its list has no type
  *   agg_p(in): the function; its domain and its list's were set before the first row
  *   dbval(in/out): the value, converted in place
  *
@@ -3428,9 +3428,22 @@ qdata_update_agg_interpolation_func_value_and_domain (const VAL_DESCR *vd, cubxa
 
   if (DB_VALUE_DOMAIN_TYPE (dbval) != domain_type)
     {
+      const bool string_value = TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (dbval));
+      const bool value_argument = agg_p->plan_item != NULL && (agg_p->plan_item->flags & DOMAIN_PLAN_VALUE_ARGUMENT);
       int error = db_value_coerce (dbval, dbval, domain);
       if (error != NO_ERROR)
 	{
+	  if (!string_value || (!value_argument && agg_p->list_id->tuple_cnt == 0))
+	    {
+	      /* the function's error, as the cast of the first value reported it: a value of a type the function cannot
+	       * take (a bit string, a collection), or the first value of a string column or expression (a date string
+	       * under the compiled DOUBLE); a later string that does not convert fails as the conversion does, and a
+	       * value argument (a literal, a bind, a session variable read) keeps the conversion's error */
+	      er_clear ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
+		      fcode_get_uppercase_name (agg_p->function), "DOUBLE, DATETIME, TIME");
+	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+	    }
 	  return error;
 	}
     }

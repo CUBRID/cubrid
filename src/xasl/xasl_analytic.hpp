@@ -101,7 +101,6 @@ namespace cubxasl
     db_value part_value;		/* partition temporary accumulator */
     SUM_ACC sum_acc;	                /* word accumulator for NUMERIC SUM/AVG */
     INT64 curr_cnt;			/* current number of items */
-    bool is_first_exec_time;	        /* the fist time to be executed */
 
     void init ();
   };

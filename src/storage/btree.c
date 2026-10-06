@@ -23428,7 +23428,6 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
   DB_MIDXKEY *new_mkey = NULL;
   DB_VALUE *new_key_value = NULL;
   int error = NO_ERROR, i = 0;
-  TP_DOMAIN *domain;
 
   assert (multi_range_opt->use == true);
 
@@ -23492,33 +23491,9 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 	}
     }
 
-  /* the sort columns' domains: the index's columns, ascending (the sort order is is_desc_order's), from the scan's key
-   * plan once */
-  if (multi_range_opt->sort_col_dom == NULL)
-    {
-      const domain_plan_index *key_plan = bts->index_scan_idp != NULL ? bts->index_scan_idp->key_plan : NULL;
-      if (key_plan == NULL)
-	{
-	  /* the unresolved-domain check (execution): every index scan has its key plan - scan_open_index_key_plan
-	   * refuses to open one without it; this block runs once per scan, when the sort columns' domains are made */
-	  error = domain_unresolved_error ("", -1, DB_TYPE_MIDXKEY);
-	  goto exit;
-	}
-      multi_range_opt->sort_col_dom =
-	(TP_DOMAIN **) db_private_alloc (thread_p, multi_range_opt->num_attrs * sizeof (TP_DOMAIN *));
-      if (multi_range_opt->sort_col_dom == NULL)
-	{
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  goto exit;
-	}
-
-      for (i = 0; i < multi_range_opt->num_attrs; i++)
-	{
-	  domain = (TP_DOMAIN *) domain_key_column (key_plan->asc_key_type, multi_range_opt->sort_att_idx[i]);
-	  assert (domain != NULL);
-	  multi_range_opt->sort_col_dom[i] = domain;
-	}
-    }
+  /* the sort columns' domains were made from the scan's key plan when the block set its sort columns
+   * (query_multi_range_opt_check_set_sort_col), before any key */
+  assert (multi_range_opt->sort_col_dom != NULL);
 
   if (multi_range_opt->cnt == multi_range_opt->size)
     {

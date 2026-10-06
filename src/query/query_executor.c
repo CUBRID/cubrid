@@ -16374,6 +16374,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 
 	  if (xasl->proc.buildlist.a_eval_list)
 	    {
+	      /* the analytic functions' domains, settled before the scan: no value settles one */
+	      if (qexec_setup_analytic_domains (&xasl_state->vd, xasl->proc.buildlist.a_eval_list) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
 	      if (qdata_setup_analytic_eval_list (thread_p, xasl, xasl_state) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
@@ -21445,6 +21450,29 @@ query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p, XASL_NODE * x
       multi_range_opt->is_desc_order[index] = (orderby_list->s_order == S_DESC) ? true : false;
       multi_range_opt->sort_att_idx[index] = sort_index_pos;
     }
+
+  /* the sort columns' domains: the index's columns, ascending (the sort order is is_desc_order's), from the scan's key
+   * plan (scan_open_index_key_plan made it when the scan opened), before any key */
+  {
+    const domain_plan_index *key_plan = spec->s_id.s.isid.key_plan;
+    if (key_plan == NULL)
+      {
+	error = domain_unresolved_error ("", -1, DB_TYPE_MIDXKEY);
+	goto exit;
+      }
+    multi_range_opt->sort_col_dom = (TP_DOMAIN **) db_private_alloc (thread_p, count * sizeof (TP_DOMAIN *));
+    if (multi_range_opt->sort_col_dom == NULL)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, count * sizeof (TP_DOMAIN *));
+	goto exit_on_error;
+      }
+    for (index = 0; index < count; index++)
+      {
+	multi_range_opt->sort_col_dom[index] =
+	  (TP_DOMAIN *) domain_key_column (key_plan->asc_key_type, multi_range_opt->sort_att_idx[index]);
+	assert (multi_range_opt->sort_col_dom[index] != NULL);
+      }
+  }
 
   /* disable order by in XASL for this execution */
   if (xasl->option != Q_DISTINCT && xasl->scan_ptr == NULL)

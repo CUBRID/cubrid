@@ -88,8 +88,15 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
 {
   func_p->curr_cnt = 0;
   func_p->sum_acc.is_active = false;
-  if (db_value_domain_init (func_p->value, DB_VALUE_DOMAIN_TYPE (func_p->value), DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE)
-      != NO_ERROR)
+  /* the value's type: the function's domain in this execution, which the setup settled before the scan
+   * (qexec_setup_analytic_domains; a function the compiler left variable has resolve_domains' type, which the first
+   * binding used to give the value), else the value's own; a copy into the value takes this type (a *variable* value
+   * would drop what MIN / MAX copy) */
+  const TP_DOMAIN *domain = qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
+  const DB_TYPE value_type = domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
+			     && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL
+			     ? TP_DOMAIN_TYPE (domain) : DB_VALUE_DOMAIN_TYPE (func_p->value);
+  if (db_value_domain_init (func_p->value, value_type, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -144,6 +151,12 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
 	  return ER_FAILED;
 	}
       type_list.domp[0] = qexec_get_node_domain (vd, func_p->operand.domain, func_p->operand.plan_item);
+      if (TP_DOMAIN_TYPE (type_list.domp[0]) == DB_TYPE_VARIABLE)
+	{
+	  /* the values are written converted to the function's domain, which the setup settled; a *variable* readval
+	   * would silently drop them */
+	  type_list.domp[0] = qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
+	}
 
       list_id_p = qfile_open_list (thread_p, &type_list, NULL, query_id, QFILE_FLAG_DISTINCT, NULL);
       if (list_id_p == NULL)
@@ -217,8 +230,8 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	}
     }
 
-  /* the function's domain and operand type in this execution: what its first binding took as its execution domains; the
-   * fast path above needs neither, and fetching its operand takes none of the function's */
+  /* the function's domain and operand type in this execution, settled before the scan (qexec_setup_analytic_domains);
+   * the fast path above needs neither, and fetching its operand takes none of the function's */
   TP_DOMAIN *domain = qexec_get_node_domain (val_desc_p, func_p->domain, func_p->plan_item);
   DB_TYPE opr_type = qexec_node_operand_type (val_desc_p, func_p->opr_dbtype, func_p->plan_item);
 
@@ -228,67 +241,10 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       return ER_FAILED;
     }
 
-  /* resolve_domains resolved the function once for the execution; the first value no longer resolves it, over a session
-   * variable read too. A value resolve_domains could not type is rejected by the first execution below. */
-  const TP_DOMAIN *resolved_domain = NULL;
-  bool first_binding = (opr_type == DB_TYPE_VARIABLE
-			|| TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL) && !DB_IS_NULL (&dbval);
-  if (first_binding)
-    {
-      resolved_domain = qexec_resolved_domain (val_desc_p, func_p->plan_item);
-      if (resolved_domain == NULL && !QPROC_IS_INTERPOLATION_FUNC (func_p))
-	{
-	  /* resolve_domains resolves every variable function: the unresolved-domain check (execution) */
-	  error = qexec_domain_unresolved (val_desc_p, func_p->plan_item, domain);
-	  goto exit;
-	}
-      first_binding = resolved_domain != NULL;
-    }
-  if (first_binding)
-    {
-      domain = (TP_DOMAIN *) resolved_domain;
-
-      /* coerce operand */
-      const DB_TYPE value_type = DB_VALUE_DOMAIN_TYPE (&dbval);
-      if (tp_value_coerce (&dbval, &dbval, domain) != DOMAIN_COMPATIBLE)
-	{
-	  if (QPROC_IS_INTERPOLATION_FUNC (func_p) && TP_IS_CHAR_TYPE (value_type)
-	      && (func_p->plan_item == NULL || ! (func_p->plan_item->flags & DOMAIN_PLAN_VALUE_ARGUMENT)))
-	    {
-	      /* a string resolve_domains typed by its type (DOUBLE) whose value does not convert reports
-	       * ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, as the aggregate's row cast does; a value argument
-	       * keeps the conversion's error. */
-	      er_clear ();
-	      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (func_p->function), "DOUBLE");
-	      goto exit;
-	    }
-	  /* the failure used to leave no error, so the query ended silently with no rows (an assertion in
-	   * qexec_analytic_add_tuple under optdebug) */
-	  error = er_errid ();
-	  if (error == NO_ERROR)
-	    {
-	      error = ER_TP_CANT_COERCE;
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, pr_type_name (DB_VALUE_DOMAIN_TYPE (&dbval)),
-		      pr_type_name (TP_DOMAIN_TYPE (domain)));
-	    }
-	  goto exit;
-	}
-
-      opr_type = TP_DOMAIN_TYPE (domain);
-      qexec_set_node_domain (val_desc_p, func_p->plan_item, func_p->domain, domain);
-      qexec_take_operand_type (val_desc_p, func_p->plan_item, func_p->opr_dbtype, opr_type);
-      db_value_domain_init (func_p->value, opr_type, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-
-      /* set the distinct list file domain for finalize; a *variable* readval
-       * is a no-op and would silently drop all values. */
-      if (func_p->option == Q_DISTINCT && TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) == DB_TYPE_VARIABLE)
-	{
-	  /* values are written after coercion to domain. */
-	  func_p->list_id->type_list.domp[0] = domain;
-	  qfile_set_layout (&func_p->list_id->type_list);
-	}
-    }
+  /* no value is converted at the function's binding: the setup settled its domains before the scan
+   * (qexec_setup_analytic_domains), and each function converts the values it reads where it always did - a string into
+   * a SUM / AVG, every value of a MEDIAN / PERCENTILE, a value of a DISTINCT list. The operand keeps its own type
+   * otherwise, as it did under develop's first binding, which typed the function by the value and converted nothing. */
 
   if (DB_IS_NULL (&dbval) && func_p->function != PT_ROW_NUMBER && func_p->function != PT_FIRST_VALUE
       && func_p->function != PT_LAST_VALUE && func_p->function != PT_NTH_VALUE && func_p->function != PT_RANK
@@ -690,112 +646,6 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		  goto exit;
 		}
 	    }
-
-	  if (func_p->is_first_exec_time)
-	    {
-	      func_p->is_first_exec_time = false;
-	      /* a variable function resolve_domains resolved takes that type; the value is coerced to it below */
-	      const TP_DOMAIN *resolved = TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
-					  ? qexec_resolved_domain (val_desc_p, func_p->plan_item) : NULL;
-	      if (resolved != NULL)
-		{
-		  domain = (TP_DOMAIN *) resolved;
-		}
-	      /* a value resolve_domains could not type is rejected below; a function whose resolution has no value
-	       * sees only NULLs */
-	      /* determine domain based on first value */
-	      if (resolved == NULL)
-		switch (opr_type)
-		  {
-
-		  case DB_TYPE_SHORT:
-		  case DB_TYPE_INTEGER:
-		  case DB_TYPE_BIGINT:
-		  case DB_TYPE_FLOAT:
-		  case DB_TYPE_DOUBLE:
-		  case DB_TYPE_MONETARY:
-		  case DB_TYPE_NUMERIC:
-		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		      {
-			if (func_p->is_const_operand || func_p->function == PT_PERCENTILE_DISC)
-			  {
-			    /* percentile_disc returns the same type as operand while median and percentile_cont return
-			     * double */
-			    domain = tp_domain_resolve_value (&dbval, NULL);
-			    if (domain == NULL)
-			      {
-				error = er_errid ();
-				assert (error != NO_ERROR);
-
-				return error;
-			      }
-			  }
-			else
-			  {
-			    domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-			  }
-		      }
-		    break;
-
-		  case DB_TYPE_DATE:
-		  case DB_TYPE_DATETIME:
-		  case DB_TYPE_DATETIMETZ:
-		  case DB_TYPE_DATETIMELTZ:
-		  case DB_TYPE_TIMESTAMP:
-		  case DB_TYPE_TIMESTAMPTZ:
-		  case DB_TYPE_TIMESTAMPLTZ:
-		  case DB_TYPE_TIME:
-		    /* a date or time value's type is the function's (one body) */
-		    if (TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-		      {
-			domain = tp_domain_resolve_default (opr_type);
-		      }
-		    break;
-
-		  default:
-		    /* the compiled function domain is the plan's: domain may already hold the resolved domain
-		     * applied above */
-		    assert (func_p->plan_item != NULL);
-		    if (func_p->plan_item != NULL && func_p->plan_item->fixed.domain != NULL
-			&& TP_DOMAIN_TYPE (func_p->plan_item->fixed.domain) != DB_TYPE_VARIABLE)
-		      {
-			/* a string column or expression is DOUBLE, the compiled function domain */
-			tmp_domain_p = tp_domain_resolve_default (TP_DOMAIN_TYPE (func_p->plan_item->fixed.domain));
-			dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
-		      }
-		    else if (DB_IS_NULL (&dbval))
-		      {
-			/* a NULL: the first cast, to DOUBLE, takes it */
-			tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-			dom_status = tp_value_cast (&dbval, &dbval, tmp_domain_p, false);
-		      }
-		    else
-		      {
-			/* a value resolve_domains could not type - a literal, a bind, a session variable read - is
-			 * resolve_domains' -1118 before any row, and one it typed has its resolution (resolved) */
-			error = qexec_domain_unresolved (val_desc_p, func_p->plan_item, func_p->domain);
-			goto exit;
-		      }
-
-		    if (dom_status != DOMAIN_COMPATIBLE)
-		      {
-			error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-			er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (func_p->function),
-				TP_DOMAIN_TYPE (tmp_domain_p) == DB_TYPE_TIME ? "DOUBLE, DATETIME, TIME" : "DOUBLE");
-			goto exit;
-		      }
-
-		    /* clear errors from failed casts if any cast attempt succeeds. */
-		    if (er_errid () != NO_ERROR)
-		      {
-			er_clear ();
-		      }
-
-		    /* update domain */
-		    domain = tmp_domain_p;
-		  }
-	      qexec_set_node_domain (val_desc_p, func_p->plan_item, func_p->domain, domain);
-	    }
 	}
 
       /* percentile value check */
@@ -820,11 +670,24 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	    }
 	}
 
-      /* copy value */
+      /* copy value, converted to the function's domain, which the setup settled (qexec_setup_analytic_domains) */
       pr_clear_value (func_p->value);
       error = db_value_coerce (&dbval, func_p->value, domain);
       if (error != NO_ERROR)
 	{
+	  if (!TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&dbval))
+	      || (func_p->curr_cnt < 1
+		  && (func_p->plan_item == NULL || ! (func_p->plan_item->flags & DOMAIN_PLAN_VALUE_ARGUMENT))))
+	    {
+	      /* the function's error, as the cast of the first value reported it: a value of a type the function cannot
+	       * take (a bit string, a collection), or the first value of a string column or expression (a date string
+	       * under the compiled DOUBLE); a later string that does not convert fails as the conversion does, and a
+	       * value argument (a literal, a bind, a session variable read) keeps the conversion's error */
+	      er_clear ();
+	      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (func_p->function),
+		      TP_DOMAIN_TYPE (domain) == DB_TYPE_TIME ? "DOUBLE, DATETIME, TIME" : "DOUBLE");
+	    }
 	  goto exit;
 	}
       break;

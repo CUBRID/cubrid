@@ -122,7 +122,6 @@ namespace parallel_scan
 	: writer_result_p (nullptr),
 	  vd (nullptr),
 	  xasl (nullptr),
-	  val_list_domain_resolved (false),
 	  agg_hash_state (HS_NONE),
 	  is_topn (false),
 	  write_initialized (false) {}
@@ -131,8 +130,6 @@ namespace parallel_scan
       QFILE_TUPLE_RECORD tpl_buf;
       VAL_DESCR *vd;
       XASL_NODE *xasl;
-      std::vector<DB_VALUE> dbvals_for_domain_resolve;
-      bool val_list_domain_resolved;
       AGGREGATE_HASH_STATE agg_hash_state;
       /* per-worker mirror of (xasl->topn_items != nullptr); avoids hot-path pointer chase on every row. */
       bool is_topn;

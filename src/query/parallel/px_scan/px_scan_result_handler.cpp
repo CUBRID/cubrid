@@ -283,17 +283,6 @@ namespace parallel_scan
 	    return;
 	  }
 	tl.tpl_buf.size = DB_PAGESIZE;
-	int total_val_cnt = 0;
-	for (XASL_NODE *xasl = m_.orig_xasl; xasl != nullptr; xasl = xasl->scan_ptr)
-	  {
-	    total_val_cnt += xasl->val_list->val_cnt;
-	  }
-	tl.dbvals_for_domain_resolve.resize (total_val_cnt);
-	for (DB_VALUE &dbval : tl.dbvals_for_domain_resolve)
-	  {
-	    dbval.domain.general_info.is_null = 1;
-	  }
-	tl.val_list_domain_resolved = false;
 	tl.xasl = curr_xasl;
 	if (m_.instnum_mode != parallel_scan::instnum_mode::NONE && tl.xasl->instnum_val != nullptr)
 	  {
@@ -389,7 +378,6 @@ namespace parallel_scan
 		db_private_free (thread_p, tl.tpl_buf.tpl);
 		tl.tpl_buf.tpl = nullptr;
 	      }
-	    tl.dbvals_for_domain_resolve.clear ();
 	    tl.vd = nullptr;
 	    return;
 	  }
@@ -439,30 +427,6 @@ namespace parallel_scan
 	tl.vd = nullptr;
 	{
 	  std::lock_guard<std::mutex> lock (m_result_mutex);
-
-	  HL_HEAPID heap_id = db_change_private_heap (thread_p, 0);
-	  XASL_NODE *xptr = m_.orig_xasl;
-	  int i = 0;
-	  for (; xptr != nullptr; xptr = xptr->scan_ptr)
-	    {
-	      QPROC_DB_VALUE_LIST orig_valp = xptr->val_list->valp;
-	      int end = i + xptr->val_list->val_cnt;
-	      for (; i < end; i++)
-		{
-		  if (orig_valp->val->domain.general_info.is_null && !tl.dbvals_for_domain_resolve[i].domain.general_info.is_null)
-		    {
-		      pr_clone_value (&tl.dbvals_for_domain_resolve[i], orig_valp->val);
-		    }
-		  orig_valp = orig_valp->next;
-		}
-	    }
-
-	  db_change_private_heap (thread_p, heap_id);
-	  for (DB_VALUE &dbval : tl.dbvals_for_domain_resolve)
-	    {
-	      pr_clear_value (&dbval);
-	    }
-	  tl.dbvals_for_domain_resolve.clear();
 
 	  if (hash_aggregate_append)
 	    {
@@ -945,34 +909,6 @@ namespace parallel_scan
 	    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 	    return false;
 	  }
-	if (unlikely (!tl.val_list_domain_resolved))
-	  {
-	    XASL_NODE *xptr = tl.xasl;
-	    int i = 0;
-	    tl.val_list_domain_resolved = true;
-
-	    for (; xptr != nullptr; xptr = xptr->scan_ptr)
-	      {
-		QPROC_DB_VALUE_LIST valp = xptr->val_list->valp;
-		int end = i + xptr->val_list->val_cnt;
-		for (; i < end; i++)
-		  {
-		    if (tl.dbvals_for_domain_resolve[i].domain.general_info.is_null)
-		      {
-			if (!valp->val->domain.general_info.is_null)
-			  {
-			    pr_clone_value (valp->val, &tl.dbvals_for_domain_resolve[i]);
-			  }
-			else
-			  {
-			    tl.val_list_domain_resolved = false;
-			  }
-		      }
-		    valp = valp->next;
-		  }
-	      }
-	  }
-
 	if (likely (status == QPROC_TPLDESCR_SUCCESS))
 	  {
 	    bool output_tuple = true;
