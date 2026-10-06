@@ -540,12 +540,24 @@ repl_log_insert (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * ins
  *   serial_oidp(in): OID of the serial
  *   key_dbvalue(in): name of the serial
  *   prior_dbvalue(in): the cur_val the write-back replaces (see LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC)
+ *
+ * NOTE: logged even while a DDL suppresses row replication: the DDL replicates as its statement, and the
+ *       peer replaying it has no cache to write the tail back from.
  */
 int
 repl_log_insert_serial_write_back (THREAD_ENTRY * thread_p, const OID * serial_oidp, DB_VALUE * key_dbvalue,
 				   DB_VALUE * prior_dbvalue)
 {
-  int error;
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  int save_suppress, error;
+
+  if (tdes == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  save_suppress = tdes->suppress_replication;
+  tdes->suppress_replication = 0;
 
   error = repl_log_insert_internal (thread_p, oid_Serial_class_oid, serial_oidp, LOG_REPLICATION_DATA,
 				    RVREPL_DATA_UPDATE, key_dbvalue, REPL_INFO_TYPE_RBR_NORMAL, prior_dbvalue);
@@ -553,6 +565,8 @@ repl_log_insert_serial_write_back (THREAD_ENTRY * thread_p, const OID * serial_o
     {
       error = repl_add_update_lsa (thread_p, serial_oidp);
     }
+
+  tdes->suppress_replication = save_suppress;
 
   return error;
 }

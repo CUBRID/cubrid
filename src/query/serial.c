@@ -753,14 +753,16 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
  * serial_flush_cur_val_of_serial () - give the unissued tail of the reserved block back before the
  *                entry is dropped: lower cur_val to the entry's cur_val, the last value actually
  *                handed out. Without it a reset/rebase DDL, a DROP or a shutdown strands the values
- *                between that and the block end, and the next block starts past them. They are lost
- *                only when the entry disappears without running this (a crash).
+ *                between that and the block end, and the next block starts past them. They are still
+ *                lost in a crash, and with HA under this transaction's X lock (below).
  *   return: NO_ERROR, or ER_status
  *   entry(in)    :
  *
  * The write is deliberately not part of the transaction that triggered the drop: a rolled back
  * reset DDL must still leave the lowered cur_val behind, because the values it covers were already
- * issued. Value state is non-transactional; generation parameters are not.
+ * issued. Value state is non-transactional; generation parameters are not. Under this transaction's
+ * X lock the write would go without the flush mark, and a rollback would keep it but drop its
+ * replication record, so with HA the tail is left unissued instead.
  *
  * No supplemental (CDC) record is appended. That record reports the values a write hands out, and
  * this one hands out none - any n would push a consumer past the master, in the direction opposite
@@ -778,6 +780,13 @@ serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
       /* nothing was issued from this entry yet */
       return NO_ERROR;
     }
+
+#if defined (SERVER_MODE)	/* SA_MODE reports every object X locked, and has no peer */
+  if (log_does_allow_replication () && lock_get_object_lock (&entry->oid, oid_Serial_class_oid) == X_LOCK)
+    {
+      return NO_ERROR;
+    }
+#endif /* SERVER_MODE */
 
   error = numeric_db_value_compare (&entry->cur_val, &entry->last_cached_val, &cmp_result);
   if (error != NO_ERROR)
@@ -1223,6 +1232,8 @@ serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * r
 	}
       else
 	{
+	  /* flush-marked, the write-back's record outlives a rollback of the DDL that caused it */
+	  assert (lock_mode != X_LOCK);
 	  repl_log_insert_serial_write_back (thread_p, serial_oidp, key_val, prior_val);
 	}
 
