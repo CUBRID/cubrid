@@ -13825,6 +13825,7 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
 {
   DB_LOGICAL ev_res = V_TRUE;
   UPDDEL_MVCC_COND_REEVAL *mvcc_cond_reeval = NULL;
+  int idx;
 
   /* reevaluate condition for each class involved into */
   for (mvcc_cond_reeval = mvcc_reev_data->mvcc_cond_reev_list; mvcc_cond_reeval != NULL;
@@ -13845,11 +13846,75 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
       goto end;
     }
 
-  /* Reevaluating assignments rebuilt the record with heap_attrinfo_transform_to_disk (), which writes OOS chains
-   * before the destination heap is known. No UPDATE path requests it; fail rather than misplace a chain. */
-  assert_release (false);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-  ev_res = V_ERROR;
+  /* reload data from classes involved only in right side of assignments (not in condition) */
+  if (mvcc_reev_data->curr_extra_assign_reev != NULL)
+    {
+      for (idx = 0; idx < mvcc_reev_data->curr_extra_assign_cnt; idx++)
+	{
+	  mvcc_cond_reeval = mvcc_reev_data->curr_extra_assign_reev[idx];
+	  ev_res = locator_mvcc_reeval_scan_filters (thread_p, oid, scan_cache, recdes, mvcc_cond_reeval, false);
+	  if (ev_res != V_TRUE)
+	    {
+	      goto end;
+	    }
+	}
+    }
+
+  /* after reevaluation perform assignments */
+  if (mvcc_reev_data->curr_assigns != NULL)
+    {
+      UPDATE_MVCC_REEV_ASSIGNMENT *assign = mvcc_reev_data->curr_assigns;
+      int rc;
+      DB_VALUE *dbval = NULL;
+
+      if (heap_attrinfo_clear_dbvalues (mvcc_reev_data->curr_attrinfo) != NO_ERROR)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+      for (; assign != NULL; assign = assign->next)
+	{
+	  if (assign->constant != NULL)
+	    {
+	      rc = heap_attrinfo_set (oid, assign->att_id, assign->constant, mvcc_reev_data->curr_attrinfo);
+	    }
+	  else
+	    {
+	      if (fetch_peek_dbval (thread_p, assign->regu_right, mvcc_reev_data->vd, (OID *) class_oid, (OID *) oid,
+				    NULL, &dbval) != NO_ERROR)
+		{
+		  ev_res = V_ERROR;
+		  goto end;
+		}
+	      rc = heap_attrinfo_set (oid, assign->att_id, dbval, mvcc_reev_data->curr_attrinfo);
+	      if (dbval->need_clear)
+		{
+		  pr_clear_value (dbval);
+		}
+	    }
+	  if (rc != NO_ERROR)
+	    {
+	      ev_res = V_ERROR;
+	      goto end;
+	    }
+	}
+
+      /* TO DO - reuse already allocated area */
+      if (mvcc_reev_data->copyarea != NULL)
+	{
+	  locator_free_copy_area (mvcc_reev_data->copyarea);
+	  mvcc_reev_data->new_recdes->data = NULL;
+	  mvcc_reev_data->new_recdes->area_size = 0;
+	}
+      mvcc_reev_data->copyarea =
+	locator_allocate_copy_area_by_attr_info (thread_p, mvcc_reev_data->curr_attrinfo, recdes,
+						 mvcc_reev_data->new_recdes, -1, LOB_FLAG_INCLUDE_LOB);
+      if (mvcc_reev_data->copyarea == NULL)
+	{
+	  ev_res = V_ERROR;
+	  goto end;
+	}
+    }
 
 end:
 

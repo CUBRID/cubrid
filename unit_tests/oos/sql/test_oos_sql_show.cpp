@@ -26,6 +26,7 @@
 
 #include "record_descriptor.hpp"
 #include "heap_oos.hpp"
+#include "packer.hpp"
 #include "locator_sr.h"
 #include "class_object.h"
 #include "locator_cl.h"
@@ -674,6 +675,15 @@ TEST_F (OosSqlShow, PendingReferencesResolveAndFinalizeInPlace)
     heap_attrinfo_end (thread_p, &attrs);
   }
   ASSERT_EQ (pending.size (), 2u);
+  // Reject transport before writing any descriptor or pointer-bearing bytes, including release builds.
+  std::vector<char> transport (storage.get_recdes ().length + 32, '\x5A');
+  const std::vector<char> untouched = transport;
+  cubpacking::packer packer (transport.data (), transport.size ());
+  storage.pack (packer);
+  EXPECT_EQ (er_errid (), ER_GENERIC_ERROR);
+  EXPECT_EQ (packer.get_current_size (), 0u);
+  EXPECT_EQ (transport, untouched);
+  er_clear ();
   RECDES record = storage.get_recdes ();
   char *const original_buffer = record.data;
   const int original_length = record.length;
