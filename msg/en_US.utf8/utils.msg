@@ -284,6 +284,7 @@ Available command:\n\
     acl         <status|reload> [gateway-name]\n
 46 The length of owner_name is required to be less than %1$d and the length of class_name is required to be less than %2$d bytes.\n
 47 Invalid format for owner_name.class_name ('%1$s').\n
+51 "%1$s" is a view; this operation requires a table.\n
 
 $set 2 MSGCAT_UTIL_SET_BACKUPDB
 30 WARNING: -t option is ignored in stand-alone mode execution.\n

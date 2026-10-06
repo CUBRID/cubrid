@@ -24,6 +24,7 @@
 #define _PX_SCAN_RESULT_HANDLER_HPP_
 
 #include "query_list.h"
+#include "qfile_tuple_layout.h"	/* QFILE_TUPLE_WALK */
 #include "storage_common.h"
 #include "thread_entry.hpp"
 #include "px_interrupt.hpp"
@@ -87,14 +88,12 @@ namespace parallel_scan
       mergeable_list_variables()
 	: orig_xasl (nullptr),
 	  active_results (0),
-	  is_list_id_domain_resolved (false),
 	  trace_handler_p (nullptr) {}
       ~mergeable_list_variables() = default;
       std::vector<QFILE_LIST_ID *> writer_results;
       std::mutex writer_results_mutex;
       XASL_NODE *orig_xasl;
       int active_results;
-      bool is_list_id_domain_resolved;
       std::vector<QFILE_LIST_ID *> hgby_results;
       bool g_hash_eligible;
       trace_handler *trace_handler_p;
@@ -126,7 +125,8 @@ namespace parallel_scan
 	  val_list_domain_resolved (false),
 	  agg_hash_state (HS_NONE),
 	  g_agg_domains_resolved (TRUE),
-	  is_topn (false) {}
+	  is_topn (false),
+	  write_initialized (false) {}
       ~mergeable_list_tls() = default;
       QFILE_LIST_ID *writer_result_p;
       QFILE_TUPLE_RECORD tpl_buf;
@@ -138,6 +138,8 @@ namespace parallel_scan
       int g_agg_domains_resolved;
       /* per-worker mirror of (xasl->topn_items != nullptr); avoids hot-path pointer chase on every row. */
       bool is_topn;
+      /* write_initialize () went through; write_finalize () may use xasl and the hash context. */
+      bool write_initialized;
       /* once this worker has seen the atomic-draw quota exhausted, stop touching the shared counter. */
       bool instnum_quota_done = false;
   };
