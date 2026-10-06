@@ -204,6 +204,14 @@ domain_arith_subtract_datetime (DB_TYPE left, DB_TYPE right)
     }
 }
 
+/* A dispatcher's answer for a first operand it has no helper for: the parameter is read on that path alone, as the
+ * operand coercion of a numeric pair - an AVG's division at every group's end - never meets it */
+static int
+domain_arith_reject (void)
+{
+  return prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ? NO_ERROR : ER_QPROC_INVALID_DATATYPE;
+}
+
 /*
  * domain_arith_dispatch - the typed dispatch of qdata_{add,subtract,multiply,divide}_dbval after the operand coercion
  *   return: NO_ERROR, or the error the dispatcher raises for the pair
@@ -218,8 +226,6 @@ domain_arith_subtract_datetime (DB_TYPE left, DB_TYPE right)
 static int
 domain_arith_dispatch (int opcode, DB_TYPE first, DB_TYPE second, DB_TYPE * result_type)
 {
-  const int reject = prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ? NO_ERROR : ER_QPROC_INVALID_DATATYPE;
-
   *result_type = DB_TYPE_NULL;
   if (TP_IS_NUMERIC_TYPE (first))
     {
@@ -257,7 +263,7 @@ domain_arith_dispatch (int opcode, DB_TYPE first, DB_TYPE second, DB_TYPE * resu
 	{
 	  if (!TP_IS_DISCRETE_NUMBER_TYPE (second))
 	    {
-	      return reject;
+	      return domain_arith_reject ();
 	    }
 	  *result_type = first;
 	  return NO_ERROR;
@@ -280,10 +286,10 @@ domain_arith_dispatch (int opcode, DB_TYPE first, DB_TYPE second, DB_TYPE * resu
 	  *result_type = domain_arith_subtract_datetime (first, second);
 	  return NO_ERROR;
 	}
-      return reject;
+      return domain_arith_reject ();
 
     default:
-      return reject;
+      return domain_arith_reject ();
     }
 }
 
@@ -321,7 +327,7 @@ domain_arith_binary (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_tar
       return domain_arith_binary (opcode, left, step, left_target, right_target, result_type);
     }
 
-  if (is_add && prm_get_bool_value (PRM_ID_PLUS_AS_CONCAT) && TP_IS_CHAR_BIT_TYPE (left) && TP_IS_CHAR_BIT_TYPE (right))
+  if (is_add && TP_IS_CHAR_BIT_TYPE (left) && TP_IS_CHAR_BIT_TYPE (right) && prm_get_bool_value (PRM_ID_PLUS_AS_CONCAT))
     {
       return domain_arith_concat (left, right, result_type);
     }
@@ -380,8 +386,8 @@ domain_arith_binary (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_tar
       first = second == DB_TYPE_TIME ? DB_TYPE_TIME : DB_TYPE_DATETIME;
       second = second == DB_TYPE_TIME ? DB_TYPE_TIME : DB_TYPE_DATETIME;
     }
-  else if (opcode == T_DIV && prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR)
-	   && TP_IS_DISCRETE_NUMBER_TYPE (first) && TP_IS_DISCRETE_NUMBER_TYPE (second))
+  else if (opcode == T_DIV && TP_IS_DISCRETE_NUMBER_TYPE (first) && TP_IS_DISCRETE_NUMBER_TYPE (second)
+	   && prm_get_bool_value (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR))
     {
       first = DB_TYPE_NUMERIC;
       second = DB_TYPE_NUMERIC;
