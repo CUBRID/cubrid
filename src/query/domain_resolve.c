@@ -2037,7 +2037,12 @@ qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, DO
   const TP_DOMAIN *value_domain = domain_value_domain (value);
   if (value_domain == NULL)
     {
-      return ER_FAILED;
+      /* a set whose element domains could not be built, or no memory: the cause is the error, as at the bind step */
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
+	}
+      return er_errid ();
     }
   if (!midxkey)
     {
