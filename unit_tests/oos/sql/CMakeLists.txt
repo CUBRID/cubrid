@@ -46,6 +46,7 @@ add_test(NAME test_oos_sql_eager_cleanup COMMAND test_oos_sql_eager_cleanup)
 add_test(NAME test_oos_sql_storage COMMAND test_oos_sql_storage)
 add_test(NAME test_oos_sql_show COMMAND test_oos_sql_show)
 add_test(NAME test_oos_sql_visible_version COMMAND test_oos_sql_visible_version)
+add_test(NAME test_oos_sql_workspace_bytes COMMAND test_oos_sql_workspace_bytes)
 
 set_tests_properties(
   test_oos_sql_crud test_oos_sql_ddl test_oos_sql_delete
@@ -55,6 +56,7 @@ set_tests_properties(
   test_oos_sql_storage
   test_oos_sql_show
   test_oos_sql_visible_version
+  test_oos_sql_workspace_bytes
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 30
 )
 

@@ -34,6 +34,7 @@
 #include "heap_show_scan_context.hpp"
 #include "log_impl.h"
 #include "object_representation.h"
+#include "object_domain.h"
 #include "oos_file.hpp"
 #include "oos_log.hpp"
 #include "oos_util.hpp"
@@ -43,6 +44,7 @@
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 #include <atomic>
 #endif
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <new>
@@ -1061,4 +1063,299 @@ cleanup:
     }
 
   return (error == NO_ERROR) ? S_SUCCESS : S_ERROR;
+}
+
+/* The policy is shared by DB_VALUE writers and serialized workspace records. Keep the
+ * initial header estimate during the largest-first loop, as the original planner did. */
+static size_t
+heap_oos_record_header_size (const OR_CLASSREP *repr, size_t payload_size, bool is_mvcc_class,
+			     size_t &offset_size)
+{
+  offset_size = OR_BYTE_SIZE;
+  const size_t fixed_header = (is_mvcc_class ? OR_MVCC_INSERT_HEADER_SIZE : OR_NON_MVCC_HEADER_SIZE)
+			      + OR_BOUND_BIT_BYTES (repr->n_attributes - repr->n_variable);
+  size_t header = fixed_header + OR_VAR_TABLE_SIZE_INTERNAL (repr->n_variable, offset_size);
+  if (header + payload_size > OR_MAX_BYTE)
+    {
+      offset_size = OR_SHORT_SIZE;
+      header = fixed_header + OR_VAR_TABLE_SIZE_INTERNAL (repr->n_variable, offset_size);
+    }
+  if (header + payload_size > OR_MAX_SHORT)
+    {
+      offset_size = OR_INT_SIZE;
+      header = fixed_header + OR_VAR_TABLE_SIZE_INTERNAL (repr->n_variable, offset_size);
+    }
+  return header;
+}
+
+int
+heap_oos_determine_disk_layout (const OR_CLASSREP *repr, bool is_mvcc_class,
+				std::vector<heap_oos_column_plan> &plan, size_t &offset_size,
+				size_t &inline_size, bool &has_oos)
+{
+  has_oos = false;
+  size_t payload_size = 0;
+  for (auto &column : plan)
+    {
+      column.selected = false;
+      payload_size += column.disk_size;
+    }
+  const int mvcc_extra = is_mvcc_class ? OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE : 0;
+  for (auto &column : plan)
+    {
+      if (!column.attribute->is_fixed
+	  && column.attribute->oos_storage == OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE
+	  && column.disk_size > OR_OOS_INLINE_SIZE)
+	{
+	  column.selected = true;
+	  payload_size -= column.disk_size - OR_OOS_INLINE_SIZE;
+	  has_oos = true;
+	}
+    }
+  size_t header = heap_oos_record_header_size (repr, payload_size, is_mvcc_class, offset_size);
+  if (header + payload_size + mvcc_extra > (size_t) DB_PAGESIZE / 4)
+    {
+      try
+	{
+	  std::vector<heap_oos_demote_candidate> candidates;
+	  for (size_t i = 0; i < plan.size (); ++i)
+	    {
+	      const auto &column = plan[i];
+	      if (!column.selected && !column.attribute->is_fixed && column.disk_size > OR_OOS_INLINE_SIZE)
+		{
+		  candidates.push_back ({heap_oos_get_demote_priority (
+						 column.attribute->oos_storage == OR_ATTRIBUTE_OOS_STORAGE_PREFER_INLINE),
+					 column.disk_size, (int) i});
+		}
+	    }
+	  std::sort (candidates.begin (), candidates.end (), heap_oos_demote_candidate_precedes);
+	  for (const auto &candidate : candidates)
+	    {
+	      if (header + payload_size + mvcc_extra <= (size_t) DB_PAGESIZE / 4)
+		{
+		  break;
+		}
+	      plan[candidate.attr_index].selected = true;
+	      payload_size -= candidate.size - OR_OOS_INLINE_SIZE;
+	      has_oos = true;
+	    }
+	}
+      catch (const std::bad_alloc &)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  plan.size () * sizeof (heap_oos_demote_candidate));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      header = heap_oos_record_header_size (repr, payload_size, is_mvcc_class, offset_size);
+    }
+  inline_size = header + payload_size;
+  return NO_ERROR;
+}
+
+/* A workspace record has already acquired permanent object references and copied LOBs.
+ * Pruning has selected its destination class and representation. Do not decode its values
+ * or repeat those side effects. The caller owns the force top operation and the output buffer. */
+static int
+heap_oos_demote_workspace_record_internal (THREAD_ENTRY *thread_p, const OID *class_oid,
+    const OR_CLASSREP *repr, const RECDES *source, RECDES *result)
+{
+  const int n_var = repr->n_variable;
+  if (n_var == 0)
+    {
+      return NO_ERROR;
+    }
+  const int src_header = OR_HEADER_SIZE (source->data);
+  const int src_width = OR_GET_OFFSET_SIZE (source->data);
+  const int src_vot = OR_VAR_TABLE_SIZE_INTERNAL (n_var, src_width);
+  const int fixed_bitmap = repr->fixed_length + OR_BOUND_BIT_BYTES (repr->n_attributes - n_var);
+  if (src_header + src_vot + fixed_bitmap > source->length
+      || (OR_GET_INT (source->data) & OR_MVCC_REPID_MASK) != repr->id)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+
+  const bool is_mvcc_class = !mvcc_is_mvcc_disabled_class (class_oid);
+  const size_t mvcc_extra = is_mvcc_class ? OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE : 0;
+  bool force_outline = false;
+  for (int i = 0; i < repr->n_attributes; ++i)
+    {
+      force_outline |= !repr->attributes[i].is_fixed
+		       && repr->attributes[i].oos_storage == OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE;
+    }
+  /* The serialized length is a conservative bound: canonical offsets can only get narrower.
+   * Small ordinary records need neither a per-row attribute array nor an output allocation. */
+  if (!force_outline && source->length + mvcc_extra <= (size_t) DB_PAGESIZE / 4)
+    {
+      return NO_ERROR;
+    }
+
+  std::vector<int> offsets (n_var + 1);
+  for (int i = 0; i <= n_var; ++i)
+    {
+      int entry;
+      if (heap_recdes_get_var_offset_entry (source, i, &entry) != NO_ERROR || OR_IS_OOS (entry))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_FAILED;
+	}
+      offsets[i] = OR_GET_VAR_OFFSET (entry);
+      if (offsets[i] < src_vot + fixed_bitmap || offsets[i] > source->length - src_header
+	  || (i > 0 && offsets[i] < offsets[i - 1]))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_FAILED;
+	}
+    }
+  if (offsets.front () != src_vot + fixed_bitmap || offsets.back () != source->length - src_header)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_FAILED;
+    }
+
+  std::vector<heap_oos_column_plan> plan (repr->n_attributes);
+  std::vector<int> variable_columns (n_var);
+  for (int i = 0; i < repr->n_attributes; ++i)
+    {
+      const OR_ATTRIBUTE &attribute = repr->attributes[i];
+      plan[i].attribute = &attribute;
+      if (attribute.is_fixed)
+	{
+	  plan[i].disk_size = tp_domain_disk_size (attribute.domain);
+	}
+      else
+	{
+	  const int location = attribute.location;
+	  assert (location >= 0 && location < n_var);
+	  variable_columns[location] = i;
+	  plan[i].disk_size = offsets[location + 1] - offsets[location];
+	}
+    }
+
+  size_t dst_width, inline_size;
+  bool has_oos;
+  int error = heap_oos_determine_disk_layout (repr, is_mvcc_class, plan, dst_width, inline_size, has_oos);
+  if (error != NO_ERROR || !has_oos)
+    {
+      return error;
+    }
+  const int dst_header = is_mvcc_class ? OR_MVCC_INSERT_HEADER_SIZE : OR_NON_MVCC_HEADER_SIZE;
+  const int dst_vot = OR_VAR_TABLE_SIZE_INTERNAL (n_var, dst_width);
+  size_t length = dst_header + dst_vot + fixed_bitmap;
+  for (int i : variable_columns)
+    {
+      length += plan[i].selected ? OR_OOS_INLINE_SIZE : plan[i].disk_size;
+    }
+  const size_t reserved_length = std::max (length, inline_size) + mvcc_extra;
+  if (reserved_length > INT_MAX || heap_is_big_length ((int) reserved_length))
+    {
+      int max_length;
+      xheap_get_maxslotted_reclength (max_length);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE, 2,
+	      (int) std::min (reserved_length, (size_t) INT_MAX), max_length);
+      return ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE;
+    }
+  if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+    {
+      return er_errid ();
+    }
+  std::vector<oos_insert_request> requests;
+  requests.reserve (n_var);
+  for (int i : variable_columns)
+    {
+      auto &column = plan[i];
+      if (column.selected)
+	{
+	  column.length = column.disk_size;
+	  requests.push_back ({oos_buffer (source->data + src_header + offsets[column.attribute->location],
+					   column.disk_size), &column.oid, &column.identity_stamp});
+	}
+    }
+  result->data = (char *) db_private_alloc (thread_p, reserved_length);
+  if (result->data == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  result->area_size = (int) reserved_length;
+  result->length = (int) length;
+  result->type = REC_HOME;
+  if (heap_oos_insert_serialized_values (thread_p, class_oid,
+					 cubbase::span<oos_insert_request> (requests.data (), requests.size ())) != S_SUCCESS)
+    {
+      return er_errid ();
+    }
+
+  std::memset (result->data, 0, reserved_length);
+  unsigned int bits = repr->id | ((unsigned int) OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS);
+  if (repr->n_attributes > n_var)
+    {
+      bits |= OR_BOUND_BIT_FLAG;
+    }
+  if (is_mvcc_class)
+    {
+      bits |= (unsigned int) OR_MVCC_FLAG_VALID_INSID << OR_RECORD_FLAG_SHIFT_BITS;
+    }
+  OR_SET_VAR_OFFSET_SIZE (bits, dst_width);
+  OR_PUT_INT (result->data, bits);
+  OR_PUT_INT (result->data + OR_CHN_OFFSET, OR_GET_INT (source->data + OR_CHN_OFFSET));
+  std::memcpy (result->data + dst_header + dst_vot, source->data + src_header + src_vot, fixed_bitmap);
+  OR_BUF vot;
+  or_init (&vot, result->data + dst_header, dst_vot);
+  int position = dst_vot + fixed_bitmap;
+  for (int i : variable_columns)
+    {
+      const auto &column = plan[i];
+      or_put_offset_internal (&vot, column.selected ? OR_SET_VAR_OOS (position) : position, dst_width);
+      char *destination = result->data + dst_header + position;
+      if (column.selected)
+	{
+	  OR_BUF stub;
+	  or_init (&stub, destination, OR_OOS_INLINE_SIZE);
+	  or_put_oid (&stub, &column.oid);
+	  or_put_bigint (&stub, column.length);
+	  or_put_bigint (&stub, oos_pack_identity_stamp (column.identity_stamp));
+	  position += OR_OOS_INLINE_SIZE;
+	}
+      else
+	{
+	  std::memcpy (destination, source->data + src_header + offsets[column.attribute->location], column.disk_size);
+	  position += column.disk_size;
+	}
+    }
+  or_put_offset_internal (&vot, OR_SET_VAR_LAST_ELEMENT (position), dst_width);
+  assert (dst_header + position == result->length);
+  return NO_ERROR;
+}
+
+int
+heap_oos_demote_workspace_record (THREAD_ENTRY *thread_p, const OID *class_oid,
+				  const RECDES *source, RECDES *result)
+{
+  assert (result->data == NULL);
+  if (OID_IS_ROOTOID (class_oid) || OR_RECORD_HAS_OOS (source->data))
+    {
+      return NO_ERROR;
+    }
+  int cache_index = -1;
+  OR_CLASSREP *repr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &cache_index);
+  if (repr == NULL)
+    {
+      return er_errid ();
+    }
+  int error;
+  try
+    {
+      error = heap_oos_demote_workspace_record_internal (thread_p, class_oid, repr, source, result);
+    }
+  catch (const std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) source->length);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  heap_classrepr_free_and_init (repr, &cache_index);
+  if (error != NO_ERROR)
+    {
+      db_private_free_and_init (thread_p, result->data);
+    }
+  return error;
 }

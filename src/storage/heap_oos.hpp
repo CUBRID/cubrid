@@ -62,6 +62,26 @@ heap_oos_demote_candidate_precedes (const heap_oos_demote_candidate &a, const he
   return a.attr_index > b.attr_index;
 }
 
+/* Metadata and serialized sizes are sufficient for OOS selection; no DB_VALUE is needed. */
+struct heap_oos_column_plan
+{
+  const OR_ATTRIBUTE *attribute = nullptr;
+  int disk_size = 0;
+  bool selected = false;
+  OID oid = OID_INITIALIZER;
+  DB_BIGINT length = 0;
+  LOG_LSA identity_stamp = NULL_LSA;
+};
+
+extern int heap_oos_determine_disk_layout (const OR_CLASSREP *repr, bool is_mvcc_class,
+    std::vector<heap_oos_column_plan> &plan, size_t &offset_size, size_t &inline_size, bool &has_oos);
+
+/* Demote a current-representation workspace record after destination partition selection.
+ * On success, result->data is NULL if unchanged, otherwise the caller frees it with db_private_free.
+ * Source bytes remain unchanged. The caller's force top operation owns all OOS writes/rollback. */
+extern int heap_oos_demote_workspace_record (THREAD_ENTRY *thread_p, const OID *class_oid,
+    const RECDES *source, RECDES *result);
+
 extern SCAN_CODE heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context);
 
 /* Grouped lazy OOS Resolve for heap_attrinfo_read_dbvalues (heap_file.c dispatches into it). */
