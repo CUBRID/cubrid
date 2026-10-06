@@ -171,6 +171,9 @@
 /* NL inner memoize decision (qo_nl_inner_memoize_is_useless) */
 #define MEMOIZE_UNIQUE_KEY_RATIO 0.9	/* an outer key column with NDV >= 90% of its table rows is near-unique */
 #define MEMOIZE_MIN_HIT_RATIO 0.1	/* skip memoize when less than 10% of the inner calls are expected to hit */
+#define MEMOIZE_MIN_CALLS 1000.0	/* decide only from this many inner calls: below it the run-time check
+					 * (MEMOIZE_FREE_ITERATION_LIMIT in memoize.hpp) keeps memoize anyway and the
+					 * storage costs little, while the estimate of so few rows is the least reliable */
 
 /* Cost tie detection for the plan comparison steps: exact floating-point equality
  * virtually never fires after any nontrivial cost arithmetic, so ties fell through
@@ -3858,6 +3861,7 @@ qo_node_rows_in_join (QO_ENV * env, QO_NODE * node, BITSET * outer_nodes, double
  * The expected hit ratio is (calls - ndv) / calls, as in PostgreSQL cost_memoize_rescan () without its
  * cache capacity factor, where calls is the outer cardinality and ndv the number of distinct keys in
  * the outer rows. The decision is conservative and leaves the rest to the run-time check:
+ * - An outer of fewer than MEMOIZE_MIN_CALLS rows is not decided.
  * - Only an outer key column that is near-unique in its own table counts. Its NDV is a lower bound
  *   of the NDV of the whole key, so the other key columns (and their statistics) cannot make it skip.
  * - Its NDV in the outer rows is estimated from the rows of its table the outer holds
@@ -3883,7 +3887,7 @@ qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_t
 
   env = outer->info->env;
   calls = outer->info->cardinality;
-  if (calls < 1.0)
+  if (calls < MEMOIZE_MIN_CALLS)
     {
       return false;
     }
