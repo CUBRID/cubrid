@@ -2031,69 +2031,110 @@ expr_rhs_end (EXPR_BUILD_CTX * bctx, int saved, int guard, int cse_start, int no
     }
 }
 
-/* the arithmetic kernel for (opcode, operand type); DB_TYPE_UNKNOWN when unsupported */
-static EXPR_KERNEL_FN
-expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type, bool numeric_pure)
+/******************************************************************************
+ * the arithmetic kernel table
+ *
+ * One cell per (operator, result type, operand mix): the kernel a binary arithmetic node
+ * runs, or NULL where no kernel exists and the node stays interpreted.  The table is the
+ * whole policy -- a reviewer reads a cell, not a switch -- and the slot a program leaves
+ * open for a variable node is filled from it once the gate has resolved the node's types
+ * (database-reference 참고: the compiler's operator/type tables).
+ *
+ *   mix SAME         both operands already have the result type: the typed operator
+ *   mix NUMERIC_INT  a NUMERIC result over a SHORT/INTEGER/BIGINT side the kernel coerces
+ *                    (expr_k_coerce_numeric) -- the "plain" numeric kernels
+ ******************************************************************************/
+enum expr_arith_op
+{ EXPR_OP_ADD = 0, EXPR_OP_SUB, EXPR_OP_MUL, EXPR_OP_DIV, EXPR_OP_COUNT };
+enum expr_arith_type
+{ EXPR_AT_INTEGER = 0, EXPR_AT_BIGINT, EXPR_AT_DOUBLE, EXPR_AT_NUMERIC, EXPR_AT_COUNT };
+enum expr_arith_mix
+{ EXPR_MIX_SAME = 0, EXPR_MIX_NUMERIC_INT, EXPR_MIX_COUNT };
+
+/* row = operator, column = result type, depth = operand mix */
+static const EXPR_KERNEL_FN expr_Arith_kernels[EXPR_OP_COUNT][EXPR_AT_COUNT][EXPR_MIX_COUNT] = {
+  /* T_ADD */
+  {
+   /* INTEGER */ {expr_k_add_int, NULL},
+   /* BIGINT  */ {expr_k_add_bigint, NULL},
+   /* DOUBLE  */ {expr_k_add_double, NULL},
+   /* NUMERIC */ {expr_k_add_numeric_float, expr_k_add_numeric_plain},
+   },
+  /* T_SUB */
+  {
+   /* INTEGER */ {expr_k_sub_int, NULL},
+   /* BIGINT  */ {expr_k_sub_bigint, NULL},
+   /* DOUBLE  */ {expr_k_sub_double, NULL},
+   /* NUMERIC */ {expr_k_sub_numeric_float, expr_k_sub_numeric_plain},
+   },
+  /* T_MUL */
+  {
+   /* INTEGER */ {expr_k_mul_int, NULL},
+   /* BIGINT  */ {expr_k_mul_bigint, NULL},
+   /* DOUBLE  */ {expr_k_mul_double, NULL},
+   /* NUMERIC */ {expr_k_mul_numeric, expr_k_mul_numeric_plain},
+   },
+  /* T_DIV */
+  {
+   /* INTEGER */ {expr_k_div_int, NULL},
+   /* BIGINT  */ {expr_k_div_bigint, NULL},
+   /* DOUBLE: no kernel -- the overflow-check gating of a double division differs, keep interpreted */
+   {NULL, NULL},
+   /* NUMERIC */ {expr_k_div_numeric_float, expr_k_div_numeric_plain},
+   },
+};
+
+/* the table's row for an operator, -1 for one the table does not hold */
+static int
+expr_arith_op_index (OPERATOR_TYPE opcode)
 {
   switch (opcode)
     {
     case T_ADD:
-      switch (type)
-	{
-	case DB_TYPE_INTEGER:
-	  return expr_k_add_int;
-	case DB_TYPE_BIGINT:
-	  return expr_k_add_bigint;
-	case DB_TYPE_DOUBLE:
-	  return expr_k_add_double;
-	case DB_TYPE_NUMERIC:
-	  return numeric_pure ? expr_k_add_numeric_float : expr_k_add_numeric_plain;
-	default:
-	  return NULL;
-	}
+      return EXPR_OP_ADD;
     case T_SUB:
-      switch (type)
-	{
-	case DB_TYPE_INTEGER:
-	  return expr_k_sub_int;
-	case DB_TYPE_BIGINT:
-	  return expr_k_sub_bigint;
-	case DB_TYPE_DOUBLE:
-	  return expr_k_sub_double;
-	case DB_TYPE_NUMERIC:
-	  return numeric_pure ? expr_k_sub_numeric_float : expr_k_sub_numeric_plain;
-	default:
-	  return NULL;
-	}
+      return EXPR_OP_SUB;
     case T_MUL:
-      switch (type)
-	{
-	case DB_TYPE_INTEGER:
-	  return expr_k_mul_int;
-	case DB_TYPE_BIGINT:
-	  return expr_k_mul_bigint;
-	case DB_TYPE_DOUBLE:
-	  return expr_k_mul_double;
-	case DB_TYPE_NUMERIC:
-	  return numeric_pure ? expr_k_mul_numeric : expr_k_mul_numeric_plain;
-	default:
-	  return NULL;
-	}
+      return EXPR_OP_MUL;
     case T_DIV:
-      switch (type)
-	{
-	case DB_TYPE_INTEGER:
-	  return expr_k_div_int;
-	case DB_TYPE_BIGINT:
-	  return expr_k_div_bigint;
-	case DB_TYPE_NUMERIC:
-	  return numeric_pure ? expr_k_div_numeric_float : expr_k_div_numeric_plain;
-	default:
-	  return NULL;		/* DOUBLE division: overflow-check gating differs, keep interpreted */
-	}
+      return EXPR_OP_DIV;
     default:
+      return -1;
+    }
+}
+
+/* the table's column for a result type, -1 for one the table does not hold */
+static int
+expr_arith_type_index (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_INTEGER:
+      return EXPR_AT_INTEGER;
+    case DB_TYPE_BIGINT:
+      return EXPR_AT_BIGINT;
+    case DB_TYPE_DOUBLE:
+      return EXPR_AT_DOUBLE;
+    case DB_TYPE_NUMERIC:
+      return EXPR_AT_NUMERIC;
+    default:
+      return -1;
+    }
+}
+
+/* the arithmetic kernel for (opcode, result type, operand mix) -- a table cell; NULL when unsupported */
+static EXPR_KERNEL_FN
+expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type, bool numeric_pure)
+{
+  const int op = expr_arith_op_index (opcode);
+  const int at = expr_arith_type_index (type);
+
+  if (op < 0 || at < 0)
+    {
       return NULL;
     }
+  /* a NUMERIC result over an integer side takes the coercing kernel; every other result type has one mix */
+  return expr_Arith_kernels[op][at][(at == EXPR_AT_NUMERIC && !numeric_pure) ? EXPR_MIX_NUMERIC_INT : EXPR_MIX_SAME];
 }
 
 /******************************************************************************
@@ -3466,7 +3507,8 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
    * (expr_arith_exec_domain ()).  Any other node still variable here has nothing the
    * program may read: decline it and let the interpreter run it. */
   if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE && regu->type != TYPE_POS_VALUE
-      && ((regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH) || expr_arith_exec_domain (bctx->vd, regu) == NULL))
+      && ((regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH)
+	  || expr_arith_exec_domain (bctx->vd, regu) == NULL))
     {
       return -1;
     }
