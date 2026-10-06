@@ -1666,6 +1666,8 @@ boot_finalize_client_sub (void)
   /* must run before ws_final (); query handlers of this thread refer to the workspace */
   method_callback_final ();
   ws_final (true);
+  /* after ws_final (); the domains of this thread refer to the MOPs of its workspace */
+  tp_free_sub_client_domains ();
   //es_final ();
   //tp_final ();
 

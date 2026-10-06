@@ -392,6 +392,9 @@ extern "C"
   extern int tp_init (void);
   extern void tp_apply_sys_charset (void);
   extern void tp_final (void);
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  extern void tp_free_sub_client_domains (void);
+#endif
   extern TP_DOMAIN *tp_domain_resolve (DB_TYPE domain_type, DB_OBJECT * class_obj, int precision, int scale,
 				       TP_DOMAIN * setdomain, int collation);
   extern TP_DOMAIN *tp_domain_resolve_default (DB_TYPE type);
