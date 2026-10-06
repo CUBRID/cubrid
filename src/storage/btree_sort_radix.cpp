@@ -415,14 +415,49 @@ radix_sort_resolve_key (RADIX_KEY_ENCODING *encoding, const TP_DOMAIN *key_domai
       return false;
     }
 
-  /* the engine is written for these widths only */
-  assert (word_width == 2 || word_width == 4 || word_width == 8);
+  /* the engine is a template on these widths only */
+  if (word_width != 2 && word_width != 4 && word_width != 8)
+    {
+      return false;
+    }
 
   encoding->word_width = word_width;
   encoding->format = format;
   encoding->is_desc = (key_domain->is_desc != 0);
 
   return true;
+}
+
+namespace
+{
+  /* the unsigned integer a radix word is carried in, so a word is one load and one store */
+  template <int WORD_WIDTH> struct radix_word_of;
+  template <> struct radix_word_of<2>
+  {
+    using type = UINT16;
+  };
+  template <> struct radix_word_of<4>
+  {
+    using type = UINT32;
+  };
+  template <> struct radix_word_of<8>
+  {
+    using type = UINT64;
+  };
+  template <int WORD_WIDTH> using radix_word = typename radix_word_of<WORD_WIDTH>::type;
+}
+
+/* a signed or IEEE key's sign bit in its radix word, built from the word's bytes as the host's byte order places it */
+template <int WORD_WIDTH>
+static inline radix_word<WORD_WIDTH>
+word_sign_bit ()
+{
+  const unsigned char bytes[WORD_WIDTH] = { 0x80 };
+  radix_word<WORD_WIDTH> word;
+
+  memcpy (&word, bytes, WORD_WIDTH);
+
+  return word;
 }
 
 /* big-endian bytes to a host integer, as OR_GET_SHORT (), OR_GET_INT () and OR_GET_INT64 () read them */
@@ -457,109 +492,94 @@ put_field_big_endian (unsigned char *to, const unsigned char *from)
 }
 
 /*
- * key_to_big_endian () - Copies a fixed width key with each of its fields big-endian
- *   return: void
- *   key_row(out): word_width bytes, as the transforms of the format take them
+ * fixed_key_word () - The word of a fixed width key with each of its fields big-endian
+ *   return: the word, as the transforms of the format take it
+ *   format(in): the key's, a constant where the caller is a template on it
  *   key(in): the stored key
- *   format(in):
- *   word_width(in):
  */
-static void
-key_to_big_endian (unsigned char *key_row, const unsigned char *key, RADIX_KEY_FORMAT format, int word_width)
+template <int WORD_WIDTH>
+static inline radix_word<WORD_WIDTH>
+fixed_key_word (RADIX_KEY_FORMAT format, const unsigned char *key)
 {
+  unsigned char bytes[OR_BIGINT_SIZE];
+  radix_word<WORD_WIDTH> word;
+
   switch (format)
     {
     case RADIX_KEY_DATETIME:
-      put_field_big_endian<UINT32> (key_row + OR_DATETIME_DATE, key + OR_DATETIME_DATE);
-      put_field_big_endian<UINT32> (key_row + OR_DATETIME_TIME, key + OR_DATETIME_TIME);
+      put_field_big_endian<UINT32> (bytes + OR_DATETIME_DATE, key + OR_DATETIME_DATE);
+      put_field_big_endian<UINT32> (bytes + OR_DATETIME_TIME, key + OR_DATETIME_TIME);
       break;
 
     case RADIX_KEY_OID:
-      put_field_big_endian<UINT32> (key_row + OR_OID_PAGEID, key + OR_OID_PAGEID);
-      put_field_big_endian<UINT16> (key_row + OR_OID_SLOTID, key + OR_OID_SLOTID);
-      put_field_big_endian<UINT16> (key_row + OR_OID_VOLID, key + OR_OID_VOLID);
+      put_field_big_endian<UINT32> (bytes + OR_OID_PAGEID, key + OR_OID_PAGEID);
+      put_field_big_endian<UINT16> (bytes + OR_OID_SLOTID, key + OR_OID_SLOTID);
+      put_field_big_endian<UINT16> (bytes + OR_OID_VOLID, key + OR_OID_VOLID);
       break;
 
     case RADIX_KEY_MONETARY:
       /* the amount, which the comparator reads alone */
-      put_field_big_endian<UINT64> (key_row, key + OR_MONETARY_AMOUNT);
+      put_field_big_endian<UINT64> (bytes, key + OR_MONETARY_AMOUNT);
       break;
 
     default:
       /* a value of one field */
-      if (word_width == OR_SHORT_SIZE)
-	{
-	  put_field_big_endian<UINT16> (key_row, key);
-	}
-      else if (word_width == OR_INT_SIZE)
-	{
-	  put_field_big_endian<UINT32> (key_row, key);
-	}
-      else
-	{
-	  put_field_big_endian<UINT64> (key_row, key);
-	}
+      put_field_big_endian<radix_word<WORD_WIDTH>> (bytes, key);
       break;
     }
+
+  memcpy (&word, bytes, WORD_WIDTH);
+
+  return word;
 }
 
 /*
  * ieee_to_order () - Puts a big-endian IEEE 754 value in unsigned byte order
- *   return: void
- *   key_row(in/out):
- *   word_width(in):
+ *   return: the radix word in order
+ *   word(in): the stored value, as a radix word holds it
+ *   sign_bit(in): word_sign_bit ()
  */
-static void
-ieee_to_order (unsigned char *key_row, int word_width)
+template <typename RADIX_WORD>
+static inline RADIX_WORD
+ieee_to_order (RADIX_WORD word, RADIX_WORD sign_bit)
 {
-  auto is_zero = [] (unsigned char b)
-  {
-    return b == 0;
-  };
-  int byte_index;
-
   /* a positive value: flipping the first bit puts it above every negative value */
-  if ((key_row[0] & 0x80) == 0)
+  if ((word & sign_bit) == 0)
     {
-      key_row[0] ^= 0x80;
-      return;
+      return word ^ sign_bit;
     }
 
-  /* -0.0: left as it is, so it equals +0.0 */
-  if (key_row[0] == 0x80 && std::all_of (key_row + 1, key_row + word_width, is_zero))
+  /* -0.0, the sign bit alone: left as it is, so it equals +0.0 */
+  if (word == sign_bit)
     {
-      return;
+      return word;
     }
 
   /* a negative value: flip every bit */
-  for (byte_index = 0; byte_index < word_width; byte_index++)
-    {
-      key_row[byte_index] ^= 0xff;
-    }
+  return (RADIX_WORD) ~word;
 }
 
 /*
  * oid_to_order () - Puts a stored OID in the order oid_compare () reads it
- *   return: void
- *   key_row(in/out): the stored OID: the page, the slot, then the volume
+ *   return: the radix word in order
+ *   word(in): the stored OID, as a radix word holds it: the page, the slot, then the volume
  *
  * Note: The fields order as unsigned bytes, as no field of a key OID is negative.
  */
-static void
-oid_to_order (unsigned char *key_row)
+static inline UINT64
+oid_to_order (UINT64 word)
 {
-  unsigned char volume[OR_SHORT_SIZE];
-
   assert (OR_OID_SIZE == 8);
 
   /* a NULL OID is a NULL key, which never reaches the sort */
-  assert ((key_row[OR_OID_PAGEID] & 0x80) == 0 && (key_row[OR_OID_SLOTID] & 0x80) == 0
-	  && (key_row[OR_OID_VOLID] & 0x80) == 0);
+  assert ((swap64 (word) & 0x8000000080008000ULL) == 0);
 
-  /* the last two bytes, the volume, move to the front */
-  memcpy (volume, key_row + OR_OID_VOLID, OR_SHORT_SIZE);
-  memmove (key_row + OR_SHORT_SIZE, key_row, OR_OID_VOLID);
-  memcpy (key_row, volume, OR_SHORT_SIZE);
+  /* the last two bytes, the volume, move to the front: one rotation of the word */
+#if OR_BYTE_ORDER == OR_LITTLE_ENDIAN
+  return (word << 16) | (word >> 48);
+#else
+  return (word >> 16) | (word << 48);
+#endif
 }
 
 /*
@@ -569,30 +589,33 @@ oid_to_order (unsigned char *key_row)
  *   rec_base(in): the sort buffer the slots are offsets into
  *   slots(in):
  *   record_count(in):
- *   radix_words(out): one word of encoding->word_width bytes per slot
+ *   radix_words(out): one word of WORD_WIDTH bytes per slot
  *
  * Note: The key is read big-endian field by field. Flipping the bits its format names puts its bytes in unsigned
- *       order, and flipping every bit of a descending key's word turns that order round.
+ *       order, and flipping every bit of a descending key's word turns that order round. A word is built in a
+ *       register and written once. The format is a template argument, so its switch folds to one case.
  */
+template <int WORD_WIDTH, RADIX_KEY_FORMAT FORMAT>
 static void
 encode_radix_words (const RADIX_KEY_ENCODING *encoding, const char *rec_base, const BTSORT_RUN_SLOT *slots,
 		    int record_count, unsigned char *radix_words)
 {
-  const int word_width = encoding->word_width;
-  const RADIX_KEY_FORMAT format = encoding->format;
-  const bool is_desc = encoding->is_desc;
+  const radix_word<WORD_WIDTH> sign_bit = word_sign_bit<WORD_WIDTH> ();
+  const radix_word<WORD_WIDTH> desc_flip = encoding->is_desc ? (radix_word<WORD_WIDTH>) ~0ULL : 0;
+  constexpr RADIX_KEY_FORMAT format = FORMAT;
   const char *rec;
-  unsigned char *key_row;
-  int rec_index, byte_index;
+  radix_word<WORD_WIDTH> word;
+  int rec_index;
+
+  assert (encoding->word_width == WORD_WIDTH);
 
   for (rec_index = 0; rec_index < record_count; rec_index++)
     {
       rec = rec_base + slots[rec_index];
-      key_row = radix_words + rec_index * word_width;
 
       assert (!BTSORT_REC_HDR (rec)->is_bigone && !BTSORT_REC_HDR (rec)->has_null);
 
-      key_to_big_endian (key_row, (const unsigned char *) BTSORT_REC_KEY (rec), format, word_width);
+      word = fixed_key_word<WORD_WIDTH> (format, (const unsigned char *) BTSORT_REC_KEY (rec));
 
       switch (format)
 	{
@@ -600,27 +623,55 @@ encode_radix_words (const RADIX_KEY_ENCODING *encoding, const char *rec_base, co
 	case RADIX_KEY_DATETIME:
 	  break;		/* already in unsigned order */
 	case RADIX_KEY_SIGNED:
-	  key_row[0] ^= 0x80;
+	  word ^= sign_bit;
 	  break;
 	case RADIX_KEY_IEEE:
 	case RADIX_KEY_MONETARY:
-	  ieee_to_order (key_row, word_width);
+	  word = ieee_to_order (word, sign_bit);
 	  break;
 	case RADIX_KEY_OID:
-	  oid_to_order (key_row);
+	  word = oid_to_order (word);
 	  break;
 	default:
 	  assert (false);
 	  break;
 	}
 
-      if (is_desc)
-	{
-	  for (byte_index = 0; byte_index < word_width; byte_index++)
-	    {
-	      key_row[byte_index] ^= 0xff;
-	    }
-	}
+      word ^= desc_flip;
+
+      memcpy (radix_words + rec_index * WORD_WIDTH, &word, WORD_WIDTH);
+    }
+}
+
+/* the run's format as the constant the radix words are encoded with */
+template <int WORD_WIDTH>
+static void
+encode_radix_words (const RADIX_KEY_ENCODING *encoding, const char *rec_base, const BTSORT_RUN_SLOT *slots,
+		    int record_count, unsigned char *radix_words)
+{
+  switch (encoding->format)
+    {
+    case RADIX_KEY_UNSIGNED:
+      encode_radix_words<WORD_WIDTH, RADIX_KEY_UNSIGNED> (encoding, rec_base, slots, record_count, radix_words);
+      break;
+    case RADIX_KEY_DATETIME:
+      encode_radix_words<WORD_WIDTH, RADIX_KEY_DATETIME> (encoding, rec_base, slots, record_count, radix_words);
+      break;
+    case RADIX_KEY_SIGNED:
+      encode_radix_words<WORD_WIDTH, RADIX_KEY_SIGNED> (encoding, rec_base, slots, record_count, radix_words);
+      break;
+    case RADIX_KEY_IEEE:
+      encode_radix_words<WORD_WIDTH, RADIX_KEY_IEEE> (encoding, rec_base, slots, record_count, radix_words);
+      break;
+    case RADIX_KEY_OID:
+      encode_radix_words<WORD_WIDTH, RADIX_KEY_OID> (encoding, rec_base, slots, record_count, radix_words);
+      break;
+    case RADIX_KEY_MONETARY:
+      encode_radix_words<WORD_WIDTH, RADIX_KEY_MONETARY> (encoding, rec_base, slots, record_count, radix_words);
+      break;
+    default:
+      assert (false);
+      break;
     }
 }
 
@@ -650,11 +701,12 @@ namespace
   using bucket_counts = std::array<int, 256>;	/* one count per value of a key byte */
 
   /* one MSD sort of a run: its slots and radix words, and the spare of each it moves into */
+  template <int WORD_WIDTH>
   class msd_sort
   {
     public:
       msd_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, BTSORT_RUN_SLOT *slots_spare, unsigned char *radix_words,
-		unsigned char *radix_words_spare, int word_width, int record_count, msd_range *stack, int stack_entries);
+		unsigned char *radix_words_spare, int record_count, msd_range *stack, int stack_entries);
 
       void sort ();	/* the result ends in the home slots */
 
@@ -668,7 +720,6 @@ namespace
       const char *m_rec_base;	/* the sort buffer the slots are offsets into */
       BTSORT_RUN_SLOT *m_slots[2];	/* by side */
       unsigned char *m_radix_words[2];	/* radix words by side, in step with the slots */
-      int m_word_width;
       int m_record_count;	/* two or more, see radix_sort_run () */
       msd_range *m_stack;
       int m_stack_entries;
@@ -676,8 +727,9 @@ namespace
 }
 
 /* a range split no further: its key bytes left, then the OID tie-break (section 4) */
-static void insertion_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, unsigned char *radix_words, int word_width,
-			    unsigned char *temp_word, int record_count, int from_byte);
+template <int WORD_WIDTH>
+static void insertion_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, unsigned char *radix_words, int record_count,
+			    int from_byte);
 static void sort_by_oid (const char *rec_base, BTSORT_RUN_SLOT *slots, int record_count);
 static inline bool oid_less (const char *rec_base, BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right);
 
@@ -755,21 +807,38 @@ radix_sort_run (const RADIX_KEY_ENCODING *encoding, const char *rec_base, BTSORT
   assert (PTR_ALIGN (stack_area, INT_ALIGNMENT) == stack_area);
   assert ((size_t) stack_entries * sizeof (msd_range) <= stack_bytes);
 
-  encode_radix_words (encoding, rec_base, slots, record_count, radix_words);
-
-  msd_sort msd (rec_base, slots, slots_spare, radix_words, radix_words_spare, word_width, record_count, stack,
-		stack_entries);
-
-  msd.sort ();
+  /* the width as a constant from here on: a word moves in one load and store, and its offsets are shifts */
+  switch (word_width)
+    {
+    case 2:
+      encode_radix_words<2> (encoding, rec_base, slots, record_count, radix_words);
+      msd_sort<2> (rec_base, slots, slots_spare, radix_words, radix_words_spare, record_count, stack,
+		   stack_entries).sort ();
+      break;
+    case 4:
+      encode_radix_words<4> (encoding, rec_base, slots, record_count, radix_words);
+      msd_sort<4> (rec_base, slots, slots_spare, radix_words, radix_words_spare, record_count, stack,
+		   stack_entries).sort ();
+      break;
+    case 8:
+      encode_radix_words<8> (encoding, rec_base, slots, record_count, radix_words);
+      msd_sort<8> (rec_base, slots, slots_spare, radix_words, radix_words_spare, record_count, stack,
+		   stack_entries).sort ();
+      break;
+    default:
+      /* radix_sort_resolve_key () resolves these widths only */
+      assert (false);
+      break;
+    }
 }
 
-msd_sort::msd_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, BTSORT_RUN_SLOT *slots_spare,
-		    unsigned char *radix_words, unsigned char *radix_words_spare, int word_width, int record_count,
-		    msd_range *stack, int stack_entries)
+template <int WORD_WIDTH>
+msd_sort<WORD_WIDTH>::msd_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, BTSORT_RUN_SLOT *slots_spare,
+				unsigned char *radix_words, unsigned char *radix_words_spare, int record_count,
+				msd_range *stack, int stack_entries)
   : m_rec_base (rec_base)
   , m_slots { slots, slots_spare }
   , m_radix_words { radix_words, radix_words_spare }
-  , m_word_width (word_width)
   , m_record_count (record_count)
   , m_stack (stack)
   , m_stack_entries (stack_entries)
@@ -782,15 +851,13 @@ msd_sort::msd_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, BTSORT_RUN_SLO
  *
  * Note: Each range is finished or split 256 ways on its current byte, and an explicit stack holds the pending ones.
  */
+template <int WORD_WIDTH>
 void
-msd_sort::sort ()
+msd_sort<WORD_WIDTH>::sort ()
 {
-  const int word_width = m_word_width;
   int stack_top = 0;
   msd_range range;
   bucket_counts bucket_count;	/* a count fits an int, see radix_sort_run () */
-
-  assert (word_width >= 1);
 
   m_stack[stack_top++] = { 0, m_record_count, 0, HOME };
 
@@ -798,10 +865,10 @@ msd_sort::sort ()
     {
       range = m_stack[--stack_top];
 
-      assert (range.byte_index <= word_width);
+      assert (range.byte_index <= WORD_WIDTH);
 
       /* too few records to pay for a counting pass, or no key byte left */
-      if (range.record_count <= RADIX_MSD_CUTOFF || range.byte_index >= word_width)
+      if (range.record_count <= RADIX_MSD_CUTOFF || range.byte_index >= WORD_WIDTH)
 	{
 	  finish_range (range);
 	  continue;
@@ -828,11 +895,11 @@ msd_sort::sort ()
  *   range(in):
  *   bucket_count(out): 256 counts
  */
+template <int WORD_WIDTH>
 void
-msd_sort::count_buckets (const msd_range &range, bucket_counts &bucket_count) const
+msd_sort<WORD_WIDTH>::count_buckets (const msd_range &range, bucket_counts &bucket_count) const
 {
   const unsigned char *radix_words = m_radix_words[range.where];
-  const int word_width = m_word_width;
   const int byte_index = range.byte_index;
   const int end = range.start + range.record_count;
   int rec_index;
@@ -841,7 +908,7 @@ msd_sort::count_buckets (const msd_range &range, bucket_counts &bucket_count) co
 
   for (rec_index = range.start; rec_index < end; rec_index++)
     {
-      bucket_count[radix_words[rec_index * word_width + byte_index]]++;
+      bucket_count[radix_words[rec_index * WORD_WIDTH + byte_index]]++;
     }
 }
 
@@ -851,10 +918,11 @@ msd_sort::count_buckets (const msd_range &range, bucket_counts &bucket_count) co
  *   range(in):
  *   bucket_count(in): from count_buckets ()
  */
+template <int WORD_WIDTH>
 bool
-msd_sort::is_all_in_one (const msd_range &range, const bucket_counts &bucket_count) const
+msd_sort<WORD_WIDTH>::is_all_in_one (const msd_range &range, const bucket_counts &bucket_count) const
 {
-  const unsigned char first_byte = m_radix_words[range.where][range.start * m_word_width + range.byte_index];
+  const unsigned char first_byte = m_radix_words[range.where][range.start * WORD_WIDTH + range.byte_index];
 
   return bucket_count[first_byte] == range.record_count;
 }
@@ -867,14 +935,14 @@ msd_sort::is_all_in_one (const msd_range &range, const bucket_counts &bucket_cou
  *
  * Note: One left to right pass, so records sharing the byte keep their order.
  */
+template <int WORD_WIDTH>
 void
-msd_sort::move_to_buckets (const msd_range &range, const bucket_counts &bucket_count)
+msd_sort<WORD_WIDTH>::move_to_buckets (const msd_range &range, const bucket_counts &bucket_count)
 {
   const BTSORT_RUN_SLOT *from_slots = m_slots[range.where];
   BTSORT_RUN_SLOT *to_slots = m_slots[other (range.where)];
   const unsigned char *from_words = m_radix_words[range.where];
   unsigned char *to_words = m_radix_words[other (range.where)];
-  const int word_width = m_word_width;
   const int byte_index = range.byte_index;
   const int end = range.start + range.record_count;
   bucket_counts bucket_next;	/* where the next record of each bucket goes */
@@ -892,11 +960,11 @@ msd_sort::move_to_buckets (const msd_range &range, const bucket_counts &bucket_c
   /* each record and its radix word to the next free place of its bucket */
   for (rec_index = range.start; rec_index < end; rec_index++)
     {
-      from_word = from_words + rec_index * word_width;
+      from_word = from_words + rec_index * WORD_WIDTH;
       put_at = bucket_next[from_word[byte_index]]++;
 
       to_slots[put_at] = from_slots[rec_index];
-      memcpy (to_words + put_at * word_width, from_word, (size_t) word_width);
+      memcpy (to_words + put_at * WORD_WIDTH, from_word, WORD_WIDTH);
     }
 }
 
@@ -909,8 +977,9 @@ msd_sort::move_to_buckets (const msd_range &range, const bucket_counts &bucket_c
  *
  * Note: A bucket of one record is final and only has to come home.
  */
+template <int WORD_WIDTH>
 int
-msd_sort::push_buckets (const msd_range &range, const bucket_counts &bucket_count, int stack_top)
+msd_sort<WORD_WIDTH>::push_buckets (const msd_range &range, const bucket_counts &bucket_count, int stack_top)
 {
   const side to = other (range.where);
   int bucket_start = range.start;
@@ -947,22 +1016,20 @@ msd_sort::push_buckets (const msd_range &range, const bucket_counts &bucket_coun
  * msd_sort::finish_range () - Sorts a range split no further and brings it home
  *   return: void
  *   range(in):
- *
- * Note: The other side of the range is idle, so it parks the word being placed.
  */
+template <int WORD_WIDTH>
 void
-msd_sort::finish_range (const msd_range &range)
+msd_sort<WORD_WIDTH>::finish_range (const msd_range &range)
 {
   BTSORT_RUN_SLOT *slots = m_slots[range.where] + range.start;
-  unsigned char *radix_words = m_radix_words[range.where] + range.start * m_word_width;
-  unsigned char *temp_word = m_radix_words[other (range.where)] + range.start * m_word_width;
+  unsigned char *radix_words = m_radix_words[range.where] + range.start * WORD_WIDTH;
 
   if (range.record_count > 1)
     {
-      if (range.byte_index < m_word_width)
+      if (range.byte_index < WORD_WIDTH)
 	{
 	  /* at most RADIX_MSD_CUTOFF records: by the key bytes left, then by OID within equal keys */
-	  insertion_sort (m_rec_base, slots, radix_words, m_word_width, temp_word, range.record_count, range.byte_index);
+	  insertion_sort<WORD_WIDTH> (m_rec_base, slots, radix_words, range.record_count, range.byte_index);
 	}
       else
 	{
@@ -981,12 +1048,13 @@ msd_sort::finish_range (const msd_range &range)
  * 4. FINISH RANGE: THE KEY BYTES LEFT, THEN THE OID TIE-BREAK
  */
 
+template <int WORD_WIDTH>
 static void
-insertion_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, unsigned char *radix_words, int word_width,
-		unsigned char *temp_word, int record_count, int from_byte)
+insertion_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, unsigned char *radix_words, int record_count,
+		int from_byte)
 {
-  const size_t word_bytes = (size_t) word_width;
-  const size_t tail_bytes = (size_t) (word_width - from_byte);
+  const size_t tail_bytes = (size_t) (WORD_WIDTH - from_byte);
+  radix_word<WORD_WIDTH> taken_word;
   int taken, hole, place, c;
   BTSORT_RUN_SLOT taken_slot;
 
@@ -995,7 +1063,7 @@ insertion_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, unsigned char *rad
       for (hole = taken - 1; hole >= 0; hole--)
 	{
 	  /* the bytes before from_byte are already equal across the range, so only the bytes after are compared */
-	  c = memcmp (radix_words + hole * word_width + from_byte, radix_words + taken * word_width + from_byte, tail_bytes);
+	  c = memcmp (radix_words + hole * WORD_WIDTH + from_byte, radix_words + taken * WORD_WIDTH + from_byte, tail_bytes);
 
 	  /* equal radix words hold equal keys, so a key tie goes by OID */
 	  if (c < 0 || (c == 0 && oid_less (rec_base, slots[hole], slots[taken])))
@@ -1010,12 +1078,13 @@ insertion_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, unsigned char *rad
 	  continue;
 	}
 
+      /* the word being placed waits in a word while the radix words between shift up */
       taken_slot = slots[taken];
-      memcpy (temp_word, radix_words + taken * word_width, word_bytes);
-      memmove (radix_words + (place + 1) * word_width, radix_words + place * word_width,
-	       (size_t) (taken - place) * word_bytes);
+      memcpy (&taken_word, radix_words + taken * WORD_WIDTH, WORD_WIDTH);
+      memmove (radix_words + (place + 1) * WORD_WIDTH, radix_words + place * WORD_WIDTH,
+	       (size_t) (taken - place) * WORD_WIDTH);
       memmove (slots + place + 1, slots + place, (size_t) (taken - place) * sizeof (BTSORT_RUN_SLOT));
-      memcpy (radix_words + place * word_width, temp_word, word_bytes);
+      memcpy (radix_words + place * WORD_WIDTH, &taken_word, WORD_WIDTH);
       slots[place] = taken_slot;
     }
 }
