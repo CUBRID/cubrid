@@ -29,7 +29,7 @@
 
 #include <vector>
 
-class heap_pending_oos_values;
+class heap_pending_record;
 
 /* Decoded reference, not the packed record format. Both alternatives copy into
  * caller-owned storage; callers never borrow a pending payload or a page. */
@@ -64,7 +64,7 @@ class heap_oos_value_ref
  * writes. A failed call must be rolled back; it is not a retryable insertion. */
 extern int heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record);
 extern int heap_prepare_oos_record (THREAD_ENTRY *thread_p, const OID *source_class, RECDES *source,
-				    record_descriptor *record, heap_pending_oos_values *pending);
+				    heap_pending_record *pending);
 
 enum heap_oos_demote_priority
 {

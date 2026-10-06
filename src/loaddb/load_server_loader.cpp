@@ -651,7 +651,6 @@ namespace cubload
     stop_scancache ();
 
     m_recdes_collected.clear ();
-    m_pending_oos_values.discard_since (0);
     m_retained_bytes = 0;
 
     m_clsid = NULL_CLASS_ID;
@@ -737,24 +736,21 @@ namespace cubload
 	  }
 	else
 	  {
-	    record_descriptor record (cubmem::STANDARD_BLOCK_ALLOCATOR);
-	    const std::size_t mark = m_pending_oos_values.size ();
-	    if (heap_attrinfo_prepare_record (m_thread_ref, &m_attrinfo, nullptr, &record,
-					      &m_pending_oos_values, false) != S_SUCCESS)
+	    heap_pending_record record;
+	    if (heap_attrinfo_prepare_record (m_thread_ref, &m_attrinfo, nullptr, &record, false) != S_SUCCESS)
 	      {
 		m_error_handler.on_failure ();
 		m_error_handler.set_error_on_current_line (false);
 		clear_db_values ();
 		return;
 	      }
-	    const std::size_t record_bytes = record.get_recdes ().area_size;
+	    const std::size_t record_bytes = record.retained_bytes ();
 	    try
 	      {
 		m_recdes_collected.push_back (std::move (record));
 	      }
 	    catch (const std::bad_alloc &)
 	      {
-		m_pending_oos_values.discard_since (mark);
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, record_bytes);
 		m_error_handler.on_failure ();
 		m_error_handler.set_error_on_current_line (false);
@@ -765,8 +761,7 @@ namespace cubload
 	    // Bound the queue by both compact records and out-of-row payloads.
 	    // A single large input may exceed the limit and is flushed immediately.
 	    constexpr std::size_t retained_limit = 8 * 1024 * 1024;
-	    if (m_retained_bytes + m_pending_oos_values.retained_bytes ()
-		+ m_recdes_collected.capacity () * sizeof (record_descriptor) >= retained_limit)
+	    if (m_retained_bytes + m_recdes_collected.capacity () * sizeof (heap_pending_record) >= retained_limit)
 	      {
 		flush_records ();
 	      }
@@ -861,7 +856,6 @@ namespace cubload
 	    ++m_rows;
 	  }
 	m_recdes_collected.clear ();
-	m_pending_oos_values.discard_since (0);
 	m_retained_bytes = 0;
       }
     else
@@ -883,7 +877,6 @@ namespace cubload
 	    log_sysop_attach_to_outer (m_thread_ref);
 	    m_rows += m_recdes_collected.size ();
 	    m_recdes_collected.clear ();
-	    m_pending_oos_values.discard_since (0);
 	    m_retained_bytes = 0;
 	  }
       }

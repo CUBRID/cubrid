@@ -39,7 +39,7 @@
 #include "bestspace.hpp"
 #include "heap_file.h"
 #include "heap_oos.hpp"
-#include "heap_pending_oos_values.hpp"
+#include "heap_pending_record.hpp"
 #include "heap_show_scan_context.hpp"
 #include "oos_file.hpp"
 #include "oos_util.hpp"
@@ -826,7 +826,7 @@ static SCAN_CODE heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_
 /* *INDENT-OFF* */
 static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							   RECDES * old_recdes, record_descriptor * new_recdes,
-							   int lob_create_flag, heap_pending_oos_values * pending =
+							   int lob_create_flag, heap_pending_record * pending =
 							   nullptr);
 /* *INDENT-ON* */
 
@@ -13250,9 +13250,10 @@ void heap_oos_test_fail_heap_insert_once () { heap_Oos_fail_heap_insert.store (t
 
 SCAN_CODE
 heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes,
-                             record_descriptor *record, heap_pending_oos_values *pending, bool copy_lobs)
+                             heap_pending_record *pending, bool copy_lobs)
 {
-  const std::size_t mark = pending->size ();
+  record_descriptor *record = &pending->record ();
+  assert (record->get_recdes ().data == nullptr);
   SCAN_CODE status = S_ERROR;
   if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
     {
@@ -13278,10 +13279,6 @@ heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_
     {
       record->set_type (REC_OOS_PENDING);
     }
-  else
-    {
-      pending->discard_since (mark);
-    }
   return status;
 }
 
@@ -13289,8 +13286,9 @@ heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_
  * preserve the source MVCC header when rebuilding its compact representation. */
 int
 heap_prepare_oos_record (THREAD_ENTRY *thread_p, const OID *source_class, RECDES *source,
-                         record_descriptor *record, heap_pending_oos_values *pending)
+                         heap_pending_record *pending)
 {
+  record_descriptor *record = &pending->record ();
   HEAP_CACHE_ATTRINFO attr_info;
   int error = heap_attrinfo_start (thread_p, source_class, -1, nullptr, &attr_info);
   if (error != NO_ERROR)
@@ -13299,7 +13297,7 @@ heap_prepare_oos_record (THREAD_ENTRY *thread_p, const OID *source_class, RECDES
     }
   error = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, source, &attr_info);
   if (error == NO_ERROR
-      && heap_attrinfo_prepare_record (thread_p, &attr_info, nullptr, record, pending, false) != S_SUCCESS)
+      && heap_attrinfo_prepare_record (thread_p, &attr_info, nullptr, pending, false) != S_SUCCESS)
     {
       error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
     }
@@ -13839,7 +13837,7 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
 static SCAN_CODE
 heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 					  RECDES * old_recdes, record_descriptor * new_recdes, int lob_create_flag,
-					  heap_pending_oos_values * pending)
+					  heap_pending_record * pending)
 {
   OR_BUF buf;
   size_t inline_size_after_oos, mvcc_extra;
