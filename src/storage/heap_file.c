@@ -26402,11 +26402,11 @@ heap_prepare_object_page (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHE
 /*
  * heap_try_refix_home_page () - Fix the home page again for the scan cache, only if it can be latched right away.
  *
- * return	 : NO_ERROR, or the error of a fix that failed for a reason other than the latch being taken.
+ * return	 : NO_ERROR, or ER_INTERRUPTED when the fix found the transaction interrupted.
  * thread_p (in) : Thread entry.
  * context (in)	 : Heap get context whose pages were released for a previous-version walk.
  *
- * NOTE: When the latch is taken, the watcher stays empty and the next access fixes the page as usual.
+ * NOTE: When the fix fails, the watcher stays empty and the next access fixes the page as usual.
  *	 Do not wrap an ordered fix in xlogtb_reset_wait_msecs (LK_FORCE_ZERO_WAIT) instead: the wait is per
  *	 transaction, and parallel workers of the same transaction would stop waiting too.
  */
@@ -26415,7 +26415,7 @@ heap_try_refix_home_page (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
 {
   VPID home_vpid;
   PAGE_PTR home_page;
-  int error_before, error;
+  bool has_prior_error;
 
   assert (context->home_page_watcher.pgptr == NULL && context->fwd_page_watcher.pgptr == NULL);
 
@@ -26425,24 +26425,37 @@ heap_try_refix_home_page (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
     }
 
   VPID_GET_FROM_OID (&home_vpid, context->oid_p);
-  error_before = er_errid ();
+
+  /* The read has succeeded, so what this fix sets is not the caller's. An error already set is pushed aside; when
+   * there is none, as usual, clearing after a failed fix is enough and avoids a push for every walk. */
+  has_prior_error = (er_errid () != NO_ERROR);
+  if (has_prior_error)
+    {
+      er_stack_push ();
+    }
   /* not OLD_PAGE_PREVENT_DEALLOC: a conditional fix that fails would leave its guard raised */
   home_page = pgbuf_fix (thread_p, &home_vpid, OLD_PAGE, context->latch_mode, PGBUF_CONDITIONAL_LATCH);
+  if (home_page == NULL && er_errid () == ER_INTERRUPTED)
+    {
+      /* pgbuf_fix () has cleared the interrupt flag, so this error is the only notice left */
+      if (has_prior_error)
+	{
+	  er_stack_pop_and_keep_error ();
+	}
+      return ER_INTERRUPTED;
+    }
+  if (has_prior_error)
+    {
+      er_stack_pop ();
+    }
+
   if (home_page == NULL)
     {
-      if (er_errid () == error_before)
+      if (!has_prior_error)
 	{
-	  /* the latch is taken; nothing was set */
-	  return NO_ERROR;
-	}
-      if (er_errid () == ER_LK_PAGE_TIMEOUT)
-	{
-	  /* set only under lock_timeout 0; the read itself has succeeded */
 	  er_clear ();
-	  return NO_ERROR;
 	}
-      ASSERT_ERROR_AND_SET (error);
-      return error;
+      return NO_ERROR;
     }
 
   pgbuf_attach_watcher (thread_p, home_page, context->latch_mode, &context->scan_cache->node.hfid,
