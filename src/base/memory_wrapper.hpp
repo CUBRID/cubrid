@@ -46,7 +46,21 @@ inline T *placement_new (T *ptr, Args &&... args)
  * memory_wrapper.hpp         CANNOT INCLUDE      |     CAN INCLUDE           |   END OF INCLUDE
  */
 
-#ifdef SERVER_MODE
+/* AddressSanitizer: GCC defines __SANITIZE_ADDRESS__, and clang provides __has_feature (address_sanitizer) */
+#if defined(__SANITIZE_ADDRESS__)
+#define CUB_ADDRESS_SANITIZER
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+#define CUB_ADDRESS_SANITIZER
+#endif
+#endif
+
+/*
+ * With AddressSanitizer, the overloaded new/delete below are not used.
+ * Consequently, the memory monitor does not track C++ new/delete in this case
+ * (while the malloc/free family is still tracked)
+ */
+#if defined(SERVER_MODE) && !defined(CUB_ADDRESS_SANITIZER)
 // TODO: The usage of operator new encompasses various additional methods beyond basic usage.
 // However, as CUBRID does not currently utilize such additional methods, they are not overloaded.
 // It has been decided that overloading will be undertaken should any issues arise from
@@ -85,11 +99,8 @@ inline void operator delete [] (void *ptr, size_t sz) noexcept
   cub_free (ptr);
 }
 
-#if !defined(__SANITIZE_ADDRESS__)
 #define new new(__FILE__, __LINE__)
-#endif
-
-#endif // SERVER_MODE
+#endif // SERVER_MODE && !CUB_ADDRESS_SANITIZER
 #endif // !WINDOWS
 
 #endif // _MEMORY_WRAPPER_HPP_
