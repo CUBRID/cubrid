@@ -31,7 +31,6 @@
 #include "system_catalog.h"
 
 #include "btree.h"		// for single/multi ops
-#include "deduplicate_key.h"
 #include "error_manager.h"
 #include "heap_file.h"
 #include "transform.h"
@@ -876,28 +875,13 @@ catcls_convert_attr_id_to_name (THREAD_ENTRY * thread_p, OR_BUF * orbuf_p, OR_VA
 	    }
 
 	  id = db_get_int (&key_atts[1].value);
-	  if (IS_DEDUPLICATE_KEY_ATTR_ID (id))
+	  for (ids = id_val_p->sub.value, k = 0; k < id_val_p->sub.count; k++)
 	    {
-	      DB_VALUE tmp_val;
-
-	      db_make_string (&tmp_val, dk_get_deduplicate_key_attr_name (GET_DEDUPLICATE_KEY_ATTR_LEVEL (id)));
-	      pr_clear_value (&key_atts[1].value);
-	      pr_clone_value (&tmp_val, &key_atts[1].value);
-	      if (tmp_val.need_clear)
+	      id_atts = ids[k].sub.value;
+	      if (!DB_IS_NULL (&id_atts[0].value) && id == db_get_int (&id_atts[0].value))
 		{
-		  pr_clear_value (&tmp_val);
-		}
-	    }
-	  else
-	    {
-	      for (ids = id_val_p->sub.value, k = 0; k < id_val_p->sub.count; k++)
-		{
-		  id_atts = ids[k].sub.value;
-		  if (!DB_IS_NULL (&id_atts[0].value) && id == db_get_int (&id_atts[0].value))
-		    {
-		      pr_clear_value (&key_atts[1].value);
-		      pr_clone_value (&id_atts[1].value, &key_atts[1].value);
-		    }
+		  pr_clear_value (&key_atts[1].value);
+		  pr_clone_value (&id_atts[1].value, &key_atts[1].value);
 		}
 	    }
 	}

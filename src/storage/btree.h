@@ -130,7 +130,6 @@ struct btid_int
   char *copy_buf;		/* index key copy_buf pointer info; derived from INDX_SCAN_ID.copy_buf */
   int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
   int rev_level;
-  int deduplicate_key_idx;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   OID topclass_oid;		/* class oid for which index is created */
 };
 
@@ -299,7 +298,6 @@ struct btree_scan
   bool is_btid_int_valid;
   bool is_scan_started;
   bool force_restart_from_root;
-  bool is_fk_remake;		/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   PERF_UTIME_TRACKER time_track;
 
   void *bts_other;
@@ -354,7 +352,6 @@ struct btree_scan
     OID_SET_NULL (&(bts)->match_class_oid);		\
     (bts)->time_track.is_perf_tracking = false;		\
     (bts)->bts_other = NULL;				\
-    (bts)->is_fk_remake = false;                        \
   } while (0)
 
 #define BTREE_RESET_SCAN(bts)				\
@@ -377,7 +374,6 @@ struct btree_scan
     db_make_null (&(bts)->cur_key);			\
     (bts)->clear_cur_key = false;			\
     (bts)->is_scan_started = false;			\
-    (bts)->is_fk_remake = false;                        \
   } while (0)
 
 #define BTREE_END_OF_SCAN(bts) \
@@ -435,8 +431,6 @@ struct btree_capacity
   int fence_key_cnt;		/* Number of fence-keys */
   int dis_key_cnt;		/* Distinct key count (in leaf pages) */
   int64_t tot_val_cnt;		/* Total number of values stored in tree */
-  int deduplicate_dis_key_cnt;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-  int avg_val_per_dedup_key;	/* Average number of values (OIDs) per deduplicate key */
   int avg_val_per_key;		/* Average number of values (OIDs) per key */
   int leaf_pg_cnt;		/* Leaf page count */
   int nleaf_pg_cnt;		/* NonLeaf page count */
@@ -726,11 +720,6 @@ typedef int BTREE_RANGE_SCAN_PROCESS_KEY_FUNC (THREAD_ENTRY * thread_p, BTREE_SC
 
 extern int btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
 				   OID * found_oid);
-/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-extern int btree_remake_foreign_key_with_PK (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OID * class_oid,
-					     key_val_range * kv_range, bool * is_newly);
-extern int btree_remake_reference_key_with_FK (THREAD_ENTRY * thread_p, TP_DOMAIN * pk_domain, DB_VALUE * fk_key,
-					       DB_VALUE * new_key);
 
 extern void btree_scan_clear_key (BTREE_SCAN * btree_scan);
 extern void bts_reset_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);

@@ -339,7 +339,6 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate_migration.cpp
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
-  ${OBJECT_DIR}/deduplicate_key.c
   ${OBJECT_DIR}/elo.c
   ${OBJECT_DIR}/identifier_store.cpp
   ${OBJECT_DIR}/lob_locator.cpp

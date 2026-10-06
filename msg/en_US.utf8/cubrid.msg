@@ -1656,7 +1656,6 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 No options specified for ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
-138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
 140 FILL_FACTOR argument must be between %1$d and %2$d.
 

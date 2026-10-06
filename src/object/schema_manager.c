@@ -9610,12 +9610,6 @@ flatten_properties (SM_TEMPLATE * def, SM_TEMPLATE * flat)
 	      /*
 	       * Try to find a corresponding attribute in the flattened template
 	       */
-	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attrs[i]->id))
-		{
-		  assert (attrs[i + 1] == NULL);
-		  continue;
-		}
-
 	      for (att = flat->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
 		{
 		  if (SM_COMPARE_NAMES (attrs[i]->header.name, att->header.name) == 0)
@@ -10044,7 +10038,6 @@ build_storage_order (SM_CLASS * class_, SM_TEMPLATE * flat)
 	  /* if the ids are the same, use it without looking at the name, this is how rename works */
 	  if (new_att->id != -1)
 	    {
-	      assert (!IS_DEDUPLICATE_KEY_ATTR_ID (new_att->id));
 	      if (new_att->id == current->id)
 		{
 		  found = new_att;
@@ -10827,9 +10820,7 @@ allocate_index (MOP classop, SM_CLASS * class_, DB_OBJLIST * subclasses, SM_CLAS
   // TODO: optimize has_instances case
   if (!class_->load_index_from_heap || !has_instances || index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
-      error =
-	btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk,
-			 dk_sm_deduplicate_key_position (n_attrs, attrs, function_index));
+      error = btree_add_index (index, domain, WS_OID (classop), attrs[0]->id, unique_pk);
     }
   /* If there are instances, load all of them (including applicable subclasses) into the new B-tree */
   else
@@ -10974,12 +10965,6 @@ check_fk_validity (MOP classop, SM_CLASS * class_, SM_ATTRIBUTE ** key_attrs, co
   if (has_instances > 0)
     {
       for (i = 0, n_attrs = 0; key_attrs[i] != NULL; i++, n_attrs++);
-
-      // We cannot make a PK with a function. Therefore, only the last member is checked.
-      if (n_attrs > 1 && IS_DEDUPLICATE_KEY_ATTR_ID (key_attrs[n_attrs - 1]->id))
-	{
-	  n_attrs--;
-	}
 
       domain = construct_index_key_domain (n_attrs, key_attrs, asc_desc, NULL, -1, NULL);
       if (domain == NULL)
@@ -14300,7 +14285,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       int class_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       int att_name_prefix_size = DB_MAX_IDENTIFIER_LENGTH;
       char md5_str[32 + 1] = { '\0' };
-      bool is_fk = false;
 
       switch (type)
 	{
@@ -14315,7 +14299,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
 	  break;
 	case DB_CONSTRAINT_FOREIGN_KEY:
 	  prefix = "fk_";
-	  is_fk = true;
 	  break;
 	case DB_CONSTRAINT_NOT_NULL:
 	  prefix = "n_";
@@ -14347,12 +14330,6 @@ sm_default_constraint_name (const char *class_name, DB_CONSTRAINT_TYPE type, con
       for (ptr = att_names; (*ptr != NULL) && (i < n_attrs); ptr++, i++)
 	{
 	  int ptr_size = 0;
-	  if (is_fk && IS_DEDUPLICATE_KEY_ATTR_NAME (*ptr))
-	    {
-	      n_attrs--;	/* Do not include deduplicate_key_attr name in the FK name */
-	      assert (i == n_attrs);
-	      break;
-	    }
 
 	  do_desc = false;	/* init */
 	  if (asc_desc)
