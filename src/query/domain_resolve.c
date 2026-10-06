@@ -3183,9 +3183,10 @@ qexec_enter_temporary_scope (const VAL_DESCR * vd, const VAL_LIST * val_list)
 /*
  * qexec_convert_execution_temporary () - the first read of an execution temporary in its scope's generation
  *   (qexec_execution_temporary): the value converted for every read of the generation
- *   return: the converted value; NULL when the row converts it - the scope was not entered, the conversion failed
- *	     (the outcome follows from the row's own conversion), or the value is not the execution's own
- *   entry(in/out): the execution temporary, which a PX worker's own load numbers with its scope as the plan does
+ *   return: the converted value; NULL when the row converts it - the scope was not entered, or the conversion failed
+ *	     (the outcome follows from the row's own conversion)
+ *   entry(in/out): the execution temporary, which a PX worker's own load numbers with its scope as the plan does; only
+ *		    the state's owner reads it (every caller passes its own descriptor, a PX worker its copy)
  *   conv(in), target(in): the converter the row would run, and its target
  *   value(in): the value, not NULL
  */
@@ -3194,8 +3195,9 @@ qexec_convert_execution_temporary (THREAD_ENTRY * thread_p, XASL_STATE * xasl_st
 				   DOMAIN_EXECUTION_TEMPORARY * entry, TP_VALUE_CONVERTER conv,
 				   const TP_DOMAIN * target, const DB_VALUE * value)
 {
+  assert (xasl_state->resolved_domain.owner == thread_p);
   const unsigned long long generation = xasl_state->domain_execution.scope_generations[entry->scope];
-  if (generation == 0 || xasl_state->resolved_domain.owner != thread_p)
+  if (generation == 0)
     {
       return NULL;
     }
