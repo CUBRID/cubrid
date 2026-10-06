@@ -8538,6 +8538,15 @@ qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_su
     }
   if (*is_memoize_succeed)
     {
+      /* a replayed row skips the scan, so clear the correlated subqueries here as the scan does for each row it reads
+       * (CBRD-27567). A subquery only this node's predicates read is not run again: the replayed row already passed
+       * them. A subquery a consumer of the row reads, such as a select-list subquery attached to the innermost scan,
+       * runs again for the replayed row instead of handing out the previous row's result. */
+      if (xasl->dptr_list != NULL && qexec_execute_dptr_list (thread_p, xasl->dptr_list, xasl_state, true) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+
       if (is_memoize_ended)
 	{
 	  if (xasl->curr_spec != NULL)
@@ -8632,6 +8641,12 @@ qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_su
 			    }
 			  else
 			    {
+			      /* the next replayed row: clear the correlated subqueries as above */
+			      if (xasl->dptr_list != NULL
+				  && qexec_execute_dptr_list (thread_p, xasl->dptr_list, xasl_state, true) != NO_ERROR)
+				{
+				  return S_ERROR;
+				}
 			      continue;
 			    }
 			}
