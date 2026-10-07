@@ -761,7 +761,7 @@ fetch_convert_to_branch_value (const val_descr * vd, const DOMAIN_PLAN_ITEM * it
     : type == DB_TYPE_CHAR ? resolved_domain->conv[1] : NULL;
   if (converter == NULL)
     {
-      return domain_unresolved_error ("", qexec_item_index (vd, item), type);
+      return domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, item), type);
     }
   DB_VALUE converted;
   const TP_DOMAIN_STATUS status = tp_value_convert (converter, resolved_domain->domain, value, &converted);
@@ -1661,7 +1661,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 	case FETCH_RESOLVED_UNRESOLVED:
 	default:
-	  (void) domain_unresolved_error ("", qexec_item_index (vd, arithptr->plan_item), DB_TYPE_VARIABLE);
+	  (void) domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, arithptr->plan_item),
+					  DB_TYPE_VARIABLE);
 	  goto error;
 	}
     }
@@ -4787,7 +4788,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       assert (DB_IS_NULL (arithptr->value));
       if (!DB_IS_NULL (arithptr->value))
 	{
-	  (void) domain_unresolved_error ("", qexec_item_index (vd, arithptr->plan_item), DB_TYPE_NULL);
+	  (void) domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, arithptr->plan_item), DB_TYPE_NULL);
 	  goto error;
 	}
       domain = no_value_domain;
@@ -4820,7 +4821,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	{
 	  /* resolve_domains resolves every string, a string over a session variable read too: a string
 	   * without a resolution fails the unresolved-domain check (execution) */
-	  (void) domain_unresolved_error ("", qexec_item_index (vd, arithptr->plan_item),
+	  (void) domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, arithptr->plan_item),
 					  TP_DOMAIN_TYPE (arith_domain));
 	  goto error;
 	}
@@ -4916,7 +4917,8 @@ fetch_read_plan_domain (REGU_VARIABLE * regu_var, val_descr * vd, const DB_VALUE
     }
   /* resolve_domains resolves every variable regu, one over a session variable read too: none here fails the
    * unresolved-domain check (execution) */
-  return domain_unresolved_error ("", qexec_item_index (vd, item), TP_DOMAIN_TYPE (regu_var->domain));
+  return domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, item),
+				  TP_DOMAIN_TYPE (regu_var->domain));
 }
 
 /*

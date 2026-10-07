@@ -3575,6 +3575,7 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p, 
     }
   new_xasl_state->qp_xasl_line = xasl_state_p->qp_xasl_line;
   new_xasl_state->query_id = xasl_state_p->query_id;
+  new_xasl_state->query_alias = xasl_state_p->query_alias;
   new_xasl_state->vd.xasl_state = new_xasl_state;
   new_xasl_state->vd.dbval_cnt = xasl_state_p->vd.dbval_cnt;
   new_xasl_state->vd.drand = xasl_state_p->vd.drand;
@@ -17479,6 +17480,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
 
   /* save the query_id into the XASL state struct */
   xasl_state.query_id = query_id;
+  xasl_state.query_alias = xasl->query_alias;
 
   /* initialize error line */
   xasl_state.qp_xasl_line = 0;

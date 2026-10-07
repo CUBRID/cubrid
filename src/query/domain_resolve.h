@@ -297,6 +297,14 @@ qexec_item_index (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
     ? (int) (item - plan->items) : -1;
 }
 
+/* The statement's text the unresolved-domain check (execution) names: the XASL's query alias, which the execution
+ * state carries (qexec_execute_query); "" where no execution state is at hand */
+inline const char *
+qexec_query_alias (const VAL_DESCR * vd)
+{
+  return vd != NULL && vd->xasl_state != NULL && vd->xasl_state->query_alias != NULL ? vd->xasl_state->query_alias : "";
+}
+
 extern const TP_DOMAIN *qexec_value_domain (const VAL_DESCR * vd, const regu_variable_node * regu);
 extern void qexec_enter_temporary_scope (const VAL_DESCR * vd, const val_list_node * val_list);
 extern const DB_VALUE *qexec_convert_execution_temporary (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
