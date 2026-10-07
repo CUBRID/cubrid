@@ -11008,6 +11008,18 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 		  error = do_recreate_filter_index_constr (parser, saved_constr->filter_predicate, alter, NULL, NULL);
 		  if (error != NO_ERROR)
 		    {
+		      PT_NODE *error_msg = parser->error_msgs;
+		      if (error_msg != NULL && error_msg->node_type == PT_ZZ_ERROR_MSG
+			  && error_msg->info.error_msg.error_message != NULL)
+			{
+			  /* the predicate recompiled under the changed column type: the user sees the ALTER statement, so
+			   * the message names the index whose predicate failed */
+			  char *message = pt_append_string (parser, NULL, "filter index '");
+			  message = pt_append_string (parser, message, saved_constr->name);
+			  message = pt_append_string (parser, message, "': ");
+			  error_msg->info.error_msg.error_message =
+			    pt_append_string (parser, message, error_msg->info.error_msg.error_message);
+			}
 		      goto exit;
 		    }
 		}

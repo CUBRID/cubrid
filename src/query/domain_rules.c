@@ -33,6 +33,7 @@
 #include "string_opfunc.h"
 #include <atomic>
 #include <cstddef>
+#include <cstring>
 #include <mutex>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -2167,11 +2168,30 @@ domain_type_pair_table_final (void)
   domain_key_pairs_free (domain_Key_pairs.exchange (NULL));
 }
 
+void
+domain_alias_statement (const char *alias, char *statement, size_t size)
+{
+  /* the alias is the plan cache key: the statement, then '?' and the system parameters it was compiled under
+   * (parser_print_tree), the user and the bind count; a message carries the statement alone */
+  size_t length = 0;
+  if (alias != NULL)
+    {
+      while (alias[length] != '\0' && length < size - 1 && !(alias[length] == '?' && char_isdigit (alias[length + 1])))
+	{
+	  length++;
+	}
+      memcpy (statement, alias, length);
+    }
+  statement[length] = '\0';
+}
+
 int
 domain_unresolved_error (const char *alias, int index, DB_TYPE type)
 {
+  char statement[1024];
   assert (false);
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", alias, index,
+  domain_alias_statement (alias, statement, sizeof (statement));
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", statement, index,
 	  pr_type_name (type));
   return ER_QPROC_DOMAIN_UNRESOLVED;
 }

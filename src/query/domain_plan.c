@@ -5039,8 +5039,9 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
   const int unresolved = domain_plan_validate (plan);
   if (unresolved >= 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "load",
-	      root->query_alias != NULL ? root->query_alias : "", unresolved,
+      char statement[1024];
+      domain_alias_statement (root->query_alias, statement, sizeof (statement));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "load", statement, unresolved,
 	      pr_type_name (TP_DOMAIN_TYPE (plan->items[unresolved].fixed.domain)));
       return ER_QPROC_DOMAIN_UNRESOLVED;
     }

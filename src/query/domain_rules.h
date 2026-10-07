@@ -302,6 +302,14 @@ void domain_type_pair_table_final (void);
  */
 int domain_unresolved_error (const char *alias, int index, DB_TYPE type);
 
+/*
+ * domain_alias_statement () - the statement of a plan cache key (XASL_NODE.query_alias): the text before the '?' that
+ *   opens the system parameters the key carries; for an error message
+ *   alias(in): the key, or NULL
+ *   statement(out): the statement, cut to size - 1 characters
+ */
+void domain_alias_statement (const char *alias, char *statement, size_t size);
+
 /* The key of a value: its type and, for a string or an ENUM, its codeset and collation. */
 void domain_compare_key_of_value (const DB_VALUE * value, DOMAIN_COMPARE_KEY * key);
 
