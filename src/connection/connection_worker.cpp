@@ -883,7 +883,7 @@ namespace cubconn::connection
      * that was interrupted at the start of the close. */
     if (ctx->m_conn->session_p != NULL)
       {
-	ssession_destroy_load_session (m_entry, ctx->m_conn->session_p);
+	ssession_destroy_attached_sessions (m_entry, ctx->m_conn->session_p);
       }
 
     m_events.remove_descriptor (ctx->m_conn->fd);

@@ -81,6 +81,10 @@
 #include "cas_db_inc.h"
 #include "cas_common_vars.h"
 #include "query_replace.h"
+#include "network_interface_cl.h"
+
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 
 #if defined (SUPPRESS_STRLEN_WARNING)
@@ -298,6 +302,8 @@ static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
+static bool refuse_stream_opened_mid_request (void);
+static void ux_stream_give_up_after_error (void);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -609,6 +615,8 @@ ux_database_shutdown (bool request_server)
   memset (database_passwd, 0, sizeof (database_passwd));
   cas_default_isolation_level = 0;
   cas_default_lock_timeout = -1;
+
+  ux_stream_reset ();
 }
 
 int
@@ -901,6 +909,20 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
 {
   int err_code = 0;
 
+  /* A COMMIT cannot finish a stream still running. It rolls back and fails instead -- what every driver already
+   * takes a failed END_TRAN to have done. */
+  if (tran_type == CCI_TRAN_COMMIT && stream_from_is_open ())
+    {
+      err_code = ux_end_tran (CCI_TRAN_ROLLBACK, reset_con_status, ddl_audit_log);
+      if (err_code < 0)
+	{
+	  return err_code;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a COMMIT inside an open stream session rolls the transaction back");
+      return ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+    }
+
   ux_end_tran_cleanup (tran_type);
 
   if (tran_type == CCI_TRAN_COMMIT)
@@ -914,6 +936,9 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
     }
   else if (tran_type == CCI_TRAN_ROLLBACK)
     {
+      /* the server ends any open stream session with the rollback, so this
+       * connection is no longer holding one either */
+      ux_stream_reset ();
       err_code = db_abort_transaction ();
       cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_abort_transaction() = %d", err_code);
       if (err_code < 0)
@@ -1323,6 +1348,8 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 execute_error:
   NET_BUF_ERR_SET (net_buf);
 
+  ux_stream_give_up_after_error ();
+
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
       db_session_set_xasl_cache_pinned (session, false, false);
@@ -1573,6 +1600,12 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	      as_info->num_holdable_results++;
 	    }
 	}
+
+      if (db_statement_count (session) > 1 && refuse_stream_opened_mid_request ())
+	{
+	  err_code = ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+	  goto execute_all_error;
+	}
     }
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
@@ -1667,6 +1700,8 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
 execute_all_error:
   NET_BUF_ERR_SET (net_buf);
+
+  ux_stream_give_up_after_error ();
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
@@ -2028,6 +2063,12 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	  goto batch_error;
 	}
 
+      if (refuse_stream_opened_mid_request ())
+	{
+	  db_query_end (result);
+	  goto batch_error;
+	}
+
       /* success; peek the values in tuples */
       if (result != NULL)
 	{
@@ -2378,6 +2419,12 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	      num_query--;
 	      continue;
 	    }
+	  goto exec_db_error;
+	}
+
+      if (refuse_stream_opened_mid_request ())
+	{
+	  db_query_end (result);
 	  goto exec_db_error;
 	}
 
@@ -10454,6 +10501,10 @@ encode_ext_type_to_short (T_BROKER_VERSION client_version, unsigned char cas_typ
 // return             : true to commit, false otherwise
 // server_handle (in) : server handle
 //
+/* Auto-commit owed by a statement that opened a stream session; the stream
+ * END pays it once the transfer is done. */
+static bool stream_Deferred_auto_commit = false;
+
 static bool
 do_commit_after_execute (const t_srv_handle & server_handle)
 {
@@ -10471,6 +10522,15 @@ do_commit_after_execute (const t_srv_handle & server_handle)
   // IMPORTANT EXCEPTION: server commit must always be followed by a client commit! when result set is small (less than
   //                      one page) and when other conditions are met too, server commits automatically.
   //
+
+  /* A statement that opened a stream session is not finished here: the byte
+   * transfer follows and the stream END ends the statement, so the commit is
+   * deferred to it -- with the mode this statement ran in. */
+  if (stream_from_is_open ())
+    {
+      stream_Deferred_auto_commit = (server_handle.auto_commit_mode == TRUE);
+      return false;
+    }
 
   if (server_handle.auto_commit_mode != TRUE)
     {
@@ -10532,4 +10592,230 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
   srv_handle->q_result->stmt_id = stmt_id;
 
   return err_code;
+}
+
+/*
+ * ux_stream_reset () - Drop the stream state this connection was carrying
+ *
+ * Called where the server-side session is known to be gone. Without it the
+ * deferred auto-commit of a client that vanished mid-stream would be read by
+ * the next client the CAS process serves.
+ */
+void
+ux_stream_reset (void)
+{
+  stream_from_reset ();
+  stream_Deferred_auto_commit = false;
+}
+
+/*
+ * ux_stream_is_open () - Does this connection hold an open stream session?
+ *
+ * The reply header carries this so a driver that runs auto-commit from its own
+ * side can hold its commit back the way the CAS holds its own.
+ */
+bool
+ux_stream_is_open (void)
+{
+  return stream_from_is_open ();
+}
+
+/*
+ * ux_stream_admits_request () - May this request run on the connection now?
+ *
+ * An open stream is one statement still running: only its own requests and the
+ * ones that end the whole transaction are admitted (a COMMIT rolls back, see
+ * ux_end_tran).
+ */
+bool
+ux_stream_admits_request (int func_code)
+{
+  if (!stream_from_is_open ())
+    {
+      return true;
+    }
+
+  switch (func_code)
+    {
+    case CAS_FC_STREAM_SEND_DATA:
+    case CAS_FC_STREAM_END:
+    case CAS_FC_STREAM_ABORT:
+    case CAS_FC_END_TRAN:
+    case CAS_FC_CHECK_CAS:
+    case CAS_FC_END_SESSION:
+    case CAS_FC_CON_CLOSE:
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * refuse_stream_opened_mid_request () - Give up a stream a statement opened with more of its request to run
+ *
+ * What runs next -- another statement, the batch's own commit, a rollback to the request's savepoint --
+ * would run inside the stream, so a stream is opened only by a request that runs one statement.
+ */
+static bool
+refuse_stream_opened_mid_request (void)
+{
+  if (!stream_from_is_open ())
+    {
+      return false;
+    }
+
+  (void) stream_from_abort ();
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	  "a statement that opens a stream must be executed on its own");
+  return true;
+}
+
+/*
+ * ux_stream_give_up_after_error () - Drop the stream a failing statement opened
+ *
+ * It was opened for the transfer that follows, and an error reply means that transfer never comes. No statement
+ * runs while a stream is open (ux_stream_admits_request), so one open here is this statement's.
+ */
+static void
+ux_stream_give_up_after_error (void)
+{
+  if (stream_from_is_open ())
+    {
+      (void) stream_from_abort ();
+      ux_stream_reset ();
+    }
+}
+
+/*
+ * ux_stream_init () - Open a stream session the driver asked for directly
+ *
+ * The statement path does not come through here: a statement that opens a
+ * stream defers its own auto-commit in do_commit_after_execute (), with the
+ * mode that statement ran in. A driver-opened stream has no such statement, so
+ * what END owes is settled here instead -- from the kind's own answer, which
+ * the open reply carries, and this connection's mode.
+ */
+int
+ux_stream_init (int stream_kind, char *config, int config_len, T_NET_BUF * net_buf)
+{
+  int err_code;
+
+  err_code = stream_from_init (stream_kind, config, config_len);
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  stream_Deferred_auto_commit = (stream_from_ends_unit_of_work () && as_info->auto_commit_mode == TRUE);
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  return 0;
+}
+
+int
+ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int err_code;
+
+  err_code = stream_from_send_data (data, data_len);
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+
+      /* The server dropped the session on the failed chunk, so the statement
+       * that opened the stream ends here. Whatever it already flushed is still
+       * in the transaction, so the auto-commit it deferred is paid back as a
+       * rollback -- otherwise the next statement's auto-commit commits it. */
+      if (stream_Deferred_auto_commit)
+	{
+	  req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+	  stream_Deferred_auto_commit = false;
+	}
+
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  return 0;
+}
+
+int
+ux_stream_end (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int err_code;
+  INT64 count = 0;
+  bool auto_commit_owed;
+
+  /* The statement that opened the stream deferred its auto-commit to here; it
+   * is owed only if that statement ran in auto-commit mode. */
+  auto_commit_owed = stream_Deferred_auto_commit;
+  stream_Deferred_auto_commit = false;
+
+  err_code = stream_from_end (&count);
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+
+      if (auto_commit_owed)
+	{
+	  req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+	}
+
+      return err_code;
+    }
+
+  if (auto_commit_owed)
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
+    }
+
+  /* first field is the result code, as every other CAS reply has it; the
+   * binding's count follows, 64-bit so a value stream's byte count fits */
+  net_buf_cp_int (net_buf, NO_ERROR, NULL);
+  net_buf_cp_bigint (net_buf, count, NULL);
+  return 0;
+}
+
+/*
+ * ux_stream_abort () - Give up on the stream without ending it
+ *
+ * The bytes the session already flushed stay in the transaction, so the
+ * auto-commit it deferred is paid back as a rollback -- the same reckoning as a
+ * failed chunk, and for the same reason: left unpaid, the next statement's
+ * auto-commit would commit them.
+ */
+int
+ux_stream_abort (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int err_code;
+  bool auto_commit_owed;
+
+  auto_commit_owed = stream_Deferred_auto_commit;
+  stream_Deferred_auto_commit = false;
+
+  err_code = stream_from_abort ();
+
+  if (auto_commit_owed)
+    {
+      req_info->need_auto_commit = TRAN_AUTOROLLBACK;
+    }
+
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, NO_ERROR, NULL);
+  return 0;
 }
