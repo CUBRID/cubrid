@@ -278,7 +278,11 @@
   /* cleanfiledb - hidden utility */ \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_CLEANFILEDB_DUMP_FILE_LIST) \
   NET_SERVER_REQUEST_ITEM(NET_SERVER_CLEANFILEDB_CLEAN_INVALID_FILE) \
-  NET_SERVER_REQUEST_ITEM(NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE)	// Debug only: unsafe, may break DB consistency
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_CLEANFILEDB_DELETE_TARGET_FILE)	/* Debug only: unsafe, may break DB consistency */ \
+  \
+  /* cdc channel authentication - appended at the end so no existing request number moves */ \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_CHALLENGE) \
+  NET_SERVER_REQUEST_ITEM(NET_SERVER_CDC_AUTH_RESPONSE)
 
 enum net_server_request
 {
