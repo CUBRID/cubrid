@@ -49,9 +49,8 @@ struct log_rcv_backup_level_info
 				 * the header predates the field */
 };
 
-extern bool log_rcv_no_logging_index_is_covered_by_backup (const LOG_RCV_BACKUP_LEVEL_INFO * levels, int num_levels,
-							   const LOG_LSA * build_start_lsa,
-							   const LOG_LSA * barrier_lsa);
+extern bool log_rv_no_logging_index_is_covered_by_backup (const LOG_RCV_BACKUP_LEVEL_INFO * levels, int num_levels,
+							  const LOG_LSA * build_start_lsa, const LOG_LSA * barrier_lsa);
 extern void log_recovery_set_restore_backup_level (int level, const LOG_LSA * start_lsa,
 						   const LOG_LSA * start_log_end_lsa);
 extern LOG_LSA *log_startof_nxrec (THREAD_ENTRY * thread_p, LOG_LSA * lsa, bool canuse_forwaddr);

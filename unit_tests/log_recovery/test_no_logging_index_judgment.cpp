@@ -40,17 +40,17 @@ TEST_CASE ("full backup only", "[log_recovery][no_logging_index]")
   SECTION ("barrier before the backup start: the image holds the pages")
   {
     LOG_LSA barrier = lsa (90);
-    REQUIRE (log_rcv_no_logging_index_is_covered_by_backup (levels, 1, &build_start, &barrier));
+    REQUIRE (log_rv_no_logging_index_is_covered_by_backup (levels, 1, &build_start, &barrier));
   }
   SECTION ("barrier after the backup start: pages may have been copied half-written")
   {
     LOG_LSA barrier = lsa (110);
-    REQUIRE_FALSE (log_rcv_no_logging_index_is_covered_by_backup (levels, 1, &build_start, &barrier));
+    REQUIRE_FALSE (log_rv_no_logging_index_is_covered_by_backup (levels, 1, &build_start, &barrier));
   }
   SECTION ("barrier equal to the backup start is not before it")
   {
     LOG_LSA barrier = lsa (100);
-    REQUIRE_FALSE (log_rcv_no_logging_index_is_covered_by_backup (levels, 1, &build_start, &barrier));
+    REQUIRE_FALSE (log_rv_no_logging_index_is_covered_by_backup (levels, 1, &build_start, &barrier));
   }
 }
 
@@ -66,12 +66,12 @@ TEST_CASE ("level 0 then build then level 1 (issue experiments 1 and 2)", "[log_
   SECTION ("barrier before level 1 began: level 1 re-copied every page")
   {
     LOG_LSA barrier = lsa (300);
-    REQUIRE (log_rcv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, &barrier));
+    REQUIRE (log_rv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, &barrier));
   }
   SECTION ("barrier after level 1 began")
   {
     LOG_LSA barrier = lsa (600);
-    REQUIRE_FALSE (log_rcv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, &barrier));
+    REQUIRE_FALSE (log_rv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, &barrier));
   }
 }
 
@@ -87,12 +87,12 @@ TEST_CASE ("build started before level 0's checkpoint (chain overlap)", "[log_re
   SECTION ("barrier before level 0 began: level 0 holds final pages")
   {
     LOG_LSA barrier = lsa (95);
-    REQUIRE (log_rcv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, &barrier));
+    REQUIRE (log_rv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, &barrier));
   }
   SECTION ("barrier after level 0 began: level 0 may hold partial pages and level 1 did not re-copy them")
   {
     LOG_LSA barrier = lsa (300);
-    REQUIRE_FALSE (log_rcv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, &barrier));
+    REQUIRE_FALSE (log_rv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, &barrier));
   }
 }
 
@@ -106,7 +106,7 @@ TEST_CASE ("build start equal to a level's threshold qualifies that level", "[lo
   levels[1].start_log_end_lsa = lsa (500);
   LOG_LSA build_start = lsa (90);
   LOG_LSA barrier = lsa (300);
-  REQUIRE (log_rcv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, &barrier));
+  REQUIRE (log_rv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, &barrier));
 }
 
 TEST_CASE ("three levels: the highest qualifying level decides", "[log_recovery][no_logging_index]")
@@ -124,14 +124,14 @@ TEST_CASE ("three levels: the highest qualifying level decides", "[log_recovery]
     LOG_LSA build_start = lsa (200);
     LOG_LSA barrier_ok = lsa (400);
     LOG_LSA barrier_late = lsa (600);
-    REQUIRE (log_rcv_no_logging_index_is_covered_by_backup (levels, 3, &build_start, &barrier_ok));
-    REQUIRE_FALSE (log_rcv_no_logging_index_is_covered_by_backup (levels, 3, &build_start, &barrier_late));
+    REQUIRE (log_rv_no_logging_index_is_covered_by_backup (levels, 3, &build_start, &barrier_ok));
+    REQUIRE_FALSE (log_rv_no_logging_index_is_covered_by_backup (levels, 3, &build_start, &barrier_late));
   }
   SECTION ("build after the level 2 threshold is judged by level 2")
   {
     LOG_LSA build_start = lsa (460);
     LOG_LSA barrier = lsa (600);
-    REQUIRE (log_rcv_no_logging_index_is_covered_by_backup (levels, 3, &build_start, &barrier));
+    REQUIRE (log_rv_no_logging_index_is_covered_by_backup (levels, 3, &build_start, &barrier));
   }
 }
 
@@ -147,25 +147,25 @@ TEST_CASE ("unknown inputs refuse", "[log_recovery][no_logging_index]")
 
   SECTION ("no levels")
   {
-    REQUIRE_FALSE (log_rcv_no_logging_index_is_covered_by_backup (levels, 0, &build_start, &barrier));
+    REQUIRE_FALSE (log_rv_no_logging_index_is_covered_by_backup (levels, 0, &build_start, &barrier));
   }
   SECTION ("barrier unknown (marker written before the payload existed)")
   {
     LOG_LSA null_lsa = NULL_LSA;
-    REQUIRE_FALSE (log_rcv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, &null_lsa));
-    REQUIRE_FALSE (log_rcv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, NULL));
+    REQUIRE_FALSE (log_rv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, &null_lsa));
+    REQUIRE_FALSE (log_rv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, NULL));
   }
   SECTION ("header written before the field existed")
   {
     levels[1].start_log_end_lsa = NULL_LSA;
-    REQUIRE_FALSE (log_rcv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, &barrier));
+    REQUIRE_FALSE (log_rv_no_logging_index_is_covered_by_backup (levels, 2, &build_start, &barrier));
   }
   SECTION ("build start unknown falls back to the full backup")
   {
     LOG_LSA null_lsa = NULL_LSA;
     LOG_LSA barrier_before_level0 = lsa (95);
-    REQUIRE (log_rcv_no_logging_index_is_covered_by_backup (levels, 2, &null_lsa, &barrier_before_level0));
-    REQUIRE_FALSE (log_rcv_no_logging_index_is_covered_by_backup (levels, 2, &null_lsa, &barrier));
-    REQUIRE (log_rcv_no_logging_index_is_covered_by_backup (levels, 2, NULL, &barrier_before_level0));
+    REQUIRE (log_rv_no_logging_index_is_covered_by_backup (levels, 2, &null_lsa, &barrier_before_level0));
+    REQUIRE_FALSE (log_rv_no_logging_index_is_covered_by_backup (levels, 2, &null_lsa, &barrier));
+    REQUIRE (log_rv_no_logging_index_is_covered_by_backup (levels, 2, NULL, &barrier_before_level0));
   }
 }

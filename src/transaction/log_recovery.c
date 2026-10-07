@@ -3336,7 +3336,7 @@ log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p)
 }
 
 /*
- * log_rcv_no_logging_index_is_covered_by_backup () - decide whether the restored backup chain already holds every
+ * log_rv_no_logging_index_is_covered_by_backup () - decide whether the restored backup chain already holds every
  *   page of one no-logging index build, so that media recovery may replay past the build's barrier.
  *
  * return: true when the chain holds the pages; false when it may not, or when an input is unknown (refuse)
@@ -3356,8 +3356,8 @@ log_recovery_2pc_reactivate_mvccids (THREAD_ENTRY * thread_p)
  *   Levels below K may hold half-written pages, but K overwrote each of them.
  */
 bool
-log_rcv_no_logging_index_is_covered_by_backup (const LOG_RCV_BACKUP_LEVEL_INFO * levels, int num_levels,
-					       const LOG_LSA * build_start_lsa, const LOG_LSA * barrier_lsa)
+log_rv_no_logging_index_is_covered_by_backup (const LOG_RCV_BACKUP_LEVEL_INFO * levels, int num_levels,
+					      const LOG_LSA * build_start_lsa, const LOG_LSA * barrier_lsa)
 {
   int level;
 
@@ -3452,7 +3452,7 @@ struct log_rcv_no_logging_index_marker
 
 /*
  * log_rv_no_logging_index_refuse_unless_covered () - fail-stop media recovery unless the restored backup chain holds
- *   every page of the build (log_rcv_no_logging_index_is_covered_by_backup).
+ *   every page of the build (log_rv_no_logging_index_is_covered_by_backup).
  *
  * return: nothing (does not return when it refuses)
  * thread_p(in): thread entry
@@ -3465,8 +3465,8 @@ log_rv_no_logging_index_refuse_unless_covered (THREAD_ENTRY * thread_p, const LO
 {
   assert (log_Rcv_is_media_crash);
 
-  if (log_rcv_no_logging_index_is_covered_by_backup (log_Rcv_backup_levels, log_Rcv_backup_num_levels,
-						     build_start_lsa, barrier_lsa))
+  if (log_rv_no_logging_index_is_covered_by_backup (log_Rcv_backup_levels, log_Rcv_backup_num_levels,
+						    build_start_lsa, barrier_lsa))
     {
       return;
     }
