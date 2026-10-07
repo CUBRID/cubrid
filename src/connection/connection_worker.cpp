@@ -164,11 +164,10 @@ namespace cubconn::connection
       }
 
     /* The third leg of the same rule: do not wait unless the argument that waiting is safe holds.
-     * A cancel is the only thing that ends this wait early while the connection is healthy, and it
-     * is invisible to a sender whose transaction is not active or that has no transaction at all.
-     * Waiting there would be bounded but not responsive, and it would hold off the teardown that is
-     * itself waiting on this worker (net_server_active_workers). */
-    if (!logtb_is_interruptible (thread_p))
+     * While the connection is healthy, only a cancel or a query timeout ends this wait early, and
+     * neither is visible to a sender whose transaction is not active or that has no transaction at
+     * all. Waiting there would be bounded but would answer neither a cancel nor a shutdown. */
+    if (!logtb_is_current_active (thread_p))
       {
 	return room_wait_result::NOT_INTERRUPTIBLE;
       }
@@ -210,7 +209,7 @@ namespace cubconn::connection
 
 	/* Re-checked rather than assumed: the way out has to still exist for the next turn to be
 	 * safe to take. thread_p is non-null past the entry checks. */
-	if (!logtb_is_interruptible (thread_p))
+	if (!logtb_is_current_active (thread_p))
 	  {
 	    return room_wait_result::NOT_INTERRUPTIBLE;
 	  }
