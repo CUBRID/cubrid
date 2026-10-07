@@ -20,92 +20,13 @@
  * test_oos_sql_show.cpp - SHOW HEAP OOS diagnostic SQL tests (CBRD-26972)
  */
 
-#include <algorithm>
-
-#include "test_oos_sql_common.hpp"
+#include "test_oos_sql_heap_fixture.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
 namespace
 {
-  enum show_heap_oos_column
-  {
-    COL_TABLE_NAME = 0,
-    COL_CLASS_OID,
-    COL_HEAP_VOLUME_ID,
-    COL_HEAP_FILE_ID,
-    COL_HEAP_HEADER_PAGE_ID,
-    COL_HAS_OOS_FILE,
-    COL_OOS_VOLUME_ID,
-    COL_OOS_FILE_ID,
-    COL_OOS_NUM_USER_PAGES,
-    COL_OOS_PAGE_SIZE,
-    COL_OOS_NUM_RECS,
-    COL_OOS_RECS_SUMLEN,
-    COL_OOS_PHYSICAL_BYTES,
-    COL_OOS_UNUSED_BYTES
-  };
-
-  static int
-  show_heap_oos_query (const char *sql, DB_QUERY_RESULT **result)
-  {
-    int rc = exec_sql_with_result (sql, result);
-    if (rc < 0)
-      {
-	return rc;
-      }
-    if (*result == nullptr)
-      {
-	return ER_FAILED;
-      }
-
-    rc = db_query_first_tuple (*result);
-    if (rc != DB_CURSOR_SUCCESS)
-      {
-	db_query_end (*result);
-	*result = nullptr;
-	return ER_FAILED;
-      }
-
-    return NO_ERROR;
-  }
-
-  static int
-  get_int_column (DB_QUERY_RESULT *result, int column, int *out_val)
-  {
-    DB_VALUE val;
-    int rc;
-
-    db_make_null (&val);
-    rc = db_query_get_tuple_value (result, column, &val);
-    if (rc != NO_ERROR)
-      {
-	return rc;
-      }
-
-    DB_TYPE type = db_value_type (&val);
-    if (type == DB_TYPE_INTEGER)
-      {
-	*out_val = db_get_int (&val);
-      }
-    else if (type == DB_TYPE_BIGINT)
-      {
-	*out_val = (int) db_get_bigint (&val);
-      }
-    else if (type == DB_TYPE_SHORT)
-      {
-	*out_val = (int) db_get_short (&val);
-      }
-    else
-      {
-	rc = ER_FAILED;
-      }
-
-    db_value_clear (&val);
-    return rc;
-  }
-
   static int
   get_bigint_column (DB_QUERY_RESULT *result, int column, DB_BIGINT *out_val)
   {
@@ -159,24 +80,8 @@ namespace
   }
 }
 
-class OosSqlShow : public ::testing::Test
+class OosSqlShow : public OosSqlHeapFixture
 {
-  protected:
-    void SetUp () override
-    {
-      exec_sql ("DROP TABLE IF EXISTS t_oos_show_no");
-      exec_sql ("DROP TABLE IF EXISTS t_oos_show_yes");
-      exec_sql ("DROP TABLE IF EXISTS t_oos_show_part");
-      db_commit_transaction ();
-    }
-
-    void TearDown () override
-    {
-      exec_sql ("DROP TABLE IF EXISTS t_oos_show_no");
-      exec_sql ("DROP TABLE IF EXISTS t_oos_show_yes");
-      exec_sql ("DROP TABLE IF EXISTS t_oos_show_part");
-      db_commit_transaction ();
-    }
 };
 
 TEST_F (OosSqlShow, HeapWithoutOosReportsZeroStats)
@@ -353,6 +258,7 @@ TEST_F (OosSqlShow, ShowAllHeapOosReportsPartitionRows)
 
   db_query_end (result);
 }
+
 
 int
 main (int argc, char **argv)

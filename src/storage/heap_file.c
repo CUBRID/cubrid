@@ -39,6 +39,8 @@
 #include "bestspace.hpp"
 #include "heap_file.h"
 #include "heap_oos.hpp"
+#include "heap_oos_value_ref.hpp"
+#include "heap_pending_record.hpp"
 #include "heap_show_scan_context.hpp"
 #include "oos_file.hpp"
 #include "oos_util.hpp"
@@ -730,6 +732,7 @@ static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info
 struct heap_oos_column_plan
 {
   bool selected = false;
+  int pending_index = -1;
   OID oid = OID_INITIALIZER;
   DB_BIGINT length = 0;
   LOG_LSA identity_stamp = NULL_LSA;	/* identity stamp of the inserted OOS value chain (CBRD-26950) */
@@ -742,30 +745,38 @@ static int heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info,
 
 static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
 					RECDES * raw);
-static int heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,
-					   bool * oos_owned_buffer);
+
+/* *INDENT-OFF* */
+static int heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, char *oos_scratch, int oos_scratch_size,
+					   bool * oos_owned_buffer, const heap_pending_record *pending = nullptr);
 static int heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
 					  RECDES * raw, bool * oos_owned_buffer, char *oos_scratch,
-					  int oos_scratch_size);
+					  int oos_scratch_size, const heap_pending_record *pending = nullptr);
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
 						bool oos_owned_buffer);
-static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info);
+static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
+                                const heap_pending_record *pending = nullptr);
+static int heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
+                                const heap_pending_record *pending = nullptr);
 static int heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
-							    std::vector < RECDES > *oos_payloads);
+							    std::vector < RECDES > *oos_payloads,
+                                const heap_pending_record *pending = nullptr);
 static int heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
-							  HEAP_CACHE_ATTRINFO * attr_info);
+							  HEAP_CACHE_ATTRINFO * attr_info,
+                                const heap_pending_record *pending = nullptr);
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
-				   HEAP_CACHE_ATTRINFO * attr_info);
+				   HEAP_CACHE_ATTRINFO * attr_info, const heap_pending_record *pending = nullptr);
 static OR_ATTRIBUTE *heap_locate_attribute (ATTR_ID attrid, HEAP_CACHE_ATTRINFO * attr_info);
-static int heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att);
+static int heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att,
+                                const heap_pending_record *pending = nullptr);
 
 static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 					 HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
 					 TP_DOMAIN ** key_domain,
 					 /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-					 OID * rec_oid, bool is_check_foreign);
+					 OID * rec_oid, bool is_check_foreign,
+                                const heap_pending_record *pending = nullptr);
 static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey,
 					      int *att_ids, HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res,
 					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain,
@@ -775,7 +786,10 @@ static int heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr);
 
 static int heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_index_info, int n_atts,
 				     int *att_ids, HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, int btid_index,
-				     DB_VALUE * result, FUNC_PRED_UNPACK_INFO * func_pred, TP_DOMAIN ** fi_domain);
+				     DB_VALUE * result, FUNC_PRED_UNPACK_INFO * func_pred, TP_DOMAIN ** fi_domain,
+                                const heap_pending_record *pending = nullptr);
+
+/* *INDENT-ON* */
 
 static DISK_ISVALID heap_check_all_pages_by_heapchain (THREAD_ENTRY * thread_p, HFID * hfid,
 						       HEAP_CHKALL_RELOCOIDS * chk_objs, INT32 * num_checked);
@@ -821,9 +835,12 @@ static SCAN_CODE heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_
 							  size_t mvcc_extra, int lob_create_flag, size_t * record_size);
 // *INDENT-ON*
 
+/* *INDENT-OFF* */
 static SCAN_CODE heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 							   RECDES * old_recdes, record_descriptor * new_recdes,
-							   int lob_create_flag);
+							   int lob_create_flag, heap_pending_record * pending =
+							   nullptr);
+/* *INDENT-ON* */
 
 static int heap_update_statistics (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_HDR_STATS * heap_hdr,
 				   PGBUF_WATCHER * header_watcher);
@@ -10963,7 +10980,15 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
 int
 heap_recdes_get_var_offset_entry (const RECDES * recdes, int location, int *entry_out)
 {
+  if (!heap_recdes_has_valid_header (recdes) || location < 0)
+    {
+      return ER_FAILED;
+    }
   int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+  if (location >= (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size)
+    {
+      return ER_FAILED;
+    }
   void *var_table;
   char *entry_ptr;
 
@@ -11018,6 +11043,11 @@ heap_recdes_get_var_offset_entry (const RECDES * recdes, int location, int *entr
 int
 heap_recdes_get_oos_inline_stub (const RECDES * recdes, int location, char **stub_out)
 {
+  *stub_out = NULL;
+  if (!heap_recdes_has_valid_header (recdes) || location < 0)
+    {
+      return ER_FAILED;
+    }
   const int header_size = OR_HEADER_SIZE (recdes->data);
   const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
   int this_entry = 0;
@@ -11025,10 +11055,8 @@ heap_recdes_get_oos_inline_stub (const RECDES * recdes, int location, char **stu
   int this_offset;
   int next_offset;
 
-  *stub_out = NULL;
-
   /* The entry after this one bounds the field; both entries must lie inside the record before either is read. */
-  if (location < 0 || header_size + (location + 2) * offset_size > recdes->length)
+  if (location > (recdes->length - header_size) / offset_size - 2)
     {
       return ER_FAILED;
     }
@@ -11073,10 +11101,10 @@ heap_recdes_get_oos_inline_stub (const RECDES * recdes, int location, char **stu
  */
 static int
 heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, char *oos_scratch, int oos_scratch_size,
-				bool * oos_owned_buffer)
+				bool * oos_owned_buffer, const heap_pending_record * pending)
 {
-  oos_chain_ref oos_ref;
-  DB_BIGINT oos_len;
+  heap_oos_value_ref oos_ref;
+  DB_BIGINT oos_len = 0;
   int error = NO_ERROR;
   THREAD_ENTRY *thread_p;
 
@@ -11084,7 +11112,10 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, cha
 
   /* Parse the attribute's stub out of the record, checking its field boundaries, before attaching
    * any scratch/heap buffer to raw. */
-  error = heap_oos_parse_inline_ref (recdes, location, &oos_ref, &oos_len);
+  /* *INDENT-OFF* */
+  error = heap_oos_value_ref::decode (*recdes, location, oos_ref, pending);
+  oos_len = (DB_BIGINT) oos_ref.length ();
+  /* *INDENT-ON* */
   if (error != NO_ERROR)
     {
       raw->data = NULL;
@@ -11109,7 +11140,7 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, cha
     }
 
   /* oos_read has already set an error. Release any heap buffer here; scratch is stack-backed. */
-  error = oos_read (thread_p, oos_ref, oos_buffer (raw->data, (std::size_t) oos_len));
+  error = oos_ref.read_into (thread_p, oos_buffer (raw->data, (std::size_t) oos_len));
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -11142,7 +11173,8 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, cha
  */
 static int
 heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw,
-			       bool * oos_owned_buffer, char *oos_scratch, int oos_scratch_size)
+			       bool * oos_owned_buffer, char *oos_scratch, int oos_scratch_size,
+			       const heap_pending_record * pending)
 {
   int offset;
   int error;
@@ -11170,7 +11202,7 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
     {
       /* The helper reports transient OOS data only after a successful Resolve. */
       return heap_attrvalue_read_oos_inline (recdes, attrepr->location, raw, oos_scratch, oos_scratch_size,
-					     oos_owned_buffer);
+					     oos_owned_buffer, pending);
     }
   else
     {
@@ -11262,7 +11294,8 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
  * heap_attrvalue_point_variable() / heap_attrvalue_read_oos_inline().
  */
 static int
-heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
+heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
+		     const heap_pending_record * pending)
 {
   OR_ATTRIBUTE *attrepr;
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
@@ -11305,7 +11338,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
       else
 	{
 	  error = heap_attrvalue_point_variable (recdes, attr_info, attrepr, &raw, &oos_owned_buffer, oos_scratch,
-						 IO_MAX_PAGE_SIZE);
+						 IO_MAX_PAGE_SIZE, pending);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -11330,14 +11363,15 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
  *   Keeps the per-attribute OOS Resolve path and its stack-scratch fast path.
  */
 static int
-heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info)
+heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
+					  const heap_pending_record * pending)
 {
   int i, ret;
 
   ret = NO_ERROR;
   for (i = 0; ret == NO_ERROR && i < attr_info->num_values; i++)
     {
-      ret = heap_attrvalue_read (recdes, &attr_info->values[i], attr_info);
+      ret = heap_attrvalue_read (recdes, &attr_info->values[i], attr_info, pending);
     }
 
   return ret;
@@ -11349,7 +11383,8 @@ heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO *
  */
 static int
 heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
-						 std::vector < RECDES > *oos_payloads)
+						 std::vector < RECDES > *oos_payloads,
+						 const heap_pending_record * pending)
 {
   int i, ret;
 
@@ -11363,7 +11398,7 @@ heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATT
 	}
       else
 	{
-	  ret = heap_attrvalue_read (recdes, &attr_info->values[i], attr_info);
+	  ret = heap_attrvalue_read (recdes, &attr_info->values[i], attr_info, pending);
 	}
     }
 
@@ -11380,11 +11415,11 @@ heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATT
  */
 static int
 heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
-					       HEAP_CACHE_ATTRINFO * attr_info)
+					       HEAP_CACHE_ATTRINFO * attr_info, const heap_pending_record * pending)
 {
   if (recdes == NULL || recdes->data == NULL || !heap_recdes_contains_oos (recdes))
     {
-      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info);
+      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info, pending);
     }
 
 /* *INDENT-OFF* */
@@ -11393,7 +11428,7 @@ heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES *
   bool grouped_applied = false;
   int ret;
 
-  ret = heap_oos_read_grouped_payloads (thread_p, recdes, attr_info, oos_payloads, &grouped_applied);
+  ret = heap_oos_read_grouped_payloads (thread_p, recdes, attr_info, oos_payloads, &grouped_applied, pending);
   if (ret != NO_ERROR)
     {
       heap_oos_free_grouped_payloads (oos_payloads);
@@ -11402,10 +11437,10 @@ heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES *
 
   if (!grouped_applied)
     {
-      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info);
+      return heap_attrinfo_read_dbvalues_individually (recdes, attr_info, pending);
     }
 
-  ret = heap_attrinfo_read_dbvalues_from_prefetched_oos (recdes, attr_info, &oos_payloads);
+  ret = heap_attrinfo_read_dbvalues_from_prefetched_oos (recdes, attr_info, &oos_payloads, pending);
   heap_oos_free_grouped_payloads (oos_payloads);
   return ret;
 }
@@ -11419,7 +11454,8 @@ heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES *
  *   attr_info(in):
  */
 static int
-heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, HEAP_CACHE_ATTRINFO * attr_info)
+heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
+			const heap_pending_record * pending)
 {
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   bool oos_owned_buffer = false;
@@ -11469,7 +11505,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 	  else
 	    {			/* A variable attribute */
 	      error = heap_attrvalue_point_variable (recdes, attr_info, att, &raw, &oos_owned_buffer, oos_scratch,
-						     IO_MAX_PAGE_SIZE);
+						     IO_MAX_PAGE_SIZE, pending);
 	      if (error != NO_ERROR)
 		{
 		  return error;
@@ -11511,7 +11547,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
  *   att(in): the OR_ATTRIBUTE to check (must already match the record's representation)
  */
 static int
-heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
+heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att, const heap_pending_record * pending)
 {
   /* Only variable attributes can be OOS */
   if (att->is_fixed != 0)
@@ -11534,18 +11570,14 @@ heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
       return 0;
     }
 
-  /* Read the OOS length directly from the inline stub (no I/O needed), validated exactly as
-   * heap_oos_parse_inline_ref does, so a corrupt header is never cast into a midxkey size. */
-  OID oos_oid;
-  DB_BIGINT length = 0;
-  OR_GET_OID (stub, &oos_oid);
-  OR_GET_BIGINT (stub + OR_OID_SIZE, &length);
-  if (OID_ISNULL (&oos_oid) || length <= 0 || length > (DB_BIGINT) INT_MAX)
+  /* *INDENT-OFF* */
+  heap_oos_value_ref ref;
+  if (heap_oos_value_ref::decode (*recdes, att->location, ref, pending) != NO_ERROR)
     {
       return 0;
     }
-
-  return (int) length;
+  return (int) ref.length ();
+  /* *INDENT-ON* */
 }
 
 /*
@@ -11567,7 +11599,7 @@ heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
  */
 int
 heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECDES * recdes,
-			     HEAP_CACHE_ATTRINFO * attr_info)
+			     HEAP_CACHE_ATTRINFO * attr_info, const heap_pending_record * pending)
 {
   REPR_ID reprid;		/* The disk representation of the object */
   int ret = NO_ERROR;
@@ -11601,7 +11633,7 @@ heap_attrinfo_read_dbvalues (THREAD_ENTRY * thread_p, const OID * inst_oid, RECD
    * Go over each attribute and read it
    */
 
-  ret = heap_attrinfo_read_dbvalues_with_oos_prefetch (thread_p, recdes, attr_info);
+  ret = heap_attrinfo_read_dbvalues_with_oos_prefetch (thread_p, recdes, attr_info, pending);
   if (ret != NO_ERROR)
     {
       goto exit_on_error;
@@ -13236,6 +13268,87 @@ cleanup:
   /* *INDENT-ON* */
 }
 
+/* *INDENT-OFF* */
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+static std::atomic<bool> heap_Oos_fail_preparation { false };
+static std::atomic<bool> heap_Oos_fail_heap_insert { false };
+void heap_oos_test_fail_preparation_once () { heap_Oos_fail_preparation.store (true); }
+void heap_oos_test_fail_heap_insert_once () { heap_Oos_fail_heap_insert.store (true); }
+#endif
+
+SCAN_CODE
+heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info, RECDES *old_recdes,
+                             heap_pending_record *pending, bool copy_lobs)
+{
+  record_descriptor *record = &pending->record ();
+  assert (record->get_recdes ().data == nullptr);
+  SCAN_CODE status = S_ERROR;
+  if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+    {
+      return S_ERROR;
+    }
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  if (heap_Oos_fail_preparation.exchange (false))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (heap_oos_column_plan));
+      return S_ERROR;
+    }
+#endif
+  try
+    {
+      status = heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, record,
+                    copy_lobs ? LOB_FLAG_INCLUDE_LOB : LOB_FLAG_EXCLUDE_LOB, pending);
+    }
+  catch (const std::bad_alloc &)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (heap_oos_column_plan));
+    }
+  if (status == S_SUCCESS)
+    {
+      record->set_type (REC_HOME);
+      pending->mark_prepared ();
+    }
+  return status;
+}
+
+/* Adapt a received/redistributed record once. No LOB copy or assignment effects;
+ * preserve the source MVCC header when rebuilding its compact representation. */
+int
+heap_prepare_oos_record (THREAD_ENTRY *thread_p, const OID *source_class, RECDES *source,
+                         heap_pending_record *pending)
+{
+  record_descriptor *record = &pending->record ();
+  HEAP_CACHE_ATTRINFO attr_info;
+  int error = heap_attrinfo_start (thread_p, source_class, -1, nullptr, &attr_info);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  error = heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, source, &attr_info);
+  if (error == NO_ERROR
+      && heap_attrinfo_prepare_record (thread_p, &attr_info, nullptr, pending, false) != S_SUCCESS)
+    {
+      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+    }
+  if (error == NO_ERROR)
+    {
+      MVCC_REC_HEADER header;
+      error = or_mvcc_get_header (source, &header);
+      if (error == NO_ERROR)
+        {
+          RECDES target = record->get_recdes ();
+          header.repid = attr_info.last_classrepr->id;
+          header.mvcc_flag = (header.mvcc_flag & ~OR_RECORD_FLAG_HAS_OOS)
+                             | (heap_recdes_contains_oos (&target) ? OR_RECORD_FLAG_HAS_OOS : 0);
+          error = or_mvcc_set_header (&target, &header);
+          record->set_record_length (target.length);
+        }
+    }
+  heap_attrinfo_end (thread_p, &attr_info);
+  return error;
+}
+/* *INDENT-ON* */
+
 /*
  * heap_attrinfo_transform_to_disk () - Transform to disk an attribute information
  *                               kind of instance
@@ -13545,6 +13658,14 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  return S_DOESNT_FIT;
 	}
 
+      /* *INDENT-OFF* */
+      if (oos_plan->pending_index >= 0)
+        {
+          heap_oos_value_ref::encode_pending (*ptr_varvals, oos_plan->length, oos_plan->pending_index);
+          *ptr_varvals += OR_OOS_INLINE_SIZE;
+          return S_SUCCESS;
+        }
+      /* *INDENT-ON* */
       buf->ptr = *ptr_varvals;
       or_put_oid (buf, &oos_plan->oid);
       or_put_bigint (buf, oos_plan->length);
@@ -13684,7 +13805,7 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
       else
 	{
 	  heap_oos_column_plan & plan = (*oos_plan)[i];
-	  assert (!plan.selected || !OID_ISNULL (&plan.oid));
+	  assert (!plan.selected || plan.pending_index >= 0 || !OID_ISNULL (&plan.oid));
 
 	  status =
 	    heap_attrinfo_transform_variable_to_disk (thread_p, attr_info, buf, &ptr_varvals, &plan, i, offset_size,
@@ -13743,7 +13864,8 @@ heap_attrinfo_transform_columns_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
  */
 static SCAN_CODE
 heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
-					  RECDES * old_recdes, record_descriptor * new_recdes, int lob_create_flag)
+					  RECDES * old_recdes, record_descriptor * new_recdes, int lob_create_flag,
+					  heap_pending_record * pending)
 {
   OR_BUF buf;
   size_t inline_size_after_oos, mvcc_extra;
@@ -13812,8 +13934,36 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
   if (has_oos)
     {
-      /* insert big columns to OOS */
-      status = heap_attrinfo_insert_to_oos (thread_p, attr_info, lob_create_flag, &oos_plan);
+      /* Retain selected values until routing, or publish immediately for legacy callers. */
+      /* *INDENT-OFF* */
+      status = S_SUCCESS;
+      if (pending != nullptr)
+        {
+          for (int i = 0; i < attr_info->num_values && status == S_SUCCESS; ++i)
+            {
+              if (!oos_plan[i].selected)
+                {
+                  continue;
+                }
+              RECDES payload = { 0, 0, REC_HOME, nullptr };
+              status = heap_attrinfo_serialize_oos_value (thread_p, attr_info, i, lob_create_flag, &payload);
+              if (status == S_SUCCESS
+                  && pending->retain (oos_buffer (payload.data, payload.length), oos_plan[i].pending_index) == NO_ERROR)
+                {
+                  oos_plan[i].length = payload.length;
+                }
+              else
+                {
+                  free_and_init (payload.data);
+                  status = S_ERROR;
+                }
+            }
+        }
+      else
+        {
+          status = heap_attrinfo_insert_to_oos (thread_p, attr_info, lob_create_flag, &oos_plan);
+        }
+      /* *INDENT-ON* */
       if (status != S_SUCCESS)
 	{
 	  return S_ERROR;
@@ -14423,7 +14573,8 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
 static DB_MIDXKEY *
 heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 		      HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
-		      TP_DOMAIN ** key_domain, OID * rec_oid, bool is_check_foreign)
+		      TP_DOMAIN ** key_domain, OID * rec_oid, bool is_check_foreign,
+		      const heap_pending_record * pending)
 {
   char *nullmap_ptr;
   OR_ATTRIBUTE **atts;
@@ -14530,7 +14681,7 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 	}
       else
 	{
-	  error = heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
+	  error = heap_midxkey_get_value (recdes, atts[i], &value, attrinfo, pending);
 	  if (error == NO_ERROR)
 	    {
 	      if (!DB_IS_NULL (&value))
@@ -15006,7 +15157,7 @@ DB_VALUE *
 heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo,
 			RECDES * recdes, BTID * btid, DB_VALUE * db_value, char *buf,
 			FUNC_PRED_UNPACK_INFO * func_indx_pred, TP_DOMAIN ** key_domain, OID * rec_oid,
-			bool is_check_foreign)
+			bool is_check_foreign, const heap_pending_record * pending)
 {
   OR_INDEX *index;
   int n_atts, reprid;
@@ -15057,7 +15208,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
   if (index->func_index_info)
     {
       if (heap_eval_function_index (thread_p, NULL, -1, NULL, idx_attrinfo, recdes, btid_index, db_value,
-				    func_indx_pred, &fi_domain) != NO_ERROR)
+				    func_indx_pred, &fi_domain, pending) != NO_ERROR)
 	{
 	  return NULL;
 	}
@@ -15093,7 +15244,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 	      continue;
 	    }
 	  /* Returns 0 on error or if attribute is not OOS; safe to accumulate. */
-	  midxkey_size += heap_midxkey_get_oos_extra_size (recdes, index->atts[oos_i]);
+	  midxkey_size += heap_midxkey_get_oos_extra_size (recdes, index->atts[oos_i], pending);
 	}
 
       /* Allocate storage for the buf of midxkey */
@@ -15113,7 +15264,8 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
       midxkey.min_max_val.position = -1;
 
       if (heap_midxkey_key_get
-	  (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid, is_check_foreign) == NULL)
+	  (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid, is_check_foreign,
+	   pending) == NULL)
 	{
 	  /* CBRD-26769: clean up everything this function owns before the error return, since
 	   * db_make_midxkey (the ownership-transfer point) is never reached on this path:
@@ -15794,11 +15946,15 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, LC_COP
        * instances that belong to other classes
        */
 
+      /* Optional prefetch copies raw page records while holding the heap latch.
+       * Skip OOS neighbors; ordinary fetch expands them before publication. */
       /* Check to the right */
       if (direction == HEAP_DIRECTION_RIGHT || direction == HEAP_DIRECTION_BOTH)
 	{
 	  scan = spage_next_record (pgptr, &right_slotid, prefetch->recdes, COPY);
-	  if (scan == S_SUCCESS && spage_get_record_type (pgptr, right_slotid) == REC_HOME)
+	  if (scan == S_SUCCESS && spage_get_record_type (pgptr, right_slotid) == REC_HOME
+	      && (OID_IS_ROOTOID (class_oid)
+		  || (heap_recdes_has_valid_header (prefetch->recdes) && !heap_recdes_contains_oos (prefetch->recdes))))
 	    {
 	      prefetch->mobjs->num_objs++;
 	      COPY_OID (&((*prefetch->obj)->class_oid), class_oid);
@@ -15826,7 +15982,9 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, LC_COP
 	{
 	  scan = spage_previous_record (pgptr, &left_slotid, prefetch->recdes, COPY);
 	  if (scan == S_SUCCESS && left_slotid != HEAP_HEADER_AND_CHAIN_SLOTID
-	      && spage_get_record_type (pgptr, left_slotid) == REC_HOME)
+	      && spage_get_record_type (pgptr, left_slotid) == REC_HOME
+	      && (OID_IS_ROOTOID (class_oid)
+		  || (heap_recdes_has_valid_header (prefetch->recdes) && !heap_recdes_contains_oos (prefetch->recdes))))
 	    {
 	      prefetch->mobjs->num_objs++;
 	      COPY_OID (&((*prefetch->obj)->class_oid), class_oid);
@@ -19615,7 +19773,8 @@ exit:
 static int
 heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_index_info, int n_atts, int *att_ids,
 			  HEAP_CACHE_ATTRINFO * attr_info, RECDES * recdes, int btid_index, DB_VALUE * result,
-			  FUNC_PRED_UNPACK_INFO * func_pred_cache, TP_DOMAIN ** fi_domain)
+			  FUNC_PRED_UNPACK_INFO * func_pred_cache, TP_DOMAIN ** fi_domain,
+			  const heap_pending_record * pending)
 {
   int error = NO_ERROR;
   OR_INDEX *index = NULL;
@@ -19689,7 +19848,7 @@ heap_eval_function_index (THREAD_ENTRY * thread_p, FUNCTION_INDEX_INFO * func_in
 	  attrinfo_end = true;
 	}
 
-      if (heap_attrinfo_read_dbvalues (thread_p, &attr_info->inst_oid, recdes, cache_attr_info) != NO_ERROR)
+      if (heap_attrinfo_read_dbvalues (thread_p, &attr_info->inst_oid, recdes, cache_attr_info, pending) != NO_ERROR)
 	{
 	  error = ER_FAILED;
 	  goto end;
@@ -25015,6 +25174,23 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   assert (context->recdes_p != NULL);
   assert (!HFID_IS_NULL (&context->hfid));
 
+  if (context->recdes_p != NULL
+      && (rc = heap_oos_validate_disk_record (thread_p, &context->class_oid, context->recdes_p)) != NO_ERROR)
+    {
+      return rc;
+    }
+
+  /* *INDENT-OFF* */
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  if (context->recdes_p->type != REC_ASSIGN_ADDRESS && heap_recdes_contains_oos (context->recdes_p)
+      && heap_Oos_fail_heap_insert.exchange (false))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+#endif
+  /* *INDENT-ON* */
+
   context->time_track = &time_track;
   HEAP_PERF_START (thread_p, context);
 
@@ -25429,6 +25605,12 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   assert (context->type == HEAP_OPERATION_UPDATE);
   assert (!OID_ISNULL (&context->oid));
   assert (!OID_ISNULL (&context->class_oid));
+
+  if (context->recdes_p != NULL
+      && (rc = heap_oos_validate_disk_record (thread_p, &context->class_oid, context->recdes_p)) != NO_ERROR)
+    {
+      return rc;
+    }
 
   context->time_track = &time_track;
   HEAP_PERF_START (thread_p, context);
@@ -28865,6 +29047,13 @@ bool
 heap_recdes_contains_oos (const RECDES * record)
 {
   return OR_RECORD_HAS_OOS (record->data);
+}
+
+bool
+heap_recdes_has_valid_header (const RECDES * record)
+{
+  return record != NULL && record->data != NULL && record->length >= OR_MVCC_MIN_HEADER_SIZE
+    && OR_HEADER_SIZE (record->data) <= record->length;
 }
 
 int

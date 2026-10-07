@@ -29,6 +29,17 @@
 
 #include <vector>
 
+class heap_pending_record;
+
+/* Finalize a locally prepared record in place after routing, before heap/index
+ * writes. A failed call must be rolled back; it is not a retryable insertion. */
+extern int heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record,
+				     heap_pending_record *pending = nullptr);
+/* Heap-row storage contract; generic descriptors and slotted-page metadata are not row inputs. */
+extern int heap_oos_validate_disk_record (THREAD_ENTRY *thread_p, const OID *class_oid, const RECDES *record);
+extern int heap_prepare_oos_record (THREAD_ENTRY *thread_p, const OID *source_class, RECDES *source,
+				    heap_pending_record *pending);
+
 enum heap_oos_demote_priority
 {
   HEAP_OOS_DEMOTE_NORMAL = 0,
@@ -78,7 +89,8 @@ extern int heap_oos_parse_inline_ref (const RECDES *recdes, int location, oos_ch
  * oos_payloads[i].data then holds attribute i's raw OOS bytes (NULL when attr i is not OOS);
  * heap_file.c's grouped read loop transforms them and calls heap_oos_free_grouped_payloads(). */
 extern int heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes,
-    HEAP_CACHE_ATTRINFO *attr_info, std::vector<RECDES> &oos_payloads, bool *grouped_applied);
+    HEAP_CACHE_ATTRINFO *attr_info, std::vector<RECDES> &oos_payloads, bool *grouped_applied,
+    const heap_pending_record *pending = nullptr);
 extern void heap_oos_free_grouped_payloads (std::vector<RECDES> &oos_payloads);
 
 /* Begin one logical heap-record OOS insert preparation by clearing its OID/LSA publication state.
@@ -92,6 +104,8 @@ extern SCAN_CODE heap_oos_insert_serialized_values (THREAD_ENTRY *thread_p, cons
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
 /* One-shot failure seam immediately before the OOS VFID lookup owned by the heap insert wrapper. */
+extern void heap_oos_test_fail_preparation_once ();
+extern void heap_oos_test_fail_heap_insert_once ();
 extern void heap_oos_test_fail_before_vfid_lookup_once ();
 extern void heap_oos_test_disarm_fail_before_vfid_lookup ();
 #endif
