@@ -802,6 +802,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_CSS_RECV_BUDGET_PER_CONNECTION "recv_budget_per_connection"
 #define PRM_NAME_CSS_SEND_BUDGET_PER_CONNECTION "send_budget_per_connection"
+#define PRM_NAME_CSS_SEND_QUEUE_ROOM_WAIT_MSECS "send_queue_room_wait_msecs"
 
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
@@ -5399,6 +5400,20 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 32 * 1024}},	/* 32KB */
    {false, {.i = 1 * 1024 * 1024 * 1024}},	/* 1GB */
    {false, {.i = 0}},		/* no limit */
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_SEND_QUEUE_ROOM_WAIT_MSECS,
+   PRM_NAME_CSS_SEND_QUEUE_ROOM_WAIT_MSECS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   /* 1 s: normal waits under a starved drain measured 0.6-10.8 ms */
+   {false, {.i = 1000}},
+   {false, {.i = 1000}},
+   /* connection_timeout's default: the waiter may hold a heap page latch, so it should not outwait a stalled peer */
+   {false, {.i = 5000}},
+   {false, {.i = 0}},		/* 0: close the connection at once, without waiting */
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
