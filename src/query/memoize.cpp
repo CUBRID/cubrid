@@ -45,7 +45,7 @@ namespace memoize
       VAL_LIST *val_list = xasl->val_list;
       bool subquery_result = true;
 
-      if (spec == nullptr || val_list == nullptr || val_list->val_cnt == 0)
+      if (spec == nullptr || val_list == nullptr)
 	{
 	  return false;
 	}
@@ -689,7 +689,7 @@ namespace memoize
     return true;
   }
 
-  storage *storage::new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl)
+  storage *storage::new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl, bool match_only)
   {
     ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
     VAL_LIST *val_list = xasl->val_list;
@@ -717,7 +717,7 @@ namespace memoize
 	return nullptr;
       }
 
-    if (key_cnt == 0 || value_cnt == 0)
+    if (key_cnt == 0 || (value_cnt == 0 && !match_only))
       {
 	return nullptr;
       }
@@ -728,18 +728,21 @@ namespace memoize
       {
 	return NULL;
       }
-    storage_p = placement_new (storage_p, thread_p, max_storage_size, key_cnt, value_cnt, val_list);
+    storage_p = placement_new (storage_p, thread_p, max_storage_size, key_cnt, value_cnt, val_list, match_only);
     storage_p->init (key_ptr_src);
 
     return storage_p;
   }
 
-  storage::storage (THREAD_ENTRY *thread_p, size_t max_storage_size, int key_cnt, int value_cnt, VAL_LIST *val_list)
+  storage::storage (THREAD_ENTRY *thread_p, size_t max_storage_size, int key_cnt, int value_cnt, VAL_LIST *val_list,
+		    bool match_only)
     : hit (0)
     , miss (0)
     , m_max_storage_size (max_storage_size)
     , m_key_cnt (key_cnt)
     , m_value_cnt (value_cnt)
+    , m_match_only (match_only)
+    , m_matched ()
     , m_thread_p (thread_p)
     , m_val_list (val_list)
     , m_key_fixed_allocator ()
@@ -775,7 +778,7 @@ namespace memoize
     for (auto it = m_key_value_map.begin(); it != m_key_value_map.end(); it++)
       {
 	it->first->~key();
-	if (it->second != nullptr)
+	if (it->second != nullptr && it->second != &m_matched)
 	  {
 	    it->second->~value();
 	    free (it->second);
@@ -834,6 +837,11 @@ namespace memoize
 
 	m_last_key = get_key();
 	key_changed = false;
+	/* a new key starts with no replay range. Without this a caller that stops after one
+	 * SUCCESS (an ANTI inner drops the outer on a cached match and is not re-entered) leaves
+	 * has_range set; the next key's cached "no match" then answers ENDED twice, once here and
+	 * once on the re-entry below, and the outer is emitted twice (CBRD-27465). */
+	has_range = false;
 
 	auto range = m_key_value_map.equal_range (m_last_key);
 
@@ -908,11 +916,14 @@ namespace memoize
 	assert (m_last_key != nullptr);
 
 	key *k = get_key();
-	value *v = get_value();
+	value *v = m_match_only ? &m_matched : get_value();
 
 	m_key_sz += k->get_size();
 	m_hash_sz += hash_entry_sz;
-	m_value_sz += v->get_size();
+	if (!m_match_only)
+	  {
+	    m_value_sz += v->get_size();
+	  }
 
 	m_key_value_map.insert ({k, v});
 
@@ -1075,6 +1086,10 @@ namespace memoize
   result_code storage::set_value (value *v)
   {
     int i=0;
+    if (v == &m_matched)
+      {
+	return result_code::SUCCESS;
+      }
     for (QPROC_DB_VALUE_LIST it = m_val_list->valp; it!=nullptr; it=it->next, i++)
       {
 	pr_clear_value (it->val);
@@ -1092,7 +1107,7 @@ namespace memoize
 extern "C"
 {
   using namespace memoize;
-  int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl)
+  int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl, bool match_only)
   {
     UINT64 storage_size = prm_get_bigint_value (PRM_ID_MEMOIZE_MEMORY_LIMIT);
 
@@ -1106,7 +1121,7 @@ extern "C"
 	clear_memoize_storage (thread_p, xasl);
       }
 
-    xasl->memoize_storage = storage::new_storage (thread_p, (size_t)storage_size, xasl);
+    xasl->memoize_storage = storage::new_storage (thread_p, (size_t)storage_size, xasl, match_only);
 
     return NO_ERROR;
   }

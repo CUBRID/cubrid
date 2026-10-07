@@ -554,6 +554,8 @@ static void qexec_end_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spe
 static SCAN_CODE qexec_next_merge_block (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE ** spec);
 static SCAN_CODE qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static SCAN_CODE qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+static SCAN_CODE qexec_execute_sa_anti_survive (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+						QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc);
 static SCAN_CODE qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_succeed,
 						    XASL_NODE * xasl, XASL_STATE * xasl_state,
 						    QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc);
@@ -1898,6 +1900,10 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		}
 	    }
 	  memset (&p->s_id.scan_stats, 0, sizeof (SCAN_STATS));
+
+	  /* partition_stats points into parts, which is freed here or was freed on an open error; a cached
+	   * XASL clone keeps the spec, and the next trace-on scan would write through the stale pointer */
+	  p->s_id.partition_stats = NULL;
 
 	  if (p->parts != NULL)
 	    {
@@ -8122,11 +8128,6 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  SCAN_CODE s_parts = qexec_init_next_partition (thread_p, xasl->curr_spec, xasl);
 	  if (s_parts == S_SUCCESS)
 	    {
-	      if (xasl->memoize_storage)
-		{
-		  clear_memoize_storage (thread_p, xasl);
-		  new_memoize_storage (thread_p, xasl);
-		}
 	      /* successfully moved to the next partition */
 	      continue;
 	    }
@@ -8167,6 +8168,42 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 }
 
 /*
+ * qexec_next_scan_block_renew_memoize () - move a node to its next scan block for the chain block
+ *                                          iterator and renew the row memo of a partitioned node
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+ *   thread_p(in): Thread entry
+ *   xasl(in)    : XASL Tree block
+ *
+ * Note: a row memo belongs to the scan block it was filled in. The chain block iterator
+ * (qexec_next_scan_block_iterations) is the only thing that moves an inner to a new block.
+ * For a partitioned inner a block is one partition, and the restart for the next outer block
+ * opens its empty parent class first, so a row memo would replay another block's rows if it
+ * outlived the block: renew it on every block. An unpartitioned inner has one block, which the
+ * iterator only restarts; its memo stays valid, and renewing it would read every key again and
+ * reset the hit / miss counts once per outer block. A SEMI / ANTI inner is never split into
+ * blocks by the iterator: its partition sweep is one probe of one outer row (qexec_execute_scan,
+ * CBRD-26872), so its match memo answers for all partitions and no restart invalidates it
+ * (CBRD-27465).
+ */
+static SCAN_CODE
+qexec_next_scan_block_renew_memoize (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  SCAN_CODE sb_scan = qexec_next_scan_block (thread_p, xasl);
+
+  if (sb_scan == S_SUCCESS && xasl->memoize_storage && xasl->spec_list != NULL && xasl->spec_list->parts != NULL
+      && !XASL_IS_NL_SEMI_OR_ANTI (xasl))
+    {
+      clear_memoize_storage (thread_p, xasl);
+      if (new_memoize_storage (thread_p, xasl, false) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+    }
+
+  return sb_scan;
+}
+
+/*
  * qexec_next_scan_block_iterations () -
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   xasl(in)   : XASL Tree pointer
@@ -8201,7 +8238,7 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   if (last_xptr->curr_spec && last_xptr->curr_spec->s_id.status == S_STARTED
       && !last_xptr->curr_spec->s_id.qualified_block)
     {
-      if ((xs_scan = qexec_next_scan_block (thread_p, last_xptr)) == S_END)
+      if ((xs_scan = qexec_next_scan_block_renew_memoize (thread_p, last_xptr)) == S_END)
 	{
 	  /* close following scan procedures if they are still active */
 	  for (xptr2 = last_xptr; xptr2; xptr2 = xptr2->scan_ptr)
@@ -8223,7 +8260,7 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  return S_ERROR;
 	}
     }
-  else if ((xs_scan = qexec_next_scan_block (thread_p, last_xptr)) == S_SUCCESS)
+  else if ((xs_scan = qexec_next_scan_block_renew_memoize (thread_p, last_xptr)) == S_SUCCESS)
     {				/* reset all the futher scans */
       for (xptr2 = last_xptr; xptr2; xptr2 = xptr2->scan_ptr)
 	{
@@ -8234,7 +8271,7 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 		{
 		  return S_ERROR;
 		}
-	      sb_next = qexec_next_scan_block (thread_p, xptr2->scan_ptr);
+	      sb_next = qexec_next_scan_block_renew_memoize (thread_p, xptr2->scan_ptr);
 	      if (sb_next == S_SUCCESS)
 		{
 		  xptr2->next_scan_block_on = true;
@@ -8280,7 +8317,7 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  prev_xptr->next_scan_block_on = false;
 
 	  /* move the scan block of the previous scan */
-	  xs_scan2 = qexec_next_scan_block (thread_p, prev_xptr);
+	  xs_scan2 = qexec_next_scan_block_renew_memoize (thread_p, prev_xptr);
 	  if (xs_scan2 == S_SUCCESS)
 	    {
 	      /* move all the further scan blocks */
@@ -8296,7 +8333,7 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 			{
 			  return S_ERROR;
 			}
-		      sb_next = qexec_next_scan_block (thread_p, xptr2->scan_ptr);
+		      sb_next = qexec_next_scan_block_renew_memoize (thread_p, xptr2->scan_ptr);
 		      if (sb_next == S_SUCCESS)
 			{
 			  xptr2->next_scan_block_on = true;
@@ -8411,6 +8448,56 @@ qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner)
 }
 
 /*
+ * qexec_execute_sa_anti_survive () - an NL ANTI inner found no match for the current outer row
+ *   return: SCAN_CODE
+ *   thread_p(in)     : Thread entry
+ *   xasl(in)         : the ANTI inner scan proc
+ *   xasl_state(in)   : XASL tree state information
+ *   ignore(in)       : Tuple record to ignore
+ *   next_scan_fnc(in): Function to interpret following scan block
+ *
+ * Note: the outer passes the NOT-EXISTS filter (survive).  Mark single_fetched so a
+ * re-entry for the same outer ends, then descend into the following join (the next
+ * filter), or emit the surviving outer once when this anti join is the last in the
+ * chain (CBRD-26872).  Reached from the real scan on S_END and from a memoized
+ * "no match" (CBRD-27465).
+ */
+static SCAN_CODE
+qexec_execute_sa_anti_survive (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+			       QFILE_TUPLE_RECORD * ignore, XASL_SCAN_FNC_PTR next_scan_fnc)
+{
+  SCAN_CODE xs_scan;
+
+  if (xasl->curr_spec != NULL)
+    {
+      xasl->curr_spec->s_id.single_fetched = true;
+      xasl->curr_spec->s_id.qualified_block = true;
+    }
+  /* a partitioned inner is re-entered through spec_list's latch (see the partition init block) */
+  xasl->spec_list->s_id.single_fetched = true;
+  if (xasl->scan_ptr)
+    {
+      xasl->scan_ptr->next_scan_on = false;
+      if (qexec_reset_sa_inner_scan_block (thread_p, xasl->scan_ptr) == S_ERROR)
+	{
+	  return S_ERROR;
+	}
+      if (xasl->scan_ptr->memoize_storage)
+	{
+	  xasl->scan_ptr->memoize_storage->set_key_changed ();
+	}
+      xasl->next_scan_on = true;
+      xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
+      if (xs_scan == S_END)
+	{
+	  xasl->next_scan_on = false;
+	}
+      return xs_scan;
+    }
+  return S_SUCCESS;
+}
+
+/*
  * qexec_execute_nljoin_with_memoize () -
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   thread_p(in)           : Thread entry
@@ -8453,14 +8540,41 @@ qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_su
     {
       if (is_memoize_ended)
 	{
-	  if (xasl->curr_spec->s_id.direction == S_FORWARD)
+	  if (xasl->curr_spec != NULL)
 	    {
-	      xasl->curr_spec->s_id.position = S_AFTER;
+	      if (xasl->curr_spec->s_id.direction == S_FORWARD)
+		{
+		  xasl->curr_spec->s_id.position = S_AFTER;
+		}
+	      else
+		{
+		  xasl->curr_spec->s_id.position = S_BEFORE;
+		}
 	    }
-	  else
+	  if (XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
 	    {
-	      xasl->curr_spec->s_id.position = S_BEFORE;
+	      /* cached "no match" for an ANTI inner: this outer survives NOT EXISTS */
+	      return qexec_execute_sa_anti_survive (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
 	    }
+	  if (XASL_IS_FLAGED (xasl, XASL_NL_SEMIJOIN))
+	    {
+	      /* decided: a re-entry for this outer must not scan (a partitioned inner checks spec_list) */
+	      if (xasl->curr_spec != NULL)
+		{
+		  xasl->curr_spec->s_id.single_fetched = true;
+		}
+	      xasl->spec_list->s_id.single_fetched = true;
+	    }
+	  return S_END;
+	}
+      else if (XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
+	{
+	  /* cached match for an ANTI inner: this outer fails NOT EXISTS, drop it (same as a real match) */
+	  if (xasl->curr_spec != NULL)
+	    {
+	      xasl->curr_spec->s_id.single_fetched = true;
+	    }
+	  xasl->spec_list->s_id.single_fetched = true;
 	  return S_END;
 	}
       else
@@ -8634,8 +8748,16 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
   do
     {
       sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
-      if (sc_scan == S_END && xasl->memoize_storage)
+      if (sc_scan == S_END && xasl->memoize_storage
+	  && !(XASL_IS_NL_SEMI_OR_ANTI (xasl)
+	       && (xasl->curr_spec->s_id.single_fetched || xasl->curr_spec->parts != NULL)))
 	{
+	  /* the scan produced nothing for this key. Not for a semi/anti inner whose single_fetched is
+	     already set: it did not scan, this is the re-entry after the outer was decided (a surviving
+	     ANTI outer is emitted and then re-entered), and recording it again would add a duplicate
+	     "no match" entry per outer row until the budget kills the storage. Nor at the end of one
+	     partition of a partitioned inner: the key is only exhausted after the last partition, which
+	     the partition branch below records (CBRD-27465). */
 	  memoize_err_code = memoize_put_nullptr (thread_p, xasl, &memoize_put_success);
 	  if (memoize_err_code == ER_FAILED)
 	    {
@@ -8658,33 +8780,22 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	      continue;
 	    }
 
+	  /* every partition was scanned and none matched: now the key is exhausted */
+	  if (xasl->memoize_storage)
+	    {
+	      memoize_err_code = memoize_put_nullptr (thread_p, xasl, &memoize_put_success);
+	      if (memoize_err_code == ER_FAILED)
+		{
+		  return S_ERROR;
+		}
+	    }
+
 	  if (XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
 	    {
+	      /* curr_spec is NULL now (the last partition's scan was closed); latch the spec we scanned */
 	      sa_curr_spec->s_id.single_fetched = true;
-	      xasl->spec_list->s_id.single_fetched = true;
-
-	      if (xasl->scan_ptr)
-		{
-		  sa_curr_spec->s_id.qualified_block = true;
-		  xasl->scan_ptr->next_scan_on = false;
-		  if (qexec_reset_sa_inner_scan_block (thread_p, xasl->scan_ptr) == S_ERROR)
-		    {
-		      return S_ERROR;
-		    }
-		  if (xasl->scan_ptr->memoize_storage)
-		    {
-		      xasl->scan_ptr->memoize_storage->set_key_changed ();
-		    }
-		  xasl->next_scan_on = true;
-		  xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
-		  if (xs_scan == S_END)
-		    {
-		      xasl->next_scan_on = false;
-		    }
-		  return xs_scan;
-		}
-
-	      return S_SUCCESS;
+	      sa_curr_spec->s_id.qualified_block = true;
+	      return qexec_execute_sa_anti_survive (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
 	    }
 
 	  return S_END;
@@ -8692,31 +8803,8 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       if (sc_scan == S_END && XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN) && !xasl->curr_spec->s_id.single_fetched)
 	{
 	  /* ANTI inner: the scan exhausted with no qualifying row, so this outer passes the NOT-EXISTS
-	     filter (survive).  Mark single_fetched so a re-entry for the same outer ends, then descend
-	     into the following join (the next filter), or emit the surviving outer once when this anti
-	     join is the last in the chain (CBRD-26872). */
-	  xasl->curr_spec->s_id.single_fetched = true;
-	  xasl->curr_spec->s_id.qualified_block = true;
-	  if (xasl->scan_ptr)
-	    {
-	      xasl->scan_ptr->next_scan_on = false;
-	      if (qexec_reset_sa_inner_scan_block (thread_p, xasl->scan_ptr) == S_ERROR)
-		{
-		  return S_ERROR;
-		}
-	      if (xasl->scan_ptr->memoize_storage)
-		{
-		  xasl->scan_ptr->memoize_storage->set_key_changed ();
-		}
-	      xasl->next_scan_on = true;
-	      xs_scan = (*next_scan_fnc) (thread_p, xasl->scan_ptr, xasl_state, ignore, next_scan_fnc + 1);
-	      if (xs_scan == S_END)
-		{
-		  xasl->next_scan_on = false;
-		}
-	      return xs_scan;
-	    }
-	  return S_SUCCESS;
+	     filter (survive) */
+	  return qexec_execute_sa_anti_survive (thread_p, xasl, xasl_state, ignore, next_scan_fnc);
 	}
       if (sc_scan != S_SUCCESS)
 	{
@@ -8823,8 +8911,17 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
 	  if (XASL_IS_FLAGED (xasl, XASL_NL_ANTIJOIN))
 	    {
 	      /* ANTI inner matched a qualifying row: this outer fails the NOT-EXISTS filter and is suppressed.
-	         Drain the single-fetch inner to S_END so its scan-block bookkeeping terminates, then return
-	         S_END so the parent advances the outer without emitting or descending into a following join. */
+	         Remember the match for this key, drain the single-fetch inner to S_END so its scan-block
+	         bookkeeping terminates, then return S_END so the parent advances the outer without emitting
+	         or descending into a following join. */
+	      if (xasl->memoize_storage)
+		{
+		  memoize_err_code = memoize_put (thread_p, xasl, &memoize_put_success);
+		  if (memoize_err_code == ER_FAILED)
+		    {
+		      return S_ERROR;
+		    }
+		}
 	      while ((sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id)) == S_SUCCESS)
 		{
 		  ;
@@ -12743,11 +12840,12 @@ qexec_collect_remote_delete_key (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VAL
 
 /*
  * qexec_execute_remote_dml_sink () - Push local rows to a remote table via CCI: either streaming a local
- *   SELECT into a remote INSERT, or pushing one remote DELETE per value from a local WHERE subquery.
+ *   SELECT into a remote INSERT or REPLACE, or pushing one remote DELETE per value from a local WHERE
+ *   subquery.
  *   return: NO_ERROR or ER_FAILED
  *   xasl(in)       : XASL Tree block (INSERT_PROC or DELETE_PROC with sink.is_remote set, per kind)
  *   xasl_state(in) : XASL state
- *   kind(in)       : DBLINK_DML_INSERT or DBLINK_DML_DELETE
+ *   kind(in)       : which statement the proc sends -- INSERT and REPLACE both read INSERT_PROC
  *
  * Note: The aptr producing xasl->val_list has already been executed and xasl->list_id set up by the
  *       caller (qexec_execute_insert directly; qexec_execute_remote_delete_subquery for DELETE, since
@@ -12778,6 +12876,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   switch (kind)
     {
     case DBLINK_DML_INSERT:
+    case DBLINK_DML_REPLACE:
       {
 	INSERT_PROC_NODE *insert = &xasl->proc.insert;
 
@@ -12808,7 +12907,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 
   assert (sink->is_remote);
 
-  /* open remote connection and prepare the INSERT/DELETE statement */
+  /* open remote connection and prepare the INSERT, REPLACE or DELETE statement */
   if (dblink_dml_open (thread_p, kind, sink->url, sink->user, sink->pwd, sink->table_name, attr_names, num_attrs,
 		       val_no, key_col, op, &dblink_state) != NO_ERROR)
     {
@@ -12835,6 +12934,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	  switch (kind)
 	    {
 	    case DBLINK_DML_INSERT:
+	    case DBLINK_DML_REPLACE:
 	      {
 		INSERT_PROC_NODE *insert = &xasl->proc.insert;
 
@@ -12843,16 +12943,17 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 		    goto exit_on_error;
 		  }
 
-		/* affected_rows is not read here: a positional INSERT row is expected to affect exactly one
-		 * row, though a remote-side trigger/constraint could in principle alter that. Reconciling
-		 * INSERT accounting against such cases is out of scope here. */
-		if (dblink_dml_execute_row (thread_p, &dblink_state, insert->vals, val_no, NULL) != NO_ERROR)
+		/* Take the count the remote reports rather than assuming one row per statement sent. A
+		 * REPLACE that replaces counts the row it removed as well as the one it inserted, so it
+		 * answers 2. This is the rule the text-push path already follows, and the DELETE sink
+		 * accumulates the remote's number the same way. */
+		if (dblink_dml_execute_row (thread_p, &dblink_state, insert->vals, val_no, &row_affected) != NO_ERROR)
 		  {
 		    qexec_failure_line (__LINE__, xasl_state);
 		    goto exit_on_error;
 		  }
 
-		xasl->list_id->tuple_cnt++;
+		xasl->list_id->tuple_cnt += row_affected;
 		break;
 	      }
 	    case DBLINK_DML_DELETE:
@@ -13248,7 +13349,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (insert->sink.is_remote)
     {
-      return qexec_execute_remote_dml_sink (thread_p, xasl, xasl_state, DBLINK_DML_INSERT);
+      return qexec_execute_remote_dml_sink (thread_p, xasl, xasl_state,
+					    insert->do_replace ? DBLINK_DML_REPLACE : DBLINK_DML_INSERT);
     }
 
   /* We might not hold a strong enough lock on the class yet. */
@@ -16805,28 +16907,16 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			      p_class_instance_lock_info->instances_locked = true;
 			    }
 			}
-		      {
-			/* skip memoize if any scan on the scan_ptr chain is a semi/anti single-fetch inner:
-			   caching the subtree would reuse stale per-outer match state (skip-level semi/anti) */
-			bool sa_in_chain = false;
-			XASL_NODE *dxp;
-			for (dxp = xptr; dxp != NULL; dxp = dxp->scan_ptr)
-			  {
-			    if (XASL_IS_NL_SEMI_OR_ANTI (dxp))
-			      {
-				sa_in_chain = true;
-				break;
-			      }
-			  }
-			if (spec_level == 0 && level >= 1 && !mvcc_select_lock_needed && !sa_in_chain)
-			  {
-			    if (new_memoize_storage (thread_p, xptr) != NO_ERROR)
-			      {
-				qexec_clear_mainblock_iterations (thread_p, xasl);
-				GOTO_EXIT_ON_ERROR;
-			      }
-			  }
-		      }
+		      if (spec_level == 0 && level >= 1 && !mvcc_select_lock_needed)
+			{
+			  /* a SEMI / ANTI inner memoizes only whether the key matched (match-only): the
+			     executor turns a hit into first-match (semi) or drop / survive (anti) itself */
+			  if (new_memoize_storage (thread_p, xptr, XASL_IS_NL_SEMI_OR_ANTI (xptr)) != NO_ERROR)
+			    {
+			      qexec_clear_mainblock_iterations (thread_p, xasl);
+			      GOTO_EXIT_ON_ERROR;
+			    }
+			}
 		    }
 		}
 	    }

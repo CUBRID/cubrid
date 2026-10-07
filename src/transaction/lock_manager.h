@@ -59,7 +59,10 @@ enum
 /* Value to wait forever */
   LK_INFINITE_WAIT = -1,
 /* Value to force a timeout without setting errors */
-  LK_FORCE_ZERO_WAIT = -2
+  LK_FORCE_ZERO_WAIT = -2,
+/* Not a waiting time: a thread without an override of its own waits as its transaction does
+ * (see logtb_set_thread_wait_msecs) */
+  LK_WAIT_NOT_OVERRIDDEN = -3
 };
 
 enum
