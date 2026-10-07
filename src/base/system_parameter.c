@@ -11250,33 +11250,46 @@ sysprm_set_sub_client_session_parameters (const SESSION_PARAM * session_params)
       params[i].prm_id = session_params[i].prm_id;
       params[i].flag = session_params[i].flag;
       params[i].datatype = session_params[i].datatype;
-      params[i].value = session_params[i].value;
       PRM_CLEAR_BIT (PRM_ALLOCATED, params[i].flag);
 
       /* duplicate the values that need memory allocation */
-      if (params[i].datatype == PRM_STRING && session_params[i].value.str != NULL)
+      if (params[i].datatype == PRM_STRING)
 	{
-	  params[i].value.str = strdup (session_params[i].value.str);
-	  if (params[i].value.str == NULL)
+	  if (session_params[i].value.str != NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      strlen (session_params[i].value.str) + 1);
-	      sysprm_free_session_parameters (&params);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      char *str = strdup (session_params[i].value.str);
+
+	      if (str == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  strlen (session_params[i].value.str) + 1);
+		  sysprm_free_session_parameters (&params);
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
+		}
+	      params[i].value.str = str;
 	    }
 	}
-      else if (params[i].datatype == PRM_INTEGER_LIST && session_params[i].value.integer_list != NULL)
+      else if (params[i].datatype == PRM_INTEGER_LIST)
 	{
-	  size_t size = (session_params[i].value.integer_list[0] + 1) * sizeof (int);
-
-	  params[i].value.integer_list = (int *) malloc (size);
-	  if (params[i].value.integer_list == NULL)
+	  if (session_params[i].value.integer_list != NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	      sysprm_free_session_parameters (&params);
-	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	      size_t size = (session_params[i].value.integer_list[0] + 1) * sizeof (int);
+	      int *list = (int *) malloc (size);
+
+	      if (list == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+		  sysprm_free_session_parameters (&params);
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
+		}
+	      memcpy (list, session_params[i].value.integer_list, size);
+	      params[i].value.integer_list = list;
 	    }
-	  memcpy (params[i].value.integer_list, session_params[i].value.integer_list, size);
+	}
+      else
+	{
+	  /* no memory allocation */
+	  params[i].value = session_params[i].value;
 	}
       sysprm_update_session_prm_flag_allocated (&params[i]);
     }
