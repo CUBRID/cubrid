@@ -448,9 +448,8 @@ qo_optimize_helper (QO_ENV * env)
   int level;
   QO_TERM *term;
   QO_NODE *node, *p_node;
-  BITSET nodeset, read_nodes;
-  BITSET_ITERATOR iter;
-  int n, k, t, x, r, head;
+  BITSET nodeset;
+  int n, k;
 
   parser = QO_ENV_PARSER (env);
   tree = QO_ENV_PT_TREE (env);
@@ -579,61 +578,6 @@ qo_optimize_helper (QO_ENV * env)
 	      p_node = QO_ENV_NODE (env, --k);
 	      QO_ADD_OUTER_DEP_SET (node, p_node);
 	    }
-	}
-
-      /* A join whose ON reads a node that an outer join may null-pad has to run after that outer join: run
-       * before it, the rows padded later are never checked against the ON.  The ON terms themselves give no
-       * such dependency, so it is added to the outer dependencies here, which no node may precede
-       * (planner_visit_node ()).  Two joins pad a node the ON reads:
-       *  - a RIGHT (FULL) OUTER JOIN later in the same ANSI chain, which pads every node before it;
-       *  - the LEFT (FULL) OUTER JOIN that joins the node itself, as its null-supplying side.  For an INNER JOIN
-       *    the ON must then name another node as well to be placed before it; for a SEMI JOIN the DISTINCT form
-       *    of the inner may precede the node otherwise (qo_get_distinct_info_ahead ()).
-       * A node the ON does not read, or reads on the preserved side only, adds nothing. */
-      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_INNER || QO_NODE_IS_SEMI_ANTI_JOIN (node))
-	{
-	  /* the nodes this node's ON terms read */
-	  bitset_init (&read_nodes, env);
-	  for (t = 0; t < env->nterms; t++)
-	    {
-	      term = QO_ENV_TERM (env, t);
-	      if (QO_ON_COND_TERM (term) && QO_TERM_LOCATION (term) == QO_NODE_LOCATION (node))
-		{
-		  bitset_union (&read_nodes, &(QO_TERM_NODES (term)));
-		}
-	    }
-	  bitset_remove (&read_nodes, n);
-
-	  /* the head of this node's ANSI chain; a RIGHT OUTER JOIN pads back to it and no further */
-	  for (head = n - 1; head > 0 && QO_NODE_IS_ANSI_JOIN (QO_ENV_NODE (env, head)); head--)
-	    {
-	      ;
-	    }
-
-	  for (x = bitset_iterate (&read_nodes, &iter); x != -1; x = bitset_next_member (&iter))
-	    {
-	      p_node = QO_ENV_NODE (env, x);
-	      if (QO_NODE_PT_JOIN_TYPE (p_node) == PT_JOIN_LEFT_OUTER
-		  || QO_NODE_PT_JOIN_TYPE (p_node) == PT_JOIN_FULL_OUTER)
-		{
-		  QO_ADD_OUTER_DEP_SET (node, p_node);
-		}
-
-	      if (x < head)
-		{
-		  continue;	/* another chain: no RIGHT OUTER JOIN of this chain pads it */
-		}
-	      for (r = x + 1; r < n; r++)
-		{
-		  p_node = QO_ENV_NODE (env, r);
-		  if (QO_NODE_PT_JOIN_TYPE (p_node) == PT_JOIN_RIGHT_OUTER
-		      || QO_NODE_PT_JOIN_TYPE (p_node) == PT_JOIN_FULL_OUTER)
-		    {
-		      QO_ADD_OUTER_DEP_SET (node, p_node);
-		    }
-		}
-	    }
-	  bitset_delset (&read_nodes);
 	}
     }
 
