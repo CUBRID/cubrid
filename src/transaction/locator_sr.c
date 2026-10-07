@@ -4951,10 +4951,10 @@ error3:
  * borrowed view alive; memory cleanup does not roll back the database writes. */
 static int
 locator_finalize_oos_record (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES **record,
-                            bool prepare_record, heap_pending_record *pending,
+                            bool from_copyarea, bool from_workspace, heap_pending_record *pending,
                             heap_pending_record *received, RECDES *converted)
 {
-  if (prepare_record && catcls_Enable && !OID_IS_ROOTOID (class_oid)
+  if ((from_copyarea || from_workspace) && catcls_Enable && !OID_IS_ROOTOID (class_oid)
       && !oid_is_system_class (class_oid) && (*record)->length > 0)
     {
       int error = heap_prepare_oos_record (thread_p, class_oid, *record, received);
@@ -4963,6 +4963,23 @@ locator_finalize_oos_record (THREAD_ENTRY *thread_p, const OID *class_oid, RECDE
 	  return error;
 	}
       *converted = received->get_recdes ();
+#if defined (SA_MODE)
+      if (from_workspace && pending == nullptr && !OR_RECORD_HAS_OOS ((*record)->data)
+          && !OR_RECORD_HAS_OOS (converted->data) && or_rep_id (*record) == or_rep_id (converted))
+        {
+          /* A current inline workspace row needs no replacement. Complete the
+           * inline publication transition before releasing the unused owner. */
+          error = heap_oos_finalize_record (thread_p, class_oid, converted, received);
+          if (error != NO_ERROR)
+            {
+              return error;
+            }
+          received->record ().set_external_buffer (nullptr, 0);
+          received->record ().set_record_length (0);
+          *converted = received->get_recdes ();
+          return heap_oos_validate_disk_record (thread_p, class_oid, *record);
+        }
+#endif
       *record = converted;
       pending = received;
     }
@@ -5101,7 +5118,7 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
     }
 
-  error_code = locator_finalize_oos_record (thread_p, &real_class_oid, &recdes, from_copyarea || from_workspace,
+  error_code = locator_finalize_oos_record (thread_p, &real_class_oid, &recdes, from_copyarea, from_workspace,
 					    pending, &received, &converted);
   if (error_code != NO_ERROR)
     {
@@ -6116,7 +6133,7 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	}
 
-      error_code = locator_finalize_oos_record (thread_p, class_oid, &recdes, from_copyarea || from_workspace,
+      error_code = locator_finalize_oos_record (thread_p, class_oid, &recdes, from_copyarea, from_workspace,
 						pending, &received, &converted);
       if (error_code != NO_ERROR)
 	{
