@@ -50,12 +50,36 @@ class heap_pending_record
     {
       return m_record.get_recdes ().area_size + m_bytes + m_values.capacity () * sizeof (oos_buffer);
     }
-    int retain (oos_buffer value);
+    int retain (oos_buffer value, int &index);
+    oos_buffer resolve (const RECDES &record, std::size_t index, std::size_t length) const;
+    bool owns (const RECDES &record) const;
+    bool is_prepared () const
+    {
+      return m_state == state::prepared;
+    }
+    bool is_finalized () const
+    {
+      return m_state == state::finalized;
+    }
+    void prepared ()
+    {
+      m_state = state::prepared;
+    }
+    void finish (bool success)
+    {
+      m_state = success ? state::finalized : state::failed;
+      if (success)
+	{
+	  m_record.set_type (REC_HOME);
+	}
+    }
 
   private:
     record_descriptor m_record;
     std::vector<oos_buffer> m_values;
     std::size_t m_bytes = 0;
+    enum class state { empty, prepared, finalized, failed };
+    state m_state = state::empty;
 };
 
 #endif // _HEAP_PENDING_RECORD_HPP_

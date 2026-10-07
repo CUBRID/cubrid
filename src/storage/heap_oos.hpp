@@ -37,8 +37,9 @@ class heap_oos_value_ref
 {
   public:
     heap_oos_value_ref () : m_kind (kind::disk), m_length (0), m_value () {}
-    static int decode (const RECDES &record, int location, heap_oos_value_ref &ref);
-    static void encode_memory (char *stub, oos_buffer value);
+    static int decode (const RECDES &record, int location, heap_oos_value_ref &ref,
+		       const heap_pending_record *pending = nullptr);
+    static void encode_pending (char *stub, DB_BIGINT length, int index);
     std::size_t length () const
     {
       return m_length;
@@ -56,13 +57,14 @@ class heap_oos_value_ref
       value () : disk {} {}
     } m_value;
     friend int heap_oos_read_grouped_payloads (THREAD_ENTRY *, RECDES *, HEAP_CACHE_ATTRINFO *,
-	std::vector<RECDES> &, bool *);
-    friend int heap_oos_finalize_record (THREAD_ENTRY *, const OID *, RECDES *);
+	std::vector<RECDES> &, bool *, const heap_pending_record *);
+    friend int heap_oos_finalize_record (THREAD_ENTRY *, const OID *, RECDES *, heap_pending_record *);
 };
 
 /* Finalize a locally prepared record in place after routing, before heap/index
  * writes. A failed call must be rolled back; it is not a retryable insertion. */
-extern int heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record);
+extern int heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record,
+				     heap_pending_record *pending = nullptr);
 extern int heap_prepare_oos_record (THREAD_ENTRY *thread_p, const OID *source_class, RECDES *source,
 				    heap_pending_record *pending);
 
@@ -115,7 +117,8 @@ extern int heap_oos_parse_inline_ref (const RECDES *recdes, int location, oos_ch
  * oos_payloads[i].data then holds attribute i's raw OOS bytes (NULL when attr i is not OOS);
  * heap_file.c's grouped read loop transforms them and calls heap_oos_free_grouped_payloads(). */
 extern int heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes,
-    HEAP_CACHE_ATTRINFO *attr_info, std::vector<RECDES> &oos_payloads, bool *grouped_applied);
+    HEAP_CACHE_ATTRINFO *attr_info, std::vector<RECDES> &oos_payloads, bool *grouped_applied,
+    const heap_pending_record *pending = nullptr);
 extern void heap_oos_free_grouped_payloads (std::vector<RECDES> &oos_payloads);
 
 /* Begin one logical heap-record OOS insert preparation by clearing its OID/LSA publication state.
