@@ -37,6 +37,13 @@
 class OosWorkspaceBytes : public ::testing::Test
 {
   protected:
+    struct storage_expectation
+    {
+      std::vector<bool> selected;
+      int offset_size;
+      int first_value_size = 0;
+    };
+
     void TearDown () override
     {
       db_abort_transaction ();
@@ -65,8 +72,7 @@ class OosWorkspaceBytes : public ::testing::Test
       record.area_size = bytes.size ();
     }
 
-    void expect_storage (const RECDES &record, const OID &class_oid,
-			 const std::vector<bool> &selected, int offset_size, int first_value_size)
+    void expect_storage (const RECDES &record, const OID &class_oid, const storage_expectation &expected)
     {
       int cache_index = -1;
       OR_CLASSREP *repr = heap_classrepr_get (thread_get_thread_entry_info (), &class_oid, nullptr,
@@ -76,7 +82,7 @@ class OosWorkspaceBytes : public ::testing::Test
       {
 	heap_classrepr_free (repr, &cache_index);
       });
-      ASSERT_EQ (repr->n_variable, selected.size ());
+      ASSERT_EQ (repr->n_variable, expected.selected.size ());
       bool has_oos = false;
 
       // Expectations follow declaration order of the variable columns. The
@@ -91,31 +97,31 @@ class OosWorkspaceBytes : public ::testing::Test
 	    }
 	  const int declared = attribute.def_order - fixed_count;
 	  ASSERT_GE (declared, 0);
-	  ASSERT_LT (declared, selected.size ());
+	  ASSERT_LT (declared, expected.selected.size ());
 	  SCOPED_TRACE (declared);
 	  int start;
 	  ASSERT_EQ (heap_recdes_get_var_offset_entry (&record, attribute.location, &start), NO_ERROR);
-	  EXPECT_EQ (bool (OR_IS_OOS (start)), selected[declared]);
-	  has_oos = has_oos || selected[declared];
-	  if (declared == 0 && first_value_size > 0)
+	  EXPECT_EQ (bool (OR_IS_OOS (start)), expected.selected[declared]);
+	  has_oos = has_oos || expected.selected[declared];
+	  if (declared == 0 && expected.first_value_size > 0)
 	    {
 	      if (OR_IS_OOS (start))
 		{
 		  oos_chain_ref ref;
 		  DB_BIGINT length;
 		  ASSERT_EQ (heap_oos_parse_inline_ref (&record, attribute.location, &ref, &length), NO_ERROR);
-		  EXPECT_EQ (length, first_value_size);
+		  EXPECT_EQ (length, expected.first_value_size);
 		}
 	      else
 		{
 		  int end;
 		  ASSERT_EQ (heap_recdes_get_var_offset_entry (&record, attribute.location + 1, &end), NO_ERROR);
-		  EXPECT_EQ (OR_GET_VAR_OFFSET (end) - OR_GET_VAR_OFFSET (start), first_value_size);
+		  EXPECT_EQ (OR_GET_VAR_OFFSET (end) - OR_GET_VAR_OFFSET (start), expected.first_value_size);
 		}
 	    }
 	}
       EXPECT_EQ (bool (OR_RECORD_HAS_OOS (record.data)), has_oos);
-      EXPECT_EQ (OR_GET_OFFSET_SIZE (record.data), offset_size);
+      EXPECT_EQ (OR_GET_OFFSET_SIZE (record.data), expected.offset_size);
     }
 
     void compare (const RECDES &a, const RECDES &b, const std::vector<const TP_DOMAIN *> &domains)
@@ -188,8 +194,13 @@ class OosWorkspaceBytes : public ::testing::Test
     }
 
     void check (const std::string &columns, const std::string &values, const std::string &predicate,
-		const std::vector<bool> &selected, int offset_size, const char *alter = nullptr,
-		const std::vector<bool> &old_selected = {}, int first_value_size = 0)
+		const storage_expectation &expected)
+    {
+      ASSERT_NO_FATAL_FAILURE (check (columns, values, predicate, expected, nullptr, expected));
+    }
+
+    void check (const std::string &columns, const std::string &values, const std::string &predicate,
+		const storage_expectation &current, const char *alter, const storage_expectation &old)
     {
       auto *thread = thread_get_thread_entry_info ();
       ASSERT_GE (exec_sql (("CREATE TABLE ws_bytes(" + columns + ")").c_str ()), 0);
@@ -237,9 +248,8 @@ class OosWorkspaceBytes : public ::testing::Test
       std::vector<char> workspace_bytes;
       RECDES actual = RECDES_INITIALIZER;
       ASSERT_NO_FATAL_FAILURE (capture (*WS_OID (workspace_object), class_oid, hfid, workspace_bytes, actual));
-      ASSERT_NO_FATAL_FAILURE (expect_storage (stored, class_oid, alter == nullptr ? selected : old_selected,
-			       offset_size, first_value_size));
-      ASSERT_NO_FATAL_FAILURE (expect_storage (actual, class_oid, selected, offset_size, first_value_size));
+      ASSERT_NO_FATAL_FAILURE (expect_storage (stored, class_oid, alter == nullptr ? current : old));
+      ASSERT_NO_FATAL_FAILURE (expect_storage (actual, class_oid, current));
 
       // Fixture expectations are independent of equality between the writers.
       int count;
@@ -281,7 +291,7 @@ class OosWorkspaceBytes : public ::testing::Test
 TEST_F (OosWorkspaceBytes, TinyNullAndEmptyValues)
 {
   check ("id INT, a BIT VARYING, b VARCHAR, c BIT VARYING", "1, NULL, '', X''",
-	 "id=1 AND a IS NULL AND b='' AND c=X''", {false, false, false}, OR_BYTE_SIZE);
+  "id=1 AND a IS NULL AND b='' AND c=X''", {{false, false, false}, OR_BYTE_SIZE});
 }
 
 TEST_F (OosWorkspaceBytes, LargestFirstAndPreferInline)
@@ -290,7 +300,7 @@ TEST_F (OosWorkspaceBytes, LargestFirstAndPreferInline)
 	 "1, REPEAT(X'AA', 3500), REPEAT(X'BB', 3000), REPEAT(X'CC', 600)",
 	 "id=1 AND a=CAST(REPEAT(X'AA', 3500) AS BIT VARYING)"
 	 " AND b=CAST(REPEAT(X'BB', 3000) AS BIT VARYING) AND c=CAST(REPEAT(X'CC', 600) AS BIT VARYING)",
-  {false, true, true}, OR_SHORT_SIZE);
+  {{false, true, true}, OR_SHORT_SIZE});
 }
 
 TEST_F (OosWorkspaceBytes, EqualSizeTie)
@@ -298,14 +308,14 @@ TEST_F (OosWorkspaceBytes, EqualSizeTie)
   // The legacy storage-index tiebreak selects a in this representation.
   check ("a BIT VARYING, b BIT VARYING", "REPEAT(X'AA', 2200), REPEAT(X'BB', 2200)",
 	 "a=CAST(REPEAT(X'AA', 2200) AS BIT VARYING) AND b=CAST(REPEAT(X'BB', 2200) AS BIT VARYING)",
-  {true, false}, OR_SHORT_SIZE);
+  {{true, false}, OR_SHORT_SIZE});
 }
 
 TEST_F (OosWorkspaceBytes, OffsetWidthShrinksAfterForcedDemotion)
 {
   check ("a BIT VARYING STORAGE FORCE_OUTLINE, b BIT VARYING",
 	 "REPEAT(X'AA', 65536), X'BB'", "a=CAST(REPEAT(X'AA', 65536) AS BIT VARYING) AND b=X'BB'",
-  {true, false}, OR_BYTE_SIZE);
+  {{true, false}, OR_BYTE_SIZE});
 }
 
 TEST_F (OosWorkspaceBytes, CompressedStringAndJson)
@@ -315,7 +325,7 @@ TEST_F (OosWorkspaceBytes, CompressedStringAndJson)
 	 "a=REPEAT('abcdefgh', 10000)"
 	 " AND JSON_PRETTY(b)=JSON_PRETTY('{\"key\": [1,2,3,4,5,6,7,8,9,10]}')"
 	 " AND c=CAST(REPEAT(X'BB', 4500) AS BIT VARYING)",
-  {true, true, true}, OR_BYTE_SIZE);
+  {{true, true, true}, OR_BYTE_SIZE});
 }
 
 TEST_F (OosWorkspaceBytes, CollectionSerializedBytes)
@@ -323,7 +333,7 @@ TEST_F (OosWorkspaceBytes, CollectionSerializedBytes)
   check ("a SEQUENCE OF INTEGER STORAGE FORCE_OUTLINE, b BIT VARYING",
 	 "{1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16}, REPEAT(X'AA', 5000)",
 	 "a={1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16} AND b=CAST(REPEAT(X'AA', 5000) AS BIT VARYING)",
-  {true, true}, OR_BYTE_SIZE);
+  {{true, true}, OR_BYTE_SIZE});
 }
 
 TEST_F (OosWorkspaceBytes, WideVotAndManyAttributes)
@@ -339,15 +349,16 @@ TEST_F (OosWorkspaceBytes, WideVotAndManyAttributes)
       predicate += " AND v" + std::to_string (i) + (i % 2 == 0 ? " IS NULL" : "=X'BB'");
       selected.push_back (false);
     }
-  check (columns, values, predicate, selected, OR_SHORT_SIZE);
+  check (columns, values, predicate, {selected, OR_SHORT_SIZE});
 }
 
 TEST_F (OosWorkspaceBytes, OldDiskRepresentationIsConvertedBeforeWorkspaceSerialization)
 {
+  const storage_expectation sql_row = {{true}, OR_BYTE_SIZE, 5008};
+  const storage_expectation workspace_row = {{true, false}, OR_BYTE_SIZE, 5008};
   check ("a BIT VARYING", "REPEAT(X'AA', 5000)",
 	 "a=CAST(REPEAT(X'AA', 5000) AS BIT VARYING) AND BIT_LENGTH(a)=40000 AND b='new attribute'",
-  {true, false}, OR_BYTE_SIZE,
-  "ALTER TABLE ws_bytes ADD b VARCHAR DEFAULT 'new attribute'", {true}, 5008);
+	 workspace_row, "ALTER TABLE ws_bytes ADD b VARCHAR DEFAULT 'new attribute'", sql_row);
 }
 
 class OosWorkspaceSizeBoundary : public OosWorkspaceBytes, public ::testing::WithParamInterface<int>
@@ -364,11 +375,15 @@ TEST_P (OosWorkspaceSizeBoundary, SerializedSizesMatchValueSizes)
   };
   // The 20- and 21-byte VARBIT encodings fit in 24 bytes; later fixtures
   // exceed the inline stub size and are selected by FORCE_OUTLINE.
+  const storage_expectation expected =
+  {
+    {GetParam () >= 24, false, false}, OR_SHORT_SIZE, encoded_sizes.at (GetParam ())
+  };
   check ("id INT, a BIT VARYING STORAGE FORCE_OUTLINE, b BIT VARYING, c VARCHAR",
 	 "1, REPEAT(X'AA', " + size + "), REPEAT(X'BB', 200), REPEAT('C', 255)",
 	 "id=1 AND a=CAST(REPEAT(X'AA', " + size + ") AS BIT VARYING)"
 	 " AND b=CAST(REPEAT(X'BB', 200) AS BIT VARYING) AND c=REPEAT('C', 255)",
-  {GetParam () >= 24, false, false}, OR_SHORT_SIZE, nullptr, {}, encoded_sizes.at (GetParam ()));
+	 expected);
 }
 
 INSTANTIATE_TEST_SUITE_P (EncodingAndVotBoundaries, OosWorkspaceSizeBoundary,
