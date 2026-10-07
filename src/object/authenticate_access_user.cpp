@@ -750,7 +750,7 @@ au_set_user_loginable (MOP user, bool loginable)
       goto end;
     }
 
-  if (ws_is_same_object (user, Au_information_schema_user) || ws_is_same_object (user, Au_dba_user)
+  if (au_ctx ()->is_nologin_system_user (user) || ws_is_same_object (user, Au_dba_user)
       || ws_is_same_object (user, Au_user))
     {
       db_make_null (&name);
