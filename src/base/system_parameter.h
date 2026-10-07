@@ -743,16 +743,6 @@ extern "C"
   typedef int SYSPRM_INDIRECT_POS;
   extern SYSPRM_INDIRECT_POS prm_Def_session_idx[];
 
-#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
-  /*
-   * Session parameter values of the sub-client of the current thread. NULL on the other threads (e.g., the main
-   * client), which use prm_Def. It is set when the session of the sub-client is created.
-   */
-  extern CUB_THREAD_LOCAL SESSION_PARAM *sysprm_Sub_client_session_params;
-#define PRM_SUB_CLIENT_SESSION(id) \
-  (((GET_PRM (id))->static_flag & PRM_FOR_SESSION) && sysprm_Sub_client_session_params != NULL)
-#endif
-
 #if defined (CS_MODE)
 /* when system parameters are loaded, session parameters need to be cached for
  * future clients that connect to broker
@@ -760,6 +750,14 @@ extern "C"
   extern SESSION_PARAM *cached_session_parameters;
   extern void sysprm_load_session_parameters ();
 #if defined (MULTI_CONN_TO_A_SERVER)
+  /*
+   * Session parameter values of the sub-client of the current thread. NULL on the other threads (e.g., the main
+   * client), which use prm_Def. It is set when the session of the sub-client is created.
+   */
+  extern CUB_THREAD_LOCAL SESSION_PARAM *sysprm_Sub_client_session_params;
+#define PRM_SUB_CLIENT_SESSION(id) \
+  (((GET_PRM (id))->static_flag & PRM_FOR_SESSION) && sysprm_Sub_client_session_params != NULL)
+
   extern int sysprm_set_sub_client_session_parameters (const SESSION_PARAM * session_params);
   extern void sysprm_free_sub_client_session_parameters (void);
 #endif
