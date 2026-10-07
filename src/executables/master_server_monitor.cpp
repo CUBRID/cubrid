@@ -27,7 +27,6 @@
 
 #include "system_parameter.h"
 #include "master_server_monitor.hpp"
-#include "master_util.h"
 
 std::unique_ptr<server_monitor> master_Server_monitor = nullptr;
 bool auto_Restart_server = false;
@@ -263,13 +262,6 @@ int
 server_monitor::try_revive_server (const std::string &exec_path, char *const *argv)
 {
   pid_t pid;
-
-  /* CBRD-27511: defense in depth - never execv () a path outside the trusted
-   * CUBRID bin directory, even if a REGISTER_SERVER entry somehow carried one. */
-  if (!master_util_exec_path_is_trusted (exec_path.c_str ()))
-    {
-      return -1;
-    }
 
   pid = fork ();
   if (pid < 0)

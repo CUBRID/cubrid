@@ -30,10 +30,6 @@
 
 #include "system_parameter.h"
 #include "master_util.h"
-#include "environment_variable.h"
-
-#include <string.h>
-#include <limits.h>
 
 /*
  * master_util_config_startup() - get port id and service name from parameters
@@ -91,52 +87,4 @@ master_util_wait_proc_terminate (int pid)
       sleep (1);
     }
 #endif /* ! WINDOWS */
-}
-
-/*
- * master_util_exec_path_is_trusted () - is exec_path a trusted CUBRID server binary path?
- *   return: true if exec_path has the form <CUBRID>/bin/<name> with no directory
- *           component of its own and no parent-directory traversal; else false.
- *   exec_path(in): the path a server registration asks the master to execv ()
- *
- * Note: a legitimate cub_server always registers the path built by
- *   envvar_bindir_file (basename (argv[0])), i.e. a file living directly in the
- *   installation bin directory. Confining revival to that directory keeps a
- *   caller-supplied exec_path from becoming arbitrary command execution.
- */
-bool
-master_util_exec_path_is_trusted (const char *exec_path)
-{
-  char bindir[PATH_MAX];
-  size_t bindir_len;
-  const char *base;
-
-  if (exec_path == NULL || exec_path[0] == '\0')
-    {
-      return false;
-    }
-
-  /* reject any parent-directory traversal outright */
-  if (strstr (exec_path, "..") != NULL)
-    {
-      return false;
-    }
-
-  /* expected trusted directory prefix: <CUBRID>/bin/ */
-  bindir[0] = '\0';
-  (void) envvar_bindir_file (bindir, sizeof (bindir), "");
-  bindir_len = strlen (bindir);
-  if (bindir_len == 0 || strncmp (exec_path, bindir, bindir_len) != 0)
-    {
-      return false;
-    }
-
-  /* the remainder must name a file directly in bin/ (single path component) */
-  base = exec_path + bindir_len;
-  if (base[0] == '\0' || strchr (base, '/') != NULL)
-    {
-      return false;
-    }
-
-  return true;
 }

@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <errno.h>
 #include <time.h>
 
@@ -89,6 +90,10 @@ static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, S
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid, bool is_client);
 static bool css_validate_proc_register (const CSS_SERVER_PROC_REGISTER * proc_register, int buffer_length);
 static char *css_extract_packed_string (const char **pp, const char *limit);
+#if !defined(WINDOWS)
+static bool css_make_server_revive_command (const char *server_name, char *exec_path, size_t exec_path_size,
+					    char *args, size_t args_size);
+#endif /* !WINDOWS */
 #if defined(WINDOWS)
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
 #endif /* WINDOWS */
@@ -346,17 +351,15 @@ css_accept_server_request (CSS_CONN_ENTRY * conn, int reason)
 
 /*
  * css_validate_proc_register () - validate an off-the-wire process-register image
- *   return: true if the buffer is a well-formed CSS_SERVER_PROC_REGISTER whose
- *           exec_path is a trusted server binary path; false otherwise.
+ *   return: true if the buffer is a well-formed CSS_SERVER_PROC_REGISTER; false otherwise.
  *   proc_register(in): the received buffer, reinterpreted as the struct
  *   buffer_length(in): number of bytes actually received
  *
  * Note: cub_master authenticates nothing on this port, so a server-registration
- *   buffer must be treated as hostile. Every field later dereferenced
- *   (server_name and the version/env/pid strings packed inside it, exec_path,
- *   args) is bounded here before use, and exec_path is confined to the trusted
- *   bin directory so that a REGISTER_SERVER job cannot turn later process
- *   revival into arbitrary command execution.
+ *   buffer must be treated as hostile. server_name and the version/env/pid
+ *   strings packed inside it are bounded here before use. exec_path and args
+ *   are never read by the master (see css_make_server_revive_command ()), so
+ *   they are not checked.
  */
 static bool
 css_validate_proc_register (const CSS_SERVER_PROC_REGISTER * proc_register, int buffer_length)
@@ -381,21 +384,6 @@ css_validate_proc_register (const CSS_SERVER_PROC_REGISTER * proc_register, int 
   /* the packed name (name\0[version\0env\0pid\0]) must end within its declared
    * length so the packed-string parser cannot read past it */
   if (proc_register->server_name[proc_register->server_name_length - 1] != '\0')
-    {
-      return false;
-    }
-
-  /* exec_path and args must be terminated within their own fields */
-  if (proc_register->exec_path[proc_register->CSS_SERVER_MAX_SZ_PROC_EXEC_PATH - 1] != '\0')
-    {
-      return false;
-    }
-  if (proc_register->args[proc_register->CSS_SERVER_MAX_SZ_PROC_ARGS - 1] != '\0')
-    {
-      return false;
-    }
-
-  if (!master_util_exec_path_is_trusted (proc_register->exec_path))
     {
       return false;
     }
@@ -429,6 +417,60 @@ css_extract_packed_string (const char **pp, const char *limit)
   *pp = limit;
   return NULL;
 }
+
+#if !defined(WINDOWS)
+/*
+ * css_make_server_revive_command () - build the command the server monitor
+ *   uses to revive a server
+ *   return: true on success; false if server_name cannot be a database name
+ *   server_name(in): the registered (non-HA) server name, i.e. the database name
+ *   exec_path(out): <CUBRID>/bin/cub_server of this master's installation
+ *   exec_path_size(in):
+ *   args(out): "cub_server <server_name>", the argv cub_server is started with
+ *   args_size(in):
+ *
+ * Note: CBRD-27511: the exec_path and args a registering server sends are
+ *   ignored. A registration is not authenticated, so a local user of another
+ *   OS account could otherwise have the master execv () any program with any
+ *   arguments under the master's account. The master runs only its own
+ *   cub_server, with the database name as the only argument, exactly as
+ *   "cubrid server start" does.
+ */
+static bool
+css_make_server_revive_command (const char *server_name, char *exec_path, size_t exec_path_size, char *args,
+				size_t args_size)
+{
+  const char *p;
+  int n;
+
+  if (server_name == NULL || server_name[0] == '\0')
+    {
+      return false;
+    }
+
+  /* args is split on white space into argv, so server_name must be one word */
+  for (p = server_name; *p != '\0'; p++)
+    {
+      if (isspace ((unsigned char) *p))
+	{
+	  return false;
+	}
+    }
+
+  if (envvar_bindir_file (exec_path, exec_path_size, UTIL_CUBRID_NAME) == NULL)
+    {
+      return false;
+    }
+
+  n = snprintf (args, args_size, "%s %s", UTIL_CUBRID_NAME, server_name);
+  if (n < 0 || (size_t) n >= args_size)
+    {
+      return false;
+    }
+
+  return true;
+}
+#endif /* !WINDOWS */
 
 /*
  * css_accept_new_request() - Accepts a connect request from a new server
@@ -513,12 +555,17 @@ css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, char *buffer,
 		  if (!entry->ha_mode)
 		    {
 #if !defined(WINDOWS)
-		      if (auto_Restart_server && !is_client)
+		      char exec_path[PATH_MAX];
+		      char args[PATH_MAX];
+
+		      if (auto_Restart_server && !is_client
+			  && css_make_server_revive_command (proc_register->server_name, exec_path,
+							     sizeof (exec_path), args, sizeof (args)))
 			{
 			  /* *INDENT-OFF* */
 			  master_Server_monitor->produce_job (server_monitor::job_type::REGISTER_SERVER,
-							      proc_register->pid, proc_register->exec_path,
-							      proc_register->args, proc_register->server_name);
+							      proc_register->pid, exec_path, args,
+							      proc_register->server_name);
 			  /* *INDENT-ON* */
 			}
 #endif
