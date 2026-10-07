@@ -463,6 +463,9 @@ static PARSER_VARCHAR *pt_print_drop_synonym (PARSER_CONTEXT * parser, PT_NODE *
 static PARSER_VARCHAR *pt_print_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * p);
 static PARSER_VARCHAR *pt_print_sp_body (PARSER_CONTEXT * parser, PT_NODE * p);
 static bool pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_NODE ** rewritten_order_by);
+static bool pt_static_sql_is_omittable_hidden_column (PT_NODE * col);
+static PT_NODE *pt_static_sql_find_positional_analytic (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+							int *continue_walk);
 static PT_NODE *pt_static_sql_align_declared_names (PARSER_CONTEXT * parser, PT_NODE * declared, PT_NODE * query,
 						    PT_NODE * name_source);
 
@@ -14911,6 +14914,89 @@ pt_init_select (PT_NODE * p)
 }
 
 /*
+ * pt_static_sql_is_omittable_hidden_column() - Can this hidden select-list column be left out of
+ *                                              static SQL text?
+ *   return: true if col is a hidden column that re-parsing regenerates on its own
+ *   col(in): select-list column
+ *
+ * Note:
+ *   Click counters (INCR/DECR, WITH INCREMENT FOR) are hidden columns too, but the grammar only
+ *   re-attaches them as hidden when `incr(...)`/`decr(...)` is still in the text, so they must be
+ *   printed; leaving them out silently drops the counter update.
+ */
+static bool
+pt_static_sql_is_omittable_hidden_column (PT_NODE * col)
+{
+  if (!col->flag.is_hidden_column)
+    {
+      return false;
+    }
+
+  if (col->node_type == PT_EXPR && (col->info.expr.op == PT_INCR || col->info.expr.op == PT_DECR))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * pt_static_sql_find_positional_analytic() - Find an analytic function whose OVER clause refers
+ *                                            to select-list positions
+ *   return: node
+ *   parser(in): parser context
+ *   node(in): node to check
+ *   arg(out): bool *, set to true when found
+ *   continue_walk(in/out): walk control
+ *
+ * Note:
+ *   mq_update_analytic_sort_spec_expr () turns OVER (PARTITION BY/ORDER BY) keys into select-list
+ *   positions and may append the referenced key as a hidden column; such a column cannot be left out
+ *   without leaving the position dangling.
+ */
+static PT_NODE *
+pt_static_sql_find_positional_analytic (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+  PT_NODE *spec_lists[2], *spec;
+  int i;
+
+  if (node == NULL || *continue_walk == PT_STOP_WALK)
+    {
+      return node;
+    }
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      /* a subquery's positions refer to its own select list */
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (!PT_IS_ANALYTIC_NODE (node))
+    {
+      return node;
+    }
+
+  spec_lists[0] = node->info.function.analytic.partition_by;
+  spec_lists[1] = node->info.function.analytic.order_by;
+  for (i = 0; i < 2; i++)
+    {
+      for (spec = spec_lists[i]; spec != NULL; spec = spec->next)
+	{
+	  if (spec->node_type == PT_SORT_SPEC && PT_IS_VALUE_NODE (spec->info.sort_spec.expr))
+	    {
+	      *found = true;
+	      *continue_walk = PT_STOP_WALK;
+	      return node;
+	    }
+	}
+    }
+
+  return node;
+}
+
+/*
  * pt_static_sql_can_omit_hidden_columns() - Can hidden columns be omitted from
  *                                           a query's static SQL text?
  *   return: true if omission and rewrite succeed
@@ -14923,7 +15009,9 @@ pt_init_select (PT_NODE * p)
  *      Static SQL queries embedded in compiled PL/CSQL classes are re-parsed at
  *      runtime. Hidden columns (e.g., internal ORDER BY carry columns or OID columns)
  *      must be excluded so they don't leak into user result sets and trigger
- *      "FETCH INTO" count mismatch errors.
+ *      "FETCH INTO" count mismatch errors. Click counters are kept (see
+ *      pt_static_sql_is_omittable_hidden_column ()), and nothing is omitted while an
+ *      analytic OVER clause refers to select-list positions.
  *
  *   2. ORDER BY Rewriting:
  *      Removing columns shifts select-list positional indices. Omission is only
@@ -14963,11 +15051,11 @@ pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_
   select_list = p->info.query.q.select.list;
   for (col = select_list; col != NULL; col = col->next)
     {
-      if (col->flag.is_hidden_column)
+      if (pt_static_sql_is_omittable_hidden_column (col))
 	{
 	  hidden_cnt++;
 	}
-      else
+      else if (!col->flag.is_hidden_column)
 	{
 	  visible_cnt++;
 	}
@@ -14977,6 +15065,18 @@ pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_
   if (hidden_cnt == 0 || visible_cnt == 0)
     {
       return false;
+    }
+
+  /* an analytic OVER clause may refer to a hidden column by position, whether or not there is an ORDER BY */
+  if (PT_SELECT_INFO_IS_FLAGED (p, PT_SELECT_INFO_HAS_ANALYTIC))
+    {
+      bool found = false;
+
+      (void) parser_walk_tree (parser, select_list, pt_static_sql_find_positional_analytic, &found, NULL, NULL);
+      if (found)
+	{
+	  return false;
+	}
     }
 
   order_by = p->info.query.order_by;
@@ -15011,7 +15111,7 @@ pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_
       new_pos = 0;
       for (col = select_list, i = 1; col != NULL; col = col->next, i++)
 	{
-	  if (!col->flag.is_hidden_column)
+	  if (!pt_static_sql_is_omittable_hidden_column (col))
 	    {
 	      new_pos++;
 	    }
@@ -15025,7 +15125,7 @@ pt_static_sql_can_omit_hidden_columns (PARSER_CONTEXT * parser, PT_NODE * p, PT_
 	  goto give_up;
 	}
 
-      if (!col->flag.is_hidden_column)
+      if (!pt_static_sql_is_omittable_hidden_column (col))
 	{
 	  copy = parser_copy_tree (parser, order);
 	  if (copy == NULL)
@@ -15650,7 +15750,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 
 	  for (temp = p->info.query.q.select.list; temp != NULL; temp = temp->next)
 	    {
-	      if (temp->flag.is_hidden_column)
+	      if (pt_static_sql_is_omittable_hidden_column (temp))
 		{
 		  continue;
 		}
@@ -18539,7 +18639,7 @@ pt_static_sql_align_declared_names (PARSER_CONTEXT * parser, PT_NODE * declared,
 
       for (decl = aligned, col = select_list; decl != NULL && col != NULL; decl = decl->next, col = col->next)
 	{
-	  if (col->flag.is_hidden_column)
+	  if (pt_static_sql_is_omittable_hidden_column (col))
 	    {
 	      continue;
 	    }
