@@ -831,7 +831,7 @@ namespace cubload
 						   pruning_type,
 						   pruning_type == DB_NOT_PARTITIONED_CLASS ? nullptr : &pruning,
 						   NULL, UPDATE_INPLACE_NONE, NULL, has_BU_lock,
-						   true, false);
+						   true, false, false, &m_recdes_collected[i]);
 	    partition_clear_pruning_context (&pruning);
 	    if (error_code != NO_ERROR)
 	      {

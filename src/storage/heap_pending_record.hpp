@@ -61,7 +61,7 @@ class heap_pending_record
     {
       return m_state == state::finalized;
     }
-    void prepared ()
+    void mark_prepared ()
     {
       m_state = state::prepared;
     }
