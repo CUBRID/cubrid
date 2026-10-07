@@ -29,6 +29,7 @@
 
 #include "record_descriptor.hpp"
 #include "heap_oos.hpp"
+#include "heap_oos_value_ref.hpp"
 #include "heap_pending_record.hpp"
 #include "packer.hpp"
 #include "locator_sr.h"
