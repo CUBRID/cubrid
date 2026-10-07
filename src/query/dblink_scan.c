@@ -471,7 +471,7 @@ dblink_refuse_undeclared_codeset (DB_VALUE * dbval)
 static int
 dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, DB_VALUE * dbval)
 {
-  int ret, num_size = 0;
+  int ret, num_size = 0, str_size;
   T_CCI_A_TYPE a_type;
   T_CCI_U_TYPE u_type;
   void *value;
@@ -487,6 +487,7 @@ dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, D
   T_CCI_BIT cci_bit;
   char num_str[NUMERIC_MAX_STRING_SIZE];
   char *json_body = NULL;
+  char *str_copy = NULL;
   unsigned char type;
 
   value = &dbval->data;
@@ -542,7 +543,6 @@ dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, D
     case DB_TYPE_CHAR:
       a_type = CCI_A_TYPE_STR;
       u_type = CCI_U_TYPE_STRING;
-      value = (void *) db_get_string (dbval);
       /* Gated as the declaration is, so the two cover the same connections: a vendor is reached
        * through the gateway, which reads the statement and the bound values as UTF-8 whatever we
        * say. */
@@ -550,6 +550,20 @@ dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, D
 	{
 	  return dblink_refuse_undeclared_codeset (dbval);
 	}
+      /* CCI measures a CCI_A_TYPE_STR value with strlen, but a string peeked from a temp list tuple
+       * points into the page with no NUL terminator and the next column's bytes follow it, so bind
+       * a terminated copy of its size. (cci_bind_param_ex takes a length, but cascci.def does not
+       * export it on Windows.) */
+      str_size = db_get_string_size (dbval);
+      str_copy = (char *) db_private_alloc (NULL, str_size + 1);
+      if (str_copy == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) (str_size + 1));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memcpy (str_copy, db_get_string (dbval), str_size);
+      str_copy[str_size] = '\0';
+      value = (void *) str_copy;
       break;
     case DB_TYPE_DATE:
       a_type = CCI_A_TYPE_DATE;
@@ -628,9 +642,10 @@ dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, D
       return ER_DBLINK_UNSUPPORTED_TYPE;
     }
   ret = cci_bind_param (stmt_handle, param_index, a_type, value, u_type, 0);
-  /* CCI copies the value unless the bind flag is CCI_BIND_PTR, so the JSON body can be released
-   * as soon as it is bound. */
+  /* CCI copies the value unless the bind flag is CCI_BIND_PTR, so the JSON body and the string
+   * copy can be released as soon as they are bound. */
   db_private_free_and_init (NULL, json_body);
+  db_private_free_and_init (NULL, str_copy);
   if (ret < 0)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_INVALID_BIND_PARAM, 0);
