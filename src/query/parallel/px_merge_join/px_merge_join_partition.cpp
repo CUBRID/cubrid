@@ -886,53 +886,49 @@ namespace parallel_query
 	  }
       }
 
-      /* page skipping compares only page last keys, so it cannot screen a value-level DB_UNK */
+      /* the scan is only the fallback for an overflow continuation page the walk cannot step over */
       int
       find_starts (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const page_dir *dir, const key_spec &spec,
 		   const std::vector<partition_key> &boundaries, std::vector<partition_start> &starts,
-		   bool page_skip, bool &incomparable, prepass_stats &st, const char *&path)
+		   bool &incomparable, prepass_stats &st, const char *&path)
       {
 	int error = NO_ERROR;
+	bool handled = false;
 
 	incomparable = false;
 	reset_starts (starts, boundaries.size ());
-	path = "scan";
 
-	if (page_skip)
+	if (dir != NULL)
 	  {
-	    bool handled = false;
-
-	    if (dir != NULL)
+	    error = find_starts_by_sector (thread_p, list_id, *dir, spec, boundaries, starts, incomparable, handled,
+					   st);
+	    if (error != NO_ERROR)
 	      {
-		error = find_starts_by_sector (thread_p, list_id, *dir, spec, boundaries, starts, incomparable,
-					       handled, st);
-		if (error != NO_ERROR)
-		  {
-		    return error;
-		  }
-		if (handled)
-		  {
-		    path = "sector";
-		    return NO_ERROR;
-		  }
-		incomparable = false;
-		reset_starts (starts, boundaries.size ());
-	      }
-
-	    error = find_starts_by_page (thread_p, list_id, spec, boundaries, starts, incomparable, handled, st);
-	    if (error != NO_ERROR || handled)
-	      {
-		path = "walk";
 		return error;
+	      }
+	    if (handled)
+	      {
+		path = "sector";
+		return NO_ERROR;
 	      }
 	    incomparable = false;
 	    reset_starts (starts, boundaries.size ());
 	  }
+
+	error = find_starts_by_page (thread_p, list_id, spec, boundaries, starts, incomparable, handled, st);
+	if (error != NO_ERROR || handled)
+	  {
+	    path = "walk";
+	    return error;
+	  }
+	incomparable = false;
+	reset_starts (starts, boundaries.size ());
+	path = "scan";
 	return find_starts_by_scan (thread_p, list_id, spec, boundaries, starts, incomparable);
       }
 
-      /* a value-level DB_UNK (collection holding NULL, per-value coercion failure, JSON) would only surface
-       * inside a worker; type-level DB_UNK is caught by the first page peek */
+      /* the prepass compares only page last keys, so key types that can yield a value-level DB_UNK (collection
+       * holding NULL, per-value coercion failure, JSON) fall back to the serial merge */
       bool
       can_skip_pages (const key_spec &outer_spec, const key_spec &inner_spec)
       {
@@ -1033,6 +1029,11 @@ namespace parallel_query
 	  return ER_FAILED;
 	}
 
+      if (!can_skip_pages (outer_spec, inner_spec))
+	{
+	  return NO_ERROR;
+	}
+
       page_dir outer_dir, inner_dir;
       page_dir *outer_dirp = build_page_dir (thread_p, outer_list_id, outer_dir) ? &outer_dir : NULL;
       page_dir *inner_dirp = build_page_dir (thread_p, inner_list_id, inner_dir) ? &inner_dir : NULL;
@@ -1058,13 +1059,12 @@ namespace parallel_query
 
       const char *outer_path = "none";
       const char *inner_path = "none";
-      bool page_skip = can_skip_pages (outer_spec, inner_spec);
       error = find_starts (thread_p, outer_list_id, outer_dirp, outer_spec, result.m_boundaries,
-			   result.m_outer_starts, page_skip, incomparable, outer_st, outer_path);
+			   result.m_outer_starts, incomparable, outer_st, outer_path);
       if (error == NO_ERROR && !incomparable)
 	{
 	  error = find_starts (thread_p, inner_list_id, inner_dirp, inner_spec, result.m_boundaries,
-			       result.m_inner_starts, page_skip, incomparable, inner_st, inner_path);
+			       result.m_inner_starts, incomparable, inner_st, inner_path);
 	}
       er_log_debug (ARG_FILE_LINE, "px_merge_join: prepass side=outer path=%s fixes=%d decodes=%d\n", outer_path,
 		    outer_st.fixes, outer_st.decodes);
