@@ -972,7 +972,9 @@ namespace parallel_scan
      * top-N idiom, so keep list specs serial. Renumbering (instnum_pred == NULL) is unaffected. */
     const bool block_list_spec = (arg->instnum_pred != nullptr);
 
-    const bool block_all_specs = XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST);
+    /* a merge join input that keeps its index scan order must not be split across workers */
+    const bool block_all_specs = XASL_IS_FLAGED (arg, XASL_SKIP_ORDERBY_LIST)
+				 || (arg->type == BUILDLIST_PROC && arg->after_iscan_list != nullptr);
 
     if (is_flag_set (result, CANNOT_PARALLEL_SCAN) || block_all_specs)
       {
