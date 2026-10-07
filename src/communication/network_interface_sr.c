@@ -11540,6 +11540,29 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
   return;
 }
 
+/*
+ * flashback_check_requester () - may the requester run flashback?
+ *   return: true if so; otherwise the request has been refused and no session
+ *           state touched.
+ *
+ * Decided by log_extract_check_authorization (), the function CDC uses too, and
+ * refused the way CHECK_AUTHORIZATION refuses, so the client sees the same reply.
+ */
+static bool
+flashback_check_requester (THREAD_ENTRY * thread_p, unsigned int rid)
+{
+  if (log_extract_check_authorization (thread_p, LOG_EXTRACT_FLASHBACK))
+    {
+      return true;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "");
+  return_error_to_client (thread_p, rid);
+  css_send_abort_to_client (thread_p->conn_entry, rid);
+
+  return false;
+}
+
 void
 sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
 {
@@ -11563,6 +11586,11 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   time_t end_time = 0;
 
   char *classname = NULL;
+
+  if (!flashback_check_requester (thread_p, rid))
+    {
+      return;
+    }
 
   error_code = flashback_initialize (thread_p);
   if (error_code != NO_ERROR)
@@ -11726,6 +11754,11 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER, };
 
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
+
+  if (!flashback_check_requester (thread_p, rid))
+    {
+      return;
+    }
 
   ptr = or_unpack_int (request, &context.trid);
   ptr = or_unpack_string_nocopy (ptr, &context.user);
