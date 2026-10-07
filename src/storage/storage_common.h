@@ -217,9 +217,6 @@ struct ehid
   INT32 pageid;			/* The first (root) page of the directory */
 };
 
-/* Local descriptor only: never a slotted-page type or a transport value. */
-#define REC_OOS_PENDING 0x100
-
 typedef struct recdes RECDES;	/* RECORD DESCRIPTOR */
 struct recdes
 {

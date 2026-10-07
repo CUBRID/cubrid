@@ -2178,6 +2178,28 @@ error:
   return error_code;
 }
 
+int
+locator_copyarea_add_fetch (const OID * class_oid, const OID * oid, const RECDES * recdes, int offset,
+			    LC_COPYAREA_MANYOBJS * mobjs, LC_COPYAREA_ONEOBJ * obj)
+{
+  /* These producers requested Expand. A non-root heap row must have no OOS
+   * stubs left, including a copied temporary image with no external owner. */
+  if (!OID_IS_ROOTOID (class_oid) && (!heap_recdes_has_valid_header (recdes) || heap_recdes_contains_oos (recdes)))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oid_Null_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+  COPY_OID (&obj->class_oid, class_oid);
+  COPY_OID (&obj->oid, oid);
+  obj->flag = 0;
+  obj->hfid = NULL_HFID;
+  obj->length = recdes->length;
+  obj->offset = offset;
+  obj->operation = LC_FETCH;
+  mobjs->num_objs++;
+  return NO_ERROR;
+}
+
 static SCAN_CODE
 locator_return_object_assign (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * assign, OID * class_oid, OID * oid,
 			      int chn, int guess_chn, SCAN_CODE scan, int tran_index)
@@ -2206,18 +2228,11 @@ locator_return_object_assign (THREAD_ENTRY * thread_p, LOCATOR_RETURN_NXOBJ * as
 		}
 	      (void) heap_chnguess_put (thread_p, oid, tran_index, or_chn (&assign->recdes));
 	    }
-	  assign->mobjs->num_objs++;
-
-	  COPY_OID (&assign->obj->class_oid, class_oid);
-	  COPY_OID (&assign->obj->oid, oid);
-
-	  /* Set object flag */
-	  assign->obj->flag = 0;
-
-	  assign->obj->hfid = NULL_HFID;
-	  assign->obj->length = assign->recdes.length;
-	  assign->obj->offset = assign->area_offset;
-	  assign->obj->operation = LC_FETCH;
+	  if (locator_copyarea_add_fetch (class_oid, oid, &assign->recdes, assign->area_offset,
+					  assign->mobjs, assign->obj) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
 	  assign->obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (assign->obj);
 
 #if !defined(NDEBUG)
@@ -2919,14 +2934,11 @@ xlocator_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * lock, LC_
       while ((scan = heap_next (thread_p, hfid, class_oid, &oid, &recdes, &scan_cache, COPY,
 				HEAP_RECDES_CONSUME_RAW_BYTES)) == S_SUCCESS)
 	{
-	  mobjs->num_objs++;
-	  COPY_OID (&obj->class_oid, class_oid);
-	  COPY_OID (&obj->oid, &oid);
-	  obj->flag = 0;
-	  obj->hfid = NULL_HFID;
-	  obj->length = recdes.length;
-	  obj->offset = offset;
-	  obj->operation = LC_FETCH;
+	  if (locator_copyarea_add_fetch (class_oid, &oid, &recdes, offset, mobjs, obj) != NO_ERROR)
+	    {
+	      scan = S_ERROR;
+	      break;
+	    }
 	  obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
 	  round_length = DB_ALIGN (recdes.length, MAX_ALIGNMENT);
 #if !defined(NDEBUG)
@@ -12308,14 +12320,11 @@ xlocator_lock_and_fetch_all (THREAD_ENTRY * thread_p, const HFID * hfid, LOCK * 
 		}
 	    }
 
-	  mobjs->num_objs++;
-	  COPY_OID (&obj->class_oid, class_oid);
-	  COPY_OID (&obj->oid, &oid);
-	  obj->flag = 0;
-	  obj->hfid = NULL_HFID;
-	  obj->length = recdes.length;
-	  obj->offset = offset;
-	  obj->operation = LC_FETCH;
+	  if (locator_copyarea_add_fetch (class_oid, &oid, &recdes, offset, mobjs, obj) != NO_ERROR)
+	    {
+	      scan = S_ERROR;
+	      break;
+	    }
 	  obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj);
 	  round_length = DB_ALIGN (recdes.length, MAX_ALIGNMENT);
 #if !defined(NDEBUG)

@@ -65,6 +65,8 @@ class heap_oos_value_ref
  * writes. A failed call must be rolled back; it is not a retryable insertion. */
 extern int heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record,
 				     heap_pending_record *pending = nullptr);
+/* Heap-row storage contract; generic descriptors and slotted-page metadata are not row inputs. */
+extern int heap_oos_validate_disk_record (THREAD_ENTRY *thread_p, const OID *class_oid, const RECDES *record);
 extern int heap_prepare_oos_record (THREAD_ENTRY *thread_p, const OID *source_class, RECDES *source,
 				    heap_pending_record *pending);
 

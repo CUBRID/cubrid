@@ -140,26 +140,84 @@ heap_oos_value_ref::read_into (THREAD_ENTRY *thread_p, oos_buffer destination) c
 }
 
 int
+heap_oos_validate_disk_record (THREAD_ENTRY *thread_p, const OID *class_oid, const RECDES *record)
+{
+  if (OID_IS_ROOTOID (class_oid) || (record != nullptr && record->type == REC_ASSIGN_ADDRESS))
+    {
+      return NO_ERROR;
+    }
+  if (!heap_recdes_has_valid_header (record))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oid_Null_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+  if (!heap_recdes_contains_oos (record))
+    {
+      return NO_ERROR;
+    }
+
+  int cache_index = -1;
+  RECDES view = *record;
+  OR_CLASSREP *repr = heap_classrepr_get (thread_p, class_oid, nullptr, or_rep_id (&view), &cache_index);
+  if (repr == nullptr)
+    {
+      return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+    }
+  int error = NO_ERROR;
+  bool found_oos = false;
+  const int table_entries = (record->length - OR_HEADER_SIZE (record->data)) / OR_GET_OFFSET_SIZE (record->data);
+  if (repr->n_variable < 1 || repr->n_variable >= table_entries)
+    {
+      error = ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+  for (int i = 0; i < repr->n_attributes && error == NO_ERROR; ++i)
+    {
+      const OR_ATTRIBUTE &attr = repr->attributes[i];
+      if (attr.is_fixed)
+	{
+	  continue;
+	}
+      int entry = 0;
+      if (attr.location < 0 || attr.location >= repr->n_variable
+	  || heap_recdes_get_var_offset_entry (record, attr.location, &entry) != NO_ERROR)
+	{
+	  error = ER_HEAP_OOS_BAD_INLINE_HEADER;
+	  break;
+	}
+      if (OR_IS_OOS (entry))
+	{
+	  oos_chain_ref ref;
+	  DB_BIGINT length;
+	  found_oos = true;
+	  error = heap_oos_parse_inline_ref (record, attr.location, &ref, &length);
+	}
+    }
+  heap_classrepr_free_and_init (repr, &cache_index);
+  if (error != NO_ERROR || !found_oos)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oid_Null_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+  return NO_ERROR;
+}
+
+int
 heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record,
 			  heap_pending_record *pending)
 {
   if (pending == nullptr)
     {
-      if (record->type != REC_OOS_PENDING)
-	{
-	  return NO_ERROR;
-	}
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
+      return heap_oos_validate_disk_record (thread_p, destination, record);
     }
-  if (!pending->owns (*record) || (!pending->is_prepared () && !pending->is_finalized ()))
+  if (!heap_recdes_has_valid_header (record) || !pending->owns (*record)
+      || (!pending->is_prepared () && !pending->is_finalized ()))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       return ER_GENERIC_ERROR;
     }
   if (pending->is_finalized ())
     {
-      return NO_ERROR;
+      return heap_oos_validate_disk_record (thread_p, destination, record);
     }
   if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
     {
@@ -168,7 +226,7 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
     }
   if (!heap_recdes_contains_oos (record))
     {
-      record->type = REC_HOME;
+      pending->record ().set_record_length (record->length);
       pending->finish (true);
       return NO_ERROR;
     }
@@ -247,7 +305,7 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	      or_put_bigint (&buf, (DB_BIGINT) requests[i].src.size ());
 	      or_put_bigint (&buf, oos_pack_identity_stamp (refs[i].identity_stamp));
 	    }
-	  record->type = REC_HOME;
+	  pending->record ().set_record_length (record->length);
 	}
     }
   catch (const std::bad_alloc &)
