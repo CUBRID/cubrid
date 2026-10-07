@@ -1027,7 +1027,7 @@ namespace memoize
 
 	    k->~key ();
 	    m_key_fixed_allocator.deallocate (k);
-	    if (v != nullptr)
+	    if (v != nullptr && v != &m_matched)
 	      {
 		m_value_sz -= v->get_size ();
 		v->~value ();
