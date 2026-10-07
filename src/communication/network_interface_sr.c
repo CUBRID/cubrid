@@ -11701,7 +11701,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
    * num_summary by flashback_max_transaction (INT_MAX by default), so the
    * product overflows an int -- and would under-allocate the area the summary
    * entries are packed into -- long before it can overflow 64 bits. */
-  area_size64 = (UINT64) OR_OID_SIZE * context.num_class + OR_INT64_SIZE + OR_INT64_SIZE + OR_INT_SIZE
+  area_size64 = OR_OID_SIZE * (UINT64) context.num_class + OR_INT64_SIZE + OR_INT64_SIZE + OR_INT_SIZE
     + ((UINT64) OR_SUMMARY_ENTRY_SIZE_WITHOUT_CLASS + (UINT64) OR_OID_SIZE * context.num_class) * context.num_summary;
 
   if (area_size64 <= INT_MAX)
@@ -11919,7 +11919,7 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
    * Computed in UINT64: queue_size is the total length actually generated, which
    * the requested batch size does not bound, so a huge transaction can push it
    * past INT_MAX. */
-  area_size64 = (UINT64) OR_LOG_LSA_ALIGNED_SIZE * 2 + OR_INT_SIZE
+  area_size64 = 2 * (UINT64) OR_LOG_LSA_ALIGNED_SIZE + OR_INT_SIZE
     + (UINT64) context.queue_size + (UINT64) context.num_loginfo * MAX_ALIGNMENT;
 
   if (area_size64 <= INT_MAX)
