@@ -32,6 +32,7 @@
 #include "dbtype_def.h"
 #include "object_representation.h"	/* OR_*_SIZE, OR_MVCCID_SIZE */
 #include "object_representation_constants.h"	/* OR_OID_PAGEID, OR_OID_SLOTID, OR_OID_VOLID */
+#include "string_opfunc.h"	/* bit_compare, varbit_compare: the oracles the bit string keys are checked against */
 
 #include <algorithm>
 #include <cmath>
@@ -296,6 +297,41 @@ namespace
     return c;
   }
 
+  /* a stored BIT is its bytes as they lie, every record of the domain carrying the same count of them */
+  key_compare
+  cmp_bit (int bytes)
+  {
+    return [bytes] (const unsigned char *a, const unsigned char *b)
+    {
+      int c = bit_compare (a, bytes, b, bytes);
+
+      return (c < 0) ? -1 : (c > 0) ? 1 : 0;
+    };
+  }
+
+  /* a stored VARBIT: its bit length, one byte of it or a byte of 0xff and an int, then the bytes those bits fill */
+  int
+  varbit_bits (const unsigned char *image, int *value_at)
+  {
+    if (image[0] < 0xff)
+      {
+	*value_at = OR_BYTE_SIZE;
+	return image[0];
+      }
+    *value_at = OR_BYTE_SIZE + OR_INT_SIZE;
+    return (int) get_be (image + OR_BYTE_SIZE, OR_INT_SIZE);
+  }
+
+  int
+  cmp_varbit (const unsigned char *a, const unsigned char *b)
+  {
+    int at_a, at_b;
+    int bits_a = varbit_bits (a, &at_a), bits_b = varbit_bits (b, &at_b);
+    int c = varbit_compare (a + at_a, BITS_TO_BYTES (bits_a), b + at_b, BITS_TO_BYTES (bits_b));
+
+    return (c < 0) ? -1 : (c > 0) ? 1 : 0;
+  }
+
   /* ------------------------------------------------------------ the harness */
 
   /* a run as the sorter sees it: the records in the sort buffer, one slot (offset) per record */
@@ -327,8 +363,14 @@ namespace
   {
     run_image run;
     size_t n = samples.size();
-    size_t blob = samples.empty() ? 0 : samples[0].key_bytes.size();
-    size_t widest = (size_t) key_offset (true, MVCC_WORD_MODES - 1) + blob;
+    size_t blob = 0;		/* the widest key: a VARBIT varies from record to record */
+    size_t widest;
+
+    for (const sample &one : samples)
+      {
+	blob = std::max (blob, one.key_bytes.size());
+      }
+    widest = (size_t) key_offset (true, MVCC_WORD_MODES - 1) + blob;
 
     run.rec_size = (widest + 7) & ~ (size_t) 7;
     run.arena.assign ((n > 0 ? n : 1) * run.rec_size, 0);
@@ -347,7 +389,7 @@ namespace
 	header->flags = (UINT8) ((mvcc_words >= 1 ? BTSORT_REC_HAS_INSID : 0)
 				 | (mvcc_words >= 2 ? BTSORT_REC_HAS_DELID : 0));
 	put_oid ((unsigned char *) BTSORT_REC_BODY (rec), samples[i].oid_rank);
-	memcpy (BTSORT_REC_KEY (rec), samples[i].key_bytes.data(), blob);
+	memcpy (BTSORT_REC_KEY (rec), samples[i].key_bytes.data(), samples[i].key_bytes.size());
 	run.slots[i] = run.slot_of (i);
       }
     return run;
@@ -363,16 +405,14 @@ namespace
     return domain;
   }
 
-  /* build, sort, check against the oracle */
+  /* build, sort by the encoding, check against the oracle */
   void
-  check_run (DB_TYPE type, bool desc, bool unique, const std::vector<sample> &samples, const key_compare &oracle,
-	     const std::string &what)
+  check_run (const RADIX_KEY_ENCODING &encoding, bool desc, bool unique, const std::vector<sample> &samples,
+	     const key_compare &oracle, const std::string &what)
   {
     int n = (int) samples.size();
     run_image run = build_run (unique, samples);
     std::vector<size_t> expected ((size_t) n);
-    TP_DOMAIN domain = domain_of (type, desc);
-    RADIX_KEY_ENCODING encoding;
 
     /* the oracle: key in the domain's direction, instance OID ascending between equal keys */
     std::iota (expected.begin(), expected.end(), (size_t) 0);
@@ -388,7 +428,6 @@ namespace
     });
 
     INFO (what);
-    REQUIRE (radix_sort_resolve_key (&encoding, &domain));
     run_work work (encoding, n);
     work.sort (&encoding, run.rec_base(), run.slots.data(), n);
 
@@ -402,6 +441,19 @@ namespace
 	    REQUIRE (run.slots[i] == want);
 	  }
       }
+  }
+
+  /* the encoding of the domain the loader hands the sort */
+  void
+  check_run (DB_TYPE type, bool desc, bool unique, const std::vector<sample> &samples, const key_compare &oracle,
+	     const std::string &what)
+  {
+    TP_DOMAIN domain = domain_of (type, desc);
+    RADIX_KEY_ENCODING encoding;
+
+    INFO (what);
+    REQUIRE (radix_sort_resolve_key (&encoding, &domain));
+    check_run (encoding, desc, unique, samples, oracle, what);
   }
 
   /* every neighbouring pair in comparator order: key, then the instance OID */
@@ -598,6 +650,89 @@ namespace
 
   /* more than RADIX_MSD_CUTOFF records, so a bucket this large is stacked */
   const int STACKED_BUCKET_RECORDS = 65;
+
+  /* the bit string domain of an index column: the precision in bits, declared ASC or DESC */
+  TP_DOMAIN
+  bit_domain (int precision, bool desc, DB_TYPE type = DB_TYPE_BIT)
+  {
+    TP_DOMAIN domain = *tp_domain_resolve_default (type);
+
+    domain.precision = precision;
+    domain.is_desc = desc ? 1 : 0;
+    return domain;
+  }
+
+  bool
+  resolve_bit (RADIX_KEY_ENCODING &encoding, int precision, DB_TYPE type = DB_TYPE_BIT)
+  {
+    TP_DOMAIN domain = bit_domain (precision, false, type);
+
+    return radix_sort_resolve_key (&encoding, &domain);
+  }
+
+  /* the encoding the key table hands out for a bit string column */
+  RADIX_KEY_ENCODING
+  bit_encoding (int precision, bool desc, DB_TYPE type = DB_TYPE_BIT)
+  {
+    TP_DOMAIN domain = bit_domain (precision, desc, type);
+    RADIX_KEY_ENCODING encoding;
+
+    REQUIRE (radix_sort_resolve_key (&encoding, &domain));
+    return encoding;
+  }
+
+  /* the image mr_data_writeval_bit () stores: the bytes as they lie, the first lead of them the same in every record */
+  sample
+  bit_sample (int key_bytes, int lead, int shape, int i, int n, std::mt19937_64 &rng, unsigned int oid)
+  {
+    sample one;
+
+    one.key_bytes.assign ((size_t) key_bytes, 0);
+    for (int at = 0; at < key_bytes; at++)
+      {
+	/* every key opens with the same bytes, so a wide key has to ask for the words past them */
+	one.key_bytes[ (size_t) at] = (at < lead) ? 0xa5 : (unsigned char) shape_value (shape, i, n, rng);
+      }
+    one.oid_rank = oid;
+    return one;
+  }
+
+  /* the image or_put_varbit () stores: the bit length, one byte of it or a byte of 0xff and an int, then the bytes */
+  std::vector<unsigned char>
+  varbit_image (int bit_length, const std::vector<unsigned char> &value)
+  {
+    std::vector<unsigned char> image;
+
+    if (bit_length < 0xff)
+      {
+	image.push_back ((unsigned char) bit_length);
+      }
+    else
+      {
+	image.assign ((size_t) (OR_BYTE_SIZE + OR_INT_SIZE), 0xff);
+	put_be (image.data() + OR_BYTE_SIZE, (unsigned long long) bit_length, OR_INT_SIZE);
+      }
+    image.insert (image.end(), value.begin(), value.begin() + BITS_TO_BYTES (bit_length));
+    return image;
+  }
+
+  /* a VARBIT of any bit length up to the precision, the first lead bytes the same in every record, so a short value
+   * opens a longer one and only the length tells them apart */
+  sample
+  varbit_sample (int precision, int lead, int shape, int i, int n, std::mt19937_64 &rng, unsigned int oid)
+  {
+    const int bit_length = (int) (shape_value (shape, i, n, rng) % (unsigned long long) (precision + 1));
+    std::vector<unsigned char> value ((size_t) BITS_TO_BYTES (precision), 0);
+    sample one;
+
+    for (int at = 0; at < BITS_TO_BYTES (bit_length); at++)
+      {
+	value[ (size_t) at] = (at < lead) ? 0xa5 : (unsigned char) shape_value (shape, i, n, rng);
+      }
+    one.key_bytes = varbit_image (bit_length, value);
+    one.oid_rank = oid;
+    return one;
+  }
 
   /* unsigned keys that fill the MSD stack: STACKED_BUCKET_RECORDS records under every leading byte, or with along_key
    * 255 such siblings at every key byte on the way down the 0xFF path, which fills it to the key's bound */
@@ -798,6 +933,206 @@ TEST_CASE ("radix sorts IEEE 754 keys", "[radix_sort]")
     }
 }
 
+/* a BIT key: the bytes the precision asks for, as they lie, taken a word at a time when wider than a word */
+TEST_CASE ("radix sorts BIT keys as bit_compare () does", "[radix_sort]")
+{
+  struct bit_case
+  {
+    int precision;		/* bits */
+    int width;			/* the word width the key table picks */
+    std::vector<int> leads;	/* shared opening bytes: none, part of the first word, a whole word, more */
+  };
+
+  const std::vector<bit_case> cases =
+  {
+    { 1, 2, { 0 } },
+    { 9, 2, { 0, 1 } },		/* two bytes, the second part used */
+    { 24, 4, { 0, 2 } },
+    { 33, 8, { 0, 4 } },	/* five bytes: one word, part filled */
+    { 64, 8, { 0, 4 } },	/* one word exactly */
+    { 72, 8, { 0, 8 } },	/* a second word of one byte */
+    { 160, 8, { 0, 4, 8, 12, 16 } },
+    { 192, 8, { 0, 8, 16 } },	/* three words exactly */
+    { 504, 8, { 0, 48 } },
+    { 2032, 8, { 0, 200 } },
+    { 16384, 8, { 0, 2040 } },	/* 256 words: the last word index a byte would hold */
+    { 16392, 8, { 2048 } },	/* 257 words: one past it */
+  };
+
+  for (const bit_case &c : cases)
+    {
+      const int bytes = BITS_TO_BYTES (c.precision);
+      const key_compare oracle = cmp_bit (bytes);
+      RADIX_KEY_ENCODING encoding;
+
+      INFO ("bit(" << c.precision << ")");
+      REQUIRE (resolve_bit (encoding, c.precision));
+      REQUIRE (encoding.key_length == bytes);
+      REQUIRE (encoding.word_width == c.width);
+      REQUIRE (encoding.format == RADIX_KEY_BIT);
+
+      for (int lead : c.leads)
+	{
+	  for (bool desc : KEY_DIRECTIONS)
+	    {
+	      for (int n : TEST_SIZES)
+		{
+		  for (int shape = 0; shape < SHAPE_COUNT; shape++)
+		    {
+		      std::mt19937_64 rng (0xb1700000u + (unsigned) c.precision * 977u + (unsigned) lead * 101u
+					   + (unsigned) n * 31u + (unsigned) shape);
+		      std::vector<unsigned int> oids = make_oids (n, (shape & 1) != 0, rng);
+		      std::vector<sample> samples ((size_t) n);
+		      std::string what = "bit(" + std::to_string (c.precision) + ") lead=" + std::to_string (lead);
+
+		      for (int i = 0; i < n; i++)
+			{
+			  samples[ (size_t) i] = bit_sample (bytes, lead, shape, i, n, rng, oids[ (size_t) i]);
+			}
+
+		      what += " n=" + std::to_string (n) + " " + shape_name (shape) + (desc ? " desc" : " asc");
+		      check_run (bit_encoding (c.precision, desc), desc, false, samples, oracle, what);
+		    }
+		}
+	    }
+	}
+    }
+}
+
+/* a VARBIT key: the bytes its bit length reaches in whole words, zero past them, then a word of their count */
+TEST_CASE ("radix sorts VARBIT keys as varbit_compare () does", "[radix_sort]")
+{
+  struct varbit_case
+  {
+    int precision;		/* bits */
+    int width;			/* the word width the key table picks */
+    std::vector<int> leads;	/* shared opening bytes: none, or enough for a short value to open a longer one */
+  };
+
+  const std::vector<varbit_case> cases =
+  {
+    { 8, 8, { 0 } },		/* one byte: a word of it, a word of the count */
+    { 16, 8, { 0, 1 } },
+    { 48, 8, { 0, 3 } },
+    { 64, 8, { 0, 4 } },	/* a word exactly, the count in the next */
+    { 72, 8, { 0, 8 } },	/* a second word of one byte */
+    { 400, 8, { 0, 8 } },	/* a length of 255 bits or more takes five bytes of the image */
+    { 2040, 8, { 0, 200 } },
+    { 4096, 8, { 0, 512 } },	/* every value opens every longer one, so the count alone tells them apart */
+  };
+
+  for (const varbit_case &c : cases)
+    {
+      RADIX_KEY_ENCODING encoding;
+
+      INFO ("varbit(" << c.precision << ")");
+      REQUIRE (resolve_bit (encoding, c.precision, DB_TYPE_VARBIT));
+      REQUIRE (encoding.key_length == DB_ALIGN (BITS_TO_BYTES (c.precision), OR_BIGINT_SIZE) + OR_BIGINT_SIZE);
+      REQUIRE (encoding.word_width == c.width);
+      REQUIRE (encoding.format == RADIX_KEY_VARBIT);
+
+      for (int lead : c.leads)
+	{
+	  for (bool desc : KEY_DIRECTIONS)
+	    {
+	      const RADIX_KEY_ENCODING run_encoding = bit_encoding (c.precision, desc, DB_TYPE_VARBIT);
+
+	      for (int n : TEST_SIZES)
+		{
+		  for (int shape = 0; shape < SHAPE_COUNT; shape++)
+		    {
+		      std::mt19937_64 rng (0x7a1b0000u + (unsigned) c.precision * 977u + (unsigned) lead * 101u
+					   + (unsigned) n * 31u + (unsigned) shape);
+		      std::vector<unsigned int> oids = make_oids (n, (shape & 1) != 0, rng);
+		      std::vector<sample> samples ((size_t) n);
+		      std::string what = "varbit(" + std::to_string (c.precision) + ") lead=" + std::to_string (lead);
+
+		      for (int i = 0; i < n; i++)
+			{
+			  samples[ (size_t) i] = varbit_sample (c.precision, lead, shape, i, n, rng, oids[ (size_t) i]);
+			}
+
+		      what += " n=" + std::to_string (n) + " " + shape_name (shape) + (desc ? " desc" : " asc");
+		      check_run (run_encoding, desc, false, samples, cmp_varbit, what);
+		    }
+		}
+	    }
+	}
+    }
+}
+
+/* the widest VARBIT: its radix key stops where a sort record does, and short values are told apart all the same */
+TEST_CASE ("radix sorts the widest VARBIT by the bytes a sort record holds", "[radix_sort]")
+{
+  std::mt19937_64 rng (0x7a1bca9);
+  const RADIX_KEY_ENCODING encoding = bit_encoding (DB_MAX_VARBIT_PRECISION, false, DB_TYPE_VARBIT);
+  const int SIZES[] = { 100, 1000 };
+  const int DISTINCT_KEYS[] = { 1, 3, 200 };
+
+  REQUIRE (encoding.key_length == DB_ALIGN (BTSORT_REC_MAX_LENGTH, OR_BIGINT_SIZE) + OR_BIGINT_SIZE);
+
+  for (int n : SIZES)
+    {
+      for (int distinct : DISTINCT_KEYS)
+	{
+	  std::vector<unsigned int> oids = make_oids (n, true, rng);
+	  std::vector<sample> samples ((size_t) n);
+
+	  for (int i = 0; i < n; i++)
+	    {
+	      size_t ix = (size_t) i;
+	      int group = i % distinct;
+	      /* one to three bytes: a short group opens a longer one, which the count alone tells apart */
+	      std::vector<unsigned char> value = { 'x', (unsigned char) (group / 7), (unsigned char) (group % 7) };
+
+	      samples[ix].key_bytes = varbit_image (8 * (1 + group % 3), value);
+	      samples[ix].oid_rank = oids[ix];
+	    }
+
+	  std::string what = "widest varbit n=" + std::to_string (n) + " distinct=" + std::to_string (distinct);
+
+	  check_run (encoding, false, false, samples, cmp_varbit, what);
+	}
+    }
+}
+
+/* a wide key the records share for words on end: every word of it is asked for, then the OID settles the group */
+TEST_CASE ("radix settles a wide key the records share by instance OID", "[radix_sort]")
+{
+  std::mt19937_64 rng (0xd0b1e);
+  const int precision = 504;	/* 63 bytes: eight words of key, the last one part full */
+  const int key_bytes = BITS_TO_BYTES (precision);
+  const key_compare oracle = cmp_bit (key_bytes);
+  /* few distinct keys over many records: every group is settled by the OID after eight words of the key */
+  const int SHARED_SIZES[] = { 100, 5000, 40000 };
+  const int DISTINCT_KEYS[] = { 1, 3, 200 };
+
+  for (int n : SHARED_SIZES)
+    {
+      for (int distinct : DISTINCT_KEYS)
+	{
+	  std::vector<unsigned int> oids = make_oids (n, true, rng);
+	  std::vector<sample> samples ((size_t) n);
+
+	  for (int i = 0; i < n; i++)
+	    {
+	      size_t ix = (size_t) i;
+	      int distinct_at = i % distinct;
+
+	      /* the two last bytes carry the group, so the words agree until the last word of the key */
+	      samples[ix].key_bytes.assign ((size_t) key_bytes, 'x');
+	      samples[ix].key_bytes[ (size_t) key_bytes - 2] = (unsigned char) ('a' + (distinct_at / 26) % 26);
+	      samples[ix].key_bytes[ (size_t) key_bytes - 1] = (unsigned char) ('a' + distinct_at % 26);
+	      samples[ix].oid_rank = oids[ix];
+	    }
+
+	  std::string what = "shared wide key n=" + std::to_string (n) + " distinct=" + std::to_string (distinct);
+
+	  check_run (bit_encoding (precision, false), false, false, samples, oracle, what);
+	}
+    }
+}
+
 /* the work memory is the caller's: one sizing serves every run up to that size */
 TEST_CASE ("radix sort works in the memory its caller sized", "[radix_sort]")
 {
@@ -829,6 +1164,12 @@ TEST_CASE ("radix sort works in the memory its caller sized", "[radix_sort]")
     REQUIRE (radix_sort_stack_bytes (&encoding, 1000000) == radix_sort_stack_bytes (&encoding, 100000000));
     REQUIRE (radix_sort_stack_bytes (&encoding, 10) < radix_sort_stack_bytes (&encoding, 1000000));
     REQUIRE (radix_sort_stack_bytes (&encoding, 1) > 0);
+
+    /* a wide key splits on every byte of it in turn, so its bound grows with the key, not the word */
+    RADIX_KEY_ENCODING wide = bit_encoding (504, false);
+    RADIX_KEY_ENCODING one_word = bit_encoding (64, false);
+
+    REQUIRE (radix_sort_stack_bytes (&wide, 100000000) > radix_sort_stack_bytes (&one_word, 100000000));
   }
 
   SECTION ("keys that fill the stack to either bound sort within it")
@@ -866,7 +1207,7 @@ TEST_CASE ("radix key table", "[radix_sort]")
   {
     const DB_TYPE unsupported[] =
     {
-      DB_TYPE_VARCHAR, DB_TYPE_CHAR, DB_TYPE_VARNCHAR_DEPRECATED, DB_TYPE_NCHAR_DEPRECATED, DB_TYPE_BIT, DB_TYPE_VARBIT,
+      DB_TYPE_VARCHAR, DB_TYPE_CHAR, DB_TYPE_VARNCHAR_DEPRECATED, DB_TYPE_NCHAR_DEPRECATED,
       DB_TYPE_MIDXKEY, DB_TYPE_SET, DB_TYPE_BLOB, DB_TYPE_CLOB, DB_TYPE_JSON, DB_TYPE_NULL
     };
 
@@ -887,15 +1228,80 @@ TEST_CASE ("radix key table", "[radix_sort]")
   {
     REQUIRE (radix_sort_resolve_key (&encoding, tp_domain_resolve_default (DB_TYPE_TIMESTAMPTZ)));
     REQUIRE (encoding.word_width == OR_UTIME_SIZE);
+    REQUIRE (encoding.key_length == OR_UTIME_SIZE);
     REQUIRE (radix_sort_resolve_key (&encoding, tp_domain_resolve_default (DB_TYPE_DATETIMETZ)));
     REQUIRE (encoding.word_width == OR_DATETIME_SIZE);
+    REQUIRE (encoding.key_length == OR_DATETIME_SIZE);
     REQUIRE (encoding.format == RADIX_KEY_DATETIME);
+  }
+
+  SECTION ("a BIT is its bytes, in the word they fit or a word at a time")
+  {
+    REQUIRE (resolve_bit (encoding, 16));
+    REQUIRE (encoding.word_width == 2);
+    REQUIRE (encoding.key_length == 2);
+    REQUIRE (encoding.format == RADIX_KEY_BIT);
+    REQUIRE (resolve_bit (encoding, 17));
+    REQUIRE (encoding.word_width == 4);
+    REQUIRE (encoding.key_length == 3);
+    REQUIRE (resolve_bit (encoding, 64));
+    REQUIRE (encoding.word_width == 8);
+    REQUIRE (encoding.key_length == 8);
+    REQUIRE (resolve_bit (encoding, 72));
+    REQUIRE (encoding.word_width == 8);
+    REQUIRE (encoding.key_length == 9);
+
+    /* no width is too much: a key as long as a sort record still has its words counted, and the stack bound stays
+     * within the records */
+    REQUIRE (resolve_bit (encoding, 16392));
+    REQUIRE (encoding.key_length == 2049);
+    REQUIRE (resolve_bit (encoding, DB_MAX_BIT_PRECISION));
+    REQUIRE (encoding.key_length == BITS_TO_BYTES (DB_MAX_BIT_PRECISION));
+    /* the records bound the stack long before the key does, for a BIGINT and the widest BIT alike */
+    RADIX_KEY_ENCODING bigint;
+
+    REQUIRE (radix_sort_resolve_key (&bigint, tp_domain_resolve_default (DB_TYPE_BIGINT)));
+    REQUIRE (radix_sort_stack_bytes (&encoding, 49000) == radix_sort_stack_bytes (&bigint, 49000));
+
+    /* no fixed length: a floating precision is a literal's, not a column's, and 0 stands for it in a domain */
+    REQUIRE_FALSE (resolve_bit (encoding, TP_FLOATING_PRECISION_VALUE));
+    REQUIRE_FALSE (resolve_bit (encoding, 0));
+  }
+
+  SECTION ("a VARBIT is its bytes in whole words, then a word of their count, as far as a sort record holds")
+  {
+    REQUIRE (resolve_bit (encoding, 8, DB_TYPE_VARBIT));
+    REQUIRE (encoding.word_width == 8);
+    REQUIRE (encoding.key_length == 2 * OR_BIGINT_SIZE);	/* a word of the byte, a word of the count */
+    REQUIRE (encoding.min_key_length == OR_BYTE_SIZE);	/* the length byte of a value with no bits */
+    REQUIRE (encoding.format == RADIX_KEY_VARBIT);
+    REQUIRE (resolve_bit (encoding, 64, DB_TYPE_VARBIT));
+    REQUIRE (encoding.key_length == 2 * OR_BIGINT_SIZE);
+    REQUIRE (resolve_bit (encoding, 72, DB_TYPE_VARBIT));
+    REQUIRE (encoding.key_length == 3 * OR_BIGINT_SIZE);
+
+    /* a value past a sort record is a BIGONE, which skips the sort: the widest precision resolves and ends there */
+    REQUIRE (resolve_bit (encoding, BTSORT_REC_MAX_LENGTH * 8, DB_TYPE_VARBIT));
+    REQUIRE (encoding.key_length == DB_ALIGN (BTSORT_REC_MAX_LENGTH, OR_BIGINT_SIZE) + OR_BIGINT_SIZE);
+    REQUIRE (resolve_bit (encoding, DB_MAX_VARBIT_PRECISION, DB_TYPE_VARBIT));
+    REQUIRE (encoding.key_length == DB_ALIGN (BTSORT_REC_MAX_LENGTH, OR_BIGINT_SIZE) + OR_BIGINT_SIZE);
+    REQUIRE (encoding.min_key_length == OR_BYTE_SIZE);
+
+    REQUIRE_FALSE (resolve_bit (encoding, TP_FLOATING_PRECISION_VALUE, DB_TYPE_VARBIT));
+    REQUIRE_FALSE (resolve_bit (encoding, 0, DB_TYPE_VARBIT));
+
+    /* every other key is as long as its radix key */
+    REQUIRE (resolve_bit (encoding, 72));
+    REQUIRE (encoding.min_key_length == 9);
+    REQUIRE (radix_sort_resolve_key (&encoding, tp_domain_resolve_default (DB_TYPE_BIGINT)));
+    REQUIRE (encoding.min_key_length == OR_BIGINT_SIZE);
   }
 
   SECTION ("a monetary key is its amount")
   {
     REQUIRE (radix_sort_resolve_key (&encoding, tp_domain_resolve_default (DB_TYPE_MONETARY)));
     REQUIRE (encoding.word_width == OR_DOUBLE_SIZE);
+    REQUIRE (encoding.key_length == OR_DOUBLE_SIZE);
     REQUIRE (encoding.format == RADIX_KEY_MONETARY);
   }
 
@@ -924,6 +1330,8 @@ TEST_CASE ("radix key table", "[radix_sort]")
     REQUIRE (encoding.word_width == OR_INT_SIZE);
     REQUIRE_FALSE (radix_sort_resolve_key (&encoding, tp_domain_resolve_default (DB_TYPE_NUMERIC)));
     REQUIRE (encoding.word_width == 0);
+    REQUIRE (encoding.key_length == 0);
+    REQUIRE (encoding.min_key_length == 0);
     REQUIRE (encoding.format == RADIX_KEY_UNSIGNED);
     REQUIRE_FALSE (encoding.is_desc);
   }

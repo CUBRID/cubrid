@@ -40,7 +40,9 @@ typedef enum
   RADIX_KEY_SIGNED,		/* signed integer: the sign bit flipped */
   RADIX_KEY_IEEE,		/* IEEE 754: the sign bit flipped, or every bit of a negative value */
   RADIX_KEY_OID,		/* OID: volume, page and slot in that order */
-  RADIX_KEY_MONETARY		/* currency then an IEEE 754 amount: the amount's word, in IEEE order */
+  RADIX_KEY_MONETARY,		/* currency then an IEEE 754 amount: the amount's word, in IEEE order */
+  RADIX_KEY_BIT,		/* BIT: its bytes as they lie, zero past the key, a word at a time over the width */
+  RADIX_KEY_VARBIT		/* VARBIT: its bytes in whole words, zero past them, then a word of their count */
 } RADIX_KEY_FORMAT;
 
 /* key encoding of an index, worked out of its key domain */
@@ -48,6 +50,8 @@ typedef struct radix_key_encoding RADIX_KEY_ENCODING;
 struct radix_key_encoding
 {
   int word_width;			/* bytes of one radix word: 2, 4 or 8; 0 until resolved */
+  int key_length;		/* bytes of the radix key, taken a word at a time over the width */
+  int min_key_length;		/* the shortest stored key: key_length, or the length byte alone of an empty VARBIT */
   RADIX_KEY_FORMAT format;
   bool is_desc;			/* a descending key: the word is the ascending word's complement */
 };
