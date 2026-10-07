@@ -3085,7 +3085,8 @@ emit_attribute_def (extract_context & ctxt, print_output & output_ctx, DB_ATTRIB
 
   if (emit_autoincrement_def (output_ctx, attribute) != NO_ERROR)
     {
-      fprintf (stderr, "%s\n", db_error_string (3));
+      fprintf (stderr, "%s", db_error_string (3));
+      fprintf (stderr, " The AUTO_INCREMENT clause is missing from the schema file.\n");
       ctxt.emit_err_count++;
     }
 
