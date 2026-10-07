@@ -69,6 +69,8 @@ extern "C"
   void password_fprintf (void *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
 			 int (*cas_fprintf) (void *, const char *, ...));
   int password_snprint (char *msg, int size, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
+  void password_write_sql_log_in_signal_handler (void *log_fd, char *query,
+						 void (*write_func) (void *log_fd, const char *ptr, int len));
 
 #ifdef __cplusplus
 }

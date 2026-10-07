@@ -170,6 +170,7 @@ static CAS_LOG_FD_STATUS cas_log_fd_status = CAS_LOG_FD_NONE;
 
 static inline size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb, CAS_LOG_FD * lfd);
 static inline void cas_fwrite_oneline (CAS_LOG_FD * lfd, const char *str);
+static void cas_fwrite_for_password (void *lfd, const char *ptr, int len);
 static inline INT64 cas_ftell (CAS_LOG_FD * lfd);
 static inline int cas_fseek (CAS_LOG_FD * lfd, INT64 offset, int whence);
 static CAS_LOG_FD *cas_fopen (CAS_LOG_FD * lfd, const char *path, const char *mode);
@@ -212,6 +213,8 @@ static void cas_log_start_unit (void);
 static void copy_scratch_to_sql_log (void);
 
 static INT64 saved_temp_stmt_fpos = 0;
+static char *saved_temp_stmt_query = NULL;	/* the statement being compiled, written masked on exit */
+static bool saved_temp_stmt_newline = false;
 
 static char *
 make_sql_log_filename (T_CUBRID_FILE_ID fid, char *filename_buf, size_t buf_size, const char *br_name)
@@ -421,6 +424,19 @@ cas_log_flush_on_exit (void)
 	  INT64 end = saved_temp_stmt_fpos - sql_log_fd.file_buf_base;
 
 	  (void) cas_fflush_partial (&sql_log_fd, (int) MIN (end, (INT64) sql_log_fd.buf_used));
+
+	  /* drop the plaintext from the buffer and write the statement again with its passwords masked */
+	  if (end >= 0 && end == sql_log_fd.buf_flushed && saved_temp_stmt_query != NULL)
+	    {
+	      sql_log_fd.buf_used = (int) end;
+	      CAS_LOG_SET_UNMASKED (SQL_LOG_UNMASKED_NONE);
+	      password_write_sql_log_in_signal_handler (&sql_log_fd, saved_temp_stmt_query, cas_fwrite_for_password);
+	      if (saved_temp_stmt_newline)
+		{
+		  cas_fwrite ("\n", 1, 1, &sql_log_fd);
+		}
+	      (void) cas_fflush (&sql_log_fd);
+	    }
 	}
     }
   if (slow_log_fd.fd >= 0)
@@ -989,6 +1005,8 @@ cas_log_compile_begin_internal (char *query, bool newline)
   if (log_fp != NULL && query != NULL)
     {
       saved_temp_stmt_fpos = cas_ftell (log_fp);
+      saved_temp_stmt_query = query;
+      saved_temp_stmt_newline = newline;
       if ((int) strlen (query) < log_fp->buf_capacity - log_fp->buf_used)
 	{
 	  CAS_LOG_SET_UNMASKED (SQL_LOG_UNMASKED_BUFFERED);
@@ -1021,6 +1039,7 @@ cas_log_compile_end_internal (char *query, bool newline, HIDE_PWD_INFO_PTR hide_
 
   CAS_LOG_SET_UNMASKED (SQL_LOG_UNMASKED_NONE);
   saved_temp_stmt_fpos = 0;
+  saved_temp_stmt_query = NULL;
 
   if (sql_log_unmask_flush_pending)
     {
@@ -1041,6 +1060,18 @@ void
 cas_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
   cas_log_write_query_string_internal (query, size, true, hide_pwd_info_ptr, CAS_LOG_HIDE_PW);
+}
+
+/*
+ * cas_fwrite_for_password () - write callback for password_write_sql_log_in_signal_handler ().
+ *
+ * NOTE:
+ *   Wraps cas_fwrite () only to match the callback type, which takes lfd as void * and returns nothing.
+ */
+static void
+cas_fwrite_for_password (void *lfd, const char *ptr, int len)
+{
+  (void) cas_fwrite (ptr, 1, (size_t) len, (CAS_LOG_FD *) lfd);
 }
 
 static void
