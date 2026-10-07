@@ -9840,8 +9840,7 @@ fileio_list_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, char *
   fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BKUP_HDR_LEVEL),
 	   backup_header_p->level, fileio_get_backup_level_string (backup_header_p->level),
 	   backup_header_p->start_lsa.pageid, backup_header_p->start_lsa.offset, backup_header_p->chkpt_lsa.pageid,
-	   backup_header_p->chkpt_lsa.offset);
-  fprintf (stdout, "     log end at backup start: %lld|%d\n", LSA_AS_ARGS (&backup_header_p->start_log_end_lsa));
+	   backup_header_p->chkpt_lsa.offset, LSA_AS_ARGS (&backup_header_p->start_log_end_lsa));
 
   tmp_time = (time_t) backup_header_p->start_time;
   (void) ctime_r (&tmp_time, time_val);
