@@ -216,4 +216,6 @@ class EXPORT_IMPORT authenticate_context
     }
 };
 
+extern bool use_console_password;
+
 #endif // _AUTHENTICATE_CONTEXT_HPP_
