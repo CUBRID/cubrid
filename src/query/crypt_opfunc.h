@@ -52,6 +52,8 @@ extern char *str_to_hex (THREAD_ENTRY * thread_p, const char *src, int src_len, 
 extern void str_to_hex_prealloced (const char *src, int src_len, char *dest, int dest_len, HEX_LETTERCASE lettercase);
 
 extern int crypt_generate_random_bytes (char *dest, int length);
+extern int crypt_hmac_sha256_hex (const char *key, int key_len, const char *msg, int msg_len, char *hex_out,
+				  int hex_out_size);
 extern void crypt_crc32 (const char *src, int src_len, int *dest);
 
 extern int crypt_dblink_encrypt (const unsigned char *str, int str_len, unsigned char *cipher_buffer,
