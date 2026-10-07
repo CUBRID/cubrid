@@ -221,6 +221,22 @@ domain_character_is_variable (const TP_DOMAIN * domain)
     && TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL;
 }
 
+/* A cast into a character domain whose collation is enforced (the wrapper the compiler puts around an operand it
+ * could not type, (1 + ?) + '3'): tp_value_cast_internal leaves a value of any other type as it is, so the type
+ * the cast gives is its operand's, which resolve_domains resolves (domain_character_cast). */
+static bool
+domain_cast_keeps_source_type (const REGU_VARIABLE * operand)
+{
+  if (operand->type != TYPE_INARITH && operand->type != TYPE_OUTARITH)
+    {
+      return false;
+    }
+  const ARITH_TYPE *arith = operand->value.arithptr;
+  return arith != NULL && (arith->opcode == T_CAST || arith->opcode == T_CAST_WRAP || arith->opcode == T_CAST_NOFAIL)
+    && arith->domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (arith->domain))
+    && TP_DOMAIN_COLLATION_FLAG (arith->domain) == TP_DOMAIN_COLL_ENFORCE;
+}
+
 /* The load entry an item lives in: every item is an entry's embedded item until the plan is published. */
 static DOMAIN_LOAD_ENTRY *
 domain_load_entry_of (const DOMAIN_PLAN_ITEM * item)
@@ -1174,7 +1190,9 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
   const bool coercion_variable = domain_operand_coercion_operator (arith->opcode) && !late_bound && !collation_variable
     && operands[0] != NULL && operands[1] != NULL && operands[0]->plan_item != NULL
     && operands[1]->plan_item != NULL && (!domain_type_is_fixed (operands[0]->domain)
-					  || !domain_type_is_fixed (operands[1]->domain));
+					  || !domain_type_is_fixed (operands[1]->domain)
+					  || domain_cast_keeps_source_type (operands[0])
+					  || domain_cast_keeps_source_type (operands[1]));
   if (item != NULL && (late_bound || collation_variable || coercion_variable))
     {
       DOMAIN_LOAD_ENTRY *load_entry = domain_load_entry_of (item);
