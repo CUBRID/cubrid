@@ -42,12 +42,10 @@ class OosWorkspaceBytes : public ::testing::Test
 {
   protected:
     bool sysop = false;
-    RECDES demoted = RECDES_INITIALIZER;
 
     void TearDown () override
     {
       auto *thread = thread_get_thread_entry_info ();
-      db_private_free_and_init (thread, demoted.data);
       if (sysop)
 	{
 	  log_sysop_abort (thread);
@@ -133,19 +131,40 @@ class OosWorkspaceBytes : public ::testing::Test
       ASSERT_NE (class_mop, nullptr);
       DB_OBJLIST *objects = db_fetch_all_objects (class_mop, DB_FETCH_READ);
       ASSERT_NE (objects, nullptr);
-      MOBJ object = locator_fetch_instance (objects->op, DB_FETCH_READ, LC_FETCH_MVCC_VERSION);
+      DB_OBJECT *query_object = objects->op;
+      MOBJ object = locator_fetch_instance (query_object, DB_FETCH_READ, LC_FETCH_MVCC_VERSION);
       MOBJ class_object = locator_fetch_class (class_mop, DB_FETCH_READ);
       db_objlist_free (objects);
       ASSERT_NE (object, nullptr);
       ASSERT_NE (class_object, nullptr);
+
+      // Copy the query writer's logical values into a new workspace object.
+      // Flushing it exercises the real locator force path, independent of the
+      // particular OOS conversion helper used by the implementation.
+      DB_OBJECT *workspace_object = db_create (class_mop);
+      ASSERT_NE (workspace_object, nullptr);
+      for (DB_ATTRIBUTE *attribute = db_get_attributes (class_mop); attribute != nullptr;
+	   attribute = db_attribute_next (attribute))
+	{
+	  DB_VALUE value;
+	  db_make_null (&value);
+	  scope_exit clear_value ([&] ()
+	  {
+	    db_value_clear (&value);
+	  });
+	  const char *name = db_attribute_name (attribute);
+	  ASSERT_EQ (db_get (query_object, name, &value), NO_ERROR);
+	  ASSERT_EQ (db_put (workspace_object, name, &value), NO_ERROR);
+	}
+      MOBJ workspace_memory = locator_fetch_instance (workspace_object, DB_FETCH_READ, LC_FETCH_MVCC_VERSION);
+      ASSERT_NE (workspace_memory, nullptr);
       std::vector<char> storage (1024 * 1024);
       RECDES source = RECDES_INITIALIZER;
       source.data = storage.data ();
       source.area_size = storage.size ();
       bool indexes;
-      ASSERT_EQ (tf_mem_to_disk (class_mop, class_object, object, &source, &indexes), TF_SUCCESS);
+      ASSERT_EQ (tf_mem_to_disk (class_mop, class_object, workspace_memory, &source, &indexes), TF_SUCCESS);
       ASSERT_FALSE (OR_RECORD_HAS_OOS (source.data));
-      const std::vector<char> original (source.data, source.data + source.length);
       OID class_oid = *WS_OID (class_mop);
 
       // Capture the query writer's stored image as an independent comparison,
@@ -172,10 +191,27 @@ class OosWorkspaceBytes : public ::testing::Test
       heap_scanrange_end (thread, &scan_range);
       ASSERT_EQ (scan, S_SUCCESS);
       stored.data = stored_bytes.data ();
+
+      ASSERT_EQ (locator_flush_instance (workspace_object), NO_ERROR);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      HEAP_SCANCACHE scan_cache;
+      ASSERT_EQ (heap_scancache_start (thread, &scan_cache, &hfid, &class_oid, true,
+				       logtb_get_mvcc_snapshot (thread)), NO_ERROR);
+      std::vector<char> actual_storage;
+      RECDES actual = RECDES_INITIALIZER;
+      scan = heap_get_visible_version (thread, WS_OID (workspace_object), &class_oid, &actual,
+				       &scan_cache, COPY, NULL_CHN, HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+      if (scan == S_SUCCESS)
+	{
+	  actual_storage.assign (actual.data, actual.data + actual.length);
+	}
+      EXPECT_EQ (heap_scancache_end (thread, &scan_cache), NO_ERROR);
+      ASSERT_EQ (scan, S_SUCCESS);
+      actual.data = actual_storage.data ();
       log_sysop_start (thread);
       sysop = true;
 
-      // The reference is the exact decode/re-encode path replaced by this PR.
+      // Compare the flushed workspace record with the existing attrinfo writer.
       HEAP_CACHE_ATTRINFO attrinfo;
       ASSERT_EQ (heap_attrinfo_start (thread, &class_oid, -1, nullptr, &attrinfo), NO_ERROR);
       const int n_var = attrinfo.last_classrepr->n_variable;
@@ -198,20 +234,19 @@ class OosWorkspaceBytes : public ::testing::Test
       const SCAN_CODE transformed = heap_attrinfo_transform_to_disk_except_lob (thread, &attrinfo, nullptr, &reference);
       heap_attrinfo_end (thread, &attrinfo);
       ASSERT_EQ (transformed, S_SUCCESS);
-      ASSERT_EQ (heap_oos_demote_workspace_record (thread, &class_oid, &source, &demoted), NO_ERROR);
-      const RECDES &actual = demoted.data == nullptr ? source : demoted;
       ASSERT_NO_FATAL_FAILURE (compare (actual, reference.get_recdes (), domains));
       if (alter == nullptr)
 	{
 	  ASSERT_NO_FATAL_FAILURE (compare (actual, stored, domains, true));
 	}
-      if (demoted.data != nullptr)
+      if (OR_RECORD_HAS_OOS (actual.data))
 	{
 	  EXPECT_EQ (OR_GET_OFFSET_SIZE (actual.data), OR_GET_OFFSET_SIZE (reference.get_recdes ().data));
-	  EXPECT_EQ (actual.length, reference.get_recdes ().length);
-	  EXPECT_EQ (OR_GET_INT (actual.data + OR_CHN_OFFSET), OR_GET_INT (source.data + OR_CHN_OFFSET));
+	  // Committed heap records may omit the insert MVCC ID. Compare the
+	  // layout after each record's header rather than transaction metadata.
+	  EXPECT_EQ (actual.length - OR_HEADER_SIZE (actual.data),
+		     reference.get_recdes ().length - OR_HEADER_SIZE (reference.get_recdes ().data));
 	}
-      EXPECT_EQ (std::vector<char> (source.data, source.data + source.length), original);
     }
 };
 

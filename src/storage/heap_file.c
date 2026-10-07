@@ -724,6 +724,16 @@ static int heap_attrinfo_set_uninitialized (THREAD_ENTRY * thread_p, OID * inst_
 static int heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACHE_ATTRINFO * attr_info);
 
 /* *INDENT-OFF* */
+static int heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info, std::vector<int> * column_size);
+static int heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int payload_size, bool is_mvcc_class,
+						 size_t * offset_size_ptr);
+struct heap_oos_column_plan
+{
+  bool selected = false;
+  OID oid = OID_INITIALIZER;
+  DB_BIGINT length = 0;
+  LOG_LSA identity_stamp = NULL_LSA;	/* identity stamp of the inserted OOS value chain (CBRD-26950) */
+};
 static int heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
 						size_t * offset_size_ptr,
 						std::vector<heap_oos_column_plan> * oos_plan,
@@ -12700,27 +12710,183 @@ exit_on_error:
 }
 
 /*
- * heap_attrinfo_determine_disk_layout () - Supply DB_VALUE sizes to the shared OOS layout policy.
+ * heap_attrinfo_get_record_payload_size ()
+ *
+ *   return: size of the payload size of record
+ *   attr_info(in/out): the attribute information structure
  */
 /* *INDENT-OFF* */
 static int
-heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO *attr_info, bool is_mvcc_class, size_t *offset_size_ptr,
-                                    std::vector<heap_oos_column_plan> *oos_plan, bool *has_oos,
-                                    size_t *inline_size_after_oos_ptr)
-{
-  for (int i = 0; i < attr_info->num_values; ++i)
-    {
-      const HEAP_ATTRVALUE &value = attr_info->values[i];
-      heap_oos_column_plan &column = (*oos_plan)[i];
-      column.attribute = value.last_attrepr;
-      column.disk_size = value.last_attrepr->is_fixed
-                         ? tp_domain_disk_size (value.last_attrepr->domain)
-                         : pr_data_writeval_disk_size (&attr_info->values[i].dbvalue);
-    }
-  return heap_oos_determine_disk_layout (attr_info->last_classrepr, is_mvcc_class, *oos_plan,
-                                         *offset_size_ptr, *inline_size_after_oos_ptr, *has_oos);
-}
+heap_attrinfo_get_record_payload_size (HEAP_CACHE_ATTRINFO * attr_info, std::vector<int> * column_size)
 /* *INDENT-ON* */
+{
+  HEAP_ATTRVALUE *value;
+  int size;
+  int i;
+
+  size = 0;
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      value = &attr_info->values[i];
+
+      if (value->last_attrepr->is_fixed != 0)
+	{
+	  (*column_size)[i] = tp_domain_disk_size (value->last_attrepr->domain);
+	  size += (*column_size)[i];
+	}
+      else
+	{
+	  (*column_size)[i] = pr_data_writeval_disk_size (&value->dbvalue);
+	  size += (*column_size)[i];
+	}
+    }
+
+  return size;
+}
+
+/*
+ * heap_attrinfo_get_record_header_size ()
+ *
+ *   return: size of the header size of record
+ *   attr_info(in/out): the attribute information structure
+ *   column_size(in): the size of payload (raw format of colmuns)
+ *   is_mvcc_class(in): true, if MVCC class
+ *   offset_size_ptr(out): offset size
+ */
+static int
+heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int payload_size, bool is_mvcc_class,
+				      size_t * offset_size_ptr)
+{
+  int header_size;
+
+  *offset_size_ptr = OR_BYTE_SIZE;
+
+  header_size = is_mvcc_class ? OR_MVCC_INSERT_HEADER_SIZE : OR_NON_MVCC_HEADER_SIZE;
+  header_size += OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
+  header_size += OR_BOUND_BIT_BYTES (attr_info->last_classrepr->n_attributes - attr_info->last_classrepr->n_variable);
+
+  if (*offset_size_ptr == OR_BYTE_SIZE && header_size + payload_size > OR_MAX_BYTE)
+    {
+      header_size -= OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
+      *offset_size_ptr = OR_SHORT_SIZE;	/* 2 byte */
+      header_size += OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
+    }
+  if (*offset_size_ptr == OR_SHORT_SIZE && header_size + payload_size > OR_MAX_SHORT)
+    {
+      header_size -= OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
+      *offset_size_ptr = OR_INT_SIZE;	/* 4 byte */
+      header_size += OR_VAR_TABLE_SIZE_INTERNAL (attr_info->last_classrepr->n_variable, *offset_size_ptr);
+    }
+
+  return header_size;
+}
+
+/*
+ * heap_attrinfo_determine_disk_layout () - Determine the disk layout needed to transform the object
+ *                        represented by attr_info
+ *   return: NO_ERROR, or error code
+ *   attr_info(in/out): The attribute information structure
+ *   is_mvcc_class(in): true, if MVCC class
+ *   offset_size_ptr(out): offset size
+ *   oos_plan(out): selected columns are demoted to OOS
+ *   has_oos(out): true if any column is demoted to OOS
+ *   inline_size_after_oos_ptr(out): inline heap record size after OOS demotion
+ *
+ * Note: Choose the OOS layout and compute the inline heap record size. This size is not the logical
+ * record size before OOS demotion.
+ */
+/* *INDENT-OFF* */
+static int
+heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, size_t * offset_size_ptr,
+					     std::vector<heap_oos_column_plan> * oos_plan, bool * has_oos,
+					     size_t * inline_size_after_oos_ptr)
+/* *INDENT-ON* */
+{
+/* *INDENT-OFF* */
+  std::vector<int> column_size (attr_info->num_values);
+/* *INDENT-ON* */
+  int payload_size, header_size;
+  int mvcc_extra;
+  int i;
+
+  *has_oos = false;
+
+  /* calcuate the entire size of columns */
+  payload_size = heap_attrinfo_get_record_payload_size (attr_info, &column_size);
+  header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
+  mvcc_extra = is_mvcc_class ? OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE : 0;
+
+  /* FORCE_OUTLINE bypasses the normal record-size gate, but values must still be larger than the OOS stub so that
+   * moving them out of row shrinks the inline record. */
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      if (!attr_info->values[i].last_attrepr->is_fixed
+	  && attr_info->values[i].last_attrepr->oos_storage == OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE
+	  && !db_value_is_null (&attr_info->values[i].dbvalue) && column_size[i] > OR_OOS_INLINE_SIZE)
+	{
+	  (*oos_plan)[i].selected = true;
+	  payload_size -= column_size[i];
+	  payload_size += OR_OOS_INLINE_SIZE;
+	  *has_oos = true;
+	}
+    }
+
+  /* A forced value changes the payload and may change the variable-offset width. */
+  header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
+
+  /* TODO: change the statistics */
+  /* Push the largest remaining variable column to OOS one by one until the heap record fits within
+   * DB_PAGESIZE/4 (PG TOAST style), instead of pushing every eligible column. */
+  if (header_size + payload_size + mvcc_extra > DB_PAGESIZE / 4)
+    {
+      /* *INDENT-OFF* */
+      std::vector<heap_oos_demote_candidate> oos_candidates;
+      /* *INDENT-ON* */
+
+      for (i = 0; i < attr_info->num_values; i++)
+	{
+	  /* a variable column is OOS-eligible only if externalizing it shrinks the inline record:
+	   * its value must be larger than the OOS stub (OID + length) it is replaced with */
+	  if (!(*oos_plan)[i].selected && !attr_info->values[i].last_attrepr->is_fixed
+	      && column_size[i] > OR_OOS_INLINE_SIZE)
+	    {
+	      /* *INDENT-OFF* */
+	      heap_oos_demote_priority priority =
+		heap_oos_get_demote_priority (attr_info->values[i].last_attrepr->oos_storage
+					      == OR_ATTRIBUTE_OOS_STORAGE_PREFER_INLINE);
+	      oos_candidates.push_back ({ priority, column_size[i], i });
+	      /* *INDENT-ON* */
+	    }
+	}
+
+      /* *INDENT-OFF* */
+      /* Demote order: columns flagged STORAGE PREFER_INLINE sink to the tail and are externalized
+       * only as a last resort; within each priority class, largest first. The idx-descending
+       * tiebreak preserves the legacy std::greater<std::pair> order for the no-hint (DEFAULT) case. */
+      std::sort (oos_candidates.begin (), oos_candidates.end (), heap_oos_demote_candidate_precedes);
+      /* *INDENT-ON* */
+
+      /* *INDENT-OFF* */
+      for (auto& cand : oos_candidates)
+	/* *INDENT-ON* */
+      {
+	if (header_size + payload_size + mvcc_extra <= DB_PAGESIZE / 4)
+	  {
+	    break;
+	  }
+	(*oos_plan)[cand.attr_index].selected = true;
+	payload_size -= cand.size;
+	payload_size += OR_OOS_INLINE_SIZE;
+	*has_oos = true;
+      }
+
+      /* re-calculate the header size */
+      header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
+    }
+
+  *inline_size_after_oos_ptr = header_size + payload_size;
+  return NO_ERROR;
+}
 
 /*
  * heap_oos_find_vfid () - find (or optionally create) the OOS file of a heap

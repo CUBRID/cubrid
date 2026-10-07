@@ -46,7 +46,6 @@
 #include "fetch.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
-#include "heap_oos.hpp"
 #include "oos_file.hpp"
 #include "list_file.h"
 #include "log_lsa.hpp"
@@ -4929,24 +4928,71 @@ error3:
 }
 
 /*
- * locator_oos_demote_workspace_record () - Apply OOS to an already serialized SA workspace record.
- *   recdes_p(in/out): redirected to demoted_recdes only if OOS was selected
- *   demoted_recdes(out): caller-owned db_private_alloc buffer, or NULL data when unchanged
+ * locator_oos_demote_workspace_record () - Apply OOS demotion to a standalone workspace record.
  *
- * The destination partition has been selected. OOS and heap/index writes share the caller's force top operation.
- * Object references, copied LOB locators and CHN have already been assigned by workspace serialization.
+ * return: NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   class_oid(in): Class OID of the workspace record
+ *   recdes_p(in/out): The workspace record in disk format; redirected to demoted_recdes when demotion happens
+ *   demoted_recdes(out): The demoted representation (a REC_HOME recdes); valid only while *copyarea is allocated
+ *   copyarea(out): Copy area owning the demoted representation, or NULL when the record is kept as is
+ *
+ * Note: The caller has selected the destination heap and owns the force top operation. OOS creation and the
+ *       subsequent heap/index write must remain in that operation, including on filtered-error paths.
+ *       Workspace serialization already copied LOB locators and assigned object references; only their disk
+ *       representation is changed here. The caller releases *copyarea, if returned, after forcing the record.
  */
 static int
 locator_oos_demote_workspace_record (THREAD_ENTRY * thread_p, OID * class_oid, RECDES ** recdes_p,
-				     RECDES * demoted_recdes)
+				     RECDES * demoted_recdes, LC_COPYAREA ** copyarea)
 {
 #if defined (SA_MODE)
-  int error = heap_oos_demote_workspace_record (thread_p, class_oid, *recdes_p, demoted_recdes);
-  if (error == NO_ERROR && demoted_recdes->data != NULL)
+  HEAP_CACHE_ATTRINFO attr_info;
+  RECDES *recdes = *recdes_p;
+  int error_code;
+
+  assert (*copyarea == NULL);
+  if (OID_IS_ROOTOID (class_oid) || OR_RECORD_HAS_OOS (recdes->data))
     {
-      *recdes_p = demoted_recdes;
+      return NO_ERROR;
     }
-  return error;
+
+  error_code = heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (attr_info.last_classrepr->n_variable == 0)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+      return NO_ERROR;
+    }
+
+  error_code = heap_attrinfo_read_dbvalues_without_oid (thread_p, recdes, &attr_info);
+  if (error_code == NO_ERROR)
+    {
+      *copyarea = locator_allocate_copy_area_by_attr_info (thread_p, &attr_info, NULL, demoted_recdes,
+							   recdes->length, LOB_FLAG_EXCLUDE_LOB);
+      if (*copyarea == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	}
+      else if (!OR_RECORD_HAS_OOS (demoted_recdes->data))
+	{
+	  /* No demotion was selected. Keep the original workspace representation and header. */
+	  locator_free_copy_area (*copyarea);
+	  *copyarea = NULL;
+	}
+      else
+	{
+	  /* tf_mem_to_disk already advanced CHN for the workspace object. Do not advance it again. */
+	  OR_PUT_INT (demoted_recdes->data + OR_CHN_OFFSET, or_chn (recdes));
+	  *recdes_p = demoted_recdes;
+	}
+    }
+  heap_attrinfo_end (thread_p, &attr_info);
+  return error_code;
 #else
   return NO_ERROR;
 #endif
@@ -4992,7 +5038,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   RECDES new_recdes;
   bool is_cached = false;
   LC_COPYAREA *cache_attr_copyarea = NULL;
-  RECDES workspace_recdes = RECDES_INITIALIZER;
+  LC_COPYAREA *workspace_copyarea = NULL;
+  RECDES workspace_recdes;
   int error_code = NO_ERROR;
   OID real_class_oid;
   HFID real_hfid;
@@ -5096,7 +5143,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
   if (from_workspace)
     {
-      error_code = locator_oos_demote_workspace_record (thread_p, &real_class_oid, &recdes, &workspace_recdes);
+      error_code = locator_oos_demote_workspace_record (thread_p, &real_class_oid, &recdes, &workspace_recdes,
+							&workspace_copyarea);
       if (error_code != NO_ERROR)
 	{
 	  goto error2;
@@ -5319,7 +5367,10 @@ error1:
   HFID_COPY (hfid, &real_hfid);
 
 error2:
-  db_private_free_and_init (thread_p, workspace_recdes.data);
+  if (workspace_copyarea != NULL)
+    {
+      locator_free_copy_area (workspace_copyarea);
+    }
   if (cache_attr_copyarea != NULL)
     {
       locator_free_copy_area (cache_attr_copyarea);
@@ -5529,7 +5580,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   RECDES new_record;
   bool is_cached = false;
   LC_COPYAREA *cache_attr_copyarea = NULL;
-  RECDES workspace_recdes = RECDES_INITIALIZER;
+  LC_COPYAREA *workspace_copyarea = NULL;
+  RECDES workspace_recdes;
   int error_code = NO_ERROR;
   HEAP_SCANCACHE *local_scan_cache;
   bool no_data_new_address = false;
@@ -6091,7 +6143,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 
       if (from_workspace)
 	{
-	  error_code = locator_oos_demote_workspace_record (thread_p, class_oid, &recdes, &workspace_recdes);
+	  error_code = locator_oos_demote_workspace_record (thread_p, class_oid, &recdes, &workspace_recdes,
+							    &workspace_copyarea);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
@@ -6225,7 +6278,10 @@ error:
       free_and_init (old_classname);
     }
 
-  db_private_free_and_init (thread_p, workspace_recdes.data);
+  if (workspace_copyarea != NULL)
+    {
+      locator_free_copy_area (workspace_copyarea);
+    }
 
   if (cache_attr_copyarea != NULL)
     {
