@@ -1501,7 +1501,11 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
     {
       cls = cls == OPERAND_NON_CACHEABLE ? cls : OPERAND_CORRELATED;
     }
-  DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &regu->plan_item, regu->domain, cls, context, regu->type);
+  /* a literal is its value's domain: the compiler leaves the domain of a literal it folded from a bind - a statement
+   * recompiled with the bound values in hand, DATE '...' + ? into a DATE value - as the bind's, variable */
+  const TP_DOMAIN *regu_domain = regu->type == TYPE_DBVAL && domain_is_variable (regu->domain)
+    ? domain_value_domain (&regu->value.dbval) : regu->domain;
+  DOMAIN_PLAN_ITEM *item = domain_add_item (ctx, &regu->plan_item, regu_domain, cls, context, regu->type);
   if (item == NULL)
     {
       return;
@@ -1513,7 +1517,7 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
   /* a list position's value descriptor shares the regu's item: one execution domain for both; each
    * half keeps its own variable flag */
   const bool position_variable = regu->type == TYPE_POSITION && domain_is_variable (regu->value.pos_descr.dom);
-  const bool variable = domain_is_variable (regu->domain) || position_variable;
+  const bool variable = domain_is_variable (regu_domain) || position_variable;
   if (variable)
     {
       domain_give_node_domain (item, domain_is_variable (regu->domain));

@@ -2176,9 +2176,22 @@ domain_alias_statement (const char *alias, char *statement, size_t size)
   size_t length = 0;
   if (alias != NULL)
     {
-      while (alias[length] != '\0' && length < size - 1 && !(alias[length] == '?' && char_isdigit (alias[length + 1])))
+      /* a key compiled without the system parameters (a recompiled statement) goes straight to "user=..." */
+      const char *user = strstr (alias, ";bind_var_cnt=");
+      const char *tail = NULL;
+      if (user != NULL)
+	{
+	  for (tail = user; tail > alias && strncmp (tail, "user=", 5) != 0; tail--)
+	    ;
+	}
+      while (alias[length] != '\0' && length < size - 1 && !(alias[length] == '?' && char_isdigit (alias[length + 1]))
+	     && (tail == NULL || alias + length < tail))
 	{
 	  length++;
+	}
+      while (length > 0 && alias[length - 1] == ' ')
+	{
+	  length--;
 	}
       memcpy (statement, alias, length);
     }

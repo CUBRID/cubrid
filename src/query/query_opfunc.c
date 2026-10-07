@@ -6623,8 +6623,14 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
       val_type = DB_VALUE_TYPE (peek_value_p);
       assert (val_type != DB_TYPE_NULL);
 
-      /* the column's domain in this execution: the one its fetch took, or its compiled one */
-      TP_DOMAIN *domain = qexec_get_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->plan_item);
+      /* the column's domain in this execution: the one its fetch took, or its plan's - the list was opened with the
+       * plan's domains (qdata_get_valptr_type_list), so the value is cast to the same domain the column holds */
+      TP_DOMAIN *now = qexec_get_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->plan_item);
+      TP_DOMAIN *domain = (TP_DOMAIN *) qexec_consumer_domain (val_desc_p, now, regu_var_p->plan_item);
+      if (domain == NULL)
+	{
+	  domain = now;
+	}
       dom_type = TP_DOMAIN_TYPE (domain);
       if (dom_type != DB_TYPE_NULL)
 	{
