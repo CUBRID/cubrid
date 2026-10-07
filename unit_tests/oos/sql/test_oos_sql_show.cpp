@@ -716,14 +716,45 @@ TEST_F (OosSqlShow, PendingReferencesResolveAndFinalizeInPlace)
     heap_attrinfo_end (thread_p, &attrs);
   }
   EXPECT_GE (storage.retained_bytes (), 100000u);
-  // Reject transport before writing any descriptor or pointer-bearing bytes, including release builds.
-  std::vector<char> transport (storage.get_recdes ().length + 32, '\x5A');
-  const std::vector<char> untouched = transport;
-  cubpacking::packer packer (transport.data (), transport.size ());
-  storage.record ().pack (packer);
-  EXPECT_EQ (er_errid (), ER_GENERIC_ERROR);
-  EXPECT_EQ (packer.get_current_size (), 0u);
-  EXPECT_EQ (transport, untouched);
+  // Actual fetch publication rejects the row and copied byte images before
+  // publishing a descriptor or increasing the copy-area count.
+  LC_COPYAREA_MANYOBJS exported = {};
+  LC_COPYAREA_ONEOBJ descriptor;
+  std::memset (&descriptor, 0x5A, sizeof (descriptor));
+  const std::string untouched ((char *) &descriptor, sizeof (descriptor));
+  record_descriptor temporary_copy (storage.get_recdes ());
+  for (const RECDES *candidate :
+       {
+	       &storage.get_recdes (), &temporary_copy.get_recdes ()
+       })
+    {
+      EXPECT_EQ (locator_copyarea_add_fetch (&class_oid, &oid_Null_oid, candidate, 0, &exported, &descriptor),
+		 ER_HEAP_OOS_BAD_INLINE_HEADER);
+      EXPECT_EQ (exported.num_objs, 0);
+      EXPECT_EQ (std::string ((char *) &descriptor, sizeof (descriptor)), untouched);
+      er_clear ();
+    }
+  RECDES unowned = temporary_copy.get_recdes ();
+  EXPECT_EQ (unowned.type, REC_HOME);
+  EXPECT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &unowned), ER_HEAP_OOS_BAD_INLINE_HEADER);
+  er_clear ();
+  char short_bytes[OR_MVCC_MIN_HEADER_SIZE] = {};
+  for (int length = 0; length < OR_MVCC_MIN_HEADER_SIZE; ++length)
+    {
+      RECDES short_row = { sizeof (short_bytes), length, REC_HOME, short_bytes };
+      EXPECT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &short_row), ER_HEAP_OOS_BAD_INLINE_HEADER);
+      er_clear ();
+      EXPECT_EQ (locator_copyarea_add_fetch (&class_oid, &oid_Null_oid, &short_row, 0, &exported, &descriptor),
+		 ER_HEAP_OOS_BAD_INLINE_HEADER);
+      EXPECT_EQ (exported.num_objs, 0);
+      EXPECT_EQ (std::string ((char *) &descriptor, sizeof (descriptor)), untouched);
+      er_clear ();
+    }
+  HFID hfid;
+  ASSERT_EQ (heap_get_class_hfid (thread_p, &class_oid, &hfid, nullptr), NO_ERROR);
+  HEAP_OPERATION_CONTEXT insertion;
+  heap_create_insert_context (&insertion, &hfid, &class_oid, &unowned, nullptr);
+  EXPECT_EQ (heap_insert_logical (thread_p, &insertion, nullptr), ER_HEAP_OOS_BAD_INLINE_HEADER);
   er_clear ();
   RECDES record = storage.get_recdes ();
   MVCC_REC_HEADER enlarged;
@@ -788,6 +819,26 @@ TEST_F (OosSqlShow, PendingReferencesResolveAndFinalizeInPlace)
   EXPECT_EQ (record.data, original_buffer);
   EXPECT_EQ (record.length, original_length);
   EXPECT_EQ (record.type, REC_HOME);
+  EXPECT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &record), NO_ERROR);
+  // Storage validation supports legacy last offsets without a modern sentinel.
+  const int last_location = std::max (locations[0], locations[1]) + 1;
+  const int offset_size = OR_GET_OFFSET_SIZE (record.data);
+  int last_entry;
+  ASSERT_EQ (heap_recdes_get_var_offset_entry (&record, last_location, &last_entry), NO_ERROR);
+  OR_BUF last_buf;
+  char *last_ptr = OR_VAR_ELEMENT_PTR (record.data, last_location);
+  or_init (&last_buf, last_ptr, offset_size);
+  or_put_offset_internal (&last_buf, OR_GET_VAR_OFFSET (last_entry), offset_size);
+  EXPECT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &record), NO_ERROR);
+  or_init (&last_buf, last_ptr, offset_size);
+  or_put_offset_internal (&last_buf, last_entry, offset_size);
+  EXPECT_EQ (locator_copyarea_add_fetch (&class_oid, &oid_Null_oid, &record, 0, &exported, &descriptor),
+	     ER_HEAP_OOS_BAD_INLINE_HEADER);
+  EXPECT_EQ (exported.num_objs, 0);
+  er_clear ();
+  // Root metadata has a separate format and bypasses the heap-row check.
+  EXPECT_EQ (locator_copyarea_add_fetch (oid_Root_class_oid, &class_oid, &record, 0, &exported, &descriptor), NO_ERROR);
+  EXPECT_EQ (exported.num_objs, 1);
   // Keep the finalized bytes while destroying the row and all retained memory values.
   record_descriptor persisted (record);
   {
@@ -807,7 +858,47 @@ TEST_F (OosSqlShow, PendingReferencesResolveAndFinalizeInPlace)
       std::memcpy (original.data () + (stub - record.data), stub, OR_OOS_INLINE_SIZE);
     }
   EXPECT_EQ (std::string (record.data, record.length), std::string (original.data (), original.size ()));
+  heap_create_insert_context (&insertion, &hfid, &class_oid, &record, nullptr);
+  ASSERT_EQ (heap_insert_logical (thread_p, &insertion, nullptr), NO_ERROR);
+  HEAP_OPERATION_CONTEXT update;
+  heap_create_update_context (&update, &hfid, &insertion.res_oid, &class_oid, &unowned, nullptr, UPDATE_INPLACE_NONE);
+  EXPECT_EQ (heap_update_logical (thread_p, &update), ER_HEAP_OOS_BAD_INLINE_HEADER);
+  er_clear ();
+  RECDES expanded = RECDES_INITIALIZER;
+  ASSERT_EQ (recdes_allocate_data_area (&expanded, IO_MAX_PAGE_SIZE), NO_ERROR);
+  HEAP_SCANCACHE scan;
+  ASSERT_EQ (heap_scancache_start (thread_p, &scan, &hfid, &class_oid, false, nullptr), NO_ERROR);
+  SCAN_CODE fetched = heap_get_visible_version (thread_p, &insertion.res_oid, &class_oid, &expanded, &scan, COPY,
+		      NULL_CHN, HEAP_RECDES_CONSUME_RAW_BYTES);
+  if (fetched == S_DOESNT_FIT)
+    {
+      const int required = -expanded.length;
+      recdes_free_data_area (&expanded);
+      ASSERT_EQ (recdes_allocate_data_area (&expanded, required), NO_ERROR);
+      fetched = heap_get_visible_version (thread_p, &insertion.res_oid, &class_oid, &expanded, &scan, COPY,
+					  NULL_CHN, HEAP_RECDES_CONSUME_RAW_BYTES);
+    }
+  ASSERT_EQ (fetched, S_SUCCESS);
+  EXPECT_EQ (locator_copyarea_add_fetch (&class_oid, &insertion.res_oid, &expanded, 0, &exported, &descriptor), NO_ERROR);
+  EXPECT_EQ (exported.num_objs, 2);
+  recdes_free_data_area (&expanded);
+  ASSERT_EQ (heap_scancache_end (thread_p, &scan), NO_ERROR);
   ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+}
+
+TEST (OosSqlPacking, GenericDescriptorsPreserveArbitraryBytes)
+{
+  const char raw[] = { '\xFF', '\x00', '\xAB', '\xCD', '\xEF' };
+  record_descriptor source (raw, sizeof (raw));
+  char packed[128];
+  cubpacking::packer packer (packed, sizeof (packed));
+  source.pack (packer);
+  cubpacking::unpacker unpacker (packed, packer.get_current_size ());
+  record_descriptor restored;
+  restored.unpack (unpacker);
+  EXPECT_EQ (restored.get_recdes ().type, source.get_recdes ().type);
+  EXPECT_EQ (restored.get_recdes ().length, sizeof (raw));
+  EXPECT_EQ (std::string (restored.get_recdes ().data, restored.get_recdes ().length), std::string (raw, sizeof (raw)));
 }
 
 TEST_F (OosSqlShow, FinalizationResetsPublicationOnceAndFailureCannotRetry)

@@ -10979,7 +10979,15 @@ heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR
 int
 heap_recdes_get_var_offset_entry (const RECDES * recdes, int location, int *entry_out)
 {
+  if (!heap_recdes_has_valid_header (recdes) || location < 0)
+    {
+      return ER_FAILED;
+    }
   int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
+  if (location >= (recdes->length - OR_HEADER_SIZE (recdes->data)) / offset_size)
+    {
+      return ER_FAILED;
+    }
   void *var_table;
   char *entry_ptr;
 
@@ -11034,6 +11042,11 @@ heap_recdes_get_var_offset_entry (const RECDES * recdes, int location, int *entr
 int
 heap_recdes_get_oos_inline_stub (const RECDES * recdes, int location, char **stub_out)
 {
+  *stub_out = NULL;
+  if (!heap_recdes_has_valid_header (recdes) || location < 0)
+    {
+      return ER_FAILED;
+    }
   const int header_size = OR_HEADER_SIZE (recdes->data);
   const int offset_size = OR_GET_OFFSET_SIZE (recdes->data);
   int this_entry = 0;
@@ -11044,7 +11057,7 @@ heap_recdes_get_oos_inline_stub (const RECDES * recdes, int location, char **stu
   *stub_out = NULL;
 
   /* The entry after this one bounds the field; both entries must lie inside the record before either is read. */
-  if (location < 0 || header_size + (location + 2) * offset_size > recdes->length)
+  if (location > (recdes->length - header_size) / offset_size - 2)
     {
       return ER_FAILED;
     }
@@ -13293,7 +13306,7 @@ heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_
     }
   if (status == S_SUCCESS)
     {
-      record->set_type (REC_OOS_PENDING);
+      record->set_type (REC_HOME);
       pending->prepared ();
     }
   return status;
@@ -25156,10 +25169,10 @@ heap_insert_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context, 
   assert (context->recdes_p != NULL);
   assert (!HFID_IS_NULL (&context->hfid));
 
-  if (context->recdes_p != NULL && context->recdes_p->type == REC_OOS_PENDING)
+  if (context->recdes_p != NULL
+      && (rc = heap_oos_validate_disk_record (thread_p, &context->class_oid, context->recdes_p)) != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
+      return rc;
     }
 
   /* *INDENT-OFF* */
@@ -25588,10 +25601,10 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   assert (!OID_ISNULL (&context->oid));
   assert (!OID_ISNULL (&context->class_oid));
 
-  if (context->recdes_p != NULL && context->recdes_p->type == REC_OOS_PENDING)
+  if (context->recdes_p != NULL
+      && (rc = heap_oos_validate_disk_record (thread_p, &context->class_oid, context->recdes_p)) != NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-      return ER_GENERIC_ERROR;
+      return rc;
     }
 
   context->time_track = &time_track;
@@ -29029,6 +29042,13 @@ bool
 heap_recdes_contains_oos (const RECDES * record)
 {
   return OR_RECORD_HAS_OOS (record->data);
+}
+
+bool
+heap_recdes_has_valid_header (const RECDES * record)
+{
+  return record != NULL && record->data != NULL && record->length >= OR_MVCC_MIN_HEADER_SIZE
+    && OR_HEADER_SIZE (record->data) <= record->length;
 }
 
 int
