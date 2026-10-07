@@ -7532,7 +7532,7 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 #if SERVER_MODE && !WINDOWS
       int px_merge_parallelism = 0;
       if (parallel_query::merge_join::try_parallel_merge (thread_p, outer_xasl->list_id, inner_xasl->list_id,
-							  merge_infop, ls_flag, &list_id,
+							  merge_infop, ls_flag, outer_xasl->parallelism, &list_id,
 							  px_merge_executed, px_merge_parallelism) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;

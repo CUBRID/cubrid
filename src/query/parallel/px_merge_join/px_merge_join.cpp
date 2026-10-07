@@ -69,8 +69,8 @@ namespace parallel_query
 
     int
     try_parallel_merge (THREAD_ENTRY *thread_p, QFILE_LIST_ID *outer_list_id, QFILE_LIST_ID *inner_list_id,
-			QFILE_LIST_MERGE_INFO *merge_infop, int ls_flag, QFILE_LIST_ID **result_list_id,
-			bool &executed, int &executed_parallelism)
+			QFILE_LIST_MERGE_INFO *merge_infop, int ls_flag, int hint_degree,
+			QFILE_LIST_ID **result_list_id, bool &executed, int &executed_parallelism)
     {
       int error = NO_ERROR;
 
@@ -87,7 +87,7 @@ namespace parallel_query
       UINT64 max_page_cnt =
 	      (UINT64) ((outer_list_id->page_cnt > inner_list_id->page_cnt)
 			? outer_list_id->page_cnt : inner_list_id->page_cnt);
-      UINT32 degree = compute_parallel_degree (parallel_type::MERGE_JOIN, max_page_cnt);
+      UINT32 degree = compute_parallel_degree (parallel_type::MERGE_JOIN, max_page_cnt, hint_degree);
       if (degree < 2)
 	{
 	  return NO_ERROR;
