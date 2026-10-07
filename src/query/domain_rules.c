@@ -805,6 +805,17 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
       return NO_ERROR;
     }
 
+  if ((function == PT_SUM || function == PT_AVG) && TP_IS_DATE_OR_TIME_TYPE (operand_type))
+    {
+      /* SUM and AVG add their values, and a date or time value does not add (qdata_add_dbval, -454 at the second
+       * value); the compiler rejects a date column, a NULL bind lets one through (nvl (?, d)): resolve_domains raises
+       * the row's error before any row. return_null_on_function_errors keeps the row's NULL. */
+      int error = domain_arith_reject ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
   if (domain_function_is_late_bound (compiled, operand))
     {
       if (TP_IS_CHAR_TYPE (val_type) && (function == PT_SUM || function == PT_AVG))
@@ -941,6 +952,17 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
   DB_TYPE val_type = domain_operand_type (operand);
   const TP_DOMAIN *argument = compiled;
 
+  if ((function == PT_SUM || function == PT_AVG)
+      && TP_IS_DATE_OR_TIME_TYPE (operand->domain != NULL ? TP_DOMAIN_TYPE (operand->domain) : val_type))
+    {
+      /* as the aggregate's: a date or time value does not add; the window's first value took it as it was and the
+       * partition's single value went out as a DOUBLE */
+      int error = domain_arith_reject ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
   if (domain_function_is_late_bound (compiled, operand))
     {
       switch (function)

@@ -512,8 +512,9 @@ enum DOMAIN_DEFERRED_ERROR_KIND
 				 * search's -181 in its order */
   DOMAIN_DEFERRED_ERROR_ARGUMENT_TYPE,	/* a MEDIAN / PERCENTILE value without an argument type:
 					 * argument_type.function */
-  DOMAIN_DEFERRED_ERROR_OPERAND	/* a constant operand's conversion: index = plan->constant_operands index,
-				 * failed = its TP_DOMAIN_STATUS */
+  DOMAIN_DEFERRED_ERROR_OPERAND,	/* a constant operand's conversion: index = plan->constant_operands index,
+					 * failed = its TP_DOMAIN_STATUS */
+  DOMAIN_DEFERRED_ERROR_DATATYPE	/* a SUM / AVG over a date or time argument (-454, no argument) */
 };
 
 struct DOMAIN_DEFERRED_ERROR
@@ -910,6 +911,20 @@ qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xa
 	   * the unification of the branch lists (qfile_unify_types) rejects it only when both hold rows */
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	  return error;
+	}
+      if (error == ER_QPROC_INVALID_DATATYPE && (context == DOMAIN_CTX_AGG || context == DOMAIN_CTX_ANALYTIC))
+	{
+	  /* a SUM / AVG whose argument resolve_domains typed as a date or time (nvl (?, d) with a NULL bind): the rows
+	   * would raise it at the second value, or carry the date out of the window as a DOUBLE; resolve_domains raises
+	   * it before any row, below a constant branch only if a row reaches the function */
+	  if (cold->constant_branch < 0)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	      return error;
+	    }
+	  return qexec_defer_constant_error (thread_p, deferred,
+					     qexec_deferred_error (NULL, cold->constant_branch, -1,
+								   DOMAIN_DEFERRED_ERROR_DATATYPE, 0));
 	}
       if (error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN && (node->flags & DOMAIN_PLAN_VALUE_ARGUMENT)
 	  && operands[0].val_type == DB_TYPE_NULL && operands[0].domain != NULL
@@ -2829,6 +2844,10 @@ qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, c
 		  fcode_get_uppercase_name ((FUNC_CODE) deferred_error->argument_type.function),
 		  "DOUBLE, DATETIME or TIME");
 	  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+	  break;
+	case DOMAIN_DEFERRED_ERROR_DATATYPE:
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+	  error = ER_QPROC_INVALID_DATATYPE;
 	  break;
 	case DOMAIN_DEFERRED_ERROR_OPERAND:
 	  {
