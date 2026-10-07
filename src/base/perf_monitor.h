@@ -400,6 +400,9 @@ typedef enum
   PSTAT_PRIOR_INFLIGHT_WINDOW_HIT,
   PSTAT_PRIOR_INFLIGHT_WINDOW_MISS,
 
+  /* previous-version reads that did not copy the page their record starts on */
+  PSTAT_LOG_NUM_FETCHES_SKIPPED,
+
   /* HA replication delay */
   PSTAT_HA_REPL_DELAY,
 
