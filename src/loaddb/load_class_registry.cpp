@@ -31,10 +31,23 @@ namespace cubload
 {
 
   // attribute
-  attribute::attribute (const std::string &name, std::size_t index, or_attribute *repr)
+  attribute::attribute (const std::string &name, std::size_t index, const or_attribute *repr)
+    : attribute (name, index, repr->domain, repr->is_notnull != 0, repr->id)
+  {
+    //
+  }
+
+  /* The converters need only the domain, the not-null flag and the representation id.
+   * Keeping those instead of a representation pointer lets the same attribute serve both
+   * the server side(or_attribute) and the standalone side (SM_ATTRIBUTE), which do not share a representation type.
+   */
+  attribute::attribute (const std::string &name, std::size_t index, const tp_domain *domain, bool is_not_null,
+			int repr_id)
     : m_name (name)
     , m_index (index)
-    , m_repr (repr)
+    , m_domain (domain)
+    , m_is_not_null (is_not_null)
+    , m_repr_id (repr_id)
   {
     //
   }
@@ -51,16 +64,22 @@ namespace cubload
     return m_index;
   }
 
-  const or_attribute &
-  attribute::get_repr () const
-  {
-    return *m_repr;
-  }
-
   const tp_domain &
   attribute::get_domain () const
   {
-    return *m_repr->domain;
+    return *m_domain;
+  }
+
+  bool
+  attribute::is_not_null () const
+  {
+    return m_is_not_null;
+  }
+
+  int
+  attribute::get_repr_id () const
+  {
+    return m_repr_id;
   }
 
   // class_entry
