@@ -5098,12 +5098,6 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   bool dont_check_fk = (force_flags & LC_FORCE_FLAG_DONT_CHECK_FK) != 0;
   bool use_bulk_logging = (force_flags & LC_FORCE_FLAG_BULK_LOGGING) != 0;
   bool from_workspace = (force_flags & LC_FORCE_FLAG_FROM_WORKSPACE) != 0;
-#if defined (SA_MODE)
-  if (from_workspace)
-    {
-      from_copyarea = false;
-    }
-#endif
 
   assert (class_oid != NULL);
   assert (!OID_ISNULL (class_oid));
@@ -5637,12 +5631,6 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   heap_pending_record received;
   RECDES converted;
   /* *INDENT-ON* */
-#if defined (SA_MODE)
-  if (from_workspace)
-    {
-      from_copyarea = false;
-    }
-#endif
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   char *rep_dir_offset;
   char *classname = NULL;	/* Classname to update */
