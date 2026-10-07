@@ -169,7 +169,7 @@
 #define RBO_CHECK_LIMIT_RATIO 10
 
 /* NL inner memoize decision (qo_nl_inner_memoize_is_useless) */
-#define MEMOIZE_UNIQUE_KEY_RATIO 0.9	/* an outer key column with NDV >= 90% of its table rows is near-unique */
+#define MEMOIZE_UNIQUE_KEY_RATIO 0.95	/* without a unique index, NDV >= 95% of the rows counts as near-unique */
 #define MEMOIZE_MIN_HIT_RATIO 0.1	/* skip memoize when less than 10% of the inner calls are expected to hit */
 
 /* Cost tie detection for the plan comparison steps: exact floating-point equality
@@ -268,6 +268,7 @@ static void qo_zero_cost (QO_PLAN *);
 static void qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms);
 static bool qo_node_is_multi_class (QO_NODE * node);
 static double qo_seg_ndv (QO_SEGMENT * seg);
+static bool qo_seg_has_unique_index (QO_SEGMENT * seg);
 static double qo_node_filtered_rows (QO_NODE * node);
 static QO_SEGMENT *qo_term_seg_of_node (QO_TERM * term, QO_NODE * node, QO_SEGMENT ** other);
 static bool qo_node_matches_at_most_once (QO_ENV * env, QO_NODE * node, BITSET * from);
@@ -3636,6 +3637,41 @@ qo_seg_ndv (QO_SEGMENT * seg)
 }
 
 /*
+ * qo_seg_has_unique_index () - whether a column is the only column of a unique index
+ *   return:
+ *   seg(in):
+ *
+ * A primary key or unique index that is neither filtered nor on a function.
+ */
+static bool
+qo_seg_has_unique_index (QO_SEGMENT * seg)
+{
+  QO_NODE *node = QO_SEG_HEAD (seg);
+  QO_NODE_INDEX *node_indexp = QO_NODE_INDEXES (node);
+  QO_INDEX_ENTRY *index_entryp;
+  int i;
+
+  if (node_indexp == NULL || qo_node_is_multi_class (node))
+    {
+      return false;
+    }
+
+  for (i = 0; i < QO_NI_N (node_indexp); i++)
+    {
+      index_entryp = QO_NI_ENTRY (node_indexp, i)->head;
+      if (index_entryp != NULL && index_entryp->constraints != NULL
+	  && SM_IS_CONSTRAINT_UNIQUE_FAMILY (index_entryp->constraints->type)
+	  && index_entryp->constraints->filter_predicate == NULL && index_entryp->constraints->func_index_info == NULL
+	  && index_entryp->nsegs == 1 && index_entryp->seg_idxs[0] == QO_SEG_IDX (seg))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_node_filtered_rows () - rows of a table after its own search conditions
  *   return:
  *   node(in):
@@ -3858,8 +3894,11 @@ qo_node_rows_in_join (QO_ENV * env, QO_NODE * node, BITSET * outer_nodes, double
  * The expected hit ratio is (calls - ndv) / calls, as in PostgreSQL cost_memoize_rescan () without its
  * cache capacity factor, where calls is the outer cardinality and ndv the number of distinct keys in
  * the outer rows. The decision is conservative and leaves the rest to the run-time check:
- * - Only an outer key column that is near-unique in its own table counts. Its NDV is a lower bound
- *   of the NDV of the whole key, so the other key columns (and their statistics) cannot make it skip.
+ * - Only an outer key column that is unique (a unique index) or near-unique (MEMOIZE_UNIQUE_KEY_RATIO) in
+ *   its own table counts. Its NDV is a lower bound of the NDV of the whole key, so the other key columns
+ *   (and their statistics) cannot make it skip. Where the few duplicates of a near-unique column sit is
+ *   unknown: a filter or join that keeps just those rows repeats the key more than the estimate assumes,
+ *   and the run-time check then has to catch it.
  * - Its NDV in the outer rows is estimated from the rows of its table the outer holds
  *   (qo_node_rows_in_join ()) with qo_estimate_ndv ().
  * - An outer with an outer join, or missing statistics the estimate needs, is not decided.
@@ -3924,8 +3963,17 @@ qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_t
 	}
 
       seg_ndv = qo_seg_ndv (seg);
-      if (seg_ndv <= 0.0 || QO_NODE_NCARD (node) <= 0
-	  || seg_ndv < MEMOIZE_UNIQUE_KEY_RATIO * (double) QO_NODE_NCARD (node))
+      if (seg_ndv <= 0.0 || QO_NODE_NCARD (node) <= 0)
+	{
+	  /* no statistics */
+	  continue;
+	}
+      if (qo_seg_has_unique_index (seg))
+	{
+	  /* one value per row, whatever the sampled NDV says */
+	  seg_ndv = (double) QO_NODE_NCARD (node);
+	}
+      else if (seg_ndv < MEMOIZE_UNIQUE_KEY_RATIO * (double) QO_NODE_NCARD (node))
 	{
 	  continue;
 	}
