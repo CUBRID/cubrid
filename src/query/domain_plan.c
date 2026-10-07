@@ -2641,7 +2641,11 @@ domain_resolve_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry)
       load_entry->known = compiled && load_entry->kind == DOMAIN_LOAD_FIXED_AGG;
       return;
     }
-  if (load_entry->kind == DOMAIN_LOAD_FIXED_AGG && compiled && !any_variable_pos)
+  /* a string function the compiler typed with its collation left to the argument (MIN / MAX, LAG / LEAD, FIRST_VALUE
+   * / NTH_VALUE over CAST (? AS VARCHAR (n)): ENFORCE over an argument it could not type) is a late-binding node
+   * whatever its argument: resolve_domains gives it the argument's resolved domain, as it does the variable ones */
+  if (load_entry->kind == DOMAIN_LOAD_FIXED_AGG && compiled && !any_variable_pos
+      && !domain_character_is_variable (item->fixed.domain))
     {
       const DOMAIN_PLAN_ITEM *argument = load_entry->link[0];
       DOMAIN_OPERAND operand = { argument->fixed.domain, TP_DOMAIN_TYPE (argument->fixed.domain), -1, false };
