@@ -2272,7 +2272,6 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   ctx->constant_branch = if_constant_branch;
   domain_walk_xasl (ctx, xasl->fptr_list);
   ctx->constant_branch = block_constant_branch;
-  domain_walk_xasl (ctx, xasl->connect_by_ptr);
   switch (xasl->type)
     {
     case BUILDLIST_PROC:
@@ -2389,12 +2388,15 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 	CONNECTBY_PROC_NODE *b = &xasl->proc.connect_by;
 	domain_walk_pred (ctx, b->start_with_pred);
 	domain_walk_pred (ctx, b->after_connect_by_pred);
-	domain_walk_list (ctx, b->regu_list_pred);
-	domain_walk_list (ctx, b->regu_list_rest);
-	domain_walk_list (ctx, b->prior_regu_list_pred);
-	domain_walk_list (ctx, b->prior_regu_list_rest);
-	domain_walk_list (ctx, b->after_cb_regu_list_pred);
-	domain_walk_list (ctx, b->after_cb_regu_list_rest);
+	/* the position lists read the block's input list, the parent tuple and the block's own list: all three hold the
+	 * columns of the block's output list in its order (pt_make_connect_by_proc makes every one from the block's
+	 * value list), so an output column is the producer of each position */
+	domain_walk_position_list (ctx, b->regu_list_pred, xasl, NULL);
+	domain_walk_position_list (ctx, b->regu_list_rest, xasl, NULL);
+	domain_walk_position_list (ctx, b->prior_regu_list_pred, xasl, NULL);
+	domain_walk_position_list (ctx, b->prior_regu_list_rest, xasl, NULL);
+	domain_walk_position_list (ctx, b->after_cb_regu_list_pred, xasl, NULL);
+	domain_walk_position_list (ctx, b->after_cb_regu_list_rest, xasl, NULL);
 	domain_walk_out (ctx, b->prior_outptr_list);
       }
       break;
@@ -2446,6 +2448,11 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   domain_walk_regu (ctx, xasl->precomp_owner_regu, DOMAIN_CTX_COMPARE);
   ctx->constant_branch = if_constant_branch;
   domain_walk_xasl (ctx, xasl->scan_ptr);
+  /* the CONNECT BY block runs over this block's list once the scans have filled it: walked after the scans, so that
+   * a value both a scan and the CONNECT BY block's list readers write (a derived-table column) is produced by the
+   * scan's reader, which knows its domain, and not by the CONNECT BY block's own reader of the same value */
+  ctx->constant_branch = block_constant_branch;
+  domain_walk_xasl (ctx, xasl->connect_by_ptr);
   /* the next block is no part of this one's execution: outside its constant branches, and not an outer block of it */
   ctx->constant_branch = entry_constant_branch;
   assert (ctx->n_ancestors > 0 && ctx->ancestors[ctx->n_ancestors - 1] == xasl);
