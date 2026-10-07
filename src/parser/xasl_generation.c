@@ -8121,6 +8121,14 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			    {
 			      domain = node->expected_domain;
 			    }
+			  if (domain == NULL
+			      && (node->info.expr.op == PT_QPRIOR || node->info.expr.op == PT_CONNECT_BY_ROOT))
+			    {
+			      /* PRIOR / CONNECT_BY_ROOT over a host variable, or a derived column one types, passes
+			       * its operand's value through: a late-binding node resolve_domains types from the operand
+			       * (a user host variable has no expected domain to give it) */
+			      domain = &tp_Variable_domain;
+			    }
 			}
 		      else
 			{

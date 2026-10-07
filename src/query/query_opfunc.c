@@ -7201,6 +7201,13 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
   XASL_NODE *xasl, *xptr;
   int length, i;
 
+  /* a constant argument (a bind, a literal) is the root's value as it is every row's: the compiler folded such a
+   * CONNECT_BY_ROOT when it knew the value, and a plan that does not depend on the values evaluates it here */
+  if (regu_p->type == TYPE_POS_VALUE || regu_p->type == TYPE_DBVAL)
+    {
+      return fetch_copy_dbval (thread_p, regu_p, vd, NULL, NULL, NULL, result_val_p) == NO_ERROR;
+    }
+
   /* sanity checks */
   if (regu_p->type != TYPE_CONSTANT)
     {
@@ -7280,8 +7287,16 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
 
   if (i < xptr->val_list->val_cnt)
     {
-      if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p,
-					qexec_get_node_domain (vd, regu_p->domain, regu_p->plan_item)) != NO_ERROR)
+      /* the column's domain in this execution: the argument reads a value pointer, whose domain is its producer's
+       * resolution (a derived-table column a bind types) when the compiler left it variable */
+      const TP_DOMAIN *column_domain = qexec_consumer_domain (vd, regu_p->domain, regu_p->plan_item);
+      if (column_domain == NULL)
+	{
+	  qfile_close_scan (thread_p, &s_id);
+	  (void) qexec_domain_unresolved (vd, regu_p->plan_item, regu_p->domain);
+	  return false;
+	}
+      if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p, (TP_DOMAIN *) column_domain) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return false;
@@ -7331,6 +7346,14 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
   DB_VALUE p_pos_dbval;
   XASL_NODE *xasl, *xptr;
   int length;
+
+  /* a constant argument (a bind, a literal) is the parent's value as it is every row's, the root's included: the
+   * compiler folded such a PRIOR when it knew the value, and a plan that does not depend on the values evaluates it
+   * here */
+  if (regu_p->type == TYPE_POS_VALUE || regu_p->type == TYPE_DBVAL)
+    {
+      return fetch_copy_dbval (thread_p, regu_p, vd, NULL, NULL, NULL, result_val_p) == NO_ERROR;
+    }
 
   xasl = (XASL_NODE *) xasl_p;
 
@@ -7597,12 +7620,16 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
       need_clear_arg_dbval = false;
       if (!use_extended)
 	{
-	  /* get the required column */
+	  /* get the required column, in its domain of this execution (as CONNECT_BY_ROOT reads its argument) */
 	  if (i < xptr->val_list->val_cnt)
 	    {
-	      if (qexec_get_tuple_column_value (&tuple_rec, i, arg_dbval_p,
-						qexec_get_node_domain (vd, regu_p->domain,
-								       regu_p->plan_item)) != NO_ERROR)
+	      const TP_DOMAIN *column_domain = qexec_consumer_domain (vd, regu_p->domain, regu_p->plan_item);
+	      if (column_domain == NULL)
+		{
+		  (void) qexec_domain_unresolved (vd, regu_p->plan_item, regu_p->domain);
+		  goto error;
+		}
+	      if (qexec_get_tuple_column_value (&tuple_rec, i, arg_dbval_p, (TP_DOMAIN *) column_domain) != NO_ERROR)
 		{
 		  goto error;
 		}

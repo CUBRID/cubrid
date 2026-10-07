@@ -643,6 +643,12 @@ domain_non_cacheable_operator (OPERATOR_TYPE opcode)
     case T_EXEC_STATS:
     case T_TRACE_STATS:
     case T_SLEEP:
+      /* the hierarchical operators read another tuple of the CONNECT BY block's list: a value of the row, however
+       * constant their argument (PRIOR ?) */
+    case T_PRIOR:
+    case T_QPRIOR:
+    case T_CONNECT_BY_ROOT:
+    case T_SYS_CONNECT_BY_PATH:
       return true;
     default:
       return false;
@@ -1052,6 +1058,12 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
     }
   bool is_cast = arith->opcode == T_CAST || arith->opcode == T_CAST_WRAP;
   REGU_VARIABLE *operands[] = { arith->leftptr, arith->rightptr, arith->thirdptr };
+  if (arith->opcode == T_CONNECT_BY_ROOT || arith->opcode == T_QPRIOR)
+    {
+      /* the third operand carries the CONNECT BY block (regu->xasl) and no value: the execution points it at the
+       * parent tuple's value (qexec_replace_prior_regu_vars); the node's value is its argument's (rightptr) */
+      operands[2] = NULL;
+    }
   DOMAIN_OPERAND_CLASS cls = domain_non_cacheable_operator (arith->opcode) || arith->pred != NULL
     ? OPERAND_NON_CACHEABLE : OPERAND_CONST;
   /* CASE, DECODE and IF take one arm by their predicate, which they evaluate first; COALESCE, NVL, IFNULL and NVL2
