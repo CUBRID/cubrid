@@ -5519,6 +5519,7 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
   T_BROKER_VERSION client_version = req_info->client_version;
   char *default_value_string = NULL;
   bool alloced_default_value_string = false;
+  bool is_cub_select_catalog_member;
 
   q_result = (T_QUERY_RESULT *) (srv_handle->cur_result);
   if (q_result == NULL)
@@ -5553,6 +5554,8 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
     {
       net_buf_cp_int (net_buf, 0, &num_tuple_msg_offset);
     }
+
+  is_cub_select_catalog_member = au_is_user_group_member (Au_cub_select_catalog_user, Au_user);
 
   memset ((char *) &tuple_obj, 0, sizeof (T_OBJECT));
   num_tuple = 0;
@@ -5594,8 +5597,15 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	}
       attr_name = attr_name_buf;
 
-      /* the db_attribute view has already checked the authorization for this row */
-      err_code = au_fetch_class_force (class_obj, &class_, AU_FETCH_READ);
+      /* CUB_SELECT_CATALOG members can see every class in the catalog views, so they skip the check */
+      if (is_cub_select_catalog_member)
+	{
+	  err_code = au_fetch_class_force (class_obj, &class_, AU_FETCH_READ);
+	}
+      else
+	{
+	  err_code = au_fetch_class (class_obj, &class_, AU_FETCH_READ, AU_SELECT);
+	}
       if (err_code != NO_ERROR)
 	{
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
