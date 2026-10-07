@@ -1121,6 +1121,7 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
 	    {
 	      /* A clone is available. */
 	      *xclone = (*xcache_entry)->cache_clones[--(*xcache_entry)->n_cache_clones];
+	      ATOMIC_INC_32 (&xcache_Memory_usage_clone, -xcache_entry_get_one_clonesize (*xcache_entry));
 	      (void) pthread_mutex_unlock (&(*xcache_entry)->cache_clones_mutex);
 
 	      assert (xclone->xasl != NULL && xclone->xasl_buf != NULL);
@@ -1145,11 +1146,6 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
   error_code =
     stx_map_stream_to_xasl (thread_p, &xclone->xasl, use_xasl_clone, (*xcache_entry)->stream.buffer,
 			    (*xcache_entry)->stream.buffer_size, &xclone->xasl_buf);
-  if (use_xasl_clone && error_code == NO_ERROR)
-    {
-      /* only a successfully built clone holds memory. */
-      ATOMIC_INC_32 (&xcache_Memory_usage_clone, xcache_entry_get_one_clonesize (*xcache_entry));
-    }
 
   if (save_heapid != 0)
     {
@@ -2341,8 +2337,17 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
   INT32 xasl_entry_size = xcache_entry_get_entrysize (xcache_entry);
   if (xcache_uses_clones ())
     {
+      INT32 clone_size = xcache_entry_get_one_clonesize (xcache_entry);
+
       pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
-      if (xcache_entry->n_cache_clones < xcache_Max_clones && xasl_entry_size < xcache_Max_plan_size)
+      /* Add the clone before reading the cache usage, so concurrent retirements and inserts cannot miss each other. */
+      INT32 memory_usage = ATOMIC_INC_32 (&xcache_Memory_usage_clone, clone_size);
+      memory_usage += xcache_Memory_usage_cache;
+      /* Limit the estimated memory of one entry's kept clones to (hard - soft).
+       * xcache_Max_plan_size is set to roughly fit one clone in (hard - soft). */
+      if (xcache_entry->n_cache_clones < xcache_Max_clones && xasl_entry_size < xcache_Max_plan_size
+	  && memory_usage < xcache_Soft_limit
+	  && ((xcache_entry->n_cache_clones + 1) * clone_size) <= (xcache_Hard_limit - xcache_Soft_limit))
 	{
 	  if (xcache_entry->n_cache_clones == xcache_entry->cache_clones_capacity
 	      && xcache_entry->cache_clones_capacity < xcache_Max_clones)
