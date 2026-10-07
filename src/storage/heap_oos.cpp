@@ -68,9 +68,17 @@ heap_oos_value_ref::decode (const RECDES &record, int location, heap_oos_value_r
 			    const heap_pending_record *pending)
 {
   char *stub = nullptr;
+  (void) heap_recdes_get_oos_inline_stub (&record, location, &stub);
+  return decode_stub (record, stub, ref, pending);
+}
+
+int
+heap_oos_value_ref::decode_stub (const RECDES &record, char *stub, heap_oos_value_ref &ref,
+				 const heap_pending_record *pending)
+{
   DB_BIGINT length = 0;
   OID head = OID_INITIALIZER;
-  if (heap_recdes_get_oos_inline_stub (&record, location, &stub) != NO_ERROR)
+  if (stub == nullptr)
     {
       goto invalid;
     }
@@ -104,16 +112,11 @@ heap_oos_value_ref::decode (const RECDES &record, int location, heap_oos_value_r
       ref.m_value.memory = payload.data ();
       return NO_ERROR;
     }
-  {
-    oos_chain_ref disk;
-    int error = heap_oos_parse_inline_ref (&record, location, &disk, &length);
-    if (error == NO_ERROR)
-      {
-	ref.m_value.disk = disk;
-	ref.m_kind = kind::disk;
-      }
-    return error;
-  }
+  DB_BIGINT packed_identity_stamp;
+  OR_GET_BIGINT (stub + OR_OID_SIZE + OR_BIGINT_SIZE, &packed_identity_stamp);
+  ref.m_value.disk = { head, oos_unpack_identity_stamp (packed_identity_stamp) };
+  ref.m_kind = kind::disk;
+  return NO_ERROR;
 
 invalid:
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&head));
@@ -238,15 +241,19 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
       pending->finish (false);
       return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
     }
-  std::vector<oos_chain_ref> refs;
+  struct pending_value
+  {
+    char *stub;
+    oos_buffer payload;
+    oos_chain_ref result;
+  };
+  std::vector<pending_value> values;
   std::vector<oos_insert_request> requests;
-  std::vector<char *> stubs;
   int error = NO_ERROR;
   try
     {
-      refs.resize (repr->n_variable);
+      values.reserve (repr->n_variable);
       requests.reserve (repr->n_variable);
-      stubs.reserve (repr->n_variable);
       for (int i = 0; i < repr->n_attributes; ++i)
 	{
 	  OR_ATTRIBUTE &attr = repr->attributes[i];
@@ -264,8 +271,10 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	    {
 	      continue;
 	    }
+	  char *stub = nullptr;
+	  (void) heap_recdes_get_oos_inline_stub (record, attr.location, &stub);
 	  heap_oos_value_ref ref;
-	  error = heap_oos_value_ref::decode (*record, attr.location, ref, pending);
+	  error = heap_oos_value_ref::decode_stub (*record, stub, ref, pending);
 	  if (error != NO_ERROR)
 	    {
 	      break;
@@ -276,19 +285,15 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	      error = ER_GENERIC_ERROR;
 	      break;
 	    }
-	  char *stub = nullptr;
-	  error = heap_recdes_get_oos_inline_stub (record, attr.location, &stub);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-	  oos_chain_ref &chain = refs[requests.size ()];
-	  requests.push_back ({ oos_buffer (const_cast<char *> (ref.m_value.memory), ref.length ()),
-				&chain.head_oid, &chain.identity_stamp });
-	  stubs.push_back (stub);
+	  values.push_back ({ stub, oos_buffer (const_cast<char *> (ref.m_value.memory), ref.length ()), {} });
 	}
       if (error == NO_ERROR)
 	{
+	  /* Collect every value before borrowing result addresses for the batch. */
+	  for (auto &value : values)
+	    {
+	      requests.push_back ({ value.payload, &value.result.head_oid, &value.result.identity_stamp });
+	    }
 	  cubbase::span<oos_insert_request> batch { requests.data (), requests.size () };
 	  if (heap_oos_insert_serialized_values (thread_p, destination, batch) != S_SUCCESS)
 	    {
@@ -297,13 +302,13 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	}
       if (error == NO_ERROR)
 	{
-	  for (std::size_t i = 0; i < requests.size (); ++i)
+	  for (const auto &value : values)
 	    {
 	      OR_BUF buf;
-	      or_init (&buf, stubs[i], OR_OOS_INLINE_SIZE);
-	      or_put_oid (&buf, &refs[i].head_oid);
-	      or_put_bigint (&buf, (DB_BIGINT) requests[i].src.size ());
-	      or_put_bigint (&buf, oos_pack_identity_stamp (refs[i].identity_stamp));
+	      or_init (&buf, value.stub, OR_OOS_INLINE_SIZE);
+	      or_put_oid (&buf, &value.result.head_oid);
+	      or_put_bigint (&buf, (DB_BIGINT) value.payload.size ());
+	      or_put_bigint (&buf, oos_pack_identity_stamp (value.result.identity_stamp));
 	    }
 	  pending->record ().set_record_length (record->length);
 	}
@@ -311,7 +316,7 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
   catch (const std::bad_alloc &)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (std::size_t) repr->n_variable * (sizeof (oos_chain_ref) + sizeof (oos_insert_request) + sizeof (char *)));
+	      (std::size_t) repr->n_variable * (sizeof (pending_value) + sizeof (oos_insert_request)));
       error = ER_OUT_OF_VIRTUAL_MEMORY;
     }
   heap_classrepr_free_and_init (repr, &cache_index);

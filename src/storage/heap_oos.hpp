@@ -47,6 +47,9 @@ class heap_oos_value_ref
     int read_into (THREAD_ENTRY *thread_p, oos_buffer destination) const;
 
   private:
+    /* The caller locates and bounds-checks the field before decoding its bytes. */
+    static int decode_stub (const RECDES &record, char *stub, heap_oos_value_ref &ref,
+			    const heap_pending_record *pending);
     enum class kind { memory, disk };
     kind m_kind;
     std::size_t m_length;
