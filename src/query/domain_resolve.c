@@ -3330,7 +3330,7 @@ qexec_consumer_domain (const VAL_DESCR * vd, const TP_DOMAIN * compiled, const D
 int
 qexec_domain_unresolved (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * compiled)
 {
-  return domain_unresolved_error ("", qexec_item_index (vd, item),
+  return domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, item),
 				  compiled != NULL ? TP_DOMAIN_TYPE (compiled) : DB_TYPE_NULL);
 }
 
@@ -4061,6 +4061,19 @@ qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd)
       const bool interpolation = QPROC_IS_INTERPOLATION_FUNC (agg_p);
       const TP_DOMAIN *accumulator = NULL;
       const RESOLVED_DOMAIN *late_bind_node = qexec_late_bind_domain (vd, agg_p->plan_item);
+      if (late_bind_node == NULL && (agg_p->function == PT_SUM || agg_p->function == PT_AVG)
+	  && qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->plan_item) == DB_TYPE_NULL)
+	{
+	  /* an argument the compiler typed NULL - SUM (NULL), SUM (CAST (NULL AS INT)), a CASE whose arms are all
+	   * NULL: the function sees only NULLs and yields NULL, like a function whose resolution has no value; no
+	   * accumulator domain is derived from a NULL (the load's is the NULL domain) */
+	  error = qexec_setup_aggregate_lists (vd, agg_p, NULL);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  continue;
+	}
       if (late_bind_node != NULL && !interpolation && TP_DOMAIN_TYPE (late_bind_node->domain) == DB_TYPE_VARIABLE)
 	{
 	  /* resolve_domains types every aggregate, and no row resolves one; a MEDIAN / PERCENTILE without a type
