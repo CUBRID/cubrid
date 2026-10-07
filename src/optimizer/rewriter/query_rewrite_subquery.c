@@ -237,8 +237,6 @@ static bool
 qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cnf_node, QO_UNNEST_INFO * info)
 {
   PT_NODE *subq, *inner_spec, *on_cond, *cnf, *spec, *save_next, *new_expr = NULL;
-  DB_OBJECT *classop;
-  BTID btid;
   UINTPTR ref;
   int n_outer = 0;
   bool has_direct_join = false, has_subquery = false;
@@ -328,28 +326,6 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
       if (has_subquery)
 	{
 	  return false;
-	}
-
-      /* an uncorrelated IN is unnested only when the item column has an index to search the inner by: a SEMI JOIN
-       * inner is joined by nested loops only, so without one every outer row reads the whole inner, where the
-       * derived table of qo_rewrite_subqueries () is read once and joined by hash */
-      if (!info->is_anti && subq->info.query.correlation_level == 0)
-	{
-	  if (item->node_type != PT_NAME || item->info.name.spec_id != inner_spec->info.spec.id
-	      || item->info.name.original == NULL || inner_spec->info.spec.only_all == PT_ALL
-	      || inner_spec->info.spec.flat_entity_list == NULL || inner_spec->info.spec.flat_entity_list->next != NULL)
-	    {
-	      return false;
-	    }
-
-	  classop = NULL;
-	  PT_SPEC_GET_DB_OBJECT (inner_spec, classop);
-	  if (classop == NULL
-	      || sm_find_index (classop, (char **) &item->info.name.original, 1, false, true, &btid) == NULL
-	      || !sm_is_index_visible (sm_class_constraints (classop), btid))
-	    {
-	      return false;
-	    }
 	}
 
       /* ANTI JOIN keeps a row whose key is NULL where NOT IN drops it.  The item side reads the
