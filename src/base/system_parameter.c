@@ -5408,17 +5408,12 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   /* A second. Waits measured on a connection whose drain is deliberately starved run 0.6-10.8 ms,
-    * so this is about two orders of magnitude above a normal wait and an order below what CUBRID
-    * already spends deciding a peer on this socket has stopped talking (connection_timeout, 5s).
-    * Being too short costs the connection, which is the defect this bounds, so it keeps margin. */
+   /* 1 s: normal waits under a starved drain measured 0.6-10.8 ms */
    {false, {.i = 1000}},
    {false, {.i = 1000}},
-   /* Five seconds, fixed at connection_timeout's default (a client parameter, not read here): the
-    * waiting worker holds the heap page it is scanning, so it should not wait on a peer longer than
-    * CUBRID by default takes to decide that peer has stopped talking. */
+   /* connection_timeout's default: the waiter may hold a heap page latch, so it should not outwait a stalled peer */
    {false, {.i = 5000}},
-   {false, {.i = 0}},		/* 0: drop the connection at once, as before CBRD-27287 */
+   {false, {.i = 0}},		/* 0: close the connection at once, without waiting */
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

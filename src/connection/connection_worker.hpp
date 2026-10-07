@@ -195,12 +195,8 @@ namespace cubconn::connection
 
       void attach ();
 
-      /* may_wait_for_room: this sender's message is one-way, so a full send queue may be waited
-       * out instead of costing the connection. Only the callback channel grants it -- every other
-       * server-to-client sender carries a reply the client is blocked on, and dropping one of those
-       * without closing the connection would leave that client waiting forever. Those senders do
-       * reach a full queue (one the callback path filled), so this is a live decision, not a case
-       * that cannot happen. */
+      /* may_wait_for_room: wait up to send_queue_room_wait_msecs for room before closing the connection. Only the
+       * callback channel passes true; other senders can still meet a queue it filled, and close at once. */
       static unsigned int send_packet (css_conn_entry *conn, const cubbase::span<std::byte> *packet,
 				       std::size_t packet_count, const bool *retain_packet,
 				       std::function<void ()> &&deleter, int wait_time,

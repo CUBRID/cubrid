@@ -761,9 +761,7 @@ css_send_reply_and_data_to_client_direct (CSS_CONN_ENTRY * conn, unsigned int ei
 
   buffer_count = (buffer_size > 0 && buffer != NULL) ? 2 : 1;
 
-  /* xs_callback_send is this function's only caller, so this is exactly the callback channel: the
-   * message does not carry a reply anyone is blocked on, and it is the only sender that can fill a
-   * send queue -- one row-wise PL call spends 4 iovec and never waits for an answer. */
+  /* may_wait_for_room: the only caller is xs_callback_send, whose row-wise PL calls can fill a send queue */
   return css_send_response_buffers_to_client (conn, eid, DATA_TYPE, buffers, buffer_sizes, buffer_count, false,
 					      buffer_count, std::function<void ()> (), 0, true);
 }

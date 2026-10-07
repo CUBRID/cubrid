@@ -72,13 +72,10 @@ namespace cubconn::connection
     return prm_get_integer_value (PRM_ID_CSS_MAX_CONNECTION_WORKER);
   });
 
-  /* One turn of the wait: how long a sender goes without re-reading the connection and the
-   * interrupt flag. send_queue_room_wait_msecs bounds the whole wait, and is provisional -- whether
-   * a full queue should give up at all is a connection-layer policy call; 0 restores dropping. */
+  /* how long a waiting sender goes without re-checking its connection and the interrupt flag */
   static constexpr std::chrono::milliseconds SEND_QUEUE_ROOM_WAIT_TURN (100);
 
-  /* Why a sender stopped waiting. Only ROOM_AVAILABLE goes on to append; the rest are told apart in
-   * the log because they need different answers from whoever reads it. */
+  /* why a sender stopped waiting; anything but ROOM_AVAILABLE is logged as the reason its message was dropped */
   enum class room_wait_result
   {
     ROOM_AVAILABLE,
@@ -95,18 +92,17 @@ namespace cubconn::connection
   static const char *
   room_wait_result_name (room_wait_result r)
   {
-    /* No default: a new reason has to be given a line of its own here rather than folded silently
-     * into an existing one. */
+    /* no default, so -Wswitch flags a new value that has no reason string */
     switch (r)
       {
       case room_wait_result::ROOM_AVAILABLE:
 	return "room is available";
       case room_wait_result::NOT_PERMITTED:
-	return "this sender carries a reply and may not wait";
+	return "only the callback channel may wait";
       case room_wait_result::DISABLED:
 	return "waiting is off (send_queue_room_wait_msecs = 0)";
       case room_wait_result::NOT_INTERRUPTIBLE:
-	return "an interrupt could not be seen from this sender, so the wait has no way out";
+	return "an interrupt cannot reach this sender, so only the timeout could end the wait";
       case room_wait_result::TIMED_OUT:
 	return "no room within send_queue_room_wait_msecs";
       case room_wait_result::INTERRUPTED:
@@ -123,20 +119,7 @@ namespace cubconn::connection
     return "unknown";
   }
 
-  /* Wait for one more iovec of room; conn->cmutex is held on entry and on return.
-   *
-   * A full queue means the producer is ahead of the connection worker draining it. Only the one-way
-   * callback path (xs_callback_send, which does not wait for a reply) can fill one: every other
-   * server-to-client sender is request/response and spends 4-8 iovec per round trip. Those senders
-   * can still find a queue someone else filled, which is why they are declined here rather than
-   * assumed absent. The drain itself (transmitter::fill, from handle_transmission) needs only
-   * conn->cmutex, which this function releases across the wait, so parking here cannot stop it.
-   *
-   * Except while this thread holds conn->rmutex. The worker event loop is serial, and it takes that
-   * mutex in handle_reception and again in the post-send handling of handle_transmission; blocking
-   * the loop there stops the drain for every connection that worker owns, so the wait would
-   * guarantee its own failure. sboot_notify_unregister_client sends with conn->rmutex held on
-   * purpose (CBRD-21375), which is how a sender gets here holding it. */
+  /* waits for one more iovec of room; holds conn->cmutex except while asleep, which is all the drain needs */
   static room_wait_result
   wait_for_send_queue_room (cubthread::entry *thread_p, css_conn_entry *conn, context *ctx,
 			    worker *&owner)
@@ -153,30 +136,23 @@ namespace cubconn::connection
 
     if (thread_p == NULL)
       {
-	/* Neither the rmutex check below nor the interrupt check in the loop can be made without it,
-	 * so waiting cannot be shown to be safe. Decline rather than wait unchecked. */
 	return room_wait_result::NO_THREAD_ENTRY;
       }
 
+    /* the event loop also takes rmutex, so waiting with it held can stall the drain this waits for */
     if (conn->rmutex.owner == thread_p->get_id ())
       {
 	return room_wait_result::RMUTEX_HELD;
       }
 
-    /* The third leg of the same rule: do not wait unless the argument that waiting is safe holds.
-     * While the connection is healthy, only a cancel or a query timeout ends this wait early, and
-     * neither is visible to a sender whose transaction is not active or that has no transaction at
-     * all. Waiting there would be bounded but would answer neither a cancel nor a shutdown. */
+    /* on a live connection only a cancel or a query timeout ends the wait early, and neither reaches a transaction that
+     * is not active */
     if (!logtb_is_current_active (thread_p))
       {
 	return room_wait_result::NOT_INTERRUPTIBLE;
       }
 
-    /* The generation of what this thread is waiting for, read under cmutex. Both the connection
-     * slot and the context are recycled through LIFO free lists (css_dealloc_conn,
-     * pool::retire_context) and the coordinator returns the two together, so the same pair of
-     * addresses can belong to a new client by the time this thread wakes. m_id is the generation
-     * token this file already compares elsewhere (validate_message_generation). */
+    /* conn and ctx are recycled together through LIFO free lists, so m_id tells whether ctx still serves this client */
     ctx_id = ctx->m_id;
 
     std::chrono::steady_clock::time_point deadline =
@@ -188,17 +164,9 @@ namespace cubconn::connection
 	std::chrono::milliseconds remaining;
 	std::chrono::milliseconds turn;
 
-	/* These tests come before each sleep, not only after one. Teardown wakes the senders already
-	 * waiting; a sender that arrives after that would otherwise sleep a whole turn on a connection
-	 * that is already closing. On the first pass the generation tests hold trivially.
-	 *
-	 * A handoff changes only which worker drains this connection, so adopt the new owner rather
-	 * than dropping a healthy one. Anything else leaves these bytes nowhere to go in order.
-	 *
-	 * The order of the tests is load-bearing: the pointer comparison comes before any dereference
-	 * of ctx, which may have been retired to the pool while this thread slept. Past it, ctx is a
-	 * live object, and the generation and back pointer say whether it is still the one this thread
-	 * started out on -- the same triple as validate_message_generation. */
+	/* Checked before every sleep, so a sender arriving after teardown's wake does not sleep a turn on a closing
+	 * connection. A handoff only changes the owner, so adopt it. conn->context != ctx comes before any read of ctx,
+	 * which may have been retired while this thread slept. */
 	owner = conn->worker;
 	if (owner == nullptr || conn->context != ctx || ctx->m_id != ctx_id || ctx->m_conn != conn
 	    || IS_INVALID_SOCKET (conn->fd) || conn->status != CONN_OPEN
@@ -207,8 +175,6 @@ namespace cubconn::connection
 	    return room_wait_result::CONNECTION_GONE;
 	  }
 
-	/* Re-checked rather than assumed: the way out has to still exist for the next turn to be
-	 * safe to take. thread_p is non-null past the entry checks. */
 	if (!logtb_is_current_active (thread_p))
 	  {
 	    return room_wait_result::NOT_INTERRUPTIBLE;
@@ -231,8 +197,6 @@ namespace cubconn::connection
 	    return room_wait_result::TIMED_OUT;
 	  }
 
-	/* A turn is how long the sender goes without re-reading the connection, not an addition to
-	 * the budget: never sleep past the deadline. */
 	remaining = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now);
 	turn = (remaining < SEND_QUEUE_ROOM_WAIT_TURN) ? remaining : SEND_QUEUE_ROOM_WAIT_TURN;
 
@@ -437,8 +401,6 @@ namespace cubconn::connection
 
 	if (!ctx->m_send.m_transmitter.prepare_append (1))
 	  {
-	    /* Only a one-way sender waits. A reply-carrying sender keeps the old behaviour, because
-	     * dropping its message without closing the connection would hang its client. */
 	    room_wait_result waited = may_wait_for_room
 				      ? wait_for_send_queue_room (thread_get_thread_entry_info (), conn, ctx, owner)
 				      : room_wait_result::NOT_PERMITTED;
@@ -453,20 +415,17 @@ namespace cubconn::connection
 		    deleter ();
 		  }
 
-		/* Logged whether or not er_log_debug is on: every one of these ends a client
-		 * connection, and it is the only record of why. */
+		/* unconditional: it is the only record of why a send failed */
 		_er_log_debug (ARG_FILE_LINE, "send queue full for connection %d: %s\n", conn->idx,
 			       room_wait_result_name (waited));
 
 		if (waited == room_wait_result::CONNECTION_GONE)
 		  {
-		    /* Answered like the check on entry to this function, which drops the message and
-		     * returns without asking for a shutdown. The connection this thread was sending on is
-		     * gone, or is already being closed by someone else, and the slot it used may already
-		     * belong to another client, so conn is not ours to close. */
+		    /* like the entry check: the connection is closing or already reused, so conn is not ours to close */
 		    return NO_ERROR;
 		  }
 
+		/* a dropped message must cost the connection, or its client waits for it forever */
 		css_request_shutdown_conn (conn, static_cast<uint8_t> (ignore_level::IGNORE_ALL), false, 0);
 		return INTERNAL_CSS_ERROR;
 	      }
@@ -1065,10 +1024,8 @@ namespace cubconn::connection
 	net_server_wakeup_workers (m_entry, tran_index, client_id);
       }
 
-    /* A sender waiting for room is one of the workers counted below, so the clear further down,
-     * reached only once they are gone, is too late to wake it. CONN_CLOSING is set by now: under
-     * cmutex, a sender is either already waiting and woken here, or reads CONN_CLOSING before it
-     * would sleep. */
+    /* A room waiter is one of the workers counted below, so the clear further down would come too late to wake it.
+     * CONN_CLOSING is already set, so a sender is either woken here or sees it before it sleeps. */
     rmutex_lock (m_entry, &ctx->m_conn->cmutex);
     room = std::move (ctx->m_send.m_room);
     rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
@@ -2430,13 +2387,8 @@ respond:
 
     assert (status == result::Ok || status == result::Pending || status == result::BudgetExhausted);
 
-    /* Only when a sender is waiting, so that with nobody waiting -- always, at
-     * send_queue_room_wait_msecs = 0 -- this path is the one from before CBRD-27287. No wakeup is
-     * lost: a sender registers m_room in the same cmutex hold as the prepare_append that failed
-     * for it, so a null m_room here means no sender is between those two steps.
-     *
-     * And only when there is actually room: a drain that advances inside the first iovec frees no
-     * slot, because prepare_append reclaims only the fully consumed prefix. */
+    /* m_room is registered in the same cmutex hold as the prepare_append that failed, so nullptr means nobody waits and
+     * the drain skips prepare_append. Wake only on a free slot: a drain inside the first iovec frees none. */
     if (ctx->m_send.m_room != nullptr && ctx->m_send.m_transmitter.prepare_append (1))
       {
 	room = std::move (ctx->m_send.m_room);
