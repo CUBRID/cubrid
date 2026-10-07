@@ -82,7 +82,8 @@ namespace hist
     HV2_TYPE       = 20,
     HV2_TOTAL_SIZE = 24,
     /* declared CHAR precision in characters; 0 = unknown (blobs collected before CBRD-27251
-     * wrote this field, or a column whose type carries no padding) */
+     * wrote this field -- it was HV2_RESERVED, always written 0 -- or a column whose type
+     * carries no padding). The reader folds anything outside [0, DB_MAX_CHAR_PRECISION] to 0. */
     HV2_PRECISION  = 28,
     HV2_TOTAL_ROWS = 32,
     HV2_NULL_FREQ  = 40,

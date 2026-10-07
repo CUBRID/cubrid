@@ -1827,7 +1827,7 @@ pattern_heuristic_selectivity (const std::string &pattern, char escape_char)
  * histogram_repad_char_value () - undo the sampler's CHAR normalization for pattern matchers
  *   value(in)            : stored MCV/bucket value (view into the histogram blob)
  *   column_type(in)      : DB_TYPE of the histogram's column
- *   column_precision(in) : declared CHAR length in characters; <= 0 disables re-padding
+ *   repad(in) : column type, declared CHAR length in characters (<= 0 disables re-padding) and charset
  *   column_codeset(in)   : column charset (decides bytes per character)
  *   buf(in/out)          : storage for the padded copy; reused across calls by the caller
  *   return               : value itself when nothing is padded, else a view into buf
@@ -1840,18 +1840,40 @@ pattern_heuristic_selectivity (const std::string &pattern, char escape_char)
  * codeset). A column node without data_type gives no precision -> no re-padding: the estimate
  * then degrades to the stripped comparison instead of guessing a width.
  */
+/* What CHAR re-padding needs to know about the histogram's column: its type and declared width
+ * from the blob header (what the sampler saw), and the charset of the collation the predicate
+ * was resolved under (what the executor compares in). Built once per predicate by
+ * histogram_repad_ctx () and threaded through the match helpers unchanged. */
+struct hist_repad_ctx
+{
+  DB_TYPE type;
+  int precision;
+  INTL_CODESET codeset;
+};
+
+static hist_repad_ctx
+histogram_repad_ctx (const hist::HistogramReader &reader, int collation_id)
+{
+  const LANG_COLLATION *collation = lang_get_collation (collation_id);
+
+  /* a collation id the runtime does not know falls back to the system charset, as the string
+   * layer itself does; the type/width come from the blob, never from the query text */
+  return hist_repad_ctx { reader.value_type (), reader.value_precision (),
+			  (collation != NULL) ? collation->codeset : LANG_SYS_CODESET };
+}
+
 static std::string_view
-histogram_repad_char_value (std::string_view value, DB_TYPE column_type, int column_precision,
-			    INTL_CODESET column_codeset, std::string &buf)
+histogram_repad_char_value (std::string_view value, const hist_repad_ctx &repad, std::string &buf)
 {
   int char_count = 0;
+  const int column_precision = repad.precision;
 
-  if (column_type != DB_TYPE_CHAR || column_precision <= 0 || column_precision > DB_MAX_CHAR_PRECISION)
+  if (repad.type != DB_TYPE_CHAR || column_precision <= 0 || column_precision > DB_MAX_CHAR_PRECISION)
     {
       return value;
     }
 
-  switch (column_codeset)
+  switch (repad.codeset)
     {
     case INTL_CODESET_ISO88591:
     case INTL_CODESET_RAW_BYTES:
@@ -1864,7 +1886,7 @@ histogram_repad_char_value (std::string_view value, DB_TYPE column_type, int col
     }
 
   intl_char_count (reinterpret_cast<const unsigned char *> (value.data ()), static_cast<int> (value.size ()),
-		   column_codeset, &char_count);
+		   repad.codeset, &char_count);
   if (char_count >= column_precision)
     {
       return value;
@@ -1877,7 +1899,7 @@ histogram_repad_char_value (std::string_view value, DB_TYPE column_type, int col
 
 static bool
 like_match_value (const DB_VALUE *pattern_db_value, int src_collation_id, std::string_view value,
-		  DB_TYPE column_type, int column_precision, INTL_CODESET column_codeset, std::string &pad_buf)
+		  const hist_repad_ctx &repad, std::string &pad_buf)
 {
   DB_VALUE src, pattern;
   int res = V_FALSE;
@@ -1885,7 +1907,7 @@ like_match_value (const DB_VALUE *pattern_db_value, int src_collation_id, std::s
   int common_coll_id = -1;
 
   /* the executor matches the padded heap value, not the stripped stored one */
-  value = histogram_repad_char_value (value, column_type, column_precision, column_codeset, pad_buf);
+  value = histogram_repad_char_value (value, repad, pad_buf);
 
   /* Match through the runtime evaluator (db_string_like) so the estimate cannot diverge from
    * execution: it matches '_' per character (not per byte) and folds case under the common
@@ -2063,15 +2085,10 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   int src_coll_id = (lhs_name != NULL && lhs_name->data_type != NULL)
 		    ? lhs_name->data_type->info.data_type.collation_id : db_get_string_collation (rhs_db_value);
 
-  /* Column width and charset for CHAR re-padding (histogram_repad_char_value), both taken from
-   * what describes the column rather than from the query text: the width from the blob the
-   * sampler wrote, the charset from the collation resolved just above. A blob collected before
-   * CBRD-27251 carries width 0, which disables re-padding until the statistics are collected
-   * again. */
-  const DB_TYPE column_type = histogram_reader.value_type ();
-  const int column_precision = histogram_reader.value_precision ();
-  const LANG_COLLATION *src_collation = lang_get_collation (src_coll_id);
-  const INTL_CODESET column_codeset = (src_collation != NULL) ? src_collation->codeset : LANG_SYS_CODESET;
+  /* CHAR re-padding context: width from the blob, charset from the collation resolved just
+   * above. A blob collected before CBRD-27251 carries width 0, which disables re-padding until
+   * the statistics are collected again. */
+  const hist_repad_ctx repad = histogram_repad_ctx (histogram_reader, src_coll_id);
   std::string pad_buf;
 
   /* MCVs: exact LIKE test against each MCV value, weighted by its population frequency. */
@@ -2082,8 +2099,7 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   for (int i = 0; i < static_cast<int> (histogram_reader.mcv_count ()); i++)
     {
       const std::string_view mcv_val = histogram_reader.mcv_hi<std::string_view> (i);
-      if (like_match_value (rhs_db_value, src_coll_id, mcv_val, column_type, column_precision, column_codeset,
-			    pad_buf))
+      if (like_match_value (rhs_db_value, src_coll_id, mcv_val, repad, pad_buf))
 	{
 	  matched_mcv_freq += histogram_reader.mcv_freq (i);
 	}
@@ -2098,8 +2114,8 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   for (int i = 0; i < static_cast<int> (histogram_reader.bucket_count ()); i++)
     {
       non_mcv_buckets += 1.0;
-      if (like_match_value (rhs_db_value, src_coll_id, histogram_reader.bucket_hi<std::string_view> (i),
-			    column_type, column_precision, column_codeset, pad_buf))
+      if (like_match_value (rhs_db_value, src_coll_id, histogram_reader.bucket_hi<std::string_view> (i), repad,
+			    pad_buf))
 	{
 	  matched_non_mcv_buckets += 1.0;
 	}
@@ -2164,14 +2180,14 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
 }
 
 static bool
-rlike_match_string (const cubregex::compiled_regex &reg, std::string_view value, DB_TYPE column_type,
-		    int column_precision, INTL_CODESET column_codeset, std::string &pad_buf)
+rlike_match_string (const cubregex::compiled_regex &reg, std::string_view value, const hist_repad_ctx &repad,
+		    std::string &pad_buf)
 {
   int res = V_FALSE;
   int err;
 
   /* the executor matches the padded heap value, not the stripped stored one (same as LIKE) */
-  value = histogram_repad_char_value (value, column_type, column_precision, column_codeset, pad_buf);
+  value = histogram_repad_char_value (value, repad, pad_buf);
 
   /* cubregex::search () er_set()s on an execution failure (bad codeset, regex_error); like the
    * compile above, a planning probe must not leave that in the global error state -- shield it
@@ -2260,14 +2276,9 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
       return;
     }
 
-  /* Column width and charset for CHAR re-padding (histogram_repad_char_value), both taken from
-   * what describes the column rather than from the query text: the width from the blob the
-   * sampler wrote, the charset from the collation the regex was compiled under. A blob collected before
-   * CBRD-27251 carries width 0, which disables re-padding until the statistics are collected
-   * again. */
-  const DB_TYPE column_type = histogram_reader.value_type ();
-  const int column_precision = histogram_reader.value_precision ();
-  const INTL_CODESET column_codeset = collation->codeset;
+  /* CHAR re-padding context: width from the blob, charset from the collation the regex is
+   * compiled under (common_coll_id, resolved above). */
+  const hist_repad_ctx repad = histogram_repad_ctx (histogram_reader, common_coll_id);
   std::string pad_buf;
 
   /* An invalid pattern must keep raising its error at execution time, not at planning time:
@@ -2289,8 +2300,7 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
 
   for (int i = 0; i < static_cast<int> (histogram_reader.mcv_count ()); i++)
     {
-      if (rlike_match_string (*compiled, histogram_reader.mcv_hi<std::string_view> (i), column_type,
-			      column_precision, column_codeset, pad_buf))
+      if (rlike_match_string (*compiled, histogram_reader.mcv_hi<std::string_view> (i), repad, pad_buf))
 	{
 	  matched_mcv_freq += histogram_reader.mcv_freq (i);
 	}
@@ -2304,8 +2314,7 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
   for (int i = 0; i < static_cast<int> (histogram_reader.bucket_count ()); i++)
     {
       non_mcv_buckets += 1.0;
-      if (rlike_match_string (*compiled, histogram_reader.bucket_hi<std::string_view> (i), column_type,
-			      column_precision, column_codeset, pad_buf))
+      if (rlike_match_string (*compiled, histogram_reader.bucket_hi<std::string_view> (i), repad, pad_buf))
 	{
 	  matched_non_mcv_buckets += 1.0;
 	}

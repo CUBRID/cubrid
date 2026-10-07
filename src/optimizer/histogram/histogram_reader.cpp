@@ -21,6 +21,7 @@
 */
 
 #include "histogram_reader.hpp"
+#include "dbtype_def.h"
 #include <algorithm>
 #include <utility>
 #include "error_manager.h"
@@ -93,11 +94,13 @@ namespace hist
     str_size_   = get_value<std::uint32_t> (base + HV2_STR_SIZE);
     type_       = static_cast<std::uint32_t> (get_value<std::int32_t> (base + HV2_TYPE));
     total_size_ = get_value<std::uint32_t> (base + HV2_TOTAL_SIZE);
-    /* 0 on blobs collected before CBRD-27251 wrote this field; CHAR re-padding treats that as
-     * "width unknown" and skips padding. Clamp a corrupt negative so it can never become a
-     * pad length. */
+    /* This slot was HV2_RESERVED before CBRD-27251 and every v2 builder wrote 0 there (since the
+     * format's first commit, #7286), so a pre-27251 blob reads 0 = "width unknown" and CHAR
+     * re-padding skips it. The sampler only records a width for CHAR columns, whose declared
+     * length is at most DB_MAX_CHAR_PRECISION: anything outside [0, that] is a corrupt header,
+     * and is folded to "unknown" here so it can never become a pad length. */
     precision_  = get_value<std::int32_t> (base + HV2_PRECISION);
-    if (precision_ < 0)
+    if (precision_ < 0 || precision_ > DB_MAX_CHAR_PRECISION)
       {
 	precision_ = 0;
       }
