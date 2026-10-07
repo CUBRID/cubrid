@@ -181,6 +181,7 @@ struct archive_log_header_scan_context
 };
 
 CDC_GLOBAL cdc_Gl;
+LOG_EXTRACT_OWNER cdc_Session_owner = LOG_EXTRACT_OWNER_INITIALIZER;
 bool cdc_Logging = false;
 /* CDC end */
 
@@ -14786,47 +14787,301 @@ end:
 }
 
 /*
- * cdc_check_dba_authorization () - is this connection allowed to drive CDC?
- *   return: true if the requester is a verified DBA.
+ * log_extract_check_authorization () - may this connection read the log through
+ *                                      CDC or flashback?
+ *   return: true if the requester is a DBA for that kind of extraction.
  *   thread_p (in):
+ *   kind (in)    : the extraction the request is for
  *
- * The channel carries no booted client, so it answers a challenge of its own
- * first and only that result is trusted here. logtb_am_i_dba_client() is
- * deliberately not a fallback: no CDC client has a booted connection, so it
- * could only match one sending CDC requests over an SQL connection to skip the
- * challenge.
+ * Decided on the server only, from what the server itself verified:
+ *   LOG_EXTRACT_CDC       - the CDC channel carries no booted client, so only the
+ *                           result of its own challenge counts (the DBA or a
+ *                           member of the DBA group, as the client-side check used
+ *                           to allow). logtb_am_i_dba_client () is deliberately not
+ *                           a fallback: it could only match a client that sends CDC
+ *                           requests over an SQL connection to skip the challenge.
+ *   LOG_EXTRACT_FLASHBACK - flashback runs on a booted client connection, whose
+ *                           user the server keeps; the DBA account, as before.
  */
 bool
-cdc_check_dba_authorization (THREAD_ENTRY * thread_p)
+log_extract_check_authorization (THREAD_ENTRY * thread_p, LOG_EXTRACT_KIND kind)
 {
 #if defined (SERVER_MODE)
-  return (thread_p->conn_entry != NULL && thread_p->conn_entry->cdc_auth_done);
+  if (thread_p->conn_entry == NULL)
+    {
+      return false;
+    }
+
+  switch (kind)
+    {
+    case LOG_EXTRACT_CDC:
+      return thread_p->conn_entry->cdc_auth_done;
+    case LOG_EXTRACT_FLASHBACK:
+      return logtb_am_i_dba_client (thread_p);
+    default:
+      assert (false);
+      return false;
+    }
+#else
+  return false;
+#endif
+}
+
+#if defined (SERVER_MODE)
+/*
+ * log_extract_owner_is_alive () - is the connection recorded as the owner still open?
+ *   owner (in): caller holds owner->lock
+ *
+ * A closed connection gets its fd invalidated before its entry is reused, so it
+ * drops out of css_find_conn_from_fd (); client_id rules out a later connection
+ * that was handed the same fd.
+ */
+static bool
+log_extract_owner_is_alive (const LOG_EXTRACT_OWNER * owner)
+{
+  CSS_CONN_ENTRY *conn;
+  bool alive;
+  int r;
+
+  if (owner->fd == INVALID_SOCKET)
+    {
+      return false;
+    }
+
+  conn = css_find_conn_from_fd (owner->fd);
+  if (conn == NULL)
+    {
+      return false;
+    }
+
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  alive = (conn->status == CONN_OPEN && conn->fd == owner->fd && conn->client_id == owner->client_id);
+
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  return alive;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * log_extract_owner_claim () - make the calling connection the owner of a session,
+ *                              serving its first request
+ *   return: true if the caller now owns the session; false if takeover is not
+ *           allowed and a live connection still owns it.
+ *   owner (in/out)      :
+ *   thread_p (in)       :
+ *   takeover (in)       : take the session over even from a live owner
+ *   prev_fd (out)       : the previous owner's fd, INVALID_SOCKET if none (may be NULL)
+ *   prev_client_id (out): the previous owner's client id (may be NULL)
+ *
+ * An owner whose connection is gone is replaced either way: that is how a session
+ * left behind by a client that terminated abnormally is recovered. The caller
+ * ends the request it is serving with log_extract_owner_end_request (), or drops
+ * the session with log_extract_owner_release ().
+ */
+bool
+log_extract_owner_claim (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p, bool takeover, SOCKET * prev_fd,
+			 int *prev_client_id)
+{
+#if defined (SERVER_MODE)
+  pthread_mutex_lock (&owner->lock);
+
+  if (!takeover && log_extract_owner_is_alive (owner))
+    {
+      pthread_mutex_unlock (&owner->lock);
+      return false;
+    }
+
+  if (prev_fd != NULL)
+    {
+      *prev_fd = owner->fd;
+    }
+  if (prev_client_id != NULL)
+    {
+      *prev_client_id = owner->client_id;
+    }
+
+  owner->fd = thread_p->conn_entry->fd;
+  owner->client_id = thread_p->conn_entry->client_id;
+  owner->busy = true;
+
+  pthread_mutex_unlock (&owner->lock);
+  return true;
 #else
   return false;
 #endif
 }
 
 /*
- * cdc_check_session_owner () - is the calling connection the one that opened the
- *   active CDC session with scdc_start_session()?
- *   return: true if there is an active session and this connection owns it.
- *   thread_p (in):
- *
- * CBRD-27436: scdc_start_session() is the only CDC request that carries a
- * client-declared identity to check with cdc_check_dba_authorization(); every
- * other CDC request (FIND_LSA, GET_LOGINFO_METADATA, GET_LOGINFO, END_SESSION)
- * had no authorization of any kind, so a client could skip START_SESSION
- * entirely and reach them directly. Only a DBA-authorized connection can ever
- * become cdc_Gl's owner (scdc_start_session enforces that), so requiring the
- * caller to BE that owner is sufficient here and needs no new wire field on
- * these requests (which would reopen the CDC wire-compatibility question for
- * four more opcodes instead of the one).
+ * log_extract_owner_is_owner () - is the calling connection the one that opened
+ *                                 the session?
  */
 bool
-cdc_check_session_owner (THREAD_ENTRY * thread_p)
+log_extract_owner_is_owner (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
 {
-  return (cdc_Gl.conn.fd != -1
-	  && thread_p->conn_entry->fd == cdc_Gl.conn.fd && thread_p->conn_entry->client_id == cdc_Gl.conn.client_id);
+  bool is_owner;
+
+  pthread_mutex_lock (&owner->lock);
+  is_owner = log_extract_owner_is_owner_locked (owner, thread_p);
+  pthread_mutex_unlock (&owner->lock);
+
+  return is_owner;
+}
+
+/*
+ * log_extract_owner_is_active () - does a live connection own the session?
+ */
+bool
+log_extract_owner_is_active (LOG_EXTRACT_OWNER * owner)
+{
+#if defined (SERVER_MODE)
+  bool active;
+
+  pthread_mutex_lock (&owner->lock);
+  active = log_extract_owner_is_alive (owner);
+  pthread_mutex_unlock (&owner->lock);
+
+  return active;
+#else
+  return false;
+#endif
+}
+
+/*
+ * log_extract_owner_begin_request () - start serving a request of the session's owner
+ *   return: false if the caller is not the owner, or another of its requests is
+ *           still being served.
+ *
+ * The client libraries wait for each reply before they send the next request, so
+ * a second request arriving while one is served does not come from a normal
+ * client; refusing it here keeps two requests off the one session state.
+ */
+bool
+log_extract_owner_begin_request (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
+{
+  bool begun = false;
+
+  pthread_mutex_lock (&owner->lock);
+  if (log_extract_owner_is_owner_locked (owner, thread_p) && !owner->busy)
+    {
+      owner->busy = true;
+      begun = true;
+    }
+  pthread_mutex_unlock (&owner->lock);
+
+  return begun;
+}
+
+/*
+ * log_extract_owner_end_request () - finish the request started by
+ *   log_extract_owner_begin_request () or log_extract_owner_claim (). Does nothing
+ *   if another connection has taken the session over meanwhile.
+ */
+void
+log_extract_owner_end_request (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
+{
+  pthread_mutex_lock (&owner->lock);
+  if (log_extract_owner_is_owner_locked (owner, thread_p))
+    {
+      owner->busy = false;
+    }
+  pthread_mutex_unlock (&owner->lock);
+}
+
+/*
+ * log_extract_owner_release () - drop the session if the caller owns it
+ *   return: true if it did.
+ */
+bool
+log_extract_owner_release (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
+{
+  bool released = false;
+
+  pthread_mutex_lock (&owner->lock);
+  if (log_extract_owner_is_owner_locked (owner, thread_p))
+    {
+      log_extract_owner_clear_locked (owner);
+      released = true;
+    }
+  pthread_mutex_unlock (&owner->lock);
+
+  return released;
+}
+
+/*
+ * log_extract_owner_lock () / log_extract_owner_unlock () - for a caller that has to
+ *   change its own session state atomically with an ownership check, together
+ *   with the *_locked functions below.
+ */
+void
+log_extract_owner_lock (LOG_EXTRACT_OWNER * owner)
+{
+  pthread_mutex_lock (&owner->lock);
+}
+
+void
+log_extract_owner_unlock (LOG_EXTRACT_OWNER * owner)
+{
+  pthread_mutex_unlock (&owner->lock);
+}
+
+bool
+log_extract_owner_is_owner_locked (const LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  return (owner->fd != INVALID_SOCKET && thread_p->conn_entry != NULL && thread_p->conn_entry->fd == owner->fd
+	  && thread_p->conn_entry->client_id == owner->client_id);
+#else
+  return false;
+#endif
+}
+
+void
+log_extract_owner_clear_locked (LOG_EXTRACT_OWNER * owner)
+{
+  owner->fd = INVALID_SOCKET;
+  owner->client_id = -1;
+  owner->busy = false;
+}
+
+/*
+ * log_extract_match_lsa () - classify a resume position a client sent back
+ *   return: which server-issued position it is, whether it lies inside the
+ *           session's range, or rejected.
+ *   lsa (in)        : the position from the request
+ *   issued (in)     : the position handed out last (NULL or a NULL LSA if none)
+ *   previous (in)   : the one handed out before it (NULL or a NULL LSA if none)
+ *   range_start (in): the range the session was opened for (NULL if none)
+ *   range_end (in)  :
+ *
+ * The CDC and flashback clients send back the positions the server handed out,
+ * so a request is checked against what the server remembers before any log page
+ * is read for it.
+ */
+LOG_EXTRACT_LSA_MATCH
+log_extract_match_lsa (const LOG_LSA * lsa, const LOG_LSA * issued, const LOG_LSA * previous,
+		       const LOG_LSA * range_start, const LOG_LSA * range_end)
+{
+  if (issued != NULL && !LSA_ISNULL (issued) && LSA_EQ (lsa, issued))
+    {
+      return LOG_EXTRACT_LSA_ISSUED;
+    }
+
+  if (previous != NULL && !LSA_ISNULL (previous) && LSA_EQ (lsa, previous))
+    {
+      return LOG_EXTRACT_LSA_PREVIOUS;
+    }
+
+  if (range_start != NULL && range_end != NULL && !LSA_ISNULL (range_start) && !LSA_ISNULL (range_end)
+      && LSA_GE (lsa, range_start) && LSA_LE (lsa, range_end))
+    {
+      return LOG_EXTRACT_LSA_IN_RANGE;
+    }
+
+  return LOG_EXTRACT_LSA_REJECTED;
 }
 
 int
@@ -15736,9 +15991,9 @@ end:
 int
 cdc_initialize ()
 {
-  cdc_Gl.conn.fd = -1;
-  cdc_Gl.conn.status = CONN_CLOSED;
-  cdc_Gl.conn.client_id = -1;
+  log_extract_owner_lock (&cdc_Session_owner);
+  log_extract_owner_clear_locked (&cdc_Session_owner);
+  log_extract_owner_unlock (&cdc_Session_owner);
 
   cdc_Gl.producer.extraction_user = NULL;
   cdc_Gl.producer.extraction_classoids = NULL;

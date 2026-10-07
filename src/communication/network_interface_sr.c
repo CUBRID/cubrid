@@ -10510,15 +10510,8 @@ ssession_stop_attached_threads (THREAD_ENTRY * thread_p, void *session, bool is_
 static bool
 cdc_check_client_connection ()
 {
-  if (css_check_conn (&cdc_Gl.conn) == NO_ERROR)
-    {
-      /* existing connection is alive */
-      return true;
-    }
-  else
-    {
-      return false;
-    }
+  /* is the connection that opened the CDC session alive? */
+  return log_extract_owner_is_active (&cdc_Session_owner);
 }
 #endif /* ENABLE_UNUSED_FUNCTION */
 
@@ -11055,6 +11048,10 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   char *dummy_user = NULL;
   char *cdc_db_user = NULL;
 
+  SOCKET prev_fd = INVALID_SOCKET;
+  int prev_client_id = -1;
+  bool session_claimed = false;
+
   if (prm_get_integer_value (PRM_ID_SUPPLEMENTAL_LOG) == 0)
     {
       error_code = ER_CDC_NOT_AVAILABLE;
@@ -11079,7 +11076,7 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       error_code = ER_NET_DATASIZE_MISMATCH;
       goto error;
     }
-  if (!cdc_check_dba_authorization (thread_p))
+  if (!log_extract_check_authorization (thread_p, LOG_EXTRACT_CDC))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
       error_code = ER_AU_DBA_ONLY;
@@ -11194,19 +11191,20 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
     ("%s : max_log_item (%d), extraction_timeout (%d), all_in_cond (%d), num_extraction_user (%d), num_extraction_class (%d)",
      __func__, max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class);
 
-  /* Only now, fully validated, do we affect *other* connections: close an
-   * incumbent session and take cdc_Gl.conn (used by cdc_check_session_owner()
-   * for every other CDC opcode). Doing this earlier would let a request that
-   * fails a later check still kill a running consumer for nothing.
+  /* Only now, fully validated, do we affect *other* connections: take the session
+   * (checked by log_extract_owner_is_owner () for every other CDC opcode) and close
+   * an incumbent one. Doing this earlier would let a request that fails a later
+   * check still kill a running consumer for nothing. CDC takes a session over
+   * even from a live owner: a restarted client must be able to reconnect.
    *
    * The producer has to be paused before cdc_set_configuration() below, which
    * frees the extraction filter the producer reads in cdc_is_filtered_user()
    * and cdc_is_filtered_class(). */
-  if (cdc_Gl.conn.fd != -1)
-    {
-      SOCKET prev_fd = cdc_Gl.conn.fd;
-      int prev_client_id = cdc_Gl.conn.client_id;
+  (void) log_extract_owner_claim (&cdc_Session_owner, thread_p, true, &prev_fd, &prev_client_id);
+  session_claimed = true;
 
+  if (prev_fd != INVALID_SOCKET)
+    {
       if (thread_p->conn_entry->fd != prev_fd)
 	{
 	  /* A new client is requesting a session while the previous one still holds the CDC connection.
@@ -11247,9 +11245,7 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
       goto error;
     }
 
-  cdc_Gl.conn.fd = thread_p->conn_entry->fd;
-  cdc_Gl.conn.status = thread_p->conn_entry->status;
-  cdc_Gl.conn.client_id = thread_p->conn_entry->client_id;
+  log_extract_owner_end_request (&cdc_Session_owner, thread_p);
 
   or_pack_int (reply, error_code);
 
@@ -11258,6 +11254,13 @@ scdc_start_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, in
   return;
 
 error:
+
+  if (session_claimed)
+    {
+      /* The session was taken but could not be set up; leave it ownerless rather
+       * than owned by a connection the client was just told failed. */
+      (void) log_extract_owner_release (&cdc_Session_owner, thread_p);
+    }
 
   if (extraction_user != NULL)
     {
@@ -11296,7 +11299,7 @@ scdc_find_lsa (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int req
 
   /* CBRD-27436: unlike scdc_start_session(), this request had no identity
    * check at all -- a client could skip START_SESSION and reach it directly. */
-  if (!cdc_check_session_owner (thread_p))
+  if (!log_extract_owner_is_owner (&cdc_Session_owner, thread_p))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
       error_code = ER_AU_DBA_ONLY;
@@ -11377,12 +11380,13 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
   char *log_info_list;
   int error_code = NO_ERROR;
   int num_log_info;
+  LOG_EXTRACT_LSA_MATCH lsa_match;
 
   int rc;
 
   /* CBRD-27436: unguarded -- a client could skip CDC_START_SESSION entirely
    * and reach it directly (see scdc_find_lsa()). */
-  if (!cdc_check_session_owner (thread_p))
+  if (!log_extract_owner_is_owner (&cdc_Session_owner, thread_p))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
       error_code = ER_AU_DBA_ONLY;
@@ -11427,7 +11431,9 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
       cdc_wakeup_producer ();
     }
 
-  if (LSA_EQ (&cdc_Gl.consumer.next_lsa, &start_lsa))
+  /* the client resumes from the next position handed out, or asks for the last bundle again */
+  lsa_match = log_extract_match_lsa (&start_lsa, &cdc_Gl.consumer.next_lsa, &cdc_Gl.consumer.start_lsa, NULL, NULL);
+  if (lsa_match == LOG_EXTRACT_LSA_ISSUED)
     {
       error_code = cdc_make_loginfo (thread_p, &start_lsa);
       if (error_code != NO_ERROR)
@@ -11441,7 +11447,7 @@ scdc_get_loginfo_metadata (THREAD_ENTRY * thread_p, unsigned int rid, char *requ
 	  goto error;
 	}
     }
-  else if (LSA_EQ (&cdc_Gl.consumer.start_lsa, &start_lsa))
+  else if (lsa_match == LOG_EXTRACT_LSA_PREVIOUS)
     {
       /* Send again; only the case, where cdc client re-request loginfo metadata requested last time due to a problem like shutdown, will be dealt. */
       error_code = cdc_get_loginfo_metadata (&next_lsa, &total_length, &num_log_info);
@@ -11488,7 +11494,7 @@ scdc_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
    * scdc_find_lsa()). This reply carries no error-code framing, so report the
    * rejection in the packet header and answer with an empty buffer: the caller
    * fails immediately instead of waiting out its extraction timeout. */
-  if (!cdc_check_session_owner (thread_p))
+  if (!log_extract_owner_is_owner (&cdc_Session_owner, thread_p))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
       thread_p->conn_entry->db_error = ER_AU_DBA_ONLY;
@@ -11513,7 +11519,7 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
 
   /* CBRD-27436: unguarded -- any client could end a session it never started,
    * force-disconnecting a legitimate consumer. Check ownership first. */
-  if (!cdc_check_session_owner (thread_p))
+  if (!log_extract_owner_is_owner (&cdc_Session_owner, thread_p))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_AU_DBA_ONLY, 1, "cdc");
       error_code = ER_AU_DBA_ONLY;
@@ -11526,9 +11532,7 @@ scdc_end_session (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int 
 
   cdc_log ("%s : clean up for cdc thread has done.", __func__);
 
-  cdc_Gl.conn.fd = -1;
-  cdc_Gl.conn.status = CONN_CLOSED;
-  cdc_Gl.conn.client_id = -1;
+  (void) log_extract_owner_release (&cdc_Session_owner, thread_p);
 
   or_pack_int (reply, error_code);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
