@@ -11054,8 +11054,6 @@ heap_recdes_get_oos_inline_stub (const RECDES * recdes, int location, char **stu
   int this_offset;
   int next_offset;
 
-  *stub_out = NULL;
-
   /* The entry after this one bounds the field; both entries must lie inside the record before either is read. */
   if (location > (recdes->length - header_size) / offset_size - 2)
     {
@@ -13307,7 +13305,7 @@ heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_
   if (status == S_SUCCESS)
     {
       record->set_type (REC_HOME);
-      pending->prepared ();
+      pending->mark_prepared ();
     }
   return status;
 }
@@ -15947,11 +15945,15 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, LC_COP
        * instances that belong to other classes
        */
 
+      /* Optional prefetch copies raw page records while holding the heap latch.
+       * Skip OOS neighbors; ordinary fetch expands them before publication. */
       /* Check to the right */
       if (direction == HEAP_DIRECTION_RIGHT || direction == HEAP_DIRECTION_BOTH)
 	{
 	  scan = spage_next_record (pgptr, &right_slotid, prefetch->recdes, COPY);
-	  if (scan == S_SUCCESS && spage_get_record_type (pgptr, right_slotid) == REC_HOME)
+	  if (scan == S_SUCCESS && spage_get_record_type (pgptr, right_slotid) == REC_HOME
+	      && (OID_IS_ROOTOID (class_oid)
+		  || (heap_recdes_has_valid_header (prefetch->recdes) && !heap_recdes_contains_oos (prefetch->recdes))))
 	    {
 	      prefetch->mobjs->num_objs++;
 	      COPY_OID (&((*prefetch->obj)->class_oid), class_oid);
@@ -15979,7 +15981,9 @@ heap_prefetch (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid, LC_COP
 	{
 	  scan = spage_previous_record (pgptr, &left_slotid, prefetch->recdes, COPY);
 	  if (scan == S_SUCCESS && left_slotid != HEAP_HEADER_AND_CHAIN_SLOTID
-	      && spage_get_record_type (pgptr, left_slotid) == REC_HOME)
+	      && spage_get_record_type (pgptr, left_slotid) == REC_HOME
+	      && (OID_IS_ROOTOID (class_oid)
+		  || (heap_recdes_has_valid_header (prefetch->recdes) && !heap_recdes_contains_oos (prefetch->recdes))))
 	    {
 	      prefetch->mobjs->num_objs++;
 	      COPY_OID (&((*prefetch->obj)->class_oid), class_oid);

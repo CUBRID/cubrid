@@ -54,6 +54,7 @@
 
 #include "mvcc.h"
 #include "object_representation.h"
+#include "object_representation_sr.h"
 #include "vacuum.h"
 #include "xserver_interface.h"
 
@@ -92,7 +93,27 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
   assert (n_oos > 0);
   assert ((int) oos_lengths.size () == n_oos);
 
-  const int vot_bytes = (n_oos + 1) * VOT_ENTRY_SZ;	/* one entry per attribute plus the terminator */
+  /* Match the borrowed class representation at the logical-write validation boundary. */
+  OID borrowed_class = OID_INITIALIZER;
+  if (xlocator_find_class_oid (thread_p, "db_user", &borrowed_class, NULL_LOCK) != LC_CLASSNAME_EXIST)
+    {
+      return ER_FAILED;
+    }
+  int cache_index = -1;
+  OR_CLASSREP *repr = heap_classrepr_get (thread_p, &borrowed_class, nullptr, NULL_REPRID, &cache_index);
+  if (repr == nullptr)
+    {
+      return ER_FAILED;
+    }
+  const int n_var = repr->n_variable;
+  const int repr_id = repr->id;
+  heap_classrepr_free_and_init (repr, &cache_index);
+  if (n_var < n_oos)
+    {
+      return ER_FAILED;
+    }
+
+  const int vot_bytes = (n_var + 1) * VOT_ENTRY_SZ;	/* one entry per attribute plus the terminator */
   const int data_bytes = n_oos * OOS_INLINE_SZ;
   const int total = HEAP_HDR_SIZE + vot_bytes + data_bytes;
 
@@ -109,7 +130,7 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
   char *base = rec_out.data;
 
   /* 1. rep_and_flags: OOS flag + 4-byte offset size */
-  int rep_and_flags = (OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS) | OR_OFFSET_SIZE_4BYTE;
+  int rep_and_flags = repr_id | (OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS) | OR_OFFSET_SIZE_4BYTE;
   OR_PUT_INT (base + OR_REP_OFFSET, rep_and_flags);
 
   /* 2. CHN = 0 (already zeroed) */
@@ -122,7 +143,11 @@ build_heap_recdes_with_oos (const std::vector<OID> &oos_oids,
     {
       OR_PUT_INT (vot + i * VOT_ENTRY_SZ, OR_SET_VAR_OOS (vot_bytes + i * OOS_INLINE_SZ));
     }
-  OR_PUT_INT (vot + n_oos * VOT_ENTRY_SZ, OR_SET_VAR_LAST_ELEMENT (vot_bytes + n_oos * OOS_INLINE_SZ));
+  for (int i = n_oos; i <= n_var; ++i)
+    {
+      const int offset = vot_bytes + n_oos * OOS_INLINE_SZ;
+      OR_PUT_INT (vot + i * VOT_ENTRY_SZ, i == n_var ? OR_SET_VAR_LAST_ELEMENT (offset) : offset);
+    }
 
   /* 4. OOS inline stub: OID (8b) + length (8b) + identity stamp (8b) per column. Every caller in
    * this file embeds OIDs of really inserted chunks, so the true stamp is always readable

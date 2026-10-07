@@ -32,6 +32,7 @@
 #include "log_impl.h"
 #include "class_object.h"
 #include "locator_cl.h"
+#include "work_space.h"
 #include "xserver_interface.h"
 #include "object_representation.h"
 #include "object_representation_sr.h"
@@ -680,6 +681,70 @@ TEST_F (OosSqlShow, RawClientUpdatePreservesUnassignedValuesAndRollsBackFailure)
 			       "data_col=CAST(REPEAT('BC',50000) AS BIT VARYING)", &matches), NO_ERROR);
   EXPECT_EQ (matches, 1);
 #endif
+}
+
+TEST_F (OosSqlShow, PrefetchSkipsUnexpandedOosNeighbors)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, data_col BIT VARYING STORAGE FORCE_OUTLINE)"), 0);
+  DB_OBJECT *cls = db_find_class ("t_oos_show_yes");
+  OID rows[3];
+  const std::string bytes (50000, '\xAC');
+  for (int i = 0; i < 3; ++i)
+    {
+      DB_OBJECT *row = db_create (cls);
+      ASSERT_NE (row, nullptr);
+      DB_VALUE value;
+      db_make_int (&value, i);
+      ASSERT_EQ (db_put (row, "id", &value), NO_ERROR);
+      if (i == 1)
+	{
+	  db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, bytes.data (), bytes.size () * 8);
+	  ASSERT_EQ (db_put (row, "data_col", &value), NO_ERROR);
+	}
+      ASSERT_EQ (locator_flush_instance (row), NO_ERROR);
+      OID *row_oid = ws_identifier (row);
+      ASSERT_NE (row_oid, nullptr);
+      rows[i] = *row_oid;
+    }
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  ASSERT_EQ (rows[0].pageid, rows[1].pageid);
+  ASSERT_EQ (rows[1].pageid, rows[2].pageid);
+  OID class_oid = *db_identifier (cls);
+  for (int primary :
+       {
+	       0, 2
+       })
+    {
+      LC_COPYAREA *area = locator_allocate_copy_area_by_length (2 * DB_PAGESIZE);
+      ASSERT_NE (area, nullptr);
+      LC_COPYAREA_MANYOBJS *many = LC_MANYOBJS_PTR_IN_COPYAREA (area);
+      many->num_objs = 0;
+      LC_COPYAREA_ONEOBJ *obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (many);
+      int offset = 0;
+      RECDES recdes = RECDES_INITIALIZER;
+      recdes.data = area->mem;
+      recdes.area_size = area->length - sizeof (*many);
+      LC_COPYAREA_DESC prefetch = { many, &obj, &offset, &recdes };
+      ASSERT_EQ (heap_prefetch (thread_get_thread_entry_info (), &class_oid, &rows[primary], &prefetch), NO_ERROR);
+      obj = LC_START_ONEOBJ_PTR_IN_COPYAREA (many);
+      bool inline_neighbor = false;
+      for (int i = 0; i < many->num_objs; ++i, obj = LC_NEXT_ONEOBJ_PTR_IN_COPYAREA (obj))
+	{
+	  if (obj->operation != LC_FETCH || !OID_EQ (&obj->class_oid, &class_oid))
+	    {
+	      continue;
+	    }
+	  RECDES view = RECDES_INITIALIZER;
+	  view.data = area->mem + obj->offset;
+	  view.length = obj->length;
+	  EXPECT_TRUE (heap_recdes_has_valid_header (&view));
+	  EXPECT_FALSE (heap_recdes_contains_oos (&view));
+	  EXPECT_FALSE (OID_EQ (&obj->oid, &rows[1]));
+	  inline_neighbor |= OID_EQ (&obj->oid, &rows[2 - primary]);
+	}
+      EXPECT_TRUE (inline_neighbor);
+      locator_free_copy_area (area);
+    }
 }
 
 TEST_F (OosSqlShow, PendingReferencesResolveAndFinalizeInPlace)
