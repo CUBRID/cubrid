@@ -4653,12 +4653,18 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	{
 	  /*
 	   * The parameter values on the client (prm_Def) are process-wide and shared with the main client and
-	   * the other sub-clients, so a sub-client must not rewrite them. The session of a sub-client is created
-	   * with cached_session_parameters loaded by the main client.
-	   *
-	   * TODO: keep the session parameter values of a sub-client per connection on the client
-	   *       (see db_set_system_parameters ()).
+	   * the other sub-clients, so a sub-client must not rewrite them. Keep the session parameter values of
+	   * this sub-client in its own thread-local array instead (see sysprm_set_sub_client_session_parameters ()).
+	   * The session of a new sub-client is created with cached_session_parameters loaded by the main client.
 	   */
+	  error = sysprm_set_sub_client_session_parameters (update_parameter_values ? session_params :
+							    cached_session_parameters);
+	  if (error != NO_ERROR)
+	    {
+	      sysprm_free_session_parameters (&session_params);
+	      free_and_init (request);
+	      return error;
+	    }
 	}
       else
 #endif

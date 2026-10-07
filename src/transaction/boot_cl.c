@@ -1686,6 +1686,8 @@ boot_finalize_client_sub (void)
   /* boot_Is_client_all_final is for the process-wide modules, so it is not touched by a sub-client */
   boot_Is_sub_client = false;
 
+  /* session parameter values of this sub-client (see sysprm_set_sub_client_session_parameters ()) */
+  sysprm_free_sub_client_session_parameters ();
 
   if (boot_Server_credential.db_full_name)
     {
