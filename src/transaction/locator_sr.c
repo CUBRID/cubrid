@@ -4943,23 +4943,27 @@ error3:
 }
 
 /* *INDENT-OFF* */
-/* Copy-area rows already contain routable values. Convert only after destination
- * selection, without repeating workspace LOB copies or advancing its header. */
+/* Complete the row after destination selection, before heap/index writes.
+ * Copy-area adaptation preserves workspace LOB effects and the current header;
+ * the enclosing caller keeps the received owner and converted view alive. */
 static int
-locator_prepare_copyarea_record (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES **record,
-                                heap_pending_record *owner, RECDES *converted)
+locator_finalize_oos_record (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES **record,
+                            bool from_copyarea, heap_pending_record *pending,
+                            heap_pending_record *received, RECDES *converted)
 {
-  if (!catcls_Enable || OID_IS_ROOTOID (class_oid) || oid_is_system_class (class_oid) || (*record)->length <= 0)
+  if (from_copyarea && catcls_Enable && !OID_IS_ROOTOID (class_oid)
+      && !oid_is_system_class (class_oid) && (*record)->length > 0)
     {
-      return NO_ERROR;
-    }
-  int error = heap_prepare_oos_record (thread_p, class_oid, *record, owner);
-  if (error == NO_ERROR)
-    {
-      *converted = owner->get_recdes ();
+      int error = heap_prepare_oos_record (thread_p, class_oid, *record, received);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      *converted = received->get_recdes ();
       *record = converted;
+      pending = received;
     }
-  return error;
+  return heap_oos_finalize_record (thread_p, class_oid, *record, pending);
 }
 /* *INDENT-ON* */
 
@@ -5088,18 +5092,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
     }
 
-  if (from_copyarea)
-    {
-      error_code = locator_prepare_copyarea_record (thread_p, &real_class_oid, &recdes, &received, &converted);
-      if (received.is_prepared ())
-	{
-	  pending = &received;
-	}
-    }
-  if (error_code == NO_ERROR)
-    {
-      error_code = heap_oos_finalize_record (thread_p, &real_class_oid, recdes, pending);
-    }
+  error_code = locator_finalize_oos_record (thread_p, &real_class_oid, &recdes, from_copyarea,
+					    pending, &received, &converted);
   if (error_code != NO_ERROR)
     {
       goto error2;
@@ -6108,18 +6102,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	    }
 	}
 
-      if (from_copyarea)
-	{
-	  error_code = locator_prepare_copyarea_record (thread_p, class_oid, &recdes, &received, &converted);
-	  if (received.is_prepared ())
-	    {
-	      pending = &received;
-	    }
-	}
-      if (error_code == NO_ERROR)
-	{
-	  error_code = heap_oos_finalize_record (thread_p, class_oid, recdes, pending);
-	}
+      error_code = locator_finalize_oos_record (thread_p, class_oid, &recdes, from_copyarea,
+						pending, &received, &converted);
       if (error_code != NO_ERROR)
 	{
 	  goto error;
