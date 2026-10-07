@@ -334,7 +334,7 @@ logwr_read_log_header (void)
 	      return error;
 	    }
 
-	  memcpy (&logwr_Gl.hdr, log_pgptr->area, sizeof (LOG_HEADER));
+	  memcpy ((void *) &logwr_Gl.hdr, log_pgptr->area, sizeof (LOG_HEADER));
 
 	  assert (log_pgptr->hdr.logical_pageid == LOGPB_HEADER_PAGE_ID);
 	  assert (log_pgptr->hdr.offset == NULL_OFFSET);
@@ -662,7 +662,7 @@ logwr_set_hdr_and_flush_info (void)
   if (num_toflush > 0)
     {
       log_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
-      memcpy (&logwr_Gl.hdr, log_pgptr->area, sizeof (LOG_HEADER));
+      memcpy ((void *) &logwr_Gl.hdr, log_pgptr->area, sizeof (LOG_HEADER));
       logwr_Gl.loghdr_pgptr = log_pgptr;
 
       /* Initialize archive info if it is not set */
@@ -692,7 +692,7 @@ logwr_set_hdr_and_flush_info (void)
 	  logwr_Gl.last_arv_lpageid = logwr_Gl.hdr.nxarv_pageid - 1;
 	}
 
-      if (last_pgptr != NULL && last_pgptr->hdr.logical_pageid < logwr_Gl.hdr.eof_lsa.pageid)
+      if (last_pgptr != NULL && last_pgptr->hdr.logical_pageid < logwr_Gl.hdr.eof_lsa.load ().pageid)
 	{
 	  /* There are left several pages to get from the server */
 	  logwr_Gl.last_recv_pageid = last_pgptr->hdr.logical_pageid;
@@ -700,7 +700,7 @@ logwr_set_hdr_and_flush_info (void)
 	}
       else
 	{
-	  logwr_Gl.last_recv_pageid = logwr_Gl.hdr.eof_lsa.pageid;
+	  logwr_Gl.last_recv_pageid = logwr_Gl.hdr.eof_lsa.load ().pageid;
 
 	  if (logwr_Gl.action & LOGWR_ACTION_DELAYED_WRITE)
 	    {
@@ -714,7 +714,7 @@ logwr_set_hdr_and_flush_info (void)
       /* If it gets only the header page, compares both of the headers. There is no update for the header information */
       LOG_HEADER hdr;
       log_pgptr = (LOG_PAGE *) logwr_Gl.logpg_area;
-      memcpy (&hdr, log_pgptr->area, sizeof (LOG_HEADER));
+      memcpy ((void *) &hdr, log_pgptr->area, sizeof (LOG_HEADER));
 
       if (hdr.ha_server_state != HA_SERVER_STATE_ACTIVE && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_ACTIVE
 	  && hdr.ha_server_state != HA_SERVER_STATE_TO_BE_STANDBY
@@ -743,7 +743,7 @@ logwr_set_hdr_and_flush_info (void)
       else
 	{
 	  /* To get the last page again, decrease last pageid */
-	  logwr_Gl.last_recv_pageid = logwr_Gl.hdr.eof_lsa.pageid - 1;
+	  logwr_Gl.last_recv_pageid = logwr_Gl.hdr.eof_lsa.load ().pageid - 1;
 	}
     }
   if (logwr_Gl.hdr.ha_file_status != LOG_HA_FILESTAT_SYNCHRONIZED)
@@ -1527,7 +1527,7 @@ logwr_write_log_pages (void)
       const LOG_PAGEID append_pageid = logwr_Gl.hdr.append_lsa.load ().pageid;
 
       if (logwr_Gl.force_flush == false && !LOGWR_AT_SERVER_ARCHIVING (append_pageid)
-	  && (logwr_Gl.hdr.eof_lsa.pageid <= logwr_Gl.toflush[0]->hdr.logical_pageid) && (diff_msec < 1000))
+	  && (logwr_Gl.hdr.eof_lsa.load ().pageid <= logwr_Gl.toflush[0]->hdr.logical_pageid) && (diff_msec < 1000))
 	{
 	  return NO_ERROR;
 	}
@@ -1623,7 +1623,7 @@ logwr_copy_log_header_check (const char *db_name, bool verbose, LOG_LSA * master
     {
 
       loghdr_pgptr = (LOG_PAGE *) logpg_area;
-      memcpy (&hdr, loghdr_pgptr->area, sizeof (LOG_HEADER));
+      memcpy ((void *) &hdr, loghdr_pgptr->area, sizeof (LOG_HEADER));
 
       *master_eof_lsa = hdr.eof_lsa;
 
@@ -2295,7 +2295,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
 
   if (LSA_ISNULL (&entry->eof_lsa))
     {
-      LSA_COPY (&eof_lsa, &log_Gl.hdr.eof_lsa);
+      eof_lsa = log_Gl.hdr.eof_lsa;
     }
   else
     {
@@ -2417,7 +2417,7 @@ logwr_pack_log_pages (THREAD_ENTRY * thread_p, char *logpg_area, int *logpg_used
       hdr_ptr->nxarv_pageid = nxarv_pageid;
       hdr_ptr->nxarv_num = nxarv_num;
     }
-  LSA_COPY (&hdr_ptr->eof_lsa, &eof_lsa);
+  hdr_ptr->eof_lsa.store (eof_lsa);
 
   p += LOG_PAGESIZE;
 
@@ -2533,7 +2533,7 @@ logwr_set_eof_lsa (THREAD_ENTRY * thread_p, LOGWR_ENTRY * entry)
   if (LSA_ISNULL (&entry->eof_lsa))
     {
       LOG_CS_ENTER (thread_p);
-      LSA_COPY (&entry->eof_lsa, &log_Gl.hdr.eof_lsa);
+      entry->eof_lsa = log_Gl.hdr.eof_lsa;
       LOG_CS_EXIT (thread_p);
     }
 
@@ -3118,8 +3118,10 @@ logwr_dump_log_header (FILE * out, const LOG_HEADER * hdr, int indent)
   logwr_dump_json_string_field (out, indent + 2, "ha_server_state", ha_server_state, true);
   logwr_dump_json_string_field (out, indent + 2, "ha_file_status", ha_file_status, true);
 
+  const LOG_LSA eof_lsa = hdr->eof_lsa;
+
   fprintf (out, "%*s\"eof_lsa\": ", indent + 2, "");
-  logwr_dump_log_lsa (out, &hdr->eof_lsa, indent + 4);
+  logwr_dump_log_lsa (out, &eof_lsa, indent + 4);
   fprintf (out, ",\n\n");
 
   fprintf (out, "%*s\"smallest_lsa_at_last_chkpt\": ", indent + 2, "");
@@ -3257,8 +3259,8 @@ logwr_dump_logwr_gl_topfields (FILE * out, int indent)
     }
 
   copy_gap_pages =
-    (logwr_Gl.hdr.eof_lsa.pageid != NULL_PAGEID && logwr_Gl.last_recv_pageid != NULL_PAGEID)
-    ? (long long) (logwr_Gl.hdr.eof_lsa.pageid - logwr_Gl.last_recv_pageid) : -1;
+    (logwr_Gl.hdr.eof_lsa.load ().pageid != NULL_PAGEID && logwr_Gl.last_recv_pageid != NULL_PAGEID)
+    ? (long long) (logwr_Gl.hdr.eof_lsa.load ().pageid - logwr_Gl.last_recv_pageid) : -1;
   archive_gap_pages =
     (logwr_Gl.hdr.nxarv_pageid != NULL_PAGEID && logwr_Gl.last_arv_fpageid != NULL_PAGEID)
     ? (long long) (logwr_Gl.hdr.nxarv_pageid - logwr_Gl.last_arv_fpageid) : -1;
