@@ -1273,11 +1273,13 @@ xcache_unfix (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry)
       xcache_log ("delete entry from hash after unfix: \n"
 		  XCACHE_LOG_ENTRY_TEXT ("entry") XCACHE_LOG_TRAN_TEXT,
 		  XCACHE_LOG_ENTRY_ARGS (xcache_entry), XCACHE_LOG_TRAN_ARGS (thread_p));
-      /* No need to acquire the clone mutex, since I'm the unique user. */
+      /* Another thread may be freeing these clones in xcache_entry_mark_deleted at the same time. */
+      (void) pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
       while (xcache_entry->n_cache_clones > 0)
 	{
 	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones], xcache_entry);
 	}
+      (void) pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
 
       /* need to clear list-cache first */
       if (xcache_entry->list_ht_no >= 0)
@@ -1352,6 +1354,13 @@ xcache_entry_mark_deleted (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_en
 
   xcache_stat_entry_deleted (thread_p, false);
   xcache_entry_sub_mem_size (xcache_entry);
+
+  (void) pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
+  while (xcache_entry->n_cache_clones > 0)
+    {
+      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones], xcache_entry);
+    }
+  (void) pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
 
   /* The entry can be deleted if the only fixer is this transaction. */
   return (new_cache_flag == XCACHE_ENTRY_DELETED_BY_ME);
@@ -1944,15 +1953,7 @@ xcache_invalidate_entries (THREAD_ENTRY * thread_p, bool (*invalidate_check) (XA
 	      /* Mark entry as deleted. */
 	      if (del_mark)
 		{
-		  /*
-		   * Successfully marked for delete. Save it to delete after the iteration.
-		   * No need to acquire the clone mutex, since I'm the unique user.
-		   */
-		  while (xcache_entry->n_cache_clones > 0)
-		    {
-		      xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones],
-					    xcache_entry);
-		    }
+		  /* Successfully marked for delete. Save it to delete after the iteration. */
 		  delete_xids[n_delete_xids++] = xcache_entry->xasl_id;
 		}
 	    }
@@ -2345,8 +2346,10 @@ xcache_retire_clone (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xcache_entry, X
       memory_usage += xcache_Memory_usage_cache;
       /* Limit the estimated memory of one entry's kept clones to (hard - soft).
        * xcache_Max_plan_size is set to roughly fit one clone in (hard - soft). */
-      if (xcache_entry->n_cache_clones < xcache_Max_clones && xasl_entry_size < xcache_Max_plan_size
+      if (!(xcache_entry->xasl_id.cache_flag & XCACHE_ENTRY_MARK_DELETED)
+	  && xasl_entry_size < xcache_Max_plan_size
 	  && memory_usage < xcache_Soft_limit
+	  && xcache_entry->n_cache_clones < xcache_Max_clones
 	  && ((xcache_entry->n_cache_clones + 1) * clone_size) <= (xcache_Hard_limit - xcache_Soft_limit))
 	{
 	  if (xcache_entry->n_cache_clones == xcache_entry->cache_clones_capacity
