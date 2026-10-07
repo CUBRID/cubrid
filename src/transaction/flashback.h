@@ -140,7 +140,11 @@ extern void flashback_set_min_log_pageid_to_keep (THREAD_ENTRY * thread_p, LOG_L
 extern void flashback_set_request_done_time ();
 extern void flashback_set_status_active ();
 extern void flashback_set_status_inactive ();
-extern bool flashback_is_owner (THREAD_ENTRY * thread_p);
+extern bool flashback_begin_request (THREAD_ENTRY * thread_p);
+extern void flashback_end_request (THREAD_ENTRY * thread_p);
+extern void flashback_set_session_range (THREAD_ENTRY * thread_p, const LOG_LSA * start_lsa, const LOG_LSA * end_lsa);
+extern void flashback_set_issued_lsa (THREAD_ENTRY * thread_p, const LOG_LSA * start_lsa, const LOG_LSA * end_lsa);
+extern bool flashback_check_resume_lsa (THREAD_ENTRY * thread_p, const LOG_LSA * start_lsa, const LOG_LSA * end_lsa);
 extern void flashback_reset_if_owner (THREAD_ENTRY * thread_p);
 
 #endif /* _FLASHBACK_H_ */

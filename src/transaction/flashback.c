@@ -61,98 +61,100 @@
 
 static volatile LOG_PAGEID flashback_Min_log_pageid = NULL_LOG_PAGEID;	// Minumun log pageid to keep archive log volume from being removed
 
-static CSS_CONN_ENTRY *flashback_Current_conn = NULL;	// the connection entry for a flashback request
+/* The connection that opened the flashback session with GET_SUMMARY. Who owns the
+ * session is decided by the log_extract_owner_* functions CDC uses as well; the
+ * session state below changes under the owner's lock. */
+static LOG_EXTRACT_OWNER flashback_Owner = LOG_EXTRACT_OWNER_INITIALIZER;
 
-static pthread_mutex_t flashback_Conn_lock = PTHREAD_MUTEX_INITIALIZER;
+/* the range GET_SUMMARY opened the session for, and the positions handed out last */
+static LOG_LSA flashback_Range_start_lsa = LSA_INITIALIZER;
+static LOG_LSA flashback_Range_end_lsa = LSA_INITIALIZER;
+static LOG_LSA flashback_Issued_start_lsa = LSA_INITIALIZER;
+static LOG_LSA flashback_Issued_end_lsa = LSA_INITIALIZER;
 
 /* Buffer size for a "%d-%m-%Y:%H:%M:%S" time string. A four-digit year needs
  * 20 bytes including the NUL; sized larger here so a year of more than four
  * digits still formats instead of overflowing the buffer. */
 #define FLASHBACK_TIME_STR_SIZE 32
 
-static void flashback_reset (void);
-
 /*
- * flashback_is_duplicated_request - check if the caller is duplicated request for flashback
+ * flashback_clear_session_locked - forget the session's state
  *
- * need_reset (in) : if connection is lost and need_reset is true, then it reset the flashback variables
- *
- * return   : duplicated or not
+ * NOTE: the caller holds the owner's lock.
  */
 
-static bool
-flashback_is_in_progress ()
+static void
+flashback_clear_session_locked (void)
 {
-  /* flashback_Current_conn indicates conn_entry in thread_p, and conn_entry can be reused by request handler.
-   * So, status in flashback_Current_conn can be overwritten. */
-
-  if (flashback_Current_conn == NULL)
-    {
-      /* previous flashback set flashback_Current_conn to NULL properly. (exited well) */
-      return false;
-    }
-  else
-    {
-      if (flashback_Current_conn->in_flashback == true)
-	{
-	  /* previous flashback is still in progress */
-	  return true;
-	}
-      else
-	{
-	  /* - flashback_Current_conn is overwritten with new connection, so in_flashback value is initialized to false.
-	   * - previous flashback connection has been exited abnormally. */
-	  return false;
-	}
-    }
+  flashback_Min_log_pageid = NULL_LOG_PAGEID;
+  LSA_SET_NULL (&flashback_Range_start_lsa);
+  LSA_SET_NULL (&flashback_Range_end_lsa);
+  LSA_SET_NULL (&flashback_Issued_start_lsa);
+  LSA_SET_NULL (&flashback_Issued_end_lsa);
 }
 
 /*
- * flashback_initialize - check request if is duplicated, 
- *                        then initialize variables and connection when flashback request is started
+ * flashback_initialize - open a flashback session for the calling connection,
+ *                        serving its GET_SUMMARY
+ *
+ * return   : NO_ERROR, or ER_FLASHBACK_DUPLICATED_REQUEST if a live connection
+ *            (the caller included) still holds a session
+ *
+ * A session whose connection is gone is taken over: that is how one left behind
+ * by an abnormally terminated client is recovered. The caller ends the request
+ * with flashback_end_request (), or drops the session with
+ * flashback_reset_if_owner ().
  */
 
 int
 flashback_initialize (THREAD_ENTRY * thread_p)
 {
-  /* If multiple requests come at the same time,
-   * they all can be treated as non-duplicate requests.
-   * So, latch for check and set flashback connection is required */
-
-  pthread_mutex_lock (&flashback_Conn_lock);
-
-  if (flashback_is_in_progress ())
+  if (!log_extract_owner_claim (&flashback_Owner, thread_p, false, NULL, NULL))
     {
-      pthread_mutex_unlock (&flashback_Conn_lock);
-
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_DUPLICATED_REQUEST, 0);
       return ER_FLASHBACK_DUPLICATED_REQUEST;
     }
 
-  if (flashback_Current_conn != NULL)
+  log_extract_owner_lock (&flashback_Owner);
+  if (log_extract_owner_is_owner_locked (&flashback_Owner, thread_p))
     {
-      flashback_reset ();
+      flashback_clear_session_locked ();
     }
-
-  flashback_Current_conn = thread_p->conn_entry;
-  flashback_Current_conn->in_flashback = true;
-
-  pthread_mutex_unlock (&flashback_Conn_lock);
-
-  flashback_Min_log_pageid = NULL_LOG_PAGEID;
+  log_extract_owner_unlock (&flashback_Owner);
 
   return NO_ERROR;
 }
 
 /*
+ * flashback_begin_request - start serving a GET_LOGINFO of the session's owner
+ *
+ * return   : false if the caller does not own the session, or another of its
+ *            requests is still being served
+ */
+
+bool
+flashback_begin_request (THREAD_ENTRY * thread_p)
+{
+  return log_extract_owner_begin_request (&flashback_Owner, thread_p);
+}
+
+/*
+ * flashback_end_request - finish the request started by flashback_initialize ()
+ *                         or flashback_begin_request ()
+ */
+
+void
+flashback_end_request (THREAD_ENTRY * thread_p)
+{
+  log_extract_owner_end_request (&flashback_Owner, thread_p);
+}
+
+/*
  * flashback_set_min_log_pageid_to_keep - set flashback_Min_log_pageid
  *
- * Only the connection that owns the in-progress session may move the
- * archive-retention floor. A second request on the same connection can still
- * be here after the owner finished and was replaced by another connection's
- * session (requests are served by independent worker tasks); without the owner
- * check it would overwrite the new session's floor and let archive logs the new
- * session still needs be removed.
+ * Only the session's owner may move the archive-retention floor: a request still
+ * running for a connection that no longer owns the session must not overwrite the
+ * floor of the session that does.
  */
 
 void
@@ -160,14 +162,77 @@ flashback_set_min_log_pageid_to_keep (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 {
   assert (lsa != NULL);
 
-  pthread_mutex_lock (&flashback_Conn_lock);
-
-  if (flashback_Current_conn == thread_p->conn_entry)
+  log_extract_owner_lock (&flashback_Owner);
+  if (log_extract_owner_is_owner_locked (&flashback_Owner, thread_p))
     {
       flashback_Min_log_pageid = lsa->pageid;
     }
+  log_extract_owner_unlock (&flashback_Owner);
+}
 
-  pthread_mutex_unlock (&flashback_Conn_lock);
+/*
+ * flashback_set_session_range - remember the range GET_SUMMARY opened the session for
+ */
+
+void
+flashback_set_session_range (THREAD_ENTRY * thread_p, const LOG_LSA * start_lsa, const LOG_LSA * end_lsa)
+{
+  log_extract_owner_lock (&flashback_Owner);
+  if (log_extract_owner_is_owner_locked (&flashback_Owner, thread_p))
+    {
+      LSA_COPY (&flashback_Range_start_lsa, start_lsa);
+      LSA_COPY (&flashback_Range_end_lsa, end_lsa);
+      LSA_SET_NULL (&flashback_Issued_start_lsa);
+      LSA_SET_NULL (&flashback_Issued_end_lsa);
+    }
+  log_extract_owner_unlock (&flashback_Owner);
+}
+
+/*
+ * flashback_set_issued_lsa - remember the positions a GET_LOGINFO reply handed out
+ */
+
+void
+flashback_set_issued_lsa (THREAD_ENTRY * thread_p, const LOG_LSA * start_lsa, const LOG_LSA * end_lsa)
+{
+  log_extract_owner_lock (&flashback_Owner);
+  if (log_extract_owner_is_owner_locked (&flashback_Owner, thread_p))
+    {
+      LSA_COPY (&flashback_Issued_start_lsa, start_lsa);
+      LSA_COPY (&flashback_Issued_end_lsa, end_lsa);
+    }
+  log_extract_owner_unlock (&flashback_Owner);
+}
+
+/*
+ * flashback_check_resume_lsa - may a GET_LOGINFO of the owner ask for these positions?
+ *
+ * return   : true if each is the one handed out last, or lies inside the range the
+ *            session was opened for
+ *
+ * The first request for a transaction sends its summary entry, which lies inside
+ * the range (its start is NULL when the transaction's changes precede it); later
+ * requests send back what the previous reply handed out, which may lie outside the
+ * range once the start has been searched backward.
+ */
+
+bool
+flashback_check_resume_lsa (THREAD_ENTRY * thread_p, const LOG_LSA * start_lsa, const LOG_LSA * end_lsa)
+{
+  bool accepted = false;
+
+  log_extract_owner_lock (&flashback_Owner);
+  if (log_extract_owner_is_owner_locked (&flashback_Owner, thread_p))
+    {
+      accepted = ((LSA_ISNULL (start_lsa)
+		   || log_extract_match_lsa (start_lsa, &flashback_Issued_start_lsa, NULL, &flashback_Range_start_lsa,
+					     &flashback_Range_end_lsa) != LOG_EXTRACT_LSA_REJECTED)
+		  && log_extract_match_lsa (end_lsa, &flashback_Issued_end_lsa, NULL, &flashback_Range_start_lsa,
+					    &flashback_Range_end_lsa) != LOG_EXTRACT_LSA_REJECTED);
+    }
+  log_extract_owner_unlock (&flashback_Owner);
+
+  return accepted;
 }
 
 /*
@@ -185,99 +250,34 @@ flashback_min_log_pageid_to_keep ()
 /*
  * flashback_is_needed_to_keep_archive - check if archive log volume is required to be kept
  *
- * return   : true or false
+ * return   : true while a live connection owns a flashback session
  */
 
 bool
 flashback_is_needed_to_keep_archive ()
 {
-  bool is_needed = false;
-
-  if (flashback_is_in_progress ())
-    {
-      is_needed = true;
-    }
-  else
-    {
-      is_needed = false;
-    }
-
-  return is_needed;
+  return log_extract_owner_is_active (&flashback_Owner);
 }
 
 /*
- * flashback_reset - reset flashback global variables
+ * flashback_reset_if_owner - end the flashback session, but only if the calling
+ *                            connection owns it
  *
- * NOTE: the caller must hold flashback_Conn_lock; the only callers are
- *       flashback_initialize() and flashback_reset_if_owner(), both of which
- *       already do. Kept file-local so no caller can reach it without the lock.
+ * A handler error path can get here without the caller ever having owned the
+ * session (e.g. GET_LOGINFO with no preceding GET_SUMMARY); that must not end
+ * another connection's live session.
  */
 
-static void
-flashback_reset (void)
-{
-  flashback_Min_log_pageid = NULL_LOG_PAGEID;
-
-  /* flashback_Current_conn is only set once flashback_initialize() has run;
-   * a request that fails before that (e.g. GET_LOGINFO with no preceding
-   * GET_SUMMARY) still routes through this shared reset, so guard against
-   * NULL here rather than crashing. */
-  if (flashback_Current_conn != NULL)
-    {
-      flashback_Current_conn->in_flashback = false;
-      flashback_Current_conn = NULL;
-    }
-}
-
-/*
- * flashback_is_owner - is the calling connection the one that opened the
- *                      flashback session now in progress?
- *
- * return: true only if a session is in progress and this connection opened it
- *
- * NOTE: GET_SUMMARY opens the session (flashback_initialize); every GET_LOGINFO
- *       that follows reads under it and moves flashback_Min_log_pageid, which
- *       keeps the archives that session still needs. A connection that did not
- *       open the session must not do either.
- */
-bool
-flashback_is_owner (THREAD_ENTRY * thread_p)
-{
-  bool is_owner;
-
-  pthread_mutex_lock (&flashback_Conn_lock);
-
-  is_owner = (flashback_Current_conn != NULL && flashback_Current_conn == thread_p->conn_entry
-	      && flashback_Current_conn->in_flashback);
-
-  pthread_mutex_unlock (&flashback_Conn_lock);
-
-  return is_owner;
-}
-
-/*
- * flashback_reset_if_owner - reset flashback global state, but only if the
- *                            calling connection is the current owner
- *
- * A handler error path can reach the shared cleanup without this connection
- * ever having become the owner (e.g. GET_LOGINFO with no preceding
- * GET_SUMMARY) -- flashback_reset() itself doesn't check, so calling it
- * unconditionally there would tear down an unrelated connection's live
- * session. Handler error paths use this instead; flashback_initialize()'s
- * own stale-entry takeover still calls flashback_reset() directly, since it
- * already confirmed (via flashback_is_in_progress()) the entry is abandoned.
- */
 void
 flashback_reset_if_owner (THREAD_ENTRY * thread_p)
 {
-  pthread_mutex_lock (&flashback_Conn_lock);
-
-  if (flashback_Current_conn == thread_p->conn_entry)
+  log_extract_owner_lock (&flashback_Owner);
+  if (log_extract_owner_is_owner_locked (&flashback_Owner, thread_p))
     {
-      flashback_reset ();
+      log_extract_owner_clear_locked (&flashback_Owner);
+      flashback_clear_session_locked ();
     }
-
-  pthread_mutex_unlock (&flashback_Conn_lock);
+  log_extract_owner_unlock (&flashback_Owner);
 }
 
 /*

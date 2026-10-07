@@ -11683,6 +11683,7 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
 
   assert (!LSA_ISNULL (&context.start_lsa));
 
+  flashback_set_session_range (thread_p, &context.start_lsa, &context.end_lsa);
   flashback_set_min_log_pageid_to_keep (thread_p, &context.start_lsa);
 
   /* get summary list */
@@ -11753,6 +11754,9 @@ sflashback_get_summary (THREAD_ENTRY * thread_p, unsigned int rid, char *request
       goto css_send_error;
     }
 
+  /* the session stays open for the GET_LOGINFO requests that follow */
+  flashback_end_request (thread_p);
+
   return;
 error:
 
@@ -11813,22 +11817,24 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
   char *start_ptr;
 
   int threshold_to_remove_archive = 0;
+  bool request_begun = false;
 
   FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER, };
 
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 
   /* Only the connection that opened the session with GET_SUMMARY may read log
-   * info under it. Without this, a GET_LOGINFO from anywhere else scans the log
-   * and, reading forward, moves flashback_Min_log_pageid away from the archives
-   * the real session still needs. The error path below resets nothing for a
-   * connection that is not the owner. */
-  if (!flashback_is_owner (thread_p))
+   * info under it, one request at a time. Without this, a GET_LOGINFO from
+   * anywhere else scans the log and, reading forward, moves
+   * flashback_Min_log_pageid away from the archives the real session still
+   * needs. A request refused here leaves the session as it is. */
+  if (!flashback_begin_request (thread_p))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FLASHBACK_DUPLICATED_REQUEST, 0);
       error_code = ER_FLASHBACK_DUPLICATED_REQUEST;
       goto error;
     }
+  request_begun = true;
 
   /* A too-short (or NULL) request would otherwise dereference NULL / read
    * past a zero-byte allocation at the unconditional unpack below. */
@@ -11892,6 +11898,15 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
     }
   ptr = or_unpack_int (ptr, &context.forward);
 
+  /* the client sends back the positions it was handed; check them against what
+   * the session remembers before any log page is read for them */
+  if (!flashback_check_resume_lsa (thread_p, &context.start_lsa, &context.end_lsa))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CDC_INVALID_LOG_LSA, 2, LSA_AS_ARGS (&context.start_lsa));
+      error_code = ER_CDC_INVALID_LOG_LSA;
+      goto error;
+    }
+
   error_code = flashback_make_loginfo (thread_p, &context);
   if (error_code != NO_ERROR)
     {
@@ -11949,11 +11964,16 @@ sflashback_get_loginfo (THREAD_ENTRY * thread_p, unsigned int rid, char *request
     }
   else
     {
+      /* the next GET_LOGINFO resumes from the positions just sent */
+      flashback_set_issued_lsa (thread_p, &context.start_lsa, &context.end_lsa);
+
       if (context.forward)
 	{
 	  /* start_lsa is increased only if direction is forward */
 	  flashback_set_min_log_pageid_to_keep (thread_p, &context.start_lsa);
 	}
+
+      flashback_end_request (thread_p);
     }
 
   return;
@@ -11977,7 +11997,10 @@ error:
       (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
     }
 
-  flashback_reset_if_owner (thread_p);
+  if (request_begun)
+    {
+      flashback_reset_if_owner (thread_p);
+    }
 
   return;
 css_send_error:
