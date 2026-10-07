@@ -332,8 +332,13 @@ xcache_initialize (THREAD_ENTRY * thread_p)
   xcache_Max_clones = prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_CLONES);
   const int freelist_block_count = 2;
   const int freelist_block_size = std::max (1, xcache_Soft_capacity / freelist_block_count);
-  xcache_Hashmap.init (xcache_Ts, THREAD_TS_XCACHE, xcache_Soft_capacity, freelist_block_size, freelist_block_count,
-		       xcache_Entry_descriptor);
+  if (xcache_Hashmap.init (xcache_Ts, THREAD_TS_XCACHE, xcache_Soft_capacity, freelist_block_size,
+			   freelist_block_count, xcache_Entry_descriptor) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      xcache_log_error ("could not init hash table.\n");
+      return error_code;
+    }
 
   /* Use global heap */
   save_heapid = db_change_private_heap (thread_p, 0);

@@ -37,6 +37,15 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if !defined (SERVER_MODE)
+/* the hash map locks entries in SERVER_MODE only, so the mutex calls here must not run either */
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)   0
+#define pthread_mutex_trylock(a)   0
+#define pthread_mutex_unlock(a)
+#endif /* !SERVER_MODE */
+
 typedef struct fpcache_ent FPCACHE_ENTRY;
 struct fpcache_ent
 {
@@ -160,8 +169,13 @@ fpcache_initialize (THREAD_ENTRY * thread_p)
   /* Initialize free list */
   const int freelist_block_count = 2;
   const int freelist_block_size = std::max (1, fpcache_Soft_capacity / freelist_block_count);
-  fpcache_Hashmap.init (fpcache_Ts, THREAD_TS_FPCACHE, fpcache_Soft_capacity, freelist_block_size, freelist_block_count,
-			fpcache_Entry_descriptor);
+  if (fpcache_Hashmap.init (fpcache_Ts, THREAD_TS_FPCACHE, fpcache_Soft_capacity, freelist_block_size,
+			    freelist_block_count, fpcache_Entry_descriptor) != NO_ERROR)
+    {
+      int error_code = NO_ERROR;
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
   fpcache_Entry_counter = 0;
   fpcache_Clone_counter = 0;
 
@@ -282,7 +296,9 @@ static int
 fpcache_entry_init (void *entry)
 {
   FPCACHE_ENTRY *fpcache_entry = FPCACHE_PTR_TO_ENTRY (entry);
-  /* Add here if anything should be initialized. */
+  /* Empty the stack first: on the failure below fpcache_entry_uninit () still runs, and the constructor
+   * leaves clone_stack_head indeterminate. */
+  fpcache_entry->clone_stack_head = -1;
   /* Allocate clone stack. */
   fpcache_entry->clone_stack =
     (PRED_EXPR_WITH_CONTEXT **) malloc (fpcache_Clone_stack_size * sizeof (PRED_EXPR_WITH_CONTEXT *));
@@ -292,7 +308,6 @@ fpcache_entry_init (void *entry)
 	      fpcache_Clone_stack_size * sizeof (PRED_EXPR_WITH_CONTEXT));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  fpcache_entry->clone_stack_head = -1;
   return NO_ERROR;
 }
 
