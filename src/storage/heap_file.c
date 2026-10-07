@@ -500,7 +500,7 @@ typedef struct heap_prev_version_walk HEAP_PREV_VERSION_WALK;
 struct heap_prev_version_walk
 {
   LOG_PAGE *held_page;		/* the page the last copying hop left behind */
-  LOG_LSA held_below;		/* every record starting below it was complete in held_page */
+  LOG_LSA_UNPACKED held_below;	/* every record starting below it was complete in held_page */
   int n_fetches_skipped;	/* reads served without a page copy, added to the statistics once */
   HEAP_GET_CONTEXT *release_context;	/* get context whose heap pages are still fixed; NULL once released */
   int fixed_hops;		/* versions passed with those pages fixed */
@@ -25789,7 +25789,7 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
     }
 
   /* held_below first: the page is uninitialized stack bytes until a hop copies into it */
-  if (LSA_LT (version_lsa, &walk->held_below) && walk->held_page->hdr.logical_pageid == version_lsa->pageid)
+  if (LOG_LSA_UNPACKED (*version_lsa) < walk->held_below && walk->held_page->hdr.logical_pageid == version_lsa->pageid)
     {
       scan = log_get_undo_record (thread_p, walk->held_page, *version_lsa, recdes);
       if (scan == S_SUCCESS)
