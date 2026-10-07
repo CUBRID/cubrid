@@ -2403,6 +2403,11 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	{
 	  xasl = gen_outer (env, plan->plan_un.sort.subplan, &new_subqueries, inner_scans, fetches, xasl);
 	  xasl = add_sort_spec (env, xasl, plan, NULL, true /* add instnum pred */ );
+	  if (xasl != NULL && plan->plan_un.sort.sort_type == SORT_DISTINCT)
+	    {
+	      /* xasl is the list file this plan fills: a hash/merge join input, or the one gen_inner () scans */
+	      xasl->option = Q_DISTINCT;
+	    }
 	}
       break;
 
@@ -3125,16 +3130,12 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
        * that file.
        */
     case QO_PLANTYPE_SORT:
-      /* check for sort type */
-      QO_ASSERT (env, plan->plan_un.sort.sort_type == SORT_TEMP);
+      /* check for sort type: SORT_DISTINCT is a SEMI JOIN inner read once with the duplicates removed */
+      QO_ASSERT (env, plan->plan_un.sort.sort_type == SORT_TEMP || plan->plan_un.sort.sort_type == SORT_DISTINCT);
 
       namelist = make_namelist_from_projected_segs (env, plan);
       listfile = make_buildlist_proc (env, namelist);
       listfile = gen_outer (env, plan, &EMPTY_SET, NULL, NULL, listfile);
-      if (listfile != NULL && plan->plan_type == QO_PLANTYPE_SORT && plan->plan_un.sort.sort_type == SORT_DISTINCT)
-	{
-	  listfile->option = Q_DISTINCT;
-	}
       scan = make_scan_proc (env);
       scan = init_list_scan_proc (env, scan, listfile, namelist, predset, NULL);
       if (namelist)
