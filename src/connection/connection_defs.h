@@ -368,6 +368,11 @@ typedef enum ha_log_applier_state HA_LOG_APPLIER_STATE;
 #define CSS_RID_FROM_EID(eid)           ((unsigned short) LOW16BITS(eid))
 #define CSS_ENTRYID_FROM_EID(eid)       ((unsigned short) HIGH16BITS(eid))
 
+/* CDC channel authentication (CBRD-27436): challenge is 16 random bytes in hex,
+ * response is a SHA-256 digest in hex. */
+#define CSS_CDC_AUTH_NONCE_SIZE         33
+#define CSS_CDC_AUTH_RESPONSE_SIZE      65
+
 #define NET_HEADER_FLAG_METHOD_MODE         0x4000
 #define NET_HEADER_FLAG_INVALIDATE_SNAPSHOT 0x8000
 
@@ -436,8 +441,12 @@ struct css_conn_entry
   bool reset_on_commit;		/* set reset_on_commit when commit/abort */
   bool in_method;		/* this connection is for method callback */
 
-  bool in_flashback;		/* this client is in progress of flashback */
 #if defined(SERVER_MODE)
+  /* CDC channel authentication (CBRD-27436). The CDC log-server channel is not a
+   * booted client, so it has no server-verified identity; it proves one with a
+   * challenge-response of its own and the outcome is kept here. */
+  bool cdc_auth_done;		/* a DBA answered a challenge on this connection */
+  volatile int cdc_auth_busy;	/* an account lookup for the handshake is running */
   int idx;			/* connection index */
   BOOT_CLIENT_TYPE client_type;
   SYNC_RMUTEX rmutex;		/* connection mutex */

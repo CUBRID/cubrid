@@ -300,7 +300,8 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->client_id = err;
   conn->db_error = 0;
   conn->in_transaction = false;
-  conn->in_flashback = false;
+  conn->cdc_auth_done = false;
+  conn->cdc_auth_busy = 0;
   conn->reset_on_commit = false;
   conn->stop_talk = false;
   conn->ignore_repl_delay = false;
@@ -379,7 +380,6 @@ css_shutdown_conn (CSS_CONN_ENTRY * conn)
     {
       conn->status = CONN_CLOSED;
       conn->stop_talk = false;
-      conn->in_flashback = false;
       conn->stop_phase = THREAD_STOP_WORKERS_EXCEPT_LOGWR;
 
       if (conn->version_string)

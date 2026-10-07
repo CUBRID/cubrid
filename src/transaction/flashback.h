@@ -43,6 +43,12 @@
 
 #define FLASHBACK_MAX_NUM_TRAN_TO_SUMMARY (prm_get_integer_value(PRM_ID_FLASHBACK_MAX_TRANSACTION))
 
+/* Upper bound for the log-info batch size a single request may ask for. The
+ * flashback utility asks for 5; this only has to be generous enough to never
+ * constrain a legitimate client while bounding how far a crafted request can
+ * drive log scanning past the range it asked for. */
+#define FLASHBACK_MAX_NUM_LOGINFO_PER_REQUEST 1024
+
 #define FLASHBACK_CHECK_AND_GET_SUMMARY(summary_list, trid, summary_entry) \
   do \
     { \
@@ -105,7 +111,7 @@ typedef struct flashback_loginfo_context
   int num_class;
   int forward;
   int num_loginfo;
-  int queue_size;
+  INT64 queue_size;		/* total length of the queued entries; can exceed INT_MAX for a huge transaction */
   OID invalid_class;
   // *INDENT-OFF*
   std::unordered_set<OID> classoid_set;
@@ -120,6 +126,7 @@ extern char *flashback_pack_summary_entry (char *ptr, FLASHBACK_SUMMARY_CONTEXT 
 extern int flashback_make_summary_list (THREAD_ENTRY * thread_p, FLASHBACK_SUMMARY_CONTEXT * context);
 
 extern char *flashback_pack_loginfo (THREAD_ENTRY * thread_p, char *ptr, FLASHBACK_LOGINFO_CONTEXT context);
+extern void flashback_free_loginfo_queue (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context);
 extern int flashback_initialize (THREAD_ENTRY * thread_p);
 
 extern int flashback_make_loginfo (THREAD_ENTRY * thread_p, FLASHBACK_LOGINFO_CONTEXT * context);
@@ -129,10 +136,15 @@ extern bool flashback_is_needed_to_keep_archive ();
 extern bool flashback_check_time_exceed_threshold (int *threshold);
 extern bool flashback_is_loginfo_generation_finished (LOG_LSA * start_lsa, LOG_LSA * end_lsa);
 
-extern void flashback_set_min_log_pageid_to_keep (LOG_LSA * lsa);
+extern void flashback_set_min_log_pageid_to_keep (THREAD_ENTRY * thread_p, LOG_LSA * lsa);
 extern void flashback_set_request_done_time ();
 extern void flashback_set_status_active ();
 extern void flashback_set_status_inactive ();
-extern void flashback_reset ();
+extern bool flashback_begin_request (THREAD_ENTRY * thread_p);
+extern void flashback_end_request (THREAD_ENTRY * thread_p);
+extern void flashback_set_session_range (THREAD_ENTRY * thread_p, const LOG_LSA * start_lsa, const LOG_LSA * end_lsa);
+extern void flashback_set_issued_lsa (THREAD_ENTRY * thread_p, const LOG_LSA * start_lsa, const LOG_LSA * end_lsa);
+extern bool flashback_check_resume_lsa (THREAD_ENTRY * thread_p, const LOG_LSA * start_lsa, const LOG_LSA * end_lsa);
+extern void flashback_reset_if_owner (THREAD_ENTRY * thread_p);
 
 #endif /* _FLASHBACK_H_ */
