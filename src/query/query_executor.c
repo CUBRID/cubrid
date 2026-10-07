@@ -17855,6 +17855,22 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       GOTO_EXIT_ON_ERROR;
     }
 
+  /* the block's position lists read its input list, the parent tuple and its own list without a list scan: their
+   * variable positions take their columns' resolved domains before any tuple is read */
+  {
+    REGU_VARIABLE_LIST position_lists[] = {
+      connect_by->regu_list_pred, connect_by->regu_list_rest, connect_by->prior_regu_list_pred,
+      connect_by->prior_regu_list_rest, connect_by->after_cb_regu_list_pred, connect_by->after_cb_regu_list_rest
+    };
+    for (size_t i = 0; i < sizeof (position_lists) / sizeof (position_lists[0]); i++)
+      {
+	if (qexec_plan_position_list_domains (&xasl_state->vd, position_lists[i]) != NO_ERROR)
+	  {
+	    GOTO_EXIT_ON_ERROR;
+	  }
+      }
+  }
+
   /* create the node's output list file */
   if (qexec_start_mainblock_iterations (thread_p, xasl, xasl_state) != NO_ERROR)
     {

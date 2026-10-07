@@ -356,6 +356,7 @@ extern int qexec_resolve_domains (THREAD_ENTRY * thread_p, xasl_node * xasl, xas
 extern void qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
 extern int qexec_copy_resolved_domains (THREAD_ENTRY * thread_p, const xasl_state * from, xasl_state * to,
 					bool own_load);
+extern int qexec_plan_position_list_domains (const VAL_DESCR * vd, REGU_VARIABLE_LIST list);
 extern int qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SORT_LIST * order_list,
 					 SORT_LIST ** resolved_list);
 extern int qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, buildlist_proc_node * buildlist,

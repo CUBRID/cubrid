@@ -3456,6 +3456,38 @@ qexec_convert_execution_temporary (THREAD_ENTRY * thread_p, XASL_STATE * xasl_st
  * variable read too. The sort reads the keys' domains when it builds its key information
  * (qfile_initialize_sort_key_info): the loop's preparation point.
  */
+/*
+ * qexec_plan_position_list_domains () - the execution domains of the positions of a regu list a block reads from a
+ *   list without a list scan: the CONNECT BY block's lists over its input list, the parent tuple and its own list
+ *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED (the unresolved-domain check (execution))
+ *
+ * A list scan gives its own positions their domains when it opens (scan_plan_list_scan_domains); a position read
+ * outside a scan takes its column's resolved domain here, once per execution, before the block reads a tuple.
+ */
+int
+qexec_plan_position_list_domains (const VAL_DESCR * vd, REGU_VARIABLE_LIST list)
+{
+  for (REGU_VARIABLE_LIST regu = list; regu != NULL; regu = regu->next)
+    {
+      if (regu->value.type != TYPE_POSITION)
+	{
+	  continue;
+	}
+      if (!qexec_node_domain_is_variable (vd, regu->value.plan_item)
+	  && !qexec_position_domain_is_variable (vd, regu->value.plan_item))
+	{
+	  continue;
+	}
+      const TP_DOMAIN *resolved = qexec_consumer_domain (vd, NULL, regu->value.plan_item);
+      if (resolved == NULL)
+	{
+	  return qexec_domain_unresolved (vd, regu->value.plan_item, regu->value.value.pos_descr.dom);
+	}
+      qexec_set_node_domain (vd, regu->value.plan_item, NULL, resolved);
+    }
+  return NO_ERROR;
+}
+
 int
 qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SORT_LIST * order_list,
 			      SORT_LIST ** resolved_list)
