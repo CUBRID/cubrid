@@ -41,9 +41,11 @@ heap_pending_record::heap_pending_record ()
 heap_pending_record::heap_pending_record (heap_pending_record &&other) noexcept
   : m_record (std::move (other.m_record))
   , m_bytes (other.m_bytes)
+  , m_state (other.m_state)
 {
   m_values.swap (other.m_values);
   other.m_bytes = 0;
+  other.m_state = state::empty;
 }
 
 heap_pending_record::~heap_pending_record ()
@@ -56,8 +58,9 @@ heap_pending_record::~heap_pending_record ()
 }
 
 int
-heap_pending_record::retain (oos_buffer value)
+heap_pending_record::retain (oos_buffer value, int &index)
 {
+  index = (int) m_values.size ();
   try
     {
       m_values.push_back (value);
@@ -69,4 +72,21 @@ heap_pending_record::retain (oos_buffer value)
     }
   m_bytes += value.size ();
   return NO_ERROR;
+}
+
+bool
+heap_pending_record::owns (const RECDES &record) const
+{
+  return record.data != nullptr && record.data == get_recdes ().data
+	 && record.length > 0 && record.length <= get_recdes ().area_size;
+}
+
+oos_buffer
+heap_pending_record::resolve (const RECDES &record, std::size_t index, std::size_t length) const
+{
+  if (!is_prepared () || !owns (record) || index >= m_values.size () || m_values[index].size () != length)
+    {
+      return { nullptr, 0 };
+    }
+  return m_values[index];
 }

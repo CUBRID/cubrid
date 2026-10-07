@@ -31,6 +31,7 @@
 #include "error_manager.h"
 #include "file_manager.h"
 #include "heap_file.h"
+#include "heap_pending_record.hpp"
 #include "heap_show_scan_context.hpp"
 #include "log_impl.h"
 #include "object_representation.h"
@@ -45,7 +46,7 @@
 #endif
 #include <cassert>
 #include <cstring>
-#include <cstdint>
+#include <climits>
 #include <new>
 #include <vector>
 
@@ -53,18 +54,18 @@
 #include "memory_wrapper.hpp"
 
 void
-heap_oos_value_ref::encode_memory (char *stub, oos_buffer value)
+heap_oos_value_ref::encode_pending (char *stub, DB_BIGINT length, int index)
 {
-  static_assert (sizeof (std::uintptr_t) <= sizeof (DB_BIGINT), "OOS accessor must fit its packed field");
   OR_BUF buf;
   or_init (&buf, stub, OR_OOS_INLINE_SIZE);
   or_put_oid (&buf, &oid_Null_oid);
-  or_put_bigint (&buf, (DB_BIGINT) value.size ());
-  or_put_bigint (&buf, (DB_BIGINT) reinterpret_cast<std::uintptr_t> (value.data ()));
+  or_put_bigint (&buf, length);
+  or_put_bigint (&buf, index);
 }
 
 int
-heap_oos_value_ref::decode (const RECDES &record, int location, heap_oos_value_ref &ref)
+heap_oos_value_ref::decode (const RECDES &record, int location, heap_oos_value_ref &ref,
+			    const heap_pending_record *pending)
 {
   char *stub = nullptr;
   DB_BIGINT length = 0;
@@ -82,20 +83,25 @@ heap_oos_value_ref::decode (const RECDES &record, int location, heap_oos_value_r
   ref.m_length = (std::size_t) length;
   if (OID_ISNULL (&head))
     {
-      /* Only a descriptor constructed locally by the pending serializer may
-       * carry a memory alternative. Fetched and received records stay disk-only. */
-      DB_BIGINT address = 0;
-      if (record.type != REC_OOS_PENDING)
+      /* Bytes never authorize memory access: require this allocation's prepared
+       * owner and a matching retained value. Copies and incoming rows stay disk-only. */
+      DB_BIGINT index = 0;
+      if (pending == nullptr)
 	{
 	  goto invalid;
 	}
-      OR_GET_BIGINT (stub + OR_OID_SIZE + OR_BIGINT_SIZE, &address);
-      if (address == 0)
+      OR_GET_BIGINT (stub + OR_OID_SIZE + OR_BIGINT_SIZE, &index);
+      if (index < 0 || index > INT_MAX)
+	{
+	  goto invalid;
+	}
+      oos_buffer payload = pending->resolve (record, (std::size_t) index, ref.m_length);
+      if (payload.data () == nullptr)
 	{
 	  goto invalid;
 	}
       ref.m_kind = kind::memory;
-      ref.m_value.memory = reinterpret_cast<const char *> ((std::uintptr_t) address);
+      ref.m_value.memory = payload.data ();
       return NO_ERROR;
     }
   {
@@ -134,19 +140,36 @@ heap_oos_value_ref::read_into (THREAD_ENTRY *thread_p, oos_buffer destination) c
 }
 
 int
-heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record)
+heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record,
+			  heap_pending_record *pending)
 {
-  if (record->type != REC_OOS_PENDING)
+  if (pending == nullptr)
+    {
+      if (record->type != REC_OOS_PENDING)
+	{
+	  return NO_ERROR;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  if (!pending->owns (*record) || (!pending->is_prepared () && !pending->is_finalized ()))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+  if (pending->is_finalized ())
     {
       return NO_ERROR;
     }
   if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
     {
+      pending->finish (false);
       return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
     }
   if (!heap_recdes_contains_oos (record))
     {
       record->type = REC_HOME;
+      pending->finish (true);
       return NO_ERROR;
     }
 
@@ -154,6 +177,7 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
   OR_CLASSREP *repr = heap_classrepr_get (thread_p, destination, nullptr, or_rep_id (record), &cache_index);
   if (repr == nullptr)
     {
+      pending->finish (false);
       return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
     }
   std::vector<oos_chain_ref> refs;
@@ -183,7 +207,7 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	      continue;
 	    }
 	  heap_oos_value_ref ref;
-	  error = heap_oos_value_ref::decode (*record, attr.location, ref);
+	  error = heap_oos_value_ref::decode (*record, attr.location, ref, pending);
 	  if (error != NO_ERROR)
 	    {
 	      break;
@@ -233,6 +257,7 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
       error = ER_OUT_OF_VIRTUAL_MEMORY;
     }
   heap_classrepr_free_and_init (repr, &cache_index);
+  pending->finish (error == NO_ERROR);
   if (error != NO_ERROR)
     {
       (void) heap_oos_begin_insert_publication (thread_p);
@@ -702,7 +727,8 @@ heap_oos_attr_has_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
  */
 int
 heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CACHE_ATTRINFO *attr_info,
-				std::vector<RECDES> &oos_payloads, bool *grouped_applied)
+				std::vector<RECDES> &oos_payloads, bool *grouped_applied,
+				const heap_pending_record *pending)
 {
   const RECDES empty_payload = { -1, -1, REC_UNKNOWN, NULL };
   std::vector<oos_read_request> requests;
@@ -751,7 +777,7 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
 	  continue;		/* not OOS here: the per-attribute reader handles it */
 	}
 
-      error = heap_oos_value_ref::decode (*recdes, attr_info->values[i].read_attrepr->location, ref);
+      error = heap_oos_value_ref::decode (*recdes, attr_info->values[i].read_attrepr->location, ref, pending);
       oos_len = ref.length ();
       if (error == NO_ERROR && recdes_allocate_data_area (&oos_payloads[i], (int) oos_len) != NO_ERROR)
 	{

@@ -29,6 +29,7 @@
 #include "heap_pending_record.hpp"
 #include "packer.hpp"
 #include "locator_sr.h"
+#include "log_impl.h"
 #include "class_object.h"
 #include "locator_cl.h"
 #include "xserver_interface.h"
@@ -574,7 +575,7 @@ TEST_F (OosSqlShow, RawCopyAreaRoutesInsertAndMovementWithoutChangingPayload)
       ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &supplied), S_SUCCESS);
       RECDES supplied_record = supplied.get_recdes ();
       heap_attrinfo_end (thread_p, &attrs);
-      ASSERT_EQ (heap_oos_finalize_record (thread_p, &source, &supplied_record), NO_ERROR);
+      ASSERT_EQ (heap_oos_finalize_record (thread_p, &source, &supplied_record, &supplied), NO_ERROR);
       /* A supplied stored image can already contain OOS; it still needs new destination-owned chains. */
       RECDES *record = &supplied_record;
       LC_COPYAREA *area = locator_allocate_copy_area_by_length (record->length + OR_MVCC_MAX_HEADER_SIZE
@@ -725,6 +726,15 @@ TEST_F (OosSqlShow, PendingReferencesResolveAndFinalizeInPlace)
   EXPECT_EQ (transport, untouched);
   er_clear ();
   RECDES record = storage.get_recdes ();
+  MVCC_REC_HEADER enlarged;
+  ASSERT_EQ (or_mvcc_get_header (&record, &enlarged), NO_ERROR);
+  enlarged.mvcc_flag |= OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_PREV_VERSION;
+  enlarged.mvcc_ins_id = 101;
+  enlarged.mvcc_del_id = 202;
+  enlarged.prev_version_lsa.pageid = 303;
+  enlarged.prev_version_lsa.offset = 4;
+  ASSERT_EQ (or_mvcc_set_header (&record, &enlarged), NO_ERROR);
+  ASSERT_GT (record.length, storage.get_recdes ().length);
   char *const original_buffer = record.data;
   const int original_length = record.length;
   std::vector<char> original (record.data, record.data + record.length);
@@ -732,7 +742,17 @@ TEST_F (OosSqlShow, PendingReferencesResolveAndFinalizeInPlace)
   for (int i = 0; i < 2; ++i)
     {
       heap_oos_value_ref ref;
-      ASSERT_EQ (heap_oos_value_ref::decode (record, locations[i], ref), NO_ERROR);
+      // Prepared bytes alone cannot authorize access to retained memory.
+      EXPECT_EQ (heap_oos_value_ref::decode (record, locations[i], ref), ER_HEAP_OOS_BAD_INLINE_HEADER);
+      er_clear ();
+      heap_pending_record wrong_owner;
+      EXPECT_EQ (heap_oos_value_ref::decode (record, locations[i], ref, &wrong_owner), ER_HEAP_OOS_BAD_INLINE_HEADER);
+      er_clear ();
+      record_descriptor copied (record);
+      EXPECT_EQ (heap_oos_value_ref::decode (copied.get_recdes (), locations[i], ref, &storage),
+		 ER_HEAP_OOS_BAD_INLINE_HEADER);
+      er_clear ();
+      ASSERT_EQ (heap_oos_value_ref::decode (record, locations[i], ref, &storage), NO_ERROR);
       payloads[i].resize (ref.length ());
       ASSERT_EQ (ref.read_into (thread_p, { payloads[i].data (), payloads[i].size () }), NO_ERROR);
       // The same bytes received from a client or fetched from disk cannot authorize memory access.
@@ -740,16 +760,31 @@ TEST_F (OosSqlShow, PendingReferencesResolveAndFinalizeInPlace)
       untrusted.type = REC_HOME;
       EXPECT_EQ (heap_oos_value_ref::decode (untrusted, locations[i], ref), ER_HEAP_OOS_BAD_INLINE_HEADER);
       er_clear ();
+      char *stub = nullptr;
+      ASSERT_EQ (heap_recdes_get_oos_inline_stub (&record, locations[i], &stub), NO_ERROR);
+      char saved[OR_OOS_INLINE_SIZE];
+      std::memcpy (saved, stub, sizeof (saved));
+      OR_BUF buf;
+      or_init (&buf, stub + OR_OID_SIZE + OR_BIGINT_SIZE, OR_BIGINT_SIZE);
+      or_put_bigint (&buf, -1);
+      EXPECT_EQ (heap_oos_value_ref::decode (record, locations[i], ref, &storage), ER_HEAP_OOS_BAD_INLINE_HEADER);
+      er_clear ();
+      std::memcpy (stub, saved, sizeof (saved));
+      or_init (&buf, stub + OR_OID_SIZE, OR_BIGINT_SIZE);
+      or_put_bigint (&buf, (DB_BIGINT) payloads[i].size () + 1);
+      EXPECT_EQ (heap_oos_value_ref::decode (record, locations[i], ref, &storage), ER_HEAP_OOS_BAD_INLINE_HEADER);
+      er_clear ();
+      std::memcpy (stub, saved, sizeof (saved));
     }
   // Both requested attributes take grouped Resolve and survive source DB_VALUE cleanup.
   HEAP_CACHE_ATTRINFO attrs;
   ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, -1, nullptr, &attrs), NO_ERROR);
-  ASSERT_EQ (heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &record, &attrs), NO_ERROR);
+  ASSERT_EQ (heap_attrinfo_read_dbvalues (thread_p, &oid_Null_oid, &record, &attrs, &storage), NO_ERROR);
   EXPECT_EQ (db_get_int (heap_attrinfo_access (db_attribute_id (db_get_attribute (cls, "id")), &attrs)), 7);
   heap_attrinfo_end (thread_p, &attrs);
   EXPECT_TRUE (thread_p->oos_oids.empty ());
 
-  ASSERT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &record), NO_ERROR);
+  ASSERT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &record, &storage), NO_ERROR);
   EXPECT_EQ (record.data, original_buffer);
   EXPECT_EQ (record.length, original_length);
   EXPECT_EQ (record.type, REC_HOME);
@@ -775,6 +810,71 @@ TEST_F (OosSqlShow, PendingReferencesResolveAndFinalizeInPlace)
   ASSERT_EQ (db_abort_transaction (), NO_ERROR);
 }
 
+TEST_F (OosSqlShow, FinalizationResetsPublicationOnceAndFailureCannotRetry)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (a BIT VARYING STORAGE FORCE_OUTLINE)"), 0);
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  ASSERT_NE (tdes, nullptr);
+  DB_OBJECT *cls = db_find_class ("t_oos_show_yes");
+  OID class_oid = *db_identifier (cls);
+  HEAP_CACHE_ATTRINFO attrs;
+  ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, -1, nullptr, &attrs), NO_ERROR);
+  heap_pending_record inline_row;
+  ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &inline_row), S_SUCCESS);
+  RECDES inline_record = inline_row.get_recdes ();
+  std::string bytes (50000, '\xAB');
+  DB_VALUE value;
+  db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, bytes.data (), bytes.size () * 8);
+  ASSERT_EQ (heap_attrinfo_set (nullptr, db_attribute_id (db_get_attribute (cls, "a")), &value, &attrs), NO_ERROR);
+  heap_pending_record first;
+  ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &first), S_SUCCESS);
+  RECDES first_record = first.get_recdes ();
+  ASSERT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &first_record, &first), NO_ERROR);
+  ASSERT_EQ (thread_p->oos_oids.size (), 1u);
+  // Standalone does not emit replication LSAs; seed the existing publication
+  // queue to verify that the paired reset also clears it.
+  if (tdes->oos_insert_lsa_queue.is_empty ())
+    {
+      tdes->oos_insert_lsa_queue.push (thread_p->oos_oids.front ().identity_stamp);
+    }
+  ASSERT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &inline_record, &inline_row), NO_ERROR);
+  EXPECT_TRUE (thread_p->oos_oids.empty ());
+  EXPECT_TRUE (tdes->oos_insert_lsa_queue.is_empty ());
+
+  heap_pending_record next;
+  ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &next), S_SUCCESS);
+  RECDES next_record = next.get_recdes ();
+  ASSERT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &next_record, &next), NO_ERROR);
+  ASSERT_EQ (thread_p->oos_oids.size (), 1u);
+  const OID published = thread_p->oos_oids.front ().oid;
+  if (tdes->oos_insert_lsa_queue.is_empty ())
+    {
+      tdes->oos_insert_lsa_queue.push (thread_p->oos_oids.front ().identity_stamp);
+    }
+  const std::size_t published_lsas = tdes->oos_insert_lsa_queue.size ();
+  ASSERT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &inline_record, &inline_row), NO_ERROR);
+  ASSERT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &first_record, &first), NO_ERROR);
+  ASSERT_EQ (thread_p->oos_oids.size (), 1u);
+  EXPECT_TRUE (OID_EQ (&published, &thread_p->oos_oids.front ().oid));
+  EXPECT_EQ (tdes->oos_insert_lsa_queue.size (), published_lsas);
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+  heap_pending_record failed;
+  ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &failed), S_SUCCESS);
+  RECDES failed_record = failed.get_recdes ();
+  heap_oos_test_fail_before_vfid_lookup_once ();
+  ASSERT_NE (heap_oos_finalize_record (thread_p, &class_oid, &failed_record, &failed), NO_ERROR);
+  er_clear ();
+  EXPECT_NE (heap_oos_finalize_record (thread_p, &class_oid, &failed_record, &failed), NO_ERROR);
+  EXPECT_TRUE (thread_p->oos_oids.empty ());
+  EXPECT_TRUE (tdes->oos_insert_lsa_queue.is_empty ());
+  er_clear ();
+#endif
+  heap_attrinfo_end (thread_p, &attrs);
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+}
+
 TEST_F (OosSqlShow, SerializedPreparationPreservesMvccAndOutlivesSource)
 {
   ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT DEFAULT 7, "
@@ -797,7 +897,7 @@ TEST_F (OosSqlShow, SerializedPreparationPreservesMvccAndOutlivesSource)
     ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &source), S_SUCCESS);
     RECDES source_record = source.get_recdes ();
     heap_attrinfo_end (thread_p, &attrs);
-    ASSERT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &source_record), NO_ERROR);
+    ASSERT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &source_record, &source), NO_ERROR);
     ASSERT_EQ (or_mvcc_get_header (&source_record, &expected), NO_ERROR);
     expected.mvcc_flag |= OR_MVCC_FLAG_VALID_INSID | OR_MVCC_FLAG_VALID_DELID | OR_MVCC_FLAG_VALID_PREV_VERSION;
     expected.mvcc_ins_id = 101;
@@ -811,7 +911,7 @@ TEST_F (OosSqlShow, SerializedPreparationPreservesMvccAndOutlivesSource)
   }
   heap_pending_record moved (std::move (adapted));
   RECDES moved_record = moved.get_recdes ();
-  ASSERT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &moved_record), NO_ERROR);
+  ASSERT_EQ (heap_oos_finalize_record (thread_p, &class_oid, &moved_record, &moved), NO_ERROR);
   MVCC_REC_HEADER actual;
   ASSERT_EQ (or_mvcc_get_header (&moved_record, &actual), NO_ERROR);
   EXPECT_EQ ((int) actual.mvcc_flag, (int) expected.mvcc_flag);
