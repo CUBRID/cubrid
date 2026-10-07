@@ -146,46 +146,6 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
     }
 }
 
-static unsigned int
-encrypt_get_salt_offset (const char *name, unsigned int max_length)
-{
-  int i;
-  unsigned int x = 0;
-
-  x = 0;
-  for (i = 0; name[i] != '\0'; i++)
-    {
-      x += (unsigned char)name[i];
-    }
-  x = x % (ENCRYPT_SHA2_512_HEX_SIZE + 1);
-
-  return (x > max_length) ? max_length : x;
-}
-
-char *
-encrypt_salt_extract (const char *name, const char *salted_sha2_512, char *salt)
-{
-  if (IS_ENCODED_SHA2_512_SALT (salted_sha2_512))
-    {
-      unsigned int len = strlen (salted_sha2_512 + 1);
-
-      if (len == (ENCRYPT_SALT_SIZE_HEX + ENCRYPT_SHA2_512_HEX_SIZE))
-	{
-	  unsigned int x = encrypt_get_salt_offset (name, len - ENCRYPT_SALT_SIZE_HEX);
-
-	  salted_sha2_512++; // skip the prefix
-	  memcpy (salt, salted_sha2_512 + x, ENCRYPT_SALT_SIZE_HEX);
-	  salt[ENCRYPT_SALT_SIZE_HEX] = '\0';
-	  return salt;
-	}
-    }
-
-  assert (false);
-
-  salt[0] = '\0';
-  return NULL;
-}
-
 static void
 encrypt_salt_generate (char *salt, int salt_size)
 {
@@ -233,17 +193,6 @@ encrypt_salt_generate (char *salt, int salt_size)
   assert (length == ENCRYPT_SALT_SIZE_HEX);
 }
 
-static void
-encrypt_new_string (char *dest, const char *src1, const char *src2, const char *src3)
-{
-  memcpy (dest, src1, strlen (src1));
-  dest += strlen (src1);
-  memcpy (dest, src2, strlen (src2));
-  dest += strlen (src2);
-  memcpy (dest, src3, strlen (src3) + 1);
-}
-
-
 /*
  * encrypt_password_sha2_512_salt -  hashing a password string using SHA2 512 with salt
  *   return: none
@@ -260,9 +209,8 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
 {
   char sha512[AU_MAX_PASSWORD_BUF + 4];
   char salt_in[ENCRYPT_SALT_SIZE_HEX + 1];
-  char *ptr = sha512;
   char buf[AU_MAX_PASSWORD_BUF + 4];
-  unsigned int x;
+  char *ptr;
 
   assert (name != NULL && strlen (name) > 0);
 
@@ -295,34 +243,12 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
     }
 
   assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
-
-  x = 0;
-  for (int i = 0; i < ENCRYPT_SALT_SIZE_HEX; i++)
-    {
-      x ^= (unsigned char)salt[i];
-    }
-
-  switch (x % 6)
-    {
-    case 0:
-      encrypt_new_string (buf, salt, sha512 + 1, name);
-      break;
-    case 1:
-      encrypt_new_string (buf, salt, name, sha512 + 1);
-      break;
-    case 2:
-      encrypt_new_string (buf, sha512 + 1, salt, name);
-      break;
-    case 3:
-      encrypt_new_string (buf, sha512 + 1, name, salt);
-      break;
-    case 4:
-      encrypt_new_string (buf, name, salt, sha512 + 1);
-      break;
-    default:
-      encrypt_new_string (buf, name, sha512 + 1, salt);
-      break;
-    }
+  ptr = buf;
+  memcpy (ptr, salt, strlen (salt));
+  ptr += strlen (salt);
+  memcpy (ptr, sha512 + 1, strlen (sha512 + 1));
+  ptr += strlen (sha512 + 1);
+  memcpy (ptr, name, strlen (name) + 1);
 
   encrypt_password_sha2_512 (buf, sha512);
   if (sha512[0] == '\0')
@@ -332,29 +258,9 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
     }
 
   ptr = sha512 + 1;
-  x = encrypt_get_salt_offset (name, strlen (ptr));
-  if (x > 0)
-    {
-      memcpy (dest + 1, ptr, x);
-    }
-
-  memcpy (dest + 1 + x, salt, ENCRYPT_SALT_SIZE_HEX + 1);
-
-  if (x < strlen (ptr))
-    {
-      memcpy (dest + 1 + x + ENCRYPT_SALT_SIZE_HEX, ptr + x, strlen (ptr) - x + 1);
-    }
+  memcpy (dest + 1, salt, ENCRYPT_SALT_SIZE_HEX);
+  memcpy (dest + 1 + ENCRYPT_SALT_SIZE_HEX, ptr, strlen (ptr) + 1);
   dest[0] = ENCODE_PREFIX_SHA2_512_SALT; // set the prefix to SHA2_512_SALT
-
-#ifndef NDEBUG
-  {
-    char salt_t[ENCRYPT_SALT_SIZE_HEX + 1];
-
-    encrypt_salt_extract (name, dest, salt_t);
-    assert (strlen (salt_t) == ENCRYPT_SALT_SIZE_HEX);
-    assert (memcmp (salt, salt_t, ENCRYPT_SALT_SIZE_HEX)==0);
-  }
-#endif
 }
 
 /*
@@ -433,12 +339,16 @@ match_password (const char *name, const char *user, const char *database)
 
       strcpy (buf2, database);
 
-      if (encrypt_salt_extract (name, database, salt) == NULL)
+      if (strlen (database + 1) != (ENCRYPT_SALT_SIZE_HEX + ENCRYPT_SHA2_512_HEX_SIZE))
 	{
+	  assert (false);
 	  return false;
 	}
 
+      memcpy (salt, database + 1, ENCRYPT_SALT_SIZE_HEX);
+      salt[ENCRYPT_SALT_SIZE_HEX] = '\0';
       assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
+
       encrypt_password_sha2_512_salt (name, salt, user, buf1);
     }
   else
