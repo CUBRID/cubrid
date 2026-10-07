@@ -12412,17 +12412,17 @@ pt_check_with_clause (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
- * pt_dblink_delete_subq_shadows_name () - true if subq's OWN top-level FROM rebinds name (as a range
+ * pt_dblink_dml_subq_shadows_name () - true if subq's OWN top-level FROM rebinds name (as a range
  *   variable, or as a bare entity name when the spec has no alias).
  *   Only a plain SELECT has a single top-level FROM to check; UNION/INTERSECTION/DIFFERENCE and CTEs are
  *   conservatively treated as not shadowing (same as before this check existed), since a query's operands
  *   would each need this evaluated in their own right. Checks subq's own scope only -- a further-nested
  *   PT_SELECT (a derived table in this FROM, or any other nested subquery) may shadow the name again on
- *   its own terms, independently of this result; the caller (pt_dblink_delete_corr_ref_pre) re-evaluates
+ *   its own terms, independently of this result; the caller (pt_dblink_dml_corr_ref_pre) re-evaluates
  *   this per scope as it descends, rather than relying on a single top-level call.
  */
 static bool
-pt_dblink_delete_subq_shadows_name (PT_NODE * subq, const char *name)
+pt_dblink_dml_subq_shadows_name (PT_NODE * subq, const char *name)
 {
   PT_NODE *spec;
 
@@ -12447,47 +12447,47 @@ pt_dblink_delete_subq_shadows_name (PT_NODE * subq, const char *name)
 }
 
 /*
- * pt_dblink_delete_corr_ref_pre/_post () - walk callback pair: flag a subquery correlated to the outer
- *   remote DELETE target. A correlated reference is a qualified column (PT_DOT_) whose qualifier matches
- *   the target's range variable or entity name. Used by pt_check_with_info's DELETE branch before the
- *   subquery is bound stand-alone (which would otherwise fail with a confusing "Attribute <alias> was not
- *   found").
+ * pt_dblink_dml_corr_ref_pre/_post () - walk callback pair: flag a subquery correlated to the outer
+ *   remote DELETE or UPDATE target. A correlated reference is a qualified column (PT_DOT_) whose
+ *   qualifier matches the target's range variable or entity name. Used by pt_check_with_info's DELETE
+ *   branch and by pt_dblink_update_bind_subq () before the subquery is bound stand-alone (which would
+ *   otherwise fail with a confusing "Attribute <alias> was not found").
  *   Shadowing is re-evaluated at every PT_SELECT boundary the walk descends into (subq itself, a derived
  *   table, or any other nested subquery) via the scope stack the pre/post pair pushes/pops -- not just
  *   subq's own top-level FROM -- so a derived table that rebinds the name deeper in the tree is also
  *   recognized. A scope inherits its enclosing scope's shadow state (once shadowed, always shadowed
- *   going deeper -- see pt_dblink_delete_subq_shadows_name).
+ *   going deeper -- see pt_dblink_dml_subq_shadows_name).
  */
-typedef struct pt_dblink_del_corr_scope
+typedef struct pt_dblink_dml_corr_scope
 {
-  struct pt_dblink_del_corr_scope *up;
+  struct pt_dblink_dml_corr_scope *up;
   bool alias_shadowed;		/* true if this scope's own top-level FROM (or an enclosing one) rebinds `alias` */
   bool entity_shadowed;		/* true if this scope's own top-level FROM (or an enclosing one) rebinds `entity` */
-} PT_DBLINK_DEL_CORR_SCOPE;
+} PT_DBLINK_DML_CORR_SCOPE;
 
 typedef struct
 {
   const char *alias;		/* outer target range variable (e.g. "r" in remote_t AS r), may be NULL */
   const char *entity;		/* outer target table name (e.g. "remote_t"), may be NULL */
-  PT_DBLINK_DEL_CORR_SCOPE *top;	/* innermost pushed scope; NULL before subq's own PT_SELECT is entered */
+  PT_DBLINK_DML_CORR_SCOPE *top;	/* innermost pushed scope; NULL before subq's own PT_SELECT is entered */
   bool found;
-} PT_DBLINK_DEL_CORR;
+} PT_DBLINK_DML_CORR;
 
 static PT_NODE *
-pt_dblink_delete_corr_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_dblink_dml_corr_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_DBLINK_DEL_CORR *chk = (PT_DBLINK_DEL_CORR *) arg;
+  PT_DBLINK_DML_CORR *chk = (PT_DBLINK_DML_CORR *) arg;
 
   *continue_walk = PT_CONTINUE_WALK;
   if (node->node_type == PT_SELECT)
     {
-      PT_DBLINK_DEL_CORR_SCOPE *scope = (PT_DBLINK_DEL_CORR_SCOPE *) parser_alloc (parser, sizeof (*scope));
+      PT_DBLINK_DML_CORR_SCOPE *scope = (PT_DBLINK_DML_CORR_SCOPE *) parser_alloc (parser, sizeof (*scope));
       bool up_alias_shadowed = (chk->top != NULL) && chk->top->alias_shadowed;
       bool up_entity_shadowed = (chk->top != NULL) && chk->top->entity_shadowed;
 
       scope->up = chk->top;
-      scope->alias_shadowed = up_alias_shadowed || pt_dblink_delete_subq_shadows_name (node, chk->alias);
-      scope->entity_shadowed = up_entity_shadowed || pt_dblink_delete_subq_shadows_name (node, chk->entity);
+      scope->alias_shadowed = up_alias_shadowed || pt_dblink_dml_subq_shadows_name (node, chk->alias);
+      scope->entity_shadowed = up_entity_shadowed || pt_dblink_dml_subq_shadows_name (node, chk->entity);
       chk->top = scope;
     }
   else if (node->node_type == PT_DOT_ && node->info.dot.arg1 != NULL && node->info.dot.arg1->node_type == PT_NAME)
@@ -12508,9 +12508,9 @@ pt_dblink_delete_corr_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *ar
 }
 
 static PT_NODE *
-pt_dblink_delete_corr_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+pt_dblink_dml_corr_ref_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  PT_DBLINK_DEL_CORR *chk = (PT_DBLINK_DEL_CORR *) arg;
+  PT_DBLINK_DML_CORR *chk = (PT_DBLINK_DML_CORR *) arg;
 
   (void) parser;
 
@@ -12578,6 +12578,49 @@ pt_bind_remote_dml_subq (PARSER_CONTEXT * parser, PT_NODE * subq, SEMANTIC_CHK_I
   sc_info_ptr->top_node = saved_top;
 
   return pt_has_error (parser) ? NULL : subq;
+}
+
+/*
+ * pt_dblink_update_bind_subq () - Reject a subquery correlated to the outer remote UPDATE target, then
+ *   bind it stand-alone. A remote UPDATE sink holds one subquery per SET assignment plus the WHERE
+ *   driving predicate, and each needs both steps, so they live here instead of being repeated per site.
+ *   The correlation walk is shared with the DELETE sink (PT_DBLINK_DML_CORR and its callback pair): the
+ *   rule is the same for both -- the sink evaluates the subquery once with no outer row, so a reference
+ *   to the target cannot be honored -- and rejecting it here keeps the stand-alone bind below from
+ *   failing with a confusing "Attribute <alias> was not found". Only a qualified reference is recognized,
+ *   so an unqualified one (WHERE l.x = remote_only_col) still reaches the bind and fails with that
+ *   message -- the statement is rejected either way, just less clearly. Same limitation on the DELETE side.
+ *   return: the bound subquery, or NULL if it was rejected or the bind failed (parser error already set)
+ *   parser(in)          : parser context
+ *   stmt(in)            : the UPDATE statement, for error reporting
+ *   subq(in)            : the subquery to check and bind
+ *   sc_info_ptr(in/out) : semantic check info, passed through to pt_bind_remote_dml_subq
+ *   alias(in)           : outer target range variable, may be NULL
+ *   entity(in)          : outer target table name, may be NULL
+ *   clause(in)          : "WHERE" or "SET", used to name the offending clause in both messages
+ */
+static PT_NODE *
+pt_dblink_update_bind_subq (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * subq,
+			    SEMANTIC_CHK_INFO * sc_info_ptr, const char *alias, const char *entity, const char *clause)
+{
+  PT_DBLINK_DML_CORR corr;
+  char msg[128];
+
+  corr.alias = alias;
+  corr.entity = entity;
+  corr.top = NULL;
+  corr.found = false;
+  parser_walk_tree (parser, subq, pt_dblink_dml_corr_ref_pre, &corr, pt_dblink_dml_corr_ref_post, &corr);
+  if (corr.found)
+    {
+      snprintf (msg, sizeof (msg), "dblink: correlated subquery is not supported in a remote UPDATE %s clause", clause);
+      PT_ERRORc (parser, stmt, msg);
+      return NULL;
+    }
+
+  snprintf (msg, sizeof (msg), "remote UPDATE: failed to translate the %s subquery", clause);
+
+  return pt_bind_remote_dml_subq (parser, subq, sc_info_ptr, msg);
 }
 
 /*
@@ -12737,7 +12780,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		   * converted the target to PT_DBLINK_TABLE_DML: the sink leaves qstr == NULL, while a full qstr
 		   * pushdown (e.g. same-server all-remote IN (SELECT ... FROM t@srv)) sets qstr and ships the whole
 		   * DELETE as text -- its subquery must NOT be translated locally. qstr == NULL is only produced when
-		   * the parser shape gate (pt_dblink_delete_where_is_inscope) accepted the form, so this also confines
+		   * the parser shape gate (pt_dblink_dml_where_is_inscope) accepted the form, so this also confines
 		   * resolution to the parser-approved single-predicate shapes. */
 		  if (remote != NULL && remote->node_type == PT_DBLINK_TABLE_DML
 		      && remote->info.dblink_table.qstr == NULL && cond != NULL && cond->next == NULL
@@ -12749,7 +12792,7 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		  if (subq != NULL)
 		    {
 		      PT_NODE *tgt = node->info.delete_.spec;
-		      PT_DBLINK_DEL_CORR corr;
+		      PT_DBLINK_DML_CORR corr;
 
 		      /* reject a subquery correlated to the outer DELETE target with a clear message, before the
 		       * stand-alone bind below (which would fail with "Attribute <alias> was not found"). The
@@ -12764,8 +12807,8 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		       * not the outer target. Shadowing is (re-)computed per scope by the pre/post pair itself. */
 		      corr.top = NULL;
 		      corr.found = false;
-		      parser_walk_tree (parser, subq, pt_dblink_delete_corr_ref_pre, &corr,
-					pt_dblink_delete_corr_ref_post, &corr);
+		      parser_walk_tree (parser, subq, pt_dblink_dml_corr_ref_pre, &corr,
+					pt_dblink_dml_corr_ref_post, &corr);
 		      if (corr.found)
 			{
 			  PT_ERROR (parser, node,
@@ -12780,6 +12823,50 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		      if (subq != NULL)
 			{
 			  cond->info.expr.arg2 = subq;
+			}
+		    }
+		}
+	      else if (node->node_type == PT_UPDATE)
+		{
+		  /* mirrors the remote DELETE handling above (same reason -- see that comment), with one
+		   * difference: a remote UPDATE sink can hold several local subqueries -- the WHERE driving
+		   * predicate plus one per SET assignment -- and every one of them runs stand-alone. */
+		  PT_NODE *remote = node->info.update.spec->info.spec.remote_server_name;
+
+		  if (remote != NULL && remote->node_type == PT_DBLINK_TABLE_DML
+		      && remote->info.dblink_table.qstr == NULL)
+		    {
+		      PT_NODE *tgt = node->info.update.spec;
+		      PT_NODE *cond = node->info.update.search_cond;
+		      PT_ASSIGNMENTS_HELPER ea;
+		      const char *alias =
+			(tgt->info.spec.range_var != NULL) ? tgt->info.spec.range_var->info.name.original : NULL;
+		      const char *entity =
+			(tgt->info.spec.entity_name != NULL) ? tgt->info.spec.entity_name->info.name.original : NULL;
+
+		      if (cond != NULL && cond->next == NULL && cond->node_type == PT_EXPR
+			  && cond->info.expr.arg2 != NULL && PT_IS_QUERY (cond->info.expr.arg2))
+			{
+			  PT_NODE *subq = pt_dblink_update_bind_subq (parser, node, cond->info.expr.arg2,
+								      sc_info_ptr, alias, entity, "WHERE");
+			  if (subq != NULL)
+			    {
+			      cond->info.expr.arg2 = subq;
+			    }
+			}
+
+		      pt_init_assignments_helper (parser, &ea, node->info.update.assignment);
+		      while (!pt_has_error (parser) && pt_get_next_assignment (&ea))
+			{
+			  if (ea.rhs != NULL && PT_IS_QUERY (ea.rhs))
+			    {
+			      PT_NODE *subq = pt_dblink_update_bind_subq (parser, node, ea.rhs, sc_info_ptr,
+									  alias, entity, "SET");
+			      if (subq != NULL)
+				{
+				  ea.assignment->info.expr.arg2 = subq;
+				}
+			    }
 			}
 		    }
 		}
