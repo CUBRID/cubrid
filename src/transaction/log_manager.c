@@ -74,6 +74,7 @@
 #include "slotted_page.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "set_object.h"
 #include "tz_support.h"
 #include "db_date.h"
 #include "fault_injection.h"
@@ -180,6 +181,7 @@ struct archive_log_header_scan_context
 };
 
 CDC_GLOBAL cdc_Gl;
+LOG_EXTRACT_OWNER cdc_Session_owner = LOG_EXTRACT_OWNER_INITIALIZER;
 bool cdc_Logging = false;
 /* CDC end */
 
@@ -14400,6 +14402,688 @@ cdc_wakeup_consumer ()
   cdc_Gl.consumer.request = CDC_REQUEST_CONSUMER_TO_RUN;
 }
 
+/*
+ * Server-side account lookup for the CDC log-server channel (CBRD-27436). The
+ * channel has no server-verified identity, so what it decides about the caller
+ * has to come from the catalog rather than from the request.
+ */
+static int cdc_User_attr_password = -1;
+static int cdc_User_attr_groups = -1;
+
+/*
+ * cdc_load_user_attr_ids () - resolve the db_user attribute ids read below.
+ *   return: NO_ERROR, or ER_FAILED if the class record could not be read.
+ *
+ * Resolved once per server. A race resolves the same ids twice, and each is
+ * published only once known good, so no lock is needed.
+ */
+static int
+cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
+{
+  HEAP_SCANCACHE scan;
+  RECDES class_record;
+  HEAP_CACHE_ATTRINFO attr_info;
+  char *attr_name;
+  int alloced;
+  int i, error = NO_ERROR;
+  int password_id = -1, groups_id = -1;
+  bool scan_started = false, attrinfo_started = false;
+
+  if (cdc_User_attr_password != -1 && cdc_User_attr_groups != -1)
+    {
+      return NO_ERROR;
+    }
+
+  if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, oid_User_class_oid) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  scan_started = true;
+
+  if (heap_get_class_record (thread_p, oid_User_class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  if (heap_attrinfo_start (thread_p, oid_User_class_oid, -1, NULL, &attr_info) != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+  attrinfo_started = true;
+
+  for (i = 0; i < attr_info.num_values; i++)
+    {
+      attr_name = NULL;
+      alloced = 0;
+
+      if (or_get_attrname (&class_record, i, &attr_name, &alloced) != NO_ERROR || attr_name == NULL)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      if (strcmp (attr_name, "password") == 0)
+	{
+	  password_id = i;
+	}
+      else if (strcmp (attr_name, "groups") == 0)
+	{
+	  groups_id = i;
+	}
+
+      if (alloced)
+	{
+	  db_private_free_and_init (thread_p, attr_name);
+	}
+    }
+
+  if (password_id == -1 || groups_id == -1)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  cdc_User_attr_password = password_id;
+  cdc_User_attr_groups = groups_id;
+
+end:
+  if (attrinfo_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  if (scan_started)
+    {
+      (void) heap_scancache_end (thread_p, &scan);
+    }
+
+  return error;
+}
+
+/*
+ * cdc_find_user_oid () - locate a db_user instance by account name.
+ *   return: true if the account exists.
+ *   thread_p (in):
+ *   user_name (in): account name
+ *   user_oid (out): the instance oid
+ *
+ * db_user has a unique index on "name", so this is a key lookup, not a scan.
+ */
+static bool
+cdc_find_user_oid (THREAD_ENTRY * thread_p, const char *user_name, OID * user_oid)
+{
+  BTID btid;
+  DB_VALUE key;
+  /* upper-casing can grow a name by up to INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER */
+  char upper_name[DB_MAX_USER_LENGTH * INTL_IDENTIFIER_CASING_SIZE_MULTIPLIER + 1];
+  BTREE_SEARCH search;
+
+  /* the same limit au_login () applies; longer can be no account */
+  if (user_name == NULL || *user_name == '\0' || strlen (user_name) >= DB_MAX_USER_LENGTH)
+    {
+      return false;
+    }
+
+  /* account names are stored upper-cased */
+  intl_identifier_upper (user_name, upper_name);
+
+  if (heap_get_index_with_name (thread_p, oid_User_class_oid, "u_db_user_name", &btid) != NO_ERROR
+      || BTID_IS_NULL (&btid))
+    {
+      return false;
+    }
+
+  db_make_string (&key, upper_name);
+  search = xbtree_find_unique (thread_p, &btid, S_SELECT, &key, oid_User_class_oid, user_oid, false);
+  pr_clear_value (&key);
+
+  return (search == BTREE_KEY_FOUND);
+}
+
+/*
+ * cdc_read_password_string () - read the stored password out of a db_password
+ *   instance.
+ *   return: true if the password object was read; false on any read failure.
+ *   thread_p (in):
+ *   password_oid (in)  : oid held by db_user.password (a real password object)
+ *   password (out)     : the stored string, which is already encrypted
+ *   password_size (in) : size of the output buffer
+ *
+ * The caller only reaches here when db_user.password holds an object, so a
+ * failure to read that object is a genuine error, not a passwordless account:
+ * it must be reported (false) rather than left as an empty password, or a read
+ * failure would make the account look passwordless and let a caller answer the
+ * challenge with a hash of the public nonce alone.
+ */
+static bool
+cdc_read_password_string (THREAD_ENTRY * thread_p, const OID * password_oid, char *password, int password_size)
+{
+  HEAP_SCANCACHE scan;
+  RECDES recdes;
+  HEAP_CACHE_ATTRINFO attr_info;
+  OID class_oid;
+  DB_VALUE *value;
+  const char *stored;
+  bool ok = false;
+  bool scan_started = false, attrinfo_started = false;
+
+  if (OID_ISNULL (password_oid))
+    {
+      return false;
+    }
+
+  if (heap_get_class_oid (thread_p, password_oid, &class_oid) != S_SUCCESS)
+    {
+      return false;
+    }
+
+  if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, &class_oid) != NO_ERROR)
+    {
+      return false;
+    }
+  scan_started = true;
+
+  if (heap_get_visible_version (thread_p, password_oid, &class_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+    {
+      goto end;
+    }
+
+  if (heap_attrinfo_start (thread_p, &class_oid, -1, NULL, &attr_info) != NO_ERROR)
+    {
+      goto end;
+    }
+  attrinfo_started = true;
+
+  if (heap_attrinfo_read_dbvalues (thread_p, password_oid, &recdes, &attr_info) != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* The password object was read; that alone is success. An empty or NULL stored
+   * string is a legitimately passwordless account (password left empty), not a
+   * read failure -- only the heap failures above return false. */
+  ok = true;
+
+  /* db_password holds a single attribute, the encrypted password */
+  value = heap_attrinfo_access (0, &attr_info);
+  if (value != NULL && !DB_IS_NULL (value) && TP_IS_CHAR_TYPE (DB_VALUE_TYPE (value)))
+    {
+      stored = db_get_string (value);
+      if (stored != NULL)
+	{
+	  strncpy (password, stored, password_size - 1);
+	  password[password_size - 1] = '\0';
+	}
+    }
+
+end:
+  if (attrinfo_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  if (scan_started)
+    {
+      (void) heap_scancache_end (thread_p, &scan);
+    }
+
+  return ok;
+}
+
+/*
+ * cdc_set_contains_oid () - does an object set hold this instance?
+ *   return: true if found.
+ *   set_value (in): a set-typed attribute value read from a heap record
+ *   oid (in)      : instance to look for
+ */
+static bool
+cdc_set_contains_oid (DB_VALUE * set_value, const OID * oid)
+{
+  DB_COLLECTION *set;
+  DB_VALUE element;
+  int i, size;
+
+  set = db_get_set (set_value);
+  if (set == NULL)
+    {
+      return false;
+    }
+
+  size = set_size (set);
+  for (i = 0; i < size; i++)
+    {
+      if (set_get_element_nocopy (set, i, &element) != NO_ERROR)
+	{
+	  continue;
+	}
+
+      /* object-typed attributes come back as plain oids on the server side */
+      if (DB_VALUE_TYPE (&element) == DB_TYPE_OID && OID_EQ (db_get_oid (&element), oid))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * cdc_get_user_info () - read an account's stored password and DBA group
+ *   membership straight from the catalog.
+ *   return: true if the account exists and could be read.
+ *   thread_p (in):
+ *   user_name (in)     : account name declared by the client
+ *   password (out)     : the stored (already encrypted) password, empty if none
+ *   password_size (in) : size of the password buffer
+ *   is_dba_group (out) : whether the account is DBA or a member of the DBA group
+ *
+ * "groups" is the flattened membership set, so nested groups need no extra walk.
+ * The CDC thread has no transaction index of its own; one is borrowed here.
+ */
+bool
+cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *password, int password_size,
+		   bool * is_dba_group)
+{
+  HEAP_SCANCACHE scan;
+  RECDES recdes;
+  HEAP_CACHE_ATTRINFO attr_info;
+  DB_VALUE *value;
+  OID user_oid, dba_oid;
+  int saved_tran_index = thread_p->tran_index;
+  bool dba_found, borrowed_tran = false;
+  bool found = false, scan_started = false, attrinfo_started = false;
+
+  assert (password != NULL && password_size > 0 && is_dba_group != NULL);
+
+  password[0] = '\0';
+  *is_dba_group = false;
+
+  if (saved_tran_index == NULL_TRAN_INDEX)
+    {
+      if (logtb_assign_tran_index (thread_p, NULL_TRANID, TRAN_ACTIVE, NULL, NULL, TRAN_LOCK_INFINITE_WAIT,
+				   TRAN_DEFAULT_ISOLATION_LEVEL ()) == NULL_TRAN_INDEX)
+	{
+	  return false;
+	}
+      borrowed_tran = true;
+    }
+
+  if (cdc_load_user_attr_ids (thread_p) != NO_ERROR || !cdc_find_user_oid (thread_p, user_name, &user_oid))
+    {
+      goto end;
+    }
+
+  dba_found = cdc_find_user_oid (thread_p, "DBA", &dba_oid);
+  if (dba_found && OID_EQ (&user_oid, &dba_oid))
+    {
+      *is_dba_group = true;
+    }
+
+  if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, oid_User_class_oid) != NO_ERROR)
+    {
+      goto end;
+    }
+  scan_started = true;
+
+  if (heap_get_visible_version (thread_p, &user_oid, oid_User_class_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
+    {
+      goto end;
+    }
+
+  if (heap_attrinfo_start (thread_p, oid_User_class_oid, -1, NULL, &attr_info) != NO_ERROR)
+    {
+      goto end;
+    }
+  attrinfo_started = true;
+
+  if (heap_attrinfo_read_dbvalues (thread_p, &user_oid, &recdes, &attr_info) != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* "password" references a db_password instance, it is not the string itself. A
+   * NULL/absent reference is a genuinely passwordless account (empty password is
+   * fine); an object we cannot read is a failure and must not pass as empty. */
+  value = heap_attrinfo_access (cdc_User_attr_password, &attr_info);
+  if (value != NULL && !DB_IS_NULL (value) && DB_VALUE_TYPE (value) == DB_TYPE_OID)
+    {
+      if (!cdc_read_password_string (thread_p, db_get_oid (value), password, password_size))
+	{
+	  /* the account has a password but it could not be read -- fail closed */
+	  *is_dba_group = false;
+	  found = false;
+	  goto end;
+	}
+    }
+
+  if (!*is_dba_group && dba_found)
+    {
+      value = heap_attrinfo_access (cdc_User_attr_groups, &attr_info);
+      if (value != NULL && !DB_IS_NULL (value))
+	{
+	  *is_dba_group = cdc_set_contains_oid (value, &dba_oid);
+	}
+    }
+
+  found = true;
+
+end:
+  if (attrinfo_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  if (scan_started)
+    {
+      (void) heap_scancache_end (thread_p, &scan);
+    }
+  if (borrowed_tran)
+    {
+      (void) xtran_server_commit (thread_p, false);
+      logtb_free_tran_index (thread_p, thread_p->tran_index);
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, saved_tran_index);
+    }
+
+  return found;
+}
+
+/*
+ * log_extract_check_authorization () - may this connection read the log through
+ *                                      CDC or flashback?
+ *   return: true if the requester is a DBA for that kind of extraction.
+ *   thread_p (in):
+ *   kind (in)    : the extraction the request is for
+ *
+ * Decided on the server only, from what the server itself verified:
+ *   LOG_EXTRACT_CDC       - the CDC channel carries no booted client, so only the
+ *                           result of its own challenge counts (the DBA or a
+ *                           member of the DBA group, as the client-side check used
+ *                           to allow). logtb_am_i_dba_client () is deliberately not
+ *                           a fallback: it could only match a client that sends CDC
+ *                           requests over an SQL connection to skip the challenge.
+ *   LOG_EXTRACT_FLASHBACK - flashback runs on a booted client connection, whose
+ *                           user the server keeps; the DBA account, as before.
+ */
+bool
+log_extract_check_authorization (THREAD_ENTRY * thread_p, LOG_EXTRACT_KIND kind)
+{
+#if defined (SERVER_MODE)
+  if (thread_p->conn_entry == NULL)
+    {
+      return false;
+    }
+
+  switch (kind)
+    {
+    case LOG_EXTRACT_CDC:
+      return thread_p->conn_entry->cdc_auth_done;
+    case LOG_EXTRACT_FLASHBACK:
+      return logtb_am_i_dba_client (thread_p);
+    default:
+      assert (false);
+      return false;
+    }
+#else
+  return false;
+#endif
+}
+
+#if defined (SERVER_MODE)
+/*
+ * log_extract_owner_is_alive () - is the connection recorded as the owner still open?
+ *   owner (in): caller holds owner->lock
+ *
+ * A closed connection gets its fd invalidated before its entry is reused, so it
+ * drops out of css_find_conn_from_fd (); client_id rules out a later connection
+ * that was handed the same fd.
+ */
+static bool
+log_extract_owner_is_alive (const LOG_EXTRACT_OWNER * owner)
+{
+  CSS_CONN_ENTRY *conn;
+  bool alive;
+  int r;
+
+  if (owner->fd == INVALID_SOCKET)
+    {
+      return false;
+    }
+
+  conn = css_find_conn_from_fd (owner->fd);
+  if (conn == NULL)
+    {
+      return false;
+    }
+
+  r = rmutex_lock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  alive = (conn->status == CONN_OPEN && conn->fd == owner->fd && conn->client_id == owner->client_id);
+
+  r = rmutex_unlock (NULL, &conn->rmutex);
+  assert (r == NO_ERROR);
+
+  return alive;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * log_extract_owner_claim () - make the calling connection the owner of a session,
+ *                              serving its first request
+ *   return: true if the caller now owns the session; false if takeover is not
+ *           allowed and a live connection still owns it.
+ *   owner (in/out)      :
+ *   thread_p (in)       :
+ *   takeover (in)       : take the session over even from a live owner
+ *   prev_fd (out)       : the previous owner's fd, INVALID_SOCKET if none (may be NULL)
+ *   prev_client_id (out): the previous owner's client id (may be NULL)
+ *
+ * An owner whose connection is gone is replaced either way: that is how a session
+ * left behind by a client that terminated abnormally is recovered. The caller
+ * ends the request it is serving with log_extract_owner_end_request (), or drops
+ * the session with log_extract_owner_release ().
+ */
+bool
+log_extract_owner_claim (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p, bool takeover, SOCKET * prev_fd,
+			 int *prev_client_id)
+{
+#if defined (SERVER_MODE)
+  pthread_mutex_lock (&owner->lock);
+
+  if (!takeover && log_extract_owner_is_alive (owner))
+    {
+      pthread_mutex_unlock (&owner->lock);
+      return false;
+    }
+
+  if (prev_fd != NULL)
+    {
+      *prev_fd = owner->fd;
+    }
+  if (prev_client_id != NULL)
+    {
+      *prev_client_id = owner->client_id;
+    }
+
+  owner->fd = thread_p->conn_entry->fd;
+  owner->client_id = thread_p->conn_entry->client_id;
+  owner->busy = true;
+
+  pthread_mutex_unlock (&owner->lock);
+  return true;
+#else
+  return false;
+#endif
+}
+
+/*
+ * log_extract_owner_is_owner () - is the calling connection the one that opened
+ *                                 the session?
+ */
+bool
+log_extract_owner_is_owner (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
+{
+  bool is_owner;
+
+  pthread_mutex_lock (&owner->lock);
+  is_owner = log_extract_owner_is_owner_locked (owner, thread_p);
+  pthread_mutex_unlock (&owner->lock);
+
+  return is_owner;
+}
+
+/*
+ * log_extract_owner_is_active () - does a live connection own the session?
+ */
+bool
+log_extract_owner_is_active (LOG_EXTRACT_OWNER * owner)
+{
+#if defined (SERVER_MODE)
+  bool active;
+
+  pthread_mutex_lock (&owner->lock);
+  active = log_extract_owner_is_alive (owner);
+  pthread_mutex_unlock (&owner->lock);
+
+  return active;
+#else
+  return false;
+#endif
+}
+
+/*
+ * log_extract_owner_begin_request () - start serving a request of the session's owner
+ *   return: false if the caller is not the owner, or another of its requests is
+ *           still being served.
+ *
+ * The client libraries wait for each reply before they send the next request, so
+ * a second request arriving while one is served does not come from a normal
+ * client; refusing it here keeps two requests off the one session state.
+ */
+bool
+log_extract_owner_begin_request (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
+{
+  bool begun = false;
+
+  pthread_mutex_lock (&owner->lock);
+  if (log_extract_owner_is_owner_locked (owner, thread_p) && !owner->busy)
+    {
+      owner->busy = true;
+      begun = true;
+    }
+  pthread_mutex_unlock (&owner->lock);
+
+  return begun;
+}
+
+/*
+ * log_extract_owner_end_request () - finish the request started by
+ *   log_extract_owner_begin_request () or log_extract_owner_claim (). Does nothing
+ *   if another connection has taken the session over meanwhile.
+ */
+void
+log_extract_owner_end_request (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
+{
+  pthread_mutex_lock (&owner->lock);
+  if (log_extract_owner_is_owner_locked (owner, thread_p))
+    {
+      owner->busy = false;
+    }
+  pthread_mutex_unlock (&owner->lock);
+}
+
+/*
+ * log_extract_owner_release () - drop the session if the caller owns it
+ *   return: true if it did.
+ */
+bool
+log_extract_owner_release (LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
+{
+  bool released = false;
+
+  pthread_mutex_lock (&owner->lock);
+  if (log_extract_owner_is_owner_locked (owner, thread_p))
+    {
+      log_extract_owner_clear_locked (owner);
+      released = true;
+    }
+  pthread_mutex_unlock (&owner->lock);
+
+  return released;
+}
+
+/*
+ * log_extract_owner_lock () / log_extract_owner_unlock () - for a caller that has to
+ *   change its own session state atomically with an ownership check, together
+ *   with the *_locked functions below.
+ */
+void
+log_extract_owner_lock (LOG_EXTRACT_OWNER * owner)
+{
+  pthread_mutex_lock (&owner->lock);
+}
+
+void
+log_extract_owner_unlock (LOG_EXTRACT_OWNER * owner)
+{
+  pthread_mutex_unlock (&owner->lock);
+}
+
+bool
+log_extract_owner_is_owner_locked (const LOG_EXTRACT_OWNER * owner, THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  return (owner->fd != INVALID_SOCKET && thread_p->conn_entry != NULL && thread_p->conn_entry->fd == owner->fd
+	  && thread_p->conn_entry->client_id == owner->client_id);
+#else
+  return false;
+#endif
+}
+
+void
+log_extract_owner_clear_locked (LOG_EXTRACT_OWNER * owner)
+{
+  owner->fd = INVALID_SOCKET;
+  owner->client_id = -1;
+  owner->busy = false;
+}
+
+/*
+ * log_extract_match_lsa () - classify a resume position a client sent back
+ *   return: which server-issued position it is, whether it lies inside the
+ *           session's range, or rejected.
+ *   lsa (in)        : the position from the request
+ *   issued (in)     : the position handed out last (NULL or a NULL LSA if none)
+ *   previous (in)   : the one handed out before it (NULL or a NULL LSA if none)
+ *   range_start (in): the range the session was opened for (NULL if none)
+ *   range_end (in)  :
+ *
+ * The CDC and flashback clients send back the positions the server handed out,
+ * so a request is checked against what the server remembers before any log page
+ * is read for it.
+ */
+LOG_EXTRACT_LSA_MATCH
+log_extract_match_lsa (const LOG_LSA * lsa, const LOG_LSA * issued, const LOG_LSA * previous,
+		       const LOG_LSA * range_start, const LOG_LSA * range_end)
+{
+  if (issued != NULL && !LSA_ISNULL (issued) && LSA_EQ (lsa, issued))
+    {
+      return LOG_EXTRACT_LSA_ISSUED;
+    }
+
+  if (previous != NULL && !LSA_ISNULL (previous) && LSA_EQ (lsa, previous))
+    {
+      return LOG_EXTRACT_LSA_PREVIOUS;
+    }
+
+  if (range_start != NULL && range_end != NULL && !LSA_ISNULL (range_start) && !LSA_ISNULL (range_end)
+      && LSA_GE (lsa, range_start) && LSA_LE (lsa, range_end))
+    {
+      return LOG_EXTRACT_LSA_IN_RANGE;
+    }
+
+  return LOG_EXTRACT_LSA_REJECTED;
+}
+
 int
 cdc_find_lsa (THREAD_ENTRY * thread_p, time_t * extraction_time, LOG_LSA * start_lsa)
 {
@@ -15307,9 +15991,9 @@ end:
 int
 cdc_initialize ()
 {
-  cdc_Gl.conn.fd = -1;
-  cdc_Gl.conn.status = CONN_CLOSED;
-  cdc_Gl.conn.client_id = -1;
+  log_extract_owner_lock (&cdc_Session_owner);
+  log_extract_owner_clear_locked (&cdc_Session_owner);
+  log_extract_owner_unlock (&cdc_Session_owner);
 
   cdc_Gl.producer.extraction_user = NULL;
   cdc_Gl.producer.extraction_classoids = NULL;
