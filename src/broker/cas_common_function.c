@@ -30,307 +30,478 @@
 #include "object_primitive.h"
 #include "broker_cas_cci.h"
 #include "dbtype.h"
+#include "broker_util.h"
 
-static const char *type_str_tbl[] = {
-  "NULL",			/* CCI_U_TYPE_NULL */
-  "CHAR",			/* CCI_U_TYPE_CHAR */
-  "VARCHAR",			/* CCI_U_TYPE_STRING */
+/* the SQL log line after the time, before the value, e.g. " (3) bind 1 (IN) : INT " */
+#define BIND_HEADER_FMT " (%u) bind %d %s: %s "
+
+/* the header and the value in one format, or the value alone for a SET element (header == NULL) */
+#define BIND_PRINT(line, header, value_fmt, ...) \
+  ((header) != NULL \
+   ? bind_line_printf ((line), BIND_HEADER_FMT value_fmt, (header)->query_seq_num, (header)->bind_num, (header)->mode, \
+		       (header)->type_name, __VA_ARGS__) \
+   : bind_line_printf ((line), value_fmt, __VA_ARGS__))
+
+/* the header alone, skipped for a SET element (header == NULL) */
+#define BIND_PRINT_HEADER(line, header) \
+  do { \
+    if ((header) != NULL) \
+      { \
+	BIND_PRINT ((line), (header), "%s", ""); \
+      } \
+  } while (0)
+
+/* a bind log line is assembled here and usually written with a single log write */
+typedef struct bind_line BIND_LINE;
+struct bind_line
+{
+  void (*fwrite_func) (char *value, int size);
+  int len;
+  char buf[CAS_LOG_BUFFER_SIZE];
+};
+
+typedef struct bind_header BIND_HEADER;
+struct bind_header
+{
+  unsigned int query_seq_num;
+  int bind_num;
+  const char *mode;
+  const char *type_name;
+};
+
+typedef void (*BIND_WRITE_FN) (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+			       INTL_CODESET charset);
+
+static void bind_line_flush (BIND_LINE * line);
+static void bind_line_printf (BIND_LINE * line, const char *fmt, ...);
+static void bind_line_append (BIND_LINE * line, const char *p, int n);
+static void bind_value_write (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+			      INTL_CODESET charset);
+static void bind_write_null (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+			     INTL_CODESET charset);
+static void bind_write_string (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+			       INTL_CODESET charset);
+static void bind_write_bit (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+			    INTL_CODESET charset);
+static void bind_write_numeric (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+				INTL_CODESET charset);
+static void bind_write_int (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+			    INTL_CODESET charset);
+static void bind_write_bigint (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+			       INTL_CODESET charset);
+static void bind_write_short (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+			      INTL_CODESET charset);
+static void bind_write_double (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+			       INTL_CODESET charset);
+static void bind_write_float (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+			      INTL_CODESET charset);
+static void bind_write_datetime (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+				 INTL_CODESET charset);
+static void bind_write_datetimetz (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+				   INTL_CODESET charset);
+static void bind_write_set (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+			    INTL_CODESET charset);
+static void bind_write_object (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+			       INTL_CODESET charset);
+static void bind_write_lob (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value,
+			    INTL_CODESET charset);
+
+/* one entry per CCI_U_TYPE, in enum order. A type without a writer is logged as NULL. */
+/* *INDENT-OFF* */
+static const struct
+{
+  const char *name;
+  BIND_WRITE_FN write_func;
+} bind_type_tbl[] = {
+  {"NULL", NULL},			/* CCI_U_TYPE_NULL */
+  {"CHAR", bind_write_string},		/* CCI_U_TYPE_CHAR */
+  {"VARCHAR", bind_write_string},	/* CCI_U_TYPE_STRING */
 
   /* TODO:
    * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
-   * However, to maintain compatibility with previous versions, the enum list will be preserved.       
+   * However, to maintain compatibility with previous versions, the enum list will be preserved.
    */
-  "NCHAR",			/* CCI_U_TYPE_NCHAR_DEPRECATED */
-  "VARNCHAR",			/* CCI_U_TYPE_VARNCHAR_DEPRECATED */
+  {"NCHAR", NULL},			/* CCI_U_TYPE_NCHAR_DEPRECATED */
+  {"VARNCHAR", NULL},			/* CCI_U_TYPE_VARNCHAR_DEPRECATED */
 
-  "BIT",			/* CCI_U_TYPE_BIT */
-  "VARBIT",			/* CCI_U_TYPE_VARBIT */
-  "NUMERIC",			/* CCI_U_TYPE_NUMERIC */
-  "INT",			/* CCI_U_TYPE_INT */
-  "SHORT",			/* CCI_U_TYPE_SHORT */
-  "MONETARY",			/* CCI_U_TYPE_MONETARY */
-  "FLOAT",			/* CCI_U_TYPE_FLOAT */
-  "DOUBLE",			/* CCI_U_TYPE_DOUBLE */
-  "DATE",			/* CCI_U_TYPE_DATE */
-  "TIME",			/* CCI_U_TYPE_TIME */
-  "TIMESTAMP",			/* CCI_U_TYPE_TIMESTAMP */
-  "SET",			/* CCI_U_TYPE_SET */
-  "MULTISET",			/* CCI_U_TYPE_MULTISET */
-  "SEQUENCE",			/* CCI_U_TYPE_SEQUENCE */
-  "OBJECT",			/* CCI_U_TYPE_OBJECT */
-  "RESULTSET",			/* CCI_U_TYPE_RESULTSET */
-  "BIGINT",			/* CCI_U_TYPE_BIGINT */
-  "DATETIME",			/* CCI_U_TYPE_DATETIME */
-  "BLOB",			/* CCI_U_TYPE_BLOB */
-  "CLOB",			/* CCI_U_TYPE_CLOB */
-  "ENUM",			/* CCI_U_TYPE_ENUM */
-  "USHORT",			/* CCI_U_TYPE_USHORT */
-  "UINT",			/* CCI_U_TYPE_UINT */
-  "UBIGINT",			/* CCI_U_TYPE_UBIGINT */
-  "TIMESTAMPTZ",		/* CCI_U_TYPE_TIMESTAMPTZ */
-  "TIMESTAMPLTZ",		/* CCI_U_TYPE_TIMESTAMPLTZ */
-  "DATETIMETZ",			/* CCI_U_TYPE_DATETIMETZ */
-  "DATETIMELTZ",		/* CCI_U_TYPE_DATETIMELTZ */
-  "TIMETZ",			/* CCI_U_TYPE_TIMETZ */
-  "JSON",			/* CCI_U_TYPE_JSON */
+  {"BIT", bind_write_bit},		/* CCI_U_TYPE_BIT */
+  {"VARBIT", bind_write_bit},		/* CCI_U_TYPE_VARBIT */
+  {"NUMERIC", bind_write_numeric},	/* CCI_U_TYPE_NUMERIC */
+  {"INT", bind_write_int},		/* CCI_U_TYPE_INT */
+  {"SHORT", bind_write_short},		/* CCI_U_TYPE_SHORT */
+  {"MONETARY", bind_write_double},	/* CCI_U_TYPE_MONETARY */
+  {"FLOAT", bind_write_float},		/* CCI_U_TYPE_FLOAT */
+  {"DOUBLE", bind_write_double},	/* CCI_U_TYPE_DOUBLE */
+  {"DATE", bind_write_datetime},	/* CCI_U_TYPE_DATE */
+  {"TIME", bind_write_datetime},	/* CCI_U_TYPE_TIME */
+  {"TIMESTAMP", bind_write_datetime},	/* CCI_U_TYPE_TIMESTAMP */
+  {"SET", bind_write_set},		/* CCI_U_TYPE_SET */
+  {"MULTISET", bind_write_set},		/* CCI_U_TYPE_MULTISET */
+  {"SEQUENCE", bind_write_set},		/* CCI_U_TYPE_SEQUENCE */
+  {"OBJECT", bind_write_object},	/* CCI_U_TYPE_OBJECT */
+  {"RESULTSET", NULL},			/* CCI_U_TYPE_RESULTSET */
+  {"BIGINT", bind_write_bigint},	/* CCI_U_TYPE_BIGINT */
+  {"DATETIME", bind_write_datetime},	/* CCI_U_TYPE_DATETIME */
+  {"BLOB", bind_write_lob},		/* CCI_U_TYPE_BLOB */
+  {"CLOB", bind_write_lob},		/* CCI_U_TYPE_CLOB */
+  {"ENUM", bind_write_string},		/* CCI_U_TYPE_ENUM */
+  {"USHORT", bind_write_short},		/* CCI_U_TYPE_USHORT */
+  {"UINT", bind_write_int},		/* CCI_U_TYPE_UINT */
+  {"UBIGINT", bind_write_bigint},	/* CCI_U_TYPE_UBIGINT */
+  {"TIMESTAMPTZ", bind_write_datetimetz},	/* CCI_U_TYPE_TIMESTAMPTZ */
+  {"TIMESTAMPLTZ", NULL},		/* CCI_U_TYPE_TIMESTAMPLTZ */
+  {"DATETIMETZ", bind_write_datetimetz},	/* CCI_U_TYPE_DATETIMETZ */
+  {"DATETIMELTZ", NULL},		/* CCI_U_TYPE_DATETIMELTZ */
+  {"TIMETZ", NULL},			/* CCI_U_TYPE_TIMETZ */
+  {"JSON", bind_write_string},		/* CCI_U_TYPE_JSON */
 };
+/* *INDENT-ON* */
 
-void
-cas_common_bind_value_print (char type, void *net_value, bool slow_log, INTL_CODESET charset)
+static_assert (sizeof (bind_type_tbl) / sizeof (bind_type_tbl[0]) == CCI_U_TYPE_LAST + 1,
+	       "bind_type_tbl must have one entry per CCI_U_TYPE");
+
+static void
+bind_line_flush (BIND_LINE * line)
+{
+  if (line->len > 0)
+    {
+      line->fwrite_func (line->buf, line->len);
+      line->len = 0;
+    }
+}
+
+static void
+bind_line_printf (BIND_LINE * line, const char *fmt, ...)
+{
+  va_list ap;
+  int free_size = CAS_LOG_BUFFER_SIZE - line->len;
+  int n;
+
+  va_start (ap, fmt);
+  n = vsnprintf (line->buf + line->len, free_size, fmt, ap);
+  va_end (ap);
+  if (n < 0)
+    {
+      return;
+    }
+  if (n >= free_size)
+    {
+      /* the result is longer than the free size, so write out what is assembled to empty the buffer and format again */
+      bind_line_flush (line);
+      va_start (ap, fmt);
+      n = vsnprintf (line->buf, CAS_LOG_BUFFER_SIZE, fmt, ap);
+      va_end (ap);
+      if (n < 0)
+	{
+	  return;
+	}
+      if (n >= CAS_LOG_BUFFER_SIZE)
+	{
+	  n = CAS_LOG_BUFFER_SIZE - 1;
+	}
+    }
+  line->len += n;
+}
+
+static void
+bind_line_append (BIND_LINE * line, const char *p, int n)
+{
+  int free_size = CAS_LOG_BUFFER_SIZE - line->len;
+
+  if (n <= 0)
+    {
+      return;
+    }
+  if (n <= free_size)
+    {
+      memcpy (line->buf + line->len, p, n);
+      line->len += n;
+      return;
+    }
+
+  /* a value longer than the free size is written as it is, without copying */
+  bind_line_flush (line);
+  line->fwrite_func ((char *) p, n);
+}
+
+static void
+bind_value_write (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
 {
   int data_size;
-  void (*write2_func) (const char *, ...);
-  void (*fwrite_func) (char *value, int size);
+  BIND_WRITE_FN write_func = NULL;
 
-  if (slow_log)
+  net_arg_get_size (&data_size, net_value);
+  if (data_size > 0 && type > CCI_U_TYPE_FIRST && type <= CCI_U_TYPE_LAST)
     {
-      write2_func = cas_slow_log_write2;
-      fwrite_func = cas_slow_log_write_value_string;
+      write_func = bind_type_tbl[(int) type].write_func;
+    }
+  if (write_func == NULL)
+    {
+      write_func = bind_write_null;
+    }
+  write_func (line, header, type, net_value, charset);
+}
+
+static void
+bind_write_null (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
+{
+  BIND_PRINT (line, header, "%s", "NULL");
+}
+
+static void
+bind_write_string (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
+{
+  char *str_val;
+  int val_size;
+  int num_chars = 0;
+
+  net_arg_get_str (&str_val, &val_size, net_value);
+  if (val_size > 0)
+    {
+      /* CAS protocol: string payload carries a trailing NUL that is counted in val_size. */
+      assert (str_val[val_size - 1] == '\0');
+      intl_char_count ((const unsigned char *) str_val, val_size - 1, charset, &num_chars);
+    }
+  BIND_PRINT (line, header, "(%d)", num_chars);
+  bind_line_append (line, str_val, val_size - 1);
+}
+
+static void
+bind_write_bit (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
+{
+  char *str_val;
+  int val_size;
+
+  net_arg_get_str (&str_val, &val_size, net_value);
+  BIND_PRINT (line, header, "(%d)", val_size);
+  bind_line_append (line, str_val, val_size);
+}
+
+static void
+bind_write_numeric (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
+{
+  char *str_val;
+  int val_size;
+
+  net_arg_get_str (&str_val, &val_size, net_value);
+  BIND_PRINT_HEADER (line, header);
+  bind_line_append (line, str_val, val_size - 1);
+}
+
+static void
+bind_write_int (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
+{
+  int i_val;
+
+  net_arg_get_int (&i_val, net_value);
+  if (type == CCI_U_TYPE_UINT)
+    {
+      BIND_PRINT (line, header, "%u", (unsigned int) i_val);
     }
   else
     {
-      write2_func = cas_log_write2_nonl_noflush;
-      fwrite_func = cas_log_write_value_string;
+      BIND_PRINT (line, header, "%d", i_val);
     }
+}
+
+static void
+bind_write_bigint (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
+{
+  INT64 bi_val;
+
+  net_arg_get_bigint (&bi_val, net_value);
+  if (type == CCI_U_TYPE_UBIGINT)
+    {
+      BIND_PRINT (line, header, "%llu", (unsigned long long) bi_val);
+    }
+  else
+    {
+      BIND_PRINT (line, header, "%lld", (long long) bi_val);
+    }
+}
+
+static void
+bind_write_short (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
+{
+  short s_val;
+
+  net_arg_get_short (&s_val, net_value);
+  if (type == CCI_U_TYPE_USHORT)
+    {
+      BIND_PRINT (line, header, "%u", (unsigned short) s_val);
+    }
+  else
+    {
+      BIND_PRINT (line, header, "%d", s_val);
+    }
+}
+
+static void
+bind_write_double (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
+{
+  double d_val;
+
+  net_arg_get_double (&d_val, net_value);
+  BIND_PRINT (line, header, "%.15e", d_val);
+}
+
+static void
+bind_write_float (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
+{
+  float f_val;
+
+  net_arg_get_float (&f_val, net_value);
+  BIND_PRINT (line, header, "%.6e", f_val);
+}
+
+static void
+bind_write_datetime (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
+{
+  short yr, mon, day, hh, mm, ss, ms;
+
+  net_arg_get_datetime (&yr, &mon, &day, &hh, &mm, &ss, &ms, net_value);
+  if (type == CCI_U_TYPE_DATE)
+    {
+      BIND_PRINT (line, header, "%d-%d-%d", yr, mon, day);
+    }
+  else if (type == CCI_U_TYPE_TIME)
+    {
+      BIND_PRINT (line, header, "%d:%d:%d", hh, mm, ss);
+    }
+  else if (type == CCI_U_TYPE_TIMESTAMP)
+    {
+      BIND_PRINT (line, header, "%d-%d-%d %d:%d:%d", yr, mon, day, hh, mm, ss);
+    }
+  else
+    {
+      BIND_PRINT (line, header, "%d-%d-%d %d:%d:%d.%03d", yr, mon, day, hh, mm, ss, ms);
+    }
+}
+
+static void
+bind_write_datetimetz (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
+{
+  short yr, mon, day, hh, mm, ss, ms;
+  char *tz_str_p;
+  int tz_size;
+  char tz_str[CCI_TZ_SIZE + 1];
+
+  net_arg_get_datetimetz (&yr, &mon, &day, &hh, &mm, &ss, &ms, &tz_str_p, &tz_size, net_value);
+  tz_size = MIN (CCI_TZ_SIZE, tz_size);
+  strncpy (tz_str, tz_str_p, tz_size);
+  tz_str[tz_size] = '\0';
+
+  if (type == CCI_U_TYPE_TIMESTAMPTZ)
+    {
+      BIND_PRINT (line, header, "%d-%d-%d %d:%d:%d %s", yr, mon, day, hh, mm, ss, tz_str);
+    }
+  else
+    {
+      BIND_PRINT (line, header, "%d-%d-%d %d:%d:%d.%03d %s", yr, mon, day, hh, mm, ss, ms, tz_str);
+    }
+}
+
+static void
+bind_write_set (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
+{
+  int data_size;
+  int remain_size;
+  int ele_size;
+  char ele_type;
+  char *cur_p = (char *) net_value;
+  bool print_comma = false;
 
   net_arg_get_size (&data_size, net_value);
-  if (data_size <= 0)
+  remain_size = data_size;
+  cur_p += 4;
+  ele_type = *cur_p;
+  cur_p++;
+  remain_size--;
+
+  if (ele_type <= CCI_U_TYPE_FIRST || ele_type > CCI_U_TYPE_LAST)
     {
-      type = CCI_U_TYPE_NULL;
-      data_size = 0;
+      BIND_PRINT_HEADER (line, header);
+      return;
     }
 
-  switch (type)
+  BIND_PRINT (line, header, "(%s) {", bind_type_tbl[(int) ele_type].name);
+
+  while (remain_size > 0)
     {
-    case CCI_U_TYPE_CHAR:
-    case CCI_U_TYPE_STRING:
-    case CCI_U_TYPE_ENUM:
-    case CCI_U_TYPE_JSON:
-      {
-	char *str_val;
-	int val_size;
-	int num_chars = 0;
-
-	net_arg_get_str (&str_val, &val_size, net_value);
-	if (val_size > 0)
-	  {
-	    /* CAS protocol: string payload carries a trailing NUL that is counted in val_size. */
-	    assert (str_val[val_size - 1] == '\0');
-	    intl_char_count ((const unsigned char *) str_val, val_size - 1, charset, &num_chars);
-	  }
-	write2_func ("(%d)", num_chars);
-	fwrite_func (str_val, val_size - 1);
-      }
-      break;
-    case CCI_U_TYPE_BIT:
-    case CCI_U_TYPE_VARBIT:
-    case CCI_U_TYPE_NUMERIC:
-      {
-	char *str_val;
-	int val_size;
-	net_arg_get_str (&str_val, &val_size, net_value);
-	if (type != CCI_U_TYPE_NUMERIC)
-	  {
-	    write2_func ("(%d)", val_size);
-	    fwrite_func (str_val, val_size);
-	  }
-	else
-	  {
-	    fwrite_func (str_val, val_size - 1);
-	  }
-      }
-      break;
-    case CCI_U_TYPE_BIGINT:
-      {
-	INT64 bi_val;
-	net_arg_get_bigint (&bi_val, net_value);
-	write2_func ("%lld", (long long) bi_val);
-      }
-      break;
-    case CCI_U_TYPE_UBIGINT:
-      {
-	UINT64 ubi_val;
-	net_arg_get_bigint ((INT64 *) (&ubi_val), net_value);
-	write2_func ("%llu", (unsigned long long) ubi_val);
-      }
-      break;
-    case CCI_U_TYPE_INT:
-      {
-	int i_val;
-	net_arg_get_int (&i_val, net_value);
-	write2_func ("%d", i_val);
-      }
-      break;
-    case CCI_U_TYPE_UINT:
-      {
-	unsigned int ui_val;
-	net_arg_get_int ((int *) &ui_val, net_value);
-	write2_func ("%u", ui_val);
-      }
-      break;
-    case CCI_U_TYPE_SHORT:
-      {
-	short s_val;
-	net_arg_get_short (&s_val, net_value);
-	write2_func ("%d", s_val);
-      }
-      break;
-    case CCI_U_TYPE_USHORT:
-      {
-	unsigned short us_val;
-	net_arg_get_short ((short *) &us_val, net_value);
-	write2_func ("%u", us_val);
-      }
-      break;
-    case CCI_U_TYPE_MONETARY:
-    case CCI_U_TYPE_DOUBLE:
-      {
-	double d_val;
-	net_arg_get_double (&d_val, net_value);
-	write2_func ("%.15e", d_val);
-      }
-      break;
-    case CCI_U_TYPE_FLOAT:
-      {
-	float f_val;
-	net_arg_get_float (&f_val, net_value);
-	write2_func ("%.6e", f_val);
-      }
-      break;
-    case CCI_U_TYPE_DATE:
-    case CCI_U_TYPE_TIME:
-    case CCI_U_TYPE_TIMESTAMP:
-    case CCI_U_TYPE_DATETIME:
-      {
-	short yr, mon, day, hh, mm, ss, ms;
-	net_arg_get_datetime (&yr, &mon, &day, &hh, &mm, &ss, &ms, net_value);
-	if (type == CCI_U_TYPE_DATE)
-	  write2_func ("%d-%d-%d", yr, mon, day);
-	else if (type == CCI_U_TYPE_TIME)
-	  write2_func ("%d:%d:%d", hh, mm, ss);
-	else if (type == CCI_U_TYPE_TIMESTAMP)
-	  write2_func ("%d-%d-%d %d:%d:%d", yr, mon, day, hh, mm, ss);
-	else
-	  write2_func ("%d-%d-%d %d:%d:%d.%03d", yr, mon, day, hh, mm, ss, ms);
-      }
-      break;
-    case CCI_U_TYPE_TIMESTAMPTZ:
-    case CCI_U_TYPE_DATETIMETZ:
-      {
-	short yr, mon, day, hh, mm, ss, ms;
-	char *tz_str_p;
-	int tz_size;
-	char tz_str[CCI_TZ_SIZE + 1];
-
-	net_arg_get_datetimetz (&yr, &mon, &day, &hh, &mm, &ss, &ms, &tz_str_p, &tz_size, net_value);
-	tz_size = MIN (CCI_TZ_SIZE, tz_size);
-	strncpy (tz_str, tz_str_p, tz_size);
-	tz_str[tz_size] = '\0';
-
-	if (type == CCI_U_TYPE_TIMESTAMPTZ)
-	  {
-	    write2_func ("%d-%d-%d %d:%d:%d %s", yr, mon, day, hh, mm, ss, tz_str);
-	  }
-	else
-	  {
-	    write2_func ("%d-%d-%d %d:%d:%d.%03d %s", yr, mon, day, hh, mm, ss, ms, tz_str);
-	  }
-      }
-      break;
-    case CCI_U_TYPE_SET:
-    case CCI_U_TYPE_MULTISET:
-    case CCI_U_TYPE_SEQUENCE:
-      {
-	int remain_size = data_size;
-	int ele_size;
-	char ele_type;
-	char *cur_p = (char *) net_value;
-	char print_comma = 0;
-
-	cur_p += 4;
-	ele_type = *cur_p;
-	cur_p++;
-	remain_size--;
-
-	if (ele_type <= CCI_U_TYPE_FIRST || ele_type > CCI_U_TYPE_LAST)
+      net_arg_get_size (&ele_size, cur_p);
+      if (ele_size + 4 > remain_size)
+	{
 	  break;
-
-	write2_func ("(%s) {", type_str_tbl[(int) ele_type]);
-
-	while (remain_size > 0)
-	  {
-	    net_arg_get_size (&ele_size, cur_p);
-	    if (ele_size + 4 > remain_size)
-	      break;
-	    if (print_comma)
-	      write2_func (", ");
-	    else
-	      print_comma = 1;
-	    cas_common_bind_value_print (ele_type, cur_p, slow_log, charset);
-	    ele_size += 4;
-	    cur_p += ele_size;
-	    remain_size -= ele_size;
-	  }
-
-	write2_func ("}");
-      }
-      break;
-    case CCI_U_TYPE_OBJECT:
-      {
-	int pageid;
-	short slotid, volid;
-
-	net_arg_get_cci_object (&pageid, &slotid, &volid, net_value);
-	write2_func ("%d|%d|%d", pageid, slotid, volid);
-      }
-      break;
-    case CCI_U_TYPE_BLOB:
-    case CCI_U_TYPE_CLOB:
-      {
-	DB_VALUE db_val;
-	DB_ELO *db_elo;
-	net_arg_get_lob_value (&db_val, net_value);
-	db_elo = db_get_elo (&db_val);
-	if (db_elo)
-	  {
-	    write2_func ("%s|%lld|%s|%s|%d", (type == CCI_U_TYPE_BLOB) ? "BLOB" : "CLOB", db_elo->size, db_elo->locator,
-			 db_elo->meta_data, db_elo->type);
-	  }
-	else
-	  {
-	    write2_func ("invalid LOB");
-	  }
-
-	db_value_clear (&db_val);
-      }
-      break;
-    default:
-      write2_func ("NULL");
-      break;
+	}
+      if (print_comma)
+	{
+	  bind_line_append (line, ", ", 2);
+	}
+      else
+	{
+	  print_comma = true;
+	}
+      bind_value_write (line, NULL, ele_type, cur_p, charset);
+      ele_size += 4;
+      cur_p += ele_size;
+      remain_size -= ele_size;
     }
+
+  bind_line_append (line, "}", 1);
+}
+
+static void
+bind_write_object (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
+{
+  int pageid;
+  short slotid, volid;
+
+  net_arg_get_cci_object (&pageid, &slotid, &volid, net_value);
+  BIND_PRINT (line, header, "%d|%d|%d", pageid, slotid, volid);
+}
+
+static void
+bind_write_lob (BIND_LINE * line, const BIND_HEADER * header, char type, void *net_value, INTL_CODESET charset)
+{
+  DB_VALUE db_val;
+  DB_ELO *db_elo;
+
+  net_arg_get_lob_value (&db_val, net_value);
+  db_elo = db_get_elo (&db_val);
+  /* format the value apart from the header so the length limit applies to the value alone */
+  BIND_PRINT_HEADER (line, header);
+  if (db_elo)
+    {
+      bind_line_printf (line, "%s|%lld|%s|%s|%d", (type == CCI_U_TYPE_BLOB) ? "BLOB" : "CLOB", db_elo->size,
+			db_elo->locator, db_elo->meta_data, db_elo->type);
+    }
+  else
+    {
+      bind_line_printf (line, "%s", "invalid LOB");
+    }
+  db_value_clear (&db_val);
 }
 
 void
 cas_common_bind_value_log (struct timeval *log_time, int start, int argc, void **argv, int param_size, char *param_mode,
 			   unsigned int query_seq_num, bool slow_log, INTL_CODESET charset)
 {
+  BIND_LINE line;
+  BIND_HEADER header;
   int idx;
   char type;
-  int num_bind;
   void *net_value;
-  const char *param_mode_str;
-  void (*write2_func) (const char *, ...);
 
   if (slow_log)
     {
-      write2_func = cas_slow_log_write2;
+      line.fwrite_func = cas_slow_log_write_value_string;
     }
   else
     {
-      write2_func = cas_log_write2_nonl_noflush;
+      line.fwrite_func = cas_log_write_value_string;
     }
-
-  num_bind = 1;
+  header.query_seq_num = query_seq_num;
+  header.bind_num = 1;
   idx = start;
 
   while (idx < argc)
@@ -338,38 +509,34 @@ cas_common_bind_value_log (struct timeval *log_time, int start, int argc, void *
       net_arg_get_char (type, argv[idx++]);
       net_value = argv[idx++];
 
-      param_mode_str = "";
-      if (param_mode != NULL && param_size >= num_bind)
+      header.mode = "";
+      if (param_mode != NULL && param_size >= header.bind_num)
 	{
-	  if (param_mode[num_bind - 1] == CCI_PARAM_MODE_IN)
-	    param_mode_str = "(IN) ";
-	  else if (param_mode[num_bind - 1] == CCI_PARAM_MODE_OUT)
-	    param_mode_str = "(OUT) ";
-	  else if (param_mode[num_bind - 1] == CCI_PARAM_MODE_INOUT)
-	    param_mode_str = "(INOUT) ";
+	  if (param_mode[header.bind_num - 1] == CCI_PARAM_MODE_IN)
+	    header.mode = "(IN) ";
+	  else if (param_mode[header.bind_num - 1] == CCI_PARAM_MODE_OUT)
+	    header.mode = "(OUT) ";
+	  else if (param_mode[header.bind_num - 1] == CCI_PARAM_MODE_INOUT)
+	    header.mode = "(INOUT) ";
 	}
 
-      if (slow_log)
-	{
-	  cas_slow_log_write (log_time, query_seq_num, false, "bind %d %s: ", num_bind++, param_mode_str);
-	}
-      else
-	{
-	  cas_log_write_nonl_noflush (query_seq_num, false, "bind %d %s: ", num_bind++, param_mode_str);
-	}
+      /* the SQL log takes the current time and the slow log takes the query start time */
+      line.len = ut_time_string (line.buf, slow_log ? log_time : NULL);
 
       if (type > CCI_U_TYPE_FIRST && type <= CCI_U_TYPE_LAST)
 	{
 	  /* Since the existing test code uses CCI_U_TYPE_NCHAR and CCI_U_TYPE_VARNCHAR, the assert() is commented out. */
 	  //assert (type != CCI_U_TYPE_NCHAR_DEPRECATED && type != CCI_U_TYPE_VARNCHAR_DEPRECATED);
-	  write2_func ("%s ", type_str_tbl[(int) type]);
-	  cas_common_bind_value_print (type, net_value, slow_log, charset);
+	  header.type_name = bind_type_tbl[(int) type].name;
+	  bind_value_write (&line, &header, type, net_value, charset);
 	}
       else
 	{
-	  write2_func ("NULL");
+	  bind_line_printf (&line, " (%u) bind %d %s: NULL", header.query_seq_num, header.bind_num, header.mode);
 	}
-      write2_func ("\n");
+      bind_line_append (&line, "\n", 1);
+      bind_line_flush (&line);
+      header.bind_num++;
     }
 
   /*
