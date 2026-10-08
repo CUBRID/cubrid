@@ -165,6 +165,7 @@ namespace cubload
 	if (*val_str == '-' || *val_str == '+')
 	  {
 	    val_str++;
+            val_str_len--;
 	  }
 
 	if ((val_str_len < 19) || (val_str_len == 19 && (strcmp (val_str, max_big_int[idx]) <= 0)))
