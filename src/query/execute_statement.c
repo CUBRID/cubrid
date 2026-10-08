@@ -14658,19 +14658,23 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  /* for dblink: no need to check xasl_id is NULL */
-  if (statement->info.insert.spec->info.spec.remote_server_name == NULL)
+  if (statement->xasl_id == NULL)
     {
-      if (statement->xasl_id == NULL)
+      /* Nothing to execute for a remote target, e.g. false where or not prepared correctly -- the same as
+       * do_execute_delete (). The do_insert () fallback below is for local targets only. */
+      if (statement->info.insert.spec->info.spec.remote_server_name != NULL)
 	{
-	  /* check if it is not necessary to execute this statement */
-	  if (qo_need_skip_execution ())
-	    {
-	      statement->etc = NULL;
-	      return NO_ERROR;
-	    }
-	  return do_insert (parser, statement);
+	  statement->etc = NULL;
+	  return NO_ERROR;
 	}
+
+      /* check if it is not necessary to execute this statement */
+      if (qo_need_skip_execution ())
+	{
+	  statement->etc = NULL;
+	  return NO_ERROR;
+	}
+      return do_insert (parser, statement);
     }
 
   query_flag = DEFAULT_EXEC_MODE;
