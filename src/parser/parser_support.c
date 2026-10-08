@@ -13168,3 +13168,795 @@ pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
   return node;
 }
+
+/*
+ * Text edits of PL/CSQL static SQL
+ *
+ * The SQL text of a PL/CSQL static SQL statement is embedded in the compiled class and re-parsed at runtime. Instead of
+ * printing the compiled tree, which can be transformed into a shape that can not be re-parsed, the original text is
+ * kept and only the following edits are applied to it:
+ *   - a PL/CSQL variable (an unresolved name or path expression) is replaced with a host variable '?'
+ *   - an object name (class, view, synonym, serial, stored function) written without its owner is qualified
+ *   - the INTO clause is removed
+ * The edits are collected right after name resolution, where the nodes still have their source positions.
+ */
+
+typedef struct pt_static_sql_edit_list PT_STATIC_SQL_EDIT_LIST;
+struct pt_static_sql_edit_list
+{
+  const char *text;		/* original text */
+  int text_len;
+  PT_STATIC_SQL_EDIT *edits;
+  int count;
+  int alloc;
+  PT_NODE *methods;		/* stored function calls whose names must be qualified */
+  PT_NODE *path_specs;		/* specs implied by path expressions, which are not in the text */
+  bool backslash_escapes;	/* a backslash escapes the next character in a string literal */
+  bool ansi_quotes;		/* "..." is a delimited identifier, otherwise a string literal */
+  bool failed;
+};
+
+enum pt_static_sql_token_kind
+{
+  PT_SS_TOKEN_END = 0,
+  PT_SS_TOKEN_IDENT,
+  PT_SS_TOKEN_QUOTED,		/* quoted identifier or string literal */
+  PT_SS_TOKEN_PUNCT
+};
+
+/*
+ * pt_static_sql_next_token () - scan the next token of the SQL text skipping white spaces and comments
+ *   return: kind of the token
+ *   list(in): text and the lexical options of it
+ *   pos(in): position to scan from
+ *   start(out): start of the token
+ *   end(out): end of the token
+ */
+static int
+pt_static_sql_next_token (const PT_STATIC_SQL_EDIT_LIST * list, int pos, int *start, int *end)
+{
+  const char *s = list->text;
+  int len = list->text_len;
+
+  while (pos < len)
+    {
+      unsigned char c = (unsigned char) s[pos];
+
+      if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v')
+	{
+	  pos++;
+	}
+      else if ((c == '-' && pos + 1 < len && s[pos + 1] == '-') || (c == '/' && pos + 1 < len && s[pos + 1] == '/'))
+	{
+	  while (pos < len && s[pos] != '\n')
+	    {
+	      pos++;
+	    }
+	}
+      else if (c == '/' && pos + 1 < len && s[pos + 1] == '*')
+	{
+	  const char *e = strstr (s + pos + 2, "*/");
+
+	  pos = (e == NULL || e - s > len) ? len : (int) (e - s) + 2;
+	}
+      else
+	{
+	  break;
+	}
+    }
+
+  *start = *end = pos;
+  if (pos >= len)
+    {
+      return PT_SS_TOKEN_END;
+    }
+
+  unsigned char c = (unsigned char) s[pos];
+
+  if (c == '\'' || c == '"' || c == '`' || c == '[')
+    {
+      char close = (c == '[') ? ']' : (char) c;
+      /* the same as the lexer: a backslash escape is only in a string literal */
+      bool escapes = list->backslash_escapes && (c == '\'' || (c == '"' && !list->ansi_quotes));
+
+      pos++;
+      while (pos < len)
+	{
+	  if (escapes && s[pos] == '\\')
+	    {
+	      pos += 2;
+	      continue;
+	    }
+	  if (s[pos] == close)
+	    {
+	      if (close != ']' && pos + 1 < len && s[pos + 1] == close)
+		{
+		  pos += 2;	/* doubled quote */
+		  continue;
+		}
+	      pos++;
+	      break;
+	    }
+	  pos++;
+	}
+      if (pos > len)
+	{
+	  pos = len;
+	}
+      *end = pos;
+      return PT_SS_TOKEN_QUOTED;
+    }
+
+  if (isalnum (c) || c == '_' || c == '#' || c == '$' || c >= 0x80)
+    {
+      while (pos < len)
+	{
+	  c = (unsigned char) s[pos];
+	  if (!(isalnum (c) || c == '_' || c == '#' || c == '$' || c >= 0x80))
+	    {
+	      break;
+	    }
+	  pos++;
+	}
+      *end = pos;
+      return PT_SS_TOKEN_IDENT;
+    }
+
+  *end = pos + 1;
+  return PT_SS_TOKEN_PUNCT;
+}
+
+/*
+ * pt_static_sql_token_equals () - check if the token is the identifier ignoring case and delimiters
+ */
+static bool
+pt_static_sql_token_equals (const char *s, int start, int end, const char *ident)
+{
+  int len = (int) strlen (ident);
+
+  if (end - start >= 2 && (s[start] == '[' || s[start] == '"' || s[start] == '`'))
+    {
+      start++;
+      end--;
+    }
+
+  if (end - start != len)
+    {
+      return false;
+    }
+
+  /* ASCII letters are compared ignoring case; the other bytes as they are */
+  for (int i = 0; i < len; i++)
+    {
+      unsigned char a = (unsigned char) s[start + i];
+      unsigned char b = (unsigned char) ident[i];
+
+      if (a != b && (a >= 0x80 || b >= 0x80 || tolower (a) != tolower (b)))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * pt_static_sql_normalize () - remove white spaces and delimiters and lower the case, to compare path expressions
+ */
+static void
+pt_static_sql_normalize (const char *s, int len, char *buf, int buf_size)
+{
+  int i, j;
+
+  for (i = 0, j = 0; i < len && j < buf_size - 1; i++)
+    {
+      unsigned char c = (unsigned char) s[i];
+
+      if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '[' || c == ']' || c == '"' || c == '`')
+	{
+	  continue;
+	}
+      buf[j++] = (char) tolower (c);
+    }
+  buf[j] = '\0';
+}
+
+/*
+ * pt_static_sql_token_start () - start of the identifier token that ends at the given position
+ *   return: start of the token, or -1 if there is no identifier token
+ *   s(in): text
+ *   end(in): end of the token
+ */
+static int
+pt_static_sql_token_start (const char *s, int end)
+{
+  int pos = end - 1;
+
+  if (pos < 0)
+    {
+      return -1;
+    }
+
+  if (s[pos] == ']' || s[pos] == '"' || s[pos] == '`')
+    {
+      char open = (s[pos] == ']') ? '[' : s[pos];
+
+      for (pos--; pos >= 0 && s[pos] != open; pos--)
+	;
+      return pos;
+    }
+
+  while (pos >= 0)
+    {
+      unsigned char c = (unsigned char) s[pos];
+
+      if (!(isalnum (c) || c == '_' || c == '#' || c == '$' || c >= 0x80))
+	{
+	  break;
+	}
+      pos--;
+    }
+
+  return (pos + 1 < end) ? pos + 1 : -1;
+}
+
+/*
+ * pt_static_sql_skip_space_before () - position of the last non-white-space character before the given position
+ */
+static int
+pt_static_sql_skip_space_before (const char *s, int pos)
+{
+  pos--;
+  while (pos >= 0 && (s[pos] == ' ' || s[pos] == '\t' || s[pos] == '\r' || s[pos] == '\n'))
+    {
+      pos--;
+    }
+  return pos;
+}
+
+static void
+pt_static_sql_add_edit (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list, int start, int end, const char *text,
+			int host_var_index)
+{
+  if (list->count == list->alloc)
+    {
+      int new_alloc = (list->alloc == 0) ? 16 : list->alloc * 2;
+      PT_STATIC_SQL_EDIT *new_edits =
+	(PT_STATIC_SQL_EDIT *) parser_alloc (parser, new_alloc * sizeof (PT_STATIC_SQL_EDIT));
+
+      if (new_edits == NULL)
+	{
+	  list->failed = true;
+	  return;
+	}
+      if (list->count > 0)
+	{
+	  memcpy (new_edits, list->edits, list->count * sizeof (PT_STATIC_SQL_EDIT));
+	}
+      list->edits = new_edits;
+      list->alloc = new_alloc;
+    }
+
+  list->edits[list->count].start = start;
+  list->edits[list->count].end = end;
+  list->edits[list->count].text = text;
+  list->edits[list->count].host_var_index = host_var_index;
+  list->count++;
+}
+
+/*
+ * pt_static_sql_owner_prefix () - "owner." to insert before an object name; the owner is delimited if needed
+ */
+static const char *
+pt_static_sql_owner_prefix (PARSER_CONTEXT * parser, const char *qualified_name)
+{
+  const char *dot = strchr (qualified_name, '.');
+  int owner_len = (int) (dot - qualified_name);
+  bool plain = true;
+  char *prefix;
+  int i;
+
+  for (i = 0; i < owner_len; i++)
+    {
+      unsigned char c = (unsigned char) qualified_name[i];
+
+      if (!(isalnum (c) || c == '_' || c >= 0x80) || (i == 0 && isdigit (c)))
+	{
+	  plain = false;
+	  break;
+	}
+    }
+
+  prefix = (char *) parser_alloc (parser, owner_len + 4);
+  if (prefix == NULL)
+    {
+      return NULL;
+    }
+  if (plain)
+    {
+      sprintf (prefix, "%.*s.", owner_len, qualified_name);
+    }
+  else
+    {
+      sprintf (prefix, "[%.*s].", owner_len, qualified_name);
+    }
+
+  return prefix;
+}
+
+/*
+ * pt_static_sql_qualify_name () - add the edit to insert the owner before a name written without it
+ */
+static void
+pt_static_sql_qualify_name (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list, PT_NODE * name)
+{
+  const char *qualified, *dot, *prefix;
+  int start, end, prev;
+
+  if (name == NULL || name->node_type != PT_NAME || name->info.name.original == NULL)
+    {
+      return;
+    }
+
+  qualified = name->info.name.original;
+  dot = strchr (qualified, '.');
+  if (dot == NULL)
+    {
+      /* system class or not qualified by pt_set_user_specified_name () */
+      return;
+    }
+
+  /* the end of the name is kept in buffer_pos; the name is the token that ends there */
+  end = name->buffer_pos;
+  if (end <= 0 || end > list->text_len)
+    {
+      list->failed = true;
+      return;
+    }
+
+  start = pt_static_sql_token_start (list->text, end);
+  if (start < 0 || !pt_static_sql_token_equals (list->text, start, end, dot + 1))
+    {
+      list->failed = true;
+      return;
+    }
+
+  /* written with its owner (owner.name, owner . name) */
+  prev = pt_static_sql_skip_space_before (list->text, start);
+  if (prev >= 0 && list->text[prev] == '.')
+    {
+      return;
+    }
+
+  prefix = pt_static_sql_owner_prefix (parser, qualified);
+  if (prefix == NULL)
+    {
+      list->failed = true;
+      return;
+    }
+
+  pt_static_sql_add_edit (parser, list, start, start, prefix, -1);
+}
+
+static PT_NODE *
+pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_STATIC_SQL_EDIT_LIST *list = (PT_STATIC_SQL_EDIT_LIST *) arg;
+
+  if (list->failed)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_SPEC:
+      {
+	PT_NODE *p;
+
+	/* specs implied by path expressions are not in the text */
+	for (p = list->path_specs; p != NULL; p = p->next)
+	  {
+	    if (p->info.pointer.node == node)
+	      {
+		return node;
+	      }
+	  }
+	for (p = node->info.spec.path_entities; p != NULL; p = p->next)
+	  {
+	    PT_NODE *ptr = pt_point (parser, p);
+
+	    if (ptr == NULL)
+	      {
+		list->failed = true;
+		return node;
+	      }
+	    list->path_specs = parser_append_node (ptr, list->path_specs);
+	  }
+      }
+      if (node->info.spec.entity_name != NULL && node->info.spec.cte_pointer == NULL
+	  && node->info.spec.derived_table == NULL && node->info.spec.remote_server_name == NULL
+	  && node->info.spec.entity_name->node_type == PT_NAME)
+	{
+	  pt_static_sql_qualify_name (parser, list, node->info.spec.entity_name);
+	}
+      break;
+
+    case PT_EXPR:
+      if (PT_IS_SERIAL (node->info.expr.op) && PT_IS_NAME_NODE (node->info.expr.arg1))
+	{
+	  pt_static_sql_qualify_name (parser, list, node->info.expr.arg1);
+	}
+      break;
+
+    case PT_METHOD_CALL:
+      if (!node->info.method_call.on_call_target && node->info.method_call.method_name != NULL
+	  && PT_IS_NAME_NODE (node->info.method_call.method_name)
+	  && node->info.method_call.method_name->info.name.original != NULL
+	  && strchr (node->info.method_call.method_name->info.name.original, '.') != NULL)
+	{
+	  /* the source position of the name is not kept; it is found in the text later */
+	  PT_NODE *p = pt_point (parser, node);
+
+	  if (p == NULL)
+	    {
+	      list->failed = true;
+	      break;
+	    }
+	  list->methods = parser_append_node (p, list->methods);
+	}
+      break;
+
+    case PT_HOST_VAR:
+      if (node->info.host_var.label != NULL && node->info.host_var.index >= 0
+	  && node->info.host_var.index < parser->host_var_count)
+	{
+	  /* a PL/CSQL variable replaced by pt_parameterize_for_static_sql (): the end of the name or the path
+	   * expression (e.g. rec.field) is kept in buffer_pos, and the start is found backward in the text */
+	  const char *label = node->info.host_var.label;
+	  int end = node->buffer_pos;
+	  int start = -1, pos, parts = 1;
+	  char text_norm[256], label_norm[256];
+	  const char *c;
+
+	  for (c = label; *c != '\0'; c++)
+	    {
+	      if (*c == '.')
+		{
+		  parts++;
+		}
+	    }
+
+	  if (end > 0 && end <= list->text_len)
+	    {
+	      start = pt_static_sql_token_start (list->text, end);
+	      while (start >= 0 && --parts > 0)
+		{
+		  pos = pt_static_sql_skip_space_before (list->text, start);
+		  if (pos < 0 || list->text[pos] != '.')
+		    {
+		      start = -1;
+		      break;
+		    }
+		  pos = pt_static_sql_skip_space_before (list->text, pos);
+		  start = (pos < 0) ? -1 : pt_static_sql_token_start (list->text, pos + 1);
+		}
+	    }
+	  if (start < 0)
+	    {
+	      list->failed = true;
+	      break;
+	    }
+	  pt_static_sql_normalize (list->text + start, end - start, text_norm, sizeof (text_norm));
+	  pt_static_sql_normalize (node->info.host_var.label, (int) strlen (node->info.host_var.label), label_norm,
+				   sizeof (label_norm));
+	  if (strcmp (text_norm, label_norm) != 0)
+	    {
+	      list->failed = true;
+	      break;
+	    }
+	  pt_static_sql_add_edit (parser, list, start, end, "?", node->info.host_var.index);
+	}
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
+}
+
+/*
+ * pt_static_sql_qualify_methods () - qualify the names of stored functions called in the text
+ *
+ * Note: the source positions of the function names are not kept in the tree, so the calls are found in the text:
+ *	 an identifier followed by '(' and not preceded by '.'. The number of the calls in the text must match the tree.
+ */
+static void
+pt_static_sql_qualify_methods (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list)
+{
+  PT_NODE *p, *q;
+
+  for (p = list->methods; p != NULL && !list->failed; p = p->next)
+    {
+      PT_NODE *call = p->info.pointer.node;
+      const char *qualified = call->info.method_call.method_name->info.name.original;
+      const char *name = strchr (qualified, '.') + 1;
+      int count_in_tree = 0, count_in_text = 0;
+      int kind, pos, start, end, prev_kind = PT_SS_TOKEN_END, prev_start = 0, prev_end = 0;
+      const char *prefix;
+      bool seen = false;
+
+      for (q = list->methods; q != NULL; q = q->next)
+	{
+	  if (intl_identifier_casecmp (q->info.pointer.node->info.method_call.method_name->info.name.original,
+				       qualified) == 0)
+	    {
+	      if (q == p)
+		{
+		  /* processed with the first call of the same function */
+		  seen = (count_in_tree > 0);
+		}
+	      count_in_tree++;
+	    }
+	}
+      if (seen)
+	{
+	  continue;
+	}
+
+      prefix = pt_static_sql_owner_prefix (parser, qualified);
+      if (prefix == NULL)
+	{
+	  list->failed = true;
+	  break;
+	}
+
+      for (pos = 0; (kind = pt_static_sql_next_token (list, pos, &start, &end))
+	   != PT_SS_TOKEN_END; pos = end)
+	{
+	  if ((kind == PT_SS_TOKEN_IDENT || kind == PT_SS_TOKEN_QUOTED) && pt_static_sql_token_equals (list->text, start,
+												      end, name))
+	    {
+	      int n_start, n_end;
+
+	      if (pt_static_sql_next_token (list, end, &n_start, &n_end) == PT_SS_TOKEN_PUNCT
+		  && list->text[n_start] == '(')
+		{
+		  count_in_text++;
+		  if (!(prev_kind == PT_SS_TOKEN_PUNCT && list->text[prev_start] == '.'))
+		    {
+		      pt_static_sql_add_edit (parser, list, start, start, prefix, -1);
+		    }
+		}
+	    }
+	  prev_kind = kind;
+	  prev_start = start;
+	  prev_end = end;
+	}
+      (void) prev_end;
+
+      if (count_in_text != count_in_tree)
+	{
+	  list->failed = true;
+	}
+    }
+}
+
+/*
+ * pt_static_sql_remove_into () - remove the INTO clause of the top query, found in the text at the top level
+ */
+static void
+pt_static_sql_remove_into (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list, int into_count)
+{
+  int kind, pos, start, end, depth = 0;
+  int into_start = -1, into_end = -1, targets = 0;
+
+  for (pos = 0; (kind = pt_static_sql_next_token (list, pos, &start, &end)) != PT_SS_TOKEN_END;
+       pos = end)
+    {
+      if (kind == PT_SS_TOKEN_PUNCT)
+	{
+	  if (list->text[start] == '(')
+	    {
+	      depth++;
+	    }
+	  else if (list->text[start] == ')')
+	    {
+	      depth--;
+	    }
+	}
+      else if (kind == PT_SS_TOKEN_IDENT && depth == 0 && end - start == 4
+	       && strncasecmp (list->text + start, "into", 4) == 0)
+	{
+	  into_start = start;
+	  break;
+	}
+    }
+
+  if (into_start < 0)
+    {
+      list->failed = true;
+      return;
+    }
+
+  /* targets: name [. name ...] [, name [. name ...] ...] */
+  pos = end;
+  while (true)
+    {
+      kind = pt_static_sql_next_token (list, pos, &start, &end);
+      if (kind != PT_SS_TOKEN_IDENT && kind != PT_SS_TOKEN_QUOTED)
+	{
+	  list->failed = true;
+	  return;
+	}
+      into_end = end;
+      pos = end;
+      targets++;
+
+      while (true)
+	{
+	  kind = pt_static_sql_next_token (list, pos, &start, &end);
+	  if (kind == PT_SS_TOKEN_PUNCT && list->text[start] == '.')
+	    {
+	      kind = pt_static_sql_next_token (list, end, &start, &end);
+	      if (kind != PT_SS_TOKEN_IDENT && kind != PT_SS_TOKEN_QUOTED)
+		{
+		  list->failed = true;
+		  return;
+		}
+	      into_end = end;
+	      pos = end;
+	      continue;
+	    }
+	  break;
+	}
+
+      if (kind == PT_SS_TOKEN_PUNCT && list->text[start] == ',')
+	{
+	  pos = end;
+	  continue;
+	}
+      break;
+    }
+
+  if (targets != into_count)
+    {
+      list->failed = true;
+      return;
+    }
+
+  pt_static_sql_add_edit (parser, list, into_start, into_end, " ", -1);
+}
+
+static int
+pt_static_sql_compare_edits (const void *a, const void *b)
+{
+  const PT_STATIC_SQL_EDIT *x = (const PT_STATIC_SQL_EDIT *) a;
+  const PT_STATIC_SQL_EDIT *y = (const PT_STATIC_SQL_EDIT *) b;
+
+  if (x->start != y->start)
+    {
+      return x->start - y->start;
+    }
+  /* an insertion comes before a replacement at the same position */
+  return (x->end - x->start) - (y->end - y->start);
+}
+
+/*
+ * pt_collect_static_sql_edits () - collect the edits of the original text of a PL/CSQL static SQL statement
+ *   return: none
+ *   parser(in):
+ *   statement(in): the statement right after name resolution
+ *
+ * Note: sets parser->static_sql_edit_status to 1 with the edits sorted by position,
+ *	 or to -1 if the statement can not be expressed with text edits.
+ */
+void
+pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_STATIC_SQL_EDIT_LIST list;
+  int i, j;
+  int *seen_host_vars = NULL;
+  PT_NODE *query = NULL;
+
+  if (parser->static_sql_edit_status != 0 || statement == NULL)
+    {
+      return;
+    }
+  parser->static_sql_edit_status = -1;
+
+  if (parser->original_buffer == NULL || pt_has_error (parser))
+    {
+      return;
+    }
+
+  memset (&list, 0, sizeof (list));
+  list.text = parser->original_buffer;
+  list.text_len = (int) strlen (parser->original_buffer);
+  list.backslash_escapes = !prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) && !parser->flag.strings_have_no_escapes;
+  list.ansi_quotes = prm_get_bool_value (PRM_ID_ANSI_QUOTES);
+
+  (void) parser_walk_tree (parser, statement, pt_collect_static_sql_edits_pre, &list, NULL, NULL);
+
+  if (!list.failed && list.methods != NULL)
+    {
+      pt_static_sql_qualify_methods (parser, &list);
+    }
+
+  if (!list.failed && PT_IS_QUERY (statement))
+    {
+      for (query = statement; query != NULL && query->node_type != PT_SELECT; query = query->info.query.q.union_.arg1)
+	{
+	  if (query->info.query.into_list != NULL)
+	    {
+	      break;
+	    }
+	}
+      if (query != NULL && query->info.query.into_list != NULL)
+	{
+	  pt_static_sql_remove_into (parser, &list, pt_length_of_list (query->info.query.into_list));
+	}
+    }
+
+  if (list.failed)
+    {
+      return;
+    }
+
+  if (list.count > 1)
+    {
+      qsort (list.edits, list.count, sizeof (PT_STATIC_SQL_EDIT), pt_static_sql_compare_edits);
+
+      /* the same insertion can be collected more than once from copies of a name */
+      for (i = 1, j = 0; i < list.count; i++)
+	{
+	  if (list.edits[i].start == list.edits[j].start && list.edits[i].end == list.edits[j].end
+	      && list.edits[i].host_var_index < 0 && list.edits[j].host_var_index < 0
+	      && strcmp (list.edits[i].text, list.edits[j].text) == 0)
+	    {
+	      continue;
+	    }
+	  list.edits[++j] = list.edits[i];
+	}
+      list.count = j + 1;
+    }
+
+  /* edits must not overlap, and every host variable must be replaced exactly once */
+  if (parser->host_var_count > 0)
+    {
+      seen_host_vars = (int *) parser_alloc (parser, parser->host_var_count * sizeof (int));
+      if (seen_host_vars == NULL)
+	{
+	  return;
+	}
+      memset (seen_host_vars, 0, parser->host_var_count * sizeof (int));
+    }
+
+  for (i = 0; i < list.count; i++)
+    {
+      if (i > 0 && list.edits[i].start < list.edits[i - 1].end)
+	{
+	  return;
+	}
+      if (list.edits[i].host_var_index >= 0)
+	{
+	  if (seen_host_vars[list.edits[i].host_var_index]++ != 0)
+	    {
+	      return;
+	    }
+	}
+    }
+  for (i = 0; i < parser->host_var_count; i++)
+    {
+      if (seen_host_vars[i] != 1)
+	{
+	  return;
+	}
+    }
+
+  parser->static_sql_edits = list.edits;
+  parser->static_sql_edit_count = list.count;
+  parser->static_sql_edit_status = 1;
+}
