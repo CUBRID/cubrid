@@ -31,6 +31,7 @@
 
 int cas_get_graceful_down_timeout (void);
 void cas_sig_handler (int signo);
+void cas_sig_init (void);
 void cas_final (void);
 void cas_free (bool from_sighandler);
 

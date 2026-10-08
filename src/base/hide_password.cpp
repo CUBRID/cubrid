@@ -75,7 +75,7 @@ class hide_password
 				  bool *is_pwd_keyword_found);
     char *skip_one_query (char *query);
     bool check_lead_string_in_query (char **query, char **method_name, bool *is_create, bool *is_server);
-    void fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...));
+    void fprintf_replace_newline (void *fp, char *query, int (*cas_fprintf) (void *, const char *, ...));
     bool check_capitalized_keyword_create (char *query);
     const char *get_password_string (char *qryptr, int *pwd_info_ptr);
 
@@ -92,8 +92,10 @@ class hide_password
 
     void find_password_positions (char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr);
     int snprint_password (char *msg, int size, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr);
-    void fprintf_password (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr,
-			   int (*cas_fprintf) (FILE *, const char *, ...));
+    void fprintf_password (void *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr,
+			   int (*cas_fprintf) (void *, const char *, ...));
+    void write_sql_log_in_signal_handler (void *log_fd, char *query,
+					  void (*write_func) (void *log_fd, const char *ptr, int len));
 };
 
 char *
@@ -650,7 +652,7 @@ hide_password::snprint_password (char *msg, int size, char *query, HIDE_PWD_INFO
 }
 
 void
-hide_password::fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf) (FILE *, const char *, ...))
+hide_password::fprintf_replace_newline (void *fp, char *query, int (*cas_fprintf) (void *, const char *, ...))
 {
   int offset;
   char chbk;
@@ -677,8 +679,8 @@ hide_password::fprintf_replace_newline (FILE *fp, char *query, int (*cas_fprintf
 }
 
 void
-hide_password::fprintf_password (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr,
-				 int (*cas_fprintf) (FILE *, const char *, ...))
+hide_password::fprintf_password (void *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr,
+				 int (*cas_fprintf) (void *, const char *, ...))
 {
   char *qryptr = query;
   char chbk;
@@ -709,8 +711,8 @@ hide_password::fprintf_password (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_p
 }
 
 void
-password_fprintf (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
-		  int (*cas_fprintf) (FILE *, const char *, ...))
+password_fprintf (void *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
+		  int (*cas_fprintf) (void *, const char *, ...))
 {
   hide_password chp;
 
@@ -727,6 +729,121 @@ password_fprintf (FILE *fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr,
       chp.fprintf_password (fp, query, &t_pwd_info, cas_fprintf);
       QUIT_HIDE_PASSWORD_INFO (&t_pwd_info);
     }
+}
+
+/*
+ * write_replace_newline () - write str with each CR and LF replaced by a space, as fprintf_replace_newline () does.
+ *
+ * NOTE:
+ *   Unlike fprintf_replace_newline (), it writes each piece by its length without printf, leaving str unchanged.
+ */
+static void
+write_replace_newline (void *log_fd, const char *str, void (*write_func) (void *log_fd, const char *ptr, int len))
+{
+  while (*str)
+    {
+      int len = (int) strcspn (str, "\r\n");
+
+      if (len == 0)
+	{
+	  write_func (log_fd, " ", 1);
+	  str++;
+	}
+      else
+	{
+	  write_func (log_fd, str, len);
+	  str += len;
+	}
+    }
+}
+
+/*
+ * write_sql_log_in_signal_handler () - write the query with its passwords masked, without malloc or printf.
+ *
+ * NOTE:
+ *   Unlike find_password_positions (), it writes each password as it is found, without storing its position.
+ */
+void
+hide_password::write_sql_log_in_signal_handler (void *log_fd, char *query,
+    void (*write_func) (void *log_fd, const char *ptr, int len))
+{
+  bool is_add_comma;
+  bool is_create, is_server, has_password_keyword;
+  char *newptr = query;
+  char *qryptr = query;
+  EN_ADD_PWD_STRING en_add_pwd_string;
+
+  while (*newptr)
+    {
+      char *ps;
+      int password_len;
+      char *method_name = NULL;
+
+      if (check_lead_string_in_query (&newptr, &method_name, &is_create, &is_server))
+	{
+	  if (method_name)
+	    {
+	      if ((ps = get_method_passowrd_start_position (newptr, method_name, &password_len)) == NULL)
+		{
+		  newptr = skip_one_query (newptr);
+		  continue;
+		}
+
+	      is_add_comma = (bool) (password_len == 0);
+	      en_add_pwd_string = en_none_password;
+	    }
+	  else
+	    {
+	      if ((ps = get_passowrd_pos_n_len (newptr, is_create, is_server, &password_len, &has_password_keyword)) == NULL)
+		{
+		  newptr = skip_one_query (newptr);
+		  continue;
+		}
+
+	      en_add_pwd_string = (is_create
+				   && !has_password_keyword) ? (is_server ? en_server_password : en_user_password) : en_none_password;
+	      is_add_comma = (bool) (is_create && is_server && !has_password_keyword);
+	    }
+
+	  newptr = ps + password_len;
+
+	  /* write the text before the password, then the mask in its place */
+	  int pwd_info[2];
+	  int start = (int) (ps - query);
+	  char chbk = *ps;
+	  const char *mask;
+
+	  pwd_info[0] = start;
+	  pwd_info[1] = SET_PWD_LENGTH_N_ADDINFO (start, start + password_len, is_add_comma, en_add_pwd_string);
+
+	  *ps = '\0';
+	  write_replace_newline (log_fd, qryptr, write_func);
+	  mask = get_password_string (qryptr, pwd_info);
+	  write_func (log_fd, mask, (int) strlen (mask));
+	  *ps = chbk;
+
+	  qryptr = newptr;
+	}
+
+      newptr = skip_one_query (newptr);
+    }
+
+  write_replace_newline (log_fd, qryptr, write_func);
+}
+
+/*
+ * password_write_sql_log_in_signal_handler () - write the query to the SQL log with its passwords masked.
+ *
+ * NOTE:
+ *   Safe to call from a terminating signal handler since it neither allocates memory nor uses printf.
+ */
+void
+password_write_sql_log_in_signal_handler (void *log_fd, char *query,
+    void (*write_func) (void *log_fd, const char *ptr, int len))
+{
+  hide_password chp;
+
+  chp.write_sql_log_in_signal_handler (log_fd, query, write_func);
 }
 
 int
