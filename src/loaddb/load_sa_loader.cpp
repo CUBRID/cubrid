@@ -2450,8 +2450,12 @@ ldr_cast_elem_to_set_domain (LDR_CONTEXT *context, DB_VALUE *val)
 {
   TP_DOMAIN *domain;
   DB_VALUE cast_val;
-
-  GET_DOMAIN (context, domain);
+  /*
+   * Do not use GET_DOMAIN (): this only ever runs on a collection element,
+   * and the macro's other branch reads attrs[next_attr].att->domain.
+   * On a %constructor line's argument that att is NULL.
+   */
+  domain = context->set_domain;
 
   if (domain == NULL || TP_DOMAIN_TYPE (domain) == db_value_type (val))
     {
