@@ -18717,6 +18717,7 @@ qexec_opcode_is_prior_or_volatile (OPERATOR_TYPE opcode)
     case T_RANDOM:
     case T_DRANDOM:
     case T_SYS_GUID:
+    case T_DEFINE_VARIABLE:	/* @v := ... mutates a session variable, so a new value each evaluation */
       return true;
     default:
       return false;
@@ -18753,14 +18754,9 @@ qexec_regu_has_opcode (const REGU_VARIABLE * regu, QEXEC_OPCODE_MATCH match)
 	      || qexec_regu_has_opcode (regu->value.arithptr->thirdptr, match));
 
     case TYPE_SP:
-      for (REGU_VARIABLE_LIST r = regu->value.sp_ptr->args; r != NULL; r = r->next)
-	{
-	  if (qexec_regu_has_opcode (&r->value, match))
-	    {
-	      return true;
-	    }
-	}
-      return false;
+      /* a stored/PL function call may return a new value per invocation, so evaluating it once is unsafe regardless of
+       * its arguments */
+      return true;
 
     case TYPE_FUNC:
       for (REGU_VARIABLE_LIST r = regu->value.funcp->operand; r != NULL; r = r->next)
