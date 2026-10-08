@@ -555,7 +555,20 @@ namespace cubload
   int
   to_db_string (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    return db_make_string (val, str);
+    /*
+     * Not db_make_string (): it measures the token with strlen (), so a NUL inside
+     * the token cuts the value short without a word. '2.25\0junk' then reached the
+     * engine as "2.25" and cast cleanly into a NUMERIC column, where INSERT refuses
+     * the string whole. The loader already knows the real length, so say it. Apart
+     * from the length this is what db_make_string () does.
+     */
+    int error_code = db_value_domain_init (val, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
+    return db_make_db_char (val, LANG_SYS_CODESET, LANG_SYS_COLLATION, str, (int) str_size);
   }
 
   int
