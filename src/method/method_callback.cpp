@@ -471,65 +471,6 @@ namespace cubmethod
 // Compile
 //////////////////////////////////////////////////////////////////////////
 
-  static bool
-  is_supported_dbtype (const DB_TYPE type)
-  {
-    bool res = false;
-    switch (type)
-      {
-      case DB_TYPE_INTEGER:
-      case DB_TYPE_SHORT:
-      case DB_TYPE_BIGINT:
-      case DB_TYPE_FLOAT:
-      case DB_TYPE_DOUBLE:
-      case DB_TYPE_MONETARY:
-      case DB_TYPE_NUMERIC:
-      case DB_TYPE_CHAR:
-      case DB_TYPE_STRING:
-      case DB_TYPE_DATE:
-      case DB_TYPE_TIME:
-      case DB_TYPE_TIMESTAMP:
-      case DB_TYPE_DATETIME:
-      case DB_TYPE_SET:
-      case DB_TYPE_MULTISET:
-      case DB_TYPE_SEQUENCE:
-      case DB_TYPE_OID:
-      case DB_TYPE_OBJECT:
-      case DB_TYPE_RESULTSET:
-      case DB_TYPE_NULL:
-	res = true;
-	break;
-      // unsupported types
-      case DB_TYPE_BIT:
-      case DB_TYPE_VARBIT:
-      case DB_TYPE_TABLE:
-      case DB_TYPE_BLOB:
-      case DB_TYPE_CLOB:
-      case DB_TYPE_TIMESTAMPTZ:
-      case DB_TYPE_TIMESTAMPLTZ:
-      case DB_TYPE_DATETIMETZ:
-      case DB_TYPE_DATETIMELTZ:
-      case DB_TYPE_JSON:
-      case DB_TYPE_ENUMERATION:
-	res = false;
-	break;
-
-      // obsolete, internal, unused type
-      case DB_TYPE_ELO:
-      case DB_TYPE_VARIABLE:
-      case DB_TYPE_SUB:
-      case DB_TYPE_POINTER:
-      case DB_TYPE_ERROR:
-      case DB_TYPE_VOBJ:
-      case DB_TYPE_DB_VALUE:
-      case DB_TYPE_MIDXKEY:
-      default:
-	assert (false);
-	break;
-      }
-    return res;
-  }
-
   int
   callback_handler::get_sql_semantics (packing_unpacker &unpacker)
   {
@@ -646,36 +587,7 @@ namespace cubmethod
 			semantics.hvs[idx].name.assign ((char *) marker->info.host_var.label);
 		      }
 
-		    TP_DOMAIN *hv_expected_domain = NULL;
-		    if (idx >= parser->host_var_count)
-		      {
-			// auto parameterized
-			hv_expected_domain = marker->expected_domain;
-		      }
-		    else
-		      {
-			hv_expected_domain = db_session->parser->host_var_expected_domains[idx];
-		      }
-
-		    // safe guard
-		    if (hv_expected_domain == NULL)
-		      {
-			hv_expected_domain = pt_node_to_db_domain (parser, marker, NULL);
-		      }
-
-		    semantics.hvs[idx].type = TP_DOMAIN_TYPE (hv_expected_domain);
-		    semantics.hvs[idx].precision = db_domain_precision (hv_expected_domain);
-		    semantics.hvs[idx].scale = (short) db_domain_scale (hv_expected_domain);
-		    semantics.hvs[idx].charset = db_domain_codeset (hv_expected_domain);
-
-		    if (semantics.hvs[idx].type != DB_TYPE_NULL)
-		      {
-			db_value_clone (& (db_session->parser->host_variables[idx]), & (semantics.hvs[idx].value));
-		      }
-		    else
-		      {
-			db_make_null (& (semantics.hvs[idx].value));
-		      }
+		    /* the type of a host variable is not inferred: PL/CSQL compiler does not use it */
 
 		    marker = db_marker_next (marker);
 		  }
@@ -700,14 +612,6 @@ namespace cubmethod
 
     for (sql_semantics &s : semantics_vec)
       {
-	for (const cubpl::pl_parameter_info &hv : s.hvs)
-	  {
-	    if (is_supported_dbtype ((DB_TYPE) hv.type) == false)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_NOT_SUPPORTED_ARG_TYPE, 1, pr_type_name ((DB_TYPE) hv.type));
-	      }
-	  }
-
 	if (er_errid () != NO_ERROR)
 	  {
 	    s.columns.clear ();
