@@ -12958,6 +12958,34 @@ pt_dml_gather_source_refs (PARSER_CONTEXT * parser, PT_NODE * stmt, S_LINK_COLUM
 }
 
 /*
+ * pt_find_spec_owner_pre () - find the query block whose FROM lists a spec
+ *   arg(in/out): PT_NODE *[2]: the spec, then the PT_SELECT listing it once found
+ */
+static PT_NODE *
+pt_find_spec_owner_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE **find = (PT_NODE **) arg;
+  PT_NODE *spec;
+
+  if (node->node_type != PT_SELECT)
+    {
+      return node;
+    }
+
+  for (spec = node->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      if (spec == find[0])
+	{
+	  find[1] = node;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
+    }
+
+  return node;
+}
+
+/*
  * pt_gather_dblink_cols_in_dml_pre () - collect, for one remote source table of a DML
  *   statement, the columns the statement references on it
  *   arg(in): the enclosing DML statement
@@ -12995,32 +13023,50 @@ pt_gather_dblink_cols_in_dml_pre (PARSER_CONTEXT * parser, PT_NODE * node, void 
     }
 
   S_LINK_COLUMNS lkcol;
-  bool multi_source;
-
-  /* the statement's own spec list is the block's column sources: with exactly one spec
-   * its unqualified names are this table's; a MERGE always joins two, and anything
-   * unexpected counts as several so the table is described */
-  switch (stmt->node_type)
-    {
-    case PT_UPDATE:
-      multi_source = (pt_length_of_list (stmt->info.update.spec)
-		      + pt_length_of_list (stmt->info.update.class_specs)) != 1;
-      break;
-    case PT_DELETE:
-      multi_source = (pt_length_of_list (stmt->info.delete_.spec)
-		      + pt_length_of_list (stmt->info.delete_.class_specs)) != 1;
-      break;
-    default:
-      multi_source = true;
-      break;
-    }
+  PT_NODE *find[2] = { node, NULL };
 
   memset (&lkcol, 0x00, sizeof (lkcol));
   lkcol.col_list = table->info.dblink_table.sel_list;
   lkcol.tbl_name_node = node->info.spec.range_var;
-  lkcol.multi_source = multi_source;
 
-  pt_dml_gather_source_refs (parser, stmt, &lkcol);
+  /* A query block of the statement that reads this table (an INSERT's SELECT, a subquery,
+   * a UNION arm) is judged as a plain SELECT is (pt_gather_dblink_colums ()): no name
+   * outside that block can see the table, ON DUPLICATE KEY UPDATE aside. */
+  (void) parser_walk_tree (parser, stmt, pt_find_spec_owner_pre, find, NULL, NULL);
+  if (find[1] != NULL)
+    {
+      lkcol.multi_source = (find[1]->info.query.q.select.from->next != NULL);
+      pt_get_cols_for_dblink (parser, &lkcol, &find[1]->info.query);
+
+      /* ON DUPLICATE KEY UPDATE resolves against the target table and the SELECT's tables
+       * (pt_bind_names ()), so an unqualified name there may be either's */
+      if (find[1] == pt_get_subquery_of_insert_select (stmt))
+	{
+	  lkcol.multi_source = true;
+	  pt_walk_col_refs (parser, stmt->info.insert.odku_assignments, pt_dml_column_name_pre, &lkcol);
+	}
+    }
+  else
+    {
+      /* the statement's own spec list is the block's column sources: with exactly one spec
+       * its unqualified names are this table's; a MERGE always joins two, and anything
+       * unexpected counts as several so the table is described */
+      switch (stmt->node_type)
+	{
+	case PT_UPDATE:
+	  lkcol.multi_source = (pt_length_of_list (stmt->info.update.spec)
+				+ pt_length_of_list (stmt->info.update.class_specs)) != 1;
+	  break;
+	case PT_DELETE:
+	  lkcol.multi_source = (pt_length_of_list (stmt->info.delete_.spec)
+				+ pt_length_of_list (stmt->info.delete_.class_specs)) != 1;
+	  break;
+	default:
+	  lkcol.multi_source = true;
+	  break;
+	}
+      pt_dml_gather_source_refs (parser, stmt, &lkcol);
+    }
 
   table->info.dblink_table.sel_list = lkcol.col_list;
   lkcol.col_list = NULL;
