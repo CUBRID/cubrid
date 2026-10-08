@@ -33,6 +33,7 @@
 #include "perf_monitor.h"		/* perfmon_update_max_timeval, perfmon_update_min_timeval */
 #include "query_evaluator.h"		/* eval_pred, V_ERROR, V_TRUE */
 #include "query_hash_join.h"
+#include "query_hash_join_partition.hpp"
 #include "query_hash_scan.h"
 #include "query_manager.h"		/* qmgr_get_old_page, qmgr_free_old_page_and_init, ... */
 #include "storage_common.h"		/* OID_INITIALIZER, S_CLOSED, VPID_SET_NULL, ... */
@@ -175,6 +176,7 @@ namespace parallel_query
 
       assert (m_shared_info != nullptr);
       assert (m_shared_info->part_mutexes != nullptr);
+      assert (m_shared_info->part_set != nullptr);
     }
 
     void
@@ -182,8 +184,7 @@ namespace parallel_query
     {
       task_execution_guard guard (thread_ref, m_task_manager);
 
-      QFILE_LIST_ID **part_list_id;
-      HASHJOIN_PART_WRITER part_writer;
+      cubquery::hjoin_part_writer part_writer;
 
       PAGE_PTR page = nullptr;
       QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
@@ -202,13 +203,11 @@ namespace parallel_query
 
       /* Do not perform NULL checks;
       * validation is expected to be handled by the constructor */
-      part_list_id = m_split_info->part_list_id;
       part_cnt = m_manager->context_cnt;
 
       is_outer_join = IS_OUTER_JOIN_TYPE (m_manager->join_type);
 
-      error = hjoin_init_part_writer (&thread_ref, &part_writer, part_list_id, &m_shared_info->staging,
-				      m_manager->part_spools[m_index], part_cnt, m_shared_info->part_mutexes);
+      error = part_writer.init (&thread_ref, *m_shared_info->part_set, m_manager->part_spools[m_index]);
       if (error != NO_ERROR)
 	{
 	  m_task_manager.handle_error (thread_ref);
@@ -218,9 +217,6 @@ namespace parallel_query
       temp_key = qdata_alloc_hscan_key (&thread_ref, m_manager->key_cnt, true);
       if (temp_key == nullptr)
 	{
-	  /* cleanup */
-	  hjoin_clear_part_writer (&thread_ref, &part_writer);
-
 	  assert_release_error (er_errid () != NO_ERROR);
 	  m_task_manager.handle_error (thread_ref);
 	  return;
@@ -346,7 +342,7 @@ namespace parallel_query
 		  hjoin_update_tuple_hash_key (&thread_ref, &tuple_record, hash_key);
 		}
 
-	      error = hjoin_add_to_part_writer (&thread_ref, &part_writer, part_id, tuple_record.tpl);
+	      error = part_writer.add (part_id, tuple_record.tpl);
 	      if (error != NO_ERROR)
 		{
 		  assert_release_error (er_errid () != NO_ERROR);
@@ -378,7 +374,7 @@ namespace parallel_query
 
       if (!has_error)
 	{
-	  error = hjoin_flush_part_writer (&thread_ref, &part_writer);
+	  error = part_writer.flush ();
 	  if (error != NO_ERROR)
 	    {
 	      assert_release_error (er_errid () != NO_ERROR);
@@ -387,8 +383,6 @@ namespace parallel_query
 	}
 
       /* cleanup */
-      hjoin_clear_part_writer (&thread_ref, &part_writer);
-
       qdata_free_hscan_key (&thread_ref, temp_key, m_manager->key_cnt);
 
       if (overflow_record.tpl != nullptr)

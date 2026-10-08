@@ -303,14 +303,12 @@ typedef struct hashjoin_split_info
   HASHJOIN_INPUT_SPLIT_INFO inner;
 } HASHJOIN_SPLIT_INFO;
 
-/* HASHJOIN_PART_STAGING */
-typedef struct hashjoin_part_staging
+// *INDENT-OFF*
+namespace cubquery
 {
-  /* Last page of each partition list, kept in memory until it is full (qfile_add_tuple_to_staged_list).
-   * NULL until the partition gets a tuple. */
-  PAGE_PTR *pages;
-  UINT32 page_cnt;		/* number of partitions */
-} HASHJOIN_PART_STAGING;
+  class hjoin_part_set;
+}
+// *INDENT-ON*
 
 /* HASHJOIN_SHARED_SPLIT_INFO */
 typedef struct hashjoin_shared_split_info
@@ -319,38 +317,17 @@ typedef struct hashjoin_shared_split_info
   QFILE_LIST_SECTOR_SCAN_INFO sector_scan;
 
   std::mutex *part_mutexes;
-  HASHJOIN_PART_STAGING staging;
+  cubquery::hjoin_part_set *part_set;	/* partition lists of the input being split */
 
   hashjoin_shared_split_info ()
     : sector_scan ()
     , part_mutexes (nullptr)
-    , staging { nullptr, 0 }
+    , part_set (nullptr)
   {
     //
   }
   // *INDENT-ON*
 } HASHJOIN_SHARED_SPLIT_INFO;
-
-/* HASHJOIN_PART_WRITER */
-typedef struct hashjoin_part_writer
-{
-  QFILE_LIST_ID **part_list_id;
-  HASHJOIN_PART_STAGING *staging;
-  struct qmgr_temp_file *spool;	/* pages of this writer are allocated from it */
-  // *INDENT-OFF*
-  std::mutex *part_mutexes;	/* nullptr in serial split */
-  // *INDENT-ON*
-  UINT32 part_cnt;
-
-  /* Tuples of all partitions, appended to the partition lists when the buffer is full.
-   * Each entry is the offset of the next entry of the same partition followed by the tuple. */
-  char *buffer;
-  int buffer_used;
-  int *part_first;		/* offset of the first entry of each partition, -1 if none */
-  int *part_last;
-  UINT32 *filled_parts;		/* partitions that have entries, in the order of their first entry */
-  UINT32 filled_cnt;
-} HASHJOIN_PART_WRITER;
 
 /* HASHJOIN_SHARED_PROBE_INFO */
 typedef struct hashjoin_shared_probe_info
@@ -532,23 +509,6 @@ void hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * 
 /* Hash Join Partition Spool */
 int hjoin_init_part_spools (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info,
 			    int spool_cnt);
-
-/* Hash Join Partition Staging */
-int hjoin_init_part_staging (THREAD_ENTRY * thread_p, HASHJOIN_PART_STAGING * staging, UINT32 part_cnt);
-int hjoin_flush_part_staging (THREAD_ENTRY * thread_p, HASHJOIN_PART_STAGING * staging, QFILE_LIST_ID ** part_list_id,
-			      struct qmgr_temp_file *spool);
-void hjoin_clear_part_staging (HASHJOIN_PART_STAGING * staging);
-
-/* Hash Join Partition Writer */
-// *INDENT-OFF*
-int hjoin_init_part_writer (THREAD_ENTRY * thread_p, HASHJOIN_PART_WRITER * writer, QFILE_LIST_ID ** part_list_id,
-			    HASHJOIN_PART_STAGING * staging, struct qmgr_temp_file *spool, UINT32 part_cnt,
-			    std::mutex * part_mutexes);
-// *INDENT-ON*
-void hjoin_clear_part_writer (THREAD_ENTRY * thread_p, HASHJOIN_PART_WRITER * writer);
-int hjoin_add_to_part_writer (THREAD_ENTRY * thread_p, HASHJOIN_PART_WRITER * writer, UINT32 part_id,
-			      QFILE_TUPLE tuple);
-int hjoin_flush_part_writer (THREAD_ENTRY * thread_p, HASHJOIN_PART_WRITER * writer);
 
 /* Hash List Scan */
 int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id);

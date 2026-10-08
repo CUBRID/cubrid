@@ -22,6 +22,7 @@
 
 #include "px_hash_join.hpp"
 #include "px_hash_join_task_manager.hpp"
+#include "query_hash_join_partition.hpp"
 
 #include "error_manager.h"		/* assert_release_error, er_errid, NO_ERROR, ... */
 #include "list_file.h"			/* qfile_open_list, qfile_open_list_scan, qfile_close_scan, ... */
@@ -45,6 +46,7 @@ namespace parallel_query
     {
       HASHJOIN_INPUT_SPLIT_INFO *outer, *inner;
       HASHJOIN_SHARED_SPLIT_INFO shared_info;
+      cubquery::hjoin_part_set part_set;
       UINT32 task_cnt, task_index;
       int error = NO_ERROR;
 
@@ -81,11 +83,12 @@ namespace parallel_query
 	  hjoin_trace_start (&thread_ref, &start_stats);
 	}
 
-      error = hjoin_init_part_staging (&thread_ref, &shared_info.staging, manager->context_cnt);
+      error = part_set.init (outer->part_list_id, manager->context_cnt, shared_info.part_mutexes);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
 	}
+      shared_info.part_set = &part_set;
 
       /* collect data page sectors for outer relation */
       error = qfile_open_list_sector_scan (&thread_ref, outer->fetch_info->list_id, &shared_info.sector_scan);
@@ -104,10 +107,9 @@ namespace parallel_query
 
       if (!task_manager.has_error ())
 	{
-	  error = hjoin_flush_part_staging (&thread_ref, &shared_info.staging, outer->part_list_id,
-					    manager->part_spools[0]);
+	  error = part_set.finish (&thread_ref, manager->part_spools[0]);
 	}
-      hjoin_clear_part_staging (&shared_info.staging);
+      part_set.clear ();
 
       if (thread_is_on_trace (&thread_ref))
 	{
@@ -130,7 +132,7 @@ namespace parallel_query
 	  hjoin_trace_start (&thread_ref, &start_stats);
 	}
 
-      error = hjoin_init_part_staging (&thread_ref, &shared_info.staging, manager->context_cnt);
+      error = part_set.init (inner->part_list_id, manager->context_cnt, shared_info.part_mutexes);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -154,10 +156,9 @@ namespace parallel_query
 
       if (!task_manager.has_error ())
 	{
-	  error = hjoin_flush_part_staging (&thread_ref, &shared_info.staging, inner->part_list_id,
-					    manager->part_spools[0]);
+	  error = part_set.finish (&thread_ref, manager->part_spools[0]);
 	}
-      hjoin_clear_part_staging (&shared_info.staging);
+      part_set.clear ();
 
       if (thread_is_on_trace (&thread_ref))
 	{
@@ -178,7 +179,7 @@ namespace parallel_query
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
-      hjoin_clear_part_staging (&shared_info.staging);
+      part_set.clear ();
       hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
 
       return error;
