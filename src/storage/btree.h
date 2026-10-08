@@ -736,6 +736,36 @@ struct btree_insert_list
 };
 // *INDENT-ON*
 
+typedef enum
+{
+  BTREE_KEY_PEEK,		/* data is borrowed; its owner must keep it alive */
+  BTREE_KEY_COPY		/* data is the key's own copy */
+} BTREE_KEY_MODE;
+
+/* A key as a b+tree record stores it: the index_writeval () image and its length. */
+typedef struct btree_key BTREE_KEY;
+struct btree_key
+{
+  TP_DOMAIN *domain;		/* the domain data was written with: key_type on a leaf, nonleaf_key_type above */
+  const char *data;
+  int length;			/* byte length of data */
+  BTREE_KEY_MODE mode;
+  char *storage;		/* BTREE_KEY_COPY only: the buffer data points into */
+  int capacity;			/* BTREE_KEY_COPY only: bytes storage can hold */
+};
+
+/* key_domain must not be named domain: the macro would replace the member name too. */
+#define BTREE_KEY_INIT(key, key_domain)	\
+  do					\
+    {					\
+      (key)->domain = (key_domain);	\
+      (key)->data = NULL;		\
+      (key)->length = 0;		\
+      (key)->mode = BTREE_KEY_COPY;	\
+      (key)->storage = NULL;		\
+      (key)->capacity = 0;		\
+    } while (false)
+
 /* BTREE_RANGE_SCAN_PROCESS_KEY_FUNC -
  * btree_range_scan internal function that is called for each key that passes
  * range/filter checks.
@@ -952,14 +982,13 @@ extern int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTI
 /* Stores an overflow key on behalf of btree_write_record_ex () and returns the VPID of its first page.  Lets the
  * parallel no-logging index build route overflow keys through its own page provider instead of
  * btree_store_overflow_key (). */
-typedef int (*BTREE_STORE_OVF_KEY_FUNC) (THREAD_ENTRY * thread_p, void *arg, DB_VALUE * key, int key_len,
-					 BTREE_NODE_TYPE node_type, VPID * first_vpid);
+typedef int (*BTREE_STORE_OVF_KEY_FUNC) (THREAD_ENTRY * thread_p, void *arg, const BTREE_KEY * key, VPID * first_vpid);
 
 extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
-			       BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading,
-			       OID * class_oid, OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
-extern int btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
-				  BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading,
+			       BTREE_NODE_TYPE node_type, int key_type, int key_len, OID * class_oid, OID * oid,
+			       BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
+extern int btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec,
+				  const BTREE_KEY * key, BTREE_NODE_TYPE node_type, int key_type,
 				  OID * class_oid, OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec,
 				  BTREE_STORE_OVF_KEY_FUNC store_ovf_key_fn, void *store_ovf_key_arg);
 extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, RECDES * Rec, DB_VALUE * key,

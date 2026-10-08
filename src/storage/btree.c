@@ -1229,6 +1229,8 @@ STATIC_INLINE int btree_count_oids (THREAD_ENTRY * thread_p, BTID_INT * btid_int
 
 static int btree_store_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key, int size,
 				     BTREE_NODE_TYPE node_type, VPID * firstpg_vpid);
+static int btree_write_record_header (BTID_INT * btid, void *node_rec, BTREE_NODE_TYPE node_type, OID * class_oid,
+				      OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec, OR_BUF * buf);
 static int btree_load_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, VPID * firstpg_vpid, DB_VALUE * key,
 				    BTREE_NODE_TYPE node_type);
 static int btree_delete_overflow_key (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, INT16 slot_id,
@@ -4138,6 +4140,73 @@ btree_get_disk_size_of_key (DB_VALUE * key)
 }
 
 /*
+ * btree_write_record_header () - Write the part of a b+tree record that comes before its key
+ *   return: NO_ERROR or error code
+ *   buf(out): initialized over rec and left at the position of the key
+ */
+static int
+btree_write_record_header (BTID_INT * btid, void *node_rec, BTREE_NODE_TYPE node_type, OID * class_oid, OID * oid,
+			   BTREE_MVCC_INFO * mvcc_info, RECDES * rec, OR_BUF * buf)
+{
+  int error_code = NO_ERROR;
+
+  or_init (buf, rec->data, rec->area_size);
+
+  if (node_type == BTREE_LEAF_NODE)
+    {
+      /* first instance oid */
+      error_code = or_put_oid (buf, oid);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  return error_code;
+	}
+      if (BTREE_IS_UNIQUE (btid->unique_pk) && !OID_EQ (&btid->topclass_oid, class_oid))
+	{
+	  /* write the subclass OID */
+	  error_code = or_put_oid (buf, class_oid);
+	  if (error_code != NO_ERROR)
+	    {
+	      assert_release (false);
+	      return error_code;
+	    }
+	  btree_leaf_set_flag (rec, BTREE_LEAF_RECORD_CLASS_OID);
+	}
+
+      if (mvcc_info != NULL)
+	{
+	  if (BTREE_MVCC_INFO_HAS_INSID (mvcc_info))
+	    {
+	      error_code = or_put_mvccid (buf, mvcc_info->insert_mvccid);
+	      if (error_code != NO_ERROR)
+		{
+		  assert_release (false);
+		  return error_code;
+		}
+	    }
+	  if (BTREE_MVCC_INFO_HAS_DELID (mvcc_info))
+	    {
+	      error_code = or_put_mvccid (buf, mvcc_info->delete_mvccid);
+	      if (error_code != NO_ERROR)
+		{
+		  assert_release (false);
+		  return error_code;
+		}
+	    }
+	  btree_record_object_set_mvcc_flags (rec->data, mvcc_info->flags);
+	}
+    }
+  else
+    {
+      NON_LEAF_REC *non_leaf_rec = (NON_LEAF_REC *) node_rec;
+
+      btree_write_fixed_portion_of_non_leaf_record_to_orbuf (buf, non_leaf_rec);
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * btree_write_record () -
  *   return: NO_ERROR
  *   btid(in):
@@ -4146,7 +4215,6 @@ btree_get_disk_size_of_key (DB_VALUE * key)
  *   node_type(in):
  *   key_type(in):
  *   key_len(in):
- *   during_loading(in):
  *   class_oid(in):
  *   oid(in):
  *   p_mvcc_rec_header(in): MVCC record header
@@ -4162,28 +4230,7 @@ btree_get_disk_size_of_key (DB_VALUE * key)
  */
 int
 btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key, BTREE_NODE_TYPE node_type,
-		    int key_type, int key_len, bool during_loading, OID * class_oid, OID * oid,
-		    BTREE_MVCC_INFO * mvcc_info, RECDES * rec)
-{
-  return btree_write_record_ex (thread_p, btid, node_rec, key, node_type, key_type, key_len, during_loading, class_oid,
-				oid, mvcc_info, rec, NULL, NULL);
-}
-
-/*
- * btree_write_record_ex () - btree_write_record () with a replaceable overflow-key writer
- *   return: error code
- *   store_ovf_key_fn(in): stores the overflow key and returns its first VPID; NULL selects
- *                         btree_store_overflow_key ()
- *   store_ovf_key_arg(in): opaque argument handed back to store_ovf_key_fn
- *
- * Note: See btree_write_record ().  The hook exists so the parallel no-logging index build can take overflow-key
- * pages from its own provider pool while sharing every other byte of the record format.
- */
-int
-btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
-		       BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading, OID * class_oid,
-		       OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec,
-		       BTREE_STORE_OVF_KEY_FUNC store_ovf_key_fn, void *store_ovf_key_arg)
+		    int key_type, int key_len, OID * class_oid, OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec)
 {
   VPID key_vpid;
   OR_BUF buf;
@@ -4193,57 +4240,10 @@ btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec,
   assert (key_type == BTREE_NORMAL_KEY || key_type == BTREE_OVERFLOW_KEY);
   assert (rec != NULL);
 
-  or_init (&buf, rec->data, rec->area_size);
-
-  if (node_type == BTREE_LEAF_NODE)
+  error_code = btree_write_record_header (btid, node_rec, node_type, class_oid, oid, mvcc_info, rec, &buf);
+  if (error_code != NO_ERROR)
     {
-      /* first instance oid */
-      error_code = or_put_oid (&buf, oid);
-      if (error_code != NO_ERROR)
-	{
-	  assert_release (false);
-	  return error_code;
-	}
-      if (BTREE_IS_UNIQUE (btid->unique_pk) && !OID_EQ (&btid->topclass_oid, class_oid))
-	{
-	  /* write the subclass OID */
-	  error_code = or_put_oid (&buf, class_oid);
-	  if (error_code != NO_ERROR)
-	    {
-	      assert_release (false);
-	      return error_code;
-	    }
-	  btree_leaf_set_flag (rec, BTREE_LEAF_RECORD_CLASS_OID);
-	}
-
-      if (mvcc_info != NULL)
-	{
-	  if (BTREE_MVCC_INFO_HAS_INSID (mvcc_info))
-	    {
-	      error_code = or_put_mvccid (&buf, mvcc_info->insert_mvccid);
-	      if (error_code != NO_ERROR)
-		{
-		  assert_release (false);
-		  return error_code;
-		}
-	    }
-	  if (BTREE_MVCC_INFO_HAS_DELID (mvcc_info))
-	    {
-	      error_code = or_put_mvccid (&buf, mvcc_info->delete_mvccid);
-	      if (error_code != NO_ERROR)
-		{
-		  assert_release (false);
-		  return error_code;
-		}
-	    }
-	  btree_record_object_set_mvcc_flags (rec->data, mvcc_info->flags);
-	}
-    }
-  else
-    {
-      NON_LEAF_REC *non_leaf_rec = (NON_LEAF_REC *) node_rec;
-
-      btree_write_fixed_portion_of_non_leaf_record_to_orbuf (&buf, non_leaf_rec);
+      return error_code;
     }
 
   /* write the key */
@@ -4275,13 +4275,102 @@ btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec,
 	  btree_leaf_set_flag (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY);
 	}
 
+      error_code = btree_store_overflow_key (thread_p, btid, key, key_len, node_type, &key_vpid);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      /* write the overflow VPID as the key */
+      error_code = or_put_int (&buf, key_vpid.pageid);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  return error_code;
+	}
+      error_code = or_put_short (&buf, key_vpid.volid);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  return error_code;
+	}
+    }
+
+  error_code = or_put_align32 (&buf);
+  if (error_code != NO_ERROR)
+    {
+      assert_release (false);
+      return error_code;
+    }
+
+  rec->length = CAST_BUFLEN (buf.ptr - buf.buffer);
+  rec->type = REC_HOME;
+
+  return NO_ERROR;
+}
+
+/*
+ * btree_write_record_ex () - btree_write_record () for a key given as its page image, with a replaceable
+ *                            overflow-key writer
+ *   return: error code
+ *   key(in): the key as index_writeval () wrote it in the domain of node_type
+ *   store_ovf_key_fn(in): stores the overflow key and returns its first VPID; NULL stores it in the index's own
+ *                         overflow file
+ *   store_ovf_key_arg(in): opaque argument handed back to store_ovf_key_fn
+ */
+int
+btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, const BTREE_KEY * key,
+		       BTREE_NODE_TYPE node_type, int key_type, OID * class_oid, OID * oid,
+		       BTREE_MVCC_INFO * mvcc_info, RECDES * rec, BTREE_STORE_OVF_KEY_FUNC store_ovf_key_fn,
+		       void *store_ovf_key_arg)
+{
+  VPID key_vpid;
+  OR_BUF buf;
+  int error_code = NO_ERROR;
+
+  assert (node_type == BTREE_LEAF_NODE || node_type == BTREE_NON_LEAF_NODE);
+  assert (key_type == BTREE_NORMAL_KEY || key_type == BTREE_OVERFLOW_KEY);
+  assert (rec != NULL);
+  assert (key != NULL && key->data != NULL && key->length > 0);
+  assert (key->domain == (node_type == BTREE_LEAF_NODE ? btid->key_type : btid->nonleaf_key_type));
+
+  error_code = btree_write_record_header (btid, node_rec, node_type, class_oid, oid, mvcc_info, rec, &buf);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (key_type == BTREE_NORMAL_KEY)
+    {
+      error_code = or_put_data (&buf, key->data, key->length);
+      if (error_code != NO_ERROR)
+	{
+	  assert_release (false);
+	  return error_code;
+	}
+    }
+  else
+    {
+      /* overflow key */
+      if (node_type == BTREE_LEAF_NODE)
+	{
+	  btree_leaf_set_flag (rec, BTREE_LEAF_RECORD_OVERFLOW_KEY);
+	}
+
       if (store_ovf_key_fn != NULL)
 	{
-	  error_code = (*store_ovf_key_fn) (thread_p, store_ovf_key_arg, key, key_len, node_type, &key_vpid);
+	  error_code = (*store_ovf_key_fn) (thread_p, store_ovf_key_arg, key, &key_vpid);
 	}
       else
 	{
-	  error_code = btree_store_overflow_key (thread_p, btid, key, key_len, node_type, &key_vpid);
+	  /* overflow_insert () only reads the record */
+	  RECDES ovf_rec = RECDES_INITIALIZER;
+
+	  assert (!VFID_ISNULL (&btid->ovfid));
+
+	  ovf_rec.data = CONST_CAST (char *, key->data);
+	  ovf_rec.length = key->length;
+	  error_code = overflow_insert (thread_p, &btid->ovfid, &key_vpid, &ovf_rec, FILE_BTREE_OVERFLOW_KEY);
 	}
       if (error_code != NO_ERROR)
 	{
@@ -4313,7 +4402,6 @@ btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec,
   rec->length = CAST_BUFLEN (buf.ptr - buf.buffer);
   rec->type = REC_HOME;
 
-  /* Success. */
   return NO_ERROR;
 }
 
@@ -17102,7 +17190,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       if (sep_key_len < BTREE_MAX_KEYLEN_INPAGE && sep_key_len <= qheader->max_key_len)
 	{
 	  ret =
-	    btree_write_record (thread_p, btid, NULL, sep_key, BTREE_LEAF_NODE, BTREE_NORMAL_KEY, sep_key_len, false,
+	    btree_write_record (thread_p, btid, NULL, sep_key, BTREE_LEAF_NODE, BTREE_NORMAL_KEY, sep_key_len,
 				&btid->topclass_oid, &dummy_oid, NULL, &rec);
 	  if (ret != NO_ERROR)
 	    {
@@ -17330,7 +17418,7 @@ btree_split_node (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   ret =
-    btree_write_record (thread_p, btid, &nleaf_rec, sep_key, BTREE_NON_LEAF_NODE, key_type, key_len, false, NULL, NULL,
+    btree_write_record (thread_p, btid, &nleaf_rec, sep_key, BTREE_NON_LEAF_NODE, key_type, key_len, NULL, NULL,
 			NULL, &rec);
   if (ret != NO_ERROR)
     {
@@ -17707,7 +17795,7 @@ btree_split_test (THREAD_ENTRY * thread_p, BTID_INT * btid, DB_VALUE * key, VPID
 	    {
 	      ret =
 		btree_write_record (thread_p, btid, NULL, sep_key, BTREE_LEAF_NODE, BTREE_NORMAL_KEY, sep_key_len,
-				    false, &btid->topclass_oid, &dummy_oid, NULL, &rec);
+				    &btid->topclass_oid, &dummy_oid, NULL, &rec);
 
 	      btree_leaf_set_flag (&rec, BTREE_LEAF_RECORD_FENCE);
 	      fence_insert = true;
@@ -17971,7 +18059,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
       if (sep_key_len < BTREE_MAX_KEYLEN_INPAGE && sep_key_len <= pheader->node.max_key_len)
 	{
 	  ret =
-	    btree_write_record (thread_p, btid, NULL, sep_key, BTREE_LEAF_NODE, BTREE_NORMAL_KEY, sep_key_len, false,
+	    btree_write_record (thread_p, btid, NULL, sep_key, BTREE_LEAF_NODE, BTREE_NORMAL_KEY, sep_key_len,
 				&btid->topclass_oid, &dummy_oid, NULL, &rec);
 	  if (ret != NO_ERROR)
 	    {
@@ -18225,7 +18313,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   ret =
-    btree_write_record (thread_p, btid, &nleaf_rec, neg_inf_key, BTREE_NON_LEAF_NODE, key_type, key_len, false, NULL,
+    btree_write_record (thread_p, btid, &nleaf_rec, neg_inf_key, BTREE_NON_LEAF_NODE, key_type, key_len, NULL,
 			NULL, NULL, &rec);
   if (ret != NO_ERROR)
     {
@@ -18267,7 +18355,7 @@ btree_split_root (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR P, PAGE_PTR
     }
 
   ret =
-    btree_write_record (thread_p, btid, &nleaf_rec, sep_key, BTREE_NON_LEAF_NODE, key_type, key_len, false, NULL, NULL,
+    btree_write_record (thread_p, btid, &nleaf_rec, sep_key, BTREE_NON_LEAF_NODE, key_type, key_len, NULL, NULL,
 			NULL, &rec);
   if (ret != NO_ERROR)
     {
@@ -22851,13 +22939,13 @@ btree_set_error (THREAD_ENTRY * thread_p, const DB_VALUE * key, const OID * obj_
       /* We don't provide classname for VACUUM operations, since it may prevent other vacuums from fixing a page. */
       if (!VACUUM_IS_THREAD_VACUUM (thread_p))
 	{
-	  save_old_wait = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+	  save_old_wait = logtb_set_thread_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
 	  if (heap_get_class_name (thread_p, class_oid, &class_name) != NO_ERROR)
 	    {
 	      /* ignore */
 	      er_clear ();
 	    }
-	  (void) xlogtb_reset_wait_msecs (thread_p, save_old_wait);
+	  (void) logtb_set_thread_wait_msecs (thread_p, save_old_wait);
 	}
     }
 
@@ -32343,7 +32431,7 @@ btree_key_insert_new_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE
   record.data = PTR_ALIGN (data_buffer, MAX_ALIGNMENT);
   record.area_size = DB_PAGESIZE;
   error_code =
-    btree_write_record (thread_p, btid_int, NULL, new_key, BTREE_LEAF_NODE, key_type, key_len, false,
+    btree_write_record (thread_p, btid_int, NULL, new_key, BTREE_LEAF_NODE, key_type, key_len,
 			BTREE_INSERT_CLASS_OID (insert_helper), BTREE_INSERT_OID (insert_helper),
 			BTREE_INSERT_MVCC_INFO (insert_helper), &record);
   if (new_key == &local_key)

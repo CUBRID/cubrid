@@ -1879,7 +1879,8 @@ namespace parallel_scan
 	    return false;
 	  }
 	DB_VALUE *db_value2_p;
-	if (second_operand->value.type == TYPE_CONSTANT)
+	/* a scalar subquery operand must be fetched to run for this row, as for the first operand in write () */
+	if (second_operand->value.type == TYPE_CONSTANT && second_operand->value.xasl == NULL)
 	  {
 	    db_value2_p = second_operand->value.value.dbvalptr;
 	  }
@@ -2028,7 +2029,10 @@ namespace parallel_scan
 	  }
 
 	DB_VALUE *db_value_p;
-	if (agg_node->operands->value.type == TYPE_CONSTANT)
+	/* A scalar subquery operand is TYPE_CONSTANT too, but its slot holds this row's value only after
+	 * fetch_peek_dbval () runs the subquery (the slot is cleared after every row), so only a constant
+	 * without a linked subquery is read directly. Serial qdata_evaluate_aggregate_list () always fetches. */
+	if (agg_node->operands->value.type == TYPE_CONSTANT && agg_node->operands->value.xasl == NULL)
 	  {
 	    db_value_p = agg_node->operands->value.value.dbvalptr;
 	  }
