@@ -11856,9 +11856,9 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
 
 /* true iff every ON DUPLICATE KEY UPDATE assignment can go out as remote statement text.
  *
- * It lists what it accepts rather than what it refuses, and has to: pt_convert_dblink_dml_query () rejects a
- * local reference inside the clause only while the statement has no sink kind, so a shape this test lets
- * through skips that rejection, and a list of refusals would let through every shape it does not name.
+ * Each value is printed into the statement as written, so only a literal the remote reads the same way is
+ * accepted.  Keeping a local table out of the clause is not this test's job: pt_convert_dblink_dml_query ()
+ * refuses one whatever this test answers, so widening it cannot let a local table through.
  */
 static bool
 pt_dblink_odku_assigns_are_sendable (PT_NODE * assignments)
@@ -12520,6 +12520,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   int i;
   int tmp_server_cnt = snl->server_cnt;
   int sub_sel_server_cnt = 0;	/* remote server count found in the INSERT SELECT or DELETE WHERE subquery */
+  int odku_local_cnt = 0;	/* local table count found in the ON DUPLICATE KEY UPDATE clause */
   unsigned int save_custom_print;
 
   PT_NODE *sub_sel = NULL;	/* for select sub-query */
@@ -12547,13 +12548,18 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       sub_sel_server_cnt = snl->server_cnt - tmp_server_cnt;
 
       /* An ON DUPLICATE KEY UPDATE assignment can hold a subquery, so a table reference lives here too.
-       * A local spec must reach local_cnt or the rejection below never fires and the statement ships
-       * whole, resolving that name against the remote instead.  Walked after sub_sel_server_cnt so that
-       * count keeps meaning "remote servers in the SELECT source", and for remote targets only: the
-       * local-target callback rewrites specs rather than counting them, which would newly convert them. */
+       * Its local specs still go into local_cnt and are also counted on their own in odku_local_cnt: a sink
+       * statement reads a local source by design and so always has local_cnt above zero, so local_cnt alone
+       * cannot tell whether the ON DUPLICATE KEY UPDATE clause holds a local table too.  Walked after
+       * sub_sel_server_cnt so that count keeps meaning "remote servers in the SELECT source", and for remote
+       * targets only: the local-target callback rewrites specs rather than counting them, which would newly
+       * convert them. */
       if (remote_upd > 0 && node->info.insert.odku_assignments)
 	{
+	  int local_cnt_before = snl->local_cnt;
+
 	  parser_walk_tree (parser, node->info.insert.odku_assignments, pt_get_server_name_list, snl, NULL, NULL);
+	  odku_local_cnt = snl->local_cnt - local_cnt_before;
 	}
 
       sub_sel = NULL;
@@ -12635,7 +12641,13 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  if (snl->local_cnt > 0 && remote_upd > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)
+  /* Two rejections share this message:
+   *   - odku_local_cnt > 0: a local table in the ON DUPLICATE KEY UPDATE clause, refused for every remote
+   *     target, sink or not -- the clause goes out as text and the remote would resolve that name against
+   *     its own tables.
+   *   - local_cnt > 0 without a sink: any other local reference -- a sink statement reads a local source by
+   *     design, so this one cannot apply to it. */
+  if (remote_upd > 0 && (odku_local_cnt > 0 || (snl->local_cnt > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)))
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec,
 		"dblink: this combination of local and remote references is not supported (some forms are, such "
