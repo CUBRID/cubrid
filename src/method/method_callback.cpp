@@ -1493,7 +1493,6 @@ exit:
   callback_handler::change_exec_rights (packing_unpacker &unpacker)
   {
     // Push/pop the execution rights around a direct call of an external PL/CSQL routine, so that the
-    // callee's body runs with its own owner's rights rather than the caller's. This does the same
     // callee's body runs with its own owner's rights rather than the caller's. The outcome is
     // reported back: neither the server nor the PL server may proceed if the switch did not happen.
     int command;
