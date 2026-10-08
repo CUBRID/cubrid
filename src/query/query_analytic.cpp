@@ -413,13 +413,21 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
 	  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (opr_dbval_p)))
 	    {
-	      /* char types default to double; coerce here so we don't mess up the accumulator when we copy the operand
-	       */
-	      if (tp_value_coerce (&dbval, &dbval, domain) != DOMAIN_COMPATIBLE)
+	      /* char types default to double; coerce here so we don't mess up the accumulator when we copy the operand.
+	       * A string the function's domain does not take ('10:00:00' as a DOUBLE) is the row's error, -181, as the
+	       * aggregate path raises it (qdata_aggregate_value_to_accumulator); ER_FAILED alone left no error and no
+	       * row. */
+	      DB_VALUE coerced;
+	      db_make_null (&coerced);
+	      dom_status = tp_value_coerce (&dbval, &coerced, domain);
+	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
-		  error = ER_FAILED;
+		  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, domain);
+		  pr_clear_value (&coerced);
 		  goto exit;
 		}
+	      pr_clear_value (&dbval);
+	      dbval = coerced;
 	    }
 
 	  /* this type setting is necessary, it ensures that for the case average handling, which is treated like sum
