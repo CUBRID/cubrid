@@ -616,13 +616,6 @@ if(CMAKE_SYSTEM_NAME MATCHES "Linux")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wmissing-prototypes -Wredundant-decls -Wextra -Wno-unused -Wno-unused-result -pthread")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wformat -Wformat-security -Werror=format-security -Wwrite-strings -Wno-cast-qual -Wredundant-decls -Wextra -Wno-unused -Wno-unused-result -Wno-unused-parameter -pthread")
   endif()
-  # -Wclobbered is GCC-only; Clang does not recognize it.
-  if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wclobbered")
-  endif()
-  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wclobbered")
-  endif()
   # CUBRID compiles its .c sources as C++ on purpose, so the C variable length
   # arrays in them are a deliberate use of a compiler extension, not a defect.
   # Clang is the only compiler here that reports them.
