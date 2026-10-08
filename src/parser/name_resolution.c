@@ -12783,7 +12783,8 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
       break;
 
     case PT_VALUE:
-      if (node->type_enum == PT_TYPE_STAR)
+      /* a nested block's "*" expands that block's own FROM, never this table */
+      if (node->type_enum == PT_TYPE_STAR && plkcol->nested_depth == 0)
 	{			// case: *
 	  check_for_already_exists (parser, plkcol, NULL, NULL);
 	}
