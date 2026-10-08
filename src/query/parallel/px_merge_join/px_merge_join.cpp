@@ -154,10 +154,10 @@ namespace parallel_query
       manager.m_outputs.assign (range_cnt, NULL);
       for (int i = 0; i < range_cnt; i++)
 	{
-	  /* range 0's list becomes the gathered result, so it carries the caller's ls_flag; the others only inherit
-	   * its backward flag so every range has the same tuple header size. All outputs are file-backed:
-	   * qfile_connect_list splices page chains, which membuf pages cannot join */
-	  int out_flag = ((i == 0) ? ls_flag : (QFILE_FLAG_ALL | (ls_flag & QFILE_FLAG_BACKWARD))) | QFILE_NOT_USE_MEMBUF;
+	  /* every range is an identical file-backed list so any of them can become the result: qfile_connect_list
+	   * splices page chains, which membuf pages cannot join. The caller's result-file flag is not needed because
+	   * the result cache duplicates a chained list anyway */
+	  int out_flag = QFILE_FLAG_ALL | (ls_flag & QFILE_FLAG_BACKWARD) | QFILE_NOT_USE_MEMBUF;
 	  manager.m_outputs[i] = qfile_open_list (thread_p, &type_list, NULL, outer_list_id->query_id,
 						  out_flag, NULL);
 	  if (manager.m_outputs[i] == NULL)
@@ -193,28 +193,30 @@ namespace parallel_query
       }
 
       free_and_init (type_list.domp);
-      QFILE_LIST_ID *merged = manager.m_outputs[0];
-      manager.m_outputs[0] = NULL;	/* ownership transferred; destroy_lists must skip it */
+      int base = 0;
+      while (base < range_cnt - 1 && manager.m_outputs[base]->tuple_cnt == 0)
+	{
+	  base++;
+	}
+      if (manager.m_outputs[base]->tuple_cnt == 0)
+	{
+	  base = 0;
+	}
 
-      for (int i = 1; i < range_cnt && error == NO_ERROR; i++)
+      QFILE_LIST_ID *merged = manager.m_outputs[base];
+      manager.m_outputs[base] = NULL;	/* ownership transferred; destroy_lists must skip it */
+
+      for (int i = base + 1; i < range_cnt && error == NO_ERROR; i++)
 	{
 	  QFILE_LIST_ID *&part = manager.m_outputs[i];
 	  if (part->tuple_cnt == 0)
 	    {
 	      continue;
 	    }
-	  if (merged->tuple_cnt == 0)
+	  error = qfile_connect_list (thread_p, merged, part);
+	  if (error == NO_ERROR)
 	    {
-	      /* connect needs a non-empty base: page-copy the first non-empty range in (at most once) */
-	      error = qfile_append_list (thread_p, merged, part);
-	    }
-	  else
-	    {
-	      error = qfile_connect_list (thread_p, merged, part);
-	      if (error == NO_ERROR)
-		{
-		  part = NULL;	/* freed through merged's dependent_list_id chain */
-		}
+	      part = NULL;	/* freed through merged's dependent_list_id chain */
 	    }
 	}
 
