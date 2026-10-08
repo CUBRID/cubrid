@@ -657,12 +657,26 @@ struct connect_by_dfs_spill
   int children_spilled;		/* tuples written to children_list */
 };
 
+/* hash-bucket index of the active path levels, so the cycle check visits only same-bucket ancestors instead of the
+ * whole path; head[bucket] is the deepest level in that bucket, next[] chains the shallower ones, both -1 terminated */
+typedef struct connect_by_path_index CONNECT_BY_PATH_INDEX;
+struct connect_by_path_index
+{
+  int *head;			/* head[bucket] = deepest path level in bucket, or NONE */
+  int *next;			/* next[level] = next shallower level in the same bucket, or NONE */
+  int capacity;			/* levels next[] can index; mirrors the path array capacity */
+  int shift;			/* 32 - log2(bucket_count), for Fibonacci hashing */
+};
+
 #define CONNECT_BY_SPILL_CHUNK_MAX_NODES 65536
 #define CONNECT_BY_SPILL_CHUNK_DIR_INIT_CAPACITY 16
 /* spilling stops at half the limit, so at least two chunks must fit; one reload re-admits at most a quarter */
 #define CONNECT_BY_SPILL_CHUNKS_PER_LIMIT 4
 #define CONNECT_BY_NODE_ARRAY_INIT_CAPACITY 32
 #define CONNECT_BY_HASH_MULTIPLIER 31u
+#define CONNECT_BY_PATH_INDEX_NONE (-1)
+#define CONNECT_BY_PATH_INDEX_MIN_BUCKETS (1 << 6)
+#define CONNECT_BY_PATH_INDEX_FIB 2654435769u
 
 static unsigned int qexec_connect_by_hash_column (const DB_VALUE * dbval);
 static void qexec_connect_by_hash_from_valptr (OUTPTR_LIST * outptr_list, unsigned int *hash_out);
@@ -674,6 +688,12 @@ static int qexec_connect_by_node_array_reserve (THREAD_ENTRY * thread_p, CONNECT
 						int need);
 static void qexec_connect_by_node_array_clear (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_NODE * array, int *count,
 					       UINT64 * mem);
+static int qexec_connect_by_path_index_bucket (const CONNECT_BY_PATH_INDEX * index, unsigned int hash);
+static int qexec_connect_by_path_index_reserve (THREAD_ENTRY * thread_p, CONNECT_BY_PATH_INDEX * index,
+						CONNECT_BY_DFS_NODE * path, int path_count, int path_capacity);
+static void qexec_connect_by_path_index_push (CONNECT_BY_PATH_INDEX * index, int level, unsigned int hash);
+static void qexec_connect_by_path_index_pop (CONNECT_BY_PATH_INDEX * index, int level, unsigned int hash);
+static void qexec_connect_by_path_index_clear (THREAD_ENTRY * thread_p, CONNECT_BY_PATH_INDEX * index);
 static void qexec_connect_by_spill_init (CONNECT_BY_DFS_SPILL * spill, QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 					 QUERY_ID query_id);
 static int qexec_connect_by_spill_chunk_reserve (THREAD_ENTRY * thread_p, CONNECT_BY_SPILL_CHUNK ** dir,
@@ -17989,6 +18009,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   int children_count = 0, children_capacity = 0;
   CONNECT_BY_DFS_NODE node = { NULL, 0, 0 };
   CONNECT_BY_DFS_SPILL spill;
+  CONNECT_BY_PATH_INDEX path_index = { NULL, NULL, 0, 0 };
   int tpl_len;
   unsigned int child_hash = 0;
   SORTKEY_INFO sort_key_info;
@@ -18231,6 +18252,17 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  db_private_free_and_init (thread_p, node.tpl);
 	  GOTO_EXIT_ON_ERROR;
 	}
+      if (qexec_connect_by_path_index_reserve (thread_p, &path_index, path, path_count, path_capacity) != NO_ERROR)
+	{
+	  spill.mem -= QFILE_GET_TUPLE_LENGTH (node.tpl);
+	  db_private_free_and_init (thread_p, node.tpl);
+	  GOTO_EXIT_ON_ERROR;
+	}
+      /* unchain the levels being replaced, deepest first so each is the head of its bucket chain */
+      for (i = path_count - 1; i >= node.level - 1; i--)
+	{
+	  qexec_connect_by_path_index_pop (&path_index, i, path[i].hash);
+	}
       for (i = node.level - 1; i < path_count; i++)
 	{
 	  if (path[i].tpl != NULL)
@@ -18242,6 +18274,7 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       qexec_connect_by_spill_trim_path (thread_p, &spill, node.level - 1);
       path[node.level - 1] = node;
       path_count = node.level;
+      qexec_connect_by_path_index_push (&path_index, node.level - 1, node.hash);
 
       if (qexec_connect_by_spill_if_needed (thread_p, &spill, stack, stack_count, path, node.level - 1) != NO_ERROR)
 	{
@@ -18323,38 +18356,26 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	   * ancestor can be equal. */
 	  cycle = 0;
 	  qexec_connect_by_hash_from_valptr (xasl->outptr_list, &child_hash);
-	  for (i = node.level - 1; i >= 0; i--)
+	  for (i = path_index.head[qexec_connect_by_path_index_bucket (&path_index, child_hash)];
+	       i != CONNECT_BY_PATH_INDEX_NONE; i = path_index.next[i])
 	    {
-	      if (path[i].hash == child_hash)
+	      /* buckets are shared, so re-check the exact hash before the costlier compare */
+	      if (path[i].hash != child_hash)
+		{
+		  continue;
+		}
+	      if (path[i].tpl == NULL && qexec_connect_by_spill_reload_path (thread_p, &spill, path, i) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      qexec_connect_by_bind_tuple (&node_rec, path[i].tpl, &tpl_layout);
+	      if (qexec_compare_valptr_with_tuple (xasl->outptr_list, &node_rec, &type_list, &cycle) != NO_ERROR)
+		{
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      if (cycle)
 		{
 		  break;
-		}
-	    }
-	  if (i >= 0)
-	    {
-	      for (i = node.level - 1; i >= 0; i--)
-		{
-		  if (path[i].tpl == NULL)
-		    {
-		      /* a hash mismatch already rules the ancestor out; reload only a possible match */
-		      if (path[i].hash != child_hash)
-			{
-			  continue;
-			}
-		      if (qexec_connect_by_spill_reload_path (thread_p, &spill, path, i) != NO_ERROR)
-			{
-			  GOTO_EXIT_ON_ERROR;
-			}
-		    }
-		  qexec_connect_by_bind_tuple (&node_rec, path[i].tpl, &tpl_layout);
-		  if (qexec_compare_valptr_with_tuple (xasl->outptr_list, &node_rec, &type_list, &cycle) != NO_ERROR)
-		    {
-		      GOTO_EXIT_ON_ERROR;
-		    }
-		  if (cycle)
-		    {
-		      break;
-		    }
 		}
 	    }
 
@@ -18571,6 +18592,7 @@ connect_by_emitted:
   qexec_close_scan (thread_p, xasl->spec_list);
 
   qexec_connect_by_node_array_clear (thread_p, path, &path_count, &spill.mem);
+  qexec_connect_by_path_index_clear (thread_p, &path_index);
   qexec_connect_by_spill_clear (thread_p, &spill);
   assert (spill.mem == 0);
   if (path != NULL)
@@ -18637,6 +18659,7 @@ exit_on_error:
   qexec_connect_by_node_array_clear (thread_p, path, &path_count, &spill.mem);
   qexec_connect_by_node_array_clear (thread_p, stack, &stack_count, &spill.mem);
   qexec_connect_by_node_array_clear (thread_p, children, &children_count, &spill.mem);
+  qexec_connect_by_path_index_clear (thread_p, &path_index);
   qexec_connect_by_spill_clear (thread_p, &spill);
   assert (spill.mem == 0);
   if (path != NULL)
@@ -20027,6 +20050,144 @@ qexec_connect_by_node_array_clear (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_NODE 
 	}
     }
   *count = 0;
+}
+
+/*
+ * qexec_connect_by_path_index_bucket () - Fibonacci-hash a cycle-key hash to a path-index bucket
+ *  return: bucket number
+ *  index(in):
+ *  hash(in):
+ */
+static int
+qexec_connect_by_path_index_bucket (const CONNECT_BY_PATH_INDEX * index, unsigned int hash)
+{
+  return (int) ((hash * CONNECT_BY_PATH_INDEX_FIB) >> index->shift);
+}
+
+/*
+ * qexec_connect_by_path_index_reserve () - grow the path index to the path array capacity and rehash the active path
+ *  return: error code
+ *  index(in/out):
+ *  path(in): the active path, rehashed shallowest-first so each bucket chain stays deepest-first
+ *  path_count(in): resident levels to rehash
+ *  path_capacity(in): the path array capacity the index must index
+ */
+static int
+qexec_connect_by_path_index_reserve (THREAD_ENTRY * thread_p, CONNECT_BY_PATH_INDEX * index, CONNECT_BY_DFS_NODE * path,
+				     int path_count, int path_capacity)
+{
+  int *new_head, *new_next;
+  int bucket_count, shift, i, b;
+
+  if (path_capacity <= index->capacity)
+    {
+      return NO_ERROR;
+    }
+
+  /* at least two buckets per path level keeps chains short */
+  bucket_count = CONNECT_BY_PATH_INDEX_MIN_BUCKETS;
+  while (bucket_count < path_capacity * 2)
+    {
+      bucket_count *= 2;
+    }
+  shift = 32;
+  for (i = bucket_count; i > 1; i >>= 1)
+    {
+      shift--;
+    }
+
+  new_head = (int *) db_private_alloc (thread_p, bucket_count * sizeof (int));
+  new_next = (int *) db_private_alloc (thread_p, path_capacity * sizeof (int));
+  if (new_head == NULL || new_next == NULL)
+    {
+      if (new_head != NULL)
+	{
+	  db_private_free_and_init (thread_p, new_head);
+	}
+      if (new_next != NULL)
+	{
+	  db_private_free_and_init (thread_p, new_next);
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (bucket_count + path_capacity) * sizeof (int));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  for (i = 0; i < bucket_count; i++)
+    {
+      new_head[i] = CONNECT_BY_PATH_INDEX_NONE;
+    }
+
+  if (index->head != NULL)
+    {
+      db_private_free_and_init (thread_p, index->head);
+    }
+  if (index->next != NULL)
+    {
+      db_private_free_and_init (thread_p, index->next);
+    }
+  index->head = new_head;
+  index->next = new_next;
+  index->capacity = path_capacity;
+  index->shift = shift;
+
+  for (i = 0; i < path_count; i++)
+    {
+      b = qexec_connect_by_path_index_bucket (index, path[i].hash);
+      index->next[i] = index->head[b];
+      index->head[b] = i;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_connect_by_path_index_push () - chain the just-placed deepest path level at the head of its bucket
+ *  index(in/out):
+ *  level(in): the path array index being added
+ *  hash(in): path[level].hash
+ */
+static void
+qexec_connect_by_path_index_push (CONNECT_BY_PATH_INDEX * index, int level, unsigned int hash)
+{
+  int b = qexec_connect_by_path_index_bucket (index, hash);
+
+  index->next[level] = index->head[b];
+  index->head[b] = level;
+}
+
+/*
+ * qexec_connect_by_path_index_pop () - unchain the deepest path level of its bucket
+ *  index(in/out):
+ *  level(in): the path array index being removed; levels leave in reverse push order, so it heads its chain
+ *  hash(in): path[level].hash
+ */
+static void
+qexec_connect_by_path_index_pop (CONNECT_BY_PATH_INDEX * index, int level, unsigned int hash)
+{
+  int b = qexec_connect_by_path_index_bucket (index, hash);
+
+  assert (index->head[b] == level);
+  index->head[b] = index->next[level];
+}
+
+/*
+ * qexec_connect_by_path_index_clear () - free the path index
+ *  index(in/out):
+ */
+static void
+qexec_connect_by_path_index_clear (THREAD_ENTRY * thread_p, CONNECT_BY_PATH_INDEX * index)
+{
+  if (index->head != NULL)
+    {
+      db_private_free_and_init (thread_p, index->head);
+    }
+  if (index->next != NULL)
+    {
+      db_private_free_and_init (thread_p, index->next);
+    }
+  index->capacity = 0;
+  index->shift = 0;
 }
 
 /*
