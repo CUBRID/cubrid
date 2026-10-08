@@ -49,6 +49,7 @@
 #include "process_util.h"
 #include "environment_variable.h"
 #include "system_parameter.h"
+#include "language_support.h"
 #include "release_string.h"
 #include "memory_alloc.h"
 #include "error_manager.h"
@@ -206,6 +207,10 @@ namespace cubpl
   {
     cubmethod::header req_header;
     std::vector <sys_param> server_params;
+    // Locale of this database, e.g. "en_US" or "tr_TR". The PL server converts the case of identifiers
+    // that it looks up in the catalog, and the server converts them with the identifier alphabet of
+    // this locale (see intl_identifier_lower ()), so the two have to agree.
+    std::string db_locale;
 
     bootstrap_request (SYSPRM_ASSIGN_VALUE *pl_ctx_values);
     ~bootstrap_request () = default;
@@ -654,11 +659,12 @@ exit:
    * bootstrap_request - definition
    *********************************************************************/
 #define BOOTSTRAP_REQ_ARGS() \
-  req_header, server_params
+  req_header, server_params, db_locale
 
   bootstrap_request::bootstrap_request (SYSPRM_ASSIGN_VALUE *pl_ctx_values)
     : req_header (DB_EMPTY_SESSION, SP_CODE_UTIL_BOOTSTRAP)
     , server_params ()
+    , db_locale (lang_get_Lang_name () == NULL ? "" : lang_get_Lang_name ())
   {
     while (pl_ctx_values != nullptr)
       {

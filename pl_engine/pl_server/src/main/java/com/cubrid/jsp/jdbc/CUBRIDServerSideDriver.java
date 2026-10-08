@@ -37,6 +37,7 @@ import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.DriverPropertyInfo;
 import java.sql.SQLException;
+import java.util.Locale;
 import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.logging.Logger;
@@ -108,7 +109,7 @@ public class CUBRIDServerSideDriver implements Driver {
             return false;
         }
 
-        if (url.toLowerCase().startsWith(JDBC_DEFAULT_CONNECTION)) {
+        if (url.toLowerCase(Locale.ROOT).startsWith(JDBC_DEFAULT_CONNECTION)) {
             return true;
         }
 
@@ -121,7 +122,7 @@ public class CUBRIDServerSideDriver implements Driver {
             String propString = st.nextToken();
             StringTokenizer pt = new StringTokenizer(propString, "=");
             if (pt.hasMoreTokens()) {
-                String name = pt.nextToken().toLowerCase();
+                String name = pt.nextToken().toLowerCase(Locale.ROOT);
                 if (pt.hasMoreTokens()) {
                     String value = pt.nextToken();
                     info.put(name, value);

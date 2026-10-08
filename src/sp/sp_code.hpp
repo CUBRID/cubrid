@@ -32,4 +32,5 @@
 #include "query_manager.h"
 
 int sp_get_code_attr (THREAD_ENTRY *thread_p, const std::string &attr_name, const OID *sp_oidp, DB_VALUE *result);
+
 #endif				/* _SP_CODE_HPP_ */
