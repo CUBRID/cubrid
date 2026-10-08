@@ -45,6 +45,63 @@
 
 using namespace cubpl;
 
+/*
+ * make_static_sql_text () - apply the text edits of a PL/CSQL static SQL to its original text
+ *   return: true if the edited text can be used as the rewritten query
+ *   parser(in): parser that compiled the static SQL
+ *   sql(in): original text
+ *   text(out): edited text
+ *   host_var_order(out): host variable indexes in the order of '?' in the text
+ *
+ * Note: the edits are collected right after name resolution (see pt_collect_static_sql_edits ()).
+ *       The edited text is compiled once more as a normal statement to make sure that it can be re-parsed at runtime
+ *       with the same host variables. Otherwise the caller falls back to printing the compiled tree.
+ */
+static bool
+make_static_sql_text (PARSER_CONTEXT *parser, const std::string &sql, std::string &text,
+		      std::vector<int> &host_var_order)
+{
+  int pos = 0;
+  bool ok = false;
+
+  text.clear ();
+  host_var_order.clear ();
+
+  if (parser->static_sql_edit_status != 1 || parser->original_buffer == NULL
+      || sql.compare (parser->original_buffer) != 0)
+    {
+      return false;
+    }
+
+  for (int i = 0; i < parser->static_sql_edit_count; i++)
+    {
+      const PT_STATIC_SQL_EDIT &edit = parser->static_sql_edits[i];
+
+      text.append (sql, pos, edit.start - pos);
+      text.append (edit.text);
+      pos = edit.end;
+      if (edit.host_var_index >= 0)
+	{
+	  host_var_order.push_back (edit.host_var_index);
+	}
+    }
+  text.append (sql, pos, std::string::npos);
+
+  DB_SESSION *session = db_open_buffer (text.c_str ());
+  if (session != NULL)
+    {
+      if (db_statement_count (session) == 1 && db_compile_statement (session) >= 0
+	  && db_number_of_input_markers (session, 1) == (int) host_var_order.size ())
+	{
+	  ok = true;
+	}
+      db_close_session (session);
+    }
+  er_clear ();
+
+  return ok;
+}
+
 static PT_NODE *
 pt_find_table_access (PARSER_CONTEXT *parser, PT_NODE *tree, void *arg, int *continue_walk)
 {
@@ -566,12 +623,24 @@ namespace cubmethod
 	    PARSER_CONTEXT *parser = db_get_parser (db_session);
 	    PT_NODE *stmt = db_get_statement (db_session, 0);
 
-	    parser->custom_print |= PT_CONVERT_RANGE;
-	    /* select-list aliases (e.g. "AS col1") must survive into rewritten_query: this text is
-	     * embedded verbatim in the compiled PL/CSQL class and re-parsed at runtime by Query.open(),
-	     * so a client reading column labels off that cursor needs them to still be there */
-	    parser->custom_print |= PT_PRINT_ALIAS;
-	    semantics.rewritten_query = parser_print_tree (parser, stmt);
+	    /* the rewritten query is embedded verbatim in the compiled PL/CSQL class and re-parsed at runtime.
+	     * keep the original text with the text edits if possible; printing the compiled tree is the fallback */
+	    std::vector<int> host_var_order;
+	    std::string edited_text;
+	    bool use_text_edits = make_static_sql_text (parser, s, edited_text, host_var_order);
+
+	    if (use_text_edits)
+	      {
+		semantics.rewritten_query = edited_text;
+	      }
+	    else
+	      {
+		parser->custom_print |= PT_CONVERT_RANGE;
+		/* select-list aliases (e.g. "AS col1") must survive into rewritten_query: a client reading
+		 * column labels off the cursor needs them to still be there */
+		parser->custom_print |= PT_PRINT_ALIAS;
+		semantics.rewritten_query = parser_print_tree (parser, stmt);
+	      }
 
 	    has_table_access = false;
 	    (void) parser_walk_tree (parser, stmt, pt_find_table_access, &has_table_access, NULL, NULL);
@@ -680,6 +749,27 @@ namespace cubmethod
 		    marker = db_marker_next (marker);
 		  }
 		while (marker);
+	      }
+
+	    if (error == NO_ERROR && use_text_edits)
+	      {
+		if (semantics.hvs.size () == host_var_order.size ())
+		  {
+		    /* host variables are bound in the order of '?' in the text */
+		    std::vector<pl_parameter_info> hvs_in_text_order;
+
+		    for (int idx : host_var_order)
+		      {
+			hvs_in_text_order.push_back (semantics.hvs[idx]);
+		      }
+		    semantics.hvs.swap (hvs_in_text_order);
+		  }
+		else
+		  {
+		    /* e.g. auto-parameterized values that are not in the text */
+		    parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_ALIAS;
+		    semantics.rewritten_query = parser_print_tree (parser, stmt);
+		  }
 	      }
 	  }
 	else

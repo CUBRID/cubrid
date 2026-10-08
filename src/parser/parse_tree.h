@@ -1635,6 +1635,7 @@ typedef struct parser_string_block PARSER_STRING_BLOCK;	/* defined in parse_tree
 typedef struct parser_varchar PARSER_VARCHAR;
 
 typedef struct parser_context PARSER_CONTEXT;
+typedef struct pt_static_sql_edit PT_STATIC_SQL_EDIT;
 
 typedef struct parser_node PT_NODE;
 typedef struct pt_alter_info PT_ALTER_INFO;
@@ -3882,6 +3883,15 @@ typedef struct remote_cols
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
 typedef int (*PT_INT_FUNCTION) (PARSER_CONTEXT * c);
 
+/* an edit of the original text of a PL/CSQL static SQL statement: replace [start, end) with text */
+struct pt_static_sql_edit
+{
+  int start;			/* byte offset in the original text */
+  int end;			/* byte offset in the original text, start for an insertion */
+  const char *text;		/* replacement */
+  int host_var_index;		/* index of the host variable for a replaced PL/CSQL variable, otherwise -1 */
+};
+
 struct parser_context
 {
   PT_INT_FUNCTION next_char;	/* the next character function */
@@ -3958,6 +3968,12 @@ struct parser_context
 
   char **external_into_label;
   int external_into_label_cnt;
+
+  /* PL/CSQL static SQL: edits to the original SQL text that replace PL/CSQL variables with host variables,
+   * qualify object names with their owners and remove the INTO clause (see pt_collect_static_sql_edits ()) */
+  PT_STATIC_SQL_EDIT *static_sql_edits;
+  int static_sql_edit_count;
+  int static_sql_edit_status;	/* 0: not collected, 1: collected, -1: can not be expressed as text edits */
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   HIDE_PWD_INFO hide_pwd_info;

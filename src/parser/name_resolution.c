@@ -11912,6 +11912,11 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
   larger_host_var_expected_domains = NULL;
 
   PT_NODE_MOVE_NUMBER_OUTERLINK (hostvar, name_node);
+
+  /* keep the end of the replaced name or path expression in the source text
+   * for the text edits of the static SQL (see pt_collect_static_sql_edits ()) */
+  hostvar->buffer_pos = name_node->buffer_pos;
+
   parser_free_tree (parser, name_node);
 
   return hostvar;
