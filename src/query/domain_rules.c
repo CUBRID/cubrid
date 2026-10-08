@@ -2658,9 +2658,12 @@ domain_as_value_domain (const TP_DOMAIN * domain)
 enum DOMAIN_CHAR_SOURCE
 {
   DOMAIN_CHAR_MERGE,		/* LANG_RT_COMMON_COLL over every character operand in operand order
-				 * (db_string_concatenate, db_string_pad, db_string_replace) */
+				 * (db_string_concatenate, db_string_replace) */
   DOMAIN_CHAR_FIRST,		/* the first character operand: the string being cut, cased, trimmed, reversed,
-				 * translated, repeated, hashed or bounded keeps its codeset and collation */
+				 * translated, repeated, hashed, padded or bounded keeps its codeset and collation */
+  DOMAIN_CHAR_FIRST_MERGED,	/* the first character operand's, once every character operand merges
+				 * (LANG_RT_COMMON_COLL rejects the pair): SUBSTRING_INDEX gives the source's
+				 * collation and rejects a delimiter that does not merge with it */
   DOMAIN_CHAR_FORMAT,		/* the format argument, the second operand (db_date_format, db_time_format) */
   DOMAIN_CHAR_SYSTEM,		/* LANG_SYS: a string the operator makes itself (db_make_string, LANG_COERCIBLE_COLL) */
   DOMAIN_CHAR_BRANCH,		/* one operand's value, chosen per row (IF, CASE, DECODE, ELT) */
@@ -2687,7 +2690,7 @@ struct DOMAIN_CHAR_RULE
 };
 
 /* The rule of a character operator. An operator not listed makes a new string from its character operands, merged
- * (db_string_concatenate, db_string_pad, db_string_replace); every operator that returns one of its operands is listed
+ * (db_string_concatenate, db_string_replace); every operator that returns one of its operands is listed
  * (the branches, the common values). */
 /* *INDENT-OFF* */
 static DOMAIN_CHAR_RULE
@@ -2713,8 +2716,13 @@ domain_character_rule (int opcode)
        * characters), anything else its own length */
       return DOMAIN_CHAR_RULE { DB_TYPE_NULL, DOMAIN_CHAR_FIRST, DOMAIN_PREC_CHAR_SOURCE };
     case T_TRANSLATE:
-      /* db_string_translate makes the result in the source string's codeset and collation */
+    case T_LPAD:
+    case T_RPAD:
+      /* db_string_translate and db_string_pad make the result in the source string's codeset and collation; the pad
+       * string's collation is not read (its codeset must be the source's) */
       return DOMAIN_CHAR_RULE { DB_TYPE_VARCHAR, DOMAIN_CHAR_FIRST, DOMAIN_PREC_FLOATING };
+    case T_SUBSTRING_INDEX:
+      return DOMAIN_CHAR_RULE { DB_TYPE_VARCHAR, DOMAIN_CHAR_FIRST_MERGED, DOMAIN_PREC_FLOATING };
     case T_UUID_FORMAT:
       return DOMAIN_CHAR_RULE { DB_TYPE_VARCHAR, DOMAIN_CHAR_FIRST, DOMAIN_PREC_COMPILED };
     case T_REPEAT:
@@ -2887,6 +2895,13 @@ domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_oper
 	    }
 	  break;
 	case DOMAIN_CHAR_FIRST:
+	  collation_id = first != NULL ? first->collation_id : -1;
+	  break;
+	case DOMAIN_CHAR_FIRST_MERGED:
+	  if (!domain_merge_collations (operands, n_operands, &collation_id))
+	    {
+	      return ER_QSTR_INCOMPATIBLE_COLLATIONS;
+	    }
 	  collation_id = first != NULL ? first->collation_id : -1;
 	  break;
 	case DOMAIN_CHAR_FORMAT:
