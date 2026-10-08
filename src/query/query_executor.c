@@ -2735,6 +2735,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
 		}
 	    }
 	}
+      for (int i = 0; i < xasl->proc.insert.num_default_slots; i++)
+	{
+	  pg_cnt += qexec_clear_regu_var (thread_p, xasl, xasl->proc.insert.default_slots[i].expr, is_final, false);
+	}
       break;
 
     case CTE_PROC:
@@ -3344,6 +3348,10 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
 		  pg_cnt += qexec_clear_regu_var (thread_p, xasl, &regu_list->value, is_final, true);
 		}
 	    }
+	}
+      for (int i = 0; i < xasl->proc.insert.num_default_slots; i++)
+	{
+	  pg_cnt += qexec_clear_regu_var (thread_p, xasl, xasl->proc.insert.default_slots[i].expr, is_final, true);
 	}
       break;
 

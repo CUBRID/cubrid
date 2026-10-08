@@ -269,6 +269,15 @@ namespace cubxasl
 		  }
 	      }
 	  }
+
+	for (int i = 0; i < xasl->proc.insert.num_default_slots; i++)
+	  {
+	    result = iterate_regu_var (xasl->proc.insert.default_slots[i].expr, func, default_value);
+	    if (result != default_value)
+	      {
+		return result;
+	      }
+	  }
       }
 
     return default_value;

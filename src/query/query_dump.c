@@ -435,6 +435,13 @@ qdump_print_insert_proc_node (INSERT_PROC_NODE * node_p)
   qdump_print_hfid (node_p->class_hfid);
   qdump_print_attribute ("insert", node_p->num_vals, node_p->att_id);
 
+  for (int i = 0; i < node_p->num_default_slots; i++)
+    {
+      fprintf (foutput, "\n default[%d] %s: ", node_p->default_slots[i].att_id,
+	       PT_VOLATILITY_IS_VOLATILE_RESIDUAL (node_p->default_slots[i].volatility) ? "volatile" : "stable");
+      qdump_print_regu_type (node_p->default_slots[i].expr);
+    }
+
   return true;
 }
 
