@@ -41,56 +41,69 @@ namespace parallel_query
   {
     namespace
     {
-      /* key > upper boundary: this range is complete (the next range owns the rest of the list) */
-      SCAN_CODE
-      check_upper (QEXEC_MERGE_SIDE *side, const key_spec *spec, const partition_key *upper, DB_VALUE *bound_vals)
-      {
-	DB_VALUE_COMPARE_RESULT cmp;
-
-	if (upper == NULL)
-	  {
-	    return S_SUCCESS;
-	  }
-
-	if (read_key (&side->tplrec, *spec, false, bound_vals) != NO_ERROR)
-	  {
-	    return S_ERROR;
-	  }
-	cmp = cmp_keys (bound_vals, upper->m_vals.data (), side->nvals);
-	clear_key (bound_vals, side->nvals);
-	if (cmp == DB_GT)
-	  {
-	    return S_END;
-	  }
-	if (cmp == DB_UNK)
-	  {
-	    /* compute_partitions screened incomparable keys */
-	    assert (false);
-	    return S_ERROR;
-	  }
-
-	return S_SUCCESS;
-      }
-
       struct range_merge_context
       {
 	const QEXEC_MERGE_SIDE *outer;
-	const key_spec *outer_key_spec;
-	const key_spec *inner_key_spec;
-	const partition_key *upper;
-	DB_VALUE *bound_vals;
+	const partition_start *outer_end;
+	const partition_start *inner_end;
 	task_manager *task_mgr;
 	UINT64 poll_counter;
 	bool stopped;
       };
 
+      /* a side's range ends where the next range starts on its list; NULL or exhausted: it runs to the list end */
+      bool
+      at_range_end (const QEXEC_MERGE_SIDE *side, const partition_start *end)
+      {
+	return (end != NULL && !end->m_exhausted && VPID_EQ (&side->sid.curr_vpid, &end->m_pos.vpid)
+		&& side->sid.curr_offset == end->m_pos.offset);
+      }
+
+      /* outside group walks a side moves forward one tuple at a time, so it lands exactly on its range end */
       SCAN_CODE
       range_merge_after_advance (THREAD_ENTRY *, QEXEC_MERGE_SIDE *side, void *arg)
       {
 	range_merge_context *ctx = (range_merge_context *) arg;
-	const key_spec *spec = (side == ctx->outer) ? ctx->outer_key_spec : ctx->inner_key_spec;
+	const partition_start *end = (side == ctx->outer) ? ctx->outer_end : ctx->inner_end;
 
-	return check_upper (side, spec, ctx->upper, ctx->bound_vals);
+	return at_range_end (side, end) ? S_END : S_SUCCESS;
+      }
+
+      /* S_END: the range is empty on this side */
+      SCAN_CODE
+      position_side (THREAD_ENTRY *thread_p, QEXEC_MERGE_SIDE *side, const partition_start *start,
+		     const partition_start *end)
+      {
+	if (start != NULL)
+	  {
+	    QFILE_TUPLE_POSITION start_pos = start->m_pos;
+	    if (qexec_merge_side_jump (thread_p, side, &start_pos) != S_SUCCESS)
+	      {
+		return S_ERROR;
+	      }
+	    return at_range_end (side, end) ? S_END : S_SUCCESS;
+	  }
+
+	/* range 0 skips the unbound-key prefix as the serial merge does. A composite key with a NULL column sorts
+	 * among the bound ones, so the skip can reach the range end */
+	while (qexec_merge_side_next (thread_p, side) == S_SUCCESS)
+	  {
+	    int k;
+
+	    if (at_range_end (side, end))
+	      {
+		return S_END;
+	      }
+	    for (k = 0; k < side->nvals && side->lenp[k] != 0; k++)
+	      {
+		;
+	      }
+	    if (k >= side->nvals)
+	      {
+		return S_SUCCESS;
+	      }
+	  }
+	return side->scan;
       }
 
       bool
@@ -107,7 +120,8 @@ namespace parallel_query
       }
 
       /* deviations from qexec_merge_list: the output list comes from the coordinator; each side starts at its
-       * range start; the merge loop gets the upper boundary check and the peer error/interrupt poll as hooks */
+       * range start and ends at the next range's start; the merge loop gets the end check and the peer
+       * error/interrupt poll as hooks */
       int
       execute_range_merge (cubthread::entry &thread_ref, task_manager &task_mgr, merge_manager *m, int range_index,
 			   QFILE_LIST_ID *list_idp)
@@ -117,17 +131,15 @@ namespace parallel_query
 	QFILE_LIST_ID *outer_list_idp = m->m_outer_list_id;
 	QFILE_LIST_ID *inner_list_idp = m->m_inner_list_id;
 
-	const partition_key *upper =
-		(range_index < (int) m->m_parts->m_boundaries.size ()) ? &m->m_parts->m_boundaries[range_index] : NULL;
+	bool is_last = range_index >= (int) m->m_parts->m_boundaries.size ();
 	const partition_start *outer_start = (range_index > 0) ? &m->m_parts->m_outer_starts[range_index - 1] : NULL;
 	const partition_start *inner_start = (range_index > 0) ? &m->m_parts->m_inner_starts[range_index - 1] : NULL;
-	const key_spec *outer_key_spec = &m->m_outer_key_spec;
-	const key_spec *inner_key_spec = &m->m_inner_key_spec;
+	const partition_start *outer_end = is_last ? NULL : &m->m_parts->m_outer_starts[range_index];
+	const partition_start *inner_end = is_last ? NULL : &m->m_parts->m_inner_starts[range_index];
 
 	int nvals;
 	QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
 	QEXEC_MERGE_SIDE outer, inner;
-	DB_VALUE *bound_vals = NULL;
 	range_merge_context ctx;
 	QEXEC_MERGE_HOOKS hooks;
 	SCAN_CODE scan;
@@ -168,67 +180,11 @@ namespace parallel_query
 	    goto exit_on_error;
 	  }
 
-	if (upper != NULL)
+	scan = position_side (thread_p, &outer, outer_start, outer_end);
+	if (scan == S_SUCCESS)
 	  {
-	    bound_vals = (DB_VALUE *) db_private_alloc (thread_p, nvals * sizeof (DB_VALUE));
-	    if (bound_vals == NULL)
-	      {
-		goto exit_on_error;
-	      }
+	    scan = position_side (thread_p, &inner, inner_start, inner_end);
 	  }
-
-	if (outer_start != NULL)
-	  {
-	    QFILE_TUPLE_POSITION start_pos = outer_start->m_pos;
-	    if (qexec_merge_side_jump (thread_p, &outer, &start_pos) != S_SUCCESS)
-	      {
-		goto exit_on_error;
-	      }
-	  }
-	else
-	  {
-	    /* range 0 starts at the list head: skip the unbound-key prefix as the serial merge does */
-	    scan = qexec_merge_side_skip_null_keys (thread_p, &outer);
-	    if (scan == S_END)
-	      {
-		goto exit_on_end;
-	      }
-	    if (scan == S_ERROR)
-	      {
-		goto exit_on_error;
-	      }
-	  }
-	scan = check_upper (&outer, outer_key_spec, upper, bound_vals);
-	if (scan == S_END)
-	  {
-	    goto exit_on_end;
-	  }
-	if (scan == S_ERROR)
-	  {
-	    goto exit_on_error;
-	  }
-
-	if (inner_start != NULL)
-	  {
-	    QFILE_TUPLE_POSITION start_pos = inner_start->m_pos;
-	    if (qexec_merge_side_jump (thread_p, &inner, &start_pos) != S_SUCCESS)
-	      {
-		goto exit_on_error;
-	      }
-	  }
-	else
-	  {
-	    scan = qexec_merge_side_skip_null_keys (thread_p, &inner);
-	    if (scan == S_END)
-	      {
-		goto exit_on_end;
-	      }
-	    if (scan == S_ERROR)
-	      {
-		goto exit_on_error;
-	      }
-	  }
-	scan = check_upper (&inner, inner_key_spec, upper, bound_vals);
 	if (scan == S_END)
 	  {
 	    goto exit_on_end;
@@ -239,10 +195,8 @@ namespace parallel_query
 	  }
 
 	ctx.outer = &outer;
-	ctx.outer_key_spec = outer_key_spec;
-	ctx.inner_key_spec = inner_key_spec;
-	ctx.upper = upper;
-	ctx.bound_vals = bound_vals;
+	ctx.outer_end = outer_end;
+	ctx.inner_end = inner_end;
 	ctx.task_mgr = &task_mgr;
 	ctx.poll_counter = 0;
 	ctx.stopped = false;
@@ -267,10 +221,6 @@ exit_on_end:
 	if (tplrec.tpl)
 	  {
 	    db_private_free_and_init (thread_p, tplrec.tpl);
-	  }
-	if (bound_vals)
-	  {
-	    db_private_free_and_init (thread_p, bound_vals);
 	  }
 
 	return error;

@@ -124,16 +124,6 @@ namespace parallel_query
       manager.m_merge_info = merge_infop;
       manager.m_parts = &parts;
 
-      if (make_key_spec (outer_list_id, merge_infop->ls_outer_column, merge_infop->ls_column_cnt,
-			 manager.m_outer_key_spec) != NO_ERROR
-	  || make_key_spec (inner_list_id, merge_infop->ls_inner_column, merge_infop->ls_column_cnt,
-			    manager.m_inner_key_spec) != NO_ERROR)
-	{
-	  px_worker_manager->release_workers ();
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return ER_GENERIC_ERROR;
-	}
-
       QFILE_TUPLE_VALUE_TYPE_LIST type_list;
       type_list.type_cnt = merge_infop->ls_pos_cnt;
       type_list.domp = (TP_DOMAIN **) malloc (type_list.type_cnt * sizeof (TP_DOMAIN *));

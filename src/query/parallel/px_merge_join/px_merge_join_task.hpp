@@ -48,8 +48,6 @@ namespace parallel_query
       QFILE_LIST_ID *m_inner_list_id;
       QFILE_LIST_MERGE_INFO *m_merge_info;
       const merge_partitions *m_parts;
-      key_spec m_outer_key_spec;	/* for range upper-bound checks */
-      key_spec m_inner_key_spec;
       std::vector<QFILE_LIST_ID *> m_outputs;	/* one private output list per range, opened on the main thread */
     };
 
