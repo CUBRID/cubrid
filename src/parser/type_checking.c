@@ -228,6 +228,10 @@ static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 static PT_NODE *pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool pt_is_int_value_at_least (PT_NODE * node, DB_BIGINT min_value);
+static bool pt_exists_limit_is_removable (PT_NODE * node);
+static void pt_remove_exists_limit (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool pt_query_has_intersect_or_difference (PT_NODE * node);
 static bool pt_is_able_to_determine_return_type (const PT_OP_TYPE op);
 static PT_NODE *pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_opt_type (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -8168,6 +8172,139 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 }
 
 /*
+ * pt_is_int_value_at_least () - check if the node is an integer constant not less than min_value
+ *   return: true if so
+ *   node(in):
+ *   min_value(in):
+ */
+static bool
+pt_is_int_value_at_least (PT_NODE * node, DB_BIGINT min_value)
+{
+  if (node == NULL || node->node_type != PT_VALUE)
+    {
+      return false;
+    }
+
+  switch (node->type_enum)
+    {
+    case PT_TYPE_SMALLINT:
+    case PT_TYPE_INTEGER:
+      return node->info.value.data_value.i >= min_value;
+    case PT_TYPE_BIGINT:
+      return node->info.value.data_value.bigint >= min_value;
+    default:
+      return false;
+    }
+}
+
+/*
+ * pt_exists_limit_is_removable () - check if LIMIT and FOR ORDERBY_NUM() of an EXISTS subquery (and of its set
+ *				      operands) can be removed together with ORDER BY
+ *   return: true if removable
+ *   node(in): query
+ *
+ * Note: a query with "LIMIT n" (n >= 1) returns a row if and only if the query without ORDER BY and LIMIT does,
+ *	 so for EXISTS they can be removed. With an offset (or any other bound) they decide whether a row is
+ *	 returned, so they must be kept, and so must the select list since ORDER BY may refer to it by position.
+ */
+static bool
+pt_exists_limit_is_removable (PT_NODE * node)
+{
+  PT_NODE *orderby_for, *limit;
+
+  if (!pt_is_query (node))
+    {
+      return true;
+    }
+
+  orderby_for = node->info.query.orderby_for;
+  if (orderby_for != NULL)
+    {
+      /* only 'orderby_num() <= n' (n >= 1) or 'orderby_num() < n' (n >= 2) */
+      if (orderby_for->next != NULL || orderby_for->or_next != NULL || !pt_is_expr_node (orderby_for)
+	  || !PT_IS_ORDERBYNUM (orderby_for->info.expr.arg1))
+	{
+	  return false;
+	}
+      if (!(orderby_for->info.expr.op == PT_LE && pt_is_int_value_at_least (orderby_for->info.expr.arg2, 1))
+	  && !(orderby_for->info.expr.op == PT_LT && pt_is_int_value_at_least (orderby_for->info.expr.arg2, 2)))
+	{
+	  return false;
+	}
+    }
+
+  if (node->node_type == PT_SELECT)
+    {
+      /* LIMIT of a SELECT without FOR ORDERBY_NUM() is rewritten to INST_NUM() or GROUPBY_NUM() predicates, which do
+       * not depend on the select list */
+      return true;
+    }
+
+  /* LIMIT of a set operation without ORDER BY is not rewritten yet */
+  limit = node->info.query.limit;
+  if (orderby_for == NULL && limit != NULL && node->info.query.flag.rewrite_limit
+      && (limit->next != NULL || !pt_is_int_value_at_least (limit, 1)))
+    {
+      return false;
+    }
+
+  return (pt_exists_limit_is_removable (node->info.query.q.union_.arg1)
+	  && pt_exists_limit_is_removable (node->info.query.q.union_.arg2));
+}
+
+/*
+ * pt_query_has_intersect_or_difference () - check if the query is or has as a set operand INTERSECT or EXCEPT
+ *   return: true if found
+ *   node(in): query
+ */
+static bool
+pt_query_has_intersect_or_difference (PT_NODE * node)
+{
+  if (!pt_is_query (node) || node->node_type == PT_SELECT)
+    {
+      return false;
+    }
+
+  if (node->node_type != PT_UNION)
+    {
+      return true;
+    }
+
+  return (pt_query_has_intersect_or_difference (node->info.query.q.union_.arg1)
+	  || pt_query_has_intersect_or_difference (node->info.query.q.union_.arg2));
+}
+
+/*
+ * pt_remove_exists_limit () - remove LIMIT and FOR ORDERBY_NUM() checked by pt_exists_limit_is_removable ()
+ *   return: none
+ *   parser(in):
+ *   node(in/out): query
+ */
+static void
+pt_remove_exists_limit (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  if (!pt_is_query (node))
+    {
+      return;
+    }
+
+  if (node->info.query.orderby_for != NULL)
+    {
+      parser_free_tree (parser, node->info.query.orderby_for);
+      node->info.query.orderby_for = NULL;
+      parser_free_tree (parser, node->info.query.limit);
+      node->info.query.limit = NULL;
+      node->info.query.flag.rewrite_limit = 0;
+    }
+  else if (node->node_type != PT_SELECT && node->info.query.limit != NULL && node->info.query.flag.rewrite_limit)
+    {
+      parser_free_tree (parser, node->info.query.limit);
+      node->info.query.limit = NULL;
+      node->info.query.flag.rewrite_limit = 0;
+    }
+}
+
+/*
  * pt_chop_to_one_select_item () -
  *   return: none
  *   parser(in):
@@ -8178,6 +8315,22 @@ pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   if (pt_is_query (node))
     {
+      if (pt_query_has_intersect_or_difference (node))
+	{
+	  /* INTERSECT and EXCEPT compare whole rows of their operands, so neither their select lists nor LIMIT can be
+	   * changed. The select lists of the other set operands must be kept too, to match the number of columns. */
+	  return;
+	}
+
+      if (!pt_exists_limit_is_removable (node))
+	{
+	  /* LIMIT (FOR ORDERBY_NUM()) decides whether a row is returned, so ORDER BY can not be removed. Also the
+	   * select list must be kept since ORDER BY may refer to its items by position. */
+	  return;
+	}
+
+      pt_remove_exists_limit (parser, node);
+
       if (node->node_type == PT_SELECT)
 	{
 	  /* chop to one select item */
