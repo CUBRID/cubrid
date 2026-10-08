@@ -39,6 +39,7 @@ set(SA_MODE_TESTS
   test_oos_record_flags
   test_byte_span_writer
   test_oos_tde_gate
+  test_oos_workspace
 )
 
 foreach(test_name ${SA_MODE_TESTS})
@@ -199,3 +200,8 @@ set_tests_properties(
 # - Since we do not need isolation here, we use add_test above.
 
 add_subdirectory(sql)
+
+# Real standalone loader/workspace routes require installed utilities, like the DB fixtures.
+# Each GoogleTest case owns a private registry and database; never use shared unittestdb here.
+add_test(NAME test_oos_workspace COMMAND test_oos_workspace)
+set_tests_properties(test_oos_workspace PROPERTIES RUN_SERIAL TRUE TIMEOUT 240)

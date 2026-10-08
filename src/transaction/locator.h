@@ -54,6 +54,7 @@
 
 #define LC_RECDES_TO_GET_ONEOBJ(copy_area_ptr, oneobj_ptr, recdes_ptr) \
   do { \
+    (recdes_ptr)->type = REC_HOME; \
     (recdes_ptr)->data = (char *) ((copy_area_ptr)->mem + \
                                    (oneobj_ptr)->offset); \
     (recdes_ptr)->length = (recdes_ptr)->area_size = (oneobj_ptr)->length; \
@@ -66,6 +67,7 @@
 
 #define LC_REPL_RECDES_FOR_ONEOBJ(copy_area_ptr, oneobj_ptr, key_length, recdes_ptr)    \
   do {                                                                                  \
+      (recdes_ptr)->type = REC_HOME;                                                   \
       (recdes_ptr)->data = (char *)((copy_area_ptr)->mem                                \
                                     + (oneobj_ptr)->offset + (key_length));             \
       (recdes_ptr)->length = (recdes_ptr)->area_size = (oneobj_ptr)->length             \
@@ -74,6 +76,7 @@
 
 #define LC_RECDES_IN_COPYAREA(copy_area_ptr, recdes_ptr) \
   do { \
+    (recdes_ptr)->type = REC_HOME; \
     (recdes_ptr)->data = (copy_area_ptr)->mem; \
     (recdes_ptr)->area_size = \
       (copy_area_ptr)->length - DB_SIZEOF(LC_COPYAREA_MANYOBJS); \
