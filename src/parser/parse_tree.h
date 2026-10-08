@@ -3767,6 +3767,7 @@ struct parser_node
   int line_number;		/* the user line number originating this */
   int column_number;		/* the user column number originating this */
   int buffer_pos;		/* position in the parse buffer of the string originating this */
+  int buffer_start_pos;		/* start position in the parse buffer of the string originating this */
   char *sql_user_text;		/* user input sql string */
   int sql_user_text_len;	/* user input sql string length (one statement) */
 

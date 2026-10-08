@@ -15612,6 +15612,7 @@ mq_reset_references_to_query_string (PARSER_CONTEXT * parser, PT_NODE * node, vo
   node->line_number = 0;
   node->column_number = 0;
   node->buffer_pos = -1;
+  node->buffer_start_pos = -1;
 
   return node;
 }

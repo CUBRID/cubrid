@@ -49,6 +49,7 @@ typedef struct YYLTYPE
   int last_line;
   int last_column;
   int buffer_pos; /* position in the buffer being parsed */
+  int first_buffer_pos; /* position in the buffer being parsed where the first token starts */
 
 } YYLTYPE;
 #define YYLTYPE_IS_DECLARED 1
@@ -290,6 +291,7 @@ static bool is_in_sp_func_type = false;
       assert (node);                            \
       (node)->line_number   = (loc).first_line; \
       (node)->column_number = (loc).first_column; \
+      (node)->buffer_start_pos = (loc).first_buffer_pos; \
     }    
 
 typedef enum
@@ -494,6 +496,7 @@ static int g_plcsql_text_pos;
 	  (Current).last_line    = YYRHSLOC (Rhs, N).last_line;		\
 	  (Current).last_column  = YYRHSLOC (Rhs, N).last_column;	\
 	  (Current).buffer_pos   = YYRHSLOC (Rhs, N).buffer_pos;	\
+	  (Current).first_buffer_pos = YYRHSLOC (Rhs, 1).first_buffer_pos;	\
 	}								\
       else								\
 	{								\
@@ -502,6 +505,7 @@ static int g_plcsql_text_pos;
 	  (Current).first_column = (Current).last_column =		\
 	    YYRHSLOC (Rhs, 0).last_column;				\
 	  (Current).buffer_pos   = YYRHSLOC (Rhs, 0).buffer_pos;	\
+	  (Current).first_buffer_pos = YYRHSLOC (Rhs, 0).buffer_pos;	\
 	}								\
     while (0)
 
