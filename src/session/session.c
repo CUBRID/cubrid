@@ -809,6 +809,15 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id, bool is_kee
       return ER_SES_SESSION_EXPIRED;
     }
 
+#if defined (SERVER_MODE)
+  /* the id comes from the request; only the connection the session is attached to may end or keep it */
+  if (thread_p->conn_entry == NULL || thread_p->conn_entry->session_p != session_p)
+    {
+      pthread_mutex_unlock (&session_p->mutex);
+      return ER_FAILED;
+    }
+#endif
+
   if (is_keep_session == true)
     {
       session_p->is_keep_session = true;
@@ -817,20 +826,12 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id, bool is_kee
     }
 
 #if defined (SERVER_MODE)
-  if (thread_p != NULL && thread_p->conn_entry != NULL && thread_p->conn_entry->session_p != NULL
-      && thread_p->conn_entry->session_p == session_p)
-    {
-      thread_p->conn_entry->session_p = NULL;
-      thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
+  thread_p->conn_entry->session_p = NULL;
+  thread_p->conn_entry->session_id = DB_EMPTY_SESSION;
 
-      if (session_p->ref_count > 0)
-	{
-	  session_state_decrease_ref_count (thread_p, session_p);
-	}
-    }
-  else
+  if (session_p->ref_count > 0)
     {
-      /* do we accept this case?? if we don't, add safe-guard here. */
+      session_state_decrease_ref_count (thread_p, session_p);
     }
 
   logtb_set_current_user_active (thread_p, false);
