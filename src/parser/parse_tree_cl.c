@@ -974,10 +974,12 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
   else if (new_node->node_type == PT_UPDATE)
     {
       new_node->info.update.bind_watch = NULL;
+      new_node->info.update.bind_variant_key = NULL;
     }
   else if (new_node->node_type == PT_DELETE)
     {
       new_node->info.delete_.bind_watch = NULL;
+      new_node->info.delete_.bind_variant_key = NULL;
     }
 
   /* clone XASL_ID; aliasing old_node's would double-free in parser_free_node_resources () */
