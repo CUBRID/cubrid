@@ -6275,6 +6275,7 @@ qo_exchange (QO_TERM * t0, QO_TERM * t1)
   PT_NODE_EXCHANGE (t0->pt_expr, t1->pt_expr);
   INT_EXCHANGE (t0->location, t1->location);
   BITSET_EXCHANGE (t0->subqueries, t1->subqueries);
+  BITSET_EXCHANGE (t0->outer_dep_set, t1->outer_dep_set);
   JOIN_TYPE_EXCHANGE (t0->join_type, t1->join_type);
   INT_EXCHANGE (t0->can_use_index, t1->can_use_index);
   SEGMENTPTR_EXCHANGE (t0->index_seg[0], t1->index_seg[0]);
@@ -6516,9 +6517,38 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  /* is explicit join ON cond */
 	  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
-	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
+	  if (QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
 	    {
-	      continue;		/* inner / semi / anti: structurally inner, no outer-join classification */
+	      continue;		/* semi/anti: not outer-join null-padding semantics, keep excluded */
+	    }
+
+	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER)
+	    {
+	      /* record which RIGHT OUTER on_nodes must join first; defer the edge until they do */
+	      /* LEFT OUTER JOIN needs no equivalent handling because its on_node is the null-supplying side */
+	      int t2;
+	      BITSET_ITERATOR iter2;
+
+	      for (t2 = bitset_iterate (&(QO_TERM_NODES (term)), &iter2); t2 != -1; t2 = bitset_next_member (&iter2))
+		{
+		  QO_NODE *m_node = QO_ENV_NODE (env, t2);
+		  int n2;
+
+		  for (n2 = 0; n2 < env->nnodes; n2++)
+		    {
+		      QO_NODE *cand_node = QO_ENV_NODE (env, n2);
+
+		      if (QO_NODE_PT_JOIN_TYPE (cand_node) == PT_JOIN_RIGHT_OUTER
+			  && BITSET_MEMBER (QO_NODE_OUTER_DEP_SET (cand_node), QO_NODE_IDX (m_node))
+			  && QO_NODE_LOCATION (m_node) < QO_NODE_LOCATION (cand_node)
+			  && QO_NODE_LOCATION (on_node) > QO_NODE_LOCATION (cand_node))
+			{
+			  bitset_add (&(QO_TERM_OUTER_DEP_SET (term)), QO_NODE_IDX (cand_node));
+			}
+		    }
+		}
+
+	      continue;
 	    }
 
 	  /* is explicit outer-joined ON cond */
@@ -9411,6 +9441,7 @@ qo_term_clear (QO_ENV * env, int idx)
   bitset_init (&(QO_TERM_NODES (term)), env);
   bitset_init (&(QO_TERM_SEGS (term)), env);
   bitset_init (&(QO_TERM_SUBQUERIES (term)), env);
+  bitset_init (&(QO_TERM_OUTER_DEP_SET (term)), env);
 
   QO_TERM_FLAG (term) = 0;
 }
@@ -9724,6 +9755,7 @@ qo_term_free (QO_TERM * term)
   bitset_delset (&(QO_TERM_NODES (term)));
   bitset_delset (&(QO_TERM_SEGS (term)));
   bitset_delset (&(QO_TERM_SUBQUERIES (term)));
+  bitset_delset (&(QO_TERM_OUTER_DEP_SET (term)));
   if (QO_TERM_MULTI_COL_SEGS (term))
     {
       free_and_init (QO_TERM_MULTI_COL_SEGS (term));
