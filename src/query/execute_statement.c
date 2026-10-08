@@ -18333,7 +18333,17 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  server_op = (server_insert && server_update);
+  if (statement->info.merge.into->info.spec.remote_server_name)
+    {
+      /* A remote MERGE is sent to the remote server as one statement, so either WHEN clause
+       * alone is complete. With AND it would take the client path, which needs a local class
+       * (class_obj and flat are NULL here). */
+      server_op = (server_insert || server_update);
+    }
+  else
+    {
+      server_op = (server_insert && server_update);
+    }
 
   if (server_op)
     {
