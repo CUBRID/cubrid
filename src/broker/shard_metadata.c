@@ -267,6 +267,8 @@ shard_metadata_read_conn (const char *filename, T_SHM_PROXY * shm_proxy_p)
   FILE *file = NULL;
 
   T_SHM_SHARD_CONN *shm_conn_p = NULL;
+  char db_name_buf[MAX_DBNAME_LENGTH + 1];
+  char db_conn_info_buf[MAX_CONN_INFO_LENGTH + 1];
   T_SHARD_CONN *conn_p = NULL;
 
   shm_conn_p = shard_metadata_get_conn (shm_proxy_p);
@@ -307,11 +309,22 @@ shard_metadata_read_conn (const char *filename, T_SHM_PROXY * shm_proxy_p)
 
       assert (idx_conn >= 0);
       conn_p = &(shm_conn_p->shard_conn[idx_conn]);
-      nargs = sscanf (line, "%d %63s %513[^\n]", &conn_p->shard_id, conn_p->db_name, conn_p->db_conn_info);
+      /* The widths keep sscanf () inside the destinations, but a field that is one
+       * character too long would otherwise be split silently: the tail of the name
+       * would become the head of the connection information and nargs would still
+       * be 3. Both are read into buffers one byte larger so that the overlong case
+       * is visible and can be rejected. */
+      nargs = sscanf (line, "%d %64s %514[^\n]", &conn_p->shard_id, db_name_buf, db_conn_info_buf);
       if (nargs != 3)
 	{
 	  continue;
 	}
+      if (strlen (db_name_buf) >= MAX_DBNAME_LENGTH || strlen (db_conn_info_buf) >= MAX_CONN_INFO_LENGTH)
+	{
+	  goto error_return;
+	}
+      strcpy (conn_p->db_name, db_name_buf);
+      strcpy (conn_p->db_conn_info, db_conn_info_buf);
 
       trim (conn_p->db_conn_info);
 
