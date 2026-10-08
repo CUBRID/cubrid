@@ -65,9 +65,17 @@ void mmon_finalize ()
 #if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
       mmon_Gl->print_debug_result ();
 #endif
-      delete mmon_Gl;
-      mmon_Gl = nullptr;
+      /* The monitor must stop tracking before it is deleted. The replacement
+       * operator delete routes this delete through cub_free (), which asks
+       * mmon_is_memory_monitor_enabled () and then calls mmon_Gl->sub_stat ().
+       * With the flag still set that is a call into an object whose destructor
+       * has already run. Until now the replacement was only present in a debug
+       * build, so this could only happen there; it is linked into every build
+       * from this change on. */
+      memory_monitor *finalized = mmon_Gl;
       mmon_disabled = true;
+      mmon_Gl = nullptr;
+      delete finalized;
     }
 }
 
