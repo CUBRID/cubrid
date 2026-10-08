@@ -5980,8 +5980,9 @@ pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * dblink, S_RE
       sql = pt_dblink_describe_sql (parser, conn, sql);
     }
 
-  /* "SELECT *" prepare metadata cannot get invisible columns, so take the schema from
-   * cci_schema_info; star expansion needs IS_INVISIBLE (PROTOCOL_V13). */
+  /* A "SELECT *" prepare describes the visible columns only, so the referenced names decide
+   * the column list: prepared as written when every one is this table's, otherwise read from
+   * cci_schema_info, which reports the invisible ones too (IS_INVISIBLE, PROTOCOL_V13). */
   if (table_name != NULL && dblink_table->sel_list != NULL)
     {
       int reason = PT_DBLINK_SCHEMA_OK, rc = ER_FAILED;
@@ -12670,8 +12671,15 @@ check_for_already_exists (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, cons
     }
 }
 
-static void pt_walk_col_refs (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTION pre,
-			      S_LINK_COLUMNS * lkcol);
+/*
+ * pt_walk_col_refs () - gather the column references of one clause
+ *   Note: a NULL clause is a no-op.
+ */
+static void
+pt_walk_col_refs (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTION pre, S_LINK_COLUMNS * lkcol)
+{
+  (void) parser_walk_tree (parser, node, pre, lkcol, NULL, NULL);
+}
 
 /*
  * pt_dblink_name_redeclared () - whether a FROM list declares the name the gathered table
@@ -12810,16 +12818,6 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   return node;
 }
 
-/*
- * pt_walk_col_refs () - gather the column references of one clause
- *   Note: a NULL clause is a no-op.
- */
-static void
-pt_walk_col_refs (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTION pre, S_LINK_COLUMNS * lkcol)
-{
-  (void) parser_walk_tree (parser, node, pre, lkcol, NULL, NULL);
-}
-
 static void
 pt_get_cols_for_dblink (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, PT_QUERY_INFO * query)
 {
@@ -12895,15 +12893,8 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 	      pt_get_cols_for_dblink (parser, &lkcol, query);
 
 	      table->info.dblink_table.sel_list = lkcol.col_list;
-	      lkcol.col_list = NULL;
-	      if (lkcol.needs_describe)
-		{
-		  table->info.dblink_table.needs_describe = true;
-		}
-	      if (lkcol.uncertain_name_seen)
-		{
-		  table->info.dblink_table.uncertain_name_seen = true;
-		}
+	      table->info.dblink_table.needs_describe |= lkcol.needs_describe;
+	      table->info.dblink_table.uncertain_name_seen |= lkcol.uncertain_name_seen;
 	    }
 	}
     }
@@ -12930,7 +12921,8 @@ pt_check_dblink_query (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
  * pt_dml_column_name_pre () - pt_get_column_name_pre () restricted to the positions
  *   that can reference a source table: spec subtrees (table and server names), the
  *   assignment left-hand sides and the INSERT attribute lists (DML target columns)
- *   are excluded here, so nested constructs are covered too
+ *   are excluded here.  A nested query block, which has none of them, is walked by
+ *   pt_get_column_name_pre () itself.
  */
 static PT_NODE *
 pt_dml_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
@@ -13126,15 +13118,8 @@ pt_gather_dblink_cols_in_dml_pre (PARSER_CONTEXT * parser, PT_NODE * node, void 
     }
 
   table->info.dblink_table.sel_list = lkcol.col_list;
-  lkcol.col_list = NULL;
-  if (lkcol.needs_describe)
-    {
-      table->info.dblink_table.needs_describe = true;
-    }
-  if (lkcol.uncertain_name_seen)
-    {
-      table->info.dblink_table.uncertain_name_seen = true;
-    }
+  table->info.dblink_table.needs_describe |= lkcol.needs_describe;
+  table->info.dblink_table.uncertain_name_seen |= lkcol.uncertain_name_seen;
 
   *continue_walk = PT_LIST_WALK;
 
