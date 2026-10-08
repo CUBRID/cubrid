@@ -1678,9 +1678,10 @@ arm_flush_timer (void)
 
   memset (&its, 0, sizeof (its));
   its.it_value.tv_sec = 1;
-  if (timer_settime (sql_log_timer, 0, &its, NULL) == 0)
+  sql_log_timer_armed = 1;
+  if (timer_settime (sql_log_timer, 0, &its, NULL) != 0)
     {
-      sql_log_timer_armed = 1;
+      sql_log_timer_armed = 0;
     }
 }
 
