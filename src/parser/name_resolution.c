@@ -11878,7 +11878,7 @@ pt_print_pl_host_expr (PARSER_CONTEXT * parser, PT_NODE * node)
  *   name_node(in): PT_NAME or PT_DOT_ (rec.field) to be converted to a host variable
  *   label(in): the PL/CSQL host expression
  *
- * Note: the range is replaced with '?' to make the text executed at runtime (see pt_make_static_sql_text ())
+ * Note: the range is replaced with '?' to rewrite the text executed at runtime (see pt_rewrite_static_sql_text ())
  */
 static int
 pt_add_static_sql_host_var (PARSER_CONTEXT * parser, PT_NODE * name_node, const char *label)
@@ -11891,7 +11891,7 @@ pt_add_static_sql_host_var (PARSER_CONTEXT * parser, PT_NODE * name_node, const 
       first = first->info.dot.arg1;
     }
 
-  if (first == NULL || first->buffer_start_pos < 0 || name_node->buffer_pos <= first->buffer_start_pos)
+  if (first == NULL || first->buffer_pos_start < 0 || name_node->buffer_pos <= first->buffer_pos_start)
     {
       PT_INTERNAL_ERROR (parser, "the position of a PL/CSQL variable in the static SQL is unknown");
       return ER_FAILED;
@@ -11921,7 +11921,7 @@ pt_add_static_sql_host_var (PARSER_CONTEXT * parser, PT_NODE * name_node, const 
     }
 
   host_var = &parser->static_sql_host_vars[parser->static_sql_host_var_cnt++];
-  host_var->start = first->buffer_start_pos;
+  host_var->start = first->buffer_pos_start;
   host_var->end = name_node->buffer_pos;
   host_var->label = label;
 

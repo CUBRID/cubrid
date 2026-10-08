@@ -509,7 +509,7 @@ namespace cubmethod
 
 	    /* the text executed at runtime is made from the original text, not printed from the parse tree:
 	     * PL/CSQL variables are replaced with '?' and the INTO clause is removed */
-	    const char *text = pt_make_static_sql_text (parser);
+	    const char *text = pt_rewrite_static_sql_text (parser);
 	    if (text == NULL)
 	      {
 		error = ER_FAILED;
@@ -532,18 +532,18 @@ namespace cubmethod
 	      }
 
 	    // into variable
-	    char **external_into_label = db_session->parser->external_into_label;
-	    if (external_into_label)
+	    char **static_sql_into_label = db_session->parser->static_sql_into_label;
+	    if (static_sql_into_label)
 	      {
-		for (int i = 0; i < db_session->parser->external_into_label_cnt; i++)
+		for (int i = 0; i < db_session->parser->static_sql_into_label_cnt; i++)
 		  {
-		    semantics.into_vars.push_back (external_into_label[i]);
-		    free (external_into_label[i]);
+		    semantics.into_vars.push_back (static_sql_into_label[i]);
+		    free (static_sql_into_label[i]);
 		  }
-		free (external_into_label);
+		free (static_sql_into_label);
 	      }
-	    db_session->parser->external_into_label = NULL;
-	    db_session->parser->external_into_label_cnt = 0;
+	    db_session->parser->static_sql_into_label = NULL;
+	    db_session->parser->static_sql_into_label_cnt = 0;
 
 	    // host variables in the order of '?'s in the text
 	    semantics.hvs.resize (parser->static_sql_host_var_cnt);

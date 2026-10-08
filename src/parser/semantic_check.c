@@ -10715,16 +10715,16 @@ pt_check_into_clause_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * qry, int
   int is_fail = 1;
   PT_NODE *into = qry->info.query.into_list;
 
-  char **external_into_label = (char **) malloc (into_cnt * sizeof (char *));
-  if (external_into_label == NULL)
+  char **static_sql_into_label = (char **) malloc (into_cnt * sizeof (char *));
+  if (static_sql_into_label == NULL)
     {
       goto error_exit;
     }
 
   for (i = 0; i < into_cnt; i++)
     {
-      external_into_label[i] = strdup (into->info.name.original);
-      if (external_into_label[i] == NULL)
+      static_sql_into_label[i] = strdup (into->info.name.original);
+      if (static_sql_into_label[i] == NULL)
 	{
 	  goto error_exit;
 	}
@@ -10736,22 +10736,22 @@ error_exit:
   if (is_fail == 1)
     {
       // clear memory
-      if (external_into_label)
+      if (static_sql_into_label)
 	{
 	  for (--i; i >= 0; i--)
 	    {
-	      free (external_into_label[i]);
+	      free (static_sql_into_label[i]);
 	    }
-	  free (external_into_label);
-	  external_into_label = NULL;
+	  free (static_sql_into_label);
+	  static_sql_into_label = NULL;
 	}
 
       PT_ERRORm (parser, qry, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
       into_cnt = 0;
     }
 
-  parser->external_into_label_cnt = into_cnt;
-  parser->external_into_label = external_into_label;
+  parser->static_sql_into_label_cnt = into_cnt;
+  parser->static_sql_into_label = static_sql_into_label;
 
   parser_free_tree (parser, qry->info.query.into_list);
   qry->info.query.into_list = NULL;

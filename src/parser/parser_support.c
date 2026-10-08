@@ -13187,7 +13187,7 @@ pt_compare_static_sql_host_var (const void *a, const void *b)
 }
 
 /*
- * pt_make_static_sql_text () - make the text of a static SQL executed at runtime from its original text
+ * pt_rewrite_static_sql_text () - rewrite the original text of a static SQL into the text executed at runtime
  *   return: the text allocated in the parser, or NULL on error
  *   parser(in/out): the parser which compiled the static SQL
  *
@@ -13198,7 +13198,7 @@ pt_compare_static_sql_host_var (const void *a, const void *b)
  *       the '?'s in the text.
  */
 char *
-pt_make_static_sql_text (PARSER_CONTEXT * parser)
+pt_rewrite_static_sql_text (PARSER_CONTEXT * parser)
 {
   const char *src = parser->original_buffer;
   PT_STATIC_SQL_HOST_VAR *host_vars = parser->static_sql_host_vars;

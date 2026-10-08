@@ -3768,7 +3768,7 @@ struct parser_node
   int line_number;		/* the user line number originating this */
   int column_number;		/* the user column number originating this */
   int buffer_pos;		/* position in the parse buffer of the string originating this */
-  int buffer_start_pos;		/* start position in the parse buffer of the string originating this */
+  int buffer_pos_start;		/* start position in the parse buffer of the string originating this */
   char *sql_user_text;		/* user input sql string */
   int sql_user_text_len;	/* user input sql string length (one statement) */
 
@@ -3969,8 +3969,8 @@ struct parser_context
 
   int max_print_len;		/* for pt_short_print */
 
-  char **external_into_label;
-  int external_into_label_cnt;
+  char **static_sql_into_label;
+  int static_sql_into_label_cnt;
   /* for PL/CSQL's static SQL: ranges of the original buffer replaced to build the text executed at runtime */
   PT_STATIC_SQL_HOST_VAR *static_sql_host_vars;
   int static_sql_host_var_cnt;

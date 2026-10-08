@@ -1754,7 +1754,7 @@ pt_internal_error (PARSER_CONTEXT * parser, const char *file, int line, const ch
   node.line_number = 0;
   node.column_number = 0;
   node.buffer_pos = -1;
-  node.buffer_start_pos = -1;
+  node.buffer_pos_start = -1;
 
   if (parser && !pt_has_error (parser))
     {
@@ -2490,7 +2490,7 @@ parser_init_node (PT_NODE * node, PT_NODE_TYPE node_type)
 
   memset (node, 0x00, sizeof (PT_NODE));
   node->buffer_pos = -1;
-  node->buffer_start_pos = -1;
+  node->buffer_pos_start = -1;
   node->type_enum = PT_TYPE_NONE;
 
   node->parser_id = parser_id;
@@ -2526,7 +2526,7 @@ parser_reinit_node (PT_NODE * node)
 
       memset (node, 0x00, sizeof (PT_NODE));
       node->buffer_pos = -1;
-      node->buffer_start_pos = -1;
+      node->buffer_pos_start = -1;
       node->type_enum = PT_TYPE_NONE;
 
       node->parser_id = parser_id;

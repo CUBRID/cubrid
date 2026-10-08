@@ -1218,8 +1218,8 @@ parser_create_parser (void)
   parser->flag.is_unloading_plcsql_def = 0;
   parser->flag.is_parsing_trigger = 0;
 
-  parser->external_into_label = NULL;
-  parser->external_into_label_cnt = 0;
+  parser->static_sql_into_label = NULL;
+  parser->static_sql_into_label_cnt = 0;
 
   parser->static_sql_host_vars = NULL;
   parser->static_sql_host_var_cnt = 0;
@@ -1277,14 +1277,14 @@ parser_free_parser (PARSER_CONTEXT * parser)
     }
 
   /* INTO labels of a static SQL which have not been taken by the caller (e.g. on a compile error) */
-  if (parser->external_into_label)
+  if (parser->static_sql_into_label)
     {
-      for (i = 0; i < parser->external_into_label_cnt; i++)
+      for (i = 0; i < parser->static_sql_into_label_cnt; i++)
 	{
-	  free_and_init (parser->external_into_label[i]);
+	  free_and_init (parser->static_sql_into_label[i]);
 	}
-      free_and_init (parser->external_into_label);
-      parser->external_into_label_cnt = 0;
+      free_and_init (parser->static_sql_into_label);
+      parser->static_sql_into_label_cnt = 0;
     }
 
   parser_free_lcks_classes (parser);
