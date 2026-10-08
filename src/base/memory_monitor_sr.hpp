@@ -31,6 +31,7 @@
 
 #include "concurrent_unordered_map.h"
 #include "memory_monitor_common.hpp"
+#include "porting_inline.hpp"
 
 #ifndef MMON_DEBUG_LEVEL
 /* 0: not debug
@@ -79,7 +80,7 @@ struct mmon_debug_info
 
 extern bool mmon_disabled;
 // true while mmon_add_stat () runs on this thread; the global operator new does not track then (memory_wrapper.cpp)
-extern thread_local bool mmon_in_add_stat;
+extern THREAD_LOCAL_TRIVIAL bool mmon_in_add_stat;
 
 namespace cubmem
 {
@@ -94,6 +95,18 @@ namespace cubmem
   static constexpr int MMON_MAP_RESERVE_SIZE = 8192;
 
   extern std::atomic<uint64_t> m_stat_map[MMON_MAP_RESERVE_SIZE];
+
+  struct stat_id_cache_entry
+  {
+    const char *file;
+    int line;
+    int stat_id;
+  };
+
+  // stat ids of the call sites this thread allocated from lately, found by the address of the __FILE__ literal and the
+  // line, which a call site passes unchanged
+  static constexpr int MMON_STAT_ID_CACHE_SIZE = 64;
+  extern THREAD_LOCAL_TRIVIAL stat_id_cache_entry mmon_stat_id_cache[MMON_STAT_ID_CACHE_SIZE];
 
   class memory_monitor
   {
@@ -121,6 +134,8 @@ namespace cubmem
     private:
       inline char *get_metainfo_pos (char *ptr, size_t size);
       inline void make_stat_name (char *buf, const char *file, const int line);
+      inline int get_stat_id (const char *file, const int line);
+      int find_stat_id (const char *file, const int line);
 #if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
       void check_add_stat_tracking_error_is_exist (MMON_METAINFO *metainfo, const char *file, int line);
       void check_sub_stat_tracking_error_is_exist (MMON_METAINFO *metainfo);
@@ -128,7 +143,8 @@ namespace cubmem
 
     private:
       std::string m_server_name;
-      // Entries of m_stat_name_map and m_stat_map will not be deleted
+      // Entries of m_stat_name_map and m_stat_map will not be deleted and the monitor is created once in a process,
+      // so a stat id in mmon_stat_id_cache stays valid
       tbb::concurrent_unordered_map <std::string, int> m_stat_name_map;        // key: stat name, value: stat id
 #if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
       tbb::concurrent_unordered_map <intptr_t, MMON_DEBUG_INFO> m_error_tracking_map;
@@ -171,35 +187,28 @@ namespace cubmem
     return ptr + size - MMON_METAINFO_SIZE;
   }
 
+  inline int memory_monitor::get_stat_id (const char *file, const int line)
+  {
+    int slot = ((uintptr_t) file + line) & (MMON_STAT_ID_CACHE_SIZE - 1);
+    stat_id_cache_entry &entry = mmon_stat_id_cache[slot];
+
+    if (entry.file != file || entry.line != line)
+      {
+	entry.stat_id = find_stat_id (file, line);
+	entry.file = file;
+	entry.line = line;
+      }
+    return entry.stat_id;
+  }
+
   inline void memory_monitor::add_stat (char *ptr, const size_t size, const char *file, const int line)
   {
-    char stat_name[MMON_MAX_NAME_LENGTH];
-
     // size should not be 0 because of MMON_METAINFO_SIZE
     assert (size > 0);
 
     MMON_METAINFO *metainfo = (MMON_METAINFO *) get_metainfo_pos (ptr, size);
 
-    make_stat_name (stat_name, file, line);
-
-retry:
-    const auto search = m_stat_name_map.find (stat_name);
-    if (search != m_stat_name_map.end ())
-      {
-	metainfo->stat_id = search->second;
-      }
-    else
-      {
-	std::pair<tbb::concurrent_unordered_map<std::string, int>::iterator, bool> insert_success;
-	metainfo->stat_id = m_stat_name_map.size ();
-	assert (metainfo->stat_id < MMON_MAP_RESERVE_SIZE);
-	// stat_id starts with 0
-	insert_success = m_stat_name_map.insert (std::pair <std::string, int> (stat_name, metainfo->stat_id));
-	if (!insert_success.second)
-	  {
-	    goto retry;
-	  }
-      }
+    metainfo->stat_id = get_stat_id (file, line);
 
     // nothing is counted before the lookup above, which can throw std::bad_alloc (see mmon_add_stat ())
     metainfo->allocated_size = (uint64_t) size;
@@ -274,6 +283,7 @@ inline bool mmon_is_memory_monitor_enabled ()
   return (!mmon_disabled);
 }
 
+// file must live as long as the process, like __FILE__: its address names the call site (mmon_stat_id_cache)
 inline void mmon_add_stat (char *ptr, const size_t size, const char *file, const int line)
 {
   // add_stat () builds std::string keys, which come back into the global operator new

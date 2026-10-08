@@ -28,11 +28,12 @@
 #include "memory_monitor_sr.hpp"
 
 bool mmon_disabled = true;
-thread_local bool mmon_in_add_stat = false;
+THREAD_LOCAL_TRIVIAL bool mmon_in_add_stat = false;
 
 namespace cubmem
 {
   std::atomic<uint64_t> m_stat_map[MMON_MAP_RESERVE_SIZE] = {};
+  THREAD_LOCAL_TRIVIAL stat_id_cache_entry mmon_stat_id_cache[MMON_STAT_ID_CACHE_SIZE];
 
   memory_monitor::memory_monitor (const char *server_name)
     : m_server_name {server_name},
@@ -63,6 +64,32 @@ namespace cubmem
       {
 	m_target_pos = 0;
       }
+  }
+
+  int memory_monitor::find_stat_id (const char *file, const int line)
+  {
+    char stat_name[MMON_MAX_NAME_LENGTH];
+    int stat_id;
+
+    make_stat_name (stat_name, file, line);
+
+retry:
+    const auto search = m_stat_name_map.find (stat_name);
+    if (search != m_stat_name_map.end ())
+      {
+	return search->second;
+      }
+
+    std::pair<tbb::concurrent_unordered_map<std::string, int>::iterator, bool> insert_success;
+    stat_id = m_stat_name_map.size ();
+    assert (stat_id < MMON_MAP_RESERVE_SIZE);
+    // stat_id starts with 0
+    insert_success = m_stat_name_map.insert (std::pair <std::string, int> (stat_name, stat_id));
+    if (!insert_success.second)
+      {
+	goto retry;
+      }
+    return stat_id;
   }
 
   size_t memory_monitor::get_allocated_size (char *ptr)
