@@ -24,6 +24,7 @@
 
 #include <mutex>
 
+#include "log_impl.h"		/* LOG_FIND_CURRENT_TDES, log_tdes::is_under_sysop */
 #include "system.h"		/* UINT32, UINT64 */
 #include "system_parameter.h"	/* sysprm_get_range, PRM_ID_PARALLELISM */
 #include "thread_manager.hpp"	/* cubthread::system_core_count */
@@ -33,6 +34,29 @@
 
 namespace parallel_query
 {
+  /*
+   * is_under_system_operation () - is the calling transaction inside a system operation?
+   *   return: true if a system operation is open on the current thread's transaction
+   *
+   * A system operation (log_sysop_start) holds the transaction's rmutex_topop, which is re-entrant only for the
+   * owning thread. Every parallel worker runs on the leader's transaction index, so a worker that needs a system
+   * operation of its own (e.g. creating a temporary file when the temp file cache is empty: file_create ->
+   * disk_reserve_sectors -> log_sysop_start) blocks on that mutex forever while the leader waits for the worker.
+   * MERGE opens its statement-level system operation before executing its sub-SELECTs (CBRD-27492); the same risk
+   * exists for any other context that would spawn workers while a system operation is open. The check therefore
+   * gates compute_parallel_degree (sort, hash join, heap/list scan, subquery, statistics scans) rather than one
+   * executor site; the parallel index scan, whose degree comes from the optimizer, calls it directly.
+   *
+   * topops.last is read without synchronization: the caller is either the leader itself (exact) or a worker of a
+   * leader that keeps its system operation open until all workers finish (stable while the worker runs).
+   */
+  bool is_under_system_operation () noexcept
+  {
+    LOG_TDES *tdes = LOG_FIND_CURRENT_TDES ();
+
+    return tdes != NULL && tdes->is_under_sysop ();
+  }
+
   UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages, int hint_degree) noexcept
   {
     static std::once_flag once;
@@ -67,6 +91,11 @@ namespace parallel_query
       }
 
     assert (hint_degree == -1 /* auto-compute */ || (hint_degree >= 0 && hint_degree <= PRM_MAX_PARALLELISM));
+
+    if (is_under_system_operation ())
+      {
+	return 0;	/* disable: workers sharing this transaction would deadlock on its system operation (CBRD-27492) */
+      }
 
     switch (type)
       {
