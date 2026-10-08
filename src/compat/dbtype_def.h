@@ -1283,10 +1283,11 @@ extern "C"
     const char *default_expr_text;	/* original text of an expression DEFAULT (Expression-Derived Literal or
 					 * residual); NULL otherwise */
     const char *default_expr_regu_stream;	/* serialized REGU form (FUNC_PRED stream) of a residual DEFAULT
-						 * expression for Server Evaluation; NULL otherwise */
+						 * expression, filled only by a DEFAULT_EXPR_REGU_STREAM build;
+						 * NULL otherwise */
     int default_expr_regu_stream_size;	/* size in bytes of default_expr_regu_stream */
-    const char *default_expr_tree_stream;	/* Compact DEFAULT Tree of a residual DEFAULT expression for
-						 * Local Evaluation; NULL otherwise */
+    const char *default_expr_tree_stream;	/* Compact DEFAULT Tree of a residual DEFAULT expression, compiled
+						 * into an INSERT or evaluated locally; NULL otherwise */
     int default_expr_tree_stream_size;	/* size in bytes of default_expr_tree_stream */
   };
 

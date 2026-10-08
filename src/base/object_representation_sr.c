@@ -2625,6 +2625,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 
 	  pr_clear_value (&def_expr);
 
+#if defined (DEFAULT_EXPR_REGU_STREAM)
 	  /* residual DEFAULT: restore the serialized REGU form for Server Evaluation */
 	  if (att_props != NULL && classobj_get_prop (att_props, "default_expr_regu", &def_expr) > 0)
 	    {
@@ -2660,6 +2661,7 @@ or_get_current_representation (RECDES * record, int do_indexes)
 	    }
 
 	  pr_clear_value (&def_expr);
+#endif /* DEFAULT_EXPR_REGU_STREAM */
 
 	  if (att_props != NULL && classobj_get_prop (att_props, "update_default", &def_expr) > 0)
 	    {
@@ -3624,10 +3626,12 @@ or_free_classrep (OR_CLASSREP * rep)
 	      free_and_init (att->default_value.default_expr.default_expr_text);
 	    }
 
+#if defined (DEFAULT_EXPR_REGU_STREAM)
 	  if (att->default_value.default_expr.default_expr_regu_stream != NULL)
 	    {
 	      free_and_init (att->default_value.default_expr.default_expr_regu_stream);
 	    }
+#endif
 
 	  if (att->current_default_value.value != NULL)
 	    {
@@ -3639,10 +3643,12 @@ or_free_classrep (OR_CLASSREP * rep)
 	      free_and_init (att->current_default_value.default_expr.default_expr_text);
 	    }
 
+#if defined (DEFAULT_EXPR_REGU_STREAM)
 	  if (att->current_default_value.default_expr.default_expr_regu_stream != NULL)
 	    {
 	      free_and_init (att->current_default_value.default_expr.default_expr_regu_stream);
 	    }
+#endif
 
 	  if (att->btids != NULL && att->btids != att->btid_pack)
 	    {

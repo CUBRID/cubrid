@@ -1032,7 +1032,7 @@ do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter)
 	    }
 
 	  /* the Stored DEFAULT Forms, as CREATE / MODIFY / CHANGE derive them: a residual keeps its expression
-	   * (REGU stream and Compact DEFAULT Tree) while src_val stays the DDL-time snapshot stored as the value */
+	   * (Compact DEFAULT Tree) while src_val stays the DDL-time snapshot stored as the value */
 	  error = do_build_default_expr (parser, d, &default_expr);
 	  if (error != NO_ERROR)
 	    {
@@ -7977,9 +7977,9 @@ get_attr_name (PT_NODE * attribute)
 
 /*
  * do_build_default_expr () - the Stored DEFAULT Forms of an attribute DEFAULT from its PT_DATA_DEFAULT node:
- *	the source text of an expression DEFAULT and, for a residual (STABLE or VOLATILE), the serialized REGU
- *	form (server evaluation, once per statement or once per row according to the volatility stamped on
- *	it) and the Compact DEFAULT Tree (local evaluation)
+ *	the source text of an expression DEFAULT and, for a residual (STABLE or VOLATILE), the Compact DEFAULT
+ *	Tree, which an INSERT compiles into its XASL or evaluates locally (and, in a DEFAULT_EXPR_REGU_STREAM
+ *	build, the serialized REGU form the server evaluates)
  *   return: Error code
  *   parser(in): Parser context
  *   data_default(in): PT_DATA_DEFAULT node of the attribute (may be NULL)
@@ -8009,6 +8009,7 @@ do_build_default_expr (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAU
 
   residual_expr = data_default->info.data_default.default_value;
 
+#if defined (DEFAULT_EXPR_REGU_STREAM)
   error = pt_to_default_expr_stream (parser, residual_expr, &stream, &stream_size);
   if (error != NO_ERROR)
     {
@@ -8016,6 +8017,7 @@ do_build_default_expr (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAU
     }
   dest->default_expr_regu_stream = stream;
   dest->default_expr_regu_stream_size = stream_size;
+#endif
 
   error = pt_compact_default_tree_to_stream (parser, residual_expr, &stream, &stream_size);
   if (error != NO_ERROR)
@@ -8046,8 +8048,10 @@ do_build_default_expr (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAU
 static void
 do_free_default_expr_streams (DB_DEFAULT_EXPR * dest)
 {
+#if defined (DEFAULT_EXPR_REGU_STREAM)
   free_and_init (dest->default_expr_regu_stream);
   dest->default_expr_regu_stream_size = 0;
+#endif
   free_and_init (dest->default_expr_tree_stream);
   dest->default_expr_tree_stream_size = 0;
 }
@@ -8202,8 +8206,8 @@ do_add_attribute (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * attri
   on_update_expr = attribute->info.attr_def.on_update;
   default_value = &stack_value;
 
-  /* a residual DEFAULT (STABLE or VOLATILE) keeps its expression, which the server evaluates once per INSERT
-   * statement or once per row */
+  /* a residual DEFAULT (STABLE or VOLATILE) keeps its expression, which an INSERT evaluates once per statement
+   * or once per row */
   error = do_build_default_expr (parser, attribute->info.attr_def.data_default, &default_expr);
   if (error != NO_ERROR)
     {

@@ -34,8 +34,9 @@
  * whether an expression is admissible in a DEFAULT.  The zero value is a distinct
  * UNSET sentinel (NOT volatile): an un-annotated overload reaching DEFAULT
  * processing is treated as not constant-foldable, never silently as Volatile.
- * The values are ordered (IMMUTABLE < STABLE < VOLATILE) and persisted in two
- * regu-flag bits (REGU_VARIABLE_DEFAULT_VOLATILITY_*), so they must not change.
+ * The values are ordered (IMMUTABLE < STABLE < VOLATILE).  A DEFAULT_EXPR_REGU_STREAM
+ * build persists them in two regu-flag bits (REGU_VARIABLE_DEFAULT_VOLATILITY_*),
+ * so they must not change.
  */
 typedef enum
 {

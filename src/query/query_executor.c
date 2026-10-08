@@ -578,7 +578,9 @@ struct qexec_insert_default
 {
   REGU_VARIABLE *expr;		/* the DEFAULT expression; NULL for a constant DEFAULT */
   bool is_volatile;		/* evaluated for every row instead of once per statement */
-  FUNC_PRED_UNPACK_INFO stored;	/* the stored REGU form expr comes from, when the INSERT has no slot for it */
+#if defined (DEFAULT_EXPR_REGU_STREAM)
+  FUNC_PRED_UNPACK_INFO stored;	/* the stored REGU form expr comes from */
+#endif
 };
 
 static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
@@ -586,7 +588,9 @@ static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PRO
 					     QEXEC_INSERT_DEFAULT * defaults);
 static void qexec_free_default_expr_caches (THREAD_ENTRY * thread_p, int num_default_expr,
 					    QEXEC_INSERT_DEFAULT ** defaults);
+#if !defined (DEFAULT_EXPR_REGU_STREAM)
 static const INSERT_DEFAULT_SLOT *qexec_find_default_slot (const INSERT_PROC_NODE * insert, int att_id);
+#endif
 static int qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -13091,6 +13095,7 @@ exit_on_error:
   return ER_FAILED;
 }
 
+#if defined (DEFAULT_EXPR_REGU_STREAM)
 /*
  * qexec_prepare_default_expr_stream () - deserialize a residual DEFAULT's stored
  *	REGU form once, returning the FUNC_PRED (and the XASL_UNPACK_INFO that owns
@@ -13114,7 +13119,9 @@ qexec_prepare_default_expr_stream (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr,
 				      attr->current_default_value.default_expr.default_expr_regu_stream_size,
 				      unpack_info);
 }
+#endif /* DEFAULT_EXPR_REGU_STREAM */
 
+#if !defined (DEFAULT_EXPR_REGU_STREAM)
 /*
  * qexec_find_default_slot () - the DEFAULT slot an INSERT compiled for an attribute
  *   return: the slot, or NULL if the attribute has none
@@ -13135,6 +13142,7 @@ qexec_find_default_slot (const INSERT_PROC_NODE * insert, int att_id)
     }
   return NULL;
 }
+#endif /* !DEFAULT_EXPR_REGU_STREAM */
 
 /*
  * qexec_default_expr_notnull_error () - report the NOT NULL violation of a column whose DEFAULT the row
@@ -13224,8 +13232,8 @@ qexec_eval_default_expr (THREAD_ENTRY * thread_p, REGU_VARIABLE * expr, XASL_STA
 /*
  * qexec_free_default_expr_caches () - release the per-statement residual DEFAULT array allocated in
  *	qexec_execute_insert.  A DEFAULT taken from a slot of the XASL is cleared with the XASL; a stored REGU
- *	form deserialized for the statement is released here.  The pointer is nulled.  Safe to call when none
- *	was allocated.
+ *	form deserialized for the statement (DEFAULT_EXPR_REGU_STREAM) is released here.  The pointer is
+ *	nulled.  Safe to call when none was allocated.
  *   thread_p(in): thread entry
  *   num_default_expr(in): array length
  *   defaults(in/out): the array
@@ -13233,11 +13241,10 @@ qexec_eval_default_expr (THREAD_ENTRY * thread_p, REGU_VARIABLE * expr, XASL_STA
 static void
 qexec_free_default_expr_caches (THREAD_ENTRY * thread_p, int num_default_expr, QEXEC_INSERT_DEFAULT ** defaults)
 {
-  int k;
-
   if (*defaults != NULL)
     {
-      for (k = 0; k < num_default_expr; k++)
+#if defined (DEFAULT_EXPR_REGU_STREAM)
+      for (int k = 0; k < num_default_expr; k++)
 	{
 	  if ((*defaults)[k].stored.func_pred != NULL)
 	    {
@@ -13254,6 +13261,7 @@ qexec_free_default_expr_caches (THREAD_ENTRY * thread_p, int num_default_expr, Q
 	      free_xasl_unpack_info (thread_p, (*defaults)[k].stored.unpack_info);
 	    }
 	}
+#endif
       db_private_free_and_init (thread_p, *defaults);
     }
 }
@@ -13556,8 +13564,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	{
 	  defaults[k].expr = NULL;
 	  defaults[k].is_volatile = false;
+#if defined (DEFAULT_EXPR_REGU_STREAM)
 	  defaults[k].stored.func_pred = NULL;
 	  defaults[k].stored.unpack_info = NULL;
+#endif
 	}
     }
 
@@ -13566,7 +13576,9 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     {
       OR_ATTRIBUTE *attr;
       DB_VALUE *new_val;
+#if !defined (DEFAULT_EXPR_REGU_STREAM)
       const INSERT_DEFAULT_SLOT *slot;
+#endif
       int error = NO_ERROR;
 
       attr = heap_locate_last_attrepr (insert->att_id[k], &attr_info);
@@ -13582,17 +13594,10 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
       db_make_null (new_val);
       insert->vals[k] = new_val;
 
-      /* a residual DEFAULT: the INSERT compiled it into a DEFAULT slot */
-      slot = qexec_find_default_slot (insert, insert->att_id[k]);
-      if (slot != NULL)
+#if defined (DEFAULT_EXPR_REGU_STREAM)
+      /* a residual DEFAULT: deserialize its stored REGU form once */
+      if (attr->current_default_value.default_expr.default_expr_regu_stream != NULL)
 	{
-	  defaults[k].expr = slot->expr;
-	  defaults[k].is_volatile = PT_VOLATILITY_IS_VOLATILE_RESIDUAL (slot->volatility);
-	}
-      else if (attr->current_default_value.default_expr.default_expr_regu_stream != NULL)
-	{
-	  /* an INSERT that did not compile the residual: deserialize its stored REGU form once */
-	  assert (false);
 	  error = qexec_prepare_default_expr_stream (thread_p, attr, &defaults[k].stored.func_pred,
 						     &defaults[k].stored.unpack_info);
 	  if (error != NO_ERROR)
@@ -13603,6 +13608,15 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  defaults[k].is_volatile =
 	    PT_VOLATILITY_IS_VOLATILE_RESIDUAL (REGU_VARIABLE_GET_DEFAULT_VOLATILITY (defaults[k].expr));
 	}
+#else
+      /* a residual DEFAULT: the INSERT compiled it into a DEFAULT slot */
+      slot = qexec_find_default_slot (insert, insert->att_id[k]);
+      if (slot != NULL)
+	{
+	  defaults[k].expr = slot->expr;
+	  defaults[k].is_volatile = PT_VOLATILITY_IS_VOLATILE_RESIDUAL (slot->volatility);
+	}
+#endif
 
       if (defaults[k].expr != NULL)
 	{

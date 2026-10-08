@@ -278,8 +278,10 @@ static int pt_init_pred_expr_context (PARSER_CONTEXT * parser, PT_NODE * predica
 				      PRED_EXPR_WITH_CONTEXT * pred_expr);
 static bool validate_regu_key_function_index (REGU_VARIABLE * regu_var);
 static XASL_NODE *pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
+#if !defined (DEFAULT_EXPR_REGU_STREAM)
 static int pt_to_insert_default_slots (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * default_expr_attrs,
 				       INSERT_PROC_NODE * insert);
+#endif
 static XASL_NODE *pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * non_null_attrs,
 					   PT_NODE * default_expr_attrs);
 static PT_NODE *pt_append_assignment_references (PARSER_CONTEXT * parser, PT_NODE * assignments, PT_NODE * from,
@@ -20267,10 +20269,12 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      insert->num_vals = num_vals + num_default_expr;
 	      insert->num_default_expr = num_default_expr;
 
+#if !defined (DEFAULT_EXPR_REGU_STREAM)
 	      if (error >= NO_ERROR)
 		{
 		  error = pt_to_insert_default_slots (parser, class_obj, default_expr_attrs, insert);
 		}
+#endif
 	    }
 	  else
 	    {
@@ -26908,6 +26912,7 @@ outofmem:
   return NULL;
 }
 
+#if defined (DEFAULT_EXPR_REGU_STREAM)
 /*
  * pt_to_default_expr_stream () - compiles a residual DEFAULT expression to a
  *	serialized REGU form (a FUNC_PRED stream) for Server Evaluation
@@ -27005,6 +27010,7 @@ end:
 
   return error;
 }
+#endif /* DEFAULT_EXPR_REGU_STREAM */
 
 /*
  * pt_check_default_expr_compile () - check at DDL time that the Compact DEFAULT Tree of a residual DEFAULT
@@ -27065,6 +27071,7 @@ pt_check_default_expr_compile (PARSER_CONTEXT * parser, const char *stream, int 
   return error;
 }
 
+#if !defined (DEFAULT_EXPR_REGU_STREAM)
 /*
  * pt_to_insert_default_slots () - compile the residual DEFAULTs of the attributes an INSERT leaves out into the
  *	DEFAULT slots of its XASL
@@ -27153,6 +27160,7 @@ pt_to_insert_default_slots (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_N
 
   return NO_ERROR;
 }
+#endif /* !DEFAULT_EXPR_REGU_STREAM */
 
 /*
  * validate_regu_key_function_index () - checks if a regu variable can be used
@@ -28451,10 +28459,12 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	  insert->num_vals = num_vals + num_default_expr;
 	  insert->num_default_expr = num_default_expr;
 
+#if !defined (DEFAULT_EXPR_REGU_STREAM)
 	  if (error >= 0)
 	    {
 	      error = pt_to_insert_default_slots (parser, class_obj, default_expr_attrs, insert);
 	    }
+#endif
 	}
       else
 	{

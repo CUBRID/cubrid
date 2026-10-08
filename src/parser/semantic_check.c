@@ -4320,7 +4320,7 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	    {
 	      /* An IMMUTABLE expression folds to a single literal; a residual
 	       * (STABLE or VOLATILE) survives folding (only its IMMUTABLE subtrees
-	       * fold) and is stored (text + Compact DEFAULT Tree + REGU stream) for
+	       * fold) and is stored (text + Compact DEFAULT Tree) for
 	       * once-per-statement (STABLE) or once-per-row (VOLATILE) evaluation. */
 	      expr_vol = vol;
 	      edl_text = pt_default_expr_normalized_text (parser, default_value);
