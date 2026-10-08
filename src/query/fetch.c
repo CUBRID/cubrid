@@ -4788,7 +4788,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       assert (DB_IS_NULL (arithptr->value));
       if (!DB_IS_NULL (arithptr->value))
 	{
-	  (void) domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, arithptr->plan_item), DB_TYPE_NULL);
+	  (void) domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, arithptr->plan_item),
+					  DB_TYPE_NULL);
 	  goto error;
 	}
       domain = no_value_domain;
