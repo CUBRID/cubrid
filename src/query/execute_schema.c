@@ -8027,6 +8027,14 @@ do_build_default_expr (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAU
   dest->default_expr_tree_stream = stream;
   dest->default_expr_tree_stream_size = stream_size;
 
+  /* an INSERT compiles the stored tree as it is; refuse here a DEFAULT it could not compile */
+  error = pt_check_default_expr_compile (parser, stream, stream_size);
+  if (error != NO_ERROR)
+    {
+      do_free_default_expr_streams (dest);
+      return error;
+    }
+
   return NO_ERROR;
 }
 

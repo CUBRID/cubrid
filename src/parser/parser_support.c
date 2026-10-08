@@ -10823,6 +10823,13 @@ pt_cdt_get_node (PARSER_CONTEXT * parser, OR_BUF * buf)
       return NULL;
     }
 
+  /* a code outside its enumeration is a damaged stream, or one written by a build whose enumeration differs */
+  if ((tag == PT_CDT_TAG_OP && (code < PT_AND || code >= PT_LAST_OPCODE))
+      || (tag == PT_CDT_TAG_FUNC && (code < PT_MIN || code > PT_PERCENTILE_DISC)))
+    {
+      return NULL;
+    }
+
   arity = or_get_int (buf, &rc);
   if (rc != NO_ERROR || arity < 0 || (tag == PT_CDT_TAG_OP && arity > 3))
     {
@@ -11110,6 +11117,65 @@ pt_cdt_registry_free (PARSER_CONTEXT * parser)
 	}
     }
   parser->cdt_registry = NULL;
+}
+
+/*
+ * pt_find_client_value_op () - parser_walk_tree callback: whether a node compiles to a value of the compiling
+ *	client (see pt_class_defaults_read_client)
+ */
+static PT_NODE *
+pt_find_client_value_op (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (node->node_type == PT_EXPR && (node->info.expr.op == PT_USER || node->info.expr.op == PT_VERSION))
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * pt_class_defaults_read_client () - whether a residual DEFAULT of a class compiles to a value of the compiling
+ *	client: XASL generation turns USER () into the client's user and host name and VERSION () into the client's
+ *	build. An INSERT compiles the DEFAULTs it fills into its XASL, so its XASL cache key must carry those values.
+ *   return: true if so
+ *   parser(in): parser context owning the CDT registry
+ *   class_obj(in): the class an INSERT or MERGE writes into
+ */
+bool
+pt_class_defaults_read_client (PARSER_CONTEXT * parser, DB_OBJECT * class_obj)
+{
+  SM_CLASS *smclass = NULL;
+  SM_ATTRIBUTE *att;
+  PT_NODE *tree;
+  bool found = false;
+
+  if (class_obj == NULL || au_fetch_class_force (class_obj, &smclass, AU_FETCH_READ) != NO_ERROR)
+    {
+      /* the statement has resolved this class already; let the XASL generation report the failure */
+      return false;
+    }
+
+  for (att = smclass->attributes; att != NULL && !found; att = (SM_ATTRIBUTE *) att->header.next)
+    {
+      if (!DB_IS_RESIDUAL_DEFAULT_EXPR (&att->default_value.default_expr))
+	{
+	  continue;
+	}
+
+      tree = pt_cdt_registry_tree (parser, att, NULL);
+      if (tree == NULL)
+	{
+	  /* name resolution decoded this tree already; a failure here is reported when the XASL is generated */
+	  found = true;
+	  break;
+	}
+      (void) parser_walk_tree (parser, tree, pt_find_client_value_op, &found, NULL, NULL);
+    }
+
+  return found;
 }
 
 /*
