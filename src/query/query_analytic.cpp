@@ -873,7 +873,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		     * (qdata_evaluate_analytic_func) - the value list the finalization writes is laid out by that domain,
 		     * and the typed addition takes no string. A string the domain does not take is -181. */
 		    TP_DOMAIN *function_domain = tmp_domain_ptr != NULL ? tmp_domain_ptr
-		      : qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
+						 : qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
 		    if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&dbval)) && function_domain != NULL
 			&& TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (function_domain)))
 		      {
