@@ -1186,6 +1186,12 @@ jobs:
           fi
           echo "ctp branch : $CTP_BRANCH"
 
+          # A fetch of under 100 objects is written loose, and git then bumps the mtime
+          # of each pack that already held one of them. On the overlays below that copies
+          # the whole pack up into /rw: 3.3GB of private-ex per pod, 9/28-9/30. Kept as a
+          # pack, nothing in the lowerdir is touched. Global, so the entrypoint's fetch too.
+          git config --global fetch.unpackLimit 1
+
           # The entrypoint below clones CTP whole when .git is absent, and that clone
           # was 124s of WAN. Mounted from the node copy it finds .git and fetches the
           # tip instead -- CUBRIDQA-1497. The shards mount the same copy, so nothing
@@ -1806,6 +1812,8 @@ jobs:
             echo "::error::no testcase seed: $TC_SEED"
             echo "  gha-node-seed keeps the node copy; a swap leaves it absent for a moment."
             exit 1; }
+          # As in plan: a fetch written loose would copy the node copy's pack up into /rw.
+          git config --global fetch.unpackLimit 1
           mkdir -p /rw/upper /rw/work "$TC_DIR"
           mount -t overlay overlay -o "lowerdir=$TC_SEED,upperdir=/rw/upper,workdir=/rw/work" "$TC_DIR"
           echo "testcases mounted: $TC_SEED"
