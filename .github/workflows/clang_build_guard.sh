@@ -16,12 +16,25 @@
 #   limitations under the License.
 # 
 #
-# Tripwire for the changes that make a Clang build meaningful. Each of these can be
-# undone by an ordinary-looking edit, and none of them fails any existing CI job,
-# because no CI job builds with Clang. Keep this cheap so it can run on every PR.
+# Why this file exists
+# --------------------
+# No CI job builds CUBRID with Clang. Every change in CBRD-26726 that makes such a
+# build possible, or that fixes what it reported, can therefore be undone by an
+# ordinary-looking edit without a single job turning red. One of those changes is the
+# -w in build.sh: putting it back silences every warning again, including the
+# -Werror=format-security that CMakeLists.txt sets, and nothing would say so.
 #
-# Pair it with a real Clang build job when CI budget allows; this only catches the
-# known ways the fixes get reverted, not new ones.
+# This script is a cheap text tripwire for exactly those changes, so it can run on
+# every PR. Each rule below is labelled R1, R2 ... and the comment above it says which
+# change it protects and what breaks if that change is reverted. Every rule was checked
+# by injecting the regression it is meant to catch and confirming that it fails.
+#
+# What it does NOT do: it cannot recognise the defect class in general. The same macro
+# that is a bug on a signed operand is correct on an unsigned one, and text alone cannot
+# tell the operand types apart - a rule written that way flagged 15 of 17 correct uses.
+# Catching new occurrences needs a build with -fsanitize=signed-integer-overflow, which
+# is worth adding as a nightly job. This script only catches the known ways these
+# particular fixes get reverted.
 
 set -u
 fail=0

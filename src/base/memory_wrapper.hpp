@@ -66,14 +66,14 @@ inline void *operator new[] (size_t size, const char *file, const int line) noex
  * either delete (void *ptr) / delete [] (void *ptr) or delete (void *ptr, size_t sz) /
  * delete [] (void *ptr, size_t sz) can be called.
  *
- * These four are *replacement* functions: [basic.stc.dynamic]/3 forbids declaring
- * them inline, and an inline definition is only picked up by the translation units
- * that happen to include this header, so the replacement silently disappears
- * whenever the compiler decides not to emit a weak definition (this is exactly what
- * happened in a release build, where operator delete stayed unresolved). They are
- * therefore defined once, in memory_wrapper.cpp, and are not redeclared here: the
- * compiler already declares them implicitly and GCC rejects a redeclaration under
- * -Wredundant-decls. */
+ * The four operator delete overloads named above used to be defined here, inline.
+ * They are *replacement* functions, and [basic.stc.dynamic]/3 forbids declaring one
+ * inline: an inline definition is only picked up by the translation units that happen
+ * to include this header, so the replacement disappears whenever the compiler decides
+ * not to emit a weak definition. That is what a release build did, leaving the
+ * replacement out of the server entirely. They now live in memory_wrapper.cpp, which
+ * is linked into the server, and they are deliberately not declared here: the compiler
+ * declares them implicitly, and GCC rejects a redeclaration under -Wredundant-decls. */
 
 #define new new(__FILE__, __LINE__)
 #endif // SERVER_MODE
