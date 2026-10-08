@@ -495,6 +495,15 @@ struct heap_capacity_info
   int avg_overhead;		/* average overhead per page */
 };
 
+/* What a previous-version walk keeps across its hops. */
+typedef struct heap_prev_version_walk HEAP_PREV_VERSION_WALK;
+struct heap_prev_version_walk
+{
+  LOG_PAGE *held_page;		/* the page the last copying hop left behind */
+  LOG_LSA held_below;		/* every record starting below it was complete in held_page */
+  int n_fetches_skipped;	/* reads served without a page copy, added to the statistics once */
+};
+
 static int heap_Maxslotted_reclength;
 static int heap_Slotted_overhead = 4;	/* sizeof (SPAGE_SLOT) */
 
@@ -906,7 +915,7 @@ static int heap_scancache_add_partition_node (THREAD_ENTRY * thread_p, HEAP_SCAN
 					      OID * partition_oid);
 #endif /* ENABLE_UNUSED_FUNCTION */
 static SCAN_CODE heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa,
-						   LOG_PAGE * log_page_p, RECDES * recdes);
+						   HEAP_PREV_VERSION_WALK * walk, RECDES * recdes);
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
 						    int has_chn);
@@ -8796,7 +8805,7 @@ heap_does_exist (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid)
   PGBUF_INIT_WATCHER (&pg_watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
 
   old_check_interrupt = logtb_set_check_interrupt (thread_p, false);
-  old_wait_msec = xlogtb_reset_wait_msecs (thread_p, LK_INFINITE_WAIT);
+  old_wait_msec = logtb_set_thread_wait_msecs (thread_p, LK_INFINITE_WAIT);
 
   if (HEAP_ISVALID_OID (thread_p, oid) != DISK_VALID)
     {
@@ -8903,7 +8912,7 @@ exit_on_end:
     }
 
   (void) logtb_set_check_interrupt (thread_p, old_check_interrupt);
-  (void) xlogtb_reset_wait_msecs (thread_p, old_wait_msec);
+  (void) logtb_set_thread_wait_msecs (thread_p, old_wait_msec);
 
   return doesexist;
 }
@@ -25678,18 +25687,21 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *   return: SCAN_CODE, as log_get_undo_record ()
  *   thread_p (in): Thread entry.
  *   version_lsa (in): Log address of the version to read.
- *   log_page_p (in): Scratch log page, used only when the version is read from the log.
+ *   walk (in/out): State kept across the hops of one walk.
  *   recdes (out): Record descriptor.
  *
- * NOTE: A version already copied into the log page buffer is read from there, or from disk, as usual.
+ * NOTE: A version already copied into the log page buffer is read from the page the walk holds when that
+ *       page still has it, else in place out of the log page buffer, and only when neither works is its
+ *       page copied, from the buffer or disk.
  *       One not copied yet is read from its staged prior node in the in-flight window; only when the
  *       window lacks it too is a drain forced. Decided per hop, since any hop may still be uncopied.
  */
 static SCAN_CODE
-heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa, LOG_PAGE * log_page_p,
-				  RECDES * recdes)
+heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa,
+				  HEAP_PREV_VERSION_WALK * walk, RECDES * recdes)
 {
   LOG_LSA copied_lsa = log_Gl.append.get_copied_lsa ();
+  SCAN_CODE scan;
 
   /* Inclusive, as in logpb_fetch_page (): copied_lsa is where the next record goes, so a version at
    * exactly that address is the head of what is still staged - the case this window exists for. */
@@ -25729,17 +25741,36 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
       assert (LSA_LT (version_lsa, &copied_lsa));
     }
 
-  /* Fetch the page where version_lsa is located */
-  log_page_p->hdr.logical_pageid = NULL_PAGEID;
-  log_page_p->hdr.offset = NULL_OFFSET;
-  if (logpb_fetch_page (thread_p, version_lsa, LOG_CS_SAFE_READER, log_page_p) != NO_ERROR)
+  /* held_below first: the page is uninitialized stack bytes until a hop copies into it */
+  if (LSA_LT (version_lsa, &walk->held_below) && walk->held_page->hdr.logical_pageid == version_lsa->pageid)
+    {
+      scan = log_get_undo_record (thread_p, walk->held_page, *version_lsa, recdes);
+      if (scan == S_SUCCESS)
+	{
+	  walk->n_fetches_skipped++;
+	}
+      return scan;
+    }
+
+  if (log_get_undo_record_from_buffer (thread_p, version_lsa, &copied_lsa, recdes, &scan))
+    {
+      if (scan == S_SUCCESS)
+	{
+	  walk->n_fetches_skipped++;
+	}
+      return scan;
+    }
+
+  /* The page is copied after copied_lsa is read, so every record below that value is complete in it. */
+  walk->held_below = copied_lsa;
+  if (logpb_fetch_page (thread_p, version_lsa, LOG_CS_SAFE_READER, walk->held_page) != NO_ERROR)
     {
       assert (false);
       logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "heap_get_undo_record_for_version");
       return S_ERROR;
     }
 
-  return log_get_undo_record (thread_p, log_page_p, *version_lsa, recdes);
+  return log_get_undo_record (thread_p, walk->held_page, *version_lsa, recdes);
 }
 
 /*
@@ -25762,7 +25793,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
   LOG_LSA process_lsa;
   SCAN_CODE scan_code = S_SUCCESS;
   char log_pgbuf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
-  LOG_PAGE *log_page_p = NULL;
+  HEAP_PREV_VERSION_WALK walk;
   MVCC_REC_HEADER mvcc_header;
   RECDES local_recdes;
   MVCC_SATISFIES_SNAPSHOT_RESULT snapshot_res;
@@ -25781,13 +25812,15 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
       scan_cache->assign_recdes_to_area (*recdes);
     }
 
-  log_page_p = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  walk.held_page = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
+  walk.held_below = NULL_LSA;	/* nothing held yet */
+  walk.n_fetches_skipped = 0;
 
   /* Check visibility of old versions from log following prev_version_lsa links. Where each version is
    * read from is decided per hop, in heap_get_undo_record_for_version (). */
   for (LSA_COPY (&process_lsa, previous_version_lsa); !LSA_ISNULL (&process_lsa);)
     {
-      scan_code = heap_get_undo_record_for_version (thread_p, &process_lsa, log_page_p, recdes);
+      scan_code = heap_get_undo_record_for_version (thread_p, &process_lsa, &walk, recdes);
       if (scan_code != S_SUCCESS)
 	{
 	  if (scan_code == S_DOESNT_FIT && scan_cache->is_recdes_assigned_to_area (*recdes))
@@ -25800,7 +25833,7 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	    }
 	  else
 	    {
-	      return scan_code;
+	      goto end;
 	    }
 	}
 
@@ -25808,36 +25841,44 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	{
 	  assert (false);
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return S_ERROR;
+	  scan_code = S_ERROR;
+	  goto end;
 	}
       snapshot_res = scan_cache->mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, scan_cache->mvcc_snapshot);
       if (snapshot_res == SNAPSHOT_SATISFIED)
 	{
 	  /* Visible. Get record if CHN was changed. */
-	  if (MVCC_IS_CHN_UPTODATE (&mvcc_header, has_chn))
-	    {
-	      return S_SUCCESS_CHN_UPTODATE;
-	    }
-	  return S_SUCCESS;
+	  scan_code = MVCC_IS_CHN_UPTODATE (&mvcc_header, has_chn) ? S_SUCCESS_CHN_UPTODATE : S_SUCCESS;
+	  goto end;
 	}
       else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)
 	{
 	  assert (false);
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-	  return S_ERROR;
+	  scan_code = S_ERROR;
+	  goto end;
 	}
       else
 	{
 	  /* TOO_NEW_FOR_SNAPSHOT */
 	  assert (snapshot_res == TOO_NEW_FOR_SNAPSHOT);
 	  /* continue with previous version */
+	  assert (LSA_LT (&MVCC_GET_PREV_VERSION_LSA (&mvcc_header), &process_lsa));
 	  LSA_COPY (&process_lsa, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header));
 	  continue;
 	}
     }
 
   /* No visible version found. */
-  return S_DOESNT_EXIST;
+  scan_code = S_DOESNT_EXIST;
+
+end:
+  /* once per walk: every hop adding to a shared counter would contend with the other readers */
+  if (walk.n_fetches_skipped > 0)
+    {
+      perfmon_add_stat (thread_p, PSTAT_LOG_NUM_FETCHES_SKIPPED, walk.n_fetches_skipped);
+    }
+  return scan_code;
 }
 
 /*
