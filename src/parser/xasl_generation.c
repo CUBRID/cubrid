@@ -30065,6 +30065,10 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
 	{
 	  return 0;
 	}
+      if (QO_ENV_PT_TREE (env)->info.query.q.select.connect_by != NULL)
+	{
+	  return 0;
+	}
       break;
 
     case QO_PLANTYPE_SORT:
