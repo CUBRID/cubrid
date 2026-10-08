@@ -199,7 +199,6 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
       return;
     }
 
-  //
   if (salt == NULL)
     {
       encrypt_password_sha2_512 (pass, sha512);
