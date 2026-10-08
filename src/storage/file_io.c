@@ -207,7 +207,8 @@
   (((off_t)(pagesize)) * ((off_t)(npages)))
 
 #define FILEIO_BACKUP_NO_ZIP_HEADER_VERSION        1
-#define FILEIO_BACKUP_CURRENT_HEADER_VERSION       2
+#define FILEIO_BACKUP_LOG_END_HEADER_VERSION       3	/* start_log_end_lsa is present (CBRD-27298) */
+#define FILEIO_BACKUP_CURRENT_HEADER_VERSION       3
 #define FILEIO_CHECK_FOR_INTERRUPT_INTERVAL       100
 
 #define FILEIO_PAGE_SIZE_FULL_LEVEL (IO_PAGESIZE * FILEIO_FULL_LEVEL_EXP)
@@ -6889,6 +6890,7 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
   session_p->bkup.bkuphdr->level = level;
   session_p->bkup.bkuphdr->bkup_iosize = session_p->bkup.iosize;
   session_p->bkup.bkuphdr->bk_hdr_version = FILEIO_BACKUP_CURRENT_HEADER_VERSION;
+  LSA_SET_NULL (&session_p->bkup.bkuphdr->start_log_end_lsa);
   session_p->bkup.bkuphdr->start_time = 0;
   session_p->bkup.bkuphdr->end_time = -1;
   memset (session_p->bkup.bkuphdr->db_prec_bkvolname, 0, sizeof (session_p->bkup.bkuphdr->db_prec_bkvolname));
@@ -9320,6 +9322,12 @@ fileio_read_restore_header (FILEIO_BACKUP_SESSION * session_p)
       backup_header_p->zip_level = FILEIO_ZIP_NONE_LEVEL;
     }
 
+  if (backup_header_p->bk_hdr_version < FILEIO_BACKUP_LOG_END_HEADER_VERSION)
+    {
+      /* the field did not exist; the bytes there are whatever followed the old struct in the header page */
+      LSA_SET_NULL (&backup_header_p->start_log_end_lsa);
+    }
+
   if (to_read_nbytes > 0)
     {
       return ER_FAILED;
@@ -9832,7 +9840,7 @@ fileio_list_restore (THREAD_ENTRY * thread_p, const char *db_full_name_p, char *
   fprintf (stdout, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_IO, MSGCAT_FILEIO_BKUP_HDR_LEVEL),
 	   backup_header_p->level, fileio_get_backup_level_string (backup_header_p->level),
 	   backup_header_p->start_lsa.pageid, backup_header_p->start_lsa.offset, backup_header_p->chkpt_lsa.pageid,
-	   backup_header_p->chkpt_lsa.offset);
+	   backup_header_p->chkpt_lsa.offset, LSA_AS_ARGS (&backup_header_p->start_log_end_lsa));
 
   tmp_time = (time_t) backup_header_p->start_time;
   (void) ctime_r (&tmp_time, time_val);

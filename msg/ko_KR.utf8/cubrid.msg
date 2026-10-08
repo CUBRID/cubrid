@@ -2201,7 +2201,8 @@ $set 15 MSGCAT_SET_IO
    Pagesize: %3$d\n
 7 Backup Level: %1$d (%2$s)\n\
    Start_lsa: %3$lld|%4$d\n\
-   Last_lsa: %5$lld|%6$d\n
+   Last_lsa: %5$lld|%6$d\n\
+   Start_log_end_lsa: %7$lld|%8$d\n
 8 Backup Time: %1$s\
    Backup Unit Num: %2$d\n
 9 Database Volume Name: %1$s\n\
