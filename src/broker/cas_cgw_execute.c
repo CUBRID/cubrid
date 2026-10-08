@@ -1172,7 +1172,16 @@ ux_cgw_schema_info (int schema_type, char *table_name, char *attr_name, char fla
 
   if (cgw_schema_info_attribute (cgw_handle->hdbc, table_name, &attrs, &num_attrs) < 0)
     {
-      err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+      /* the remote's own error when one of its calls failed (an unknown name, a lost
+       * connection), so the client can report it without asking again */
+      if (db_error_code () != 0)
+	{
+	  err_code = ERROR_INFO_SET (db_error_code (), DBMS_ERROR_INDICATOR);
+	}
+      else
+	{
+	  err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+	}
       goto schema_info_error;
     }
 
