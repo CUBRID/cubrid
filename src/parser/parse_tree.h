@@ -2195,6 +2195,7 @@ struct pt_delete_info
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
   BIND_WATCH_STATE *bind_watch;	/* bind-value watch state (see pt_query_info.bind_watch) */
+  const char *bind_variant_key;	/* plan variant key (see pt_query_info.bind_variant_key) */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
@@ -3056,6 +3057,7 @@ struct pt_update_info
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */
   BIND_WATCH_STATE *bind_watch;	/* bind-value watch state (see pt_query_info.bind_watch) */
+  const char *bind_variant_key;	/* plan variant key (see pt_query_info.bind_variant_key) */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */

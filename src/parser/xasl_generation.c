@@ -22387,6 +22387,11 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
        * the actual bind values */
       xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
     }
+  if (xasl != NULL && histogram_bind_watch_candidate (parser, statement))
+    {
+      /* target selection for bind-value plan variants, as for SELECT in pt_plan_query () */
+      xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
+    }
 
   return xasl;
 
@@ -23325,6 +23330,11 @@ cleanup:
        * unbound host-variable predicate markers, so the first execution replans once under
        * the actual bind values */
       xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
+    }
+  if (xasl != NULL && histogram_bind_watch_candidate (parser, statement))
+    {
+      /* target selection for bind-value plan variants, as for SELECT in pt_plan_query () */
+      xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
     }
   return xasl;
 }

@@ -310,10 +310,44 @@ db_bind_watch_verdict (PARSER_CONTEXT * parser, PT_NODE * statement)
 static bool
 db_bind_variant_mode (PT_NODE * statement)
 {
-  return (statement != NULL && PT_IS_QUERY (statement) && statement->flag.bind_watch_candidate
-	  && prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_VARIANTS) > 0
-	  && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->flag.cannot_prepare == 0
-	  && !db_is_bind_sensitive (statement));
+  if (statement == NULL || !statement->flag.bind_watch_candidate || statement->flag.cannot_prepare)
+    {
+      return false;
+    }
+  if (!PT_IS_QUERY (statement))
+    {
+      /* UPDATE / DELETE only on the server-side path, whose plan is one cache entry named by the
+       * statement text. The client-side path (triggers, views) prepares a fresh internal SELECT
+       * each time; a variant compile there would replace the query's base entry. */
+      if (!((statement->node_type == PT_UPDATE && statement->info.update.server_update)
+	    || (statement->node_type == PT_DELETE && statement->info.delete_.server_delete)))
+	{
+	  return false;
+	}
+    }
+  return (prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_VARIANTS) > 0
+	  && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && !db_is_bind_sensitive (statement));
+}
+
+/*
+ * db_stmt_bind_variant_key_ptr () - where the statement keeps the key of its current plan variant
+ */
+static const char **
+db_stmt_bind_variant_key_ptr (PT_NODE * statement)
+{
+  if (PT_IS_QUERY (statement))
+    {
+      return &statement->info.query.bind_variant_key;
+    }
+  if (statement->node_type == PT_UPDATE)
+    {
+      return &statement->info.update.bind_variant_key;
+    }
+  if (statement->node_type == PT_DELETE)
+    {
+      return &statement->info.delete_.bind_variant_key;
+    }
+  return NULL;
 }
 
 /*
@@ -365,7 +399,7 @@ db_bind_variant_switch (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH
     {
       return NO_ERROR;
     }
-  statement->info.query.bind_variant_key = (variant >= 0) ? db_bind_variant_key (parser, ws, variant) : NULL;
+  *db_stmt_bind_variant_key_ptr (statement) = (variant >= 0) ? db_bind_variant_key (parser, ws, variant) : NULL;
 
   if (!compile && variant >= 0 && variant < BIND_VARIANT_MAX_COMPILES && ws->id_known[variant])
     {
@@ -447,7 +481,7 @@ db_bind_variant_rebase (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH
     {
       ws->id_known[i] = false;
     }
-  statement->info.query.bind_variant_key = NULL;
+  *db_stmt_bind_variant_key_ptr (statement) = NULL;
 
   err = do_replan_statement_internal (parser, statement, false);
   if (err != NO_ERROR)
