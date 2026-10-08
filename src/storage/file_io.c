@@ -8126,6 +8126,28 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sess
 
       held_pageid = reorder_queue_p->next_read_pageid++;
 
+      /* Check for a user interrupt (Ctrl-C) here, under mtx. Every pageid is claimed exactly once, so the
+       * cadence is the same set of pageids as before; doing it at claim time also keeps the consume of the
+       * shared transaction's interrupt flag serialized, which it was until the read moved out of the lock. */
+      if ((held_pageid % FILEIO_CHECK_FOR_INTERRUPT_INTERVAL) == 0
+	  && pgbuf_is_log_check_for_interrupts (thread_p) == true)
+	{
+#if defined(CUBRID_DEBUG)
+	  fprintf (stdout, "io_backup_volume_read interrupt\n");
+#endif /* CUBRID_DEBUG */
+	  /* no node held yet, so nothing to reclaim */
+	  thread_info_p->abort = true;
+	  if (thread_info_p->errid == NO_ERROR)
+	    {
+	      assert (er_errid () != NO_ERROR);
+	      thread_info_p->errid = er_errid ();
+	    }
+	  pthread_cond_broadcast (&thread_info_p->wcv);
+	  pthread_cond_broadcast (&thread_info_p->rcv);
+	  pthread_mutex_unlock (&thread_info_p->mtx);
+	  goto eof;
+	}
+
       held_node = fileio_reorder_queue_pool_get (thread_info_p, backup_header_p);
       if (held_node == NULL)
 	{
@@ -8144,25 +8166,18 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sess
       pthread_mutex_unlock (&thread_info_p->mtx);
 
       /* --- outside mtx: read, filter and compress; all readers run here concurrently.
-       * No abort early-exit: held_node stays single-owned until publish or self-free. --- */
+       * No abort early-exit: held_node stays single-owned until publish or self-free. A peer that aborts
+       * while this thread is here is therefore seen only at the top of the next iteration, so at most one
+       * extra page is read and compressed per reader after an abort. That is deliberate and bounded. --- */
       held_node->pageid = held_pageid;
       held_node->tombstone = false;
       held_node->nread = fileio_read_backup_to (thread_p, session_p, held_pageid, held_node->area);
       if (held_node->nread <= 0)
 	{
-	  /* -1 read error, 0 early-EOF (sparse mid-volume): both fatal. Preexisting divergence from the
-	   * serial path in fileio_backup_volume (), which treats nread == 0 as a benign end-of-volume:
-	   * a volume that shrinks after the fstat () giving from_npages fails with -t >= 2, not -t 1. */
-	  goto fail_publish_abort;
-	}
-
-      /* Have to allow other threads to run and check for interrupts from the user (i.e. Ctrl-C ) */
-      if ((held_pageid % FILEIO_CHECK_FOR_INTERRUPT_INTERVAL) == 0
-	  && pgbuf_is_log_check_for_interrupts (thread_p) == true)
-	{
-#if defined(CUBRID_DEBUG)
-	  fprintf (stdout, "io_backup_volume_read interrupt\n");
-#endif /* CUBRID_DEBUG */
+	  /* -1 is a read error. 0 means the page lies wholly past EOF even though page_id < from_npages,
+	   * i.e. the volume is shorter than the size its own header reports. Both are fatal here, as they
+	   * were before this change. The serial path in fileio_backup_volume () still treats 0 as a benign
+	   * end-of-volume, so the two disagree; that predates this change. */
 	  goto fail_publish_abort;
 	}
 
