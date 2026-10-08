@@ -1221,6 +1221,12 @@ parser_create_parser (void)
   parser->external_into_label = NULL;
   parser->external_into_label_cnt = 0;
 
+  parser->static_sql_host_vars = NULL;
+  parser->static_sql_host_var_cnt = 0;
+  parser->static_sql_host_var_capacity = 0;
+  parser->static_sql_into_start = -1;
+  parser->static_sql_into_end = -1;
+
   return parser;
 }
 

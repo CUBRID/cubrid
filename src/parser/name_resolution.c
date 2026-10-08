@@ -403,6 +403,8 @@ static int pt_dblink_table_get_column_defs (PARSER_CONTEXT * parser, PT_NODE * d
 					    S_REMOTE_TBL_COLS * rmt_tbl_cols);
 
 static PT_NODE *pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node);
+static int pt_add_static_sql_host_var (PARSER_CONTEXT * parser, PT_NODE * name_node, const char *label);
+static bool pt_is_name_in_static_sql_limit (PT_NODE * node);
 
 /*
  * pt_undef_names_pre () - Set error if name matching spec is found. Used in
@@ -3441,6 +3443,16 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  {
 	    /* reset spec_id to rebind the name/type */
 	    node->info.name.spec_id = 0;
+	  }
+
+	if (parser->flag.is_parsing_static_sql == 1 && pt_is_name_in_static_sql_limit (node))
+	  {
+	    /* a name in LIMIT clause is always a PL/CSQL variable: a column can not be there */
+	    node = pt_parameterize_for_static_sql (parser, node);
+
+	    /* don't visit leaves */
+	    *continue_walk = PT_LIST_WALK;
+	    break;
 	  }
 
 	temp = pt_bind_name_or_path_in_scope (parser, bind_arg, node);
@@ -11859,6 +11871,79 @@ pt_print_pl_host_expr (PARSER_CONTEXT * parser, PT_NODE * node)
   return NULL;
 }
 
+/*
+ * pt_add_static_sql_host_var () - record the range of a PL/CSQL variable in the original buffer of a static SQL
+ *   return: error code
+ *   parser(in):
+ *   name_node(in): PT_NAME or PT_DOT_ (rec.field) to be converted to a host variable
+ *   label(in): the PL/CSQL host expression
+ *
+ * Note: the range is replaced with '?' to make the text executed at runtime (see pt_make_static_sql_text ())
+ */
+static int
+pt_add_static_sql_host_var (PARSER_CONTEXT * parser, PT_NODE * name_node, const char *label)
+{
+  PT_NODE *first = name_node;
+  PT_STATIC_SQL_HOST_VAR *host_var;
+
+  while (first != NULL && first->node_type == PT_DOT_)
+    {
+      first = first->info.dot.arg1;
+    }
+
+  if (first == NULL || first->buffer_start_pos < 0 || name_node->buffer_pos <= first->buffer_start_pos)
+    {
+      PT_INTERNAL_ERROR (parser, "the position of a PL/CSQL variable in the static SQL is unknown");
+      return ER_FAILED;
+    }
+
+  if (parser->static_sql_host_var_cnt == parser->static_sql_host_var_capacity)
+    {
+      int capacity = (parser->static_sql_host_var_capacity == 0) ? 8 : parser->static_sql_host_var_capacity * 2;
+      PT_STATIC_SQL_HOST_VAR *host_vars =
+	(PT_STATIC_SQL_HOST_VAR *) parser_alloc (parser, capacity * sizeof (PT_STATIC_SQL_HOST_VAR));
+
+      if (host_vars == NULL)
+	{
+	  PT_ERRORm (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return ER_FAILED;
+	}
+
+      if (parser->static_sql_host_var_cnt > 0)
+	{
+	  memcpy (host_vars, parser->static_sql_host_vars,
+		  parser->static_sql_host_var_cnt * sizeof (PT_STATIC_SQL_HOST_VAR));
+	}
+
+      /* the old array is freed together with the parser */
+      parser->static_sql_host_vars = host_vars;
+      parser->static_sql_host_var_capacity = capacity;
+    }
+
+  host_var = &parser->static_sql_host_vars[parser->static_sql_host_var_cnt++];
+  host_var->start = first->buffer_start_pos;
+  host_var->end = name_node->buffer_pos;
+  host_var->label = label;
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_is_name_in_static_sql_limit () - check if the name is in LIMIT clause of a static SQL
+ *   return:
+ *   node(in):
+ */
+static bool
+pt_is_name_in_static_sql_limit (PT_NODE * node)
+{
+  if (node == NULL || node->node_type != PT_NAME || node->etc == NULL)
+    {
+      return false;
+    }
+
+  return intl_identifier_casecmp ((char *) node->etc, PT_NAME_IN_STATIC_SQL_LIMIT) == 0;
+}
+
 static PT_NODE *
 pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
 {
@@ -11875,6 +11960,11 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
       PT_ERRORmf (parser, name_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_INVALID_HOST_EXPR, err);
       return NULL;
     }
+  if (pt_add_static_sql_host_var (parser, name_node, host_expr_str) != NO_ERROR)
+    {
+      return NULL;
+    }
+
   hostvar->info.host_var.label = host_expr_str;
   hostvar->info.host_var.var_type = PT_HOST_IN;
   hostvar->info.host_var.index = parser->host_var_count;

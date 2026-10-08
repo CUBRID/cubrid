@@ -13391,11 +13391,23 @@ opt_select_param_list
 		{{
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			if (this_parser->flag.is_parsing_static_sql)
+			  {
+			    /* the INTO clause is removed from the text executed at runtime */
+			    this_parser->static_sql_into_start = @$.first_buffer_pos;
+			    this_parser->static_sql_into_end = @$.buffer_pos;
+			  }
 		}}
 	| TO to_param_list
 		{{
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			if (this_parser->flag.is_parsing_static_sql)
+			  {
+			    /* the INTO clause is removed from the text executed at runtime */
+			    this_parser->static_sql_into_start = @$.first_buffer_pos;
+			    this_parser->static_sql_into_end = @$.buffer_pos;
+			  }
 		}}
 	;
 
@@ -14722,21 +14734,16 @@ limit_factor
                 {{
                         if (this_parser->flag.is_parsing_static_sql) {
 
-                            // interpret the identifier only as a PL/CSQL host variable
-                            PT_NODE *node = parser_new_node (this_parser, PT_HOST_VAR);
+                            // the identifier is interpreted only as a PL/CSQL variable.
+                            // it is converted to a host variable in name binding (see pt_bind_names ())
+                            PT_NODE *node = $1;
                             if (node)
                               {
-                                node->info.host_var.var_type = PT_HOST_IN;
-                                node->info.host_var.str = pt_makename("?");
-                                node->info.host_var.label = $1->info.name.original;
-                                node->info.host_var.index = parser_input_host_index++;
-                                node->type_enum = PT_TYPE_NONE;
-
-                                PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
+                                node->etc = (void *) pt_append_string (this_parser, NULL, PT_NAME_IN_STATIC_SQL_LIMIT);
                               }
 
-                            parser_free_node(this_parser, $1);
                             $$ = node;
+                            PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
                         } else {
 			    PT_ERRORm(this_parser, $1,

@@ -1637,6 +1637,7 @@ typedef struct parser_varchar PARSER_VARCHAR;
 typedef struct parser_context PARSER_CONTEXT;
 
 typedef struct parser_node PT_NODE;
+typedef struct pt_static_sql_host_var PT_STATIC_SQL_HOST_VAR;
 typedef struct pt_alter_info PT_ALTER_INFO;
 typedef struct pt_alter_user_info PT_ALTER_USER_INFO;
 typedef struct pt_alter_trigger_info PT_ALTER_TRIGGER_INFO;
@@ -3883,6 +3884,17 @@ typedef struct remote_cols
 typedef int (*PT_CASECMP_FUN) (const char *s1, const char *s2);
 typedef int (*PT_INT_FUNCTION) (PARSER_CONTEXT * c);
 
+/* a PL/CSQL variable in a static SQL: range [start, end) of the original buffer which is replaced with '?' */
+struct pt_static_sql_host_var
+{
+  int start;
+  int end;
+  const char *label;		/* the PL/CSQL host expression, e.g. v or rec.field */
+};
+
+/* mark of a name in LIMIT clause of a static SQL. it is always a PL/CSQL variable (see pt_bind_names ()) */
+#define PT_NAME_IN_STATIC_SQL_LIMIT "name_in_static_sql_limit"
+
 struct parser_context
 {
   PT_INT_FUNCTION next_char;	/* the next character function */
@@ -3959,6 +3971,12 @@ struct parser_context
 
   char **external_into_label;
   int external_into_label_cnt;
+  /* for PL/CSQL's static SQL: ranges of the original buffer replaced to build the text executed at runtime */
+  PT_STATIC_SQL_HOST_VAR *static_sql_host_vars;
+  int static_sql_host_var_cnt;
+  int static_sql_host_var_capacity;
+  int static_sql_into_start;	/* INTO clause, -1 if none */
+  int static_sql_into_end;
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   HIDE_PWD_INFO hide_pwd_info;

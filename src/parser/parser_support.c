@@ -13168,3 +13168,115 @@ pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
 
   return node;
 }
+
+/*
+ * pt_compare_static_sql_host_var () - qsort comparator of PL/CSQL variable ranges of a static SQL by position
+ */
+static int
+pt_compare_static_sql_host_var (const void *a, const void *b)
+{
+  const PT_STATIC_SQL_HOST_VAR *x = (const PT_STATIC_SQL_HOST_VAR *) a;
+  const PT_STATIC_SQL_HOST_VAR *y = (const PT_STATIC_SQL_HOST_VAR *) b;
+
+  if (x->start != y->start)
+    {
+      return (x->start < y->start) ? -1 : 1;
+    }
+
+  return (x->end < y->end) ? -1 : ((x->end > y->end) ? 1 : 0);
+}
+
+/*
+ * pt_make_static_sql_text () - make the text of a static SQL executed at runtime from its original text
+ *   return: the text allocated in the parser, or NULL on error
+ *   parser(in/out): the parser which compiled the static SQL
+ *
+ * Note: the original buffer is not re-printed from the parse tree, which compiling may have transformed into
+ *       a shape that can not be parsed again. Instead, the ranges of PL/CSQL variables are replaced with '?'
+ *       and the INTO clause is removed. All the positions are byte offsets in the same buffer.
+ *       On return, parser->static_sql_host_vars are sorted by position without duplicates, in the order of
+ *       the '?'s in the text.
+ */
+char *
+pt_make_static_sql_text (PARSER_CONTEXT * parser)
+{
+  const char *src = parser->original_buffer;
+  PT_STATIC_SQL_HOST_VAR *host_vars = parser->static_sql_host_vars;
+  int into_start = parser->static_sql_into_start;
+  int into_end = parser->static_sql_into_end;
+  int src_len, cnt, i, pos;
+  bool out_of_buffer, overlapping;
+  char *text, *p;
+
+  if (src == NULL)
+    {
+      return NULL;
+    }
+  src_len = (int) strlen (src);
+
+  if (into_start >= 0 && (into_end <= into_start || into_end > src_len))
+    {
+      return NULL;
+    }
+
+  /* sort, remove duplicates (a name node copied before name binding) and the variables in the INTO clause */
+  if (parser->static_sql_host_var_cnt > 1)
+    {
+      qsort (host_vars, parser->static_sql_host_var_cnt, sizeof (PT_STATIC_SQL_HOST_VAR),
+	     pt_compare_static_sql_host_var);
+    }
+  cnt = 0;
+  for (i = 0; i < parser->static_sql_host_var_cnt; i++)
+    {
+      if (into_start >= 0 && host_vars[i].start >= into_start && host_vars[i].end <= into_end)
+	{
+	  continue;
+	}
+      if (cnt > 0 && host_vars[cnt - 1].start == host_vars[i].start && host_vars[cnt - 1].end == host_vars[i].end)
+	{
+	  continue;
+	}
+      out_of_buffer = (host_vars[i].start < 0 || host_vars[i].end > src_len);
+      overlapping = ((cnt > 0 && host_vars[cnt - 1].end > host_vars[i].start)
+		     || (into_start >= 0 && host_vars[i].start < into_end && host_vars[i].end > into_start));
+      if (out_of_buffer || overlapping)
+	{
+	  /* out of the buffer or overlapping */
+	  return NULL;
+	}
+      host_vars[cnt++] = host_vars[i];
+    }
+  parser->static_sql_host_var_cnt = cnt;
+
+  /* every replaced range is at least one byte, so the text is not longer than the original */
+  text = (char *) parser_alloc (parser, src_len + 1);
+  if (text == NULL)
+    {
+      return NULL;
+    }
+
+  p = text;
+  pos = 0;
+  i = 0;
+  while (pos < src_len)
+    {
+      if (i < cnt && pos == host_vars[i].start)
+	{
+	  *p++ = '?';
+	  pos = host_vars[i].end;
+	  i++;
+	}
+      else if (pos == into_start)
+	{
+	  *p++ = ' ';
+	  pos = into_end;
+	}
+      else
+	{
+	  *p++ = src[pos++];
+	}
+    }
+  *p = '\0';
+
+  return text;
+}

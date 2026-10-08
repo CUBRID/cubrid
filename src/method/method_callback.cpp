@@ -507,12 +507,19 @@ namespace cubmethod
 	    PARSER_CONTEXT *parser = db_get_parser (db_session);
 	    PT_NODE *stmt = db_get_statement (db_session, 0);
 
-	    parser->custom_print |= PT_CONVERT_RANGE;
-	    /* select-list aliases (e.g. "AS col1") must survive into rewritten_query: this text is
-	     * embedded verbatim in the compiled PL/CSQL class and re-parsed at runtime by Query.open(),
-	     * so a client reading column labels off that cursor needs them to still be there */
-	    parser->custom_print |= PT_PRINT_ALIAS;
-	    semantics.rewritten_query = parser_print_tree (parser, stmt);
+	    /* the text executed at runtime is made from the original text, not printed from the parse tree:
+	     * PL/CSQL variables are replaced with '?' and the INTO clause is removed */
+	    const char *text = pt_make_static_sql_text (parser);
+	    if (text == NULL)
+	      {
+		error = ER_FAILED;
+		semantics.sql_type = error;
+		semantics.rewritten_query = "internal error: failed to make the text of a static SQL";
+	      }
+	    else
+	      {
+		semantics.rewritten_query = text;
+	      }
 
 	    has_table_access = false;
 	    (void) parser_walk_tree (parser, stmt, pt_find_table_access, &has_table_access, NULL, NULL);
@@ -538,60 +545,12 @@ namespace cubmethod
 	    db_session->parser->external_into_label = NULL;
 	    db_session->parser->external_into_label_cnt = 0;
 
-	    // host/automatic variables
-	    DB_MARKER *marker = db_get_input_markers (db_session, 1);
-	    if (marker)
+	    // host variables in the order of '?'s in the text
+	    semantics.hvs.resize (parser->static_sql_host_var_cnt);
+	    for (int i = 0; i < parser->static_sql_host_var_cnt; i++)
 	      {
-		/* The following way of getting markers_cnt is unreliable:
-		 *      it does not match the actual number of markers sometimes (CBRD-25606)
-		 * TODO: figure out why.
-
-		int markers_cnt = parser->host_var_count + parser->auto_param_count;
-
-		 * Instead, we count the actual number of markers as follows.
-		*/
-		int markers_cnt = 0;
-		DB_MARKER *marker_save = marker;
-		do
-		  {
-		    markers_cnt++;
-		    marker = db_marker_next (marker);
-		  }
-		while (marker);
-		marker = marker_save;
-
-		semantics.hvs.resize (markers_cnt);
-
-		do
-		  {
-		    int idx = marker->info.host_var.index;
-		    if (idx >= markers_cnt)
-		      {
-			error = ER_FAILED;
-			semantics.sql_type = error;
-			semantics.rewritten_query = "internal error: a host variable marker index is out of valid range";
-			break;
-		      }
-
-		    if (semantics.hvs[idx].mode != 0)
-		      {
-			error = ER_FAILED;
-			semantics.sql_type = error;
-			semantics.rewritten_query = "internal error: two different host variable markers have the same index";
-			break;
-		      }
-		    semantics.hvs[idx].mode = 1;
-
-		    if (marker->info.host_var.label)
-		      {
-			semantics.hvs[idx].name.assign ((char *) marker->info.host_var.label);
-		      }
-
-		    /* the type of a host variable is not inferred: PL/CSQL compiler does not use it */
-
-		    marker = db_marker_next (marker);
-		  }
-		while (marker);
+		semantics.hvs[i].mode = 1;
+		semantics.hvs[i].name.assign (parser->static_sql_host_vars[i].label);
 	      }
 	  }
 	else
