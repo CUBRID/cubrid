@@ -236,6 +236,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
   int effective_size;
   int replace_rule_idx = -1;
   char *log_sql;		/* writable alias of effective_sql for the compile-end log */
+  char *app_sql = NULL;		/* copy of the client's text, handed over to a replaced handle */
 
   if (argc < 2)
     {
@@ -286,7 +287,15 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     {
       const char *replace_query = qr_get_replace_query (replace_rule_idx);
 
-      if (replace_query == NULL)
+      /* a replaced handle must be able to go back to the client's own text (the demote in
+       * fn_execute_internal / fn_execute_array), so that text is secured before the replacement
+       * is prepared.  without it -- out of memory -- the query is simply not replaced: the
+       * rule's ORIG is a normalized matching key, not a statement to fall back to. */
+      if (replace_query != NULL)
+	{
+	  ALLOC_COPY_STRLEN (app_sql, sql_stmt);
+	}
+      if (replace_query == NULL || app_sql == NULL)
 	{
 	  replace_rule_idx = -1;
 	}
@@ -361,6 +370,8 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
 	  snprintf (qr_reason, sizeof (qr_reason), "replacement prepare failed (err:%d)", err_info.err_number);
 	}
 
+      FREE_MEM (app_sql);	/* back to the original query: nothing to demote to */
+
       cas_log_write (query_seq_num_current_value (), false,
 		     "[REPLACE-FAILED] prepare err:%d, disabled, fallback to orig", err_info.err_number);
 #if !defined(NDEBUG)
@@ -413,6 +424,16 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
     }
 
   srv_handle = hm_find_srv_handle (srv_h_id);
+
+  /* hand the client's text over to the replaced handle, so a demote at execute time runs the
+   * original query.  ux_prepare always returns a fresh handle (hm_new_srv_handle). */
+  if (replace_rule_idx >= 0 && srv_handle != NULL)
+    {
+      assert (srv_handle->qr_app_sql == NULL);
+      srv_handle->qr_app_sql = app_sql;
+      app_sql = NULL;
+    }
+  FREE_MEM (app_sql);		/* any path that did not hand it over */
 
   /* when the query was rewritten, effective_sql points into the read-only (SHM_RDONLY)
    * replace rule segment, but cas_log_compile_end_write_query_string() hides passwords
@@ -893,23 +914,19 @@ fn_execute_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
    * replace in place. */
   if (qr_demote && srv_handle->replace_rule_idx >= 0)
     {
-      const char *orig_query = qr_get_orig_query (srv_handle->replace_rule_idx);
-      char *orig_dup = NULL;
-
-      if (orig_query != NULL)
-	{
-	  ALLOC_COPY_STRLEN (orig_dup, orig_query);
-	}
-      if (orig_dup != NULL)
+      /* a replaced handle always carries the client's text (fn_prepare_internal does not
+       * replace without it).  it is handed over, not copied, so a demote never allocates. */
+      assert (srv_handle->qr_app_sql != NULL);
+      if (srv_handle->qr_app_sql != NULL)
 	{
 	  FREE_MEM (srv_handle->sql_stmt);
-	  srv_handle->sql_stmt = orig_dup;	/* recompiled at next execute */
+	  srv_handle->sql_stmt = srv_handle->qr_app_sql;	/* recompiled at next execute */
+	  srv_handle->qr_app_sql = NULL;
 	  srv_handle->num_markers = srv_handle->num_orig_markers;	/* the driver already binds K_orig */
 	  srv_handle->replace_rule_idx = -1;	/* stop replace: no remap, block won't re-fire */
 	  srv_handle->is_prepared = FALSE;	/* force db_open_buffer + compile of sql_stmt */
 	  srv_handle->replace_fallback = 1;	/* adopt the recompiled original as prepared */
 	}
-      /* orig_dup == NULL (OOM): leave the handle unchanged */
     }
 
   return FN_KEEP_CONN;
@@ -1943,19 +1960,15 @@ fn_execute_array (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_
    * (same ordering rule as fn_execute_internal). */
   if (srv_handle->qr_demote_pending)
     {
-      const char *orig_query = qr_get_orig_query (srv_handle->replace_rule_idx);
-      char *orig_dup = NULL;
-
       srv_handle->qr_demote_pending = 0;
 
-      if (orig_query != NULL)
-	{
-	  ALLOC_COPY_STRLEN (orig_dup, orig_query);
-	}
-      if (orig_dup != NULL)
+      /* the same hand-over as fn_execute_internal */
+      assert (srv_handle->qr_app_sql != NULL);
+      if (srv_handle->qr_app_sql != NULL)
 	{
 	  FREE_MEM (srv_handle->sql_stmt);
-	  srv_handle->sql_stmt = orig_dup;
+	  srv_handle->sql_stmt = srv_handle->qr_app_sql;
+	  srv_handle->qr_app_sql = NULL;
 	  srv_handle->num_markers = srv_handle->num_orig_markers;
 	  srv_handle->replace_rule_idx = -1;
 	  srv_handle->is_prepared = FALSE;

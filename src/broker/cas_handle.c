@@ -376,6 +376,7 @@ static void
 srv_handle_content_free (T_SRV_HANDLE * srv_handle)
 {
   FREE_MEM (srv_handle->sql_stmt);
+  FREE_MEM (srv_handle->qr_app_sql);
   if (!is_cgw_mode)
     {
       hm_prepare_call_info_free (srv_handle->prepare_call_info);
