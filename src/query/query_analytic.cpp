@@ -272,11 +272,18 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       if (TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) != DB_TYPE_VARIABLE
 	  && DB_VALUE_DOMAIN_TYPE (&dbval) != TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]))
 	{
-	  if (tp_value_coerce (&dbval, &dbval, func_p->list_id->type_list.domp[0]) != DOMAIN_COMPATIBLE)
+	  /* a value the list's domain does not take is the row's error, -181 (ER_FAILED alone left no error and no row) */
+	  DB_VALUE coerced;
+	  db_make_null (&coerced);
+	  dom_status = tp_value_coerce (&dbval, &coerced, func_p->list_id->type_list.domp[0]);
+	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
-	      error = ER_FAILED;
+	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, func_p->list_id->type_list.domp[0]);
+	      pr_clear_value (&coerced);
 	      goto exit;
 	    }
+	  pr_clear_value (&dbval);
+	  dbval = coerced;
 	}
 
       /* handle distincts by adding to the temp list file (the assembler encodes for the list's column layout) */
@@ -544,11 +551,20 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       copy_opr = false;
       tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
-      if (tp_value_coerce (&dbval, &dbval, tmp_domain_p) != DOMAIN_COMPATIBLE)
-	{
-	  error = ER_FAILED;
-	  goto exit;
-	}
+      {
+	/* a value DOUBLE does not take is the row's error, -181, as the aggregate STDDEV / VARIANCE raise it */
+	DB_VALUE coerced;
+	db_make_null (&coerced);
+	dom_status = tp_value_coerce (&dbval, &coerced, tmp_domain_p);
+	if (dom_status != DOMAIN_COMPATIBLE)
+	  {
+	    error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, tmp_domain_p);
+	    pr_clear_value (&coerced);
+	    goto exit;
+	  }
+	pr_clear_value (&dbval);
+	dbval = coerced;
+      }
 
       if (func_p->curr_cnt < 1)
 	{
