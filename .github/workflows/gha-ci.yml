@@ -649,7 +649,9 @@ jobs:
     permissions: {} # no token used; the engine comes from the node mirror
     if: needs.gate.outputs.run == 'true'
     runs-on: cubrid-arc-build
-    timeout-minutes: 120
+    # 2x the slowest full build since the source moved to the node copy
+    # (14.3 min, 2026-09-29~10-06). A hung build holds one of the lane's 8 slots.
+    timeout-minutes: 30
     strategy:
       # One mode failing must not hide the other's result.
       fail-fast: false
