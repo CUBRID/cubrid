@@ -230,6 +230,7 @@ namespace parallel_scan
   {
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
+	tl.write_initialized = false;
 	tl.vd = vd;
 	{
 	  std::lock_guard<std::mutex> lock (m_.writer_results_mutex);
@@ -333,6 +334,7 @@ namespace parallel_scan
 		  }
 	      }
 	  }
+	tl.write_initialized = true;
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
@@ -359,6 +361,29 @@ namespace parallel_scan
   {
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
+	if (!tl.write_initialized)
+	  {
+	    /* write_initialize () stopped at an error and set the interrupt, so the reader no longer waits
+	     * for this worker; release only what it got, since tl.xasl and the hash context may be unset */
+	    if (tl.writer_result_p != nullptr)
+	      {
+		qfile_close_list (thread_p, tl.writer_result_p);
+		if (tl.writer_result_p->tpl_descr.f_valp != nullptr)
+		  {
+		    free_and_init (tl.writer_result_p->tpl_descr.f_valp);
+		  }
+		tl.writer_result_p = nullptr;
+	      }
+	    if (tl.tpl_buf.tpl != nullptr)
+	      {
+		db_private_free (thread_p, tl.tpl_buf.tpl);
+		tl.tpl_buf.tpl = nullptr;
+	      }
+	    tl.dbvals_for_domain_resolve.clear ();
+	    tl.vd = nullptr;
+	    return;
+	  }
+
 	AGGREGATE_HASH_CONTEXT *context = tl.xasl->proc.buildlist.agg_hash_context;
 	bool hash_aggregate_append = m_.g_hash_eligible;
 	if (hash_aggregate_append)
@@ -2011,7 +2036,8 @@ namespace parallel_scan
 	    return false;
 	  }
 	DB_VALUE *db_value2_p;
-	if (second_operand->value.type == TYPE_CONSTANT)
+	/* a scalar subquery operand must be fetched to run for this row, as for the first operand in write () */
+	if (second_operand->value.type == TYPE_CONSTANT && second_operand->value.xasl == NULL)
 	  {
 	    db_value2_p = second_operand->value.value.dbvalptr;
 	  }
@@ -2177,7 +2203,10 @@ namespace parallel_scan
 	  }
 
 	DB_VALUE *db_value_p;
-	if (agg_node->operands->value.type == TYPE_CONSTANT)
+	/* A scalar subquery operand is TYPE_CONSTANT too, but its slot holds this row's value only after
+	 * fetch_peek_dbval () runs the subquery (the slot is cleared after every row), so only a constant
+	 * without a linked subquery is read directly. Serial qdata_evaluate_aggregate_list () always fetches. */
+	if (agg_node->operands->value.type == TYPE_CONSTANT && agg_node->operands->value.xasl == NULL)
 	  {
 	    db_value_p = agg_node->operands->value.value.dbvalptr;
 	  }
