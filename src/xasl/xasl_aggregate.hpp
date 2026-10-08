@@ -81,13 +81,20 @@ namespace cubxasl
 
   /* An aggregate's accumulator domains in one execution, kept in the execution state and not in the plan node
    * (domain_execution.accumulator_domains[], by the function's node_domain_index, qexec_accumulator_domain): the setup
-   * writes them before the first row. An analytic SUM / AVG uses operand_coercion alone. */
+   * writes them before the first row. An analytic SUM / AVG plans its additions in two stages per partition
+   * (qdata_initialize_analytic_func): the second value is added to the first as it is, every later one to the sum's
+   * running type - the function's domain once an addition was coerced to it. */
   struct aggregate_accumulator_domain
   {
-    tp_domain *value_dom;		/* domain of value */
+    tp_domain *value_dom;		/* domain of value; an analytic SUM / AVG: the domain each addition's result is
+				 * coerced to, NULL for a sum kept floating (an AVG over a NUMERIC first value, a
+				 * SUM whose domain is NUMERIC) */
     tp_domain *value2_dom;	/* domain of value2 */
     DOMAIN_OPERAND_COERCION operand_coercion;	/* SUM / AVG: the operand coercion of value + a value, set with
-						 * value_dom (an analytic function's per partition) */
+						 * value_dom (an analytic function's per partition: the second value's,
+						 * over the first value's type) */
+    DOMAIN_OPERAND_COERCION later_coercion;	/* an analytic SUM / AVG: the operand coercion of every value after
+						 * the second, over the sum's running type */
     int temporary;			/* SUM / AVG: the domain_execution.temporaries index of a value added after the
 				 * first that a scope fixes and operand_coercion converts; -1 none. Set with
 				 * operand_coercion (qexec_setup_aggregate_accumulators) */

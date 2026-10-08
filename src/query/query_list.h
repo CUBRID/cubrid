@@ -445,6 +445,11 @@ struct qfile_tuple_descriptor
   int *f_len;			/* body length of f_valp[i] from the size pass, consumed by the fill pass. Lives in the
 				 * f_valp allocation right after the pointers (qfile_tpl_descr_alloc_values), so freeing
 				 * f_valp frees it. */
+  DB_VALUE *f_cast;		/* f_cast_cnt values: the collection casts a column's value into f_cast[i] when the value is
+				 * not of the column's domain (qdata_get_dbval_from_constant_regu_variable), so a peeked
+				 * value - a scan's value another column reads too - keeps the type its producer gave it.
+				 * Allocated with f_valp, cleared and freed with it (qfile_clear_list_id). */
+  int f_cast_cnt;
 
   /* T_COL_SRC */
   QFILE_TUPLE_COL_SRC *col_src;	/* owned by the list; grown on demand by qfile_tpl_descr_col_src () */
@@ -544,6 +549,8 @@ struct qfile_list_id
       (list_id)->tpl_descr.f_cnt = 0; \
       (list_id)->tpl_descr.f_valp = NULL; \
       (list_id)->tpl_descr.f_len = NULL; \
+      (list_id)->tpl_descr.f_cast = NULL; \
+      (list_id)->tpl_descr.f_cast_cnt = 0; \
       (list_id)->tpl_descr.col_src = NULL; \
       (list_id)->tpl_descr.col_src_cap = 0; \
       (list_id)->tpl_descr.col_src_cnt = 0; \

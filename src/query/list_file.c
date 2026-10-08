@@ -469,6 +469,8 @@ qfile_modify_type_list (QFILE_TUPLE_VALUE_TYPE_LIST * type_list_p, QFILE_LIST_ID
 
   list_id_p->tpl_descr.f_valp = NULL;
   list_id_p->tpl_descr.f_len = NULL;
+  list_id_p->tpl_descr.f_cast = NULL;
+  list_id_p->tpl_descr.f_cast_cnt = 0;
   list_id_p->tpl_descr.col_src = NULL;
   list_id_p->tpl_descr.col_src_cap = 0;
   return NO_ERROR;
@@ -599,6 +601,15 @@ qfile_clear_list_id (QFILE_LIST_ID * list_id_p)
   if (list_id_p->tpl_descr.f_valp)
     {
       free_and_init (list_id_p->tpl_descr.f_valp);
+    }
+  if (list_id_p->tpl_descr.f_cast)
+    {
+      for (int i = 0; i < list_id_p->tpl_descr.f_cast_cnt; i++)
+	{
+	  pr_clear_value (&list_id_p->tpl_descr.f_cast[i]);
+	}
+      free_and_init (list_id_p->tpl_descr.f_cast);
+      list_id_p->tpl_descr.f_cast_cnt = 0;
     }
   if (list_id_p->tpl_descr.col_src)
     {
@@ -1710,6 +1721,19 @@ qfile_tpl_descr_alloc_values (QFILE_TUPLE_DESCRIPTOR * tuple_descr_p, int n)
       return ER_FAILED;
     }
   tuple_descr_p->f_len = (int *) (tuple_descr_p->f_valp + n);
+  tuple_descr_p->f_cast = (DB_VALUE *) malloc ((size_t) n * sizeof (DB_VALUE));
+  if (tuple_descr_p->f_cast == NULL)
+    {
+      free_and_init (tuple_descr_p->f_valp);
+      tuple_descr_p->f_len = NULL;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) n * sizeof (DB_VALUE));
+      return ER_FAILED;
+    }
+  for (int i = 0; i < n; i++)
+    {
+      db_make_null (&tuple_descr_p->f_cast[i]);
+    }
+  tuple_descr_p->f_cast_cnt = n;
   return NO_ERROR;
 }
 

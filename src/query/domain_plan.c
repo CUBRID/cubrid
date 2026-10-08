@@ -103,6 +103,9 @@ struct DOMAIN_LOAD_ENTRY
   REGU_VARIABLE *temporary_operand[2];
   XASL_NODE *temporary_scope[2];
   const AGGREGATE_TYPE *temporary_aggregate;	/* a SUM or AVG: the function */
+  /* T_ADD, T_SUB, T_MUL, T_DIV the compiler typed: the operands whose compiled domains the operand coercion was
+   * planned over (domain_plan_resolved_operand_coercion plans it again where the resolution gave one another type) */
+  REGU_VARIABLE *coercion_operand[2];
 };
 struct DOMAIN_LOAD_BINDING
 {
@@ -257,6 +260,18 @@ domain_cast_operand_is_variable (const ARITH_TYPE * arith, REGU_VARIABLE * const
       variable = variable || !domain_type_is_fixed (operands[i]->domain);
     }
   return variable;
+}
+
+/* A bind the compiler typed whose reference a comparison, an index key or an assignment reads by the value
+ * (DOMAIN_PLAN_CONSUMER_CONVERTS): the client sends such a value as it is - a number compared with ORDERBY_NUM stays
+ * the NUMERIC the statement bound - so a node over it computes over the value's type, as over a bind the compiler
+ * did not type. The ORDERBY_NUM bound (qo_get_limit_from_eval_term) reuses the comparison's own regu, walked before
+ * the bound (domain_walk_xasl: ordbynum_pred, then orderby_limit). */
+static bool
+domain_bind_read_by_value (const REGU_VARIABLE * operand)
+{
+  return operand->type == TYPE_POS_VALUE && operand->plan_item != NULL
+    && (operand->plan_item->flags & DOMAIN_PLAN_CONSUMER_CONVERTS) != 0;
 }
 
 /* A cast into a character domain whose collation is enforced (the wrapper the compiler puts around an operand it
@@ -863,8 +878,12 @@ domain_plan_operand_coercion (DOMAIN_PLAN_ITEM * item, OPERATOR_TYPE opcode, con
   item->fixed.conv[0] = item->fixed.conv[1] = NULL;
   if (!domain_type_is_fixed (left) || !domain_type_is_fixed (right))
     {
+      /* no value either (DOMAIN_ARITH_UNRESOLVED): the row reads the late-binding entry, or fails the
+       * unresolved-domain check */
       item->fixed.operand_domain[0] = left;
       item->fixed.operand_domain[1] = right;
+      item->fixed.arith.kind = DOMAIN_ARITH_UNRESOLVED;
+      item->fixed.arith.type = DB_TYPE_NULL;
       return;
     }
   const DOMAIN_OPERAND operands[2] = {
@@ -877,6 +896,7 @@ domain_plan_operand_coercion (DOMAIN_PLAN_ITEM * item, OPERATOR_TYPE opcode, con
       item->fixed.operand_domain[i] = operand_coercion.operand_domain[i];
       item->fixed.conv[i] = operand_coercion.conv[i];
     }
+  item->fixed.arith = operand_coercion.arith;
 }
 
 static void
@@ -1230,7 +1250,9 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
     && operands[1]->plan_item != NULL && (!domain_type_is_fixed (operands[0]->domain)
 					  || !domain_type_is_fixed (operands[1]->domain)
 					  || domain_cast_keeps_source_type (operands[0])
-					  || domain_cast_keeps_source_type (operands[1]));
+					  || domain_cast_keeps_source_type (operands[1])
+					  || domain_bind_read_by_value (operands[0])
+					  || domain_bind_read_by_value (operands[1]));
   /* a cast, or a NVL / IFNULL / COALESCE / NVL2 that casts the operand the row picks into the node's compiled domain,
    * over an operand the compiler did not type (a bind, a late-binding node): the converter into that domain is
    * resolve_domains', from the operand's resolved type (qexec_resolve_cast_coercion); the row calls it
@@ -1282,6 +1304,12 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
   if (operand_coercion)
     {
       domain_plan_operand_coercion (item, arith->opcode, operands[0]->domain, operands[1]->domain);
+      if (item != NULL)
+	{
+	  DOMAIN_LOAD_ENTRY *load_entry = domain_load_entry_of (item);
+	  load_entry->coercion_operand[0] = operands[0];
+	  load_entry->coercion_operand[1] = operands[1];
+	}
     }
   if (item != NULL && domain_operand_coercion_operator (arith->opcode) && operands[0] != NULL && operands[1] != NULL)
     {
@@ -2780,6 +2808,52 @@ domain_resolve_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry)
       load_entry->cold.ctx = domain_late_bind_context ((OPERATOR_TYPE) load_entry->cold.opcode);
     }
   load_entry->known = !ctx->failed;
+}
+
+/*
+ * domain_plan_resolved_operand_coercion () - the operand coercion of a node the compiler typed, planned again over the
+ *   domains the resolution gave its operands where one differs in type from the compiled one
+ *
+ * The walk planned it over the operands' compiled domains (domain_plan_operand_coercion). An operand that is a value
+ * pointer reads its producer's value, and the resolution gave the pointer's item the producer's domain
+ * (domain_link_producer): a recursive CTE part's reference to its own column is compiled with the non-recursive part's
+ * type while the list it reads holds the unified column. The operands' values are the producers': the operand
+ * coercion and the value (arith) the row dispatches on are theirs.
+ */
+static void
+domain_plan_resolved_operand_coercion (DOMAIN_LOAD_CONTEXT * ctx)
+{
+  for (DOMAIN_LOAD_ENTRY * r = ctx->head; r != NULL && !ctx->failed; r = r->next)
+    {
+      if (r->alias != NULL || r->coercion_operand[0] == NULL || r->coercion_operand[1] == NULL
+	  || r->item.fixed.arith.kind == DOMAIN_ARITH_UNRESOLVED)
+	{
+	  continue;
+	}
+      const TP_DOMAIN *resolved[2];
+      bool differs = false;
+      for (int i = 0; i < 2; i++)
+	{
+	  const REGU_VARIABLE *operand = r->coercion_operand[i];
+	  resolved[i] = operand->domain;
+	  if (operand->plan_item == NULL)
+	    {
+	      continue;
+	    }
+	  const DOMAIN_LOAD_ENTRY *source = domain_owner_load_entry (domain_load_entry_of (operand->plan_item));
+	  const TP_DOMAIN *domain = source->item.fixed.domain;
+	  if (domain_type_is_fixed (domain) && domain_type_is_fixed (operand->domain)
+	      && TP_DOMAIN_TYPE (domain) != TP_DOMAIN_TYPE (operand->domain))
+	    {
+	      resolved[i] = domain;
+	      differs = true;
+	    }
+	}
+      if (differs)
+	{
+	  domain_plan_operand_coercion (&r->item, (OPERATOR_TYPE) r->cold.opcode, resolved[0], resolved[1]);
+	}
+    }
 }
 
 static void
@@ -4891,6 +4965,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
     {
       domain_resolve_record (&ctx, r);
     }
+  domain_plan_resolved_operand_coercion (&ctx);
   /* a value pointer reads its producer's resolutions through the producer's item, but each node keeps a domain of
    * its own - a column over an aggregate's accumulator, say, stays as compiled when the aggregate resolves. Where
    * either has an execution domain, the consumer's node gets its own copy of the item (domain_plan_add_item_copies) and

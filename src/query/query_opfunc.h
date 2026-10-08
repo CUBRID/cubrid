@@ -37,6 +37,7 @@
 // forward definitions
 struct function_node;
 class regu_variable_node;
+struct DOMAIN_ARITH;
 struct RESOLVED_DOMAIN;
 struct tp_domain;
 struct val_descr;
@@ -65,30 +66,27 @@ extern QPROC_TPLDESCR_STATUS qdata_generate_tuple_desc_for_valptr_list (THREAD_E
 									qfile_list_id * list_id);
 extern int qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list, val_descr * vd);
 
-/* T_ADD, T_SUB, T_MUL or T_DIV over two values, as the ARITH rule names it over their types (domain_arith_rule); the
- * four operators below are it with the opcode fixed */
-extern int qdata_arith_dbval (OPERATOR_TYPE opcode, DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res,
-			      tp_domain * domain_p);
-extern int qdata_add_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
+/* T_ADD, T_SUB, T_MUL or T_DIV over two values, as the plan resolved it before any row (DOMAIN_ARITH: a node's
+ * RESOLVED_DOMAIN, a SUM's or AVG's DOMAIN_OPERAND_COERCION, domain_arith_double for an accumulation in DOUBLE); no
+ * value's type is read for the dispatch */
+extern int qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * dbval1, DB_VALUE * dbval2,
+			      DB_VALUE * res, tp_domain * domain_p);
 extern int qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res,
 				    tp_domain * domain, const int max_allowed_size, const char *warning_context);
 extern int qdata_increment_dbval (DB_VALUE * dbval1, DB_VALUE * res, int incval);
-extern int qdata_subtract_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
-extern int qdata_multiply_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
-extern int qdata_divide_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
 extern int qdata_unary_minus_dbval (DB_VALUE * res, DB_VALUE * dbval1);
 extern int qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval, DB_VALUE * res, tp_domain * domain);
 extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
 /* The error of an operand coercion that fails, as tp_value_auto_cast sets it */
 extern int qdata_operand_coercion_error (TP_DOMAIN_STATUS status, const DB_VALUE * value, const TP_DOMAIN * target);
 /* T_ADD, T_SUB, T_MUL or T_DIV over its operands' operand coercion, resolved before any row
- * (domain_resolve_operand_coercion): conv[i] converts operand i into operand_domain[i] - a RESOLVED_DOMAIN's arrays
- * or a DOMAIN_OPERAND_COERCION's; conv NULL converts nothing; temporaries[i]: operand i converted once for its scope
- * already */
+ * (domain_resolve_operand_coercion): conv[i] converts operand i into operand_domain[i] and arith is what the operator
+ * makes of the coerced operands - a RESOLVED_DOMAIN's or a DOMAIN_OPERAND_COERCION's; conv NULL converts nothing;
+ * temporaries[i]: operand i converted once for its scope already */
 extern int qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
-					const TP_DOMAIN * const *operand_domain, DB_VALUE * dbval1, DB_VALUE * dbval2,
-					DB_VALUE * res, tp_domain * domain_p, const DB_VALUE * const *temporaries =
-					NULL);
+					const TP_DOMAIN * const *operand_domain, const DOMAIN_ARITH * arith,
+					DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p,
+					const DB_VALUE * const *temporaries = NULL);
 
 extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
 						val_list_node * single_tuple);
@@ -148,7 +146,7 @@ extern int qdata_update_interpolation_func_value_and_domain (DB_VALUE * src_val,
  *
  * NUMERIC uses the word accumulator in numeric_opfunc.c. SHORT/INTEGER/BIGINT,
  * DOUBLE, and FLOAT use the typed accumulator in query_opfunc.c. Typed modes
- * reproduce qdata_add_dbval () without per-row DB_VALUE dispatch.
+ * reproduce the typed addition without per-row DB_VALUE dispatch.
  *
  * Integer modes preserve the input type's overflow semantics (for example,
  * SUM(SHORT) overflows past 32767). DOUBLE uses the same IEEE operations, and

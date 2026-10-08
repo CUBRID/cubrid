@@ -866,11 +866,18 @@ fetch_arith_binary (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * 
     {
       plan = qexec_late_bind_domain (vd, item);
     }
+  if (plan != NULL && plan->arith.kind == DOMAIN_ARITH_UNRESOLVED)
+    {
+      /* a plan nothing resolved - the load met a variable operand and resolve_domains gave no entry: the
+       * unresolved-domain check (execution), as a missing plan */
+      plan = NULL;
+    }
   if (plan != NULL && plan->conv[0] == NULL && plan->conv[1] == NULL)
     {
-      /* an operand coercion that converts neither operand calls the operator directly; the operator's optdebug
-       * check still stops operands a plan left unconverted (qdata_assert_arith_resolved) */
-      return qdata_arith_dbval (arithptr->opcode, left, right, arithptr->value, domain);
+      /* an operand coercion that converts neither operand calls the operator directly, which dispatches on the plan's
+       * value (arith); its optdebug check still holds the plan to the rule over the values (qdata_assert_arith_planned)
+       */
+      return qdata_arith_dbval (arithptr->opcode, &plan->arith, left, right, arithptr->value, domain);
     }
   return fetch_arith_binary_operand_coercion (thread_p, vd, arithptr, plan, left, right, domain);
 }
@@ -906,11 +913,13 @@ fetch_arith_binary_operand_coercion (THREAD_ENTRY * thread_p, const val_descr * 
 					   operands[i]);
 	    }
 	}
-      return qdata_coerce_arith_operands (arithptr->opcode, plan->conv, plan->operand_domain, left, right,
-					  arithptr->value, domain, temporaries);
+      return qdata_coerce_arith_operands (arithptr->opcode, plan->conv, plan->operand_domain, &plan->arith, left,
+					  right, arithptr->value, domain, temporaries);
     }
+  /* without a plan an operand is NULL (the check above): the operator answers it before any dispatch */
   return qdata_coerce_arith_operands (arithptr->opcode, plan != NULL ? plan->conv : NULL,
-				      plan != NULL ? plan->operand_domain : NULL, left, right, arithptr->value, domain);
+				      plan != NULL ? plan->operand_domain : NULL, plan != NULL ? &plan->arith : NULL,
+				      left, right, arithptr->value, domain);
 }
 
 /*

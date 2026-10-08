@@ -37,11 +37,13 @@ enum DOMAIN_CTX
 /*
  * What an addition, subtraction, multiplication or division makes of two operands of given types
  * (domain_arith_rule): the kind names the operator that computes the value, the type is the value's. The resolver
- * reads it for the result domain before any row; the operator reads it over its values' types at the row and
- * dispatches on it alone (qdata_arith_dbval) - the one answer, from the one rule.
+ * reads it before any row and the plan carries it - a node's RESOLVED_DOMAIN, a SUM's or AVG's
+ * DOMAIN_OPERAND_COERCION; the operator dispatches on it alone (qdata_arith_dbval) - the one answer, from the one
+ * rule, read once.
  */
 enum DOMAIN_ARITH_KIND
 {
+  DOMAIN_ARITH_UNRESOLVED,	/* nothing resolved it (a zeroed plan): the unresolved-domain check, never a value */
   DOMAIN_ARITH_NO_VALUE,	/* a NULL operand, or a pair the typed operator passes over: no value, no error */
   DOMAIN_ARITH_NUMBER,		/* two numbers: the number of the result type */
   DOMAIN_ARITH_DATE,		/* a date or time with a number or another date or time: the date and time operators */
@@ -65,6 +67,7 @@ struct RESOLVED_DOMAIN
   const TP_DOMAIN *domain;
   TP_VALUE_CONVERTER conv[3];
   const TP_DOMAIN *operand_domain[3];
+  DOMAIN_ARITH arith;		/* T_ADD, T_SUB, T_MUL, T_DIV: what the operator makes of the coerced operands */
 };
 
 struct DOMAIN_OPERAND
@@ -101,18 +104,19 @@ struct DOMAIN_OPERAND_COERCION
 {
   TP_VALUE_CONVERTER conv[2];
   const TP_DOMAIN *operand_domain[2];
+  DOMAIN_ARITH arith;		/* what the operator makes of the coerced operands */
 };
 
 /* The operands' operand coercion of T_ADD, T_SUB, T_MUL or T_DIV alone: operand_domain[0..1] and conv[0..1] of the
- * ARITH rule over operands of these types, whatever its result. */
+ * ARITH rule over operands of these types, and what the operator makes of them (arith), whatever the result domain. */
 void domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_OPERAND_COERCION * result);
 
 /*
  * domain_arith_rule () - the ARITH rule over two operand types alone: the targets of the operand coercion and what the
- *   typed operator makes of the coerced operands. The resolver reads it over the operands' domains for the result
- *   domain and the operand coercion; the operator reads it over its two values' types at the row (the operand
- *   coercion has run by then: the targets are the types) and computes what it names. Over coerced operands the
- *   classification is the cost of a few type tests; two numbers take the first branch.
+ *   typed operator makes of the coerced operands. The resolver reads it over the operands' domains, before any row,
+ *   for the result domain, the operand coercion and the value (arith) the plan carries to the operator; the operator's
+ *   debug cross-check reads it over its two values' types (the operand coercion has run by then: the targets are the
+ *   types) and holds the plan to it.
  *   return: NO_ERROR, or the error the operator raises for the pair (arith then names the operator that raises it:
  *	     REJECT, REJECT_OR_NULL, STRING or CONCAT)
  *   left_target, right_target(out): the type each operand is cast to
@@ -120,6 +124,11 @@ void domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operand
  */
 int domain_arith_rule (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_target, DB_TYPE * right_target,
 		       DOMAIN_ARITH * arith);
+
+/* What the rule names for two DOUBLEs under each of the four operators: the number, a DOUBLE. The accumulations and
+ * finalizations that compute in DOUBLE by construction (STDDEV / VARIANCE, the AVG of a sum, a COUNT merge) read it
+ * in place of a resolution; the operator's debug cross-check holds it to the rule at every use. */
+extern const DOMAIN_ARITH domain_arith_double;
 
 /* val_type of a value-dependent argument (MEDIAN/PERCENTILE argument, STR_TO_DATE format, ADDTIME left).
  * resolve_domains only, once, before domain_resolve. DB_TYPE_NULL when the value cannot be typed: the function's own

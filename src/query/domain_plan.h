@@ -132,8 +132,8 @@ struct domain_plan_item
     int temporaries[2];
   };
 };
-/* Operand targets are distinct from the result, so the item holds 80 bytes, not 64. */
-static_assert (sizeof (DOMAIN_PLAN_ITEM) == 80, "domain plan item layout");
+/* Operand targets are distinct from the result, and the ARITH value rides with them, so the item holds 88 bytes. */
+static_assert (sizeof (DOMAIN_PLAN_ITEM) == 88, "domain plan item layout");
 static_assert (offsetof (DOMAIN_PLAN_ITEM, fixed) == 16, "fixed domain offset");
 
 struct DOMAIN_PLAN_ITEM_COLD

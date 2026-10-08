@@ -27570,8 +27570,9 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  DOMAIN_OPERAND_COERCION operand_coercion;
 	  domain_resolve_operand_coercion (T_SUB, operands, &operand_coercion);
 	  error =
-	    qdata_coerce_arith_operands (T_SUB, operand_coercion.conv, operand_coercion.operand_domain, val,
-					 &one_val, ubound, qexec_get_node_domain (vd, rhs->domain, rhs->plan_item));
+	    qdata_coerce_arith_operands (T_SUB, operand_coercion.conv, operand_coercion.operand_domain,
+					 &operand_coercion.arith, val, &one_val, ubound,
+					 qexec_get_node_domain (vd, rhs->domain, rhs->plan_item));
 	}
       else
 	{

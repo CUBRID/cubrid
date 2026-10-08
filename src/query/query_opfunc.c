@@ -192,7 +192,7 @@ static int qdata_collection_operator (OPERATOR_TYPE opcode, DB_TYPE result_type,
 				      DB_VALUE * value2, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 
 static DB_VALUE *qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
-							      VAL_DESCR * val_desc_p);
+							      VAL_DESCR * val_desc_p, DB_VALUE * cast_into);
 static int qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABLE * func,
 					VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec);
 static int qdata_evaluate_generic_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
@@ -354,7 +354,15 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
 {
   REGU_VARIABLE_LIST reg_var_p;
   DB_VALUE *vals_buf[QDATA_TUPLE_VALS_STACK], **vals = vals_buf;
+  /* a column's value cast into the column's domain, kept off the value its producer owns; a column past the stack
+   * array casts in place, as every column did (qdata_get_dbval_from_constant_regu_variable) */
+  DB_VALUE cast_buf[QDATA_TUPLE_VALS_STACK];
   int k, n, error = NO_ERROR;
+
+  for (k = 0; k < QDATA_TUPLE_VALS_STACK; k++)
+    {
+      db_make_null (&cast_buf[k]);
+    }
 
   if (valptr_list_p->valptr_cnt > QDATA_TUPLE_VALS_STACK)
     {
@@ -374,7 +382,8 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
 	{
 	  continue;
 	}
-      vals[n] = qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
+      vals[n] = qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p,
+							     n < QDATA_TUPLE_VALS_STACK ? &cast_buf[n] : NULL);
       if (vals[n] == NULL)
 	{
 	  error = ER_FAILED;
@@ -386,6 +395,10 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
   error = qdata_copy_values_to_tuple (thread_p, vals, n, type_list, tuple_record_p);
 
 end:
+  for (k = 0; k < n && k < QDATA_TUPLE_VALS_STACK; k++)
+    {
+      pr_clear_value (&cast_buf[k]);
+    }
   if (vals != vals_buf)
     {
       db_private_free (thread_p, vals);
@@ -545,7 +558,9 @@ qdata_collect_tuple_values (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
 	{
 	  continue;
 	}
-      value = qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
+      value = qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p,
+							   tuple_desc_p->f_cnt < tuple_desc_p->f_cast_cnt
+							   ? &tuple_desc_p->f_cast[tuple_desc_p->f_cnt] : NULL);
       tuple_desc_p->f_valp[tuple_desc_p->f_cnt] = value;
       if (value == NULL)
 	{
@@ -621,7 +636,7 @@ qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valpt
   reg_var_p = valptr_list_p->valptrp;
   for (i = 0; i < valptr_list_p->valptr_cnt; i++)
     {
-      dbval_p = qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
+      dbval_p = qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p, NULL);
 
       if (dbval_p != NULL)
 	{
@@ -897,7 +912,7 @@ qdata_add_short_to_utime_asymmetry (DB_VALUE * utime_val_p, short s, unsigned in
     }
 
   db_make_short (&tmp, -(s));
-  return (qdata_subtract_dbval (utime_val_p, &tmp, result_p, domain_p));
+  return qdata_subtract_datetime_value (utime_val_p, &tmp, result_p, domain_p);
 }
 
 static int
@@ -919,7 +934,7 @@ qdata_add_int_to_utime_asymmetry (DB_VALUE * utime_val_p, int i, unsigned int *u
     }
 
   db_make_int (&tmp, -i);
-  return (qdata_subtract_dbval (utime_val_p, &tmp, result_p, domain_p));
+  return qdata_subtract_datetime_value (utime_val_p, &tmp, result_p, domain_p);
 }
 
 static int
@@ -941,7 +956,7 @@ qdata_add_bigint_to_utime_asymmetry (DB_VALUE * utime_val_p, DB_BIGINT bi, unsig
     }
 
   db_make_bigint (&tmp, -bi);
-  return (qdata_subtract_dbval (utime_val_p, &tmp, result_p, domain_p));
+  return qdata_subtract_datetime_value (utime_val_p, &tmp, result_p, domain_p);
 }
 
 static int
@@ -1954,9 +1969,9 @@ qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CON
  *   coercion, resolved before any row, then the typed operator, which casts nothing
  *   return: NO_ERROR or ER_code
  *   opcode(in): T_ADD, T_SUB, T_MUL or T_DIV
- *   conv(in), operand_domain(in): conv[0..1] and operand_domain[0..1] of the operand coercion - a node's
- *	       RESOLVED_DOMAIN, a SUM's or AVG's DOMAIN_OPERAND_COERCION (domain_resolve_operand_coercion); conv NULL
- *	       converts nothing
+ *   conv(in), operand_domain(in), arith(in): conv[0..1], operand_domain[0..1] and arith of the operand coercion - a
+ *	       node's RESOLVED_DOMAIN, a SUM's or AVG's DOMAIN_OPERAND_COERCION (domain_resolve_operand_coercion); conv
+ *	       NULL converts nothing
  *   temporaries(in): [2] an operand its scope converted once already: the operator takes it in place
  *	       of the conversion; NULL none
  *
@@ -1967,13 +1982,14 @@ qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CON
  */
 int
 qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
-			     const TP_DOMAIN * const *operand_domain, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
-			     DB_VALUE * result_p, TP_DOMAIN * domain_p, const DB_VALUE * const *temporaries)
+			     const TP_DOMAIN * const *operand_domain, const DOMAIN_ARITH * arith, DB_VALUE * dbval1_p,
+			     DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p,
+			     const DB_VALUE * const *temporaries)
 {
   assert (opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV);
   if (conv == NULL || dbval1_p == NULL || dbval2_p == NULL || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
-      return qdata_arith_dbval (opcode, dbval1_p, dbval2_p, result_p, domain_p);
+      return qdata_arith_dbval (opcode, arith, dbval1_p, dbval2_p, result_p, domain_p);
     }
 #if !defined (NDEBUG)
   qdata_assert_operand_coercion_resolved (opcode, conv, operand_domain, dbval1_p, dbval2_p);
@@ -2014,7 +2030,7 @@ qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * co
     }
   if (error == NO_ERROR)
     {
-      error = qdata_arith_dbval (opcode, operand[0], operand[1], result_p, domain_p);
+      error = qdata_arith_dbval (opcode, arith, operand[0], operand[1], result_p, domain_p);
     }
   for (int i = 0; i < 2; i++)
     {
@@ -2024,16 +2040,6 @@ qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * co
 	}
     }
   return error;
-}
-
-/*
- * qdata_add_dbval () - the addition of two values: qdata_arith_dbval over the ARITH rule resolved from their types
- *   return: NO_ERROR, or ER_code
- */
-int
-qdata_add_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
-{
-  return qdata_arith_dbval (T_ADD, dbval1_p, dbval2_p, result_p, domain_p);
 }
 
 /*
@@ -2811,7 +2817,7 @@ qdata_subtract_utime_to_short_asymmetry (DB_VALUE * utime_val_p, short s, unsign
     }
 
   db_make_short (&tmp, -(s));
-  error = qdata_add_dbval (utime_val_p, &tmp, result_p, domain_p);
+  error = qdata_add_datetime_value (utime_val_p, &tmp, result_p, domain_p);
 
   return error;
 }
@@ -2836,7 +2842,7 @@ qdata_subtract_utime_to_int_asymmetry (DB_VALUE * utime_val_p, int i, unsigned i
     }
 
   db_make_int (&tmp, -(i));
-  error = qdata_add_dbval (utime_val_p, &tmp, result_p, domain_p);
+  error = qdata_add_datetime_value (utime_val_p, &tmp, result_p, domain_p);
 
   return error;
 }
@@ -2861,7 +2867,7 @@ qdata_subtract_utime_to_bigint_asymmetry (DB_VALUE * utime_val_p, DB_BIGINT bi, 
     }
 
   db_make_bigint (&tmp, -(bi));
-  error = qdata_add_dbval (utime_val_p, &tmp, result_p, domain_p);
+  error = qdata_add_datetime_value (utime_val_p, &tmp, result_p, domain_p);
 
   return error;
 }
@@ -2921,7 +2927,7 @@ qdata_subtract_datetime_to_int_asymmetry (DB_VALUE * datetime_val_p, DB_BIGINT i
     }
 
   db_make_bigint (&tmp, -(i));
-  error = qdata_add_dbval (datetime_val_p, &tmp, result_p, domain_p);
+  error = qdata_add_datetime_value (datetime_val_p, &tmp, result_p, domain_p);
 
   return error;
 }
@@ -3683,16 +3689,6 @@ qdata_subtract_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p, DB_VALU
 }
 
 /*
- * qdata_subtract_dbval () - the subtraction of two values: qdata_arith_dbval over the ARITH rule resolved from their types
- *   return: NO_ERROR, or ER_code
- */
-int
-qdata_subtract_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
-{
-  return qdata_arith_dbval (T_SUB, dbval1_p, dbval2_p, result_p, domain_p);
-}
-
-/*
  * qdata_subtract_number_to_datetime () - a number minus a date or time (DOMAIN_ARITH_DATE with the number first), as
  *   the typed subtractions of a SHORT, an INTEGER and a BIGINT computed it: a SHORT or an INTEGER minus a DATETIME,
  *   DATETIMELTZ or DATETIMETZ is milliseconds as an INTEGER and a BIGINT minus one is no value; a SHORT minus a DATE
@@ -4025,16 +4021,6 @@ qdata_multiply_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_V
   return NO_ERROR;
 }
 
-/*
- * qdata_multiply_dbval () - the multiplication of two values: qdata_arith_dbval over the ARITH rule resolved from their types
- *   return: NO_ERROR, or ER_code
- */
-int
-qdata_multiply_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
-{
-  return qdata_arith_dbval (T_MUL, dbval1_p, dbval2_p, result_p, domain_p);
-}
-
 static bool
 qdata_is_divided_zero (DB_VALUE * dbval_p)
 {
@@ -4172,16 +4158,6 @@ qdata_divide_monetary (double d1, double d2, DB_CURRENCY currency, DB_VALUE * re
 
   db_make_monetary (result_p, currency, dtmp);
   return NO_ERROR;
-}
-
-/*
- * qdata_divide_dbval () - the division of two values: qdata_arith_dbval over the ARITH rule resolved from their types
- *   return: NO_ERROR, or ER_code
- */
-int
-qdata_divide_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
-{
-  return qdata_arith_dbval (T_DIV, dbval1_p, dbval2_p, result_p, domain_p);
 }
 
 /*
@@ -4574,23 +4550,32 @@ qdata_collection_operator (OPERATOR_TYPE opcode, DB_TYPE result_type, DB_VALUE *
 
 #if !defined (NDEBUG)
 /*
- * qdata_assert_arith_resolved () - debug cross-check before the operator: its two values come coerced - the ARITH rule
- *   over their own types converts neither (the operator casts nothing; a caller that did not plan the operand
- *   coercion fails here)
+ * qdata_assert_arith_planned () - debug cross-check before the operator: the plan it dispatches on is the ARITH rule
+ *   over its two values' own types - which come coerced, so the rule converts neither (a caller that did not plan the
+ *   operand coercion fails here) and names the same kind and type. A string or bit value stands for its type family:
+ *   CHAR and VARCHAR converters read any string.
  */
 static void
-qdata_assert_arith_resolved (OPERATOR_TYPE opcode, DB_TYPE left_target, DB_TYPE right_target,
-			     const DB_VALUE * dbval1_p, const DB_VALUE * dbval2_p)
+qdata_assert_arith_planned (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, const DB_VALUE * dbval1_p,
+			    const DB_VALUE * dbval2_p)
 {
   const DB_TYPE type1 = DB_VALUE_DOMAIN_TYPE (dbval1_p);
   const DB_TYPE type2 = DB_VALUE_DOMAIN_TYPE (dbval2_p);
+  DB_TYPE left_target, right_target;
+  DOMAIN_ARITH expected;
 
-  if (left_target != type1 || right_target != type2)
+  (void) domain_arith_rule (opcode, type1, type2, &left_target, &right_target, &expected);
+  const bool same_type = expected.type == arith->type
+    || (TP_IS_CHAR_TYPE (expected.type) && TP_IS_CHAR_TYPE (arith->type))
+    || (TP_IS_BIT_TYPE (expected.type) && TP_IS_BIT_TYPE (arith->type));
+  if (left_target != type1 || right_target != type2 || expected.kind != arith->kind || !same_type)
     {
-      fprintf (stderr, "unplanned pre-cast: opcode=%d values=%d/%d targets=%d/%d\n", (int) opcode, (int) type1,
-	       (int) type2, (int) left_target, (int) right_target);
+      fprintf (stderr, "arithmetic plan: opcode=%d values=%d/%d targets=%d/%d kind=%d/%d type=%d/%d (plan/rule)\n",
+	       (int) opcode, (int) type1, (int) type2, (int) left_target, (int) right_target, (int) arith->kind,
+	       (int) expected.kind, (int) arith->type, (int) expected.type);
     }
   assert (left_target == type1 && right_target == type2);
+  assert (expected.kind == arith->kind && same_type);
 }
 
 /*
@@ -4620,23 +4605,22 @@ qdata_assert_arith_value (const DOMAIN_ARITH * arith, const DB_VALUE * result_p)
 #endif
 
 /*
- * qdata_arith_dbval () - an addition, subtraction, multiplication or division of two values, as the ARITH rule names
- *   it over their types (domain_arith_rule): the kind names the operator that computes the value and the type is the
- *   value's. The operands come in the types their operand coercion gave them (qdata_coerce_arith_operands) and the
- *   operator casts nothing: over them the rule converts nothing, and the value's type it names is the resolver's
- *   before any row. The rule is read over the values, not a plan: a value pointer, an accumulator or a list column
- *   may hold a type its compiled domain does not describe, and the operator computes what the values are.
+ * qdata_arith_dbval () - an addition, subtraction, multiplication or division of two values, as the ARITH rule
+ *   resolved it before any row (domain_arith_rule): the kind names the operator that computes the value and the type
+ *   is the value's. The operands come in the types their operand coercion gave them (qdata_coerce_arith_operands)
+ *   and the operator casts nothing; no type of a value decides anything here but the NULL of a string under plus as
+ *   concatenation (qdata_strcat_dbval answers a NULL string, as the typed addition let it).
  *   return: NO_ERROR, or ER_code
  *   opcode(in): T_ADD, T_SUB, T_MUL or T_DIV
+ *   arith(in): the plan - a node's RESOLVED_DOMAIN, a SUM's or AVG's DOMAIN_OPERAND_COERCION, domain_arith_double
+ *	       for an accumulation in DOUBLE; a plan nothing resolved (DOMAIN_ARITH_UNRESOLVED) is the caller's
+ *	       unresolved-domain check, never seen here
  *   domain_p(in): the domain the result is coerced to; NULL none
  */
 int
-qdata_arith_dbval (OPERATOR_TYPE opcode, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p,
-		   TP_DOMAIN * domain_p)
+qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
+		   DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
-  DOMAIN_ARITH resolved;
-  const DOMAIN_ARITH *arith = &resolved;
-  DB_TYPE left_target, right_target;
   int error = NO_ERROR;
 
   assert (opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV);
@@ -4646,24 +4630,36 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, DB_VALUE * dbval1_p, DB_VALUE * dbval2_
       return NO_ERROR;
     }
 
-  (void) domain_arith_rule (opcode, dbval1_p != NULL ? DB_VALUE_DOMAIN_TYPE (dbval1_p) : DB_TYPE_NULL,
-			    dbval2_p != NULL ? DB_VALUE_DOMAIN_TYPE (dbval2_p) : DB_TYPE_NULL, &left_target,
-			    &right_target, &resolved);
-
-  if (arith->kind == DOMAIN_ARITH_CONCAT)
+  if (dbval1_p == NULL || dbval2_p == NULL || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
-      /* plus as concatenation, which answers a NULL operand itself */
-      return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p);
+      /* a NULL operand: no value, before any plan (a node without one answers its NULL operand too), but under plus
+       * as concatenation a NULL string, which qdata_strcat_dbval answers (oracle_style_empty_string); a NULL without a
+       * string type (a NULL made bare) is no value */
+      if (arith != NULL && arith->kind == DOMAIN_ARITH_CONCAT && dbval1_p != NULL && dbval2_p != NULL
+	  && TP_IS_CHAR_BIT_TYPE (DB_VALUE_DOMAIN_TYPE (dbval1_p))
+	  && TP_IS_CHAR_BIT_TYPE (DB_VALUE_DOMAIN_TYPE (dbval2_p)))
+	{
+	  return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p);
+	}
+      return NO_ERROR;
     }
 
-  if (arith->kind == DOMAIN_ARITH_NO_VALUE || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
+  assert (arith != NULL && arith->kind != DOMAIN_ARITH_UNRESOLVED);
+
+#if !defined (NDEBUG)
+  qdata_assert_arith_planned (opcode, arith, dbval1_p, dbval2_p);
+#endif
+
+  if (arith->kind == DOMAIN_ARITH_NO_VALUE)
     {
       return NO_ERROR;
     }
 
-#if !defined (NDEBUG)
-  qdata_assert_arith_resolved (opcode, left_target, right_target, dbval1_p, dbval2_p);
-#endif
+  if (arith->kind == DOMAIN_ARITH_CONCAT)
+    {
+      /* plus as concatenation */
+      return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p);
+    }
 
   if (opcode == T_DIV && qdata_is_divided_zero (dbval2_p))
     {
@@ -5278,10 +5274,13 @@ qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfil
  *       return a pointer to it.
  *
  * Note: Regulator variable should point to only constant values.
+ *   cast_into(in): the value a value not of the column's domain is cast into, so the peeked value keeps its own
+ *		    type; NULL casts the peeked value in place (qdata_set_valptr_list_unbound, a column past the
+ *		    stack array of qdata_copy_valptr_list_to_tuple)
  */
 static DB_VALUE *
 qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p,
-					     VAL_DESCR * val_desc_p)
+					     VAL_DESCR * val_desc_p, DB_VALUE * cast_into)
 {
   DB_VALUE *peek_value_p;
   DB_TYPE dom_type, val_type;
@@ -5337,21 +5336,43 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
 		}
 	      else
 		{
-		  if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+		  if (cast_into != NULL)
 		    {
-		      save_heapid = db_change_private_heap (thread_p, 0);
+		      /* a copy, cast in place as the value itself was: the peeked value - a scan's value another column
+		       * reads too - keeps the type its producer gave it, which the plan of that column's node
+		       * describes; the cast of a copy is the cast of the value (a string cast over itself keeps its
+		       * own padding, a cast into another value pads anew) */
+		      pr_clear_value (cast_into);
+		      if (pr_clone_value (peek_value_p, cast_into) != NO_ERROR)
+			{
+			  return NULL;
+			}
+		      dom_status = tp_value_auto_cast (cast_into, cast_into, domain);
+		      if (dom_status != DOMAIN_COMPATIBLE)
+			{
+			  result = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, cast_into, domain);
+			  return NULL;
+			}
+		      peek_value_p = cast_into;
 		    }
+		  else
+		    {
+		      if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+			{
+			  save_heapid = db_change_private_heap (thread_p, 0);
+			}
 
-		  dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, domain);
-		  if (save_heapid != 0)
-		    {
-		      (void) db_change_private_heap (thread_p, save_heapid);
-		      save_heapid = 0;
-		    }
-		  if (dom_status != DOMAIN_COMPATIBLE)
-		    {
-		      result = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, domain);
-		      return NULL;
+		      dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, domain);
+		      if (save_heapid != 0)
+			{
+			  (void) db_change_private_heap (thread_p, save_heapid);
+			  save_heapid = 0;
+			}
+		      if (dom_status != DOMAIN_COMPATIBLE)
+			{
+			  result = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, domain);
+			  return NULL;
+			}
 		    }
 		  assert (dom_type == DB_VALUE_TYPE (peek_value_p)
 			  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) && DB_IS_NULL (peek_value_p)));

@@ -539,9 +539,8 @@ domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operand
 	  }
 	else
 	  {
-	    DOMAIN_ARITH arith;
-	    error = domain_arith_rule (opcode, left, right, &left_target, &right_target, &arith);
-	    result_type = arith.type;
+	    error = domain_arith_rule (opcode, left, right, &left_target, &right_target, &result->arith);
+	    result_type = result->arith.type;
 	  }
 	if (error != NO_ERROR)
 	  {
@@ -623,11 +622,10 @@ domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DO
 {
   assert (opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV);
   DB_TYPE left_target, right_target;
-  DOMAIN_ARITH arith;
   RESOLVED_DOMAIN resolved = RESOLVED_DOMAIN ();
   /* the targets are set before the operator answers whether it takes the pair */
   (void) domain_arith_rule (opcode, domain_operand_type (&operands[0]), domain_operand_type (&operands[1]),
-			    &left_target, &right_target, &arith);
+			    &left_target, &right_target, &result->arith);
   domain_set_arith_operands (opcode, operands, left_target, right_target, &resolved);
   for (int i = 0; i < 2; i++)
     {
@@ -635,6 +633,8 @@ domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DO
       result->operand_domain[i] = resolved.operand_domain[i];
     }
 }
+
+const DOMAIN_ARITH domain_arith_double = { DOMAIN_ARITH_NUMBER, DB_TYPE_DOUBLE };
 
 /* The cached domain tp_domain_resolve (type, NULL, precision, 0, NULL, collation_id) gives a string (the collation's
  * codeset) or a bit string, found without the transient domain tp_domain_resolve makes and frees; a domain not

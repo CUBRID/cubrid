@@ -774,8 +774,8 @@ qexec_resolve_cast_coercion (int opcode, const DOMAIN_OPERAND * operands, int n_
     }
 }
 
-/* A late-binding node's resolution that starts from its operands' operand coercion alone: conv[0..1] and
- * operand_domain[0..1], no domain yet. */
+/* A late-binding node's resolution that starts from its operands' operand coercion alone: conv[0..1],
+ * operand_domain[0..1] and the value the operator makes (arith), no domain yet. */
 static void
 qexec_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * entry)
 {
@@ -787,6 +787,7 @@ qexec_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, RES
       entry->conv[i] = coercion.conv[i];
       entry->operand_domain[i] = coercion.operand_domain[i];
     }
+  entry->arith = coercion.arith;
 }
 
 /*
