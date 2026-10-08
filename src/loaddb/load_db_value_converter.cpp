@@ -620,8 +620,10 @@ namespace cubload
   int
   to_db_numeric (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    int precision = (int) str_size - 1 - (str[0] == '+' || str[0] == '-');
-    int scale = (int) str_size - (int) strcspn (str, ".") - 1;
+    const char *dot = (const char *) memchr (str, '.', str_size);
+    int sign = (str_size > 0 && (str[0] == '+' || str[0] == '-')) ? 1 : 0;
+    int precision = (int) str_size - sign - (dot != NULL ? 1 : 0);
+    int scale = (dot != NULL) ? (int) (str + str_size - dot - 1) : 0;
 
     if (precision > DB_MAX_NUMERIC_PRECISION)
       {
