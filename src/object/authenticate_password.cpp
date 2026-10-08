@@ -149,48 +149,28 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
 static void
 encrypt_salt_generate (char *salt, int salt_size)
 {
-  int i, length = 0;
-  const char *hex = "0123456789ABCDEF";
   char master_salt[ENCRYPT_SALT_SIZE + 1];
-
   assert (salt != NULL && salt_size > (ENCRYPT_SALT_SIZE * 2));
 
   if (crypt_generate_random_bytes (master_salt, ENCRYPT_SALT_SIZE) != NO_ERROR)
     {
-      // fallback to generate salt using time
+      // fallback to generate salt using random_device
+      int i = 0;
+      size_t copy_size;
+      uint64_t random_val;
       thread_local std::mt19937_64 engine (std::random_device{}());
-      std::uniform_int_distribution<int> distribution (0, INT_MAX);
 
-      i = 0;
       while (i < ENCRYPT_SALT_SIZE)
 	{
-	  length = distribution (engine);
-	  if (i < (int) (ENCRYPT_SALT_SIZE - sizeof (int)))
-	    {
-	      memcpy (master_salt + i, &length, sizeof (int));
-	      i += sizeof (int);
-	    }
-	  else if (i < (int) (ENCRYPT_SALT_SIZE - sizeof (short)))
-	    {
-	      memcpy (master_salt + i, &length, sizeof (short));
-	      i += sizeof (short);
-	    }
-	  else
-	    {
-	      master_salt[i] = (char) (length & 0xFF);
-	      i++;
-	    }
+	  random_val = engine();
+	  copy_size = (ENCRYPT_SALT_SIZE - i) < (int)sizeof (uint64_t) ? (ENCRYPT_SALT_SIZE - i) : sizeof (uint64_t);
+	  memcpy (master_salt + i, &random_val, copy_size);
+	  i += copy_size;
 	}
     }
 
-  length = 0;
-  for (i = 0; i < ENCRYPT_SALT_SIZE; i++)
-    {
-      salt[length++] = hex[ (u_char)master_salt[i] >> 4];
-      salt[length++] = hex[ (u_char)master_salt[i] & 0x0F];
-    }
-  salt[length] = '\0';
-  assert (length == ENCRYPT_SALT_SIZE_HEX);
+  str_to_hex_prealloced (master_salt, ENCRYPT_SALT_SIZE, salt, salt_size, HEX_UPPERCASE);
+  assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
 }
 
 /*
@@ -201,8 +181,8 @@ encrypt_salt_generate (char *salt, int salt_size)
  *   pass(in): string to encrypt
  *   dest(out): destination buffer
  *
- *   Notice: If salt is null, pass is the user's raw input;
-             otherwise, it is formatted as ENCODE_PREFIX_SHA2_512.
+ *   Notice: If salt is null, pass is the user's raw input and a new salt is generated;
+ *           otherwise, pass is the user's raw input or formatted as ENCODE_PREFIX_SHA2_512.
  */
 void
 encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *pass, char *dest)
@@ -210,7 +190,6 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
   char sha512[AU_MAX_PASSWORD_BUF + 4];
   char salt_in[ENCRYPT_SALT_SIZE_HEX + 1];
   char buf[AU_MAX_PASSWORD_BUF + 4];
-  char *ptr;
 
   assert (name != NULL && strlen (name) > 0);
 
@@ -243,13 +222,7 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
     }
 
   assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
-  ptr = buf;
-  memcpy (ptr, salt, strlen (salt));
-  ptr += strlen (salt);
-  memcpy (ptr, sha512 + 1, strlen (sha512 + 1));
-  ptr += strlen (sha512 + 1);
-  memcpy (ptr, name, strlen (name) + 1);
-
+  snprintf (buf, sizeof (buf), "%s%s%s", salt, sha512 + 1, name);
   encrypt_password_sha2_512 (buf, sha512);
   if (sha512[0] == '\0')
     {
@@ -257,10 +230,10 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
       return;
     }
 
-  ptr = sha512 + 1;
-  memcpy (dest + 1, salt, ENCRYPT_SALT_SIZE_HEX);
-  memcpy (dest + 1 + ENCRYPT_SALT_SIZE_HEX, ptr, strlen (ptr) + 1);
   dest[0] = ENCODE_PREFIX_SHA2_512_SALT; // set the prefix to SHA2_512_SALT
+  dest++;
+  memcpy (dest, salt, ENCRYPT_SALT_SIZE_HEX);
+  strcpy (dest + ENCRYPT_SALT_SIZE_HEX, sha512 + 1);
 }
 
 /*
@@ -335,6 +308,7 @@ match_password (const char *name, const char *user, const char *database)
     }
   else if (IS_ENCODED_SHA2_512_SALT (database))
     {
+      /* DB: SHA2 with salt */
       char salt[ENCRYPT_SALT_SIZE_HEX + 1];
 
       strcpy (buf2, database);
@@ -347,7 +321,6 @@ match_password (const char *name, const char *user, const char *database)
 
       memcpy (salt, database + 1, ENCRYPT_SALT_SIZE_HEX);
       salt[ENCRYPT_SALT_SIZE_HEX] = '\0';
-      assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
 
       encrypt_password_sha2_512_salt (name, salt, user, buf1);
     }
