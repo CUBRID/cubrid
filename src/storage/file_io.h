@@ -332,8 +332,7 @@ struct fileio_backup_buffer
 				 * buffer when writing */
   FILEIO_BACKUP_HEADER *bkuphdr;	/* pointer to header information */
 
-  /* parallel-write (PW): writer-private async double-buffer.
-   * Owned ONLY by the single inline writer thread. When async_enabled is true, the writer
+  /* Writer-private async double-buffer, owned ONLY by the single inline writer thread. When async_enabled is true, the writer
    * packs into buffer_ring[active_slot], issues aio_write of a full slot, flips to the other
    * slot, and reaps the in-flight write before reusing a slot / at rollover / at teardown.
    * When async_enabled is false (default), bkup.buffer simply aliases buffer_ring[active_slot]

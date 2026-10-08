@@ -6929,7 +6929,7 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
    * (the default) async_enabled is false and behavior is byte-identical to the
    * prior synchronous code. SERVER_MODE only; in SA mode it is always false.
    *
-   * Gate (do-no-harm, MEDIUM-1 fix): the async double-buffer is enabled ONLY on
+   * Gate: the async double-buffer is enabled ONLY on
    * POSITIVE proof that the -D output target is on a different physical device
    * than the DB. Concretely:
    *
@@ -6938,7 +6938,7 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
    *                   AND out.st_dev != db.st_dev
    *
    * If either stat() fails OR the two devices are equal, async stays OFF and we
-   * use the unchanged synchronous path (do no harm). The same-device server-log
+   * use the unchanged synchronous path. The same-device server-log
    * line is emitted ONLY when the devices are actually proven equal.
    *
    * Opt-in values:
@@ -6983,7 +6983,7 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
 	      }
 	    else
 	      {
-		/* devices proven equal -> write-bandwidth bound; do no harm, stay synchronous. */
+		/* devices proven equal -> write-bandwidth bound; stay synchronous. */
 		er_log_debug (ARG_FILE_LINE,
 			      "backup output on same physical device as DB; parallel-write disabled "
 			      "(write-bandwidth bound)\n");
@@ -6992,7 +6992,7 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
 	  }
 	else
 	  {
-	    /* could not prove different devices (stat failed) -> do no harm, stay synchronous. */
+	    /* could not prove different devices (stat failed) -> stay synchronous. */
 	    session_p->bkup.async_enabled = false;
 	  }
       }
@@ -8880,7 +8880,7 @@ error:
  * Note: Thin dispatcher. When bkup.async_enabled is false -- the default whenever
  *       CUBRID_BACKUP_ASYNC_WRITE is unset -- it forwards to the unchanged synchronous
  *       implementation fileio_flush_backup_sync, so behavior is byte-for-byte identical
- *       to the prior code (do no harm). When async_enabled is true it routes through the
+ *       to the prior code. When async_enabled is true it routes through the
  *       writer-private kernel-async double-buffer (fileio_flush_backup_issue +
  *       fileio_flush_backup_reap_slot), which produces byte-identical output because a
  *       single thread issues and reaps writes in submission order.
