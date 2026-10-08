@@ -3894,11 +3894,11 @@ qo_node_rows_in_join (QO_ENV * env, QO_NODE * node, BITSET * outer_nodes, double
  * The expected hit ratio is (calls - ndv) / calls, as in PostgreSQL cost_memoize_rescan () without its
  * cache capacity factor, where calls is the outer cardinality and ndv the number of distinct keys in
  * the outer rows. The decision is conservative and leaves the rest to the run-time check:
- * - Only an outer key column that is unique (a unique index) or near-unique (MEMOIZE_UNIQUE_KEY_RATIO) in
- *   its own table counts. Its NDV is a lower bound of the NDV of the whole key, so the other key columns
- *   (and their statistics) cannot make it skip. Where the few duplicates of a near-unique column sit is
- *   unknown: a filter or join that keeps just those rows repeats the key more than the estimate assumes,
- *   and the run-time check then has to catch it.
+ * - Only an outer key column that is unique (a NOT NULL unique index) or near-unique
+ *   (MEMOIZE_UNIQUE_KEY_RATIO) in its own table counts. Its NDV is a lower bound of the NDV of the whole
+ *   key, so the other key columns (and their statistics) cannot make it skip. Where the few duplicates of
+ *   a near-unique column sit is unknown: a filter or join that keeps just those rows repeats the key more
+ *   than the estimate assumes, and the run-time check then has to catch it.
  * - Its NDV in the outer rows is estimated from the rows of its table the outer holds
  *   (qo_node_rows_in_join ()) with qo_estimate_ndv ().
  * - An outer with an outer join, or missing statistics the estimate needs, is not decided.
@@ -3968,9 +3968,10 @@ qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_t
 	  /* no statistics */
 	  continue;
 	}
-      if (qo_seg_has_unique_index (seg))
+      if (qo_seg_has_unique_index (seg) && QO_SEG_IS_NOT_NULL (seg))
 	{
-	  /* one value per row, whatever the sampled NDV says */
+	  /* one value per row, whatever the sampled NDV says; a unique index allows many NULLs, and
+	   * memoize keeps and replays the result of a NULL key too, so a nullable column goes by its NDV */
 	  seg_ndv = (double) QO_NODE_NCARD (node);
 	}
       else if (seg_ndv < MEMOIZE_UNIQUE_KEY_RATIO * (double) QO_NODE_NCARD (node))
