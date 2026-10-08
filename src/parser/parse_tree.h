@@ -3497,8 +3497,8 @@ typedef struct pt_dblink_info
   bool needs_describe;
 
   /* a gathered name may not be this table's (pt_get_column_name_pre ()): an unqualified one,
-   * or any inside a nested block.  Without one every name is this table's, so a refused
-   * prepare is the answer and nothing is described. */
+   * or one qualified with this table's name inside a nested block.  Without one every name is
+   * this table's, so a refused prepare is the answer and nothing is described. */
   bool uncertain_name_seen;
 
   void *remote_col_list;	/* remote table's column list */

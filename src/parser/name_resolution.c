@@ -12602,7 +12602,8 @@ typedef struct link_columns
   bool shadowed;		/* inside a nested block that redeclares this table's name: a qualified
 				   name there is that block's table, not this one */
   bool needs_describe;		/* a name was seen that cannot be pinned to this table */
-  bool uncertain_name_seen;	/* a name that may not be this table's: a bare one, or any inside a nested block */
+  bool uncertain_name_seen;	/* a name that may not be this table's: a bare one, or one qualified with this
+				   table's name inside a nested block */
 } S_LINK_COLUMNS;
 
 static void
@@ -12744,8 +12745,11 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	    {
 	      /* a nested block may still give another table this name in a form
 	       * pt_dblink_name_redeclared () does not recognize, so a refused prepare is
-	       * checked against the catalog */
-	      if (plkcol->nested_depth > 0)
+	       * checked against the catalog.  Another qualifier is never this table's:
+	       * check_for_already_exists () does not gather it. */
+	      if (plkcol->nested_depth > 0
+		  && intl_identifier_casecmp_for_dblink (node->info.dot.arg1->info.name.original,
+							 plkcol->tbl_name_node->info.name.original) == 0)
 		{
 		  plkcol->uncertain_name_seen = true;
 		}
