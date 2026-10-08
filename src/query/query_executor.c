@@ -694,7 +694,7 @@ static void qexec_connect_by_spill_trim_path (THREAD_ENTRY * thread_p, CONNECT_B
 static void qexec_connect_by_spill_clear (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill);
 static int qexec_connect_by_children_list_add (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill, QFILE_TUPLE tpl);
 static int qexec_connect_by_spill_children_order (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill,
-						  SORT_LIST * orderby_list);
+						  SORT_LIST * orderby_list, bool reverse_keys);
 static int qexec_connect_by_spill_children_to_stack (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill,
 						     OUTPTR_LIST * outptr_list,
 						     QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
@@ -18473,17 +18473,14 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
 	  if (has_order_siblings_by && children_on_disk > 1)
 	    {
-	      if (qexec_connect_by_spill_children_order (thread_p, &spill, xasl->orderby_list) != NO_ERROR)
+	      if (qexec_connect_by_spill_children_order (thread_p, &spill, xasl->orderby_list, reverse_hash_children)
+		  != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
-	      backward = false;
 	    }
-	  else
-	    {
-	      /* a non-reverse access path kept input order, so it is restored by reading the list back to front */
-	      backward = !reverse_hash_children;
-	    }
+	  /* a non-reverse access path kept input order, so it is restored by reading the list back to front */
+	  backward = !reverse_hash_children;
 
 	  /* the children go on as spilled stack chunks; first spill the resident stack tail so they extend one
 	   * contiguous spilled prefix that the normal reload path can walk */
@@ -20498,50 +20495,63 @@ qexec_connect_by_children_list_add (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPIL
 }
 
 /*
- * qexec_connect_by_spill_children_order () - sort the spilled children into the reverse of the ORDER SIBLINGS BY order
+ * qexec_connect_by_spill_children_order () - sort the spilled children so they pop in ORDER SIBLINGS BY order
  *  return: error code
  *  spill(in/out): children_list is replaced by its sorted copy
  *  orderby_list(in): the ORDER SIBLINGS BY keys
+ *  reverse_keys(in): true for a reversed-input (hash) child list, read forward afterwards; false for an input-order
+ *    (non-hash) child list, read backward afterwards
  *
- *  Note: a forward scan then feeds the stack bottom-first, so the siblings pop in ORDER SIBLINGS BY order; hence the
- *  keys are flipped to sort descending here.
+ *  Note: the in-memory path stable-sorts the children in input order and pushes them in reverse, so ties keep input
+ *  order. The spilled path reproduces that: a non-hash list is already in input order, so it is sorted on the original
+ *  keys and read back to front; a hash list is in reversed input order, so the keys are flipped and it is read front to
+ *  back. Either way the chunk reload, which pops in reverse of the read order, emits ties in input order.
  */
 static int
-qexec_connect_by_spill_children_order (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill, SORT_LIST * orderby_list)
+qexec_connect_by_spill_children_order (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_SPILL * spill, SORT_LIST * orderby_list,
+				       bool reverse_keys)
 {
   SORT_LIST *rev = NULL, *tail = NULL, *s;
+  SORT_LIST *sort_keys = orderby_list;
   QFILE_LIST_ID *sorted;
   int error = NO_ERROR;
 
-  for (s = orderby_list; s != NULL; s = s->next)
+  if (reverse_keys)
     {
-      SORT_LIST *node = (SORT_LIST *) db_private_alloc (thread_p, sizeof (SORT_LIST));
-      if (node == NULL)
+      for (s = orderby_list; s != NULL; s = s->next)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SORT_LIST));
-	  error = ER_OUT_OF_VIRTUAL_MEMORY;
-	  break;
+	  SORT_LIST *node = (SORT_LIST *) db_private_alloc (thread_p, sizeof (SORT_LIST));
+	  if (node == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (SORT_LIST));
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      break;
+	    }
+	  node->next = NULL;
+	  node->local_next = NULL;
+	  node->del_id = 0;
+	  node->pos_descr = s->pos_descr;
+	  node->s_order = (s->s_order == S_ASC) ? S_DESC : S_ASC;
+	  node->s_nulls = (s->s_nulls == S_NULLS_FIRST) ? S_NULLS_LAST : S_NULLS_FIRST;
+	  if (tail == NULL)
+	    {
+	      rev = tail = node;
+	    }
+	  else
+	    {
+	      tail->next = node;
+	      tail = node;
+	    }
 	}
-      node->next = NULL;
-      node->local_next = NULL;
-      node->del_id = 0;
-      node->pos_descr = s->pos_descr;
-      node->s_order = (s->s_order == S_ASC) ? S_DESC : S_ASC;
-      node->s_nulls = (s->s_nulls == S_NULLS_FIRST) ? S_NULLS_LAST : S_NULLS_FIRST;
-      if (tail == NULL)
-	{
-	  rev = tail = node;
-	}
-      else
-	{
-	  tail->next = node;
-	  tail = node;
-	}
+      sort_keys = rev;
     }
 
   if (error == NO_ERROR)
     {
-      sorted = qfile_sort_list (thread_p, spill->children_list, rev, Q_ALL, false);
+      /* keep the sorted list backward capable: the non-hash path reads it back to front to restore the tie order */
+      sorted = qfile_sort_list_with_func (thread_p, spill->children_list, sort_keys, Q_ALL,
+					  QFILE_FLAG_ALL | QFILE_FLAG_BACKWARD, NULL, NULL, NULL, NULL, NO_SORT_LIMIT,
+					  false, 0, NULL);
       if (sorted == NULL)
 	{
 	  /* a sort that fails while opening its result leaves the input temp file intact, so destroy it here */
