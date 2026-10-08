@@ -18740,6 +18740,8 @@ qexec_opcode_is_prior_or_volatile (OPERATOR_TYPE opcode)
     case T_RANDOM:
     case T_DRANDOM:
     case T_SYS_GUID:
+    case T_INCR:
+    case T_DECR:		/* INCR/DECR mutate and return a new value each evaluation */
     case T_DEFINE_VARIABLE:	/* @v := ... mutates a session variable, so a new value each evaluation */
       return true;
     default:
