@@ -174,9 +174,15 @@ namespace cubload
 
     setters_[DB_TYPE_JSON][LDR_STR] = &to_db_json;
 
-    setters_[DB_TYPE_MONETARY][LDR_INT] = &to_db_monetary;
-    setters_[DB_TYPE_MONETARY][LDR_NUMERIC] = &to_db_monetary;
-    setters_[DB_TYPE_MONETARY][LDR_DOUBLE] = &to_db_monetary;
+    /*
+     * Only the $ literal comes here. A plain number keeps the fallback above, which
+     * builds the literal's own natural type and lets the engine cast it - the same
+     * path INSERT takes, and the reason a number has to stay off to_db_monetary ():
+     * that one reads every literal with strtod (), and strtod ("-0") is IEEE negative
+     * zero, so -0 and -0.0 were stored as $-0.00 where INSERT stores $0.00. INSERT
+     * keeps the sign for -0e0, because that literal really is a double; deferring to
+     * the engine reproduces both answers instead of picking one.
+     */
     setters_[DB_TYPE_MONETARY][LDR_MONETARY] = &to_db_monetary;
 
     setters_[DB_TYPE_DATE][LDR_STR] = &to_db_string;
