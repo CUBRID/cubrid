@@ -155,6 +155,28 @@ namespace cubload
   {
     constant_type *con = NULL;
 
+    if (type == LDR_INT && val != NULL && ((string_type *)val)->val != NULL)
+      {
+	char *val_str = ((string_type *)val)->val;
+	int val_str_len = ((string_type *)val)->size;
+	const char *max_big_int[2] = {"9223372036854775807", "9223372036854775808"};
+	int idx = (*val_str == '-') ? 1 : 0;
+
+	if (*val_str == '-' || *val_str == '+')
+	  {
+	    val_str++;
+	  }
+
+	if ((val_str_len < 19) || (val_str_len == 19 && (strcmp (val_str, max_big_int[idx]) <= 0)))
+	  {
+	    /* no-op */;
+	  }
+	else
+	  {
+	    type = LDR_NUMERIC;
+	  }
+      }
+
     if (m_constant_pool_idx < CONSTANT_POOL_SIZE)
       {
 	con = &m_constant_pool[m_constant_pool_idx++];
