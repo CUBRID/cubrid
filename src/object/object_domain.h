@@ -240,15 +240,9 @@ typedef enum tp_match
  */
 
 #define TP_IS_CHAR_TYPE(typeid)           ((typeid) == DB_TYPE_VARCHAR || (typeid) == DB_TYPE_CHAR)
-
-#define TP_IS_LOBFILE_TYPE(typeid) \
-  (((typeid) == DB_TYPE_BFILE)  || ((typeid) == DB_TYPE_CFILE))
-
-#define TP_IS_LOB_TYPE(typeid)            ((typeid) == DB_TYPE_BLOB || (typeid) == DB_TYPE_CLOB)
-
-#define TP_IS_LOB_FAMILY_TYPE(typeid) \
-  ((TP_IS_LOBFILE_TYPE(typeid)) || (TP_IS_LOB_TYPE(typeid)))
-
+#define TP_IS_LOBFILE_TYPE(typeid)            ((typeid) == DB_TYPE_BFILE || (typeid) == DB_TYPE_CFILE)
+#define TP_IS_LOB_TYPE(typeid)                 ((typeid) == DB_TYPE_BLOB || (typeid) == DB_TYPE_CLOB)
+#define TP_IS_LOB_FAMILY_TYPE(typeid)          (TP_IS_LOBFILE_TYPE (typeid) || TP_IS_LOB_TYPE (typeid))
 #define TP_IS_FIXED_LEN_CHAR_TYPE(typeid) ((typeid) == DB_TYPE_CHAR)
 #define TP_IS_VAR_LEN_CHAR_TYPE(typeid)   ((typeid) == DB_TYPE_VARCHAR || (typeid) == DB_TYPE_CLOB)
 
@@ -310,26 +304,8 @@ tp_is_string_implicit_target_allowed (DB_TYPE dest)
 static inline bool
 tp_implicit_coercion_not_allowed (DB_TYPE src, DB_TYPE dest)
 {
-  if (src == dest)
-    {
-      return false;
-    }
-
-  /* External LOBFILE values must be converted explicitly. */
-  if (TP_IS_LOBFILE_TYPE (src) || TP_IS_LOBFILE_TYPE (dest))
-    {
-      return true;
-    }
-
-  /* Internal LOB values keep only their natural implicit partners:
-   * CHAR/VARCHAR <-> CLOB and BIT/VARBIT <-> BLOB. */
-  if ((TP_IS_CHAR_TYPE (src) && dest == DB_TYPE_CLOB) || (src == DB_TYPE_CLOB && TP_IS_CHAR_TYPE (dest))
-      || (TP_IS_BIT_TYPE (src) && dest == DB_TYPE_BLOB) || (src == DB_TYPE_BLOB && TP_IS_BIT_TYPE (dest)))
-    {
-      return false;
-    }
-
-  if (TP_IS_LOB_TYPE (src) || TP_IS_LOB_TYPE (dest))
+  /* Block both LOBFILE (BFILE/CFILE) and LOB (BLOB/CLOB). */
+  if (TP_IS_LOB_FAMILY_TYPE (src) || TP_IS_LOB_FAMILY_TYPE (dest))
     {
       return true;
     }

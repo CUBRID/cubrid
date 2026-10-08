@@ -772,8 +772,11 @@ namespace cubload
 
     insert_errors_filtered = has_errors_filtered_for_insert (m_session.get_args().m_ignored_errors);
 
-    /* The locator_multi_insert_force() sometimes creates the data page-based log record instead of the record-based log record. In HA, it means that the replication log cannot have an accurate LSA for each insert by loaddb. */
-    if (insert_errors_filtered || !HA_DISABLED ())
+    /* locator_multi_insert_force () settles its own logging shape - a page image
+     * where replication is not watching, a record per row where it is - so HA no
+     * longer forces the row-at-a-time path. Filtering per-row errors still does:
+     * a batch cannot report which row failed. */
+    if (insert_errors_filtered)
       {
 	// In case of possible errors filtered for insert we disable the unique optimization
 	for (size_t i = 0; i < m_recdes_collected.size (); i++)
@@ -864,6 +867,10 @@ namespace cubload
 	error_code = process_generic_constant (cons, attr);
 	break;
 
+      case LDR_INTERNAL_LOB_REF:
+	error_code = process_internal_lob_constant (cons, attr);
+	break;
+
       case LDR_MONETARY:
 	error_code = process_monetary_constant (cons, attr);
 	break;
@@ -931,6 +938,37 @@ namespace cubload
       }
 
     return error_code;
+  }
+
+  int
+  server_object_loader::process_internal_lob_constant (constant_type *cons, const attribute &attr)
+  {
+    string_type *str = reinterpret_cast<string_type *> (cons->val);
+    const tp_domain &domain = attr.get_domain ();
+    DB_TYPE expected_type = domain.type->get_id ();
+    char token_type;
+    char expected_token_type;
+    DB_BIGINT max_length = domain.precision;
+    db_value &db_val = get_attribute_db_value (attr.get_index ());
+
+    if (str == NULL || str->val == NULL || str->size < 3 || str->val[1] != '|'
+	|| (expected_type != DB_TYPE_BLOB && expected_type != DB_TYPE_CLOB))
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_DOMAIN_MISMATCH, 4, attr.get_name (),
+		m_class_entry->get_class_name (), "BLOB/CLOB", domain.type->get_name ());
+	return ER_LDR_DOMAIN_MISMATCH;
+      }
+
+    token_type = str->val[0];
+    expected_token_type = (expected_type == DB_TYPE_BLOB) ? 'B' : 'C';
+    if (token_type != expected_token_type)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, attr.get_name ());
+	return ER_OBJ_DOMAIN_CONFLICT;
+      }
+
+    return m_session.internal_lob_payload_make_value (*m_thread_ref, m_clsid, str->val + 2, str->size - 2,
+	   expected_type, max_length, &db_val);
   }
 
   int

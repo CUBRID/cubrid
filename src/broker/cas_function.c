@@ -60,6 +60,9 @@
 #include "db_session.h"
 #include "object_primitive.h"
 
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
+
 /* ========================================================================
  * Forward Function Declarations
  * ======================================================================== */
@@ -2469,4 +2472,137 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 			 query_timeout);
 	}
     }
+}
+
+FN_RETURN
+fn_stream_send_data (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  char *data = NULL;
+  int data_len = 0;
+
+  if (argc != 1)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_str (&data, &data_len, argv[0]);
+
+  ux_stream_send_data (data, data_len, net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_stream_end (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  /* whether END owes an auto-commit was settled when the stream opened: by the statement's own mode, or for a
+   * driver-opened stream by the kind's answer (ux_stream_init) -- an upload never owes one */
+  ux_stream_end (net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_stream_init (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int stream_kind = 0;
+  char *config = NULL;
+  int config_len = 0;
+
+  if (argc != 2)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  net_arg_get_int (&stream_kind, argv[0]);
+  net_arg_get_str (&config, &config_len, argv[1]);
+
+  ux_stream_init (stream_kind, config, config_len, net_buf);
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_stream_abort (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  if (argc != 0)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+
+  ux_stream_abort (net_buf, req_info);
+
+  return FN_KEEP_CONN;
+}
+
+/* runs in place of a request an open stream does not admit (ux_stream_admits_request); the stream is left as it was */
+FN_RETURN
+fn_stream_refused (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	  "a stream session is open on this connection; end or abort it first");
+  errors_in_transaction++;
+  ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+  NET_BUF_ERR_SET (net_buf);
+
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_lob_stream_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  char *locator = NULL;
+  int locator_len = 0;
+  DB_BIGINT start_offset = 0;
+
+  if (argc != 2)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_arg_get_str (&locator, &locator_len, argv[0]);
+  net_arg_get_bigint (&start_offset, argv[1]);
+  (void) ux_lob_stream_open (locator, locator_len, start_offset, net_buf);
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_lob_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT token = 0;
+  int size = 0;
+
+  if (argc != 2)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_arg_get_bigint (&token, argv[0]);
+  net_arg_get_int (&size, argv[1]);
+  (void) ux_lob_stream_read (token, size, net_buf);
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_lob_stream_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT token = 0;
+
+  if (argc != 1)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_arg_get_bigint (&token, argv[0]);
+  (void) ux_lob_stream_close (token, net_buf);
+  return FN_KEEP_CONN;
 }

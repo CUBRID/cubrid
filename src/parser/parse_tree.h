@@ -1050,6 +1050,8 @@ enum pt_node_type
   PT_DROP_SYNONYM = CUBRID_STMT_DROP_SYNONYM,
   PT_RENAME_SYNONYM = CUBRID_STMT_RENAME_SYNONYM,
 
+  PT_COPY = CUBRID_STMT_COPY,
+
   PT_DIFFERENCE = CUBRID_MAX_STMT_TYPE,	/* these enumerations must be distinct from statements */
   PT_INTERSECTION,		/* difference intersection and union are reported as CUBRID_STMT_SELECT. */
   PT_UNION,
@@ -2394,6 +2396,7 @@ struct pt_expr_info
 #define PT_EXPR_INFO_OR_DERIVED_EXPENSIVE 33554432	/* 0x2000000, an OR-derived restriction with a conjunct costlier
 							 * than a column-vs-constant compare; kept only when an index
 							 * adopts it */
+#define PT_EXPR_INFO_LOB_DIRECT_INSERT 67108864	/* 0x4000000, streaming LOB source is direct INSERT/UPDATE target */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)
@@ -3591,6 +3594,26 @@ struct pt_synonym_info
   unsigned is_dblinked:1;	/* server name specified */
 };
 
+/* COPY FROM STDIN / COPY TO STDOUT info */
+typedef struct pt_copy_info PT_COPY_INFO;
+struct pt_copy_info
+{
+  PT_NODE *table_name;		/* PT_NAME: target table */
+  PT_NODE *column_list;		/* PT_NAME (list): column names, or NULL for all */
+  int direction;		/* 0 = FROM, 1 = TO */
+  int format;			/* 0 = BINARY, 1 = CSV, 2 = LOADDB */
+  int bulk;			/* 1 = bulk-load mode (BU_LOCK + batch insert); all formats */
+  union				/* format-specific options, selected by `format` */
+  {
+    struct
+    {
+      int delimiter;		/* field delimiter char; 0 = default ',' */
+      int quote;		/* quote char; 0 = default '"' */
+      int header;		/* 1 = skip a leading header line */
+    } csv;
+  } fmt;
+};
+
 /* Info field of the basic NODE
   If 'xyz' is the name of the field, then the structure type should be
   struct PT_XYZ_INFO xyz;
@@ -3612,6 +3635,7 @@ union pt_statement_info
   PT_CHECK_OPTION_INFO check_option;
   PT_COMMIT_WORK_INFO commit_work;
   PT_CONSTRAINT_INFO constraint;
+  PT_COPY_INFO copy;
   PT_CREATE_ENTITY_INFO create_entity;
   PT_CREATE_SERVER_INFO create_server;
   PT_CREATE_TRIGGER_INFO create_trigger;
@@ -3806,6 +3830,7 @@ struct parser_node
   {
     unsigned recompile:1;	/* the statement should be recompiled - used for plan cache */
     unsigned cannot_prepare:1;	/* the statement cannot be prepared - used for plan cache */
+    unsigned cannot_prepare_only_internal_lob_file:1;	/* file source is the only prepare blocker */
     unsigned partition_pruned:1;	/* partition pruning takes place */
     unsigned si_datetime:1;	/* get server info; SYS_DATETIME */
     unsigned si_tran_id:1;	/* get server info; LOCAL_TRANSACTION_ID */

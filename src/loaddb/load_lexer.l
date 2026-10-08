@@ -191,6 +191,11 @@ BEGIN_SUPPRESS_WARNING_BISON_FLEX
     return token::REF_ELO_EXT;
 }
 
+\^[Ll] {
+    PRINT ("REF_INTERNAL_LOB %s\n", yytext);
+    return token::REF_INTERNAL_LOB;
+}
+
 \^[Uu] {
     PRINT ("REF_USER %s\n", yytext);
     return token::REF_USER;

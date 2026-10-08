@@ -24,14 +24,21 @@
 
 
 #include <assert.h>
+#include <new>
 
 #if !defined(WINDOWS)
 #include <sys/time.h>
 #include <sys/resource.h>
+#include <unistd.h>
+#include <fcntl.h>
 #endif /* !WINDDOWS */
 
 #include "system.h"
 #include "session.h"
+#include "stream_session.hpp"
+#include "internal_lob_stream_kind.h"
+#include "internal_lob_dml_session.hpp"
+#include "internal_lob_upload.hpp"
 
 #include "boot_sr.h"
 #include "jansson.h"
@@ -141,6 +148,9 @@ struct session_state
   int private_lru_index;
 
   load_session *load_session_p;
+  stream_session *stream_session_p;
+  internal_lob_upload_store *internal_lob_upload_store_p;
+  INT64 internal_lob_locator_key;	/* per-session secret; signs client-facing internal LOB read locators */
   PL_SESSION *pl_session_p;
 
   // *INDENT-OFF*
@@ -323,6 +333,54 @@ session_state_init (void *st)
   session_p->private_lru_index = -1;
   session_p->auto_commit = false;
   session_p->load_session_p = NULL;
+  session_p->stream_session_p = NULL;
+  /* In SERVER_MODE this `new` is memory_wrapper.hpp's noexcept overload and yields NULL on failure, but
+   * this file is also compiled into cubridsa, where it is the throwing operator new.  Catch here so the
+   * engine's C error model holds in both builds. */
+  try
+  {
+    session_p->internal_lob_upload_store_p = new internal_lob_upload_store ();
+  }
+  catch (const std::bad_alloc &)
+  {
+    session_p->internal_lob_upload_store_p = NULL;
+  }
+  if (session_p->internal_lob_upload_store_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (internal_lob_upload_store));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  /* Per-session secret that signs client-facing internal LOB read locators (CBRD-26780).  A client cannot
+   * forge a locator for an OID it did not legitimately receive because it cannot compute this signature;
+   * the key is discarded when the session ends, so a locator is only usable within its issuing session. */
+  {
+    INT64 key = 0;
+#if !defined(WINDOWS)
+    int rnd_fd = open ("/dev/urandom", O_RDONLY);
+    if (rnd_fd >= 0)
+      {
+	if (read (rnd_fd, &key, sizeof (key)) != (ssize_t) sizeof (key))
+	  {
+	    key = 0;
+	  }
+	close (rnd_fd);
+      }
+    if (key == 0)
+      {
+	struct timeval tv;
+	gettimeofday (&tv, NULL);
+	key = ((INT64) tv.tv_sec << 32) ^ ((INT64) tv.tv_usec * 2654435761LL)
+	  ^ (INT64) (size_t) session_p ^ ((INT64) session_p->id << 20);
+      }
+#else /* WINDOWS */
+    key = ((INT64) time (NULL) << 32) ^ (INT64) (size_t) session_p ^ ((INT64) session_p->id << 20);
+#endif /* WINDOWS */
+    if (key == 0)
+      {
+	key = 1;
+      }
+    session_p->internal_lob_locator_key = key;
+  }
   session_p->pl_session_p = NULL;
 
   return NO_ERROR;
@@ -353,6 +411,12 @@ session_state_uninit (void *st)
 #endif /* SESSION_DEBUG */
 
   session_stop_attached_threads (thread_p, session);
+
+  if (session->internal_lob_upload_store_p != NULL)
+    {
+      delete session->internal_lob_upload_store_p;
+      session->internal_lob_upload_store_p = NULL;
+    }
 
   if (session->pl_session_p)
     {
@@ -3259,7 +3323,7 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
     }
 
   /* The session state can outlive its load session: connection teardown (see
-   * session_destroy_load_session) frees the load session while the state is still
+   * session_destroy_attached_sessions) frees the load session while the state is still
    * reachable. Report an error here so sloaddb_* handlers take the error path
    * instead of dereferencing a NULL load session. */
   if (state_p->load_session_p == NULL)
@@ -3270,6 +3334,297 @@ session_get_load_session (THREAD_ENTRY * thread_p, REFPTR (load_session, load_se
 
   load_session_ref_ptr = state_p->load_session_p;
 
+  return NO_ERROR;
+}
+
+int
+session_set_stream_session (THREAD_ENTRY * thread_p, stream_session * stream_session_p)
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  /* one stream session per connection (the invariant the transport seam depends on) */
+  if (stream_session_p != NULL && state_p->stream_session_p != NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a stream session is already active on this connection");
+      return ER_STREAM_SESSION_ERROR;
+    }
+
+  state_p->stream_session_p = stream_session_p;
+
+  return NO_ERROR;
+}
+
+int
+session_get_stream_session (THREAD_ENTRY * thread_p, REFPTR (stream_session, stream_session_ref_ptr))
+{
+  SESSION_STATE *state_p = NULL;
+
+  state_p = session_get_session_state (thread_p);
+  if (state_p == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  stream_session_ref_ptr = state_p->stream_session_p;
+
+  return NO_ERROR;
+}
+
+bool
+session_has_stream_session (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  /* Read off the connection, as session_abort_stream_session () does: a client that ended its session first
+   * (db_shutdown ends it before its last commit or abort) has no stream left, and asking must not raise
+   * ER_SES_SESSION_EXPIRED on the way. */
+  if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p == NULL)
+    {
+      return false;
+    }
+
+  return thread_p->conn_entry->session_p->stream_session_p != NULL;
+#else /* SERVER_MODE */
+  stream_session *stream_session_p = NULL;
+
+  (void) session_get_stream_session (thread_p, stream_session_p);
+
+  return stream_session_p != NULL;
+#endif /* not SERVER_MODE */
+}
+
+/*
+ * session_end_stream_session () - End the stream session when its transaction rolls back
+ *   thread_p(in): this thread handle
+ *
+ * A stream session cannot outlive the transaction it was opened in. Its
+ * consumer has already put work into that transaction, so a chunk arriving
+ * after a rollback would build on state that was undone. Rolling back
+ * therefore ends the stream, and the next chunk is refused with "no active
+ * stream session". Nothing commits inside a stream (stran_server_commit_internal).
+ *
+ * Unlike the interrupt path, this is safe to free here: the transaction is
+ * ended by the same worker that would be running receive_chunk, and the stream
+ * protocol is lockstep, so no chunk can be in flight.
+ */
+void
+session_end_stream_session (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  SESSION_STATE *state_p = NULL;
+
+  /* a loaddb worker's batch transaction does not own the connection's stream; see session_abort_stream_session () */
+  if (thread_p != NULL && thread_p->type == TT_LOADDB)
+    {
+      return;
+    }
+
+  /* read off the connection for the reason session_has_stream_session () gives */
+  if (thread_p == NULL || thread_p->conn_entry == NULL)
+    {
+      return;
+    }
+  state_p = thread_p->conn_entry->session_p;
+  if (state_p == NULL || state_p->stream_session_p == NULL)
+    {
+      return;
+    }
+
+  state_p->stream_session_p->abort (thread_p);
+
+  delete state_p->stream_session_p;
+  state_p->stream_session_p = NULL;
+#endif /* SERVER_MODE */
+}
+
+/*
+ * session_abort_stream_session () - Abort and drop the connection's stream session, if one is open.
+ *
+ *   A stream session holds transaction state of the statement that opened it (the savepoint of its direct LOB
+ *   writes, its OOS replication tracking), so it must not outlive that transaction.  Called by the commit/abort
+ *   entry points before the log manager ends the transaction, while the savepoint is still valid.  A rollback the
+ *   client asks for, or a deadlock victim's, has already ended the stream through session_end_stream_session ();
+ *   this is the backstop for every other way a transaction ends.
+ */
+void
+session_abort_stream_session (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  /* A loaddb worker commits or aborts a batch transaction of its own.  The connection's open stream, if any, is
+   * the Internal LOB payload of a later batch (load_internal_lob.hpp) and belongs to the connection, not to the
+   * batch that is ending here: leave it alone. */
+  if (thread_p != NULL && thread_p->type == TT_LOADDB)
+    {
+      return;
+    }
+
+  /* A client that ended its session first (db_shutdown ends it before the last abort) has no stream left; look
+   * at the connection directly so that case does not raise ER_SES_SESSION_EXPIRED. */
+  if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p == NULL)
+    {
+      return;
+    }
+  SESSION_STATE *state_p = thread_p->conn_entry->session_p;
+
+  if (state_p->stream_session_p == NULL)
+    {
+      return;
+    }
+
+  er_log_debug (ARG_FILE_LINE, "session_abort_stream_session: transaction ended with an open stream session\n");
+  state_p->stream_session_p->abort (thread_p);
+  delete state_p->stream_session_p;
+  state_p->stream_session_p = NULL;
+#else /* SERVER_MODE */
+  (void) thread_p;
+#endif /* not SERVER_MODE */
+}
+
+bool
+session_has_internal_lob_dml_stream (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  return state_p != NULL && dynamic_cast < internal_lob_dml_session * >(state_p->stream_session_p) != NULL;
+}
+
+int
+session_internal_lob_dml_consume (THREAD_ENTRY * thread_p, int slot, const OID * class_oid, DB_TYPE expected_type,
+				  INTERNAL_LOB_LOCATOR * locator)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+  internal_lob_dml_session *dml_session_p;
+
+  if (state_p == NULL || locator == NULL)
+    {
+      return stream_session_set_error ("internal LOB DML stream is unavailable");
+    }
+
+  dml_session_p = dynamic_cast < internal_lob_dml_session * >(state_p->stream_session_p);
+  if (dml_session_p == NULL)
+    {
+      return stream_session_set_error ("active stream does not own internal LOB DML");
+    }
+
+  return dml_session_p->consume_lob_slot (thread_p, slot, class_oid, expected_type, *locator);
+}
+
+int
+session_internal_lob_upload_begin (THREAD_ENTRY * thread_p, DB_TYPE type, DB_BIGINT data_length,
+				   DB_BIGINT logical_length, INT64 * token)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL || token == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->begin (type, data_length, logical_length, *token);
+}
+
+int
+session_internal_lob_upload_append (THREAD_ENTRY * thread_p, INT64 token, const char *data, int data_size)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->append (token, data, data_size);
+}
+
+int
+session_internal_lob_upload_end (THREAD_ENTRY * thread_p, INT64 token)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->end (token);
+}
+
+int
+session_internal_lob_upload_abort (THREAD_ENTRY * thread_p, INT64 token)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->abort (token);
+}
+
+void
+session_internal_lob_upload_note_executed (THREAD_ENTRY * thread_p, INT64 token)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p != NULL && state_p->internal_lob_upload_store_p != NULL)
+    {
+      state_p->internal_lob_upload_store_p->note_executed (token);
+    }
+}
+
+int
+session_internal_lob_upload_consume (THREAD_ENTRY * thread_p, INT64 token, const OID * class_oid,
+				     DB_TYPE expected_type, INTERNAL_LOB_LOCATOR * locator)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL || locator == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->consume (thread_p, token, class_oid, expected_type, *locator);
+}
+
+/*
+ * session_internal_lob_load_consume () - Resolve a loaddb load-slot envelope while the row is inserted.
+ *   The batch's load worker wrote the chunk chain ahead of the row; the load session hands back its locator and
+ *   replication bookkeeping (see cubload::session::internal_lob_consume_slot).
+ */
+int
+session_internal_lob_load_consume (THREAD_ENTRY * thread_p, INT64 slot, const OID * class_oid, DB_TYPE expected_type,
+				   INTERNAL_LOB_LOCATOR * locator)
+{
+#if defined (SERVER_MODE)
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->load_session_p == NULL || locator == NULL)
+    {
+      return stream_session_set_error ("internal LOB load slot is unavailable");
+    }
+  return state_p->load_session_p->internal_lob_consume_slot (*thread_p, slot, class_oid, expected_type, *locator);
+#else /* SERVER_MODE */
+  return stream_session_set_error ("internal LOB load slot is unavailable");
+#endif /* not SERVER_MODE */
+}
+
+/*
+ * session_get_internal_lob_locator_key () - fetch this session's secret for signing/verifying client-facing
+ *                                           internal LOB read locators (CBRD-26780).
+ *   return: NO_ERROR, or ER_FAILED when no session state exists (server-internal readers, which do not sign).
+ */
+int
+session_get_internal_lob_locator_key (THREAD_ENTRY * thread_p, INT64 * key_out)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || key_out == NULL)
+    {
+      return ER_FAILED;
+    }
+  *key_out = state_p->internal_lob_locator_key;
   return NO_ERROR;
 }
 
@@ -3333,12 +3688,17 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 
   /* Interrupt only; keep the load session object alive so that in-flight requests
    * still holding a reference (via session_get_load_session) do not access freed
-   * memory. The object is freed later by session_destroy_load_session, once the
+   * memory. The object is freed later by session_destroy_attached_sessions, once the
    * connection workers have drained. */
   if (session->load_session_p != NULL)
     {
       session->load_session_p->interrupt ();
     }
+
+  /* The stream session (COPY / LOB / ...) is left alone here for the same reason
+   * as the load session: a worker may still be inside receive_chunk. It is
+   * aborted and freed by session_destroy_attached_sessions, once the workers have
+   * drained. */
 
   if (session->pl_session_p)
     {
@@ -3352,7 +3712,7 @@ session_interrupt_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
 }
 
 void
-session_destroy_load_session (THREAD_ENTRY * thread_p, void *session_arg)
+session_destroy_attached_sessions (THREAD_ENTRY * thread_p, void *session_arg)
 {
 #if defined (SERVER_MODE)
   SESSION_STATE *session = (SESSION_STATE *) session_arg;
@@ -3360,13 +3720,21 @@ session_destroy_load_session (THREAD_ENTRY * thread_p, void *session_arg)
   assert (session != NULL);
 
   /* Must be called only after the connection workers have drained, otherwise an
-   * in-flight sloaddb_* request may still be using the load session. */
+   * in-flight sloaddb_* or sstream_* request may still be using the session. */
   if (session->load_session_p != NULL)
     {
       session->load_session_p->wait_for_completion ();
 
       delete session->load_session_p;
       session->load_session_p = NULL;
+    }
+
+  if (session->stream_session_p != NULL)
+    {
+      session->stream_session_p->abort (thread_p);
+
+      delete session->stream_session_p;
+      session->stream_session_p = NULL;
     }
 #endif
 }
@@ -3382,6 +3750,6 @@ session_stop_attached_threads (THREAD_ENTRY * thread_p, void *session_arg)
   /* Session-state uninit path: no concurrent worker can reach this session, so
    * interrupt and destroy in one shot. */
   session_interrupt_attached_threads (thread_p, session);
-  session_destroy_load_session (thread_p, session);
+  session_destroy_attached_sessions (thread_p, session);
 #endif
 }
