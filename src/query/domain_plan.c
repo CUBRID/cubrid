@@ -2444,6 +2444,14 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 	{
 	  if (xasl->proc.insert.valptr_lists[i] != NULL)
 	    {
+	      /* an inserted value is cast into its column without truncation (qexec_execute_insert sets the flag
+	       * before it fetches the value); the constant expression step fetches a constant value before that,
+	       * so the load sets it: the cast the compiler wrapped a value in (CAST_WRAP) is strict there too */
+	      for (REGU_VARIABLE_LIST value = xasl->proc.insert.valptr_lists[i]->valptrp; value != NULL;
+		   value = value->next)
+		{
+		  value->value.flags |= REGU_VARIABLE_STRICT_TYPE_CAST;
+		}
 	      domain_walk_list (ctx, xasl->proc.insert.valptr_lists[i]->valptrp, DOMAIN_CTX_ASSIGN);
 	    }
 	}
