@@ -7460,6 +7460,14 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
   /* To ensure that after exit of recursive expression node the evaluation of type will continue in normal mode */
   *continue_walk = PT_CONTINUE_WALK;
+
+  if (node->flag.is_restored_default)
+    {
+      /* a grafted DEFAULT keeps the types it was restored with, whatever the session of this statement */
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
   if (sc_info->donot_fold == true)
     {				/* skip folding */
       return node;
@@ -8107,6 +8115,12 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
   PT_NODE *list;
   STATEMENT_SET_FOLD do_fold;
   PT_MISC_TYPE is_subquery;
+
+  if (node->flag.is_restored_default)
+    {
+      /* see pt_eval_type_pre */
+      return node;
+    }
 
   switch (node->node_type)
     {

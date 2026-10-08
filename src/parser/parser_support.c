@@ -11061,7 +11061,8 @@ pt_cdt_registry_tree (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_VOLA
 /*
  * pt_cdt_registry_tree_copy () - a private copy of the registry tree of a residual DEFAULT (pt_cdt_registry_tree)
  *	for a caller that folds or releases it; a failure the registry reported is carried into the parser's
- *	error channel
+ *	error channel.  The copy is marked is_restored_default, so the statement it is grafted into does not
+ *	type check it again in its own session.
  *   return: the copy, or NULL on error
  *   parser(in): parser context
  *   att(in): attribute with a residual DEFAULT
@@ -11090,7 +11091,9 @@ pt_cdt_registry_tree_copy (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT
   if (copy == NULL)
     {
       PT_ERRORm (parser, err_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
     }
+  copy->flag.is_restored_default = 1;
   return copy;
 }
 
