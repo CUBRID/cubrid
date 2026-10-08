@@ -12598,8 +12598,9 @@ typedef struct link_columns
   PT_NODE *col_list;
   PT_NODE *tbl_name_node;
   bool multi_source;		/* the block reads columns from more than this table */
-  int nested_depth;		/* > 0 while inside a query block nested in the walked clause; it also
-				   counts that block's list siblings, which only costs a describe */
+  int nested_depth;		/* > 0 while inside a query block nested in the walked clause */
+  bool shadowed;		/* inside a nested block that redeclares this table's name: a qualified
+				   name there is that block's table, not this one */
   bool needs_describe;		/* a name was seen that cannot be pinned to this table */
   bool uncertain_name_seen;	/* a name that may not be this table's: a bare one, or any inside a nested block */
 } S_LINK_COLUMNS;
@@ -12671,6 +12672,33 @@ check_for_already_exists (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, cons
 static void pt_walk_col_refs (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTION pre,
 			      S_LINK_COLUMNS * lkcol);
 
+/*
+ * pt_dblink_name_redeclared () - whether a FROM list declares the name the gathered table
+ *   answers to (an alias, or a table name without one)
+ */
+static bool
+pt_dblink_name_redeclared (S_LINK_COLUMNS * plkcol, PT_NODE * from)
+{
+  PT_NODE *spec, *name;
+
+  for (spec = from; spec != NULL; spec = spec->next)
+    {
+      if (spec->node_type != PT_SPEC)
+	{
+	  continue;
+	}
+      name = spec->info.spec.range_var ? spec->info.spec.range_var : spec->info.spec.entity_name;
+      if (name != NULL && name->node_type == PT_NAME && name->info.name.original != NULL
+	  && intl_identifier_casecmp_for_dblink (name->info.name.original,
+						 plkcol->tbl_name_node->info.name.original) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
 static PT_NODE *
 pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -12679,11 +12707,28 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
   /* reset: pt_walk_private () walks node->next with the value set for node */
   *continue_walk = PT_CONTINUE_WALK;
 
-  /* a query block nested in the clause: its bare names may be its own tables' columns,
-   * so they are not certainly this table's (pt_get_column_name_post () leaves the block) */
+  /* A query block nested in the clause: its bare names may be its own tables' columns, so
+   * they are not certainly this table's.  The block is walked here rather than by the
+   * caller's walk, which visits the block's list siblings (names of the enclosing block)
+   * before it leaves the block. */
   if (PT_IS_QUERY_NODE_TYPE (node->node_type))
     {
+      bool save_shadowed = plkcol->shadowed;
+
+      /* A block that declares this table's name hides the table from qualified names in it
+       * and below it: name resolution searches the innermost scope first and stops at the
+       * spec the qualifier names.  An unqualified name can still reach the table. */
+      if (node->node_type == PT_SELECT && pt_dblink_name_redeclared (plkcol, node->info.query.q.select.from))
+	{
+	  plkcol->shadowed = true;
+	}
+
       plkcol->nested_depth++;
+      (void) parser_walk_leaves (parser, node, pt_get_column_name_pre, plkcol, NULL, NULL);
+      plkcol->nested_depth--;
+      plkcol->shadowed = save_shadowed;
+
+      *continue_walk = PT_LIST_WALK;
       return node;
     }
 
@@ -12695,13 +12740,18 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
        * Do not descend: arg1 would be gathered as a column of its own. */
       if (node->info.dot.arg1->node_type == PT_NAME && node->info.dot.arg2->node_type == PT_NAME)
 	{
-	  /* a nested block may give another table this table's alias */
-	  if (plkcol->nested_depth > 0)
+	  if (!plkcol->shadowed)
 	    {
-	      plkcol->uncertain_name_seen = true;
+	      /* a nested block may still give another table this name in a form
+	       * pt_dblink_name_redeclared () does not recognize, so a refused prepare is
+	       * checked against the catalog */
+	      if (plkcol->nested_depth > 0)
+		{
+		  plkcol->uncertain_name_seen = true;
+		}
+	      check_for_already_exists (parser, plkcol, node->info.dot.arg1->info.name.original,
+					node->info.dot.arg2->info.name.original);
 	    }
-	  check_for_already_exists (parser, plkcol, node->info.dot.arg1->info.name.original,
-				    node->info.dot.arg2->info.name.original);
 	  *continue_walk = PT_LIST_WALK;
 	}
       break;
@@ -12709,7 +12759,10 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
     case PT_NAME:
       if (node->type_enum == PT_TYPE_STAR)
 	{			// case:  tbl.*
-	  check_for_already_exists (parser, plkcol, node->info.name.original, NULL);
+	  if (!plkcol->shadowed)
+	    {
+	      check_for_already_exists (parser, plkcol, node->info.name.original, NULL);
+	    }
 	}
       else
 	{
@@ -12753,30 +12806,13 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 }
 
 /*
- * pt_get_column_name_post () - leave a nested query block entered by pt_get_column_name_pre ()
- */
-static PT_NODE *
-pt_get_column_name_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  S_LINK_COLUMNS *plkcol = (S_LINK_COLUMNS *) arg;
-
-  if (PT_IS_QUERY_NODE_TYPE (node->node_type) && plkcol->nested_depth > 0)
-    {
-      plkcol->nested_depth--;
-    }
-
-  return node;
-}
-
-/*
  * pt_walk_col_refs () - gather the column references of one clause
- *   Note: pt_get_column_name_post () has to pair with the pre function at every site,
- *   or a nested block's depth never unwinds.  A NULL clause is a no-op.
+ *   Note: a NULL clause is a no-op.
  */
 static void
 pt_walk_col_refs (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTION pre, S_LINK_COLUMNS * lkcol)
 {
-  (void) parser_walk_tree (parser, node, pre, lkcol, pt_get_column_name_post, lkcol);
+  (void) parser_walk_tree (parser, node, pre, lkcol, NULL, NULL);
 }
 
 static void
