@@ -424,9 +424,18 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	       * A string the function's domain does not take ('10:00:00' as a DOUBLE) is the row's error, -181, as the
 	       * aggregate path raises it (qdata_aggregate_value_to_accumulator); ER_FAILED alone left no error and no
 	       * row. */
+	      /* the converter is the operand coercion resolve_domains planned for this partition's values (the
+	       * argument into the sum's domain, qdata_initialize_analytic_func): no type switch at the row */
+	      const DOMAIN_OPERAND_COERCION *first_coercion =
+		      &qexec_accumulator_domain (val_desc_p, func_p->plan_item)->operand_coercion;
+	      if (first_coercion->conv[1] == NULL)
+		{
+		  error = qexec_domain_unresolved (val_desc_p, func_p->plan_item, func_p->domain);
+		  goto exit;
+		}
 	      DB_VALUE coerced;
 	      db_make_null (&coerced);
-	      dom_status = tp_value_coerce (&dbval, &coerced, domain);
+	      dom_status = tp_value_convert (first_coercion->conv[1], first_coercion->operand_domain[1], &dbval, &coerced);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
 		  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, domain);
@@ -867,33 +876,34 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		      }
 		  }
 
-		  {
-		    /* the distinct list keeps the argument's type; a string it holds is read as the function's domain
-		     * (DOUBLE for SUM / AVG), as the first value of the function without DISTINCT is
-		     * (qdata_evaluate_analytic_func) - the value list the finalization writes is laid out by that domain,
-		     * and the typed addition takes no string. A string the domain does not take is -181. */
-		    TP_DOMAIN *function_domain = tmp_domain_ptr != NULL ? tmp_domain_ptr
-						 : qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
-		    if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&dbval)) && function_domain != NULL
-			&& TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (function_domain)))
-		      {
-			DB_VALUE coerced;
-			db_make_null (&coerced);
-			TP_DOMAIN_STATUS dom_status = tp_value_coerce (&dbval, &coerced, function_domain);
-			if (dom_status != DOMAIN_COMPATIBLE)
-			  {
-			    err = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, function_domain);
-			    pr_clear_value (&coerced);
-			    (void) pr_clear_value (&dbval);
-			    qfile_close_scan (thread_p, &scan_id);
-			    qfile_close_list (thread_p, list_id_p);
-			    qfile_destroy_list (thread_p, list_id_p);
-			    goto error;
-			  }
-			(void) pr_clear_value (&dbval);
-			dbval = coerced;
-		      }
-		  }
+		  if ((func_p->function == PT_SUM || func_p->function == PT_AVG)
+		      && TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&dbval)))
+		    {
+		      /* the distinct list keeps the argument's type; a string it holds is read as the function's domain
+		       * (DOUBLE), as the first value of the function without DISTINCT is (qdata_evaluate_analytic_func) -
+		       * the value list the finalization writes is laid out by that domain, and the typed addition takes
+		       * no string. The converter is the operand coercion resolve_domains planned (the argument into the
+		       * sum's domain); a string it does not take is -181. */
+		      const DOMAIN_OPERAND_COERCION *coercion =
+			      &qexec_accumulator_domain (vd, func_p->plan_item)->operand_coercion;
+		      DB_VALUE coerced;
+		      db_make_null (&coerced);
+		      TP_DOMAIN_STATUS dom_status = coercion->conv[1] == NULL ? DOMAIN_INCOMPATIBLE
+			: tp_value_convert (coercion->conv[1], coercion->operand_domain[1], &dbval, &coerced);
+		      if (dom_status != DOMAIN_COMPATIBLE)
+			{
+			  err = coercion->conv[1] == NULL ? qexec_domain_unresolved (vd, func_p->plan_item, func_p->domain)
+			    : tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, coercion->operand_domain[1]);
+			  pr_clear_value (&coerced);
+			  (void) pr_clear_value (&dbval);
+			  qfile_close_scan (thread_p, &scan_id);
+			  qfile_close_list (thread_p, list_id_p);
+			  qfile_destroy_list (thread_p, list_id_p);
+			  goto error;
+			}
+		      (void) pr_clear_value (&dbval);
+		      dbval = coerced;
+		    }
 
 		  if (func_p->function == PT_VARIANCE || func_p->function == PT_VAR_POP
 		      || func_p->function == PT_VAR_SAMP || func_p->function == PT_STDDEV
