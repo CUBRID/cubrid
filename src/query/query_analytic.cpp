@@ -169,9 +169,14 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
       type_list.domp[0] = qexec_get_node_domain (vd, func_p->operand.domain, func_p->operand.plan_item);
       if (TP_DOMAIN_TYPE (type_list.domp[0]) == DB_TYPE_VARIABLE)
 	{
-	  /* the values are written converted to the function's domain, which the setup settled; a *variable* readval
-	   * would silently drop them */
-	  type_list.domp[0] = qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
+	  /* a bind or a late-binding node: the list's column takes the domain resolve_domains resolved for its values,
+	   * so they are written as they are (the finalization converts a string into the function's domain with the
+	   * converter it planned); an argument without a value (a NULL bind) leaves the function's domain, which only
+	   * NULLs reach - a *variable* readval would silently drop them */
+	  const TP_DOMAIN *resolved = qexec_value_domain (vd, &func_p->operand);
+	  type_list.domp[0] = resolved != NULL && TP_DOMAIN_TYPE (resolved) != DB_TYPE_VARIABLE
+			      && TP_DOMAIN_TYPE (resolved) != DB_TYPE_NULL
+			      ? (TP_DOMAIN *) resolved : qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
 	}
 
       list_id_p = qfile_open_list (thread_p, &type_list, NULL, query_id, QFILE_FLAG_DISTINCT, NULL);
@@ -285,11 +290,11 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       /* later rows may have different types because only the first row is coerced.
        * coerce all values to the list domain for consistent duplicate elimination and finalize
        * (a conversion to the function's domain, not a resolution) */
-      if (TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) != DB_TYPE_VARIABLE
+      if (!DB_IS_NULL (&dbval) && TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) != DB_TYPE_VARIABLE
 	  && DB_VALUE_DOMAIN_TYPE (&dbval) != TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]))
 	{
-	  /* the list opened with the argument's resolved domain, which every value of the argument carries: a value of
-	   * another type is the unresolved-domain check (execution), not a cast at the row */
+	  /* the list opened with the argument's resolved domain (qdata_initialize_analytic_func), which every value of
+	   * the argument carries: a value of another type is the unresolved-domain check (execution), not a cast */
 	  error = qexec_domain_unresolved (val_desc_p, func_p->plan_item, func_p->list_id->type_list.domp[0]);
 	  goto exit;
 	}
