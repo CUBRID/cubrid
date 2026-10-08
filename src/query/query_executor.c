@@ -20538,8 +20538,10 @@ qexec_connect_by_spill_children_order (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_S
       sorted = qfile_sort_list (thread_p, spill->children_list, rev, Q_ALL, false);
       if (sorted == NULL)
 	{
-	  /* the file is already gone; just drop the now-stale list_id so the cleanup path does not touch it */
+	  /* a sort that fails while opening its result leaves the input temp file intact, so destroy it here */
 	  ASSERT_ERROR_AND_SET (error);
+	  qfile_close_list (thread_p, spill->children_list);
+	  qfile_destroy_list (thread_p, spill->children_list);
 	  QFILE_FREE_AND_INIT_LIST_ID (spill->children_list);
 	}
       else
