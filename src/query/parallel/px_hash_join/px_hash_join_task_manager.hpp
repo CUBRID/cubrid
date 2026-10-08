@@ -49,7 +49,26 @@ namespace parallel_query
     class base_task;
 
     using parallel_query::task_manager;
-    using parallel_query::task_execution_guard;
+
+    class task_execution_guard : public parallel_query::task_execution_guard
+    {
+      public:
+	using parallel_query::task_execution_guard::task_execution_guard;
+
+	inline ~task_execution_guard ()
+	{
+	  /* Tear down any spawn_manager TLS the task may have obtained via get_spawn_manager()
+	   * before the base pops resource tracks. Safe no-op when never acquired (NULL-guarded inside). */
+	  spawn_manager::destroy_instance ();
+	}
+
+	/* Lazily obtain the per-worker spawn_manager TLS owned by this guard. Returns nullptr
+	 * on allocation failure (er_errid set). Subsequent calls return the same instance. */
+	inline spawn_manager *get_spawn_manager ()
+	{
+	  return spawn_manager::get_instance (m_thread_ref);
+	}
+    };
 
     /*
      * base_task
