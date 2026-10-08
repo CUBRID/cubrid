@@ -28,6 +28,7 @@
 #include <cstdio>
 #include <atomic>
 #include <new>
+#include <sched.h>
 
 #include "concurrent_unordered_map.h"
 #include "memory_monitor_common.hpp"
@@ -94,8 +95,6 @@ namespace cubmem
   // We think that the number of entry of map(or mapping array) cannot over 8K.
   static constexpr int MMON_MAP_RESERVE_SIZE = 8192;
 
-  extern std::atomic<uint64_t> m_stat_map[MMON_MAP_RESERVE_SIZE];
-
   struct stat_id_cache_entry
   {
     const char *file;
@@ -107,6 +106,8 @@ namespace cubmem
   // line, which a call site passes unchanged
   static constexpr int MMON_STAT_ID_CACHE_SIZE = 64;
   extern THREAD_LOCAL_TRIVIAL stat_id_cache_entry mmon_stat_id_cache[MMON_STAT_ID_CACHE_SIZE];
+
+  static constexpr int MMON_SHARD_COUNT = 64;
 
   class memory_monitor
   {
@@ -136,6 +137,21 @@ namespace cubmem
       inline void make_stat_name (char *buf, const char *file, const int line);
       inline int get_stat_id (const char *file, const int line);
       int find_stat_id (const char *file, const int line);
+
+      // usage is counted on the shard of the CPU the thread runs on, so threads seldom write the same cache line;
+      // a thread can move to another CPU, so the counters stay atomic, and a block can be freed on another CPU than
+      // it was allocated on, so only the sum over the shards is the usage
+      struct alignas (64) shard
+      {
+	std::atomic <uint64_t> total_mem_usage;
+	std::atomic <uint64_t> meta_alloc_count;	// for checking occupancy of memory used by metainfo space
+	std::atomic <uint64_t> stat_mem_usage[MMON_MAP_RESERVE_SIZE];
+      };
+
+      inline shard &get_shard ();
+      uint64_t get_total_mem_usage ();
+      uint64_t get_meta_alloc_count ();
+      uint64_t get_stat_mem_usage (int stat_id);
 #if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
       void check_add_stat_tracking_error_is_exist (MMON_METAINFO *metainfo, const char *file, int line);
       void check_sub_stat_tracking_error_is_exist (MMON_METAINFO *metainfo);
@@ -143,7 +159,7 @@ namespace cubmem
 
     private:
       std::string m_server_name;
-      // Entries of m_stat_name_map and m_stat_map will not be deleted and the monitor is created once in a process,
+      // Entries of m_stat_name_map will not be deleted and the monitor is created once in a process,
       // so a stat id in mmon_stat_id_cache stays valid
       tbb::concurrent_unordered_map <std::string, int> m_stat_name_map;        // key: stat name, value: stat id
 #if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
@@ -157,8 +173,7 @@ namespace cubmem
       uint64_t m_stat_memory_peak[MMON_MAP_RESERVE_SIZE];
       uint64_t m_total_memory_peak;
 #endif
-      std::atomic <uint64_t> m_total_mem_usage;
-      std::atomic <int> m_meta_alloc_count;                         // for checking occupancy of memory used by metainfo space
+      shard m_shards[MMON_SHARD_COUNT];
       int m_target_pos;
       // Magic number is for checking an allocated memory which is out-of-scope of memory_monitor.
       // It's because memory_monitor starts to manage information about heap memory allocation
@@ -187,6 +202,12 @@ namespace cubmem
     return ptr + size - MMON_METAINFO_SIZE;
   }
 
+  inline memory_monitor::shard &memory_monitor::get_shard ()
+  {
+    // sched_getcpu () returns -1 when it fails, which still masks to a shard
+    return m_shards[sched_getcpu () & (MMON_SHARD_COUNT - 1)];
+  }
+
   inline int memory_monitor::get_stat_id (const char *file, const int line)
   {
     int slot = ((uintptr_t) file + line) & (MMON_STAT_ID_CACHE_SIZE - 1);
@@ -211,19 +232,21 @@ namespace cubmem
     metainfo->stat_id = get_stat_id (file, line);
 
     // nothing is counted before the lookup above, which can throw std::bad_alloc (see mmon_add_stat ())
+    shard &s = get_shard ();
     metainfo->allocated_size = (uint64_t) size;
-    m_total_mem_usage += metainfo->allocated_size;
+    s.total_mem_usage += metainfo->allocated_size;
 #if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
     // check total allocated memory peak
-    if (m_total_mem_usage.load () > m_total_memory_peak)
+    uint64_t total_size = get_total_mem_usage ();
+    if (total_size > m_total_memory_peak)
       {
-	m_total_memory_peak = m_total_mem_usage.load ();
+	m_total_memory_peak = total_size;
       }
 #endif
-    m_stat_map[metainfo->stat_id] += metainfo->allocated_size;
+    s.stat_mem_usage[metainfo->stat_id] += metainfo->allocated_size;
 #if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
     // check stat allocated memory peak
-    uint64_t stat_size = m_stat_map[metainfo->stat_id].load ();
+    uint64_t stat_size = get_stat_mem_usage (metainfo->stat_id);
     if (stat_size > m_stat_memory_peak[metainfo->stat_id])
       {
 	m_stat_memory_peak[metainfo->stat_id] = stat_size;
@@ -235,7 +258,7 @@ namespace cubmem
 
     // put meta info into the allocated chunk
     metainfo->magic_number = m_magic_number;
-    m_meta_alloc_count++;
+    s.meta_alloc_count++;
 #if !defined (NDEBUG) && (MMON_DEBUG_LEVEL > 1)
     check_add_stat_tracking_error_is_exist (metainfo, file, line);
 #endif
@@ -254,16 +277,16 @@ namespace cubmem
 #endif
 	if (metainfo->magic_number == m_magic_number)
 	  {
+	    shard &s = get_shard ();
+
 	    assert (metainfo->stat_id >= 0 && metainfo->stat_id < MMON_MAP_RESERVE_SIZE);
-	    assert (m_total_mem_usage >= metainfo->allocated_size && m_stat_map[metainfo->stat_id] >= metainfo->allocated_size);
 	    assert (metainfo->allocated_size == allocated_size);
 
-	    m_total_mem_usage -= metainfo->allocated_size;
-	    m_stat_map[metainfo->stat_id] -= metainfo->allocated_size;
+	    s.total_mem_usage -= metainfo->allocated_size;
+	    s.stat_mem_usage[metainfo->stat_id] -= metainfo->allocated_size;
 
 	    metainfo->magic_number = 0;
-	    m_meta_alloc_count--;
-	    assert (m_meta_alloc_count >= 0);
+	    s.meta_alloc_count--;
 #if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
 	    m_stat_free_count[metainfo->stat_id]++;
 	    m_total_free_count++;
