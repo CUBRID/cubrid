@@ -26,10 +26,9 @@
 # once the default branch carries the file. push runs the pushed commit's copy, and
 # schedule the default branch's -- so the batch dispatches on its own ref.
 #
-# Three runner lanes, all self-hosted. plan, collect, a re-run's one shard and the
-# medium suite take cubrid-arc-light; build takes cubrid-arc-build; the shell and
-# sql shards take cubrid-arc. Without the split a one-minute job queues behind
-# another run's 50.
+# Three self-hosted runner lanes: cubrid-arc-light (plan, collect, a re-run's one
+# shard, medium), cubrid-arc-build (build), cubrid-arc (shell and sql shards).
+# Without the split a one-minute job queues behind another run's 50.
 #
 # Prerequisites in the runner, not here. circleci-k8s-ansible roles/arc owns
 # them; its README.md carries the full contract table for this file.
@@ -649,8 +648,6 @@ jobs:
     permissions: {} # no token used; the engine comes from the node mirror
     if: needs.gate.outputs.run == 'true'
     runs-on: cubrid-arc-build
-    # 2x the slowest full build since the source moved to the node copy
-    # (14.3 min, 2026-09-29~10-06). A hung build holds one of the lane's 8 slots.
     timeout-minutes: 30
     strategy:
       # One mode failing must not hide the other's result.
