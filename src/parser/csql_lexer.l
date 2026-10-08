@@ -45,6 +45,11 @@
 #define FLOAT_LITERAL_BUFFER (FLOAT_MAX_LITERAL + 2) /* +2: +1 for trailing '0' (e.g., "3." -> "3.0"), +1 for null terminator */
 #define FLOAT_APPENDABLE_TRAILING_ZERO (NUMBER_LITERAL_MAX_LEN)
 
+typedef enum {
+    LBS_NORMAL,
+    LBS_SEEN_ROUTINE_MARK
+} LOCAL_BLOCK_STATE;
+
 int parser_yyinput_single_mode = 0;
 
 static void init_plcsql_lexing (void);
@@ -55,7 +60,9 @@ static void csql_yyerror_internal (const char *s, const int line, const int colu
 
 static int plcsql_begin_end_balance;
 static int plcsql_nest_level;
+static LOCAL_BLOCK_STATE plcsql_local_block_state;
 static int from_plcsql_text;
+static bool is_parsing_package;
 
 static enum {
   ensingle_quoted_string,  
@@ -191,8 +198,9 @@ IDL       [a-zA-Z0-9_]
 [aA][sS]								{
                                                                             if (expecting_pkg_plcsql_text) {
                                                                                 expecting_pkg_plcsql_text = 0;
-                                                                                plcsql_begin_end_balance++;
                                                                                 BEGIN(PLCSQL_TEXT);
+                                                                                init_plcsql_lexing();
+                                                                                is_parsing_package = true;
                                                                             } else if (expecting_pl_lang_spec) {
                                                                                 expecting_pl_lang_spec = 0;
                                                                                 BEGIN(PL_LANG_SPEC);
@@ -486,8 +494,9 @@ IDL       [a-zA-Z0-9_]
 [iI][sS]								{
                                                                             if (expecting_pkg_plcsql_text) {
                                                                                 expecting_pkg_plcsql_text = 0;
-                                                                                plcsql_begin_end_balance++;
                                                                                 BEGIN(PLCSQL_TEXT);
+                                                                                init_plcsql_lexing();
+                                                                                is_parsing_package = true;
                                                                             } else if (expecting_pl_lang_spec) {
                                                                                 expecting_pl_lang_spec = 0;
                                                                                 BEGIN(PL_LANG_SPEC);
@@ -1593,45 +1602,63 @@ _[uU][tT][fF]8[']		{
 <PLCSQL_TEXT>[cC][aA][sS][eE]                           {
                                                                 // case can start an expression and can appear in a balance 0 area
                                                                 if (plcsql_begin_end_balance == 0) {
-                                                                        plcsql_nest_level++;
+                                                                    plcsql_nest_level++;
                                                                 }
                                                                 plcsql_begin_end_balance++;
 							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL_TEXT_SOME; }
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[iI][fF][ \t\r\n]*             |
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[cC][aA][sS][eE][ \t\r\n]*     |
-<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[lL][oO][oO][pP][ \t\r\n]*     |
+<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[lL][oO][oO][pP][ \t\r\n]*     {
+                                                                plcsql_local_block_state = LBS_NORMAL;;
+                                                                plcsql_begin_end_balance--;
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]*                     {
+                                                                plcsql_local_block_state = LBS_NORMAL;;
                                                                 plcsql_begin_end_balance--;
                                                                 if (plcsql_begin_end_balance < 0) {
+                                                                    if (plcsql_begin_end_balance == -1 && is_parsing_package) {
+                                                                        // OK: package spec/body can have 'end' without matching 'begin'
+                                                                        plcsql_begin_end_balance = 0;
+                                                                    } else {
                                                                         // syntax error.
                                                                         // ignore this for now and let the PL/CSQL parser raise the error
-                                                                        plcsql_begin_end_balance = 0;
+                                                                        csql_yyerror("unmatched ends");
+                                                                        return UNMATCHED_ENDS;
+                                                                    }
                                                                 }
                                                                 if (plcsql_begin_end_balance == 0) {
-                                                                        plcsql_nest_level--;
-                                                                        if (plcsql_nest_level < 0) {
-                                                                                BEGIN(POST_PLCSQL_TEXT);
-                                                                        }
+                                                                    plcsql_nest_level--;
+                                                                    if (plcsql_nest_level < 0) {
+                                                                        BEGIN(POST_PLCSQL_TEXT);
+                                                                    }
                                                                 }
 							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL_TEXT_SOME; }
 
-<PLCSQL_TEXT>[pP][rR][oO][cC][eE][dD][uU][rR][eE]       {
-                                                                if (plcsql_begin_end_balance == 0) {
-                                                                        // increase the nest level only when it is not in a block statement
-                                                                        plcsql_nest_level++;
-                                                                }
-							        csql_yylval.cptr = pt_makename(yytext);
-                                                                return PLCSQL_TEXT_SOME; }
+<PLCSQL_TEXT>[pP][rR][oO][cC][eE][dD][uU][rR][eE]       |
 <PLCSQL_TEXT>[fF][uU][nN][cC][tT][iI][oO][nN]           {
                                                                 if (plcsql_begin_end_balance == 0) {
-                                                                        // increase the nest level only when it is not in a block statement
-                                                                        plcsql_nest_level++;
+                                                                    plcsql_local_block_state = LBS_SEEN_ROUTINE_MARK;
                                                                 }
 							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL_TEXT_SOME; }
-
+<PLCSQL_TEXT>";"                                        {
+                                                                if ( plcsql_local_block_state == LBS_SEEN_ROUTINE_MARK) {
+                                                                    // do not increase the nest level
+                                                                    plcsql_local_block_state = LBS_NORMAL;
+                                                                }
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+<PLCSQL_TEXT>[iI][sS]                                   |
+<PLCSQL_TEXT>[aA][sS]                                   {
+                                                                if (plcsql_local_block_state == LBS_SEEN_ROUTINE_MARK) {
+                                                                    plcsql_nest_level++;
+                                                                    plcsql_local_block_state = LBS_NORMAL;
+                                                                }
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
 <PLCSQL_TEXT>{IDL}+                                     {
 							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL_TEXT_SOME; }
@@ -1942,7 +1969,9 @@ init_plcsql_lexing (void)
 {
   plcsql_begin_end_balance = 0;
   plcsql_nest_level = 0;
+  plcsql_local_block_state = LBS_NORMAL;
   from_plcsql_text = 0;
+  is_parsing_package = false;
 }
 
 static bool
