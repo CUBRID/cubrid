@@ -5318,6 +5318,10 @@ ws_repl::ws_free_repl_obj (WS_REPL_OBJ * obj)
     {
       free_and_init (obj->packed_pkey_value);
     }
+  if (obj->packed_prior_value != NULL)
+    {
+      free_and_init (obj->packed_prior_value);
+    }
   free_and_init (obj);
 }
 
@@ -5353,12 +5357,15 @@ ws_repl::ws_clear_all_repl_objs (void)
  *  recdes(in):
  *  operation(in):
  *  has_index(in):
+ *  packed_prior_value(in): NULL, or the value a _db_serial write-back replaced
+ *  packed_prior_value_length(in):
  *
  *    return:
  */
 int
 ws_repl::ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int packed_pkey_value_length,
-				  RECDES * recdes, int operation, bool has_index)
+				  RECDES * recdes, int operation, bool has_index, char *packed_prior_value,
+				  int packed_prior_value_length)
 {
   WS_REPL_OBJ *repl_obj = NULL;
 
@@ -5383,6 +5390,22 @@ ws_repl::ws_add_to_repl_obj_list (OID * class_oid, char *packed_pkey_value, int 
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   memcpy (repl_obj->packed_pkey_value, packed_pkey_value, packed_pkey_value_length);
+
+  repl_obj->packed_prior_value = NULL;
+  repl_obj->packed_prior_value_length = 0;
+  if (packed_prior_value != NULL)
+    {
+      repl_obj->packed_prior_value = (char *) malloc (packed_prior_value_length);
+      if (repl_obj->packed_prior_value == NULL)
+	{
+	  free (repl_obj->packed_pkey_value);
+	  free (repl_obj);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, packed_prior_value_length);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      memcpy (repl_obj->packed_prior_value, packed_prior_value, packed_prior_value_length);
+      repl_obj->packed_prior_value_length = packed_prior_value_length;
+    }
 
   repl_obj->recdes = recdes;
   repl_obj->has_index = has_index;

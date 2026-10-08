@@ -2476,6 +2476,10 @@ do_update_maxvalue_of_auto_increment_serial (PARSER_CONTEXT * parser, MOP * seri
    */
   assert (WS_ISDIRTY (serial_mop) == false);
 
+  /* as in do_alter_serial: decache before the refetch takes the write lock; under it the write-back would be
+   * skipped with HA, and the template's block end would overwrite it at commit */
+  (void) serial_decache ((OID *) (&serial_obj_id));
+
   ws_decache (serial_mop);
 
   /* no need to get the last version for serial - actually, AU_FETCH_WRITE will get only last version, for locking */

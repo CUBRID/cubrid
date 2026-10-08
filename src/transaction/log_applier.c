@@ -247,6 +247,8 @@ struct la_item
   int packed_key_value_length;
   char *packed_key_value;	/* disk image of pkey value */
   DB_VALUE key;			/* it will be unpacked from packed_key_value on demand */
+  int packed_prior_value_length;
+  char *packed_prior_value;	/* _db_serial write-back: disk image of the value it replaced, or NULL */
   LOG_LSA lsa;			/* the LSA of the replication log record */
   LOG_LSA target_lsa;		/* the LSA of the target log record */
 };
@@ -487,6 +489,7 @@ static void la_add_repl_item (LA_APPLY * apply, LA_ITEM * item);
 
 static DB_VALUE *la_get_item_pk_value (LA_ITEM * item);
 static LA_ITEM *la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa);
+static int la_copy_serial_prior_value (LA_ITEM * item, char *ptr, const char *end);
 static void la_unlink_repl_item (LA_APPLY * apply, LA_ITEM * item);
 static void la_free_repl_item (LA_APPLY * apply, LA_ITEM * item);
 static void la_free_all_repl_items_except_head (LA_APPLY * apply);
@@ -3031,6 +3034,8 @@ la_new_repl_item (LOG_LSA * lsa, LOG_LSA * target_lsa)
   db_make_null (&item->key);
   item->packed_key_value_length = 0;
   item->packed_key_value = NULL;
+  item->packed_prior_value_length = 0;
+  item->packed_prior_value = NULL;
 
   item->next = NULL;
   item->prev = NULL;
@@ -3086,6 +3091,50 @@ la_get_item_pk_value (LA_ITEM * item)
 
   /* statement replication or key was already unpacked */
   return &item->key;
+}
+
+/*
+ * la_copy_serial_prior_value () - keep the packed value a _db_serial write-back replaced
+ *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY
+ *   item(in/out): its packed_prior_value stays NULL for a record that carries no value
+ *   ptr(in): the end of the packed key
+ *   end(in): the end of the record
+ *
+ * Note: see LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC for the layout. PTR_ALIGN is not used: debug builds zero
+ *       the padding it skips, which may lie past the end of the record.
+ */
+static int
+la_copy_serial_prior_value (LA_ITEM * item, char *ptr, const char *end)
+{
+  int magic, prior_len;
+
+  ptr = (char *) DB_ALIGN ((UINTPTR) ptr, INT_ALIGNMENT);
+  if (ptr + 2 * OR_INT_SIZE > end)
+    {
+      return NO_ERROR;
+    }
+  ptr = or_unpack_int (ptr, &magic);
+  if (magic != LOG_REPL_SERIAL_PRIOR_VALUE_MAGIC)
+    {
+      return NO_ERROR;
+    }
+  ptr = or_unpack_int (ptr, &prior_len);
+  ptr = (char *) DB_ALIGN ((UINTPTR) ptr, MAX_ALIGNMENT);
+  if (prior_len <= 0 || ptr + prior_len > end)
+    {
+      return NO_ERROR;
+    }
+
+  item->packed_prior_value = (char *) malloc (prior_len);
+  if (item->packed_prior_value == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) prior_len);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memcpy (item->packed_prior_value, ptr, prior_len);
+  item->packed_prior_value_length = prior_len;
+
+  return NO_ERROR;
 }
 
 static LA_ITEM *
@@ -3159,6 +3208,14 @@ la_make_repl_item (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa
       ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);	/* 8 bytes alignment. see or_pack_mem_value */
       memcpy (item->packed_key_value, ptr, item->packed_key_value_length);
 
+      if (strcasecmp (item->class_name, CT_SERIAL_NAME) == 0)
+	{
+	  if (la_copy_serial_prior_value (item, ptr + item->packed_key_value_length, area + length) != NO_ERROR)
+	    {
+	      goto error_return;
+	    }
+	}
+
       item->item_type = repl_log->rcvindex;
 
       break;
@@ -3216,6 +3273,11 @@ error_return:
       if (item->packed_key_value != NULL)
 	{
 	  free_and_init (item->packed_key_value);
+	}
+
+      if (item->packed_prior_value != NULL)
+	{
+	  free_and_init (item->packed_prior_value);
 	}
 
       free_and_init (item);
@@ -3289,6 +3351,11 @@ la_free_repl_item (LA_APPLY * apply, LA_ITEM * item)
   if (item->packed_key_value != NULL)
     {
       free_and_init (item->packed_key_value);
+    }
+
+  if (item->packed_prior_value != NULL)
+    {
+      free_and_init (item->packed_prior_value);
     }
 
   free_and_init (item);
@@ -4934,7 +5001,8 @@ la_repl_add_object (MOP classop, LA_ITEM * item, RECDES * recdes)
 
   error =
     __gv_loc_repl.ws_add_to_repl_obj_list (class_oid, item->packed_key_value, item->packed_key_value_length, recdes,
-					   operation, has_index);
+					   operation, has_index, item->packed_prior_value,
+					   item->packed_prior_value_length);
   return error;
 }
 

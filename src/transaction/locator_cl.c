@@ -6990,6 +6990,10 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 
       /* includes leading and trailing alignment */
       required_length = repl_obj->packed_pkey_value_length + MAX_ALIGNMENT + INT_ALIGNMENT;
+      if (repl_obj->packed_prior_value != NULL)
+	{
+	  required_length += repl_obj->packed_prior_value_length + MAX_ALIGNMENT + INT_ALIGNMENT;
+	}
       if (repl_obj->operation != LC_FLUSH_DELETE)
 	{
 	  assert (repl_obj->recdes != NULL && repl_obj->recdes->data != NULL);
@@ -7028,6 +7032,15 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 
       ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);	/* for int alignment. see or_pack_mem_value */
 
+      /* the value a _db_serial write-back replaced follows the key, in the same form */
+      if (repl_obj->packed_prior_value != NULL)
+	{
+	  ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+	  memcpy (ptr, repl_obj->packed_prior_value, repl_obj->packed_prior_value_length);
+	  ptr += repl_obj->packed_prior_value_length;
+	  ptr = PTR_ALIGN (ptr, INT_ALIGNMENT);
+	}
+
       key_length = CAST_BUFLEN (ptr - obj_start_p);
       mflush->recdes.data = ptr;
 
@@ -7046,9 +7059,14 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 
       mflush->mobjs->num_objs++;
       mflush->obj->operation = (LC_COPYAREA_OPERATION) repl_obj->operation;
+      mflush->obj->flag = 0;
       if (repl_obj->has_index == true)
 	{
 	  LC_ONEOBJ_SET_HAS_INDEX (mflush->obj);
+	}
+      if (repl_obj->packed_prior_value != NULL)
+	{
+	  LC_ONEOBJ_SET_HAS_PRIOR_VALUE (mflush->obj);
 	}
 
       COPY_OID (&mflush->obj->class_oid, &repl_obj->class_oid);
