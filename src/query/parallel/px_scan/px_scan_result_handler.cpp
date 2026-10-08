@@ -85,6 +85,28 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
+  /* The gather cannot resolve the aggregate domains from rows: it only has the first non-NULL value of each column,
+   * taken from different rows, and an operand that is non-NULL on few rows can be NULL on that mix. So each worker
+   * hands the domains it resolved (write ()) to the original aggregate nodes, the first worker to resolve a node
+   * winning, as BUILDVALUE_OPT does when it merges the accumulators. */
+  static void carry_resolved_agg_domains (AGGREGATE_TYPE *orig_agg_p, AGGREGATE_TYPE *cur_agg_p)
+  {
+    for (; orig_agg_p != NULL && cur_agg_p != NULL; orig_agg_p = orig_agg_p->next, cur_agg_p = cur_agg_p->next)
+      {
+	if (orig_agg_p->opr_dbtype == DB_TYPE_VARIABLE && cur_agg_p->opr_dbtype != DB_TYPE_VARIABLE)
+	  {
+	    orig_agg_p->domain = cur_agg_p->domain;
+	    orig_agg_p->opr_dbtype = cur_agg_p->opr_dbtype;
+	  }
+
+	if (orig_agg_p->accumulator_domain.value_dom == NULL && cur_agg_p->accumulator_domain.value_dom != NULL)
+	  {
+	    orig_agg_p->accumulator_domain.value_dom = cur_agg_p->accumulator_domain.value_dom;
+	    orig_agg_p->accumulator_domain.value2_dom = cur_agg_p->accumulator_domain.value2_dom;
+	  }
+      }
+  }
+
   template <RESULT_TYPE result_type>
   result_handler<result_type>::result_handler (QUERY_ID query_id, interrupt *interrupt_p,
       err_messages_with_lock *err_messages_p, int parallelism, bool g_agg_domain_resolve_need,
@@ -99,6 +121,7 @@ namespace parallel_scan
 	m_.orig_xasl = orig_xasl_tree_for_domain_resolve;
 	m_.active_results = parallelism;
 	m_.g_hash_eligible = (bool) orig_xasl_tree_for_domain_resolve->proc.buildlist.g_hash_eligible;
+	m_.g_agg_domain_resolve_need = g_agg_domain_resolve_need;
 
 	m_.instnum_mode = parallel_scan::detect_instnum_mode (orig_xasl_tree_for_domain_resolve,
 			  m_.rownum_col_indices, m_.instnum_draw);
@@ -315,6 +338,11 @@ namespace parallel_scan
 	    tl.agg_hash_state = HS_ACCEPT_ALL;
 	    tl.g_agg_domains_resolved = FALSE;
 	  }
+	else if (m_.g_agg_domain_resolve_need)
+	  {
+	    /* the rows are aggregated after the gather, which has no rows to resolve the domains from */
+	    tl.g_agg_domains_resolved = FALSE;
+	  }
 	/* setup failure leaves curr_xasl->topn_items NULL; worker falls back to plain BUILDLIST and final ORDER BY+LIMIT runs on main's concat list_id via qexec_orderby_distinct_by_sorting. */
 	tl.is_topn = false;
 	if (m_.orig_xasl->topn_items != nullptr && curr_xasl->type == BUILDLIST_PROC)
@@ -453,6 +481,11 @@ namespace parallel_scan
 	      pr_clear_value (&dbval);
 	    }
 	  tl.dbvals_for_domain_resolve.clear();
+
+	  if (m_.g_agg_domain_resolve_need)
+	    {
+	      carry_resolved_agg_domains (m_.orig_xasl->proc.buildlist.g_agg_list, tl.xasl->proc.buildlist.g_agg_list);
+	    }
 
 	  if (hash_aggregate_append)
 	    {
@@ -671,6 +704,39 @@ namespace parallel_scan
     return NO_ERROR;
   }
 
+  /* A partial list resolves an accumulator column from the first non-NULL value saved into it, so a worker whose
+   * accumulators of a function were all NULL leaves that column unresolved. merge_list_ids () chains the lists under
+   * the layout of the first one, so give those columns the domains the workers resolved (carried to the original
+   * aggregate nodes by write_finalize ()) before chaining. Such a column stores no value, and
+   * qexec_resolve_domains_for_group_by () lays the chained list out with the same domains afterwards. */
+  static void set_unresolved_agg_part_list_domains (BUILDLIST_PROC_NODE *buildlist, QFILE_LIST_ID *part_list_id)
+  {
+    AGGREGATE_ACCUMULATOR_DOMAIN **acc_dom = buildlist->agg_hash_context->accumulator_domains;
+    TP_DOMAIN **domp = part_list_id->type_list.domp;
+    bool changed = false;
+    int i, index;
+
+    for (i = 0; i < buildlist->g_func_count; i++)
+      {
+	index = buildlist->g_hkey_size + i * 3;
+	if (TP_DOMAIN_TYPE (domp[index]) == DB_TYPE_VARIABLE && acc_dom[i]->value_dom != NULL)
+	  {
+	    domp[index] = acc_dom[i]->value_dom;
+	    changed = true;
+	  }
+	if (TP_DOMAIN_TYPE (domp[index + 1]) == DB_TYPE_VARIABLE && acc_dom[i]->value2_dom != NULL)
+	  {
+	    domp[index + 1] = acc_dom[i]->value2_dom;
+	    changed = true;
+	  }
+      }
+
+    if (changed)
+      {
+	qfile_set_layout (&part_list_id->type_list);
+      }
+  }
+
   template <RESULT_TYPE result_type>
   SCAN_CODE result_handler<result_type>::read (THREAD_ENTRY *thread_p, read_dest_type *dest)
   {
@@ -740,6 +806,15 @@ namespace parallel_scan
 	if (m_.g_hash_eligible)
 	  {
 	    BUILDLIST_PROC_NODE *buildlist_proc = &m_.orig_xasl->proc.buildlist;
+	    if (buildlist_proc->agg_hash_context->part_list_id->tuple_cnt > 0)
+	      {
+		/* the new lists are chained after the partial accumulators this list already holds */
+		set_unresolved_agg_part_list_domains (buildlist_proc, buildlist_proc->agg_hash_context->part_list_id);
+	      }
+	    for (QFILE_LIST_ID *list_id : m_.hgby_results)
+	      {
+		set_unresolved_agg_part_list_domains (buildlist_proc, list_id);
+	      }
 	    if (merge_list_ids (thread_p, buildlist_proc->agg_hash_context->part_list_id, m_.hgby_results) != NO_ERROR)
 	      {
 		m_err_messages_p->move_top_error_message_to_this();
@@ -968,27 +1043,31 @@ namespace parallel_scan
 	      }
 	  }
 
+	/* Resolve from every row until resolved, as the serial scan does (qexec_end_one_iteration ()), not only from the
+	 * rows the hash table takes: the rows left in the list are aggregated after the gather, with the domains
+	 * write_finalize () hands over. */
+	if (unlikely (!tl.g_agg_domains_resolved))
+	  {
+	    if (qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_g_agg (thread_p, tl.xasl, tl.vd,
+		&tl.g_agg_domains_resolved) != NO_ERROR)
+	      {
+		m_err_messages_p->move_top_error_message_to_this();
+		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		return false;
+	      }
+
+	    /* The serial path's marking does not reach a worker's own XASL copy.
+	     * Mark it here, once per worker, like the domain resolve above. */
+	    qexec_mark_aggregate_operand_expressions (tl.xasl);
+	    /* Sharing needs the resolved accumulator domains, so it is linked here. */
+	    qdata_link_shared_accumulators (tl.xasl->proc.buildlist.g_agg_list);
+	  }
+
 	if (likely (status == QPROC_TPLDESCR_SUCCESS))
 	  {
 	    bool output_tuple = true;
 	    if (tl.agg_hash_state == HS_ACCEPT_ALL)
 	      {
-		if (unlikely (!tl.g_agg_domains_resolved))
-		  {
-		    if (qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_g_agg (thread_p, tl.xasl, tl.vd,
-			&tl.g_agg_domains_resolved) != NO_ERROR)
-		      {
-			m_err_messages_p->move_top_error_message_to_this();
-			m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-			return false;
-		      }
-
-		    /* The serial path's marking does not reach a worker's own XASL copy.
-		     * Mark it here, once per worker, like the domain resolve above. */
-		    qexec_mark_aggregate_operand_expressions (tl.xasl);
-		    /* Sharing needs the resolved accumulator domains, so it is linked here. */
-		    qdata_link_shared_accumulators (tl.xasl->proc.buildlist.g_agg_list);
-		  }
 		if (qexec_hash_gby_agg_tuple_public (thread_p, tl.xasl, tl.vd->xasl_state, &tl.tpl_buf,
 						     & (tl.writer_result_p->tpl_descr), tl.writer_result_p, &output_tuple) != NO_ERROR)
 		  {
@@ -2036,7 +2115,8 @@ namespace parallel_scan
 	    return false;
 	  }
 	DB_VALUE *db_value2_p;
-	if (second_operand->value.type == TYPE_CONSTANT)
+	/* a scalar subquery operand must be fetched to run for this row, as for the first operand in write () */
+	if (second_operand->value.type == TYPE_CONSTANT && second_operand->value.xasl == NULL)
 	  {
 	    db_value2_p = second_operand->value.value.dbvalptr;
 	  }
@@ -2202,7 +2282,10 @@ namespace parallel_scan
 	  }
 
 	DB_VALUE *db_value_p;
-	if (agg_node->operands->value.type == TYPE_CONSTANT)
+	/* A scalar subquery operand is TYPE_CONSTANT too, but its slot holds this row's value only after
+	 * fetch_peek_dbval () runs the subquery (the slot is cleared after every row), so only a constant
+	 * without a linked subquery is read directly. Serial qdata_evaluate_aggregate_list () always fetches. */
+	if (agg_node->operands->value.type == TYPE_CONSTANT && agg_node->operands->value.xasl == NULL)
 	  {
 	    db_value_p = agg_node->operands->value.value.dbvalptr;
 	  }
