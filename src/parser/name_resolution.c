@@ -12668,6 +12668,9 @@ check_for_already_exists (PARSER_CONTEXT * parser, S_LINK_COLUMNS * plkcol, cons
     }
 }
 
+static void pt_walk_col_refs (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE_WALK_FUNCTION pre,
+			      S_LINK_COLUMNS * lkcol);
+
 static PT_NODE *
 pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -12727,6 +12730,19 @@ pt_get_column_name_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 	{			// case: *
 	  check_for_already_exists (parser, plkcol, NULL, NULL);
 	}
+      break;
+
+    case PT_SPEC:
+      /* the FROM of a nested block: its table, alias and column-alias names are not column
+       * references; only its ON condition and a derived table the statement wrote can hold
+       * one (a DBLink table, or the wrapper the DML rewrite generated, holds none) */
+      pt_walk_col_refs (parser, node->info.spec.on_cond, pt_get_column_name_pre, plkcol);
+      if (node->info.spec.derived_table_type != PT_DERIVED_DBLINK_TABLE
+	  && !(node->info.spec.flag & PT_SPEC_FLAG_DBLINK_DML_SRC))
+	{
+	  pt_walk_col_refs (parser, node->info.spec.derived_table, pt_get_column_name_pre, plkcol);
+	}
+      *continue_walk = PT_LIST_WALK;
       break;
 
     default:
