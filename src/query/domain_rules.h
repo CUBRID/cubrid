@@ -34,6 +34,32 @@ enum DOMAIN_CTX
   DOMAIN_CTX_AGG, DOMAIN_CTX_ANALYTIC, DOMAIN_CTX_FUNC_ARG, DOMAIN_CTX_LIST_COLUMN, DOMAIN_CTX_KEY_ELEM
 };
 
+/*
+ * What an addition, subtraction, multiplication or division makes of two operands of given types
+ * (domain_arith_rule): the kind names the operator that computes the value, the type is the value's. The resolver
+ * reads it for the result domain before any row; the operator reads it over its values' types at the row and
+ * dispatches on it alone (qdata_arith_dbval) - the one answer, from the one rule.
+ */
+enum DOMAIN_ARITH_KIND
+{
+  DOMAIN_ARITH_NO_VALUE,	/* a NULL operand, or a pair the typed operator passes over: no value, no error */
+  DOMAIN_ARITH_NUMBER,		/* two numbers: the number of the result type */
+  DOMAIN_ARITH_DATE,		/* a date or time with a number or another date or time: the date and time operators */
+  DOMAIN_ARITH_CONCAT,		/* plus as concatenation (qdata_strcat_dbval) */
+  DOMAIN_ARITH_STRING,		/* a character or bit string added to any value: db_string_concatenate, which
+				 * rejects a pair it does not concatenate */
+  DOMAIN_ARITH_COLLECTION,	/* two collections: union, difference or intersection */
+  DOMAIN_ARITH_REJECT,		/* a pair the operator rejects: ER_QPROC_INVALID_DATATYPE */
+  DOMAIN_ARITH_REJECT_OR_NULL	/* a pair the operator rejects unless return_null_on_function_errors: no value then */
+};
+
+struct DOMAIN_ARITH
+{
+  DOMAIN_ARITH_KIND kind;
+  DB_TYPE type;			/* the value's type; DB_TYPE_NULL for no value, and for a collection the type a missing
+				 * result domain defaults to */
+};
+
 struct RESOLVED_DOMAIN
 {
   const TP_DOMAIN *domain;
@@ -80,6 +106,20 @@ struct DOMAIN_OPERAND_COERCION
 /* The operands' operand coercion of T_ADD, T_SUB, T_MUL or T_DIV alone: operand_domain[0..1] and conv[0..1] of the
  * ARITH rule over operands of these types, whatever its result. */
 void domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_OPERAND_COERCION * result);
+
+/*
+ * domain_arith_rule () - the ARITH rule over two operand types alone: the targets of the operand coercion and what the
+ *   typed operator makes of the coerced operands. The resolver reads it over the operands' domains for the result
+ *   domain and the operand coercion; the operator reads it over its two values' types at the row (the operand
+ *   coercion has run by then: the targets are the types) and computes what it names. Over coerced operands the
+ *   classification is the cost of a few type tests; two numbers take the first branch.
+ *   return: NO_ERROR, or the error the operator raises for the pair (arith then names the operator that raises it:
+ *	     REJECT, REJECT_OR_NULL, STRING or CONCAT)
+ *   left_target, right_target(out): the type each operand is cast to
+ *   arith(out): the value; DOMAIN_ARITH_NO_VALUE for a NULL operand or a pair the operator passes over
+ */
+int domain_arith_rule (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_target, DB_TYPE * right_target,
+		       DOMAIN_ARITH * arith);
 
 /* val_type of a value-dependent argument (MEDIAN/PERCENTILE argument, STR_TO_DATE format, ADDTIME left).
  * resolve_domains only, once, before domain_resolve. DB_TYPE_NULL when the value cannot be typed: the function's own

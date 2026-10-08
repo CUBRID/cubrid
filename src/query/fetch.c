@@ -868,20 +868,9 @@ fetch_arith_binary (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * 
     }
   if (plan != NULL && plan->conv[0] == NULL && plan->conv[1] == NULL)
     {
-      /* an operand coercion that converts neither operand calls the typed operator directly; the operator's optdebug
-       * check still stops operands a plan left unconverted (qdata_assert_operands_coerced) */
-      switch (arithptr->opcode)
-	{
-	case T_ADD:
-	  return qdata_add_dbval (left, right, arithptr->value, domain);
-	case T_SUB:
-	  return qdata_subtract_dbval (left, right, arithptr->value, domain);
-	case T_MUL:
-	  return qdata_multiply_dbval (left, right, arithptr->value, domain);
-	default:
-	  assert (arithptr->opcode == T_DIV);
-	  return qdata_divide_dbval (left, right, arithptr->value, domain);
-	}
+      /* an operand coercion that converts neither operand calls the operator directly; the operator's optdebug
+       * check still stops operands a plan left unconverted (qdata_assert_arith_resolved) */
+      return qdata_arith_dbval (arithptr->opcode, left, right, arithptr->value, domain);
     }
   return fetch_arith_binary_operand_coercion (thread_p, vd, arithptr, plan, left, right, domain);
 }

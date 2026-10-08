@@ -88,8 +88,8 @@ domain_set_operand (RESOLVED_DOMAIN * result, int i, const DOMAIN_OPERAND * oper
   result->conv[i] = tp_value_find_converter (domain_operand_type (operand), result->operand_domain[i], mode);
 }
 
-/* Result of two numbers after the operand coercion: the typed dispatch of
- * qdata_{add,subtract,multiply,divide}_*_to_dbval. */
+/* Result of two numbers after the operand coercion: the type qdata_number_operator reads both operands as and
+ * computes in (query_opfunc.c). */
 static DB_TYPE
 domain_arith_number (int opcode, DB_TYPE left, DB_TYPE right)
 {
@@ -104,8 +104,8 @@ domain_arith_number (int opcode, DB_TYPE left, DB_TYPE right)
   if (left == DB_TYPE_FLOAT || right == DB_TYPE_FLOAT)
     {
       DB_TYPE other = left == DB_TYPE_FLOAT ? right : left;
-      /* FLOAT with NUMERIC goes through qdata_coerce_numeric_to_double; FLOAT + BIGINT (not BIGINT + FLOAT) is
-       * qdata_add_double in qdata_add_float_to_dbval. */
+      /* FLOAT with NUMERIC is a DOUBLE, and so is FLOAT + BIGINT but not BIGINT + FLOAT: the typed additions'
+       * answers, kept. */
       if (other == DB_TYPE_NUMERIC || (opcode == T_ADD && left == DB_TYPE_FLOAT && right == DB_TYPE_BIGINT))
 	{
 	  return DB_TYPE_DOUBLE;
@@ -213,31 +213,43 @@ domain_arith_reject (void)
   return prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) ? NO_ERROR : ER_QPROC_INVALID_DATATYPE;
 }
 
+/* A date or time operator's value of this type; DB_TYPE_NULL when it has no case for the pair: no value */
+static void
+domain_arith_date (DOMAIN_ARITH * arith, DB_TYPE type)
+{
+  arith->kind = type != DB_TYPE_NULL ? DOMAIN_ARITH_DATE : DOMAIN_ARITH_NO_VALUE;
+  arith->type = type;
+}
+
 /*
- * domain_arith_dispatch - the typed dispatch of qdata_{add,subtract,multiply,divide}_dbval after the operand coercion
- *   return: NO_ERROR, or the error the dispatcher raises for the pair
+ * domain_arith_dispatch - what the operator makes of the two operands after the operand coercion and, for an
+ *   addition, the swap: the kind that names the operator computing it and the value's type (qdata_arith_dbval
+ *   dispatches on them)
+ *   return: NO_ERROR, or the error the operator raises for the pair
  *   first, second(in): operand types after the operand coercion and, for addition, the swap
- *   result_type(out): the result type; DB_TYPE_NULL when a typed helper passes the pair over without an error
+ *   arith(out): the value; DOMAIN_ARITH_NO_VALUE when the operator passes the pair over without an error
  *
- * A dispatcher rejects a first operand it has no helper for: addition always, the others unless
- * return_null_on_function_errors; a collection with a non-collection always. A typed helper leaves no value for a
- * second operand it has no case for (DATETIME - TIME), except the date addition, which rejects it like the
- * dispatchers (qdata_add_date_to_dbval).
+ * The operator rejects a first operand it has no case for: addition always, the others unless
+ * return_null_on_function_errors; a collection with a non-collection always. A date or time operator leaves no value
+ * for a second operand it has no case for (DATETIME - TIME), except the date addition, which rejects it like the
+ * operators do.
  */
 static int
-domain_arith_dispatch (int opcode, DB_TYPE first, DB_TYPE second, DB_TYPE * result_type)
+domain_arith_dispatch (int opcode, DB_TYPE first, DB_TYPE second, DOMAIN_ARITH * arith)
 {
-  *result_type = DB_TYPE_NULL;
+  arith->kind = DOMAIN_ARITH_NO_VALUE;
+  arith->type = DB_TYPE_NULL;
   if (TP_IS_NUMERIC_TYPE (first))
     {
       if (TP_IS_NUMERIC_TYPE (second))
 	{
-	  *result_type = domain_arith_number (opcode, first, second);
+	  arith->kind = DOMAIN_ARITH_NUMBER;
+	  arith->type = domain_arith_number (opcode, first, second);
 	}
       else if (opcode == T_SUB && TP_IS_DATE_OR_TIME_TYPE (second))
 	{
 	  /* the operand coercion made a floating first operand BIGINT */
-	  *result_type = domain_arith_subtract_datetime (first, second);
+	  domain_arith_date (arith, domain_arith_subtract_datetime (first, second));
 	}
       return NO_ERROR;
     }
@@ -245,10 +257,12 @@ domain_arith_dispatch (int opcode, DB_TYPE first, DB_TYPE second, DB_TYPE * resu
     {
       if (!TP_IS_SET_TYPE (second))
 	{
+	  arith->kind = DOMAIN_ARITH_REJECT;
 	  return ER_QPROC_INVALID_DATATYPE;
 	}
       /* partial resolve of a late-bound collection result (domain_p == NULL) */
-      *result_type = (opcode == T_ADD ? first == second : (first == second && first == DB_TYPE_SET))
+      arith->kind = DOMAIN_ARITH_COLLECTION;
+      arith->type = (opcode == T_ADD ? first == second : (first == second && first == DB_TYPE_SET))
 	? first : DB_TYPE_MULTISET;
       return NO_ERROR;
     }
@@ -258,15 +272,18 @@ domain_arith_dispatch (int opcode, DB_TYPE first, DB_TYPE second, DB_TYPE * resu
     case T_ADD:
       if (TP_IS_CHAR_BIT_TYPE (first))
 	{
-	  return domain_arith_concat (first, second, result_type);
+	  /* db_string_concatenate, which raises the error of a pair it does not concatenate itself */
+	  arith->kind = DOMAIN_ARITH_STRING;
+	  return domain_arith_concat (first, second, &arith->type);
 	}
       if (first == DB_TYPE_DATE)
 	{
 	  if (!TP_IS_DISCRETE_NUMBER_TYPE (second))
 	    {
+	      arith->kind = DOMAIN_ARITH_REJECT_OR_NULL;
 	      return domain_arith_reject ();
 	    }
-	  *result_type = first;
+	  domain_arith_date (arith, first);
 	  return NO_ERROR;
 	}
       if (TP_IS_DATE_OR_TIME_TYPE (first))
@@ -275,41 +292,56 @@ domain_arith_dispatch (int opcode, DB_TYPE first, DB_TYPE second, DB_TYPE * resu
 	   * answer is not kept, no value like their siblings */
 	  if (TP_IS_DISCRETE_NUMBER_TYPE (second))
 	    {
-	      *result_type = first;
+	      domain_arith_date (arith, first);
 	    }
 	  return NO_ERROR;
 	}
+      arith->kind = DOMAIN_ARITH_REJECT;
       return ER_QPROC_INVALID_DATATYPE;
 
     case T_SUB:
       if (TP_IS_DATE_OR_TIME_TYPE (first))
 	{
-	  *result_type = domain_arith_subtract_datetime (first, second);
+	  domain_arith_date (arith, domain_arith_subtract_datetime (first, second));
 	  return NO_ERROR;
 	}
+      arith->kind = DOMAIN_ARITH_REJECT_OR_NULL;
       return domain_arith_reject ();
 
     default:
+      arith->kind = DOMAIN_ARITH_REJECT_OR_NULL;
       return domain_arith_reject ();
     }
 }
 
 /*
- * domain_arith_binary - the operand coercion and typed dispatch of the four binary operators
+ * domain_arith_rule - the operand coercion of the four binary operators and what the operator makes of the coerced
+ *   operands
  *   return: NO_ERROR, or the error the operator raises for the pair
  *   left, right(in): operand types
  *   left_target, right_target(out): type each operand is cast to
- *   result_type(out): type the operator produces; DB_TYPE_NULL for a NULL operand or a pair it passes over
+ *   arith(out): the value; DOMAIN_ARITH_NO_VALUE for a NULL operand or a pair the operator passes over
  */
-static int
-domain_arith_binary (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_target, DB_TYPE * right_target,
-		     DB_TYPE * result_type)
+int
+domain_arith_rule (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_target, DB_TYPE * right_target,
+		   DOMAIN_ARITH * arith)
 {
   bool is_add = opcode == T_ADD;
 
   *left_target = left;
   *right_target = right;
-  *result_type = DB_TYPE_NULL;
+  arith->kind = DOMAIN_ARITH_NO_VALUE;
+  arith->type = DB_TYPE_NULL;
+
+  if (TP_IS_NUMERIC_TYPE (left) && TP_IS_NUMERIC_TYPE (right)
+      && !(opcode == T_DIV && TP_IS_DISCRETE_NUMBER_TYPE (left) && TP_IS_DISCRETE_NUMBER_TYPE (right)))
+    {
+      /* two numbers convert nothing and make a number - the row's common case, answered before the other tests; a
+       * division of two discrete numbers may become NUMERIC under oracle_compat_number_behavior, below */
+      arith->kind = DOMAIN_ARITH_NUMBER;
+      arith->type = domain_arith_number (opcode, left, right);
+      return NO_ERROR;
+    }
 
   if (!is_add && (left == DB_TYPE_NULL || right == DB_TYPE_NULL))
     {
@@ -322,15 +354,17 @@ domain_arith_binary (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_tar
       if (left == DB_TYPE_ENUMERATION)
 	{
 	  DB_TYPE step = (is_add && TP_IS_CHAR_BIT_TYPE (right)) ? DB_TYPE_VARCHAR : DB_TYPE_SHORT;
-	  return domain_arith_binary (opcode, step, right, left_target, right_target, result_type);
+	  return domain_arith_rule (opcode, step, right, left_target, right_target, arith);
 	}
       DB_TYPE step = (is_add && TP_IS_CHAR_BIT_TYPE (left)) ? DB_TYPE_VARCHAR : DB_TYPE_SHORT;
-      return domain_arith_binary (opcode, left, step, left_target, right_target, result_type);
+      return domain_arith_rule (opcode, left, step, left_target, right_target, arith);
     }
 
   if (is_add && TP_IS_CHAR_BIT_TYPE (left) && TP_IS_CHAR_BIT_TYPE (right) && prm_get_bool_value (PRM_ID_PLUS_AS_CONCAT))
     {
-      return domain_arith_concat (left, right, result_type);
+      /* qdata_strcat_dbval, which raises the error of a pair it does not concatenate itself */
+      arith->kind = DOMAIN_ARITH_CONCAT;
+      return domain_arith_concat (left, right, &arith->type);
     }
 
   if (left == DB_TYPE_NULL || right == DB_TYPE_NULL)
@@ -396,7 +430,7 @@ domain_arith_binary (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_tar
   *first_target = first;
   *second_target = second;
 
-  return domain_arith_dispatch (opcode, first, second, result_type);
+  return domain_arith_dispatch (opcode, first, second, arith);
 }
 
 /* The result of the db_mod_<type> helpers for two numbers; a character operand is DOUBLE by then. */
@@ -497,9 +531,18 @@ domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operand
       {
 	DB_TYPE left_target, right_target;
 	const DB_TYPE left = domain_operand_type (&operands[0]), right = domain_operand_type (&operands[1]);
+	int error;
 	assert (n_operands == 2);
-	int error = opcode == T_MOD ? domain_arith_mod (left, right, &left_target, &right_target, &result_type)
-	  : domain_arith_binary (opcode, left, right, &left_target, &right_target, &result_type);
+	if (opcode == T_MOD)
+	  {
+	    error = domain_arith_mod (left, right, &left_target, &right_target, &result_type);
+	  }
+	else
+	  {
+	    DOMAIN_ARITH arith;
+	    error = domain_arith_rule (opcode, left, right, &left_target, &right_target, &arith);
+	    result_type = arith.type;
+	  }
 	if (error != NO_ERROR)
 	  {
 	    return error;
@@ -579,11 +622,12 @@ void
 domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_OPERAND_COERCION * result)
 {
   assert (opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV);
-  DB_TYPE left_target, right_target, result_type;
+  DB_TYPE left_target, right_target;
+  DOMAIN_ARITH arith;
   RESOLVED_DOMAIN resolved = RESOLVED_DOMAIN ();
-  /* the targets are set before the typed dispatch answers whether it takes the pair */
-  (void) domain_arith_binary (opcode, domain_operand_type (&operands[0]), domain_operand_type (&operands[1]),
-			      &left_target, &right_target, &result_type);
+  /* the targets are set before the operator answers whether it takes the pair */
+  (void) domain_arith_rule (opcode, domain_operand_type (&operands[0]), domain_operand_type (&operands[1]),
+			    &left_target, &right_target, &arith);
   domain_set_arith_operands (opcode, operands, left_target, right_target, &resolved);
   for (int i = 0; i < 2; i++)
     {

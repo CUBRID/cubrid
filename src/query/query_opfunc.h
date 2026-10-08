@@ -65,6 +65,10 @@ extern QPROC_TPLDESCR_STATUS qdata_generate_tuple_desc_for_valptr_list (THREAD_E
 									qfile_list_id * list_id);
 extern int qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list, val_descr * vd);
 
+/* T_ADD, T_SUB, T_MUL or T_DIV over two values, as the ARITH rule names it over their types (domain_arith_rule); the
+ * four operators below are it with the opcode fixed */
+extern int qdata_arith_dbval (OPERATOR_TYPE opcode, DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res,
+			      tp_domain * domain_p);
 extern int qdata_add_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
 extern int qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res,
 				    tp_domain * domain, const int max_allowed_size, const char *warning_context);
