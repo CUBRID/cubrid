@@ -1190,27 +1190,22 @@ ldr_class_name (LDR_CONTEXT *context)
 static const char *
 ldr_attr_name (LDR_CONTEXT *context)
 {
-  const char *name = NULL;
+  const char *name = "";
 
-  if (context && context->attrs && context->valid)
+  /*
+   * next_attr walks the attributes and then the %constructor arguments, so it
+   * reaches num_attrs and goes past it. Only 0 .. num_attrs-1 name an attribute;
+   * at num_attrs and beyond the slot is an argument, and ldr_add_attribute_setters ()
+   * leaves att NULL on it because an argument has no attribute descriptor. Reading
+   * the name there dereferences NULL.
+   *
+   * Return the empty string rather than NULL: every caller hands this straight to
+   * er_set () or fprintf () as a %s.
+   */
+  if (context && context->attrs && context->valid
+      && context->next_attr < context->num_attrs && context->attrs[context->next_attr].att != NULL)
     {
-      if (context->num_attrs >= context->next_attr)
-	{
-	  if (context->num_attrs)
-	    {
-	      name = context->attrs[context->next_attr].att->header.name;
-	    }
-	  else
-	    {
-	      /* haven't processed an attribute yet */
-	      name = "";
-	    }
-	}
-      else
-	{
-	  /* should return some kind of string representation for the current method argument */
-	  name = "";
-	}
+      name = context->attrs[context->next_attr].att->header.name;
     }
 
   return name;
@@ -2694,8 +2689,7 @@ ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type
       if (context->attrs[context->next_attr].collection_domain == NULL)
 	{
 	  CHECK_CONTEXT_VALIDITY (context, true);
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
-		  context->attrs[context->next_attr].att->header.name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
 	  CHECK_ERR (err, ER_OBJ_DOMAIN_CONFLICT);
 	}
       CHECK_ERR (err, ldr_collection_db_collection (context, str, len, &context->attrs[context->next_attr]));
@@ -2725,15 +2719,13 @@ ldr_act_class_attr (LDR_CONTEXT *context, const char *str, size_t len, data_type
 	    }
 	  else
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
-		      context->attrs[context->next_attr].att->header.name);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
 	      CHECK_ERR (err, ER_OBJ_DOMAIN_CONFLICT);
 	    }
 	}
       else if (tp_value_cast (&src_val, &dest_val, domain, false))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
-		  context->attrs[context->next_attr].att->header.name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
 	  CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, TP_DOMAIN_TYPE (domain), str);
 	}
       CHECK_ERR (err, ldr_sink_class_object (context, context->attrs[context->next_attr].att, val));
@@ -2925,8 +2917,7 @@ ldr_bstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 
   if (qstr_bit_to_bin (bstring, dest_size, (char *) str, (int) len) != (int) len)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
-	      context->attrs[context->next_attr].att->header.name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
@@ -2948,8 +2939,7 @@ ldr_bstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
   domain_ptr = tp_domain_resolve_value (val, &temp_domain);
   if (tp_value_cast (&temp, val, domain_ptr, false))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
-	      context->attrs[context->next_attr].att->header.name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
@@ -3009,8 +2999,7 @@ ldr_xstr_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
   domain_ptr = tp_domain_resolve_value (val, &temp_domain);
   if (tp_value_cast (&temp, val, domain_ptr, false))
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1,
-	      context->attrs[context->next_attr].att->header.name);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, ldr_attr_name (context));
       CHECK_PARSE_ERR (err, ER_OBJ_DOMAIN_CONFLICT, context, DB_TYPE_BIT, str);
     }
 
