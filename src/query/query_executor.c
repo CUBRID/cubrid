@@ -20046,10 +20046,16 @@ qexec_connect_by_node_array_clear (THREAD_ENTRY * thread_p, CONNECT_BY_DFS_NODE 
 static void
 qexec_connect_by_spill_init (CONNECT_BY_DFS_SPILL * spill, QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QUERY_ID query_id)
 {
+  UINT64 membuf_bytes;
+
   memset (spill, 0, sizeof (*spill));
   /* 0 spills every node */
   spill->limit = (UINT64) prm_get_bigint_value (PRM_ID_MAX_CONNECT_BY_DFS_SIZE);
-  spill->chunk_bytes = MAX (spill->limit / CONNECT_BY_SPILL_CHUNKS_PER_LIMIT, 1);
+  /* each chunk's temp file preallocates a whole memory buffer, so floor the chunk at that size: a tiny limit must not
+   * split the spill into many tiny chunks, each still paying a full buffer, which makes peak memory grow as the limit
+   * shrinks */
+  membuf_bytes = (UINT64) prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) * DB_PAGESIZE;
+  spill->chunk_bytes = MAX (spill->limit / CONNECT_BY_SPILL_CHUNKS_PER_LIMIT, membuf_bytes);
   spill->type_list = type_list;
   spill->query_id = query_id;
 }
