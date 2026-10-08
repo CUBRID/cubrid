@@ -255,6 +255,15 @@ qr_norm_need_space (const char *dst, int len, char c, int num_tok, int dot_kind)
       return true;
     }
 
+  /* two backtick identifiers side by side ("`a` `b`": column a aliased b) would otherwise glue
+   * into the doubled-backtick escape of ONE identifier ("`a``b`": the column named a`b) -- two
+   * valid statements on one key.  '[' after ']' needs no space: csql_lexer.l has no "]]" escape,
+   * so "[a][b]" already reads as two names; '"' is a QR_CC_WORD and is covered above. */
+  if (prev == '`' && c == '`')
+    {
+      return true;
+    }
+
   /* "\N" is NULL and "\USD" a currency sign, but "\ N" and "\ USD" are the won sign
    * followed by an identifier -- a syntax error that would otherwise land on the key of
    * the valid rule. */
@@ -385,15 +394,31 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 	{
 	  /* inside a string literal: copy verbatim AND hash, so the returned
 	   * hash equals qr_hash_str(dst) even when the query contains a literal. */
-	  if (c == '\\' && *(s + 1) == quote)
+	  if (c == '\\')
 	    {
-	      /* whether "\\'" closes the literal or escapes the quote depends on
-	       * no_backslash_escapes, a session parameter the CAS cannot see, and guessing wrong
-	       * mis-tracks the quote state -- the rest of the statement would then be folded as
-	       * if it were code.  every other backslash ("C:\\dir", "a\\nb", the LIKE escapes)
-	       * closes the literal at the same byte under either reading, so only this one
-	       * costs the query its replacement. */
-	      return QR_NORM_ERR_LITERAL;
+	      /* csql_lexer.l pairs a backslash with the byte after it under either setting of
+	       * no_backslash_escapes ([\\].), so "C:\\dir", "a\\nb", the LIKE escapes and an
+	       * escaped backslash "\\\\" all close the literal at the same byte; only the
+	       * literal's value differs, and the replacement is prepared in the same session.  the
+	       * one exception is a backslash before the literal's own quote: with
+	       * no_backslash_escapes=yes the quote closes the literal, with =no it is an escaped
+	       * quote and the literal goes on.  that is a session parameter, and guessing wrong
+	       * mis-tracks the quote state -- the rest of the statement would then be folded as if
+	       * it were code -- so only that case costs the query its replacement.  copying the pair
+	       * together is what tells "\\\\'" (an escaped backslash, then the closing quote) from
+	       * "\\'". */
+	      if (*(s + 1) == quote)
+		{
+		  return QR_NORM_ERR_LITERAL;
+		}
+	      QR_PUT (c);
+	      if (*(s + 1) != '\0')
+		{
+		  s++;
+		  QR_PUT (*s);
+		}
+	      prev_space = 0;
+	      continue;
 	    }
 	  QR_PUT (c);
 	  if (c == quote)
@@ -1089,7 +1114,7 @@ qr_parse_file (const char *path, const char *up_db, const char *up_user, T_QR_PA
       if (errmsg != NULL)
 	{
 	  snprintf (errmsg, errsz,
-		    "ORIG query has a backslash inside a string literal, "
+		    "ORIG query has a backslash inside a string literal right before its quote, "
 		    "whose meaning depends on no_backslash_escapes");
 	}
       return -1;
@@ -3468,12 +3493,12 @@ qr_lookup (const char *sql_stmt, int sql_len)
       return -1;
     }
 
-  /* cheap pre-filter before the O(len) normalization.  normalization can *grow* the text:
-   * a hint keeps one separator space on each side, which canonicalizes the whitespace
-   * around it so that writing the hint with or without inner spaces yields one key.  that
-   * is at most 2 bytes per hint token of >= 3 input bytes, so norm_len always stays below
-   * 2 * sql_len + 2; a query shorter than that bound cannot reach the shortest rule. */
-  if (2 * sql_len + 2 < qr_shm->min_query_len)
+  /* cheap pre-filter before the O(len) normalization.  normalization never grows the text:
+   * whitespace survives only where there was some, comments are dropped, and case folding
+   * and literals keep their length.  the one byte it can add is the newline a line hint
+   * ("--+", "//+") keeps when the statement ends without one, so norm_len <= sql_len + 1,
+   * and a query shorter than that cannot reach the shortest rule. */
+  if (sql_len + 1 < qr_shm->min_query_len)
     {
       return -1;
     }
