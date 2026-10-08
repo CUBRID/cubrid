@@ -28,6 +28,7 @@
 #include "list_file.h"
 #include "memory_alloc.h"
 #include "object_representation.h"
+#include "perf_monitor.h"
 #include "qfile_tuple_layout.h"
 #include "query_executor.h"
 #include "storage_common.h"
@@ -237,6 +238,15 @@ exit_on_stop:
       }
     }
 
+    UINT64 *
+    merge_manager::get_worker_stats (int range_index) const
+    {
+      assert (m_px_worker_stats != NULL);
+      assert (range_index >= 0 && range_index < (int) m_outputs.size ());
+
+      return m_px_worker_stats + (size_t) range_index * perfmon_get_number_of_statistic_values ();
+    }
+
     merge_task::merge_task (task_manager &task_manager, merge_manager *manager, int range_index)
       : m_task_manager (task_manager)
       , m_manager (manager)
@@ -263,12 +273,25 @@ exit_on_stop:
 
       assert (output != nullptr);
 
+      if (thread_is_on_trace (&thread_ref))
+	{
+	  thread_ref.m_px_stats = m_manager->get_worker_stats (m_range_index);
+	  thread_ref.m_uses_px_stats = true;
+	}
+      else
+	{
+	  assert (thread_ref.m_px_stats == nullptr);
+	}
+
       if (!m_task_manager.has_error () && !m_task_manager.check_interrupt (thread_ref))
 	{
 	  error = execute_range_merge (thread_ref, m_task_manager, m_manager, m_range_index, output);
 	}
 
       qfile_close_list (&thread_ref, output);
+
+      thread_ref.m_px_stats = nullptr;
+      thread_ref.m_uses_px_stats = false;
 
       if (error != NO_ERROR && !m_task_manager.has_error ())
 	{
