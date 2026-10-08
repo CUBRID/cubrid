@@ -7853,6 +7853,7 @@ static int update_check_for_constraints (PARSER_CONTEXT * parser, int *has_uniqu
 static bool update_check_having_meta_attr (PARSER_CONTEXT * parser, PT_NODE * assignment);
 static int update_real_class (PARSER_CONTEXT * parser, PT_NODE * statement, bool savepoint_started);
 static XASL_NODE *statement_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
+static int do_append_bind_variant_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement);
 static int is_server_update_allowed (PARSER_CONTEXT * parser, PT_NODE ** non_null_attrs, int *has_uniques,
 				     int *const server_allowed, const PT_NODE * statement);
 static int delete_object_tuple (DB_OBJECT * obj);
@@ -9927,6 +9928,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  parser->flag.print_type_ambiguity = 0;
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
 	  contextp->sql_hash_text = (char *) statement->alias_print;
+	  err = do_append_bind_variant_key (parser, contextp, statement);
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
 	  err =
 	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 			 &contextp->sha1);
@@ -9979,6 +9985,11 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		   * driver-neutral recording as do_prepare_select ()) */
 		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
+	      if (err == NO_ERROR && stream.xasl_id != NULL && (xasl_header.xasl_flag & BIND_WATCH_CANDIDATE))
+		{
+		  /* the cached plan passed target selection for bind-value plan variants */
+		  statement->flag.bind_watch_candidate = 1;
+		}
 	    }
 
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
@@ -9997,6 +10008,10 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  /* freshly compiled with unbound host-variable markers */
 		  statement->flag.hv_pred_plan_unpeeked = 1;
+		}
+	      if (contextp->xasl && (contextp->xasl->header.xasl_flag & BIND_WATCH_CANDIDATE))
+		{
+		  statement->flag.bind_watch_candidate = 1;
 		}
 	      AU_RESTORE (au_save);
 
@@ -11309,6 +11324,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	  parser->flag.print_type_ambiguity = 0;
 	  PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
 	  contextp->sql_hash_text = (char *) statement->alias_print;
+	  err = do_append_bind_variant_key (parser, contextp, statement);
+	  if (err != NO_ERROR)
+	    {
+	      return err;
+	    }
 	  err =
 	    SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 			 &contextp->sha1);
@@ -11352,6 +11372,11 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		   * driver-neutral recording as do_prepare_select ()) */
 		  statement->flag.hv_pred_plan_unpeeked = 1;
 		}
+	      if (err == NO_ERROR && stream.xasl_id != NULL && (xasl_header.xasl_flag & BIND_WATCH_CANDIDATE))
+		{
+		  /* the cached plan passed target selection for bind-value plan variants */
+		  statement->flag.bind_watch_candidate = 1;
+		}
 	    }
 	  if (stream.xasl_id == NULL && err == NO_ERROR)
 	    {
@@ -11369,6 +11394,10 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		{
 		  /* freshly compiled with unbound host-variable markers */
 		  statement->flag.hv_pred_plan_unpeeked = 1;
+		}
+	      if (contextp->xasl && (contextp->xasl->header.xasl_flag & BIND_WATCH_CANDIDATE))
+		{
+		  statement->flag.bind_watch_candidate = 1;
 		}
 	      AU_RESTORE (au_save);
 
@@ -15213,6 +15242,51 @@ pt_sub_host_vars_index (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 }
 
 /*
+ * do_append_bind_variant_key () - name a bind-value plan variant: its key goes after the hash text
+ *   of the statement, so the variant is a cache entry of its own (bind_variant.h)
+ * return : error code
+ */
+static int
+do_append_bind_variant_key (PARSER_CONTEXT * parser, COMPILE_CONTEXT * contextp, PT_NODE * statement)
+{
+  const char *key = NULL;
+  size_t text_len, key_len;
+  char *variant_text;
+
+  if (PT_IS_QUERY (statement))
+    {
+      key = statement->info.query.bind_variant_key;
+    }
+  else if (statement->node_type == PT_UPDATE)
+    {
+      key = statement->info.update.bind_variant_key;
+    }
+  else if (statement->node_type == PT_DELETE)
+    {
+      key = statement->info.delete_.bind_variant_key;
+    }
+  if (key == NULL || contextp->sql_hash_text == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  text_len = strlen (contextp->sql_hash_text);
+  key_len = strlen (key);
+  variant_text = (char *) parser_alloc (parser, (int) (text_len + key_len + 1));
+  if (variant_text == NULL)
+    {
+      int err;
+
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+  memcpy (variant_text, contextp->sql_hash_text, text_len);
+  memcpy (variant_text + text_len, key, key_len + 1);
+  contextp->sql_hash_text = variant_text;
+  return NO_ERROR;
+}
+
+/*
  * do_prepare_select() - Prepare the SELECT statement including optimization and
  *                       plan generation, and creating XASL as the result
  *   return: Error code
@@ -15273,22 +15347,10 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 			  (CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_DIFFERENT_SYSTEM_PARAMETERS | PT_PRINT_LOWER));
 
   contextp->sql_hash_text = (char *) statement->alias_print;
-  if (PT_IS_QUERY (statement) && statement->info.query.bind_variant_key != NULL && contextp->sql_hash_text != NULL)
+  err = do_append_bind_variant_key (parser, contextp, statement);
+  if (err != NO_ERROR)
     {
-      /* a plan variant of this query is a cache entry of its own, named by its key after the
-       * query text (bind_variant.h) */
-      size_t text_len = strlen (contextp->sql_hash_text);
-      size_t key_len = strlen (statement->info.query.bind_variant_key);
-      char *variant_text = (char *) parser_alloc (parser, (int) (text_len + key_len + 1));
-
-      if (variant_text == NULL)
-	{
-	  ASSERT_ERROR_AND_SET (err);
-	  return err;
-	}
-      memcpy (variant_text, contextp->sql_hash_text, text_len);
-      memcpy (variant_text + text_len, statement->info.query.bind_variant_key, key_len + 1);
-      contextp->sql_hash_text = variant_text;
+      return err;
     }
   err =
     SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
