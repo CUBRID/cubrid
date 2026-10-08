@@ -81,19 +81,13 @@ struct setobj;
 
 /* Signed integer addition and subtraction with overflow detection.
  *
- * These replace a pair of macros, OR_CHECK_ADD_OVERFLOW and OR_CHECK_SUB_UNDERFLOW, that
- * inspected the sign of a sum or a difference the caller had already computed with a plain
- * + or -. Computing it is itself signed overflow, which is undefined behaviour, so a
- * compiler may assume it never happened and delete the check. Clang does exactly that: an
- * overflowing addition returned a wrapped result instead of raising
- * ER_QPROC_OVERFLOW_ADDITION. The old macros have been deleted rather than left unused, so
- * that writing one again is a compile error instead of a silent return of the same bug.
- *
- * The builtins also store the wrapped result through r, so the value seen on the error path
- * is the same one the old code left behind. This mirrors OR_MULT_OVERFLOW above.
- *
- * On a compiler with neither builtin the fallback computes a wider difference instead, which
- * is well defined; it requires that the operands are narrower than long long. */
+ * These replace OR_CHECK_ADD_OVERFLOW and OR_CHECK_SUB_UNDERFLOW, which inspected the sign
+ * of a sum the caller had already formed with a plain + or -. Forming it is itself signed
+ * overflow, so a compiler may assume it never happened and delete the check. Clang did:
+ * an overflowing addition returned a wrapped result instead of raising
+ * ER_QPROC_OVERFLOW_ADDITION. The old macros are deleted rather than left unused, so that
+ * writing one again is a compile error. The builtins store the wrapped result through r,
+ * which is the value the old code left behind on the error path. */
 #if defined (__GNUC__) || defined (__clang__)
 #define OR_ADD_OVERFLOW(a, b, r) __builtin_add_overflow ((a), (b), (r))
 #define OR_SUB_OVERFLOW(a, b, r) __builtin_sub_overflow ((a), (b), (r))
