@@ -3970,6 +3970,8 @@ struct parser_context
   struct pt_cdt_registry_entry *cdt_registry;	/* CDT registry: rehydrated Compact DEFAULT Trees, one per
 						 * attribute per parser (pt_cdt_registry_tree); a parser_alloc'd
 						 * list released with the parser, NULL until used */
+  struct pt_rand_state **rand_states;	/* while set, each seeded RAND/DRAND/RANDOM/DRANDOM call keeps its
+					 * generator in this list (pt_evaluate_seeded_rand); NULL otherwise */
 
   COMPILE_CONTEXT context;
   struct xasl_node *parent_proc_xasl;

@@ -12937,6 +12937,107 @@ pt_expr_tree_reads_statement_clock (PARSER_CONTEXT * parser, PT_NODE * tree)
 }
 
 /*
+ * Seeded random state: while parser->rand_states is set, each seeded RAND, DRAND,
+ * RANDOM and DRANDOM call node keeps its own generator, seeded on its first
+ * evaluation and advanced on every later one, as the server keeps one per
+ * arithmetic node.  Without it every evaluation reseeds and returns the first value.
+ */
+struct pt_rand_state
+{
+  struct pt_rand_state *next;
+  const PT_NODE *node;		/* the seeded call */
+  struct drand48_data buf;
+};
+
+/*
+ * pt_evaluate_seeded_rand () - the next value of a seeded random call
+ *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
+ *   parser(in):
+ *   node(in): the RAND, DRAND, RANDOM or DRANDOM call
+ *   seed(in):
+ *   is_double(in): true for DRAND and DRANDOM
+ *   result(out):
+ */
+static int
+pt_evaluate_seeded_rand (PARSER_CONTEXT * parser, const PT_NODE * node, int seed, bool is_double, DB_VALUE * result)
+{
+  struct pt_rand_state *state = NULL;
+
+  if (parser->rand_states != NULL)
+    {
+      for (state = *parser->rand_states; state != NULL && state->node != node; state = state->next)
+	{
+	  ;
+	}
+
+      if (state == NULL)
+	{
+	  state = (struct pt_rand_state *) malloc (sizeof (struct pt_rand_state));
+	  if (state == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (struct pt_rand_state));
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	  state->node = node;
+	  srand48_r ((long) seed, &state->buf);
+	  state->next = *parser->rand_states;
+	  *parser->rand_states = state;
+	}
+    }
+
+  if (is_double)
+    {
+      double d;
+
+      if (state != NULL)
+	{
+	  drand48_r (&state->buf, &d);
+	}
+      else
+	{
+	  srand48 (seed);
+	  d = drand48 ();
+	}
+      db_make_double (result, d);
+    }
+  else
+    {
+      long int r;
+
+      if (state != NULL)
+	{
+	  lrand48_r (&state->buf, &r);
+	}
+      else
+	{
+	  srand48 (seed);
+	  r = lrand48 ();
+	}
+      db_make_int (result, r);
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_free_rand_states () - free the seeded random states collected in *states
+ *   return: none
+ *   states(in/out): list head, NULL on return
+ */
+void
+pt_free_rand_states (struct pt_rand_state **states)
+{
+  struct pt_rand_state *state;
+
+  while (*states != NULL)
+    {
+      state = *states;
+      *states = state->next;
+      free_and_init (state);
+    }
+}
+
+/*
  * pt_evaluate_db_value_expr () - apply op to db_value opds & place it in result
  *   return: 1 if evaluation succeeded, 0 otherwise
  *   parser(in): handle to the parser context
@@ -15671,10 +15772,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  db_make_int (result, parser->lrand);
 	}
-      else
+      else if (pt_evaluate_seeded_rand (parser, expr, db_get_int (arg1), false, result) != NO_ERROR)
 	{
-	  srand48 (db_get_int (arg1));
-	  db_make_int (result, lrand48 ());
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
 	}
       break;
 
@@ -15683,10 +15784,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	{
 	  db_make_double (result, parser->drand);
 	}
-      else
+      else if (pt_evaluate_seeded_rand (parser, expr, db_get_int (arg1), true, result) != NO_ERROR)
 	{
-	  srand48 (db_get_int (arg1));
-	  db_make_double (result, drand48 ());
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
 	}
       break;
 
@@ -15699,12 +15800,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  struct timeval t;
 	  gettimeofday (&t, NULL);
 	  srand48 ((long) (t.tv_usec + lrand48 ()));
+	  db_make_int (result, lrand48 ());
 	}
-      else
+      else if (pt_evaluate_seeded_rand (parser, expr, db_get_int (arg1), false, result) != NO_ERROR)
 	{
-	  srand48 (db_get_int (arg1));
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
 	}
-      db_make_int (result, lrand48 ());
       break;
 
     case PT_DRANDOM:
@@ -15713,12 +15815,13 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	  struct timeval t;
 	  gettimeofday (&t, NULL);
 	  srand48 ((long) (t.tv_usec + lrand48 ()));
+	  db_make_double (result, drand48 ());
 	}
-      else
+      else if (pt_evaluate_seeded_rand (parser, expr, db_get_int (arg1), true, result) != NO_ERROR)
 	{
-	  srand48 (db_get_int (arg1));
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
 	}
-      db_make_double (result, drand48 ());
       break;
 
     case PT_FLOOR:

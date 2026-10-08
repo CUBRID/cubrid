@@ -559,7 +559,10 @@ is_stmt_based_repl_type (const PT_NODE * node)
  * built for a class, VOLATILE ones once per row, by walking the set itself.
  * Re-evaluating the SAME tree per row is safe because pt_evaluate_tree recomputes
  * volatile leaves (UUID/...) on every call and never memoizes a result onto the
- * node.  The set is owned by the row-loop owner (do_insert_template,
+ * node.  A seeded RAND/DRAND/RANDOM/DRANDOM keeps its generator in rand_states
+ * instead, one per call node, so it advances per row as on the server; the states
+ * last for the whole statement, across a rebuild for another (partition) class.
+ * The set is owned by the row-loop owner (do_insert_template,
  * insert_subquery_results) and is the only place a DEFAULT is evaluated on this
  * path (do_evaluate_row_default_expr_for_otemplate).
  */
@@ -577,16 +580,17 @@ struct cdt_eval_set
   SM_CLASS *smclass;		/* class the entries were built for; NULL if not built */
   int count;			/* number of residual entries */
   CDT_EVAL_ENTRY *entries;
+  struct pt_rand_state *rand_states;	/* seeded random generators of this statement (pt_free_rand_states) */
 };
 
 /*
- * do_clear_cdt_eval_set () - free a CDT eval set: release the
- *	entry array and reset the eval set to empty.  The trees belong to the parser's
- *	CDT registry and are not touched.  Safe on an unbuilt
+ * do_release_cdt_eval_entries () - release the entry array of a CDT eval set and
+ *	reset it to unbuilt; the seeded random states are kept.  The trees belong to
+ *	the parser's CDT registry and are not touched.  Safe on an unbuilt
  *	(zero-initialized) eval set.
  */
 static void
-do_clear_cdt_eval_set (CDT_EVAL_SET * eval_set)
+do_release_cdt_eval_entries (CDT_EVAL_SET * eval_set)
 {
   if (eval_set == NULL)
     {
@@ -598,6 +602,22 @@ do_clear_cdt_eval_set (CDT_EVAL_SET * eval_set)
     }
   eval_set->count = 0;
   eval_set->smclass = NULL;
+}
+
+/*
+ * do_clear_cdt_eval_set () - free a CDT eval set at the end of its statement: the
+ *	entry array and the seeded random states.  Safe on an unbuilt
+ *	(zero-initialized) eval set.
+ */
+static void
+do_clear_cdt_eval_set (CDT_EVAL_SET * eval_set)
+{
+  if (eval_set == NULL)
+    {
+      return;
+    }
+  do_release_cdt_eval_entries (eval_set);
+  pt_free_rand_states (&eval_set->rand_states);
 }
 
 /*
@@ -620,8 +640,9 @@ is_template_assigned_attr (const DB_OTMPL * otemplate, const SM_ATTRIBUTE * att)
  *	volatility of every residual DEFAULT of smclass the statement can consume,
  *	populating eval_set.  Residuals of the columns otemplate already assigns are
  *	left out (see CDT_EVAL_SET).  No value is evaluated here; the caller
- *	evaluates the collected trees per row/statement.  Any prior contents (e.g.
- *	for a different partition class) are released first.
+ *	evaluates the collected trees per row/statement.  Any prior entries (e.g.
+ *	for a different partition class) are released first; the seeded random
+ *	states are kept.
  *   return: NO_ERROR or ER_code
  */
 static int
@@ -630,7 +651,7 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
   SM_ATTRIBUTE *att;
   int n = 0;
 
-  do_clear_cdt_eval_set (eval_set);
+  do_release_cdt_eval_entries (eval_set);
 
   for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
@@ -675,7 +696,7 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
 
 	  /* the registry diagnosed the failure where it happened; this level only propagates it */
 	  ASSERT_ERROR_AND_SET (error);
-	  do_clear_cdt_eval_set (eval_set);
+	  do_release_cdt_eval_entries (eval_set);
 	  return error;
 	}
 
@@ -696,18 +717,22 @@ do_build_cdt_eval_set (PARSER_CONTEXT * parser, SM_CLASS * smclass, const DB_OTM
  *	and refresh the attribute's in-memory default value with the result, cast to
  *	the attribute domain.  att->default_value.value is what the object template
  *	consumes (populate_defaults) -- the same channel the legacy
- *	statement-determined expressions refresh in place.
+ *	statement-determined expressions refresh in place.  Seeded random calls in
+ *	the tree draw on rand_states (see CDT_EVAL_SET).
  *   return: NO_ERROR or ER_code
  */
 static int
-do_evaluate_cdt (PARSER_CONTEXT * parser, SM_ATTRIBUTE * att, PT_NODE * residual)
+do_evaluate_cdt (PARSER_CONTEXT * parser, SM_ATTRIBUTE * att, PT_NODE * residual, struct pt_rand_state **rand_states)
 {
   DB_VALUE default_value;
   TP_DOMAIN_STATUS dom_status;
+  struct pt_rand_state **save_rand_states = parser->rand_states;
   int error;
 
   db_make_null (&default_value);
+  parser->rand_states = rand_states;
   pt_evaluate_tree (parser, residual, &default_value, 1);
+  parser->rand_states = save_rand_states;
   if (pt_has_error (parser))
     {
       pt_report_to_ersys (parser, PT_EXECUTION);
@@ -751,7 +776,7 @@ do_evaluate_stable_cdts (PARSER_CONTEXT * parser, CDT_EVAL_SET * eval_set)
 	{
 	  continue;
 	}
-      error = do_evaluate_cdt (parser, eval_set->entries[j].att, eval_set->entries[j].tree);
+      error = do_evaluate_cdt (parser, eval_set->entries[j].att, eval_set->entries[j].tree, &eval_set->rand_states);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -805,7 +830,7 @@ do_evaluate_row_default_expr_for_otemplate (PARSER_CONTEXT * parser, DB_OTMPL * 
 	{
 	  continue;
 	}
-      error = do_evaluate_cdt (parser, eval_set->entries[j].att, eval_set->entries[j].tree);
+      error = do_evaluate_cdt (parser, eval_set->entries[j].att, eval_set->entries[j].tree, &eval_set->rand_states);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -13178,7 +13203,7 @@ do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * st
   DB_VALUE *value = NULL;
   DB_SEQ *seq = NULL;
   int obj_count = 0;
-  CDT_EVAL_SET cdt_eval = { NULL, 0, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
+  CDT_EVAL_SET cdt_eval = { NULL, 0, NULL, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
 
   assert (otemplate != NULL);
   if (otemplate == NULL)
@@ -13744,7 +13769,7 @@ insert_subquery_results (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   DB_SEQ *seq = NULL;
   DB_VALUE db_value;
   DB_VALUE *value = NULL;
-  CDT_EVAL_SET cdt_eval = { NULL, 0, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
+  CDT_EVAL_SET cdt_eval = { NULL, 0, NULL, NULL };	/* rehydrate residual DEFAULTs once, reuse across rows */
 
   assert (parser != NULL);
 
