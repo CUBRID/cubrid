@@ -221,6 +221,44 @@ domain_character_is_variable (const TP_DOMAIN * domain)
     && TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL;
 }
 
+/* Whether a cast, or a NVL / IFNULL / COALESCE / NVL2, casts an operand the compiler did not type into the node's
+ * domain: the cast's source (rightptr), the two arms of NVL / IFNULL / COALESCE, the second and third of NVL2. */
+static bool
+domain_cast_operand_is_variable (const ARITH_TYPE * arith, REGU_VARIABLE * const *operands)
+{
+  int first, last;
+  switch (arith->opcode)
+    {
+    case T_CAST:
+    case T_CAST_WRAP:
+    case T_CAST_NOFAIL:
+      first = last = 1;
+      break;
+    case T_NVL:
+    case T_IFNULL:
+    case T_COALESCE:
+      first = 0;
+      last = 1;
+      break;
+    case T_NVL2:
+      first = 1;
+      last = 2;
+      break;
+    default:
+      return false;
+    }
+  bool variable = false;
+  for (int i = first; i <= last; i++)
+    {
+      if (operands[i] == NULL || operands[i]->plan_item == NULL)
+	{
+	  return false;
+	}
+      variable = variable || !domain_type_is_fixed (operands[i]->domain);
+    }
+  return variable;
+}
+
 /* A cast into a character domain whose collation is enforced (the wrapper the compiler puts around an operand it
  * could not type, (1 + ?) + '3'): tp_value_cast_internal leaves a value of any other type as it is, so the type
  * the cast gives is its operand's, which resolve_domains resolves (domain_character_cast). */
@@ -1193,7 +1231,13 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
 					  || !domain_type_is_fixed (operands[1]->domain)
 					  || domain_cast_keeps_source_type (operands[0])
 					  || domain_cast_keeps_source_type (operands[1]));
-  if (item != NULL && (late_bound || collation_variable || coercion_variable))
+  /* a cast, or a NVL / IFNULL / COALESCE / NVL2 that casts the operand the row picks into the node's compiled domain,
+   * over an operand the compiler did not type (a bind, a late-binding node): the converter into that domain is
+   * resolve_domains', from the operand's resolved type (qexec_resolve_cast_coercion); the row calls it
+   * (fetch_cast_operand) instead of the cast's per-value lookup */
+  const bool cast_variable = !late_bound && !collation_variable && !coercion_variable
+    && domain_type_is_fixed (arith->domain) && domain_cast_operand_is_variable (arith, operands);
+  if (item != NULL && (late_bound || collation_variable || coercion_variable || cast_variable))
     {
       DOMAIN_LOAD_ENTRY *load_entry = domain_load_entry_of (item);
       const int n_value_operands = (arith->opcode == T_CONNECT_BY_ROOT || arith->opcode == T_QPRIOR) ? 2 : 3;
@@ -1202,7 +1246,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
 	{
 	  item->flags |= DOMAIN_PLAN_LATE_BIND_COLLATION;
 	}
-      if (coercion_variable)
+      if (coercion_variable || cast_variable)
 	{
 	  item->flags |= DOMAIN_PLAN_LATE_BIND_COERCION;
 	}

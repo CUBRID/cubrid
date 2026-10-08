@@ -931,8 +931,8 @@ fetch_arith_binary_operand_coercion (THREAD_ENTRY * thread_p, const val_descr * 
  *   force(in): tp_value_cast_force's coercion, else tp_value_cast's
  */
 static inline TP_DOMAIN_STATUS
-fetch_cast_operand (const ARITH_TYPE * arithptr, int i, const DB_VALUE * value, DB_VALUE * result,
-		    const TP_DOMAIN * domain, bool force)
+fetch_cast_operand (const val_descr * vd, const ARITH_TYPE * arithptr, int i, const DB_VALUE * value,
+		    DB_VALUE * result, const TP_DOMAIN * domain, bool force)
 {
   const DOMAIN_PLAN_ITEM *item = arithptr->plan_item;
   const REGU_VARIABLE *operand = i == 0 ? arithptr->leftptr : i == 1 ? arithptr->rightptr : arithptr->thirdptr;
@@ -941,6 +941,17 @@ fetch_cast_operand (const ARITH_TYPE * arithptr, int i, const DB_VALUE * value, 
     {
       return tp_value_cast_with_converter (value, result, domain, force, TP_DOMAIN_TYPE (operand->domain),
 					   item->fixed.conv[i]);
+    }
+  if (item != NULL && (item->flags & DOMAIN_PLAN_LATE_BIND_COERCION) && value != NULL && !DB_IS_NULL (value))
+    {
+      /* an operand the compiler did not type: resolve_domains found the converter from its resolved type
+       * (qexec_resolve_cast_coercion) */
+      const RESOLVED_DOMAIN *resolved = qexec_late_bind_domain (vd, item);
+      if (resolved != NULL && resolved->conv[i] != NULL && resolved->operand_domain[i] == domain)
+	{
+	  return tp_value_cast_with_converter (value, result, domain, force, DB_VALUE_DOMAIN_TYPE (value),
+					       resolved->conv[i]);
+	}
     }
   return force ? tp_value_cast_force (value, result, domain, false) : tp_value_cast (value, result, domain, false);
 }
@@ -3494,7 +3505,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
       else
 	{
-	  dom_status = fetch_cast_operand (arithptr, 1, peek_right, arithptr->value, arith_domain,
+	  dom_status = fetch_cast_operand (vd, arithptr, 1, peek_right, arithptr->value, arith_domain,
 					   !REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_STRICT_TYPE_CAST)
 					   || arithptr->opcode != T_CAST_WRAP);
 
@@ -3535,10 +3546,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	}
       else
 	{
-	  TP_DOMAIN_STATUS status;
-
-	  status = tp_value_cast (peek_right, arithptr->value, arith_domain, false);
-	  if (status != NO_ERROR)
+	  /* the planned converter, as T_CAST takes it (fetch_cast_operand); a cast that fails leaves NULL */
+	  if (fetch_cast_operand (vd, arithptr, 1, peek_right, arithptr->value, arith_domain, false)
+	      != DOMAIN_COMPATIBLE)
 	    {
 	      PRIM_SET_NULL (arithptr->value);
 	    }
@@ -3647,8 +3657,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	  }
 
 	src = DB_IS_NULL (peek_left) ? peek_right : peek_left;
-	dom_status = fetch_cast_operand (arithptr, DB_IS_NULL (peek_left) ? 1 : 0, src, arithptr->value, target_domain,
-					 false);
+	dom_status = fetch_cast_operand (vd, arithptr, DB_IS_NULL (peek_left) ? 1 : 0, src, arithptr->value,
+					 target_domain, false);
 	if (dom_status != DOMAIN_COMPATIBLE)
 	  {
 	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, target_domain);
@@ -3716,8 +3726,8 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 	    src = peek_right;
 	  }
 
-	dom_status = fetch_cast_operand (arithptr, DB_IS_NULL (peek_left) ? 2 : 1, src, arithptr->value, target_domain,
-					 false);
+	dom_status = fetch_cast_operand (vd, arithptr, DB_IS_NULL (peek_left) ? 2 : 1, src, arithptr->value,
+					 target_domain, false);
 	if (dom_status != DOMAIN_COMPATIBLE)
 	  {
 	    (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, target_domain);

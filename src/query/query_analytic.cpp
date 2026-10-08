@@ -127,6 +127,22 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
 	  domain_resolve_operand_coercion (T_ADD, operands, coercion);
 	}
     }
+  else if (fcode == PT_STDDEV || fcode == PT_STDDEV_POP || fcode == PT_STDDEV_SAMP || fcode == PT_VARIANCE
+	   || fcode == PT_VAR_POP || fcode == PT_VAR_SAMP)
+    {
+      /* STDDEV / VARIANCE accumulate in DOUBLE: the converter of the argument's resolved type into DOUBLE, found once
+       * here (tp_value_coerce's implicit mode), runs at every value that is not a DOUBLE already */
+      DOMAIN_OPERAND_COERCION *coercion = &qexec_accumulator_domain (vd, func_p->plan_item)->operand_coercion;
+      *coercion = DOMAIN_OPERAND_COERCION ();
+      const TP_DOMAIN *argument = qexec_value_domain (vd, &func_p->operand);
+      if (argument != NULL && TP_DOMAIN_TYPE (argument) != DB_TYPE_VARIABLE
+	  && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL)
+	{
+	  coercion->operand_domain[1] = &tp_Double_domain;
+	  coercion->conv[1] = TP_DOMAIN_TYPE (argument) == DB_TYPE_DOUBLE ? NULL
+			      : tp_value_find_converter (TP_DOMAIN_TYPE (argument), &tp_Double_domain, DOMAIN_CONVERT_IMPLICIT);
+	}
+    }
   if (fcode == PT_COUNT_STAR || fcode == PT_COUNT)
     {
       db_make_bigint (func_p->value, 0);
@@ -272,18 +288,10 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       if (TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]) != DB_TYPE_VARIABLE
 	  && DB_VALUE_DOMAIN_TYPE (&dbval) != TP_DOMAIN_TYPE (func_p->list_id->type_list.domp[0]))
 	{
-	  /* a value the list's domain does not take is the row's error, -181 (ER_FAILED alone left no error and no row) */
-	  DB_VALUE coerced;
-	  db_make_null (&coerced);
-	  dom_status = tp_value_coerce (&dbval, &coerced, func_p->list_id->type_list.domp[0]);
-	  if (dom_status != DOMAIN_COMPATIBLE)
-	    {
-	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, func_p->list_id->type_list.domp[0]);
-	      pr_clear_value (&coerced);
-	      goto exit;
-	    }
-	  pr_clear_value (&dbval);
-	  dbval = coerced;
+	  /* the list opened with the argument's resolved domain, which every value of the argument carries: a value of
+	   * another type is the unresolved-domain check (execution), not a cast at the row */
+	  error = qexec_domain_unresolved (val_desc_p, func_p->plan_item, func_p->list_id->type_list.domp[0]);
+	  goto exit;
 	}
 
       /* handle distincts by adding to the temp list file (the assembler encodes for the list's column layout) */
@@ -402,12 +410,25 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       if (func_p->sum_acc.is_active
 	  && func_p->sum_acc.sum_type != sum_acc_analytic_sum_type_for (DB_VALUE_DOMAIN_TYPE (&dbval)))
 	{
-	  dom_status = tp_value_coerce (&dbval, &dbval, domain);
-	  if (dom_status != DOMAIN_COMPATIBLE)
+	  /* with the operand coercion the partition resolved (the argument into the sum's domain): no cast at the row */
+	  const DOMAIN_OPERAND_COERCION *acc_coercion =
+		  &qexec_accumulator_domain (val_desc_p, func_p->plan_item)->operand_coercion;
+	  if (acc_coercion->conv[1] == NULL)
 	    {
-	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, domain);
+	      error = qexec_domain_unresolved (val_desc_p, func_p->plan_item, func_p->domain);
 	      goto exit;
 	    }
+	  DB_VALUE coerced;
+	  db_make_null (&coerced);
+	  dom_status = tp_value_convert (acc_coercion->conv[1], acc_coercion->operand_domain[1], &dbval, &coerced);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, acc_coercion->operand_domain[1]);
+	      pr_clear_value (&coerced);
+	      goto exit;
+	    }
+	  pr_clear_value (&dbval);
+	  dbval = coerced;
 	}
 
       /* whether the accumulator takes this value's type */
@@ -560,20 +581,29 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       copy_opr = false;
       tmp_domain_p = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
-      {
-	/* a value DOUBLE does not take is the row's error, -181, as the aggregate STDDEV / VARIANCE raise it */
-	DB_VALUE coerced;
-	db_make_null (&coerced);
-	dom_status = tp_value_coerce (&dbval, &coerced, tmp_domain_p);
-	if (dom_status != DOMAIN_COMPATIBLE)
-	  {
-	    error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, tmp_domain_p);
-	    pr_clear_value (&coerced);
-	    goto exit;
-	  }
-	pr_clear_value (&dbval);
-	dbval = coerced;
-      }
+      if (DB_VALUE_DOMAIN_TYPE (&dbval) != DB_TYPE_DOUBLE)
+	{
+	  /* the converter into DOUBLE the function's initialization found for the argument's resolved type; a value
+	   * DOUBLE does not take is the row's error, -181, as the aggregate STDDEV / VARIANCE raise it */
+	  const DOMAIN_OPERAND_COERCION *acc_coercion =
+		  &qexec_accumulator_domain (val_desc_p, func_p->plan_item)->operand_coercion;
+	  if (acc_coercion->conv[1] == NULL)
+	    {
+	      error = qexec_domain_unresolved (val_desc_p, func_p->plan_item, tmp_domain_p);
+	      goto exit;
+	    }
+	  DB_VALUE coerced;
+	  db_make_null (&coerced);
+	  dom_status = tp_value_convert (acc_coercion->conv[1], tmp_domain_p, &dbval, &coerced);
+	  if (dom_status != DOMAIN_COMPATIBLE)
+	    {
+	      error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, tmp_domain_p);
+	      pr_clear_value (&coerced);
+	      goto exit;
+	    }
+	  pr_clear_value (&dbval);
+	  dbval = coerced;
+	}
 
       if (func_p->curr_cnt < 1)
 	{
@@ -889,11 +919,11 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		      DB_VALUE coerced;
 		      db_make_null (&coerced);
 		      TP_DOMAIN_STATUS dom_status = coercion->conv[1] == NULL ? DOMAIN_INCOMPATIBLE
-			: tp_value_convert (coercion->conv[1], coercion->operand_domain[1], &dbval, &coerced);
+						    : tp_value_convert (coercion->conv[1], coercion->operand_domain[1], &dbval, &coerced);
 		      if (dom_status != DOMAIN_COMPATIBLE)
 			{
 			  err = coercion->conv[1] == NULL ? qexec_domain_unresolved (vd, func_p->plan_item, func_p->domain)
-			    : tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, coercion->operand_domain[1]);
+				: tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, coercion->operand_domain[1]);
 			  pr_clear_value (&coerced);
 			  (void) pr_clear_value (&dbval);
 			  qfile_close_scan (thread_p, &scan_id);
@@ -905,18 +935,28 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		      dbval = coerced;
 		    }
 
-		  if (func_p->function == PT_VARIANCE || func_p->function == PT_VAR_POP
-		      || func_p->function == PT_VAR_SAMP || func_p->function == PT_STDDEV
-		      || func_p->function == PT_STDDEV_POP || func_p->function == PT_STDDEV_SAMP)
+		  if (tmp_domain_ptr != NULL && DB_VALUE_DOMAIN_TYPE (&dbval) != DB_TYPE_DOUBLE)
 		    {
-		      if (tp_value_coerce (&dbval, &dbval, tmp_domain_ptr) != DOMAIN_COMPATIBLE)
+		      /* STDDEV / VARIANCE: the converter into DOUBLE the function's initialization found */
+		      const DOMAIN_OPERAND_COERCION *acc_coercion =
+			      &qexec_accumulator_domain (vd, func_p->plan_item)->operand_coercion;
+		      DB_VALUE coerced;
+		      db_make_null (&coerced);
+		      TP_DOMAIN_STATUS dom_status = acc_coercion->conv[1] == NULL ? DOMAIN_INCOMPATIBLE
+						    : tp_value_convert (acc_coercion->conv[1], tmp_domain_ptr, &dbval, &coerced);
+		      if (dom_status != DOMAIN_COMPATIBLE)
 			{
+			  err = acc_coercion->conv[1] == NULL ? qexec_domain_unresolved (vd, func_p->plan_item, tmp_domain_ptr)
+				: tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, tmp_domain_ptr);
+			  pr_clear_value (&coerced);
 			  (void) pr_clear_value (&dbval);
 			  qfile_close_scan (thread_p, &scan_id);
 			  qfile_close_list (thread_p, list_id_p);
 			  qfile_destroy_list (thread_p, list_id_p);
-			  return ER_FAILED;
+			  goto error;
 			}
+		      (void) pr_clear_value (&dbval);
+		      dbval = coerced;
 		    }
 
 		  if (DB_IS_NULL (func_p->value))

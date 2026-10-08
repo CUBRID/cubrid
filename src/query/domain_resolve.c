@@ -745,6 +745,35 @@ qexec_resolve_elt_branch (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE 
   return branch > 0 && branch < link->n_operands ? (int) branch : 0;
 }
 
+/* A late-binding cast's resolution: the converter into the node's compiled domain for every operand the node casts
+ * into it (the cast's source; the two arms of NVL / IFNULL / COALESCE; the second and third of NVL2), at the operand's
+ * fetch index - the link skips a cast's empty first operand, so its source is link operand 0 and fetch operand 1. An
+ * operand without a value type (a NULL bind, a node without a value) gets no converter: its NULL casts to NULL. */
+static void
+qexec_resolve_cast_coercion (int opcode, const DOMAIN_OPERAND * operands, int n_operands, const TP_DOMAIN * target,
+			     RESOLVED_DOMAIN * entry)
+{
+  *entry = RESOLVED_DOMAIN ();
+  const bool is_cast = opcode == T_CAST || opcode == T_CAST_WRAP || opcode == T_CAST_NOFAIL;
+  for (int k = 0; k < n_operands && k < 3; k++)
+    {
+      const int fetch_index = is_cast ? 1 : k;
+      const bool casts_into_node = is_cast || (opcode == T_NVL2 ? k > 0 : k < 2);
+      if (!casts_into_node)
+	{
+	  continue;
+	}
+      const DB_TYPE type = operands[k].val_type != DB_TYPE_NULL ? operands[k].val_type
+	: operands[k].domain != NULL ? TP_DOMAIN_TYPE (operands[k].domain) : DB_TYPE_NULL;
+      if (type == DB_TYPE_NULL || type == DB_TYPE_VARIABLE || target == NULL)
+	{
+	  continue;
+	}
+      entry->operand_domain[fetch_index] = target;
+      entry->conv[fetch_index] = tp_value_find_converter (type, target, DOMAIN_CONVERT_ASSIGN);
+    }
+}
+
 /* A late-binding node's resolution that starts from its operands' operand coercion alone: conv[0..1] and
  * operand_domain[0..1], no domain yet. */
 static void
@@ -798,10 +827,19 @@ qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xa
     }
   if (node->flags & DOMAIN_PLAN_LATE_BIND_COERCION)
     {
-      /* an arithmetic node the compiler typed over an operand it did not keeps its compiled domain;
-       * its operands' operand coercion is the type rules' over their resolved domains */
-      assert (link->n_operands == 2);
-      qexec_resolve_operand_coercion (cold->opcode, operands, entry);
+      if (cold->opcode == T_ADD || cold->opcode == T_SUB || cold->opcode == T_MUL || cold->opcode == T_DIV)
+	{
+	  /* an arithmetic node the compiler typed over an operand it did not keeps its compiled domain;
+	   * its operands' operand coercion is the type rules' over their resolved domains */
+	  assert (link->n_operands == 2);
+	  qexec_resolve_operand_coercion (cold->opcode, operands, entry);
+	}
+      else
+	{
+	  /* a cast, or a NVL / IFNULL / COALESCE / NVL2, over an operand the compiler did not type: the converter of
+	   * each operand it casts into the node's compiled domain, found once from the operand's resolved type */
+	  qexec_resolve_cast_coercion (cold->opcode, operands, link->n_operands, link->consumer, entry);
+	}
       entry->domain = link->consumer;
       return NO_ERROR;
     }
