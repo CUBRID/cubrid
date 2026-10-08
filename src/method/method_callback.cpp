@@ -90,7 +90,21 @@ make_static_sql_text (PARSER_CONTEXT *parser, const std::string &sql, std::strin
   DB_SESSION *session = db_open_buffer (text.c_str ());
   if (session != NULL)
     {
-      if (db_statement_count (session) == 1 && db_compile_statement (session) >= 0
+      /* the INTO clause must have been removed: a wrong one removed (e.g. INTO in a string literal) would leave it */
+      bool has_into = false;
+      PT_NODE *query = db_get_statement (session, 0);
+
+      while (query != NULL && PT_IS_QUERY (query))
+	{
+	  if (query->info.query.into_list != NULL)
+	    {
+	      has_into = true;
+	      break;
+	    }
+	  query = (query->node_type == PT_SELECT) ? NULL : query->info.query.q.union_.arg1;
+	}
+
+      if (!has_into && db_statement_count (session) == 1 && db_compile_statement (session) >= 0
 	  && db_number_of_input_markers (session, 1) == (int) host_var_order.size ())
 	{
 	  ok = true;

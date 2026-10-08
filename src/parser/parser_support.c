@@ -13191,6 +13191,8 @@ struct pt_static_sql_edit_list
   int alloc;
   PT_NODE *methods;		/* stored function calls whose names must be qualified */
   PT_NODE *path_specs;		/* specs implied by path expressions, which are not in the text */
+  bool backslash_escapes;	/* a backslash escapes the next character in a string literal */
+  bool ansi_quotes;		/* "..." is a delimited identifier, otherwise a string literal */
   bool failed;
 };
 
@@ -13205,15 +13207,17 @@ enum pt_static_sql_token_kind
 /*
  * pt_static_sql_next_token () - scan the next token of the SQL text skipping white spaces and comments
  *   return: kind of the token
- *   s(in): text
- *   len(in): length of the text
+ *   list(in): text and the lexical options of it
  *   pos(in): position to scan from
  *   start(out): start of the token
  *   end(out): end of the token
  */
 static int
-pt_static_sql_next_token (const char *s, int len, int pos, int *start, int *end)
+pt_static_sql_next_token (const PT_STATIC_SQL_EDIT_LIST * list, int pos, int *start, int *end)
 {
+  const char *s = list->text;
+  int len = list->text_len;
+
   while (pos < len)
     {
       unsigned char c = (unsigned char) s[pos];
@@ -13252,10 +13256,17 @@ pt_static_sql_next_token (const char *s, int len, int pos, int *start, int *end)
   if (c == '\'' || c == '"' || c == '`' || c == '[')
     {
       char close = (c == '[') ? ']' : (char) c;
+      /* the same as the lexer: a backslash escape is only in a string literal */
+      bool escapes = list->backslash_escapes && (c == '\'' || (c == '"' && !list->ansi_quotes));
 
       pos++;
       while (pos < len)
 	{
+	  if (escapes && s[pos] == '\\')
+	    {
+	      pos += 2;
+	      continue;
+	    }
 	  if (s[pos] == close)
 	    {
 	      if (close != ']' && pos + 1 < len && s[pos + 1] == close)
@@ -13267,6 +13278,10 @@ pt_static_sql_next_token (const char *s, int len, int pos, int *start, int *end)
 	      break;
 	    }
 	  pos++;
+	}
+      if (pos > len)
+	{
+	  pos = len;
 	}
       *end = pos;
       return PT_SS_TOKEN_QUOTED;
@@ -13698,7 +13713,7 @@ pt_static_sql_qualify_methods (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST 
 	  break;
 	}
 
-      for (pos = 0; (kind = pt_static_sql_next_token (list->text, list->text_len, pos, &start, &end))
+      for (pos = 0; (kind = pt_static_sql_next_token (list, pos, &start, &end))
 	   != PT_SS_TOKEN_END; pos = end)
 	{
 	  if ((kind == PT_SS_TOKEN_IDENT || kind == PT_SS_TOKEN_QUOTED) && pt_static_sql_token_equals (list->text, start,
@@ -13706,7 +13721,7 @@ pt_static_sql_qualify_methods (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST 
 	    {
 	      int n_start, n_end;
 
-	      if (pt_static_sql_next_token (list->text, list->text_len, end, &n_start, &n_end) == PT_SS_TOKEN_PUNCT
+	      if (pt_static_sql_next_token (list, end, &n_start, &n_end) == PT_SS_TOKEN_PUNCT
 		  && list->text[n_start] == '(')
 		{
 		  count_in_text++;
@@ -13738,7 +13753,7 @@ pt_static_sql_remove_into (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * li
   int kind, pos, start, end, depth = 0;
   int into_start = -1, into_end = -1, targets = 0;
 
-  for (pos = 0; (kind = pt_static_sql_next_token (list->text, list->text_len, pos, &start, &end)) != PT_SS_TOKEN_END;
+  for (pos = 0; (kind = pt_static_sql_next_token (list, pos, &start, &end)) != PT_SS_TOKEN_END;
        pos = end)
     {
       if (kind == PT_SS_TOKEN_PUNCT)
@@ -13770,7 +13785,7 @@ pt_static_sql_remove_into (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * li
   pos = end;
   while (true)
     {
-      kind = pt_static_sql_next_token (list->text, list->text_len, pos, &start, &end);
+      kind = pt_static_sql_next_token (list, pos, &start, &end);
       if (kind != PT_SS_TOKEN_IDENT && kind != PT_SS_TOKEN_QUOTED)
 	{
 	  list->failed = true;
@@ -13782,10 +13797,10 @@ pt_static_sql_remove_into (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * li
 
       while (true)
 	{
-	  kind = pt_static_sql_next_token (list->text, list->text_len, pos, &start, &end);
+	  kind = pt_static_sql_next_token (list, pos, &start, &end);
 	  if (kind == PT_SS_TOKEN_PUNCT && list->text[start] == '.')
 	    {
-	      kind = pt_static_sql_next_token (list->text, list->text_len, end, &start, &end);
+	      kind = pt_static_sql_next_token (list, end, &start, &end);
 	      if (kind != PT_SS_TOKEN_IDENT && kind != PT_SS_TOKEN_QUOTED)
 		{
 		  list->failed = true;
@@ -13860,6 +13875,8 @@ pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
   memset (&list, 0, sizeof (list));
   list.text = parser->original_buffer;
   list.text_len = (int) strlen (parser->original_buffer);
+  list.backslash_escapes = !prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) && !parser->flag.strings_have_no_escapes;
+  list.ansi_quotes = prm_get_bool_value (PRM_ID_ANSI_QUOTES);
 
   (void) parser_walk_tree (parser, statement, pt_collect_static_sql_edits_pre, &list, NULL, NULL);
 
