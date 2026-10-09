@@ -1580,6 +1580,9 @@ error_exit:
       manager->context_cnt = 0;
     }
 
+  /* no list refers to the spools now; the single join that follows needs the temporary space they hold */
+  hjoin_clear_part_spools (thread_p, manager);
+
   if (thread_is_on_trace (thread_p))
     {
       assert (manager->stats_group != NULL);
