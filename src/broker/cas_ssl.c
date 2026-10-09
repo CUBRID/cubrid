@@ -70,8 +70,10 @@
 #define SOCKET_NONBLOCK		1
 #define SOCKET_BLOCK		0
 
-/* TLS 1.2: ephemeral key exchange only. !kRSA excludes static RSA, which gives no forward secrecy */
-#define CAS_SSL_CIPHER_LIST	"ECDHE+AESGCM:ECDHE+CHACHA20:DHE+AESGCM:!aNULL:!kRSA"
+/* TLS 1.2: ECDHE key exchange only. !kRSA excludes static RSA, which gives no forward secrecy. DHE is left out:
+ * without DH parameters it was never negotiated, and with them a client offering only DHE could make the CAS spend
+ * far more CPU than ECDHE costs (D(HE)at, CVE-2002-20001). Every supported client does ECDHE. */
+#define CAS_SSL_CIPHER_LIST	"ECDHE+AESGCM:ECDHE+CHACHA20:!aNULL:!kRSA"
 #define CAS_SSL_CIPHERSUITES	"TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256:TLS_AES_128_GCM_SHA256"
 #define CAS_SSL_TIME_STR_LEN	32
 
