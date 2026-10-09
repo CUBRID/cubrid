@@ -101,65 +101,10 @@ qdata_initialize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_
       return ER_FAILED;
     }
 
+  /* the accumulator domains - a SUM / AVG's sum domain and operand coercion, a STDDEV / VARIANCE's converter into
+   * DOUBLE - were planned once for the execution by the setup (qexec_setup_analytic_accumulator); a partition reads
+   * them and derives nothing */
   const FUNC_CODE fcode = func_p->function;
-  if (fcode == PT_SUM || fcode == PT_AVG)
-    {
-      /* the additions a SUM / AVG makes after the first value, planned here from the function's domain and its
-       * argument's in this execution and kept in the execution state (qexec_accumulator_domain): the second value is
-       * added to the first as it is (operand_coercion), and each addition's result is coerced to the function's
-       * domain unless the sum is kept floating (value_dom); every later value is added to the sum's running type
-       * (later_coercion) - the function's domain once an addition was coerced to it, else what the second addition
-       * made. A string is converted into the sum by the operand coercion; no value's type is read at the row. */
-      AGGREGATE_ACCUMULATOR_DOMAIN *acc_dom = qexec_accumulator_domain (vd, func_p->plan_item);
-      DOMAIN_OPERAND_COERCION *coercion = &acc_dom->operand_coercion;
-      DOMAIN_OPERAND_COERCION *later = &acc_dom->later_coercion;
-      *coercion = DOMAIN_OPERAND_COERCION ();
-      *later = DOMAIN_OPERAND_COERCION ();
-      acc_dom->value_dom = NULL;
-      const TP_DOMAIN *argument = qexec_value_domain (vd, &func_p->operand);
-      const TP_DOMAIN *function = qexec_resolved_domain (vd, func_p->plan_item);
-      if (function == NULL)
-	{
-	  function = qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
-	}
-      if (argument != NULL && function != NULL && TP_DOMAIN_TYPE (argument) != DB_TYPE_VARIABLE
-	  && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL && TP_DOMAIN_TYPE (function) != DB_TYPE_VARIABLE)
-	{
-	  /* the first value becomes the function's domain when it is a string, and keeps its own type otherwise */
-	  const TP_DOMAIN *sum = TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (argument)) ? function : argument;
-	  const DOMAIN_OPERAND second[2] =
-	  {
-	    {sum, TP_DOMAIN_TYPE (sum), -1, false}, {argument, TP_DOMAIN_TYPE (argument), -1, false}
-	  };
-	  domain_resolve_operand_coercion (T_ADD, second, coercion);
-	  /* an AVG over a NUMERIC first value and a SUM whose domain is NUMERIC keep the sum floating */
-	  const DB_TYPE kept = fcode == PT_AVG ? TP_DOMAIN_TYPE (sum) : TP_DOMAIN_TYPE (function);
-	  acc_dom->value_dom = kept == DB_TYPE_NUMERIC ? NULL : (TP_DOMAIN *) function;
-	  const TP_DOMAIN *running = acc_dom->value_dom != NULL ? function
-				     : coercion->arith.type != DB_TYPE_NULL ? tp_domain_resolve_default (coercion->arith.type) : sum;
-	  const DOMAIN_OPERAND later_operands[2] =
-	  {
-	    {running, TP_DOMAIN_TYPE (running), -1, false}, {argument, TP_DOMAIN_TYPE (argument), -1, false}
-	  };
-	  domain_resolve_operand_coercion (T_ADD, later_operands, later);
-	}
-    }
-  else if (fcode == PT_STDDEV || fcode == PT_STDDEV_POP || fcode == PT_STDDEV_SAMP || fcode == PT_VARIANCE
-	   || fcode == PT_VAR_POP || fcode == PT_VAR_SAMP)
-    {
-      /* STDDEV / VARIANCE accumulate in DOUBLE: the converter of the argument's resolved type into DOUBLE, found once
-       * here (tp_value_coerce's implicit mode), runs at every value that is not a DOUBLE already */
-      DOMAIN_OPERAND_COERCION *coercion = &qexec_accumulator_domain (vd, func_p->plan_item)->operand_coercion;
-      *coercion = DOMAIN_OPERAND_COERCION ();
-      const TP_DOMAIN *argument = qexec_value_domain (vd, &func_p->operand);
-      if (argument != NULL && TP_DOMAIN_TYPE (argument) != DB_TYPE_VARIABLE
-	  && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL)
-	{
-	  coercion->operand_domain[1] = &tp_Double_domain;
-	  coercion->conv[1] = TP_DOMAIN_TYPE (argument) == DB_TYPE_DOUBLE ? NULL
-			      : tp_value_find_converter (TP_DOMAIN_TYPE (argument), &tp_Double_domain, DOMAIN_CONVERT_IMPLICIT);
-	}
-    }
   if (fcode == PT_COUNT_STAR || fcode == PT_COUNT)
     {
       db_make_bigint (func_p->value, 0);
@@ -453,32 +398,31 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  dbval = coerced;
 	}
 
-      /* whether the accumulator takes this value's type */
-      bool use_sum_acc = SUM_ACC_IS_ANALYTIC_SUPPORTED_TYPE (DB_VALUE_DOMAIN_TYPE (&dbval));
+      /* whether the resident accumulator sums this partition: the setup planned it from the argument's type
+       * (qexec_setup_analytic_accumulator) */
+      const AGGREGATE_ACCUMULATOR_DOMAIN *first_acc_dom = qexec_accumulator_domain (val_desc_p, func_p->plan_item);
+      const bool use_sum_acc = first_acc_dom->accumulator_takes;
 
       if (func_p->curr_cnt < 1)
 	{
 	  opr_dbval_p = &dbval;
 	  copy_opr = true;
 
-	  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (opr_dbval_p)))
+	  /* a first value the accumulator does not take becomes the sum's domain, with the converter the setup planned
+	   * (a string into DOUBLE, a FLOAT into DOUBLE); a string the function's domain does not take ('10:00:00' as
+	   * a DOUBLE) is the row's error, -181, as the aggregate path raises it (qdata_aggregate_value_to_accumulator).
+	   * A string without a planned converter fails the unresolved-domain check: the typed addition takes no
+	   * string. */
+	  if (!use_sum_acc && first_acc_dom->first_conv == NULL && TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (opr_dbval_p)))
 	    {
-	      /* char types default to double; coerce here so we don't mess up the accumulator when we copy the operand.
-	       * A string the function's domain does not take ('10:00:00' as a DOUBLE) is the row's error, -181, as the
-	       * aggregate path raises it (qdata_aggregate_value_to_accumulator); ER_FAILED alone left no error and no
-	       * row. */
-	      /* the converter is the operand coercion resolve_domains planned for this partition's values (the
-	       * argument into the sum's domain, qdata_initialize_analytic_func): no type switch at the row */
-	      const DOMAIN_OPERAND_COERCION *first_coercion =
-		      &qexec_accumulator_domain (val_desc_p, func_p->plan_item)->operand_coercion;
-	      if (first_coercion->conv[1] == NULL)
-		{
-		  error = qexec_domain_unresolved (val_desc_p, func_p->plan_item, func_p->domain);
-		  goto exit;
-		}
+	      error = qexec_domain_unresolved (val_desc_p, func_p->plan_item, func_p->domain);
+	      goto exit;
+	    }
+	  if (!use_sum_acc && first_acc_dom->first_conv != NULL)
+	    {
 	      DB_VALUE coerced;
 	      db_make_null (&coerced);
-	      dom_status = tp_value_convert (first_coercion->conv[1], first_coercion->operand_domain[1], &dbval, &coerced);
+	      dom_status = tp_value_convert (first_acc_dom->first_conv, first_acc_dom->value_dom, &dbval, &coerced);
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{
 		  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, domain);
@@ -509,12 +453,10 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	      goto exit;
 	    }
 
-	  /* the addition the partition planned for this value - the second value's over the first value's type, a
-	   * later one's over the sum's running type - and the domain its result is coerced to
-	   * (qdata_initialize_analytic_func) */
+	  /* the addition the setup planned - the sum's domain with the argument's - and the domain its result is
+	   * coerced to (qexec_setup_analytic_accumulator) */
 	  const AGGREGATE_ACCUMULATOR_DOMAIN *acc_dom = qexec_accumulator_domain (val_desc_p, func_p->plan_item);
-	  const DOMAIN_OPERAND_COERCION *coercion =
-		  func_p->curr_cnt == 1 ? &acc_dom->operand_coercion : &acc_dom->later_coercion;
+	  const DOMAIN_OPERAND_COERCION *coercion = &acc_dom->operand_coercion;
 	  if (qdata_coerce_arith_operands (T_ADD, coercion->conv, coercion->operand_domain, &coercion->arith,
 					   func_p->value, &dbval, func_p->value, acc_dom->value_dom) != NO_ERROR)
 	    {
@@ -902,17 +844,10 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	    }
 	  else
 	    {
-	      /* the additions of the distinct values, as the partition planned them (qdata_initialize_analytic_func);
-	       * a string value is converted into the sum before the addition (below), so its addition converts
-	       * nothing more; an AVG over NUMERIC values keeps the sum floating, every other sum is coerced to the
-	       * function's domain. The list's column is the argument's resolved domain. */
+	      /* the distinct values are summed as the setup planned (qexec_setup_analytic_accumulator): the first into
+	       * the sum's domain, every later one with the operand coercion of (sum, argument), the result coerced to
+	       * the sum's domain unless the sum is kept floating */
 	      const AGGREGATE_ACCUMULATOR_DOMAIN *acc_dom = qexec_accumulator_domain (vd, func_p->plan_item);
-	      const TP_DOMAIN *column = list_id_p->type_list.domp[0];
-	      const bool string_argument = column != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (column));
-	      TP_DOMAIN *distinct_sum_domain =
-		      func_p->function == PT_AVG && column != NULL && TP_DOMAIN_TYPE (column) == DB_TYPE_NUMERIC ? NULL
-		      : qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
-	      bool added = false;
 	      while (true)
 		{
 		  scan_code = qfile_scan_list_next (thread_p, &scan_id, &tuple_record, PEEK);
@@ -938,24 +873,21 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		      }
 		  }
 
-		  if ((func_p->function == PT_SUM || func_p->function == PT_AVG)
-		      && TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&dbval)))
+		  if ((func_p->function == PT_SUM || func_p->function == PT_AVG) && DB_IS_NULL (func_p->value)
+		      && (acc_dom->first_conv != NULL || TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&dbval))))
 		    {
-		      /* the distinct list keeps the argument's type; a string it holds is read as the function's domain
-		       * (DOUBLE), as the first value of the function without DISTINCT is (qdata_evaluate_analytic_func) -
-		       * the value list the finalization writes is laid out by that domain, and the typed addition takes
-		       * no string. The converter is the operand coercion resolve_domains planned (the argument into the
-		       * sum's domain); a string it does not take is -181. */
-		      const DOMAIN_OPERAND_COERCION *coercion =
-			      &qexec_accumulator_domain (vd, func_p->plan_item)->operand_coercion;
+		      /* the first distinct value into the sum's domain, as the first value of the function without
+		       * DISTINCT (qdata_evaluate_analytic_func): the value list the finalization writes is laid out by
+		       * that domain, and the typed addition takes no string - a string without a planned converter fails
+		       * the unresolved-domain check, one the domain does not take is -181 */
 		      DB_VALUE coerced;
 		      db_make_null (&coerced);
-		      TP_DOMAIN_STATUS dom_status = coercion->conv[1] == NULL ? DOMAIN_INCOMPATIBLE
-						    : tp_value_convert (coercion->conv[1], coercion->operand_domain[1], &dbval, &coerced);
+		      TP_DOMAIN_STATUS dom_status = acc_dom->first_conv == NULL ? DOMAIN_INCOMPATIBLE
+						    : tp_value_convert (acc_dom->first_conv, acc_dom->value_dom, &dbval, &coerced);
 		      if (dom_status != DOMAIN_COMPATIBLE)
 			{
-			  err = coercion->conv[1] == NULL ? qexec_domain_unresolved (vd, func_p->plan_item, func_p->domain)
-				: tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, coercion->operand_domain[1]);
+			  err = acc_dom->first_conv == NULL ? qexec_domain_unresolved (vd, func_p->plan_item, func_p->domain)
+				: tp_domain_status_er_set (dom_status, ARG_FILE_LINE, &dbval, acc_dom->value_dom);
 			  pr_clear_value (&coerced);
 			  (void) pr_clear_value (&dbval);
 			  qfile_close_scan (thread_p, &scan_id);
@@ -1056,16 +988,12 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 			    }
 			}
 
-		      /* a STDDEV / VARIANCE adds two DOUBLEs by construction; a SUM / AVG adds the second distinct value
-		       * to the first as it is and every later one to the sum's running type, as the partition planned
-		       * (qdata_initialize_analytic_func), the result coerced to the function's domain unless an AVG
-		       * over NUMERIC values keeps the sum floating (distinct_sum_domain, from the list's column) */
-		      const DOMAIN_OPERAND_COERCION *coercion = tmp_domain_ptr != NULL ? NULL
-			  : added ? &acc_dom->later_coercion : &acc_dom->operand_coercion;
-		      domain_ptr = tmp_domain_ptr != NULL ? tmp_domain_ptr : distinct_sum_domain;
-		      added = true;
+		      /* a STDDEV / VARIANCE adds two DOUBLEs by construction; a SUM / AVG adds with the operand coercion
+		       * the setup planned, the result coerced to the sum's domain */
+		      const DOMAIN_OPERAND_COERCION *coercion = tmp_domain_ptr != NULL ? NULL : &acc_dom->operand_coercion;
+		      domain_ptr = tmp_domain_ptr != NULL ? tmp_domain_ptr : acc_dom->value_dom;
 
-		      if (qdata_coerce_arith_operands (T_ADD, coercion != NULL && !string_argument ? coercion->conv : NULL,
+		      if (qdata_coerce_arith_operands (T_ADD, coercion != NULL ? coercion->conv : NULL,
 						       coercion != NULL ? coercion->operand_domain : NULL,
 						       coercion != NULL ? &coercion->arith : &domain_arith_double,
 						       func_p->value, &dbval, func_p->value, domain_ptr) != NO_ERROR)
@@ -1112,19 +1040,14 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
       double_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
-      /* compute AVG(X) = SUM(X)/COUNT(X), with the division's operand coercion for the sum's type - the partition's
-       * sum as it stands: a FLOAT first value alone, the DOUBLE it became once a value was added, a MONETARY, a NUMERIC
-       * kept floating - resolved once for the partition, not at a row */
+      /* compute AVG(X) = SUM(X)/COUNT(X): an AVG divides with the operand coercion the setup planned for the sum's
+       * type (qexec_setup_analytic_accumulator), a STDDEV / VARIANCE two DOUBLEs by construction */
       db_make_double (&dbval, func_p->curr_cnt);
-      DOMAIN_OPERAND_COERCION divide = {};
-      {
-	const DOMAIN_OPERAND operands[2] =
-	{
-	  {NULL, DB_VALUE_DOMAIN_TYPE (func_p->value), -1, false}, {double_domain_ptr, DB_TYPE_DOUBLE, -1, false}
-	};
-	domain_resolve_operand_coercion (T_DIV, operands, &divide);
-      }
-      if (qdata_coerce_arith_operands (T_DIV, divide.conv, divide.operand_domain, &divide.arith, func_p->value, &dbval,
+      const DOMAIN_OPERAND_COERCION *divide =
+	      func_p->function == PT_AVG ? &qexec_accumulator_domain (vd, func_p->plan_item)->divide_coercion : NULL;
+      if (qdata_coerce_arith_operands (T_DIV, divide != NULL ? divide->conv : NULL,
+				       divide != NULL ? divide->operand_domain : NULL,
+				       divide != NULL ? &divide->arith : &domain_arith_double, func_p->value, &dbval,
 				       &xavgval, double_domain_ptr) != NO_ERROR)
 	{
 	  goto error;

@@ -79,22 +79,27 @@ namespace cubxasl
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 
-  /* An aggregate's accumulator domains in one execution, kept in the execution state and not in the plan node
-   * (domain_execution.accumulator_domains[], by the function's node_domain_index, qexec_accumulator_domain): the setup
-   * writes them before the first row. An analytic SUM / AVG plans its additions in two stages per partition
-   * (qdata_initialize_analytic_func): the second value is added to the first as it is, every later one to the sum's
-   * running type - the function's domain once an addition was coerced to it. */
+  /* An aggregate's or an analytic function's accumulator domains in one execution, kept in the execution state and
+   * not in the plan node (domain_execution.accumulator_domains[], by the function's node_domain_index,
+   * qexec_accumulator_domain): the setup writes them once before the first row (qexec_setup_aggregate_accumulators,
+   * qexec_setup_analytic_accumulator); the partitions and the rows read them. */
   struct aggregate_accumulator_domain
   {
-    tp_domain *value_dom;		/* domain of value; an analytic SUM / AVG: the domain each addition's result is
-				 * coerced to, NULL for a sum kept floating (an AVG over a NUMERIC first value, a
-				 * SUM whose domain is NUMERIC) */
+    tp_domain *value_dom;		/* domain of value; an analytic SUM / AVG: the sum's domain, which the first
+				 * value is converted into and each addition's result is coerced to, NULL for a sum
+				 * kept floating (an AVG over a NUMERIC argument, a SUM whose domain is NUMERIC) */
     tp_domain *value2_dom;	/* domain of value2 */
     DOMAIN_OPERAND_COERCION operand_coercion;	/* SUM / AVG: the operand coercion of value + a value, set with
-						 * value_dom (an analytic function's per partition: the second value's,
-						 * over the first value's type) */
-    DOMAIN_OPERAND_COERCION later_coercion;	/* an analytic SUM / AVG: the operand coercion of every value after
-						 * the second, over the sum's running type */
+						 * value_dom; STDDEV / VARIANCE: [1] the converter of a value into
+						 * DOUBLE */
+    bool accumulator_takes;	/* an analytic SUM / AVG: the resident accumulator takes the argument's type
+				 * (SUM_ACC_IS_ANALYTIC_SUPPORTED_TYPE) - its typed sum is the partition's sum;
+				 * else the values are added into value_dom (and a DISTINCT list's values always) */
+    TP_VALUE_CONVERTER first_conv;	/* an analytic SUM / AVG: the converter of the first value into value_dom,
+					 * NULL when it is of that type already */
+    DOMAIN_OPERAND_COERCION divide_coercion;	/* an analytic AVG: the operand coercion of sum / count at the
+						 * partition's end, over the sum's type - the accumulator's for a
+						 * type it takes, value_dom's or the argument's otherwise */
     int temporary;			/* SUM / AVG: the domain_execution.temporaries index of a value added after the
 				 * first that a scope fixes and operand_coercion converts; -1 none. Set with
 				 * operand_coercion (qexec_setup_aggregate_accumulators) */

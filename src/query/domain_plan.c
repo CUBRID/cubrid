@@ -103,8 +103,8 @@ struct DOMAIN_LOAD_ENTRY
   REGU_VARIABLE *temporary_operand[2];
   XASL_NODE *temporary_scope[2];
   const AGGREGATE_TYPE *temporary_aggregate;	/* a SUM or AVG: the function */
-  /* T_ADD, T_SUB, T_MUL, T_DIV the compiler typed: the operands whose compiled domains the operand coercion was
-   * planned over (domain_plan_resolved_operand_coercion plans it again where the resolution gave one another type) */
+  /* T_ADD, T_SUB, T_MUL, T_DIV the compiler typed: the operands its operand coercion is planned over once the
+   * producers are linked (domain_plan_compiled_operand_coercion) */
   REGU_VARIABLE *coercion_operand[2];
 };
 struct DOMAIN_LOAD_BINDING
@@ -862,10 +862,14 @@ domain_operand_coercion_operator (OPERATOR_TYPE opcode)
 }
 
 /*
- * domain_plan_operand_coercion () - the operand converters of an addition, subtraction, multiplication or division over
- *   its operands' compiled domains: fetch converts the operands with them and qdata_*_dbval casts nothing. A node
- *   resolve_domains resolves the type of reads resolve_domains' instead; an operand whose domain is variable plans
- *   no converter here: the operands keep their compiled domains as their targets.
+ * domain_plan_operand_coercion () - the operand converters and the value (arith) of an addition, subtraction,
+ *   multiplication or division over its operands' domains: fetch converts the operands with them and the operator
+ *   dispatches on the value, casting nothing. A node resolve_domains resolves the type of reads resolve_domains'
+ *   instead; an operand whose domain is variable plans no converter and no value here (DOMAIN_ARITH_UNRESOLVED): the
+ *   operands keep their domains as their targets, and the row reads the late-binding entry or fails the
+ *   unresolved-domain check. The load calls it once per node: for a node of the tree after the producers are linked,
+ *   over the domains the load gave the operands (domain_plan_compiled_operand_coercion); for a stream's node at its
+ *   walk, over the compiled domains (a stream has no producers).
  */
 static void
 domain_plan_operand_coercion (DOMAIN_PLAN_ITEM * item, OPERATOR_TYPE opcode, const TP_DOMAIN * left,
@@ -878,8 +882,6 @@ domain_plan_operand_coercion (DOMAIN_PLAN_ITEM * item, OPERATOR_TYPE opcode, con
   item->fixed.conv[0] = item->fixed.conv[1] = NULL;
   if (!domain_type_is_fixed (left) || !domain_type_is_fixed (right))
     {
-      /* no value either (DOMAIN_ARITH_UNRESOLVED): the row reads the late-binding entry, or fails the
-       * unresolved-domain check */
       item->fixed.operand_domain[0] = left;
       item->fixed.operand_domain[1] = right;
       item->fixed.arith.kind = DOMAIN_ARITH_UNRESOLVED;
@@ -1283,7 +1285,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
 	}
     }
   /* the operand coercion of a node the compiler typed - its collation may still be resolve_domains' - is the
-   * resolver's over its operands' compiled domains */
+   * resolver's over its operands' domains, planned once the producers are linked */
   const bool operand_coercion = domain_operand_coercion_operator (arith->opcode) && !late_bound && operands[0] != NULL
     && operands[1] != NULL;
   for (int i = operand_coercion ? 2 : 0; i < 3; i++)
@@ -1301,15 +1303,17 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
 				DOMAIN_CTX_ASSIGN);
 	}
     }
-  if (operand_coercion)
+  if (operand_coercion && item != NULL)
     {
-      domain_plan_operand_coercion (item, arith->opcode, operands[0]->domain, operands[1]->domain);
-      if (item != NULL)
-	{
-	  DOMAIN_LOAD_ENTRY *load_entry = domain_load_entry_of (item);
-	  load_entry->coercion_operand[0] = operands[0];
-	  load_entry->coercion_operand[1] = operands[1];
-	}
+      /* planned once the producers are linked (domain_plan_compiled_operand_coercion): until then, no value */
+      item->fixed.conv[0] = item->fixed.conv[1] = NULL;
+      item->fixed.operand_domain[0] = operands[0]->domain;
+      item->fixed.operand_domain[1] = operands[1]->domain;
+      item->fixed.arith.kind = DOMAIN_ARITH_UNRESOLVED;
+      item->fixed.arith.type = DB_TYPE_NULL;
+      DOMAIN_LOAD_ENTRY *load_entry = domain_load_entry_of (item);
+      load_entry->coercion_operand[0] = operands[0];
+      load_entry->coercion_operand[1] = operands[1];
     }
   if (item != NULL && domain_operand_coercion_operator (arith->opcode) && operands[0] != NULL && operands[1] != NULL)
     {
@@ -2811,48 +2815,41 @@ domain_resolve_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry)
 }
 
 /*
- * domain_plan_resolved_operand_coercion () - the operand coercion of a node the compiler typed, planned again over the
- *   domains the resolution gave its operands where one differs in type from the compiled one
+ * domain_plan_compiled_operand_coercion () - the operand coercion and the value (arith) of every T_ADD, T_SUB, T_MUL or
+ *   T_DIV the compiler typed, planned once, after the producers are linked, over the domains the load gave the
+ *   operands
  *
- * The walk planned it over the operands' compiled domains (domain_plan_operand_coercion). An operand that is a value
- * pointer reads its producer's value, and the resolution gave the pointer's item the producer's domain
- * (domain_link_producer): a recursive CTE part's reference to its own column is compiled with the non-recursive part's
- * type while the list it reads holds the unified column. The operands' values are the producers': the operand
- * coercion and the value (arith) the row dispatches on are theirs.
+ * An operand that is a value pointer reads its producer's value, and the load gave the pointer's item the producer's
+ * domain (domain_link_producer): a recursive CTE part's reference to its own column is compiled with the non-recursive
+ * part's type while the list it reads holds the unified column. The operands' values are the producers', so the plan
+ * is over the producers' domains; any other operand keeps its compiled domain. A node resolve_domains resolves the
+ * operand coercion of (DOMAIN_PLAN_LATE_BIND_COERCION) is not planned here.
  */
 static void
-domain_plan_resolved_operand_coercion (DOMAIN_LOAD_CONTEXT * ctx)
+domain_plan_compiled_operand_coercion (DOMAIN_LOAD_CONTEXT * ctx)
 {
   for (DOMAIN_LOAD_ENTRY * r = ctx->head; r != NULL && !ctx->failed; r = r->next)
     {
       if (r->alias != NULL || r->coercion_operand[0] == NULL || r->coercion_operand[1] == NULL
-	  || r->item.fixed.arith.kind == DOMAIN_ARITH_UNRESOLVED)
+	  || (r->item.flags & DOMAIN_PLAN_LATE_BIND_COERCION))
 	{
 	  continue;
 	}
       const TP_DOMAIN *resolved[2];
-      bool differs = false;
       for (int i = 0; i < 2; i++)
 	{
 	  const REGU_VARIABLE *operand = r->coercion_operand[i];
 	  resolved[i] = operand->domain;
-	  if (operand->plan_item == NULL)
+	  if (operand->plan_item != NULL)
 	    {
-	      continue;
-	    }
-	  const DOMAIN_LOAD_ENTRY *source = domain_owner_load_entry (domain_load_entry_of (operand->plan_item));
-	  const TP_DOMAIN *domain = source->item.fixed.domain;
-	  if (domain_type_is_fixed (domain) && domain_type_is_fixed (operand->domain)
-	      && TP_DOMAIN_TYPE (domain) != TP_DOMAIN_TYPE (operand->domain))
-	    {
-	      resolved[i] = domain;
-	      differs = true;
+	      const DOMAIN_LOAD_ENTRY *source = domain_owner_load_entry (domain_load_entry_of (operand->plan_item));
+	      if (domain_type_is_fixed (source->item.fixed.domain))
+		{
+		  resolved[i] = source->item.fixed.domain;
+		}
 	    }
 	}
-      if (differs)
-	{
-	  domain_plan_operand_coercion (&r->item, (OPERATOR_TYPE) r->cold.opcode, resolved[0], resolved[1]);
-	}
+      domain_plan_operand_coercion (&r->item, (OPERATOR_TYPE) r->cold.opcode, resolved[0], resolved[1]);
     }
 }
 
@@ -4965,7 +4962,7 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
     {
       domain_resolve_record (&ctx, r);
     }
-  domain_plan_resolved_operand_coercion (&ctx);
+  domain_plan_compiled_operand_coercion (&ctx);
   /* a value pointer reads its producer's resolutions through the producer's item, but each node keeps a domain of
    * its own - a column over an aggregate's accumulator, say, stays as compiled when the aggregate resolves. Where
    * either has an execution domain, the consumer's node gets its own copy of the item (domain_plan_add_item_copies) and

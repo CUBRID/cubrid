@@ -42,6 +42,7 @@
 #include "query_aggregate.hpp"
 #include "query_evaluator.h"
 #include "query_opfunc.h"
+#include "query_sum_accumulator.h"
 #include "session.h"
 #include "set_object.h"
 #include "system_parameter.h"
@@ -4186,6 +4187,94 @@ qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd)
  *   a string). No value is read.
  *   return: NO_ERROR
  */
+/*
+ * qexec_setup_analytic_accumulator () - an analytic SUM / AVG's or STDDEV / VARIANCE's accumulator domains, once per
+ *   execution, from the function's domain and its argument's resolved domain; the partitions read them
+ *   (qdata_initialize_analytic_func) and derive nothing
+ *   domain(in): the function's domain in this execution
+ *
+ * SUM / AVG: the sum has one domain for the partition, the function's - the first value is converted into it
+ * (first_conv) and every addition's result is coerced to it - except a sum kept floating, which keeps the argument's
+ * NUMERIC as it is (value_dom NULL): an AVG over a NUMERIC argument, a SUM whose domain is NUMERIC. Every value is
+ * added with the operand coercion of (sum, argument). An argument type the resident accumulator takes
+ * (accumulator_takes) is summed by the accumulator's typed sum instead, the values as they are; a DISTINCT list's
+ * values are always added. An AVG divides the sum by the count at the partition's end with the operand coercion of
+ * (the sum's type, DOUBLE).
+ * STDDEV / VARIANCE accumulate in DOUBLE: [1] the converter of the argument's resolved type into DOUBLE
+ * (tp_value_coerce's implicit mode), which runs at every value that is not a DOUBLE already.
+ */
+static void
+qexec_setup_analytic_accumulator (const VAL_DESCR * vd, ANALYTIC_TYPE * func_p, const TP_DOMAIN * domain)
+{
+  const FUNC_CODE fcode = func_p->function;
+  const bool sum_or_avg = fcode == PT_SUM || fcode == PT_AVG;
+  const bool stddev = fcode == PT_STDDEV || fcode == PT_STDDEV_POP || fcode == PT_STDDEV_SAMP || fcode == PT_VARIANCE
+    || fcode == PT_VAR_POP || fcode == PT_VAR_SAMP;
+  if (!sum_or_avg && !stddev)
+    {
+      return;
+    }
+  AGGREGATE_ACCUMULATOR_DOMAIN *acc_dom = qexec_accumulator_domain (vd, func_p->plan_item);
+  memset (acc_dom, 0, sizeof (*acc_dom));
+  acc_dom->temporary = -1;
+  const TP_DOMAIN *argument = qexec_value_domain (vd, &func_p->operand);
+  const bool argument_typed = argument != NULL && TP_DOMAIN_TYPE (argument) != DB_TYPE_VARIABLE
+    && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL;
+  if (stddev)
+    {
+      acc_dom->value_dom = &tp_Double_domain;
+      acc_dom->value2_dom = &tp_Double_domain;
+      if (argument_typed)
+	{
+	  acc_dom->operand_coercion.operand_domain[1] = &tp_Double_domain;
+	  acc_dom->operand_coercion.conv[1] = TP_DOMAIN_TYPE (argument) == DB_TYPE_DOUBLE ? NULL
+	    : tp_value_find_converter (TP_DOMAIN_TYPE (argument), &tp_Double_domain, DOMAIN_CONVERT_IMPLICIT);
+	}
+      return;
+    }
+  const TP_DOMAIN *function = qexec_resolved_domain (vd, func_p->plan_item);
+  if (function == NULL)
+    {
+      function = domain;
+    }
+  if (!argument_typed || function == NULL || TP_DOMAIN_TYPE (function) == DB_TYPE_VARIABLE)
+    {
+      /* no plan: a value the partition meets fails the unresolved-domain check */
+      return;
+    }
+  const DB_TYPE argument_type = TP_DOMAIN_TYPE (argument);
+  const DB_TYPE function_type = TP_DOMAIN_TYPE (function);
+  /* the typed addition coerced its result to the function's domain unless an AVG summed a NUMERIC first value - a
+   * string's is the function's domain - or a SUM's domain is NUMERIC */
+  const DB_TYPE kept = fcode == PT_AVG ? (TP_IS_CHAR_TYPE (argument_type) ? function_type : argument_type)
+    : function_type;
+  const TP_DOMAIN *sum = kept == DB_TYPE_NUMERIC ? argument : function;
+  acc_dom->value_dom = kept == DB_TYPE_NUMERIC ? NULL : (TP_DOMAIN *) function;
+  const DOMAIN_OPERAND operands[2] = {
+    {sum, TP_DOMAIN_TYPE (sum), -1, false}, {argument, argument_type, -1, false}
+  };
+  domain_resolve_operand_coercion (T_ADD, operands, &acc_dom->operand_coercion);
+  if (acc_dom->value_dom != NULL && argument_type != function_type)
+    {
+      /* the first value into the sum's domain: the operand coercion's converter where the rule converts the argument
+       * (a string into DOUBLE), the type pair's converter otherwise (a FLOAT into DOUBLE) */
+      acc_dom->first_conv = acc_dom->operand_coercion.conv[1] != NULL ? acc_dom->operand_coercion.conv[1]
+	: tp_value_find_converter (argument_type, function, DOMAIN_CONVERT_IMPLICIT);
+    }
+  acc_dom->accumulator_takes = SUM_ACC_IS_ANALYTIC_SUPPORTED_TYPE (argument_type);
+  if (fcode == PT_AVG)
+    {
+      /* the sum the partition's end divides: the accumulator's typed sum, the added values' domain for a type it does
+       * not take and for a DISTINCT list, whose values are added */
+      const DB_TYPE sum_type = acc_dom->accumulator_takes && func_p->option != Q_DISTINCT
+	? sum_acc_analytic_sum_type_for (argument_type) : TP_DOMAIN_TYPE (sum);
+      const DOMAIN_OPERAND divide[2] = {
+	{NULL, sum_type, -1, false}, {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false}
+      };
+      domain_resolve_operand_coercion (T_DIV, divide, &acc_dom->divide_coercion);
+    }
+}
+
 int
 qexec_setup_analytic_domains (const VAL_DESCR * vd, ANALYTIC_EVAL_TYPE * eval_list)
 {
@@ -4238,6 +4327,7 @@ qexec_setup_analytic_domains (const VAL_DESCR * vd, ANALYTIC_EVAL_TYPE * eval_li
 		}
 	      qexec_set_node_domain (vd, func_p->plan_item, func_p->domain, settled);
 	    }
+	  qexec_setup_analytic_accumulator (vd, func_p, qexec_get_node_domain (vd, func_p->domain, func_p->plan_item));
 	}
     }
   return NO_ERROR;
