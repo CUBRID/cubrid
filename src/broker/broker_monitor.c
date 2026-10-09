@@ -43,6 +43,7 @@
 #include <conio.h>
 #endif
 
+#include <openssl/err.h>
 #include <openssl/pem.h>
 #include <openssl/x509.h>
 
@@ -961,15 +962,18 @@ print_job_queue (T_MAX_HEAP_NODE * job_queue)
 }
 
 /*
- * print_ssl_cert_info () - print the expiry of the certificate that an SSL=ON broker presents
+ * print_ssl_cert_info () - print the expiry of the certificate chain that an SSL=ON broker presents
  *   br_info_p(in):
  *   with_name(in): prefix the broker name, for the lines below the -b table
  *
- * SSL CERT: [<broker>] <file>  notAfter=<ISO 8601 UTC>  days=<N>[  EXPIRED|  NOT YET VALID]
+ * SSL CERT: [<broker>] <file>  notAfter=<ISO 8601 UTC>  days=<N>[  EXPIRED|  NOT YET VALID][  (chain: <CN>)]
  * SSL CERT: [<broker>] <file>  ERROR=<reason>
  *
- * days is rounded down, so it is negative once the certificate has expired. The validity is judged the same way
- * cas_init_ssl () judges it, which rejects SSL connections in both the EXPIRED and NOT YET VALID cases.
+ * notAfter and days are those of the first certificate in the file to expire: the server certificate, or an
+ * intermediate CA sent with it, which is then named in "(chain: ...)". Once any of them has expired a verifying
+ * driver rejects the chain, so "days < N" stays the one rule a monitor needs. days is rounded down, so it is
+ * negative once expired. NOT YET VALID is judged on the server certificate, as cas_init_ssl () judges it; that
+ * and an expired server certificate make the CAS reject SSL connections.
  */
 static void
 print_ssl_cert_info (const T_BROKER_INFO * br_info_p, bool with_name)
@@ -980,6 +984,9 @@ print_ssl_cert_info (const T_BROKER_INFO * br_info_p, bool with_name)
   int len;
   FILE *fp;
   X509 *crt = NULL;
+  X509 *chain_crt = NULL;	/* the chain certificate that expires first, when before the server certificate */
+  X509 *ca;
+  char chain_cn[256];
   const ASN1_TIME *not_after = NULL;
   struct tm tm;
   char not_after_str[32];
@@ -998,6 +1005,24 @@ print_ssl_cert_info (const T_BROKER_INFO * br_info_p, bool with_name)
   else
     {
       crt = PEM_read_X509 (fp, NULL, NULL, NULL);
+      if (crt != NULL)
+	{
+	  /* the intermediate CAs sent with it, as SSL_CTX_use_certificate_chain_file () reads them */
+	  while ((ca = PEM_read_X509 (fp, NULL, NULL, NULL)) != NULL)
+	    {
+	      if (ASN1_TIME_compare (X509_get0_notAfter (ca),
+				     X509_get0_notAfter ((chain_crt != NULL) ? chain_crt : crt)) < 0)
+		{
+		  X509_free (chain_crt);
+		  chain_crt = ca;
+		}
+	      else
+		{
+		  X509_free (ca);
+		}
+	    }
+	  ERR_clear_error ();	/* the read that found no more certificates */
+	}
       fclose (fp);
 
       if (crt == NULL)
@@ -1006,7 +1031,7 @@ print_ssl_cert_info (const T_BROKER_INFO * br_info_p, bool with_name)
 	}
       else
 	{
-	  not_after = X509_get0_notAfter (crt);
+	  not_after = X509_get0_notAfter ((chain_crt != NULL) ? chain_crt : crt);
 	  if (ASN1_TIME_to_tm (not_after, &tm) == 0 || ASN1_TIME_diff (&diff_day, &diff_sec, NULL, not_after) == 0
 	      || strftime (not_after_str, sizeof (not_after_str), "%Y-%m-%dT%H:%M:%SZ", &tm) == 0)
 	    {
@@ -1047,7 +1072,16 @@ print_ssl_cert_info (const T_BROKER_INFO * br_info_p, bool with_name)
 	  state = "  NOT YET VALID";
 	}
 
-      snprintf (line + len, sizeof (line) - len, "notAfter=%s  days=%lld%s", not_after_str, days, state);
+      len += snprintf (line + len, sizeof (line) - len, "notAfter=%s  days=%lld%s", not_after_str, days, state);
+      if (chain_crt != NULL && len < (int) sizeof (line))
+	{
+	  if (X509_NAME_get_text_by_NID (X509_get_subject_name (chain_crt), NID_commonName, chain_cn,
+					 sizeof (chain_cn)) < 0)
+	    {
+	      X509_NAME_oneline (X509_get_subject_name (chain_crt), chain_cn, sizeof (chain_cn));
+	    }
+	  snprintf (line + len, sizeof (line) - len, "  (chain: %s)", chain_cn);
+	}
     }
 
   str_out ("%s", line);
@@ -1057,6 +1091,7 @@ print_ssl_cert_info (const T_BROKER_INFO * br_info_p, bool with_name)
     {
       X509_free (crt);
     }
+  X509_free (chain_crt);
 }
 
 static void
