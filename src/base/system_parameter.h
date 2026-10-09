@@ -35,6 +35,7 @@
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "chartype.h"
+#include "db_multi_threads_connections.h"
 
 typedef enum
 {
@@ -562,8 +563,14 @@ enum param_id
   PRM_ID_COST_EFFECTIVE_CACHE_PAGES,
   PRM_ID_COST_HEAP_FETCH_PER_OID,
 
+  PRM_ID_HA_WRITESET_HISTORY_SIZE,
+
+  PRM_ID_HA_WRITESET_TRACE_LEVEL,
+
+  PRM_ID_HA_APPLY_WORKER_COUNT,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_COST_HEAP_FETCH_PER_OID
+  PRM_LAST_ID = PRM_ID_HA_APPLY_WORKER_COUNT
 };
 typedef enum param_id PARAM_ID;
 
@@ -754,7 +761,8 @@ extern "C"
 /* when system parameters are loaded, session parameters need to be cached for
  * future clients that connect to broker
  */
-  extern SESSION_PARAM *cached_session_parameters;
+  extern CUB_THREAD_LOCAL SESSION_PARAM *cached_session_parameters;
+  extern void sysprm_load_session_parameters ();
 #endif				/* CS_MODE */
 
   extern const char *prm_get_name (PARAM_ID prm_id);

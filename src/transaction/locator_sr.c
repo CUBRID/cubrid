@@ -48,6 +48,7 @@
 #include "heap_file.h"
 #include "list_file.h"
 #include "log_lsa.hpp"
+#include "writeset.hpp"
 #include "lock_manager.h"
 #include "object_primitive.h"
 #include "object_representation.h"
@@ -7745,6 +7746,123 @@ locator_add_or_remove_index_for_moving (THREAD_ENTRY * thread_p, RECDES * recdes
 }
 
 /*
+ * locator_wset_error () - preserve a lower-layer error or set a writeset key-build error
+ *
+ * return: error code
+ */
+static int
+locator_wset_error (const char *detail)
+{
+  int error_code = er_errid ();
+
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_WRITESET_KEY_BUILD_FAILED, 1, detail);
+
+  return ER_HA_WRITESET_KEY_BUILD_FAILED;
+}
+
+static void
+locator_wset_trace_key_source (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const char *operation,
+			       const char *image, LOG_WSET_KIND kind, const OID * table_oid,
+			       const OID * row_oid, const char *constraint_name, const OID * key_class_oid,
+			       const VFID * key_index_vfid)
+{
+  char *table_name = NULL;
+
+  if (!wset_trace_enabled (3) || tdes->wset_overflow || tdes->suppress_replication != 0)
+    {
+      return;
+    }
+
+  /* Trace-only metadata lookup must not replace an error already being handled by the DML path. */
+  er_stack_push ();
+  (void) heap_get_class_name (thread_p, table_oid, &table_name);
+  er_stack_pop ();
+
+  wset_trace_key_source (tdes, operation, image, kind, table_oid, row_oid, table_name, constraint_name,
+			 key_class_oid, key_index_vfid);
+  if (table_name != NULL)
+    {
+      free_and_init (table_name);
+    }
+}
+
+/*
+ * locator_wset_collect_fk_ref () - collect a writeset reference key for a foreign-key index
+ *
+ *   tdes(in/out): current transaction descriptor
+ *   index(in): the index being maintained (only BTREE_FOREIGN_KEY indexes are handled)
+ *   btid_index(in): position of this index used to fetch its key from the record
+ *   attrinfo(in): cached attribute info for the record
+ *   recdes(in): the touched row (new image on insert, old image on delete)
+ *   inst_oid(in): the row's OID
+ *
+ * return: NO_ERROR, or an error code on failure
+ *
+ * Note: Orders this transaction behind the parent row that owns the referenced primary key by
+ *       reproducing the parent's write hash from the child's foreign-key value. The value is read
+ *       with the deduplicate column removed (as the master's own foreign-key check does) and packed
+ *       in the parent primary-key domain. A NULL foreign key has no parent reference and is skipped.
+ *       Every technical failure is returned to the DML path; a key must not be silently omitted.
+ */
+static int
+locator_wset_collect_fk_ref (THREAD_ENTRY * thread_p, LOG_TDES * tdes, OR_INDEX * index, int btid_index,
+			     HEAP_CACHE_ATTRINFO * attrinfo, RECDES * recdes, OID * inst_oid,
+			     const OID * table_oid, const char *operation, const char *image)
+{
+  TP_DOMAIN *parent_pk_domain;
+  DB_VALUE *fk_key;
+  DB_VALUE dbvalue;
+  BTID fk_btid;
+  char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT];
+  char *aligned_buf;
+  int error_code;
+
+  assert (index != NULL);
+  assert (index->fk != NULL);
+  assert (tdes != NULL);
+
+  if (tdes->wset_overflow || tdes->suppress_replication != 0)
+    {
+      return NO_ERROR;
+    }
+
+  parent_pk_domain = btree_read_key_type (thread_p, &index->fk->ref_class_pk_btid);
+  if (parent_pk_domain == NULL)
+    {
+      return locator_wset_error ("failed to read referenced parent key domain");
+    }
+
+  db_make_null (&dbvalue);
+  aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
+
+  fk_key =
+    heap_attrvalue_get_key (thread_p, btid_index, attrinfo, recdes, &fk_btid, &dbvalue, aligned_buf, NULL, NULL,
+			    inst_oid, true);
+  if (fk_key == NULL)
+    {
+      pr_clear_value (&dbvalue);
+      return locator_wset_error ("failed to extract foreign key value");
+    }
+
+  locator_wset_trace_key_source (thread_p, tdes, operation, image, LOG_WSET_KIND_REF, table_oid, inst_oid,
+				 index->fk->fkname, &index->fk->ref_class_oid, &index->fk->ref_class_pk_btid.vfid);
+  error_code = wset_add_ref_key (tdes, &index->fk->ref_class_oid, &index->fk->ref_class_pk_btid.vfid,
+				 fk_key, parent_pk_domain);
+
+  if (fk_key == &dbvalue)
+    {
+      pr_clear_value (&dbvalue);
+    }
+
+  return error_code;
+}
+
+/*
  * locator_add_or_remove_index_internal () - helper function for
  *                                     locator_add_or_remove_index () and
  *                                     locator_add_or_remove_index_for_moving ()
@@ -7931,6 +8049,39 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 	  else if (index->type == BTREE_PRIMARY_KEY)
 	    {
 	      unique_pk = BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY;
+	    }
+
+	  /* recdes is the new row image for INSERT and the pre-delete row image for DELETE, so
+	   * key_dbvalue is already the corresponding new or old index key. */
+	  if (datayn && need_replication && !LOG_CHECK_LOG_APPLIER (thread_p) && log_does_allow_replication () == true)
+	    {
+	      LOG_TDES *ws_tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+	      assert (ws_tdes != NULL);
+	      if (unique_pk != 0)
+		{
+		  locator_wset_trace_key_source (thread_p, ws_tdes, is_insert ? "INSERT" : "DELETE",
+						 is_insert ? "NEW" : "OLD",
+						 LOG_WSET_KIND_WRITE, class_oid, inst_oid, index->btname, class_oid,
+						 &index->btid.vfid);
+		  error_code = wset_add_write_key (ws_tdes, class_oid, &index->btid.vfid, key_dbvalue);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
+	      else if (index->type == BTREE_FOREIGN_KEY)
+		{
+		  /* A foreign-key column value points at a parent row's primary key, so this
+		   * transaction must be ordered against writes of that parent row. */
+		  error_code =
+		    locator_wset_collect_fk_ref (thread_p, ws_tdes, index, i, &index_attrinfo, recdes, inst_oid,
+						 class_oid, is_insert ? "INSERT" : "DELETE", is_insert ? "NEW" : "OLD");
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error;
+		    }
+		}
 	    }
 
 	  if (is_insert)
@@ -8587,6 +8738,59 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	    }
 	}
 
+      unique_pk = 0;
+      if (index->type == BTREE_UNIQUE || index->type == BTREE_REVERSE_UNIQUE)
+	{
+	  unique_pk = BTREE_CONSTRAINT_UNIQUE;
+	}
+      else if (index->type == BTREE_PRIMARY_KEY)
+	{
+	  unique_pk = BTREE_CONSTRAINT_UNIQUE | BTREE_CONSTRAINT_PRIMARY_KEY;
+	}
+
+      /* Collect both old and new keys without relying on UPDATE key-comparison equivalence. */
+      if (repl_info != NULL && repl_info->need_replication && !LOG_CHECK_LOG_APPLIER (thread_p)
+	  && log_does_allow_replication () == true)
+	{
+	  LOG_TDES *ws_tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+	  assert (ws_tdes != NULL);
+	  if (unique_pk != 0)
+	    {
+	      locator_wset_trace_key_source (thread_p, ws_tdes, "UPDATE", "OLD", LOG_WSET_KIND_WRITE, class_oid, oid,
+					     index->btname, class_oid, &index->btid.vfid);
+	      error_code = wset_add_write_key (ws_tdes, class_oid, &index->btid.vfid, old_key);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
+		}
+	      locator_wset_trace_key_source (thread_p, ws_tdes, "UPDATE", "NEW", LOG_WSET_KIND_WRITE, class_oid, oid,
+					     index->btname, class_oid, &index->btid.vfid);
+	      error_code = wset_add_write_key (ws_tdes, class_oid, &index->btid.vfid, new_key);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
+	  else if (index->type == BTREE_FOREIGN_KEY)
+	    {
+	      /* A foreign-key column value points at a parent row's primary key, so this
+	       * transaction must be ordered against writes of that parent row. */
+	      error_code = locator_wset_collect_fk_ref (thread_p, ws_tdes, index, i, old_attrinfo, old_recdes, oid,
+							class_oid, "UPDATE", "OLD");
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
+		}
+	      error_code = locator_wset_collect_fk_ref (thread_p, ws_tdes, index, i, new_attrinfo, new_recdes, oid,
+							class_oid, "UPDATE", "NEW");
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
+		}
+	    }
+	}
+
 #if defined(ENABLE_SYSTEMTAP)
       CUBRID_IDX_UPDATE_START (classname, index->btname);
       is_started = true;
@@ -8816,9 +9020,33 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  error_code =
 	    repl_log_insert (thread_p, class_oid, oid, LOG_REPLICATION_DATA, RVREPL_DATA_UPDATE, repl_old_key,
 			     (REPL_INFO_TYPE) repl_info->repl_info_type);
+	  if (error_code != NO_ERROR)
+	    {
+	      if (repl_old_key == &old_dbvalue)
+		{
+		  pr_clear_value (&old_dbvalue);
+		  repl_old_key = NULL;
+		}
+	      goto error;
+	    }
+
+	  /* Reached only when the loop skipped the primary-key index: an in-place update on an
+	   * MVCC-disabled class (e.g. db_serial) with the primary-key columns untouched - the key is
+	   * unchanged, so the old key alone identifies the row. Mutually exclusive with the in-loop
+	   * block (no double counting). old_btid, filled by the fetch above, has the primary-key VFID. */
+	  LOG_TDES *ws_tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+	  locator_wset_trace_key_source (thread_p, ws_tdes, "UPDATE", "OLD", LOG_WSET_KIND_WRITE, class_oid, oid,
+					 "PRIMARY_KEY", class_oid, &old_btid.vfid);
+	  error_code = wset_add_write_key (ws_tdes, class_oid, &old_btid.vfid, repl_old_key);
 	  if (repl_old_key == &old_dbvalue)
 	    {
 	      pr_clear_value (&old_dbvalue);
+	      repl_old_key = NULL;
+	    }
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
 	    }
 	}
       else

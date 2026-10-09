@@ -821,6 +821,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_STATISTICS_SAMPLE_PAGES "statistics_sample_pages"
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
+#define PRM_NAME_HA_WRITESET_HISTORY_SIZE "ha_writeset_history_size"
+#define PRM_NAME_HA_WRITESET_TRACE_LEVEL "ha_writeset_trace_level"
+#define PRM_NAME_HA_APPLY_WORKER_COUNT "ha_apply_worker_count"
 
 #define PRM_NAME_COST_SEQ_PAGE "cost_seq_page"
 #define PRM_NAME_COST_RANDOM_PAGE "cost_random_page"
@@ -5680,6 +5683,39 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_WRITESET_HISTORY_SIZE,
+   PRM_NAME_HA_WRITESET_HISTORY_SIZE,
+   (PRM_FOR_SERVER | PRM_FOR_HA),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 1000000}},
+   {false, {.i = 1000000}},
+   {false, {.i = 10000000}}, {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_WRITESET_TRACE_LEVEL,
+   PRM_NAME_HA_WRITESET_TRACE_LEVEL,
+   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_HA),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 2}},
+   {false, {.i = 2}},
+   {false, {.i = 3}}, {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_HA_APPLY_WORKER_COUNT,
+   PRM_NAME_HA_APPLY_WORKER_COUNT,
+   (PRM_FOR_CLIENT | PRM_FOR_HA),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = HB_DEFAULT_APPLY_WORKER_COUNT}},
+   {false, {.i = HB_DEFAULT_APPLY_WORKER_COUNT}},
+   {false, {.i = HB_MAX_APPLY_WORKER_COUNT}}, {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
 };
 
 /* The PL server (cub_pl) is a separate Java process that hard-codes the ordinals of the
@@ -5748,7 +5784,7 @@ static const int *PARAM_VALUE_SHARE[] = {
  * loaded from cubrid.conf file. When a new client connects to CAS, it should
  * reload these parameters (because some may be changed by previous clients)
  */
-SESSION_PARAM *cached_session_parameters = NULL;
+CUB_THREAD_LOCAL SESSION_PARAM *cached_session_parameters = NULL;
 #endif /* CS_MODE */
 
 /*
@@ -6369,6 +6405,43 @@ sysprm_check_id_order ()
 }
 #endif
 
+
+#if defined (CS_MODE)
+void
+sysprm_load_session_parameters ()
+{
+  int i;
+  int num_session_prms;
+  SESSION_PARAM *sprm = NULL;
+
+  /* cache session parameters */
+  if (cached_session_parameters != NULL)
+    {
+      /* free previous cache */
+      sysprm_free_session_parameters (&cached_session_parameters);
+    }
+  cached_session_parameters = sysprm_alloc_session_parameters ();
+  num_session_prms = 0;
+  for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
+    {
+      if (PRM_IS_FOR_SESSION (GET_PRM (i)))
+	{
+	  assert (prm_Def_session_idx[i] == num_session_prms);
+	  sprm = &cached_session_parameters[num_session_prms++];
+	  sprm->prm_id = (PARAM_ID) i;
+	  sprm->flag = (GET_PRM (i)->dynamic_flag);
+	  sprm->datatype = GET_PRM (i)->datatype;
+	  sysprm_set_sysprm_value_from_parameter (&sprm->value, GET_PRM (i));
+	  sysprm_update_session_prm_flag_allocated (sprm);
+	}
+      else
+	{
+	  assert (prm_Def_session_idx[i] == -1);
+	}
+    }
+}
+#endif /* CS_MODE */
+
 /*
  * sysprm_load_and_init_internal - Read system parameters from the init files
  *   return: NO_ERROR or ER_FAILED
@@ -6568,31 +6641,7 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
     }
 
 #if defined (CS_MODE)
-  /* cache session parameters */
-  if (cached_session_parameters != NULL)
-    {
-      /* free previous cache */
-      sysprm_free_session_parameters (&cached_session_parameters);
-    }
-  cached_session_parameters = sysprm_alloc_session_parameters ();
-  num_session_prms = 0;
-  for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
-    {
-      if (PRM_IS_FOR_SESSION (GET_PRM (i)))
-	{
-	  assert (prm_Def_session_idx[i] == num_session_prms);
-	  sprm = &cached_session_parameters[num_session_prms++];
-	  sprm->prm_id = (PARAM_ID) i;
-	  sprm->flag = (GET_PRM (i)->dynamic_flag);
-	  sprm->datatype = GET_PRM (i)->datatype;
-	  sysprm_set_sysprm_value_from_parameter (&sprm->value, GET_PRM (i));
-	  sysprm_update_session_prm_flag_allocated (sprm);
-	}
-      else
-	{
-	  assert (prm_Def_session_idx[i] == -1);
-	}
-    }
+  sysprm_load_session_parameters ();
 #endif /* CS_MODE */
 
 #if !defined(NDEBUG)
