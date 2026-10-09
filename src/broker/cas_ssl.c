@@ -25,6 +25,8 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <errno.h>
 #include <signal.h>
 #include <assert.h>
 #include <time.h>
@@ -195,11 +197,28 @@ cas_init_ssl (int sd)
     }
 
   err_code = SSL_accept (ssl);
-  if (err_code < 0)
+  if (err_code <= 0)		/* 0 is a failed handshake too */
     {
-      err_code = SSL_get_error (ssl, err_code);
+      int saved_errno = errno;
+      int ssl_error = SSL_get_error (ssl, err_code);
+
       err = ERR_get_error ();
-      cas_log_write_and_end (0, true, "SSL: Accept failed - '%s'", ERR_error_string (err, NULL));
+      if (err != 0)
+	{
+	  cas_log_write_and_end (0, true, "SSL: Accept failed - '%s'", ERR_error_string (err, NULL));
+	}
+      else if (ssl_error == SSL_ERROR_SYSCALL && saved_errno != 0)
+	{
+	  cas_log_write_and_end (0, true, "SSL: Accept failed - %s", strerror (saved_errno));
+	}
+      else
+	{
+	  /* Nothing queued and no errno: the client closed the connection before or during the handshake, as a
+	   * driver does when it cannot read its own trust anchors. */
+	  cas_log_write_and_end (0, true,
+				 "SSL: Accept failed - the client closed the connection during the TLS handshake");
+	}
+      ERR_clear_error ();
       SSL_free (ssl);
       ssl = NULL;
       return ER_SSL_GENERAL;
