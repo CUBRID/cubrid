@@ -41,6 +41,7 @@ option (UNIT_TEST_LOADDB "Unit testing: loaddb module")
 option (UNIT_TEST_MEMORY_MONITOR "Unit testing: memory monitor")
 option (UNIT_TEST_DOUBLE_WRITE_BUFFER "Unit testing: double write buffer")
 option (UNIT_TEST_JSON_BUILDER "Unit testing: JSON tree building for plan output")
+option (UNIT_TEST_LOG_WRITESET "Unit testing: writeset collection and global commit history")
 
 message("  unit_tests/...")
 
@@ -96,6 +97,11 @@ if (UNIT_TESTS OR UNIT_TEST_PACKING)
   message("    packing")
   add_subdirectory(packing)
 endif(UNIT_TESTS OR UNIT_TEST_PACKING)
+
+if (UNIT_TESTS OR UNIT_TEST_LOG_WRITESET)
+  message("    writeset")
+  add_subdirectory(writeset)
+endif(UNIT_TESTS OR UNIT_TEST_LOG_WRITESET)
 
 if (UNIT_TESTS OR UNIT_TEST_OBJECT_FACTORY)
   message("    object_factory")
