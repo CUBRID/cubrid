@@ -65,9 +65,10 @@ void mmon_finalize ()
 #if (MMON_DEBUG_LEVEL == 1) || (MMON_DEBUG_LEVEL == 3)
       mmon_Gl->print_debug_result ();
 #endif
+      // disable first: every C++ allocation now reaches the memory monitor, so it must not be used while deleted
+      mmon_disabled = true;
       delete mmon_Gl;
       mmon_Gl = nullptr;
-      mmon_disabled = true;
     }
 }
 
