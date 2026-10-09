@@ -330,9 +330,6 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   assert (manager != NULL);
 
   HASHJOIN_STATS *stats = manager->single_context.stats;
-#if HASHJOIN_PROFILE_TIME
-  HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#endif /* HASHJOIN_PROFILE_TIME */
   assert (!thread_is_on_trace (thread_p) || stats != NULL);
 
   context_cnt = manager->context_cnt;
@@ -364,31 +361,8 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	  hjoin_trace_merge_stats (stats, current_context->stats, manager->single_context.status);
 	}
 
-      if (current_context->list_id == NULL)
-	{
-	  error = er_errid ();
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	  else
-	    {
-	      /* list_id can be NULL when the join result is empty.
-	       * In this case, it is NO_ERROR. */
-	      continue;
-	    }
-	}
-
-      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_MERGE);
-      error = hjoin_merge_qlist (thread_p, manager, current_context);
-      HJOIN_PROFILE_MERGE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_MERGE,
-			       (manager->single_context.list_id !=
-				nullptr) ? manager->single_context.list_id->tuple_cnt : 0);
-
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
+      /* the result went to result_list_id, so there is no list of the partition to merge */
+      assert (current_context->list_id == NULL);
     }
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -466,7 +440,7 @@ hjoin_execute_subpartitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager
 
   assert (sub_cnt > 1);
 
-  /* number of partitions of the first split, which took the high part of hash * divisor (HJOIN_HASH_TO_PARTITION) */
+  /* partitions of the first split, which took the high part of mixed key * divisor (HJOIN_HASH_TO_PARTITION) */
   divisor = manager->context_cnt - (IS_OUTER_JOIN_TYPE (manager->join_type) ? 1 : 0);
 
   sub_contexts = (HASHJOIN_CONTEXT *) db_private_alloc (thread_p, sub_cnt * sizeof (HASHJOIN_CONTEXT));
@@ -649,8 +623,8 @@ hjoin_resplit_qlist (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_LIS
 	{
 	  hash_key = (UINT32) OR_GET_INT (hjoin_locate_tuple_hash_key (&tuple_record));
 
-	  /* the position of the key within its partition of the first split */
-	  sub_hash_key = (UINT32) ((UINT64) hash_key * divisor);
+	  /* the position of the mixed key within its partition of the first split */
+	  sub_hash_key = (UINT32) ((UINT64) HJOIN_HASH_MIX (hash_key) * divisor);
 
 	  error = part_writer.add (HJOIN_HASH_TO_PARTITION (sub_hash_key, part_cnt), tuple_record.tpl);
 	  if (error != NO_ERROR)
@@ -2040,7 +2014,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
       else
 	{
 	  hash_key = qdata_hash_scan_key (temp_key, UINT_MAX, HASH_METH_IN_MEM);
-	  part_id = HJOIN_HASH_TO_PARTITION (hash_key, (is_outer_join) ? part_cnt - 1 : part_cnt);
+	  part_id = HJOIN_HASH_TO_PARTITION (HJOIN_HASH_MIX (hash_key), (is_outer_join) ? part_cnt - 1 : part_cnt);
 
 	  hjoin_update_tuple_hash_key (thread_p, &tuple_record, hash_key);
 	}

@@ -337,7 +337,8 @@ namespace parallel_query
 	      else
 		{
 		  hash_key = qdata_hash_scan_key (temp_key, UINT_MAX, HASH_METH_IN_MEM);
-		  part_id = HJOIN_HASH_TO_PARTITION (hash_key, (is_outer_join) ? part_cnt - 1 : part_cnt);
+		  part_id = HJOIN_HASH_TO_PARTITION (HJOIN_HASH_MIX (hash_key),
+						     (is_outer_join) ? part_cnt - 1 : part_cnt);
 
 		  hjoin_update_tuple_hash_key (&thread_ref, &tuple_record, hash_key);
 		}

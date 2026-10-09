@@ -255,8 +255,12 @@ error_exit:
 
 	  if (!task_manager.has_error () && error == NO_ERROR)
 	    {
+	      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_MERGE);
 	      error = hjoin_merge_qlist_into (&thread_ref, manager, &manager->single_context.list_id,
 					      &shared_info.result_list_ids[task_index]);
+	      HJOIN_PROFILE_MERGE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_MERGE,
+				       (manager->single_context.list_id != nullptr)
+				       ? manager->single_context.list_id->tuple_cnt : 0);
 	    }
 
 	  if (shared_info.result_list_ids[task_index] != nullptr)
@@ -300,40 +304,8 @@ error_exit:
 	      hjoin_trace_merge_stats (stats, current_context->stats, manager->single_context.status);
 	    }
 
-	  if (current_context->list_id == nullptr)
-	    {
-	      error = er_errid ();
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-	      else
-		{
-		  /* list_id can be NULL when the join result is empty.
-		   * In this case, it is NO_ERROR. */
-		  continue;
-		}
-	    }
-
-	  if (current_context->list_id->tuple_cnt == 0)
-	    {
-	      qfile_destroy_list (&thread_ref, current_context->list_id);
-	      QFILE_FREE_AND_INIT_LIST_ID (current_context->list_id);
-
-	      /* empty context */
-	      continue;
-	    }
-
-	  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_MERGE);
-	  error = hjoin_merge_qlist (&thread_ref, manager, current_context);
-	  HJOIN_PROFILE_MERGE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_MERGE,
-				   (manager->single_context.list_id != nullptr) ? manager->single_context.list_id->tuple_cnt : 0);
-
-	  if (error != NO_ERROR)
-	    {
-	      assert_release_error (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
+	  /* the result went to the result list of a task, merged above */
+	  assert (current_context->list_id == nullptr);
 	}
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();

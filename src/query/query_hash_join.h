@@ -285,9 +285,13 @@ typedef struct hashjoin_fetch_info
   REGU_VARIABLE_LIST regu_list_pred;
 } HASHJOIN_FETCH_INFO;
 
-/* Partition of a hash key, taken from its high bits. A hash table takes its slot from the low bits of the same key
- * (mht_put_hls_internal), so partitioning by the low bits would leave each partition few distinct slots. */
-#define HJOIN_HASH_TO_PARTITION(hash_key, part_cnt) ((UINT32) (((UINT64) (hash_key) * (part_cnt)) >> 32))
+/* Hash key mixed for partitioning. The string hashes (ADD_TO_HASH, mht_2str_pseudo_key) clear the top 4 bits, so the
+ * high bits of a raw key would put every string key into the first partitions. */
+#define HJOIN_HASH_MIX(hash_key) ((UINT32) ((UINT32) (hash_key) * 0x9E3779B1U))
+
+/* Partition of a mixed hash key, taken from its high bits. A hash table takes its slot from the low bits of the raw
+ * key (mht_put_hls_internal), so partitioning by the low bits would leave each partition few distinct slots. */
+#define HJOIN_HASH_TO_PARTITION(mixed_key, part_cnt) ((UINT32) (((UINT64) (mixed_key) * (part_cnt)) >> 32))
 
 /* HASHJOIN_INPUT_SPLIT_INFO */
 typedef struct hashjoin_input_split_info
