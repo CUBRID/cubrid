@@ -388,6 +388,7 @@ typedef enum
 typedef enum
 {
   PLANDUMP_MSG_BAD_OUTPUT = 15,
+  PLANDUMP_MSG_BAD_OPTION = 16,
   PLANDUMP_MSG_NOT_IN_STANDALONE = 59,
   PLANDUMP_MSG_USAGE = 60
 } MSGCAT_PLANDUMP_MSG;
@@ -1322,6 +1323,8 @@ typedef struct _ha_config
 #define PLANDUMP_OUTPUT_FILE_L                  "output-file"
 #define PLANDUMP_SHA1_S		        	's'
 #define PLANDUMP_SHA1_L                  	"sha1"
+#define PLANDUMP_DROP_CLONE_S			'c'
+#define PLANDUMP_DROP_CLONE_L			"drop-clone"
 
 /* tranlist option list */
 #if defined(NEED_PRIVILEGE_PASSWORD)
