@@ -8113,6 +8113,15 @@ db_get_string_length (const DB_VALUE * value)
   if (value->domain.general_info.type != DB_TYPE_BIT && value->domain.general_info.type != DB_TYPE_VARBIT)
     {
       intl_char_count ((unsigned char *) str, size, codeset, &length);
+
+      /* Keep the count. The slot was read above but nothing ever filled it, so every
+       * caller walked the same bytes again -- a CHAR value is counted once to decide
+       * the coercion and once more to decide the trailing-space padding.
+       * The count is a function of (buf, size, codeset) alone, and every constructor
+       * of a string value resets this slot together with those three, so a remembered
+       * count cannot outlive the bytes it was counted from. The value is const to the
+       * caller because the count it stands for does not change; only the memo does. */
+      CONST_CAST (DB_VALUE *, value)->data.ch.medium.length = length;
     }
 
   return length;
