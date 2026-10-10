@@ -237,14 +237,14 @@ au_set_get_obj (DB_SET * set, int index, MOP * obj)
 }
 
 /*
- * au_dump_auth() - Prints authorization info for all users.
+ * au_dump_auth() - Prints authorization info for the users visible in db_user.
  *   return: none
  *   fp(in): output file
  *
  * Note: The db_root class used to have a user attribute which was a set
  *       containing the object-id for all users.  The users attribute has been
  *       eliminated for performance reasons.  A query on the _db_user class is
- *       new used to find all users.
+ *       now used to find the users visible in db_user.
  */
 void
 au_dump_auth (FILE * fp)
@@ -371,7 +371,7 @@ au_dump_user (MOP user, FILE * fp)
  * Note: The db_root class used to have a user attribute which was a set
  *       containing the object-id for all users.  The users attribute has been
  *       eliminated for performance reasons.  A query on the _db_user class is
- *       new used to find all users.
+ *       now used to find the users visible in db_user.
  */
 void
 au_dump_to_file (FILE * fp)
