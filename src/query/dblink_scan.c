@@ -1210,7 +1210,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
   T_CCI_DATE date_time;		/* for date or time type */
   T_CCI_DATE_TZ date_time_tz;	/* for date or time with zone */
   void *value;			/* for any other type */
-  DB_VALUE cci_value = { 0 };	/* from cci interface */
+  DB_VALUE cci_value = { };	/* from cci interface */
   QPROC_DB_VALUE_LIST valptrp;
   T_CCI_COL_INFO *col_info = (T_CCI_COL_INFO *) scan_info->col_info;
 

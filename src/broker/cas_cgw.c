@@ -199,7 +199,7 @@ static void cgw_post_db_connect (void *context, struct timeval *cas_start_time, 
 				 char *db_name, char *db_user, const char *url, bool is_new_connection);
 static void cgw_cleanup_session (void);
 
-static void cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info);
+static void cas_send_connect_reply_to_driver (T_BROKER_VERSION protocol, SOCKET client_sock_fd, char *cas_info);
 static FN_RETURN process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOCKET srv_sock_fd);
 
 
@@ -259,7 +259,7 @@ main (int argc, char *argv[])
 static int
 cgw_cas_main (void)
 {
-  CGW_CONTEXT cgw_ctx = { 0 };
+  CGW_CONTEXT cgw_ctx = { };
   CAS_MAIN_OPS ops = {
     .init_specific = cgw_init,	/* CGW specific initialization */
     .pre_db_connect = cgw_pre_db_connect,
@@ -289,7 +289,7 @@ cgw_cas_main (void)
 }
 
 static void
-cas_send_connect_reply_to_driver (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info)
+cas_send_connect_reply_to_driver (T_BROKER_VERSION protocol, SOCKET client_sock_fd, char *cas_info)
 {
   char msgbuf[CAS_CONNECTION_REPLY_SIZE + 8];
   char *p = msgbuf;

@@ -515,7 +515,7 @@ static HEAP_CHNGUESS heap_Guesschn_area = { NULL, NULL, NULL, false, 0,
 static HEAP_CHNGUESS *heap_Guesschn = NULL;
 
 static HEAP_HFID_TABLE heap_Hfid_table_area = { LF_HASH_TABLE_INITIALIZER, LF_ENTRY_DESCRIPTOR_INITIALIZER,
-  LF_FREELIST_INITIALIZER, false
+  LF_FREELIST_INITIALIZER, false, 0
 };
 
 static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
@@ -9892,7 +9892,7 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
       }
 
     /* 5. merge the per-worker partials, then derive the 8 outputs */
-    HEAP_CAPACITY_ACCUM total = { 0 };
+    HEAP_CAPACITY_ACCUM total = { };
     int last_page_freespace = 0;
 
     for (int i = 0; i < n_workers; i++)
@@ -9972,7 +9972,7 @@ static int
 heap_get_capacity_serial (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAPACITY_INFO * capacity)
 {
   VPID vpid;			/* Page-volume identifier */
-  HEAP_CAPACITY_ACCUM accum = { 0 };
+  HEAP_CAPACITY_ACCUM accum = { };
   int last_freespace = 0;
   int ret = NO_ERROR;
   PGBUF_WATCHER pg_watcher;
@@ -15428,7 +15428,7 @@ exit:
 int
 heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * hfid)
 {
-  HEAP_CAPACITY_INFO capacity = { 0 };
+  HEAP_CAPACITY_INFO capacity = { };
   HEAP_CACHE_ATTRINFO attr_info;
   FILE_DESCRIPTORS fdes;
 
@@ -19187,7 +19187,7 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
   char *classname = NULL;
   char class_oid_str[64] = { 0 };
   bool is_heap_attrinfo_started = false;
-  HEAP_CAPACITY_INFO capacity = { 0 };
+  HEAP_CAPACITY_INFO capacity = { };
   int val = 0;
   int idx = 0;
   FILE_DESCRIPTORS fdes;

@@ -7942,6 +7942,10 @@ btree_get_stats_with_fullscan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
   assert (env != NULL);
   assert (env->stat_info != NULL);
 
+  /* set before any goto: the exit_on_error path falls through to "end",
+   * which unfixes the pages held by BTS. */
+  BTS = &(env->btree_scan);
+
   mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
   if (mvcc_snapshot == NULL)
     {
@@ -7949,7 +7953,6 @@ btree_get_stats_with_fullscan (THREAD_ENTRY * thread_p, BTREE_STATS_ENV * env)
       goto exit_on_error;
     }
 
-  BTS = &(env->btree_scan);
   BTS->use_desc_index = 0;	/* get the left-most leaf page */
 
   ret = btree_find_lower_bound_leaf (thread_p, BTS, env->stat_info);

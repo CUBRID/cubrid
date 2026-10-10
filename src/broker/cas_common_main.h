@@ -90,8 +90,8 @@ typedef void (*cas_db_post_connect_fn_t) (void *context, struct timeval * cas_st
 typedef void (*cas_cleanup_session_fn_t) (void);
 typedef FN_RETURN (*cas_process_request_fn_t) (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 					       SOCKET srv_sock_fd);
-typedef void (*cas_set_session_id_fn_t) (T_CAS_PROTOCOL protocol, char *session);
-typedef void (*cas_send_connect_reply_fn_t) (T_CAS_PROTOCOL protocol, SOCKET client_sock_fd, char *cas_info);
+typedef void (*cas_set_session_id_fn_t) (T_BROKER_VERSION protocol, char *session);
+typedef void (*cas_send_connect_reply_fn_t) (T_BROKER_VERSION protocol, SOCKET client_sock_fd, char *cas_info);
 
 /* cas_main() operations structure */
 typedef struct

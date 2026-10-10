@@ -3066,7 +3066,7 @@ pt_conv_values_2_hash_text (PARSER_CONTEXT * parser, const PT_NODE * node)
   parser->print_db_value = saved_print_db_value;
   parser->flag.dont_prt_long_string = saved_dont_prt_long_string;
 
-  if (values_str == NULL || values_str->bytes == NULL || values_str->length <= 0)
+  if (values_str == NULL || values_str->length <= 0)
     {
       return NULL;
     }
@@ -14999,7 +14999,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print |= PT_PRINT_ALIAS;
 
       is_first_list = true;
-      for (temp = temp; temp; temp = temp->next)
+      for (; temp; temp = temp->next)
 	{
 	  if (!is_first_list)
 	    {

@@ -668,8 +668,11 @@ db_timestamp_encode_utc (const DB_DATE * date, const DB_TIME * timeval, DB_TIMES
   /* The first item adds the days off all the years between 1970 and the given year considering that each year has 365
    * days. The second item adds a day every 4 years starting from 1973. The third item subtracts a day back out every
    * 100 years starting with 2001. The fourth item adds a day back every 400 years starting with 2001 */
-  t = ((year - 70) * secs_in_a_year + ((year - 69) / 4) * secs_per_day - ((year - 1) / 100) * secs_per_day
-       + ((year + 299) / 400) * secs_per_day);
+  /* Compute in DB_BIGINT: the int expression this replaced overflowed for years near the
+   * year_max_epoch guard above, and the "t < 0" test below then inspected the result of
+   * that signed overflow. Widening keeps t exact, so the existing range test is correct. */
+  t = ((DB_BIGINT) (year - 70)) * secs_in_a_year + ((year - 69) / 4) * secs_per_day
+    - ((year - 1) / 100) * secs_per_day + ((year + 299) / 400) * secs_per_day;
 
   if (mon > TZ_MON_JAN)
     {
@@ -4585,8 +4588,7 @@ db_subtract_int_from_datetime (DB_DATETIME * dt1, DB_BIGINT bi2, DB_DATETIME * r
 
   bi1 = ((DB_BIGINT) dt1->date) * MILLISECONDS_OF_ONE_DAY + dt1->time;
 
-  result_bi = bi1 - bi2;
-  if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, result_bi))
+  if (OR_SUB_OVERFLOW (bi1, bi2, &result_bi))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
       return ER_QPROC_TIME_UNDERFLOW;
@@ -4629,8 +4631,7 @@ db_add_int_to_datetime (DB_DATETIME * datetime, DB_BIGINT bi2, DB_DATETIME * res
 
   bi1 = ((DB_BIGINT) datetime->date) * MILLISECONDS_OF_ONE_DAY + datetime->time;
 
-  result_bi = bi1 + bi2;
-  if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result_bi))
+  if (OR_ADD_OVERFLOW (bi1, bi2, &result_bi))
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_TIME_UNDERFLOW, 0);
       return ER_QPROC_TIME_UNDERFLOW;
