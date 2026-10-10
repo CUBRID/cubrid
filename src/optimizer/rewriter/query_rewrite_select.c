@@ -3848,6 +3848,212 @@ qo_rewrite_innerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
   return node;
 }
 
+/* argument classification for a CONNECT BY predicate side (see pt_split_hash_attrs_for_HQ) */
+typedef struct qo_hq_arg_class
+{
+  bool has_prior;		/* references a PRIOR expression */
+  bool has_name;		/* references a column outside of PRIOR */
+} QO_HQ_ARG_CLASS;
+
+/*
+ * qo_hq_classify_arg_walker () - marks PRIOR references (without descending
+ *   into them) and bare column references of a CONNECT BY predicate side
+ */
+static PT_NODE *
+qo_hq_classify_arg_walker (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk)
+{
+  QO_HQ_ARG_CLASS *c = (QO_HQ_ARG_CLASS *) void_arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (tree, PT_PRIOR) || PT_IS_EXPR_NODE_WITH_OPERATOR (tree, PT_QPRIOR))
+    {
+      c->has_prior = true;
+      /* names under PRIOR are parent-row constants, not scan columns */
+      *continue_walk = PT_LIST_WALK;
+    }
+  else if (PT_IS_NAME_NODE (tree))
+    {
+      c->has_name = true;
+    }
+
+  return tree;
+}
+
+/*
+ * qo_hq_op_except_prior_walker () - detects hierarchical operators other than
+ *   PRIOR (LEVEL, CONNECT_BY_ISLEAF, ...); such terms are evaluated in the
+ *   CONNECT BY proc and can use neither an index nor a hash
+ */
+static PT_NODE *
+qo_hq_op_except_prior_walker (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+
+  if (node->node_type == PT_EXPR && PT_CHECK_HQ_OP_EXCEPT_PRIOR (node->info.expr.op))
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * qo_hq_is_hashable_eq_term () - checks one PT_EQ conjunct of a CONNECT BY
+ *   predicate: one side a pure PRIOR expression (probe), the other a pure scan
+ *   column expression (build), without other hierarchical operators
+ *   return: whether the hash list scan can use the conjunct as a key
+ *   build_name(out): the build side when it is a bare column, NULL otherwise
+ * Note: mirrors pt_split_hash_attrs_for_HQ / CHECK_HASH_ATTR, where a side
+ *       carrying both PRIOR and a column is unhashable and a constant side
+ *       gives no parent-child link.
+ */
+static bool
+qo_hq_is_hashable_eq_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE ** build_name)
+{
+  bool has_hq_op = false;
+  QO_HQ_ARG_CLASS c1 = { false, false };
+  QO_HQ_ARG_CLASS c2 = { false, false };
+  PT_NODE *save_next = term->next;
+  PT_NODE *build;
+
+  *build_name = NULL;
+
+  term->next = NULL;
+  (void) parser_walk_tree (parser, term, qo_hq_op_except_prior_walker, &has_hq_op, NULL, NULL);
+  term->next = save_next;
+  if (has_hq_op)
+    {
+      return false;
+    }
+
+  (void) parser_walk_tree (parser, term->info.expr.arg1, qo_hq_classify_arg_walker, &c1, NULL, NULL);
+  (void) parser_walk_tree (parser, term->info.expr.arg2, qo_hq_classify_arg_walker, &c2, NULL, NULL);
+
+  if (c1.has_prior && !c1.has_name && c2.has_name && !c2.has_prior)
+    {
+      build = term->info.expr.arg2;
+    }
+  else if (c1.has_name && !c1.has_prior && c2.has_prior && !c2.has_name)
+    {
+      build = term->info.expr.arg1;
+    }
+  else
+    {
+      return false;
+    }
+
+  if (PT_IS_NAME_NODE (build))
+    {
+      *build_name = build;
+    }
+
+  return true;
+}
+
+/*
+ * qo_hq_index_leads_with () - checks whether a normal index of the class has
+ *   the given column as its first attribute
+ */
+static bool
+qo_hq_index_leads_with (SM_CLASS_CONSTRAINT * constraints, PT_NODE * name)
+{
+  SM_CLASS_CONSTRAINT *cons;
+
+  for (cons = constraints; cons != NULL; cons = cons->next)
+    {
+      if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type) && cons->index_status == SM_NORMAL_INDEX
+	  && cons->attributes != NULL && cons->attributes[0] != NULL
+	  && intl_identifier_casecmp (name->info.name.original, cons->attributes[0]->header.name) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_hq_has_hashable_eq_term () - checks the CONNECT BY predicate (still an
+ *   AND parse tree at rewrite time) for a hashable equality conjunct
+ *   return: with constraints NULL, whether any conjunct is hashable; otherwise
+ *           whether a hashable conjunct's bare build column leads one of the
+ *           given indexes
+ */
+static bool
+qo_hq_has_hashable_eq_term (PARSER_CONTEXT * parser, PT_NODE * pred, SM_CLASS_CONSTRAINT * constraints)
+{
+  PT_NODE *build_name;
+
+  /* the predicate is an AND parse tree at rewrite time, but iterate a
+   * conjunct (->next) list too in case it was already normalized */
+  for (; pred != NULL; pred = pred->next)
+    {
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_AND))
+	{
+	  if (qo_hq_has_hashable_eq_term (parser, pred->info.expr.arg1, constraints)
+	      || qo_hq_has_hashable_eq_term (parser, pred->info.expr.arg2, constraints))
+	    {
+	      return true;
+	    }
+	  continue;
+	}
+
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_EQ) && pred->or_next == NULL
+	  && qo_hq_is_hashable_eq_term (parser, pred, &build_name))
+	{
+	  if (constraints == NULL || (build_name != NULL && qo_hq_index_leads_with (constraints, build_name)))
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_hq_prefer_hash_over_single_table () - decides whether a single-table
+ *   CONNECT BY should give up the single-table optimization in favor of the
+ *   generic path, whose hash list scan finds children in O(N+E) instead of
+ *   rescanning the table for every parent row
+ *   return: true to use the generic (materialize + hash list scan) path
+ * Note: the single-table plan is kept only when an index leads with the bare
+ *       build-side column of a hashable equality, since only such an index
+ *       can serve the per-parent child lookup; an expression over the column
+ *       (PRIOR id = pid + 0) cannot use any index.
+ */
+static bool
+qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
+{
+  PT_NODE *connect_by = node->info.query.q.select.connect_by;
+  SM_CLASS_CONSTRAINT *constraints;
+
+  /* the user asked for the single-table plan shape explicitly */
+  if (node->info.query.q.select.hint & (PT_HINT_NO_HASH_LIST_SCAN | PT_HINT_USE_IDX | PT_HINT_USE_IDX_DESC))
+    {
+      return false;
+    }
+  if (node->info.query.q.select.using_index != NULL)
+    {
+      return false;
+    }
+
+  if (!qo_hq_has_hashable_eq_term (parser, connect_by, NULL))
+    {
+      return false;
+    }
+
+  constraints = sm_class_constraints (spec->info.spec.entity_name->info.name.db_object);
+  if (constraints != NULL && qo_hq_has_hashable_eq_term (parser, connect_by, constraints))
+    {
+      return false;
+    }
+
+  return true;
+}
+
 /*
  * qo_check_generate_single_tbl_connect_by () - checks a SELECT ... CONNECT BY
  *                                              query for single-table
@@ -3924,6 +4130,14 @@ qo_check_generate_single_tbl_connect_by (PARSER_CONTEXT * parser, PT_NODE * node
     {
       return false;
     }
+
+  if (qo_hq_prefer_hash_over_single_table (parser, node, spec))
+    {
+      /* no index can serve the child lookups: the generic path finds children
+       * by hash instead of rescanning the table per parent row */
+      return false;
+    }
+
   return true;
 }
 
