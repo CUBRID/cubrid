@@ -1865,10 +1865,14 @@ namespace parallel_scan
 
     if (unlikely (!m_task_started))
       {
+	/* snapshot precomputed scalar values for worker injection; unconditional so a single-table scan injects too
+	 * instead of re-executing per worker. Every gather mode needs it, the row-by-row XASL_SNAPSHOT included: its
+	 * workers evaluate the scan predicate too, and a worker that finds no value re-executes the subquery
+	 * (CBRD-27588: NEXT_VALUE ran once per worker). */
+	m_pre_execution_info.capture_precomp_vals (m_xasl);
+
 	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
 	  {
-	    /* snapshot precomputed scalar values for worker injection; unconditional so a single-table scan injects too instead of re-executing per worker. */
-	    m_pre_execution_info.capture_precomp_vals (m_xasl);
 	    if (m_xasl->scan_ptr)
 	      {
 		m_pre_execution_info.capture_pre_execution_info (m_xasl);
