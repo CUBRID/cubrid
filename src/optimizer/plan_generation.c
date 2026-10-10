@@ -1885,6 +1885,13 @@ make_pred_from_plan (QO_ENV * env, QO_PLAN * plan, PT_NODE ** key_predp, PT_NODE
 	{
 	  bitset_add (&(plan->sarged_terms), qo_index_infop->need_copy_multi_range_term);
 	}
+      else if (qo_index_infop->need_copy_multi_range_term != -1
+	       && QO_TERM_IS_FLAGED (QO_ENV_TERM (env, qo_index_infop->need_copy_multi_range_term),
+				     QO_TERM_CALLS_SQL_CAPABLE_SP))
+	{
+	  /* never in the key filter (CBRD-27591); qo_index_scan_new () made this scan non-covering */
+	  bitset_add (&(plan->sarged_terms), qo_index_infop->need_copy_multi_range_term);
+	}
       else if (qo_index_infop->need_copy_multi_range_term != -1)
 	{
 	  index_entryp = qo_index_infop->ni_entry->head;
@@ -2433,10 +2440,12 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		{
 		  bitset_add (&taj_terms, i);
 		}
-	      else if (is_normal_access_term (term))
+	      else if (is_normal_access_term (term) && !QO_TERM_IS_FLAGED (term, QO_TERM_CALLS_SQL_CAPABLE_SP))
 		{
 		  /* Check if join term can be pushed to key filter instead of sargable terms. The index used for inner
-		   * index scan must include all term segments that belong to inner node */
+		   * index scan must include all term segments that belong to inner node. A term that calls an SP able to
+		   * run SQL stays a data filter of the inner, whose scan is then neither covering nor multi-range
+		   * optimized (qo_iscan_has_sql_capable_sp_filter, CBRD-27591). */
 		  if (qo_is_index_covering_scan (inner) || qo_plan_multi_range_opt (inner))
 		    {
 		      /* Coverage indexes and indexes using multi range optimization are certified to include segments
@@ -4997,6 +5006,12 @@ qo_check_terms_for_multiple_range_opt (QO_PLAN * plan, int first_sort_col_idx, b
 	}
     }
   free_and_init (used_cols);
+
+  if (qo_iscan_has_sql_capable_sp_filter (plan))
+    {
+      /* a data filter would drop rows after the top rows are chosen (CBRD-27591) */
+      return NO_ERROR;
+    }
 
   /* check all segments in all terms in environment for data filter */
   for (t = 0; t < env->nterms; t++)

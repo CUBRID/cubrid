@@ -140,6 +140,7 @@ namespace cubthread
 #if !defined (NDEBUG)
     , fi_test_array (NULL)
     , count_private_allocators (0)
+    , m_callback_wait_seq (0)
 #endif /* DEBUG */
     , m_qlist_count (0)
     , read_ovfl_pages_count (0) // For Vacuum only.

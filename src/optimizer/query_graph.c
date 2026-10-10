@@ -186,6 +186,9 @@ static bool is_dependent_table (PT_NODE * entity);
 static void get_term_subqueries (QO_ENV * env, QO_TERM * term);
 static void get_term_rank (QO_ENV * env, QO_TERM * term);
 static PT_NODE *check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+#if defined (CS_MODE)
+static PT_NODE *check_sql_capable_sp_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+#endif /* CS_MODE */
 static bool is_local_name (QO_ENV * env, PT_NODE * expr);
 static void get_local_subqueries (QO_ENV * env, PT_NODE * tree);
 static PT_NODE *get_local_subqueries_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -1786,6 +1789,20 @@ qo_add_term (PT_NODE * conjunct, int term_type, QO_ENV * env)
   if (conjunct->node_type == PT_EXPR)
     {
       (void) qo_analyze_term (term, term_type);
+
+#if defined (CS_MODE)
+      /* An SP that may run SQL is any SP not declared PARALLEL_ENABLE, as for the parallel hash join. Decided once
+       * per term here; qo_index_scan_new () keeps such a term out of a key filter (CBRD-27591). Only a server runs
+       * the SP's SQL on another worker, the one that waits for the latch: SA_MODE runs it on the scanning thread. */
+      bool calls_sql_capable_sp = false;
+
+      (void) parser_walk_tree (QO_ENV_PARSER (env), conjunct, check_sql_capable_sp_pre, &calls_sql_capable_sp, NULL,
+			       NULL);
+      if (calls_sql_capable_sp)
+	{
+	  QO_TERM_SET_FLAG (term, QO_TERM_CALLS_SQL_CAPABLE_SP);
+	}
+#endif /* CS_MODE */
     }
   else
     {
@@ -3740,6 +3757,31 @@ check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
   return node;			/* leave node unchanged */
 
 }
+
+#if defined (CS_MODE)
+/*
+ * check_sql_capable_sp_pre () - Pre routine to find in a term an SP that may run SQL
+ *   return: PT_NODE *
+ *   parser(in): parser environment
+ *   node(in): node to check
+ *   arg(in/out): bool *, set when such an SP is found
+ *   continue_walk(in/out):
+ *
+ * Note: A subquery is not searched: an uncorrelated one runs before the scan, and a correlated one already keeps its
+ *	 term out of a key filter.
+ */
+static PT_NODE *
+check_sql_capable_sp_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (PT_IS_QUERY (node))
+    {
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  return qo_check_method_call_parallel_eligibility (parser, node, arg, continue_walk);
+}
+#endif /* CS_MODE */
 
 /*
  * is_local_name () -

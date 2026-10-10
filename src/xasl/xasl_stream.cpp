@@ -98,6 +98,7 @@ stx_init_xasl_unpack_info (THREAD_ENTRY *thread_p, char *xasl_stream, int xasl_s
   unpack_info->alloc_buf = (char *) unpack_info + head_offset;
   unpack_info->additional_buffers = NULL;
   unpack_info->track_allocated_bufers = 0;
+  unpack_info->has_sql_capable_sp = false;
 #if defined (SERVER_MODE)
   unpack_info->thrd = thread_p;
 #endif /* SERVER_MODE */
