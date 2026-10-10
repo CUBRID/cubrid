@@ -327,9 +327,11 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
       /* always create new session for old drivers */
       char key[] =
 	{ (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF, (char) 0xFF };
+      char secret[SESSION_SECRET_SIZE] = { 0 };
 
       cas_log_write_and_end (0, false, "session id (old protocol) for connection 0");
       db_set_server_session_key (key);
+      db_set_session_secret (secret);
       db_set_session_id (DB_EMPTY_SESSION);
     }
 }
