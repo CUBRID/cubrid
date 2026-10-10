@@ -301,11 +301,12 @@ namespace parallel_scan
 			  }
 		      }
 
-		    /* a partitioned SEMI / ANTI inner is not advanced partition by partition by the main thread's
-		     * scan-block iteration (qexec_next_scan_block_iterations skips it); qexec_execute_scan walks
-		     * every partition per outer row itself, so the clone needs the pruned partition list the main
-		     * thread got in qexec_open_scan, or it probes only the one captured partition (CBRD-27485) */
-		    if ((thread_ref.on_trace || XASL_IS_NL_SEMI_OR_ANTI (xptr))
+		    /* a partitioned SEMI / ANTI inner, or a following join after one (CBRD-27493), is not advanced
+		     * partition by partition by the main thread's scan-block iteration
+		     * (qexec_next_scan_block_iterations skips it); qexec_execute_scan walks every partition per outer
+		     * row itself, so the clone needs the pruned partition list the main thread got in qexec_open_scan,
+		     * or it probes only the one captured partition (CBRD-27485) */
+		    if ((thread_ref.on_trace || XASL_IS_PER_OUTER_ROW (xptr))
 			&& HFID_EQ (&xptr->curr_spec->s.cls_node.hfid, &scan_info.hfid) == false)
 		      {
 			err_code = partition_prune_spec (&thread_ref, m_vd, xptr->curr_spec);
@@ -524,8 +525,9 @@ namespace parallel_scan
       {
 	for (xptr = m_xasl; xptr != NULL; xptr = xptr->scan_ptr)
 	  {
-	    /* a partitioned SEMI / ANTI inner that went through its last partition is left with curr_spec
-	     * NULL; point it back at its spec so the record below and qexec_clear_xasl () close its scan */
+	    /* a partitioned SEMI / ANTI inner, or a following join after one (CBRD-27493), that went through its
+	     * last partition is left with curr_spec NULL; point it back at its spec so the record below and
+	     * qexec_clear_xasl () close its scan */
 	    if (xptr->curr_spec == NULL)
 	      {
 		xptr->curr_spec = xptr->spec_list;
@@ -537,10 +539,10 @@ namespace parallel_scan
 	      }
 
 	    /* init btid regardless of parts: initialize () overwrites indexptr->btid with the partition BTID
-	     * even when this clone was not pruned (only trace or a SEMI / ANTI inner prunes it). The clone goes
-	     * back to the shared XASL cache clone pool, and a leader that picks it up would prune the
-	     * partitioned class with a partition BTID, which heap_get_indexinfo_of_btid () rejects without
-	     * setting an error (CBRD-27484). */
+	     * even when this clone was not pruned (only trace, a SEMI / ANTI inner or a following join after one
+	     * prunes it). The clone goes back to the shared XASL cache clone pool, and a leader that picks it up
+	     * would prune the partitioned class with a partition BTID, which heap_get_indexinfo_of_btid ()
+	     * rejects without setting an error (CBRD-27484). */
 	    if (xptr->spec_list->type == TARGET_CLASS && xptr->spec_list->indexptr)
 	      {
 		BTID_COPY (&xptr->spec_list->indexptr->btid, &xptr->spec_list->btid);
