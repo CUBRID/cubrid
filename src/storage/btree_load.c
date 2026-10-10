@@ -150,7 +150,8 @@ struct load_args
   BT_LOAD_PX_OUTCOME px_outcome;	/* Why the parallel build was skipped, or that it ran. */
 
   /* Per-shard subtotals.  Maintained by btree_construct_leafs () on every path, but only ever consumed by
-   * bt_load_px_join_finalize (), which aggregates them to patch the leaf-level seams and build the non-leaf levels. */
+   * bt_load_px_join_finalize (), which aggregates them to patch the leaf-level seams and build the non-leaf levels.
+   * The join also leaves the build's last leaf in the leader's report_last_leaf_vpid for btree_load_check_fk (). */
   VPID report_first_leaf_vpid;
   VPID report_last_leaf_vpid;
   int report_local_max_key_len;
@@ -163,6 +164,9 @@ struct load_args
 };
 #define BT_LOAD_POOL_SPAN_NPAGES 64
 #define BT_LOAD_OVF_REFILL_NPAGES 256
+
+/* er_message keeps a reference to its logging flag; the provider's kept error never logs. */
+static const bool bt_load_er_message_logging = false;
 
 typedef enum bt_load_slot_state
 {
@@ -239,6 +243,8 @@ struct bt_load_provider
   pthread_cond_t *cond_worker;
   pthread_cond_t cond_main;
   int first_error;
+    cuberr::er_message * first_error_msg;	/* Error context of the worker whose failure set first_error; the leader takes
+						 * it once every worker is done. */
   BT_LOAD_SPAN *main_inline_spans;
   BT_LOAD_SPAN *main_inline_current;
   BT_LOAD_SPAN *ovf_inline_spans;
@@ -2982,9 +2988,12 @@ bt_load_provider_claim_page (BT_LOAD_PROVIDER * provider, int worker_idx, bool i
 	}
       if (provider->first_error != NO_ERROR)
 	{
-	  error = provider->first_error;
+	  /* Another worker or the leader failed first and holds the build's error; this worker only stops.  Every
+	   * caller expects a failed claim to leave an error in this thread, so set one.  Only the first failure's
+	   * error reaches the leader (bt_load_worker_epilogue ()). */
 	  pthread_mutex_unlock (&provider->mtx);
-	  return error;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BTREE_LOAD_FAILED, 0);
+	  return ER_BTREE_LOAD_FAILED;
 	}
       span = slot->ready_span;
       slot->ready_span = NULL;
@@ -3046,6 +3055,7 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
   provider->slots = (BT_LOAD_WORKER_SLOT *) calloc ((size_t) n_workers, sizeof (*provider->slots));
   provider->cond_worker = (pthread_cond_t *) malloc ((size_t) n_workers * sizeof (*provider->cond_worker));
   provider->first_error = NO_ERROR;
+  provider->first_error_msg = new cuberr::er_message (bt_load_er_message_logging);
   provider->main_inline_spans = NULL;
   provider->main_inline_current = NULL;
   provider->ovf_inline_spans = NULL;
@@ -3055,7 +3065,7 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
   provider->consumed_pages = 0;
   provider->consumed_ovf_pages = 0;
   provider->returned_pages = 0;
-  if (provider->slots == NULL || provider->cond_worker == NULL)
+  if (provider->slots == NULL || provider->cond_worker == NULL || provider->first_error_msg == NULL)
     {
       if (provider->slots != NULL)
 	{
@@ -3065,6 +3075,7 @@ bt_load_provider_open (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER ** out, const B
 	{
 	  free_and_init (provider->cond_worker);
 	}
+      delete provider->first_error_msg;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 	      (size_t) n_workers * (sizeof (BT_LOAD_WORKER_SLOT) + sizeof (pthread_cond_t)));
       delete provider;
@@ -3133,6 +3144,11 @@ bt_load_provider_service_loop (THREAD_ENTRY * thread_p, BT_LOAD_PROVIDER * provi
       if (all_done)
 	{
 	  pthread_mutex_unlock (&provider->mtx);
+	  if (provider->first_error_msg->err_id != NO_ERROR)
+	    {
+	      /* A worker failed first.  No worker runs now, so take its error into the leader's own context. */
+	      cuberr::context::get_thread_local_error ().swap (*provider->first_error_msg);
+	    }
 	  return provider->first_error;
 	}
       if (selected < 0)
@@ -3511,6 +3527,7 @@ bt_load_provider_close (BT_LOAD_PROVIDER * provider)
   bt_load_free_spans (provider->ovf_inline_spans);
   bt_load_free_ledger (provider->ledger);
   free_and_init (provider->cond_worker);
+  delete provider->first_error_msg;
   pthread_cond_destroy (&provider->cond_main);
   pthread_mutex_destroy (&provider->mtx);
   delete provider;
@@ -5443,6 +5460,8 @@ bt_load_worker_epilogue (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int err
       if (provider->first_error == NO_ERROR)
 	{
 	  provider->first_error = error;
+	  /* The build's first failure: keep its error context for the leader (bt_load_provider_service_loop ()). */
+	  provider->first_error_msg->swap (cuberr::context::get_thread_local_error ());
 	}
       for (int i = 0; i < provider->n_workers; i++)
 	{
@@ -5612,6 +5631,9 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
   main_load_args->provider = provider;
   main_load_args->new_page_fn = bt_load_new_page_main_inline;
   main_load_args->vpid_first_leaf = shard_load_args[0]->report_first_leaf_vpid;
+  /* btree_build_nleafs () below walks leaf.vpid off the end of the leaf chain; btree_load_check_fk () reads the last
+   * leaf from here instead. */
+  main_load_args->report_last_leaf_vpid = shard_load_args[n_shards - 1]->report_last_leaf_vpid;
   if (report_n_keys > INT_MAX)
     {
       return ER_FAILED;
@@ -6791,8 +6813,9 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
     }
   else
     {
-      /* Get the last leaf. Current leaf is the last one. */
-      vpid = load_args->leaf.vpid;
+      /* Get the last leaf.  A serial build is checked before btree_build_nleafs (), while the current leaf is still
+       * the last one; a parallel build is checked after it, and its join kept the last leaf. */
+      vpid = (load_args->px_outcome == BT_PX_TREE_DONE) ? load_args->report_last_leaf_vpid : load_args->leaf.vpid;
     }
 
   /* Init slot id */
@@ -7264,13 +7287,14 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
 	      /* unfix old page */
 	      pgbuf_unfix_and_init (thread_p, old_page);
 
-	      *slot_id = is_desc ? *key_cnt : 1;
-
 	      /* Get the new header. */
 	      local_header = btree_get_node_header (thread_p, page);
 
 	      /* Get number of keys in new page. */
 	      *key_cnt = btree_node_number_of_keys (thread_p, page);
+
+	      /* Start from the new page's own key count; the old page's count can be larger or smaller. */
+	      *slot_id = is_desc ? *key_cnt : 1;
 	    }
 	}
 

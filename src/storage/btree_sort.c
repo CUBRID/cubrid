@@ -4218,24 +4218,15 @@ btsort_put_result_index_leaf (cubthread::entry & thread_ref, BTSORT_PARAM * sort
     {
       error = bt_load_worker_close_shard (thread_p, load_args);
     }
+  /* The build's first failure (e.g. the dedicated vacuum-notification-limit error of a no-logging build) reaches the
+   * leader through the page provider: bt_load_worker_epilogue () keeps that worker's error context, and the leader
+   * takes it in its own thread once every worker is done.  Writing it into the leader's context from here would race
+   * with the leader, which serves page refills and may push and pop its error stack meanwhile. */
   error = bt_load_worker_epilogue (thread_p, load_args, error);
   thread_p->pop_resource_tracks ();
 
   pthread_mutex_lock (sort_param->px_mtx);
   sort_param->px_status = error == NO_ERROR ? BTSORT_PX_DONE : BTSORT_PX_ERR_FAILED;
-  if (error != NO_ERROR)
-    {
-      /* first-error-wins: only the first failing shard publishes its error context (e.g. the dedicated
-       * vacuum-notification-limit error of a no-logging build) into the main thread's context. */
-      if (sort_param->ori_sort_param == NULL || !sort_param->ori_sort_param->px_error_published)
-	{
-	  if (sort_param->ori_sort_param != NULL)
-	    {
-	      sort_param->ori_sort_param->px_error_published = true;
-	    }
-	  sort_param->main_error_context->get_current_error_level ().swap (cuberr::context::get_thread_local_error ());
-	}
-    }
   thread_ref.m_px_orig_thread_entry = NULL;
   pthread_cond_signal (sort_param->complete_cond);
   pthread_mutex_unlock (sort_param->px_mtx);
