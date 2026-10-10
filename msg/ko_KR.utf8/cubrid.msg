@@ -2005,6 +2005,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 341 SEMI/ANTI JOIN inner 테이블의 컬럼 '%1$s'은 참조할 수 없습니다.
 342 SEMI/ANTI JOIN은 outer(left) 측을 참조하는 join 술어가 필요합니다.
 343 SEMI/ANTI JOIN은 계층 질의(CONNECT BY)에서 사용할 수 없습니다.
+344 Static SQL에서 UNION, INTERSECT, EXCEPT의 피연산자에는 SELECT INTO를 사용할 수 없습니다.
 
 
 

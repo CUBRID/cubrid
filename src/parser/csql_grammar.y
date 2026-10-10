@@ -49,6 +49,7 @@ typedef struct YYLTYPE
   int last_line;
   int last_column;
   int buffer_pos; /* position in the buffer being parsed */
+  int buffer_pos_start; /* position in the buffer being parsed where the first token starts */
 
 } YYLTYPE;
 #define YYLTYPE_IS_DECLARED 1
@@ -290,6 +291,7 @@ static bool is_in_sp_func_type = false;
       assert (node);                            \
       (node)->line_number   = (loc).first_line; \
       (node)->column_number = (loc).first_column; \
+      (node)->buffer_pos_start = (loc).buffer_pos_start; \
     }    
 
 typedef enum
@@ -494,6 +496,7 @@ static int g_plcsql_text_pos;
 	  (Current).last_line    = YYRHSLOC (Rhs, N).last_line;		\
 	  (Current).last_column  = YYRHSLOC (Rhs, N).last_column;	\
 	  (Current).buffer_pos   = YYRHSLOC (Rhs, N).buffer_pos;	\
+	  (Current).buffer_pos_start = YYRHSLOC (Rhs, 1).buffer_pos_start;	\
 	}								\
       else								\
 	{								\
@@ -502,6 +505,7 @@ static int g_plcsql_text_pos;
 	  (Current).first_column = (Current).last_column =		\
 	    YYRHSLOC (Rhs, 0).last_column;				\
 	  (Current).buffer_pos   = YYRHSLOC (Rhs, 0).buffer_pos;	\
+	  (Current).buffer_pos_start = YYRHSLOC (Rhs, 0).buffer_pos;	\
 	}								\
     while (0)
 
@@ -13387,11 +13391,23 @@ opt_select_param_list
 		{{
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			if (this_parser->flag.is_parsing_static_sql)
+			  {
+			    /* the INTO clause is removed from the text executed at runtime */
+			    this_parser->static_sql_into_start = @$.buffer_pos_start;
+			    this_parser->static_sql_into_end = @$.buffer_pos;
+			  }
 		}}
 	| TO to_param_list
 		{{
 			$$ = $2;
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
+			if (this_parser->flag.is_parsing_static_sql)
+			  {
+			    /* the INTO clause is removed from the text executed at runtime */
+			    this_parser->static_sql_into_start = @$.buffer_pos_start;
+			    this_parser->static_sql_into_end = @$.buffer_pos;
+			  }
 		}}
 	;
 
@@ -14718,21 +14734,16 @@ limit_factor
                 {{
                         if (this_parser->flag.is_parsing_static_sql) {
 
-                            // interpret the identifier only as a PL/CSQL host variable
-                            PT_NODE *node = parser_new_node (this_parser, PT_HOST_VAR);
+                            // the identifier is interpreted only as a PL/CSQL variable.
+                            // it is converted to a host variable in name binding (see pt_bind_names ())
+                            PT_NODE *node = $1;
                             if (node)
                               {
-                                node->info.host_var.var_type = PT_HOST_IN;
-                                node->info.host_var.str = pt_makename("?");
-                                node->info.host_var.label = $1->info.name.original;
-                                node->info.host_var.index = parser_input_host_index++;
-                                node->type_enum = PT_TYPE_NONE;
-
-                                PARSER_SAVE_ERR_CONTEXT (node, @$.buffer_pos)
+                                node->etc = (void *) pt_append_string (this_parser, NULL, PT_NAME_IN_STATIC_SQL_LIMIT);
                               }
 
-                            parser_free_node(this_parser, $1);
                             $$ = node;
+                            PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 
                         } else {
 			    PT_ERRORm(this_parser, $1,

@@ -2239,6 +2239,7 @@ parser_yy_user_action (void)
     {
       yytoken_start_line = csql_yylloc.first_line = yylineno;
       yytoken_start_column = csql_yylloc.first_column = parser_column_position();
+      csql_yylloc.buffer_pos_start = yybuffer_pos;
     }
 
   if (yylineno_prev < yylineno)
