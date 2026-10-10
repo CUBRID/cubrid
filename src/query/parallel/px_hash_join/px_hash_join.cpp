@@ -341,6 +341,9 @@ error_exit:
       context->after_join_pred = single_context->after_join_pred;
       context->val_descr = single_context->val_descr;
 
+      context->layout_regu_list = single_context->layout_regu_list;
+      context->layout_regu_count = single_context->layout_regu_count;
+
       context->status = HASHJOIN_STATUS_PARALLEL_PROBE;
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();

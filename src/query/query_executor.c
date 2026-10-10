@@ -16667,6 +16667,70 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	}
 
+      if (XASL_IS_FLAGED (xasl, XASL_ADOPT_APTR_LIST))
+	{
+	  /*
+	   * The aptr just built this node's result, column for column, so opening the list scan below
+	   * would read every tuple back and write the same tuple again. Take the list file over
+	   * instead: qfile_copy_list_id () copies the descriptor, not the pages, and
+	   * QFILE_MOVE_DEPENDENT hands over the chain a parallel hash join links its per-worker lists
+	   * into. The producer's own descriptor is then cleared rather than destroyed, so the
+	   * qexec_clear_head_lists () below leaves the file this node now owns alone.
+	   */
+	  XASL_NODE *producer = xasl->aptr_list;
+
+	  /* gen_adopted_result () hangs that join here on its own. Anything else means the tree gained
+	   * a node after that decision was made, and spec_list below still reads the join result
+	   * correctly, so fall back to reading it rather than take over a list file that is not the
+	   * one this node's columns were laid out for. */
+	  assert (producer != NULL && producer->next == NULL && producer->type == HASHJOIN_PROC
+		  && xasl->scan_ptr == NULL && xasl->dptr_list == NULL);
+
+	  if (producer != NULL && producer->next == NULL && producer->type == HASHJOIN_PROC
+	      && xasl->scan_ptr == NULL && xasl->dptr_list == NULL)
+	    {
+	      qfile_destroy_list (thread_p, xasl->list_id);
+	      if (qfile_copy_list_id (xasl->list_id, producer->list_id, false, QFILE_MOVE_DEPENDENT) != NO_ERROR)
+		{
+		  /* The copy duplicates the whole descriptor first and can fail after that, leaving both
+		   * nodes naming the same file. Give the file back to the producer alone, so the error
+		   * path below destroys it once. */
+		  QFILE_CLEAR_LIST_ID (xasl->list_id);
+
+		  if (tplrec.tpl)
+		    {
+		      db_private_free_and_init (thread_p, tplrec.tpl);
+		    }
+		  qexec_failure_line (__LINE__, xasl_state);
+		  GOTO_EXIT_ON_ERROR;
+		}
+	      qfile_clear_list_id (producer->list_id);
+
+	      if (xasl->spec_list != NULL)
+		{
+		  /* The scan below never opened, so it never set its own type and the trace would fall back
+		   * to printing an unrelated tag. Report what this spec actually did: it is the list scan
+		   * the plan built, it read no tuple, and the rows it produced are the ones it took over.
+		   * A reader then sees readrows 0 against a non-zero rows. */
+		  xasl->spec_list->s_id.type = S_LIST_SCAN;
+		  xasl->spec_list->s_id.scan_stats.read_rows = 0;
+		  xasl->spec_list->s_id.scan_stats.qualified_rows = xasl->list_id->tuple_cnt;
+		}
+
+	      qexec_clear_head_lists (thread_p, xasl->aptr_list);
+
+	      if (tplrec.tpl)
+		{
+		  db_private_free_and_init (thread_p, tplrec.tpl);
+		}
+
+	      xasl->status = XASL_SUCCESS;
+	      qexec_assert_result_list_backward (xasl, xasl->list_id);
+
+	      return NO_ERROR;
+	    }
+	}
+
 #if SERVER_MODE
       if (xasl->type != CTE_PROC)
 	{
