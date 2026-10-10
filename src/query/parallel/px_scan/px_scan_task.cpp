@@ -295,8 +295,9 @@ namespace parallel_scan
 			  {
 			    fixed_scan = true;
 			  }
-			else if (!specp->s_id.grouped)
+			else if (!specp->s_id.grouped && !m_xasl_state->calls_sql_capable_sp)
 			  {
+			    /* no cached scan in a statement whose SP may change rows (CBRD-27590) */
 			    inner_cached_scan = true;
 			  }
 		      }
@@ -671,6 +672,7 @@ namespace parallel_scan
       }
     m_xasl_state->qp_xasl_line = m_orig_vd->xasl_state->qp_xasl_line;
     m_xasl_state->query_id = m_orig_vd->xasl_state->query_id;
+    m_xasl_state->calls_sql_capable_sp = m_orig_vd->xasl_state->calls_sql_capable_sp;
     m_vd = &m_xasl_state->vd;
     memcpy (m_vd, m_orig_vd, sizeof (val_descr));
     m_vd->xasl_state = m_xasl_state;

@@ -3585,6 +3585,14 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 
   /* indicator whether covering index is used or not */
   coverage_enabled = (indx_info->coverage != 0) && (scan_op_type == S_SELECT) && !mvcc_select_lock_needed;
+  /* A statement whose SP may change rows reads them from the heap as they are when the scan reaches them, not
+   * from keys gathered before the SP ran (CBRD-27590). A loose index scan goes off with the covering read
+   * (BTS_IS_INDEX_ILS requires it), as for FOR UPDATE: every key of the range is read, and the statement's
+   * DISTINCT or aggregation still applies. */
+  if (coverage_enabled && vd->xasl_state->calls_sql_capable_sp)
+    {
+      coverage_enabled = false;
+    }
   scan_id->scan_stats.loose_index_scan = indx_info->ils_prefix_len > 0;
 
   /* is a single range? */

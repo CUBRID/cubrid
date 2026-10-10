@@ -6509,7 +6509,9 @@ heap_scancache_start_internal (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_ca
   scan_cache->local_cache_handle = NULL;
   VPID_SET_NULL (&scan_cache->local_cache_vpid);
   scan_cache->read_mode = HEAP_SCAN_READ_COPY;
-  if (copy_to_local_cache && is_queryscan)
+  /* Rows of an MVCC-disabled class (_db_serial, ...) change in place, by this transaction or another, while the
+   * scan reads the page; read them from the live page, never from a copy (CBRD-27590). */
+  if (copy_to_local_cache && is_queryscan && !scan_cache->mvcc_disabled_class)
     {
       scan_cache->local_cache_handle = pgbuf_copy_buffer_alloc ();
       if (scan_cache->local_cache_handle == NULL)

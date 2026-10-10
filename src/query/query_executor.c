@@ -3709,6 +3709,7 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
     }
   new_xasl_state->qp_xasl_line = xasl_state_p->qp_xasl_line;
   new_xasl_state->query_id = xasl_state_p->query_id;
+  new_xasl_state->calls_sql_capable_sp = xasl_state_p->calls_sql_capable_sp;
   new_xasl_state->vd.xasl_state = new_xasl_state;
   new_xasl_state->vd.dbval_cnt = xasl_state_p->vd.dbval_cnt;
   new_xasl_state->vd.drand = xasl_state_p->vd.drand;
@@ -16821,8 +16822,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		       * once per outer row, so the single-page local cache would be re-copied
 		       * constantly for no latch-avoidance benefit. This is only the gate: final
 		       * activation is ANDed with eligibility in qexec_open_scan (), where
-		       * mvcc_select_lock_needed becomes known. */
-		      specp->cached_scan = (level == 0 && spec_level == 0);
+		       * mvcc_select_lock_needed becomes known.
+		       * A statement that calls an SP which may run SQL never uses it: the SP may change a
+		       * later row of the copied page, and the scan must read that row as it is then
+		       * (CBRD-27590). The SP may sit in any block, e.g. a correlated subquery. */
+		      specp->cached_scan = (level == 0 && spec_level == 0 && !xasl_state->calls_sql_capable_sp);
 
 		      /* set if the scan will be done in a grouped manner */
 		      if ((level == 0 && xptr->scan_ptr == NULL) && (QPROC_MAX_GROUPED_SCAN_CNT > 0))
@@ -17564,6 +17568,8 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
 
   /* initialize error line */
   xasl_state.qp_xasl_line = 0;
+
+  xasl_state.calls_sql_capable_sp = xasl->calls_sql_capable_sp;
 
   time_t sec;
   int millisec;
