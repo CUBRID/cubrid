@@ -76,7 +76,8 @@ static struct timeb base_server_timeb = { 0, 0, 0, 0 };
 static struct timeb base_client_timeb = { 0, 0, 0, 0 };
 
 static int get_dimension_of (PT_NODE ** array);
-static DB_SESSION *db_open_local (void);
+static DB_SESSION *db_open_local (bool is_system_generated);
+static DB_SESSION *db_open_buffer_session (const char *buffer, bool is_system_generated);
 static DB_SESSION *initialize_session (DB_SESSION * session);
 static int db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result);
 static DB_OBJLIST *db_get_all_chosen_classes (int (*p) (MOBJ o));
@@ -401,9 +402,10 @@ db_statement_count (DB_SESSION * session)
 /*
  * db_open_local() - Starts a new SQL empty compile session
  * returns : new DB_SESSION
+ * is_system_generated(in) : true if the engine generates the SQL, false if it comes from the application
  */
 static DB_SESSION *
-db_open_local (void)
+db_open_local (bool is_system_generated)
 {
   DB_SESSION *session = NULL;
 
@@ -422,6 +424,9 @@ db_open_local (void)
     }
 
   assert (session->parser->query_id == NULL_QUERY_ID);
+
+  /* set before parsing: parsing decides query_trace from it */
+  session->parser->flag.is_system_generated_stmt = is_system_generated ? 1 : 0;
 
   session->stage = NULL;
   session->dimension = 0;
@@ -454,18 +459,19 @@ initialize_session (DB_SESSION * session)
 }
 
 /*
- * db_open_buffer_local() - Please refer to the db_open_buffer() function
+ * db_open_buffer_session() - Starts a new SQL compile session on a nul terminated string
  * returns  : new DB_SESSION
  * buffer(in): contains query text to be compiled
+ * is_system_generated(in) : true if the engine generates the query text, false if it comes from the application
  */
-DB_SESSION *
-db_open_buffer_local (const char *buffer)
+static DB_SESSION *
+db_open_buffer_session (const char *buffer, bool is_system_generated)
 {
   DB_SESSION *session;
 
   CHECK_1ARG_NULL (buffer);
 
-  session = db_open_local ();
+  session = db_open_local (is_system_generated);
 
   if (session)
     {
@@ -485,6 +491,18 @@ db_open_buffer_local (const char *buffer)
 }
 
 /*
+ * db_open_buffer_local() - Starts a new SQL compile session for SQL that the engine generates.
+ *    Its plan and trace are not shown to the user. SQL from the application uses db_open_buffer().
+ * returns  : new DB_SESSION
+ * buffer(in): contains query text to be compiled
+ */
+DB_SESSION *
+db_open_buffer_local (const char *buffer)
+{
+  return db_open_buffer_session (buffer, true);
+}
+
+/*
  * db_open_buffer() - Starts a new SQL compile session on a nul terminated
  *    string
  * return:new DB_SESSION
@@ -498,7 +516,7 @@ db_open_buffer (const char *buffer)
   CHECK_1ARG_NULL (buffer);
   CHECK_CONNECT_NULL ();
 
-  session = db_open_buffer_local (buffer);
+  session = db_open_buffer_session (buffer, false);
 
   return session;
 }
@@ -516,7 +534,7 @@ db_open_file (FILE * file)
 
   CHECK_CONNECT_NULL ();
 
-  session = db_open_local ();
+  session = db_open_local (false);
   if (session)
     {
       session->statements = parser_parse_file (session->parser, file);
@@ -547,7 +565,7 @@ db_make_session_for_one_statement_execution (FILE * file)
 
   CHECK_CONNECT_NULL ();
 
-  session = db_open_local ();
+  session = db_open_local (false);
   if (session)
     {
       pt_init_one_statement_parser (session->parser, file);
@@ -649,7 +667,7 @@ db_open_file_name (const char *name)
 
   CHECK_CONNECT_NULL ();
 
-  session = db_open_local ();
+  session = db_open_local (false);
   if (session)
     {
       fp = fopen (name, "r");
@@ -879,8 +897,6 @@ db_compile_statement_local (DB_SESSION * session)
   statement = session->statements[stmt_ndx];
   statement->flag.use_plan_cache = 0;
   statement->flag.use_query_cache = 0;
-
-  statement->flag.is_system_generated_stmt = parser->flag.is_system_generated_stmt;
 
   /* check if the statement is already processed */
   if (session->stage[stmt_ndx] >= StatementPreparedStage)
@@ -2894,7 +2910,8 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   /* re-PREPARE of the same name invalidates the tree kept for bind-sensitive replans */
   db_prepared_tree_remove (session, name);
 
-  prepared_session = db_open_buffer_local (statement_literal);
+  /* a prepared statement belongs to whoever prepared it */
+  prepared_session = db_open_buffer_session (statement_literal, session->parser->flag.is_system_generated_stmt);
   if (prepared_session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -3350,7 +3367,9 @@ db_check_where_need_recompile (PARSER_CONTEXT * parent_parser, PT_NODE * stateme
   assert (statement->info.execute.query->node_type == PT_VALUE);
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
-  session = db_open_buffer_local ((char *) statement->info.execute.query->info.value.data_value.str->bytes);
+  session =
+    db_open_buffer_session ((char *) statement->info.execute.query->info.value.data_value.str->bytes,
+			    parent_parser->flag.is_system_generated_stmt);
   if (session == NULL)
     {
       /* error opening session */
@@ -3436,7 +3455,9 @@ db_check_limit_need_recompile (PARSER_CONTEXT * parent_parser, PT_NODE * stateme
   assert (statement->info.execute.query->node_type == PT_VALUE);
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
-  session = db_open_buffer_local ((char *) statement->info.execute.query->info.value.data_value.str->bytes);
+  session =
+    db_open_buffer_session ((char *) statement->info.execute.query->info.value.data_value.str->bytes,
+			    parent_parser->flag.is_system_generated_stmt);
   if (session == NULL)
     {
       /* error opening session */
@@ -3688,7 +3709,9 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   assert (statement->info.execute.query->node_type == PT_VALUE);
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
-  new_session = db_open_buffer_local ((char *) statement->info.execute.query->info.value.data_value.str->bytes);
+  new_session =
+    db_open_buffer_session ((char *) statement->info.execute.query->info.value.data_value.str->bytes,
+			    session->parser->flag.is_system_generated_stmt);
   if (new_session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -4044,12 +4067,13 @@ db_execute_statement (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** res
  * CSQL_query (in)	 : SQL query string.
  * query_error (in)	 : Saved query error for output.
  * include_oid (in)	 : Include OID mode.
+ * is_system_generated (in) : True if the engine generated CSQL_query.
  * session (out)	 : Generated session.
  * stmt_no (out)	 : Compiled statement number.
  */
 int
 db_open_buffer_and_compile_first_statement (const char *CSQL_query, DB_QUERY_ERROR * query_error, int include_oid,
-					    DB_SESSION ** session, int *stmt_no)
+					    bool is_system_generated, DB_SESSION ** session, int *stmt_no)
 {
   int error = NO_ERROR;
   DB_SESSION_ERROR *errs;
@@ -4057,7 +4081,7 @@ db_open_buffer_and_compile_first_statement (const char *CSQL_query, DB_QUERY_ERR
   CHECK_CONNECT_ERROR ();
 
   /* Open buffer and generate session */
-  *session = db_open_buffer_local (CSQL_query);
+  *session = db_open_buffer_session (CSQL_query, is_system_generated);
   if (*session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -4157,8 +4181,10 @@ db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, D
       db_set_read_fetch_instance_version (LC_FETCH_MVCC_VERSION);
     }
 
-  /* Open buffer and compile first statement */
-  error = db_open_buffer_and_compile_first_statement (CSQL_query, query_error, include_oid, &session, &stmt_no);
+  /* Open buffer and compile first statement. A sub-execution of another statement is SQL the engine generated. */
+  error =
+    db_open_buffer_and_compile_first_statement (CSQL_query, query_error, include_oid, !is_new_statement, &session,
+						&stmt_no);
   if (session == NULL)
     {
       /* In case of error, the session is freed */
@@ -4203,30 +4229,6 @@ db_compile_and_execute_queries_internal (const char *CSQL_query, void *result, D
   db_close_session_local (session);
 
   return error;
-}
-
-/*
- * db_set_system_generated_statement () -
- *
- * returns  : error status, if an invalid session is given
- *            NO_ERROR
- * session(in) : contains the SQL query that has been compiled
- *
- */
-int
-db_set_system_generated_statement (DB_SESSION * session)
-{
-  CHECK_CONNECT_MINUSONE ();
-
-  if (session == NULL || session->parser == NULL)
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
-      return ER_OBJ_INVALID_ARGUMENTS;
-    }
-
-  session->parser->flag.is_system_generated_stmt = 1;
-
-  return NO_ERROR;
 }
 
 /*

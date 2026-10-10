@@ -3445,28 +3445,6 @@ pt_flush_classes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 }
 
 /*
- * pt_set_is_system_generated_stmt () -
- *   return:
- *   parser(in):
- *   tree(in):
- *   void_arg(in):
- *   continue_walk(in):
- */
-static PT_NODE *
-pt_set_is_system_generated_stmt (PARSER_CONTEXT * parser, PT_NODE * tree, void *void_arg, int *continue_walk)
-{
-  if (PT_IS_QUERY_NODE_TYPE (tree->node_type))
-    {
-      bool is_system_generated_stmt;
-
-      is_system_generated_stmt = *(bool *) void_arg;
-      tree->flag.is_system_generated_stmt = is_system_generated_stmt;
-    }
-
-  return tree;
-}
-
-/*
  * pt_flush_class_and_null_xasl () - Flushes each class encountered
  * 	Partition pruning is applied to PT_SELECT nodes
  *   return:
@@ -18438,7 +18416,7 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_COLS_SCHEMA)
       && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_FULL_INFO_COLS_SCHEMA)
-      && !select_node->flag.is_system_generated_stmt
+      && !parser->flag.is_system_generated_stmt
       && !((spec = select_node->info.query.q.select.from) != NULL
 	   && spec->info.spec.derived_table_type == PT_IS_SHOWSTMT))
     {
@@ -21007,8 +20985,6 @@ pt_copy_upddel_hints_to_select (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
     default:
       return NO_ERROR;
     }
-
-  select_stmt->flag.is_system_generated_stmt = node->flag.is_system_generated_stmt;
 
   select_stmt->info.query.q.select.hint = (PT_HINT_ENUM) (select_stmt->info.query.q.select.hint | hint_flags);
   select_stmt->flag.recompile = node->flag.recompile;
@@ -23671,7 +23647,6 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   XASL_NODE *xasl = NULL;
   PT_NODE *next;
-  bool is_system_generated_stmt;
 
   assert (parser != NULL && node != NULL);
 
@@ -23679,10 +23654,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   node->next = NULL;
   parser->dbval_cnt = 0;
 
-  is_system_generated_stmt = node->flag.is_system_generated_stmt;
-
-  node = parser_walk_tree (parser, node, pt_flush_class_and_null_xasl, NULL, pt_set_is_system_generated_stmt,
-			   &is_system_generated_stmt);
+  node = parser_walk_tree (parser, node, pt_flush_class_and_null_xasl, NULL, NULL, NULL);
 
   /* During the above parser_walk_tree the request to get a driver may cause a deadlock. We give up the following steps
    * and propagate the error messages */
