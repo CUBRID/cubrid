@@ -513,6 +513,7 @@ void hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * 
 /* Hash Join Partition Spool */
 int hjoin_init_part_spools (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info,
 			    int spool_cnt);
+void hjoin_clear_part_spools (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
 
 /* Hash List Scan */
 int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id);

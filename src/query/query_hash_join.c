@@ -98,7 +98,6 @@ static int hjoin_build_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * m
 				   HASHJOIN_SPLIT_INFO * split_info);
 static int hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 			      HASHJOIN_INPUT_SPLIT_INFO * split_info, HASH_SCAN_KEY * temp_key);
-static void hjoin_clear_part_spools (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
 static void hjoin_detach_spooled_qlist (QFILE_LIST_ID * list_id);
 static UINT32 hjoin_estimate_partition_count (INT64 min_tuple_cnt, double fill_factor);
 static int hjoin_execute_subpartitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
@@ -2741,7 +2740,7 @@ hjoin_init_part_spools (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
  *   thread_p(in): Thread entry.
  *   manager(in/out): Hash join manager.
  */
-static void
+void
 hjoin_clear_part_spools (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 {
   int spool_index;

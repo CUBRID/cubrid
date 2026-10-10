@@ -245,6 +245,12 @@ error_exit:
 
       task_manager.join ();
 
+      /* every partition is done, so no list reads the spool pages; do not hold them while the results are merged */
+      if (!task_manager.has_error ())
+	{
+	  hjoin_clear_part_spools (&thread_ref, manager);
+	}
+
       /* merge the result list of each task, or destroy them if a task failed */
       for (task_index = 0; task_index < task_cnt; task_index++)
 	{
