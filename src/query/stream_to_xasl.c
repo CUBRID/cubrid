@@ -4085,6 +4085,30 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 	}
     }
 
+  ptr = or_unpack_int (ptr, &insert_info->remote_num_odku);
+  if (insert_info->remote_num_odku == 0)
+    {
+      insert_info->remote_odku_cols = NULL;
+      insert_info->remote_odku_exprs = NULL;
+    }
+  else
+    {
+      insert_info->remote_odku_cols =
+	(char **) stx_alloc_struct (thread_p, sizeof (char *) * insert_info->remote_num_odku);
+      insert_info->remote_odku_exprs =
+	(char **) stx_alloc_struct (thread_p, sizeof (char *) * insert_info->remote_num_odku);
+      if (insert_info->remote_odku_cols == NULL || insert_info->remote_odku_exprs == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      for (i = 0; i < insert_info->remote_num_odku; i++)
+	{
+	  insert_info->remote_odku_cols[i] = stx_restore_string (thread_p, ptr);
+	  insert_info->remote_odku_exprs[i] = stx_restore_string (thread_p, ptr);
+	}
+    }
+
   return ptr;
 
 error:

@@ -11854,6 +11854,66 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
   pt_convert_dblink_dml_query (parser, node, (int) (remote_target == false), (int) (remote_target == true), snl);
 }
 
+/* true iff every ON DUPLICATE KEY UPDATE assignment can go out as remote statement text.
+ *
+ * Each value is printed into the statement as written, so only a literal the remote reads the same way is
+ * accepted.  Keeping a local table out of the clause is not this test's job: pt_convert_dblink_dml_query ()
+ * refuses one whatever this test answers, so widening it cannot let a local table through.
+ */
+static bool
+pt_dblink_odku_assigns_are_sendable (PT_NODE * assignments)
+{
+  PT_NODE *assign, *lhs, *rhs;
+
+  for (assign = assignments; assign != NULL; assign = assign->next)
+    {
+      if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN)
+	{
+	  return false;
+	}
+
+      lhs = assign->info.expr.arg1;
+      if (lhs == NULL || lhs->node_type != PT_NAME || lhs->info.name.original == NULL
+	  || lhs->info.name.original[0] == '\0')
+	{
+	  return false;
+	}
+
+      /* a negative literal is a sign over the number here, not one value -- nothing folds it yet */
+      rhs = assign->info.expr.arg2;
+      if (rhs != NULL && rhs->node_type == PT_EXPR && rhs->info.expr.op == PT_UNARY_MINUS)
+	{
+	  rhs = rhs->info.expr.arg1;
+	  if (rhs == NULL || !PT_IS_NUMERIC_TYPE (rhs->type_enum))
+	    {
+	      return false;
+	    }
+	}
+
+      if (rhs == NULL || rhs->node_type != PT_VALUE)
+	{
+	  return false;
+	}
+
+      /* a braced container and a parenthesized list are value nodes too, and their elements are
+       * ordinary expressions, so name the types that may go rather than the ones that may not */
+      if (!(PT_IS_NUMERIC_TYPE (rhs->type_enum) || PT_IS_SIMPLE_CHAR_STRING_TYPE (rhs->type_enum)
+	    || PT_IS_DATE_TIME_TYPE (rhs->type_enum) || rhs->type_enum == PT_TYPE_NULL))
+	{
+	  return false;
+	}
+
+      /* an introducer or a COLLATE modifier goes out as written, and the remote need not read it alike */
+      if (rhs->info.value.has_cs_introducer || rhs->info.value.print_charset || rhs->info.value.print_collation
+	  || rhs->info.value.coll_modifier != 0)
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
 static void
 pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
@@ -11879,10 +11939,11 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
    * REPLACE carries that meaning row by row, so honoring it is a matter of which statement
    * dblink_dml_open prepares; the values travel the same way.
    *
-   * INSERT ... SELECT ... ON DUPLICATE KEY UPDATE is still excluded: the sink has nowhere to carry the
-   * update assignments yet. By not setting the flag here it falls through to the mixed local/remote
-   * rejection in pt_convert_dblink_dml_query. */
-  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL && node->info.insert.odku_assignments == NULL)
+   * ON DUPLICATE KEY UPDATE rides along when every assignment can be written out. One that cannot
+   * keeps the whole statement out of the sink, and it falls through to the mixed local/remote
+   * rejection. */
+  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL
+      && pt_dblink_odku_assigns_are_sendable (node->info.insert.odku_assignments))
     {
       snl->sink_kind = DBLINK_REMOTE_SINK_INSERT_SELECT;
     }
@@ -12459,6 +12520,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
   int i;
   int tmp_server_cnt = snl->server_cnt;
   int sub_sel_server_cnt = 0;	/* remote server count found in the INSERT SELECT or DELETE WHERE subquery */
+  int odku_local_cnt = 0;	/* local table count found in the ON DUPLICATE KEY UPDATE clause */
   unsigned int save_custom_print;
 
   PT_NODE *sub_sel = NULL;	/* for select sub-query */
@@ -12486,13 +12548,18 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       sub_sel_server_cnt = snl->server_cnt - tmp_server_cnt;
 
       /* An ON DUPLICATE KEY UPDATE assignment can hold a subquery, so a table reference lives here too.
-       * A local spec must reach local_cnt or the rejection below never fires and the statement ships
-       * whole, resolving that name against the remote instead.  Walked after sub_sel_server_cnt so that
-       * count keeps meaning "remote servers in the SELECT source", and for remote targets only: the
-       * local-target callback rewrites specs rather than counting them, which would newly convert them. */
+       * Its local specs still go into local_cnt and are also counted on their own in odku_local_cnt: a sink
+       * statement reads a local source by design and so always has local_cnt above zero, so local_cnt alone
+       * cannot tell whether the ON DUPLICATE KEY UPDATE clause holds a local table too.  Walked after
+       * sub_sel_server_cnt so that count keeps meaning "remote servers in the SELECT source", and for remote
+       * targets only: the local-target callback rewrites specs rather than counting them, which would newly
+       * convert them. */
       if (remote_upd > 0 && node->info.insert.odku_assignments)
 	{
+	  int local_cnt_before = snl->local_cnt;
+
 	  parser_walk_tree (parser, node->info.insert.odku_assignments, pt_get_server_name_list, snl, NULL, NULL);
+	  odku_local_cnt = snl->local_cnt - local_cnt_before;
 	}
 
       sub_sel = NULL;
@@ -12574,7 +12641,13 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  if (snl->local_cnt > 0 && remote_upd > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)
+  /* Two rejections share this message:
+   *   - odku_local_cnt > 0: a local table in the ON DUPLICATE KEY UPDATE clause, refused for every remote
+   *     target, sink or not -- the clause goes out as text and the remote would resolve that name against
+   *     its own tables.
+   *   - local_cnt > 0 without a sink: any other local reference -- a sink statement reads a local source by
+   *     design, so this one cannot apply to it. */
+  if (remote_upd > 0 && (odku_local_cnt > 0 || (snl->local_cnt > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)))
     {
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec,
 		"dblink: this combination of local and remote references is not supported (some forms are, such "
