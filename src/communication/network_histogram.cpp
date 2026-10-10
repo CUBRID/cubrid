@@ -30,7 +30,7 @@
 
 #if defined (CS_MODE)
 /* histogram context */
-static struct net_histo_ctx net_histo_context;
+static CUB_THREAD_LOCAL struct net_histo_ctx net_histo_context;
 
 net_histo_ctx::net_histo_ctx ()
   : is_collecting (false)

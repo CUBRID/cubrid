@@ -62,7 +62,9 @@ struct alloc_resource
   DB_QUERY_RESULT *free_qres_list;	/* list of free query entry structures */
 };
 
-static struct
+/* query result table of the connection; per connection (thread-local) for multiple connections, because the
+ * end of a transaction ends the results in it (db_clear_client_query_result ()) */
+static CUB_THREAD_LOCAL struct
 {				/* global query table variable */
   int qres_cnt;			/* number of active query entries */
   int qres_closed_cnt;		/* number of closed query entries */
@@ -81,8 +83,9 @@ static const int QP_QRES_LIST_INIT_CNT = 10;
 static const float QP_QRES_LIST_INC_RATE = 1.25f;
 			   /* query result list increment ratio */
 
-static char *db_Execution_plan = NULL;
-static int db_Execution_plan_length = -1;
+/* execution plan of the last query of the connection */
+static CUB_THREAD_LOCAL char *db_Execution_plan = NULL;
+static CUB_THREAD_LOCAL int db_Execution_plan_length = -1;
 
 static DB_QUERY_RESULT *allocate_query_result (void);
 static void free_query_result (DB_QUERY_RESULT * q_res);
@@ -1314,6 +1317,51 @@ db_clear_client_query_result (int notify_server, bool end_holdable)
 	}
     }
 }
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+/*
+ * db_final_client_query_result () - end the remaining query results and free the query result table of the
+ *				     connection of this thread
+ * return : none
+ *
+ * Note: Called when a sub-client is shut down, after its connection is closed and before its workspace is finalized
+ *       (the values of the results are freed with the memory areas of the workspace).
+ *       The results still open (e.g., holdable ones, ones not ended by db_query_end (), or ones of a transaction
+ *       not ended because nothing was updated) are ended here; the caller must not use them any more.
+ *       The server is not notified, since it ends the queries of a connection when the connection is closed.
+ */
+void
+db_final_client_query_result (void)
+{
+  DB_QUERY_RESULT *q_res;
+
+  /* end every remaining result, including the holdable ones */
+  db_clear_client_query_result (false, true);
+
+  if (Qres_table.qres_cnt > 0)
+    {
+      /* safe-guard: db_clear_client_query_result () removes every result from the table */
+      assert (false);
+      return;
+    }
+
+  while (Qres_table.alloc_res.free_qres_list != NULL)
+    {
+      q_res = Qres_table.alloc_res.free_qres_list;
+      Qres_table.alloc_res.free_qres_list = q_res->next;
+      free_and_init (q_res);
+    }
+  Qres_table.alloc_res.free_qres_cnt = 0;
+  Qres_table.alloc_res.max_qres_cnt = 0;
+
+  if (Qres_table.qres_list != NULL)
+    {
+      free_and_init (Qres_table.qres_list);
+    }
+  Qres_table.entry_cnt = 0;
+  Qres_table.qres_closed_cnt = 0;
+}
+#endif
 
 /*
  * db_cp_query_type_helper() - Copies the given type to a newly allocated type

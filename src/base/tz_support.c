@@ -103,7 +103,8 @@ typedef enum ds_search_direction DS_SEARCH_DIRECTION;
 static int tz_Initialized = 0;
 static TZ_REGION tz_Region_system;
 #if !defined(SERVER_MODE)
-static TZ_REGION tz_Region_session;
+/* session timezone region of the client; per connection (thread-local) for multiple connections */
+static CUB_THREAD_LOCAL TZ_REGION tz_Region_session;
 #endif
 
 /*
