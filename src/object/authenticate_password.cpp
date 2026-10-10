@@ -19,6 +19,7 @@
 /*
  * authenticate_password.cpp -
  */
+#include <random>
 
 #include "authenticate_password.hpp"
 
@@ -132,6 +133,7 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
       if (error_status == NO_ERROR)
 	{
 	  assert (result_strp != NULL);
+	  assert (result_len == ENCRYPT_SHA2_512_HEX_SIZE);
 
 	  memcpy (dest + 1, result_strp, result_len);
 	  dest[result_len + 1] = '\0';	/* null termination for match_password () */
@@ -146,10 +148,99 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
     }
 }
 
+static void
+encrypt_salt_generate (char *salt, int salt_size)
+{
+  char master_salt[ENCRYPT_SALT_SIZE + 1];
+  assert (salt != NULL && salt_size > (ENCRYPT_SALT_SIZE * 2));
+
+  if (crypt_generate_random_bytes (master_salt, ENCRYPT_SALT_SIZE) != NO_ERROR)
+    {
+      // fallback to generate salt using random_device
+      int i = 0;
+      size_t copy_size;
+      uint64_t random_val;
+      thread_local std::mt19937_64 engine (std::random_device{}());
+
+      while (i < ENCRYPT_SALT_SIZE)
+	{
+	  random_val = engine();
+	  copy_size = (ENCRYPT_SALT_SIZE - i) < (int)sizeof (uint64_t) ? (ENCRYPT_SALT_SIZE - i) : sizeof (uint64_t);
+	  memcpy (master_salt + i, &random_val, copy_size);
+	  i += copy_size;
+	}
+    }
+
+  str_to_hex_prealloced (master_salt, ENCRYPT_SALT_SIZE, salt, salt_size, HEX_UPPERCASE);
+  assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
+}
+
+/*
+ * encrypt_password_sha2_512_salt -  hashing a password string using SHA2 512 with salt
+ *   return: none
+ *   name(in): user name
+ *   salt(in): salt string to encrypt
+ *   pass(in): string to encrypt
+ *   dest(out): destination buffer
+ *
+ *   Notice: If salt is null, pass is the user's raw input and a new salt is generated;
+ *           otherwise, pass is the user's raw input or formatted as ENCODE_PREFIX_SHA2_512.
+ */
+void
+encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *pass, char *dest)
+{
+  char sha512[AU_MAX_PASSWORD_BUF + 4];
+  char salt_in[ENCRYPT_SALT_SIZE_HEX + 1];
+  char buf[AU_MAX_PASSWORD_BUF + 4];
+
+  assert (name != NULL && strlen (name) > 0);
+
+  if (pass == NULL)
+    {
+      strcpy (dest, "");
+      return;
+    }
+
+  if (salt == NULL)
+    {
+      encrypt_password_sha2_512 (pass, sha512);
+      encrypt_salt_generate (salt_in, sizeof (salt_in));
+      salt = salt_in;
+    }
+  else if (IS_ENCODED_SHA2_512 (pass) && strlen (pass + 1) == ENCRYPT_SHA2_512_HEX_SIZE)
+    {
+      strcpy (sha512, pass);
+    }
+  else
+    {
+      encrypt_password_sha2_512 (pass, sha512);
+    }
+
+  if (sha512[0] == '\0')
+    {
+      strcpy (dest, "");
+      return;
+    }
+
+  assert (strlen (salt) == ENCRYPT_SALT_SIZE_HEX);
+  snprintf (buf, sizeof (buf), "%s%s%s", salt, sha512 + 1, name);
+  encrypt_password_sha2_512 (buf, sha512);
+  if (sha512[0] == '\0')
+    {
+      strcpy (dest, "");
+      return;
+    }
+
+  dest[0] = ENCODE_PREFIX_SHA2_512_SALT; // set the prefix to SHA2_512_SALT
+  dest++;
+  memcpy (dest, salt, ENCRYPT_SALT_SIZE_HEX);
+  strcpy (dest + ENCRYPT_SALT_SIZE_HEX, sha512 + 1);
+}
 
 /*
  * match_password -  This compares two passwords to see if they match.
  *   return: non-zero if the passwords match
+ *   name(in): user name(uppercase only)
  *   user(in): user supplied password
  *   database(in): stored database password
  *
@@ -159,7 +250,7 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
  *       in to an active session.
  */
 bool
-match_password (const char *user, const char *database)
+match_password (const char *name, const char *user, const char *database)
 {
   char buf1[AU_MAX_PASSWORD_BUF + 4];
   char buf2[AU_MAX_PASSWORD_BUF + 4];
@@ -216,19 +307,37 @@ match_password (const char *user, const char *database)
 	  encrypt_password_sha2_512 (user, buf1);
 	}
     }
+  else if (IS_ENCODED_SHA2_512_SALT (database))
+    {
+      /* DB: SHA2 with salt */
+      char salt[ENCRYPT_SALT_SIZE_HEX + 1];
+
+      strcpy (buf2, database);
+
+      if (strlen (database + 1) != (ENCRYPT_SALT_SIZE_HEX + ENCRYPT_SHA2_512_HEX_SIZE))
+	{
+	  assert (false);
+	  return false;
+	}
+
+      memcpy (salt, database + 1, ENCRYPT_SALT_SIZE_HEX);
+      salt[ENCRYPT_SALT_SIZE_HEX] = '\0';
+
+      encrypt_password_sha2_512_salt (name, salt, user, buf1);
+    }
   else
     {
       /* DB:PLAINTEXT -> SHA2 */
       encrypt_password_sha2_512 (database, buf2);
       if (IS_ENCODED_ANY (user))
 	{
-	  /* USER : SHA1 */
-	  strcpy (buf1, Au_user_password_sha1);
+	  /* USER : SHA2 */
+	  strcpy (buf1, Au_user_password_sha2_512);
 	}
       else
 	{
-	  /* USER : PLAINTEXT -> SHA1 */
-	  encrypt_password_sha1 (user, 1, buf1);
+	  /* USER : PLAINTEXT -> SHA2 */
+	  encrypt_password_sha2_512 (user, buf1);
 	}
     }
 
@@ -327,7 +436,52 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
     }
   else if (encode)
     {
-      encrypt_password_sha2_512 (password, pbuf);
+      DB_VALUE nm_value;
+      error = obj_get (user, "name", &nm_value);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+
+      if (DB_IS_STRING (&nm_value) && !DB_IS_NULL (&nm_value) && db_get_string (&nm_value) != NULL)
+	{
+#if defined(CUBRID_ENABLE_LEGACY_PASSWORD_TEST)
+#ifdef NDEBUG
+#error "Notice: CUBRID_ENABLE_LEGACY_PASSWORD_TEST is enabled."
+#else
+#warning "Notice: CUBRID_ENABLE_LEGACY_PASSWORD_TEST is enabled."
+#endif
+	  const char *user_nm = db_get_string (&nm_value);
+	  if (strncmp (user_nm, "##PLAIN_", strlen ("##PLAIN_")) == 0)
+	    {
+	      strcpy ( pbuf, password);
+	    }
+	  else if (strncmp (user_nm, "##DES_", strlen ("##DES_")) == 0)
+	    {
+	      encrypt_password (password, 1, pbuf);
+	    }
+	  else if (strncmp (user_nm, "##SHA1_", strlen ("##SHA1_")) == 0)
+	    {
+	      encrypt_password_sha1 (password, 1, pbuf);
+	    }
+	  else if (strncmp (user_nm, "##SHA2_", strlen ("##SHA2_")) == 0)
+	    {
+	      encrypt_password_sha2_512 (password, pbuf);
+	    }
+	  else
+#endif
+	    {
+	      encrypt_password_sha2_512_salt (db_get_string (&nm_value), NULL, password, pbuf);
+	    }
+	}
+      else
+	{
+	  assert_release (false);
+	  error = ER_AU_INVALID_USER_NAME;
+	  goto end;
+	}
+
+      db_value_clear (&nm_value);
       db_make_string (&value, pbuf);
     }
   else

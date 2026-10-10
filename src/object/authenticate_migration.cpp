@@ -218,16 +218,17 @@ au_export_users (extract_context &ctxt, print_output &output_ctx)
 		      snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str + 1);
 		      encrypt_mode = ENCODE_PREFIX_SHA1;
 		    }
-		  else if (IS_ENCODED_SHA2_512 (str))
+		  else if (IS_ENCODED_SHA2_512 (str) || IS_ENCODED_SHA2_512_SALT (str))
 		    {
 		      /* not strip off the prefix */
 		      snprintf (passbuf, AU_MAX_PASSWORD_BUF - 1, "%s", str);
-		      encrypt_mode = ENCODE_PREFIX_SHA2_512;
+		      encrypt_mode = str[0];
 		    }
 		  else if (strlen (str))
 		    {
-		      /* sha2 hashing with prefix */
-		      encrypt_password_sha2_512 (str, passbuf);
+		      /* sha2 hashing with prefix and salt */
+		      encrypt_password_sha2_512_salt (uname, NULL, str, passbuf);
+		      encrypt_mode = ENCODE_PREFIX_SHA2_512_SALT;
 		    }
 		  ws_free_string (str);
 		}

@@ -185,10 +185,9 @@ authenticate_context::start (void)
       else
 	{
 	  /*
-	   * If you try to start the authorization system and
-	   * there is no user logged in, you will automatically be logged in
-	   * as "PUBLIC".  Optionally, we could get a name from the
-	   * cubrid.conf file or use the name of the current Unix user.
+	   * If you try to start the authorization system and there is no user logged in,
+	   * you will automatically be logged in as "PUBLIC".
+	   * Optionally, we could get a name from the cubrid.conf file or use the name of the current Unix user.
 	   */
 	  if (strlen (user_name) == 0)
 	    {
@@ -648,13 +647,22 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 
 		  if (pass != NULL && strlen (pass))
 		    {
+		      DB_VALUE nm_value;
+		      if (obj_get (user, "name", &nm_value) != NO_ERROR)
+			{
+			  db_value_clear (&value);
+			  return er_errid ();
+			}
+
 		      /* the password is present and must match */
 		      if ((dbpassword == NULL) || (strlen (dbpassword) == 0)
-			  || !match_password (dbpassword, db_get_string (&value)))
+			  || !match_password (db_get_string (&nm_value), dbpassword, db_get_string (&value)))
 			{
 			  error = ER_AU_INVALID_PASSWORD;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			}
+
+		      db_value_clear (&nm_value);
 		    }
 		  else
 		    {
