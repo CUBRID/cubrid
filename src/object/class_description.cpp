@@ -725,9 +725,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	       * itself and belong to the parent table. But show create table will only print the constraints which
 	       * belong to the table itself.
 	       */
-	      assert ( (c->attributes[0] && IS_DEDUPLICATE_KEY_ATTR_ID (c->attributes[0]->id)) ? (c->attributes[1] != NULL) : true);
-	      if (include_inherited
-		  || (c->attributes[0] && c->attributes[ ((IS_DEDUPLICATE_KEY_ATTR_ID (c->attributes[0]->id)) ? 1 : 0)]->class_mop == op))
+	      if (include_inherited || (c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
 		{
 		  count++;
 		}
@@ -750,9 +748,7 @@ int class_description::init (struct db_object *op, type prt_type, string_buffer 
 	    {
 	      if (SM_IS_CONSTRAINT_INDEX_FAMILY (c->type))
 		{
-		  assert ( (c->attributes[0] && IS_DEDUPLICATE_KEY_ATTR_ID (c->attributes[0]->id)) ? (c->attributes[1] != NULL) : true);
-		  if (include_inherited
-		      || (c->attributes[0] && c->attributes[ ((IS_DEDUPLICATE_KEY_ATTR_ID (c->attributes[0]->id)) ? 1 : 0)]->class_mop == op))
+		  if (include_inherited || (c->attributes[0] != NULL && c->attributes[0]->class_mop == op))
 		    {
 		      sb.clear ();
 		      printer.describe_constraint (*class_, *c, prt_type);
