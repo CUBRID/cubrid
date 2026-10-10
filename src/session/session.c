@@ -59,6 +59,8 @@
 #include "xasl_cache.h"
 #include "pl_session.hpp"
 
+#include <openssl/crypto.h>
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -920,7 +922,7 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id, const char 
       return ER_SES_SESSION_EXPIRED;
     }
 
-  if (memcmp (session_p->secret, secret, SESSION_SECRET_SIZE) != 0)
+  if (CRYPTO_memcmp (session_p->secret, secret, SESSION_SECRET_SIZE) != 0)
     {
       pthread_mutex_unlock (&session_p->mutex);
       return ER_FAILED;
