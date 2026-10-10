@@ -18435,6 +18435,20 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
     }
 
+  if (xasl != NULL && histogram_bind_watch_candidate (parser, select_node))
+    {
+      /* target selection for the bind-value plan variants. Every condition is structural (joined
+       * nodes, most-common values on the column, no unique key pinning the node), so whatever
+       * values the plan was chosen under, every compile of the statement gives the same answer
+       * and the flag travels with every variant of it. */
+      xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
+    }
+  if (xasl != NULL && plan != NULL)
+    {
+      /* the plan-variant directory tells two compiles of one query apart by their plans */
+      parser->bind_plan_sig = qo_plan_signature (plan, parser->bind_plan_sig);
+    }
+
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_COLS_SCHEMA)
       && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_FULL_INFO_COLS_SCHEMA)
@@ -22373,6 +22387,11 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
        * the actual bind values */
       xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
     }
+  if (xasl != NULL && histogram_bind_watch_candidate (parser, statement))
+    {
+      /* target selection for bind-value plan variants, as for SELECT in pt_plan_query () */
+      xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
+    }
 
   return xasl;
 
@@ -23311,6 +23330,11 @@ cleanup:
        * unbound host-variable predicate markers, so the first execution replans once under
        * the actual bind values */
       xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
+    }
+  if (xasl != NULL && histogram_bind_watch_candidate (parser, statement))
+    {
+      /* target selection for bind-value plan variants, as for SELECT in pt_plan_query () */
+      xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
     }
   return xasl;
 }

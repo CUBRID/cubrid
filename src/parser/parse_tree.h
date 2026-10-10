@@ -1637,6 +1637,11 @@ typedef struct parser_varchar PARSER_VARCHAR;
 typedef struct parser_context PARSER_CONTEXT;
 
 typedef struct parser_node PT_NODE;
+
+/* node-cardinality watch state of a statement, defined in histogram_cl.hpp; the parse tree only
+ * carries the pointer (allocated with parser_alloc (), so it lives and dies with the parser). */
+struct bind_watch_state;
+typedef struct bind_watch_state BIND_WATCH_STATE;
 typedef struct pt_alter_info PT_ALTER_INFO;
 typedef struct pt_alter_user_info PT_ALTER_USER_INFO;
 typedef struct pt_alter_trigger_info PT_ALTER_TRIGGER_INFO;
@@ -2189,8 +2194,8 @@ struct pt_delete_info
   PT_NODE *use_hash_hint;	/* USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
-  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
-				 * (see pt_query_info.bind_fp); 0 = not recorded yet */
+  BIND_WATCH_STATE *bind_watch;	/* bind-value watch state (see pt_query_info.bind_watch) */
+  const char *bind_variant_key;	/* plan variant key (see pt_query_info.bind_variant_key) */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
@@ -2950,9 +2955,12 @@ struct pt_query_info
     PT_SELECT_INFO select;
     PT_UNION_INFO union_;
   } q;
-  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
-				 * (quantized selectivities of host-var predicates); 0 = not recorded.
-				 * See histogram_bind_fingerprint (). */
+  BIND_WATCH_STATE *bind_watch;	/* bind-value state of this prepared statement: the rows each
+				 * host-variable predicate was expected to scan under the current plan,
+				 * and the query's plan variants as last seen. NULL until the first
+				 * checked execution allocates it (parser lifetime). */
+  const char *bind_variant_key;	/* appended to the hash text to name a plan variant of this query
+				 * (bind_variant.h); NULL = the query's base entry */
 };
 
 /* Info for Set Optimization Level statement */
@@ -3048,8 +3056,8 @@ struct pt_update_info
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */
-  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
-				 * (see pt_query_info.bind_fp); 0 = not recorded yet */
+  BIND_WATCH_STATE *bind_watch;	/* bind-value watch state (see pt_query_info.bind_watch) */
+  const char *bind_variant_key;	/* plan variant key (see pt_query_info.bind_variant_key) */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
@@ -3816,6 +3824,9 @@ struct parser_node
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
     unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
     unsigned for_default_func:1;	/* for DEFAULT built-in function */
+    unsigned bind_watch_candidate:1;	/* the plan carries BIND_WATCH_CANDIDATE: this statement passed
+					 * target selection for bind-value plan variants, so its
+					 * executions choose among the query's plans by fingerprint */
     unsigned hv_pred_plan_unpeeked:1;	/* the plan this statement is about to execute was chosen with unbound
 					 * host-variable predicate markers (HV_PRED_PLAN_UNPEEKED in the XASL
 					 * header), so the first execution must replan under the real values.
@@ -3919,6 +3930,8 @@ struct parser_context
 						 * session. */
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
+  UINT64 bind_plan_sig;		/* signature of the plans chosen by this compile (bind_variant.h): two
+				 * compiles of one query got the same plan when these are equal */
 
   int dbval_cnt;		/* to be assigned to XASL */
   int line, column;		/* current input line and column */

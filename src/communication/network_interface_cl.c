@@ -64,6 +64,7 @@
 #if !defined(CS_MODE)
 /* heap_file.h is server-only; the SA path below needs it, CS path does not */
 #include "heap_file.h"
+#include "xasl_cache.h"
 #endif /* !CS_MODE */
 #include "system_parameter.h"
 #include "replication.h"
@@ -7853,6 +7854,92 @@ qmgr_drop_all_query_plans (void)
 
   /* call the server routine of query drop plan */
   status = xqmgr_drop_all_query_plans (thread_p);
+
+  exit_server (*thread_p);
+
+  return status;
+#endif /* !CS_MODE */
+}
+
+/*
+ * qmgr_bind_variant - Send a NET_SERVER_QM_BIND_VARIANT request: find or reserve the plan
+ *   variant of a cached query that suits a fingerprint, or register the plan a reserved variant
+ *   compiled to
+ *   (bind_variant.h). This function is a counter part to sqmgr_bind_variant().
+ *
+ * return     : error code
+ * req (in)   : the request
+ * reply (out): the outcome and the query's variant directory
+ */
+int
+qmgr_bind_variant (const BIND_VARIANT_REQUEST * req, BIND_VARIANT_REPLY * reply)
+{
+#if defined(CS_MODE)
+  int status = ER_NET_CLIENT_DATA_RECEIVE;
+  int req_error, i, j;
+  OR_ALIGNED_BUF (OR_BIND_VARIANT_REQUEST_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BIND_VARIANT_REPLY_SIZE) a_reply;
+  char *request, *reply_buf, *ptr;
+  INT64 sig;
+
+  request = OR_ALIGNED_BUF_START (a_request);
+  reply_buf = OR_ALIGNED_BUF_START (a_reply);
+
+  ptr = or_pack_sha1 (request, &req->sha1);
+  OR_PACK_CACHE_TIME (ptr, &req->time_stored);
+  ptr = or_pack_int (ptr, req->op);
+  ptr = or_pack_int (ptr, req->limit);
+  ptr = or_pack_int (ptr, req->variant);
+  ptr = or_pack_int (ptr, req->fp.terms);
+  sig = (INT64) req->plan_sig;
+  ptr = or_pack_int64 (ptr, sig);
+  ptr = or_pack_double (ptr, req->band);
+  ptr = or_pack_double (ptr, req->floor);
+  for (i = 0; i < BIND_WATCH_MAX_TERMS; i++)
+    {
+      ptr = or_pack_double (ptr, (i < req->fp.terms) ? req->fp.rows[i] : 0.0);
+    }
+
+  req_error =
+    net_client_request (NET_SERVER_QM_BIND_VARIANT, request, OR_ALIGNED_BUF_SIZE (a_request), reply_buf,
+			OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (req_error)
+    {
+      return req_error;
+    }
+
+  ptr = or_unpack_int (reply_buf, &status);
+  ptr = or_unpack_int (ptr, &reply->result);
+  ptr = or_unpack_int (ptr, &reply->variant);
+  ptr = or_unpack_int (ptr, &reply->state);
+  ptr = or_unpack_int (ptr, &reply->compiles);
+  ptr = or_unpack_int (ptr, &reply->plans);
+  ptr = or_unpack_int (ptr, &reply->pending);
+  ptr = or_unpack_int (ptr, &reply->n_records);
+  if (reply->n_records < 0 || reply->n_records > BIND_VARIANT_MAX_COMPILES)
+    {
+      reply->n_records = 0;
+    }
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      ptr = or_unpack_int (ptr, &reply->records[i].variant);
+      ptr = or_unpack_int (ptr, &reply->records[i].fp.terms);
+    }
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      for (j = 0; j < BIND_WATCH_MAX_TERMS; j++)
+	{
+	  ptr = or_unpack_double (ptr, &reply->records[i].fp.rows[j]);
+	}
+    }
+
+  return status;
+#else /* CS_MODE */
+  int status;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  status = xcache_bind_variant (thread_p, req, reply);
 
   exit_server (*thread_p);
 
