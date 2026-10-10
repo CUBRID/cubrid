@@ -531,6 +531,7 @@ static int la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int
 static int la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid);
 static void la_free_repl_items_by_tranid (int tranid);
 static int la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
+static bool la_record_end_is_stale (void);
 static int la_change_state (void);
 static int la_log_commit (bool update_commit_time);
 static unsigned long la_get_mem_size (void);
@@ -6398,12 +6399,43 @@ la_get_hostname_from_log_path (char *log_path)
   return hostname + 1;
 }
 
+/*
+ * la_record_end_is_stale() - check whether the record end an iteration reached is short of the copied log
+ *   return: true if the source has stopped and the copied log header's eof is past final_lsa
+ *
+ * Note: an iteration reads its page once. If the copied log grows meanwhile, the END_OF_LOG it reaches
+ *       in that page is not the end of the copied log, although the header may have been re-read since.
+ *       Only a stopped source matters: it is the one that lets the applier report done.
+ */
+static bool
+la_record_end_is_stale (void)
+{
+  const LOG_HEADER *log_hdr = la_Info.act_log.log_hdr;
+
+  if (log_hdr->ha_server_state != HA_SERVER_STATE_DEAD && log_hdr->ha_server_state != HA_SERVER_STATE_STANDBY
+      && log_hdr->ha_server_state != HA_SERVER_STATE_MAINTENANCE)
+    {
+      return false;
+    }
+
+  return LSA_GT (&log_hdr->eof_lsa, &la_Info.final_lsa);
+}
+
 static int
 la_change_state (void)
 {
   int error = NO_ERROR;
   int new_state = HA_LOG_APPLIER_STATE_NA;
   char buffer[1024];
+
+  /* a stale record end is cleared above the early return, so that last_is_end_of_record records it
+   * and the real end gets past that check */
+  if (la_Info.is_end_of_record == true && la_record_end_is_stale ())
+    {
+      er_log_debug (ARG_FILE_LINE, "record end %lld|%d is short of the copied log eof %lld|%d",
+		    LSA_AS_ARGS (&la_Info.final_lsa), LSA_AS_ARGS (&la_Info.act_log.log_hdr->eof_lsa));
+      la_Info.is_end_of_record = false;
+    }
 
   if (la_Info.last_server_state == la_Info.act_log.log_hdr->ha_server_state
       && la_Info.last_file_state == la_Info.act_log.log_hdr->ha_file_status
