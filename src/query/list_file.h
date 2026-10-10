@@ -143,6 +143,10 @@ extern void qfile_finalize (void);
 extern void qfile_destroy_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 extern void qfile_close_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 extern int qfile_add_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE tpl);
+extern int qfile_add_tuple_to_staged_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAGE_PTR staged_page,
+					   struct qmgr_temp_file *spool_p, QFILE_TUPLE tuple);
+extern int qfile_write_staged_list_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAGE_PTR staged_page,
+					 struct qmgr_temp_file *spool_p);
 extern int qfile_add_tuple_to_list_from (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE tpl,
 					 int src_hdr_size);
 extern int qfile_add_tuple_get_pos_in_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_TUPLE tpl,

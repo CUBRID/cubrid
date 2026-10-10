@@ -22,6 +22,7 @@
 
 #include "px_hash_join.hpp"
 #include "px_hash_join_task_manager.hpp"
+#include "query_hash_join_split.hpp"
 
 #include "error_manager.h"		/* assert_release_error, er_errid, NO_ERROR, ... */
 #include "list_file.h"			/* qfile_open_list, qfile_open_list_scan, qfile_close_scan, ... */
@@ -45,6 +46,7 @@ namespace parallel_query
     {
       HASHJOIN_INPUT_SPLIT_INFO *outer, *inner;
       HASHJOIN_SHARED_SPLIT_INFO shared_info;
+      cubquery::hjoin_part_set part_set;
       UINT32 task_cnt, task_index;
       int error = NO_ERROR;
 
@@ -70,10 +72,23 @@ namespace parallel_query
 	  goto error_exit;
 	}
 
+      error = hjoin_init_part_spools (&thread_ref, manager, split_info, task_cnt);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_start (&thread_ref, &start_stats);
 	}
+
+      error = part_set.init (outer->part_list_id, manager->context_cnt, shared_info.part_mutexes);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      shared_info.part_set = &part_set;
 
       /* collect data page sectors for outer relation */
       error = qfile_open_list_sector_scan (&thread_ref, outer->fetch_info->list_id, &shared_info.sector_scan);
@@ -90,6 +105,12 @@ namespace parallel_query
 
       task_manager.join ();
 
+      if (!task_manager.has_error ())
+	{
+	  error = part_set.finish (&thread_ref, manager->part_spools[0]);
+	}
+      part_set.clear ();
+
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
@@ -101,9 +122,20 @@ namespace parallel_query
 	  goto error_exit;
 	}
 
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_start (&thread_ref, &start_stats);
+	}
+
+      error = part_set.init (inner->part_list_id, manager->context_cnt, shared_info.part_mutexes);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
 	}
 
       /* collect data page sectors for inner relation
@@ -122,6 +154,12 @@ namespace parallel_query
 
       task_manager.join ();
 
+      if (!task_manager.has_error ())
+	{
+	  error = part_set.finish (&thread_ref, manager->part_spools[0]);
+	}
+      part_set.clear ();
+
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
@@ -133,9 +171,15 @@ namespace parallel_query
 	  goto error_exit;
 	}
 
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
+      part_set.clear ();
       hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
 
       return error;
@@ -181,6 +225,13 @@ error_exit:
       task_manager task_manager (manager->px_worker_manager, *main_thread_p);
       join_task *task = nullptr;
 
+      shared_info.result_list_ids = (QFILE_LIST_ID **) calloc (task_cnt, sizeof (QFILE_LIST_ID *));
+      if (shared_info.result_list_ids == nullptr)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, task_cnt * sizeof (QFILE_LIST_ID *));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
       if (thread_is_on_trace (&thread_ref))
 	{
 	  hjoin_trace_start (&thread_ref, &start_stats);
@@ -193,6 +244,39 @@ error_exit:
 	}
 
       task_manager.join ();
+
+      /* every partition is done, so no list reads the spool pages; do not hold them while the results are merged */
+      if (!task_manager.has_error ())
+	{
+	  hjoin_clear_part_spools (&thread_ref, manager);
+	}
+
+      /* merge the result list of each task, or destroy them if a task failed */
+      for (task_index = 0; task_index < task_cnt; task_index++)
+	{
+	  if (shared_info.result_list_ids[task_index] == nullptr)
+	    {
+	      continue;
+	    }
+
+	  if (!task_manager.has_error () && error == NO_ERROR)
+	    {
+	      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_MERGE);
+	      error = hjoin_merge_qlist_into (&thread_ref, manager, &manager->single_context.list_id,
+					      &shared_info.result_list_ids[task_index]);
+	      HJOIN_PROFILE_MERGE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_MERGE,
+				       (manager->single_context.list_id != nullptr)
+				       ? manager->single_context.list_id->tuple_cnt : 0);
+	    }
+
+	  if (shared_info.result_list_ids[task_index] != nullptr)
+	    {
+	      qfile_close_list (&thread_ref, shared_info.result_list_ids[task_index]);
+	      qfile_destroy_list (&thread_ref, shared_info.result_list_ids[task_index]);
+	      QFILE_FREE_AND_INIT_LIST_ID (shared_info.result_list_ids[task_index]);
+	    }
+	}
+      free_and_init (shared_info.result_list_ids);
 
       if (thread_is_on_trace (&thread_ref))
 	{
@@ -212,6 +296,11 @@ error_exit:
 	  return er_errid ();
 	}
 
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
       for (context_index = 0; context_index < manager->context_cnt; context_index++)
 	{
 	  current_context = &manager->contexts[context_index];
@@ -221,40 +310,8 @@ error_exit:
 	      hjoin_trace_merge_stats (stats, current_context->stats, manager->single_context.status);
 	    }
 
-	  if (current_context->list_id == nullptr)
-	    {
-	      error = er_errid ();
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-	      else
-		{
-		  /* list_id can be NULL when the join result is empty.
-		   * In this case, it is NO_ERROR. */
-		  continue;
-		}
-	    }
-
-	  if (current_context->list_id->tuple_cnt == 0)
-	    {
-	      qfile_destroy_list (&thread_ref, current_context->list_id);
-	      QFILE_FREE_AND_INIT_LIST_ID (current_context->list_id);
-
-	      /* empty context */
-	      continue;
-	    }
-
-	  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_MERGE);
-	  error = hjoin_merge_qlist (&thread_ref, manager, current_context);
-	  HJOIN_PROFILE_MERGE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_MERGE,
-				   (manager->single_context.list_id != nullptr) ? manager->single_context.list_id->tuple_cnt : 0);
-
-	  if (error != NO_ERROR)
-	    {
-	      assert_release_error (er_errid () != NO_ERROR);
-	      return er_errid ();
-	    }
+	  /* the result went to the result list of a task, merged above */
+	  assert (current_context->list_id == nullptr);
 	}
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();

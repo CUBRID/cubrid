@@ -285,6 +285,14 @@ typedef struct hashjoin_fetch_info
   REGU_VARIABLE_LIST regu_list_pred;
 } HASHJOIN_FETCH_INFO;
 
+/* Hash key mixed for partitioning. The string hashes (ADD_TO_HASH, mht_2str_pseudo_key) clear the top 4 bits, so the
+ * high bits of a raw key would put every string key into the first partitions. */
+#define HJOIN_HASH_MIX(hash_key) ((UINT32) ((UINT32) (hash_key) * 0x9E3779B1U))
+
+/* Partition of a mixed hash key, taken from its high bits. A hash table takes its slot from the low bits of the raw
+ * key (mht_put_hls_internal), so partitioning by the low bits would leave each partition few distinct slots. */
+#define HJOIN_HASH_TO_PARTITION(mixed_key, part_cnt) ((UINT32) (((UINT64) (mixed_key) * (part_cnt)) >> 32))
+
 /* HASHJOIN_INPUT_SPLIT_INFO */
 typedef struct hashjoin_input_split_info
 {
@@ -299,6 +307,13 @@ typedef struct hashjoin_split_info
   HASHJOIN_INPUT_SPLIT_INFO inner;
 } HASHJOIN_SPLIT_INFO;
 
+// *INDENT-OFF*
+namespace cubquery
+{
+  class hjoin_part_set;
+}
+// *INDENT-ON*
+
 /* HASHJOIN_SHARED_SPLIT_INFO */
 typedef struct hashjoin_shared_split_info
 {
@@ -306,10 +321,12 @@ typedef struct hashjoin_shared_split_info
   QFILE_LIST_SECTOR_SCAN_INFO sector_scan;
 
   std::mutex *part_mutexes;
+  cubquery::hjoin_part_set *part_set;	/* partition lists of the input being split */
 
   hashjoin_shared_split_info ()
     : sector_scan ()
     , part_mutexes (nullptr)
+    , part_set (nullptr)
   {
     //
   }
@@ -347,6 +364,8 @@ typedef struct hashjoin_shared_join_info
   HASHJOIN_RANGE_TIME_STATS build_range_time;
   HASHJOIN_RANGE_TIME_STATS probe_range_time;
 
+  QFILE_LIST_ID **result_list_ids;	/* result list of each join task */
+
   hashjoin_shared_join_info ()
     : scan_mutex ()
     , scan_position (S_BEFORE)
@@ -354,6 +373,7 @@ typedef struct hashjoin_shared_join_info
     , stats_mutex ()
     , build_range_time HASHJOIN_RANGE_TIME_STATS_INITIALIZER
     , probe_range_time HASHJOIN_RANGE_TIME_STATS_INITIALIZER
+    , result_list_ids (nullptr)
   {
     //
   }
@@ -378,6 +398,12 @@ typedef struct hashjoin_context
   VAL_DESCR *val_descr;
 
   HASHJOIN_STATUS status;
+
+  /* The pages of outer.list_id and inner.list_id belong to HASHJOIN_MANAGER.part_spools, not to the lists. */
+  bool is_input_spooled;
+
+  /* When set, the result is appended to this list, shared with other partitions, instead of list_id. */
+  QFILE_LIST_ID *result_list_id;
 
   /* Pointer to a member of HASHJOIN_MANAGER. */
   HASHJOIN_STATS *stats;
@@ -411,6 +437,10 @@ typedef struct hashjoin_manager
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   HASHJOIN_MERGE_METHOD qlist_merge_method;
   int qlist_flag;
+
+  /* Temporary files the partition lists are written to, one per split worker. */
+  struct qmgr_temp_file **part_spools;
+  int part_spool_cnt;
 
   // *INDENT-OFF*
   parallel_query::worker_manager *px_worker_manager;
@@ -468,13 +498,22 @@ int qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_i
 
 /* Hash Join Execution */
 int hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
+int hjoin_execute_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
+			     struct qmgr_temp_file *spool);
 int hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
+int hjoin_merge_qlist_into (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, QFILE_LIST_ID ** dest_list_id,
+			    QFILE_LIST_ID ** list_id);
 
 /* Hash Join Shared Split Info */
 int hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 				  HASHJOIN_SHARED_SPLIT_INFO * shared_info);
 void hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 				    HASHJOIN_SHARED_SPLIT_INFO * shared_info);
+
+/* Hash Join Partition Spool */
+int hjoin_init_part_spools (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info,
+			    int spool_cnt);
+void hjoin_clear_part_spools (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
 
 /* Hash List Scan */
 int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id);

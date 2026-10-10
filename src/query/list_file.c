@@ -1146,6 +1146,10 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
     {
       list_id_p->tfile_vfid = qmgr_create_result_file (thread_p, query_id);
     }
+  else if (QFILE_IS_FLAG_SET (flag, QFILE_NOT_USE_MEMBUF))
+    {
+      list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_NONE);
+    }
   else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_USE_KEY_BUFFER))
     {
       list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_KEY_BUFFER);
@@ -1162,14 +1166,6 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
 	  free_and_init (list_id_p);
 	}
       return NULL;
-    }
-
-  if (QFILE_IS_FLAG_SET (flag, QFILE_NOT_USE_MEMBUF))
-    {
-      list_id_p->tfile_vfid->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
-      list_id_p->tfile_vfid->membuf = NULL;
-      list_id_p->tfile_vfid->membuf_npages = 0;
-      list_id_p->tfile_vfid->membuf_type = TEMP_FILE_MEMBUF_NONE;
     }
 
   VFID_COPY (&(list_id_p->temp_vfid), &(list_id_p->tfile_vfid->temp_vfid));
@@ -1654,6 +1650,183 @@ qfile_add_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, QFI
       return ER_FAILED;
     }
   return qfile_add_tuple_to_list_from (thread_p, list_id_p, tuple, list_id_p->type_list.hdr_size);
+}
+
+/*
+ * qfile_init_staged_page () - initialize the header of a page image, as a new list page
+ *   page_image(out): page image
+ *   prev_vpid(in): previous page of the list, or NULL for an overflow page
+ *   tuple_cnt(in): 0 for a data page, QFILE_OVERFLOW_TUPLE_COUNT_FLAG for an overflow page
+ */
+static void
+qfile_init_staged_page (PAGE_PTR page_image, const VPID * prev_vpid, int tuple_cnt)
+{
+  memset (page_image, 0, QFILE_PAGE_HEADER_SIZE);
+  QFILE_PUT_TUPLE_COUNT (page_image, tuple_cnt);
+  if (prev_vpid != NULL)
+    {
+      QFILE_PUT_PREV_VPID (page_image, prev_vpid);
+    }
+  else
+    {
+      QFILE_PUT_PREV_VPID_NULL (page_image);
+    }
+  QFILE_PUT_NEXT_VPID_NULL (page_image);
+  QFILE_PUT_LAST_TUPLE_OFFSET (page_image, QFILE_PAGE_HEADER_SIZE);
+  QFILE_PUT_OVERFLOW_VPID_NULL (page_image);
+}
+
+/*
+ * qfile_add_tuple_to_staged_list () - add a tuple to a list whose last page is kept in a page image in memory
+ *   return: NO_ERROR or error code
+ *   list_id_p(in/out): list file; its last page is staged_page, to be written at list_id_p->last_vpid
+ *   staged_page(in/out): image of the last page
+ *   spool_p(in): temporary file the pages are allocated from
+ *   tuple(in): tuple laid out for the list
+ *
+ * Note: The place of the last page is allocated before the page is written, so the page is written once with its
+ *       next link set, and the previous page is never fixed again to link the next one. The last page is written by
+ *       qfile_write_staged_list_page () after the last tuple.
+ */
+int
+qfile_add_tuple_to_staged_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAGE_PTR staged_page,
+				QMGR_TEMP_FILE * spool_p, QFILE_TUPLE tuple)
+{
+  VPID new_vpid, ovf_vpid, next_ovf_vpid;
+  char *ovf_page = NULL;
+  int tuple_length, tuple_page_size, offset;
+  int error = NO_ERROR;
+
+  assert (list_id_p != NULL && staged_page != NULL && spool_p != NULL);
+  assert (list_id_p->last_pgptr == NULL);
+
+  tuple_length = QFILE_GET_TUPLE_LENGTH (tuple);
+
+  if (qfile_is_first_tuple (list_id_p) || qfile_is_last_page_full (list_id_p, tuple_length, false))
+    {
+#if defined (SERVER_MODE)
+      if (qmgr_is_query_interrupted (thread_p, list_id_p->query_id) == true)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  return ER_INTERRUPTED;
+	}
+#endif /* SERVER_MODE */
+
+      error = qmgr_alloc_temp_page (thread_p, spool_p, &new_vpid);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      if (qfile_is_first_tuple (list_id_p))
+	{
+	  QFILE_COPY_VPID (&list_id_p->first_vpid, &new_vpid);
+	}
+      else
+	{
+	  QFILE_PUT_NEXT_VPID (staged_page, &new_vpid);
+	  error = qmgr_write_temp_page (thread_p, spool_p, &list_id_p->last_vpid, staged_page);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+
+      qfile_init_staged_page (staged_page, &list_id_p->last_vpid, 0);
+      QFILE_COPY_VPID (&list_id_p->last_vpid, &new_vpid);
+      list_id_p->page_cnt++;
+      list_id_p->last_offset = QFILE_PAGE_HEADER_SIZE;
+    }
+
+  QFILE_PUT_TUPLE_COUNT (staged_page, QFILE_GET_TUPLE_COUNT (staged_page) + 1);
+  QFILE_PUT_LAST_TUPLE_OFFSET (staged_page, list_id_p->last_offset);
+
+  tuple_page_size = MIN (tuple_length, qfile_Max_tuple_page_size);
+  memcpy ((char *) staged_page + list_id_p->last_offset, tuple, tuple_page_size);
+#if !defined(NDEBUG)
+  qfile_type_list_note_tuple (&list_id_p->type_list, tuple, list_id_p->type_list.hdr_size);
+#endif
+  qfile_add_tuple_to_list_id (list_id_p, staged_page + list_id_p->last_offset, tuple_length, tuple_page_size);
+
+  if (tuple_page_size == tuple_length)
+    {
+      return NO_ERROR;
+    }
+
+  /* the rest of the tuple goes to overflow pages, written at once since they are never appended to */
+  ovf_page = (char *) db_private_alloc (thread_p, DB_PAGESIZE);
+  if (ovf_page == NULL)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+  memset (ovf_page, 0, DB_PAGESIZE);
+
+  error = qmgr_alloc_temp_page (thread_p, spool_p, &ovf_vpid);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  QFILE_PUT_OVERFLOW_VPID (staged_page, &ovf_vpid);
+
+  for (offset = tuple_page_size; offset < tuple_length; offset += tuple_page_size)
+    {
+      tuple_page_size = MIN (tuple_length - offset, qfile_Max_tuple_page_size);
+
+      qfile_init_staged_page ((PAGE_PTR) ovf_page, NULL, QFILE_OVERFLOW_TUPLE_COUNT_FLAG);
+      QFILE_PUT_OVERFLOW_TUPLE_PAGE_SIZE (ovf_page, tuple_page_size);
+      memcpy (ovf_page + QFILE_PAGE_HEADER_SIZE, (char *) tuple + offset, tuple_page_size);
+
+      if (offset + tuple_page_size < tuple_length)
+	{
+	  error = qmgr_alloc_temp_page (thread_p, spool_p, &next_ovf_vpid);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	  QFILE_PUT_OVERFLOW_VPID (ovf_page, &next_ovf_vpid);
+	}
+      else
+	{
+	  VPID_SET_NULL (&next_ovf_vpid);
+	}
+
+      error = qmgr_write_temp_page (thread_p, spool_p, &ovf_vpid, ovf_page);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+      list_id_p->page_cnt++;
+
+      ovf_vpid = next_ovf_vpid;
+    }
+
+exit:
+  db_private_free_and_init (thread_p, ovf_page);
+  return error;
+}
+
+/*
+ * qfile_write_staged_list_page () - write the last page of a list built by qfile_add_tuple_to_staged_list ()
+ *   return: NO_ERROR or error code
+ *   list_id_p(in): list file
+ *   staged_page(in): image of the last page
+ *   spool_p(in): temporary file the last page was allocated from
+ */
+int
+qfile_write_staged_list_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAGE_PTR staged_page,
+			      QMGR_TEMP_FILE * spool_p)
+{
+  assert (list_id_p != NULL && staged_page != NULL && spool_p != NULL);
+  assert (list_id_p->last_pgptr == NULL);
+
+  if (qfile_is_first_tuple (list_id_p))
+    {
+      return NO_ERROR;
+    }
+
+  QFILE_PUT_NEXT_VPID_NULL (staged_page);
+  return qmgr_write_temp_page (thread_p, spool_p, &list_id_p->last_vpid, staged_page);
 }
 
 /*
