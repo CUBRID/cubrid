@@ -1680,7 +1680,12 @@ hjoin_estimate_partition_count (INT64 min_tuple_cnt, double fill_factor)
   UINT64 per_entry_size;
 
   mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
-  assert (mem_limit > 0);
+  if (mem_limit == 0)
+    {
+      /* 0 turns hash list scans off and no hash join is planned under it, but a statement prepared under another
+       * value still runs its hash join plan: do not partition, and hjoin_scan_init chooses HASH_FILE */
+      return 1;
+    }
 
   /* Per-entry HYBRID size: ~2 slots (load factor 1/0.7 * power-of-two rounding) + one entry + a tuple position.
    * Linear estimate is enough: min_tuple_cnt is INT64, and the partition count is only approximate
@@ -3010,8 +3015,8 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
   assert (list_id == NULL || list_id->tuple_cnt > 0);
   assert (key_cnt > 0);
 
+  /* 0 is possible (see hjoin_estimate_partition_count); every size check below then fails and HASH_FILE is chosen */
   mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
-  assert (mem_limit > 0);
 
   assert (hash_scan->build_regu_list == NULL);	/* Unused */
   assert (hash_scan->probe_regu_list == NULL);	/* Unused */
