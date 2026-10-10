@@ -15854,7 +15854,7 @@ sm_truncate_using_delete (MOP class_mop)
   (void) snprintf (delete_query, sizeof (delete_query), "DELETE /*+ RECOMPILE NO_SUPPLEMENTAL_LOG */ FROM [%s];",
 		   class_name);
 
-  session = db_open_buffer (delete_query);
+  session = db_open_buffer_local (delete_query);
   if (session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -15869,7 +15869,7 @@ sm_truncate_using_delete (MOP class_mop)
       goto end;
     }
 
-  stmt_id = db_compile_statement (session);
+  stmt_id = db_compile_statement_local (session);
   if (stmt_id != 1)
     {
       assert (er_errid () != NO_ERROR);

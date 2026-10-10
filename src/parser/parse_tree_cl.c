@@ -2018,7 +2018,7 @@ parser_parse_string_with_escapes (PARSER_CONTEXT * parser, const char *buffer, c
   parser->flag.strings_have_no_escapes = strings_have_no_escapes ? 1 : 0;
   parser->flag.dont_collect_exec_stats = 0;
 
-  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true)
+  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && !parser->flag.is_system_generated_stmt)
     {
       parser->query_trace = true;
     }
@@ -2162,7 +2162,7 @@ parser_parse_file (PARSER_CONTEXT * parser, FILE * file)
   parser->flag.is_in_and_list = 0;
   parser->flag.dont_collect_exec_stats = 0;
 
-  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true)
+  if (prm_get_bool_value (PRM_ID_QUERY_TRACE) == true && !parser->flag.is_system_generated_stmt)
     {
       parser->query_trace = true;
     }
