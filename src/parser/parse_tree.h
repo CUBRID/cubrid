@@ -1638,6 +1638,7 @@ typedef struct parser_context PARSER_CONTEXT;
 
 typedef struct parser_node PT_NODE;
 typedef struct pt_static_sql_host_var PT_STATIC_SQL_HOST_VAR;
+typedef struct pt_static_sql_order_by_pos PT_STATIC_SQL_ORDER_BY_POS;
 typedef struct pt_alter_info PT_ALTER_INFO;
 typedef struct pt_alter_user_info PT_ALTER_USER_INFO;
 typedef struct pt_alter_trigger_info PT_ALTER_TRIGGER_INFO;
@@ -3002,6 +3003,7 @@ struct pt_sort_spec_info
   QFILE_TUPLE_VALUE_POSITION pos_descr;	/* Value position descriptor */
   PT_MISC_TYPE asc_or_desc;	/* enum value will be PT_ASC or PT_DESC */
   PT_MISC_TYPE nulls_first_or_last;	/* enum value will be PT_NULLS_DEFAULT, PT_NULLS_FIRST or PT_NULLS_LAST */
+  int expr_buffer_pos;		/* end of expr in the buffer being parsed. the start is buffer_pos_start of the node */
 };
 
 /* Info for Transaction Timeout */
@@ -3892,6 +3894,15 @@ struct pt_static_sql_host_var
   const char *label;		/* the PL/CSQL host expression, e.g. v or rec.field */
 };
 
+/* an ORDER BY expression of a static SQL which the parser replaced with the position of the select list:
+ * range [start, end) of the original buffer which is replaced with the position */
+struct pt_static_sql_order_by_pos
+{
+  int start;
+  int end;
+  int pos_no;
+};
+
 /* mark of a name in LIMIT clause of a static SQL. it is always a PL/CSQL variable (see pt_bind_names ()) */
 #define PT_NAME_IN_STATIC_SQL_LIMIT "name_in_static_sql_limit"
 
@@ -3975,6 +3986,9 @@ struct parser_context
   PT_STATIC_SQL_HOST_VAR *static_sql_host_vars;
   int static_sql_host_var_cnt;
   int static_sql_host_var_capacity;
+  PT_STATIC_SQL_ORDER_BY_POS *static_sql_order_by_pos;
+  int static_sql_order_by_pos_cnt;
+  int static_sql_order_by_pos_capacity;
   int static_sql_into_start;	/* INTO clause, -1 if none */
   int static_sql_into_end;
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */

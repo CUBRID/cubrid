@@ -14628,6 +14628,14 @@ opt_orderby_clause
 					      {
 						if (found_star)
 						  {
+						    if (this_parser->flag.is_parsing_static_sql
+							&& !(col->alias_print && intl_identifier_casecmp (n_str, col->alias_print) == 0))
+						      {
+							/* keep the expression of a static SQL. the PL/CSQL variables in it
+							 * have to be bound to be replaced with '?' in the text */
+							is_col = false;
+							continue;
+						      }
 						    temp = parser_copy_tree (this_parser, col);
 						    temp->next = NULL;
 						  }
@@ -14655,6 +14663,14 @@ opt_orderby_clause
 						    break;
 						  }
 					      }
+					  }
+
+					if (this_parser->flag.is_parsing_static_sql && !found_star && (is_col || is_alias)
+					    && order->info.sort_spec.expr->node_type == PT_VALUE)
+					  {
+					    /* the expression is gone with the PL/CSQL variables in it.
+					     * replace it with the position also in the text of a static SQL */
+					    pt_add_static_sql_order_by_pos (this_parser, order);
 					  }
 				      }
 				  }
@@ -14943,6 +14959,8 @@ sort_spec
 			    node->info.sort_spec.asc_or_desc = PT_ASC;
 			    node->info.sort_spec.expr = $1;
 			    node->info.sort_spec.nulls_first_or_last = $3;
+			    node->buffer_pos_start = @1.buffer_pos_start;
+			    node->info.sort_spec.expr_buffer_pos = @1.buffer_pos;
 			  }
 
 			$$ = node;
@@ -14957,6 +14975,8 @@ sort_spec
 			    node->info.sort_spec.asc_or_desc = PT_DESC;
 			    node->info.sort_spec.expr = $1;
 			    node->info.sort_spec.nulls_first_or_last = $3;
+			    node->buffer_pos_start = @1.buffer_pos_start;
+			    node->info.sort_spec.expr_buffer_pos = @1.buffer_pos;
 			  }
 
 			$$ = node;
@@ -14971,6 +14991,8 @@ sort_spec
 			    node->info.sort_spec.asc_or_desc = PT_ASC;
 			    node->info.sort_spec.expr = $1;
 			    node->info.sort_spec.nulls_first_or_last = $2;
+			    node->buffer_pos_start = @1.buffer_pos_start;
+			    node->info.sort_spec.expr_buffer_pos = @1.buffer_pos;
 			  }
 
 			$$ = node;

@@ -154,6 +154,7 @@ extern "C"
 
   extern PT_NODE *pt_compile (PARSER_CONTEXT * parser, PT_NODE * volatile statement);
   extern char *pt_rewrite_static_sql_text (PARSER_CONTEXT * parser);
+  extern int pt_add_static_sql_order_by_pos (PARSER_CONTEXT * parser, PT_NODE * sort_spec);
 
   extern PT_NODE *pt_semantic_type (PARSER_CONTEXT * parser, PT_NODE * tree, SEMANTIC_CHK_INFO * sc_info);
 

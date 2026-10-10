@@ -13187,12 +13187,71 @@ pt_compare_static_sql_host_var (const void *a, const void *b)
 }
 
 /*
+ * pt_add_static_sql_order_by_pos () - record the range of an ORDER BY expression of a static SQL which the parser
+ *                                     replaced with the position of the select list
+ *   return: error code
+ *   parser(in):
+ *   sort_spec(in): PT_SORT_SPEC whose expression is replaced with the position (PT_VALUE)
+ *
+ * Note: the PL/CSQL variables in the expression are gone with it, and are not replaced with '?'.
+ *       So the range is replaced with the position (see pt_rewrite_static_sql_text ())
+ */
+int
+pt_add_static_sql_order_by_pos (PARSER_CONTEXT * parser, PT_NODE * sort_spec)
+{
+  PT_STATIC_SQL_ORDER_BY_POS *order_by_pos;
+
+  if (parser->static_sql_order_by_pos_cnt == parser->static_sql_order_by_pos_capacity)
+    {
+      int capacity = (parser->static_sql_order_by_pos_capacity == 0) ? 4 : parser->static_sql_order_by_pos_capacity * 2;
+      PT_STATIC_SQL_ORDER_BY_POS *new_array =
+	(PT_STATIC_SQL_ORDER_BY_POS *) parser_alloc (parser, capacity * sizeof (PT_STATIC_SQL_ORDER_BY_POS));
+
+      if (new_array == NULL)
+	{
+	  PT_ERRORm (parser, sort_spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return ER_FAILED;
+	}
+
+      if (parser->static_sql_order_by_pos_cnt > 0)
+	{
+	  memcpy (new_array, parser->static_sql_order_by_pos,
+		  parser->static_sql_order_by_pos_cnt * sizeof (PT_STATIC_SQL_ORDER_BY_POS));
+	}
+
+      /* the old array is freed together with the parser */
+      parser->static_sql_order_by_pos = new_array;
+      parser->static_sql_order_by_pos_capacity = capacity;
+    }
+
+  order_by_pos = &parser->static_sql_order_by_pos[parser->static_sql_order_by_pos_cnt++];
+  order_by_pos->start = sort_spec->buffer_pos_start;
+  order_by_pos->end = sort_spec->info.sort_spec.expr_buffer_pos;
+  order_by_pos->pos_no = sort_spec->info.sort_spec.expr->info.value.data_value.i;
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_compare_static_sql_order_by_pos () - qsort comparator of ORDER BY expression ranges of a static SQL by position
+ */
+static int
+pt_compare_static_sql_order_by_pos (const void *a, const void *b)
+{
+  const PT_STATIC_SQL_ORDER_BY_POS *x = (const PT_STATIC_SQL_ORDER_BY_POS *) a;
+  const PT_STATIC_SQL_ORDER_BY_POS *y = (const PT_STATIC_SQL_ORDER_BY_POS *) b;
+
+  return (x->start < y->start) ? -1 : ((x->start > y->start) ? 1 : 0);
+}
+
+/*
  * pt_rewrite_static_sql_text () - rewrite the original text of a static SQL into the text executed at runtime
  *   return: the text allocated in the parser, or NULL on error
  *   parser(in/out): the parser which compiled the static SQL
  *
  * Note: the original buffer is not re-printed from the parse tree, which compiling may have transformed into
- *       a shape that can not be parsed again. Instead, the ranges of PL/CSQL variables are replaced with '?'
+ *       a shape that can not be parsed again. Instead, the ranges of PL/CSQL variables are replaced with '?',
+ *       the ORDER BY expressions replaced with positions by the parser are replaced with the positions
  *       and the INTO clause is removed. All the positions are byte offsets in the same buffer.
  *       On return, parser->static_sql_host_vars are sorted by position without duplicates, in the order of
  *       the '?'s in the text.
@@ -13202,9 +13261,11 @@ pt_rewrite_static_sql_text (PARSER_CONTEXT * parser)
 {
   const char *src = parser->original_buffer;
   PT_STATIC_SQL_HOST_VAR *host_vars = parser->static_sql_host_vars;
+  PT_STATIC_SQL_ORDER_BY_POS *order_by_pos = parser->static_sql_order_by_pos;
+  int order_by_pos_cnt = parser->static_sql_order_by_pos_cnt;
   int into_start = parser->static_sql_into_start;
   int into_end = parser->static_sql_into_end;
-  int src_len, cnt, i, pos;
+  int src_len, cnt, i, j, pos, prev_end;
   bool out_of_buffer, overlapping;
   char *text, *p;
 
@@ -13248,8 +13309,31 @@ pt_rewrite_static_sql_text (PARSER_CONTEXT * parser)
     }
   parser->static_sql_host_var_cnt = cnt;
 
-  /* every replaced range is at least one byte, so the text is not longer than the original */
-  text = (char *) parser_alloc (parser, src_len + 1);
+  /* ORDER BY expressions must not overlap with each other, the PL/CSQL variables and the INTO clause */
+  if (order_by_pos_cnt > 1)
+    {
+      qsort (order_by_pos, order_by_pos_cnt, sizeof (PT_STATIC_SQL_ORDER_BY_POS), pt_compare_static_sql_order_by_pos);
+    }
+  prev_end = 0;
+  for (i = 0, j = 0; j < order_by_pos_cnt; j++)
+    {
+      while (i < cnt && host_vars[i].end <= order_by_pos[j].start)
+	{
+	  i++;
+	}
+      out_of_buffer = (order_by_pos[j].start < 0 || order_by_pos[j].end > src_len);
+      overlapping = (order_by_pos[j].end <= order_by_pos[j].start || order_by_pos[j].start < prev_end
+		     || (i < cnt && host_vars[i].start < order_by_pos[j].end)
+		     || (into_start >= 0 && order_by_pos[j].start < into_end && order_by_pos[j].end > into_start));
+      if (out_of_buffer || overlapping)
+	{
+	  return NULL;
+	}
+      prev_end = order_by_pos[j].end;
+    }
+
+  /* a position may be longer than the expression replaced with it */
+  text = (char *) parser_alloc (parser, src_len + order_by_pos_cnt * 11 + 1);
   if (text == NULL)
     {
       return NULL;
@@ -13258,6 +13342,7 @@ pt_rewrite_static_sql_text (PARSER_CONTEXT * parser)
   p = text;
   pos = 0;
   i = 0;
+  j = 0;
   while (pos < src_len)
     {
       if (i < cnt && pos == host_vars[i].start)
@@ -13265,6 +13350,12 @@ pt_rewrite_static_sql_text (PARSER_CONTEXT * parser)
 	  *p++ = '?';
 	  pos = host_vars[i].end;
 	  i++;
+	}
+      else if (j < order_by_pos_cnt && pos == order_by_pos[j].start)
+	{
+	  p += sprintf (p, "%d", order_by_pos[j].pos_no);
+	  pos = order_by_pos[j].end;
+	  j++;
 	}
       else if (pos == into_start)
 	{
