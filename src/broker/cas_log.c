@@ -70,9 +70,6 @@ static void cas_log_backup (T_CUBRID_FILE_ID fid);
 static void cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt, ...);
 
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-static void cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index);
-#endif
 static void cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_num, bool do_flush,
 				    const char *fmt, va_list ap);
 static void cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, va_list ap);
@@ -81,10 +78,6 @@ static FILE *access_log_open (char *log_file_name);
 static void cas_log_write_query_string_internal (char *query, int size, bool newline,
 						 HIDE_PWD_INFO_PTR hide_pwd_info_ptr, bool ishidepw);
 
-#ifdef CAS_ERROR_LOG
-static int error_file_offset;
-static char cas_log_error_flag;
-#endif
 static FILE *log_fp = NULL, *slow_log_fp = NULL;
 static char log_filepath[BROKER_PATH_MAX], slow_log_filepath[BROKER_PATH_MAX];
 static INT64 saved_log_fpos = 0;
@@ -310,24 +303,6 @@ cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt, ...)
 
   return;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-static void
-cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index)
-{
-  char new_filepath[BROKER_PATH_MAX];
-  struct tm tmp_tm;
-
-  assert (log_filepath[0] != '\0');
-
-  localtime_r (&cur_time, &tmp_tm);
-  tmp_tm.tm_year += 1900;
-
-  snprintf (new_filepath, BROKER_PATH_MAX, "%s.%02d%02d%02d%02d%02d.%d", log_filepath, tmp_tm.tm_mon + 1,
-	    tmp_tm.tm_mday, tmp_tm.tm_hour, tmp_tm.tm_min, tmp_tm.tm_sec, run_time);
-  cas_rename (log_filepath, new_filepath);
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 cas_log_end (int mode, int run_time_sec, int run_time_msec)
@@ -859,90 +834,6 @@ cas_log_write_client_ip (const unsigned char *ip_addr)
       cas_log_write_and_end (0, false, "CLIENT IP %s", client_ip_str);
     }
 }
-
-#if !defined (NDEBUG)
-void
-cas_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
-{
-#if 0
-
-  if (log_fp != NULL)
-    {
-      char buf[LINE_MAX], *p;
-      int len, n;
-      va_list ap;
-
-      va_start (ap, fmt);
-      p = buf;
-      len = LINE_MAX;
-      n = ut_time_string (p);
-      len -= n;
-      p += n;
-      if (len > 0)
-	{
-	  n = snprintf (p, len, " (debug) file %s line %d ", file_name, line_no);
-	  len -= n;
-	  p += n;
-	  if (len > 0)
-	    {
-	      n = vsnprintf (p, len, fmt, ap);
-	      len -= n;
-	      p += n;
-	    }
-	}
-      cas_fwrite (buf, (p - buf), 1, log_fp);
-      cas_fputc ('\n', log_fp);
-      va_end (ap);
-    }
-
-#endif
-}
-#endif
-
-#ifdef CAS_ERROR_LOG
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-void
-cas_error_log (int err_code, char *err_msg_str, int client_ip_addr)
-{
-
-  FILE *fp;
-  char *err_log_file = shm_appl->error_log_file;
-  char *script_file = getenv (PATH_INFO_ENV_STR);
-  time_t t = time (NULL);
-  struct tm ct1;
-  char err_code_str[12];
-  char *lastcmd = "";
-  char *ip_str;
-
-  localtime_r (&t, &ct1);
-  ct1.tm_year += 1900;
-
-  fp = access_log_open (err_log_file);
-  if (fp == NULL)
-    {
-      return;
-    }
-
-#ifdef CAS_ERROR_LOG
-  error_file_offset = cas_ftell (fp);
-#endif
-
-  if (script_file == NULL)
-    script_file = "";
-  sprintf (err_code_str, "%d", err_code);
-  ip_str = ut_uchar2ipstr ((unsigned char *) (&client_ip_addr));
-
-  cas_fprintf (fp, "[%d] %s %s %d/%d/%d %d:%d:%d %d\n%s:%s\ncmd:%s\n", (int) getpid (), ip_str, script_file,
-	       ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min, ct1.tm_sec,
-	       (int) (strlen (err_code_str) + strlen (err_msg_str) + 1), err_code_str, err_msg_str, lastcmd);
-  cas_fclose (fp);
-
-  cas_log_error_flag = 1;
-
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-#endif
 
 int
 cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, char *dbname, char *dbuser,

@@ -324,6 +324,9 @@ PSTAT_METADATA pstat_Metadata[] = {
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_INFLIGHT_WINDOW_HIT, "Num_prior_inflight_window_hit"),
   PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_PRIOR_INFLIGHT_WINDOW_MISS, "Num_prior_inflight_window_miss"),
 
+  /* previous-version reads that did not copy the page their record starts on */
+  PSTAT_METADATA_INIT_SINGLE_ACC (PSTAT_LOG_NUM_FETCHES_SKIPPED, "Num_log_page_fetches_skipped"),
+
   /* HA replication delay */
   PSTAT_METADATA_INIT_SINGLE_PEEK (PSTAT_HA_REPL_DELAY, "Time_ha_replication_delay"),
 
