@@ -6638,11 +6638,11 @@ sqmgr_drop_all_query_plans (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
  * return:
  *
  *   rid(in):
- *   request(in)qmgr_drop_query_plans_by_sha1:
+ *   request(in):
  *   reqlen(in):
  *
  * NOTE:
- * Clear all XASL cache entires out upon request of the client.
+ * Clear sha1 XASL cache entries out upon request of the client.
  * This function is a counter part to qmgr_drop_query_plans_by_sha1().
  */
 void

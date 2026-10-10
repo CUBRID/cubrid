@@ -7863,9 +7863,9 @@ qmgr_drop_all_query_plans (void)
 /*
  * qmgr_drop_query_plans_by_sha1 - Send a SERVER_QM_DROP_BY_SHA1 request to the server
  *
- * Request the server to clear sha1 XASL cache entires out. When the client
+ * Request the server to clear sha1 XASL cache entries out. When the client
  * want to delete cached query plans for sha1, this function will be used.
- * This function is a counter part to sqmgr_drop_all_query_plans().
+ * This function is a counter part to sqmgr_drop_query_plans_by_sha1().
  */
 /*
  * qmgr_drop_query_plans_by_sha1 -
@@ -7875,7 +7875,7 @@ qmgr_drop_all_query_plans (void)
  * NOTE:
  */
 int
-qmgr_drop_query_plans_by_sha1 (char *sha1)
+qmgr_drop_query_plans_by_sha1 (const char *sha1)
 {
 #if defined(CS_MODE)
   int success = ER_FAILED;

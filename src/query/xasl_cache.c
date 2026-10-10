@@ -2100,13 +2100,13 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, const OID * oid)
  *
  * return	     : True if entry is related, false otherwise.
  * xcache_entry (in) : XASL cache entry.
- * arg (in)	     : Pointer to OID.
+ * arg (in)	     : sha1 string.
  */
 static bool
 xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void *arg)
 {
   char sha1_xasl[45];
-  const char *sha1 = (char *) arg;
+  const char *sha1 = (const char *) arg;
 
   assert (xcache_entry != NULL);
   assert (sha1 != NULL);
