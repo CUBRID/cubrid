@@ -1780,7 +1780,17 @@
 #define ER_SYSMETA_UPGRADE_REQUIRED                 -1381
 #define ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED          -1382
 
-#define ER_LAST_ERROR                               -1383
+#define ER_HEAP_OOS_BAD_INLINE_HEADER               -1383
+
+#define ER_HEAP_OOS_OVERPASS_MAXOBJ_SIZE            -1384
+
+#define ER_HEAP_OOS_CORRUPTED_RECORD                -1385
+
+#define ER_HEAP_OOS_INVALID_ARGUMENT                -1386
+
+#define ER_HEAP_OOS_EAGER_CLEANUP_SKIPPED           -1387
+
+#define ER_LAST_ERROR                               -1388
 
 
 /*
