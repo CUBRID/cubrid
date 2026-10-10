@@ -920,12 +920,14 @@ valid options:\n\
 
 $set 37 MSGCAT_UTIL_SET_PLANDUMP
 15 Cannot open output file '%1$s'\n
+16 ERROR: --drop-clone and --drop cannot be used together.\n
 59 plandump cannot run as standalone mode.\n
 60 \
 plandump: Display or control cached query plans.\n\
 usage: %1$s plandump [OPTION] database-name\n\
 \n\
 valid options:\n\
+  -c, --drop-clone             drop XASL clones of the cached plans, keeping the plans; with -s, of the sha1 plan only\n\
   -d, --drop                   drop all plans in the server's cache\n\
   -o, --output-file=FILE       redirect output messages to FILE; default: none\n\
   -s, --sha1=SHA1              drop sha1 plan in the server's cache; default: none\n

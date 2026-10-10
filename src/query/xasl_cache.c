@@ -2100,13 +2100,13 @@ xcache_remove_by_oid (THREAD_ENTRY * thread_p, const OID * oid)
  *
  * return	     : True if entry is related, false otherwise.
  * xcache_entry (in) : XASL cache entry.
- * arg (in)	     : Pointer to OID.
+ * arg (in)	     : sha1 string.
  */
 static bool
 xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void *arg)
 {
   char sha1_xasl[45];
-  const char *sha1 = (char *) arg;
+  const char *sha1 = (const char *) arg;
 
   assert (xcache_entry != NULL);
   assert (sha1 != NULL);
@@ -2162,6 +2162,46 @@ xcache_drop_all (THREAD_ENTRY * thread_p)
 
   xcache_log ("drop all queries \n" XCACHE_LOG_TRAN_TEXT, XCACHE_LOG_TRAN_ARGS (thread_p));
   xcache_invalidate_entries (thread_p, NULL, NULL);
+}
+
+/*
+ * xcache_drop_clones () - Free the clones kept in XASL cache entries. The entries stay in cache.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * sha1 (in)	 : Free only the clones of the entries with this sha1. NULL for all entries.
+ */
+void
+xcache_drop_clones (THREAD_ENTRY * thread_p, const char *sha1)
+{
+  XASL_CACHE_ENTRY *xcache_entry = NULL;
+
+  if (!xcache_Enabled)
+    {
+      return;
+    }
+
+  xcache_check_logging ();
+
+  xcache_log ("drop clones: \n" "\t sha1 = %s \n" XCACHE_LOG_TRAN_TEXT, sha1 != NULL ? sha1 : "(all)",
+	      XCACHE_LOG_TRAN_ARGS (thread_p));
+
+  xcache_hashmap_iterator iter = { thread_p, xcache_Hashmap };
+
+  while ((xcache_entry = iter.iterate ()) != NULL)
+    {
+      if (sha1 != NULL && !xcache_entry_is_related_to_sha1 (xcache_entry, sha1))
+	{
+	  continue;
+	}
+
+      (void) pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
+      while (xcache_entry->n_cache_clones > 0)
+	{
+	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones], xcache_entry);
+	}
+      (void) pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
+    }
 }
 
 /*
