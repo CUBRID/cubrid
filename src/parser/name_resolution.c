@@ -110,6 +110,9 @@ enum
 };
 
 static const char *CPTR_PT_NAME_IN_GROUP_HAVING = "name_in_group_having";
+/* a name in group by/having/order by of a static SQL, not resolved by name binding. it is resolved as an alias or
+ * converted to a host variable after the alias resolution */
+static const char *CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL = "name_deferred_for_static_sql";
 
 typedef struct pt_bind_names_data_type PT_BIND_NAMES_DATA_TYPE;
 struct pt_bind_names_data_type
@@ -220,6 +223,11 @@ static int generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_l
 static int generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, NATURAL_JOIN_ATTR_INFO ** attrs_p);
 
 static bool is_pt_name_in_group_having (PT_NODE * node);
+
+static bool is_pt_name_deferred_for_static_sql (PT_NODE * node);
+
+static PT_NODE *pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+							      int *continue_walk);
 
 static PT_NODE *pt_mark_pt_name (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent, int *continue_walk);
 
@@ -3454,11 +3462,18 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  {
 	    if (parser->flag.is_parsing_static_sql == 1 && er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
 	      {
-		// clear unknown attribute error, the unknown symbol will be converted (paramterized) to host variable
 		er_clear ();
 		pt_reset_error (parser);
 
-		node = pt_parameterize_for_static_sql (parser, node);
+		if (is_pt_name_in_group_having (node))
+		  {
+		    // it may be an alias of the select list. it will be converted after pt_resolve_group_having_alias ()
+		    node->etc = (void *) pt_append_string (parser, NULL, CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL);
+		  }
+		else
+		  {
+		    node = pt_parameterize_for_static_sql (parser, node);
+		  }
 
 		/* don't visit leaves */
 		*continue_walk = PT_LIST_WALK;
@@ -9060,12 +9075,57 @@ is_pt_name_in_group_having (PT_NODE * node)
       return false;
     }
 
-  if (intl_identifier_casecmp ((char *) node->etc, CPTR_PT_NAME_IN_GROUP_HAVING) == 0)
+  if (strcmp ((char *) node->etc, CPTR_PT_NAME_IN_GROUP_HAVING) == 0)
     {
       return true;
     }
 
   return false;
+}
+
+/*
+ * is_pt_name_deferred_for_static_sql () - check if the name in group by/having/order by of a static SQL
+ *                                         was not resolved by name binding
+ *   return:
+ *   node(in):
+ */
+static bool
+is_pt_name_deferred_for_static_sql (PT_NODE * node)
+{
+  if (node == NULL || node->node_type != PT_NAME || node->etc == NULL)
+    {
+      return false;
+    }
+
+  return strcmp ((char *) node->etc, CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL) == 0;
+}
+
+/*
+ * pt_parameterize_deferred_name_for_static_sql () - convert a name deferred by name binding of a static SQL,
+ *                                                   which is not resolved as an alias either, to a host variable
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in/out):
+ *
+ * Note: names are resolved in the order of a column, an alias of the select list and a PL/CSQL variable
+ */
+static PT_NODE *
+pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (is_pt_name_deferred_for_static_sql (node))
+    {
+      node = pt_parameterize_for_static_sql (parser, node);
+      if (node == NULL)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return node;
 }
 
 /*
@@ -9196,6 +9256,12 @@ pt_resolve_group_having_alias_pt_name (PARSER_CONTEXT * parser, PT_NODE ** node_
   /* We can not resolve the pt_name. */
   if (col == NULL)
     {
+      if (is_pt_name_deferred_for_static_sql (node))
+	{
+	  /* it will be converted to a host variable (see pt_parameterize_deferred_name_for_static_sql ()) */
+	  return;
+	}
+
       PT_ERRORmf (parser, (*node_p), MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED,
 		  pt_short_print (parser, (*node_p)));
     }
@@ -9415,6 +9481,17 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
       if (pt_has_error (parser))
 	{
 	  return NULL;
+	}
+
+      if (parser->flag.is_parsing_static_sql == 1)
+	{
+	  /* names in group by/having/order by which are not aliases are converted to host variables */
+	  statement =
+	    parser_walk_tree (parser, statement, pt_parameterize_deferred_name_for_static_sql, NULL, NULL, NULL);
+	  if (pt_has_error (parser))
+	    {
+	      return NULL;
+	    }
 	}
 
       /*
