@@ -3103,7 +3103,7 @@ css_wakeup_handler (css_conn_entry * conn)
       return;
     }
 
-  if (!conn->worker->notify ())
+  if (conn->worker->has_queued_messages () && !conn->worker->notify ())
     {
       assert_release (false);
     }
