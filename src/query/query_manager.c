@@ -2166,6 +2166,20 @@ xqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY * thread_p, const char *sha1)
 }
 
 /*
+ * xqmgr_drop_query_clones () - Drop the XASL clones kept in the stored query plans
+ *   return: NO_ERROR
+ *   sha1(in): sha1 of the plans whose clones are dropped; NULL for all plans
+ *
+ * Note: The plans stay in the XASL cache.
+ */
+int
+xqmgr_drop_query_clones (THREAD_ENTRY * thread_p, const char *sha1)
+{
+  xcache_drop_clones (thread_p, sha1);
+  return NO_ERROR;
+}
+
+/*
  * xqmgr_dump_query_plans () - Dump the content of the XASL cache
  *   return:
  *   outfp(in)  :

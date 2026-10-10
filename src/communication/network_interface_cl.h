@@ -284,6 +284,7 @@ extern QFILE_LIST_ID *qmgr_prepare_and_execute_query (char *xasl_stream, int xas
 extern int qmgr_end_query (QUERY_ID query_id);
 extern int qmgr_drop_all_query_plans (void);
 extern int qmgr_drop_query_plans_by_sha1 (const char *sha1);
+extern int qmgr_drop_query_clones (const char *sha1);
 extern void qmgr_dump_query_plans (FILE * outfp);
 extern void qmgr_dump_query_cache (FILE * outfp);
 #if defined(ENABLE_UNUSED_FUNCTION)

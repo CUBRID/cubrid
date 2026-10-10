@@ -7923,6 +7923,60 @@ qmgr_drop_query_plans_by_sha1 (const char *sha1)
 }
 
 /*
+ * qmgr_drop_query_clones - Send a NET_SERVER_QM_QUERY_DROP_CLONES request to the server
+ *
+ * return: NO_ERROR or error code
+ *
+ *   sha1(in): sha1 of the plans whose clones are dropped; NULL for all plans
+ */
+int
+qmgr_drop_query_clones (const char *sha1)
+{
+#if defined(CS_MODE)
+  int success = ER_FAILED;
+  int request_size, strlen1 = 0;
+  char *request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply;
+  int req_error;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+
+  request_size = length_const_string (sha1, &strlen1);
+
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      return ER_FAILED;
+    }
+
+  pack_const_string_with_length (request, sha1, strlen1);
+
+  req_error = net_client_request (NET_SERVER_QM_QUERY_DROP_CLONES, request, request_size, reply,
+				  OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (!req_error)
+    {
+      or_unpack_int (reply, &success);
+    }
+
+  free_and_init (request);
+
+  return success;
+#else /* CS_MODE */
+  int status;
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  status = xqmgr_drop_query_clones (thread_p, sha1);
+
+  exit_server (*thread_p);
+
+  return status;
+#endif /* !CS_MODE */
+}
+
+/*
  * qmgr_dump_query_plans -
  *
  * return:
