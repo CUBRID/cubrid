@@ -50,7 +50,6 @@ Client App → Broker (port listener) → CAS₁, CAS₂, ... CASₙ → cub_ser
 
 - Functions prefixed `cas_` (CAS process), `broker_` (broker process), `shm_` (shared memory)
 - Broker and CAS are separate processes — communicate only through shared memory
-- CAS uses its own error handling: `cas_error_log_write()`, not `er_set()`
 - Config values come from `cubrid_broker.conf` — parsed in `broker_config.c`
 
 ## Gotchas
