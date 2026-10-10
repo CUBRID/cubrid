@@ -354,8 +354,6 @@ static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index
 static int qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
-static PT_NODE *qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
-							   int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
 static bool qo_check_skip_term (QO_ENV * env, BITSET visited_segs, QO_TERM * term, BITSET * visited_terms,
 				BITSET * cur_visited_terms);
@@ -2004,6 +2002,40 @@ qo_index_forbids_key_filter (QO_INDEX_ENTRY * index_entryp)
 }
 
 /*
+ * qo_iscan_has_sql_capable_sp_filter () - check whether a term that calls an SP able to run SQL must be a data filter
+ *					    of the index scan
+ *   return: true if such a term touches the scan's node and is not one of its key-range terms
+ *   plan(in): index scan plan whose key-range terms are set
+ *
+ * Note: Such a term is never a key filter (CBRD-27591), so the scan can be neither covering, which takes no data
+ *	 filter, nor multi-range optimized, which picks its top rows before the data filter. This includes a join term
+ *	 that gen_outer () would put in the key filter of a covering inner scan, and a multi-column key-range term
+ *	 that make_pred_from_plan () may copy to a filter. A single-column key-range term is evaluated before the
+ *	 scan descends, and a term with a correlated subquery is evaluated after the scan returns the row.
+ */
+bool
+qo_iscan_has_sql_capable_sp_filter (QO_PLAN * plan)
+{
+  QO_ENV *env = plan->info->env;
+  QO_TERM *term;
+  int t;
+
+  for (t = 0; t < env->nterms; t++)
+    {
+      term = QO_ENV_TERM (env, t);
+      if (QO_TERM_IS_FLAGED (term, QO_TERM_CALLS_SQL_CAPABLE_SP)
+	  && BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (plan->plan_un.scan.node))
+	  && bitset_is_empty (&(QO_TERM_SUBQUERIES (term)))
+	  && (!BITSET_MEMBER (plan->plan_un.scan.terms, t) || QO_TERM_IS_FLAGED (term, QO_TERM_MULTI_COLL_PRED)))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_index_scan_new () -
  *   return:
  *   info(in):
@@ -2135,6 +2167,14 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 	      continue;		/* term contains correlated subquery */
 	    }
 
+	  if (QO_TERM_IS_FLAGED (term, QO_TERM_CALLS_SQL_CAPABLE_SP))
+	    {
+	      /* The btree scan evaluates the key filter on the leaf page it keeps latched, and the SP's SQL runs as
+	       * another request of this transaction that may need that page: it would wait for the latch until it
+	       * timed out (CBRD-27591). As a data filter the term runs after the scan has released the leaf. */
+	      continue;
+	    }
+
 	  /* check for no key-range index scan */
 	  if (bitset_is_empty (&(plan->plan_un.scan.terms)))
 	    {
@@ -2196,8 +2236,9 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 
 	  if (t == -1)
 	    {
-	      /* not found data-filter; mark as covering index scan */
-	      plan->plan_un.scan.index_cover = true;
+	      /* not found data-filter; mark as covering index scan, unless a term that calls an SP able to run SQL
+	       * would have to be a data filter (CBRD-27591) */
+	      plan->plan_un.scan.index_cover = !qo_iscan_has_sql_capable_sp_filter (plan);
 	    }
 	}
     }
@@ -14750,8 +14791,10 @@ qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
  *   tree(in):
  *   arg(in/out): bool *, set when such a node is found
  *   continue_walk(in/out):
+ *
+ * Note: qo_add_term () finds with it the terms that may run SQL, which stay out of a key filter (CBRD-27591).
  */
-static PT_NODE *
+PT_NODE *
 qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
 {
   bool *has_ineligible = (bool *) arg;
