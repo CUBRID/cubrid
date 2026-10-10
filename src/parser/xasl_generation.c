@@ -6675,6 +6675,32 @@ pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value, const DB_TY
 
 
 /*
+ * pt_make_key_limit_arith () - build a key limit node (rownum < N is N - 1, a range is upper - lower,
+ *                              a merge with a user KEYLIMIT is LEAST/GREATEST) and mark it as such,
+ *                              so key_limit_eval () can tell it from arithmetic written by the user
+ *   return: a regu variable or NULL on error
+ *   arg1(in), arg2(in): operands
+ *   op(in): T_SUB, T_LEAST or T_GREATEST
+ *   domain(in): result domain
+ */
+REGU_VARIABLE *
+pt_make_key_limit_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, const OPERATOR_TYPE op,
+			 const TP_DOMAIN * domain)
+{
+  REGU_VARIABLE *regu;
+
+  assert (op == T_SUB || op == T_LEAST || op == T_GREATEST);
+
+  regu = pt_make_regu_arith (arg1, arg2, NULL, op, domain);
+  if (regu != NULL)
+    {
+      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_KEY_LIMIT_ARITH);
+    }
+
+  return regu;
+}
+
+/*
  * pt_make_regu_arith () - takes a regu_variable pair,
  *                         and makes an regu arith type
  *   return: A NULL return indicates an error occurred
@@ -11618,7 +11644,7 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
     {
       if (regu_var_u != NULL)
 	{
-	  key_infop->key_limit_u = pt_make_regu_arith (key_infop->key_limit_u, regu_var_u, NULL, T_LEAST, dom_bigint);
+	  key_infop->key_limit_u = pt_make_key_limit_arith (key_infop->key_limit_u, regu_var_u, T_LEAST, dom_bigint);
 	  if (key_infop->key_limit_u == NULL)
 	    {
 	      goto error;
@@ -11635,8 +11661,7 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
     {
       if (regu_var_l != NULL)
 	{
-	  key_infop->key_limit_l =
-	    pt_make_regu_arith (key_infop->key_limit_l, regu_var_l, NULL, T_GREATEST, dom_bigint);
+	  key_infop->key_limit_l = pt_make_key_limit_arith (key_infop->key_limit_l, regu_var_l, T_GREATEST, dom_bigint);
 	  if (key_infop->key_limit_l == NULL)
 	    {
 	      goto error;
@@ -11744,7 +11769,7 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
 	{
 	  TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
 
-	  limit_infop->upper = pt_make_regu_arith (limit_infop->upper, limit_infop->lower, NULL, T_SUB, dom_bigint);
+	  limit_infop->upper = pt_make_key_limit_arith (limit_infop->upper, limit_infop->lower, T_SUB, dom_bigint);
 	  if (limit_infop->upper == NULL)
 	    {
 	      goto exit_on_error;
