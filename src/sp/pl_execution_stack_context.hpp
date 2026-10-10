@@ -147,8 +147,12 @@ namespace cubpl
        * created (that object is cached per session, so concurrent px workers would share one). */
       bool is_server_side_sql_forbidden () const
       {
+	/* the parallel checkers keep an SP not declared PARALLEL_ENABLE out of px workers. One that
+	 * gets there anyway is refused as well: CAS answers only the request id of its own thread,
+	 * which a px worker does not have, so the query would wait forever holding its locks
+	 * (CBRD-27596). */
 	assert (m_is_parallel_enabled_sp || !m_is_px_worker);
-	return m_is_parallel_enabled_sp;
+	return m_is_parallel_enabled_sp || m_is_px_worker;
       }
 
       void set_parallel_enabled_sp (bool is_parallel_enabled)
