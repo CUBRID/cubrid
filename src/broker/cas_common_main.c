@@ -1041,8 +1041,8 @@ cas_parse_db_info (char *read_buf, int db_info_size, T_REQ_INFO * req_info, DB_C
   if (req_info->client_version >= CAS_MAKE_VER (8, 4, 0))
     {
       assert (url != NULL);
+      /* not NUL-terminated: the last byte is part of the session secret */
       db_sessionid = url + SRV_CON_URL_SIZE;
-      db_sessionid[SRV_CON_DBSESS_ID_SIZE - 1] = '\0';
     }
   else
     {

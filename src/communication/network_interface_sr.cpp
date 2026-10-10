@@ -9512,6 +9512,7 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
   char *db_user = NULL, *host = NULL, *program_name = NULL;
   char db_user_upper[DB_MAX_USER_LENGTH] = { '\0' };
   char server_session_key[SERVER_SESSION_KEY_SIZE];
+  char session_secret[SESSION_SECRET_SIZE];
   SESSION_PARAM *session_params = NULL;
   int error = NO_ERROR, update_parameter_values = 0;
 
@@ -9521,15 +9522,16 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
   ptr = or_unpack_string_alloc (ptr, &db_user);
   ptr = or_unpack_string_alloc (ptr, &host);
   ptr = or_unpack_string_alloc (ptr, &program_name);
+  ptr = or_unpack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
 
   if (id == DB_EMPTY_SESSION
       || memcmp (server_session_key, xboot_get_server_session_key (), SERVER_SESSION_KEY_SIZE) != 0
-      || (error = xsession_check_session (thread_p, id)) != NO_ERROR)
+      || (error = xsession_check_session (thread_p, id, session_secret)) != NO_ERROR)
     {
       /* not an error yet */
       er_clear ();
       /* create new session */
-      error = xsession_create_new (thread_p, &id);
+      error = xsession_create_new (thread_p, &id, session_secret);
       if (error != NO_ERROR)
 	{
 	  (void) return_error_to_client (thread_p, rid);
@@ -9574,6 +9576,9 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
 	  area_size += sysprm_packed_session_parameters_length (session_params, area_size);
 	}
 
+      /* session secret */
+      area_size += or_packed_stream_length (SESSION_SECRET_SIZE);
+
       area = (char *) malloc (area_size);
       if (area != NULL)
 	{
@@ -9585,6 +9590,7 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
 	    {
 	      ptr = sysprm_pack_session_parameters (ptr, session_params);
 	    }
+	  ptr = or_pack_stream (ptr, session_secret, SESSION_SECRET_SIZE);
 	}
       else
 	{
