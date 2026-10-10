@@ -96,6 +96,7 @@ namespace parallel_scan
       int active_results;
       std::vector<QFILE_LIST_ID *> hgby_results;
       bool g_hash_eligible;
+      bool g_agg_domain_resolve_need;	/* the original aggregate nodes still wait for domains the workers resolve */
       trace_handler *trace_handler_p;
       parallel_scan::instnum_mode instnum_mode = parallel_scan::instnum_mode::NONE;
       std::vector<int> rownum_col_indices;	/* RENUMBER: ROWNUM positions in the valptr list */
@@ -125,7 +126,8 @@ namespace parallel_scan
 	  val_list_domain_resolved (false),
 	  agg_hash_state (HS_NONE),
 	  g_agg_domains_resolved (TRUE),
-	  is_topn (false) {}
+	  is_topn (false),
+	  write_initialized (false) {}
       ~mergeable_list_tls() = default;
       QFILE_LIST_ID *writer_result_p;
       QFILE_TUPLE_RECORD tpl_buf;
@@ -137,6 +139,8 @@ namespace parallel_scan
       int g_agg_domains_resolved;
       /* per-worker mirror of (xasl->topn_items != nullptr); avoids hot-path pointer chase on every row. */
       bool is_topn;
+      /* write_initialize () went through; write_finalize () may use xasl and the hash context. */
+      bool write_initialized;
       /* once this worker has seen the atomic-draw quota exhausted, stop touching the shared counter. */
       bool instnum_quota_done = false;
   };

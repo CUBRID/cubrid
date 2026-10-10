@@ -47,9 +47,6 @@ extern void cas_log_open (char *br_name);
 extern void cas_log_reset (char *br_name);
 extern void cas_log_close (bool flag);
 extern void cas_log_flush_if_needed (void);
-#ifdef CAS_ERROR_LOG
-extern void cas_error_log (int err_code, char *err_msg, int client_ip_addr);
-#endif
 
 extern int cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, char *dbname, char *dbuser,
 			   ACCESS_LOG_TYPE log_type);
@@ -70,13 +67,6 @@ extern void cas_log_compile_begin_write_query_string (char *query, int size, HID
 extern void cas_log_compile_end_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
 extern void cas_log_compile_begin_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
 extern void cas_log_compile_end_write_query_string_nonl (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_info_ptr);
-
-#define ARG_FILE_LINE   __FILE__, __LINE__
-#if defined (NDEBUG)
-#define cas_log_debug(...)
-#else
-extern void cas_log_debug (const char *file_name, const int line_no, const char *fmt, ...);
-#endif /* !NDEBUG */
 
 extern char *cas_log_query_plan_file (int id);
 extern void cas_log_query_info_init (int id, char is_only_query_plan);
