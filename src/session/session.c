@@ -925,7 +925,8 @@ session_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id, const char 
   if (CRYPTO_memcmp (session_p->secret, secret, SESSION_SECRET_SIZE) != 0)
     {
       pthread_mutex_unlock (&session_p->mutex);
-      return ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_SESSION_SECRET_MISMATCH, 1, id);
+      return ER_SES_SESSION_SECRET_MISMATCH;
     }
 
   /* update session active time */
