@@ -16785,6 +16785,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	      /* no fixed scan if it was decided so during compilation */
 	      fixed_scan_xasl = NULL;
 	    }
+	  if (xasl_state->calls_sql_capable_sp)
+	    {
+	      /* An SP of this statement may run SQL. That SQL runs on another worker of this transaction while this
+	       * worker waits for the SP, and it would wait for the page a fixed scan keeps latched across the row
+	       * (CBRD-27591). The SP may sit in any block, e.g. a hash join input, so every block reads by COPY. */
+	      fixed_scan_xasl = NULL;
+	    }
 	  if (xasl->dptr_list != NULL)
 	    {
 	      /* correlated subquery found, no fixed is allowed */

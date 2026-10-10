@@ -79,7 +79,15 @@ int xs_callback_receive (cubthread::entry *thread_p, const xs_callback_func &fun
 {
   cubmem::block buffer (0, nullptr);
 
+#if !defined (NDEBUG)
+  /* odd only around the bare wait: func () below may fix pages, and the latch self-wait check reads this thread's
+   * page holder list only while it cannot change */
+  thread_p->m_callback_wait_seq++;
+#endif
   int error = xs_receive_data_from_client (thread_p, &buffer.ptr, (int *) &buffer.dim);
+#if !defined (NDEBUG)
+  thread_p->m_callback_wait_seq++;
+#endif
   if (error == NO_ERROR && er_errid () == NO_ERROR)
     {
       error = func (buffer);

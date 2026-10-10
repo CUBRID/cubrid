@@ -1173,6 +1173,9 @@ static int pgbuf_flush_all_helper (THREAD_ENTRY * thread_p, VOLID volid, bool is
 static void pgbuf_make_latch_timeout (struct timespec *to, int timeout_msecs);
 static int pgbuf_timed_sleep_error_handling (THREAD_ENTRY * thrd_entry, PGBUF_BCB * bufptr);
 static int pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
+#if !defined (NDEBUG)
+static THREAD_ENTRY *pgbuf_find_callback_waiting_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr);
+#endif /* !NDEBUG */
 STATIC_INLINE void pgbuf_wakeup_reader_writer (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   __attribute__ ((ALWAYS_INLINE));
 #endif /* SERVER_MODE */
@@ -7230,6 +7233,11 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   const char *client_host_name;	/* Client host for tran */
   int client_pid;		/* Client process identifier for tran */
 
+#if !defined (NDEBUG)
+  /* fail at once on a wait that only the latch timeout below could end (CBRD-27591) */
+  assert (pgbuf_find_callback_waiting_holder (thread_p, bufptr) == NULL);
+#endif /* !NDEBUG */
+
   /* After holding the mutex associated with conditional variable, release the bufptr->mutex. */
   thread_lock_entry (thread_p);
   PGBUF_BCB_UNLOCK (bufptr);
@@ -7389,6 +7397,96 @@ er_set_return:
 
   return ER_FAILED;
 }
+
+#if !defined (NDEBUG)
+/*
+ * pgbuf_find_callback_waiting_holder () - find a thread of this transaction that holds the page this thread is about
+ *					     to wait for while it waits for the client's reply to a method/SP callback
+ *   return: that holder thread, or NULL
+ *   thread_p(in): thread about to wait for the page latch
+ *   bufptr(in): the page's BCB (bufptr->mutex is held)
+ *
+ * Note: A debug-only check for a latch wait that only page_latch_timeout_in_msecs can end (CBRD-27591). While a thread
+ *	 waits in xs_callback_receive (), its client works on that callback, and SQL run by the callback comes back as a
+ *	 new request of the same transaction on another worker. So every other thread of the transaction works for the
+ *	 callback, except px workers of the waiting thread itself; if one of them waits for a page the callback waiter
+ *	 holds, nothing can release the page.
+ *	 It reports no ordinary wait: READ-READ never waits, a zero-wait request does not wait, a holder outside the
+ *	 callback wait (m_callback_wait_seq even) can still release the page, and a px worker of the holder is skipped.
+ *	 The waiter's holder list does not change during the wait; reading the sequence before and after the walk
+ *	 discards a walk that raced with the end of the wait.
+ */
+static THREAD_ENTRY *
+pgbuf_find_callback_waiting_holder (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
+{
+  cubthread::manager * mgr;
+  cubthread::entry * all_entries;
+  THREAD_ENTRY *my_main_thread;
+  size_t n, i;
+  int wait_msecs;
+
+  if (thread_p->conn_entry == NULL || !thread_p->conn_entry->has_outstanding_method_callback ())
+    {
+      /* no thread of this connection is in a callback */
+      return NULL;
+    }
+
+  wait_msecs = pgbuf_find_current_wait_msecs (thread_p);
+  if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
+    {
+      return NULL;
+    }
+
+  mgr = cubthread::get_manager ();
+  all_entries = mgr->get_all_entries ();
+  n = mgr->get_max_thread_count ();
+  my_main_thread = thread_get_main_thread (thread_p);
+  for (i = 0; i < n; i++)
+    {
+      THREAD_ENTRY *other = &all_entries[i];
+      PGBUF_HOLDER_ANCHOR *anchor;
+      PGBUF_HOLDER *holder;
+      unsigned int seq;
+      int remain;
+      bool holds_page = false;
+
+      if (other == thread_p || other == my_main_thread || other->tran_index != thread_p->tran_index)
+	{
+	  continue;
+	}
+
+      seq = other->m_callback_wait_seq.load ();
+      if ((seq & 1) == 0)
+	{
+	  continue;
+	}
+
+      anchor = &pgbuf_Pool.thrd_holder_info[other->index];
+      for (holder = anchor->thrd_hold_list, remain = anchor->num_hold_cnt; holder != NULL && remain > 0;
+	   holder = holder->thrd_link, remain--)
+	{
+	  if (holder->bufptr == bufptr && holder->fix_count > 0)
+	    {
+	      holds_page = true;
+	      break;
+	    }
+	}
+
+      std::atomic_thread_fence (std::memory_order_acquire);
+      if (holds_page && other->m_callback_wait_seq.load () == seq)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "page latch self-wait: thread %d (tran %d) would wait for a %s latch on page "
+			 "%d|%d, held by thread %d of the same transaction while it waits for the client's reply to a "
+			 "method/SP callback\n", thread_p->index, thread_p->tran_index,
+			 (thread_p->request_latch_mode == PGBUF_LATCH_READ) ? "READ" : "WRITE", bufptr->vpid.volid,
+			 bufptr->vpid.pageid, other->index);
+	  return other;
+	}
+    }
+
+  return NULL;
+}
+#endif /* !NDEBUG */
 
 /*
  * pgbuf_wakeup_reader_writer () - Wakes up blocked threads on the BCB queue with read or write latch mode
