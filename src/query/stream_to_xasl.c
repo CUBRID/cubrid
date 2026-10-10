@@ -263,6 +263,9 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
    * server side flag. */
   xasl->query_in_progress = false;
+
+  /* also a server side flag of the root only; qexec_execute_query () passes it to every block in XASL_STATE */
+  xasl->calls_sql_capable_sp = unpack_info_p->has_sql_capable_sp;
 end:
   stx_free_visited_ptrs (thread_p);
 #if defined(SERVER_MODE)
@@ -6200,6 +6203,13 @@ stx_build_sp_type (THREAD_ENTRY * thread_p, char *ptr, SP_TYPE * sp)
 	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
 	  return NULL;
 	}
+    }
+
+  /* PARALLEL_ENABLE refuses server-side SQL in serial execution too; any other SP may change rows while the
+   * statement scans them (CBRD-27590). */
+  if (sp->sig == NULL || !sp->sig->is_parallel_enabled)
+    {
+      xasl_unpack_info->has_sql_capable_sp = true;
     }
 
   return ptr;
