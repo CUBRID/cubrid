@@ -17,10 +17,10 @@
  */
 
 /*
- * query_hash_join_partition.cpp - writing the partition lists of a hash join
+ * query_hash_join_split.cpp - writing the partition lists of a hash join
  */
 
-#include "query_hash_join_partition.hpp"
+#include "query_hash_join_split.hpp"
 
 #include "error_manager.h"		/* er_set, er_errid, assert_release_error */
 #include "list_file.h"			/* qfile_add_tuple_to_staged_list, qfile_write_staged_list_page */

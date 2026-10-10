@@ -33,7 +33,7 @@
 #include "perf_monitor.h"		/* perfmon_update_max_timeval, perfmon_update_min_timeval */
 #include "query_evaluator.h"		/* eval_pred, V_ERROR, V_TRUE */
 #include "query_hash_join.h"
-#include "query_hash_join_partition.hpp"
+#include "query_hash_join_split.hpp"
 #include "query_hash_scan.h"
 #include "query_manager.h"		/* qmgr_get_old_page, qmgr_free_old_page_and_init, ... */
 #include "storage_common.h"		/* OID_INITIALIZER, S_CLOSED, VPID_SET_NULL, ... */

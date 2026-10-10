@@ -21,7 +21,7 @@
  */
 
 #include "query_hash_join.h"
-#include "query_hash_join_partition.hpp"
+#include "query_hash_join_split.hpp"
 #include "qfile_tuple_layout.h"
 
 #include "dbtype.h"		/* db_make_null */

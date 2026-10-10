@@ -22,7 +22,7 @@
 
 #include "px_hash_join.hpp"
 #include "px_hash_join_task_manager.hpp"
-#include "query_hash_join_partition.hpp"
+#include "query_hash_join_split.hpp"
 
 #include "error_manager.h"		/* assert_release_error, er_errid, NO_ERROR, ... */
 #include "list_file.h"			/* qfile_open_list, qfile_open_list_scan, qfile_close_scan, ... */

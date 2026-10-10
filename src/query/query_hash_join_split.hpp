@@ -17,11 +17,11 @@
  */
 
 /*
- * query_hash_join_partition.hpp - writing the partition lists of a hash join
+ * query_hash_join_split.hpp - writing the partition lists of a hash join
  */
 
-#ifndef _QUERY_HASH_JOIN_PARTITION_HPP_
-#define _QUERY_HASH_JOIN_PARTITION_HPP_
+#ifndef _QUERY_HASH_JOIN_SPLIT_HPP_
+#define _QUERY_HASH_JOIN_SPLIT_HPP_
 
 #include "query_list.h"		/* QFILE_LIST_ID, QFILE_TUPLE */
 #include "storage_common.h"	/* PAGE_PTR */
@@ -97,4 +97,4 @@ namespace cubquery
   };
 } // namespace cubquery
 
-#endif /* _QUERY_HASH_JOIN_PARTITION_HPP_ */
+#endif /* _QUERY_HASH_JOIN_SPLIT_HPP_ */
