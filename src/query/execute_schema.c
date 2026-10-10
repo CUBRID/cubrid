@@ -11008,6 +11008,18 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 		  error = do_recreate_filter_index_constr (parser, saved_constr->filter_predicate, alter, NULL, NULL);
 		  if (error != NO_ERROR)
 		    {
+		      PT_NODE *error_msg = parser->error_msgs;
+		      if (error_msg != NULL && error_msg->node_type == PT_ZZ_ERROR_MSG
+			  && error_msg->info.error_msg.error_message != NULL)
+			{
+			  /* the predicate recompiled under the changed column type: the user sees the ALTER statement, so
+			   * the message names the index whose predicate failed */
+			  char *message = pt_append_string (parser, NULL, "filter index '");
+			  message = pt_append_string (parser, message, saved_constr->name);
+			  message = pt_append_string (parser, message, "': ");
+			  error_msg->info.error_msg.error_message =
+			    pt_append_string (parser, message, error_msg->info.error_msg.error_message);
+			}
 		      goto exit;
 		    }
 		}
@@ -12428,6 +12440,27 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 		{
 		  assert (attr_chg_properties->name_space == ID_ATTRIBUTE);
 
+		  error = sm_save_constraint_info (&(attr_chg_properties->constr_info), sm_cls_constr);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		}
+	    }
+	  else if (att->header.name_space == ID_ATTRIBUTE && SM_IS_CONSTRAINT_INDEX_FAMILY (sm_cls_constr->type)
+		   && sm_cls_constr->filter_predicate != NULL)
+	    {
+	      /* an index whose key does not hold the attribute but whose filter
+	       * predicate reads it keeps a predicate stream compiled against the attribute's type; saved, it is
+	       * compiled anew and rebuilt with the change, as an index over the attribute is */
+	      const SM_PREDICATE_INFO *pred = sm_cls_constr->filter_predicate;
+	      bool reads_attribute = false;
+	      for (int i = 0; i < pred->num_attrs && !reads_attribute; i++)
+		{
+		  reads_attribute = pred->att_ids[i] == att->id;
+		}
+	      if (reads_attribute)
+		{
 		  error = sm_save_constraint_info (&(attr_chg_properties->constr_info), sm_cls_constr);
 		  if (error != NO_ERROR)
 		    {

@@ -114,6 +114,23 @@ struct leaf_rec
   short key_len;
 };
 
+// *INDENT-OFF*
+enum DOMAIN_SEARCH_KEYS : unsigned char;
+// *INDENT-ON*
+
+/* How an index scan's B-tree compares its search key values with the index keys: the scan's choice from its key
+ * plan, made before any row (scan_index_search_compare). */
+enum BTREE_SEARCH_COMPARE
+{
+  BTREE_SEARCH_COMPARE_RESOLVED = 0,	/* btree_compare_key_with's type and collation checks, then the key plan's
+					 * comparison of a value that does not compare as it is (by value outside a
+					 * query plan) */
+  BTREE_SEARCH_COMPARE_DIRECT,	/* a single-column key whose values all have the index column's type and collation:
+				 * the column's cmpval */
+  BTREE_SEARCH_COMPARE_MIDXKEY_PLAIN	/* a multi-column key whose values all have their columns' types and
+					 * collations: the midxkey comparison without the plan's element comparison */
+};
+
 /* BTID_INT structure from btree_load.h */
 typedef struct btid_int BTID_INT;
 struct btid_int
@@ -129,6 +146,10 @@ struct btid_int
   VFID ovfid;
   char *copy_buf;		/* index key copy_buf pointer info; derived from INDX_SCAN_ID.copy_buf */
   int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
+  BTREE_SEARCH_COMPARE search_compare;	/* how the comparisons of an index scan's search key values compare; derived
+					 * with search_keys; RESOLVED outside an index scan */
+  DOMAIN_SEARCH_KEYS search_keys;	/* what the comparisons of an index scan's search key values read; derived
+					 * from INDX_SCAN_ID's key plan; DOMAIN_SEARCH_KEYS_NONE outside an index scan */
   int rev_level;
   int deduplicate_key_idx;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   OID topclass_oid;		/* class oid for which index is created */
@@ -975,6 +996,8 @@ extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
 			      BTREE_SCAN * bts);
 extern DB_VALUE_COMPARE_RESULT btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
 						  int do_coercion, int total_order, int *start_colp);
+extern DB_VALUE_COMPARE_RESULT btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key2,
+							 int *start_colp);
 extern PERF_PAGE_TYPE btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 
 extern void btree_dump_key (FILE * fp, const DB_VALUE * key);

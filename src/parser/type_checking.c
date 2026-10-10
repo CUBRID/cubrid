@@ -5997,8 +5997,11 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
     }
 
   if (pt_is_op_hv_late_bind (op)
-      && (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE || arg3_type == PT_TYPE_MAYBE))
+      && (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE || arg3_type == PT_TYPE_MAYBE)
+      && !(op == PT_ADDTIME && PT_IS_STRING_TYPE (arg1_type)))
     {
+      /* an operator whose result type an undetermined argument can still change; ADDTIME's result is resolved by its
+       * first argument alone, and a string first argument is VARCHAR (the manual's "date/time string" row) */
       expr->type_enum = PT_TYPE_MAYBE;
     }
   else
@@ -20506,19 +20509,17 @@ pt_get_equivalent_type_with_op (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM a
 }
 
 /*
- * pt_is_op_hv_late_bind () - checks if the operator is in the list of
- *			      operators that should perform late binding on
- *			      their host variable arguments
+ * pt_is_op_hv_late_bind () - the operators whose result type is resolved at execution when a host variable
+ *			       argument has no compile-time type
  *
- *   return: true if arguments types should be mirrored
+ *   return: true if the operator leaves a MAYBE host variable argument to the execution's domain resolution
  *   op(in): operator type
  *
- *  Note: this functions is used by type inference algorithm to check if an
- *	  expression should leave its HV arguments as TYPE_MAYBE (the default
- *	  type inference behavior would be to match it with a concrete type
- *	  according to one of its signatures). Also, such expression is
- *	  wrapped with cast rather then its result type be forced to an
- *	  "expected domain" dictated by the expression context.
+ *  Note: type inference leaves such an argument as TYPE_MAYBE (the default behavior would match it with a concrete
+ *	  type from one of the operator's signatures) and gives the expression the VARIABLE result type; the
+ *	  expression is wrapped with a cast rather than forced to the "expected domain" of its context. The
+ *	  server resolves the argument and result domains once per execution from the bound values, before any row
+ *	  (qexec_resolve_domains).
  */
 bool
 pt_is_op_hv_late_bind (PT_OP_TYPE op)

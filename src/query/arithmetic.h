@@ -68,6 +68,8 @@ extern int db_sleep (DB_VALUE * result, DB_VALUE * value);
 extern int db_crc32_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_collection_to_string_dbval (DB_VALUE * result, DB_VALUE * value);
 extern int db_least_or_greatest (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE * result, bool least);
+extern int db_least_or_greatest_by (DB_VALUE * arg1, DB_VALUE * arg2, DB_VALUE_COMPARE_RESULT cmp_result,
+				    bool can_compare, DB_VALUE * result, bool least);
 
 // json functions
 extern int db_accumulate_json_arrayagg (const DB_VALUE * json_db_val, DB_VALUE * json_res);

@@ -219,6 +219,8 @@ struct val_list_node
 {
   QPROC_DB_VALUE_LIST valp;	/* first value node */
   int val_cnt;			/* value count */
+  int domain_scope;		/* server, load-derived, not serialized: the scope of the correlated values its block
+				 * reads converted once, which a scan filling this list starts anew; 0 none */
 };
 
 /* To handle selected update list, click counter related */
@@ -346,7 +348,6 @@ struct buildlist_proc_node
 					 * statement */
   AGGREGATE_HASH_CONTEXT *agg_hash_context;	/* hash aggregate context, not serialized */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
-  int g_agg_domains_resolved;	/* domain status (not serialized) */
 };
 
 typedef struct buildvalue_proc_node BUILDVALUE_PROC_NODE;
@@ -357,7 +358,6 @@ struct buildvalue_proc_node
   AGGREGATE_TYPE *agg_list;	/* aggregate function list */
   ARITH_TYPE *outarith_list;	/* outside arithmetic list */
   int is_always_false;		/* always-false agg-query? */
-  int agg_domains_resolved;	/* domain status (not serialized) */
 };
 
 typedef struct mergelist_proc_node MERGELIST_PROC_NODE;
@@ -371,6 +371,9 @@ struct mergelist_proc_node
   VAL_LIST *inner_val_list;	/* output-value list for inner */
 
   QFILE_LIST_MERGE_INFO ls_merge;	/* list file merge info */
+  /* load-derived, not serialized: [ls_merge.ls_column_cnt] each merge column pair's comparison, as the
+   * load or resolve_domains resolved it */
+  const struct DOMAIN_COMPARE_PLAN **merge_compares;
 };
 
 typedef struct hashjoin_proc_node
@@ -1065,6 +1068,8 @@ struct func_stat
 struct topn_tuples
 {
   SORT_LIST *sort_items;	/* sort items position in tuple and sort order */
+  const TP_DOMAIN **sort_domains;	/* per sort item: the domain its values compare in - the plan's for a variable
+					 * one - or NULL where the values' types resolve */
   struct binary_heap *heap;	/* heap used to hold top-n tuples */
   TOPN_TUPLE *tuples;		/* actual tuples stored in memory */
   int values_count;		/* number of values in a tuple */
@@ -1125,8 +1130,11 @@ namespace memoize
   class storage;
 }
 // *INDENT-ON*
+struct domain_plan;
+
 struct xasl_node
 {
+  struct domain_plan *domain_plan;	/* tree-wide unpack-arena plan, not serialized */
   XASL_NODE_HEADER header;	/* XASL header */
   XASL_NODE *next;		/* next XASL block */
   PROC_TYPE type;		/* XASL type */
@@ -1165,6 +1173,9 @@ struct xasl_node
   DB_VALUE *save_instnum_val;	/* inst_num() value kept after being substi- tuted for ordbynum_val; */
   REGU_VARIABLE *limit_offset;	/* offset of limit clause */
   REGU_VARIABLE *limit_row_count;	/* the record count from limit clause */
+  /* load-derived, not serialized: the row count's comparison with 0, as the load or resolve_domains resolved
+   * it */
+  const struct DOMAIN_COMPARE_PLAN *limit_compare;
   XASL_NODE *fptr_list;		/* after OBJFETCH_PROC list */
   XASL_NODE *scan_ptr;		/* SCAN_PROC pointer */
 

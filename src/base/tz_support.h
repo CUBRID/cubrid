@@ -28,7 +28,6 @@
 
 #define db_utime_to_string db_timestamp_to_string
 #define db_string_to_utime db_string_to_timestamp
-#define db_date_parse_utime db_date_parse_timestamp
 
 enum
 {

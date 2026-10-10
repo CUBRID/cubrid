@@ -234,6 +234,8 @@ regu_init (indx_info &ii)
   ii.iss_range.range = NA_NA;
   ii.iss_range.key1 = NULL;
   ii.iss_range.key2 = NULL;
+  ii.key_type = NULL;
+  ii.key_plan = NULL;
 }
 
 void
@@ -247,6 +249,7 @@ regu_init (key_range &kr)
 void
 regu_init (sort_list &sl)
 {
+  sl.pos_descr.plan_item = NULL;
   sl.next = NULL;
   sl.pos_descr.pos_no = 0;
   sl.pos_descr.dom = &tp_Integer_domain;
@@ -270,6 +273,7 @@ regu_init (cubxasl::pred_expr &pr)
 void
 regu_init (arith_list_node &arith)
 {
+  arith.plan_item = NULL;
   arith.domain = NULL;
   arith.value = NULL;
   arith.opcode = T_ADD;
@@ -328,6 +332,7 @@ regu_init (function_node &fnode)
 void
 regu_init (cubxasl::aggregate_list_node &agg)
 {
+  agg.plan_item = NULL;
   agg.next = NULL;
   agg.accumulator.value = NULL;
   agg.accumulator.value2 = NULL;
@@ -350,6 +355,7 @@ regu_init (cubxasl::aggregate_list_node &agg)
 void
 regu_init (cubxasl::analytic_list_node &ana)
 {
+  ana.plan_item = NULL;
   ana.next = NULL;
   ana.value = NULL;
   ana.value2 = NULL;
@@ -374,6 +380,7 @@ regu_init (cubxasl::analytic_list_node &ana)
 void
 regu_init (regu_variable_node &regu)
 {
+  regu.plan_item = NULL;
   regu.type = TYPE_POS_VALUE;
   regu.flags = 0;
   regu.value.val_pos = 0;

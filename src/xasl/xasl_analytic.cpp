@@ -31,8 +31,6 @@ namespace cubxasl
   void
   analytic_list_node::init ()
   {
-    /* is_first_exec_time */
-    is_first_exec_time = true;
 
     /* part_value */
     db_make_null (&part_value);

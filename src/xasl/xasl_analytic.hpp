@@ -23,6 +23,8 @@
 #ifndef _XASL_ANALYTIC_HPP_
 #define _XASL_ANALYTIC_HPP_
 
+struct domain_plan_item;
+
 #include "dbtype_def.h"
 #include "db_function.hpp"          // FUNC_CODE
 #include "query_sum_accumulator.h"  // SUM_ACC
@@ -71,10 +73,9 @@ namespace cubxasl
     FUNC_CODE function;		/* analytic function type */
     QUERY_OPTIONS option;		/* DISTINCT/ALL option */
     tp_domain *domain;		/* domain of the result */
-    tp_domain *original_domain;	/* domain of the result */
+    domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
 
     DB_TYPE opr_dbtype;		/* operand data type */
-    DB_TYPE original_opr_dbtype;	/* original operand data type */
     regu_variable_node operand;	/* operand */
 
     int flag;			/* flags */
@@ -100,7 +101,6 @@ namespace cubxasl
     db_value part_value;		/* partition temporary accumulator */
     SUM_ACC sum_acc;	                /* word accumulator for NUMERIC SUM/AVG */
     INT64 curr_cnt;			/* current number of items */
-    bool is_first_exec_time;	        /* the fist time to be executed */
 
     void init ();
   };

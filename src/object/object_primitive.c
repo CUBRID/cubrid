@@ -47,6 +47,10 @@
 #include "string_opfunc.h"
 #include "system_parameter.h"
 #include "tz_support.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/* domain_compare_by_type_pair: the server compares two JSON scalars by the type pair comparison table */
+#include "domain_rules.h"
+#endif
 
 #include <utility>
 
@@ -794,7 +798,8 @@ static int mr_data_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * 
 static int mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy,
 				     char *copy_buf, int copy_buf_len);
 static DB_VALUE_COMPARE_RESULT pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN * dom2,
-							   int do_coercion, int total_order);
+							   int do_coercion, int total_order, int column,
+							   PR_MIDXKEY_ELEMENT_COMPARE element_compare);
 static DB_VALUE_COMPARE_RESULT mr_index_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
 							 int total_order, int *start_colp);
 static DB_VALUE_COMPARE_RESULT mr_data_cmpdisk_midxkey (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion,
@@ -7686,7 +7691,7 @@ mr_index_readval_midxkey (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 
 static DB_VALUE_COMPARE_RESULT
 pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN * dom2, int do_coercion,
-			    int total_order)
+			    int total_order, int column, PR_MIDXKEY_ELEMENT_COMPARE element_compare)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   DB_VALUE val1, val2;
@@ -7718,7 +7723,15 @@ pr_midxkey_compare_element (char *mem1, char *mem2, TP_DOMAIN * dom1, TP_DOMAIN 
       goto clean_up;
     }
 
-  c = tp_value_compare_with_error (&val1, &val2, do_coercion, total_order, &comparable);
+  if (element_compare != NULL)
+    {
+      /* the caller's plan for this column's two keys */
+      c = element_compare (column, &val1, &val2, do_coercion, total_order, &comparable);
+    }
+  else
+    {
+      c = tp_value_compare_with_error (&val1, &val2, do_coercion, total_order, &comparable);
+    }
 
 clean_up:
   if (DB_NEED_CLEAR (&val1))
@@ -7742,6 +7755,15 @@ clean_up:
 DB_VALUE_COMPARE_RESULT
 pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order, int num_index_term,
 		    int *start_colp, int *diff_column, bool * dom_is_desc, int *result_size)
+{
+  return pr_midxkey_compare_resolved (mul1, mul2, do_coercion, total_order, num_index_term, start_colp, diff_column,
+				      dom_is_desc, result_size, NULL);
+}
+
+DB_VALUE_COMPARE_RESULT
+pr_midxkey_compare_resolved (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int total_order,
+			     int num_index_term, int *start_colp, int *diff_column, bool * dom_is_desc,
+			     int *result_size, PR_MIDXKEY_ELEMENT_COMPARE element_compare)
 {
   DB_VALUE_COMPARE_RESULT c = DB_UNK;
   int i;
@@ -7919,7 +7941,7 @@ pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion, int t
 		  /* coercion and comparison
 		   * val1 and val2 have different domain
 		   */
-		  c = pr_midxkey_compare_element (mem1, mem2, dom1, dom2, do_coercion, total_order);
+		  c = pr_midxkey_compare_element (mem1, mem2, dom1, dom2, do_coercion, total_order, i, element_compare);
 		}
 
 	      if (c == DB_EQ)
@@ -15495,7 +15517,13 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
 	}
     }
 
+  /* the scalars' types are the documents' data: the server reads the key pair table, which holds the comparison of
+   * every pair of keys a value can have, resolved before any row */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  cmp_result = domain_compare_by_type_pair (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
+#else
   cmp_result = tp_value_compare_with_error (&scalar_value1, &scalar_value2, do_coercion, total_order, NULL);
+#endif
 
   pr_clear_value (&scalar_value1);
   pr_clear_value (&scalar_value2);

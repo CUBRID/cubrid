@@ -56,6 +56,9 @@
 #include "string_regex.hpp"
 #include "tz_support.h"
 #include "util_func.h"
+#if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
+#include "domain_rules.h"
+#endif
 
 #include <algorithm>
 #include <string>
@@ -7317,6 +7320,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
   int collation_id;
   TZ_ID tz_id = 0;
   DB_DATETIMETZ ldatetimetz;
+  bool zone_to_string = false;
 
   if (DB_IS_NULL (left) || DB_IS_NULL (right))
     {
@@ -7529,10 +7533,36 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 
   /* depending on the first argument, the result is either result_date or result_time */
 
-  if (domain != NULL)
+  /* the compiler types a string column or expression VARCHAR (the manual's "date/time string" row), and
+   * the zone such a string carries goes into the result string. A string literal, bind or session variable keeps the
+   * type its value gives (a zone makes it DATETIMETZ): the client folds a literal without a domain, and resolve_domains
+   * types a bind or a session variable's value into the domain it passes. */
+  zone_to_string = domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR && result_type == DB_TYPE_DATETIMETZ;
+  if (domain != NULL && !zone_to_string)
     {
       assert (TP_DOMAIN_TYPE (domain) == result_type);
     }
+
+#if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
+  {
+    /* debug cross-check: domain_resolve (DOMAIN_CTX_FUNC_ARG) answers the result type - from the value's type,
+     * but for a string the compiler typed VARCHAR whose zone goes into the result string */
+    DB_TYPE left_class = !zone_to_string ? domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, 0, left)
+      : DB_VALUE_DOMAIN_TYPE (left);
+    DOMAIN_OPERAND operands[2] = {
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (left)), left_class, -1, false}
+      ,
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (right)), DB_VALUE_DOMAIN_TYPE (right), -1, false}
+    };
+    RESOLVED_DOMAIN resolved;
+    bool needs_late_bind;
+    int cross_check_error =
+      domain_resolve (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, operands, 2, NULL, &resolved, &needs_late_bind);
+    assert (cross_check_error == NO_ERROR && !needs_late_bind);
+    assert (cross_check_error != NO_ERROR
+	    || TP_DOMAIN_TYPE (resolved.domain) == (zone_to_string ? DB_TYPE_VARCHAR : result_type));
+  }
+#endif
 
   switch (result_type)
     {
@@ -7587,6 +7617,20 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 	if (error != NO_ERROR)
 	  {
 	    goto error_return;
+	  }
+	if (zone_to_string)
+	  {
+	    res_s = (char *) db_private_alloc (NULL, DATETIMETZ_BUF_SIZE);
+	    if (res_s == NULL)
+	      {
+		error = ER_DATE_CONVERSION;
+		goto error_return;
+	      }
+	    db_datetimetz_to_string (res_s, DATETIMETZ_BUF_SIZE, &dt_tz.datetime, &dt_tz.tz_id);
+	    db_make_varchar (result, strlen (res_s), res_s, strlen (res_s), TP_DOMAIN_CODESET (domain),
+			     TP_DOMAIN_COLLATION (domain));
+	    result->need_clear = true;
+	    break;
 	  }
 	db_make_datetimetz (result, &dt_tz);
 	break;
@@ -22612,6 +22656,25 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 	  goto error;
 	}
     }
+
+#if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
+  {
+    /* debug cross-check: resolve_domains' format type and domain_resolve (DOMAIN_CTX_FUNC_ARG) answer res_type */
+    DB_TYPE format_class = domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_STR_TO_DATE, 1, format);
+    DOMAIN_OPERAND operands[2] = {
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (str)), DB_VALUE_DOMAIN_TYPE (str), -1, false}
+      ,
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (format)), format_class, -1, false}
+    };
+    RESOLVED_DOMAIN resolved;
+    bool needs_late_bind;
+    int cross_check_error = domain_resolve (DOMAIN_CTX_FUNC_ARG, T_STR_TO_DATE, operands, 2, domain, &resolved,
+					    &needs_late_bind);
+    assert (domain != NULL || format_class == res_type);
+    assert (cross_check_error == NO_ERROR && !needs_late_bind);
+    assert (cross_check_error != NO_ERROR || TP_DOMAIN_TYPE (resolved.domain) == res_type);
+  }
+#endif
 
   /*
    * 1. Get information according to format specifiers

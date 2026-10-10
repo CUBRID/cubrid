@@ -166,7 +166,6 @@ namespace parallel_index_scan
 	*matched_range_idx = -1;
       }
 
-    TP_DOMAIN *key_domain = m_btid_int->key_type;
     key_val_range *ranges = m_input_handler->get_key_val_ranges ();
     int num_ranges = m_input_handler->get_num_key_ranges ();
     const bool use_desc_index = m_use_desc_index;
@@ -211,7 +210,7 @@ namespace parallel_index_scan
 	    if (!DB_IS_NULL (&kvr->key1))
 	      {
 		start_col = 0;
-		c = btree_compare_key (key, &kvr->key1, key_domain, 1, 1, &start_col);
+		c = btree_compare_search_key (m_btid_int, key, &kvr->key1, &start_col);
 		if (c == DB_UNK)
 		  {
 		    return ER_FAILED;
@@ -229,7 +228,7 @@ namespace parallel_index_scan
 	    if (!DB_IS_NULL (&kvr->key1))
 	      {
 		start_col = 0;
-		c = btree_compare_key (key, &kvr->key1, key_domain, 1, 1, &start_col);
+		c = btree_compare_search_key (m_btid_int, key, &kvr->key1, &start_col);
 		if (c == DB_UNK)
 		  {
 		    return ER_FAILED;
@@ -249,7 +248,7 @@ namespace parallel_index_scan
 	    if (!DB_IS_NULL (&kvr->key1))
 	      {
 		start_col = 0;
-		c = btree_compare_key (key, &kvr->key1, key_domain, 1, 1, &start_col);
+		c = btree_compare_search_key (m_btid_int, key, &kvr->key1, &start_col);
 		if (c == DB_UNK)
 		  {
 		    return ER_FAILED;
@@ -279,7 +278,7 @@ namespace parallel_index_scan
 	    if (!DB_IS_NULL (&kvr->key2))
 	      {
 		start_col = 0;
-		c = btree_compare_key (&kvr->key2, key, key_domain, 1, 1, &start_col);
+		c = btree_compare_search_key (m_btid_int, &kvr->key2, key, &start_col);
 		if (c == DB_UNK)
 		  {
 		    return ER_FAILED;
@@ -298,7 +297,7 @@ namespace parallel_index_scan
 	    if (!DB_IS_NULL (&kvr->key2))
 	      {
 		start_col = 0;
-		c = btree_compare_key (&kvr->key2, key, key_domain, 1, 1, &start_col);
+		c = btree_compare_search_key (m_btid_int, &kvr->key2, key, &start_col);
 		if (c == DB_UNK)
 		  {
 		    return ER_FAILED;
@@ -319,7 +318,7 @@ namespace parallel_index_scan
 	    if (!DB_IS_NULL (&kvr->key1))
 	      {
 		start_col = 0;
-		c = btree_compare_key (key, &kvr->key1, key_domain, 1, 1, &start_col);
+		c = btree_compare_search_key (m_btid_int, key, &kvr->key1, &start_col);
 		if (c == DB_UNK)
 		  {
 		    return ER_FAILED;
