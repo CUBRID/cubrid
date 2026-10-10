@@ -63,7 +63,11 @@
 #include "broker_shm.h"
 #include "broker_msg.h"
 #include "broker_process_size.h"
+#if !defined(WINDOWS)
+#include "background_process.hpp"
+#endif
 #include "broker_util.h"
+#include "broker_process.hpp"
 #include "broker_access_list.h"
 #include "broker_filename.h"
 #include "broker_er_html.h"
@@ -332,7 +336,6 @@ static int process_flag = 1;
 
 static int num_busy_uts = 0;
 
-static int max_open_fd = 128;
 
 #if defined(WIN_FW)
 static int last_job_fetch_time;
@@ -461,6 +464,11 @@ int
 main (int argc, char *argv[])
 #endif
 {
+#if !defined(WINDOWS)
+  if (background_process_prepare_stdio () != 0)
+    return 1;
+#endif
+
   pthread_t receiver_thread;
   pthread_t dispatch_thread;
   pthread_t cas_monitor_thread;
@@ -1107,11 +1115,6 @@ receiver_thr_f (void *arg)
 	  continue;
 	}
 
-      if (max_open_fd < clt_sock_fd)
-	{
-	  max_open_fd = clt_sock_fd;
-	}
-
       job_count = (job_count >= JOB_COUNT_MAX) ? 1 : job_count + 1;
       new_job.id = job_count;
       new_job.clt_sock_fd = clt_sock_fd;
@@ -1579,9 +1582,6 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
   char appl_name[APPL_SERVER_NAME_MAX_SIZE];
   int pid;
   char argv0[128];
-#if !defined(WINDOWS)
-  int i;
-#endif
   char as_id_env_str[32];
   char appl_server_shm_key_env_str[32];
 
@@ -1616,45 +1616,35 @@ run_appl_server (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index)
       unlink (path);
     }
 
-  pid = fork ();
-  if (pid == 0)
-    {
-      signal (SIGCHLD, SIG_DFL);
-
-      for (i = 3; i <= max_open_fd; i++)
-	{
-	  close (i);
-	}
 #endif
-      strcpy (appl_name, shm_appl->appl_server_name);
+  strcpy (appl_name, shm_appl->appl_server_name);
 
-      sprintf (appl_server_shm_key_env_str, "%s=%d", APPL_SERVER_SHM_KEY_STR,
-	       shm_br->br_info[br_index].appl_server_shm_id);
-      putenv (appl_server_shm_key_env_str);
+  sprintf (appl_server_shm_key_env_str, "%s=%d", APPL_SERVER_SHM_KEY_STR, shm_br->br_info[br_index].appl_server_shm_id);
+#if defined(WINDOWS)
+  putenv (appl_server_shm_key_env_str);
+#endif
 
-      snprintf (as_id_env_str, sizeof (as_id_env_str), "%s=%d", AS_ID_ENV_STR, as_index);
-      putenv (as_id_env_str);
+  snprintf (as_id_env_str, sizeof (as_id_env_str), "%s=%d", AS_ID_ENV_STR, as_index);
+#if defined(WINDOWS)
+  putenv (as_id_env_str);
+#endif
 
-      if (br_shard_flag == ON)
-	{
-	  snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d_%d_%d", shm_br->br_info[br_index].name, appl_name,
-		    as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
-	}
-      else
-	{
-	  snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d", shm_br->br_info[br_index].name, appl_name, as_index + 1);
-	}
+  if (br_shard_flag == ON)
+    {
+      snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d_%d_%d", shm_br->br_info[br_index].name, appl_name,
+		as_info_p->proxy_id + 1, as_info_p->shard_id, as_info_p->shard_cas_id + 1);
+    }
+  else
+    {
+      snprintf (argv0, sizeof (argv0) - 1, "%s_%s_%d", shm_br->br_info[br_index].name, appl_name, as_index + 1);
+    }
 
 #if defined(WINDOWS)
-      pid = run_child (appl_name);
+  pid = run_child (appl_name);
 #else
-      execle (appl_name, argv0, NULL, environ);
+  pid = broker_process_restart (appl_name, argv0, appl_server_shm_key_env_str, as_id_env_str);
 #endif
 
-#if !defined(WINDOWS)
-      exit (0);
-    }
-#endif
 
   if (br_shard_flag == ON)
     {
@@ -1941,7 +1931,7 @@ cas_monitor_worker (T_APPL_SERVER_INFO * as_info_p, int br_index, int as_index, 
 	  CloseHandle (phandle);
 	}
 #else
-      if (kill (as_info_p->pid, 0) < 0)
+      if (as_info_p->pid <= 0 || kill (as_info_p->pid, 0) < 0)
 	{
 	  restart_appl_server (as_info_p, br_index, as_index);
 	  as_info_p->uts_status = UTS_STATUS_IDLE;
@@ -3081,10 +3071,11 @@ proxy_monitor_worker (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index
       CloseHandle (phandle);
     }
 #else /* WINDOWS */
-  if (kill (proxy_info_p->pid, 0) < 0)
+  /* An active proxy with PID zero is awaiting a failed-exec retry. */
+  if (proxy_info_p->pid == 0 || kill (proxy_info_p->pid, 0) < 0)
     {
       SLEEP_MILISEC (1, 0);
-      if (kill (proxy_info_p->pid, 0) < 0)
+      if (proxy_info_p->pid == 0 || kill (proxy_info_p->pid, 0) < 0)
 	{
 	  restart_proxy_server (proxy_info_p, br_index, proxy_index);
 	  goto shm_init;
@@ -3227,7 +3218,6 @@ run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
   int pid;
 #if !defined(WINDOWS)
   char process_name[APPL_SERVER_NAME_MAX_SIZE];
-  int i;
 #endif
 
   while (1)
@@ -3256,43 +3246,37 @@ run_proxy_server (T_PROXY_INFO * proxy_info_p, int br_index, int proxy_index)
 #if !defined(WINDOWS)
   unlink (proxy_info_p->port_name);
 
-  pid = fork ();
-  if (pid == 0)
-    {
-      signal (SIGCHLD, SIG_DFL);
-
-      for (i = 3; i <= max_open_fd; i++)
-	{
-	  close (i);
-	}
 #endif
 
-      snprintf (proxy_shm_id_env_str, sizeof (proxy_shm_id_env_str), "%s=%d", PROXY_SHM_KEY_STR,
-		shm_br->br_info[br_index].proxy_shm_id);
-      putenv (proxy_shm_id_env_str);
+  snprintf (proxy_shm_id_env_str, sizeof (proxy_shm_id_env_str), "%s=%d", PROXY_SHM_KEY_STR,
+	    shm_br->br_info[br_index].proxy_shm_id);
+#if defined(WINDOWS)
+  putenv (proxy_shm_id_env_str);
+#endif
 
-      snprintf (proxy_id_env_str, sizeof (proxy_id_env_str), "%s=%d", PROXY_ID_ENV_STR, proxy_index);
-      putenv (proxy_id_env_str);
+  snprintf (proxy_id_env_str, sizeof (proxy_id_env_str), "%s=%d", PROXY_ID_ENV_STR, proxy_index);
+#if defined(WINDOWS)
+  putenv (proxy_id_env_str);
+#endif
 
 #if !defined(WINDOWS)
-      if (snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d", shm_appl->broker_name, proxy_exe_name,
-		    proxy_index + 1) < 0)
-	{
-	  assert (false);
-	  exit (0);
-	}
+  if (snprintf (process_name, sizeof (process_name) - 1, "%s_%s_%d", shm_appl->broker_name, proxy_exe_name,
+		proxy_index + 1) < 0)
+    {
+      assert (false);
+      run_proxy_flag = 0;
+      return -1;
+    }
 #endif /* !WINDOWS */
 
 #if defined(WINDOWS)
-      pid = run_child (proxy_exe_name);
+  pid = run_child (proxy_exe_name);
 #else
-      execle (proxy_exe_name, process_name, NULL, environ);
+  pid = broker_process_restart (proxy_exe_name, process_name, proxy_shm_id_env_str, proxy_id_env_str);
+  if (pid < 0)
+    pid = 0;
 #endif
 
-#if !defined(WINDOWS)
-      exit (0);
-    }
-#endif
 
   run_proxy_flag = 0;
 

@@ -23,6 +23,10 @@ set(CSQL_SOURCES
   ${BASE_DIR}/cubrid_getopt_long.c
   )
 
+if(UNIX)
+  list(APPEND CSQL_SOURCES ${BASE_DIR}/background_process.cpp)
+endif()
+
 SET_SOURCE_FILES_PROPERTIES(
   ${CSQL_SOURCES}
   PROPERTIES LANGUAGE CXX
@@ -51,6 +55,7 @@ set(CUB_MASTER_SOURCES
   ${EXECUTABLES_DIR}/master_util.c
   )
 if(UNIX)
+  list(APPEND CUB_MASTER_SOURCES ${BASE_DIR}/background_process.cpp)
   list(APPEND CUB_MASTER_SOURCES ${EXECUTABLES_DIR}/master_heartbeat.c)
   list(APPEND CUB_MASTER_SOURCES ${EXECUTABLES_DIR}/master_server_monitor.cpp)
   SET_SOURCE_FILES_PROPERTIES(
@@ -112,6 +117,11 @@ if(WIN32)
   )
   list(APPEND CUBRID_SOURCES ${CMAKE_BINARY_DIR}/version.rc)
 endif(WIN32)
+if(NOT WIN32)
+  list(APPEND CUBRID_SOURCES ${BASE_DIR}/background_process.cpp)
+  add_executable(cub_console ${EXECUTABLES_DIR}/console_relay.cpp)
+  install(TARGETS cub_console RUNTIME DESTINATION ${CUBRID_BINDIR} COMPONENT Application)
+endif(NOT WIN32)
 add_executable(cubrid-bin ${CUBRID_SOURCES})
 
 if(WIN32)

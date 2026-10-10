@@ -32,6 +32,7 @@
 #include <assert.h>
 #if !defined(WINDOWS)
 #include <sys/wait.h>
+#include <poll.h>
 #endif
 #if defined(WINDOWS)
 #include <io.h>
@@ -53,6 +54,7 @@
 #include "dynamic_array.h"
 #include "heartbeat.h"
 #include "process_util.h"
+#include "background_process.hpp"
 #include "pl_file.h"
 
 #include <string>
@@ -303,7 +305,10 @@ static void print_message (FILE * output, int message_id, ...);
 static void print_result (const char *util_name, int status, int command_type);
 static char *make_exec_abspath (char *buf, int buf_len, char *cmd);
 static const char *command_string (int command_type);
-static bool is_server_running (const char *type, const char *server_name, int pid);
+/* *INDENT-OFF* */
+static bool is_server_running (const char *type, const char *server_name, int pid,
+			       void (*wait_output) (void *) = NULL, void *context = NULL);
+/* *INDENT-ON* */
 static int shutdown_reviving_server (const char *server_name);
 static int is_broker_running (void);
 static int is_gateway_running (void);
@@ -324,12 +329,12 @@ static bool ha_is_registered (const char *args, const char *hostname);
 
 #if !defined(WINDOWS)
 static int us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-				  const char *remote_host);
+				  const char *remote_host, bool * exec_failed);
 static int us_hb_copylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				 const char *remote_host);
 
 static int us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name,
-				   const char *node_name, const char *remote_host);
+				   const char *node_name, const char *remote_host, bool * exec_failed);
 static int us_hb_applylogdb_stop (HA_CONF * ha_conf, const char *db_name, const char *node_name,
 				  const char *remote_host);
 
@@ -345,9 +350,9 @@ static int us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool che
 static int us_hb_process_stop (HA_CONF * ha_conf, const char *db_name);
 
 static int us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-				    const char *remote_host);
+				    const char *remote_host, bool * exec_failed);
 static int us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-				     const char *remote_host);
+				     const char *remote_host, bool * exec_failed);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int us_hb_process_server (int command_type, HA_CONF * ha_conf, const char *db_name);
 #endif /* ENABLE_UNUSED_FUNCTION */
@@ -537,6 +542,14 @@ util_get_command_option_mask (int command_type)
 int
 main (int argc, char *argv[])
 {
+#if !defined(WINDOWS)
+  /* Reserve closed standard descriptors before any logging opens a file. */
+  if (background_process_prepare_stdio () != 0)
+    {
+      return EXIT_FAILURE;
+    }
+#endif
+
   int util_type, command_type;
   int status;
   bool process_window_service = false;
@@ -1002,6 +1015,15 @@ process_master (int command_type)
 	if (!__gv_cvar.css_does_master_exist (master_port))
 	  {
 	    const char *args[] = { UTIL_MASTER_NAME, NULL };
+#if !defined(WINDOWS)
+            /* *INDENT-OFF* */
+            background_process process;
+            char executable[PATH_MAX], relay[PATH_MAX], console[PATH_MAX];
+            envvar_bindir_file (executable, sizeof (executable), UTIL_MASTER_NAME);
+            envvar_bindir_file (relay, sizeof (relay), "cub_console");
+            envvar_logdir_file (console, sizeof (console), "master-console.log");
+            /* *INDENT-ON* */
+#endif
 
 	    status = ER_GENERIC_ERROR;
 	    while (status != NO_ERROR && waited_seconds < 180)
@@ -1014,9 +1036,28 @@ process_master (int command_type)
 		      }
 
 #if !defined(WINDOWS)
-		    envvar_set ("NO_DAEMON", "true");
-#endif
+                    /* *INDENT-OFF* */
+                    if (process.control >= 0 && background_process_finish_start (process) != 0)
+                      {
+                        perror ("master startup output");
+                        status = ER_GENERIC_ERROR;
+                        break;
+                      }
+                    envvar_set ("NO_DAEMON", "true");
+                    fflush (stdout);
+                    fflush (stderr);
+                    signal (SIGCHLD, SIG_IGN);
+                    status = background_process_start (executable, args, relay, console, process);
+                    pid = process.pid;
+                    if (status != NO_ERROR)
+                      {
+                        perror ("master background start");
+                        status = ER_GENERIC_ERROR;
+                      }
+                    /* *INDENT-ON* */
+#else
 		    status = proc_execute (UTIL_MASTER_NAME, args, false, false, false, &pid);
+#endif
 		    if (status != NO_ERROR)
 		      {
 			util_log_write_errstr ("Could not start master process.\n");
@@ -1025,12 +1066,27 @@ process_master (int command_type)
 		  }
 
 		/* The master process needs a few seconds to bind port */
+#if !defined(WINDOWS)
+                /* *INDENT-OFF* */
+                background_process_wait (process, 1000);
+                /* *INDENT-ON* */
+#else
 		sleep (1);
+#endif
 		waited_seconds++;
 
 		status = __gv_cvar.css_does_master_exist (master_port) ? NO_ERROR : ER_GENERIC_ERROR;
 	      }
 
+#if !defined(WINDOWS)
+            /* *INDENT-OFF* */
+            if (process.control >= 0 && background_process_finish_start (process) != 0)
+              {
+                perror ("master startup output");
+                status = ER_GENERIC_ERROR;
+              }
+            /* *INDENT-ON* */
+#endif
 	    if (status != NO_ERROR)
 	      {
 		/* The master process failed to start or could not connected within 3 minutes */
@@ -1567,7 +1623,7 @@ check_server (const char *type, const char *server_name)
  *      pid(in):
  */
 static bool
-is_server_running (const char *type, const char *server_name, int pid)
+is_server_running (const char *type, const char *server_name, int pid, void (*wait_output) (void *), void *context)
 {
   if (!__gv_cvar.css_does_master_exist (prm_get_master_port_id ()))
     {
@@ -1587,7 +1643,14 @@ is_server_running (const char *type, const char *server_name, int pid)
 	    {
 	      return true;
 	    }
-	  sleep (1);
+	  if (wait_output != NULL)
+	    {
+	      wait_output (context);
+	    }
+	  else
+	    {
+	      sleep (1);
+	    }
 
 	  /* A child process is defunct because the SIGCHLD signal ignores. */
 	  /*
@@ -1775,12 +1838,46 @@ process_server (int command_type, int argc, char **argv, bool show_usage, bool c
 		{
 		  int pid;
 		  const char *args[] = { UTIL_CUBRID_NAME, token, NULL };
+#if !defined(WINDOWS)
+                  /* *INDENT-OFF* */
+                  background_process process;
+                  char executable[PATH_MAX], relay[PATH_MAX], console[PATH_MAX];
+                  envvar_bindir_file (executable, sizeof (executable), UTIL_CUBRID_NAME);
+                  envvar_bindir_file (relay, sizeof (relay), "cub_console");
+                  envvar_logdir_file (console, sizeof (console), "server-console.log");
+                  fflush (stdout);
+                  fflush (stderr);
+                  /* Match proc_execute's automatic reaping for asynchronous service children. */
+                  signal (SIGCHLD, SIG_IGN);
+                  status = background_process_start (executable, args, relay, console, process);
+                  if (status != NO_ERROR)
+                    {
+                      perror ("server background start");
+                      status = ER_GENERIC_ERROR;
+                    }
+                  else
+                    {
+                      pid = process.pid;
+                      if (!is_server_running (CHECK_SERVER, token, pid,
+                          [] (void *context) { background_process_wait (*static_cast<background_process *> (context), 1000); },
+                          &process))
+                        {
+                          status = ER_GENERIC_ERROR;
+                        }
+                      if (background_process_finish_start (process) != 0)
+                        {
+                          fprintf (stderr, "Failed to collect server startup output\n");
+                          status = ER_GENERIC_ERROR;
+                        }
+                    }
+                  /* *INDENT-ON* */
+#else
 		  status = proc_execute (UTIL_CUBRID_NAME, args, false, false, false, &pid);
-
 		  if (status == NO_ERROR && !is_server_running (CHECK_SERVER, token, pid))
 		    {
 		      status = ER_GENERIC_ERROR;
 		    }
+#endif
 		  print_result (PRINT_SERVER_NAME, status, command_type);
 		}
 	    }
@@ -3225,9 +3322,127 @@ ha_argv_to_args (char *args, int size, const char **argv, HB_PROC_TYPE type)
 }
 
 #if !defined(WINDOWS)
+/* *INDENT-OFF* */
+struct us_hb_background_process
+{
+  background_process process;
+  background_process_output output;
+};
+
+/* Local HA batches own their startup channels until the existing liveness check.
+ * Pump every producer fairly; one noisy DB must not starve another DB's errors. */
+static bool
+us_hb_output_pump (dynamic_array *processes)
+{
+  bool pending = false;
+  for (int i = 0; i < da_size (processes); ++i)
+    {
+      us_hb_background_process item;
+      background_process &process = item.process;
+      da_get (processes, i, &item);
+      background_process_wait (process, 0, &item.output);
+      /* Synchronous registration queries can restore SIGCHLD to SIG_DFL.
+       * Reap only this batch's exited children, never a management command. */
+      int child_status;
+      while (waitpid (process.pid, &child_status, WNOHANG) < 0 && errno == EINTR) {}
+      while (waitpid (process.relay_pid, &child_status, WNOHANG) < 0 && errno == EINTR) {}
+      pending |= process.output[0] >= 0 || process.output[1] >= 0;
+      da_put (processes, i, &item);
+    }
+  return pending;
+}
+
+static void
+us_hb_output_wait (dynamic_array *processes)
+{
+  struct timespec start, now;
+  clock_gettime (CLOCK_MONOTONIC, &start);
+  do
+    {
+      us_hb_output_pump (processes);
+      poll (NULL, 0, 10);
+      clock_gettime (CLOCK_MONOTONIC, &now);
+    }
+  while ((now.tv_sec - start.tv_sec) * 1000 + (now.tv_nsec - start.tv_nsec) / 1000000
+         < HB_START_WAITING_TIME_IN_SECS * 1000);
+}
+
+static int
+us_hb_output_finish (dynamic_array *processes)
+{
+  int status = NO_ERROR;
+  /* Trigger all finite relay barriers before draining any one of them. */
+  for (int i = 0; i < da_size (processes); ++i)
+    {
+      us_hb_background_process item;
+      background_process &process = item.process;
+      da_get (processes, i, &item);
+      if (process.control >= 0) close (process.control);
+      process.control = -1;
+      da_put (processes, i, &item);
+    }
+  while (us_hb_output_pump (processes)) poll (NULL, 0, 10);
+  for (int i = 0; i < da_size (processes); ++i)
+    {
+      us_hb_background_process item;
+      background_process &process = item.process;
+      da_get (processes, i, &item);
+      if (background_process_finish_start (process) != 0)
+        {
+          fprintf (stderr, "Failed to collect HA utility startup output\n");
+          status = ER_GENERIC_ERROR;
+        }
+    }
+  return status;
+}
+
+static int
+us_hb_start_local (dynamic_array *processes, const char *args[], bool *exec_failed)
+{
+  us_hb_background_process item;
+  background_process &process = item.process;
+  char executable[PATH_MAX], relay[PATH_MAX], console[PATH_MAX];
+  envvar_bindir_file (executable, sizeof (executable), UTIL_ADMIN_NAME);
+  envvar_bindir_file (relay, sizeof (relay), "cub_console");
+  envvar_logdir_file (console, sizeof (console), "server-console.log");
+  /* Reserve ownership before creating a child, including allocation failure. */
+  if (processes == NULL || da_add (processes, &item) != NO_ERROR) return ER_GENERIC_ERROR;
+  fflush (stdout);
+  fflush (stderr);
+  if (signal (SIGCHLD, SIG_IGN) == SIG_ERR
+      || background_process_start (executable, args, relay, console, process) != 0)
+    {
+      perror (process.exec_failed ? "execv" : "HA utility background start");
+      /* No child/channel ownership was transferred on a failed start. */
+      --processes->max;
+      /* Legacy utility/replication commands returned success when producer exec
+       * failed. Preserve that public result in the parent, never by returning
+       * the failed child into the launcher. Setup failures remain checked. */
+      if (process.exec_failed && exec_failed != NULL)
+        {
+          *exec_failed = true;
+          return NO_ERROR;
+        }
+      return ER_GENERIC_ERROR;
+    }
+  da_put (processes, da_size (processes) - 1, &item);
+  us_hb_output_pump (processes);
+  return NO_ERROR;
+}
+
+static int
+us_hb_process_pid (dynamic_array *processes, int index)
+{
+  us_hb_background_process item;
+  background_process &process = item.process;
+  da_get (processes, index, &item);
+  return process.pid;
+}
+/* *INDENT-ON* */
+
 static int
 us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-		       const char *remote_host)
+		       const char *remote_host, bool * exec_failed)
 {
   int status = NO_ERROR;
   int pid;
@@ -3314,16 +3529,10 @@ us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db
 
 		  if (ha_mkdir (log_path, 0755))
 		    {
-		      status = proc_execute (UTIL_ADMIN_NAME, lw_argv, false, false, false, &pid);
+		      status = us_hb_start_local (out_ap, lw_argv, exec_failed);
 
 		      if (status != NO_ERROR)
 			{
-			  goto ret;
-			}
-
-		      if (out_ap && da_add (out_ap, &pid) != NO_ERROR)
-			{
-			  status = ER_GENERIC_ERROR;
 			  goto ret;
 			}
 		    }
@@ -3374,6 +3583,10 @@ us_hb_copylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db
 
 ret:
   print_result (UTIL_COPYLOGDB, status, START);
+  if (status == NO_ERROR && exec_failed != NULL && *exec_failed)
+    {
+      print_result (UTIL_COPYLOGDB, ER_GENERIC_ERROR, START);
+    }
   return status;
 }
 
@@ -3509,7 +3722,7 @@ ret:
 
 static int
 us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-			const char *remote_host)
+			const char *remote_host, bool * exec_failed)
 {
   int status = NO_ERROR;
   int pid;
@@ -3595,15 +3808,9 @@ us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *d
 		      continue;
 		    }
 
-		  status = proc_execute (UTIL_ADMIN_NAME, la_argv, false, false, false, &pid);
+		  status = us_hb_start_local (out_ap, la_argv, exec_failed);
 		  if (status != NO_ERROR)
 		    {
-		      goto ret;
-		    }
-
-		  if (out_ap && da_add (out_ap, &pid) != NO_ERROR)
-		    {
-		      status = ER_GENERIC_ERROR;
 		      goto ret;
 		    }
 		}
@@ -3653,6 +3860,10 @@ us_hb_applylogdb_start (dynamic_array * out_ap, HA_CONF * ha_conf, const char *d
 
 ret:
   print_result (UTIL_APPLYLOGDB, status, START);
+  if (status == NO_ERROR && exec_failed != NULL && *exec_failed)
+    {
+      print_result (UTIL_APPLYLOGDB, ER_GENERIC_ERROR, START);
+    }
   return status;
 }
 
@@ -3793,13 +4004,13 @@ us_hb_utils_start (dynamic_array * pids, HA_CONF * ha_conf, const char *db_name,
 {
   int status = NO_ERROR;
 
-  status = us_hb_copylogdb_start (pids, ha_conf, db_name, node_name, NULL);
+  status = us_hb_copylogdb_start (pids, ha_conf, db_name, node_name, NULL, NULL);
   if (status != NO_ERROR)
     {
       return status;
     }
 
-  status = us_hb_applylogdb_start (pids, ha_conf, db_name, node_name, NULL);
+  status = us_hb_applylogdb_start (pids, ha_conf, db_name, node_name, NULL, NULL);
   return status;
 }
 
@@ -3928,7 +4139,7 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HA_PROCS_NAME, PRINT_CMD_START);
 
-  pids = da_create (100, sizeof (int));
+  pids = da_create (100, sizeof (us_hb_background_process));
   if (pids == NULL)
     {
       status = ER_GENERIC_ERROR;
@@ -3941,24 +4152,24 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
       goto ret;
     }
 
-  status = us_hb_copylogdb_start (pids, ha_conf, db_name, NULL, NULL);
+  status = us_hb_copylogdb_start (pids, ha_conf, db_name, NULL, NULL, NULL);
   if (status != NO_ERROR)
     {
       goto ret;
     }
 
-  status = us_hb_applylogdb_start (pids, ha_conf, db_name, NULL, NULL);
+  status = us_hb_applylogdb_start (pids, ha_conf, db_name, NULL, NULL, NULL);
   if (status != NO_ERROR)
     {
       goto ret;
     }
 
-  sleep (HB_START_WAITING_TIME_IN_SECS);
+  us_hb_output_wait (pids);
   if (check_result == true)
     {
       for (i = 0; i < da_size (pids); i++)
 	{
-	  da_get (pids, i, &pid);
+	  pid = us_hb_process_pid (pids, i);
 	  if (is_terminated_process (pid))
 	    {
 	      status = ER_GENERIC_ERROR;
@@ -3970,6 +4181,10 @@ us_hb_process_start (HA_CONF * ha_conf, const char *db_name, bool check_result)
 ret:
   if (pids)
     {
+      if (us_hb_output_finish (pids) != NO_ERROR)
+	{
+	  status = ER_GENERIC_ERROR;
+	}
       da_destroy (pids);
     }
 
@@ -4074,7 +4289,7 @@ ret:
 
 static int
 us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-			 const char *remote_host)
+			 const char *remote_host, bool * exec_failed)
 {
   int status = NO_ERROR;
   int i;
@@ -4088,19 +4303,19 @@ us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_nam
     case START:
       if (remote_host == NULL)
 	{
-	  pids = da_create (100, sizeof (int));
+	  pids = da_create (100, sizeof (us_hb_background_process));
 	  if (pids == NULL)
 	    {
 	      status = ER_GENERIC_ERROR;
 	      goto ret;
 	    }
 
-	  status = us_hb_copylogdb_start (pids, ha_conf, db_name, node_name, remote_host);
+	  status = us_hb_copylogdb_start (pids, ha_conf, db_name, node_name, remote_host, exec_failed);
 
-	  sleep (HB_START_WAITING_TIME_IN_SECS);
+	  us_hb_output_wait (pids);
 	  for (i = 0; i < da_size (pids); i++)
 	    {
-	      da_get (pids, i, &pid);
+	      pid = us_hb_process_pid (pids, i);
 	      if (is_terminated_process (pid))
 		{
 		  (void) us_hb_copylogdb_stop (ha_conf, db_name, node_name, remote_host);
@@ -4118,7 +4333,7 @@ us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_nam
 	      goto ret;
 	    }
 
-	  status = us_hb_copylogdb_start (args, ha_conf, db_name, node_name, remote_host);
+	  status = us_hb_copylogdb_start (args, ha_conf, db_name, node_name, remote_host, NULL);
 
 	  sleep (HB_START_WAITING_TIME_IN_SECS);
 	  for (i = 0; i < da_size (args); i++)
@@ -4148,6 +4363,10 @@ us_hb_process_copylogdb (int command_type, HA_CONF * ha_conf, const char *db_nam
 ret:
   if (pids)
     {
+      if (us_hb_output_finish (pids) != NO_ERROR)
+	{
+	  status = ER_GENERIC_ERROR;
+	}
       da_destroy (pids);
     }
   if (args)
@@ -4160,7 +4379,7 @@ ret:
 
 static int
 us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_name, const char *node_name,
-			  const char *remote_host)
+			  const char *remote_host, bool * exec_failed)
 {
   int status = NO_ERROR;
   int i, pid;
@@ -4173,19 +4392,19 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_na
     case START:
       if (remote_host == NULL)
 	{
-	  pids = da_create (100, sizeof (int));
+	  pids = da_create (100, sizeof (us_hb_background_process));
 	  if (pids == NULL)
 	    {
 	      status = ER_GENERIC_ERROR;
 	      goto ret;
 	    }
 
-	  status = us_hb_applylogdb_start (pids, ha_conf, db_name, node_name, remote_host);
+	  status = us_hb_applylogdb_start (pids, ha_conf, db_name, node_name, remote_host, exec_failed);
 
-	  sleep (HB_START_WAITING_TIME_IN_SECS);
+	  us_hb_output_wait (pids);
 	  for (i = 0; i < da_size (pids); i++)
 	    {
-	      da_get (pids, i, &pid);
+	      pid = us_hb_process_pid (pids, i);
 	      if (is_terminated_process (pid))
 		{
 		  (void) us_hb_applylogdb_stop (ha_conf, db_name, node_name, remote_host);
@@ -4203,7 +4422,7 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_na
 	      goto ret;
 	    }
 
-	  status = us_hb_applylogdb_start (args, ha_conf, db_name, node_name, remote_host);
+	  status = us_hb_applylogdb_start (args, ha_conf, db_name, node_name, remote_host, NULL);
 
 	  sleep (HB_START_WAITING_TIME_IN_SECS);
 	  for (i = 0; i < da_size (args); i++)
@@ -4231,6 +4450,10 @@ us_hb_process_applylogdb (int command_type, HA_CONF * ha_conf, const char *db_na
 ret:
   if (pids)
     {
+      if (us_hb_output_finish (pids) != NO_ERROR)
+	{
+	  status = ER_GENERIC_ERROR;
+	}
       da_destroy (pids);
     }
   if (args)
@@ -4961,6 +5184,7 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
 {
   int status = NO_ERROR;
   int sub_command_type;
+  bool exec_failed = false;
 
   char db_name[64];
   char node_name[CUB_MAXHOSTNAMELEN];
@@ -5002,15 +5226,19 @@ process_heartbeat_util (HA_CONF * ha_conf, int command_type, int argc, const cha
   switch (command_type)
     {
     case SC_COPYLOGDB:
-      status = us_hb_process_copylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p);
+      status = us_hb_process_copylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p, &exec_failed);
       break;
     case SC_APPLYLOGDB:
-      status = us_hb_process_applylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p);
+      status = us_hb_process_applylogdb (sub_command_type, ha_conf, db_name_p, node_name_p, host_name_p, &exec_failed);
       break;
     }
 
 ret:
   print_result (PRINT_HEARTBEAT_NAME, status, command_type);
+  if (status == NO_ERROR && exec_failed)
+    {
+      print_result (PRINT_HEARTBEAT_NAME, ER_GENERIC_ERROR, command_type);
+    }
   return status;
 }
 
@@ -5030,6 +5258,7 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
   int status = NO_ERROR;
   int sub_command_type;
   int master_port;
+  bool copy_exec_failed = false, apply_exec_failed = false;
   const char *node_name = NULL;
 
   print_message (stdout, MSGCAT_UTIL_GENERIC_START_STOP_2S, PRINT_HEARTBEAT_NAME, PRINT_CMD_REPLICATION);
@@ -5064,20 +5293,20 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
 	{
 	  if (sub_command_type == START)
 	    {
-	      status = us_hb_process_copylogdb (START, ha_conf, NULL, node_name, NULL);
+	      status = us_hb_process_copylogdb (START, ha_conf, NULL, node_name, NULL, &copy_exec_failed);
 	      if (status == NO_ERROR)
 		{
-		  status = us_hb_process_applylogdb (START, ha_conf, NULL, node_name, NULL);
+		  status = us_hb_process_applylogdb (START, ha_conf, NULL, node_name, NULL, &apply_exec_failed);
 		  if (status != NO_ERROR)
 		    {
-		      (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL);
+		      (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL, NULL);
 		    }
 		}
 	    }
 	  else
 	    {
-	      (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL);
-	      (void) us_hb_process_applylogdb (STOP, ha_conf, NULL, node_name, NULL);
+	      (void) us_hb_process_copylogdb (STOP, ha_conf, NULL, node_name, NULL, NULL);
+	      (void) us_hb_process_applylogdb (STOP, ha_conf, NULL, node_name, NULL, NULL);
 	      status = NO_ERROR;
 	    }
 	}
@@ -5090,6 +5319,12 @@ process_heartbeat_replication (HA_CONF * ha_conf, int argc, const char **argv)
     }
 
 ret:
+  /* The old failed children each printed a replication failure result. Keep
+   * those diagnostics without repeating their stop/shutdown control flow. */
+  if (copy_exec_failed)
+    print_result (PRINT_HEARTBEAT_NAME, ER_GENERIC_ERROR, REPLICATION);
+  if (apply_exec_failed)
+    print_result (PRINT_HEARTBEAT_NAME, ER_GENERIC_ERROR, REPLICATION);
   print_result (PRINT_HEARTBEAT_NAME, status, REPLICATION);
   return status;
 }

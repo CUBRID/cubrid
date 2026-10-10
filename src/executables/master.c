@@ -23,12 +23,16 @@
 #ident "$Id$"
 
 #include "config.h"
+#include "background_process.hpp"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
 #include <time.h>
+#if defined(LINUX)
+#include <sys/prctl.h>
+#endif
 
 #if defined(_AIX)
 #include <sys/select.h>
@@ -110,7 +114,9 @@ static void css_master_loop (void);
 static void css_free_entry (SOCKET_QUEUE_ENTRY * entry_p);
 
 #if !defined(WINDOWS)
-static void css_daemon_start (void);
+static void css_daemon_start (bool already_forked);
+static int css_launch_daemon (int argc, char **argv, int port_id);
+static const char css_Daemon_child_marker[] = "--cubrid-master-daemon-child=";
 #endif
 
 struct timeval *css_Master_timeout = NULL;
@@ -1259,6 +1265,14 @@ css_master_loop (void)
 int
 main (int argc, char **argv)
 {
+#if !defined(WINDOWS)
+  /* Reserve closed standard descriptors before any logging opens a file. */
+  if (background_process_prepare_stdio () != 0)
+    {
+      return EXIT_FAILURE;
+    }
+#endif
+
   int port_id;
   CSS_CONN_ENTRY *conn;
   static const char suffix[] = "_master.err";
@@ -1267,6 +1281,25 @@ main (int argc, char **argv)
   int status = EXIT_SUCCESS;
   const char *msg_format;
   bool util_config_ret;
+#if !defined(WINDOWS)
+  /* Private re-exec marker, removed before interpreting the original arguments. */
+  bool daemon_child = argc > 1
+    && strncmp (argv[argc - 1], css_Daemon_child_marker, sizeof (css_Daemon_child_marker) - 1) == 0;
+  if (daemon_child)
+    {
+#if defined(LINUX)
+      /* /proc/self/exe otherwise names the child "exe". Keep the invoking
+       * process's actual name, including when its file was renamed or deleted. */
+      const char *name = argv[argc - 1] + sizeof (css_Daemon_child_marker) - 1;
+      if (prctl (PR_SET_NAME, name, 0, 0, 0) != 0)
+	{
+	  perror ("master process name");
+	  return EXIT_FAILURE;
+	}
+#endif
+      argv[--argc] = NULL;
+    }
+#endif
 
   if (utility_initialize () != NO_ERROR)
     {
@@ -1328,7 +1361,11 @@ main (int argc, char **argv)
 #if !defined(WINDOWS)
   if (envvar_get ("NO_DAEMON") == NULL)
     {
-      css_daemon_start ();
+      if (!daemon_child && getppid () != 1)
+	{
+	  return css_launch_daemon (argc, argv, port_id);
+	}
+      css_daemon_start (daemon_child);
     }
 #endif
 
@@ -1602,7 +1639,7 @@ css_return_entry_by_conn (CSS_CONN_ENTRY * conn_p, SOCKET_QUEUE_ENTRY ** anchor_
  *   return: none
  */
 static void
-css_daemon_start (void)
+css_daemon_start (bool already_forked)
 {
   int childpid, fd;
 #if defined (sun)
@@ -1654,7 +1691,7 @@ css_daemon_start (void)
    * call to setsid
    */
 
-  childpid = fork ();
+  childpid = already_forked ? 0 : fork ();
   if (childpid < 0)
     {
       MASTER_ER_SET (ER_WARNING_SEVERITY, ARG_FILE_LINE, ERR_CSS_CANNOT_FORK, 0);
@@ -1663,7 +1700,7 @@ css_daemon_start (void)
     {
       exit (0);			/* parent goes bye-bye */
     }
-  else
+  else if (!already_forked)
     {
       /*
        * Wait until the parent process has finished. Coded with polling since
@@ -1713,4 +1750,112 @@ out:
 
   umask (0);
 }
+
+/*
+ * css_launch_daemon() - own the direct daemon caller's output until initialization
+ * finishes. The historical parent success code is not a readiness promise.
+ */
+/* *INDENT-OFF* */
+static int
+css_launch_daemon (int argc, char **argv, int port_id)
+{
+  char executable[PATH_MAX], relay[PATH_MAX], console[PATH_MAX];
+  char daemon_marker[sizeof (css_Daemon_child_marker) + 16];
+  strcpy (daemon_marker, css_Daemon_child_marker);
+#if defined(LINUX)
+  if (prctl (PR_GET_NAME, daemon_marker + sizeof (css_Daemon_child_marker) - 1, 0, 0, 0) != 0)
+    {
+      perror ("master process name");
+      return EXIT_FAILURE;
+    }
+#endif
+#if defined(LINUX)
+  /* After fork this still names the invoked master, even outside the install
+   * tree or after its pathname was replaced. Do not switch to another build. */
+  strcpy (executable, "/proc/self/exe");
+#else
+  if (strchr (argv[0], '/') != NULL)
+    {
+      if (realpath (argv[0], executable) == NULL)
+        {
+          perror ("master executable");
+          return EXIT_FAILURE;
+        }
+    }
+  else
+    {
+      const char *path = getenv ("PATH");
+      bool found = false;
+      while (path != NULL)
+        {
+          const char *end = strchr (path, ':');
+          size_t length = end == NULL ? strlen (path) : (size_t) (end - path);
+          if (length < sizeof (executable))
+            {
+              int count = snprintf (executable, sizeof (executable), "%.*s/%s",
+                                    (int) (length == 0 ? 1 : length), length == 0 ? "." : path, argv[0]);
+              if (count > 0 && count < (int) sizeof (executable) && access (executable, X_OK) == 0)
+                {
+                  found = true;
+                  break;
+                }
+            }
+          path = end == NULL ? NULL : end + 1;
+        }
+      if (!found)
+        {
+          errno = ENOENT;
+          perror ("master executable");
+          return EXIT_FAILURE;
+        }
+    }
+#endif
+  envvar_bindir_file (relay, sizeof (relay), "cub_console");
+  envvar_logdir_file (console, sizeof (console), "master-console.log");
+  const char **args = (const char **) malloc ((argc + 2) * sizeof (*args));
+  if (args == NULL)
+    {
+      perror ("master daemon arguments");
+      return EXIT_FAILURE;
+    }
+  for (int i = 0; i < argc; ++i)
+    {
+      args[i] = argv[i];
+    }
+  args[argc] = daemon_marker;
+  args[argc + 1] = NULL;
+  background_process process;
+  fflush (stdout);
+  fflush (stderr);
+  int result = background_process_start (executable, args, relay, console, process);
+  int saved_error = errno;
+  free_and_init (args);
+  errno = saved_error;
+  if (result != 0)
+    {
+      perror ("master background start");
+      return EXIT_FAILURE;
+    }
+  /* Preserve the daemon parent's successful-launch code even when subsequent
+   * initialization fails. Observe that failure to collect its original output.
+   * This is the existing connection probe, not a new readiness condition. */
+  while (!__gv_cvar.css_does_master_exist (port_id))
+    {
+      int status;
+      pid_t child = waitpid (process.pid, &status, WNOHANG);
+      if (child == process.pid || (child < 0 && errno != EINTR))
+        {
+          break;
+        }
+      background_process_wait (process, 100);
+    }
+  if (background_process_finish_start (process) != 0)
+    {
+      perror ("master startup output");
+      return EXIT_FAILURE;
+    }
+  return EXIT_SUCCESS;
+}
+/* *INDENT-ON* */
+
 #endif
