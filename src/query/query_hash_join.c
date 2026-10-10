@@ -3623,7 +3623,7 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	  if (manager->join_type == JOIN_SEMI)
 	    {
 	      /* semi join: one match is enough to emit this row, so stop scanning. */
-	      build->tuple_record.tpl = NULL;
+	      qfile_slot_reset (&build->tuple_record);
 	      break;
 	    }
 	}
@@ -3932,7 +3932,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	       * The unnested subquery condition becomes the ON clause,
 	       * so after_join_pred does not decide the match.
 	       */
-	      build->tuple_record.tpl = NULL;
+	      qfile_slot_reset (&build->tuple_record);
 	      break;
 	    }
 

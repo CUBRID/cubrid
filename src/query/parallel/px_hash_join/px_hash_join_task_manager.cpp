@@ -1154,7 +1154,7 @@ cleanup:
 		  if (m_manager->join_type == JOIN_SEMI)
 		    {
 		      /* semi join: one match is enough to emit this row, so stop scanning. */
-		      build->tuple_record.tpl = nullptr;
+		      qfile_slot_reset (&build->tuple_record);
 		      break;
 		    }
 		}
@@ -1510,7 +1510,7 @@ cleanup:
 		       * The unnested subquery condition becomes the ON clause,
 		       * so after_join_pred does not decide the match.
 		       */
-		      build->tuple_record.tpl = nullptr;
+		      qfile_slot_reset (&build->tuple_record);
 		      break;
 		    }
 

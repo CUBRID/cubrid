@@ -16540,7 +16540,7 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		   *   LEFT        yes                                  no (outer rows go out NULL-filled)
 		   *   SEMI        yes                                  yes
 		   *   ANTI        yes                                  no (every outer row is unmatched)
-		   *   RIGHT       no (inner rows go out NULL-filled)   yes (merge join only)
+		   *   RIGHT       no (inner rows go out NULL-filled)   yes
 		   */
 
 		  if (merge_infop->join_type == JOIN_INNER || merge_infop->join_type == JOIN_LEFT
