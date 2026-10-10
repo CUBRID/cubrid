@@ -471,7 +471,7 @@ dblink_refuse_undeclared_codeset (DB_VALUE * dbval)
 static int
 dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, DB_VALUE * dbval)
 {
-  int ret, num_size = 0;
+  int ret, num_size = 0, length = UNMEASURED_LENGTH;
   T_CCI_A_TYPE a_type;
   T_CCI_U_TYPE u_type;
   void *value;
@@ -550,6 +550,9 @@ dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, D
 	{
 	  return dblink_refuse_undeclared_codeset (dbval);
 	}
+      /* A string peeked from a temp list tuple has no NUL terminator: the next column's bytes follow
+       * it. Bind it by its size, which CCI otherwise measures with strlen. */
+      length = db_get_string_size (dbval);
       break;
     case DB_TYPE_DATE:
       a_type = CCI_A_TYPE_DATE;
@@ -627,7 +630,7 @@ dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, D
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 1, "unknown");
       return ER_DBLINK_UNSUPPORTED_TYPE;
     }
-  ret = cci_bind_param (stmt_handle, param_index, a_type, value, u_type, 0);
+  ret = cci_bind_param_ex (stmt_handle, param_index, a_type, value, length, u_type, 0);
   /* CCI copies the value unless the bind flag is CCI_BIND_PTR, so the JSON body can be released
    * as soon as it is bound. */
   db_private_free_and_init (NULL, json_body);

@@ -36,7 +36,6 @@
 #if !defined(WINDOWS)
 #include <unistd.h>
 #include <signal.h>
-#include <fcntl.h>
 #include <time.h>
 #else
 #include <signal.h>
@@ -94,7 +93,6 @@ cas_main_loop (CAS_MAIN_OPS * ops)
   char client_ip_str[16];
   bool is_new_connection = true;
   DB_CONN_INFO conn_info;
-  prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
   /* Initialize */
   if (cas_main_init (&net_buf, &srv_sock_fd) < 0)
@@ -254,11 +252,8 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 	    set_hang_check_time ();
 
-	    cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s url %s " "session id %s", conn_info.db_name,
-			   conn_info.db_user, conn_info.url, conn_info.db_sessionid);
 	    if (as_info->reset_flag == TRUE)
 	      {
-		cas_log_debug (ARG_FILE_LINE, "main: set reset_flag");
 		if (ops->set_session_id)
 		  {
 		    cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
@@ -341,8 +336,6 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 #endif /* !WINDOWS */
 		as_info->last_access_time = time (NULL);
 	      }
-
-	    prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
 	    if (as_info->cur_statement_pooling)
 	      {
@@ -564,19 +557,7 @@ cas_final (void)
 void
 cas_free (bool from_sighandler)
 {
-#ifdef MEM_DEBUG
-  int fd;
-#endif
   int max_process_size;
-
-  if (from_sighandler)
-    {
-      cas_log_debug (ARG_FILE_LINE, "request cas_free() from the signal handler");
-    }
-  else
-    {
-      cas_log_debug (ARG_FILE_LINE, "request cas_free() from the cas_final()");
-    }
 
   if (as_info->cur_statement_pooling && !from_sighandler)
     {
@@ -679,15 +660,6 @@ cas_free (bool from_sighandler)
   cas_log_close (true);
   cas_slow_log_close ();
   logddl_destroy ();
-
-#ifdef MEM_DEBUG
-  fd = open ("mem_debug.log", O_CREAT | O_TRUNC | O_WRONLY, 0666);
-  if (fd > 0)
-    {
-      malloc_dump (fd);
-      close (fd);
-    }
-#endif
 
   if (cleanup_callback != NULL)
     {
@@ -1276,7 +1248,6 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
 	    {
 	      if (restart_is_needed ())
 		{
-		  cas_log_debug (ARG_FILE_LINE, "net_read_int_keep_con_auto: " "restart_is_needed()");
 		  ret_value = -1;
 		  break;
 		}
