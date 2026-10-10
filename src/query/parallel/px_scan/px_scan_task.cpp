@@ -295,8 +295,9 @@ namespace parallel_scan
 			  {
 			    fixed_scan = true;
 			  }
-			else if (!specp->s_id.grouped)
+			else if (!specp->s_id.grouped && !m_xasl_state->calls_sql_capable_sp)
 			  {
+			    /* no cached scan in a statement whose SP may change rows (CBRD-27590) */
 			    inner_cached_scan = true;
 			  }
 		      }
