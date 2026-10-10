@@ -283,7 +283,7 @@ static void qo_dump_planvec (QO_PLANVEC *, FILE *, int);
 static void qo_dump_info (QO_INFO *, FILE *);
 static void qo_dump_planner_info (QO_PLANNER *, QO_PARTITION *, FILE *);
 
-static void qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
+static bool qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
 				  double *out_head_factor, double *out_tail_factor);
 static void planner_visit_node (QO_PLANNER *, QO_PARTITION *, PT_HINT_ENUM, QO_NODE *, QO_NODE *, BITSET *, BITSET *,
 				BITSET *, BITSET *, BITSET *, BITSET *, BITSET *, int);
@@ -3382,7 +3382,7 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   /* add to out terms */
   bitset_union (&sarg_out_terms, &(plan->plan_un.join.join_terms));
 
-  if (IS_OUTER_JOIN_TYPE (join_type))
+  if (IS_OUTER_JOIN_TYPE (join_type) || qo_plan_semi_anti_join_type (inner) == PT_JOIN_ANTI)
     {
       /* set during join terms */
       bitset_assign (&(plan->plan_un.join.during_join_terms), duj_terms);
@@ -3741,11 +3741,6 @@ qo_can_apply_limit_card (QO_ENV * env)
 }
 
 /*
- * qo_nljoin_cost () -
- *   return:
- *   planp(in):
- */
-/*
  * qo_mackert_lohman_pages () - distinct pages that N random probes touch in a T-page object
  *   return: estimated page count
  *   T(in): object size in pages
@@ -3789,6 +3784,11 @@ qo_mackert_lohman_pages (double T, double N)
   return pages_fetched;
 }
 
+/*
+ * qo_nljoin_cost () -
+ *   return:
+ *   planp(in):
+ */
 static void
 qo_nljoin_cost (QO_PLAN * planp)
 {
@@ -4178,7 +4178,13 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       break;
 
     case JOIN_INNER:
-      if ((inner_build_cpu_cost + inner_build_io_cost) <= (outer_build_cpu_cost + outer_build_io_cost))
+      if (qo_plan_semi_anti_join_type (inner_plan_p) != PT_JOIN_NONE)
+	{
+	  /* semi/anti always builds the inner side (see hjoin_init_context ()) */
+	  plan_p->variable_cpu_cost += inner_build_cpu_cost;
+	  plan_p->variable_io_cost += inner_build_io_cost;
+	}
+      else if ((inner_build_cpu_cost + inner_build_io_cost) <= (outer_build_cpu_cost + outer_build_io_cost))
 	{
 	  plan_p->variable_cpu_cost += inner_build_cpu_cost;
 	  plan_p->variable_io_cost += inner_build_io_cost;
@@ -6795,8 +6801,7 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
       inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
     }
 
-  /* inner is single class spec; for a semi/anti inner ignore USE_MERGE/USE_HASH (merge/hash unsupported in v1)
-   * so NL/IDX still survives (M3 hint neutralization) */
+  /* inner is single class spec; USE_MERGE does not apply to a semi/anti inner (no semi/anti merge join) */
   if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_NL))
     {
       /* join hint: force idx-join */
@@ -6806,8 +6811,7 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
       /* join hint: force merge-join; skip idx-join */
       goto exit;
     }
-  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-	   && !QO_NODE_IS_SEMI_ANTI_JOIN (inner_node))
+  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
     {
       /* join hint: force hash-join; skip idx-join */
       goto exit;
@@ -6929,8 +6933,9 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
   else
     {
       /* At here, inner is single class spec */
-      /* for a semi/anti inner ignore USE_MERGE/USE_HASH (merge/hash unsupported in v1) so NL survives */
       inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+
+      /* USE_MERGE does not apply to a semi/anti inner (no semi/anti merge join) */
       if (QO_NODE_HINT (inner_node) & PT_HINT_USE_NL)
 	{
 	  /* join hint: force nl-join */
@@ -6941,8 +6946,7 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	  /* join hint: force idx-join, merge-join; skip nl-join */
 	  goto exit;
 	}
-      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-	       && !QO_NODE_IS_SEMI_ANTI_JOIN (inner_node))
+      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
 	{
 	  /* join hint: force hash-join; skip nl-join */
 	  goto exit;
@@ -7276,7 +7280,8 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	{
 	  /* join hint: force hash-join */
 	}
-      else if (QO_NODE_HINT (hint_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+      else if ((QO_NODE_HINT (hint_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX))
+	       || ((QO_NODE_HINT (hint_node) & PT_HINT_USE_MERGE) && !QO_NODE_IS_SEMI_ANTI_JOIN (hint_node)))
 	{
 	  /* join hint: force nl-join, idx-join, m-join; skip hash-join */
 	  goto exit;
@@ -7842,24 +7847,8 @@ qo_dump_planner_info (QO_PLANNER * planner, QO_PARTITION * partition, FILE * f)
 }
 
 /*
- * planner_visit_node () -
- *   return:
- *   planner(in):
- *   partition(in):
- *   hint(in):
- *   head_node(in):
- *   tail_node(in):
- *   visited_nodes(in):
- *   visited_rel_nodes(in):
- *   visited_terms(in):
- *   nested_path_nodes(in):
- *   remaining_nodes(in):
- *   remaining_terms(in):
- *   remaining_subqueries(in):
- *   num_path_inner(in):
- */
-/*
  * qo_get_term_hit_prob () -
+ *   return: true if the NDVs of both join keys are known, false otherwise
  *
  * hit_prob = min(1, ndv(tail after its filters) / ndv(head))
  *
@@ -7867,7 +7856,7 @@ qo_dump_planner_info (QO_PLANNER * planner, QO_PARTITION * partition, FILE * f)
  * search conditions with qo_estimate_ndv (), the same estimate
  * GROUP BY uses for the number of groups after filtering.
  */
-static void
+static bool
 qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
 		      double *out_head_factor, double *out_tail_factor)
 {
@@ -7882,7 +7871,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
   *out_tail_factor = 1.0;
   if (bitset_cardinality (term_segs) != 2)
     {
-      return;
+      return false;
     }
 
   for (seg_idx = bitset_iterate (term_segs, &seg_iter); seg_idx != -1; seg_idx = bitset_next_member (&seg_iter))
@@ -7902,7 +7891,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
     }
   if (head_seg == NULL || tail_seg == NULL)
     {
-      return;
+      return false;
     }
 
   if (QO_SEG_INFO (head_seg) != NULL && QO_SEG_INFO (head_seg)->ndv > 0)
@@ -7911,7 +7900,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
     }
   else
     {
-      return;
+      return false;
     }
 
   if (QO_SEG_INFO (tail_seg) != NULL && QO_SEG_INFO (tail_seg)->ndv > 0)
@@ -7920,7 +7909,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
     }
   else
     {
-      return;
+      return false;
     }
 
   /* Distinct join-key values that survive each side's own search conditions: the NDV shrinks the way
@@ -7940,8 +7929,27 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
 
   *out_head_factor = MIN (1.0, tail_ndv_eff / (double) head_ndv);
   *out_tail_factor = MIN (1.0, head_ndv_eff / (double) tail_ndv);
+
+  return true;
 }
 
+/*
+ * planner_visit_node () -
+ *   return:
+ *   planner(in):
+ *   partition(in):
+ *   hint(in):
+ *   head_node(in):
+ *   tail_node(in):
+ *   visited_nodes(in):
+ *   visited_rel_nodes(in):
+ *   visited_terms(in):
+ *   nested_path_nodes(in):
+ *   remaining_nodes(in):
+ *   remaining_terms(in):
+ *   remaining_subqueries(in):
+ *   num_path_inner(in):
+ */
 static void
 planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM hint, QO_NODE * head_node,
 		    QO_NODE * tail_node, BITSET * visited_nodes, BITSET * visited_rel_nodes, BITSET * visited_terms,
@@ -8331,7 +8339,10 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		      }
 		    else
 		      {		/* non-eq edge */
-			if (IS_OUTER_JOIN_TYPE (join_type) && QO_ON_COND_TERM (term))
+			if (QO_ON_COND_TERM (term)
+			    && (IS_OUTER_JOIN_TYPE (join_type)
+				|| QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (planner->env, QO_TERM_LOCATION (term))) ==
+				PT_JOIN_ANTI))
 			  {	/* ON clause */
 			    bitset_add (&duj_terms, i);	/* need for m-join */
 			  }
@@ -8373,7 +8384,9 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	      }
 	    else if (QO_TERM_CLASS (term) == QO_TC_OTHER)
 	      {
-		if (IS_OUTER_JOIN_TYPE (join_type) && QO_ON_COND_TERM (term))
+		if (QO_ON_COND_TERM (term)
+		    && (IS_OUTER_JOIN_TYPE (join_type)
+			|| QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (planner->env, QO_TERM_LOCATION (term))) == PT_JOIN_ANTI))
 		  {		/* ON clause */
 		    bitset_add (&duj_terms, i);
 		  }
@@ -8475,9 +8488,9 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
   if (new_info == NULL)
     {
-
       double selectivity, cardinality, total_rows, head_hit_prob, tail_hit_prob;
       double fk_floor_product;
+      double ndv_sel, eq_join_sel, on_sel, during_sel, filter_sel;	/* semi/anti only */
       BITSET eqclasses;
       BITSET fk_excluded_terms;
       BITSET fk_col_terms;
@@ -8486,25 +8499,37 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       bitset_init (&fk_excluded_terms, planner->env);
       bitset_init (&fk_col_terms, planner->env);
 
-
       selectivity = 1.0;	/* init */
       fk_floor_product = 1.0;	/* product of floors for FK-PK relationships this step completes */
 
-      cardinality = head_info->cardinality * tail_info->cardinality;
       total_rows = head_info->total_rows * tail_info->total_rows;
       head_hit_prob = 1.0;
       tail_hit_prob = 1.0;
-      if (IS_OUTER_JOIN_TYPE (join_type))
+
+      ndv_sel = 1.0;
+      eq_join_sel = 1.0;
+      on_sel = 1.0;
+      during_sel = 1.0;
+      filter_sel = 1.0;
+
+      if (join_type == JOIN_RIGHT)
 	{
 	  /* set lower bound of outer join result */
-	  if (join_type == JOIN_RIGHT)
-	    {
-	      cardinality = MAX (cardinality, tail_info->cardinality);
-	    }
-	  else
-	    {
-	      cardinality = MAX (cardinality, head_info->cardinality);
-	    }
+	  cardinality = MAX (head_info->cardinality * tail_info->cardinality, tail_info->cardinality);
+	}
+      else if (join_type == JOIN_LEFT)
+	{
+	  /* set lower bound of outer join result */
+	  cardinality = MAX (head_info->cardinality * tail_info->cardinality, head_info->cardinality);
+	}
+      else if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+	{
+	  /* keep an empty inner from zeroing semi/anti before the reestimate below */
+	  cardinality = MAX (head_info->cardinality * tail_info->cardinality, head_info->cardinality);
+	}
+      else
+	{
+	  cardinality = head_info->cardinality * tail_info->cardinality;
 	}
 
       if (cardinality != 0)
@@ -8649,19 +8674,75 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_LIKE_DERIVED_RANGE | QO_TERM_OR_DERIVED))
 		    {
 		      double head_factor, tail_factor;
+		      bool has_ndv;
 
-		      if (!BITSET_MEMBER (fk_excluded_terms, i))
+		      has_ndv =
+			qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
+
+		      if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
 			{
-			  /* Terms identified above as standing for a composite PK-FK relationship's
-			   * columns are excluded here: their independent product ignores the
-			   * correlation the constraint guarantees and underestimates the join. Their
-			   * combined effect is folded in once below as a floor instead (cf.
-			   * PostgreSQL's get_foreign_key_join_selectivity()). */
-			  selectivity *= QO_TERM_SELECTIVITY (term);
-			  selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+			  if (!QO_ON_COND_TERM (term))
+			    {
+			      /* WHERE-clause term: filters the semi/anti result rows and does not decide the match */
+			      filter_sel *= QO_TERM_SELECTIVITY (term);
+			    }
+			  else if (QO_TERM_CLASS (term) == QO_TC_DURING_JOIN
+				   && !BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (tail_node)))
+			    {
+			      /* during-join term that does not read the inner: decided once per outer row */
+			      during_sel *= QO_TERM_SELECTIVITY (term);
+			    }
+			  else if (has_ndv && QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+			    {
+			      /* semi/anti equi-join term with known NDVs,
+			       * decided by whether the outer key is among the inner keys;
+			       * an outer row whose key is NULL matches no inner row
+			       */
+			      double outer_null_freq = 0.0;
+			      int seg_idx;
+
+			      for (seg_idx = bitset_iterate (&(QO_TERM_SEGS (term)), &bj); seg_idx != -1;
+				   seg_idx = bitset_next_member (&bj))
+				{
+				  QO_SEGMENT *seg = QO_ENV_SEG (planner->env, seg_idx);
+				  PT_NODE *name = QO_SEG_PT_NODE (seg);
+
+				  if (BITSET_MEMBER (head_info->nodes, QO_NODE_IDX (QO_SEG_HEAD (seg))))
+				    {
+				      if (PT_IS_NAME_NODE (name) && name->info.name.null_frequency >= 0.0)
+					{
+					  outer_null_freq = name->info.name.null_frequency;
+					}
+				      break;
+				    }
+				}
+
+			      ndv_sel *= head_factor * (1.0 - outer_null_freq);
+			      eq_join_sel *= QO_TERM_SELECTIVITY (term);
+			    }
+			  else
+			    {
+			      /* semi/anti ON-clause term that reads the inner: decided per pair of rows */
+			      on_sel *= QO_TERM_SELECTIVITY (term);
+			      on_sel = MAX (1.0 / MAX (cardinality, 1.0), on_sel);
+			    }
+			}
+		      else
+			{
+			  /* not a semi/anti join */
+
+			  if (!BITSET_MEMBER (fk_excluded_terms, i))
+			    {
+			      /* Terms identified above as standing for a composite PK-FK relationship's
+			       * columns are excluded here: their independent product ignores the
+			       * correlation the constraint guarantees and underestimates the join. Their
+			       * combined effect is folded in once below as a floor instead (cf.
+			       * PostgreSQL's get_foreign_key_join_selectivity()). */
+			      selectivity *= QO_TERM_SELECTIVITY (term);
+			      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+			    }
 			}
 
-		      qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
 		      head_hit_prob *= head_factor;
 		      tail_hit_prob *= tail_factor;
 		    }
@@ -8674,10 +8755,57 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
 	    }
 
-	  cardinality *= selectivity;
-	  cardinality = MAX (1.0, cardinality);
-	  total_rows *= selectivity;
-	  total_rows = MAX (1.0, total_rows);
+	  if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+	    {
+	      /* semi/anti returns at most one row per outer row,
+	       * so the estimate uses the probability that an outer row finds a matching inner row, as below
+	       *
+	       *   match_prob = during_sel * ndv_sel * MIN (1, on_sel * N)
+	       *   antijoin   = outer * (1 - match_prob) * filter_sel
+	       *   semijoin   = outer * match_prob * filter_sel
+	       *
+	       *   ndv_sel    = MIN (1, NDV (inner key) / NDV (outer key)) of the equi-join terms with known NDVs
+	       *   on_sel     = selectivity of one pair for the other ON-clause terms that read the inner,
+	       *                over the inner rows that share the outer key (eq_join_sel / ndv_sel)
+	       *   during_sel = selectivity of the during-join terms that do not read the inner
+	       *   filter_sel = selectivity of the WHERE-clause terms
+	       *   N          = inner rows (tail_info->cardinality)
+	       */
+
+	      double match_prob;
+
+	      if (ndv_sel > 0.0)
+		{
+		  /* the other ON-clause terms are tried only on the inner rows that share the outer key */
+		  on_sel *= eq_join_sel / ndv_sel;
+		}
+
+	      match_prob = during_sel * ndv_sel * MIN (1.0, on_sel * tail_info->cardinality);
+
+	      if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_ANTI)
+		{
+		  cardinality = head_info->cardinality * (1.0 - match_prob) * filter_sel;
+		}
+	      else
+		{
+		  cardinality = head_info->cardinality * match_prob * filter_sel;
+		}
+
+	      /* the outer rows that produce a row, for the LIMIT estimate */
+	      head_hit_prob = MIN (1.0, cardinality / MAX (1.0, head_info->cardinality));
+
+	      cardinality = MAX (1.0, cardinality);
+
+	      /* the result is a subset of the outer rows */
+	      total_rows = MAX (1.0, head_info->total_rows);
+	    }
+	  else
+	    {
+	      cardinality *= selectivity;
+	      cardinality = MAX (1.0, cardinality);
+	      total_rows *= selectivity;
+	      total_rows = MAX (1.0, total_rows);
+	    }
 
 	  if (IS_OUTER_JOIN_TYPE (join_type) && bitset_is_empty (&afj_terms))
 	    {
@@ -8761,7 +8889,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 #if 1				/* MERGE_JOINS */
 	/* STEP 5-4: examine merge-join */
-	/* skip for a semi/anti inner: merge/hash inner gives wrong results, so never cost it (M3 prune) */
+	/* skip for a semi/anti inner (no semi/anti merge join) */
 	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
 	  {
 	    kept +=
@@ -8772,7 +8900,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 #if 1				/* HASH_JOINS */
 	/* STEP 5-5: examine hash-join */
-	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+	if (!bitset_is_empty (&sm_join_terms))
 	  {
 	    /**
 	     * sm_join_terms is a mergeable term for SM join. In hash join, mergeable term is used as hash join term.
@@ -11084,14 +11212,6 @@ qo_not_selectivity (QO_ENV * env, double sel)
 }
 
 /*
- * qo_equal_selectivity () - Compute the selectivity of an equality predicate
- *   return: double
- *   env(in):
- *   pt_expr(in):
- *
- * Note: This uses the System R algorithm
- */
-/*
  * qo_expr_ndv_bound () - upper bound on the distinct values an expression can produce
  *   return: the bound, or 0.0 when no column with statistics was found
  *   env(in):
@@ -11197,6 +11317,14 @@ qo_expr_equal_selectivity (QO_ENV * env, PT_NODE * node)
   return MAX (1.0 / bound, DEFAULT_EQUAL_SELECTIVITY);
 }
 
+/*
+ * qo_equal_selectivity () - Compute the selectivity of an equality predicate
+ *   return: double
+ *   env(in):
+ *   pt_expr(in):
+ *
+ * Note: This uses the System R algorithm
+ */
 static double
 qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {

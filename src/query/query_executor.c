@@ -16531,7 +16531,20 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    {
 	      if (merge_infop && !xasl->px_executor)
 		{
-		  if (merge_infop->join_type == JOIN_INNER || merge_infop->join_type == JOIN_LEFT)
+		  /*
+		   * If one side is already empty, the other side's aptr does not need to run.
+		   *
+		   *   join type   outer empty -> skip inner            inner empty -> skip outer
+		   *   ---------   ----------------------------------   ----------------------------------
+		   *   INNER       yes                                  yes
+		   *   LEFT        yes                                  no (outer rows go out NULL-filled)
+		   *   SEMI        yes                                  yes
+		   *   ANTI        yes                                  no (every outer row is unmatched)
+		   *   RIGHT       no (inner rows go out NULL-filled)   yes
+		   */
+
+		  if (merge_infop->join_type == JOIN_INNER || merge_infop->join_type == JOIN_LEFT
+		      || merge_infop->join_type == JOIN_SEMI || merge_infop->join_type == JOIN_ANTI)
 		    {
 		      if (outer_xasl->list_id->type_list.type_cnt > 0 && outer_xasl->list_id->tuple_cnt == 0)
 			{
@@ -16543,7 +16556,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 			}
 		    }
 
-		  if (merge_infop->join_type == JOIN_INNER || merge_infop->join_type == JOIN_RIGHT)
+		  if (merge_infop->join_type == JOIN_INNER || merge_infop->join_type == JOIN_RIGHT
+		      || merge_infop->join_type == JOIN_SEMI)
 		    {
 		      if (inner_xasl->list_id->type_list.type_cnt > 0 && inner_xasl->list_id->tuple_cnt == 0)
 			{
