@@ -6516,9 +6516,63 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  /* is explicit join ON cond */
 	  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
-	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
+	  if (QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
 	    {
-	      continue;		/* inner / semi / anti: structurally inner, no outer-join classification */
+	      continue;		/* semi/anti: not outer-join null-padding semantics, keep excluded */
+	    }
+
+	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER)
+	    {
+	      /*
+	       * An INNER join term referencing the null-supplying side of a preceding
+	       * RIGHT OUTER JOIN must be evaluated AFTER_JOIN. M is protected when it
+	       * belongs to a RIGHT OUTER on_node N's outer_dep_set, M precedes N, and
+	       * this INNER term follows N.
+	       */
+	      /* LEFT OUTER JOIN requires no equivalent handling because its on_node is the null-supplying side. */
+	      bool inner_term_null_padded = false;
+	      int t2;
+	      BITSET_ITERATOR iter2;
+
+	      for (t2 = bitset_iterate (&(QO_TERM_NODES (term)), &iter2); t2 != -1 && !inner_term_null_padded;
+		   t2 = bitset_next_member (&iter2))
+		{
+		  QO_NODE *m_node = QO_ENV_NODE (env, t2);
+
+		  {
+		    int n2;
+
+		    for (n2 = 0; n2 < env->nnodes; n2++)
+		      {
+			QO_NODE *cand_node = QO_ENV_NODE (env, n2);
+
+			/*
+			 * Location checks avoid hint-induced dependencies and terms belonging
+			 * to the preceding join chain. For example, in
+			 * "(x0 JOIN x2) RIGHT JOIN x1", the x0-x2 term precedes the RIGHT
+			 * OUTER JOIN and must not be deferred.
+			 */
+			if (QO_NODE_PT_JOIN_TYPE (cand_node) == PT_JOIN_RIGHT_OUTER
+			    && BITSET_MEMBER (QO_NODE_OUTER_DEP_SET (cand_node), QO_NODE_IDX (m_node))
+			    && QO_NODE_LOCATION (m_node) < QO_NODE_LOCATION (cand_node)
+			    && QO_NODE_LOCATION (on_node) > QO_NODE_LOCATION (cand_node))
+			  {
+			    inner_term_null_padded = true;
+			    break;
+			  }
+		      }
+		  }
+		}
+
+	      if (!inner_term_null_padded)
+		{
+		  continue;
+		}
+
+	      QO_TERM_CLASS (term) = QO_TC_AFTER_JOIN;
+	      QO_TERM_JOIN_TYPE (term) = NO_JOIN;
+	      QO_TERM_CLEAR_FLAG (term, QO_TERM_MERGEABLE_EDGE);
+	      continue;
 	    }
 
 	  /* is explicit outer-joined ON cond */

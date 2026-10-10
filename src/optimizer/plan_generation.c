@@ -1648,8 +1648,13 @@ is_totally_after_join_term (QO_TERM * term)
 static int
 is_follow_if_term (QO_TERM * term)
 {
+  /*
+   * AFTER_JOIN terms must remain in if_pred for FOLLOW plans, since if_pred
+   * is evaluated for both NULL-path and non-NULL-path results, while
+   * access_pred is skipped for NULL-path results.
+   */
   if (QO_TERM_CLASS (term) == QO_TC_DURING_JOIN	/* ? */
-      || QO_TERM_CLASS (term) == QO_TC_AFTER_JOIN || QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
+      || QO_TERM_CLASS (term) == QO_TC_TOTALLY_AFTER_JOIN)
     {
       return 0;
     }
