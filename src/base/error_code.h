@@ -1784,7 +1784,10 @@
 
 #define ER_SP_NOT_EXIST_2                           -1388
 
-#define ER_LAST_ERROR                               -1389
+#define ER_SP_PKG_ROUTINE_NOT_ALLOWED               -1389
+#define ER_SP_AMBIGUOUS_NAME                        -1390
+
+#define ER_LAST_ERROR                               -1391
 
 /*
  * CAUTION!

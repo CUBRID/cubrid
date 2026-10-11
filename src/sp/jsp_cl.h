@@ -67,6 +67,8 @@ extern int jsp_get_return_type (const char *name);
 extern int jsp_get_sp_type (const char *name);
 extern MOP jsp_find_stored_procedure (const char *name);
 extern int jsp_check_execute_authorization (const MOP sp_obj);
+extern int jsp_get_package_of_member (const MOP sp_obj, MOP * pkg_mop_p);
+extern int jsp_find_routine_to_alter (const char *name, const char *op_name, MOP * sp_mop_p);
 extern MOP jsp_find_package (const char *name);
 extern MOP jsp_find_stored_procedure_code (const char *name);
 extern int jsp_find_sp_of_another_owner (const char *name, MOP * return_mop);

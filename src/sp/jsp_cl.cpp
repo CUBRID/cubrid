@@ -144,7 +144,6 @@ static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
 static int jsp_drop_stored_procedure (const char *name, SP_TYPE_ENUM expected_type);
 static int jsp_drop_stored_procedure_code (const char *name);
 
-static int jsp_get_package_of_member (const MOP sp_obj, MOP *pkg_mop_p);
 
 extern bool ssl_client;
 
@@ -4016,6 +4015,85 @@ error_exit:
 }
 
 /*
+ * jsp_find_routine_to_alter - find the routine that ALTER PROCEDURE/FUNCTION or change_sp_owner names
+ *   return: error code
+ *   name(in): the routine name as given: <routine>, <a>.<b>, or <user>.<package>.<routine>
+ *   op_name(in): the operation, for the error message
+ *   sp_mop_p(out): the routine found
+ *
+ * Note: <a>.<b> reads as <user>.<routine> or as <package>.<routine> of the current user, the two
+ *       readings that get_user_defined_routine_info () in method_callback.cpp tries too. A name
+ *       matching both is ambiguous. A package routine cannot be altered on its own.
+ */
+int
+jsp_find_routine_to_alter (const char *name, const char *op_name, MOP *sp_mop_p)
+{
+  const char *dot = strchr (name, '.');
+  MOP sp_mop, pkg_routine_mop = NULL, pkg_mop = NULL;
+  int err;
+
+  *sp_mop_p = NULL;
+
+  // <package>.<routine> of the current user
+  if (dot != NULL && strchr (dot + 1, '.') == NULL)
+    {
+      std::string pkg_name (name, dot - name);
+      char user_pkg_name[SM_MAX_IDENTIFIER_LENGTH];
+
+      if (sm_user_specified_name (pkg_name.c_str (), user_pkg_name, sizeof (user_pkg_name)) != NULL)
+	{
+	  std::string pkg_routine_name = std::string (user_pkg_name) + dot;
+
+	  pkg_routine_mop = jsp_find_stored_procedure (pkg_routine_name.c_str ());
+	  if (pkg_routine_mop == NULL)
+	    {
+	      if (er_errid () != ER_SP_NOT_EXIST)
+		{
+		  ASSERT_ERROR_AND_SET (err);
+		  return err;
+		}
+	      er_clear ();
+	    }
+	}
+    }
+
+  // <routine>, or <user>.<routine>
+  sp_mop = jsp_find_stored_procedure (name);
+  if (sp_mop == NULL)
+    {
+      if (er_errid () != ER_SP_NOT_EXIST || pkg_routine_mop == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (err);
+	  return err;
+	}
+      er_clear ();
+      sp_mop = pkg_routine_mop;
+    }
+  else if (pkg_routine_mop != NULL)
+    {
+      err = ER_SP_AMBIGUOUS_NAME;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, name);
+      return err;
+    }
+
+  // a package routine is found through <package>.<routine>, or through dbms_output.<routine>
+  err = jsp_get_package_of_member (sp_mop, &pkg_mop);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  if (pkg_mop != NULL)
+    {
+      err = ER_SP_PKG_ROUTINE_NOT_ALLOWED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, op_name, name);
+      return err;
+    }
+
+  *sp_mop_p = sp_mop;
+  return NO_ERROR;
+}
+
+/*
  * jsp_alter_stored_procedure
  *   return: if failed return error code else NO_ERROR
  *   parser(in/out): parser environment
@@ -4077,10 +4155,10 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   AU_SAVE_AND_DISABLE (save);
 
   /* existence of sp */
-  sp_mop = jsp_find_stored_procedure (name_str);
-  if (sp_mop == NULL)
+  err = jsp_find_routine_to_alter (name_str, (type == PT_SP_FUNCTION) ? "ALTER FUNCTION" : "ALTER PROCEDURE",
+				   &sp_mop);
+  if (err != NO_ERROR)
     {
-      ASSERT_ERROR_AND_SET (err);
       goto error;
     }
 
@@ -5199,7 +5277,7 @@ exit_on_error:
 
 // If sp_obj is a package member, return its owning package through *pkg_mop_p; otherwise set it to
 // NULL. A member's pkg_of points at its package; it is NULL for a standalone routine.
-static int
+int
 jsp_get_package_of_member (const MOP sp_obj, MOP *pkg_mop_p)
 {
   int save, error;
