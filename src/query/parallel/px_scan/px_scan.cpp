@@ -1384,6 +1384,13 @@ extern "C"
 	return NO_ERROR;
       }
 
+    /* this degree does not go through compute_parallel_degree (); apply its system operation check (CBRD-27492) */
+    if (parallel_query::is_under_system_operation ())
+      {
+	assert (scan_id->type == S_INDX_SCAN);
+	return NO_ERROR;
+      }
+
     /* server-side gate: actual index size (user pages of the b-tree file; overflow files excluded) */
     INDX_INFO *indx_info = scan_id->s.isid.indx_info;
     if (indx_info == nullptr)
