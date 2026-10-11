@@ -1497,8 +1497,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1389 %1$s cannot be applied to package routine '%2$s'.
 1390 Ambiguous: '%1$s' matches both <user>.<name> pattern and <package>.<name> pattern.
+1391 Creating a system generated package or its body is not allowed.
 
-1391 Last Error
+1392 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):

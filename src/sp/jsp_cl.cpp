@@ -177,6 +177,32 @@ jsp_find_pkg (const char *unique_name)
 }
 
 /*
+ * jsp_is_system_generated_pkg - is the package a system generated one, such as the built-in dbms_output?
+ *   return: error code
+ *   pkg_mop(in): a _db_package object
+ *   is_system(out): the answer
+ */
+static int
+jsp_is_system_generated_pkg (MOP pkg_mop, bool *is_system)
+{
+  DB_VALUE flags_val;
+  int save, err;
+
+  *is_system = false;
+
+  AU_SAVE_AND_DISABLE (save);
+  err = db_get (pkg_mop, PKG_ATTR_FLAGS, &flags_val);
+  AU_RESTORE (save);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  *is_system = (db_get_int (&flags_val) & PKG_FLAGS_SYSTEM_GENERATED) != 0;
+  return NO_ERROR;
+}
+
+/*
  * jsp_is_existing_stored_procedure
  *   return: name is exist then return true
  *                         else return false
@@ -1673,15 +1699,15 @@ jsp_drop_pkg (const char *unique_name, MOP pkg_mop, MOP owner)
   // A system generated package cannot be dropped. The statement level check in jsp_drop_package ()
   // does not cover CREATE OR REPLACE, which drops the existing package through this function.
   {
-    DB_VALUE flags_val;
+    bool is_system;
 
-    err = db_get (pkg_mop, PKG_ATTR_FLAGS, &flags_val);
+    err = jsp_is_system_generated_pkg (pkg_mop, &is_system);
     if (err != NO_ERROR)
       {
 	goto cleanup0;
       }
 
-    if (db_get_int (&flags_val) & PKG_FLAGS_SYSTEM_GENERATED)
+    if (is_system)
       {
 	err = ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED;
 	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
@@ -3538,6 +3564,33 @@ jsp_create_package (PARSER_CONTEXT *parser, PT_NODE *statement)
       }
   }
 
+  // A system generated package, such as the built-in dbms_output, cannot be created or replaced,
+  // and neither can its body: the drop paths refuse it, so whatever got created could not be dropped.
+  {
+    MOP pkg_mop = jsp_find_pkg (unique_name);
+    bool is_system = false;
+
+    if (pkg_mop == NULL && er_errid () != NO_ERROR)
+      {
+	err = er_errid ();
+	goto error_exit;
+      }
+    if (pkg_mop != NULL)
+      {
+	err = jsp_is_system_generated_pkg (pkg_mop, &is_system);
+	if (err != NO_ERROR)
+	  {
+	    goto error_exit;
+	  }
+      }
+    if (is_system)
+      {
+	err = ER_PKG_CREATE_NOT_ALLOWED_SYSTEM_GENERATED;
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+	goto error_exit;
+      }
+  }
+
   err = tran_system_savepoint (SAVEPOINT_CREATE_PACKAGE);
   if (err != NO_ERROR)
     {
@@ -3662,18 +3715,15 @@ jsp_drop_package (PARSER_CONTEXT *parser, PT_NODE *statement)
       pkg_mop = jsp_find_pkg (unique_name);
       if (pkg_mop)
 	{
-	  DB_VALUE value;
+	  bool is_system;
 
-	  AU_SAVE_AND_DISABLE (save);
-	  err = db_get (pkg_mop, PKG_ATTR_FLAGS, &value);
-	  AU_RESTORE (save);
+	  err = jsp_is_system_generated_pkg (pkg_mop, &is_system);
 	  if (err != NO_ERROR)
 	    {
 	      goto error_exit;
 	    }
 
-	  int flags = db_get_int (&value);
-	  if (flags & PKG_FLAGS_SYSTEM_GENERATED)
+	  if (is_system)
 	    {
 	      err = ER_PKG_DROP_NOT_ALLOWED_SYSTEM_GENERATED;
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);

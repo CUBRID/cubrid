@@ -1786,8 +1786,9 @@
 
 #define ER_SP_PKG_ROUTINE_NOT_ALLOWED               -1389
 #define ER_SP_AMBIGUOUS_NAME                        -1390
+#define ER_PKG_CREATE_NOT_ALLOWED_SYSTEM_GENERATED  -1391
 
-#define ER_LAST_ERROR                               -1391
+#define ER_LAST_ERROR                               -1392
 
 /*
  * CAUTION!
