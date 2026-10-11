@@ -10135,7 +10135,9 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_varchar (parser, q, r1);
 	      q = pt_append_nulstring (parser, q, ")");
 
-	      return q;
+	      /* the range variable and the columns are printed above. "natural" is not printed for a resolved
+	       * natural join, so its on_cond must be printed */
+	      goto print_join_cond;
 	    }
 	  else
 	    {
@@ -10201,6 +10203,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print = save_custom;
     }
 
+print_join_cond:
   if (p->info.spec.on_cond)
     {
       r1 = pt_print_and_list (parser, p->info.spec.on_cond);
