@@ -1794,112 +1794,9 @@ cleanup0:
   return err;
 }
 
-/*
- * sp_set_pkg_members_backref - set pkg_of of every object in one of the member lists of a package
- *   return: error code
- *   pkg_mop(in): the _db_package object, already finished
- *   pkg_value(in): pkg_mop wrapped in a DB_VALUE
- *   list_attr(in): the attribute of _db_package holding the member list
- *   backref_attr(in): the attribute of a member object referring back to its package
- */
 static int
-sp_set_pkg_members_backref (MOP pkg_mop, DB_VALUE *pkg_value, const char *list_attr, const char *backref_attr)
-{
-  DB_VALUE members;
-  DB_SET *set;
-  int i, size, err;
-
-  err = db_get (pkg_mop, list_attr, &members);
-  if (err != NO_ERROR)
-    {
-      return err;
-    }
-
-  if (!DB_IS_NULL (&members))
-    {
-      set = db_get_set (&members);
-      size = set_size (set);
-      for (i = 0; i < size; i++)
-	{
-	  DB_VALUE elem;
-
-	  err = set_get_element (set, i, &elem);
-	  if (err != NO_ERROR)
-	    {
-	      break;
-	    }
-
-	  err = obj_set (db_get_object (&elem), backref_attr, pkg_value);
-	  pr_clear_value (&elem);
-	  if (err != NO_ERROR)
-	    {
-	      break;
-	    }
-	}
-    }
-  pr_clear_value (&members);
-
-  return err;
-}
-
-/*
- * sp_set_pkg_backrefs - fill in the references back to a package from the rows created before it
- *   return: error code
- *   pkg_mop(in): the _db_package object, already finished
- *   code_mop(in): the _db_package_code object of the package
- *
- * Note: the package object is finished only after its code row, its member routines, and the rows
- *       in _db_package_var, _db_package_exception, _db_package_cursor and _db_package_record_type
- *       have been created, so their pkg_of cannot be set at creation time.
- */
-static int
-sp_set_pkg_backrefs (MOP pkg_mop, MOP code_mop)
-{
-  DB_VALUE value;
-  int err;
-
-  db_make_object (&value, pkg_mop);
-
-  err = obj_set (code_mop, PKG_CODE_ATTR_PKG_OF, &value);
-  if (err != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  err = sp_set_pkg_members_backref (pkg_mop, &value, PKG_ATTR_PROCEDURES, SP_ATTR_PKG_OF);
-  if (err != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  err = sp_set_pkg_members_backref (pkg_mop, &value, PKG_ATTR_VARIABLES, PKG_VAR_ATTR_PKG_OF);
-  if (err != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  err = sp_set_pkg_members_backref (pkg_mop, &value, PKG_ATTR_EXCEPTIONS, PKG_EXCEPTION_ATTR_PKG_OF);
-  if (err != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  err = sp_set_pkg_members_backref (pkg_mop, &value, PKG_ATTR_CURSORS, PKG_CURSOR_ATTR_PKG_OF);
-  if (err != NO_ERROR)
-    {
-      goto exit;
-    }
-
-  err = sp_set_pkg_members_backref (pkg_mop, &value, PKG_ATTR_RECORD_TYPES, PKG_RECORD_TYPE_ATTR_PKG_OF);
-
-exit:
-  pr_clear_value (&value);
-  return err;
-}
-
-static int
-sp_set_pkg_code (MOP *mop_out, const char *pkg_unique_name, const char *class_name, const char *compile_id,
-		 const char *scode_spec, const char *scode_body, const char *ocode)
+sp_set_pkg_code (MOP *mop_out, MOP pkg_mop, const char *pkg_unique_name, const char *class_name,
+		 const char *compile_id, const char *scode_spec, const char *scode_body, const char *ocode)
 {
 
   DB_OTMPL *obt;
@@ -1952,6 +1849,14 @@ sp_set_pkg_code (MOP *mop_out, const char *pkg_unique_name, const char *class_na
   db_make_string (&value, pkg_unique_name);
   err = dbt_put_internal (obt, PKG_CODE_ATTR_PKG_UNIQUE_NAME, &value);
   pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute pkg_of (a row left by CREATE PACKAGE BODY before the spec has it NULL until now)
+  db_make_object (&value, pkg_mop);
+  err = dbt_put_internal (obt, PKG_CODE_ATTR_PKG_OF, &value);
   if (err != NO_ERROR)
     {
       goto cleanup0;
@@ -2230,7 +2135,7 @@ error:
 }
 
 static int
-sp_add_pkg_sp (MOP *mop_out, MOP owner, DB_VALUE &current_datetime,
+sp_add_pkg_sp (MOP *mop_out, MOP pkg_mop, MOP owner, DB_VALUE &current_datetime,
 	       const char *pkg_unique_name, const char *class_name, const cubpl::pkg_sp &sp)
 {
   std::string sp_name;
@@ -2307,8 +2212,13 @@ sp_add_pkg_sp (MOP *mop_out, MOP owner, DB_VALUE &current_datetime,
       goto cleanup0;
     }
 
-  // attribute pkg_of: left NULL here because the package object does not exist yet.
-  // sp_set_pkg_backrefs () fills it in after the package is created.
+  // attribute pkg_of
+  db_make_object (&value, pkg_mop);
+  err = dbt_put_internal (obt, SP_ATTR_PKG_OF, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
 
   // attribute is_system_generated
   db_make_int (&value, 0);      // 0: hardcoded false
@@ -2538,7 +2448,7 @@ error:
 }
 
 static int
-sp_add_pkg_var (MOP *mop_out, const cubpl::pkg_var &var)
+sp_add_pkg_var (MOP *mop_out, MOP pkg_mop, const cubpl::pkg_var &var)
 {
   std::string var_name;
 
@@ -2561,8 +2471,13 @@ sp_add_pkg_var (MOP *mop_out, const cubpl::pkg_var &var)
       goto error;
     } // side effect 0
 
-  // attribute pkg_of: left NULL here because the package object does not exist yet.
-  // sp_set_pkg_backrefs () fills it in after the package is created.
+  // attribute pkg_of
+  db_make_object (&value, pkg_mop);
+  err = dbt_put_internal (obt, PKG_VAR_ATTR_PKG_OF, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
 
   // attribute name
   var_name = pl_downcase_identifier (var.name);
@@ -2647,7 +2562,7 @@ error:
 }
 
 static int
-sp_add_pkg_exception (MOP *mop_out, const cubpl::pkg_exception &exception)
+sp_add_pkg_exception (MOP *mop_out, MOP pkg_mop, const cubpl::pkg_exception &exception)
 {
   std::string exception_name;
 
@@ -2670,8 +2585,13 @@ sp_add_pkg_exception (MOP *mop_out, const cubpl::pkg_exception &exception)
       goto error;
     } // side effect 0
 
-  // attribute pkg_of: left NULL here because the package object does not exist yet.
-  // sp_set_pkg_backrefs () fills it in after the package is created.
+  // attribute pkg_of
+  db_make_object (&value, pkg_mop);
+  err = dbt_put_internal (obt, PKG_EXCEPTION_ATTR_PKG_OF, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
 
   // attribute name
   exception_name = pl_downcase_identifier (exception.name);
@@ -2724,7 +2644,7 @@ error:
 }
 
 static int
-sp_add_pkg_cursor (MOP *mop_out, const cubpl::pkg_cursor &cursor)
+sp_add_pkg_cursor (MOP *mop_out, MOP pkg_mop, const cubpl::pkg_cursor &cursor)
 {
   std::string cursor_name;
   std::string cursor_rec_type;
@@ -2748,8 +2668,13 @@ sp_add_pkg_cursor (MOP *mop_out, const cubpl::pkg_cursor &cursor)
       goto error;
     } // side effect 0
 
-  // attribute pkg_of: left NULL here because the package object does not exist yet.
-  // sp_set_pkg_backrefs () fills it in after the package is created.
+  // attribute pkg_of
+  db_make_object (&value, pkg_mop);
+  err = dbt_put_internal (obt, PKG_CURSOR_ATTR_PKG_OF, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
 
   // attribute name
   cursor_name = pl_downcase_identifier (cursor.name);
@@ -2849,7 +2774,7 @@ error:
 }
 
 static int
-sp_add_pkg_rec_type (MOP *mop_out, const cubpl::pkg_rec_type &rec_type)
+sp_add_pkg_rec_type (MOP *mop_out, MOP pkg_mop, const cubpl::pkg_rec_type &rec_type)
 {
   std::string rec_type_name;
 
@@ -2872,8 +2797,13 @@ sp_add_pkg_rec_type (MOP *mop_out, const cubpl::pkg_rec_type &rec_type)
       goto error;
     } // side effect 0
 
-  // attribute pkg_of: left NULL here because the package object does not exist yet.
-  // sp_set_pkg_backrefs () fills it in after the package is created.
+  // attribute pkg_of
+  db_make_object (&value, pkg_mop);
+  err = dbt_put_internal (obt, PKG_RECORD_TYPE_ATTR_PKG_OF, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
 
   // attribute name
   rec_type_name = pl_downcase_identifier (rec_type.name);
@@ -3040,10 +2970,65 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
       goto cleanup2;
     }
 
+  // attribute comment
+  if (comment && comment[0])
+    {
+      db_make_string (&value, comment);
+    }
+  else
+    {
+      db_make_null (&value);
+    }
+  err = dbt_put_internal (obt, PKG_ATTR_COMMENT, &value);
+  pr_clear_value (&value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup2;
+    }
+
+  // attribute created_time
+  err = dbt_put_internal (obt, PKG_ATTR_CREATED_TIME, &current_datetime);
+  if (err != NO_ERROR)
+    {
+      goto cleanup2;
+    }
+
+  // attribute updated_time
+  err = dbt_put_internal (obt, PKG_ATTR_UPDATED_TIME, &current_datetime);
+  if (err != NO_ERROR)
+    {
+      goto cleanup2;
+    }
+
+  // Create the package object before the rows referring to it, so that they get their pkg_of at
+  // creation: pkg_of is part of the primary key (pkg_of, name) of the member tables.
+  object = dbt_finish_object (obt);
+  if (!object)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup2;
+    }
+  obt = NULL;
+
+  err = locator_flush_instance (object);
+  if (err != NO_ERROR)
+    {
+      obj_delete (object);
+      goto cleanup1;
+    }
+
+  // the rest of the attributes refer to the rows created below
+  obt = dbt_edit_object (object);
+  if (!obt)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto cleanup1;
+    }
+
   // insert or update into _db_package_code
   {
     const char *ocode = pkg_compile_response.compiled_code.data();
-    err = sp_set_pkg_code (&code_mop, unique_name, class_name, compile_id, scode_spec, scode_body, ocode);
+    err = sp_set_pkg_code (&code_mop, object, unique_name, class_name, compile_id, scode_spec, scode_body, ocode);
     if (err != NO_ERROR)
       {
 	goto cleanup2;
@@ -3070,7 +3055,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
     i = 0;
     for (const cubpl::pkg_sp &sp: pkg_compile_response.sp)
       {
-	err = sp_add_pkg_sp (&mop, owner, current_datetime, unique_name, class_name, sp);
+	err = sp_add_pkg_sp (&mop, object, owner, current_datetime, unique_name, class_name, sp);
 	if (err != NO_ERROR)
 	  {
 	    set_free (seq);
@@ -3117,7 +3102,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
     for (const cubpl::pkg_var &var: pkg_compile_response.var)
       {
 
-	err = sp_add_pkg_var (&mop, var);
+	err = sp_add_pkg_var (&mop, object, var);
 	if (err != NO_ERROR)
 	  {
 	    set_free (seq);
@@ -3164,7 +3149,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
     for (const cubpl::pkg_exception &exc: pkg_compile_response.exception)
       {
 
-	err = sp_add_pkg_exception (&mop, exc);
+	err = sp_add_pkg_exception (&mop, object, exc);
 	if (err != NO_ERROR)
 	  {
 	    set_free (seq);
@@ -3211,7 +3196,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
     for (const cubpl::pkg_cursor &cr: pkg_compile_response.cursor)
       {
 
-	err = sp_add_pkg_cursor (&mop, cr);
+	err = sp_add_pkg_cursor (&mop, object, cr);
 	if (err != NO_ERROR)
 	  {
 	    set_free (seq);
@@ -3258,7 +3243,7 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
     for (const cubpl::pkg_rec_type &rt: pkg_compile_response.rec_type)
       {
 
-	err = sp_add_pkg_rec_type (&mop, rt);
+	err = sp_add_pkg_rec_type (&mop, object, rt);
 	if (err != NO_ERROR)
 	  {
 	    set_free (seq);
@@ -3292,39 +3277,8 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
       }
   }
 
-  // attribute comment
-  if (comment && comment[0])
-    {
-      db_make_string (&value, comment);
-    }
-  else
-    {
-      db_make_null (&value);
-    }
-  err = dbt_put_internal (obt, PKG_ATTR_COMMENT, &value);
-  pr_clear_value (&value);
-  if (err != NO_ERROR)
-    {
-      goto cleanup2;
-    }
-
-  // attribute created_time
-  err = dbt_put_internal (obt, PKG_ATTR_CREATED_TIME, &current_datetime);
-  if (err != NO_ERROR)
-    {
-      goto cleanup2;
-    }
-
-  // attribute updated_time
-  err = dbt_put_internal (obt, PKG_ATTR_UPDATED_TIME, &current_datetime);
-  if (err != NO_ERROR)
-    {
-      goto cleanup2;
-    }
-
   // finish object
-  object = dbt_finish_object (obt);
-  if (!object)
+  if (dbt_finish_object (obt) == NULL)
     {
       ASSERT_ERROR_AND_SET (err);
       goto cleanup2;
@@ -3333,15 +3287,6 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
 
   // flush instance
   err = locator_flush_instance (object);
-  if (err != NO_ERROR)
-    {
-      obj_delete (object);
-      goto cleanup1;
-    }
-
-  // the code row and the member routines were created before this package object existed,
-  // so their references back to it are filled in now
-  err = sp_set_pkg_backrefs (object, code_mop);
   if (err != NO_ERROR)
     {
       goto cleanup1;

@@ -1398,7 +1398,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_UNIQUE, "", {PKG_VAR_ATTR_PKG_OF, PKG_VAR_ATTR_NAME, nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_VAR_ATTR_PKG_OF, PKG_VAR_ATTR_NAME, nullptr}, false}
     },
 // authorization
     {
@@ -1424,7 +1424,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_UNIQUE, "", {PKG_EXCEPTION_ATTR_PKG_OF, PKG_EXCEPTION_ATTR_NAME, nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_EXCEPTION_ATTR_PKG_OF, PKG_EXCEPTION_ATTR_NAME, nullptr}, false}
     },
 // authorization
     {
@@ -1452,7 +1452,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_UNIQUE, "", {PKG_CURSOR_ATTR_PKG_OF, PKG_CURSOR_ATTR_NAME, nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_CURSOR_ATTR_PKG_OF, PKG_CURSOR_ATTR_NAME, nullptr}, false}
     },
 // authorization
     {
@@ -1479,7 +1479,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_UNIQUE, "", {PKG_RECORD_TYPE_ATTR_PKG_OF, PKG_RECORD_TYPE_ATTR_NAME, nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {PKG_RECORD_TYPE_ATTR_PKG_OF, PKG_RECORD_TYPE_ATTR_NAME, nullptr}, false}
     },
 // authorization
     {
