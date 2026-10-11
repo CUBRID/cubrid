@@ -635,7 +635,7 @@ const char *sm_define_view_routines_spec (void)
       /* SP_LANG_PLCSQL */
       "IF ([sp].[lang] = %d "
           "AND (" AUTH_CHECK_DBA " OR " AUTH_CHECK_OWNER ("[sp].[owner].[name]") "), "
-          "[sp_code].[scode], NULL) AS [routine_definition], "
+          "[sp].[code].[scode], NULL) AS [routine_definition], "
       /* SP_LANG_JAVA */
       "IF ([sp].[lang] = %d, [sp].[target_class], NULL) AS [external_name], "
       /* SP_LANG_PLCSQL, SP_LANG_JAVA */
@@ -661,9 +661,7 @@ const char *sm_define_view_routines_spec (void)
       /* CT_STORED_PROC_NAME */
       "[%s] AS [sp] "
       /* CT_DATATYPE_NAME */
-      "LEFT OUTER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp].[return_type] "
-      /* CT_STORED_PROC_CODE_NAME */
-      "LEFT OUTER JOIN [%s] AS [sp_code] ON [sp_code] = [sp].[code], "
+      "LEFT OUTER JOIN [%s] AS [dt] ON [dt].[type_id] = [sp].[return_type], "
       /* CT_ROOT_NAME */
       "[%s] AS [root], "
       /* CT_CHARSET_NAME */
@@ -689,7 +687,6 @@ const char *sm_define_view_routines_spec (void)
     SP_DIRECTIVE_RIGHTS_CALLER,
     CT_STORED_PROC_NAME,
     CT_DATATYPE_NAME,
-    CT_STORED_PROC_CODE_NAME,
     CT_ROOT_NAME,
     CT_CHARSET_NAME);
   // *INDENT-ON*
