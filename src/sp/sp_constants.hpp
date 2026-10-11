@@ -76,6 +76,7 @@ enum index_pkg_attr
     MAP_LIST_ITEM(NAME) \
     MAP_LIST_ITEM(COMPILE_ID) \
     MAP_LIST_ITEM(PKG_OF) \
+    MAP_LIST_ITEM(OWNER) \
     MAP_LIST_ITEM(STYPE) \
     MAP_LIST_ITEM(SCODE_SPEC) \
     MAP_LIST_ITEM(SCODE_BODY) \
@@ -90,6 +91,9 @@ enum index_pkg_attr
 #define PKG_CODE_ATTR_COMPILE_ID            "compile_id"
 // the package this code belongs to (reverse of _db_package.code); NULL until the spec is created
 #define PKG_CODE_ATTR_PKG_OF                "pkg_of"
+// owner of the package. DROP USER checks it, because a row left by CREATE PACKAGE BODY without a spec
+// has no package row whose owner could be checked
+#define PKG_CODE_ATTR_OWNER                 "owner"
 #define PKG_CODE_ATTR_STYPE                 "stype"
 #define PKG_CODE_ATTR_SCODE_SPEC            "scode_spec"
 #define PKG_CODE_ATTR_SCODE_BODY            "scode_body"

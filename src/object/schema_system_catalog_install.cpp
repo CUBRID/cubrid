@@ -1359,6 +1359,7 @@ namespace cubschema
       {PKG_CODE_ATTR_NAME, format_varchar (PLCSQL_TARGET_CLASS_LEN)}, // generated Java class name
       {PKG_CODE_ATTR_COMPILE_ID, format_varchar (PLCSQL_COMPILE_ID_LEN)},
       {PKG_CODE_ATTR_PKG_OF, CT_PACKAGE_NAME},
+      {PKG_CODE_ATTR_OWNER, AU_USER_CLASS_NAME},
       {PKG_CODE_ATTR_STYPE, "integer"},
       {PKG_CODE_ATTR_SCODE_SPEC, "string"},
       {PKG_CODE_ATTR_SCODE_BODY, "string"},

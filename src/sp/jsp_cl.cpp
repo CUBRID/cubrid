@@ -1167,7 +1167,7 @@ jsp_get_pkg_scode_body (const char *unique_name, DB_VALUE *value)
 }
 
 static int
-jsp_set_pkg_scode_body_and_ocode (const char *unique_name, const char *scode_body, const char *ocode)
+jsp_set_pkg_scode_body_and_ocode (const char *unique_name, MOP owner, const char *scode_body, const char *ocode)
 {
   int err;
   int save;
@@ -1218,6 +1218,14 @@ jsp_set_pkg_scode_body_and_ocode (const char *unique_name, const char *scode_bod
       db_make_string (&value, unique_name);
       err = dbt_put_internal (obt, PKG_CODE_ATTR_PKG_UNIQUE_NAME, &value);
       pr_clear_value (&value);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup1;
+	}
+
+      // set the owner of the new record
+      db_make_object (&value, owner);
+      err = dbt_put_internal (obt, PKG_CODE_ATTR_OWNER, &value);
       if (err != NO_ERROR)
 	{
 	  goto cleanup1;
@@ -1846,7 +1854,7 @@ cleanup0:
 }
 
 static int
-sp_set_pkg_code (MOP *mop_out, MOP pkg_mop, const char *pkg_unique_name, const char *class_name,
+sp_set_pkg_code (MOP *mop_out, MOP pkg_mop, const char *pkg_unique_name, MOP owner, const char *class_name,
 		 const char *compile_id, const char *scode_spec, const char *scode_body, const char *ocode)
 {
 
@@ -1908,6 +1916,14 @@ sp_set_pkg_code (MOP *mop_out, MOP pkg_mop, const char *pkg_unique_name, const c
   // attribute pkg_of (a row left by CREATE PACKAGE BODY before the spec has it NULL until now)
   db_make_object (&value, pkg_mop);
   err = dbt_put_internal (obt, PKG_CODE_ATTR_PKG_OF, &value);
+  if (err != NO_ERROR)
+    {
+      goto cleanup0;
+    }
+
+  // attribute owner
+  db_make_object (&value, owner);
+  err = dbt_put_internal (obt, PKG_CODE_ATTR_OWNER, &value);
   if (err != NO_ERROR)
     {
       goto cleanup0;
@@ -3079,7 +3095,8 @@ sp_add_pkg_and_related (const char *unique_name, const char *owner_name, MOP own
   // insert or update into _db_package_code
   {
     const char *ocode = pkg_compile_response.compiled_code.data();
-    err = sp_set_pkg_code (&code_mop, object, unique_name, class_name, compile_id, scode_spec, scode_body, ocode);
+    err = sp_set_pkg_code (&code_mop, object, unique_name, owner, class_name, compile_id, scode_spec, scode_body,
+			   ocode);
     if (err != NO_ERROR)
       {
 	goto cleanup2;
@@ -3436,7 +3453,7 @@ jsp_create_pkg_body (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
 	}
 
       // package spec has not been updated, and hence no spec-related updates in system tables
-      err = jsp_set_pkg_scode_body_and_ocode (unique_name, pkg_compile_request.body_code.data(), ocode);
+      err = jsp_set_pkg_scode_body_and_ocode (unique_name, owner_mop, pkg_compile_request.body_code.data(), ocode);
       if (err != NO_ERROR)
 	{
 	  goto error_exit;
