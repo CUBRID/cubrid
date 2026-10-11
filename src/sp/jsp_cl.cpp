@@ -5097,27 +5097,45 @@ jsp_make_pl_signature (PARSER_CONTEXT *parser, PT_NODE *node, PT_NODE *subquery_
 	    DB_VALUE cid;
 
 	    sig.ext.sp.code_oid = *WS_OID (code_mop);
-	    if (db_get (code_mop, SP_CODE_ATTR_COMPILE_ID, &cid) == NO_ERROR)
+	    error = db_get (code_mop, SP_CODE_ATTR_COMPILE_ID, &cid);
+	    if (error != NO_ERROR)
 	      {
+		goto exit;
+	      }
+	    sig.ext.sp.compile_id = db_private_strdup (NULL, db_get_string (&cid));
+	    pr_clear_value (&cid);
+	  }
+	else if (!DB_IS_NULL (&entry.vals[INDEX_SP_ATTR_PKG_OF]))
+	  {
+	    // a member of a built-in package (a Java SP) has no package code row, hence no compile_id
+	    MOP pkg_mop = db_get_object (&entry.vals[INDEX_SP_ATTR_PKG_OF]);
+	    DB_VALUE pkg_code, cid;
+
+	    error = db_get (pkg_mop, PKG_ATTR_CODE, &pkg_code);
+	    if (error != NO_ERROR)
+	      {
+		goto exit;
+	      }
+	    if (!DB_IS_NULL (&pkg_code))
+	      {
+		error = db_get (db_get_object (&pkg_code), PKG_CODE_ATTR_COMPILE_ID, &cid);
+		pr_clear_value (&pkg_code);
+		if (error != NO_ERROR)
+		  {
+		    goto exit;
+		  }
 		sig.ext.sp.compile_id = db_private_strdup (NULL, db_get_string (&cid));
 		pr_clear_value (&cid);
 	      }
 	  }
-	else if (!DB_IS_NULL (&entry.vals[INDEX_SP_ATTR_PKG_OF]))
-	  {
-	    MOP pkg_mop = db_get_object (&entry.vals[INDEX_SP_ATTR_PKG_OF]);
-	    DB_VALUE pkg_code, cid;
 
-	    if (db_get (pkg_mop, PKG_ATTR_CODE, &pkg_code) == NO_ERROR)
-	      {
-		if (!DB_IS_NULL (&pkg_code)
-		    && db_get (db_get_object (&pkg_code), PKG_CODE_ATTR_COMPILE_ID, &cid) == NO_ERROR)
-		  {
-		    sig.ext.sp.compile_id = db_private_strdup (NULL, db_get_string (&cid));
-		    pr_clear_value (&cid);
-		  }
-		pr_clear_value (&pkg_code);
-	      }
+	// the PL server runs a PL/CSQL routine by its compile_id; calling one without it would fail later
+	// and less clearly (or crash the server), so report the inconsistency here
+	if (sig.type == PL_TYPE_PLCSQL && sig.ext.sp.compile_id == NULL)
+	  {
+	    error = ER_UNEXPECTED;
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, "PL/CSQL routine without a compile_id.");
+	    goto exit;
 	  }
       }
   }
