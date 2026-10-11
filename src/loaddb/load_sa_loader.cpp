@@ -2601,13 +2601,32 @@ ldr_store_value (LDR_CONTEXT *context, const char *str, size_t len, LDR_ATTDESC 
   const LDR_STORE_SPEC *slot = &attdesc->store[type];
   DB_VALUE val;
   int err;
+  int conv_err;
 
   if (slot->handler != NULL)
     {
       return (* (slot->handler)) (context, str, len, attdesc);
     }
 
-  CHECK_ERR (err, ldr_convert_value (context, str, len, attdesc, type, slot->name_attr, &val));
+  conv_err = ldr_convert_value (context, str, len, attdesc, type, slot->name_attr, &val);
+
+  CHECK_ERR (err, conv_err);
+
+  if (conv_err != NO_ERROR)
+    {
+      /*
+       * The conversion failed and the user asked for that error to be ignored, so
+       * CHECK_ERR above cleared err and marked the instance to be skipped.
+       * There is still no value to store.
+       * Going on to the sink would write the null that
+       * ldr_convert_value () left behind, and a NOT NULL column answers that with
+       * ER_OBJ_ATTRIBUTE_CANT_BE_NULL - an error the user never asked to ignore, which
+       * ends the whole load.
+       * Stop here and let the row be skipped.
+       */
+      goto error_exit;
+    }
+
   CHECK_ERR (err, ldr_sink_instance (context, attdesc, &val, slot->direct, slot->bound_bit));
 
 error_exit:
