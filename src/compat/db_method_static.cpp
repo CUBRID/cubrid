@@ -1074,7 +1074,7 @@ au_change_sp_owner_method (MOP obj, DB_VALUE *returnval, DB_VALUE *sp, DB_VALUE 
 	{
 	  // the same name resolution as ALTER PROCEDURE: an ambiguous name or a package routine (whose
 	  // owner is that of its package) is refused
-	  if (jsp_find_routine_to_alter (db_get_string (sp), "change_sp_owner", &sp_mop) == NO_ERROR)
+	  if (jsp_find_standalone_routine (db_get_string (sp), "change_sp_owner", &sp_mop) == NO_ERROR)
 	    {
 	      if ((user = au_find_user (db_get_string (owner))) != NULL
 		  && tran_system_savepoint (SAVEPOINT_CHANGE_SP_OWNER) == NO_ERROR)

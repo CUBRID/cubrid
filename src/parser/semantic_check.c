@@ -10107,8 +10107,25 @@ pt_check_grant_revoke (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  // [TODO] Resovle user schema name, built-in package name
 	  const char *obj_name = procs->info.name.original;
-	  bool exists = is_package ? (jsp_is_existing_package (obj_name) != 0)
-	    : (jsp_is_existing_stored_procedure (obj_name) != 0);
+	  bool exists;
+	  if (is_package)
+	    {
+	      exists = (jsp_is_existing_package (obj_name) != 0);
+	    }
+	  else
+	    {
+	      /* a package routine is granted only through its package */
+	      MOP sp_mop;
+	      int err = jsp_find_standalone_routine (obj_name, (node->node_type == PT_GRANT) ? "GRANT" : "REVOKE",
+						     &sp_mop);
+	      if (err != NO_ERROR && err != ER_SP_NOT_EXIST)
+		{
+		  PT_ERRORc (parser, procs, er_msg ());
+		  break;
+		}
+	      er_clear ();
+	      exists = (err == NO_ERROR);
+	    }
 	  if (!exists)
 	    {
 	      PT_ERRORmf (parser, procs, MSGCAT_SET_PARSER_SEMANTIC,

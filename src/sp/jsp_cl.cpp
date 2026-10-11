@@ -4065,7 +4065,8 @@ error_exit:
 }
 
 /*
- * jsp_find_routine_to_alter - find the routine that ALTER PROCEDURE/FUNCTION or change_sp_owner names
+ * jsp_find_standalone_routine - find the routine that ALTER PROCEDURE/FUNCTION, change_sp_owner or
+ *                               GRANT/REVOKE ... ON PROCEDURE names
  *   return: error code
  *   name(in): the routine name as given: <routine>, <a>.<b>, or <user>.<package>.<routine>
  *   op_name(in): the operation, for the error message
@@ -4073,10 +4074,10 @@ error_exit:
  *
  * Note: <a>.<b> reads as <user>.<routine> or as <package>.<routine> of the current user, the two
  *       readings that get_user_defined_routine_info () in method_callback.cpp tries too. A name
- *       matching both is ambiguous. A package routine cannot be altered on its own.
+ *       matching both is ambiguous. A package routine cannot be altered or granted on its own.
  */
 int
-jsp_find_routine_to_alter (const char *name, const char *op_name, MOP *sp_mop_p)
+jsp_find_standalone_routine (const char *name, const char *op_name, MOP *sp_mop_p)
 {
   const char *dot = strchr (name, '.');
   MOP sp_mop, pkg_routine_mop = NULL, pkg_mop = NULL;
@@ -4205,8 +4206,8 @@ jsp_alter_stored_procedure (PARSER_CONTEXT *parser, PT_NODE *statement)
   AU_SAVE_AND_DISABLE (save);
 
   /* existence of sp */
-  err = jsp_find_routine_to_alter (name_str, (type == PT_SP_FUNCTION) ? "ALTER FUNCTION" : "ALTER PROCEDURE",
-				   &sp_mop);
+  err = jsp_find_standalone_routine (name_str, (type == PT_SP_FUNCTION) ? "ALTER FUNCTION" : "ALTER PROCEDURE",
+				     &sp_mop);
   if (err != NO_ERROR)
     {
       goto error;
