@@ -4167,16 +4167,6 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 	}
     }
 
-  if (TM_TRAN_ISOLATION () >= TRAN_REP_READ)
-    {
-      /* need to flush in isolation level >= RR, since in case of serializable conflict we have to abort the current
-       * command */
-      if (locator_all_flush () != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-
   return object;
 
 error:

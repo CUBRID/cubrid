@@ -7322,16 +7322,6 @@ do_create_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
   statement->etc = (void *) value;
 #endif
 
-  if (smclass != NULL && smclass->users != NULL && TM_TRAN_ISOLATION () < TRAN_REP_READ)
-    {
-      /* We have to flush the newly created trigger if the class it belongs to has subclasses. This is because the same
-       * trigger is assigned to the whole hierarchy and we have to make sure it does not remain a temporary object when
-       * it is first compiled. Since the class that this trigger belongs to might also be a temporary object, we
-       * actually have to flush the whole workspace. No need to flush in isolation levels >= repeatable read since
-       * already flushed in tr_create_trigger */
-      error = locator_all_flush ();
-    }
-
   return error;
 }
 
