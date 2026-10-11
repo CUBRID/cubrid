@@ -182,7 +182,7 @@ jsp_find_pkg (const char *unique_name)
  *   pkg_mop(in): a _db_package object
  *   is_system(out): the answer
  */
-static int
+int
 jsp_is_system_generated_pkg (MOP pkg_mop, bool *is_system)
 {
   DB_VALUE flags_val;
@@ -199,6 +199,32 @@ jsp_is_system_generated_pkg (MOP pkg_mop, bool *is_system)
     }
 
   *is_system = (db_get_int (&flags_val) & PKG_FLAGS_SYSTEM_GENERATED) != 0;
+  return NO_ERROR;
+}
+
+/*
+ * jsp_is_system_generated_sp - is the routine a system generated one, such as a built-in dbms_output routine?
+ *   return: error code
+ *   sp_mop(in): a _db_stored_procedure object
+ *   is_system(out): the answer
+ */
+int
+jsp_is_system_generated_sp (MOP sp_mop, bool *is_system)
+{
+  DB_VALUE generated_val;
+  int save, err;
+
+  *is_system = false;
+
+  AU_SAVE_AND_DISABLE (save);
+  err = db_get (sp_mop, SP_ATTR_IS_SYSTEM_GENERATED, &generated_val);
+  AU_RESTORE (save);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  *is_system = !DB_IS_NULL (&generated_val) && db_get_int (&generated_val) == 1;
   return NO_ERROR;
 }
 

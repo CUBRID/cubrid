@@ -326,6 +326,24 @@ au_grant_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH ty
 
   AU_SAVE_AND_DISABLE (save);
   MOP owner = jsp_get_owner (obj_mop);
+  bool is_system = false;
+
+  error = (obj_type == DB_OBJECT_PACKAGE) ? jsp_is_system_generated_pkg (obj_mop, &is_system)
+	  : jsp_is_system_generated_sp (obj_mop, &is_system);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* a system generated object is owned by PUBLIC, of which every user is a member, so only the DBA group can */
+  if (is_system && !au_is_dba_group_member (Au_user))
+    {
+      error = ER_AU_DBA_ONLY;
+      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,
+	      (obj_type == DB_OBJECT_PACKAGE) ? "GRANT on a system generated package" :
+	      "GRANT on a system generated procedure");
+      goto end;
+    }
 
   /*
    * The WITH GRANT OPTION is not yet supported for stored procedures and packages.
@@ -737,6 +755,7 @@ au_revoke_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH t
   DB_VALUE cache_element;
   MOP owner;
   MOP grantor = NULL;
+  bool is_system = false;
 
   AU_SAVE_AND_DISABLE (save);
   if (ws_is_same_object (user, Au_user))
@@ -771,6 +790,22 @@ au_revoke_proc_or_pkg (DB_OBJECT_TYPE obj_type, MOP user, MOP obj_mop, DB_AUTH t
          goto fail_end;
          }
        */
+      /* a system generated object is owned by PUBLIC, of which every user is a member, so only the DBA group can */
+      error = (obj_type == DB_OBJECT_PACKAGE) ? jsp_is_system_generated_pkg (obj_mop, &is_system)
+	      : jsp_is_system_generated_sp (obj_mop, &is_system);
+      if (error != NO_ERROR)
+	{
+	  goto fail_end;
+	}
+      if (is_system && !au_is_dba_group_member (Au_user))
+	{
+	  error = ER_AU_DBA_ONLY;
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1,
+		  (obj_type == DB_OBJECT_PACKAGE) ? "REVOKE on a system generated package" :
+		  "REVOKE on a system generated procedure");
+	  goto fail_end;
+	}
+
       /*
        * The WITH GRANT OPTION is not yet supported for stored procedures and packages.
        * Therefore, if the user is not the dba group or owner, the same error as grant/revoke_class is output.
