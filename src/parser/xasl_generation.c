@@ -17269,7 +17269,16 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
   pt_set_aptr (parser, select_node, xasl);
 
-  if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
+  if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_IS_MERGE_QUERY))
+    {
+      /* MERGE executes this SELECT inside the statement-level system operation (xtran_server_start_topop) it opens
+       * for atomicity. Parallel workers share the transaction and deadlock on its system operation mutex
+       * (rmutex_topop) when they need a system operation of their own, e.g. to create a temporary file during a
+       * parallel sort (CBRD-27492). Disable parallel execution of this XASL, PARALLEL hint included; same reason
+       * as the hash join exclusion in qo_check_hjoin_for_parallel_opt (CBRD-26311). */
+      xasl->parallelism = 0;
+    }
+  else if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
     {
       xasl->parallelism = select_node->info.query.q.select.num_parallel_threads;
     }
@@ -17645,7 +17654,16 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 
   pt_set_aptr (parser, select_node, xasl);
 
-  if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
+  if (PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_IS_MERGE_QUERY))
+    {
+      /* MERGE executes this SELECT inside the statement-level system operation (xtran_server_start_topop) it opens
+       * for atomicity. Parallel workers share the transaction and deadlock on its system operation mutex
+       * (rmutex_topop) when they need a system operation of their own, e.g. to create a temporary file during a
+       * parallel sort (CBRD-27492). Disable parallel execution of this XASL, PARALLEL hint included; same reason
+       * as the hash join exclusion in qo_check_hjoin_for_parallel_opt (CBRD-26311). */
+      xasl->parallelism = 0;
+    }
+  else if (select_node->info.query.q.select.hint & PT_HINT_PARALLEL)
     {
       xasl->parallelism = select_node->info.query.q.select.num_parallel_threads;
     }
@@ -19802,6 +19820,10 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       insert->remote_attr_names = NULL;
       insert->remote_num_attrs = 0;
     }
+
+  /* the statement kind the sink sends: REPLACE INTO when the statement asked for it, INSERT INTO
+   * otherwise. Already serialized with the rest of INSERT_PROC, so the server reads it as it stands. */
+  insert->do_replace = (statement->info.insert.do_replace ? 1 : 0);
 
   /* no local class for remote INSERT */
   OID_SET_NULL (&insert->class_oid);

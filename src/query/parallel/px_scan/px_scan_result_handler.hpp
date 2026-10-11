@@ -96,6 +96,7 @@ namespace parallel_scan
       int active_results;
       std::vector<QFILE_LIST_ID *> hgby_results;
       bool g_hash_eligible;
+      bool g_agg_domain_resolve_need;	/* the original aggregate nodes still wait for domains the workers resolve */
       trace_handler *trace_handler_p;
       parallel_scan::instnum_mode instnum_mode = parallel_scan::instnum_mode::NONE;
       std::vector<int> rownum_col_indices;	/* RENUMBER: ROWNUM positions in the valptr list */
