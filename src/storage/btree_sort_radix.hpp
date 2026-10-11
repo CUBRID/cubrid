@@ -42,7 +42,8 @@ typedef enum
   RADIX_KEY_OID,		/* OID: volume, page and slot in that order */
   RADIX_KEY_MONETARY,		/* currency then an IEEE 754 amount: the amount's word, in IEEE order */
   RADIX_KEY_BIT,		/* BIT: its bytes as they lie, zero past the key, a word at a time over the width */
-  RADIX_KEY_VARBIT		/* VARBIT: its bytes in whole words, zero past them, then a word of their count */
+  RADIX_KEY_VARBIT,		/* VARBIT: its bytes in whole words, zero past them, then a word of their count */
+  RADIX_KEY_STRING		/* CHAR, VARCHAR: the bytes the collation sees, then a count word if shorter_first */
 } RADIX_KEY_FORMAT;
 
 /* key encoding of an index, worked out of its key domain */
@@ -51,9 +52,13 @@ struct radix_key_encoding
 {
   int word_width;			/* bytes of one radix word: 2, 4 or 8; 0 until resolved */
   int key_length;		/* bytes of the radix key, taken a word at a time over the width */
-  int min_key_length;		/* the shortest stored key: key_length, or the length byte alone of an empty VARBIT */
+  int min_key_length;		/* the shortest stored key the domain allows */
   RADIX_KEY_FORMAT format;
   bool is_desc;			/* a descending key: the word is the ascending word's complement */
+  bool space_as_zero;		/* a string whose collation treats a space as zero, see resolve_string_collation () */
+  bool case_insensitive;	/* a string whose collation treats 'a'..'z' as 'A'..'Z' */
+  bool shorter_first;		/* of two values that agree to the shorter one's end, the shorter orders first, so a
+				 * word of the byte count ends the radix key */
 };
 
 /* MSD radix sorter (btree_sort_radix.cpp), for a key domain radix_sort_supports_key () takes */

@@ -45,7 +45,7 @@
  *   key            the stored key in a record; its radix key is key_length bytes
  *   radix key      the key as unsigned bytes that order as the comparator does; RADIX_KEY_FORMAT names the rewrite
  *   radix word     word_width bytes (2, 4 or 8) of the radix key, one per record; the engine's unit of work
- *   byte string    a key whose radix key is its value bytes as they lie (BIT, VARBIT), zero past the value
+ *   byte string    a key whose radix key is its value bytes (BIT, VARBIT, CHAR, VARCHAR), zero past the value
  *   word index     which word of a radix key wider than one word; 0 is the first
  *   tail word      a word of the radix key past the radix word, worked out from the record when radix words tie
  *   slot           a record's offset from the buffer start; the sort moves slots, never records
@@ -68,12 +68,15 @@
 #include "btree_sort_radix.hpp"
 
 #include "byte_order.h"
+#include "intl_support.h"
+#include "language_support.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "object_representation_constants.h"
 #include "oid.h"
 #include "porting.h"
+#include "system_parameter.h"
 
 #include <algorithm>
 #include <array>
@@ -326,9 +329,57 @@ radix_sort_supports_key (const TP_DOMAIN *key_domain)
 }
 
 /*
+ * resolve_string_collation () - Whether a radix key of bytes orders a string as its collation does, and how
+ *   return: false for a collation that reads a string other than a byte at a time
+ *   key_domain(in): a CHAR or a VARCHAR
+ *   space_as_zero(out): a space is treated as zero, as lang_fastcmp_byte () does
+ *   case_insensitive(out): 'a'..'z' is treated as 'A'..'Z', as the en_ci weights do
+ *   shorter_first(out): of two values that agree to the shorter one's end, the shorter orders first
+ *
+ * Note: lang_fastcmp_binary () reads the bytes as they lie and passes over a tail of zero bytes, which a radix key zero
+ *       past the value matches. lang_fastcmp_byte () with the weights of these collations reads every byte as itself
+ *       but a space, which it treats as zero, and with trailing spaces kept puts the shorter VARCHAR first, where a
+ *       CHAR always drops them. The collations of other weights, EUC-KR and the UCA ones keep the compare sort.
+ */
+static bool
+resolve_string_collation (const TP_DOMAIN *key_domain, bool *space_as_zero, bool *case_insensitive,
+			  bool *shorter_first)
+{
+  const bool is_varchar = (TP_DOMAIN_TYPE (key_domain) == DB_TYPE_VARCHAR);
+
+  switch (TP_DOMAIN_COLLATION (key_domain))
+    {
+    case LANG_COLL_BINARY:
+      *space_as_zero = false;
+      *case_insensitive = false;
+      *shorter_first = false;
+      return true;
+
+    case LANG_COLL_ISO_BINARY:
+    case LANG_COLL_UTF8_BINARY:
+    case LANG_COLL_ISO_EN_CS:
+    case LANG_COLL_UTF8_EN_CS:
+      *space_as_zero = true;
+      *case_insensitive = false;
+      *shorter_first = is_varchar && !prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+      return true;
+
+    case LANG_COLL_ISO_EN_CI:
+    case LANG_COLL_UTF8_EN_CI:
+      *space_as_zero = true;
+      *case_insensitive = true;
+      *shorter_first = is_varchar && !prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/*
  * radix_sort_resolve_key () - Works the key encoding out of the key domain
  *   return: false when the domain has no fixed width radix key
- *   encoding(out): word_width, key_length, min_key_length, format and is_desc, all zero when declined
+ *   encoding(out): all its fields, zero when declined
  *   key_domain(in):
  *
  * Note: Every key of a domain has a radix key of one length: the stored key's, or one the precision bounds when
@@ -338,14 +389,20 @@ bool
 radix_sort_resolve_key (RADIX_KEY_ENCODING *encoding, const TP_DOMAIN *key_domain)
 {
   int key_length;		/* bytes of the radix key */
+  int min_key_length = -1;	/* the shortest stored key, key_length unless the format says */
+  int max_bytes;
   int word_width;
   RADIX_KEY_FORMAT format;
+  bool space_as_zero = false, case_insensitive = false, shorter_first = false;
 
   encoding->word_width = 0;
   encoding->key_length = 0;
   encoding->min_key_length = 0;
   encoding->format = RADIX_KEY_UNSIGNED;
   encoding->is_desc = false;
+  encoding->space_as_zero = false;
+  encoding->case_insensitive = false;
+  encoding->shorter_first = false;
 
   if (key_domain == NULL)
     {
@@ -435,7 +492,30 @@ radix_sort_resolve_key (RADIX_KEY_ENCODING *encoding, const TP_DOMAIN *key_domai
 	}
       key_length = DB_ALIGN (std::min (BITS_TO_BYTES (key_domain->precision), BTSORT_REC_MAX_LENGTH), OR_BIGINT_SIZE)
 		   + OR_BIGINT_SIZE;
+      min_key_length = OR_BYTE_SIZE;	/* a VARBIT with no bits is its length byte alone */
+      shorter_first = true;
       format = RADIX_KEY_VARBIT;
+      break;
+
+    case DB_TYPE_CHAR:
+    case DB_TYPE_VARCHAR:
+      /* a length byte then the value's bytes as the collation sees them, a CHAR padded to its precision in characters
+       * first. A value of OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION bytes or more is stored in another form, so a
+       * domain whose values can reach it keeps the compare sort */
+      if (key_domain->precision < 1 || key_domain->precision >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+	  || !resolve_string_collation (key_domain, &space_as_zero, &case_insensitive, &shorter_first))
+	{
+	  return false;
+	}
+      max_bytes = key_domain->precision * INTL_CODESET_MULT (TP_DOMAIN_CODESET (key_domain));
+      if (max_bytes >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+	{
+	  return false;
+	}
+      key_length = DB_ALIGN (max_bytes, OR_BIGINT_SIZE) + (shorter_first ? OR_BIGINT_SIZE : 0);
+      /* an empty VARCHAR is its length byte alone, and a CHAR holds its precision in characters at the least */
+      min_key_length = OR_BYTE_SIZE + ((TP_DOMAIN_TYPE (key_domain) == DB_TYPE_CHAR) ? key_domain->precision : 0);
+      format = RADIX_KEY_STRING;
       break;
 
     default:
@@ -448,10 +528,12 @@ radix_sort_resolve_key (RADIX_KEY_ENCODING *encoding, const TP_DOMAIN *key_domai
 
   encoding->word_width = word_width;
   encoding->key_length = key_length;
-  /* a VARBIT with no bits is its length byte alone */
-  encoding->min_key_length = (format == RADIX_KEY_VARBIT) ? OR_BYTE_SIZE : key_length;
+  encoding->min_key_length = (min_key_length >= 0) ? min_key_length : key_length;
   encoding->format = format;
   encoding->is_desc = (key_domain->is_desc != 0);
+  encoding->space_as_zero = space_as_zero;
+  encoding->case_insensitive = case_insensitive;
+  encoding->shorter_first = shorter_first;
 
   return true;
 }
@@ -636,8 +718,8 @@ struct byte_string
  *   key(in): the stored key
  *
  * Note: A BIT is its bytes, key_length of them. A VARBIT leads with its bit length, one byte of it or a byte of 0xff
- *       and an int, then the bytes those bits reach, and varbit_compare () puts the shorter of two values that agree
- *       first.
+ *       and an int, then the bytes those bits reach. A CHAR or a VARCHAR leads with its byte length in one byte, the
+ *       key table keeping the domain under the length stored otherwise.
  */
 template <RADIX_KEY_FORMAT FORMAT>
 static inline byte_string
@@ -658,6 +740,12 @@ byte_string_of (const RADIX_KEY_ENCODING *encoding, const unsigned char *key)
 	  value.length = BITS_TO_BYTES ((int) word_from_bytes<OR_INT_SIZE> (key + OR_BYTE_SIZE));
 	}
     }
+  else if constexpr (FORMAT == RADIX_KEY_STRING)
+    {
+      assert (key[0] < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+      value.bytes = key + OR_BYTE_SIZE;
+      value.length = key[0];
+    }
   else
     {
       static_assert (FORMAT == RADIX_KEY_BIT, "a byte string format");
@@ -668,10 +756,48 @@ byte_string_of (const RADIX_KEY_ENCODING *encoding, const unsigned char *key)
   return value;
 }
 
-/* one word of the value, zero past it, so the words of a shorter value tie with a longer one that goes on with zeros */
+/* a radix word in the low bytes of a 16 byte vector, where each operator works on every byte at once. A vector of 8
+ * bytes would be split into single bytes by GCC 8 */
+typedef unsigned char radix_byte_vector __attribute__ ((vector_size (16)));
+typedef UINT64 radix_word_vector __attribute__ ((vector_size (16)));
+
+/* the word with every space byte made zero */
 template <int WORD_WIDTH>
 static inline radix_word<WORD_WIDTH>
-value_word (const byte_string &value, int from)
+spaces_to_zero (radix_word<WORD_WIDTH> word)
+{
+  const radix_word_vector words = { word, 0 };
+  radix_byte_vector bytes = (radix_byte_vector) words;
+
+  bytes &= (radix_byte_vector) (bytes != ' ');	/* a comparison gives 0xff in each byte it holds for, 0 in the rest */
+  return (radix_word<WORD_WIDTH>) ((radix_word_vector) bytes)[0];
+}
+
+/* the word with every small letter, a byte in 'a'..'z', made its capital */
+template <int WORD_WIDTH>
+static inline radix_word<WORD_WIDTH>
+lower_to_upper (radix_word<WORD_WIDTH> word)
+{
+  const radix_word_vector words = { word, 0 };
+  radix_byte_vector bytes = (radix_byte_vector) words;
+
+  bytes -= (radix_byte_vector) ((bytes >= 'a') & (bytes <= 'z')) & (unsigned char) ('a' - 'A');
+  return (radix_word<WORD_WIDTH>) ((radix_word_vector) bytes)[0];
+}
+
+/*
+ * value_word () - Puts one word of the value in unsigned byte order
+ *   return: the radix word
+ *   encoding(in):
+ *   value(in): from byte_string_of ()
+ *   from(in): the value byte the word starts at
+ *
+ * Note: Zero past the value, so the words of a shorter value tie with a longer one that goes on with zeros. A space is
+ *       zero too, and a small letter its capital, where the collation treats them so, see resolve_string_collation ().
+ */
+template <int WORD_WIDTH, RADIX_KEY_FORMAT FORMAT>
+static inline radix_word<WORD_WIDTH>
+value_word (const RADIX_KEY_ENCODING *encoding, const byte_string &value, int from)
 {
   radix_word<WORD_WIDTH> word = 0;
   size_t copy_bytes = 0;
@@ -687,34 +813,63 @@ value_word (const byte_string &value, int from)
       memcpy (&word, value.bytes + from, copy_bytes);
     }
 
+  if constexpr (FORMAT == RADIX_KEY_STRING)
+    {
+      if (encoding->space_as_zero)
+	{
+	  word = spaces_to_zero<WORD_WIDTH> (word);
+	}
+      if (encoding->case_insensitive)
+	{
+	  word = lower_to_upper<WORD_WIDTH> (word);
+	}
+    }
+
   return word;
+}
+
+/* whether the shorter of two values that agree orders first, so a word of the byte count ends the radix key:
+ * always for a VARBIT, for a string as its collation says */
+template <RADIX_KEY_FORMAT FORMAT>
+static inline bool
+orders_shorter_first (const RADIX_KEY_ENCODING *encoding)
+{
+  if constexpr (FORMAT == RADIX_KEY_VARBIT)
+    {
+      return true;
+    }
+  else if constexpr (FORMAT == RADIX_KEY_STRING)
+    {
+      return encoding->shorter_first;
+    }
+  else
+    {
+      return false;
+    }
 }
 
 /*
  * byte_string_word () - Puts one word of a byte string key in unsigned byte order
  *   return: the radix word
+ *   encoding(in):
  *   value(in): from byte_string_of ()
- *   key_length(in): bytes of the radix key
  *   from(in): the radix key byte the word starts at
  *
- * Note: A word of the value, or the last word of a VARBIT, its byte count, which puts the shorter of two values that
- *       agree first.
+ * Note: A word of the value, or the count word that ends the radix key of a VARBIT, or of a VARCHAR whose collation
+ *       puts the shorter of two values that agree first.
  */
 template <int WORD_WIDTH, RADIX_KEY_FORMAT FORMAT>
 static inline radix_word<WORD_WIDTH>
-byte_string_word (const byte_string &value, int key_length, int from)
+byte_string_word (const RADIX_KEY_ENCODING *encoding, const byte_string &value, int from)
 {
   /* the count is big-endian in the word: the swap of big_endian_to_host () goes both ways */
-  if constexpr (FORMAT == RADIX_KEY_VARBIT)
+  if (orders_shorter_first<FORMAT> (encoding) && from >= encoding->key_length - WORD_WIDTH)
     {
-      if (from >= key_length - WORD_WIDTH)
-	{
-	  assert (value.length <= key_length - WORD_WIDTH);
-	  return big_endian_to_host ((radix_word<WORD_WIDTH>) value.length);
-	}
+      assert (value.length <= encoding->key_length - WORD_WIDTH);
+      return big_endian_to_host ((radix_word<WORD_WIDTH>) value.length);
     }
 
-  return value_word<WORD_WIDTH> (value, from);
+  return value_word<WORD_WIDTH, FORMAT> (encoding, value, from);
 }
 
 /*
@@ -820,7 +975,7 @@ encode_byte_string_words (const RADIX_KEY_ENCODING *encoding, const char *rec_ba
       assert (!BTSORT_REC_HDR (rec)->is_bigone && !BTSORT_REC_HDR (rec)->has_null);
 
       value = byte_string_of<FORMAT> (encoding, (const unsigned char *) BTSORT_REC_KEY (rec));
-      word = byte_string_word<WORD_WIDTH, FORMAT> (value, encoding->key_length, from) ^ desc_flip;
+      word = byte_string_word<WORD_WIDTH, FORMAT> (encoding, value, from) ^ desc_flip;
 
       memcpy (radix_words + rec_index * WORD_WIDTH, &word, WORD_WIDTH);
 
@@ -870,6 +1025,10 @@ encode_radix_words (const RADIX_KEY_ENCODING *encoding, const char *rec_base, co
       break;
     case RADIX_KEY_VARBIT:
       encode_byte_string_words<WORD_WIDTH, RADIX_KEY_VARBIT> (encoding, rec_base, slots, record_count, radix_words,
+	  varying_bits, word_index);
+      break;
+    case RADIX_KEY_STRING:
+      encode_byte_string_words<WORD_WIDTH, RADIX_KEY_STRING> (encoding, rec_base, slots, record_count, radix_words,
 	  varying_bits, word_index);
       break;
     default:
@@ -931,6 +1090,7 @@ namespace
       void finish_ties (const msd_range &range);
       void insertion_sort (const msd_range &range);
       bool record_less (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right, int from_word) const;
+      bool wide_key_less (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right, int from_word) const __attribute__ ((noinline));
       template <RADIX_KEY_FORMAT FORMAT>
       bool tail_less (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right, int from_word) const;
 
@@ -1498,7 +1658,8 @@ msd_sort<WORD_WIDTH>::insertion_sort (const msd_range &range)
  *   from_word(in): the word of the key after the radix words
  *
  * Note: Only a byte string key is wider than a word, see radix_sort_resolve_key (). Its format is a template argument
- *       of tail_less (), so the format is looked up once a call.
+ *       of tail_less (), looked up once a call: a BIT's walk is called straight, the formats with a length through
+ *       wide_key_less ().
  */
 template <int WORD_WIDTH>
 bool
@@ -1510,14 +1671,28 @@ msd_sort<WORD_WIDTH>::record_less (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right, 
       return oid_less (m_rec_base, left, right);
     }
 
-  if (m_encoding->format == RADIX_KEY_VARBIT)
+  if (m_encoding->format == RADIX_KEY_BIT)
     {
-      return tail_less<RADIX_KEY_VARBIT> (left, right, from_word);
+      return tail_less<RADIX_KEY_BIT> (left, right, from_word);
     }
 
-  assert (m_encoding->format == RADIX_KEY_BIT);
+  return wide_key_less (left, right, from_word);
+}
 
-  return tail_less<RADIX_KEY_BIT> (left, right, from_word);
+/* record_less () for a key with a length, a VARBIT or a string.
+ * out of line, so the loops that call record_less () hold two calls, not one a format, and keep their registers */
+template <int WORD_WIDTH>
+bool
+msd_sort<WORD_WIDTH>::wide_key_less (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right, int from_word) const
+{
+  if (m_encoding->format == RADIX_KEY_STRING)
+    {
+      return tail_less<RADIX_KEY_STRING> (left, right, from_word);
+    }
+
+  assert (m_encoding->format == RADIX_KEY_VARBIT);
+
+  return tail_less<RADIX_KEY_VARBIT> (left, right, from_word);
 }
 
 /*
@@ -1536,20 +1711,21 @@ msd_sort<WORD_WIDTH>::tail_less (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right, in
   const unsigned char *right_bytes = (const unsigned char *) BTSORT_REC_KEY (m_rec_base + right);
   const byte_string left_value = byte_string_of<FORMAT> (m_encoding, left_bytes);
   const byte_string right_value = byte_string_of<FORMAT> (m_encoding, right_bytes);
-  int value_words = (FORMAT == RADIX_KEY_VARBIT) ? m_words_per_key - 1 : m_words_per_key;
+  const bool shorter_first = orders_shorter_first<FORMAT> (m_encoding);
+  int value_words = shorter_first ? m_words_per_key - 1 : m_words_per_key;
   radix_word<WORD_WIDTH> left_word, right_word;
   int word_index;
 
   /* the words past the longer value are zero in both keys, so the walk stops there */
-  if (FORMAT == RADIX_KEY_VARBIT)
+  if (FORMAT == RADIX_KEY_VARBIT || FORMAT == RADIX_KEY_STRING)
     {
       value_words = (std::max (left_value.length, right_value.length) + WORD_WIDTH - 1) / WORD_WIDTH;
     }
 
   for (word_index = from_word; word_index < value_words; word_index++)
     {
-      left_word = value_word<WORD_WIDTH> (left_value, word_index * WORD_WIDTH);
-      right_word = value_word<WORD_WIDTH> (right_value, word_index * WORD_WIDTH);
+      left_word = value_word<WORD_WIDTH, FORMAT> (m_encoding, left_value, word_index * WORD_WIDTH);
+      right_word = value_word<WORD_WIDTH, FORMAT> (m_encoding, right_value, word_index * WORD_WIDTH);
       if (left_word != right_word)
 	{
 	  /* a descending key turns the order round */
@@ -1564,19 +1740,16 @@ msd_sort<WORD_WIDTH>::tail_less (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right, in
 	}
     }
 
-  if constexpr (FORMAT == RADIX_KEY_VARBIT)
+  /* the shorter value first, and a descending key turns that round */
+  if (shorter_first && left_value.length != right_value.length)
     {
-      /* the shorter value first, as varbit_compare () puts it, and a descending key turns that round */
-      if (left_value.length != right_value.length)
+      if (m_encoding->is_desc)
 	{
-	  if (m_encoding->is_desc)
-	    {
-	      return left_value.length > right_value.length;
-	    }
-	  else
-	    {
-	      return left_value.length < right_value.length;
-	    }
+	  return left_value.length > right_value.length;
+	}
+      else
+	{
+	  return left_value.length < right_value.length;
 	}
     }
 

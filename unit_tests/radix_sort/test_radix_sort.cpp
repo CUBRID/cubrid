@@ -33,6 +33,9 @@
 #include "object_representation.h"	/* OR_*_SIZE, OR_MVCCID_SIZE */
 #include "object_representation_constants.h"	/* OR_OID_PAGEID, OR_OID_SLOTID, OR_OID_VOLID */
 #include "string_opfunc.h"	/* bit_compare, varbit_compare: the oracles the bit string keys are checked against */
+#include "language_support.h"	/* lang_init, LANG_COLL_*: a string key is checked against its collation's compare */
+#include "object_primitive.h"	/* pr_type: the index comparator of a string domain is the oracle */
+#include "system_parameter.h"	/* ignore_trailing_space, which says whether a shorter VARCHAR orders first */
 
 #include <algorithm>
 #include <cmath>
@@ -1133,6 +1136,179 @@ TEST_CASE ("radix settles a wide key the records share by instance OID", "[radix
     }
 }
 
+namespace
+{
+  /* the domain of a string index column: the type, its precision in characters and a collation, in its codeset */
+  TP_DOMAIN
+  string_domain (DB_TYPE type, int precision, int collation_id, bool desc)
+  {
+    TP_DOMAIN domain = *tp_domain_resolve_default (type);
+
+    domain.precision = precision;
+    domain.codeset = (unsigned char) lang_get_collation (collation_id)->codeset;
+    domain.collation_id = collation_id;
+    domain.is_desc = desc ? 1 : 0;
+    return domain;
+  }
+
+  /* the index comparator of the domain, which the sort has to agree with */
+  key_compare
+  cmp_string_image (const TP_DOMAIN &domain)
+  {
+    return [domain] (const unsigned char *a, const unsigned char *b)
+    {
+      DB_VALUE_COMPARE_RESULT c = domain.type->index_cmpdisk (a, b, &domain, 0, 1, NULL);
+
+      assert (c != DB_UNK);
+      return (c == DB_LT) ? -1 : (c == DB_GT) ? 1 : 0;
+    };
+  }
+
+  /* the characters a value is spelt in: a space and a tab among them, for a collation that treats a space as zero,
+   * both cases of a letter and the bytes either side of the letters, for one that treats 'a'..'z' as 'A'..'Z', bytes
+   * of the high half whose low seven bits spell a small letter, which that one leaves alone, and multibyte ones for
+   * UTF-8 */
+  const std::vector<std::string> ISO_LETTERS =
+  {
+    "a", "b", "z", "A", "M", "Z", "@", "[", "`", "{", " ", "\t", "0", "9", "~", "\xc9", "\xe9"
+  };
+  const std::vector<std::string> UTF8_LETTERS =
+  {
+    "a", "b", "z", "A", "Z", "@", "[", "`", "{", " ", "\t", "0", "\xc3\xa9", "\xc3\x84", "\xd0\x96", "\xed\x95\x9c"
+  };
+  const std::vector<std::string> RAW_LETTERS = { "a", "b", " ", "\t", std::string ("\0", 1), "\x7f", "\x80", "\xff" };
+
+  const std::vector<std::string> &
+  letters_of (int collation_id)
+  {
+    switch (lang_get_collation (collation_id)->codeset)
+      {
+      case INTL_CODESET_UTF8:
+	return UTF8_LETTERS;
+      case INTL_CODESET_ISO88591:
+	return ISO_LETTERS;
+      default:
+	return RAW_LETTERS;
+      }
+  }
+
+  /* the image the string writers store: a length byte, then the characters, a CHAR holding its precision of them and a
+   * VARCHAR up to it, the first lead of them the same in every record */
+  sample
+  string_sample (bool is_char, int precision, const std::vector<std::string> &letters, int lead, int shape, int i,
+		 int n, std::mt19937_64 &rng, unsigned int oid)
+  {
+    const int chars = is_char ? precision
+		      : (int) (shape_value (shape, i, n, rng) % (unsigned long long) (precision + 1));
+    std::string value;
+    sample one;
+
+    for (int at = 0; at < chars; at++)
+      {
+	size_t pick = (at < lead) ? 0 : (size_t) (shape_value (shape, i, n, rng) % letters.size ());
+
+	value += letters[pick];
+      }
+
+    REQUIRE (value.size () < (size_t) OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+    one.key_bytes.assign (1, (unsigned char) value.size ());
+    one.key_bytes.insert (one.key_bytes.end (), value.begin (), value.end ());
+    one.oid_rank = oid;
+    return one;
+  }
+}
+
+/* a CHAR or a VARCHAR key: a length byte then the bytes, zero past them and where a space is, then the count when the
+ * length orders */
+TEST_CASE ("radix sorts CHAR and VARCHAR keys as their collation compares", "[radix_sort]")
+{
+  struct string_case
+  {
+    const char *name;
+    DB_TYPE type;
+    int precision;
+    int collation_id;
+    bool space_as_zero;
+    bool case_insensitive;
+    bool shorter_first_when_kept;	/* the shorter value first, with trailing spaces kept */
+  };
+
+  const std::vector<string_case> cases =
+  {
+    { "varchar(20) utf8_bin", DB_TYPE_VARCHAR, 20, LANG_COLL_UTF8_BINARY, true, false, true },
+    /* the widest utf8 domain */
+    { "varchar(63) utf8_bin", DB_TYPE_VARCHAR, 63, LANG_COLL_UTF8_BINARY, true, false, true },
+    /* the widest iso one */
+    { "varchar(254) iso88591_bin", DB_TYPE_VARCHAR, 254, LANG_COLL_ISO_BINARY, true, false, true },
+    { "varchar(16) iso88591_en_cs", DB_TYPE_VARCHAR, 16, LANG_COLL_ISO_EN_CS, true, false, true },
+    { "varchar(16) iso88591_en_ci", DB_TYPE_VARCHAR, 16, LANG_COLL_ISO_EN_CI, true, true, true },
+    { "varchar(20) utf8_en_ci", DB_TYPE_VARCHAR, 20, LANG_COLL_UTF8_EN_CI, true, true, true },
+    { "varchar(32) binary", DB_TYPE_VARCHAR, 32, LANG_COLL_BINARY, false, false, false },
+    { "char(10) utf8_bin", DB_TYPE_CHAR, 10, LANG_COLL_UTF8_BINARY, true, false, false },
+    { "char(10) utf8_en_ci", DB_TYPE_CHAR, 10, LANG_COLL_UTF8_EN_CI, true, true, false },
+    { "char(3) iso88591_bin", DB_TYPE_CHAR, 3, LANG_COLL_ISO_BINARY, true, false, false },
+    { "char(24) binary", DB_TYPE_CHAR, 24, LANG_COLL_BINARY, false, false, false },
+  };
+  const int LEADS[] = { 0, 4, 9 };
+  const bool spaces_kept = !prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
+  REQUIRE (lang_init () == NO_ERROR);
+
+  for (const string_case &c : cases)
+    {
+      const bool is_char = (c.type == DB_TYPE_CHAR);
+      const TP_DOMAIN domain = string_domain (c.type, c.precision, c.collation_id, false);
+      const std::vector<std::string> &letters = letters_of (c.collation_id);
+      const key_compare oracle = cmp_string_image (domain);
+      RADIX_KEY_ENCODING encoding;
+
+      INFO (c.name);
+      REQUIRE (radix_sort_resolve_key (&encoding, &domain));
+      REQUIRE (encoding.format == RADIX_KEY_STRING);
+      REQUIRE (encoding.word_width == OR_BIGINT_SIZE);
+      REQUIRE (encoding.space_as_zero == c.space_as_zero);
+      REQUIRE (encoding.case_insensitive == c.case_insensitive);
+      REQUIRE (encoding.shorter_first == (c.shorter_first_when_kept && spaces_kept));
+      REQUIRE (encoding.key_length == DB_ALIGN (c.precision * INTL_CODESET_MULT (TP_DOMAIN_CODESET (&domain)),
+	       OR_BIGINT_SIZE) + (encoding.shorter_first ? OR_BIGINT_SIZE : 0));
+      REQUIRE (encoding.min_key_length == OR_BYTE_SIZE + (is_char ? c.precision : 0));
+
+      for (int lead : LEADS)
+	{
+	  for (bool desc : KEY_DIRECTIONS)
+	    {
+	      const TP_DOMAIN run_domain = string_domain (c.type, c.precision, c.collation_id, desc);
+	      RADIX_KEY_ENCODING run_encoding;
+
+	      REQUIRE (radix_sort_resolve_key (&run_encoding, &run_domain));
+
+	      for (int n : TEST_SIZES)
+		{
+		  for (int shape = 0; shape < SHAPE_COUNT; shape++)
+		    {
+		      std::mt19937_64 rng (0x57a10000u + (unsigned) c.precision * 977u
+					   + (unsigned) c.collation_id * 131u + (unsigned) lead * 101u
+					   + (unsigned) n * 31u + (unsigned) shape);
+		      std::vector<unsigned int> oids = make_oids (n, (shape & 1) != 0, rng);
+		      std::vector<sample> samples ((size_t) n);
+		      std::string what = std::string (c.name) + " lead=" + std::to_string (lead);
+
+		      for (int i = 0; i < n; i++)
+			{
+			  samples[ (size_t) i] = string_sample (is_char, c.precision, letters,
+								std::min (lead, c.precision), shape, i, n, rng,
+								oids[ (size_t) i]);
+			}
+
+		      what += " n=" + std::to_string (n) + " " + shape_name (shape) + (desc ? " desc" : " asc");
+		      check_run (run_encoding, desc, false, samples, oracle, what);
+		    }
+		}
+	    }
+	}
+    }
+}
+
 /* the work memory is the caller's: one sizing serves every run up to that size */
 TEST_CASE ("radix sort works in the memory its caller sized", "[radix_sort]")
 {
@@ -1207,8 +1383,8 @@ TEST_CASE ("radix key table", "[radix_sort]")
   {
     const DB_TYPE unsupported[] =
     {
-      DB_TYPE_VARCHAR, DB_TYPE_CHAR, DB_TYPE_VARNCHAR_DEPRECATED, DB_TYPE_NCHAR_DEPRECATED,
-      DB_TYPE_MIDXKEY, DB_TYPE_SET, DB_TYPE_BLOB, DB_TYPE_CLOB, DB_TYPE_JSON, DB_TYPE_NULL
+      DB_TYPE_VARNCHAR_DEPRECATED, DB_TYPE_NCHAR_DEPRECATED, DB_TYPE_MIDXKEY, DB_TYPE_SET, DB_TYPE_BLOB, DB_TYPE_CLOB,
+      DB_TYPE_JSON, DB_TYPE_NULL
     };
 
     for (DB_TYPE t : unsupported)
@@ -1266,6 +1442,91 @@ TEST_CASE ("radix key table", "[radix_sort]")
     /* no fixed length: a floating precision is a literal's, not a column's, and 0 stands for it in a domain */
     REQUIRE_FALSE (resolve_bit (encoding, TP_FLOATING_PRECISION_VALUE));
     REQUIRE_FALSE (resolve_bit (encoding, 0));
+  }
+
+  SECTION ("a CHAR or a VARCHAR under a byte collation is its bytes, a word at a time, with the length when it orders")
+  {
+    const bool spaces_kept = !prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+    TP_DOMAIN domain;
+
+    REQUIRE (lang_init () == NO_ERROR);
+
+    /* every byte its own weight but a space, and a shorter VARCHAR first unless trailing spaces are ignored */
+    domain = string_domain (DB_TYPE_VARCHAR, 10, LANG_COLL_UTF8_BINARY, false);
+    REQUIRE (radix_sort_resolve_key (&encoding, &domain));
+    REQUIRE (encoding.format == RADIX_KEY_STRING);
+    REQUIRE (encoding.word_width == OR_BIGINT_SIZE);
+    REQUIRE (encoding.space_as_zero);
+    REQUIRE (encoding.shorter_first == spaces_kept);
+    REQUIRE (encoding.key_length == 40 + (spaces_kept ? OR_BIGINT_SIZE : 0));
+    REQUIRE (encoding.min_key_length == OR_BYTE_SIZE);
+
+    /* a CHAR always drops its trailing spaces, and holds its precision in characters at the least */
+    domain = string_domain (DB_TYPE_CHAR, 10, LANG_COLL_UTF8_BINARY, false);
+    REQUIRE (radix_sort_resolve_key (&encoding, &domain));
+    REQUIRE (encoding.space_as_zero);
+    REQUIRE_FALSE (encoding.shorter_first);
+    REQUIRE (encoding.key_length == 40);
+    REQUIRE (encoding.min_key_length == OR_BYTE_SIZE + 10);
+
+    /* the binary collation reads the bytes as they lie */
+    domain = string_domain (DB_TYPE_VARCHAR, 10, LANG_COLL_BINARY, false);
+    REQUIRE (radix_sort_resolve_key (&encoding, &domain));
+    REQUIRE_FALSE (encoding.space_as_zero);
+    REQUIRE_FALSE (encoding.shorter_first);
+    REQUIRE (encoding.key_length == 16);
+
+    const int iso_byte_collations[] = { LANG_COLL_ISO_BINARY, LANG_COLL_ISO_EN_CS };
+
+    for (int collation_id : iso_byte_collations)
+      {
+	domain = string_domain (DB_TYPE_VARCHAR, 10, collation_id, false);
+	REQUIRE (radix_sort_resolve_key (&encoding, &domain));
+	REQUIRE (encoding.key_length == 16 + (spaces_kept ? OR_BIGINT_SIZE : 0));
+      }
+    domain = string_domain (DB_TYPE_VARCHAR, 10, LANG_COLL_UTF8_EN_CS, false);
+    REQUIRE (radix_sort_resolve_key (&encoding, &domain));
+    REQUIRE_FALSE (encoding.case_insensitive);
+
+    /* en_ci treats 'a'..'z' as 'A'..'Z' and the rest as en_cs does */
+    const int case_insensitive_collations[] = { LANG_COLL_ISO_EN_CI, LANG_COLL_UTF8_EN_CI };
+
+    for (int collation_id : case_insensitive_collations)
+      {
+	domain = string_domain (DB_TYPE_VARCHAR, 10, collation_id, false);
+	REQUIRE (radix_sort_resolve_key (&encoding, &domain));
+	REQUIRE (encoding.case_insensitive);
+	REQUIRE (encoding.space_as_zero);
+	REQUIRE (encoding.shorter_first == spaces_kept);
+      }
+
+    /* a collation of other weights, or reading a character at a time, keeps the compare sort */
+    domain = string_domain (DB_TYPE_VARCHAR, 10, LANG_COLL_EUCKR_BINARY, false);
+    REQUIRE_FALSE (radix_sort_resolve_key (&encoding, &domain));
+    domain = string_domain (DB_TYPE_VARCHAR, 10, LANG_COLL_UTF8_KO_CS, false);
+    REQUIRE_FALSE (radix_sort_resolve_key (&encoding, &domain));
+    domain = string_domain (DB_TYPE_VARCHAR, 10, LANG_COLL_UTF8_TR_CS, false);
+    REQUIRE_FALSE (radix_sort_resolve_key (&encoding, &domain));
+
+    /* a domain whose values can reach the length stored in another form keeps the compare sort */
+    domain = string_domain (DB_TYPE_VARCHAR, 63, LANG_COLL_UTF8_BINARY, false);
+    REQUIRE (radix_sort_resolve_key (&encoding, &domain));
+    REQUIRE (encoding.key_length == 256 + (spaces_kept ? OR_BIGINT_SIZE : 0));
+    domain = string_domain (DB_TYPE_VARCHAR, 64, LANG_COLL_UTF8_BINARY, false);
+    REQUIRE_FALSE (radix_sort_resolve_key (&encoding, &domain));
+    domain = string_domain (DB_TYPE_VARCHAR, 254, LANG_COLL_ISO_BINARY, false);
+    REQUIRE (radix_sort_resolve_key (&encoding, &domain));
+    domain = string_domain (DB_TYPE_VARCHAR, 255, LANG_COLL_ISO_BINARY, false);
+    REQUIRE_FALSE (radix_sort_resolve_key (&encoding, &domain));
+    domain = string_domain (DB_TYPE_CHAR, 255, LANG_COLL_ISO_BINARY, false);
+    REQUIRE_FALSE (radix_sort_resolve_key (&encoding, &domain));
+
+    /* no precision, or the widest one of the default domain */
+    domain = string_domain (DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, LANG_COLL_UTF8_BINARY, false);
+    REQUIRE_FALSE (radix_sort_resolve_key (&encoding, &domain));
+    REQUIRE_FALSE (radix_sort_resolve_key (&encoding, tp_domain_resolve_default (DB_TYPE_VARCHAR)));
+    REQUIRE (encoding.key_length == 0);
+    REQUIRE_FALSE (encoding.shorter_first);
   }
 
   SECTION ("a VARBIT is its bytes in whole words, then a word of their count, as far as a sort record holds")
