@@ -852,6 +852,9 @@ extern void perfmon_stop_watch (THREAD_ENTRY * thread_p);
 extern void perfmon_er_log_current_stats (THREAD_ENTRY * thread_p);
 extern void perfmon_initialize_parallel_stats (THREAD_ENTRY * thread_p);
 extern void perfmon_destroy_parallel_stats (THREAD_ENTRY * thread_p);
+extern bool perfmon_parallel_stats_needed (THREAD_ENTRY * thread_p);
+extern void perfmon_merge_values (UINT64 * dst, const UINT64 * src);
+extern void perfmon_add_values_to_local (THREAD_ENTRY * thread_p, const UINT64 * values);
 #endif /* SERVER_MODE || SA_MODE */
 
 STATIC_INLINE bool perfmon_is_perf_tracking (void) __attribute__ ((ALWAYS_INLINE));
@@ -873,8 +876,6 @@ STATIC_INLINE void perfmon_set_at_offset (THREAD_ENTRY * thread_p, int offset, i
 STATIC_INLINE void perfmon_add_at_offset_to_global (int offset, UINT64 amount) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_stat_to_global (PERF_STAT_ID psid, int statval) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_at_offset_to_global (int offset, int statval) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void perfmon_merge_child_stats_to_parent_stats (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
-STATIC_INLINE void perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_time_bulk_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff, UINT64 count)
@@ -1185,128 +1186,6 @@ perfmon_set_at_offset_to_global (int offset, int statval)
 }
 
 /*
- * perfmon_get_parallel_merged_offsets () - the statistics a parallel worker accumulates in its own
- *                                          px_stats array and that must be merged back
- *
- * return    : the offset array; *count receives its length
- *
- * Note: the page-buffer counters, plus the regu-call counters that feed xasl->func_stats and the
- *       trace's FUNC line. The latter are bumped only for a stored procedure / method call
- *       (fetch.c, case TYPE_SP), which a worker can evaluate now; leaving them out silently
- *       under-reports every SP a worker ran. One list, because it used to be copied at each
- *       merge point and the copies drifted.
- */
-STATIC_INLINE const int *
-perfmon_get_parallel_merged_offsets (int *count)
-{
-  /* immutable */
-  static const int offsets[] = {
-    pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
-    pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
-    pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
-    pstat_Metadata[PSTAT_REGU_NUM_CALL_EVALS].start_offset,
-    pstat_Metadata[PSTAT_REGU_EVAL_TIME_10USEC].start_offset,
-    pstat_Metadata[PSTAT_REGU_NUM_FETCHES].start_offset,
-    pstat_Metadata[PSTAT_REGU_NUM_IOREADS].start_offset
-  };
-
-  *count = (int) (sizeof (offsets) / sizeof (offsets[0]));
-  return offsets;
-}
-
-/*
- * perfmon_merge_child_stats_to_parent_stats () - Merge child statistics to parent statistics.
- *
- * return	 : Void.
- * thread_p (in) : Child thread entry.
- */
-STATIC_INLINE void
-perfmon_merge_child_stats_to_parent_stats (THREAD_ENTRY * thread_p)
-{
-#if defined (SERVER_MODE)
-  assert (thread_p != NULL);
-
-  if (thread_p->m_px_stats == NULL)
-    {
-      assert (false);
-      return;
-    }
-
-  THREAD_ENTRY *main_thread_p = thread_get_main_thread (thread_p);
-
-  if (main_thread_p == thread_p)
-    {
-      return;
-    }
-
-  /*
-   * m_px_stats should be NULL.
-   * perfmon_initialize_parallel_stats is a temporary safeguard.
-   * TODO: replace with assert().
-   */
-  if (main_thread_p->m_px_stats == NULL)
-    {
-      perfmon_initialize_parallel_stats (main_thread_p);
-    }
-
-  int stats_cnt = 0;
-  const int *offsets = perfmon_get_parallel_merged_offsets (&stats_cnt);
-
-  pthread_mutex_lock (&(main_thread_p->m_px_stats_mutex));
-  for (int stats_index = 0; stats_index < stats_cnt; stats_index++)
-    {
-      const int offset = offsets[stats_index];
-      main_thread_p->m_px_stats[offset] += thread_p->m_px_stats[offset];
-      thread_p->m_px_stats[offset] = 0;
-    }
-  pthread_mutex_unlock (&(main_thread_p->m_px_stats_mutex));
-#endif /* SERVER_MODE */
-}
-
-/*
- * perfmon_merge_parallel_stats_to_tran_stats () - Merge parallel statistics to transaction statistics.
- *
- * return	 : Void.
- * thread_p (in) : Main thread entry.
- */
-STATIC_INLINE void
-perfmon_merge_parallel_stats_to_tran_stats (THREAD_ENTRY * thread_p)
-{
-#if defined (SERVER_MODE)
-  assert (thread_p != NULL);
-
-  if (thread_p->m_px_stats == NULL)
-    {
-      assert (false);
-      return;
-    }
-
-  if (thread_p->m_uses_px_stats)
-    {
-      return;
-    }
-
-  THREAD_ENTRY *main_thread_p = thread_get_main_thread (thread_p);
-
-  /* Skip if not the top-level parent. */
-  if (main_thread_p != thread_p)
-    {
-      return;
-    }
-
-  int stats_cnt = 0;
-  const int *offsets = perfmon_get_parallel_merged_offsets (&stats_cnt);
-
-  for (int stats_index = 0; stats_index < stats_cnt; stats_index++)
-    {
-      const int offset = offsets[stats_index];
-      perfmon_add_at_offset_to_local (thread_p, offset, thread_p->m_px_stats[offset]);
-      thread_p->m_px_stats[offset] = 0;
-    }
-#endif /* SERVER_MODE */
-}
-
-/*
  * perfmon_time_stat () - Register statistic timer value. Counter, total time and maximum time are updated.
  *
  * return	 : Void.
@@ -1370,8 +1249,20 @@ perfmon_time_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timediff)
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
   if (pstat_Global.is_watching[tran_index])
     {
-      assert (pstat_Global.tran_stats[tran_index] != NULL);
-      statvalp = pstat_Global.tran_stats[tran_index] + offset;
+      if (thread_p != NULL && thread_p->m_uses_px_stats)
+	{
+	  /* a parallel worker keeps its own array; the parent merges it once when the worker ends */
+	  if (thread_p->m_px_stats == NULL)
+	    {
+	      return;
+	    }
+	  statvalp = thread_p->m_px_stats + offset;
+	}
+      else
+	{
+	  assert (pstat_Global.tran_stats[tran_index] != NULL);
+	  statvalp = pstat_Global.tran_stats[tran_index] + offset;
+	}
       (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += 1;
       (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
       max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);
@@ -1458,8 +1349,20 @@ perfmon_time_bulk_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 timedif
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
   if (pstat_Global.is_watching[tran_index])
     {
-      assert (pstat_Global.tran_stats[tran_index] != NULL);
-      statvalp = pstat_Global.tran_stats[tran_index] + offset;
+      if (thread_p != NULL && thread_p->m_uses_px_stats)
+	{
+	  /* a parallel worker keeps its own array; the parent merges it once when the worker ends */
+	  if (thread_p->m_px_stats == NULL)
+	    {
+	      return;
+	    }
+	  statvalp = thread_p->m_px_stats + offset;
+	}
+      else
+	{
+	  assert (pstat_Global.tran_stats[tran_index] != NULL);
+	  statvalp = pstat_Global.tran_stats[tran_index] + offset;
+	}
       (*PSTAT_COUNTER_TIMER_COUNT_VALUE (statvalp)) += count;
       (*PSTAT_COUNTER_TIMER_TOTAL_TIME_VALUE (statvalp)) += timediff;
       max_time = *PSTAT_COUNTER_TIMER_MAX_TIME_VALUE (statvalp);

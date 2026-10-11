@@ -3967,11 +3967,9 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS
     {
       tsc_getticks (&start_tick);
 
-      if (xasl->orderby_stats.orderby_filesort)
-	{
-	  old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
-	  old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
-	}
+      /* not under orderby_filesort: the sort below is what sets it on the first execution */
+      old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+      old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
     }
 
   if (xasl->topn_items != NULL)
@@ -5020,6 +5018,9 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	      agg_list = agg_list->next;
 	      i++;
 	    }
+
+	  /* a group evicted from the hash table more than once has one entry per eviction */
+	  context->curr_part_value->tuple_count += context->temp_part_value->tuple_count;
 	}
       else
 	{
@@ -9126,14 +9127,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	    {
 	      if (spec->s_id.s.phsid.trace_storage)
 		{
-		  if (thread_p->m_px_stats != NULL)
-		    {
-		      spec->s_id.scan_stats.num_fetches +=
-			thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
-		      spec->s_id.scan_stats.num_ioreads +=
-			thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
-		    }
-
+		  /* the workers' fixes reached scan_stats in manager::merge_stats () */
 		  spec->s_id.s.phsid.trace_storage->set_last_partition_stats (&spec->curent->scan_stats);
 		}
 	    }
@@ -9141,14 +9135,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	    {
 	      if (spec->s_id.s.pisid.trace_storage)
 		{
-		  if (thread_p->m_px_stats != NULL)
-		    {
-		      spec->s_id.scan_stats.num_fetches +=
-			thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
-		      spec->s_id.scan_stats.num_ioreads +=
-			thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
-		    }
-
+		  /* the workers' fixes reached scan_stats in manager::merge_stats () */
 		  spec->s_id.s.pisid.trace_storage->set_last_partition_stats (&spec->curent->scan_stats);
 		}
 	    }

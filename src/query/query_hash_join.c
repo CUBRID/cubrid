@@ -936,18 +936,6 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
     {
       db_private_free_and_init (thread_p, manager->px_worker_stats);
     }
-
-  THREAD_ENTRY *main_thread_p = thread_get_main_thread (thread_p);
-
-  /* only top-level parent */
-  if (main_thread_p == thread_p)
-    {
-      if (thread_p->m_px_stats != NULL && !thread_p->m_uses_px_stats)
-	{
-	  perfmon_merge_parallel_stats_to_tran_stats (thread_p);
-	  free_and_init (thread_p->m_px_stats);
-	}
-    }
 #else
   assert (manager->px_worker_manager == NULL);
   assert (manager->px_worker_stats == NULL);
@@ -2029,7 +2017,8 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   degree = px_worker_manager->get_reserved_workers ();
   manager->num_parallel_threads = degree;
 
-  if (thread_is_on_trace (thread_p))
+  /* one statistics slice per worker whenever anyone reads them, trace or not; drained after each phase */
+  if (perfmon_parallel_stats_needed (thread_p))
     {
       px_worker_stats = (UINT64 *) db_private_alloc (thread_p, degree * stats_size);
       if (px_worker_stats == NULL)
@@ -2038,18 +2027,6 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
 	  goto error_exit;
 	}
       memset (px_worker_stats, 0, degree * stats_size);
-
-      /* only top-level parent */
-      if (thread_p->m_px_stats == NULL)
-	{
-	  thread_p->m_px_stats = perfmon_allocate_values ();
-	  if (thread_p->m_px_stats == NULL)
-	    {
-	      assert_release_error (er_errid () != NO_ERROR);
-	      goto error_exit;
-	    }
-	  memset (thread_p->m_px_stats, 0, stats_size);
-	}
 
       manager->px_worker_stats = px_worker_stats;
     }
@@ -2137,7 +2114,8 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
   degree = px_worker_manager->get_reserved_workers ();
   manager->num_parallel_threads = degree;
 
-  if (thread_is_on_trace (thread_p))
+  /* one statistics slice per worker whenever anyone reads them, trace or not; drained after each phase */
+  if (perfmon_parallel_stats_needed (thread_p))
     {
       px_worker_stats = (UINT64 *) db_private_alloc (thread_p, degree * stats_size);
       if (px_worker_stats == NULL)
@@ -2146,18 +2124,6 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
 	  goto error_exit;
 	}
       memset (px_worker_stats, 0, degree * stats_size);
-
-      /* only top-level parent */
-      if (thread_p->m_px_stats == NULL)
-	{
-	  thread_p->m_px_stats = perfmon_allocate_values ();
-	  if (thread_p->m_px_stats == NULL)
-	    {
-	      assert_release_error (er_errid () != NO_ERROR);
-	      goto error_exit;
-	    }
-	  memset (thread_p->m_px_stats, 0, stats_size);
-	}
 
       manager->px_worker_stats = px_worker_stats;
     }
@@ -4525,32 +4491,24 @@ hjoin_trace_drain_worker_stats (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * mana
 {
   UINT64 *worker_stats;
   int task_cnt, task_index;
-  int stats_cnt, stats_index;
 
-  assert (thread_p->m_px_stats != NULL);
   assert (manager != NULL);
   assert (manager->num_parallel_threads > 1);
   assert (manager->px_worker_stats != NULL);
 
   /* immutable */
-  const int *offsets = NULL;
+  static const size_t stats_size = perfmon_get_number_of_statistic_values () * sizeof (UINT64);
 
   task_cnt = manager->num_parallel_threads;
-  offsets = perfmon_get_parallel_merged_offsets (&stats_cnt);
 
   for (task_index = 0; task_index < task_cnt; task_index++)
     {
       worker_stats = hjoin_trace_get_worker_stats (manager, task_index);
 
-      for (stats_index = 0; stats_index < stats_cnt; stats_index++)
-	{
-	  const int offset = offsets[stats_index];
-	  thread_p->m_px_stats[offset] += worker_stats[offset];
-	  worker_stats[offset] = 0;
-	}
+      /* everything the worker counted in this phase */
+      perfmon_add_values_to_local (thread_p, worker_stats);
+      memset (worker_stats, 0, stats_size);
     }
-
-  perfmon_merge_parallel_stats_to_tran_stats (thread_p);
 }
 
 #if HASHJOIN_DUMP_HASH_TABLE

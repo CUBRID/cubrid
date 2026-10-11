@@ -3154,7 +3154,8 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	}
 
 #if !WINDOWS
-      if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
+      /* a partitioned class goes back to S_HEAP_SCAN after its last partition, as the text dump expects */
+      if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
 	{
 	  if (spec->s_id.s.phsid.trace_storage != NULL)
 	    {
