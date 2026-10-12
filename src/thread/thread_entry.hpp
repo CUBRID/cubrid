@@ -321,8 +321,8 @@ namespace cubthread
 
       int count_private_allocators;
 
-      /* odd while the thread waits in xs_callback_receive () for the client's reply to a method/SP callback; read
-       * by other threads for the page latch self-wait check (pgbuf_find_callback_waiting_holder) */
+      /* odd from just before a method/SP callback is sent until the client's reply arrives; read by other threads
+       * for the page latch self-wait check (pgbuf_find_callback_waiting_holder) */
       std::atomic<unsigned int> m_callback_wait_seq;
 #endif
       std::atomic_int m_qlist_count;

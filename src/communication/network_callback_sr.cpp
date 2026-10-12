@@ -38,6 +38,11 @@ xs_callback_begin_wait (cubthread::entry *thread_p)
   if (thread_p != NULL && thread_p->conn_entry != NULL)
     {
       thread_p->conn_entry->begin_method_callback ();
+#if !defined (NDEBUG)
+      /* odd from before the send: the client may run the callback's SQL as soon as the request reaches it. Made even
+       * in xs_callback_receive () before func () may fix pages, and here at the end if the send failed. */
+      thread_p->m_callback_wait_seq++;
+#endif
     }
 }
 
@@ -46,6 +51,12 @@ xs_callback_end_wait (cubthread::entry *thread_p)
 {
   if (thread_p != NULL && thread_p->conn_entry != NULL)
     {
+#if !defined (NDEBUG)
+      if (thread_p->m_callback_wait_seq & 1)
+	{
+	  thread_p->m_callback_wait_seq++;
+	}
+#endif
       thread_p->conn_entry->end_method_callback ();
     }
 }
@@ -79,14 +90,14 @@ int xs_callback_receive (cubthread::entry *thread_p, const xs_callback_func &fun
 {
   cubmem::block buffer (0, nullptr);
 
-#if !defined (NDEBUG)
-  /* odd only around the bare wait: func () below may fix pages, and the latch self-wait check reads this thread's
-   * page holder list only while it cannot change */
-  thread_p->m_callback_wait_seq++;
-#endif
   int error = xs_receive_data_from_client (thread_p, &buffer.ptr, (int *) &buffer.dim);
 #if !defined (NDEBUG)
-  thread_p->m_callback_wait_seq++;
+  /* odd since xs_callback_begin_wait (): func () below may fix pages, and the latch self-wait check reads this thread's
+   * page holder list only while it cannot change */
+  if (thread_p->m_callback_wait_seq & 1)
+    {
+      thread_p->m_callback_wait_seq++;
+    }
 #endif
   if (error == NO_ERROR && er_errid () == NO_ERROR)
     {
