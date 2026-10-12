@@ -8850,7 +8850,12 @@ pt_create_pt_name (PARSER_CONTEXT * parser, PT_NODE * spec, NATURAL_JOIN_ATTR_IN
   name->info.name.original = pt_append_string (parser, NULL, attr->name);
   name->type_enum = attr->type_enum;
   name->info.name.meta_class = attr->meta_class;
-  if (PT_SPEC_IS_ENTITY (spec))
+  if (spec->info.spec.range_var != NULL)
+    {
+      /* qualify the name with the range variable, as name binding does. the join condition is printed with it */
+      name->info.name.resolved = pt_append_string (parser, NULL, spec->info.spec.range_var->info.name.original);
+    }
+  else if (PT_SPEC_IS_ENTITY (spec))
     {
       name->info.name.resolved = pt_append_string (parser, NULL, spec->info.spec.entity_name->info.name.original);
     }
