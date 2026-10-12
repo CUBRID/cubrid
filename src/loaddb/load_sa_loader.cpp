@@ -2219,16 +2219,29 @@ ldr_act_meth (LDR_CONTEXT *context, const char *str, size_t len, data_type type)
   db_value_clear (&attdesc->ctor_val);
 
   /*
-   * A collection arrives as an opening brace, its elements, then a closing brace,
-   * so there is no single token to convert here. Feeding a brace to the element table
-   * only raises ER_LDR_NESTED_SET, which is the wrong diagnosis for a top level collection.
-   * Leave the value null instead.
+   * A collection on a CONSTRUCTOR line is refused here, and said so.
    *
-   * Nothing reads it: ldr_act_meth () counts a slot for each brace, so a line
-   * with a collection always trips the count check and never reaches
-   * construct_instance ().
+   * It never worked. The braces and the elements do not line up with the slots:
+   * ldr_act_meth () takes one slot for the opening brace, the elements go to
+   * ldr_act_elem () where context->collection is still NULL so set_add_element ()
+   * quietly does nothing, and the closing brace lands in ldr_act_attr (). If the
+   * next slot is a collection attribute, ldr_collection_db_collection () reads that
+   * closing brace as an opening one, builds a collection nobody frees and takes a
+   * second slot. A line short of one value then adds up to the right count, passes
+   * the check and is stored with the collection gone - no error, no failed count.
+   *
+   * The count check used to catch this by accident, because the elements took slots
+   * too. Do not leave it to arithmetic.
    */
-  if (type != LDR_COLLECTION)
+  if (type == LDR_COLLECTION)
+    {
+      TP_DOMAIN *att_domain = (attdesc->att != NULL) ? attdesc->att->domain : NULL;
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_UNEXPECTED_SET, 3, ldr_attr_name (context),
+	      ldr_class_name (context), (att_domain != NULL) ? att_domain->type->name : "");
+      CHECK_ERR (err, ER_LDR_UNEXPECTED_SET);
+    }
+  else
     {
       if (context->next_attr >= context->arg_index)
 	{
