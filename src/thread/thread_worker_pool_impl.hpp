@@ -198,6 +198,8 @@ namespace cubthread
       virtual std::size_t get_next_core (void);
       // get next core by round robin scheduling (default policy)
       std::size_t get_round_robin_core_hash (void);
+      // get the index into m_cores of the core that core_hash maps to
+      std::size_t get_core_index (std::size_t core_hash) const;
 
       bool begin_task_submission (void);
       void end_task_submission (void);
@@ -666,10 +668,17 @@ namespace cubthread
 	return;
       }
 
-    std::size_t core_index = core_hash % m_cores.size ();
+    std::size_t core_index = get_core_index (core_hash);
     m_cores[core_index]->execute_task (work_arg, options);
 
     end_task_submission ();
+  }
+
+  template <stats_t Stats>
+  std::size_t
+  worker_pool_impl<Stats>::get_core_index (std::size_t core_hash) const
+  {
+    return core_hash % m_cores.size ();
   }
 
   template <stats_t Stats>
