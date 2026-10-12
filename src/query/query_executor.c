@@ -670,7 +670,7 @@ struct connect_by_path_index
 
 #define CONNECT_BY_SPILL_CHUNK_MAX_NODES 65536
 #define CONNECT_BY_SPILL_CHUNK_DIR_INIT_CAPACITY 16
-/* spilling stops at half the limit, so a chunk is at most a quarter of it; qexec_connect_by_spill_init floors it */
+/* spilling stops at half the limit, so a chunk is at most a quarter of it; the limit is floored at four buffers */
 #define CONNECT_BY_SPILL_CHUNKS_PER_LIMIT 4
 #define CONNECT_BY_NODE_ARRAY_INIT_CAPACITY 32
 #define CONNECT_BY_HASH_MULTIPLIER 31u
@@ -20205,13 +20205,12 @@ qexec_connect_by_spill_init (CONNECT_BY_DFS_SPILL * spill, QFILE_TUPLE_VALUE_TYP
   UINT64 membuf_bytes;
 
   memset (spill, 0, sizeof (*spill));
-  /* 0 spills every node */
-  spill->limit = (UINT64) prm_get_bigint_value (PRM_ID_MAX_CONNECT_BY_DFS_SIZE);
-  /* each chunk's temp file preallocates a whole memory buffer, so floor the chunk at that size: a tiny limit must not
-   * split the spill into many tiny chunks, each still paying a full buffer, which makes peak memory grow as the limit
-   * shrinks */
   membuf_bytes = (UINT64) prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) * DB_PAGESIZE;
-  spill->chunk_bytes = MAX (spill->limit / CONNECT_BY_SPILL_CHUNKS_PER_LIMIT, membuf_bytes);
+  /* every chunk's temp file holds a whole memory buffer; a spill writes at least half the limit, so the file count
+   * follows the spilled bytes rather than the DFS depth only if the limit is at least four buffers */
+  spill->limit = MAX ((UINT64) prm_get_bigint_value (PRM_ID_MAX_CONNECT_BY_DFS_SIZE),
+		      membuf_bytes * CONNECT_BY_SPILL_CHUNKS_PER_LIMIT);
+  spill->chunk_bytes = spill->limit / CONNECT_BY_SPILL_CHUNKS_PER_LIMIT;
   spill->type_list = type_list;
   spill->query_id = query_id;
 }
