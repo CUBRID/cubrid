@@ -82,7 +82,8 @@ namespace parallel_index_scan
     m_drain_fsm = fsm;
 
     INDX_INFO *indx_info = (scan_id != nullptr) ? scan_id->s.isid.indx_info : nullptr;
-    m_is_covering = (indx_info != nullptr && indx_info->coverage != 0);
+    /* the scan open decided it: a statement whose SP may change rows reads the heap (CBRD-27590) */
+    m_is_covering = (scan_id != nullptr && SCAN_IS_INDEX_COVERED (&scan_id->s.isid));
     m_use_desc_index = (indx_info != nullptr && indx_info->use_desc_index != 0);
 
     /* m_btid_int set lazily on first set_page / from FSM late-joiner entry. */

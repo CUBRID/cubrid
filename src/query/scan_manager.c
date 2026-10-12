@@ -3593,7 +3593,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     {
       coverage_enabled = false;
     }
-  scan_id->scan_stats.loose_index_scan = indx_info->ils_prefix_len > 0;
+  scan_id->scan_stats.loose_index_scan = coverage_enabled && indx_info->ils_prefix_len > 0;
 
   /* is a single range? */
   isidp->one_range = false;
