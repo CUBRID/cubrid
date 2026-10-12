@@ -208,8 +208,6 @@ static void do_clear_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_st
 static PT_NODE *do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							int *continue_walk);
 static int do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement);
-static void do_add_default_client_values_to_hash_text (PARSER_CONTEXT * parser, PT_NODE * statement,
-						       DB_OBJECT * class_obj);
 static int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, PT_NODE * statement,
 			       const char **savepoint_name, int *row_count_ptr);
 static void init_compile_context (PARSER_CONTEXT * parser);
@@ -11911,43 +11909,11 @@ insert_object_attr (const PARSER_CONTEXT * parser, DB_OTMPL * otemplate, DB_VALU
  * parser (in)	  : Parser context.
  * statement (in) : Parse tree node for insert statement.
  */
-/*
- * do_add_default_client_values_to_hash_text () - add to the XASL cache key text of an INSERT or MERGE the client
- *	values its column DEFAULTs compile to (pt_class_defaults_read_client), so that a client on another host or
- *	of another build does not reuse them
- *   return: void
- *   parser(in): parser context
- *   statement(in/out): the statement whose alias_print holds the key text
- *   class_obj(in): the class the statement writes into
- */
-static void
-do_add_default_client_values_to_hash_text (PARSER_CONTEXT * parser, PT_NODE * statement, DB_OBJECT * class_obj)
-{
-  char *user_and_host;
-
-  if (statement->alias_print == NULL || !pt_class_defaults_read_client (parser, class_obj))
-    {
-      return;
-    }
-
-  /* the very values USER () and VERSION () compile to */
-  user_and_host = db_get_user_and_host_name ();
-  statement->alias_print = pt_append_string (parser, statement->alias_print, " ?client=");
-  if (user_and_host != NULL)
-    {
-      statement->alias_print = pt_append_string (parser, statement->alias_print, user_and_host);
-      db_private_free_and_init (NULL, user_and_host);
-    }
-  statement->alias_print = pt_append_string (parser, statement->alias_print, "|");
-  statement->alias_print = pt_append_string (parser, statement->alias_print, rel_build_number ());
-}
-
 static int
 do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   int error = NO_ERROR;
   PT_NODE *val = NULL, *head = NULL, *prev = NULL;
-  PT_NODE *flat;
   PT_NODE *value_list = NULL;
 
   COMPILE_CONTEXT *contextp;
@@ -12002,8 +11968,6 @@ do_prepare_insert_internal (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->flag.long_string_skipped = 0;
   parser->flag.print_type_ambiguity = 0;
   PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
-  flat = statement->info.insert.spec->info.spec.flat_entity_list;
-  do_add_default_client_values_to_hash_text (parser, statement, flat != NULL ? flat->info.name.db_object : NULL);
   contextp->sql_hash_text = (char *) statement->alias_print;
   error =
     SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
@@ -18374,7 +18338,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
       parser->flag.long_string_skipped = 0;
       parser->flag.print_type_ambiguity = 0;
       PT_NODE_PRINT_TO_ALIAS (parser, statement, CUSTOM_PRINT_4_SHA_COMPUTE | PT_PRINT_LOWER);
-      do_add_default_client_values_to_hash_text (parser, statement, flat != NULL ? flat->info.name.db_object : NULL);
       contextp->sql_hash_text = (char *) statement->alias_print;
       err = SHA1Compute ((unsigned char *) contextp->sql_hash_text, (unsigned) strlen (contextp->sql_hash_text),
 			 &contextp->sha1);

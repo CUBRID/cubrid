@@ -12951,6 +12951,52 @@ pt_expr_tree_reads_statement_clock (PARSER_CONTEXT * parser, PT_NODE * tree)
 }
 
 /*
+ * pt_op_reads_client_value () - whether XASL generation compiles an operator to a value of the client compiling
+ *	the statement: USER () to its host, VERSION () to its build.  The other session values it compiles as
+ *	constants (CURRENT_USER, SCHEMA (), DATABASE ()) follow the current user and the database, which the XASL
+ *	cache key tells apart already.
+ *   return: true if so
+ *   op(in): the operator
+ */
+bool
+pt_op_reads_client_value (PT_OP_TYPE op)
+{
+  return op == PT_USER || op == PT_VERSION;
+}
+
+/*
+ * pt_reads_client_value_walk () - parser_walk_tree callback of pt_expr_tree_reads_client_value
+ */
+static PT_NODE *
+pt_reads_client_value_walk (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *reads = (bool *) arg;
+
+  if (node->node_type == PT_EXPR && pt_op_reads_client_value (node->info.expr.op))
+    {
+      *reads = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * pt_expr_tree_reads_client_value () - whether an expression tree contains an operator that compiles to a value
+ *	of the client (pt_op_reads_client_value)
+ *   return: true if so
+ *   parser(in): parser context
+ *   tree(in): expression tree
+ */
+bool
+pt_expr_tree_reads_client_value (PARSER_CONTEXT * parser, PT_NODE * tree)
+{
+  bool reads = false;
+
+  (void) parser_walk_tree (parser, tree, pt_reads_client_value_walk, &reads, NULL, NULL);
+  return reads;
+}
+
+/*
  * Seeded random state: while parser->rand_states is set, each seeded RAND, DRAND,
  * RANDOM and DRANDOM call node keeps its own generator, seeded on its first
  * evaluation and advanced on every later one, as the server keeps one per

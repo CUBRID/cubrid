@@ -160,6 +160,8 @@ extern "C"
   extern PT_VOLATILITY pt_get_expr_tree_volatility (PT_NODE * node, PT_NODE ** unclassified_node);
   extern bool pt_op_reads_statement_clock (PT_OP_TYPE op, const PT_NODE * arg1);
   extern bool pt_expr_tree_reads_statement_clock (PARSER_CONTEXT * parser, PT_NODE * tree);
+  extern bool pt_op_reads_client_value (PT_OP_TYPE op);
+  extern bool pt_expr_tree_reads_client_value (PARSER_CONTEXT * parser, PT_NODE * tree);
 
   extern void pt_report_to_ersys (const PARSER_CONTEXT * parser, const PT_ERROR_TYPE error_type);
 
@@ -725,7 +727,7 @@ extern "C"
   extern PT_NODE *pt_cdt_registry_tree_copy (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_NODE * err_node,
 					     PT_VOLATILITY * volatility);
   extern void pt_cdt_registry_free (PARSER_CONTEXT * parser);
-  extern bool pt_class_defaults_read_client (PARSER_CONTEXT * parser, DB_OBJECT * class_obj);
+  extern bool pt_omitted_defaults_read_client (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern PT_NODE *pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern int pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher, int ciper_size);

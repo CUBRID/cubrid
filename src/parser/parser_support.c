@@ -11123,37 +11123,19 @@ pt_cdt_registry_free (PARSER_CONTEXT * parser)
 }
 
 /*
- * pt_find_client_value_op () - parser_walk_tree callback: whether a node compiles to a value of the compiling
- *	client (see pt_class_defaults_read_client)
- */
-static PT_NODE *
-pt_find_client_value_op (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
-{
-  bool *found = (bool *) arg;
-
-  if (node->node_type == PT_EXPR && (node->info.expr.op == PT_USER || node->info.expr.op == PT_VERSION))
-    {
-      *found = true;
-      *continue_walk = PT_STOP_WALK;
-    }
-  return node;
-}
-
-/*
- * pt_class_defaults_read_client () - whether a residual DEFAULT of a class compiles to a value of the compiling
- *	client: XASL generation turns USER () into the client's user and host name and VERSION () into the client's
- *	build. An INSERT compiles the DEFAULTs it fills into its XASL, so its XASL cache key must carry those values.
+ * pt_omits_client_default () - whether an INSERT into a class leaves out a column whose residual DEFAULT compiles
+ *	a client value (pt_expr_tree_reads_client_value) into its DEFAULT slot
  *   return: true if so
- *   parser(in): parser context owning the CDT registry
- *   class_obj(in): the class an INSERT or MERGE writes into
+ *   parser(in): parser context
+ *   class_obj(in): the class inserted into
+ *   attrs(in): the columns the INSERT lists
  */
-bool
-pt_class_defaults_read_client (PARSER_CONTEXT * parser, DB_OBJECT * class_obj)
+static bool
+pt_omits_client_default (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * attrs)
 {
   SM_CLASS *smclass = NULL;
   SM_ATTRIBUTE *att;
-  PT_NODE *tree;
-  bool found = false;
+  PT_NODE *attr, *tree;
 
   if (class_obj == NULL || au_fetch_class_force (class_obj, &smclass, AU_FETCH_READ) != NO_ERROR)
     {
@@ -11161,9 +11143,22 @@ pt_class_defaults_read_client (PARSER_CONTEXT * parser, DB_OBJECT * class_obj)
       return false;
     }
 
-  for (att = smclass->attributes; att != NULL && !found; att = (SM_ATTRIBUTE *) att->header.next)
+  for (att = smclass->attributes; att != NULL; att = (SM_ATTRIBUTE *) att->header.next)
     {
       if (!DB_IS_RESIDUAL_DEFAULT_EXPR (&att->default_value.default_expr))
+	{
+	  continue;
+	}
+
+      /* the columns left out are those pt_find_omitted_default_expr gives the slots */
+      for (attr = attrs; attr != NULL; attr = attr->next)
+	{
+	  if (!pt_str_compare (pt_get_name (attr), att->header.name, CASE_INSENSITIVE))
+	    {
+	      break;
+	    }
+	}
+      if (attr != NULL)
 	{
 	  continue;
 	}
@@ -11172,12 +11167,60 @@ pt_class_defaults_read_client (PARSER_CONTEXT * parser, DB_OBJECT * class_obj)
       if (tree == NULL)
 	{
 	  /* name resolution decoded this tree already; a failure here is reported when the XASL is generated */
-	  found = true;
-	  break;
+	  return true;
 	}
-      (void) parser_walk_tree (parser, tree, pt_find_client_value_op, &found, NULL, NULL);
+      if (pt_expr_tree_reads_client_value (parser, tree))
+	{
+	  return true;
+	}
     }
 
+  return false;
+}
+
+/*
+ * pt_find_omitted_client_default () - parser_walk_tree callback of pt_omitted_defaults_read_client
+ */
+static PT_NODE *
+pt_find_omitted_client_default (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *found = (bool *) arg;
+  PT_NODE *spec = NULL, *attrs = NULL;
+
+  if (node->node_type == PT_INSERT)
+    {
+      spec = node->info.insert.spec;
+      attrs = node->info.insert.attr_list;
+    }
+  else if (node->node_type == PT_MERGE && node->info.merge.insert.value_clauses != NULL)
+    {
+      spec = node->info.merge.into;
+      attrs = node->info.merge.insert.attr_list;
+    }
+
+  if (spec != NULL && spec->info.spec.flat_entity_list != NULL
+      && pt_omits_client_default (parser, spec->info.spec.flat_entity_list->info.name.db_object, attrs))
+    {
+      *found = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/*
+ * pt_omitted_defaults_read_client () - whether an INSERT or MERGE of a statement, a nested one included, leaves
+ *	out a column whose residual DEFAULT compiles a client value: its DEFAULT slot holds that value, which the
+ *	statement text does not show, so the XASL cache key must carry it
+ *   return: true if so
+ *   parser(in): parser context
+ *   statement(in): the statement, after its views are translated
+ */
+bool
+pt_omitted_defaults_read_client (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  bool found = false;
+
+  (void) parser_walk_tree (parser, statement, pt_find_omitted_client_default, &found, NULL, NULL);
   return found;
 }
 
