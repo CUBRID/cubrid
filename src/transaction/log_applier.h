@@ -45,6 +45,9 @@
    (error == ER_TDE_CIPHER_IS_NOT_LOADED)             || \
    (error == ER_LK_DEADLOCK_CYCLE_DETECTED))
 
+#define LA_IS_FLUSH_ERROR(err) \
+  ((err) == ER_LC_PARTIALLY_FAILED_TO_FLUSH || (err) == ER_LC_FAILED_TO_FLUSH_REPL_ITEMS)
+
 typedef enum
 {
   REPL_FILTER_NONE,

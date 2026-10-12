@@ -6926,6 +6926,14 @@ locator_repl_get_key_value (DB_VALUE * key_value, LC_COPYAREA * force_area, LC_C
   return (int) (ptr - start_ptr);
 }
 
+/* records at least this long are traced one by one by xlocator_repl_force (diagnostic, trace level 1+)
+ *
+ * TODO: Temporary diagnostic for a defect check, to be removed. It was added to trace large rows that were
+ *       found corrupted on the slave (the worker record pool was sized from the default log page size
+ *       instead of the database page size). Remove it, together with the other [WSET] diag traces in
+ *       log_applier.c, locator_cl.c and locator_sr.c, once that fix is verified. */
+#define LOCATOR_REPL_DIAG_RECORD_LENGTH 1024
+
 /*
  * xlocator_force () - Updates objects sent by log applier
  *
@@ -7079,9 +7087,39 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 	    }			/* end-switch */
 	}
 
+      /* Diagnostic: one line per large replicated record (wide rows) and per delete, so a row that the slave
+       * applier sent but never got stored, or one removed by a delete it did not expect, can be traced to
+       * the request, the operation and its result. Ordinary inserts and updates are not logged. */
+      if ((recdes.length >= LOCATOR_REPL_DIAG_RECORD_LENGTH || obj->operation == LC_FLUSH_DELETE)
+	  && wset_trace_enabled (1))
+	{
+	  char *key_print = pr_valstring (&key_value);
+
+	  _er_log_debug (ARG_FILE_LINE,
+			 "[WSET] diag repl_force obj=%d/%d class=%d|%d|%d op=%d key=%s rec_len=%d oid=%d|%d|%d "
+			 "error=%d\n", i, mobjs->num_objs, obj->class_oid.volid, obj->class_oid.pageid,
+			 obj->class_oid.slotid, obj->operation, key_print != NULL ? key_print : "?", recdes.length,
+			 obj->oid.volid, obj->oid.pageid, obj->oid.slotid, error_code);
+	  if (key_print != NULL)
+	    {
+	      db_private_free (thread_p, key_print);
+	    }
+	}
+
       if (error_code != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
+
+	  /* A deadlock victim must give up its locks. Going on with the next object would make it wait
+	   * again with those locks still held, and the cycle it was chosen to break would never clear.
+	   * Fail the whole call instead so the client aborts the transaction. */
+	  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()))
+	    {
+	      error_code = er_errid ();
+	      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &oneobj_lsa);
+	      goto exit_on_error;
+	    }
+
 	  locator_repl_add_error_to_copyarea (reply_area, &reply_recdes, obj, &key_value, er_errid (), er_msg ());
 
 	  error_code = NO_ERROR;
@@ -8094,6 +8132,14 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 		{
 		  if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 		    {
+		      /* Pre-existing defect fixed here: the failed lock was not reported. error_code still held the
+		       * previous index's NO_ERROR, so a lock that failed (deadlock victim, lock timeout) returned
+		       * success. The insert was reported as done with this and the later indexes left unmaintained,
+		       * and a deadlock victim went on holding its locks, so the deadlock never cleared and every
+		       * transaction queued behind it hung. Seen when this row reused the heap slot of a row another
+		       * transaction had inserted and rolled back (failed statement or savepoint) while keeping its
+		       * X lock on the OID. */
+		      ASSERT_ERROR_AND_SET (error_code);
 		      goto error;
 		    }
 		}
@@ -8866,6 +8912,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 			{
 			  if (lock_object (thread_p, oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 			    {
+			      /* Pre-existing defect fixed here, same as in locator_add_or_remove_index_internal: a failed
+			       * lock (deadlock victim, lock timeout) returned the previous NO_ERROR, so the update was
+			       * reported as done with this and the later index keys left unmaintained, and a deadlock
+			       * victim kept its locks and the deadlock never cleared. */
+			      ASSERT_ERROR_AND_SET (error_code);
 			      goto error;
 			    }
 			}
