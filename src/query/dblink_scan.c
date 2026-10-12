@@ -30,6 +30,7 @@
 #include "xasl.h"
 
 #include "dbtype.h"
+#include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "query_list.h"
@@ -491,7 +492,8 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
  *
  * Note: The handshake already stored the type, so this costs no round trip.  It gates both the codeset
  *   we declare and the values we refuse for not being in it, so the two always cover the same
- *   connections.
+ *   connections.  The remote DELETE sink also restores the pushed value's type only where this holds,
+ *   since the CAST it adds is CUBRID syntax.
  */
 static bool
 dblink_remote_is_cubrid (int conn_handle)
@@ -1735,22 +1737,6 @@ sql_build_error:
  */
 
 /*
- * dblink_dml_remote_is_cubrid () - Is the remote a native CUBRID server?
- *   return: true only for a direct or proxied CUBRID connection
- *   conn_handle(in): open CCI connection
- *
- * Free to ask: cci_get_dbms_type() reads broker_info[BROKER_INFO_DBMS_TYPE], which the connection
- * handshake already filled in -- no round-trip, so this needs no caching.
- */
-static bool
-dblink_dml_remote_is_cubrid (int conn_handle)
-{
-  int dbms_type = cci_get_dbms_type (conn_handle);
-
-  return dbms_type == CAS_DBMS_CUBRID || dbms_type == CAS_PROXY_DBMS_CUBRID;
-}
-
-/*
  * dblink_dml_unresolved_fallback_casts () - Is this source type one of those the unresolved-marker
  *   fallback casts?
  *   return: true for the four date/time types
@@ -1842,7 +1828,7 @@ dblink_dml_cast_type (TP_DOMAIN * src_dom, char *buf, size_t buflen)
  *
  * The marker is the sink's only way to see the target type: a DML prepare carries no column information
  * (CAS ships that only for SELECT). The rule, its fallback and why an unreadable marker refuses instead
- * of falling back are in the policy comment above dblink_dml_remote_is_cubrid().
+ * of falling back are in the policy comment above dblink_dml_unresolved_fallback_casts().
  */
 static int
 dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *buf, size_t buflen,
@@ -1851,29 +1837,55 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
   T_CCI_PARAM_INFO *param_info = NULL;
   T_CCI_ERROR err_buf;
   const char *cast_type = NULL;
-  DB_TYPE src_type = TP_DOMAIN_TYPE (src_dom);
-  int marker_type, num_param;
+  DB_TYPE src_type;
+  T_CCI_U_TYPE marker_type;
+  int num_param;
+  char errmsg[sizeof (err_buf.err_msg) + 160];
 
+  /* The caller fills it in both modes (see qexec_execute_remote_dml_sink); a NULL would read as
+   * DB_TYPE_NULL and fall back to the bare "?" without a word. */
+  assert (src_dom != NULL);
+
+  src_type = TP_DOMAIN_TYPE (src_dom);
   *cast_type_out = NULL;
 
   num_param = cci_get_param_info (stmt_handle, &param_info, &err_buf);
-  if (num_param < 1 || param_info == NULL)
+  if (num_param != 1 || param_info == NULL)
     {
       /* num_param == 0 still hands back a malloc(0) block, so free before leaving */
       cci_param_info_free (param_info);
       /* "WHERE column", not "marker": the marker is the placeholder this file generates, so it is not in
-       * the statement the user wrote, while the column it stands for is. */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
-	      "remote DELETE: the remote did not report the type of the WHERE column, "
-	      "so the comparison cannot be made safely");
+       * the statement the user wrote, while the column it stands for is. The statement carries exactly one
+       * placeholder, so any other count means it is not the statement the sink built. err_buf is filled
+       * only when the call fails -- the call resets it first. */
+      if (num_param < 0)
+	{
+	  snprintf (errmsg, sizeof (errmsg),
+		    "remote DELETE: the remote did not report the type of the WHERE column, "
+		    "so the comparison cannot be made safely (CCI error %d: %s)", num_param,
+		    err_buf.err_msg[0] != '\0' ? err_buf.err_msg : "no message from the remote");
+	}
+      else if (num_param != 1)
+	{
+	  snprintf (errmsg, sizeof (errmsg),
+		    "remote DELETE: the remote did not report the type of the WHERE column, "
+		    "so the comparison cannot be made safely (%d parameters reported, expected 1)", num_param);
+	}
+      else
+	{
+	  snprintf (errmsg, sizeof (errmsg),
+		    "remote DELETE: the remote did not report the type of the WHERE column, "
+		    "so the comparison cannot be made safely");
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
       return ER_DBLINK;
     }
 
   /* through dblink_get_basic_utype() so the comparison stays right if a marker ever arrives with the
    * collection bits set -- CCI_GET_PARAM_INFO_TYPE reports the *ext* type. */
-  marker_type = (int) dblink_get_basic_utype ((T_CCI_U_EXT_TYPE) CCI_GET_PARAM_INFO_TYPE (param_info, 1));
+  marker_type = dblink_get_basic_utype ((T_CCI_U_EXT_TYPE) CCI_GET_PARAM_INFO_TYPE (param_info, 1));
 
-  if (marker_type == (int) CCI_U_TYPE_NULL)
+  if (marker_type == CCI_U_TYPE_NULL)
     {
       /* Fallback: a numeric or ENUM target leaves the domain unresolved. Which source types cast or refuse
        * here, and why, is in the policy comment above. */
@@ -1890,7 +1902,7 @@ dblink_dml_delete_cast_type_needed (int stmt_handle, TP_DOMAIN * src_dom, char *
 	  cast_type = dblink_dml_cast_type (src_dom, buf, buflen);
 	}
     }
-  else if (marker_type != (int) dblink_dml_src_utype (src_type))
+  else if (marker_type != dblink_dml_src_utype (src_type))
     {
       cast_type = dblink_dml_cast_type (src_dom, buf, buflen);
     }
@@ -1994,6 +2006,7 @@ dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE
   T_CCI_ERROR err_buf;
   char *sql = NULL;
   int ret, req;
+  char errmsg[sizeof (err_buf.err_msg) + 160];
 
   ret = dblink_dml_build_delete_sql (thread_p, table_name, key_col, op, cast_type, &sql);
   if (ret != NO_ERROR)
@@ -2006,7 +2019,10 @@ dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE
   db_private_free (thread_p, sql);
   if (req < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, err_buf.err_msg);
+      /* The remote's message is about a CAST the user did not write, so say where it came from. */
+      snprintf (errmsg, sizeof (errmsg), "remote DELETE (comparing in the source type, CAST(? AS %s)): %s",
+		cast_type, err_buf.err_msg[0] != '\0' ? err_buf.err_msg : "no message from the remote");
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
       /* Remote conn stays in dblink pool; cleaned up at local txn end by qmgr_check_dblink_trans() */
       return ER_DBLINK;
     }
@@ -2029,9 +2045,9 @@ dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE
  *   num_bind(in)    : INSERT and REPLACE only -- number of ? placeholders (= SELECT column count)
  *   key_col(in)     : DELETE only -- remote WHERE column (left-hand side, e.g. rc1)
  *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<>", "<", ">", "<=", ">=")
- *   src_dom(in)     : DELETE only -- domain of the local subquery's source column (NULL when
- *                     unknown). Used to restore the pushed value's declared type; see the policy comment
- *                     above dblink_dml_remote_is_cubrid()
+ *   src_dom(in)     : DELETE only -- domain of the local subquery's source column (NULL for INSERT
+ *                     and REPLACE). Used to restore the pushed value's declared type; see the policy
+ *                     comment above dblink_dml_unresolved_fallback_casts()
  *   state(out)      : filled with conn_handle and stmt_handle on success
  *
  * Note: To prevent partial writes, both kinds ALWAYS:
@@ -2124,7 +2140,7 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
     case DBLINK_DML_DELETE:
       /* The first SQL always carries a bare "?": what to cast to is only knowable from the marker, which
        * needs this prepare to exist. Gated on a CUBRID remote -- CAST is CUBRID syntax. */
-      restore_type = (key_col != NULL && dblink_dml_remote_is_cubrid (state->conn_handle));
+      restore_type = (key_col != NULL && dblink_remote_is_cubrid (state->conn_handle));
       ret = dblink_dml_build_delete_sql (thread_p, sink->table_name, key_col, op, NULL, &sql);
       break;
     default:

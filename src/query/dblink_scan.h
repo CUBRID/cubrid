@@ -31,7 +31,6 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "dbtype_def.h"
-#include "object_domain.h"
 #include "storage_common.h"
 #include "thread_compat.hpp"
 
@@ -40,6 +39,8 @@ struct val_descr;
 typedef struct val_descr VAL_DESCR;
 struct remote_dml_sink;
 typedef struct remote_dml_sink REMOTE_DML_SINK;
+struct tp_domain;
+typedef struct tp_domain TP_DOMAIN;
 
 typedef enum
 {
