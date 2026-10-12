@@ -670,7 +670,7 @@ struct connect_by_path_index
 
 #define CONNECT_BY_SPILL_CHUNK_MAX_NODES 65536
 #define CONNECT_BY_SPILL_CHUNK_DIR_INIT_CAPACITY 16
-/* spilling stops at half the limit, so at least two chunks must fit; one reload re-admits at most a quarter */
+/* spilling stops at half the limit, so a chunk is at most a quarter of it; qexec_connect_by_spill_init floors it */
 #define CONNECT_BY_SPILL_CHUNKS_PER_LIMIT 4
 #define CONNECT_BY_NODE_ARRAY_INIT_CAPACITY 32
 #define CONNECT_BY_HASH_MULTIPLIER 31u
@@ -20765,8 +20765,6 @@ qexec_connect_by_spill_children_to_stack (THREAD_ENTRY * thread_p, CONNECT_BY_DF
   int idx = base, chunk_start = base, chunk_count = 0, flag;
   int error = NO_ERROR;
 
-  /* same chunk size as the stack/path spill: a tiny limit keeps chunks tiny, which stays linear instead of reloading
-   * a big batch only for the spill machinery to evict it again */
   flag = (spill->type_list->hdr_size == QFILE_TUPLE_HDR_SIZE_BACKWARD) ? QFILE_FLAG_BACKWARD : 0;
 
   qfile_close_list (thread_p, spill->children_list);
