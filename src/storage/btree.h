@@ -114,6 +114,23 @@ struct leaf_rec
   short key_len;
 };
 
+// *INDENT-OFF*
+enum DOMAIN_SEARCH_KEYS : unsigned char;
+// *INDENT-ON*
+
+/* How an index scan's B-tree compares its search key values with the index keys: the scan's choice from its key
+ * plan, made before any row (scan_index_search_compare). */
+enum BTREE_SEARCH_COMPARE
+{
+  BTREE_SEARCH_COMPARE_RESOLVED = 0,	/* btree_compare_key_with's type and collation checks, then the key plan's
+					 * comparison of a value that does not compare as it is (by value outside a
+					 * query plan) */
+  BTREE_SEARCH_COMPARE_DIRECT,	/* a single-column key whose values all have the index column's type and collation:
+				 * the column's cmpval */
+  BTREE_SEARCH_COMPARE_MIDXKEY_PLAIN	/* a multi-column key whose values all have their columns' types and
+					 * collations: the midxkey comparison without the plan's element comparison */
+};
+
 /* BTID_INT structure from btree_load.h */
 typedef struct btid_int BTID_INT;
 struct btid_int
@@ -129,6 +146,10 @@ struct btid_int
   VFID ovfid;
   char *copy_buf;		/* index key copy_buf pointer info; derived from INDX_SCAN_ID.copy_buf */
   int copy_buf_len;		/* index key copy_buf length info; derived from INDX_SCAN_ID.copy_buf_len */
+  BTREE_SEARCH_COMPARE search_compare;	/* how the comparisons of an index scan's search key values compare; derived
+					 * with search_keys; RESOLVED outside an index scan */
+  DOMAIN_SEARCH_KEYS search_keys;	/* what the comparisons of an index scan's search key values read; derived
+					 * from INDX_SCAN_ID's key plan; DOMAIN_SEARCH_KEYS_NONE outside an index scan */
   int rev_level;
   int deduplicate_key_idx;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
   OID topclass_oid;		/* class oid for which index is created */
@@ -715,6 +736,36 @@ struct btree_insert_list
 };
 // *INDENT-ON*
 
+typedef enum
+{
+  BTREE_KEY_PEEK,		/* data is borrowed; its owner must keep it alive */
+  BTREE_KEY_COPY		/* data is the key's own copy */
+} BTREE_KEY_MODE;
+
+/* A key as a b+tree record stores it: the index_writeval () image and its length. */
+typedef struct btree_key BTREE_KEY;
+struct btree_key
+{
+  TP_DOMAIN *domain;		/* the domain data was written with: key_type on a leaf, nonleaf_key_type above */
+  const char *data;
+  int length;			/* byte length of data */
+  BTREE_KEY_MODE mode;
+  char *storage;		/* BTREE_KEY_COPY only: the buffer data points into */
+  int capacity;			/* BTREE_KEY_COPY only: bytes storage can hold */
+};
+
+/* key_domain must not be named domain: the macro would replace the member name too. */
+#define BTREE_KEY_INIT(key, key_domain)	\
+  do					\
+    {					\
+      (key)->domain = (key_domain);	\
+      (key)->data = NULL;		\
+      (key)->length = 0;		\
+      (key)->mode = BTREE_KEY_COPY;	\
+      (key)->storage = NULL;		\
+      (key)->capacity = 0;		\
+    } while (false)
+
 /* BTREE_RANGE_SCAN_PROCESS_KEY_FUNC -
  * btree_range_scan internal function that is called for each key that passes
  * range/filter checks.
@@ -931,14 +982,13 @@ extern int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTI
 /* Stores an overflow key on behalf of btree_write_record_ex () and returns the VPID of its first page.  Lets the
  * parallel no-logging index build route overflow keys through its own page provider instead of
  * btree_store_overflow_key (). */
-typedef int (*BTREE_STORE_OVF_KEY_FUNC) (THREAD_ENTRY * thread_p, void *arg, DB_VALUE * key, int key_len,
-					 BTREE_NODE_TYPE node_type, VPID * first_vpid);
+typedef int (*BTREE_STORE_OVF_KEY_FUNC) (THREAD_ENTRY * thread_p, void *arg, const BTREE_KEY * key, VPID * first_vpid);
 
 extern int btree_write_record (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
-			       BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading,
-			       OID * class_oid, OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
-extern int btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec, DB_VALUE * key,
-				  BTREE_NODE_TYPE node_type, int key_type, int key_len, bool during_loading,
+			       BTREE_NODE_TYPE node_type, int key_type, int key_len, OID * class_oid, OID * oid,
+			       BTREE_MVCC_INFO * mvcc_info, RECDES * rec);
+extern int btree_write_record_ex (THREAD_ENTRY * thread_p, BTID_INT * btid, void *node_rec,
+				  const BTREE_KEY * key, BTREE_NODE_TYPE node_type, int key_type,
 				  OID * class_oid, OID * oid, BTREE_MVCC_INFO * mvcc_info, RECDES * rec,
 				  BTREE_STORE_OVF_KEY_FUNC store_ovf_key_fn, void *store_ovf_key_arg);
 extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pgptr, RECDES * Rec, DB_VALUE * key,
@@ -946,6 +996,8 @@ extern int btree_read_record (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR
 			      BTREE_SCAN * bts);
 extern DB_VALUE_COMPARE_RESULT btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain,
 						  int do_coercion, int total_order, int *start_colp);
+extern DB_VALUE_COMPARE_RESULT btree_compare_search_key (const BTID_INT * btid, DB_VALUE * key1, DB_VALUE * key2,
+							 int *start_colp);
 extern PERF_PAGE_TYPE btree_get_perf_btree_page_type (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr);
 
 extern void btree_dump_key (FILE * fp, const DB_VALUE * key);
