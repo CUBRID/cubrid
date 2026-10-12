@@ -205,13 +205,10 @@ encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *
       encrypt_salt_generate (salt_in, sizeof (salt_in));
       salt = salt_in;
     }
-  else if (IS_ENCODED_SHA2_512 (pass) && strlen (pass + 1) == ENCRYPT_SHA2_512_HEX_SIZE)
-    {
-      strcpy (sha512, pass);
-    }
   else
     {
-      encrypt_password_sha2_512 (pass, sha512);
+      assert (IS_ENCODED_SHA2_512 (pass) && strlen (pass + 1) == ENCRYPT_SHA2_512_HEX_SIZE);
+      strcpy (sha512, pass);
     }
 
   if (sha512[0] == '\0')
@@ -264,7 +261,7 @@ match_password (const char *name, const char *user, const char *database)
     {
       /* DB: DES */
       strcpy (buf2, database);
-      if (IS_ENCODED_ANY (user))
+      if (IS_USER_ENCRYPTED_PASSWORD (user))
 	{
 	  /* USER : DES */
 	  strcpy (buf1, Au_user_password_des_oldstyle);
@@ -279,7 +276,7 @@ match_password (const char *name, const char *user, const char *database)
     {
       /* DB: SHA1 */
       strcpy (buf2, database);
-      if (IS_ENCODED_ANY (user))
+      if (IS_USER_ENCRYPTED_PASSWORD (user))
 	{
 	  /* USER:SHA1 */
 	  strcpy (buf1, Au_user_password_sha1);
@@ -294,7 +291,7 @@ match_password (const char *name, const char *user, const char *database)
     {
       /* DB: SHA2 */
       strcpy (buf2, database);
-      if (IS_ENCODED_ANY (user))
+      if (IS_USER_ENCRYPTED_PASSWORD (user))
 	{
 	  /* USER:SHA2 */
 	  strcpy (buf1, Au_user_password_sha2_512);
@@ -321,13 +318,28 @@ match_password (const char *name, const char *user, const char *database)
       memcpy (salt, database + 1, ENCRYPT_SALT_SIZE_HEX);
       salt[ENCRYPT_SALT_SIZE_HEX] = '\0';
 
-      encrypt_password_sha2_512_salt (name, salt, user, buf1);
+      /* Distinguish execution paths using pointer comparison:
+       * start() passes pre-hashed Au_user_password_sha2_512, whereas login() passes raw input. */
+      if (IS_USER_ENCRYPTED_PASSWORD (user))
+	{
+	  encrypt_password_sha2_512_salt (name, salt, user, buf1);
+	}
+      else
+	{
+	  char user_sha512[AU_MAX_PASSWORD_BUF + 4];
+	  encrypt_password_sha2_512 (user, user_sha512);
+	  if (user_sha512[0] == '\0')
+	    {
+	      return false;
+	    }
+	  encrypt_password_sha2_512_salt (name, salt, user_sha512, buf1);
+	}
     }
   else
     {
       /* DB:PLAINTEXT -> SHA2 */
       encrypt_password_sha2_512 (database, buf2);
-      if (IS_ENCODED_ANY (user))
+      if (IS_USER_ENCRYPTED_PASSWORD (user))
 	{
 	  /* USER : SHA2 */
 	  strcpy (buf1, Au_user_password_sha2_512);

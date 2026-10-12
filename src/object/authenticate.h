@@ -73,6 +73,12 @@ class print_output;
 #define Au_user_password_sha1           au_ctx ()->user_password_sha1
 #define Au_user_password_sha2_512       au_ctx ()->user_password_sha2_512
 
+/* While start() always passes the Au_user_encrypted_password buffer with a pre-hashed password, 
+ * login() passes the input password as-is, allowing the two paths to be distinguished via pointer comparison. */
+#define Au_user_encrypted_password      au_ctx ()->user_password_sha2_512
+#define IS_USER_ENCRYPTED_PASSWORD(ptr) ((ptr) == Au_user_encrypted_password)
+
+
 #define Au_cache                        au_ctx ()->caches
 
 /* Functions */

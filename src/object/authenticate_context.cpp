@@ -194,7 +194,7 @@ authenticate_context::start (void)
 	      strcpy (user_name, AU_PUBLIC_USER_NAME);
 	    }
 
-	  error = perform_login (user_name, user_password_sha2_512, false);
+	  error = perform_login (user_name, Au_user_encrypted_password, false);
 	}
     }
 
