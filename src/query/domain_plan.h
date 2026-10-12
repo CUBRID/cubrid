@@ -502,5 +502,7 @@ int stx_build_domain_plan (THREAD_ENTRY * thread_p, xasl_node * root, xasl_unpac
  * and any other side by the key pair table. */
 int domain_plan_stream_compares (THREAD_ENTRY * thread_p, cubxasl::pred_expr * pred, regu_variable_node * regu);
 int domain_plan_validate (const DOMAIN_PLAN * plan);
+bool domain_non_cacheable_operator (OPERATOR_TYPE opcode);
+bool domain_branch_operator (OPERATOR_TYPE opcode);
 
 #endif /* _DOMAIN_PLAN_H_ */
