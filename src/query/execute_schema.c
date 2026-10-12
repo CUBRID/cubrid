@@ -238,6 +238,7 @@ static int drop_class_name (const char *name, bool is_cascade_constraints);
 static int do_alter_one_clause_with_template (PARSER_CONTEXT * parser, PT_NODE * alter);
 static int do_build_default_expr (PARSER_CONTEXT * parser, PT_NODE * data_default, DB_DEFAULT_EXPR * dest);
 static void do_free_default_expr_streams (DB_DEFAULT_EXPR * dest);
+static int do_check_kept_residual_default (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_NODE * attribute);
 static int lob_process_dir_add_attr (SM_CLASS * class_, int old_att_count);
 static int lob_process_dir_drop_attr (SM_CLASS * class_, const char *attr_name);
 static int do_alter_clause_rename_entity (PARSER_CONTEXT * const parser, PT_NODE * const alter);
@@ -8057,6 +8058,56 @@ do_free_default_expr_streams (DB_DEFAULT_EXPR * dest)
 }
 
 /*
+ * do_check_kept_residual_default () - check the residual DEFAULT an attribute keeps through MODIFY / CHANGE
+ *	without a DEFAULT clause against its new type, the way CREATE checks a DEFAULT it is given
+ *   return: error code
+ *   parser(in): parser context
+ *   att(in): the attribute as it is before the change
+ *   attribute(in): its PT_ATTR_DEF, of the new type
+ */
+static int
+do_check_kept_residual_default (PARSER_CONTEXT * parser, const SM_ATTRIBUTE * att, PT_NODE * attribute)
+{
+  PT_NODE *expr, *data_default;
+  PT_VOLATILITY volatility;
+  DB_VALUE value;
+  int error;
+
+  if (!DB_IS_RESIDUAL_DEFAULT_EXPR (&att->default_value.default_expr))
+    {
+      return NO_ERROR;
+    }
+
+  expr = pt_cdt_registry_tree_copy (parser, att, attribute, &volatility);
+  if (expr == NULL)
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      return er_errid ();
+    }
+
+  data_default = pt_make_data_default_expr_node (parser, expr);
+  if (data_default == NULL)
+    {
+      parser_free_tree (parser, expr);
+      PT_ERRORm (parser, attribute, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      return er_errid ();
+    }
+  data_default->info.data_default.expr_text =
+    pt_append_string (parser, NULL, att->default_value.default_expr.default_expr_text);
+  data_default->info.data_default.expr_volatility = volatility;
+
+  /* the check only: the attribute keeps its stored DEFAULT and DDL-time value */
+  db_make_null (&value);
+  error = get_att_default_from_data_default (parser, data_default, attribute->type_enum, attribute->data_type, NULL,
+					     &value);
+  pr_clear_value (&value);
+  parser_free_tree (parser, data_default);
+
+  return error;
+}
+
+/*
  * do_add_attribute() - Adds an attribute to a class object
  *   return: Error code
  *   parser(in): Parser context
@@ -11565,6 +11616,7 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   DB_VALUE *new_default = NULL;
   DB_VALUE *default_value = &stack_value;
   SM_ATTRIBUTE *found_att = NULL;
+  SM_ATTRIBUTE *old_att = NULL;
   int error = NO_ERROR;
   bool change_first = false;
   const char *change_after_attr = NULL;
@@ -11658,6 +11710,21 @@ do_change_att_schema_only (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NOD
   /* default_value is either NULL or pointing to address of stack_value */
   assert (default_value == NULL || default_value == &stack_value);
   new_default = default_value;
+
+  if (attribute->info.attr_def.data_default == NULL)
+    {
+      error = smt_find_attribute (ctemplate, attr_name, (attr_chg_prop->name_space == ID_CLASS_ATTRIBUTE) ? 1 : 0,
+				  &old_att);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+      error = do_check_kept_residual_default (parser, old_att, attribute);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
 
   /* a residual DEFAULT (STABLE or VOLATILE) keeps its expression through MODIFY / CHANGE, so it keeps being
    * evaluated per statement or per row instead of freezing to the DDL-time snapshot */
