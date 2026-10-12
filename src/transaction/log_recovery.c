@@ -1559,7 +1559,7 @@ log_rv_analysis_complete (THREAD_ENTRY * thread_p, int tran_id, LOG_LSA * log_ls
 
   donetime = (LOG_REC_DONETIME *) ((char *) log_page_p->area + log_lsa->offset);
   last_at_time = (time_t) donetime->at_time;
-  if (stop_at != NULL && *stop_at != (time_t) (-1) && difftime (*stop_at, last_at_time) < 0)
+  if (stop_at != NULL && *stop_at != (time_t) (-1) && difftime (*stop_at, last_at_time) <= 0)
     {
 #if !defined(NDEBUG)
       if (prm_get_bool_value (PRM_ID_LOG_TRACE_DEBUG))
