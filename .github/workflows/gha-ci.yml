@@ -1682,27 +1682,22 @@ jobs:
   shard:
     name: "shard ${{ matrix.suite }} ${{ matrix.i }}"
     needs: plan
-    # success() is false for a failed job anywhere behind this one: without this a
-    # red release leg skips every shard, though plan published the split.
+    # success() is false for a failed job anywhere behind this one: a red release leg
+    # would skip every shard, though plan published the split.
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
-    # 50 privileged pods running testcase code; testcases arrive via the App token.
     permissions: {}
-    # The lane comes from plan, not an expression here: plan already owns the
-    # split, and a second copy of the rule is the one nobody updates.
+    # plan owns the lane, as it owns the split.
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
-      # One dying must not stop the rest. No max-parallel: maxRunners is the ceiling.
       fail-fast: false
-      # include, not a cross product: each element is one (suite, index) pair plan
-      # wrote, so `/run all` is one matrix over all three suites' shards.
       matrix:
         include: ${{ fromJson(needs.plan.outputs.matrix) }}
     container:
       image: cubridci/cubridci:test_rl8.10
     defaults:
       run:
-        shell: bash
+        shell: bash --noprofile --norc -euo pipefail {0}
     env:
       WORKDIR: /home
       CUBRID_DIR: /home/CUBRID
@@ -1710,176 +1705,97 @@ jobs:
       SUITE: ${{ matrix.suite }}
       IDX: ${{ matrix.i }}
       BUILD_NS: ${{ needs.plan.outputs.build_ns }}
+      PLAN_DIR: ${{ needs.plan.outputs.rundir }}/${{ matrix.suite }}/plan
+      SHARD_DIR: ${{ needs.plan.outputs.rundir }}/${{ matrix.suite }}/shard/${{ matrix.i }}
 
     steps:
       - name: Resolve the suite
         id: suite
         run: |
-          set -euo pipefail
           attr() { jq -r --arg s "$SUITE" --arg k "$1" '.[$s][$k] // ""' <<<"$SUITES"; }
-          repo=$(attr tc_repo)
-          # Every step below reads these and never the table, the way the entrypoint's
-          # functions read what resolve_category set.
           {
-            echo "TC_REPO=$repo"
-            echo "TC_DIR=$WORKDIR/$repo"
+            echo "TC_DIR=$WORKDIR/$(attr tc_repo)"
             echo "TC_SEED=$(attr tc_seed)"
-            echo "CTP_CMD=$(attr ctp_cmd)"
-            echo "CTP_CONF=$(attr ctp_conf)"
-            echo "XML_SRC=$(attr xml_src)"
-            echo "VERDICT_SRC=$(attr verdict_src)"
-            echo "UNIT=$(attr unit)"
-            echo "EXCLUDE=$(attr exclude)"
-            echo "CASE_GLOB=$(attr case_glob)"
-            echo "CASE_FILTER=$(attr case_filter)"
-            echo "PLAN_DIR=$RUNDIR/$SUITE/plan"
-            echo "SHARD_DIR=$RUNDIR/$SUITE/shard/$IDX"
             echo "STAMP=$STAMPS/shard-$SUITE-$IDX.tsv"
           } >> "$GITHUB_ENV"
-          # The App token is minted only where a private repo needs one.
           echo "tc_private=$(attr tc_private)" >> "$GITHUB_OUTPUT"
-          echo "suite $SUITE / shard $IDX / repo $repo"
 
       - name: Check the pod template assumptions
         run: |
-          set -euo pipefail
-          # plan does not run again under "Re-run failed jobs", so nothing has made
-          # this attempt's stamps directory.
+          # plan does not run again under "Re-run failed jobs", so nothing made this attempt's stamps.
           mkdir -p "$(dirname "$STAMP")"
           printf 'start\t%s\n' "$(date -u +%s)" > "$STAMP"
-
-          # Dying here, before the share is read, is the shape a pod lost at the hook
-          # layer leaves.
-          if [ -f "$PLAN_DIR/shards/${IDX}.kill" ]; then
-            echo "::error::sabotage=kill-shard: shard ${IDX} is dying on purpose, with its share intact"
+          if [ -f "$PLAN_DIR/shards/$IDX.kill" ]; then
+            echo "::error::sabotage=kill-shard: shard $IDX is dying on purpose, with its share intact"
             exit 1
           fi
-
-          # Without shareProcessNamespace, PID 1 never reaps the double-forked server,
-          # so `cubrid server stop` waits forever and the job hangs to the timeout.
-          # Nothing in the log says so, hence this check.
+          # Without shareProcessNamespace nothing reaps the double-forked server, and
+          # `cubrid server stop` hangs to the job timeout with nothing in the log.
           pid1=$(ps -p 1 -o comm= | tr -d ' ')
-          echo "PID 1: $pid1"
-          if [ "$pid1" != "pause" ]; then
-            echo "::error::PID 1 is not pause ($pid1). shareProcessNamespace: true is missing from the pod template."
-            echo "  Left as is, the shell tests hang instead of failing."
-            exit 1
-          fi
+          [ "$pid1" = pause ] || {
+            echo "::error::PID 1 is $pid1, not pause: the pod template lacks shareProcessNamespace: true"; exit 1; }
 
       - name: Take my share (guard 2 of 3)
         id: mine
         run: |
-          set -euo pipefail
-          f="$PLAN_DIR/shards/${IDX}.list"
-
-          # Guard 2 of 3. plan split everything, so an empty share is a bug.
-          # CircleCI could legitimately answer "your share is 0"; here it cannot.
-          if [ ! -f "$f" ]; then
-            echo "::error::my share file is missing: $f"
-            echo "  plan either never wrote it or it vanished. Zero cases is not success."
-            exit 1
-          fi
-          n=$(wc -l < "$f")
-          if [ "$n" -eq 0 ]; then
-            echo "::error::my share is empty: $f"
-            echo "  plan split everything, so zero is a bug. Zero cases is not success."
-            exit 1
-          fi
-          # A unit is one case for shell and one top-level directory for sql and
-          # medium, so the case count this shard owes comes from plan.tsv.
+          f="$PLAN_DIR/shards/$IDX.list"
+          # plan split everything, so no share is a bug, not a pass.
+          [ -f "$f" ] || { echo "::error::my share file is missing: $f"; exit 1; }
+          [ -s "$f" ] || { echo "::error::my share is empty: $f"; exit 1; }
+          # A unit is a case for shell and a top-level directory for sql and medium.
           want=$(awk -F'\t' -v i="$IDX" '$1 == i {print $2}' "$PLAN_DIR/plan.tsv")
           [ -n "$want" ] || { echo "::error::shard $IDX is not in $PLAN_DIR/plan.tsv"; exit 1; }
-          echo "my share: $n units, $want cases"
-          head -3 "$f"
           echo "n=$want" >> "$GITHUB_OUTPUT"
-          echo "units=$n" >> "$GITHUB_OUTPUT"
 
-      - name: Storage, two overlays and the build provenance
+      - name: Testcases, build and CTP, from the node copy
         env:
           SHA: ${{ needs.plan.outputs.sha }}
           WANT_BRID: ${{ needs.plan.outputs.build_run_id }}
         run: |
-          set -euo pipefail
-          # The whole tree, from the node copy: this shard deletes what is not its
-          # share below. Nothing crosses the network, and the write layer is tmpfs.
-          [ -d "$TC_SEED/.git" ] || {
-            echo "::error::no testcase seed: $TC_SEED"
-            echo "  gha-node-seed keeps the node copy; a swap leaves it absent for a moment."
-            exit 1; }
+          # Every lowerdir is inside the pod and every upperdir is tmpfs: nothing a case
+          # reads crosses the network, and nothing it writes outlives the pod.
+          for seed in "$TC_SEED" "$CTP_SEED"; do
+            [ -d "$seed/.git" ] || {
+              echo "::error::no node copy at $seed; gha-node-seed swaps it, so it can be absent for a moment"
+              exit 1; }
+          done
           mkdir -p /rw/upper /rw/work "$TC_DIR"
           mount -t overlay overlay -o "lowerdir=$TC_SEED,upperdir=/rw/upper,workdir=/rw/work" "$TC_DIR"
-          echo "testcases mounted: $TC_SEED"
+          mkdir -p /rw/ctp-upper /rw/ctp-work "$WORKDIR/cubrid-testtools"
+          mount -t overlay overlay \
+            -o "lowerdir=$CTP_SEED,upperdir=/rw/ctp-upper,workdir=/rw/ctp-work" "$WORKDIR/cubrid-testtools"
+          # The image derives init_path and PATH from CTP_HOME, so CTP has to be where it says.
+          [ -x "$CTP_HOME/bin/ctp.sh" ] || { echo "::error::no CTP at the image's CTP_HOME ($CTP_HOME)"; exit 1; }
 
-          # The lowerdir must live inside the pod -- pointed at the volume,
-          # every process launch in every case is a FUSE read. The write layer
-          # stays tmpfs: sql and medium create their databases under CUBRID_DIR.
           base="$CI_BUILD_ROOT/$BUILD_NS/$SHA/debug"
           lower=/build-lower/CUBRID
           mkdir -p /build-lower
           t0=$(date +%s)
           if [ -f "$base/CUBRID.tar.gz" ]; then
             tar -xzf "$base/CUBRID.tar.gz" -C /build-lower
-            from="$base/CUBRID.tar.gz"
           elif [ -d "$base/CUBRID" ]; then
-            # Published before this change: one bulk copy, not a shard-long drip.
-            cp -a "$base/CUBRID" "$lower"
-            from="$base/CUBRID"
+            cp -a "$base/CUBRID" "$lower"    # published before the archive
           else
             echo "::error::no build: $base/CUBRID.tar.gz"; exit 1
           fi
-          echo "build unpacked in $(( $(date +%s) - t0 ))s from $from"
-
+          echo "build unpacked in $(( $(date +%s) - t0 ))s"
           mkdir -p /build-rw/upper /build-rw/work "$CUBRID_DIR"
           mount -t overlay overlay \
             -o lowerdir="$lower",upperdir=/build-rw/upper,workdir=/build-rw/work "$CUBRID_DIR"
-          echo "CUBRID mounted: lowerdir=$lower"
 
-          # Read through the overlay the tests use, not the artifact on the volume.
+          # Read through the mount the tests use, not the artifact on the volume.
           m="$CUBRID_DIR/$BUILD_META"
-          [ -f "$m" ] || {
-            echo "::error::no $BUILD_META inside the mounted CUBRID"
-            echo "  What this shard reads is not the artifact the build job published."; exit 1; }
-
+          [ -f "$m" ] || { echo "::error::no $BUILD_META inside the mounted CUBRID"; exit 1; }
           got_sha=$(awk -F= '/^sha=/ {print $2}' "$m")
           got_brid=$(awk -F= '/^run_id=/ {print $2}' "$m")
-          echo "build read: sha=$got_sha run_id=$got_brid"
           [ "$got_sha" = "$SHA" ] || {
-            echo "::error::the build read has sha($got_sha), not plan's sha($SHA)"; exit 1; }
+            echo "::error::the build read has sha $got_sha, not plan's $SHA"; exit 1; }
           [ "$got_brid" = "$WANT_BRID" ] || {
-            echo "::error::the build read was made by run($got_brid), not the run plan verified($WANT_BRID)"
-            echo "  The artifact changed mid-pipeline."; exit 1; }
+            echo "::error::the build read was made by run $got_brid, not the one plan verified ($WANT_BRID)"; exit 1; }
+          mkdir -p "$SHARD_DIR"
+          cp -f "$m" "$SHARD_DIR/build.read"
 
-          # collect counts these files to decide every shard read the same build.
-          out="$SHARD_DIR"
-          mkdir -p "$out"
-          cp -f "$m" "$out/build.read"
-          echo "matches: this shard reads the build from run $got_brid"
-
-      - name: CTP, mounted from the node copy
-        run: |
-          set -euo pipefail
-          # The same copy plan read, on this node's disk. Nothing to publish and
-          # nothing to copy: the mount is the delivery. One CTP serves every suite.
-          [ -d "$CTP_SEED/.git" ] || {
-            echo "::error::no CTP seed: $CTP_SEED"
-            echo "  gha-node-seed keeps the node copy; a swap leaves it absent for a moment."
-            exit 1; }
-          mkdir -p /rw/ctp-upper /rw/ctp-work "$WORKDIR/cubrid-testtools"
-          mount -t overlay overlay \
-            -o "lowerdir=$CTP_SEED,upperdir=/rw/ctp-upper,workdir=/rw/ctp-work" \
-            "$WORKDIR/cubrid-testtools"
-          echo "CTP mounted: $CTP_SEED @ $(git -C "$WORKDIR/cubrid-testtools" rev-parse --short HEAD)"
-          # Deliberately the image's CTP_HOME, not a stated one: this line is the
-          # cross-check that where we just put CTP is where the image expects it.
-          # Stating it here would only compare the copy against itself, and would
-          # not move init_path or PATH, which the image derives from CTP_HOME and
-          # every shell case reads (". $init_path/init.sh").
-          ls "$CTP_HOME/bin/ctp.sh" "$CTP_HOME/$CTP_CONF"
-
-          sudo /usr/sbin/sshd || /usr/sbin/sshd || true
-
-      # Each job mints its own: job outputs cross boundaries unmasked. Only a suite
-      # whose testcases are private needs one at all.
+      # Each job mints its own: a job output crosses the boundary unmasked.
       - name: GitHub App token
         id: app-token
         if: steps.suite.outputs.tc_private == 'yes'
@@ -1887,293 +1803,72 @@ jobs:
         with:
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
-          # One private repo only: asking for cubrid-testtools fails token issuance.
+          # One repo only: naming cubrid-testtools too fails the issuance.
           repositories: cubrid-testcases-private-ex
           owner: CUBRID
-          # Read-only: the default would carry the installation's contents: write.
           permission-contents: read
-
-      - name: Mask the token
-        if: steps.suite.outputs.tc_private == 'yes'
-        env:
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
-        run: echo "::add-mask::$APP_TOKEN"
 
       - name: Align CTP and testcases to the commits plan saw
         env:
           GHI_TOKEN: ${{ steps.app-token.outputs.token }}
           WANT_CTP_SHA: ${{ needs.plan.outputs.ctp_sha }}
-          CTP_BRANCH: ${{ needs.plan.outputs.ctp_branch }}
         run: |
-          set -euo pipefail
-          # CTP must be mounted first: entrypoint needs .git to fetch instead of clone.
-          [ -d "$WORKDIR/cubrid-testtools/.git" ] || {
-            echo "::error::CTP is missing. The steps are in the wrong order"; exit 1; }
-
-          . "$PLAN_DIR/split.meta"       # tc_sha, tc_branch -- what plan pinned
-
-          rx0=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
-          # Commits, not branches: tc/pr-<N> and probe/* are deleted when the work that
-          # made them ends, and the checkout takes whatever it is given.
-          export BRANCH_TESTCASES="$tc_sha"
-          export BRANCH_TESTTOOLS="$WANT_CTP_SHA"
-          /entrypoint.sh checkout "$SUITE"
-
-          ctp="$WORKDIR/cubrid-testtools"
-          git -C "$ctp" cat-file -e "${WANT_CTP_SHA}^{commit}" 2>/dev/null \
-            || git -C "$ctp" fetch -q --depth 1 --no-tags origin "$WANT_CTP_SHA"
-          git -C "$ctp" reset -q --hard "$WANT_CTP_SHA"
-          got_ctp=$(git -C "$ctp" rev-parse HEAD)
-          echo "ctp branch : $CTP_BRANCH"
-          echo "ctp SHA   : $got_ctp"
-          [ "$got_ctp" = "$WANT_CTP_SHA" ] || {
-            echo "::error::could not align CTP to the SHA plan saw($WANT_CTP_SHA); at $got_ctp"; exit 1; }
-
-          cd "$TC_DIR"
-          # The entrypoint drops its git credential on exit, so this carries its own.
-          # An empty one would turn an anonymous fetch into a failed authentication.
-          if [ -n "$GHI_TOKEN" ]; then
-            export GIT_CONFIG_COUNT=1
-            export GIT_CONFIG_KEY_0="url.https://x-access-token:${GHI_TOKEN}@github.com/.insteadof"
-            export GIT_CONFIG_VALUE_0="https://github.com/"
-          fi
-          git fetch -q --depth 1 --no-tags origin "$tc_sha"
-          git reset -q --hard "$tc_sha"
-          got=$(git rev-parse HEAD)
-          [ "$got" = "$tc_sha" ] || {
-            echo "::error::could not align to the tc SHA plan saw($tc_sha); at $got"; exit 1; }
-          rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
-          echo "tc branch  : $tc_branch"
-          echo "tc SHA    : $got"
-          echo "refresh WAN: $(( (rx1 - rx0) / 1048576 )) MB"
-
-          # collect counts these to decide every shard saw the same testcases.
-          out="$SHARD_DIR"
-          mkdir -p "$out"
-          printf 'tc_sha=%s\ntc_branch=%s\n' "$got" "$tc_branch" > "$out/tc.read"
+          [ -z "$GHI_TOKEN" ] || echo "::add-mask::$GHI_TOKEN"
+          . "$PLAN_DIR/split.meta"
+          wan() { awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev; }
+          rx0=$(wan)
+          # Commits, not branches: tc/pr-<N> and probe/* are gone once their work ends.
+          BRANCH_TESTCASES="$tc_sha" BRANCH_TESTTOOLS="$WANT_CTP_SHA" /entrypoint.sh checkout "$SUITE"
+          echo "refresh WAN: $(( ($(wan) - rx0) / 1048576 )) MB"
+          printf 'tc_sha=%s\ntc_branch=%s\n' "$(git -C "$TC_DIR" rev-parse HEAD)" "$tc_branch" > "$SHARD_DIR/tc.read"
 
       - name: Keep only my share
-        env:
-          MINE_N: ${{ steps.mine.outputs.n }}
-          MINE_UNITS: ${{ steps.mine.outputs.units }}
-        run: |
-          set -euo pipefail
-          f="$PLAN_DIR/shards/${IDX}.list"
-
-          # The same rule plan counted by, so "cases left" and "expected" are
-          # comparable. No match is grep exit 1, which pipefail would turn fatal.
-          count_cases() {
-            find "$TC_DIR/$SUITE" -path "$CASE_GLOB" 2>/dev/null \
-              | { [ -z "$CASE_FILTER" ] && cat || { grep -P "$CASE_FILTER" || :; }; } \
-              | wc -l
-          }
-
-          [ -z "$EXCLUDE" ] || rm -rf "$TC_DIR/$SUITE/$EXCLUDE"
-
-          # Keeping everything is grep -v exit 1, not an error: parallelism 1 with no
-          # limit does exactly that. pipefail would kill the step.
-          if [ "$UNIT" = dir ]; then
-            # A unit is a top-level directory, so the delete is at that level too.
-            # Everything that is not a unit stays: medium's files/ and both suites'
-            # config/. CircleCI keeps them the same way -- its prune deletes *.sql
-            # files and nothing else (config.yml 259-261).
-            sed "s#^$TC_REPO/$SUITE/##" "$f" | sort -u > /tmp/keep_units.list
-            find "$TC_DIR/$SUITE" -mindepth 1 -maxdepth 1 -type d -name '_*' -printf '%f\n' \
-              | { grep -vxF -f /tmp/keep_units.list || :; } \
-              | sed "s#^#$TC_DIR/$SUITE/#" \
-              | xargs -r rm -rf
-          else
-            # A unit is one case file, so the delete is by the directory holding it.
-            # plan emits a repo-prefixed path; the delete side is absolute.
-            sed "s#^$TC_REPO/#$TC_DIR/#" "$f" \
-              | xargs -n1 dirname | sort -u > /tmp/keep_dirs.list
-            find "$TC_DIR/$SUITE" -name cases -type d \
-              | { grep -v -F -f /tmp/keep_dirs.list || :; } \
-              | xargs -r rm -rf
-          fi
-
-          left=$(count_cases)
-
-          echo "units kept: $MINE_UNITS"
-          echo "cases left: $left (expected: $MINE_N)"
-          # Both are tmpfs and charged to this container's memory cgroup, with no
-          # swap to reclaim to. This is the baseline before any test has run;
-          # "Publish results for collect" reports the cgroup high-water mark.
-          echo "/rw       : $(df -h /rw | tail -1 | awk '{print $3" used of "$2}')"
-          echo "/build-rw : $(df -h /build-rw | tail -1 | awk '{print $3" used of "$2}')"
-          # Not tmpfs: the unpacked build, inside the pod.
-          echo "/build-lower : $(du -sh /build-lower 2>/dev/null | awk '{print $1}')"
+        run: /entrypoint.sh keep "$TC_DIR/$SUITE" "$PLAN_DIR/shards/$IDX.list"
 
       - name: Run CTP
         id: ctp
         env:
           # The only CircleCI variable CTP reads. Without it every shard logs as `local`.
           CIRCLE_NODE_INDEX: ${{ matrix.i }}
+        # A failed test does not stop here: collect needs the results published first.
         run: |
-          set -euo pipefail
-          ulimit -c 10485760
-          set +e
-          ( cd "$CTP_HOME" && HOME="$WORKDIR" ./bin/ctp.sh "$CTP_CMD" -c "$CTP_HOME/$CTP_CONF" )
-          rc=$?
-          set -e
-          echo "ctp exit: $rc"
+          rc=0
+          /entrypoint.sh test "$SUITE" || rc=$?
           echo "rc=$rc" >> "$GITHUB_OUTPUT"
-          # Do not stop on a non-zero exit: collect needs the results published first.
 
       - name: Publish results for collect
         if: always()
         env:
-          MINE_N: ${{ steps.mine.outputs.n }}
-          CTP_RC: ${{ steps.ctp.outputs.rc }}
+          WANT: ${{ steps.mine.outputs.n }}
+          TEST_RC: ${{ steps.ctp.outputs.rc }}
         run: |
-          set -euo pipefail
-          out="$SHARD_DIR"
-          # The verdict file stays at the shard root next to build.read and shard.done:
-          # it is this shard's control record, not a result anyone else reads.
-          mkdir -p "$out/artifacts"
-          logs="$CTP_HOME/$XML_SRC"
-
-          if [ -d "$logs" ]; then
-            case "$VERDICT_SRC" in
-              test_status.data)
-                real=$(readlink -f "$logs")
-                mkdir -p "$out/test-results"
-                cp -f "$real/test_status.data" "$out/test_status.data" 2>/dev/null || true
-                cp -f "$real/test-shell.xml" "$out/test-results/" 2>/dev/null || true
-                cp -f "$real/feedback.log" "$out/artifacts/" 2>/dev/null || true
-                ;;
-              summary_info)
-                # The SQL runner writes one summary_info per level of the result
-                # tree, and the leaf ones carry `<case>:ok` / `<case>:nok` -- the
-                # same file the entrypoint's judge_sqlresult reads. Merged into one,
-                # so that its absence is what tells collect this shard ran nothing.
-                find "$logs" -type f -name summary_info -exec cat {} + > /tmp/summary_info 2>/dev/null || :
-                [ -s /tmp/summary_info ] && cp -f /tmp/summary_info "$out/summary_info" || :
-                # The per-case queries and diffs are in the JUnit XML, which collect
-                # reads for the summary. summary.xml is the old format, 725 KB of waste.
-                mkdir -p "$out/test-results"
-                find "$logs" -type f -name '*.xml' ! -name summary.xml \
-                  -exec cp -f {} "$out/test-results/" \; 2>/dev/null || :
-                ;;
-            esac
+          /entrypoint.sh results "$SUITE" "$SHARD_DIR"
+          eval "$(/entrypoint.sh count "$SUITE" "$SHARD_DIR")"
+          # The pod is gone seconds after this, so a failure's evidence leaves now. Only
+          # on failure: a green 50-shard run would write 50 archives nobody reads.
+          if [ "${TEST_RC:-1}" != 0 ] || [ "$found" = no ] || [ "$fail" -gt 0 ]; then
+            /entrypoint.sh evidence "$SUITE" "$SHARD_DIR" 10G || echo "::warning::could not keep all of the failure evidence"
+            cp -f "$PLAN_DIR/shards/$IDX.list" "$SHARD_DIR/tc.list" || echo "::warning::no share list for shard $IDX"
           fi
-
-          # Those files say a case failed, never why. The pod and its overlay are
-          # gone seconds after this step, so the evidence has to leave now -- on failure
-          # only, because a green 50-shard run would write 50 archives nobody reads.
-          # CircleCI's Collect Logs keeps the same things, ERROR_BACKUP included.
-          #
-          # "Failed" is not ctp's exit code. Measured in the fork, run 32834158935:
-          # shard 00 reported `ctp exit: 0` with 8 of its 10 cases failed. ctp.sh
-          # returns 0 for a completed suite whatever the cases did, which is why the
-          # Verdict step below reads the result file instead. Read the same file here,
-          # and treat a missing one as a failure: then the tests never ran at all.
-          fail_n=0
-          if [ -f "$out/$VERDICT_SRC" ]; then
-            case "$VERDICT_SRC" in
-              test_status.data)
-                fail_n=$(awk -F= '/total_fail_case_count/ {print $2+0}' "$out/test_status.data") ;;
-              summary_info)
-                fail_n=$(grep -cE ':nok[[:space:]]+[0-9]+ms$' "$out/summary_info" || :) ;;
-            esac
-          fi
-          if [ "${CTP_RC:-1}" != '0' ] || [ "$fail_n" -gt 0 ] \
-             || [ ! -f "$out/$VERDICT_SRC" ]; then
-            echo "=== ctp_rc=${CTP_RC:-(step did not run)} failed_cases=$fail_n:"
-            echo "=== keeping the failure evidence ==="
-
-            if [ -d "$logs" ]; then
-              real=$(readlink -f "$logs")
-              tar czf "$out/artifacts/ctp_log.tgz" -C "$(dirname "$real")" "$(basename "$real")" \
-                || echo "::warning::could not archive $logs"
-            fi
-
-            # The units this shard owned. plan's copy is the same list, but a reader of
-            # a failed shard should not have to go looking for it.
-            cp -f "$PLAN_DIR/shards/${IDX}.list" "$out/tc.list" \
-              || echo "::warning::no share list for shard ${IDX}"
-
-            # Not $CUBRID_DIR/log/coredump: core_pattern is `core`, and CTP packs each core
-            # with the build and the case into one archive here, deleting the original.
-            # The shards share one GlusterFS volume, hence the per-file cap, and a failed
-            # copy must not cost this shard its shard.done.
-            backup="$WORKDIR/ERROR_BACKUP"
-            if [ -d "$backup" ]; then
-              find "$backup" -maxdepth 1 -type f -print | while IFS= read -r f; do
-                mkdir -p "$out/artifacts/ERROR_BACKUP" || :
-                sz=$(stat -c '%s' "$f") || { echo "::warning::could not stat $f"; continue; }
-                if [ "$sz" -le 10737418240 ]; then
-                  cp -f "$f" "$out/artifacts/ERROR_BACKUP/" \
-                    || echo "::warning::could not copy $(basename "$f")"
-                else
-                  echo "::warning::$(basename "$f") is $((sz / 1048576)) MB, over the 10 GiB cap: not copied"
-                  printf '%s\t%s\n' "$(basename "$f")" "$sz" >> "$out/artifacts/ERROR_BACKUP/oversized.tsv" || :
-                fi
-              done
-            fi
-          fi
-
-          # Marks that the shard got this far. Without it collect counts it as dead.
-          printf 'suite=%s\nidx=%s\nassigned=%s\nctp_rc=%s\n' \
-            "$SUITE" "$IDX" "$MINE_N" "${CTP_RC}" > "$out/shard.done"
-
+          # Without it collect counts this shard as dead.
+          printf 'suite=%s\nidx=%s\nassigned=%s\ntest_rc=%s\n' "$SUITE" "$IDX" "$WANT" "${TEST_RC:-}" > "$SHARD_DIR/shard.done"
           printf 'end\t%s\n' "$(date -u +%s)" >> "$STAMP"
-
-          echo "published: $out"
-          ls -la "$out"
-          [ -f "$out/$VERDICT_SRC" ] && head -20 "$out/$VERDICT_SRC" || echo "(no result file)"
-
-          # df is an instant reading, so these are what survived CTP teardown, NOT
-          # the maximum -- measured 2026-08-24, the residue runs 9-13x under the peak.
-          # always() so a tmpfs that filled up still reports its size.
-          echo "/rw       (after CTP): $(df -h /rw | tail -1 | awk '{print $3" used of "$2}')"
-          echo "/build-rw (after CTP): $(df -h /build-rw | tail -1 | awk '{print $3" used of "$2}')"
-          # The one real high-water mark available without sampling, and the number
-          # a sizeLimit change must clear: tmpfs pages are charged to this cgroup,
-          # so it covers both mounts plus RSS and page cache -- which is what a node
-          # OOM is decided on. Compare it against the job pod's memory limit.
-          for f in /sys/fs/cgroup/memory.peak \
-                   /sys/fs/cgroup/memory/memory.max_usage_in_bytes; do
-            [ -r "$f" ] || continue
-            awk '{printf "container memory peak: %.1f GiB\n", $1 / 1073741824}' "$f"
-            break
-          done
+          # tmpfs is charged to this container's memory cgroup, so the peak covers both mounts.
+          peak=$(cat /sys/fs/cgroup/memory.peak /sys/fs/cgroup/memory/memory.max_usage_in_bytes 2>/dev/null | head -1 || :)
+          used() { df -h "$1" | awk 'END {print $3 "/" $2}'; }
+          echo "memory peak ${peak:+$(awk -v b="$peak" 'BEGIN {printf "%.1f GiB", b / 1073741824}')} · /rw $(used /rw) · /build-rw $(used /build-rw) · /build-lower $(du -sh /build-lower 2>/dev/null | cut -f1)"
 
       - name: Verdict
         if: always()
         env:
-          MINE_N: ${{ steps.mine.outputs.n }}
+          WANT: ${{ steps.mine.outputs.n }}
         run: |
-          set -euo pipefail
-          out="$SHARD_DIR"
-          st="$out/$VERDICT_SRC"
-          [ -f "$st" ] || { echo "::error::no CTP result file ($VERDICT_SRC): the tests did not run"; exit 1; }
-
-          case "$VERDICT_SRC" in
-            test_status.data)
-              exec_n=$(awk -F= '/total_executed_case_count/ {print $2+0}' "$st")
-              fail_n=$(awk -F= '/total_fail_case_count/ {print $2+0}' "$st")
-              skip_n=$(awk -F= '/total_skip_case_count/ {print $2+0}' "$st")
-              ;;
-            summary_info)
-              # One line per case: `<path>:ok    123ms`, `<path>:nok    123ms`, or an
-              # empty verdict for a case the conf's exclusion list held back.
-              fail_n=$(grep -cE ':nok[[:space:]]+[0-9]+ms$' "$st" || :)
-              pass_n=$(grep -cE ':ok[[:space:]]+[0-9]+ms$' "$st" || :)
-              skip_n=$(grep -cE ':[[:space:]]+[0-9]+ms$' "$st" || :)
-              exec_n=$((pass_n + fail_n))
-              ;;
-          esac
-          want="$MINE_N"
-          echo "assigned $want / run $exec_n / failed $fail_n / skipped $skip_n"
-
-          # run + skipped must equal what was assigned; fewer means silent loss.
-          if [ "$((exec_n + skip_n))" -lt "$want" ]; then
-            echo "::error::assigned $want but only $((exec_n + skip_n)) handled: cases went missing"
-            exit 1
-          fi
-          [ "$fail_n" -eq 0 ] || { echo "::error::$fail_n failed"; exit 1; }
-          echo "this shard passed"
+          eval "$(/entrypoint.sh count "$SUITE" "$SHARD_DIR")"
+          [ "$found" = yes ] || { echo "::error::no CTP result file: the tests did not run"; exit 1; }
+          echo "assigned $WANT / run $exec / failed $fail / skipped $skip"
+          [ $((exec + skip)) -ge "$WANT" ] || {
+            echo "::error::assigned $WANT but only $((exec + skip)) handled: cases went missing"; exit 1; }
+          [ "$fail" -eq 0 ] || { echo "::error::$fail failed"; exit 1; }
 
   collect:
     name: collect
