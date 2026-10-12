@@ -13022,6 +13022,7 @@ static int
 pt_evaluate_seeded_rand (PARSER_CONTEXT * parser, const PT_NODE * node, int seed, bool is_double, DB_VALUE * result)
 {
   struct pt_rand_state *state = NULL;
+  struct drand48_data local, *buf = &local;
 
   if (parser->rand_states != NULL)
     {
@@ -13043,36 +13044,26 @@ pt_evaluate_seeded_rand (PARSER_CONTEXT * parser, const PT_NODE * node, int seed
 	  state->next = *parser->rand_states;
 	  *parser->rand_states = state;
 	}
+      buf = &state->buf;
+    }
+  else
+    {
+      /* a generator of its own, as the server seeds one, rather than the process-wide one */
+      srand48_r ((long) seed, &local);
     }
 
   if (is_double)
     {
       double d;
 
-      if (state != NULL)
-	{
-	  drand48_r (&state->buf, &d);
-	}
-      else
-	{
-	  srand48 (seed);
-	  d = drand48 ();
-	}
+      drand48_r (buf, &d);
       db_make_double (result, d);
     }
   else
     {
       long int r;
 
-      if (state != NULL)
-	{
-	  lrand48_r (&state->buf, &r);
-	}
-      else
-	{
-	  srand48 (seed);
-	  r = lrand48 ();
-	}
+      lrand48_r (buf, &r);
       db_make_int (result, r);
     }
 
