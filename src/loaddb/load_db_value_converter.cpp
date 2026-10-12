@@ -473,12 +473,26 @@ namespace cubload
   int
   to_db_bigint (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
+    /*
+     * str_size counts a leading sign and MAX_DIGITS_FOR_BIGINT counts digits, and the
+     * two paths below do not want the same string. parse_bigint () reads either sign.
+     * numeric_coerce_dec_str_to_num () does not: it is an engine internal whose other
+     * callers hand it a bare digit string and carry the sign apart from it, so it
+     * takes a '-' and reads a '+' as a digit. Counting the sign pushed a 19 digit
+     * literal onto that path, where +1234567890123456789 came back an overflow and
+     * the line was lost - INSERT reads the sign in the grammar and stores the value.
+     */
+    const bool has_sign = (str_size > 0 && (str[0] == '+' || str[0] == '-'));
+    const size_t num_digits = has_sign ? str_size - 1 : str_size;
+    const char *digits = has_sign ? str + 1 : str;
+    const char *dec_str = (has_sign && str[0] == '+') ? digits : str;
+
     db_make_bigint (val, 0);
 
     /* Let try take the fastest path here, if we know that number we are getting fits into a long, use strtol, else we
      * need to convert it to a double and coerce it, checking for overflow. Note if integers with leading zeros are
      * entered this can take the slower route. */
-    if (str_size < MAX_DIGITS_FOR_BIGINT || (str_size == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
+    if (num_digits < MAX_DIGITS_FOR_BIGINT || (num_digits == MAX_DIGITS_FOR_BIGINT && digits[0] != '9'))
       {
 	int error_code = parse_bigint (&val->data.bigint, str, 10);
 	if (error_code != 0)
@@ -493,7 +507,7 @@ namespace cubload
 	DB_BIGINT tmp_bigint;
 	bool is_value_negative = false;
 
-	numeric_coerce_dec_str_to_num (str, num.d.buf, &is_value_negative);
+	numeric_coerce_dec_str_to_num (dec_str, num.d.buf, &is_value_negative);
 	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint, is_value_negative) != NO_ERROR)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BIGINT));
@@ -1096,6 +1110,12 @@ namespace cubload
   {
     int error_code = NO_ERROR;
 
+    /* The sign is counted and stripped the way to_db_bigint () explains. */
+    const bool has_sign = (str_size > 0 && (str[0] == '+' || str[0] == '-'));
+    const size_t num_digits = has_sign ? str_size - 1 : str_size;
+    const char *digits = has_sign ? str + 1 : str;
+    const char *dec_str = (has_sign && str[0] == '+') ? digits : str;
+
     /*
      * Watch out for really long digit strings that really are being
      * assigned into a DB_TYPE_NUMERIC attribute; they can hold more than a
@@ -1103,7 +1123,7 @@ namespace cubload
      * data.
      * Is there some better way to test for this condition?
      */
-    if (str_size < MAX_DIGITS_FOR_INT || (str_size == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
+    if (num_digits < MAX_DIGITS_FOR_INT || (num_digits == MAX_DIGITS_FOR_INT && (digits[0] == '0' || digits[0] == '1')))
       {
 	db_make_int (val, 0);
 	error_code = parse_int (&val->data.i, str, 10);
@@ -1113,7 +1133,7 @@ namespace cubload
 	    return ER_IT_DATA_OVERFLOW;
 	  }
       }
-    else if (str_size < MAX_DIGITS_FOR_BIGINT || (str_size == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
+    else if (num_digits < MAX_DIGITS_FOR_BIGINT || (num_digits == MAX_DIGITS_FOR_BIGINT && digits[0] != '9'))
       {
 	db_make_bigint (val, 0);
 	error_code = parse_bigint (&val->data.bigint, str, 10);
@@ -1129,10 +1149,10 @@ namespace cubload
 	DB_BIGINT tmp_bigint;
 	bool is_value_negative = false;
 
-	numeric_coerce_dec_str_to_num (str, num.d.buf, &is_value_negative);
+	numeric_coerce_dec_str_to_num (dec_str, num.d.buf, &is_value_negative);
 	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint, is_value_negative) != NO_ERROR)
 	  {
-	    int precision = (int) str_size - (str[0] == '+' || str[0] == '-');
+	    int precision = (int) num_digits;
 	    if (precision > DB_MAX_NUMERIC_PRECISION)
 	      {
 		precision = DB_MAX_NUMERIC_PRECISION;
