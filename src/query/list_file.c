@@ -545,6 +545,22 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_li
 	  const_cast < QFILE_LIST_ID * >(src_list_id_p)->dependent_list_id = NULL;
 	  break;
 
+	case QFILE_COPY_DEPENDENT:
+	  /* both list ids read the same files; each owns its dependent list ids, so either one can be cleared */
+	  dest_list_id_p->dependent_list_id =
+	    qfile_clone_list_id (src_list_id_p->dependent_list_id, false, QFILE_COPY_DEPENDENT);
+	  if (dest_list_id_p->dependent_list_id == NULL)
+	    {
+	      if (dest_list_id_p->sort_list != NULL)
+		{
+		  qfile_free_sort_list (NULL, dest_list_id_p->sort_list);
+		  dest_list_id_p->sort_list = NULL;
+		}
+	      free_and_init (dest_list_id_p->type_list.domp);
+	      return ER_FAILED;
+	    }
+	  break;
+
 	case QFILE_PROHIBIT_DEPENDENT:
 	default:
 	  /* impossible case */
