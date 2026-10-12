@@ -40,6 +40,7 @@
 
 #include <stack>
 
+#include "db_multi_threads_connections.h"
 #include "porting.h"
 #include "misc_string.h"
 #include "memory_alloc.h"
@@ -84,7 +85,7 @@
  *
  * 
  */
-static authenticate_context *au_ctx_obj = nullptr;
+static CUB_THREAD_LOCAL authenticate_context *au_ctx_obj = nullptr;
 
 int
 au_login (const char *name, const char *password, bool ignore_dba_privilege)
@@ -101,6 +102,18 @@ au_ctx (void)
     }
   return au_ctx_obj;
 }
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+void
+au_ctx_destructor (void)
+{
+  if (au_ctx_obj != nullptr)
+    {
+      delete au_ctx_obj;
+      au_ctx_obj = nullptr;
+    }
+}
+#endif
 
 /*
  * DB_ EXTENSION FUNCTIONS

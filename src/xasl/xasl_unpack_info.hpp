@@ -26,6 +26,7 @@
 #include "porting.h"
 #include "system.h"
 #include "thread_compat.hpp"
+#include "db_multi_threads_connections.h"
 
 const size_t MAX_PTR_BLOCKS = 256;
 
