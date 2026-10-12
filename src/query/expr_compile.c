@@ -2274,7 +2274,10 @@ expr_arith_operands_unconverted (const EXPR_BUILD_CTX * bctx, const ARITH_TYPE *
     {
       plan = &item->fixed;
     }
-  return plan != NULL && plan->conv[0] == NULL && plan->conv[1] == NULL;
+  /* The operator dispatches on the plan's ARITH value (qdata_arith_dbval): the kernels are the
+   * number operator, so only a plan that names a number is theirs -- an unresolved plan is the
+   * fetch's unresolved-domain error, a date, string or collection plan another operator's. */
+  return plan != NULL && plan->conv[0] == NULL && plan->conv[1] == NULL && plan->arith.kind == DOMAIN_ARITH_NUMBER;
 }
 
 /* the DB_TYPE a leaf will produce, as known at compile time */
@@ -4126,9 +4129,13 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  bool numeric_pure = false, lazy;
 
 	  /* the operand coercion the plan (or the gate) chose for this node: the kernels below are
-	   * the direct typed operator, so a node that converts an operand on the row stays
-	   * interpreted -- except the NUMERIC mix, whose integer-side coercion the kernel mirrors */
-	  if (rtype != DB_TYPE_NUMERIC && !expr_arith_operands_unconverted (bctx, arith))
+	   * the direct number operator, so a node whose plan converts an operand on the row stays
+	   * interpreted.  The NUMERIC mix is no exception: the ARITH rule converts neither of two
+	   * numbers (domain_arith_rule), and the number operator coerces the integer side itself
+	   * (qdata_number_numeric) -- which is what expr_k_coerce_numeric mirrors below.  A pair the
+	   * rule does convert (a division of two integers under oracle_compat_number_behavior) is the
+	   * planned converters' and stays interpreted. */
+	  if (!expr_arith_operands_unconverted (bctx, arith))
 	    {
 	      return -1;
 	    }

@@ -658,7 +658,9 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
       if (eval_prog != NULL && valptr_list_p->eval_prog_idx[k] >= 0)
 	{
 	  /* the program owns the cell: a column cast into its domain is cast in place */
-	  vals[n] = qdata_get_dbval_from_prog (thread_p, &reg_var_p->value, eval_prog, valptr_list_p->eval_prog_idx[k], val_desc_p);
+	  vals[n] =
+	    qdata_get_dbval_from_prog (thread_p, &reg_var_p->value, eval_prog, valptr_list_p->eval_prog_idx[k],
+				       val_desc_p);
 	}
       else
 	{
@@ -852,7 +854,8 @@ qdata_collect_tuple_values (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
       if (eval_prog != NULL && valptr_list_p->eval_prog_idx[i] >= 0)
 	{
 	  /* the program owns the cell: a column cast into its domain is cast in place */
-	  value = qdata_get_dbval_from_prog (thread_p, regu_var_p, eval_prog, valptr_list_p->eval_prog_idx[i], val_desc_p);
+	  value =
+	    qdata_get_dbval_from_prog (thread_p, regu_var_p, eval_prog, valptr_list_p->eval_prog_idx[i], val_desc_p);
 	}
       else
 	{
