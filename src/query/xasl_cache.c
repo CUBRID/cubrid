@@ -2167,18 +2167,29 @@ xcache_drop_all (THREAD_ENTRY * thread_p)
 /*
  * xcache_drop_clones () - Free the clones kept in XASL cache entries. The entries stay in cache.
  *
- * return	 : Void.
+ * return	 : Error code.
  * thread_p (in) : Thread entry.
  * sha1 (in)	 : Free only the clones of the entries with this sha1. NULL for all entries.
  */
-void
+int
 xcache_drop_clones (THREAD_ENTRY * thread_p, const char *sha1)
 {
   XASL_CACHE_ENTRY *xcache_entry = NULL;
+  XASL_CLONE *clones = NULL;
+  int n_clones = 0;
+  int i;
 
-  if (!xcache_Enabled)
+  if (!xcache_Enabled || !xcache_uses_clones ())
     {
-      return;
+      return NO_ERROR;
+    }
+
+  /* Free the clones after unlocking cache_clones_mutex; executions of the query lock it to fetch a clone. */
+  clones = (XASL_CLONE *) malloc (xcache_Max_clones * sizeof (XASL_CLONE));
+  if (clones == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, xcache_Max_clones * sizeof (XASL_CLONE));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
   xcache_check_logging ();
@@ -2196,12 +2207,20 @@ xcache_drop_clones (THREAD_ENTRY * thread_p, const char *sha1)
 	}
 
       (void) pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
-      while (xcache_entry->n_cache_clones > 0)
-	{
-	  xcache_clone_decache (thread_p, &xcache_entry->cache_clones[--xcache_entry->n_cache_clones], xcache_entry);
-	}
+      assert (xcache_entry->n_cache_clones <= xcache_Max_clones);
+      n_clones = xcache_entry->n_cache_clones;
+      memcpy (clones, xcache_entry->cache_clones, n_clones * sizeof (XASL_CLONE));
+      xcache_entry->n_cache_clones = 0;
       (void) pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
+
+      for (i = 0; i < n_clones; i++)
+	{
+	  xcache_clone_decache (thread_p, &clones[i], xcache_entry);
+	}
     }
+
+  free_and_init (clones);
+  return NO_ERROR;
 }
 
 /*
