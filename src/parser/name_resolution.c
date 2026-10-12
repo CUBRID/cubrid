@@ -11904,6 +11904,32 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
   parser->host_variables = larger_host_variables;
   parser->host_var_expected_domains = larger_host_var_expected_domains;
 
+  /* keep the end of the replaced name or path expression in the source text
+   * for the text edits of the static SQL (see pt_collect_static_sql_edits ()) */
+  {
+    bool was_null = (parser->static_sql_host_var_end == NULL);
+    int *larger_host_var_end = (int *) realloc (parser->static_sql_host_var_end, count_to_realloc * sizeof (int));
+
+    if (larger_host_var_end != NULL)
+      {
+	if (was_null)
+	  {
+	    for (int i = 0; i < parser->host_var_count; i++)
+	      {
+		larger_host_var_end[i] = -1;
+	      }
+	  }
+	larger_host_var_end[parser->host_var_count] = name_node->buffer_pos;
+	parser->static_sql_host_var_end = larger_host_var_end;
+      }
+    else
+      {
+	/* the text edits can not be made; the rewritten query will be printed from the tree */
+	free_and_init (parser->static_sql_host_var_end);
+	parser->static_sql_edit_status = -1;
+      }
+  }
+
   db_make_null (&parser->host_variables[parser->host_var_count]);
   parser->host_var_expected_domains[parser->host_var_count] = pt_type_enum_to_db_domain (PT_TYPE_NONE);
 
@@ -11912,11 +11938,6 @@ pt_parameterize_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * name_node)
   larger_host_var_expected_domains = NULL;
 
   PT_NODE_MOVE_NUMBER_OUTERLINK (hostvar, name_node);
-
-  /* keep the end of the replaced name or path expression in the source text
-   * for the text edits of the static SQL (see pt_collect_static_sql_edits ()) */
-  hostvar->buffer_pos = name_node->buffer_pos;
-
   parser_free_tree (parser, name_node);
 
   return hostvar;

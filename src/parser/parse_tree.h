@@ -3974,6 +3974,7 @@ struct parser_context
   PT_STATIC_SQL_EDIT *static_sql_edits;
   int static_sql_edit_count;
   int static_sql_edit_status;	/* 0: not collected, 1: collected, -1: can not be expressed as text edits */
+  int *static_sql_host_var_end;	/* end in the text of each PL/CSQL variable replaced with a host variable */
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   HIDE_PWD_INFO hide_pwd_info;

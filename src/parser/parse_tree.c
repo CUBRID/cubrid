@@ -1270,6 +1270,11 @@ parser_free_parser (PARSER_CONTEXT * parser)
       free_and_init (parser->host_var_expected_domains);
     }
 
+  if (parser->static_sql_host_var_end)
+    {
+      free_and_init (parser->static_sql_host_var_end);
+    }
+
   parser_free_lcks_classes (parser);
 
   /* free remaining plan trace string */
