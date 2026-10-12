@@ -512,8 +512,8 @@ enum hash_scan_key_rule
   HASH_SCAN_KEY_COPY,		/* the values have the probe key's type: copied */
   HASH_SCAN_KEY_CONVERT,	/* the resolved converter brings each value into the probe key's domain */
   HASH_SCAN_KEY_COERCE,		/* tp_value_coerce brings each value into the probe key's domain: a JSON value, which
-				 * its scalar converts, or a string domain whose collation is the values' (LEAVE,
-				 * ENFORCE) */
+				 * its scalar converts, a string domain whose collation is the values' (LEAVE,
+				 * ENFORCE), or a NUMERIC whose precision/scale hashes differently */
   HASH_SCAN_KEY_FAIL		/* the probe key's domain is variable (a node not computed yet in this execution):
 				 * a coercion into it refuses every value (ER_TP_CANT_COERCE). This is develop's answer
 				 * and timing (the first non-NULL build value), kept as a user error: not the
@@ -534,6 +534,28 @@ struct hash_scan_key_plan
   int n_keys;
   HASH_SCAN_KEY_ENTRY key[1];	/* [n_keys] */
 };
+
+/*
+ * qdata_hscan_numeric_hash_differs () - whether two NUMERIC domains hash equal numbers differently
+ *   return: true if a value must be coerced into the other domain before hashing
+ *   prec1(in): precision of one domain
+ *   scale1(in): scale of one domain
+ *   prec2(in): precision of the other domain
+ *   scale2(in): scale of the other domain
+ */
+bool
+qdata_hscan_numeric_hash_differs (int prec1, int scale1, int prec2, int scale2)
+{
+  const bool is_float1 = (prec1 == DB_DEFAULT_NUMERIC_PRECISION);
+  const bool is_float2 = (prec2 == DB_DEFAULT_NUMERIC_PRECISION);
+
+  /* float NUMERIC hashes the normalized value, fixed NUMERIC its scaled integer whatever the precision */
+  if (is_float1 != is_float2)
+    {
+      return true;
+    }
+  return !is_float1 && scale1 != scale2;
+}
 
 /*
  * qdata_hscan_key_value_domain () - the domain of the values a build key gives in this open
@@ -617,7 +639,13 @@ qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_
 	  return qexec_domain_unresolved (vd, build->value.plan_item, build->value.domain);
 	}
       key->source = TP_DOMAIN_TYPE (values);
-      if (key->source == DB_TYPE_NULL || key->source == target)
+      if (key->source == DB_TYPE_NUMERIC && target == DB_TYPE_NUMERIC)
+	{
+	  const bool differs = qdata_hscan_numeric_hash_differs (values->precision, values->scale,
+								 key->target->precision, key->target->scale);
+	  key->rule = differs ? HASH_SCAN_KEY_COERCE : HASH_SCAN_KEY_COPY;
+	}
+      else if (key->source == DB_TYPE_NULL || key->source == target)
 	{
 	  key->rule = HASH_SCAN_KEY_COPY;
 	}
@@ -672,11 +700,13 @@ qdata_check_hscan_key_convert (const DB_VALUE * value, const TP_DOMAIN * target,
  *   key(in): the build row's key
  *   plan(in): the scan's key plan (qdata_plan_hscan_keys)
  *   new_key(in/out): the scan's key with values of its own
+ *   unmatchable(out): true if a NUMERIC value overflows the probe key's domain; the row then matches no probe value
  */
 HASH_SCAN_KEY *
 qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY * key, const HASH_SCAN_KEY_PLAN * plan,
-				    HASH_SCAN_KEY * new_key)
+				    HASH_SCAN_KEY * new_key, bool * unmatchable)
 {
+  *unmatchable = false;
   if (key == NULL)
     {
       return NULL;
@@ -722,6 +752,12 @@ qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY *
 	      qdata_check_hscan_key_convert (value, entry->target, status, new_key->values[i]);
 	    }
 #endif
+	  if (status == DOMAIN_OVERFLOW && rule == HASH_SCAN_KEY_COERCE && entry->source == DB_TYPE_NUMERIC)
+	    {
+	      pr_clear_value (new_key->values[i]);
+	      *unmatchable = true;
+	      return new_key;
+	    }
 	  if (status != DOMAIN_COMPATIBLE)
 	    {
 	      pr_clear_value (new_key->values[i]);
@@ -729,6 +765,83 @@ qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY *
 		      pr_type_name (DB_VALUE_DOMAIN_TYPE (value)), pr_type_name (TP_DOMAIN_TYPE (entry->target)));
 	      return NULL;
 	    }
+	}
+    }
+
+  return new_key;
+}
+
+/*
+ * qdata_hscan_probe_value_need_coerce () - whether a probe value hashes differently from its probe key's domain
+ *   return: true if the value must be coerced into *domain
+ *   vd(in): the execution's value descriptor
+ *   value(in): the probe value
+ *   regu(in): the probe key
+ *   domain(out): the probe key's domain
+ */
+static bool
+qdata_hscan_probe_value_need_coerce (const VAL_DESCR * vd, const DB_VALUE * value, REGU_VARIABLE_LIST regu,
+				     TP_DOMAIN ** domain)
+{
+  if (DB_IS_NULL (value) || DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_NUMERIC)
+    {
+      return false;
+    }
+  *domain = qexec_get_node_domain (vd, regu->value.domain, regu->value.plan_item);
+  return (*domain != NULL && TP_DOMAIN_TYPE (*domain) == DB_TYPE_NUMERIC
+	  && qdata_hscan_numeric_hash_differs (DB_VALUE_PRECISION (value), DB_VALUE_SCALE (value),
+					       (*domain)->precision, (*domain)->scale));
+}
+
+/*
+ * qdata_coerce_hscan_probe_key () - bring the NUMERIC probe values into their probe key's domain
+ *   returns: key itself if no value needs it, new_key holding the coerced values otherwise, NULL on error
+ *   thread_p(in): thread
+ *   vd(in): the execution's value descriptor
+ *   key(in): the probe key
+ *   probe_regu_list(in): the probe regu list
+ *   new_key(in/out): the scan's key with values of its own
+ *
+ * Note: a probe key's values need not carry its domain (a PRIOR column's key can be float NUMERIC while its values
+ *       are fixed), and the build values are hashed in that domain.
+ */
+HASH_SCAN_KEY *
+qdata_coerce_hscan_probe_key (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_SCAN_KEY * key,
+			      REGU_VARIABLE_LIST probe_regu_list, HASH_SCAN_KEY * new_key)
+{
+  REGU_VARIABLE_LIST regu;
+  TP_DOMAIN *domain;
+  bool need_coerce = false;
+  int i;
+
+  for (i = 0, regu = probe_regu_list; i < key->val_count && regu != NULL; i++, regu = regu->next)
+    {
+      if (qdata_hscan_probe_value_need_coerce (vd, key->values[i], regu, &domain))
+	{
+	  need_coerce = true;
+	  break;
+	}
+    }
+  if (!need_coerce)
+    {
+      return key;
+    }
+
+  new_key->val_count = key->val_count;
+  for (i = 0, regu = probe_regu_list; i < key->val_count; i++, regu = regu->next)
+    {
+      pr_clear_value (new_key->values[i]);
+      /* a value that overflows the domain matches no build value, all of which were brought into it */
+      if (qdata_hscan_probe_value_need_coerce (vd, key->values[i], regu, &domain)
+	  && tp_value_coerce (key->values[i], new_key->values[i], domain) == DOMAIN_COMPATIBLE)
+	{
+	  continue;
+	}
+      pr_clear_value (new_key->values[i]);
+      if (pr_clone_value (key->values[i], new_key->values[i]) != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
+	  return NULL;
 	}
     }
 

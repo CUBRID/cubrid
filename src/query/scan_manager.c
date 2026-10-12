@@ -4412,6 +4412,10 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       /* alloc temp key */
       llsidp->hlsid.temp_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
       llsidp->hlsid.temp_new_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
+      if (llsidp->hlsid.temp_key == NULL || llsidp->hlsid.temp_new_key == NULL)
+	{
+	  return S_ERROR;
+	}
       if (scan_start_scan (thread_p, scan_id) != NO_ERROR)
 	{
 	  return S_ERROR;
@@ -8930,6 +8934,7 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   unsigned int hash_key;
   MHT_HLS_ENTRY *entry;
   TFTID tftid;
+  bool unmatchable;
 
   llsidp = &scan_id->s.llsid;
   key = llsidp->hlsid.temp_key;
@@ -8967,10 +8972,14 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* create new key */
       if (llsidp->hlsid.need_coerce_type)
 	{
-	  new_key = qdata_copy_hscan_key_without_alloc (thread_p, key, llsidp->hlsid.key_plan, new_key);
+	  new_key = qdata_copy_hscan_key_without_alloc (thread_p, key, llsidp->hlsid.key_plan, new_key, &unmatchable);
 	  if (new_key == NULL)
 	    {
 	      return S_ERROR;
+	    }
+	  if (unmatchable)
+	    {
+	      continue;
 	    }
 	}
       else
@@ -9151,7 +9160,7 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 {
   LLIST_SCAN_ID *llsidp;
   QFILE_LIST_SCAN_ID *scan_id_p;
-  HASH_SCAN_KEY *key;
+  HASH_SCAN_KEY *key, *hash_scan_key;
   unsigned int hash_key;
   MHT_HLS_ENTRY *entry;
   QFILE_TUPLE_SIMPLE_POS *simple_pos;
@@ -9171,8 +9180,18 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	{
 	  return S_ERROR;
 	}
+      if (llsidp->hlsid.temp_new_key == NULL)
+	{
+	  return S_ERROR;
+	}
+      hash_scan_key = qdata_coerce_hscan_probe_key (thread_p, scan_id->vd, key, llsidp->hlsid.probe_regu_list,
+						    llsidp->hlsid.temp_new_key);
+      if (hash_scan_key == NULL)
+	{
+	  return S_ERROR;
+	}
       /* make hash key */
-      hash_key = qdata_hash_scan_key (key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
+      hash_key = qdata_hash_scan_key (hash_scan_key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
       llsidp->hlsid.curr_hash_key = hash_key;
 
       switch (llsidp->hlsid.hash_list_scan_type)
@@ -9329,6 +9348,7 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
 {
   int build_cnt;
   regu_variable_list_node *build, *probe;
+  TP_DOMAIN *probe_domain, *build_domain;
   DB_TYPE vtype1, vtype2;
   UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
   INT64 tuple_cnt;
@@ -9365,8 +9385,10 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
       /* In the list scan, Vobj is converted to oid for comparison at tp_value_compare_with_error(). */
       /* the keys' domains now, read from the nodes: a node computed earlier in this execution holds the domain it
        * took there (its execution domain), any other its compiled one */
-      vtype1 = TP_DOMAIN_TYPE (qexec_get_node_domain (vd, probe->value.domain, probe->value.plan_item));
-      vtype2 = TP_DOMAIN_TYPE (qexec_get_node_domain (vd, build->value.domain, build->value.plan_item));
+      probe_domain = qexec_get_node_domain (vd, probe->value.domain, probe->value.plan_item);
+      build_domain = qexec_get_node_domain (vd, build->value.domain, build->value.plan_item);
+      vtype1 = TP_DOMAIN_TYPE (probe_domain);
+      vtype2 = TP_DOMAIN_TYPE (build_domain);
 
       if ((vtype1 == DB_TYPE_OBJECT && vtype2 == DB_TYPE_OID) || (vtype2 == DB_TYPE_OBJECT && vtype1 == DB_TYPE_OID)
 	  || (vtype1 == DB_TYPE_VOBJ || vtype2 == DB_TYPE_VOBJ))
@@ -9374,6 +9396,12 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
 	  return HASH_METH_NOT_USE;
 	}
       if (vtype1 != vtype2)
+	{
+	  llsidp->hlsid.need_coerce_type = true;
+	}
+      else if (vtype1 == DB_TYPE_NUMERIC && probe_domain != NULL && build_domain != NULL
+	       && qdata_hscan_numeric_hash_differs (probe_domain->precision, probe_domain->scale,
+						    build_domain->precision, build_domain->scale))
 	{
 	  llsidp->hlsid.need_coerce_type = true;
 	}
