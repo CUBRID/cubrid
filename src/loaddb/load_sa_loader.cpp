@@ -150,12 +150,21 @@ const std::size_t LDR_MAX_ARGS = 32;
     if (context->validation_only) goto error_exit;                      \
   } while (0)
 
-#define GET_DOMAIN(context, domain)                                      \
-	    do {                                                         \
-	      if (context->collection == NULL && context->valid)         \
-	        domain = context->attrs[context->next_attr].att->domain; \
-	      else                                                       \
-	        domain = context->set_domain;                            \
+/*
+ * The slot next_attr points at has no attribute descriptor when it is a
+ * CONSTRUCTOR argument - ldr_act_add_attr () leaves att NULL there, because an
+ * argument carries no domain of its own. Answer NULL rather than reading through
+ * it; every caller reachable from an argument already handles a NULL domain,
+ * which is also what "no domain was specified" has always meant here.
+ */
+#define GET_DOMAIN(context, domain)                                       \
+	    do {                                                          \
+	      if (context->collection == NULL && context->valid)          \
+	        domain = (context->attrs[context->next_attr].att != NULL) \
+	                 ? context->attrs[context->next_attr].att->domain \
+	                 : NULL;                                          \
+	      else                                                        \
+	        domain = context->set_domain;                             \
 	     } while (0)
 
 #define  CHECK_SKIP()                        \
@@ -3153,11 +3162,15 @@ ldr_double_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *va
   if (str_ptr == str || OR_CHECK_DOUBLE_OVERFLOW (d))
     {
       TP_DOMAIN *domain;
+      DB_TYPE dom_type;
 
       GET_DOMAIN (context, domain);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (TP_DOMAIN_TYPE (domain)));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, TP_DOMAIN_TYPE (domain), str);
+      /* A constructor argument has no domain, so name the literal's own type. */
+      dom_type = (domain != NULL) ? TP_DOMAIN_TYPE (domain) : DB_TYPE_DOUBLE;
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (dom_type));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, dom_type, str);
     }
   else
     {
@@ -3191,11 +3204,15 @@ ldr_float_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val
   if (str_ptr == str || OR_CHECK_FLOAT_OVERFLOW (d))
     {
       TP_DOMAIN *domain;
+      DB_TYPE dom_type;
 
       GET_DOMAIN (context, domain);
 
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (TP_DOMAIN_TYPE (domain)));
-      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, TP_DOMAIN_TYPE (domain), str);
+      /* A constructor argument has no domain, so name the literal's own type. */
+      dom_type = (domain != NULL) ? TP_DOMAIN_TYPE (domain) : DB_TYPE_FLOAT;
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, db_get_type_name (dom_type));
+      CHECK_PARSE_ERR (err, ER_IT_DATA_OVERFLOW, context, dom_type, str);
     }
   else
     {
@@ -3920,11 +3937,16 @@ find_instance (LDR_CONTEXT *context, DB_OBJECT *class_, OID *oid, int id)
       else
 	{
 	  /* Forward reference */
-	  if ((class_ == context->cls) && (context->inst_num == id))
+	  if ((class_ == context->cls) && (context->inst_num == id) && context->obj != NULL)
 	    {
 	      /*
 	       * We have a reference to the current object being processed.
 	       * Simply use the oid of the object.
+	       *
+	       * context->obj has to be there. On a CONSTRUCTOR line the instance is
+	       * not built until construct_instance () runs at the end of the line, so
+	       * a value converted before that - an argument, say - finds it still NULL
+	       * and the reference has to be left forward like any other.
 	       */
 	      COPY_OID (oid, WS_REAL_OID (context->obj));
 	    }
