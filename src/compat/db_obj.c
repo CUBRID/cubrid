@@ -1438,7 +1438,7 @@ db_rename_trigger (DB_OBJECT * obj, const char *newname)
   CHECK_MODIFICATION_ERROR ();
 
   /* auditing will be done at tr_rename_trigger() */
-  retval = tr_rename_trigger (obj, newname, true, false);
+  retval = tr_rename_trigger (obj, newname, true, false, false);
   return retval;
 }
 
