@@ -43,8 +43,8 @@
 #include "memory_wrapper.hpp"
 
 // the system package that the built-in stored procedures belong to
-#define SP_BUILTIN_PKG_UNIQUE_NAME      "public.dbms_output"
-#define SP_BUILTIN_PKG_NAME             "dbms_output"
+#define SP_DBMS_OUTPUT_PKG_UNIQUE_NAME  "public.dbms_output"
+#define SP_DBMS_OUTPUT_PKG_NAME         "dbms_output"
 
 // memory representation of built-in stored procedures
 static std::vector <sp_info> sp_builtin_definition;
@@ -316,7 +316,7 @@ sp_add_builtin_package (MOP *mop_out)
       goto error;
     }
 
-  db_make_string (&value, SP_BUILTIN_PKG_UNIQUE_NAME);
+  db_make_string (&value, SP_DBMS_OUTPUT_PKG_UNIQUE_NAME);
   err = dbt_put_internal (obt_p, PKG_ATTR_UNIQUE_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
@@ -324,7 +324,7 @@ sp_add_builtin_package (MOP *mop_out)
       goto error;
     }
 
-  db_make_string (&value, SP_BUILTIN_PKG_NAME);
+  db_make_string (&value, SP_DBMS_OUTPUT_PKG_NAME);
   err = dbt_put_internal (obt_p, PKG_ATTR_PKG_NAME, &value);
   pr_clear_value (&value);
   if (err != NO_ERROR)
