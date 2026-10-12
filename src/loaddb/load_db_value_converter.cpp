@@ -655,6 +655,15 @@ namespace cubload
       {
 	scale = (scale == 0) ? (DB_MAX_NUMERIC_PRECISION - precision) : scale;
 	precision = DB_MAX_NUMERIC_PRECISION;
+
+	if (scale > DB_MAX_NUMERIC_SCALE)
+	  {
+	    scale = DB_MAX_NUMERIC_SCALE;
+	  }
+	else if (scale < DB_MIN_NUMERIC_SCALE)
+	  {
+	    scale = DB_MIN_NUMERIC_SCALE;
+	  }
       }
 
     int error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale);
