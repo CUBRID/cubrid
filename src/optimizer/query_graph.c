@@ -8494,6 +8494,10 @@ qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
 	{
 	  continue;
 	}
+      if (!bitset_is_empty (&(QO_TERM_OUTER_DEP_SET (jterm))))
+	{
+	  continue;		/* conditional on a preceding RIGHT OUTER JOIN: not an unconditional edge */
+	}
       /* Always-true transitive copies from qo_reduce_equality_terms would only yield terms
        * demoted to QO_TC_DUMMY_JOIN, so they do not seed the union-find either. */
       tpe = QO_TERM_PT_EXPR (jterm);
