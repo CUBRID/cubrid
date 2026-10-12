@@ -325,7 +325,6 @@ authenticate_context::install (void)
     {
       goto exit_on_error;
     }
-  smt_add_attribute (def, "triggers", "sequence of (string, object)", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "charset", "integer", NULL);
   smt_add_attribute (def, "lang", "string", NULL);
   smt_add_attribute (def, "timezone_checksum", "string", NULL);
