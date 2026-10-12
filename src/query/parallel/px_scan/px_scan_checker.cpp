@@ -132,6 +132,8 @@ namespace parallel_scan
   template <bool is_outptr_list>
   possible_flags check (ARITH_TYPE *arg);
   template <bool is_outptr_list>
+  possible_flags check (AGGREGATE_TYPE *arg);
+  template <bool is_outptr_list>
   possible_flags check (PRED *arg);
   template <bool is_outptr_list>
   possible_flags check (EVAL_TERM *arg);
@@ -279,6 +281,18 @@ namespace parallel_scan
       {
 	result |= check<is_outptr_list> (&curr->value);
 	curr = curr->next;
+      }
+    return result;
+  }
+
+  /* one aggregate: its operands, and the ratio of PERCENTILE_CONT/DISC, which is evaluated with them per row */
+  template <bool is_outptr_list>
+  possible_flags check (AGGREGATE_TYPE *arg)
+  {
+    possible_flags result = check<is_outptr_list> (arg->operands);
+    if (arg->function == PT_PERCENTILE_CONT || arg->function == PT_PERCENTILE_DISC)
+      {
+	result |= check<is_outptr_list> (arg->info.percentile.percentile_reguvar);
       }
     return result;
   }
@@ -508,6 +522,14 @@ namespace parallel_scan
       {
 	temp |= check<false> (arg->s.list_node.list_regu_list_probe);
       }
+    else if (arg->type == TARGET_SET)
+      {
+	temp |= check<false> (arg->s.set_node.set_ptr) | check<false> (arg->where_pred);
+      }
+    else if (arg->type == TARGET_JSON_TABLE)
+      {
+	temp |= check<false> (arg->s.json_table_node.m_json_reguvar) | check<false> (arg->where_pred);
+      }
     if (is_flag_set (temp, CANNOT_RUN_IN_WORKER))
       {
 	set_flag (result, CANNOT_RUN_IN_WORKER);
@@ -631,7 +653,7 @@ namespace parallel_scan
 	temp |= check<false> (buildlist->g_scan_regu_list);
 	for (AGGREGATE_TYPE *aggp = buildlist->g_agg_list; aggp; aggp = aggp->next)
 	  {
-	    temp |= check<false> (aggp->operands);
+	    temp |= check<false> (aggp);
 	  }
 	temp |= check<false> (buildlist->a_scan_regu_list);
 	if (buildlist->a_outptr_list)
@@ -660,7 +682,7 @@ namespace parallel_scan
 	temp |= check<false> (sibling->proc.buildvalue.outarith_list);
 	for (AGGREGATE_TYPE *aggp = sibling->proc.buildvalue.agg_list; aggp; aggp = aggp->next)
 	  {
-	    temp |= check<false> (aggp->operands);
+	    temp |= check<false> (aggp);
 	  }
 	break;
       case CTE_PROC:
@@ -743,7 +765,7 @@ namespace parallel_scan
 	flags |= check<false> (arg->proc.buildlist.g_grbynum_pred);
 	for (AGGREGATE_TYPE *aggp = arg->proc.buildlist.g_agg_list; aggp; aggp = aggp->next)
 	  {
-	    flags |= check<false> (aggp->operands);
+	    flags |= check<false> (aggp);
 	  }
 	break;
       case BUILDVALUE_PROC:
@@ -751,7 +773,7 @@ namespace parallel_scan
 	flags |= check<false> (arg->proc.buildvalue.outarith_list);
 	for (AGGREGATE_TYPE *aggp = arg->proc.buildvalue.agg_list; aggp; aggp = aggp->next)
 	  {
-	    flags |= check<false> (aggp->operands);
+	    flags |= check<false> (aggp);
 	  }
 	break;
       case HASHJOIN_PROC:
@@ -834,7 +856,7 @@ namespace parallel_scan
 		    buildvalue_opt = false;
 		    break;
 		  }
-		temp |= check<false> (agg_it->operands);
+		temp |= check<false> (agg_it);
 		if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 		  {
 		    buildvalue_opt = false;
