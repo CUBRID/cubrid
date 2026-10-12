@@ -557,6 +557,8 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_li
 		  dest_list_id_p->sort_list = NULL;
 		}
 	      free_and_init (dest_list_id_p->type_list.domp);
+	      /* not counted in m_qlist_count yet: leave an empty list id, which the caller's clear does not uncount */
+	      QFILE_CLEAR_LIST_ID (dest_list_id_p);
 	      return ER_FAILED;
 	    }
 	  break;
