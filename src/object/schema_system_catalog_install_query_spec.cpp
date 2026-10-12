@@ -1332,13 +1332,33 @@ sm_define_view_stored_procedure_spec (void)
 			  "[u].[name] = CURRENT_USER"
 		      ") "
 		    "AND [au].[auth_type] = 'EXECUTE'"
-		")"
+		") "
+	      "OR ([sp].[pkg_of] IS NOT NULL AND {[sp].[pkg_of]} SUBSETEQ ("
+		  "SELECT "
+		    "SUM (SET {[au].[object_of]}) "
+		  "FROM "
+		    /* CT_CLASSAUTH_NAME */
+		    "[%s] AS [au] "
+		  "WHERE "
+		    "{[au].[grantee].[name]} SUBSETEQ ("
+			"SELECT "
+			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+			"FROM "
+			  /* AU_USER_CLASS_NAME */
+			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+			"WHERE "
+			  "[u].[name] = CURRENT_USER"
+		      ") "
+		    "AND [au].[auth_type] = 'EXECUTE'"
+		"))"
 	    ")",
 	CT_DATATYPE_NAME,
 	AU_USER_CLASS_NAME,
 	AU_USER_CLASS_NAME,
 	CT_STORED_PROC_NAME,
         AU_USER_CLASS_NAME,
+	AU_USER_CLASS_NAME,
+	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
@@ -1350,7 +1370,7 @@ sm_define_view_stored_procedure_spec (void)
 const char *
 sm_define_view_stored_procedure_args_spec (void)
 {
-  static char stmt [2048];
+  static char stmt [4096];
 
   // *INDENT-OFF*
   sprintf (stmt,
@@ -1410,7 +1430,25 @@ sm_define_view_stored_procedure_args_spec (void)
 			  "[u].[name] = CURRENT_USER"
 		      ") "
 		    "AND [au].[auth_type] = 'EXECUTE'"
-		")"
+		") "
+	      "OR ([sp].[sp_of].[pkg_of] IS NOT NULL AND {[sp].[sp_of].[pkg_of]} SUBSETEQ ("
+		  "SELECT "
+		    "SUM (SET {[au].[object_of]}) "
+		  "FROM "
+		    /* CT_CLASSAUTH_NAME */
+		    "[%s] AS [au] "
+		  "WHERE "
+		    "{[au].[grantee].[name]} SUBSETEQ ("
+			"SELECT "
+			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+			"FROM "
+			  /* AU_USER_CLASS_NAME */
+			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+			"WHERE "
+			  "[u].[name] = CURRENT_USER"
+		      ") "
+		    "AND [au].[auth_type] = 'EXECUTE'"
+		"))"
 	    ")"
 	"ORDER BY " /* Is it possible to remove ORDER BY? */
 	  "[sp].[sp_of].[sp_name], "
@@ -1418,6 +1456,8 @@ sm_define_view_stored_procedure_args_spec (void)
 	CT_DATATYPE_NAME,
 	CT_STORED_PROC_ARGS_NAME,
         AU_USER_CLASS_NAME,
+	AU_USER_CLASS_NAME,
+	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME,
 	CT_CLASSAUTH_NAME,
 	AU_USER_CLASS_NAME);
