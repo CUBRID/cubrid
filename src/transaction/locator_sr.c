@@ -7028,6 +7028,17 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
       if (error_code != NO_ERROR)
 	{
 	  assert (er_errid () != NO_ERROR);
+
+	  /* A deadlock victim must give up its locks. Going on with the next object would make it wait
+	   * again with those locks still held, and the cycle it was chosen to break would never clear.
+	   * Fail the whole call instead so the client aborts the transaction. */
+	  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()))
+	    {
+	      error_code = er_errid ();
+	      (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &oneobj_lsa);
+	      goto exit_on_error;
+	    }
+
 	  locator_repl_add_error_to_copyarea (reply_area, &reply_recdes, obj, &key_value, er_errid (), er_msg ());
 
 	  error_code = NO_ERROR;
@@ -8070,6 +8081,14 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 		{
 		  if (lock_object (thread_p, inst_oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 		    {
+		      /* Pre-existing defect fixed here: the failed lock was not reported. error_code still held the
+		       * previous index's NO_ERROR, so a lock that failed (deadlock victim, lock timeout) returned
+		       * success. The insert was reported as done with this and the later indexes left unmaintained,
+		       * and a deadlock victim went on holding its locks, so the deadlock never cleared and every
+		       * transaction queued behind it hung. Seen when this row reused the heap slot of a row another
+		       * transaction had inserted and rolled back (failed statement or savepoint) while keeping its
+		       * X lock on the OID. */
+		      ASSERT_ERROR_AND_SET (error_code);
 		      goto error;
 		    }
 		}
@@ -8842,6 +8861,11 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 			{
 			  if (lock_object (thread_p, oid, class_oid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 			    {
+			      /* Pre-existing defect fixed here, same as in locator_add_or_remove_index_internal: a failed
+			       * lock (deadlock victim, lock timeout) returned the previous NO_ERROR, so the update was
+			       * reported as done with this and the later index keys left unmaintained, and a deadlock
+			       * victim kept its locks and the deadlock never cleared. */
+			      ASSERT_ERROR_AND_SET (error_code);
 			      goto error;
 			    }
 			}

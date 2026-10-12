@@ -31,6 +31,8 @@
 /* heartbeat */
 #define HB_DEFAULT_HA_PORT_ID                           (59901)
 #define HB_DEFAULT_APPLY_MAX_MEM_SIZE                   (500)
+#define HB_DEFAULT_APPLY_WORKER_COUNT                   (1)
+#define HB_MAX_APPLY_WORKER_COUNT                       (32)	/* applylogdb sizes its per-worker arrays by this */
 
 #define HB_DEFAULT_INIT_TIMER_IN_MSECS                  (10*1000)
 #define HB_DEFAULT_HEARTBEAT_INTERVAL_IN_MSECS          (500)

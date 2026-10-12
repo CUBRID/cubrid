@@ -473,6 +473,12 @@ if(UNIX)
   list(APPEND BASE_SOURCES ${BASE_DIR}/dynamic_load.c)
   list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier_sql_log.c)
   list(APPEND TRANSACTION_SOURCES ${TRANSACTION_DIR}/log_applier.c)
+  list(APPEND TRANSACTION_SOURCES ${APPLIER_DIR}/log_applier_task_queue.cpp)
+  list(APPEND TRANSACTION_SOURCES ${APPLIER_DIR}/log_applier_result_queue.cpp)
+  list(APPEND TRANSACTION_SOURCES ${APPLIER_DIR}/log_applier_inflight.cpp)
+  list(APPEND TRANSACTION_SOURCES ${APPLIER_DIR}/log_applier_gate.cpp)
+  list(APPEND TRANSACTION_SOURCES ${APPLIER_DIR}/log_applier_pending.cpp)
+  list(APPEND TRANSACTION_SOURCES ${APPLIER_DIR}/log_applier_worker.cpp)
   list(APPEND STORAGE_SOURCES ${STORAGE_DIR}/es_owfs.c)
   SET_SOURCE_FILES_PROPERTIES(
     ${EXECUTABLES_DIR}/checksumdb.c
