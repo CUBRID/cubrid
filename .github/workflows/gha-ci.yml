@@ -645,7 +645,7 @@ jobs:
   build:
     name: build (${{ matrix.mode }})
     needs: gate
-    permissions: {} # no token used; the engine comes from the node mirror
+    permissions: {}
     if: needs.gate.outputs.run == 'true'
     runs-on: cubrid-arc-build
     timeout-minutes: 30
@@ -662,148 +662,85 @@ jobs:
       image: cubridci/cubridci:build_rl8.10
     defaults:
       run:
-        shell: bash
+        shell: bash --noprofile --norc -euo pipefail {0}
 
     env:
       BUILD_MIRROR: /home/ci/seed/build
-      # Per mode: one path for two matrix legs is the later leg overwriting
-      # the earlier one.
+      # Per mode: one path for both legs is the later one overwriting the earlier.
       BUILD_LOG_DIR: /home/ci/shared/runs/${{ github.run_id }}/build/${{ matrix.mode }}
       MODE: ${{ matrix.mode }}
       BUILD_ARGS: ${{ matrix.args }}
-      # develop | pr. Keeps the preserved develop artifacts out of reach of PR builds.
+      # develop | pr: keeps the preserved develop artifacts out of reach of PR builds.
       BUILD_NS: ${{ needs.gate.outputs.build_ns }}
-
-      # One cache per mode, on the node disk -- there is no restore/save step to
-      # gate, so "write on develop only" is enforced by ccache itself below.
+      # One cache per mode on the node disk. With no save step to gate, "write on
+      # develop only" is ccache's own read-only mode, set in step 3.
       CCACHE_DIR: /home/ci/cache/ccache/develop-${{ matrix.mode }}
-      # The default is mtime, which a fresh clone always misses.
+      # The default is mtime, which a fresh checkout always misses.
       CCACHE_COMPILERCHECK: content
-      # `ccache --max-size` writes into the cache directory; the variable does not.
-      # 5G held 4.6GB, so the node disk gets the headroom the volume did not.
+      # `ccache --max-size` would write into the cache directory; the variable does not.
       CCACHE_MAXSIZE: 10G
-      # No CCACHE_HARDLINK: a hardlinked entry is one bad build away from a poisoned
-      # cache, and both trees are on the same node disk either way.
+      # No CCACHE_HARDLINK: a hardlinked entry is one bad build away from a poisoned cache.
       CACHE_WRITE: ${{ needs.gate.outputs.cache_write }}
 
     steps:
       - name: 0. Environment check
         env:
-          # Inputs via env, never interpolated into the body.
           INPUT_SHA: ${{ needs.gate.outputs.sha }}
         run: |
-          set -euo pipefail
-          echo "=== identity ==="
-          echo "job pod    : $(hostname)"
-          echo "runner     : ${RUNNER_NAME:-(none)}"
-          echo "image      : $(cat /etc/redhat-release)"
-
-          echo "=== input SHA ==="
-          # Full 40-char SHA only. Short SHAs and ref names are refused.
-          if [[ ! "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
-            echo "::error::sha must be 40 lowercase hex characters"
-            exit 1
-          fi
-          echo "SHA: $INPUT_SHA"
+          [[ "$INPUT_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::sha must be 40 lowercase hex characters"; exit 1; }
           echo "SHA=$INPUT_SHA" >> "$GITHUB_ENV"
-
-          echo "=== mounts ==="
-          ls -ld "$CI_ROOT" "$BUILD_MIRROR/cubrid" "$BUILD_MIRROR/cubrid.git" "$CCACHE_DIR" || true
           for d in "$BUILD_MIRROR/cubrid/.git" "$BUILD_MIRROR/cubrid.git"; do
-            [ -d "$d" ] && continue
-            echo "::error::the node copy is not visible: $d"
-            echo "  Either the pod template did not reach the job pod, or gha-node-seed has not run."
-            exit 1
+            [ -d "$d" ] || {
+              echo "::error::the node copy is not visible: $d. The pod template did not reach the pod, or gha-node-seed has not run"
+              exit 1; }
           done
-
-          echo "=== writable ==="
-          # Checked now rather than at publish time, 30 minutes later.
+          # Now rather than at publish time, 30 minutes later.
           mkdir -p "$CI_BUILD_ROOT"
           probe="$CI_BUILD_ROOT/.write-probe.$$"
           touch "$probe" && rm -f "$probe"
-          echo "writable"
-
-          # Wall-clock stamps. build opens the run dir; plan's mkdir -p keeps it.
+          # build opens the run's stamps; plan's mkdir -p keeps them.
           mkdir -p "$STAMPS"
           printf 'start\t%s\n' "$(date -u +%s)" > "$STAMPS/build.tsv"
-
-          # WAN baseline. GlusterFS goes via hostPath, so this counts GitHub + 3rdparty.
-          awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' \
-            /proc/net/dev > "$RUNNER_TEMP/rx0"
+          # GlusterFS goes via hostPath, so this counts GitHub and the 3rdparty downloads.
+          awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev > "$RUNNER_TEMP/rx0"
 
       - name: 1. Is this SHA already published
         id: reuse
         env:
           INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
         run: |
-          set -euo pipefail
-          # No `step halt` in GHA: emit an output and gate later steps on it.
-          dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
-          # Named reuse, not mode: this job already calls the matrix leg MODE.
-          if [ "$INPUT_FORCE" = 'true' ]; then
-            echo "force_build=true, rebuilding even though an artifact exists"
-            reuse=built
-          elif [ -f "$dir/$BUILD_SENTINEL" ]; then
-            echo "already published: $dir"
-            reuse=reused
+          if [ "$INPUT_FORCE" != 'true' ] && [ -f "$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE/$BUILD_SENTINEL" ]; then
+            echo "reuse=reused" >> "$GITHUB_OUTPUT"
           else
-            echo "nothing published, building"
-            reuse=built
+            echo "reuse=built" >> "$GITHUB_OUTPUT"
           fi
-          echo "reuse=$reuse"
-          echo "reuse=$reuse" >> "$GITHUB_OUTPUT"
 
       - name: 2. Source, the node copy with only the delta fetched
         if: steps.reuse.outputs.reuse != 'reused'
         run: |
-          set -euo pipefail
           cd "$GITHUB_WORKSPACE"
-
-          # The seed is already checked out, so the image's fetch_source skips its
-          # clone and only fetches the delta (docker-entrypoint.sh 42-58). Overlay,
-          # not a copy: the build writes 700MB into this tree and the seed is
-          # read-only and shared with the other matrix leg.
-          #
-          # upper and work go on the node disk under $RUNNER_TEMP, not on /rw:
-          # this tree takes the build output. overlayfs also refuses an upperdir
-          # that is itself on overlayfs, which the container's own / is.
+          # An overlay, not a copy: the build writes 700MB into this tree, and the seed
+          # is read-only and shared with the other leg. upper and work on the node disk,
+          # not /rw: overlayfs refuses an upperdir on overlayfs, which / is.
           mkdir -p "$RUNNER_TEMP/src-upper" "$RUNNER_TEMP/src-work" cubrid
           mount -t overlay overlay \
             -o "lowerdir=$BUILD_MIRROR/cubrid,upperdir=$RUNNER_TEMP/src-upper,workdir=$RUNNER_TEMP/src-work" \
             cubrid
-          echo "source seed: $BUILD_MIRROR/cubrid @ $(git -C cubrid log -1 --format='%h %ci')"
-
-          # The verb never goes shallow: build.sh reads the serial off `git rev-list
-          # --count`, and a shallow clone stamps every package 0001. Submodules still
-          # come from $BUILD_MIRROR, which the seed does not carry.
-          # The tree lands in ./cubrid, so step 3 stays one level up.
+          # The seed has .git, so the verb fetches the delta only, and never shallow:
+          # build.sh reads the serial off `git rev-list --count`.
           /entrypoint.sh checkout "$SHA"
 
       - name: 3. Build
         if: steps.reuse.outputs.reuse != 'reused'
         run: |
-          set -euo pipefail
-          # One level up from the source on purpose: run_build finds cubrid/build.sh
-          # from here and writes build.log to cwd, which is where step 5 reads it.
+          # The verb finds cubrid/build.sh from here and writes build.log here, where step 5 reads it.
           cd "$GITHUB_WORKSPACE"
-
-          # Read-only unless this is a develop push. There is no save_cache step to
-          # gate, so ccache enforces it -- read_only stops writes, stats=false stops the
-          # counter file, and temporary_dir keeps scratch out of the shared cache (the
-          # default is <cache_dir>/tmp). CCACHE_MAXSIZE stands in for `ccache --max-size`,
-          # which writes into the cache directory, as `ccache -z` also would.
-          if [ "$CACHE_WRITE" = 'true' ]; then
-            echo "ccache: writable, this is a develop push -- $CCACHE_DIR"
-          else
-            export CCACHE_READONLY=1 CCACHE_NOSTATS=1
-            echo "ccache: read-only -- $CCACHE_DIR"
-          fi
+          # Read-only unless a develop push. temporary_dir keeps scratch out of the shared cache.
+          [ "$CACHE_WRITE" = 'true' ] || export CCACHE_READONLY=1 CCACHE_NOSTATS=1
           export CCACHE_TEMPDIR="$RUNNER_TEMP/ccache-tmp"
           mkdir -p "$CCACHE_TEMPDIR"
           [ -d "$CCACHE_DIR" ] || echo "::warning::no ccache at $CCACHE_DIR yet, so this is a cold build"
-
-          # No -j: ninja 1.11.1 reads the cgroup quota and decides for itself.
-          # BUILD_ARGS is one flag pair from the matrix, so it must word-split.
+          # No -j: ninja reads the cgroup quota. BUILD_ARGS is one flag pair and must word-split.
           # shellcheck disable=SC2086
           /entrypoint.sh build $BUILD_ARGS
           ccache -s
@@ -813,67 +750,42 @@ jobs:
           INPUT_FORCE: ${{ needs.gate.outputs.force_build }}
           REUSE: ${{ steps.reuse.outputs.reuse }}
         run: |
-          set -euo pipefail
           dir="$CI_BUILD_ROOT/$BUILD_NS/$SHA/$MODE"
-
-          # The reuse decision is 8 to 40 minutes old by now, and a duplicate run on
-          # the same SHA -- a push to feature/** and a /run comment naming the same
-          # commit -- publishes into this very path. Reading the sentinel again
-          # saves the 700MB staging copy when the other run is already done. It does
-          # NOT decide the race: see the rename below.
-          if [ "$REUSE" != 'reused' ] && [ "$INPUT_FORCE" != 'true' ] \
-             && [ -f "$dir/$BUILD_SENTINEL" ]; then
-            echo "another run published this build first, keeping theirs: $dir"
+          # The reuse decision is 8 to 40 minutes old, and a duplicate run on the same SHA
+          # publishes into this very path. Reading the sentinel again saves the staging
+          # copy when the other run is done; it does not decide the race, the rename does.
+          if [ "$REUSE" != 'reused' ] && [ "$INPUT_FORCE" != 'true' ] && [ -f "$dir/$BUILD_SENTINEL" ]; then
             REUSE=reused
           fi
-
-          if [ "$REUSE" = 'reused' ]; then
-            echo "reused, not publishing: $dir"
-          else
+          if [ "$REUSE" != 'reused' ]; then
             tmp="${dir}.tmp.${GITHUB_RUN_ID}"
             rm -rf "$tmp"
             mkdir -p "$tmp"
-            # Written before the archive so it travels inside it: the shard
-            # reads it back out of what it unpacked.
             meta=$(printf 'sha=%s\nmode=%s\nns=%s\nrun_id=%s\nrun_attempt=%s\nbuilt_at=%s\nworkflow=gha-ci\n' \
               "$SHA" "$MODE" "$BUILD_NS" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$(date -u +%s)")
+            # Inside the archive too: the shard reads it back out of what it unpacked.
             printf '%s\n' "$meta" > "/home/CUBRID/$BUILD_META"
-
-            # An archive, not a tree: a published tree became the shard's overlay
-            # lowerdir, so every process launch read the build over GlusterFS.
+            # An archive, not a tree: a published tree was the shard's lowerdir, and every
+            # process launch read the build over GlusterFS.
             tar -C /home -cf - CUBRID | gzip -1 > "$tmp/CUBRID.tar.gz"
-
-            # The summary links this copy, not the one under the run directory: a
-            # reused build outlives the run that made it.
-            if [ -f "$GITHUB_WORKSPACE/build.log" ]; then
-              cp "$GITHUB_WORKSPACE/build.log" "$tmp/build.log"
-            fi
-
+            # The summary links this copy: a reused build outlives the run that made it.
+            [ ! -f "$GITHUB_WORKSPACE/build.log" ] || cp "$GITHUB_WORKSPACE/build.log" "$tmp/build.log"
             printf '%s\n' "$meta" > "$tmp/build.meta"
-
-            # Sentinel created inside staging, so the rename never exposes a partial tree.
             touch "$tmp/$BUILD_SENTINEL"
 
-            # rename(2) refuses to replace a non-empty directory, and on a shared
-            # filesystem that refusal is the only atomic arbiter there is. Checking
-            # first and acting after loses a race whose window is the staging copy
-            # above: measured in the fork, runs 32835135072 and 32835140419 built the
-            # same SHA, the second read the sentinel one second before the first wrote
-            # it, and replaced a tree that had just been published. So try the plain
-            # rename and let the loser find out from the kernel.
+            # rename(2) refuses to replace a non-empty directory, the only atomic arbiter on
+            # a shared filesystem. Check-then-act lost this race in the fork (runs
+            # 32835135072 and 32835140419), so try the rename and let the loser learn from it.
             if mv -T "$tmp" "$dir" 2>/dev/null; then
-              echo "published: $dir"
+              :
             elif [ -f "$dir/$BUILD_SENTINEL" ] && [ "$INPUT_FORCE" != 'true' ]; then
-              # Lost. Their tree is finished and a shard may already have it mounted
-              # as its overlay lowerdir, so it stays and ours goes -- the same choice
-              # the CircleCI baseline makes (config.yml 430-436).
+              # Lost: theirs is finished and may already be a shard's lowerdir, so ours goes,
+              # as in the CircleCI baseline (config.yml 430-436).
               echo "another run published this build first, keeping theirs: $dir"
               rm -rf "$tmp"
             else
-              # force_build, or a tree with no sentinel: published before this
-              # workflow, or left behind by a run that died mid-publish. Replacing it
-              # takes two renames, and $dir is briefly absent -- plan's sentinel check
-              # catches that.
+              # force_build, or a tree with no sentinel. Two renames leave $dir briefly
+              # absent, which plan's sentinel check catches.
               old="${dir}.old.${GITHUB_RUN_ID}"
               rm -rf "$old"
               if [ -e "$dir" ] && ! mv -T "$dir" "$old"; then
@@ -881,7 +793,7 @@ jobs:
                 echo "::error::could not move the old artifact aside: $dir"; exit 1
               fi
               if ! mv -T "$tmp" "$dir"; then
-                # Roll back. The old build surviving beats nothing surviving.
+                # The old build surviving beats nothing surviving.
                 [ -e "$old" ] && mv -T "$old" "$dir"
                 rm -rf "$tmp"
                 echo "::error::could not move the new artifact in: $dir"; exit 1
@@ -890,53 +802,35 @@ jobs:
             fi
           fi
 
-          # plan and shard assume these exist. Better to die here.
+          # plan and shard assume these; better to die here. A reused artifact can predate
+          # the archive, and this job does not republish it.
           for f in "$BUILD_SENTINEL" build.meta; do
-            [ -f "$dir/$f" ] || {
-              echo "::error::the artifact has no $f: $dir"
-              echo "  Builds published before this workflow carry no meta. Re-run with force_build=true."
-              exit 1
-            }
+            [ -f "$dir/$f" ] || { echo "::error::the artifact has no $f: $dir. Re-run with force_build=true"; exit 1; }
           done
-          # Either shape, the two plan and shard accept: a reused artifact can
-          # predate the archive, and this job does not republish it.
           if [ -f "$dir/CUBRID.tar.gz" ]; then
             tar -tzf "$dir/CUBRID.tar.gz" "CUBRID/$BUILD_META" >/dev/null || {
               echo "::error::the archive carries no CUBRID/$BUILD_META: $dir"; exit 1; }
-          elif [ -f "$dir/CUBRID/$BUILD_META" ]; then
-            echo "reused a tree published before the archive: $dir"
-          else
-            echo "::error::the artifact has no CUBRID.tar.gz and no CUBRID/$BUILD_META: $dir"
-            echo "  Re-run with force_build=true."
+          elif [ ! -f "$dir/CUBRID/$BUILD_META" ]; then
+            echo "::error::the artifact has no CUBRID.tar.gz and no CUBRID/$BUILD_META: $dir. Re-run with force_build=true"
             exit 1
           fi
-          by=$(awk -F= '/^run_id=/ {print $2}' "$dir/build.meta")
-          echo "artifact : $dir"
-          echo "built by : $by (this run: $GITHUB_RUN_ID)"
-          cat "$dir/build.meta"
-          du -sh "$dir"
-          df -h "$CI_ROOT" | tail -1
-
+          echo "artifact $(du -sh "$dir" | cut -f1) built by run $(awk -F= '/^run_id=/ {print $2}' "$dir/build.meta") · volume $(df -h "$CI_ROOT" | awk 'END {print $3 "/" $2}') used"
           printf 'end\t%s\n' "$(date -u +%s)" >> "$STAMPS/build.tsv"
 
       - name: 5. WAN and build log
         if: always()
+        env:
+          JOB_STATUS: ${{ job.status }}
         run: |
-          set -euo pipefail
           if [ -f "$RUNNER_TEMP/rx0" ]; then
-            rx1=$(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev)
-            echo "WAN received by this job: $(( (rx1 - $(cat "$RUNNER_TEMP/rx0")) / 1048576 )) MB"
-            echo "  baseline: 372.02MB measured, replacing a 290MB CircleCI artifact"
+            echo "WAN received by this job: $(( ($(awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev) - $(cat "$RUNNER_TEMP/rx0")) / 1048576 )) MB"
           fi
-
           # build.log is the only clue on failure, and it does not reach the GHA log.
           f="$GITHUB_WORKSPACE/build.log"
           if [ -f "$f" ]; then
             mkdir -p "$BUILD_LOG_DIR"
             cp "$f" "$BUILD_LOG_DIR/build.log"
-            echo "saved: $BUILD_LOG_DIR/build.log ($(wc -l < "$f") lines)"
-            echo "=== last 60 lines of build.log ==="
-            tail -60 "$f"
+            [ "$JOB_STATUS" = success ] || tail -60 "$f"
           fi
 
   # A comment run's check runs land on the default branch head, never on the
