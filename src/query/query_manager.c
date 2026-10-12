@@ -1364,8 +1364,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     }
   else if (xasl_trace == true)
     {
+      /* no perfmon watch: the statistics a trace reads count in this transaction only (perfmon_inc_stat_for_trace),
+       * so tracing does not make every thread of the server collect statistics */
       thread_trace_on (thread_p);
-      perfmon_start_watch (thread_p);
 
       if (IS_XASL_TRACE_TEXT (*flag_p))
 	{
@@ -1899,8 +1900,9 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
     }
   else if (xasl_trace == true)
     {
+      /* no perfmon watch: the statistics a trace reads count in this transaction only (perfmon_inc_stat_for_trace),
+       * so tracing does not make every thread of the server collect statistics */
       thread_trace_on (thread_p);
-      perfmon_start_watch (thread_p);
 
       if (IS_XASL_TRACE_TEXT (*flag_p))
 	{

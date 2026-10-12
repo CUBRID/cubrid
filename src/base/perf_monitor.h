@@ -868,6 +868,8 @@ STATIC_INLINE void perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, U
 STATIC_INLINE void perfmon_add_at_offset_to_local (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid) __attribute__ ((ALWAYS_INLINE));
+STATIC_INLINE void perfmon_inc_stat_for_trace (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
+  __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_inc_stat_to_global (PERF_STAT_ID psid) __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE void perfmon_set_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, int statval, bool check_watchers)
   __attribute__ ((ALWAYS_INLINE));
@@ -883,6 +885,10 @@ STATIC_INLINE void perfmon_time_bulk_at_offset (THREAD_ENTRY * thread_p, int off
 STATIC_INLINE void perfmon_time_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid, UINT64 timediff)
   __attribute__ ((ALWAYS_INLINE));
 STATIC_INLINE int perfmon_get_activation_flag (void) __attribute__ ((ALWAYS_INLINE));
+#if defined (SERVER_MODE) || defined (SA_MODE)
+STATIC_INLINE UINT64 perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
+  __attribute__ ((ALWAYS_INLINE));
+#endif /* SERVER_MODE || SA_MODE */
 extern char *perfmon_pack_stats (char *buf, UINT64 * stats);
 extern char *perfmon_unpack_stats (char *buf, UINT64 * stats);
 
@@ -962,6 +968,31 @@ perfmon_inc_stat (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
 }
 
 /*
+ * perfmon_inc_stat_for_trace () - Increment by 1 a statistic that SHOW TRACE reads.
+ *
+ * return	 : Void.
+ * thread_p (in) : Thread entry.
+ * psid (in)	 : Statistic ID.
+ *
+ * Note: while someone watches statistics it counts like perfmon_inc_stat; otherwise it counts only in the local
+ *       statistics of a thread on trace, since SET TRACE ON does not start a watch.
+ */
+STATIC_INLINE void
+perfmon_inc_stat_for_trace (THREAD_ENTRY * thread_p, PERF_STAT_ID psid)
+{
+  if (perfmon_is_perf_tracking ())
+    {
+      perfmon_inc_stat (thread_p, psid);
+    }
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  else if (thread_p != NULL && thread_p->on_trace)
+    {
+      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[psid].start_offset, 1);
+    }
+#endif /* SERVER_MODE || SA_MODE */
+}
+
+/*
  * perfmon_inc_stat_to_global () - Increment global statistic value by 1.
  *
  * return	 : Void.
@@ -998,7 +1029,8 @@ perfmon_add_at_offset (THREAD_ENTRY * thread_p, int offset, UINT64 amount)
 #if defined (SERVER_MODE) || defined (SA_MODE)
   /* Update local statistic */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if ((tran_index >= 0 && tran_index < pstat_Global.n_trans) && pstat_Global.is_watching[tran_index])
+  if ((tran_index >= 0 && tran_index < pstat_Global.n_trans)
+      && (pstat_Global.is_watching[tran_index] || (thread_p != NULL && thread_p->on_trace)))
     {
       if (thread_p != NULL && thread_p->m_uses_px_stats)
 	{
@@ -1045,7 +1077,8 @@ perfmon_add_at_offset_to_local (THREAD_ENTRY * thread_p, int offset, UINT64 amou
   /* Update local statistic */
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   assert (tran_index >= 0 && tran_index < pstat_Global.n_trans);
-  if (pstat_Global.is_watching[tran_index])
+  /* a thread on trace counts locally without a watch (SET TRACE ON does not start one) */
+  if (pstat_Global.is_watching[tran_index] || (thread_p != NULL && thread_p->on_trace))
     {
       if (thread_p != NULL && thread_p->m_uses_px_stats)
 	{
@@ -1385,6 +1418,66 @@ perfmon_get_activation_flag (void)
   return pstat_Global.activation_flag;
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/*
+ * perfmon_get_from_statistic () - Get a statistic value of this thread's query: of its parallel worker array when
+ *                                 the thread is a parallel worker, otherwise of its transaction.
+ *
+ * return	     : the value.
+ * thread_p (in)     : Thread entry.
+ * statistic_id (in) : Statistic ID.
+ */
+STATIC_INLINE UINT64
+perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
+{
+  UINT64 *stats;
+  int tran_index;
+
+  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+  assert (tran_index >= 0);
+
+  if (tran_index >= pstat_Global.n_trans)
+    {
+      return 0;
+    }
+
+  assert ((thread_p && thread_p->m_uses_px_stats && thread_p->m_px_orig_thread_entry) || (thread_p == NULL)
+	  || (!thread_p->m_uses_px_stats));
+
+  if (thread_p->m_px_orig_thread_entry && thread_p->m_uses_px_stats)
+    {
+      if (thread_p->m_px_stats != NULL)
+	{
+	  stats = thread_p->m_px_stats;
+	}
+      else
+	{
+	  /* impossible case */
+	  assert (false);
+	  return 0;
+	}
+    }
+  else
+    {
+      /* This routine is called from the query execute scan routine in TRACE ON state.
+       * Therefore, there is no need to call perfmon_get_peek_stats,
+       * which retrieves overall statistical information,
+       * because the server's overall statistical information is not needed,
+       * and only I/O fetch and time information are needed.
+       */
+      stats = pstat_Global.tran_stats[tran_index];
+    }
+
+  if (stats != NULL)
+    {
+      int offset = pstat_Metadata[statistic_id].start_offset;
+      return stats[offset];
+    }
+
+  return 0;
+}
+#endif /* SERVER_MODE || SA_MODE */
+
 /*
  * perfmon_is_perf_tracking () - Returns true if there are active threads
  *
@@ -1599,8 +1692,6 @@ struct perf_utime_tracker
  * Statistics at file io level
  */
 extern bool perfmon_server_is_stats_on (THREAD_ENTRY * thread_p);
-
-extern UINT64 perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id);
 
 extern void perfmon_lk_waited_time_on_objects (THREAD_ENTRY * thread_p, int lock_mode, UINT64 amount);
 

@@ -1065,56 +1065,6 @@ xperfmon_server_copy_global_stats (UINT64 * to_stats)
     }
 }
 
-UINT64
-perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
-{
-  UINT64 *stats;
-  int tran_index;
-
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  assert (tran_index >= 0);
-
-  if (tran_index >= pstat_Global.n_trans)
-    {
-      return 0;
-    }
-
-  assert ((thread_p && thread_p->m_uses_px_stats && thread_p->m_px_orig_thread_entry) || (thread_p == NULL)
-	  || (!thread_p->m_uses_px_stats));
-
-  if (thread_p->m_px_orig_thread_entry && thread_p->m_uses_px_stats)
-    {
-      if (thread_p->m_px_stats != NULL)
-	{
-	  stats = thread_p->m_px_stats;
-	}
-      else
-	{
-	  /* impossible case */
-	  assert (false);
-	  return 0;
-	}
-    }
-  else
-    {
-      /* This routine is called from the query execute scan routine in TRACE ON state.
-       * Therefore, there is no need to call perfmon_get_peek_stats,
-       * which retrieves overall statistical information,
-       * because the server's overall statistical information is not needed,
-       * and only I/O fetch and time information are needed.
-       */
-      stats = pstat_Global.tran_stats[tran_index];
-    }
-
-  if (stats != NULL)
-    {
-      int offset = pstat_Metadata[statistic_id].start_offset;
-      return stats[offset];
-    }
-
-  return 0;
-}
-
 /*
  * perfmon_lk_waited_time_on_objects - Increase lock time wait counter of
  *				       the current transaction index
@@ -3573,7 +3523,8 @@ perfmon_add_values_to_local (THREAD_ENTRY * thread_p, const UINT64 * values)
     }
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  if (tran_index >= 0 && tran_index < pstat_Global.n_trans && pstat_Global.is_watching[tran_index])
+  if (tran_index >= 0 && tran_index < pstat_Global.n_trans
+      && (pstat_Global.is_watching[tran_index] || (thread_p != NULL && thread_p->on_trace)))
     {
       assert (pstat_Global.tran_stats[tran_index] != NULL);
       perfmon_merge_values (pstat_Global.tran_stats[tran_index], values);
