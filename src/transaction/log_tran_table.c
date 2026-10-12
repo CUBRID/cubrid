@@ -47,6 +47,9 @@
 
 #include "dbtran_def.h"
 #include "log_impl.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "writeset.hpp"
+#endif /* SERVER_MODE || SA_MODE */
 #include "log_lsa.hpp"
 #include "log_manager.h"
 #include "log_system_tran.hpp"
@@ -502,6 +505,11 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
 	  goto error;
 	}
     }
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  wset_history_initialize ();
+#endif /* SERVER_MODE || SA_MODE */
+
   return error_code;
 
 error:
@@ -589,6 +597,12 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
     {
       log_Gl.mvcc_table.finalize ();
       lock_finalize ();
+#if defined (SERVER_MODE) || defined (SA_MODE)
+      /* Same lifetime as the lock manager: both are created by logtb_define_trantable_log_latch and
+       * only transactions on this table probe or publish the history. The reuse cycles during recovery
+       * skip this block, so the history survives them as its initialize guard expects. */
+      wset_history_finalize ();
+#endif /* SERVER_MODE || SA_MODE */
       pgbuf_finalize ();
       file_manager_final ();
     }
@@ -1600,6 +1614,10 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->num_exec_queries = 0;
   tdes->suppress_replication = 0;
+  tdes->wset_overflow = false;
+  tdes->wset_dependency_is_ref = false;
+  tdes->wset_hashes.clear ();
+  LSA_SET_NULL (&tdes->wset_dependency_seq);
   tdes->m_log_postpone_cache.reset ();
   tdes->has_supplemental_log = false;
   if (tdes->ddl_sql_user_text != NULL)
@@ -1681,6 +1699,10 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->suppress_replication = 0;
+  tdes->wset_overflow = false;
+  tdes->wset_dependency_is_ref = false;
+  tdes->wset_hashes.clear ();
+  LSA_SET_NULL (&tdes->wset_dependency_seq);
   tdes->lob_locator_root.init ();
   tdes->query_timeout = 0;
   tdes->last_query_deadline = 0;

@@ -5313,6 +5313,7 @@ locator_all_flush (void)
   return error_code;
 }
 
+#if defined(SA_MODE)
 /*
  * locator_add_root () - Insert root
  *
@@ -5359,6 +5360,7 @@ locator_add_root (OID * root_oid, MOBJ class_root)
 
   return root_mop;
 }
+#endif // #if defined(SA_MODE)
 
 /*
  * locator_add_class () - Insert a class
@@ -5593,6 +5595,9 @@ locator_add_instance (MOBJ instance, MOP class_mop)
    * recycle the temporarily OIDs.
    */
 
+  /* TODO: 
+   * It is necessary to check whether a lock is required for operations in a multithreaded environment
+   */
   OID_ASSIGN_TEMPOID (&temp_oid);
   if (OID_ISNULL (&temp_oid))
     {
@@ -6888,6 +6893,66 @@ end:
 // class locator_repl
 CUB_THREAD_LOCAL class locator_repl __gv_locator_repl;
 
+/* objects at least this long make locator_repl_diag_batch trace their batch (diagnostic, trace level 1+)
+ *
+ * TODO: Temporary diagnostic for a defect check, to be removed. It was added to trace large rows that were
+ *       found corrupted on the slave (the worker record pool was sized from the default log page size
+ *       instead of the database page size). Remove it, together with the other [WSET] diag traces in
+ *       log_applier.c, locator_cl.c and locator_sr.c, once that fix is verified. */
+#define LOCATOR_REPL_DIAG_RECORD_LENGTH 1024
+
+/*
+ * locator_repl_diag_batch () - trace a replication batch that carries a large object
+ *
+ * return: true if the batch was traced
+ *
+ *   mflush(in): batch about to be sent
+ *   reason(in): why the batch is sent now
+ *
+ * Note: Diagnostic. Large rows (wide tables) have been seen to vanish on the slave without an error, so a
+ *       batch holding one is listed object by object, with where each sits in the copy area. Batches of
+ *       ordinary rows are not logged.
+ */
+static bool
+locator_repl_diag_batch (LOCATOR_MFLUSH_CACHE * mflush, const char *reason)
+{
+  LC_COPYAREA_ONEOBJ *obj;
+  bool has_large = false;
+  int i;
+
+  if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) < 1)
+    {
+      return false;
+    }
+
+  for (i = 0; i < mflush->mobjs->num_objs; i++)
+    {
+      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, i);
+      if (obj->length >= LOCATOR_REPL_DIAG_RECORD_LENGTH)
+	{
+	  has_large = true;
+	  break;
+	}
+    }
+
+  if (!has_large)
+    {
+      return false;
+    }
+
+  _er_log_debug (ARG_FILE_LINE, "[WSET] diag repl_flush %s objs=%d area=%d\n", reason, mflush->mobjs->num_objs,
+		 mflush->copy_area->length);
+  for (i = 0; i < mflush->mobjs->num_objs; i++)
+    {
+      obj = LC_FIND_ONEOBJ_PTR_IN_COPYAREA (mflush->mobjs, i);
+      _er_log_debug (ARG_FILE_LINE, "[WSET] diag repl_flush obj=%d class=%d|%d|%d op=%d offset=%d length=%d\n", i,
+		     obj->class_oid.volid, obj->class_oid.pageid, obj->class_oid.slotid, obj->operation, obj->offset,
+		     obj->length);
+    }
+
+  return true;
+}
+
 /*
  * locator_repl_mflush_force () - Force the mflush area
  *
@@ -6902,13 +6967,20 @@ locator_repl::locator_repl_mflush_force (LOCATOR_MFLUSH_CACHE * mflush)
 {
   LC_COPYAREA *reply_copy_area = NULL;
   int error_code = NO_ERROR;
+  bool diag_batch = false;
 
   assert (mflush != NULL);
 
   /* Force the objects stored in area */
   if (mflush->mobjs->num_objs > 0)
     {
+      diag_batch = locator_repl_diag_batch (mflush, "send");
       error_code = locator_repl_force (mflush->copy_area, &reply_copy_area);
+      if (diag_batch)
+	{
+	  _er_log_debug (ARG_FILE_LINE, "[WSET] diag repl_flush sent objs=%d error=%d\n", mflush->mobjs->num_objs,
+			 error_code);
+	}
 
       /* If the force failed and the system is down.. finish */
       if (error_code == ER_LK_UNILATERALLY_ABORTED
@@ -7008,6 +7080,12 @@ locator_repl::locator_repl_mflush (LOCATOR_MFLUSH_CACHE * mflush)
 	    }
 	  else
 	    {
+	      if (repl_obj->recdes != NULL && repl_obj->recdes->length >= LOCATOR_REPL_DIAG_RECORD_LENGTH
+		  && prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
+		{
+		  _er_log_debug (ARG_FILE_LINE, "[WSET] diag repl_flush split: next object needs %d, area left %d\n",
+				 required_length, mflush->recdes.area_size);
+		}
 	      error = locator_repl_mflush_force (mflush);
 	      if (error != NO_ERROR && error != ER_LC_PARTIALLY_FAILED_TO_FLUSH)
 		{

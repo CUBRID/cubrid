@@ -1388,6 +1388,16 @@ vacuum_stop_workers (THREAD_ENTRY * thread_p)
 
   delete vacuum_Worker_entry_manager;
   vacuum_Worker_entry_manager = NULL;
+
+#if !defined (NDEBUG)
+  // clear 
+  while (vacuum_Track_dropped_files)
+    {
+      VACUUM_TRACK_DROPPED_FILES *t = vacuum_Track_dropped_files;
+      vacuum_Track_dropped_files = t->next_tracked_page;
+      free (t);
+    }
+#endif
 }
 
 void

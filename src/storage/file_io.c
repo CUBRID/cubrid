@@ -3879,7 +3879,7 @@ fileio_get_volume_mutex (THREAD_ENTRY * thread_p, int vdes)
 static ssize_t
 fileio_os_read (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, size_t count, off_t offset)
 {
-#if !defined (SERVER_MODE)
+#if !defined (SERVER_MODE) && defined (WINDOWS)
   /* Locate the desired page */
   if (lseek (vol_fd, offset, SEEK_SET) != offset)
     {
@@ -4081,7 +4081,7 @@ fileio_write_or_add_to_dwb (THREAD_ENTRY * thread_p, int vol_fd, FILEIO_PAGE * i
 static ssize_t
 fileio_os_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, size_t count, off_t offset)
 {
-#if !defined (SERVER_MODE)
+#if !defined (SERVER_MODE) && defined (WINDOWS)
   if (lseek (vol_fd, offset, SEEK_SET) != offset)
     {
       return ER_FAILED;
@@ -4120,12 +4120,11 @@ fileio_os_write (THREAD_ENTRY * thread_p, int vol_fd, void *io_page_p, size_t co
   pthread_mutex_unlock (io_mutex);
 
   return (ssize_t) nbytes;
-#elif defined (NDEBUG)
-  /* release mode */
-  return pwrite (vol_fd, io_page_p, count, offset);
-#else
+#elif defined (SERVER_MODE) && !defined (NDEBUG)
   /* server debugging mode */
   return pwrite_with_injected_fault (thread_p, vol_fd, io_page_p, count, offset);
+#else
+  return pwrite (vol_fd, io_page_p, count, offset);
 #endif
 }
 

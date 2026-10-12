@@ -1784,7 +1784,9 @@
 
 #define ER_QPROC_SESSION_VARIABLE_TYPE              -1384
 
-#define ER_LAST_ERROR                               -1385
+#define ER_HA_WRITESET_KEY_BUILD_FAILED              -1385
+
+#define ER_LAST_ERROR                               -1386
 
 
 /*
