@@ -18725,24 +18725,34 @@ qexec_opcode_is_prior (OPERATOR_TYPE opcode)
 }
 
 /*
- * qexec_opcode_is_prior_or_volatile () - QEXEC_OPCODE_MATCH for PRIOR and non-deterministic operators
- *  return: true for T_PRIOR or an operator that yields a new value on every evaluation
+ * qexec_opcode_is_prior_or_volatile () - QEXEC_OPCODE_MATCH for PRIOR and non-constant operators
+ *  return: true for T_PRIOR or an operator whose value may change between evaluations
  *  opcode(in):
  */
 static bool
 qexec_opcode_is_prior_or_volatile (OPERATOR_TYPE opcode)
 {
+  /* mirrors the operators fetch_peek_arith flags REGU_VARIABLE_FETCH_NOT_CONST for their own value, not for a pred */
   switch (opcode)
     {
     case T_PRIOR:
+    case T_INCR:
+    case T_DECR:
+    case T_CURRENT_VALUE:
+    case T_NEXT_VALUE:
+    case T_ROW_COUNT:
+    case T_LAST_INSERT_ID:
+    case T_EVALUATE_VARIABLE:
+    case T_DEFINE_VARIABLE:
+    case T_EXEC_STATS:
+    case T_TRACE_STATS:
     case T_RAND:
-    case T_DRAND:
     case T_RANDOM:
+    case T_DRAND:
     case T_DRANDOM:
     case T_SYS_GUID:
-    case T_INCR:
-    case T_DECR:		/* INCR/DECR mutate and return a new value each evaluation */
-    case T_DEFINE_VARIABLE:	/* @v := ... mutates a session variable, so a new value each evaluation */
+    case T_UUID:
+    case T_SLEEP:
       return true;
     default:
       return false;
