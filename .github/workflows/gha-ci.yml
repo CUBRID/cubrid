@@ -1,45 +1,26 @@
-# CUBRIDQA-1526 -- build, publish, then run the shell suite on self-hosted runners.
-# Replaces the CircleCI jobs build + build_debug + download-build + test_shell.
-# Both stay live during the migration, so one /run comment can be compared.
-#
-# Trigger, and what each one runs.
+# Build the engine, then run the CTP suites on self-hosted runners. Replaces the CircleCI
+# jobs build, build_debug, download-build and test_shell; both run during the migration.
 #
 #   issue_comment  /run <suites>       build, then those suites on the debug build
 #   push develop, feature/**           build only. develop also writes the ccache
 #   workflow_dispatch                  build; one suite always runs, or all three
 #   schedule                           the nightly batch, one dispatch per merge
 #
-# <suites> is any of shell, sql and medium, and `all` means all three. Everything that
-# differs between them is one table, the `SUITES` env below; plan and collect walk it
-# inside a single job, shard is a matrix over (suite, index), and each suite posts its
-# own commit status. workflow_dispatch takes one suite, or `all`; with `all` it takes
-# neither parallelism nor rerun_from, so both stay unambiguous.
+# <suites> is any of shell, sql and medium, or `all`. A trailing testtools=<branch> takes
+# CTP from that cubrid-testtools branch; CircleCI does not know the key, so such a comment
+# never reaches it. workflow_dispatch with `all` takes neither parallelism nor rerun_from.
 #
-# Any request that runs a suite takes an optional trailing testtools=<branch> --
-# `/run shell testtools=fix/x` or the dispatch input -- and then CTP comes from that
-# cubrid-testtools branch instead of the image's develop. CircleCI's comment_trigger.yml
-# does not know the key, so a comment carrying it never reaches CircleCI.
+# Which copy of this file runs: issue_comment and schedule read the default branch, so
+# /run does nothing until this is merged; workflow_dispatch runs the ref it is given,
+# push the pushed commit.
 #
-# Which copy of this file runs differs by trigger. issue_comment has no ref of its
-# own and always reads the DEFAULT BRANCH, so /run does nothing until this is merged.
-# workflow_dispatch runs the copy in the ref it is given, and appears in the UI only
-# once the default branch carries the file. push runs the pushed commit's copy, and
-# schedule the default branch's -- so the batch dispatches on its own ref.
+# Lanes: cubrid-arc-light (plan, collect, a re-run's shard, medium), cubrid-arc-build
+# (build), cubrid-arc (shell and sql shards); without them a one-minute job queues
+# behind another run's 50.
 #
-# Three self-hosted runner lanes: cubrid-arc-light (plan, collect, a re-run's one
-# shard, medium), cubrid-arc-build (build), cubrid-arc (shell and sql shards).
-# Without the split a one-minute job queues behind another run's 50.
-#
-# Prerequisites in the runner, not here. circleci-k8s-ansible roles/arc owns
-# them; its README.md carries the full contract table for this file.
-#   pod template   shareProcessNamespace, or the shell tests hang instead of
-#                  failing; privileged, or the overlay mount fails;
-#                  imagePullPolicy Always, or nodes keep a stale image
-#   job hook       ALLOWED_EVENTS must list issue_comment, push and
-#                  workflow_dispatch
-#
-# Decisions, measurements and the ccache/path contract: CUBRIDQA-1526, and
-# roles/arc/README.md in circleci-k8s-ansible.
+# This file holds the policy and the relay between pods. How CTP runs and what its result
+# files say is the test image's (cubridci test_rl8.10, /entrypoint.sh <verb>); what the
+# pods must provide is circleci-k8s-ansible roles/arc/README.md.
 
 name: gha-ci
 
@@ -161,64 +142,41 @@ env:
   CI_ROOT: /home/ci/shared
   CI_BUILD_ROOT: /home/ci/shared/builds
   TIMINGS: /home/ci/shared/timings/shell.tsv
-  # Per attempt: run_id does not change on a re-run, so attempt 2 would read the
-  # stamps attempt 1 left and subtract times taken in different attempts.
+  # Per attempt: a re-run keeps run_id, and would subtract times from different attempts.
   STAMPS: /home/ci/shared/runs/${{ github.run_id }}/stamps/${{ github.run_attempt }}
-  # CTP, like the testcases below, comes from the node copy the gha-node-seed
-  # DaemonSet refreshes hourly: every byte a test reads is node-local, and the
-  # volume carries only what two nodes must share -- CUBRIDQA-1501 ticket 72.
+  # Like the testcases, from the node copy gha-node-seed refreshes hourly: every byte a
+  # test reads is node-local, and the volume carries only what two nodes share.
   CTP_SEED: /home/ci/seed/test/cubrid-testtools
   BUILD_SENTINEL: .complete
   BUILD_META: .gha-ci-build.meta
   # Paired with arc_artifact_server_node_port in circleci-k8s-ansible.
   ARTIFACT_URL_BASE: http://192.168.1.48:30080
-  # One table for plan, shard, collect and the two status jobs, the way the test
-  # image's resolve_category is one table for the whole entrypoint. No job below
-  # names a suite outside this block.
-  #
-  #   tc_seed     the node copy the testcases are overlay-mounted from. The
-  #               DaemonSet refreshes it hourly and the pod has it read-only
-  #   unit        what one line of a shard's share file holds, and so what the
-  #               split moves around: one case, or one top-level directory.
-  #   case_glob   find -path pattern that names one case file
-  #   case_filter perl regex a case path must also match; shell alone has one,
-  #               because there a case is <name>/cases/<name>.sh
-  #   runner      which lane a shard of this suite queues in. Expected duration,
-  #               not resource use: the queue is FIFO and a one-minute job holds
-  #               the same slot as a 28-minute one -- CUBRIDQA-1501 ticket 62
+  # Every suite policy in one table; no job below names a suite outside it. How CTP runs a
+  # suite (command, conf, result files, what a case is) is the test image's table.
+  #   tc_seed   the node copy the testcases are overlay-mounted from, read-only
+  #   unit      what one line of a share holds, so what the split moves: a case or a
+  #             top-level directory
+  #   runner    the lane a shard queues in, by expected duration: the queue is FIFO, and
+  #             a one-minute job holds the same slot as a 28-minute one (ticket 62)
+  #   exclude   left out of the split, as CircleCI does
   SUITES: |-
     {
       "shell": {
         "tc_repo": "cubrid-testcases-private-ex", "tc_private": "yes",
         "tc_seed": "/home/ci/seed/test/cubrid-testcases-private-ex",
-        "ctp_cmd": "shell", "ctp_conf": "conf/shell_ci.conf",
-        "xml_src": "result/shell/current_runtime_logs",
-        "verdict_src": "test_status.data",
-        "unit": "case", "par_default": "50",
-        "runner": "cubrid-arc",
-        "case_glob": "*/cases/*.sh", "case_filter": "/([^/]+)/cases/\\1\\.sh$",
+        "unit": "case", "par_default": "50", "runner": "cubrid-arc",
         "exclude": "_25_unstable", "status_ctx": "gha-ci: test_shell"
       },
       "sql": {
         "tc_repo": "cubrid-testcases", "tc_private": "no",
         "tc_seed": "/home/ci/seed/test/cubrid-testcases",
-        "ctp_cmd": "sql", "ctp_conf": "conf/sql.conf",
-        "xml_src": "sql/result",
-        "verdict_src": "summary_info",
-        "unit": "dir", "par_default": "10",
-        "runner": "cubrid-arc",
-        "case_glob": "*/cases/*.sql", "case_filter": "",
+        "unit": "dir", "par_default": "10", "runner": "cubrid-arc",
         "exclude": "", "status_ctx": "gha-ci: test_sql"
       },
       "medium": {
         "tc_repo": "cubrid-testcases", "tc_private": "no",
         "tc_seed": "/home/ci/seed/test/cubrid-testcases",
-        "ctp_cmd": "medium", "ctp_conf": "conf/medium_dev.conf",
-        "xml_src": "sql/result",
-        "verdict_src": "summary_info",
-        "unit": "dir", "par_default": "1",
-        "runner": "cubrid-arc-light",
-        "case_glob": "*/cases/*.sql", "case_filter": "",
+        "unit": "dir", "par_default": "1", "runner": "cubrid-arc-light",
         "exclude": "", "status_ctx": "gha-ci: test_medium"
       }
     }
