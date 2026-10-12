@@ -7229,7 +7229,6 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   const char *client_user_name;	/* Client user name for tran */
   const char *client_host_name;	/* Client host for tran */
   int client_pid;		/* Client process identifier for tran */
-  bool old_check_interrupt = false;
 
   /* After holding the mutex associated with conditional variable, release the bufptr->mutex. */
   thread_lock_entry (thread_p);
@@ -7252,18 +7251,8 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 try_again:
   pgbuf_make_latch_timeout (&to, wait_msecs);
 
-  if (thread_p->type == TT_WORKER)
-    {
-      old_check_interrupt = logtb_set_check_interrupt (thread_p, true);
-    }
-
   thread_p->resume_status = THREAD_PGBUF_SUSPENDED;
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_PGBUF_SUSPENDED);
-
-  if (thread_p->type == TT_WORKER)
-    {
-      logtb_set_check_interrupt (thread_p, old_check_interrupt);
-    }
 
   if (r == NO_ERROR)
     {
