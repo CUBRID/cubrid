@@ -3497,7 +3497,8 @@ perfmon_parallel_stats_needed (THREAD_ENTRY * thread_p)
  * src (in)	: Statistics values of a parallel worker.
  *
  * Note: counters are added and timers keep the larger maximum. Peek values are set from global state and
- *       ratios are computed when the statistics are read, so neither is merged.
+ *       ratios are computed when the statistics are read, so neither is merged, except the page fix time
+ *       that is accumulated in a ratio's slot.
  */
 void
 perfmon_merge_values (UINT64 * dst, const UINT64 * src)
@@ -3526,8 +3527,15 @@ perfmon_merge_values (UINT64 * dst, const UINT64 * src)
 	    }
 	  break;
 
-	case PSTAT_PEEK_SINGLE_VALUE:
 	case PSTAT_COMPUTED_RATIO_VALUE:
+	  /* pgbuf_fix () adds each fix time to this slot, and trace reads it raw as fetch_time */
+	  if (i == PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC)
+	    {
+	      dst[offset] += src[offset];
+	    }
+	  break;
+
+	case PSTAT_PEEK_SINGLE_VALUE:
 	default:
 	  break;
 	}
