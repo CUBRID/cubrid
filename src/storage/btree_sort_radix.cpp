@@ -45,7 +45,7 @@
  *   key            the stored key in a record; its radix key is key_length bytes
  *   radix key      the key as unsigned bytes that order as the comparator does; RADIX_KEY_FORMAT names the rewrite
  *   radix word     word_width bytes (2, 4 or 8) of the radix key, one per record; the engine's unit of work
- *   byte string    a key whose radix key is its value bytes (BIT, VARBIT, CHAR, VARCHAR), zero past the value
+ *   byte string    a key whose radix key is built from its value bytes (BIT, VARBIT, CHAR, VARCHAR, NUMERIC)
  *   word index     which word of a radix key wider than one word; 0 is the first
  *   tail word      a word of the radix key past the radix word, worked out from the record when radix words tie
  *   slot           a record's offset from the buffer start; the sort moves slots, never records
@@ -71,6 +71,7 @@
 #include "intl_support.h"
 #include "language_support.h"
 #include "memory_alloc.h"
+#include "numeric_opfunc.h"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "object_representation_constants.h"
@@ -88,6 +89,10 @@
 
 /* below this a counting pass costs more than a few compares; 64 measured best of 16/24/32/48/64/96/128 */
 #define RADIX_MSD_CUTOFF 64
+
+/* the radix key of a NUMERIC without a precision: a byte for the sign, two of decimal exponent, then the mantissa
+ * of DB_MAX_NUMERIC_PRECISION digits, padded to the word, see float_numeric_word () */
+#define FLOAT_NUMERIC_KEY_LENGTH DB_ALIGN (OR_BYTE_SIZE + OR_SHORT_SIZE + DB_NUMERIC_BUF_SIZE, OR_BIGINT_SIZE)
 
 /*
  * 1. SORTER: THE HOOKS
@@ -377,6 +382,40 @@ resolve_string_collation (const TP_DOMAIN *key_domain, bool *space_as_zero, bool
 }
 
 /*
+ * fixed_numeric_magnitude_bytes () - The widest magnitude the writer stores for a NUMERIC of the precision
+ *   return: bytes of it, 0 for a precision the key table declines
+ *   precision(in): the domain's precision, in decimal digits
+ */
+static int
+fixed_numeric_magnitude_bytes (int precision)
+{
+  /* by precision p: the magnitude the writer stores for 10^p - 1, the widest value of p digits. The value takes
+   * bytes (p) bytes, and the writer keeps leading zero bytes ahead of them until the image, the 3 byte header and
+   * the magnitude, is a multiple of 4 bytes.
+   *
+   *   bytes (p)     = ceil (p * log256 (10)), where log256 (10) = 0.415...
+   *   magnitude (p) = DB_ALIGN (NUMERIC_HEADER_SIZE + bytes (p), 4) - NUMERIC_HEADER_SIZE
+   *
+   *   p          1-2   3-12   13-21   22-31   32-38
+   *   bytes      1     2-5    6-9     10-13   14-16
+   *   image      4     8      12      16      20
+   *   magnitude  1     5      9       13      17
+   */
+  static const UINT8 MAGNITUDE_BYTES[DB_MAX_FIXED_NUMERIC_PRECISION + 1] =
+  {
+    0, 1, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 9, 9, 9, 9, 9, 9, 9,
+    9, 9, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13, 17, 17, 17, 17, 17, 17, 17
+  };
+
+  if (precision < 1 || precision > DB_MAX_FIXED_NUMERIC_PRECISION)
+    {
+      return 0;
+    }
+
+  return MAGNITUDE_BYTES[precision];
+}
+
+/*
  * radix_sort_resolve_key () - Works the key encoding out of the key domain
  *   return: false when the domain has no fixed width radix key
  *   encoding(out): all its fields, zero when declined
@@ -516,6 +555,30 @@ radix_sort_resolve_key (RADIX_KEY_ENCODING *encoding, const TP_DOMAIN *key_domai
       /* an empty VARCHAR is its length byte alone, and a CHAR holds its precision in characters at the least */
       min_key_length = OR_BYTE_SIZE + ((TP_DOMAIN_TYPE (key_domain) == DB_TYPE_CHAR) ? key_domain->precision : 0);
       format = RADIX_KEY_STRING;
+      break;
+
+    case DB_TYPE_NUMERIC:
+      /* without a precision, each value has a precision and a scale of its own */
+      if (key_domain->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  key_length = FLOAT_NUMERIC_KEY_LENGTH;
+	  format = RADIX_KEY_FLOAT_NUMERIC;
+	}
+      else
+	{
+	  key_length = fixed_numeric_magnitude_bytes (key_domain->precision);
+	  if (key_length == 0)
+	    {
+	      return false;
+	    }
+
+	  /* a byte of its own for the sign, ahead of the magnitude */
+	  key_length += OR_BYTE_SIZE;
+	  format = RADIX_KEY_FIXED_NUMERIC;
+	}
+
+      /* the header and one byte of magnitude */
+      min_key_length = NUMERIC_HEADER_SIZE + OR_BYTE_SIZE;
       break;
 
     default:
@@ -709,6 +772,8 @@ struct byte_string
 {
   const unsigned char *bytes;	/* the value */
   int length;			/* bytes of it */
+  bool negative = false;	/* whether the NUMERIC is negative */
+  int scale = 0;		/* the scale of the NUMERIC */
 };
 
 /*
@@ -719,7 +784,8 @@ struct byte_string
  *
  * Note: A BIT is its bytes, key_length of them. A VARBIT leads with its bit length, one byte of it or a byte of 0xff
  *       and an int, then the bytes those bits reach. A CHAR or a VARCHAR leads with its byte length in one byte, the
- *       key table keeping the domain under the length stored otherwise.
+ *       key table keeping the domain under the length stored otherwise. A NUMERIC leads with a header of its length
+ *       and sign, then its scale, then the magnitude.
  */
 template <RADIX_KEY_FORMAT FORMAT>
 static inline byte_string
@@ -727,8 +793,14 @@ byte_string_of (const RADIX_KEY_ENCODING *encoding, const unsigned char *key)
 {
   byte_string value;
 
-  if constexpr (FORMAT == RADIX_KEY_VARBIT)
+  switch (FORMAT)
     {
+    case RADIX_KEY_BIT:
+      value.bytes = key;
+      value.length = encoding->key_length;
+      break;
+
+    case RADIX_KEY_VARBIT:
       if (key[0] < 0xff)
 	{
 	  value.bytes = key + OR_BYTE_SIZE;
@@ -739,18 +811,27 @@ byte_string_of (const RADIX_KEY_ENCODING *encoding, const unsigned char *key)
 	  value.bytes = key + OR_BYTE_SIZE + OR_INT_SIZE;
 	  value.length = BITS_TO_BYTES ((int) word_from_bytes<OR_INT_SIZE> (key + OR_BYTE_SIZE));
 	}
-    }
-  else if constexpr (FORMAT == RADIX_KEY_STRING)
-    {
+      break;
+
+    case RADIX_KEY_STRING:
       assert (key[0] < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
       value.bytes = key + OR_BYTE_SIZE;
       value.length = key[0];
-    }
-  else
-    {
-      static_assert (FORMAT == RADIX_KEY_BIT, "a byte string format");
+      break;
+
+    case RADIX_KEY_FIXED_NUMERIC:
+    case RADIX_KEY_FLOAT_NUMERIC:
+      value.bytes = key + NUMERIC_HEADER_SIZE;
+      value.length = (key[0] & ~NUMERIC_VALUE_SIGN_BIT_MASK) - NUMERIC_HEADER_SIZE;
+      value.negative = (key[0] & NUMERIC_VALUE_SIGN_BIT_MASK) != 0;
+      value.scale = (key[1] & NUMERIC_HEADER_SCALE_SIGN_BIT_MASK) ? -key[2] : key[2];
+      break;
+
+    default:
+      assert (false);
       value.bytes = key;
-      value.length = encoding->key_length;
+      value.length = 0;
+      break;
     }
 
   return value;
@@ -786,14 +867,86 @@ lower_to_upper (radix_word<WORD_WIDTH> word)
 }
 
 /*
+ * fixed_numeric_word () - Puts one word of a NUMERIC's radix key in unsigned byte order
+ *   return: the radix word
+ *   encoding(in):
+ *   magnitude(in): from byte_string_of (): the scaled value, big end first, its leading zero bytes dropped
+ *   from(in): the radix key byte the word starts at
+ */
+template <int WORD_WIDTH>
+static inline radix_word<WORD_WIDTH>
+fixed_numeric_word (const RADIX_KEY_ENCODING *encoding, const byte_string &magnitude, int from)
+{
+  const int lead = encoding->key_length - magnitude.length;	/* the radix key bytes ahead of the magnitude */
+  const int begin = std::max (from, lead);
+  const int end = std::min (from + WORD_WIDTH, encoding->key_length);
+  radix_word<WORD_WIDTH> word = 0;
+  unsigned char *word_bytes = (unsigned char *) &word;
+
+  assert (lead >= OR_BYTE_SIZE);
+
+  /* the magnitude right aligned to key_length behind the sign byte and zeros, so a shorter magnitude is smaller */
+  if (begin < end)
+    {
+      memcpy (word_bytes + (begin - from), magnitude.bytes + (begin - lead), (size_t) (end - begin));
+    }
+
+  /* the sign bit flipped lifts every positive value above every negative one */
+  if (from == 0)
+    {
+      word_bytes[0] ^= NUMERIC_VALUE_SIGN_BIT_MASK;
+    }
+
+  /* every bit of a negative value flipped turns its magnitude round, which is the order of the value itself */
+  return magnitude.negative ? (radix_word<WORD_WIDTH>) ~word : word;
+}
+
+/*
+ * float_numeric_word () - Puts one word of the radix key of a NUMERIC without a precision in unsigned byte order
+ *   return: the radix word
+ *   value(in): from byte_string_of (): the magnitude, big end first, its sign and its scale
+ *   from(in): the radix key byte the word starts at
+ *
+ * Note: The radix key is a byte for the sign, then the value as 0.M x 10^e from float_numeric_normalize_for_sort ():
+ *       e in two bytes, then M, a mantissa of DB_MAX_NUMERIC_PRECISION digits. Equal values of different scales have
+ *       one radix key, and a zero has e and M zero, under every value above it.
+ */
+template <int WORD_WIDTH>
+static inline radix_word<WORD_WIDTH>
+float_numeric_word (const byte_string &value, int from)
+{
+  unsigned char magnitude[DB_NUMERIC_BUF_SIZE] = { 0 };
+  unsigned char key[FLOAT_NUMERIC_KEY_LENGTH] = { 0 };
+  radix_word<WORD_WIDTH> word;
+  int exponent;
+
+  assert (value.length >= OR_BYTE_SIZE && value.length <= DB_NUMERIC_BUF_SIZE);
+
+  /* the stored magnitude drops its leading zero bytes, the numeric buffer holds them */
+  memcpy (magnitude + DB_NUMERIC_BUF_SIZE - value.length, value.bytes, (size_t) value.length);
+  exponent = float_numeric_normalize_for_sort (magnitude, value.scale, key + OR_BYTE_SIZE + OR_SHORT_SIZE);
+  assert (exponent >= 0 && exponent <= USHRT_MAX);
+
+  /* the sign bit lifts every positive value above every negative one */
+  key[0] = NUMERIC_VALUE_SIGN_BIT_MASK;
+  key[OR_BYTE_SIZE] = (unsigned char) (exponent >> 8);
+  key[OR_BYTE_SIZE + 1] = (unsigned char) exponent;
+
+  /* every bit of a negative value flipped turns its order round */
+  memcpy (&word, key + from, WORD_WIDTH);
+  return value.negative ? (radix_word<WORD_WIDTH>) ~word : word;
+}
+
+/*
  * value_word () - Puts one word of the value in unsigned byte order
  *   return: the radix word
  *   encoding(in):
  *   value(in): from byte_string_of ()
- *   from(in): the value byte the word starts at
+ *   from(in): the radix key byte the word starts at
  *
  * Note: Zero past the value, so the words of a shorter value tie with a longer one that goes on with zeros. A space is
  *       zero too, and a small letter its capital, where the collation treats them so, see resolve_string_collation ().
+ *       A NUMERIC's word comes from fixed_numeric_word () or float_numeric_word () instead.
  */
 template <int WORD_WIDTH, RADIX_KEY_FORMAT FORMAT>
 static inline radix_word<WORD_WIDTH>
@@ -801,6 +954,15 @@ value_word (const RADIX_KEY_ENCODING *encoding, const byte_string &value, int fr
 {
   radix_word<WORD_WIDTH> word = 0;
   size_t copy_bytes = 0;
+
+  if constexpr (FORMAT == RADIX_KEY_FIXED_NUMERIC)
+    {
+      return fixed_numeric_word<WORD_WIDTH> (encoding, value, from);
+    }
+  if constexpr (FORMAT == RADIX_KEY_FLOAT_NUMERIC)
+    {
+      return float_numeric_word<WORD_WIDTH> (value, from);
+    }
 
   /* a word the value covers in one load, the word it ends in by the bytes left */
   if (value.length - from >= WORD_WIDTH)
@@ -987,6 +1149,17 @@ encode_byte_string_words (const RADIX_KEY_ENCODING *encoding, const char *rec_ba
   *varying_bits = any_set ^ all_set;
 }
 
+/* encode_byte_string_words () for a NUMERIC without a precision, out of line: its case in the function the formats
+ * share would cost the loops of the others their registers */
+template <int WORD_WIDTH>
+static __attribute__ ((noinline)) void
+encode_float_numeric_words (const RADIX_KEY_ENCODING *encoding, const char *rec_base, const BTSORT_RUN_SLOT *slots,
+			    int record_count, unsigned char *radix_words, UINT64 *varying_bits, int word_index)
+{
+  encode_byte_string_words<WORD_WIDTH, RADIX_KEY_FLOAT_NUMERIC> (encoding, rec_base, slots, record_count, radix_words,
+      varying_bits, word_index);
+}
+
 /* the run's format as the constant the radix words are encoded with */
 template <int WORD_WIDTH>
 static void
@@ -1030,6 +1203,14 @@ encode_radix_words (const RADIX_KEY_ENCODING *encoding, const char *rec_base, co
     case RADIX_KEY_STRING:
       encode_byte_string_words<WORD_WIDTH, RADIX_KEY_STRING> (encoding, rec_base, slots, record_count, radix_words,
 	  varying_bits, word_index);
+      break;
+    case RADIX_KEY_FIXED_NUMERIC:
+      encode_byte_string_words<WORD_WIDTH, RADIX_KEY_FIXED_NUMERIC> (encoding, rec_base, slots, record_count,
+	  radix_words, varying_bits, word_index);
+      break;
+    case RADIX_KEY_FLOAT_NUMERIC:
+      encode_float_numeric_words<WORD_WIDTH> (encoding, rec_base, slots, record_count, radix_words, varying_bits,
+					      word_index);
       break;
     default:
       *varying_bits = 0;
@@ -1091,6 +1272,8 @@ namespace
       void insertion_sort (const msd_range &range);
       bool record_less (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right, int from_word) const;
       bool wide_key_less (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right, int from_word) const __attribute__ ((noinline));
+      bool float_numeric_less (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right, int from_word) const
+      __attribute__ ((noinline));
       template <RADIX_KEY_FORMAT FORMAT>
       bool tail_less (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right, int from_word) const;
 
@@ -1679,20 +1862,42 @@ msd_sort<WORD_WIDTH>::record_less (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right, 
   return wide_key_less (left, right, from_word);
 }
 
-/* record_less () for a key with a length, a VARBIT or a string.
+/* record_less () for a key whose value has a length of its own: a VARBIT, a string or a NUMERIC.
  * out of line, so the loops that call record_less () hold two calls, not one a format, and keep their registers */
 template <int WORD_WIDTH>
 bool
 msd_sort<WORD_WIDTH>::wide_key_less (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right, int from_word) const
 {
-  if (m_encoding->format == RADIX_KEY_STRING)
+  switch (m_encoding->format)
     {
+    case RADIX_KEY_VARBIT:
+      return tail_less<RADIX_KEY_VARBIT> (left, right, from_word);
+    case RADIX_KEY_STRING:
       return tail_less<RADIX_KEY_STRING> (left, right, from_word);
+    case RADIX_KEY_FIXED_NUMERIC:
+      return tail_less<RADIX_KEY_FIXED_NUMERIC> (left, right, from_word);
+    default:
+      assert (m_encoding->format == RADIX_KEY_FLOAT_NUMERIC);
+      return float_numeric_less (left, right, from_word);
+    }
+}
+
+/* record_less () for a NUMERIC without a precision, out of line as wide_key_less () is, for the other formats' tails */
+template <int WORD_WIDTH>
+bool
+msd_sort<WORD_WIDTH>::float_numeric_less (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right, int from_word) const
+{
+  const unsigned char *left_bytes = (const unsigned char *) BTSORT_REC_KEY (m_rec_base + left);
+  const unsigned char *right_bytes = (const unsigned char *) BTSORT_REC_KEY (m_rec_base + right);
+
+  /* the same stored bytes, the length with the sign, the scale and the magnitude, make the same radix key */
+  if (left_bytes[0] == right_bytes[0]
+      && memcmp (left_bytes, right_bytes, (size_t) (left_bytes[0] & ~NUMERIC_VALUE_SIGN_BIT_MASK)) == 0)
+    {
+      return oid_less (m_rec_base, left, right);
     }
 
-  assert (m_encoding->format == RADIX_KEY_VARBIT);
-
-  return tail_less<RADIX_KEY_VARBIT> (left, right, from_word);
+  return tail_less<RADIX_KEY_FLOAT_NUMERIC> (left, right, from_word);
 }
 
 /*

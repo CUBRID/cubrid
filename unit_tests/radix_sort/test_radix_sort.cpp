@@ -34,8 +34,10 @@
 #include "object_representation_constants.h"	/* OR_OID_PAGEID, OR_OID_SLOTID, OR_OID_VOLID */
 #include "string_opfunc.h"	/* bit_compare, varbit_compare: the oracles the bit string keys are checked against */
 #include "language_support.h"	/* lang_init, LANG_COLL_*: a string key is checked against its collation's compare */
-#include "object_primitive.h"	/* pr_type: the index comparator of a string domain is the oracle */
+#include "object_primitive.h"	/* pr_type: the index comparator of a string domain is the oracle, NUMERIC_HEADER_SIZE */
 #include "system_parameter.h"	/* ignore_trailing_space, which says whether a shorter VARCHAR orders first */
+#include "dbtype.h"		/* db_make_numeric: a NUMERIC key is written by the type's own writer */
+#include "numeric_opfunc.h"	/* numeric_coerce_dec_str_to_num */
 
 #include <algorithm>
 #include <cmath>
@@ -1153,7 +1155,7 @@ namespace
 
   /* the index comparator of the domain, which the sort has to agree with */
   key_compare
-  cmp_string_image (const TP_DOMAIN &domain)
+  cmp_disk_image (const TP_DOMAIN &domain)
   {
     return [domain] (const unsigned char *a, const unsigned char *b)
     {
@@ -1259,7 +1261,7 @@ TEST_CASE ("radix sorts CHAR and VARCHAR keys as their collation compares", "[ra
       const bool is_char = (c.type == DB_TYPE_CHAR);
       const TP_DOMAIN domain = string_domain (c.type, c.precision, c.collation_id, false);
       const std::vector<std::string> &letters = letters_of (c.collation_id);
-      const key_compare oracle = cmp_string_image (domain);
+      const key_compare oracle = cmp_disk_image (domain);
       RADIX_KEY_ENCODING encoding;
 
       INFO (c.name);
@@ -1303,6 +1305,248 @@ TEST_CASE ("radix sorts CHAR and VARCHAR keys as their collation compares", "[ra
 		      what += " n=" + std::to_string (n) + " " + shape_name (shape) + (desc ? " desc" : " asc");
 		      check_run (run_encoding, desc, false, samples, oracle, what);
 		    }
+		}
+	    }
+	}
+    }
+}
+
+namespace
+{
+  /* the domain of a NUMERIC index column of a fixed precision and scale */
+  TP_DOMAIN
+  numeric_domain (int precision, int scale, bool desc)
+  {
+    TP_DOMAIN domain = *tp_domain_resolve_default (DB_TYPE_NUMERIC);
+
+    domain.precision = precision;
+    domain.scale = scale;
+    domain.is_desc = desc ? 1 : 0;
+    return domain;
+  }
+
+  /* up to precision decimal digits of the shape, 19 at a time from the top, so the shape's order carries over */
+  std::string
+  numeric_digits (int precision, int shape, int i, int n, std::mt19937_64 &rng, bool *negative)
+  {
+    const int LIMB_DIGITS = 19;	/* 10^19 fits an unsigned 64-bit value */
+    std::string digits;
+
+    *negative = false;
+    for (int left = precision; left > 0; left -= LIMB_DIGITS)
+      {
+	const int take = std::min (left, LIMB_DIGITS);
+	const long long drawn = (long long) shape_value (shape, i, n, rng);
+	unsigned long long limb = (drawn < 0) ? 0 - (unsigned long long) drawn : (unsigned long long) drawn;
+	unsigned long long bound = 1;
+	std::string spelt;
+
+	if (left == precision)
+	  {
+	    *negative = (drawn < 0);	/* the first draw signs the value, so an ordered shape stays ordered */
+	  }
+	for (int digit = 0; digit < take; digit++)
+	  {
+	    bound *= 10;
+	  }
+	spelt = std::to_string (limb % bound);
+	digits += std::string ((size_t) take - spelt.size (), '0') + spelt;
+      }
+    return digits;
+  }
+
+  /* the image the NUMERIC writer stores for the digits: a byte of size and sign, the precision, the scale, then the
+   * magnitude with its leading zero bytes dropped. A NUMERIC without a precision (is_float) keeps the value's own */
+  sample
+  numeric_sample (const std::string &digits, int precision, int scale, bool is_float, bool negative, unsigned int oid)
+  {
+    unsigned char num[DB_NUMERIC_BUF_SIZE];
+    char image[NUMERIC_HEADER_SIZE + DB_NUMERIC_BUF_SIZE];
+    bool spelt_negative;
+    DB_VALUE value;
+    OR_BUF buf;
+    sample one;
+
+    numeric_coerce_dec_str_to_num (digits.c_str (), num, &spelt_negative);
+    if (db_make_numeric (&value, num, precision, scale, DB_NUMERIC_BUF_SIZE, negative, is_float) != NO_ERROR)
+      {
+	FAIL ("db_make_numeric: " << digits);
+      }
+    or_init (&buf, image, (int) sizeof (image));
+    if (tp_Numeric.index_writeval (&buf, &value) != NO_ERROR)
+      {
+	FAIL ("index_writeval: " << digits);
+      }
+
+    one.key_bytes.assign (image, buf.ptr);
+    one.oid_rank = oid;
+    return one;
+  }
+}
+
+/* a NUMERIC key: the magnitude of the value scaled by the domain's scale, right aligned behind a byte for the sign */
+TEST_CASE ("radix sorts NUMERIC keys as numeric_db_value_compare () does", "[radix_sort]")
+{
+  struct numeric_case
+  {
+    int precision;
+    int scale;
+    int key_length;		/* the widest magnitude the writer keeps for the precision, and a byte for the sign */
+  };
+
+  const std::vector<numeric_case> cases =
+  {
+    { 1, 0, 2 }, { 2, 0, 2 }, { 9, 2, 6 }, { 12, 4, 6 }, { 13, 0, 10 }, { 20, 5, 10 }, { 21, 3, 10 }, { 31, 0, 14 },
+    { 32, 8, 18 }, { DB_MAX_FIXED_NUMERIC_PRECISION, 10, 18 },
+  };
+
+  for (const numeric_case &c : cases)
+    {
+      const TP_DOMAIN domain = numeric_domain (c.precision, c.scale, false);
+      const key_compare oracle = cmp_disk_image (domain);
+      RADIX_KEY_ENCODING encoding;
+
+      INFO ("numeric(" << c.precision << "," << c.scale << ")");
+      REQUIRE (radix_sort_resolve_key (&encoding, &domain));
+      REQUIRE (encoding.format == RADIX_KEY_FIXED_NUMERIC);
+      REQUIRE (encoding.key_length == c.key_length);
+      REQUIRE (encoding.word_width == ((c.key_length <= OR_SHORT_SIZE) ? OR_SHORT_SIZE : OR_BIGINT_SIZE));
+      REQUIRE (encoding.min_key_length == NUMERIC_HEADER_SIZE + OR_BYTE_SIZE);
+      REQUIRE_FALSE (encoding.shorter_first);
+
+      for (bool desc : KEY_DIRECTIONS)
+	{
+	  const TP_DOMAIN run_domain = numeric_domain (c.precision, c.scale, desc);
+	  RADIX_KEY_ENCODING run_encoding;
+
+	  REQUIRE (radix_sort_resolve_key (&run_encoding, &run_domain));
+
+	  for (bool unique : UNIQUE_MODES)
+	    {
+	      for (int n : TEST_SIZES)
+		{
+		  for (int shape = 0; shape < SHAPE_COUNT; shape++)
+		    {
+		      std::mt19937_64 rng (0x0e0c0000u + (unsigned) c.precision * 977u + (unsigned) n * 31u
+					   + (unsigned) shape);
+		      std::vector<unsigned int> oids = make_oids (n, (shape & 1) != 0, rng);
+		      std::vector<sample> samples ((size_t) n);
+		      std::string what = "numeric(" + std::to_string (c.precision) + "," + std::to_string (c.scale)
+					 + ") n=" + std::to_string (n) + " " + shape_name (shape)
+					 + (unique ? " unique" : " non-unique") + (desc ? " desc" : " asc");
+
+		      for (int i = 0; i < n; i++)
+			{
+			  bool negative;
+			  std::string digits = numeric_digits (c.precision, shape, i, n, rng, &negative);
+
+			  samples[ (size_t) i] = numeric_sample (digits, c.precision, c.scale, false, negative,
+								 oids[ (size_t) i]);
+			}
+
+		      check_run (run_encoding, desc, unique, samples, oracle, what);
+		    }
+		}
+	    }
+	}
+    }
+}
+
+/* a NUMERIC without a precision: each value its own scale, so the decimal exponent orders first, then the magnitude
+ * made 40 digits */
+TEST_CASE ("radix sorts NUMERIC keys without a precision as numeric_db_value_compare () does", "[radix_sort]")
+{
+  struct float_case
+  {
+    const char *name;
+    int max_digits;		/* a value has 1 to this many digits */
+    std::vector<int> scales;	/* a value has one of these scales */
+  };
+
+  std::vector<int> wide_scales;
+
+  for (int scale = -20; scale <= 60; scale++)
+    {
+      wide_scales.push_back (scale);
+    }
+
+  const std::vector<float_case> cases =
+  {
+    { "typical", 12, { 0, 1, 2, 3, 4, 5, 6 } },
+    { "one scale", 15, { 2 } },
+    { "wide", DB_MAX_NUMERIC_PRECISION, wide_scales },
+    {
+      "extreme scales", DB_MAX_NUMERIC_PRECISION,
+      { DB_MIN_NUMERIC_SCALE, DB_MIN_NUMERIC_SCALE + 1, -1, 0, 1, DB_MAX_NUMERIC_SCALE - 1, DB_MAX_NUMERIC_SCALE }
+    },
+  };
+  const TP_DOMAIN domain = *tp_domain_resolve_default (DB_TYPE_NUMERIC);
+  const key_compare oracle = cmp_disk_image (domain);
+  RADIX_KEY_ENCODING encoding;
+
+  REQUIRE (domain.precision == DB_DEFAULT_NUMERIC_PRECISION);
+  REQUIRE (radix_sort_resolve_key (&encoding, &domain));
+  REQUIRE (encoding.format == RADIX_KEY_FLOAT_NUMERIC);
+  REQUIRE (encoding.key_length == DB_ALIGN (OR_BYTE_SIZE + OR_SHORT_SIZE + DB_NUMERIC_BUF_SIZE, OR_BIGINT_SIZE));
+  REQUIRE (encoding.word_width == OR_BIGINT_SIZE);
+  REQUIRE (encoding.min_key_length == NUMERIC_HEADER_SIZE + OR_BYTE_SIZE);
+  REQUIRE_FALSE (encoding.shorter_first);
+
+  for (const float_case &c : cases)
+    {
+      for (bool desc : KEY_DIRECTIONS)
+	{
+	  TP_DOMAIN run_domain = domain;
+	  RADIX_KEY_ENCODING run_encoding;
+
+	  run_domain.is_desc = desc ? 1 : 0;
+	  REQUIRE (radix_sort_resolve_key (&run_encoding, &run_domain));
+
+	  for (int n : TEST_SIZES)
+	    {
+	      for (int shape = 0; shape < SHAPE_COUNT; shape++)
+		{
+		  std::mt19937_64 rng (0xf10a0000u + (unsigned) c.max_digits * 977u + (unsigned) n * 31u
+				       + (unsigned) shape);
+		  std::vector<unsigned int> oids = make_oids (n, (shape & 1) != 0, rng);
+		  std::vector<sample> samples ((size_t) n);
+		  std::vector<std::string> all_digits ((size_t) n);
+		  std::vector<int> all_scales ((size_t) n);
+		  std::vector<char> all_negative ((size_t) n);
+		  std::string what = std::string (c.name) + " n=" + std::to_string (n) + " " + shape_name (shape)
+				     + (desc ? " desc" : " asc");
+
+		  for (int i = 0; i < n; i++)
+		    {
+		      const size_t at = (size_t) i;
+		      bool negative;
+
+		      if (i % 5 == 4 && all_digits[at - 4].size () < (size_t) DB_MAX_NUMERIC_PRECISION
+			  && all_scales[at - 4] < DB_MAX_NUMERIC_SCALE)
+			{
+			  /* the value four back once more, a digit longer and its scale one more */
+			  all_digits[at] = all_digits[at - 4] + "0";
+			  all_scales[at] = all_scales[at - 4] + 1;
+			  negative = all_negative[at - 4] != 0;
+			}
+		      else
+			{
+			  /* every 31st a zero, of a scale and a sign mark like any other value */
+			  const int digits = (i % 31 == 30) ? 1 : 1 + (int) (rng () % (unsigned) c.max_digits);
+
+			  all_digits[at] = numeric_digits (digits, shape, i, n, rng, &negative);
+			  if (i % 31 == 30)
+			    {
+			      all_digits[at] = "0";
+			    }
+			  all_scales[at] = c.scales[rng () % c.scales.size ()];
+			}
+		      all_negative[at] = negative ? 1 : 0;
+		      samples[at] = numeric_sample (all_digits[at], (int) all_digits[at].size (), all_scales[at], true,
+						    negative, oids[at]);
+		    }
+
+		  check_run (run_encoding, desc, false, samples, oracle, what);
 		}
 	    }
 	}
@@ -1394,10 +1638,38 @@ TEST_CASE ("radix key table", "[radix_sort]")
       }
   }
 
-  /* a numeric: 3-byte header plus a magnitude sized by the value, so no fixed offset or width, bytes out of order */
-  SECTION ("a numeric is declined")
+  /* a NUMERIC: the widest magnitude the writer keeps for the precision and a byte for the sign, or without a precision
+   * a sign, an exponent and 40 digits */
+  SECTION ("a numeric is taken up to the fixed precision, and without a precision")
   {
-    REQUIRE_FALSE (radix_sort_resolve_key (&encoding, tp_domain_resolve_default (DB_TYPE_NUMERIC)));
+    TP_DOMAIN numeric = *tp_domain_resolve_default (DB_TYPE_NUMERIC);
+    const int TAKEN[] = { 1, 2, 3, 12, 13, 21, 22, 31, 32, DB_MAX_FIXED_NUMERIC_PRECISION };
+    const int KEY_LENGTH[] = { 2, 2, 6, 6, 10, 10, 14, 14, 18, 18 };
+    const int DECLINED[] = { TP_FLOATING_PRECISION_VALUE, 0, DB_MAX_FIXED_NUMERIC_PRECISION + 1 };
+
+    numeric.precision = DB_DEFAULT_NUMERIC_PRECISION;
+    REQUIRE (radix_sort_resolve_key (&encoding, &numeric));
+    REQUIRE (encoding.format == RADIX_KEY_FLOAT_NUMERIC);
+    REQUIRE (encoding.key_length == DB_ALIGN (OR_BYTE_SIZE + OR_SHORT_SIZE + DB_NUMERIC_BUF_SIZE, OR_BIGINT_SIZE));
+    REQUIRE (encoding.min_key_length == NUMERIC_HEADER_SIZE + OR_BYTE_SIZE);
+
+    numeric.scale = 0;
+    for (size_t at = 0; at < sizeof (TAKEN) / sizeof (TAKEN[0]); at++)
+      {
+	INFO ("precision " << TAKEN[at]);
+	numeric.precision = TAKEN[at];
+	REQUIRE (radix_sort_resolve_key (&encoding, &numeric));
+	REQUIRE (encoding.format == RADIX_KEY_FIXED_NUMERIC);
+	REQUIRE (encoding.key_length == KEY_LENGTH[at]);
+	REQUIRE (encoding.min_key_length == NUMERIC_HEADER_SIZE + OR_BYTE_SIZE);
+	REQUIRE (encoding.word_width == ((KEY_LENGTH[at] <= OR_SHORT_SIZE) ? OR_SHORT_SIZE : OR_BIGINT_SIZE));
+      }
+    for (int precision : DECLINED)
+      {
+	INFO ("precision " << precision);
+	numeric.precision = precision;
+	REQUIRE_FALSE (radix_sort_resolve_key (&encoding, &numeric));
+      }
   }
 
   SECTION ("a key with a zone is as wide as its time")
@@ -1589,7 +1861,7 @@ TEST_CASE ("radix key table", "[radix_sort]")
   {
     REQUIRE (radix_sort_resolve_key (&encoding, tp_domain_resolve_default (DB_TYPE_INTEGER)));
     REQUIRE (encoding.word_width == OR_INT_SIZE);
-    REQUIRE_FALSE (radix_sort_resolve_key (&encoding, tp_domain_resolve_default (DB_TYPE_NUMERIC)));
+    REQUIRE_FALSE (radix_sort_resolve_key (&encoding, tp_domain_resolve_default (DB_TYPE_JSON)));
     REQUIRE (encoding.word_width == 0);
     REQUIRE (encoding.key_length == 0);
     REQUIRE (encoding.min_key_length == 0);

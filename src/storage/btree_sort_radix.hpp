@@ -43,7 +43,9 @@ typedef enum
   RADIX_KEY_MONETARY,		/* currency then an IEEE 754 amount: the amount's word, in IEEE order */
   RADIX_KEY_BIT,		/* BIT: its bytes as they lie, zero past the key, a word at a time over the width */
   RADIX_KEY_VARBIT,		/* VARBIT: its bytes in whole words, zero past them, then a word of their count */
-  RADIX_KEY_STRING		/* CHAR, VARCHAR: the bytes the collation sees, then a count word if shorter_first */
+  RADIX_KEY_STRING,		/* CHAR, VARCHAR: the bytes the collation sees, then a count word if shorter_first */
+  RADIX_KEY_FIXED_NUMERIC,	/* NUMERIC(p, s): its magnitude right aligned behind a byte for the sign */
+  RADIX_KEY_FLOAT_NUMERIC	/* NUMERIC without a precision: sign, decimal exponent, the magnitude made 40 digits */
 } RADIX_KEY_FORMAT;
 
 /* key encoding of an index, worked out of its key domain */
