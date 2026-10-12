@@ -367,7 +367,6 @@ authenticate_context::install (void)
   smt_add_attribute (def, "direct_groups", "set of (_db_user)", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "groups", "set of (_db_user)", (DB_DOMAIN *) 0);
   smt_add_attribute (def, "authorization", AU_AUTH_CLASS_NAME, (DB_DOMAIN *) 0);
-  smt_add_attribute (def, "triggers", "sequence of object", (DB_DOMAIN *) 0);
   smt_add_attribute (def, AU_USER_ATTR_IS_LOGINABLE, "integer", NULL);
   smt_add_attribute (def, AU_USER_ATTR_IS_SYSTEM_CREATED, "integer", NULL);
   smt_add_attribute (def, "comment", "varchar(1024)", NULL);
