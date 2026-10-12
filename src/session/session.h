@@ -83,8 +83,7 @@ class client_session_context;
 extern int session_adopt_client_context (THREAD_ENTRY * thread_p, client_session_context * csc);
 extern int session_auto_enable (THREAD_ENTRY * thread_p, const char *user, UINT64 nonce);
 extern int session_auto_claim (THREAD_ENTRY * thread_p, SESSION_ID id, const char *user,
-                               const char *server_key, UINT64 nonce,
-			       client_session_context **context);
+			       const char *server_key, UINT64 nonce, client_session_context ** context);
 extern void session_auto_detach (THREAD_ENTRY * thread_p, bool renew_timeout);
 extern UINT64 session_auto_nonce (THREAD_ENTRY * thread_p);
 #endif

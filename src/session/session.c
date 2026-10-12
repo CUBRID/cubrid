@@ -1082,7 +1082,7 @@ session_check_timeout (SESSION_STATE * session_p, SESSION_INFO * active_sessions
   if (session_p->auto_nonce != 0)
     {
       *remove = session_p->auto_detached && ATOMIC_INC_32 (&session_p->ref_count, 0) == 0
-		&& std::chrono::steady_clock::now () >= session_p->auto_expires;
+	&& std::chrono::steady_clock::now () >= session_p->auto_expires;
       return NO_ERROR;
     }
 #endif
@@ -2986,7 +2986,7 @@ session_auto_enable (THREAD_ENTRY * thread_p, const char *user, UINT64 nonce)
  * never share a context. Authentication follows on the new registration. */
 int
 session_auto_claim (THREAD_ENTRY * thread_p, SESSION_ID id, const char *user, const char *server_key, UINT64 nonce,
-		    client_session_context **context)
+		    client_session_context ** context)
 {
   *context = NULL;
   if (thread_p == NULL || thread_p->conn_entry == NULL || thread_p->conn_entry->session_p != NULL

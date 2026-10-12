@@ -1547,7 +1547,7 @@ error:
  * registration and authenticated transport identity are new. Failure must
  * never take boot_restart_failure_cleanup's session-destruction path. */
 int
-boot_resume_client (BOOT_CLIENT_CREDENTIAL *client_credential, const char *password)
+boot_resume_client (BOOT_CLIENT_CREDENTIAL * client_credential, const char *password)
 {
   TRAN_STATE state;
   const TRAN_ISOLATION isolation = TM_TRAN_ISOLATION ();

@@ -3303,15 +3303,15 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
       if (boot_find_root_heap (&(server_credential->root_class_hfid)) != NO_ERROR
 	  || HFID_IS_NULL (&(server_credential->root_class_hfid)))
 	{
-          logtb_release_tran_index (thread_p, tran_index);
+	  logtb_release_tran_index (thread_p, tran_index);
 #if defined (SERVER_MODE)
-          thread_p->conn_entry->set_tran_index (NULL_TRAN_INDEX);
+	  thread_p->conn_entry->set_tran_index (NULL_TRAN_INDEX);
 #endif
-          client_credential->db_user = db_user_save;
-          if (er_errid () == NO_ERROR)
-            {
-              er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-            }
+	  client_credential->db_user = db_user_save;
+	  if (er_errid () == NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	    }
 	  *tran_state = TRAN_UNACTIVE_UNKNOWN;
 	  return NULL_TRAN_INDEX;
 	}
@@ -3335,7 +3335,7 @@ xboot_register_client (THREAD_ENTRY * thread_p, BOOT_CLIENT_CREDENTIAL * client_
 	  if (css_check_ha_server_state_for_client (thread_p, 1) != NO_ERROR)
 	    {
 	      logtb_release_tran_index (thread_p, tran_index);
-              thread_p->conn_entry->set_tran_index (NULL_TRAN_INDEX);
+	      thread_p->conn_entry->set_tran_index (NULL_TRAN_INDEX);
 	      er_log_debug (ARG_FILE_LINE, "xboot_register_client: css_check_ha_server_state_for_client() error\n");
 	      *tran_state = TRAN_UNACTIVE_UNKNOWN;
 	      client_credential->db_user = db_user_save;

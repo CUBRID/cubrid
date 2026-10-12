@@ -86,7 +86,7 @@ cas_sql_log_buffer (void)
   struct sql_log_buffer_holder
   {
     char *buffer = NULL;
-    ~sql_log_buffer_holder ()
+     ~sql_log_buffer_holder ()
     {
       free (buffer);
     }

@@ -4859,7 +4859,7 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
 	  /* create new session */
 	  result = xsession_create_new (thread_p, &id);
 #if defined (SERVER_MODE)
-          created_session = (result == NO_ERROR);
+	  created_session = (result == NO_ERROR);
 #endif
 	  if (result != NO_ERROR)
 	    {
@@ -4928,9 +4928,9 @@ csession_find_or_create_session (SESSION_ID * session_id, int *row_count, char *
     {
       /* The connection has not adopted a client context yet. */
       if (created_session)
-        {
-          (void) xsession_end_session (thread_p, id, false);
-        }
+	{
+	  (void) xsession_end_session (thread_p, id, false);
+	}
       db_Session_id = DB_EMPTY_SESSION;
       *session_id = DB_EMPTY_SESSION;
     }
