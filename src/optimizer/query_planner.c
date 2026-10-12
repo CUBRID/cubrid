@@ -3190,12 +3190,6 @@ qo_sort_cost (QO_PLAN * planp)
 
       order = planp->order;
       objects = (subplanp->info)->cardinality;
-      if (planp->plan_un.sort.sort_type == SORT_DISTINCT)
-	{
-	  /* the file the join reads holds what the removal left, not what the subplan produced.  For the
-	   * query's own DISTINCT the two are the same info, so this changes nothing there */
-	  objects = (planp->info)->cardinality;
-	}
       result_size = objects * (double) (subplanp->info)->projected_size;
       pages = result_size / (double) IO_PAGESIZE;
       if (pages < 1.0)
@@ -3208,12 +3202,15 @@ qo_sort_cost (QO_PLAN * planp)
        */
       planp->fixed_cpu_cost = subplanp->fixed_cpu_cost + subplanp->variable_cpu_cost + TEMP_SETUP_COST;
       planp->fixed_io_cost = subplanp->fixed_io_cost + subplanp->variable_io_cost;
-      planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT;
+      planp->variable_cpu_cost = (planp->info)->cardinality * (double) QO_CPU_WEIGHT;
       /* the list file is written and re-read in order: sequential unit price. TEMP_SETUP_COST
        * above is a CPU-side policy offset, not a page count, and is not priced. */
-      planp->variable_io_cost = pages * QO_COST_SEQ_PAGE;
+      planp->variable_io_cost =
+	MAX (1.0, (planp->info)->cardinality * (double) (subplanp->info)->projected_size / (double) IO_PAGESIZE)
+	* QO_COST_SEQ_PAGE;
 
-      if (order != QO_UNORDERED && order != subplanp->order)
+      /* a plan with an info of its own (qo_distinct_new ()) sorts to remove the duplicates whatever the order */
+      if ((order != QO_UNORDERED && order != subplanp->order) || planp->info != subplanp->info)
 	{
 	  double sort_io;
 
