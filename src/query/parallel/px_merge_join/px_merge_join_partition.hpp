@@ -29,6 +29,9 @@
 
 #include <vector>
 
+struct DOMAIN_COMPARE_PLAN;
+typedef struct val_descr VAL_DESCR;
+
 namespace parallel_query
 {
   namespace merge_join
@@ -85,8 +88,8 @@ namespace parallel_query
      * NULL prefix stays whole in range 0. DB_UNK = incomparable pair, callers fall back to the serial merge */
     DB_VALUE_COMPARE_RESULT cmp_keys (const DB_VALUE *left, const DB_VALUE *right, int cnt);
 
-    bool is_applicable (const QFILE_LIST_MERGE_INFO &merge_info, const QFILE_LIST_ID *outer_list_id,
-			const QFILE_LIST_ID *inner_list_id);
+    bool is_applicable (const QFILE_LIST_MERGE_INFO &merge_info, const DOMAIN_COMPARE_PLAN *const *compares,
+			const QFILE_LIST_ID *outer_list_id, const QFILE_LIST_ID *inner_list_id);
 
     /* can_partition == false with NO_ERROR: no useful split (degree <= 1, collapsed boundaries, DB_UNK); use the
      * serial merge */

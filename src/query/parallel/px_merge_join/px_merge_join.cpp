@@ -136,7 +136,8 @@ namespace parallel_query
 
     int
     try_parallel_merge (THREAD_ENTRY *thread_p, QFILE_LIST_ID *outer_list_id, QFILE_LIST_ID *inner_list_id,
-			QFILE_LIST_MERGE_INFO *merge_infop, int ls_flag, int hint_degree,
+			QFILE_LIST_MERGE_INFO *merge_infop, int ls_flag, const DOMAIN_COMPARE_PLAN *const *compares,
+			const VAL_DESCR *vd, int hint_degree,
 			QFILE_LIST_ID **result_list_id, bool &executed, int &executed_parallelism)
     {
       int error = NO_ERROR;
@@ -146,7 +147,8 @@ namespace parallel_query
 
       assert (merge_infop->join_type == JOIN_INNER);
 
-      if (!prm_get_bool_value (PRM_ID_PARALLEL_MERGE_JOIN) || !is_applicable (*merge_infop, outer_list_id, inner_list_id))
+      if (!prm_get_bool_value (PRM_ID_PARALLEL_MERGE_JOIN)
+	  || !is_applicable (*merge_infop, compares, outer_list_id, inner_list_id))
 	{
 	  return NO_ERROR;
 	}
@@ -189,6 +191,8 @@ namespace parallel_query
       manager.m_outer_list_id = outer_list_id;
       manager.m_inner_list_id = inner_list_id;
       manager.m_merge_info = merge_infop;
+      manager.m_compares = compares;
+      manager.m_vd = vd;
       manager.m_parts = &parts;
       manager.m_px_worker_stats = NULL;
       bool main_stats_allocated = false;

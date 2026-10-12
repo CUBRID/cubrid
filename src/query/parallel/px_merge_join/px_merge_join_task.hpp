@@ -47,6 +47,9 @@ namespace parallel_query
       QFILE_LIST_ID *m_outer_list_id;
       QFILE_LIST_ID *m_inner_list_id;
       QFILE_LIST_MERGE_INFO *m_merge_info;
+      /* the leader's: the merge comparisons only read them, and the leader waits while the workers run */
+      const DOMAIN_COMPARE_PLAN *const *m_compares;
+      const VAL_DESCR *m_vd;
       const merge_partitions *m_parts;
       std::vector<QFILE_LIST_ID *> m_outputs;	/* one private output list per range, opened on the main thread */
       UINT64 *m_px_worker_stats;	/* one perf stat slice per range while tracing, else NULL */

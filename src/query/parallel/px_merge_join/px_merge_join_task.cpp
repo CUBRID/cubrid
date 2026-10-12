@@ -206,7 +206,8 @@ namespace parallel_query
 	hooks.should_stop = range_merge_should_stop;
 	hooks.arg = &ctx;
 
-	if (qexec_merge_inner_loop (thread_p, list_idp, merge_infop, &tplrec, &outer, &inner, &hooks) != NO_ERROR)
+	if (qexec_merge_inner_loop (thread_p, list_idp, merge_infop, &tplrec, &outer, &inner, m->m_compares, m->m_vd,
+				    &hooks) != NO_ERROR)
 	  {
 	    if (ctx.stopped)
 	      {
