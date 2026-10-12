@@ -311,6 +311,23 @@ namespace cubload
 
     db_value_clear (&natural);
 
+    /*
+     * The cast can hand back a null without failing. Under
+     * oracle_style_empty_string an empty string is a null, so '' into a numeric
+     * column arrives here as one and tp_value_cast () calls that DOMAIN_COMPATIBLE.
+     * A NOT NULL column cannot take it.
+     *
+     * Say so here rather than leaving it to whoever stores the value. The standalone
+     * loader's object template refuses it a second time, but the server loader tests
+     * NOT NULL only on a NULL token, so nothing downstream would catch it and the row
+     * would be written with the constraint broken.
+     */
+    if (attr->is_not_null () && DB_IS_NULL (val))
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, attr->get_name ());
+	return ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
+      }
+
     return NO_ERROR;
   }
 
