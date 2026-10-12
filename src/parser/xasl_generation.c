@@ -26912,6 +26912,34 @@ outofmem:
   return NULL;
 }
 
+/*
+ * pt_default_tree_to_regu () - compile a residual DEFAULT expression, as restored from its Compact DEFAULT Tree,
+ *	without type checking it again
+ *   return: the expression, or NULL with a parser error
+ *   parser(in): parser context
+ *   tree(in): the DEFAULT expression
+ *
+ * The DDL check, the DEFAULT slots of an INSERT and the stored REGU form all compile through here, so the DDL
+ * check sees what an INSERT compiles.
+ */
+static REGU_VARIABLE *
+pt_default_tree_to_regu (PARSER_CONTEXT * parser, PT_NODE * tree)
+{
+  REGU_VARIABLE *regu;
+
+  regu = pt_to_regu_variable (parser, tree, UNBOX_AS_VALUE);
+  if (regu == NULL || pt_has_error (parser))
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "compile the DEFAULT expression");
+	}
+      return NULL;
+    }
+
+  return regu;
+}
+
 #if defined (DEFAULT_EXPR_REGU_STREAM)
 /*
  * pt_to_default_expr_stream () - compiles a residual DEFAULT expression to a
@@ -26983,10 +27011,10 @@ pt_to_default_expr_stream (PARSER_CONTEXT * parser, PT_NODE * expr, char **strea
       goto end;
     }
 
-  func_pred->func_regu = pt_to_regu_variable (parser, expr, UNBOX_AS_VALUE);
+  func_pred->func_regu = pt_default_tree_to_regu (parser, expr);
   func_pred->cache_attrinfo = symbols->cache_attrinfo;
 
-  if (pt_has_error (parser) || func_pred->func_regu == NULL)
+  if (func_pred->func_regu == NULL)
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
       error = er_errid ();
@@ -27027,7 +27055,6 @@ pt_check_default_expr_compile (PARSER_CONTEXT * parser, const char *stream, int 
 {
   SYMBOL_INFO *save_symbols = parser->symbols;
   PT_NODE *tree;
-  REGU_VARIABLE *regu = NULL;
   int error = NO_ERROR;
 
   tree = pt_compact_default_tree_from_stream (parser, stream, stream_size);
@@ -27047,15 +27074,11 @@ pt_check_default_expr_compile (PARSER_CONTEXT * parser, const char *stream, int 
     }
   else
     {
-      regu = pt_to_regu_variable (parser, tree, UNBOX_AS_VALUE);
+      (void) pt_default_tree_to_regu (parser, tree);
     }
 
-  if (regu == NULL || pt_has_error (parser))
+  if (pt_has_error (parser))
     {
-      if (!pt_has_error (parser))
-	{
-	  PT_INTERNAL_ERROR (parser, "compile the DEFAULT expression");
-	}
       pt_report_to_ersys (parser, PT_SEMANTIC);
       error = er_errid ();
       if (error == NO_ERROR)
@@ -27138,13 +27161,9 @@ pt_to_insert_default_slots (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, INSE
       slot = &insert->default_slots[insert->num_default_slots];
       slot->att_index = k;
       slot->volatility = volatility;
-      slot->expr = pt_to_regu_variable (parser, tree, UNBOX_AS_VALUE);
-      if (slot->expr == NULL || pt_has_error (parser))
+      slot->expr = pt_default_tree_to_regu (parser, tree);
+      if (slot->expr == NULL)
 	{
-	  if (!pt_has_error (parser))
-	    {
-	      PT_INTERNAL_ERROR (parser, "compile the DEFAULT expression");
-	    }
 	  return ER_FAILED;
 	}
       insert->num_default_slots++;
