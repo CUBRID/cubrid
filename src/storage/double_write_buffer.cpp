@@ -3691,6 +3691,7 @@ check_flushed_blocks:
   if (!DWB_IS_BLOCK_WRITE_STARTED (current_position_with_flags, initial_block_no))
     {
       /* Check helper flush block. */
+      initial_block = &dwb_Global.blocks[initial_block_no];
       goto wait_for_file_sync_helper_block;
     }
 
@@ -3703,6 +3704,7 @@ check_flushed_blocks:
       assert (current_block_version > initial_block_version);
 
       /* Check helper flush block. */
+      initial_block = &dwb_Global.blocks[initial_block_no];
       goto wait_for_file_sync_helper_block;
     }
 
@@ -3734,8 +3736,9 @@ check_flushed_blocks:
   goto check_flushed_blocks;
 
 wait_for_file_sync_helper_block:
+  /* initial_block is set by the path that jumps here. When no block was being written, it is the block the helper
+   * holds, which is not the block of the current position. */
   dwb_log ("dwb_flush_force: Wait for helper flush = %lld\n", ATOMIC_INC_64 (&dwb_Global.position_with_flags, 0ULL));
-  initial_block = &dwb_Global.blocks[initial_block_no];
 
 #if defined (SERVER_MODE)
   while (dwb_Global.file_sync_helper_block == initial_block)
