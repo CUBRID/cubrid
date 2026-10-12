@@ -1716,7 +1716,8 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	{
 	  assert (part_list_id[part_id]->last_pgptr == NULL);
 
-	  if (qfile_reopen_list_as_append_mode (thread_p, part_list_id[part_id]) != NO_ERROR)
+	  error = qfile_reopen_list_as_append_mode (thread_p, part_list_id[part_id]);
+	  if (error != NO_ERROR)
 	    {
 	      break;		/* error_exit */
 	    }
@@ -1771,12 +1772,15 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 			     QFILE_FLAG_ALL | QFILE_LIST_BACKWARD_FLAG (list_id), NULL);
 	  if (temp_part_list_id[part_id] == NULL)
 	    {
+	      assert_release_error (er_errid () != NO_ERROR);
+	      error = er_errid ();
 	      break;		/* error_exit */
 	    }
 	}
 
       /* without a memory buffer, a fixed last page per partition exhausts the page buffer; no-op with membuf */
-      if (qfile_reopen_list_as_append_mode (thread_p, temp_part_list_id[part_id]) != NO_ERROR)
+      error = qfile_reopen_list_as_append_mode (thread_p, temp_part_list_id[part_id]);
+      if (error != NO_ERROR)
 	{
 	  break;		/* error_exit */
 	}
@@ -1800,6 +1804,12 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
    * ensure qfile_close_scan runs here
    * before jumping to error_exit. */
   qfile_close_scan (thread_p, &list_scan_id);
+
+  /* skip the merge on error, as the parallel split does; a successful append below would overwrite the error */
+  if (scan_code == S_ERROR || error != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   for (part_index = 0; part_index < part_cnt; part_index++)
     {
