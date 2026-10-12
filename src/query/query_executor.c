@@ -18717,7 +18717,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	      && qfile_copy_list_id (non_recursive_part->list_id, recursive_part->list_id, true,
 				     QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
 	    {
-	      QFILE_FREE_AND_INIT_LIST_ID (non_recursive_part->list_id);
+	      /* the list id is part of the XASL tree, and the failed copy left it empty */
 	      GOTO_EXIT_ON_ERROR;
 	    }
 	  qfile_clear_list_id (recursive_part->list_id);
@@ -18754,7 +18754,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
        */
       if (qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true, QFILE_COPY_DEPENDENT) != NO_ERROR)
 	{
-	  QFILE_FREE_AND_INIT_LIST_ID (non_recursive_part->list_id);
+	  /* the list id is part of the XASL tree, and the failed copy left it empty */
 	  GOTO_EXIT_ON_ERROR;
 	}
 
@@ -18772,7 +18772,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
   else if (qexec_assert_result_list_backward (xasl, non_recursive_part->list_id),	/* debug check, then copy */
 	   qfile_copy_list_id (xasl->list_id, non_recursive_part->list_id, true, QFILE_COPY_DEPENDENT) != NO_ERROR)
     {
-      QFILE_FREE_AND_INIT_LIST_ID (xasl->list_id);
+      /* the list id is part of the XASL tree, and the failed copy left it empty */
       GOTO_EXIT_ON_ERROR;
     }
 
