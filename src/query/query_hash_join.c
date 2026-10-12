@@ -49,7 +49,7 @@
 
 #define PARTITION_FILL_FACTOR 0.8
 
-/* most partitions of a split; a larger partition is split again when it is executed (hjoin_execute_partition).
+/* most partitions of a split; a larger partition is split again when it is executed (hjoin_execute_context).
  * It also bounds the last pages of the partition lists kept in memory (cubquery::hjoin_part_set). */
 #define HASHJOIN_PART_MAX_CNT 1024
 
@@ -100,8 +100,8 @@ static int hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 			      HASHJOIN_INPUT_SPLIT_INFO * split_info, HASH_SCAN_KEY * temp_key);
 static void hjoin_detach_spooled_qlist (QFILE_LIST_ID * list_id);
 static UINT32 hjoin_estimate_partition_count (INT64 min_tuple_cnt, double fill_factor);
-static int hjoin_execute_subpartitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
-					UINT32 sub_cnt, struct qmgr_temp_file *spool);
+static int hjoin_execute_sub_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
+				       UINT32 sub_cnt, struct qmgr_temp_file *spool);
 static int hjoin_resplit_qlist (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_LIST_ID ** part_list_id,
 				UINT32 part_cnt, UINT32 divisor, struct qmgr_temp_file *spool);
 static QFILE_TUPLE hjoin_locate_tuple_hash_key (QFILE_TUPLE_RECORD * tuple_record);
@@ -333,7 +333,7 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
   context_cnt = manager->context_cnt;
 
-  /* the partitions are executed one by one, so all of them append to the final result list */
+  /* the contexts are executed one by one, so all of them append to the final result list */
   if (manager->single_context.list_id == NULL)
     {
       manager->single_context.list_id =
@@ -349,7 +349,7 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
       current_context = &manager->contexts[context_index];
       current_context->result_list_id = manager->single_context.list_id;
 
-      error = hjoin_execute_partition (thread_p, manager, current_context, manager->part_spools[0]);
+      error = hjoin_execute_context (thread_p, manager, current_context, manager->part_spools[0]);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -360,7 +360,7 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	  hjoin_trace_merge_stats (stats, current_context->stats, manager->single_context.status);
 	}
 
-      /* the result went to result_list_id, so there is no list of the partition to merge */
+      /* the result went to result_list_id, so there is no list of the context to merge */
       assert (current_context->list_id == NULL);
     }
 
@@ -378,19 +378,19 @@ error_exit:
 }
 
 /*
- * hjoin_execute_partition() - execute a partition, splitting it again first if its hash table would still be too large
+ * hjoin_execute_context() - execute a context, splitting its lists again first if its hash table would still be too large
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
- *   context(in/out): Partition to execute.
+ *   context(in/out): Hash join context containing per-partition state.
  *   spool(in): Temporary file the pages of the sub-partitions are allocated from; not used by another thread meanwhile.
  *
  * Note: The first split makes at most HASHJOIN_PART_MAX_CNT partitions, so a partition may still be larger than
  *       max_hash_list_scan_size. It is split again by the hash keys stored in its tuples.
  */
 int
-hjoin_execute_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
-			 struct qmgr_temp_file *spool)
+hjoin_execute_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
+		       struct qmgr_temp_file *spool)
 {
   INT64 min_tuple_cnt;
   UINT32 sub_cnt;
@@ -401,11 +401,11 @@ hjoin_execute_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
 
   if (IS_OUTER_JOIN_TYPE (manager->join_type) && context == &manager->contexts[manager->context_cnt - 1])
     {
-      /* the partition of NULL join keys is not joined by hash */
+      /* the context of NULL join keys is not joined by hash */
       return hjoin_execute (thread_p, manager, context);
     }
 
-  /* only a partition over the limit itself is split again, not one over PARTITION_FILL_FACTOR of it */
+  /* only a context over the limit itself is split again, not one over PARTITION_FILL_FACTOR of it */
   min_tuple_cnt = MIN (context->outer.list_id->tuple_cnt, context->inner.list_id->tuple_cnt);
   if (hjoin_estimate_partition_count (min_tuple_cnt, 1.0) <= 1)
     {
@@ -413,21 +413,22 @@ hjoin_execute_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
     }
 
   sub_cnt = hjoin_estimate_partition_count (min_tuple_cnt, PARTITION_FILL_FACTOR);
-  return hjoin_execute_subpartitions (thread_p, manager, context, MIN (sub_cnt, HASHJOIN_PART_MAX_CNT), spool);
+  return hjoin_execute_sub_contexts (thread_p, manager, context, MIN (sub_cnt, HASHJOIN_PART_MAX_CNT), spool);
 }
 
 /*
- * hjoin_execute_subpartitions() - split a partition into sub-partitions, execute them, and merge their results
+ * hjoin_execute_sub_contexts() - split the lists of a context into sub-partitions, execute them as sub-contexts, and
+ *                                merge their results
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
- *   context(in/out): Partition to split; receives the merged result.
- *   sub_cnt(in): Number of sub-partitions.
+ *   context(in/out): Hash join context containing per-partition state.
+ *   sub_cnt(in): Number of sub-contexts.
  *   spool(in): Temporary file the pages of the sub-partitions are allocated from.
  */
 static int
-hjoin_execute_subpartitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
-			     UINT32 sub_cnt, struct qmgr_temp_file *spool)
+hjoin_execute_sub_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
+			    UINT32 sub_cnt, struct qmgr_temp_file *spool)
 {
   HASHJOIN_CONTEXT *sub_contexts = NULL, *sub_context;
   QFILE_LIST_ID **sub_list_id[2] = { NULL, NULL };
@@ -510,7 +511,7 @@ hjoin_execute_subpartitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager
       assert (context->result_list_id != NULL);
       sub_context->result_list_id = context->result_list_id;
 
-      /* each sub-partition counts by itself, then adds to the partition, since a context sets its stats only once */
+      /* each sub-context counts by itself, then adds to the context, since a context sets its stats only once */
       if (context->stats != NULL)
 	{
 	  memset (&sub_stats, 0, sizeof (HASHJOIN_STATS));
@@ -1663,7 +1664,7 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
   part_cnt = hjoin_estimate_partition_count (min_tuple_cnt, PARTITION_FILL_FACTOR);
   if (part_cnt > 1)
     {
-      /* a larger partition is split again when it is executed (hjoin_execute_partition) */
+      /* a larger partition is split again when it is executed (hjoin_execute_context) */
       part_cnt = MIN (part_cnt, HASHJOIN_PART_MAX_CNT);
 
       if (IS_OUTER_JOIN_TYPE (manager->join_type))

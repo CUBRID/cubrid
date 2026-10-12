@@ -440,7 +440,7 @@ namespace parallel_query
 	  assert (thread_ref.m_px_stats == nullptr);
 	}
 
-      /* the partitions of this task append their results to one list, merged by the main thread */
+      /* the contexts of this task append their results to one list, merged by the main thread */
       m_shared_info->result_list_ids[m_index] =
 	      qfile_open_list (&thread_ref, &m_manager->type_list, nullptr, m_manager->query_id, m_manager->qlist_flag, nullptr);
       if (m_shared_info->result_list_ids[m_index] == nullptr)
@@ -488,7 +488,7 @@ namespace parallel_query
 	  context->result_list_id = m_shared_info->result_list_ids[m_index];
 
 	  assert (m_index < m_manager->part_spool_cnt);
-	  error = hjoin_execute_partition (&thread_ref, m_manager, context, m_manager->part_spools[m_index]);
+	  error = hjoin_execute_context (&thread_ref, m_manager, context, m_manager->part_spools[m_index]);
 
 	  if (thread_is_on_trace (&thread_ref))
 	    {

@@ -245,7 +245,7 @@ error_exit:
 
       task_manager.join ();
 
-      /* every partition is done, so no list reads the spool pages; do not hold them while the results are merged */
+      /* every context is done, so no list reads the spool pages; do not hold them while the results are merged */
       if (!task_manager.has_error ())
 	{
 	  hjoin_clear_part_spools (&thread_ref, manager);
