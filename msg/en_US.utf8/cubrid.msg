@@ -1487,7 +1487,14 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1380 A stored procedure/function declared PARALLEL_ENABLE cannot execute SQL on the server-side connection or use DBMS_OUTPUT.
 
-1381 Last Error
+1381 System metadata is incompatible with this CUBRID version. Run 'cubrid upgradedb'.
+1382 System metadata version is newer than the current CUBRID version supports; downgrade is not supported.
+
+1383 Domain of a query node is unresolved at %1$s (query %2$s, node %3$d, domain %4$s).
+
+1384 Session variable @%1$s would hold %2$s and %3$s within a statement that reads it; cast the value to one type.
+
+1385 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1655,6 +1662,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Maximum length of a server user is %1$d bytes.
 138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
+140 FILL_FACTOR argument must be between %1$d and %2$d.
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.

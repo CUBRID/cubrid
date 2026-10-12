@@ -194,10 +194,20 @@ sm_define_view_columns_spec (void)
       "IF ([attr].[data_type] IN (%d, %d, %d, %d), [dom].[prec], NULL) AS [character_maximum_length], "
       /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
       "IF ([attr].[data_type] IN (%d, %d), CAST ([dom].[prec] AS BIGINT) * [charset].[char_size], NULL) AS [character_octet_length], "
-      /* DB_TYPE_INTEGER, DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DB_TYPE_SHORT/SMALLINT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT */
-      "IF ([attr].[data_type] IN (%d, %d, %d, %d, %d, %d), [dom].[prec], NULL) AS [numeric_precision], "
-      /* DB_TYPE_INTEGER, DB_TYPE_SHORT/SMALLINT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT */
-      "IF ([attr].[data_type] IN (%d, %d, %d, %d), [dom].[scale], NULL) AS [numeric_scale], "
+      "CASE "
+        /* a floating-point NUMERIC (DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION) has no column precision */
+        "WHEN [attr].[data_type] = %d AND [dom].[prec] = %d THEN NULL "
+        /* DB_TYPE_INTEGER, DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DB_TYPE_SHORT/SMALLINT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT */
+        "WHEN [attr].[data_type] IN (%d, %d, %d, %d, %d, %d) THEN [dom].[prec] "
+        "ELSE NULL "
+      "END AS [numeric_precision], "
+      "CASE "
+        /* a floating-point NUMERIC (DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION) has no column scale */
+        "WHEN [attr].[data_type] = %d AND [dom].[prec] = %d THEN NULL "
+        /* DB_TYPE_INTEGER, DB_TYPE_SHORT/SMALLINT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT */
+        "WHEN [attr].[data_type] IN (%d, %d, %d, %d) THEN [dom].[scale] "
+        "ELSE NULL "
+      "END AS [numeric_scale], "
       /* DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE, DB_TYPE_DATETIME, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ */
       "IF ([attr].[data_type] IN (%d, %d, %d, %d, %d, %d, %d, %d), [dom].[prec], NULL) AS [datetime_precision], "
       /* DB_TYPE_STRING/VARCHAR, DB_TYPE_CHAR */
@@ -219,6 +229,8 @@ sm_define_view_columns_spec (void)
         "WHEN [attr].[data_type] = %d THEN CONCAT ('BIT(', [dom].[prec], ')') "
         /* DB_TYPE_VARBIT */
         "WHEN [attr].[data_type] = %d THEN CONCAT ('BIT VARYING(', [dom].[prec], ')') "
+        /* a floating-point NUMERIC (DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION) is declared without precision */
+        "WHEN [attr].[data_type] = %d AND [dom].[prec] = %d THEN 'NUMERIC' "
         /* DB_TYPE_NUMERIC */
         "WHEN [attr].[data_type] = %d THEN CONCAT ('NUMERIC(', [dom].[prec], ',', [dom].[scale], ')') "
         /* DB_TYPE_SHORT/SMALLINT */
@@ -279,7 +291,9 @@ sm_define_view_columns_spec (void)
       AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
     DB_TYPE_STRING, DB_TYPE_BIT, DB_TYPE_VARBIT, DB_TYPE_CHAR,
     DB_TYPE_STRING, DB_TYPE_CHAR,
+    DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
     DB_TYPE_INTEGER, DB_TYPE_FLOAT, DB_TYPE_DOUBLE, DB_TYPE_SHORT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT,
+    DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
     DB_TYPE_INTEGER, DB_TYPE_SHORT, DB_TYPE_NUMERIC, DB_TYPE_BIGINT,
     DB_TYPE_TIME, DB_TYPE_TIMESTAMP, DB_TYPE_DATE, DB_TYPE_DATETIME, DB_TYPE_TIMESTAMPTZ, DB_TYPE_TIMESTAMPLTZ, DB_TYPE_DATETIMETZ, DB_TYPE_DATETIMELTZ,
     DB_TYPE_STRING, DB_TYPE_CHAR,
@@ -288,6 +302,7 @@ sm_define_view_columns_spec (void)
     DB_TYPE_CHAR,
     DB_TYPE_BIT,
     DB_TYPE_VARBIT,
+    DB_TYPE_NUMERIC, DB_DEFAULT_NUMERIC_PRECISION,
     DB_TYPE_NUMERIC,
     DB_TYPE_SHORT,
     DB_TYPE_ENUMERATION,

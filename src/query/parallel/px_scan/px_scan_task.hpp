@@ -76,6 +76,8 @@ namespace parallel_scan
       m_is_grouped (is_grouped),
       m_is_cached_scan (is_cached_scan),
       m_uses_xasl_clone (uses_xasl_clone),
+      m_run_nonlinked_dptr (false),
+      m_handlers_initialized (false),
       m_worker_manager (worker_manager)
       {
       }
@@ -111,6 +113,8 @@ namespace parallel_scan
       bool m_is_grouped;
       bool m_is_cached_scan;	/* from manager, propagated to scan_open_heap_scan */
       bool m_uses_xasl_clone;
+      bool m_run_nonlinked_dptr;
+      bool m_handlers_initialized;	/* write_initialize () reached; finalize () may finalize the handlers */
       TSC_TICKS m_start_tick;
 
       worker_manager *m_worker_manager;

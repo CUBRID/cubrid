@@ -14658,19 +14658,23 @@ do_execute_insert (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   CHECK_MODIFICATION_ERROR ();
 
-  /* for dblink: no need to check xasl_id is NULL */
-  if (statement->info.insert.spec->info.spec.remote_server_name == NULL)
+  if (statement->xasl_id == NULL)
     {
-      if (statement->xasl_id == NULL)
+      /* Nothing to execute for a remote target, e.g. false where or not prepared correctly -- the same as
+       * do_execute_delete (). The do_insert () fallback below is for local targets only. */
+      if (statement->info.insert.spec->info.spec.remote_server_name != NULL)
 	{
-	  /* check if it is not necessary to execute this statement */
-	  if (qo_need_skip_execution ())
-	    {
-	      statement->etc = NULL;
-	      return NO_ERROR;
-	    }
-	  return do_insert (parser, statement);
+	  statement->etc = NULL;
+	  return NO_ERROR;
 	}
+
+      /* check if it is not necessary to execute this statement */
+      if (qo_need_skip_execution ())
+	{
+	  statement->etc = NULL;
+	  return NO_ERROR;
+	}
+      return do_insert (parser, statement);
     }
 
   query_flag = DEFAULT_EXEC_MODE;
@@ -15612,11 +15616,11 @@ int
 do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_query, DB_PREPARE_SUBQUERY_INFO * info)
 {
   int i, q, err = NO_ERROR;
-  QUERY_ID query_id;
-  QFILE_LIST_ID *list_id;
 
   for (q = 0; q < num_query; q++)
     {
+      QUERY_ID query_id = NULL_QUERY_ID;
+      QFILE_LIST_ID *list_id = NULL;
       DB_VALUE *host_variables = NULL;
 
       if (info[q].host_var_count > 0)
@@ -15650,6 +15654,16 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 	  free (host_variables);
 	}
 
+      if (list_id != NULL)
+	{
+	  cursor_free_self_list_id (list_id);
+	}
+
+      if (query_id != NULL_QUERY_ID && !tran_was_latest_query_ended ())
+	{
+	  qmgr_end_query (query_id);
+	}
+
       if (err != NO_ERROR)
 	{
 	  if (err == ER_QPROC_XASLNODE_RECOMPILE_REQUESTED || err == ER_QPROC_INVALID_XASLNODE)
@@ -15676,7 +15690,7 @@ do_execute_prepared_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt, int num_q
 int
 do_execute_subquery (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
-  QUERY_ID query_id;
+  QUERY_ID query_id = NULL_QUERY_ID;
   QFILE_LIST_ID *list_id;
   DB_VALUE *host_variables = NULL;
   CACHE_TIME clt_cache_time;
@@ -18319,7 +18333,17 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	}
     }
 
-  server_op = (server_insert && server_update);
+  if (statement->info.merge.into->info.spec.remote_server_name)
+    {
+      /* A remote MERGE is sent to the remote server as one statement, so either WHEN clause
+       * alone is complete. With AND it would take the client path, which needs a local class
+       * (class_obj and flat are NULL here). */
+      server_op = (server_insert || server_update);
+    }
+  else
+    {
+      server_op = (server_insert && server_update);
+    }
 
   if (server_op)
     {

@@ -125,6 +125,10 @@ struct SUBKEY_INFO
   int is_nulls_first;
 
   bool use_cmp_dom;		/* when true, use cmp_dom to make comparing */
+
+  bool cmp_dom_session_read;	/* cmp_dom rests on a session variable read: the type holds for the statement, a value
+				 * of another type converts to it or fails; the optdebug cross-check, which compares
+				 * with the type each value gives, skips it */
 };
 
 struct SORTKEY_INFO
@@ -136,6 +140,7 @@ struct SORTKEY_INFO
   SUBKEY_INFO *key;		/* Points to `default_keys' if `nkeys' <= 8; otherwise it points to malloc'ed space. */
   SUBKEY_INFO default_keys[8];	/* Default storage; this ought to work for most cases. */
   int error;			/* median domain convert errors */
+  QFILE_TUPLE_VALUE_TYPE_LIST key_tl;	/* key mini-tuple layout: domp[i] = domain of key[i].col */
 };
 
 struct SORT_INFO
