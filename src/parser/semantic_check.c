@@ -9659,9 +9659,7 @@ pt_check_drop_package (PARSER_CONTEXT * parser, PT_NODE * node)
 static void
 pt_check_alter_package (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  /* TODO package: ALTER PACKAGE (COMMENT, OWNER TO, COMPILE) is not implemented yet. Reject it
-   * here so that it does not report success without doing anything. */
-  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_NOT_SUPPORTED_YET, "ALTER PACKAGE");
+  // TODO package
 }
 
 /*

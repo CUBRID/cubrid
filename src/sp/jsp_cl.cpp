@@ -3680,9 +3680,7 @@ error_exit:
 int
 jsp_alter_package (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  // TODO package: not implemented yet. pt_check_alter_package () rejects the statement with a
-  // message naming ALTER PACKAGE, so this is only a backstop that keeps any path from reporting
-  // success without doing anything.
+  // TODO package: ALTER PACKAGE is not implemented yet; fail instead of reporting success
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERFACE_NOT_SUPPORTED_OPERATION, 0);
   return ER_INTERFACE_NOT_SUPPORTED_OPERATION;
 }
