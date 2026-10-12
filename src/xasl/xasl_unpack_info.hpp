@@ -76,6 +76,9 @@ struct xasl_unpack_info
 
   bool use_xasl_clone;		/* true, if uses xasl clone */
   bool has_sql_capable_sp;	/* true, if an SP that may run SQL (not PARALLEL_ENABLE) was restored */
+  bool index_stream;		/* a filter or function index predicate: loaded without resolve_domains */
+  bool index_stream_late_bind;	/* such a stream holds a regu resolve_domains would resolve: the unresolved-domain check
+				 * (load) */
 };
 
 XASL_UNPACK_INFO *get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p);
