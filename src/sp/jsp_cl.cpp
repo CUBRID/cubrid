@@ -528,7 +528,9 @@ jsp_get_sp_type (const char *name)
 bool
 jsp_is_sp_parallel_eligible (const char *name)
 {
-#if defined (CS_MODE)
+  /* the folded client half compiles inside cub_server, so SERVER_MODE reads the catalog like CS_MODE
+   * (same guard as the directive flags in jsp_make_pl_signature) */
+#if defined (CS_MODE) || defined (SERVER_MODE)
   DB_OBJECT *mop_p;
   DB_VALUE directive_val;
   int save;
@@ -548,9 +550,8 @@ jsp_is_sp_parallel_eligible (const char *name)
 
   return eligible;
 #else
-  /* Only the client compiles a plan that a server can run in parallel; SA_MODE has no parallel
-   * hash join at all (px_hash_join is built into the server target alone), so answering "not
-   * eligible" here costs nothing. */
+  /* SA_MODE has no parallel hash join at all (px_hash_join is built into the server target alone),
+   * so answering "not eligible" here costs nothing. */
   (void) name;
   return false;
 #endif
