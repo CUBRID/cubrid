@@ -1116,6 +1116,12 @@ extern "C"
 	return NO_ERROR;
       }
 
+    if (XASL_IS_FLAGED (xasl, XASL_NO_MEMOIZE))
+      {
+	/* the optimizer found from statistics that the outer key hardly repeats (CBRD-27543) */
+	return NO_ERROR;
+      }
+
     if (xasl->memoize_storage != nullptr)
       {
 	clear_memoize_storage (thread_p, xasl);
