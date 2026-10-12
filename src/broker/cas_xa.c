@@ -33,6 +33,8 @@
 #include "cas_common_vars.h"	/* CAS_TLS */
 #include "cas_db_inc.h"
 #include "xa.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define CAS_SUPPORT_XA
 #define MAX_GTRIDS	100

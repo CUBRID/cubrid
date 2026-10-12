@@ -47,6 +47,8 @@
 #include "string_regex.hpp"
 #include "language_support.h"
 #include "error_manager.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static bool histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key);
 static int store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq,
