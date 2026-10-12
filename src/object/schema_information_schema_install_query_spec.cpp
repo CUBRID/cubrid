@@ -816,8 +816,7 @@ sm_define_view_sequences_spec (void)
       /* CT_SERIAL_NAME */
       "[%s] AS [serial] "
     "WHERE "
-      "[serial].[class_name] IS NULL "
-      "AND " AUTH_CHECK_OBJECT_ANY("[serial].[owner].[name]", "[serial]"),
+      "[serial].[class_name] IS NULL",
     DB_MAX_NUMERIC_PRECISION,
     DB_DEFAULT_NUMERIC_SCALE,
     CT_SERIAL_NAME);
