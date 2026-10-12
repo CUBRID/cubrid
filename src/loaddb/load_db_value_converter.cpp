@@ -297,14 +297,23 @@ namespace cubload
       }
 
     bool implicit_coercion = !TP_IS_CHAR_TYPE (domain.type->id);
+    TP_DOMAIN_STATUS status = tp_value_cast (&natural, val, const_cast<tp_domain *> (&domain), implicit_coercion);
 
-    if (tp_value_cast (&natural, val, const_cast<tp_domain *> (&domain), implicit_coercion) != DOMAIN_COMPATIBLE)
+    if (status != DOMAIN_COMPATIBLE)
       {
+	/*
+	 * Let the engine name its own failure, through the call INSERT makes. A cast
+	 * that overflowed is not a domain conflict: INSERT says
+	 * ER_IT_DATA_OVERFLOW for it, and so did the standalone loader before the
+	 * conversion moved ahead of the object template, which used to make this same
+	 * call. Reporting one code for every kind of failure also broke
+	 * --error-control-file, which filters by code - a file naming -427 no longer
+	 * matched the overflow it was written for.
+	 */
+	error_code = tp_domain_status_er_set (status, ARG_FILE_LINE, &natural, &domain);
+
 	db_value_clear (&natural);
 	db_value_clear (val);
-
-	error_code = ER_OBJ_DOMAIN_CONFLICT;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
 
 	return error_code;
       }
