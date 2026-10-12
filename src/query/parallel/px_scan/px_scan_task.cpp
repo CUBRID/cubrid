@@ -29,6 +29,7 @@
 #include "xasl_cache.h"
 #include "xasl_iteration.hpp"
 #include "query_executor.h"
+#include "domain_plan.h"
 #include "stream_to_xasl.h"
 #include "xasl_unpack_info.hpp"
 #include "memoize.hpp"
@@ -563,16 +564,7 @@ namespace parallel_scan
 	  }
       }
 
-    if (m_xasl_state != nullptr)
-      {
-	for (int i = 0; i < m_vd->dbval_cnt; i++)
-	  {
-	    pr_clear_value (&m_vd->dbval_ptr[i]);
-	  }
-
-	db_private_free (&thread_ref, m_vd->dbval_ptr);
-	db_private_free (&thread_ref, m_xasl_state);
-      }
+    qexec_free_xasl_state (&thread_ref, m_xasl_state);
     qexec_clear_xasl (&thread_ref, m_xasl, true, false);
 
     pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
@@ -606,7 +598,6 @@ namespace parallel_scan
   {
     THREAD_ENTRY *main_thread_p = thread_get_main_thread (m_parent_thread_p);
     int err_code = NO_ERROR;
-    int i;
 
     if (m_uses_xasl_clone)
       {
@@ -646,12 +637,7 @@ namespace parallel_scan
 	pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
       }
 
-    /* The agg-expr marking is a run-time decision and is not inherited by XASL
-     * clones. Re-derive it here for each worker; FETCH_ALL_CONST and FETCH_NOT_CONST
-     * must not be carried across, and the fixed query shape yields the same result.
-     */
-    qexec_mark_aggregate_operand_expressions (m_xasl);
-
+    /* the agg-expr marking is the clone's load's (domain_mark_aggregate_operands) */
     m_scan_id = &m_xasl->spec_list->s_id;
 
     for (xasl_node *dptr = m_xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
@@ -663,32 +649,24 @@ namespace parallel_scan
 	  }
       }
 
-    m_xasl_state = (xasl_state *) db_private_alloc (&thread_ref, sizeof (xasl_state));
+    /* The worker's own copy on its own heap: it frees it in finalize. */
+    assert (m_orig_vd == &m_orig_vd->xasl_state->vd);
+    m_xasl_state = qexec_deep_copy_xasl_state (&thread_ref, m_orig_vd->xasl_state, true);
     if (m_xasl_state == nullptr)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	/* the copy of the resolved domains sets its own error (the block size, a value's clone) */
+	if (er_errid () == NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (xasl_state));
+	  }
 	return ER_FAILED;
       }
-    m_xasl_state->qp_xasl_line = m_orig_vd->xasl_state->qp_xasl_line;
-    m_xasl_state->query_id = m_orig_vd->xasl_state->query_id;
+    /* the worker's own load numbers its items and resolved indexes as the leader's plan does: it reads the leader's
+     * resolutions with its own items (copied_from_leader) */
+    assert (m_xasl->domain_plan == nullptr || m_xasl_state->resolved_domain.plan == nullptr
+	    || (m_xasl->domain_plan->n_items == m_xasl_state->resolved_domain.plan->n_items
+		&& m_xasl->domain_plan->n_resolved == m_xasl_state->resolved_domain.plan->n_resolved));
     m_vd = &m_xasl_state->vd;
-    memcpy (m_vd, m_orig_vd, sizeof (val_descr));
-    m_vd->xasl_state = m_xasl_state;
-    if (m_orig_vd->dbval_cnt > 0)
-      {
-	m_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (&thread_ref, sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
-	if (m_vd->dbval_ptr == nullptr)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
-	    db_private_free_and_init (&thread_ref, m_xasl_state);
-	    m_vd = nullptr;
-	    return ER_FAILED;
-	  }
-	for (i = 0; i < m_orig_vd->dbval_cnt; i++)
-	  {
-	    pr_clone_value (&m_orig_vd->dbval_ptr[i], &m_vd->dbval_ptr[i]);
-	  }
-      }
     return NO_ERROR;
   }
 
