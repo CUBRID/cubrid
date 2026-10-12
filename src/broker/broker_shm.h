@@ -567,7 +567,6 @@ struct t_shm_appl_server
   char slow_log_mode;
   char stripped_column_name;
   char keep_connection;
-  char cache_user_info;
   char sql_log2;
   char statement_pooling;
   char access_mode;

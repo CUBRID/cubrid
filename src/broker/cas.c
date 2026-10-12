@@ -397,8 +397,6 @@ shard_cas_main (void)
 
   bool is_first = true;
 
-  prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
-
   net_buf_init (&net_buf, cas_get_client_version ());
   net_buf.data = (char *) MALLOC (SHARD_NET_BUF_ALLOC_SIZE);
   if (net_buf.data == NULL)
@@ -456,7 +454,6 @@ conn_retry:
 
   if (as_info->reset_flag == TRUE)
     {
-      cas_log_debug (ARG_FILE_LINE, "main: set reset_flag");
       cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
       as_info->reset_flag = FALSE;
     }
@@ -578,8 +575,6 @@ conn_retry:
 	  }
 	/* This is a only use in proxy-cas internal message */
 	req_info.client_version = CAS_PROTO_CURRENT_VER;
-
-	prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
 	if (as_info->cur_statement_pooling)
 	  {

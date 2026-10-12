@@ -116,9 +116,9 @@ struct logwr_global
 #define LOGWR_IS_ARCHIVE_PAGE(pageid) \
         ((pageid) != LOGPB_HEADER_PAGE_ID && (pageid) < logwr_Gl.hdr.nxarv_pageid)
 
-#define LOGWR_AT_SERVER_ARCHIVING() \
-	(LOGWR_AT_NEXT_ARCHIVE_PAGE_ID(logwr_Gl.hdr.append_lsa.pageid) \
-	 && (logwr_Gl.hdr.eof_lsa.pageid < logwr_Gl.hdr.append_lsa.pageid))
+#define LOGWR_AT_SERVER_ARCHIVING(append_pageid) \
+	(LOGWR_AT_NEXT_ARCHIVE_PAGE_ID(append_pageid) \
+	 && (logwr_Gl.hdr.eof_lsa.pageid < (append_pageid)))
 
 extern LOGWR_GLOBAL logwr_Gl;
 extern void logwr_flush_header_page (void);

@@ -95,7 +95,7 @@ namespace cubxasl
       REGU_VARIABLE_LIST spawn (const REGU_VARIABLE_LIST src);
 
       SP_TYPE *spawn (const SP_TYPE *src);
-      PL_SIGNATURE_TYPE *spawn (const PL_SIGNATURE_TYPE *src);	/* TODO: unsupported */
+      PL_SIGNATURE_TYPE *spawn (const PL_SIGNATURE_TYPE *src);
 
       /* (XASL_NODE *)->val_list */
       VAL_LIST *spawn (const VAL_LIST *src);

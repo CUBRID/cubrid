@@ -192,8 +192,11 @@ IDL       [a-zA-Z0-9_]
 [aA][lL][tT][eE][rR]							{ return ALTER; }
 [aA][nN][aA][lL][yY][zZ][eE]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return ANALYZE; }
+[aA][nN][tT][iI]							{ return ANTI; }
 [aA][nN][dD]								{ return AND; }
 [aA][nN][yY]								{ return ANY; }
+[aA][pP][pP][rR][oO][xX]						{ csql_yylval.cptr = pt_makename(yytext);
+									  return APPROX; }
 [aA][rR][cC][hH][iI][vV][eE]						{ csql_yylval.cptr = pt_makename(yytext);
 									  return ARCHIVE; }
 [aA][rR][eE]								{ return ARE; }
@@ -279,6 +282,8 @@ IDL       [a-zA-Z0-9_]
 [cC][oO][mM][mM][iI][tT]						{ return COMMIT; }
 [cC][oO][mM][mM][iI][tT][tT][eE][dD]					{ csql_yylval.cptr = pt_makename(yytext);
 									  return COMMITTED; }
+[cC][oO][mM][pP][aA][cC][tT]					        { csql_yylval.cptr = pt_makename(yytext);
+                                                                          return COMPACT; }
 [cC][oO][mM][pP][iI][lL][eE]					        { csql_yylval.cptr = pt_makename(yytext);
                                                                           return COMPILE; }
 [cC][oO][nN][nN][eE][cC][tT]						{ return CONNECT; }
@@ -383,6 +388,8 @@ IDL       [a-zA-Z0-9_]
                                                                           return ERROR_; }
 [eE][sS][cC][aA][pP][eE]						{ return ESCAPE; }
 [eE][vV][aA][lL][uU][aA][tT][eE]					{ return EVALUATE; }
+[eE][xX][aA][cC][tT]							{ csql_yylval.cptr = pt_makename(yytext);
+									  return EXACT; }
 [eE][xX][cC][eE][pP][tT]						{ return EXCEPT; }
 [eE][xX][cC][eE][pP][tT][iI][oO][nN]					{ return EXCEPTION; }
 [eE][xX][eE][cC]							{ return EXEC; }
@@ -407,6 +414,8 @@ IDL       [a-zA-Z0-9_]
 [fF][uU][nN][cC][tT][iI][oO][nN]					{ return FUNCTION; }
 [fF][aA][lL][sS][eE]							{ return False; }
 [fF][iI][lL][eE]							{ return File; }
+[fF][iI][lL][lL]_[fF][aA][cC][tT][oO][rR]				{ csql_yylval.cptr = pt_makename(yytext);
+									  return FILL_FACTOR; }
 [fF][lL][oO][aA][tT]							{ return FLOAT_; }
 [fF][oO][rR]								{ return For; }
 [gG][eE][nN][eE][rR][aA][lL]						{ return GENERAL; }
@@ -692,7 +701,9 @@ IDL       [a-zA-Z0-9_]
 									  return PAGE; }
                                                                                 
 [pP][aA][rR][aA][lL][lL][eE][lL]					{ csql_yylval.cptr = pt_makename(yytext);
-                                                                          return PARALLEL; }										
+                                                                          return PARALLEL; }
+[pP][aA][rR][aA][lL][lL][eE][lL]_[eE][nN][aA][bB][lL][eE]		{ csql_yylval.cptr = pt_makename(yytext);
+                                                                          return PARALLEL_ENABLE; }
 [pP][aA][rR][aA][mM][eE][tT][eE][rR][sS]				{ return PARAMETERS; }
 [pP][aA][rR][tT][iI][aA][lL]						{ return PARTIAL; }
 [pP][aA][rR][tT][iI][tT][iI][oO][nN]					{ csql_yylval.cptr = pt_makename(yytext);
@@ -817,6 +828,7 @@ IDL       [a-zA-Z0-9_]
 [sS][eE][eE][dD]							{ csql_yylval.cptr = pt_makename(yytext);
 									  return SEED_; }
 [sS][eE][lL][eE][cC][tT]						{ return SELECT; }
+[sS][eE][mM][iI]							{ return SEMI; }
 [sS][eE][nN][sS][iI][tT][iI][vV][eE]					{ return SENSITIVE; }
 [sS][eE][pP][aA][rR][aA][tT][oO][rR]					{ csql_yylval.cptr = pt_makename(yytext);
 									  return SEPARATOR; }

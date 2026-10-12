@@ -54,7 +54,6 @@ $       27      restartevnt
 $       28      prestartldb
 $       29      shutdownldb
 $       30      mqueueldb
-$       31      migrate_v73
 $       32      load_audit_trail
 $       33      alterdbhost
 $       37      plandump
@@ -877,26 +876,6 @@ opciones validas:\n\
   -q, --query-exec-info              mostrar informacion sobre informacion de ejecucion de transacciones activas de la consulta\n\
   -f, --force                        matar la transaccion sin un aviso para verificar\n
 
-
-$set 31 MSGCAT_UTIL_SET_MIGRATE
-1 nombre-de-base-de-datos
-2 argumento pedido, no hay estandar
-3 verificacion de compatibilidad
-4 solo verificacion de compatibilidad
-5 destino de respaldo
-6 una ruta de directorio o dispositivo para la destinacion de los volumenes de respaldo
-20 la base de datos '%1$s' no existe.
-21 '%1$s' no puede ser migrada a %2$s, porque su version DB es demasiado baja.\n
-22 '%1$s' no necesitan ser migrados.\n
-23 '%1$s' necesita ser migrado.\n
-24 Respaldar es recomendado despues de migracion. Quiere respaldar su base de datos ahora? (si/no):
-25 Le recomendamos respaldar su nueva base de datos con el comando backupdb despues de la migracion.
-26 \n*** ADVERTENCIA: Respaldar su base de datos antes de inicializar la migracion hacia %1$s ***\n\nPara recuperar errores que pueden haber ocurrido durante la migracion, le recomendamos muy fuerte respaldar su base de datos.\nHa ya creado un respaldo para su base de datos? (si/no):
-27 \n1. Ejecutar respaldo \n2. Introducir la nueva ruta de respaldo para la base de datos nueva. (ruta actual: %1$s)\n3. Salir \n
-28 \n La nueva ruta de respaldo para la base de datos:
-29 \nMigracion y respaldo han sido finalizados con exito.
-30 Fracaso al respaldar. Por favor, reintente respaldar su base de datos.
-31 \n\n*** ADVERTENCIA : Una vez que la migracion es finalizada, Ud no puede restablecer la base de datos con volumenes de respaldo anteriores.\nNotar que la version anterior de los archivos de respaldo pueden ser restablecidos solo en versiones correspondientes de restoredb.\nPor favor, verifique que los volumenes de respaldo anteriores son guardados a un nivel alto de seguridad.\n
 
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \

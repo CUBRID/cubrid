@@ -693,6 +693,9 @@ struct log_global
 
 #if defined(SERVER_MODE)
   bool backup_in_progress;
+  /* First archive a running backup still needs; -1 when none. In memory only: a crash must not leave
+   * a pin that blocks archive removal forever. */
+  int backup_first_arv_num_needed;
 #else				/* SERVER_MODE */
   LOG_LSA final_restored_lsa;
 #endif				/* SERVER_MODE */
@@ -1045,6 +1048,7 @@ extern void logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info
 extern int logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count);
 extern void logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_LSA * log_lsa,
 				 LOG_PAGE * log_pgptr);
+extern bool logpb_copy_from_log_if_buffered (char *area, int length, LOG_LSA * log_lsa);
 extern int logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				       const char *prefix_logname);
 extern bool logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -1075,6 +1079,7 @@ extern void logpb_fatal_error (THREAD_ENTRY * thread_p, bool logexit, const char
 			       const char *fmt, ...);
 extern void logpb_fatal_error_exit_immediately_wo_flush (THREAD_ENTRY * thread_p, const char *file_name,
 							 const int lineno, const char *fmt, ...);
+extern void logpb_free_prior_node (LOG_PRIOR_NODE * node);
 extern int logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid);
 extern void logpb_initialize_arv_page_info_table (void);
 extern void logpb_initialize_logging_statistics (void);
@@ -1147,6 +1152,8 @@ extern const char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_msecs (int tran_index);
+extern int logtb_set_thread_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs);
+extern int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p);
 
 extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);

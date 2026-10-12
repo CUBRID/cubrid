@@ -87,7 +87,9 @@ static void css_accept_new_request (CSS_CONN_ENTRY * conn, unsigned short rid, c
 static void css_accept_old_request (CSS_CONN_ENTRY * conn, unsigned short rid, SOCKET_QUEUE_ENTRY * entry,
 				    char *server_name, int server_name_length);
 static void css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid, bool is_client);
+#if defined(WINDOWS)
 static void css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid);
+#endif /* WINDOWS */
 static int css_get_client_type_from_data_request (const char *server_name, int data_length);
 static bool css_send_new_request_to_server (SOCKET server_fd, SOCKET client_fd, unsigned short rid,
 					    CSS_SERVER_REQUEST request, int client_type);
@@ -563,7 +565,12 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid, bool is_clie
  * Note:
  *   Register a server using the new-style of connection protocol where
  *   the port id is given to us explicitly.
+ *
+ *   this new-style registration protocol is Windows-only
+ *   (css_Server_use_new_connection_protocol); it is compiled out on other
+ *   platforms, where its SERVER_REQUEST_NEW entry point is rejected.
  */
+#if defined(WINDOWS)
 static void
 css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
 {
@@ -656,6 +663,7 @@ css_register_new_server2 (CSS_CONN_ENTRY * conn, unsigned short rid)
       free_and_init (server_name);
     }
 }
+#endif /* WINDOWS */
 
 /*
  * Master server to Slave server communication support routines.
@@ -873,7 +881,15 @@ css_process_new_connection (SOCKET fd)
 	  break;
 	case SERVER_REQUEST_NEW:	/* request from a new server */
 	  /* here the server wants to manage its own connection port */
+#if defined(WINDOWS)
 	  css_register_new_server2 (conn, rid);
+#else /* ! WINDOWS */
+	  /* the new-style, server-declared-port registration is a
+	   * Windows-only protocol (css_Server_use_new_connection_protocol). On
+	   * non-Windows no legitimate server uses it; it only serves as a
+	   * client-redirect vector, so reject it. */
+	  __gv_cvar.css_free_conn (conn);
+#endif /* ! WINDOWS */
 	  break;
 	default:
 	  __gv_cvar.css_free_conn (conn);

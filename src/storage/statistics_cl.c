@@ -103,8 +103,8 @@ stats_client_unpack_statistics (char *buf_p)
   class_stats_p->time_stamp = (unsigned int) OR_GET_INT (buf_p);
   buf_p += OR_INT_SIZE;
 
-  class_stats_p->heap_num_objects = OR_GET_INT (buf_p);
-  buf_p += OR_INT_SIZE;
+  OR_GET_INT64 (buf_p, &class_stats_p->heap_num_objects);
+  buf_p += OR_INT64_SIZE;
   if (class_stats_p->heap_num_objects < 0)
     {
       assert (false);
@@ -185,8 +185,8 @@ stats_client_unpack_statistics (char *buf_p)
 	  btree_stats_p->has_function = OR_GET_INT (buf_p);
 	  buf_p += OR_INT_SIZE;
 
-	  btree_stats_p->keys = OR_GET_INT (buf_p);
-	  buf_p += OR_INT_SIZE;
+	  OR_GET_INT64 (buf_p, &btree_stats_p->keys);
+	  buf_p += OR_INT64_SIZE;
 
 	  btree_stats_p->dedup_idx = OR_GET_INT (buf_p);
 	  buf_p += OR_INT_SIZE;
@@ -208,7 +208,7 @@ stats_client_unpack_statistics (char *buf_p)
 	      btree_stats_p->pkeys_size = BTREE_STATS_PKEYS_NUM;
 	    }
 
-	  btree_stats_p->pkeys = (int *) db_ws_alloc (btree_stats_p->pkeys_size * sizeof (int));
+	  btree_stats_p->pkeys = (INT64 *) db_ws_alloc (btree_stats_p->pkeys_size * sizeof (INT64));
 	  if (btree_stats_p->pkeys == NULL)
 	    {
 	      stats_free_statistics (class_stats_p);
@@ -218,8 +218,8 @@ stats_client_unpack_statistics (char *buf_p)
 	  assert (btree_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
 	  for (k = 0; k < btree_stats_p->pkeys_size; k++)
 	    {
-	      btree_stats_p->pkeys[k] = OR_GET_INT (buf_p);
-	      buf_p += OR_INT_SIZE;
+	      OR_GET_INT64 (buf_p, &btree_stats_p->pkeys[k]);
+	      buf_p += OR_INT64_SIZE;
 	    }
 	}
     }
@@ -337,7 +337,7 @@ stats_dump (const char *class_name_p, FILE * file_p)
       fprintf (file_p, " Timestamp: %s", ctime (&tloc));
     }
   fprintf (file_p, " Total pages in class heap: %d\n", class_stats_p->heap_num_pages);
-  fprintf (file_p, " Total objects: %d\n", class_stats_p->heap_num_objects);
+  fprintf (file_p, " Total objects: %lld\n", (long long) class_stats_p->heap_num_objects);
   fprintf (file_p, " Number of attributes: %d\n", class_stats_p->n_attrs);
 
   for (i = 0; i < class_stats_p->n_attrs; i++)
@@ -370,7 +370,7 @@ stats_dump (const char *class_name_p, FILE * file_p)
 
 	      fprintf (file_p, "        Index: %s , BTID: { %d , %d }\n", (index_name_p ? index_name_p : "not found"),
 		       bt_stats_p->btid.vfid.volid, bt_stats_p->btid.vfid.fileid);
-	      fprintf (file_p, "        Cardinality: %d (", bt_stats_p->keys);
+	      fprintf (file_p, "        Cardinality: %lld (", (long long) bt_stats_p->keys);
 
 	      prefix_p = "";
 	      assert (bt_stats_p->pkeys_size <= BTREE_STATS_PKEYS_NUM);
@@ -378,7 +378,7 @@ stats_dump (const char *class_name_p, FILE * file_p)
 	      int pkeys_size = (bt_stats_p->dedup_idx >= 0) ? bt_stats_p->dedup_idx : bt_stats_p->pkeys_size;
 	      for (k = 0; k < pkeys_size; k++)
 		{
-		  fprintf (file_p, "%s%d", prefix_p, bt_stats_p->pkeys[k]);
+		  fprintf (file_p, "%s%lld", prefix_p, (long long) bt_stats_p->pkeys[k]);
 		  prefix_p = ",";
 		}
 	      fprintf (file_p, ") ,");

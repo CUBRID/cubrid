@@ -263,6 +263,11 @@ namespace cubthread
       bool interrupted;		/* is this request/transaction interrupted ? */
       std::atomic_bool shutdown;		/* is server going down? */
       bool check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
+      int wait_msecs_override;	/* lock and page latch waiting time of this thread alone, or LK_WAIT_NOT_OVERRIDDEN
+				 * to wait as its transaction does. a task changes it through
+				 * logtb_set_thread_wait_msecs () and restores it before it ends; the constructor and
+				 * entry_manager (recycle_context, retire_context) reset it. see
+				 * logtb_set_thread_wait_msecs () for why this lives here and not in LOG_TDES. */
       bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
       entry *next_wait_thrd;
 
@@ -276,6 +281,7 @@ namespace cubthread
 
       struct log_zip *log_zip_undo;
       struct log_zip *log_zip_redo;
+      struct log_zip *log_unzip_undo;	/* reader side: decompressing an undo image back out */
       char *log_data_ptr;
       int log_data_length;
 

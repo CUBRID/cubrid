@@ -116,9 +116,6 @@ extern CAS_TLS T_ERROR_INFO err_info;
 extern CAS_TLS char stripped_column_name;
 extern CAS_TLS char cas_client_type;
 
-/* CAS info buffer */
-extern CAS_TLS char prev_cas_info[CAS_INFO_SIZE];
-
 /* Network socket */
 extern CAS_TLS SOCKET new_req_sock_fd;
 

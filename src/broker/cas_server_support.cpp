@@ -139,7 +139,6 @@ cas_server_speaker_boot_init (const char *db_name)
   shm->trigger_action_flag = ON;
   shm->access_mode = READ_WRITE_ACCESS_MODE;
   shm->replica_only_flag = OFF;
-  shm->cache_user_info = OFF;
   shm->cas_rctime = 0;
   shm->long_query_time = 0;
   shm->long_transaction_time = 0;
@@ -324,7 +323,6 @@ cas_server_session_slot_begin (int client_type, int client_version, const char *
   con_status_before_check_cas = -1;
   query_cancel_flag = 0;
   cas_info_size = CAS_INFO_SIZE;
-  std::memset (prev_cas_info, CAS_INFO_RESERVED_DEFAULT, sizeof (prev_cas_info));
 }
 
 /* A broker may hand sessions to several DB server processes, and its restart

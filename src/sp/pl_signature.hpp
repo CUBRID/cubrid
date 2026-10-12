@@ -97,6 +97,10 @@ namespace cubpl
      * check (workspace#176 결함 16) */
     bool is_deterministic; // DETERMINISTIC
 #endif
+    /* PARALLEL_ENABLE. Unlike is_deterministic this one is packed, because the server has to
+     * refuse the client callbacks of a declared SP (see execution_stack::send_data_to_client_recv).
+     * pl_signature travels on the XASL stream only, so this is not a Java or broker wire change. */
+    bool is_parallel_enabled;
 
     pl_arg arg;
     pl_ext ext;
@@ -105,7 +109,7 @@ namespace cubpl
     void unpack (cubpacking::unpacker &deserializator) override;
     size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
-    bool has_args ();
+    bool has_args () const;
 
     pl_signature ();
     ~pl_signature () override;

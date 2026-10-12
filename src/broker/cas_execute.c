@@ -206,6 +206,7 @@ static void set_column_info (T_NET_BUF * net_buf, char ut, short scale, int prec
 static int fetch_result (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_class (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_attribute (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
+static int cas_copy_peeked_string (const DB_VALUE * value, char *buf, size_t buf_size);
 static int fetch_method (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_methfile (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
 static int fetch_constraint (T_SRV_HANDLE *, int, int, char, int, T_NET_BUF *, T_REQ_INFO *);
@@ -341,11 +342,9 @@ ux_check_connection (void)
     {
       if (db_ping_server (0, NULL) < 0)
 	{
-	  cas_log_debug (ARG_FILE_LINE, "ux_check_connection: db_ping_server() error");
 	  cas_log_write_and_end (0, true, "SERVER DOWN");
 	  if (as_info->cur_statement_pooling)
 	    {
-	      cas_log_debug (ARG_FILE_LINE, "ux_check_connection: cur_statement_pooling");
 	      return -1;
 	    }
 	  else
@@ -358,9 +357,6 @@ ux_check_connection (void)
 	      strncpy_bufsize (dbuser, database_user);
 	      strncpy_bufsize (dbpasswd, database_passwd);
 
-	      cas_log_debug (ARG_FILE_LINE,
-			     "ux_check_connection: ux_database_shutdown()" " ux_database_connect(%s, %s)", dbname,
-			     dbuser);
 	      ux_database_shutdown (true);
 	      ux_database_connect (dbname, dbuser, dbpasswd, NULL);
 	    }
@@ -421,12 +417,10 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  if (shm_appl->replica_only_flag)
 	    {
 	      client_type = DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_replica_only_broker");
 	    }
 	  else
 	    {
 	      client_type = DB_CLIENT_TYPE_READ_ONLY_BROKER;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_only_broker");
 	    }
 	}
       else if (shm_appl->access_mode == SLAVE_ONLY_ACCESS_MODE)
@@ -434,12 +428,10 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  if (shm_appl->replica_only_flag)
 	    {
 	      client_type = DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: slave_replica_only_broker");
 	    }
 	  else
 	    {
 	      client_type = DB_CLIENT_TYPE_SLAVE_ONLY_BROKER;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: slave_only_broker");
 	    }
 	}
       else
@@ -447,7 +439,6 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  if (shm_appl->replica_only_flag)
 	    {
 	      client_type = DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_write_replica_only_broker");
 	    }
 	  else
 	    {
@@ -477,8 +468,6 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  db_enable_trigger ();
 	}
 
-      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: db_login(%s) db_restart(%s) at %s", db_user, db_name,
-		     host_connected);
       p = strchr (db_name, '@');
       if (p)
 	{
@@ -499,8 +488,7 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       ux_get_default_setting ();
     }
-  else if (shm_appl->cache_user_info == OFF || strcmp (database_user, db_user) != 0
-	   || strcmp (database_passwd, db_passwd) != 0)
+  else
     {
       int err_code;
       /* Already connected to a database, make sure to clear errors from previous clients */
@@ -517,13 +505,6 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 
       strncpy (database_user, db_user, sizeof (database_user) - 1);
       strncpy (database_passwd, db_passwd, sizeof (database_passwd) - 1);
-    }
-  else
-    {
-      /* Already connected to a database, make sure to clear errors from previous clients */
-      er_clear ();
-      /* check session to see if it is still active and create if isn't */
-      (void) db_find_or_create_session (db_user, program_name);
     }
   return 0;
 
@@ -676,7 +657,6 @@ ux_database_shutdown (bool request_server)
 	  db_shutdown_without_request_to_server ();
 	}
     }
-  cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
 
   as_info->database_name[0] = '\0';
   as_info->database_host[0] = '\0';
@@ -986,7 +966,6 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
   if (tran_type == CCI_TRAN_COMMIT)
     {
       err_code = db_commit_transaction ();
-      cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_commit_transaction() = %d", err_code);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -995,7 +974,6 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
   else if (tran_type == CCI_TRAN_ROLLBACK)
     {
       err_code = db_abort_transaction ();
-      cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_abort_transaction() = %d", err_code);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -4354,6 +4332,10 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	  {
 	    err_code = db_make_sequence (&db_val, seq);
 	  }
+	else if (type == CCI_U_TYPE_MULTISET)
+	  {
+	    err_code = db_make_multiset (&db_val, set);
+	  }
 	else
 	  {
 	    err_code = db_make_set (&db_val, set);
@@ -5544,6 +5526,33 @@ fetch_class (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fe
   return 0;
 }
 
+/*
+ * cas_copy_peeked_string () - NUL-terminated copy of a string value peeked from a query result
+ *   return: 0, or ER_QPROC_INVALID_DATATYPE when the value is not a string or does not fit
+ *   A peeked string value points into the list file page: its bytes are exactly the string, with the next column
+ *   right behind them. Everything that treats the bytes as a C string needs its own copy.
+ */
+static int
+cas_copy_peeked_string (const DB_VALUE * value, char *buf, size_t buf_size)
+{
+  int size;
+
+  if (DB_IS_NULL (value) || !DB_IS_STRING (value))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+  size = db_get_string_size (value);
+  if (size < 0 || (size_t) size >= buf_size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
+      return ER_QPROC_INVALID_DATATYPE;
+    }
+  memcpy (buf, db_get_string (value), size);
+  buf[size] = '\0';
+  return 0;
+}
+
 static int
 fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, char fetch_flag, int result_set_idx,
 		 T_NET_BUF * net_buf, T_REQ_INFO * req_info)
@@ -5557,6 +5566,8 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
   DB_QUERY_RESULT *result;
   T_QUERY_RESULT *q_result;
   DB_VALUE val_class, val_attr;
+  char class_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];	/* unique_name = owner.class fits an identifier (DB_MAX_CLASS_LENGTH) */
+  char attr_name_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
   DB_OBJECT *class_obj;
   DB_ATTRIBUTE *db_attr;
   const char *attr_name;
@@ -5613,7 +5624,14 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
 
-      class_name = db_get_string (&val_class);
+      /* the value is a peek into the list file page: the bytes are not NUL-terminated (the next column follows
+       * immediately), so take a NUL-terminated copy before handing them to the C-string schema APIs */
+      err_code = cas_copy_peeked_string (&val_class, class_name_buf, sizeof (class_name_buf));
+      if (err_code < 0)
+	{
+	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	}
+      class_name = class_name_buf;
       class_obj = db_find_class (class_name);
       if (class_obj == NULL)
 	{
@@ -5626,7 +5644,12 @@ fetch_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count, cha
 	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
 	}
 
-      attr_name = db_get_string (&val_attr);
+      err_code = cas_copy_peeked_string (&val_attr, attr_name_buf, sizeof (attr_name_buf));
+      if (err_code < 0)
+	{
+	  return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+	}
+      attr_name = attr_name_buf;
       if (srv_handle->schema_type == CCI_SCH_CLASS_ATTRIBUTE)
 	{
 	  db_attr = db_get_class_attribute (class_obj, attr_name);
@@ -10038,10 +10061,8 @@ ux_lob_new (int lob_type, T_NET_BUF * net_buf)
   int err_code;
   T_LOB_HANDLE cas_lob;
   int lob_handle_size;
-  DB_ELO *elo_debug;
 
   err_code = db_create_fbo (&lob_dbval, (lob_type == CCI_U_TYPE_BLOB) ? DB_TYPE_BLOB : DB_TYPE_CLOB);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_new: result_code=%d", err_code);
   if (err_code < 0)
     {
       errors_in_transaction++;
@@ -10056,11 +10077,6 @@ ux_lob_new (int lob_type, T_NET_BUF * net_buf)
   net_buf_cp_int (net_buf, lob_handle_size, NULL);
   net_buf_cp_lob_handle (net_buf, &cas_lob);
 
-  elo_debug = db_get_elo (&lob_dbval);
-
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_new: locator=%s, size=%lld, type=%u", elo_debug->locator,
-		 elo_debug->size, elo_debug->type);
-
   db_value_clear (&lob_dbval);
   return 0;
 }
@@ -10073,11 +10089,8 @@ ux_lob_write (DB_VALUE * lob_dbval, INT64 offset, int size, char *data, T_NET_BU
   DB_ELO *elo_debug;
 
   elo_debug = db_get_elo (lob_dbval);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_write: locator=%s, size=%lld, type=%u", elo_debug->locator,
-		 elo_debug->size, elo_debug->type);
 
   err_code = db_elo_write (elo_debug, offset, data, size, &size_written);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_write: result_code=%d", size_written);
   if (err_code < 0)
     {
       errors_in_transaction++;
@@ -10101,17 +10114,13 @@ ux_lob_read (DB_VALUE * lob_dbval, INT64 offset, int size, T_NET_BUF * net_buf)
   DB_ELO *elo_debug;
 
   elo_debug = db_get_elo (lob_dbval);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_read: locator=%s, size=%lld, type=%u", elo_debug->locator,
-		 elo_debug->size, elo_debug->type);
 
   if (size + NET_SIZE_INT > NET_BUF_FREE_SIZE (net_buf))
     {
       size = NET_BUF_FREE_SIZE (net_buf) - NET_SIZE_INT;
-      cas_log_debug (ARG_FILE_LINE, "ux_lob_read: length reduced to %d", size);
     }
 
   err_code = db_elo_read (elo_debug, offset, data, size, &size_read);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_read: result_code=%d size_read=%lld", err_code, size_read);
   if (err_code < 0)
     {
       errors_in_transaction++;

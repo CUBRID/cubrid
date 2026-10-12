@@ -45,6 +45,11 @@
 
 #define STATS_MAX_PRECISION	4000	/* max precision of char for getting statistics */
 
+/* Hand an INT64 statistic to a consumer that still speaks int (public API, page estimates):
+ * saturate instead of wrapping. (CBRD-27140) */
+#define STATS_CLAMP_TO_INT(x) \
+  ((x) < 0 ? 0 : ((x) > (INT64) INT_MAX ? INT_MAX : (int) (x)))
+
 /* free_and_init routine */
 #define stats_free_statistics_and_init(stats) \
   do \
@@ -70,11 +75,11 @@ struct btree_stats
   int leafs;			/* number of leaf pages including overflow pages */
   int pages;			/* number of total pages */
   int height;			/* the height of the B+tree */
-  int keys;			/* number of keys */
+  INT64 keys;			/* number of keys; INT64 so an index past 2^31 keys keeps a sane count (CBRD-27140) */
   int has_function;		/* is a function index */
   TP_DOMAIN *key_type;		/* The key type for the B+tree */
   int pkeys_size;		/* pkeys array size */
-  int *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] ->
+  INT64 *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] ->
 				 * # of {a, b} ... pkeys[pkeys_size-1] -> # of {a, b, ..., x} */
   int dedup_idx;		/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
@@ -99,7 +104,7 @@ typedef struct class_stats CLASS_STATS;
 struct class_stats
 {
   unsigned int time_stamp;	/* the time stamped when the stat info updated; used to get up-to-date stat info */
-  int heap_num_objects;		/* cardinality of the class; number of instances the class has */
+  INT64 heap_num_objects;	/* cardinality of the class; number of instances the class has */
   int heap_num_pages;		/* number of pages the class occupy */
   int n_attrs;			/* number of attributes; size of the attr_stats[] */
   ATTR_STATS *attr_stats;	/* pointer to the array of attribute statistics */

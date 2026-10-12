@@ -1614,9 +1614,11 @@ namespace cubconn
 	}
 
       /* only the csql family may declare its own type (B5-D2); drivers keep
-       * arriving through the broker where the server synthesizes the type */
+       * arriving through the broker where the server synthesizes the type.
+       * (DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG is gone since CBRD-26750;
+       * BOOT_CSQL_CLIENT_TYPE no longer admits it.) */
       int client_type = (int) body.client_type;
-      if (!BOOT_CSQL_CLIENT_TYPE (client_type) || client_type == DB_CLIENT_TYPE_ADMIN_CSQL_REBUILD_CATALOG)
+      if (!BOOT_CSQL_CLIENT_TYPE (client_type))
 	{
 	  reject.reason = (std::int32_t) reject_reason::NOT_AUTHORIZED;
 	  (void) send_message (ch, msg_op::HANDOFF_REJECT, &reject, sizeof (reject));
