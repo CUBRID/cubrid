@@ -437,7 +437,7 @@ qdump_print_insert_proc_node (INSERT_PROC_NODE * node_p)
 
   for (int i = 0; i < node_p->num_default_slots; i++)
     {
-      fprintf (foutput, "\n default[%d] %s: ", node_p->default_slots[i].att_id,
+      fprintf (foutput, "\n default[%d] %s: ", node_p->att_id[node_p->default_slots[i].att_index],
 	       PT_VOLATILITY_IS_VOLATILE_RESIDUAL (node_p->default_slots[i].volatility) ? "volatile" : "stable");
       qdump_print_regu_type (node_p->default_slots[i].expr);
     }

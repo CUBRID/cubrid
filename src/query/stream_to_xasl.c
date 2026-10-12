@@ -4103,7 +4103,7 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 	{
 	  int volatility;
 
-	  ptr = or_unpack_int (ptr, &insert_info->default_slots[i].att_id);
+	  ptr = or_unpack_int (ptr, &insert_info->default_slots[i].att_index);
 	  ptr = or_unpack_int (ptr, &volatility);
 	  insert_info->default_slots[i].volatility = (PT_VOLATILITY) volatility;
 	  ptr = or_unpack_int (ptr, &offset);

@@ -4348,7 +4348,7 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 
   for (i = 0; i < insert_info->num_default_slots; i++)
     {
-      ptr = or_pack_int (ptr, insert_info->default_slots[i].att_id);
+      ptr = or_pack_int (ptr, insert_info->default_slots[i].att_index);
       ptr = or_pack_int (ptr, (int) insert_info->default_slots[i].volatility);
       offset = xts_save_regu_variable (insert_info->default_slots[i].expr);
       if (offset == ER_FAILED)
