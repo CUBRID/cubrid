@@ -166,6 +166,7 @@ static PT_NODE *pt_find_aggregate_analytic_post (PARSER_CONTEXT * parser, PT_NOD
 						 int *continue_walk);
 static PT_NODE *pt_find_aggregate_analytic_in_where (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_find_method_call (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *pt_find_invalid_uuid_version (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static void pt_check_attribute_domain (PARSER_CONTEXT * parser, PT_NODE * attr_defs, PT_MISC_TYPE class_type,
 				       const char *self, const bool reuse_oid, PT_NODE * stmt);
 static void pt_check_mutable_attributes (PARSER_CONTEXT * parser, DB_OBJECT * cls, PT_NODE * attr_defs);
@@ -4441,6 +4442,14 @@ pt_check_data_default (PARSER_CONTEXT * parser, PT_NODE * data_default_list)
 	  goto end;
 	}
 
+      node_ptr = NULL;
+      parser_walk_tree (parser, default_value, pt_find_invalid_uuid_version, &node_ptr, NULL, NULL);
+      if (node_ptr != NULL)
+	{
+	  PT_ERRORm (parser, node_ptr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
+	  goto end;
+	}
+
     end:
       data_default->next = save_next;
       prev = data_default;
@@ -4584,6 +4593,61 @@ pt_find_method_call (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *co
     )
     {
       *sp = tree;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+/*
+ * pt_find_invalid_uuid_version () - search for a UUID call whose version is a numeric literal other than 0, 4 and 7
+ *
+ * result	  : parser tree node
+ * parser(in)	  : parser
+ * tree(in)	  : parser tree node
+ * arg(in/out)	  : the UUID call found
+ * continue_walk  : Continue walk.
+ *
+ * Note: a version computed by an expression is checked when it is evaluated.
+ */
+static PT_NODE *
+pt_find_invalid_uuid_version (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  PT_NODE **uuid = (PT_NODE **) arg;
+  PT_NODE *version;
+  DB_VALUE *literal;
+  DB_VALUE int_version;
+  bool valid;
+
+  if (tree->node_type != PT_EXPR || tree->info.expr.op != PT_UUID || tree->info.expr.arg1 == NULL)
+    {
+      return tree;
+    }
+
+  /* type checking may have wrapped the literal in a cast to INTEGER */
+  version = tree->info.expr.arg1;
+  if (version->node_type == PT_EXPR && version->info.expr.op == PT_CAST && version->info.expr.arg1 != NULL)
+    {
+      version = version->info.expr.arg1;
+    }
+  if (version->node_type != PT_VALUE || !PT_IS_NUMERIC_TYPE (version->type_enum))
+    {
+      return tree;
+    }
+  literal = pt_value_to_db (parser, version);
+  if (literal == NULL)
+    {
+      return tree;
+    }
+
+  db_make_null (&int_version);
+  valid = (tp_value_coerce (literal, &int_version, &tp_Integer_domain) == DOMAIN_COMPATIBLE
+	   && (db_get_int (&int_version) == 0 || db_get_int (&int_version) == 4 || db_get_int (&int_version) == 7));
+  pr_clear_value (&int_version);
+
+  if (!valid)
+    {
+      *uuid = tree;
       *continue_walk = PT_STOP_WALK;
     }
 
