@@ -11025,7 +11025,7 @@ pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
 	    if (!info.found_inner && other->info.spec.derived_table != NULL)
 	      {
 		(void) parser_walk_tree (parser, other->info.spec.derived_table, pt_semi_anti_ref_pre, &info, NULL,
-					NULL);
+					 NULL);
 	      }
 	  }
 
