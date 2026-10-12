@@ -2748,6 +2748,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
       for (int i = 0; i < xasl->proc.insert.num_default_slots; i++)
 	{
 	  pg_cnt += qexec_clear_regu_var (thread_p, xasl, xasl->proc.insert.default_slots[i].expr, is_final, false);
+	  if (xasl->proc.insert.default_slots[i].value != NULL)
+	    {
+	      pr_clear_value (xasl->proc.insert.default_slots[i].value);
+	    }
 	}
       break;
 
@@ -3362,6 +3366,10 @@ qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, XASL_NODE * xasl, b
       for (int i = 0; i < xasl->proc.insert.num_default_slots; i++)
 	{
 	  pg_cnt += qexec_clear_regu_var (thread_p, xasl, xasl->proc.insert.default_slots[i].expr, is_final, true);
+	  if (xasl->proc.insert.default_slots[i].value != NULL)
+	    {
+	      pr_clear_value (xasl->proc.insert.default_slots[i].value);
+	    }
 	}
       break;
 
@@ -13268,6 +13276,11 @@ qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * in
       OR_ATTRIBUTE *attr;
       int error;
 
+      if (k >= insert->num_default_expr)
+	{
+	  /* the slots of the listed attributes, which the VALUES rows evaluate where they use them */
+	  break;
+	}
       if (!PT_VOLATILITY_IS_VOLATILE_RESIDUAL (slot->volatility))
 	{
 	  continue;
@@ -13387,6 +13400,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   bool has_volatile_default = false;	/* a VOLATILE residual DEFAULT is re-evaluated for every row */
   const INSERT_DEFAULT_SLOT *slots = NULL;	/* the residual DEFAULTs the INSERT fills, in att_id order */
   int num_slots = 0;
+  int first_listed_slot = 0;	/* the first slot of a listed attribute the VALUES fill with its own DEFAULT */
 #if defined (DEFAULT_EXPR_REGU_STREAM)
   QEXEC_STORED_DEFAULTS stored_defaults = { 0, NULL, NULL };
 #else
@@ -13584,6 +13598,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  built->att_index = k;
 	  built->expr = stored->func_pred->func_regu;
 	  built->volatility = REGU_VARIABLE_GET_DEFAULT_VOLATILITY (built->expr);
+	  built->value = NULL;
 	  num_slots = stored_defaults.count;
 	  slot = built;
 	}
@@ -13625,6 +13640,34 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  pr_clear_value (&insert_val);
 	}
     }
+
+#if defined (DEFAULT_EXPR_REGU_STREAM)
+  first_listed_slot = num_slots;
+#else
+  /* the listed attributes the VALUES fill with their own DEFAULT: a STABLE slot is evaluated now, once per
+   * statement; a VOLATILE one where a row uses it */
+  first_listed_slot = next_slot;
+  for (int s = first_listed_slot; s < num_slots; s++)
+    {
+      OR_ATTRIBUTE *attr;
+
+      if (PT_VOLATILITY_IS_VOLATILE_RESIDUAL (slots[s].volatility))
+	{
+	  continue;
+	}
+      attr = heap_locate_last_attrepr (insert->att_id[slots[s].att_index], &attr_info);
+      if (attr == NULL)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      pr_clear_value (slots[s].value);
+      if (qexec_eval_default_expr (thread_p, slots[s].expr, xasl_state, &insert->class_oid, attr, slots[s].value)
+	  != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+    }
+#endif
 
   specp = xasl->spec_list;
   if (specp != NULL || ((insert->do_replace || (xasl->dptr_list != NULL)) && insert->has_uniques)
@@ -13855,9 +13898,34 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
       for (i = 0; i < insert->num_val_lists; i++)
 	{
+	  int listed_slot = first_listed_slot;
+
 	  for (regu_list = insert->valptr_lists[i]->valptrp, vallist = xasl->val_list->valp, k = num_default_expr;
 	       k < val_no; k++, regu_list = regu_list->next, vallist = vallist->next)
 	    {
+	      if (listed_slot < num_slots && slots[listed_slot].att_index == k)
+		{
+		  const INSERT_DEFAULT_SLOT *slot = &slots[listed_slot++];
+
+		  /* the row fills the attribute with its own DEFAULT: a VOLATILE one is evaluated for it here */
+		  if (PT_VOLATILITY_IS_VOLATILE_RESIDUAL (slot->volatility) && regu_list->value.type == TYPE_CONSTANT
+		      && regu_list->value.value.dbvalptr == slot->value)
+		    {
+		      OR_ATTRIBUTE *attr = heap_locate_last_attrepr (insert->att_id[k], &attr_info);
+
+		      if (attr == NULL)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		      pr_clear_value (slot->value);
+		      if (qexec_eval_default_expr (thread_p, slot->expr, xasl_state, &insert->class_oid, attr,
+						   slot->value) != NO_ERROR)
+			{
+			  GOTO_EXIT_ON_ERROR;
+			}
+		    }
+		}
+
 	      regu_list->value.flags |= REGU_VARIABLE_STRICT_TYPE_CAST;
 	      if (fetch_peek_dbval (thread_p, &regu_list->value, &xasl_state->vd, &class_oid, NULL, NULL, &valp) !=
 		  NO_ERROR)

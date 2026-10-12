@@ -4113,6 +4113,20 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 	    {
 	      return NULL;
 	    }
+	  ptr = or_unpack_int (ptr, &offset);
+	  if (offset == 0)
+	    {
+	      insert_info->default_slots[i].value = NULL;
+	    }
+	  else
+	    {
+	      insert_info->default_slots[i].value =
+		stx_restore_db_value (thread_p, &xasl_unpack_info->packed_xasl[offset]);
+	      if (insert_info->default_slots[i].value == NULL)
+		{
+		  return NULL;
+		}
+	    }
 	}
     }
 

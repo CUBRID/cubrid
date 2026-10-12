@@ -1982,6 +1982,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 
 	      crt_value->info.expr.op = PT_DEFAULTF;
 	      crt_value->info.expr.arg1 = parser_copy_tree (parser, crt_attr);
+	      crt_value->flag.is_own_default = 1;
 
 	      if (crt_value->info.expr.arg1 == NULL)
 		{
@@ -2025,6 +2026,13 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 		}
 	      if (crt_value->info.expr.arg1 != NULL)
 		{
+		  /* DEFAULT (c) in the place of c is the DEFAULT of its own column too */
+		  crt_arg = crt_value->info.expr.arg1;
+		  if (crt_arg->node_type == PT_NAME && crt_arg->info.name.original != NULL
+		      && !pt_str_compare (crt_arg->info.name.original, crt_attr->info.name.original, CASE_INSENSITIVE))
+		    {
+		      crt_value->flag.is_own_default = 1;
+		    }
 		  continue;
 		}
 	      crt_arg = parser_copy_tree (parser, crt_attr);
@@ -2034,6 +2042,7 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 		  return;
 		}
 	      crt_value->info.expr.arg1 = crt_arg;
+	      crt_value->flag.is_own_default = 1;
 	      pt_set_fill_default_in_path_expression (crt_arg);
 	    }
 	}

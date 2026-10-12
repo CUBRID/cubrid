@@ -18633,6 +18633,8 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  result = cast_expr;
 	}
 
+      /* the value keeps telling it is the DEFAULT of its own column (pt_to_insert_default_slots) */
+      result->flag.is_own_default = expr->flag.is_own_default;
       goto end;
     }
 

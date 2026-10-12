@@ -3839,6 +3839,8 @@ struct parser_node
     unsigned for_default_func:1;	/* for DEFAULT built-in function */
     unsigned is_restored_default:1;	/* root of a DEFAULT tree copy grafted into a statement: type checking
 					 * keeps the types it was restored with */
+    unsigned is_own_default:1;	/* an INSERT value that is the DEFAULT of its own column (the DEFAULT keyword, or
+				 * DEFAULT (c) in the place of c): all of them share the DEFAULT slot of the column */
     unsigned hv_pred_plan_unpeeked:1;	/* the plan this statement is about to execute was chosen with unbound
 					 * host-variable predicate markers (HV_PRED_PLAN_UNPEEKED in the XASL
 					 * header), so the first execution must replan under the real values.

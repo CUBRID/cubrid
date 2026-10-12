@@ -11225,6 +11225,31 @@ pt_omitted_defaults_read_client (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /*
+ * pt_own_default_tree () - the residual DEFAULT tree an INSERT value grafted as the DEFAULT of its own column
+ *	(is_own_default): the DEFAULT keyword, or DEFAULT (c) in the place of c
+ *   return: the tree, or NULL if the value is not such a DEFAULT or its DEFAULT is a constant
+ *   value(in): an INSERT value
+ */
+PT_NODE *
+pt_own_default_tree (PT_NODE * value)
+{
+  PT_NODE *tree = value;
+
+  if (value == NULL || !value->flag.is_own_default)
+    {
+      return NULL;
+    }
+
+  /* the cast the DEFAULT reference wraps it in for the column */
+  if (tree->node_type == PT_EXPR && tree->info.expr.op == PT_CAST && tree->info.expr.arg1 != NULL)
+    {
+      tree = tree->info.expr.arg1;
+    }
+
+  return tree->flag.is_restored_default ? tree : NULL;
+}
+
+/*
  * pt_has_name_oid () - Check whether the node is oid name
  *   return:
  *   parser(in):

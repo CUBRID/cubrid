@@ -728,6 +728,7 @@ extern "C"
 					     PT_VOLATILITY * volatility);
   extern void pt_cdt_registry_free (PARSER_CONTEXT * parser);
   extern bool pt_omitted_defaults_read_client (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern PT_NODE *pt_own_default_tree (PT_NODE * value);
   extern PT_NODE *pt_has_name_oid (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
   extern int pt_check_dblink_password (PARSER_CONTEXT * parser, const char *passwd, char *cipher, int ciper_size);

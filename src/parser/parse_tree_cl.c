@@ -2590,6 +2590,20 @@ pt_print_bytes (PARSER_CONTEXT * parser, const PT_NODE * node)
 
   CAST_POINTER_TO_NODE (node);
 
+  if (node->flag.is_own_default && (parser->custom_print & PT_PRINT_USER) != 0)
+    {
+      PT_NODE *own_default = (PT_NODE *) node;
+
+      /* printed for the XASL cache key: the INSERT fills this value from the DEFAULT slot of its column, unlike the
+       * same expression written in its place, so the key marks it; it keeps the expression too, as a change of a
+       * view DEFAULT does not drop the XASL of the base class */
+      result = pt_append_nulstring (parser, NULL, "default:");
+      own_default->flag.is_own_default = 0;
+      result = pt_append_varchar (parser, result, pt_print_bytes (parser, own_default));
+      own_default->flag.is_own_default = 1;
+      return result;
+    }
+
   if (node->flag.is_cnf_start && !parser->flag.is_in_and_list)
     {
       return pt_print_and_list (parser, node);

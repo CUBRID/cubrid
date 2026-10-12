@@ -4356,6 +4356,12 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 	  return NULL;
 	}
       ptr = or_pack_int (ptr, offset);
+      offset = xts_save_db_value (insert_info->default_slots[i].value);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
     }
 
   return ptr;
@@ -6643,7 +6649,7 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + OR_INT_SIZE	/* remote_num_attrs */
 	   + (insert_info->remote_num_attrs * PTR_SIZE)	/* remote_attr_names */
 	   + OR_INT_SIZE	/* num_default_slots */
-	   + (insert_info->num_default_slots * (OR_INT_SIZE + OR_INT_SIZE + PTR_SIZE)));	/* default_slots */
+	   + (insert_info->num_default_slots * (OR_INT_SIZE + OR_INT_SIZE + PTR_SIZE + PTR_SIZE)));	/* default_slots */
 
   return size;
 }

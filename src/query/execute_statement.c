@@ -204,6 +204,7 @@ static bool truncate_need_repl_log (PT_NODE * statement);
 static int do_check_for_empty_classes_in_delete (PARSER_CONTEXT * parser, PT_NODE * statement);
 
 static int do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement);
+static PT_NODE *do_own_default_value (PT_NODE ** own_defaults, int attr_index, PT_NODE * value);
 static void do_clear_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement);
 static PT_NODE *do_replace_names_for_insert_values_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							int *continue_walk);
@@ -20014,6 +20015,24 @@ pt_append_odku_references (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, i
 }
 
 /*
+ * do_own_default_value () - the value every row filling an attribute with its own DEFAULT evaluates: the one of the
+ *	first such row, as the server evaluates one DEFAULT slot of the attribute for them all
+ *   return: that value
+ *   own_defaults(in/out): per listed attribute, the value, NULL until a row gives it
+ *   attr_index(in): the place of the attribute in the INSERT list
+ *   value(in): the value of the row at hand (pt_own_default_tree)
+ */
+static PT_NODE *
+do_own_default_value (PT_NODE ** own_defaults, int attr_index, PT_NODE * value)
+{
+  if (own_defaults[attr_index] == NULL)
+    {
+      own_defaults[attr_index] = value;
+    }
+  return own_defaults[attr_index];
+}
+
+/*
  * do_evaluate_insert_values () - Evaluates list of values for insert.
  *
  * return		 : Error code.
@@ -20038,6 +20057,11 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   PT_NODE *attr_list = NULL, *value_list = NULL, *value_clause = NULL;
   PT_NODE *temp = NULL;
   bool free_temp = false;
+  PT_NODE **own_defaults = NULL;	/* per listed attribute, the value every row filling it with its own DEFAULT
+					 * evaluates, so that they share one evaluation as on the server */
+  struct pt_rand_state *rand_states = NULL;	/* the seeded random generators of those values */
+  struct pt_rand_state **save_rand_states;
+  int error = NO_ERROR;
 
   attr_list = insert_statement->info.insert.attr_list;
   value_clause = insert_statement->info.insert.value_clauses;
@@ -20045,6 +20069,13 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
     {
       /* nothing to evaluate */
       return NO_ERROR;
+    }
+
+  own_defaults = (PT_NODE **) calloc (pt_length_of_list (attr_list), sizeof (PT_NODE *));
+  if (own_defaults == NULL)
+    {
+      PT_ERRORm (parser, insert_statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      goto end_error;
     }
 
   /* initialize attr_list in EVAL_INSERT_VALUE object */
@@ -20111,7 +20142,14 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 		  temp = val->info.insert_value.original_node;
 		}
 	      /* obtain evaluated value */
+	      save_rand_states = parser->rand_states;
+	      if (!free_temp && pt_own_default_tree (temp) != NULL)
+		{
+		  temp = do_own_default_value (own_defaults, eval.crt_attr_index, temp);
+		  parser->rand_states = &rand_states;
+		}
 	      pt_evaluate_tree_having_serial (parser, temp, &val->info.insert_value.value, 1);
+	      parser->rand_states = save_rand_states;
 	      if (free_temp)
 		{
 		  /* free temp */
@@ -20134,7 +20172,15 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	  eval.reevaluate_needed = false;
 	  eval.replace_names = false;
 
-	  if (!PT_IS_CONST (val))
+	  if (pt_own_default_tree (val) != NULL)
+	    {
+	      /* the DEFAULT of its own column, which names nothing: evaluated in place, from the value of the first row
+	       * giving it, and again on the next execution */
+	      temp = do_own_default_value (own_defaults, eval.crt_attr_index, val);
+	      free_temp = false;
+	      eval.reevaluate_needed = true;
+	    }
+	  else if (!PT_IS_CONST (val))
 	    {
 	      /* duplicate value as it may be altered when names are replaced */
 	      temp = parser_copy_tree (parser, val);
@@ -20162,7 +20208,13 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	  assert (temp != NULL);
 	  /* evaluate temp to obtain a value */
 	  db_value_clear (&eval_value);
+	  save_rand_states = parser->rand_states;
+	  if (pt_own_default_tree (temp) != NULL)
+	    {
+	      parser->rand_states = &rand_states;
+	    }
 	  pt_evaluate_tree_having_serial (parser, temp, &eval_value, 1);
+	  parser->rand_states = save_rand_states;
 	  if (pt_has_error (parser))
 	    {
 	      val->next = save_next;
@@ -20237,7 +20289,7 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 	}
       pr_clear_value (&eval_value);
     }
-  return NO_ERROR;
+  goto end;
 
 end_error:
   pr_clear_value (&eval_value);
@@ -20245,11 +20297,19 @@ end_error:
     {
       parser_free_tree (parser, temp);
     }
-  if (er_errid () != NO_ERROR)
+  error = er_errid ();
+  if (error == NO_ERROR)
     {
-      return er_errid ();
+      error = ER_FAILED;
     }
-  return ER_FAILED;
+
+end:
+  pt_free_rand_states (&rand_states);
+  if (own_defaults != NULL)
+    {
+      free_and_init (own_defaults);
+    }
+  return error;
 }
 
 /*

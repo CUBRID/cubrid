@@ -421,6 +421,8 @@ struct insert_default_slot
   int att_index;		/* place of the attribute in att_id, below num_default_expr */
   PT_VOLATILITY volatility;	/* STABLE: evaluated once per statement, VOLATILE: once per row */
   REGU_VARIABLE *expr;		/* the DEFAULT expression */
+  DB_VALUE *value;		/* a listed attribute: the value its own DEFAULT gives, which each VALUES row
+				 * filling the attribute with it reads; NULL for an attribute left out */
 };
 
 typedef struct insert_proc_node INSERT_PROC_NODE;
