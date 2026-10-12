@@ -1747,18 +1747,31 @@ sql_build_error:
 /*
  * dblink_dml_unresolved_fallback_casts () - Is this source type one of those the unresolved-marker
  *   fallback casts?
- *   return: true for the four date/time types
+ *   return: true for the date/time types, zone-qualified ones included
  *   src_type(in): DB_TYPE of the local subquery's source column
  *
  * On a numeric target the remote deletes a row that the all-local form keeps when the source is date/time.
- * Zone-qualified types are out -- cci_bind_param rejects them before a comparison happens. JSON is refused
- * instead of cast; see the policy comment above.
+ * The zone-qualified types are listed although cci_bind_param still rejects them before a comparison happens:
+ * once that binding works they need the same cast, and nothing here should have to change then. JSON is
+ * refused instead of cast; see the policy comment above.
  */
 static bool
 dblink_dml_unresolved_fallback_casts (DB_TYPE src_type)
 {
-  return (src_type == DB_TYPE_DATE || src_type == DB_TYPE_TIME || src_type == DB_TYPE_DATETIME
-	  || src_type == DB_TYPE_TIMESTAMP);
+  switch (src_type)
+    {
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_DATETIMETZ:
+    case DB_TYPE_DATETIMELTZ:
+    case DB_TYPE_TIMESTAMPTZ:
+    case DB_TYPE_TIMESTAMPLTZ:
+      return true;
+    default:
+      return false;
+    }
 }
 
 /*
