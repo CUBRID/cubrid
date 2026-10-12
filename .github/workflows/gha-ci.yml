@@ -20,7 +20,7 @@
 #
 # This file holds the policy and the relay between pods. How CTP runs and what its result
 # files say is the test image's (cubridci test_rl8.10, /entrypoint.sh <verb>); what the
-# pods must provide is circleci-k8s-ansible roles/arc/README.md.
+# pods must provide is CUBRID/qatools-internal test-infra/roles/arc/README.md.
 
 name: gha-ci
 
@@ -149,7 +149,7 @@ env:
   CTP_SEED: /home/ci/seed/test/cubrid-testtools
   BUILD_SENTINEL: .complete
   BUILD_META: .gha-ci-build.meta
-  # Paired with arc_artifact_server_node_port in circleci-k8s-ansible.
+  # Paired with arc_artifact_server_node_port in CUBRID/qatools-internal test-infra/.
   ARTIFACT_URL_BASE: http://192.168.1.48:30080
   # Every suite policy in one table; no job below names a suite outside it. How CTP runs a
   # suite (command, conf, result files, what a case is) is the test image's table.
