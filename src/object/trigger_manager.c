@@ -3377,6 +3377,108 @@ end:
 }
 
 /*
+ * fetch_trigger_mops() - Fetches the trigger objects from _db_trigger
+ *    return: error code
+ *    lmops(out): fetched objects, NULL if none, freed with locator_free_list_mops
+ *
+ * Note:
+ *    Not a query: in COMMIT and ROLLBACK it would overwrite the last statement's error, row count and trace.
+ *    Not db_get_all_objects: its S lock blocks CREATE and DROP TRIGGER.
+ */
+static int
+fetch_trigger_mops (LIST_MOPS ** lmops)
+{
+  DB_OBJECT *class_mop;
+  int error = NO_ERROR;
+
+  *lmops = NULL;
+
+  class_mop = db_find_class (TR_CLASS_NAME);
+  if (class_mop == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  /* only the error area shows a failure, and it may still hold an earlier statement's error */
+  er_stack_push ();
+  *lmops = locator_get_all_mops (class_mop, DB_FETCH_READ, NULL);
+  if (er_has_error ())
+    {
+      error = er_errid ();
+      er_stack_pop_and_keep_error ();
+      locator_free_list_mops (*lmops);
+      *lmops = NULL;
+      return error;
+    }
+  er_stack_pop ();
+
+  return NO_ERROR;
+}
+
+/*
+ * tr_find_trigger_objects() - Finds all the trigger objects
+ *    return: error code
+ *    objects(out): object list (returned), freed with ml_free
+ */
+int
+tr_find_trigger_objects (DB_OBJLIST ** objects)
+{
+  LIST_MOPS *lmops;
+  int error;
+  int i;
+
+  *objects = NULL;
+
+  error = fetch_trigger_mops (&lmops);
+  if (error != NO_ERROR || lmops == NULL)
+    {
+      return error;
+    }
+
+  for (i = 0; i < lmops->num && error == NO_ERROR; i++)
+    {
+      error = ml_append (objects, lmops->mops[i], NULL);
+    }
+  locator_free_list_mops (lmops);
+
+  if (error != NO_ERROR)
+    {
+      ml_free (*objects);
+      *objects = NULL;
+    }
+
+  return error;
+}
+
+/*
+ * tr_map_trigger_if_exists() - Like tr_map_trigger, but a dropped trigger is not an error
+ *    return: error code
+ *    object(in): trigger object
+ *    trigger(out): trigger structure, NULL if dropped or on error
+ */
+int
+tr_map_trigger_if_exists (DB_OBJECT * object, TR_TRIGGER ** trigger)
+{
+  int error = NO_ERROR;
+
+  *trigger = tr_map_trigger (object, 1);
+  if (*trigger == NULL)
+    {
+      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  er_clear ();
+	}
+      else
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	}
+    }
+
+  return error;
+}
+
+/*
  * check_authorization() - This checks authorization on a trigger structure
  *    return: non-zero if authorization is ok
  *    trigger(in): trigger to examine
@@ -3456,64 +3558,30 @@ find_all_triggers (bool active_filter, bool alter_filter, DB_OBJLIST ** list)
 {
   int error = NO_ERROR;
   TR_TRIGGER *trigger;
-  DB_SET *table;
-  DB_VALUE value;
-  int max, i;
+  DB_OBJLIST *objects = NULL, *o;
 
   *list = NULL;
 
-  if (Au_root == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  error = obj_get (Au_root, "triggers", &value);
+  error = tr_find_trigger_objects (&objects);
   if (error != NO_ERROR)
     {
-      return NO_ERROR;
+      return error;
     }
 
-  if (DB_IS_NULL (&value))
+  for (o = objects; o != NULL && error == NO_ERROR; o = o->next)
     {
-      table = NULL;
-    }
-  else
-    {
-      table = db_get_set (&value);
-    }
-
-  if (table == NULL)
-    {
-      return NO_ERROR;
-    }
-
-  error = set_filter (table);
-  max = set_size (table);
-  for (i = 1; i < max && error == NO_ERROR; i += 2)
-    {
-      error = set_get_element (table, i, &value);
-      if (error == NO_ERROR)
+      error = tr_map_trigger_if_exists (o->op, &trigger);
+      if (trigger != NULL && (!active_filter || trigger->status == TR_STATUS_ACTIVE)
+	  && check_authorization (trigger, alter_filter))
 	{
-	  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value) && db_get_object (&value) != NULL)
-	    {
-	      /* think about possibly avoiding this, especially if we're going to turn around and delete it */
-	      trigger = tr_map_trigger (db_get_object (&value), 1);
-	      if (trigger == NULL)
-		{
-		  ASSERT_ERROR_AND_SET (error);
-		}
-	      else
-		{
-		  if ((!active_filter || trigger->status == TR_STATUS_ACTIVE)
-		      && check_authorization (trigger, alter_filter))
-		    {
-		      error = ml_ext_add (list, db_get_object (&value), NULL);
-		    }
-		}
-	    }
+	  error = ml_ext_add (list, o->op, NULL);
 	}
     }
-  set_free (table);
+
+  if (objects != NULL)
+    {
+      ml_free (objects);
+    }
 
   if (error != NO_ERROR && *list != NULL)
     {

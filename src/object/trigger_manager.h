@@ -273,6 +273,8 @@ extern DB_OBJECT *tr_create_trigger (const char *name, DB_TRIGGER_STATUS status,
 /* Trigger location */
 
 extern int tr_find_all_triggers (DB_OBJLIST ** list);
+extern int tr_find_trigger_objects (DB_OBJLIST ** objects);
+extern int tr_map_trigger_if_exists (DB_OBJECT * object, TR_TRIGGER ** trigger);
 extern DB_OBJECT *tr_find_trigger (const char *name);
 extern int tr_find_event_triggers (DB_TRIGGER_EVENT event, DB_OBJECT * class_, const char *attribute, bool active,
 				   DB_OBJLIST ** list);
