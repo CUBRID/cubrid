@@ -455,34 +455,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
 
       if (DB_IS_STRING (&nm_value) && !DB_IS_NULL (&nm_value) && db_get_string (&nm_value) != NULL)
 	{
-#if defined(CUBRID_ENABLE_LEGACY_PASSWORD_TEST)
-#ifdef NDEBUG
-#error "Notice: CUBRID_ENABLE_LEGACY_PASSWORD_TEST is enabled."
-#else
-#warning "Notice: CUBRID_ENABLE_LEGACY_PASSWORD_TEST is enabled."
-#endif
-	  const char *user_nm = db_get_string (&nm_value);
-	  if (strncmp (user_nm, "##PLAIN_", strlen ("##PLAIN_")) == 0)
-	    {
-	      strcpy ( pbuf, password);
-	    }
-	  else if (strncmp (user_nm, "##DES_", strlen ("##DES_")) == 0)
-	    {
-	      encrypt_password (password, 1, pbuf);
-	    }
-	  else if (strncmp (user_nm, "##SHA1_", strlen ("##SHA1_")) == 0)
-	    {
-	      encrypt_password_sha1 (password, 1, pbuf);
-	    }
-	  else if (strncmp (user_nm, "##SHA2_", strlen ("##SHA2_")) == 0)
-	    {
-	      encrypt_password_sha2_512 (password, pbuf);
-	    }
-	  else
-#endif
-	    {
-	      encrypt_password_sha2_512_salt (db_get_string (&nm_value), NULL, password, pbuf);
-	    }
+	  encrypt_password_sha2_512_salt (db_get_string (&nm_value), NULL, password, pbuf);
 	}
       else
 	{
