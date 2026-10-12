@@ -79,7 +79,7 @@ namespace cubmethod
        * owned handles and pending replies keep an execution context pinned. */
       bool has_retained_resources () const
       {
-        return m_live_query_handlers != 0 || !m_deferred_query_free_handler.empty () || !m_data_queue.empty ();
+	return m_live_query_handlers != 0 || !m_deferred_query_free_handler.empty () || !m_data_queue.empty ();
       }
 
       void clear_all_query_handlers ();

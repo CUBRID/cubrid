@@ -76,8 +76,7 @@ static OID oid_Rep_Read_Tran = { 0, (short int) 0x8000, 0 };
 const OID oid_Null_oid = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
 
 #if defined (SERVER_MODE)
-PAGEID &
-oid_next_tempid (void)
+PAGEID & oid_next_tempid (void)
 {
   return csc_current ()->oid_next_tempid;
 }

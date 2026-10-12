@@ -211,7 +211,7 @@ extern OID *oid_User_class_oid;
 extern OID *oid_Sp_code_class_oid;
 
 #if defined (SERVER_MODE)
-extern PAGEID &oid_next_tempid (void);
+extern PAGEID & oid_next_tempid (void);
 #define oid_Next_tempid (oid_next_tempid ())
 #else
 extern PAGEID oid_Next_tempid;

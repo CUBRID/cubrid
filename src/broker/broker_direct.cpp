@@ -126,13 +126,13 @@ namespace brd
 	      {
 		continue;
 	      }
-	  return -1;
-	}
-      if (n == 0)
-        {
-          return -1;
-        }
-      p += n;
+	    return -1;
+	  }
+	if (n == 0)
+	  {
+	    return -1;
+	  }
+	p += n;
 	len -= (std::size_t) n;
       }
     return 0;
@@ -524,17 +524,17 @@ namespace brd
 	    break;
 	  }
 
-        if ((adopt::msg_op) header.op == adopt::msg_op::IDLE_HINT)
-          {
-            if (header.length != sizeof (adopt::token_body))
-              {
-                break;
-              }
-            std::lock_guard<std::mutex> guard (m->slots_mutex);
-            m->idle_hint_generation++;
-            m->slots_cv.notify_all ();
-            continue;
-          }
+	if ((adopt::msg_op) header.op == adopt::msg_op::IDLE_HINT)
+	  {
+	    if (header.length != sizeof (adopt::token_body))
+	      {
+		break;
+	      }
+	    std::lock_guard<std::mutex> guard (m->slots_mutex);
+	    m->idle_hint_generation++;
+	    m->slots_cv.notify_all ();
+	    continue;
+	  }
 	if ((adopt::msg_op) header.op == adopt::msg_op::SESSION_END)
 	  {
 	    if (header.length == sizeof (adopt::token_body))
@@ -617,11 +617,11 @@ namespace brd
   channel_request (channel &ch, adopt::msg_op op, const void *body, std::size_t body_len,
 		   const void *handoff_payload, std::size_t handoff_payload_len, int handoff_fd,
 		   adopt::msg_header *reply_header, void *reply_body, std::size_t reply_body_size,
-                   bool *fd_transferred = nullptr)
+		   bool *fd_transferred = nullptr)
   {
     if (fd_transferred != nullptr)
       {
-        *fd_transferred = false;
+	*fd_transferred = false;
       }
     std::lock_guard<std::mutex> request_guard (ch.request_mutex);
 
@@ -684,10 +684,10 @@ namespace brd
 	    {
 	      return -1;
 	    }
-          if (fd_transferred != nullptr)
-            {
-              *fd_transferred = true;
-            }
+	  if (fd_transferred != nullptr)
+	    {
+	      *fd_transferred = true;
+	    }
 	  /* a short sendmsg still delivered the fd; finish the byte stream */
 	  if ((std::size_t) sent < total)
 	    {
@@ -1585,7 +1585,7 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
    * slot, then CAS_ER_FREE_SERVER; 0/unset in an old shm falls back to the
    * inherited header-read budget */
   const int wait_seconds = m->shm->direct_handoff_wait_timeout > 0 ? m->shm->direct_handoff_wait_timeout
-                           : DB_INFO_PEEK_TIMEOUT_SEC;
+			   : DB_INFO_PEEK_TIMEOUT_SEC;
   const auto admission_deadline = std::chrono::steady_clock::now () + std::chrono::seconds (wait_seconds);
 
   for (;;)
@@ -1594,91 +1594,92 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
        * as the idle-CAS wait it replaces (#117 D3) */
       while (m->slots_used.load () >= m->max_slots && !m->stopping.load ())
 	{
-          std::uint64_t seen_hint;
-          {
-            std::lock_guard<std::mutex> guard (m->slots_mutex);
-            seen_hint = m->idle_hint_generation;
-          }
-          std::vector<std::shared_ptr<channel>> yield_channels;
-          if (m->shm->keep_connection == KEEP_CON_AUTO)
-            {
-              std::set<std::string> owners;
-              {
-                std::lock_guard<std::mutex> guard (m->tokens_mutex);
-                for (const auto &entry : m->tokens)
-                  {
-                    owners.insert (entry.second.db_name);
-                  }
-              }
-              for (const auto &owner : owners)
-                {
-                  auto ch = channel_get_or_dial (*m, owner);
-                  if (ch != nullptr)
-                    {
-                      yield_channels.push_back (ch);
-                    }
-                }
-            }
-          if (m->slots_used.load () < m->max_slots)
-            {
-              break;
-            }
-          bool watching_idle = false;
-          if (yield_channels.size () == 1)
-            {
-              // The slot owner may be a different DB from the new request.
-              adopt::token_body wanted = { 1 };
-              (void) channel_send (*yield_channels.front (), adopt::msg_op::YIELD_IDLE, &wanted, sizeof (wanted));
-            }
-          else if (yield_channels.size () > 1)
-            {
-              bool claimed = false;
-              for (const auto &ch : yield_channels)
-                {
-                  adopt::msg_header reply_header;
-                  adopt::token_body reply = { 0 };
-                  if (channel_request (*ch, adopt::msg_op::YIELD_TRY, nullptr, 0, nullptr, 0, -1,
-                                       &reply_header, &reply, sizeof (reply)) == 0
-                      && (adopt::msg_op) reply_header.op == adopt::msg_op::YIELD_TRY_REPLY
-                      && reply_header.length == sizeof (reply) && reply.token != 0)
-                    {
-                      claimed = true;
-                      break;
-                    }
-                }
-              if (!claimed)
-                {
-                  watching_idle = true;
-                  adopt::token_body wanted = { 1 };
-                  for (const auto &ch : yield_channels)
-                    {
-                      (void) channel_send (*ch, adopt::msg_op::IDLE_WATCH, &wanted, sizeof (wanted));
-                    }
-                }
-            }
-          std::unique_lock<std::mutex> guard (m->slots_mutex);
-          bool awakened = m->slots_cv.wait_until (guard, admission_deadline,
-                            [&] { return m->slots_used.load () < m->max_slots || m->stopping.load ()
-                                         || (watching_idle && m->idle_hint_generation != seen_hint); });
-          guard.unlock ();
-          adopt::token_body cancel = { 0 };
-          if (yield_channels.size () == 1)
-            {
-              (void) channel_send (*yield_channels.front (), adopt::msg_op::YIELD_IDLE, &cancel, sizeof (cancel));
-            }
-          else if (watching_idle)
-            {
-              for (const auto &ch : yield_channels)
-                {
-                  (void) channel_send (*ch, adopt::msg_op::IDLE_WATCH, &cancel, sizeof (cancel));
-                }
-            }
-          if (!awakened)
-            {
-              reject_client (*m, job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
-              close (job->clt_sock_fd);
-              return;
-            }
+	  std::uint64_t seen_hint;
+	  {
+	    std::lock_guard<std::mutex> guard (m->slots_mutex);
+	    seen_hint = m->idle_hint_generation;
+	  }
+	  std::vector<std::shared_ptr<channel>> yield_channels;
+	  if (m->shm->keep_connection == KEEP_CON_AUTO)
+	    {
+	      std::set<std::string> owners;
+	      {
+		std::lock_guard<std::mutex> guard (m->tokens_mutex);
+		for (const auto &entry : m->tokens)
+		  {
+		    owners.insert (entry.second.db_name);
+		  }
+	      }
+	      for (const auto &owner : owners)
+		{
+		  auto ch = channel_get_or_dial (*m, owner);
+		  if (ch != nullptr)
+		    {
+		      yield_channels.push_back (ch);
+		    }
+		}
+	    }
+	  if (m->slots_used.load () < m->max_slots)
+	    {
+	      break;
+	    }
+	  bool watching_idle = false;
+	  if (yield_channels.size () == 1)
+	    {
+	      // The slot owner may be a different DB from the new request.
+	      adopt::token_body wanted = { 1 };
+	      (void) channel_send (*yield_channels.front (), adopt::msg_op::YIELD_IDLE, &wanted, sizeof (wanted));
+	    }
+	  else if (yield_channels.size () > 1)
+	    {
+	      bool claimed = false;
+	      for (const auto &ch : yield_channels)
+		{
+		  adopt::msg_header reply_header;
+		  adopt::token_body reply = { 0 };
+		  if (channel_request (*ch, adopt::msg_op::YIELD_TRY, nullptr, 0, nullptr, 0, -1,
+				       &reply_header, &reply, sizeof (reply)) == 0
+		      && (adopt::msg_op) reply_header.op == adopt::msg_op::YIELD_TRY_REPLY
+		      && reply_header.length == sizeof (reply) && reply.token != 0)
+		    {
+		      claimed = true;
+		      break;
+		    }
+		}
+	      if (!claimed)
+		{
+		  watching_idle = true;
+		  adopt::token_body wanted = { 1 };
+		  for (const auto &ch : yield_channels)
+		    {
+		      (void) channel_send (*ch, adopt::msg_op::IDLE_WATCH, &wanted, sizeof (wanted));
+		    }
+		}
+	    }
+	  std::unique_lock<std::mutex> guard (m->slots_mutex);
+	  bool awakened = m->slots_cv.wait_until (guard, admission_deadline,
+						  [&] { return m->slots_used.load () < m->max_slots || m->stopping.load ()
+						      || (watching_idle && m->idle_hint_generation != seen_hint);
+						      });
+	  guard.unlock ();
+	  adopt::token_body cancel = { 0 };
+	  if (yield_channels.size () == 1)
+	    {
+	      (void) channel_send (*yield_channels.front (), adopt::msg_op::YIELD_IDLE, &cancel, sizeof (cancel));
+	    }
+	  else if (watching_idle)
+	    {
+	      for (const auto &ch : yield_channels)
+		{
+		  (void) channel_send (*ch, adopt::msg_op::IDLE_WATCH, &cancel, sizeof (cancel));
+		}
+	    }
+	  if (!awakened)
+	    {
+	      reject_client (*m, job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
+	      close (job->clt_sock_fd);
+	      return;
+	    }
 	}
       if (m->stopping.load ())
 	{
@@ -1716,7 +1717,7 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
        * flags, system-param bits) when it builds the reply */
       body.broker_info[BROKER_INFO_DBMS_TYPE] = CAS_DBMS_CUBRID;
       body.broker_info[BROKER_INFO_KEEP_CONNECTION] =
-        m->shm->keep_connection == KEEP_CON_AUTO ? 0 : CAS_KEEP_CONNECTION_ON;
+	      m->shm->keep_connection == KEEP_CON_AUTO ? 0 : CAS_KEEP_CONNECTION_ON;
       body.broker_info[BROKER_INFO_STATEMENT_POOLING] =
 	      m->shm->statement_pooling ? CAS_STATEMENT_POOLING_ON : CAS_STATEMENT_POOLING_OFF;
       body.broker_info[BROKER_INFO_CCI_PCONNECT] = m->shm->cci_pconnect ? CCI_PCONNECT_ON : CCI_PCONNECT_OFF;
@@ -1730,10 +1731,10 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
 			   &reply_header, reply_body, sizeof (reply_body), &fd_transferred) != 0)
 	{
 	  brd_debug ("handoff db=%s: request failed/timeout", db_name);
-          if (!fd_transferred)
-            {
+	  if (!fd_transferred)
+	    {
 	      reject_client (*m, job->clt_sock_fd, CAS_ER_FREE_SERVER, job->driver_info);
-            }
+	    }
 	  close (job->clt_sock_fd);
 	  return;
 	}
@@ -1759,11 +1760,11 @@ brd_dispatch_job (T_MAX_HEAP_NODE *job)
 	  std::memcpy (&reject, reply_body, sizeof (reject));
 	  if ((adopt::reject_reason) reject.reason == adopt::reject_reason::CLIENTS_EXCEEDED)
 	    {
-              /* This DB cannot admit the connection. Return the existing
-               * retryable error instead of indefinitely blocking unrelated
-               * database handoffs behind this job. A negative ACK proves no
-               * server session or client-wire writer was started. */
-              brd_debug ("handoff db=%s: server capacity rejected", db_name);
+	      /* This DB cannot admit the connection. Return the existing
+	       * retryable error instead of indefinitely blocking unrelated
+	       * database handoffs behind this job. A negative ACK proves no
+	       * server session or client-wire writer was started. */
+	      brd_debug ("handoff db=%s: server capacity rejected", db_name);
 	    }
 	}
 
@@ -1797,12 +1798,12 @@ brd_cancel (unsigned int token, const unsigned char *clt_ip, unsigned short clt_
     for (auto it = range.first; it != range.second; ++it)
       {
 	if ((clt_port == 0 || it->second.clt_port == clt_port)
-            && std::memcmp (it->second.clt_ip, clt_ip, 4) == 0)
+	    && std::memcmp (it->second.clt_ip, clt_ip, 4) == 0)
 	  {
-            if (found)
-              {
-                return -1;
-              }
+	    if (found)
+	      {
+		return -1;
+	      }
 	    db_name = it->second.db_name;
 	    found = true;
 	  }
@@ -1844,7 +1845,7 @@ brd_status (unsigned int token)
       }
     if (m->tokens.count (token) != 1)
       {
-        return FN_STATUS_NONE;
+	return FN_STATUS_NONE;
       }
     db_name = it->second.db_name;
   }
@@ -1932,16 +1933,16 @@ void
 brd_status_reply_async (SOCKET clt_sock_fd, unsigned int token)
 {
   brd_detach_or_inline<std::function<void ()>> (
-    [clt_sock_fd, token] ()
-    {
-      brd_send_code (clt_sock_fd, brd_status (token));
-      close (clt_sock_fd);
-    },
-    [clt_sock_fd] ()
-    {
-      brd_send_code (clt_sock_fd, FN_STATUS_NONE);
-      close (clt_sock_fd);
-    });
+	      [clt_sock_fd, token] ()
+  {
+    brd_send_code (clt_sock_fd, brd_status (token));
+    close (clt_sock_fd);
+  },
+  [clt_sock_fd] ()
+  {
+    brd_send_code (clt_sock_fd, FN_STATUS_NONE);
+    close (clt_sock_fd);
+  });
 }
 
 void
@@ -1965,12 +1966,12 @@ brd_cancel_reply_async (SOCKET clt_sock_fd, unsigned int token, const unsigned c
     close (clt_sock_fd);
   };
   brd_detach_or_inline<std::function<void ()>> (
-    [reply, token, ip, clt_port] ()
-    {
-      reply (brd_cancel (token, ip, clt_port) == 0 ? 0 : CAS_ER_QUERY_CANCEL);
-    },
-    [reply] ()
-    {
-      reply (CAS_ER_QUERY_CANCEL);
-    });
+	      [reply, token, ip, clt_port] ()
+  {
+    reply (brd_cancel (token, ip, clt_port) == 0 ? 0 : CAS_ER_QUERY_CANCEL);
+  },
+  [reply] ()
+  {
+    reply (CAS_ER_QUERY_CANCEL);
+  });
 }

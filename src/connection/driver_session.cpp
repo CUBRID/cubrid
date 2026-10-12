@@ -518,14 +518,14 @@ namespace cubconn
       FN_RETURN fn_ret = FN_KEEP_CONN;
       while (fn_ret == FN_KEEP_CONN)
 	{
-          registry_auto_ready (wake_fd >= 0 && as_info->con_status == CON_STATUS_OUT_TRAN
-                               && as_info->num_holdable_results == 0 && !is_xa_prepared ()
-                               && as_info->cas_change_mode == CAS_CHANGE_MODE_AUTO
-                               && csc_prepare_detach ());
+	  registry_auto_ready (wake_fd >= 0 && as_info->con_status == CON_STATUS_OUT_TRAN
+			       && as_info->num_holdable_results == 0 && !is_xa_prepared ()
+			       && as_info->cas_change_mode == CAS_CHANGE_MODE_AUTO
+			       && csc_prepare_detach ());
 	  /* the SIGUSR1 (re)arming of the CAS loop is retired: cancel arrives
 	   * as a tran interrupt via the control channel (#117 D4) */
 	  fn_ret = cas_process_request (fd, &net_buf, &req_info, wake_fd);
-          registry_auto_ready (false);
+	  registry_auto_ready (false);
 	  /* Match cas_common_main's per-request epilogue. Otherwise a later
 	   * cursor/handle close is still treated as the first request and
 	   * incorrectly tells the driver that its transaction is inactive. */
@@ -542,7 +542,7 @@ namespace cubconn
       cas_log_error_handler_end ();
       net_buf_destroy (&net_buf);
       return fn_ret == FN_KEEP_SESS && as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT
-             && !as_info->reset_flag;
+	     && !as_info->reset_flag;
     }
 
     /* ------------------------------------------------------------------ */
@@ -634,11 +634,11 @@ namespace cubconn
       cubthread::entry *entry_p = cubthread::get_manager ()->claim_entry ();
       if (entry_p == NULL)
 	{
-          if (ssl_client)
-            {
-              cas_ssl_close (params.client_fd);
-              ssl_client = false;
-            }
+	  if (ssl_client)
+	    {
+	      cas_ssl_close (params.client_fd);
+	      ssl_client = false;
+	    }
 	  css_decrement_num_conn ((BOOT_CLIENT_TYPE) params.client_type);	/* same refund as above */
 	  registry_session_finished (params.token);
 	  close (params.client_fd);
@@ -654,18 +654,18 @@ namespace cubconn
       /* session-scoped client context; adopted by the server session after
        * registration, freed with it (session_state_uninit) */
       try
-        {
-          ctx = new client_session_context ();
-        }
+	{
+	  ctx = new client_session_context ();
+	}
       catch (const std::bad_alloc &)
-        {
-        }
+	{
+	}
       if (ctx == nullptr)
-        {
-          send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
-                            CAS_ER_NO_MORE_MEMORY, "Cannot allocate client context");
-          goto retire;
-        }
+	{
+	  send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
+			    CAS_ER_NO_MORE_MEMORY, "Cannot allocate client context");
+	  goto retire;
+	}
       csc_activate (ctx);
 
       /* socketless conn entry: the CAS wire lives on params.client_fd, the
@@ -815,76 +815,76 @@ namespace cubconn
       }
 
       if (auto_mode)
-        {
-          wake_fd = eventfd (0, EFD_CLOEXEC | EFD_NONBLOCK);
-          if (wake_fd < 0)
-            {
-              send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
-                                CAS_ER_FREE_SERVER, "Cannot create AUTO wake descriptor");
-              goto retire;
-            }
-          if (!registry_auto_enable (params.token, wake_fd))
-            {
-              send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
-                                CAS_ER_NO_MORE_MEMORY, "Cannot initialize AUTO admission");
-              goto retire;
-            }
-          as_info->cur_keep_con = KEEP_CON_AUTO;
-          as_info->cas_change_mode = CAS_CHANGE_MODE_AUTO;
-          UINT64 nonce;
-          std::uint32_t wire_id;
-          std::memcpy (&nonce, info.session_id + 12, sizeof (nonce));
-          std::memcpy (&wire_id, info.session_id + 8, sizeof (wire_id));
-          if (nonce != 0)
-            {
-              client_session_context *retained = nullptr;
-              err = session_auto_claim (entry_p, ntohl (wire_id), info.db_user, info.session_id, nonce, &retained);
-              if (err == NO_ERROR)
-                {
-                  csc_deactivate ();
-                  csc_retire_and_delete (ctx);
-                  ctx = retained;
-                  csc_activate (ctx);
-                  adopted = true;
-                  resumed = true;
-                }
-              else if (err != ER_SES_SESSION_EXPIRED)
-                {
-                  send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
-                                    CAS_ER_FREE_SERVER, "Session cannot be resumed");
-                  goto retire;
-                }
-            }
-        }
+	{
+	  wake_fd = eventfd (0, EFD_CLOEXEC | EFD_NONBLOCK);
+	  if (wake_fd < 0)
+	    {
+	      send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
+				CAS_ER_FREE_SERVER, "Cannot create AUTO wake descriptor");
+	      goto retire;
+	    }
+	  if (!registry_auto_enable (params.token, wake_fd))
+	    {
+	      send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
+				CAS_ER_NO_MORE_MEMORY, "Cannot initialize AUTO admission");
+	      goto retire;
+	    }
+	  as_info->cur_keep_con = KEEP_CON_AUTO;
+	  as_info->cas_change_mode = CAS_CHANGE_MODE_AUTO;
+	  UINT64 nonce;
+	  std::uint32_t wire_id;
+	  std::memcpy (&nonce, info.session_id + 12, sizeof (nonce));
+	  std::memcpy (&wire_id, info.session_id + 8, sizeof (wire_id));
+	  if (nonce != 0)
+	    {
+	      client_session_context *retained = nullptr;
+	      err = session_auto_claim (entry_p, ntohl (wire_id), info.db_user, info.session_id, nonce, &retained);
+	      if (err == NO_ERROR)
+		{
+		  csc_deactivate ();
+		  csc_retire_and_delete (ctx);
+		  ctx = retained;
+		  csc_activate (ctx);
+		  adopted = true;
+		  resumed = true;
+		}
+	      else if (err != ER_SES_SESSION_EXPIRED)
+		{
+		  send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
+				    CAS_ER_FREE_SERVER, "Session cannot be resumed");
+		  goto retire;
+		}
+	    }
+	}
 
       if (resumed)
-        {
-          BOOT_CLIENT_CREDENTIAL credential;
-          credential.client_type = (BOOT_CLIENT_TYPE) params.client_type;
-          credential.db_name = info.db_name;
-          credential.db_user = info.db_user;
-          credential.program_name = client_name;
-          credential.process_id = -1;
-          char client_ip[16];
-          ut_get_ipv4_string (client_ip, sizeof (client_ip), (unsigned char *) &params.client_ip);
-          credential.client_ip_addr = client_ip;
-          db_set_client_ip_addr (client_ip);
-          err = boot_resume_client (&credential, info.db_passwd);
-        }
+	{
+	  BOOT_CLIENT_CREDENTIAL credential;
+	  credential.client_type = (BOOT_CLIENT_TYPE) params.client_type;
+	  credential.db_name = info.db_name;
+	  credential.db_user = info.db_user;
+	  credential.program_name = client_name;
+	  credential.process_id = -1;
+	  char client_ip[16];
+	  ut_get_ipv4_string (client_ip, sizeof (client_ip), (unsigned char *) &params.client_ip);
+	  credential.client_ip_addr = client_ip;
+	  db_set_client_ip_addr (client_ip);
+	  err = boot_resume_client (&credential, info.db_passwd);
+	}
       else
-        {
-          apply_driver_session_id (info.session_id);
-          err = db_restart_ex (client_name, info.db_name, info.db_user, info.db_passwd, NULL, params.client_type);
-        }
+	{
+	  apply_driver_session_id (info.session_id);
+	  err = db_restart_ex (client_name, info.db_name, info.db_user, info.db_passwd, NULL, params.client_type);
+	}
       if (err != NO_ERROR)
 	{
 	  /* cas_db_connect failure path: DBMS error straight to the driver */
 	  send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, DBMS_ERROR_INDICATOR, err,
 			    er_msg () != NULL ? er_msg () : "");
-          if (resumed)
-            {
-              session_auto_detach (entry_p, false);
-            }
+	  if (resumed)
+	    {
+	      session_auto_detach (entry_p, false);
+	    }
 	  goto retire;
 	}
       registered = true;
@@ -908,17 +908,17 @@ namespace cubconn
 	}
 
       if (auto_mode && !resumed)
-        {
-          UINT64 nonce = 0;
-          err = crypt_generate_random_bytes ((char *) &nonce, sizeof (nonce));
-          if (err != NO_ERROR || nonce == 0 || session_auto_enable (entry_p, info.db_user, nonce) != NO_ERROR)
-            {
-              send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
-                                CAS_ER_INTERNAL, "Cannot establish AUTO session");
-              (void) ux_end_session ();
-              goto retire;
-            }
-        }
+	{
+	  UINT64 nonce = 0;
+	  err = crypt_generate_random_bytes ((char *) &nonce, sizeof (nonce));
+	  if (err != NO_ERROR || nonce == 0 || session_auto_enable (entry_p, info.db_user, nonce) != NO_ERROR)
+	    {
+	      send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, CAS_ERROR_INDICATOR,
+				CAS_ER_INTERNAL, "Cannot establish AUTO session");
+	      (void) ux_end_session ();
+	      goto retire;
+	    }
+	}
 
       /* cancel arrives on the control channel as a tran interrupt (#117 D4) */
       registry_set_tran_index (params.token, tm_Tran_index);
@@ -926,20 +926,20 @@ namespace cubconn
       /* the new-connection defaults capture ux_database_connect performs
        * (cas_execute.c:493): isolation/lock-timeout baselines + sys params */
       if (!resumed)
-        {
-          ux_get_default_setting ();
-          ctx->driver_default_isolation = cas_default_isolation_level;
-          ctx->driver_default_lock_timeout = cas_default_lock_timeout;
-          ctx->driver_default_ansi_quotes = cas_default_ansi_quotes;
-          ctx->driver_default_no_backslash_escapes = cas_default_no_backslash_escapes;
-        }
+	{
+	  ux_get_default_setting ();
+	  ctx->driver_default_isolation = cas_default_isolation_level;
+	  ctx->driver_default_lock_timeout = cas_default_lock_timeout;
+	  ctx->driver_default_ansi_quotes = cas_default_ansi_quotes;
+	  ctx->driver_default_no_backslash_escapes = cas_default_no_backslash_escapes;
+	}
       else
-        {
-          cas_default_isolation_level = ctx->driver_default_isolation;
-          cas_default_lock_timeout = ctx->driver_default_lock_timeout;
-          cas_default_ansi_quotes = ctx->driver_default_ansi_quotes;
-          cas_default_no_backslash_escapes = ctx->driver_default_no_backslash_escapes;
-        }
+	{
+	  cas_default_isolation_level = ctx->driver_default_isolation;
+	  cas_default_lock_timeout = ctx->driver_default_lock_timeout;
+	  cas_default_ansi_quotes = ctx->driver_default_ansi_quotes;
+	  cas_default_no_backslash_escapes = ctx->driver_default_no_backslash_escapes;
+	}
       (void) tr_set_execution_state (cas_session_cfg.trigger_action_flag != 0);
 
       /* The broker owns the shared, append-only rule slots. Each adopted
@@ -1006,21 +1006,21 @@ namespace cubconn
 	}
       db_set_keep_session (false);
       if (yielded && auto_mode)
-        {
-          session_auto_detach (entry_p, true);
-        }
+	{
+	  session_auto_detach (entry_p, true);
+	}
       else
-        {
-          (void) ux_end_session ();
-        }
+	{
+	  (void) ux_end_session ();
+	}
 
 retire:
       registry_begin_session_cleanup (params.token);
       if (wake_fd >= 0)
-        {
-          close (wake_fd);
-          wake_fd = -1;
-        }
+	{
+	  close (wake_fd);
+	  wake_fd = -1;
+	}
       hm_srv_handle_table_final ();
       qr_final ();
       if (as_info != NULL)
@@ -1058,9 +1058,9 @@ retire:
       entry_p->tran_index = NULL_TRAN_INDEX;
       entry_p->m_status = cubthread::entry::status::TS_DEAD;
       if (csc_bracket_is_active ())
-        {
-          csc_deactivate ();
-        }
+	{
+	  csc_deactivate ();
+	}
       if (!adopted && ctx != nullptr)
 	{
 	  csc_retire_and_delete (ctx);

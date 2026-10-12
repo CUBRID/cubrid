@@ -1140,8 +1140,8 @@ exit:
 
 	    m_deferred_query_free_handler.push_back (m_query_handlers[id]);
 	    m_query_handlers[id] = nullptr;
-            assert (m_live_query_handlers > 0);
-            m_live_query_handlers--;
+	    assert (m_live_query_handlers > 0);
+	    m_live_query_handlers--;
 	  }
 	else
 	  {
