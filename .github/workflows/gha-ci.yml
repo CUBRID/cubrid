@@ -1186,6 +1186,9 @@ jobs:
           fi
           echo "ctp branch : $CTP_BRANCH"
 
+          # Else a small fetch touches the node copy's packs, copying them whole into /rw.
+          git config --global fetch.unpackLimit 1
+
           # The entrypoint below clones CTP whole when .git is absent, and that clone
           # was 124s of WAN. Mounted from the node copy it finds .git and fetches the
           # tip instead -- CUBRIDQA-1497. The shards mount the same copy, so nothing
@@ -1817,6 +1820,7 @@ jobs:
           . "$PLAN_DIR/split.meta"
           wan() { awk 'NR>2 {n=$1; sub(/:.*/,"",n); if (n!="lo") r+=$2} END {print r+0}' /proc/net/dev; }
           rx0=$(wan)
+          git config --global fetch.unpackLimit 1
           # Commits, not branches: tc/pr-<N> and probe/* are gone once their work ends.
           BRANCH_TESTCASES="$tc_sha" BRANCH_TESTTOOLS="$WANT_CTP_SHA" /entrypoint.sh checkout "$SUITE"
           echo "refresh WAN: $(( ($(wan) - rx0) / 1048576 )) MB"
