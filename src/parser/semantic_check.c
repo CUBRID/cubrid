@@ -4190,7 +4190,7 @@ pt_is_argless_legacy_pseudo (const PT_NODE * node)
 /*
  * pt_is_bare_legacy_default_form () - whether node may appear as a non-parenthesized (bare)
  *	column DEFAULT: an argument-less legacy pseudo-column, UUID(<numeric literal>), or
- *	TO_CHAR(<literal | argument-less datetime pseudo-column> [, <literal>])
+ *	TO_CHAR(<literal | signed numeric literal | argument-less datetime pseudo-column> [, <literal>])
  *   return: true if so
  *   node(in): the top-level node of the DEFAULT expression
  */
@@ -4229,8 +4229,8 @@ pt_is_bare_legacy_default_form (const PT_NODE * node)
 	{
 	  return false;
 	}
-      /* one level of nesting only */
-      return arg1->node_type == PT_VALUE || pt_is_argless_legacy_pseudo (arg1);
+      /* one level of nesting only: a literal, a signed numeric literal or an argument-less pseudo-column */
+      return arg1->node_type == PT_VALUE || pt_is_signed_numeric_literal (arg1) || pt_is_argless_legacy_pseudo (arg1);
     }
 
   return false;
