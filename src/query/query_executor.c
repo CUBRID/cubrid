@@ -18797,6 +18797,11 @@ exit_on_error:
       recursive_part->max_iterations = -1;
     }
 
+  if (t_list_id)
+    {
+      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
+    }
+
   xasl->status = XASL_FAILURE;
   return ER_FAILED;
 }
