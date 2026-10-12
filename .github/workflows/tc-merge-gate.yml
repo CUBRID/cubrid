@@ -373,7 +373,7 @@ jobs:
                   | @tsv' \
             "${RUNNER_TEMP}/open-prs.json" > "${RUNNER_TEMP}/prs.tsv"
 
-          # Leave a verdict younger than this alone: its run may still be settling.
+          # Re-run no gate whose verdict is younger than this: its run may still be settling.
           MIN_AGE_SEC=1800
           NOW=$(date -u +%s)
           RERUN_N=0
@@ -382,7 +382,11 @@ jobs:
           while IFS=$'\t' read -r PR_NUMBER HEAD_SHA STANDING JOB_ID COMPLETED OLD; do
             [ -z "${PR_NUMBER}" ] && continue
             [ -z "${COMPLETED}" ] && continue
-            [ $(( NOW - $(date -u -d "${COMPLETED}" +%s) )) -lt "${MIN_AGE_SEC}" ] && continue
+            YOUNG=''
+            [ $(( NOW - $(date -u -d "${COMPLETED}" +%s) )) -lt "${MIN_AGE_SEC}" ] && YOUNG=1
+            # Entries an earlier sweep wrote are aligned on every pass, young or not:
+            # a re-run of a gate run older than the ALIGN step leaves them as they were.
+            [ -n "${YOUNG}" ] && [ -z "${OLD}" ] && continue
 
             if grep -qxF "${PR_NUMBER}" "${RUNNER_TEMP}/open-tc.txt"; then
               EXPECTED=FAILURE
@@ -397,7 +401,7 @@ jobs:
             STALE_OLD=''
             for C in ${OLD//,/ }; do [ "${C}" != "${EXPECTED}" ] && STALE_OLD=1; done
             STALE_GATE=''
-            [ "${STANDING}" != '-' ] && [ "${STANDING}" != "${EXPECTED}" ] && STALE_GATE=1
+            [ -z "${YOUNG}" ] && [ "${STANDING}" != '-' ] && [ "${STANDING}" != "${EXPECTED}" ] && STALE_GATE=1
             [ -z "${STALE_OLD}${STALE_GATE}" ] && continue
 
             # Before any re-run: it would copy a stale entry onto the end of its run.
