@@ -18765,8 +18765,8 @@ qexec_opcode_is_prior_or_volatile (OPERATOR_TYPE opcode)
  *  regu(in):
  *  match(in):
  *
- *  Note: mirrors qexec_replace_prior_regu_vars so detection covers exactly the
- *  places the general path would substitute PRIOR pointers.
+ *  Note: covers every place qexec_replace_prior_regu_vars substitutes PRIOR pointers and also the
+ *  CASE/DECODE/IF/PREDICATE pred and value lists, so detection is a superset of substitution.
  */
 static bool
 qexec_regu_has_opcode (const REGU_VARIABLE * regu, QEXEC_OPCODE_MATCH match)
@@ -18774,6 +18774,12 @@ qexec_regu_has_opcode (const REGU_VARIABLE * regu, QEXEC_OPCODE_MATCH match)
   if (regu == NULL)
     {
       return false;
+    }
+
+  if (regu->xasl != NULL && XASL_IS_FLAGED (regu->xasl, XASL_LINK_TO_REGU_VARIABLE))
+    {
+      /* a subquery body is not walked: PRIOR is never substituted inside it, but it may hold a volatile term */
+      return match != qexec_opcode_is_prior;
     }
 
   switch (regu->type)
@@ -18786,7 +18792,8 @@ qexec_regu_has_opcode (const REGU_VARIABLE * regu, QEXEC_OPCODE_MATCH match)
 	}
       return (qexec_regu_has_opcode (regu->value.arithptr->leftptr, match)
 	      || qexec_regu_has_opcode (regu->value.arithptr->rightptr, match)
-	      || qexec_regu_has_opcode (regu->value.arithptr->thirdptr, match));
+	      || qexec_regu_has_opcode (regu->value.arithptr->thirdptr, match)
+	      || qexec_pred_has_opcode (regu->value.arithptr->pred, match));
 
     case TYPE_SP:
       /* a stored/PL function call may return a new value per invocation, so evaluating it once is unsafe regardless of
@@ -18797,6 +18804,26 @@ qexec_regu_has_opcode (const REGU_VARIABLE * regu, QEXEC_OPCODE_MATCH match)
       for (REGU_VARIABLE_LIST r = regu->value.funcp->operand; r != NULL; r = r->next)
 	{
 	  if (qexec_regu_has_opcode (&r->value, match))
+	    {
+	      return true;
+	    }
+	}
+      return false;
+
+    case TYPE_REGU_VAR_LIST:
+      for (REGU_VARIABLE_LIST r = regu->value.regu_var_list; r != NULL; r = r->next)
+	{
+	  if (qexec_regu_has_opcode (&r->value, match))
+	    {
+	      return true;
+	    }
+	}
+      return false;
+
+    case TYPE_REGUVAL_LIST:
+      for (REGU_VALUE_ITEM * item = regu->value.reguval_list->regu_list; item != NULL; item = item->next)
+	{
+	  if (qexec_regu_has_opcode (item->value, match))
 	    {
 	      return true;
 	    }
