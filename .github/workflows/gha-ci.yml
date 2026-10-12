@@ -1823,7 +1823,8 @@ jobs:
           git config --global fetch.unpackLimit 1
           # Commits, not branches: tc/pr-<N> and probe/* are gone once their work ends.
           BRANCH_TESTCASES="$tc_sha" BRANCH_TESTTOOLS="$WANT_CTP_SHA" /entrypoint.sh checkout "$SUITE"
-          echo "refresh WAN: $(( ($(wan) - rx0) / 1048576 )) MB"
+          # /rw in MB means the fetch kept its pack; in GB, it copied the node copy's up.
+          echo "refresh WAN: $(( ($(wan) - rx0) / 1048576 )) MB · /rw $(df -h /rw | awk 'END {print $3}') used"
           printf 'tc_sha=%s\ntc_branch=%s\n' "$(git -C "$TC_DIR" rev-parse HEAD)" "$tc_branch" > "$SHARD_DIR/tc.read"
 
       - name: Keep only my share
