@@ -210,6 +210,7 @@ namespace parallel_query
       error = part_writer.init (&thread_ref, *m_shared_info->part_set, m_manager->part_spools[m_index]);
       if (error != NO_ERROR)
 	{
+	  assert_release_error (er_errid () != NO_ERROR);
 	  m_task_manager.handle_error (thread_ref);
 	  return;
 	}
@@ -444,6 +445,7 @@ namespace parallel_query
 	      qfile_open_list (&thread_ref, &m_manager->type_list, nullptr, m_manager->query_id, m_manager->qlist_flag, nullptr);
       if (m_shared_info->result_list_ids[m_index] == nullptr)
 	{
+	  assert_release_error (er_errid () != NO_ERROR);
 	  m_task_manager.handle_error (thread_ref);
 	  thread_ref.m_px_stats = nullptr;
 	  thread_ref.m_uses_px_stats = false;

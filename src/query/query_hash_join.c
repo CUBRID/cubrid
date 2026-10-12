@@ -600,54 +600,72 @@ hjoin_resplit_qlist (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_LIS
   UINT32 hash_key, sub_hash_key;
   int error = NO_ERROR;
 
+  assert (thread_p != NULL);
+  assert (list_id != NULL);
+  assert (part_list_id != NULL);
+  assert (part_cnt > 1);
+  assert (spool != NULL);
+
   /* Prevent faults when qfile_close_scan is called */
   list_scan_id.status = S_CLOSED;
 
   error = part_set.init (part_list_id, part_cnt, NULL);
   if (error != NO_ERROR)
     {
-      return error;
+      goto error_exit;
     }
 
   error = part_writer.init (thread_p, part_set, spool);
   if (error != NO_ERROR)
     {
-      return error;
+      goto error_exit;
     }
 
   error = qfile_open_list_scan (list_id, &list_scan_id);
-  if (error == NO_ERROR)
+  if (error != NO_ERROR)
     {
-      while ((scan_code = qfile_scan_list_next (thread_p, &list_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
+      goto error_exit;
+    }
+
+  while ((scan_code = qfile_scan_list_next (thread_p, &list_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
+    {
+      hash_key = (UINT32) OR_GET_INT (hjoin_locate_tuple_hash_key (&tuple_record));
+
+      /* the position of the mixed key within its partition of the first split */
+      sub_hash_key = (UINT32) ((UINT64) HJOIN_HASH_MIX (hash_key) * divisor);
+
+      error = part_writer.add (HJOIN_HASH_TO_PARTITION (sub_hash_key, part_cnt), tuple_record.tpl);
+      if (error != NO_ERROR)
 	{
-	  hash_key = (UINT32) OR_GET_INT (hjoin_locate_tuple_hash_key (&tuple_record));
-
-	  /* the position of the mixed key within its partition of the first split */
-	  sub_hash_key = (UINT32) ((UINT64) HJOIN_HASH_MIX (hash_key) * divisor);
-
-	  error = part_writer.add (HJOIN_HASH_TO_PARTITION (sub_hash_key, part_cnt), tuple_record.tpl);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
+	  break;		/* error_exit */
 	}
+    }				/* while (qfile_scan_list_next (list_scan_id)) */
 
-      qfile_close_scan (thread_p, &list_scan_id);
-    }
+  qfile_close_scan (thread_p, &list_scan_id);
 
-  if (scan_code == S_ERROR && error == NO_ERROR)
-    {
-      error = er_errid ();
-    }
-
-  if (error == NO_ERROR)
+  if (scan_code != S_ERROR && error == NO_ERROR)
     {
       error = part_writer.flush ();
     }
 
-  if (error == NO_ERROR)
+  if (scan_code != S_ERROR && error == NO_ERROR)
     {
       error = part_set.finish (thread_p, spool);
+    }
+
+  if (scan_code == S_ERROR || error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
+  return NO_ERROR;
+
+error_exit:
+  if (error == NO_ERROR || er_errid () == NO_ERROR)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      error = er_errid ();
     }
 
   return error;
