@@ -33,7 +33,6 @@
 #include "schema_manager.h"
 #include "object_accessor.h"
 #include "object_primitive.h"
-#include "set_object.h"
 #include "authenticate.h"
 #include "db.h"
 #include "parser.h"
@@ -197,9 +196,8 @@ static void get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, c
 static int compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with_evaluate);
 static int validate_trigger (TR_TRIGGER * trigger);
 
-static int register_user_trigger (DB_OBJECT * object);
-static int unregister_user_trigger (TR_TRIGGER * trigger, int rollback);
 static int get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST ** trigger_list);
+static int find_user_trigger_objects (DB_OBJLIST ** objects);
 
 static void reorder_schema_caches (TR_TRIGGER * trigger);
 static int find_trigger_by_name (const char *name, DB_OBJECT ** trigger_p);
@@ -1889,157 +1887,14 @@ tr_unmap_trigger (TR_TRIGGER * trigger)
 /* USER TRIGGER CACHE */
 
 /*
- * The user object has an attribute that may contain a sequence of trigger object pointers.
- * These were once in the au_ module but since they don't really need any special support there,
- * they were* moved here to keep au_ from having to know too much about triggers.
- * The triggers in this list are only the "user" level triggers such as COMMIT, ABORT, TIMEOUT, and ROLLBACK.
- * These triggers are extracted from the user object and placed in a global trigger cache list.
- * This saves the expense of performing the usual db_get() operations to extract the trigger info every time
- * a user event happens.  Proper maintenance of the cache depends on the function tr_check_rollback_triggers being called
- * inside the tran_abort() function.  When the transaction is rolled back, we universally invalidate the user cache
- * so that it can be recalculated for the next transaction.
- * We only really need to do this if the user object was modified during the transaction.
- *
+ * tr_invalidate_user_cache() - Marks the user trigger cache to be rebuilt on its next use
+ *    return: none
  */
-
-/*
- * register_user_trigger() - This stores a new trigger object inside the current user object
- *    return: error code
- *    object(in): trigger object
- *
- * Note:
- *    If successful, it will recalculate the user trigger cache list as well.
- */
-static int
-register_user_trigger (DB_OBJECT * object)
+void
+tr_invalidate_user_cache (void)
 {
-  int error = NO_ERROR;
-  DB_SET *table;
-  DB_VALUE value;
-  int save;
-
-  AU_SAVE_AND_DISABLE (save);
-
-  if (Au_user != NULL && (error = obj_inst_lock (Au_user, 1)) == NO_ERROR
-      && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
-    {
-      if (DB_IS_NULL (&value))
-	{
-	  table = NULL;
-	}
-      else
-	{
-	  table = db_get_set (&value);
-	}
-
-      if (table == NULL)
-	{
-	  table = set_create_sequence (0);
-	  db_make_sequence (&value, table);
-	  obj_set (Au_user, "triggers", &value);
-	  /*
-	   * remember, because of coercion, we have to either set the domain properly to begin with or
-	   * we have to get the coerced set back out after it has been assigned
-	   */
-	  set_free (table);
-	  obj_get (Au_user, "triggers", &value);
-	  if (DB_IS_NULL (&value))
-	    {
-	      table = NULL;
-	    }
-	  else
-	    {
-	      table = db_get_set (&value);
-	    }
-	}
-
-      db_make_object (&value, object);
-      error = set_insert_element (table, 0, &value);
-      if (error == NO_ERROR)
-	{
-	  error = au_update_timestamps (Au_user);
-	}
-      /* if an error is set, probably must abort the transaction */
-    }
-
-  AU_RESTORE (save);
-
-  if (error == NO_ERROR)
-    {
-      tr_User_triggers_modified = 1;
-      tr_update_user_cache ();
-    }
-
-  return error;
-}
-
-/*
- * unregister_user_trigger() - This removes a trigger from the user object and associated caches
- *    return: error code
- *    trigger(in): trigger structure
- *    rollback(in): non-zero if we're performing a rollback
- *
- * Note:
- *    This removes a trigger from the user object and associated caches.
- *    If the rollback flag is set, it indicates that we're trying to
- *    remove a trigger that was defined during the current transaction.
- *    In that case, try to be more tolerant of errors that may occurr.
- */
-static int
-unregister_user_trigger (TR_TRIGGER * trigger, int rollback)
-{
-  int error = NO_ERROR;
-  DB_SET *table;
-  DB_VALUE value;
-  int save;
-
-  if (rollback)
-    {
-      /*
-       * Carefully remove it from the user cache first, if we have
-       * errors touching the user object then at least it will be
-       * out of the cache
-       */
-      (void) remove_trigger_list (&tr_User_triggers, trigger);
-    }
-
-  AU_SAVE_AND_DISABLE (save);
-
-  if (Au_user != NULL && (error = obj_inst_lock (Au_user, 1)) == NO_ERROR
-      && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
-    {
-      if (DB_IS_NULL (&value))
-	{
-	  table = NULL;
-	}
-      else
-	{
-	  table = db_get_set (&value);
-	}
-
-      if (table != NULL)
-	{
-	  db_make_object (&value, trigger->object);
-	  error = set_drop_element (table, &value, false);
-	  set_free (table);
-	}
-      if (error == NO_ERROR)
-	{
-	  error = au_update_timestamps (Au_user);
-	}
-      /* else, should have "trigger not found" error ? */
-    }
-
-  AU_RESTORE (save);
-
-  /* don't bother updating the cache now if its a rollback */
-  if (error == NO_ERROR && !rollback)
-    {
-      tr_User_triggers_modified = 1;
-      tr_update_user_cache ();
-    }
-
-  return error;
+  tr_User_triggers_modified = 1;
+  tr_User_triggers_valid = 0;
 }
 
 /*
@@ -2054,11 +1909,8 @@ static int
 get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST ** trigger_list)
 {
   int error = NO_ERROR;
-  DB_SET *table;
-  DB_VALUE value;
-  DB_TRIGGER_EVENT e;
   TR_TRIGGER *trigger;
-  int max, i;
+  DB_OBJLIST *objects = NULL, *o;
   int save;
 
   *trigger_list = NULL;
@@ -2069,68 +1921,22 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
     }
 
   AU_SAVE_AND_DISABLE (save);
-  error = obj_get (Au_user, "triggers", &value);
-  if (error != NO_ERROR)
-    {
-      AU_RESTORE (save);
-      return error;
-    }
 
-  if (DB_IS_NULL (&value))
+  error = find_user_trigger_objects (&objects);
+  for (o = objects; o != NULL && error == NO_ERROR; o = o->next)
     {
-      table = NULL;
-    }
-  else
-    {
-      table = db_get_set (&value);
-    }
-
-  if (table != NULL)
-    {
-      error = set_filter (table);
-      max = set_size (table);
-
-      for (i = 0; i < max && error == NO_ERROR; i++)
+      error = tr_map_trigger_if_exists (o->op, &trigger);
+      if (trigger != NULL && (!active_filter || trigger->status == TR_STATUS_ACTIVE)
+	  && (event == TR_EVENT_NULL || trigger->event == event))
 	{
-	  error = set_get_element (table, i, &value);
-	  if (error == NO_ERROR)
-	    {
-	      if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value) && db_get_object (&value) != NULL)
-		{
-		  /* deleted objects should have been filtered by now */
-		  trigger = tr_map_trigger (db_get_object (&value), 1);
-		  if (trigger == NULL)
-		    {
-		      ASSERT_ERROR_AND_SET (error);
-		    }
-		  else
-		    {
-		      if (!active_filter || trigger->status == TR_STATUS_ACTIVE)
-			{
-			  if (event == TR_EVENT_NULL)
-			    {
-			      /* unconditionally collect all the trigger objects */
-			      error = ml_ext_add (trigger_list, db_get_object (&value), NULL);
-			    }
-			  else
-			    {
-			      /* must check for a specific event */
-			      error = tr_trigger_event (db_get_object (&value), &e);
-			      if (error == NO_ERROR)
-				{
-				  if (e == event)
-				    {
-				      error = ml_ext_add (trigger_list, db_get_object (&value), NULL);
-				    }
-				}
-			    }
-			}
-		    }
-		}
-	    }
+	  error = ml_ext_add (trigger_list, o->op, NULL);
 	}
+    }
+  AU_RESTORE (save);
 
-      set_free (table);
+  if (objects != NULL)
+    {
+      ml_free (objects);
     }
 
   if (error != NO_ERROR && *trigger_list != NULL)
@@ -2138,8 +1944,6 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
       ml_ext_free (*trigger_list);
       *trigger_list = NULL;
     }
-
-  AU_RESTORE (save);
 
   return error;
 }
@@ -2156,10 +1960,9 @@ int
 tr_update_user_cache (void)
 {
   int error = NO_ERROR;
-  DB_SET *table;
-  DB_VALUE value;
   TR_TRIGGER *trigger;
-  int max, i;
+  DB_OBJLIST *objects = NULL, *o;
+  int save;
 
   tr_User_triggers_valid = 0;
   if (tr_User_triggers != NULL)
@@ -2168,50 +1971,28 @@ tr_update_user_cache (void)
       tr_User_triggers = NULL;
     }
 
-  int save;
+  if (Au_user == NULL)
+    {
+      tr_User_triggers_valid = 1;
+      return NO_ERROR;
+    }
+
   AU_SAVE_AND_DISABLE (save);
 
-  if (Au_user != NULL && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
+  error = find_user_trigger_objects (&objects);
+  for (o = objects; o != NULL && error == NO_ERROR; o = o->next)
     {
-      if (DB_IS_NULL (&value))
+      error = tr_map_trigger_if_exists (o->op, &trigger);
+      if (trigger != NULL)
 	{
-	  table = NULL;
+	  error = insert_trigger_list (&tr_User_triggers, trigger);
 	}
-      else
-	{
-	  table = db_get_set (&value);
-	}
+    }
+  AU_RESTORE (save);
 
-      if (table != NULL)
-	{
-	  error = set_filter (table);
-	  max = set_size (table);
-
-	  for (i = 0; i < max && error == NO_ERROR; i++)
-	    {
-	      error = set_get_element (table, i, &value);
-	      if (error == NO_ERROR)
-		{
-		  if (DB_VALUE_TYPE (&value) == DB_TYPE_OBJECT && !DB_IS_NULL (&value)
-		      && db_get_object (&value) != NULL)
-		    {
-		      /* deleted objects will have been filtered by now */
-		      trigger = tr_map_trigger (db_get_object (&value), 1);
-		      if (trigger == NULL)
-			{
-			  assert (er_errid () != NO_ERROR);
-			  error = er_errid ();
-			}
-		      else
-			{
-			  error = insert_trigger_list (&tr_User_triggers, trigger);
-			}
-		    }
-		}
-	    }
-
-	  set_free (table);
-	}
+  if (objects != NULL)
+    {
+      ml_free (objects);
     }
 
   if (error == NO_ERROR)
@@ -2224,30 +2005,8 @@ tr_update_user_cache (void)
       tr_User_triggers = NULL;
     }
 
-  AU_RESTORE (save);
-
   return error;
 }
-
-#if defined(ENABLE_UNUSED_FUNCTION)
-/*
- * tr_invalidate_user_cache() - This is called to invalidate the user trigger
- *                              cache and cause it to be recalculated the next
- *                              time a user event is encountered.
- *    return: none
- *
- * Note:
- *    It is intended to be called only by au_set_user() when the user
- *    object has been changed.  Since this can happen frequently under
- *    some conditions, don't do much complicated here.  Delay the actual
- *    cache calulation until it is needed.
- */
-void
-tr_invalidate_user_cache (void)
-{
-  tr_User_triggers_valid = 0;
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 /* SCHEMA CACHE */
 
@@ -3109,6 +2868,80 @@ tr_find_trigger_objects (DB_OBJLIST ** objects)
 }
 
 /*
+ * check_current_user_trigger() - Checks whether the object is a user trigger owned by the current user
+ *    return: error code
+ *    object(in): trigger object
+ *    is_current_user_trigger(out): true if it is
+ */
+static int
+check_current_user_trigger (DB_OBJECT * object, bool * is_current_user_trigger)
+{
+  DB_VALUE value;
+  int error;
+
+  *is_current_user_trigger = false;
+
+  error = obj_get (object, TR_ATT_EVENT, &value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if ((DB_VALUE_TYPE (&value) != DB_TYPE_INTEGER) || !IS_USER_EVENT ((DB_TRIGGER_EVENT) db_get_int (&value)))
+    {
+      return NO_ERROR;
+    }
+
+  error = obj_get (object, TR_ATT_OWNER, &value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  *is_current_user_trigger = ws_is_same_object (db_get_object (&value), Au_user);
+  return NO_ERROR;
+}
+
+/*
+ * find_user_trigger_objects() - Finds the user trigger objects owned by the current user
+ *    return: error code
+ *    objects(out): object list (returned), freed with ml_free
+ */
+static int
+find_user_trigger_objects (DB_OBJLIST ** objects)
+{
+  LIST_MOPS *lmops;
+  int error;
+  int i;
+  bool is_current_user_trigger;
+
+  *objects = NULL;
+
+  error = fetch_trigger_mops (&lmops);
+  if (error != NO_ERROR || lmops == NULL)
+    {
+      return error;
+    }
+
+  for (i = 0; i < lmops->num && error == NO_ERROR; i++)
+    {
+      error = check_current_user_trigger (lmops->mops[i], &is_current_user_trigger);
+      if (error == NO_ERROR && is_current_user_trigger)
+	{
+	  error = ml_append (objects, lmops->mops[i], NULL);
+	}
+    }
+  locator_free_list_mops (lmops);
+
+  if (error != NO_ERROR)
+    {
+      ml_free (*objects);
+      *objects = NULL;
+    }
+
+  return error;
+}
+
+/*
  * tr_map_trigger_if_exists() - Like tr_map_trigger, but a dropped trigger is not an error
  *    return: error code
  *    object(in): trigger object
@@ -3829,7 +3662,6 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 
   tr_object_map_added = true;
 
-  /* cache the trigger in the the schema or the user object for later reference */
   if (trigger->class_mop != NULL)
     {
       if (sm_add_trigger (trigger->class_mop, trigger->attribute, 0, trigger->object))
@@ -3837,12 +3669,9 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 	  goto error;
 	}
     }
-  else
+  else if (ws_is_same_object (trigger->owner, Au_user))
     {
-      if (register_user_trigger (object))
-	{
-	  goto error;
-	}
+      tr_invalidate_user_cache ();
     }
 
   return object;
@@ -4101,7 +3930,10 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
   /* remove it from the class or user cache */
   if (trigger->class_mop == NULL)
     {
-      error = unregister_user_trigger (trigger, rollback);
+      if (ws_is_same_object (trigger->owner, Au_user))
+	{
+	  tr_invalidate_user_cache ();
+	}
     }
   else
     {
