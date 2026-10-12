@@ -132,7 +132,7 @@ static OBJ_TEMPASSIGN *obt_make_assignment (OBJ_TEMPLATE * template_ptr, SM_ATTR
 static void obt_free_assignment (OBJ_TEMPASSIGN * assign);
 static void obt_free_template (OBJ_TEMPLATE * template_ptr);
 static int populate_auto_increment (OBJ_TEMPLATE * template_ptr);
-static int populate_defaults (OBJ_TEMPLATE * template_ptr);
+static int populate_defaults (OBJ_TEMPLATE * template_ptr, int check_non_null);
 static int obt_assign_obt (OBJ_TEMPLATE * template_ptr, SM_ATTRIBUTE * att, int base_assignment, OBJ_TEMPLATE * value);
 static MOP create_template_object (OBJ_TEMPLATE * template_ptr);
 static int access_object (OBJ_TEMPLATE * template_ptr, MOP * object, MOBJ * objptr);
@@ -1259,6 +1259,8 @@ auto_increment_error:
  *                      for a class.
  *      returns: error code
  *      template(in): template to fill out
+ *      check_non_null(in): whether a NOT NULL column its residual DEFAULT leaves without a value is refused here;
+ *			    off for an object the caller fills afterwards (obj_create)
  *
  * Note :
  *    This is necessary for INSERT templates.  The assignments are marked
@@ -1272,7 +1274,7 @@ auto_increment_error:
  */
 
 static int
-populate_defaults (OBJ_TEMPLATE * template_ptr)
+populate_defaults (OBJ_TEMPLATE * template_ptr, int check_non_null)
 {
   SM_ATTRIBUTE *att, *base_att;
   OBJ_TEMPASSIGN *a, *exists;
@@ -1385,7 +1387,8 @@ populate_defaults (OBJ_TEMPLATE * template_ptr)
 		  goto memory_error;
 		}
 	    }
-	  else if ((att->flags & SM_ATTFLAG_NON_NULL) && DB_IS_RESIDUAL_DEFAULT_EXPR (&att->default_value.default_expr))
+	  else if (check_non_null && (att->flags & SM_ATTFLAG_NON_NULL)
+		   && DB_IS_RESIDUAL_DEFAULT_EXPR (&att->default_value.default_expr))
 	    {
 	      int error = NO_ERROR;
 
@@ -2261,7 +2264,7 @@ obt_final_check (OBJ_TEMPLATE * template_ptr, int check_non_null, int *has_uniqu
 	      return er_errid ();
 	    }
 
-	  if (populate_defaults (template_ptr))
+	  if (populate_defaults (template_ptr, check_non_null))
 	    {
 	      assert (er_errid () != NO_ERROR);
 	      return er_errid ();
@@ -3074,7 +3077,7 @@ obt_populate_known_arguments (OBJ_TEMPLATE * template_ptr)
       return NO_ERROR;
     }
 
-  if (populate_defaults (template_ptr) != NO_ERROR)
+  if (populate_defaults (template_ptr, 1) != NO_ERROR)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
