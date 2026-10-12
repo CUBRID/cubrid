@@ -1403,6 +1403,97 @@ cleanup0:
   return err;
 }
 
+/*
+ * jsp_set_pkg_sp_sql_data_access - update sql_data_access of the routines of a package
+ *   return: error code
+ *   unique_name(in): unique name of the package
+ *   sps(in): routines in the response of a package spec compile
+ *
+ * Note: The routine rows are made when the spec is created. A spec compiled without its body gives
+ *       NO_SQL to every routine, so creating or dropping the body later has to update the rows.
+ *       A routine name is unique in a package, so the routines are matched by name.
+ */
+static int
+jsp_set_pkg_sp_sql_data_access (const char *unique_name, const std::vector<cubpl::pkg_sp> &sps)
+{
+  int err = NO_ERROR;
+  int save, proc_cnt;
+  MOP pkg_mop, sp_mop;
+  DB_VALUE proc_cnt_val, procs_val, sp_elem, name_val, value;
+  DB_SET *procs;
+
+  AU_SAVE_AND_DISABLE (save);
+
+  pkg_mop = jsp_find_pkg (unique_name);
+  if (pkg_mop == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      goto exit;
+    }
+
+  err = db_get (pkg_mop, PKG_ATTR_PROCEDURES_CNT, &proc_cnt_val);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+  proc_cnt = db_get_int (&proc_cnt_val);
+
+  err = db_get (pkg_mop, PKG_ATTR_PROCEDURES, &procs_val);
+  if (err != NO_ERROR)
+    {
+      goto exit;
+    }
+  procs = db_get_set (&procs_val);
+
+  for (int i = 0; i < proc_cnt; i++)
+    {
+      const cubpl::pkg_sp *found = NULL;
+
+      err = set_get_element (procs, i, &sp_elem);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      sp_mop = db_get_object (&sp_elem);
+
+      err = db_get (sp_mop, SP_ATTR_SP_NAME, &name_val);
+      if (err != NO_ERROR)
+	{
+	  pr_clear_value (&sp_elem);
+	  goto cleanup;
+	}
+      for (const cubpl::pkg_sp &sp : sps)
+	{
+	  if (intl_identifier_casecmp (sp.name.c_str (), db_get_string (&name_val)) == 0)
+	    {
+	      found = &sp;
+	      break;
+	    }
+	}
+      pr_clear_value (&name_val);
+
+      // the rows were made from the same spec that has just been compiled
+      assert (found != NULL);
+      if (found != NULL)
+	{
+	  db_make_int (&value, found->sql_data_access);
+	  err = obj_set (sp_mop, SP_ATTR_SQL_DATA_ACCESS, &value);
+	}
+      pr_clear_value (&sp_elem);
+      if (err != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+    }
+
+cleanup:
+  pr_clear_value (&procs_val);
+
+exit:
+  AU_RESTORE (save);
+  return err;
+}
+
 static int
 jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *owner_name, MOP owner_mop)
 {
@@ -1521,6 +1612,12 @@ jsp_drop_pkg_body (PARSER_CONTEXT *parser, const char *unique_name, const char *
 	}
 
 	err = jsp_set_pkg_compile_id (unique_name, pkg_compile_response.compile_id.data());
+	if (err != NO_ERROR)
+	  {
+	    goto cleanup0;
+	  }
+
+	err = jsp_set_pkg_sp_sql_data_access (unique_name, pkg_compile_response.sp);
 	if (err != NO_ERROR)
 	  {
 	    goto cleanup0;
@@ -3446,6 +3543,12 @@ jsp_create_pkg_body (PARSER_CONTEXT *parser, PT_NODE *statement, const char *uni
       if (compile_id)
 	{
 	  err = jsp_set_pkg_compile_id (unique_name, compile_id);
+	  if (err != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+
+	  err = jsp_set_pkg_sp_sql_data_access (unique_name, pkg_compile_response.sp);
 	  if (err != NO_ERROR)
 	    {
 	      goto error_exit;
