@@ -167,8 +167,19 @@ struct projection_final_info
 {
   PT_NODE *name_list;
   int name_count;
+
+  /* The layout the consumer of this join asked it to build, which stands in for name_list when set.
+   * A PT_VALUE entry is a constant column written without reading either input. Borrowed: the owner
+   * is a PROJECTION_PART_INFO's expr_name_list or the statement's select list, so it is not freed
+   * along with the rest of this struct. */
+  PT_NODE *required_list;
+
+  /* True when required_list holds an entry that is not a column name. The join then evaluates every
+   * entry of required_list in its probe loop instead of copying input columns, and merge_info
+   * describes no output column at all. */
+  bool required_has_expr;
 };
-#define PROJECTION_FINAL_INFO_INITIALIZER { NULL, 0 }
+#define PROJECTION_FINAL_INFO_INITIALIZER { NULL, 0, NULL, false }
 
 typedef struct projection_info PROJECTION_INFO;
 struct projection_info
