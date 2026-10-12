@@ -188,7 +188,9 @@ static PT_NODE *pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, voi
 static PT_NODE *pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * const node);
 static PT_NODE *pt_make_attribute_default_value_node (PARSER_CONTEXT * parser, DB_ATTRIBUTE * att, PT_NODE * name);
-static bool pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr);
+static bool pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * attr, PT_NODE * stmt);
+static bool pt_class_defaults_read_statement_clock (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * stmt);
+static PT_NODE *pt_find_insert_default_clock (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 
 static PT_NODE *pt_resolve_vclass_args (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int pt_function_name_is_spec_attr (PARSER_CONTEXT * parser, PT_NODE * name, PT_BIND_NAMES_ARG * bind_arg,
@@ -1889,6 +1891,101 @@ pt_residual_default_needs_si_datetime (PARSER_CONTEXT * parser, SM_ATTRIBUTE * a
 }
 
 /*
+ * pt_class_defaults_read_statement_clock () - whether a residual DEFAULT of a class reads the statement clock
+ *   return: true if server time synchronization is needed
+ *   parser(in):
+ *   class_obj(in): the class an INSERT or MERGE fills
+ *   stmt(in): that INSERT or MERGE, for error reporting
+ */
+static bool
+pt_class_defaults_read_statement_clock (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, PT_NODE * stmt)
+{
+  SM_CLASS *smclass = NULL;
+  SM_ATTRIBUTE *attr;
+
+  if (class_obj == NULL)
+    {
+      return false;
+    }
+
+  au_fetch_class_force (class_obj, &smclass, AU_FETCH_READ);
+  if (smclass == NULL)
+    {
+      return false;
+    }
+
+  for (attr = smclass->attributes; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
+    {
+      if (DB_IS_RESIDUAL_DEFAULT_EXPR (&attr->default_value.default_expr)
+	  && pt_residual_default_needs_si_datetime (parser, attr, stmt))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * pt_find_insert_default_clock () - parser_walk_tree pre-function of pt_mark_translated_default_clock
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): bool, set when an INSERT or MERGE fills a class whose residual DEFAULT reads the clock
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_find_insert_default_clock (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  bool *reads_clock = (bool *) arg;
+  PT_NODE *spec = NULL;
+
+  if (node->node_type == PT_INSERT)
+    {
+      spec = node->info.insert.spec;
+    }
+  else if (node->node_type == PT_MERGE)
+    {
+      spec = node->info.merge.into;
+    }
+
+  if (spec != NULL && spec->node_type == PT_SPEC && spec->info.spec.entity_name != NULL
+      && spec->info.spec.entity_name->node_type == PT_NAME
+      && pt_class_defaults_read_statement_clock (parser, spec->info.spec.entity_name->info.name.db_object, node))
+    {
+      *reads_clock = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return node;
+}
+
+/*
+ * pt_mark_translated_default_clock () - mark an INSERT or MERGE for the statement clock when a class it fills
+ *	after view translation has a residual DEFAULT that reads the clock.  Name resolution saw only the view.
+ *   return: none
+ *   parser(in):
+ *   statement(in/out): the translated statement
+ */
+void
+pt_mark_translated_default_clock (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  bool reads_clock = false;
+
+  if (statement == NULL || statement->flag.si_datetime
+      || (statement->node_type != PT_INSERT && statement->node_type != PT_MERGE))
+    {
+      return;
+    }
+
+  (void) parser_walk_tree (parser, statement, pt_find_insert_default_clock, &reads_clock, NULL, NULL);
+  if (reads_clock)
+    {
+      statement->flag.si_datetime = 1;
+    }
+}
+
+/*
  * fill_in_insert_default_function_arguments () - Fills in the argument of the
  *                                                DEFAULT function when used
  *                                                for INSERT, MERGE INSERT
@@ -1905,8 +2002,6 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
   PT_NODE *crt_attr = NULL;
   PT_NODE *crt_value = NULL;
   PT_NODE *crt_list = NULL;
-  SM_CLASS *smclass = NULL;
-  SM_ATTRIBUTE *attr = NULL;
   PT_NODE *cls_name = NULL;
   PT_NODE *values_list = NULL;
   PT_NODE *attrs_list = NULL;
@@ -1928,22 +2023,13 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
       attrs_list = node->info.merge.insert.attr_list;
     }
 
-  au_fetch_class_force (cls_name->info.name.db_object, &smclass, AU_FETCH_READ);
-  if (smclass)
+  /* a residual DEFAULT expression referencing the statement clock needs the server time synchronized before the
+   * Local Evaluation path evaluates it */
+  if (pt_class_defaults_read_statement_clock (parser, cls_name->info.name.db_object, node))
     {
-      for (attr = smclass->attributes; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
-	{
-	  /* a residual DEFAULT expression referencing the statement clock needs the server time
-	   * synchronized before the Local Evaluation path evaluates it */
-	  if (DB_IS_RESIDUAL_DEFAULT_EXPR (&attr->default_value.default_expr)
-	      && pt_residual_default_needs_si_datetime (parser, attr, node))
-	    {
-	      node->flag.si_datetime = true;
-	      db_make_null (&parser->sys_datetime);
-	      db_make_null (&parser->sys_epochtime);
-	      break;
-	    }
-	}
+      node->flag.si_datetime = true;
+      db_make_null (&parser->sys_datetime);
+      db_make_null (&parser->sys_epochtime);
     }
 
   for (crt_list = values_list; crt_list != NULL; crt_list = crt_list->next)

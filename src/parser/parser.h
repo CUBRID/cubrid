@@ -340,6 +340,7 @@ extern "C"
 				     SEMANTIC_CHK_INFO * sc_info);
 
   extern PT_NODE *pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INFO * sc_info);
+  extern void pt_mark_translated_default_clock (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern PT_NODE *pt_resolve_cte_specs (PARSER_CONTEXT * parser, PT_NODE * stmt, void *arg, int *continue_walk);
 
   extern PT_NODE *pt_resolve_using_index (PARSER_CONTEXT * parser, PT_NODE * index, PT_NODE * from, bool * is_ignore);
