@@ -13485,13 +13485,35 @@ pt_static_sql_owner_prefix (PARSER_CONTEXT * parser, const char *qualified_name)
 }
 
 /*
+ * pt_static_sql_follows_dot () - check if the token at the position follows '.' (comments and white spaces between)
+ */
+static bool
+pt_static_sql_follows_dot (const PT_STATIC_SQL_EDIT_LIST * list, int position)
+{
+  int kind, pos, start, end;
+  int prev_kind = PT_SS_TOKEN_END, prev_start = 0;
+
+  for (pos = 0; (kind = pt_static_sql_next_token (list, pos, &start, &end)) != PT_SS_TOKEN_END; pos = end)
+    {
+      if (start >= position)
+	{
+	  break;
+	}
+      prev_kind = kind;
+      prev_start = start;
+    }
+
+  return (prev_kind == PT_SS_TOKEN_PUNCT && list->text[prev_start] == '.');
+}
+
+/*
  * pt_static_sql_qualify_name () - add the edit to insert the owner before a name written without it
  */
 static void
 pt_static_sql_qualify_name (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list, PT_NODE * name)
 {
   const char *qualified, *dot, *prefix;
-  int start, end, prev;
+  int start, end;
 
   if (name == NULL || name->node_type != PT_NAME || name->info.name.original == NULL)
     {
@@ -13521,9 +13543,8 @@ pt_static_sql_qualify_name (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * l
       return;
     }
 
-  /* written with its owner (owner.name, owner . name) */
-  prev = pt_static_sql_skip_space_before (list->text, start);
-  if (prev >= 0 && list->text[prev] == '.')
+  /* written with its owner (owner.name, owner . name, or with a comment between them) */
+  if (pt_static_sql_follows_dot (list, start))
     {
       return;
     }
