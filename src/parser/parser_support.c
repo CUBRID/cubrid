@@ -13181,11 +13181,21 @@ pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
  * The edits are collected right after name resolution, where the nodes still have their source positions.
  */
 
+typedef struct pt_static_sql_token PT_STATIC_SQL_TOKEN;
+struct pt_static_sql_token
+{
+  int start;
+  int end;
+  int kind;			/* PT_SS_TOKEN_IDENT, PT_SS_TOKEN_QUOTED or PT_SS_TOKEN_PUNCT */
+};
+
 typedef struct pt_static_sql_edit_list PT_STATIC_SQL_EDIT_LIST;
 struct pt_static_sql_edit_list
 {
   const char *text;		/* original text */
   int text_len;
+  PT_STATIC_SQL_TOKEN *tokens;	/* tokens of the text, scanned once */
+  int token_count;
   PT_STATIC_SQL_EDIT *edits;
   int count;
   int alloc;
@@ -13485,25 +13495,71 @@ pt_static_sql_owner_prefix (PARSER_CONTEXT * parser, const char *qualified_name)
 }
 
 /*
+ * pt_static_sql_tokenize () - scan the tokens of the text once
+ *   return: false if out of memory
+ */
+static bool
+pt_static_sql_tokenize (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list)
+{
+  int kind, pos, start, end, n = 0;
+
+  for (pos = 0; pt_static_sql_next_token (list, pos, &start, &end) != PT_SS_TOKEN_END; pos = end)
+    {
+      n++;
+    }
+
+  list->tokens = (PT_STATIC_SQL_TOKEN *) parser_alloc (parser, (n + 1) * sizeof (PT_STATIC_SQL_TOKEN));
+  if (list->tokens == NULL)
+    {
+      return false;
+    }
+
+  for (pos = 0, n = 0; (kind = pt_static_sql_next_token (list, pos, &start, &end)) != PT_SS_TOKEN_END; pos = end)
+    {
+      list->tokens[n].start = start;
+      list->tokens[n].end = end;
+      list->tokens[n].kind = kind;
+      n++;
+    }
+  list->token_count = n;
+
+  return true;
+}
+
+/*
+ * pt_static_sql_token_is () - check if the i-th token is the punctuation
+ */
+static bool
+pt_static_sql_token_is (const PT_STATIC_SQL_EDIT_LIST * list, int i, char punct)
+{
+  return (i >= 0 && i < list->token_count && list->tokens[i].kind == PT_SS_TOKEN_PUNCT
+	  && list->text[list->tokens[i].start] == punct);
+}
+
+/*
  * pt_static_sql_follows_dot () - check if the token at the position follows '.' (comments and white spaces between)
  */
 static bool
 pt_static_sql_follows_dot (const PT_STATIC_SQL_EDIT_LIST * list, int position)
 {
-  int kind, pos, start, end;
-  int prev_kind = PT_SS_TOKEN_END, prev_start = 0;
+  int low = 0, high = list->token_count;
 
-  for (pos = 0; (kind = pt_static_sql_next_token (list, pos, &start, &end)) != PT_SS_TOKEN_END; pos = end)
+  /* the first token that starts at or after the position */
+  while (low < high)
     {
-      if (start >= position)
+      int mid = (low + high) / 2;
+
+      if (list->tokens[mid].start < position)
 	{
-	  break;
+	  low = mid + 1;
 	}
-      prev_kind = kind;
-      prev_start = start;
+      else
+	{
+	  high = mid;
+	}
     }
 
-  return (prev_kind == PT_SS_TOKEN_PUNCT && list->text[prev_start] == '.');
+  return pt_static_sql_token_is (list, low - 1, '.');
 }
 
 /*
@@ -13704,8 +13760,7 @@ pt_static_sql_qualify_methods (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST 
       PT_NODE *call = p->info.pointer.node;
       const char *qualified = call->info.method_call.method_name->info.name.original;
       const char *name = strchr (qualified, '.') + 1;
-      int count_in_tree = 0, count_in_text = 0;
-      int kind, pos, start, end, prev_kind = PT_SS_TOKEN_END, prev_start = 0, prev_end = 0;
+      int count_in_tree = 0, count_in_text = 0, i;
       const char *prefix;
       bool seen = false;
 
@@ -13734,29 +13789,21 @@ pt_static_sql_qualify_methods (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST 
 	  break;
 	}
 
-      for (pos = 0; (kind = pt_static_sql_next_token (list, pos, &start, &end))
-	   != PT_SS_TOKEN_END; pos = end)
+      for (i = 0; i < list->token_count; i++)
 	{
-	  if ((kind == PT_SS_TOKEN_IDENT || kind == PT_SS_TOKEN_QUOTED) && pt_static_sql_token_equals (list->text, start,
-												      end, name))
-	    {
-	      int n_start, n_end;
+	  const PT_STATIC_SQL_TOKEN *token = &list->tokens[i];
 
-	      if (pt_static_sql_next_token (list, end, &n_start, &n_end) == PT_SS_TOKEN_PUNCT
-		  && list->text[n_start] == '(')
+	  if ((token->kind == PT_SS_TOKEN_IDENT || token->kind == PT_SS_TOKEN_QUOTED)
+	      && pt_static_sql_token_is (list, i + 1, '(')
+	      && pt_static_sql_token_equals (list->text, token->start, token->end, name))
+	    {
+	      count_in_text++;
+	      if (!pt_static_sql_token_is (list, i - 1, '.'))
 		{
-		  count_in_text++;
-		  if (!(prev_kind == PT_SS_TOKEN_PUNCT && list->text[prev_start] == '.'))
-		    {
-		      pt_static_sql_add_edit (parser, list, start, start, prefix, -1);
-		    }
+		  pt_static_sql_add_edit (parser, list, token->start, token->start, prefix, -1);
 		}
 	    }
-	  prev_kind = kind;
-	  prev_start = start;
-	  prev_end = end;
 	}
-      (void) prev_end;
 
       if (count_in_text != count_in_tree)
 	{
@@ -13771,84 +13818,68 @@ pt_static_sql_qualify_methods (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST 
 static void
 pt_static_sql_remove_into (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list, int into_count)
 {
-  int kind, pos, start, end, depth = 0;
-  int into_start = -1, into_end = -1, targets = 0;
+  int i, depth = 0, into = -1, targets = 0;
+  const PT_STATIC_SQL_TOKEN *tokens = list->tokens;
 
-  for (pos = 0; (kind = pt_static_sql_next_token (list, pos, &start, &end)) != PT_SS_TOKEN_END;
-       pos = end)
+  for (i = 0; i < list->token_count; i++)
     {
-      if (kind == PT_SS_TOKEN_PUNCT)
+      if (pt_static_sql_token_is (list, i, '('))
 	{
-	  if (list->text[start] == '(')
-	    {
-	      depth++;
-	    }
-	  else if (list->text[start] == ')')
-	    {
-	      depth--;
-	    }
+	  depth++;
 	}
-      else if (kind == PT_SS_TOKEN_IDENT && depth == 0 && end - start == 4
-	       && strncasecmp (list->text + start, "into", 4) == 0)
+      else if (pt_static_sql_token_is (list, i, ')'))
 	{
-	  into_start = start;
+	  depth--;
+	}
+      else if (tokens[i].kind == PT_SS_TOKEN_IDENT && depth == 0 && tokens[i].end - tokens[i].start == 4
+	       && strncasecmp (list->text + tokens[i].start, "into", 4) == 0)
+	{
+	  into = i;
 	  break;
 	}
     }
 
-  if (into_start < 0)
+  if (into < 0)
     {
       list->failed = true;
       return;
     }
 
   /* targets: name [. name ...] [, name [. name ...] ...] */
-  pos = end;
-  while (true)
+  for (i = into + 1; i < list->token_count; i++)
     {
-      kind = pt_static_sql_next_token (list, pos, &start, &end);
-      if (kind != PT_SS_TOKEN_IDENT && kind != PT_SS_TOKEN_QUOTED)
+      if (tokens[i].kind != PT_SS_TOKEN_IDENT && tokens[i].kind != PT_SS_TOKEN_QUOTED)
 	{
 	  list->failed = true;
 	  return;
 	}
-      into_end = end;
-      pos = end;
       targets++;
 
-      while (true)
+      while (pt_static_sql_token_is (list, i + 1, '.'))
 	{
-	  kind = pt_static_sql_next_token (list, pos, &start, &end);
-	  if (kind == PT_SS_TOKEN_PUNCT && list->text[start] == '.')
+	  i += 2;
+	  if (i >= list->token_count || (tokens[i].kind != PT_SS_TOKEN_IDENT && tokens[i].kind != PT_SS_TOKEN_QUOTED))
 	    {
-	      kind = pt_static_sql_next_token (list, end, &start, &end);
-	      if (kind != PT_SS_TOKEN_IDENT && kind != PT_SS_TOKEN_QUOTED)
-		{
-		  list->failed = true;
-		  return;
-		}
-	      into_end = end;
-	      pos = end;
-	      continue;
+	      list->failed = true;
+	      return;
 	    }
+	}
+
+      if (!pt_static_sql_token_is (list, i + 1, ','))
+	{
 	  break;
 	}
-
-      if (kind == PT_SS_TOKEN_PUNCT && list->text[start] == ',')
-	{
-	  pos = end;
-	  continue;
-	}
-      break;
+      i++;
     }
 
-  if (targets != into_count)
+  if (i >= list->token_count || targets != into_count)
     {
       list->failed = true;
       return;
     }
 
-  pt_static_sql_add_edit (parser, list, into_start, into_end, " ", -1);
+  /* from INTO to the end of the last target */
+  pt_static_sql_add_edit (parser, list, tokens[into].start, tokens[i].end, " ", -1);
 }
 
 static int
@@ -13898,6 +13929,10 @@ pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
   list.text_len = (int) strlen (parser->original_buffer);
   list.backslash_escapes = !prm_get_bool_value (PRM_ID_NO_BACKSLASH_ESCAPES) && !parser->flag.strings_have_no_escapes;
   list.ansi_quotes = prm_get_bool_value (PRM_ID_ANSI_QUOTES);
+  if (!pt_static_sql_tokenize (parser, &list))
+    {
+      return;
+    }
 
   (void) parser_walk_tree (parser, statement, pt_collect_static_sql_edits_pre, &list, NULL, NULL);
 
