@@ -1421,7 +1421,8 @@ perfmon_get_activation_flag (void)
 #if defined (SERVER_MODE) || defined (SA_MODE)
 /*
  * perfmon_get_from_statistic () - Get a statistic value of this thread's query: of its parallel worker array when
- *                                 the thread is a parallel worker, otherwise of its transaction.
+ *                                 the thread is a parallel worker, of its transaction plus its own array when it is
+ *                                 the root of a parallel subquery, otherwise of its transaction.
  *
  * return	     : the value.
  * thread_p (in)     : Thread entry.
@@ -1448,6 +1449,13 @@ perfmon_get_from_statistic (THREAD_ENTRY * thread_p, const int statistic_id)
     {
       if (thread_p->m_px_stats != NULL)
 	{
+	  if (thread_p->m_px_orig_thread_entry == thread_p)
+	    {
+	      /* the root counts here until run_jobs () adds this array to the transaction; a trace delta taken across
+	       * that hand-over must read the same sum on both sides */
+	      int offset = pstat_Metadata[statistic_id].start_offset;
+	      return pstat_Global.tran_stats[tran_index][offset] + thread_p->m_px_stats[offset];
+	    }
 	  stats = thread_p->m_px_stats;
 	}
       else
