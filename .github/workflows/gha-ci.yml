@@ -1666,17 +1666,12 @@ jobs:
   collect:
     name: collect
     needs: [gate, build, plan, shard]
-    # The gate outputs alone would not do: a comment the gate turned away, and the
-    # build-only triggers, have nothing to collect. !cancelled() rather than
-    # always() so a superseded run stops here instead of posting a summary of a
-    # suite that never ran. A shard cut by timeout-minutes still reports.
-    #
-    # NOT a matrix over the suites, for the reason plan is not: a matrix job reports
-    # one element's outputs, and `status` needs each suite's verdict separately.
+    # !cancelled(), not always(): a superseded run stops here instead of posting a
+    # summary of a suite that never ran; a shard cut by timeout-minutes still reports.
+    # Not a matrix, for plan's reason: `status` needs each suite's verdict.
     if: ${{ !cancelled() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' }}
     permissions:
-      # The wall-clock step reads the run start time. Public repos need no scope --
-      # stated so it does not fail silently if this repository ever becomes private.
+      # Wall clock reads the run start time; stated so a private repo does not fail silently.
       actions: read
     runs-on: cubrid-arc-light
     timeout-minutes: 30
@@ -1684,7 +1679,7 @@ jobs:
       image: cubridci/cubridci:test-rl810-gha-verbs
     defaults:
       run:
-        shell: bash
+        shell: bash --noprofile --norc -euo pipefail {0}
     env:
       WORKDIR: /home
       RUNDIR: ${{ needs.plan.outputs.rundir }}
@@ -1692,8 +1687,7 @@ jobs:
       PR: ${{ needs.gate.outputs.pr }}
       SUITES_RUN: ${{ join(fromJson(needs.gate.outputs.suites), ' ') }}
     outputs:
-      # One per suite, because one commit status per suite hangs off them. A suite
-      # that did not run leaves its own empty, and `status` never asks for it.
+      # One per suite: one commit status per suite hangs off them.
       verdict_shell: ${{ steps.verdict.outputs.verdict_shell }}
       verdict_sql: ${{ steps.verdict.outputs.verdict_sql }}
       verdict_medium: ${{ steps.verdict.outputs.verdict_medium }}
@@ -1704,9 +1698,7 @@ jobs:
           BUILD_RESULT: ${{ needs.build.result }}
           PLAN_RESULT: ${{ needs.plan.result }}
         run: |
-          set -euo pipefail
           if [ -z "$RUNDIR" ] || [ ! -d "$RUNDIR" ]; then
-            # Say which stage broke, not just that something did.
             if [ "$BUILD_RESULT" != 'success' ]; then
               echo "::error::the build ended $BUILD_RESULT, so no test ran at all."
             else
@@ -1714,69 +1706,41 @@ jobs:
             fi
             exit 1
           fi
-          echo "run directory: $RUNDIR / suites: $SUITES_RUN"
 
       - name: Update timings for the next split
         run: |
-          set -euo pipefail
-          # feedback.log format: [OK]:  <case path> <milliseconds> EnvId=...
-          # Only the shell runner writes one, so this is a no-op for the others.
-          : > /tmp/new_timings.tsv
-          for f in "$RUNDIR"/*/shard/*/artifacts/feedback.log; do
-            [ -f "$f" ] || continue
-            # A feedback.log with no verdict line is grep exit 1. This step has no
-            # always(), so pipefail here would also drop Wall clock and Guard 3.
-            { grep -E '^\[(OK|NOK)\]' "$f" 2>/dev/null || :; } | awk '
-              {
-                # Scan back for the number before EnvId=; assumes no spaces in the path.
-                for (i = NF; i > 1; i--) {
-                  if ($i ~ /^EnvId=/) { ms = $(i-1); path = $(i-2); break }
-                }
-                if (ms ~ /^[0-9]+$/ && path != "") printf "%s\t%.3f\n", path, ms / 1000
-              }' >> /tmp/new_timings.tsv
-          done
-          new_n=$(wc -l < /tmp/new_timings.tsv)
-          echo "measured by this run: $new_n"
-          [ "$new_n" -gt 0 ] || { echo "no suite of this run measures case timings"; exit 0; }
-
+          for d in "$RUNDIR"/*/shard/*/; do /entrypoint.sh times "$d"; done > /tmp/new_timings.tsv
+          [ -s /tmp/new_timings.tsv ] || exit 0
           mkdir -p "$(dirname "$TIMINGS")"
           [ -f "$TIMINGS" ] || : > "$TIMINGS"
           old_n=$(wc -l < "$TIMINGS")
-
-          # Newer values win, as they do in CircleCI. A row is the cost the split must
-          # reserve for a case, and feedback.log records one verdict line per attempt.
+          # Newer values win, as in CircleCI; a retried case's attempts add up, because a
+          # row is the time the split must reserve for it.
           awk -F'\t' '
-            NR == FNR { t[$1] += $2; next }       # this run: all attempts of a case
-            !($1 in t) { t[$1] = $2 }             # old values only fill the gaps
-            END { for (k in t) printf "%s\t%.3f\n", k, t[k] }   # seconds to 3 decimals, summed or not
+            NR == FNR { t[$1] += $2; next }
+            !($1 in t) { t[$1] = $2 }
+            END { for (k in t) printf "%s\t%.3f\n", k, t[k] }
           ' /tmp/new_timings.tsv "$TIMINGS" | sort > /tmp/merged.tsv
-
-          # Losing this data takes the longest shard 24.8m -> 49.4m. The merge is a
-          # union, so a shorter result means the merge broke. Keep the old file then.
+          # Losing this data takes the longest shard 24.8m -> 49.4m, and the merge is a
+          # union, so a shorter result means the merge broke: keep the old file.
           merged_n=$(wc -l < /tmp/merged.tsv)
           if [ "$merged_n" -lt "$old_n" ]; then
             echo "::error::the merge is shorter than the old file ($merged_n < $old_n). Not updating."
             exit 1
           fi
-
           # A cross-filesystem mv is copy+unlink: move onto GlusterFS, then rename.
           mv -f /tmp/merged.tsv "${TIMINGS}.tmp.$$"
           mv -f "${TIMINGS}.tmp.$$" "$TIMINGS"
-          echo "timing data: $old_n -> $(wc -l < "$TIMINGS") rows"
 
       - name: Wall clock
         id: clock
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
           now=$(date -u +%s)
           mkdir -p "$STAMPS"
           printf 'start\t%s\n' "$now" > "$STAMPS/collect.tsv"
-
           # The run start time is not in the context; one API call returns it.
-          # queue_sec now covers gate + runner queue, so it is not comparable
-          # with the pre-port runs.
           run_started=""
           if code=$(curl -sS -o /tmp/run.json -w '%{http_code}' \
                 -H "Authorization: Bearer $GITHUB_TOKEN" \
@@ -1788,7 +1752,7 @@ jobs:
           fi
           [ -n "$run_started" ] || echo "::warning::could not read the run start time (HTTP ${code:-?}); queue time is omitted."
 
-          dur() {   # <file> -> seconds; needs both start and end
+          dur() {   # <stamp file> -> seconds, given both start and end
             [ -f "$1" ] || { echo ""; return; }
             awk -F'\t' '$1=="start"{s=$2} $1=="end"{e=$2} END {if (s&&e) print e-s}' "$1"
           }
@@ -1796,51 +1760,36 @@ jobs:
 
           build_sec=$(dur "$STAMPS/build.tsv")
           plan_sec=$(dur "$STAMPS/plan.tsv")
-          # Gone on a later attempt: build succeeded, so "Re-run failed jobs" did not
-          # run it again and this attempt's stamps hold nothing for it. Without `|| :`
-          # awk's exit 2 would end the step under set -e.
+          # Absent on a later attempt that did not re-run build.
           build_start=$(awk -F'\t' '$1=="start"{print $2}' "$STAMPS/build.tsv" 2>/dev/null || :)
           queue_sec=""
           [ -n "$run_started" ] && [ -n "$build_start" ] && queue_sec=$((build_start - run_started))
           total_sec=""
           [ -n "$run_started" ] && total_sec=$((now - run_started))
 
-          echo "=== wall clock ==="
-          echo "queue        : $(fmt "$queue_sec")"
-          echo "build        : $(fmt "$build_sec")"
-          echo "split        : $(fmt "$plan_sec")"
-
-          # Many shards per suite: longest, median, shortest and the wall-clock span.
-          # Written per suite, because the summary reports one table per suite.
           for suite in $SUITES_RUN; do
             : > /tmp/shard_dur.txt
             for f in "$STAMPS"/shard-"$suite"-*.tsv; do
               [ -f "$f" ] || continue
               d=$(dur "$f"); [ -n "$d" ] && echo "$d" >> /tmp/shard_dur.txt
             done
-            # The span counts a dead shard's start too, since it held the slot. `|| true`:
-            # every shard dying is exactly when the wall clock must still be reported.
+            # The span counts a dead shard's start too, since it held the slot; every
+            # shard dying is exactly when the wall clock must still be reported.
             stamp_field() { { awk -F'\t' -v k="$1" '$1==k {print $2}' "$STAMPS"/shard-"$suite"-*.tsv 2>/dev/null || true; } | sort -n; }
             first_start=$(stamp_field start | head -1)
             last_end=$(stamp_field end | tail -1)
             read -r sh_n sh_max sh_med <<<"$(sort -n /tmp/shard_dur.txt | awk '
-              {a[NR]=$1} END {
-                if (NR==0) {print "0 0 0"; exit}
-                printf "%d %d %d\n", NR, a[NR], a[int((NR+1)/2)]
-              }')"
+              {a[NR]=$1} END {if (NR==0) {print "0 0 0"; exit}; printf "%d %d %d\n", NR, a[NR], a[int((NR+1)/2)]}')"
             sh_span=""
             [ -n "$first_start" ] && [ -n "$last_end" ] && sh_span=$((last_end - first_start))
-            # Quoted: the values read `12s (0.2m)`, and the summary step sources this.
+            # Quoted: the summary step sources it.
             {
               echo "shard_max='$(fmt "$sh_max")'"
               echo "shard_med='$(fmt "$sh_med")'"
               echo "shard_span='$(fmt "$sh_span")'"
               echo "shard_n=$sh_n"
             } > "/tmp/clock.$suite"
-            echo "$suite: longest $(fmt "$sh_max") / median $(fmt "$sh_med") / span $(fmt "$sh_span") / $sh_n shards"
           done
-          echo "total        : $(fmt "$total_sec")  (run start to now; the rest of collect is not counted)"
-
           {
             echo "queue=$(fmt "$queue_sec")"
             echo "build=$(fmt "$build_sec")"
@@ -1853,217 +1802,76 @@ jobs:
         env:
           SHA: ${{ needs.plan.outputs.sha }}
           BRID: ${{ needs.plan.outputs.build_run_id }}
-          WANT_BRID: ${{ needs.plan.outputs.build_run_id }}
           CTP_SHA: ${{ needs.plan.outputs.ctp_sha }}
           CTP_BRANCH: ${{ needs.plan.outputs.ctp_branch }}
-          RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}   # names the source run in the summary
+          RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}
           C_QUEUE: ${{ steps.clock.outputs.queue }}
           C_BUILD: ${{ steps.clock.outputs.build }}
           C_PLAN: ${{ steps.clock.outputs.plan }}
           C_TOTAL: ${{ steps.clock.outputs.total }}
         run: |
-          set -euo pipefail
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
           rc=0
           rm -rf /tmp/failed-logs; mkdir -p /tmp/failed-logs
 
           for suite in $SUITES_RUN; do
             repo=$(attr "$suite" tc_repo)
-            vsrc=$(attr "$suite" verdict_src)
             d="$RUNDIR/$suite"
             . "$d/plan/split.meta"          # total, units, par, timed, tc_*, rerun_*
-            echo "=================================================="
-            echo "=== $suite: $total cases in $units units over $par shards"
 
-            # --- gather -------------------------------------------------------
-            # Not `ls <glob> | wc -l`: with no match it kills the step under pipefail --
-            # exactly when every shard died and guard 3 must speak. find returns 0.
+            # find, not ls: every shard dead is exactly when guard 3 must speak.
             planned=$(find "$d/plan/shards" -maxdepth 1 -name '*.list' 2>/dev/null | wc -l)
             done_n=$(find "$d/shard" -mindepth 2 -maxdepth 2 -name shard.done 2>/dev/null | wc -l)
             read_n=$(find "$d/shard" -mindepth 2 -maxdepth 2 -name build.read 2>/dev/null | wc -l)
             tcread_n=$(find "$d/shard" -mindepth 2 -maxdepth 2 -name tc.read 2>/dev/null | wc -l)
-            echo "shard: planned $planned / published $done_n / build provenance $read_n / tc provenance $tcread_n"
 
-            # A shard with no result file reached no case, so the failure list below
-            # cannot see its share.
+            # A shard with no result file reached no case, and no failure list sees its share.
             unrun_n=0; dead_n=0
             : > /tmp/dead_shards.list
             for f in "$d"/plan/shards/*.list; do
               [ -f "$f" ] || continue
               i=$(basename "$f" .list)
-              [ -f "$d/shard/$i/$vsrc" ] && continue
+              eval "$(/entrypoint.sh count "$suite" "$d/shard/$i")"
+              [ "$found" = no ] || continue
               n=$(awk -F'\t' -v k="$i" '$1 == k {print $2}' "$d/plan/plan.tsv")
               dead_n=$((dead_n + 1))
               unrun_n=$((unrun_n + ${n:-0}))
               printf 'shard %s: %s cases\n' "$i" "${n:-0}" >> /tmp/dead_shards.list
             done
-            echo "shards that never ran a case: $dead_n / cases left unrun: $unrun_n"
-            [ "$dead_n" -eq 0 ] || cat /tmp/dead_shards.list
 
             exec_sum=0; succ_sum=0; fail_sum=0; skip_sum=0
-            for r in "$d"/shard/*/; do
-              st="$r/$vsrc"
-              [ -f "$st" ] || continue
-              case "$vsrc" in
-                test_status.data)
-                  read -r e s fl k <<<"$(awk -F= '
-                    /total_executed_case_count/ {e=$2+0}
-                    /total_success_case_count/  {s=$2+0}
-                    /total_fail_case_count/     {f=$2+0}
-                    /total_skip_case_count/     {k=$2+0}
-                    END {printf "%d %d %d %d\n", e, s, f, k}' "$st")"
-                  ;;
-                summary_info)
-                  # One line per case: `<path>:ok    123ms`, `:nok`, or an empty
-                  # verdict where the conf's exclusion list held the case back.
-                  fl=$(grep -cE ':nok[[:space:]]+[0-9]+ms$' "$st" || :)
-                  s=$(grep -cE ':ok[[:space:]]+[0-9]+ms$' "$st" || :)
-                  k=$(grep -cE ':[[:space:]]+[0-9]+ms$' "$st" || :)
-                  e=$((s + fl))
-                  ;;
-              esac
-              exec_sum=$((exec_sum + e)); succ_sum=$((succ_sum + s))
-              fail_sum=$((fail_sum + fl)); skip_sum=$((skip_sum + k))
-            done
-            echo "run $exec_sum / passed $succ_sum / failed $fail_sum / skipped $skip_sum (of $total)"
-
-            # --- provenance ---------------------------------------------------
-            # Every shard recorded the meta it read. They must all name the same run.
-            : > /tmp/brids.txt
-            for f in "$d"/shard/*/build.read; do
-              [ -f "$f" ] || continue
-              awk -F= '/^run_id=/ {print $2}' "$f" >> /tmp/brids.txt
-            done
-            uniq_n=$(sort -u /tmp/brids.txt | wc -l)
-            echo "distinct run_ids among the builds shards read: $uniq_n"
-            sort /tmp/brids.txt | uniq -c
-
-            # Three ways to disagree, reported separately: they are different faults.
-            if [ "$uniq_n" -eq 0 ]; then
-              reason=none        # nobody recorded a provenance file
-            elif [ "$uniq_n" -gt 1 ]; then
-              reason=mixed       # shards read different builds
-            elif [ "$(sort -u /tmp/brids.txt)" != "$WANT_BRID" ]; then
-              reason=mismatch    # all the same, but not the build plan verified
-            else
-              reason=ok
-            fi
-
-            : > /tmp/tcs.txt
-            for f in "$d"/shard/*/tc.read; do
-              [ -f "$f" ] || continue
-              awk -F= '/^tc_sha=/ {print $2}' "$f" >> /tmp/tcs.txt
-            done
-            tc_uniq=$(sort -u /tmp/tcs.txt | wc -l)
-            echo "distinct testcase SHAs among the shards: $tc_uniq"
-            sort /tmp/tcs.txt | uniq -c
-            if [ "$tc_uniq" -eq 0 ]; then
-              tc_reason=none
-            elif [ "$tc_uniq" -gt 1 ]; then
-              tc_reason=mixed
-            elif [ "$(sort -u /tmp/tcs.txt)" != "$tc_sha" ]; then
-              tc_reason=mismatch
-            else
-              tc_reason=ok
-            fi
-            echo "tc verdict: $tc_reason (plan chose: $tc_sha)"
-
-            # --- failed cases -------------------------------------------------
             : > /tmp/failed.list
-            mkdir -p "/tmp/failed-logs/$suite"
-            logs_awk='
-              BEGIN {
-                while (idx != "" && (getline line < idx) > 0) {
-                  split(line, f, "\t"); want[f[1]] = f[2]
-                }
-              }
-              # First, so that a case log carrying the literal <testcase or
-              # <failure does not restart the scan while the body is being read.
-              body != "" {
-                if (/\]\]><\/failure>/) {
-                  sub(/\]\]><\/failure>.*$/, "")
-                  print > body
-                  close(body)
-                  body = ""
-                  next
-                }
-                print > body
-                next
-              }
-              /<testcase/ {
-                cur = ""
-                # The leading space is required: CTP writes classname before name,
-                # so /name="..."/ would match classname and extract a URL.
-                if (match($0, / name="[^"]*"/)) {
-                  cur = substr($0, RSTART + 7, RLENGTH - 8)
-                }
-              }
-              /<failure/ && cur != "" {
-                # No index: the XML is the list itself, numbered as met. With one:
-                # only its cases, keyed by name -- the two files are written by
-                # different passes and need not share an order.
-                if (idx == "") { printf "%s\t%s\n", shard, cur; n = off + ++k }
-                else if (cur in want) { n = want[cur] }
-                else { cur = ""; next }
-                body = dir "/" n ".log"
-                rest = $0
-                sub(/^.*<!\[CDATA\[/, "", rest)
-                if (rest ~ /\]\]><\/failure>/) {
-                  sub(/\]\]><\/failure>.*$/, "", rest)
-                  print rest > body
-                  close(body)
-                  body = ""
-                } else if (rest != "") {
-                  print rest > body
-                }
-                cur = ""
-                next
-              }
-              /<\/testcase>/ { cur = "" }
-            '
-            case "$vsrc" in
-              test_status.data)
-                for sdir in "$d"/shard/*/; do
-                  x="$sdir/test-results/test-shell.xml"
-                  [ -f "$x" ] || continue
-                  i=$(basename "$sdir")
-                  # Line k of failed.list is /tmp/failed-logs/<suite>/k.log. The offset
-                  # carries that numbering across the shards.
-                  off=$(wc -l < /tmp/failed.list)
-                  awk -v shard="$i" -v off="$off" -v idx= \
-                    -v dir="/tmp/failed-logs/$suite" "$logs_awk" "$x" >> /tmp/failed.list
-                done
-                ;;
-              summary_info)
-                # judge_sqlresult reads the same lines. The path is absolute; cut it
-                # back to the repo-relative shape the shell suite's XML already has,
-                # because plan puts the repo prefix back when it reads this file.
-                for st in "$d"/shard/*/summary_info; do
-                  [ -f "$st" ] || continue
-                  i=$(basename "$(dirname "$st")")
-                  { grep -E ':nok[[:space:]]+[0-9]+ms$' "$st" || :; } \
-                    | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/##" \
-                    | awk -v shard="$i" '{printf "%s\t%s\n", shard, $0}' >> /tmp/failed.list
-                done
-                # The names in failed.list are the keys; its line numbers are the logs.
-                awk -F'\t' '{printf "%s\t%d\n", $2, NR}' /tmp/failed.list > /tmp/failed.idx
-                for x in "$d"/shard/*/test-results/*.xml; do
-                  [ -f "$x" ] || continue
-                  awk -v dir="/tmp/failed-logs/$suite" -v idx=/tmp/failed.idx "$logs_awk" "$x"
-                done
-                ;;
-            esac
+            for r in "$d"/shard/*/; do
+              i=$(basename "$r")
+              eval "$(/entrypoint.sh count "$suite" "$r")"
+              [ "$found" = yes ] || continue
+              exec_sum=$((exec_sum + exec)); succ_sum=$((succ_sum + pass))
+              fail_sum=$((fail_sum + fail)); skip_sum=$((skip_sum + skip))
+              # Line k of a shard's names is its logs' k.log.
+              /entrypoint.sh failed "$suite" "$r" "/tmp/failed-logs/$suite/$i" \
+                | awk -v s="$i" '{printf "%s\t%s\n", s, $0}' >> /tmp/failed.list
+            done
             failed_n=$(wc -l < /tmp/failed.list)
-            echo "failed cases: $failed_n"
-            [ "$failed_n" -eq 0 ] || head -30 /tmp/failed.list
             cp /tmp/failed.list "$d/collect/failed.list"
             cp /tmp/failed.list "/tmp/failed.$suite.list"
 
-            # --- verdict ------------------------------------------------------
+            # Every shard recorded the build it read and the testcases it saw; each must
+            # be one, and the one plan chose. Three ways to disagree, three faults.
+            agree() {   # <files> <key> <want> -> ok | mixed | mismatch | none, and the distinct count
+              local vals
+              vals=$(cat $1 2>/dev/null | awk -F= -v k="$2" '$1 == k {print $2}' | sort -u || :)
+              local n; n=$(printf '%s' "$vals" | grep -c . || :)
+              if [ "$n" -eq 0 ]; then echo "none 0"
+              elif [ "$n" -gt 1 ]; then echo "mixed $n"
+              elif [ "$vals" != "$3" ]; then echo "mismatch 1"
+              else echo "ok 1"; fi
+            }
+            read -r reason uniq_n <<<"$(agree "$d/shard/*/build.read" run_id "$BRID")"
+            read -r tc_reason tc_uniq <<<"$(agree "$d/shard/*/tc.read" tc_sha "$tc_sha")"
+
             covered=$((exec_sum + skip_sum))
             v_cov="OK"; [ "$covered" -ge "$total" ] || v_cov="FAIL"
             v_shard="OK"; [ "$done_n" -eq "$planned" ] || v_shard="FAIL"
-            # How many recorded and whether they agree are separate faults.
             v_read="OK"; [ "$read_n" -eq "$planned" ] || v_read="FAIL"
             case "$reason" in
               ok)       v_same="OK all the same" ;;
@@ -2192,128 +2000,74 @@ jobs:
 
             # Guard 3 of 3: a shard dying whole is invisible to guard 2.
             srb=0
-            if [ "$done_n" -ne "$planned" ]; then
-              echo "::error::$suite: only $done_n of $planned shards published a result; the rest died whole"
-              srb=1
-            fi
-            if [ "$covered" -lt "$total" ]; then
-              echo "::error::$suite: only $covered of $total cases were handled; cases went missing"
-              srb=1
-            fi
-            if [ "$read_n" -ne "$planned" ]; then
-              echo "::error::$suite: only $read_n of $planned shards recorded a build provenance; the rest died before mounting"
-              srb=1
-            fi
+            fault() { echo "::error::$suite: $1"; srb=1; }
+            [ "$done_n" -eq "$planned" ] || fault "only $done_n of $planned shards published a result; the rest died whole"
+            [ "$covered" -ge "$total" ]  || fault "only $covered of $total cases were handled; cases went missing"
+            [ "$read_n" -eq "$planned" ] || fault "only $read_n of $planned shards recorded a build provenance; the rest died before mounting"
             case "$reason" in
               ok) ;;
-              mixed)
-                echo "::error::$suite: shards read different builds (run_id $uniq_n distinct). The artifact changed mid-pipeline"
-                srb=1 ;;
-              mismatch)
-                echo "::error::$suite: every shard read the same build, but not the one from the run plan verified($BRID)"
-                srb=1 ;;
-              *)
-                echo "::error::$suite: no shard recorded a build provenance"
-                srb=1 ;;
+              mixed)    fault "shards read different builds ($uniq_n distinct run_ids). The artifact changed mid-pipeline" ;;
+              mismatch) fault "every shard read the same build, but not the one from the run plan verified ($BRID)" ;;
+              *)        fault "no shard recorded a build provenance" ;;
             esac
-            if [ "$tcread_n" -ne "$planned" ]; then
-              echo "::error::$suite: only $tcread_n of $planned shards recorded a tc provenance"
-              srb=1
-            fi
+            [ "$tcread_n" -eq "$planned" ] || fault "only $tcread_n of $planned shards recorded a tc provenance"
             case "$tc_reason" in
               ok) ;;
-              mixed)
-                echo "::error::$suite: shards saw different testcases ($tc_uniq distinct). That disagrees with the split list"
-                srb=1 ;;
-              mismatch)
-                echo "::error::$suite: every shard is the same, but not the commit plan chose($tc_sha)"
-                srb=1 ;;
-              *)
-                echo "::error::$suite: no shard recorded a tc provenance"
-                srb=1 ;;
+              mixed)    fault "shards saw different testcases ($tc_uniq distinct). That disagrees with the split list" ;;
+              mismatch) fault "every shard is the same, but not the commit plan chose ($tc_sha)" ;;
+              *)        fault "no shard recorded a tc provenance" ;;
             esac
-            if [ "$fail_sum" -gt 0 ]; then
-              echo "::error::$suite: $fail_sum failed"
-              srb=1
-            fi
+            [ "$fail_sum" -eq 0 ] || fault "$fail_sum failed"
             # A re-run replaces the source run's commit status, so it must not go green
-            # over cases it did not run. A dead shard's share is carried by plan; this
-            # is what is left.
-            if [ -n "$RERUN_FROM" ] && [ "${rerun_short:-0}" -gt 0 ]; then
-              echo "::error::run $RERUN_FROM left $rerun_short cases assigned but never handled, and nothing names them"
-              echo "  This re-run could not carry them, so it cannot stand in for that run. Use /run $suite."
-              srb=1
-            fi
-            if [ -n "$RERUN_FROM" ] && [ "${rerun_gone:-0}" -gt 0 ]; then
-              echo "::error::$rerun_gone of the units run $RERUN_FROM left unhandled are no longer in the tree"
-              echo "  Deleted or renamed, nothing here can tell which, and a renamed one has to"
-              echo "  run under its new name. Use /run $suite."
-              srb=1
+            # over cases it did not run.
+            if [ -n "$RERUN_FROM" ]; then
+              [ "${rerun_short:-0}" -eq 0 ] || fault "run $RERUN_FROM left $rerun_short cases assigned but never handled, and nothing names them. Use /run $suite"
+              [ "${rerun_gone:-0}" -eq 0 ] || fault "$rerun_gone of the units run $RERUN_FROM left unhandled are no longer in the tree (deleted or renamed). Use /run $suite"
             fi
 
-            if [ "$srb" -eq 0 ]; then
-              echo "$suite completed with no failures."
-              v=pass
-            else
-              v=fail
-              rc=1
-            fi
+            if [ "$srb" -eq 0 ]; then v=pass; else v=fail; rc=1; fi
             echo "verdict_$suite=$v" >> "$GITHUB_OUTPUT"
-            # On the volume too, so the cleanup step below reads one file per suite
-            # instead of three outputs it would have to name suite by suite.
+            # On the volume too: the cleanup step reads one file per suite.
             echo "$v" > "$d/collect/verdict"
             unset total units par timed tc_sha tc_branch rerun_unrun rerun_short rerun_gone \
                   shard_max shard_med shard_span shard_n
           done
 
-          echo
-          echo "### Artifacts" >> "$GITHUB_STEP_SUMMARY"
-          echo >> "$GITHUB_STEP_SUMMARY"
-          # Next to the published build, not under the run directory: a reused
-          # build outlives the run that made it. debug is what the suite mounted.
-          # A build published before this layout carries no log, so no link.
-          line="[Run directory]($ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/)"
-          blog="builds/$BUILD_NS/$SHA/debug/build.log"
-          [ -f "$CI_ROOT/$blog" ] && line="$line · [build log]($ARTIFACT_URL_BASE/$blog)"
           {
+            echo "### Artifacts"
+            echo
+            # Beside the published build, not in the run directory: a reused build
+            # outlives the run that made it.
+            line="[Run directory]($ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/)"
+            blog="builds/$BUILD_NS/$SHA/debug/build.log"
+            [ -f "$CI_ROOT/$blog" ] && line="$line · [build log]($ARTIFACT_URL_BASE/$blog)"
             echo "$line"
             echo
             echo "Internal network only. The run directory is pruned 30 days after the run."
           } >> "$GITHUB_STEP_SUMMARY"
-
           exit $rc
 
-      # Its own step, so it gets its own 1 MiB summary budget: when the logs are
-      # too big, the upload GitHub drops is this one and the verdict above stays.
-      #
-      # Only the shell suite reaches this: its <failure> bodies carry the case log,
-      # which the SQL runner keeps in its own result tree instead.
+      # Its own step for its own 1 MiB summary budget: when the logs are too big, the
+      # upload GitHub drops is this one, and the verdict above stays. Only the shell
+      # suite's <failure> bodies carry the case log.
       - name: The log of each failed case
         if: always()
         run: |
-          set -euo pipefail
           for suite in $SUITES_RUN; do
             list="/tmp/failed.$suite.list"
-            [ -f "$list" ] || continue
-            n=$(wc -l < "$list")
-            [ "$n" -gt 0 ] || continue
+            [ -s "$list" ] || continue
             [ -n "$(find "/tmp/failed-logs/$suite" -name '*.log' -print -quit 2>/dev/null)" ] || continue
-
-            # Same 50 the table above lists. Sharing the budget out over them lets a
-            # run with one failure show that log whole, which is the common case.
+            n=$(wc -l < "$list")
+            # The same 50 the table lists. Shared out over them, one failure shows whole.
             shown=$n
             [ "$shown" -gt 50 ] && shown=50
             budget=900000
-            # 512 for the <details> wrapper of each case, so that the cases which
-            # all reach their share still add up to less than the budget.
+            # 512 for each case's <details> wrapper, so full shares still fit the budget.
             case_max=$((budget / shown - 512))
             [ "$case_max" -gt 131072 ] && case_max=131072
             head_b=$((case_max / 2))
             tail_b=$((case_max - head_b))
-            echo "$suite: cases $n / shown $shown / per case $case_max bytes"
-
             esc() { sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g' "$1"; }
-
             base="$ARTIFACT_URL_BASE/${RUNDIR#$CI_ROOT/}/$suite"
             # The suites name their JUnit XML differently, so take it from the shards.
             xml_name=$(basename "$(ls "$RUNDIR/$suite"/shard/*/test-results/*.xml 2>/dev/null | head -1)" 2>/dev/null || :)
@@ -2325,42 +2079,36 @@ jobs:
               echo
             } >> "$GITHUB_STEP_SUMMARY"
 
+            declare -A k=()
             used=0; i=0; left=0
             while IFS=$'\t' read -r shard name; do
               i=$((i + 1))
+              k[$shard]=$(( ${k[$shard]:-0} + 1 ))
               [ "$i" -le "$shown" ] || { left=$((left + 1)); continue; }
-              log="/tmp/failed-logs/$suite/$i.log"
+              log="/tmp/failed-logs/$suite/$shard/${k[$shard]}.log"
               {
                 echo "<details>"
                 echo "<summary>shard $shard &middot; <code>$name</code> &middot; <a href=\"$base/shard/$shard/test-results/$xml_name\">full log</a></summary>"
                 echo
-                # <pre> opens its own line: a blank line inside the log would end the
-                # HTML block that <details> opened, and the rest would render as text.
+                # <pre> on its own line: a blank line in the log would end the HTML block.
                 echo "<pre>"
               } > /tmp/block
               if [ ! -f "$log" ]; then
                 echo "(this case left no log in the XML)" >> /tmp/block
               else
-                # The 1 MiB is counted after escaping, so cut the escaped log, not
-                # the log: a share measured before escaping is not the share spent.
+                # The budget counts escaped bytes, so cut the escaped log.
                 esc "$log" > /tmp/esc
                 sz=$(wc -c < /tmp/esc)
                 if [ "$sz" -le "$case_max" ]; then
                   cat /tmp/esc >> /tmp/block
                 else
-                  # sed drops the line the byte cut split, so <pre> holds whole
-                  # lines and no entity is left half written.
+                  # sed drops the line the byte cut split, so no entity is left half written.
                   head -c "$head_b" /tmp/esc | sed '$d' >> /tmp/block
                   printf '\n... %d KB of the middle is not here ...\n\n' $(((sz - head_b - tail_b) / 1024)) >> /tmp/block
                   tail -c "$tail_b" /tmp/esc | sed '1d' >> /tmp/block
                 fi
               fi
-              {
-                echo "</pre>"
-                echo
-                echo "</details>"
-                echo
-              } >> /tmp/block
+              printf '</pre>\n\n</details>\n\n' >> /tmp/block
               size=$(wc -c < /tmp/block)
               if [ $((used + size)) -gt "$budget" ]; then
                 left=$((left + 1))
@@ -2369,11 +2117,8 @@ jobs:
               cat /tmp/block >> "$GITHUB_STEP_SUMMARY"
               used=$((used + size))
             done < "$list"
-
-            if [ "$left" -gt 0 ]; then
-              echo "_$left more cases failed. Their logs are in each shard's \`$xml_name\`, under [Artifacts]($base/)._" >> "$GITHUB_STEP_SUMMARY"
-            fi
-            echo "wrote $((i - left)) of $i case logs, $used bytes"
+            unset k
+            [ "$left" -eq 0 ] || echo "_$left more cases failed. Their logs are in each shard's \`$xml_name\`, under [Artifacts]($base/)._" >> "$GITHUB_STEP_SUMMARY"
           done
 
   # always(), not success(): a red verdict is what the gate exists to show.
