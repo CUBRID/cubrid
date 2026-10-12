@@ -243,6 +243,7 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
   int save;
   const char *name;
   char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
+  char trigger_owner_name[DB_MAX_USER_LENGTH] = { '\0' };
   const char *trigger_name = NULL;
   const char *class_name = NULL;
   PARSER_CONTEXT *parser;
@@ -275,7 +276,13 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
       output_ctx ("CREATE TRIGGER ");
       if (ctxt.is_dba_user || ctxt.is_dba_group_member)
 	{
-	  output_ctx ("[%s].[%s]\n", owner_name, sm_remove_qualifier_name (trigger->name));
+	  if (sm_qualifier_name (trigger->name, trigger_owner_name, DB_MAX_USER_LENGTH) == NULL)
+	    {
+	      ASSERT_ERROR_AND_SET (error);
+	      AU_RESTORE (save);
+	      return error;
+	    }
+	  output_ctx ("[%s].[%s]\n", trigger_owner_name, sm_remove_qualifier_name (trigger->name));
 	}
       else
 	{
