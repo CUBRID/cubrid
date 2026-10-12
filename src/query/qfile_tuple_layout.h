@@ -523,7 +523,7 @@ qfile_tuple_check_col_type (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list, int c
     }
   ctype = TP_DOMAIN_TYPE (type_list->domp[column_index]);
   vtype = DB_VALUE_DOMAIN_TYPE (val);
-  assert (ctype != DB_TYPE_VARIABLE);	/* resolved by the size pass (qfile_tuple_resolve_column) */
+  assert (ctype != DB_TYPE_VARIABLE);	/* the size pass refused a value for a VARIABLE column */
   assert (ctype == vtype || (pr_is_string_type (ctype) && pr_is_string_type (vtype))
 	  || ((TP_IS_SET_TYPE (ctype) || ctype == DB_TYPE_VOBJ) && (TP_IS_SET_TYPE (vtype) || vtype == DB_TYPE_VOBJ))
 	  || ((ctype == DB_TYPE_OBJECT || ctype == DB_TYPE_OID) && (vtype == DB_TYPE_OBJECT || vtype == DB_TYPE_OID)));
@@ -531,32 +531,24 @@ qfile_tuple_check_col_type (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list, int c
 #endif
 
 /*
- * qfile_tuple_resolve_column () - resolve an unresolved (DB_TYPE_VARIABLE) column from its first bound value and
- *   recompute the layout.
- *   return: true when the descriptor changed
+ * qfile_tuple_column_unresolved () - the unresolved-domain check (execution) of a value written into a column whose
+ *   domain is still VARIABLE: a list opens with the plan's domains, so no row resolves a column's domain
+ *   return: ER_FAILED, with ER_QPROC_DOMAIN_UNRESOLVED set
  */
-inline bool
-qfile_tuple_resolve_column (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, int column_index, const DB_VALUE * val)
+inline int
+qfile_tuple_column_unresolved (int column_index)
 {
-  TP_DOMAIN *dom;
-
-  if (TP_DOMAIN_TYPE (type_list->domp[column_index]) != DB_TYPE_VARIABLE || val == NULL || DB_IS_NULL (val))
-    {
-      return false;
-    }
-  dom = tp_domain_resolve_value (val, NULL);
-  if (dom == NULL || TP_DOMAIN_TYPE (dom) == DB_TYPE_VARIABLE)
-    {
-      return false;
-    }
-  type_list->domp[column_index] = dom;
-  return true;
+  assert (false);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", column_index,
+	  pr_type_name (DB_TYPE_VARIABLE));
+  return ER_FAILED;
 }
 
 /*
  * qfile_tuple_size () - assembler size pass.
  *   return: exact tuple length (header included, multiple of 4), or ER_FAILED
- *   type_list(in/out): layout descriptor of the destination list; an unresolved column is resolved from its first bound value
+ *   type_list(in): layout descriptor of the destination list; a VARIABLE column takes no value (the unresolved-domain
+ *		 check, qfile_tuple_column_unresolved)
  *   src(in/out): a val source gets its column_data size stored in column_data_size
  *   has_null(out): at least one column is NULL
  */
@@ -565,7 +557,7 @@ qfile_tuple_size (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE_COL_SRC *
 {
   const QFILE_COL_LAYOUT *column_layout;
   int i, size;
-  bool hn = false, changed = false;
+  bool hn = false;
 
   assert (type_list != NULL && type_list->layout_ready && type_list->type_cnt == n);
 
@@ -579,14 +571,11 @@ qfile_tuple_size (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE_COL_SRC *
 	{
 	  hn = true;
 	}
-      else if (src[i].val != NULL)
+      else if (src[i].val != NULL && type_list->column_layout_array[i].type_id == DB_TYPE_VARIABLE
+	       && !DB_IS_NULL (src[i].val))
 	{
-	  changed |= qfile_tuple_resolve_column (type_list, i, src[i].val);
+	  return qfile_tuple_column_unresolved (i);
 	}
-    }
-  if (changed)
-    {
-      qfile_set_layout (type_list);
     }
   size = type_list->data_offset[hn ? 1 : 0];
 
@@ -843,19 +832,15 @@ qfile_tuple_size_from_values (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, DB_VALUE 
   assert (type_list != NULL && type_list->layout_ready && type_list->type_cnt == n);
   assert (lens != NULL || n == 0);	/* a zero-column list never allocates f_valp/f_len */
 
-restart:
   values_size = 0;
   hn = false;
   for (i = 0; i < n; i++)
     {
       v = vals[i];
       column_layout = &type_list->column_layout_array[i];
-      if (column_layout->type_id == DB_TYPE_VARIABLE && !DB_IS_NULL (v)
-	  && DB_VALUE_DOMAIN_TYPE (v) != DB_TYPE_VARIABLE && qfile_tuple_resolve_column (type_list, i, v))
+      if (column_layout->type_id == DB_TYPE_VARIABLE && !DB_IS_NULL (v))
 	{
-	  /* A late domain changed the layout; measure all columns again, without re-evaluating the values. */
-	  qfile_set_layout (type_list);
-	  goto restart;
+	  return qfile_tuple_column_unresolved (i);
 	}
       values_size = qfile_tuple_size_add_value (column_layout, v, &lens[i], values_size, &hn);
       if (values_size < 0)
