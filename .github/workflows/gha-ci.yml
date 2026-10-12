@@ -1186,7 +1186,7 @@ jobs:
           fi
           echo "ctp branch : $CTP_BRANCH"
 
-          # Without it a small fetch bumps the node copy's pack mtime, copying 3.3GB up into /rw.
+          # Else a small fetch touches the node copy's packs, copying them whole into /rw.
           git config --global fetch.unpackLimit 1
 
           # The entrypoint below clones CTP whole when .git is absent, and that clone
@@ -1809,7 +1809,6 @@ jobs:
             echo "::error::no testcase seed: $TC_SEED"
             echo "  gha-node-seed keeps the node copy; a swap leaves it absent for a moment."
             exit 1; }
-          git config --global fetch.unpackLimit 1
           mkdir -p /rw/upper /rw/work "$TC_DIR"
           mount -t overlay overlay -o "lowerdir=$TC_SEED,upperdir=/rw/upper,workdir=/rw/work" "$TC_DIR"
           echo "testcases mounted: $TC_SEED"
@@ -1921,6 +1920,7 @@ jobs:
           # made them ends, and the checkout takes whatever it is given.
           export BRANCH_TESTCASES="$tc_sha"
           export BRANCH_TESTTOOLS="$WANT_CTP_SHA"
+          git config --global fetch.unpackLimit 1
           /entrypoint.sh checkout "$SUITE"
 
           ctp="$WORKDIR/cubrid-testtools"
