@@ -19,6 +19,14 @@
 # engine PR's last event and GitHub does not re-evaluate required checks when
 # the merge button is hit.
 #
+# Where a verdict is stale the sweep re-runs the gate job; it never writes a check
+# run of its own. The Checks API files a check run under whichever workflow ran
+# first on the commit, and branch protection reads the newest run of each workflow
+# on its own: a verdict filed under another workflow blocks however the gate
+# decides, and one filed under an older gate run is ignored (CUBRID/cubrid#8118).
+# An earlier sweep did write such check runs. They cannot be deleted, so both jobs
+# keep them equal to the gate's verdict.
+#
 
 name: TC Merge Gate
 
@@ -165,6 +173,23 @@ env:
     echo "${VERDICT}"
     printf '%s' "${DETAIL}"
 
+  # align <head-sha> <success|failure> <title> <summary> — needs GH_TOKEN with
+  # checks: write on ENGINE_REPO. Sets every "Check TC PRs" check run on the commit
+  # that no job owns to the given verdict. A re-run copies those onto the end of its
+  # run, so one left stale would land on top of the fresh verdict.
+  ALIGN: |
+    set -uo pipefail
+
+    IDS=$(gh api --paginate "repos/${ENGINE_REPO}/commits/${1}/check-runs?check_name=Check%20TC%20PRs&filter=all&per_page=100" \
+            --jq ".check_runs[] | select(.app.slug == \"github-actions\")
+                  | select((.details_url // \"\") | test(\"/actions/runs/\") | not)
+                  | select(.conclusion != \"${2}\") | .id") || exit 1
+
+    for ID in ${IDS}; do
+      gh api -X PATCH "repos/${ENGINE_REPO}/check-runs/${ID}" -f conclusion="${2}" \
+        -f "output[title]=${3}" -f "output[summary]=${4}" --silent || exit 1
+    done
+
 jobs:
   check-tc-prs:
     name: Check TC PRs
@@ -172,6 +197,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
+      checks: write
+      contents: read
       pull-requests: write
     steps:
       - name: Generate GitHub App Token
@@ -195,6 +222,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
           ENGINE_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         shell: bash
         run: |
           set -euo pipefail
@@ -204,10 +232,33 @@ jobs:
             exit 1
           fi
 
-          printf '%s' "${JUDGE}" > "${RUNNER_TEMP}/judge.sh"
+          # A re-run executes the workflow as it was when the run began, and the
+          # sweep re-runs old runs. Reading the judge from develop keeps them on
+          # today's rules.
+          if ! GH_TOKEN="${GITHUB_TOKEN}" gh api -H 'Accept: application/vnd.github.raw' \
+                 "repos/${ENGINE_REPO}/contents/.github/workflows/tc-merge-gate.yml?ref=develop" \
+               | yq -e '.env.JUDGE' > "${RUNNER_TEMP}/judge.sh"; then
+            echo "::error::Could not read the judge from develop — re-run this check"
+            exit 1
+          fi
           OUT=$(bash "${RUNNER_TEMP}/judge.sh" "${PR_NUMBER}")
           VERDICT=$(head -n 1 <<< "${OUT}")
           DETAIL=$(tail -n +2 <<< "${OUT}")
+
+          if [ "${VERDICT}" = BLOCK ]; then
+            CONCLUSION=failure
+            TITLE='TC changes are not on TC develop yet'
+          else
+            CONCLUSION=success
+            TITLE='Nothing is left on the TC branches that develop does not have'
+          fi
+          printf '%s' "${ALIGN}" > "${RUNNER_TEMP}/align.sh"
+          HEAD_SHA=$(GH_TOKEN="${GITHUB_TOKEN}" gh api "repos/${ENGINE_REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')
+          if ! GH_TOKEN="${GITHUB_TOKEN}" bash "${RUNNER_TEMP}/align.sh" "${HEAD_SHA}" "${CONCLUSION}" "${TITLE}" \
+                 "${DETAIL}"$'\n\n'"Follows the TC Merge Gate verdict (${RUN_URL}). To judge again, re-run that run, not this entry."; then
+            echo "::error::Could not align the check runs an earlier sweep wrote — re-run this check"
+            exit 1
+          fi
 
           if [ "${VERDICT}" = BLOCK ]; then
             COMMENT_BODY="## ❌ TC Merge Gate — Merge Blocked
@@ -217,7 +268,7 @@ jobs:
           ${DETAIL}
           **Steps to unblock:**
           1. Merge the TC PRs listed above. Close one only when it carries no change.
-          2. Re-run this check: **Actions tab → TC Merge Gate → Re-run failed jobs**"
+          2. Re-run **TC Merge Gate / Check TC PRs** (Actions tab → TC Merge Gate → Re-run failed jobs). Re-running any other workflow does not judge again."
           else
             COMMENT_BODY="## ✅ TC Merge Gate — Merge Allowed
 
@@ -255,6 +306,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
+      actions: write
       checks: write
       pull-requests: read
     steps:
@@ -273,7 +325,7 @@ jobs:
         shell: bash
         run: echo "::add-mask::${APP_TOKEN}"
 
-      - name: Judge open PRs again, and post the verdict where the standing one is stale
+      - name: Judge open PRs again, and re-run the gate where the standing verdict is stale
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -284,6 +336,7 @@ jobs:
           set -euo pipefail
 
           printf '%s' "${JUDGE}" > "${RUNNER_TEMP}/judge.sh"
+          printf '%s' "${ALIGN}" > "${RUNNER_TEMP}/align.sh"
 
           # An open TC PR blocks on its own, so one list per TC repo settles most
           # PRs without asking about them one by one.
@@ -304,23 +357,33 @@ jobs:
             echo "::warning::${OPEN_N} open PRs reached the list limit — raise it"
           fi
 
+          # Branch protection reads the gate's newest run: the highest run id. Its job
+          # id is what a re-run takes. An entry with no job behind it was written by
+          # an earlier sweep.
           jq -r '.[] | . as $pr
-                  | ([$pr.statusCheckRollup[]? | select(.name == "Check TC PRs")] | max_by(.completedAt // ""))
-                  | select(. != null)
-                  | "\($pr.number)\t\($pr.headRefOid)\t\(.conclusion // "")\t\(.completedAt // "")"' \
+                  | [$pr.statusCheckRollup[]? | select(.name == "Check TC PRs")] as $all
+                  | ([$all[] | select((.detailsUrl // "") | test("/actions/runs/[0-9]+/job/[0-9]+"))
+                      | . + (.detailsUrl | capture("/actions/runs/(?<run>[0-9]+)/job/(?<job>[0-9]+)"))]
+                     | max_by(.run | tonumber)) as $gate
+                  | [$all[] | select((.detailsUrl // "") | test("/actions/runs/") | not)] as $old
+                  | select($gate != null or ($old | length) > 0)
+                  | [$pr.number, $pr.headRefOid, ($gate.conclusion // "-"), ($gate.job // "-"),
+                     ([$gate.completedAt, $old[].completedAt] | map(select(. != null)) | max // ""),
+                     ([$old[] | .conclusion // "-"] | join(","))]
+                  | @tsv' \
             "${RUNNER_TEMP}/open-prs.json" > "${RUNNER_TEMP}/prs.tsv"
 
           # Leave a verdict younger than this alone: its run may still be settling.
           MIN_AGE_SEC=1800
           NOW=$(date -u +%s)
-          POSTED_N=0
+          RERUN_N=0
+          ALIGNED_N=0
 
-          while IFS=$'\t' read -r PR_NUMBER HEAD_SHA STANDING COMPLETED; do
+          while IFS=$'\t' read -r PR_NUMBER HEAD_SHA STANDING JOB_ID COMPLETED OLD; do
             [ -z "${PR_NUMBER}" ] && continue
             [ -z "${COMPLETED}" ] && continue
             [ $(( NOW - $(date -u -d "${COMPLETED}" +%s) )) -lt "${MIN_AGE_SEC}" ] && continue
 
-            OUT=''
             if grep -qxF "${PR_NUMBER}" "${RUNNER_TEMP}/open-tc.txt"; then
               EXPECTED=FAILURE
             else
@@ -330,38 +393,37 @@ jobs:
               }
               EXPECTED=$( [ "$(head -n 1 <<< "${OUT}")" = BLOCK ] && echo FAILURE || echo SUCCESS )
             fi
-            [ "${STANDING}" = "${EXPECTED}" ] && continue
 
-            if [ -z "${OUT}" ]; then
-              OUT=$(bash "${RUNNER_TEMP}/judge.sh" "${PR_NUMBER}") || {
-                echo "::warning::PR #${PR_NUMBER}: the judge did not finish — left as it stands"
+            STALE_OLD=''
+            for C in ${OLD//,/ }; do [ "${C}" != "${EXPECTED}" ] && STALE_OLD=1; done
+            STALE_GATE=''
+            [ "${STANDING}" != '-' ] && [ "${STANDING}" != "${EXPECTED}" ] && STALE_GATE=1
+            [ -z "${STALE_OLD}${STALE_GATE}" ] && continue
+
+            # Before any re-run: it would copy a stale entry onto the end of its run.
+            if [ -n "${STALE_OLD}" ]; then
+              if [ "${EXPECTED}" = FAILURE ]; then
+                TITLE='TC changes are not on TC develop yet'
+              else
+                TITLE='Nothing is left on the TC branches that develop does not have'
+              fi
+              if ! GH_TOKEN="${GITHUB_TOKEN}" bash "${RUNNER_TEMP}/align.sh" "${HEAD_SHA}" "${EXPECTED,,}" "${TITLE}" \
+                     "Follows the TC Merge Gate verdict, as the scheduled sweep (${RUN_URL}) judged it. To judge again, re-run the TC Merge Gate run, not this entry."; then
+                echo "::warning::PR #${PR_NUMBER}: could not align the entries an earlier sweep wrote — left as it stands"
                 continue
-              }
-            fi
-            VERDICT=$(head -n 1 <<< "${OUT}")
-            DETAIL=$(tail -n +2 <<< "${OUT}")
-
-            if [ "${VERDICT}" = BLOCK ]; then
-              CONCLUSION=failure
-              TITLE='TC changes are not on TC develop yet'
-            else
-              CONCLUSION=success
-              TITLE='Nothing is left on the TC branches that develop does not have'
+              fi
+              echo "::notice::PR #${PR_NUMBER}: entries an earlier sweep wrote now say ${EXPECTED}"
+              ALIGNED_N=$((ALIGNED_N + 1))
             fi
 
-            # Post the check run directly. A label or any other event raised with
-            # GITHUB_TOKEN starts no workflow run, so the verdict has to be written
-            # rather than triggered. The name is what branch protection requires.
-            if jq -n --arg sha "${HEAD_SHA}" --arg conclusion "${CONCLUSION}" --arg title "${TITLE}" \
-                    --arg summary "${DETAIL}"$'\n\n'"Posted by the scheduled sweep (${RUN_URL}), because the standing verdict no longer matched." \
-                    '{name: "Check TC PRs", head_sha: $sha, status: "completed",
-                      conclusion: $conclusion, output: {title: $title, summary: $summary}}' \
-               | GH_TOKEN="${GITHUB_TOKEN}" gh api -X POST "repos/${ENGINE_REPO}/check-runs" --input - > /dev/null; then
-              echo "::notice::PR #${PR_NUMBER}: standing ${STANDING}, now ${EXPECTED} — posted"
-              POSTED_N=$((POSTED_N + 1))
+            [ -z "${STALE_GATE}" ] && continue
+            if GH_TOKEN="${GITHUB_TOKEN}" gh api -X POST "repos/${ENGINE_REPO}/actions/jobs/${JOB_ID}/rerun" --silent; then
+              echo "::notice::PR #${PR_NUMBER}: standing ${STANDING}, now ${EXPECTED} — re-ran the gate"
+              RERUN_N=$((RERUN_N + 1))
             else
-              echo "::warning::PR #${PR_NUMBER}: could not post the check run"
+              echo "::warning::PR #${PR_NUMBER}: standing ${STANDING}, now ${EXPECTED}, but the gate could not be re-run." \
+                   "GitHub refuses runs older than 30 days; a push, or closing and reopening the PR, starts a new one."
             fi
           done < "${RUNNER_TEMP}/prs.tsv"
 
-          echo "Posted a fresh verdict on ${POSTED_N} PR(s)." >> "${GITHUB_STEP_SUMMARY}"
+          echo "Re-ran the gate on ${RERUN_N} PR(s). Aligned earlier sweep entries on ${ALIGNED_N} PR(s)." >> "${GITHUB_STEP_SUMMARY}"
