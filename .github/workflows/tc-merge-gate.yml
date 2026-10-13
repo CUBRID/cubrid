@@ -173,22 +173,36 @@ env:
     echo "${VERDICT}"
     printf '%s' "${DETAIL}"
 
-  # align <head-sha> <success|failure> <title> <summary> — needs GH_TOKEN with
-  # checks: write on ENGINE_REPO. Sets every "Check TC PRs" check run on the commit
-  # that no job owns to the given verdict. A re-run copies those onto the end of its
-  # run, so one left stale would land on top of the fresh verdict.
+  # align <head-sha> <success|failure> <detail> — needs GH_TOKEN with checks: write
+  # on ENGINE_REPO. Sets every "Check TC PRs" check run on the commit that no job
+  # owns to the given verdict. A re-run copies those onto the end of its run, so one
+  # left stale would land on top of the fresh verdict.
+  # stdout: how many it changed.
   ALIGN: |
     set -uo pipefail
 
+    if [ "${2}" = failure ]; then
+      TITLE='TC changes are not on TC develop yet'
+    else
+      TITLE='Nothing is left on the TC branches that develop does not have'
+    fi
+    FOLLOWS='Follows the TC Merge Gate verdict. To judge again, re-run TC Merge Gate / Check TC PRs, not this entry.'
+
+    # A verdict can match while the text is still an earlier sweep's, which links
+    # that sweep's run. Re-running that run brings back the code that wrote it.
     IDS=$(gh api --paginate "repos/${ENGINE_REPO}/commits/${1}/check-runs?check_name=Check%20TC%20PRs&filter=all&per_page=100" \
             --jq ".check_runs[] | select(.app.slug == \"github-actions\")
                   | select((.details_url // \"\") | test(\"/actions/runs/\") | not)
-                  | select(.conclusion != \"${2}\") | .id") || exit 1
+                  | select(.conclusion != \"${2}\" or ((.output.summary // \"\") | contains(\"${FOLLOWS}\") | not))
+                  | .id") || exit 1
 
+    N=0
     for ID in ${IDS}; do
       gh api -X PATCH "repos/${ENGINE_REPO}/check-runs/${ID}" -f conclusion="${2}" \
-        -f "output[title]=${3}" -f "output[summary]=${4}" --silent || exit 1
+        -f "output[title]=${TITLE}" -f "output[summary]=${3}"$'\n\n'"${FOLLOWS}" --silent || exit 1
+      N=$((N + 1))
     done
+    echo "${N}"
 
 jobs:
   check-tc-prs:
@@ -245,17 +259,11 @@ jobs:
           VERDICT=$(head -n 1 <<< "${OUT}")
           DETAIL=$(tail -n +2 <<< "${OUT}")
 
-          if [ "${VERDICT}" = BLOCK ]; then
-            CONCLUSION=failure
-            TITLE='TC changes are not on TC develop yet'
-          else
-            CONCLUSION=success
-            TITLE='Nothing is left on the TC branches that develop does not have'
-          fi
           printf '%s' "${ALIGN}" > "${RUNNER_TEMP}/align.sh"
           HEAD_SHA=$(GH_TOKEN="${GITHUB_TOKEN}" gh api "repos/${ENGINE_REPO}/pulls/${PR_NUMBER}" --jq '.head.sha')
-          if ! GH_TOKEN="${GITHUB_TOKEN}" bash "${RUNNER_TEMP}/align.sh" "${HEAD_SHA}" "${CONCLUSION}" "${TITLE}" \
-                 "${DETAIL}"$'\n\n'"Follows the TC Merge Gate verdict (${RUN_URL}). To judge again, re-run that run, not this entry."; then
+          CONCLUSION=$( [ "${VERDICT}" = BLOCK ] && echo failure || echo success )
+          if ! GH_TOKEN="${GITHUB_TOKEN}" bash "${RUNNER_TEMP}/align.sh" "${HEAD_SHA}" "${CONCLUSION}" \
+                 "${DETAIL}"$'\n\n'"Judged by ${RUN_URL}." > /dev/null; then
             echo "::error::Could not align the check runs an earlier sweep wrote — re-run this check"
             exit 1
           fi
@@ -359,7 +367,8 @@ jobs:
 
           # Branch protection reads the gate's newest run: the highest run id. Its job
           # id is what a re-run takes. An entry with no job behind it was written by
-          # an earlier sweep.
+          # an earlier sweep. No field may be empty: gh gives a running check run an
+          # empty conclusion, and read folds an empty field into the next one.
           jq -r '.[] | . as $pr
                   | [$pr.statusCheckRollup[]? | select(.name == "Check TC PRs")] as $all
                   | ([$all[] | select((.detailsUrl // "") | test("/actions/runs/[0-9]+/job/[0-9]+"))
@@ -367,9 +376,10 @@ jobs:
                      | max_by(.run | tonumber)) as $gate
                   | [$all[] | select((.detailsUrl // "") | test("/actions/runs/") | not)] as $old
                   | select($gate != null or ($old | length) > 0)
-                  | [$pr.number, $pr.headRefOid, ($gate.conclusion // "-"), ($gate.job // "-"),
-                     ([$gate.completedAt, $old[].completedAt] | map(select(. != null)) | max // ""),
-                     ([$old[] | .conclusion // "-"] | join(","))]
+                  | [$pr.number, $pr.headRefOid,
+                     (if $gate.status == "COMPLETED" then $gate.conclusion else "-" end), ($gate.job // "-"),
+                     ([$gate.completedAt, $old[].completedAt] | map(select(. != null)) | max // "-"),
+                     ($old | length)]
                   | @tsv' \
             "${RUNNER_TEMP}/open-prs.json" > "${RUNNER_TEMP}/prs.tsv"
 
@@ -379,14 +389,16 @@ jobs:
           RERUN_N=0
           ALIGNED_N=0
 
-          while IFS=$'\t' read -r PR_NUMBER HEAD_SHA STANDING JOB_ID COMPLETED OLD; do
+          while IFS=$'\t' read -r PR_NUMBER HEAD_SHA STANDING JOB_ID COMPLETED SWEPT_N; do
             [ -z "${PR_NUMBER}" ] && continue
-            [ -z "${COMPLETED}" ] && continue
+            [ "${COMPLETED}" = '-' ] && continue
             YOUNG=''
             [ $(( NOW - $(date -u -d "${COMPLETED}" +%s) )) -lt "${MIN_AGE_SEC}" ] && YOUNG=1
+            # A gate job that has not completed is still settling.
+            [ "${JOB_ID}" != '-' ] && [ "${STANDING}" = '-' ] && YOUNG=1
             # Entries an earlier sweep wrote are aligned on every pass, young or not:
             # a re-run of a gate run older than the ALIGN step leaves them as they were.
-            [ -n "${YOUNG}" ] && [ -z "${OLD}" ] && continue
+            [ -n "${YOUNG}" ] && [ "${SWEPT_N}" = 0 ] && continue
 
             # A young verdict may be newer than the list — a TC PR closed since — so it
             # goes to the judge.
@@ -400,35 +412,28 @@ jobs:
               EXPECTED=$( [ "$(head -n 1 <<< "${OUT}")" = BLOCK ] && echo FAILURE || echo SUCCESS )
             fi
 
-            STALE_OLD=''
-            for C in ${OLD//,/ }; do [ "${C}" != "${EXPECTED}" ] && STALE_OLD=1; done
-            STALE_GATE=''
-            [ -z "${YOUNG}" ] && [ "${STANDING}" != '-' ] && [ "${STANDING}" != "${EXPECTED}" ] && STALE_GATE=1
-            [ -z "${STALE_OLD}${STALE_GATE}" ] && continue
-
             # Before any re-run: it would copy a stale entry onto the end of its run.
-            if [ -n "${STALE_OLD}" ]; then
-              if [ "${EXPECTED}" = FAILURE ]; then
-                TITLE='TC changes are not on TC develop yet'
-              else
-                TITLE='Nothing is left on the TC branches that develop does not have'
-              fi
-              if ! GH_TOKEN="${GITHUB_TOKEN}" bash "${RUNNER_TEMP}/align.sh" "${HEAD_SHA}" "${EXPECTED,,}" "${TITLE}" \
-                     "Follows the TC Merge Gate verdict, as the scheduled sweep (${RUN_URL}) judged it. To judge again, re-run the TC Merge Gate run, not this entry."; then
+            if [ "${SWEPT_N}" != 0 ]; then
+              if ! N=$(GH_TOKEN="${GITHUB_TOKEN}" bash "${RUNNER_TEMP}/align.sh" "${HEAD_SHA}" "${EXPECTED,,}" \
+                         "Judged by the scheduled sweep (${RUN_URL})."); then
                 echo "::warning::PR #${PR_NUMBER}: could not align the entries an earlier sweep wrote — left as it stands"
                 continue
               fi
-              echo "::notice::PR #${PR_NUMBER}: entries an earlier sweep wrote now say ${EXPECTED}"
-              ALIGNED_N=$((ALIGNED_N + 1))
+              if [ "${N}" != 0 ]; then
+                echo "::notice::PR #${PR_NUMBER}: ${N} entries an earlier sweep wrote now say ${EXPECTED}"
+                ALIGNED_N=$((ALIGNED_N + 1))
+              fi
             fi
 
+            STALE_GATE=''
+            [ -z "${YOUNG}" ] && [ "${STANDING}" != '-' ] && [ "${STANDING}" != "${EXPECTED}" ] && STALE_GATE=1
             [ -z "${STALE_GATE}" ] && continue
-            if GH_TOKEN="${GITHUB_TOKEN}" gh api -X POST "repos/${ENGINE_REPO}/actions/jobs/${JOB_ID}/rerun" --silent; then
+            if ERR=$(GH_TOKEN="${GITHUB_TOKEN}" gh api -X POST "repos/${ENGINE_REPO}/actions/jobs/${JOB_ID}/rerun" --silent 2>&1); then
               echo "::notice::PR #${PR_NUMBER}: standing ${STANDING}, now ${EXPECTED} — re-ran the gate"
               RERUN_N=$((RERUN_N + 1))
             else
-              echo "::warning::PR #${PR_NUMBER}: standing ${STANDING}, now ${EXPECTED}, but the gate could not be re-run." \
-                   "GitHub refuses runs older than 30 days; a push, or closing and reopening the PR, starts a new one."
+              echo "::warning::PR #${PR_NUMBER}: standing ${STANDING}, now ${EXPECTED}, but the gate could not be re-run: ${ERR//$'\n'/ }." \
+                   "GitHub refuses runs older than 30 days; a push to the PR starts a new one."
             fi
           done < "${RUNNER_TEMP}/prs.tsv"
 
