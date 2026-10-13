@@ -42,6 +42,7 @@
 #include "log_lsa.hpp"
 #include "log_manager.h"
 #include "object_representation.h"
+#include "object_representation_sr.h"
 #include "oos_file.hpp"
 #include "oos_log.hpp"
 #include "page_buffer.h"
@@ -79,7 +80,25 @@ namespace
     const int n_oos = (int) refs.size ();
     assert (n_oos > 0 && (int) lengths.size () == n_oos);
     assert (filler_size >= 0 && filler_size % INT_ALIGNMENT == 0);
-    const int n_var = n_oos + (filler_size > 0 ? 1 : 0);
+    /* Match the borrowed class representation at the logical-write validation boundary. */
+    OID borrowed_class = OID_INITIALIZER;
+    if (xlocator_find_class_oid (thread_p, "db_user", &borrowed_class, NULL_LOCK) != LC_CLASSNAME_EXIST)
+      {
+	return ER_FAILED;
+      }
+    int cache_index = -1;
+    OR_CLASSREP *repr = heap_classrepr_get (thread_p, &borrowed_class, nullptr, NULL_REPRID, &cache_index);
+    if (repr == nullptr)
+      {
+	return ER_FAILED;
+      }
+    const int n_var = repr->n_variable;
+    const int repr_id = repr->id;
+    heap_classrepr_free_and_init (repr, &cache_index);
+    if (n_var < n_oos + (filler_size > 0 ? 1 : 0))
+      {
+	return ER_FAILED;
+      }
     const int vot_bytes = (n_var + 1) * VOT_ENTRY_SZ;
     const int total = HEAP_HDR_SIZE + vot_bytes + n_oos * OR_OOS_INLINE_SIZE + filler_size;
 
@@ -92,19 +111,18 @@ namespace
     rec_out.length = total;
     std::memset (rec_out.data, 0, total);
     OR_PUT_INT (rec_out.data + OR_REP_OFFSET,
-		(OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS) | OR_OFFSET_SIZE_4BYTE);
+		repr_id | (OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS) | OR_OFFSET_SIZE_4BYTE);
 
     char *vot = rec_out.data + HEAP_HDR_SIZE;
     for (int i = 0; i < n_oos; i++)
       {
 	OR_PUT_INT (vot + i * VOT_ENTRY_SZ, OR_SET_VAR_OOS (vot_bytes + i * OR_OOS_INLINE_SIZE));
       }
-    if (filler_size > 0)
+    for (int i = n_oos; i <= n_var; ++i)
       {
-	OR_PUT_INT (vot + n_oos * VOT_ENTRY_SZ, vot_bytes + n_oos * OR_OOS_INLINE_SIZE);
+	int offset = vot_bytes + n_oos * OR_OOS_INLINE_SIZE + (i > n_oos ? filler_size : 0);
+	OR_PUT_INT (vot + i * VOT_ENTRY_SZ, i == n_var ? OR_SET_VAR_LAST_ELEMENT (offset) : offset);
       }
-    OR_PUT_INT (vot + n_var * VOT_ENTRY_SZ,
-		OR_SET_VAR_LAST_ELEMENT (vot_bytes + n_oos * OR_OOS_INLINE_SIZE + filler_size));
 
     char *stub = vot + vot_bytes;
     for (int i = 0; i < n_oos; i++, stub += OR_OOS_INLINE_SIZE)
