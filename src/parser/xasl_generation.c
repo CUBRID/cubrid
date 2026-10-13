@@ -4789,7 +4789,8 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
       info.flag_agg_min_max_optimized = true;
     }
 
-  if (pt_is_single_tuple (parser, select_node))
+  /* index statistics count the whole table, not the hierarchy */
+  if (pt_is_single_tuple (parser, select_node) && select_node->info.query.q.select.connect_by == NULL)
     {
       if (where == NULL && pt_length_of_list (from) == 1 && pt_length_of_list (from->info.spec.flat_entity_list) == 1
 	  && from->info.spec.only_all != PT_ALL)
