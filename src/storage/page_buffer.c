@@ -3626,10 +3626,13 @@ retry:
   goto retry;
 }
 
+/* a hash look-up of one page costs about as much as checking this many bcbs in a pool scan */
+#define PGBUF_DISCARD_PROBE_COST_IN_BCBS 16
+
 /*
- * pgbuf_discard_pages_of_sectors () - discard all buffered pages of the given sectors in one pass over the buffer
- *                                     pool (cost: pool size, not file size); each hit goes through
- *                                     pgbuf_discard_page ().
+ * pgbuf_discard_pages_of_sectors () - discard all buffered pages of the given sectors; each hit goes through
+ *                                     pgbuf_discard_page (). a small file looks up each of its pages in the hash
+ *                                     (cost: file size); a large one scans the buffer pool once (cost: pool size).
  *
  * return        : void
  * thread_p (in) : thread entry
@@ -3641,10 +3644,11 @@ retry:
 void
 pgbuf_discard_pages_of_sectors (THREAD_ENTRY * thread_p, const VSID * vsids, int nsects)
 {
+  PGBUF_BUFFER_HASH *hash_anchor;
   PGBUF_BCB *bufptr;
   VSID vsid_key;
   VPID vpid;
-  int bufid, interval;
+  int bufid, interval, i, offset;
 
   if (vsids == NULL || nsects <= 0)
     {
@@ -3653,6 +3657,30 @@ pgbuf_discard_pages_of_sectors (THREAD_ENTRY * thread_p, const VSID * vsids, int
     }
 
   interval = pgbuf_discard_interval_open ();
+
+  if ((INT64) nsects * DISK_SECTOR_NPAGES * PGBUF_DISCARD_PROBE_COST_IN_BCBS < (INT64) pgbuf_Pool.num_buffers)
+    {
+      for (i = 0; i < nsects; i++)
+	{
+	  vpid.volid = vsids[i].volid;
+	  for (offset = 0, vpid.pageid = SECTOR_FIRST_PAGEID (vsids[i].sectid); offset < DISK_SECTOR_NPAGES;
+	       offset++, vpid.pageid++)
+	    {
+	      /* under the anchor mutex the chain is stable; pgbuf_discard_page () checks the bcb again. */
+	      hash_anchor = &pgbuf_Pool.buf_hash_table[PGBUF_HASH_VALUE (&vpid)];
+	      pthread_mutex_lock (&hash_anchor->hash_mutex);
+	      bufptr = pgbuf_search_hash_chain_no_bcb_lock (thread_p, hash_anchor, &vpid);
+	      pthread_mutex_unlock (&hash_anchor->hash_mutex);
+	      if (bufptr != NULL)
+		{
+		  (void) pgbuf_discard_page (thread_p, bufptr, &vpid, NULL, interval);
+		}
+	    }
+	}
+      pgbuf_discard_interval_close (interval);
+      return;
+    }
+
   for (bufid = 0; bufid < pgbuf_Pool.num_buffers; bufid++)
     {
       bufptr = PGBUF_FIND_BCB_PTR (bufid);
