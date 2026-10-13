@@ -50,6 +50,7 @@ valid options:\n\
       --no-pager               do not use pager\n\
       --no-single-line         turn off single line oriented execution\n\
       --no-trigger-action      disable trigger action\n\
+      --echo                   print SQL statements before execution\n\
       --delimiter=ARG          delimiter between columns (only work with -q)\n\
       --enclosure=ARG          enclosure for result string (only work with -q)\n\
 \n\
