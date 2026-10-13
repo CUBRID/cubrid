@@ -9069,6 +9069,19 @@ fileio_flush_backup_reap_slot (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * 
       cblist[0] = cb;
       if (aio_suspend (cblist, 1, NULL) != 0 && errno != EINTR)
 	{
+	  /* aio_suspend can no longer report on this request, but the write may still be outstanding and
+	   * its buffer is buffer_ring[which], which the caller's error path frees (fileio_abort_backup)
+	   * after closing bkup.vdes. The request must outlive neither, so cancel it and drain it to
+	   * completion first; aio_cancel alone is not enough because an already-running write returns
+	   * AIO_NOTCANCELED. */
+	  (void) aio_cancel (cb->aio_fildes, cb);
+	  while (aio_error (cb) == EINPROGRESS)
+	    {
+	      cblist[0] = cb;
+	      (void) aio_suspend (cblist, 1, NULL);
+	    }
+	  (void) aio_return (cb);
+
 	  er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_WRITE, 2,
 			       CEIL_PTVDIV (session_p->bkup.voltotalio, IO_PAGESIZE), session_p->bkup.vlabel);
 	  session_p->bkup.slot_in_flight[which] = false;
