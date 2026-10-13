@@ -62,6 +62,7 @@ extern int pt_has_text_domain (PARSER_CONTEXT * parser, DB_ATTRIBUTE * attribute
 extern PT_NODE *pt_find_order_value_in_list (PARSER_CONTEXT * parser, const PT_NODE * sort_value,
 					     const PT_NODE * order_list);
 extern bool pt_check_cast_op (PARSER_CONTEXT * parser, PT_NODE * node);
+extern bool pt_is_cast_valid (PT_TYPE_ENUM arg_type, PT_TYPE_ENUM cast_type);
 extern bool pt_check_compatible_node_for_orderby (PARSER_CONTEXT * parser, PT_NODE * order, PT_NODE * column);
 extern bool pt_check_compatible_node_for_min_max_optimize (PARSER_CONTEXT * parser, PT_NODE * order, PT_NODE * column);
 extern PT_NODE *pt_check_odku_assignments (PARSER_CONTEXT * parser, PT_NODE * insert);

@@ -58,6 +58,7 @@
 #include "tde.h"
 #include "jsp_cl.h"
 #include "xasl.h"
+#include "release_string.h"
 
 #include <malloc.h>
 
@@ -468,6 +469,7 @@ static PT_NODE *pt_apply_use (PARSER_CONTEXT * parser, PT_NODE * p, void *arg);
 static PARSER_VARCHAR *pt_print_use (PARSER_CONTEXT * parser, PT_NODE * p);
 #endif
 
+static PARSER_VARCHAR *parser_print_client_values (PARSER_CONTEXT * parser, PARSER_VARCHAR * string);
 static int parser_print_user (char *user_text, int len);
 
 static void pt_clean_tree_copy_info (PT_TREE_COPY_INFO * tree_copy_info);
@@ -2588,6 +2590,20 @@ pt_print_bytes (PARSER_CONTEXT * parser, const PT_NODE * node)
 
   CAST_POINTER_TO_NODE (node);
 
+  if (node->flag.is_own_default && (parser->custom_print & PT_PRINT_USER) != 0)
+    {
+      PT_NODE *own_default = (PT_NODE *) node;
+
+      /* printed for the XASL cache key: the INSERT fills this value from the DEFAULT slot of its column, unlike the
+       * same expression written in its place, so the key marks it; it keeps the expression too, as a change of a
+       * view DEFAULT does not drop the XASL of the base class */
+      result = pt_append_nulstring (parser, NULL, "default:");
+      own_default->flag.is_own_default = 0;
+      result = pt_append_varchar (parser, result, pt_print_bytes (parser, own_default));
+      own_default->flag.is_own_default = 1;
+      return result;
+    }
+
   if (node->flag.is_cnf_start && !parser->flag.is_in_and_list)
     {
       return pt_print_and_list (parser, node);
@@ -3094,6 +3110,7 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
   char user_text_buffer[PT_QUERY_STRING_USER_TEXT];
 
   assert (parser->dblink_server_text == NULL);
+  parser->flag.print_client_values = 0;
   string = pt_print_bytes (parser, node);
   if (string)
     {
@@ -3111,6 +3128,14 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
 	    {
 	      string = pt_append_nulstring (parser, string, user_text_buffer);
 	    }
+
+	  /* the client values the XASL compiles as constants: those of the operators printed above
+	   * (pt_print_expr), and those of the DEFAULTs an INSERT of the statement leaves out */
+	  if (parser->flag.print_client_values || pt_omitted_defaults_read_client (parser, (PT_NODE *) node))
+	    {
+	      string = parser_print_client_values (parser, string);
+	    }
+	  parser->flag.print_client_values = 0;
 	}
       if ((parser->custom_print & PT_PRINT_HOST_VAR_COUNT) != 0)
 	{
@@ -3190,6 +3215,29 @@ parser_print_user (char *user_text, int len)
     }
 
   return snprintf (p, len - 1, "user=%d|%d|%d", oid->volid, oid->pageid, oid->slotid);
+}
+
+/*
+ * parser_print_client_values () - append to the XASL cache key text the client values XASL generation compiles as
+ *	constants (pt_op_reads_client_value): the user and host USER () returns and the build VERSION () returns
+ *
+ * return	  : the text, extended
+ * parser (in)	  : parser context
+ * string (in)	  : the text
+ */
+static PARSER_VARCHAR *
+parser_print_client_values (PARSER_CONTEXT * parser, PARSER_VARCHAR * string)
+{
+  char *user_and_host = db_get_user_and_host_name ();
+
+  string = pt_append_nulstring (parser, string, ";client=");
+  if (user_and_host != NULL)
+    {
+      string = pt_append_nulstring (parser, string, user_and_host);
+      db_private_free_and_init (NULL, user_and_host);
+    }
+  string = pt_append_nulstring (parser, string, "|");
+  return pt_append_nulstring (parser, string, rel_build_number ());
 }
 
 /*
@@ -8999,7 +9047,9 @@ pt_init_data_default (PT_NODE * p)
 {
   p->info.data_default.default_value = (PT_NODE *) 0;
   p->info.data_default.shared = (PT_MISC_TYPE) 0;
-  p->info.data_default.default_expr_type = DB_DEFAULT_NONE;
+  p->info.data_default.expr_text = NULL;
+  p->info.data_default.expr_volatility = PT_VOLATILITY_UNSET;
+  p->info.data_default.expr_type = PT_TYPE_NONE;
   return p;
 }
 
@@ -10547,6 +10597,12 @@ pt_print_expr (PARSER_CONTEXT * parser, PT_NODE * p)
   assert_release (p != p->info.expr.arg1);
   assert_release (p != p->info.expr.arg2);
   assert_release (p != p->info.expr.arg3);
+
+  if ((parser->custom_print & PT_PRINT_USER) != 0 && pt_op_reads_client_value (p->info.expr.op))
+    {
+      /* printed for the XASL cache key: the XASL holds a value of this client (parser_print_tree) */
+      parser->flag.print_client_values = 1;
+    }
 
   if (p->info.expr.paren_type == 1)
     {

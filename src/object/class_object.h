@@ -401,6 +401,12 @@ struct sm_default_value
   DB_DEFAULT_EXPR default_expr;	/* default expression */
 };
 
+/* Whether a DEFAULT gives a row that omits the column a value of its own: a stored value does, and so does a
+ * residual expression, which is evaluated when the row is populated even if its DDL-time snapshot is NULL.
+ * (dv) is an SM_DEFAULT_VALUE pointer. */
+#define SM_DEFAULT_SUPPLIES_VALUE(dv) \
+  ( !DB_IS_NULL (&(dv)->value) || DB_IS_RESIDUAL_DEFAULT_EXPR (&(dv)->default_expr) )
+
 typedef struct sm_attribute SM_ATTRIBUTE;
 
 /*

@@ -307,13 +307,16 @@ struct trace_json_t;
 #define PT_IS_FUNCTION(n) \
         ( (n) && ((n)->node_type == PT_FUNCTION) )
 
+/* An expression DEFAULT, Expression-Derived Literal or residual: its normalized source text is stored and
+ * stands for the DEFAULT.  (n) is a PT_DATA_DEFAULT node. */
+#define PT_HAS_DEFAULT_EXPR(n) \
+        ( (n) && ((n)->node_type == PT_DATA_DEFAULT) && ((n)->info.data_default.expr_text != NULL) )
+
 /* a PT_DATA_DEFAULT node carrying a residual DEFAULT expression: classified
- * STABLE or VOLATILE by pt_check_data_default, on the new DEFAULT path (no
- * legacy pseudo-column enum).  A STABLE residual is evaluated once per
- * statement, a VOLATILE one once per row. */
+ * STABLE or VOLATILE by pt_check_data_default.  A STABLE residual is
+ * evaluated once per statement, a VOLATILE one once per row. */
 #define PT_IS_RESIDUAL_DEFAULT(n) \
         ( (n) && ((n)->node_type == PT_DATA_DEFAULT) && \
-          (n)->info.data_default.default_expr_type == DB_DEFAULT_NONE && \
           PT_VOLATILITY_IS_RESIDUAL ((n)->info.data_default.expr_volatility) )
 
 #define PT_IS_VOLATILE_RESIDUAL_DEFAULT(n) \
@@ -2129,11 +2132,13 @@ struct pt_data_default_info
 {
   PT_NODE *default_value;	/* PT_VALUE (list) */
   PT_MISC_TYPE shared;		/* will PT_SHARED or PT_DEFAULT */
-  DB_DEFAULT_EXPR_TYPE default_expr_type;	/* if it is a pseudocolumn, do not evaluate expr */
-  char *expr_text;		/* normalized source text of an Expression-Derived Literal DEFAULT; NULL otherwise */
+  char *expr_text;		/* normalized source text of an expression DEFAULT (Expression-Derived Literal or
+				 * residual); NULL otherwise */
   PT_VOLATILITY expr_volatility;	/* effective volatility of a DEFAULT expression on the new path:
-					 * IMMUTABLE for an Expression-Derived Literal, STABLE for a residual
-					 * expression that survives folding; UNSET otherwise */
+					 * IMMUTABLE for an Expression-Derived Literal, STABLE or VOLATILE for a
+					 * residual expression that survives folding; UNSET otherwise */
+  PT_TYPE_ENUM expr_type;	/* type of a column DEFAULT expression before folding, what the DDL checks against
+				 * the column (a folded NULL carries no type); PT_TYPE_NONE otherwise */
 };
 
 /* Info for the AUTO_INCREMENT node */
@@ -3832,6 +3837,10 @@ struct parser_node
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
     unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
     unsigned for_default_func:1;	/* for DEFAULT built-in function */
+    unsigned is_restored_default:1;	/* root of a DEFAULT tree copy grafted into a statement: type checking
+					 * keeps the types it was restored with */
+    unsigned is_own_default:1;	/* an INSERT value that is the DEFAULT of its own column (the DEFAULT keyword, or
+				 * DEFAULT (c) in the place of c): all of them share the DEFAULT slot of the column */
     unsigned hv_pred_plan_unpeeked:1;	/* the plan this statement is about to execute was chosen with unbound
 					 * host-variable predicate markers (HV_PRED_PLAN_UNPEEKED in the XASL
 					 * header), so the first execution must replan under the real values.
@@ -3965,6 +3974,8 @@ struct parser_context
   struct pt_cdt_registry_entry *cdt_registry;	/* CDT registry: rehydrated Compact DEFAULT Trees, one per
 						 * attribute per parser (pt_cdt_registry_tree); a parser_alloc'd
 						 * list released with the parser, NULL until used */
+  struct pt_rand_state **rand_states;	/* while set, each seeded RAND/DRAND/RANDOM/DRANDOM call keeps its
+					 * generator in this list (pt_evaluate_seeded_rand); NULL otherwise */
 
   COMPILE_CONTEXT context;
   struct xasl_node *parent_proc_xasl;
@@ -4012,6 +4023,8 @@ struct parser_context
     unsigned is_parsing_trigger:1;
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
     unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
+    unsigned print_client_values:1;	/* the XASL cache key being printed must carry the client values the
+					 * statement compiles (pt_op_reads_client_value) */
   } flag;
 };
 

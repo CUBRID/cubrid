@@ -34,8 +34,9 @@
  * whether an expression is admissible in a DEFAULT.  The zero value is a distinct
  * UNSET sentinel (NOT volatile): an un-annotated overload reaching DEFAULT
  * processing is treated as not constant-foldable, never silently as Volatile.
- * The values are ordered (IMMUTABLE < STABLE < VOLATILE) and persisted in two
- * regu-flag bits (REGU_VARIABLE_DEFAULT_VOLATILITY_*), so they must not change.
+ * The values are ordered (IMMUTABLE < STABLE < VOLATILE).  A DEFAULT_EXPR_REGU_STREAM
+ * build persists them in two regu-flag bits (REGU_VARIABLE_DEFAULT_VOLATILITY_*),
+ * so they must not change.
  */
 typedef enum
 {
@@ -66,9 +67,7 @@ pt_volatility_max (PT_VOLATILITY a, PT_VOLATILITY b)
 /*
  * A "residual" column DEFAULT is an expression that survived constant folding:
  * its effective volatility is classified at or above STABLE (folding can only
- * reduce IMMUTABLE subtrees).  Callers pair these with a
- * default_expr_type == DB_DEFAULT_NONE check to exclude legacy pseudo-column
- * defaults (SYSDATE, UUID(7), ...), which carry their own DB_DEFAULT_* enum.
+ * reduce IMMUTABLE subtrees).
  */
 #define PT_VOLATILITY_IS_RESIDUAL(vol)          ((vol) >= PT_VOLATILITY_STABLE)
 #define PT_VOLATILITY_IS_VOLATILE_RESIDUAL(vol) ((vol) == PT_VOLATILITY_VOLATILE)

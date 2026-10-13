@@ -414,6 +414,17 @@ struct remote_dml_sink
   char *table_name;		/* remote target table name */
 };
 
+/* a residual (STABLE or VOLATILE) column DEFAULT compiled with the INSERT that fills it */
+typedef struct insert_default_slot INSERT_DEFAULT_SLOT;
+struct insert_default_slot
+{
+  int att_index;		/* place of the attribute in att_id, below num_default_expr */
+  PT_VOLATILITY volatility;	/* STABLE: evaluated once per statement, VOLATILE: once per row */
+  REGU_VARIABLE *expr;		/* the DEFAULT expression */
+  DB_VALUE *value;		/* a listed attribute: the value its own DEFAULT gives, which each VALUES row
+				 * filling the attribute with it reads; NULL for an attribute left out */
+};
+
 typedef struct insert_proc_node INSERT_PROC_NODE;
 struct insert_proc_node
 {
@@ -422,6 +433,9 @@ struct insert_proc_node
   int num_vals;			/* total number of attrs involved */
   int num_default_expr;		/* total number of attrs which require a default value to be inserted */
   int *att_id;			/* ID's of attributes (array) */
+  int num_default_slots;	/* number of default_slots */
+  INSERT_DEFAULT_SLOT *default_slots;	/* residual DEFAULTs among the first num_default_expr attributes, in
+					 * att_id order */
   DB_VALUE **vals;		/* values (array) */
   PRED_EXPR *cons_pred;		/* constraint predicate */
   ODKU_INFO *odku;		/* ON DUPLICATE KEY UPDATE assignments */

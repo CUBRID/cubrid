@@ -278,6 +278,12 @@ static int pt_init_pred_expr_context (PARSER_CONTEXT * parser, PT_NODE * predica
 				      PRED_EXPR_WITH_CONTEXT * pred_expr);
 static bool validate_regu_key_function_index (REGU_VARIABLE * regu_var);
 static XASL_NODE *pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_null_attrs);
+#if !defined (DEFAULT_EXPR_REGU_STREAM)
+static int pt_to_insert_default_slots (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, INSERT_PROC_NODE * insert,
+				       PT_NODE * value_clauses, PT_NODE * err_node);
+static int pt_to_insert_listed_default_slots (PARSER_CONTEXT * parser, INSERT_PROC_NODE * insert,
+					      PT_NODE * value_clauses);
+#endif
 static XASL_NODE *pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * non_null_attrs,
 					   PT_NODE * default_expr_attrs);
 static PT_NODE *pt_append_assignment_references (PARSER_CONTEXT * parser, PT_NODE * assignments, PT_NODE * from,
@@ -20264,6 +20270,16 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      insert->vals = NULL;
 	      insert->num_vals = num_vals + num_default_expr;
 	      insert->num_default_expr = num_default_expr;
+
+#if !defined (DEFAULT_EXPR_REGU_STREAM)
+	      if (error >= NO_ERROR)
+		{
+		  error = pt_to_insert_default_slots (parser, class_obj, insert,
+						      (value_clauses != NULL
+						       && value_clauses->info.node_list.list_type == PT_IS_VALUE)
+						      ? value_clauses : NULL, default_expr_attrs);
+		}
+#endif
 	    }
 	  else
 	    {
@@ -26902,6 +26918,35 @@ outofmem:
 }
 
 /*
+ * pt_default_tree_to_regu () - compile a residual DEFAULT expression, as restored from its Compact DEFAULT Tree,
+ *	without type checking it again
+ *   return: the expression, or NULL with a parser error
+ *   parser(in): parser context
+ *   tree(in): the DEFAULT expression
+ *
+ * The DDL check, the DEFAULT slots of an INSERT and the stored REGU form all compile through here, so the DDL
+ * check sees what an INSERT compiles.
+ */
+static REGU_VARIABLE *
+pt_default_tree_to_regu (PARSER_CONTEXT * parser, PT_NODE * tree)
+{
+  REGU_VARIABLE *regu;
+
+  regu = pt_to_regu_variable (parser, tree, UNBOX_AS_VALUE);
+  if (regu == NULL || pt_has_error (parser))
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "compile the DEFAULT expression");
+	}
+      return NULL;
+    }
+
+  return regu;
+}
+
+#if defined (DEFAULT_EXPR_REGU_STREAM)
+/*
  * pt_to_default_expr_stream () - compiles a residual DEFAULT expression to a
  *	serialized REGU form (a FUNC_PRED stream) for Server Evaluation
  *   return: NO_ERROR or error code
@@ -26971,10 +27016,10 @@ pt_to_default_expr_stream (PARSER_CONTEXT * parser, PT_NODE * expr, char **strea
       goto end;
     }
 
-  func_pred->func_regu = pt_to_regu_variable (parser, expr, UNBOX_AS_VALUE);
+  func_pred->func_regu = pt_default_tree_to_regu (parser, expr);
   func_pred->cache_attrinfo = symbols->cache_attrinfo;
 
-  if (pt_has_error (parser) || func_pred->func_regu == NULL)
+  if (func_pred->func_regu == NULL)
     {
       pt_report_to_ersys (parser, PT_SEMANTIC);
       error = er_errid ();
@@ -26998,6 +27043,270 @@ end:
 
   return error;
 }
+#endif /* DEFAULT_EXPR_REGU_STREAM */
+
+/*
+ * pt_check_default_expr_compile () - check at DDL time that the Compact DEFAULT Tree of a residual DEFAULT
+ *	compiles, as an INSERT compiles it into a DEFAULT slot of its XASL
+ *   return: NO_ERROR or error code
+ *   parser(in): parser context
+ *   stream(in): the Compact DEFAULT Tree just derived from the DEFAULT
+ *   stream_size(in): stream size in bytes
+ *
+ * The tree is compiled as stored, without type checking it again, and the result is discarded.
+ */
+int
+pt_check_default_expr_compile (PARSER_CONTEXT * parser, const char *stream, int stream_size)
+{
+  SYMBOL_INFO *save_symbols = parser->symbols;
+  PT_NODE *tree;
+  int error = NO_ERROR;
+
+  tree = pt_compact_default_tree_from_stream (parser, stream, stream_size);
+  if (tree == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "rehydrate the DEFAULT expression");
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      return er_errid ();
+    }
+
+  pt_enter_packing_buf ();
+
+  parser->symbols = pt_symbol_info_alloc ();
+  if (parser->symbols == NULL)
+    {
+      PT_ERRORm (parser, tree, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+    }
+  else
+    {
+      (void) pt_default_tree_to_regu (parser, tree);
+    }
+
+  if (pt_has_error (parser))
+    {
+      pt_report_to_ersys (parser, PT_SEMANTIC);
+      error = er_errid ();
+      if (error == NO_ERROR)
+	{
+	  error = ER_FAILED;
+	}
+    }
+
+  parser->symbols = save_symbols;
+  pt_exit_packing_buf ();
+  parser_free_tree (parser, tree);
+
+  return error;
+}
+
+#if !defined (DEFAULT_EXPR_REGU_STREAM)
+/*
+ * pt_to_insert_default_slots () - compile the residual DEFAULTs of the attributes an INSERT leaves out into the
+ *	DEFAULT slots of its XASL
+ *   return: NO_ERROR or error code
+ *   parser(in): parser context
+ *   class_obj(in): the class inserted into
+ *   insert(in/out): the INSERT_PROC_NODE receiving the slots; its first num_default_expr att_id are the attributes
+ *		     the INSERT leaves out
+ *   value_clauses(in): the VALUES rows, already compiled into insert->valptr_lists; NULL for any other source
+ *   err_node(in): node the errors are reported on
+ *
+ * Each slot compiles the Compact DEFAULT Tree as stored, without type checking it again, so the expression does
+ * not depend on the session that compiles the INSERT. The REGU constants point into the parser's CDT registry
+ * trees, which live until the XASL is serialized. The slots follow att_id, so the executor walks both together:
+ * first the attributes left out, then the listed ones the VALUES fill with their own DEFAULT
+ * (pt_to_insert_listed_default_slots).
+ */
+static int
+pt_to_insert_default_slots (PARSER_CONTEXT * parser, DB_OBJECT * class_obj, INSERT_PROC_NODE * insert,
+			    PT_NODE * value_clauses, PT_NODE * err_node)
+{
+  SM_CLASS *smclass = NULL;
+  SM_ATTRIBUTE *att;
+  PT_NODE *tree;
+  PT_VOLATILITY volatility;
+  INSERT_DEFAULT_SLOT *slot;
+  int k;
+  int error;
+
+  /* every failure leaves a parser error, which makes the caller drop the XASL */
+  error = au_fetch_class_force (class_obj, &smclass, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      PT_ERRORc (parser, err_node, er_msg ());
+      return error;
+    }
+
+  for (k = 0; k < insert->num_default_expr; k++)
+    {
+      att = classobj_find_attribute_id (smclass, insert->att_id[k], 0);
+      if (att == NULL || !DB_IS_RESIDUAL_DEFAULT_EXPR (&att->default_value.default_expr))
+	{
+	  continue;
+	}
+
+      if (insert->default_slots == NULL)
+	{
+	  /* room for every attribute from here on, of which only the residual ones take a slot */
+	  regu_array_alloc (&insert->default_slots, insert->num_vals - k);
+	  if (insert->default_slots == NULL)
+	    {
+	      PT_ERRORm (parser, err_node, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	}
+
+      tree = pt_cdt_registry_tree (parser, att, &volatility);
+      if (tree == NULL)
+	{
+	  /* the registry diagnosed the failure where it happened */
+	  ASSERT_ERROR_AND_SET (error);
+	  PT_ERRORc (parser, err_node, er_msg ());
+	  return error;
+	}
+      assert (PT_VOLATILITY_IS_RESIDUAL (volatility));
+
+      slot = &insert->default_slots[insert->num_default_slots];
+      slot->att_index = k;
+      slot->volatility = volatility;
+      slot->expr = pt_default_tree_to_regu (parser, tree);
+      if (slot->expr == NULL)
+	{
+	  return ER_FAILED;
+	}
+      slot->value = NULL;
+      insert->num_default_slots++;
+    }
+
+  if (value_clauses == NULL)
+    {
+      return NO_ERROR;
+    }
+  return pt_to_insert_listed_default_slots (parser, insert, value_clauses);
+}
+
+/*
+ * pt_to_insert_listed_default_slots () - give a DEFAULT slot to every listed attribute the VALUES fill with its own
+ *	DEFAULT, and make each such value read the slot
+ *   return: NO_ERROR or error code
+ *   parser(in): parser context
+ *   insert(in/out): the INSERT_PROC_NODE, its slots for the attributes left out already built
+ *   value_clauses(in): the VALUES rows, already compiled into insert->valptr_lists
+ *
+ * The DEFAULT keyword, or DEFAULT (c) in the place of c, is the DEFAULT of its own column (is_own_default): every
+ * row giving it shares one slot, as the column left out does, and the server evaluates the slot where a row uses
+ * it, so a VOLATILE DEFAULT advances only on those rows. The slot compiles the tree the first such row grafted (a
+ * view grafts its own DEFAULT). A DEFAULT (b) in another place stays the expression of that place.
+ */
+static int
+pt_to_insert_listed_default_slots (PARSER_CONTEXT * parser, INSERT_PROC_NODE * insert, PT_NODE * value_clauses)
+{
+  int num_listed = insert->num_vals - insert->num_default_expr;
+  PT_NODE **trees = NULL;	/* per listed attribute, the DEFAULT tree its slot compiles */
+  INSERT_DEFAULT_SLOT **slots = NULL;	/* per listed attribute, its slot */
+  PT_NODE *row, *value, *tree, *unclassified_node = NULL;
+  REGU_VARIABLE_LIST regu_list;
+  INSERT_DEFAULT_SLOT *slot;
+  int i, p;
+  int error = NO_ERROR;
+
+  if (num_listed <= 0)
+    {
+      return NO_ERROR;
+    }
+
+  trees = (PT_NODE **) calloc (num_listed, sizeof (PT_NODE *));
+  slots = (INSERT_DEFAULT_SLOT **) calloc (num_listed, sizeof (INSERT_DEFAULT_SLOT *));
+  if (trees == NULL || slots == NULL)
+    {
+      PT_ERRORm (parser, value_clauses, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+
+  /* the attributes that take a slot, each with the tree of the first row filling it with its own DEFAULT */
+  for (row = value_clauses; row != NULL; row = row->next)
+    {
+      for (value = row->info.node_list.list, p = 0; value != NULL && p < num_listed; value = value->next, p++)
+	{
+	  tree = pt_own_default_tree (value);
+	  if (tree != NULL && trees[p] == NULL)
+	    {
+	      trees[p] = tree;
+	    }
+	}
+    }
+
+  /* their slots, in att_id order after the ones of the attributes left out */
+  for (p = 0; p < num_listed; p++)
+    {
+      if (trees[p] == NULL)
+	{
+	  continue;
+	}
+
+      if (insert->default_slots == NULL)
+	{
+	  regu_array_alloc (&insert->default_slots, num_listed - p);
+	  if (insert->default_slots == NULL)
+	    {
+	      PT_ERRORm (parser, value_clauses, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto end;
+	    }
+	}
+
+      slot = &insert->default_slots[insert->num_default_slots];
+      slot->att_index = insert->num_default_expr + p;
+      slot->volatility = pt_get_expr_tree_volatility (trees[p], &unclassified_node);
+      assert (PT_VOLATILITY_IS_RESIDUAL (slot->volatility));
+      slot->expr = pt_default_tree_to_regu (parser, trees[p]);
+      if (slot->expr == NULL)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+      regu_alloc (slot->value);
+      if (slot->value == NULL)
+	{
+	  PT_ERRORm (parser, value_clauses, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_RESOURCES_EXHAUSTED);
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+      insert->num_default_slots++;
+      slots[p] = slot;
+    }
+
+  /* every row filling such an attribute with its own DEFAULT reads the value of the slot */
+  for (row = value_clauses, i = 0; row != NULL && i < insert->num_val_lists; row = row->next, i++)
+    {
+      for (value = row->info.node_list.list, regu_list = insert->valptr_lists[i]->valptrp, p = 0;
+	   value != NULL && regu_list != NULL && p < num_listed; value = value->next, regu_list = regu_list->next, p++)
+	{
+	  if (slots[p] == NULL || pt_own_default_tree (value) == NULL)
+	    {
+	      continue;
+	    }
+	  regu_list->value.type = TYPE_CONSTANT;
+	  regu_list->value.flags = 0;
+	  regu_list->value.xasl = NULL;
+	  regu_list->value.vfetch_to = NULL;
+	  regu_list->value.value.dbvalptr = slots[p]->value;
+	}
+    }
+
+end:
+  if (trees != NULL)
+    {
+      free_and_init (trees);
+    }
+  if (slots != NULL)
+    {
+      free_and_init (slots);
+    }
+  return error;
+}
+#endif /* !DEFAULT_EXPR_REGU_STREAM */
 
 /*
  * validate_regu_key_function_index () - checks if a regu variable can be used
@@ -28295,6 +28604,13 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	  insert->vals = NULL;
 	  insert->num_vals = num_vals + num_default_expr;
 	  insert->num_default_expr = num_default_expr;
+
+#if !defined (DEFAULT_EXPR_REGU_STREAM)
+	  if (error >= 0)
+	    {
+	      error = pt_to_insert_default_slots (parser, class_obj, insert, NULL, default_expr_attrs);
+	    }
+#endif
 	}
       else
 	{
