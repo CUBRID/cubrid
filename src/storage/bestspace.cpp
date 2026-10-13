@@ -384,19 +384,17 @@ namespace cubstorage
   bestspace::shard::update_freespace (VPID vpid, std::uint16_t freespace, std::size_t &entry_index)
   {
     std::size_t i;
-    bool found;
 
-    found = false;
     for (i = 0; i < ENTRIES_PER_SHARD; i++)
       {
 	if (update_freespace_at (i, vpid, freespace))
 	  {
 	    entry_index = i;
-	    found = true;
+	    return true;
 	  }
       }
 
-    return found;
+    return false;
   }
 
   bool
@@ -1576,6 +1574,9 @@ namespace cubstorage
     candidate.pageid = vpid.pageid;
     m_candidates.update_if_exist (candidate);
 
+    // the same page may also be in another shard's L1;
+    // only one entry is updated, the cached one or else the first match,
+    // as L1_find updates only the entry it hands out
     if (l1_pos >= 0)
       {
 	i = static_cast<std::size_t> (l1_pos) / ENTRIES_PER_SHARD;
@@ -1584,7 +1585,7 @@ namespace cubstorage
 	  {
 	    return;
 	  }
-	l1_pos = -1;		// unknown; the sweep below re-learns the position
+	l1_pos = -1;		// unknown; the sweep over all shards sets it again
       }
 
     for (i = 0; i < m_shards.size (); i++)
@@ -1593,6 +1594,7 @@ namespace cubstorage
 	if (m_shards[i].update_freespace (vpid, freespace, entry_index))
 	  {
 	    l1_pos = static_cast<int> (i * ENTRIES_PER_SHARD + entry_index);
+	    return;
 	  }
       }
   }
@@ -1603,8 +1605,8 @@ namespace cubstorage
   {
     std::size_t shard;
 
-    // any shard may take the count -- get_estimates () sums them all.
-    // find ()'s rule is reused so the count lands on the shard this thread already works on
+    // get_estimates () sums every shard, so any shard can take the count;
+    // the shard is the one find () picks for this thread
     shard = m_distributed_insert ? static_cast<std::size_t> (thread_ref.index) % m_shards.size () : 0;
     m_shards[shard].add_estimates (num_pages, recs_num, recs_sumlen);
   }

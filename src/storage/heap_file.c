@@ -6402,8 +6402,8 @@ heap_scancache_check_with_hfid (THREAD_ENTRY * thread_p, HFID * hfid, OID * clas
 }
 
 /*
- * heap_scancache_reset_insert_hint () - forget the insert page hint
- *   scan_cache (in/out): the two hint fields always move together
+ * heap_scancache_reset_insert_hint () - clear the insert page hint
+ *   scan_cache (in/out): the two hint fields are always reset together
  */
 STATIC_INLINE void
 heap_scancache_reset_insert_hint (HEAP_SCANCACHE * scan_cache)
@@ -6709,6 +6709,9 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
 {
   int ret;
 
+  /* reset before any early return, or the scan cache keeps the previous heap's hint */
+  heap_scancache_reset_insert_hint (scan_cache);
+
   ret = heap_scancache_force_modify (thread_p, scan_cache);
   if (ret != NO_ERROR)
     {
@@ -6755,8 +6758,6 @@ heap_scancache_reset_modify (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cach
     }
   scan_cache->page_latch = PGBUF_LATCH_WRITE;
   scan_cache->node.classname = NULL;
-
-  heap_scancache_reset_insert_hint (scan_cache);
 
   return ret;
 }
@@ -21262,21 +21263,29 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 
       assert (!HFID_IS_NULL (&context->hfid));
 
-      /* Rows of a batch INSERT mostly land on the same page,
-       * so the page that took this scan's previous insert is tried before the bestspace search.
-       * The hint is validated like a bestspace candidate; any miss falls back to the search. */
-      if (context->scan_cache_p != NULL && !VPID_ISNULL (&context->scan_cache_p->insert_hint_vpid))
+      /* Rows of a batch INSERT mostly go to the same page,
+       * so the page of this scan's previous insert is tried before the bestspace search.
+       * The hint page is checked like a bestspace candidate; any miss falls back to the search.
+       * The hint page is tried only when:
+       *   - a scan cache is given: some callers insert without one
+       *   - the scan cache holds a hint: none before the first insert or after the hint is dropped
+       *   - no error is pending: bestspace::find returns a pending error,
+       *     which the er_clear () calls of the hint path would clear */
+      if (context->scan_cache_p != NULL && !VPID_ISNULL (&context->scan_cache_p->insert_hint_vpid)
+	  && er_errid_if_has_error () == NO_ERROR)
 	{
 	  // *INDENT-OFF*
 	  cubstorage::bestspace *bestspace;
 	  // *INDENT-ON*
 
-	  /* the bestspace is looked up before the hint page is latched,
-	   * and lookup only (NULL class_oid) -- a registry find, no build. */
+	  /* lookup only (NULL class_oid): heap_find_bestpage builds a missing bestspace */
 	  bestspace = heap_find_bestspace (thread_p, NULL, &context->hfid, NULL);
 	  if (bestspace != NULL)
 	    {
 	      VPID hint_vpid = context->scan_cache_p->insert_hint_vpid;
+
+	      /* the watcher must be empty: pgbuf_ordered_fix puts the hint page into it */
+	      assert (PGBUF_IS_CLEAN_WATCHER (context->home_page_watcher_p));
 
 	      /* mirrors bestspace::shard::L1_fix -- the hint page is fixed the way a bestspace candidate is */
 	      int save_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
@@ -21306,13 +21315,16 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 
 		  if (page_valid && freespace >= needed_size)
 		    {
-		      /* the search charges the record to the estimates when it hands out a page,
-		       * so the hint does too -- otherwise the estimates lose every row that skips the search */
+		      /* the search counts the record in the estimates when it hands out a page,
+		       * so the hint does too; otherwise the estimates miss every row that skips the search */
 		      bestspace->add_estimates (*thread_p, 0, 1, context->recdes_p->length);
 
 		      /* the search charges its handout to the recorded free space; the hint does the same,
-		       * but only when the page changes tier -- the search reads by tier,
-		       * so a finer correction would not change any lookup */
+		       * but only when the page changes tier, since the L2/L3 bitmaps index by tier.
+		       *
+		       * The L1 pre-filter and the candidate queue compare the exact value,
+		       * so an entry left high within its tier costs one wasted page fix,
+		       * and the searcher that fixed the page writes back the measured value */
 		      std::uint16_t freespace_after = (std::uint16_t) (freespace - consume_size);
 
 		      // *INDENT-OFF*
@@ -21328,11 +21340,11 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 		    }
 		  else
 		    {
-		      /* hint miss; the page filled up, or vacuum took it out of the heap -- drop the hint */
+		      /* hint miss; the page is too full or no longer this class's heap page -- drop the hint */
 		      er_clear ();	/* a failed header read is already logged */
 
-		      /* correct the recorded free space once before the hint goes,
-		       * so the next searcher is not sent to a page this scan already filled */
+		      /* correct the recorded free space once before the hint is dropped,
+		       * so the next searcher reads the measured free space */
 		      if (page_valid)
 			{
 			  // *INDENT-OFF*
@@ -21353,7 +21365,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 		}
 	      else if (error_code == ER_PB_BAD_PAGEID || er_errid () == ER_PB_BAD_PAGEID)
 		{
-		  /* hint miss; the hinted page was deallocated -- drop the hint */
+		  /* hint miss; the hint page was deallocated -- drop the hint */
 		  heap_scancache_reset_insert_hint (context->scan_cache_p);
 		  er_clear ();
 		  error_code = NO_ERROR;
@@ -24158,7 +24170,7 @@ error:
   CUBRID_OBJ_INSERT_END (&context->class_oid, (rc < 0));
 #endif /* ENABLE_SYSTEMTAP */
 
-  /* remember the page that took this insert; the next insert of this scan tries it first */
+  /* save the page of this insert as the hint; the next insert of this scan tries it first */
   if (rc == NO_ERROR && context->scan_cache_p != NULL && !OID_ISNULL (&context->res_oid))
     {
       VPID res_vpid;
