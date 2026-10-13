@@ -1,32 +1,14 @@
+# The job name "Check TC PRs" is the required check on develop.
 #
-# TC Merge Gate — Block engine PR merge while TC changes are still unlanded
+# Branch content counts, not just an open TC PR: TC Branch Finalize deletes
+# tc/pr-<N> when the engine PR merges, and what it held is lost (#7964).
+# Anything the gate cannot confirm blocks: a lost TC change costs more than a re-run.
 #
-# Register as Required Status Check in Branch Protection Rules:
-#   Settings → Branches → develop → Require status checks → "Check TC PRs"
-#
-# Fail conditions (per TC repo, either one blocks):
-#   - An open TC PR for tc/pr-<N>                  →  merge it, or close it if it carries nothing
-#   - tc/pr-<N> holds content develop does not have →  merge the TC PR
-#
-# The second condition exists because TC Branch Finalize closes the TC PR and
-# deletes tc/pr-<N> when the engine PR merges. Whatever the branch still holds
-# is gone at that moment (CUBRID/cubrid#7964 lost a reviewed commit that way).
-#
-# Every answer this gate cannot establish blocks. Losing a TC change costs more
-# than one re-run.
-#
-# The scheduled sweep judges open PRs again, because tc/pr-<N> changes after the
-# engine PR's last event and GitHub does not re-evaluate required checks when
-# the merge button is hit.
-#
-# Where a verdict is stale the sweep re-runs the gate job; it never writes a check
-# run of its own. The Checks API files a check run under whichever workflow ran
-# first on the commit, and branch protection reads the newest run of each workflow
-# on its own: a verdict filed under another workflow blocks however the gate
-# decides, and one filed under an older gate run is ignored (CUBRID/cubrid#8118).
-# An earlier sweep did write such check runs. They cannot be deleted, so both jobs
-# keep them equal to the gate's verdict.
-#
+# The sweep exists because GitHub does not re-run required checks at merge time.
+# It never writes a check run: one written through the Checks API lands under
+# whichever workflow ran first and blocks on its own, and a re-run copies it over
+# the fresh verdict (#8118). An earlier sweep wrote such entries. They cannot be
+# deleted, so ALIGN keeps them equal to the gate's verdict.
 
 name: TC Merge Gate
 
@@ -44,7 +26,7 @@ on:
         required: true
         type: string
 
-permissions: {} # Least privilege — jobs opt in below
+permissions: {}
 
 concurrency:
   group: tc-merge-gate-${{ github.event.pull_request.number || inputs.pr_number || 'sweep' }}
@@ -54,8 +36,6 @@ env:
   OWNER: CUBRID
   TC_REPOS: 'cubrid-testcases cubrid-testcases-private-ex'
 
-  # judge <engine-pr-number> — needs GH_TOKEN scoped to the TC repos.
-  # stdout: first line PASS|BLOCK, rest a markdown bullet list.
   JUDGE: |
     set -uo pipefail
 
@@ -64,11 +44,9 @@ env:
     VERDICT=PASS
     DETAIL=""
 
-    # Paths carry '%' and spaces; they must be encoded before they enter a URL.
     url_path() { jq -rn --arg s "$1" '$s|@uri' | sed 's|%2F|/|g'; }
 
-    # Blob sha of a path on develop, '-' when develop does not have it, '?' when
-    # the answer did not arrive. '?' matches nothing, so it blocks.
+    # '-' = develop lacks the path. '?' = no answer; it matches no blob, so it blocks.
     dev_blob() {
       local out
       if out=$(gh api "repos/${OWNER}/${1}/contents/$(url_path "${2}")?ref=develop" --jq '.sha' 2>&1); then
@@ -81,8 +59,7 @@ env:
     }
 
     for TC_REPO in ${TC_REPOS}; do
-      # This call also stands in for an access check: a token that cannot see the
-      # repo fails here, before a 404 below could read as "no branch".
+      # Also the access check: it fails before a 404 below could read as "no branch".
       if ! OPEN_PR=$(gh pr list --repo "${OWNER}/${TC_REPO}" --head "${BRANCH}" \
                        --state open --limit 1 --json url,isDraft --jq '.[0] // empty'); then
         DETAIL+="- ⚠️ **${TC_REPO}**: could not read the TC PR list — re-run this check"$'\n'
@@ -108,8 +85,7 @@ env:
         continue
       fi
 
-      # The three-dot file list only says which paths the branch touched. A squash
-      # merge leaves them all listed, so the content decides, not the commits.
+      # A squash merge leaves every touched path listed, so each file's content decides.
       if ! CHANGED=$(gh api "repos/${OWNER}/${TC_REPO}/compare/develop...${BRANCH}" \
                        --jq '.files[]? | "\(.status)\t\(if .status == "removed" then "-" else .sha end)\t\(.previous_filename // "-")\t\(.filename)"'); then
         DETAIL+="- ⚠️ **${TC_REPO}**: could not compare \`${BRANCH}\` with develop — re-run this check"$'\n'
@@ -125,7 +101,6 @@ env:
         continue
       fi
 
-      # The compare API reports at most 300 files. Past that, silence is not proof.
       if [ "${FILE_COUNT}" -ge 300 ]; then
         DETAIL+="- ❌ **${TC_REPO}**: \`${BRANCH}\` touches ${FILE_COUNT} files or more,"
         DETAIL+=" which is past what the compare API reports. Merge the TC PR."$'\n'
@@ -138,7 +113,6 @@ env:
       LIST=''
       while IFS=$'\t' read -r STATUS BRANCH_BLOB PREVIOUS FILE; do
         HIT=''
-        # Never skip a line quietly: an entry we cannot read is an answer we do not have.
         [ -z "${FILE}" ] && HIT='(an entry of the compare output could not be read)'
         if [ -n "${HIT}" ]; then
           :
@@ -146,8 +120,6 @@ env:
           [ "$(dev_blob "${TC_REPO}" "${FILE}")" != '-' ] && HIT="${FILE} (deleted on the branch)"
         else
           [ "$(dev_blob "${TC_REPO}" "${FILE}")" != "${BRANCH_BLOB}" ] && HIT="${FILE}"
-          # A rename also deletes its old path, and that deletion can be unlanded
-          # while the new path already matches.
           if [ -z "${HIT}" ] && [ "${STATUS}" = renamed ] && [ "${PREVIOUS}" != '-' ]; then
             [ "$(dev_blob "${TC_REPO}" "${PREVIOUS}")" != '-' ] && HIT="${PREVIOUS} (renamed on the branch)"
           fi
@@ -173,11 +145,6 @@ env:
     echo "${VERDICT}"
     printf '%s' "${DETAIL}"
 
-  # align <head-sha> <success|failure> <detail> — needs GH_TOKEN with checks: write
-  # on ENGINE_REPO. Sets every "Check TC PRs" check run on the commit that no job
-  # owns to the given verdict. A re-run copies those onto the end of its run, so one
-  # left stale would land on top of the fresh verdict.
-  # stdout: how many it changed.
   ALIGN: |
     set -uo pipefail
 
@@ -188,8 +155,7 @@ env:
     fi
     FOLLOWS='Follows the TC Merge Gate verdict. To judge again, re-run TC Merge Gate / Check TC PRs, not this entry.'
 
-    # A verdict can match while the text is still an earlier sweep's, which links
-    # that sweep's run. Re-running that run brings back the code that wrote it.
+    # The old text links the old sweep run, and re-running that run brings its code back.
     IDS=$(gh api --paginate "repos/${ENGINE_REPO}/commits/${1}/check-runs?check_name=Check%20TC%20PRs&filter=all&per_page=100" \
             --jq ".check_runs[] | select(.app.slug == \"github-actions\")
                   | select((.details_url // \"\") | test(\"/actions/runs/\") | not)
@@ -246,9 +212,7 @@ jobs:
             exit 1
           fi
 
-          # A re-run executes the workflow as it was when the run began, and the
-          # sweep re-runs old runs. Reading the judge from develop keeps them on
-          # today's rules.
+          # A re-run uses the workflow as it was when the run began.
           if ! GH_TOKEN="${GITHUB_TOKEN}" gh api -H 'Accept: application/vnd.github.raw' \
                  "repos/${ENGINE_REPO}/contents/.github/workflows/tc-merge-gate.yml?ref=develop" \
                | yq -e '.env.JUDGE' > "${RUNNER_TEMP}/judge.sh"; then
@@ -285,7 +249,6 @@ jobs:
           ${DETAIL}"
           fi
 
-          # Best effort — the comment never decides the check result.
           {
             COMMENT_ID=$(GH_TOKEN="${GITHUB_TOKEN}" gh api "repos/${ENGINE_REPO}/issues/${PR_NUMBER}/comments" \
               --jq '.[] | select(.user.login=="github-actions[bot]" and (.body | contains("TC Merge Gate"))) | .id' \
@@ -346,8 +309,7 @@ jobs:
           printf '%s' "${JUDGE}" > "${RUNNER_TEMP}/judge.sh"
           printf '%s' "${ALIGN}" > "${RUNNER_TEMP}/align.sh"
 
-          # An open TC PR blocks on its own, so one list per TC repo settles most
-          # PRs without asking about them one by one.
+          # One list per TC repo spares a judge call for most PRs.
           : > "${RUNNER_TEMP}/open-tc.txt"
           for TC_REPO in ${TC_REPOS}; do
             gh pr list --repo "${OWNER}/${TC_REPO}" --state open --limit 500 --json headRefName \
@@ -359,16 +321,14 @@ jobs:
           GH_TOKEN="${GITHUB_TOKEN}" gh pr list --repo "${ENGINE_REPO}" --base develop --state open \
             --limit 300 --json number,headRefOid,statusCheckRollup > "${RUNNER_TEMP}/open-prs.json"
 
-          # Past the limit the rest would drop out without a word.
           OPEN_N=$(jq 'length' "${RUNNER_TEMP}/open-prs.json")
           if [ "${OPEN_N}" -ge 300 ]; then
             echo "::warning::${OPEN_N} open PRs reached the list limit — raise it"
           fi
 
-          # Branch protection reads the gate's newest run: the highest run id. Its job
-          # id is what a re-run takes. An entry with no job behind it was written by
-          # an earlier sweep. No field may be empty: gh gives a running check run an
-          # empty conclusion, and read folds an empty field into the next one.
+          # Protection reads the gate's newest run (highest id). An entry with no job
+          # behind it is an earlier sweep's. No field may be empty: gh gives a running
+          # check an empty conclusion, and read folds empty fields together.
           jq -r '.[] | . as $pr
                   | [$pr.statusCheckRollup[]? | select(.name == "Check TC PRs")] as $all
                   | ([$all[] | select((.detailsUrl // "") | test("/actions/runs/[0-9]+/job/[0-9]+"))
@@ -383,7 +343,7 @@ jobs:
                   | @tsv' \
             "${RUNNER_TEMP}/open-prs.json" > "${RUNNER_TEMP}/prs.tsv"
 
-          # Re-run no gate whose verdict is younger than this: its run may still be settling.
+          # A younger verdict may still be settling: no re-run.
           MIN_AGE_SEC=1800
           NOW=$(date -u +%s)
           RERUN_N=0
@@ -394,14 +354,12 @@ jobs:
             [ "${COMPLETED}" = '-' ] && continue
             YOUNG=''
             [ $(( NOW - $(date -u -d "${COMPLETED}" +%s) )) -lt "${MIN_AGE_SEC}" ] && YOUNG=1
-            # A gate job that has not completed is still settling.
+            # A job with no verdict yet is still running.
             [ "${JOB_ID}" != '-' ] && [ "${STANDING}" = '-' ] && YOUNG=1
-            # Entries an earlier sweep wrote are aligned on every pass, young or not:
-            # a re-run of a gate run older than the ALIGN step leaves them as they were.
+            # Young PRs are aligned too: re-running a run from before ALIGN leaves entries stale.
             [ -n "${YOUNG}" ] && [ "${SWEPT_N}" = 0 ] && continue
 
-            # A young verdict may be newer than the list — a TC PR closed since — so it
-            # goes to the judge.
+            # A young verdict may postdate the list, so it goes to the judge.
             if [ -z "${YOUNG}" ] && grep -qxF "${PR_NUMBER}" "${RUNNER_TEMP}/open-tc.txt"; then
               EXPECTED=FAILURE
             else
@@ -412,7 +370,6 @@ jobs:
               EXPECTED=$( [ "$(head -n 1 <<< "${OUT}")" = BLOCK ] && echo FAILURE || echo SUCCESS )
             fi
 
-            # Before any re-run: it would copy a stale entry onto the end of its run.
             if [ "${SWEPT_N}" != 0 ]; then
               if ! N=$(GH_TOKEN="${GITHUB_TOKEN}" bash "${RUNNER_TEMP}/align.sh" "${HEAD_SHA}" "${EXPECTED,,}" \
                          "Judged by the scheduled sweep (${RUN_URL})."); then
