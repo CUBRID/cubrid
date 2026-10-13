@@ -3218,13 +3218,12 @@ scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATI
  *   return: void
  *   thread_p(in): thread entry
  *   scan_id(in/out): the scan being opened
- *   upddel_target_scan(in): the statement already answered that this spec feeds its force phase
+ *   upddel_target_scan(in): the row locks are the statement's (outermost READ COMMITTED DELETE/UPDATE target);
+ *			   kept across a partition switch
  *   cls_oid(in): the class this scan is on -- the pruned partition, on a partition switch
  *
- * Note: the statement-level half of the answer arrives in upddel_target_scan and is sticky: a partition
- *	switch reopens the scan and hands it back.  The class-level half is answered here, because it is
- *	answered per class -- a class under an online index build keeps its row locks to commit, and so
- *	does a class MVCC does not apply to -- and a partition can differ from the class it partitions.
+ * Note: decided per class, since a partition can differ from its root: a class under an online index build, or
+ *	one MVCC does not apply to, keeps its row locks to commit.
  */
 static void
 scan_set_upddel_target (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool upddel_target_scan, const OID * cls_oid)

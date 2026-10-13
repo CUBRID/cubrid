@@ -4250,12 +4250,10 @@ logtb_has_active_savepoint (THREAD_ENTRY * thread_p)
 }
 
 /*
- * logtb_wait_for_tran_end () - Block until the transaction working under mvccid ends: S_LOCK on its
- *				MVCCID self-lock, then release.
+ * logtb_wait_for_tran_end () - Block until the transaction working under mvccid ends
  *
- * return	 : NO_ERROR once that transaction has ended. An error if the lock failed, or if the
- *		   self-lock invariant is breached (grant while the transaction is still active) --
- *		   waiting again cannot recover it, so fail the statement rather than spin.
+ * return	 : NO_ERROR once that transaction has ended.  An error if the lock failed, or if the lock was granted
+ *		   while that transaction is still active -- waiting again cannot help.
  * thread_p (in) : Thread entry.
  * mvccid (in)	 : MVCCID of the in-progress transaction to wait out.
  *

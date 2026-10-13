@@ -44,9 +44,8 @@ struct btree_find_unique_helper
   OID match_class_oid;		/* Object is only considered if its class OID matches this class OID. */
   LOCK lock_mode;		/* Lock mode for found unique object. */
   bool lock_found_object;	/* Take lock_mode on the found object here.  False when the caller settles on the heap's
-				 * last version instead (locator_lock_and_get_object ()), where the row's owner is visible;
-				 * the key entry alone cannot show it, so a lock taken here would queue an owner behind a
-				 * waiter that already holds the row lock while it waits on the owner. */
+				 * last version instead: an update of a non-key column leaves the key entry as its
+				 * inserter wrote it, so only the heap shows the row's owner. */
   MVCC_SNAPSHOT *snapshot;	/* Snapshot used to filter objects not visible. If NULL, objects are not filtered. */
   bool found_object;		/* Set to true if object was found. */
 

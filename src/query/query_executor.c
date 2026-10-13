@@ -164,9 +164,8 @@
    && ((xasl)->spec_list->pruning_type == DB_NOT_PARTITIONED_CLASS)  \
    && ((xasl)->aptr_list == NULL) && ((xasl)->scan_ptr == NULL))
 
-/* Give back the row lock of an object the predicate above the scan rejected.  The scan may have counted
- * that request as its statement's (scan_manager.c, lock_ends_with_statement); then the count has to go
- * back with the lock, or the statement's release would later give back a request nobody is holding. */
+/* Give back the row lock of an object the predicate rejected.  A request the scan counted as the statement's
+ * gives its count back too, or the statement's release would undo a request nobody holds. */
 #define QEXEC_UNLOCK_UNQUALIFIED_OID(thread_p, xasl) \
   do \
     { \
@@ -394,14 +393,9 @@ struct upddel_class_info_internal
   HEAP_SCANCACHE *scan_cache;
 
   OID prev_class_oid;		/* previous class oid */
-  OID lock_policy_class;	/* the class the two answers below were given for.  These three are set
-				 * together when the class info is created and afterwards written only by
-				 * qexec_class_ends_locks_with_statement (): a second writer that left this
-				 * key alone would make the memo answer for the wrong class. */
-  bool is_mvcc_class;		/* whether MVCC applies to lock_policy_class -- memoized because
-				 * mvcc_is_mvcc_disabled_class () is too slow to ask per row */
-  bool has_online_index;	/* an index of lock_policy_class is being built online -- memoized because
-				 * reading the class representation is too slow to ask per row */
+  OID lock_policy_class;	/* the class the two memos below describe; the three are written together */
+  bool is_mvcc_class;		/* MVCC applies to lock_policy_class */
+  bool has_online_index;	/* an index of lock_policy_class is being built online; too slow to ask per row */
   HEAP_CACHE_ATTRINFO attr_info;	/* attribute cache info */
   bool is_attr_info_inited;	/* true if attr_info has valid data */
   int needs_pruning;		/* partition pruning information */
@@ -7630,12 +7624,9 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
 	}
     }
 
-  /* Whether these row locks are the statement's to give back at its end.  The spec flag does not tell
-   * a DML target from SELECT ... FOR UPDATE (same flag, but FOR UPDATE's locks are the transaction's);
-   * what separates them is upd_del_class_cnt, a statement-level fact the caller passes in rather than
-   * this function reading it -- the node here is one scan-chain level, and the count sits on the top
-   * node alone, so a join's inner class would read 0 and hold its rows to commit.  The class-level
-   * half is added by the opener, which knows the class (the pruned partition, after a switch). */
+  /* Whether these row locks end with the statement.  upd_del_class_cnt, not the spec flag, tells a DML target from
+   * SELECT ... FOR UPDATE; it sits on the top node only, so the caller passes it in.  The opener adds the per-class
+   * condition (the pruned partition, after a switch). */
   upddel_target_scan = (mvcc_select_lock_needed && upddel_stmt
 			&& lock_transient_scope_is_outermost (thread_p)
 			&& logtb_find_current_isolation (thread_p) == TRAN_READ_COMMITTED);
@@ -10521,9 +10512,9 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   MVCC_REEV_DATA mvcc_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
   UPDATE_MVCC_REEV_ASSIGNMENT *mvcc_reev_assigns = NULL;
-  LOCATOR_LOCK_POLICY base_lock_policy;	/* what the select phase left for the force phase to do */
-  bool statement_ends_locks;	/* whether this statement's row locks end with it */
-  LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* the same, narrowed by the current class */
+  LOCATOR_LOCK_POLICY base_lock_policy;	/* whether the select phase or the force phase locks the rows */
+  bool statement_ends_locks;
+  LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* base_lock_policy, for the current class */
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
   /* from here every exit runs through one of the two lock_transient_scope_end () calls below */
@@ -11128,9 +11119,8 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 	}
     }
 
-  /* Updates published: late arrivals settle on our MVCCID self-lock, so these row locks end with the
-   * statement -- but kept to commit under a savepoint, whose partial rollback could undo the change
-   * while a writer parks on our MVCCID. */
+  /* Later writers wait on our MVCCID self-lock, so the row locks can end here -- except under a savepoint, whose
+   * partial rollback would undo a change a writer is waiting on. */
   lock_transient_scope_end (thread_p, !logtb_has_active_savepoint (thread_p));
 
   qexec_close_scan (thread_p, specp);
@@ -11192,8 +11182,7 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
   return NO_ERROR;
 
 exit_on_error:
-  /* the statement failed, so its rows keep their locks to commit.  Drop the counts, though -- they name
-   * no statement, and the next statement to release would give back requests it never took. */
+  /* failed: the rows keep their locks to commit; drop the counts so no later statement gives them back */
   lock_transient_scope_end (thread_p, false);
 
   if (scan_open)
@@ -11398,9 +11387,9 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   MVCC_REEV_DATA mvcc_reev_data;
   MVCC_UPDDEL_REEV_DATA mvcc_upddel_reev_data;
   UPDDEL_MVCC_COND_REEVAL *mvcc_reev_classes = NULL, *mvcc_reev_class = NULL;
-  LOCATOR_LOCK_POLICY base_lock_policy;	/* what the select phase left for the force phase to do */
-  bool statement_ends_locks;	/* whether this statement's row locks end with it */
-  LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* the same, narrowed by the current class */
+  LOCATOR_LOCK_POLICY base_lock_policy;	/* whether the select phase or the force phase locks the rows */
+  bool statement_ends_locks;
+  LOCATOR_LOCK_POLICY lock_policy = LOCATOR_LOCK_AT_SELECT;	/* base_lock_policy, for the current class */
   UPDDEL_CLASS_INSTANCE_LOCK_INFO class_instance_lock_info, *p_class_instance_lock_info = NULL;
 
   /* remote DELETE + local subquery sink: evaluate the WHERE subquery locally and push one remote
@@ -11469,9 +11458,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
     }
 
   base_lock_policy = qexec_base_lock_policy (p_class_instance_lock_info);
-  /* Locking at force, no reevaluation class means no predicate to re-check -- pt_to_delete_xasl () keeps the
-   * select-phase lock for one it cannot replay -- so a changed version is deleted, not skipped.  The skip below
-   * is for the subclass that turns out to carry no access spec. */
+  /* At force with no reevaluation class there is no predicate to re-check (pt_to_delete_xasl () keeps the
+   * select-phase lock when it cannot replay one), so a changed version is deleted, not skipped. */
 
   /* This guarantees that the result list file will have a type list. Copying a list_id structure fails unless it has a
    * type list. */
@@ -11778,12 +11766,8 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	}
     }
 
-  /* Deletes published: late arrivals settle on our MVCCID self-lock (persisted across 2PC by the prepare
-   * record), so these row locks end with the statement -- but kept to commit under a savepoint, whose
-   * partial rollback could undo the delete while a writer parks on our MVCCID.
-   * TODO: logtb_has_active_savepoint () does not tell a user savepoint from a DDL/trigger system one, so a
-   *       transaction that ran DDL earlier forgoes the release (correct, but conservative).  CBRD-27238
-   *       adds a user-savepoint-only flag on tdes for both paths. */
+  /* As in qexec_execute_update (); the prepare record carries our MVCCID self-lock across 2PC.
+   * logtb_has_active_savepoint () also counts system savepoints, which keeps the locks more often than needed. */
   lock_transient_scope_end (thread_p, !logtb_has_active_savepoint (thread_p));
 
   qexec_close_scan (thread_p, specp);
@@ -11837,8 +11821,7 @@ qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   return NO_ERROR;
 
 exit_on_error:
-  /* the statement failed, so its rows keep their locks to commit.  Drop the counts, though -- they name
-   * no statement, and the next statement to release would give back requests it never took. */
+  /* failed: the rows keep their locks to commit; drop the counts so no later statement gives them back */
   lock_transient_scope_end (thread_p, false);
 
   if (scan_open)
@@ -12023,11 +12006,9 @@ qexec_free_delete_lob_info_list (THREAD_ENTRY * thread_p, DEL_LOB_INFO ** del_lo
  *   oid(in/out): the row the unlocked lookup found; on return, the row the key names
  *   recdes(out): the row's last version, or NULL if only the lock is needed
  *
- * Note: The lookup takes no lock: a lock from the key entry cannot see the row's owner -- an update of a non-key
- *	 column leaves the entry as its inserter wrote it -- and would queue this transaction behind a waiter parked
- *	 on its own stamp.  The owner is waited out here, on the row's last version.  But an owner goes past the X we
- *	 hold, and the row can be deleted and committed before we lock it, so the key is asked again until it names
- *	 the row we settled on.
+ * Note: the lookup takes no lock: one taken from the key entry cannot see the row's owner and would queue this
+ *	 transaction behind a waiter parked on this transaction's stamp.  The owner can still move the row past our X,
+ *	 and the row can be deleted before we lock it, so the key is asked again until it names the row we settled on.
  */
 static BTREE_SEARCH
 qexec_settle_on_duplicate (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, SCAN_OPERATION_TYPE op_type,
@@ -26839,10 +26820,9 @@ qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
  *   internal_class(in/out): the class the force phase is on; carries the memo
  *   class_oid(in): its OID -- the pruned partition, where pruning applies
  *
- * Note: answered per class, not per row.  Two classes keep their row locks to commit: one under an online
- *	index build (its entry state names no owner, so the row lock serializes two writers there) and one
- *	MVCC does not apply to.  Memoized on the class because a multi-target statement does not bind every
- *	target through the same path.
+ * Note: a class under an online index build (its index entries name no owner, so the row lock is what serializes
+ *	writers) and a non-MVCC class keep their row locks to commit.  Past initialization, the only writer of the
+ *	memo in internal_class.
  */
 static bool
 qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNAL * internal_class,
@@ -26867,11 +26847,9 @@ qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INF
  *   return: whether the statement's row locks end with it
  *   thread_p(in): thread entry
  *
- * Note: the scope opens either way, so the nesting stays balanced; every exit closes it with
- *	 lock_transient_scope_end ().  The row locks end with the statement only for the outermost statement at
- *	 READ COMMITTED -- a nested statement, and one above READ COMMITTED, keeps them to commit.
- *	 qexec_open_scan () decides the select phase on the same two facts, so both phases agree whose locks
- *	 they are.
+ * Note: the scope opens either way to keep the nesting balanced; every exit closes it with lock_transient_scope_end ().
+ *	 qexec_open_scan () decides the select phase on the same two conditions (outermost, READ COMMITTED), so both
+ *	 phases agree.
  */
 static bool
 qexec_start_statement_lock_scope (THREAD_ENTRY * thread_p)
@@ -26898,14 +26876,12 @@ qexec_base_lock_policy (const UPDDEL_CLASS_INSTANCE_LOCK_INFO * lock_info)
  *   return: the transient form of base_policy, or base_policy itself when the locks are kept to commit
  *   thread_p(in): thread entry
  *   base_policy(in): where the statement locks its rows, LOCATOR_LOCK_AT_SELECT or LOCATOR_LOCK_AT_FORCE
- *   statement_ends_locks(in): whether the statement's row locks end with it -- the outermost statement, at
- *			       READ COMMITTED
+ *   statement_ends_locks(in): whether the statement's row locks end with it
  *   internal_class(in/out): the class the force phase is on
  *   class_oid(in): its OID
  *
- * Note: decided per class, not per row; see qexec_class_ends_locks_with_statement ().  A row the select phase
- *	 locked turns transient too: its request ends with the statement, so the scan's lock does not keep the row
- *	 past it.
+ * Note: a row the select phase already locked is asked for again by locator_delete_force_internal (); that
+ *	 request turns transient too, or it would keep the row locked past the statement.
  */
 static LOCATOR_LOCK_POLICY
 qexec_make_lock_policy_transient (THREAD_ENTRY * thread_p, LOCATOR_LOCK_POLICY base_policy, bool statement_ends_locks,
@@ -27072,20 +27048,11 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
   int savepoint_used = 0;
   LOG_LSA lsa;
 
-  /* Hold a scope around both halves so neither is the outermost statement.  Each half would otherwise
-   * open and close its own, giving its row locks back inside the system operation below -- and an abort
-   * of that operation then undoes a stamp whose row lock is already gone.
-   *
-   * Under this scope the halves run nested, so qexec_open_scan () answers no for them and they take no
-   * statement-scoped lock of their own.  That is why the end of this scope gives nothing back.
-   *
-   * It covers only the MERGE the server executes.  When a target carries a trigger or is a view, do_merge ()
-   * sends the two halves down as separate server statements (server_op in execute_statement.c), each of them
-   * outermost in its own scope -- and those halves do take transient row locks, because qexec_open_scan ()
-   * does not exclude MERGE (pt_to_merge_update_query () sets upd_del_class_cnt on the driving select) and the
-   * force phase never consults it.  What keeps their locks today is the system savepoint do_merge () takes,
-   * which logtb_has_active_savepoint () reports -- an unrelated guard that CBRD-27238 narrows to user
-   * savepoints.  This scope does not depend on it; that path does. */
+  /* One scope around both halves runs them nested, so they take no statement-scoped lock and none is given back
+   * inside the system operation below, whose abort would undo a stamp that no longer has its row lock.
+   * A MERGE the client executes (a target with a trigger, a view, any MERGE without PT_MERGE_INFO_SERVER_OP) never
+   * comes here: the server runs only its SELECTs, which open no scope of their own, and its changes arrive as client
+   * forces at LOCATOR_LOCK_AT_FORCE, so at top level all of its row locks are ordinary locks kept to commit. */
   lock_transient_scope_start (thread_p);
 
   /* start a topop */
@@ -27152,7 +27119,7 @@ qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* nothing to give back -- the halves ran nested and so took no statement-scoped lock of their own */
+  /* the halves ran nested: nothing to give back */
   lock_transient_scope_end (thread_p, false);
 
   return NO_ERROR;

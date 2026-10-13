@@ -1120,9 +1120,7 @@ lock_get_hash_value (const OID * oid, int htsize)
  *   return: void
  *   tran_lock(in/out): the transaction's lock list
  *
- * Note: a zeroed LK_TRAN_LOCK is not this state -- NA_LOCK is 0 and NULL_LOCK is 2, and a zeroed OID is
- *	not a null one -- so the table's initial memset does not produce it and this has to run there too,
- *	not only when a transaction ends.
+ * Note: runs when the table is initialized and when a transaction ends.
  */
 static void
 lock_reset_transient_state (LK_TRAN_LOCK * tran_lock)
@@ -6459,10 +6457,8 @@ lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
       if (mark_transient && granted == LK_GRANTED && inst_entry != NULL
 	  && inst_entry->transient_count < inst_entry->count)
 	{
-	  /* the caller gives this request up when its statement ends.  Counted rather than flagged: a second
-	   * request on the same entry only raises count, and the release has to give back exactly what was
-	   * taken -- see lock_release_transient_object_locks.  Never count past what the entry holds: a request
-	   * an earlier statement took is not this statement's to give back. */
+	  /* counted, not flagged: a repeated request only raises count, and the release gives back exactly what was
+	   * taken.  Never past count -- a request an earlier statement took is not this statement's to give back. */
 	  inst_entry->transient_count++;
 	  lk_Gl.tran_lock_table[tran_index].transient_total++;
 	}
@@ -6511,10 +6507,8 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
  *   lock(in): requested lock mode
  *   cond_flag(in): conditional or unconditional
  *
- * Note: the entry is marked so lock_release_transient_object_locks () can find it by walking the
- *	transaction's hold list, which costs no hash lookup.  Only the instance entry is marked -- a class
- *	lock taken on the way is not -- and releasing it decrements the count this request added, so a lock
- *	the transaction already held survives.
+ * Note: only the instance entry is counted, not a class lock taken on the way; a lock the transaction already
+ *	held survives the release.
  */
 int
 lock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int cond_flag)
@@ -6527,10 +6521,8 @@ lock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
  *   return: true when this is the outermost such statement
  *   thread_p(in): thread entry
  *
- * Note: the counts live on the transaction, not on the statement that made them, so a statement running
- *	inside another one would give back the outer statement's locks when it ended -- opening exactly the
- *	window a statement-scoped release exists to close.  Only the outermost statement takes transient
- *	locks; one nested in it keeps its own to commit, the way every statement did before.
+ * Note: the counts live on the transaction, so a nested statement must not give them back: only the outermost
+ *	statement takes transient locks, and one nested in it keeps its own to commit.
  */
 bool
 lock_transient_scope_start (THREAD_ENTRY * thread_p)
@@ -6546,13 +6538,10 @@ lock_transient_scope_start (THREAD_ENTRY * thread_p)
 
 /*
  * lock_transient_scope_is_outermost () - Whether the statement now opening is the outermost one
- *   return: true when no other statement of this transaction is inside a transient scope
+ *   return: true when exactly one transient scope is open -- the caller's own; false when none is
  *   thread_p(in): thread entry
  *
- * Note: asked once per scan open, so that the scan can be told whether the row locks it is about to take
- *	are its statement's to give back.  A statement nested in another one -- a row trigger's inner
- *	statement -- must not be told yes: the counts live on the transaction, and it would be giving back
- *	the outer statement's requests when it ended.
+ * Note: asked once per scan open; see lock_transient_scope_start ().
  */
 bool
 lock_transient_scope_is_outermost (THREAD_ENTRY * thread_p)
@@ -6606,8 +6595,7 @@ lock_transient_scope_end (THREAD_ENTRY * thread_p, bool release)
  *   class_oid(in): its class
  *   lock(in): the mode that was granted
  *
- * Note: used where the caller undoes an acquisition it just made, so the count it added has to go with
- *	it -- otherwise the statement's release would give back a request nobody is holding.
+ * Note: undoes an acquisition the caller just made, together with the count it added.
  */
 void
 lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock)
@@ -6622,9 +6610,8 @@ lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OI
   entry_ptr = lock_find_tran_hold_entry (thread_p, tran_index, oid, false);
   if (entry_ptr == NULL || entry_ptr->transient_count == 0)
     {
-      /* this call counted nothing on the entry, so it has nothing to give back -- a request that is there
-       * belongs to an earlier statement.  Reached when a class lock the transaction already held covered
-       * the request, so lock_object_transient () was granted without making an instance request. */
+      /* nothing was counted: a class lock already held covered the request, and what the entry holds belongs to
+       * an earlier statement */
       return;
     }
 
@@ -6643,15 +6630,9 @@ lock_unlock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OI
  *   return: void
  *   thread_p(in): thread entry
  *
- * Note: the hold list is walked rather than each object looked up, so what a lock costs to give back
- *	is what commit pays for it and does not grow with the size of the lock table.  The walk is over
- *	everything the transaction holds rather than over what this statement took, so a statement that
- *	took nothing would still pay for the locks the transaction holds for other reasons -- the running
- *	total is there to answer that case without walking at all.  An entry the escalation reclaimed is
- *	already off this list, so nothing has to be said about it here.
- *
- *	The walk takes no hold_mutex, on the same ground the other walks of this list state: a transaction
- *	runs one thread at a time, so no one else is changing the list while we are on it.
+ * Note: walks the hold list instead of looking each object up, so a lock costs what commit pays for it;
+ *	transient_total skips the walk when nothing was counted.  No hold_mutex: only this thread runs for the
+ *	transaction here.
  */
 void
 lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
@@ -6668,8 +6649,6 @@ lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
 
   if (tran_lock->transient_total == 0)
     {
-      /* nothing was counted, so the list has nothing for us -- a statement that took no transient lock
-       * does not pay for the locks the transaction holds for other reasons */
       return;
     }
 
@@ -6681,8 +6660,7 @@ lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
       n = entry_ptr->transient_count;
       if (n > 0)
 	{
-	  /* every counted request also raised count, so this cannot outrun what the entry holds; were it
-	   * to, the release that empties the entry would free it under the ones still to come */
+	  /* each counted request raised count; outrunning it would free the entry under the releases still to come */
 	  assert (n <= entry_ptr->count);
 	  n = MIN (n, entry_ptr->count);
 	  entry_ptr->transient_count = 0;
@@ -6694,8 +6672,7 @@ lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
 	}
     }
 
-  /* an entry the escalation reclaimed took its count with it, so the total can only have run high;
-   * clearing it here keeps that from costing a walk later */
+  /* an entry the escalation reclaimed took its count with it, so the total can only be high */
   tran_lock->transient_total = 0;
 #endif /* !SERVER_MODE */
 }
@@ -6705,8 +6682,7 @@ lock_release_transient_object_locks (THREAD_ENTRY * thread_p)
  *   return: void
  *   thread_p(in): thread entry
  *
- * Note: a statement that failed leaves its locks to commit, the way it did before any of them were
- *	counted.  The counts have to go, though: they name no statement, so the next statement to release
+ * Note: a failed statement keeps its locks to commit, but its counts must go, or the next statement to release
  *	would give back requests it never took.
  */
 void

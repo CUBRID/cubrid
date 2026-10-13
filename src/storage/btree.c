@@ -14439,22 +14439,14 @@ btree_find_oid_does_mvcc_info_match (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * 
  * btree_note_active_delete_owner () - Remember an object stamped deleted by a transaction still running
  *
  * thread_p (in)	    : Thread entry.
- * owner_mvcc_info (in/out) : Where to remember it; NULL when the caller does not care.  The first such
- *			      object wins, and the field is left alone when there is none -- so the caller
- *			      initializes it and reads a valid delete MVCCID as "the key still holds this
- *			      object, stamped deleted by a transaction that has not ended".
+ * owner_mvcc_info (in/out) : Where to remember it, or NULL.  The first such object wins and the field is otherwise
+ *			      left alone (the caller initializes it), so a valid delete MVCCID in it means "the key
+ *			      holds this object, stamped deleted by a transaction still running".
  * mvcc_info (in)	    : MVCC info of the object just turned down.
  *
- * Note: the searches match an object by OID and then by what the purpose expects of its MVCC info.  An
- *	 object that fails only the second test is invisible to the caller, which sees NOT_FOUND and cannot
- *	 tell it from a key that never held the object.  A caller that came to stamp a delete needs that
- *	 difference: the object may already carry a delete MVCCID whose owner is still running.
- *
- *	 All three tests belong here, not at the caller.  A key can hold the same OID twice -- one version
- *	 deleted by a transaction long committed and not yet vacuumed, one current -- and which of the two
- *	 the search meets first is a function of the record layout (a non-unique index appends, a unique one
- *	 prepends).  Remembering the first object with any delete MVCCID and asking about its owner
- *	 afterwards would answer for whichever copy the layout happened to put first.
+ * Note: an object that fails only the purpose's MVCC test is reported as NOT_FOUND, which a caller stamping a delete
+ *	 must tell apart from a key without the object.  The owner is tested here, per object: a key can hold the same
+ *	 OID twice (one copy deleted by a committed transaction and not yet vacuumed), in an order set by the layout.
  */
 STATIC_INLINE void
 btree_note_active_delete_owner (THREAD_ENTRY * thread_p, BTREE_MVCC_INFO * owner_mvcc_info,
@@ -26360,10 +26352,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 #if defined (SERVER_MODE)
 	  if (!find_unique_helper->lock_found_object)
 	    {
-	      /* The caller settles on the heap's last version instead (locator_lock_and_get_object ()), where the row's
-	       * owner is visible.  The key entry alone cannot show it -- an update of a non-key column leaves the entry
-	       * as its inserter wrote it -- so a lock taken here would queue the owner behind a waiter that already
-	       * holds the row lock while it waits on the owner's transaction lock. */
+	      /* the caller settles on the heap's last version, where the row's owner shows; do not lock from the key */
 	      COPY_OID (&find_unique_helper->oid, &unique_oid);
 	      find_unique_helper->found_object = true;
 	      return NO_ERROR;
@@ -26688,10 +26677,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 #if defined (SERVER_MODE)
 	  if (!find_unique_helper->lock_found_object)
 	    {
-	      /* The caller settles on the heap's last version instead (locator_lock_and_get_object ()), where the row's
-	       * owner is visible.  The key entry alone cannot show it -- an update of a non-key column leaves the entry
-	       * as its inserter wrote it -- so a lock taken here would queue the owner behind a waiter that already
-	       * holds the row lock while it waits on the owner's transaction lock. */
+	      /* the caller settles on the heap's last version, where the row's owner shows; do not lock from the key */
 	      COPY_OID (&find_unique_helper->oid, &unique_oid);
 	      find_unique_helper->found_object = true;
 	      return NO_ERROR;
@@ -27469,12 +27455,9 @@ xbtree_find_unique (THREAD_ENTRY * thread_p, BTID * btid, SCAN_OPERATION_TYPE sc
 
 /*
  * xbtree_find_unique_unlocked () - Find the first object of a key in a unique index for S_DELETE / S_UPDATE without
- *				    locking it.  An inserter or deleter still live on the key is waited out as usual;
- *				    only the object lock is left to the caller, which settles on the heap's last
- *				    version (locator_lock_and_get_object ()) where the row's owner is visible.  Nothing
- *				    protects the object between this lookup and that settle, so a caller that then
- *				    finds the row gone must ask the index again: the key may already belong to a new
- *				    row.
+ *				    locking it.  A live inserter or deleter on the key is still waited out.  Nothing
+ *				    protects the object until the caller settles on it, so a caller that finds the row
+ *				    gone must ask the index again.
  *
  * return		  : BTREE_SEARCH result.
  * thread_p (in)	  : Thread entry.
@@ -29390,14 +29373,13 @@ btree_fk_object_does_exist (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES
     case DELETE_RECORD_INSERT_IN_PROGRESS:
     case DELETE_RECORD_DELETE_IN_PROGRESS:
 #if defined (SERVER_MODE)
-      /* Neither writer holds a row lock the object lock could suspend on, so that lock would be granted at
-       * once and the re-check would spin. Wait for the writer's transaction to end instead. */
+      /* the writer may hold no row lock (an inserter takes none, a deleter may have given it back), so an object
+       * lock could be granted at once and the re-check would spin: wait for its transaction to end instead */
       {
 	MVCCID fk_writer_mvccid = (satisfy_delete == DELETE_RECORD_INSERT_IN_PROGRESS)
 	  ? BTREE_MVCC_INFO_INSID (mvcc_info) : BTREE_MVCC_INFO_DELID (mvcc_info);
 
-	/* The writer may have ended in the race since mvcc_satisfies_delete (), so the verdict can be stale:
-	 * re-read the key either way rather than consume it. */
+	/* the writer may have ended since mvcc_satisfies_delete (), so re-read the key either way */
 	btree_fk_release_pages_and_locks (thread_p, bts, fk_arg, find_fk_obj, class_oid);
 	if (logtb_is_active_other_mvccid (thread_p, fk_writer_mvccid))
 	  {
@@ -32173,15 +32155,9 @@ btree_key_find_and_insert_delete_mvccid (THREAD_ENTRY * thread_p, BTID_INT * bti
     {
       assert (found_page == NULL);
 
-      /* NOT_FOUND can also mean the object is here with a delete MVCCID already set: this purpose matches
-       * only an object without one, and the search reported such an object through settle_mvcc_info --
-       * wherever in the key it sits, leaf or overflow.  A still-running owner means the entry was stamped by
-       * a writer that gave up the row lock before ending, and rollback restores the heap before the index --
-       * so the record this key came from can already be back to the version it was stamped for.  The
-       * heap-side settle cannot see that, only the entry can.  Hand the owner to btree_key_wait_for_tran_end (),
-       * which drops the latch, waits under the transaction's lock timeout and asks for a restart -- the same
-       * primitive the unique-key probe waits on.  No private budget here, and the heap-side settle keeps no
-       * count either. */
+      /* NOT_FOUND can also mean the object is here already stamped with a delete MVCCID (settle_mvcc_info).  Its
+       * owner gave up the row lock before ending, and a rollback restores the heap before the index, so only the
+       * entry shows it: wait for that transaction and restart. */
 #if defined (SERVER_MODE)
       if (insert_helper->purpose == BTREE_OP_INSERT_MVCC_DELID && BTREE_MVCC_INFO_IS_DELID_VALID (&settle_mvcc_info))
 	{

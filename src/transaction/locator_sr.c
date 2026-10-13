@@ -4433,7 +4433,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  recdes.data = NULL;
 		  /* TO DO - handle reevaluation */
 
-		  /* kept to commit, but a child row this transaction itself stamped is touched again without its lock */
+		  /* kept to commit; a child row we stamped ourselves is touched again without its lock */
 		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
 							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED, false, true);
 		  if (scan_code != S_SUCCESS)
@@ -4789,7 +4789,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		  recdes.data = NULL;
 		  /* TO DO - handle reevaluation */
 
-		  /* kept to commit, but a child row this transaction itself stamped is touched again without its lock */
+		  /* kept to commit; a child row we stamped ourselves is touched again without its lock */
 		  scan_code = locator_lock_and_get_object (thread_p, oid_ptr, &fkref->self_oid, &recdes, &scan_cache,
 							   X_LOCK, COPY, NULL_CHN, LOG_ERROR_IF_DELETED, false, true);
 		  if (scan_code != S_SUCCESS)
@@ -6108,16 +6108,10 @@ error:
  *   thread_p(in): thread entry
  *   class_oid(in): the class
  *
- * Note: an online build keeps its own state on each index entry -- INSERT_FLAG, DELETE_FLAG, or
- *	 neither -- and that state carries no MVCCID: it names neither the transaction that left it nor
- *	 whether that transaction ended.  The row lock is what keeps two writers from reading the same
- *	 entry under different assumptions, so a class under an online build keeps it to commit.
- *
- *	 One answer per class holds for the whole statement, and not because the build holds a strong
- *	 lock throughout -- it demotes to IX for the load precisely so DML is not blocked.  It holds
- *	 because the status is published by a schema change under SCH_M, and a DML statement holds IX on
- *	 the class to commit: no statement spans that publication.  A caller that cannot read the class
- *	 representation is told to keep the lock.
+ * Note: an online build's index entry state carries no MVCCID and names no owner, so the row lock is what keeps
+ *	 two writers apart there; such a class keeps it to commit.  One answer holds for the whole statement: the
+ *	 status changes only under SCH_M, and a DML statement holds IX on the class to commit.  When the class
+ *	 representation cannot be read, the answer is to keep the lock.
  */
 bool
 locator_class_has_online_index (THREAD_ENTRY * thread_p, const OID * class_oid)
@@ -7580,8 +7574,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 	      scan_cache->mvcc_snapshot = NULL;
 	    }
 
-	  /* the select phase did not lock this row, so this request is the statement's and follows its
-	   * policy -- locator_update_force () below sees oldrecdes filled and does not lock it again */
+	  /* not locked at select: lock per the statement's policy; locator_update_force () will not lock again */
 	  scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, X_LOCK, COPY,
 					      NULL_CHN, LOG_ERROR_IF_DELETED, LOCATOR_LOCK_IS_TRANSIENT (lock_policy), true);
 	  if (saved_mvcc_snapshot != NULL)
@@ -13063,10 +13056,8 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
 	}
 
 #if defined (SERVER_MODE)
-      /* The last version may be one an active transaction is still deciding: a deleter stamps the delete id,
-       * an updater leaves its version with an insert id and no delete id, so both stamps must be settled.
-       * Either owner holds the self-lock on its MVCCID before that stamp is observable, which makes the wait
-       * below a real wait, not a no-op grant. */
+      /* Settle both stamps, a deleter's delete id and an updater's insert id.  Either owner holds its MVCCID
+       * self-lock before the stamp is visible, so the wait below is a real wait. */
       owner_mvccid = MVCCID_NULL;
       if (MVCC_IS_HEADER_DELID_VALID (recdes_header)
 	  && logtb_is_active_other_mvccid (thread_p, MVCC_GET_DELID (recdes_header)))
@@ -13093,8 +13084,7 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
 	      return S_ERROR;
 	    }
 
-	  /* whichever way it went -- committed, or rolled back to the version before it -- the header has to
-	   * be read again, and it may name yet another owner */
+	  /* committed or rolled back, read the header again; it may name another owner */
 	  scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
 	  if (scan != S_SUCCESS)
 	    {
@@ -13115,9 +13105,8 @@ locator_get_settled_last_version (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * co
  * thread_p (in)       :
  * context (in)	       : Heap get context.
  * recdes_header (in)  : MVCC header of the version to be modified.
- * conflict_scan (out) : The code to fail with -- S_DOESNT_EXIST for a version that is gone, S_ERROR for
- *			 a conflict, whose error is set. Written only on conflict, so a false return leaves
- *			 the caller's own scan code intact.
+ * conflict_scan (out) : S_DOESNT_EXIST for a version that is gone, S_ERROR (error set) for a conflict.
+ *			 Written only on conflict.
  */
 static bool
 locator_has_isolation_conflict (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context, MVCC_REC_HEADER * recdes_header,
@@ -13180,13 +13169,9 @@ locator_has_isolation_conflict (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * cont
  *   thread_p(in): thread entry
  *   context(in/out): heap get context; given back unfixed, as it was on entry
  *
- * Note: a row whose last version we stamped needs no row lock to be touched again while only an X holder has it.
- *	Any other writer meets that stamp and settles on our MVCCID self-lock first, so while that lock stands we
- *	are the row's only writer, and the settle below never waits for us either.  Taking the row lock anyway
- *	would queue us behind a waiter that already holds it while it waits on us -- a cycle the deadlock detector
- *	then has to break.  This is the same ground on which locator_update_force () asks for the lock only of a
- *	version it did not insert.  An S holder is not waiting on us: it has decided on the row and must be waited
- *	for.  Read the header, decide, and give the page back so the caller starts from one state either way.
+ * Note: any other writer settles on our MVCCID self-lock before touching a row we stamped, so while it stands we
+ *	are the row's only writer and need no row lock while only an X holder has it; asking for it would queue us
+ *	behind a waiter that waits on us.  An S holder has already decided on the row and must be waited for.
  */
 static bool
 locator_last_version_is_ours (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
@@ -13220,11 +13205,9 @@ locator_last_version_is_ours (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * contex
  * context (in/out): Heap get context .
  * lock_mode (in)  : Type of lock.
  * transient (in)  : Whether the request ends with the statement rather than the transaction.
- * owner_bypass_ok (in) : Whether a row this transaction itself stamped may be touched again without the row
- *			  lock -- a statement's own DML and a foreign-key cascade may, a client fetch that caches
- *			  the lock it asked for may not.
- * lock_acquired_p (out) : Whether this call took the lock and still holds it on return; NULL when the caller
- *			   does not care.
+ * owner_bypass_ok (in) : Whether a row this transaction stamped may be touched again without the row lock; not
+ *			  for a client fetch, which caches the lock it asked for.
+ * lock_acquired_p (out) : Whether this call took the lock and still holds it; may be NULL.
  *
  * NOTE: Caller must handle the cleanup of context
  */
@@ -13236,7 +13219,6 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   bool lock_acquired = false;
   MVCC_REC_HEADER recdes_header;
   bool is_mvcc_class;
-  /* whether the request this call makes ends with the statement or with the transaction */
   int (*lock_fn) (THREAD_ENTRY *, const OID *, const OID *, LOCK, int) =
     (transient ? lock_object_transient : lock_object);
 
@@ -13253,10 +13235,8 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 
   is_mvcc_class = !mvcc_is_mvcc_disabled_class (context->class_oid_p);
 
-  /* try to lock the object conditionally, if it fails unfix page watchers and try unconditionally.  Between the
-   * two, when the caller allows it, a last version this transaction stamped itself is touched again without the
-   * row lock -- see locator_last_version_is_ours ().  Asked only once the conditional try has failed: an
-   * uncontended row is simply taken, as it always was. */
+  /* try to lock the object conditionally, if it fails unfix page watchers and try unconditionally.  In between, a
+   * last version we stamped ourselves may be touched without the row lock; see locator_last_version_is_ours (). */
 
   if (lock_fn (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_COND_LOCK) == LK_GRANTED)
     {
@@ -13319,7 +13299,7 @@ error:
 
   if (lock_acquired)
     {
-      /* undo the request we just made -- including the count it added, if it was a transient one */
+      /* undo the request we just made, with its count if it was transient */
       if (transient)
 	{
 	  lock_unlock_object_transient (thread_p, context->oid_p, context->class_oid_p, lock_mode);
@@ -13348,8 +13328,7 @@ error:
  * (obsolete) non_ex_handling_type (in): - LOG_ERROR_IF_DELETED: write the
  *				ER_HEAP_UNKNOWN_OBJECT error to log
  *                            - LOG_WARNING_IF_DELETED: set only warning
- * owner_bypass_ok (in) : Whether a row this transaction itself stamped may be touched again without the row
- *			  lock; passed on to locator_lock_and_get_object_internal ().
+ * owner_bypass_ok (in) : see locator_lock_and_get_object_internal ().
  *
  * Note: This function will lock the object with X_LOCK. This lock type should correspond to delete/update operations.
  */
@@ -13446,8 +13425,7 @@ locator_lock_and_get_object_with_evaluation (THREAD_ENTRY * thread_p, OID * oid,
       ev_res = locator_mvcc_reev_cond_and_assignment (thread_p, scan_cache, mvcc_reev_data, &mvcc_header, oid, recdes);
       if (ev_res != V_TRUE)
 	{
-	  /* did not pass the evaluation or error occurred - unlock object, if this call took it (an owner
-	   * touching its own stamped row again went without the lock) */
+	  /* did not pass the evaluation or error occurred - unlock object, if this call took it */
 	  if (lock_acquired && transient)
 	    {
 	      lock_unlock_object_transient (thread_p, oid, class_oid, lock_mode);

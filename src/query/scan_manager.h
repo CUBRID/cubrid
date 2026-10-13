@@ -486,9 +486,8 @@ struct scan_id_struct
   SCAN_POSITION position;	/* Scan Position */
   SCAN_DIRECTION direction;	/* Forward/Backward Direction */
   bool mvcc_select_lock_needed;	/* true if lock at scanning needed in mvcc */
-  bool upddel_target_scan;	/* the scan feeds the force phase of this statement, so the row locks it takes
-				 * are the statement's -- SELECT ... FOR UPDATE reaches the same lock site and its
-				 * locks are the transaction's.  Sticky across a partition switch. */
+  bool upddel_target_scan;	/* the row locks are the statement's: the outermost READ COMMITTED DELETE/UPDATE
+				 * target, not SELECT ... FOR UPDATE.  Kept across a partition switch. */
   bool lock_ends_with_statement;	/* the same, narrowed by the class this scan is on now */
   SCAN_OPERATION_TYPE scan_op_type;	/* SELECT, DELETE, UPDATE */
 

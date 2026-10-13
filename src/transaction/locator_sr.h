@@ -61,10 +61,8 @@ enum
 
 extern bool locator_Dont_check_foreign_key;
 
-/* Where a statement takes the row lock for a modified object, and how long it keeps it.
- * The select phase may have taken it already; otherwise the force phase does, and then either holds it
- * to commit or -- once the change is published and a late arrival can settle on the MVCCID self-lock --
- * gives it up when the statement ends. */
+/* Which phase takes the row lock for a modified object, and whether it is kept to commit or given up when the
+ * statement ends. */
 typedef enum
 {
   LOCATOR_LOCK_AT_SELECT,	/* the select phase locked the object; the force phase must not lock again */
