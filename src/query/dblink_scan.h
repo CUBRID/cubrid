@@ -122,7 +122,7 @@ extern int dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final);
 extern SCAN_CODE dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
 extern SCAN_CODE dblink_scan_reset (DBLINK_SCAN_INFO * scan_info);
 
-/* remote DML push-sink state, shared by INSERT SELECT and DELETE / UPDATE + local subquery */
+/* remote DML push-sink state, shared by INSERT / REPLACE SELECT and DELETE / UPDATE + local subquery */
 typedef struct dblink_dml_state DBLINK_DML_STATE;
 struct dblink_dml_state
 {
@@ -141,6 +141,7 @@ struct dblink_dml_state
 typedef enum dblink_dml_kind
 {
   DBLINK_DML_INSERT,		/* uses attr_names/num_attrs/num_bind */
+  DBLINK_DML_REPLACE,		/* same params as INSERT: REPLACE takes an INSERT's shape */
   DBLINK_DML_DELETE,		/* uses key_col/op */
   DBLINK_DML_UPDATE		/* uses set_text, and key_col/op when the statement has a WHERE */
 } DBLINK_DML_KIND;
