@@ -7576,7 +7576,8 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 
 	  /* not locked at select: lock per the statement's policy; locator_update_force () will not lock again */
 	  scan = locator_lock_and_get_object (thread_p, oid, &class_oid, &copy_recdes, scan_cache, X_LOCK, COPY,
-					      NULL_CHN, LOG_ERROR_IF_DELETED, LOCATOR_LOCK_IS_TRANSIENT (lock_policy), true);
+					      NULL_CHN, LOG_ERROR_IF_DELETED, LOCATOR_LOCK_IS_TRANSIENT (lock_policy),
+					      true);
 	  if (saved_mvcc_snapshot != NULL)
 	    {
 	      scan_cache->mvcc_snapshot = saved_mvcc_snapshot;
