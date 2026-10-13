@@ -31,6 +31,7 @@
 #include <stdarg.h>
 #include <math.h>
 #include <assert.h>
+#include <stdint.h>
 #if !defined(WINDOWS)
 #include <values.h>
 #endif /* !WINDOWS */
@@ -101,7 +102,7 @@
  * Figure out how many bytes a pkeys[] struct with n entries requires.
  */
 #define SIZEOF_ATTR_CUM_STATS_PKEYS(n) \
-    ((n) * sizeof(int))
+    ((n) * sizeof(INT64))
 
 #define NOMINAL_HEAP_SIZE(class)	200	/* pages */
 #define NOMINAL_OBJECT_SIZE(class)	 64	/* bytes */
@@ -264,6 +265,9 @@ static int qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENT
 static bool qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry);
 static void qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * nodep, BITSET * order_nodes, BITSET * dep_nodes);
 static bool qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node);
+static int qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_idx,
+			       QO_SEGMENT ** fk_col_segs_out, QO_EQCLASS ** col_eqclasses_out);
+static void qo_mark_fk_join_selectivity_floor (QO_ENV * env);
 static bool qo_is_non_mvcc_class_with_index (QO_CLASS_INFO_ENTRY * class_entry_p);
 
 /*
@@ -623,6 +627,7 @@ qo_optimize_helper (QO_ENV * env)
   qo_discover_indexes (env);
   qo_discover_partitions (env);
   qo_discover_sort_limit_nodes (env);
+  qo_mark_fk_join_selectivity_floor (env);
   /* now optimize */
 
   plan = qo_planner_search (env);
@@ -941,6 +946,8 @@ graph_size_for_entity (QO_ENV * env, PT_NODE * entity)
   switch (entity->info.spec.join_type)
     {
     case PT_JOIN_INNER:
+    case PT_JOIN_SEMI:		/* semi/anti are structurally inner joins (frozen NL inner) */
+    case PT_JOIN_ANTI:
       /* reserve dummy inner join term */
       env->nterms++;
       /* reserve additional always-false sarg */
@@ -1993,6 +2000,11 @@ qo_add_dummy_join_term (QO_ENV * env, QO_NODE * p_node, QO_NODE * on_node)
     case PT_JOIN_FULL_OUTER:	/* not used */
       QO_TERM_JOIN_TYPE (term) = JOIN_OUTER;
       break;
+    case PT_JOIN_SEMI:		/* semi/anti: structurally inner, but RHS frozen under the preceding (outer) side */
+    case PT_JOIN_ANTI:
+      QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
+      QO_ADD_OUTER_DEP_SET (on_node, p_node);
+      break;
     default:
       /* this should not happen */
       assert (false);
@@ -2666,7 +2678,8 @@ qo_analyze_term (QO_TERM * term, int term_type)
 	  /* The term might be a merge term (i.e., it uses '=' as the operator), but the expressions might not be
 	   * simple attribute references, and we mustn't try to establish equivalence classes in that case.
 	   */
-	  if (qo_is_equi_join_term (term))
+	  if (qo_is_equi_join_term (term)
+	      && !QO_NODE_IS_SEMI_ANTI_JOIN (head_node) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
 	    {
 	      qo_equivalence (head_seg, tail_seg);
 	      QO_TERM_NOMINAL_SEG (term) = head_seg;
@@ -2733,6 +2746,12 @@ qo_analyze_term (QO_TERM * term, int term_type)
 		{
 		  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
 		}
+	      else if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_SEMI || QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_ANTI)
+		{
+		  /* structurally inner, but freeze RHS under its outer antecedent; LHS stays reorderable */
+		  QO_TERM_JOIN_TYPE (term) = JOIN_INNER;
+		  QO_ADD_OUTER_DEP_SET (on_node, head_node);
+		}
 	    }
 	  else
 	    {
@@ -2743,6 +2762,31 @@ qo_analyze_term (QO_TERM * term, int term_type)
 
 	      /* keep out from m-join edge */
 	      QO_TERM_CLEAR_FLAG (term, QO_TERM_MERGEABLE_EDGE);
+	    }
+	}
+    }
+
+  /* a node an ON-clause predicate reads must be joined before the node that owns the ON clause, or the predicate
+   * cannot be evaluated there. Outside the class dispatch above so QO_TC_SARG and QO_TC_OTHER are covered too */
+  if (QO_ON_COND_TERM (term))
+    {
+      int location = QO_TERM_LOCATION (term);
+      QO_NODE *on_node;
+
+      QO_ASSERT (env, location < env->nnodes);
+
+      on_node = QO_ENV_NODE (env, location);
+      QO_ASSERT (env, QO_NODE_LOCATION (on_node) == location);
+
+      if (QO_NODE_IS_OUTER_JOIN (on_node))
+	{
+	  for (t = bitset_iterate (&(QO_TERM_NODES (term)), &iter); t != -1; t = bitset_next_member (&iter))
+	    {
+	      if (t != location)
+		{
+		  QO_ASSERT (env, t < location);
+		  QO_ADD_OUTER_DEP_SET (on_node, QO_ENV_NODE (env, t));
+		}
 	    }
 	}
     }
@@ -5217,7 +5261,7 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 		    {
 		      free_and_init (cum_statsp->pkeys);
 		    }
-		  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+		  cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 		  if (cum_statsp->pkeys == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5534,7 +5578,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 		{
 		  free_and_init (cum_statsp->pkeys);	/* free alloced */
 		}
-	      cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	      cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	      if (cum_statsp->pkeys == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5573,7 +5617,7 @@ qo_get_attr_info (QO_ENV * env, QO_SEGMENT * seg)
 	    {
 	      free_and_init (cum_statsp->pkeys);
 	    }
-	  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	  cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	  if (cum_statsp->pkeys == NULL)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5783,7 +5827,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		    {
 		      free_and_init (cum_statsp->pkeys);
 		    }
-		  cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+		  cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 		  if (cum_statsp->pkeys == NULL)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5821,7 +5865,7 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 		{
 		  free_and_init (cum_statsp->pkeys);
 		}
-	      cum_statsp->pkeys = (int *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
+	      cum_statsp->pkeys = (INT64 *) malloc (SIZEOF_ATTR_CUM_STATS_PKEYS (cum_statsp->pkeys_size));
 	      if (cum_statsp->pkeys == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
@@ -5998,7 +6042,7 @@ qo_estimate_statistics (MOP class_mop, CLASS_STATS * statblock)
    */
 
   statblock->heap_num_pages = NOMINAL_HEAP_SIZE (class_mop);
-  statblock->heap_num_objects = (statblock->heap_num_pages * DB_PAGESIZE) / NOMINAL_OBJECT_SIZE (class_mop);
+  statblock->heap_num_objects = ((INT64) statblock->heap_num_pages * DB_PAGESIZE) / NOMINAL_OBJECT_SIZE (class_mop);
 
 }
 
@@ -6061,6 +6105,8 @@ qo_env_new (PARSER_CONTEXT * parser, PT_NODE * query)
   env->multi_range_opt_candidate = false;
   env->sel_hist_used = false;
   env->sel_hist_fallback = false;
+  env->fk_join_info = NULL;
+  env->n_fk_join_info = 0;
 
   return env;
 }
@@ -6182,6 +6228,16 @@ qo_env_free (QO_ENV * env)
 	      qo_subquery_free (&env->subqueries[i]);
 	    }
 	  free_and_init (env->subqueries);
+	}
+
+      if (env->fk_join_info)
+	{
+	  for (i = 0; i < env->n_fk_join_info; ++i)
+	    {
+	      free_and_init (env->fk_join_info[i].fk_col_segs);
+	      free_and_init (env->fk_join_info[i].col_eqclasses);
+	    }
+	  free_and_init (env->fk_join_info);
 	}
 
       bitset_delset (&(env->final_segs));
@@ -6460,9 +6516,9 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 	  /* is explicit join ON cond */
 	  QO_ASSERT (env, QO_TERM_LOCATION (term) == QO_NODE_LOCATION (on_node));
 
-	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER)
+	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
 	    {
-	      continue;		/* is inner join; no need to classify */
+	      continue;		/* inner / semi / anti: structurally inner, no outer-join classification */
 	    }
 
 	  /* is explicit outer-joined ON cond */
@@ -8418,6 +8474,11 @@ qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
       s1 = QO_TERM_SEG (jterm);
       s2 = QO_TERM_OID_SEG (jterm);
       if (s1 == NULL || s2 == NULL)
+	{
+	  continue;
+	}
+
+      if (QO_NODE_IS_SEMI_ANTI_JOIN (QO_SEG_HEAD (s1)) || QO_NODE_IS_SEMI_ANTI_JOIN (QO_SEG_HEAD (s2)))
 	{
 	  continue;
 	}
@@ -10491,6 +10552,255 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
     }
 
   return true;
+}
+
+/*
+ * qo_match_fk_prefix () - match composite FK columns with the referenced PK
+ * return : number of leading columns matched
+ * env (in)              : environment
+ * fk_idx (in)           : FK index entry
+ * pk_idx (in)           : referenced PK index entry
+ * fk_col_segs_out (out) : matched FK-side segments
+ * col_eqclasses_out (out): matched equivalence classes
+ *
+ * Note: matching is based on equivalence classes so that it remains valid
+ *  when redundant FK-PK join terms are removed by qo_check_skip_term().
+ *
+ * Note: a nullable FK column is matched the same as a NOT NULL one, with no separate NULL-ratio
+ *  correction applied to the floor. A correction would double-count against an explicit IS NOT
+ *  NULL (or similar) predicate elsewhere, since nothing here sees every predicate that may already
+ *  be pricing the same NULL rows out; leaving it out is a bounded overestimate instead.
+ */
+static int
+qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_idx, QO_SEGMENT ** fk_col_segs_out,
+		    QO_EQCLASS ** col_eqclasses_out)
+{
+  int i, max_cols;
+  QO_SEGMENT *fk_seg, *pk_seg;
+  QO_EQCLASS *eqc;
+
+  max_cols = MIN (pk_idx->nsegs, fk_idx->nsegs);
+
+  for (i = 0; i < max_cols; i++)
+    {
+      if (fk_idx->seg_idxs[i] == -1 || pk_idx->seg_idxs[i] == -1)
+	{
+	  /* this constraint column is not referenced by the current query */
+	  break;
+	}
+
+      fk_seg = QO_ENV_SEG (env, fk_idx->seg_idxs[i]);
+      pk_seg = QO_ENV_SEG (env, pk_idx->seg_idxs[i]);
+
+      eqc = QO_SEG_EQCLASS (fk_seg);
+      if (eqc == NULL || eqc == QO_UNORDERED || eqc != QO_SEG_EQCLASS (pk_seg))
+	{
+	  break;
+	}
+
+      fk_col_segs_out[i] = fk_seg;
+      col_eqclasses_out[i] = eqc;
+    }
+
+  return i;
+}
+
+/*
+ * qo_mark_fk_join_selectivity_floor () - record composite FK constraints
+ *					   whose join selectivity should be
+ *					   floored to 1 / (parent cardinality)
+ * return : void
+ * env (in) : environment
+ *
+ * Note: for a 2+ column PK-FK join, per-term selectivities are still
+ *  multiplied independently in planner_visit_node(), underestimating the
+ *  join by ignoring the correlation guaranteed by the constraint. This finds
+ *  every composite FK-PK column prefix (see qo_match_fk_prefix()) and
+ *  records it in env->fk_join_info, one entry per FK constraint - fk_node
+ *  and pk_node can be linked by more than one FK constraint (e.g. two
+ *  different FK's on fk_node both referencing pk_node's primary key), and
+ *  each is recorded separately rather than only the first one found.
+ *
+ *  Each entry's fk_col_segs and col_eqclasses are used to look up which
+ *  terms stand for its columns at the step that actually connects fk_node
+ *  and pk_node; the terms themselves are not tagged here. This is
+ *  necessary because qo_check_skip_term() may judge a literal edge
+ *  redundant and leave an eqclass-equivalent term on some other node pair
+ *  in its place (e.g. supplier-lineitem standing in for partsupp-lineitem),
+ *  so a fixed term set recorded here would miss that substitute. Single-
+ *  column FK joins are left as-is.
+ */
+static void
+qo_mark_fk_join_selectivity_floor (QO_ENV * env)
+{
+  int i, j, k, m, n_matched;
+  size_t n_pairs, cap, fi;
+  QO_NODE *node_i, *node_j, *fk_node, *pk_node;
+  QO_NODE_INDEX *fk_node_indexp, *pk_node_indexp;
+  QO_INDEX_ENTRY *fk_idx, *pk_idx;
+  QO_FK_JOIN_INFO *info_arr;
+  QO_SEGMENT **fk_col_segs;
+  QO_EQCLASS **col_eqclasses;
+
+  info_arr = NULL;
+  cap = 0;
+  n_pairs = 0;
+
+  /* iterate every ordered pair, not just every unordered pair once: we don't know a priori which of the two
+   * nodes is the FK side, so (node_i, node_j) and (node_j, node_i) are both tried as separate iterations below */
+  for (i = 0; i < env->nnodes; i++)
+    {
+      node_i = QO_ENV_NODE (env, i);
+
+      for (j = 0; j < env->nnodes; j++)
+	{
+	  if (i == j)
+	    {
+	      continue;
+	    }
+	  node_j = QO_ENV_NODE (env, j);
+
+	  fk_node = node_i;
+	  pk_node = node_j;
+
+	  if (QO_NODE_IS_SEMI_ANTI_JOIN (fk_node) || QO_NODE_IS_SEMI_ANTI_JOIN (pk_node))
+	    {
+	      /* Semi/anti equi-join columns are excluded from EQCLASS, so this path is currently unreachable.
+	       * Keep this guard in case that policy changes in the future. */
+	      continue;
+	    }
+
+	  pk_node_indexp = QO_NODE_INDEXES (pk_node);
+	  if (pk_node_indexp == NULL)
+	    {
+	      continue;
+	    }
+
+	  fk_node_indexp = QO_NODE_INDEXES (fk_node);
+	  if (fk_node_indexp == NULL)
+	    {
+	      continue;
+	    }
+
+	  /* every FK constraint on fk_node that references pk_node's primary key gets its own entry - two
+	   * different constraints referencing the same parent PK must not be conflated into one, even if
+	   * qo_assign_eq_classes() ends up merging their columns into the same equivalence classes */
+	  for (k = 0; k < QO_NI_N (fk_node_indexp); k++)
+	    {
+	      fk_idx = QO_NI_ENTRY (fk_node_indexp, k)->head;
+	      if (fk_idx->constraints->type != SM_CONSTRAINT_FOREIGN_KEY)
+		{
+		  continue;
+		}
+
+	      pk_idx = NULL;
+	      for (m = 0; m < QO_NI_N (pk_node_indexp); m++)
+		{
+		  if (BTID_IS_EQUAL (&QO_NI_ENTRY (pk_node_indexp, m)->head->constraints->index_btid,
+				     &fk_idx->constraints->fk_info->ref_class_pk_btid))
+		    {
+		      pk_idx = QO_NI_ENTRY (pk_node_indexp, m)->head;
+		      break;
+		    }
+		}
+
+	      if (pk_idx == NULL || pk_idx->nsegs < 2 || QO_NODE_NCARD (pk_node) <= 0)
+		{
+		  continue;
+		}
+	      /* Only PRIMARY KEY reaches here. UNIQUE is considered for future FK support,
+	       * while REVERSE_UNIQUE does not reach this path. */
+	      assert (SM_IS_CONSTRAINT_UNIQUE_FAMILY (pk_idx->constraints->type));
+
+	      /* Secure room for one more entry before any per-candidate allocation below, so that a capacity
+	       * failure here never has to unwind a not-yet-owned temporary allocation - only already-registered
+	       * entries and info_arr itself (see the fk_join_info_fail cleanup). This also enforces that the
+	       * count never grows past what env->n_fk_join_info (an int) can hold. */
+	      if (n_pairs >= (size_t) INT_MAX)
+		{
+		  goto fk_join_info_fail;
+		}
+	      if (n_pairs >= cap)
+		{
+		  size_t new_cap;
+		  QO_FK_JOIN_INFO *new_info_arr;
+
+		  if (cap > SIZE_MAX / 2)
+		    {
+		      goto fk_join_info_fail;
+		    }
+		  new_cap = (cap == 0) ? 8 : cap * 2;
+
+		  if (new_cap > SIZE_MAX / sizeof (QO_FK_JOIN_INFO))
+		    {
+		      goto fk_join_info_fail;
+		    }
+		  new_info_arr = (QO_FK_JOIN_INFO *) realloc (info_arr, sizeof (QO_FK_JOIN_INFO) * new_cap);
+		  if (new_info_arr == NULL)
+		    {
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			      sizeof (QO_FK_JOIN_INFO) * new_cap);
+		      goto fk_join_info_fail;
+		    }
+		  info_arr = new_info_arr;
+		  cap = new_cap;
+		}
+
+	      fk_col_segs = (QO_SEGMENT **) malloc (sizeof (QO_SEGMENT *) * pk_idx->nsegs);
+	      col_eqclasses = (QO_EQCLASS **) malloc (sizeof (QO_EQCLASS *) * pk_idx->nsegs);
+	      if (fk_col_segs == NULL || col_eqclasses == NULL)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+			  sizeof (QO_SEGMENT *) * pk_idx->nsegs);
+		  free_and_init (fk_col_segs);
+		  free_and_init (col_eqclasses);
+		  goto fk_join_info_fail;
+		}
+
+	      n_matched = qo_match_fk_prefix (env, fk_idx, pk_idx, fk_col_segs, col_eqclasses);
+	      if (n_matched < 2 || n_matched < MIN (pk_idx->nsegs, fk_idx->nsegs))
+		{
+		  /* single-column FK-PK join, or only a leading prefix of a composite FK/PK matched: a partial
+		   * key match does not guarantee each FK row matches exactly one parent row, so the floor must not
+		   * be applied; leave the ordinary per-term selectivity alone */
+		  free_and_init (fk_col_segs);
+		  free_and_init (col_eqclasses);
+		  continue;
+		}
+
+	      /* room for this entry was already secured above */
+	      info_arr[n_pairs].fk_node = fk_node;
+	      info_arr[n_pairs].pk_node = pk_node;
+	      info_arr[n_pairs].floor_selectivity = 1.0 / QO_NODE_NCARD (pk_node);
+	      info_arr[n_pairs].fk_col_segs = fk_col_segs;
+	      info_arr[n_pairs].col_eqclasses = col_eqclasses;
+	      info_arr[n_pairs].n_cols = n_matched;
+	      n_pairs++;
+	    }
+	}
+    }
+
+  if (n_pairs == 0)
+    {
+      free_and_init (info_arr);
+      return;
+    }
+
+  env->fk_join_info = info_arr;
+  env->n_fk_join_info = (int) n_pairs;
+  return;
+
+fk_join_info_fail:
+  /* overflow, count-limit, or realloc failure while growing info_arr: abandon the whole FK-floor
+   * optimization for this query rather than keep a partial, iteration-order-dependent subset. Nothing has
+   * been assigned to env->fk_join_info/env->n_fk_join_info yet, so the caller sees exactly the same "no FK
+   * floor info" state as if this function had found nothing to register at all. */
+  for (fi = 0; fi < n_pairs; fi++)
+    {
+      free_and_init (info_arr[fi].fk_col_segs);
+      free_and_init (info_arr[fi].col_eqclasses);
+    }
+  free_and_init (info_arr);
 }
 
 /*

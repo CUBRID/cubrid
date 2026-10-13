@@ -279,6 +279,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/fetch.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
+  ${QUERY_DIR}/qfile_tuple_layout.c
   ${QUERY_DIR}/dblink_scan.c
   ${QUERY_DIR}/dblink_2pc.c
   ${QUERY_DIR}/dblink_2pc_daemon.c
@@ -305,6 +306,9 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/memoize.cpp
   ${QUERY_DIR}/stream_to_xasl.c
+  ${QUERY_DIR}/domain_plan.c
+  ${QUERY_DIR}/domain_resolve.c
+  ${QUERY_DIR}/domain_rules.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
   ${QUERY_DIR}/string_regex_std.cpp
@@ -344,6 +348,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_description.cpp
   ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_domain_convert.cpp
   ${OBJECT_DIR}/object_accessor.c
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/object_print.c
@@ -516,6 +521,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/bestspace.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
+  ${STORAGE_DIR}/btree_sort.c
   ${STORAGE_DIR}/btree_unique.cpp
   ${STORAGE_DIR}/byte_order.c
   ${STORAGE_DIR}/catalog_class.c
