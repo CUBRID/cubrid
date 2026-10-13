@@ -147,8 +147,8 @@ unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_ME
 int qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_SCAN * hlsid,
 			   REGU_VARIABLE_LIST producers);
 void qdata_free_hscan_key_plan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid);
-HASH_SCAN_KEY *qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
-						   const HASH_SCAN_KEY_PLAN * plan, HASH_SCAN_KEY * new_key);
+int qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, const HASH_SCAN_KEY_PLAN * plan,
+					HASH_SCAN_KEY * new_key, bool * fits);
 
 int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
 				 void *args);

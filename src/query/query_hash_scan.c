@@ -514,10 +514,9 @@ enum hash_scan_key_rule
   HASH_SCAN_KEY_COERCE,		/* tp_value_coerce brings each value into the probe key's domain: a JSON value, which
 				 * its scalar converts, or a string domain whose collation is the values' (LEAVE,
 				 * ENFORCE) */
-  HASH_SCAN_KEY_FAIL		/* the probe key's domain is variable (a node not computed yet in this execution):
-				 * a coercion into it refuses every value (ER_TP_CANT_COERCE). This is develop's answer
-				 * and timing (the first non-NULL build value), kept as a user error: not the
-				 * unresolved-domain error, which would make it an internal one */
+  HASH_SCAN_KEY_FAIL		/* the probe key has no domain to hash in: no non-NULL value fits, so the scan reads
+				 * the list without the table (check_hash_list_scan refuses a variable probe domain
+				 * before the plan; this covers a NULL one) */
 };
 
 typedef struct hash_scan_key_entry HASH_SCAN_KEY_ENTRY;
@@ -667,19 +666,26 @@ qdata_check_hscan_key_convert (const DB_VALUE * value, const TP_DOMAIN * target,
 /*
  * qdata_copy_hscan_key_without_alloc () - the key a build row stores: each value copied, or brought into its probe
  *   key's domain as the scan resolved it before its first build row
- *   returns: new_key, or NULL on error (ER_TP_CANT_COERCE where the conversion fails)
+ *   returns: NO_ERROR, or the error code set
  *   thread_p(in): thread
  *   key(in): the build row's key
  *   plan(in): the scan's key plan (qdata_plan_hscan_keys)
  *   new_key(in/out): the scan's key with values of its own
+ *   fits(out): false when a value has no counterpart in its probe key's domain (overflow, a string longer than the
+ *              domain, no conversion between the types): no probe value equals it, and no error is set. The scan
+ *              then reads the list without the table, as the NO_HASH_LIST_SCAN hint does, since the list scan
+ *              compares the pair the way the predicate does (tp_value_compare_with_error).
+ *
+ * A conversion that sets an error (DOMAIN_ERROR) is that error: the predicate would raise it on the same pair.
  */
-HASH_SCAN_KEY *
+int
 qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY * key, const HASH_SCAN_KEY_PLAN * plan,
-				    HASH_SCAN_KEY * new_key)
+				    HASH_SCAN_KEY * new_key, bool * fits)
 {
+  *fits = true;
   if (key == NULL)
     {
-      return NULL;
+      return ER_FAILED;
     }
   if (new_key)
     {
@@ -702,7 +708,7 @@ qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY *
 	      if (pr_clone_value (value, new_key->values[i]) != NO_ERROR)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
-		  return NULL;
+		  return ER_OUT_OF_VIRTUAL_MEMORY;
 		}
 	      continue;
 	    case HASH_SCAN_KEY_CONVERT:
@@ -725,14 +731,24 @@ qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY *
 	  if (status != DOMAIN_COMPATIBLE)
 	    {
 	      pr_clear_value (new_key->values[i]);
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
-		      pr_type_name (DB_VALUE_DOMAIN_TYPE (value)), pr_type_name (TP_DOMAIN_TYPE (entry->target)));
-	      return NULL;
+	      if (status == DOMAIN_ERROR)
+		{
+		  int error = er_errid ();
+		  if (error == NO_ERROR)
+		    {
+		      error = ER_TP_CANT_COERCE;
+		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, pr_type_name (DB_VALUE_DOMAIN_TYPE (value)),
+			      pr_type_name (TP_DOMAIN_TYPE (entry->target)));
+		    }
+		  return error;
+		}
+	      *fits = false;
+	      return NO_ERROR;
 	    }
 	}
     }
 
-  return new_key;
+  return NO_ERROR;
 }
 
 /*

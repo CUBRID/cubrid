@@ -221,7 +221,7 @@ static SCAN_CODE call_get_next_index_oidset (THREAD_ENTRY * thread_p, SCAN_ID * 
 static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_term, DOMAIN_SEARCH_KEYS search_keys);
 
 /* for hash list scan */
-static SCAN_CODE scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool * fits);
 static SCAN_CODE scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * tuple);
 static HASH_METHOD check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_type,
@@ -4343,6 +4343,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 {
   LLIST_SCAN_ID *llsidp;
   int val_cnt;
+  bool fits = true;
   DB_TYPE single_node_type = DB_TYPE_NULL;
 
   /* scan type is LIST SCAN */
@@ -4416,9 +4417,26 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	{
 	  return S_ERROR;
 	}
-      if (scan_build_hash_list_scan (thread_p, scan_id) == S_ERROR)
+      if (scan_build_hash_list_scan (thread_p, scan_id, &fits) == S_ERROR)
 	{
 	  return S_ERROR;
+	}
+      if (!fits)
+	{
+	  /* a build key has no value in its probe key's domain (BIGINT beyond INT, a string longer than a CHAR (n)):
+	   * the table cannot hold it where a probe would find it, so this open reads the list without the table */
+	  scan_end_scan (thread_p, scan_id);
+	  scan_free_hash_list_scan (thread_p, &llsidp->hlsid);
+	  qdata_free_hscan_key_plan (thread_p, &llsidp->hlsid);
+	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key, val_cnt);
+	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_new_key, val_cnt);
+	  llsidp->hlsid.temp_key = NULL;
+	  llsidp->hlsid.temp_new_key = NULL;
+	  llsidp->hlsid.memory.hash_table = NULL;
+	  llsidp->hlsid.memory.curr_hash_entry = NULL;
+	  llsidp->hlsid.need_coerce_type = false;
+	  llsidp->hlsid.hash_list_scan_type = HASH_METH_NOT_USE;
+	  return NO_ERROR;
 	}
 
 #if HASH_LIST_SCAN_DUMP_HASH_TABLE
@@ -8917,11 +8935,13 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
  * scan_build_hash_list_scan () - build hash table from list
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
+ *   fits(out): false when a build key has no value in its probe key's domain, with the table left part-built: the
+ *              caller drops the table and reads the list without it (no error is set)
  *
  * Note: If an error occurs, S_ERROR is returned.
  */
 static SCAN_CODE
-scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool * fits)
 {
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
@@ -8967,10 +8987,13 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       /* create new key */
       if (llsidp->hlsid.need_coerce_type)
 	{
-	  new_key = qdata_copy_hscan_key_without_alloc (thread_p, key, llsidp->hlsid.key_plan, new_key);
-	  if (new_key == NULL)
+	  if (qdata_copy_hscan_key_without_alloc (thread_p, key, llsidp->hlsid.key_plan, new_key, fits) != NO_ERROR)
 	    {
 	      return S_ERROR;
+	    }
+	  if (!*fits)
+	    {
+	      return S_END;
 	    }
 	}
       else
@@ -9370,6 +9393,13 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
 
       if ((vtype1 == DB_TYPE_OBJECT && vtype2 == DB_TYPE_OID) || (vtype2 == DB_TYPE_OBJECT && vtype1 == DB_TYPE_OID)
 	  || (vtype1 == DB_TYPE_VOBJ || vtype2 == DB_TYPE_VOBJ))
+	{
+	  return HASH_METH_NOT_USE;
+	}
+      /* A build key is hashed in its probe key's domain (qdata_plan_hscan_keys). A probe key whose domain is still
+       * variable here (an expression over a host variable, not computed yet in this execution) gives no domain to
+       * hash in: a probe value would hash by its own type and miss the build keys. The list scan compares them. */
+      if (vtype1 == DB_TYPE_VARIABLE)
 	{
 	  return HASH_METH_NOT_USE;
 	}
