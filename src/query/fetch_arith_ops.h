@@ -68,6 +68,13 @@ extern FETCH_ARITH_OP fetch_arith_op (OPERATOR_TYPE opcode);
 extern void fetch_arith_node_domains (val_descr * vd, FETCH_ARITH_ARGS * a);
 extern int fetch_arith_node_resolve (val_descr * vd, FETCH_ARITH_ARGS * a);
 extern int fetch_arith_node_end (val_descr * vd, FETCH_ARITH_ARGS * a);
+
+/* two of the interpreter's operand rules the generic step's emitter mirrors (fetch.c): the operand whose fetch error
+ * a date/time function replaces with a conversion error, and WIDTH_BUCKET's two bounds out of its PT_BETWEEN operand */
+extern bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
+extern int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
+							  val_descr * vd, OID * obj_oid, QFILE_TUPLE_RECORD * tplrec,
+							  DB_VALUE ** min, DB_VALUE ** max);
 /* a value a row picked among branches whose collations resolve_domains merged, brought into the merged domain */
 extern int fetch_arith_convert_to_resolved_branch (const val_descr * vd, const DOMAIN_PLAN_ITEM * item,
 						   DB_VALUE * value);

@@ -65,9 +65,6 @@
 
 static int fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid,
 			     QFILE_TUPLE_RECORD * tplrec, DB_VALUE ** peek_dbval);
-static int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
-							  val_descr * vd, OID * obj_oid, QFILE_TUPLE_RECORD * tplrec,
-							  DB_VALUE ** min, DB_VALUE ** max);
 
 /* The type group for aggregate operand evaluation, derived from the root
  * result domain. The tree shape is validated once per type group at marking
@@ -91,7 +88,6 @@ static bool fetch_agg_expr_dbl_from_dbv (const DB_VALUE * dbv, double *out);
 static bool fetch_agg_expr_eval_dbl (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd,
 				     OID * obj_oid, QFILE_TUPLE_RECORD * tplrec, double *out);
 
-static bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
 static int fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * tplrec,
 				 const VAL_DESCR * vd);
 
@@ -2113,7 +2109,7 @@ exit_on_error:
  *   min(out): the lower bound of width_bucket
  *   max(out): the upper bound of width_bucket
  */
-static int
+int
 fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd,
 					       OID * obj_oid, QFILE_TUPLE_RECORD * tplrec, DB_VALUE ** min,
 					       DB_VALUE ** max)
@@ -2428,7 +2424,7 @@ fetch_init_val_list (regu_variable_list_node * regu_list)
  *   tplrec(in): tuple slot (record + layout descriptor)
  *   peek(int):
  */
-static bool
+bool
 is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
 {
   if (regu_var == NULL)

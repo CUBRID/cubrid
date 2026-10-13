@@ -104,6 +104,8 @@ struct expr_step
 
   void *pred;			/* EXPR_PRED *, owned by the program (CASE branch test, T_PREDICATE) */
   void *fn;			/* the generic step's operator body (FETCH_ARITH_OP, fetch_arith_ops.h) */
+  int skip;			/* a generic step's operands the row did not fetch (bit 2 right, 4 third), set by the lazy
+				 * check that jumped over their steps; the step reads it as NULL operands and clears it */
 
   /* Conditional evaluation is expressed with JUMPS, the steps staying one flat sequence
    * the row loop walks forward.  A right operand the interpreter fetches only under a

@@ -119,7 +119,6 @@ static bool qdump_print_value_type_addr (REGU_VARIABLE * value);
 static bool qdump_print_oid (OID * oidptr);
 static bool qdump_print_predicate (PRED_EXPR * predptr);
 static const char *qdump_relation_operator_string (int op);
-static const char *qdump_arith_operator_string (OPERATOR_TYPE opcode);
 static bool qdump_print_arith_expression (ARITH_TYPE * arith_p);
 static bool qdump_print_aggregate_expression (AGGREGATE_TYPE * aggptr);
 static bool qdump_print_arith (int type, void *ptr);
@@ -1782,7 +1781,8 @@ qdump_relation_operator_string (int op)
     }
 }
 
-static const char *
+/* the operator's display name; a program listing names a generic step's operator with it (expr_prog_dump) */
+const char *
 qdump_arith_operator_string (OPERATOR_TYPE opcode)
 {
   switch (opcode)

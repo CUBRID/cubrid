@@ -42,7 +42,7 @@
 #include "error_manager.h"
 #include "fetch.h"
 #include "fetch_arith_ops.h"
-#include "query_dump.h"		/* qdump_operator_type_string () for the listing */
+#include "query_dump.h"		/* qdump_arith_operator_string () for the listing */
 #include "domain_resolve.h"
 #include "memory_alloc.h"
 #include "numeric_opfunc.h"
@@ -70,6 +70,9 @@
 /* argument cells are carried 1-BASED through the build phase (0 must stay
  * distinguishable from "argument unused" == NULL); decoded in materialization */
 #define EXPR_ARG_ENCODE(cell_idx) ((DB_VALUE **) (intptr_t) ((cell_idx) + 1))
+
+/* a generic step's aux: WIDTH_BUCKET fetches its two bounds in the step (expr_generic_operand_spec's '^') */
+#define EXPR_GENERIC_WIDTH_BUCKET 1
 
 /* compiled predicate tree for the CASE family; the evaluator MIRRORS eval_pred ():
  * B_AND/B_OR right-linear loops reduce to three-valued Kleene logic with immediate exit
@@ -1407,17 +1410,26 @@ static int
 expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   FETCH_ARITH_ARGS a;
+  const int skip = step->skip;
   int rc;
 
+  step->skip = 0;
   a.regu_var = step->regu;
   a.arithptr = step->regu->value.arithptr;
   a.vd = ctx->vd;
   a.obj_oid = ctx->obj_oid;
   a.tplrec = ctx->tpl;
   a.peek_left = (step->arg1p != NULL) ? *step->arg1p : NULL;
-  a.peek_right = (step->arg2p != NULL) ? *step->arg2p : NULL;
-  a.peek_third = (step->arg3p != NULL) ? *step->arg3p : NULL;
+  /* an operand the lazy check skipped this row is one the interpreter did not fetch: NULL */
+  a.peek_right = (step->arg2p != NULL && !(skip & 2)) ? *step->arg2p : NULL;
+  a.peek_third = (step->arg3p != NULL && !(skip & 4)) ? *step->arg3p : NULL;
   a.peek_fourth = (step->arg4p != NULL) ? *step->arg4p : NULL;
+  if (step->aux == EXPR_GENERIC_WIDTH_BUCKET
+      && fetch_peek_min_max_value_of_width_bucket_func (ctx->thread_p, a.arithptr->rightptr, ctx->vd, ctx->obj_oid,
+							ctx->tpl, &a.peek_right, &a.peek_third) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
   fetch_arith_node_domains (ctx->vd, &a);
   rc = fetch_arith_node_resolve (ctx->vd, &a);
   if (rc != NO_ERROR)
@@ -1441,6 +1453,38 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     }
   *step->out_cell = a.arithptr->value;
   return NO_ERROR;
+}
+
+/* The lazy check of a generic step's '?' rule: a NULL left operand jumps over the right (and third) operand's steps
+ * onto the generic step and tells it, through its skip mask, which operands the row did not fetch. */
+static int
+expr_k_jump_skip_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  if (DB_IS_NULL (*step->arg1p))
+    {
+      ctx->prog->steps[step->alias_of].skip |= step->aux;
+      ctx->jump = step->jump_to;
+      return EXPR_JUMPED;
+    }
+  return NO_ERROR;
+}
+
+/* The operand of a date or time function whose fetch error the interpreter replaces (is_argument_wrapped_with_cast_op
+ * -- the operand is a CAST the parser wrapped, so the user's value, not the function, failed to convert): the step runs
+ * the operand's steps itself and, on an error, sets the conversion error (step->aux) in its place. */
+static int
+expr_k_try_operand (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  const int first = (int) (step - ctx->prog->steps) + 1;
+  int rc = expr_run_range (ctx->prog, first, step->jump_to, ctx);
+
+  if (rc != NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, step->aux, 0);
+      return ER_FAILED;
+    }
+  ctx->jump = step->jump_to;
+  return EXPR_JUMPED;
 }
 
 /******************************************************************************
@@ -1810,7 +1854,8 @@ expr_step_is_fallible (const EXPR_STEP * step)
 	   || step->kernel == expr_k_extract_datetime || step->kernel == expr_k_extract_timestamp_date
 	   || step->kernel == expr_k_extract_timestamp_time || step->kernel == expr_k_jump_null_arith
 	   || step->kernel == expr_k_jump_null_nullif || step->kernel == expr_k_jump_notnull_nvl
-	   || step->kernel == expr_k_jump || step->kernel == expr_k_case_pub_select);
+	   || step->kernel == expr_k_jump || step->kernel == expr_k_case_pub_select
+	   || step->kernel == expr_k_jump_skip_generic);
 }
 
 static bool
@@ -3589,15 +3634,140 @@ expr_prog_refill_open (EXPR_PROG * prog, const val_descr * vd)
 }
 
 /* The operand fetch rule of an opcode: which of leftptr (L), rightptr (R) and thirdptr (T) the interpreter fetches
- * before the operator (fetch_peek_arith ()'s fetch switch), in that order; a lower-case letter is an operand fetched
- * only when the node has one.  NULL for a rule the generic step does not emit yet: a rule that fetches an operand only
- * on a condition the row decides (a non-NULL left operand -- arithmetic, the string functions), one that replaces a
- * fetch error with a date or time conversion error (MAKEDATE, YEAR, HOUR, ...), and WIDTH_BUCKET's bounds. */
+ * before the operator (fetch_peek_arith ()'s fetch switch), in that order, as a string the emitter walks:
+ *   L R T   fetched;  l r t   fetched only when the node has the operand (the interpreter tests the pointer)
+ *   ?       what follows is fetched only for a non-NULL left operand (a check step jumps over those steps)
+ *   !d  !t  a fetch error of a CAST-wrapped operand is replaced by ER_DATE_CONVERSION / ER_TIME_CONVERSION
+ *   ^       WIDTH_BUCKET: left, the two bounds out of the PT_BETWEEN right operand (in the step), third as the fourth
+ * T_ADD/T_STRCAT and T_CONCAT read oracle_style_empty_string, the former the node's domain too, as the interpreter
+ * does on every row; the parameter cannot change inside an execution.  The groups are the fetch switch's label groups
+ * (피연산자fetch-패턴-20261013.md). */
 static const char *
-expr_generic_operand_spec (OPERATOR_TYPE op)
+expr_generic_operand_spec (OPERATOR_TYPE op, const TP_DOMAIN * exec_domain)
 {
   switch (op)
     {
+      /* left; right, then third when the node has one, only for a non-NULL left (the string functions) */
+    case T_SUBSTRING:
+    case T_LPAD:
+    case T_RPAD:
+    case T_REPLACE:
+    case T_TRANSLATE:
+    case T_TO_CHAR:
+    case T_TO_DATE:
+    case T_TO_TIME:
+    case T_TO_TIMESTAMP:
+    case T_TO_DATETIME:
+    case T_TO_NUMBER:
+    case T_INSTR:
+    case T_MID:
+    case T_DATE_ADD:
+    case T_DATE_SUB:
+    case T_NEXT_VALUE:
+    case T_INDEX_PREFIX:
+    case T_TO_DATETIME_TZ:
+    case T_TO_TIMESTAMP_TZ:
+      return "L?Rt";
+
+      /* third first (no check), left, then right for a non-NULL left (the format functions) */
+    case T_STR_TO_DATE:
+    case T_DATE_FORMAT:
+    case T_TIME_FORMAT:
+    case T_FORMAT:
+      return "TL?R";
+
+      /* left, then right for a non-NULL left -- or always, for a string concatenation under oracle_style_empty_string (arithmetic, INCR/DECR, NULLIF, ...) */
+    case T_ADD:
+    case T_SUB:
+    case T_MUL:
+    case T_DIV:
+    case T_MOD:
+    case T_POSITION:
+    case T_FINDINSET:
+    case T_ADD_MONTHS:
+    case T_MONTHS_BETWEEN:
+    case T_AES_ENCRYPT:
+    case T_AES_DECRYPT:
+    case T_SHA_TWO:
+    case T_POWER:
+    case T_ROUND:
+    case T_LOG:
+    case T_TRUNC:
+    case T_STRCAT:
+    case T_NULLIF:
+    case T_INCR:
+    case T_DECR:
+    case T_BIT_AND:
+    case T_BIT_OR:
+    case T_BIT_XOR:
+    case T_BITSHIFT_LEFT:
+    case T_BITSHIFT_RIGHT:
+    case T_INTDIV:
+    case T_INTMOD:
+    case T_STRCMP:
+    case T_ATAN2:
+    case T_ADDDATE:
+    case T_SUBDATE:
+    case T_DATEDIFF:
+    case T_TIMEDIFF:
+    case T_CURRENT_VALUE:
+    case T_CHR:
+      /* a NULL left operand still fetches the right one when the node is really a string concatenation */
+      return (prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) && (op == T_STRCAT || op == T_ADD)
+	      && (exec_domain == NULL || TP_DOMAIN_TYPE (exec_domain) == DB_TYPE_VARIABLE
+		  || QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (exec_domain)))) ? "LR" : "L?R";
+
+      /* left, then right when the node has one */
+    case T_TRIM:
+    case T_LTRIM:
+    case T_RTRIM:
+      return "Lr";
+
+      /* left, then right and third when the node has them */
+    case T_FROM_UNIXTIME:
+      return "Lrt";
+
+      /* left, right when the node has one, third */
+    case T_SUBSTRING_INDEX:
+    case T_CONCAT_WS:
+    case T_FIELD:
+    case T_INDEX_CARDINALITY:
+      return "LrT";
+
+      /* left, right and third */
+    case T_CONV:
+      return "LRT";
+
+      /* left and right, then third when the node has one */
+    case T_LOCATE:
+      return "LRt";
+
+      /* left, then right (when the node has one) for a non-NULL left -- or always under oracle_style_empty_string */
+    case T_CONCAT:
+      return prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING) ? "Lr" : "L?r";
+
+      /* left and right */
+    case T_REPEAT:
+    case T_LEAST:
+    case T_GREATEST:
+    case T_SYS_CONNECT_BY_PATH:
+    case T_LEFT:
+    case T_RIGHT:
+      return "LR";
+
+      /* left and right; a fetch error of a CAST-wrapped operand is a date conversion error */
+    case T_MAKEDATE:
+    case T_ADDTIME:
+    case T_WEEK:
+    case T_DEFINE_VARIABLE:
+    case T_FROM_TZ:
+      return "LR!d";
+
+      /* left, right and third; a fetch error of a CAST-wrapped operand is a time conversion error */
+    case T_MAKETIME:
+    case T_NEW_TIME:
+      return "LRT!t";
+
       /* nothing to fetch, or a body that fetches its own operands (the CASE family) */
     case T_CASE:
     case T_DECODE:
@@ -3607,28 +3777,6 @@ expr_generic_operand_spec (OPERATOR_TYPE op)
     case T_PREDICATE:
     case T_COALESCE:
     case T_NVL2:
-    case T_CONNECT_BY_ROOT:
-    case T_QPRIOR:
-    case T_SYS_DATE:
-    case T_SYS_TIME:
-    case T_SYS_TIMESTAMP:
-    case T_SYS_DATETIME:
-    case T_CURRENT_DATE:
-    case T_CURRENT_TIME:
-    case T_CURRENT_TIMESTAMP:
-    case T_CURRENT_DATETIME:
-    case T_UTC_TIME:
-    case T_UTC_DATE:
-    case T_LOCAL_TRANSACTION_ID:
-    case T_PI:
-    case T_ROW_COUNT:
-    case T_LAST_INSERT_ID:
-    case T_LIST_DBS:
-    case T_TRACE_STATS:
-    case T_DBTIMEZONE:
-    case T_SESSIONTIMEZONE:
-    case T_SYS_GUID:
-    case T_UTC_TIMESTAMP:
       return "";
 
       /* the right operand */
@@ -3698,13 +3846,69 @@ expr_generic_operand_spec (OPERATOR_TYPE op)
     case T_ESTIMATED_DATA_LENGTH:
     case T_ESTIMATED_DATA_FREE:
     case T_COLLECTION_TO_STRING:
-    case T_TO_ENUMERATION_VALUE:
       return "R";
+
+      /* the right operand; a fetch error of a CAST-wrapped operand is a date conversion error */
+    case T_YEAR:
+    case T_MONTH:
+    case T_DAY:
+    case T_QUARTER:
+    case T_WEEKDAY:
+    case T_DAYOFWEEK:
+    case T_DAYOFYEAR:
+    case T_TODAYS:
+    case T_FROMDAYS:
+    case T_EVALUATE_VARIABLE:
+      return "R!d";
+
+      /* the right operand; a fetch error of a CAST-wrapped operand is a time conversion error */
+    case T_HOUR:
+    case T_MINUTE:
+    case T_SECOND:
+    case T_TIMETOSEC:
+    case T_SECTOTIME:
+      return "R!t";
 
       /* the right operand when the node has one */
     case T_UNIX_TIMESTAMP:
     case T_DEFAULT:
       return "r";
+
+      /* left, then right when the node has one */
+    case T_TIMESTAMP:
+    case T_LIKE_LOWER_BOUND:
+    case T_LIKE_UPPER_BOUND:
+      return "Lr";
+
+      /* nothing to fetch */
+    case T_CONNECT_BY_ROOT:
+    case T_QPRIOR:
+    case T_SYS_DATE:
+    case T_SYS_TIME:
+    case T_SYS_TIMESTAMP:
+    case T_SYS_DATETIME:
+    case T_CURRENT_DATE:
+    case T_CURRENT_TIME:
+    case T_CURRENT_TIMESTAMP:
+    case T_CURRENT_DATETIME:
+    case T_UTC_TIME:
+    case T_UTC_DATE:
+    case T_LOCAL_TRANSACTION_ID:
+    case T_PI:
+    case T_ROW_COUNT:
+    case T_LAST_INSERT_ID:
+    case T_LIST_DBS:
+    case T_TRACE_STATS:
+    case T_DBTIMEZONE:
+    case T_SESSIONTIMEZONE:
+    case T_SYS_GUID:
+    case T_UTC_TIMESTAMP:
+      return "";
+
+      /* left, then right (when the node has one) for a non-NULL left (the LOB conversions) */
+    case T_BLOB_TO_BIT:
+    case T_CLOB_TO_CHAR:
+      return "L?r";
 
       /* the left operand */
     case T_BIT_TO_BLOB:
@@ -3712,72 +3916,85 @@ expr_generic_operand_spec (OPERATOR_TYPE op)
     case T_LOB_LENGTH:
       return "L";
 
-      /* left and right */
-    case T_REPEAT:
-    case T_LEAST:
-    case T_GREATEST:
-    case T_SYS_CONNECT_BY_PATH:
-    case T_LEFT:
-    case T_RIGHT:
-      return "LR";
+      /* the right operand */
+    case T_TO_ENUMERATION_VALUE:
+      return "R";
 
-      /* left, right and third */
-    case T_CONV:
-      return "LRT";
-
-      /* left, then right when the node has one */
-    case T_TRIM:
-    case T_LTRIM:
-    case T_RTRIM:
-    case T_TIMESTAMP:
-    case T_LIKE_LOWER_BOUND:
-    case T_LIKE_UPPER_BOUND:
-      return "Lr";
-
-      /* left, then right and third when the node has them */
-    case T_FROM_UNIXTIME:
-      return "Lrt";
-
-      /* left, right when the node has one, third */
-    case T_SUBSTRING_INDEX:
-    case T_CONCAT_WS:
-    case T_FIELD:
-    case T_INDEX_CARDINALITY:
-      return "LrT";
-
-      /* left and right, then third when the node has one */
-    case T_LOCATE:
-      return "LRt";
+      /* left, the two bounds out of the PT_BETWEEN right operand, third as the fourth */
+    case T_WIDTH_BUCKET:
+      return "^";
     default:
       return NULL;
     }
 }
 
 /* An arithmetic node the kernel table does not cover: its operands compiled in the interpreter's fetch order, then
- * one generic step running the opcode's body (expr_k_generic).  -1 when the node's fetch rule is not emitted yet or
- * an operand declines: the node stays interpreted.  No CSE and no hoisting: a body may be non-deterministic (RAND,
- * SYS_*) or have a side effect (INCR, DEFINE_VARIABLE), and the gate already evaluates a constant expression once
- * (plan_item->ref), so a body over literals alone is rare here. */
+ * one generic step running the opcode's body (expr_k_generic).  -1 when an operand declines or the program is full:
+ * the node stays interpreted.  No CSE and no hoisting: a body may be non-deterministic (RAND, SYS_*) or have a side
+ * effect (INCR, DEFINE_VARIABLE), and the gate already evaluates a constant expression once (plan_item->ref).
+ *
+ * A '?' rule always gets its check step, fallible right side or not (unlike the arithmetic kernels' lazy region):
+ * the body sees the operands the interpreter fetched and no other -- INCR/DECR read the right operand only, and a
+ * NULL left one must leave it unfetched, or the node would register an increment the interpreter does not. */
 static int
 expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * exec_domain, bool * compiled_something)
 {
   ARITH_TYPE *arith = regu->value.arithptr;
-  const char *spec = expr_generic_operand_spec (arith->opcode);
+  const char *spec = expr_generic_operand_spec (arith->opcode, exec_domain);
   FETCH_ARITH_OP fn = fetch_arith_op (arith->opcode);
-  int cells[3] = { -1, -1, -1 };
+  int cells[4] = { -1, -1, -1, -1 };
   EXPR_STEP *step;
-  int cell;
+  int cell, err_code = NO_ERROR, lazy_mask = 0, lazy_start = -1, guard = 0, saved_guard = 0, cse_mark = 0, node_mark =
+    0;
+  bool width_bucket = false;
   const char *p;
 
   if (spec == NULL || fn == NULL)
     {
       return -1;
     }
-  for (p = spec; *p != '\0'; p++)
+  if (strchr (spec, '!') != NULL)
     {
-      const int which = (*p == 'L' || *p == 'l') ? 0 : (*p == 'R' || *p == 'r') ? 1 : 2;
-      REGU_VARIABLE *operand = (which == 0) ? arith->leftptr : (which == 1) ? arith->rightptr : arith->thirdptr;
+      err_code = (strchr (spec, '!')[1] == 'd') ? ER_DATE_CONVERSION : ER_TIME_CONVERSION;
+    }
+  for (p = spec; *p != '\0' && *p != '!'; p++)
+    {
+      int which;
+      REGU_VARIABLE *operand;
+      int try_idx = -1;
 
+      if (*p == '^')
+	{
+	  /* WIDTH_BUCKET: the step itself fetches the two bounds (fetch_peek_min_max_value_of_width_bucket_func) */
+	  width_bucket = true;
+	  cells[0] = expr_compile_node (bctx, arith->leftptr, compiled_something);
+	  if (cells[0] < 0)
+	    {
+	      return -1;
+	    }
+	  cells[3] = expr_compile_node (bctx, arith->thirdptr, compiled_something);
+	  if (cells[3] < 0)
+	    {
+	      return -1;
+	    }
+	  break;
+	}
+      if (*p == '?')
+	{
+	  /* the operands that follow run only for a non-NULL left operand (the check step is inserted below) */
+	  assert (cells[0] >= 0);
+	  lazy_start = bctx->n_steps;
+	  cse_mark = bctx->n_cse;
+	  node_mark = bctx->n_node_cells;
+	  guard = expr_rhs_begin (bctx, cells[0], EXPR_GUARD_LHS_NOT_NULL, &saved_guard);
+	  if (guard < 0)
+	    {
+	      return -1;
+	    }
+	  continue;
+	}
+      which = (*p == 'L' || *p == 'l') ? 0 : (*p == 'R' || *p == 'r') ? 1 : 2;
+      operand = (which == 0) ? arith->leftptr : (which == 1) ? arith->rightptr : arith->thirdptr;
       if (operand == NULL)
 	{
 	  if (*p >= 'a' && *p <= 'z')
@@ -3786,11 +4003,42 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
 	    }
 	  return -1;
 	}
+      if (err_code != NO_ERROR && is_argument_wrapped_with_cast_op (operand))
+	{
+	  /* the operand's steps run under a try step that replaces their error; no step of theirs is hoisted
+	   * out of its range (the branch rule disables hoisting) */
+	  try_idx = bctx->n_steps;
+	  bctx->in_branch++;
+	}
       cells[which] = expr_compile_node (bctx, operand, compiled_something);
+      if (try_idx >= 0)
+	{
+	  bctx->in_branch--;
+	}
       if (cells[which] < 0)
 	{
 	  return -1;
 	}
+      if (try_idx >= 0)
+	{
+	  EXPR_STEP *try_step = expr_build_insert_step (bctx, try_idx, expr_k_try_operand, cells[which]);
+
+	  if (try_step == NULL)
+	    {
+	      return -1;
+	    }
+	  try_step->regu = operand;
+	  try_step->aux = err_code;
+	  try_step->jump_to = bctx->n_steps;	/* the boundary after the operand's steps */
+	}
+      if (lazy_start >= 0)
+	{
+	  lazy_mask |= (which == 1) ? 2 : 4;
+	}
+    }
+  if (lazy_start >= 0)
+    {
+      expr_rhs_end (bctx, saved_guard, guard, cse_mark, node_mark, lazy_mask != 0);
     }
   step = expr_new_step_with_cell (bctx, expr_k_generic, &cell);
   if (step == NULL)
@@ -3800,10 +4048,28 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
   step->arg1p = (cells[0] >= 0) ? EXPR_ARG_ENCODE (cells[0]) : NULL;
   step->arg2p = (cells[1] >= 0) ? EXPR_ARG_ENCODE (cells[1]) : NULL;
   step->arg3p = (cells[2] >= 0) ? EXPR_ARG_ENCODE (cells[2]) : NULL;
+  step->arg4p = (cells[3] >= 0) ? EXPR_ARG_ENCODE (cells[3]) : NULL;
   step->regu = regu;
   step->domain = exec_domain;	/* for the listing: the step reads the node's domains of the row's execution itself */
   step->fn = (void *) fn;
+  step->aux = width_bucket ? EXPR_GENERIC_WIDTH_BUCKET : 0;
   /* a row step: expr_step_hoist () is not called, so its cell keeps the per-row class */
+  if (lazy_mask != 0)
+    {
+      /* a NULL left operand skips the right (and third) operand's steps: the check marks them unfetched on the
+       * generic step and lands on it */
+      const int node_idx = (int) (step - bctx->steps);
+      EXPR_STEP *check = expr_build_insert_step (bctx, lazy_start, expr_k_jump_skip_generic, cell);
+
+      if (check == NULL)
+	{
+	  return -1;
+	}
+      check->arg1p = EXPR_ARG_ENCODE (cells[0]);
+      check->aux = lazy_mask;
+      check->alias_of = node_idx + 1;	/* the generic step moved to node_idx + 1 */
+      check->jump_to = node_idx + 1;
+    }
   *compiled_something = true;
   return cell;
 }
@@ -4857,7 +5123,8 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
 	  }
 	if (step->kernel != expr_k_leaf_fetch && step->kernel != expr_k_hostvar && step->kernel != expr_k_fallback
 	    && step->kernel != expr_k_jump && step->kernel != expr_k_jump_null_arith
-	    && step->kernel != expr_k_jump_null_nullif && step->kernel != expr_k_jump_notnull_nvl)
+	    && step->kernel != expr_k_jump_null_nullif && step->kernel != expr_k_jump_notnull_nvl
+	    && step->kernel != expr_k_jump_skip_generic && step->kernel != expr_k_try_operand)
 	  {
 	    prog->n_compute++;
 	  }
@@ -5261,7 +5528,11 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     {
     expr_k_fallback, "fallback"},
     {
-  expr_k_generic, "generic"},};
+    expr_k_generic, "generic"},
+    {
+    expr_k_jump_skip_generic, "jump_skip"},
+    {
+  expr_k_try_operand, "try_operand"},};
   size_t i;
 
   for (i = 0; i < sizeof (names) / sizeof (names[0]); i++)
@@ -5363,25 +5634,38 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
       fprintf (fp, "%*c[%c%2d] %-14s", indent, ' ',
 	       (i < prog->n_prologue) ? 'P' : (i < prog->n_prologue + prog->n_exec_prologue) ? 'E' : ' ', i,
 	       expr_kernel_name (step->kernel));
-      if (step->arg1p != NULL)
-	{
-	  fprintf (fp, " c%d", (int) (step->arg1p - prog->cells));
-	}
-      if (step->arg2p != NULL)
-	{
-	  fprintf (fp, ", c%d", (int) (step->arg2p - prog->cells));
-	}
-      if (step->arg3p != NULL)
-	{
-	  fprintf (fp, ", c%d", (int) (step->arg3p - prog->cells));
-	}
-      if (step->arg4p != NULL)
-	{
-	  fprintf (fp, ", c%d", (int) (step->arg4p - prog->cells));
-	}
+      {
+	/* the operand cells in order; a generic step's unfetched operand (a rule's missing optional one) is "-" */
+	DB_VALUE **const args[4] = { step->arg1p, step->arg2p, step->arg3p, step->arg4p };
+	int last = 3, k;
+
+	while (last >= 0 && args[last] == NULL)
+	  {
+	    last--;
+	  }
+	for (k = 0; k <= last; k++)
+	  {
+	    if (args[k] != NULL)
+	      {
+		fprintf (fp, "%sc%d", (k == 0) ? " " : ", ", (int) (args[k] - prog->cells));
+	      }
+	    else
+	      {
+		fprintf (fp, "%s-", (k == 0) ? " " : ", ");
+	      }
+	  }
+      }
       if (step->kernel == expr_k_generic)
 	{
-	  fprintf (fp, " op=%s", qdump_operator_type_string (step->regu->value.arithptr->opcode));
+	  fprintf (fp, " op=%s", qdump_arith_operator_string (step->regu->value.arithptr->opcode));
+	}
+      if (step->kernel == expr_k_jump_skip_generic)
+	{
+	  fprintf (fp, " skip=%d", step->aux);
+	}
+      if (step->kernel == expr_k_try_operand)
+	{
+	  fprintf (fp, " err=%d", step->aux);
 	}
       if (step->kernel == expr_k_hostvar)
 	{
