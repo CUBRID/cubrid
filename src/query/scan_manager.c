@@ -224,6 +224,9 @@ static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_ter
 static SCAN_CODE scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool * fits);
 static SCAN_CODE scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * tuple);
+static SCAN_CODE scan_hash_probe_linear_next (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p,
+					      QFILE_TUPLE * tuple);
+static void scan_drop_hash_list_scan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid);
 static HASH_METHOD check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_type,
 					 const VAL_DESCR * vd);
 
@@ -4372,6 +4375,8 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   llsidp->hlsid.probe_regu_list = regu_list_probe;
   llsidp->hlsid.need_coerce_type = false;
   llsidp->hlsid.key_plan = NULL;
+  llsidp->hlsid.probe_key = NULL;
+  llsidp->hlsid.probe_linear = false;
 
   llsidp->is_read_only = is_read_only;
 
@@ -4413,6 +4418,11 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       /* alloc temp key */
       llsidp->hlsid.temp_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
       llsidp->hlsid.temp_new_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
+      llsidp->hlsid.probe_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
+      if (llsidp->hlsid.temp_key == NULL || llsidp->hlsid.temp_new_key == NULL || llsidp->hlsid.probe_key == NULL)
+	{
+	  return S_ERROR;
+	}
       if (scan_start_scan (thread_p, scan_id) != NO_ERROR)
 	{
 	  return S_ERROR;
@@ -4423,19 +4433,13 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	}
       if (!fits)
 	{
-	  /* a build key has no value in its probe key's domain (BIGINT beyond INT, a string longer than a CHAR (n)):
-	   * the table cannot hold it where a probe would find it, so this open reads the list without the table */
+	  /* a build value has no image in the hash domain. The domain never narrows a side, so only a conversion that
+	   * fails on the value itself gets here: the predicate decides it, so this open reads the list without the
+	   * table, as the NO_HASH_LIST_SCAN hint does */
 	  scan_end_scan (thread_p, scan_id);
-	  scan_free_hash_list_scan (thread_p, &llsidp->hlsid);
-	  qdata_free_hscan_key_plan (thread_p, &llsidp->hlsid);
-	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key, val_cnt);
-	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_new_key, val_cnt);
-	  llsidp->hlsid.temp_key = NULL;
-	  llsidp->hlsid.temp_new_key = NULL;
-	  llsidp->hlsid.memory.hash_table = NULL;
-	  llsidp->hlsid.memory.curr_hash_entry = NULL;
-	  llsidp->hlsid.need_coerce_type = false;
+	  scan_drop_hash_list_scan (thread_p, &llsidp->hlsid);
 	  llsidp->hlsid.hash_list_scan_type = HASH_METH_NOT_USE;
+	  llsidp->hlsid.need_coerce_type = false;
 	  return NO_ERROR;
 	}
 
@@ -4470,6 +4474,35 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
     }
 
   return NO_ERROR;
+}
+
+/*
+ * scan_drop_hash_list_scan () - free the hash table, the key plan and the temporary keys of a hash list scan; the
+ *   scan type stays for the trace of a closed scan
+ *   hlsid(in/out): the hash list scan
+ */
+static void
+scan_drop_hash_list_scan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid)
+{
+  scan_free_hash_list_scan (thread_p, hlsid);
+  qdata_free_hscan_key_plan (thread_p, hlsid);
+  /* free temp keys and values */
+  if (hlsid->temp_key != NULL)
+    {
+      qdata_free_hscan_key (thread_p, hlsid->temp_key, hlsid->temp_key->val_count);
+      hlsid->temp_key = NULL;
+    }
+  if (hlsid->temp_new_key != NULL)
+    {
+      qdata_free_hscan_key (thread_p, hlsid->temp_new_key, hlsid->temp_new_key->val_count);
+      hlsid->temp_new_key = NULL;
+    }
+  if (hlsid->probe_key != NULL)
+    {
+      qdata_free_hscan_key (thread_p, hlsid->probe_key, hlsid->probe_key->val_count);
+      hlsid->probe_key = NULL;
+    }
+  hlsid->probe_linear = false;
 }
 
 /*
@@ -5788,20 +5821,7 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    }
 	}
 #endif
-      scan_free_hash_list_scan (thread_p, &llsidp->hlsid);
-      qdata_free_hscan_key_plan (thread_p, &llsidp->hlsid);
-      /* free temp keys and values */
-      if (llsidp->hlsid.temp_key != NULL)
-	{
-	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key, llsidp->hlsid.temp_key->val_count);
-	  llsidp->hlsid.temp_key = NULL;
-	}
-      /* free temp new keys and values */
-      if (llsidp->hlsid.temp_new_key != NULL)
-	{
-	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_new_key, llsidp->hlsid.temp_new_key->val_count);
-	  llsidp->hlsid.temp_new_key = NULL;
-	}
+      scan_drop_hash_list_scan (thread_p, &llsidp->hlsid);
       break;
 
     case S_SHOWSTMT_SCAN:
@@ -8935,8 +8955,8 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
  * scan_build_hash_list_scan () - build hash table from list
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
- *   fits(out): false when a build key has no value in its probe key's domain, with the table left part-built: the
- *              caller drops the table and reads the list without it (no error is set)
+ *   fits(out): false when a build value has no image in the hash domain (qdata_copy_hscan_key_without_alloc), with
+ *              the table left part-built: the caller drops it and reads the list without it
  *
  * Note: If an error occurs, S_ERROR is returned.
  */
@@ -8959,7 +8979,8 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool * fi
     {
       return S_ERROR;
     }
-  /* each build key's copy or conversion, from the domains the positions above now read */
+  /* each key pair's hash domain and each side's copy or conversion, from the domains the positions above now read;
+   * need_coerce_type keeps whether a build key converts */
   if (llsidp->hlsid.need_coerce_type
       && qdata_plan_hscan_keys (thread_p, scan_id->vd, &llsidp->hlsid, llsidp->scan_pred.regu_list) != NO_ERROR)
     {
@@ -9163,6 +9184,24 @@ scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
+ * scan_hash_probe_linear_next () - the next tuple of a probe that reads the whole list (HASH_LIST_SCAN.probe_linear)
+ *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
+ *   scan_id_p(in/out): the list file scan, which the scan reopens before each probe (scan_reset_scan_block)
+ *   tuple(out): the tuple, peeked
+ */
+static SCAN_CODE
+scan_hash_probe_linear_next (THREAD_ENTRY * thread_p, QFILE_LIST_SCAN_ID * scan_id_p, QFILE_TUPLE * tuple)
+{
+  QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
+  const SCAN_CODE qp_scan = qfile_scan_list_next (thread_p, scan_id_p, &tplrec, PEEK);
+  if (qp_scan == S_SUCCESS)
+    {
+      *tuple = tplrec.tpl;
+    }
+  return qp_scan;
+}
+
+/*
  * scan_hash_probe_next () - The scan is moved to the next hash list scan item.
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
@@ -9189,10 +9228,29 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 
   if (scan_id_p->position == S_BEFORE)
     {
+      llsidp->hlsid.probe_linear = false;
       /* build key */
       if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hlsid.probe_regu_list, key) != NO_ERROR)
 	{
 	  return S_ERROR;
+	}
+      /* the probe key in the hash domain */
+      if (qdata_hscan_key_plan_probe_converts (llsidp->hlsid.key_plan))
+	{
+	  bool fits = true;
+	  if (qdata_probe_hscan_key (key, llsidp->hlsid.key_plan, llsidp->hlsid.temp_new_key, llsidp->hlsid.probe_key,
+				     &fits) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  if (!fits)
+	    {
+	      /* no bucket holds the build values equal to this probe: it reads the whole list, and the predicate
+	       * decides each tuple as the list scan does */
+	      llsidp->hlsid.probe_linear = true;
+	      return scan_hash_probe_linear_next (thread_p, scan_id_p, tuple);
+	    }
+	  key = llsidp->hlsid.probe_key;
 	}
       /* make hash key */
       hash_key = qdata_hash_scan_key (key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
@@ -9259,6 +9317,10 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
     }
   else if (scan_id_p->position == S_ON)
     {
+      if (llsidp->hlsid.probe_linear)
+	{
+	  return scan_hash_probe_linear_next (thread_p, scan_id_p, tuple);
+	}
       switch (llsidp->hlsid.hash_list_scan_type)
 	{
 	case HASH_METH_IN_MEM:
@@ -9396,14 +9458,9 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
 	{
 	  return HASH_METH_NOT_USE;
 	}
-      /* A build key is hashed in its probe key's domain (qdata_plan_hscan_keys). A probe key whose domain is still
-       * variable here (an expression over a host variable, not computed yet in this execution) gives no domain to
-       * hash in: a probe value would hash by its own type and miss the build keys. The list scan compares them. */
-      if (vtype1 == DB_TYPE_VARIABLE)
-	{
-	  return HASH_METH_NOT_USE;
-	}
-      if (vtype1 != vtype2)
+      /* the key plan (qdata_plan_hscan_keys) decides whether a pair hashes differently: types that differ, a domain
+       * not fixed yet, NUMERIC precisions and scales, string codesets */
+      if (vtype1 != vtype2 || vtype1 == DB_TYPE_VARIABLE || vtype1 == DB_TYPE_NUMERIC || TP_IS_CHAR_TYPE (vtype1))
 	{
 	  llsidp->hlsid.need_coerce_type = true;
 	}
