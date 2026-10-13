@@ -653,12 +653,29 @@ expr_k_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
    * the per-row clear */
   pr_clear_value (step->out);
 
-  /* T_CAST is the explicit CAST the user wrote, which the interpreted path coerces with
-   * tp_value_cast_force () -- it allows conversions the plain (non-forced) cast rejects,
-   * such as a character string to BIT. tp_value_cast () is reserved there for a
-   * STRICT_TYPE_CAST-flagged T_CAST_WRAP, which is never compiled here (see the T_CAST
-   * arm of expr_compile_node ()). */
+  /* T_CAST is the explicit CAST the user wrote, and T_CAST_WRAP the cast the parser wraps an
+   * operand in (a CASE arm typed by the CASE, an operand widened to its operator's type); the
+   * interpreted path coerces both with tp_value_cast_force () -- it allows conversions the
+   * plain (non-forced) cast rejects, such as a character string to BIT -- except a
+   * STRICT_TYPE_CAST-flagged T_CAST_WRAP, which takes tp_value_cast () (expr_k_cast_strict,
+   * the same choice fetch_cast_operand () makes). */
   dom_status = tp_value_cast_force (src, step->out, step->domain, false);
+  if (unlikely (dom_status != DOMAIN_COMPATIBLE))
+    {
+      return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, step->domain);
+    }
+  return NO_ERROR;
+}
+
+/* the STRICT_TYPE_CAST-flagged T_CAST_WRAP: the plain cast, which rejects what the forced one allows */
+static int
+expr_k_cast_strict (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  DB_VALUE *src = *step->arg1p;
+  TP_DOMAIN_STATUS dom_status;
+
+  pr_clear_value (step->out);
+  dom_status = tp_value_cast (src, step->out, step->domain, false);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, step->domain);
@@ -4077,19 +4094,30 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    return cell;
 	  }
 
-	if (arith->opcode == T_CAST)
+	if (arith->opcode == T_CAST || arith->opcode == T_CAST_WRAP)
 	  {
+	    /* T_CAST_WRAP is the cast the parser wraps an operand in -- a CASE arm typed by the
+	     * CASE ("CASE WHEN c THEN a + 1 ELSE ? END" is DOUBLE when the parser cannot type the
+	     * other arm, so the arm is CAST_WRAP (a + 1 AS DOUBLE)), an operand widened to its
+	     * operator's type.  The interpreted path coerces it exactly as the explicit CAST, with
+	     * the forced cast, unless the node is STRICT_TYPE_CAST-flagged: then the plain cast
+	     * (fetch_cast_operand's force argument).  The two kernels are those two casts; the
+	     * CSE key tells them apart, a forced wrap shares the explicit CAST's. */
+	    const bool force = !REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_STRICT_TYPE_CAST)
+	      || arith->opcode != T_CAST_WRAP;
+	    const int cse_op = force ? T_CAST : T_CAST_WRAP;
+
 	    c1 = expr_compile_node (bctx, arith->rightptr, compiled_something);
 	    if (c1 < 0)
 	      {
 		return -1;
 	      }
-	    cell = expr_cse_find (bctx, exec_domain, T_CAST, c1, -1, -1);
+	    cell = expr_cse_find (bctx, exec_domain, cse_op, c1, -1, -1);
 	    if (cell >= 0)
 	      {
 		return cell;
 	      }
-	    step = expr_new_step_with_cell (bctx, expr_k_cast, &cell);
+	    step = expr_new_step_with_cell (bctx, force ? expr_k_cast : expr_k_cast_strict, &cell);
 	    if (step == NULL)
 	      {
 		return -1;
@@ -4100,7 +4128,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    step->out = (DB_VALUE *) 1;	/* needs an owned slot; materialized later */
 	    bctx->n_slots++;
 	    expr_step_hoist (bctx, step, cell, c1, -1, true);	/* cast (? as int), cast ('1' as int) */
-	    expr_cse_add (bctx, exec_domain, T_CAST, c1, -1, -1, cell, bctx->cur_guard);
+	    expr_cse_add (bctx, exec_domain, cse_op, c1, -1, -1, cell, bctx->cur_guard);
 	    *compiled_something = true;
 	    return cell;
 	  }
@@ -4916,6 +4944,8 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     expr_k_nullif, "nullif"},
     {
     expr_k_cast, "cast"},
+    {
+    expr_k_cast_strict, "cast_strict"},
     {
     expr_k_case_branch, "case_branch"},
     {
