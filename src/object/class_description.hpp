@@ -23,9 +23,6 @@
 #ifndef _CLASS_DESCRIPTION_HPP_
 #define _CLASS_DESCRIPTION_HPP_
 
-#if defined(SERVER_MODE)
-#error Does not belong to server module
-#endif //defined(SERVER_MODE)
 
 #include <vector>
 

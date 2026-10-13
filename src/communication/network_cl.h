@@ -26,9 +26,6 @@
 
 #ident "$Id$"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* SERVER_MODE */
 #if defined(SA_MODE)
 #error Does not belong to sa mode
 #endif

@@ -83,6 +83,7 @@
 #include "connection_sr.h"
 #include "server_support.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
+#include "adoption.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -1351,9 +1352,14 @@ css_shutdown_conn_by_tran_index (int tran_index, int wait_time)
 		{
 		  conn->status = CONN_CLOSING;
 
-		  css_request_shutdown_conn (conn,
-					     static_cast < uint8_t >
-					     (cubconn::connection::ignore_level::DONT_IGNORE), false, wait_time);
+		  /* Adopted sessions have no CSS socket worker. Terminate their real
+		   * driver socket so an idle request reader can perform its cleanup. */
+		  if (!cubconn::adoption::registry_shutdown_client (conn->client_id, tran_index))
+		    {
+		      css_request_shutdown_conn (conn,
+						 static_cast < uint8_t >
+						 (cubconn::connection::ignore_level::DONT_IGNORE), false, wait_time);
+		    }
 
 		  error = NO_ERROR;
 		}

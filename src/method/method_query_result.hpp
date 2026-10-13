@@ -21,9 +21,6 @@
 
 #ident "$Id$"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* SERVER_MODE */
 
 #include <vector>
 #include "dbtype_def.h"

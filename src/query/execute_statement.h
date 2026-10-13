@@ -26,9 +26,6 @@
 
 #ident "$Id$"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* SERVER_MODE */
 
 #include "dbi.h"
 #include "parser.h"
@@ -85,9 +82,15 @@ extern int get_dblink_owner_name_from_dbserver (PARSER_CONTEXT * parser, PT_NODE
 
 typedef int (PT_DO_FUNC) (PARSER_CONTEXT *, PT_NODE *);
 
+#if defined (SERVER_MODE)
+#include "trigger_manager.h"	/* csc_tr: per-session trigger-involvement flags */
+#define do_Trigger_involved (csc_tr ()->do_trigger_involved)
+#define cdc_Trigger_involved (csc_tr ()->cdc_trigger_involved)
+#else
 extern bool do_Trigger_involved;
 
 extern bool cdc_Trigger_involved;
+#endif
 
 extern int do_alter (PARSER_CONTEXT * parser, PT_NODE * statement);
 

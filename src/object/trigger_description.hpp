@@ -23,9 +23,6 @@
 #ifndef _TRIGGER_DESCRIPTION_HPP_
 #define _TRIGGER_DESCRIPTION_HPP_
 
-#if defined(SERVER_MODE)
-#error Does not belong to server module
-#endif //defined(SERVER_MODE)
 
 #include <stdio.h>
 #include "dbtype_def.h"

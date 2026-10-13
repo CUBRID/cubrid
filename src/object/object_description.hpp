@@ -26,9 +26,6 @@
 #ifndef _OBJECT_DESCRIPTION_HPP_
 #define _OBJECT_DESCRIPTION_HPP_
 
-#if defined(SERVER_MODE)
-#error Does not belong to server module
-#endif //defined(SERVER_MODE)
 
 struct db_object;
 

@@ -62,6 +62,11 @@ struct alloc_resource
   DB_QUERY_RESULT *free_qres_list;	/* list of free query entry structures */
 };
 
+#if defined (SERVER_MODE)
+/* the registry is session state (db.h db_qres_table_context): a shared table
+ * would let one session's commit close another session's live cursors */
+#define Qres_table (csc_db ()->qres_table)
+#else /* SERVER_MODE */
 static struct
 {				/* global query table variable */
   int qres_cnt;			/* number of active query entries */
@@ -75,14 +80,23 @@ static struct
   {
   0, 0, (DB_QUERY_RESULT *) NULL}
 };				/* query result table */
+#endif /* !SERVER_MODE */
 
 static const int QP_QRES_LIST_INIT_CNT = 10;
 			       /* query result list initial cnt */
 static const float QP_QRES_LIST_INC_RATE = 1.25f;
 			   /* query result list increment ratio */
 
+#if defined (SERVER_MODE)
+#include "client_session_context.hpp"
+#define db_Execution_plan (csc_current ()->db_execution_plan)
+#define db_Execution_plan_length (csc_current ()->db_execution_plan_length)
+#else
 static char *db_Execution_plan = NULL;
 static int db_Execution_plan_length = -1;
+#endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 static DB_QUERY_RESULT *allocate_query_result (void);
 static void free_query_result (DB_QUERY_RESULT * q_res);
@@ -1314,6 +1328,46 @@ db_clear_client_query_result (int notify_server, bool end_holdable)
 	}
     }
 }
+
+#if defined (SERVER_MODE)
+/*
+ * db_final_client_query_results() - session teardown: close any result still
+ *    registered (no server round-trips — the session's server half is being
+ *    torn down with it) and release the registry storage itself.
+ * return : void
+ */
+void
+db_final_client_query_results (void)
+{
+  DB_QUERY_RESULT **qres_ptr;
+  DB_QUERY_RESULT *q_res, *next;
+  int k;
+
+  for (k = 0, qres_ptr = Qres_table.qres_list; k < Qres_table.entry_cnt; k++, qres_ptr++)
+    {
+      if (*qres_ptr != NULL)
+	{
+	  (void) db_query_end_internal (*qres_ptr, false);
+	}
+    }
+  if (Qres_table.qres_list != NULL)
+    {
+      free_and_init (Qres_table.qres_list);
+    }
+  Qres_table.entry_cnt = 0;
+  Qres_table.qres_cnt = 0;
+  Qres_table.qres_closed_cnt = 0;
+
+  for (q_res = Qres_table.alloc_res.free_qres_list; q_res != NULL; q_res = next)
+    {
+      next = q_res->next;
+      free (q_res);
+    }
+  Qres_table.alloc_res.free_qres_list = NULL;
+  Qres_table.alloc_res.free_qres_cnt = 0;
+  Qres_table.alloc_res.max_qres_cnt = 0;
+}
+#endif /* SERVER_MODE */
 
 /*
  * db_cp_query_type_helper() - Copies the given type to a newly allocated type

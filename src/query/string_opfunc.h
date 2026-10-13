@@ -351,9 +351,7 @@ extern int db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset
 extern int db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value);
 extern int db_clob_length (const DB_VALUE * src_value, DB_VALUE * result_value);
 extern int db_get_date_quarter (const DB_VALUE * src_date, DB_VALUE * result);
-#if !defined (SERVER_MODE)
 extern int db_get_date_weekday (const DB_VALUE * src_date, const int type, DB_VALUE * result);
-#endif /* !defined (SERVER_MODE) */
 extern int db_get_date_dayofyear (const DB_VALUE * src_date, DB_VALUE * result);
 extern int db_get_date_totaldays (const DB_VALUE * src_date, DB_VALUE * result);
 extern int db_convert_time_to_sec (const DB_VALUE * src_date, DB_VALUE * result);
@@ -363,10 +361,8 @@ extern int db_add_days_to_year (const DB_VALUE * src_year, const DB_VALUE * src_
 extern int db_convert_to_time (const DB_VALUE * src_hour, const DB_VALUE * src_minute, const DB_VALUE * src_second,
 			       DB_VALUE * result);
 extern int db_get_date_week (const DB_VALUE * src_date, const DB_VALUE * mode, DB_VALUE * result);
-#if !defined (SERVER_MODE)
 extern int db_get_date_item (const DB_VALUE * src_date, const int item_type, DB_VALUE * result);
 extern int db_get_time_item (const DB_VALUE * src_date, const int item_type, DB_VALUE * result);
-#endif /* !defined (SERVER_MODE) */
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern int db_null_terminate_string (const DB_VALUE * src_value, char **strp);
 #endif

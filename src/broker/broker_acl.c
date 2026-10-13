@@ -50,10 +50,10 @@ typedef enum
 } ACL_FMT;
 
 static ACCESS_INFO *access_control_find_access_info (ACCESS_INFO ai[], int size, char *dbname, char *dbuser);
-static int access_control_read_ip_info (IP_INFO * ip_info, char *filename, char *admin_err_msg);
+static int access_control_read_ip_info (BR_ACL_IP_INFO * ip_info, char *filename, char *admin_err_msg);
 static int access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p, char *dbname, char *dbuser,
 						unsigned char *address);
-static int access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p, IP_INFO * ip_info, unsigned char *address,
+static int access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p, BR_ACL_IP_INFO * ip_info, unsigned char *address,
 				    int info_index);
 static int record_ip_access_time (T_SHM_APPL_SERVER * shm_as_p, int info_index, int list_index);
 static ACL_FMT is_invalid_acl_entry (const char *buf, T_SHM_BROKER * shm_br);
@@ -367,7 +367,7 @@ is_invalid_acl_entry (const char *acl, T_SHM_BROKER * shm_br)
 }
 
 static int
-access_control_read_ip_info (IP_INFO * ip_info, char *filename, char *admin_err_msg)
+access_control_read_ip_info (BR_ACL_IP_INFO * ip_info, char *filename, char *admin_err_msg)
 {
   char buf[LINE_MAX];
   char *save;
@@ -551,7 +551,7 @@ access_control_check_right_internal (T_SHM_APPL_SERVER * shm_as_p, char *dbname,
 }
 
 static int
-access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p, IP_INFO * ip_info, unsigned char *address, int info_index)
+access_control_check_ip (T_SHM_APPL_SERVER * shm_as_p, BR_ACL_IP_INFO * ip_info, unsigned char *address, int info_index)
 {
   int i;
 

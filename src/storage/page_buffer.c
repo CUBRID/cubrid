@@ -3182,6 +3182,10 @@ pgbuf_unfix (THREAD_ENTRY * thread_p, PAGE_PTR pgptr)
  *       our system must be corrected to prevent above situation from
  *	 occurring.
  */
+#if defined (SERVER_MODE)
+extern bool csc_in_method_dispatch (void);	/* client_session_context.cpp */
+#endif
+
 void
 pgbuf_unfix_all (THREAD_ENTRY * thread_p)
 {
@@ -3189,6 +3193,18 @@ pgbuf_unfix_all (THREAD_ENTRY * thread_p)
   PAGE_PTR pgptr;
   PGBUF_HOLDER_ANCHOR *thrd_holder_info;
   PGBUF_HOLDER *holder;
+
+#if defined (SERVER_MODE)
+  /* an in-process method dispatch commits/aborts on the very thread whose
+   * outer executor is suspended holding legitimate fixes; the legacy CAS
+   * drove that transaction boundary from another process, so this sweep
+   * never saw them.  Leave them alone — the pre-fold client half cannot
+   * hold page fixes of its own. */
+  if (csc_in_method_dispatch ())
+    {
+      return;
+    }
+#endif
 #if defined(NDEBUG)
 #else /* NDEBUG */
   PGBUF_BCB *bufptr;

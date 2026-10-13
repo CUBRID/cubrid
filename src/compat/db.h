@@ -28,16 +28,15 @@
 
 #include "config.h"
 
+#include <limits.h>
 #include <stdio.h>
 #include "error_manager.h"
 #include "intl_support.h"
 #include "db_date.h"
 #include "object_domain.h"
-#if !defined(SERVER_MODE)
 #include "trigger_manager.h"
 #include "dbi.h"
 #include "parser.h"
-#endif
 #include "log_comm.h"
 #include "dbtype_def.h"
 #include "db_admin.h"
@@ -46,22 +45,104 @@
 #define DB_CONNECTION_STATUS_NOT_CONNECTED      0
 #define DB_CONNECTION_STATUS_CONNECTED          1
 #define DB_CONNECTION_STATUS_RESET              -1
+
+#if defined (SERVER_MODE)
+/* Per-session connection identity of the merged client half (#123 D2; the
+ * db_Session_id race is the A3->A4 hand-off item).  Reached through the
+ * thread's activation bracket (client_session_context.hpp). */
+// *INDENT-OFF*
+/* db_query.c query-result registry (one per session — a shared registry
+ * would let one session's commit close another session's live cursors) */
+struct db_qres_alloc_resource
+{
+  int free_qres_cnt = 0;	/* number of free query_result structures */
+  int max_qres_cnt = 0;		/* maximum number of free structures to keep */
+  DB_QUERY_RESULT *free_qres_list = NULL;	/* list of free query entry structures */
+};
+
+struct db_qres_table_context
+{
+  int qres_cnt = 0;		/* number of active query entries */
+  int qres_closed_cnt = 0;	/* number of closed query entries */
+  int entry_cnt = 0;		/* # of result list entries */
+  DB_QUERY_RESULT **qres_list = NULL;	/* list of query result entries */
+  db_qres_alloc_resource alloc_res;	/* allocation structure resource */
+};
+
+struct db_cl_context
+{
+  int connect_status = DB_CONNECTION_STATUS_CONNECTED;
+  SESSION_ID session_id = DB_EMPTY_SESSION;
+  bool keep_session = false;
+  int row_count = DB_ROW_COUNT_NOT_SET;
+  char database_name[DB_MAX_IDENTIFIER_LENGTH + 1] = {};
+  char program_name[PATH_MAX] = {};
+
+  /* file-scope state of db_admin.c */
+  char client_ip_addr[16] = {};
+  int client_type = 1;		/* DB_CLIENT_TYPE_DEFAULT (db_client_type.hpp) */
+  /* db_disable/enable_modification nesting depth (#121 D8, codex B3 F2):
+   * session-lived, so a transaction boundary's tdes reseed cannot destroy
+   * an open protected region.  The gate is baseline (tdes, type-derived)
+   * PLUS this depth — the sum reproduces the legacy global's arithmetic. */
+  int modification_disable_depth = 0;
+  CUBRID_STMT_TYPE client_statement_type = CUBRID_STMT_NONE;
+  int is_doing_end_session = -1;
+
+  /* file-scope state of db_query.c */
+  db_qres_table_context qres_table;
+};
+// *INDENT-ON*
+
+extern struct db_cl_context *csc_db (void);
+
+/* session teardown of the query-result registry (db_query.c) */
+extern void db_final_client_query_results (void);
+
+/* B4-D8: inside an active session bracket the session context's status
+ * applies; any other server thread (legacy CS dispatch, executor internals
+ * reaching compat code — e.g. a SET-column scan calling db_set_size) sees
+ * the constant CONNECTED that upstream's SERVER_MODE global hardwired, so
+ * every CHECK_CONNECT_* stays a no-op there instead of asserting on the
+ * missing bracket.  The pointer keeps the macro an lvalue for the
+ * client-half writes, which all happen in-bracket. */
+extern int *db_connect_status_ptr (void);
+#define db_Connect_status (*db_connect_status_ptr ())
+#define db_Session_id (csc_db ()->session_id)
+#define db_Keep_session (csc_db ()->keep_session)
+#define db_Row_count (csc_db ()->row_count)
+#define db_Database_name (csc_db ()->database_name)
+#define db_Program_name (csc_db ()->program_name)
+#else /* SERVER_MODE */
 extern int db_Connect_status;
 
 extern SESSION_ID db_Session_id;
 extern bool db_Keep_session;
 
 extern int db_Row_count;
+#endif /* !SERVER_MODE */
 
 #if !defined(_DB_DISABLE_MODIFICATIONS_)
 #define _DB_DISABLE_MODIFICATIONS_
 extern int db_Disable_modifications;
 #endif /* _DB_DISABLE_MODIFICATIONS_ */
 
-#if !defined(SERVER_MODE)
+/* #121 D8: in the folded server the process global is the SERVER'S own
+ * (capability advertisement, tdes seeding); the client half's modification
+ * gate is the session's transaction state (tdes->disable_modifications),
+ * seeded from the client type at registration and every boundary.  CS/SA
+ * keep the historical global. */
+#if defined (SERVER_MODE)
+extern int db_cl_modification_disabled (void);
+#define DB_MODIFICATION_DISABLED() db_cl_modification_disabled ()
+#else
+#define DB_MODIFICATION_DISABLED() db_Disable_modifications
+#endif
+
+#if !defined (SERVER_MODE)
 extern char db_Database_name[];
 extern char db_Program_name[];
-#endif /* !SERVER_MODE */
+#endif
 
 /* MACROS FOR ERROR CHECKING */
 /* These should be used at the start of every db_ function so we can check
@@ -107,14 +188,14 @@ extern char db_Program_name[];
 /* CHECK MODIFICATION */
 #define CHECK_MODIFICATION_VOID()                                            \
   do {                                                                       \
-    if (db_Disable_modifications) {                                          \
+    if (DB_MODIFICATION_DISABLED ()) {                                          \
       er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0);   \
       return;                                                                \
     }                                                                        \
   } while (0)
 
 #define CHECK_MODIFICATION_AND_RETURN_EXPR(return_expr_)                     \
-  if (db_Disable_modifications) {                                            \
+  if (DB_MODIFICATION_DISABLED ()) {                                            \
     er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0);     \
     return (return_expr_);                                                   \
   }
@@ -134,10 +215,10 @@ extern char db_Program_name[];
   error = NO_ERROR;
 #else /* SA_MODE */
 #define CHECK_MODIFICATION_NO_RETURN(error)                                  \
-  if (db_Disable_modifications) {                                            \
+  if (DB_MODIFICATION_DISABLED ()) {                                          \
     er_set(ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DB_NO_MODIFICATIONS, 0);     \
     er_log_debug (ARG_FILE_LINE, "db_Disable_modification = %d\n",           \
-		  db_Disable_modifications);                                  \
+		  DB_MODIFICATION_DISABLED ());                               \
     error = ER_DB_NO_MODIFICATIONS;                                          \
   } else {                                                                   \
     error = NO_ERROR;                                                        \
@@ -233,10 +314,8 @@ extern int db_get_line_col_of_1st_error (DB_SESSION * session, DB_QUERY_ERROR * 
 extern DB_VALUE *db_get_hostvars (DB_SESSION * session);
 extern char **db_get_lock_classes (DB_SESSION * session);
 extern void db_drop_all_statements (DB_SESSION * session);
-#if !defined (SERVER_MODE)
 extern PARSER_CONTEXT *db_get_parser (DB_SESSION * session);
 extern int db_ensure_server_info (PARSER_CONTEXT * parser, int server_info_bits);
-#endif /* !defined (SERVER_MODE) */
 extern DB_NODE *db_get_statement (DB_SESSION * session, int id);
 extern DB_SESSION *db_make_session_for_one_statement_execution (FILE * file);
 extern int db_abort_to_savepoint_internal (const char *savepoint_name);
@@ -281,10 +360,8 @@ extern BTID *db_constraint_index (DB_CONSTRAINT * constraint, BTID * index);
 
 extern int db_col_optimize (DB_COLLECTION * col);
 
-#if !defined(SERVER_MODE)
 extern int db_get_connect_status (void);
 extern void db_set_connect_status (int status);
-#endif
 extern int db_set_otmpl_timestamps (DB_OTMPL * otmpl);
 extern int db_update_otmpl_timestamp (DB_OTMPL * otmpl);
 extern int db_update_obj_timestamp (DB_OBJECT * obj);

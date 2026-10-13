@@ -62,6 +62,8 @@
 #include "network_interface_cl.h"
 
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define OBJ_INTERNAL_SAVEPOINT_NAME "*template-unique*"
 
@@ -73,6 +75,10 @@
  * checking is enabled.
  * This state can be modifed using obt_enable_unique_checking()
  */
+#if defined (SERVER_MODE)
+#define obj_Template_traversal (csc_obt ()->template_traversal)
+#define template_savepoint_count (csc_obt ()->template_savepoint_count)
+#else
 bool obt_Check_uniques = true;
 
 /*
@@ -87,6 +93,8 @@ bool obt_Enable_autoincrement = true;
  * It is only for client-side insertion.
  */
 bool obt_Last_insert_id_generated = false;
+
+#endif /* !SERVER_MODE */
 
 /*
  *                            OBJECT MANAGER AREAS
@@ -113,12 +121,14 @@ static AREA *Assignment_area = NULL;
  *
  */
 
+#if !defined (SERVER_MODE)
 static unsigned int obj_Template_traversal = 0;
 /*
  * Must make sure template savepoints have unique names to allow for concurrent
  * or nested updates.  Could be resetting this at db_restart() time.
  */
 static unsigned int template_savepoint_count = 0;
+#endif /* !SERVER_MODE */
 
 
 static DB_VALUE *check_att_domain (SM_ATTRIBUTE * att, DB_VALUE * proposed_value);
@@ -155,6 +165,12 @@ static void free_temp_object (MOP obj);
 int
 obt_area_init (void)
 {
+  if (Template_area != NULL)
+    {
+      /* process-shared area (#123 D5); process teardown resets the pointer */
+      return NO_ERROR;
+    }
+
   Template_area = area_create ("Object templates", sizeof (OBJ_TEMPLATE), 32);
   if (Template_area == NULL)
     {

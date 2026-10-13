@@ -394,7 +394,16 @@ static int do_alter_index_compact (PARSER_CONTEXT * parser, const PT_NODE * stat
 static int do_alter_index_compact_one_class (MOP class_mop, const char *index_name, int fill_factor,
 					     INT64 * keys_compacted, INT64 * pages_freed, INT64 * pairs_skipped);
 
+#if defined (SERVER_MODE)
+/* per-session: the online-index thread count of this session's running DDL
+ * (A3 audit hand-off — a shared global is rewritten by concurrent DDL) */
+#include "client_session_context.hpp"
+#define ib_thread_count (csc_current ()->ib_thread_count)
+#else
 int ib_thread_count = 0;
+#endif
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /*
  * Function Group :

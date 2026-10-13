@@ -1,0 +1,24 @@
+
+Time: 08/30/26 22:48:50.892 - NOTIFICATION *** file /home/cubrid/dev/worktrees/wf143-gate/src/transaction/boot_sr.c, line 3303  CODE = -972, Tran = -1, EID = 4
+Program '/home/cubrid/optdebug/CUBRID-wf143-gate/bin/csql' (pid 2582387) was connected from the host 'ilhansong_data2'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 08/31/26 00:54:29.039 - NOTIFICATION *** file /home/cubrid/dev/worktrees/wf143-gate/src/transaction/boot_sr.c, line 3303  CODE = -972, Tran = -1, EID = 4
+Program '/home/cubrid/optdebug/CUBRID-wf143-gate/bin/csql' (pid 2816044) was connected from the host 'ilhansong_data2'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 08/31/26 01:07:50.403 - NOTIFICATION *** file /home/cubrid/dev/worktrees/wf143-gate/src/transaction/boot_sr.c, line 3303  CODE = -972, Tran = -1, EID = 4
+Program '/home/cubrid/optdebug/CUBRID-wf143-gate/bin/csql' (pid 2838747) was connected from the host 'ilhansong_data2'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+
+
+Time: 08/31/26 01:16:29.153 - NOTIFICATION *** file /home/cubrid/dev/worktrees/wf143-gate/src/transaction/boot_sr.c, line 3303  CODE = -972, Tran = -1, EID = 4
+Program '/home/cubrid/optdebug/CUBRID-wf143-gate/bin/csql' (pid 2846648) was connected from the host 'ilhansong_data2'. (transaction index 1)
+
+*** The previous error message is the last one. ***
+

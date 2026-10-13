@@ -54,10 +54,15 @@
 #include "error_code.h"
 #include "broker_util.h"
 #include "cas_ssl.h"
+#if defined (SERVER_MODE)
+#include "adoption.hpp"
+#endif
 
 #if defined(WINDOWS)
 #include "broker_wsa_init.h"
 #endif /* WINDOWS */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define SELECT_MASK	fd_set
 
@@ -71,10 +76,19 @@ static void unset_net_timeout_flag (void);
 static int get_host_ip (unsigned char *ip_addr);
 #endif /* WINDOWS */
 
-static bool net_timeout_flag = false;
+static CAS_TLS bool net_timeout_flag = false;
 
-static char net_error_flag;
-static int net_timeout = NET_DEFAULT_TIMEOUT;
+static CAS_TLS char net_error_flag;
+static CAS_TLS int net_timeout = NET_DEFAULT_TIMEOUT;
+
+void
+net_reset_connection (void)
+{
+  net_error_flag = 0;
+  net_timeout_flag = false;
+  net_timeout = NET_DEFAULT_TIMEOUT;
+  new_req_sock_fd = INVALID_SOCKET;
+}
 
 #define READ_FROM_NET(sd, buf, size) ssl_client ? cas_ssl_read (sd, buf, size) : \
 	READ_FROM_SOCKET(sd, buf, size)
@@ -419,16 +433,26 @@ net_decode_str (char *msg, int msg_size, char *func_code, void ***ret_argv)
       remain_size -= 4;
       cur_p += 4;
 
-      if (remain_size < i_val)
+      /* a negative length passed the remain_size check, walked cur_p
+       * backwards and grew argv without bound — in the CAS that killed one
+       * process, here it is cub_server's address space (workspace#259 axis 1,
+       * audit 1-4) */
+      if (i_val < 0 || remain_size < i_val)
 	{
 	  FREE_MEM (argv);
 	  return CAS_ER_COMMUNICATION;
 	}
 
       argc++;
-      argv = (void **) REALLOC (argv, sizeof (void *) * argc);
-      if (argv == NULL)
-	return CAS_ER_NO_MORE_MEMORY;
+      {
+	void **new_argv = (void **) REALLOC (argv, sizeof (void *) * argc);
+	if (new_argv == NULL)
+	  {
+	    FREE_MEM (argv);	/* realloc failure keeps the old block: do not lose it */
+	    return CAS_ER_NO_MORE_MEMORY;
+	  }
+	argv = new_argv;
+      }
 
       argv[argc - 1] = argp;
 
@@ -584,8 +608,23 @@ retry_poll:
     {
       if (cas_shard_flag == OFF && !IS_INVALID_SOCKET (new_req_sock_fd) && (po[1].revents & POLLIN))
 	{
+#if defined (SERVER_MODE)
+	  UINT64 signal;
+	  (void) read (new_req_sock_fd, &signal, sizeof (signal));
+	  if (as_info->con_status == CON_STATUS_OUT_TRAN && as_info->num_holdable_results == 0
+	      && as_info->cas_change_mode == CAS_CHANGE_MODE_AUTO && !as_info->reset_flag)
+	    {
+	      as_info->con_status = CON_STATUS_CLOSE_AND_CONNECT;
+	      return -1;
+	    }
+	  if (!(po[0].revents & (POLLIN | POLLERR | POLLHUP)))
+	    {
+	      goto retry_poll;
+	    }
+#else
 	  /* CHANGE CLIENT */
 	  return -1;
+#endif
 	}
       if (po[0].revents & POLLERR || po[0].revents & POLLHUP)
 	{
@@ -605,6 +644,12 @@ retry_poll:
     {
       net_error_flag = 1;
     }
+#if defined (SERVER_MODE)
+  if (read_len > 0)
+    {
+      cubconn::adoption::registry_histogram_io (read_len, 0);
+    }
+#endif
   return read_len;
 }
 
@@ -667,6 +712,12 @@ retry_poll:
     {
       net_error_flag = 1;
     }
+#if defined (SERVER_MODE)
+  if (write_len > 0)
+    {
+      cubconn::adoption::registry_histogram_io (0, write_len);
+    }
+#endif
   return write_len;
 }
 

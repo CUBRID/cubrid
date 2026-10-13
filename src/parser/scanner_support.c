@@ -38,15 +38,17 @@
 #include "csql_grammar_scan.h"
 #include "memory_alloc.h"
 #include "misc_string.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define IS_WHITE_SPACE(c) (char_isspace2((c)))
 
 #define IS_HINT_ON_TABLE(h)  ((h) & (PT_HINT_INDEX_SS | PT_HINT_INDEX_LS))
 
-int parser_input_host_index = 0;
-int parser_statement_OK = 0;
-PARSER_CONTEXT *this_parser;
-int parser_output_host_index = 0;
+CSQL_PARSER_TLS int parser_input_host_index = 0;
+CSQL_PARSER_TLS int parser_statement_OK = 0;
+CSQL_PARSER_TLS PARSER_CONTEXT *this_parser;
+CSQL_PARSER_TLS int parser_output_host_index = 0;
 
 
 #if defined(SA_MODE) && !defined(NDEBUG)
@@ -196,7 +198,7 @@ static struct st_hint_msg s_hint_msg;
 #endif //#if defined(SA_MODE) && !defined(NDEBUG)
 
 #define HINT_LEAD_CHAR_SIZE (129)
-static u_char hint_table_lead_offset[HINT_LEAD_CHAR_SIZE] = { 0, };
+static CSQL_PARSER_TLS u_char hint_table_lead_offset[HINT_LEAD_CHAR_SIZE] = { 0, };
 
 /*
  * pt_makename () -
@@ -286,46 +288,49 @@ pt_initialize_hint (PARSER_CONTEXT * parser, PT_HINT hint_table[])
   s_hint_msg.stmt_no = -1;
 #endif
 
-  static bool was_initialized =[](PT_HINT hint_table[]){
-    int i;
+  /* the hint table and its lead-offset index are per-thread under
+   * SERVER_MODE, so every thread must sort/index its own copy on first use;
+   * a function-local static would initialize only the first thread's copy. */
+  static CSQL_PARSER_TLS bool was_initialized = false;
+  if (!was_initialized)
+    {
+      was_initialized = true;
+      int i;
 
-    memset (hint_table_lead_offset, 0x00, sizeof (hint_table_lead_offset));
-    for (i = 0; hint_table[i].tokens; i++)
-      {
+      memset (hint_table_lead_offset, 0x00, sizeof (hint_table_lead_offset));
+      for (i = 0; hint_table[i].tokens; i++)
+	{
 #ifndef NDEBUG
-	char *p;
-	for (p = (char *) hint_table[i].tokens; *p; p++)
-	  {
-	    assert (toupper (*p) == *p);
-	  }
+	  char *p;
+	  for (p = (char *) hint_table[i].tokens; *p; p++)
+	    {
+	      assert (toupper (*p) == *p);
+	    }
 #endif
-	hint_table[i].is_hit = false;
-	hint_table[i].length = (int) strlen (hint_table[i].tokens);
-	hint_table_lead_offset[(unsigned char) (hint_table[i].tokens[0])]++;
-      }
+	  hint_table[i].is_hit = false;
+	  hint_table[i].length = (int) strlen (hint_table[i].tokens);
+	  hint_table_lead_offset[(unsigned char) (hint_table[i].tokens[0])]++;
+	}
 
-    // ordering by asc 
-    qsort (hint_table, i, sizeof (hint_table[0]), &hint_token_cmp);
+      // ordering by asc 
+      qsort (hint_table, i, sizeof (hint_table[0]), &hint_token_cmp);
 
-    // Cumulative Distribution Counting
-    int sum = 0;
-    int tCnt = hint_table_lead_offset[0];
-    for (i = 0; i < HINT_LEAD_CHAR_SIZE; i++)
-      {
-	tCnt = hint_table_lead_offset[i];
-	hint_table_lead_offset[i] = sum;
-	sum += tCnt;
-      }
+      // Cumulative Distribution Counting
+      int sum = 0;
+      int tCnt = hint_table_lead_offset[0];
+      for (i = 0; i < HINT_LEAD_CHAR_SIZE; i++)
+	{
+	  tCnt = hint_table_lead_offset[i];
+	  hint_table_lead_offset[i] = sum;
+	  sum += tCnt;
+	}
 
-    // Copy for lower character
-    for (i = 'A'; i <= 'Z'; i++)
-      {
-	hint_table_lead_offset[i + 32 /*('a'-'A') */ ] = hint_table_lead_offset[i];
-      }
-
-    return true;
-  }
-  (hint_table);
+      // Copy for lower character
+      for (i = 'A'; i <= 'Z'; i++)
+	{
+	  hint_table_lead_offset[i + 32 /*('a'-'A') */ ] = hint_table_lead_offset[i];
+	}
+    }
 }
 
 /*

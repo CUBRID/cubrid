@@ -4430,7 +4430,6 @@ intl_check_string (const char *buf, int size, char **pos, const INTL_CODESET cod
   return INTL_UTF8_VALID;
 }
 
-#if !defined (SERVER_MODE)
 /*
  * intl_is_bom_magic - Returns 1 if the buffer contains BOM magic for UTF-8
  *
@@ -4456,7 +4455,6 @@ intl_is_bom_magic (const char *buf, const int size)
 
   return false;
 }
-#endif /* SERVER_MODE */
 
 /* UTF-8 to console routines */
 

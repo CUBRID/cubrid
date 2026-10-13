@@ -26,12 +26,15 @@
 
 #include "porting.h"
 #include "cas_protocol.h"
+#include "cas_common_vars.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #define SET_BIT(C,B)	((C) |= (B))
 #define CLEAR_BIT(C,B)	((C) &= ~(B))
 #define IS_SET_BIT(C,B)	(((C) & (B)) == (B))
 
-static char broker_info[BROKER_INFO_SIZE] = {
+static CAS_TLS char broker_info[BROKER_INFO_SIZE] = {
   CAS_DBMS_CUBRID,
   CAS_KEEP_CONNECTION_ON,
   CAS_STATEMENT_POOLING_ON,

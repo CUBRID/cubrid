@@ -156,7 +156,9 @@ extern "C"
 
   /********************************************************/
   /* From object_accessor.h */
+#if !defined (SERVER_MODE)
   extern char *obj_Method_error_msg;
+#endif
 
   /******************************************/
   /* From dbdef.h */

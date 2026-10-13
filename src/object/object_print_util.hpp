@@ -23,9 +23,6 @@
 #ifndef _OBJECT_PRINT_UTIL_HPP_
 #define _OBJECT_PRINT_UTIL_HPP_
 
-#if defined(SERVER_MODE)
-#error Does not belong to server module
-#endif //defined(SERVER_MODE)
 
 namespace object_print
 {

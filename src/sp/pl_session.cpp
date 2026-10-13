@@ -29,6 +29,10 @@
 
 #include "method_struct_parameter_info.hpp"
 
+#if defined (SERVER_MODE)
+extern bool csc_bracket_is_active (void);	/* client_session_context.cpp */
+#endif
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -46,8 +50,9 @@ namespace cubpl
     session *s = nullptr;
     cubthread::entry *thread_p = thread_get_thread_entry_info ();
 #if defined (SERVER_MODE)
-    // only worker thread can access session
-    if (thread_p && thread_p->type != TT_WORKER)
+    // only worker threads and merged in-process client threads (their session
+    // activation bracket is thread-local) can access session
+    if (thread_p && thread_p->type != TT_WORKER && !csc_bracket_is_active ())
       {
 	return nullptr;
       }

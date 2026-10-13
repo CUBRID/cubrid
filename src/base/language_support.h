@@ -338,14 +338,12 @@ extern "C"
 						 const unsigned char *escape, const bool has_last_escape,
 						 int *str1_match_size, bool ignore_trailing_space);
   extern int lang_get_charset_env_string (char *buf, int buf_size, const char *lang_name, const INTL_CODESET charset);
-#if !defined (SERVER_MODE)
   extern int lang_charset_name_to_id (const char *name, INTL_CODESET * codeset);
   extern int lang_db_put_charset (void);
   extern INTL_CODESET lang_get_client_charset (void);
   extern int lang_get_client_collation (void);
   extern void lang_set_parser_use_client_charset (bool use);
   extern bool lang_get_parser_use_client_charset (void);
-#endif				/* !SERVER_MODE */
 
   extern INTL_CODESET lang_charset_cubrid_name_to_id (const char *name);
   extern const char *lang_charset_introducer (const INTL_CODESET codeset);

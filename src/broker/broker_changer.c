@@ -50,6 +50,7 @@ main (int argc, char *argv[])
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
   int as_number = -1;
+  const char *session_selector = NULL;
 
   if (argc == 2 && strcmp (argv[1], "--version") == 0)
     {
@@ -61,16 +62,16 @@ main (int argc, char *argv[])
   wsa_initialize ();
 #endif /* WINDOWS */
 
-  if (argc < 4)
+  if (argc < 4 || argc > 5)
     {
-      printf ("%s <broker-name> [<cas-number>] <conf-name> <conf-value>\n", argv[0]);
-      exit (0);
+      printf ("%s <broker-name> [<cas-number>|<database>:<Session_id>] <conf-name> <conf-value>\n", argv[0]);
+      exit (1);
     }
 
   if (broker_config_read (NULL, br_info, &num_broker, &master_shm_id, NULL, 0, NULL, NULL, NULL, NULL) < 0)
     {
       printf ("config file error\n");
-      exit (0);
+      exit (1);
     }
 
   ut_cd_work_dir ();
@@ -81,12 +82,20 @@ main (int argc, char *argv[])
     {
       int result;
 
-      result = parse_int (&as_number, argv[2], 10);
+      if (strchr (argv[2], ':') != NULL)
+	{
+	  session_selector = argv[2];
+	  result = 0;
+	}
+      else
+	{
+	  result = parse_int (&as_number, argv[2], 10);
+	}
 
-      if (result != 0 || as_number < 0)
+      if (result != 0 || (session_selector == NULL && as_number < 0))
 	{
 	  printf ("Invalid cas number\n");
-	  exit (0);
+	  exit (1);
 	}
 
       conf_name = argv[3];
@@ -100,10 +109,10 @@ main (int argc, char *argv[])
 
   admin_err_msg[0] = '\0';
 
-  if (admin_conf_change (master_shm_id, br_name, conf_name, conf_value, as_number) < 0)
+  if (admin_conf_change_session (master_shm_id, br_name, conf_name, conf_value, as_number, session_selector) < 0)
     {
       printf ("%s\n", admin_err_msg);
-      exit (0);
+      exit (1);
     }
 
   if (admin_err_msg[0] != '\0')

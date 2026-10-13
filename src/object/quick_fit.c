@@ -34,16 +34,24 @@
 #include "porting.h"
 #endif
 
-#if defined(SERVER_MODE)
-#error Does not belong to server module
-#endif
 
+#if defined (SERVER_MODE)
+/* the workspace heap is session state (#123 D2): allocation and free both
+ * resolve through the activation bracket to the owning session's heap, never
+ * to a heap picked by the calling thread's identity (ALLOC-08) */
+#include "work_space.h"
+#define ws_Heap_id (csc_ws ()->heap_id)
+#define DB_IS_UTILITY_THREAD() (false)
+#else /* SERVER_MODE */
 static HL_HEAPID ws_Heap_id = 0;
 
 static pthread_t ws_Heap_Owner_id = (pthread_t) (-1);
 static int use_utility_theads = 0;
 
 #define DB_IS_UTILITY_THREAD() ((ws_Heap_id == 0 || use_utility_theads == 0) ? false : (pthread_self () != ws_Heap_Owner_id))
+#endif /* !SERVER_MODE */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 bool
 db_is_utility_thread ()
@@ -59,7 +67,13 @@ db_is_utility_thread ()
 void
 db_set_use_utility_thread (bool use)
 {
+#if defined (SERVER_MODE)
+  /* utility threads are a standalone-utility notion; the server resolves the
+   * heap through the session bracket instead */
+  assert (false);
+#else
   use_utility_theads = use ? 1 : 0;
+#endif
 }
 
 
@@ -75,7 +89,9 @@ db_create_workspace_heap (void)
   if (ws_Heap_id == 0)
     {
       ws_Heap_id = hl_register_lea_heap ();
+#if !defined (SERVER_MODE)
       ws_Heap_Owner_id = pthread_self ();
+#endif
     }
   return ws_Heap_id;
 }
@@ -92,7 +108,9 @@ db_destroy_workspace_heap (void)
     {
       hl_unregister_lea_heap (ws_Heap_id);
       ws_Heap_id = 0;
+#if !defined (SERVER_MODE)
       ws_Heap_Owner_id = (pthread_t) (-1);
+#endif
     }
 }
 
