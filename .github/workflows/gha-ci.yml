@@ -201,7 +201,6 @@ jobs:
 
           case "$EV" in
             schedule)
-              echo "schedule: nightly batch -- the nightly job does it"
               emit run false
               exit 0
               ;;
@@ -216,7 +215,6 @@ jobs:
 
             workflow_dispatch)
               if [ "$IN_NIGHTLY" = true ] && [ -z "$IN_SHA" ]; then
-                echo "dispatch: nightly batch -- the nightly job does it"
                 emit run false
                 exit 0
               fi
@@ -273,7 +271,6 @@ jobs:
                 sel=$(printf '%s\n' $sel | sort -u)
                 test_run=true
               else
-                echo "[info] not /run syntax, ignoring: $BODY"
                 emit run false
                 exit 0
               fi
@@ -383,7 +380,6 @@ jobs:
           # A dash, not an empty field: read collapses a run of tabs.
           declare -A parent title
           while IFS=$'\t' read -r c p t; do parent[$c]="$p"; title[$c]="$t"; done < /tmp/window.tsv
-          echo "window: $(wc -l < /tmp/window.tsv) commits on $BRANCH since $since"
 
           covered() {
             local body missing
@@ -398,11 +394,8 @@ jobs:
           : > /tmp/todo.list
           c=$(gh api "repos/${REPO}/commits/${BRANCH}" --jq .sha)
           while [ -n "$c" ] && [ -n "${parent[$c]+set}" ]; do
-            if covered "$c"; then
-              echo "  covered  ${c:0:10}  ${title[$c]}"
-            else
+            if ! covered "$c"; then
               printf '%s\n' "$c" >> /tmp/todo.list
-              echo "  take     ${c:0:10}  ${title[$c]}"
               if [ "$(wc -l < /tmp/todo.list)" -ge "$CAP" ]; then
                 echo "::warning::$CAP commits is the cap; older ones wait for the next batch"
                 break
@@ -431,7 +424,6 @@ jobs:
               -f parallelism="$par" -f limit="$limit" -f testtools="$tt" </dev/null
             echo "dispatched ${c:0:10}  ${title[$c]}"
           done < /tmp/dispatch.list
-          echo "dispatched $(wc -l < /tmp/dispatch.list) of $n on ref $REF, suite $suite"
 
   # Posted from here: build and collect pods can be evicted, and statuses: write must not reach a
   # runner that executes testcase code.
@@ -951,7 +943,6 @@ jobs:
               # A deleted unit and a renamed one look alike, so the re-run cannot pass over either.
               grep -xF -f /tmp/want.list /tmp/all.list > /tmp/sel.list || : > /tmp/sel.list
               gone=$((want - $(wc -l < /tmp/sel.list)))
-              echo "re-run of $RERUN_FROM: $(wc -l < "$src") failed + $unrun unrun -> $((want - gone)) of $want ${unit}s still in the tree"
               if [ "$gone" -gt 0 ]; then
                 echo "::warning::$gone are no longer in the tree (deleted or renamed), so this re-run cannot pass"
                 comm -23 /tmp/want.list <(sort /tmp/sel.list) | sed 's/^/  gone: /'
@@ -1033,8 +1024,6 @@ jobs:
                 }
               ' /tmp/units.tsv > /tmp/plan.tsv
             fi
-            awk -F'\t' -v s="$suite" '{if (NR == 1 || $4 > mx) mx = $4; if (NR == 1 || $4 < mn) mn = $4}
-              END {if (mx > 0) printf "%s: estimated longest shard %.1fm, shortest %.1fm\n", s, mx / 60, mn / 60}' /tmp/plan.tsv
 
             # Guard 1 of 3: the split adds up to the whole.
             got=$(awk -F'\t' '{s+=$2} END {print s+0}' /tmp/plan.tsv)
