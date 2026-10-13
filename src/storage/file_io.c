@@ -6892,14 +6892,6 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
       goto error;
     }
 
-  session_p->bkup.buffer_ring[1] = (char *) malloc (session_p->bkup.iosize);
-  if (session_p->bkup.buffer_ring[1] == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, session_p->bkup.iosize);
-
-      goto error;
-    }
-
   session_p->bkup.buffer = session_p->bkup.buffer_ring[session_p->bkup.active_slot];
 
   session_p->dbfile.area = (FILEIO_BACKUP_PAGE *) malloc (size);
@@ -6998,6 +6990,21 @@ fileio_initialize_backup (const char *db_full_name_p, const char *backup_destina
       }
   }
 #endif /* SERVER_MODE */
+
+  if (session_p->bkup.async_enabled)
+    {
+      /* The second staging slot exists only for the async double-buffer, so allocate it after the gate.
+       * A synchronous session -- the default, and every SA-mode session -- then does not carry an
+       * iosize-sized buffer it never touches. It stays NULL otherwise, and every consumer of
+       * buffer_ring[1] runs only when async_enabled is true. */
+      session_p->bkup.buffer_ring[1] = (char *) malloc (session_p->bkup.iosize);
+      if (session_p->bkup.buffer_ring[1] == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, session_p->bkup.iosize);
+
+	  goto error;
+	}
+    }
 
   session_p->bkup.bkuphdr->unit_num = FILEIO_INITIAL_BACKUP_UNITS;
   session_p->bkup.bkuphdr->level = level;
