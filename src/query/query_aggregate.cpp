@@ -1127,6 +1127,19 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
 			  && operand->next == NULL && operand->value.type == TYPE_INARITH
 			  && operand->value.domain != NULL && TP_DOMAIN_TYPE (operand->value.domain) == DB_TYPE_NUMERIC
 			  && fetch_is_agg_expr_shape (&operand->value, depth_budget));
+	  /* The same for an operand that is only the cast the parser wraps a SUM/AVG argument in
+	   * (SUM (int_col) is a BIGINT, so the argument comes as CAST_WRAP (int_col AS BIGINT)):
+	   * develop marks it REGU_VARIABLE_AGG_OPERAND and its fused register path reads the
+	   * integer straight through the wrap (fetch.c).  The compiler used to decline such a
+	   * root, leaving it there; now that the wrap compiles, keep it there on purpose -- a cast
+	   * kernel would cost a DB_VALUE slot and a forced cast per row where the loop reads a
+	   * word, and that shape has not been measured against the loop. */
+	  if (!word_operand && operand->value.type == TYPE_INARITH
+	      && operand->value.value.arithptr->opcode == T_CAST_WRAP
+	      && REGU_VARIABLE_IS_FLAGED (&operand->value, REGU_VARIABLE_AGG_OPERAND))
+	    {
+	      word_operand = true;
+	    }
 	  roots[n++] = word_operand ? NULL : &operand->value;
 	}
     }
