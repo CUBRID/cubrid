@@ -2252,19 +2252,22 @@ expr_regu_exec_domain (const VAL_DESCR * vd, REGU_VARIABLE * regu)
   return domain;
 }
 
-/* Whether the operand coercion planned for a binary arithmetic node converts neither
- * operand (fetch_arith_binary's direct typed-operator path): the kernels are that typed
- * operator.  A node whose plan converts an operand on the row (plan->conv[i]) stays
- * interpreted until a kernel mirrors the planned converter. */
-static bool
-expr_arith_operands_unconverted (const EXPR_BUILD_CTX * bctx, const ARITH_TYPE * arith)
+/* The plan of a binary arithmetic node the kernels can take: an operand coercion that
+ * converts neither operand (fetch_arith_binary's direct typed-operator path) and names a
+ * number -- the kernels are that typed number operator, computing in the plan's type
+ * (arith.type, what qdata_number_operator reads both operands as).  NULL for any other
+ * node, which stays interpreted: a plan that converts an operand on the row (plan->conv[i])
+ * until a kernel mirrors the planned converter, an unresolved plan (the fetch's
+ * unresolved-domain error), a date, string or collection plan (another operator's). */
+static const RESOLVED_DOMAIN *
+expr_arith_number_plan (const EXPR_BUILD_CTX * bctx, const ARITH_TYPE * arith)
 {
   const DOMAIN_PLAN_ITEM *item = arith->plan_item;
   const RESOLVED_DOMAIN *plan;
 
   if (item == NULL)
     {
-      return false;
+      return NULL;
     }
   if ((item->flags & DOMAIN_PLAN_LATE_BIND) && !(item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION))
     {
@@ -2274,10 +2277,11 @@ expr_arith_operands_unconverted (const EXPR_BUILD_CTX * bctx, const ARITH_TYPE *
     {
       plan = &item->fixed;
     }
-  /* The operator dispatches on the plan's ARITH value (qdata_arith_dbval): the kernels are the
-   * number operator, so only a plan that names a number is theirs -- an unresolved plan is the
-   * fetch's unresolved-domain error, a date, string or collection plan another operator's. */
-  return plan != NULL && plan->conv[0] == NULL && plan->conv[1] == NULL && plan->arith.kind == DOMAIN_ARITH_NUMBER;
+  if (plan == NULL || plan->conv[0] != NULL || plan->conv[1] != NULL || plan->arith.kind != DOMAIN_ARITH_NUMBER)
+    {
+      return NULL;
+    }
+  return plan;
 }
 
 /* the DB_TYPE a leaf will produce, as known at compile time */
@@ -4101,10 +4105,37 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    return cell;
 	  }
 
+	/* The operand coercion the plan (or the gate) chose for this node: the kernels below are
+	 * the direct number operator, so a node whose plan converts an operand on the row stays
+	 * interpreted.  The NUMERIC mix is no exception: the ARITH rule converts neither of two
+	 * numbers (domain_arith_rule), and the number operator coerces the integer side itself
+	 * (qdata_number_numeric) -- which is what expr_k_coerce_numeric mirrors below.  A pair the
+	 * rule does convert (a division of two integers under oracle_compat_number_behavior) is the
+	 * planned converters' and stays interpreted. */
+	const RESOLVED_DOMAIN *const plan = expr_arith_number_plan (bctx, arith);
+
+	if (plan == NULL)
+	  {
+	    return -1;
+	  }
+
+	/* The kernel is the typed operator of the plan's number type: the type qdata_number_operator
+	 * reads both operands as and computes in.  The node's domain can be wider than that type --
+	 * the parser types a CASE arm by the CASE ("CASE WHEN c THEN a + 1 ELSE ? END" is DOUBLE
+	 * when the parser cannot type the other arm), so the arm a + 1 is an INTEGER addition
+	 * whose value the node takes as a DOUBLE.  The interpreted path computes in the plan's type
+	 * and coerces the value to the node's domain afterwards (qdata_arith_dbval's tail,
+	 * qdata_coerce_result_to_domain); the kernel's epilogue is that coercion, and it is kept
+	 * whenever the domain is not what the kernel already produces -- a wider type, or a
+	 * NUMERIC's precision and scale. */
+	const DB_TYPE ktype = plan->arith.type;
+	const bool coerce_result = (ktype == DB_TYPE_NUMERIC || ktype != rtype);
+	TP_DOMAIN *const result_domain = coerce_result ? exec_domain : NULL;
+
 	/* which NUMERIC family the kernel belongs to depends on the operand mix decided
-	 * below; probe here only to reject an unsupported (opcode, result type) pair before
+	 * below; probe here only to reject an unsupported (opcode, kernel type) pair before
 	 * compiling the operands */
-	if (expr_arith_kernel (arith->opcode, rtype, true) == NULL)
+	if (expr_arith_kernel (arith->opcode, ktype, true) == NULL)
 	  {
 	    return -1;
 	  }
@@ -4127,21 +4158,9 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  DB_TYPE t1 = expr_node_type (bctx, arith->leftptr);
 	  DB_TYPE t2 = expr_node_type (bctx, arith->rightptr);
 	  bool numeric_pure = false, lazy;
-
-	  /* the operand coercion the plan (or the gate) chose for this node: the kernels below are
-	   * the direct number operator, so a node whose plan converts an operand on the row stays
-	   * interpreted.  The NUMERIC mix is no exception: the ARITH rule converts neither of two
-	   * numbers (domain_arith_rule), and the number operator coerces the integer side itself
-	   * (qdata_number_numeric) -- which is what expr_k_coerce_numeric mirrors below.  A pair the
-	   * rule does convert (a division of two integers under oracle_compat_number_behavior) is the
-	   * planned converters' and stays interpreted. */
-	  if (!expr_arith_operands_unconverted (bctx, arith))
-	    {
-	      return -1;
-	    }
 	  int r_start, r_cse, r_nodes, r_n, guard, saved_guard;
 
-	  if (rtype == DB_TYPE_NUMERIC)
+	  if (ktype == DB_TYPE_NUMERIC)
 	    {
 	      if ((t1 != DB_TYPE_NUMERIC && t1 != DB_TYPE_SHORT && t1 != DB_TYPE_INTEGER && t1 != DB_TYPE_BIGINT)
 		  || (t2 != DB_TYPE_NUMERIC && t2 != DB_TYPE_SHORT && t2 != DB_TYPE_INTEGER && t2 != DB_TYPE_BIGINT))
@@ -4150,7 +4169,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 		}
 	      numeric_pure = (t1 == DB_TYPE_NUMERIC && t2 == DB_TYPE_NUMERIC);
 	    }
-	  else if (t1 != rtype || t2 != rtype)
+	  else if (t1 != ktype || t2 != ktype)
 	    {
 	      /* non-NUMERIC kernels require both operands to already be of the kernel
 	       * type; the interpreted path would otherwise coerce per row */
@@ -4162,7 +4181,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    {
 	      return -1;
 	    }
-	  if (rtype == DB_TYPE_NUMERIC && t1 != DB_TYPE_NUMERIC)
+	  if (ktype == DB_TYPE_NUMERIC && t1 != DB_TYPE_NUMERIC)
 	    {
 	      step = expr_new_step_with_cell (bctx, expr_k_coerce_numeric, &cell);
 	      if (step == NULL)
@@ -4190,7 +4209,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      return -1;
 	    }
 	  c2 = expr_compile_node (bctx, arith->rightptr, compiled_something);
-	  if (c2 >= 0 && rtype == DB_TYPE_NUMERIC && t2 != DB_TYPE_NUMERIC)
+	  if (c2 >= 0 && ktype == DB_TYPE_NUMERIC && t2 != DB_TYPE_NUMERIC)
 	    {
 	      step = expr_new_step_with_cell (bctx, expr_k_coerce_numeric, &cell);
 	      if (step == NULL)
@@ -4223,15 +4242,15 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      /* the operand-swapped twin, when both nodes evaluate both operands on every row */
 	      cell = expr_cse_find_commuted (bctx, arith->opcode, c1, c2, (int) rtype);
 	      if (cell >= 0
-		  && (rtype != DB_TYPE_NUMERIC
-		      || tp_domain_match (expr_cell_step_domain (bctx, cell), exec_domain, TP_EXACT_MATCH)))
+		  && (result_domain == NULL
+		      || tp_domain_match (expr_cell_step_domain (bctx, cell), result_domain, TP_EXACT_MATCH)))
 		{
 		  return cell;
 		}
 	      cell = -1;
 	    }
 	  /* the operand mix is known now: bind the family-specific kernel */
-	  kernel = expr_arith_kernel (arith->opcode, rtype, numeric_pure);
+	  kernel = expr_arith_kernel (arith->opcode, ktype, numeric_pure);
 	  step = expr_new_step_with_cell (bctx, kernel, &cell);
 	  if (step == NULL)
 	    {
@@ -4242,8 +4261,8 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  /* the trailing coercion is a verified no-op for a non-parameterized result domain
 	   * whose type the kernel already produces (tp_value_cast_internal returns straight
 	   * away when desired_type == original_type, !is_parameterized and src == dest), so
-	   * skip the call; NUMERIC is parameterized (precision/scale) and keeps it */
-	  step->domain = ((rtype == DB_TYPE_NUMERIC) ? exec_domain : NULL);
+	   * skip the call; a wider domain and the parameterized NUMERIC (precision/scale) keep it */
+	  step->domain = result_domain;
 	  step->regu = regu;
 	  step->out = (DB_VALUE *) 1;	/* owned slot */
 	  bctx->n_slots++;
