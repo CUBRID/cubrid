@@ -388,7 +388,9 @@ jobs:
             # a re-run of a gate run older than the ALIGN step leaves them as they were.
             [ -n "${YOUNG}" ] && [ -z "${OLD}" ] && continue
 
-            if grep -qxF "${PR_NUMBER}" "${RUNNER_TEMP}/open-tc.txt"; then
+            # A young verdict may be newer than the list — a TC PR closed since — so it
+            # goes to the judge.
+            if [ -z "${YOUNG}" ] && grep -qxF "${PR_NUMBER}" "${RUNNER_TEMP}/open-tc.txt"; then
               EXPECTED=FAILURE
             else
               OUT=$(bash "${RUNNER_TEMP}/judge.sh" "${PR_NUMBER}") || {
