@@ -11546,6 +11546,15 @@ file_delete_invalid_file (THREAD_ENTRY * thread_p,
   {
     log_sysop_start (thread_p);
 
+    /* unlike a DROP, nothing notified vacuum of this file. do it first, so that no vacuum worker fixes its pages
+     * while they are discarded or after their sectors are freed. */
+    if (vacuum_notify_dropped_file (thread_p, &vfid) != NO_ERROR)
+      {
+	ASSERT_ERROR_AND_SET (error_code);
+	log_sysop_abort (thread_p);
+	return error_code;
+      }
+
     if (file_destroy (thread_p, &vfid, false) != NO_ERROR)
       {
 	ASSERT_ERROR_AND_SET (error_code);
@@ -11730,6 +11739,16 @@ file_tracker_item_delete_target_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_
 	}
       else
 	{
+	  /* as in file_delete_invalid_file: no vacuum worker may fix the pages of the file */
+	  if (vacuum_notify_dropped_file (thread_p, target_vfid) != NO_ERROR)
+	    {
+	      ASSERT_ERROR_AND_SET (error_code);
+
+	      log_sysop_abort (thread_p);
+
+	      return error_code;
+	    }
+
 	  if (file_destroy (thread_p, target_vfid, false) != NO_ERROR)
 	    {
 	      ASSERT_ERROR_AND_SET (error_code);
