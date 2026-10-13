@@ -546,7 +546,6 @@ broker_shm_initialize_shm_as (T_BROKER_INFO * br_info_p, T_SHM_PROXY * shm_proxy
   shm_as_p->max_string_length = br_info_p->max_string_length;
   shm_as_p->stripped_column_name = br_info_p->stripped_column_name;
   shm_as_p->keep_connection = br_info_p->keep_connection;
-  shm_as_p->cache_user_info = br_info_p->cache_user_info;
   shm_as_p->statement_pooling = br_info_p->statement_pooling;
   shm_as_p->access_mode = br_info_p->access_mode;
   shm_as_p->cci_pconnect = br_info_p->cci_pconnect;

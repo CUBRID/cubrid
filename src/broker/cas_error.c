@@ -49,11 +49,10 @@
 static bool server_aborted = false;
 
 void
-err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
+err_msg_set (T_NET_BUF * net_buf)
 {
   if ((err_info.err_indicator != CAS_ERROR_INDICATOR) && (err_info.err_indicator != DBMS_ERROR_INDICATOR))
     {
-      cas_log_debug (ARG_FILE_LINE, "invalid internal error info : file %s line %d", file, line);
       return;
     }
 
@@ -61,7 +60,6 @@ err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
     {
       net_buf_error_msg_set (net_buf, err_info.err_indicator, err_info.err_number, err_info.err_string,
 			     err_info.err_file, err_info.err_line);
-      cas_log_debug (ARG_FILE_LINE, "err_msg_set: err_code %d file %s line %d", err_info.err_number, file, line);
     }
   if (err_info.err_indicator == CAS_ERROR_INDICATOR)
     {
@@ -81,7 +79,6 @@ err_msg_set (T_NET_BUF * net_buf, const char *file, int line)
     case ER_BO_CONNECT_FAILED:
       /* case -581: *//* ER_DB_NO_MODIFICATIONS */
       as_info->reset_flag = TRUE;
-      cas_log_debug (ARG_FILE_LINE, "db_err_msg_set: set reset_flag");
       break;
     }
 }
@@ -105,7 +102,6 @@ error_info_set_with_msg (int err_number, int err_indicator, const char *err_msg,
 
   if ((!force) && (err_info.err_indicator != ERROR_INDICATOR_UNSET))
     {
-      cas_log_debug (ARG_FILE_LINE, "ERROR_INFO_SET reset error info : err_code %d", err_info.err_number);
       return err_info.err_indicator;
     }
 
