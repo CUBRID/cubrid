@@ -21264,6 +21264,12 @@ do_set_trace_to_query_flag (QUERY_FLAG * query_flag)
     {
       *query_flag |= XASL_TRACE_JSON;
     }
+  /* a session that dumps its plans in detail (csql ;plan detail sets the level's 0x200 bit) gets the compiled
+   * expression programs in its trace as well: the server cannot see the client's optimization level otherwise */
+  if (DETAILED_DUMP (prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL)))
+    {
+      *query_flag |= XASL_TRACE_PLAN_DETAIL;
+    }
 }
 
 /*

@@ -111,14 +111,14 @@ namespace parallel_scan
     size_t len = 0;
     FILE *fp;
 
-    /* Only for whoever is debugging the compiler (sql_trace_expr_program), never in the default
-     * trace.  Two reasons.  The serial section already says whether this plan compiled, so a
+    /* Only for a session that shows its plans in detail (;plan detail, the worker inherits the
+     * flag with on_trace), never in the default trace.  Two reasons.  The serial section already says whether this plan compiled, so a
      * worker clone repeating it is noise.  And what a worker has to report depends on how far it
      * got: the first worker to finalize claims this slot, and one that finished before its
      * aggregate operands were compiled reports fewer sections than one that ran rows.  That makes
      * the default trace differ between runs of the same statement, which a test answer cannot
      * carry. */
-    if (!prm_get_bool_value (PRM_ID_SQL_TRACE_EXPR_PROGRAM))
+    if (!thread_get_thread_entry_info ()->trace_plan_detail)
       {
 	return;
       }

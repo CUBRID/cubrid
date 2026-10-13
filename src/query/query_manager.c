@@ -1365,6 +1365,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
   saved_is_stats_on = perfmon_server_is_stats_on (thread_p);
 
   xasl_trace = IS_XASL_TRACE_TEXT (*flag_p) || IS_XASL_TRACE_JSON (*flag_p);
+  thread_p->trace_plan_detail = IS_XASL_TRACE_PLAN_DETAIL (*flag_p);
 
   is_xasl_pinned_reference = IS_XASL_CACHE_PINNED_REFERENCE (*flag_p);
 
@@ -1902,6 +1903,7 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
 
   saved_is_stats_on = perfmon_server_is_stats_on (thread_p);
   xasl_trace = IS_XASL_TRACE_TEXT (*flag_p) || IS_XASL_TRACE_JSON (*flag_p);
+  thread_p->trace_plan_detail = IS_XASL_TRACE_PLAN_DETAIL (*flag_p);
 
   if (DO_NOT_COLLECT_EXEC_STATS (*flag_p))
     {

@@ -563,7 +563,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_SQL_TRACE_SLOW "sql_trace_slow"
 
-#define PRM_NAME_SQL_TRACE_EXPR_PROGRAM "sql_trace_expr_program"
 
 #define PRM_NAME_LOG_TRACE_FLUSH_TIME "log_trace_flush_time"
 
@@ -5679,22 +5678,6 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 5}},
    {false, {.i = 100000}},
    {false, {.i = 0}},
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  /* the compiled expression programs' section of the SQL trace (see
-   * qdump_print_expr_compile_text ()): the one-line summaries and the per-step listing
-   * (kernels, cells, domains) print only when a session turns this on; the default trace
-   * is what a build without the compiler prints */
-  {PRM_ID_SQL_TRACE_EXPR_PROGRAM,
-   PRM_NAME_SQL_TRACE_EXPR_PROGRAM,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
-   PRM_BOOLEAN,
-   PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
-   {false, {.b = false}},
-   NULL_SYSPRM_PARAM_VALUE,
-   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

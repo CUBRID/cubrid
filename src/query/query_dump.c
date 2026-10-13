@@ -3818,10 +3818,10 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
  *				      trace (see expr_compile.h): one summary line per
  *				      program (is it active, what does it cover) and its
  *				      per-step listing (kernels, cells, domains, prologue
- *				      marks, jump targets), only when the session has
- *				      sql_trace_expr_program on -- it is compiler
- *				      diagnostics, not something a user reading a trace
- *				      needs or can act on, and the default trace stays
+ *				      marks, jump targets), only for a session that shows its
+ *				      plans in detail (csql ;plan detail, XASL_TRACE_PLAN_DETAIL)
+ *				      -- it is the plan's execution shape, not something a user
+ *				      reading a plain trace needs, and the default trace stays
  *				      what a build without this feature prints
  */
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -3839,10 +3839,10 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
    * a user has no knob to act on it -- there is no hint and no parameter that turns the
    * compiler on or off for a statement.  Printing it by default made every trace-carrying
    * test answer depend on the coverage of the day and re-blessed again with each coverage
-   * commit.  Whoever works on the compiler sets sql_trace_expr_program and gets the summary
-   * lines and the step listings together; the default trace stays byte-identical to a build
-   * without this feature. */
-  if (!prm_get_bool_value (PRM_ID_SQL_TRACE_EXPR_PROGRAM))
+   * commit.  A session that asks for its plans in detail (csql ;plan detail: the client sends
+   * XASL_TRACE_PLAN_DETAIL with the trace) gets the summary lines and the step listings
+   * together; the default trace stays byte-identical to a build without this feature. */
+  if (!thread_get_thread_entry_info ()->trace_plan_detail)
     {
       return;
     }
