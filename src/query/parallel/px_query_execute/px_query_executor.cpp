@@ -45,7 +45,7 @@ namespace parallel_query_execute
      m_job_execution_queue (new queue (estimated_jobs)),
      m_is_task_running_p (new bool (false)),
      m_parallelism (parallelism),
-     m_xasl_state (qexec_deep_copy_xasl_state (root_thread_p, xasl_state)),
+     m_xasl_state (qexec_deep_copy_xasl_state (root_thread_p, xasl_state, false)),
      m_join_context (),
      m_interrupt (),
      m_error_messages(),

@@ -188,8 +188,16 @@ typedef enum tp_domain_status
   DOMAIN_COMPATIBLE = 0,	/* success */
   DOMAIN_INCOMPATIBLE,		/* can't be coerced */
   DOMAIN_OVERFLOW,		/* value out of range */
-  DOMAIN_ERROR			/* an error has been set */
+  DOMAIN_ERROR,			/* an error has been set */
+  DOMAIN_TRUNCATED		/* converted value retained; caller resolves acceptance */
 } TP_DOMAIN_STATUS;
+
+/* A converter of a value into a domain of another type (object_domain_convert.cpp, tp_value_find_converter): the one
+ * type the resolved converters and the casts share. The caller handles NULL and aliasing and initializes the target
+ * domain (tp_value_convert); a date or time conversion records its error in the last argument. */
+struct date_conversion_error;
+typedef TP_DOMAIN_STATUS (*TP_VALUE_CONVERTER) (const DB_VALUE *, DB_VALUE *, const TP_DOMAIN *,
+						struct date_conversion_error *);
 
 /*
  * TP_MATCH
@@ -458,6 +466,9 @@ extern "C"
 
   extern TP_DOMAIN_STATUS tp_value_cast_force (const DB_VALUE * src, DB_VALUE * dest,
 					       const TP_DOMAIN * desired_domain, bool implicit_coercion);
+  extern TP_DOMAIN_STATUS tp_value_cast_with_converter (const DB_VALUE * src, DB_VALUE * dest,
+							const TP_DOMAIN * desired_domain, bool force, DB_TYPE src_type,
+							TP_VALUE_CONVERTER converter);
 
   extern TP_DOMAIN_STATUS tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest,
 							 const TP_DOMAIN * desired_domain, bool implicit_coercion,
