@@ -3816,12 +3816,13 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 /*
  * qdump_print_expr_compile_text () - compiled expression-program section of the SQL
  *				      trace (see expr_compile.h): one summary line per
- *				      program (is it active, what does it cover) always;
- *				      the per-step listing (kernels, cells, domains,
- *				      prologue marks, jump targets) only when the session
- *				      has sql_trace_expr_program on -- it is compiler
+ *				      program (is it active, what does it cover) and its
+ *				      per-step listing (kernels, cells, domains, prologue
+ *				      marks, jump targets), only when the session has
+ *				      sql_trace_expr_program on -- it is compiler
  *				      diagnostics, not something a user reading a trace
- *				      needs, and it would lengthen every trace otherwise
+ *				      needs or can act on, and the default trace stays
+ *				      what a build without this feature prints
  */
 #if defined (SERVER_MODE) || defined (SA_MODE)
 void
@@ -3832,6 +3833,19 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
   const char *out_names[2] = { "output list", "group output list" };
   const char *sfx = (tag != NULL) ? tag : "";
   int i, k;
+
+  /* Nothing of this section is in the default trace: it is the compiler's coverage state
+   * (which lists compiled, how many columns a program covers, who owns an accumulator), and
+   * a user has no knob to act on it -- there is no hint and no parameter that turns the
+   * compiler on or off for a statement.  Printing it by default made every trace-carrying
+   * test answer depend on the coverage of the day and re-blessed again with each coverage
+   * commit.  Whoever works on the compiler sets sql_trace_expr_program and gets the summary
+   * lines and the step listings together; the default trace stays byte-identical to a build
+   * without this feature. */
+  if (!prm_get_bool_value (PRM_ID_SQL_TRACE_EXPR_PROGRAM))
+    {
+      return;
+    }
 
   outs[0] = xasl_p->outptr_list;
   if (xasl_p->type == BUILDLIST_PROC)
@@ -3897,10 +3911,7 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
 		  fprintf (fp, "\n");
 		}
 	    }
-	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXPR_PROGRAM))
-	    {
-	      expr_prog_dump (fp, (EXPR_PROG *) agg_list->operand_prog, indent + 2);
-	    }
+	  expr_prog_dump (fp, (EXPR_PROG *) agg_list->operand_prog, indent + 2);
 	}
     }
 
@@ -3916,7 +3927,7 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
 	  }
 	fprintf (fp, "%*cEXPR_COMPILE (data filter): %s%s\n", indent, ' ',
 		 (spec->where_pred->scan_prog_state == 1) ? "active" : "interpreted (not covered)", sfx);
-	if (spec->where_pred->scan_prog_state == 1 && prm_get_bool_value (PRM_ID_SQL_TRACE_EXPR_PROGRAM))
+	if (spec->where_pred->scan_prog_state == 1)
 	  {
 	    /* the operand program, when the filter's comparisons carry compiled arithmetic */
 	    expr_scan_pred_dump (fp, spec->where_pred->scan_prog, indent + 2);
@@ -3946,10 +3957,7 @@ qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const 
 	    }
 	  fprintf (fp, "%*cEXPR_COMPILE (%s): active, columns covered %d/%d%s\n", indent, ' ', out_names[k], covered,
 		   out->valptr_cnt, sfx);
-	  if (prm_get_bool_value (PRM_ID_SQL_TRACE_EXPR_PROGRAM))
-	    {
-	      expr_prog_dump (fp, (EXPR_PROG *) out->eval_prog, indent + 2);
-	    }
+	  expr_prog_dump (fp, (EXPR_PROG *) out->eval_prog, indent + 2);
 	}
     }
 }
