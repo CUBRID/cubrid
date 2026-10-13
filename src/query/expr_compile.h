@@ -92,6 +92,8 @@ struct expr_step
    * stable value (constant, host variable) or to a producer step's cell */
   DB_VALUE **arg1p;
   DB_VALUE **arg2p;
+  DB_VALUE **arg3p;		/* the generic step's third and fourth operands (a WIDTH_BUCKET's bounds), else NULL */
+  DB_VALUE **arg4p;
 
   DB_VALUE *out;		/* this step's owned result slot (NULL for pure pointer-select steps) */
   DB_VALUE **out_cell;		/* cell to publish the result pointer into */
@@ -101,6 +103,7 @@ struct expr_step
   int aux;			/* kernel-specific small parameter (host variable index, side flags) */
 
   void *pred;			/* EXPR_PRED *, owned by the program (CASE branch test, T_PREDICATE) */
+  void *fn;			/* the generic step's operator body (FETCH_ARITH_OP, fetch_arith_ops.h) */
 
   /* Conditional evaluation is expressed with JUMPS, the steps staying one flat sequence
    * the row loop walks forward.  A right operand the interpreter fetches only under a

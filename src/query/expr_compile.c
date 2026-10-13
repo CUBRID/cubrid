@@ -41,6 +41,8 @@
 #include "dbtype.h"
 #include "error_manager.h"
 #include "fetch.h"
+#include "fetch_arith_ops.h"
+#include "query_dump.h"		/* qdump_operator_type_string () for the listing */
 #include "domain_resolve.h"
 #include "memory_alloc.h"
 #include "numeric_opfunc.h"
@@ -1390,6 +1392,54 @@ expr_k_fallback (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
       return ER_FAILED;
     }
   *step->out_cell = peek;
+  return NO_ERROR;
+}
+
+/* ---- the generic step: an operator the kernel table does not cover ----
+ *
+ * The step runs the opcode's body (fetch_arith_ops.c) on the operand cells its emitter wired, inside the node protocol
+ * the interpreter runs around the same body (fetch_arith_node_resolve / fetch_arith_node_end): the node's domains of
+ * this execution, its slot cleared, a variable domain resolved; after the body the no-value check and the collation
+ * relabel.  The result is the node's own slot (arithptr->value), published by pointer like a leaf fetch -- the body
+ * writes there and the interpreter's consumers read there, so nothing is copied.  T_INCR/T_DECR publish their left
+ * operand itself (FETCH_ARITH_RAW_LEFT), outside the epilogue, as the interpreter does. */
+static int
+expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  FETCH_ARITH_ARGS a;
+  int rc;
+
+  a.regu_var = step->regu;
+  a.arithptr = step->regu->value.arithptr;
+  a.vd = ctx->vd;
+  a.obj_oid = ctx->obj_oid;
+  a.tplrec = ctx->tpl;
+  a.peek_left = (step->arg1p != NULL) ? *step->arg1p : NULL;
+  a.peek_right = (step->arg2p != NULL) ? *step->arg2p : NULL;
+  a.peek_third = (step->arg3p != NULL) ? *step->arg3p : NULL;
+  a.peek_fourth = (step->arg4p != NULL) ? *step->arg4p : NULL;
+  fetch_arith_node_domains (ctx->vd, &a);
+  rc = fetch_arith_node_resolve (ctx->vd, &a);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  rc = ((FETCH_ARITH_OP) step->fn) (ctx->thread_p, &a);
+  if (rc == FETCH_ARITH_RAW_LEFT)
+    {
+      *step->out_cell = a.peek_left;
+      return NO_ERROR;
+    }
+  if (rc != NO_ERROR)
+    {
+      return ER_FAILED;		/* the interpreter's error exit: the body set the error */
+    }
+  rc = fetch_arith_node_end (ctx->vd, &a);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  *step->out_cell = a.arithptr->value;
   return NO_ERROR;
 }
 
@@ -3538,6 +3588,226 @@ expr_prog_refill_open (EXPR_PROG * prog, const val_descr * vd)
   return true;
 }
 
+/* The operand fetch rule of an opcode: which of leftptr (L), rightptr (R) and thirdptr (T) the interpreter fetches
+ * before the operator (fetch_peek_arith ()'s fetch switch), in that order; a lower-case letter is an operand fetched
+ * only when the node has one.  NULL for a rule the generic step does not emit yet: a rule that fetches an operand only
+ * on a condition the row decides (a non-NULL left operand -- arithmetic, the string functions), one that replaces a
+ * fetch error with a date or time conversion error (MAKEDATE, YEAR, HOUR, ...), and WIDTH_BUCKET's bounds. */
+static const char *
+expr_generic_operand_spec (OPERATOR_TYPE op)
+{
+  switch (op)
+    {
+      /* nothing to fetch, or a body that fetches its own operands (the CASE family) */
+    case T_CASE:
+    case T_DECODE:
+    case T_IF:
+    case T_IFNULL:
+    case T_NVL:
+    case T_PREDICATE:
+    case T_COALESCE:
+    case T_NVL2:
+    case T_CONNECT_BY_ROOT:
+    case T_QPRIOR:
+    case T_SYS_DATE:
+    case T_SYS_TIME:
+    case T_SYS_TIMESTAMP:
+    case T_SYS_DATETIME:
+    case T_CURRENT_DATE:
+    case T_CURRENT_TIME:
+    case T_CURRENT_TIMESTAMP:
+    case T_CURRENT_DATETIME:
+    case T_UTC_TIME:
+    case T_UTC_DATE:
+    case T_LOCAL_TRANSACTION_ID:
+    case T_PI:
+    case T_ROW_COUNT:
+    case T_LAST_INSERT_ID:
+    case T_LIST_DBS:
+    case T_TRACE_STATS:
+    case T_DBTIMEZONE:
+    case T_SESSIONTIMEZONE:
+    case T_SYS_GUID:
+    case T_UTC_TIMESTAMP:
+      return "";
+
+      /* the right operand */
+    case T_LAST_DAY:
+    case T_UNMINUS:
+    case T_OCTET_LENGTH:
+    case T_BIT_LENGTH:
+    case T_CHAR_LENGTH:
+    case T_LOWER:
+    case T_UPPER:
+    case T_HEX:
+    case T_ASCII:
+    case T_SPACE:
+    case T_MD5:
+    case T_UUID_FORMAT:
+    case T_UUID:
+    case T_SHA_ONE:
+    case T_TO_BASE64:
+    case T_FROM_BASE64:
+    case T_BIN:
+    case T_CAST:
+    case T_CAST_NOFAIL:
+    case T_CAST_WRAP:
+    case T_EXTRACT:
+    case T_FLOOR:
+    case T_CEIL:
+    case T_SIGN:
+    case T_ABS:
+    case T_EXP:
+    case T_SQRT:
+    case T_PRIOR:
+    case T_BIT_NOT:
+    case T_REVERSE:
+    case T_DISK_SIZE:
+    case T_BIT_COUNT:
+    case T_ACOS:
+    case T_ASIN:
+    case T_SIN:
+    case T_COS:
+    case T_TAN:
+    case T_COT:
+    case T_DEGREES:
+    case T_RADIANS:
+    case T_LN:
+    case T_LOG2:
+    case T_LOG10:
+    case T_ATAN:
+    case T_DATE:
+    case T_TIME:
+    case T_ISNULL:
+    case T_RAND:
+    case T_DRAND:
+    case T_RANDOM:
+    case T_DRANDOM:
+    case T_TYPEOF:
+    case T_EXEC_STATS:
+    case T_INET_ATON:
+    case T_INET_NTOA:
+    case T_CHARSET:
+    case T_COLLATION:
+    case T_TZ_OFFSET:
+    case T_SLEEP:
+    case T_CRC32:
+    case T_CONV_TZ:
+    case T_ESTIMATED_TABLE_ROWS:
+    case T_ESTIMATED_AVG_ROW_LENGTH:
+    case T_ESTIMATED_DATA_LENGTH:
+    case T_ESTIMATED_DATA_FREE:
+    case T_COLLECTION_TO_STRING:
+    case T_TO_ENUMERATION_VALUE:
+      return "R";
+
+      /* the right operand when the node has one */
+    case T_UNIX_TIMESTAMP:
+    case T_DEFAULT:
+      return "r";
+
+      /* the left operand */
+    case T_BIT_TO_BLOB:
+    case T_CHAR_TO_CLOB:
+    case T_LOB_LENGTH:
+      return "L";
+
+      /* left and right */
+    case T_REPEAT:
+    case T_LEAST:
+    case T_GREATEST:
+    case T_SYS_CONNECT_BY_PATH:
+    case T_LEFT:
+    case T_RIGHT:
+      return "LR";
+
+      /* left, right and third */
+    case T_CONV:
+      return "LRT";
+
+      /* left, then right when the node has one */
+    case T_TRIM:
+    case T_LTRIM:
+    case T_RTRIM:
+    case T_TIMESTAMP:
+    case T_LIKE_LOWER_BOUND:
+    case T_LIKE_UPPER_BOUND:
+      return "Lr";
+
+      /* left, then right and third when the node has them */
+    case T_FROM_UNIXTIME:
+      return "Lrt";
+
+      /* left, right when the node has one, third */
+    case T_SUBSTRING_INDEX:
+    case T_CONCAT_WS:
+    case T_FIELD:
+    case T_INDEX_CARDINALITY:
+      return "LrT";
+
+      /* left and right, then third when the node has one */
+    case T_LOCATE:
+      return "LRt";
+    default:
+      return NULL;
+    }
+}
+
+/* An arithmetic node the kernel table does not cover: its operands compiled in the interpreter's fetch order, then
+ * one generic step running the opcode's body (expr_k_generic).  -1 when the node's fetch rule is not emitted yet or
+ * an operand declines: the node stays interpreted.  No CSE and no hoisting: a body may be non-deterministic (RAND,
+ * SYS_*) or have a side effect (INCR, DEFINE_VARIABLE), and the gate already evaluates a constant expression once
+ * (plan_item->ref), so a body over literals alone is rare here. */
+static int
+expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * exec_domain, bool * compiled_something)
+{
+  ARITH_TYPE *arith = regu->value.arithptr;
+  const char *spec = expr_generic_operand_spec (arith->opcode);
+  FETCH_ARITH_OP fn = fetch_arith_op (arith->opcode);
+  int cells[3] = { -1, -1, -1 };
+  EXPR_STEP *step;
+  int cell;
+  const char *p;
+
+  if (spec == NULL || fn == NULL)
+    {
+      return -1;
+    }
+  for (p = spec; *p != '\0'; p++)
+    {
+      const int which = (*p == 'L' || *p == 'l') ? 0 : (*p == 'R' || *p == 'r') ? 1 : 2;
+      REGU_VARIABLE *operand = (which == 0) ? arith->leftptr : (which == 1) ? arith->rightptr : arith->thirdptr;
+
+      if (operand == NULL)
+	{
+	  if (*p >= 'a' && *p <= 'z')
+	    {
+	      continue;		/* an operand the node does not have: the interpreter leaves it NULL too */
+	    }
+	  return -1;
+	}
+      cells[which] = expr_compile_node (bctx, operand, compiled_something);
+      if (cells[which] < 0)
+	{
+	  return -1;
+	}
+    }
+  step = expr_new_step_with_cell (bctx, expr_k_generic, &cell);
+  if (step == NULL)
+    {
+      return -1;
+    }
+  step->arg1p = (cells[0] >= 0) ? EXPR_ARG_ENCODE (cells[0]) : NULL;
+  step->arg2p = (cells[1] >= 0) ? EXPR_ARG_ENCODE (cells[1]) : NULL;
+  step->arg3p = (cells[2] >= 0) ? EXPR_ARG_ENCODE (cells[2]) : NULL;
+  step->regu = regu;
+  step->domain = exec_domain;	/* for the listing: the step reads the node's domains of the row's execution itself */
+  step->fn = (void *) fn;
+  /* a row step: expr_step_hoist () is not called, so its cell keeps the per-row class */
+  *compiled_something = true;
+  return cell;
+}
+
 /* an arithmetic node, under the depth guard of expr_compile_node () */
 static int
 expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something)
@@ -3801,7 +4071,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 
 	      if (bctx->in_branch > 0)
 		{
-		  return -1;
+		  return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 		}
 
 	      cpred = expr_compile_pred (bctx, arith->pred, compiled_something);
@@ -3899,7 +4169,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    if (t1 != rtype || t2 != rtype
 		|| (rtype != DB_TYPE_INTEGER && rtype != DB_TYPE_BIGINT && rtype != DB_TYPE_DOUBLE))
 	      {
-		return -1;
+		return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	      }
 
 	    c1 = expr_compile_node (bctx, arith->leftptr, compiled_something);
@@ -3969,7 +4239,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 
 	    if (rtype != DB_TYPE_INTEGER || arith->rightptr == NULL)
 	      {
-		return -1;
+		return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	      }
 	    opnd_type = expr_node_type (bctx, arith->rightptr);
 	    switch (opnd_type)
@@ -3993,7 +4263,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      }
 	    if (extract_kernel == NULL)
 	      {
-		return -1;
+		return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	      }
 	    c1 = expr_compile_node (bctx, arith->rightptr, compiled_something);
 	    if (c1 < 0)
@@ -4034,7 +4304,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 		|| !(t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
 		     || expr_pred_generic_cmp_type (t1)))
 	      {
-		return -1;
+		return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	      }
 	    c1 = expr_compile_node (bctx, arith->leftptr, compiled_something);
 	    if (c1 < 0)
@@ -4144,7 +4414,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 
 	if (plan == NULL)
 	  {
-	    return -1;
+	    return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	  }
 
 	/* The kernel is the typed operator of the plan's number type: the type qdata_number_operator
@@ -4165,7 +4435,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 
 	if (coerce_result && !TP_IS_NUMERIC_TYPE (rtype))
 	  {
-	    return -1;
+	    return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	  }
 
 	/* which NUMERIC family the kernel belongs to depends on the operand mix decided
@@ -4173,7 +4443,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	 * compiling the operands */
 	if (expr_arith_kernel (arith->opcode, ktype, true) == NULL)
 	  {
-	    return -1;
+	    return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	  }
 
 	/* T_ADD over a char/bit result domain is really a string concatenation when
@@ -4181,7 +4451,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	if (arith->opcode == T_ADD && prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
 	    && QSTR_IS_ANY_CHAR_OR_BIT (rtype))
 	  {
-	    return -1;
+	    return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	  }
 
 	/* Operands whose compile-time type differs from the kernel type get a per-row
@@ -4201,7 +4471,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      if ((t1 != DB_TYPE_NUMERIC && t1 != DB_TYPE_SHORT && t1 != DB_TYPE_INTEGER && t1 != DB_TYPE_BIGINT)
 		  || (t2 != DB_TYPE_NUMERIC && t2 != DB_TYPE_SHORT && t2 != DB_TYPE_INTEGER && t2 != DB_TYPE_BIGINT))
 		{
-		  return -1;
+		  return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 		}
 	      numeric_pure = (t1 == DB_TYPE_NUMERIC && t2 == DB_TYPE_NUMERIC);
 	    }
@@ -4209,7 +4479,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    {
 	      /* non-NUMERIC kernels require both operands to already be of the kernel
 	       * type; the interpreted path would otherwise coerce per row */
-	      return -1;
+	      return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	    }
 
 	  c1 = expr_compile_node (bctx, arith->leftptr, compiled_something);
@@ -4609,6 +4879,14 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
 	{
 	  step->arg2p = &prog->cells[(intptr_t) step->arg2p - 1];
 	}
+      if (step->arg3p != NULL)
+	{
+	  step->arg3p = &prog->cells[(intptr_t) step->arg3p - 1];
+	}
+      if (step->arg4p != NULL)
+	{
+	  step->arg4p = &prog->cells[(intptr_t) step->arg4p - 1];
+	}
       step->out_cell = &prog->cells[(intptr_t) step->out_cell];
       if (step->out != NULL)
 	{
@@ -4981,7 +5259,9 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     {
     expr_k_hostvar, "hostvar"},
     {
-  expr_k_fallback, "fallback"},};
+    expr_k_fallback, "fallback"},
+    {
+  expr_k_generic, "generic"},};
   size_t i;
 
   for (i = 0; i < sizeof (names) / sizeof (names[0]); i++)
@@ -5090,6 +5370,18 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
       if (step->arg2p != NULL)
 	{
 	  fprintf (fp, ", c%d", (int) (step->arg2p - prog->cells));
+	}
+      if (step->arg3p != NULL)
+	{
+	  fprintf (fp, ", c%d", (int) (step->arg3p - prog->cells));
+	}
+      if (step->arg4p != NULL)
+	{
+	  fprintf (fp, ", c%d", (int) (step->arg4p - prog->cells));
+	}
+      if (step->kernel == expr_k_generic)
+	{
+	  fprintf (fp, " op=%s", qdump_operator_type_string (step->regu->value.arithptr->opcode));
 	}
       if (step->kernel == expr_k_hostvar)
 	{

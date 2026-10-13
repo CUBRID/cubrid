@@ -710,6 +710,143 @@ fetch_constant_evaluated (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 }
 
 /*
+ * fetch_arith_node_domains () - the domains an arithmetic node has now in this execution: its execution domains, or
+ *   the compiled ones in regu_var->domain and arithptr->domain, which never change
+ */
+void
+fetch_arith_node_domains (val_descr * vd, FETCH_ARITH_ARGS * a)
+{
+  a->domain = qexec_get_node_domain (vd, a->regu_var->domain, a->regu_var->plan_item);
+  a->arith_domain = qexec_get_node_domain (vd, a->arithptr->domain, a->arithptr->plan_item);
+  a->no_value_domain = NULL;
+}
+
+/*
+ * fetch_arith_node_resolve () - the node's result slot cleared and, for a node whose compiled domain is variable, the
+ *   domain resolve_domains resolved before the main block taken as its execution domain; the operator runs next
+ *   return: NO_ERROR, or ER_FAILED at the unresolved-domain check (execution)
+ *
+ * The interpreter (fetch_peek_arith) and a program's generic step share this protocol around an operator: the operand
+ * values differ in where they come from, the node's domains and the epilogue (fetch_arith_node_end) do not.
+ */
+int
+fetch_arith_node_resolve (val_descr * vd, FETCH_ARITH_ARGS * a)
+{
+  REGU_VARIABLE *regu_var = a->regu_var;
+  ARITH_TYPE *arithptr = a->arithptr;
+  TP_DOMAIN *domain = a->domain;
+  TP_DOMAIN *arith_domain = a->arith_domain;
+  TP_DOMAIN *no_value_domain = a->no_value_domain;
+
+  /* evaluate arithmetic expression */
+
+  /* clear any previous result */
+  pr_clear_value (arithptr->value);
+  if (domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+    {
+      /* the node's first computation in this execution takes the domain resolve_domains resolved before the main block
+       * as its execution domain for the rest of the execution. A character result carries its merged
+       * collation. */
+      const TP_DOMAIN *resolved_domain = NULL;
+      FETCH_RESOLVED_READING reading = fetch_arith_resolved_domain (vd, arithptr, &resolved_domain);
+      switch (reading)
+	{
+	case FETCH_RESOLVED_DOMAIN:
+	  domain = (TP_DOMAIN *) resolved_domain;
+	  qexec_set_node_domain (vd, regu_var->plan_item, regu_var->domain, resolved_domain);
+	  if (resolved_domain != arith_domain)
+	    {
+	      arith_domain = (TP_DOMAIN *) resolved_domain;
+	      qexec_set_node_domain (vd, arithptr->plan_item, arithptr->domain, resolved_domain);
+	    }
+	  break;
+
+	case FETCH_RESOLVED_NO_VALUE:
+	  no_value_domain = domain;
+	  domain = NULL;
+	  break;
+
+	case FETCH_RESOLVED_UNRESOLVED:
+	default:
+	  (void) domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, arithptr->plan_item),
+					  DB_TYPE_VARIABLE);
+	  return ER_FAILED;
+	}
+    }
+  a->domain = domain;
+  a->arith_domain = arith_domain;
+  a->no_value_domain = no_value_domain;
+  return NO_ERROR;
+}
+
+/*
+ * fetch_arith_node_end () - the node's epilogue after its operator: a node resolve_domains found to take no value must
+ *   have given NULL, and a string whose collation resolve_domains merged takes the merged domain for the execution
+ *   return: NO_ERROR, or ER_FAILED at the unresolved-domain check (execution)
+ */
+int
+fetch_arith_node_end (val_descr * vd, FETCH_ARITH_ARGS * a)
+{
+  REGU_VARIABLE *regu_var = a->regu_var;
+  ARITH_TYPE *arithptr = a->arithptr;
+  TP_DOMAIN *domain = a->domain;
+  TP_DOMAIN *arith_domain = a->arith_domain;
+  TP_DOMAIN *no_value_domain = a->no_value_domain;
+
+
+  if (no_value_domain != NULL)
+    {
+      /* FETCH_RESOLVED_NO_VALUE: resolve_domains found the node takes no value, so the row gave NULL or raised the
+       * operator's error (a return_null_on_function_errors NULL included); the node binds nothing: an unbound node
+       * whose value is NULL keeps its variable domain */
+      assert (DB_IS_NULL (arithptr->value));
+      if (!DB_IS_NULL (arithptr->value))
+	{
+	  (void) domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, arithptr->plan_item),
+					  DB_TYPE_NULL);
+	  return ER_FAILED;
+	}
+      domain = no_value_domain;
+    }
+
+  if (arith_domain != NULL && arith_domain->collation_flag != TP_DOMAIN_COLL_NORMAL && !DB_IS_NULL (arithptr->value))
+    {
+      assert (TP_TYPE_HAS_COLLATION (arith_domain->type->id));
+
+      const TP_DOMAIN *resolved_domain = qexec_resolved_domain (vd, arithptr->plan_item);
+      if (resolved_domain != NULL)
+	{
+	  /* resolve_domains resolved this string's domain once for the execution from its operands' resolved domains;
+	   * the row reads it in place of its value's. A NULL value keeps the compiled domain. */
+#if !defined (NDEBUG)
+	  /* debug cross-check: the resolution is the value's domain but for a string's precision, which stays the
+	   * value's */
+	  {
+	    const TP_DOMAIN *value_domain = tp_domain_resolve_value (arithptr->value, NULL);
+	    assert (value_domain == NULL || (TP_DOMAIN_TYPE (value_domain) == TP_DOMAIN_TYPE (resolved_domain)
+					     && (!TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (resolved_domain))
+						 || (value_domain->codeset == resolved_domain->codeset
+						     && value_domain->collation_id == resolved_domain->collation_id))));
+	  }
+#endif
+	  domain = (TP_DOMAIN *) resolved_domain;
+	  qexec_set_node_domain (vd, regu_var->plan_item, regu_var->domain, domain);
+	}
+      else
+	{
+	  /* resolve_domains resolves every string, a string over a session variable read too: a string
+	   * without a resolution fails the unresolved-domain check (execution) */
+	  (void) domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, arithptr->plan_item),
+					  TP_DOMAIN_TYPE (arith_domain));
+	  return ER_FAILED;
+	}
+    }
+
+  a->domain = domain;
+  return NO_ERROR;
+}
+
+/*
  * fetch_peek_arith () -
  *   return: NO_ERROR or ER_code
  *   regu_var(in/out): Regulator Variable of an ARITH node.
@@ -724,7 +861,6 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 {
   ARITH_TYPE *arithptr;
   DB_VALUE *peek_left, *peek_right, *peek_third, *peek_fourth;
-  TP_DOMAIN *no_value_domain = NULL;	/* FETCH_RESOLVED_NO_VALUE: the compiled domain the node keeps */
 
   assert (regu_var != NULL);
   arithptr = regu_var->value.arithptr;
@@ -734,10 +870,16 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       *peek_dbval = vd->dbval_ptr + arithptr->plan_item->ref;
       return NO_ERROR;
     }
-  /* The domains the node has now in this execution: its execution domains, or the compiled ones in regu_var->domain
-   * and arithptr->domain, which never change. */
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, regu_var->domain, regu_var->plan_item);
-  TP_DOMAIN *arith_domain = qexec_get_node_domain (vd, arithptr->domain, arithptr->plan_item);
+  /* the node and the domains it has now in this execution (fetch_arith_node_domains); the operand fetch rules read
+   * the node's domain (T_ADD's oracle_style_empty_string) */
+  FETCH_ARITH_ARGS args;
+  args.regu_var = regu_var;
+  args.arithptr = arithptr;
+  args.vd = vd;
+  args.obj_oid = obj_oid;
+  args.tplrec = tplrec;
+  fetch_arith_node_domains (vd, &args);
+  TP_DOMAIN *domain = args.domain;
 
   /* An aggregate operand expression is evaluated in one register pass.
    * Unlike the general path, which materializes a DB_VALUE at each operation,
@@ -1393,40 +1535,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       goto error;
     }
 
-  /* evaluate arithmetic expression */
-
-  /* clear any previous result */
-  pr_clear_value (arithptr->value);
-  if (domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+  if (fetch_arith_node_resolve (vd, &args) != NO_ERROR)
     {
-      /* the node's first computation in this execution takes the domain resolve_domains resolved before the main block
-       * as its execution domain for the rest of the execution. A character result carries its merged
-       * collation. */
-      const TP_DOMAIN *resolved_domain = NULL;
-      FETCH_RESOLVED_READING reading = fetch_arith_resolved_domain (vd, arithptr, &resolved_domain);
-      switch (reading)
-	{
-	case FETCH_RESOLVED_DOMAIN:
-	  domain = (TP_DOMAIN *) resolved_domain;
-	  qexec_set_node_domain (vd, regu_var->plan_item, regu_var->domain, resolved_domain);
-	  if (resolved_domain != arith_domain)
-	    {
-	      arith_domain = (TP_DOMAIN *) resolved_domain;
-	      qexec_set_node_domain (vd, arithptr->plan_item, arithptr->domain, resolved_domain);
-	    }
-	  break;
-
-	case FETCH_RESOLVED_NO_VALUE:
-	  no_value_domain = domain;
-	  domain = NULL;
-	  break;
-
-	case FETCH_RESOLVED_UNRESOLVED:
-	default:
-	  (void) domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, arithptr->plan_item),
-					  DB_TYPE_VARIABLE);
-	  goto error;
-	}
+      goto error;
     }
   /* the operator's body: one function per opcode (fetch_arith_ops.c); an opcode without one keeps the cleared
    * value */
@@ -1434,21 +1545,12 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
     FETCH_ARITH_OP op = fetch_arith_op (arithptr->opcode);
     if (op != NULL)
       {
-	FETCH_ARITH_ARGS args;
 	int status;
 
-	args.regu_var = regu_var;
-	args.arithptr = arithptr;
-	args.vd = vd;
-	args.obj_oid = obj_oid;
-	args.tplrec = tplrec;
 	args.peek_left = peek_left;
 	args.peek_right = peek_right;
 	args.peek_third = peek_third;
 	args.peek_fourth = peek_fourth;
-	args.domain = domain;
-	args.arith_domain = arith_domain;
-	args.no_value_domain = no_value_domain;
 	status = op (thread_p, &args);
 	if (status != NO_ERROR)
 	  {
@@ -1464,54 +1566,9 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
   }
 
   *peek_dbval = arithptr->value;
-
-
-  if (no_value_domain != NULL)
+  if (fetch_arith_node_end (vd, &args) != NO_ERROR)
     {
-      /* FETCH_RESOLVED_NO_VALUE: resolve_domains found the node takes no value, so the row gave NULL or raised the
-       * operator's error (a return_null_on_function_errors NULL included); the node binds nothing: an unbound node
-       * whose value is NULL keeps its variable domain */
-      assert (DB_IS_NULL (arithptr->value));
-      if (!DB_IS_NULL (arithptr->value))
-	{
-	  (void) domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, arithptr->plan_item),
-					  DB_TYPE_NULL);
-	  goto error;
-	}
-      domain = no_value_domain;
-    }
-
-  if (arith_domain != NULL && arith_domain->collation_flag != TP_DOMAIN_COLL_NORMAL && !DB_IS_NULL (arithptr->value))
-    {
-      assert (TP_TYPE_HAS_COLLATION (arith_domain->type->id));
-
-      const TP_DOMAIN *resolved_domain = qexec_resolved_domain (vd, arithptr->plan_item);
-      if (resolved_domain != NULL)
-	{
-	  /* resolve_domains resolved this string's domain once for the execution from its operands' resolved domains;
-	   * the row reads it in place of its value's. A NULL value keeps the compiled domain. */
-#if !defined (NDEBUG)
-	  /* debug cross-check: the resolution is the value's domain but for a string's precision, which stays the
-	   * value's */
-	  {
-	    const TP_DOMAIN *value_domain = tp_domain_resolve_value (arithptr->value, NULL);
-	    assert (value_domain == NULL || (TP_DOMAIN_TYPE (value_domain) == TP_DOMAIN_TYPE (resolved_domain)
-					     && (!TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (resolved_domain))
-						 || (value_domain->codeset == resolved_domain->codeset
-						     && value_domain->collation_id == resolved_domain->collation_id))));
-	  }
-#endif
-	  domain = (TP_DOMAIN *) resolved_domain;
-	  qexec_set_node_domain (vd, regu_var->plan_item, regu_var->domain, domain);
-	}
-      else
-	{
-	  /* resolve_domains resolves every string, a string over a session variable read too: a string
-	   * without a resolution fails the unresolved-domain check (execution) */
-	  (void) domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, arithptr->plan_item),
-					  TP_DOMAIN_TYPE (arith_domain));
-	  goto error;
-	}
+      goto error;
     }
 
 fetch_peek_arith_end:

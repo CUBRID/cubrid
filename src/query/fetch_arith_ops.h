@@ -61,6 +61,13 @@ struct fetch_arith_args
 typedef int (*FETCH_ARITH_OP) (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a);
 
 extern FETCH_ARITH_OP fetch_arith_op (OPERATOR_TYPE opcode);
+
+/* The node protocol around an operator (fetch.c), shared by the interpreter and a program's generic step: the node's
+ * domains in this execution, its result slot cleared and a variable domain resolved, then after the operator the
+ * no-value check and the merged-collation relabel. */
+extern void fetch_arith_node_domains (val_descr * vd, FETCH_ARITH_ARGS * a);
+extern int fetch_arith_node_resolve (val_descr * vd, FETCH_ARITH_ARGS * a);
+extern int fetch_arith_node_end (val_descr * vd, FETCH_ARITH_ARGS * a);
 /* a value a row picked among branches whose collations resolve_domains merged, brought into the merged domain */
 extern int fetch_arith_convert_to_resolved_branch (const val_descr * vd, const DOMAIN_PLAN_ITEM * item,
 						   DB_VALUE * value);
