@@ -77,6 +77,10 @@ namespace cubstorage
       static constexpr std::size_t ALLOC_BATCH_SIZE = 4;
       // CBRD-27325: pages visited by one bounded rediscovery scan of the heap chain
       static constexpr std::size_t REDISCOVER_BATCH_SIZE = 64;
+      // CBRD-27325: pages a rediscovery may visit without finding a usable page before it turns itself off
+      static constexpr std::uint32_t REDISCOVER_FRUITLESS_BUDGET = 1024;
+      // CBRD-27325: seconds a turned-off rediscovery waits before a later push may turn it back on
+      static constexpr std::uint64_t REDISCOVER_REARM_INTERVAL = 1;
       static constexpr std::size_t L3_FANOUT = 8;
       static constexpr std::size_t L2_FANOUT = 8;
       static constexpr std::size_t ENTRIES_PER_SHARD = L3_FANOUT * L2_FANOUT;
@@ -245,7 +249,7 @@ namespace cubstorage
 	  void reset (const bestspace_entry entries[ENTRIES_PER_SHARD]);
 
 	  status find (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
-		       std::size_t bias, PGBUF_WATCHER &page_watcher);
+		       std::size_t bias, bool may_rediscover, PGBUF_WATCHER &page_watcher);
 	  status find_candidate (OID *class_oid, std::uint16_t needed_size, std::uint16_t consume_size,
 				 bestspace_entry &candidate, bool &valid, PGBUF_WATCHER &page_watcher);
 
@@ -330,7 +334,7 @@ namespace cubstorage
 				       std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates);
 
 	  status allocate (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
-			   PGBUF_WATCHER &page_watcher);
+			   bool may_rediscover, PGBUF_WATCHER &page_watcher);
       };
 
       class candidate_queue
@@ -385,10 +389,13 @@ namespace cubstorage
 
       std::size_t get_num_shards ();
 
-      // CBRD-27325: scan a bounded slice of the heap chain and push free pages into the
-      // candidate queue. Returns the number of pages pushed. At most one scan runs at a time;
-      // a fruitless full sweep disables scanning until the queue sees a push again.
-      std::size_t rediscover (HFID *hfid);
+      // CBRD-27325: scan a bounded slice of the heap chain and push free pages into the candidate queue.
+      // num_usable counts the pushed pages that can hold needed_size. At most one scan runs at a time.
+      // After REDISCOVER_FRUITLESS_BUDGET pages without a usable page the scan turns off; a push by another
+      // thread since the last scan began turns it back on, at most once per REDISCOVER_REARM_INTERVAL.
+      // Returns an error only for a real failure such as an interruption or an I/O error.
+      // TODO: run the scan outside the user transaction; consumers re-validate, so a late result is fine.
+      int rediscover (HFID *hfid, std::uint16_t needed_size, std::size_t &num_usable);
 
       void to_entries (bestspace_entry *entries, bestspace_entry *candidates, std::size_t &num_candidates);
 
@@ -411,10 +418,13 @@ namespace cubstorage
       std::atomic<bool> m_scanning;
       std::atomic<bool> m_scan_enabled;
       std::atomic<std::uint32_t> m_scan_fruitless;
-      // bumped by every push that adds free space; lets a scan that is backing off detect a push
-      // that raced with the disable so the scan is not left off while free space is available.
+      // bumped by every push; a turned-off scan comes back on once it differs from m_scan_signal_at_disable
       std::atomic<std::uint32_t> m_scan_signal;
+      std::atomic<std::uint32_t> m_scan_signal_at_disable;
+      std::atomic<std::uint64_t> m_scan_disabled_at;
       VPID m_scan_cursor;
+
+      bool rediscover_rearm_due ();
 
       int find_from_shards (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::size_t shard,
 			    std::uint16_t needed_size, std::uint16_t consume_size, std::size_t bias, bool is_newrec, PGBUF_WATCHER &page_watcher);
