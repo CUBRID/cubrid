@@ -784,6 +784,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_PARALLEL_INDEX_SCAN_PAGE_THRESHOLD "parallel_index_scan_page_threshold"
 #define PRM_NAME_PARALLEL_HASH_JOIN_PAGE_THRESHOLD "parallel_hash_join_page_threshold"
 #define PRM_NAME_PARALLEL_SORT_PAGE_THRESHOLD "parallel_sort_page_threshold"
+#define PRM_NAME_INDEX_BUILD_BUFFER_SIZE "index_build_buffer_size"
+#define PRM_NAME_INDEX_BUILD_PARALLELISM "index_build_parallelism"
+#define PRM_NAME_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD "parallel_index_build_page_threshold"
 
 #define PRM_NAME_TCP_KEEPALIVE_IDLE "tcp_keepalive_idle"
 #define PRM_NAME_TCP_KEEPALIVE_INTERVAL "tcp_keepalive_interval"
@@ -799,6 +802,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_CSS_RECV_BUDGET_PER_CONNECTION "recv_budget_per_connection"
 #define PRM_NAME_CSS_SEND_BUDGET_PER_CONNECTION "send_budget_per_connection"
+#define PRM_NAME_CSS_SEND_QUEUE_ROOM_WAIT_MSECS "send_queue_room_wait_msecs"
 
 #define PRM_NAME_MEMOIZE_MEMORY_LIMIT "memoize_memory_limit"
 
@@ -818,7 +822,13 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_PLAN_CACHE_BIND_SENSITIVITY "plan_cache_bind_sensitivity"
 
-// #endregion 
+#define PRM_NAME_COST_SEQ_PAGE "cost_seq_page"
+#define PRM_NAME_COST_RANDOM_PAGE "cost_random_page"
+#define PRM_NAME_COST_CPU_TUPLES_PER_PAGE "cost_cpu_tuples_per_page"
+#define PRM_NAME_COST_EFFECTIVE_CACHE_PAGES "cost_effective_cache_pages"
+#define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
+
+// #endregion
 
 /*
  * Note about ERROR_LIST and INTEGER_LIST type
@@ -4779,7 +4789,7 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_THREAD_CORE_COUNT,
    PRM_NAME_THREAD_CORE_COUNT,
-   (PRM_FOR_SERVER | PRM_DEPRECATED),
+   (PRM_FOR_SERVER | PRM_DEPRECATED | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
    {false, {.i = 1}},
@@ -5168,8 +5178,8 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 2048}},
-   {false, {.i = 2048}},
+   {false, {.i = 256}},
+   {false, {.i = 256}},
    {false, {.i = INT_MAX}},
    {false, {.i = 0}},
    (char *) NULL,
@@ -5192,8 +5202,8 @@ SYSPRM_PARAM prm_Def[] = {
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = 2048}},
-   {false, {.i = 2048}},
+   {false, {.i = 256}},
+   {false, {.i = 256}},
    {false, {.i = INT_MAX}},
    {false, {.i = 0}},
    (char *) NULL,
@@ -5201,6 +5211,43 @@ SYSPRM_PARAM prm_Def[] = {
    (DUP_PRM_FUNC) NULL},
   {PRM_ID_PARALLEL_SORT_PAGE_THRESHOLD,
    PRM_NAME_PARALLEL_SORT_PAGE_THRESHOLD,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 256}},
+   {false, {.i = 256}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* CBRD-27235: index build sort parameters, independent of the query sort (sort_buffer_size,
+   * parallel_sort_page_threshold). index_build_parallelism = -1 follows the parallelism parameter. */
+  {PRM_ID_INDEX_BUILD_BUFFER_SIZE,
+   PRM_NAME_INDEX_BUILD_BUFFER_SIZE,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_SIZE_UNIT | PRM_DIFFER_UNIT | PRM_RELOADABLE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 128}},
+   {false, {.i = 128}},
+   NULL_SYSPRM_PARAM_VALUE, {false, {.i = 4}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) prm_size_to_io_pages,
+   (DUP_PRM_FUNC) prm_io_pages_to_size},
+  {PRM_ID_INDEX_BUILD_PARALLELISM,
+   PRM_NAME_INDEX_BUILD_PARALLELISM,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = -1}},
+   {false, {.i = -1}},
+   {false, {.i = PRM_MAX_PARALLELISM}},
+   {false, {.i = -1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD,
+   PRM_NAME_PARALLEL_INDEX_BUILD_PAGE_THRESHOLD,
    (PRM_FOR_SERVER | PRM_HIDDEN),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
@@ -5359,6 +5406,20 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 32 * 1024}},	/* 32KB */
    {false, {.i = 1 * 1024 * 1024 * 1024}},	/* 1GB */
    {false, {.i = 0}},		/* no limit */
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_SEND_QUEUE_ROOM_WAIT_MSECS,
+   PRM_NAME_CSS_SEND_QUEUE_ROOM_WAIT_MSECS,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   /* 1 s: normal waits under a starved drain measured 0.6-10.8 ms */
+   {false, {.i = 1000}},
+   {false, {.i = 1000}},
+   /* connection_timeout's default: the waiter may hold a heap page latch, so it should not outwait a stalled peer */
+   {false, {.i = 5000}},
+   {false, {.i = 0}},		/* 0: close the connection at once, without waiting */
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5539,6 +5600,83 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.b = false}},
    NULL_SYSPRM_PARAM_VALUE,
    NULL_SYSPRM_PARAM_VALUE,
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* Optimizer cost unit prices (CBRD-27126). The optimizer runs on the client, so these are
+   * PRM_FOR_CLIENT and take effect from the next compilation after SET SYSTEM PARAMETERS.
+   * PRM_FOR_QRY_STRING puts a tuned value into the XASL cache key (like max_hash_list_scan_size):
+   * without it a session that changes a price keeps hitting plans another session -- or its own
+   * past -- compiled under the old prices, and a new session inherits them. Only values that
+   * differ from the default are appended, so an untouched configuration keeps its cache keys.
+   * Every default is the literal query_planner.c used to hard-code, so an untouched
+   * configuration prices plans exactly as before. cost_seq_page is the unit of the model
+   * (one sequential page read = 1.0); tune the others as ratios to it. The per-tuple CPU
+   * price is an integer reciprocal, cost_cpu_tuples_per_page = 400 ("one page read costs as
+   * much as handling 400 tuples"), because the former literal 0.0025 has no exact float and
+   * 1.0 / 400 reproduces that double bit for bit; a float parameter would have shifted every
+   * cost by 2e-8 and flipped .5 roundings in plan dumps. Its lower bound is 1 (a divisor).
+   * A lower bound of 0 is allowed on the page prices, as in PostgreSQL, to price a term as
+   * free; the Mackert-Lohman formula degrades safely to "no caching" when
+   * cost_effective_cache_pages is 0. That one is denominated in pages (not bytes) so the
+   * default equals the former 32768 on every page size. */
+  {PRM_ID_COST_SEQ_PAGE,
+   PRM_NAME_COST_SEQ_PAGE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_FLOAT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.f = 1.0f}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 100000.0f}},
+   {false, {.f = 0.0f}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_RANDOM_PAGE,
+   PRM_NAME_COST_RANDOM_PAGE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_FLOAT,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.f = 1.0f}},
+   {false, {.f = 1.0f}},
+   {false, {.f = 100000.0f}},
+   {false, {.f = 0.0f}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_CPU_TUPLES_PER_PAGE,
+   PRM_NAME_COST_CPU_TUPLES_PER_PAGE,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 400}},
+   {false, {.i = 400}},
+   {false, {.i = 100000000}},
+   {false, {.i = 1}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_EFFECTIVE_CACHE_PAGES,
+   PRM_NAME_COST_EFFECTIVE_CACHE_PAGES,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 32768}},
+   {false, {.i = 32768}},
+   {false, {.i = INT_MAX}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_COST_HEAP_FETCH_PER_OID,
+   PRM_NAME_COST_HEAP_FETCH_PER_OID,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_QRY_STRING),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 5}},
+   {false, {.i = 5}},
+   {false, {.i = 100000}},
+   {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

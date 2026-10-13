@@ -19,7 +19,9 @@
 #include "schema_information_schema_install.hpp"
 
 #include "authenticate.h"
+#include "dbi.h"
 #include "dbtype_def.h"
+#include "schema_manager.h"
 #include "schema_information_schema_builder.hpp"
 #include "schema_information_schema_constants.h"
 #include "schema_information_schema_definition.hpp"
@@ -96,6 +98,41 @@ info_schema_install (void)
     }
 
 end:
+  AU_RESTORE (save);
+  info_schema_list.clear ();
+
+  return error_code;
+}
+
+int
+info_schema_rebuild_vclasses (void)
+{
+  int error_code = NO_ERROR;
+  /* build_vclass () hands the vclasses to the INFORMATION_SCHEMA user, so they only answer to the qualified name */
+  const std::string owner_prefix = std::string (AU_INFORMATION_SCHEMA_USER_NAME) + ".";
+  int save;
+
+  using info_builder = cubschema::information_schema_builder;
+
+  info_schema_init ();
+  AU_SAVE_AND_DISABLE (save);
+
+  for (size_t i = 0; i < info_schema_list.size () && error_code == NO_ERROR; i++)
+    {
+      MOP class_mop = db_find_class ((owner_prefix + info_schema_list[i].name).c_str ());
+      if (class_mop == nullptr)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  break;
+	}
+
+      error_code = info_builder::build_vclass (class_mop, info_schema_list[i].definition);
+      if (error_code == NO_ERROR)
+	{
+	  error_code = sm_destroy_representations (class_mop);
+	}
+    }
+
   AU_RESTORE (save);
   info_schema_list.clear ();
 
@@ -516,6 +553,7 @@ namespace cubschema
       {"external_language", format_varchar (64)},
       {"parameter_style", format_varchar (3)},
       {"is_deterministic", format_varchar (3)},
+      {"is_parallel_enabled", format_varchar (3)},
       {"sql_data_access", format_varchar (17)},
       {"sql_path", "string"},
       {"security_type", format_varchar (7)},

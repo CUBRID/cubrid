@@ -270,6 +270,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/fetch.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
+  ${QUERY_DIR}/qfile_tuple_layout.c
   ${QUERY_DIR}/dblink_scan.c
   ${QUERY_DIR}/dblink_2pc.c
   ${QUERY_DIR}/dblink_2pc_daemon.c
@@ -295,6 +296,9 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/memoize.cpp
   ${QUERY_DIR}/stream_to_xasl.c
+  ${QUERY_DIR}/domain_plan.c
+  ${QUERY_DIR}/domain_resolve.c
+  ${QUERY_DIR}/domain_rules.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
   ${QUERY_DIR}/string_regex_std.cpp
@@ -320,6 +324,7 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/identifier_store.cpp
   ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_domain_convert.cpp
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/object_representation.c
   ${OBJECT_DIR}/set_object.c
@@ -466,6 +471,7 @@ set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/log_manager.c
   ${TRANSACTION_DIR}/log_page_buffer.c
   ${TRANSACTION_DIR}/log_postpone_cache.cpp
+  ${TRANSACTION_DIR}/log_prior_inflight.cpp
   ${TRANSACTION_DIR}/log_recovery.c
   ${TRANSACTION_DIR}/log_recovery_redo.cpp
   ${TRANSACTION_DIR}/log_recovery_redo_parallel.cpp
@@ -490,6 +496,8 @@ set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/log_common_impl.h
   ${TRANSACTION_DIR}/log_lsa.hpp
   ${TRANSACTION_DIR}/log_postpone_cache.hpp
+  ${TRANSACTION_DIR}/log_prior_inflight.hpp
+  ${TRANSACTION_DIR}/log_prior_inflight_ring.hpp
   ${TRANSACTION_DIR}/log_reader.hpp
   ${TRANSACTION_DIR}/log_recovery.h
   ${TRANSACTION_DIR}/log_recovery_redo_perf.hpp
@@ -511,6 +519,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/bestspace.cpp
   ${STORAGE_DIR}/btree.c
   ${STORAGE_DIR}/btree_load.c
+  ${STORAGE_DIR}/btree_sort.c
   ${STORAGE_DIR}/btree_unique.cpp
   ${STORAGE_DIR}/byte_order.c
   ${STORAGE_DIR}/catalog_class.c

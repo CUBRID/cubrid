@@ -8755,7 +8755,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       if (page_ftab == NULL)
 	{
 	  error_code = er_errid ();
-	  if (error_code != ER_INTERRUPTED)
+	  if (error_code != ER_INTERRUPTED && !PGBUF_IS_LATCH_REFUSED_ERROR (error_code))
 	    {
 	      assert_release (false);
 	    }
@@ -8776,7 +8776,13 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       if (error_code != NO_ERROR)
 	{
 	  error_code = er_errid ();
-	  if (error_code != ER_INTERRUPTED)
+	  if (error_code == NO_ERROR)
+	    {
+	      /* the reservation failed without setting an error - do not let NO_ERROR report success below */
+	      assert (false);
+	      error_code = ER_FAILED;
+	    }
+	  else if (error_code != ER_INTERRUPTED && !PGBUF_IS_LATCH_REFUSED_ERROR (error_code))
 	    {
 	      assert_release (false);
 	    }
@@ -8886,7 +8892,7 @@ file_temp_alloc (THREAD_ENTRY * thread_p, PAGE_PTR page_fhead, FILE_ALLOC_TYPE a
       if (page_ftab == NULL)
 	{
 	  error_code = er_errid ();
-	  if (error_code != ER_INTERRUPTED)
+	  if (error_code != ER_INTERRUPTED && !PGBUF_IS_LATCH_REFUSED_ERROR (error_code))
 	    {
 	      assert_release (false);
 	    }
@@ -12452,9 +12458,16 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
   assert (tde_algo != TDE_ALGORITHM_NONE);
 
   /* apply to heap file and heap overflow file */
-  error_code = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
+  bool hfid_found;		/* always written by heap_get_class_info () */
+
+  error_code = heap_get_class_info (thread_p, class_oid, &hfid, NULL, &hfid_found);
   if (error_code != NO_ERROR)
     {
+      goto exit;
+    }
+  if (!hfid_found)
+    {
+      /* no heap - nothing to apply the TDE algorithm to. */
       goto exit;
     }
 

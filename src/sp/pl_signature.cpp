@@ -166,6 +166,7 @@ namespace cubpl
     , auth {nullptr}
     , result_type {0}
   {
+    is_parallel_enabled = false;
     memset (&ext, 0, sizeof (pl_ext));
 
 #if defined (SERVER_MODE)
@@ -210,6 +211,7 @@ namespace cubpl
       }
 
     serializator.pack_int (result_type);
+    serializator.pack_bool (is_parallel_enabled);
 
     // arg
     arg.pack (serializator);
@@ -271,6 +273,7 @@ namespace cubpl
       }
 
     deserializator.unpack_int (result_type);
+    deserializator.unpack_bool (is_parallel_enabled);
 
     arg.unpack (deserializator);
 
@@ -346,6 +349,7 @@ namespace cubpl
       }
 
     size += serializator.get_packed_int_size (size); /* result_type */
+    size += serializator.get_packed_bool_size (size); /* is_parallel_enabled */
 
     size += arg.get_packed_size (serializator, size); // arg
 
@@ -382,7 +386,7 @@ namespace cubpl
   }
 
   bool
-  pl_signature::has_args ()
+  pl_signature::has_args () const
   {
     return arg.arg_size > 0;
   }

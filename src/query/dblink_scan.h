@@ -84,6 +84,13 @@ struct dblink_conn_info
   char conn_url[MAX_LEN_CONNECTION_URL + 1];
   char user_name[DB_MAX_USER_LENGTH + 1];
   char password[DB_MAX_PASSWORD_LENGTH + 1];
+  /* true if the participant cannot execute XA prepare (e.g. a gateway to a
+   * third-party DBMS); such a participant is committed with a plain end-tran
+   * at prepare time and must be excluded from the XA decision-delivery and
+   * daemon-enqueue paths that assume an XA-prepared branch.  In-memory only:
+   * entries rebuilt from _db_global_tran during recovery lose this flag and
+   * are guarded by the permanent-failure error-code check instead */
+  bool xa_unsupported;
 };
 
 /*
@@ -113,7 +120,7 @@ extern int dblink_close_scan (DBLINK_SCAN_INFO * scan_info, bool is_final);
 extern SCAN_CODE dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list);
 extern SCAN_CODE dblink_scan_reset (DBLINK_SCAN_INFO * scan_info);
 
-/* remote DML push-sink state, shared by INSERT SELECT and DELETE + local subquery (and UPDATE to follow) */
+/* remote DML push-sink state, shared by INSERT / REPLACE SELECT and DELETE + local subquery (and UPDATE to follow) */
 typedef struct dblink_dml_state DBLINK_DML_STATE;
 struct dblink_dml_state
 {
@@ -132,6 +139,7 @@ struct dblink_dml_state
 typedef enum dblink_dml_kind
 {
   DBLINK_DML_INSERT,		/* uses attr_names/num_attrs/num_bind; ignores key_col/op */
+  DBLINK_DML_REPLACE,		/* same params as INSERT: REPLACE takes an INSERT's shape */
   DBLINK_DML_DELETE		/* uses key_col/op; ignores attr_names/num_attrs/num_bind */
     /* DBLINK_DML_UPDATE to follow */
 } DBLINK_DML_KIND;

@@ -169,7 +169,8 @@ metadata_of_active_log_header (void)
     {"Next_mvcc_id", "bigint"},
     {"Mvcc_op_log_lsa", "varchar(32)"},
     {"Last_block_oldest_mvcc_id", "bigint"},
-    {"Last_block_newest_mvcc_id", "bigint"}
+    {"Last_block_newest_mvcc_id", "bigint"},
+    {"System_metadata_version", "int"}
   };
 
   static const SHOWSTMT_NAMED_ARG args[] = {
@@ -315,7 +316,8 @@ metadata_of_heap_header (SHOW_ONLY_ALL flag)
   };
 
   static const SHOWSTMT_NAMED_ARG args[] = {
-    {NULL, AVT_IDENTIFIER, ARG_REQUIRED}
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED},
+    {NULL, AVT_INTEGER, ARG_REQUIRED}	/* SHOWSTMT_SCAN_MODE */
   };
 
   static SHOWSTMT_METADATA md_only = {
@@ -362,7 +364,8 @@ metadata_of_heap_capacity (SHOW_ONLY_ALL flag)
   };
 
   static const SHOWSTMT_NAMED_ARG args[] = {
-    {NULL, AVT_IDENTIFIER, ARG_REQUIRED}
+    {NULL, AVT_IDENTIFIER, ARG_REQUIRED},
+    {NULL, AVT_INTEGER, ARG_REQUIRED}	/* SHOWSTMT_SCAN_MODE */
   };
 
   static SHOWSTMT_METADATA md_only = {
@@ -842,7 +845,11 @@ pt_check_table_in_show_heap (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
-  parser_append_node (partition_node, show_args_node);
+  /* Insert the partition type in front of the scan mode, so that the server always sees the
+   * arguments as [class_name, partition_type, scan_mode] and a request without a scan mode
+   * (an older client) simply falls back to the default. */
+  partition_node->next = show_args_node->next;
+  show_args_node->next = partition_node;
 
   return node;
 }
