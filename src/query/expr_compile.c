@@ -42,7 +42,7 @@
 #include "error_manager.h"
 #include "fetch.h"
 #include "fetch_arith_ops.h"
-#include "query_dump.h"		/* qdump_arith_operator_string () for the listing */
+#include "query_dump.h"		/* qdump_arith_opcode_name () for the listing */
 #include "domain_resolve.h"
 #include "memory_alloc.h"
 #include "numeric_opfunc.h"
@@ -5936,7 +5936,7 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
       }
       if (step->kernel == expr_k_generic)
 	{
-	  fprintf (fp, " op=%s", qdump_arith_operator_string (step->regu->value.arithptr->opcode));
+	  fprintf (fp, " op=%s", qdump_arith_opcode_name (step->regu->value.arithptr->opcode));
 	}
       if (step->kernel == expr_k_jump_skip_generic)
 	{

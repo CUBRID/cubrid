@@ -44,6 +44,7 @@ extern void qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int in
 #endif /* SERVER_MODE || SA_MODE */
 extern const char *qdump_operator_type_string (OPERATOR_TYPE optype);
 extern const char *qdump_arith_operator_string (OPERATOR_TYPE opcode);
+extern const char *qdump_arith_opcode_name (OPERATOR_TYPE opcode);
 extern const char *qdump_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type);
 
 #endif /* _QUERY_DUMP_H_ */
