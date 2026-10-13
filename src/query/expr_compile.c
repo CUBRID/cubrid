@@ -1398,6 +1398,71 @@ expr_k_fallback (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
+/* A leaf the fetch path evaluates: a linked scalar subquery (a TYPE_CONSTANT whose XASL the fetch executes first), a
+ * function (TYPE_FUNC), a list position, an OID, a COLLATE-flagged or variable-domain column -- the slow fetch's own
+ * epilogue (the collation relabel, the variable domain's resolution) runs inside it.  Unlike expr_k_leaf_fetch, which
+ * a scan column takes, this step can fail for the row's values (a function's error), so it is fallible. */
+static int
+expr_k_fetch (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  DB_VALUE *peek = NULL;
+
+  if (fetch_peek_dbval (ctx->thread_p, step->regu, ctx->vd, NULL, ctx->obj_oid, ctx->tpl, &peek) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  *step->out_cell = peek;
+  return NO_ERROR;
+}
+
+/* A COLLATE-flagged arithmetic node (REGU_VARIABLE_APPLY_COLLATION): the interpreted path does not cast the value but
+ * re-labels its codeset and collation with the node's domain (fetch_peek_dbval_slow ()'s epilogue).  The step clones
+ * the node's value into its own slot before the relabel: the producing step's slot may serve another reader through
+ * CSE, and that reader keeps the value's own collation. */
+static int
+expr_k_relabel (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  const TP_DOMAIN *collate = qexec_get_node_domain (ctx->vd, step->regu->domain, step->regu->plan_item);
+
+  pr_clear_value (step->out);
+  if (pr_clone_value (*step->arg1p, step->out) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (collate)))
+    {
+      db_string_put_cs_and_collation (step->out, collate->codeset, collate->collation_id);
+    }
+  else
+    {
+      assert (TP_DOMAIN_TYPE (collate) == DB_TYPE_ENUMERATION);
+      db_enum_put_cs_and_collation (step->out, collate->codeset, collate->collation_id);
+    }
+  return NO_ERROR;
+}
+
+/* A constant expression resolve_domains evaluates once per execution (plan_item->ref): when it did, the gate's value
+ * is the node's and the node's own steps are jumped over; when it did not (the evaluation is deferred to the rows),
+ * the node computes as usual -- and its slot address goes back into the cell, which an earlier execution may have
+ * pointed at the gate's value (a slot-owning step publishes its slot once, at materialization). */
+static int
+expr_k_resolved_value (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  const ARITH_TYPE *arith = step->regu->value.arithptr;
+
+  if (fetch_arith_constant_evaluated (ctx->vd, arith->plan_item))
+    {
+      *step->out_cell = ctx->vd->dbval_ptr + arith->plan_item->ref;
+      ctx->jump = step->jump_to;
+      return EXPR_JUMPED;
+    }
+  if (step->out != NULL)
+    {
+      *step->out_cell = step->out;	/* the node's slot (alias_of) */
+    }
+  return NO_ERROR;
+}
+
 /* ---- the generic step: an operator the kernel table does not cover ----
  *
  * The step runs the opcode's body (fetch_arith_ops.c) on the operand cells its emitter wired, inside the node protocol
@@ -3585,7 +3650,7 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 
       for (j = first_step; j < bctx->n_steps; j++)
 	{
-	  if (bctx->steps[j].regu == regu)
+	  if (bctx->steps[j].regu == regu && bctx->steps[j].kernel != expr_k_generic)
 	    {
 	      bctx->steps[j].open = true;
 	      bctx->steps[j].open_type = exec_domain != NULL ? TP_DOMAIN_TYPE (exec_domain) : DB_TYPE_UNKNOWN;
@@ -3631,6 +3696,24 @@ expr_prog_refill_open (EXPR_PROG * prog, const val_descr * vd)
 	}
     }
   return true;
+}
+
+
+/* a leaf the fetch path evaluates (expr_k_fetch): the step, or -1 when the program is full */
+static int
+expr_emit_fetch (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something)
+{
+  EXPR_STEP *step;
+  int cell;
+
+  step = expr_new_step_with_cell (bctx, expr_k_fetch, &cell);
+  if (step == NULL)
+    {
+      return -1;
+    }
+  step->regu = regu;
+  *compiled_something = true;
+  return cell;
 }
 
 /* The operand fetch rule of an opcode: which of leftptr (L), rightptr (R) and thirdptr (T) the interpreter fetches
@@ -4078,6 +4161,7 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
 static int
 expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something)
 {
+  const int first_step = bctx->n_steps;
   int cell;
 
   /* the scan's data filter may already compute this very expression for the row */
@@ -4099,6 +4183,51 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
     }
 
   cell = expr_compile_node_impl (bctx, regu, compiled_something);
+  if (cell >= 0 && regu->value.arithptr->plan_item != NULL && regu->value.arithptr->plan_item->ref >= 0
+      && bctx->n_steps > first_step)
+    {
+      /* a constant expression the gate evaluates once per execution: the check before the node's steps publishes
+       * the gate's value and skips them when it did (a CSE hit emits no step and needs none: the twin's value is the
+       * same constant) */
+      int node_idx = -1, j;
+      EXPR_STEP *check;
+
+      for (j = first_step; j < bctx->n_steps; j++)
+	{
+	  if ((int) (intptr_t) bctx->steps[j].out_cell == cell)
+	    {
+	      node_idx = j;	/* the last step publishing the cell is the producer */
+	    }
+	}
+      check = (node_idx >= 0) ? expr_build_insert_step (bctx, first_step, expr_k_resolved_value, cell) : NULL;
+      if (node_idx >= 0 && check == NULL)
+	{
+	  return -1;
+	}
+      if (check != NULL)
+	{
+	  check->regu = regu;
+	  check->alias_of = node_idx + 1;	/* the producer moved by one */
+	  check->jump_to = bctx->n_steps;
+	}
+    }
+  if (cell >= 0 && REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION))
+    {
+      /* the COLLATE modifier: the node's value re-labeled with the node's domain, in a slot of its own */
+      EXPR_STEP *step;
+      int relabel_cell;
+
+      step = expr_new_step_with_cell (bctx, expr_k_relabel, &relabel_cell);
+      if (step == NULL)
+	{
+	  return -1;
+	}
+      step->arg1p = EXPR_ARG_ENCODE (cell);
+      step->regu = regu;
+      step->out = (DB_VALUE *) 1;	/* owned slot */
+      bctx->n_slots++;
+      cell = relabel_cell;
+    }
   if (cell >= 0 && bctx->n_node_cells < EXPR_MAX_STEPS)
     {
       bctx->node_cells[bctx->n_node_cells].regu = regu;
@@ -4127,19 +4256,19 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
    * (expr_arith_exec_domain ()).  Any other node still variable here has nothing the
    * program may read: decline it and let the interpreter run it. */
   if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE && regu->type != TYPE_POS_VALUE
-      && ((regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH)
-	  || expr_arith_exec_domain (bctx->vd, regu) == NULL))
+      && regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH)
     {
-      return -1;
+      /* a leaf still variable here: the fetch path reads its resolution (fetch_read_plan_domain) */
+      return expr_emit_fetch (bctx, regu, compiled_something);
     }
 
-  /* A COLLATE modifier flags the node: the interpreted path then does not cast it but
-   * re-labels the value's codeset/collation with the domain's (the T_CAST arm and the
-   * epilogue of fetch_peek_dbval ()).  No kernel mirrors that, so the node stays
-   * interpreted -- costs nothing, the flag is rare. */
-  if (REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION))
+  /* A COLLATE modifier flags the node: the interpreted path then does not cast it but re-labels the value's
+   * codeset/collation with the domain's (the epilogue of fetch_peek_dbval_slow ()).  A leaf takes the fetch path,
+   * which does that itself; an arithmetic node gets a relabel step after its own (expr_compile_node_arith). */
+  if (REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION) && regu->type != TYPE_INARITH
+      && regu->type != TYPE_OUTARITH)
     {
-      return -1;
+      return expr_emit_fetch (bctx, regu, compiled_something);
     }
 
   switch (regu->type)
@@ -4147,9 +4276,9 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
     case TYPE_CONSTANT:
       if (regu->xasl != NULL)
 	{
-	  /* a linked scalar subquery: the interpreted fetch EXECUTES the XASL before
-	   * reading dbvalptr, so this is not a stable cell -- keep it interpreted */
-	  return -1;
+	  /* a linked scalar subquery: the fetch EXECUTES the XASL before reading dbvalptr, so this is not a stable
+	   * cell but a step through the fetch path */
+	  return expr_emit_fetch (bctx, regu, compiled_something);
 	}
       /* stable pointer; zero per-row cost */
       cell = expr_cse_find (bctx, regu->value.dbvalptr, -1, -1, -1, -1);
@@ -4262,21 +4391,22 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	/* the node's domain in this execution: compiled, or the gate's resolution of a variable one */
 	TP_DOMAIN *const exec_domain = expr_arith_exec_domain (bctx->vd, regu);
 
-	if (arith == NULL || exec_domain == NULL)
+	if (arith == NULL)
 	  {
-	    return -1;
-	  }
-	if (arith->plan_item != NULL
-	    && (arith->plan_item->ref >= 0 || (arith->plan_item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION)))
-	  {
-	    /* a constant expression resolve_domains evaluates once per execution (the interpreted
-	     * fetch returns that value), or a node whose collation the values give: interpreted */
 	    return -1;
 	  }
 	if (arith->pred != NULL && arith->opcode != T_CASE && arith->opcode != T_IF && arith->opcode != T_DECODE
 	    && arith->opcode != T_PREDICATE)
 	  {
 	    return -1;
+	  }
+	if (exec_domain == NULL
+	    || (arith->plan_item != NULL && (arith->plan_item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION)))
+	  {
+	    /* a node that takes no value in this execution (or has no resolution a program may bake in), or one
+	     * whose collation the values give: no kernel, the generic step's node protocol reads the node's domains
+	     * on the row as the interpreter does */
+	    return expr_compile_generic (bctx, regu, NULL, compiled_something);
 	  }
 
 	rtype = TP_DOMAIN_TYPE (exec_domain);
@@ -4873,7 +5003,8 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
       }
 
     default:
-      return -1;
+      /* a function, a list position, an OID, ORDERBY_NUM, ...: the fetch path evaluates it */
+      return expr_emit_fetch (bctx, regu, compiled_something);
     }
 }
 
@@ -5124,7 +5255,8 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
 	if (step->kernel != expr_k_leaf_fetch && step->kernel != expr_k_hostvar && step->kernel != expr_k_fallback
 	    && step->kernel != expr_k_jump && step->kernel != expr_k_jump_null_arith
 	    && step->kernel != expr_k_jump_null_nullif && step->kernel != expr_k_jump_notnull_nvl
-	    && step->kernel != expr_k_jump_skip_generic && step->kernel != expr_k_try_operand)
+	    && step->kernel != expr_k_jump_skip_generic && step->kernel != expr_k_try_operand
+	    && step->kernel != expr_k_fetch && step->kernel != expr_k_resolved_value)
 	  {
 	    prog->n_compute++;
 	  }
@@ -5532,7 +5664,13 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     {
     expr_k_jump_skip_generic, "jump_skip"},
     {
-  expr_k_try_operand, "try_operand"},};
+    expr_k_try_operand, "try_operand"},
+    {
+    expr_k_fetch, "fetch"},
+    {
+    expr_k_relabel, "relabel"},
+    {
+  expr_k_resolved_value, "resolved_value"},};
   size_t i;
 
   for (i = 0; i < sizeof (names) / sizeof (names[0]); i++)

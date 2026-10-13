@@ -705,6 +705,13 @@ fetch_constant_evaluated (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
   return resolved.value_states[item->ref] == DOMAIN_VALUE_EVALUATED;
 }
 
+/* fetch_constant_evaluated for a program's step (out of line; the inline one is this file's) */
+bool
+fetch_arith_constant_evaluated (const val_descr * vd, const DOMAIN_PLAN_ITEM * item)
+{
+  return fetch_constant_evaluated (vd, item);
+}
+
 /*
  * fetch_arith_node_domains () - the domains an arithmetic node has now in this execution: its execution domains, or
  *   the compiled ones in regu_var->domain and arithptr->domain, which never change

@@ -68,6 +68,8 @@ extern FETCH_ARITH_OP fetch_arith_op (OPERATOR_TYPE opcode);
 extern void fetch_arith_node_domains (val_descr * vd, FETCH_ARITH_ARGS * a);
 extern int fetch_arith_node_resolve (val_descr * vd, FETCH_ARITH_ARGS * a);
 extern int fetch_arith_node_end (val_descr * vd, FETCH_ARITH_ARGS * a);
+/* whether resolve_domains evaluated this constant expression in this execution (its value is at vd->dbval_ptr + ref) */
+extern bool fetch_arith_constant_evaluated (const val_descr * vd, const DOMAIN_PLAN_ITEM * item);
 
 /* two of the interpreter's operand rules the generic step's emitter mirrors (fetch.c): the operand whose fetch error
  * a date/time function replaces with a conversion error, and WIDTH_BUCKET's two bounds out of its PT_BETWEEN operand */
