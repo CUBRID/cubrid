@@ -262,7 +262,8 @@ check_power_savings (void)
 #elif defined (LINUX)
   /*
    * Note: the TSC is a clock when its rate does not follow the core clock (constant_tsc) and it keeps counting in
-   *       deep C-states (nonstop_tsc); both are in the "flags" line of /proc/cpuinfo.
+   *       deep C-states (nonstop_tsc); both are in the "flags" line of /proc/cpuinfo. The TSCs of the CPUs must
+   *       also agree: the kernel checks that and keeps the TSC as its clock source only while they do.
    */
   char buf[16384];
   char *flags, *eol;
@@ -287,8 +288,21 @@ check_power_savings (void)
       return 1;
     }
   *eol = '\0';
+  if (!cpu_has_flag (flags, "constant_tsc") || !cpu_has_flag (flags, "nonstop_tsc"))
+    {
+      return 1;
+    }
 
-  return (cpu_has_flag (flags, "constant_tsc") && cpu_has_flag (flags, "nonstop_tsc")) ? 0 : 1;
+  /* the kernel keeps both flags when it finds the TSCs out of step; it only changes its clock source */
+  fd = open ("/sys/devices/system/clocksource/clocksource0/current_clocksource", O_RDONLY);
+  if (fd == -1)
+    {
+      return 1;
+    }
+  n = read (fd, buf, sizeof (buf) - 1);
+  close (fd);
+
+  return (n == 4 && strncmp (buf, "tsc\n", 4) == 0) ? 0 : 1;
 
 #else
   /*
