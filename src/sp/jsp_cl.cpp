@@ -136,7 +136,7 @@ static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_authid (PT_MISC_TYPE pt_authid);
 static SP_DIRECTIVE_ENUM jsp_map_pt_to_sp_dtrm_type (PT_MISC_TYPE pt_dtrm_type, SP_DIRECTIVE_ENUM directive);
 
 static char *jsp_check_stored_procedure_name (const char *str);
-static char *jsp_check_package_name (const char *str);
+static char *jsp_user_specified_name (const char *str);
 static int jsp_check_overflow_args (PARSER_CONTEXT *parser, PT_NODE *node, int num_params, int num_args);
 static int jsp_check_out_param_in_query (PARSER_CONTEXT *parser, PT_NODE *node, int arg_mode);
 static int jsp_check_param_type_supported  (DB_TYPE type, int mode);
@@ -323,7 +323,7 @@ jsp_find_package (const char *name)
       return NULL;
     }
 
-  char *checked_name = jsp_check_package_name (name);
+  char *checked_name = jsp_user_specified_name (name);
   MOP mop = jsp_find_pkg (checked_name);
   if (!mop)
     {
@@ -4233,9 +4233,9 @@ jsp_find_standalone_routine (const char *name, const char *op_name, MOP *sp_mop_
   if (dot != NULL && strchr (dot + 1, '.') == NULL)
     {
       std::string pkg_name (name, dot - name);
-      char user_pkg_name[SM_MAX_IDENTIFIER_LENGTH];
+      char *user_pkg_name = jsp_user_specified_name (pkg_name.c_str ());
 
-      if (sm_user_specified_name (pkg_name.c_str (), user_pkg_name, sizeof (user_pkg_name)) != NULL)
+      if (user_pkg_name != NULL && user_pkg_name[0] != '\0')
 	{
 	  std::string pkg_routine_name = std::string (user_pkg_name) + dot;
 
@@ -4245,11 +4245,14 @@ jsp_find_standalone_routine (const char *name, const char *op_name, MOP *sp_mop_
 	      if (er_errid () != ER_SP_NOT_EXIST)
 		{
 		  ASSERT_ERROR_AND_SET (err);
+		  free_and_init (user_pkg_name);
 		  return err;
 		}
 	      er_clear ();
 	    }
 	}
+
+      free_and_init (user_pkg_name);
     }
 
   // <routine>, or <user>.<routine>
@@ -4629,12 +4632,6 @@ jsp_check_stored_procedure_name (const char *str)
     }
 
   return name;
-}
-
-static char *
-jsp_check_package_name (const char *str)
-{
-  return jsp_user_specified_name (str);
 }
 
 /*
