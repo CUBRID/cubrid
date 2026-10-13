@@ -7026,6 +7026,8 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
     {
       LSA_COPY (&tmp_chkpt.redo_lsa, &newchkpt_lsa);
     }
+  /* the flush cannot see the dirty pages destroyed files discarded */
+  pgbuf_discard_redo_bound_apply (&tmp_chkpt.redo_lsa, &chkpt_redo_lsa);
 
   assert (LSA_LE (&tmp_chkpt.redo_lsa, &newchkpt_lsa));
 

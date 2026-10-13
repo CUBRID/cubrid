@@ -274,6 +274,11 @@ int pgbuf_dealloc_temp_page (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, bool need_
 
 /* discard the buffered pages of a destroyed file's sectors without flushing or logging */
 extern void pgbuf_discard_pages_of_sectors (THREAD_ENTRY * thread_p, const VSID * vsids, int nsects);
+/* keep a checkpoint redo point out of the log ranges that discarded dirty pages miss on disk */
+extern void pgbuf_discard_redo_bound_apply (LOG_LSA * redo_lsa, const LOG_LSA * prev_redo_lsa);
+/* crash recovery: drop the pages that redo re-created for files destroyed later in the log */
+extern void pgbuf_rv_add_unreserved_sector (const VSID * vsid, const LOG_LSA * unreserve_lsa);
+extern void pgbuf_rv_discard_unreserved_pages (THREAD_ENTRY * thread_p);
 
 #if !defined(NDEBUG)
 
