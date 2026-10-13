@@ -20071,6 +20071,8 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
       return NO_ERROR;
     }
 
+  db_make_null (&eval_value);
+
   own_defaults = (PT_NODE **) calloc (pt_length_of_list (attr_list), sizeof (PT_NODE *));
   if (own_defaults == NULL)
     {
@@ -20085,8 +20087,6 @@ do_evaluate_insert_values (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   eval.reevaluate_needed = false;
   eval.replace_names = false;
   eval.crt_attr_index = 0;
-
-  db_make_null (&eval_value);
 
   /* evaluate lists of values */
   for (value_list = value_clause; value_list != NULL; value_list = value_list->next)
