@@ -65,7 +65,7 @@ namespace cubpl
      * SP sees a plain SQLException; what it does with that exception is its own business. */
     cubmem::block blk = std::move (pack_data_block (METHOD_RESPONSE_ERROR, ER_SP_PARALLEL_ENABLE_NO_SQL,
 				   std::string ("cannot execute SQL on the server-side connection: the stored procedure is"
-				       " declared PARALLEL_ENABLE"),
+				       " declared PARALLEL_ENABLE or is running in a parallel query worker"),
 				   ARG_FILE_LINE));
     int error = send_data_to_java (blk);
     blk.freemem ();

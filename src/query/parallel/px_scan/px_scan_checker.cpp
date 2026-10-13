@@ -622,12 +622,20 @@ namespace parallel_scan
       }
 
     /* the thread that runs this block evaluates the rest of it as well: its select list, aggregates,
-     * GROUP BY / analytic lists, later join tables, merged method scans and nested blocks. Of these
-     * only an SP or method counts, so a subquery without one keeps its plan (CBRD-27596). */
+     * GROUP BY / analytic lists, later join tables, merged method scans, hierarchical query and nested
+     * blocks. Of these only an SP or method counts, so a subquery without one keeps its plan (CBRD-27596). */
     temp = sibling_check<false> (sibling->scan_ptr);
     for (ACCESS_SPEC_TYPE *specp = sibling->merge_spec; specp; specp = specp->next)
       {
 	temp |= sibling_check<false> (specp);
+      }
+    if (sibling->connect_by_ptr)
+      {
+	/* the CONNECT BY node holds the CONNECT BY scan and predicate, START WITH of a join and the WHERE */
+	XASL_NODE *connect_by = sibling->connect_by_ptr;
+	temp |= sibling_check<false> (connect_by);
+	temp |= check<false> (connect_by->proc.connect_by.start_with_pred);
+	temp |= check<false> (connect_by->proc.connect_by.after_connect_by_pred);
       }
     if (sibling->outptr_list)
       {
