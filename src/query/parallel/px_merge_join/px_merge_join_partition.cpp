@@ -160,8 +160,8 @@ namespace parallel_query
 
     namespace
     {
-      /* sorted input: a fresh sample is either == or > the last kept boundary */
-      void
+      /* sorted input: a fresh sample is either == or > the last kept boundary; false when it sorts before it */
+      bool
       push_boundary (partition_key &candidate, const key_spec &spec, std::vector<partition_key> &boundaries,
 		     bool &incomparable)
       {
@@ -171,14 +171,20 @@ namespace parallel_query
 	    if (c == DB_UNK)
 	      {
 		incomparable = true;
-		return;
+		return true;
+	      }
+	    if (c == DB_GT)
+	      {
+		assert (false);
+		return false;
 	      }
 	    if (c != DB_LT)
 	      {
-		return;
+		return true;
 	      }
 	  }
 	boundaries.push_back (std::move (candidate));
+	return true;
       }
 
       void
@@ -320,23 +326,27 @@ namespace parallel_query
       enum page_key_result
       {
 	PAGE_KEY_OK,
-	PAGE_KEY_NONE,		/* overflow continuation or empty page: carries no key */
+	PAGE_KEY_EMPTY,
+	PAGE_KEY_OVERFLOW,		/* overflow continuation page: off the next chain */
 	PAGE_KEY_ERROR
       };
 
       page_key_result
       read_page_last_key (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const page_dir &dir, size_t idx,
-			  const key_spec &spec, QFILE_TUPLE_RECORD &ovf_rec, DB_VALUE *key, prepass_stats &st)
+			  const key_spec &spec, QFILE_TUPLE_RECORD &ovf_rec, DB_VALUE *key, VPID &next_vpid,
+			  prepass_stats &st)
       {
 	PAGE_PTR page = fix_dir_page (thread_p, list_id, dir, idx, st);
 	if (page == NULL)
 	  {
 	    return PAGE_KEY_ERROR;
 	  }
-	if (QFILE_GET_TUPLE_COUNT (page) <= 0)
+	QFILE_GET_NEXT_VPID (&next_vpid, page);
+	int cnt = QFILE_GET_TUPLE_COUNT (page);
+	if (cnt <= 0)
 	  {
 	    free_dir_page (thread_p, list_id, dir, idx, page);
-	    return PAGE_KEY_NONE;
+	    return (cnt == 0) ? PAGE_KEY_EMPTY : PAGE_KEY_OVERFLOW;
 	  }
 
 	QFILE_TUPLE tpl = NULL;
@@ -360,7 +370,8 @@ namespace parallel_query
       {
 	for (found = idx; found < hi; found++)
 	  {
-	    page_key_result r = read_page_last_key (thread_p, list_id, dir, found, spec, ovf_rec, key, st);
+	    VPID next_vpid;
+	    page_key_result r = read_page_last_key (thread_p, list_id, dir, found, spec, ovf_rec, key, next_vpid, st);
 	    if (r == PAGE_KEY_ERROR)
 	      {
 		return ER_FAILED;
@@ -373,26 +384,57 @@ namespace parallel_query
 	return NO_ERROR;
       }
 
-      /* found == dir size: none */
+      /* the data page chained right before dir[idx] (idx == dir size: the list's last page), checked against the
+       * next links since the directory order is only assumed to be the chain order. found == dir size: none */
       int
-      prev_data_page (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const page_dir &dir, size_t idx,
-		      const key_spec &spec, QFILE_TUPLE_RECORD &ovf_rec, DB_VALUE *key, size_t &found,
-		      prepass_stats &st)
+      chain_prev_data_page (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const page_dir &dir, size_t idx,
+			    const key_spec &spec, QFILE_TUPLE_RECORD &ovf_rec, DB_VALUE *key, size_t &found,
+			    bool &linked, prepass_stats &st)
       {
+	size_t npages = dir.m_vpids.size ();
+	bool at_end = (idx >= npages);
+	VPID expect;
+
+	if (at_end)
+	  {
+	    VPID_SET_NULL (&expect);
+	  }
+	else
+	  {
+	    expect = dir.m_vpids[idx];
+	  }
+	found = npages;
+	linked = false;
 	for (size_t i = idx; i > 0; i--)
 	  {
-	    page_key_result r = read_page_last_key (thread_p, list_id, dir, i - 1, spec, ovf_rec, key, st);
+	    VPID next_vpid;
+	    page_key_result r = read_page_last_key (thread_p, list_id, dir, i - 1, spec, ovf_rec, key, next_vpid, st);
 	    if (r == PAGE_KEY_ERROR)
 	      {
 		return ER_FAILED;
 	      }
+	    if (r == PAGE_KEY_OVERFLOW)
+	      {
+		continue;
+	      }
+	    if (at_end ? !VPID_EQ (&dir.m_vpids[i - 1], &list_id->last_vpid) : !VPID_EQ (&next_vpid, &expect))
+	      {
+		if (r == PAGE_KEY_OK)
+		  {
+		    clear_key (key, spec.cnt);
+		  }
+		return NO_ERROR;
+	      }
 	    if (r == PAGE_KEY_OK)
 	      {
 		found = i - 1;
+		linked = true;
 		return NO_ERROR;
 	      }
+	    expect = dir.m_vpids[i - 1];
+	    at_end = false;
 	  }
-	found = dir.m_vpids.size ();
+	linked = (!at_end && VPID_EQ (&expect, &list_id->first_vpid));
 	return NO_ERROR;
       }
 
@@ -400,14 +442,15 @@ namespace parallel_query
       int
       collect_boundaries_by_sector (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, const page_dir &dir,
 				    const key_spec &spec, int degree, std::vector<partition_key> &boundaries,
-				    bool &incomparable, prepass_stats &st)
+				    bool &incomparable, bool &reversed, prepass_stats &st)
       {
 	QFILE_TUPLE_RECORD ovf_rec = QFILE_TUPLE_RECORD_INITIALIZER;
 	std::vector<DB_VALUE> key (spec.cnt);
 	size_t npages = dir.m_vpids.size ();
 	int error = NO_ERROR;
 
-	for (int j = 1; j < degree && error == NO_ERROR && !incomparable; j++)
+	reversed = false;
+	for (int j = 1; j < degree && error == NO_ERROR && !incomparable && !reversed; j++)
 	  {
 	    size_t found = npages;
 	    size_t idx = (size_t) ((INT64) j * (INT64) npages / degree);
@@ -425,14 +468,14 @@ namespace parallel_query
 		candidate.m_vals[i] = key[i];
 		db_make_null (&key[i]);
 	      }
-	    push_boundary (candidate, spec, boundaries, incomparable);
+	    reversed = !push_boundary (candidate, spec, boundaries, incomparable);
 	  }
 
 	if (ovf_rec.tpl != NULL)
 	  {
 	    db_private_free_and_init (thread_p, ovf_rec.tpl);
 	  }
-	if (error != NO_ERROR || incomparable)
+	if (error != NO_ERROR || incomparable || reversed)
 	  {
 	    boundaries.clear ();
 	  }
@@ -504,7 +547,7 @@ namespace parallel_query
 			     prepass_stats &st)
       {
 	QFILE_TUPLE_RECORD ovf_rec = QFILE_TUPLE_RECORD_INITIALIZER;
-	std::vector<DB_VALUE> key (spec.cnt), land_key (spec.cnt);
+	std::vector<DB_VALUE> key (spec.cnt);
 	size_t npages = dir.m_vpids.size ();
 	size_t bi = 0;
 	size_t from = 0;
@@ -554,28 +597,44 @@ namespace parallel_query
 	      }
 
 	    size_t land = npages;
-	    error = first_data_page (thread_p, list_id, dir, lo, npages, spec, ovf_rec, land_key.data (), land, st);
+	    error = first_data_page (thread_p, list_id, dir, lo, npages, spec, ovf_rec, key.data (), land, st);
 	    if (error != NO_ERROR)
 	      {
+		break;
+	      }
+	    if (land < npages)
+	      {
+		clear_key (key.data (), spec.cnt);
+	      }
+
+	    /* the search only proves land's last key > bnd; the chained predecessor <= bnd pins the crossing to land */
+	    size_t prev = npages;
+	    bool linked = false;
+	    error = chain_prev_data_page (thread_p, list_id, dir, land, spec, ovf_rec, key.data (), prev, linked, st);
+	    if (error != NO_ERROR)
+	      {
+		break;
+	      }
+	    if (linked && prev < npages)
+	      {
+		DB_VALUE_COMPARE_RESULT c = cmp_keys (key.data (), bnd, spec.cnt);
+		clear_key (key.data (), spec.cnt);
+		if (c == DB_UNK)
+		  {
+		    incomparable = true;
+		    break;
+		  }
+		linked = (c != DB_GT);
+	      }
+	    if (!linked)
+	      {
+		assert (false);
+		handled = false;
 		break;
 	      }
 	    if (land >= npages)
 	      {
 		break;		/* list ends inside range bi: later ranges stay exhausted */
-	      }
-
-	    /* the page before the landing page sorting after it means the directory order is not the key order */
-	    size_t prev = npages;
-	    error = prev_data_page (thread_p, list_id, dir, land, spec, ovf_rec, key.data (), prev, st);
-	    if (error == NO_ERROR && prev < npages)
-	      {
-		handled = (cmp_keys (key.data (), land_key.data (), spec.cnt) != DB_GT);
-		clear_key (key.data (), spec.cnt);
-	      }
-	    clear_key (land_key.data (), spec.cnt);
-	    if (error != NO_ERROR || !handled)
-	      {
-		break;
 	      }
 
 	    error = scan_landing_page (thread_p, list_id, dir, land, spec, boundaries, starts, bi, incomparable,
@@ -742,7 +801,13 @@ namespace parallel_query
 
 	if (dir != NULL)
 	  {
-	    return collect_boundaries_by_sector (thread_p, list_id, *dir, spec, degree, boundaries, incomparable, st);
+	    bool reversed = false;
+	    int error = collect_boundaries_by_sector (thread_p, list_id, *dir, spec, degree, boundaries, incomparable,
+			reversed, st);
+	    if (error != NO_ERROR || !reversed)
+	      {
+		return error;
+	      }
 	  }
 
 	int error = collect_boundaries_by_page (thread_p, list_id, spec, degree, boundaries, incomparable, handled, st);
