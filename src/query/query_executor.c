@@ -393,9 +393,8 @@ struct upddel_class_info_internal
   HEAP_SCANCACHE *scan_cache;
 
   OID prev_class_oid;		/* previous class oid */
-  OID lock_policy_class;	/* the class the two memos below describe; the three are written together */
-  bool is_mvcc_class;		/* MVCC applies to lock_policy_class */
-  bool has_online_index;	/* an index of lock_policy_class is being built online; too slow to ask per row */
+  OID lock_policy_class;	/* the class the memo below describes; the two are written together */
+  bool keeps_row_locks;		/* locator_class_keeps_row_locks () for lock_policy_class; too slow to ask per row */
   HEAP_CACHE_ATTRINFO attr_info;	/* attribute cache info */
   bool is_attr_info_inited;	/* true if attr_info has valid data */
   int needs_pruning;		/* partition pruning information */
@@ -26603,8 +26602,7 @@ qexec_create_internal_classes (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO * quer
       class_->class_oid = NULL;
       class_->needs_pruning = DB_NOT_PARTITIONED_CLASS;
       class_->subclass_idx = -1;
-      class_->is_mvcc_class = false;
-      class_->has_online_index = false;
+      class_->keeps_row_locks = true;
       class_->scan_cache = NULL;
       OID_SET_NULL (&class_->lock_policy_class);
       OID_SET_NULL (&class_->prev_class_oid);
@@ -26820,9 +26818,8 @@ qexec_upddel_mvcc_set_filters (THREAD_ENTRY * thread_p, XASL_NODE * aptr_list,
  *   internal_class(in/out): the class the force phase is on; carries the memo
  *   class_oid(in): its OID -- the pruned partition, where pruning applies
  *
- * Note: a class under an online index build (its index entries name no owner, so the row lock is what serializes
- *	writers) and a non-MVCC class keep their row locks to commit.  Past initialization, the only writer of the
- *	memo in internal_class.
+ * Note: see locator_class_keeps_row_locks () for the classes that keep their row locks to commit.  Past
+ *	initialization, the only writer of the memo in internal_class.
  */
 static bool
 qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INFO_INTERNAL * internal_class,
@@ -26835,11 +26832,10 @@ qexec_class_ends_locks_with_statement (THREAD_ENTRY * thread_p, UPDDEL_CLASS_INF
   if (!OID_EQ (&internal_class->lock_policy_class, class_oid))
     {
       COPY_OID (&internal_class->lock_policy_class, class_oid);
-      internal_class->is_mvcc_class = !mvcc_is_mvcc_disabled_class (class_oid);
-      internal_class->has_online_index = locator_class_has_online_index (thread_p, class_oid);
+      internal_class->keeps_row_locks = locator_class_keeps_row_locks (thread_p, class_oid);
     }
 
-  return internal_class->is_mvcc_class && !internal_class->has_online_index;
+  return !internal_class->keeps_row_locks;
 }
 
 /*

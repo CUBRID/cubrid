@@ -80,6 +80,7 @@ typedef enum
   ((policy) == LOCATOR_LOCK_AT_SELECT_TRANSIENT || (policy) == LOCATOR_LOCK_AT_FORCE_TRANSIENT)
 
 extern bool locator_class_has_online_index (THREAD_ENTRY * thread_p, const OID * class_oid);
+extern bool locator_class_keeps_row_locks (THREAD_ENTRY * thread_p, const OID * class_oid);
 
 
 extern int locator_initialize (THREAD_ENTRY * thread_p);

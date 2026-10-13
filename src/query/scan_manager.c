@@ -3222,16 +3222,14 @@ scan_init_scan_id (SCAN_ID * scan_id, bool mvcc_select_lock_needed, SCAN_OPERATI
  *			   kept across a partition switch
  *   cls_oid(in): the class this scan is on -- the pruned partition, on a partition switch
  *
- * Note: decided per class, since a partition can differ from its root: a class under an online index build, or
- *	one MVCC does not apply to, keeps its row locks to commit.
+ * Note: decided per class, since a partition can differ from its root; see locator_class_keeps_row_locks ().
  */
 static void
 scan_set_upddel_target (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, bool upddel_target_scan, const OID * cls_oid)
 {
   scan_id->upddel_target_scan = upddel_target_scan;
   scan_id->lock_ends_with_statement = (upddel_target_scan && cls_oid != NULL && !OID_ISNULL (cls_oid)
-				       && !mvcc_is_mvcc_disabled_class (cls_oid)
-				       && !locator_class_has_online_index (thread_p, cls_oid));
+				       && !locator_class_keeps_row_locks (thread_p, cls_oid));
 }
 
 /*

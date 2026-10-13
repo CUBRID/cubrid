@@ -6144,6 +6144,54 @@ locator_class_has_online_index (THREAD_ENTRY * thread_p, const OID * class_oid)
 }
 
 /*
+ * locator_class_has_triggers () - does the class record list a trigger of its own?
+ *   return: true when it does, or when the record cannot be read
+ *   thread_p(in): thread entry
+ *   class_oid(in): the class
+ *
+ * Note: an empty trigger list is stored as NULL.  A trigger on an attribute is not listed here; it needs no check,
+ *	 since it sends every UPDATE of the class to the client, which keeps its locks.
+ */
+static bool
+locator_class_has_triggers (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+  HEAP_SCANCACHE scan_cache;
+  RECDES recdes = RECDES_INITIALIZER;
+  bool has_triggers = true;
+
+  if (heap_scancache_quick_start_root_hfid (thread_p, &scan_cache) != NO_ERROR)
+    {
+      return true;
+    }
+  if (heap_get_class_record (thread_p, class_oid, &recdes, &scan_cache, PEEK) == S_SUCCESS)
+    {
+      has_triggers = !OR_VAR_IS_NULL (recdes.data, ORC_TRIGGERS_INDEX);
+    }
+  heap_scancache_end (thread_p, &scan_cache);
+
+  return has_triggers;
+}
+
+/*
+ * locator_class_keeps_row_locks () - must the class keep its DELETE and UPDATE row locks to commit?
+ *   return: true when a row lock of the class cannot end with its statement
+ *   thread_p(in): thread entry
+ *   class_oid(in): the class
+ *
+ * Note: three kinds of class keep them.  One MVCC does not apply to leaves no stamp for a later writer to wait on.
+ *	 One with an index being built online: see locator_class_has_online_index ().  One with a trigger of its own:
+ *	 INSERT ... ON DUPLICATE KEY UPDATE and REPLACE on it run on the client, whose unique-key lookup locks the row
+ *	 with no owner check, so a row an earlier statement gave back would queue its owner behind a waiter parked on
+ *	 the owner's MVCCID self-lock.
+ */
+bool
+locator_class_keeps_row_locks (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+  return (mvcc_is_mvcc_disabled_class (class_oid) || locator_class_has_online_index (thread_p, class_oid)
+	  || locator_class_has_triggers (thread_p, class_oid));
+}
+
+/*
  * locator_delete_force () - Delete the given object
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
