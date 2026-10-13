@@ -684,7 +684,7 @@ jobs:
     runs-on: cubrid-arc-light
     timeout-minutes: 30
     container:
-      image: cubridci/cubridci:test-rl810-gha-verbs
+      image: cubridci/cubridci:test_rl8.10
     defaults:
       run:
         shell: bash --noprofile --norc -euo pipefail {0}
@@ -1122,7 +1122,7 @@ jobs:
       matrix:
         include: ${{ fromJson(needs.plan.outputs.matrix) }}
     container:
-      image: cubridci/cubridci:test-rl810-gha-verbs
+      image: cubridci/cubridci:test_rl8.10
     defaults:
       run:
         shell: bash --noprofile --norc -euo pipefail {0}
@@ -1304,7 +1304,7 @@ jobs:
     runs-on: cubrid-arc-light
     timeout-minutes: 30
     container:
-      image: cubridci/cubridci:test-rl810-gha-verbs
+      image: cubridci/cubridci:test_rl8.10
     defaults:
       run:
         shell: bash --noprofile --norc -euo pipefail {0}
