@@ -598,7 +598,7 @@ cas_free (bool from_shutdown_signal)
 {
   int max_process_size;
 
-  if (as_info->cur_statement_pooling && !from_sighandler)
+  if (as_info->cur_statement_pooling && !from_shutdown_signal)
     {
       hm_srv_handle_free_all (true);
     }
