@@ -1610,11 +1610,7 @@ _[uU][tT][fF]8[']		{
                                                                 return PLCSQL_TEXT_SOME; }
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[iI][fF][ \t\r\n]*             |
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[cC][aA][sS][eE][ \t\r\n]*     |
-<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[lL][oO][oO][pP][ \t\r\n]*     {
-                                                                plcsql_local_block_state = LBS_NORMAL;;
-                                                                plcsql_begin_end_balance--;
-							        csql_yylval.cptr = pt_makename(yytext);
-                                                                return PLCSQL_TEXT_SOME; }
+<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[lL][oO][oO][pP][ \t\r\n]*     |
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]*                     {
                                                                 plcsql_begin_end_balance--;
                                                                 if (plcsql_begin_end_balance < 0) {
