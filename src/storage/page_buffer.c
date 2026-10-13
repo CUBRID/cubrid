@@ -211,6 +211,33 @@ typedef enum
   PGBUF_ZONE_MASK = (PGBUF_LRU_ZONE_MASK | PGBUF_INVALID_ZONE | PGBUF_VOID_ZONE),
 } PGBUF_ZONE;
 
+/* [CBRD-24029 리뷰용] ========================================================================
+ * R1. [신규] PGBUF_DIRECT_VICTIM_SEARCH : 유지보수 데몬(S6)이 victim 을 찾을 "리스트 범위" 필터
+ *
+ *  버퍼 풀의 LRU 리스트 배열
+ *    index : 0 ......... S-1 | S ................................ S+P-1
+ *            [ shared LRU   ] | [ private LRU (스레드별, quota 보유) ]
+ *
+ *  S6 는 아래 3단계 순서로 리스트를 방문한다. 각 단계가 이 enum 값 하나에 대응.
+ *    1단계 PGBUF_DIRECT_VICTIM_SEARCH_OVER_QUOTA  : private 중 quota 를 초과한 리스트만
+ *    2단계 PGBUF_DIRECT_VICTIM_SEARCH_ALL         : shared 리스트 전부
+ *    3단계 PGBUF_DIRECT_VICTIM_SEARCH_UNDER_QUOTA : private 중 quota 이하 리스트만 (최후 수단)
+ *
+ *  왜 이 순서인가?
+ *    일반 victim 탐색 pgbuf_get_victim 의 정책과 같게 맞추기 위함.
+ *      - 남의 private 리스트는 over-quota 일 때만 건드린다 (lfcq 큐에 over-quota 만 등록됨)
+ *      - under-quota private 는 그 주인 스레드의 working set 이므로 최대한 보호, 최후에만 사용
+ *    이 순서는 "배제"가 아니라 "선호 순서"다. waiter 가 끝까지 남으면 3단계에서 under-quota 도 쓴다.
+ *    (panic 경로는 원래 quota 를 보지 않는다 - R4 참고)
+ * ============================================================================================= */
+/* PGBUF_DIRECT_VICTIM_SEARCH - lru lists searched by page maintenance to assign direct victims */
+typedef enum
+{
+  PGBUF_DIRECT_VICTIM_SEARCH_ALL,
+  PGBUF_DIRECT_VICTIM_SEARCH_OVER_QUOTA,
+  PGBUF_DIRECT_VICTIM_SEARCH_UNDER_QUOTA
+} PGBUF_DIRECT_VICTIM_SEARCH;
+
 #define PGBUF_MAKE_ZONE(list_id, zone) ((list_id) | (zone))
 #define PGBUF_GET_ZONE(flags) ((PGBUF_ZONE) ((flags) & PGBUF_ZONE_MASK))
 #define PGBUF_GET_LRU_INDEX(flags) ((flags) & PGBUF_LRU_INDEX_MASK)
@@ -1045,6 +1072,46 @@ PGBUF_THREAD_HAS_PRIVATE_LRU (THREAD_ENTRY * thread_p)
 #define PGBUF_LRU_LIST_IS_OVER_QUOTA_WITH_BUFFER(list) \
   (PGBUF_LRU_LIST_COUNT (list) > (list)->quota + PGBUF_OVER_QUOTA_BUFFER ((list)->quota))
 
+/* [CBRD-24029 리뷰용] ========================================================================
+ * R2. [신규] flush 데몬을 깨울지 판단하는 매크로 2개
+ *
+ *  (1) PGBUF_PRIVATE_LRU_VICTIM_FLUSH_TARGET (list)
+ *      = MIN (리스트 크기 - quota * 0.9, zone3 크기)
+ *      원래 pgbuf_compute_lru_vict_target 안에 똑같은 2줄이 두 군데 있던 것을 매크로로 뽑은 것 (동작 동일, R9).
+ *      > 0 이면 flush 데몬이 이 private 리스트를 flush 대상(우선순위 > 0)으로 본다.
+ *      즉 "quota 의 90% 를 넘는 부분"만 flush 대상. under-quota private 는 flush 대상이 아님.
+ *
+ *  (2) PGBUF_LRU_LIST_HAS_VICTIM_FLUSH_TARGET (list)  -- 둘 다 참이면 "깨울 근거 있음"
+ *        조건 A: count_lru3 > count_vict_cand
+ *        조건 B: flush 데몬의 대상 리스트 (shared 이거나, private 면 (1) > 0)
+ *
+ *  LRU 리스트 하나의 모양과 카운터
+ *
+ *    top                                                                       bottom
+ *     [ zone 1 (hot) ][ zone 2 (buffer) ][ zone 3 (victim zone)                    ]
+ *                                        |<------------- count_lru3 ------------->|
+ *                                          C  C  D  F  C  V  D  C
+ *                                          C = clean        : count_vict_cand 에 포함 (victim 후보)
+ *                                          D = dirty        : 후보 아님 -> flush 하면 C 가 됨
+ *                                          F = flushing     : 후보 아님 -> 쓰기 끝나면 스스로 C 가 됨
+ *                                          V = direct 배정됨 : 후보 아님 -> waiter 가 곧 가져감
+ *
+ *    조건 A 의 차이 (count_lru3 - count_vict_cand) = D + F + V 의 개수.
+ *    리스트별 dirty 전용 카운터는 없으므로 이 차이를 "dirty 가 있을 수 있음"의 근사로 사용.
+ *    (F/V 만 있는 순간에는 flush 가 할 일이 없을 수 있음. F/V 는 수 ms 안에 사라지는 일시 상태이며,
+ *     flush 데몬 자신이 쓰는 중인 F 는 호출부의 !is_flushing_victims 조건으로 걸러짐.)
+ *
+ *  count_vict_cand 는 fix 여부를 세지 않는 "상한 힌트"다 (fix/unfix 는 hot path 라 카운터에 반영하지 않는 설계).
+ *  모든 소비자는 "힌트 -> 락 -> pgbuf_is_bcb_victimizable 재확인" 으로 쓴다. 이 매크로도 락 없이 읽기만 한다.
+ * ============================================================================================= */
+/* number of private list bcb's targeted by victim flush: zone three bcb's beyond 90% of quota */
+#define PGBUF_PRIVATE_LRU_VICTIM_FLUSH_TARGET(list) \
+  MIN (PGBUF_LRU_LIST_COUNT (list) - (int) ((list)->quota * 0.9), (list)->count_lru3)
+/* victim flush targets the list and may turn its zone three non-candidates (e.g. dirty) into victims */
+#define PGBUF_LRU_LIST_HAS_VICTIM_FLUSH_TARGET(list) \
+  ((list)->count_lru3 > (list)->count_vict_cand \
+   && (PGBUF_IS_SHARED_LRU_INDEX ((list)->index) || PGBUF_PRIVATE_LRU_VICTIM_FLUSH_TARGET (list) > 0))
+
 #define PBGUF_BIG_PRIVATE_MIN_SIZE 100
 
 /* LRU flags */
@@ -1127,9 +1194,13 @@ static PGBUF_BCB *pgbuf_get_victim (THREAD_ENTRY * thread_p);
 static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx);
 #if defined (SERVER_MODE)
 static int pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
-						       PGBUF_BCB * bcb_start);
+						       PGBUF_BCB * bcb_start, int max_assign);
 STATIC_INLINE void pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nassign_inout)
   __attribute__ ((ALWAYS_INLINE));
+static void pgbuf_assign_direct_victims_round_robin (THREAD_ENTRY * thread_p, int lru_idx_base, int lru_count,
+						     PGBUF_DIRECT_VICTIM_SEARCH search, int *start_inout,
+						     int *nassign_inout);
+static bool pgbuf_is_any_lru_victim_flush_target (void);
 #endif /* SERVER_MODE */
 STATIC_INLINE void pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const int lru_idx)
   __attribute__ ((ALWAYS_INLINE));
@@ -9389,7 +9460,14 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 	      if (pgbuf_Pool.direct_victims.waiter_threads_low_priority->size ()
 		  >= (5 + (thread_num_total_threads () / 20)))
 		{
-		  pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bufptr->prev_BCB);
+		  /* [CBRD-24029 리뷰용] ========================================================================
+		   * R3. [변경] S4 (탐색 중 hack 경로) 호출부: max_assign 인자 추가에 따른 수정
+		   *
+		   *    워커가 자기 victim 을 찾은 직후, low-priority waiter 가 (5 + 스레드수/20) 이상 쌓여 있으면
+		   *    같은 리스트에서 남은 후보를 waiter 들에게 몰아서 배정하는 기존 경로.
+		   *    기존처럼 "상한 없이" 배정하도록 DB_INT32_MAX 를 넘김 -> 이 경로의 동작은 전혀 바뀌지 않음.
+		   * ============================================================================================= */
+		  pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, bufptr->prev_BCB, DB_INT32_MAX);
 		}
 #endif /* SERVER_MODE */
 
@@ -9469,16 +9547,61 @@ pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const int lru_idx)
 }
 
 #if defined (SERVER_MODE)
+/* [CBRD-24029 리뷰용] ========================================================================
+ * R4. [변경] pgbuf_panic_assign_direct_victims_from_lru : "panic 배정" 함수
+ *
+ *  ■ 코드에서 "panic" 의 의미
+ *    panic 이라는 상태 변수는 없다. 이 함수를 부르는 상황이 곧 panic 이다.
+ *    = "정상적인 victim 공급이 돌았는데도 waiter 가 남아 있는 상태"
+ *      호출처 S4 : 워커 탐색 중, low-priority waiter 가 임계 이상 쌓임           (pgbuf_get_victim_from_lru_list)
+ *      호출처 S6 : 유지보수 데몬, 일반 공급 경로가 돌았는데도 waiter 남음          (pgbuf_direct_victims_maintenance)
+ *    이 함수는 quota 를 보지 않는다 (panic 이면 quota 무시). 통계 Num_victim_assign_direct_panic 은 S4 + S6 합계.
+ *
+ *  ■ 동작
+ *    bcb_start 부터 위로 (prev_BCB 방향) zone 3 을 최대 MAX_DEPTH(1000) 개 훑는다.
+ *
+ *       bcb_start (보통 victim_hint 또는 bottom)
+ *         |
+ *         v  prev_BCB 방향으로 이동
+ *       [후보?] --아니오--> 다음
+ *         | 예 (락 없이 1차 확인: pgbuf_is_bcb_victimizable (bcb, false))
+ *       PGBUF_BCB_TRYLOCK --실패--> 다음
+ *         | 성공
+ *       [후보?] --아니오--> unlock, 다음      (락 잡고 확정: pgbuf_is_bcb_victimizable (bcb, true))
+ *         | 예
+ *       pgbuf_assign_direct_victim --waiter 없음--> unlock, 종료
+ *         | waiter 깨움 + bcb 넘김
+ *       n_assigned++ ; n_assigned == max_assign 이면 종료   <-- [신규] 상한
+ *
+ *  ■ [신규] max_assign 인자
+ *    AS-IS : 한 리스트에서 waiter 가 바닥날 때까지 배정 -> LRU mutex 를 쥔 채 waiter 를 계속 깨움
+ *            (실측: S6 에서 리스트 1개당 최대 9개 배정, tick 당 5개 상한이 실제로는 지켜지지 않았음)
+ *    TO-BE : S6 = 남은 몫 (*nassign_inout, tick 당 총 5개) / S4 = DB_INT32_MAX (기존 동작 유지)
+ *            (실측: 리스트당 최대 5개로 제한됨)
+ *
+ *  ■ 함수 주석의 TODO (별도 이슈 예정)
+ *    waiter 큐 소비 순서 (pgbuf_get_thread_waiting_for_direct_victim):
+ *      4번 중 1번은 low 먼저, 나머지는 high -> low
+ *      high = vacuum worker, 남이 기다리는 latch(볼륨 헤더, 파일 테이블 등)를 쥔 스레드
+ *      이유 : vacuum 이 뒤처지지 않게, latch 대기를 짧게 (latch convoy 방지)
+ *    panic 에서는 내부 스레드보다 사용자 트랜잭션을 먼저 살릴지 검토가 필요 -> TODO 로 남김
+ * ============================================================================================= */
 /*
  * pgbuf_panic_assign_direct_victims_from_lru () - panic assign direct victims from lru.
  *
- * return         : number of assigned victims.
- * thread_p (in)  : thread entry
- * lru_list (in)  : lru list
- * bcb_start (in) : starting bcb
+ * return          : number of assigned victims.
+ * thread_p (in)   : thread entry
+ * lru_list (in)   : lru list
+ * bcb_start (in)  : starting bcb
+ * max_assign (in) : maximum number of victims to assign
+ *
+ * TODO: waiters are served high priority first (see pgbuf_get_thread_waiting_for_direct_victim), i.e. vacuum workers
+ *       and holders of latches others wait for, to keep vacuum from lagging and to shorten latch waits. in panic,
+ *       consider serving user transactions first.
  */
 static int
-pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb_start)
+pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list, PGBUF_BCB * bcb_start,
+					    int max_assign)
 {
 #define MAX_DEPTH 1000
   PGBUF_BCB *bcb = NULL;
@@ -9494,10 +9617,22 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
   assert (pgbuf_bcb_get_lru_index (bcb_start) == lru_list->index);
 
   /* panic victimization function */
+  /* unlike pgbuf_lru_fall_bcb_to_zone_3, to-vacuum bcb's are assigned too: a waiter blocked for lack of victims
+   * outweighs a page re-read by vacuum. */
 
+  /* [CBRD-24029 리뷰용] ========================================================================
+   * R4b. [변경] 루프 종료 조건에 "n_assigned < max_assign" 추가 (위 R4 흐름도의 맨 마지막 줄)
+   *
+   *  바로 위 영문 주석 (to-vacuum) 의 의미:
+   *    평상시 경로 pgbuf_lru_fall_bcb_to_zone_3 은 vacuum 이 곧 읽을 페이지(to-vacuum)는 waiter 에게 주지 않는다.
+   *    (주면 vacuum 이 그 페이지를 디스크에서 다시 읽어야 하므로)
+   *    panic 경로는 그 검사를 하지 않는다 = vacuum 대상 페이지도 준다.
+   *    근거: victim 이 없어 멈춰 있는 waiter 를 살리는 것이, vacuum 의 페이지 재읽기 1회 비용보다 중요.
+   *    (이 동작은 원래 그랬고 이번에 바꾼 것이 아니다. 그 근거를 주석으로 남긴 것)
+   * ============================================================================================= */
   for (bcb = bcb_start;
-       bcb != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb) && lru_list->count_vict_cand > 0 && count < MAX_DEPTH;
-       bcb = bcb->prev_BCB, count++)
+       bcb != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (bcb) && lru_list->count_vict_cand > 0 && count < MAX_DEPTH
+       && n_assigned < max_assign; bcb = bcb->prev_BCB, count++)
     {
       assert (pgbuf_bcb_get_lru_index (bcb) == lru_list->index);
       if (!pgbuf_is_bcb_victimizable (bcb, false))
@@ -9535,6 +9670,58 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
 #undef MAX_DEPTH
 }
 
+/* [CBRD-24029 리뷰용] ========================================================================
+ * R5. [변경] pgbuf_direct_victims_maintenance : 이슈의 본체 (S6)
+ *
+ *  ■ 누가 언제 부르나
+ *    pgbuf-maintain 데몬 (100ms 고정 주기)
+ *      pgbuf_page_maintenance_execute
+ *        (1) pgbuf_adjust_quotas              : private quota, zone 임계값 재계산, lfcq 큐 등록
+ *        (2) pgbuf_direct_victims_maintenance : <-- 여기. (1) 직후 상태를 보고 동작
+ *
+ *  ■ 왜 필요한가 (waiter 에게 victim 을 주는 경로 지도)
+ *    victim 을 못 찾은 스레드는 waiter 큐에 들어가 잠든다 (pgbuf_allocate_bcb).
+ *    누군가 pgbuf_assign_direct_victim 을 불러줘야 깨어난다. 그 "누군가" 목록:
+ *
+ *      S1 flush 데몬     : zone 3 훑다가 clean 을 만나면 1개 직접 배정  (flush 대상 리스트만)
+ *      S2 post-flush     : 방금 flush 한 bcb 배정                        (under-quota private 는 skip)
+ *      S3 zone 낙하      : bcb 가 zone 3 으로 "새로 떨어질 때" 배정       (pgbuf_lru_fall_bcb_to_zone_3)
+ *      S4 탐색 중 hack   : waiter 가 많이 쌓였을 때 panic 배정
+ *      S5 vacuum unfix   : vacuum 이 놓는 bcb 배정
+ *      S6 유지보수 데몬  : "이미 zone 3 에 가만히 있는" clean 을 찾아가 배정  <-- 유일한 안전망
+ *
+ *    S1~S5 는 모두 어떤 "이벤트"가 일어나야 동작한다. 활동이 거의 없으면 아무도 안 깨워 줄 수 있다.
+ *    (pgbuf_allocate_bcb 의 TODO 주석 "forgotten waiter" 문제. 결과: page_latch_timeout_in_msecs
+ *     (기본 300초)까지 대기 -> debug 는 assert abort, release 는 쿼리 에러)
+ *
+ *  ■ AS-IS (2017 CBRD-20074 부터 데드 코드)
+ *      for (index = prv_index, restarted = false;
+ *           ... && index != prv_index && !restarted;      <- 시작하자마자 index == prv_index 라서 거짓
+ *           ...)                                          -> 본문 0회. prv_index 도 안 바뀌어 매 tick 반복
+ *      + !restarted : 첫 조건을 고쳐도 N-1 -> 0 으로 넘어가는 순간 멈춰 "한 바퀴"를 못 돎
+ *      (실측: base 에서 waiter 약 15만 건 발생 중에도 이 경로 배정 0건)
+ *
+ *  ■ TO-BE
+ *      nassigns = 5                                       (tick 당 총 배정 상한)
+ *        |
+ *        +-- 1단계 round_robin (private, OVER_QUOTA , &prv_over_quota_index)
+ *        +-- 2단계 round_robin (shared , ALL        , &shr_index)
+ *        +-- 3단계 round_robin (private, UNDER_QUOTA, &prv_under_quota_index)
+ *        |     각 단계 공통 종료 조건: waiter 없음 || nassigns <= 0 || 한 바퀴 다 돎
+ *        |
+ *        +-- waiter 남음 && flush 진행 중 아님 && 깨울 근거 있는 리스트 존재 (R2)
+ *              -> pgbuf_wakeup_page_flush_daemon                       (R5b)
+ *
+ *    static 위치 변수를 단계별로 3개로 분리:
+ *      1단계와 3단계는 같은 private 범위를 돌지만, 서로의 round-robin 위치를 흐트러뜨리지 않게 하기 위함.
+ *    static 사용이 안전한 이유: 이 함수는 pgbuf-maintain 데몬 스레드 하나에서만 호출됨 (기존 설계 그대로).
+ *
+ *  ■ 상황별 흐름
+ *    유휴 상태      : adjust_quotas 가 private 활동 0 을 보고 quota = 0 으로 만듦 -> 모든 private 가
+ *                     over-quota -> 1단계에서 해결
+ *    부하 상태      : over-quota private, shared 에서 먼저 공급 (일반 탐색과 같은 우선순위)
+ *    극단 상태      : 모든 private 가 quota 바로 아래 + shared 에 zone 3 없음 -> 3단계에서 under-quota 사용
+ * ============================================================================================= */
 /*
  * pgbuf_direct_victims_maintenance () - assign direct victims via searching. the purpose of function is to make sure a
  *                                       victim is assigned even when system has low to no activity, which prevents
@@ -9549,33 +9736,153 @@ pgbuf_direct_victims_maintenance (THREAD_ENTRY * thread_p)
 {
 #define DEFAULT_ASSIGNS_PER_ITERATION 5
   int nassigns = DEFAULT_ASSIGNS_PER_ITERATION;
-  bool restarted;
-  int index;
 
   /* note this is designed for single-threaded use only. the static values are used for pick lists with a round-robin
    * system */
-  static int prv_index = 0;
+  static int prv_over_quota_index = 0;
   static int shr_index = 0;
+  static int prv_under_quota_index = 0;
 
-  /* privates */
-  for (index = prv_index, restarted = false;
-       pgbuf_is_any_thread_waiting_for_direct_victim () && nassigns > 0 && index != prv_index && !restarted;
-       (index == PGBUF_PRIVATE_LRU_COUNT - 1) ? index = 0, restarted = true : index++)
-    {
-      pgbuf_lfcq_assign_direct_victims (thread_p, PGBUF_LRU_INDEX_FROM_PRIVATE (index), &nassigns);
-    }
-  prv_index = index;
+  /* same order as pgbuf_get_victim: privates over quota, shared, then privates under quota as last resort */
+  pgbuf_assign_direct_victims_round_robin (thread_p, PGBUF_LRU_INDEX_FROM_PRIVATE (0), PGBUF_PRIVATE_LRU_COUNT,
+					   PGBUF_DIRECT_VICTIM_SEARCH_OVER_QUOTA, &prv_over_quota_index, &nassigns);
+  pgbuf_assign_direct_victims_round_robin (thread_p, 0, PGBUF_SHARED_LRU_COUNT, PGBUF_DIRECT_VICTIM_SEARCH_ALL,
+					   &shr_index, &nassigns);
+  pgbuf_assign_direct_victims_round_robin (thread_p, PGBUF_LRU_INDEX_FROM_PRIVATE (0), PGBUF_PRIVATE_LRU_COUNT,
+					   PGBUF_DIRECT_VICTIM_SEARCH_UNDER_QUOTA, &prv_under_quota_index, &nassigns);
 
-  /* shared */
-  for (index = shr_index, restarted = false;
-       pgbuf_is_any_thread_waiting_for_direct_victim () && nassigns > 0 && index != shr_index && !restarted;
-       (index == PGBUF_SHARED_LRU_COUNT - 1) ? index = 0, restarted = true : index++)
+  /* [CBRD-24029 리뷰용] ========================================================================
+   * R5b. [신규] flush 데몬 조건부 기상
+   *
+   *  ■ 왜 필요한가: flush 데몬이 "후보 없음"으로 잠든 뒤 아무도 안 깨우는 구멍
+   *
+   *    pgbuf-page-flush 데몬
+   *      while (waiter 있음 ...)
+   *        pgbuf_flush_victim_candidates
+   *          pgbuf_get_victim_candidates_from_lru : flush 대상 리스트의 zone 3 에서 dirty 수집
+   *          수집 0 개 -> *stop = true -> 루프 탈출 -> 잠듦
+   *      다음 기상: page_flush_interval_in_msecs (기본 1000ms, 0 이면 무한 대기)
+   *                또는 새 waiter 등록 / 다른 스레드의 victim 탐색 이벤트
+   *
+   *    잠든 사이 (1) pgbuf_adjust_quotas 가 quota/zone 을 바꿔 flush 대상이나 zone 3 내용이 새로 생겨도
+   *    활동이 없으면 flush 를 깨울 주체가 없다 -> waiter 는 최대 1초 (설정 0 이면 300초 타임아웃까지) 대기.
+   *
+   *  ■ 조건 (모두 참일 때만 깨움)
+   *    1) pgbuf_is_any_thread_waiting_for_direct_victim () : S6 로 다 못 채운 waiter 가 남음
+   *    2) !pgbuf_Pool.is_flushing_victims                  : flush 가 이미 일하는 중이면 깨울 필요 없음
+   *    3) pgbuf_is_any_lru_victim_flush_target ()          : flush 대상 리스트의 zone 3 에 후보 아닌 bcb 존재 (R2)
+   *                                                           = 깨우면 victim 을 만들 근거 (adjust 직후 상태로 판정)
+   *
+   *  ■ 깨운 결과
+   *    flush 데몬이 zone 3 을 훑으며  D 는 flush -> S2 가 waiter 에게 배정
+   *                                 C 를 만나면 S1 로 1개 직접 배정
+   *  ■ 비용: 조건변수 signal 1회. waiter 가 있을 때만, 100ms 당 최대 1회.
+   * ============================================================================================= */
+  if (pgbuf_is_any_thread_waiting_for_direct_victim () && !pgbuf_Pool.is_flushing_victims
+      && pgbuf_is_any_lru_victim_flush_target ())
     {
-      pgbuf_lfcq_assign_direct_victims (thread_p, index, &nassigns);
+      /* flush may have stopped for lack of candidates before quotas and zones were adjusted */
+      pgbuf_wakeup_page_flush_daemon (thread_p);
     }
-  shr_index = index;
 
 #undef DEFAULT_ASSIGNS_PER_ITERATION
+}
+
+/* [CBRD-24029 리뷰용] ========================================================================
+ * R6. [신규] pgbuf_assign_direct_victims_round_robin : 범위 [base, base+count) 를 저장 위치부터 한 바퀴
+ *
+ *  ■ 인덱스 계산: lru_idx = base + (start + nvisited) % count
+ *
+ *  ■ 예1) count = 4, start = 2, 상한 여유 있음
+ *       nvisited : 0   1   2   3
+ *       방문     : 2 -> 3 -> 0 -> 1        (한 바퀴, nvisited = 4 에서 종료)
+ *       종료 후  : start = (2 + 4) % 4 = 2
+ *
+ *  ■ 예2) count = 4, start = 2, 리스트 3 처리 후 nassigns 소진
+ *       방문     : 2 -> 3                  (nvisited = 2 에서 종료)
+ *       종료 후  : start = (2 + 2) % 4 = 0  -> 다음 tick 은 0 번부터 (공평한 순환)
+ *
+ *  ■ 필터 (R1 의 단계)
+ *       OVER_QUOTA  단계 : PGBUF_LRU_LIST_IS_OVER_QUOTA 가 거짓인 리스트는 건너뜀
+ *       UNDER_QUOTA 단계 : PGBUF_LRU_LIST_IS_OVER_QUOTA 가 참인 리스트는 건너뜀
+ *       건너뛰어도 nvisited 는 증가 (continue) -> 절대 한 바퀴를 넘지 않음
+ *
+ *  ■ count <= 0 이면 즉시 return
+ *       pb_num_private_chains = 0 (quota 비활성) 이면 private 리스트 수가 0 -> % 0 (0 나누기) 방지
+ *
+ *  ■ 리스트 하나 처리 = pgbuf_lfcq_assign_direct_victims (R8)
+ * ============================================================================================= */
+/*
+ * pgbuf_assign_direct_victims_round_robin () - visit lru lists once in round-robin order, starting from saved position,
+ *                                              and assign victims directly while threads are waiting.
+ *
+ * return                 : void
+ * thread_p (in)          : thread entry
+ * lru_idx_base (in)      : lru index of the first list in range
+ * lru_count (in)         : number of lists in range
+ * search (in)            : which lists in range to search
+ * start_inout (in/out)   : position to start from. updated to the position after the last visited list
+ * nassign_inout (in/out) : update the number of victims to assign
+ */
+static void
+pgbuf_assign_direct_victims_round_robin (THREAD_ENTRY * thread_p, int lru_idx_base, int lru_count,
+					 PGBUF_DIRECT_VICTIM_SEARCH search, int *start_inout, int *nassign_inout)
+{
+  PGBUF_LRU_LIST *lru_list;
+  int lru_idx;
+  int nvisited;
+
+  if (lru_count <= 0)
+    {
+      return;
+    }
+
+  for (nvisited = 0;
+       nvisited < lru_count && *nassign_inout > 0 && pgbuf_is_any_thread_waiting_for_direct_victim (); nvisited++)
+    {
+      lru_idx = lru_idx_base + (*start_inout + nvisited) % lru_count;
+      lru_list = PGBUF_GET_LRU_LIST (lru_idx);
+
+      if ((search == PGBUF_DIRECT_VICTIM_SEARCH_OVER_QUOTA && !PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list))
+	  || (search == PGBUF_DIRECT_VICTIM_SEARCH_UNDER_QUOTA && PGBUF_LRU_LIST_IS_OVER_QUOTA (lru_list)))
+	{
+	  continue;
+	}
+
+      pgbuf_lfcq_assign_direct_victims (thread_p, lru_idx, nassign_inout);
+    }
+
+  *start_inout = (*start_inout + nvisited) % lru_count;
+}
+
+/* [CBRD-24029 리뷰용] ========================================================================
+ * R7. [신규] pgbuf_is_any_lru_victim_flush_target : R5b 의 조건 3)
+ *
+ *    for 전체 LRU (shared + private)
+ *      PGBUF_LRU_LIST_HAS_VICTIM_FLUSH_TARGET (R2) 가 참인 리스트를 하나라도 만나면 true
+ *
+ *    - 락을 하나도 잡지 않는다. 카운터 읽기만 하는 휴리스틱 (pgbuf_get_victim 의 무락 선검사와 같은 방식).
+ *    - waiter 가 남은 경우에만 호출되므로 평상시 (버퍼 압박 없음) 비용은 0.
+ * ============================================================================================= */
+/*
+ * pgbuf_is_any_lru_victim_flush_target () - is there any lru list where victim flush can produce victims?
+ *
+ * return : true/false
+ */
+static bool
+pgbuf_is_any_lru_victim_flush_target (void)
+{
+  int lru_idx;
+
+  for (lru_idx = 0; lru_idx < PGBUF_TOTAL_LRU_COUNT; lru_idx++)
+    {
+      if (PGBUF_LRU_LIST_HAS_VICTIM_FLUSH_TARGET (PGBUF_GET_LRU_LIST (lru_idx)))
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 /*
@@ -9598,22 +9905,52 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nas
     {
       pthread_mutex_lock (&lru_list->mutex);
       victim_hint = lru_list->victim_hint;
-      nassigned = pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, victim_hint);
+      nassigned = pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, victim_hint, *nassign_inout);
       if (nassigned == 0 && lru_list->count_vict_cand > 0 && pgbuf_is_any_thread_waiting_for_direct_victim ())
 	{
 	  /* maybe hint was bad? that's most likely case. reset the hint to bottom. */
-	  assert (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom));
-	  if (PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
+	  /* [CBRD-24029 리뷰용] ========================================================================
+	   * R8. [변경] pgbuf_lfcq_assign_direct_victims : 리스트 하나에서 배정 (NULL 가드 + 중복 스캔 제거)
+	   *
+	   *  ■ 전체 흐름
+	   *    count_vict_cand > 0 ? (락 없이 힌트) -- 아니오 --> 아무것도 안 함 (락도 안 잡음)
+	   *      | 예
+	   *    lock (lru_list->mutex)
+	   *    panic 배정 (victim_hint 부터, 상한 = 남은 몫)            (R4)
+	   *    0 개 배정 && 아직 후보·waiter 있음 -> "hint 가 나빴나?"   <-- 여기
+	   *        [AS-IS]
+	   *          assert (LRU3 (bottom));                <- bottom == NULL 이면 pgbuf_bcb_get_zone (NULL) 역참조
+	   *          if (LRU3 (bottom))   hint = bottom     <- release 에서도 같은 역참조
+	   *          else                 hint = NULL
+	   *          panic 배정 (bottom 부터)               <- hint == bottom 이면 방금 훑은 구간을 또 훑음
+	   *                                                    bottom 이 zone 3 이 아니면 사실상 아무 일 안 함
+	   *        [TO-BE]
+	   *          if (bottom != NULL && LRU3 (bottom))
+	   *            hint = bottom
+	   *            if (bottom != 처음 시작점 hint)  panic 배정 (bottom 부터)   <- 다른 구간일 때만 재스캔
+	   *          else
+	   *            hint = NULL                                                  <- 기존과 동일
+	   *    unlock
+	   *    *nassign_inout -= 배정 수
+	   *
+	   *  ■ 이 코드는 2017 년 이후 한 번도 실행된 적이 없다 (호출처가 데드 루프뿐이었음).
+	   *    살리는 순간 100ms 마다 도는 상시 경로가 되므로, 숨어 있던 NULL 역참조를 함께 막았다.
+	   * ============================================================================================= */
+	  if (lru_list->bottom != NULL && PGBUF_IS_BCB_IN_LRU_VICTIM_ZONE (lru_list->bottom))
 	    {
 	      (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, lru_list->bottom);
+
+	      /* check from bottom anyway */
+	      if (lru_list->bottom != victim_hint)
+		{
+		  nassigned =
+		    pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, lru_list->bottom, *nassign_inout);
+		}
 	    }
 	  else
 	    {
 	      (void) ATOMIC_CAS_ADDR (&lru_list->victim_hint, victim_hint, (PGBUF_BCB *) NULL);
 	    }
-
-	  /* check from bottom anyway */
-	  nassigned = pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, lru_list->bottom);
 	}
       pthread_mutex_unlock (&lru_list->mutex);
 
@@ -14090,8 +14427,19 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
        * (I tried), because you may find yourself in the peculiar case where quota's are on par with list size, while
        * shared are right below minimum desired size... and flush will not find anything.
        */
-      this_prv_target = PGBUF_LRU_LIST_COUNT (lru_list) - (int) (lru_list->quota * 0.9);
-      this_prv_target = MIN (this_prv_target, lru_list->count_lru3);
+      /* [CBRD-24029 리뷰용] ========================================================================
+       * R9. [리팩터링] flush 데몬의 대상 계산 (pgbuf_compute_lru_vict_target)
+       *
+       *    AS-IS (이 함수 안 2곳)
+       *      this_prv_target = PGBUF_LRU_LIST_COUNT (lru_list) - (int) (lru_list->quota * 0.9);
+       *      this_prv_target = MIN (this_prv_target, lru_list->count_lru3);
+       *    TO-BE
+       *      this_prv_target = PGBUF_PRIVATE_LRU_VICTIM_FLUSH_TARGET (lru_list);   (R2 의 매크로, 같은 식)
+       *
+       *    목적: flush 데몬이 "flush 대상"을 정하는 기준과 S6 가 "flush 를 깨울 근거"를 정하는 기준을
+       *          한 곳(매크로)에서 관리. 한쪽만 바뀌어 어긋나는 것을 방지. 동작 변화 없음.
+       * ============================================================================================= */
+      this_prv_target = PGBUF_PRIVATE_LRU_VICTIM_FLUSH_TARGET (lru_list);
       if (this_prv_target > 0)
 	{
 	  total_prv_target += this_prv_target;
@@ -14153,8 +14501,7 @@ pgbuf_compute_lru_vict_target (float *lru_sum_flush_priority)
 	      else
 		{
 		  /* use bcb's over 90% of quota as flush target */
-		  this_prv_target = PGBUF_LRU_LIST_COUNT (lru_list) - (int) (lru_list->quota * 0.9);
-		  this_prv_target = MIN (this_prv_target, lru_list->count_lru3);
+		  this_prv_target = PGBUF_PRIVATE_LRU_VICTIM_FLUSH_TARGET (lru_list);
 		}
 	      if (this_prv_target > 0)
 		{
