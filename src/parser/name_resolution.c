@@ -229,6 +229,7 @@ static bool is_pt_name_deferred_for_static_sql (PT_NODE * node);
 
 static PT_NODE *pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 							      int *continue_walk);
+static PT_NODE *pt_resolve_group_having_alias_and_deferred_name (PARSER_CONTEXT * parser, PT_NODE * node);
 
 static PT_NODE *pt_mark_pt_name (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent, int *continue_walk);
 
@@ -1322,6 +1323,12 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	      table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 	    }
 	  spec->info.spec.derived_table = table;
+
+	  if (parser->flag.is_parsing_static_sql == 1)
+	    {
+	      /* the names deferred by name binding have no type. resolve them before the type checking below */
+	      table = pt_resolve_group_having_alias_and_deferred_name (parser, table);
+	    }
 
 	  /* must bind any expr types in table. pt_bind_types requires it. */
 	  save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
@@ -9120,6 +9127,26 @@ pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE *
 }
 
 /*
+ * pt_resolve_group_having_alias_and_deferred_name () - resolve aliases in group by/having/order by and, for a static
+ *                                                      SQL, convert the names deferred by name binding which are not
+ *                                                      aliases to host variables
+ *   return:
+ *   parser(in):
+ *   node(in):
+ */
+static PT_NODE *
+pt_resolve_group_having_alias_and_deferred_name (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  node = parser_walk_tree (parser, node, pt_resolve_group_having_alias, NULL, NULL, NULL);
+  if (pt_has_error (parser) || parser->flag.is_parsing_static_sql == 0)
+    {
+      return node;
+    }
+
+  return parser_walk_tree (parser, node, pt_parameterize_deferred_name_for_static_sql, NULL, NULL, NULL);
+}
+
+/*
  * pt_mark_pt_name () -
  *   return:
  *   parser(in):
@@ -9468,21 +9495,10 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	}
 
       /* Resolve alias in group by/having. */
-      statement = parser_walk_tree (parser, statement, pt_resolve_group_having_alias, NULL, NULL, NULL);
+      statement = pt_resolve_group_having_alias_and_deferred_name (parser, statement);
       if (pt_has_error (parser))
 	{
 	  return NULL;
-	}
-
-      if (parser->flag.is_parsing_static_sql == 1)
-	{
-	  /* names in group by/having/order by which are not aliases are converted to host variables */
-	  statement =
-	    parser_walk_tree (parser, statement, pt_parameterize_deferred_name_for_static_sql, NULL, NULL, NULL);
-	  if (pt_has_error (parser))
-	    {
-	      return NULL;
-	    }
 	}
 
       /*
@@ -11286,6 +11302,12 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
   non_recursive_cte = parser_walk_tree (parser, non_recursive_cte, pt_bind_names, bind_arg,
 					pt_bind_names_post, bind_arg);
 
+  if (parser->flag.is_parsing_static_sql == 1)
+    {
+      /* the names deferred by name binding have no type. resolve them before the type checking below */
+      non_recursive_cte = pt_resolve_group_having_alias_and_deferred_name (parser, non_recursive_cte);
+    }
+
   /* must bind any expr types in non recursive part; required for types binding */
   save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
   bind_arg->sc_info->donot_fold = true;	/* skip folding */
@@ -11318,6 +11340,12 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
       if (recursive_cte == NULL)
 	{
 	  goto end;
+	}
+
+      if (parser->flag.is_parsing_static_sql == 1)
+	{
+	  /* the names deferred by name binding have no type. resolve them before the type checking below */
+	  recursive_cte = pt_resolve_group_having_alias_and_deferred_name (parser, recursive_cte);
 	}
 
       cte_def->info.cte.recursive_part = recursive_cte;
