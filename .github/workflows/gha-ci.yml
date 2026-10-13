@@ -114,6 +114,20 @@ env:
   BUILD_META: .gha-ci-build.meta
   # Paired with arc_artifact_server_node_port in CUBRID/qatools-internal test-infra/.
   ARTIFACT_URL_BASE: http://192.168.1.48:30080
+  # One copy for the three jobs that count CTP's results; each step evals it.
+  COUNT_RESULTS: |
+    count() {
+      if [ -f "$1/test_status.data" ]; then
+        awk -F= '/total_executed_case_count/ {e = $2 + 0} /total_success_case_count/ {s = $2 + 0}
+          /total_fail_case_count/ {f = $2 + 0} /total_skip_case_count/ {k = $2 + 0}
+          END {printf "found=yes exec=%d pass=%d fail=%d skip=%d\n", e, s, f, k}' "$1/test_status.data"
+      elif [ -f "$1/summary_info" ]; then
+        awk '/:nok[[:space:]]+[0-9]+ms$/ {f++; next} /:ok[[:space:]]+[0-9]+ms$/ {s++; next} /:[[:space:]]+[0-9]+ms$/ {k++}
+          END {printf "found=yes exec=%d pass=%d fail=%d skip=%d\n", s + f, s, f, k}' "$1/summary_info"
+      else
+        echo "found=no exec=0 pass=0 fail=0 skip=0"
+      fi
+    }
   # How CTP runs a suite is the test image's table; this one holds the split policy.
   SUITES: |-
     {
@@ -865,6 +879,7 @@ jobs:
           RERUN_FROM: ${{ needs.gate.outputs.rerun_from }}
           SHA: ${{ needs.gate.outputs.sha }}
         run: |
+          eval "$COUNT_RESULTS"
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
           rundir="$CI_ROOT/runs/${GITHUB_RUN_ID}"
           : > /tmp/matrix.jsonl
@@ -920,7 +935,7 @@ jobs:
                 [ -f "$sf" ] || continue
                 i=$(basename "$sf" .list)
                 a=$(awk -F'\t' -v k="$i" '$1 == k {print $2}' "$srcdir/plan/plan.tsv")
-                h=$(eval "$(/entrypoint.sh count "$suite" "$srcdir/shard/$i")"; [ "$found" = yes ] && echo $((exec + skip)) || echo none)
+                h=$(eval "$(count "$srcdir/shard/$i")"; [ "$found" = yes ] && echo $((exec + skip)) || echo none)
                 if [ "$h" = none ]; then
                   cat "$sf" >> /tmp/unrun.list
                   unrun=$((unrun + ${a:-0}))
@@ -1252,7 +1267,8 @@ jobs:
           TEST_RC: ${{ steps.ctp.outputs.rc }}
         run: |
           /entrypoint.sh results "$SUITE" "$SHARD_DIR"
-          eval "$(/entrypoint.sh count "$SUITE" "$SHARD_DIR")"
+          eval "$COUNT_RESULTS"
+          eval "$(count "$SHARD_DIR")"
           # Only on failure: a green 50-shard run would write 50 archives nobody reads.
           if [ "${TEST_RC:-1}" != 0 ] || [ "$found" = no ] || [ "$fail" -gt 0 ]; then
             /entrypoint.sh evidence "$SUITE" "$SHARD_DIR" 10G || echo "::warning::could not keep all of the failure evidence"
@@ -1270,7 +1286,8 @@ jobs:
         env:
           WANT: ${{ steps.mine.outputs.n }}
         run: |
-          eval "$(/entrypoint.sh count "$SUITE" "$SHARD_DIR")"
+          eval "$COUNT_RESULTS"
+          eval "$(count "$SHARD_DIR")"
           [ "$found" = yes ] || { echo "::error::no CTP result file: the tests did not run"; exit 1; }
           echo "assigned $WANT / run $exec / failed $fail / skipped $skip"
           [ $((exec + skip)) -ge "$WANT" ] || {
@@ -1319,7 +1336,13 @@ jobs:
 
       - name: Update timings for the next split
         run: |
-          for d in "$RUNDIR"/*/shard/*/; do /entrypoint.sh times "$d"; done > /tmp/new_timings.tsv
+          for f in "$RUNDIR"/*/shard/*/artifacts/feedback.log; do
+            [ -f "$f" ] || continue
+            { grep -E '^\[(OK|NOK)\]' "$f" || :; } | awk '
+              { ms = ""; path = ""
+                for (i = NF; i > 1; i--) if ($i ~ /^EnvId=/) { ms = $(i-1); path = $(i-2); break }
+                if (ms ~ /^[0-9]+$/ && path != "") printf "%s\t%.3f\n", path, ms / 1000 }'
+          done > /tmp/new_timings.tsv
           [ -s /tmp/new_timings.tsv ] || exit 0
           mkdir -p "$(dirname "$TIMINGS")"
           [ -f "$TIMINGS" ] || : > "$TIMINGS"
@@ -1414,7 +1437,45 @@ jobs:
           C_PLAN: ${{ steps.clock.outputs.plan }}
           C_TOTAL: ${{ steps.clock.outputs.total }}
         run: |
+          eval "$COUNT_RESULTS"
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
+          # A failure body is read through first: a log can hold a literal <testcase or <failure.
+          FAILED_AWK='
+            BEGIN { while (idx != "" && (getline line < idx) > 0) { split(line, f, "\t"); want[f[1]] = f[2] } }
+            body != "" {
+              if (/\]\]><\/failure>/) { sub(/\]\]><\/failure>.*$/, ""); print > body; close(body); body = ""; next }
+              print > body
+              next
+            }
+            /<testcase/ { cur = ""; if (match($0, / name="[^"]*"/)) cur = substr($0, RSTART + 7, RLENGTH - 8) }
+            /<failure/ && cur != "" {
+              if (idx == "") { print cur; n = ++k }
+              else if (cur in want) { n = want[cur] }
+              else { cur = ""; next }
+              body = dir "/" n ".log"
+              rest = $0
+              sub(/^.*<!\[CDATA\[/, "", rest)
+              if (rest ~ /\]\]><\/failure>/) { sub(/\]\]><\/failure>.*$/, "", rest); print rest > body; close(body); body = "" }
+              else if (rest != "") print rest > body
+              cur = ""
+              next
+            }
+            /<\/testcase>/ { cur = "" }
+          '
+          failed() {   # <shard dir> <log dir>: the failed cases; the n-th one's log is <log dir>/<n>.log
+            mkdir -p "$2"
+            if [ -f "$1/test_status.data" ]; then
+              find "$1" -type f -name test-shell.xml -exec awk -v dir="$2" -v idx= "$FAILED_AWK" {} +
+            elif [ -f "$1/summary_info" ]; then
+              { grep -E ':nok[[:space:]]+[0-9]+ms$' "$1/summary_info" || :; } \
+                | sed -e 's/:nok[[:space:]].*$//' -e "s#^$WORKDIR/$repo/##" > "$2/failed.list"
+              awk '{printf "%s\t%d\n", $0, NR}' "$2/failed.list" > "$2/failed.idx"
+              find "$1" -type f -name '*.xml' ! -name summary.xml \
+                -exec awk -v dir="$2" -v idx="$2/failed.idx" "$FAILED_AWK" {} +
+              cat "$2/failed.list"
+              rm -f "$2/failed.list" "$2/failed.idx"
+            fi
+          }
           rc=0
           rm -rf /tmp/failed-logs; mkdir -p /tmp/failed-logs
 
@@ -1434,7 +1495,7 @@ jobs:
             for f in "$d"/plan/shards/*.list; do
               [ -f "$f" ] || continue
               i=$(basename "$f" .list)
-              eval "$(/entrypoint.sh count "$suite" "$d/shard/$i")"
+              eval "$(count "$d/shard/$i")"
               [ "$found" = no ] || continue
               n=$(awk -F'\t' -v k="$i" '$1 == k {print $2}' "$d/plan/plan.tsv")
               dead_n=$((dead_n + 1))
@@ -1446,11 +1507,11 @@ jobs:
             : > /tmp/failed.list
             for r in "$d"/shard/*/; do
               i=$(basename "$r")
-              eval "$(/entrypoint.sh count "$suite" "$r")"
+              eval "$(count "$r")"
               [ "$found" = yes ] || continue
               exec_sum=$((exec_sum + exec)); succ_sum=$((succ_sum + pass))
               fail_sum=$((fail_sum + fail)); skip_sum=$((skip_sum + skip))
-              /entrypoint.sh failed "$suite" "$r" "/tmp/failed-logs/$suite/$i" \
+              failed "$r" "/tmp/failed-logs/$suite/$i" \
                 | awk -v s="$i" '{printf "%s\t%s\n", s, $0}' >> /tmp/failed.list
             done
             failed_n=$(wc -l < /tmp/failed.list)
