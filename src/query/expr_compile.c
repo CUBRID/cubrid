@@ -3887,7 +3887,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  {
 	    /* T_NVL / T_IFNULL / T_COALESCE share one interpreted block */
 	    DB_TYPE t1, t2;
-	    int r_start, r_cse, r_nodes, r_n, guard, saved_guard;
+	    int r_start, r_cse, r_nodes, guard, saved_guard;
 	    bool lazy;
 
 	    /* the pointer-select is only transparent when both branches already carry
@@ -4027,7 +4027,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	     * interpreted domain-infer arm and cross-type coercion stay interpreted */
 	    DB_TYPE t1 = expr_node_type (bctx, arith->leftptr);
 	    DB_TYPE t2 = expr_node_type (bctx, arith->rightptr);
-	    int r_start, r_cse, r_nodes, r_n, guard, saved_guard;
+	    int r_start, r_cse, r_nodes, guard, saved_guard;
 	    bool lazy;
 
 	    if (exec_domain == NULL || t1 != t2 || t1 == DB_TYPE_UNKNOWN
@@ -4148,17 +4148,25 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  }
 
 	/* The kernel is the typed operator of the plan's number type: the type qdata_number_operator
-	 * reads both operands as and computes in.  The node's domain can be wider than that type --
-	 * the parser types a CASE arm by the CASE ("CASE WHEN c THEN a + 1 ELSE ? END" is DOUBLE
-	 * when the parser cannot type the other arm), so the arm a + 1 is an INTEGER addition
-	 * whose value the node takes as a DOUBLE.  The interpreted path computes in the plan's type
-	 * and coerces the value to the node's domain afterwards (qdata_arith_dbval's tail,
+	 * reads both operands as and computes in.  The interpreted path computes in that type and
+	 * coerces the value to the node's domain afterwards (qdata_arith_dbval's tail,
 	 * qdata_coerce_result_to_domain); the kernel's epilogue is that coercion, and it is kept
-	 * whenever the domain is not what the kernel already produces -- a wider type, or a
-	 * NUMERIC's precision and scale. */
+	 * whenever the domain is not what the kernel already produces -- a NUMERIC's precision and
+	 * scale, or a domain wider than the operation's type.  Today the parser gives a fixed node
+	 * the operation's own type (a wider consumer gets a T_CAST_WRAP around the node, compiled
+	 * above) and the gate resolves a variable node to the number type it computes in
+	 * (domain_resolve_arith), so the second case is the mirror kept for a plan that names a
+	 * narrower type than the node's domain, not a path a statement reaches today.  A domain
+	 * that is not a number is declined: the arithmetic kernels' slots never own heap memory
+	 * (they skip the per-row clear), which a coercion into a string domain would break. */
 	const DB_TYPE ktype = plan->arith.type;
 	const bool coerce_result = (ktype == DB_TYPE_NUMERIC || ktype != rtype);
 	TP_DOMAIN *const result_domain = coerce_result ? exec_domain : NULL;
+
+	if (coerce_result && !TP_IS_NUMERIC_TYPE (rtype))
+	  {
+	    return -1;
+	  }
 
 	/* which NUMERIC family the kernel belongs to depends on the operand mix decided
 	 * below; probe here only to reject an unsupported (opcode, kernel type) pair before
@@ -4186,7 +4194,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  DB_TYPE t1 = expr_node_type (bctx, arith->leftptr);
 	  DB_TYPE t2 = expr_node_type (bctx, arith->rightptr);
 	  bool numeric_pure = false, lazy;
-	  int r_start, r_cse, r_nodes, r_n, guard, saved_guard;
+	  int r_start, r_cse, r_nodes, guard, saved_guard;
 
 	  if (ktype == DB_TYPE_NUMERIC)
 	    {

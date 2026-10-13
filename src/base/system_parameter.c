@@ -5682,9 +5682,10 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
-  /* the step listing of the compiled expression programs in the SQL trace (see
-   * qdump_print_expr_compile_text ()): the one-line summaries always print, the per-step
-   * listing (kernels, cells, domains) only when a session turns this on */
+  /* the compiled expression programs' section of the SQL trace (see
+   * qdump_print_expr_compile_text ()): the one-line summaries and the per-step listing
+   * (kernels, cells, domains) print only when a session turns this on; the default trace
+   * is what a build without the compiler prints */
   {PRM_ID_SQL_TRACE_EXPR_PROGRAM,
    PRM_NAME_SQL_TRACE_EXPR_PROGRAM,
    (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_USER_CHANGE | PRM_FOR_SESSION),
