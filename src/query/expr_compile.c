@@ -195,10 +195,11 @@ struct expr_build_ctx
    * known here -- the interpreter also counts the frames it is called from -- so this is
    * the lower bound of what the interpreter would reject, never more. */
   int depth;
-  int depth_limit;
-  bool depth_exceeded;		/* a node was declined for depth: the ROOT being compiled must go to the
-				 * interpreter whole (a fallback step for the subtree alone would evaluate it
-				 * with the counter at the frames above the program, not above the node) */
+  int depth_max;		/* the deepest level reached so far (a predicate's nodes included) */
+  int pred_level;		/* the deepest level the predicate compiled last reached: its test step's level */
+
+  bool full;			/* a table (steps, cells, guards) ran out: the node being compiled becomes a nested
+				 * program behind one step (expr_compile_node) */
 
   int n_slots;			/* slots are materialized after counting */
 
@@ -1358,6 +1359,16 @@ expr_k_predicate_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
+/* The interpreter counts one thread frame per arithmetic node it enters; a program enters none, so a step whose body
+ * calls back into the fetch path (a CASE body fetching its own operands, a function's arguments, a nested program) puts
+ * the frames of the nodes above it on the counter for the duration of the call, and the interpreted part counts on
+ * from where the interpreter would have been. */
+static inline void
+expr_frames_add (EXPR_EVAL_CTX * ctx, int n)
+{
+  ctx->thread_p->xasl_recursion_depth += n;
+}
+
 /* ---- leaves and fallback ---- */
 
 /* publish a leaf's value through the regular fetch path (TODO in expr_compile.h:
@@ -1389,8 +1400,12 @@ static int
 expr_k_fallback (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   DB_VALUE *peek = NULL;
+  int rc;
 
-  if (fetch_peek_dbval (ctx->thread_p, step->regu, ctx->vd, NULL, ctx->obj_oid, ctx->tpl, &peek) != NO_ERROR)
+  expr_frames_add (ctx, step->level - 1);
+  rc = fetch_peek_dbval (ctx->thread_p, step->regu, ctx->vd, NULL, ctx->obj_oid, ctx->tpl, &peek);
+  expr_frames_add (ctx, -(step->level - 1));
+  if (rc != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1406,8 +1421,12 @@ static int
 expr_k_fetch (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   DB_VALUE *peek = NULL;
+  int rc;
 
-  if (fetch_peek_dbval (ctx->thread_p, step->regu, ctx->vd, NULL, ctx->obj_oid, ctx->tpl, &peek) != NO_ERROR)
+  expr_frames_add (ctx, step->level - 1);
+  rc = fetch_peek_dbval (ctx->thread_p, step->regu, ctx->vd, NULL, ctx->obj_oid, ctx->tpl, &peek);
+  expr_frames_add (ctx, -(step->level - 1));
+  if (rc != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1463,6 +1482,24 @@ expr_k_resolved_value (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
+/* a subtree compiled as a program of its own (the parent's tables were full): its root cell is this step's value */
+static int
+expr_k_nested_prog (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
+{
+  EXPR_PROG *sub = (EXPR_PROG *) step->fn;
+  int rc;
+
+  expr_frames_add (ctx, step->level - 1);
+  rc = expr_prog_eval (sub, ctx->thread_p, ctx->vd, ctx->obj_oid, ctx->tpl);
+  expr_frames_add (ctx, -(step->level - 1));
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  *step->out_cell = sub->cells[sub->root_cells[0]];
+  return NO_ERROR;
+}
+
 /* ---- the generic step: an operator the kernel table does not cover ----
  *
  * The step runs the opcode's body (fetch_arith_ops.c) on the operand cells its emitter wired, inside the node protocol
@@ -1501,7 +1538,9 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     {
       return rc;
     }
+  expr_frames_add (ctx, step->level);
   rc = ((FETCH_ARITH_OP) step->fn) (ctx->thread_p, &a);
+  expr_frames_add (ctx, -step->level);
   if (rc == FETCH_ARITH_RAW_LEFT)
     {
       *step->out_cell = a.peek_left;
@@ -1557,6 +1596,8 @@ expr_k_try_operand (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
  ******************************************************************************/
 
 static int expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something);
+static EXPR_PROG *expr_node_compile (cubthread::entry * thread_p, REGU_VARIABLE * regu, val_descr * vd);
+static int expr_compile_nested (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something);
 static void expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root);
 static bool expr_literal_same (const DB_VALUE * a, const DB_VALUE * b);
 
@@ -1699,6 +1740,7 @@ expr_new_cell (EXPR_BUILD_CTX * bctx, DB_VALUE * stable_addr)
 {
   if (bctx->n_cells >= EXPR_MAX_STEPS)
     {
+      bctx->full = true;
       return -1;
     }
   bctx->cells[bctx->n_cells] = stable_addr;	/* NULL when a step will publish it */
@@ -1775,6 +1817,7 @@ expr_new_step (EXPR_BUILD_CTX * bctx, EXPR_KERNEL_FN kernel, int out_cell)
 
   if (bctx->n_steps >= EXPR_MAX_STEPS)
     {
+      bctx->full = true;
       return NULL;
     }
   step = &bctx->steps[bctx->n_steps++];
@@ -1783,6 +1826,7 @@ expr_new_step (EXPR_BUILD_CTX * bctx, EXPR_KERNEL_FN kernel, int out_cell)
   step->out_cell = (DB_VALUE **) (intptr_t) out_cell;	/* index; fixed up in materialize */
   step->jump_to = -1;
   step->alias_of = -1;
+  step->level = bctx->depth;
   return step;
 }
 
@@ -1798,6 +1842,7 @@ expr_build_insert_step (EXPR_BUILD_CTX * bctx, int pos, EXPR_KERNEL_FN kernel, i
 
   if (bctx->n_steps >= EXPR_MAX_STEPS)
     {
+      bctx->full = true;
       return NULL;
     }
   memmove (&bctx->steps[pos + 1], &bctx->steps[pos], sizeof (EXPR_STEP) * (bctx->n_steps - pos));
@@ -1828,6 +1873,7 @@ expr_build_insert_step (EXPR_BUILD_CTX * bctx, int pos, EXPR_KERNEL_FN kernel, i
   step->out_cell = (DB_VALUE **) (intptr_t) out_cell;
   step->jump_to = -1;
   step->alias_of = -1;
+  step->level = bctx->depth;
   bctx->step_prologue[pos] = false;
   bctx->step_exec_prologue[pos] = false;
   return step;
@@ -1846,6 +1892,7 @@ expr_new_step_with_cell (EXPR_BUILD_CTX * bctx, EXPR_KERNEL_FN kernel, int *cell
 
   if (bctx->n_steps >= EXPR_MAX_STEPS || bctx->n_cells >= EXPR_MAX_STEPS)
     {
+      bctx->full = true;
       *cell_out = -1;
       return NULL;
     }
@@ -1862,7 +1909,7 @@ expr_new_step_with_cell (EXPR_BUILD_CTX * bctx, EXPR_KERNEL_FN kernel, int *cell
 typedef struct expr_build_mark EXPR_BUILD_MARK;
 struct expr_build_mark
 {
-  int n_steps, n_cells, n_cse, n_slots, n_guards;
+  int n_steps, n_cells, n_cse, n_slots, n_guards, n_node_cells, cur_guard, in_branch;
 };
 
 static void
@@ -1873,6 +1920,9 @@ expr_build_mark (const EXPR_BUILD_CTX * bctx, EXPR_BUILD_MARK * mark)
   mark->n_cse = bctx->n_cse;
   mark->n_slots = bctx->n_slots;
   mark->n_guards = bctx->n_guards;
+  mark->n_node_cells = bctx->n_node_cells;
+  mark->cur_guard = bctx->cur_guard;
+  mark->in_branch = bctx->in_branch;
 }
 
 /* drop every step, cell, CSE entry and slot emitted since the mark: the predicate trees
@@ -1887,6 +1937,11 @@ expr_build_rewind (EXPR_BUILD_CTX * bctx, const EXPR_BUILD_MARK * mark)
     {
       expr_pred_free ((EXPR_PRED *) bctx->steps[j].pred);
       bctx->steps[j].pred = NULL;
+      if (bctx->steps[j].kernel == expr_k_nested_prog)
+	{
+	  expr_prog_free ((EXPR_PROG *) bctx->steps[j].fn);
+	  bctx->steps[j].fn = NULL;
+	}
       bctx->step_prologue[j] = false;
       bctx->step_exec_prologue[j] = false;
     }
@@ -1895,6 +1950,9 @@ expr_build_rewind (EXPR_BUILD_CTX * bctx, const EXPR_BUILD_MARK * mark)
   bctx->n_cse = mark->n_cse;
   bctx->n_slots = mark->n_slots;
   bctx->n_guards = mark->n_guards;
+  bctx->n_node_cells = mark->n_node_cells;
+  bctx->cur_guard = mark->cur_guard;	/* a failure inside a right-hand region leaves its guard in effect */
+  bctx->in_branch = mark->in_branch;
 }
 
 /* can this step fail for a non-NULL input?  Publishing a host variable, coercing to NUMERIC
@@ -2169,6 +2227,7 @@ expr_rhs_begin (EXPR_BUILD_CTX * bctx, int lhs_cell, int kind, int *saved)
     }
   if (bctx->n_guards >= EXPR_MAX_STEPS)
     {
+      bctx->full = true;
       return -1;
     }
   bctx->guards[bctx->n_guards].parent = *saved;
@@ -2634,11 +2693,10 @@ expr_scan_side_compile (EXPR_BUILD_CTX * bctx, EXPR_PRED * pred, REGU_VARIABLE *
       return;
     }
   cell = expr_compile_node (bctx, regu, &compiled_something);
-  if (cell < 0 || bctx->depth_exceeded)
+  if (cell < 0)
     {
-      /* nothing compiled, or a node too deep for the limit: the leaf fetches this operand
-       * through the interpreter, which raises ER_MAX_RECURSION_SQL_DEPTH as before */
-      bctx->depth_exceeded = false;
+      /* nothing compiled: the leaf fetches this operand through the interpreter */
+      bctx->full = false;
       expr_build_rewind (bctx, &mark);
       bctx->cur_guard = saved_guard;
       bctx->n_node_cells = node_mark;
@@ -3008,9 +3066,9 @@ expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr, val_d
   memset (bctx, 0, sizeof (*bctx));
   bctx->vd = vd;
   bctx->thread_p = thread_p;
-  bctx->depth_limit = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
 
-  pred = expr_scan_pred_build (bctx, pr, 0, bctx->depth_limit, true);
+  /* a filter tree deeper than the limit stays interpreted (its own guard; the operand programs check theirs on the row) */
+  pred = expr_scan_pred_build (bctx, pr, 0, prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH), true);
   if (pred == NULL)
     {
       expr_build_free_preds (bctx);
@@ -3363,15 +3421,15 @@ expr_compile_pred (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * compiled_
     {
       return NULL;
     }
-  /* the depth guard (see expr_build_ctx.depth): eval_pred () counts one frame per predicate
-   * node, leaves included, and rejects the node when the frames above it exceed the limit */
-  if (bctx->depth > bctx->depth_limit)
-    {
-      bctx->depth_exceeded = true;
-      return NULL;
-    }
+  /* eval_pred () counts one frame per predicate node, leaves included: the deepest level this predicate's nodes
+   * reach is what its test step answers for in the checked loop (pred_level) */
+  const int saved_max = bctx->depth_max;
+
   bctx->depth++;
+  bctx->depth_max = bctx->depth;
   pred = expr_compile_pred_impl (bctx, pr, compiled_something);
+  bctx->pred_level = bctx->depth_max;
+  bctx->depth_max = MAX (saved_max, bctx->pred_level);
   bctx->depth--;
   return pred;
 }
@@ -3629,17 +3687,26 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
       return expr_compile_node_impl (bctx, regu, compiled_something);
     }
 
-  /* the depth guard (see expr_build_ctx.depth): fetch_peek_arith () rejects this node when
-   * the frames above it already exceed the limit, so does this */
-  if (bctx->depth > bctx->depth_limit)
-    {
-      bctx->depth_exceeded = true;
-      return -1;
-    }
   const int first_step = bctx->n_steps;
+  EXPR_BUILD_MARK mark;
 
+  /* the depth is the interpreter's frame count at this node (expr_step.level); a node too deep is not declined
+   * here -- the row checks it where the interpreter would (expr_run_range_checked) */
   bctx->depth++;
+  if (bctx->depth > bctx->depth_max)
+    {
+      bctx->depth_max = bctx->depth;
+    }
+  expr_build_mark (bctx, &mark);
   cell = expr_compile_node_arith (bctx, regu, compiled_something);
+  if (cell < 0 && bctx->full)
+    {
+      /* a table ran out under this node: everything it emitted goes, and the subtree becomes a program of its own
+       * behind one step (a subtree too big for that nests again inside) */
+      expr_build_rewind (bctx, &mark);
+      bctx->full = false;
+      cell = expr_compile_nested (bctx, regu, compiled_something);
+    }
   bctx->depth--;
   if (cell >= 0 && regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
     {
@@ -3650,7 +3717,8 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
 
       for (j = first_step; j < bctx->n_steps; j++)
 	{
-	  if (bctx->steps[j].regu == regu && bctx->steps[j].kernel != expr_k_generic)
+	  if (bctx->steps[j].regu == regu && bctx->steps[j].kernel != expr_k_generic
+	      && bctx->steps[j].kernel != expr_k_nested_prog)
 	    {
 	      bctx->steps[j].open = true;
 	      bctx->steps[j].open_type = exec_domain != NULL ? TP_DOMAIN_TYPE (exec_domain) : DB_TYPE_UNKNOWN;
@@ -3681,6 +3749,10 @@ expr_prog_refill_open (EXPR_PROG * prog, const val_descr * vd)
       EXPR_STEP *step = &prog->steps[i];
       TP_DOMAIN *domain;
 
+      if (step->kernel == expr_k_nested_prog && !expr_prog_refill_open ((EXPR_PROG *) step->fn, vd))
+	{
+	  return false;
+	}
       if (!step->open)
 	{
 	  continue;
@@ -4157,7 +4229,31 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
   return cell;
 }
 
-/* an arithmetic node, under the depth guard of expr_compile_node () */
+/* a subtree as a program of its own behind one step (expr_k_nested_prog), owned by the enclosing program */
+static int
+expr_compile_nested (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something)
+{
+  EXPR_PROG *sub = expr_node_compile (bctx->thread_p, regu, bctx->vd);
+  EXPR_STEP *step;
+  int cell;
+
+  if (sub == NULL)
+    {
+      return -1;
+    }
+  step = expr_new_step_with_cell (bctx, expr_k_nested_prog, &cell);
+  if (step == NULL)
+    {
+      expr_prog_free (sub);
+      return -1;
+    }
+  step->regu = regu;
+  step->fn = (void *) sub;
+  *compiled_something = true;
+  return cell;
+}
+
+/* an arithmetic node, under the frame count of expr_compile_node () */
 static int
 expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something)
 {
@@ -4442,6 +4538,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 		    expr_pred_free (cpred);
 		    return -1;
 		  }
+		step->level = bctx->pred_level;	/* the predicate's nodes are entered by the step */
 		step->pred = cpred;
 		step->out = (DB_VALUE *) 1;
 		bctx->n_slots++;
@@ -4501,6 +4598,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 		  expr_pred_free (cpred);
 		  return -1;
 		}
+	      test->level = bctx->pred_level;	/* the predicate's nodes are entered by the test */
 	      test->pred = cpred;
 	      test->regu = regu;
 
@@ -5240,9 +5338,12 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
 	}
     }
     prog->n_compute = 0;
+    prog->max_level = 0;
     for (i = 0; i < prog->n_steps; i++)
       {
 	EXPR_STEP *step = &prog->steps[i];
+
+	prog->max_level = MAX (prog->max_level, step->level);
 
 	if (step->jump_to >= 0)
 	  {
@@ -5353,7 +5454,6 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
   memset (bctx, 0, sizeof (*bctx));
   bctx->vd = vd;
   bctx->thread_p = thread_p;
-  bctx->depth_limit = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
   expr_share_attach (bctx, share_spec);
 
   for (i = 0; i < in_roots; i++)
@@ -5363,13 +5463,7 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
 
       expr_build_mark (bctx, &mark);
       cell = expr_compile_node (bctx, roots[i], &compiled_something);
-      if (bctx->depth_exceeded)
-	{
-	  /* a subtree was too deep: the whole root goes to the interpreter (the rejection
-	   * below), which raises ER_MAX_RECURSION_SQL_DEPTH for it as before */
-	  bctx->depth_exceeded = false;
-	  cell = -1;
-	}
+      bctx->full = false;	/* a root the nesting could not save falls back below */
 
       if (cell >= 0 && only_compute_roots)
 	{
@@ -5444,6 +5538,13 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
     }
 
   return expr_prog_finish (bctx, root_cells, n_roots, vd, NULL);
+}
+
+/* one node as a program: the root cell is the node's value (a wired cell is enough); NULL when it cannot compile */
+static EXPR_PROG *
+expr_node_compile (cubthread::entry * thread_p, REGU_VARIABLE * regu, val_descr * vd)
+{
+  return expr_prog_compile_roots (thread_p, &regu, 1, vd, false, true, false, NULL, NULL);
 }
 
 EXPR_PROG *
@@ -5547,11 +5648,41 @@ expr_prog_prepare (EXPR_PROG * prog, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
+/* The row loop of a row the recursion limit can reach: before each step, the interpreter's check at the node the step
+ * belongs to -- the thread's frames above the program (outer) plus the nodes above the step's node -- so the row fails
+ * with ER_MAX_RECURSION_SQL_DEPTH where the interpreter fails, and not for a node a lazy region or a branch skips. */
+static int
+expr_run_range_checked (EXPR_PROG * prog, int start, int end, EXPR_EVAL_CTX * ctx, int outer, int limit)
+{
+  int i = start, rc;
+
+  while (i < end)
+    {
+      if (unlikely (outer + prog->steps[i].level - 1 > limit))
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_MAX_RECURSION_SQL_DEPTH, 1, limit);
+	  return ER_MAX_RECURSION_SQL_DEPTH;
+	}
+      rc = prog->steps[i].kernel (&prog->steps[i], ctx);
+      if (unlikely (rc != NO_ERROR))
+	{
+	  if (rc == EXPR_JUMPED)
+	    {
+	      i = ctx->jump;
+	      continue;
+	    }
+	  return rc;
+	}
+      i++;
+    }
+  return NO_ERROR;
+}
+
 int
 expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid, QFILE_TUPLE_RECORD * tpl)
 {
   EXPR_EVAL_CTX ctx;
-  int error;
+  int error, outer, limit;
 
   ctx.thread_p = thread_p;
   ctx.vd = vd;
@@ -5563,6 +5694,14 @@ expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, O
   if (unlikely (error != NO_ERROR))
     {
       return error;
+    }
+  /* the recursion limit the interpreter enforces at every node: only a row whose frames above the program leave no
+   * room for the program's deepest node pays the per-step check */
+  outer = thread_get_recursion_depth (thread_p);
+  limit = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
+  if (unlikely (outer + prog->max_level - 1 > limit))
+    {
+      return expr_run_range_checked (prog, prog->row_start, prog->n_steps, &ctx, outer, limit);
     }
   return expr_run_range (prog, prog->row_start, prog->n_steps, &ctx);
 }
@@ -5670,7 +5809,9 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     {
     expr_k_relabel, "relabel"},
     {
-  expr_k_resolved_value, "resolved_value"},};
+    expr_k_resolved_value, "resolved_value"},
+    {
+  expr_k_nested_prog, "nested_prog"},};
   size_t i;
 
   for (i = 0; i < sizeof (names) / sizeof (names[0]); i++)
@@ -5805,6 +5946,10 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
 	{
 	  fprintf (fp, " err=%d", step->aux);
 	}
+      if (step->level > 1)
+	{
+	  fprintf (fp, " L%d", step->level);
+	}
       if (step->kernel == expr_k_hostvar)
 	{
 	  fprintf (fp, " vd[%d]", step->aux);
@@ -5851,6 +5996,10 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
 	  fprintf (fp, " pure");
 	}
       fprintf (fp, "\n");
+      if (step->kernel == expr_k_nested_prog)
+	{
+	  expr_prog_dump (fp, (const EXPR_PROG *) step->fn, indent + 4);
+	}
     }
 
   fprintf (fp, "%*croots:", indent, ' ');
@@ -5876,6 +6025,13 @@ expr_prog_reset (EXPR_PROG * prog)
   for (i = 0; i < prog->n_slots; i++)
     {
       pr_clear_value (&prog->slots[i]);
+    }
+  for (i = 0; i < prog->n_steps; i++)
+    {
+      if (prog->steps[i].kernel == expr_k_nested_prog)
+	{
+	  expr_prog_reset ((EXPR_PROG *) prog->steps[i].fn);
+	}
     }
   prog->prologue_done = false;
   prog->exec_stamp_valid = false;
@@ -5917,6 +6073,10 @@ expr_prog_free (EXPR_PROG * prog)
       for (i = 0; i < prog->n_steps; i++)
 	{
 	  expr_pred_free ((EXPR_PRED *) prog->steps[i].pred);
+	  if (prog->steps[i].kernel == expr_k_nested_prog)
+	    {
+	      expr_prog_free ((EXPR_PROG *) prog->steps[i].fn);
+	    }
 	}
       free_and_init (prog->steps);
     }

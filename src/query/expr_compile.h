@@ -104,6 +104,8 @@ struct expr_step
 
   void *pred;			/* EXPR_PRED *, owned by the program (CASE branch test, T_PREDICATE) */
   void *fn;			/* the generic step's operator body (FETCH_ARITH_OP, fetch_arith_ops.h) */
+  int level;			/* the interpreter's frame depth of this step's node (1: a root node): the recursion-depth
+				 * check of a deep row (expr_run_range_checked) and the frames a body's interpreted calls see */
   int skip;			/* a generic step's operands the row did not fetch (bit 2 right, 4 third), set by the lazy
 				 * check that jumped over their steps; the step reads it as NULL operands and clears it */
 
@@ -166,6 +168,10 @@ struct expr_prog
    * a consumer whose per-root fast path needs none may drop a program that only
    * repeats leaf fetches through extra indirection */
   int n_compute;
+
+  /* the deepest node level among the steps: a row whose thread frames plus this exceed max_recursion_sql_depth
+   * runs the checked loop, which raises where the interpreter would (expr_prog_eval) */
+  int max_level;
 
   /* cells wired to result slots of the scan's compiled data filter: expressions the filter
    * already computes for the row, read here instead of recomputed (see share_spec) */
