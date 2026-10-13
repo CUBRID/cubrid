@@ -99,15 +99,10 @@
     "OR " AUTH_CHECK_SELECT_GRANT(object_of_expr) \
   ")"
 
-#define AUTH_CHECK_SCHEMA(user_name_expr, user_expr) \
+#define AUTH_CHECK_SCHEMA(user_name_expr) \
   "(" \
     AUTH_CHECK_DBA " " \
-    "OR " AUTH_CHECK_OWNER(user_name_expr) " " \
-    "OR EXISTS (" \
-      "SELECT 1 FROM [" CT_CLASSAUTH_NAME "] AS [auth] " \
-      "WHERE [auth].[grantor] = " user_expr " " \
-      "AND {[auth].[grantee].[name]} SUBSETEQ (" CURRENT_USER_GROUPS_SUBQUERY ")" \
-    ")" \
+    "OR " AUTH_CHECK_OWNER(user_name_expr) \
   ")"
 
 #define AUTH_CHECK_PRIVILEGE(grantee_name_expr, grantor_name_expr) \
@@ -763,7 +758,7 @@ sm_define_view_schemata_spec (void)
       "[%s] AS [ch] "
     "WHERE "
       "[ch].[charset_id] = [root].[charset] "
-      "AND " AUTH_CHECK_SCHEMA("[usr].[name]", "[usr]"),
+      "AND " AUTH_CHECK_SCHEMA("[usr].[name]"),
     AU_USER_CLASS_NAME,
     CT_ROOT_NAME,
     CT_CHARSET_NAME);
