@@ -65,7 +65,9 @@ qfile_col_layout_of_domain (const TP_DOMAIN * dom, QFILE_COL_LAYOUT * column_lay
       return;
     }
 
-  a = MIN (t->alignment, QFILE_TUPLE_ALIGNMENT);	/* BIGINT/DOUBLE align 4 and are read by memcpy */
+  /* QFILE_TUPLE_ALIGNMENT is sizeof (int), so it is unsigned; t->alignment is a small
+   * positive int. The cast keeps MIN () from comparing across signedness. */
+  a = MIN (t->alignment, (int) QFILE_TUPLE_ALIGNMENT);	/* BIGINT/DOUBLE align 4 and are read by memcpy */
   if (a < 1)
     {
       a = 1;
