@@ -37,6 +37,9 @@ extern int heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destinat
 				     heap_pending_record *pending = nullptr);
 /* Heap-row storage contract; generic descriptors and slotted-page metadata are not row inputs. */
 extern int heap_oos_validate_disk_record (THREAD_ENTRY *thread_p, const OID *class_oid, const RECDES *record);
+/* Keep received inline bytes when the current representation and size rule out OOS demotion. */
+extern int heap_oos_needs_record_preparation (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *record,
+    bool *needs_preparation);
 extern int heap_prepare_oos_record (THREAD_ENTRY *thread_p, const OID *source_class, RECDES *source,
 				    heap_pending_record *pending);
 

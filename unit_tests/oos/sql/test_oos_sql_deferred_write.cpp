@@ -107,6 +107,143 @@ class OosSqlDeferredWrite : public OosSqlHeapFixture
 {
 };
 
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+TEST_F (OosSqlDeferredWrite, SmallWorkspaceFlushDoesNotNeedOosPreparation)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_no (id INT, payload BIT VARYING)"), 0);
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, payload BIT VARYING STORAGE FORCE_OUTLINE)"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  DB_OBJECT *row = db_create (db_find_class ("t_oos_show_no"));
+  ASSERT_NE (row, nullptr);
+  const std::string bytes (64, '\xAB');
+  DB_VALUE value;
+  db_make_int (&value, 1);
+  ASSERT_EQ (db_put (row, "id", &value), NO_ERROR);
+  db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, bytes.data (), bytes.size () * 8);
+  ASSERT_EQ (db_put (row, "payload", &value), NO_ERROR);
+  // An OOS preparation allocation failure must leave an ordinary small flush unaffected,
+  // but must still reject the equally small FORCE_OUTLINE row that actually needs preparation.
+  heap_oos_test_fail_preparation_once ();
+  EXPECT_EQ (locator_flush_instance (row), NO_ERROR);
+  db_make_int (&value, 2);
+  EXPECT_EQ (db_put (row, "id", &value), NO_ERROR);
+  EXPECT_EQ (locator_flush_instance (row), NO_ERROR);
+  // Create the forced row after these flushes: a workspace flush can send other dirty rows too.
+  row = db_create (db_find_class ("t_oos_show_yes"));
+  ASSERT_NE (row, nullptr);
+  db_make_int (&value, 1);
+  ASSERT_EQ (db_put (row, "id", &value), NO_ERROR);
+  db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, bytes.data (), bytes.size () * 8);
+  ASSERT_EQ (db_put (row, "payload", &value), NO_ERROR);
+  EXPECT_LT (locator_flush_instance (row), NO_ERROR);
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+}
+#endif
+
+TEST_F (OosSqlDeferredWrite, WorkspaceFlushNearSizeGateReservesMvccHeadroom)
+{
+  const int sizes[] = { DB_PAGESIZE / 4 - 128, DB_PAGESIZE / 4 - 40, DB_PAGESIZE / 4 + 16 };
+  const int expected_oos[] = { 0, 1, 1 };
+  for (int i = 0; i < 3; ++i)
+    {
+      SCOPED_TRACE (sizes[i]);
+      ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, payload BIT VARYING)"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      DB_OBJECT *row = db_create (db_find_class ("t_oos_show_yes"));
+      ASSERT_NE (row, nullptr);
+      DB_VALUE value;
+      db_make_int (&value, 1);
+      ASSERT_EQ (db_put (row, "id", &value), NO_ERROR);
+      const std::string bytes (sizes[i], '\xAB');
+      db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, bytes.data (), bytes.size () * 8);
+      ASSERT_EQ (db_put (row, "payload", &value), NO_ERROR);
+      ASSERT_EQ (locator_flush_instance (row), NO_ERROR);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      char sql[256];
+      snprintf (sql, sizeof (sql), "SELECT COUNT(*) FROM t_oos_show_yes WHERE id=1 "
+		"AND payload=CAST(REPEAT('AB',%d) AS BIT VARYING)", sizes[i]);
+      int matches = 0;
+      ASSERT_EQ (fetch_single_int (sql, &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
+      DB_QUERY_RESULT *result = nullptr;
+      ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_yes", &result), NO_ERROR);
+      int has_oos = -1;
+      EXPECT_EQ (get_int_column (result, COL_HAS_OOS_FILE, &has_oos), NO_ERROR);
+      EXPECT_EQ (has_oos, expected_oos[i]);
+      db_query_end (result);
+      db_make_int (&value, 2);
+      ASSERT_EQ (db_put (row, "id", &value), NO_ERROR);
+      ASSERT_EQ (locator_flush_instance (row), NO_ERROR);
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+      ASSERT_EQ (fetch_single_int (sql, &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
+      ASSERT_GE (exec_sql ("DROP TABLE t_oos_show_yes"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+    }
+}
+
+TEST_F (OosSqlDeferredWrite, SmallOldCopyAreaMaterializesCurrentRepresentation)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, payload BIT VARYING)"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  DB_OBJECT *cls = db_find_class ("t_oos_show_yes");
+  OID class_oid = *db_identifier (cls);
+  HFID hfid;
+  ASSERT_EQ (heap_get_class_hfid (thread_p, &class_oid, &hfid, nullptr), NO_ERROR);
+  HEAP_CACHE_ATTRINFO attrs;
+  ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, -1, nullptr, &attrs), NO_ERROR);
+  DB_VALUE value;
+  db_make_int (&value, 1);
+  ASSERT_EQ (heap_attrinfo_set (nullptr, db_attribute_id (db_get_attribute (cls, "id")), &value, &attrs), NO_ERROR);
+  const std::string bytes (64, '\xCD');
+  db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, bytes.data (), bytes.size () * 8);
+  ASSERT_EQ (heap_attrinfo_set (nullptr, db_attribute_id (db_get_attribute (cls, "payload")), &value, &attrs), NO_ERROR);
+  heap_pending_record supplied;
+  ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &supplied), S_SUCCESS);
+  heap_attrinfo_end (thread_p, &attrs);
+  RECDES record = supplied.get_recdes ();
+  ASSERT_FALSE (heap_recdes_contains_oos (&record));
+  ASSERT_GE (exec_sql ("ALTER TABLE t_oos_show_yes ADD COLUMN extra INT DEFAULT 7"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  const REPR_ID current_rep = heap_get_class_repr_id (thread_p, &class_oid);
+  ASSERT_NE (or_rep_id (&record), current_rep);
+
+  LC_COPYAREA *area = locator_allocate_copy_area_by_length (record.length + OR_MVCC_MAX_HEADER_SIZE
+		      + sizeof (LC_COPYAREA_MANYOBJS));
+  ASSERT_NE (area, nullptr);
+  memcpy (area->mem, record.data, record.length);
+  LC_COPYAREA_MANYOBJS *many = LC_MANYOBJS_PTR_IN_COPYAREA (area);
+  memset (many, 0, sizeof (*many));
+  many->num_objs = 1;
+  LC_COPYAREA_ONEOBJ &obj = many->objs;
+  obj.operation = LC_FLUSH_INSERT;
+  obj.hfid = hfid;
+  obj.class_oid = class_oid;
+  OID_SET_NULL (&obj.oid);
+  obj.length = record.length;
+  obj.offset = 0;
+  const int error = xlocator_force (thread_p, area, 0, nullptr);
+  const OID row_oid = obj.oid;
+  locator_free_copy_area (area);
+  ASSERT_EQ (error, NO_ERROR);
+  HEAP_SCANCACHE scan;
+  ASSERT_EQ (heap_scancache_start (thread_p, &scan, &hfid, &class_oid, false, nullptr), NO_ERROR);
+  RECDES stored = RECDES_INITIALIZER;
+  const SCAN_CODE status = heap_get_visible_version (thread_p, &row_oid, &class_oid, &stored, &scan, COPY, NULL_CHN,
+			   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+  if (status == S_SUCCESS)
+    {
+      EXPECT_EQ (or_rep_id (&stored), current_rep);
+    }
+  heap_scancache_end (thread_p, &scan);
+  ASSERT_EQ (status, S_SUCCESS);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE id=1 AND extra=7 "
+			       "AND payload=CAST(REPEAT('CD',64) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+}
+
 TEST_F (OosSqlDeferredWrite, InsertOwnsOosInDestinationHeap)
 {
   ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_part (id INT, data_col BIT VARYING) "

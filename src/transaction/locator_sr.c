@@ -4954,14 +4954,27 @@ locator_finalize_oos_record (THREAD_ENTRY *thread_p, const OID *class_oid, RECDE
   if (from_copyarea && catcls_Enable && !OID_IS_ROOTOID (class_oid)
       && !oid_is_system_class (class_oid) && (*record)->length > 0)
     {
-      int error = heap_prepare_oos_record (thread_p, class_oid, *record, received);
+      bool needs_preparation;
+      int error = heap_oos_needs_record_preparation (thread_p, class_oid, *record, &needs_preparation);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
-      *converted = received->get_recdes ();
-      *record = converted;
-      pending = received;
+      if (needs_preparation)
+	{
+	  error = heap_prepare_oos_record (thread_p, class_oid, *record, received);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  *converted = received->get_recdes ();
+	  *record = converted;
+	  pending = received;
+	}
+      else if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+	{
+	  return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+	}
     }
   return heap_oos_finalize_record (thread_p, class_oid, *record, pending);
 }
@@ -4999,10 +5012,8 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p, bool has_BU_lock,
 		      bool dont_check_fk, bool use_bulk_logging, bool from_copyarea, heap_pending_record * pending)
 {
-  /* *INDENT-OFF* */
   heap_pending_record received;
   RECDES converted;
-  /* *INDENT-ON* */
 #if 0				/* TODO - dead code; do not delete me */
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
 #endif
@@ -6827,9 +6838,6 @@ locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA * force_are
 	  if (error_code != NO_ERROR)
 	    {
 	      (void) heap_oos_begin_insert_publication (thread_p);
-	    }
-	  if (error_code != NO_ERROR)
-	    {
 	      /*
 	       * Problems updating the object...Maybe, the transaction should be
 	       * aborted by the caller...Quit..
