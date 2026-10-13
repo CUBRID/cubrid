@@ -268,6 +268,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
   ${QUERY_DIR}/crypt_opfunc.c
   ${QUERY_DIR}/fetch.c
+  ${QUERY_DIR}/fetch_arith_ops.c
   ${QUERY_DIR}/filter_pred_cache.c
   ${QUERY_DIR}/list_file.c
   ${QUERY_DIR}/qfile_tuple_layout.c
