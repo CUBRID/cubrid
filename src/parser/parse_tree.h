@@ -1636,6 +1636,7 @@ typedef struct parser_varchar PARSER_VARCHAR;
 
 typedef struct parser_context PARSER_CONTEXT;
 typedef struct pt_static_sql_edit PT_STATIC_SQL_EDIT;
+typedef struct pt_static_sql_star PT_STATIC_SQL_STAR;
 
 typedef struct parser_node PT_NODE;
 typedef struct pt_alter_info PT_ALTER_INFO;
@@ -3892,6 +3893,25 @@ struct pt_static_sql_edit
   int host_var_index;		/* index of the host variable for a replaced PL/CSQL variable, otherwise -1 */
 };
 
+/* a column list implied in the original text of a PL/CSQL static SQL statement (e.g. SELECT *), which is expanded
+ * in the text so that the columns are fixed at compile time as they are in the compiled tree */
+typedef enum
+{
+  PT_SS_STAR_ALL,		/* "*" in a select list; pos is the end of "*" */
+  PT_SS_STAR_QUALIFIED,		/* "name.*" in a select list; pos is the end of "name" */
+  PT_SS_INSERT_COLUMNS,		/* INSERT without a column list; pos is the end of the class name */
+  PT_SS_MERGE_INSERT_COLUMNS	/* INSERT of MERGE without a column list; pos is not used */
+} PT_STATIC_SQL_STAR_KIND;
+
+struct pt_static_sql_star
+{
+  PT_STATIC_SQL_STAR_KIND kind;
+  int pos;
+  PT_NODE *columns;		/* copy of the expanded names */
+  bool qualify;			/* qualify the columns with their range variables */
+  PT_STATIC_SQL_STAR *next;
+};
+
 struct parser_context
 {
   PT_INT_FUNCTION next_char;	/* the next character function */
@@ -3975,6 +3995,7 @@ struct parser_context
   int static_sql_edit_count;
   int static_sql_edit_status;	/* 0: not collected, 1: collected, -1: can not be expressed as text edits */
   int *static_sql_host_var_end;	/* end in the text of each PL/CSQL variable replaced with a host variable */
+  PT_STATIC_SQL_STAR *static_sql_stars;	/* column lists implied in the text */
   REMOTE_COLS *dblink_remote;	/* for dblink, remote column list */
 
   HIDE_PWD_INFO hide_pwd_info;

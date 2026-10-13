@@ -13178,6 +13178,8 @@ pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
  *   - a PL/CSQL variable (an unresolved name or path expression) is replaced with a host variable '?'
  *   - an object name (class, view, synonym, serial, stored function) written without its owner is qualified
  *   - the INTO clause is removed
+ *   - a column list implied by "*" or by INSERT without a column list is written, so that the columns are fixed at
+ *     compile time as they are in the compiled statement
  * The edits are collected right after name resolution, where the nodes still have their source positions.
  */
 
@@ -13884,6 +13886,266 @@ pt_static_sql_remove_into (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * li
   pt_static_sql_add_edit (parser, list, tokens[into].start, tokens[i].end, " ", -1);
 }
 
+/*
+ * pt_record_static_sql_star () - record a column list implied in the text, expanded by name resolution
+ *   return: none
+ *   parser(in):
+ *   kind(in): kind of the implied list
+ *   pos(in): position in the text (see PT_STATIC_SQL_STAR_KIND)
+ *   columns(in): expanded names
+ *   qualify(in): qualify the columns with their range variables
+ *
+ * Note: the list is written in the text by pt_collect_static_sql_edits (), so that the columns of the rewritten query
+ *	 are fixed at compile time as they are in the compiled statement.
+ */
+void
+pt_record_static_sql_star (PARSER_CONTEXT * parser, PT_STATIC_SQL_STAR_KIND kind, int pos, PT_NODE * columns,
+			   bool qualify)
+{
+  PT_STATIC_SQL_STAR *star;
+
+  if (parser->static_sql_edit_status != 0)
+    {
+      return;
+    }
+
+  star = (PT_STATIC_SQL_STAR *) parser_alloc (parser, sizeof (PT_STATIC_SQL_STAR));
+  if (star == NULL)
+    {
+      parser->static_sql_edit_status = -1;
+      return;
+    }
+
+  star->kind = kind;
+  star->pos = pos;
+  star->columns = parser_copy_tree_list (parser, columns);
+  star->qualify = qualify;
+  star->next = parser->static_sql_stars;
+  parser->static_sql_stars = star;
+
+  if (columns != NULL && star->columns == NULL)
+    {
+      parser->static_sql_edit_status = -1;
+    }
+}
+
+/*
+ * pt_static_sql_token_ending_at () - index of the token that ends at the position, or -1
+ */
+static int
+pt_static_sql_token_ending_at (const PT_STATIC_SQL_EDIT_LIST * list, int position)
+{
+  int low = 0, high = list->token_count;
+
+  while (low < high)
+    {
+      int mid = (low + high) / 2;
+
+      if (list->tokens[mid].end < position)
+	{
+	  low = mid + 1;
+	}
+      else
+	{
+	  high = mid;
+	}
+    }
+
+  return (low < list->token_count && list->tokens[low].end == position) ? low : -1;
+}
+
+/*
+ * pt_static_sql_merge_insert () - index of the INSERT token of "WHEN NOT MATCHED THEN INSERT" in the text, or -1
+ */
+static int
+pt_static_sql_merge_insert (const PT_STATIC_SQL_EDIT_LIST * list)
+{
+  static const char *keywords[] = { "not", "matched", "then", "insert" };
+  int i, k, found = -1;
+
+  for (i = 3; i < list->token_count; i++)
+    {
+      for (k = 0; k < 4; k++)
+	{
+	  const PT_STATIC_SQL_TOKEN *token = &list->tokens[i - 3 + k];
+
+	  if (token->kind != PT_SS_TOKEN_IDENT
+	      || !pt_static_sql_token_equals (list->text, token->start, token->end, keywords[k]))
+	    {
+	      break;
+	    }
+	}
+      if (k == 4)
+	{
+	  if (found >= 0)
+	    {
+	      return -1;
+	    }
+	  found = i;
+	}
+    }
+
+  return found;
+}
+
+/*
+ * pt_static_sql_column_list () - text of a column list: "[c1], qualifier.[c2], ...", where the first column has no
+ *				    qualifier because it replaces "*" of "qualifier.*"
+ *   return: the text, or NULL if a name can not be written
+ *   parser(in):
+ *   columns(in): names
+ *   qualifier(in): qualifier text of the columns after the first one, or NULL
+ *   qualifier_len(in):
+ *   use_range_var(in): qualify each column with its range variable, "[range_var].[c]"
+ */
+static const char *
+pt_static_sql_column_list (PARSER_CONTEXT * parser, PT_NODE * columns, const char *qualifier, int qualifier_len,
+			   bool use_range_var)
+{
+  PT_NODE *col;
+  char *text, *p;
+  int len = 0;
+
+  for (col = columns; col != NULL; col = col->next)
+    {
+      if (col->node_type != PT_NAME || col->info.name.original == NULL || strchr (col->info.name.original, ']') != NULL)
+	{
+	  return NULL;
+	}
+      if (use_range_var
+	  && (col->info.name.resolved == NULL || col->info.name.resolved[0] == '\0'
+	      || strchr (col->info.name.resolved, ']') != NULL))
+	{
+	  return NULL;
+	}
+      len += (int) strlen (col->info.name.original) + 4 + qualifier_len + 1;
+      if (use_range_var)
+	{
+	  len += (int) strlen (col->info.name.resolved) + 3;
+	}
+    }
+  if (len == 0)
+    {
+      return NULL;
+    }
+
+  text = (char *) parser_alloc (parser, len + 1);
+  if (text == NULL)
+    {
+      return NULL;
+    }
+
+  for (col = columns, p = text; col != NULL; col = col->next)
+    {
+      if (col != columns)
+	{
+	  p += sprintf (p, ", ");
+	  if (qualifier != NULL)
+	    {
+	      p += sprintf (p, "%.*s.", qualifier_len, qualifier);
+	    }
+	}
+      if (use_range_var)
+	{
+	  p += sprintf (p, "[%s].", col->info.name.resolved);
+	}
+      p += sprintf (p, "[%s]", col->info.name.original);
+    }
+
+  return text;
+}
+
+/*
+ * pt_static_sql_expand_stars () - add the edits to write the column lists implied in the text (see
+ *				    pt_record_static_sql_star ())
+ */
+static void
+pt_static_sql_expand_stars (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list)
+{
+  PT_STATIC_SQL_STAR *star;
+
+  for (star = parser->static_sql_stars; star != NULL && !list->failed; star = star->next)
+    {
+      int i = (star->kind == PT_SS_MERGE_INSERT_COLUMNS) ? pt_static_sql_merge_insert (list)
+	: pt_static_sql_token_ending_at (list, star->pos);
+      const char *text = NULL;
+
+      if (i < 0)
+	{
+	  list->failed = true;
+	  return;
+	}
+
+      switch (star->kind)
+	{
+	case PT_SS_STAR_ALL:
+	  /* select * */
+	  if (!pt_static_sql_token_is (list, i, '*'))
+	    {
+	      list->failed = true;
+	      return;
+	    }
+	  text = pt_static_sql_column_list (parser, star->columns, NULL, 0, star->qualify);
+	  if (text != NULL)
+	    {
+	      pt_static_sql_add_edit (parser, list, list->tokens[i].start, list->tokens[i].end, text, -1);
+	    }
+	  break;
+
+	case PT_SS_STAR_QUALIFIED:
+	  /* select qualifier.*: the qualifier can be a path of names (e.g. owner.class) */
+	  {
+	    int first = i;
+
+	    if (list->tokens[i].kind == PT_SS_TOKEN_PUNCT || !pt_static_sql_token_is (list, i + 1, '.')
+		|| !pt_static_sql_token_is (list, i + 2, '*'))
+	      {
+		list->failed = true;
+		return;
+	      }
+	    while (pt_static_sql_token_is (list, first - 1, '.') && first - 2 >= 0
+		   && list->tokens[first - 2].kind != PT_SS_TOKEN_PUNCT)
+	      {
+		first -= 2;
+	      }
+	    text = pt_static_sql_column_list (parser, star->columns, list->text + list->tokens[first].start,
+					      list->tokens[i].end - list->tokens[first].start, false);
+	    if (text != NULL)
+	      {
+		pt_static_sql_add_edit (parser, list, list->tokens[i + 2].start, list->tokens[i + 2].end, text, -1);
+	      }
+	  }
+	  break;
+
+	case PT_SS_INSERT_COLUMNS:
+	case PT_SS_MERGE_INSERT_COLUMNS:
+	  /* insert into class values ...: the column list is added after the class name,
+	   * or after INSERT of "when not matched then insert values ..." */
+	  {
+	    const char *columns = pt_static_sql_column_list (parser, star->columns, NULL, 0, false);
+
+	    if (columns != NULL && list->tokens[i].kind != PT_SS_TOKEN_PUNCT)
+	      {
+		char *buf = (char *) parser_alloc (parser, (int) strlen (columns) + 4);
+
+		if (buf != NULL)
+		  {
+		    sprintf (buf, " (%s)", columns);
+		    text = buf;
+		    pt_static_sql_add_edit (parser, list, list->tokens[i].end, list->tokens[i].end, text, -1);
+		  }
+	      }
+	  }
+	  break;
+	}
+
+      if (text == NULL)
+	{
+	  list->failed = true;
+	}
+    }
+}
+
 static int
 pt_static_sql_compare_edits (const void *a, const void *b)
 {
@@ -13956,6 +14218,11 @@ pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  pt_static_sql_remove_into (parser, &list, pt_length_of_list (query->info.query.into_list));
 	}
+    }
+
+  if (!list.failed && parser->static_sql_stars != NULL)
+    {
+      pt_static_sql_expand_stars (parser, &list);
     }
 
   if (list.failed)
