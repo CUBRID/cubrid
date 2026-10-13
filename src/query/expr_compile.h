@@ -74,6 +74,12 @@ struct expr_eval_ctx
   QFILE_TUPLE_RECORD *tpl;	/* the current list-file tuple record, or NULL (CBRD-27365 tuple format) */
   EXPR_PROG *prog;
   int jump;			/* the step the row continues at, set by a kernel that returned EXPR_JUMPED */
+
+  /* the recursion limit, armed at the program's entry for a row whose thread frames above the program leave no room
+   * for its deepest node: every range run then checks each step's node against it (expr_run_range_checked) */
+  bool checked;
+  int check_outer;		/* the thread's frames above the program */
+  int check_limit;		/* max_recursion_sql_depth */
 };
 
 /* a kernel's third possible return: it decided where the row continues (ctx->jump) */

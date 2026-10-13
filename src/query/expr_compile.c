@@ -200,6 +200,8 @@ struct expr_build_ctx
 
   bool full;			/* a table (steps, cells, guards) ran out: the node being compiled becomes a nested
 				 * program behind one step (expr_compile_node) */
+  int force_nest_depth;		/* > 0: every arithmetic node at this depth is compiled as a nested program outright --
+				 * the retry of a nested program whose root overflowed its own table (expr_node_compile) */
 
   int n_slots;			/* slots are materialized after counting */
 
@@ -1194,11 +1196,28 @@ expr_pred_free (EXPR_PRED * pred)
  * error.  Jumps never leave the range they were compiled in (a lazy node jumps past
  * itself, a CASE jumps within its own steps), so a caller running a sub-range -- a scan
  * filter leaf running one operand side -- stays inside it. */
+static int expr_run_range_checked (EXPR_PROG * prog, int start, int end, EXPR_EVAL_CTX * ctx);
+
+/* The recursion limit the interpreter enforces at every node: only a row whose frames above the program leave no room
+ * for the program's deepest node pays the per-step check (expr_run_range_checked). */
+static inline void
+expr_ctx_arm_depth (EXPR_EVAL_CTX * ctx, const EXPR_PROG * prog)
+{
+  ctx->check_outer = thread_get_recursion_depth (ctx->thread_p);
+  ctx->check_limit = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
+  ctx->checked = (ctx->check_outer + prog->max_level - 1 > ctx->check_limit);
+}
+
+
 static int
 expr_run_range (EXPR_PROG * prog, int start, int end, EXPR_EVAL_CTX * ctx)
 {
   int i = start, rc;
 
+  if (unlikely (ctx->checked))
+    {
+      return expr_run_range_checked (prog, start, end, ctx);
+    }
   while (i < end)
     {
       rc = prog->steps[i].kernel (&prog->steps[i], ctx);
@@ -3305,9 +3324,14 @@ expr_scan_pred_eval (void *compiled, cubthread::entry * thread_p, val_descr * vd
   ctx.obj_oid = obj_oid;
   ctx.tpl = NULL;
   ctx.prog = root->prog;
-  if (root->prog != NULL && unlikely (expr_prog_prepare (root->prog, &ctx) != NO_ERROR))
+  ctx.checked = false;
+  if (root->prog != NULL)
     {
-      return V_ERROR;
+      expr_ctx_arm_depth (&ctx, root->prog);
+      if (unlikely (expr_prog_prepare (root->prog, &ctx) != NO_ERROR))
+	{
+	  return V_ERROR;
+	}
     }
   return expr_scan_pred_eval_node (root, &ctx);
 }
@@ -3698,8 +3722,16 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
       bctx->depth_max = bctx->depth;
     }
   expr_build_mark (bctx, &mark);
-  cell = expr_compile_node_arith (bctx, regu, compiled_something);
-  if (cell < 0 && bctx->full)
+  if (bctx->force_nest_depth > 0 && bctx->depth == bctx->force_nest_depth)
+    {
+      /* the retry of an overflowing nested root: its operands go behind one step each */
+      cell = expr_compile_nested (bctx, regu, compiled_something);
+    }
+  else
+    {
+      cell = expr_compile_node_arith (bctx, regu, compiled_something);
+    }
+  if (cell < 0 && bctx->full && bctx->depth > 1)
     {
       /* a table ran out under this node: everything it emitted goes, and the subtree becomes a program of its own
        * behind one step (a subtree too big for that nests again inside) */
@@ -5439,7 +5471,7 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
 static EXPR_PROG *
 expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p, REGU_VARIABLE ** roots, int in_roots,
 			      val_descr * vd, bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots,
-			      int *root_idx_out, const void *share_spec)
+			      int *root_idx_out, const void *share_spec, int force_nest_depth)
 {
   EXPR_PROG *prog = NULL;
   bool compiled_something = false;
@@ -5454,6 +5486,7 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
   memset (bctx, 0, sizeof (*bctx));
   bctx->vd = vd;
   bctx->thread_p = thread_p;
+  bctx->force_nest_depth = force_nest_depth;
   expr_share_attach (bctx, share_spec);
 
   for (i = 0; i < in_roots; i++)
@@ -5540,17 +5573,10 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
   return expr_prog_finish (bctx, root_cells, n_roots, vd, NULL);
 }
 
-/* one node as a program: the root cell is the node's value (a wired cell is enough); NULL when it cannot compile */
 static EXPR_PROG *
-expr_node_compile (cubthread::entry * thread_p, REGU_VARIABLE * regu, val_descr * vd)
-{
-  return expr_prog_compile_roots (thread_p, &regu, 1, vd, false, true, false, NULL, NULL);
-}
-
-EXPR_PROG *
-expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, int in_roots, val_descr * vd,
-			 bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots, int *root_idx_out,
-			 const void *share_spec)
+expr_prog_compile_roots_ex (cubthread::entry * thread_p, REGU_VARIABLE ** roots, int in_roots, val_descr * vd,
+			    bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots,
+			    int *root_idx_out, const void *share_spec, int force_nest_depth)
 {
   /* the build context is a page-plus of scratch arrays: too big for a server worker's
    * stack, and compilation happens once per execution, so it lives on the heap */
@@ -5562,9 +5588,34 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
       return NULL;
     }
   prog = expr_prog_compile_roots_impl (bctx, thread_p, roots, in_roots, vd, allow_fallback_roots, allow_wired_only,
-				       only_compute_roots, root_idx_out, share_spec);
+				       only_compute_roots, root_idx_out, share_spec, force_nest_depth);
   free_and_init (bctx);
   return prog;
+}
+
+/* One node as a program: the root cell is the node's value (a wired cell is enough); NULL when it cannot compile.
+ * A subtree that overflows a table of its own fails at its root (a node whose own steps find the table full is nested
+ * only below the root: nesting the root again would be this same compile); the retry nests the root's operands
+ * outright, so the root's steps always fit, and an operand too big for a program nests again inside. */
+static EXPR_PROG *
+expr_node_compile (cubthread::entry * thread_p, REGU_VARIABLE * regu, val_descr * vd)
+{
+  EXPR_PROG *prog = expr_prog_compile_roots_ex (thread_p, &regu, 1, vd, false, true, false, NULL, NULL, 0);
+
+  if (prog == NULL)
+    {
+      prog = expr_prog_compile_roots_ex (thread_p, &regu, 1, vd, false, true, false, NULL, NULL, 2);
+    }
+  return prog;
+}
+
+EXPR_PROG *
+expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, int in_roots, val_descr * vd,
+			 bool allow_fallback_roots, bool allow_wired_only, bool only_compute_roots, int *root_idx_out,
+			 const void *share_spec)
+{
+  return expr_prog_compile_roots_ex (thread_p, roots, in_roots, vd, allow_fallback_roots, allow_wired_only,
+				     only_compute_roots, root_idx_out, share_spec, 0);
 }
 
 bool
@@ -5652,8 +5703,9 @@ expr_prog_prepare (EXPR_PROG * prog, EXPR_EVAL_CTX * ctx)
  * belongs to -- the thread's frames above the program (outer) plus the nodes above the step's node -- so the row fails
  * with ER_MAX_RECURSION_SQL_DEPTH where the interpreter fails, and not for a node a lazy region or a branch skips. */
 static int
-expr_run_range_checked (EXPR_PROG * prog, int start, int end, EXPR_EVAL_CTX * ctx, int outer, int limit)
+expr_run_range_checked (EXPR_PROG * prog, int start, int end, EXPR_EVAL_CTX * ctx)
 {
+  const int outer = ctx->check_outer, limit = ctx->check_limit;
   int i = start, rc;
 
   while (i < end)
@@ -5682,26 +5734,19 @@ int
 expr_prog_eval (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid, QFILE_TUPLE_RECORD * tpl)
 {
   EXPR_EVAL_CTX ctx;
-  int error, outer, limit;
+  int error;
 
   ctx.thread_p = thread_p;
   ctx.vd = vd;
   ctx.obj_oid = obj_oid;
   ctx.tpl = tpl;
   ctx.prog = prog;
+  expr_ctx_arm_depth (&ctx, prog);
 
   error = expr_prog_prepare (prog, &ctx);
   if (unlikely (error != NO_ERROR))
     {
       return error;
-    }
-  /* the recursion limit the interpreter enforces at every node: only a row whose frames above the program leave no
-   * room for the program's deepest node pays the per-step check */
-  outer = thread_get_recursion_depth (thread_p);
-  limit = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
-  if (unlikely (outer + prog->max_level - 1 > limit))
-    {
-      return expr_run_range_checked (prog, prog->row_start, prog->n_steps, &ctx, outer, limit);
     }
   return expr_run_range (prog, prog->row_start, prog->n_steps, &ctx);
 }
