@@ -7103,17 +7103,34 @@ exit:
  *   node(in): the node about to be placed
  *   visited_nodes(in): the nodes already placed before it
  *
- * Note: only a SEMI node with a DISTINCT alternative may precede its SEMI/ANTI dependencies. The caller
- *       checks dependent-table, outer-join and hint requirements separately. When the SEMI/ANTI dependencies
- *       are already satisfied, the caller uses node_info to retain ordinary SEMI execution.
+ * Note: only a SEMI node with a DISTINCT alternative may precede its SEMI/ANTI dependencies, and never an outer
+ *       join node among them. The caller checks dependent-table, outer-join and hint requirements separately.
+ *       When the SEMI/ANTI dependencies are already satisfied, the caller uses node_info to retain ordinary SEMI
+ *       execution.
  */
 static QO_INFO *
 qo_get_distinct_info_ahead (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
 {
+  QO_NODE *dep;
+  BITSET_ITERATOR bi;
+  int i;
+
   if (QO_NODE_PT_JOIN_TYPE (node) != PT_JOIN_SEMI || planner->distinct_info == NULL
       || bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node))))
     {
       return NULL;
+    }
+
+  /* an outer join node still to be placed has to come first: placed before it, the ON terms reading it are
+   * evaluated as that outer join's ON, which fills the rows it has no match for with NULL instead of dropping
+   * them */
+  for (i = bitset_iterate (&(QO_NODE_SEMI_ANTI_DEP_SET (node)), &bi); i != -1; i = bitset_next_member (&bi))
+    {
+      dep = QO_ENV_NODE (planner->env, i);
+      if (!BITSET_MEMBER (*visited_nodes, i) && QO_NODE_IS_OUTER_JOIN (dep))
+	{
+	  return NULL;
+	}
     }
 
   return planner->distinct_info[QO_NODE_IDX (node)];
