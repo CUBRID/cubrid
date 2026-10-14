@@ -1,5 +1,4 @@
-# Policy and the relay between pods. How CTP runs is the test image's /entrypoint.sh <verb>;
-# what the pods must provide is CUBRID/qatools-internal test-infra/roles/arc/README.md.
+# The pods must provide what CUBRID/qatools-internal test-infra/roles/arc/README.md lists.
 
 name: gha-ci
 
@@ -17,7 +16,7 @@ on:
     types: [created, edited]
   push:
     branches: [develop, 'feature/**']
-  # 00:20 KST: after the day's last develop merge (13Z), off the hour where cron queues longest.
+  # After the day's last develop merge (13Z), off the hour where cron queues longest.
   schedule:
     - cron: '20 15 * * *'
   workflow_dispatch:
@@ -114,7 +113,6 @@ env:
   BUILD_META: .gha-ci-build.meta
   # Paired with arc_artifact_server_node_port in CUBRID/qatools-internal test-infra/.
   ARTIFACT_URL_BASE: http://192.168.1.48:30080
-  # One copy for the three jobs that count CTP's results; each step evals it.
   COUNT_RESULTS: |
     count() {
       if [ -f "$1/test_status.data" ]; then
@@ -128,7 +126,7 @@ env:
         echo "found=no exec=0 pass=0 fail=0 skip=0"
       fi
     }
-  # How CTP runs a suite is the test image's table; this one holds the split policy.
+  # A new suite also needs a row in the test image's resolve_category.
   SUITES: |-
     {
       "shell": {
@@ -190,7 +188,6 @@ jobs:
       - name: Resolve the trigger
         id: g
         env:
-          # Inputs arrive through env, never interpolated into the script body.
           EV: ${{ github.event_name }}
           BODY: ${{ github.event.comment.body }}
           ISSUE: ${{ github.event.issue.number }}
@@ -351,8 +348,7 @@ jobs:
           emit tc_until "$tc_until"
           echo "resolved: event=$EV sha=$sha pr=${pr:-none} suites=$suites test=$test_run namespace=$ns ccache_write=$cache_write status=$post_status${rerun:+ rerun_from=$rerun}${tt:+ testtools=$tt}${tc_until:+ tc_until=$tc_until}"
 
-  # One run per develop commit merged since the last batch. No cursor: the commit status is the
-  # record, so a missed night heals on the next.
+  # No cursor: the commit status is the record, so a missed night heals on the next.
   nightly:
     name: nightly batch
     if: >-
@@ -949,7 +945,7 @@ jobs:
                 done < "$srcdir/plan/plan.tsv"
               fi
               cut -f2 "$src" | sed "s#^#$repo/#" > /tmp/want.list
-              # The whole directory: a case is not known to be safe on its own (CUBRIDQA-1523).
+              # The whole directory: a case is not known to be safe on its own.
               [ "$unit" != dir ] || sed -i "s#^\($repo/$suite/[^/]*\)/.*#\1#" /tmp/want.list
               cat /tmp/unrun.list >> /tmp/want.list
               sort -u -o /tmp/want.list /tmp/want.list
@@ -988,7 +984,6 @@ jobs:
             rm -rf /tmp/shards; mkdir -p /tmp/shards
             timed=0
             if [ "$unit" = case ]; then
-              # LPT by last run's seconds, longest first; an unseen case gets the median.
               mkdir -p "$(dirname "$TIMINGS")"
               [ -f "$TIMINGS" ] || : > "$TIMINGS"
               if [ -s "$TIMINGS" ]; then
@@ -1023,7 +1018,6 @@ jobs:
                 END { for (i = 0; i < par; i++) printf "%02d\t%d\t%d\t%.1f\n", i, cases[i] + 0, units[i] + 0, load[i] }
               ' /tmp/sorted.tsv > /tmp/plan.tsv
             else
-              # CircleCI's --split-by=name: `par` contiguous chunks of the sorted list.
               awk -v par="$par" '
                 BEGIN { FS = "\t" }
                 { u[NR] = $1; c[NR] = $2 }
@@ -1040,7 +1034,6 @@ jobs:
               ' /tmp/units.tsv > /tmp/plan.tsv
             fi
 
-            # Guard 1 of 3: the split adds up to the whole.
             got=$(awk -F'\t' '{s+=$2} END {print s+0}' /tmp/plan.tsv)
             [ "$got" -eq "$total" ] || { echo "::error::the split lost cases ($got != $total)"; exit 1; }
 
@@ -1657,7 +1650,7 @@ jobs:
               echo
             } >> "$GITHUB_STEP_SUMMARY"
 
-            # Guard 3 of 3: a shard dying whole is invisible to guard 2.
+            # A shard dying whole is invisible to guard 2.
             srb=0
             fault() { echo "::error::$suite: $1"; srb=1; }
             [ "$done_n" -eq "$planned" ] || fault "only $done_n of $planned shards published a result; the rest died whole"
