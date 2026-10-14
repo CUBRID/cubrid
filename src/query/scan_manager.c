@@ -4440,6 +4440,13 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	  scan_drop_hash_list_scan (thread_p, &llsidp->hlsid);
 	  llsidp->hlsid.hash_list_scan_type = HASH_METH_NOT_USE;
 	  llsidp->hlsid.need_coerce_type = false;
+	  if (on_trace)
+	    {
+	      /* the rows hashed before the value are build work this scan did: the trace keeps them */
+	      tsc_getticks (&end_tick);
+	      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+	      TSC_ADD_TIMEVAL (scan_id->scan_stats.elapsed_hash_build, tv_diff);
+	    }
 	  return NO_ERROR;
 	}
 
@@ -8838,6 +8845,12 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
       else if (scan_id->s.llsid.hlsid.hash_list_scan_type == HASH_METH_HASH_FILE)
 	{
 	  fprintf (fp, "(hash temp(f), build time: %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
+	}
+      else if (scan_id->scan_stats.elapsed_hash_build.tv_sec != 0
+	       || scan_id->scan_stats.elapsed_hash_build.tv_usec != 0)
+	{
+	  /* a hash build that stopped at a value with no image in the hash domain: the scan read the list instead */
+	  fprintf (fp, "(temp, hash build time: %d,", TO_MSEC (scan_id->scan_stats.elapsed_hash_build));
 	}
       else
 	{
