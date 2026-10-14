@@ -35,17 +35,12 @@
 #include <string.h>
 #include <stdarg.h>
 #include <assert.h>
-#include <errno.h>
 
 #if defined(WINDOWS)
 #include <winsock2.h>
 #include <windows.h>
 #include <conio.h>
 #endif
-
-#include <openssl/err.h>
-#include <openssl/pem.h>
-#include <openssl/x509.h>
 
 #if defined(WINDOWS)
 #include <sys/timeb.h>
@@ -70,7 +65,6 @@
 #include "broker_process_info.h"
 #endif
 #include "cas_util.h"
-#include "cas_ssl.h"
 #include "shard_shm.h"
 #include "shard_metadata.h"
 #include "util_func.h"
@@ -335,7 +329,6 @@ static int get_char (void);
 static void print_usage (void);
 static int get_args (int argc, char *argv[], char *br_vector);
 static void print_job_queue (T_MAX_HEAP_NODE *);
-static void print_ssl_cert_info (const T_BROKER_INFO * br_info_p, bool with_name);
 static void ip2str (unsigned char *ip, char *ip_str);
 static void time2str (const time_t t, char *str);
 
@@ -961,139 +954,6 @@ print_job_queue (T_MAX_HEAP_NODE * job_queue)
     print_newline ();
 }
 
-/*
- * print_ssl_cert_info () - print the expiry of the certificate chain that an SSL=ON broker presents
- *   br_info_p(in):
- *   with_name(in): prefix the broker name, for the lines below the -b table
- *
- * SSL CERT: [<broker>] <file>  notAfter=<ISO 8601 UTC>  days=<N>[  EXPIRED|  NOT YET VALID][  (chain: <CN>)]
- * SSL CERT: [<broker>] <file>  ERROR=<reason>
- *
- * notAfter and days are those of the first certificate in the file to expire: the server certificate, or an
- * intermediate CA sent with it, which is then named in "(chain: ...)". Once any of them has expired a verifying
- * driver rejects the chain, so "days < N" stays the one rule a monitor needs. days is rounded down, so it is
- * negative once expired. NOT YET VALID is judged on the server certificate, as cas_init_ssl () judges it; that
- * and an expired server certificate make the CAS reject SSL connections.
- */
-static void
-print_ssl_cert_info (const T_BROKER_INFO * br_info_p, bool with_name)
-{
-  char cert[BROKER_PATH_MAX];
-  /* str_out () formats into a 1024 byte buffer in the refresh mode */
-  char line[1000];
-  int len;
-  FILE *fp;
-  X509 *crt = NULL;
-  X509 *chain_crt = NULL;	/* the chain certificate that expires first, when before the server certificate */
-  X509 *ca;
-  char chain_cn[256];
-  const ASN1_TIME *not_after = NULL;
-  struct tm tm;
-  char not_after_str[32];
-  int diff_day, diff_sec;
-  long long remain_sec, days;
-  const char *error = NULL;
-  const char *state = "";
-
-  snprintf (cert, sizeof (cert), "%s/conf/%s", getenv ("CUBRID"), CAS_SSL_CERT_FILE);
-
-  fp = fopen (cert, "r");
-  if (fp == NULL)
-    {
-      error = strerror (errno);
-    }
-  else
-    {
-      crt = PEM_read_X509 (fp, NULL, NULL, NULL);
-      if (crt != NULL)
-	{
-	  /* the intermediate CAs sent with it, as SSL_CTX_use_certificate_chain_file () reads them */
-	  while ((ca = PEM_read_X509 (fp, NULL, NULL, NULL)) != NULL)
-	    {
-	      if (ASN1_TIME_compare (X509_get0_notAfter (ca),
-				     X509_get0_notAfter ((chain_crt != NULL) ? chain_crt : crt)) < 0)
-		{
-		  X509_free (chain_crt);
-		  chain_crt = ca;
-		}
-	      else
-		{
-		  X509_free (ca);
-		}
-	    }
-	  ERR_clear_error ();	/* the read that found no more certificates */
-	}
-      fclose (fp);
-
-      if (crt == NULL)
-	{
-	  error = "not a PEM certificate";
-	}
-      else
-	{
-	  not_after = X509_get0_notAfter ((chain_crt != NULL) ? chain_crt : crt);
-	  if (ASN1_TIME_to_tm (not_after, &tm) == 0 || ASN1_TIME_diff (&diff_day, &diff_sec, NULL, not_after) == 0
-	      || strftime (not_after_str, sizeof (not_after_str), "%Y-%m-%dT%H:%M:%SZ", &tm) == 0)
-	    {
-	      error = "invalid notAfter";
-	    }
-	}
-    }
-
-  if (with_name)
-    {
-      len = snprintf (line, sizeof (line), "SSL CERT: [%s] %s  ", br_info_p->name, cert);
-    }
-  else
-    {
-      len = snprintf (line, sizeof (line), "SSL CERT: %s  ", cert);
-    }
-  if (len < 0 || len >= (int) sizeof (line))
-    {
-      len = sizeof (line) - 1;
-    }
-
-  if (error != NULL)
-    {
-      snprintf (line + len, sizeof (line) - len, "ERROR=%s", error);
-    }
-  else
-    {
-      /* diff_day and diff_sec have the same sign */
-      remain_sec = diff_day * 86400LL + diff_sec;
-      days = (remain_sec >= 0) ? remain_sec / 86400 : -((-remain_sec + 86399) / 86400);
-
-      if (X509_cmp_time (not_after, NULL) != 1)
-	{
-	  state = "  EXPIRED";
-	}
-      else if (X509_cmp_time (X509_get0_notBefore (crt), NULL) != -1)
-	{
-	  state = "  NOT YET VALID";
-	}
-
-      len += snprintf (line + len, sizeof (line) - len, "notAfter=%s  days=%lld%s", not_after_str, days, state);
-      if (chain_crt != NULL && len < (int) sizeof (line))
-	{
-	  if (X509_NAME_get_text_by_NID (X509_get_subject_name (chain_crt), NID_commonName, chain_cn,
-					 sizeof (chain_cn)) < 0)
-	    {
-	      X509_NAME_oneline (X509_get_subject_name (chain_crt), chain_cn, sizeof (chain_cn));
-	    }
-	  snprintf (line + len, sizeof (line) - len, "  (chain: %s)", chain_cn);
-	}
-    }
-
-  str_out ("%s", line);
-  print_newline ();
-
-  if (crt != NULL)
-    {
-      X509_free (crt);
-    }
-  X509_free (chain_crt);
-}
-
 static void
 ip2str (unsigned char *ip, char *ip_str)
 {
@@ -1392,12 +1252,6 @@ appl_monitor (char *br_vector, double elapsed_time)
 		}		/* CAS INFORMATION DISPLAY */
 
 	      print_newline ();
-
-	      if (shm_br->br_info[i].use_SSL == ON)
-		{
-		  print_ssl_cert_info (&shm_br->br_info[i], false);
-		  print_newline ();
-		}
 
 	      if (display_job_queue == true && shard_flag == OFF)
 		{
@@ -2056,33 +1910,6 @@ brief_monitor (char *br_vector, MONITOR_TYPE mnt_type, double elapsed_time)
 	{
 	  uw_shm_detach (shm_proxy_p);
 	  shm_proxy_p = NULL;
-	}
-    }
-
-  if (mnt_type == MONITOR_T_BROKER)
-    {
-      bool first_ssl_broker = true;
-
-      for (br_index = 0; br_index < shm_br->num_broker; br_index++)
-	{
-	  br_info_p = &shm_br->br_info[br_index];
-
-	  if (br_vector[br_index] == 0 || br_info_p->service_flag != SERVICE_ON || br_info_p->use_SSL != ON)
-	    {
-	      continue;
-	    }
-
-	  if (service_filter_value != SERVICE_UNKNOWN && service_filter_value != br_info_p->service_flag)
-	    {
-	      continue;
-	    }
-
-	  if (first_ssl_broker)
-	    {
-	      print_newline ();
-	      first_ssl_broker = false;
-	    }
-	  print_ssl_cert_info (br_info_p, true);
 	}
     }
 
