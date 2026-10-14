@@ -118,6 +118,8 @@ extern int internal_lob_reverse_insert_append (THREAD_ENTRY *thread_p, INTERNAL_
 extern int internal_lob_reverse_insert_end (THREAD_ENTRY *thread_p, INTERNAL_LOB_REVERSE_WRITER &writer,
     INTERNAL_LOB_LOCATOR &locator);
 extern void internal_lob_reverse_insert_abort (INTERNAL_LOB_REVERSE_WRITER &writer);
+extern int internal_lob_clone (THREAD_ENTRY *thread_p, const VFID &target_lob_vfid, DB_TYPE lob_type,
+			       const INTERNAL_LOB_LOCATOR &source_locator, INTERNAL_LOB_LOCATOR &target_locator);
 extern int internal_lob_read (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, oos_buffer dest);
 extern int internal_lob_read_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator,
 				   INTERNAL_LOB_READER &reader);
@@ -128,6 +130,8 @@ extern int xinternal_lob_stream_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB
 extern int xinternal_lob_stream_read (THREAD_ENTRY *thread_p, INT64 token, char *buf, int count, int *nread);
 extern int xinternal_lob_stream_close (THREAD_ENTRY *thread_p, INT64 token);
 extern void internal_lob_stream_purge_tran (int tran_index);
+extern int internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, const INTERNAL_LOB_LOCATOR &locator);
+
 extern bool internal_lob_parse_locator_string (const char *data, int size, INTERNAL_LOB_LOCATOR *locator,
     unsigned long long *sig_out = NULL);
 extern bool internal_lob_db_value_is_locator (const DB_VALUE *value, INTERNAL_LOB_LOCATOR *locator,

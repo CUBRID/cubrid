@@ -512,6 +512,176 @@ internal_lob_reverse_insert_abort (INTERNAL_LOB_REVERSE_WRITER &writer)
   internal_lob_reverse_writer_clear (writer);
 }
 
+/*
+ * internal_lob_clone () - copy a value's chain into another heap's internal LOB file (a locator of one class
+ *   stored into another: the target class must own its own copy).
+ *
+ *   The chain is written tail-first but the source walks head-first, so pass 1 records each chunk's OID
+ *   (headers only) and pass 2 re-reads the chunks in reverse into the OOS chain writer, one chunk in memory.
+ */
+int
+internal_lob_clone (THREAD_ENTRY *thread_p, const VFID &target_lob_vfid, DB_TYPE lob_type,
+		    const INTERNAL_LOB_LOCATOR &source_locator, INTERNAL_LOB_LOCATOR &target_locator)
+{
+  std::vector<OID> chunk_oids;
+  DB_BIGINT expected_payload_bytes;
+  DB_BIGINT seen_payload_bytes = 0;
+  DB_BIGINT max_chunk_count;
+  OOS_CHAIN_WRITER chain;
+  OID source_oid;
+  OID target_next_oid;
+  char *payload = NULL;
+  int chunk_capacity;
+  int expected_index = 0;
+  int error;
+
+  OID_SET_NULL (&target_locator.oid);
+  target_locator.length = 0;
+  target_locator.adopted = false;
+
+  if (thread_p == NULL || VFID_ISNULL (&target_lob_vfid) || source_locator.length < 0
+      || (lob_type != DB_TYPE_BLOB && lob_type != DB_TYPE_CLOB))
+    {
+      return internal_lob_set_generic_error ();
+    }
+
+  error = internal_lob_physical_bytes (lob_type, source_locator.length, expected_payload_bytes);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (OID_ISNULL (&source_locator.oid))
+    {
+      INTERNAL_LOB_REVERSE_WRITER empty_writer;
+
+      if (expected_payload_bytes != 0)
+	{
+	  return internal_lob_set_generic_error ();
+	}
+      error = internal_lob_reverse_insert_begin (thread_p, target_lob_vfid, lob_type, 0, source_locator.length,
+	      empty_writer);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      return internal_lob_reverse_insert_end (thread_p, empty_writer, target_locator);
+    }
+
+  chunk_capacity = oos_chain_max_chunk_payload ();
+  if (chunk_capacity <= 0)
+    {
+      return internal_lob_set_generic_error ();
+    }
+  /* Safety cap on the walk: every chunk but a lone empty head carries at least one byte, so a
+   * well-formed chain cannot have more chunks than it has payload bytes.  Correctness comes from the
+   * chunk_index sequence and the total-payload check below. */
+  max_chunk_count = expected_payload_bytes <= 0 ? 1 : expected_payload_bytes;
+
+  /* Pass 1: walk the source chain, headers only, recording each chunk's OID in chain order. */
+  source_oid = source_locator.oid;
+  while (!OID_ISNULL (&source_oid))
+    {
+      OOS_RECORD_HEADER header;
+      int payload_len = 0;
+
+      if ((DB_BIGINT) chunk_oids.size () >= max_chunk_count)
+	{
+	  return internal_lob_set_generic_error ();
+	}
+
+      error = oos_chain_read_chunk (thread_p, source_oid, oos_buffer (NULL, 0), payload_len, header);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (header.chunk_index != expected_index || payload_len < 0 || payload_len > chunk_capacity
+	  || (payload_len == 0 && expected_index != 0))
+	{
+	  return internal_lob_set_generic_error ();
+	}
+      if (expected_index == 0 && header.total_data_length != expected_payload_bytes)
+	{
+	  return internal_lob_set_generic_error ();
+	}
+
+      try
+	{
+	  chunk_oids.push_back (source_oid);
+	}
+      catch (std::bad_alloc &)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OID));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      seen_payload_bytes += payload_len;
+      if (seen_payload_bytes > expected_payload_bytes)
+	{
+	  return internal_lob_set_generic_error ();
+	}
+
+      source_oid = header.next_chunk_oid;
+      expected_index++;
+    }
+
+  if (seen_payload_bytes != expected_payload_bytes || chunk_oids.empty ())
+    {
+      return internal_lob_set_generic_error ();
+    }
+
+  payload = (char *) malloc ((std::size_t) chunk_capacity);
+  if (payload == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (std::size_t) chunk_capacity);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  /* Pass 2: re-read the chunks tail-first and rebuild the chain in the target file. */
+  oos_chain_insert_begin (target_lob_vfid, expected_payload_bytes, (int) chunk_oids.size (), chain);
+  OID_SET_NULL (&target_next_oid);
+  for (std::size_t reverse_index = chunk_oids.size (); reverse_index > 0; reverse_index--)
+    {
+      const std::size_t index = reverse_index - 1;
+      OOS_RECORD_HEADER header;
+      OID target_current_oid;
+      int payload_len = 0;
+
+      error = oos_chain_read_chunk (thread_p, chunk_oids[index], oos_buffer (payload, (std::size_t) chunk_capacity),
+				    payload_len, header);
+      if (error != NO_ERROR)
+	{
+	  free_and_init (payload);
+	  return error;
+	}
+      if (header.chunk_index != (int) index || payload_len < 0 || payload_len > chunk_capacity)
+	{
+	  free_and_init (payload);
+	  return internal_lob_set_generic_error ();
+	}
+
+      error = oos_chain_insert_next (thread_p, chain, oos_buffer (payload_len > 0 ? payload : NULL,
+				     (std::size_t) payload_len), target_current_oid);
+      if (error != NO_ERROR)
+	{
+	  free_and_init (payload);
+	  return error;
+	}
+      target_next_oid = target_current_oid;
+    }
+
+  free_and_init (payload);
+
+  if (!oos_chain_insert_done (chain))
+    {
+      return internal_lob_set_generic_error ();
+    }
+
+  target_locator.oid = target_next_oid;
+  target_locator.length = source_locator.length;
+  target_locator.adopted = false;
+  return NO_ERROR;
+}
+
 int
 internal_lob_read (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, oos_buffer dest)
 {
@@ -951,6 +1121,23 @@ internal_lob_stream_purge_tran (int tran_index)
 	}
       iter = internal_lob_stream_release_cursor (iter);
     }
+}
+
+int
+internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, const INTERNAL_LOB_LOCATOR &locator)
+{
+  if (locator.length == 0 && OID_ISNULL (&locator.oid))
+    {
+      return NO_ERROR;
+    }
+
+  if (locator.length < 0 || OID_ISNULL (&locator.oid))
+    {
+      return internal_lob_set_generic_error ();
+    }
+
+  /* One ordinary OOS chain: the OOS delete walks and removes every chunk. */
+  return oos_delete (thread_p, lob_vfid, locator.oid);
 }
 
 bool
