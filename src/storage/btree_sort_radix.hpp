@@ -45,7 +45,8 @@ typedef enum
   RADIX_KEY_VARBIT,		/* VARBIT: its bytes in whole words, zero past them, then a word of their count */
   RADIX_KEY_STRING,		/* CHAR, VARCHAR: the bytes the collation sees, then a count word if shorter_first */
   RADIX_KEY_FIXED_NUMERIC,	/* NUMERIC(p, s): its magnitude right aligned behind a byte for the sign */
-  RADIX_KEY_FLOAT_NUMERIC	/* NUMERIC without a precision: sign, decimal exponent, the magnitude made 40 digits */
+  RADIX_KEY_FLOAT_NUMERIC,	/* NUMERIC without a precision: sign, decimal exponent, the magnitude made 40 digits */
+  RADIX_KEY_MIDXKEY		/* a MIDXKEY: no word of its own, each column a key of its own format */
 } RADIX_KEY_FORMAT;
 
 /* key encoding of an index, worked out of its key domain */
@@ -63,6 +64,28 @@ struct radix_key_encoding
 				 * word of the byte count ends the radix key */
 };
 
+/* the most words of a MIDXKEY's radix key, the words of its columns' radix keys in turn. The sort goes a call
+ * deeper for each subarray a word splits, under 500 bytes of stack a call, so 64 words hold the deepest sort near
+ * 32KB, little beside a thread stack of megabytes. The columns past them take the comparator */
+#define RADIX_MAX_KEY_WORDS 64
+
+/* a column of a MIDXKEY */
+typedef struct radix_key_column RADIX_KEY_COLUMN;
+struct radix_key_column
+{
+  RADIX_KEY_ENCODING encoding;	/* as a key of the column's domain alone */
+  const TP_DOMAIN *domain;	/* for the walk past the offset table */
+};
+
+/* key encoding of a MIDXKEY, worked out of its key domain a column at a time */
+typedef struct radix_midxkey RADIX_MIDXKEY;
+struct radix_midxkey
+{
+  int column_count;		/* the key's columns */
+  int radix_columns;		/* the leading columns with a radix key, one at least */
+  RADIX_KEY_COLUMN columns[RADIX_MAX_KEY_WORDS];
+};
+
 /* MSD radix sorter (btree_sort_radix.cpp), for a key domain radix_sort_supports_key () takes */
 extern const BTSORT_RUN_SORTER btsort_radix_sorter;
 
@@ -72,5 +95,12 @@ extern size_t radix_sort_stack_bytes (const RADIX_KEY_ENCODING *encoding, int ma
 extern void radix_sort_run (const RADIX_KEY_ENCODING *encoding, const char *rec_base, BTSORT_RUN_SLOT *slots,
 			    BTSORT_RUN_SLOT *slots_spare, int record_count, char *words_area, size_t words_bytes,
 			    char *stack_area, size_t stack_bytes);
+
+extern bool radix_sort_resolve_midxkey (RADIX_MIDXKEY *midxkey, RADIX_KEY_ENCODING *encoding,
+					const TP_DOMAIN *key_domain);
+extern void radix_sort_midxkey_run (const RADIX_MIDXKEY *midxkey, BTSORT_CMP_FUNC *cmp_fn, void *cmp_arg,
+				    const char *rec_base, BTSORT_RUN_SLOT *slots, BTSORT_RUN_SLOT *slots_spare,
+				    int record_count, char *words_area, size_t words_bytes, char *stack_area,
+				    size_t stack_bytes);
 
 #endif /* _BTREE_SORT_RADIX_HPP_ */

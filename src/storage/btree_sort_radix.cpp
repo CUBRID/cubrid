@@ -22,10 +22,11 @@
  * Orders a run by its radix key and breaks key ties by instance OID, so the order is that of
  * btsort_compare_records (). init () sets the context and the MSD stack aside at the top of the sort buffer;
  * below them the run is laid out as the merge sorter does, and sort () keeps its radix words in the free space
- * accept () claims, so nothing is allocated.
+ * accept () claims, so nothing is allocated. A MIDXKEY is sorted a word of a column at a time (section 5).
  *
  *   top  ┌───────────────────┐
  *        │ context           │  set aside by init ()
+ *        │ MIDXKEY columns   │  of a MIDXKEY only
  *        │ MSD stack         │
  *        ├───────────────────┤
  *        │ slots             │  the newest record's slot at the lowest address
@@ -54,13 +55,16 @@
  *   range          slots whose radix words agree up to byte_index, split 256 ways on that byte
  *   bucket         the records of a range that share one value of that byte
  *   MSD stack      the ranges waiting for a split, one msd_range each; radix_sort_stack_bytes () sizes it
- *   context        what init () keeps for every run: the key encoding, rec_overhead and the stack area
+ *   context        what init () keeps for every run: the key encoding, MIDXKEY columns, rec_overhead and the stack area
  *   rec_overhead   what a record claims above the records: a slot and a radix word on each side
+ *   radix column   a leading column of a MIDXKEY with a radix key; the comparator orders the columns after
+ *   subarray       records of a run that agree on every word so far, which the next word sorts
  *
  * 1. sorter: the hooks
  * 2. key encoding: which keys, and their radix words
  * 3. engine: the MSD radix sort of the slots by their radix words
  * 4. small range sorts: the radix words, the tail words, the OID order of equal keys
+ * 5. MIDXKEY: a word of a column at a time, each a key of one word to the engine
  */
 
 #include "config.h"
@@ -103,7 +107,8 @@ namespace
   /* what the sorter keeps from init () on, at the top of the sort buffer */
   struct radix_sorter_ctx
   {
-    RADIX_KEY_ENCODING key_encoding;	/* the key encoding the engine sorts by */
+    RADIX_KEY_ENCODING key_encoding;	/* the key encoding the engine sorts by, a MIDXKEY's for its work memory */
+    const RADIX_MIDXKEY *midxkey;	/* the columns of a MIDXKEY, below the context; NULL for a key of one column */
     int rec_overhead;		/* bytes a record claims above the records: a slot in each array and two radix words */
     char *stack_area;		/* MSD stack, sized for the most records a run can hold */
     size_t stack_bytes;
@@ -129,8 +134,8 @@ const BTSORT_RUN_SORTER btsort_radix_sorter =
 };
 
 /*
- * btsort_radix_sorter_init () - Sets the context and the MSD stack aside at the top of the sort buffer, then
- *                               starts the first run
+ * btsort_radix_sorter_init () - Sets the context, the MIDXKEY columns and the MSD stack aside at the top of the sort
+ *                               buffer, then starts the first run
  *   return: void
  *   run(in/out):
  *   key_domain(in): a domain radix_sort_supports_key () takes
@@ -139,12 +144,27 @@ static void
 btsort_radix_sorter_init (BTSORT_RUN *run, const TP_DOMAIN *key_domain)
 {
   radix_sorter_ctx *ctx = (radix_sorter_ctx *) (run->top - DB_ALIGN (sizeof (radix_sorter_ctx), DOUBLE_ALIGNMENT));
+  char *ctx_low = (char *) ctx;	/* the lowest byte the context takes */
+  RADIX_MIDXKEY *midxkey = NULL;
   size_t min_rec_length;
   size_t max_records;
+  bool resolved;
 
   assert (PTR_ALIGN (run->top, DOUBLE_ALIGNMENT) == run->top);
 
-  if (!radix_sort_resolve_key (&ctx->key_encoding, key_domain))
+  if (TP_DOMAIN_TYPE (key_domain) == DB_TYPE_MIDXKEY)
+    {
+      midxkey = (RADIX_MIDXKEY *) (ctx_low - DB_ALIGN (sizeof (RADIX_MIDXKEY), DOUBLE_ALIGNMENT));
+      ctx_low = (char *) midxkey;
+      resolved = radix_sort_resolve_midxkey (midxkey, &ctx->key_encoding, key_domain);
+    }
+  else
+    {
+      resolved = radix_sort_resolve_key (&ctx->key_encoding, key_domain);
+    }
+  ctx->midxkey = midxkey;
+
+  if (!resolved)
     {
       /* btsort_run_pick_sorter () picks this sorter for a radix key only */
       assert (false);
@@ -156,13 +176,13 @@ btsort_radix_sorter_init (BTSORT_RUN *run, const TP_DOMAIN *key_domain)
 
   /* the smallest record: a header, the instance OID and the shortest key, plus rec_overhead above the records */
   min_rec_length = DB_ALIGN (BTSORT_REC_HEADER_SIZE + OR_OID_SIZE + ctx->key_encoding.min_key_length, INT_ALIGNMENT);
-  max_records = (size_t) ((char *) ctx - run->base) / (min_rec_length + ctx->rec_overhead);
+  max_records = (size_t) (ctx_low - run->base) / (min_rec_length + ctx->rec_overhead);
 
   /* a slot is a 32-bit offset into a buffer under 2GB */
   assert (max_records <= (size_t) INT_MAX);
 
   ctx->stack_bytes = radix_sort_stack_bytes (&ctx->key_encoding, (int) max_records);
-  ctx->stack_area = (char *) ctx - DB_ALIGN (ctx->stack_bytes, DOUBLE_ALIGNMENT);
+  ctx->stack_area = ctx_low - DB_ALIGN (ctx->stack_bytes, DOUBLE_ALIGNMENT);
 
   run->sorter_ctx = ctx;
 
@@ -279,8 +299,17 @@ btsort_radix_sorter_sort (THREAD_ENTRY *thread_p, BTSORT_RUN *run)
        * so insertion_sort () and sort_by_oid () find them in place instead of turning them round */
       std::reverse (slots, slots + run->numrecs);
 
-      radix_sort_run (&ctx->key_encoding, run->base, slots, spare, (int) run->numrecs, words_area,
-		      (size_t) ((char *) spare - words_area), ctx->stack_area, ctx->stack_bytes);
+      if (ctx->key_encoding.format == RADIX_KEY_MIDXKEY)
+	{
+	  radix_sort_midxkey_run (ctx->midxkey, run->cmp_fn, run->cmp_arg, run->base, slots, spare,
+				  (int) run->numrecs, words_area, (size_t) ((char *) spare - words_area),
+				  ctx->stack_area, ctx->stack_bytes);
+	}
+      else
+	{
+	  radix_sort_run (&ctx->key_encoding, run->base, slots, spare, (int) run->numrecs, words_area,
+			  (size_t) ((char *) spare - words_area), ctx->stack_area, ctx->stack_bytes);
+	}
 
 #if !defined (NDEBUG)
       btsort_radix_validate (run, slots);
@@ -322,13 +351,19 @@ btsort_radix_sorter_next (BTSORT_RUN *run)
 
 /*
  * radix_sort_supports_key () - Whether the radix sorter can order a key of the domain
- *   return: true when the domain has a fixed width radix key
+ *   return: true when the domain has a fixed width radix key, or is a MIDXKEY whose first column has one
  *   key_domain(in):
  */
 bool
 radix_sort_supports_key (const TP_DOMAIN *key_domain)
 {
   RADIX_KEY_ENCODING encoding;
+  RADIX_MIDXKEY midxkey;
+
+  if (key_domain != NULL && TP_DOMAIN_TYPE (key_domain) == DB_TYPE_MIDXKEY)
+    {
+      return radix_sort_resolve_midxkey (&midxkey, &encoding, key_domain);
+    }
 
   return radix_sort_resolve_key (&encoding, key_domain);
 }
@@ -756,7 +791,7 @@ oid_to_order (UINT64 word)
 {
   assert (OR_OID_SIZE == 8);
 
-  /* a NULL OID is a NULL key, which never reaches the sort */
+  /* a NULL OID is never encoded: a NULL key never reaches the sort, and a NULL column is set aside first */
   assert ((big_endian_to_host (word) & 0x8000000080008000ULL) == 0);
 
   /* the last two bytes, the volume, move to the front: one rotation of the word */
@@ -765,6 +800,35 @@ oid_to_order (UINT64 word)
 #else
   return (word >> 16) | (word << 48);
 #endif
+}
+
+/*
+ * fixed_word_to_order () - Puts the big-endian word of a key of one word in unsigned byte order
+ *   return: the radix word, ascending
+ *   format(in): the key's, a constant where the caller is a template on it
+ *   word(in): from fixed_key_word ()
+ *   sign_bit(in): word_sign_bit ()
+ */
+template <int WORD_WIDTH>
+static inline radix_word<WORD_WIDTH>
+fixed_word_to_order (RADIX_KEY_FORMAT format, radix_word<WORD_WIDTH> word, radix_word<WORD_WIDTH> sign_bit)
+{
+  switch (format)
+    {
+    case RADIX_KEY_UNSIGNED:
+    case RADIX_KEY_DATETIME:
+      return word;		/* already in unsigned order */
+    case RADIX_KEY_SIGNED:
+      return word ^ sign_bit;
+    case RADIX_KEY_IEEE:
+    case RADIX_KEY_MONETARY:
+      return ieee_to_order (word, sign_bit);
+    case RADIX_KEY_OID:
+      return oid_to_order (word);
+    default:
+      assert (false);
+      return word;
+    }
 }
 
 /* the value bytes of a byte string key, as its format stores them */
@@ -1046,7 +1110,8 @@ byte_string_word (const RADIX_KEY_ENCODING *encoding, const byte_string &value, 
  *
  * Note: The key is read big-endian field by field. Flipping the bits its format names puts its bytes in unsigned
  *       order, and flipping every bit of a descending key's word turns that order round. A word is built in a
- *       register and written once. The format is a template argument, so its switch folds to one case.
+ *       register and written once. The format is a template argument, so the switch of fixed_word_to_order () folds
+ *       to one case.
  */
 template <int WORD_WIDTH, RADIX_KEY_FORMAT FORMAT>
 static void
@@ -1070,27 +1135,7 @@ encode_radix_words (const RADIX_KEY_ENCODING *encoding, const char *rec_base, co
 
       word = fixed_key_word<WORD_WIDTH> (format, (const unsigned char *) BTSORT_REC_KEY (rec));
 
-      switch (format)
-	{
-	case RADIX_KEY_UNSIGNED:
-	case RADIX_KEY_DATETIME:
-	  break;		/* already in unsigned order */
-	case RADIX_KEY_SIGNED:
-	  word ^= sign_bit;
-	  break;
-	case RADIX_KEY_IEEE:
-	case RADIX_KEY_MONETARY:
-	  word = ieee_to_order (word, sign_bit);
-	  break;
-	case RADIX_KEY_OID:
-	  word = oid_to_order (word);
-	  break;
-	default:
-	  assert (false);
-	  break;
-	}
-
-      word ^= desc_flip;
+      word = fixed_word_to_order<WORD_WIDTH> (format, word, sign_bit) ^ desc_flip;
 
       memcpy (radix_words + rec_index * WORD_WIDTH, &word, WORD_WIDTH);
 
@@ -1249,7 +1294,8 @@ namespace
 
   using bucket_counts = std::array<int, 256>;	/* one count per value of a word byte */
 
-  /* one MSD sort of a run: its slots and radix words, and the spare of each it moves into */
+  /* one MSD sort of a run, or of a MIDXKEY subarray by one word: its slots and radix words, and the spare of each it
+   * moves into */
   template <int WORD_WIDTH>
   class msd_sort
   {
@@ -1355,10 +1401,13 @@ msd_stack_entries (int key_length, int record_count)
 size_t
 radix_sort_stack_bytes (const RADIX_KEY_ENCODING *encoding, int max_records)
 {
+  /* the engine takes a MIDXKEY a word of a column at a time, each a key of one word */
+  const int engine_key_length = (encoding->format == RADIX_KEY_MIDXKEY) ? encoding->word_width : encoding->key_length;
+
   assert (encoding->word_width >= 1 && encoding->key_length >= 1);
   assert (max_records >= 0);
 
-  return (size_t) msd_stack_entries (encoding->key_length, max_records) * sizeof (msd_range);
+  return (size_t) msd_stack_entries (engine_key_length, max_records) * sizeof (msd_range);
 }
 
 /*
@@ -1998,4 +2047,477 @@ oid_less (const char *rec_base, BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right)
   OR_GET_OID (BTSORT_REC_OID (rec_base + right), &right_oid);
 
   return OID_LT (&left_oid, &right_oid);
+}
+
+/*
+ * 5. MIDXKEY: A WORD OF A COLUMN AT A TIME, EACH A KEY OF ONE WORD TO THE ENGINE
+ */
+
+/*
+ * radix_sort_resolve_midxkey () - Works the key encoding of a MIDXKEY out of its key domain, a column at a time
+ *   return: false when the first column has no radix key
+ *   midxkey(out): the columns, each as a key of its own domain, up to the first without a radix key or past the limits
+ *   encoding(out): the widest column's word, the radix columns' radix keys together, and the shortest stored key
+ *   key_domain(in): a MIDXKEY domain
+ */
+bool
+radix_sort_resolve_midxkey (RADIX_MIDXKEY *midxkey, RADIX_KEY_ENCODING *encoding, const TP_DOMAIN *key_domain)
+{
+  const TP_DOMAIN *column_domain;
+  RADIX_KEY_ENCODING column_encoding;
+  int word_width = 0, key_length = 0, word_count = 0;
+
+  memset (midxkey, 0, sizeof (*midxkey));
+  memset (encoding, 0, sizeof (*encoding));
+
+  if (key_domain == NULL || TP_DOMAIN_TYPE (key_domain) != DB_TYPE_MIDXKEY || key_domain->precision < 1)
+    {
+      return false;
+    }
+
+  for (column_domain = key_domain->setdomain; column_domain != NULL; column_domain = column_domain->next)
+    {
+      if (!radix_sort_resolve_key (&column_encoding, column_domain))
+	{
+	  break;
+	}
+
+      /* the words of the column's radix key */
+      word_count += (column_encoding.key_length + column_encoding.word_width - 1) / column_encoding.word_width;
+      if (word_count > RADIX_MAX_KEY_WORDS)
+	{
+	  break;
+	}
+
+      midxkey->columns[midxkey->radix_columns].encoding = column_encoding;
+      midxkey->columns[midxkey->radix_columns].domain = column_domain;
+      word_width = std::max (word_width, column_encoding.word_width);
+      key_length += column_encoding.key_length;
+      midxkey->radix_columns++;
+    }
+
+  if (midxkey->radix_columns == 0)
+    {
+      return false;
+    }
+
+  midxkey->column_count = key_domain->precision;
+
+  encoding->word_width = word_width;
+  encoding->key_length = key_length;
+  encoding->min_key_length = or_multi_header_size (midxkey->column_count);
+  encoding->format = RADIX_KEY_MIDXKEY;
+
+  return true;
+}
+
+/*
+ * column_key () - The key of a column: where its value starts in the stored MIDXKEY
+ *   return: its first byte
+ *   midxkey(in):
+ *   rec(in): the sort record
+ *   column_index(in): a radix column the record has a value of
+ *
+ * Note: The offset table says, but for a value past the 255 bytes it reaches, which the comparator's walk finds.
+ *       Inlined, as the loops of sort_by_word () read it for every record.
+ */
+static inline __attribute__ ((always_inline)) const unsigned char *
+column_key (const RADIX_MIDXKEY *midxkey, const char *rec, int column_index)
+{
+  char *image = BTSORT_REC_KEY (rec);
+  int offset = or_multi_get_element_offset (image, midxkey->column_count, column_index);
+  int before;
+
+  assert (!BTSORT_REC_HDR (rec)->is_bigone);
+
+  if (offset < 0)
+    {
+      offset = or_multi_header_size (midxkey->column_count);
+      for (before = 0; before < column_index; before++)
+	{
+	  /* a NULL column takes no bytes */
+	  if (or_multi_is_not_null (image, before))
+	    {
+	      offset += pr_midxkey_element_disk_size (image + offset, (TP_DOMAIN *) midxkey->columns[before].domain);
+	    }
+	}
+    }
+
+  return (const unsigned char *) image + offset;
+}
+
+/*
+ * column_word () - One word of a column's radix key, as the key of the column's domain alone has it
+ *   return: the radix word
+ *   column(in):
+ *   key(in): from column_key ()
+ *   word_index(in): the word of the column's radix key
+ *
+ * Note: Inlined, as the loops of sort_by_word () call it for every record.
+ */
+template <int WORD_WIDTH>
+static inline __attribute__ ((always_inline)) radix_word<WORD_WIDTH>
+column_word (const RADIX_KEY_COLUMN *column, const unsigned char *key, int word_index)
+{
+  const RADIX_KEY_ENCODING *encoding = &column->encoding;
+  const int from = word_index * WORD_WIDTH;
+  radix_word<WORD_WIDTH> word;
+
+  /* a byte string column is stored as the key of a single column */
+  switch (encoding->format)
+    {
+    case RADIX_KEY_BIT:
+      word = byte_string_word<WORD_WIDTH, RADIX_KEY_BIT> (encoding, byte_string_of<RADIX_KEY_BIT> (encoding, key),
+	     from);
+      break;
+    case RADIX_KEY_VARBIT:
+      word = byte_string_word<WORD_WIDTH, RADIX_KEY_VARBIT> (encoding, byte_string_of<RADIX_KEY_VARBIT> (encoding, key),
+	     from);
+      break;
+    case RADIX_KEY_STRING:
+      word = byte_string_word<WORD_WIDTH, RADIX_KEY_STRING> (encoding, byte_string_of<RADIX_KEY_STRING> (encoding, key),
+	     from);
+      break;
+    case RADIX_KEY_FIXED_NUMERIC:
+      word = byte_string_word<WORD_WIDTH, RADIX_KEY_FIXED_NUMERIC> (encoding,
+	     byte_string_of<RADIX_KEY_FIXED_NUMERIC> (encoding, key), from);
+      break;
+    case RADIX_KEY_FLOAT_NUMERIC:
+      word = byte_string_word<WORD_WIDTH, RADIX_KEY_FLOAT_NUMERIC> (encoding,
+	     byte_string_of<RADIX_KEY_FLOAT_NUMERIC> (encoding, key), from);
+      break;
+    default:
+      word = fixed_word_to_order<WORD_WIDTH> (encoding->format, fixed_key_word<WORD_WIDTH> (encoding->format, key),
+					      word_sign_bit<WORD_WIDTH> ());
+      break;
+    }
+
+  /* a descending column turns its order round */
+  return encoding->is_desc ? (radix_word<WORD_WIDTH>) ~word : word;
+}
+
+namespace
+{
+  /* what the sort of a MIDXKEY run shares, word after word */
+  struct midxkey_sort
+  {
+    const RADIX_MIDXKEY *midxkey;
+    BTSORT_CMP_FUNC *cmp_fn;	/* for the columns past the radix columns */
+    void *cmp_arg;
+    const char *rec_base;	/* the sort buffer the slots are offsets into */
+    unsigned char *words_area;	/* aligned: each sort_by_word () lays its radix words from the bottom */
+    const char *words_area_end;
+    msd_range *stack;
+    size_t stack_bytes;
+    bool has_null;		/* some record of the run has a NULL column */
+  };
+}
+
+static void sort_subarray (const midxkey_sort &ms, BTSORT_RUN_SLOT *slots, BTSORT_RUN_SLOT *slots_spare,
+			   int record_count, int column_index, int word_index);
+
+/* a record's word: word_index of the column's radix key */
+template <int WORD_WIDTH>
+static inline radix_word<WORD_WIDTH>
+column_word_of (const midxkey_sort &ms, BTSORT_RUN_SLOT slot, int column_index, int word_index)
+{
+  return column_word<WORD_WIDTH> (&ms.midxkey->columns[column_index],
+				  column_key (ms.midxkey, ms.rec_base + slot, column_index), word_index);
+}
+
+/* the word after a word of a column: the next word of its radix key, or the first word of the next column */
+static inline void
+to_next_word (const RADIX_MIDXKEY *midxkey, int *column_index, int *word_index)
+{
+  const RADIX_KEY_ENCODING *encoding = &midxkey->columns[*column_index].encoding;
+
+  if ((*word_index + 1) * encoding->word_width < encoding->key_length)
+    {
+      (*word_index)++;
+    }
+  else
+    {
+      (*column_index)++;
+      *word_index = 0;
+    }
+}
+
+/*
+ * sort_by_word () - Orders a subarray by one word of a column, then each subarray that shares it by the next word
+ *   return: false when every record shares the word, which leaves the subarray as it is
+ *   ms(in):
+ *   slots(in/out): records that agree on every word before this one
+ *   slots_spare(in): as many slots, for scratch
+ *   record_count(in): two or more
+ *   column_index(in): a radix column the records have a value of
+ *   word_index(in): the word of the column's radix key
+ *
+ * Note: To the engine the column's word is a key of one word. A subarray is found by its words worked out again, as
+ *       the sort by the next word lays its own radix words over them.
+ */
+template <int WORD_WIDTH>
+static bool
+sort_by_word (const midxkey_sort &ms, BTSORT_RUN_SLOT *slots, BTSORT_RUN_SLOT *slots_spare, int record_count,
+	      int column_index, int word_index)
+{
+  using word = radix_word<WORD_WIDTH>;
+  const RADIX_KEY_ENCODING *column_encoding = &ms.midxkey->columns[column_index].encoding;
+  const int stack_entries = msd_stack_entries (WORD_WIDTH, record_count);
+  unsigned char *radix_words = ms.words_area, *radix_words_spare = ms.words_area + record_count * WORD_WIDTH;
+  RADIX_KEY_ENCODING word_encoding = *column_encoding;
+  word rec_word, subarray_word, any_set = 0, all_set = (word) ~0ULL;
+  int next_column_index = column_index, next_word_index = word_index;
+  int at, start, end;
+
+  assert (column_encoding->word_width == WORD_WIDTH);
+  assert ((char *) radix_words_spare + record_count * WORD_WIDTH <= ms.words_area_end);
+  assert ((size_t) stack_entries * sizeof (msd_range) <= ms.stack_bytes);
+
+  for (at = 0; at < record_count; at++)
+    {
+      rec_word = column_word_of<WORD_WIDTH> (ms, slots[at], column_index, word_index);
+      memcpy (radix_words + at * WORD_WIDTH, &rec_word, WORD_WIDTH);
+      any_set |= rec_word;
+      all_set &= rec_word;
+    }
+
+  if (any_set == all_set)
+    {
+      return false;
+    }
+
+  word_encoding.key_length = WORD_WIDTH;
+  msd_sort<WORD_WIDTH> (&word_encoding, ms.rec_base, slots, slots_spare, radix_words, radix_words_spare, record_count,
+			any_set ^ all_set, ms.stack, stack_entries).sort ();
+
+  /* the last word: the engine broke the ties by OID */
+  to_next_word (ms.midxkey, &next_column_index, &next_word_index);
+  if (next_column_index >= ms.midxkey->column_count)
+    {
+      return true;
+    }
+
+  rec_word = column_word_of<WORD_WIDTH> (ms, slots[0], column_index, word_index);
+  for (start = 0; start < record_count; start = end)
+    {
+      subarray_word = rec_word;
+      for (end = start + 1; end < record_count; end++)
+	{
+	  rec_word = column_word_of<WORD_WIDTH> (ms, slots[end], column_index, word_index);
+	  if (rec_word != subarray_word)
+	    {
+	      break;
+	    }
+	}
+
+      if (end - start > 1)
+	{
+	  sort_subarray (ms, slots + start, slots_spare + start, end - start, next_column_index, next_word_index);
+	}
+    }
+
+  return true;
+}
+
+/*
+ * set_nulls_aside () - Moves the records whose column is NULL to the end of the subarray the comparator orders them at
+ *   return: how many it moved
+ *   ms(in):
+ *   slots(in/out):
+ *   slots_spare(in): as many slots, for scratch
+ *   record_count(in):
+ *   column_index(in):
+ *
+ * Note: A NULL orders first, and a descending column turns that round. The records keep their order on either side.
+ */
+static int
+set_nulls_aside (const midxkey_sort &ms, BTSORT_RUN_SLOT *slots, BTSORT_RUN_SLOT *slots_spare, int record_count,
+		 int column_index)
+{
+  const bool nulls_last = ms.midxkey->columns[column_index].encoding.is_desc;
+  /* the part that goes last to the spare slots, the other closed up in place */
+  BTSORT_RUN_SLOT *nulls_to = nulls_last ? slots_spare : slots;
+  BTSORT_RUN_SLOT *values_to = nulls_last ? slots : slots_spare;
+  const char *rec;
+  int null_count = 0, value_count = 0, first_count, at;
+
+  for (at = 0; at < record_count; at++)
+    {
+      rec = ms.rec_base + slots[at];
+      if (BTSORT_REC_HDR (rec)->has_null && or_multi_is_null (BTSORT_REC_KEY (rec), column_index))
+	{
+	  nulls_to[null_count++] = slots[at];
+	}
+      else
+	{
+	  values_to[value_count++] = slots[at];
+	}
+    }
+
+  /* the part in the spare slots back after the other. When none goes first, the slots are as they were */
+  first_count = nulls_last ? value_count : null_count;
+  if (first_count > 0)
+    {
+      std::copy (slots_spare, slots_spare + (record_count - first_count), slots + first_count);
+    }
+
+  return null_count;
+}
+
+/* the comparator's order, for the columns past the radix columns */
+static void
+compare_sort (const midxkey_sort &ms, BTSORT_RUN_SLOT *slots, int record_count)
+{
+  auto ascending = [&ms] (BTSORT_RUN_SLOT left, BTSORT_RUN_SLOT right)
+  {
+    return (*ms.cmp_fn) (ms.rec_base + left, ms.rec_base + right, ms.cmp_arg) < 0;
+  };
+
+  if (std::is_sorted (slots, slots + record_count, ascending))
+    {
+      return;
+    }
+
+  std::sort (slots, slots + record_count, ascending);
+}
+
+/*
+ * sort_subarray () - Orders a subarray of records that agree on every word before the column's word
+ *   return: void
+ *   ms(in):
+ *   slots(in/out):
+ *   slots_spare(in): as many slots, for scratch
+ *   record_count(in): two or more
+ *   column_index(in): the column of the word, the column count when the records share the key whole
+ *   word_index(in): the word of the column's radix key
+ *
+ * Note: A word every record of the subarray shares leaves it to the next word in the loop here, a call deeper only for
+ *       a subarray a word splits. RADIX_MAX_KEY_WORDS bounds how deep that goes.
+ */
+static void
+sort_subarray (const midxkey_sort &ms, BTSORT_RUN_SLOT *slots, BTSORT_RUN_SLOT *slots_spare, int record_count,
+	       int column_index, int word_index)
+{
+  int null_count, nulls_at, values_at;
+  bool nulls_last, sorted;
+
+  assert (record_count >= 2);
+
+  while (true)
+    {
+      /* when every key ties, order by OID */
+      if (column_index >= ms.midxkey->column_count)
+	{
+	  sort_by_oid (ms.rec_base, slots, record_count);
+	  return;
+	}
+
+      /* a column the radix sort cannot order takes the compare sort */
+      if (column_index >= ms.midxkey->radix_columns)
+	{
+	  compare_sort (ms, slots, record_count);
+	  return;
+	}
+
+      /* set aside the records whose column is NULL, first or last as NULLs order.
+       * They are sorted again from the next column */
+      if (word_index == 0 && ms.has_null)
+	{
+	  nulls_last = ms.midxkey->columns[column_index].encoding.is_desc;
+	  null_count = set_nulls_aside (ms, slots, slots_spare, record_count, column_index);
+	  nulls_at = nulls_last ? record_count - null_count : 0;
+	  values_at = nulls_last ? 0 : null_count;
+
+	  if (null_count > 1)
+	    {
+	      sort_subarray (ms, slots + nulls_at, slots_spare + nulls_at, null_count, column_index + 1, 0);
+	    }
+
+	  slots += values_at;
+	  slots_spare += values_at;
+	  record_count -= null_count;
+	  if (record_count < 2)
+	    {
+	      return;
+	    }
+	}
+
+      /* radix sort the records whose column is not NULL, at the width of the column's word */
+      switch (ms.midxkey->columns[column_index].encoding.word_width)
+	{
+	case 2:
+	  sorted = sort_by_word<2> (ms, slots, slots_spare, record_count, column_index, word_index);
+	  break;
+	case 4:
+	  sorted = sort_by_word<4> (ms, slots, slots_spare, record_count, column_index, word_index);
+	  break;
+	case 8:
+	  sorted = sort_by_word<8> (ms, slots, slots_spare, record_count, column_index, word_index);
+	  break;
+	default:
+	  /* radix_sort_resolve_key () resolves these widths only */
+	  assert (false);
+	  return;
+	}
+
+      if (sorted)
+	{
+	  return;
+	}
+
+      to_next_word (ms.midxkey, &column_index, &word_index);
+    }
+}
+
+/*
+ * radix_sort_midxkey_run () - Orders one run of a MIDXKEY
+ *   return: void
+ *   midxkey(in):
+ *   cmp_fn(in): the run's comparator, for the columns past the radix columns
+ *   cmp_arg(in):
+ *   rec_base(in): the sort buffer the slots are offsets into
+ *   slots(in/out): one per record, in arrival order so equal keys come in OID order
+ *   slots_spare(in): as many slots, for scratch
+ *   record_count(in):
+ *   words_area(in): two words of the widest column per record and DOUBLE_ALIGNMENT, or more
+ *   words_bytes(in):
+ *   stack_area(in): radix_sort_stack_bytes () of the encoding radix_sort_resolve_midxkey () gave, aligned for an int
+ *   stack_bytes(in):
+ *
+ * Note: The run is sorted by the first word of its first column, then each subarray of records that share every word so
+ *       far by the next one, the words of a column in turn and the columns in turn, and the records that share the key
+ *       whole by instance OID.
+ */
+void
+radix_sort_midxkey_run (const RADIX_MIDXKEY *midxkey, BTSORT_CMP_FUNC *cmp_fn, void *cmp_arg,
+			const char *rec_base, BTSORT_RUN_SLOT *slots, BTSORT_RUN_SLOT *slots_spare, int record_count,
+			char *words_area, size_t words_bytes, char *stack_area, size_t stack_bytes)
+{
+  midxkey_sort ms;
+  int at;
+
+  assert (midxkey->radix_columns >= 1 && midxkey->radix_columns <= midxkey->column_count);
+  assert (PTR_ALIGN (stack_area, INT_ALIGNMENT) == stack_area);
+
+  if (record_count <= 1)
+    {
+      return;
+    }
+
+  ms.midxkey = midxkey;
+  ms.cmp_fn = cmp_fn;
+  ms.cmp_arg = cmp_arg;
+  ms.rec_base = rec_base;
+  ms.words_area = (unsigned char *) PTR_ALIGN (words_area, DOUBLE_ALIGNMENT);
+  ms.words_area_end = words_area + words_bytes;
+  ms.stack = (msd_range *) stack_area;
+  ms.stack_bytes = stack_bytes;
+  ms.has_null = false;
+
+  for (at = 0; at < record_count && !ms.has_null; at++)
+    {
+      ms.has_null = (BTSORT_REC_HDR (rec_base + slots[at])->has_null != 0);
+    }
+
+  sort_subarray (ms, slots, slots_spare, record_count, 0, 0);
 }

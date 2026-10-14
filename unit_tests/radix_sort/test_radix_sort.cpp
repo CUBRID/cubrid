@@ -72,6 +72,14 @@ namespace
       radix_sort_run (encoding, rec_base, slots, slots_spare.data(), n, words_area.data(), words_area.size(),
 		      stack.data(), stack.size());
     }
+
+    /* a MIDXKEY, its work memory sized by the encoding radix_sort_resolve_midxkey () gave */
+    void sort (const RADIX_MIDXKEY *key, BTSORT_CMP_FUNC *cmp_fn, void *cmp_arg, const char *rec_base,
+	       BTSORT_RUN_SLOT *slots, int n)
+    {
+      radix_sort_midxkey_run (key, cmp_fn, cmp_arg, rec_base, slots, slots_spare.data(), n, words_area.data(),
+			      words_area.size(), stack.data(), stack.size());
+    }
   };
 
   /* the index-build sort record, as bt_load_put_buf_to_record () lays it out:
@@ -215,6 +223,7 @@ namespace
   {
     std::vector<unsigned char> key_bytes;
     unsigned int oid_rank = 0;
+    bool has_null = false;	/* a MIDXKEY with a NULL column */
   };
 
   /* orders two stored keys as the type's comparator does, decoding the disk bytes, not via the sorter's transforms */
@@ -389,7 +398,7 @@ namespace
 
 	header->length = (UINT16) run.rec_size;
 	header->is_bigone = 0;
-	header->has_null = 0;
+	header->has_null = samples[i].has_null ? 1 : 0;
 	header->key_off = (UINT8) key_offset (unique, mvcc_words);
 	header->flags = (UINT8) ((mvcc_words >= 1 ? BTSORT_REC_HAS_INSID : 0)
 				 | (mvcc_words >= 2 ? BTSORT_REC_HAS_DELID : 0));
@@ -1867,5 +1876,833 @@ TEST_CASE ("radix key table", "[radix_sort]")
     REQUIRE (encoding.min_key_length == 0);
     REQUIRE (encoding.format == RADIX_KEY_UNSIGNED);
     REQUIRE_FALSE (encoding.is_desc);
+  }
+}
+
+namespace
+{
+  /* the columns a MIDXKEY is tried with */
+  enum column_kind
+  {
+    COL_SHORT,
+    COL_INT,
+    COL_BIGINT,
+    COL_FLOAT,
+    COL_DOUBLE,
+    COL_DATE,
+    COL_TIME,
+    COL_TIMESTAMP,
+    COL_TIMESTAMPLTZ,
+    COL_TIMESTAMPTZ,
+    COL_DATETIME,
+    COL_DATETIMELTZ,
+    COL_DATETIMETZ,
+    COL_ENUM,
+    COL_MONETARY,
+    COL_OID,
+    COL_CHAR6,
+    COL_VARCHAR12,
+    COL_VARCHAR16_EN_CS,
+    COL_VARCHAR16_EN_CI,
+    COL_VARCHAR40,
+    COL_LONG_VARCHAR200,	/* close to 200 characters, so the offsets of the columns after reach past 255 */
+    COL_VARCHAR300,		/* a domain the key table declines, its values short */
+    COL_BIT12,
+    COL_VARBIT20,
+    COL_VARBIT300,		/* a length of 255 bits or more takes the long form */
+    COL_NUMERIC,
+    COL_FLOAT_NUMERIC
+  };
+
+  /* a column: its kind and direction, its values' shape, or rows alike in groups of `group` when that is set, and a
+   * NULL in about one row of `null_every`, 0 for none */
+  struct column_spec
+  {
+    column_kind kind;
+    bool desc;
+    int shape;
+    int group;
+    int null_every;
+  };
+
+  TP_DOMAIN
+  column_domain (const column_spec &spec)
+  {
+    switch (spec.kind)
+      {
+      case COL_SHORT:
+	return domain_of (DB_TYPE_SHORT, spec.desc);
+      case COL_INT:
+	return domain_of (DB_TYPE_INTEGER, spec.desc);
+      case COL_BIGINT:
+	return domain_of (DB_TYPE_BIGINT, spec.desc);
+      case COL_FLOAT:
+	return domain_of (DB_TYPE_FLOAT, spec.desc);
+      case COL_DOUBLE:
+	return domain_of (DB_TYPE_DOUBLE, spec.desc);
+      case COL_DATE:
+	return domain_of (DB_TYPE_DATE, spec.desc);
+      case COL_TIME:
+	return domain_of (DB_TYPE_TIME, spec.desc);
+      case COL_TIMESTAMP:
+	return domain_of (DB_TYPE_TIMESTAMP, spec.desc);
+      case COL_TIMESTAMPLTZ:
+	return domain_of (DB_TYPE_TIMESTAMPLTZ, spec.desc);
+      case COL_TIMESTAMPTZ:
+	return domain_of (DB_TYPE_TIMESTAMPTZ, spec.desc);
+      case COL_DATETIME:
+	return domain_of (DB_TYPE_DATETIME, spec.desc);
+      case COL_DATETIMELTZ:
+	return domain_of (DB_TYPE_DATETIMELTZ, spec.desc);
+      case COL_DATETIMETZ:
+	return domain_of (DB_TYPE_DATETIMETZ, spec.desc);
+      case COL_ENUM:
+	return domain_of (DB_TYPE_ENUMERATION, spec.desc);
+      case COL_MONETARY:
+	return domain_of (DB_TYPE_MONETARY, spec.desc);
+      case COL_OID:
+	return domain_of (DB_TYPE_OID, spec.desc);
+      case COL_CHAR6:
+	return string_domain (DB_TYPE_CHAR, 6, LANG_COLL_ISO_BINARY, spec.desc);
+      case COL_VARCHAR12:
+	return string_domain (DB_TYPE_VARCHAR, 12, LANG_COLL_UTF8_BINARY, spec.desc);
+      case COL_VARCHAR16_EN_CS:
+	return string_domain (DB_TYPE_VARCHAR, 16, LANG_COLL_ISO_EN_CS, spec.desc);
+      case COL_VARCHAR16_EN_CI:
+	return string_domain (DB_TYPE_VARCHAR, 16, LANG_COLL_UTF8_EN_CI, spec.desc);
+      case COL_VARCHAR40:
+	return string_domain (DB_TYPE_VARCHAR, 40, LANG_COLL_ISO_BINARY, spec.desc);
+      case COL_LONG_VARCHAR200:
+	return string_domain (DB_TYPE_VARCHAR, 200, LANG_COLL_ISO_BINARY, spec.desc);
+      case COL_VARCHAR300:
+	return string_domain (DB_TYPE_VARCHAR, 300, LANG_COLL_ISO_BINARY, spec.desc);
+      case COL_BIT12:
+	return bit_domain (12, spec.desc);
+      case COL_VARBIT20:
+	return bit_domain (20, spec.desc, DB_TYPE_VARBIT);
+      case COL_VARBIT300:
+	return bit_domain (300, spec.desc, DB_TYPE_VARBIT);
+      case COL_NUMERIC:
+	return numeric_domain (10, 2, spec.desc);
+      default:
+	return domain_of (DB_TYPE_NUMERIC, spec.desc);	/* without a precision */
+      }
+  }
+
+  /* the MIDXKEY domain of the columns, each a domain of its own direction */
+  TP_DOMAIN
+  midxkey_domain (std::vector<TP_DOMAIN> &columns)
+  {
+    TP_DOMAIN domain = *tp_domain_resolve_default (DB_TYPE_MIDXKEY);
+
+    for (size_t at = 0; at < columns.size (); at++)
+      {
+	columns[at].next = (at + 1 < columns.size ()) ? &columns[at + 1] : NULL;
+      }
+    domain.precision = (int) columns.size ();
+    domain.setdomain = columns.empty () ? NULL : columns.data ();
+    domain.is_desc = 0;
+    return domain;
+  }
+
+  /* a column's part of a MIDXKEY image: its bytes as the index writer writes them, none for a NULL */
+  struct column_part
+  {
+    std::vector<unsigned char> bytes;
+    bool is_null = false;
+  };
+
+  column_part
+  written_part (const TP_DOMAIN &domain, DB_VALUE &value)
+  {
+    char image[64];
+    OR_BUF buf;
+    column_part part;
+
+    or_init (&buf, image, (int) sizeof (image));
+    if (domain.type->index_writeval (&buf, &value) != NO_ERROR)
+      {
+	FAIL ("index_writeval of a " << domain.type->name);
+      }
+    part.bytes.assign (image, buf.ptr);
+    return part;
+  }
+
+  /* a draw's run of bytes, the same for the same draw */
+  unsigned long long
+  next_of (unsigned long long &state)
+  {
+    state = state * 6364136223846793005ULL + 1442695040888963407ULL;
+    return state >> 33;
+  }
+
+  /* the image the string writers store, spelt from the draw: a length byte, then chars characters */
+  column_part
+  string_part (int chars, const std::vector<std::string> &letters, unsigned long long drawn)
+  {
+    unsigned long long state = drawn;
+    std::string value;
+    column_part part;
+
+    for (int at = 0; at < chars; at++)
+      {
+	value += letters[ (size_t) (next_of (state) % letters.size ())];
+      }
+    REQUIRE (value.size () < (size_t) OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+
+    part.bytes.assign (1, (unsigned char) value.size ());
+    part.bytes.insert (part.bytes.end (), value.begin (), value.end ());
+    return part;
+  }
+
+  /* the bytes of a bit string, the last byte's spare bits zero as the writer leaves them */
+  std::vector<unsigned char>
+  bit_bytes (int bit_length, unsigned long long drawn)
+  {
+    std::vector<unsigned char> bytes ((size_t) BITS_TO_BYTES (bit_length), 0);
+    unsigned long long state = drawn;
+
+    for (size_t at = 0; at < bytes.size (); at++)
+      {
+	bytes[at] = (unsigned char) next_of (state);
+      }
+    if (bit_length % 8 != 0)
+      {
+	bytes.back () &= (unsigned char) (0xff << (8 - bit_length % 8));
+      }
+    return bytes;
+  }
+
+  DB_DATETIME
+  datetime_of (unsigned long long drawn)
+  {
+    DB_DATETIME datetime;
+
+    datetime.date = (unsigned int) (drawn % 3652059);
+    datetime.time = (unsigned int) ((drawn >> 20) % 86400000);
+    return datetime;
+  }
+
+  /* the value of the column in row i: the shape's draw, or the number of the row's group */
+  column_part
+  column_value (const TP_DOMAIN &domain, const column_spec &spec, int i, int n, std::mt19937_64 &rng)
+  {
+    const unsigned long long drawn = (spec.group > 0) ? (unsigned long long) (i / spec.group)
+				     : shape_value (spec.shape, i, n, rng);
+    DB_VALUE value;
+
+    if (spec.null_every > 0 && rng () % (unsigned long long) spec.null_every == 0)
+      {
+	column_part null_part;
+
+	null_part.is_null = true;
+	return null_part;
+      }
+
+    switch (spec.kind)
+      {
+      case COL_SHORT:
+	db_make_short (&value, (short) drawn);
+	break;
+      case COL_INT:
+	db_make_int (&value, (int) drawn);
+	break;
+      case COL_BIGINT:
+	db_make_bigint (&value, (DB_BIGINT) drawn);
+	break;
+      case COL_FLOAT:
+	db_make_float (&value, (float) (long long) drawn / 3.0f);
+	break;
+      case COL_DOUBLE:
+	db_make_double (&value, (double) (long long) drawn / 3.0);
+	break;
+      case COL_DATE:
+      {
+	DB_DATE date = (DB_DATE) (drawn % 3652059);
+
+	db_value_put_encoded_date (&value, &date);
+      }
+      break;
+      case COL_TIME:
+      {
+	DB_TIME time = (DB_TIME) (drawn % 86400);
+
+	db_value_put_encoded_time (&value, &time);
+      }
+      break;
+      case COL_TIMESTAMP:
+	/* any 32 bits, so a value past 0x7fffffff shows the word is unsigned */
+	db_make_timestamp (&value, (DB_TIMESTAMP) drawn);
+	break;
+      case COL_TIMESTAMPLTZ:
+	db_make_timestampltz (&value, (DB_TIMESTAMP) drawn);
+	break;
+      case COL_TIMESTAMPTZ:
+      {
+	DB_TIMESTAMPTZ ts_tz;
+
+	/* a zone of its own, which the comparator never reads */
+	ts_tz.timestamp = (DB_TIMESTAMP) (drawn % 0x7fffffff);
+	ts_tz.tz_id = (TZ_ID) rng ();
+	db_make_timestamptz (&value, &ts_tz);
+      }
+      break;
+      case COL_DATETIME:
+      {
+	DB_DATETIME datetime = datetime_of (drawn);
+
+	db_make_datetime (&value, &datetime);
+      }
+      break;
+      case COL_DATETIMELTZ:
+      {
+	DB_DATETIME datetime = datetime_of (drawn);
+
+	db_make_datetimeltz (&value, &datetime);
+      }
+      break;
+      case COL_DATETIMETZ:
+      {
+	DB_DATETIMETZ dt_tz;
+
+	dt_tz.datetime = datetime_of (drawn);
+	dt_tz.tz_id = (TZ_ID) rng ();
+	db_make_datetimetz (&value, &dt_tz);
+      }
+      break;
+      case COL_ENUM:
+	/* the index alone, which the comparator reads as an unsigned short */
+	db_make_enumeration (&value, (unsigned short) drawn, NULL, 0, INTL_CODESET_ISO88591, LANG_COLL_ISO_BINARY);
+	break;
+      case COL_MONETARY:
+	db_make_monetary (&value, DB_CURRENCY_DOLLAR, (double) (long long) drawn / 100.0);
+	break;
+      case COL_OID:
+      {
+	OID oid;
+
+	/* no field of a key OID is negative, and each goes past a byte, so a field in the wrong byte order shows */
+	oid.pageid = (INT32) (drawn % 1000003);
+	oid.slotid = (INT16) ((drawn >> 20) % 30011);
+	oid.volid = (INT16) ((drawn >> 40) % 30011);
+	db_make_oid (&value, &oid);
+      }
+      break;
+      case COL_CHAR6:
+	return string_part (6, ISO_LETTERS, drawn);
+      case COL_VARCHAR12:
+	return string_part ((int) (drawn % 13), UTF8_LETTERS, drawn);
+      case COL_VARCHAR16_EN_CS:
+	return string_part ((int) (drawn % 17), ISO_LETTERS, drawn);
+      case COL_VARCHAR16_EN_CI:
+	return string_part ((int) (drawn % 17), UTF8_LETTERS, drawn);
+      case COL_VARCHAR40:
+	return string_part ((int) (drawn % 41), ISO_LETTERS, drawn);
+      case COL_LONG_VARCHAR200:
+	return string_part (200 - (int) (drawn % 16), ISO_LETTERS, drawn);
+      case COL_VARCHAR300:
+	return string_part ((int) (drawn % 41), ISO_LETTERS, drawn);
+      case COL_BIT12:
+      {
+	column_part part;
+
+	part.bytes = bit_bytes (12, drawn);
+	return part;
+      }
+      case COL_VARBIT20:
+      {
+	const int bit_length = (int) (drawn % 21);
+	column_part part;
+
+	part.bytes = varbit_image (bit_length, bit_bytes (bit_length, drawn));
+	return part;
+      }
+      case COL_VARBIT300:
+      {
+	const int bit_length = (int) (drawn % 301);
+	column_part part;
+
+	part.bytes = varbit_image (bit_length, bit_bytes (bit_length, drawn));
+	return part;
+      }
+      case COL_NUMERIC:
+      case COL_FLOAT_NUMERIC:
+      {
+	const bool is_float = (spec.kind == COL_FLOAT_NUMERIC);
+	const std::string digits = std::to_string (drawn % 10000000000ULL);
+	const bool negative = (drawn & 1) != 0 && digits != "0";
+	column_part part;
+
+	part.bytes = numeric_sample (digits, is_float ? (int) digits.size () : 10, is_float ? (int) (drawn % 5) : 2,
+				     is_float, negative, 0).key_bytes;
+	return part;
+      }
+      }
+    return written_part (domain, value);
+  }
+
+  /* the image heap_midxkey_key_generate () stores: a bitmap of the columns that have a value, an offset table, which
+   * holds 255 for an offset it cannot, then each value but a NULL, which takes no bytes */
+  sample
+  midxkey_image (const std::vector<column_part> &parts, unsigned int oid)
+  {
+    const int count = (int) parts.size ();
+    std::vector<unsigned char> image ((size_t) or_multi_header_size (count), 0);
+    sample one;
+
+    for (int at = 0; at < count; at++)
+      {
+	or_multi_put_element_offset ((char *) image.data (), count, (int) image.size (), at);
+	if (parts[ (size_t) at].is_null)
+	  {
+	    one.has_null = true;
+	    continue;
+	  }
+	or_multi_set_not_null ((char *) image.data (), at);
+	image.insert (image.end (), parts[ (size_t) at].bytes.begin (), parts[ (size_t) at].bytes.end ());
+      }
+    or_multi_put_size_offset ((char *) image.data (), count, (int) image.size ());
+    one.key_bytes = image;
+    one.oid_rank = oid;
+    return one;
+  }
+
+  sample
+  midxkey_sample (const std::vector<TP_DOMAIN> &columns, const std::vector<column_spec> &specs, int i, int n,
+		  std::mt19937_64 &rng, unsigned int oid)
+  {
+    std::vector<column_part> parts;
+
+    for (size_t at = 0; at < columns.size (); at++)
+      {
+	parts.push_back (column_value (columns[at], specs[at], i, n, rng));
+      }
+    return midxkey_image (parts, oid);
+  }
+
+  /* the MIDXKEY branch of btsort_compare_records (): a NULL first, then the index comparator of each column, in the
+   * direction of the column the keys part in */
+  key_compare
+  cmp_midxkey (const TP_DOMAIN &domain)
+  {
+    return [domain] (const unsigned char *a, const unsigned char *b)
+    {
+      const int header_size = or_multi_header_size (domain.precision);
+      char *mem1 = (char *) a + header_size;
+      char *mem2 = (char *) b + header_size;
+      TP_DOMAIN *dom = domain.setdomain;
+
+      for (int i = 0; i < domain.precision; i++, dom = dom->next)
+	{
+	  const bool null1 = or_multi_is_null ((char *) a, i), null2 = or_multi_is_null ((char *) b, i);
+	  int c;
+
+	  if (null1 && null2)
+	    {
+	      continue;
+	    }
+	  if (null1 || null2)
+	    {
+	      c = null1 ? -1 : 1;
+	    }
+	  else
+	    {
+	      DB_VALUE_COMPARE_RESULT r = dom->type->index_cmpdisk (mem1, mem2, dom, 0, 1, NULL);
+
+	      assert (r != DB_UNK);
+	      c = (r == DB_LT) ? -1 : (r == DB_GT) ? 1 : 0;
+	      mem1 += pr_midxkey_element_disk_size (mem1, dom);
+	      mem2 += pr_midxkey_element_disk_size (mem2, dom);
+	    }
+	  if (c != 0)
+	    {
+	      return dom->is_desc ? -c : c;
+	    }
+	}
+      return 0;
+    };
+  }
+
+  /* the run's comparator, which the sort takes the order of the columns past the radix columns from: the key by the
+   * oracle in cmp_arg, then the instance OID */
+  int
+  compare_records (const void *first, const void *second, void *cmp_arg)
+  {
+    const key_compare *oracle = (const key_compare *) cmp_arg;
+    const unsigned char *a = (const unsigned char *) first;
+    const unsigned char *b = (const unsigned char *) second;
+    int c = (*oracle) (key_of (a), key_of (b));
+
+    return (c != 0) ? c : cmp_oid (a, b);
+  }
+
+  /* the MIDXKEY of the columns, which the caller keeps alive with the domain */
+  RADIX_MIDXKEY
+  resolved_midxkey (const std::vector<column_spec> &specs, std::vector<TP_DOMAIN> &columns, TP_DOMAIN &domain,
+		    RADIX_KEY_ENCODING &encoding)
+  {
+    RADIX_MIDXKEY key;
+
+    columns.clear ();
+    for (const column_spec &spec : specs)
+      {
+	columns.push_back (column_domain (spec));
+      }
+    domain = midxkey_domain (columns);
+    REQUIRE (radix_sort_resolve_midxkey (&key, &encoding, &domain));
+    REQUIRE (key.column_count == (int) specs.size ());
+    return key;
+  }
+
+  /* build, sort by the MIDXKEY in work memory sized for more records, check against the oracle */
+  void
+  check_midxkey_run (const RADIX_MIDXKEY &key, run_work &work, bool unique, const std::vector<sample> &samples,
+		     const key_compare &oracle, const std::string &what)
+  {
+    int n = (int) samples.size ();
+    run_image run = build_run (unique, samples);
+    std::vector<size_t> expected ((size_t) n);
+
+    std::iota (expected.begin (), expected.end (), (size_t) 0);
+    std::sort (expected.begin (), expected.end (), [&] (size_t x, size_t y)
+    {
+      int c = oracle (samples[x].key_bytes.data (), samples[y].key_bytes.data ());
+
+      return (c != 0) ? c < 0 : samples[x].oid_rank < samples[y].oid_rank;
+    });
+
+    INFO (what);
+    work.sort (&key, compare_records, (void *) &oracle, run.rec_base (), run.slots.data (), n);
+
+    for (size_t i = 0; i < (size_t) n; i++)
+      {
+	BTSORT_RUN_SLOT want = run.slot_of (expected[i]);
+
+	if (run.slots[i] != want)
+	  {
+	    INFO (what << ": wrong record at " << i << " of " << n);
+	    REQUIRE (run.slots[i] == want);
+	  }
+      }
+  }
+}
+
+/* a MIDXKEY: the run by the first word of its first column, then the records that tie on every word so far by
+ * the next, down to the OID. The ties come in groups either side of the cutoff and as the whole run, the NULLs of a
+ * column as a group of their own, and the columns past the radix columns from the comparator */
+TEST_CASE ("radix sorts MIDXKEYs as btsort_compare_records () does", "[radix_sort]")
+{
+  struct midxkey_case
+  {
+    const char *name;
+    std::vector<column_spec> columns;
+    int radix_columns;		/* 0 for every column */
+  };
+  const std::vector<midxkey_case> cases =
+  {
+    { "int, int", { { COL_INT, false, SHAPE_RANDOM, 0, 0 }, { COL_INT, false, SHAPE_RANDOM, 0, 0 } }, 0 },
+    {
+      "int few, varchar",
+      { { COL_INT, false, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_VARCHAR12, false, SHAPE_RANDOM, 0, 0 } }, 0
+    },
+    {
+      "char few, smallint desc dup",
+      { { COL_CHAR6, false, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_SHORT, true, SHAPE_ASC_DUP, 0, 0 } }, 0
+    },
+    {
+      "bigint desc dup, double few, datetime",
+      {
+	{ COL_BIGINT, true, SHAPE_ASC_DUP, 0, 0 }, { COL_DOUBLE, false, SHAPE_FEW_DISTINCT, 0, 0 },
+	{ COL_DATETIME, false, SHAPE_RANDOM, 0, 0 }
+      }, 0
+    },
+    { "numeric dup, int", { { COL_NUMERIC, false, SHAPE_ASC_DUP, 0, 0 }, { COL_INT, false, SHAPE_RANDOM, 0, 0 } }, 0 },
+    {
+      "monetary few, float desc dup",
+      { { COL_MONETARY, false, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_FLOAT, true, SHAPE_DESC_DUP, 0, 0 } }, 0
+    },
+    {
+      "date few, timestamptz dup, datetimetz desc",
+      {
+	{ COL_DATE, false, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_TIMESTAMPTZ, false, SHAPE_ASC_DUP, 0, 0 },
+	{ COL_DATETIMETZ, true, SHAPE_RANDOM, 0, 0 }
+      }, 0
+    },
+    {
+      "bit few, varbit dup, numeric without a precision",
+      {
+	{ COL_BIT12, false, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_VARBIT20, false, SHAPE_ASC_DUP, 0, 0 },
+	{ COL_FLOAT_NUMERIC, false, SHAPE_RANDOM, 0, 0 }
+      }, 0
+    },
+    { "oid few, int", { { COL_OID, false, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_INT, false, SHAPE_RANDOM, 0, 0 } }, 0 },
+    { "int dup, oid desc", { { COL_INT, false, SHAPE_ASC_DUP, 0, 0 }, { COL_OID, true, SHAPE_RANDOM, 0, 0 } }, 0 },
+    /* a value of 2 or 4 bytes of one field, the extremes of it unsigned */
+    {
+      "time few, timestamp desc extremes, timestampltz",
+      {
+	{ COL_TIME, false, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_TIMESTAMP, true, SHAPE_EXTREMES, 0, 0 },
+	{ COL_TIMESTAMPLTZ, false, SHAPE_RANDOM, 0, 0 }
+      }, 0
+    },
+    {
+      "enum extremes, datetimeltz desc",
+      { { COL_ENUM, false, SHAPE_EXTREMES, 0, 0 }, { COL_DATETIMELTZ, true, SHAPE_RANDOM, 0, 0 } }, 0
+    },
+    /* a collation's own order, and a CHAR turned round */
+    {
+      "char desc few, varchar en_ci",
+      { { COL_CHAR6, true, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_VARCHAR16_EN_CI, false, SHAPE_RANDOM, 0, 0 } }, 0
+    },
+    {
+      "varchar en_cs few, varchar en_ci desc nulls, int",
+      {
+	{ COL_VARCHAR16_EN_CS, false, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_VARCHAR16_EN_CI, true, SHAPE_RANDOM, 0, 3 },
+	{ COL_INT, false, SHAPE_RANDOM, 0, 0 }
+      }, 0
+    },
+    /* a VARBIT whose length takes the long form */
+    { "varbit long dup, int", { { COL_VARBIT300, false, SHAPE_ASC_DUP, 0, 0 }, { COL_INT, false, SHAPE_RANDOM, 0, 0 } }, 0 },
+    {
+      "varbit long desc nulls, short",
+      { { COL_VARBIT300, true, SHAPE_RANDOM, 0, 4 }, { COL_SHORT, false, SHAPE_RANDOM, 0, 0 } }, 0
+    },
+    /* the run handed over whole to the next word, and ties of every size on the way down */
+    { "int alike, int dup", { { COL_INT, false, SHAPE_ALL_EQUAL, 0, 0 }, { COL_INT, false, SHAPE_ASC_DUP, 0, 0 } }, 0 },
+    {
+      "int alike, int alike, int",
+      {
+	{ COL_INT, false, SHAPE_ALL_EQUAL, 0, 0 }, { COL_INT, false, SHAPE_ALL_EQUAL, 0, 0 },
+	{ COL_INT, false, SHAPE_RANDOM, 0, 0 }
+      }, 0
+    },
+    { "groups of 64, bigint", { { COL_INT, false, 0, 64, 0 }, { COL_BIGINT, false, SHAPE_RANDOM, 0, 0 } }, 0 },
+    { "groups of 65, varchar wide", { { COL_INT, false, 0, 65, 0 }, { COL_VARCHAR40, false, SHAPE_RANDOM, 0, 0 } }, 0 },
+    { "groups of 2, groups of 4", { { COL_INT, false, 0, 2, 0 }, { COL_SHORT, false, 0, 4, 0 } }, 0 },
+    /* NULLs and a descending column inside a group the insertion sort orders */
+    { "groups of 5 nulls, groups of 3", { { COL_INT, false, 0, 5, 2 }, { COL_SHORT, false, 0, 3, 0 } }, 0 },
+    {
+      "groups of 6 desc, varchar nulls",
+      { { COL_INT, true, 0, 6, 0 }, { COL_VARCHAR12, false, SHAPE_RANDOM, 0, 3 } }, 0
+    },
+    {
+      "groups of 130 desc, groups of 65, short",
+      {
+	{ COL_INT, true, 0, 130, 0 }, { COL_INT, false, 0, 65, 0 }, { COL_SHORT, false, SHAPE_RANDOM, 0, 0 }
+      }, 0
+    },
+    /* a wide first column whose ties take its words one by one before the next column */
+    {
+      "varchar wide few, int",
+      { { COL_VARCHAR40, false, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_INT, false, SHAPE_RANDOM, 0, 0 } }, 0
+    },
+    {
+      "three few",
+      {
+	{ COL_INT, false, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_SHORT, true, SHAPE_FEW_DISTINCT, 0, 0 },
+	{ COL_DOUBLE, false, SHAPE_FEW_DISTINCT, 0, 0 }
+      }, 0
+    },
+    {
+      "sixty-four short few",
+      std::vector<column_spec> ((size_t) RADIX_MAX_KEY_WORDS, { COL_SHORT, false, SHAPE_FEW_DISTINCT, 0, 0 }), 0
+    },
+    /* the NULLs of a column, first or, in a descending column, last, then ordered by the columns after */
+    {
+      "int few nulls, int",
+      { { COL_INT, false, SHAPE_FEW_DISTINCT, 0, 4 }, { COL_INT, false, SHAPE_RANDOM, 0, 0 } }, 0
+    },
+    {
+      "int desc few nulls, varchar nulls",
+      { { COL_INT, true, SHAPE_FEW_DISTINCT, 0, 3 }, { COL_VARCHAR12, false, SHAPE_RANDOM, 0, 5 } }, 0
+    },
+    {
+      "int all null, bigint dup",
+      { { COL_INT, false, SHAPE_RANDOM, 0, 1 }, { COL_BIGINT, false, SHAPE_ASC_DUP, 0, 0 } }, 0
+    },
+    {
+      "datetime few, double desc nulls",
+      { { COL_DATETIME, false, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_DOUBLE, true, SHAPE_FEW_DISTINCT, 0, 2 } }, 0
+    },
+    {
+      "varchar wide few nulls, numeric nulls, short",
+      {
+	{ COL_VARCHAR40, false, SHAPE_FEW_DISTINCT, 0, 3 }, { COL_NUMERIC, false, SHAPE_FEW_DISTINCT, 0, 3 },
+	{ COL_SHORT, false, SHAPE_RANDOM, 0, 0 }
+      }, 0
+    },
+    { "groups of 65, int nulls", { { COL_INT, false, 0, 65, 0 }, { COL_INT, false, SHAPE_RANDOM, 0, 2 } }, 0 },
+    /* the offset table holds 255 for a column past its reach, which the walk finds */
+    {
+      "long varchar few, long varchar few, int",
+      {
+	{ COL_LONG_VARCHAR200, false, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_LONG_VARCHAR200, true, SHAPE_FEW_DISTINCT, 0, 0 },
+	{ COL_INT, false, SHAPE_RANDOM, 0, 0 }
+      }, 0
+    },
+    {
+      "long varchar few nulls, long varchar few, int desc",
+      {
+	{ COL_LONG_VARCHAR200, false, SHAPE_FEW_DISTINCT, 0, 3 }, { COL_LONG_VARCHAR200, false, SHAPE_FEW_DISTINCT, 0, 0 },
+	{ COL_INT, true, SHAPE_RANDOM, 0, 0 }
+      }, 0
+    },
+    /* the columns past the radix columns from the comparator */
+    {
+      "int few, varchar(300), int",
+      {
+	{ COL_INT, false, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_VARCHAR300, false, SHAPE_FEW_DISTINCT, 0, 0 },
+	{ COL_INT, false, SHAPE_RANDOM, 0, 0 }
+      }, 1
+    },
+    {
+      "int few nulls, varchar(300) desc nulls",
+      { { COL_INT, false, SHAPE_FEW_DISTINCT, 0, 3 }, { COL_VARCHAR300, true, SHAPE_RANDOM, 0, 3 } }, 1
+    },
+    {
+      "sixty-five short few",
+      std::vector<column_spec> ((size_t) RADIX_MAX_KEY_WORDS + 1, { COL_SHORT, false, SHAPE_FEW_DISTINCT, 0, 0 }),
+      RADIX_MAX_KEY_WORDS
+    },
+    /* 26 words each, so a third would pass RADIX_MAX_KEY_WORDS */
+    {
+      "long varchar few, long varchar few, long varchar few, int",
+      {
+	{ COL_LONG_VARCHAR200, false, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_LONG_VARCHAR200, false, SHAPE_FEW_DISTINCT, 0, 0 },
+	{ COL_LONG_VARCHAR200, true, SHAPE_FEW_DISTINCT, 0, 0 }, { COL_INT, false, SHAPE_RANDOM, 0, 0 }
+      }, 2
+    },
+  };
+  const int SIZES[] = { 0, 1, 2, 3, 63, 64, 65, 129, 255, 256, 257, 1000, 4096 };
+  std::mt19937_64 rng (20261013);
+
+  REQUIRE (lang_init () == NO_ERROR);
+
+  for (const midxkey_case &c : cases)
+    {
+      std::vector<TP_DOMAIN> columns;
+      TP_DOMAIN domain;
+      RADIX_KEY_ENCODING encoding;
+      const RADIX_MIDXKEY key = resolved_midxkey (c.columns, columns, domain, encoding);
+      const key_compare oracle = cmp_midxkey (domain);
+      /* one sizing serves every run of the sort */
+      run_work work (encoding, 4096);
+
+      INFO (c.name);
+      REQUIRE (key.radix_columns == ((c.radix_columns > 0) ? c.radix_columns : (int) c.columns.size ()));
+      for (bool unique : UNIQUE_MODES)
+	{
+	  for (int n : SIZES)
+	    {
+	      std::vector<unsigned int> oids = make_oids (n, true, rng);
+	      std::vector<sample> samples;
+
+	      for (int i = 0; i < n; i++)
+		{
+		  samples.push_back (midxkey_sample (columns, c.columns, i, n, rng, oids[ (size_t) i]));
+		}
+	      check_midxkey_run (key, work, unique, samples, oracle,
+				 std::string (c.name) + " n=" + std::to_string (n) + (unique ? " unique" : ""));
+	    }
+	}
+    }
+}
+
+/* a MIDXKEY is its leading columns with a radix key, each a key of its own domain */
+TEST_CASE ("radix MIDXKEY table", "[radix_sort]")
+{
+  RADIX_MIDXKEY key;
+  RADIX_KEY_ENCODING encoding;
+  std::vector<TP_DOMAIN> columns;
+  TP_DOMAIN domain;
+
+  REQUIRE (lang_init () == NO_ERROR);
+
+  SECTION ("each column is the key of its domain, and the engine's key one word of the widest")
+  {
+    RADIX_KEY_ENCODING alone;
+
+    columns = { domain_of (DB_TYPE_INTEGER, false), string_domain (DB_TYPE_VARCHAR, 20, LANG_COLL_UTF8_BINARY, true),
+		domain_of (DB_TYPE_DATETIME, false)
+	      };
+    domain = midxkey_domain (columns);
+    REQUIRE (radix_sort_supports_key (&domain));
+    REQUIRE (radix_sort_resolve_midxkey (&key, &encoding, &domain));
+    REQUIRE (key.column_count == 3);
+    REQUIRE (key.radix_columns == 3);
+    for (int at = 0; at < 3; at++)
+      {
+	REQUIRE (radix_sort_resolve_key (&alone, &columns[ (size_t) at]));
+	REQUIRE (memcmp (&key.columns[at].encoding, &alone, sizeof (alone)) == 0);
+	REQUIRE (key.columns[at].domain == &columns[ (size_t) at]);
+      }
+    REQUIRE (key.columns[1].encoding.is_desc);
+    REQUIRE (encoding.word_width == OR_BIGINT_SIZE);
+    REQUIRE (encoding.key_length == key.columns[0].encoding.key_length + key.columns[1].encoding.key_length
+	     + key.columns[2].encoding.key_length);
+    REQUIRE (encoding.min_key_length == or_multi_header_size (3));
+    REQUIRE (encoding.format == RADIX_KEY_MIDXKEY);
+    /* the engine's key is one word of the widest column, the DATETIME's */
+    REQUIRE (radix_sort_stack_bytes (&encoding, 1000000) == radix_sort_stack_bytes (&key.columns[2].encoding, 1000000));
+
+    /* the key table of one column takes no MIDXKEY */
+    REQUIRE_FALSE (radix_sort_resolve_key (&alone, &domain));
+  }
+
+  SECTION ("the engine's word is as narrow as the widest column")
+  {
+    columns = { domain_of (DB_TYPE_SHORT, false), domain_of (DB_TYPE_SHORT, true) };
+    domain = midxkey_domain (columns);
+    REQUIRE (radix_sort_resolve_midxkey (&key, &encoding, &domain));
+    REQUIRE (encoding.word_width == OR_SHORT_SIZE);
+    REQUIRE (encoding.key_length == 2 * OR_SHORT_SIZE);
+
+    columns = { domain_of (DB_TYPE_SHORT, false), domain_of (DB_TYPE_DATE, false) };
+    domain = midxkey_domain (columns);
+    REQUIRE (radix_sort_resolve_midxkey (&key, &encoding, &domain));
+    REQUIRE (encoding.word_width == OR_INT_SIZE);
+  }
+
+  SECTION ("the radix columns end at a column without a radix key, or past the most key words")
+  {
+    /* 33 and 31 words: the words at the limit, and one more past it */
+    columns = { string_domain (DB_TYPE_VARCHAR, 250, LANG_COLL_ISO_BINARY, false),
+		string_domain (DB_TYPE_VARCHAR, 240, LANG_COLL_ISO_BINARY, false), domain_of (DB_TYPE_SHORT, false)
+	      };
+    domain = midxkey_domain (columns);
+    REQUIRE (radix_sort_resolve_midxkey (&key, &encoding, &domain));
+    REQUIRE (key.columns[0].encoding.key_length + key.columns[1].encoding.key_length
+	     == RADIX_MAX_KEY_WORDS * OR_BIGINT_SIZE);
+    REQUIRE (key.radix_columns == 2);
+
+    columns = { domain_of (DB_TYPE_INTEGER, false), string_domain (DB_TYPE_VARCHAR, 300, LANG_COLL_ISO_BINARY, false),
+		domain_of (DB_TYPE_INTEGER, false)
+	      };
+    domain = midxkey_domain (columns);
+    REQUIRE (radix_sort_supports_key (&domain));
+    REQUIRE (radix_sort_resolve_midxkey (&key, &encoding, &domain));
+    REQUIRE (key.column_count == 3);
+    REQUIRE (key.radix_columns == 1);
+
+    columns.assign ((size_t) RADIX_MAX_KEY_WORDS + 3, domain_of (DB_TYPE_INTEGER, false));
+    domain = midxkey_domain (columns);
+    REQUIRE (radix_sort_resolve_midxkey (&key, &encoding, &domain));
+    REQUIRE (key.column_count == RADIX_MAX_KEY_WORDS + 3);
+    REQUIRE (key.radix_columns == RADIX_MAX_KEY_WORDS);
+  }
+
+  SECTION ("a first column without a radix key keeps the compare sort, and leaves nothing behind")
+  {
+    columns = { string_domain (DB_TYPE_VARCHAR, 300, LANG_COLL_ISO_BINARY, false), domain_of (DB_TYPE_INTEGER, false) };
+    domain = midxkey_domain (columns);
+    REQUIRE_FALSE (radix_sort_supports_key (&domain));
+    REQUIRE_FALSE (radix_sort_resolve_midxkey (&key, &encoding, &domain));
+    REQUIRE (key.column_count == 0);
+    REQUIRE (key.radix_columns == 0);
+    REQUIRE (encoding.word_width == 0);
+    REQUIRE (encoding.key_length == 0);
+
+    REQUIRE_FALSE (radix_sort_resolve_midxkey (&key, &encoding, tp_domain_resolve_default (DB_TYPE_INTEGER)));
+    REQUIRE_FALSE (radix_sort_resolve_midxkey (&key, &encoding, NULL));
   }
 }
