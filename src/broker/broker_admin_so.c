@@ -322,6 +322,7 @@ uc_start (char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
+  int res;
   char admin_log_file[BROKER_PATH_MAX];
   char acl_file[BROKER_PATH_MAX];
   bool acl_flag, acl_default_policy;
@@ -332,9 +333,14 @@ uc_start (char *err_msg)
       return -1;
     }
 
-  if (admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file, acl_default_policy, admin_log_file) < 0)
+  res = admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file, acl_default_policy, admin_log_file);
+  if (res < 0)
     {
       CP_ADMIN_ERR_MSG (err_msg);
+      if (res == ADMIN_ERR_SSL_KEY_PERMISSION)
+	{
+	  admin_log_write (admin_log_file, admin_err_msg);
+	}
       return -1;
     }
 
@@ -450,6 +456,7 @@ uc_on (const char *br_name, char *err_msg)
 {
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   int num_broker, master_shm_id;
+  int res;
   char admin_log_file[BROKER_PATH_MAX];
   char msg_buf[256];
 
@@ -458,9 +465,14 @@ uc_on (const char *br_name, char *err_msg)
       return -1;
     }
 
-  if (admin_on_cmd (master_shm_id, br_name) < 0)
+  res = admin_on_cmd (master_shm_id, br_name);
+  if (res < 0)
     {
       CP_ADMIN_ERR_MSG (err_msg);
+      if (res == ADMIN_ERR_SSL_KEY_PERMISSION)
+	{
+	  admin_log_write (admin_log_file, admin_err_msg);
+	}
       return -1;
     }
 
