@@ -6349,6 +6349,12 @@ btree_find_foreign_key (THREAD_ENTRY * thread_p, BTID * btid, DB_VALUE * key, OI
   /* Define range of scan. */
   pr_share_value (key, &kv_range.key1);
   pr_share_value (key, &kv_range.key2);
+  if (DB_VALUE_TYPE (key) == DB_TYPE_MIDXKEY)
+    {
+      /* key may carry the PK's domain; btree_prepare_bts () gives the range the FK index's. */
+      kv_range.key1.data.midxkey.domain = NULL;
+      kv_range.key2.data.midxkey.domain = NULL;
+    }
   kv_range.range = GE_LE;
   kv_range.num_index_term = 0;
 
