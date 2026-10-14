@@ -55,6 +55,7 @@
 #include <openssl/evp.h>
 #include <openssl/sha.h>
 #include <openssl/rand.h>
+#include <openssl/hmac.h>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -688,6 +689,31 @@ crypt_crc32 (const char *src, int src_len, int *dest)
  *   length(in): the length of bytes to generate
  * Note:
  */
+/*
+ * crypt_hmac_sha256_hex () - HMAC-SHA256 of msg under key, as uppercase hex.
+ *   return: NO_ERROR, or ER_ENCRYPTION_LIB_FAILED
+ *   hex_out (out)    : 64 hex characters and a NUL
+ *   hex_out_size (in): size of hex_out, at least 65
+ */
+int
+crypt_hmac_sha256_hex (const char *key, int key_len, const char *msg, int msg_len, char *hex_out, int hex_out_size)
+{
+  unsigned char mac[EVP_MAX_MD_SIZE];
+  unsigned int mac_len = 0;
+
+  assert (key != NULL && msg != NULL && hex_out != NULL && hex_out_size >= 2 * SHA256_DIGEST_LENGTH + 1);
+
+  if (HMAC (EVP_sha256 (), key, key_len, (const unsigned char *) msg, (size_t) msg_len, mac, &mac_len) == NULL
+      || mac_len != SHA256_DIGEST_LENGTH)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ENCRYPTION_LIB_FAILED, 1, crypt_lib_fail_info[CRYPT_LIB_CRYPT_ERR]);
+      return ER_ENCRYPTION_LIB_FAILED;
+    }
+
+  str_to_hex_prealloced ((const char *) mac, (int) mac_len, hex_out, hex_out_size, HEX_UPPERCASE);
+  return NO_ERROR;
+}
+
 int
 crypt_generate_random_bytes (char *dest, int length)
 {
