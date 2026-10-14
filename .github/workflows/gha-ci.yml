@@ -1186,6 +1186,9 @@ jobs:
           fi
           echo "ctp branch : $CTP_BRANCH"
 
+          # Else a small fetch touches the node copy's packs, copying them whole into /rw.
+          git config --global fetch.unpackLimit 1
+
           # The entrypoint below clones CTP whole when .git is absent, and that clone
           # was 124s of WAN. Mounted from the node copy it finds .git and fetches the
           # tip instead -- CUBRIDQA-1497. The shards mount the same copy, so nothing
@@ -1917,6 +1920,7 @@ jobs:
           # made them ends, and the checkout takes whatever it is given.
           export BRANCH_TESTCASES="$tc_sha"
           export BRANCH_TESTTOOLS="$WANT_CTP_SHA"
+          git config --global fetch.unpackLimit 1
           /entrypoint.sh checkout "$SUITE"
 
           ctp="$WORKDIR/cubrid-testtools"
