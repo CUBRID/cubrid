@@ -11946,12 +11946,27 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
  *        pt_dblink_dml_settle_sink (from pt_convert_dblink_dml_query).
  * ========================================================================================================== */
 
-/* true iff cond is a pushable subquery predicate: col IN / {=|<>|<|>|<=|>=} ANY / scalar-cmp (subquery).
- * Each admitted shape is satisfied by pushing the local values one at a time and letting the remote compare
- * each; ALL is not (it needs a reduction ordered by the remote column, not visible here).
- * Shape only; execution is in XASL gen. */
+/* true iff the left-hand side of cond is a single column, bare or dotted -- the one key the remote WHERE
+ * compares each local value against. A row value (id, c) or an expression has no such key. Whether a dotted
+ * qualifier names the target is pt_dblink_dml_check_qualifier's question, not this one. */
 static bool
-pt_dblink_dml_is_pushable_pred (PT_NODE * cond)
+pt_dblink_dml_pred_lhs_is_column (PT_NODE * cond)
+{
+  PT_NODE *arg1 = cond->info.expr.arg1;
+
+  if (arg1 == NULL)
+    {
+      return false;
+    }
+
+  return arg1->node_type == PT_NAME || (arg1->node_type == PT_DOT_ && arg1->info.dot.arg2 != NULL
+					&& arg1->info.dot.arg2->node_type == PT_NAME);
+}
+
+/* true iff cond compares something with a subquery through an operator the sink can push:
+ * IN / {=|<>|<|>|<=|>=} ANY / scalar-cmp. What stands on the left is not looked at. */
+static bool
+pt_dblink_dml_is_subquery_pred (PT_NODE * cond)
 {
   PT_NODE *arg2;
 
@@ -11987,6 +12002,16 @@ pt_dblink_dml_is_pushable_pred (PT_NODE * cond)
     }
 
   return true;
+}
+
+/* true iff cond is a pushable subquery predicate: col IN / {=|<>|<|>|<=|>=} ANY / scalar-cmp (subquery).
+ * Each admitted shape is satisfied by pushing the local values one at a time and letting the remote compare
+ * each; ALL is not (it needs a reduction ordered by the remote column, not visible here).
+ * Shape only; execution is in XASL gen. */
+static bool
+pt_dblink_dml_is_pushable_pred (PT_NODE * cond)
+{
+  return pt_dblink_dml_is_subquery_pred (cond) && pt_dblink_dml_pred_lhs_is_column (cond);
 }
 
 /* true iff the per-value remote predicates this shape produces can match overlapping row sets, so one
@@ -12116,9 +12141,10 @@ pt_dblink_dml_check_qualifier (PT_NODE * cond, PT_NODE * spec, const char **bad_
 /* true iff the DML WHERE is a single pushable predicate (see pt_dblink_dml_is_pushable_pred). This is
  * DELETE's shape gate; an UPDATE reaches it from the decline step and the mixed-reference rejection, while
  * its own gate is pt_dblink_update_where_is_inscope.
- * Correlation / row subquery are not decided here (correlation_level is 0 on a DELETE WHERE subquery), but
- * downstream on both paths: the pt_dblink_dml_corr_ref_pre/_post walk (semantic_check.c) rejects
- * correlated ones, pt_dblink_dml_xasl_where () (xasl_generation.c) rejects row/multi-column ones. */
+ * A row value or an expression on the left is refused here, by pt_dblink_dml_pred_lhs_is_column;
+ * pt_dblink_dml_xasl_where () (xasl_generation.c) keeps the same check as a backstop.
+ * Correlation is not decided here (correlation_level is 0 on a DELETE WHERE subquery), but downstream on
+ * both paths: the pt_dblink_dml_corr_ref_pre/_post walk (semantic_check.c) rejects correlated ones. */
 static bool
 pt_dblink_dml_where_is_inscope (PT_NODE * cond)
 {
@@ -12481,9 +12507,10 @@ pt_dblink_dml_reject_declined (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE 
   return false;
 }
 
-/* The mixed local/remote rejection, in the voice of the declines above. Each kind asks its own gate again
- * so that it names what actually turned the statement away; when no gate did, the sink was cleared earlier
- * -- ahead of the caller -- and the bare sentence is all we can say. */
+/* The mixed local/remote rejection, in the voice of the declines above. A WHERE subquery predicate without a
+ * single column on its left is named first, for DELETE and UPDATE alike. Otherwise each kind asks its own
+ * gate again so that it names what actually turned the statement away; when no gate did, the sink was
+ * cleared earlier -- ahead of the caller -- and the bare sentence is all we can say. */
 static void
 pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * loc)
 {
@@ -12492,6 +12519,18 @@ pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
   PT_NODE *cond;
   bool driving_pred;
   int num_set_subq;
+
+  /* Ahead of the per-kind questions, which would answer "a single uncorrelated WHERE subquery" -- and the
+   * statement has one. What it lacks is a single column for the remote to compare each value against. */
+  cond = pt_dblink_dml_search_cond (node);
+  if (cond != NULL && cond->next == NULL && pt_dblink_dml_is_subquery_pred (cond)
+      && !pt_dblink_dml_pred_lhs_is_column (cond))
+    {
+      snprintf (errmsg, sizeof (errmsg), "dblink: remote %s with a local subquery supports only a single column "
+		"on the left of the WHERE subquery predicate", pt_dblink_dml_stmt_name (node, false));
+      PT_ERRORc (parser, loc, errmsg);
+      return;
+    }
 
   switch (node->node_type)
     {
@@ -12522,7 +12561,6 @@ pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
       /* Overlap first, asked the way the gate asks it -- can_overlap reads the expression union, so the
        * pushable check has to come before it. Naming the clause here would read as already satisfied: the
        * statement does have a single local subquery predicate. */
-      cond = pt_dblink_dml_search_cond (node);
       if (pt_dblink_dml_is_pushable_pred (cond) && pt_dblink_dml_pred_targets_can_overlap (cond))
 	{
 	  accepted = "IN, = ANY or a scalar comparison; the other quantified forms would update a row twice";

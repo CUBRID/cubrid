@@ -20062,7 +20062,8 @@ pt_dblink_dml_xasl_where (PARSER_CONTEXT * parser, PT_NODE * cond, const char *s
       return false;
     }
 
-  /* single-column WHERE left-hand side (reject row / multi-column predicates) */
+  /* single-column WHERE left-hand side. The parser gate (pt_dblink_dml_pred_lhs_is_column) refuses row values
+   * and expressions first; this stays as a backstop for a rewrite between there and here. */
   arg1 = cond->info.expr.arg1;
   if (arg1 != NULL && arg1->node_type == PT_NAME)
     {
