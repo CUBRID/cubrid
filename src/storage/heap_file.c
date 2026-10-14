@@ -736,10 +736,11 @@ static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * a
 static int heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,
 					   bool * oos_owned_buffer);
 static int heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
-					  RECDES * raw, bool * oos_owned_buffer, char *oos_scratch,
-					  int oos_scratch_size);
+					  RECDES * raw, bool * oos_owned_buffer, bool * internal_lob_locator,
+					  char *oos_scratch, int oos_scratch_size);
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
-						bool oos_owned_buffer);
+						bool oos_owned_buffer, bool internal_lob_locator,
+						const OID * class_oid);
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
@@ -10525,7 +10526,6 @@ heap_recdes_get_var_offset_entry (RECDES * recdes, int location, int *entry_out)
  *
  *   On success raw->data is either the caller scratch (when oos_len fits) or a
  *   heap-allocated buffer the caller must free via recdes_free_data_area.
- *   On failure raw->data is set to NULL.
  */
 static int
 heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,
@@ -10598,12 +10598,14 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch
  */
 static int
 heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw,
-			       bool * oos_owned_buffer, char *oos_scratch, int oos_scratch_size)
+			       bool * oos_owned_buffer, bool * internal_lob_locator, char *oos_scratch,
+			       int oos_scratch_size)
 {
   int offset;
   int error;
 
   *oos_owned_buffer = false;
+  *internal_lob_locator = false;
 
   if (OR_VAR_IS_NULL (recdes->data, attrepr->location))
     {
@@ -10624,8 +10626,18 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
   raw->data = ((char *) recdes->data + OR_VAR_OFFSET (recdes->data, attrepr->location));
   if (OR_IS_OOS (offset))
     {
-      /* The helper reports transient OOS data only after a successful Resolve. */
-      return heap_attrvalue_read_oos_inline (recdes, raw, oos_scratch, oos_scratch_size, oos_owned_buffer);
+      if (TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (attrepr->domain)))
+	{
+	  /* Internal LOB keeps the OOS inline slot as a locator DB_VALUE. */
+	  raw->length = OR_OOS_INLINE_SIZE;
+	  *internal_lob_locator = true;
+	}
+      else
+	{
+	  /* The helper reports transient OOS data only after a successful Resolve: oos_owned_buffer stays
+	   * false on pre-allocation errors and becomes true when raw holds an OOS-owned buffer. */
+	  return heap_attrvalue_read_oos_inline (recdes, raw, oos_scratch, oos_scratch_size, oos_owned_buffer);
+	}
     }
   else
     {
@@ -10654,10 +10666,11 @@ heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
  *   attrepr(in): The attribute structure
  *   data(in): Disk value pointer
  *   length(in): Disk value length
+ *   class_oid(in): class of the record, named by an internal LOB locator so its reader can lock it
  */
 static int
 heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
-				     bool oos_owned_buffer)
+				     bool oos_owned_buffer, bool internal_lob_locator, const OID * class_oid)
 {
   const PR_TYPE *pr_type;
   OR_BUF buf;
@@ -10685,6 +10698,35 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
   else
     {
       or_init (&buf, raw->data, raw->length);
+
+      if (internal_lob_locator)
+	{
+	  INTERNAL_LOB_LOCATOR locator;
+	  DB_BIGINT disk_length;
+	  int stub_kind;
+	  /* The column is a BLOB/CLOB, so demand that the stub says the same: a stub that claims to be
+	   * an ordinary OOS value here means the record and the schema disagree, and expanding it as
+	   * one would hand the reader raw content in place of a locator. */
+	  const int expect_kind = (TP_DOMAIN_TYPE (attrepr->domain) == DB_TYPE_BLOB
+				   ? OR_OOS_KIND_BLOB : OR_OOS_KIND_CLOB);
+
+	  if (or_get_oos_stub (&buf, &locator.oid, &stub_kind, &disk_length, expect_kind) != NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      return ER_GENERIC_ERROR;
+	    }
+	  rv = internal_lob_decode_disk_length (locator, disk_length);
+	  if (rv != NO_ERROR)
+	    {
+	      return rv;
+	    }
+
+	  COPY_OID (&locator.class_oid, class_oid);
+	  rv = internal_lob_make_locator_db_value (thread_get_thread_entry_info (), &value->dbvalue,
+						   TP_DOMAIN_TYPE (attrepr->domain), locator);
+	  value->state = HEAP_READ_ATTRVALUE;
+	  return rv;
+	}
 
       /* read the value according to disk information that was found */
       pr_type = pr_type_from_id (attrepr->type);
@@ -10722,6 +10764,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   OR_ATTRIBUTE *attrepr;
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   bool oos_owned_buffer = false;
+  bool internal_lob_locator = false;
   /* Stack scratch for OOS inline-reference reads up to one I/O page; larger payloads heap-alloc. */
   char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
@@ -10759,8 +10802,8 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 	}
       else
 	{
-	  error = heap_attrvalue_point_variable (recdes, attr_info, attrepr, &raw, &oos_owned_buffer, oos_scratch,
-						 IO_MAX_PAGE_SIZE);
+	  error = heap_attrvalue_point_variable (recdes, attr_info, attrepr, &raw, &oos_owned_buffer,
+						 &internal_lob_locator, oos_scratch, IO_MAX_PAGE_SIZE);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -10769,7 +10812,8 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
     }
 
   /* the data pointer will point to either a current value in recdes or a default one in attrepr */
-  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, oos_owned_buffer);
+  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, oos_owned_buffer, internal_lob_locator,
+					       &attr_info->class_oid);
   /* TODO: revisit when dbvalue supports zero-copy to OOS and a PEEK mode lands. */
   if (oos_owned_buffer && raw.data != oos_scratch)
     {
@@ -10814,7 +10858,7 @@ heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATT
       if ((*oos_payloads)[i].data != NULL)
 	{
 	  ret = heap_attrvalue_transform_to_dbvalue (&attr_info->values[i], attr_info->values[i].read_attrepr,
-						     &(*oos_payloads)[i], true);
+						     &(*oos_payloads)[i], true, false, &attr_info->class_oid);
 	}
       else
 	{
@@ -10878,6 +10922,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 {
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   bool oos_owned_buffer = false;
+  bool internal_lob_locator = false;
   bool found = true;		/* Does attribute(att) exist in this disk representation? */
   /* Stack scratch for OOS inline-reference reads up to one I/O page on the hot index-key path. */
   char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
@@ -10923,8 +10968,8 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 	    }
 	  else
 	    {			/* A variable attribute */
-	      error = heap_attrvalue_point_variable (recdes, attr_info, att, &raw, &oos_owned_buffer, oos_scratch,
-						     IO_MAX_PAGE_SIZE);
+	      error = heap_attrvalue_point_variable (recdes, attr_info, att, &raw, &oos_owned_buffer,
+						     &internal_lob_locator, oos_scratch, IO_MAX_PAGE_SIZE);
 	      if (error != NO_ERROR)
 		{
 		  return error;
@@ -10943,8 +10988,35 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
       OR_BUF buf;
 
       or_init (&buf, raw.data, raw.length);
-      /* Transient OOS data requires COPY because PEEK would dangle after cleanup. */
-      att->domain->type->data_readval (&buf, value, att->domain, raw.length, oos_owned_buffer, NULL, 0);
+      if (internal_lob_locator)
+	{
+	  INTERNAL_LOB_LOCATOR locator;
+	  DB_BIGINT disk_length;
+	  int stub_kind;
+	  const int expect_kind = (TP_DOMAIN_TYPE (att->domain) == DB_TYPE_BLOB ? OR_OOS_KIND_BLOB : OR_OOS_KIND_CLOB);
+
+	  if (or_get_oos_stub (&buf, &locator.oid, &stub_kind, &disk_length, expect_kind) != NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      return ER_GENERIC_ERROR;
+	    }
+	  error = internal_lob_decode_disk_length (locator, disk_length);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  if (attr_info != NULL)
+	    {
+	      COPY_OID (&locator.class_oid, &attr_info->class_oid);
+	    }
+	  return internal_lob_make_locator_db_value (thread_get_thread_entry_info (), value,
+						     TP_DOMAIN_TYPE (att->domain), locator);
+	}
+      else
+	{
+	  /* Transient OOS data requires COPY because PEEK would dangle after cleanup. */
+	  att->domain->type->data_readval (&buf, value, att->domain, raw.length, oos_owned_buffer, NULL, 0);
+	}
     }
 
   if (oos_owned_buffer && raw.data != oos_scratch)
@@ -11025,11 +11097,17 @@ heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att)
       return 0;
     }
 
-  or_get_oid (&buf, &oos_oid);
+  /* Read the OOS stub directly from recdes inline data (no I/O needed). Any kind is acceptable
+   * here -- this only sizes a buffer -- but the length must still be taken apart from the kind
+   * bits, or a CLOB/BLOB stub would size the buffer from a number in the exabytes. */
+  DB_BIGINT length = 0;
+  int stub_kind = OR_OOS_KIND_OOS;
 
-  /* Read OOS length directly from recdes inline data (no I/O needed) */
-  DB_BIGINT length = or_get_bigint (&buf, &rc);
-  if (rc != NO_ERROR || OID_ISNULL (&oos_oid) || length <= 0 || length > (DB_BIGINT) INT_MAX)
+  if (or_get_oos_stub (&buf, &oos_oid, &stub_kind, &length, OR_OOS_KIND_ANY) != NO_ERROR)
+    {
+      return 0;
+    }
+  if (OID_ISNULL (&oos_oid) || length <= 0 || length > (DB_BIGINT) INT_MAX)
     {
       return 0;
     }
@@ -26263,6 +26341,8 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
   int max_num_slots, i;
   OID temp_oid;
   bool reusable;
+  /* Every page below belongs to the same heap, so its OOS / Internal LOB file ids are resolved once. */
+  VACUUM_HEAP_OOS_FILES oos_files = VACUUM_HEAP_OOS_FILES_INITIALIZER;
   int error_code = NO_ERROR;
 
   assert (upd_scancache != NULL);
@@ -26334,7 +26414,7 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
 
 	  error_code =
 	    vacuum_heap_page (thread_p, worker.heap_objects, worker.n_heap_objects, threshold_mvccid,
-			      &upd_scancache->node.hfid, &reusable, false);
+			      &upd_scancache->node.hfid, &oos_files, &reusable, false);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto exit;
@@ -29130,12 +29210,14 @@ heap_recdes_contains_oos (const RECDES * record)
   return OR_RECORD_HAS_OOS (record->data);
 }
 
-int
-heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
+static int
+heap_recdes_get_oos_slots (const RECDES * recdes, HEAP_OOS_REFERENCE_VECTOR & oos_references)
 {
   using namespace oos_log;
 
-  oos_oids.clear ();
+  int error = NO_ERROR;
+
+  oos_references.clear ();
 
   if (!heap_recdes_contains_oos (recdes))
     {
@@ -29153,7 +29235,8 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
       if (index == max_var_count)
 	{
 	  assert_release (false && "LAST_ELEMENT flag not found within record bounds");
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto end;
 	}
 
       int offset;
@@ -29170,64 +29253,95 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
 	  break;
 	default:
 	  assert_release (false);
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto end;
 	}
 
       if (OR_IS_OOS (offset))
 	{
-	  OID oid = OID_INITIALIZER;
+	  HEAP_OOS_REFERENCE reference = { OID_INITIALIZER, 0, DB_TYPE_NULL, index };
 	  const char *oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, index);
-	  if (oid_ptr + OR_OID_SIZE > (char *) recdes->data + recdes->length)
+	  if (oid_ptr + OR_OOS_INLINE_SIZE > (char *) recdes->data + recdes->length)
 	    {
-	      assert (false && "OID read would exceed record bounds");
-	      return ER_FAILED;
+	      assert (false && "OOS inline slot read would exceed record bounds");
+	      error = ER_FAILED;
+	      goto end;
 	    }
 	  OR_BUF buf;
-	  or_init (&buf, (char *) oid_ptr, OR_OID_SIZE);
-	  int err = or_get_oid (&buf, &oid);
-	  if (err != NO_ERROR)
+	  int stub_kind = OR_OOS_KIND_OOS;
+	  or_init (&buf, (char *) oid_ptr, OR_OOS_INLINE_SIZE);
+	  if (or_get_oos_stub (&buf, &reference.oid, &stub_kind, &reference.disk_length, OR_OOS_KIND_ANY) != NO_ERROR)
 	    {
-	      assert (false && "or_get_oid failed unexpectedly");
-	      return ER_FAILED;
+	      assert (false && "invalid OOS inline stub");
+	      error = ER_FAILED;
+	      goto end;
 	    }
-	  if (OID_ISNULL (&oid))
+	  /* The stub carries what the chain holds, so the reference is typed without consulting the
+	   * class representation at all. */
+	  reference.type = (stub_kind == OR_OOS_KIND_BLOB ? DB_TYPE_BLOB
+			    : stub_kind == OR_OOS_KIND_CLOB ? DB_TYPE_CLOB : DB_TYPE_NULL);
+	  if (OID_ISNULL (&reference.oid))
 	    {
 	      assert (false && "OID read from OOS slot is null — corrupted record?");
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto end;
 	    }
-	  oos_debug ("there exists an OOS with OID %hd|%d|%hd at offset %d index %d", OID_AS_ARGS (&oid), offset,
-		     index);
-	  oos_oids.emplace_back (oid);
+	  oos_debug ("there exists an OOS with OID %hd|%d|%hd at offset %d index %d", OID_AS_ARGS (&reference.oid),
+		     offset, index);
+	  oos_references.emplace_back (reference);
 	}
 
       if (OR_IS_LAST_ELEMENT (offset))
 	{
-	  if (oos_oids.empty ())
+	  if (oos_references.empty ())
 	    {
 	      /* heap_recdes_contains_oos() already confirmed OOS flag is set, so finding no OOS OIDs is inconsistent */
 	      assert (false && "heap_recdes_contains_oos() passed but no OOS OIDs found");
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto end;
 	    }
 #if !defined (NDEBUG)
 	  {
 	    std::string line = "{";
-	    for (size_t i = 0; i < oos_oids.size (); ++i)
+	    for (size_t i = 0; i < oos_references.size (); ++i)
 	      {
 		char oid_buf[32];
 		if (i > 0)
 		  line.append (", ");
-		line.append (oid_to_string (oid_buf, sizeof oid_buf, &oos_oids[i]));
+		line.append (oid_to_string (oid_buf, sizeof oid_buf, &oos_references[i].oid));
 	      }
 	    line += '}';
-	    oos_debug ("Total %zu found. OOS OIDs: %s", oos_oids.size (), line.c_str ());
+	    oos_debug ("Total %zu found. OOS OIDs: %s", oos_references.size (), line.c_str ());
 	  }
 #endif
-	  return NO_ERROR;
+	  goto end;
 	}
     }
 
   assert (false && "unreachable: there must be last element");
-  return ER_FAILED;
+  error = ER_FAILED;
+
+end:
+  return error;
+}
+
+/*
+ * heap_recdes_get_oos_references () - collect the OOS references of a heap record together with the kind each
+ *   one holds (CLOB, BLOB or ordinary OOS), so callers can tell ordinary OOS records apart from internal LOB chains.
+ *
+ * return             : error code
+ * thread_p (in)      : unused; kept for the callers' signature
+ * recdes (in)        : heap record
+ * oos_references (out) : references in variable-attribute order
+ */
+int
+heap_recdes_get_oos_references (THREAD_ENTRY * thread_p, const RECDES * recdes,
+				HEAP_OOS_REFERENCE_VECTOR & oos_references)
+{
+  /* The inline stub carries its own kind (OR_OOS_KIND_*), so heap_recdes_get_oos_slots () types every reference
+   * as CLOB, BLOB or ordinary OOS without the owner class: callers need not resolve it. */
+  (void) thread_p;
+  return heap_recdes_get_oos_slots (recdes, oos_references);
 }
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
