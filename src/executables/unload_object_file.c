@@ -32,6 +32,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <string.h>
 #if defined(WINDOWS)
 #include <io.h>
 #else
@@ -62,6 +63,10 @@
 #include "message_catalog.h"
 #include "string_opfunc.h"
 #include "porting.h"
+#include "language_support.h"
+#include "compressor.hpp"
+#include "internal_lob_marker.h"
+#include "load_common.hpp"
 
 volatile bool error_occurred = false;
 int g_io_buffer_size = 4096;
@@ -80,6 +85,13 @@ static int fprint_blob_value (TEXT_OUTPUT * tout, DB_VALUE * value);
 static int fprint_special_strings (TEXT_OUTPUT * tout, DB_VALUE * value);
 
 static int write_object_file (TEXT_BUFFER_BLK * head);
+
+static FILE *internal_lob_unload_fp = NULL;
+static pthread_mutex_t internal_lob_unload_lock = PTHREAD_MUTEX_INITIALIZER;
+
+static int internal_lob_unload_sidecar_write_stream (char lob_type, const char *key, int key_len,
+						     DB_BIGINT data_len, DB_BIGINT bit_length);
+static int fprint_internal_lob_ref_if_locator (TEXT_OUTPUT * tout, DB_VALUE * value, bool * printed);
 
 #if !defined(WINDOWS)
 extern S_WAITING_INFO wi_write_file;
@@ -685,8 +697,312 @@ need_append_dot (const char *val)
   return true;
 }
 
+int
+internal_lob_unload_sidecar_open (const char *output_dirname, const char *output_prefix)
+{
+  char path[PATH_MAX];
+  int written;
+
+  if (output_dirname == NULL)
+    {
+      output_dirname = ".";
+    }
+  if (output_prefix == NULL)
+    {
+      output_prefix = "";
+    }
+
+  internal_lob_unload_sidecar_close ();
+
+  written = snprintf (path, sizeof (path), "%s/%s%s", output_dirname, output_prefix, INTERNAL_LOB_SIDECAR_SUFFIX);
+  if (written < 0 || written >= (int) sizeof (path))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      return ER_FAILED;
+    }
+
+  internal_lob_unload_fp = fopen (path, "wb");
+  if (internal_lob_unload_fp == NULL)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      return ER_FAILED;
+    }
+
+  /* CLOB / BLOB carry no per-value charset or collation; the bytes are interpreted with the
+   * database defaults at read time. Record those defaults so loaddb can tell whether the target
+   * database would read the same bytes as different characters. */
+  if (fprintf (internal_lob_unload_fp, "%s\n%s\t%s\n", INTERNAL_LOB_SIDECAR_MAGIC_V2,
+	       lang_charset_name (LANG_SYS_CODESET), lang_get_collation_name (LANG_SYS_COLLATION)) < 0)
+    {
+      internal_lob_unload_sidecar_close ();
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
+void
+internal_lob_unload_sidecar_close (void)
+{
+  if (internal_lob_unload_fp != NULL)
+    {
+      fclose (internal_lob_unload_fp);
+      internal_lob_unload_fp = NULL;
+    }
+}
+
+static int
+internal_lob_unload_sidecar_write_block (FILE * fp, const char *data, int len, char *comp_buffer, int comp_capacity,
+					 DB_BIGINT * stored_len)
+{
+  char header[INTERNAL_LOB_SIDECAR_BLOCK_HEADER_SIZE];
+  int compressed_size;
+
+  assert (len > 0 && len <= INTERNAL_LOB_SIDECAR_BLOCK_SIZE);
+
+  compressed_size = cubcompress::compress < cubcompress::LZ4 > (data, len, comp_buffer, comp_capacity,
+								cubcompress::lz4_options ());
+  if (compressed_size <= 0 || compressed_size > comp_capacity)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      return ER_FAILED;
+    }
+
+  /* [uncompressed size][compressed size][compressed bytes] - the uncompressed size lets the
+   * reader size its output buffer without assuming a full block (the tail block is shorter). */
+  OR_PUT_INT (header, len);
+  OR_PUT_INT (header + OR_INT_SIZE, compressed_size);
+  if (fwrite (header, 1, sizeof (header), fp) != sizeof (header)
+      || fwrite (comp_buffer, 1, (size_t) compressed_size, fp) != (size_t) compressed_size)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      return ER_FAILED;
+    }
+
+  *stored_len += (DB_BIGINT) (INTERNAL_LOB_SIDECAR_BLOCK_HEADER_SIZE + compressed_size);
+  return NO_ERROR;
+}
+
+/* An entry's size fields after its key; the stored size is fixed-width so it can be patched once the body is known. */
+static int
+internal_lob_unload_sidecar_print_sizes (DB_BIGINT data_len, DB_BIGINT bit_length, DB_BIGINT stored_len)
+{
+  return fprintf (internal_lob_unload_fp, "\t%lld\t%lld\t%c\t%020lld\t", (long long) data_len, (long long) bit_length,
+		  INTERNAL_LOB_SIDECAR_COMPRESS_LZ4, (long long) stored_len);
+}
+
+static int
+internal_lob_unload_sidecar_write_stream (char lob_type, const char *key, int key_len, DB_BIGINT data_len,
+					  DB_BIGINT bit_length)
+{
+  char *buffer = NULL;
+  char *comp_buffer = NULL;
+  DB_BIGINT offset = 0;
+  DB_BIGINT stored_len = 0;
+  off_t stored_len_pos = -1;
+  int buffer_size = INTERNAL_LOB_SIDECAR_BLOCK_SIZE;
+  int comp_capacity = 0;
+  int error = NO_ERROR;
+  INT64 stream_token = 0;
+  bool stream_opened = false;
+
+  if (internal_lob_unload_fp == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      return ER_FAILED;
+    }
+  if (key == NULL || key_len <= 0 || data_len < 0 || bit_length < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      return ER_FAILED;
+    }
+
+  if (data_len > 0)
+    {
+      if (data_len < (DB_BIGINT) buffer_size)
+	{
+	  buffer_size = (int) data_len;
+	}
+
+      buffer = (char *) malloc ((size_t) buffer_size);
+      if (buffer == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) buffer_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      comp_capacity = cubcompress::bound < cubcompress::LZ4 > (buffer_size);
+      if (comp_capacity <= 0)
+	{
+	  free_and_init (buffer);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	  return ER_FAILED;
+	}
+      comp_buffer = (char *) malloc ((size_t) comp_capacity);
+      if (comp_buffer == NULL)
+	{
+	  free_and_init (buffer);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) comp_capacity);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+
+      /* One forward-only server cursor for the whole value (the same path csql streams with).  Reading by
+       * offset instead made the server re-walk the chain from its start on every block, i.e. O(size^2). */
+      error = internal_lob_stream_open_from_server (key, key_len, 0, &stream_token);
+      if (error != NO_ERROR)
+	{
+	  goto exit_before_lock;
+	}
+      stream_opened = true;
+    }
+
+  pthread_mutex_lock (&internal_lob_unload_lock);
+
+  if (fprintf (internal_lob_unload_fp, "%c\t%d\t", lob_type, key_len) < 0
+      || fwrite (key, 1, (size_t) key_len, internal_lob_unload_fp) != (size_t) key_len)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      error = ER_FAILED;
+      goto exit;
+    }
+  /* The stored size is only known after compressing, so reserve a fixed-width field and
+   * rewrite it once the body is complete. */
+  stored_len_pos = ftello (internal_lob_unload_fp);
+  if (stored_len_pos < 0 || internal_lob_unload_sidecar_print_sizes (data_len, bit_length, 0) < 0)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  while (offset < data_len)
+    {
+      DB_BIGINT remaining = data_len - offset;
+      int request_size = (remaining > (DB_BIGINT) buffer_size) ? buffer_size : (int) remaining;
+      int nread = 0;
+
+      error = internal_lob_stream_read_from_server (stream_token, buffer, request_size, &nread);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+      if (nread <= 0 || nread > request_size || offset + nread > data_len)
+	{
+	  error = ER_FAILED;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto exit;
+	}
+
+      error = internal_lob_unload_sidecar_write_block (internal_lob_unload_fp, buffer, nread, comp_buffer,
+						       comp_capacity, &stored_len);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+      offset += (DB_BIGINT) nread;
+    }
+
+  if (fputc ('\n', internal_lob_unload_fp) == EOF)
+    {
+      er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      error = ER_FAILED;
+      goto exit;
+    }
+
+  /* Patch the reserved stored-size field now that the body length is known. */
+  {
+    off_t end_pos = ftello (internal_lob_unload_fp);
+
+    if (end_pos < 0 || fseeko (internal_lob_unload_fp, stored_len_pos, SEEK_SET) != 0
+	|| internal_lob_unload_sidecar_print_sizes (data_len, bit_length, stored_len) < 0
+	|| fseeko (internal_lob_unload_fp, end_pos, SEEK_SET) != 0)
+      {
+	er_set_with_oserror (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+	error = ER_FAILED;
+      }
+  }
+
+exit:
+  pthread_mutex_unlock (&internal_lob_unload_lock);
+exit_before_lock:
+  if (stream_opened)
+    {
+      (void) internal_lob_stream_close_from_server (stream_token);
+    }
+  if (buffer != NULL)
+    {
+      free_and_init (buffer);
+    }
+  if (comp_buffer != NULL)
+    {
+      free_and_init (comp_buffer);
+    }
+  return error;
+}
+
+static int
+fprint_internal_lob_ref_if_locator (TEXT_OUTPUT * tout, DB_VALUE * value, bool * printed)
+{
+  int error = NO_ERROR;
+  DB_TYPE lob_type;
+  char lob_type_char;
+  const char *key = NULL;
+  int key_len = 0;
+  int key_bit_length = 0;
+  DB_BIGINT logical_length = 0;
+  DB_BIGINT data_len = 0;
+  DB_BIGINT bit_length = 0;
+
+  *printed = false;
+
+  lob_type = DB_VALUE_DOMAIN_TYPE (value);
+  if (lob_type == DB_TYPE_CLOB)
+    {
+      key = db_get_string (value);
+      key_len = db_get_string_size (value);
+      lob_type_char = 'C';
+    }
+  else if (lob_type == DB_TYPE_BLOB)
+    {
+      key = (const char *) db_get_bit (value, &key_bit_length);
+      key_len = (key_bit_length + 7) / 8;
+      lob_type_char = 'B';
+    }
+  else
+    {
+      return NO_ERROR;
+    }
+
+  if (!internal_lob_marker_parse_locator (key, key_len, &logical_length))
+    {
+      return NO_ERROR;
+    }
+
+  if (!internal_lob_marker_split_length (lob_type_char, logical_length, &data_len, &bit_length))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      return ER_FAILED;
+    }
+
+  error = internal_lob_unload_sidecar_write_stream (lob_type_char, key, key_len, data_len, bit_length);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  CHECK_PRINT_ERROR (text_print (tout, NULL, 0, "^L'%c|", lob_type_char));
+  CHECK_PRINT_ERROR (text_print (tout, key, key_len, NULL));
+  CHECK_PRINT_ERROR (text_print (tout, "'", 1, NULL));
+  *printed = true;
+
+exit_on_error:
+exit:
+  return error;
+}
+
 /*
- * fprint_clob_value - print an internal CLOB DB_VALUE to TEXT_OUTPUT
+ * fprint_clob_value - print a CLOB DB_VALUE to TEXT_OUTPUT
  *    return: NO_ERROR if successful, error code otherwise
  *    tout(out): output
  *    value(in): DB_VALUE of type DB_TYPE_CLOB
@@ -701,6 +1017,13 @@ fprint_clob_value (TEXT_OUTPUT * tout, DB_VALUE * value)
   int error = NO_ERROR;
   const char *str_ptr;
   int len;
+  bool printed = false;
+
+  CHECK_PRINT_ERROR (fprint_internal_lob_ref_if_locator (tout, value, &printed));
+  if (printed)
+    {
+      return NO_ERROR;
+    }
 
   str_ptr = db_get_string (value);
   len = db_get_string_size (value);
@@ -732,6 +1055,13 @@ fprint_blob_value (TEXT_OUTPUT * tout, DB_VALUE * value)
   char buf[INTERNAL_BUFFER_SIZE];
   char *ptr = NULL;
   int max_size = ((db_get_string_length (value) + 3) / 4) + 1;
+  bool printed = false;
+
+  CHECK_PRINT_ERROR (fprint_internal_lob_ref_if_locator (tout, value, &printed));
+  if (printed)
+    {
+      return NO_ERROR;
+    }
 
   if (max_size > INTERNAL_BUFFER_SIZE)
     {
