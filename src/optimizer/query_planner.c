@@ -372,6 +372,9 @@ static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index
 static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_NODE * col);
 static int qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type);
 static int qo_validate_index_notnull (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
+static bool qo_index_keeps_asc_key_order (QO_ENV * env, QO_NODE * node, QO_INDEX_ENTRY * index_entryp);
+static bool qo_key_seg_is_asc_column (QO_ENV * env, TP_DOMAIN * col_type, int seg_idx);
+static QO_EQCLASS *qo_seg_order_eqclass (QO_ENV * env, int seg_idx);
 static int qo_iscan_sort_segs (QO_PLAN * plan, int *seg_idxs, int max);
 static QO_EQCLASS *qo_iscan_order (QO_PLAN * plan);
 static bool qo_full_iscan_keeps_rows (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp);
@@ -2339,6 +2342,85 @@ qo_index_scan_new (QO_INFO * info, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entr
 }
 
 /*
+ * qo_index_keeps_asc_key_order () - checks whether a scan of the index can return its keys in ascending order
+ *   return: true if neither the index nor the query reverses or truncates the key order
+ *   env(in): pointer to the optimizer environment
+ *   node(in): scanned node
+ *   index_entryp(in): index entry
+ */
+static bool
+qo_index_keeps_asc_key_order (QO_ENV * env, QO_NODE * node, QO_INDEX_ENTRY * index_entryp)
+{
+  PT_NODE *tree = QO_ENV_PT_TREE (env);
+
+  if (QO_NODE_INFO (node) == NULL || QO_NODE_IS_CLASS_HIERARCHY (node) || index_entryp->constraints == NULL
+      || index_entryp->key_type == NULL)
+    {
+      return false;
+    }
+
+  if (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (index_entryp->constraints->type) || qo_is_prefix_index (index_entryp)
+      || index_entryp->ils_prefix_len > 0 || index_entryp->use_descending)
+    {
+      return false;
+    }
+
+  /* the hint flips every index scan to descending at XASL generation */
+  if (tree != NULL && tree->node_type == PT_SELECT && (tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC))
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * qo_key_seg_is_asc_column () - checks whether a key segment is an ascending plain column
+ *   return: true if the segment orders rows by the column value itself
+ *   env(in): pointer to the optimizer environment
+ *   col_type(in): key domain of the segment
+ *   seg_idx(in): segment index, -1 if the key part has no segment
+ */
+static bool
+qo_key_seg_is_asc_column (QO_ENV * env, TP_DOMAIN * col_type, int seg_idx)
+{
+  QO_SEGMENT *seg;
+
+  if (col_type->is_desc || seg_idx == -1)
+    {
+      return false;
+    }
+
+  seg = QO_ENV_SEG (env, seg_idx);
+  if (QO_SEG_FUNC_INDEX (seg) || QO_SEG_PT_NODE (seg) == NULL || QO_SEG_PT_NODE (seg)->node_type != PT_NAME)
+    {
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * qo_seg_order_eqclass () - the eqclass a key order on the segment stands for
+ *   return: eqclass of the segment, or QO_UNORDERED
+ *   env(in): pointer to the optimizer environment
+ *   seg_idx(in): segment index
+ */
+static QO_EQCLASS *
+qo_seg_order_eqclass (QO_ENV * env, int seg_idx)
+{
+  QO_EQCLASS *eqclass = QO_SEG_EQCLASS (QO_ENV_SEG (env, seg_idx));
+
+  /* an eqclass without segments is fabricated for a complex merge term */
+  if (eqclass == QO_UNORDERED || bitset_is_empty (&(QO_EQCLASS_SEGS (eqclass))))
+    {
+      return QO_UNORDERED;
+    }
+
+  return eqclass;
+}
+
+/*
  * qo_iscan_sort_segs () - collect the key segments an index scan returns in ascending order
  *   return: number of segments stored in seg_idxs, starting at the first non-equality key column
  *   plan(in): scan plan
@@ -2353,9 +2435,7 @@ qo_iscan_sort_segs (QO_PLAN * plan, int *seg_idxs, int max)
   QO_ENV *env;
   QO_NODE *node;
   QO_INDEX_ENTRY *index_entryp;
-  QO_SEGMENT *seg;
   TP_DOMAIN *col_type;
-  PT_NODE *tree;
   int nterms, equi_nterms, i, j, n = 0;
 
   if (plan == NULL || plan->plan_type != QO_PLANTYPE_SCAN || !qo_is_interesting_order_scan (plan)
@@ -2366,25 +2446,11 @@ qo_iscan_sort_segs (QO_PLAN * plan, int *seg_idxs, int max)
 
   node = plan->plan_un.scan.node;
   env = plan->info->env;
-  tree = QO_ENV_PT_TREE (env);
   index_entryp = plan->plan_un.scan.index->head;
 
-  if (QO_NODE_INFO (node) == NULL || QO_NODE_IS_CLASS_HIERARCHY (node) || index_entryp->constraints == NULL
-      || index_entryp->key_type == NULL)
-    {
-      return 0;
-    }
-
-  if (SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (index_entryp->constraints->type) || qo_is_prefix_index (index_entryp)
-      || index_entryp->ils_prefix_len > 0 || index_entryp->use_descending || qo_is_index_loose_scan (plan)
+  if (!qo_index_keeps_asc_key_order (env, node, index_entryp) || qo_is_index_loose_scan (plan)
       || plan->multi_range_opt_use == PLAN_MULTI_RANGE_OPT_USE
       || !bitset_is_empty (&(plan->plan_un.scan.multi_col_range_segs)))
-    {
-      return 0;
-    }
-
-  /* the hint flips every index scan to descending at XASL generation */
-  if (tree != NULL && tree->node_type == PT_SELECT && (tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC))
     {
       return 0;
     }
@@ -2429,13 +2495,7 @@ qo_iscan_sort_segs (QO_PLAN * plan, int *seg_idxs, int max)
 
   for (i = equi_nterms; i < index_entryp->nsegs && n < max && col_type != NULL; i++, col_type = col_type->next)
     {
-      if (col_type->is_desc || index_entryp->seg_idxs[i] == -1)
-	{
-	  break;
-	}
-
-      seg = QO_ENV_SEG (env, index_entryp->seg_idxs[i]);
-      if (QO_SEG_FUNC_INDEX (seg) || QO_SEG_PT_NODE (seg) == NULL || QO_SEG_PT_NODE (seg)->node_type != PT_NAME)
+      if (!qo_key_seg_is_asc_column (env, col_type, index_entryp->seg_idxs[i]))
 	{
 	  break;
 	}
@@ -2454,7 +2514,6 @@ qo_iscan_sort_segs (QO_PLAN * plan, int *seg_idxs, int max)
 static QO_EQCLASS *
 qo_iscan_order (QO_PLAN * plan)
 {
-  QO_EQCLASS *eqclass;
   int lead_seg;
 
   /* with the parameter off the planner keeps planning merge joins over sorted temp files only */
@@ -2463,15 +2522,7 @@ qo_iscan_order (QO_PLAN * plan)
       return QO_UNORDERED;
     }
 
-  eqclass = QO_SEG_EQCLASS (QO_ENV_SEG (plan->info->env, lead_seg));
-
-  /* an eqclass without segments is fabricated for a complex merge term */
-  if (eqclass == QO_UNORDERED || bitset_is_empty (&(QO_EQCLASS_SEGS (eqclass))))
-    {
-      return QO_UNORDERED;
-    }
-
-  return eqclass;
+  return qo_seg_order_eqclass (plan->info->env, lead_seg);
 }
 
 /*
@@ -14119,10 +14170,7 @@ static bool
 qo_is_full_iscan_candidate (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp)
 {
   QO_INDEX_ENTRY *index_entryp = ni_entryp->head;
-  QO_SEGMENT *seg;
-  QO_EQCLASS *eqclass;
   TP_DOMAIN *col_type;
-  PT_NODE *tree = QO_ENV_PT_TREE (env);
 
   if (!prm_get_bool_value (PRM_ID_OPTIMIZER_ENABLE_MERGE_JOIN)
       || (QO_NODE_HINT (node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_HASH)))
@@ -14130,45 +14178,30 @@ qo_is_full_iscan_candidate (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * 
       return false;
     }
 
-  if (tree == NULL || (tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC))
-    {
-      return false;
-    }
-
-  if (QO_NODE_INFO (node) == NULL || QO_NODE_IS_CLASS_HIERARCHY (node) || index_entryp->constraints == NULL
-      || index_entryp->key_type == NULL)
+  if (QO_ENV_PT_TREE (env) == NULL || !qo_index_keeps_asc_key_order (env, node, index_entryp))
     {
       return false;
     }
 
   if (index_entryp->constraints->filter_predicate != NULL || index_entryp->constraints->func_index_info != NULL
-      || SM_IS_CONSTRAINT_REVERSE_INDEX_FAMILY (index_entryp->constraints->type) || qo_is_prefix_index (index_entryp)
-      || index_entryp->ils_prefix_len > 0 || index_entryp->is_iss_candidate || index_entryp->use_descending
-      || !bitset_is_empty (&(index_entryp->multi_col_range_segs)))
+      || index_entryp->is_iss_candidate || !bitset_is_empty (&(index_entryp->multi_col_range_segs)))
     {
       return false;
     }
 
-  if (index_entryp->nsegs < 1 || index_entryp->seg_idxs[0] == -1)
+  if (index_entryp->nsegs < 1)
     {
       return false;
     }
 
   col_type = (TP_DOMAIN_TYPE (index_entryp->key_type) == DB_TYPE_MIDXKEY)
     ? index_entryp->key_type->setdomain : index_entryp->key_type;
-  if (col_type == NULL || col_type->is_desc)
+  if (col_type == NULL || !qo_key_seg_is_asc_column (env, col_type, index_entryp->seg_idxs[0]))
     {
       return false;
     }
 
-  seg = QO_ENV_SEG (env, index_entryp->seg_idxs[0]);
-  if (QO_SEG_FUNC_INDEX (seg) || QO_SEG_PT_NODE (seg) == NULL || QO_SEG_PT_NODE (seg)->node_type != PT_NAME)
-    {
-      return false;
-    }
-
-  eqclass = QO_SEG_EQCLASS (seg);
-  if (eqclass == QO_UNORDERED || bitset_is_empty (&(QO_EQCLASS_SEGS (eqclass))))
+  if (qo_seg_order_eqclass (env, index_entryp->seg_idxs[0]) == QO_UNORDERED)
     {
       return false;
     }
