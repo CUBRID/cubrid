@@ -3669,7 +3669,7 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
 	  goto error;
 	}
     }
-  else if (ws_is_same_object (trigger->owner, Au_user))
+  else
     {
       tr_invalidate_user_cache ();
     }
@@ -3930,10 +3930,7 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
   /* remove it from the class or user cache */
   if (trigger->class_mop == NULL)
     {
-      if (ws_is_same_object (trigger->owner, Au_user))
-	{
-	  tr_invalidate_user_cache ();
-	}
+      tr_invalidate_user_cache ();
     }
   else
     {
