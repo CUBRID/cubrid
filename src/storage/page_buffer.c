@@ -2523,7 +2523,8 @@ fast_path:
     {
       perf.perf_page_type = pgbuf_get_page_type_for_stat (thread_p, pgptr);
 
-      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_FETCHES);
+      /* the watch may have ended since the fix started; a thread on trace still counts this fetch */
+      perfmon_inc_stat_for_trace (thread_p, PSTAT_PB_NUM_FETCHES);
       if (request_mode == PGBUF_LATCH_READ)
 	{
 	  perf.perf_latch_mode = PERF_HOLDER_LATCH_READ;
