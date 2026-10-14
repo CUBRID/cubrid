@@ -4014,6 +4014,83 @@ qo_hq_has_hashable_eq_term (PARSER_CONTEXT * parser, PT_NODE * pred, SM_CLASS_CO
 }
 
 /*
+ * qo_hq_strip_prior () - the operand of a PRIOR expression, or the node itself
+ */
+static PT_NODE *
+qo_hq_strip_prior (PT_NODE * node)
+{
+  if (PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_PRIOR) || PT_IS_EXPR_NODE_WITH_OPERATOR (node, PT_QPRIOR))
+    {
+      return node->info.expr.arg1;
+    }
+
+  return node;
+}
+
+/*
+ * qo_hq_is_hashed_apart () - checks whether the hash list scan can hash values
+ *   that one PT_EQ conjunct finds equal into different buckets
+ * Note: same-type keys are hashed as is, JSON by its text and NUMERIC by its
+ *       unscaled digits, so only NUMERIC columns of one scale hash alike
+ */
+static bool
+qo_hq_is_hashed_apart (PT_NODE * term)
+{
+  PT_NODE *arg1 = term->info.expr.arg1;
+  PT_NODE *arg2 = term->info.expr.arg2;
+
+  if (arg1 == NULL || arg2 == NULL)
+    {
+      return false;
+    }
+
+  if (arg1->type_enum == PT_TYPE_JSON || arg2->type_enum == PT_TYPE_JSON)
+    {
+      return true;
+    }
+
+  if (arg1->type_enum != PT_TYPE_NUMERIC || arg2->type_enum != PT_TYPE_NUMERIC)
+    {
+      return false;
+    }
+
+  arg1 = qo_hq_strip_prior (arg1);
+  arg2 = qo_hq_strip_prior (arg2);
+
+  return (arg1 == NULL || arg2 == NULL || !PT_IS_NAME_NODE (arg1) || !PT_IS_NAME_NODE (arg2)
+	  || arg1->data_type == NULL || arg2->data_type == NULL
+	  || arg1->data_type->info.data_type.dec_precision != arg2->data_type->info.data_type.dec_precision);
+}
+
+/*
+ * qo_hq_has_hashed_apart_eq_term () - checks the CONNECT BY predicate for an
+ *   equality conjunct whose equal values the hash list scan can hash apart
+ */
+static bool
+qo_hq_has_hashed_apart_eq_term (PT_NODE * pred)
+{
+  for (; pred != NULL; pred = pred->next)
+    {
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_AND))
+	{
+	  if (qo_hq_has_hashed_apart_eq_term (pred->info.expr.arg1)
+	      || qo_hq_has_hashed_apart_eq_term (pred->info.expr.arg2))
+	    {
+	      return true;
+	    }
+	  continue;
+	}
+
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_EQ) && qo_hq_is_hashed_apart (pred))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_hq_prefer_hash_over_single_table () - decides whether a single-table
  *   CONNECT BY should give up the single-table optimization in favor of the
  *   generic path, whose hash list scan finds children in O(N+E) instead of
@@ -4041,6 +4118,12 @@ qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT
     }
 
   if (!qo_hq_has_hashable_eq_term (parser, connect_by, NULL))
+    {
+      return false;
+    }
+
+  /* every equality conjunct becomes a hash key, so one key hashed apart loses children */
+  if (qo_hq_has_hashed_apart_eq_term (connect_by))
     {
       return false;
     }
