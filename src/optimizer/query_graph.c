@@ -5206,13 +5206,6 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 	    {
 	      attr_id = consp->attributes[0]->id;
 
-	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id))
-		{
-		  // If a function index is defined in the first position, the second position is the actual column.
-		  // ex) create index idx on tbl(abs(val));
-		  attr_id = consp->attributes[1]->id;
-		}
-
 	      for (j = 0; j < n_attrs; j++, attr_statsp++)
 		{
 		  if (attr_statsp->id == attr_id)
@@ -5760,10 +5753,6 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	    {
 	      /* function index with the function expression as the first attribute */
 	      attr_id = index_entryp->constraints->attributes[0]->id;
-	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id))
-		{
-		  attr_id = index_entryp->constraints->attributes[1]->id;
-		}
 	    }
 
 	  for (k = 0; k < n_attrs; k++, attr_statsp++)
