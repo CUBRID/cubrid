@@ -19798,6 +19798,10 @@ qexec_connect_by_hash_column (const DB_VALUE * dbval)
        * scan value and a copied tuple value; leave these columns to the exact compare */
       return 0;
 
+    case DB_TYPE_JSON:
+      /* the JSON compare converts scalars to SQL values ("true" = true, -0.0 = 0.0) but the hash uses the raw text */
+      return 0;
+
     default:
       break;
     }
