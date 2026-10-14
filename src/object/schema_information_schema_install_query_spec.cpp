@@ -376,7 +376,7 @@ sm_define_view_foreign_servers_spec (void)
       /* CT_SERVER_NAME */
       "[%s] AS [srv] "
     "WHERE "
-      AUTH_CHECK_OBJECT_SELECT("[srv].[owner].[name]", "[srv]"),
+      "(" AUTH_CHECK_DBA " OR " AUTH_CHECK_OWNER ("[srv].[owner].[name]") ")",
     CT_SERVER_NAME);
   // *INDENT-ON*
   assert (n > 0 && n < (int) sizeof (stmt));
