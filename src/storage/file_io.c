@@ -7103,6 +7103,47 @@ error:
 }
 
 /*
+ * fileio_reorder_queue_destroy_node () - release a reorder-queue node and the buffers it owns
+ *    return: void
+ *
+ *    node_p(in/out): node to free; must not be on any list
+ *    zip_method(in): the method the node was allocated with, so that the release mirrors
+ *                    fileio_allocate_node (). Callers on the abort path must capture it from the backup
+ *                    header before that header is freed.
+ */
+static void
+fileio_reorder_queue_destroy_node (FILEIO_NODE * node_p, FILEIO_ZIP_METHOD zip_method)
+{
+  if (node_p == NULL)
+    {
+      return;
+    }
+
+  switch (zip_method)
+    {
+    case FILEIO_ZIP_LZ4_METHOD:
+      if (node_p->zip_info != NULL)
+	{
+	  free_and_init (node_p->zip_info);
+	}
+      break;
+    case FILEIO_ZIP_LZO1X_METHOD:
+      break;
+    case FILEIO_ZIP_ZLIB_METHOD:
+      break;
+    default:
+      break;
+    }
+
+  if (node_p->area != NULL)
+    {
+      free_and_init (node_p->area);
+    }
+
+  free_and_init (node_p);
+}
+
+/*
  * fileio_finalize_backup_thread() -
  *    return: void
  *
@@ -7204,28 +7245,7 @@ fileio_finalize_backup_thread (FILEIO_BACKUP_SESSION * session_p, FILEIO_ZIP_MET
     for (node = reorder_queue_p->free_list; node != NULL; node = node_next)
       {
 	node_next = node->next;
-	switch (zip_method)
-	  {
-	  case FILEIO_ZIP_LZ4_METHOD:
-	    if (node->zip_info != NULL)
-	      {
-		free_and_init (node->zip_info);
-	      }
-	    break;
-	  case FILEIO_ZIP_LZO1X_METHOD:
-	    break;
-	  case FILEIO_ZIP_ZLIB_METHOD:
-	    break;
-	  default:
-	    break;
-	  }
-
-	if (node->area != NULL)
-	  {
-	    free_and_init (node->area);
-	  }
-
-	free_and_init (node);
+	fileio_reorder_queue_destroy_node (node, zip_method);
 	freed++;
       }
     reorder_queue_p->free_list = NULL;
@@ -8083,6 +8103,58 @@ fileio_reorder_queue_pool_free (FILEIO_THREAD_INFO * thread_info_p, FILEIO_NODE 
     }
 }
 
+/*
+ * fileio_reorder_queue_pool_resize () - grow or shrink the reorder-queue node pool to want_nodes
+ *   return: void
+ *   thread_info_p(in/out):
+ *   backup_header_p(in): bkpagesize and zip_method, both fixed for the whole session
+ *   want_nodes(in): number of nodes the pool should own for this volume
+ *
+ * Note: Callable only with the queue quiesced, that is, from fileio_start_backup_thread () before the
+ *       readers are spawned. The previous volume's writer returned only after every reader ended, so every
+ *       node the pool owns is on free_list and nothing can race. It therefore takes no mutex, which is the
+ *       point: growing here keeps the allocation out of the claim phase, which does run under
+ *       thread_info_p->mtx. Shrinking matters because the pool lives for the whole session while capacity
+ *       is per volume, and a backup ends with the one page log info and the log active, where a pool sized
+ *       for a huge data volume would otherwise be held to the end.
+ */
+static void
+fileio_reorder_queue_pool_resize (FILEIO_THREAD_INFO * thread_info_p, FILEIO_BACKUP_HEADER * backup_header_p,
+				  int want_nodes)
+{
+  FILEIO_REORDER_QUEUE *reorder_queue_p = &thread_info_p->reorder_queue;
+  FILEIO_QUEUE tmp_q;
+  FILEIO_NODE *node_p;
+
+  /* Shrink. pool_total is decremented once per node actually freed, so the free_list length and pool_total
+   * stay equal and the leak assert in fileio_finalize_backup_thread () still holds. */
+  while (reorder_queue_p->pool_total > want_nodes && reorder_queue_p->free_list != NULL)
+    {
+      node_p = reorder_queue_p->free_list;
+      reorder_queue_p->free_list = node_p->next;
+      fileio_reorder_queue_destroy_node (node_p, backup_header_p->zip_method);
+      reorder_queue_p->pool_total--;
+    }
+
+  /* Grow. A failure here is not fatal: the claim phase still allocates on a miss, so a short prefill only
+   * restores the previous behaviour. Failing the volume over memory the run may never have needed would be
+   * a step back. Discard the error it reports; er_set () has already recorded it in the server error log. */
+  er_stack_push ();
+  while (reorder_queue_p->pool_total < want_nodes)
+    {
+      tmp_q.free_list = NULL;
+      node_p = fileio_allocate_node (&tmp_q, backup_header_p);
+      if (node_p == NULL)
+	{
+	  break;
+	}
+      node_p->next = reorder_queue_p->free_list;
+      reorder_queue_p->free_list = node_p;
+      reorder_queue_p->pool_total++;
+    }
+  er_stack_pop ();
+}
+
 static void
 fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p)
 {
@@ -8512,6 +8584,13 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
       thread_info_p->reorder_queue.capacity = 0;
       return ER_FAILED;
     }
+
+  /* Size the node pool for this volume while nothing else can touch it. Live nodes cannot exceed the
+   * dispatch window plus the writer's detached run, 2 x capacity, nor the page count of the volume, because
+   * every live node is bound to a distinct pageid. Holding exactly that many means the claim phase never
+   * finds the free list empty, so it never allocates under thread_info_p->mtx. */
+  fileio_reorder_queue_pool_resize (thread_info_p, backup_header_p, MIN (capacity * 2, from_npages));
+
   thread_info_p->reorder_queue.next_read_pageid = 0;
   thread_info_p->reorder_queue.next_emit_pageid = 0;
   thread_info_p->abort = false;
