@@ -1219,8 +1219,12 @@ dwb_create_internal (THREAD_ENTRY *thread_p, const char *dwb_volume_name, UINT64
   dwb_Global.vdes = vdes;
   dwb_Global.file_sync_helper_block = NULL;
 
-  dwb_Global.slots_hashmap.init (dwb_slots_Ts, THREAD_TS_DWB_SLOTS, DWB_SLOTS_HASH_SIZE, freelist_block_size,
-				 freelist_block_count, slots_entry_Descriptor);
+  if (dwb_Global.slots_hashmap.init (dwb_slots_Ts, THREAD_TS_DWB_SLOTS, DWB_SLOTS_HASH_SIZE, freelist_block_size,
+				     freelist_block_count, slots_entry_Descriptor) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto exit_on_error;
+    }
 
   /* Set creation flag. */
   new_position_with_flags = DWB_RESET_POSITION (*current_position_with_flags);

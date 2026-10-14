@@ -372,8 +372,8 @@ class lf_hash_table_cpp
 
     lf_hash_table_cpp ();
 
-    void init (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
-               lf_entry_descriptor &edes);
+    int init (lf_tran_system &transys, int hash_size, int freelist_block_count, int freelist_block_size,
+              lf_entry_descriptor &edes);
     void destroy ();
 
     T *find (lf_tran_entry *t_entry, Key &key);
@@ -440,20 +440,17 @@ lf_hash_table_cpp<Key, T>::lf_hash_table_cpp ()
 }
 
 template <class Key, class T>
-void
+int
 lf_hash_table_cpp<Key, T>::init (lf_tran_system &transys, int hash_size, int freelist_block_count,
                                  int freelist_block_size, lf_entry_descriptor &edesc)
 {
-  if (lf_freelist_init (&m_freelist, freelist_block_count, freelist_block_size, &edesc, &transys) != NO_ERROR)
+  /* both answer ER_OUT_OF_VIRTUAL_MEMORY and both used to be swallowed by an assert (false) here */
+  int error_code = lf_freelist_init (&m_freelist, freelist_block_count, freelist_block_size, &edesc, &transys);
+  if (error_code != NO_ERROR)
     {
-      assert (false);
-      return;
+      return error_code;
     }
-  if (lf_hash_init (&m_hash, &m_freelist, hash_size, &edesc) != NO_ERROR)
-    {
-      assert (false);
-      return;
-    }
+  return lf_hash_init (&m_hash, &m_freelist, hash_size, &edesc);
 }
 
 template <class Key, class T>
@@ -538,7 +535,6 @@ lf_hash_table_cpp<Key, T>::erase_locked (lf_tran_entry *t_entry, Key &key, T *&t
   if (lf_hash_delete_already_locked (t_entry, &m_hash, &key, t, &success) != NO_ERROR)
     {
       assert (false);
-      pthread_mutex_unlock (get_pthread_mutex (t));
     }
   if (success != 0)
     {
@@ -554,7 +550,10 @@ lf_hash_table_cpp<Key, T>::unlock (lf_tran_entry *t_entry, T *&t)
   assert (t != NULL);
   if (m_freelist.entry_desc->using_mutex)
     {
+      /* lock_free.c locks entries in SERVER_MODE only */
+#if defined (SERVER_MODE)
       pthread_mutex_unlock (get_pthread_mutex (t));
+#endif /* SERVER_MODE */
     }
   else
     {
@@ -672,6 +671,8 @@ template <class Key, class T>
 void
 lf_hash_table_cpp<Key, T>::iterator::restart ()
 {
+  /* the caller has already unlocked curr, and lf_hash_iterate () would walk on from it with no transaction open */
+  m_iter.curr = NULL;
   m_iter.bucket_index = -1;
   if (m_iter.tran_entry->transaction_id != LF_NULL_TRANSACTION_ID)
     {
