@@ -3712,6 +3712,18 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 	    break;
 	  }
 
+	/* a literal holds at most DB_MAX_LOB_PRECISION bits; larger values come from a file (BLOB_FROM_FILE etc.) */
+	{
+	  DB_BIGINT literal_bits = (value->info.value.string_type == 'B') ? (DB_BIGINT) s->length
+	    : (value->info.value.string_type == 'X') ? (DB_BIGINT) s->length * 4 : (DB_BIGINT) s->length * 8;
+
+	  if (literal_bits > (DB_BIGINT) DB_MAX_LOB_PRECISION)
+	    {
+	      PT_ERRORm (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_BLOB_LITERAL_TOO_LONG);
+	      return NULL;
+	    }
+	}
+
 	if (value->info.value.string_type == 'B')
 	  {
 	    src_length = s->length;
@@ -3792,6 +3804,13 @@ pt_db_value_initialize (PARSER_CONTEXT * parser, PT_NODE * value, DB_VALUE * db_
 	    value->info.value.db_value_is_in_workspace = false;
 	    *more_type_info_needed = (value->data_type == NULL);
 	    break;
+	  }
+
+	/* a literal holds at most DB_MAX_LOB_PRECISION bytes; larger values come from a file (CLOB_FROM_FILE etc.) */
+	if (s->length > DB_MAX_LOB_PRECISION)
+	  {
+	    PT_ERRORm (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CLOB_LITERAL_TOO_LONG);
+	    return NULL;
 	  }
 
 	int len = s->length;

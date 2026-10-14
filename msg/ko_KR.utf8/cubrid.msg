@@ -2006,6 +2006,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 338 잘못된 인자입니다. UUID는 UUIDv4, 또는 UUIDv7만 지원하며, 버전 인자는 NULL일 수 없습니다.
 339 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서만 storage 옵션을 정의할 수 있습니다.
 340 STORAGE 옵션은 클래스의 가변 타입 일반 속성에만 지정할 수 있습니다: '%1$s'.
+341 CLOB 리터럴은 1GiB를 넘을 수 없습니다. 1GiB를 넘는 값은 CLOB_FROM_FILE 또는 CFILE_TO_CLOB으로 넣을 수 있습니다(최대 4GiB).
+342 BLOB 리터럴은 128MiB를 넘을 수 없습니다. 128MiB를 넘는 값은 BLOB_FROM_FILE 또는 BFILE_TO_BLOB으로 넣을 수 있습니다(최대 4GiB).
 
 
 
