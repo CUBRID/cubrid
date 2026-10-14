@@ -9401,8 +9401,8 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
 	  return HASH_METH_NOT_USE;
 	}
       /* the key plan (qdata_plan_hscan_keys) decides whether a pair hashes differently: types that differ, a domain
-       * not fixed yet, NUMERIC precisions and scales, string codesets */
-      if (vtype1 != vtype2 || vtype1 == DB_TYPE_VARIABLE || vtype1 == DB_TYPE_NUMERIC || TP_IS_CHAR_TYPE (vtype1))
+       * not fixed yet, NUMERIC precisions and scales */
+      if (vtype1 != vtype2 || vtype1 == DB_TYPE_VARIABLE || vtype1 == DB_TYPE_NUMERIC)
 	{
 	  llsidp->hlsid.need_coerce_type = true;
 	}

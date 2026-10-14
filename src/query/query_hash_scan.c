@@ -504,9 +504,8 @@ qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *dat
 /*
  * How the keys of one pair enter and probe the hash table. The table holds only hash numbers, and the scan evaluates
  * the join predicate on every tuple a probe finds, so the hash has one duty: two values the predicate finds equal must
- * hash alike. Where the domains of a pair differ, both sides are hashed in one hash domain chosen from the domains the
- * comparison of the pair coerces into (tp_value_compare_common_domain). It never narrows a side, so a value of either
- * side has its image there: BIGINT 3000000000 against INT, a long VARCHAR against CHAR (3), NUMERIC (10,2) against
+ * hash alike. Where the domains of a pair differ, both sides are hashed in one hash domain common to both
+ * (qdata_hscan_key_hash_domain). It never narrows a side, so a value of either side has its image there: BIGINT 3000000000 against INT, a long VARCHAR against CHAR (3), NUMERIC (10,2) against
  * NUMERIC (12,4). The scan chooses each side's copy or conversion once per open, before its first build row, from the
  * domains the plan gives the keys (not at every row from the value's type), and the row copies or runs the converter
  * it chose.
@@ -603,44 +602,19 @@ qdata_hscan_key_probe_has_domain (const VAL_DESCR * vd, const REGU_VARIABLE * ke
   return qdata_hscan_key_probe_domain (vd, key) != NULL;
 }
 
-/* A string domain of the largest precision in the codeset and collation of like: a string of either side fits. */
-static const TP_DOMAIN *
-qdata_hscan_key_string_domain (const TP_DOMAIN * like)
-{
-  TP_DOMAIN *domain = tp_domain_copy (tp_domain_resolve_default (DB_TYPE_VARCHAR), false);
-  if (domain == NULL)
-    {
-      return NULL;
-    }
-  domain->codeset = like->codeset;
-  domain->collation_id = like->collation_id;
-  return tp_domain_cache (domain);
-}
-
 /*
- * qdata_hscan_key_same_domain () - whether a value of domain gives the hash it would give in the hash domain
- *
- * The type and, for a NUMERIC, its precision and scale (a fixed NUMERIC hashes its digits unscaled), or two string
- * types of one codeset (the string hash reads the bytes and ignores the trailing spaces, so CHAR pads nothing in).
+ * qdata_hscan_key_same_domain () - whether a value of domain hashes as it is in the hash domain target: the same type
+ *   and, for a NUMERIC, the same precision and scale (a fixed NUMERIC hashes its digits unscaled)
  */
 static bool
 qdata_hscan_key_same_domain (const TP_DOMAIN * domain, const TP_DOMAIN * target)
 {
-  const DB_TYPE type = TP_DOMAIN_TYPE (domain);
-  const DB_TYPE target_type = TP_DOMAIN_TYPE (target);
-  if (TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE (target_type))
-    {
-      return TP_DOMAIN_CODESET (domain) == TP_DOMAIN_CODESET (target);
-    }
-  if (type != target_type)
+  if (TP_DOMAIN_TYPE (domain) != TP_DOMAIN_TYPE (target))
     {
       return false;
     }
-  if (type == DB_TYPE_NUMERIC)
-    {
-      return domain->precision == target->precision && domain->scale == target->scale;
-    }
-  return true;
+  return TP_DOMAIN_TYPE (domain) != DB_TYPE_NUMERIC
+    || (domain->precision == target->precision && domain->scale == target->scale);
 }
 
 /*
@@ -648,59 +622,35 @@ qdata_hscan_key_same_domain (const TP_DOMAIN * domain, const TP_DOMAIN * target)
  *   return: the domain, NULL on error (ER_OUT_OF_VIRTUAL_MEMORY)
  *   build(in), probe(in): the domains of the pair's values
  *
- * The comparison's coercion (tp_value_compare_common_domain) picks the type: a string against a number compares as
- * DOUBLE, a string against a date or time in the date's type, other types in the more general one. Two NUMERIC
- * domains, or a NUMERIC against a narrower integer, hash as DOUBLE: equal values convert to one DOUBLE whatever their
- * scale, and a NUMERIC common to both would need a precision neither side may fit. Two strings of different codesets
- * hash as strings of the probe's codeset, of the largest precision. The values the comparison finds equal convert to
- * equal values there; values that only collide there are left to the join predicate.
+ * A string against a number or a date hashes in the type the comparison coerces both into (DOUBLE, the date's type).
+ * Any other pair hashes in the common domain tp_infer_common_domain gives, which never narrows a side, except that a
+ * NUMERIC there hashes as DOUBLE: equal values convert to one DOUBLE whatever their scale, where the common NUMERIC's
+ * fixed precision may not hold them. Values that only collide there are left to the join predicate.
  */
 static const TP_DOMAIN *
 qdata_hscan_key_hash_domain (const TP_DOMAIN * build, const TP_DOMAIN * probe)
 {
-  const DB_TYPE build_type = TP_DOMAIN_TYPE (build);
-  const DB_TYPE probe_type = TP_DOMAIN_TYPE (probe);
-
   if (qdata_hscan_key_same_domain (build, probe))
     {
       return build;
     }
-  if (TP_IS_CHAR_TYPE (build_type) && TP_IS_CHAR_TYPE (probe_type))
-    {
-      /* strings of different codesets */
-      return qdata_hscan_key_string_domain (probe);
-    }
-
-  DB_TYPE general;
-  switch (tp_value_compare_common_domain (build_type, probe_type))
+  switch (tp_value_compare_common_domain (TP_DOMAIN_TYPE (build), TP_DOMAIN_TYPE (probe)))
     {
     case TP_COMPARE_COERCE_TO_DOUBLE:
       return tp_domain_resolve_default (DB_TYPE_DOUBLE);
     case TP_COMPARE_COERCE_FIRST_TO_DATE:
-      return tp_domain_resolve_default (probe_type);
+      return tp_domain_resolve_default (TP_DOMAIN_TYPE (probe));
     case TP_COMPARE_COERCE_SECOND_TO_DATE:
-      return tp_domain_resolve_default (build_type);
-    case TP_COMPARE_COERCE_SECOND_TO_FIRST:
-      general = build_type;
-      break;
-    case TP_COMPARE_COERCE_FIRST_TO_SECOND:
-    case TP_COMPARE_COERCE_NONE:
+      return tp_domain_resolve_default (TP_DOMAIN_TYPE (build));
     default:
-      general = probe_type;
       break;
     }
-
-  if (general == DB_TYPE_NUMERIC)
+  const TP_DOMAIN *common = tp_infer_common_domain ((TP_DOMAIN *) build, (TP_DOMAIN *) probe);
+  if (common != NULL && TP_DOMAIN_TYPE (common) == DB_TYPE_NUMERIC)
     {
-      /* NUMERIC (p, s) against NUMERIC (q, t), INTEGER, SMALLINT or BIGINT */
       return tp_domain_resolve_default (DB_TYPE_DOUBLE);
     }
-  if (TP_IS_CHAR_TYPE (general))
-    {
-      /* an ENUM or another type against a string: the string side keeps its codeset and collation */
-      return qdata_hscan_key_string_domain (general == build_type ? build : probe);
-    }
-  return general == build_type ? build : general == probe_type ? probe : tp_domain_resolve_default (general);
+  return common;
 }
 
 /* How the values of one side, of domain values, enter the hash domain target. */
@@ -831,10 +781,9 @@ qdata_check_hscan_key_convert (const DB_VALUE * value, const TP_DOMAIN * target,
 
 /*
  * qdata_convert_hscan_key_value () - one value of a side into the hash domain
- *   return: NO_ERROR, or the error set (ER_TP_CANT_COERCE where the conversion fails without one)
+ *   return: NO_ERROR, or the error set (tp_domain_status_er_set, as the hash join on the same pair)
  *
- * The hash domain never narrows a side, so only a value the conversion itself refuses fails here, and the error is
- * the one the hash join gives on the same pair.
+ * The hash domain never narrows a side, so only a value the conversion itself refuses fails here.
  */
 static int
 qdata_convert_hscan_key_value (const HASH_SCAN_KEY_ENTRY * entry, const HASH_SCAN_KEY_SIDE * side,
@@ -859,13 +808,7 @@ qdata_convert_hscan_key_value (const HASH_SCAN_KEY_ENTRY * entry, const HASH_SCA
       return NO_ERROR;
     }
   pr_clear_value (converted);
-  if (status == DOMAIN_ERROR && er_errid () != NO_ERROR)
-    {
-      return er_errid ();
-    }
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_DOMAIN_TYPE (value)),
-	  pr_type_name (TP_DOMAIN_TYPE (entry->target)));
-  return ER_TP_CANT_COERCE;
+  return tp_domain_status_er_set (status, ARG_FILE_LINE, value, entry->target);
 }
 
 /*
