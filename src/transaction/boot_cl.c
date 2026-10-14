@@ -175,6 +175,7 @@ static int boot_check_locales (BOOT_CLIENT_CREDENTIAL * client_credential);
 static int boot_check_timezone_checksum (BOOT_CLIENT_CREDENTIAL * client_credential);
 #endif
 static int boot_client_find_and_cache_class_oids (void);
+static int boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool is_sub_client);
 
 static int reset_isolation_and_wait_times (void);
 static int boot_client_common (BOOT_CLIENT_CREDENTIAL * client_credential, const char *lang_charset, bool is_createdb);
@@ -1111,6 +1112,199 @@ error_exit:
 #endif /* SA_MODE */
 
 /*
+ * boot_register_and_init_client () - register the client to the server and initialize the client modules
+ *
+ * returns : NO_ERROR if all OK, ER_ status otherwise
+ *
+ *   client_credential(in) : Information required to start as client
+ *   is_sub_client(in)     : true if called by boot_restart_client_sub ()
+ *
+ * Note: This is the common part of boot_restart_client () and boot_restart_client_sub ().
+ *       The connection to the server must already be established by the caller.
+ *       The process-wide setups (domains, language, page size, class oid cache, lob path, ...) are done only
+ *       by the main client. A sub-client shares them with the main client and initializes only its own modules.
+ *       On failure, the caller is responsible for the cleanup.
+ */
+static int
+boot_register_and_init_client (BOOT_CLIENT_CREDENTIAL * client_credential, bool is_sub_client)
+{
+  int tran_index;
+  TRAN_ISOLATION tran_isolation;
+  int tran_lock_wait_msecs;
+  TRAN_STATE transtate;
+  int error_code = NO_ERROR;
+
+  if (!is_sub_client)
+    {
+      /* this must be done before the register_client because recovery steps may need domains. */
+      error_code = tp_init ();
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  error_code = ws_init (is_sub_client);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /*
+   * At this moment, we should use the default isolation level and wait
+   * timeout, since the client fetches objects during the restart process.
+   * This values are reset at a later point, once the client has been fully
+   * restarted.
+   */
+
+  tran_isolation = TRAN_DEFAULT_ISOLATION_LEVEL ();
+
+  tran_lock_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
+
+  er_log_debug (ARG_FILE_LINE,
+		"%s: register client { type %d db %s user %s password **** "
+		"program %s login %s host %s pid %d }\n",
+		is_sub_client ? "boot_restart_client_sub" : "boot_restart_client", client_credential->client_type,
+		client_credential->get_db_name (), client_credential->get_db_user (),
+		client_credential->get_program_name (),
+		client_credential->get_login_name (), client_credential->get_host_name (),
+		client_credential->process_id);
+
+  tran_index =
+    boot_register_client (client_credential, tran_lock_wait_msecs, tran_isolation, &transtate, &boot_Server_credential);
+
+  if (tran_index == NULL_TRAN_INDEX)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  if (!is_sub_client)
+    {
+#if defined(CS_MODE)
+      if (lang_set_charset ((INTL_CODESET) boot_Server_credential.db_charset) != NO_ERROR)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      if (lang_set_language (boot_Server_credential.db_lang) != NO_ERROR)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+
+      /* Reset the pagesize according to server.. */
+      if (db_set_page_size (boot_Server_credential.page_size, boot_Server_credential.log_page_size) != NO_ERROR)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+
+      /* Reset the disk_level according to server.. */
+      if (rel_disk_compatible () != boot_Server_credential.disk_compatibility)
+	{
+	  rel_set_disk_compatible (boot_Server_credential.disk_compatibility);
+	}
+#endif /* CS_MODE */
+      if (sysprm_init_intl_param () != NO_ERROR)
+	{
+	  return er_errid ();
+	}
+    }
+
+  /* Initialize client modules for execution */
+  boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
+
+  if (!is_sub_client)
+    {
+      oid_set_root (&boot_Server_credential.root_class_oid);
+    }
+  OID_INIT_TEMPID ();
+
+  sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid, is_sub_client);
+  au_init ();			/* initialize authorization globals */
+
+  /* start authorization and make sure the logged in user has access */
+  error_code = au_start ();
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (!is_sub_client)
+    {
+      error_code = boot_client_find_and_cache_class_oids ();
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  /*
+   * For a sub-client, the session is created with cached_session_parameters loaded by the main client.
+   * They are only read here, and the parameter values (prm_Def) are not rewritten for a sub-client
+   * (see csession_find_or_create_session ()).
+   */
+  (void) db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
+
+#if defined(CS_MODE)
+  if (!is_sub_client)
+    {
+      error_code = boot_check_locales (client_credential);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+
+      error_code = boot_check_timezone_checksum (client_credential);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+#endif /* CS_MODE */
+
+  tr_init ();			/* initialize trigger manager */
+
+  if (!is_sub_client)
+    {
+      /* TODO: how about to call es_init() only for normal client? */
+      if (boot_Server_credential.lob_path[0] != '\0')
+	{
+	  error_code = es_init (boot_Server_credential.lob_path);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	}
+      else
+	{
+	  er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
+	}
+    }
+
+  /* Does not care if was committed/aborted .. */
+  (void) tran_commit (false);
+
+  error_code = reset_isolation_and_wait_times ();
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (!is_sub_client)
+    {
+      error_code = showstmt_metadata_init ();
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * boot_restart_client () - restart client
  *
  * returns : NO_ERROR if all OK, ER_ status otherwise
@@ -1135,10 +1329,6 @@ error_exit:
 int
 boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
 {
-  int tran_index;
-  TRAN_ISOLATION tran_isolation;
-  int tran_lock_wait_msecs;
-  TRAN_STATE transtate;
   int error_code = NO_ERROR;
   DB_INFO *db = NULL;
 #if !defined(WINDOWS)
@@ -1202,144 +1392,7 @@ boot_restart_client (BOOT_CLIENT_CREDENTIAL * client_credential)
   cfg_free_directory (db);
   db = NULL;
 
-  /* this must be done before the register_client because recovery steps may need domains. */
-  error_code = tp_init ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  error_code = ws_init (false);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  /*
-   * At this moment, we should use the default isolation level and wait
-   * timeout, since the client fetches objects during the restart process.
-   * This values are reset at a later point, once the client has been fully
-   * restarted.
-   */
-
-  tran_isolation = TRAN_DEFAULT_ISOLATION_LEVEL ();
-
-  tran_lock_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
-
-  er_log_debug (ARG_FILE_LINE,
-		"boot_restart_client: register client { type %d db %s user %s password **** "
-		"program %s login %s host %s pid %d }\n", client_credential->client_type,
-		client_credential->get_db_name (), client_credential->get_db_user (),
-		client_credential->get_program_name (),
-		client_credential->get_login_name (), client_credential->get_host_name (),
-		client_credential->process_id);
-
-  tran_index =
-    boot_register_client (client_credential, tran_lock_wait_msecs, tran_isolation, &transtate, &boot_Server_credential);
-
-  if (tran_index == NULL_TRAN_INDEX)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      goto error;
-    }
-
-#if defined(CS_MODE)
-  if (lang_set_charset ((INTL_CODESET) boot_Server_credential.db_charset) != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      goto error;
-    }
-  if (lang_set_language (boot_Server_credential.db_lang) != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      goto error;
-    }
-
-  /* Reset the pagesize according to server.. */
-  if (db_set_page_size (boot_Server_credential.page_size, boot_Server_credential.log_page_size) != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      goto error;
-    }
-
-  /* Reset the disk_level according to server.. */
-  if (rel_disk_compatible () != boot_Server_credential.disk_compatibility)
-    {
-      rel_set_disk_compatible (boot_Server_credential.disk_compatibility);
-    }
-#endif /* CS_MODE */
-  if (sysprm_init_intl_param () != NO_ERROR)
-    {
-      error_code = er_errid ();
-      goto error;
-    }
-
-  /* Initialize client modules for execution */
-  boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
-
-  oid_set_root (&boot_Server_credential.root_class_oid);
-  OID_INIT_TEMPID ();
-
-  sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid, false);
-  au_init ();			/* initialize authorization globals */
-
-  /* start authorization and make sure the logged in user has access */
-  error_code = au_start ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = boot_client_find_and_cache_class_oids ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  (void) db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
-
-#if defined(CS_MODE)
-  error_code = boot_check_locales (client_credential);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  error_code = boot_check_timezone_checksum (client_credential);
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-#endif /* CS_MODE */
-
-  tr_init ();			/* initialize trigger manager */
-
-  /* TODO: how about to call es_init() only for normal client? */
-  if (boot_Server_credential.lob_path[0] != '\0')
-    {
-      error_code = es_init (boot_Server_credential.lob_path);
-      if (error_code != NO_ERROR)
-	{
-	  goto error;
-	}
-    }
-  else
-    {
-      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
-    }
-  /* Does not care if was committed/aborted .. */
-  (void) tran_commit (false);
-
-  error_code = reset_isolation_and_wait_times ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  error_code = showstmt_metadata_init ();
+  error_code = boot_register_and_init_client (client_credential, false);
   if (error_code != NO_ERROR)
     {
       goto error;
@@ -1371,12 +1424,6 @@ int
 boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
 {
   int error_code;
-
-  /* **************************************************************** */
-  int tran_index;
-  TRAN_ISOLATION tran_isolation;
-  int tran_lock_wait_msecs;
-  TRAN_STATE transtate;
 
   assert (client_credential != NULL);
 
@@ -1427,143 +1474,11 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
   //    db_set_host_status (boot_Host_connected, DB_HS_NON_PREFFERED_HOSTS);
   //  }  
 
-  //sysprm_tune_client_parameters ();  
-  //error_code = tp_init ();
-  //if (error_code != NO_ERROR)
-  //  {
-  //    goto error;
-  //  }
-
-  // tp_init ();
-  // tsc_init ();  
-
-  error_code = ws_init (true);
+  error_code = boot_register_and_init_client (client_credential, true);
   if (error_code != NO_ERROR)
     {
       goto error;
     }
-
-  tran_isolation = TRAN_DEFAULT_ISOLATION_LEVEL ();
-  tran_lock_wait_msecs = TRAN_LOCK_INFINITE_WAIT;
-
-  er_log_debug (ARG_FILE_LINE,
-		"boot_restart_client: register client { type %d db %s user %s password **** "
-		"program %s login %s host %s pid %d }\n", client_credential->client_type,
-		client_credential->get_db_name (), client_credential->get_db_user (),
-		client_credential->get_program_name (),
-		client_credential->get_login_name (), client_credential->get_host_name (),
-		client_credential->process_id);
-
-  tran_index =
-    boot_register_client (client_credential, tran_lock_wait_msecs, tran_isolation, &transtate, &boot_Server_credential);
-
-  if (tran_index == NULL_TRAN_INDEX)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      goto error;
-    }
-
-#if 0
-  //============================================
-  if (lang_set_charset ((INTL_CODESET) boot_Server_credential.db_charset) != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      goto error;
-    }
-  if (lang_set_language (boot_Server_credential.db_lang) != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      goto error;
-    }
-
-  /* Reset the pagesize according to server.. */
-  if (db_set_page_size (boot_Server_credential.page_size, boot_Server_credential.log_page_size) != NO_ERROR)
-    {
-      assert (er_errid () != NO_ERROR);
-      error_code = er_errid ();
-      goto error;
-    }
-
-  /* Reset the disk_level according to server.. */
-  if (rel_disk_compatible () != boot_Server_credential.disk_compatibility)
-    {
-      rel_set_disk_compatible (boot_Server_credential.disk_compatibility);
-    }
-  //============================================  
-
-  if (sysprm_init_intl_param () != NO_ERROR)
-    {
-      error_code = er_errid ();
-      goto error;
-    }
-#endif //
-
-  /* Initialize client modules for execution */
-  boot_client (tran_index, tran_lock_wait_msecs, tran_isolation);
-
-  //oid_set_root (&boot_Server_credential.root_class_oid);
-  OID_INIT_TEMPID ();
-
-  sm_init (&boot_Server_credential.root_class_oid, &boot_Server_credential.root_class_hfid, true);
-  au_init ();			/* initialize authorization globals */
-
-  /* start authorization and make sure the logged in user has access */
-  error_code = au_start ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  //error_code = boot_client_find_and_cache_class_oids ();
-
-  /*
-   * The session is created with cached_session_parameters loaded by the main client. They are only read here,
-   * and the parameter values (prm_Def) are not rewritten for a sub-client (see csession_find_or_create_session ()).
-   */
-  (void) db_find_or_create_session (client_credential->get_db_user (), client_credential->get_program_name ());
-#if 0
-  //error_code = boot_check_locales (&client_credential);
-  //if (error_code != NO_ERROR)
-  //  {
-  //    goto error;
-  //  }
-
-  //error_code = boot_check_timezone_checksum (&client_credential);
-  //if (error_code != NO_ERROR)
-  //  {
-  //    goto error;
-  //  }
-#endif
-
-  tr_init ();			/* initialize trigger manager of this sub-client */
-
-  /* TODO: how about to call es_init() only for normal client? */
-  //if (boot_Server_credential.lob_path[0] != '\0')
-  //  {
-  //    error_code = es_init (boot_Server_credential.lob_path);
-  //    if (error_code != NO_ERROR)
-  //    {
-  //      goto error;
-  //    }
-  //    }
-  //  else
-  //    {
-  //      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, ER_ES_NO_LOB_PATH, 0);
-  //    }
-
-  /* Does not care if was committed/aborted .. */
-  (void) tran_commit (false);
-
-  error_code = reset_isolation_and_wait_times ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-
-  //  error_code = showstmt_metadata_init ();
-  //  json_set_alloc_funcs (malloc, free);    
 
   return NO_ERROR;
 
