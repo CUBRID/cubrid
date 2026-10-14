@@ -1019,7 +1019,9 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 
   memset (coerce_domains, 0, domain_cnt * sizeof (TP_DOMAIN *));
 
-  /* This code references tp_infer_common_domain but reduces unnecessary calls to tp_domain_new. */
+  /* This code references tp_infer_common_domain but reduces unnecessary calls to tp_domain_new.
+   * the key columns' domains are the plan's - the join's lists opened with them (qdata_get_valptr_type_list)
+   * - so the common domain follows from resolutions made before any row. */
   for (domain_index = 0; domain_index < domain_cnt; domain_index++)
     {
       outer_value_index = outer_value_indexes[domain_index];
@@ -1096,7 +1098,11 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 		  inner_integral = inner_precision - inner_scale;
 
 		  common_precision = MAX (outer_integral, inner_integral) + common_scale;
-		  common_precision = MIN (common_precision, DB_MAX_FIXED_NUMERIC_PRECISION);
+		  if (common_precision > DB_MAX_FIXED_NUMERIC_PRECISION)
+		    {
+		      common_precision = DB_DEFAULT_NUMERIC_PRECISION;
+		      common_scale = DB_DEFAULT_NUMERIC_SCALE;
+		    }
 		}
 	    }
 	  else
@@ -1716,7 +1722,8 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	{
 	  assert (part_list_id[part_id]->last_pgptr == NULL);
 
-	  if (qfile_reopen_list_as_append_mode (thread_p, part_list_id[part_id]) != NO_ERROR)
+	  error = qfile_reopen_list_as_append_mode (thread_p, part_list_id[part_id]);
+	  if (error != NO_ERROR)
 	    {
 	      break;		/* error_exit */
 	    }
@@ -1771,22 +1778,44 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 			     QFILE_FLAG_ALL | QFILE_LIST_BACKWARD_FLAG (list_id), NULL);
 	  if (temp_part_list_id[part_id] == NULL)
 	    {
+	      assert_release_error (er_errid () != NO_ERROR);
+	      error = er_errid ();
 	      break;		/* error_exit */
 	    }
 	}
 
-      error = qfile_add_tuple_to_list (thread_p, temp_part_list_id[part_id], tuple_record.tpl);
+      /* without a memory buffer, a fixed last page per partition exhausts the page buffer; no-op with membuf */
+      error = qfile_reopen_list_as_append_mode (thread_p, temp_part_list_id[part_id]);
       if (error != NO_ERROR)
 	{
 	  break;		/* error_exit */
 	}
-      assert (VFID_ISNULL (&temp_part_list_id[part_id]->tfile_vfid->temp_vfid));
+
+      error = qfile_add_tuple_to_list (thread_p, temp_part_list_id[part_id], tuple_record.tpl);
+
+      /* close before the error check so that the list is closed on every path */
+      qfile_close_list (thread_p, temp_part_list_id[part_id]);
+
+      if (error != NO_ERROR)
+	{
+	  break;		/* error_exit */
+	}
+
+      /* without a memory buffer, the page is in the temp file */
+      assert (temp_part_list_id[part_id]->tfile_vfid->membuf_npages == 0
+	      || VFID_ISNULL (&temp_part_list_id[part_id]->tfile_vfid->temp_vfid));
     }				/* while (qfile_scan_list_next (list_scan_id)) */
 
   /* After qfile_open_list_scan, if an error occurs,
    * ensure qfile_close_scan runs here
    * before jumping to error_exit. */
   qfile_close_scan (thread_p, &list_scan_id);
+
+  /* skip the merge on error, as the parallel split does; a successful append below would overwrite the error */
+  if (scan_code == S_ERROR || error != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   for (part_index = 0; part_index < part_cnt; part_index++)
     {
