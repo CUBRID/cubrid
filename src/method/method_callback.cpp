@@ -1390,44 +1390,22 @@ exit:
     DB_VALUE key;
     MOP code_mop = NULL;
 
-    if (!is_pkg)
+    // _db_stored_procedure_code or _db_package_code, keyed by the generated class name
+    db_make_string (&key, class_name.c_str ());
+    code_mop = db_find_unique (db_find_class (is_pkg ? CT_PACKAGE_CODE_NAME : CT_STORED_PROC_CODE_NAME),
+			       is_pkg ? PKG_CODE_ATTR_NAME : SP_CODE_ATTR_NAME, &key);
+    pr_clear_value (&key);
+    if (code_mop != NULL)
       {
-	// stored procedure / function: _db_stored_procedure_code keyed by name (= class name)
-	db_make_string (&key, class_name.c_str ());
-	code_mop = db_find_unique (db_find_class (CT_STORED_PROC_CODE_NAME), SP_CODE_ATTR_NAME, &key);
-	pr_clear_value (&key);
-	if (code_mop != NULL)
+	DB_VALUE v;
+	if (db_get (code_mop, is_pkg ? PKG_CODE_ATTR_COMPILE_ID : SP_CODE_ATTR_COMPILE_ID, &v) == NO_ERROR)
 	  {
-	    DB_VALUE v;
-	    if (db_get (code_mop, SP_CODE_ATTR_COMPILE_ID, &v) == NO_ERROR)
+	    const char *s = db_get_string (&v);
+	    if (s != NULL)
 	      {
-		const char *s = db_get_string (&v);
-		if (s != NULL)
-		  {
-		    compile_id.assign (s);
-		  }
-		pr_clear_value (&v);
+		compile_id.assign (s);
 	      }
-	  }
-      }
-    else
-      {
-	// package: _db_package_code keyed by the generated class name, like the SP case
-	db_make_string (&key, class_name.c_str ());
-	code_mop = db_find_unique (db_find_class (CT_PACKAGE_CODE_NAME), PKG_CODE_ATTR_NAME, &key);
-	pr_clear_value (&key);
-	if (code_mop != NULL)
-	  {
-	    DB_VALUE v;
-	    if (db_get (code_mop, PKG_CODE_ATTR_COMPILE_ID, &v) == NO_ERROR)
-	      {
-		const char *s = db_get_string (&v);
-		if (s != NULL)
-		  {
-		    compile_id.assign (s);
-		  }
-		pr_clear_value (&v);
-	      }
+	    pr_clear_value (&v);
 	  }
       }
 
