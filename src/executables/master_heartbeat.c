@@ -94,8 +94,9 @@ static const char *hb_strtime (char *s, unsigned int max, struct timeval *tv_p);
 
 static int hb_job_queue (HB_JOB * jobs, unsigned int job_type, HB_JOB_ARG * arg, unsigned int msec);
 static HB_JOB_ENTRY *hb_job_dequeue (HB_JOB * jobs);
+static void hb_job_done (HB_JOB * jobs);
 static void hb_job_set_expire_and_reorder (HB_JOB * jobs, unsigned int job_type, unsigned int msec);
-static void hb_job_shutdown (HB_JOB * jobs);
+static void hb_job_shutdown (HB_JOB * jobs, bool wait_running_job);
 
 
 /* cluster jobs */
@@ -590,6 +591,10 @@ hb_job_dequeue (HB_JOB * jobs)
   if (hb_compare_timeval (&now, &job->expire) >= 0)
     {
       hb_list_remove ((HB_LIST *) job);
+
+      /* set it under the same lock as the removal, so that hb_job_shutdown () sees the job either in the queue
+       * or as running */
+      jobs->is_running = true;
     }
   else
     {
@@ -599,6 +604,20 @@ hb_job_dequeue (HB_JOB * jobs)
   pthread_mutex_unlock (&jobs->lock);
 
   return job;
+}
+
+/*
+ * hb_job_done() - mark that the worker has finished the job it dequeued
+ *   return: none
+ *
+ *   jobs(in):
+ */
+static void
+hb_job_done (HB_JOB * jobs)
+{
+  pthread_mutex_lock (&jobs->lock);
+  jobs->is_running = false;
+  pthread_mutex_unlock (&jobs->lock);
 }
 
 /*
@@ -674,14 +693,26 @@ hb_job_set_expire_and_reorder (HB_JOB * jobs, unsigned int job_type, unsigned in
  *   return: none
  *
  *   jobs(in):
+ *   wait_running_job(in): wait for the job the worker has already dequeued to finish
  */
 static void
-hb_job_shutdown (HB_JOB * jobs)
+hb_job_shutdown (HB_JOB * jobs, bool wait_running_job)
 {
   int rv;
   HB_JOB_ENTRY *job, *job_next;
 
   rv = pthread_mutex_lock (&jobs->lock);
+  jobs->shutdown = true;
+
+  /* the worker dequeues no more jobs from now on, but the one it has already dequeued may still be running */
+  while (wait_running_job && jobs->is_running)
+    {
+      pthread_mutex_unlock (&jobs->lock);
+      SLEEP_MILISEC (0, 10);
+      rv = pthread_mutex_lock (&jobs->lock);
+    }
+
+  /* clear the queue after the wait, so that the jobs queued by the running job are cleared as well */
   for (job = jobs->jobs; job; job = job_next)
     {
       job_next = job->next;
@@ -689,7 +720,6 @@ hb_job_shutdown (HB_JOB * jobs)
       hb_list_remove ((HB_LIST *) job);
       free_and_init (job);
     }
-  jobs->shutdown = true;
   pthread_mutex_unlock (&jobs->lock);
 }
 
@@ -2111,7 +2141,9 @@ hb_cluster_job_set_expire_and_reorder (unsigned int job_type, unsigned int msec)
 static void
 hb_cluster_job_shutdown (void)
 {
-  return hb_job_shutdown (cluster_Jobs);
+  /* wait for the running cluster job, since hb_cluster_cleanup () frees the cluster nodes the job uses.
+   * it is safe to wait while holding css_Master_socket_anchor_lock, because no cluster job acquires it. */
+  return hb_job_shutdown (cluster_Jobs, true);
 }
 
 
@@ -3909,7 +3941,10 @@ hb_resource_job_set_expire_and_reorder (unsigned int job_type, unsigned int msec
 static void
 hb_resource_job_shutdown (void)
 {
-  return hb_job_shutdown (resource_Jobs);
+  /* do not wait for the running resource job. heartbeat deactivation and master shutdown call this while holding
+   * css_Master_socket_anchor_lock, and some resource jobs (e.g. hb_resource_job_cleanup_all,
+   * hb_resource_job_change_mode) acquire it, so waiting for them would deadlock. */
+  return hb_job_shutdown (resource_Jobs, false);
 }
 
 /*
@@ -4674,6 +4709,8 @@ hb_thread_cluster_worker (void *arg)
 	{
 	  job->func (job->arg);
 	  free_and_init (job);
+
+	  hb_job_done (cluster_Jobs);
 	}
 
       SLEEP_MILISEC (0, 10);
@@ -4784,6 +4821,8 @@ hb_thread_resource_worker (void *arg)
 	{
 	  job->func (job->arg);
 	  free_and_init (job);
+
+	  hb_job_done (resource_Jobs);
 	}
 
       SLEEP_MILISEC (0, 10);
@@ -4927,6 +4966,7 @@ hb_cluster_job_initialize (void)
 
   rv = pthread_mutex_lock (&cluster_Jobs->lock);
   cluster_Jobs->shutdown = false;
+  cluster_Jobs->is_running = false;
   cluster_Jobs->num_jobs = 0;
   cluster_Jobs->jobs = NULL;
   cluster_Jobs->job_funcs = &hb_cluster_jobs[0];
@@ -5119,6 +5159,7 @@ hb_resource_job_initialize ()
 
   rv = pthread_mutex_lock (&resource_Jobs->lock);
   resource_Jobs->shutdown = false;
+  resource_Jobs->is_running = false;
   resource_Jobs->num_jobs = 0;
   resource_Jobs->jobs = NULL;
   resource_Jobs->job_funcs = &hb_resource_jobs[0];

@@ -377,6 +377,7 @@ struct hb_job
   HB_JOB_FUNC *job_funcs;
 
   bool shutdown;
+  bool is_running;		/* the worker is running a job it has dequeued from this queue */
 };
 
 extern HB_CLUSTER *hb_Cluster;
