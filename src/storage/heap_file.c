@@ -2833,9 +2833,10 @@ heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap)
 }
 
 /*
- * heap_page_is_not_in_heap () - Check whether a normal heap page is not linked to its heap yet.
+ * heap_page_is_not_in_heap () - Check whether a normal heap page is not linked to its heap: not yet (a new page), or
+ *				  no longer (vacuum unlinked it and deallocates it when its system operation commits).
  *
- * return	  : true if page must not be exposed through bestspace yet
+ * return	  : true if page must not be exposed through bestspace
  * page_heap (in) : Heap page
  */
 bool
@@ -3454,13 +3455,13 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       goto error;
     }
 
-  /* if we are here, the page should not be accessed by any active or vacuum workers. Active workers are prevented
-   * from accessing it through heap scan, and direct references should not exist.
-   * the function would not be called if any other vacuum workers would try to access the page. */
+  /* Active workers are prevented from reaching the page through heap scan, and the function would not be called if
+   * any other vacuum worker would try to access it. bestspace, however, hands out page VPIDs without the header
+   * latch, so an inserter may be waiting for this page. Give up; the page stays empty in the heap. */
   if (pgbuf_has_any_waiters (crt_watcher.pgptr))
     {
-      assert (false);
-      vacuum_er_log_error (VACUUM_ER_LOG_HEAP, "%s", "Unexpected page waiters");
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Candidate heap page %d|%d to remove has waiters.", page_vpid.volid, page_vpid.pageid);
       goto error;
     }
   /* all good, we can deallocate the page */
@@ -3568,6 +3569,33 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
 				 sizeof (chain), sizeof (chain), copy_recdes.data, update_recdes.data);
       pgbuf_set_dirty (thread_p, next_watcher.pgptr, DONT_FREE);
     }
+
+  /* The page is deallocated only when the system operation commits, after it is unfixed below. bestspace may still
+   * hand the page to an inserter in between, and a row inserted there would be deallocated with the page. Mark the
+   * page not in heap while it is latched: every bestspace consumer checks the flag under the page latch and rejects
+   * the page. */
+  copy_recdes.area_size = sizeof (chain);
+  if (spage_get_record (thread_p, crt_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &copy_recdes, COPY) != S_SUCCESS)
+    {
+      assert_release (false);
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not remove candidate empty heap page %d|%d.", page_vpid.volid, page_vpid.pageid);
+      goto error;
+    }
+  memcpy (&chain, copy_recdes.data, sizeof (chain));
+  HEAP_PAGE_SET_NOT_IN_HEAP (&chain);
+  update_recdes.data = (char *) &chain;
+  update_recdes.length = sizeof (chain);
+  if (spage_update (thread_p, crt_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &update_recdes) != SP_SUCCESS)
+    {
+      assert_release (false);
+      vacuum_er_log_warning (VACUUM_ER_LOG_HEAP,
+			     "Could not remove candidate empty heap page %d|%d.", page_vpid.volid, page_vpid.pageid);
+      goto error;
+    }
+  log_append_undoredo_data2 (thread_p, RVHF_CHAIN, &hfid->vfid, crt_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID,
+			     sizeof (chain), sizeof (chain), copy_recdes.data, update_recdes.data);
+  pgbuf_set_dirty (thread_p, crt_watcher.pgptr, DONT_FREE);
 
   /* Unfix current page. */
   pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
@@ -9646,9 +9674,9 @@ heap_capacity_parallel_worker (cubthread::entry & thread_ref, HEAP_CAPACITY_WORK
 	      continue;
 	    }
 
-	  /* allocated but not published to the heap yet (bulk load links its pages on commit postpone), so the
-	   * serial chain walk cannot reach it. This is the predicate bestspace uses, and it covers only this
-	   * direction: a page already unlinked but not yet deallocated is still counted here, not by serial. */
+	  /* not linked to the heap, so the serial chain walk cannot reach it: allocated but not published yet
+	   * (bulk load links its pages on commit postpone), or unlinked by vacuum and not deallocated yet. This is
+	   * the predicate bestspace uses. */
 	  if (heap_page_is_not_in_heap (&thread_ref, page))
 	    {
 	      pgbuf_unfix_and_init (&thread_ref, page);
