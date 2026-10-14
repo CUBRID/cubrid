@@ -98,5 +98,18 @@ extern int xinternal_lob_stream_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB
 extern int xinternal_lob_stream_read (THREAD_ENTRY *thread_p, INT64 token, char *buf, int count, int *nread);
 extern int xinternal_lob_stream_close (THREAD_ENTRY *thread_p, INT64 token);
 extern void internal_lob_stream_purge_tran (int tran_index);
+extern bool internal_lob_parse_locator_string (const char *data, int size, INTERNAL_LOB_LOCATOR *locator,
+    unsigned long long *sig_out = NULL);
+extern bool internal_lob_db_value_is_locator (const DB_VALUE *value, INTERNAL_LOB_LOCATOR *locator,
+    unsigned long long *sig_out = NULL);
+extern int internal_lob_format_signed_locator (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, char *buf,
+    size_t buf_size);
+extern bool internal_lob_verify_locator_sig (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator,
+    unsigned long long sig);
+extern int internal_lob_lock_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator);
+extern int internal_lob_make_locator_db_value (THREAD_ENTRY *thread_p, DB_VALUE *value, DB_TYPE lob_type,
+    const INTERNAL_LOB_LOCATOR &locator);
+extern int internal_lob_make_adopt_locator_db_value (DB_VALUE *value, DB_TYPE lob_type,
+    const INTERNAL_LOB_LOCATOR &locator);
 
 #endif /* _INTERNAL_LOB_FILE_HPP_ */

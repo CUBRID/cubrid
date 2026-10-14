@@ -72,6 +72,131 @@ internal_lob_reverse_writer_clear (INTERNAL_LOB_REVERSE_WRITER &writer)
   writer.finished = false;
 }
 
+/* One implementation of the locator token, shared with CAS and the client primitives so every reader
+ * classifies a locator text the same way. See internal_lob_marker_locator_token (). */
+static unsigned long long
+internal_lob_locator_token (const INTERNAL_LOB_LOCATOR &locator, bool adopted)
+{
+  return internal_lob_marker_locator_token (locator.oid.volid, locator.oid.pageid, locator.oid.slotid,
+	 locator.length, adopted);
+}
+
+/* Per-session signature over the (public) token, keyed by the session secret (CBRD-26780).  A client cannot
+ * compute this for an OID it did not legitimately receive, so it cannot forge a client-facing read locator.
+ * session_key == 0 means "no signature" (server-internal / loaddb adopted locators, verified by token only). */
+static unsigned long long
+internal_lob_locator_session_sig (const INTERNAL_LOB_LOCATOR &locator, bool adopted, INT64 session_key)
+{
+  unsigned long long token = internal_lob_locator_token (locator, adopted);
+  /* the class is signed too, so a reader cannot swap it for one it may lock and dodge the lock on the real owner */
+  unsigned long long class_token = internal_lob_marker_locator_token (locator.class_oid.volid, locator.class_oid.pageid,
+				   locator.class_oid.slotid, 0, false);
+  unsigned long long sig = internal_lob_marker_mix_u64 (token ^ class_token ^ (unsigned long long) session_key);
+
+  return sig == 0 ? 1 : sig;
+}
+
+static int
+internal_lob_format_locator_string (const INTERNAL_LOB_LOCATOR &locator, char *buf, size_t buf_size, bool adopted,
+				    INT64 session_key)
+{
+  unsigned long long sig = session_key != 0 ? internal_lob_locator_session_sig (locator, adopted, session_key) : 0;
+
+  return internal_lob_marker_format_locator (buf, buf_size, locator.oid.volid, locator.oid.pageid, locator.oid.slotid,
+	 locator.length, adopted, locator.class_oid.volid, locator.class_oid.pageid,
+	 locator.class_oid.slotid, sig);
+}
+
+/*
+ * internal_lob_format_signed_locator () - Format a client-facing locator text signed with this session's key.
+ *   With no session (a server-internal caller) the key stays 0 and the text is unsigned.
+ */
+int
+internal_lob_format_signed_locator (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, char *buf,
+				    size_t buf_size)
+{
+  INT64 session_key = 0;
+
+  (void) session_get_internal_lob_locator_key (thread_p, &session_key);
+  return internal_lob_format_locator_string (locator, buf, buf_size, false, session_key);
+}
+
+/*
+ * internal_lob_verify_locator_sig () - Is sig this session's signature over a client-supplied locator?
+ *   Without a session key nothing verifies, so only a locator this session issued passes.
+ */
+bool
+internal_lob_verify_locator_sig (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, unsigned long long sig)
+{
+  INT64 session_key = 0;
+
+  if (session_get_internal_lob_locator_key (thread_p, &session_key) != NO_ERROR || session_key == 0)
+    {
+      return false;
+    }
+  return sig != 0 && sig == internal_lob_locator_session_sig (locator, locator.adopted, session_key);
+}
+
+/*
+ * internal_lob_lock_locator_class () - IS-lock a client-supplied locator's class until the transaction ends.
+ *   The SELECT that issued the locator may have committed and released its own lock (autocommit), so without this
+ *   a DROP/TRUNCATE could free the chain under the reader.  A chain no longer in that class's file is refused.
+ */
+int
+internal_lob_lock_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator)
+{
+  HFID hfid;
+  VFID lob_vfid;
+  VPID head_vpid;
+  DISK_ISVALID owned;
+  int err;
+
+  if (OID_ISNULL (&locator.oid))
+    {
+      /* an empty LOB has no chain */
+      return NO_ERROR;
+    }
+  if (OID_ISNULL (&locator.class_oid))
+    {
+      return internal_lob_set_generic_error ();
+    }
+
+  if (lock_object (thread_p, &locator.class_oid, oid_Root_class_oid, IS_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+
+  err = heap_get_class_info (thread_p, &locator.class_oid, &hfid, NULL, NULL);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  if (!heap_oos_find_vfid_by_type (thread_p, &hfid, FILE_INTERNAL_LOB, &lob_vfid, false))
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+  if (VFID_ISNULL (&lob_vfid))
+    {
+      return internal_lob_set_generic_error ();
+    }
+
+  /* the class was dropped and its OID reused, or truncated, since the locator was issued */
+  VPID_GET_FROM_OID (&head_vpid, &locator.oid);
+  owned = file_is_vpid_in_file (thread_p, &lob_vfid, &head_vpid);
+  if (owned == DISK_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+  if (owned != DISK_VALID)
+    {
+      return internal_lob_set_generic_error ();
+    }
+  return NO_ERROR;
+}
+
 int
 internal_lob_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const OID &class_oid, VFID &lob_vfid)
 {
@@ -769,5 +894,88 @@ internal_lob_stream_purge_tran (int tran_index)
 	}
       iter = internal_lob_stream_release_cursor (iter);
     }
+}
+
+bool
+internal_lob_parse_locator_string (const char *data, int size, INTERNAL_LOB_LOCATOR *locator,
+				   unsigned long long *sig_out)
+{
+  INTERNAL_LOB_MARKER_LOCATOR_FIELDS fields;
+  INTERNAL_LOB_LOCATOR parsed_locator;
+  int consumed = 0;
+
+  /* The whole text must be the locator: unlike internal_lob_marker_parse_locator (), no embedded NUL. */
+  if (!internal_lob_marker_parse_locator_fields (data, size, &fields, &consumed) || consumed != size)
+    {
+      return false;
+    }
+
+  parsed_locator.oid.volid = (VOLID) fields.volid;
+  parsed_locator.oid.pageid = (PAGEID) fields.pageid;
+  parsed_locator.oid.slotid = (PGSLOTID) fields.slotid;
+  parsed_locator.length = fields.length;
+  parsed_locator.adopted = fields.adopted;
+  parsed_locator.class_oid.volid = (VOLID) fields.class_volid;
+  parsed_locator.class_oid.pageid = (PAGEID) fields.class_pageid;
+  parsed_locator.class_oid.slotid = (PGSLOTID) fields.class_slotid;
+
+  if (locator != NULL)
+    {
+      *locator = parsed_locator;
+    }
+  if (sig_out != NULL)
+    {
+      /* optional per-session signature; the caller verifies it with the session key */
+      *sig_out = fields.sig;
+    }
+  return true;
+}
+
+bool
+internal_lob_db_value_is_locator (const DB_VALUE *value, INTERNAL_LOB_LOCATOR *locator,
+				  unsigned long long *sig_out)
+{
+  const char *data = NULL;
+  int size = 0;
+
+  if (!db_get_internal_lob_marker_text (value, DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR, NULL, &data, &size))
+    {
+      return false;
+    }
+
+  return internal_lob_parse_locator_string (data, size, locator, sig_out);
+}
+
+int
+internal_lob_make_locator_db_value (THREAD_ENTRY *thread_p, DB_VALUE *value, DB_TYPE lob_type,
+				    const INTERNAL_LOB_LOCATOR &locator)
+{
+  return internal_lob_make_locator_db_value_internal (thread_p, value, lob_type, locator, false);
+}
+
+int
+internal_lob_make_adopt_locator_db_value (DB_VALUE *value, DB_TYPE lob_type, const INTERNAL_LOB_LOCATOR &locator)
+{
+  /* adopted locators (standalone loaddb) are server-internal and carry no per-session signature */
+  return internal_lob_make_locator_db_value_internal (NULL, value, lob_type, locator, true);
+}
+
+static int
+internal_lob_make_locator_db_value_internal (THREAD_ENTRY *thread_p, DB_VALUE *value, DB_TYPE lob_type,
+    const INTERNAL_LOB_LOCATOR &locator, bool adopted)
+{
+  char stack_buf[128];
+  int locator_len;
+
+  locator_len = (adopted ? internal_lob_format_locator_string (locator, stack_buf, sizeof (stack_buf), true, 0)
+		 : internal_lob_format_signed_locator (thread_p, locator, stack_buf, sizeof (stack_buf)));
+  if (locator_len <= 0 || locator_len >= (int) sizeof (stack_buf))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  return db_make_internal_lob_marker_value (value, lob_type, stack_buf, locator_len,
+	 DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR);
 }
 
