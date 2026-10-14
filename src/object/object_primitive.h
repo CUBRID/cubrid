@@ -310,13 +310,19 @@ extern int pr_free_ext_value (DB_VALUE * value);
 extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion,
 						   int total_order, int num_index_term, int *start_colp,
 						   int *diff_column, bool * dom_is_desc, int *result_size);
+/* The comparison of two midxkey elements whose domains differ, when the caller resolved it: an index scan's
+ * comparisons of its search key values. */
+typedef DB_VALUE_COMPARE_RESULT (*PR_MIDXKEY_ELEMENT_COMPARE) (int column, DB_VALUE * value1, DB_VALUE * value2,
+							       int do_coercion, int total_order, bool * can_compare);
+extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare_resolved (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion,
+							    int total_order, int num_index_term, int *start_colp,
+							    int *diff_column, bool * dom_is_desc, int *result_size,
+							    PR_MIDXKEY_ELEMENT_COMPARE element_compare);
 STATIC_INLINE int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain) __attribute__ ((ALWAYS_INLINE));
 extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, int *prev_indexp,
 					  char **prev_ptrp);
 extern int pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
 				    struct tp_domain *dbvals_domain_list);
-extern int pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
-					      struct tp_domain *dbvals_domain_list, int tail_null_cnt);
 
 extern int pr_index_writeval_disk_size (DB_VALUE * value);
 extern int pr_data_writeval_disk_size (DB_VALUE * value);

@@ -1779,9 +1779,16 @@
 
 #define ER_SYSMETA_UPGRADE_REQUIRED                 -1381
 #define ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED          -1382
-#define ER_HA_REPL_SERIAL_IMAGE_SKIPPED             -1383
 
-#define ER_LAST_ERROR                               -1384
+#define ER_QPROC_DOMAIN_UNRESOLVED                  -1383
+
+#define ER_QPROC_SESSION_VARIABLE_TYPE              -1384
+
+#define ER_AU_REJECT_LOGIN                          -1385
+
+#define ER_HA_REPL_SERIAL_IMAGE_SKIPPED             -1386
+
+#define ER_LAST_ERROR                               -1387
 
 
 /*

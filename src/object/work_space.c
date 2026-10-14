@@ -2444,8 +2444,6 @@ ws_final (void)
   MOP mop, next;
   unsigned int slot;
 
-  dk_deduplicate_key_attribute_finalized ();
-
   tr_final ();
 
   if (prm_get_bool_value (PRM_ID_WS_MEMORY_REPORT))

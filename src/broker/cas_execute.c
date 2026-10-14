@@ -58,7 +58,6 @@
 #include "cas_str_like.h"
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
-#include "deduplicate_key.h"
 #include "tz_support.h"
 #include "intl_support.h"
 #include "language_support.h"
@@ -336,11 +335,9 @@ ux_check_connection (void)
     {
       if (db_ping_server (0, NULL) < 0)
 	{
-	  cas_log_debug (ARG_FILE_LINE, "ux_check_connection: db_ping_server() error");
 	  cas_log_write_and_end (0, true, "SERVER DOWN");
 	  if (as_info->cur_statement_pooling)
 	    {
-	      cas_log_debug (ARG_FILE_LINE, "ux_check_connection: cur_statement_pooling");
 	      return -1;
 	    }
 	  else
@@ -353,9 +350,6 @@ ux_check_connection (void)
 	      strncpy_bufsize (dbuser, database_user);
 	      strncpy_bufsize (dbpasswd, database_passwd);
 
-	      cas_log_debug (ARG_FILE_LINE,
-			     "ux_check_connection: ux_database_shutdown()" " ux_database_connect(%s, %s)", dbname,
-			     dbuser);
 	      ux_database_shutdown (true);
 	      ux_database_connect (dbname, dbuser, dbpasswd, NULL);
 	    }
@@ -416,12 +410,10 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  if (shm_appl->replica_only_flag)
 	    {
 	      client_type = DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_replica_only_broker");
 	    }
 	  else
 	    {
 	      client_type = DB_CLIENT_TYPE_READ_ONLY_BROKER;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_only_broker");
 	    }
 	}
       else if (shm_appl->access_mode == SLAVE_ONLY_ACCESS_MODE)
@@ -429,12 +421,10 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  if (shm_appl->replica_only_flag)
 	    {
 	      client_type = DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: slave_replica_only_broker");
 	    }
 	  else
 	    {
 	      client_type = DB_CLIENT_TYPE_SLAVE_ONLY_BROKER;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: slave_only_broker");
 	    }
 	}
       else
@@ -442,7 +432,6 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  if (shm_appl->replica_only_flag)
 	    {
 	      client_type = DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_write_replica_only_broker");
 	    }
 	  else
 	    {
@@ -472,8 +461,6 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  db_enable_trigger ();
 	}
 
-      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: db_login(%s) db_restart(%s) at %s", db_user, db_name,
-		     host_connected);
       p = strchr (db_name, '@');
       if (p)
 	{
@@ -596,7 +583,6 @@ ux_database_shutdown (bool request_server)
 	  db_shutdown_without_request_to_server ();
 	}
     }
-  cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
 
   as_info->database_name[0] = '\0';
   as_info->database_host[0] = '\0';
@@ -906,7 +892,6 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
   if (tran_type == CCI_TRAN_COMMIT)
     {
       err_code = db_commit_transaction ();
-      cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_commit_transaction() = %d", err_code);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -915,7 +900,6 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
   else if (tran_type == CCI_TRAN_ROLLBACK)
     {
       err_code = db_abort_transaction ();
-      cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_abort_transaction() = %d", err_code);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -8875,7 +8859,6 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
   T_FK_INFO_RESULT *fk_res = NULL;
   const char *pktable_name, *pk_name;
   int num_fk_info = 0, error = NO_ERROR, i;
-  int fk_i;
 
   assert (result != NULL);
   *result = (void *) NULL;
@@ -8972,9 +8955,8 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
 
       /* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
        * null, it means that they have different number of attributes. */
-      fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
-      assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
-      if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
+      assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
+      if (pk_attr[i] != NULL || fk_attr[i] != NULL)
 	{
 	  error =
 	    ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,
@@ -9011,7 +8993,6 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
   T_FK_INFO_RESULT *fk_res = NULL;
   const char *pk_name;
   int num_fk_info = 0, error = NO_ERROR, i;
-  int fk_i;
 
   assert (result != NULL);
   *result = (void *) NULL;
@@ -9128,9 +9109,8 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
 
       /* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
        * null, it means that they have different number of attributes. */
-      fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
-      assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
-      if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
+      assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
+      if (pk_attr[i] != NULL || fk_attr[i] != NULL)
 	{
 	  error =
 	    ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,
@@ -10003,10 +9983,8 @@ ux_lob_new (int lob_type, T_NET_BUF * net_buf)
   int err_code;
   T_LOB_HANDLE cas_lob;
   int lob_handle_size;
-  DB_ELO *elo_debug;
 
   err_code = db_create_fbo (&lob_dbval, (lob_type == CCI_U_TYPE_BLOB) ? DB_TYPE_BLOB : DB_TYPE_CLOB);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_new: result_code=%d", err_code);
   if (err_code < 0)
     {
       errors_in_transaction++;
@@ -10021,11 +9999,6 @@ ux_lob_new (int lob_type, T_NET_BUF * net_buf)
   net_buf_cp_int (net_buf, lob_handle_size, NULL);
   net_buf_cp_lob_handle (net_buf, &cas_lob);
 
-  elo_debug = db_get_elo (&lob_dbval);
-
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_new: locator=%s, size=%lld, type=%u", elo_debug->locator,
-		 elo_debug->size, elo_debug->type);
-
   db_value_clear (&lob_dbval);
   return 0;
 }
@@ -10038,11 +10011,8 @@ ux_lob_write (DB_VALUE * lob_dbval, INT64 offset, int size, char *data, T_NET_BU
   DB_ELO *elo_debug;
 
   elo_debug = db_get_elo (lob_dbval);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_write: locator=%s, size=%lld, type=%u", elo_debug->locator,
-		 elo_debug->size, elo_debug->type);
 
   err_code = db_elo_write (elo_debug, offset, data, size, &size_written);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_write: result_code=%d", size_written);
   if (err_code < 0)
     {
       errors_in_transaction++;
@@ -10066,17 +10036,13 @@ ux_lob_read (DB_VALUE * lob_dbval, INT64 offset, int size, T_NET_BUF * net_buf)
   DB_ELO *elo_debug;
 
   elo_debug = db_get_elo (lob_dbval);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_read: locator=%s, size=%lld, type=%u", elo_debug->locator,
-		 elo_debug->size, elo_debug->type);
 
   if (size + NET_SIZE_INT > NET_BUF_FREE_SIZE (net_buf))
     {
       size = NET_BUF_FREE_SIZE (net_buf) - NET_SIZE_INT;
-      cas_log_debug (ARG_FILE_LINE, "ux_lob_read: length reduced to %d", size);
     }
 
   err_code = db_elo_read (elo_debug, offset, data, size, &size_read);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_read: result_code=%d size_read=%lld", err_code, size_read);
   if (err_code < 0)
     {
       errors_in_transaction++;
