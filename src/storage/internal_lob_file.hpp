@@ -63,6 +63,16 @@ struct internal_lob_reverse_writer
 };
 using INTERNAL_LOB_REVERSE_WRITER = struct internal_lob_reverse_writer;
 
+struct internal_lob_reader
+{
+  OOS_READER oos_reader;       /* streaming reader over the value's single OOS chunk chain */
+  DB_BIGINT logical_length = 0;
+  DB_BIGINT total_bytes = 0;   /* physical payload bytes to expose */
+  DB_BIGINT total_read = 0;
+  bool opened = false;
+};
+using INTERNAL_LOB_READER = struct internal_lob_reader;
+
 extern int internal_lob_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const OID &class_oid,
 				     VFID &lob_vfid);
 #if defined (CUBRID_UNIT_TEST_ENABLED)
@@ -78,5 +88,15 @@ extern int internal_lob_reverse_insert_append (THREAD_ENTRY *thread_p, INTERNAL_
 extern int internal_lob_reverse_insert_end (THREAD_ENTRY *thread_p, INTERNAL_LOB_REVERSE_WRITER &writer,
     INTERNAL_LOB_LOCATOR &locator);
 extern void internal_lob_reverse_insert_abort (INTERNAL_LOB_REVERSE_WRITER &writer);
+extern int internal_lob_read (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, oos_buffer dest);
+extern int internal_lob_read_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator,
+				   INTERNAL_LOB_READER &reader);
+extern int internal_lob_read_skip (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, DB_BIGINT count);
+extern int internal_lob_read_pull (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, oos_buffer dest, int &nread);
+extern int xinternal_lob_stream_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, INT64 start_offset,
+				      INT64 *token);
+extern int xinternal_lob_stream_read (THREAD_ENTRY *thread_p, INT64 token, char *buf, int count, int *nread);
+extern int xinternal_lob_stream_close (THREAD_ENTRY *thread_p, INT64 token);
+extern void internal_lob_stream_purge_tran (int tran_index);
 
 #endif /* _INTERNAL_LOB_FILE_HPP_ */
