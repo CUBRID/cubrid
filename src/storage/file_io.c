@@ -224,6 +224,14 @@
 #define FILEIO_DBVOLS_IO_PAGE_SIZE(backup_header_p)  \
   ((backup_header_p)->bkpagesize + FILEIO_BACKUP_PAGE_OVERHEAD)
 
+/* Memory budget for the parallel-read reorder queue. Live nodes peak at 2 x capacity, because the writer
+ * holds a detached run of up to capacity nodes while the readers refill the window behind it, so the budget
+ * is divided by twice the per node footprint. Without it, capacity = act_r_threads x 4 follows the core
+ * count: 80 cores ask for 632 live nodes of about 1MB each at full level with compression. The floor is for
+ * pipelining only; the queue is correct and live at any capacity >= 1. */
+#define FILEIO_BACKUP_REORDER_QUEUE_MAX_BYTES     ((size_t) 128 * 1024 * 1024)
+#define FILEIO_BACKUP_REORDER_QUEUE_MIN_CAPACITY  4
+
 #define FILEIO_BACKUP_FILE_HEADER_PAGE_SIZE  \
   (sizeof(FILEIO_BACKUP_FILE_HEADER) + offsetof(FILEIO_BACKUP_PAGE, iopage))
 
@@ -8447,6 +8455,9 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
 			    FILEIO_THREAD_INFO * thread_info_p, int from_npages, bool is_only_updated_pages,
 			    int check_ratio, int check_npages)
 {
+  FILEIO_BACKUP_HEADER *backup_header_p = session_p->bkup.bkuphdr;
+  size_t node_bytes;
+  int capacity;
   int i;
 
   /* Initialize global MT variables */
@@ -8458,12 +8469,17 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
   thread_info_p->check_npages = check_npages;
   thread_info_p->tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
 
-  /* Slots must exist before readers spawn. capacity = readers x 4; the 4 is hardcoded, not measured.
-   * It gives each reader pipeline slack while the writer emits outside the mutex, and doubles as the memory
-   * knob. Live nodes peak at 2 x capacity, not capacity: the writer still holds a detached run of up to
+  /* Slots must exist before readers spawn. capacity = readers x 4, then clamped to a memory budget; the 4
+   * is hardcoded, not measured. It gives each reader pipeline slack while the writer emits outside the
+   * mutex. Live nodes peak at 2 x capacity, not capacity: the writer still holds a detached run of up to
    * capacity nodes while readers refill the window behind it. Each node carries a FILEIO_DBVOLS_IO_PAGE_SIZE
-   * buffer (512KB at full level with 16K pages, about twice that compressed), so memory grows with thread
-   * count and page size with no cap.
+   * buffer (512KB at full level with 16K pages) plus a compression buffer of about the same size, so without
+   * the budget the queue would follow the core count.
+   *
+   * capacity is also the dispatch window, so on a box with many cores the budget can leave it below
+   * act_r_threads. That only parks the surplus readers on rcv: a reader blocks in the claim wait before it
+   * owns a pageid, so the owner of next_emit_pageid is always running, and the writer always drains it and
+   * reopens the window. Any capacity >= 1 makes progress; the floor is for pipelining, not correctness.
    *
    * This runs once per volume. free_list and pool_total are session-lifetime and are NOT reset here; the
    * slots array is per volume because capacity tracks act_r_threads, which depends on from_npages. */
@@ -8472,13 +8488,27 @@ fileio_start_backup_thread (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * ses
       /* left by the previous volume; its slots are all NULL on normal completion */
       free_and_init (thread_info_p->reorder_queue.slots);
     }
-  thread_info_p->reorder_queue.capacity = MAX (thread_info_p->act_r_threads, 1) * 4;
-  thread_info_p->reorder_queue.slots =
-    (FILEIO_NODE **) calloc (thread_info_p->reorder_queue.capacity, sizeof (FILEIO_NODE *));
+
+  node_bytes = (size_t) FILEIO_DBVOLS_IO_PAGE_SIZE (backup_header_p);
+  if (backup_header_p->zip_method != FILEIO_ZIP_NONE_METHOD)
+    {
+      /* a compressed node also owns a worst case compression buffer, one page plus change */
+      node_bytes *= 2;
+    }
+
+  capacity = MAX (thread_info_p->act_r_threads, 1) * 4;
+  if ((size_t) capacity * 2 * node_bytes > FILEIO_BACKUP_REORDER_QUEUE_MAX_BYTES)
+    {
+      capacity = (int) (FILEIO_BACKUP_REORDER_QUEUE_MAX_BYTES / (2 * node_bytes));
+      capacity = MAX (capacity, FILEIO_BACKUP_REORDER_QUEUE_MIN_CAPACITY);
+    }
+
+  thread_info_p->reorder_queue.capacity = capacity;
+  thread_info_p->reorder_queue.slots = (FILEIO_NODE **) calloc (capacity, sizeof (FILEIO_NODE *));
   if (thread_info_p->reorder_queue.slots == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) (thread_info_p->reorder_queue.capacity * sizeof (FILEIO_NODE *)));
+	      (size_t) (capacity * sizeof (FILEIO_NODE *)));
       thread_info_p->reorder_queue.capacity = 0;
       return ER_FAILED;
     }
