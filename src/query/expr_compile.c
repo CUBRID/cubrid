@@ -263,9 +263,9 @@ struct expr_build_ctx
   bool cell_shared[EXPR_MAX_STEPS];	/* the cell reads a filter slot: computed, though no step here */
   int n_shared;
 
-  bool side_effect;		/* a node compiled (or declined) in this list draws a serial, bumps a counter, seeds a
-				 * random, or sets a session variable: its evaluation order against the other columns is
-				 * observable (expr_arith_side_effect ()) */
+  bool side_effect;		/* the root being compiled holds a node that draws a serial, bumps a counter, seeds a
+				 * random, or sets or reads a session variable: its evaluation order against such a
+				 * node in another column is observable (expr_arith_side_effect ()) */
 
   val_descr *vd;		/* bind-time value descriptor (host variable types) */
     cubthread::entry * thread_p;
@@ -5512,6 +5512,7 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
 {
   EXPR_PROG *prog = NULL;
   bool compiled_something = false;
+  bool side_effect_covered = false, side_effect_uncovered = false;
   int n_roots = 0, i;
   int root_cells[EXPR_MAX_STEPS];
 
@@ -5532,6 +5533,7 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
       int cell;
 
       expr_build_mark (bctx, &mark);
+      bctx->side_effect = false;
       cell = expr_compile_node (bctx, roots[i], &compiled_something);
       bctx->full = false;	/* a root the nesting could not save falls back below */
 
@@ -5587,12 +5589,15 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
 	}
       if (cell < 0)
 	{
+	  /* the consumer fetches this column itself, after every column the program computes */
+	  side_effect_uncovered |= bctx->side_effect;
 	  if (root_idx_out != NULL)
 	    {
 	      root_idx_out[i] = -1;
 	    }
 	  continue;
 	}
+      side_effect_covered |= bctx->side_effect;
       if (root_idx_out != NULL)
 	{
 	  root_idx_out[i] = n_roots;
@@ -5607,11 +5612,12 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
       return NULL;
     }
 
-  if (bctx->side_effect && n_roots < in_roots)
+  if (side_effect_covered && side_effect_uncovered)
     {
-      /* a column the consumer still fetches itself would be evaluated after every column the program
-       * computes, whatever its position: with a serial, a counter or a session variable in the list the
-       * interpreter's left-to-right order is the observable one (expr_arith_side_effect ()) */
+      /* a serial, a counter or a session variable on both sides of the line between the columns the
+       * program computes and the one the consumer fetches afterwards: whatever their positions, the
+       * interpreter's left-to-right order is the observable one, so the whole list keeps it
+       * (expr_arith_side_effect ()).  A fallback step is in place and counts as covered. */
       expr_build_free_preds (bctx);
       return NULL;
     }
