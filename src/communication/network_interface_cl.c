@@ -6265,6 +6265,7 @@ update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  AU_RESTORE (save);
+	  locator_free_list_mops (lmops);
 	  return er_errid ();
 	}
 
@@ -6280,6 +6281,7 @@ update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip)
       if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
 	{
 	  AU_RESTORE (save);
+	  locator_free_list_mops (lmops);
 	  return error;
 	}
 
@@ -6290,8 +6292,19 @@ update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip)
 	}
     }
   AU_RESTORE (save);
+  locator_free_list_mops (lmops);
 
-  if (error == NO_ERROR && n_tables > 0)
+  if (n_excluded < n_skip)
+    {
+      /* an entry that is a class but not a top-level one (a partition of a partitioned class) never
+       * matches the list above; say so instead of dropping it silently */
+      fprintf (stderr, "Warning: %d of the %d classes to exclude %s not top-level classes and %s ignored.\n",
+	       n_skip - n_excluded, n_skip, (n_skip - n_excluded == 1) ? "is" : "are",
+	       (n_skip - n_excluded == 1) ? "was" : "were");
+      fflush (stderr);
+    }
+
+  if (error == NO_ERROR && (n_tables > 0 || n_excluded > 0))
     {
       fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s", n_tables,
 	       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");

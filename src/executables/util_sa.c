@@ -1483,9 +1483,11 @@ error_exit:
  *   no_histogram(in): true iff --no-histogram; the class statistics are updated and the existing
  *                     histograms are left as they are
  *
- * Mirrors the single-class branch of do_update_stats (): the all-columns histogram build refreshes
- * the class statistics from its own scan, so it runs first and the plain statistics update is used
- * only WITH NO HISTOGRAM or when the class has no histogrammable column (ER_OBJ_INVALID_ARGUMENTS).
+ * Mirrors the single-class branch of do_update_stats () -- keep the two in step. The all-columns
+ * histogram build refreshes the class statistics from its own scan (a class without a histogrammable
+ * column is handled inside the helper and still returns NO_ERROR), so it runs first and the plain
+ * statistics update is used only WITH NO HISTOGRAM. ER_OBJ_INVALID_ARGUMENTS is tolerated for parity
+ * with do_update_stats (); the all-columns path does not return it today.
  */
 static int
 optimizedb_update_class_statistics (DB_OBJECT * class_mop, bool no_histogram)
@@ -1518,8 +1520,7 @@ optimizedb_update_class_statistics (DB_OBJECT * class_mop, bool no_histogram)
 	{
 	  return error;
 	}
-      /* nothing histogrammable on this class; fall through to the plain statistics update */
-      error = NO_ERROR;
+      /* parity with do_update_stats (): fall through to the plain statistics update */
     }
 
   return sm_update_statistics (class_mop, STATS_WITH_SAMPLING);
@@ -1569,8 +1570,14 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
     {
       goto print_optimize_usage;
     }
-  /* -n names the one class to update; --no-histogram-classes only has a meaning for the all-classes run */
-  if (class_name != NULL && skip_list != NULL)
+  /* -n takes exactly one class; the comma-separated form belongs to --no-histogram-classes */
+  if (class_name != NULL && strchr (class_name, ',') != NULL)
+    {
+      goto print_optimize_usage;
+    }
+  /* --no-histogram-classes only has a meaning for the histogram pass of the all-classes run, which
+   * -n replaces by a single class and --no-histogram turns off altogether */
+  if (skip_list != NULL && (class_name != NULL || no_histogram))
     {
       goto print_optimize_usage;
     }
@@ -1659,6 +1666,12 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
 	  if (class_mops[n_classes] == NULL)
 	    {
 	      PRINT_AND_LOG_ERR_MSG ("%s\n", db_error_string (3));
+	      goto error_exit_shutdown;
+	    }
+	  if (skip_list != NULL && !db_is_class (class_mops[n_classes]))
+	    {
+	      /* a view (or any non-class) has no histogram to leave out; -n keeps its old lenient behaviour */
+	      PRINT_AND_LOG_ERR_MSG ("%s: not a class\n", name);
 	      goto error_exit_shutdown;
 	    }
 	  n_classes++;
