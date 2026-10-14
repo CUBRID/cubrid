@@ -133,8 +133,6 @@ struct hash_list_scan
   bool need_coerce_type;	/* may a key pair hash differently? after the plan: does a build key convert? */
   HASH_SCAN_KEY_PLAN *key_plan;	/* each key pair's hash domain and each side's copy or conversion */
   HASH_SCAN_KEY *probe_key;	/* the key a probe hashes: values pointing to temp_key's or temp_new_key's */
-  bool probe_linear;		/* the current probe reads the whole list: a probe value with no image in the hash
-				 * domain */
 };
 
 HASH_SCAN_KEY *qdata_alloc_hscan_key (THREAD_ENTRY * thread_p, int val_cnt, bool alloc_vals);
@@ -150,11 +148,12 @@ unsigned int qdata_hash_scan_key (const void *key, unsigned int ht_size, HASH_ME
 int qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_SCAN * hlsid,
 			   REGU_VARIABLE_LIST producers);
 void qdata_free_hscan_key_plan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid);
-int qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key, const HASH_SCAN_KEY_PLAN * plan,
-					HASH_SCAN_KEY * new_key, bool * fits);
+HASH_SCAN_KEY *qdata_copy_hscan_key_without_alloc (THREAD_ENTRY * thread_p, HASH_SCAN_KEY * key,
+						   const HASH_SCAN_KEY_PLAN * plan, HASH_SCAN_KEY * new_key);
 int qdata_probe_hscan_key (HASH_SCAN_KEY * key, const HASH_SCAN_KEY_PLAN * plan, HASH_SCAN_KEY * converted,
-			   HASH_SCAN_KEY * probe_key, bool * fits);
+			   HASH_SCAN_KEY * probe_key);
 bool qdata_hscan_key_plan_probe_converts (const HASH_SCAN_KEY_PLAN * plan);
+bool qdata_hscan_key_probe_has_domain (const VAL_DESCR * vd, const REGU_VARIABLE * key);
 
 int qdata_print_hash_scan_entry (THREAD_ENTRY * thread_p, FILE * fp, const void *data, const void *type_list,
 				 void *args);

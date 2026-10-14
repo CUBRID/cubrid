@@ -515,12 +515,9 @@ enum hash_scan_key_rule
 {
   HASH_SCAN_KEY_COPY,		/* the side's values are in the hash domain: hashed as they are */
   HASH_SCAN_KEY_CONVERT,	/* the resolved converter brings each value into the hash domain */
-  HASH_SCAN_KEY_COERCE,		/* tp_value_coerce brings each value into the hash domain: a JSON value, which its
+  HASH_SCAN_KEY_COERCE		/* tp_value_coerce brings each value into the hash domain: a JSON value, which its
 				 * scalar converts, a string domain whose collation is the values' (LEAVE, ENFORCE), or
 				 * a pair without a resolved converter */
-  HASH_SCAN_KEY_CHECK		/* probe only: the probe key has no domain before its rows (no resolution); a value
-				 * already in the hash domain is hashed, any other one makes its probe read the whole
-				 * list (scan_hash_probe_next) */
 };
 
 typedef struct hash_scan_key_side HASH_SCAN_KEY_SIDE;
@@ -576,11 +573,10 @@ qdata_hscan_key_value_domain (const VAL_DESCR * vd, const REGU_VARIABLE * key, R
 
 /*
  * qdata_hscan_key_probe_domain () - the domain of the values a probe key gives in this execution
- *   return: the domain; NULL when the key has none before its rows (HASH_SCAN_KEY_CHECK)
+ *   return: the domain (the NULL domain for a NULL bind); NULL when the key has none before its rows
  *
  * The probe key is evaluated on the outer row, so the domain is its node's: the one it took if this execution computed
  * it before, else the plan's resolution (a host variable's arithmetic resolves before any row), else the compiled one.
- * A variable domain and the NULL domain of a NULL bind give none.
  */
 static const TP_DOMAIN *
 qdata_hscan_key_probe_domain (const VAL_DESCR * vd, const REGU_VARIABLE * key)
@@ -590,11 +586,21 @@ qdata_hscan_key_probe_domain (const VAL_DESCR * vd, const REGU_VARIABLE * key)
     {
       domain = qexec_consumer_domain (vd, domain, key->plan_item);
     }
-  if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL)
+  if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
     {
       return NULL;
     }
   return domain;
+}
+
+/*
+ * qdata_hscan_key_probe_has_domain () - whether a probe key has a domain before its rows, which its pair's hash domain
+ *   needs (check_hash_list_scan does not hash a pair without one)
+ */
+bool
+qdata_hscan_key_probe_has_domain (const VAL_DESCR * vd, const REGU_VARIABLE * key)
+{
+  return qdata_hscan_key_probe_domain (vd, key) != NULL;
 }
 
 /* A string domain of the largest precision in the codeset and collation of like: a string of either side fits. */
@@ -728,9 +734,7 @@ qdata_plan_hscan_key_side (const TP_DOMAIN * values, const TP_DOMAIN * target, H
  *                  plan, and need_coerce_type keeps whether a build key converts
  *   producers(in): the scan's predicate regus (qdata_hscan_key_value_domain)
  *
- * The build values' domain is the plan's, the probe key's its node's (qdata_hscan_key_probe_domain). A probe key with
- * no domain before its rows leaves the build values as they are, and each probe value is checked against them
- * (HASH_SCAN_KEY_CHECK).
+ * The build values' domain is the plan's, the probe key's its node's (qdata_hscan_key_probe_domain).
  */
 int
 qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_SCAN * hlsid,
@@ -766,23 +770,17 @@ qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_
 	  return qexec_domain_unresolved (vd, build->value.plan_item, build->value.domain);
 	}
       const TP_DOMAIN *probes = qdata_hscan_key_probe_domain (vd, &probe->value);
-
       if (probes == NULL)
 	{
-	  /* the probe key gives no domain before its rows: the build values stay as they are, and each probe value is
-	   * checked against them */
-	  key->target = values;
-	  qdata_plan_hscan_key_side (values, values, &key->build);
-	  key->probe.conv = NULL;
-	  key->probe.source = DB_TYPE_NULL;
-	  key->probe.rule = HASH_SCAN_KEY_CHECK;
+	  /* check_hash_list_scan hashes no pair without a probe domain */
+	  assert (false);
+	  return qexec_domain_unresolved (vd, probe->value.plan_item, probe->value.domain);
 	}
-      else if (TP_DOMAIN_TYPE (values) == DB_TYPE_NULL)
+
+      if (TP_DOMAIN_TYPE (values) == DB_TYPE_NULL || TP_DOMAIN_TYPE (probes) == DB_TYPE_NULL)
 	{
-	  /* NULL build values: a probe finds only collisions, which the predicate rejects */
-	  key->target = probes;
-	  qdata_plan_hscan_key_side (values, probes, &key->build);
-	  qdata_plan_hscan_key_side (probes, probes, &key->probe);
+	  /* one side holds only NULLs: a probe finds only collisions, which the predicate rejects */
+	  key->target = TP_DOMAIN_TYPE (values) == DB_TYPE_NULL ? probes : values;
 	}
       else
 	{
@@ -792,9 +790,9 @@ qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_
 	      ASSERT_ERROR ();
 	      return er_errid ();
 	    }
-	  qdata_plan_hscan_key_side (values, key->target, &key->build);
-	  qdata_plan_hscan_key_side (probes, key->target, &key->probe);
 	}
+      qdata_plan_hscan_key_side (values, key->target, &key->build);
+      qdata_plan_hscan_key_side (probes, key->target, &key->probe);
       plan->build_converts |= key->build.rule != HASH_SCAN_KEY_COPY;
       plan->probe_converts |= key->probe.rule != HASH_SCAN_KEY_COPY;
     }
@@ -833,67 +831,61 @@ qdata_check_hscan_key_convert (const DB_VALUE * value, const TP_DOMAIN * target,
 
 /*
  * qdata_convert_hscan_key_value () - one value of a side into the hash domain
- *   return: NO_ERROR with *fits, or the error that stops the scan (ER_OUT_OF_VIRTUAL_MEMORY, an interrupt)
- *   *fits: false when the value has no image in the hash domain (a conversion that fails on the value itself, as
- *          the domain never narrows a side): the error the conversion set is cleared, and the caller leaves the value
- *          to the join predicate, which decides it as the list scan does
+ *   return: NO_ERROR, or the error set (ER_TP_CANT_COERCE where the conversion fails without one)
+ *
+ * The hash domain never narrows a side, so only a value the conversion itself refuses fails here, and the error is
+ * the one the hash join gives on the same pair.
  */
 static int
 qdata_convert_hscan_key_value (const HASH_SCAN_KEY_ENTRY * entry, const HASH_SCAN_KEY_SIDE * side,
-			       const DB_VALUE * value, DB_VALUE * converted, bool * fits)
+			       const DB_VALUE * value, DB_VALUE * converted)
 {
   TP_DOMAIN_STATUS status;
   pr_clear_value (converted);
-  *fits = true;
-  switch (side->rule)
+  if (side->rule == HASH_SCAN_KEY_CONVERT)
     {
-    case HASH_SCAN_KEY_CONVERT:
       assert (DB_VALUE_DOMAIN_TYPE (value) == side->source);
       status = tp_value_convert (side->conv, entry->target, value, converted);
 #if !defined (NDEBUG)
       qdata_check_hscan_key_convert (value, entry->target, status, converted);
 #endif
-      break;
-    case HASH_SCAN_KEY_COERCE:
-    default:
+    }
+  else
+    {
       status = tp_value_coerce (value, converted, entry->target);
-      break;
     }
   if (status == DOMAIN_COMPATIBLE)
     {
       return NO_ERROR;
     }
   pr_clear_value (converted);
-  const int error = er_errid ();
-  if (status == DOMAIN_ERROR && (error == ER_OUT_OF_VIRTUAL_MEMORY || error == ER_INTERRUPTED))
+  if (status == DOMAIN_ERROR && er_errid () != NO_ERROR)
     {
-      return error;
+      return er_errid ();
     }
-  if (status == DOMAIN_ERROR)
-    {
-      er_clear ();
-    }
-  *fits = false;
-  return NO_ERROR;
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_DOMAIN_TYPE (value)),
+	  pr_type_name (TP_DOMAIN_TYPE (entry->target)));
+  return ER_TP_CANT_COERCE;
 }
 
 /*
  * qdata_copy_hscan_key_without_alloc () - the key a build row stores: each value copied, or brought into the hash
  *   domain as the scan resolved it before its first build row
- *   returns: NO_ERROR, or the error code set
+ *   returns: new_key, or NULL on error (ER_TP_CANT_COERCE where the conversion fails)
  *   thread_p(in): thread
  *   key(in): the build row's key
  *   plan(in): the scan's key plan (qdata_plan_hscan_keys)
  *   new_key(in/out): the scan's key with values of its own
- *   fits(out): false when a value has no image in the hash domain (qdata_convert_hscan_key_value): the scan then
- *              reads the list without the table, as the NO_HASH_LIST_SCAN hint does
  */
-int
+HASH_SCAN_KEY *
 qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY * key, const HASH_SCAN_KEY_PLAN * plan,
-				    HASH_SCAN_KEY * new_key, bool * fits)
+				    HASH_SCAN_KEY * new_key)
 {
-  assert (key != NULL && new_key != NULL && plan != NULL && plan->n_keys == key->val_count);
-  *fits = true;
+  if (key == NULL || new_key == NULL)
+    {
+      return NULL;
+    }
+  assert (plan != NULL && plan->n_keys == key->val_count);
   new_key->val_count = key->val_count;
   for (int i = 0; i < key->val_count; i++)
     {
@@ -906,36 +898,32 @@ qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY *
 	  pr_clear_value (new_key->values[i]);
 	  if (pr_clone_value (value, new_key->values[i]) != NO_ERROR)
 	    {
-	      ASSERT_ERROR ();
-	      return er_errid ();
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DB_VALUE *));
+	      return NULL;
 	    }
 	  continue;
 	}
-      const int error = qdata_convert_hscan_key_value (entry, &entry->build, value, new_key->values[i], fits);
-      if (error != NO_ERROR || !*fits)
+      if (qdata_convert_hscan_key_value (entry, &entry->build, value, new_key->values[i]) != NO_ERROR)
 	{
-	  return error;
+	  return NULL;
 	}
     }
-  return NO_ERROR;
+  return new_key;
 }
 
 /*
  * qdata_probe_hscan_key () - the key a probe hashes: each value as it is, or brought into the hash domain
- *   return: NO_ERROR, or the error that stops the scan
+ *   return: NO_ERROR, or the error set (ER_TP_CANT_COERCE where the conversion fails)
  *   key(in): the probe key the outer row gave (values peeked)
  *   plan(in): the scan's key plan
  *   converted(in/out): a key with values of its own, for the converted values
  *   probe_key(out): a key whose values point to key's or converted's
- *   fits(out): false when a value has no image in the hash domain, or a probe value without a planned domain is not in
- *              it: no bucket holds the build values equal to it, so the probe reads the whole list
  */
 int
 qdata_probe_hscan_key (HASH_SCAN_KEY * key, const HASH_SCAN_KEY_PLAN * plan, HASH_SCAN_KEY * converted,
-		       HASH_SCAN_KEY * probe_key, bool * fits)
+		       HASH_SCAN_KEY * probe_key)
 {
   assert (plan != NULL && plan->n_keys == key->val_count);
-  *fits = true;
   probe_key->val_count = key->val_count;
   for (int i = 0; i < key->val_count; i++)
     {
@@ -946,25 +934,8 @@ qdata_probe_hscan_key (HASH_SCAN_KEY * key, const HASH_SCAN_KEY_PLAN * plan, HAS
 	{
 	  continue;
 	}
-      if (entry->probe.rule == HASH_SCAN_KEY_CHECK)
-	{
-	  TP_DOMAIN value_domain;
-	  tp_domain_init (&value_domain, DB_VALUE_DOMAIN_TYPE (value));
-	  value_domain.precision = DB_VALUE_PRECISION (value);
-	  value_domain.scale = DB_VALUE_SCALE (value);
-	  if (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (value)))
-	    {
-	      value_domain.codeset = db_get_string_codeset (value);
-	    }
-	  *fits = qdata_hscan_key_same_domain (&value_domain, entry->target);
-	  if (!*fits)
-	    {
-	      return NO_ERROR;
-	    }
-	  continue;
-	}
-      const int error = qdata_convert_hscan_key_value (entry, &entry->probe, value, converted->values[i], fits);
-      if (error != NO_ERROR || !*fits)
+      const int error = qdata_convert_hscan_key_value (entry, &entry->probe, value, converted->values[i]);
+      if (error != NO_ERROR)
 	{
 	  return error;
 	}
