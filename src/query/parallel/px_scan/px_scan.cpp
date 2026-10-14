@@ -1930,41 +1930,6 @@ namespace parallel_scan
 	  {
 	    m_pre_execution_info.apply_pre_execution_info (m_xasl);
 	  }
-
-	XASL_NODE *xptr = m_xasl;
-
-	for (xptr = m_xasl; xptr != nullptr; xptr = xptr->scan_ptr)
-	  {
-	    if (xptr->val_list == nullptr)
-	      {
-		continue;
-	      }
-	    std::vector<DB_VALUE> dbval_container (xptr->val_list->val_cnt);
-	    QPROC_DB_VALUE_LIST valp = xptr->val_list->valp;
-	    for (int i = 0; i < xptr->val_list->val_cnt; i++)
-	      {
-		pr_clone_value (valp->val, &dbval_container[i]);
-		valp = valp->next;
-	      }
-
-	    HL_HEAPID heap_id = db_change_private_heap (m_thread_p, 0);
-	    valp = xptr->val_list->valp;
-	    for (int i = 0; i < xptr->val_list->val_cnt; i++)
-	      {
-		pr_clear_value (valp->val);
-		valp = valp->next;
-	      }
-	    db_change_private_heap (m_thread_p, heap_id);
-	    valp = xptr->val_list->valp;
-	    for (int i=0; i<xptr->val_list->val_cnt; i++)
-	      {
-		pr_clone_value (&dbval_container[i], valp->val);
-		pr_clear_value (&dbval_container[i]);
-		valp = valp->next;
-	      }
-	  }
-
-	fetch_val_list (m_thread_p, m_xasl->outptr_list->valptrp, m_vd, nullptr, nullptr, NULL, true);
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {

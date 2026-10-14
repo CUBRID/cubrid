@@ -2449,8 +2449,6 @@ ws_final (bool is_sub)
 
   if (!is_sub)
     {
-      dk_deduplicate_key_attribute_finalized ();
-
       tr_final ();
     }
 
