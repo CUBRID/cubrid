@@ -9126,6 +9126,13 @@ pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE *
 {
   *continue_walk = PT_CONTINUE_WALK;
 
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type) && node->info.query.flag.group_having_alias_resolved)
+    {
+      /* already done by pt_resolve_group_having_alias_and_deferred_name () for a derived table or a CTE */
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
   if (is_pt_name_deferred_for_static_sql (node))
     {
       node = pt_parameterize_for_static_sql (parser, node);
@@ -9150,12 +9157,27 @@ static PT_NODE *
 pt_resolve_group_having_alias_and_deferred_name (PARSER_CONTEXT * parser, PT_NODE * node)
 {
   node = parser_walk_tree (parser, node, pt_resolve_group_having_alias, NULL, NULL, NULL);
-  if (pt_has_error (parser) || parser->flag.is_parsing_static_sql == 0)
+  if (pt_has_error (parser))
     {
       return node;
     }
 
-  return parser_walk_tree (parser, node, pt_parameterize_deferred_name_for_static_sql, NULL, NULL, NULL);
+  if (parser->flag.is_parsing_static_sql == 1)
+    {
+      node = parser_walk_tree (parser, node, pt_parameterize_deferred_name_for_static_sql, NULL, NULL, NULL);
+      if (pt_has_error (parser))
+	{
+	  return node;
+	}
+    }
+
+  if (node != NULL && PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      /* the walks above skip it from now on (e.g. for the enclosing query of a derived table) */
+      node->info.query.flag.group_having_alias_resolved = 1;
+    }
+
+  return node;
 }
 
 /*
@@ -9402,7 +9424,19 @@ pt_resolve_group_having_alias (PARSER_CONTEXT * parser, PT_NODE * node, void *ch
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (node == NULL || node->node_type != PT_SELECT)
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type) && node->info.query.flag.group_having_alias_resolved)
+    {
+      /* already done by pt_resolve_group_having_alias_and_deferred_name () for a derived table or a CTE */
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (node->node_type != PT_SELECT)
     {
       return node;
     }
