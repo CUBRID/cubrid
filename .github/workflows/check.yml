@@ -269,7 +269,8 @@ jobs:
             fi
 
             # [exception case] memory_monitor_sr.cpp / memory_monitor_api.cpp is base file of memory monitoring module
-            if [ "$f" == "src/base/memory_monitor_sr.cpp" ] || [ "$f" == "src/base/memory_monitor_api.cpp" ]; then
+            # memory_wrapper.cpp defines the global operator new / delete, which the new() macro of memory_wrapper.hpp would break
+            if [ "$f" == "src/base/memory_monitor_sr.cpp" ] || [ "$f" == "src/base/memory_monitor_api.cpp" ] || [ "$f" == "src/base/memory_wrapper.cpp" ]; then
               result_for_f="PASS"
             fi
 

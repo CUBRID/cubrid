@@ -1,0 +1,18 @@
+/*
+ * memory_wrapper.map - linker version script for libcubrid
+ *
+ * The global operator new and delete replaced in memory_wrapper.cpp are made local to libcubrid.
+ * Every reference inside libcubrid is still bound to them, and valgrind does not substitute its own
+ * operator new and delete for them, which it does for any exported definition. Other symbols are
+ * exported as before.
+ *
+ * The patterns match demangled names without quotes, so that they are globs: every form of
+ * operator new and delete, whatever the mangling of size_t or the forms added by later standards.
+ */
+{
+  local:
+    extern "C++" {
+      operator?new*;
+      operator?delete*;
+    };
+};
