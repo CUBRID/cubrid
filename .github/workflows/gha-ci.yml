@@ -26,9 +26,9 @@
 # once the default branch carries the file. push runs the pushed commit's copy, and
 # schedule the default branch's -- so the batch dispatches on its own ref.
 #
-# Two runner lanes, both self-hosted. plan, collect, a re-run's one shard and the
-# medium suite take cubrid-arc-light; build and the shell and sql shards take
-# cubrid-arc. Without the split a one-minute job queues behind another run's 50.
+# Three self-hosted runner lanes: cubrid-arc-light (plan, collect, a re-run's one
+# shard, medium), cubrid-arc-build (build), cubrid-arc (shell and sql shards).
+# Without the split a one-minute job queues behind another run's 50.
 #
 # Prerequisites in the runner, not here. circleci-k8s-ansible roles/arc owns
 # them; its README.md carries the full contract table for this file.
@@ -647,8 +647,8 @@ jobs:
     needs: gate
     permissions: {} # no token used; the engine comes from the node mirror
     if: needs.gate.outputs.run == 'true'
-    runs-on: cubrid-arc
-    timeout-minutes: 120
+    runs-on: cubrid-arc-build
+    timeout-minutes: 30
     strategy:
       # One mode failing must not hide the other's result.
       fail-fast: false
@@ -1185,6 +1185,9 @@ jobs:
             esac
           fi
           echo "ctp branch : $CTP_BRANCH"
+
+          # Else a small fetch touches the node copy's packs, copying them whole into /rw.
+          git config --global fetch.unpackLimit 1
 
           # The entrypoint below clones CTP whole when .git is absent, and that clone
           # was 124s of WAN. Mounted from the node copy it finds .git and fetches the
@@ -1917,6 +1920,7 @@ jobs:
           # made them ends, and the checkout takes whatever it is given.
           export BRANCH_TESTCASES="$tc_sha"
           export BRANCH_TESTTOOLS="$WANT_CTP_SHA"
+          git config --global fetch.unpackLimit 1
           /entrypoint.sh checkout "$SUITE"
 
           ctp="$WORKDIR/cubrid-testtools"

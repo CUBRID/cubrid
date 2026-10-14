@@ -33,7 +33,6 @@
 
 #include "btree.h"
 
-#include "deduplicate_key.h"
 #include "btree_sort.h"
 #include "heap_file.h"
 #include "file_io.h"
@@ -113,6 +112,7 @@ struct load_args
   PGSLOTID last_leaf_insert_slotid;	/* Slotid of last inserted leaf record. */
 
   VPID vpid_first_leaf;
+  VPID vpid_last_leaf;
 
   /* CBRD-24094: directory (OID-ordered) overflow chain directory build state. */
   bool ovf_dir;			/* Build overflow chains in the directory format (non-unique indexes). */
@@ -1434,6 +1434,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   load_args->report_published = false;
   VPID_SET_NULL (&load_args->report_first_leaf_vpid);
   VPID_SET_NULL (&load_args->report_last_leaf_vpid);
+  VPID_SET_NULL (&load_args->vpid_last_leaf);
   load_args->vacuum_items = NULL;
   load_args->vacuum_count = 0;
   load_args->vacuum_capacity = 0;
@@ -1479,8 +1480,6 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
   btid_int.key_type = key_type;
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
-  /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-  btid_int.deduplicate_key_idx = dk_get_deduplicate_key_position (n_attrs, attr_ids, func_attr_index_start);
 
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
 
@@ -1774,7 +1773,7 @@ xbtree_load_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_name, TP
 
       BTID_SET_NULL (btid);
       if (xbtree_add_index (thread_p, btid, key_type, &class_oids[0], attr_ids[0], unique_pk, sort_args->n_oids,
-			    sort_args->n_nulls, load_args->n_keys, btid_int.deduplicate_key_idx) == NULL)
+			    sort_args->n_nulls, load_args->n_keys) == NULL)
 	{
 	  goto error;
 	}
@@ -2019,6 +2018,7 @@ btree_save_last_leafrec (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
     {
       goto exit_on_error;
     }
+  load_args->vpid_last_leaf = load_args->leaf.vpid;
 
   return ret;
 
@@ -2643,8 +2643,7 @@ btree_build_nleafs (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args, int n_nulls,
 
   root_header->ovfid = load_args->btid->ovfid;	/* structure copy */
 
-  root_header->_32.rev_level = BTREE_CURRENT_REV_LEVEL;
-  SET_DECOMPRESS_IDX_HEADER (root_header, load_args->btid->deduplicate_key_idx);
+  root_header->rev_level = BTREE_CURRENT_REV_LEVEL;
 
 #if defined (SERVER_MODE)
   root_header->creator_mvccid = logtb_get_current_mvccid (thread_p);
@@ -5334,6 +5333,7 @@ bt_load_alloc_shard_load_args (THREAD_ENTRY * thread_p, const LOAD_ARGS * src, B
   VPID_SET_NULL (&load_args->vpid_first_leaf);
   VPID_SET_NULL (&load_args->report_first_leaf_vpid);
   VPID_SET_NULL (&load_args->report_last_leaf_vpid);
+  VPID_SET_NULL (&load_args->vpid_last_leaf);
   load_args->n_keys = 0;
   load_args->report_local_max_key_len = 0;
   load_args->report_n_keys = 0;
@@ -5416,7 +5416,7 @@ bt_load_worker_close_shard (THREAD_ENTRY * thread_p, LOAD_ARGS * load_args)
       return error;
     }
   load_args->report_first_leaf_vpid = load_args->vpid_first_leaf;
-  load_args->report_last_leaf_vpid = load_args->leaf.vpid;
+  load_args->report_last_leaf_vpid = load_args->vpid_last_leaf;
   load_args->report_n_keys = load_args->n_keys;
   return NO_ERROR;
 }
@@ -5612,6 +5612,7 @@ bt_load_px_join_finalize (THREAD_ENTRY * thread_p, LOAD_ARGS * main_load_args, L
   main_load_args->provider = provider;
   main_load_args->new_page_fn = bt_load_new_page_main_inline;
   main_load_args->vpid_first_leaf = shard_load_args[0]->report_first_leaf_vpid;
+  main_load_args->vpid_last_leaf = shard_load_args[n_shards - 1]->report_last_leaf_vpid;
   if (report_n_keys > INT_MAX)
     {
       return ER_FAILED;
@@ -6729,22 +6730,9 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
   HFID pk_dummy_hfid;
   BTREE_SCAN_PART *partitions = NULL;
   bool has_nulls = false;
-
-  bool has_deduplicate_key_col = false;
-  DB_VALUE new_fk_key[2];
-  DB_VALUE *fk_key_ptr = &fk_key;
-
-  db_make_null (&(new_fk_key[0]));
-  db_make_null (&(new_fk_key[1]));
-  if (sort_args->n_attrs > 1)
-    {
-      // We cannot make a PK with a function. Therefore, only the last member is checked.  
-      has_deduplicate_key_col = IS_DEDUPLICATE_KEY_ATTR_ID (sort_args->attr_ids[sort_args->n_attrs - 1]);
-      if (has_deduplicate_key_col)
-	{
-	  fk_key_ptr = &(new_fk_key[0]);
-	}
-    }
+  bool is_lookup_each_key = false;
+  TP_DOMAIN *fk_dom, *pk_dom;
+  bool has_same_dir = false, has_reverse_dir = false;
 
   btree_init_temp_key_value (&clear_fk_key, &fk_key);
   btree_init_temp_key_value (&clear_pk_key, &pk_key);
@@ -6780,8 +6768,32 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       goto end;
     }
 
-  /* Set the order. */
-  is_fk_scan_desc = (sort_args->key_type->is_desc != pk_bt_scan.btid_int.key_type->is_desc);
+  /* Walking both leaf levels together needs one key order: the FK is read forward when every column has the PK's
+   * direction and backward when every column has the opposite one. Otherwise each key is looked up from the root.
+   * A key that is not a midxkey is a list of one column. */
+  fk_dom = sort_args->key_type;
+  pk_dom = pk_bt_scan.btid_int.key_type;
+  if (TP_DOMAIN_TYPE (fk_dom) == DB_TYPE_MIDXKEY)
+    {
+      fk_dom = fk_dom->setdomain;
+    }
+  if (TP_DOMAIN_TYPE (pk_dom) == DB_TYPE_MIDXKEY)
+    {
+      pk_dom = pk_dom->setdomain;
+    }
+  for (; fk_dom != NULL && pk_dom != NULL; fk_dom = fk_dom->next, pk_dom = pk_dom->next)
+    {
+      if (fk_dom->is_desc == pk_dom->is_desc)
+	{
+	  has_same_dir = true;
+	}
+      else
+	{
+	  has_reverse_dir = true;
+	}
+    }
+  is_fk_scan_desc = (has_reverse_dir && !has_same_dir);
+  is_lookup_each_key = (has_reverse_dir && has_same_dir);
 
   /* Get the corresponding leaf of the foreign key. */
   if (!is_fk_scan_desc)
@@ -6791,8 +6803,8 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
     }
   else
     {
-      /* Get the last leaf. Current leaf is the last one. */
-      vpid = load_args->leaf.vpid;
+      /* Get the last leaf. */
+      vpid = load_args->vpid_last_leaf;
     }
 
   /* Init slot id */
@@ -6904,31 +6916,14 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  continue;
 	}
 
-      if (has_deduplicate_key_col)
-	{
-	  assert (!DB_IS_NULL (&fk_key));
-	  assert (DB_VALUE_DOMAIN_TYPE (&fk_key) == DB_TYPE_MIDXKEY);
-
-	  DB_VALUE *new_ptr = (fk_key_ptr == &(new_fk_key[0])) ? &(new_fk_key[1]) : &(new_fk_key[0]);
-
-	  pr_clear_value (new_ptr);
-	  ret = btree_remake_reference_key_with_FK (thread_p, pk_bt_scan.btid_int.key_type, &fk_key, new_ptr);
-	  if (ret != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      break;
-	    }
-
-	  if (btree_compare_key (fk_key_ptr, new_ptr, pk_bt_scan.btid_int.key_type, 1, 1, NULL) == DB_EQ)
-	    {			/* Remove the added deduplicate_key_attr and it can be the same key. */
-	      continue;
-	    }
-
-	  fk_key_ptr = new_ptr;
-	}
-
       /* We got the value from the foreign key, now search through the primary key index. */
       found = false;
+
+      if (DB_VALUE_TYPE (&fk_key) == DB_TYPE_MIDXKEY)
+	{
+	  /* The key was read with the FK's domain; the PK is searched and compared with its own. */
+	  fk_key.data.midxkey.domain = pk_bt_scan.btid_int.key_type;
+	}
 
       if (partitions)
 	{
@@ -6936,7 +6931,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  BTID_COPY (&pk_btid, sort_args->fk_refcls_pk_btid);
 
 	  /* Get the correct oid, btid and partition of the key we are looking for. */
-	  ret = partition_prune_partition_index (&pcontext, fk_key_ptr, &pk_clsoid, &pk_btid, &pos);
+	  ret = partition_prune_partition_index (&pcontext, &fk_key, &pk_clsoid, &pk_btid, &pos);
 	  if (ret != NO_ERROR)
 	    {
 	      break;
@@ -6945,7 +6940,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  if (BTID_IS_NULL (&partitions[pos].btid))
 	    {
 	      /* No need to lock individual partitions here, since the partitioned table is already locked */
-	      ret = partition_prune_unique_btid (&pcontext, fk_key_ptr, &pk_clsoid, &pk_dummy_hfid, &pk_btid);
+	      ret = partition_prune_unique_btid (&pcontext, &fk_key, &pk_clsoid, &pk_dummy_hfid, &pk_btid);
 	      if (ret != NO_ERROR)
 		{
 		  break;
@@ -6971,7 +6966,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       if (pk_bt_scan.C_page == NULL)
 	{
 	  /* No search has been initiated yet, we start from root. */
-	  ret = btree_locate_key (thread_p, &pk_bt_scan.btid_int, fk_key_ptr, &pk_bt_scan.C_vpid, &pk_bt_scan.slot_id,
+	  ret = btree_locate_key (thread_p, &pk_bt_scan.btid_int, &fk_key, &pk_bt_scan.C_vpid, &pk_bt_scan.slot_id,
 				  &pk_bt_scan.C_page, &found);
 	  if (ret != NO_ERROR)
 	    {
@@ -6981,7 +6976,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	  else if (!found)
 	    {
 	      /* Value was not found at all, it means the foreign key is invalid. */
-	      val_print = pr_valstring (fk_key_ptr);
+	      val_print = pr_valstring (&fk_key);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 		      (val_print ? val_print : "unknown value"));
 	      ret = ER_FK_INVALID;
@@ -7004,7 +6999,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	      if (!pk_has_slot_visible)
 		{
 		  /* No visible object in current page, but the key was located here. Should not happen often. */
-		  val_print = pr_valstring (fk_key_ptr);
+		  val_print = pr_valstring (&fk_key);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;
@@ -7036,7 +7031,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 		{
 		  /* The primary key has ended, but the value from foreign key was not found. */
 		  /* Foreign key is invalid. Set error. */
-		  val_print = pr_valstring (fk_key_ptr);
+		  val_print = pr_valstring (&fk_key);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;
@@ -7045,7 +7040,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 		}
 
 	      /* We need to compare the current value with the new value from the primary key. */
-	      compare_ret = btree_compare_key (&pk_key, fk_key_ptr, pk_bt_scan.btid_int.key_type, 1, 1, NULL);
+	      compare_ret = btree_compare_key (&pk_key, &fk_key, pk_bt_scan.btid_int.key_type, 1, 1, NULL);
 	      if (compare_ret == DB_EQ)
 		{
 		  /* Found value, stop searching in pk. */
@@ -7059,7 +7054,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	      else
 		{
 		  /* Fk is invalid. Set error. */
-		  val_print = pr_valstring (fk_key_ptr);
+		  val_print = pr_valstring (&fk_key);
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
 			  (val_print ? val_print : "unknown value"));
 		  ret = ER_FK_INVALID;
@@ -7073,6 +7068,11 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	      old_page = pk_bt_scan.C_page;
 	      pk_bt_scan.C_page = NULL;
 	    }
+	}
+
+      if (is_lookup_each_key)
+	{
+	  pgbuf_unfix_and_init_after_check (thread_p, pk_bt_scan.C_page);
 	}
 
       if (partitions)
@@ -7109,8 +7109,6 @@ end:
   btree_clear_key_value (&clear_fk_key, &fk_key);
   btree_clear_key_value (&clear_pk_key, &pk_key);
 
-  pr_clear_value (&(new_fk_key[0]));
-  pr_clear_value (&(new_fk_key[1]));
 
   if (clear_pcontext == true)
     {
@@ -7232,6 +7230,8 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
   /* If it is the first search. */
   if (*slot_id == -1)
     {
+      /* A walk starts at the first leaf, or at the last one when it goes backward. */
+      assert (VPID_ISNULL (is_desc ? &local_header->next_vpid : &local_header->prev_vpid));
       *slot_id = is_desc ? (*key_cnt + 1) : 0;
     }
 
@@ -7264,13 +7264,14 @@ btree_advance_to_next_slot_and_fix_page (THREAD_ENTRY * thread_p, BTID_INT * bti
 	      /* unfix old page */
 	      pgbuf_unfix_and_init (thread_p, old_page);
 
-	      *slot_id = is_desc ? *key_cnt : 1;
-
 	      /* Get the new header. */
 	      local_header = btree_get_node_header (thread_p, page);
 
 	      /* Get number of keys in new page. */
 	      *key_cnt = btree_node_number_of_keys (thread_p, page);
+
+	      /* Needs the new page's key count: a backward walk starts at its last key. */
+	      *slot_id = is_desc ? *key_cnt : 1;
 	    }
 	}
 
@@ -7425,7 +7426,6 @@ xbtree_load_online_index (THREAD_ENTRY * thread_p, BTID * btid, const char *bt_n
   btid_int.key_type = key_type;
   VFID_SET_NULL (&btid_int.ovfid);
   btid_int.rev_level = BTREE_CURRENT_REV_LEVEL;
-  btid_int.deduplicate_key_idx = dk_get_deduplicate_key_position (n_attrs, attr_ids, func_attr_index_start);
   COPY_OID (&btid_int.topclass_oid, &class_oids[0]);
   /*
    * for btree_range_search, part_key_desc is re-set at btree_initialize_bts
