@@ -4534,11 +4534,37 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
     {
       SM_ATTRIBUTE *att;
       int trace_n_histogrammable = 0, trace_n_skipped = 0, trace_n_dropped = 0;
+      int att_index, n_atts = 0;
+      char attname_buf[DB_MAX_IDENTIFIER_LENGTH + 1];
 
       for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); att != NULL; att = db_attribute_next (att))
 	{
+	  n_atts++;
+	}
 
-	  attname = (char *) att->header.name;
+      /* Walk the attributes by position, re-reading the list each time, and keep the name in a
+       * local buffer: the calls in the body are server round trips and one of them DECACHES the
+       * class -- sm_add_histogram () rolls its insert back to its own savepoint when another
+       * session created the same row first -- which frees the SM_ATTRIBUTEs (and the name) this
+       * loop would otherwise still point into.  db_get_attributes_force () recaches a decached
+       * class; if a concurrent DDL shortened the list, the walk ends early. */
+      for (att_index = 0; att_index < n_atts; att_index++)
+	{
+	  int i;
+
+	  att = (DB_ATTRIBUTE *) db_get_attributes_force (obj);
+	  for (i = 0; i < att_index && att != NULL; i++)
+	    {
+	      att = db_attribute_next (att);
+	    }
+	  if (att == NULL)
+	    {
+	      break;
+	    }
+
+	  strncpy (attname_buf, (const char *) att->header.name, sizeof (attname_buf) - 1);
+	  attname_buf[sizeof (attname_buf) - 1] = '\0';
+	  attname = attname_buf;
 	  if (do_histogram == DO_HISTOGRAM_DROP)
 	    {
 	      error = sm_drop_histogram (obj, attname);
@@ -4622,7 +4648,7 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    }
 	  if (error == NO_ERROR)
 	    {
-	      error = store_collected_histograms (obj, &hist_collect);
+	      error = store_collected_histograms (obj, &hist_collect, with_fullscan);
 	    }
 	  histogram_collect_clear (&hist_collect);
 	  if (ndv_info.attr_ndv != NULL)
@@ -4659,6 +4685,10 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 			   (trace_t1.tv_usec - trace_t0.tv_usec) / 1000.0);
 		}
 	    }
+	  /* the attribute list is read again here on purpose: the store step above can decache the
+	   * class (store_one_histogram () recreates a row a concurrent DROP HISTOGRAM removed, and
+	   * that goes through sm_add_histogram ()'s savepoint).  dump_histogram () itself only reads,
+	   * so the pointer stays valid for the rest of this walk. */
 	  for (att = (DB_ATTRIBUTE *) db_get_attributes_force (obj); (!quiet || trace_on) && att != NULL;
 	       att = db_attribute_next (att))
 	    {
@@ -10978,6 +11008,18 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
 		  error = do_recreate_filter_index_constr (parser, saved_constr->filter_predicate, alter, NULL, NULL);
 		  if (error != NO_ERROR)
 		    {
+		      PT_NODE *error_msg = parser->error_msgs;
+		      if (error_msg != NULL && error_msg->node_type == PT_ZZ_ERROR_MSG
+			  && error_msg->info.error_msg.error_message != NULL)
+			{
+			  /* the predicate recompiled under the changed column type: the user sees the ALTER statement, so
+			   * the message names the index whose predicate failed */
+			  char *message = pt_append_string (parser, NULL, "filter index '");
+			  message = pt_append_string (parser, message, saved_constr->name);
+			  message = pt_append_string (parser, message, "': ");
+			  error_msg->info.error_msg.error_message =
+			    pt_append_string (parser, message, error_msg->info.error_msg.error_message);
+			}
 		      goto exit;
 		    }
 		}
@@ -12398,6 +12440,27 @@ build_attr_change_map (PARSER_CONTEXT * parser, DB_CTMPL * ctemplate, PT_NODE * 
 		{
 		  assert (attr_chg_properties->name_space == ID_ATTRIBUTE);
 
+		  error = sm_save_constraint_info (&(attr_chg_properties->constr_info), sm_cls_constr);
+		  if (error != NO_ERROR)
+		    {
+		      return error;
+		    }
+		}
+	    }
+	  else if (att->header.name_space == ID_ATTRIBUTE && SM_IS_CONSTRAINT_INDEX_FAMILY (sm_cls_constr->type)
+		   && sm_cls_constr->filter_predicate != NULL)
+	    {
+	      /* an index whose key does not hold the attribute but whose filter
+	       * predicate reads it keeps a predicate stream compiled against the attribute's type; saved, it is
+	       * compiled anew and rebuilt with the change, as an index over the attribute is */
+	      const SM_PREDICATE_INFO *pred = sm_cls_constr->filter_predicate;
+	      bool reads_attribute = false;
+	      for (int i = 0; i < pred->num_attrs && !reads_attribute; i++)
+		{
+		  reads_attribute = pred->att_ids[i] == att->id;
+		}
+	      if (reads_attribute)
+		{
 		  error = sm_save_constraint_info (&(attr_chg_properties->constr_info), sm_cls_constr);
 		  if (error != NO_ERROR)
 		    {

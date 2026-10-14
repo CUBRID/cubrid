@@ -110,6 +110,10 @@
 #define strlen(s1)  ((int) strlen(s1))
 #endif /* defined (SUPPRESS_STRLEN_WARNING) */
 
+#if defined(SA_MODE)
+#include "domain_rules.h"
+#endif /* SA_MODE */
+
 #define BOOT_FORMAT_MAX_LENGTH 500
 
 /* for optional capability check */
@@ -675,6 +679,10 @@ boot_restart_failure_cleanup (DB_INFO * db,
       sm_final ();
       ws_final (false);
       es_final ();
+#if defined(SA_MODE)
+      /* the key pair table's string targets are cached domains */
+      domain_type_pair_table_final ();
+#endif /* SA_MODE */
       tp_final ();
 
 #if !defined(WINDOWS)
@@ -1881,6 +1889,10 @@ boot_client_all_finalize (int final_level)
 	  method_callback_final ();
 	  ws_final (false);
 	  es_final ();
+#if defined(SA_MODE)
+	  /* the key pair table's string targets are cached domains */
+	  domain_type_pair_table_final ();
+#endif /* SA_MODE */
 	  tp_final ();
 	}
 

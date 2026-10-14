@@ -3034,6 +3034,8 @@ create_stmt
 			    node->info.sp.ret_data_type = NULL;
 			    node->info.sp.body = $9;
 			    node->info.sp.comment = $10;
+
+			    pt_set_sp_owner_to_table_column_types (node);
 			  }
 
 			$$ = node;
@@ -3124,6 +3126,8 @@ create_stmt
 			    node->info.sp.ret_data_type = CONTAINER_AT_1($8);
 			    node->info.sp.body = $11;
 			    node->info.sp.comment = $12;
+
+			    pt_set_sp_owner_to_table_column_types (node);
 			  }
 
 			$$ = node;
