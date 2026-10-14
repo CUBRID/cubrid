@@ -598,7 +598,7 @@ const char *sm_define_view_routine_privileges_spec (void)
       "[auth].[grantee].[name] AS [grantee], "
       "CAST (DATABASE () AS VARCHAR (255)) AS [specific_catalog], " /* string -> varchar(255) */
       "[sp].[owner].[name] AS [specific_schema], "
-      "IF ([sp].[pkg_of] IS NOT NULL, CONCAT ([sp].[pkg_of].[pkg_name], '.', [sp].[sp_name]), [sp].[sp_name]) AS [specific_name], "
+      "CONCAT ([sp].[pkg_of].[pkg_name], '.', [sp].[sp_name]) AS [specific_name], "
       "CAST (DATABASE () AS VARCHAR (255)) AS [routine_catalog], " /* string -> varchar(255) */
       "[sp].[owner].[name] AS [routine_schema], "
       "[sp].[sp_name] AS [routine_name], "
