@@ -14583,6 +14583,9 @@ cdc_read_password_string (THREAD_ENTRY * thread_p, const OID * password_oid, cha
       return false;
     }
   scan_started = true;
+  /* read the committed version only: without a snapshot the latest version is
+   * returned, which may be an uncommitted change of another transaction */
+  scan.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 
   if (heap_get_visible_version (thread_p, password_oid, &class_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
     {
@@ -14724,6 +14727,9 @@ cdc_get_user_info (THREAD_ENTRY * thread_p, const char *user_name, char *passwor
       goto end;
     }
   scan_started = true;
+  /* decide on the committed account only: without a snapshot the latest version
+   * is returned, which may be an uncommitted change of another transaction */
+  scan.mvcc_snapshot = logtb_get_mvcc_snapshot (thread_p);
 
   if (heap_get_visible_version (thread_p, &user_oid, oid_User_class_oid, &recdes, &scan, PEEK, NULL_CHN) != S_SUCCESS)
     {
