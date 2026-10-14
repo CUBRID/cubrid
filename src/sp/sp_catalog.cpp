@@ -1038,6 +1038,7 @@ sp_add_stored_procedure_code (MOP *mop_p, SP_CODE_INFO &info)
   // a direct update otherwise.
   if (info.sp_of != NULL)
     {
+      // not flushed here: it reaches the server at commit or before the next query, like any dirty object
       db_make_object (&value, object_p);
       err = obj_set (info.sp_of, SP_ATTR_CODE, &value);
       pr_clear_value (&value);
