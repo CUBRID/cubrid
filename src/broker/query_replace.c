@@ -334,6 +334,33 @@ qr_norm_need_space (const char *dst, int len, char c, int num_tok, int dot_kind)
   return false;
 }
 
+/*
+ * qr_norm_is_backslash_token () - is run (the letters glued to a '\') one of the fixed tokens
+ *   csql_lexer.l cuts right after those letters?  a digit glued to such a token starts a number
+ *   ("\USD1.5" is the money literal 1.5, "\USD1 .5" a syntax error), while after any other run
+ *   it only continues an identifier ("\n1" is '\' and the name n1).
+ *   return: true for "\N" (NULL) and the currency signs
+ *   run(in), n(in): the run, without the backslash
+ */
+static bool
+qr_norm_is_backslash_token (const char *run, int n)
+{
+  static const char *const toks[] = {
+    "N", "TL", "JPY", "USD", "KRW", "TRY", "KHR", "CNY", "INR", "RUB", "AUD", "CAD", "BRL",
+    "RON", "EUR", "CHF", "DKK", "NOK", "BGN", "GBP", "VND", "CZK", "PLN", "SEK", "HRK", "RSD", NULL
+  };
+  int i;
+
+  for (i = 0; toks[i] != NULL; i++)
+    {
+      if ((int) strlen (toks[i]) == n && memcmp (run, toks[i], n) == 0)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
 /* both are <= 0, so qr_lookup's "norm_len <= 0" guard covers them unchanged;
  * qr_parse_file tells them apart only to word its rejection message. */
 #define QR_NORM_ERR_OVERFLOW	(-1)
@@ -347,12 +374,14 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
   int num_tok = 0;		/* the token body last emitted began with a digit */
   int dot_kind = QR_DOT_SEP;	/* what the last '.' emitted was attached to */
   int raw_ident = 0;		/* the identifier being emitted is glued to a '\' */
+  int raw_start = 0;		/* dst offset of the first byte after that '\' */
   char quote = 0;		/* current open quote char, 0 = outside literal */
   const char *s;
   unsigned int h = 5381;
 
-  /* set when a hint or block comment is not closed: the normalizer then truncates (or
-   * fabricates a closer).  rule loading rejects such text, and lookup declines to
+  /* set when a hint, block comment, delimited name or string literal is not closed:
+   * csql_lexer.l fails such text with UNEXPECTED_EOF, while the normalizer truncates it
+   * (or fabricates a closer).  rule loading rejects such text, and lookup declines to
    * replace it. */
   if (unterminated != NULL)
     {
@@ -479,6 +508,10 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 	    }
 	  if (*s == '\0')
 	    {
+	      if (unterminated != NULL)
+		{
+		  *unterminated = true;
+		}
 	      s--;		/* unterminated; loop s++ re-reads the terminator */
 	    }
 	  prev_space = 0;
@@ -648,6 +681,7 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 	    if (len == 0 || !(qr_norm_char_class[(unsigned char) dst[len - 1]] & QR_CC_IDENT))
 	      {
 		raw_ident = (len > 0 && dst[len - 1] == '\\');
+		raw_start = len;
 	      }
 	    if (raw_ident)
 	      {
@@ -661,7 +695,19 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 	  }
 	if (qr_norm_char_class[(unsigned char) fc] & QR_CC_WORD)
 	  {
-	    if (len == 0 || !(qr_norm_char_class[(unsigned char) dst[len - 1]] & QR_CC_WORD))
+	    /* a new lexer token starts here unless fc continues an identifier or number, which
+	     * QR_CC_IDENT tells: '$' and '?' are tokens of their own, so the 1 of "$1" opens a
+	     * number -- "$1 .5" (a syntax error) must not merge into the money literal "$1.5".
+	     * a "\USD"-like sign is cut after its letters the same way. */
+	    int tok_start = (len == 0
+			     || !(qr_norm_char_class[(unsigned char) fc] & QR_CC_IDENT)
+			     || !(qr_norm_char_class[(unsigned char) dst[len - 1]] & QR_CC_IDENT));
+
+	    if (!tok_start && raw_ident && (qr_norm_char_class[(unsigned char) fc] & QR_CC_DIGIT))
+	      {
+		tok_start = qr_norm_is_backslash_token (dst + raw_start, len - raw_start);
+	      }
+	    if (tok_start)
 	      {
 		num_tok = (qr_norm_char_class[(unsigned char) fc] & QR_CC_DIGIT) ? 1 : 0;
 	      }
@@ -680,6 +726,10 @@ qr_normalize_query (char *dst, int dst_size, const char *src, unsigned int *dst_
 	prev_space = 0;
 	QR_PUT (fc);
       }
+    }
+  if (quote != 0 && unterminated != NULL)
+    {
+      *unterminated = true;	/* the string literal never closed */
     }
 #undef QR_PEND
 #undef QR_FOLD
@@ -954,7 +1004,7 @@ qr_parse_file (const char *path, const char *up_db, const char *up_user, T_QR_PA
   char norm[QR_MAX_QUERY_LEN];
   int has_orig = 0, has_replace = 0, has_bind_map = 0;
   int saw_end;			/* the block was terminated by END, not by EOF */
-  bool unterminated = false;	/* ORIG had an unclosed hint / block comment */
+  bool unterminated = false;	/* ORIG had an unclosed comment, delimited name or literal */
   int orig_len = 0, replace_len = 0, norm_len;
   unsigned int orig_h;
 
@@ -1105,7 +1155,7 @@ qr_parse_file (const char *path, const char *up_db, const char *up_user, T_QR_PA
     {
       if (errmsg != NULL)
 	{
-	  snprintf (errmsg, errsz, "unterminated comment in ORIG query");
+	  snprintf (errmsg, errsz, "unterminated comment, quoted name or string literal in ORIG query");
 	}
       return -1;
     }
@@ -1777,6 +1827,29 @@ done:
   return rc;
 }
 
+#if !defined(WINDOWS)
+/* scandir order for the rule directory: plain byte order, so which of two duplicate rules is
+ * kept -- and which rules fall past query_replace_max_rules -- depends neither on the file
+ * system (readdir order) nor on the broker's locale (alphasort compares with strcoll). */
+static int
+qr_dirent_cmp (const struct dirent **a, const struct dirent **b)
+{
+  return strcmp ((*a)->d_name, (*b)->d_name);
+}
+
+static void
+qr_free_dirents (struct dirent **ents, int n)
+{
+  int i;
+
+  for (i = 0; i < n; i++)
+    {
+      free_and_init (ents[i]);
+    }
+  free_and_init (ents);
+}
+#endif
+
 int
 qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
 {
@@ -1796,7 +1869,8 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
   return 0;
 #else
   const char *dir = br_info_p->query_replace_rule;
-  DIR *dp;
+  struct dirent **ents = NULL;	/* the user@dbname entries, in qr_dirent_cmp order */
+  int n_ents, e;
   struct dirent *ent;
   T_QR_PARSED *parsed = NULL;
   int parsed_count = 0, parsed_cap = 0;
@@ -1844,8 +1918,8 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
   max_rules = br_info_p->query_replace_max_rules;
   cfg_qlen = br_info_p->query_replace_max_query_len;
 
-  dp = opendir (dir);
-  if (dp == NULL)
+  n_ents = scandir (dir, &ents, NULL, qr_dirent_cmp);
+  if (n_ents < 0)
     {
       char why[BROKER_PATH_MAX + 64];
       snprintf (why, sizeof (why), "cannot open rule directory '%s' (%s), feature disabled", dir, strerror (errno));
@@ -1858,21 +1932,25 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
   du = (T_QR_DBUSER *) calloc (max_rules, sizeof (T_QR_DBUSER));
   if (du == NULL)
     {
-      closedir (dp);
+      qr_free_dirents (ents, n_ents);
       return -1;
     }
 
   /* pass 1 : walk each "user@dbname" sub-directory and parse its rule files.
-   * the db/user are taken from the sub-directory name, not from the files. */
-  while ((ent = readdir (dp)) != NULL)
+   * the db/user are taken from the sub-directory name, not from the files.  both levels are
+   * walked in sorted order, so the first of two duplicates is the same on every host. */
+  for (e = 0; e < n_ents; e++)
     {
       char up_db[QR_NAME_LEN];
       char up_user[QR_NAME_LEN];
       char subdir[BROKER_PATH_MAX];
       int pathlen;
       struct stat st;
-      DIR *sub_dp;
+      struct dirent **sub_ents = NULL;
+      int n_sub, se;
       struct dirent *sub_ent;
+
+      ent = ents[e];
 
       if (ent->d_name[0] == '.')
 	{
@@ -1926,18 +2004,19 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
 	  }
       }
 
-      sub_dp = opendir (subdir);
-      if (sub_dp == NULL)
+      n_sub = scandir (subdir, &sub_ents, NULL, qr_dirent_cmp);
+      if (n_sub < 0)
 	{
 	  continue;
 	}
-      while ((sub_ent = readdir (sub_dp)) != NULL)
+      for (se = 0; se < n_sub; se++)
 	{
 	  T_QR_PARSED tmp;
 	  char rulepath[QR_RELPATH_LEN];
 	  char errbuf[256];
 	  char warnbuf[256];
 
+	  sub_ent = sub_ents[se];
 	  if (sub_ent->d_name[0] == '.')
 	    {
 	      continue;
@@ -1995,23 +2074,26 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
 	      /* the rule did load; the rule log is the only per-broker channel at startup */
 	      QR_RULE_LOG_WRITE (rulepath, warnbuf);
 	    }
-	  /* skip a duplicate (db, user, normalized orig): keep the first one so that
-	   * lookup stays deterministic regardless of directory read order. */
+	  /* skip a duplicate (db, user, normalized orig) so that a bucket never holds two rules
+	   * with one key.  the first one in sorted path order is kept; the log names it, since
+	   * rules that differ only in spacing or letter case are duplicates too. */
 	  {
-	    int d, dup = 0;
+	    int d, dup = -1;
 	    for (d = 0; d < parsed_count; d++)
 	      {
 		if (strcmp (parsed[d].db_name, tmp.db_name) == 0
 		    && strcmp (parsed[d].user_name, tmp.user_name) == 0
 		    && strcmp (parsed[d].orig_norm, tmp.orig_norm) == 0)
 		  {
-		    dup = 1;
+		    dup = d;
 		    break;
 		  }
 	      }
-	    if (dup)
+	    if (dup >= 0)
 	      {
-		QR_RULE_LOG_WRITE (rulepath, "duplicate ORIG (already loaded for this db/user)");
+		snprintf (errbuf, sizeof (errbuf), "duplicate ORIG (rule '%.200s' with the same key stays loaded)",
+			  parsed[dup].rulepath);
+		QR_RULE_LOG_WRITE (rulepath, errbuf);
 		free_and_init (tmp.orig_norm);
 		free_and_init (tmp.replace_query);
 		continue;
@@ -2045,9 +2127,9 @@ qr_shm_create (T_BROKER_INFO * br_info_p, T_SHM_APPL_SERVER * shm_as_p)
 	    }
 	  parsed[parsed_count++] = tmp;
 	}
-      closedir (sub_dp);
+      qr_free_dirents (sub_ents, n_sub);
     }
-  closedir (dp);
+  qr_free_dirents (ents, n_ents);
 
   if (dbuser_count == 0)
     {
@@ -3511,9 +3593,10 @@ qr_lookup (const char *sql_stmt, int sql_len)
   norm_len = qr_normalize_query (qr_norm_buf, norm_cap, sql_stmt, &norm_h, &unterminated);
   if (norm_len <= 0 || unterminated)
     {
-      /* an unclosed comment is UNEXPECTED_EOF to the lexer; its truncated key would equal
-       * the statement without it ("select 1 /" "* x" -> "SELECT 1") and replace a syntax
-       * error with a successful query. */
+      /* an unclosed comment, delimited name or string is UNEXPECTED_EOF to the lexer.  the
+       * statement can only fail, so it is never replaced -- a truncated key could even equal
+       * the statement without it ("select 1 /" "* x" -> "SELECT 1") and turn the syntax error
+       * into a successful query. */
       return -1;
     }
   else if (norm_len < qr_shm->min_query_len || norm_len > qr_shm->max_query_len)
