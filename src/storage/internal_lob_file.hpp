@@ -73,6 +73,36 @@ struct internal_lob_reader
 };
 using INTERNAL_LOB_READER = struct internal_lob_reader;
 
+struct internal_lob_pending
+{
+  DB_TYPE lob_type;
+  DB_BIGINT size;
+  char locator[PATH_MAX + 16];
+};
+using INTERNAL_LOB_PENDING = struct internal_lob_pending;
+
+struct internal_lob_upload_token
+{
+  DB_TYPE lob_type;
+  INT64 token;
+  DB_BIGINT data_length;
+  DB_BIGINT logical_length;
+};
+using INTERNAL_LOB_UPLOAD_TOKEN = struct internal_lob_upload_token;
+
+struct internal_lob_dml_slot
+{
+  int slot;
+};
+using INTERNAL_LOB_DML_SLOT = struct internal_lob_dml_slot;
+
+/* Batch-local slot of an Internal LOB payload that a loaddb worker already wrote (see load_session.cpp). */
+struct internal_lob_load_slot
+{
+  INT64 slot;
+};
+using INTERNAL_LOB_LOAD_SLOT = struct internal_lob_load_slot;
+
 extern int internal_lob_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const OID &class_oid,
 				     VFID &lob_vfid);
 #if defined (CUBRID_UNIT_TEST_ENABLED)
@@ -102,14 +132,44 @@ extern bool internal_lob_parse_locator_string (const char *data, int size, INTER
     unsigned long long *sig_out = NULL);
 extern bool internal_lob_db_value_is_locator (const DB_VALUE *value, INTERNAL_LOB_LOCATOR *locator,
     unsigned long long *sig_out = NULL);
+extern bool internal_lob_db_value_is_pending (const DB_VALUE *value, INTERNAL_LOB_PENDING *pending);
+extern bool internal_lob_db_value_is_upload (const DB_VALUE *value, INTERNAL_LOB_UPLOAD_TOKEN *upload);
+extern bool internal_lob_db_value_is_dml_slot (const DB_VALUE *value, INTERNAL_LOB_DML_SLOT *dml_slot);
+extern bool internal_lob_db_value_is_load_slot (const DB_VALUE *value, INTERNAL_LOB_LOAD_SLOT *load_slot);
+extern int internal_lob_make_load_slot_db_value (DB_VALUE *value, DB_TYPE lob_type, INT64 slot);
 extern int internal_lob_format_signed_locator (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, char *buf,
     size_t buf_size);
 extern bool internal_lob_verify_locator_sig (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator,
     unsigned long long sig);
 extern int internal_lob_lock_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator);
+inline bool
+internal_lob_is_valid_blob_bit_length (DB_BIGINT data_length, DB_BIGINT bit_length)
+{
+  if (data_length < 0 || bit_length < 0)
+    {
+      return false;
+    }
+
+  if (data_length == 0)
+    {
+      return bit_length == 0;
+    }
+
+  if (data_length > DB_BIGINT_MAX / 8)
+    {
+      return false;
+    }
+
+  return bit_length > (data_length - 1) * 8 && bit_length <= data_length * 8;
+}
+extern int internal_lob_encode_disk_length (const INTERNAL_LOB_LOCATOR &locator, DB_BIGINT &disk_length);
+extern int internal_lob_decode_disk_length (INTERNAL_LOB_LOCATOR &locator, DB_BIGINT disk_length);
 extern int internal_lob_make_locator_db_value (THREAD_ENTRY *thread_p, DB_VALUE *value, DB_TYPE lob_type,
     const INTERNAL_LOB_LOCATOR &locator);
 extern int internal_lob_make_adopt_locator_db_value (DB_VALUE *value, DB_TYPE lob_type,
     const INTERNAL_LOB_LOCATOR &locator);
+extern bool internal_lob_fits_db_value (DB_BIGINT logical_length);
+extern int internal_lob_read_db_value (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, DB_TYPE lob_type,
+				       DB_VALUE *value, TP_DOMAIN *domain);
 
 #endif /* _INTERNAL_LOB_FILE_HPP_ */

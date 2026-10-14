@@ -47,6 +47,63 @@
 static int internal_lob_make_locator_db_value_internal (THREAD_ENTRY *thread_p, DB_VALUE *value, DB_TYPE lob_type,
     const INTERNAL_LOB_LOCATOR &locator, bool adopted);
 
+static int
+internal_lob_set_generic_error (void)
+{
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+  return ER_GENERIC_ERROR;
+}
+
+/*
+ * internal_lob_physical_bytes () - stored byte count of a value with this logical length.
+ *   CLOB: logical length is already a byte count.  BLOB: it is a bit count.
+ */
+static int
+internal_lob_physical_bytes (DB_TYPE lob_type, DB_BIGINT logical_length, DB_BIGINT &payload_bytes)
+{
+  if (logical_length < 0)
+    {
+      return internal_lob_set_generic_error ();
+    }
+
+  if (lob_type == DB_TYPE_BLOB)
+    {
+      if (logical_length > DB_BIGINT_MAX - 7)
+	{
+	  return internal_lob_set_generic_error ();
+	}
+      payload_bytes = (logical_length + 7) / 8;
+      return NO_ERROR;
+    }
+
+  if (lob_type == DB_TYPE_CLOB)
+    {
+      payload_bytes = logical_length;
+      return NO_ERROR;
+    }
+
+  return internal_lob_set_generic_error ();
+}
+
+/*
+ * internal_lob_length_matches_stored () - a locator's logical length must agree with the chain's byte count
+ *   under either LOB reading, as the chain does not record its type.  The locator token and chunk_index
+ *   checks remain the primary guards against a forged OID.
+ */
+static bool
+internal_lob_length_matches_stored (DB_BIGINT logical_length, DB_BIGINT stored_bytes)
+{
+  if (logical_length < 0 || stored_bytes < 0)
+    {
+      return false;
+    }
+  if (logical_length == stored_bytes)
+    {
+      return true;			/* CLOB reading */
+    }
+  return logical_length <= DB_BIGINT_MAX - 7 && (logical_length + 7) / 8 == stored_bytes;
+}
+
 static void
 internal_lob_reverse_writer_clear (INTERNAL_LOB_REVERSE_WRITER &writer)
 {
@@ -946,6 +1003,204 @@ internal_lob_db_value_is_locator (const DB_VALUE *value, INTERNAL_LOB_LOCATOR *l
   return internal_lob_parse_locator_string (data, size, locator, sig_out);
 }
 
+bool
+internal_lob_db_value_is_pending (const DB_VALUE *value, INTERNAL_LOB_PENDING *pending)
+{
+  DB_TYPE type;
+  const char *data = NULL;
+  int size = 0;
+  char marker_buf[PATH_MAX + 64];
+  char type_char;
+  long long pending_size;
+  const char *locator;
+  size_t locator_len;
+
+  if (!db_get_internal_lob_marker_text (value, DB_VALUE_INTERNAL_LOB_MARKER_PENDING, &type, &data, &size)
+      || !internal_lob_marker_parse_pending (data, size, marker_buf, (int) sizeof (marker_buf), &type_char,
+	  &pending_size, &locator))
+    {
+      return false;
+    }
+
+  if (pending_size < 0 || pending_size > DB_MAX_INTERNAL_LOB_LENGTH || (type_char == 'C' && type != DB_TYPE_CLOB)
+      || (type_char == 'B' && type != DB_TYPE_BLOB))
+    {
+      return false;
+    }
+
+  locator_len = strlen (locator);
+  if (locator_len == 0 || locator_len >= PATH_MAX + 16)
+    {
+      return false;
+    }
+
+  if (pending != NULL)
+    {
+      pending->lob_type = (type_char == 'C') ? DB_TYPE_CLOB : DB_TYPE_BLOB;
+      pending->size = (DB_BIGINT) pending_size;
+      memcpy (pending->locator, locator, locator_len + 1);
+    }
+
+  return true;
+}
+
+bool
+internal_lob_db_value_is_upload (const DB_VALUE *value, INTERNAL_LOB_UPLOAD_TOKEN *upload)
+{
+  DB_TYPE type;
+  const char *data = NULL;
+  int size = 0;
+  int prefix_len = (int) strlen (INTERNAL_LOB_UPLOAD_PREFIX);
+  char marker_buf[160];
+  char type_char;
+  long long token;
+  long long data_length;
+  long long logical_length;
+  int consumed = 0;
+
+  if (!db_get_internal_lob_marker_text (value, DB_VALUE_INTERNAL_LOB_MARKER_UPLOAD, &type, &data, &size)
+      || !internal_lob_marker_copy_text (data, size, INTERNAL_LOB_UPLOAD_PREFIX, marker_buf, (int) sizeof (marker_buf)))
+    {
+      return false;
+    }
+
+  if (sscanf (marker_buf + prefix_len, "%c:%lld:%lld:%lld%n", &type_char, &token, &data_length,
+	      &logical_length, &consumed) != 4
+      || marker_buf[prefix_len + consumed] != '\0' || token <= 0 || data_length < 0
+      || data_length > DB_MAX_INTERNAL_LOB_LENGTH || logical_length < 0 || (type_char != 'B' && type_char != 'C')
+      || (type_char == 'B' && type != DB_TYPE_BLOB) || (type_char == 'C' && type != DB_TYPE_CLOB))
+    {
+      return false;
+    }
+
+  if (upload != NULL)
+    {
+      upload->lob_type = type;
+      upload->token = (INT64) token;
+      upload->data_length = (DB_BIGINT) data_length;
+      upload->logical_length = (DB_BIGINT) logical_length;
+    }
+  return true;
+}
+
+bool
+internal_lob_db_value_is_dml_slot (const DB_VALUE *value, INTERNAL_LOB_DML_SLOT *dml_slot)
+{
+  const char *data = NULL;
+  int size = 0;
+  int prefix_len = (int) strlen (INTERNAL_LOB_DML_SLOT_PREFIX);
+  char marker_buf[80];
+  int slot;
+  int consumed = 0;
+
+  if (!db_get_internal_lob_marker_text (value, DB_VALUE_INTERNAL_LOB_MARKER_DML_SLOT, NULL, &data, &size)
+      || !internal_lob_marker_copy_text (data, size, INTERNAL_LOB_DML_SLOT_PREFIX, marker_buf,
+					 (int) sizeof (marker_buf)))
+    {
+      return false;
+    }
+
+  if (sscanf (marker_buf + prefix_len, "%d%n", &slot, &consumed) != 1
+      || marker_buf[prefix_len + consumed] != '\0' || slot < 0)
+    {
+      return false;
+    }
+
+  if (dml_slot != NULL)
+    {
+      dml_slot->slot = slot;
+    }
+  return true;
+}
+
+/*
+ * internal_lob_db_value_is_load_slot () - Is this value the load-slot envelope a loaddb worker builds for a row
+ *                                         whose Internal LOB payload it already wrote?
+ *   The envelope text is INTERNAL_LOB_LOAD_SLOT_PREFIX followed by the 1-based slot number.
+ */
+bool
+internal_lob_db_value_is_load_slot (const DB_VALUE *value, INTERNAL_LOB_LOAD_SLOT *load_slot)
+{
+  const char *data = NULL;
+  int size = 0;
+  int prefix_len = (int) strlen (INTERNAL_LOB_LOAD_SLOT_PREFIX);
+  char marker_buf[80];
+  long long slot;
+  int consumed = 0;
+
+  if (!db_get_internal_lob_marker_text (value, DB_VALUE_INTERNAL_LOB_MARKER_LOAD_SLOT, NULL, &data, &size)
+      || !internal_lob_marker_copy_text (data, size, INTERNAL_LOB_LOAD_SLOT_PREFIX, marker_buf,
+					 (int) sizeof (marker_buf)))
+    {
+      return false;
+    }
+
+  if (sscanf (marker_buf + prefix_len, "%lld%n", &slot, &consumed) != 1
+      || marker_buf[prefix_len + consumed] != '\0' || slot <= 0)
+    {
+      return false;
+    }
+
+  if (load_slot != NULL)
+    {
+      load_slot->slot = (INT64) slot;
+    }
+  return true;
+}
+
+/*
+ * internal_lob_make_load_slot_db_value () - Build the load-slot envelope for a loaddb row value.
+ *   The heap sink resolves it through session_internal_lob_load_consume () while the row is inserted, so the
+ *   chunk chain's replication bookkeeping lands on the row that owns it.
+ */
+int
+internal_lob_make_load_slot_db_value (DB_VALUE *value, DB_TYPE lob_type, INT64 slot)
+{
+  char marker_text[64];
+  int marker_len;
+
+  if (value == NULL || (lob_type != DB_TYPE_BLOB && lob_type != DB_TYPE_CLOB) || slot <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  marker_len = snprintf (marker_text, sizeof (marker_text), INTERNAL_LOB_LOAD_SLOT_PREFIX "%lld", (long long) slot);
+  if (marker_len <= 0 || marker_len >= (int) sizeof (marker_text))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  return db_make_internal_lob_marker_value (value, lob_type, marker_text, marker_len,
+	 DB_VALUE_INTERNAL_LOB_MARKER_LOAD_SLOT);
+}
+
+int
+internal_lob_encode_disk_length (const INTERNAL_LOB_LOCATOR &locator, DB_BIGINT &disk_length)
+{
+  if (locator.length < 0)
+    {
+      return internal_lob_set_generic_error ();
+    }
+
+  disk_length = locator.length;
+  return NO_ERROR;
+}
+
+int
+internal_lob_decode_disk_length (INTERNAL_LOB_LOCATOR &locator, DB_BIGINT disk_length)
+{
+  if (disk_length < 0)
+    {
+      return internal_lob_set_generic_error ();
+    }
+
+  locator.length = disk_length;
+  locator.adopted = false;
+  return NO_ERROR;
+}
+
 int
 internal_lob_make_locator_db_value (THREAD_ENTRY *thread_p, DB_VALUE *value, DB_TYPE lob_type,
 				    const INTERNAL_LOB_LOCATOR &locator)
@@ -979,3 +1234,78 @@ internal_lob_make_locator_db_value_internal (THREAD_ENTRY *thread_p, DB_VALUE *v
 	 DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR);
 }
 
+/*
+ * internal_lob_fits_db_value () - Can the whole value become one DB_VALUE?  A DB_VALUE keeps its length (bits for
+ *   BLOB, bytes for CLOB) in an int.
+ */
+bool
+internal_lob_fits_db_value (DB_BIGINT logical_length)
+{
+  return logical_length >= 0 && logical_length <= (DB_BIGINT) INT_MAX;
+}
+
+int
+internal_lob_read_db_value (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, DB_TYPE lob_type,
+			    DB_VALUE *value, TP_DOMAIN *domain)
+{
+  char *raw_value = NULL;
+  DB_BIGINT raw_length_bigint = 0;
+  int raw_length;
+  int precision;
+  int err;
+
+  if (locator.length < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  err = internal_lob_physical_bytes (lob_type, locator.length, raw_length_bigint);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (!internal_lob_fits_db_value (locator.length))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  raw_length = (int) raw_length_bigint;
+  raw_value = (char *) db_private_alloc (NULL, (size_t) (raw_length > 0 ? raw_length : 1));
+  if (raw_value == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+
+  if (raw_length > 0)
+    {
+      err = internal_lob_read (thread_p, locator, oos_buffer (raw_value, (std::size_t) raw_length));
+      if (err != NO_ERROR)
+	{
+	  db_private_free_and_init (NULL, raw_value);
+	  return err;
+	}
+    }
+
+  precision = (domain != NULL) ? domain->precision : DB_MAX_LOB_PRECISION;
+  if (lob_type == DB_TYPE_CLOB)
+    {
+      err = db_make_clob (value, precision, raw_value, raw_length);
+    }
+  else
+    {
+      err = db_make_blob (value, precision, (DB_CONST_C_BIT) raw_value, (int) locator.length);
+    }
+
+  if (err != NO_ERROR)
+    {
+      db_private_free_and_init (NULL, raw_value);
+      return err;
+    }
+
+  value->need_clear = true;
+  return NO_ERROR;
+}

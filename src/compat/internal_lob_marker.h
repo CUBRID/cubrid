@@ -317,6 +317,119 @@ internal_lob_marker_parse_locator (const char *data, int size, DB_BIGINT * lengt
   return true;
 }
 
+/*
+ * internal_lob_marker_parse_scalar_stream () - Pull the LOB type, payload length and locator out of a scalar stream
+ *                                              marker.
+ *
+ * Format "@internal_lob_stream:<C|B>:<locator>": what CLOB_TO_CHAR ()/BLOB_TO_BIT () hand csql instead of a value
+ * too large for VARCHAR/VARBIT.  It is a transport envelope, not a value: anything consuming it as one must refuse it.
+ */
+static inline bool
+internal_lob_marker_parse_scalar_stream (const char *data, int size, char *lob_type, DB_BIGINT * length,
+					 const char **locator, int *locator_len)
+{
+  const int prefix_len = (int) strlen (INTERNAL_LOB_SCALAR_STREAM_PREFIX);
+
+  if (data == NULL || size <= prefix_len + 2
+      || memcmp (data, INTERNAL_LOB_SCALAR_STREAM_PREFIX, (size_t) prefix_len) != 0)
+    {
+      return false;
+    }
+  if ((data[prefix_len] != 'C' && data[prefix_len] != 'B') || data[prefix_len + 1] != ':')
+    {
+      return false;
+    }
+  if (lob_type != NULL)
+    {
+      *lob_type = data[prefix_len];
+    }
+  if (!internal_lob_marker_parse_locator (data + prefix_len + 2, size - prefix_len - 2, length))
+    {
+      return false;
+    }
+  if (locator != NULL)
+    {
+      *locator = data + prefix_len + 2;
+    }
+  if (locator_len != NULL)
+    {
+      *locator_len = size - prefix_len - 2;
+    }
+  return true;
+}
+
+/*
+ * internal_lob_marker_parse_file_source () - Split a FILE_SOURCE text (INTERNAL_LOB_FILE_SOURCE_FORMAT) into fields.
+ *
+ * Grammar only: the caller checks the values.  buf receives the NUL-terminated text and *path points into it.
+ */
+static inline bool
+internal_lob_marker_parse_file_source (const char *data, int size, char *buf, int buf_size, char *lob_type,
+				       long long *data_length, long long *logical_length, const char **path)
+{
+  char *p = NULL;
+  char *endptr = NULL;
+
+  if (!internal_lob_marker_copy_text (data, size, INTERNAL_LOB_FILE_SOURCE_PREFIX, buf, buf_size))
+    {
+      return false;
+    }
+
+  p = buf + strlen (INTERNAL_LOB_FILE_SOURCE_PREFIX);
+  if ((p[0] != 'C' && p[0] != 'B') || p[1] != ':')
+    {
+      return false;
+    }
+  *lob_type = p[0];
+  p += 2;
+
+  *data_length = strtoll (p, &endptr, 10);
+  if (endptr == p || *endptr != ':')
+    {
+      return false;
+    }
+  p = endptr + 1;
+
+  *logical_length = strtoll (p, &endptr, 10);
+  if (endptr == p || *endptr != ':')
+    {
+      return false;
+    }
+
+  *path = endptr + 1;
+  return true;
+}
+
+/*
+ * internal_lob_marker_parse_pending () - Split a PENDING text (INTERNAL_LOB_PENDING_FORMAT) into fields.
+ *
+ * Grammar only: the caller checks the values.  buf receives the NUL-terminated text and *locator points into it.
+ * The delete-after-read flag must still read 0 or 1 but is dropped: no reader may delete a file a marker names.
+ */
+static inline bool
+internal_lob_marker_parse_pending (const char *data, int size, char *buf, int buf_size, char *lob_type,
+				   long long *pending_size, const char **locator)
+{
+  const int prefix_len = (int) strlen (INTERNAL_LOB_PENDING_PREFIX);
+  int delete_after_read = 0;
+  int locator_offset = 0;
+
+  if (!internal_lob_marker_copy_text (data, size, INTERNAL_LOB_PENDING_PREFIX, buf, buf_size))
+    {
+      return false;
+    }
+
+  if (sscanf (buf + prefix_len, "%c:%lld:%d:%n", lob_type, pending_size, &delete_after_read, &locator_offset) < 3
+      || locator_offset <= 0 || (delete_after_read != 0 && delete_after_read != 1)
+      || (*lob_type != 'C' && *lob_type != 'B'))
+    {
+      return false;
+    }
+
+  *locator = buf + prefix_len + locator_offset;
+  return true;
+}
+
 /* Split a locator's logical length into payload bytes and BLOB bit length (0 for a CLOB); false if it overflows. */
 static inline bool
 internal_lob_marker_split_length (char lob_type, DB_BIGINT logical_length, DB_BIGINT * data_len, DB_BIGINT * bit_length)
