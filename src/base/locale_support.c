@@ -4877,6 +4877,10 @@ locale_compile_locale (LOCALE_FILE * lf, LOCALE_DATA * ld, bool is_verbose)
 		      coll_sh_entry->ldml_context.ldml_file, coll_sh_entry->ldml_context.line_no);
 	    }
 
+	  /* a name that differs only in case is saved as the first definition, whose data symbols exist */
+	  strncpy (lc->opt_coll.coll_name, coll_sh_entry->lsd_key, COLL_NAME_SIZE - 1);
+	  lc->opt_coll.coll_name[COLL_NAME_SIZE - 1] = '\0';
+
 	  continue;
 	}
 
