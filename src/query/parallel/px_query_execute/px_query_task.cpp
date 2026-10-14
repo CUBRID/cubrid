@@ -120,8 +120,11 @@ namespace parallel_query_execute
     cur_thread_p->on_trace = parent_thread_p->on_trace;
     cur_thread_p->m_px_orig_thread_entry = parent_thread_p;
     is_on_root_thread = cur_thread_p == parent_thread_p;
-    new_xasl_state = qexec_deep_copy_xasl_state (cur_thread_p, xasl_state);
-    assert (new_xasl_state != nullptr);
+    new_xasl_state = qexec_deep_copy_xasl_state (cur_thread_p, xasl_state, false);
+    if (new_xasl_state == nullptr && er_errid () == NO_ERROR)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (XASL_STATE));
+      }
     if (on_trace)
       {
 	px_stats = cur_thread_p->m_px_stats;
@@ -133,7 +136,9 @@ namespace parallel_query_execute
 		  syscall (SYS_gettid), xasl->header.id);
 #endif
     /* job execution */
-    err_code = qexec_execute_mainblock (cur_thread_p, xasl, new_xasl_state, NULL);
+    /* a state copy that failed (no memory) fails the job as an execution error does */
+    err_code = new_xasl_state == nullptr ? ER_OUT_OF_VIRTUAL_MEMORY
+	       : qexec_execute_mainblock (cur_thread_p, xasl, new_xasl_state, NULL);
 
     /* check error */
     if (err_code != NO_ERROR)

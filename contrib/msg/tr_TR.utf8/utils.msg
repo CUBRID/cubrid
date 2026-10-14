@@ -54,7 +54,6 @@ $       27      restartevnt
 $       28      prestartldb
 $       29      shutdownldb
 $       30      mqueueldb
-$       31      migrate_v73
 $       32      load_audit_trail
 $       33      alterdbhost
 $       37      plandump
@@ -877,26 +876,6 @@ geçerli seçenekler:\n\
   -q, --query-exec-info              aktif geçişlerin sorgulama çalışması bilgisi hakkında bilgiyi görüntüler\n\
   -f, --force                        doğrulaması için bir istemi olmadan işlemi iptal etme\n
 
-
-$set 31 MSGCAT_UTIL_SET_MIGRATE
-1 database-name
-2 Gerekli bağımsız değişkeni, varsayılan yok
-3 uyumluluk - denetimi
-4 uyumluluk yalnızca kontrol edin
-5 yedekleme-hedefi
-6 yedekleme yoğunluk hedef için bir dizin veya aygıt
-20 veritabanı '%1$s' yok.
-21 DB sürüm çok düşük olduğundan, '%1$s', %2$s geçirilemez.\n
-22 '%1$s' taşınmasına olanak gerekmez.\n
-23 '%1$s' taşıma gerekir.\n
-24 Yedekleme geçişten sonra önerilir. Şimdi veritabanınızı yedeklemek ister misiniz? (e/ h):
-25 Bu taşınmanın ardından backupdb komutu ile yeni bir veritabanı yedeklemek için önerilir.
-26 \n*** UYARI:taşıma başlamadan önce veritabanı yedekleme %1$s*** \n\nBu taşıması sırasında meydana gelen olabilecek hataları kurtarabilirsiniz, şiddetle veritabanınızı yedeklemenizi önerilir \n zaten veritabanı yedeklendiyse Varmı.? (e/h):
-27 \n1. Backupdb\n2 çalıştırın..\n3: yeni veritabanı için yeni bir yedekleme path (%1$s geçerli path) girin. Çıkış
-28 \nVeritabanı için yeni bir yedekleme path:
-29 \nTaşınması ve yedekleme başarıyla tamamlandı.
-30 Yedekleme başarısız oldu. Lütfen , Veritabanı yedeklemenizi yeniden deneyin.
-31 \n\n*** UYARI: Bir kez geçiş tamamlandığında, eski yedekleme yoğunlukları ile veritabanını geri yüklemek yapamazsınız yedekleme dosyalarının önceki sürümü sadece restoredb ilgili sürümü restore edilebilir \n NOT..\n Lütfen, güvenli bir şekilde tutulmasını önceki yedekleme yoğunlukları kontrol edin.\n
 
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \

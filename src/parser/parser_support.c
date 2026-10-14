@@ -157,7 +157,6 @@ static int pt_get_query_limit_from_limit (PARSER_CONTEXT * parser, PT_NODE * lim
 					  bool add_offset);
 static bool pt_check_removable_like_condition (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * expr);
 static PT_NODE *pt_create_delete_stmt (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * target_class);
-static PT_NODE *pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk);
 static PT_NODE *pt_rewrite_derived_for_upd_del (PARSER_CONTEXT * parser, PT_NODE * spec, PT_SPEC_FLAG what_for,
 						bool add_as_attr);
 static PT_NODE *pt_process_spec_for_delete (PARSER_CONTEXT * parser, PT_NODE * spec);
@@ -1966,7 +1965,7 @@ pt_check_orderbynum_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 PT_NODE *
 pt_check_subquery_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
-  if (node->node_type == PT_SELECT)
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
     {
       *continue_walk = PT_STOP_WALK;
     }
@@ -1987,7 +1986,9 @@ pt_check_subquery_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
 {
   bool *has_subquery = (bool *) arg;
 
-  if (node->node_type == PT_SELECT)
+  /* a UNION / DIFFERENCE / INTERSECTION subquery is one query node too; PT_SELECT alone would let
+   * 'x IN (SELECT ... UNION SELECT ...)' pass undetected */
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type))
     {
       if (node->info.query.is_subquery == PT_IS_SUBQUERY)
 	{
@@ -7832,7 +7833,7 @@ pt_make_query_show_grants (PARSER_CONTEXT * parser, const char *original_user_na
  *   continue_walk(in):
  *
  */
-static PT_NODE *
+PT_NODE *
 pt_is_spec_referenced (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg, int *continue_walk)
 {
   UINTPTR spec_id = *(UINTPTR *) void_arg;
@@ -10926,12 +10927,10 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       // break;
     case PT_CREATE_ENTITY:
       {
-	bool is_dba_group_member = au_is_dba_group_member (Au_user);
-	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_CREATE_ENTITY_NAME (node))) && !is_dba_group_member)
+	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_CREATE_ENTITY_NAME (node)))
+	    && !sm_is_catcls_disabled ())
 	  {
-	    int error = NO_ERROR;
-	    ERROR_SET_ERROR_1ARG (error, ER_AU_DBA_ONLY, "create system class/vclass");
-	    PT_ERRORc (parser, node, er_msg ());
+	    PT_ERROR (parser, node, "It is not allowed to create a table/view with a system table/view name.");
 	    *continue_walk = PT_STOP_WALK;
 	  }
 
@@ -10940,9 +10939,9 @@ pt_set_user_specified_name (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
       // break;
     case PT_RENAME:
       {
-	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_RENAME_NEW_NAME (node))))
+	if (sm_check_system_class_by_name (PT_NAME_ORIGINAL (PT_RENAME_NEW_NAME (node))) && !sm_is_catcls_disabled ())
 	  {
-	    PT_ERROR (parser, node, "It is not allowed to be renamed to the system class name.");
+	    PT_ERROR (parser, node, "It is not allowed to rename a table/view to a system table/view name.");
 	    *continue_walk = PT_STOP_WALK;
 	  }
 
@@ -11106,6 +11105,53 @@ pt_get_qualifier_name (PARSER_CONTEXT * parser, PT_NODE * node)
     }
 
   return pt_append_string (parser, NULL, qualifier_name);
+}
+
+/*
+ * pt_set_owner_to_table_column_type () - qualify the table name of <table>.<column>%TYPE with the owner
+ *   return: none
+ *   data_type(in/out): data type node
+ *   owner(in): owner name
+ */
+static void
+pt_set_owner_to_table_column_type (PT_NODE * data_type, const char *owner)
+{
+  if (data_type == NULL || data_type->type_enum != PT_TYPE_TABLE_COLUMN)
+    {
+      return;
+    }
+
+  PT_NODE *table_name = data_type->info.data_type.table_column->info.dot.arg1;
+  if (table_name->info.name.resolved == NULL && !sm_check_system_class_by_name (table_name->info.name.original))
+    {
+      table_name->info.name.resolved = owner;
+    }
+}
+
+/*
+ * pt_set_sp_owner_to_table_column_types () - qualify the table names of <table>.<column>%TYPE
+ *   in the parameter and return types with the owner of the stored procedure
+ *   return: none
+ *   sp_node(in/out): create procedure/function statement
+ *
+ * Without this, the unqualified table names are qualified with the current user later
+ * in pt_set_user_specified_name (), which is wrong when the SP owner is not the current user.
+ */
+void
+pt_set_sp_owner_to_table_column_types (PT_NODE * sp_node)
+{
+  const char *sp_owner = sp_node->info.sp.name->info.name.resolved;
+  if (sp_owner == NULL)
+    {
+      /* the SP owner is the current user, which is the same as the default qualification */
+      return;
+    }
+
+  for (PT_NODE * param = sp_node->info.sp.param_list; param; param = param->next)
+    {
+      pt_set_owner_to_table_column_type (param->data_type, sp_owner);
+    }
+  pt_set_owner_to_table_column_type (sp_node->info.sp.ret_data_type, sp_owner);
 }
 
 /*
@@ -11874,16 +11920,16 @@ pt_convert_dblink_insert_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
       remote_ins = 1;
     }
 
-  /* remote INSERT SELECT: INSERT INTO remote_t@conn SELECT ... FROM local_t
+  /* remote INSERT / REPLACE SELECT: INSERT INTO remote_t@conn SELECT ... FROM local_t
    *
-   * Only plain INSERT ... SELECT is carved out to the remote sink path. REPLACE INTO ... SELECT and
-   * INSERT ... SELECT ... ON DUPLICATE KEY UPDATE are intentionally excluded: the remote path emits a
-   * plain INSERT (dblink_dml_open) and cannot honor REPLACE/ODKU semantics. By not setting the flag
-   * here they fall through to pt_convert_dblink_dml_query's "local mixed remote DML is not allowed"
-   * rejection -- the same behavior develop gives for these statements. Supporting REPLACE/ODKU over a
-   * remote target is deferred. */
-  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL
-      && !node->info.insert.do_replace && node->info.insert.odku_assignments == NULL)
+   * REPLACE INTO ... SELECT takes the same sink. The sink sends one statement per source row and
+   * REPLACE carries that meaning row by row, so honoring it is a matter of which statement
+   * dblink_dml_open prepares; the values travel the same way.
+   *
+   * INSERT ... SELECT ... ON DUPLICATE KEY UPDATE is still excluded: the sink has nowhere to carry the
+   * update assignments yet. By not setting the flag here it falls through to the mixed local/remote
+   * rejection in pt_convert_dblink_dml_query. */
+  if (remote_ins && pt_get_subquery_of_insert_select (node) != NULL && node->info.insert.odku_assignments == NULL)
     {
       snl->sink_kind = DBLINK_REMOTE_SINK_INSERT_SELECT;
     }

@@ -54,7 +54,6 @@ $       27      restartevnt
 $       28      prestartldb
 $       29      shutdownldb
 $       30      mqueueldb
-$       31      migrate_v73
 $       32      load_audit_trail
 $       33      alterdbhost
 $       37      plandump
@@ -877,26 +876,6 @@ gültige Optionen:\n\
   -q, --query-exec-info              Informationen zur Abfrageausführung anzeigen; Informationen zur aktiven Transaktionen\n\
   -f, --force                        Transaktion ohne Bestätigung abbrechen \n
 
-
-$set 31 MSGCAT_UTIL_SET_MIGRATE
-1 Datenbanknamen
-2 erforderlicher Argument, keinen Standardwert
-3 Kompatibilitätsprüfung
-4 nur Kompatibilitätsprüfung
-5 Backup-Ziel
-6 ein Verzeichnispfad oder ein Gerät als Ziel des Backupdatenträgers
-20 Datenbank '%1$s' existiert nicht.
-21 '%1$s' kann zu %2$s nicht migriert werden, weil die DB-Version zu niedrig ist.\n
-22 '%1$s' brauchen keine Migration.\n
-23 '%1$s' muss migriert werden.\n
-24 Ein Backup wird nach der Migration empfohlen. Wollen Sie ein Backup Ihrer Datenbank jetzt machen? (y/n):
-25 Wir empfehlen, Ihre neue Datenbank nach Migration mit dem backupdb Befehl zu sichern.
-26 \n*** WARNUNG: Sichern Sie Ihre Datenbank, bevor die Migration zu %1$s angefangen wird ***\n\nUm Fehler zu erholen, die bei der Migration auftreten können, empfehlen wir dringend, ein Backup der Datenbank zu machen.\nHaben Sie bereits Ihre Datenbank gesichert? (y/n):
-27 \n1. backupdb ausführen\n2. Geben Sie den neuen Backuppfad für die neue Datenbank. (aktueller Pfad: %1$s)\n3. Exit \n
-28 \nDer neue Backuppfad für die Datenbank:
-29 \nMigration und Backup erfolgreich abgeschlossen.
-30 Backup fehlgeschlagen. Bitte wiederholen Sie die Backupprozedere.
-31 \n\n*** WARNUNG: Sobald die Migration abgeschlossen ist, können Sie die Datenbank nicht mehr mit den bisherigen Backupdatenträger wiederherstellen.\nBeachten Sie, dass die bisherigen Version der Backupdateien nur auf der entsprechenden Version von restoredb wiederhergestellt werden können.\nBitte überprüfen Sie, dass die bisherigen Backupdatenträger sicher aufbewahrt werden.\n
 
 $set 33 MSGCAT_UTIL_SET_ALTERDBHOST
 60 \

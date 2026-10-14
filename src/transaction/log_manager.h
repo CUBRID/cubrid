@@ -162,6 +162,7 @@ extern void log_rv_dump_hexa (FILE * fp, int length, void *data);
 extern int log_rv_outside_noop_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int log_rv_no_logging_index_durable_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int log_rv_no_logging_index_committed_redo (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
+extern int log_rv_undoredo_sysmeta_version (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void log_simulate_crash (THREAD_ENTRY * thread_p, int flush_log, int flush_data_pages);
 #endif
@@ -202,6 +203,9 @@ extern SCAN_CODE log_get_undo_record (THREAD_ENTRY * thread_p, LOG_PAGE * log_pa
 /* read an undo image out of the in-flight window instead of draining to a log page first */
 extern bool log_get_undo_record_from_inflight (THREAD_ENTRY * thread_p, const LOG_LSA * lsa, RECDES * recdes,
 					       SCAN_CODE * scan_out);
+/* read an undo image in place out of the log page buffer instead of copying its page first */
+extern bool log_get_undo_record_from_buffer (THREAD_ENTRY * thread_p, const LOG_LSA * lsa, const LOG_LSA * copied_lsa,
+					     RECDES * recdes, SCAN_CODE * scan_out);
 
 extern void log_sysop_start (THREAD_ENTRY * thread_p);
 extern void log_sysop_start_atomic (THREAD_ENTRY * thread_p);

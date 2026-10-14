@@ -852,6 +852,12 @@ parser_free_node_resources (PT_NODE * node)
       col->on_error.m_default_value = NULL;
       // db_values on_empty.m_default_value & on_error.m_default_value are allocated using area_alloc
     }
+  if (node->xasl_id != NULL)
+    {
+      /* covers cached-subquery nodes anywhere in the tree,
+       * unreached by statements[]-only walkers like db_close_session_local (). */
+      free_and_init (node->xasl_id);
+    }
 }
 
 /*
