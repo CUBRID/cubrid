@@ -7581,9 +7581,8 @@ exit:
  *   visited_nodes(in): the nodes already placed before it
  *
  * Note: only a SEMI node with a DISTINCT alternative may precede its SEMI/ANTI dependencies, and never an outer
- *       join node among them. The caller checks dependent-table, outer-join and hint requirements separately.
- *       When the SEMI/ANTI dependencies are already satisfied, the caller uses node_info to retain ordinary SEMI
- *       execution.
+ *       join node among them. The other dependencies are checked by qo_node_can_be_placed (). When the SEMI/ANTI
+ *       dependencies are already satisfied, qo_get_node_info () returns node_info to retain ordinary SEMI execution.
  */
 static QO_INFO *
 qo_get_distinct_info_ahead (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
@@ -7611,6 +7610,45 @@ qo_get_distinct_info_ahead (QO_PLANNER * planner, QO_NODE * node, BITSET * visit
     }
 
   return planner->distinct_info[QO_NODE_IDX (node)];
+}
+
+/*
+ * qo_node_can_be_placed () - can the node be joined next to the nodes placed so far?
+ *   return: bool
+ *   planner(in):
+ *   node(in): the node about to be placed
+ *   visited_nodes(in): the nodes already placed; the node itself may be among them, as no node depends on itself
+ *
+ * Note: a node comes after the nodes it depends on (QO_NODE_DEP_SET), after the previous nodes of the outer joins
+ *       it takes part in (QO_NODE_OUTER_DEP_SET) and after the nodes its SEMI/ANTI ON reads
+ *       (QO_NODE_SEMI_ANTI_DEP_SET). Only the last is relaxed, for a SEMI node read with the duplicates removed.
+ */
+static bool
+qo_node_can_be_placed (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
+{
+  if (!bitset_subset (visited_nodes, &(QO_NODE_DEP_SET (node)))
+      || !bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (node))))
+    {
+      return false;
+    }
+
+  return bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node)))
+    || qo_get_distinct_info_ahead (planner, node, visited_nodes) != NULL;
+}
+
+/*
+ * qo_get_node_info () - get the info a node is joined with at its place in the join order
+ *   return: the node's DISTINCT info when placed before its SEMI/ANTI dependencies, its node_info otherwise
+ *   planner(in):
+ *   node(in): the node about to be placed, or placed first
+ *   visited_nodes(in): the nodes already placed
+ */
+static QO_INFO *
+qo_get_node_info (QO_PLANNER * planner, QO_NODE * node, BITSET * visited_nodes)
+{
+  QO_INFO *info = qo_get_distinct_info_ahead (planner, node, visited_nodes);
+
+  return (info != NULL) ? info : planner->node_info[QO_NODE_IDX (node)];
 }
 
 /*
@@ -8849,12 +8887,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
   /* head_info points to the current prefix */
   if (bitset_cardinality (visited_nodes) == 1)
     {
-      /* current prefix has only one node; a SEMI JOIN inner placed first is read with the duplicates removed */
-      head_info = qo_get_distinct_info_ahead (planner, head_node, visited_nodes);
-      if (head_info == NULL)
-	{
-	  head_info = planner->node_info[QO_NODE_IDX (head_node)];
-	}
+      /* current prefix has only one node */
+      head_info = qo_get_node_info (planner, head_node, visited_nodes);
     }
   else
     {
@@ -8867,13 +8901,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	}
     }
 
-  /* tail_info points to the node for the single class being added to the prefix; a SEMI JOIN inner added ahead
-   * of the side it depends on is read with the duplicates removed */
-  tail_info = qo_get_distinct_info_ahead (planner, tail_node, visited_nodes);
-  if (tail_info == NULL)
-    {
-      tail_info = planner->node_info[QO_NODE_IDX (tail_node)];
-    }
+  /* tail_info points to the node for the single class being added to the prefix */
+  tail_info = qo_get_node_info (planner, tail_node, visited_nodes);
 
   /* connect tail_node to the prefix */
   bitset_add (visited_nodes, QO_NODE_IDX (tail_node));
@@ -9710,23 +9739,11 @@ go_ahead_subvisit:
 	  node = QO_ENV_NODE (planner->env, i);
 
 	  /* node dependency check; */
-	  if (!bitset_subset (visited_nodes, &(QO_NODE_DEP_SET (node))))
+	  if (!qo_node_can_be_placed (planner, node, visited_nodes))
 	    {
 	      /* node represents dependent tables, so there is no way this combination can work in isolation.  Give up
 	       * so we can try some other combinations.
 	       */
-	      continue;
-	    }
-	  if (!bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (node))))
-	    {
-	      /* DISTINCT does not relax outer join or hint dependencies. */
-	      continue;
-	    }
-
-	  if (!bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (node)))
-	      && qo_get_distinct_info_ahead (planner, node, visited_nodes) == NULL)
-	    {
-	      /* Only a SEMI node read with DISTINCT may precede its SEMI/ANTI dependencies. */
 	      continue;
 	    }
 
@@ -9911,33 +9928,18 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
       head_node = QO_ENV_NODE (planner->env, i);
 
       /* head node dependency check; */
-      if (!bitset_subset (visited_nodes, &(QO_NODE_DEP_SET (head_node))))
+      if (!qo_node_can_be_placed (planner, head_node, visited_nodes))
 	{
 	  /* head node represents dependent tables, so there is no way this combination can work in isolation.  Give up
 	   * so we can try some other combinations.
 	   */
 	  continue;
 	}
-      if (!bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (head_node))))
-	{
-	  /* DISTINCT does not relax outer join or hint dependencies. */
-	  continue;
-	}
-
-      head_info = qo_get_distinct_info_ahead (planner, head_node, visited_nodes);
-      if (!bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (head_node))) && head_info == NULL)
-	{
-	  /* Only a SEMI node read with DISTINCT may precede its SEMI/ANTI dependencies. */
-	  continue;
-	}
 
       if (bitset_is_empty (visited_nodes))
 	{			/* not found outermost nodes */
 
-	  if (head_info == NULL)
-	    {
-	      head_info = planner->node_info[QO_NODE_IDX (head_node)];
-	    }
+	  head_info = qo_get_node_info (planner, head_node, visited_nodes);
 
 	  /* init */
 	  bitset_add (visited_nodes, QO_NODE_IDX (head_node));
@@ -9953,16 +9955,7 @@ planner_permutate (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM 
 	      tail_node = QO_ENV_NODE (planner->env, j);
 
 	      /* tail node dependency check; */
-	      if (!bitset_subset (visited_nodes, &(QO_NODE_DEP_SET (tail_node))))
-		{
-		  continue;
-		}
-	      if (!bitset_subset (visited_nodes, &(QO_NODE_OUTER_DEP_SET (tail_node))))
-		{
-		  continue;
-		}
-	      if (!bitset_subset (visited_nodes, &(QO_NODE_SEMI_ANTI_DEP_SET (tail_node)))
-		  && qo_get_distinct_info_ahead (planner, tail_node, visited_nodes) == NULL)
+	      if (!qo_node_can_be_placed (planner, tail_node, visited_nodes))
 		{
 		  continue;
 		}
