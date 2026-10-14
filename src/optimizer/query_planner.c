@@ -8771,6 +8771,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
       double selectivity, cardinality, total_rows, head_hit_prob, tail_hit_prob;
       double fk_floor_product;
+      double equi_selectivity, other_selectivity;
+      bool is_semi_anti;
       BITSET eqclasses;
       BITSET fk_excluded_terms;
       BITSET fk_col_terms;
@@ -8781,6 +8783,9 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 
       selectivity = 1.0;	/* init */
+      equi_selectivity = 1.0;
+      other_selectivity = 1.0;
+      is_semi_anti = join_type == JOIN_INNER && QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_info->is_distinct;
       fk_floor_product = 1.0;	/* product of floors for FK-PK relationships this step completes */
 
       cardinality = head_info->cardinality * tail_info->cardinality;
@@ -8942,6 +8947,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_LIKE_DERIVED_RANGE | QO_TERM_OR_DERIVED))
 		    {
 		      double head_factor, tail_factor;
+		      bool is_join_term, is_equi_term;
 
 		      if (!BITSET_MEMBER (fk_excluded_terms, i))
 			{
@@ -8954,9 +8960,33 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			  selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
 			}
 
-		      qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
-		      head_hit_prob *= head_factor;
-		      tail_hit_prob *= tail_factor;
+		      is_join_term = is_semi_anti
+			&& bitset_intersects (&(QO_TERM_NODES (term)), &(head_info->nodes))
+			&& bitset_intersects (&(QO_TERM_NODES (term)), &(tail_info->nodes));
+		      is_equi_term = is_join_term && qo_is_equi_join_term (term);
+		      if (is_join_term)
+			{
+			  double term_selectivity;
+
+			  term_selectivity = MAX (0.0, MIN (1.0, QO_TERM_SELECTIVITY (term)));
+			  if (is_equi_term)
+			    {
+			      equi_selectivity *= term_selectivity;
+			    }
+			  else
+			    {
+			      /* Scan filters are already reflected in each input's cardinality and NDV.
+			       * Only predicates reading both inputs need this additional match estimate. */
+			      other_selectivity *= term_selectivity;
+			    }
+			}
+
+		      if (!is_semi_anti || is_equi_term)
+			{
+			  qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
+			  head_hit_prob *= head_factor;
+			  tail_hit_prob *= tail_factor;
+			}
 		    }
 		}
 	    }
@@ -8972,8 +9002,25 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	  total_rows *= selectivity;
 	  total_rows = MAX (1.0, total_rows);
 
-	  if (join_type == JOIN_INNER && QO_NODE_IS_SEMI_ANTI_JOIN (tail_node) && !tail_info->is_distinct)
+	  if (is_semi_anti)
 	    {
+	      if (other_selectivity < 1.0 && head_hit_prob > 0.0)
+		{
+		  double inner_rows, hit_prob;
+
+		  /* Estimate matching inner rows for an outer row that has an equality match. */
+		  inner_rows = tail_info->cardinality * equi_selectivity / head_hit_prob;
+		  inner_rows = MAX (1.0, MIN (tail_info->cardinality, inner_rows));
+
+		  /* At least one inner row must satisfy the other join terms: 1 - (1 - s)^k. */
+		  hit_prob = 0.0;
+		  if (other_selectivity > 0.0)
+		    {
+		      hit_prob = -expm1 (inner_rows * log1p (-other_selectivity));
+		    }
+		  head_hit_prob *= MAX (0.0, MIN (1.0, hit_prob));
+		}
+
 	      /* a SEMI JOIN emits an outer row at most once and an ANTI JOIN only the outer rows the inner
 	       * does not match, so neither can emit more rows than the outer side holds.  The product above
 	       * counts one row per matching inner row instead, which the next join step would then carry.
