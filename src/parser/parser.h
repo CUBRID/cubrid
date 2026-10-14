@@ -756,6 +756,7 @@ extern "C"
 
   extern PT_DBLINK_VALUE_CLASS pt_dblink_dml_classify_value (PT_NODE * expr, PT_DBLINK_LEAF_FN leaf_fn, void *arg);
   extern PT_DBLINK_LEAF_KIND pt_dblink_update_set_leaf (PT_NODE * node, void *arg);
+  extern const char *pt_dblink_dml_target_range_name (PT_NODE * spec);
   typedef void (*PT_DBLINK_MERGE_BIND_FN) (PARSER_CONTEXT * parser, PT_NODE * value, bool is_key, void *arg);
   extern int pt_dblink_merge_walk_binds (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_MERGE_BIND_FN fn,
 					 void *arg);

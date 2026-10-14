@@ -496,8 +496,8 @@ struct merge_proc_node
   /* remote MERGE + local source sink fields (MERGE INTO remote USING local). Each source row is sent as
    * MERGE INTO <table> <target alias> USING (SELECT ? AS c1, ...) <source alias> <remote_clause_text> */
   REMOTE_DML_SINK sink;
-  char *remote_target_alias;	/* the target's alias in the clauses, NULL when it has none */
-  char *remote_source_alias;	/* the alias of the one-row USING */
+  char *remote_target_alias;	/* the name the clauses qualify target columns with */
+  char *remote_source_alias;	/* the name the clauses qualify source columns with, the one-row USING's alias */
   char *remote_clause_text;	/* "ON (...) WHEN ...", source columns written as <alias>.c<n> */
   int remote_num_binds;		/* columns of the one-row USING */
   char **remote_bind_cast;	/* per column: type the placeholder is cast to, NULL for a bare "?" */

@@ -172,8 +172,6 @@ static void pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node
 					 int local_upd, int remote_upd, SERVER_NAME_LIST * snl);
 /* defined next to the INSERT SELECT conversion that shares it */
 static PT_NODE *pt_check_sub_query_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
-/* defined with the remote DELETE / UPDATE carve-out helpers; the MERGE gate names its two specs with it */
-static const char *pt_dblink_dml_target_range_name (PT_NODE * spec);
 #define NULL_ATTRID -1
 
 /*
@@ -12368,8 +12366,8 @@ pt_dblink_merge_bind_on (PARSER_CONTEXT * parser, PT_NODE * cond, PT_DBLINK_MERG
 /*
  * pt_dblink_merge_walk_binds () - Call fn once per source column a remote MERGE with a local source binds.
  *   The order is that of the one-row USING's columns: ON, SET, UPDATE WHERE, DELETE WHERE, VALUES and
- *   INSERT WHERE. The source SELECT (semantic check) is laid out from this walk. The remote statement text
- *   (XASL generation) is to be laid out from it too. Then the two agree column by column.
+ *   INSERT WHERE. The source SELECT (semantic check) is laid out from this walk. So is the remote statement
+ *   text (XASL generation). So the two agree column by column.
  *   return: the number of values
  *   parser(in): parser context
  *   merge(in): a PT_MERGE the gate (pt_dblink_merge_is_inscope) admitted; its clauses are not name-resolved
@@ -12621,7 +12619,7 @@ pt_dblink_find_remote_spec (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
  * pt_dblink_dml_target_range_name () - name the DML target can be qualified with: its alias when one is
  *   declared, otherwise the table name (declaring an alias replaces the table name as the correlation name).
  */
-static const char *
+const char *
 pt_dblink_dml_target_range_name (PT_NODE * spec)
 {
   if (spec == NULL)
