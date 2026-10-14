@@ -13332,6 +13332,15 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
       goto error;
     }
 
+  if (is_mvcc_class && lock_is_instant_lock_mode (LOG_FIND_THREAD_TRAN_INDEX (thread_p))
+      && MVCC_IS_HEADER_INSID_NOT_ALL_VISIBLE (&recdes_header)
+      && logtb_is_current_mvccid (thread_p, MVCC_GET_INSID (&recdes_header)))
+    {
+      /* A click counter commits its change on its own unless the row is already ours.  The lock manager tells that
+       * from an X lock we still hold, which an earlier statement may have given back; tell it from the stamp. */
+      lock_stop_instant_lock_mode (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), false);
+    }
+
   if (lock_acquired_p != NULL)
     {
       *lock_acquired_p = lock_acquired;
