@@ -441,7 +441,6 @@ struct css_conn_entry
   bool reset_on_commit;		/* set reset_on_commit when commit/abort */
   bool in_method;		/* this connection is for method callback */
 
-  bool in_flashback;		/* this client is in progress of flashback */
 #if defined(SERVER_MODE)
   /* CDC channel authentication (CBRD-27436). The CDC log-server channel is not a
    * booted client, so it has no server-verified identity; it proves one with a
