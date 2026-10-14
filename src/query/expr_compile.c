@@ -263,6 +263,10 @@ struct expr_build_ctx
   bool cell_shared[EXPR_MAX_STEPS];	/* the cell reads a filter slot: computed, though no step here */
   int n_shared;
 
+  bool side_effect;		/* a node compiled (or declined) in this list draws a serial, bumps a counter, seeds a
+				 * random, or sets a session variable: its evaluation order against the other columns is
+				 * observable (expr_arith_side_effect ()) */
+
   val_descr *vd;		/* bind-time value descriptor (host variable types) */
     cubthread::entry * thread_p;
 };
@@ -4285,12 +4289,45 @@ expr_compile_nested (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compile
   return cell;
 }
 
+/* Does the node's evaluation change state another node of the same list can observe?  A serial draw, an
+ * INCR/DECR counter, a seeded random sequence, a session variable.  The interpreter evaluates a list's columns
+ * left to right, each on its own fetch; a program evaluates the columns it covers first and leaves an uncovered
+ * column to the consumer's later fetch, so with such a node on both sides of that line the draws land on other
+ * columns (bug_bts_9234: MERGE ... DELETE WHERE t1.c < s.next_value puts the predicate, which the parser rewrites
+ * over the assignment copies, before the assignments in the list; the predicate column is not compiled). */
+static bool
+expr_arith_side_effect (OPERATOR_TYPE opcode)
+{
+  switch (opcode)
+    {
+    case T_NEXT_VALUE:
+    case T_CURRENT_VALUE:
+    case T_INCR:
+    case T_DECR:
+    case T_RAND:
+    case T_RANDOM:
+    case T_DRAND:
+    case T_DRANDOM:
+    case T_SYS_GUID:
+    case T_DEFINE_VARIABLE:
+    case T_EVALUATE_VARIABLE:
+      return true;
+    default:
+      return false;
+    }
+}
+
 /* an arithmetic node, under the frame count of expr_compile_node () */
 static int
 expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something)
 {
   const int first_step = bctx->n_steps;
   int cell;
+
+  if (expr_arith_side_effect (regu->value.arithptr->opcode))
+    {
+      bctx->side_effect = true;
+    }
 
   /* the scan's data filter may already compute this very expression for the row */
   if (bctx->share_pred != NULL)
@@ -5566,6 +5603,15 @@ expr_prog_compile_roots_impl (EXPR_BUILD_CTX * bctx, cubthread::entry * thread_p
   if (n_roots == 0 || (!compiled_something && !allow_wired_only))
     {
       /* everything fell back or was excluded: the program would only add indirection */
+      expr_build_free_preds (bctx);
+      return NULL;
+    }
+
+  if (bctx->side_effect && n_roots < in_roots)
+    {
+      /* a column the consumer still fetches itself would be evaluated after every column the program
+       * computes, whatever its position: with a serial, a counter or a session variable in the list the
+       * interpreter's left-to-right order is the observable one (expr_arith_side_effect ()) */
       expr_build_free_preds (bctx);
       return NULL;
     }
