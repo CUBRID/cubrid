@@ -416,7 +416,10 @@ optimizedb: Optimize a database.\n\
 usage: %1$s optimizedb [OPTION] database-name\n\
 \n\
 valid options:\n\
-  -n, --class-name=NAME        update statistics for the NAME class; default: all classes\n
+  -n, --class-name=NAME        update statistics for the NAME class; default: all classes\n\
+      --no-histogram           update the class statistics only; histograms are neither built nor dropped\n\
+      --no-histogram-classes=NAME[,NAME...]\n\
+                               do not build histograms for the NAME classes; every other class is updated as usual\n
 
 
 $set 11 MSGCAT_UTIL_SET_RESTOREDB
