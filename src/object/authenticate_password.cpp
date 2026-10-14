@@ -148,7 +148,7 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
     }
 }
 
-static void
+void
 encrypt_salt_generate (char *salt, int salt_size)
 {
   char master_salt[ENCRYPT_SALT_SIZE + 1];

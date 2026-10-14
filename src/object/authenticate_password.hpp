@@ -50,6 +50,7 @@ void encrypt_password (const char *pass, int add_prefix, char *dest);
 void encrypt_password_sha1 (const char *pass, int add_prefix, char *dest);
 void encrypt_password_sha2_512 (const char *pass, char *dest);
 void encrypt_password_sha2_512_salt (const char *name, const char *salt, const char *pass, char *dest);
+void encrypt_salt_generate (char *salt, int salt_size);
 
 bool match_password (const char *name, const char *user, const char *database);
 int au_set_password_internal (MOP user, const char *password, int encode, char encrypt_prefix);
