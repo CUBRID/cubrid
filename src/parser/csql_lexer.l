@@ -61,6 +61,7 @@ static void csql_yyerror_internal (const char *s, const int line, const int colu
 static int plcsql_begin_end_balance;
 static int plcsql_nest_level;
 static LOCAL_BLOCK_STATE plcsql_local_block_state;
+static int plcsql_routine_param_paren_balance;
 static int from_plcsql_text;
 static bool is_parsing_package;
 
@@ -1609,13 +1610,8 @@ _[uU][tT][fF]8[']		{
                                                                 return PLCSQL_TEXT_SOME; }
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[iI][fF][ \t\r\n]*             |
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[cC][aA][sS][eE][ \t\r\n]*     |
-<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[lL][oO][oO][pP][ \t\r\n]*     {
-                                                                plcsql_local_block_state = LBS_NORMAL;;
-                                                                plcsql_begin_end_balance--;
-							        csql_yylval.cptr = pt_makename(yytext);
-                                                                return PLCSQL_TEXT_SOME; }
+<PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]+[lL][oO][oO][pP][ \t\r\n]*     |
 <PLCSQL_TEXT>[eE][nN][dD][ \t\r\n]*                     {
-                                                                plcsql_local_block_state = LBS_NORMAL;;
                                                                 plcsql_begin_end_balance--;
                                                                 if (plcsql_begin_end_balance < 0) {
                                                                     if (plcsql_begin_end_balance == -1 && is_parsing_package) {
@@ -1641,21 +1637,44 @@ _[uU][tT][fF]8[']		{
 <PLCSQL_TEXT>[fF][uU][nN][cC][tT][iI][oO][nN]           {
                                                                 if (plcsql_begin_end_balance == 0) {
                                                                     plcsql_local_block_state = LBS_SEEN_ROUTINE_MARK;
+                                                                    plcsql_routine_param_paren_balance = 0;
+                                                                }
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+<PLCSQL_TEXT>"("                                        {
+                                                                if ( plcsql_local_block_state == LBS_SEEN_ROUTINE_MARK) {
+                                                                    plcsql_routine_param_paren_balance++;
+                                                                }
+							        csql_yylval.cptr = pt_makename(yytext);
+                                                                return PLCSQL_TEXT_SOME; }
+<PLCSQL_TEXT>")"                                        {
+                                                                if ( plcsql_local_block_state == LBS_SEEN_ROUTINE_MARK) {
+                                                                    plcsql_routine_param_paren_balance--;
                                                                 }
 							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL_TEXT_SOME; }
 <PLCSQL_TEXT>";"                                        {
                                                                 if ( plcsql_local_block_state == LBS_SEEN_ROUTINE_MARK) {
-                                                                    // do not increase the nest level
-                                                                    plcsql_local_block_state = LBS_NORMAL;
+
+                                                                    // consider only semicolons located outside the parameter list.
+                                                                    if (plcsql_routine_param_paren_balance == 0) {
+
+                                                                        // do not increase the nest level
+                                                                        plcsql_local_block_state = LBS_NORMAL;
+                                                                    }
                                                                 }
 							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL_TEXT_SOME; }
 <PLCSQL_TEXT>[iI][sS]                                   |
 <PLCSQL_TEXT>[aA][sS]                                   {
                                                                 if (plcsql_local_block_state == LBS_SEEN_ROUTINE_MARK) {
-                                                                    plcsql_nest_level++;
-                                                                    plcsql_local_block_state = LBS_NORMAL;
+
+                                                                    // consider only IS and AS located outside the parameter list.
+                                                                    if (plcsql_routine_param_paren_balance == 0) {
+
+                                                                        plcsql_nest_level++;
+                                                                        plcsql_local_block_state = LBS_NORMAL;
+                                                                    }
                                                                 }
 							        csql_yylval.cptr = pt_makename(yytext);
                                                                 return PLCSQL_TEXT_SOME; }
@@ -1673,11 +1692,10 @@ _[uU][tT][fF]8[']		{
                                                           CSQL_YY_LESS(0);
                                                         }
 
-<POST_PLCSQL_TEXT>{IDL}+                                { 
+<POST_PLCSQL_TEXT>{IDL}+                                {
                                                            BEGIN(INITIAL);
-                                                          
                                                            csql_yylval.cptr = pt_makename(yytext);
-                                                           return PLCSQL_TEXT_SOME; 
+                                                           return PLCSQL_TEXT_SOME;
                                                         }
 
 <POST_PLCSQL_TEXT>(.)                                   {
@@ -1687,7 +1705,7 @@ _[uU][tT][fF]8[']		{
 
 <POST_PLCSQL_TEXT><<EOF>>                               {
                                                            BEGIN(INITIAL);
-                                                           return 0; 
+                                                           return 0;
                                                         }
 
 %%
