@@ -50,6 +50,9 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <math.h>
+#include <openssl/evp.h>
+#include <openssl/x509.h>
+#include <openssl/pem.h>
 #endif /* WINDOWS */
 
 #if defined(LINUX)
@@ -159,6 +162,7 @@ static void proxy_inactivate (T_BROKER_INFO * br_info_p, T_PROXY_INFO * proxy_in
 static int get_cubrid_version (void);
 #endif
 static int admin_check_ssl_files (void);
+static bool admin_is_bundled_ssl_cert (const char *cert_file);
 #endif /* !WINDOWS */
 
 static char shard_db_password_env_str[MAX_BROKER_NUM][128];
@@ -277,7 +281,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
     {
       if (br_info[i].service_flag == ON && br_info[i].use_SSL == ON)
 	{
-	  /* all brokers share one key file, so check it once, before any broker starts */
+	  /* all brokers share one key and certificate file, so check them once, before any broker starts */
 	  if (admin_check_ssl_files () < 0)
 	    {
 	      return ADMIN_ERR_SSL_KEY_PERMISSION;
@@ -4322,17 +4326,29 @@ get_upper_str (char *upper_str, int size, const char *value)
 }
 
 #if !defined(WINDOWS)
+/* SHA-256 fingerprints of the certificates shipped as conf/cas_ssl_cert.crt, whose private keys are public */
+static const unsigned char bundled_ssl_cert_sha256[][32] = {
+  /* CBRD-23687 (2020) */
+  {0xB9, 0x3B, 0xC3, 0x51, 0x00, 0x6B, 0x5F, 0xEF, 0x0A, 0x5E, 0x63, 0x1B, 0x42, 0xD0, 0x00, 0x35,
+   0xE4, 0x80, 0xEE, 0xB0, 0xC8, 0xE7, 0x93, 0x79, 0xC4, 0xD5, 0x18, 0x9F, 0xEE, 0xAC, 0xA2, 0x4C},
+  /* CBRD-27091 (2026) */
+  {0x4E, 0x40, 0xF7, 0xA4, 0xDC, 0x91, 0xD1, 0x02, 0x5B, 0xDA, 0x3F, 0xB1, 0x00, 0x3F, 0x3A, 0x06,
+   0x3A, 0xBF, 0xD6, 0x34, 0x8F, 0x6E, 0x86, 0x31, 0x8D, 0x1A, 0x9D, 0x8E, 0xCB, 0xE8, 0x26, 0x59}
+};
+
 /*
- * admin_check_ssl_files () - check the SSL private key before a broker with SSL=ON starts
+ * admin_check_ssl_files () - check the SSL private key and certificate before a broker with SSL=ON starts
  *   return: 0, or ADMIN_ERR_SSL_KEY_PERMISSION with admin_err_msg set if others may have read the key
  *
  * Called when a broker with SSL=ON is activated, not in cas_init_ssl () which runs on every SSL connection.
+ * Sets admin_warn_msg if the certificate is one shipped with CUBRID.
  * A missing or unreadable file is left to the CAS, which reports it on SSL connection.
  */
 static int
 admin_check_ssl_files (void)
 {
   char key[BROKER_PATH_MAX];
+  char cert[BROKER_PATH_MAX];
   struct stat sbuf;
   unsigned int mode;
 
@@ -4352,6 +4368,60 @@ admin_check_ssl_files (void)
 	}
     }
 
+  snprintf (cert, sizeof (cert), "%s/conf/%s", getenv ("CUBRID"), CAS_SSL_CERT_FILE);
+  if (admin_is_bundled_ssl_cert (cert))
+    {
+      snprintf (admin_warn_msg, ADMIN_ERR_MSG_SIZE,
+		"WARNING: the broker uses the SSL certificate shipped with CUBRID: %s\n"
+		"Its private key is public, so anyone can impersonate this broker. "
+		"Generate a new private key and certificate.", cert);
+    }
+
   return 0;
+}
+
+/*
+ * admin_is_bundled_ssl_cert () - whether the first certificate in the file is one shipped with CUBRID
+ *   return: true if its SHA-256 fingerprint is in bundled_ssl_cert_sha256
+ *   cert_file(in): PEM certificate file
+ */
+static bool
+admin_is_bundled_ssl_cert (const char *cert_file)
+{
+  FILE *fp;
+  X509 *cert;
+  unsigned char md[EVP_MAX_MD_SIZE];
+  unsigned int md_len = 0;
+  bool bundled = false;
+  size_t i;
+
+  fp = fopen (cert_file, "r");
+  if (fp == NULL)
+    {
+      return false;
+    }
+
+  cert = PEM_read_X509 (fp, NULL, NULL, NULL);
+  fclose (fp);
+  if (cert == NULL)
+    {
+      return false;
+    }
+
+  if (X509_digest (cert, EVP_sha256 (), md, &md_len) == 1)
+    {
+      for (i = 0; i < sizeof (bundled_ssl_cert_sha256) / sizeof (bundled_ssl_cert_sha256[0]); i++)
+	{
+	  if (md_len == sizeof (bundled_ssl_cert_sha256[i]) && memcmp (md, bundled_ssl_cert_sha256[i], md_len) == 0)
+	    {
+	      bundled = true;
+	      break;
+	    }
+	}
+    }
+
+  X509_free (cert);
+
+  return bundled;
 }
 #endif /* !WINDOWS */
