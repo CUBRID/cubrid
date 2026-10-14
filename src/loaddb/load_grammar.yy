@@ -107,6 +107,7 @@ loader_init_yydebug (void)
 %token CMD_CONSTRUCTOR
 %token REF_ELO_INT
 %token REF_ELO_EXT
+%token REF_INTERNAL_LOB
 %token REF_USER
 %token REF_CLASS
 %token OBJECT_REFERENCE
@@ -189,6 +190,7 @@ loader_init_yydebug (void)
 %type <constant> utime
 %type <constant> monetary
 %type <constant> object_reference
+%type <constant> internal_lob_reference
 %type <constant> set_constant
 %type <constant> system_object_reference
 
@@ -480,6 +482,7 @@ constant :
   | DATE_LIT2                { $$ = m_driver.get_semantic_helper ().make_constant (LDR_DATE, $1); }
   | monetary                 { $$ = $1; }
   | object_reference         { $$ = $1; }
+  | internal_lob_reference   { $$ = $1; }
   | set_constant             { $$ = $1; }
   | system_object_reference  { $$ = $1; }
   ;
@@ -590,6 +593,13 @@ object_reference :
   {
     $2->instance_number = $3;
     $$ = m_driver.get_semantic_helper ().make_constant (LDR_OID, $2);
+  }
+  ;
+
+internal_lob_reference :
+  REF_INTERNAL_LOB Quote SQS_String_Body
+  {
+    $$ = m_driver.get_semantic_helper ().make_constant (LDR_INTERNAL_LOB_REF, $3);
   }
   ;
 
