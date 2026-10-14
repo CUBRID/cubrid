@@ -8181,10 +8181,8 @@ fileio_read_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sess
       held_node->nread = fileio_read_backup_to (thread_p, session_p, held_pageid, held_node->area);
       if (held_node->nread <= 0)
 	{
-	  /* -1 is a read error. 0 means the page lies wholly past EOF even though page_id < from_npages,
-	   * i.e. the volume is shorter than the size its own header reports. Both are fatal here, as they
-	   * were before this change. The serial path in fileio_backup_volume () still treats 0 as a benign
-	   * end-of-volume, so the two disagree; that predates this change. */
+	  /* fileio_read_backup_to () reports a read error and a page lying wholly past the end of the volume
+	   * the same way, as -1 with the error code already set. The serial path treats them the same way. */
 	  goto fail_publish_abort;
 	}
 
@@ -8429,8 +8427,8 @@ abort_drain:
 	}
     }
 
-  /* Never NO_ERROR on this path: a worker that aborts on a read returning 0 sets no error code, so errid can
-   * still be NO_ERROR here and the caller would take a truncated volume for a completed one. */
+  /* Never NO_ERROR on this path. Every abort site copies er_errid (), which is set by then; the fallback is
+   * only so that a caller can never take an incomplete volume for a completed one. */
   rv = (thread_info_p->errid != NO_ERROR) ? thread_info_p->errid : ER_FAILED;
   pthread_mutex_unlock (&thread_info_p->mtx);
   return rv;
@@ -8716,16 +8714,9 @@ fileio_backup_volume (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p
 	  /* read one page sequentially */
 	  node_p->pageid = page_id;
 	  node_p->nread = fileio_read_backup_to (thread_p, session_p, node_p->pageid, node_p->area);
-	  if (node_p->nread == -1)
+	  if (node_p->nread <= 0)
 	    {
 	      goto error;
-	    }
-	  else if (node_p->nread == 0)
-	    {
-	      /* This could be an error since we estimated more pages. End of file/volume. */
-	      (void) fileio_free_node (queue_p, node_p);
-	      node_p = NULL;
-	      break;
 	    }
 
 	  /*
@@ -9459,6 +9450,10 @@ fileio_flush_backup_sync (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * sessi
  *       needed since we write full pages to back up destination. Without this,
  *       we will not be able to know how much to read since not necessarily
  *       the whole volume/file is backed up.
+ *
+ *       A page lying wholly past the end of the volume is a different matter:
+ *       the volume is shorter than the size that was sampled for it, so the
+ *       copy would be truncated. That is reported as an error (-1).
  */
 static ssize_t
 fileio_read_backup_to (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_p, int page_id,
@@ -9518,6 +9513,16 @@ fileio_read_backup_to (THREAD_ENTRY * thread_p, FILEIO_BACKUP_SESSION * session_
 	       */
 	      memset (buffer_p, '\0', io_page_size - nread);
 	      nread = io_page_size;
+	    }
+	  else
+	    {
+	      /* The page lies wholly past the end of the volume although page_id < from_npages, so the volume is
+	       * shorter than the size that was sampled for it. errno says nothing here because read () returned 0
+	       * rather than -1. Stopping quietly would hand back a truncated image that restores without a word,
+	       * because the restore fills the missing tail with formatted empty pages. */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IO_READ, 2, FILEIO_GET_BACKUP_PAGE_ID (area),
+		      session_p->dbfile.vlabel);
+	      return -1;
 	    }
 	  break;
 	}
