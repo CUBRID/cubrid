@@ -12623,6 +12623,64 @@ pt_dblink_update_bind_subq (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * s
   return pt_bind_remote_dml_subq (parser, subq, sc_info_ptr, msg);
 }
 
+/* pt_dblink_merge_walk_binds callback: append a copy of the source column to the SELECT list being built */
+static void
+pt_dblink_merge_add_select_col (PARSER_CONTEXT * parser, PT_NODE * value, bool is_key, void *arg)
+{
+  PT_NODE **list = (PT_NODE **) arg;
+
+  *list = parser_append_node (parser_copy_tree (parser, value), *list);
+}
+
+/*
+ * pt_dblink_merge_src_query () - Build and bind the SELECT a remote MERGE with a local source scans. It reads
+ *   FROM the USING source. It has one column per bound source column, in pt_dblink_merge_walk_binds () order.
+ *   The columns are copies. The clauses stay as written for the remote statement text.
+ *   return: the bound SELECT, or NULL on failure (parser error set)
+ *   parser(in): parser context
+ *   merge(in): the PT_MERGE the parser gate admitted
+ *   sc_info_ptr(in/out): semantic check info, passed through to pt_bind_remote_dml_subq
+ */
+static PT_NODE *
+pt_dblink_merge_src_query (PARSER_CONTEXT * parser, PT_NODE * merge, SEMANTIC_CHK_INFO * sc_info_ptr)
+{
+  PT_NODE *select, *list = NULL;
+
+  pt_dblink_merge_walk_binds (parser, merge, pt_dblink_merge_add_select_col, &list);
+  if (pt_has_error (parser))
+    {
+      return NULL;
+    }
+
+  /* the gate requires an ON key, and its source column is always bound */
+  assert (list != NULL);
+  if (list == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: no value to bind from the source");
+      return NULL;
+    }
+
+  select = parser_new_node (parser, PT_SELECT);
+  if (select == NULL)
+    {
+      PT_ERRORm (parser, merge, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+  select->info.query.q.select.list = list;
+  select->info.query.q.select.from = parser_copy_tree (parser, merge->info.merge.using_clause);
+  if (select->info.query.q.select.from == NULL)
+    {
+      /* left to the bind below, an empty FROM would surface as a name-resolution error instead */
+      if (!pt_has_error (parser))
+	{
+	  PT_ERRORm (parser, merge, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	}
+      return NULL;
+    }
+
+  return pt_bind_remote_dml_subq (parser, select, sc_info_ptr, "remote MERGE: failed to translate the source");
+}
+
 /*
  * pt_check_with_info () -  do name resolution & semantic checks on this tree
  *   return:  statement if no errors, NULL otherwise
@@ -12868,6 +12926,20 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 				}
 			    }
 			}
+		    }
+		}
+	      else if (node->node_type == PT_MERGE)
+		{
+		  /* Same reason as the INSERT SELECT above. A remote MERGE with a local source has no subquery of
+		   * its own to bind. The source columns it binds per row are spread over its clauses. The clauses
+		   * stay unresolved, as the remote resolves them. So gather the columns into one SELECT over the
+		   * source and bind it stand-alone. The sink scans its rows. */
+		  PT_NODE *remote = node->info.merge.into->info.spec.remote_server_name;
+
+		  if (remote != NULL && remote->node_type == PT_DBLINK_TABLE_DML
+		      && remote->info.dblink_table.qstr == NULL)
+		    {
+		      node->info.merge.remote_src_query = pt_dblink_merge_src_query (parser, node, sc_info_ptr);
 		    }
 		}
 	      break;
