@@ -23,9 +23,9 @@
 #include <unordered_set>
 
 #include "dbtype.h"
+#include "chartype.h"
 
 #if !defined(SERVER_MODE)
-#include "chartype.h"
 #include "dbi.h"
 #include "object_domain.h"
 #include "object_primitive.h"
@@ -570,6 +570,7 @@ namespace cubmethod
 
     return num_markers;
   }
+#endif /* !SERVER_MODE */
 
   int
   consume_tokens (const std::string &sql, int index, STATEMENT_STATUS stmt_status)
@@ -679,6 +680,7 @@ namespace cubmethod
     return index;
   }
 
+#if !defined(SERVER_MODE)
   std::string
   get_column_default_as_string (DB_ATTRIBUTE *attr)
   {

@@ -692,7 +692,9 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
 	{
 	  is_first_out = 1;
 
-	  /* find '=' skipping any comment placed between "?" and "=" */
+	  /* find '=' skipping any comment placed between "?" and "=".  only whitespace, comments and
+	   * a marker number (?:1) can come before '=', so quoted text is not considered here; a quote
+	   * there makes the rest fail the CALL check below. */
 	  tmp++;
 	  while (*tmp)
 	    {

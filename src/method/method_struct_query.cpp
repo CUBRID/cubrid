@@ -337,13 +337,6 @@ namespace cubmethod
     clear ();
   }
 
-  /*
-   * set_is_first_out () is only used by the client-side prepare path
-   * (query_handler::prepare_call), which is not built for SERVER_MODE. It is
-   * guarded here so that the SERVER_MODE build does not reference the
-   * client-only skip_leading_whitespace_and_comment () helper.
-   */
-#if !defined(SERVER_MODE)
   int
   prepare_call_info::set_is_first_out (std::string &sql_stmt)
   {
@@ -353,7 +346,9 @@ namespace cubmethod
       {
 	is_first_out = true;
 
-	/* find '=' skipping any comment placed between "?" and "=" */
+	/* find '=' skipping any comment placed between "?" and "=".  only whitespace, comments and
+	 * a marker number (?:1) can come before '=', so quoted text is not considered here; a quote
+	 * there makes the rest fail the CALL check that follows. */
 	std::size_t found = pos + 1;
 	while (found < sql_stmt.size ())
 	  {
@@ -377,7 +372,6 @@ namespace cubmethod
 
     return NO_ERROR;
   }
-#endif /* !SERVER_MODE */
 
   void
   prepare_call_info::clear ()
