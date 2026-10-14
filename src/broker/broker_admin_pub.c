@@ -162,7 +162,7 @@ static void proxy_inactivate (T_BROKER_INFO * br_info_p, T_PROXY_INFO * proxy_in
 static int get_cubrid_version (void);
 #endif
 static int admin_check_ssl_files (void);
-static bool admin_is_bundled_ssl_cert (const char *cert_file);
+static bool admin_has_bundled_ssl_key (const char *cert_file);
 #endif /* !WINDOWS */
 
 static char shard_db_password_env_str[MAX_BROKER_NUM][128];
@@ -4326,14 +4326,18 @@ get_upper_str (char *upper_str, int size, const char *value)
 }
 
 #if !defined(WINDOWS)
-/* SHA-256 fingerprints of the certificates shipped as conf/cas_ssl_cert.crt, whose private keys are public */
-static const unsigned char bundled_ssl_cert_sha256[][32] = {
+/*
+ * SHA-256 of the public keys (DER SubjectPublicKeyInfo) of the private keys shipped as conf/cas_ssl_cert.key,
+ * which are public. A certificate reissued with one of these keys still matches. Same value as
+ *   openssl x509 -in cas_ssl_cert.crt -noout -pubkey | openssl pkey -pubin -outform DER | openssl dgst -sha256
+ */
+static const unsigned char bundled_ssl_key_spki_sha256[][32] = {
   /* CBRD-23687 (2020) */
-  {0xB9, 0x3B, 0xC3, 0x51, 0x00, 0x6B, 0x5F, 0xEF, 0x0A, 0x5E, 0x63, 0x1B, 0x42, 0xD0, 0x00, 0x35,
-   0xE4, 0x80, 0xEE, 0xB0, 0xC8, 0xE7, 0x93, 0x79, 0xC4, 0xD5, 0x18, 0x9F, 0xEE, 0xAC, 0xA2, 0x4C},
+  {0x59, 0x34, 0xB7, 0x5F, 0x89, 0xA7, 0xA8, 0xF7, 0xBA, 0x8A, 0x3A, 0xC8, 0x76, 0x58, 0x62, 0x1A,
+   0x6E, 0x42, 0xC8, 0xB5, 0xC6, 0x4F, 0x01, 0x6A, 0xF7, 0xDA, 0xE8, 0x46, 0x8F, 0xB1, 0x28, 0x8F},
   /* CBRD-27091 (2026) */
-  {0x4E, 0x40, 0xF7, 0xA4, 0xDC, 0x91, 0xD1, 0x02, 0x5B, 0xDA, 0x3F, 0xB1, 0x00, 0x3F, 0x3A, 0x06,
-   0x3A, 0xBF, 0xD6, 0x34, 0x8F, 0x6E, 0x86, 0x31, 0x8D, 0x1A, 0x9D, 0x8E, 0xCB, 0xE8, 0x26, 0x59}
+  {0xF9, 0x2B, 0x39, 0x42, 0x73, 0x47, 0x67, 0xCD, 0x8C, 0x9F, 0x8F, 0xF0, 0x7D, 0x9F, 0x5E, 0xAD,
+   0xF1, 0x1E, 0xD6, 0x5B, 0x41, 0xDC, 0xE0, 0xF8, 0xF2, 0x23, 0x09, 0xEC, 0xE2, 0xF6, 0x35, 0x17}
 };
 
 /*
@@ -4341,7 +4345,7 @@ static const unsigned char bundled_ssl_cert_sha256[][32] = {
  *   return: 0, or ADMIN_ERR_SSL_KEY_PERMISSION with admin_err_msg set if others may have read the key
  *
  * Called when a broker with SSL=ON is activated, not in cas_init_ssl () which runs on every SSL connection.
- * Sets admin_warn_msg if the certificate is one shipped with CUBRID.
+ * Sets admin_warn_msg if the certificate is for a private key shipped with CUBRID.
  * A missing or unreadable file is left to the CAS, which reports it on SSL connection.
  */
 static int
@@ -4369,27 +4373,32 @@ admin_check_ssl_files (void)
     }
 
   snprintf (cert, sizeof (cert), "%s/conf/%s", getenv ("CUBRID"), CAS_SSL_CERT_FILE);
-  if (admin_is_bundled_ssl_cert (cert))
+  if (admin_has_bundled_ssl_key (cert))
     {
       snprintf (admin_warn_msg, ADMIN_ERR_MSG_SIZE,
-		"WARNING: the broker uses the SSL certificate shipped with CUBRID: %s\n"
-		"Its private key is public, so anyone can impersonate this broker. "
-		"Generate a new private key and certificate.", cert);
+		"WARNING: the broker uses the SSL private key shipped with CUBRID, which is public: %s\n"
+		"Anyone can impersonate this broker. Generate a new private key and certificate.", key);
     }
 
   return 0;
 }
 
 /*
- * admin_is_bundled_ssl_cert () - whether the first certificate in the file is one shipped with CUBRID
- *   return: true if its SHA-256 fingerprint is in bundled_ssl_cert_sha256
+ * admin_has_bundled_ssl_key () - whether the first certificate in the file is for a private key shipped with CUBRID
+ *   return: true if the SHA-256 of its public key is in bundled_ssl_key_spki_sha256
  *   cert_file(in): PEM certificate file
+ *
+ * The public key is taken from the certificate, not from the private key file: the CAS refuses a key that does not
+ * match the certificate, and the private key is not opened here.
  */
 static bool
-admin_is_bundled_ssl_cert (const char *cert_file)
+admin_has_bundled_ssl_key (const char *cert_file)
 {
   FILE *fp;
   X509 *cert;
+  EVP_PKEY *pkey;
+  unsigned char *spki = NULL;
+  int spki_len = -1;
   unsigned char md[EVP_MAX_MD_SIZE];
   unsigned int md_len = 0;
   bool bundled = false;
@@ -4408,11 +4417,18 @@ admin_is_bundled_ssl_cert (const char *cert_file)
       return false;
     }
 
-  if (X509_digest (cert, EVP_sha256 (), md, &md_len) == 1)
+  pkey = X509_get0_pubkey (cert);
+  if (pkey != NULL)
     {
-      for (i = 0; i < sizeof (bundled_ssl_cert_sha256) / sizeof (bundled_ssl_cert_sha256[0]); i++)
+      spki_len = i2d_PUBKEY (pkey, &spki);
+    }
+
+  if (spki_len > 0 && EVP_Digest (spki, spki_len, md, &md_len, EVP_sha256 (), NULL) == 1)
+    {
+      for (i = 0; i < sizeof (bundled_ssl_key_spki_sha256) / sizeof (bundled_ssl_key_spki_sha256[0]); i++)
 	{
-	  if (md_len == sizeof (bundled_ssl_cert_sha256[i]) && memcmp (md, bundled_ssl_cert_sha256[i], md_len) == 0)
+	  if (md_len == sizeof (bundled_ssl_key_spki_sha256[i])
+	      && memcmp (md, bundled_ssl_key_spki_sha256[i], md_len) == 0)
 	    {
 	      bundled = true;
 	      break;
@@ -4420,6 +4436,7 @@ admin_is_bundled_ssl_cert (const char *cert_file)
 	}
     }
 
+  OPENSSL_free (spki);
   X509_free (cert);
 
   return bundled;
