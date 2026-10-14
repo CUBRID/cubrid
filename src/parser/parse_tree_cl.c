@@ -7866,37 +7866,9 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r4);
     }
 
-  if (p->info.index.unique == false)
+  if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
-      char buf[64] = { 0x00, };
-      if (p->info.index.deduplicate_level == DEDUPLICATE_OPTION_AUTO)
-	{
-	  /* Do not print level */ ;
-	}
-      else if (p->info.index.deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
-	{
-	  dk_print_deduplicate_key_info (buf, sizeof (buf), p->info.index.deduplicate_level);
-	}
-      if (buf[0])
-	{
-	  b = pt_append_nulstring (parser, b, " WITH ");
-	  b = pt_append_nulstring (parser, b, buf);
-	  if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	    {
-	      b = pt_append_nulstring (parser, b, ", ONLINE ");
-	    }
-	}
-      else if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	{
-	  b = pt_append_nulstring (parser, b, " WITH ONLINE ");
-	}
-    }
-  else
-    {
-      if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	{
-	  b = pt_append_nulstring (parser, b, " WITH ONLINE ");
-	}
+      b = pt_append_nulstring (parser, b, " WITH ONLINE ");
     }
 
   if (p->info.index.index_status == SM_INVISIBLE_INDEX)
@@ -9960,7 +9932,9 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = 0, *r1;
   unsigned int save_custom;
 
-  if (p->info.spec.natural)
+  /* a natural join is resolved into on_cond, and an inner join may be rewritten into PT_JOIN_NONE.
+   * In both cases, printing "natural" makes an invalid statement. */
+  if (p->info.spec.natural && p->info.spec.on_cond == NULL && p->info.spec.join_type != PT_JOIN_NONE)
     {
       q = pt_append_nulstring (parser, q, " natural ");
     }
@@ -10133,7 +10107,9 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_varchar (parser, q, r1);
 	      q = pt_append_nulstring (parser, q, ")");
 
-	      return q;
+	      /* the range variable and the columns are printed above. "natural" is not printed for a resolved
+	       * natural join, so its on_cond must be printed */
+	      goto print_join_cond;
 	    }
 	  else
 	    {
@@ -10199,6 +10175,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print = save_custom;
     }
 
+print_join_cond:
   if (p->info.spec.on_cond)
     {
       r1 = pt_print_and_list (parser, p->info.spec.on_cond);
