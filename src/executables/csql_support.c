@@ -1218,7 +1218,7 @@ csql_walk_statement (const char *str)
 		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
 		  plcsql_begin_end_balance = 0;
 		  plcsql_nest_level = 0;
-		  plcsql_local_block_state = LBS_NORMAL;;
+		  plcsql_local_block_state = LBS_NORMAL;
 		  continue;
 		}
 	      else
@@ -1240,7 +1240,7 @@ csql_walk_statement (const char *str)
 		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
 		  plcsql_begin_end_balance = 0;
 		  plcsql_nest_level = 0;
-		  plcsql_local_block_state = LBS_NORMAL;;
+		  plcsql_local_block_state = LBS_NORMAL;
 		  goto substate_transition;	// use goto to repeat a substate transition without increasing p
 		}
 	      break;
@@ -1257,7 +1257,7 @@ csql_walk_statement (const char *str)
 		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
 		  plcsql_begin_end_balance = 0;
 		  plcsql_nest_level = 0;
-		  plcsql_local_block_state = LBS_NORMAL;;
+		  plcsql_local_block_state = LBS_NORMAL;
 		  continue;
 		}
 	      else
