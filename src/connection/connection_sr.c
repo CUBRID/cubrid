@@ -273,7 +273,6 @@ css_initialize_conn (CSS_CONN_ENTRY * conn, SOCKET fd)
   conn->client_id = err;
   conn->db_error = 0;
   conn->in_transaction = false;
-  conn->in_flashback = false;
   conn->reset_on_commit = false;
   conn->stop_talk = false;
   conn->ignore_repl_delay = false;
@@ -339,7 +338,6 @@ css_prepare_shutdown_conn (CSS_CONN_ENTRY * conn)
   int r;
 
   conn->stop_talk = false;
-  conn->in_flashback = false;
 
   START_EXCLUSIVE_ACCESS_FREE_CONN_ANCHOR (r);
 
