@@ -6571,9 +6571,11 @@ lang_strmatch_binary (const LANG_COLLATION * lang_coll, bool is_match, const uns
 
       if (is_match && escape != NULL && c2 == *escape)
 	{
-	  str2++;
+	  /* a trailing escape is a normal character: step over the escape only when a character follows it,
+	   * otherwise the loop increment would move str2 past str2_end */
 	  if (!(has_last_escape && str2 + 1 >= str2_end))
 	    {
+	      str2++;
 	      c2 = *str2;
 	    }
 	}
