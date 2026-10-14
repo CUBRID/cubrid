@@ -117,7 +117,8 @@ typedef enum
   LC_FLUSH_UPDATE,
   LC_FLUSH_UPDATE_PRUNE,
   LC_FLUSH_UPDATE_PRUNE_VERIFY,
-  LC_FETCH_VERIFY_CHN
+  LC_FETCH_VERIFY_CHN,
+  LC_FLUSH_INSERT_INTERNAL_LOB
 } LC_COPYAREA_OPERATION;
 
 /* TODO:
@@ -126,7 +127,11 @@ typedef enum
  */
 #define LC_IS_FLUSH_INSERT(operation) \
   (operation == LC_FLUSH_INSERT || operation == LC_FLUSH_INSERT_PRUNE \
-   || operation == LC_FLUSH_INSERT_PRUNE_VERIFY || operation == LC_FLUSH_INSERT_OOS)
+   || operation == LC_FLUSH_INSERT_PRUNE_VERIFY || operation == LC_FLUSH_INSERT_OOS \
+   || operation == LC_FLUSH_INSERT_INTERNAL_LOB)
+
+#define LC_IS_FLUSH_INSERT_OOS(operation) \
+  (operation == LC_FLUSH_INSERT_OOS || operation == LC_FLUSH_INSERT_INTERNAL_LOB)
 
 #define LC_IS_FLUSH_UPDATE(operation) \
   (operation == LC_FLUSH_UPDATE || operation == LC_FLUSH_UPDATE_PRUNE \
