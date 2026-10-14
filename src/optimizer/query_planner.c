@@ -4400,11 +4400,27 @@ qo_nljoin_cost (QO_PLAN * planp)
   if (planp->plan_un.join.join_type == JOIN_INNER && planp->plan_un.join.join_method == QO_JOINMETHOD_IDX_JOIN
       && qo_plan_semi_anti_join_type (inner) != PT_JOIN_NONE && inner->iscan_range_rows > 0.0)
     {
+      QO_ENV *env = planp->info->env;
+      QO_TERM *term;
+      BITSET_ITERATOR bi;
+      double hit_prob = 1.0, head_factor, tail_factor;
+      int i;
+
       /* the key range of an idx-join inner is the join term, so every row in it matches and the scan stops on
-       * the first one it reads; an outer row whose key is absent from the index reads none at all.  hit_prob is
-       * the share of outer rows the inner matches (qo_get_term_hit_prob ()) */
-      inner_scan_card = guessed_result_cardinality * (outer->info)->hit_prob / inner->iscan_range_rows;
-      inner_fetch_rows = guessed_result_cardinality * (outer->info)->hit_prob;
+       * the first one it reads; an outer row whose key is absent from the index reads none at all.  The share of
+       * outer rows the inner matches comes from the equality join terms, as hit_prob is the share the join emits */
+      for (i = bitset_iterate (&(planp->info->terms), &bi); i != -1; i = bitset_next_member (&bi))
+	{
+	  term = QO_ENV_TERM (env, i);
+	  if (qo_is_equi_join_term (term))
+	    {
+	      qo_get_term_hit_prob (term, outer->info, inner->info, env, &head_factor, &tail_factor);
+	      hit_prob *= head_factor;
+	    }
+	}
+
+      inner_scan_card = guessed_result_cardinality * hit_prob / inner->iscan_range_rows;
+      inner_fetch_rows = guessed_result_cardinality * hit_prob;
     }
 
   /* iscan_descent_cpu is the per-probe root-to-leaf descent (zero for non-iscan inners):
@@ -9533,6 +9549,11 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
       head_info->hit_prob = head_hit_prob;
       tail_info->hit_prob = tail_hit_prob;
+      if (is_semi_anti && QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_ANTI)
+	{
+	  /* an ANTI JOIN emits the outer rows the inner does not match */
+	  head_info->hit_prob = 1.0 - head_hit_prob;
+	}
       if (IS_OUTER_JOIN_TYPE (join_type))
 	{
 	  /* set lower bound of outer join result */

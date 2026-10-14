@@ -346,7 +346,8 @@ struct qo_info
   double scan_rows;		/* Number of rows required for scanning */
   double total_rows;		/* Number of rows excluding search conditions */
   double group_rows;		/* Number of rows expected after grouping */
-  double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost */
+  double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost.
+				 * On the outer of an ANTI JOIN it is 1 - that: the share of outer rows the join emits */
   bool is_distinct;		/* true only on an info built by qo_prepare_distinct_info (): the node read once
 				 * with the duplicates removed, so a join over it is an ordinary join */
 
