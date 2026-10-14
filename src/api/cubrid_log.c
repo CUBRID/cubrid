@@ -1378,6 +1378,15 @@ cubrid_log_connect_server (char *host, int port, char *dbname, char *user, char 
 
 cubrid_log_error:
 
+  /* a connection made above but refused later (authentication, configuration)
+   * is closed here: the stage stays CONFIGURATION, where cubrid_log_finalize ()
+   * is not callable, so nothing else could release it */
+  if (g_conn_entry != NULL)
+    {
+      css_free_conn (g_conn_entry);
+      g_conn_entry = NULL;
+    }
+
   return err_code;
 }
 
