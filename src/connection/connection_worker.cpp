@@ -967,9 +967,7 @@ namespace cubconn::connection
      * m_recv_busy is not read: a close from handle_reception () would wait on this worker's own claim. */
     r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
     assert (r == NO_ERROR);
-
     busy = ctx->m_recv.m_eager_running.load (std::memory_order_acquire) > 0;
-
     r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
     assert (r == NO_ERROR);
 
