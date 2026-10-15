@@ -4103,16 +4103,12 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
       goto error;
     }
 
-  if (TM_TRAN_ISOLATION () >= TRAN_REP_READ)
+  if (tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_TRIGGER) != NO_ERROR)
     {
-      /* protect against multiple flushes to server */
-      if (tran_system_savepoint (UNIQUE_SAVEPOINT_CREATE_TRIGGER) != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      has_savepoint = true;
+      goto error;
     }
+
+  has_savepoint = true;
 
   if (tr_set_trigger_timestamps (trigger) != NO_ERROR)
     {
@@ -4187,14 +4183,9 @@ error:
 
   if (trigger != NULL)
     {
-      if (object != NULL)
+      if (tr_object_map_added)
 	{
-	  if (tr_object_map_added)
-	    {
-	      (void) mht_rem (tr_object_map, trigger->object, NULL, NULL);
-	    }
-
-	  (void) trigger_table_drop (trigger->name);
+	  (void) mht_rem (tr_object_map, trigger->object, NULL, NULL);
 	}
       remove_trigger_list (&tr_Uncommitted_triggers, trigger);
       tr_drop_deferred_activities (trigger->object, NULL);
@@ -4473,18 +4464,21 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
 	       * if this isn't a rollback, delete the object, otherwise
 	       * it will already be marked as deleted as part of the normal transaction cleanup
 	       */
-	      db_drop (trigger->object);
-
-	      /*
-	       * flush, decache object; no need to check if the object was indeed deleted;
-	       * it is supposed that the last version of the object was locked and deleted
-	       * because only the last version can be locked; previous versions are in the log
-	       */
-	      error = locator_flush_instance (trigger->object);
-	      if (error == NO_ERROR)
+	      error = db_drop (trigger->object);
+	      /* if the object has been deleted, just ignore the error */
+	      if (error == NO_ERROR || error == ER_HEAP_UNKNOWN_OBJECT)
 		{
-		  ws_decache (trigger->object);
-		  ws_clear_hints (trigger->object, false);
+		  /*
+		   * flush, decache object; no need to check if the object was indeed deleted;
+		   * it is supposed that the last version of the object was locked and deleted
+		   * because only the last version can be locked; previous versions are in the log
+		   */
+		  error = locator_flush_instance (trigger->object);
+		  if (error == NO_ERROR)
+		    {
+		      ws_decache (trigger->object);
+		      ws_clear_hints (trigger->object, false);
+		    }
 		}
 	    }
 
@@ -4559,9 +4553,7 @@ tr_drop_trigger (DB_OBJECT * obj, bool call_from_api)
 
       if (error == NO_ERROR)
 	{
-	  bool need_savepoint = (TM_TRAN_ISOLATION () >= TRAN_REP_READ);
-
-	  error = tr_drop_trigger_internal (trigger, 0, need_savepoint);
+	  error = tr_drop_trigger_internal (trigger, 0, true);
 	}
     }
 
@@ -6886,7 +6878,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   char *new_name = NULL;
   char *old_name = NULL;
   bool has_savepoint = false;
-  bool is_abort = false;
   int save = 0;
   int error = NO_ERROR;
 
@@ -6925,18 +6916,14 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
       goto end;
     }
 
-  if (TM_TRAN_ISOLATION () >= TRAN_REP_READ)
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_RENAME_TRIGGER);
+  if (error != NO_ERROR)
     {
-      /* protect against multiple flushes to server */
-      error = tran_system_savepoint (UNIQUE_SAVEPOINT_RENAME_TRIGGER);
-      if (error != NO_ERROR)
-	{
-	  ASSERT_ERROR ();
-	  goto end;
-	}
-
-      has_savepoint = true;
+      ASSERT_ERROR ();
+      goto end;
     }
+
+  has_savepoint = true;
 
   error = trigger_table_rename (trigger_object, new_name);
   if (error != NO_ERROR)
@@ -6951,7 +6938,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
-      is_abort = true;
       goto end;
     }
   pr_clear_value (&value);
@@ -6961,7 +6947,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
-      is_abort = true;
       goto end;
     }
   pr_clear_value (&value);
@@ -6970,7 +6955,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   if (error != NO_ERROR)
     {
       ASSERT_ERROR ();
-      is_abort = true;
       goto end;
     }
 
@@ -6980,7 +6964,6 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
       if (error != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
-	  is_abort = true;
 	  goto end;
 	}
     }
@@ -6993,23 +6976,9 @@ tr_rename_trigger (DB_OBJECT * trigger_object, const char *name, bool call_from_
   trigger->name = new_name;
 
 end:
-  if (is_abort && error != NO_ERROR)
+  if (new_name != NULL && trigger->name != new_name)
     {
-      /* 
-       * Archive old comments:
-       * 1. hmm, couldn't set the new name, put the old one back,
-       *    we might need to abort the transaction here ?
-       * 2. if we can't do this, the transaction better abort
-       */
-      if (trigger_table_rename (trigger_object, old_name) != NO_ERROR)
-	{
-	  assert (false);
-	}
-
-      if (new_name)
-	{
-	  free_and_init (new_name);
-	}
+      free_and_init (new_name);
     }
 
   AU_RESTORE (save);

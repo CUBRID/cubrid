@@ -137,6 +137,7 @@ OR:                           O R ;
 OR_REPLACE:                   O R SPACE+ R E P L A C E ;
 OUT:                          O U T ;
 OWNER:                        O W N E R ;
+PARALLEL_ENABLE:              P A R A L L E L '_' E N A B L E ;
 PERCENT_FOUND:                '%' SPACE* F O U N D ;
 PERCENT_ISOPEN:               '%' SPACE* I S O P E N ;
 PERCENT_NOTFOUND:             '%' SPACE* N O T F O U N D ;

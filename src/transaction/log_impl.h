@@ -533,6 +533,12 @@ struct log_tdes
   struct lob_rb_root lob_locator_root;	/* all LOB locators to be created or delete during a transaction */
 
   INT64 query_timeout;		/* a query should be executed before query_timeout time. */
+  INT64 last_query_deadline;	/* Deadline of the query that just ended, kept past the reset in
+				 * qmgr_reset_query_exec_info() so that the commit path, which runs after it,
+				 * can wait for its 2PC decisions longer than the built-in bound when more
+				 * than that is left.  It only extends that wait, never shortens it - see
+				 * log_2pc_commit_first_phase() for why.  0 means there is no deadline to
+				 * carry: either none was asked for, or the session never had one. */
 
   INT64 query_start_time;
   INT64 tran_start_time;
@@ -687,6 +693,9 @@ struct log_global
 
 #if defined(SERVER_MODE)
   bool backup_in_progress;
+  /* First archive a running backup still needs; -1 when none. In memory only: a crash must not leave
+   * a pin that blocks archive removal forever. */
+  int backup_first_arv_num_needed;
 #else				/* SERVER_MODE */
   LOG_LSA final_restored_lsa;
 #endif				/* SERVER_MODE */
@@ -881,6 +890,12 @@ typedef struct cdc_global
   LOG_LSA first_loginfo_queue_lsa;
   LOG_LSA last_loginfo_queue_lsa;
 
+  /* First LSA of the last log info bundle handed to a client. Unlike consumer.start_lsa it outlives the
+   * connection, so archive removal can still resolve the exact volume after a client has gone without
+   * ending its session - the case a restart has to be able to resume from. Ending the session does give
+   * the protection up; that is cdc_release_arv_num_to_keep()'s job. */
+  LOG_LSA arv_keep_lsa;
+
 } CDC_GLOBAL;
 
 /* will be moved to new file for CDC */
@@ -955,7 +970,7 @@ extern bool cdc_Logging;
 
 #if defined (SERVER_MODE)
 // *INDENT-OFF*
-extern cubthread::worker_pool_type *g_backup_read_worker_pool;
+extern worker_pool_type<> *g_backup_read_worker_pool;
 // *INDENT-ON*
 #endif
 
@@ -1025,6 +1040,7 @@ extern LOG_PHY_PAGEID logpb_to_physical_pageid (LOG_PAGEID logical_pageid);
 extern bool logpb_is_page_in_archive (LOG_PAGEID pageid);
 extern bool logpb_is_smallest_lsa_in_archive (THREAD_ENTRY * thread_p);
 extern int logpb_get_archive_number (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
+extern int logpb_get_archive_num_for_pageid (THREAD_ENTRY * thread_p, LOG_PAGEID pageid);
 extern void logpb_decache_archive_info (THREAD_ENTRY * thread_p);
 extern LOG_PAGE *logpb_fetch_from_archive (THREAD_ENTRY * thread_p, LOG_PAGEID pageid, LOG_PAGE * log_pgptr,
 					   int *ret_arv_num, LOG_ARV_HEADER * arv_hdr, bool is_fatal);
@@ -1032,6 +1048,7 @@ extern void logpb_remove_archive_logs (THREAD_ENTRY * thread_p, const char *info
 extern int logpb_remove_archive_logs_exceed_limit (THREAD_ENTRY * thread_p, int max_count);
 extern void logpb_copy_from_log (THREAD_ENTRY * thread_p, char *area, int length, LOG_LSA * log_lsa,
 				 LOG_PAGE * log_pgptr);
+extern bool logpb_copy_from_log_if_buffered (char *area, int length, LOG_LSA * log_lsa);
 extern int logpb_initialize_log_names (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 				       const char *prefix_logname);
 extern bool logpb_exist_log (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
@@ -1062,6 +1079,7 @@ extern void logpb_fatal_error (THREAD_ENTRY * thread_p, bool logexit, const char
 			       const char *fmt, ...);
 extern void logpb_fatal_error_exit_immediately_wo_flush (THREAD_ENTRY * thread_p, const char *file_name,
 							 const int lineno, const char *fmt, ...);
+extern void logpb_free_prior_node (LOG_PRIOR_NODE * node);
 extern int logpb_check_and_reset_temp_lsa (THREAD_ENTRY * thread_p, VOLID volid);
 extern void logpb_initialize_arv_page_info_table (void);
 extern void logpb_initialize_logging_statistics (void);
@@ -1134,6 +1152,8 @@ extern const char *logtb_find_current_client_hostname (THREAD_ENTRY * thread_p);
 extern LOG_LSA *logtb_find_current_tran_lsa (THREAD_ENTRY * thread_p);
 extern TRAN_STATE logtb_find_state (int tran_index);
 extern int logtb_find_wait_msecs (int tran_index);
+extern int logtb_set_thread_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs);
+extern int logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p);
 
 extern int logtb_find_interrupt (int tran_index, bool * interrupt);
 extern TRAN_ISOLATION logtb_find_isolation (int tran_index);

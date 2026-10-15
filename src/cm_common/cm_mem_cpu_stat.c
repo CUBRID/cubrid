@@ -74,6 +74,12 @@ static char *strcpy_limit (char *dest, const char *src, int buf_len);
 
 #define NELEMS(x) ((sizeof (x))/(sizeof ((x)[0])))
 
+#if defined (WINDOWS)
+#define STRTOK(buf,delim,saveptr)  strtok_s (buf, delim, saveptr)
+#else
+#define STRTOK(buf,delim,saveptr)  strtok_r (buf, delim, saveptr)
+#endif
+
 static void cm_db_proc_stat_free (T_CM_DB_PROC_STAT * stat);
 int
 cm_get_db_proc_stat (const char *db_name, T_CM_DB_PROC_STAT * stat, T_CM_ERROR * err_buf)
@@ -638,6 +644,7 @@ cm_get_host_disk_partition_stat (T_CM_ERROR * err_buf)
   ULONGLONG total_size[32], free_size[32];
   char names[32][4] = { 0 };
   char *token;
+  char *saveptr;
   T_CM_DISK_PARTITION_STAT_ALL *res;
 
   len = GetLogicalDriveStringsA (sizeof (buf), buf);
@@ -653,7 +660,7 @@ cm_get_host_disk_partition_stat (T_CM_ERROR * err_buf)
   buf[len - 1] = 0;
   i = 0;
 
-  for (token = strtok (buf, ";"); token != NULL && i < 32; token = strtok (NULL, ";"))
+  for (token = STRTOK (buf, ";", &saveptr); token != NULL && i < 32; token = STRTOK (NULL, ";", &saveptr))
     {
       if (GetDriveTypeA (token) == DRIVE_FIXED)
 	{

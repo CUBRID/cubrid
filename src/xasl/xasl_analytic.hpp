@@ -23,10 +23,13 @@
 #ifndef _XASL_ANALYTIC_HPP_
 #define _XASL_ANALYTIC_HPP_
 
+struct domain_plan_item;
+
 #include "dbtype_def.h"
 #include "db_function.hpp"          // FUNC_CODE
+#include "query_sum_accumulator.h"  // SUM_ACC
 #include "regu_var.hpp"             // regu_variable_node
-#include "storage_common.h"       // QUERY_OPTIONS
+#include "storage_common.h"         // QUERY_OPTIONS
 
 // forward definitions
 struct qfile_list_id;
@@ -70,10 +73,9 @@ namespace cubxasl
     FUNC_CODE function;		/* analytic function type */
     QUERY_OPTIONS option;		/* DISTINCT/ALL option */
     tp_domain *domain;		/* domain of the result */
-    tp_domain *original_domain;	/* domain of the result */
+    domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
 
     DB_TYPE opr_dbtype;		/* operand data type */
-    DB_TYPE original_opr_dbtype;	/* original operand data type */
     regu_variable_node operand;	/* operand */
 
     int flag;			/* flags */
@@ -87,18 +89,18 @@ namespace cubxasl
 
     /* runtime values */
     analytic_function_info info;	/* custom function runtime values */
-    qfile_list_id *list_id;	/* used for distinct handling */
+    qfile_list_id *list_id;	        /* used for distinct handling */
     qfile_list_id *group_list_id;	/* file containing group headers */
     qfile_list_id *order_list_id;	/* file containing group values */
     int curr_group_tuple_count;		/* tuples in current group */
     int curr_group_tuple_count_nn;	/* tuples in current group with non-NULL values */
     int curr_sort_key_tuple_count;	/* tuples sharing current sort key */
-    db_value *value;		/* value of the aggregate */
-    db_value *value2;		/* for STTDEV and VARIANCE */
+    db_value *value;		        /* value of the aggregate */
+    db_value *value2;		        /* for STTDEV and VARIANCE */
     db_value *out_value;		/* DB_VALUE used for output */
     db_value part_value;		/* partition temporary accumulator */
+    SUM_ACC sum_acc;	                /* word accumulator for NUMERIC SUM/AVG */
     INT64 curr_cnt;			/* current number of items */
-    bool is_first_exec_time;	/* the fist time to be executed */
 
     void init ();
   };

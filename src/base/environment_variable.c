@@ -475,6 +475,21 @@ envvar_logdir_file (char *path, size_t size, const char *filename)
   return path;
 }
 
+char *
+envvar_upgradedir_file (char *path, size_t size, const char *filename)
+{
+  assert (filename != NULL);
+
+  if (envvar_Root == NULL)
+    {
+      envvar_root ();
+    }
+  snprintf (path, size, "%s/share/upgrade/%s", envvar_Root, filename);
+
+  path[size - 1] = '\0';
+  return path;
+}
+
 void
 envvar_trim_char (char *env_val, const int c)
 {

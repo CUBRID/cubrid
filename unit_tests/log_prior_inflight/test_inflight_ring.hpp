@@ -1,5 +1,5 @@
 /*
- * Copyright 2008 Search Solution Corporation
+ *
  * Copyright 2016 CUBRID Corporation
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,19 +16,18 @@
  *
  */
 
-
 /*
- * cas_error_log.h -
+ * test_inflight_ring.hpp - interface for in-flight ring functional testing
  */
 
-#ifndef	_CAS_ERROR_LOG_H_
-#define	_CAS_ERROR_LOG_H_
+#ifndef _TEST_INFLIGHT_RING_HPP_
+#define _TEST_INFLIGHT_RING_HPP_
 
-#ident "$Id$"
+namespace test_lockfree
+{
 
-extern void cas_error_log_open (char *br_name);
-extern void cas_error_log_close (bool flag);
-extern void cas_error_log_write (int dbms_errno, const char *dbms_errmsg);
-extern char *cas_error_log_get_eid (char *buf, size_t bufsz);
+  int test_inflight_ring_functional (void);
 
-#endif /* _CAS_ERROR_LOG_H_ */
+} // namespace test_lockfree
+
+#endif // _TEST_INFLIGHT_RING_HPP_

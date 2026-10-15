@@ -1773,8 +1773,20 @@
 
 #define ER_AU_CANT_ALTER_LOGIN                      -1378
 
-#define ER_LAST_ERROR                               -1379
+#define ER_CDC_ARCHIVE_KEPT                         -1379
 
+#define ER_SP_PARALLEL_ENABLE_NO_SQL                -1380
+
+#define ER_SYSMETA_UPGRADE_REQUIRED                 -1381
+#define ER_SYSMETA_DOWNGRADE_NOT_SUPPORTED          -1382
+
+#define ER_QPROC_DOMAIN_UNRESOLVED                  -1383
+
+#define ER_QPROC_SESSION_VARIABLE_TYPE              -1384
+
+#define ER_AU_REJECT_LOGIN                          -1385
+
+#define ER_LAST_ERROR                               -1386
 
 
 /*

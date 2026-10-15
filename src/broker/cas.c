@@ -60,6 +60,7 @@
 #include "cas_network.h"
 #include "cas_function.h"
 #include "cas_net_buf.h"
+#include "query_replace.h"
 #include "cas_execute.h"
 #include "connection_support.hpp"
 #include "broker_process_size.h"
@@ -186,6 +187,7 @@ static int net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_heade
 static void set_db_parameter (void);
 
 /* Callback functions for cas_main_loop() */
+static int cas_init_specific (void);
 static int cas_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user, const char *db_passwd,
 			   const char *url, T_REQ_INFO * req_info, char *cas_info);
 static void cas_post_db_connect (void *context, struct timeval *cas_start_time, int shm_as_index, int client_ip_addr,
@@ -258,11 +260,25 @@ main (int argc, char *argv[])
   return res;
 }
 
+/* once-per-process initialization for the non-shard CAS (cub_cas).
+ * invoked by cas_main_loop() before the request loop. */
+static int
+cas_init_specific (void)
+{
+  /* attach to the query replace rule segment built by the broker.  a shard or CGW broker
+   * never publishes one (broker_shm.c leaves query_replace_shm_key at 0), so this is a
+   * no-op there.  the CAS_FOR_CGW guard is defensive: cas.c is built only into cub_cas. */
+#if !defined(CAS_FOR_CGW)
+  qr_init (shm_appl);
+#endif
+  return 0;
+}
+
 static int
 cas_main (void)
 {
   CAS_MAIN_OPS ops = {
-    .init_specific = NULL,	/* cas.c has no specific initialization */
+    .init_specific = cas_init_specific,	/* attach query replace rule segment */
     .pre_db_connect = NULL,	/* No pre-connect processing for cas.c */
     .db_connect = cas_db_connect,
     .post_db_connect = cas_post_db_connect,
@@ -403,6 +419,8 @@ cas_db_connect (SOCKET client_sock_fd, const char *db_name, const char *db_user,
       return -1;
     }
 
+  qr_load_dbuser_has_rules (as_info->database_name, db_user);
+
   return err_code;
 }
 
@@ -481,8 +499,6 @@ shard_cas_main (void)
 
   bool is_first = true;
 
-  prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
-
   net_buf_init (&net_buf, cas_get_client_version ());
   net_buf.data = (char *) MALLOC (SHARD_NET_BUF_ALLOC_SIZE);
   if (net_buf.data == NULL)
@@ -540,7 +556,6 @@ conn_retry:
 
   if (as_info->reset_flag == TRUE)
     {
-      cas_log_debug (ARG_FILE_LINE, "main: set reset_flag");
       cas_set_db_connect_status (-1);	/* DB_CONNECTION_STATUS_RESET */
       as_info->reset_flag = FALSE;
     }
@@ -662,8 +677,6 @@ conn_retry:
 	  }
 	/* This is a only use in proxy-cas internal message */
 	req_info.client_version = CAS_PROTO_CURRENT_VER;
-
-	prev_cas_info[CAS_INFO_STATUS] = CAS_INFO_RESERVED_DEFAULT;
 
 	if (as_info->cur_statement_pooling)
 	  {
@@ -915,6 +928,11 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
 	      ux_set_default_setting ();
 
+	      /* the db/user this CAS serves changed without going through
+	       * cas_db_connect(); refresh the query replace (db,user) rule cache
+	       * so lookups match the new connection instead of the previous one. */
+	      qr_load_dbuser_has_rules (as_info->database_name, cas_db_user);
+
 	      cas_log_write_and_end (0, false, "connect db %s user %s", cas_db_name, cas_db_user);
 	    }
 	}
@@ -1086,23 +1104,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
   server_fn = server_fn_table[func_code - 1];
 
-  if (prev_cas_info[CAS_INFO_STATUS] != CAS_INFO_RESERVED_DEFAULT)
-    {
-      assert (prev_cas_info[CAS_INFO_STATUS] == client_msg_header.info_ptr[CAS_INFO_STATUS]);
-#if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas <-> JDBC info */
-      if (prev_cas_info[CAS_INFO_STATUS] != client_msg_header.info_ptr[CAS_INFO_STATUS])
-	{
-	  cas_log_debug (ARG_FILE_LINE,
-			 "[%d][PREV : %d, RECV : %d], " "[preffunc : %d, recvfunc : %d], [REQ: %d, REQ: %d], "
-			 "[JID : %d] \n", func_code - 1, prev_cas_info[CAS_INFO_STATUS],
-			 client_msg_header.info_ptr[CAS_INFO_STATUS], prev_cas_info[CAS_INFO_RESERVED_1],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_1], prev_cas_info[CAS_INFO_RESERVED_2],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_2],
-			 client_msg_header.info_ptr[CAS_INFO_RESERVED_3]);
-	}
-#endif /* end for debug */
-    }
-
   req_info->need_auto_commit = TRAN_NOT_AUTOCOMMIT;
 
   cas_send_result_flag = TRUE;
@@ -1155,9 +1156,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
     {
       ux_set_utype_for_json (CCI_U_TYPE_JSON);
     }
-
-  cas_log_debug (ARG_FILE_LINE, "process_request: %s() err_code %d", server_func_name[func_code - 1],
-		 err_info.err_number);
 
   if (con_status_to_restore != -1)
     {
@@ -1269,15 +1267,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 	{
 	  cas_msg_header.info_ptr[CAS_INFO_ADDITIONAL_FLAG] &= ~CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN;
 	}
-#if defined (PROTOCOL_EXTENDS_DEBUG)	/* for debug cas<->jdbc info */
-      cas_msg_header.info_ptr[CAS_INFO_RESERVED_1] = func_code - 1;
-      cas_msg_header.info_ptr[CAS_INFO_RESERVED_2] = as_info->num_requests_received % 128;
-      prev_cas_info[CAS_INFO_STATUS] = cas_msg_header.info_ptr[CAS_INFO_STATUS];
-      prev_cas_info[CAS_INFO_RESERVED_1] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_1];
-      prev_cas_info[CAS_INFO_RESERVED_2] = cas_msg_header.info_ptr[CAS_INFO_RESERVED_2];
-#endif /* end for debug */
-
-
 
       *(cas_msg_header.msg_body_size_ptr) = htonl (net_buf->data_size);
       memcpy (net_buf->data, cas_msg_header.msg_body_size_ptr, NET_BUF_HEADER_MSG_SIZE);
@@ -1311,7 +1300,6 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
       ((as_info->con_status != CON_STATUS_IN_TRAN && as_info->num_holdable_results < 1
 	&& as_info->cas_change_mode == CAS_CHANGE_MODE_AUTO) || (cas_get_db_connect_status () == -1)))
     {
-      cas_log_debug (ARG_FILE_LINE, "process_request: reset_flag && !CON_STATUS_IN_TRAN");
       fn_ret = FN_KEEP_SESS;
       db_set_keep_session (true);
       goto exit_on_end;
@@ -1397,7 +1385,6 @@ net_read_process (SOCKET proxy_sock_fd, MSG_HEADER * client_msg_header, T_REQ_IN
 
 	      if (restart_is_needed ())
 		{
-		  cas_log_debug (ARG_FILE_LINE, "net_read_process: " "restart_is_needed()");
 		  ret_value = -1;
 		  break;
 		}
@@ -1556,8 +1543,6 @@ set_db_connection_info (void)
 
   strncpy (cas_db_passwd, as_info->database_passwd, SRV_CON_DBPASSWD_SIZE - 1);
   cas_db_passwd[SRV_CON_DBPASSWD_SIZE - 1] = '\0';
-
-  cas_log_debug (ARG_FILE_LINE, "db_name %s db_user %s", cas_db_name, cas_db_user);
 }
 
 static void

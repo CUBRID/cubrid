@@ -208,11 +208,15 @@ static void pt_check_method (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_truncate (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_kill (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool pt_check_one_server_owner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * owner_name,
+				       const char *statement);
+static void pt_check_server_owners (PARSER_CONTEXT * parser, PT_NODE * node);
 static void pt_check_update_stats (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_check_single_valued_node (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_single_valued_node_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						  int *continue_walk);
 static void pt_check_into_clause (PARSER_CONTEXT * parser, PT_NODE * qry);
+static void pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select);
 static int pt_normalize_path (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_json_str_codeset_normalization (PARSER_CONTEXT * parser, REFPTR (char, c));
 static int pt_check_json_table_node (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -10366,6 +10370,104 @@ pt_check_alter_serial (PARSER_CONTEXT * parser, PT_NODE * node)
 }
 
 /*
+ * pt_check_one_server_owner () - is the caller authorized for one owner named on a server statement?
+ *   return:  false if it raised an error, true otherwise
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): the statement, for error positioning
+ *   owner_name(in): the owner qualifier, or NULL when the statement carries none
+ *   statement(in): the statement name to name in the error
+ */
+static bool
+pt_check_one_server_owner (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * owner_name, const char *statement)
+{
+  const char *name = NULL;
+  DB_OBJECT *owner = NULL;
+  DB_VALUE owner_val;
+
+  if (owner_name == NULL)
+    {
+      /* No qualifier, so the caller's own schema. */
+      return true;
+    }
+
+  assert (owner_name->node_type == PT_NAME);
+  name = PT_NAME_ORIGINAL (owner_name);
+  assert (name != NULL && *name != '\0');
+
+  owner = db_find_user (name);
+  if (owner == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+
+      /* Only a name that is not a user is a semantic error. Anything else - a down server, say -
+       * is left standing for the execution path, which maps it. */
+      if (er_errid () == ER_AU_INVALID_USER)
+	{
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_USER_IS_NOT_IN_DB, name);
+	  return false;
+	}
+      return true;
+    }
+
+  db_make_object (&owner_val, owner);
+  if (au_is_server_authorized_user (&owner_val) == false)
+    {
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER, statement);
+      return false;
+    }
+
+  return true;
+}
+
+/*
+ * pt_check_server_owners () - is the caller authorized for the owners named on a dblink server statement?
+ *   return:  none
+ *   parser(in): the parser context used to derive the statement
+ *   node(in): a server statement
+ *
+ * Note: the check sits here rather than in server_find () so that it does not depend on whether the
+ * object exists. DROP ... IF EXISTS then still means "skip a missing object", not "skip one the caller
+ * is not authorized for". DROP SYNONYM orders its two checks the same way.
+ */
+static void
+pt_check_server_owners (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  if (parser == NULL || node == NULL)
+    {
+      return;
+    }
+
+  switch (node->node_type)
+    {
+    case PT_CREATE_SERVER:
+      pt_check_one_server_owner (parser, node, node->info.create_server.owner_name, "CREATE SERVER");
+      break;
+
+    case PT_ALTER_SERVER:
+      /* Two owners can be named - the one the object sits under, and the one OWNER TO moves it to. */
+      if (pt_check_one_server_owner (parser, node, node->info.alter_server.current_owner_name, "ALTER SERVER")
+	  && node->info.alter_server.xbits.bit_owner != 0)
+	{
+	  /* The grammar dereferences owner_name when it sets bit_owner, so it is here. */
+	  pt_check_one_server_owner (parser, node, node->info.alter_server.owner_name, "ALTER SERVER OWNER TO");
+	}
+      break;
+
+    case PT_DROP_SERVER:
+      pt_check_one_server_owner (parser, node, node->info.drop_server.owner_name, "DROP SERVER");
+      break;
+
+    case PT_RENAME_SERVER:
+      pt_check_one_server_owner (parser, node, node->info.rename_server.owner_name, "RENAME SERVER");
+      break;
+
+    default:
+      assert (false);
+      break;
+    }
+}
+
+/*
  * pt_check_update_stats () - do semantic checks on the UPDATE STATISTICS statement
  *   return:  none
  *   parser(in): the parser context used to derive the statement
@@ -10651,6 +10753,285 @@ error_exit:
 
   parser_free_tree (parser, qry->info.query.into_list);
   qry->info.query.into_list = NULL;
+}
+
+/*
+ * pt_semi_anti_ref_info - context for detecting column references to a spec
+ */
+typedef struct pt_semi_anti_ref_info PT_SEMI_ANTI_REF_INFO;
+struct pt_semi_anti_ref_info
+{
+  UINTPTR inner_id;		/* spec id of the semi/anti inner */
+  PT_NODE *from_list;		/* the local from-list; qualifies what counts as a local "outer" ref */
+  bool found_inner;		/* a reference to the inner spec was found */
+  bool found_outer;		/* a reference to a local from-list spec other than the inner was found */
+  bool skip_nested_for_outer_gate;	/* outer-gate: do not descend into nested subqueries (their refs are not
+					   modelled by the freeze). ANTI-leak check leaves this false and keeps descending. */
+};
+
+/*
+ * pt_spec_id_in_from () - true iff spec_id belongs to a spec in the local from-list
+ */
+static bool
+pt_spec_id_in_from (PT_NODE * from_list, UINTPTR spec_id)
+{
+  PT_NODE *s;
+
+  for (s = from_list; s != NULL; s = s->next)
+    {
+      if (s->info.spec.id == spec_id)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * pt_semi_anti_ref_pre () - walk helper: classify PT_NAME references as inner/outer.
+ *      "outer" is restricted to specs of the local from-list so that the semantic gate matches
+ *      the optimizer's local dep-set freeze; references reaching into a nested subquery (whose
+ *      specs are neither the inner nor a local from-list spec) do not count as a local outer.
+ */
+static PT_NODE *
+pt_semi_anti_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_SEMI_ANTI_REF_INFO *info = (PT_SEMI_ANTI_REF_INFO *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (info->skip_nested_for_outer_gate
+      && (node->node_type == PT_SELECT
+	  || node->node_type == PT_UNION || node->node_type == PT_DIFFERENCE || node->node_type == PT_INTERSECTION))
+    {
+      /* outer-gate: nested-subquery ref not modelled by the freeze; skip subtree, keep walking siblings */
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (node->node_type == PT_NAME && node->info.name.spec_id != 0)
+    {
+      if (node->info.name.spec_id == info->inner_id)
+	{
+	  info->found_inner = true;
+	}
+      else if (pt_spec_id_in_from (info->from_list, node->info.name.spec_id))
+	{
+	  info->found_outer = true;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_semi_anti_conjunct_info - per-conjunct state for the C1 direct-join-conjunct classifier
+ */
+typedef struct pt_semi_anti_conjunct_info PT_SEMI_ANTI_CONJUNCT_INFO;
+struct pt_semi_anti_conjunct_info
+{
+  UINTPTR inner_id;		/* spec id of the semi/anti inner */
+  PT_NODE *from_list;		/* local from-list */
+  bool found_inner;		/* conjunct references the inner spec */
+  bool has_nested;		/* conjunct contains a nested query node */
+  UINTPTR outer_id;		/* first distinct local-outer spec referenced (0 = none) */
+  bool multi_outer;		/* >1 distinct local-outer spec referenced (third table in conjunct) */
+};
+
+/*
+ * pt_semi_anti_conjunct_pre () - classify one ON leaf conjunct: inner ref, nested query, distinct outers.
+ */
+static PT_NODE *
+pt_semi_anti_conjunct_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_SEMI_ANTI_CONJUNCT_INFO *info = (PT_SEMI_ANTI_CONJUNCT_INFO *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (node->node_type == PT_SELECT
+      || node->node_type == PT_UNION || node->node_type == PT_DIFFERENCE || node->node_type == PT_INTERSECTION)
+    {
+      /* nested query disqualifies a direct join conjunct; skip subtree, keep walking siblings */
+      info->has_nested = true;
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (node->node_type == PT_NAME && node->info.name.spec_id != 0)
+    {
+      if (node->info.name.spec_id == info->inner_id)
+	{
+	  info->found_inner = true;
+	}
+      else if (pt_spec_id_in_from (info->from_list, node->info.name.spec_id))
+	{
+	  if (info->outer_id == 0)
+	    {
+	      info->outer_id = node->info.name.spec_id;
+	    }
+	  else if (info->outer_id != node->info.name.spec_id)
+	    {
+	      info->multi_outer = true;
+	    }
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_semi_anti_has_direct_join_conjunct () - true iff the given ON conjunct directly links the inner to a
+ *      single local-outer table. A pre-CNF ON is a PT_AND expression tree, split into conjuncts here by
+ *      recursive PT_AND descent (AND = expression nesting). The leaf walk isolates ->next, so a caller may
+ *      also pass a single element of a CNF ->next list (e.g. an already-CNF'd subquery WHERE reused as an ON
+ *      condition). A qualifying conjunct references the inner and exactly one local-outer spec, with no
+ *      nested query and no third table.
+ */
+bool
+pt_semi_anti_has_direct_join_conjunct (PARSER_CONTEXT * parser, PT_NODE * cond, UINTPTR inner_id, PT_NODE * from_list)
+{
+  PT_SEMI_ANTI_CONJUNCT_INFO info;
+
+  if (cond == NULL)
+    {
+      return false;
+    }
+
+  if (cond->node_type == PT_EXPR && cond->info.expr.op == PT_AND)
+    {
+      return (pt_semi_anti_has_direct_join_conjunct (parser, cond->info.expr.arg1, inner_id, from_list)
+	      || pt_semi_anti_has_direct_join_conjunct (parser, cond->info.expr.arg2, inner_id, from_list));
+    }
+
+  info.inner_id = inner_id;
+  info.from_list = from_list;
+  info.found_inner = false;
+  info.has_nested = false;
+  info.outer_id = 0;
+  info.multi_outer = false;
+
+  /* inspect only THIS conjunct: detach ->next so the walk cannot spill into sibling conjuncts when a caller
+   * passes one element of a CNF list. or_next stays (OR alternatives still seen); no-op for a pre-CNF tree. */
+  {
+    PT_NODE *save_next = cond->next;
+    cond->next = NULL;
+    (void) parser_walk_tree (parser, cond, pt_semi_anti_conjunct_pre, &info, NULL, NULL);
+    cond->next = save_next;
+  }
+
+  return info.found_inner && !info.has_nested && info.outer_id != 0 && !info.multi_outer;
+}
+
+/*
+ * pt_check_semi_anti_join () - enforce v1 SEMI/ANTI JOIN semantic rules:
+ *      (1) the ON predicate must reference the outer (left) side;
+ *      (2) inner columns may not be referenced outside the join's own ON predicate.
+ *   return:  none
+ *   parser(in): the parser context
+ *   select(in): a PT_SELECT node
+ */
+static void
+pt_check_semi_anti_join (PARSER_CONTEXT * parser, PT_NODE * select)
+{
+  PT_NODE *spec;
+
+  if (select == NULL || select->node_type != PT_SELECT)
+    {
+      return;
+    }
+
+  for (spec = select->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      if (spec->info.spec.join_type != PT_JOIN_SEMI && spec->info.spec.join_type != PT_JOIN_ANTI)
+	{
+	  continue;
+	}
+
+      /* v1: SEMI/ANTI JOIN is NL-inner only and does not compose with CONNECT BY -- the hierarchical
+         traversal bypasses the NL semi/anti inner handling and yields wrong results, so reject it here
+         instead of silently producing them. */
+      if (select->info.query.q.select.connect_by != NULL)
+	{
+	  PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SEMI_ANTI_JOIN_NOT_WITH_CONNECT_BY);
+	  continue;
+	}
+
+      /* (1) ON must reference a local-outer from-list spec (matches the optimizer's local dep-set freeze) */
+      {
+	PT_SEMI_ANTI_REF_INFO info;
+	info.inner_id = spec->info.spec.id;
+	info.from_list = select->info.query.q.select.from;
+	info.found_inner = false;
+	info.found_outer = false;
+	info.skip_nested_for_outer_gate = true;	/* nested-subquery refs not modelled by the freeze */
+
+	if (spec->info.spec.on_cond != NULL)
+	  {
+	    (void) parser_walk_tree (parser, spec->info.spec.on_cond, pt_semi_anti_ref_pre, &info, NULL, NULL);
+	  }
+
+	/* require a direct 2-node inner<->local-outer join conjunct (the only shape the optimizer freeze
+	 * models); reject nested-subquery-only and n>=3-table-only outer refs. */
+	if (spec->info.spec.on_cond == NULL || !info.found_outer
+	    || !pt_semi_anti_has_direct_join_conjunct (parser, spec->info.spec.on_cond, spec->info.spec.id,
+						       select->info.query.q.select.from))
+	  {
+	    PT_ERRORm (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SEMI_ANTI_JOIN_NEEDS_OUTER_PRED);
+	    continue;
+	  }
+      }
+
+      /* (2) inner cols allowed only in this join's own ON; scan select clauses + sibling ON/START WITH too.
+       * both forms stop scanning the inner early -- ANTI survives only when it fetched nothing at all, and
+       * SEMI stops at the first match -- so which inner row (if any) is left behind is a plan artifact.
+       * exposing its columns outside the ON would make the answer depend on the access path. */
+      {
+	PT_SEMI_ANTI_REF_INFO info;
+	PT_NODE *targets[9];
+	PT_NODE *other;
+	int i;
+
+	info.inner_id = spec->info.spec.id;
+	info.from_list = select->info.query.q.select.from;
+	info.found_inner = false;
+	info.found_outer = false;
+	info.skip_nested_for_outer_gate = false;	/* the leak check must descend into scalar subqueries */
+
+	targets[0] = select->info.query.q.select.list;
+	targets[1] = select->info.query.q.select.where;
+	targets[2] = select->info.query.q.select.group_by;
+	targets[3] = select->info.query.q.select.having;
+	targets[4] = select->info.query.order_by;
+	targets[5] = select->info.query.q.select.connect_by;
+	targets[6] = select->info.query.q.select.start_with;
+	targets[7] = select->info.query.orderby_for;
+	targets[8] = select->info.query.q.select.with_increment;
+
+	for (i = 0; i < 9 && !info.found_inner; i++)
+	  {
+	    if (targets[i] != NULL)
+	      {
+		(void) parser_walk_tree (parser, targets[i], pt_semi_anti_ref_pre, &info, NULL, NULL);
+	      }
+	  }
+
+	/* other from-list specs' ON conditions (this spec's own ON is the one legal place) */
+	for (other = select->info.query.q.select.from; other != NULL && !info.found_inner; other = other->next)
+	  {
+	    if (other == spec || other->info.spec.on_cond == NULL)
+	      {
+		continue;
+	      }
+	    (void) parser_walk_tree (parser, other->info.spec.on_cond, pt_semi_anti_ref_pre, &info, NULL, NULL);
+	  }
+
+	if (info.found_inner)
+	  {
+	    PT_ERRORmf (parser, spec, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SEMI_ANTI_JOIN_RHS_NOT_ALLOWED,
+			spec->info.spec.range_var ? spec->info.spec.range_var->info.name.original : "");
+	  }
+      }
+    }
 }
 
 /*
@@ -11130,6 +11511,8 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	}
 
       pt_check_into_clause (parser, node);
+
+      pt_check_semi_anti_join (parser, node);
 
       if (node->info.query.q.select.with_increment)
 	{
@@ -12598,9 +12981,10 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
       break;
 
     case PT_CREATE_SERVER:
+    case PT_ALTER_SERVER:
     case PT_DROP_SERVER:
     case PT_RENAME_SERVER:
-    case PT_ALTER_SERVER:
+      pt_check_server_owners (parser, node);
       break;
 
     case PT_ALTER:

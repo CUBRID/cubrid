@@ -21,7 +21,7 @@
 //
 
 #include "bestspace.hpp"
-#include "xserver_interface.h"
+#include "log_impl.h"
 #include "heap_file.h"
 #include "slotted_page.h"
 #include "error_manager.h"
@@ -677,9 +677,9 @@ namespace cubstorage
     int error_code;
 
     thread_p = thread_get_thread_entry_info ();
-    wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+    wait_msecs = logtb_set_thread_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
     error_code = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE, &page_watcher);
-    (void) xlogtb_reset_wait_msecs (thread_p, wait_msecs);
+    (void) logtb_set_thread_wait_msecs (thread_p, wait_msecs);
     if (error_code != NO_ERROR)
       {
 	if (error_code == ER_LK_PAGE_TIMEOUT)
