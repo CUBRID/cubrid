@@ -250,6 +250,7 @@ namespace cubconn::connection
       /* true while an eventfd notification is pending or being handled */
       std::atomic<bool> m_notified;
       bool m_has_retry;
+
       /* true while a connection close drains the IMMEDIATE queue in has_remaining_tasks () */
       bool m_closing_drain;
 
