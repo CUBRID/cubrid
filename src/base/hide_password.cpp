@@ -64,6 +64,9 @@
 #define IS_PWD_NEED_PASSWORD(pwd_info_ptr) ((EN_ADD_PWD_STRING)(((pwd_info_ptr)[1] >> 28) & 0x03))
 #define GET_END_PWD_OFFSET(pwd_info_ptr)   ((pwd_info_ptr)[0] + ((pwd_info_ptr)[1] & MAX_PWD_LENGTH))
 
+static void write_replace_newline (void *log_fd, const char *str,
+				   void (*write_func) (void *log_fd, const char *ptr, int len));
+
 class hide_password
 {
   private:
@@ -71,6 +74,7 @@ class hide_password
     char *find_end_of_quot (char *ps);
     char *get_token (char *&in, int &len);
     char *get_method_passowrd_start_position (char *ps, char *method_name, int *method_password_len);
+    char *get_method_argument (char *&ps, char **arg_end, char **next_token);
     char *get_passowrd_pos_n_len (char *query, bool is_create, bool is_server, int *password_len,
 				  bool *is_pwd_keyword_found);
     char *skip_one_query (char *query);
@@ -78,6 +82,8 @@ class hide_password
     void fprintf_replace_newline (void *fp, char *query, int (*cas_fprintf) (void *, const char *, ...));
     bool check_capitalized_keyword_create (char *query);
     const char *get_password_string (char *qryptr, int *pwd_info_ptr);
+    void find_password_positions_internal (char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr, void *log_fd,
+					   void (*write_func) (void *log_fd, const char *ptr, int len));
 
     bool  m_use_backslash_escape;
 
@@ -144,6 +150,13 @@ hide_password::find_end_of_quot (char *ps)
 	}
       else if (*ps == quot_char)
 	{
+	  if (ps[1] == quot_char)
+	    {
+	      /* a doubled quote is a quote inside the string */
+	      ps++;
+	      continue;
+	    }
+
 	  ps++;
 	  return ps;
 	}
@@ -159,6 +172,12 @@ hide_password::get_token (char *&in, int &len)
   int quoted_double = 0;
 
   SKIP_SPACE_CHARACTERS (in);
+  while ((in[0] == '-' && in[1] == '-') || (in[0] == '/' && (in[1] == '/' || in[1] == '*')))
+    {
+      in = skip_comment_string (in);
+      SKIP_SPACE_CHARACTERS (in);
+    }
+
   ps = in;
   if (*in == '\'' || *in == '"')
     {
@@ -227,55 +246,90 @@ hide_password::get_method_passowrd_start_position (char *ps, char *method_name, 
      add_user ('user_name')
      login ('user_name')
      login ('user_name', 'password')
+     login ((SELECT name FROM ...), 'password')
+     login ('user_name', 'pass' || 'word')
    */
-  int len;
-  char *token;
+  int len, arg_idx, password_arg_idx;
+  char *token, *arg_start, *arg_end, *next_token;
 
   *method_password_len = -1;
   token = get_token (ps, len);
-  if (len != 1 || *token != '(')
+  if (token == NULL || len != 1 || *token != '(')
     {
       return NULL;
     }
 
-  if (strcasecmp (method_name, "set_password") == 0)
+  password_arg_idx = (strcasecmp (method_name, "set_password") == 0) ? 1 : 2;
+  for (arg_idx = 1;; arg_idx++)
     {
-      token = get_token (ps, len);	// read user_name
-      if (len >= 2 && (*token == '\'' || *token == '"'))
-	{
-	  *method_password_len = len;
-	  return token;
-	}
-    }
-  else
-    {
-      token = get_token (ps, len);	// read user_name
-      if (len < 2 || (*token != '\'' && *token != '"'))
+      arg_start = get_method_argument (ps, &arg_end, &next_token);
+      if (arg_start == NULL)
 	{
 	  return NULL;
 	}
 
-      token = get_token (ps, len);
-      if (len == 1)
+      if (arg_idx == password_arg_idx)
 	{
-	  if (*token == ')')
-	    {
-	      *method_password_len = 0;
-	      return token;
-	    }
-	  else if (*token == ',')
-	    {
-	      token = get_token (ps, len);	// read password
-	      if (len >= 2 && (*token == '\'' || *token == '"'))
-		{
-		  *method_password_len = len;
-		  return token;
-		}
-	    }
+	  *method_password_len = (int) (arg_end - arg_start);
+	  return arg_start;
+	}
+
+      if (next_token == NULL || *next_token != ',')
+	{
+	  break;
 	}
     }
 
+  if (next_token != NULL && *next_token == ')')
+    {
+      /* the password argument is omitted */
+      *method_password_len = 0;
+      return next_token;
+    }
+
   return NULL;
+}
+
+/*
+ * get_method_argument () - read one method argument up to the ',' or ')' that ends it, and return its first token.
+ *
+ * NOTE:
+ *   Returns NULL if the argument is empty. Sets arg_end to the end of the argument, and next_token to the token
+ *   that ends it, which is NULL at the end of the query.
+ */
+char *
+hide_password::get_method_argument (char *&ps, char **arg_end, char **next_token)
+{
+  char *token, *arg_start = NULL;
+  int len, depth = 0;
+
+  *arg_end = NULL;
+  *next_token = NULL;
+  while ((token = get_token (ps, len)) != NULL)
+    {
+      if (*token == ';' || (depth == 0 && (*token == ',' || *token == ')')))
+	{
+	  *next_token = token;
+	  break;
+	}
+
+      if (*token == '(')
+	{
+	  depth++;
+	}
+      else if (*token == ')')
+	{
+	  depth--;
+	}
+
+      if (arg_start == NULL)
+	{
+	  arg_start = token;
+	}
+      *arg_end = ps;
+    }
+
+  return arg_start;
 }
 
 
@@ -308,6 +362,11 @@ hide_password::get_passowrd_pos_n_len (char *query, bool is_create, bool is_serv
   while (*ps)
     {
       token = get_token (ps, len);
+      if (token == NULL)
+	{
+	  break;
+	}
+
       if (*token == ';' || *token == ')')
 	{
 	  return token;
@@ -328,6 +387,11 @@ hide_password::get_passowrd_pos_n_len (char *query, bool is_create, bool is_serv
 
   prev = NULL;
   token = get_token (ps, len);
+  if (token == NULL)
+    {
+      return NULL;
+    }
+
   if (is_server)
     {
       /* pattern cases)
@@ -340,6 +404,11 @@ hide_password::get_passowrd_pos_n_len (char *query, bool is_create, bool is_serv
 	}
 
       token = get_token (ps, len);
+      if (token == NULL)
+	{
+	  return NULL;
+	}
+
       if (*token == ';' || *token == ')' || *token == ',' )
 	{
 	  return token;
@@ -362,7 +431,7 @@ hide_password::get_passowrd_pos_n_len (char *query, bool is_create, bool is_serv
 	}
     }
 
-  if (len >= 2 && (*token == '\'' || *token == '"'))
+  if (token != NULL && len >= 2 && (*token == '\'' || *token == '"'))
     {
       *password_len = (prev ? (len + tlen) : len);
       return (prev ? prev : token);
@@ -490,18 +559,32 @@ bool hide_password::check_lead_string_in_query (char **query, char **method_name
 void
 hide_password::find_password_positions (char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr)
 {
-  int start, end;
-  bool is_add_comma;
-  bool is_create, is_server, has_password_keyword;
-  char *newptr = query;
-  EN_ADD_PWD_STRING en_add_pwd_string = en_none_password;
-
   assert (hide_pwd_ptr != NULL);
   assert (hide_pwd_ptr->pwd_info_ptr != NULL);
 
+  find_password_positions_internal (query, hide_pwd_ptr, NULL, NULL);
+}
+
+/*
+ * find_password_positions_internal () - find each password, then store its position or write the query masked.
+ *
+ * NOTE:
+ *   Stores the positions into hide_pwd_ptr if it is given.
+ *   Otherwise writes each password masked by write_func as it is found, without malloc or printf.
+ */
+void
+hide_password::find_password_positions_internal (char *query, HIDE_PWD_INFO_PTR hide_pwd_ptr, void *log_fd,
+    void (*write_func) (void *log_fd, const char *ptr, int len))
+{
+  bool is_add_comma;
+  bool is_create, is_server, has_password_keyword;
+  char *newptr = query;
+  char *qryptr = query;
+  EN_ADD_PWD_STRING en_add_pwd_string;
+
   while (*newptr)
     {
-      char *tp, *ps;
+      char *ps;
       int password_len;
       char *method_name = NULL;
 
@@ -515,11 +598,8 @@ hide_password::find_password_positions (char *query, HIDE_PWD_INFO_PTR hide_pwd_
 		  continue;
 		}
 
-	      start = (int) (ps - query);
-	      end = (int) (ps - query) + password_len;
 	      is_add_comma = (bool) (password_len == 0);
 	      en_add_pwd_string = en_none_password;
-	      newptr = ps + password_len;
 	    }
 	  else
 	    {
@@ -529,44 +609,53 @@ hide_password::find_password_positions (char *query, HIDE_PWD_INFO_PTR hide_pwd_
 		  continue;
 		}
 
-	      start = (int) (ps - query);
-	      end = (int) (ps - query) + password_len;
 	      en_add_pwd_string = (is_create
 				   && !has_password_keyword) ? (is_server ? en_server_password : en_user_password) : en_none_password;
 	      is_add_comma = (bool) (is_create && is_server && !has_password_keyword);
-
-	      newptr = ps + password_len;
 	    }
 
-	  if (hide_pwd_ptr->size < (hide_pwd_ptr->used + 2))
-	    {
-	      int *pwd_info_ptr = NULL;
-	      int new_size = hide_pwd_ptr->size + (DEFAULT_PWD_INFO_CNT * 2);
+	  newptr = ps + password_len;
 
-	      pwd_info_ptr = (int *) malloc (new_size * sizeof (int));
-	      if (!pwd_info_ptr)
+	  int start = (int) (ps - query);
+	  int end = start + password_len;
+
+	  if (hide_pwd_ptr != NULL)
+	    {
+	      int used = hide_pwd_ptr->used;
+
+	      password_add_offset (hide_pwd_ptr, start, end, is_add_comma, en_add_pwd_string);
+	      if (hide_pwd_ptr->used == used)
 		{
-		  assert (0);
+		  /* malloc failed */
 		  return;
 		}
-
-	      memcpy (pwd_info_ptr, hide_pwd_ptr->pwd_info_ptr, hide_pwd_ptr->used * sizeof (int));
-	      if (hide_pwd_ptr->pwd_info_ptr != hide_pwd_ptr->pwd_info)
-		{
-		  free (hide_pwd_ptr->pwd_info_ptr);
-		}
-
-	      hide_pwd_ptr->size = new_size;
-	      hide_pwd_ptr->pwd_info_ptr = pwd_info_ptr;
 	    }
+	  else
+	    {
+	      /* write the text before the password, then the mask in its place */
+	      int pwd_info[2];
+	      char chbk = *ps;
+	      const char *mask;
 
-	  assert (SET_PWD_LENGTH (start, end) < MAX_PWD_LENGTH);
-	  hide_pwd_ptr->pwd_info_ptr[hide_pwd_ptr->used++] = start;
-	  hide_pwd_ptr->pwd_info_ptr[hide_pwd_ptr->used++] = SET_PWD_LENGTH_N_ADDINFO (start, end, is_add_comma,
-	      en_add_pwd_string);
+	      pwd_info[0] = start;
+	      pwd_info[1] = SET_PWD_LENGTH_N_ADDINFO (start, end, is_add_comma, en_add_pwd_string);
+
+	      *ps = '\0';
+	      write_replace_newline (log_fd, qryptr, write_func);
+	      mask = get_password_string (qryptr, pwd_info);
+	      write_func (log_fd, mask, (int) strlen (mask));
+	      *ps = chbk;
+
+	      qryptr = newptr;
+	    }
 	}
 
       newptr = skip_one_query (newptr);
+    }
+
+  if (hide_pwd_ptr == NULL)
+    {
+      write_replace_newline (log_fd, qryptr, write_func);
     }
 }
 
@@ -579,7 +668,7 @@ hide_password::check_capitalized_keyword_create (char *query)
 
   // "create user ~" or " ~; create user ~"
   token = get_token (ps, len);
-  if ((len == 6) &&  (strncmp (token, "CREATE", len) == 0))
+  if (token != NULL && (len == 6) &&  (strncmp (token, "CREATE", len) == 0))
     {
       return true;
     }
@@ -759,76 +848,12 @@ write_replace_newline (void *log_fd, const char *str, void (*write_func) (void *
 
 /*
  * write_sql_log_in_signal_handler () - write the query with its passwords masked, without malloc or printf.
- *
- * NOTE:
- *   Unlike find_password_positions (), it writes each password as it is found, without storing its position.
  */
 void
 hide_password::write_sql_log_in_signal_handler (void *log_fd, char *query,
     void (*write_func) (void *log_fd, const char *ptr, int len))
 {
-  bool is_add_comma;
-  bool is_create, is_server, has_password_keyword;
-  char *newptr = query;
-  char *qryptr = query;
-  EN_ADD_PWD_STRING en_add_pwd_string;
-
-  while (*newptr)
-    {
-      char *ps;
-      int password_len;
-      char *method_name = NULL;
-
-      if (check_lead_string_in_query (&newptr, &method_name, &is_create, &is_server))
-	{
-	  if (method_name)
-	    {
-	      if ((ps = get_method_passowrd_start_position (newptr, method_name, &password_len)) == NULL)
-		{
-		  newptr = skip_one_query (newptr);
-		  continue;
-		}
-
-	      is_add_comma = (bool) (password_len == 0);
-	      en_add_pwd_string = en_none_password;
-	    }
-	  else
-	    {
-	      if ((ps = get_passowrd_pos_n_len (newptr, is_create, is_server, &password_len, &has_password_keyword)) == NULL)
-		{
-		  newptr = skip_one_query (newptr);
-		  continue;
-		}
-
-	      en_add_pwd_string = (is_create
-				   && !has_password_keyword) ? (is_server ? en_server_password : en_user_password) : en_none_password;
-	      is_add_comma = (bool) (is_create && is_server && !has_password_keyword);
-	    }
-
-	  newptr = ps + password_len;
-
-	  /* write the text before the password, then the mask in its place */
-	  int pwd_info[2];
-	  int start = (int) (ps - query);
-	  char chbk = *ps;
-	  const char *mask;
-
-	  pwd_info[0] = start;
-	  pwd_info[1] = SET_PWD_LENGTH_N_ADDINFO (start, start + password_len, is_add_comma, en_add_pwd_string);
-
-	  *ps = '\0';
-	  write_replace_newline (log_fd, qryptr, write_func);
-	  mask = get_password_string (qryptr, pwd_info);
-	  write_func (log_fd, mask, (int) strlen (mask));
-	  *ps = chbk;
-
-	  qryptr = newptr;
-	}
-
-      newptr = skip_one_query (newptr);
-    }
-
-  write_replace_newline (log_fd, qryptr, write_func);
+  find_password_positions_internal (query, NULL, log_fd, write_func);
 }
 
 /*
