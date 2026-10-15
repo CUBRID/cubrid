@@ -561,17 +561,20 @@ namespace cubconn::connection
     count_out = 0;
     ctx_out = nullptr;
 
+    /* STEP 1. Claim the socket; give up when it is busy or the connection is closing. */
     ctx = eager_claim (conn, entry, owner, fd);
     if (ctx == nullptr)
       {
 	return false;
       }
 
+    /* STEP 2. Wait up to window_ms for the next request. */
     po.fd = fd;
     po.events = POLLIN;
     po.revents = 0;
     n = poll (&po, 1, window_ms);
 
+    /* STEP 3. Receive what came in, or leave an error to the worker. */
     status = result::Ok;
     more_data = false;
     hand_back = false;
@@ -589,6 +592,8 @@ namespace cubconn::connection
 	hand_back = true;
       }
 
+    /* STEP 4. Give the socket back. The claim's count drops now,
+     * or in eager_finish () once the caller has run what was received. */
     hand_back = eager_release (conn, entry, ctx, fd, hand_back);
     if (count_out == 0)
       {
