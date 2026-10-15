@@ -387,7 +387,7 @@ bind_write_datetimetz (BIND_LINE * line, const BIND_HEADER * header, char type, 
   char tz_str[CCI_TZ_SIZE + 1];
 
   net_arg_get_datetimetz (&yr, &mon, &day, &hh, &mm, &ss, &ms, &tz_str_p, &tz_size, net_value);
-  tz_size = MIN (CCI_TZ_SIZE, tz_size);
+  tz_size = MAX (0, MIN (CCI_TZ_SIZE, tz_size));
   strncpy (tz_str, tz_str_p, tz_size);
   tz_str[tz_size] = '\0';
 
@@ -413,7 +413,7 @@ bind_write_set (BIND_LINE * line, const BIND_HEADER * header, char type, void *n
 
   net_arg_get_size (&data_size, net_value);
   remain_size = data_size;
-  cur_p += 4;
+  cur_p += NET_SIZE_INT;
   ele_type = *cur_p;
   cur_p++;
   remain_size--;
@@ -428,8 +428,12 @@ bind_write_set (BIND_LINE * line, const BIND_HEADER * header, char type, void *n
 
   while (remain_size > 0)
     {
+      if (remain_size < NET_SIZE_INT)
+	{
+	  break;
+	}
       net_arg_get_size (&ele_size, cur_p);
-      if (ele_size + 4 > remain_size)
+      if (ele_size < 0 || ele_size > remain_size - NET_SIZE_INT)
 	{
 	  break;
 	}
@@ -442,7 +446,7 @@ bind_write_set (BIND_LINE * line, const BIND_HEADER * header, char type, void *n
 	  print_comma = true;
 	}
       bind_value_write (line, NULL, ele_type, cur_p, charset);
-      ele_size += 4;
+      ele_size += NET_SIZE_INT;
       cur_p += ele_size;
       remain_size -= ele_size;
     }
