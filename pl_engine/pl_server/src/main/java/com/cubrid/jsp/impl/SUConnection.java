@@ -149,22 +149,6 @@ public class SUConnection {
         return stmt;
     }
 
-    // SUFunctionCode.GET_SCHEMA_INFO
-    public SUStatement getSchemaInfo(int type, String arg1, String arg2, byte flag)
-            throws IOException, SQLException {
-        CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
-        packer.packInt(SUFunctionCode.GET_SCHEMA_INFO.getCode());
-        packer.packInt(type);
-        packer.packString(arg1);
-        packer.packString(arg2);
-        packer.packInt(flag);
-
-        CUBRIDUnpacker unpacker = request(packer.getBuffer());
-        GetSchemaInfo info = new GetSchemaInfo(unpacker);
-        SUStatement stmt = new SUStatement(this, info, arg1, arg2, type);
-        return stmt;
-    }
-
     // SUFunctionCode.EXECUTE
     public ExecuteInfo execute(
             int handlerId,
@@ -219,17 +203,6 @@ public class SUConnection {
 
         CUBRIDUnpacker unpacker = request(packer.getBuffer());
         MakeOutResultSetInfo info = new MakeOutResultSetInfo(unpacker);
-        return info;
-    }
-
-    // SUFunctionCode.NEXT_RESULT
-    public ExecuteInfo nextResult(int handlerId) throws IOException, SQLException {
-        CUBRIDPacker packer = new CUBRIDPacker(outputBuffer);
-        packer.packInt(SUFunctionCode.NEXT_RESULT.getCode());
-        packer.packInt(handlerId);
-
-        CUBRIDUnpacker unpacker = request(packer.getBuffer());
-        ExecuteInfo info = new ExecuteInfo(unpacker);
         return info;
     }
 
