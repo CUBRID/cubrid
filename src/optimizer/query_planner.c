@@ -9181,8 +9181,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			      /* a NULL key, like the during-join terms, is decided once per outer row */
 			      during_sel *= 1.0 - outer_null_freq;
 
-			      /* the selectivity already holds the outer NULL share (qo_expr_selectivity ()),
-			       * and so does during_sel, so divide it out to keep it from being counted twice
+			      /* qo_expr_selectivity () already scaled the selectivity by 1 - outer_null_freq,
+			       * the same scaling during_sel got above; divide it out so that it applies once
 			       */
 			      term_sel = QO_TERM_SELECTIVITY (term);
 			      if (outer_null_freq < 1.0)
