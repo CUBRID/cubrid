@@ -1925,7 +1925,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	    tsc_getticks (&end_tick);
 	    tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 
-	    perfmon_inc_stat (thread_p, PSTAT_REGU_NUM_CALL_EVALS);
+	    perfmon_inc_stat_for_trace (thread_p, PSTAT_REGU_NUM_CALL_EVALS);
 	    UINT64 time = tv_diff.tv_sec * 1000000LL + tv_diff.tv_usec;
 	    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_EVAL_TIME_10USEC].start_offset, time);
 	    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_FETCHES].start_offset,

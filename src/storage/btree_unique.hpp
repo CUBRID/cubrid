@@ -38,6 +38,9 @@ class btree_unique_stats
 
     btree_unique_stats ();
     btree_unique_stats (stat_type keys, stat_type nulls = 0);
+    // the user-provided operator= below is a plain memberwise copy, so the implicit copy constructor is still
+    // the correct one; declare it explicitly to satisfy the rule of three.
+    btree_unique_stats (const btree_unique_stats &other) = default;
 
     stat_type get_key_count () const;
     stat_type get_row_count () const;
