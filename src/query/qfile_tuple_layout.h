@@ -46,7 +46,12 @@ qfile_col_layout_of_domain (const TP_DOMAIN * dom, QFILE_COL_LAYOUT * column_lay
   t = dom->type;
   id = TP_DOMAIN_TYPE (dom);
 
-  assert (id >= 0 && id <= DB_TYPE_LAST && id <= UINT8_MAX);
+  /* type_id below is a uint8_t, so a DB_TYPE has to fit in one. DB_TYPE_LAST is far
+   * below UINT8_MAX, which is why testing it at run time was always true; the check
+   * the cast needs is the compile time one, which fires if a type is ever added past
+   * 255. */
+  static_assert (DB_TYPE_LAST <= UINT8_MAX, "a DB_TYPE no longer fits in column_layout->type_id");
+  assert (id >= 0 && id <= DB_TYPE_LAST);
   column_layout->byte_offset_in_values = -1;
   column_layout->type_id = (uint8_t) id;
 #if !defined(NDEBUG)
@@ -65,7 +70,9 @@ qfile_col_layout_of_domain (const TP_DOMAIN * dom, QFILE_COL_LAYOUT * column_lay
       return;
     }
 
-  a = MIN (t->alignment, QFILE_TUPLE_ALIGNMENT);	/* BIGINT/DOUBLE align 4 and are read by memcpy */
+  /* QFILE_TUPLE_ALIGNMENT is sizeof (int), so it is unsigned; t->alignment is a small
+   * positive int. The cast keeps MIN () from comparing across signedness. */
+  a = MIN (t->alignment, (int) QFILE_TUPLE_ALIGNMENT);	/* BIGINT/DOUBLE align 4 and are read by memcpy */
   if (a < 1)
     {
       a = 1;
