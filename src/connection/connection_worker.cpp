@@ -2556,18 +2556,24 @@ respond:
     return io_status;
   }
 
-  /* from_edge: the worker drops an edge while the socket is busy, so the eager receiver is told to recheck */
+  /* Take this connection's socket for the worker.
+   *   1. Skip the claim with the window 0; no transaction thread takes the socket then.
+   *   2. Under cmutex, set m_recv_busy when the socket is free.
+   *   3. When it is busy and from_edge is set, record the dropped edge in m_missed_edge
+   *      so the eager receiver rechecks on release.
+   * Returns whether the worker may receive. */
   bool worker::claim_reading (context *ctx, bool from_edge)
   {
     bool claimed;
     int r;
 
+    /* STEP 1. Skip the claim with the window 0; no transaction thread takes the socket then. */
     if (prm_get_integer_value (PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS) <= 0)
       {
-	/* with the window 0 no transaction thread takes the socket */
 	return true;
       }
 
+    /* STEP 2. Under cmutex, set m_recv_busy when the socket is free. */
     r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
     assert (r == NO_ERROR);
     claimed = !ctx->m_recv.m_recv_busy.load (std::memory_order_acquire);
@@ -2577,6 +2583,8 @@ respond:
       }
     else if (from_edge)
       {
+	/* STEP 3. When it is busy and from_edge is set, record the dropped edge in m_missed_edge
+	 * so the eager receiver rechecks on release. */
 	ctx->m_recv.m_missed_edge = true;
       }
     r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
