@@ -589,6 +589,9 @@ static int qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * x
 					  DBLINK_DML_KIND kind);
 static int qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_remote_update_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
+static int qexec_remote_merge_key_text (THREAD_ENTRY * thread_p, const MERGE_PROC_NODE * merge,
+					QFILE_TUPLE_RECORD * tplrec, char *buf, size_t size);
+static int qexec_check_remote_merge_source_keys (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_remote_merge_source (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool skip_aptr);
 static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
@@ -13443,6 +13446,233 @@ qexec_execute_remote_update_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 }
 
 /*
+ * qexec_remote_merge_key_text () - Write the ON key of a source row into buf, for the duplicate key error.
+ *   A key of more than one column is written in parentheses. A text that does not fit ends in "...".
+ *   return: NO_ERROR, or ER_FAILED if a key value cannot be read
+ *   merge(in)  : MERGE_PROC with the key positions
+ *   tplrec(in) : the source row, read from a list with the source's columns
+ *   buf(out)   : the key text
+ *   size(in)   : size of buf
+ */
+static int
+qexec_remote_merge_key_text (THREAD_ENTRY * thread_p, const MERGE_PROC_NODE * merge, QFILE_TUPLE_RECORD * tplrec,
+			     char *buf, size_t size)
+{
+  DB_VALUE val;
+  TP_DOMAIN *dom;
+  char *val_text;
+  size_t len = 0;
+  int i, ret;
+  bool multi = (merge->remote_num_keys > 1);
+
+  assert (size > 4);
+  buf[0] = '\0';
+
+  for (i = 0; i < merge->remote_num_keys; i++)
+    {
+      dom = tplrec->type_list->domp[merge->remote_key_pos[i]];
+      if (qexec_get_tuple_column_value (tplrec, merge->remote_key_pos[i], &val, dom) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      val_text = pr_valstring (&val);
+      pr_clear_value (&val);
+
+      ret = snprintf (buf + len, size - len, "%s%s%s", (i == 0 && multi) ? "(" : "", (i > 0) ? ", " : "",
+		      (val_text != NULL) ? val_text : "?");
+      if (val_text != NULL)
+	{
+	  db_private_free (thread_p, val_text);
+	}
+      if (ret < 0 || (size_t) ret >= size - len)
+	{
+	  /* a long key is cut. The start of it is enough to find the rows. */
+	  strcpy (buf + size - 4, "...");
+	  return NO_ERROR;
+	}
+      len += ret;
+    }
+
+  if (multi && len + 1 < size)
+    {
+      buf[len++] = ')';
+      buf[len] = '\0';
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * qexec_check_remote_merge_source_keys () - Reject a source with two rows on the same ON key.
+ *   return: NO_ERROR, or ER_FAILED with the error set
+ *   xasl(in)       : MERGE_PROC XASL with sink.is_remote set, its source SELECT already run
+ *   xasl_state(in) : XASL state
+ *
+ * Note: each source row goes to the remote as a MERGE of its own. The remote cannot see that two rows take
+ *   the same target row, as a local MERGE does. So the check runs before anything is sent. It also rejects
+ *   two rows on a key the target does not have, which a local MERGE inserts twice. The sink cannot tell
+ *   the two cases apart without asking the remote. A copy of the source is sorted on the keys, so rows
+ *   with the same key are adjacent. The source itself keeps its order. A key with a NULL in it matches no
+ *   target row, so it is skipped.
+ */
+static int
+qexec_check_remote_merge_source_keys (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state)
+{
+  const MERGE_PROC_NODE *merge = &xasl->proc.merge;
+  QFILE_LIST_ID *src_list = xasl->aptr_list->list_id;
+  QFILE_LIST_ID *sorted = NULL;
+  SORT_LIST *sort_items = NULL;
+  QFILE_LIST_SCAN_ID scan_id;
+  QFILE_TUPLE_RECORD tplrec[2] = { QFILE_TUPLE_RECORD_INITIALIZER, QFILE_TUPLE_RECORD_INITIALIZER };
+  DB_VALUE prev_val, curr_val;
+  TP_DOMAIN *dom;
+  SCAN_CODE scan;
+  char key_text[256], errmsg[512];
+  bool scan_open = false, prev_ok = false, curr_ok, same;
+  int curr = 0, i, pos;
+  int error = NO_ERROR;
+
+  if (src_list == NULL || src_list->tuple_cnt < 2)
+    {
+      return NO_ERROR;
+    }
+
+  assert (merge->remote_num_keys > 0 && merge->remote_key_pos != NULL);
+
+  sort_items = (SORT_LIST *) db_private_alloc (thread_p, sizeof (SORT_LIST) * merge->remote_num_keys);
+  if (sort_items == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      sizeof (SORT_LIST) * merge->remote_num_keys);
+      error = ER_FAILED;
+      goto end;
+    }
+  memset (sort_items, 0, sizeof (SORT_LIST) * merge->remote_num_keys);
+  for (i = 0; i < merge->remote_num_keys; i++)
+    {
+      pos = merge->remote_key_pos[i];
+      if (pos < 0 || pos >= src_list->type_list.type_cnt)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1,
+		  "remote MERGE: an ON key is not a column of the source query");
+	  error = ER_FAILED;
+	  goto end;
+	}
+      sort_items[i].pos_descr.pos_no = pos;
+      sort_items[i].pos_descr.dom = src_list->type_list.domp[pos];
+      sort_items[i].s_order = S_ASC;
+      sort_items[i].s_nulls = S_NULLS_FIRST;
+      sort_items[i].next = (i + 1 < merge->remote_num_keys) ? &sort_items[i + 1] : NULL;
+    }
+
+  sorted = qfile_duplicate_list (thread_p, src_list, QFILE_FLAG_ALL);
+  if (sorted == NULL)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+  if (qfile_sort_list (thread_p, sorted, sort_items, Q_ALL, true) == NULL)
+    {
+      /* A sort that fails early leaves the list as it was. A later failure has destroyed it already. The
+       * cleanup below destroys it either way, as a destroyed list has no file left to free. */
+      error = ER_FAILED;
+      goto end;
+    }
+
+  if (qfile_open_list_scan (sorted, &scan_id) != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+  scan_open = true;
+
+  /* the rows are read in turn into tplrec[curr]. tplrec[1 - curr] keeps the row before. */
+  while ((scan = qfile_scan_list_next (thread_p, &scan_id, &tplrec[curr], COPY)) == S_SUCCESS)
+    {
+      curr_ok = true;
+      same = prev_ok;
+      for (i = 0; i < merge->remote_num_keys && curr_ok; i++)
+	{
+	  pos = merge->remote_key_pos[i];
+	  dom = sorted->type_list.domp[pos];
+	  if (qexec_get_tuple_column_value (&tplrec[curr], pos, &curr_val, dom) != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+	  if (DB_IS_NULL (&curr_val))
+	    {
+	      curr_ok = false;
+	    }
+	  else if (same)
+	    {
+	      if (qexec_get_tuple_column_value (&tplrec[1 - curr], pos, &prev_val, dom) != NO_ERROR)
+		{
+		  pr_clear_value (&curr_val);
+		  error = ER_FAILED;
+		  goto end;
+		}
+	      same = (dom->type->cmpval (&prev_val, &curr_val, 0, 1, NULL, dom->collation_id) == DB_EQ);
+	      pr_clear_value (&prev_val);
+	    }
+	  pr_clear_value (&curr_val);
+	}
+
+      if (curr_ok && same)
+	{
+	  if (qexec_remote_merge_key_text (thread_p, merge, &tplrec[curr], key_text, sizeof (key_text)) != NO_ERROR)
+	    {
+	      error = ER_FAILED;
+	      goto end;
+	    }
+	  snprintf (errmsg, sizeof (errmsg),
+		    "remote MERGE: more than one source row has the ON key %s; reduce the source to one row per key",
+		    key_text);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+	  error = ER_FAILED;
+	  goto end;
+	}
+
+      prev_ok = curr_ok;
+      curr = 1 - curr;
+    }
+
+  if (scan == S_ERROR)
+    {
+      error = ER_FAILED;
+    }
+
+end:
+  if (scan_open)
+    {
+      qfile_close_scan (thread_p, &scan_id);
+    }
+  for (i = 0; i < 2; i++)
+    {
+      if (tplrec[i].tpl != NULL)
+	{
+	  db_private_free_and_init (thread_p, tplrec[i].tpl);
+	}
+    }
+  if (sorted != NULL)
+    {
+      qfile_close_list (thread_p, sorted);
+      qfile_destroy_list (thread_p, sorted);
+      QFILE_FREE_AND_INIT_LIST_ID (sorted);
+    }
+  if (sort_items != NULL)
+    {
+      db_private_free_and_init (thread_p, sort_items);
+    }
+  if (error != NO_ERROR)
+    {
+      qexec_failure_line (__LINE__, xasl_state);
+    }
+
+  return error;
+}
+
+/*
  * qexec_execute_remote_merge_source () - Evaluate the source SELECT, then hand off to
  *   qexec_execute_remote_dml_sink() to push one remote MERGE per source row via CCI.
  *   return: NO_ERROR or ER_FAILED
@@ -13474,6 +13704,11 @@ qexec_execute_remote_merge_source (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
       else if (qexec_execute_mainblock (thread_p, aptr, xasl_state, NULL) != NO_ERROR)
 	{
 	  qexec_failure_line (__LINE__, xasl_state);
+	  return ER_FAILED;
+	}
+
+      if (qexec_check_remote_merge_source_keys (thread_p, xasl, xasl_state) != NO_ERROR)
+	{
 	  return ER_FAILED;
 	}
     }
