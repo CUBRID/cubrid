@@ -1073,7 +1073,9 @@ namespace cubmethod
 
       if (lang == SP_LANG_PLCSQL)
 	{
-	  if (jsp_check_execute_authorization (routine_mop) != NO_ERROR)
+	  // loaddb compiles a routine before the grants it relies on are loaded (unloaddb puts them last).
+	  // The check made when the routine is called still applies.
+	  if (!db_client_type_is_loaddb () && jsp_check_execute_authorization (routine_mop) != NO_ERROR)
 	    {
 	      err = er_errid ();
 	      if (err == NO_ERROR)
