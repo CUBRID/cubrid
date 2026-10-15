@@ -9936,13 +9936,11 @@ exit_on_error:
 
 #if defined (SERVER_MODE)	/* parallel_query is linked into cub_server only (excludes SA / CS) */
 /* Parallel SHOW INDEX CAPACITY (entry point: btree_index_capacity_parallel).
- * Workers claim root-child subtrees and fold per-worker partials; the cross-subtree sums are done
- * in INT64, so the result does not depend on how the children were split across workers. Inside a
- * subtree btree_get_subtree_capacity still accumulates in float -- per record for sum_rec_len /
- * sum_key_len, per page for the space fields -- so only the last level of summation is exact.
- * That is still enough to matter: avg_rec_len / avg_key_len divide the INT64 totals, while serial
- * divides a float sum that picked up rounding at every level above, so serial can land one below
- * the exact value once the truncating cast is applied. */
+ * Workers claim root-child subtrees and fold per-worker partials. sum_rec_len / sum_key_len are
+ * INT64 the whole way down -- btree_get_subtree_capacity accumulates them exactly, the fold adds
+ * them exactly -- so avg_rec_len / avg_key_len match what serial computes, byte for byte, however
+ * the children happened to be split across workers. The space fields are still float, but they
+ * are only ever reported as a float average, never truncated to an int. */
 
 /* btree_capacity_accum - per-worker INT64 partial sums, merged after join. Zero-initialize.
  *   tot_used_space is not accumulated; the reduce derives it. The fields are named after their
@@ -10036,8 +10034,8 @@ btree_capacity_accum_to_cpc (const BTREE_CAPACITY_ACCUM * total, int root_free, 
   cpc->nleaf_pg_cnt = (int) t_nleaf;
   cpc->tot_pg_cnt = (int) t_pg;
   cpc->height = total->height + 1;	/* root children are co-level */
-  cpc->sum_rec_len = (float) total->sum_rec_len;
-  cpc->sum_key_len = (float) total->sum_key_len;
+  cpc->sum_rec_len = total->sum_rec_len;
+  cpc->sum_key_len = total->sum_key_len;
   cpc->tot_free_space = (float) t_free;
   cpc->tot_space = (float) t_space;
   cpc->tot_used_space = (float) (t_space - t_free);
@@ -10050,17 +10048,14 @@ btree_capacity_accum_to_cpc (const BTREE_CAPACITY_ACCUM * total, int root_free, 
   cpc->ovfl_oid_pg.tot_space = (float) total->ovfl_oid_pg.tot_space;
   cpc->ovfl_oid_pg.tot_used_space = (float) (total->ovfl_oid_pg.tot_space - total->ovfl_oid_pg.tot_free_space);
 
-  /* averages: serial's formulas, except the two noted below */
+  /* averages: serial's formulas, field for field */
   if (cpc->dis_key_cnt > 0)
     {
       assert (cpc->deduplicate_dis_key_cnt > 0);
       cpc->avg_val_per_dedup_key = (int) (cpc->tot_val_cnt / cpc->deduplicate_dis_key_cnt);
       cpc->avg_val_per_key = (int) (cpc->tot_val_cnt / cpc->dis_key_cnt);
-      /* divide the INT64 totals, not the float fields above: the top-level float sum is what costs
-       * serial its accuracy past 2^24, and cpc->dis_key_cnt is already an int truncation. The
-       * per-subtree floats still round, so these are more accurate than serial, not exact */
-      cpc->avg_key_len = (int) (total->sum_key_len / total->dis_key_cnt);
-      cpc->avg_rec_len = (int) (total->sum_rec_len / total->deduplicate_dis_key_cnt);
+      cpc->avg_key_len = (int) (cpc->sum_key_len / cpc->dis_key_cnt);
+      cpc->avg_rec_len = (int) (cpc->sum_rec_len / cpc->deduplicate_dis_key_cnt);
     }
   if (cpc->leaf_pg_cnt > 0)
     {
