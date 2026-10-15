@@ -14806,19 +14806,21 @@ cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
       attr_name = NULL;
       alloced = 0;
 
-      if (or_get_attrname (&class_record, i, &attr_name, &alloced) != NO_ERROR || attr_name == NULL)
+      if (or_get_attrname (&class_record, attr_info.values[i].attrid, &attr_name, &alloced) != NO_ERROR
+	  || attr_name == NULL)
 	{
 	  error = ER_FAILED;
 	  goto end;
 	}
 
+      /* names are looked up by attribute id; the ids need not follow the positions */
       if (strcmp (attr_name, "password") == 0)
 	{
-	  password_id = i;
+	  password_id = attr_info.values[i].attrid;
 	}
       else if (strcmp (attr_name, "groups") == 0)
 	{
-	  groups_id = i;
+	  groups_id = attr_info.values[i].attrid;
 	}
 
       if (alloced)
@@ -14835,6 +14837,92 @@ cdc_load_user_attr_ids (THREAD_ENTRY * thread_p)
 
   cdc_User_attr_password = password_id;
   cdc_User_attr_groups = groups_id;
+
+end:
+  if (attrinfo_started)
+    {
+      heap_attrinfo_end (thread_p, &attr_info);
+    }
+  if (scan_started)
+    {
+      (void) heap_scancache_end (thread_p, &scan);
+    }
+
+  return error;
+}
+
+/* the id of the password class's "password" attribute, resolved once per server */
+static ATTR_ID cdc_Password_attr_password = -1;
+
+/*
+ * cdc_load_password_attr_id () - resolve the id of the password class's
+ *   "password" attribute. The class holds other attributes too (on develop a
+ *   created_time), and attribute ids need not follow the definition order.
+ *   return: NO_ERROR, or ER_FAILED if the class record could not be read.
+ *   class_oid (in): the password class
+ */
+static int
+cdc_load_password_attr_id (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+  HEAP_SCANCACHE scan;
+  RECDES class_record;
+  HEAP_CACHE_ATTRINFO attr_info;
+  char *attr_name;
+  int alloced;
+  int i, error = NO_ERROR;
+  ATTR_ID password_id = -1;
+  bool scan_started = false, attrinfo_started = false;
+
+  if (cdc_Password_attr_password != -1)
+    {
+      return NO_ERROR;
+    }
+
+  if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, (OID *) class_oid) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  scan_started = true;
+
+  if (heap_get_class_record (thread_p, class_oid, &class_record, &scan, PEEK) != S_SUCCESS)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+
+  if (heap_attrinfo_start (thread_p, class_oid, -1, NULL, &attr_info) != NO_ERROR)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+  attrinfo_started = true;
+
+  for (i = 0; i < attr_info.num_values; i++)
+    {
+      attr_name = NULL;
+      alloced = 0;
+      if (or_get_attrname (&class_record, attr_info.values[i].attrid, &attr_name, &alloced) != NO_ERROR
+	  || attr_name == NULL)
+	{
+	  error = ER_FAILED;
+	  goto end;
+	}
+      if (strcmp (attr_name, "password") == 0)
+	{
+	  password_id = attr_info.values[i].attrid;
+	}
+      if (alloced)
+	{
+	  db_private_free_and_init (thread_p, attr_name);
+	}
+    }
+
+  if (password_id == -1)
+    {
+      error = ER_FAILED;
+      goto end;
+    }
+  cdc_Password_attr_password = password_id;
 
 end:
   if (attrinfo_started)
@@ -14931,6 +15019,11 @@ cdc_read_password_string (THREAD_ENTRY * thread_p, const OID * password_oid, cha
       return false;
     }
 
+  if (cdc_load_password_attr_id (thread_p, &class_oid) != NO_ERROR)
+    {
+      return false;
+    }
+
   if (heap_scancache_quick_start_with_class_oid (thread_p, &scan, &class_oid) != NO_ERROR)
     {
       return false;
@@ -14961,8 +15054,7 @@ cdc_read_password_string (THREAD_ENTRY * thread_p, const OID * password_oid, cha
    * read failure -- only the heap failures above return false. */
   ok = true;
 
-  /* db_password holds a single attribute, the encrypted password */
-  value = heap_attrinfo_access (0, &attr_info);
+  value = heap_attrinfo_access (cdc_Password_attr_password, &attr_info);
   if (value != NULL && !DB_IS_NULL (value) && TP_IS_CHAR_TYPE (DB_VALUE_TYPE (value)))
     {
       stored = db_get_string (value);
