@@ -10713,7 +10713,8 @@ qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_i
 		  pk_val = &pk_cast;
 		}
 
-	      if (tp_value_equal (fk_val, pk_val, 0))
+	      /* coerce numbers as the executor does, e.g. 1 = 1.0 */
+	      if (tp_value_equal (fk_val, pk_val, 1))
 		{
 		  pk_const_term = QO_ENV_TERM (env, pk_t);
 		}
