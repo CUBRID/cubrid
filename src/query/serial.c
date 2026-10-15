@@ -1788,6 +1788,129 @@ exit:
 }
 
 /*
+ * serial_row_write_begin () - get ready for serial_row_write_keep_value () before a client write of a row
+ *   return: void
+ *   class_oidp(in): class of the row about to be written
+ *   write(out)    : active when the row is a _db_serial row whose issued value has to be kept
+ *
+ * Runs before the row's page is latched, because starting the attribute caches can read the class record.
+ */
+void
+serial_row_write_begin (THREAD_ENTRY * thread_p, const OID * class_oidp, SERIAL_ROW_WRITE * write)
+{
+  write->active = false;
+  write->merged = false;
+
+  /* the log applier writes the master's rows, which carry the master's values */
+  if (!oid_is_serial (class_oidp) || LOG_CHECK_LOG_APPLIER (thread_p) || serial_Num_attrs < 0)
+    {
+      return;
+    }
+
+  if (heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL, &write->new_info) != NO_ERROR)
+    {
+      return;
+    }
+  if (heap_attrinfo_start (thread_p, oid_Serial_class_oid, -1, NULL, &write->old_info) != NO_ERROR)
+    {
+      heap_attrinfo_end (thread_p, &write->new_info);
+      return;
+    }
+  write->active = true;
+}
+
+/*
+ * serial_row_write_keep_value () - keep the value issued in place when a client write replaces a _db_serial row
+ *   return: NO_ERROR, or ER_status
+ *   write(in)     : from serial_row_write_begin ()
+ *   serial_oidp(in): the row
+ *   old_recdes(in): the row on the page, which the caller holds latched
+ *   new_recdes(in): the row the client writes
+ *   merged(out)   : new_recdes with current_val and started from old_recdes; filled only when write->merged is set
+ *
+ * NEXT_VALUE advances current_val in place without the serial's lock, and a DDL writes back the whole row it
+ * read, at commit. The current_val it read would replace the values issued since, and they would be issued
+ * again. A write that leaves started at 1 does not restart the serial, so the row keeps the value on the page;
+ * a restart (ALTER SERIAL ... START WITH, TRUNCATE, ALTER TABLE ... AUTO_INCREMENT) writes started 0 and stands.
+ */
+int
+serial_row_write_keep_value (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, const OID * serial_oidp,
+			     RECDES * old_recdes, RECDES * new_recdes, record_descriptor * merged)
+{
+  ATTR_ID cur_id = serial_Attrs_id[SERIAL_ATTR_CURRENT_VAL_INDEX];
+  ATTR_ID started_id = serial_Attrs_id[SERIAL_ATTR_STARTED_INDEX];
+  DB_VALUE *new_cur, *new_started, *old_cur, *old_started;
+  DB_VALUE cmp_result;
+  int error;
+
+  assert (write->active);
+
+  error = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, new_recdes, &write->new_info);
+  if (error == NO_ERROR)
+    {
+      error = heap_attrinfo_read_dbvalues (thread_p, serial_oidp, old_recdes, &write->old_info);
+    }
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  new_started = heap_attrinfo_access (started_id, &write->new_info);
+  if (new_started == NULL || DB_IS_NULL (new_started) || db_get_int (new_started) == 0)
+    {
+      return NO_ERROR;
+    }
+
+  new_cur = heap_attrinfo_access (cur_id, &write->new_info);
+  old_cur = heap_attrinfo_access (cur_id, &write->old_info);
+  old_started = heap_attrinfo_access (started_id, &write->old_info);
+  if (new_cur == NULL || old_cur == NULL || old_started == NULL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  error = numeric_db_value_compare (old_cur, new_cur, &cmp_result);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (db_get_int (&cmp_result) == 0 && db_get_int (old_started) == db_get_int (new_started))
+    {
+      return NO_ERROR;
+    }
+
+  error = heap_attrinfo_set (serial_oidp, cur_id, old_cur, &write->new_info);
+  if (error == NO_ERROR)
+    {
+      error = heap_attrinfo_set (serial_oidp, started_id, old_started, &write->new_info);
+    }
+  if (error == NO_ERROR
+      && heap_attrinfo_transform_to_disk (thread_p, &write->new_info, new_recdes, merged) != S_SUCCESS)
+    {
+      ASSERT_ERROR_AND_SET (error);
+    }
+  write->merged = (error == NO_ERROR);
+  return error;
+}
+
+/*
+ * serial_row_write_end () - release what serial_row_write_begin () took
+ *   return: void
+ *   write(in/out):
+ */
+void
+serial_row_write_end (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write)
+{
+  if (write->active)
+    {
+      heap_attrinfo_end (thread_p, &write->old_info);
+      heap_attrinfo_end (thread_p, &write->new_info);
+      write->active = false;
+    }
+}
+
+/*
  * serial_finalize_cache_pool () -
  *   return:
  */
