@@ -175,7 +175,7 @@ au_auth_accessor::set_new_auth (DB_OBJECT_TYPE obj_type, MOP au_obj, MOP grantor
 	}
 
       inst_mop = (obj_type == DB_OBJECT_PACKAGE)
-		 ? jsp_find_package (unique_name, DB_AUTH_NONE) : jsp_find_stored_procedure (unique_name, DB_AUTH_NONE);
+		 ? jsp_find_package (unique_name) : jsp_find_stored_procedure (unique_name);
       if (inst_mop == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);

@@ -87,6 +87,12 @@ typedef enum csql_statement_substate
   CSQL_SUBSTATE_SEEN_END
 } CSQL_STATEMENT_SUBSTATE;
 
+typedef enum local_block_state
+{
+  LBS_NORMAL,
+  LBS_SEEN_ROUTINE_MARK
+} LOCAL_BLOCK_STATE;
+
 /* editor buffer management */
 typedef struct
 {
@@ -98,9 +104,12 @@ typedef struct
   CSQL_STATEMENT_SUBSTATE substate;
   int plcsql_begin_end_balance;
   int plcsql_nest_level;
+  LOCAL_BLOCK_STATE plcsql_local_block_state;
+  int plcsql_routine_param_paren_balance;
 } CSQL_EDIT_CONTENTS;
 
-static CSQL_EDIT_CONTENTS csql_Edit_contents = { NULL, 0, 0, CSQL_STATE_GENERAL, CSQL_SUBSTATE_INITIAL, 0, 0 };
+static CSQL_EDIT_CONTENTS csql_Edit_contents =
+  { NULL, 0, 0, CSQL_STATE_GENERAL, CSQL_SUBSTATE_INITIAL, 0, 0, LBS_NORMAL, 0 };
 
 
 static bool is_identifier_letter (const char c);
@@ -1072,6 +1081,8 @@ csql_walk_statement (const char *str)
   CSQL_STATEMENT_SUBSTATE substate = csql_Edit_contents.substate;
   int plcsql_begin_end_balance = csql_Edit_contents.plcsql_begin_end_balance;
   int plcsql_nest_level = csql_Edit_contents.plcsql_nest_level;
+  LOCAL_BLOCK_STATE plcsql_local_block_state = csql_Edit_contents.plcsql_local_block_state;
+  int plcsql_routine_param_paren_balance = csql_Edit_contents.plcsql_routine_param_paren_balance;
 
   assert ((plcsql_begin_end_balance == 0 && plcsql_nest_level == 0) ||
 	  (substate == CSQL_SUBSTATE_PLCSQL_TEXT || substate == CSQL_SUBSTATE_SEEN_END));
@@ -1204,8 +1215,10 @@ csql_walk_statement (const char *str)
 	    case CSQL_SUBSTATE_EXPECTING_IS_OR_AS_OF_PACKAGE:
 	      if (match_word_ci ("is", &p) || match_word_ci ("as", &p))
 		{
-		  plcsql_begin_end_balance++;
 		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
+		  plcsql_begin_end_balance = 0;
+		  plcsql_nest_level = 0;
+		  plcsql_local_block_state = LBS_NORMAL;
 		  continue;
 		}
 	      else
@@ -1227,6 +1240,7 @@ csql_walk_statement (const char *str)
 		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
 		  plcsql_begin_end_balance = 0;
 		  plcsql_nest_level = 0;
+		  plcsql_local_block_state = LBS_NORMAL;
 		  goto substate_transition;	// use goto to repeat a substate transition without increasing p
 		}
 	      break;
@@ -1243,6 +1257,7 @@ csql_walk_statement (const char *str)
 		  substate = CSQL_SUBSTATE_PLCSQL_TEXT;
 		  plcsql_begin_end_balance = 0;
 		  plcsql_nest_level = 0;
+		  plcsql_local_block_state = LBS_NORMAL;
 		  continue;
 		}
 	      else
@@ -1254,11 +1269,57 @@ csql_walk_statement (const char *str)
 	      break;
 
 	    case CSQL_SUBSTATE_PLCSQL_TEXT:
+
 	      if (match_word_ci ("procedure", &p) || match_word_ci ("function", &p))
 		{
 		  if (plcsql_begin_end_balance == 0)
 		    {
-		      plcsql_nest_level++;
+		      plcsql_local_block_state = LBS_SEEN_ROUTINE_MARK;
+		      plcsql_routine_param_paren_balance = 0;
+		    }
+		  continue;
+		}
+	      else if (*p == '(')
+		{
+		  if (plcsql_local_block_state == LBS_SEEN_ROUTINE_MARK)
+		    {
+		      plcsql_routine_param_paren_balance++;
+		    }
+		  continue;
+		}
+	      else if (*p == ')')
+		{
+		  if (plcsql_local_block_state == LBS_SEEN_ROUTINE_MARK)
+		    {
+		      plcsql_routine_param_paren_balance--;
+		    }
+		  continue;
+		}
+	      else if (*p == ';')
+		{
+		  if (plcsql_local_block_state == LBS_SEEN_ROUTINE_MARK)
+		    {
+		      // consider only semicolons located outside the parameter list.
+		      if (plcsql_routine_param_paren_balance == 0)
+			{
+			  // ';' before 'is' or 'as'
+			  // do not increase nest level: it has no body
+			  plcsql_local_block_state = LBS_NORMAL;
+			}
+		    }
+		  continue;
+		}
+	      else if (match_word_ci ("is", &p) || match_word_ci ("as", &p))
+		{
+		  if (plcsql_local_block_state == LBS_SEEN_ROUTINE_MARK)
+		    {
+		      // consider only IS and AS located outside the parameter list.
+		      if (plcsql_routine_param_paren_balance == 0)
+			{
+			  // 'is' or 'as' before ';'
+			  plcsql_nest_level++;	// nest level up
+			  plcsql_local_block_state = LBS_NORMAL;
+			}
 		    }
 		  continue;
 		}
@@ -1267,7 +1328,7 @@ csql_walk_statement (const char *str)
 		  // case can start an expression and can appear in a balance 0 area
 		  if (plcsql_begin_end_balance == 0)
 		    {
-		      plcsql_nest_level++;
+		      plcsql_nest_level++;	// nest level up
 		    }
 		  plcsql_begin_end_balance++;
 		  continue;
@@ -1293,7 +1354,7 @@ csql_walk_statement (const char *str)
 	      plcsql_begin_end_balance--;
 	      if (plcsql_begin_end_balance < 0)
 		{
-		  // syntax error
+		  // package spec/body create statements can have the last 'end' without matching 'begin'
 		  plcsql_begin_end_balance = 0;
 		}
 	      if (plcsql_begin_end_balance == 0)
@@ -1404,6 +1465,7 @@ csql_walk_statement (const char *str)
 		  substate = CSQL_SUBSTATE_INITIAL;
 		  plcsql_begin_end_balance = 0;
 		  plcsql_nest_level = 0;
+		  plcsql_local_block_state = LBS_NORMAL;
 		}
 	      break;
 	    case ' ':
@@ -1520,6 +1582,8 @@ csql_walk_statement (const char *str)
   csql_Edit_contents.substate = substate;
   csql_Edit_contents.plcsql_begin_end_balance = plcsql_begin_end_balance;
   csql_Edit_contents.plcsql_nest_level = plcsql_nest_level;
+  csql_Edit_contents.plcsql_local_block_state = plcsql_local_block_state;
+  csql_Edit_contents.plcsql_routine_param_paren_balance = plcsql_routine_param_paren_balance;
 
   return found_noncomment;
 }
@@ -1573,6 +1637,8 @@ csql_edit_contents_clear ()
   csql_Edit_contents.substate = CSQL_SUBSTATE_INITIAL;
   csql_Edit_contents.plcsql_begin_end_balance = 0;
   csql_Edit_contents.plcsql_nest_level = 0;
+  csql_Edit_contents.plcsql_local_block_state = LBS_NORMAL;
+  csql_Edit_contents.plcsql_routine_param_paren_balance = 0;
 }
 
 void

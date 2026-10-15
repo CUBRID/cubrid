@@ -751,7 +751,7 @@ namespace cubmethod
     int save;
     DB_VALUE val;
 
-    found = jsp_find_stored_procedure (uniq_name, DB_AUTH_NONE);
+    found = jsp_find_stored_procedure (uniq_name);
     if (found)
       {
 	AU_SAVE_AND_DISABLE (save);
@@ -1390,60 +1390,22 @@ exit:
     DB_VALUE key;
     MOP code_mop = NULL;
 
-    if (!is_pkg)
+    // _db_stored_procedure_code or _db_package_code, keyed by the generated class name
+    db_make_string (&key, class_name.c_str ());
+    code_mop = db_find_unique (db_find_class (is_pkg ? CT_PACKAGE_CODE_NAME : CT_STORED_PROC_CODE_NAME),
+			       is_pkg ? PKG_CODE_ATTR_NAME : SP_CODE_ATTR_NAME, &key);
+    pr_clear_value (&key);
+    if (code_mop != NULL)
       {
-	// stored procedure / function: _db_stored_procedure_code keyed by name (= class name)
-	db_make_string (&key, class_name.c_str ());
-	code_mop = db_find_unique (db_find_class (CT_STORED_PROC_CODE_NAME), SP_CODE_ATTR_NAME, &key);
-	pr_clear_value (&key);
-	if (code_mop != NULL)
+	DB_VALUE v;
+	if (db_get (code_mop, is_pkg ? PKG_CODE_ATTR_COMPILE_ID : SP_CODE_ATTR_COMPILE_ID, &v) == NO_ERROR)
 	  {
-	    DB_VALUE v;
-	    if (db_get (code_mop, SP_CODE_ATTR_COMPILE_ID, &v) == NO_ERROR)
+	    const char *s = db_get_string (&v);
+	    if (s != NULL)
 	      {
-		const char *s = db_get_string (&v);
-		if (s != NULL)
-		  {
-		    compile_id.assign (s);
-		  }
-		pr_clear_value (&v);
+		compile_id.assign (s);
 	      }
-	  }
-      }
-    else
-      {
-	// package: _db_package (target_class -> unique_name, compile_id), _db_package_code (ocode)
-	db_make_string (&key, class_name.c_str ());
-	MOP pkg_mop = db_find_unique (db_find_class (CT_PACKAGE_NAME), PKG_ATTR_TARGET_CLASS, &key);
-	pr_clear_value (&key);
-	if (pkg_mop != NULL)
-	  {
-	    std::string unique_name;
-	    DB_VALUE v;
-	    if (db_get (pkg_mop, PKG_ATTR_UNIQUE_NAME, &v) == NO_ERROR)
-	      {
-		const char *s = db_get_string (&v);
-		if (s != NULL)
-		  {
-		    unique_name.assign (s);
-		  }
-		pr_clear_value (&v);
-	      }
-	    if (db_get (pkg_mop, PKG_ATTR_COMPILE_ID, &v) == NO_ERROR)
-	      {
-		const char *s = db_get_string (&v);
-		if (s != NULL)
-		  {
-		    compile_id.assign (s);
-		  }
-		pr_clear_value (&v);
-	      }
-	    if (!unique_name.empty ())
-	      {
-		db_make_string (&key, unique_name.c_str ());
-		code_mop = db_find_unique (db_find_class (CT_PACKAGE_CODE_NAME), PKG_CODE_ATTR_PKG_UNIQUE_NAME, &key);
-		pr_clear_value (&key);
-	      }
+	    pr_clear_value (&v);
 	  }
       }
 
@@ -1493,7 +1455,6 @@ exit:
   callback_handler::change_exec_rights (packing_unpacker &unpacker)
   {
     // Push/pop the execution rights around a direct call of an external PL/CSQL routine, so that the
-    // callee's body runs with its own owner's rights rather than the caller's. This does the same
     // callee's body runs with its own owner's rights rather than the caller's. The outcome is
     // reported back: neither the server nor the PL server may proceed if the switch did not happen.
     int command;
@@ -1578,7 +1539,7 @@ exit:
 
     AU_SAVE_AND_DISABLE (save);
 
-    MOP routine_mop = jsp_find_stored_procedure (unique_name.c_str (), DB_AUTH_NONE);
+    MOP routine_mop = jsp_find_stored_procedure (unique_name.c_str ());
     if (routine_mop == NULL)
       {
 	// dropped between the caller's compilation and this execution

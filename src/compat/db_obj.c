@@ -1941,7 +1941,7 @@ db_find_procedure (const char *name)
   CHECK_CONNECT_NULL ();
   CHECK_1ARG_NULL (name);
 
-  retval = jsp_find_stored_procedure (name, DB_AUTH_NONE);
+  retval = jsp_find_stored_procedure (name);
 
   return retval;
 }

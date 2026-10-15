@@ -1503,6 +1503,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         if (topLevelStmt == CREATE_PKG_SPEC) {
+            // CREATE PACKAGE statement does not have a nested scopes under the package items by its
+            // syntax
+            assert symbolStack.getCurrentScope().level == symbolStack.LEVEL_MAIN + 1;
+
             // do not close the declaration block: declarations in pacakge body can follow
         } else {
             symbolStack.getCurrentScope().setDeclDone();

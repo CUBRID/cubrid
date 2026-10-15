@@ -283,6 +283,7 @@ namespace cubpl
   executor::execute (DB_VALUE &value)
   {
     int error = NO_ERROR;
+    bool rights_pushed = false;
 
     if (m_stack == NULL)
       {
@@ -307,6 +308,7 @@ namespace cubpl
       {
 	goto exit;
       }
+    rights_pushed = true;
 
     error = request_invoke_command ();
     if (error != NO_ERROR)
@@ -326,8 +328,21 @@ exit:
 	m_stack->reset_query_handlers ();
       }
 
-    // restore execution rights
-    if (change_exec_rights (NULL) != NO_ERROR)
+    // undo the switches for direct calls that the PL server pushed but did not get to pop,
+    // e.g. because it died in the middle of the callee. Otherwise the connection would stay with the callee
+    // owner's rights after this routine returns.
+    while (m_exec_rights_depth > 0)
+      {
+	if (change_exec_rights (NULL) != NO_ERROR)
+	  {
+	    error = er_errid ();
+	  }
+	m_exec_rights_depth--;
+      }
+
+    // restore execution rights. Not when the switch above failed: there is nothing of ours to pop, and a pop
+    // would take off a user pushed by an outer caller instead.
+    if (rights_pushed && change_exec_rights (NULL) != NO_ERROR)
       {
 	error = er_errid ();
       }
@@ -356,10 +371,14 @@ exit:
       {
 	// the CAS refused the switch, e.g. the owner no longer exists. Running the routine with
 	// whatever rights happen to be in effect is not an option.
+	// The CAS error's own arguments are not sent over (the CAS logs it), so cas_error cannot be raised
+	// here as it is. Report it wrapped in ER_METHOD_CALLBACK instead.
 	error = cas_error;
 	if (er_errid () == NO_ERROR)
 	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_METHOD_CALLBACK, 2, cas_error,
+		    (command == EXEC_RIGHTS_PUSH) ? "failed to switch the execution rights" :
+		    "failed to restore the execution rights");
 	  }
       }
 
@@ -1148,23 +1167,19 @@ exit:
 
     auto relay_result = [&] (const cubmem::block & b)
     {
+      // count the switch as soon as the CAS reports it done, even if relaying the reply to the PL server fails
+      packing_unpacker result_unpacker (b.ptr, (size_t) b.dim);
+      int cas_error;
+      result_unpacker.unpack_int (cas_error);
+      if (cas_error == NO_ERROR)
+	{
+	  m_exec_rights_depth += (command == EXEC_RIGHTS_PUSH) ? 1 : -1;
+	}
+
       return m_stack->send_data_to_java (b);
     };
 
-    int error = m_stack->send_data_to_client_recv (relay_result, code, command, owner_name);
-    if (error == NO_ERROR)
-      {
-	if (command == EXEC_RIGHTS_PUSH)
-	  {
-	    m_exec_rights_depth++;
-	  }
-	else
-	  {
-	    m_exec_rights_depth--;
-	  }
-      }
-
-    return error;
+    return m_stack->send_data_to_client_recv (relay_result, code, command, owner_name);
   }
 
   int

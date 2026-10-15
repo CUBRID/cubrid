@@ -1179,6 +1179,7 @@ static const char *AU_OBJECT_CLASS_NAME[] =
   CT_SYNONYM_NAME,
   CT_STORED_PROC_NAME,
   CT_PACKAGE_NAME,
+  CT_PACKAGE_CODE_NAME,		/* a package body created before its spec has only this */
   NULL
 };
 
