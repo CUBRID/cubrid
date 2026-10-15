@@ -1484,7 +1484,7 @@ $ LOADDB
 
 1379 CDC: 클라이언트에 전달한 추출 위치 (%1$lld|%2$d) 때문에 archive log 볼륨 %3$d 를 보존합니다.
 
-1380 PARALLEL_ENABLE로 선언된 저장 프로시저/함수는 서버측 연결로 SQL을 실행하거나 DBMS_OUTPUT을 사용할 수 없습니다.
+1380 PARALLEL_ENABLE로 선언되었거나 병렬 질의 워커에서 실행 중인 저장 프로시저/함수는 서버측 연결로 SQL을 실행하거나 DBMS_OUTPUT을 사용할 수 없습니다.
 
 1381 시스템 메타데이터가 현재 CUBRID 버전과 호환되지 않습니다. 'cubrid upgradedb'를 실행하세요.
 1382 시스템 메타데이터 버전이 현재 CUBRID 버전이 지원하는 것보다 최신입니다. 다운그레이드는 지원되지 않습니다.
@@ -1661,7 +1661,6 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 ALTER SYNONYM에 대해 지정된 옵션이 없습니다.
 136 Server의 DBNAME 최대 길이는 %1$d 바이트입니다.
 137 Server의 USER 최대 길이는 %1$d 바이트입니다.
-138 Invalid level. 유효값은 %1$d부터 %2$d까지 입니다.
 139 저장 프로시저/함수의 인수 타입과 결과 타입에는 정밀도를 지정할 수 없습니다.
 140 FILL_FACTOR 인자 값은 %1$d에서 %2$d까지 허용됩니다.
 
