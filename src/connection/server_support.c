@@ -2059,18 +2059,6 @@ css_get_current_conn_entry (void)
 
 // *INDENT-OFF*
 /*
- * css_get_core_hash() - get the core hash that this connection's tasks
- *                       are pushed with
- *   return: core hash
- *   conn_ref(in):
- */
-static std::size_t
-css_get_core_hash (const CSS_CONN_ENTRY &conn_ref)
-{
-  return static_cast<std::size_t> (conn_ref.idx);
-}
-
-/*
  * css_push_server_task () - push a task on server request worker pool
  *
  * return          : void
@@ -2099,6 +2087,18 @@ void
 css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
 {
   thread_get_manager ()->push_task (css_Server_request_worker_pool, new css_server_external_task (conn, task));
+}
+
+/*
+ * css_get_core_hash() - get the core hash that this connection's tasks
+ *                       are pushed with
+ *   return: core hash
+ *   conn_ref(in):
+ */
+static std::size_t
+css_get_core_hash (const CSS_CONN_ENTRY &conn_ref)
+{
+  return static_cast<std::size_t> (conn_ref.idx);
 }
 
 /*
