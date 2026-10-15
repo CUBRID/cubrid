@@ -20894,7 +20894,7 @@ db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGIN
 	    }
 
 	  ms_ptr = expr_s;
-	  values[base + cnt] = std::min<DB_BIGINT> (strtoll (expr_s, &endptr, 10), INTERVAL_AMOUNT_MAX);
+	  values[base + cnt] = std::min ((DB_BIGINT) strtoll (expr_s, &endptr, 10), INTERVAL_AMOUNT_MAX);
 	  cnt++;
 	  expr_s = endptr;
 	}
