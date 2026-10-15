@@ -10128,8 +10128,12 @@ btree_capacity_parallel_worker (cubthread::entry & thread_ref, BTREE_CAPACITY_WO
       perfmon_initialize_parallel_stats (&thread_ref);
       if (thread_ref.m_uses_px_stats == false)
 	{
-	  /* clear the OOM it left behind so the page loop does not mistake it for its own error.
-	   * Isolation is lost: the workers then race on the shared counter, as they would with none. */
+	  /* record it before clearing: the OOM has to go, or the page loop would mistake it for its
+	   * own error, but the lost isolation should not pass unnoticed. Isolation is lost here: the
+	   * workers then race on the shared counter, as they would with none. */
+	  er_log_debug (ARG_FILE_LINE,
+			"btree_capacity_parallel_worker: perfmon isolation lost to OOM; "
+			"workers share pstat_Global.tran_stats\n");
 	  er_clear ();
 	}
     }
