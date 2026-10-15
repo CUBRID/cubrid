@@ -825,6 +825,25 @@ namespace cubmethod
     return intl_identifier_lower_string_size (name.c_str ()) < DB_MAX_IDENTIFIER_LENGTH;
   }
 
+  /*
+   * user_specified_name_fits () - can this name be given to sm_user_specified_name ()?
+   *   return: true if it fits
+   *   name(in): <name> or <owner>.<name>
+   *
+   * Note: Beside the whole, sm_user_specified_name () only asserts that the owner and the name of
+   *       <owner>.<name> fit their parts of an identifier, so they are checked here as well
+   *       (see jsp_user_specified_name () in jsp_cl.cpp). A user or an object with a name that long
+   *       cannot exist, so a name refused here would not be found anyway.
+   */
+  static bool
+  user_specified_name_fits (const std::string &name)
+  {
+    size_t dot;
+    return identifier_fits (name)
+	   && ((dot = name.find ('.')) == std::string::npos
+	       || (dot < SM_MAX_USER_LENGTH && name.size () - dot - 1 < SM_MAX_IDENTIFIER_LENGTH - SM_MAX_USER_LENGTH));
+  }
+
   // reported for a name identifier_fits () refused. The PL server turns it into a compile error
   // carrying the line and column of the name (see ParseTreeConverter.askServerSemanticQuestions).
   static const char *TOO_LONG_NAME_MSG = "Qualified name is too long. it must be shorter than 255 bytes.";
@@ -1108,7 +1127,7 @@ exit:
     MOP serial_class_mop, serial_mop;
     DB_IDENTIFIER serial_obj_id;
 
-    if (!identifier_fits (question.name))
+    if (!user_specified_name_fits (question.name))
       {
 	res.err_id = ER_FAILED;
 	res.err_msg = TOO_LONG_NAME_MSG;
@@ -1169,7 +1188,7 @@ exit:
     split_str (name, start_pos, id);
 
     std::string class_name_with_owner = owner_name + class_name;
-    if (!identifier_fits (class_name_with_owner))
+    if (!user_specified_name_fits (class_name_with_owner))
       {
 	return ER_FAILED;
       }
