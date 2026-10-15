@@ -169,7 +169,8 @@ metadata_of_active_log_header (void)
     {"Next_mvcc_id", "bigint"},
     {"Mvcc_op_log_lsa", "varchar(32)"},
     {"Last_block_oldest_mvcc_id", "bigint"},
-    {"Last_block_newest_mvcc_id", "bigint"}
+    {"Last_block_newest_mvcc_id", "bigint"},
+    {"System_metadata_version", "int"}
   };
 
   static const SHOWSTMT_NAMED_ARG args[] = {
@@ -436,10 +437,8 @@ metadata_of_index_capacity (SHOW_ONLY_ALL flag)
     {"Btid", "varchar(64)"},
     {"Num_distinct_key", "int"},
     {"Total_value", "bigint"},
-    {"Deduplicate_distinct_key", "int"},	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
     {"Num_fence_key", "int"},
     {"Avg_num_value_per_key", "int"},
-    {"Avg_num_value_per_deduplicate_key", "int"},	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
     {"Num_leaf_page", "int"},
     {"Num_non_leaf_page", "int"},
     {"Num_ovf_page", "int"},

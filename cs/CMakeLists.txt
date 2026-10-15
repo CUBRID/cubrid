@@ -262,6 +262,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/arithmetic.c
   ${QUERY_DIR}/crypt_opfunc.c
   ${QUERY_DIR}/cursor.c
+  ${QUERY_DIR}/qfile_tuple_layout.c
   ${QUERY_DIR}/execute_schema.c
   ${QUERY_DIR}/execute_statement.c
   ${QUERY_DIR}/numeric_opfunc.c
@@ -292,13 +293,13 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate_migration.cpp
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
-  ${OBJECT_DIR}/deduplicate_key.c
   ${OBJECT_DIR}/elo.c
   ${OBJECT_DIR}/identifier_store.cpp
   ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_accessor.c
   ${OBJECT_DIR}/object_description.cpp
   ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_domain_convert.cpp
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/object_print.c
   ${OBJECT_DIR}/object_printer.cpp

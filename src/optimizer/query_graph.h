@@ -859,6 +859,31 @@ typedef enum
 				 * limit */
 } QO_SORT_LIMIT_USE;
 
+struct qo_fk_join_info
+{
+  /*
+   * One composite FK constraint whose join selectivity should be floored to
+   * 1 / (pk_node's cardinality) instead of the product of its column
+   * selectivities. There is one entry per FK constraint, not per node pair,
+   * since the same two nodes can be linked by more than one FK constraint.
+   */
+
+  /* the two nodes this constraint joins */
+  QO_NODE *fk_node;
+  QO_NODE *pk_node;
+
+  /* precomputed 1 / QO_NODE_NCARD(pk_node) */
+  double floor_selectivity;
+
+  /* this constraint's own fk_node-side segment and equivalence class, per column */
+  QO_SEGMENT **fk_col_segs;
+  QO_EQCLASS **col_eqclasses;
+
+  /* number of entries in fk_col_segs and col_eqclasses */
+  int n_cols;
+};
+typedef struct qo_fk_join_info QO_FK_JOIN_INFO;
+
 struct qo_env
 {
   /*
@@ -982,6 +1007,10 @@ struct qo_env
   /* histogram provenance scratch for the term whose selectivity is being computed */
   bool sel_hist_used;
   bool sel_hist_fallback;
+
+  /* composite FK constraints eligible for the join selectivity floor; see qo_fk_join_info */
+  QO_FK_JOIN_INFO *fk_join_info;
+  int n_fk_join_info;
 };
 
 #define QO_ENV_SEG(env, n)		(&(env)->segs[(n)])

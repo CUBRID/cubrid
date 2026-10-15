@@ -1319,6 +1319,7 @@ typedef enum
   PT_RENAME_INDEX,
 #endif
   PT_REBUILD_INDEX,
+  PT_COMPACT_INDEX,
   PT_ADD_INDEX_CLAUSE,
   PT_CHANGE_TABLE_COMMENT,
   PT_CHANGE_COLUMN_COMMENT,
@@ -2048,7 +2049,7 @@ struct pt_index_info
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
-  short deduplicate_level;	/* -1: Not set yet, 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
+  int fill_factor;		/* ALTER INDEX ... COMPACT [WITH FILL_FACTOR = n]: target overflow page fill ratio (%) */
 };
 
 /* CREATE USER INFO */
@@ -3269,7 +3270,6 @@ struct pt_foreign_key_info
   PT_MISC_TYPE match_type;	/* full or partial */
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;
-  short deduplicate_level;	/* 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
 };
 
 /* Info for the CONSTRAINT node */

@@ -126,7 +126,9 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
     }
   else
     {
-      error_status = crypt_sha_two (NULL, pass, strlen (pass), 512, &result_strp, &result_len);
+      /* pass is a plaintext password: no context reuse, so that the digest context is
+       * cleansed as soon as the hash is done. */
+      error_status = crypt_sha_two (NULL, pass, strlen (pass), 512, &result_strp, &result_len, false);
       if (error_status == NO_ERROR)
 	{
 	  assert (result_strp != NULL);
