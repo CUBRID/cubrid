@@ -8951,7 +8951,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
     {
       double selectivity, cardinality, total_rows, head_hit_prob, tail_hit_prob;
       double fk_floor_product;
-      double ndv_sel, eq_join_sel, on_sel, during_sel, filter_sel;	/* semi/anti only */
+      double key_factor, key_sel, on_sel, during_sel, filter_sel;	/* semi/anti only */
       BITSET eqclasses;
       BITSET fk_excluded_terms;
       BITSET fk_col_terms;
@@ -8967,8 +8967,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
       head_hit_prob = 1.0;
       tail_hit_prob = 1.0;
 
-      ndv_sel = 1.0;
-      eq_join_sel = 1.0;
+      key_factor = 1.0;
+      key_sel = 1.0;
       on_sel = 1.0;
       during_sel = 1.0;
       filter_sel = 1.0;
@@ -9155,8 +9155,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			    }
 			  else if (has_ndv && QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
 			    {
-			      /* semi/anti equi-join term with known NDVs,
-			       * decided by whether the outer key is among the inner keys;
+			      /* semi/anti equi-join term with known NDVs;
 			       * an outer row whose key is NULL matches no inner row
 			       */
 			      double outer_null_freq = 0.0;
@@ -9178,8 +9177,25 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 				    }
 				}
 
-			      ndv_sel *= head_factor * (1.0 - outer_null_freq);
-			      eq_join_sel *= QO_TERM_SELECTIVITY (term);
+			      /* a NULL key, like the during-join terms, is decided once per outer row */
+			      during_sel *= 1.0 - outer_null_freq;
+
+			      /* the equi-join term with the smallest head_factor is the key,
+			       * decided by whether the outer key is among the inner keys,
+			       * and the other equi-join terms go to on_sel as independent of the key;
+			       * the match is underestimated when a term depends on the key,
+			       * since telling it apart needs multi-column statistics or an FK (left as a follow-up)
+			       */
+			      if (head_factor <= key_factor)
+				{
+				  on_sel *= key_sel;	/* the previous key, 1.0 if none */
+				  key_factor = head_factor;
+				  key_sel = QO_TERM_SELECTIVITY (term);
+				}
+			      else
+				{
+				  on_sel *= QO_TERM_SELECTIVITY (term);
+				}
 			    }
 			  else
 			    {
@@ -9221,27 +9237,49 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	      /* semi/anti returns at most one row per outer row,
 	       * so the estimate uses the probability that an outer row finds a matching inner row, as below
 	       *
-	       *   match_prob = during_sel * ndv_sel * MIN (1, on_sel * N)
+	       *   match_prob = during_sel * key_factor * MIN (1, k) * (1 - (1 - on_sel)^MAX (1, k))
 	       *   antijoin   = outer * (1 - match_prob) * filter_sel
 	       *   semijoin   = outer * match_prob * filter_sel
 	       *
-	       *   ndv_sel    = MIN (1, NDV (inner key) / NDV (outer key)) of the equi-join terms with known NDVs
-	       *   on_sel     = selectivity of one pair for the other ON-clause terms that read the inner,
-	       *                over the inner rows that share the outer key (eq_join_sel / ndv_sel)
-	       *   during_sel = selectivity of the during-join terms that do not read the inner
-	       *   filter_sel = selectivity of the WHERE-clause terms
-	       *   N          = inner rows (tail_info->cardinality)
+	       *   ----------+----------------------------------+------+------------------------------------------
+	       *   variable  |formula                           |unit  |meaning
+	       *   ----------+----------------------------------+------+------------------------------------------
+	       *   during_sel|product of selectivities          |outer |it passes the outer-only during-join terms
+	       *             |  * (1 - NULL ratio) per equi-join|      |and no equi-join key of it is NULL
+	       *   key_factor|MIN (1, NDV (inner) / NDV (outer))|outer |its key value is among the inner keys
+	       *   key_sel   |1 / MAX (NDV (inner), NDV (outer))|pair  |the pair matches on the key
+	       *   k         |N * key_sel / key_factor          |outer |inner rows that share its key
+	       *   on_sel    |product of selectivities          |pair  |the pair passes the other ON-clause terms
+	       *   filter_sel|product of selectivities          |result|it passes the WHERE-clause terms
+	       *   N         |tail_info->cardinality            |-     |inner rows
+	       *   ----------+----------------------------------+------+------------------------------------------
+	       *
+	       *   key_factor is head_factor from qo_get_term_hit_prob (),
+	       *   and key_sel is the selectivity from qo_equal_selectivity (),
+	       *   which the formula in the table approximates.
+	       *
+	       *   k counts the inner rows that an outer row with a match tries on the key:
+	       *   N * key_sel averages them over all outer rows, those with no match as 0,
+	       *   and dividing N * key_sel by key_factor leaves the average over the outer rows with a match.
+	       *   A k below 1 means only that share of those outer rows has an inner row; without a key, k is N.
+	       *
+	       *   by the NDVs of the key, k is N / NDV (inner key) either way:
+	       *   --------------+---------------+-------------------------+---------------
+	       *   NDV           |key_sel        |key_factor               |k
+	       *   --------------+---------------+-------------------------+---------------
+	       *   inner <= outer|1 / NDV (outer)|NDV (inner) / NDV (outer)|N / NDV (inner)
+	       *   inner >  outer|1 / NDV (inner)|1                        |N / NDV (inner)
+	       *   --------------+---------------+-------------------------+---------------
 	       */
 
-	      double match_prob;
+	      double match_prob, k;
 
-	      if (ndv_sel > 0.0)
-		{
-		  /* the other ON-clause terms are tried only on the inner rows that share the outer key */
-		  on_sel *= eq_join_sel / ndv_sel;
-		}
+	      k = (key_factor > 0.0) ? tail_info->cardinality * key_sel / key_factor : tail_info->cardinality;
 
-	      match_prob = during_sel * ndv_sel * MIN (1.0, on_sel * tail_info->cardinality);
+	      /* an outer row matches when any of its k inner rows passes the other ON-clause terms;
+	       * MAX (1, k) keeps a k below 1, already counted by MIN (1, k), from counting again
+	       */
+	      match_prob = during_sel * key_factor * MIN (1.0, k) * (1.0 - pow (1.0 - on_sel, MAX (1.0, k)));
 
 	      if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_ANTI)
 		{
