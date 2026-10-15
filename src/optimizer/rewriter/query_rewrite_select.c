@@ -3997,10 +3997,11 @@ qo_hq_is_spec_column (PT_NODE * node, PT_NODE * spec, const char *attr_name)
 }
 
 /*
- * qo_hq_eq_term_binds () - checks whether one PT_EQ conjunct of a CONNECT BY
- *   predicate fixes the column for every parent row: the column alone on one
- *   side, no scan column on the other (a constant, a host variable or a PRIOR
- *   expression), so the single-table plan can use it as an index key
+ * qo_hq_eq_term_binds () - checks whether one PT_EQ (or PT_IS_IN) term of a
+ *   CONNECT BY predicate fixes the column for every parent row: the column
+ *   alone on one side (the left side of IN), no scan column on the other (a
+ *   constant, a host variable or a PRIOR expression), so the single-table plan
+ *   can use it as an index key
  */
 static bool
 qo_hq_eq_term_binds (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * spec, const char *attr_name)
@@ -4014,7 +4015,7 @@ qo_hq_eq_term_binds (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * spec, co
     {
       other = term->info.expr.arg2;
     }
-  else if (qo_hq_is_spec_column (term->info.expr.arg2, spec, attr_name))
+  else if (PT_IS_EXPR_NODE_WITH_OPERATOR (term, PT_EQ) && qo_hq_is_spec_column (term->info.expr.arg2, spec, attr_name))
     {
       other = term->info.expr.arg1;
     }
@@ -4037,8 +4038,42 @@ qo_hq_eq_term_binds (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * spec, co
 }
 
 /*
- * qo_hq_column_is_bound () - checks whether an equality conjunct of the
- *   CONNECT BY predicate fixes the column (see qo_hq_eq_term_binds)
+ * qo_hq_or_term_binds () - checks whether a conjunct of a CONNECT BY predicate
+ *   fixes the column to one of a few values: an IN list or a disjunction whose
+ *   every disjunct fixes the column (see qo_hq_eq_term_binds)
+ *   return: whether the column is fixed
+ */
+static bool
+qo_hq_or_term_binds (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * spec, const char *attr_name)
+{
+  for (; term != NULL; term = term->or_next)
+    {
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (term, PT_OR))
+	{
+	  if (!qo_hq_or_term_binds (parser, term->info.expr.arg1, spec, attr_name)
+	      || !qo_hq_or_term_binds (parser, term->info.expr.arg2, spec, attr_name))
+	    {
+	      return false;
+	    }
+	  continue;
+	}
+
+      if (!PT_IS_EXPR_NODE_WITH_OPERATOR (term, PT_EQ) && !PT_IS_EXPR_NODE_WITH_OPERATOR (term, PT_IS_IN))
+	{
+	  return false;
+	}
+      if (!qo_hq_eq_term_binds (parser, term, spec, attr_name))
+	{
+	  return false;
+	}
+    }
+
+  return true;
+}
+
+/*
+ * qo_hq_column_is_bound () - checks whether a conjunct of the CONNECT BY
+ *   predicate fixes the column (see qo_hq_eq_term_binds, qo_hq_or_term_binds)
  *   return: whether the column is fixed
  *   is_link(out): set when a conjunct fixing it is a hashable PRIOR equality
  *                 whose build side is the column
@@ -4072,6 +4107,11 @@ qo_hq_column_is_bound (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE * spec, 
 	    {
 	      *is_link = true;
 	    }
+	}
+      else if (qo_hq_or_term_binds (parser, pred, spec, attr_name))
+	{
+	  /* the key range takes one value per disjunct, but only a single equality can be the PRIOR link */
+	  bound = true;
 	}
     }
 
@@ -4208,11 +4248,12 @@ qo_hq_has_hashed_apart_eq_term (PT_NODE * pred)
  *   return: true to use the generic (materialize + hash list scan) path
  * Note: the single-table plan is kept only when the leading columns of an
  *       index are all fixed by equalities of the CONNECT BY predicate (to a
- *       constant, a host variable or a PRIOR expression) and one of them is
- *       the bare build-side column of a hashable equality, since only such an
- *       index finds the children of a parent by a key range: (pid) or
- *       (grp, pid) for PRIOR id = pid AND grp = 7. An expression over the
- *       column (PRIOR id = pid + 0) cannot use any index.
+ *       constant, a host variable or a PRIOR expression, or to one of several
+ *       such values by IN or OR) and one of them is the bare build-side column
+ *       of a hashable equality, since only such an index finds the children of
+ *       a parent by a key range: (pid) or (grp, pid) for PRIOR id = pid AND
+ *       grp = 7 or grp IN (7, 8). An expression over the column
+ *       (PRIOR id = pid + 0) cannot use any index.
  */
 static bool
 qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
