@@ -45,6 +45,7 @@
 #include <cstdint>
 
 #include "log_manager.h"
+#include "schema_system_catalog_constants.h"
 
 #include "btree.h"
 #include "elo.h"
@@ -14857,6 +14858,11 @@ end:
  *
  * db_user has a unique index on "name", so this is a key lookup, not a scan.
  */
+/* the unique index the catalog makes on the user class's name attribute: "u_"
+ * + class name + "_" + attribute name, so it follows CT_USER_NAME (db_user on
+ * release/11.4, _db_user on develop) */
+#define CDC_USER_NAME_INDEX ("u_" CT_USER_NAME "_name")
+
 static bool
 cdc_find_user_oid (THREAD_ENTRY * thread_p, const char *user_name, OID * user_oid)
 {
@@ -14875,7 +14881,7 @@ cdc_find_user_oid (THREAD_ENTRY * thread_p, const char *user_name, OID * user_oi
   /* account names are stored upper-cased */
   intl_identifier_upper (user_name, upper_name);
 
-  if (heap_get_index_with_name (thread_p, oid_User_class_oid, "u_db_user_name", &btid) != NO_ERROR
+  if (heap_get_index_with_name (thread_p, oid_User_class_oid, CDC_USER_NAME_INDEX, &btid) != NO_ERROR
       || BTID_IS_NULL (&btid))
     {
       return false;
