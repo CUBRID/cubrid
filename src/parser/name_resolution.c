@@ -5555,6 +5555,86 @@ set_parser_error:
   return err;
 }
 
+/*
+ * pt_dblink_remote_column_types () - Ask the remote for the types of the columns a query selects. The query is
+ *   prepared there, not run. A remote DML target is not name-resolved, so this is how its column types are
+ *   learned.
+ *   return: NO_ERROR, or ER_DBLINK with the parser error set
+ *   server(in): the target's PT_DBLINK_TABLE_DML, its connection info resolved
+ *   sql(in): the query
+ *   num_cols(in): the number of columns it selects
+ *   types(out): the type of each column
+ */
+int
+pt_dblink_remote_column_types (PARSER_CONTEXT * parser, PT_NODE * server, const char *sql, int num_cols,
+			       PT_TYPE_ENUM * types)
+{
+  int req = -1, conn = -1, col_cnt, err = ER_DBLINK, i;
+  T_CCI_ERROR cci_error;
+  T_CCI_COL_INFO *col_info;
+  T_CCI_CUBRID_STMT stmt_type;
+  PT_DBLINK_INFO *dblink_table = &server->info.dblink_table;
+  char conn_url[MAX_LEN_CONNECTION_URL] = { 0, };
+  char *url = (char *) dblink_table->url->info.value.data_value.str->bytes;
+  char *user = (char *) dblink_table->user->info.value.data_value.str->bytes;
+  char *passwd = (char *) dblink_table->pwd->info.value.data_value.str->bytes;
+  const char *server_name = (dblink_table->conn) ? dblink_table->conn->info.name.original : url;
+
+  /* the same connection as pt_dblink_table_get_column_defs () opens */
+  snprintf (conn_url, MAX_LEN_CONNECTION_URL, "%s%s", url, (strstr (url, ":?") != NULL) ? "&__gateway=true"
+	    : "?__gateway=true");
+
+  conn = cci_connect_with_url_ex (conn_url, user, passwd, &cci_error);
+  if (conn < 0)
+    {
+      goto end;
+    }
+
+  req = cci_prepare (conn, (char *) sql, 0, &cci_error);
+  if (req < 0)
+    {
+      goto end;
+    }
+
+  col_info = (T_CCI_COL_INFO *) cci_get_result_info (req, &stmt_type, &col_cnt);
+  if (col_info == NULL || col_cnt != num_cols)
+    {
+      snprintf (cci_error.err_msg, sizeof (cci_error.err_msg), "the remote returned %d columns, not %d",
+		(col_info == NULL) ? 0 : col_cnt, num_cols);
+      goto end;
+    }
+
+  for (i = 0; i < col_cnt; i++)
+    {
+      types[i] = pt_type[pt_dblink_get_basic_utype (col_info[i].ext_type)];
+    }
+
+  err = NO_ERROR;
+
+end:
+  if (err != NO_ERROR)
+    {
+      if (cci_error.err_msg[0] == '\0')
+	{
+	  sprintf (cci_error.err_msg, "unknown error: there's no error message from remote server");
+	}
+      PT_ERRORf3 (parser, server, "Failed to get column information for query [%s] on remote [%s]\n%s", sql,
+		  server_name, cci_error.err_msg);
+    }
+
+  if (req >= 0)
+    {
+      cci_close_req_handle (req);
+    }
+
+  if (conn >= 0)
+    {
+      cci_disconnect (conn, &cci_error);
+    }
+
+  return err;
+}
+
 static PT_NODE *
 pt_dblink_table_gather_attribs (PARSER_CONTEXT * parser, PT_NODE * dblink_column, void *args, int *continue_walk)
 {

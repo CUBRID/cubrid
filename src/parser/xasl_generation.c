@@ -28073,6 +28073,169 @@ pt_dblink_merge_bind_cast (PARSER_CONTEXT * parser, PT_NODE * col, char **cast, 
   return NO_ERROR;
 }
 
+/* The ON keys of a remote MERGE, their target and source columns in key order */
+typedef struct pt_dblink_merge_key_cols PT_DBLINK_MERGE_KEY_COLS;
+struct pt_dblink_merge_key_cols
+{
+  PT_NODE **target_cols;
+  PT_NODE **source_cols;
+  int max;
+  int count;
+};
+
+/* pt_dblink_merge_walk_keys callback: keep the key's two columns */
+static void
+pt_dblink_merge_collect_key (PARSER_CONTEXT * parser, PT_NODE * target_col, PT_NODE * source_col, void *arg)
+{
+  PT_DBLINK_MERGE_KEY_COLS *keys = (PT_DBLINK_MERGE_KEY_COLS *) arg;
+
+  if (keys->count < keys->max)
+    {
+      keys->target_cols[keys->count] = target_col;
+      keys->source_cols[keys->count] = source_col;
+    }
+  keys->count++;
+}
+
+/* The kind of type a key column has. Two values of one kind compare the same way on both sides. */
+static PT_TYPE_ENUM
+pt_dblink_merge_key_kind (PT_TYPE_ENUM type)
+{
+  if (PT_IS_NUMERIC_TYPE (type))
+    {
+      return PT_TYPE_NUMERIC;
+    }
+  if (PT_IS_CHAR_STRING_TYPE (type))
+    {
+      return PT_TYPE_VARCHAR;
+    }
+  if (PT_IS_BIT_STRING_TYPE (type))
+    {
+      return PT_TYPE_VARBIT;
+    }
+  if (PT_IS_DATE_TIME_TYPE (type))
+    {
+      return PT_TYPE_DATETIME;
+    }
+  return type;
+}
+
+/*
+ * pt_dblink_merge_check_key_types () - Reject an ON key whose two sides are of different kinds of type.
+ *   The sink looks for duplicate keys in the source column's type. The remote matches them in the target
+ *   column's type. Within one kind the two agree. Across kinds they need not. '1' and '01' are two strings
+ *   but one INTEGER, so they could update one target row twice. The target is not name-resolved here, so
+ *   the remote is asked for the types of its key columns. The answer holds for the plan. A cached plan does
+ *   not ask again, as with a remote table a SELECT reads.
+ *   return: NO_ERROR, or an error code with the parser error set
+ *   statement(in): the PT_MERGE
+ *   src_query(in): the source SELECT, its columns in USING order
+ *   server(in): the target's PT_DBLINK_TABLE_DML
+ *   merge(in): the MERGE_PROC, its table, target alias and key positions filled in
+ */
+static int
+pt_dblink_merge_check_key_types (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * src_query, PT_NODE * server,
+				 const MERGE_PROC_NODE * merge)
+{
+  PT_DBLINK_MERGE_KEY_COLS keys;
+  PT_TYPE_ENUM *types;
+  PT_NODE *col;
+  PARSER_VARCHAR *sql = NULL;
+  unsigned int save_custom_print;
+  int num_keys = merge->remote_num_keys;
+  int i, j;
+  PT_TYPE_ENUM source_type;
+
+  keys.max = num_keys;
+  keys.count = 0;
+  keys.target_cols = (PT_NODE **) parser_alloc (parser, sizeof (PT_NODE *) * num_keys);
+  keys.source_cols = (PT_NODE **) parser_alloc (parser, sizeof (PT_NODE *) * num_keys);
+  types = (PT_TYPE_ENUM *) parser_alloc (parser, sizeof (PT_TYPE_ENUM) * num_keys);
+  if (keys.target_cols == NULL || keys.source_cols == NULL || types == NULL)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  pt_dblink_merge_walk_keys (parser, statement, pt_dblink_merge_collect_key, &keys);
+  if (keys.count != num_keys)
+    {
+      PT_INTERNAL_ERROR (parser, "remote MERGE: the ON keys do not match the bound key columns");
+      return ER_FAILED;
+    }
+
+  /* a query that selects the target's key columns, written as the clause text writes them */
+  save_custom_print = parser->custom_print;
+  parser->custom_print |=
+    PT_PRINT_SUPPRESS_SERVER_NAME | PT_PRINT_SUPPRESS_SERIAL_CONV | PT_PRINT_NO_HOST_VAR_INDEX |
+    PT_PRINT_SUPPRESS_FOR_DBLINK | PT_SUPPRESS_RESOLVED;
+  sql = pt_append_nulstring (parser, sql, "/* DBLINK SELECT */ SELECT ");
+  for (i = 0; i < num_keys; i++)
+    {
+      if (i > 0)
+	{
+	  sql = pt_append_nulstring (parser, sql, ", ");
+	}
+      sql = pt_append_varchar (parser, sql, pt_print_bytes (parser, keys.target_cols[i]));
+    }
+  parser->custom_print = save_custom_print;
+  sql = pt_append_nulstring (parser, sql, " FROM ");
+  sql = pt_append_nulstring (parser, sql, merge->sink.table_name);
+  sql = pt_append_nulstring (parser, sql, " ");
+  sql = pt_append_nulstring (parser, sql, merge->remote_target_alias);
+  if (sql == NULL)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+
+  if (pt_dblink_remote_column_types (parser, server, (const char *) pt_get_varchar_bytes (sql), num_keys, types)
+      != NO_ERROR)
+    {
+      return ER_DBLINK;
+    }
+
+  for (i = 0; i < num_keys; i++)
+    {
+      for (col = pt_get_select_list (parser, src_query), j = 0; col != NULL && j < merge->remote_key_pos[i];
+	   col = col->next, j++)
+	{
+	  ;
+	}
+      if (col == NULL)
+	{
+	  PT_INTERNAL_ERROR (parser, "remote MERGE: an ON key is not a column of the source query");
+	  return ER_FAILED;
+	}
+
+      /* a source column of NULLs has no key to match */
+      source_type = col->type_enum;
+      if (types[i] == PT_TYPE_NULL && source_type != PT_TYPE_NULL)
+	{
+	  /* a remote type DBLink does not map, NCHAR for one: its kind is unknown */
+	  PT_ERRORf2 (parser, statement,
+		      "dblink: remote MERGE with a local source does not support the type of the ON key's target "
+		      "column; %s = %s", pt_short_print (parser, keys.target_cols[i]),
+		      pt_short_print (parser, keys.source_cols[i]));
+	  return ER_FAILED;
+	}
+      if (source_type == PT_TYPE_NULL || pt_dblink_merge_key_kind (source_type) == pt_dblink_merge_key_kind (types[i]))
+	{
+	  continue;
+	}
+
+      PT_ERRORf4 (parser, statement,
+		  "dblink: remote MERGE with a local source needs each ON key to compare numbers with numbers, strings "
+		  "with strings, bit strings with bit strings or dates and times with dates and times; %s = %s compares "
+		  "%s with %s", pt_short_print (parser, keys.target_cols[i]),
+		  pt_short_print (parser, keys.source_cols[i]), pt_show_type_enum (types[i]),
+		  pt_show_type_enum (source_type));
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * pt_to_merge_xasl_remote_source () - Remote MERGE with a local source: build the MERGE_PROC the sink runs.
  *   The aptr is the source SELECT semantic check built. Its columns are the bound source columns. The
@@ -28191,6 +28354,11 @@ pt_to_merge_xasl_remote_source (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (merge->remote_target_alias == NULL || merge->remote_source_alias == NULL || merge->remote_clause_text == NULL)
     {
       PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return NULL;
+    }
+
+  if (pt_dblink_merge_check_key_types (parser, statement, src_query, server_node, merge) != NO_ERROR)
+    {
       return NULL;
     }
 
