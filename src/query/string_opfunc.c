@@ -26964,14 +26964,14 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
       int str_size = db_get_string_size (num);
       INTL_CODESET codeset = db_get_string_codeset (num);
       int prev_char_length = 0;
-      char *str_start = NULL, *str_end = NULL;
+      char *str_start = num_str, *str_end = num_str;
       char *prev_char = NULL;
 
-      if (str_size >= 0)
+      /* an empty string has no char to trim; intl_prev_char () needs one */
+      if (str_size > 0)
 	{
 	  str_size = MIN (str_size, (int) (sizeof (num_str) - 1));
 	  strncpy (num_str, db_get_string (num), str_size);
-	  str_start = num_str;
 	  str_end = num_str + str_size;
 
 	  /* trim the tailing white spaces */
