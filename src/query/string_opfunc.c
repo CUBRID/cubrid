@@ -20346,7 +20346,8 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
   /* simple case, where just a number of days is added to date */
   days = db_get_int (db_days);
-  composite_values[COMPOSITE_DAY] = abs (days);
+  /* widen before abs: abs (INT_MIN) overflows int */
+  composite_values[COMPOSITE_DAY] = llabs ((DB_BIGINT) days);
 
   switch (res_type)
     {
