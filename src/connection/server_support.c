@@ -199,14 +199,15 @@ static int css_get_master_request (SOCKET master_fd);
 static void css_process_shutdown_request (SOCKET master_fd);
 
 static int css_internal_request_handler (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
-static std::size_t css_get_core_hash (const CSS_CONN_ENTRY & conn_ref);
-static void css_run_one_request (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
-static void css_recycle_between_eager_requests (THREAD_ENTRY & thread_ref);
-static void css_eager_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
+
+static std::size_t css_get_core_hash (const CSS_CONN_ENTRY & conn_ref);
+static void css_run_one_request (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static void css_recycle_between_eager_requests (THREAD_ENTRY & thread_ref);
+static void css_eager_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 
 static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
 static void css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
