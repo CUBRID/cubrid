@@ -54,6 +54,9 @@ namespace cubload
 	yylineno = line_offset;
       }
 
+      /* Keep the base class yylex () overload visible; the one below only adds a new overload. */
+      using yyFlexLexer::yylex;
+
       /*
        * The main scanner function.
        * See load_lexer.l file for method declaration

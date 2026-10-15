@@ -1364,8 +1364,9 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     }
   else if (xasl_trace == true)
     {
+      /* no perfmon watch: the statistics a trace reads count in this transaction only (perfmon_inc_stat_for_trace),
+       * so tracing does not make every thread of the server collect statistics */
       thread_trace_on (thread_p);
-      perfmon_start_watch (thread_p);
 
       if (IS_XASL_TRACE_TEXT (*flag_p))
 	{
@@ -1724,6 +1725,13 @@ end:
       perfmon_start_watch (thread_p);
     }
 
+  /* the trace is in the session by now; a flag left on would make the next requests of this thread count trace
+   * statistics. A nested query (a method query in SA_MODE) leaves the flag to the query it runs in */
+  if (thread_get_recursion_depth (thread_p) == 0)
+    {
+      thread_trace_off (thread_p);
+    }
+
 #if defined (SERVER_MODE)
   qmgr_reset_query_exec_info (tran_index);
 #endif
@@ -1766,11 +1774,6 @@ exit_on_error:
   if (list_id_p)
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
-    }
-
-  if (xasl_trace == true && saved_is_stats_on == false)
-    {
-      perfmon_stop_watch (thread_p);
     }
 
   goto end;
@@ -1899,8 +1902,9 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
     }
   else if (xasl_trace == true)
     {
+      /* no perfmon watch: the statistics a trace reads count in this transaction only (perfmon_inc_stat_for_trace),
+       * so tracing does not make every thread of the server collect statistics */
       thread_trace_on (thread_p);
-      perfmon_start_watch (thread_p);
 
       if (IS_XASL_TRACE_TEXT (*flag_p))
 	{
@@ -2028,6 +2032,13 @@ end:
       perfmon_start_watch (thread_p);
     }
 
+  /* the trace is in the session by now; a flag left on would make the next requests of this thread count trace
+   * statistics. A nested query (a method query in SA_MODE) leaves the flag to the query it runs in */
+  if (thread_get_recursion_depth (thread_p) == 0)
+    {
+      thread_trace_off (thread_p);
+    }
+
 #if defined (SERVER_MODE)
   qmgr_reset_query_exec_info (tran_index);
 #endif
@@ -2057,11 +2068,6 @@ exit_on_error:
   if (list_id_p)
     {
       QFILE_FREE_AND_INIT_LIST_ID (list_id_p);
-    }
-
-  if (xasl_trace == true && saved_is_stats_on == false)
-    {
-      perfmon_stop_watch (thread_p);
     }
 
   goto end;

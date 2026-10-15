@@ -36,7 +36,6 @@
 #include "bestspace.hpp"
 #include "heap_file.h"
 
-#include "deduplicate_key.h"
 #include "porting.h"
 #include "porting_inline.hpp"
 #include "record_descriptor.hpp"
@@ -500,9 +499,19 @@ typedef struct heap_prev_version_walk HEAP_PREV_VERSION_WALK;
 struct heap_prev_version_walk
 {
   LOG_PAGE *held_page;		/* the page the last copying hop left behind */
-  LOG_LSA held_below;		/* every record starting below it was complete in held_page */
+  LOG_LSA_UNPACKED held_below;	/* every record starting below it was complete in held_page */
   int n_fetches_skipped;	/* reads served without a page copy, added to the statistics once */
+  HEAP_GET_CONTEXT *release_context;	/* get context whose heap pages are still fixed; NULL once released */
+  int fixed_hops;		/* versions passed with those pages fixed */
+  int fixed_bytes;		/* and their undo image bytes */
 };
+
+/* A walk passes at most this many versions, or this many bytes of them, with the heap pages it started with still
+ * fixed; then it releases them, so that writers of those pages do not wait for the rest of it. A read that may
+ * block (a forced drain, a log page copy) releases them before it. A shorter walk keeps the pages: releasing them
+ * costs an unfix and a later fix, which is more than such a walk takes. */
+#define HEAP_PREV_VERSION_HOLD_HOPS 64
+#define HEAP_PREV_VERSION_HOLD_BYTES (32 * ONE_K)
 
 static int heap_Maxslotted_reclength;
 static int heap_Slotted_overhead = 4;	/* sizeof (SPAGE_SLOT) */
@@ -515,7 +524,7 @@ static HEAP_CHNGUESS heap_Guesschn_area = { NULL, NULL, NULL, false, 0,
 static HEAP_CHNGUESS *heap_Guesschn = NULL;
 
 static HEAP_HFID_TABLE heap_Hfid_table_area = { LF_HASH_TABLE_INITIALIZER, LF_ENTRY_DESCRIPTOR_INITIALIZER,
-  LF_FREELIST_INITIALIZER, false
+  LF_FREELIST_INITIALIZER, false, 0
 };
 
 static HEAP_HFID_TABLE *heap_Hfid_table = NULL;
@@ -743,13 +752,10 @@ static OR_ATTRIBUTE *heap_locate_attribute (ATTR_ID attrid, HEAP_CACHE_ATTRINFO 
 
 static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 					 HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
-					 TP_DOMAIN ** key_domain,
-					 /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-					 OID * rec_oid, bool is_check_foreign);
+					 TP_DOMAIN ** key_domain);
 static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey,
 					      int *att_ids, HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res,
-					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain,
-					      /* support for SUPPORT_DEDUPLICATE_KEY_MODE */ OID * rec_oid);
+					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain);
 
 static int heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr);
 
@@ -918,7 +924,8 @@ static SCAN_CODE heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, cons
 						   HEAP_PREV_VERSION_WALK * walk, RECDES * recdes);
 static SCAN_CODE heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes,
 						    LOG_LSA * previous_version_lsa, HEAP_SCANCACHE * scan_cache,
-						    int has_chn);
+						    int has_chn, HEAP_GET_CONTEXT * release_context);
+static void heap_prev_version_walk_release_pages (THREAD_ENTRY * thread_p, HEAP_PREV_VERSION_WALK * walk);
 static int heap_update_set_prev_version (THREAD_ENTRY * thread_p, const OID * oid, PGBUF_WATCHER * home_pg_watcher,
 					 PGBUF_WATCHER * fwd_pg_watcher, LOG_LSA * prev_version_lsa);
 static int heap_scan_cache_allocate_recdes_data (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * scan_cache_p,
@@ -7694,7 +7701,9 @@ heap_next_internal (THREAD_ENTRY * thread_p, const HFID * hfid, OID * class_oid,
 	    {
 	      /* New page (VPID_EQ failed above) -- copy the frame to the local cache. Keep the live page fixed
 	       * until a visible record is returned or traversal moves to another page, so vacuum cannot deallocate
-	       * the page while slots from the local copy are still being inspected.
+	       * the page while slots from the local copy are still being inspected. A long previous-version walk
+	       * releases it earlier; the walked record then keeps a version vacuum cannot remove yet, so the page
+	       * is not deallocated either.
 	       * record-info scans never use the cached scan. */
 	      pgbuf_copy_page_for_scan (scan_cache->page_watcher.pgptr, scan_cache->local_cache_handle);
 	      scan_cache->local_cache_vpid = vpid;
@@ -8034,7 +8043,9 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 	    {
 	      /* New page (VPID_EQ failed above) -- copy the frame to the local cache. Keep the live page fixed
 	       * until a visible record is returned or traversal/handoff completes, so vacuum cannot deallocate
-	       * the page while slots from the local copy are still being inspected. */
+	       * the page while slots from the local copy are still being inspected. A long previous-version walk
+	       * releases it earlier; the walked record then keeps a version vacuum cannot remove yet, so the page
+	       * is not deallocated either. */
 	      pgbuf_copy_page_for_scan (scan_cache->page_watcher.pgptr, scan_cache->local_cache_handle);
 	      scan_cache->local_cache_vpid = *vpid;
 	      local_pgptr = pgbuf_copy_buffer_get_page_ptr (scan_cache->local_cache_handle);
@@ -9892,7 +9903,7 @@ heap_get_capacity_parallel (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAP
       }
 
     /* 5. merge the per-worker partials, then derive the 8 outputs */
-    HEAP_CAPACITY_ACCUM total = { 0 };
+    HEAP_CAPACITY_ACCUM total = { };
     int last_page_freespace = 0;
 
     for (int i = 0; i < n_workers; i++)
@@ -9972,7 +9983,7 @@ static int
 heap_get_capacity_serial (THREAD_ENTRY * thread_p, const HFID * hfid, HEAP_CAPACITY_INFO * capacity)
 {
   VPID vpid;			/* Page-volume identifier */
-  HEAP_CAPACITY_ACCUM accum = { 0 };
+  HEAP_CAPACITY_ACCUM accum = { };
   int last_freespace = 0;
   int ret = NO_ERROR;
   PGBUF_WATCHER pg_watcher;
@@ -10302,26 +10313,13 @@ heap_attrinfo_start (THREAD_ENTRY * thread_p, const OID * class_oid, int request
 	   (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	    attr_info->last_classrepr->n_class_attrs))
     {
-      for (i = requested_num_attrs - 1; i >= 0 && !IS_DEDUPLICATE_KEY_ATTR_ID (attrids[i]); i--)
-	{
-	  /* empty */ ;
-	}
-
-      i = (i < 0) ? 0 : 1;
-
 #ifndef NDEBUG
-      if (requested_num_attrs >
-	  (attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
-	   attr_info->last_classrepr->n_class_attrs) + i)
-	{
-	  fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
-		   attr_info->last_classrepr->n_attributes, requested_num_attrs);
-	}
+      fprintf (stdout, " XXX There are not that many attributes. Num_attrs = %d, Num_requested_attrs = %d\n",
+	       attr_info->last_classrepr->n_attributes, requested_num_attrs);
 #endif
       requested_num_attrs =
 	attr_info->last_classrepr->n_attributes + attr_info->last_classrepr->n_shared_attrs +
 	attr_info->last_classrepr->n_class_attrs;
-      requested_num_attrs += i;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
     }
 
   if (requested_num_attrs > 0)
@@ -10448,26 +10446,6 @@ heap_attrinfo_recache_attrepr (HEAP_CACHE_ATTRINFO * attr_info, bool islast_rese
 	{
 	  /* Case that we want all attributes */
 	  value->attrid = search_attrepr[curr_attr].id;
-	}
-      else if (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid))
-	{
-	  // In this case, in case of reserved_attr_id in heap_attrvalue_read(), skip should be processed.
-	  value->attr_type = HEAP_INSTANCE_ATTR;
-	  if (islast_reset == true)
-	    {
-	      value->last_attrepr = (OR_ATTRIBUTE *) dk_find_or_deduplicate_key_attribute (value->attrid);
-	      if (value->state == HEAP_UNINIT_ATTRVALUE)
-		{
-		  db_value_domain_init (&value->dbvalue, value->last_attrepr->type,
-					value->last_attrepr->domain->precision, value->last_attrepr->domain->scale);
-		}
-	    }
-	  else
-	    {
-	      value->read_attrepr = (OR_ATTRIBUTE *) dk_find_or_deduplicate_key_attribute (value->attrid);
-	    }
-	  num_found_attrs++;
-	  continue;
 	}
 
       for (i = 0; i < srch_num_attrs; i++, search_attrepr++)
@@ -10954,13 +10932,6 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
 {
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   OR_ATTRIBUTE *attrepr;
-
-  if (unlikely (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid)))
-    {
-      /* In the case of deduplicate_key_attr_id, there is no content that actually exists in HEAP.
-       * Therefore, the read operation is skipped and success is returned. */
-      return NO_ERROR;
-    }
 
   /* does attribute exist in this disk representation? */
   if (recdes == NULL || recdes->data == NULL || value->read_attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
@@ -12989,8 +12960,7 @@ heap_attrinfo_start_refoids (THREAD_ENTRY * thread_p, OID * class_oid, HEAP_CACH
  */
 int
 heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * class_recdes,
-				HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info,
-				bool is_check_foreign)
+				HEAP_CACHE_ATTRINFO * attr_info, HEAP_IDX_ELEMENTS_INFO * idx_info)
 {
   ATTR_ID guess_attrids[HEAP_GUESS_NUM_INDEXED_ATTRS];
   ATTR_ID *set_attrids;
@@ -13043,28 +13013,13 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
     {
       indexp = &classrepr->indexes[j];
 
-      // We cannot make a PK with a function. Therefore, only the last member is checked.
-      if (is_check_foreign && (indexp->n_atts > 1) && IS_DEDUPLICATE_KEY_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
+      if (indexp->n_atts == 1)
 	{
-	  if (indexp->n_atts == 2)
-	    {
-	      idx_info->has_single_col = true;
-	    }
-	  else
-	    {
-	      idx_info->has_multi_col = true;
-	    }
+	  idx_info->has_single_col = true;
 	}
-      else
+      else if (indexp->n_atts > 1)
 	{
-	  if (indexp->n_atts == 1)
-	    {
-	      idx_info->has_single_col = true;
-	    }
-	  else if (indexp->n_atts > 1)
-	    {
-	      idx_info->has_multi_col = true;
-	    }
+	  idx_info->has_multi_col = true;
 	}
 
       /* check for already found both */
@@ -13088,23 +13043,10 @@ heap_attrinfo_start_with_index (THREAD_ENTRY * thread_p, OID * class_oid, RECDES
 	      for (j = 0; j < *num_btids; j++)
 		{
 		  indexp = &classrepr->indexes[j];
-		  // We cannot make a PK with a function. Therefore, only the last member is checked.
-		  if (is_check_foreign && (indexp->n_atts > 1)
-		      && IS_DEDUPLICATE_KEY_ATTR_ID (indexp->atts[indexp->n_atts - 1]->id))
+		  if (indexp->n_atts == 1 && indexp->atts[0]->id == search_attrepr->id)
 		    {
-		      if (indexp->n_atts == 2 && indexp->atts[0]->id == search_attrepr->id)
-			{
-			  set_attrids[num_found_attrs++] = search_attrepr->id;
-			  break;
-			}
-		    }
-		  else
-		    {
-		      if (indexp->n_atts == 1 && indexp->atts[0]->id == search_attrepr->id)
-			{
-			  set_attrids[num_found_attrs++] = search_attrepr->id;
-			  break;
-			}
+		      set_attrids[num_found_attrs++] = search_attrepr->id;
+		      break;
 		    }
 		}
 	    }
@@ -13234,51 +13176,6 @@ heap_classrepr_find_index_id (OR_CLASSREP * classrepr, const BTID * btid)
     }
 
   return id;
-}
-
-/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-int
-heap_get_compress_attr_by_btid (THREAD_ENTRY * thread_p, OID * class_oid, BTID * btid, ATTR_ID * last_attrid,
-				int *last_asc_desc, TP_DOMAIN ** tpdomain)
-{
-  OR_CLASSREP *classrepr = NULL;
-  int index_id = -1;
-  int classrepr_cacheindex = -1;
-  int num_found_attrs = 0;
-
-  /*
-   *  Get the class representation so that we can access the indexes.
-   */
-  classrepr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &classrepr_cacheindex);
-  if (classrepr == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  /*
-   *  Get the index ID which corresponds to the BTID
-   */
-  index_id = heap_classrepr_find_index_id (classrepr, btid);
-  if (index_id < 0)
-    {
-      heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
-      return ER_FAILED;
-    }
-
-  num_found_attrs = classrepr->indexes[index_id].n_atts;
-  if (num_found_attrs > 0)
-    {
-      /* FK has no function index information. */
-      *last_attrid = classrepr->indexes[index_id].atts[num_found_attrs - 1]->id;
-      *last_asc_desc = classrepr->indexes[index_id].asc_desc[num_found_attrs - 1];
-      if (tpdomain)
-	{
-	  *tpdomain = tp_domain_copy (classrepr->indexes[index_id].atts[0]->domain, false);
-	}
-    }
-
-  heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
-  return num_found_attrs;
 }
 
 
@@ -13461,7 +13358,7 @@ heap_attrvalue_get_index (int value_index, ATTR_ID * attrid, int *n_btids, BTID 
 static DB_MIDXKEY *
 heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 		      HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
-		      TP_DOMAIN ** key_domain, OID * rec_oid, bool is_check_foreign)
+		      TP_DOMAIN ** key_domain)
 {
   char *nullmap_ptr;
   OR_ATTRIBUTE **atts;
@@ -13471,7 +13368,6 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
   int error = NO_ERROR;
   TP_DOMAIN *set_domain = NULL;
   TP_DOMAIN *next_domain = NULL;
-  int not_null_field_cnt = 0;
 
   assert (index != NULL);
 
@@ -13480,13 +13376,6 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
   if (func_res)
     {
       num_atts = index->func_index_info->attr_index_start + 1;
-    }
-
-  // We cannot make a PK with a function. Therefore, only the last member is checked.
-  if (is_check_foreign && (index->n_atts > 1) && IS_DEDUPLICATE_KEY_ATTR_ID (index->atts[index->n_atts - 1]->id))
-    {
-      assert (func_res == NULL);
-      num_atts--;
     }
 
   assert (PTR_ALIGN (midxkey->buf, INT_ALIGNMENT) == midxkey->buf);
@@ -13511,7 +13400,6 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 	    {
 	      func_domain->type->index_writeval (&buf, func_res);
 	      or_multi_set_not_null (nullmap_ptr, k);
-	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 	    }
 	  else
 	    {
@@ -13552,40 +13440,22 @@ heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 
       or_multi_put_element_offset (nullmap_ptr, num_atts, CAST_BUFLEN (buf.ptr - buf.buffer), k);
 
-      if (IS_DEDUPLICATE_KEY_ATTR_ID (atts[i]->id))
+      error = heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
+      if (error == NO_ERROR)
 	{
-	  if (not_null_field_cnt > 0)
+	  if (!DB_IS_NULL (&value))
 	    {
-	      dk_get_deduplicate_key_value (rec_oid, atts[i]->id, &value);
 	      atts[i]->domain->type->index_writeval (&buf, &value);
 	      or_multi_set_not_null (nullmap_ptr, k);
-	      /* In this case, there is no need to clean them up using pr_clear_value (). */
+
+	      if (DB_NEED_CLEAR (&value))
+		{
+		  pr_clear_value (&value);
+		}
 	    }
 	  else
 	    {
 	      assert (or_multi_is_null (nullmap_ptr, k));
-	    }
-	}
-      else
-	{
-	  error = heap_midxkey_get_value (recdes, atts[i], &value, attrinfo);
-	  if (error == NO_ERROR)
-	    {
-	      if (!DB_IS_NULL (&value))
-		{
-		  atts[i]->domain->type->index_writeval (&buf, &value);
-		  or_multi_set_not_null (nullmap_ptr, k);
-		  not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-
-		  if (DB_NEED_CLEAR (&value))
-		    {
-		      pr_clear_value (&value);
-		    }
-		}
-	      else
-		{
-		  assert (or_multi_is_null (nullmap_ptr, k));
-		}
 	    }
 	}
 
@@ -13678,7 +13548,7 @@ error:
 static DB_MIDXKEY *
 heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey,
 			   int *att_ids, HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res,
-			   int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain, OID * rec_oid)
+			   int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain)
 {
   char *nullmap_ptr;
   int num_vals, i, reprid, k;
@@ -13686,7 +13556,6 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
   DB_VALUE value;
   OR_BUF buf;
   int error = NO_ERROR;
-  int not_null_field_cnt = 0;
 
   /*
    * Make sure that we have the needed cached representation.
@@ -13733,7 +13602,6 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 	      TP_DOMAIN *domain = tp_domain_resolve_default ((DB_TYPE) func_res->domain.general_info.type);
 	      domain->type->index_writeval (&buf, func_res);
 	      or_multi_set_not_null (nullmap_ptr, k);
-	      not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 	    }
 	  else
 	    {
@@ -13748,43 +13616,24 @@ heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY 
 
       or_multi_put_element_offset (nullmap_ptr, num_vals, CAST_BUFLEN (buf.ptr - buf.buffer), k);
 
-      if (IS_DEDUPLICATE_KEY_ATTR_ID (att_ids[i]))
+      att = heap_locate_attribute (att_ids[i], attrinfo);
+
+      error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
+      if (error == NO_ERROR)
 	{
-	  if (not_null_field_cnt > 0)
+	  if (!DB_IS_NULL (&value))
 	    {
-	      att = (OR_ATTRIBUTE *) dk_find_or_deduplicate_key_attribute (att_ids[i]);
-	      dk_get_deduplicate_key_value (rec_oid, att_ids[i], &value);
 	      att->domain->type->index_writeval (&buf, &value);
 	      or_multi_set_not_null (nullmap_ptr, k);
-	      /* In this case, there is no need to clean them up using pr_clear_value (). */
+
+	      if (DB_NEED_CLEAR (&value))
+		{
+		  pr_clear_value (&value);
+		}
 	    }
 	  else
 	    {
 	      assert (or_multi_is_null (nullmap_ptr, k));
-	    }
-	}
-      else
-	{
-	  att = heap_locate_attribute (att_ids[i], attrinfo);
-
-	  error = heap_midxkey_get_value (recdes, att, &value, attrinfo);
-	  if (error == NO_ERROR)
-	    {
-	      if (!DB_IS_NULL (&value))
-		{
-		  att->domain->type->index_writeval (&buf, &value);
-		  or_multi_set_not_null (nullmap_ptr, k);
-		  not_null_field_cnt++;	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-
-		  if (DB_NEED_CLEAR (&value))
-		    {
-		      pr_clear_value (&value);
-		    }
-		}
-	      else
-		{
-		  assert (or_multi_is_null (nullmap_ptr, k));
-		}
 	    }
 	}
     }
@@ -13907,7 +13756,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 	}
 
       if (heap_midxkey_key_generate (thread_p, recdes, &midxkey, att_ids, attr_info, fi_res, fi_col_id,
-				     fi_attr_index_start, midxkey_domain, cur_oid) == NULL)
+				     fi_attr_index_start, midxkey_domain) == NULL)
 	{
 	  return NULL;
 	}
@@ -13985,8 +13834,7 @@ heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, i
 DB_VALUE *
 heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTRINFO * idx_attrinfo,
 			RECDES * recdes, BTID * btid, DB_VALUE * db_value, char *buf,
-			FUNC_PRED_UNPACK_INFO * func_indx_pred, TP_DOMAIN ** key_domain, OID * rec_oid,
-			bool is_check_foreign)
+			FUNC_PRED_UNPACK_INFO * func_indx_pred, TP_DOMAIN ** key_domain)
 {
   OR_INDEX *index;
   int n_atts, reprid;
@@ -14025,13 +13873,6 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
   index = &(idx_attrinfo->last_classrepr->indexes[btid_index]);
   n_atts = index->n_atts;
   *btid = index->btid;
-
-  // We cannot make a PK with a function. Therefore, only the last member is checked.
-  if (is_check_foreign && (index->n_atts > 1) && IS_DEDUPLICATE_KEY_ATTR_ID (index->atts[index->n_atts - 1]->id))
-    {
-      assert (index->type == BTREE_FOREIGN_KEY);
-      n_atts--;
-    }
 
   /* is function index */
   if (index->func_index_info)
@@ -14078,8 +13919,7 @@ heap_attrvalue_get_key (THREAD_ENTRY * thread_p, int btid_index, HEAP_CACHE_ATTR
 
       midxkey.min_max_val.position = -1;
 
-      if (heap_midxkey_key_get
-	  (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain, rec_oid, is_check_foreign) == NULL)
+      if (heap_midxkey_key_get (recdes, &midxkey, index, idx_attrinfo, fi_res, fi_domain, key_domain) == NULL)
 	{
 	  return NULL;
 	}
@@ -15428,7 +15268,7 @@ exit:
 int
 heap_dump_capacity (THREAD_ENTRY * thread_p, FILE * fp, const HFID * hfid)
 {
-  HEAP_CAPACITY_INFO capacity = { 0 };
+  HEAP_CAPACITY_INFO capacity = { };
   HEAP_CACHE_ATTRINFO attr_info;
   FILE_DESCRIPTORS fdes;
 
@@ -19187,7 +19027,7 @@ heap_capacity_next_scan (THREAD_ENTRY * thread_p, int cursor, DB_VALUE ** out_va
   char *classname = NULL;
   char class_oid_str[64] = { 0 };
   bool is_heap_attrinfo_started = false;
-  HEAP_CAPACITY_INFO capacity = { 0 };
+  HEAP_CAPACITY_INFO capacity = { };
   int val = 0;
   int idx = 0;
   FILE_DESCRIPTORS fdes;
@@ -25681,6 +25521,33 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 }
 
 /*
+ * heap_prev_version_walk_release_pages () - Release the heap pages of a previous-version walk, unless they are
+ *					      released already.
+ *
+ * thread_p (in) : Thread entry.
+ * walk (in/out) : Walk state. Its release_context is cleared, so later calls return at once; the page watchers of
+ *		   that context are left empty.
+ */
+static void
+heap_prev_version_walk_release_pages (THREAD_ENTRY * thread_p, HEAP_PREV_VERSION_WALK * walk)
+{
+  HEAP_GET_CONTEXT *context = walk->release_context;
+
+  if (context == NULL)
+    {
+      return;
+    }
+  walk->release_context = NULL;
+
+  assert (context->home_page_watcher.pgptr != NULL);
+  if (context->fwd_page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &context->fwd_page_watcher);
+    }
+  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+}
+
+/*
  * heap_get_undo_record_for_version () - Read the undo image of one previous version, from wherever that
  *				         version currently lives.
  *
@@ -25695,6 +25562,8 @@ heap_rv_mvcc_redo_redistribute (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
  *       page copied, from the buffer or disk.
  *       One not copied yet is read from its staged prior node in the in-flight window; only when the
  *       window lacks it too is a drain forced. Decided per hop, since any hop may still be uncopied.
+ *       The heap pages of walk->release_context, if still fixed, are released before the drain or the page copy,
+ *       so that writers of those pages do not wait for LOG_CS or a disk read.
  */
 static SCAN_CODE
 heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * version_lsa,
@@ -25728,6 +25597,9 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
 
       if (LSA_LE (&copied_lsa, version_lsa))
 	{
+	  /* the drain takes LOG_CS; do not keep the heap pages across it */
+	  heap_prev_version_walk_release_pages (thread_p, walk);
+
 	  PERF_UTIME_TRACKER_START (thread_p, &time_track);
 	  LOG_CS_ENTER (thread_p);
 	  logpb_prior_lsa_append_all_list (thread_p);
@@ -25742,7 +25614,7 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
     }
 
   /* held_below first: the page is uninitialized stack bytes until a hop copies into it */
-  if (LSA_LT (version_lsa, &walk->held_below) && walk->held_page->hdr.logical_pageid == version_lsa->pageid)
+  if (LOG_LSA_UNPACKED (*version_lsa) < walk->held_below && walk->held_page->hdr.logical_pageid == version_lsa->pageid)
     {
       scan = log_get_undo_record (thread_p, walk->held_page, *version_lsa, recdes);
       if (scan == S_SUCCESS)
@@ -25760,6 +25632,9 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
 	}
       return scan;
     }
+
+  /* Release the heap pages first: the copy may wait for LOG_CS or a disk read. */
+  heap_prev_version_walk_release_pages (thread_p, walk);
 
   /* The page is copied after copied_lsa is read, so every record below that value is complete in it. */
   walk->held_below = copied_lsa;
@@ -25785,10 +25660,12 @@ heap_get_undo_record_for_version (THREAD_ENTRY * thread_p, const LOG_LSA * versi
  *   recdes (out): Record descriptor.
  *   previous_version_lsa (in): Log address of previous version.
  *   scan_cache(in): Heap scan cache.
+ *   release_context(in): Heap get context whose pages the walk releases on the way, as
+ *			   HEAP_PREV_VERSION_HOLD_HOPS describes. On return its page watchers may be empty.
  */
 static SCAN_CODE
 heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG_LSA * previous_version_lsa,
-				   HEAP_SCANCACHE * scan_cache, int has_chn)
+				   HEAP_SCANCACHE * scan_cache, int has_chn, HEAP_GET_CONTEXT * release_context)
 {
   LOG_LSA process_lsa;
   SCAN_CODE scan_code = S_SUCCESS;
@@ -25815,6 +25692,9 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
   walk.held_page = (LOG_PAGE *) PTR_ALIGN (log_pgbuf, MAX_ALIGNMENT);
   walk.held_below = NULL_LSA;	/* nothing held yet */
   walk.n_fetches_skipped = 0;
+  walk.release_context = release_context;
+  walk.fixed_hops = 0;
+  walk.fixed_bytes = 0;
 
   /* Check visibility of old versions from log following prev_version_lsa links. Where each version is
    * read from is decided per hop, in heap_get_undo_record_for_version (). */
@@ -25865,6 +25745,15 @@ heap_get_visible_version_from_log (THREAD_ENTRY * thread_p, RECDES * recdes, LOG
 	  /* continue with previous version */
 	  assert (LSA_LT (&MVCC_GET_PREV_VERSION_LSA (&mvcc_header), &process_lsa));
 	  LSA_COPY (&process_lsa, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header));
+	  if (walk.release_context != NULL)
+	    {
+	      walk.fixed_hops++;
+	      walk.fixed_bytes += recdes->length;
+	      if (walk.fixed_hops >= HEAP_PREV_VERSION_HOLD_HOPS || walk.fixed_bytes >= HEAP_PREV_VERSION_HOLD_BYTES)
+		{
+		  heap_prev_version_walk_release_pages (thread_p, &walk);
+		}
+	    }
 	  continue;
 	}
     }
@@ -26123,10 +26012,12 @@ heap_get_visible_version_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * c
       snapshot_res = mvcc_snapshot->snapshot_fnc (thread_p, &mvcc_header, mvcc_snapshot);
       if (snapshot_res == TOO_NEW_FOR_SNAPSHOT)
 	{
-	  /* current version is not visible, check previous versions from log and skip record get from heap */
+	  /* current version is not visible, check previous versions from log and skip record get from heap.
+	   * A long walk, or one that has to wait, releases the pages on the way. The scan cache then keeps no page,
+	   * and its next access fixes one as usual. */
 	  scan =
 	    heap_get_visible_version_from_log (thread_p, context->recdes_p, &MVCC_GET_PREV_VERSION_LSA (&mvcc_header),
-					       context->scan_cache, context->old_chn);
+					       context->scan_cache, context->old_chn, context);
 	  goto exit;
 	}
       else if (snapshot_res == TOO_OLD_FOR_SNAPSHOT)

@@ -306,6 +306,9 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/subquery_cache.c
   ${QUERY_DIR}/memoize.cpp
   ${QUERY_DIR}/stream_to_xasl.c
+  ${QUERY_DIR}/domain_plan.c
+  ${QUERY_DIR}/domain_resolve.c
+  ${QUERY_DIR}/domain_rules.c
   ${QUERY_DIR}/string_opfunc.c
   ${QUERY_DIR}/string_regex.cpp
   ${QUERY_DIR}/string_regex_std.cpp
@@ -339,12 +342,12 @@ set(OBJECT_SOURCES
   ${OBJECT_DIR}/authenticate_migration.cpp
   ${OBJECT_DIR}/class_description.cpp
   ${OBJECT_DIR}/class_object.c
-  ${OBJECT_DIR}/deduplicate_key.c
   ${OBJECT_DIR}/elo.c
   ${OBJECT_DIR}/identifier_store.cpp
   ${OBJECT_DIR}/lob_locator.cpp
   ${OBJECT_DIR}/object_description.cpp
   ${OBJECT_DIR}/object_domain.c
+  ${OBJECT_DIR}/object_domain_convert.cpp
   ${OBJECT_DIR}/object_accessor.c
   ${OBJECT_DIR}/object_primitive.c
   ${OBJECT_DIR}/object_print.c
@@ -826,3 +829,21 @@ if(WIN32)
     FILES_MATCHING PATTERN "*.pdb"
     )
 endif(WIN32)
+
+# lea_heap.c includes the unmodified 3rd party dlmalloc (malloc_2_8_3.c), which uses
+# the GNU null pointer arithmetic extension. Do not edit that file; silence the
+# diagnostic for this one translation unit instead.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set_source_files_properties(${HEAPLAYERS_DIR}/lea_heap.c PROPERTIES COMPILE_OPTIONS "-Wno-gnu-null-pointer-arithmetic")
+endif()
+
+# The Bison generated load_grammar.hpp declares a copy assignment operator for
+# stack_symbol_type without the matching copy constructor. Generated file, so
+# suppress the diagnostic for the units that include it rather than patching it.
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  set_source_files_properties(
+    ${LOADER_GRAMMAR_OUTPUT}
+    ${LOADER_LEXER_OUTPUT}
+    PROPERTIES COMPILE_OPTIONS "-Wno-deprecated-copy-with-user-provided-copy"
+  )
+endif()
