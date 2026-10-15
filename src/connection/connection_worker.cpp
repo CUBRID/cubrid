@@ -546,17 +546,13 @@ namespace cubconn::connection
   }
 
   /*
-   * worker::eager_poll_and_receive () - claim this connection's socket, wait up
-   *   to window_ms for the next request, receive it on the calling thread
-   *   and give the socket back. count_out is how many complete requests
-   *   the caller must run; when it is not 0, the caller passes ctx_out
-   *   to eager_finish () after running them. Returns whether the caller may wait
-   *   on the socket again: false when nothing came, the receive failed
-   *   or the socket went back to the worker.
+   * worker::eager_poll_and_receive () - claim this connection's socket, wait up to window_ms
+   *   for the next request, receive it on the calling thread and give the socket back.
+   *   count_out is how many requests the caller must run; when it is not 0, the caller passes
+   *   ctx_out to eager_finish () after running them. Returns whether the caller may wait again:
+   *   false when nothing came, the receive failed or the socket went back to the worker.
    *
-   *   Static because the caller has only the connection. conn.worker is read
-   *   under conn.cmutex and used after the lock only for eager_drain (),
-   *   which touches the context and the connection alone.
+   *   conn.worker is used after its lock only for eager_drain (), which needs no worker state.
    */
   bool worker::eager_poll_and_receive (css_conn_entry &conn, cubthread::entry *entry, int window_ms, int &count_out,
 				       context *&ctx_out)
