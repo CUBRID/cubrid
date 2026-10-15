@@ -11598,7 +11598,7 @@ cdc_flashback_unpack_bounded_string (char *ptr, char *request, int reqlen, char 
  * password never crosses the channel and a recorded answer dies with its nonce.
  */
 static int
-cdc_auth_make_response (THREAD_ENTRY * thread_p, const char *nonce, const char *stored_password, char *response)
+cdc_auth_make_response (THREAD_ENTRY *thread_p, const char *nonce, const char *stored_password, char *response)
 {
   char buffer[CSS_CDC_AUTH_NONCE_SIZE + AU_MAX_PASSWORD_BUF + 4];
   char *digest = NULL;
@@ -11640,7 +11640,7 @@ cdc_auth_init_key (void)
  *   tag (out): CSS_CDC_AUTH_RESPONSE_SIZE bytes of hex
  */
 static int
-cdc_auth_sign (CSS_CONN_ENTRY * conn, const char *user_name, const char *nonce, INT64 issued_at, char *tag)
+cdc_auth_sign (CSS_CONN_ENTRY *conn, const char *user_name, const char *nonce, INT64 issued_at, char *tag)
 {
   char msg[CSS_CDC_AUTH_NONCE_SIZE + DB_MAX_USER_LENGTH + 64];
   int len;
@@ -11669,7 +11669,7 @@ cdc_auth_sign (CSS_CONN_ENTRY * conn, const char *user_name, const char *nonce, 
  *           on this connection, or another error if the account could not be read.
  */
 static int
-cdc_auth_lookup (THREAD_ENTRY * thread_p, const char *user_name, char *stored, int stored_size, bool * is_dba)
+cdc_auth_lookup (THREAD_ENTRY *thread_p, const char *user_name, char *stored, int stored_size, bool *is_dba)
 {
   bool found;
 
@@ -11693,7 +11693,7 @@ cdc_auth_lookup (THREAD_ENTRY * thread_p, const char *user_name, char *stored, i
  * exist gets the same reply shape (scheme 0), and the response step refuses it.
  */
 void
-scdc_auth_challenge (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+scdc_auth_challenge (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_BIGINT_SIZE + CSS_CDC_AUTH_NONCE_SIZE + CSS_CDC_AUTH_RESPONSE_SIZE +
 		  2 * MAX_ALIGNMENT) a_reply;
@@ -11785,7 +11785,7 @@ cdc_auth_response_matches (const char *expected, const char *given)
  * DBA or in its group. Only then is the connection marked authenticated.
  */
 void
-scdc_auth_response (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen)
+scdc_auth_response (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -12012,8 +12012,8 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
     }
 
   cdc_log
-    ("%s : max_log_item (%d), extraction_timeout (%d), all_in_cond (%d), num_extraction_user (%d), num_extraction_class (%d)",
-     __func__, max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class);
+  ("%s : max_log_item (%d), extraction_timeout (%d), all_in_cond (%d), num_extraction_user (%d), num_extraction_class (%d)",
+   __func__, max_log_item, extraction_timeout, all_in_cond, num_extraction_user, num_extraction_class);
 
   /* Only now, fully validated, do we affect *other* connections: take the session
    * (checked by log_extract_owner_is_owner () for every other CDC opcode) and close
