@@ -4233,6 +4233,7 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
   float f;
   double d;
   DB_BIGINT bi;
+  UINT64 bits;
   DB_VALUE tmpval, *tmpval_p;
 
   if (value == NULL)
@@ -4253,25 +4254,34 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	{
 	case DB_TYPE_SHORT:
 	  s = db_get_short (value);
-	  for (c = 0; s; c++)
+	  /* "x &= x - 1" clears the lowest set bit, but it is undefined when x holds the
+	   * smallest value of its signed type. The loop only wants the bit pattern, so it
+	   * is counted in an unsigned value of the same width. */
+	  for (c = 0, bits = (unsigned short) s; bits; c++)
 	    {
-	      s &= s - 1;
+	      bits &= bits - 1;
 	    }
 	  break;
 
 	case DB_TYPE_INTEGER:
 	  i = db_get_int (value);
-	  for (c = 0; i; c++)
+	  /* "x &= x - 1" clears the lowest set bit, but it is undefined when x holds the
+	   * smallest value of its signed type. The loop only wants the bit pattern, so it
+	   * is counted in an unsigned value of the same width. */
+	  for (c = 0, bits = (unsigned int) i; bits; c++)
 	    {
-	      i &= i - 1;
+	      bits &= bits - 1;
 	    }
 	  break;
 
 	case DB_TYPE_BIGINT:
 	  bi = db_get_bigint (value);
-	  for (c = 0; bi; c++)
+	  /* "x &= x - 1" clears the lowest set bit, but it is undefined when x holds the
+	   * smallest value of its signed type. The loop only wants the bit pattern, so it
+	   * is counted in an unsigned value of the same width. */
+	  for (c = 0, bits = (UINT64) bi; bits; c++)
 	    {
-	      bi &= bi - 1;
+	      bits &= bits - 1;
 	    }
 	  break;
 
@@ -4285,9 +4295,12 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	    {
 	      i = (int) (f + 0.5f);
 	    }
-	  for (c = 0; i; c++)
+	  /* "x &= x - 1" clears the lowest set bit, but it is undefined when x holds the
+	   * smallest value of its signed type. The loop only wants the bit pattern, so it
+	   * is counted in an unsigned value of the same width. */
+	  for (c = 0, bits = (unsigned int) i; bits; c++)
 	    {
-	      i &= i - 1;
+	      bits &= bits - 1;
 	    }
 	  break;
 
@@ -4301,9 +4314,12 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	    {
 	      bi = (DB_BIGINT) (d + 0.5f);
 	    }
-	  for (c = 0; bi; c++)
+	  /* "x &= x - 1" clears the lowest set bit, but it is undefined when x holds the
+	   * smallest value of its signed type. The loop only wants the bit pattern, so it
+	   * is counted in an unsigned value of the same width. */
+	  for (c = 0, bits = (UINT64) bi; bits; c++)
 	    {
-	      bi &= bi - 1;
+	      bits &= bits - 1;
 	    }
 	  break;
 
@@ -4325,9 +4341,12 @@ db_bit_count_dbval (DB_VALUE * result, DB_VALUE * value)
 	    {
 	      bi = (DB_BIGINT) (d + 0.5f);
 	    }
-	  for (c = 0; bi; c++)
+	  /* "x &= x - 1" clears the lowest set bit, but it is undefined when x holds the
+	   * smallest value of its signed type. The loop only wants the bit pattern, so it
+	   * is counted in an unsigned value of the same width. */
+	  for (c = 0, bits = (UINT64) bi; bits; c++)
 	    {
-	      bi &= bi - 1;
+	      bits &= bits - 1;
 	    }
 	  break;
 
