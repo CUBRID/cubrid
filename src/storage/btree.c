@@ -10089,11 +10089,11 @@ struct btree_capacity_worker_arg
   THREAD_ENTRY *main_thread_p;
   const BTREE_CAPACITY_SCAN_CTX *ctx;
   BTREE_CAPACITY_ACCUM *accum;
-// *INDENT-OFF*
+/* *INDENT-OFF* */
   std::atomic<int> *next_child;	/* shared claim counter: workers take the next unprocessed child */
   std::atomic<bool> *failed;
   std::atomic<int> *fail_errid;	/* a failing worker's errid (NO_ERROR = none) */
-// *INDENT-ON*
+/* *INDENT-ON* */
 };
 
 /*
@@ -10222,11 +10222,11 @@ static int
 btree_capacity_run_workers (THREAD_ENTRY * thread_p, const BTREE_CAPACITY_SCAN_CTX * ctx, int root_free,
 			    parallel_query::worker_manager * wm, int n_workers, BTREE_CAPACITY * cpc)
 {
-// *INDENT-OFF*
+/* *INDENT-OFF* */
   std::atomic<bool> failed (false);
   std::atomic<int> fail_errid (NO_ERROR);
   std::atomic<int> next_child (0);
-// *INDENT-ON*
+/* *INDENT-ON* */
   BTREE_CAPACITY_ACCUM *accums = NULL;
   BTREE_CAPACITY_WORKER_ARG *worker_args = NULL;
   size_t accums_size = sizeof (BTREE_CAPACITY_ACCUM) * n_workers;
@@ -10265,10 +10265,10 @@ btree_capacity_run_workers (THREAD_ENTRY * thread_p, const BTREE_CAPACITY_SCAN_C
       /* A one-pointer lambda is trivially copyable, so std::function stores it in place. std::bind is
        * not (libstdc++ gates the small-object buffer on is_trivially_copyable), and would allocate
        * through the THROWING ::operator new -- the one path this function must not have. */
-// *INDENT-OFF*
+/* *INDENT-OFF* */
       task = new parallel_query::callable_task (wm, [worker_arg_p] (cubthread::entry &thread_ref)
                                                     { btree_capacity_parallel_worker (thread_ref, worker_arg_p); });
-// *INDENT-ON*
+/* *INDENT-ON* */
       if (task == NULL)
 	{
 	  /* OOM under the non-throwing operator new. The tasks already pushed claim every remaining
