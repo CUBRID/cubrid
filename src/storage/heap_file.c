@@ -21293,10 +21293,10 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	      assert (PGBUF_IS_CLEAN_WATCHER (context->home_page_watcher_p));
 
 	      /* mirrors bestspace::shard::L1_fix -- the hint page is fixed the way a bestspace candidate is */
-	      int save_wait_msecs = xlogtb_reset_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+	      int save_wait_msecs = logtb_set_thread_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
 	      error_code = pgbuf_ordered_fix (thread_p, &hint_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE,
 					      context->home_page_watcher_p);
-	      (void) xlogtb_reset_wait_msecs (thread_p, save_wait_msecs);
+	      (void) logtb_set_thread_wait_msecs (thread_p, save_wait_msecs);
 	      if (error_code == NO_ERROR)
 		{
 		  PAGE_PTR page_p = context->home_page_watcher_p->pgptr;
