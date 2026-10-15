@@ -378,7 +378,7 @@ namespace cubconn::connection
       result receive_if_free (context *ctx, bool in_exhausted, bool from_edge);
 
       /* eager receiver: claim, drain and release the socket, in eager_poll_and_receive () */
-      static context *eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker *&self_out, SOCKET &fd_out);
+      static context *eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker *&owner_out, SOCKET &fd_out);
       result eager_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out);
       void eager_abort (context *ctx);
       void eager_flush_counted_to_pool (context *ctx);

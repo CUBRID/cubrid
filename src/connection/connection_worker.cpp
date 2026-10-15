@@ -557,7 +557,7 @@ namespace cubconn::connection
   bool worker::eager_poll_and_receive (css_conn_entry &conn, cubthread::entry *entry, int window_ms, int &count_out,
 				       context *&ctx_out)
   {
-    worker *self;
+    worker *owner;
     context *ctx;
     struct pollfd po;
     SOCKET fd;
@@ -568,7 +568,7 @@ namespace cubconn::connection
     count_out = 0;
     ctx_out = nullptr;
 
-    ctx = eager_claim (conn, entry, self, fd);
+    ctx = eager_claim (conn, entry, owner, fd);
     if (ctx == nullptr)
       {
 	return false;
@@ -585,7 +585,7 @@ namespace cubconn::connection
 
     if (n > 0 && (po.revents & POLLIN) != 0)
       {
-	status = self->eager_drain (ctx, entry, count_out, more_data);
+	status = owner->eager_drain (ctx, entry, count_out, more_data);
 	hand_back = (status != result::Ok) || more_data;
       }
     else if (n > 0 || (n < 0 && errno != EINTR))
@@ -2567,7 +2567,7 @@ respond:
   /*
    * worker::claim_reading () - take this connection's socket for this worker.
    *   Returns false when the eager receiver owns it. from_edge marks an epoll edge,
-   *   which is lost when the socket is busy, so the owner is told to hand the socket back.
+   *   which is lost when the socket is busy, so the eager receiver is told to hand the socket back.
    */
   bool worker::claim_reading (context *ctx, bool from_edge)
   {
@@ -2606,7 +2606,7 @@ respond:
   /*
    * worker::receive_if_free () - run handle_reception () if this worker can claim
    *   the socket. Returns Pending when the eager receiver owns it:
-   *   the owner rechecks on release, so nothing more is received here.
+   *   it rechecks on release, so nothing more is received here.
    */
   result worker::receive_if_free (context *ctx, bool in_exhausted, bool from_edge)
   {
@@ -2631,7 +2631,7 @@ respond:
    *   must_defer_close_for_eager_receiver () has read it.
    *   The shutdown check only ends the loop sooner.
    */
-  context *worker::eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker *&self_out, SOCKET &fd_out)
+  context *worker::eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker *&owner_out, SOCKET &fd_out)
   {
     context *ctx;
     int r;
@@ -2640,9 +2640,9 @@ respond:
       {
 	return nullptr;
       }
-    self_out = conn.worker;
+    owner_out = conn.worker;
     ctx = reinterpret_cast<context *> (conn.context);
-    if (self_out == nullptr || ctx == nullptr || ctx->m_recv.m_recv_busy.load (std::memory_order_acquire)
+    if (owner_out == nullptr || ctx == nullptr || ctx->m_recv.m_recv_busy.load (std::memory_order_acquire)
 	|| conn.status != CONN_OPEN || conn.stop_talk || css_is_shutdowning_server ())
       {
 	ctx = nullptr;
