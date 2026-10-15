@@ -3953,36 +3953,12 @@ qo_hq_is_hashable_eq_term (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE ** b
 }
 
 /*
- * qo_hq_index_leads_with () - checks whether a normal index of the class has
- *   the given column as its first attribute
- */
-static bool
-qo_hq_index_leads_with (SM_CLASS_CONSTRAINT * constraints, PT_NODE * name)
-{
-  SM_CLASS_CONSTRAINT *cons;
-
-  for (cons = constraints; cons != NULL; cons = cons->next)
-    {
-      if (SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type) && cons->index_status == SM_NORMAL_INDEX
-	  && cons->attributes != NULL && cons->attributes[0] != NULL
-	  && intl_identifier_casecmp (name->info.name.original, cons->attributes[0]->header.name) == 0)
-	{
-	  return true;
-	}
-    }
-
-  return false;
-}
-
-/*
  * qo_hq_has_hashable_eq_term () - checks the CONNECT BY predicate (still an
  *   AND parse tree at rewrite time) for a hashable equality conjunct
- *   return: with constraints NULL, whether any conjunct is hashable; otherwise
- *           whether a hashable conjunct's bare build column leads one of the
- *           given indexes
+ *   return: whether any conjunct is hashable
  */
 static bool
-qo_hq_has_hashable_eq_term (PARSER_CONTEXT * parser, PT_NODE * pred, SM_CLASS_CONSTRAINT * constraints)
+qo_hq_has_hashable_eq_term (PARSER_CONTEXT * parser, PT_NODE * pred)
 {
   PT_NODE *build_name;
 
@@ -3992,8 +3968,8 @@ qo_hq_has_hashable_eq_term (PARSER_CONTEXT * parser, PT_NODE * pred, SM_CLASS_CO
     {
       if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_AND))
 	{
-	  if (qo_hq_has_hashable_eq_term (parser, pred->info.expr.arg1, constraints)
-	      || qo_hq_has_hashable_eq_term (parser, pred->info.expr.arg2, constraints))
+	  if (qo_hq_has_hashable_eq_term (parser, pred->info.expr.arg1)
+	      || qo_hq_has_hashable_eq_term (parser, pred->info.expr.arg2))
 	    {
 	      return true;
 	    }
@@ -4003,7 +3979,141 @@ qo_hq_has_hashable_eq_term (PARSER_CONTEXT * parser, PT_NODE * pred, SM_CLASS_CO
       if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_EQ) && pred->or_next == NULL
 	  && qo_hq_is_hashable_eq_term (parser, pred, &build_name))
 	{
-	  if (constraints == NULL || (build_name != NULL && qo_hq_index_leads_with (constraints, build_name)))
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_hq_is_spec_column () - checks whether a node is the given column of the spec
+ */
+static bool
+qo_hq_is_spec_column (PT_NODE * node, PT_NODE * spec, const char *attr_name)
+{
+  return (PT_IS_NAME_NODE (node) && node->info.name.spec_id == spec->info.spec.id
+	  && intl_identifier_casecmp (node->info.name.original, attr_name) == 0);
+}
+
+/*
+ * qo_hq_eq_term_binds () - checks whether one PT_EQ conjunct of a CONNECT BY
+ *   predicate fixes the column for every parent row: the column alone on one
+ *   side, no scan column on the other (a constant, a host variable or a PRIOR
+ *   expression), so the single-table plan can use it as an index key
+ */
+static bool
+qo_hq_eq_term_binds (PARSER_CONTEXT * parser, PT_NODE * term, PT_NODE * spec, const char *attr_name)
+{
+  bool has_hq_op = false;
+  QO_HQ_ARG_CLASS c = { false, false };
+  PT_NODE *save_next = term->next;
+  PT_NODE *other;
+
+  if (qo_hq_is_spec_column (term->info.expr.arg1, spec, attr_name))
+    {
+      other = term->info.expr.arg2;
+    }
+  else if (qo_hq_is_spec_column (term->info.expr.arg2, spec, attr_name))
+    {
+      other = term->info.expr.arg1;
+    }
+  else
+    {
+      return false;
+    }
+
+  term->next = NULL;
+  (void) parser_walk_tree (parser, term, qo_hq_op_except_prior_walker, &has_hq_op, NULL, NULL);
+  term->next = save_next;
+  if (has_hq_op)
+    {
+      return false;
+    }
+
+  (void) parser_walk_tree (parser, other, qo_hq_classify_arg_walker, &c, NULL, NULL);
+
+  return !c.has_name;
+}
+
+/*
+ * qo_hq_column_is_bound () - checks whether an equality conjunct of the
+ *   CONNECT BY predicate fixes the column (see qo_hq_eq_term_binds)
+ *   return: whether the column is fixed
+ *   is_link(out): set when a conjunct fixing it is a hashable PRIOR equality
+ *                 whose build side is the column
+ */
+static bool
+qo_hq_column_is_bound (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE * spec, const char *attr_name, bool * is_link)
+{
+  PT_NODE *build_name;
+  bool bound = false;
+
+  for (; pred != NULL; pred = pred->next)
+    {
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_AND))
+	{
+	  if (qo_hq_column_is_bound (parser, pred->info.expr.arg1, spec, attr_name, is_link))
+	    {
+	      bound = true;
+	    }
+	  if (qo_hq_column_is_bound (parser, pred->info.expr.arg2, spec, attr_name, is_link))
+	    {
+	      bound = true;
+	    }
+	  continue;
+	}
+
+      if (PT_IS_EXPR_NODE_WITH_OPERATOR (pred, PT_EQ) && pred->or_next == NULL
+	  && qo_hq_eq_term_binds (parser, pred, spec, attr_name))
+	{
+	  bound = true;
+	  if (qo_hq_is_hashable_eq_term (parser, pred, &build_name) && build_name != NULL)
+	    {
+	      *is_link = true;
+	    }
+	}
+    }
+
+  return bound;
+}
+
+/*
+ * qo_hq_index_serves_child_lookup () - checks whether a normal index of the
+ *   class can find the children of a parent row by a key range
+ *   return: whether the leading columns of an index are all fixed by the
+ *           CONNECT BY predicate and one of them is the build side of a PRIOR
+ *           link
+ */
+static bool
+qo_hq_index_serves_child_lookup (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE * spec,
+				 SM_CLASS_CONSTRAINT * constraints)
+{
+  SM_CLASS_CONSTRAINT *cons;
+  int i;
+  bool is_link;
+
+  for (cons = constraints; cons != NULL; cons = cons->next)
+    {
+      if (!SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type) || cons->index_status != SM_NORMAL_INDEX
+	  || cons->attributes == NULL)
+	{
+	  continue;
+	}
+
+      is_link = false;
+      for (i = 0; cons->attributes[i] != NULL; i++)
+	{
+	  /* attributes[] of a function index skip the function key and list its arguments after the key columns */
+	  if (cons->func_index_info != NULL && i >= cons->func_index_info->col_id)
+	    {
+	      break;
+	    }
+	  if (!qo_hq_column_is_bound (parser, pred, spec, cons->attributes[i]->header.name, &is_link))
+	    {
+	      break;
+	    }
+	  if (is_link)
 	    {
 	      return true;
 	    }
@@ -4096,10 +4206,13 @@ qo_hq_has_hashed_apart_eq_term (PT_NODE * pred)
  *   generic path, whose hash list scan finds children in O(N+E) instead of
  *   rescanning the table for every parent row
  *   return: true to use the generic (materialize + hash list scan) path
- * Note: the single-table plan is kept only when an index leads with the bare
- *       build-side column of a hashable equality, since only such an index
- *       can serve the per-parent child lookup; an expression over the column
- *       (PRIOR id = pid + 0) cannot use any index.
+ * Note: the single-table plan is kept only when the leading columns of an
+ *       index are all fixed by equalities of the CONNECT BY predicate (to a
+ *       constant, a host variable or a PRIOR expression) and one of them is
+ *       the bare build-side column of a hashable equality, since only such an
+ *       index finds the children of a parent by a key range: (pid) or
+ *       (grp, pid) for PRIOR id = pid AND grp = 7. An expression over the
+ *       column (PRIOR id = pid + 0) cannot use any index.
  */
 static bool
 qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
@@ -4117,7 +4230,7 @@ qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT
       return false;
     }
 
-  if (!qo_hq_has_hashable_eq_term (parser, connect_by, NULL))
+  if (!qo_hq_has_hashable_eq_term (parser, connect_by))
     {
       return false;
     }
@@ -4129,7 +4242,7 @@ qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT
     }
 
   constraints = sm_class_constraints (spec->info.spec.entity_name->info.name.db_object);
-  if (constraints != NULL && qo_hq_has_hashable_eq_term (parser, connect_by, constraints))
+  if (constraints != NULL && qo_hq_index_serves_child_lookup (parser, connect_by, spec, constraints))
     {
       return false;
     }
