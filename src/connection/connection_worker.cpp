@@ -1166,6 +1166,7 @@ namespace cubconn::connection
 	goto retry;
       }
 
+    /* an eager receiver may still use this context; closing now would retire it under that thread */
     if (this->must_defer_close_for_eager_receiver (ctx))
       {
 	er_log_conn (__FILE__, __LINE__,
@@ -1689,6 +1690,11 @@ retry:
     return true;
   }
 
+  /* Receive again from a socket an eager receiver handed back.
+   *   1. Look up the context under cmutex; drop the message when the connection has none.
+   *   2. Drop a message meant for an older context, or forward it to the worker that took the connection over.
+   *   3. Put the message back when nested; the next queue pass serves it outside both cases.
+   *   4. Receive from the socket, unless the eager receiver holds it again. */
   bool worker::handle_message_queue_recv_recheck (message &item)
   {
     context *ctx;
@@ -1699,6 +1705,7 @@ retry:
 
     assert (item.conn);
 
+    /* STEP 1. Look up the context under cmutex; drop the message when the connection has none. */
     r = rmutex_lock (m_entry, &item.conn->cmutex);
     assert (r == NO_ERROR);
 
@@ -1710,6 +1717,7 @@ retry:
 	return true;
       }
 
+    /* STEP 2. Drop a message meant for an older context, or forward it to the worker that took the connection over. */
     conn = item.conn;
     if (!this->validate_message_generation (item, ctx)
 	|| this->forward_message_to_successor (queue_type::IMMEDIATE, item, ctx))
@@ -1719,7 +1727,7 @@ retry:
 	return true;
       }
 
-    /* Put the message back when nested; the next queue pass serves it outside both cases.
+    /* STEP 3. Put the message back when nested; the next queue pass serves it outside both cases.
      * Under cmutex (handle_message_queue_handoff_client ()), handle_reception () would take rmutex
      * while a transaction thread holding rmutex waits for cmutex in css_request_release_packet ().
      * Under a close (has_remaining_tasks ()), a nested close would clear the m_entry client info
@@ -1736,7 +1744,8 @@ retry:
 	return true;
       }
 
-    /* not from_edge: this message is the handover itself */
+    /* STEP 4. Receive from the socket, unless the eager receiver holds it again.
+     * Not from_edge: this message is the handover itself. */
     status = this->receive_if_free (ctx, false, false);
     if (status == result::Error)
       {
