@@ -1544,6 +1544,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
   DB_OBJECT **class_mops = NULL;
   int n_classes = 0;
   int n_max;
+  int i;
   char *name;
   char *next;
 
@@ -1567,11 +1568,6 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
       class_name = NULL;
     }
   if (skip_list != NULL && skip_list[0] == '\0')
-    {
-      goto print_optimize_usage;
-    }
-  /* -n takes exactly one class; the comma-separated form belongs to --no-histogram-classes */
-  if (class_name != NULL && strchr (class_name, ',') != NULL)
     {
       goto print_optimize_usage;
     }
@@ -1600,9 +1596,10 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
       goto error_exit;
     }
 
-  /* resolve the class names given on the command line: the -n class, or the comma-separated classes
-   * to leave out of the histogram build. Both follow the -n rules (owner-qualified name, dba's system
-   * classes by their bare name) and an unknown name is an error, not a silent skip */
+  /* resolve the class names given on the command line: the -n class, taken as one name as before (an
+   * identifier may itself contain a comma, e.g. [a,b]), or the comma-separated classes to leave out of
+   * the histogram build. Both follow the -n rules (owner-qualified name, dba's system classes by their
+   * bare name) and an unknown name is an error, not a silent skip */
   names = (class_name != NULL) ? class_name : skip_list;
   if (names != NULL)
     {
@@ -1630,7 +1627,7 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
 	  const char *class_name_p = NULL;
 	  const char *class_name_only = NULL;
 	  char owner_name[DB_MAX_USER_LENGTH] = { '\0' };
-	  char *comma = strchr (name, ',');
+	  char *comma = (skip_list != NULL) ? strchr (name, ',') : NULL;
 
 	  next = NULL;
 	  if (comma != NULL)
@@ -1674,7 +1671,18 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
 	      PRINT_AND_LOG_ERR_MSG ("%s: not a class\n", name);
 	      goto error_exit_shutdown;
 	    }
-	  n_classes++;
+	  /* the same class listed twice counts once, or the not-top-level warning would over-report */
+	  for (i = 0; i < n_classes; i++)
+	    {
+	      if (OID_EQ (WS_OID (class_mops[i]), WS_OID (class_mops[n_classes])))
+		{
+		  break;
+		}
+	    }
+	  if (i == n_classes)
+	    {
+	      n_classes++;
+	    }
 	}
     }
 
@@ -1698,8 +1706,8 @@ optimizedb (UTIL_FUNCTION_ARG * arg)
     }
   db_commit_transaction ();
   db_shutdown ();
-  free (names_buf);
-  free (class_mops);
+  free_and_init (names_buf);
+  free_and_init (class_mops);
 
   return EXIT_SUCCESS;
 
@@ -1713,8 +1721,8 @@ error_exit_shutdown:
   db_shutdown ();
 
 error_exit:
-  free (names_buf);
-  free (class_mops);
+  free_and_init (names_buf);
+  free_and_init (class_mops);
   return EXIT_FAILURE;
 }
 

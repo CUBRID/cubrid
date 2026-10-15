@@ -6298,9 +6298,11 @@ update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip)
     {
       /* an entry that is a class but not a top-level one (a partition of a partitioned class) never
        * matches the list above; say so instead of dropping it silently */
-      fprintf (stderr, "Warning: %d of the %d classes to exclude %s not top-level classes and %s ignored.\n",
-	       n_skip - n_excluded, n_skip, (n_skip - n_excluded == 1) ? "is" : "are",
-	       (n_skip - n_excluded == 1) ? "was" : "were");
+      int n_missed = n_skip - n_excluded;
+
+      fprintf (stderr, "Warning: %d of the %d classes to exclude %s and %s ignored.\n", n_missed, n_skip,
+	       (n_missed == 1) ? "is not a top-level class" : "are not top-level classes",
+	       (n_missed == 1) ? "was" : "were");
       fflush (stderr);
     }
 
