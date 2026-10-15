@@ -258,6 +258,10 @@ typedef enum
   COMPOSITE_MAX
 } EN_COMPOSITE_POS;
 
+/* milliseconds of 10000 years: a larger amount of any interval unit leaves the date range, so clamping to it
+ * keeps the result an error and the date arithmetic free of overflow */
+#define INTERVAL_AMOUNT_MAX ((DB_BIGINT) 10000 * 366 * 24 * 60 * 60 * 1000)
+
 static int db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE * result);
 static char db_string_escape_char (char c);
 static int qstr_trim (MISC_OPERAND tr_operand, const unsigned char *trim, int trim_length, int trim_size,
@@ -20890,7 +20894,7 @@ db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGIN
 	    }
 
 	  ms_ptr = expr_s;
-	  values[base + cnt] = strtoll (expr_s, &endptr, 10);
+	  values[base + cnt] = std::min<DB_BIGINT> (strtoll (expr_s, &endptr, 10), INTERVAL_AMOUNT_MAX);
 	  cnt++;
 	  expr_s = endptr;
 	}
@@ -21021,6 +21025,8 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       assert (unit == PT_MILLISECOND || unit == PT_SECOND || unit == PT_MINUTE || unit == PT_HOUR ||
 	      unit == PT_DAY || unit == PT_WEEK || unit == PT_MONTH || unit == PT_QUARTER || unit == PT_YEAR);
 
+      /* the negation and the WEEK and QUARTER products below overflow at the BIGINT ends */
+      unit_int_val = std::clamp (unit_int_val, -INTERVAL_AMOUNT_MAX, INTERVAL_AMOUNT_MAX);
       if (unit_int_val >= 0)
 	{
 	  is_positive_value = 1;
