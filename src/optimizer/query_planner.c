@@ -987,7 +987,7 @@ qo_top_plan_new (QO_PLAN * plan)
 
 	  if (group_sort_list)
 	    {
-	      if (found_instnum /* && found_grpynum */ )
+	      if (tree->info.query.q.select.connect_by || found_instnum /* && found_grpynum */ )
 		{
 		  ;		/* give up */
 		}
