@@ -2628,8 +2628,12 @@ respond:
     return ctx;
   }
 
-  /* Run the reception steps of handle_reception () on the eager receiver, under the constraint
-   * at the reception declarations: m_stats and LAST_ACTIVE_NS are left to the worker.
+  /* Run the reception steps of handle_reception () on the eager receiver.
+   *   1. Read the socket up to the receive budget.
+   *   2. Recheck under rmutex that the connection is still open.
+   *   3. Handle the packets; complete requests are counted instead of pushed as tasks.
+   *   4. Return the count, or push the counted requests to the pool when a method-mode packet ended counting.
+   * Under the constraint at the reception declarations, m_stats and LAST_ACTIVE_NS are left to the worker.
    * m_recv_budget is the only worker member read, and every worker has the same value. */
   result worker::eager_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out)
   {
@@ -2640,7 +2644,9 @@ respond:
     count_out = 0;
     more_data_out = false;
 
-    /* fd without cmutex: must_defer_close_for_eager_receiver () defers the close while this thread owns it */
+    /* STEP 1. Read the socket up to the receive budget.
+     * The fd is read without cmutex: must_defer_close_for_eager_receiver () defers the close
+     * while this thread owns the socket. */
     io_status = ctx->m_recv.m_receiver.drain (ctx->m_conn->fd, m_recv_budget);
     if (io_status == result::PeerReset || io_status == result::Error)
       {
@@ -2658,6 +2664,7 @@ respond:
 	return result::Ok;
       }
 
+    /* STEP 2. Recheck under rmutex that the connection is still open. */
     if (rmutex_lock (entry, &ctx->m_conn->rmutex) != NO_ERROR)
       {
 	return result::Error;
@@ -2669,6 +2676,7 @@ respond:
 	return result::Error;
       }
 
+    /* STEP 3. Handle the packets; complete requests are counted instead of pushed as tasks. */
     ctx->m_recv.m_eager_draining = true;
     ctx->m_recv.m_eager_counted = 0;
 
@@ -2691,9 +2699,9 @@ respond:
 	  }
       }
 
+    /* STEP 4. Return the count, or push the counted requests to the pool when a method-mode packet ended counting. */
     if (!ctx->m_recv.m_eager_draining)
       {
-	/* a method-mode packet ended eager counting; the requests counted before it follow it to the pool */
 	this->eager_flush_counted_to_pool (ctx);
       }
     count_out = ctx->m_recv.m_eager_counted;
