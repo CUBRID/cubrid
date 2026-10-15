@@ -2090,7 +2090,10 @@ css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
 void
 css_server_task::execute (context_type &thread_ref)
 {
+  /* run the request this task was pushed for */
   css_run_one_request (thread_ref, m_conn);
+
+  /* eager receive: before giving the thread back, run the next requests of this connection here */
   css_eager_receive_loop (thread_ref, m_conn);
 
   thread_ref.conn_entry = NULL;
@@ -2175,8 +2178,15 @@ css_run_one_request (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
  *   thread_ref(in):
  *   conn_ref(in):
  *
- * Note: worker::eager_poll_and_receive () owns the socket protocol; this loop
- *       only decides whether to keep waiting and runs what came in.
+ * Note: Each pass of the loop takes four steps.
+ *       1. Stop when the server is stopping, or when the core that
+ *          css_push_server_task () sends this connection's tasks to has work waiting.
+ *       2. Wait up to the window on the socket through worker::eager_poll_and_receive (),
+ *          which owns the socket protocol.
+ *       3. Run what came in, resetting the thread before each request
+ *          as the worker pool does between two tasks.
+ *       4. Report the run to worker::eager_finish (), then wait again
+ *          unless step 2 said to stop.
  *
  *       The connection cannot close underneath the loop:
  *       worker::must_defer_close_for_eager_receiver () defers the close
@@ -2204,8 +2214,7 @@ css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 	}
       if (css_Server_request_worker_pool->has_queued_task_on_core (static_cast<size_t> (conn_ref.idx)))
 	{
-	  /* the core css_push_server_task () sends this connection's tasks to has work waiting,
-	   * which outranks this thread's wait */
+	  /* work waiting on this connection's core outranks this thread's wait */
 	  return;
 	}
 
@@ -2216,9 +2225,9 @@ css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
        * they are already parsed and counted, and each one owes a start_request () */
       for (i = 0; i < received; i++)
 	{
-	  /* Apply the reset the worker pool puts between two tasks. recycle_context () also clears
-	   * entry::shutdown, which would drop a stop the pool has already asked for, so the flag is put back.
-	   * The write is conditional because stop_execution () may raise it during recycle_context (). */
+	  /* recycle_context () also clears entry::shutdown, which would drop a stop the pool has already
+	   * asked for, so the flag is put back. The write is conditional because stop_execution ()
+	   * may raise it during recycle_context (). */
 	  was_shutdown = thread_ref.shutdown;
 	  css_Server_request_worker_pool->get_entry_manager ().recycle_context (thread_ref);
 	  if (was_shutdown)
