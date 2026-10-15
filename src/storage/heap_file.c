@@ -21280,7 +21280,12 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 
 	  /* lookup only (NULL class_oid): heap_find_bestpage builds a missing bestspace */
 	  bestspace = heap_find_bestspace (thread_p, NULL, &context->hfid, NULL);
-	  if (bestspace != NULL)
+	  if (bestspace != NULL
+	      /* the search takes reclaimed space from the candidate queue first;
+	       * the hint would skip it and fill its own page,
+	       * so a delete-and-reinsert loop would allocate new pages where the search reuses the reclaimed ones */
+	      && !bestspace->has_candidate ((std::uint16_t)
+					    bestspace->get_needed_size (context->recdes_p->length + SPAGE_SLOT_SIZE)))
 	    {
 	      VPID hint_vpid = context->scan_cache_p->insert_hint_vpid;
 

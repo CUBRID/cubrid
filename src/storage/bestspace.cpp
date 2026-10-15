@@ -1260,6 +1260,12 @@ namespace cubstorage
     return i;
   }
 
+  std::uint16_t
+  bestspace::candidate_queue::max_freespace () const
+  {
+    return m_max_freespace.load (std::memory_order_acquire);
+  }
+
   std::size_t
   bestspace::candidate_queue::to_entries (bestspace_entry *candidates)
   {
@@ -1426,6 +1432,12 @@ namespace cubstorage
   bestspace::pop_candidates (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t needed_size)
   {
     return m_candidates.pop (candidates, minimum, needed_size);
+  }
+
+  bool
+  bestspace::has_candidate (std::uint16_t needed_size) const
+  {
+    return m_candidates.max_freespace () >= needed_size;
   }
 
   bool

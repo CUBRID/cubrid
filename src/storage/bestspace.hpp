@@ -344,6 +344,7 @@ namespace cubstorage
 
 	  bool pop (bestspace_entry &candidate, std::uint16_t needed_size);
 	  std::size_t pop (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t needed_size);
+	  std::uint16_t max_freespace () const;
 
 	  std::size_t to_entries (bestspace_entry *candidates);
 
@@ -370,6 +371,7 @@ namespace cubstorage
       void try_push_candidates (bestspace_entry *candidates, std::size_t num_candidates);
       void push_candidates (bestspace_entry *candidates, std::size_t num_candidates);
       std::size_t pop_candidates (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t needed_size);
+      bool has_candidate (std::uint16_t needed_size) const;
 
       bool updatable ();
 
