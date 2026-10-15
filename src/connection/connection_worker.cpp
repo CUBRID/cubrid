@@ -622,92 +622,6 @@ namespace cubconn::connection
     ctx->m_recv.m_eager_running.fetch_sub (1, std::memory_order_release);
   }
 
-  /*
-   * worker::eager_claim () - take this connection's socket for the calling
-   *   transaction thread. Returns the context, with its worker and descriptor,
-   *   or nullptr when the socket is busy or the connection is closing.
-   *   A granted claim raises m_eager_running. None is granted once the connection
-   *   has left CONN_OPEN, so the count cannot rise after
-   *   must_defer_close_for_eager_receiver () has read it.
-   *   The shutdown check only ends the loop sooner.
-   */
-  context *worker::eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker *&self_out, SOCKET &fd_out)
-  {
-    context *ctx;
-    int r;
-
-    if (rmutex_lock (entry, &conn.cmutex) != NO_ERROR)
-      {
-	return nullptr;
-      }
-    self_out = conn.worker;
-    ctx = reinterpret_cast<context *> (conn.context);
-    if (self_out == nullptr || ctx == nullptr || ctx->m_recv.m_recv_busy.load (std::memory_order_acquire)
-	|| conn.status != CONN_OPEN || conn.stop_talk || css_is_shutdowning_server ())
-      {
-	ctx = nullptr;
-      }
-    else
-      {
-	ctx->m_recv.m_recv_busy.store (true, std::memory_order_relaxed);
-	ctx->m_recv.m_eager_running.fetch_add (1, std::memory_order_relaxed);
-	ctx->m_recv.m_missed_edge = false;
-	fd_out = conn.fd;
-      }
-    r = rmutex_unlock (entry, &conn.cmutex);
-    assert (r == NO_ERROR);
-
-    return ctx;
-  }
-
-  /*
-   * worker::eager_release () - give the socket taken by eager_claim () back.
-   *   hand_back asks the worker to receive from it again with a RECV_RECHECK;
-   *   an edge the worker dropped meanwhile asks the same when data is still there.
-   *   Returns true when the caller must stop waiting on the socket:
-   *   it was handed back, or could not be released under the lock.
-   */
-  bool worker::eager_release (css_conn_entry &conn, cubthread::entry *entry, context *ctx, SOCKET fd, bool hand_back)
-  {
-    struct pollfd po;
-    int r;
-
-    if (rmutex_lock (entry, &conn.cmutex) != NO_ERROR)
-      {
-	/* an edge recorded in m_missed_edge cannot be handed back without the lock;
-	 * the worker's next level-triggered wake is the only recovery */
-	ctx->m_recv.m_recv_busy.store (false, std::memory_order_release);
-	return true;
-      }
-    ctx->m_recv.m_recv_busy.store (false, std::memory_order_release);
-    if (!hand_back && ctx->m_recv.m_missed_edge)
-      {
-	/* the dropped edge is usually data this thread already drained */
-	po.fd = fd;
-	po.events = POLLIN;
-	po.revents = 0;
-	hand_back = (poll (&po, 1, 0) != 0);
-      }
-    if (hand_back && conn.worker != nullptr && conn.context == ctx)
-      {
-	message request;
-
-	request.type = message_type::RECV_RECHECK;
-	request.conn = &conn;
-	request.ctx = ctx;
-	request.id = ctx->m_id;
-	if (!conn.worker->enqueue_and_notify (queue_type::IMMEDIATE, std::move (request)))
-	  {
-	    assert_release (false);
-	  }
-      }
-    ctx->m_recv.m_missed_edge = false;
-    r = rmutex_unlock (entry, &conn.cmutex);
-    assert (r == NO_ERROR);
-
-    return hand_back;
-  }
-
   worker::worker (pool *pool, std::shared_ptr<coordinator> coord, std::shared_ptr<thread_watcher> watcher,
 		  std::size_t core, std::size_t index) :
     m_parent (pool),
@@ -2722,6 +2636,44 @@ respond:
   }
 
   /*
+   * worker::eager_claim () - take this connection's socket for the calling
+   *   transaction thread. Returns the context, with its worker and descriptor,
+   *   or nullptr when the socket is busy or the connection is closing.
+   *   A granted claim raises m_eager_running. None is granted once the connection
+   *   has left CONN_OPEN, so the count cannot rise after
+   *   must_defer_close_for_eager_receiver () has read it.
+   *   The shutdown check only ends the loop sooner.
+   */
+  context *worker::eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker *&self_out, SOCKET &fd_out)
+  {
+    context *ctx;
+    int r;
+
+    if (rmutex_lock (entry, &conn.cmutex) != NO_ERROR)
+      {
+	return nullptr;
+      }
+    self_out = conn.worker;
+    ctx = reinterpret_cast<context *> (conn.context);
+    if (self_out == nullptr || ctx == nullptr || ctx->m_recv.m_recv_busy.load (std::memory_order_acquire)
+	|| conn.status != CONN_OPEN || conn.stop_talk || css_is_shutdowning_server ())
+      {
+	ctx = nullptr;
+      }
+    else
+      {
+	ctx->m_recv.m_recv_busy.store (true, std::memory_order_relaxed);
+	ctx->m_recv.m_eager_running.fetch_add (1, std::memory_order_relaxed);
+	ctx->m_recv.m_missed_edge = false;
+	fd_out = conn.fd;
+      }
+    r = rmutex_unlock (entry, &conn.cmutex);
+    assert (r == NO_ERROR);
+
+    return ctx;
+  }
+
+  /*
    * worker::eager_drain () - run the reception steps of handle_reception ()
    *   on the eager receiver, under the constraint
    *   at the reception declarations in connection_worker.hpp. Hence m_stats
@@ -2838,6 +2790,54 @@ respond:
 	css_push_server_task (*ctx->m_conn, cubthread::task_submission_options ());
       }
     ctx->m_recv.m_eager_counted = 0;
+  }
+
+  /*
+   * worker::eager_release () - give the socket taken by eager_claim () back.
+   *   hand_back asks the worker to receive from it again with a RECV_RECHECK;
+   *   an edge the worker dropped meanwhile asks the same when data is still there.
+   *   Returns true when the caller must stop waiting on the socket:
+   *   it was handed back, or could not be released under the lock.
+   */
+  bool worker::eager_release (css_conn_entry &conn, cubthread::entry *entry, context *ctx, SOCKET fd, bool hand_back)
+  {
+    struct pollfd po;
+    int r;
+
+    if (rmutex_lock (entry, &conn.cmutex) != NO_ERROR)
+      {
+	/* an edge recorded in m_missed_edge cannot be handed back without the lock;
+	 * the worker's next level-triggered wake is the only recovery */
+	ctx->m_recv.m_recv_busy.store (false, std::memory_order_release);
+	return true;
+      }
+    ctx->m_recv.m_recv_busy.store (false, std::memory_order_release);
+    if (!hand_back && ctx->m_recv.m_missed_edge)
+      {
+	/* the dropped edge is usually data this thread already drained */
+	po.fd = fd;
+	po.events = POLLIN;
+	po.revents = 0;
+	hand_back = (poll (&po, 1, 0) != 0);
+      }
+    if (hand_back && conn.worker != nullptr && conn.context == ctx)
+      {
+	message request;
+
+	request.type = message_type::RECV_RECHECK;
+	request.conn = &conn;
+	request.ctx = ctx;
+	request.id = ctx->m_id;
+	if (!conn.worker->enqueue_and_notify (queue_type::IMMEDIATE, std::move (request)))
+	  {
+	    assert_release (false);
+	  }
+      }
+    ctx->m_recv.m_missed_edge = false;
+    r = rmutex_unlock (entry, &conn.cmutex);
+    assert (r == NO_ERROR);
+
+    return hand_back;
   }
 
   result worker::handle_transmission (context *ctx, bool in_exhausted)

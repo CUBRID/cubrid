@@ -287,8 +287,8 @@ namespace cubconn::connection
       /* --------------------------------------------------------------------------- */
       bool requires_client_info (context *ctx);
       bool is_registering_client (context *ctx);
-      bool must_defer_close_for_eager_receiver (context *ctx);
 
+      bool must_defer_close_for_eager_receiver (context *ctx);
       bool has_remaining_tasks (context *ctx);
 
       std::pair<int, int> start_connection_close (context *ctx);
@@ -367,19 +367,23 @@ namespace cubconn::connection
 
       /* reception */
       /* handle_packet () runs on the worker thread and, through eager_drain (), on the eager
-       * receiver (the transaction thread that owns the socket). It and everything below it
+       * receiver (the transaction thread that owns the socket). It and everything it calls
        * may therefore touch only the context and the connection: never worker-private
        * state (m_stats, m_exhausted, m_entry, m_context, m_events, the message queues)
        * and never the connection-close path. */
       result handle_packet (context *ctx, cubbase::span<std::byte> &packet);
       result handle_reception (context *ctx, bool in_exhausted);
+
+      /* worker: claim the socket before receiving from it */
       bool claim_reading (context *ctx, bool from_edge);
       void release_reading (context *ctx);
       result receive_if_free (context *ctx, bool in_exhausted, bool from_edge);
+
+      /* eager receiver: claim, drain and release the socket, in eager_poll_and_receive () */
+      static context *eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker *&self_out, SOCKET &fd_out);
       result eager_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out);
       void eager_abort (context *ctx);
       void eager_flush_counted_to_pool (context *ctx);
-      static context *eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker *&self_out, SOCKET &fd_out);
       static bool eager_release (css_conn_entry &conn, cubthread::entry *entry, context *ctx, SOCKET fd, bool hand_back);
 
       /* --------------------------------------------------------------------------- */
