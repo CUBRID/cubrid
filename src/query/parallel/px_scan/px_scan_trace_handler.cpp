@@ -57,36 +57,48 @@ namespace parallel_scan
     m_stats.push_back (cs);
   }
 
-  void trace_handler::add_sp_stats (UINT64 calls, UINT64 time, UINT64 fetches, UINT64 ioreads)
+  trace_handler::~trace_handler ()
+  {
+    free (m_px_stats);
+  }
+
+  void trace_handler::add_px_stats (const UINT64 *worker_stats)
   {
     std::lock_guard<std::mutex> lock (m_stats_mutex);
-    m_sp_calls += calls;
-    m_sp_time += time;
-    m_sp_fetches += fetches;
-    m_sp_ioreads += ioreads;
+
+    if (m_px_stats == nullptr)
+      {
+	m_px_stats = (UINT64 *) calloc (perfmon_get_number_of_statistic_values (), sizeof (UINT64));
+	if (m_px_stats == nullptr)
+	  {
+	    /* statistics only: the query goes on without this worker's counters */
+	    return;
+	  }
+      }
+    perfmon_merge_values (m_px_stats, worker_stats);
   }
 
   void trace_handler::merge_stats (THREAD_ENTRY *thread_p, SCAN_STATS *scan_stats)
   {
     std::lock_guard<std::mutex> lock (m_stats_mutex);
 
-    /* Hand the workers' SP evaluation back to the leader's own counters. This runs while the
-     * leader is still inside qexec_execute_query (), so its closing read of PSTAT_REGU_* picks
-     * these up and xasl->func_stats reports the whole query's SP work, not just the leader's
-     * share. Zeroed after folding so a scan re-open (partition pruning) cannot count twice. */
-    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_CALL_EVALS].start_offset, m_sp_calls);
-    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_EVAL_TIME_10USEC].start_offset, m_sp_time);
-    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_FETCHES].start_offset, m_sp_fetches);
-    perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_REGU_NUM_IOREADS].start_offset, m_sp_ioreads);
-    m_sp_calls = m_sp_time = m_sp_fetches = m_sp_ioreads = 0;
+    if (m_merged)
+      {
+	return;
+      }
+    m_merged = true;
+
+    /* Everything the workers counted (page fixes, SP calls, ...) goes to the leader's own counters while the
+     * leader is still inside qexec_execute_query (), so its xasl stats, func stats and the transaction's
+     * statistics include the workers' share. Zeroed after merging so a re-opened scan (the next partition)
+     * merges only its own. */
+    if (m_px_stats != nullptr)
+      {
+	perfmon_add_values_to_local (thread_p, m_px_stats);
+	memset (m_px_stats, 0, perfmon_get_number_of_statistic_values () * sizeof (UINT64));
+      }
     for (auto &stat : m_stats)
       {
-	perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
-					stat.fetch_time);
-	perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
-					stat.ioreads);
-	perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
-					stat.fetches);
 	scan_stats->read_rows += stat.read_rows;
 	scan_stats->qualified_rows += stat.qualified_rows;
 	scan_stats->num_ioreads += stat.ioreads;
@@ -107,7 +119,7 @@ namespace parallel_scan
   {
     std::lock_guard<std::mutex> lock (m_stats_mutex);
     m_stats.clear();
-    m_sp_calls = m_sp_time = m_sp_fetches = m_sp_ioreads = 0;
+    m_merged = false;
     m_topnsort_used.store (false, std::memory_order_relaxed);   // per-reopen reset, matches m_stats.clear()
   }
 

@@ -2508,6 +2508,13 @@ qdump_print_xasl (xasl_node * xasl_p)
 	  nflag++;
 	}
 
+      if (XASL_IS_FLAGED (xasl_p, XASL_NL_FOLLOWING_JOIN))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_NL_FOLLOWING_JOIN);
+	  fprintf (foutput, "%sXASL_NL_FOLLOWING_JOIN", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
       if (xasl_p->flag)
 	{
 	  fprintf (foutput, "%s%d", (nflag ? "|" : ""), xasl_p->flag);
@@ -3161,7 +3168,8 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	}
 
 #if !WINDOWS
-      if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
+      /* a partitioned class goes back to S_HEAP_SCAN after its last partition, as the text dump expects */
+      if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
 	{
 	  if (spec->s_id.s.phsid.trace_storage != NULL)
 	    {

@@ -280,7 +280,7 @@ static bool qo_is_non_mvcc_class_with_index (QO_CLASS_INFO_ENTRY * class_entry_p
  *   ...(in): parameter-specific parameters
  */
 void
-qo_get_optimization_param (void *retval, QO_PARAM param, ...)
+qo_get_optimization_param (void *retval, int param, ...)
 {
   char *buf;
   va_list args;
@@ -327,7 +327,7 @@ qo_need_skip_execution (void)
  *   ...(in): parameter-specific parameters
  */
 void
-qo_set_optimization_param (void *retval, QO_PARAM param, ...)
+qo_set_optimization_param (void *retval, int param, ...)
 {
   va_list args;
   va_start (args, param);
@@ -1738,7 +1738,7 @@ qo_add_final_segment (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
       (void) set_seg_node (tree, env, &env->final_segs);
       *continue_walk = PT_LIST_WALK;
     }
-  else if ((tree->node_type == PT_DOT_))
+  else if (tree->node_type == PT_DOT_)
     {
       (void) set_seg_node (tree->info.dot.arg2, env, &env->final_segs);
       *continue_walk = PT_LIST_WALK;
@@ -5210,13 +5210,6 @@ qo_get_attr_info_func_index (QO_ENV * env, QO_SEGMENT * seg, const char *expr_st
 	    {
 	      attr_id = consp->attributes[0]->id;
 
-	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id))
-		{
-		  // If a function index is defined in the first position, the second position is the actual column.
-		  // ex) create index idx on tbl(abs(val));
-		  attr_id = consp->attributes[1]->id;
-		}
-
 	      for (j = 0; j < n_attrs; j++, attr_statsp++)
 		{
 		  if (attr_statsp->id == attr_id)
@@ -5764,10 +5757,6 @@ qo_get_index_info (QO_ENV * env, QO_NODE * node)
 	    {
 	      /* function index with the function expression as the first attribute */
 	      attr_id = index_entryp->constraints->attributes[0]->id;
-	      if (IS_DEDUPLICATE_KEY_ATTR_ID (attr_id))
-		{
-		  attr_id = index_entryp->constraints->attributes[1]->id;
-		}
 	    }
 
 	  for (k = 0; k < n_attrs; k++, attr_statsp++)

@@ -36,7 +36,6 @@
 #include "qfile_tuple_layout.h"
 
 #include "binaryheap.h"
-#include "deduplicate_key.h"
 #include "porting.h"
 #include "error_manager.h"
 #include "partition_sr.h"
@@ -158,6 +157,10 @@
 #define QEXEC_EMPTY_ACCESS_SPEC_SCAN(specp) \
   ((specp)->type == TARGET_CLASS \
     && ((ACCESS_SPEC_HFID((specp)).vfid.fileid == NULL_FILEID || ACCESS_SPEC_HFID((specp)).vfid.volid == NULL_VOLID)))
+
+/* a partitioned class spec with more than one partition left after pruning: each partition is a scan block */
+#define QEXEC_IS_MULTI_PARTITION_SPEC(specp) \
+  ((specp) != NULL && (specp)->parts != NULL && (specp)->parts->next != NULL)
 
 #define QEXEC_IS_MULTI_TABLE_UPDATE_DELETE(xasl) \
     (xasl->upd_del_class_cnt > 1 || (xasl->upd_del_class_cnt == 1 && xasl->scan_ptr != NULL))
@@ -441,6 +444,7 @@ static int qexec_clear_agg_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, AG
 				 bool for_parallel_aptr);
 static void qexec_clear_head_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
+static bool qexec_is_list_reusable_by_truncate (const XASL_NODE * xasl);
 static void qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_final_close_dblink_specs (XASL_NODE * xasl);
 static int qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment,
@@ -3288,6 +3292,14 @@ qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_
 	  /* skip out zero correlation-level uncorrelated subquery */
 	  continue;
 	}
+      if (!qexec_is_list_reusable_by_truncate (xasl))
+	{
+	  /* the execution leaves a list_id of a different shape (GROUP BY, analytic, set operation) or with a sort_list
+	   * (ORDER BY, DISTINCT); destroy it so that the next execution opens it again */
+	  qexec_clear_xasl_head (thread_p, xasl);
+	  continue;
+	}
+
       if (xasl->list_id && !xasl->list_id->is_result_cached)
 	{
 	  qfile_truncate_list (thread_p, xasl->list_id);
@@ -3324,6 +3336,35 @@ qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_
 	{
 	  xasl->status = XASL_CLEARED;
 	}
+    }
+}
+
+/*
+ * qexec_is_list_reusable_by_truncate () - check whether the list file of a correlated subquery can be truncated and
+ *					    reused by its next execution
+ *   return: true if the list file keeps the shape it was opened with until the end of the execution
+ *   xasl(in): XASL procedure block
+ *
+ * Note: a truncated list file keeps its type_list and sort_list, so the next execution skips opening it and writes
+ *	 into it as is. That is right only when the list file stays as opened by qexec_start_mainblock_iterations ()
+ *	 or qexec_end_buildvalueblock_iterations (). GROUP BY, analytic functions and set operations replace it with
+ *	 a result list file of a different shape, and ORDER BY and DISTINCT leave a sort_list on it.
+ */
+static bool
+qexec_is_list_reusable_by_truncate (const XASL_NODE * xasl)
+{
+  switch (xasl->type)
+    {
+    case BUILDVALUE_PROC:
+      return true;
+
+    case BUILDLIST_PROC:
+      return (xasl->proc.buildlist.groupby_list == NULL && xasl->proc.buildlist.a_eval_list == NULL
+	      && (xasl->orderby_list == NULL || XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST))
+	      && xasl->option != Q_DISTINCT);
+
+    default:
+      return false;
     }
 }
 
@@ -3967,11 +4008,9 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS
     {
       tsc_getticks (&start_tick);
 
-      if (xasl->orderby_stats.orderby_filesort)
-	{
-	  old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
-	  old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
-	}
+      /* not under orderby_filesort: the sort below is what sets it on the first execution */
+      old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+      old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
     }
 
   if (xasl->topn_items != NULL)
@@ -5020,6 +5059,9 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	      agg_list = agg_list->next;
 	      i++;
 	    }
+
+	  /* a group evicted from the hash table more than once has one entry per eviction */
+	  context->curr_part_value->tuple_count += context->temp_part_value->tuple_count;
 	}
       else
 	{
@@ -8074,7 +8116,8 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
  * reset the hit / miss counts once per outer block. A SEMI / ANTI inner is never split into
  * blocks by the iterator: its partition sweep is one probe of one outer row (qexec_execute_scan,
  * CBRD-26872), so its match memo answers for all partitions and no restart invalidates it
- * (CBRD-27465).
+ * (CBRD-27465). A following join after it is driven per outer row the same way, and its row
+ * memo spans that partition walk (CBRD-27493).
  */
 static SCAN_CODE
 qexec_next_scan_block_renew_memoize (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
@@ -8082,7 +8125,7 @@ qexec_next_scan_block_renew_memoize (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   SCAN_CODE sb_scan = qexec_next_scan_block (thread_p, xasl);
 
   if (sb_scan == S_SUCCESS && xasl->memoize_storage && xasl->spec_list != NULL && xasl->spec_list->parts != NULL
-      && !XASL_IS_NL_SEMI_OR_ANTI (xasl))
+      && !XASL_IS_PER_OUTER_ROW (xasl))
     {
       clear_memoize_storage (thread_p, xasl);
       if (new_memoize_storage (thread_p, xasl, false) != NO_ERROR)
@@ -8157,7 +8200,8 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	{
 	  if (xptr2->scan_ptr)
 	    {
-	      if (XASL_IS_NL_SEMI_OR_ANTI (xptr2->scan_ptr)
+	      /* a scan driven per outer row is rewound, as in the loop below */
+	      if (XASL_IS_PER_OUTER_ROW (xptr2->scan_ptr)
 		  && qexec_reset_sa_inner_scan_block (thread_p, xptr2->scan_ptr) == S_ERROR)
 		{
 		  return S_ERROR;
@@ -8216,10 +8260,11 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 		{
 		  if (xptr2->scan_ptr)
 		    {
-		      /* a semi/anti inner is driven per outer row and was left where its last probe stopped; rewind
-		       * it (to its first partition when partitioned) so the block advance below restarts it, instead
-		       * of reading S_END here and abandoning the outer's remaining scan blocks (partitions) */
-		      if (XASL_IS_NL_SEMI_OR_ANTI (xptr2->scan_ptr)
+		      /* a semi/anti inner and every scan after it (a following join) are driven per outer row and
+		       * were left where their last probe stopped; rewind them (to the first partition when
+		       * partitioned) so the block advance below restarts them, instead of reading S_END here and
+		       * abandoning the outer's remaining scan blocks (partitions) (CBRD-27493) */
+		      if (XASL_IS_PER_OUTER_ROW (xptr2->scan_ptr)
 			  && qexec_reset_sa_inner_scan_block (thread_p, xptr2->scan_ptr) == S_ERROR)
 			{
 			  return S_ERROR;
@@ -8278,13 +8323,22 @@ qexec_next_scan_block_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
  *   return: SCAN_CODE (S_SUCCESS, S_ERROR)
  *   inner(in) : candidate semi/anti inner scan
  *
- * Rewind a partitioned nested-loop SEMI/ANTI inner to its first partition for
- * the next outer row.  Plain inners keep the normal current-block reset.
+ * Rewind a partitioned scan driven per outer row to its first partition for
+ * the next outer row: a nested-loop SEMI/ANTI inner, or a following join after
+ * one (CBRD-27493).  A following join with a single partition left keeps the
+ * current-block reset, and is reopened on that partition only when the block
+ * iterator's close path has cleared its curr_spec (and curent): left alone,
+ * qexec_next_scan_block would open the root class, whose heap is empty, and no
+ * block iteration moves a following join on to its partition.  Other inners
+ * keep the normal current-block reset.
  */
 SCAN_CODE
 qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * inner)
 {
-  if (XASL_IS_NL_SEMI_OR_ANTI (inner) && inner->spec_list != NULL && inner->spec_list->parts != NULL)
+  if ((XASL_IS_NL_SEMI_OR_ANTI (inner) && inner->spec_list != NULL && inner->spec_list->parts != NULL)
+      || (XASL_IS_FLAGED (inner, XASL_NL_FOLLOWING_JOIN)
+	  && (QEXEC_IS_MULTI_PARTITION_SPEC (inner->spec_list)
+	      || (inner->curr_spec == NULL && inner->spec_list != NULL && inner->spec_list->parts != NULL))))
     {
       ACCESS_SPEC_TYPE *spec = inner->curr_spec;
       SCAN_CODE part_scan;
@@ -8603,6 +8657,13 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       xasl->next_scan_on = false;
     }
 
+  if (xasl->curr_spec == NULL && XASL_IS_FLAGED (xasl, XASL_NL_FOLLOWING_JOIN))
+    {
+      /* a following join that went through its last partition has nothing left for this outer row; the
+       * parent rewinds it before the next row reaches it (CBRD-27493) */
+      return S_END;
+    }
+
   if (xasl->memoize_storage)
     {
       memoize_scan =
@@ -8641,19 +8702,48 @@ qexec_execute_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl
       sc_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id);
       if (sc_scan == S_END && xasl->memoize_storage
 	  && !(XASL_IS_NL_SEMI_OR_ANTI (xasl)
-	       && (xasl->curr_spec->s_id.single_fetched || xasl->curr_spec->parts != NULL)))
+	       && (xasl->curr_spec->s_id.single_fetched || xasl->curr_spec->parts != NULL))
+	  && !(XASL_IS_FLAGED (xasl, XASL_NL_FOLLOWING_JOIN) && QEXEC_IS_MULTI_PARTITION_SPEC (xasl->curr_spec)))
 	{
 	  /* the scan produced nothing for this key. Not for a semi/anti inner whose single_fetched is
 	     already set: it did not scan, this is the re-entry after the outer was decided (a surviving
 	     ANTI outer is emitted and then re-entered), and recording it again would add a duplicate
 	     "no match" entry per outer row until the budget kills the storage. Nor at the end of one
 	     partition of a partitioned inner: the key is only exhausted after the last partition, which
-	     the partition branch below records (CBRD-27465). */
+	     the partition branch below records (CBRD-27465). The same holds for a following join with
+	     more than one partition left, whose partition walk below records it (CBRD-27493). */
 	  memoize_err_code = memoize_put_nullptr (thread_p, xasl, &memoize_put_success);
 	  if (memoize_err_code == ER_FAILED)
 	    {
 	      return S_ERROR;
 	    }
+	}
+
+      if (sc_scan == S_END && XASL_IS_FLAGED (xasl, XASL_NL_FOLLOWING_JOIN)
+	  && QEXEC_IS_MULTI_PARTITION_SPEC (xasl->curr_spec))
+	{
+	  /* a following join is driven per outer row, and the block iterator never moves it to its next
+	   * partition: walk them here within this row, as a semi/anti inner does (CBRD-27493) */
+	  SCAN_CODE sb_scan = qexec_next_scan_block (thread_p, xasl);
+	  if (sb_scan == S_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  if (sb_scan == S_SUCCESS)
+	    {
+	      continue;
+	    }
+
+	  /* every partition was scanned: now the key is exhausted */
+	  if (xasl->memoize_storage)
+	    {
+	      memoize_err_code = memoize_put_nullptr (thread_p, xasl, &memoize_put_success);
+	      if (memoize_err_code == ER_FAILED)
+		{
+		  return S_ERROR;
+		}
+	    }
+	  return S_END;
 	}
 
 
@@ -9126,14 +9216,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	    {
 	      if (spec->s_id.s.phsid.trace_storage)
 		{
-		  if (thread_p->m_px_stats != NULL)
-		    {
-		      spec->s_id.scan_stats.num_fetches +=
-			thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
-		      spec->s_id.scan_stats.num_ioreads +=
-			thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
-		    }
-
+		  /* the workers' fixes reached scan_stats in manager::merge_stats () */
 		  spec->s_id.s.phsid.trace_storage->set_last_partition_stats (&spec->curent->scan_stats);
 		}
 	    }
@@ -9141,14 +9224,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	    {
 	      if (spec->s_id.s.pisid.trace_storage)
 		{
-		  if (thread_p->m_px_stats != NULL)
-		    {
-		      spec->s_id.scan_stats.num_fetches +=
-			thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
-		      spec->s_id.scan_stats.num_ioreads +=
-			thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
-		    }
-
+		  /* the workers' fixes reached scan_stats in manager::merge_stats () */
 		  spec->s_id.s.pisid.trace_storage->set_last_partition_stats (&spec->curent->scan_stats);
 		}
 	    }
@@ -12103,8 +12179,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       HFID_COPY (&pruned_hfid, &class_hfid);
       BTID_COPY (&btid, &index->btid);
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
-				NULL, false);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
       /* TODO: unique with prefix length */
       if (key_dbvalue == NULL)
 	{
@@ -12334,8 +12409,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       is_global_index = false;
 
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
-				NULL, false);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
       if (key_dbvalue == NULL)
 	{
 	  goto error_exit;
@@ -13306,7 +13380,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (insert->has_uniques && (insert->do_replace || odku_assignments != NULL))
     {
-      if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info, false) < 0)
+      if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info) < 0)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -17825,7 +17899,9 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 {
   QFILE_LIST_ID *listfile0 = NULL, *listfile1 = NULL, *listfile2 = NULL;
   QFILE_LIST_ID *listfile2_tmp = NULL;	/* for order siblings by */
-  QFILE_TUPLE_VALUE_TYPE_LIST type_list = { NULL, 0 };
+  /* Value initialise the whole struct: naming a prefix of the members is what let a
+   * later field be added without this initialiser following it. */
+  QFILE_TUPLE_VALUE_TYPE_LIST type_list = { };
   QFILE_TUPLE_POSITION parent_pos;
   QFILE_LIST_SCAN_ID lfscan_id_lst2tmp, input_lfscan_id;
   QFILE_TUPLE_RECORD tpl_lst2tmp = QFILE_TUPLE_RECORD_INITIALIZER;
@@ -24682,13 +24758,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	{
 	  index_att = index->atts[j];
 	  att_id = index_att->id;
-	  assert (att_id >= 0 || IS_DEDUPLICATE_KEY_ATTR_ID (att_id));
-
-	  if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
-	    {
-	      assert ((j + 1) == num_idx_att);
-	      break;
-	    }
+	  assert (att_id >= 0);
 
 	  if (index_position == function_index_pos)
 	    {

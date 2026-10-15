@@ -16768,6 +16768,14 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 	  goto exit;
 	}
 
+      /* a host variable is bound here without a cast (late binding), so the format can be any type */
+      if (!is_char_string (format_str))
+	{
+	  error_status = ER_QSTR_INVALID_DATA_TYPE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto exit;
+	}
+
       /* compute allocation size : trade-off exact size (and small mem usage) vs speed */
       result_len = (db_get_string_length (format_str) * QSTR_TO_CHAR_LEN_MULTIPLIER_RATIO);
 
@@ -26961,7 +26969,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
 
       if (str_size >= 0)
 	{
-	  str_size = MIN (str_size, sizeof (num_str) - 1);
+	  str_size = MIN (str_size, (int) (sizeof (num_str) - 1));
 	  strncpy (num_str, db_get_string (num), str_size);
 	  str_start = num_str;
 	  str_end = num_str + str_size;

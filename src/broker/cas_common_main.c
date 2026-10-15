@@ -238,7 +238,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 
 	    if (ops->set_session_id)
 	      {
-		ops->set_session_id ((T_CAS_PROTOCOL) req_info.client_version, conn_info.db_sessionid);
+		ops->set_session_id (req_info.client_version, conn_info.db_sessionid);
 
 		if (db_get_session_id () != DB_EMPTY_SESSION)
 		  {
@@ -299,7 +299,7 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 	    cas_info[CAS_INFO_STATUS] = CAS_INFO_STATUS_ACTIVE;
 	    if (ops->send_connect_reply)
 	      {
-		ops->send_connect_reply ((T_CAS_PROTOCOL) req_info.client_version, client_sock_fd, cas_info);
+		ops->send_connect_reply (req_info.client_version, client_sock_fd, cas_info);
 	      }
 
 	    as_info->cci_default_autocommit = shm_appl->cci_default_autocommit;
