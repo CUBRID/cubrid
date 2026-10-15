@@ -2188,7 +2188,7 @@ static void
 css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 {
   int window_ms, received, i;
-  bool keep_waiting, was_shutdown;
+  bool keep_waiting, save_shutdown;
   cubconn::connection::context *claimed;
 
   window_ms = prm_get_integer_value (PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS);
@@ -2220,9 +2220,9 @@ css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 	{
 	  /* recycle_context () clears entry::shutdown; restore it only if it was set,
 	   * as stop_execution () may raise it meanwhile */
-	  was_shutdown = thread_ref.shutdown;
+	  save_shutdown = thread_ref.shutdown;
 	  css_Server_request_worker_pool->get_entry_manager ().recycle_context (thread_ref);
-	  if (was_shutdown)
+	  if (save_shutdown)
 	    {
 	      thread_ref.shutdown = true;
 	    }

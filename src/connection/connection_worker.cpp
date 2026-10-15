@@ -978,14 +978,14 @@ namespace cubconn::connection
 
   bool worker::has_remaining_tasks (context *ctx)
   {
-    bool has_pending_transmission, was_closing_drain;
+    bool has_pending_transmission, save_closing_drain;
     int r;
 
     /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
-    was_closing_drain = m_closing_drain;
+    save_closing_drain = m_closing_drain;
     m_closing_drain = true;
     this->handle_message_queue_by_index (queue_type::IMMEDIATE);
-    m_closing_drain = was_closing_drain;
+    m_closing_drain = save_closing_drain;
 
     r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
     assert (r == NO_ERROR);
