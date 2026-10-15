@@ -11983,19 +11983,31 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
 
   ptr = or_unpack_int (ptr, &num_extraction_class);
 
-  /* Bound the count against the remaining request length -- each class oid
-   * is packed as an int64. */
-  if (num_extraction_class < 0
-      || (INT64) num_extraction_class > (INT64) (reqlen - (int) (ptr - request)) / OR_BIGINT_SIZE)
+  if (num_extraction_class < 0)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
-	      (int) ((reqlen - (int) (ptr - request)) / OR_BIGINT_SIZE), num_extraction_class);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2, 0, num_extraction_class);
       error_code = ER_NET_DATASIZE_MISMATCH;
       goto error;
     }
 
   if (num_extraction_class > 0)
     {
+      /* Bound the count against the remaining request length -- each class oid
+       * is packed as an int64. or_unpack_int64() aligns the pointer up to
+       * MAX_ALIGNMENT before reading, and the first read also consumes that
+       * padding, so measure from the aligned position; counting from the
+       * unaligned pointer would let the loop read up to MAX_ALIGNMENT-1 bytes
+       * past the request. */
+      char *aligned_ptr = PTR_ALIGN (ptr, MAX_ALIGNMENT);
+
+      if ((INT64) num_extraction_class > (INT64) (reqlen - (int) (aligned_ptr - request)) / OR_BIGINT_SIZE)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_DATASIZE_MISMATCH, 2,
+		  (int) ((reqlen - (int) (aligned_ptr - request)) / OR_BIGINT_SIZE), num_extraction_class);
+	  error_code = ER_NET_DATASIZE_MISMATCH;
+	  goto error;
+	}
+
       extraction_classoids = (UINT64 *) malloc (sizeof (UINT64) * num_extraction_class);
       if (extraction_classoids == NULL)
 	{
