@@ -21264,13 +21264,16 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
       assert (!HFID_IS_NULL (&context->hfid));
 
       /* Rows of a batch INSERT mostly go to the same page,
-       * so the page of this scan's previous insert is tried before the bestspace search.
-       * The hint page is checked like a bestspace candidate; any miss falls back to the search.
-       * The hint page is tried only when:
-       *   - a scan cache is given: some callers insert without one
-       *   - the scan cache holds a hint: none before the first insert or after the hint is dropped
-       *   - no error is pending: bestspace::find returns a pending error,
-       *     which the er_clear () calls of the hint path would clear */
+       * so the page of this scan's previous insert is tried before the bestspace search, in six steps:
+       *   1. the hint applies: a scan cache is given, it holds a hint, and no error is pending
+       *   2. the bestspace is looked up, and its candidate queue has no room for the row
+       *   3. the hint page is fixed without waiting
+       *   4. the page is checked like a bestspace candidate
+       *   5. hit: the row is counted and the free space is recorded; miss: the record is corrected, the hint dropped
+       *   6. a failed fix: contended keeps the hint, deallocated drops it, anything else is an error
+       * Step 1, in detail: some callers insert without a scan cache; the hint is empty before the first insert
+       * and after it is dropped; bestspace::find returns a pending error, which the er_clear () calls of
+       * step 5 and 6 would clear */
       if (context->scan_cache_p != NULL && !VPID_ISNULL (&context->scan_cache_p->insert_hint_vpid)
 	  && er_errid_if_has_error () == NO_ERROR)
 	{
@@ -21278,7 +21281,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	  cubstorage::bestspace *bestspace;
 	  // *INDENT-ON*
 
-	  /* lookup only (NULL class_oid): heap_find_bestpage builds a missing bestspace */
+	  /* step 2: lookup only (NULL class_oid): heap_find_bestpage builds a missing bestspace */
 	  bestspace = heap_find_bestspace (thread_p, NULL, &context->hfid, NULL);
 	  if (bestspace != NULL
 	      /* the search takes reclaimed space from the candidate queue first;
@@ -21289,10 +21292,10 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 	    {
 	      VPID hint_vpid = context->scan_cache_p->insert_hint_vpid;
 
-	      /* the watcher must be empty: pgbuf_ordered_fix puts the hint page into it */
+	      /* step 3: mirrors bestspace::shard::L1_fix -- the hint page is fixed the way a bestspace candidate is.
+	       * The watcher must be empty: pgbuf_ordered_fix puts the hint page into it */
 	      assert (PGBUF_IS_CLEAN_WATCHER (context->home_page_watcher_p));
 
-	      /* mirrors bestspace::shard::L1_fix -- the hint page is fixed the way a bestspace candidate is */
 	      int save_wait_msecs = logtb_set_thread_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
 	      error_code = pgbuf_ordered_fix (thread_p, &hint_vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_WRITE,
 					      context->home_page_watcher_p);
@@ -21303,12 +21306,12 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 		  OID page_class_oid;
 		  bool page_valid = false;
 
-		  /* mirrors the space rule of bestspace::find -- the hint keeps the unfill reservation */
+		  /* step 4: mirrors the candidate checks of bestspace::shard::L1_find
+		   * and the space rule of bestspace::find -- the hint keeps the unfill reservation */
 		  int consume_size = context->recdes_p->length + SPAGE_SLOT_SIZE;
 		  int needed_size = bestspace->get_needed_size (consume_size);
 		  int freespace = 0;
 
-		  /* mirrors the candidate checks of bestspace::shard::L1_find */
 		  if (pgbuf_get_page_ptype (thread_p, page_p) == PAGE_HEAP
 		      && !heap_page_is_not_in_heap (thread_p, page_p)
 		      && heap_get_class_oid_from_page (thread_p, page_p, &page_class_oid) == NO_ERROR
@@ -21320,7 +21323,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 
 		  if (page_valid && freespace >= needed_size)
 		    {
-		      /* the search counts the record in the estimates when it hands out a page,
+		      /* step 5, hit: the search counts the record in the estimates when it hands out a page,
 		       * so the hint does too; otherwise the estimates miss every row that skips the search */
 		      bestspace->add_estimates (*thread_p, 0, 1, context->recdes_p->length);
 
@@ -21345,7 +21348,7 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 		    }
 		  else
 		    {
-		      /* hint miss; the page is too full or no longer this class's heap page -- drop the hint */
+		      /* step 5, miss: the page is too full or no longer this class's heap page -- drop the hint */
 		      er_clear ();	/* a failed header read is already logged */
 
 		      /* correct the recorded free space once before the hint is dropped,
@@ -21364,20 +21367,20 @@ heap_get_insert_location_with_lock (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONT
 		}
 	      else if (error_code == ER_LK_PAGE_TIMEOUT)
 		{
-		  /* hint miss; the page is only contended, not gone -- keep the hint */
+		  /* step 6, contended: the page is not gone -- keep the hint */
 		  er_clear ();
 		  error_code = NO_ERROR;
 		}
 	      else if (error_code == ER_PB_BAD_PAGEID || er_errid () == ER_PB_BAD_PAGEID)
 		{
-		  /* hint miss; the hint page was deallocated -- drop the hint */
+		  /* step 6, deallocated: the hint page is gone -- drop the hint */
 		  heap_scancache_reset_insert_hint (context->scan_cache_p);
 		  er_clear ();
 		  error_code = NO_ERROR;
 		}
 	      else
 		{
-		  /* interruption, I/O failure, ... -- not a hint miss */
+		  /* step 6, other error: interruption, I/O failure, ... -- not a hint miss */
 		  if (er_errid () == NO_ERROR)
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
