@@ -73,6 +73,16 @@ admin_log_write (const char *log_file, const char *msg)
     }
 }
 
+static void
+admin_print_and_log_warn_msg (const char *log_file)
+{
+  if (admin_warn_msg[0] != '\0')
+    {
+      printf ("%s\n", admin_warn_msg);
+      admin_log_write (log_file, admin_warn_msg);
+    }
+}
+
 int
 main (int argc, char **argv)
 {
@@ -156,15 +166,21 @@ main (int argc, char **argv)
 
       if (shm_br == NULL && uw_get_error_code () != UW_ER_SHM_OPEN_MAGIC)
 	{
-	  if (admin_start_cmd
-	      (br_info, num_broker, master_shm_id, acl_flag, acl_file, acl_default_policy, admin_log_file) < 0)
+	  err = admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file, acl_default_policy,
+				 admin_log_file);
+	  if (err < 0)
 	    {
 	      PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
+	      if (err == ADMIN_ERR_SSL_KEY_PERMISSION)
+		{
+		  admin_log_write (admin_log_file, admin_err_msg);
+		}
 	      return -1;
 	    }
 	  else
 	    {
 	      admin_log_write (admin_log_file, "start");
+	      admin_print_and_log_warn_msg (admin_log_file);
 	    }
 	}
       else
@@ -247,15 +263,21 @@ main (int argc, char **argv)
 	  PRINT_AND_LOG_ERR_MSG ("%s on <broker-name>\n", argv[0]);
 	  return -1;
 	}
-      if (admin_on_cmd (master_shm_id, argv[2]) < 0)
+      err = admin_on_cmd (master_shm_id, argv[2]);
+      if (err < 0)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
+	  if (err == ADMIN_ERR_SSL_KEY_PERMISSION)
+	    {
+	      admin_log_write (admin_log_file, admin_err_msg);
+	    }
 	  return -1;
 	}
       else
 	{
 	  sprintf (msg_buf, "%s on", argv[2]);
 	  admin_log_write (admin_log_file, msg_buf);
+	  admin_print_and_log_warn_msg (admin_log_file);
 	}
     }
   else if (strcasecmp (argv[1], "off") == 0)

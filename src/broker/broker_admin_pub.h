@@ -46,6 +46,9 @@ typedef enum
   QRCMD_ENABLE
 } QRCMD;
 
+/* admin_start_cmd () and admin_on_cmd () refused to start a broker with SSL=ON over its private key permission */
+#define ADMIN_ERR_SSL_KEY_PERMISSION	-2
+
 int admin_start_cmd (T_BROKER_INFO *, int, int, bool, char *, bool, char *);
 int admin_stop_cmd (int);
 int admin_add_cmd (int, const char *);
@@ -66,5 +69,6 @@ int admin_acl_reload_cmd (int master_shm_id, const char *broker_name);
 void admin_init_env (void);
 
 extern char admin_err_msg[];
+extern char admin_warn_msg[];
 
 #endif /* _BROKER_ADMIN_PUB_H_ */
