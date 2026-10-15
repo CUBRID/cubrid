@@ -109,6 +109,10 @@ enum
 };
 
 static const char *CPTR_PT_NAME_IN_GROUP_HAVING = "name_in_group_having";
+/* a name in group by/having/order by of a static SQL, not resolved by name binding. it is resolved as an alias or
+ * converted to a host variable after the alias resolution. it is compared by its address because etc of a PT_NAME
+ * may hold a non-pointer value (e.g. PT_IDX_HINT_FORCE of an index name) */
+static const char *CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL = "name_deferred_for_static_sql";
 
 typedef struct pt_bind_names_data_type PT_BIND_NAMES_DATA_TYPE;
 struct pt_bind_names_data_type
@@ -220,6 +224,12 @@ static int generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_l
 static int generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, NATURAL_JOIN_ATTR_INFO ** attrs_p);
 
 static bool is_pt_name_in_group_having (PT_NODE * node);
+
+static bool is_pt_name_deferred_for_static_sql (PT_NODE * node);
+
+static PT_NODE *pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+							      int *continue_walk);
+static PT_NODE *pt_resolve_group_having_alias_and_deferred_name (PARSER_CONTEXT * parser, PT_NODE * node);
 
 static PT_NODE *pt_mark_pt_name (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent, int *continue_walk);
 
@@ -1313,6 +1323,9 @@ pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg)
 	      table = parser_walk_tree (parser, table, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
 	    }
 	  spec->info.spec.derived_table = table;
+
+	  /* aliases and the names deferred by name binding have no type. resolve them before the type checking below */
+	  table = pt_resolve_group_having_alias_and_deferred_name (parser, table);
 
 	  /* must bind any expr types in table. pt_bind_types requires it. */
 	  save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
@@ -3416,11 +3429,18 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  {
 	    if (parser->flag.is_parsing_static_sql == 1 && er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
 	      {
-		// clear unknown attribute error, the unknown symbol will be converted (paramterized) to host variable
 		er_clear ();
 		pt_reset_error (parser);
 
-		node = pt_parameterize_for_static_sql (parser, node);
+		if (is_pt_name_in_group_having (node))
+		  {
+		    // it may be an alias of the select list. it will be converted after pt_resolve_group_having_alias ()
+		    node->etc = (void *) CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL;
+		  }
+		else
+		  {
+		    node = pt_parameterize_for_static_sql (parser, node);
+		  }
 
 		/* don't visit leaves */
 		*continue_walk = PT_LIST_WALK;
@@ -9055,12 +9075,99 @@ is_pt_name_in_group_having (PT_NODE * node)
       return false;
     }
 
-  if (intl_identifier_casecmp ((char *) node->etc, CPTR_PT_NAME_IN_GROUP_HAVING) == 0)
+  if (strcmp ((char *) node->etc, CPTR_PT_NAME_IN_GROUP_HAVING) == 0)
     {
       return true;
     }
 
   return false;
+}
+
+/*
+ * is_pt_name_deferred_for_static_sql () - check if the name in group by/having/order by of a static SQL
+ *                                         was not resolved by name binding
+ *   return:
+ *   node(in):
+ */
+static bool
+is_pt_name_deferred_for_static_sql (PT_NODE * node)
+{
+  if (node == NULL || node->node_type != PT_NAME)
+    {
+      return false;
+    }
+
+  return node->etc == (void *) CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL;
+}
+
+/*
+ * pt_parameterize_deferred_name_for_static_sql () - convert a name deferred by name binding of a static SQL,
+ *                                                   which is not resolved as an alias either, to a host variable
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in/out):
+ *
+ * Note: names are resolved in the order of a column, an alias of the select list and a PL/CSQL variable
+ */
+static PT_NODE *
+pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type) && node->info.query.flag.group_having_alias_resolved)
+    {
+      /* already done by pt_resolve_group_having_alias_and_deferred_name () for a derived table or a CTE */
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (is_pt_name_deferred_for_static_sql (node))
+    {
+      node = pt_parameterize_for_static_sql (parser, node);
+      if (node == NULL)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_resolve_group_having_alias_and_deferred_name () - resolve aliases in group by/having/order by and, for a static
+ *                                                      SQL, convert the names deferred by name binding which are not
+ *                                                      aliases to host variables
+ *   return:
+ *   parser(in):
+ *   node(in):
+ */
+static PT_NODE *
+pt_resolve_group_having_alias_and_deferred_name (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  node = parser_walk_tree (parser, node, pt_resolve_group_having_alias, NULL, NULL, NULL);
+  if (pt_has_error (parser))
+    {
+      return node;
+    }
+
+  if (parser->flag.is_parsing_static_sql == 1)
+    {
+      node = parser_walk_tree (parser, node, pt_parameterize_deferred_name_for_static_sql, NULL, NULL, NULL);
+      if (pt_has_error (parser))
+	{
+	  return node;
+	}
+    }
+
+  if (node != NULL && PT_IS_QUERY_NODE_TYPE (node->node_type))
+    {
+      /* the walks above skip it from now on (e.g. for the enclosing query of a derived table) */
+      node->info.query.flag.group_having_alias_resolved = 1;
+    }
+
+  return node;
 }
 
 /*
@@ -9191,6 +9298,12 @@ pt_resolve_group_having_alias_pt_name (PARSER_CONTEXT * parser, PT_NODE ** node_
   /* We can not resolve the pt_name. */
   if (col == NULL)
     {
+      if (is_pt_name_deferred_for_static_sql (node))
+	{
+	  /* it will be converted to a host variable (see pt_parameterize_deferred_name_for_static_sql ()) */
+	  return;
+	}
+
       PT_ERRORmf (parser, (*node_p), MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED,
 		  pt_short_print (parser, (*node_p)));
     }
@@ -9301,7 +9414,19 @@ pt_resolve_group_having_alias (PARSER_CONTEXT * parser, PT_NODE * node, void *ch
 
   *continue_walk = PT_CONTINUE_WALK;
 
-  if (node == NULL || node->node_type != PT_SELECT)
+  if (node == NULL)
+    {
+      return node;
+    }
+
+  if (PT_IS_QUERY_NODE_TYPE (node->node_type) && node->info.query.flag.group_having_alias_resolved)
+    {
+      /* already done by pt_resolve_group_having_alias_and_deferred_name () for a derived table or a CTE */
+      *continue_walk = PT_LIST_WALK;
+      return node;
+    }
+
+  if (node->node_type != PT_SELECT)
     {
       return node;
     }
@@ -9406,7 +9531,7 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
 	}
 
       /* Resolve alias in group by/having. */
-      statement = parser_walk_tree (parser, statement, pt_resolve_group_having_alias, NULL, NULL, NULL);
+      statement = pt_resolve_group_having_alias_and_deferred_name (parser, statement);
       if (pt_has_error (parser))
 	{
 	  return NULL;
@@ -11213,6 +11338,9 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
   non_recursive_cte = parser_walk_tree (parser, non_recursive_cte, pt_bind_names, bind_arg,
 					pt_bind_names_post, bind_arg);
 
+  /* aliases and the names deferred by name binding have no type. resolve them before the type checking below */
+  non_recursive_cte = pt_resolve_group_having_alias_and_deferred_name (parser, non_recursive_cte);
+
   /* must bind any expr types in non recursive part; required for types binding */
   save_donot_fold = bind_arg->sc_info->donot_fold;	/* save */
   bind_arg->sc_info->donot_fold = true;	/* skip folding */
@@ -11246,6 +11374,9 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
 	{
 	  goto end;
 	}
+
+      /* aliases and the names deferred by name binding have no type. resolve them before the type checking below */
+      recursive_cte = pt_resolve_group_having_alias_and_deferred_name (parser, recursive_cte);
 
       cte_def->info.cte.recursive_part = recursive_cte;
 
