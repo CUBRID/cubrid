@@ -204,9 +204,7 @@ static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
 
-static std::size_t css_get_core_hash (const CSS_CONN_ENTRY & conn_ref);
 static void css_run_one_request (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
-static void css_recycle_between_eager_requests (THREAD_ENTRY & thread_ref);
 static void css_eager_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
 
 static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
@@ -2080,25 +2078,13 @@ css_push_server_task (CSS_CONN_ENTRY &conn_ref, cubthread::task_submission_optio
   conn_ref.add_working_task ();
 
   thread_get_manager ()->push_task_on_core (css_Server_request_worker_pool, new css_server_task (conn_ref),
-					    css_get_core_hash (conn_ref), options);
+					    static_cast<size_t> (conn_ref.idx), options);
 }
 
 void
 css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
 {
   thread_get_manager ()->push_task (css_Server_request_worker_pool, new css_server_external_task (conn, task));
-}
-
-/*
- * css_get_core_hash() - get the core hash that this connection's tasks
- *                       are pushed with
- *   return: core hash
- *   conn_ref(in):
- */
-static std::size_t
-css_get_core_hash (const CSS_CONN_ENTRY &conn_ref)
-{
-  return static_cast<std::size_t> (conn_ref.idx);
 }
 
 /*
@@ -2137,29 +2123,6 @@ css_run_one_request (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 }
 
 /*
- * css_recycle_between_eager_requests() - apply the reset the worker pool puts
- *                                         between two tasks
- *   return: void
- *   thread_ref(in):
- *
- * Note: recycle_context () also clears entry::shutdown, which inside one task
- *       would drop a stop the pool has already asked for, so that one field
- *       is put back. The write is conditional because worker_pool::stop_execution ()
- *       may raise the flag while this thread is inside recycle_context ().
- */
-static void
-css_recycle_between_eager_requests (THREAD_ENTRY &thread_ref)
-{
-  bool was_shutdown = thread_ref.shutdown;
-
-  css_Server_request_worker_pool->get_entry_manager ().recycle_context (thread_ref);
-  if (was_shutdown)
-    {
-      thread_ref.shutdown = true;
-    }
-}
-
-/*
  * css_eager_receive_loop() - wait on this connection's socket for the next
  *                            request and run it on this thread
  *   return: void
@@ -2178,7 +2141,7 @@ static void
 css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 {
   int window_ms, received, i;
-  bool keep_waiting;
+  bool keep_waiting, was_shutdown;
   cubconn::connection::context *claimed;
 
   window_ms = prm_get_integer_value (PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS);
@@ -2193,9 +2156,9 @@ css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 	{
 	  return;
 	}
-      if (css_Server_request_worker_pool->has_queued_task_on_core (css_get_core_hash (conn_ref)))
+      if (css_Server_request_worker_pool->has_queued_task_on_core (static_cast<size_t> (conn_ref.idx)))
 	{
-	  /* the core this connection's tasks go to has work waiting,
+	  /* the core css_push_server_task () sends this connection's tasks to has work waiting,
 	   * which outranks this thread's wait */
 	  return;
 	}
@@ -2207,7 +2170,16 @@ css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
        * they are already parsed and counted, and each one owes a start_request () */
       for (i = 0; i < received; i++)
 	{
-	  css_recycle_between_eager_requests (thread_ref);
+	  /* Apply the reset the worker pool puts between two tasks. recycle_context () also clears
+	   * entry::shutdown, which would drop a stop the pool has already asked for, so the flag is put back.
+	   * The write is conditional because stop_execution () may raise it during recycle_context (). */
+	  was_shutdown = thread_ref.shutdown;
+	  css_Server_request_worker_pool->get_entry_manager ().recycle_context (thread_ref);
+	  if (was_shutdown)
+	    {
+	      thread_ref.shutdown = true;
+	    }
+
 	  css_run_one_request (thread_ref, conn_ref);
 	}
       if (received > 0)
