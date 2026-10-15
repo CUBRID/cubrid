@@ -9051,7 +9051,7 @@ pt_check_alter_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (ws_is_same_object (owner_obj, Au_user) == false && au_is_dba_group_member (Au_user) == false)
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER, "ALTER SYNONYM");
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DBA_OR_OWNER_ONLY, "ALTER SYNONYM");
       return;
     }
 
@@ -9136,7 +9136,7 @@ pt_check_create_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (ws_is_same_object (owner_obj, Au_user) == false && au_is_dba_group_member (Au_user) == false)
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER, "CREATE SYNONYM");
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DBA_OR_OWNER_ONLY, "CREATE SYNONYM");
       return;
     }
 
@@ -9242,7 +9242,7 @@ pt_check_drop_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (ws_is_same_object (owner_obj, Au_user) == false && au_is_dba_group_member (Au_user) == false)
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER, "DROP SYNONYM");
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DBA_OR_OWNER_ONLY, "DROP SYNONYM");
       return;
     }
 
@@ -9312,7 +9312,7 @@ pt_check_rename_synonym (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (ws_is_same_object (old_owner_obj, Au_user) == false && au_is_dba_group_member (Au_user) == false)
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER, "RENAME SYNONYM");
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DBA_OR_OWNER_ONLY, "RENAME SYNONYM");
       return;
     }
 
@@ -9633,7 +9633,7 @@ pt_check_create_package (PARSER_CONTEXT * parser, PT_NODE * node)
 
   if (au_is_dba_group_member (Au_user) == false && ws_is_same_object (owner, Au_user) == false)
     {
-      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER,
+      PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DBA_OR_OWNER_ONLY,
 		  node->info.pkg.for_body ? "CREATE PACKAGE BODY" : "CREATE PACKAGE");
     }
 }
@@ -9698,7 +9698,7 @@ pt_check_create_stored_procedure (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
       else if (au_is_dba_group_member (Au_user) == false && ws_is_same_object (owner, Au_user) == false)
 	{
-	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SYNONYM_NOT_OWNER,
+	  PT_ERRORmf (parser, node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_DBA_OR_OWNER_ONLY,
 		      "CREATE PROCEDURE/FUNCTION");
 	  return;
 	}
