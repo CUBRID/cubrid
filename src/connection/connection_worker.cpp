@@ -984,30 +984,6 @@ namespace cubconn::connection
     ctx->m_recv.m_command_flags = 0;
   }
 
-  /* give back the add_pending_request () of each counted request. Caller holds
-   * m_conn->rmutex. */
-  void worker::eager_abort (context *ctx)
-  {
-    for (int i = 0; i < ctx->m_recv.m_eager_counted; i++)
-      {
-	ctx->m_conn->start_request ();
-      }
-    ctx->m_recv.m_eager_draining = false;
-    ctx->m_recv.m_eager_counted = 0;
-  }
-
-  /* css_push_server_task () takes its own add_pending_request (), so the counted
-   * one is given back first. Caller holds m_conn->rmutex. */
-  void worker::eager_flush_counted_to_pool (context *ctx)
-  {
-    for (int i = 0; i < ctx->m_recv.m_eager_counted; i++)
-      {
-	ctx->m_conn->start_request ();
-	css_push_server_task (*ctx->m_conn, cubthread::task_submission_options ());
-      }
-    ctx->m_recv.m_eager_counted = 0;
-  }
-
   void worker::purge_stale_contexts ()
   {
     coordinator::message message;
@@ -2830,6 +2806,30 @@ respond:
     packets->clear ();
 
     return result::Ok;
+  }
+
+  /* give back the add_pending_request () of each counted request. Caller holds
+   * m_conn->rmutex. */
+  void worker::eager_abort (context *ctx)
+  {
+    for (int i = 0; i < ctx->m_recv.m_eager_counted; i++)
+      {
+	ctx->m_conn->start_request ();
+      }
+    ctx->m_recv.m_eager_draining = false;
+    ctx->m_recv.m_eager_counted = 0;
+  }
+
+  /* css_push_server_task () takes its own add_pending_request (), so the counted
+   * one is given back first. Caller holds m_conn->rmutex. */
+  void worker::eager_flush_counted_to_pool (context *ctx)
+  {
+    for (int i = 0; i < ctx->m_recv.m_eager_counted; i++)
+      {
+	ctx->m_conn->start_request ();
+	css_push_server_task (*ctx->m_conn, cubthread::task_submission_options ());
+      }
+    ctx->m_recv.m_eager_counted = 0;
   }
 
   result worker::handle_transmission (context *ctx, bool in_exhausted)

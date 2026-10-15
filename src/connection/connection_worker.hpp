@@ -278,8 +278,6 @@ namespace cubconn::connection
       uint64_t get_time_ns (clockid_t type);
 
       void push_task_into_worker_pool (context *ctx);
-      void eager_abort (context *ctx);
-      void eager_flush_counted_to_pool (context *ctx);
       void purge_stale_contexts ();
       void wakeup_blocked_worker (std::shared_ptr<message_blocker> handle);
 
@@ -378,6 +376,8 @@ namespace cubconn::connection
       void release_reading (context *ctx);
       result receive_if_free (context *ctx, bool in_exhausted, bool from_edge);
       result eager_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out);
+      void eager_abort (context *ctx);
+      void eager_flush_counted_to_pool (context *ctx);
       static context *eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker *&self_out, SOCKET &fd_out);
       static bool eager_release (css_conn_entry &conn, cubthread::entry *entry, context *ctx, SOCKET fd, bool hand_back);
 
