@@ -982,10 +982,10 @@ namespace cubconn::connection
     int r;
 
     /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
-    save_closing_drain = m_closing_drain;
+    save_closing_drain = m_closing_drain;	/* save */
     m_closing_drain = true;
     this->handle_message_queue_by_index (queue_type::IMMEDIATE);
-    m_closing_drain = save_closing_drain;
+    m_closing_drain = save_closing_drain;	/* restore */
 
     r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
     assert (r == NO_ERROR);
