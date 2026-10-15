@@ -549,7 +549,7 @@ namespace cubconn::connection
    *   1. Claim the socket; give up when it is busy or the connection is closing.
    *   2. Wait up to window_ms for the next request.
    *   3. Receive what came in, or leave an error to the worker.
-   *   4. Give the socket back. The claim's count drops now,
+   *   4. Give the socket back. m_eager_running drops now,
    *      or in eager_finish () once the caller has run what was received.
    * When count_out > 0, the caller runs that many requests, then calls eager_finish (ctx_out).
    * Returns whether the caller may wait again. */
@@ -598,7 +598,7 @@ namespace cubconn::connection
 	hand_back = true;
       }
 
-    /* STEP 4. Give the socket back. The claim's count drops now,
+    /* STEP 4. Give the socket back. m_eager_running drops now,
      * or in eager_finish () once the caller has run what was received. */
     hand_back = eager_release (conn, entry, ctx, fd, hand_back);
     if (count_out == 0)
@@ -613,7 +613,7 @@ namespace cubconn::connection
     return !hand_back && status == result::Ok && count_out > 0;
   }
 
-  /* drop the count eager_claim () raised; ctx is passed in because a failed takeover clears conn.context */
+  /* drop m_eager_running; ctx is passed in because a failed takeover clears conn.context */
   void worker::eager_finish (context *ctx)
   {
     ctx->m_recv.m_eager_running.fetch_sub (1, std::memory_order_release);
@@ -2549,7 +2549,7 @@ respond:
     return io_status;
   }
 
-  /* from_edge: an edge is lost when the socket is busy, so the eager receiver is told to recheck */
+  /* from_edge: the worker drops an edge while the socket is busy, so the eager receiver is told to recheck */
   bool worker::claim_reading (context *ctx, bool from_edge)
   {
     bool claimed;
@@ -2646,7 +2646,7 @@ respond:
 
     /* STEP 1. Read the socket up to the receive budget.
      * The fd is read without cmutex: must_defer_close_for_eager_receiver () defers the close
-     * while this thread owns the socket. */
+     * while this thread holds the socket. */
     io_status = ctx->m_recv.m_receiver.drain (ctx->m_conn->fd, m_recv_budget);
     if (io_status == result::PeerReset || io_status == result::Error)
       {
@@ -2739,13 +2739,17 @@ respond:
     ctx->m_recv.m_eager_counted = 0;
   }
 
-  /* hand_back, or a dropped edge with data still there, sends a RECV_RECHECK.
+  /* Give the socket taken by eager_claim () back.
+   *   1. Clear m_recv_busy under cmutex; when the lock fails, clear it anyway and stop waiting.
+   *   2. When the worker dropped an edge meanwhile, hand the socket back if data is still there.
+   *   3. When handing back, send the worker a RECV_RECHECK.
    * Returns true when the caller must stop waiting. */
   bool worker::eager_release (css_conn_entry &conn, cubthread::entry *entry, context *ctx, SOCKET fd, bool hand_back)
   {
     struct pollfd po;
     int r;
 
+    /* STEP 1. Clear m_recv_busy under cmutex; when the lock fails, clear it anyway and stop waiting. */
     if (rmutex_lock (entry, &conn.cmutex) != NO_ERROR)
       {
 	/* a dropped edge cannot be handed back without the lock; the worker's next wake recovers it */
@@ -2753,6 +2757,8 @@ respond:
 	return true;
       }
     ctx->m_recv.m_recv_busy.store (false, std::memory_order_release);
+
+    /* STEP 2. When the worker dropped an edge meanwhile, hand the socket back if data is still there. */
     if (!hand_back && ctx->m_recv.m_missed_edge)
       {
 	/* the dropped edge is usually data this thread already drained */
@@ -2761,6 +2767,8 @@ respond:
 	po.revents = 0;
 	hand_back = (poll (&po, 1, 0) != 0);
       }
+
+    /* STEP 3. When handing back, send the worker a RECV_RECHECK. */
     if (hand_back && conn.worker != nullptr && conn.context == ctx)
       {
 	message request;
@@ -2774,6 +2782,7 @@ respond:
 	    assert_release (false);
 	  }
       }
+
     ctx->m_recv.m_missed_edge = false;
     r = rmutex_unlock (entry, &conn.cmutex);
     assert (r == NO_ERROR);

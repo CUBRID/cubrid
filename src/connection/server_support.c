@@ -2215,7 +2215,7 @@ css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 	cubconn::connection::worker::eager_poll_and_receive (conn_ref, &thread_ref, window_ms, received, claimed);
 
       /* STEP 3. Run what came in, resetting the thread before each request.
-       * This comes before deciding to wait again: each request owes a start_request (). */
+       * The requests run before the loop decides to wait again, since each one owes a start_request (). */
       for (i = 0; i < received; i++)
 	{
 	  /* recycle_context () clears entry::shutdown; restore it only if it was set,
