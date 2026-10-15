@@ -411,24 +411,24 @@ cas_log_flush_on_exit (void)
 	{
 	  (void) cas_fflush (&sql_log_fd);
 	}
-      else if (log_fp == &sql_log_fd)
+      else if (log_fp == &sql_log_fd || log_fp == &scratch_log_fd)
 	{
-	  /* keep the lines before the statement being compiled, which may still hold a password */
-	  INT64 end = saved_temp_stmt_fpos - sql_log_fd.file_buf_base;
+	  /* flush only the lines before the statement being compiled, since it may still hold a password */
+	  INT64 end = saved_temp_stmt_fpos - log_fp->file_buf_base;
 
-	  (void) cas_fflush_partial (&sql_log_fd, (int) MIN (end, (INT64) sql_log_fd.buf_used));
+	  (void) cas_fflush_partial (log_fp, (int) MIN (end, (INT64) log_fp->buf_used));
 
 	  /* drop the plaintext from the buffer and write the statement again with its passwords masked */
-	  if (end >= 0 && end == sql_log_fd.buf_flushed && saved_temp_stmt_query != NULL)
+	  if (end >= 0 && end == log_fp->buf_flushed && saved_temp_stmt_query != NULL)
 	    {
-	      sql_log_fd.buf_used = (int) end;
+	      log_fp->buf_used = (int) end;
 	      CAS_LOG_SET_UNMASKED (SQL_LOG_UNMASKED_NONE);
-	      password_write_sql_log_in_signal_handler (&sql_log_fd, saved_temp_stmt_query, cas_fwrite_for_password);
+	      password_write_sql_log_in_signal_handler (log_fp, saved_temp_stmt_query, cas_fwrite_for_password);
 	      if (saved_temp_stmt_newline)
 		{
-		  cas_fwrite ("\n", 1, 1, &sql_log_fd);
+		  cas_fwrite ("\n", 1, 1, log_fp);
 		}
-	      (void) cas_fflush (&sql_log_fd);
+	      (void) cas_fflush (log_fp);
 	    }
 	}
     }
