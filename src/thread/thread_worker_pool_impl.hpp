@@ -675,13 +675,6 @@ namespace cubthread
   }
 
   template <stats_t Stats>
-  std::size_t
-  worker_pool_impl<Stats>::get_core_index (std::size_t core_hash) const
-  {
-    return core_hash % m_cores.size ();
-  }
-
-  template <stats_t Stats>
   bool
   worker_pool_impl<Stats>::begin_task_submission (void)
   {
@@ -1041,6 +1034,13 @@ namespace cubthread
       }
 
     return index;
+  }
+
+  template <stats_t Stats>
+  std::size_t
+  worker_pool_impl<Stats>::get_core_index (std::size_t core_hash) const
+  {
+    return core_hash % m_cores.size ();
   }
 
   //////////////////////////////////////////////////////////////////////////
