@@ -545,8 +545,14 @@ namespace cubconn::connection
     return NO_ERROR;
   }
 
-  /* Claim the socket, wait up to window_ms and receive on the calling thread. When count_out > 0,
-   * the caller runs that many requests, then calls eager_finish (ctx_out). Returns whether to wait again. */
+  /* Receive the next request of this connection on the calling thread.
+   *   1. Claim the socket; give up when it is busy or the connection is closing.
+   *   2. Wait up to window_ms for the next request.
+   *   3. Receive what came in, or leave an error to the worker.
+   *   4. Give the socket back. The claim's count drops now,
+   *      or in eager_finish () once the caller has run what was received.
+   * When count_out > 0, the caller runs that many requests, then calls eager_finish (ctx_out).
+   * Returns whether the caller may wait again. */
   bool worker::eager_poll_and_receive (css_conn_entry &conn, cubthread::entry *entry, int window_ms, int &count_out,
 				       context *&ctx_out)
   {
