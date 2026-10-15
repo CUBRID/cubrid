@@ -9159,6 +9159,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			       * an outer row whose key is NULL matches no inner row
 			       */
 			      double outer_null_freq = 0.0;
+			      double term_sel;
 			      int seg_idx;
 
 			      for (seg_idx = bitset_iterate (&(QO_TERM_SEGS (term)), &bj); seg_idx != -1;
@@ -9180,21 +9181,34 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			      /* a NULL key, like the during-join terms, is decided once per outer row */
 			      during_sel *= 1.0 - outer_null_freq;
 
+			      /* the selectivity already holds the outer NULL share (qo_expr_selectivity ()),
+			       * and so does during_sel, so divide it out to keep it from being counted twice
+			       */
+			      term_sel = QO_TERM_SELECTIVITY (term);
+			      if (outer_null_freq < 1.0)
+				{
+				  term_sel /= 1.0 - outer_null_freq;
+				}
+
 			      /* the equi-join term with the smallest head_factor is the key,
 			       * decided by whether the outer key is among the inner keys,
 			       * and the other equi-join terms go to on_sel as independent of the key;
 			       * the match is underestimated when a term depends on the key,
-			       * since telling it apart needs multi-column statistics or an FK (left as a follow-up)
+			       * since telling it apart needs multi-column statistics or an FK
+			       *
+			       * TODO: take the terms of one composite PK-FK as one key.
+			       * fk_join_info cannot be reused as is, since it matches the FK columns by eqclass
+			       * and semi/anti equi-join columns stay out of the eqclasses.
 			       */
 			      if (head_factor <= key_factor)
 				{
 				  on_sel *= key_sel;	/* the previous key, 1.0 if none */
 				  key_factor = head_factor;
-				  key_sel = QO_TERM_SELECTIVITY (term);
+				  key_sel = term_sel;
 				}
 			      else
 				{
-				  on_sel *= QO_TERM_SELECTIVITY (term);
+				  on_sel *= term_sel;
 				}
 			    }
 			  else
