@@ -203,7 +203,9 @@ namespace cubconn::connection
 				       std::function<void ()> &&deleter, int wait_time,
 				       bool may_wait_for_room = false);
 
-      static bool eager_poll_and_receive (css_conn_entry &conn, cubthread::entry *entry, int window_ms, int &count_out);
+      static bool eager_poll_and_receive (css_conn_entry &conn, cubthread::entry *entry, int window_ms, int &count_out,
+					  context *&ctx_out);
+      static void eager_finish (context *ctx);
 
       /* used for control from other threads */
       void enqueue (queue_type type, message &&item);
@@ -248,6 +250,8 @@ namespace cubconn::connection
       /* true while an eventfd notification is pending or being handled */
       std::atomic<bool> m_notified;
       bool m_has_retry;
+      /* true while a connection close drains the IMMEDIATE queue in has_remaining_tasks () */
+      bool m_closing_drain;
 
       /* this is a multi-producer single-consumer queue, so */
       /* data can be put into the queue from anywhere, but  */
@@ -374,7 +378,7 @@ namespace cubconn::connection
       void release_reading (context *ctx);
       result receive_if_free (context *ctx, bool in_exhausted, bool from_edge);
       result eager_drain (context *ctx, cubthread::entry *entry, int &count_out, bool &more_data_out);
-      static context *eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker * &self_out, SOCKET &fd_out);
+      static context *eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker *&self_out, SOCKET &fd_out);
       static bool eager_release (css_conn_entry &conn, cubthread::entry *entry, context *ctx, SOCKET fd, bool hand_back);
 
       /* --------------------------------------------------------------------------- */

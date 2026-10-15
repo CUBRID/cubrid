@@ -549,7 +549,8 @@ namespace cubconn::connection
    * worker::eager_poll_and_receive () - claim this connection's socket, wait up
    *   to window_ms for the next request, receive it on the calling thread and give
    *   the socket back. count_out is how many complete requests the caller must
-   *   run. Returns whether the caller may wait on the socket again after running
+   *   run, and when it is not 0 the caller passes ctx_out to eager_finish () after
+   *   running them. Returns whether the caller may wait on the socket again after running
    *   them: false when nothing came, the receive failed or the socket went back
    *   to the worker.
    *
@@ -557,7 +558,8 @@ namespace cubconn::connection
    *   conn.worker under conn.cmutex at the claim and used after the lock only for
    *   eager_drain (), which touches the context and the connection alone.
    */
-  bool worker::eager_poll_and_receive (css_conn_entry &conn, cubthread::entry *entry, int window_ms, int &count_out)
+  bool worker::eager_poll_and_receive (css_conn_entry &conn, cubthread::entry *entry, int window_ms, int &count_out,
+				       context *&ctx_out)
   {
     worker *self;
     context *ctx;
@@ -568,6 +570,7 @@ namespace cubconn::connection
     bool more_data, hand_back;
 
     count_out = 0;
+    ctx_out = nullptr;
 
     ctx = eager_claim (conn, entry, self, fd);
     if (ctx == nullptr)
@@ -597,17 +600,39 @@ namespace cubconn::connection
       }
 
     hand_back = eager_release (conn, entry, ctx, fd, hand_back);
+    if (count_out == 0)
+      {
+	ctx->m_recv.m_eager_running.fetch_sub (1, std::memory_order_release);
+      }
+    else
+      {
+	ctx_out = ctx;
+      }
 
     return !hand_back && status == result::Ok && count_out > 0;
+  }
+
+  /*
+   * worker::eager_finish () - the requests the last eager_poll_and_receive ()
+   *   returned have run; drop the count its claim raised on ctx, the context it
+   *   claimed. ctx is passed rather than read from conn.context, which a failed
+   *   takeover clears.
+   */
+  void worker::eager_finish (context *ctx)
+  {
+    ctx->m_recv.m_eager_running.fetch_sub (1, std::memory_order_release);
   }
 
   /*
    * worker::eager_claim () - take this connection's socket for the calling
    *   transaction thread. Returns the context, with the worker and the descriptor
    *   it belongs to, or nullptr when the socket is busy or the connection is
-   *   closing.
+   *   closing. A granted claim raises m_eager_running. None is granted once the
+   *   connection has left CONN_OPEN, so the close that
+   *   must_defer_close_for_eager_receiver () defers on that count cannot be put
+   *   off by the next claim. The shutdown check only ends the loop sooner.
    */
-  context *worker::eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker * &self_out, SOCKET &fd_out)
+  context *worker::eager_claim (css_conn_entry &conn, cubthread::entry *entry, worker *&self_out, SOCKET &fd_out)
   {
     context *ctx;
     int r;
@@ -619,13 +644,14 @@ namespace cubconn::connection
     self_out = conn.worker;
     ctx = reinterpret_cast<context *> (conn.context);
     if (self_out == nullptr || ctx == nullptr || ctx->m_recv.m_recv_busy.load (std::memory_order_acquire)
-	|| conn.status != CONN_OPEN || conn.stop_talk)
+	|| conn.status != CONN_OPEN || conn.stop_talk || css_is_shutdowning_server ())
       {
 	ctx = nullptr;
       }
     else
       {
 	ctx->m_recv.m_recv_busy.store (true, std::memory_order_relaxed);
+	ctx->m_recv.m_eager_running.fetch_add (1, std::memory_order_relaxed);
 	ctx->m_recv.m_missed_edge = false;
 	fd_out = conn.fd;
       }
@@ -694,7 +720,8 @@ namespace cubconn::connection
     m_entry (nullptr),
     m_index (index),
     m_notified (false),
-    m_has_retry (false)
+    m_has_retry (false),
+    m_closing_drain (false)
   {
     std::size_t i;
 
@@ -1038,31 +1065,56 @@ namespace cubconn::connection
   /*
    * worker::must_defer_close_for_eager_receiver () - true while a transaction
    *   thread may be waiting on this connection's socket, so the close has to wait.
-   *   The waiting thread carries no transaction index, so only the working task
-   *   count can see it.
+   *   The waiting thread carries no transaction index, so outside shutdown only
+   *   the working task count can see it.
    *
-   *   Never during shutdown: stop_execution () retires queued tasks instead of
-   *   running them, so their end_working_task () never comes and the count stays
-   *   positive. net_server_active_workers () guards its own check the same way.
+   *   During shutdown the count cannot be waited on: stop_execution () retires
+   *   queued tasks instead of running them, so their end_working_task () never
+   *   comes. The close waits on m_eager_running instead, which a claim holds until
+   *   the requests it received have run, so the close neither retires the context
+   *   under a receive nor releases the client's transaction before them. The
+   *   close sets CONN_CLOSING before it reads the count under cmutex, and
+   *   eager_claim () checks CONN_OPEN and raises the count under cmutex, so the
+   *   count only falls once the close has read it. m_recv_busy is not
+   *   read: a close that handle_reception () starts runs under this worker's own
+   *   claim of it, which would defer the close on itself.
+   *
    *   eager_drain () reads m_conn->fd without cmutex on the strength of this
    *   deferral, so whoever changes this gate changes that read too.
    */
   bool worker::must_defer_close_for_eager_receiver (context *ctx)
   {
-    if (m_status == status::TERMINATING || css_is_shutdowning_server ())
+    bool busy;
+    int r;
+
+    if (prm_get_integer_value (PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS) <= 0)
       {
 	return false;
       }
-    return prm_get_integer_value (PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS) > 0 && ctx->m_conn->has_working_task ();
+    if (m_status != status::TERMINATING && !css_is_shutdowning_server ())
+      {
+	return ctx->m_conn->has_working_task ();
+      }
+
+    r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
+    assert (r == NO_ERROR);
+    busy = ctx->m_recv.m_eager_running.load (std::memory_order_acquire) > 0;
+    r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
+    assert (r == NO_ERROR);
+
+    return busy;
   }
 
   bool worker::has_remaining_tasks (context *ctx)
   {
-    bool has_pending_transmission;
+    bool has_pending_transmission, was_closing_drain;
     int r;
 
     /* handle the entries in the message queue as there may be a queued request to release the memory in ctx */
+    was_closing_drain = m_closing_drain;
+    m_closing_drain = true;
     this->handle_message_queue_by_index (queue_type::IMMEDIATE);
+    m_closing_drain = was_closing_drain;
 
     r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
     assert (r == NO_ERROR);
@@ -1803,8 +1855,14 @@ retry:
      * rmutex, while a transaction thread in css_return_queued_request () holds
      * rmutex and waits for cmutex in css_request_release_packet (): with cmutex
      * still held here the two deadlock. Put the message back; the queue is served
-     * again once the outer handler has let go of cmutex. */
-    held_by_outer_handler = (conn->cmutex.lock_cnt > 1);
+     * again once the outer handler has let go of cmutex.
+     *
+     * Nested under a connection close (has_remaining_tasks ()). handle_reception ()
+     * below may close this or another connection, and that close's
+     * end_connection_close () clears the m_entry client info the outer close still
+     * needs to release its transaction. Put the message back as well: the queue
+     * pass this notification starts serves IMMEDIATE before LAZY, outside any close. */
+    held_by_outer_handler = (conn->cmutex.lock_cnt > 1) || m_closing_drain;
     r = rmutex_unlock (m_entry, &conn->cmutex);
     assert (r == NO_ERROR);
     if (held_by_outer_handler)
@@ -2706,10 +2764,9 @@ respond:
     /* The caller has already checked the connection under cmutex, so the state is
      * re-checked only inside the lock this function needs anyway.
      *
-     * m_conn->fd is read below without cmutex. That holds while
-     * must_defer_close_for_eager_receiver () defers the close; during shutdown it
-     * does not, and the thread_ref.shutdown check at the top of each iteration of
-     * css_eager_receive_loop () is the only defence. */
+     * m_conn->fd is read below without cmutex. That holds because
+     * must_defer_close_for_eager_receiver () defers the close while this thread
+     * owns the socket, during shutdown as well. */
     io_status = ctx->m_recv.m_receiver.drain (ctx->m_conn->fd, m_recv_budget);
     if (io_status == result::PeerReset || io_status == result::Error)
       {

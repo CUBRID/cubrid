@@ -2177,13 +2177,15 @@ css_recycle_between_eager_requests (THREAD_ENTRY &thread_ref)
  *       The connection cannot close underneath the loop outside shutdown. The
  *       task that opened it has not called end_working_task () yet, and
  *       worker::must_defer_close_for_eager_receiver () defers the close while a
- *       task is working.
+ *       task is working. During shutdown it defers the close until
+ *       worker::eager_finish () reports that what this thread received has run.
  */
 static void
 css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 {
   int window_ms, received, i;
   bool keep_waiting;
+  cubconn::connection::context *claimed;
 
   window_ms = prm_get_integer_value (PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS);
   if (window_ms <= 0 || css_Server_request_worker_pool == NULL)
@@ -2205,7 +2207,8 @@ css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 	  return;
 	}
 
-      keep_waiting = cubconn::connection::worker::eager_poll_and_receive (conn_ref, &thread_ref, window_ms, received);
+      keep_waiting =
+	cubconn::connection::worker::eager_poll_and_receive (conn_ref, &thread_ref, window_ms, received, claimed);
 
       /* Run what was received before deciding whether to wait again: the requests
        * are already parsed and counted, and each one owes a start_request (). */
@@ -2213,6 +2216,10 @@ css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 	{
 	  css_recycle_between_eager_requests (thread_ref);
 	  css_run_one_request (thread_ref, conn_ref);
+	}
+      if (received > 0)
+	{
+	  cubconn::connection::worker::eager_finish (claimed);
 	}
 
       if (!keep_waiting)

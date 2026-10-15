@@ -179,6 +179,10 @@ namespace cubconn::connection
        * under m_conn->cmutex, so the two can never both take it; the flag is
        * atomic because its owner clears it without retaking the lock. */
       std::atomic<bool> m_recv_busy { false };
+      /* Transaction threads that took this socket in eager_claim () and have not yet
+       * run what they received from it. Raised under m_conn->cmutex; dropped without
+       * it, as the thread's last use of this context. */
+      std::atomic<int> m_eager_running { 0 };
       /* while m_eager_draining is set, a complete request is counted in m_eager_counted
        * instead of being pushed as a task; the eager receiver runs it itself.
        * Both are guarded by m_conn->rmutex. */
