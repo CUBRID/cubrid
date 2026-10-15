@@ -2093,7 +2093,7 @@ css_server_task::execute (context_type &thread_ref)
   /* run the request this task was pushed for */
   css_run_one_request (thread_ref, m_conn);
 
-  /* eager receive: before giving the thread back, run the next requests of this connection here */
+  /* eager receive: run the next requests of this connection before giving the thread back */
   css_eager_receive_loop (thread_ref, m_conn);
 
   thread_ref.conn_entry = NULL;
@@ -2178,20 +2178,11 @@ css_run_one_request (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
  *   thread_ref(in):
  *   conn_ref(in):
  *
- * Note: Each pass of the loop takes four steps.
- *       1. Stop when the server is stopping, or when the core that
- *          css_push_server_task () sends this connection's tasks to has work waiting.
- *       2. Wait up to the window on the socket through worker::eager_poll_and_receive (),
- *          which owns the socket protocol.
- *       3. Run what came in, resetting the thread before each request
- *          as the worker pool does between two tasks.
- *       4. Report the run to worker::eager_finish (), then wait again
- *          unless step 2 said to stop.
- *
- *       The connection cannot close underneath the loop:
- *       worker::must_defer_close_for_eager_receiver () defers the close
- *       while the task that opened it is working and, during shutdown,
- *       until worker::eager_finish () reports that what this thread received has run.
+ * Note: 1. Stop on shutdown or when this connection's core has queued work.
+ *       2. Wait up to the window through worker::eager_poll_and_receive ().
+ *       3. Run what came in, resetting the thread before each request.
+ *       4. Call worker::eager_finish (), then wait again unless step 2 said to stop.
+ *       worker::must_defer_close_for_eager_receiver () keeps the connection open meanwhile.
  */
 static void
 css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
@@ -2221,13 +2212,11 @@ css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
       keep_waiting =
 	cubconn::connection::worker::eager_poll_and_receive (conn_ref, &thread_ref, window_ms, received, claimed);
 
-      /* the received requests run before the loop decides whether to wait again:
-       * they are already parsed and counted, and each one owes a start_request () */
+      /* run what was received before deciding to wait again: each request owes a start_request () */
       for (i = 0; i < received; i++)
 	{
-	  /* recycle_context () also clears entry::shutdown, which would drop a stop the pool has already
-	   * asked for, so the flag is put back. The write is conditional because stop_execution ()
-	   * may raise it during recycle_context (). */
+	  /* recycle_context () clears entry::shutdown; restore it only if it was set,
+	   * as stop_execution () may raise it meanwhile */
 	  was_shutdown = thread_ref.shutdown;
 	  css_Server_request_worker_pool->get_entry_manager ().recycle_context (thread_ref);
 	  if (was_shutdown)
