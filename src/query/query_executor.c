@@ -24496,9 +24496,10 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	  bool is_same_group = true;
 	  for (sort_list_idx = 0; sort_list_idx < a_func_list->sort_list_size; sort_list_idx++)
 	    {
+	      /* total order: NULL keys are equal and form one group, as they do after the sort */
 	      if (tp_value_compare
 		  (&a_eval_list->current_values[sort_list_idx], &a_eval_list->temp_values[sort_list_idx], 1,
-		   0) != DB_EQ)
+		   1) != DB_EQ)
 		{
 		  is_same_group = (sort_list_idx >= a_func_list->sort_prefix_size);
 		  break;
