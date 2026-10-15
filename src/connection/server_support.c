@@ -2087,6 +2087,52 @@ css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
   thread_get_manager ()->push_task (css_Server_request_worker_pool, new css_server_external_task (conn, task));
 }
 
+void
+css_server_task::execute (context_type &thread_ref)
+{
+  css_run_one_request (thread_ref, m_conn);
+  css_eager_receive_loop (thread_ref, m_conn);
+
+  thread_ref.conn_entry = NULL;
+  thread_ref.m_status = cubthread::entry::status::TS_FREE;
+
+  if (m_conn.end_working_task () == 0 && m_conn.status == CONN_CLOSING)
+    {
+      css_request_shutdown_conn (&m_conn, static_cast <uint8_t> (cubconn::connection::ignore_level::DONT_IGNORE), false, 0 /* no wait */);
+    }
+  else
+    {
+      css_wakeup_handler (&m_conn);
+    }
+}
+
+void
+css_server_external_task::execute (context_type &thread_ref)
+{
+  thread_ref.conn_entry = m_conn;
+
+  session_state *session_p = thread_ref.conn_entry != NULL ? thread_ref.conn_entry->session_p : NULL;
+  if (session_p != NULL)
+    {
+      thread_ref.private_lru_index = session_get_private_lru_idx (session_p);
+    }
+  else
+    {
+      assert (thread_ref.private_lru_index == -1);
+    }
+
+  thread_ref.m_status = cubthread::entry::status::TS_RUN;
+
+  // TODO: We lock tran_index_lock because external task expects it to be locked.
+  //       However, I am not convinced we really need this
+  pthread_mutex_lock (&thread_ref.tran_index_lock);
+
+  m_task->execute (thread_ref);
+
+  thread_ref.conn_entry = NULL;
+  thread_ref.m_status = cubthread::entry::status::TS_FREE;
+}
+
 /*
  * css_run_one_request() - put the thread in the state a task starts in, then
  *                         run one request on this connection
@@ -2192,52 +2238,6 @@ css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 	  return;
 	}
     }
-}
-
-void
-css_server_task::execute (context_type &thread_ref)
-{
-  css_run_one_request (thread_ref, m_conn);
-  css_eager_receive_loop (thread_ref, m_conn);
-
-  thread_ref.conn_entry = NULL;
-  thread_ref.m_status = cubthread::entry::status::TS_FREE;
-
-  if (m_conn.end_working_task () == 0 && m_conn.status == CONN_CLOSING)
-    {
-      css_request_shutdown_conn (&m_conn, static_cast <uint8_t> (cubconn::connection::ignore_level::DONT_IGNORE), false, 0 /* no wait */);
-    }
-  else
-    {
-      css_wakeup_handler (&m_conn);
-    }
-}
-
-void
-css_server_external_task::execute (context_type &thread_ref)
-{
-  thread_ref.conn_entry = m_conn;
-
-  session_state *session_p = thread_ref.conn_entry != NULL ? thread_ref.conn_entry->session_p : NULL;
-  if (session_p != NULL)
-    {
-      thread_ref.private_lru_index = session_get_private_lru_idx (session_p);
-    }
-  else
-    {
-      assert (thread_ref.private_lru_index == -1);
-    }
-
-  thread_ref.m_status = cubthread::entry::status::TS_RUN;
-
-  // TODO: We lock tran_index_lock because external task expects it to be locked.
-  //       However, I am not convinced we really need this
-  pthread_mutex_lock (&thread_ref.tran_index_lock);
-
-  m_task->execute (thread_ref);
-
-  thread_ref.conn_entry = NULL;
-  thread_ref.m_status = cubthread::entry::status::TS_FREE;
 }
 
 //
