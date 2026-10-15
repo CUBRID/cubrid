@@ -2199,6 +2199,7 @@ css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 
   for (;;)
     {
+      /* STEP 1. Stop on shutdown or when this connection's core has queued work. */
       if (thread_ref.shutdown)
 	{
 	  return;
@@ -2209,10 +2210,12 @@ css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 	  return;
 	}
 
+      /* STEP 2. Wait up to the window through worker::eager_poll_and_receive (). */
       keep_waiting =
 	cubconn::connection::worker::eager_poll_and_receive (conn_ref, &thread_ref, window_ms, received, claimed);
 
-      /* run what was received before deciding to wait again: each request owes a start_request () */
+      /* STEP 3. Run what came in, resetting the thread before each request.
+       * This comes before deciding to wait again: each request owes a start_request (). */
       for (i = 0; i < received; i++)
 	{
 	  /* recycle_context () clears entry::shutdown; restore it only if it was set,
@@ -2226,11 +2229,12 @@ css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 
 	  css_run_one_request (thread_ref, conn_ref);
 	}
+
+      /* STEP 4. Call worker::eager_finish (), then wait again unless step 2 said to stop. */
       if (received > 0)
 	{
 	  cubconn::connection::worker::eager_finish (claimed);
 	}
-
       if (!keep_waiting)
 	{
 	  return;
