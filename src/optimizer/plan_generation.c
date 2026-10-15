@@ -3526,6 +3526,10 @@ qo_check_iscan_for_multi_range_opt (QO_PLAN * plan)
       /* NO_MULTI_RANGE_OPT was hinted */
       return false;
     }
+  if (query->info.query.q.select.connect_by != NULL)
+    {
+      return false;
+    }
   if (pt_has_aggregate (parser, query))
     {
       // CBRD-22696
@@ -4239,6 +4243,10 @@ qo_check_join_for_multi_range_opt (QO_PLAN * plan)
   if (((QO_ENV_PT_TREE (plan->info->env))->info.query.q.select.hint & PT_HINT_NO_MULTI_RANGE_OPT) != 0)
     {
       /* NO_MULTI_RANGE_OPT was hinted */
+      return false;
+    }
+  if ((QO_ENV_PT_TREE (plan->info->env))->info.query.q.select.connect_by != NULL)
+    {
       return false;
     }
 
