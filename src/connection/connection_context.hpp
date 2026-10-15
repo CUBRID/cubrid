@@ -174,22 +174,21 @@ namespace cubconn::connection
       /* when data packet is completely received. */
       bool m_command;
 
-      /* Someone is receiving from this socket: the connection worker, or the
-       * transaction thread that answered the last request. The claim is decided
-       * under m_conn->cmutex, so the two can never both take it; the flag is
-       * atomic because its owner clears it without retaking the lock. */
+      /* set while the connection worker or an eager receiver (the transaction
+       * thread that answered the last request) receives from this socket.
+       * Claimed under m_conn->cmutex; cleared by its owner without the lock. */
       std::atomic<bool> m_recv_busy { false };
-      /* Transaction threads that took this socket in eager_claim () and have not yet
-       * run what they received from it. Raised under m_conn->cmutex; dropped without
-       * it, as the thread's last use of this context. */
+      /* eager receivers that claimed this socket and have not yet run what they
+       * received. Raised under m_conn->cmutex; dropped without it,
+       * as the thread's last use of this context. */
       std::atomic<int> m_eager_running { 0 };
-      /* while m_eager_draining is set, a complete request is counted in m_eager_counted
-       * instead of being pushed as a task; the eager receiver runs it itself.
-       * Both are guarded by m_conn->rmutex. */
+      /* while m_eager_draining is set, a complete request is counted in
+       * m_eager_counted instead of being pushed as a task; the eager receiver
+       * runs it itself. Both are guarded by m_conn->rmutex. */
       bool m_eager_draining { false };
       int m_eager_counted { 0 };
-      /* the worker met an EPOLLIN edge while the eager receiver owned this socket
-       * and dropped it; guarded by m_conn->cmutex like m_recv_busy's transitions */
+      /* an EPOLLIN edge the worker dropped because an eager receiver owned this
+       * socket; guarded by m_conn->cmutex */
       bool m_missed_edge { false };
     } m_recv;
 

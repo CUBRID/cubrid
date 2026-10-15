@@ -2106,9 +2106,6 @@ css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
  *   return: void
  *   thread_ref(in):
  *   conn_ref(in):
- *
- * Note: Shared by css_server_task::execute () and css_eager_receive_loop ()
- *       so that the two cannot drift apart.
  */
 static void
 css_run_one_request (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
@@ -2145,10 +2142,9 @@ css_run_one_request (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
  *   thread_ref(in):
  *
  * Note: recycle_context () also clears entry::shutdown, which inside one task
- *       would drop a stop the pool has already asked for, so this puts that
- *       one field back. The write is conditional because worker_pool::
- *       stop_execution () may raise the same flag while this thread is inside
- *       recycle_context ().
+ *       would drop a stop the pool has already asked for, so that one field
+ *       is put back. The write is conditional because worker_pool::stop_execution ()
+ *       may raise the flag while this thread is inside recycle_context ().
  */
 static void
 css_recycle_between_eager_requests (THREAD_ENTRY &thread_ref)
@@ -2170,15 +2166,13 @@ css_recycle_between_eager_requests (THREAD_ENTRY &thread_ref)
  *   thread_ref(in):
  *   conn_ref(in):
  *
- * Note: The window is eager_receive_window_in_msecs and 0 disables the loop.
- *       worker::eager_poll_and_receive () owns the socket protocol; this loop
+ * Note: worker::eager_poll_and_receive () owns the socket protocol; this loop
  *       only decides whether to keep waiting and runs what came in.
  *
- *       The connection cannot close underneath the loop outside shutdown. The
- *       task that opened it has not called end_working_task () yet, and
- *       worker::must_defer_close_for_eager_receiver () defers the close while a
- *       task is working. During shutdown it defers the close until
- *       worker::eager_finish () reports that what this thread received has run.
+ *       The connection cannot close underneath the loop:
+ *       worker::must_defer_close_for_eager_receiver () defers the close
+ *       while the task that opened it is working and, during shutdown,
+ *       until worker::eager_finish () reports that what this thread received has run.
  */
 static void
 css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
@@ -2195,23 +2189,22 @@ css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
 
   for (;;)
     {
-      /* the connection's own state is checked under cmutex by the claim below */
       if (thread_ref.shutdown)
 	{
 	  return;
 	}
       if (css_Server_request_worker_pool->has_queued_task_on_core (css_get_core_hash (conn_ref)))
 	{
-	  /* the core this connection's tasks go to has work waiting; that work
-	   * outranks this thread's wait, so give the thread back */
+	  /* the core this connection's tasks go to has work waiting,
+	   * which outranks this thread's wait */
 	  return;
 	}
 
       keep_waiting =
 	cubconn::connection::worker::eager_poll_and_receive (conn_ref, &thread_ref, window_ms, received, claimed);
 
-      /* Run what was received before deciding whether to wait again: the requests
-       * are already parsed and counted, and each one owes a start_request (). */
+      /* the received requests run before the loop decides whether to wait again:
+       * they are already parsed and counted, and each one owes a start_request () */
       for (i = 0; i < received; i++)
 	{
 	  css_recycle_between_eager_requests (thread_ref);

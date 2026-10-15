@@ -367,9 +367,9 @@ namespace cubconn::connection
       result handle_header_packet (context *ctx, cubbase::span<std::byte> &packet);
 
       /* reception */
-      /* handle_packet () runs on the worker thread and, through worker::eager_drain (),
-       * on a transaction thread that owns the socket. It and everything below it may
-       * therefore touch only the context and the connection, never worker-private
+      /* handle_packet () runs on the worker thread and, through eager_drain (),
+       * on a transaction thread that owns the socket. It and everything below it
+       * may therefore touch only the context and the connection: never worker-private
        * state (m_stats, m_exhausted, m_entry, m_context, m_events, the message queues)
        * and never the connection-close path. */
       result handle_packet (context *ctx, cubbase::span<std::byte> &packet);
