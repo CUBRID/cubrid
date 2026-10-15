@@ -1725,19 +1725,11 @@ retry:
 	return true;
       }
 
-    /* Two nestings put the message back instead of receiving here.
-     *
-     * Under a handler that pumps the IMMEDIATE queue with cmutex held
-     * (handle_message_queue_handoff_client ()): handle_reception () takes rmutex,
-     * while a transaction thread in css_return_queued_request () holds rmutex
-     * and waits for cmutex in css_request_release_packet (), so the two would deadlock.
-     * The queue is served again once the outer handler has released cmutex.
-     *
-     * Under a connection close (has_remaining_tasks ()): handle_reception ()
-     * may close this or another connection, and that close's end_connection_close ()
-     * clears the m_entry client info the outer close still needs to release
-     * its transaction. The queue pass this notification starts
-     * serves IMMEDIATE before LAZY, outside any close. */
+    /* Put the message back when nested; the next queue pass serves it outside both cases.
+     * Under cmutex (handle_message_queue_handoff_client ()), handle_reception () would take rmutex
+     * while a transaction thread holding rmutex waits for cmutex in css_request_release_packet ().
+     * Under a close (has_remaining_tasks ()), a nested close would clear the m_entry client info
+     * the outer close needs to release its transaction. */
     held_by_outer_handler = (conn->cmutex.lock_cnt > 1) || m_closing_drain;
     r = rmutex_unlock (m_entry, &conn->cmutex);
     assert (r == NO_ERROR);
