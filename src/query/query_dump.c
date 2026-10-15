@@ -2501,6 +2501,20 @@ qdump_print_xasl (xasl_node * xasl_p)
 	  nflag++;
 	}
 
+      if (XASL_IS_FLAGED (xasl_p, XASL_NO_MEMOIZE))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_NO_MEMOIZE);
+	  fprintf (foutput, "%sXASL_NO_MEMOIZE", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
+      if (XASL_IS_FLAGED (xasl_p, XASL_NL_FOLLOWING_JOIN))
+	{
+	  XASL_CLEAR_FLAG (xasl_p, XASL_NL_FOLLOWING_JOIN);
+	  fprintf (foutput, "%sXASL_NL_FOLLOWING_JOIN", (nflag ? "|" : ""));
+	  nflag++;
+	}
+
       if (xasl_p->flag)
 	{
 	  fprintf (foutput, "%s%d", (nflag ? "|" : ""), xasl_p->flag);
