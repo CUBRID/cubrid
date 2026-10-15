@@ -613,8 +613,8 @@ namespace cubconn::connection
   }
 
   /*
-   * worker::eager_finish () - the requests eager_poll_and_receive () returned
-   *   have run; drop the count its claim raised. ctx is passed in
+   * worker::eager_finish () - drop the count the claim raised, once the requests
+   *   eager_poll_and_receive () returned have run. ctx is passed in
    *   because a failed takeover clears conn.context.
    */
   void worker::eager_finish (context *ctx)
@@ -967,9 +967,9 @@ namespace cubconn::connection
 	    return;
 	  }
 
-	/* A method-mode packet needs the pool's admission, so it takes the pool path,
+	/* a method-mode packet needs the pool's admission, so it takes the pool path,
 	 * and so must every request after it in this drain,
-	 * or the two would pop from conn->request_queue against each other. */
+	 * or the two would pop from conn->request_queue against each other */
 	ctx->m_recv.m_eager_draining = false;
       }
 
@@ -1037,9 +1037,9 @@ namespace cubconn::connection
   }
 
   /*
-   * worker::must_defer_close_for_eager_receiver () - true while a transaction
-   *   thread may be waiting on this connection's socket, so the close has to wait.
-   *   The waiting thread carries no transaction index,
+   * worker::must_defer_close_for_eager_receiver () - check whether the close must wait
+   *   for an eager receiver (a transaction thread waiting on this connection's socket).
+   *   The eager receiver carries no transaction index,
    *   so outside shutdown only the working task count can see it.
    *
    *   During shutdown that count cannot be waited on: stop_execution () retires
@@ -2663,8 +2663,11 @@ respond:
     return io_status;
   }
 
-  /* from_edge: the caller acts on an epoll edge, which is lost when the socket
-   * is busy, so its owner is told to hand the socket back */
+  /*
+   * worker::claim_reading () - take this connection's socket for this worker.
+   *   Returns false when the eager receiver owns it. from_edge marks an epoll edge,
+   *   which is lost when the socket is busy, so the owner is told to hand the socket back.
+   */
   bool worker::claim_reading (context *ctx, bool from_edge)
   {
     bool claimed;
@@ -2700,9 +2703,9 @@ respond:
   }
 
   /*
-   * worker::receive_if_free () - handle_reception () on a socket this worker can
-   *   claim. A socket owned by an eager receiver is left to its owner, which
-   *   rechecks on release, and reported as Pending: nothing more to receive here.
+   * worker::receive_if_free () - run handle_reception () if this worker can claim
+   *   the socket. Returns Pending when the eager receiver owns it:
+   *   the owner rechecks on release, so nothing more is received here.
    */
   result worker::receive_if_free (context *ctx, bool in_exhausted, bool from_edge)
   {
@@ -2719,8 +2722,8 @@ respond:
   }
 
   /*
-   * worker::eager_drain () - the reception steps of handle_reception (),
-   *   run on a transaction thread that owns the socket, under the constraint
+   * worker::eager_drain () - run the reception steps of handle_reception ()
+   *   on the eager receiver, under the constraint
    *   at the reception declarations in connection_worker.hpp. Hence m_stats
    *   do not count what an eager receiver takes, and LAST_ACTIVE_NS is left alone:
    *   the worker updates it without m_conn->cmutex, so a write from here would race.
@@ -2808,8 +2811,10 @@ respond:
     return result::Ok;
   }
 
-  /* give back the add_pending_request () of each counted request. Caller holds
-   * m_conn->rmutex. */
+  /*
+   * worker::eager_abort () - give back the add_pending_request () of each counted request
+   *   and stop counting. Caller holds m_conn->rmutex.
+   */
   void worker::eager_abort (context *ctx)
   {
     for (int i = 0; i < ctx->m_recv.m_eager_counted; i++)
@@ -2820,8 +2825,11 @@ respond:
     ctx->m_recv.m_eager_counted = 0;
   }
 
-  /* css_push_server_task () takes its own add_pending_request (), so the counted
-   * one is given back first. Caller holds m_conn->rmutex. */
+  /*
+   * worker::eager_flush_counted_to_pool () - push each counted request to the pool.
+   *   css_push_server_task () takes its own add_pending_request (),
+   *   so the counted one is given back first. Caller holds m_conn->rmutex.
+   */
   void worker::eager_flush_counted_to_pool (context *ctx)
   {
     for (int i = 0; i < ctx->m_recv.m_eager_counted; i++)

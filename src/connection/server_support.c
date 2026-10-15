@@ -2058,8 +2058,8 @@ css_get_current_conn_entry (void)
 
 // *INDENT-OFF*
 /*
- * css_get_core_hash() - core hash of the worker pool core that this
- *                       connection's tasks are pushed to
+ * css_get_core_hash() - get the core hash that this connection's tasks
+ *                       are pushed with
  *   return: core hash
  *   conn_ref(in):
  */
@@ -2159,9 +2159,8 @@ css_recycle_between_eager_requests (THREAD_ENTRY &thread_ref)
 }
 
 /*
- * css_eager_receive_loop() - having answered a request, wait on this
- *                            connection's socket for the next one and run it
- *                            on this thread
+ * css_eager_receive_loop() - wait on this connection's socket for the next
+ *                            request and run it on this thread
  *   return: void
  *   thread_ref(in):
  *   conn_ref(in):

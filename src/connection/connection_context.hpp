@@ -174,22 +174,23 @@ namespace cubconn::connection
       /* when data packet is completely received. */
       bool m_command;
 
-      /* eager receive: the transaction thread that answered the last request
-       * may take the socket for the next one. Ownership moves under m_conn->cmutex. */
+      /* Eager receive: the transaction thread that answered a request waits on its socket
+       * for the next one. That thread is the eager receiver. */
 
-      /* set while the connection worker or an eager receiver receives from
-       * this socket; cleared by its owner without the lock */
+      /* True while the connection worker or the eager receiver receives from this socket.
+       * Set under m_conn->cmutex; its owner may clear it without the lock. */
       std::atomic<bool> m_recv_busy { false };
 
-      /* an EPOLLIN edge the worker dropped because an eager receiver owned the socket */
+      /* True when the worker dropped an EPOLLIN edge because the eager receiver owned this socket.
+       * Guarded by m_conn->cmutex. */
       bool m_missed_edge { false };
 
-      /* eager receivers that have not yet run what they received;
-       * dropped without the lock, as the thread's last use of this context */
+      /* Eager receivers that claimed this socket and have not yet run what they received.
+       * Raised under m_conn->cmutex; dropped without it, as the thread's last use of this context. */
       std::atomic<int> m_eager_running { 0 };
 
-      /* while m_eager_draining is set, a complete request is counted in
-       * m_eager_counted instead of being pushed as a task. Guarded by m_conn->rmutex. */
+      /* True while eager_drain () counts complete requests in m_eager_counted
+       * instead of pushing them as tasks. Both are guarded by m_conn->rmutex. */
       bool m_eager_draining { false };
       int m_eager_counted { 0 };
     } m_recv;
