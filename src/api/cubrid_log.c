@@ -1014,7 +1014,7 @@ cubrid_log_request_challenge (int timeout, CUBRID_LOG_CHALLENGE * challenge)
   ptr = or_pack_string (request, g_db_user);
   request_size = (int) (ptr - request);
 
-  if (__gv_cvar.css_send_request_with_data_buffer
+  if (__gv_cvar.css_send_request_with_data_buffer_with_padding
       (g_conn_entry, NET_SERVER_CDC_AUTH_CHALLENGE, &rid, request, request_size, challenge_reply,
        OR_ALIGNED_BUF_SIZE (a_challenge_reply)) != NO_ERRORS)
     {
@@ -1178,7 +1178,7 @@ cubrid_log_send_auth_response (const CUBRID_LOG_CHALLENGE * challenge, const cha
   ptr = or_pack_string (ptr, digest);
   request_size = (int) (ptr - request);
 
-  if (__gv_cvar.css_send_request_with_data_buffer
+  if (__gv_cvar.css_send_request_with_data_buffer_with_padding
       (g_conn_entry, NET_SERVER_CDC_AUTH_RESPONSE, &rid, request, request_size, reply,
        OR_ALIGNED_BUF_SIZE (a_reply)) != NO_ERRORS)
     {
