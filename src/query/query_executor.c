@@ -7790,11 +7790,26 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  bool is_scan_needed = false;
 	  if (!buildvalue->is_always_false)
 	    {
-	      error =
-		qexec_evaluate_aggregates_optimize (thread_p, buildvalue->agg_list, xasl->spec_list, &is_scan_needed);
-	      if (error != NO_ERROR)
+	      if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
 		{
+		  /* A hierarchical query aggregates the CONNECT BY expansion, not the class rows, so the
+		   * statistics/index based evaluation (which counts the class) does not apply. Clear the flag
+		   * so that the regular accumulation is not skipped either. */
+		  for (agg_ptr = buildvalue->agg_list; agg_ptr; agg_ptr = agg_ptr->next)
+		    {
+		      agg_ptr->flag_agg_optimize = false;
+		    }
 		  is_scan_needed = true;
+		}
+	      else
+		{
+		  error =
+		    qexec_evaluate_aggregates_optimize (thread_p, buildvalue->agg_list, xasl->spec_list,
+							&is_scan_needed);
+		  if (error != NO_ERROR)
+		    {
+		      is_scan_needed = true;
+		    }
 		}
 	    }
 
@@ -7814,7 +7829,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	      && !xasl->if_pred	/* no if predicates */
 	      && !xasl->instnum_pred	/* no instnum predicate */
 	      && agg_ptr->next == NULL	/* no other aggregate functions */
-	      && agg_ptr->function == PT_COUNT_STAR)
+	      && agg_ptr->function == PT_COUNT_STAR && !XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
 	    {
 	      /* only one count(*) function */
 	      ACCESS_SPEC_TYPE *specp = xasl->spec_list;
