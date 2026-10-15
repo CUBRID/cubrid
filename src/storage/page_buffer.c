@@ -2183,6 +2183,7 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
   bool had_holder = false;
 #endif /* !NDEBUG */
   PGBUF_FIX_PERF perf;
+  bool is_trace_only;
   bool maybe_deallocated;
 
   perf.perf_page_found = PERF_PAGE_MODE_OLD_IN_BUFFER;
@@ -2238,8 +2239,10 @@ pgbuf_fix_release (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_MODE f
 
   perf.lock_wait_time = 0;
   perf.is_perf_tracking = perfmon_is_perf_tracking ();
+  /* nobody watches statistics, but this thread's trace reads its fetches and fix time */
+  is_trace_only = !perf.is_perf_tracking && thread_p != NULL && thread_p->on_trace;
 
-  if (perf.is_perf_tracking)
+  if (perf.is_perf_tracking || is_trace_only)
     {
       tsc_getticks (&perf.start_tick);
     }
@@ -2520,7 +2523,8 @@ fast_path:
     {
       perf.perf_page_type = pgbuf_get_page_type_for_stat (thread_p, pgptr);
 
-      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_FETCHES);
+      /* the watch may have ended since the fix started; a thread on trace still counts this fetch */
+      perfmon_inc_stat_for_trace (thread_p, PSTAT_PB_NUM_FETCHES);
       if (request_mode == PGBUF_LATCH_READ)
 	{
 	  perf.perf_latch_mode = PERF_HOLDER_LATCH_READ;
@@ -2567,6 +2571,19 @@ fast_path:
 	{
 	  perfmon_pbx_fix_acquire_time (thread_p, perf.perf_page_type, perf.perf_page_found, perf.perf_latch_mode,
 					perf.perf_cond_type, perf.fix_wait_time);
+	  perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
+					  perf.fix_wait_time);
+	}
+    }
+  else if (is_trace_only)
+    {
+      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset, 1);
+
+      tsc_getticks (&perf.end_tick);
+      tsc_elapsed_time_usec (&perf.tv_diff, perf.end_tick, perf.start_tick);
+      perf.fix_wait_time = perf.tv_diff.tv_sec * 1000000LL + perf.tv_diff.tv_usec;
+      if (perf.fix_wait_time > 0)
+	{
 	  perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
 					  perf.fix_wait_time);
 	}
@@ -4671,7 +4688,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 	    }
 
 	  /* Record number of reads in statistics */
-	  perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
+	  perfmon_inc_stat_for_trace (thread_p, PSTAT_PB_NUM_IOREADS);
 
 	  if (fileio_read_user_area (thread_p, fileio_get_volume_descriptor (vpid->volid), vpid->pageid, start_offset,
 				     length, area) == NULL)
@@ -4694,7 +4711,7 @@ pgbuf_copy_to_area (THREAD_ENTRY * thread_p, const VPID * vpid, int start_offset
 
       if (thread_get_sort_stats_active (thread_p))
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+	  perfmon_inc_stat_for_trace (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
 	}
 
       /* release mutex */
@@ -5303,39 +5320,40 @@ pgbuf_is_log_check_for_interrupts (THREAD_ENTRY * thread_p)
 }
 
 /*
- * pgbuf_set_force_latch_wait () - make page latches ignore the transaction's no-wait setting
- *   return: the old value, to be restored by the caller
+ * pgbuf_force_latch_wait () - make the page latches of this thread wait although its waiting time is a no-wait
+ *   return: the old waiting time override of the thread, to be restored by the caller with
+ *           logtb_set_thread_wait_msecs ()
  *   thread_p(in): thread entry
- *   force(in): new value
  *
  * Note: Keep the scope to a fix whose caller cannot act on a refusal - the disk manager's volume header and
  *       sector allocation table. Those two pass PGBUF_UNCONDITIONAL_LATCH and offer no conditional variant,
  *       and disk_reserve_sectors treats anything but an interrupt or an IO error as a disk cache
  *       inconsistency.
- *       The flag lives in the thread entry rather than in LOG_TDES because parallel scan workers share their
- *       parent's tran_index: a save/restore on tdes->wait_msecs would race between sibling workers and could
- *       drop the user's lock_timeout.
+ *       Both no-wait values are lifted although they have different owners - LK_ZERO_WAIT carries the user's
+ *       lock_timeout, LK_FORCE_ZERO_WAIT is installed by the engine itself. A finite or an already infinite
+ *       waiting time is kept, because pgbuf_timed_sleep () classifies a watchdog expiry by this very value and
+ *       would otherwise report ER_LK_PAGE_TIMEOUT as ER_LK_UNILATERALLY_ABORTED; the thread is then left
+ *       untouched, so the transaction's waiting time stays visible to it.
  */
-bool
-pgbuf_set_force_latch_wait (THREAD_ENTRY * thread_p, bool force)
+int
+pgbuf_force_latch_wait (THREAD_ENTRY * thread_p)
 {
-#if defined (SERVER_MODE)
-  bool old_val;
+  int wait_msecs;
 
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
-      assert (thread_p != NULL);
     }
 
-  old_val = thread_p->force_latch_wait;
-  thread_p->force_latch_wait = force;
+  wait_msecs = pgbuf_find_current_wait_msecs (thread_p);
+  if (wait_msecs != LK_ZERO_WAIT && wait_msecs != LK_FORCE_ZERO_WAIT)
+    {
+      /* nothing to lift; an override of the thread's own (the page validation's LK_INFINITE_WAIT reaches the
+       * volume header fix) must stay in place */
+      return thread_p->wait_msecs_override;
+    }
 
-  return old_val;
-#else /* not SERVER_MODE = SA_MODE */
-  /* single threaded, no latch contention */
-  return false;
-#endif /* not SERVER_MODE */
+  return logtb_set_thread_wait_msecs (thread_p, LK_INFINITE_WAIT);
 }
 
 /*
@@ -6498,7 +6516,7 @@ pgbuf_latch_bcb_upon_fix (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr, PGBUF_LAT
       int wait_msec;
 
       tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-      wait_msec = logtb_find_wait_msecs (tran_index);
+      wait_msec = pgbuf_find_current_wait_msecs (thread_p);
 
       if (wait_msec == LK_ZERO_WAIT)
 	{
@@ -7228,7 +7246,6 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
   const char *client_user_name;	/* Client user name for tran */
   const char *client_host_name;	/* Client host for tran */
   int client_pid;		/* Client process identifier for tran */
-  bool old_check_interrupt = false;
 
   /* After holding the mutex associated with conditional variable, release the bufptr->mutex. */
   thread_lock_entry (thread_p);
@@ -7251,18 +7268,8 @@ pgbuf_timed_sleep (THREAD_ENTRY * thread_p, PGBUF_BCB * bufptr)
 try_again:
   pgbuf_make_latch_timeout (&to, wait_msecs);
 
-  if (thread_p->type == TT_WORKER)
-    {
-      old_check_interrupt = logtb_set_check_interrupt (thread_p, true);
-    }
-
   thread_p->resume_status = THREAD_PGBUF_SUSPENDED;
   r = thread_suspend_timeout_wakeup_and_unlock_entry (thread_p, &to, THREAD_PGBUF_SUSPENDED);
-
-  if (thread_p->type == TT_WORKER)
-    {
-      logtb_set_check_interrupt (thread_p, old_check_interrupt);
-    }
 
   if (r == NO_ERROR)
     {
@@ -7374,7 +7381,27 @@ er_set_return:
     }
   else
     {
+      /* Zero wait: LK_ZERO_WAIT or LK_FORCE_ZERO_WAIT -- from the transaction, or from the thread's own override
+       * (logtb_set_thread_wait_msecs ()) -- and the LK_ZERO_WAIT that pgbuf_find_current_wait_msecs () returns when
+       * the thread has no transaction descriptor. The timeout is the expected outcome in all three cases, but an
+       * error still has to be set: this ER_FAILED travels up through pgbuf_block_bcb () and
+       * pgbuf_latch_bcb_upon_fix (), neither of which sets one, and comes out of pgbuf_fix () as a plain NULL.
+       * Callers then run ASSERT_ERROR_AND_SET () and assert on er_errid () != NO_ERROR -- which is how a page latch
+       * timeout aborted the server inside btree_split_node_and_advance (). Same reasoning as the interrupt path in
+       * pgbuf_block_bcb ().
+       *
+       * ER_LK_PAGE_TIMEOUT, the same error the zero-wait rejection in pgbuf_latch_bcb_upon_fix () sets and the one
+       * er_errid () ends up with in the wait_msecs > 0 branch above: callers that treat latch contention as benign
+       * test for exactly this code (bestspace.cpp's contended path clears it and retries), so a different code would
+       * turn a retryable contention into a hard failure. */
       PGBUF_BCB_UNLOCK (bufptr);
+
+      (void) logtb_find_client_name_host_pid (thread_p->tran_index, &client_prog_name, &client_user_name,
+					      &client_host_name, &client_pid);
+
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LK_PAGE_TIMEOUT, 8, thread_p->tran_index, client_user_name,
+	      client_host_name, client_pid, (save_request_latch_mode == PGBUF_LATCH_READ ? "READ" : "WRITE"),
+	      bufptr->vpid.volid, bufptr->vpid.pageid, NULL);
     }
 
   return ER_FAILED;
@@ -8420,7 +8447,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
   if (fetch_mode != NEW_PAGE)
     {
       /* Record number of reads in statistics */
-      perfmon_inc_stat (thread_p, PSTAT_PB_NUM_IOREADS);
+      perfmon_inc_stat_for_trace (thread_p, PSTAT_PB_NUM_IOREADS);
 
 #if defined(ENABLE_SYSTEMTAP)
       query_id = qmgr_get_current_query_id (thread_p);
@@ -8517,7 +8544,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 
       if (thread_get_sort_stats_active (thread_p))
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_IO_PAGES);
+	  perfmon_inc_stat_for_trace (thread_p, PSTAT_SORT_NUM_IO_PAGES);
 	}
     }
   else
@@ -8548,7 +8575,7 @@ pgbuf_claim_bcb_for_fix (THREAD_ENTRY * thread_p, const VPID * vpid, PAGE_FETCH_
 
       if (thread_get_sort_stats_active (thread_p))
 	{
-	  perfmon_inc_stat (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+	  perfmon_inc_stat_for_trace (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
 	}
     }
 
@@ -16879,11 +16906,17 @@ pgbuf_lru_sanity_check (const PGBUF_LRU_LIST * lru)
 
 // TODO: find a better place for this, but not log_impl.h
 /*
- * pgbuf_find_current_wait_msecs - find waiting times for current transaction
+ * pgbuf_find_current_wait_msecs - find waiting times for current thread
  *
  * return : wait_msecs...
  *
- * Note: Find the waiting time for the current transaction.
+ * Note: Find the waiting time for the current thread - its own override (see logtb_set_thread_wait_msecs ()),
+ *       else the waiting time of its transaction. Every check fed by this function - the demotion in
+ *       pgbuf_fix_internal (), the refusal in pgbuf_latch_bcb_upon_fix (), the sleep budget in
+ *       pgbuf_timed_sleep () and the early give-up in pgbuf_ordered_fix () - reads the same value.
+ *       Same rule as logtb_find_current_wait_msecs (), which the lock manager reads; change both together. This
+ *       copy stays inline because every unconditional pgbuf_fix () reads it, and a thread without a transaction
+ *       descriptor reads LK_ZERO_WAIT here where logtb_find_wait_msecs () asserts.
  */
 STATIC_INLINE int
 pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
@@ -16892,31 +16925,19 @@ pgbuf_find_current_wait_msecs (THREAD_ENTRY * thread_p)
   int tran_index;
   int wait_msecs;
 
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p->wait_msecs_override != LK_WAIT_NOT_OVERRIDDEN)
+    {
+      return thread_p->wait_msecs_override;
+    }
+
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
   wait_msecs = (tdes != NULL) ? tdes->wait_msecs : LK_ZERO_WAIT;
-
-#if defined (SERVER_MODE)
-  /* The two disk manager fixes must not inherit the transaction's no-wait setting; see
-   * pgbuf_set_force_latch_wait ().
-   * Both no-wait values are in scope although they have different owners - LK_ZERO_WAIT carries the user's
-   * lock_timeout, LK_FORCE_ZERO_WAIT is installed by the engine itself. Every check fed by this function tests
-   * that same pair - the demotion in pgbuf_fix_internal (), the sleep budget in pgbuf_timed_sleep () and the
-   * early give-up in pgbuf_ordered_fix () - and a fix that must not be refused has to clear all of them.
-   * Lift only those two: a finite or an already infinite policy is left as the transaction set it, because
-   * pgbuf_timed_sleep () classifies a watchdog expiry by this very value and would otherwise report
-   * ER_LK_PAGE_TIMEOUT as ER_LK_UNILATERALLY_ABORTED. Resolve NULL the way pgbuf_set_force_latch_wait ()
-   * does, so the flag is read from the entry it was written to. */
-  if (wait_msecs == LK_ZERO_WAIT || wait_msecs == LK_FORCE_ZERO_WAIT)
-    {
-      THREAD_ENTRY *flag_owner_p = (thread_p != NULL) ? thread_p : thread_get_thread_entry_info ();
-
-      if (flag_owner_p != NULL && flag_owner_p->force_latch_wait)
-	{
-	  return LK_INFINITE_WAIT;
-	}
-    }
-#endif /* SERVER_MODE */
 
   return wait_msecs;
 }

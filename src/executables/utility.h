@@ -1455,8 +1455,6 @@ typedef struct _ha_config
 #define UNLOAD_SPLIT_SCHEMA_FILES_L             "split-schema-files"
 #define UNLOAD_AS_DBA_S                         11921
 #define UNLOAD_AS_DBA_L                         "as-dba"
-#define UNLOAD_SKIP_INDEX_DETAIL_S              11922	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-#define UNLOAD_SKIP_INDEX_DETAIL_L              "skip-index-detail"	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 #define UNLOAD_THREAD_COUNT_S                   't'
 #define UNLOAD_THREAD_COUNT_L                   "thread-count"
 #define UNLOAD_STRING_BUFFER_SIZE_S             11923

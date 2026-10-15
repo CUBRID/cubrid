@@ -48,8 +48,9 @@
 #include "language_support.h"
 #include "error_manager.h"
 
-static bool histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key);
-static int store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq);
+static bool histogram_extract_key (const DB_VALUE *db_val, DB_TYPE column_type, hist::histogram_key &key);
+static int store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq,
+				bool with_fullscan);
 static bool string_values_equal_under_collation (std::string_view v1, std::string_view v2, int codeset,
     int collation);
 static void histogram_lhs_string_domain (PT_NODE *lhs, int fallback_codeset, int fallback_collation,
@@ -154,7 +155,8 @@ analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, cons
   /* Store the exact null frequency AND the histogram blob together in a single object template
    * (one dbt_edit + one flush) so a failure never leaves a mixed catalog row -- a new
    * null_frequency alongside the previous histogram blob. Mirrors the multi-column path. */
-  error = store_one_histogram (classop, attr_name, histogram_blob, histogram_total_length, null_frequency);
+  error = store_one_histogram (classop, attr_name, histogram_blob, histogram_total_length, null_frequency,
+			       with_fullscan != 0);
 
   if (histogram_blob != NULL)
     {
@@ -165,11 +167,62 @@ analyze_classes_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name, cons
 
 
 /*
- * store_one_histogram () - write one column's blob + exact null frequency into its
- *   _db_histogram catalog entry (the entry must already exist).
+ * get_histogram_for_write () - locate a column's _db_histogram entry for updating, taking the X
+ *   lock on the row right at the index lookup instead of the S-then-X of db_get_histogram ().
+ *
+ * Note (CBRD-27369): store_one_histogram () read the row with db_get_histogram () (an S lock held
+ *   to commit) and then wrote it (X) -- concurrent collectors on the same table deadlocked on
+ *   that S -> X upgrade.  A plain DB_FETCH_WRITE would not do: btree_find_unique () is fixed to
+ *   S_SELECT_WITH_LOCK, so it still S-locks first and upgrades in the fetch (seen as S holders on
+ *   _db_histogram rows with concurrent UPDATE STATISTICS ON ALL CLASSES).  The for-update lookup
+ *   asks the index for X (S_UPDATE), so two collectors contend X vs X on the row, which just
+ *   serializes (no upgrade cycle).
  */
 static int
-store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq)
+get_histogram_for_write (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
+{
+  int au_save;
+  DB_OBJECT *histogram_class;
+  DB_VALUE value[2];
+  DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "key_attr" };
+
+  *histogram_obj = NULL;
+
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_BO_MISSING_OR_INVALID_CATALOG, 0);
+      return ER_BO_MISSING_OR_INVALID_CATALOG;
+    }
+
+  db_make_object (&value[0], classop);
+  db_make_string (&value[1], attr_name);
+
+  /* internal catalog write; bypass user authorization as db_get_histogram () does (CBRD-26667) */
+  AU_SAVE_AND_DISABLE (au_save);
+  *histogram_obj = db_find_multi_unique_for_update (histogram_class, 2, (char **) search_attrs, value_ptrs);
+  AU_RESTORE (au_save);
+
+  db_value_clear (value_ptrs[0]);
+  db_value_clear (value_ptrs[1]);
+
+  if (*histogram_obj == NULL && er_errid () != NO_ERROR)
+    {
+      return er_errid ();
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * store_one_histogram () - write one column's blob + exact null frequency into its
+ *   _db_histogram catalog entry, creating the entry again if it went missing
+ *   with_fullscan(in): the collection mode to record if the entry has to be recreated
+ */
+static int
+store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_length, double null_freq,
+		     bool with_fullscan)
 {
   int error = NO_ERROR;
   DB_OBJECT *histogram_obj = NULL, *fin = NULL;
@@ -178,10 +231,37 @@ store_one_histogram (MOP classop, const char *attr_name, char *blob, int blob_le
 
   db_make_null (&hv);
 
-  error = db_get_histogram (classop, attr_name, &histogram_obj);
-  if (error != NO_ERROR || histogram_obj == NULL)
+  error = get_histogram_for_write (classop, attr_name, &histogram_obj);
+  if (error != NO_ERROR)
     {
       return error;
+    }
+
+  if (histogram_obj == NULL)
+    {
+      /* The entry existed when the statement checked it (sm_add_histogram ()), and the scan has
+       * already produced this column's histogram -- a concurrent DROP HISTOGRAM committed in
+       * between and removed the row.  The existence check reads committed and takes no lock
+       * (CBRD-27369), so it could not see that DROP while it was uncommitted.  Returning success
+       * here would leave the statement reporting a collection it never stored, so put the entry
+       * back and write into it.  The bucket count is not part of the row (smt_add_histogram ()
+       * stores class_of, key_attr, with_fullscan, null_frequency and the blob), hence -1. */
+      error = sm_add_histogram (classop, attr_name, -1, with_fullscan);
+      if (error != NO_ERROR && error != ER_LC_CLASSNAME_EXIST)
+	{
+	  return error;
+	}
+
+      error = get_histogram_for_write (classop, attr_name, &histogram_obj);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      if (histogram_obj == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_OBJECT_NOT_FOUND, 0);
+	  return ER_OBJ_OBJECT_NOT_FOUND;
+	}
     }
 
   obj_tmpl = dbt_edit_object (histogram_obj);
@@ -357,7 +437,9 @@ analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name
     {
       for (int i = 0; i < n; i++)
 	{
-	  int e = store_one_histogram (classop, attr_names[i].c_str (), blobs[i], blob_lens[i], null_freqs[i]);
+	  int e =
+		  store_one_histogram (classop, attr_names[i].c_str (), blobs[i], blob_lens[i], null_freqs[i],
+				       with_fullscan != 0);
 	  if (e != NO_ERROR && error == NO_ERROR)
 	    {
 	      error = e;
@@ -405,7 +487,7 @@ analyze_classes_multi_by_reservoir (THREAD_ENTRY *thread_p, const char *tbl_name
  *   not left inconsistent on a stats failure. Returns the first error, if any.
  */
 int
-store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc)
+store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc, bool with_fullscan)
 {
   int error = NO_ERROR;
 
@@ -419,7 +501,8 @@ store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc)
 	{
 	  continue;
 	}
-      int e = store_one_histogram (classop, hc->names[i], hc->blobs[i], hc->lens[i], hc->null_freqs[i]);
+      int e = store_one_histogram (classop, hc->names[i], hc->blobs[i], hc->lens[i], hc->null_freqs[i],
+				   with_fullscan);
       if (e != NO_ERROR && error == NO_ERROR)
 	{
 	  error = e;
@@ -629,8 +712,14 @@ histogram_init_reader_from_lhs (PT_NODE *lhs, hist::HistogramReader &reader)
   return true;
 }
 
+/*
+ * histogram_extract_key () - probe key for a constant, in the histogram's slot encoding
+ *   db_val(in)      : the constant (literal or host variable)
+ *   column_type(in) : DB_TYPE of the histogram's column; decides string normalization
+ *   key(out)        : extracted key
+ */
 static bool
-histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key)
+histogram_extract_key (const DB_VALUE *db_val, DB_TYPE column_type, hist::histogram_key &key)
 {
   const DB_TYPE type = static_cast<DB_TYPE> (db_val->domain.general_info.type);
 
@@ -699,16 +788,12 @@ histogram_extract_key (const DB_VALUE *db_val, hist::histogram_key &key)
 	{
 	  return false;
 	}
-      if (type == DB_TYPE_CHAR)
-	{
-	  /* SQL CHAR comparison ignores trailing spaces and the sampler strips them from the
-	   * stored values (extract<std::string> ()); strip them from the probe key too so MCV
-	   * equality and range interpolation compare like with like */
-	  while (len > 0 && str[len - 1] == ' ')
-	    {
-	      len--;
-	    }
-	}
+      /* Normalize by the COLUMN's type, not the constant's. The type checker leaves a CHAR
+       * literal compared to a VARCHAR column as CHAR (comparable char types are not coerced),
+       * so the constant's type says nothing about how the sampler stored the column: it strips
+       * CHAR columns and keeps VARCHAR bytes. Keying on the constant's type stripped 'abcd '
+       * against a VARCHAR column and matched the 'abcd' MCV instead (CBRD-27251). */
+      len = hist::string_key_size_for_column (column_type, str, len);
       key.kind = hist::histogram_key_kind::str;
       /* length-based (not strlen): embedded NULs must not truncate the key */
       key.str.assign (str, static_cast<std::size_t> (len));
@@ -1047,7 +1132,7 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
     }
 
   hist::histogram_key key;
-  if (!histogram_extract_key (rhs_db_value, key))
+  if (!histogram_extract_key (rhs_db_value, histogram_reader.value_type (), key))
     {
       *success = false;
       return;
@@ -1120,8 +1205,8 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
        * the byte-sorted MCV list stores them as distinct entries. Sweep the list with the
        * runtime comparator and sum every matching MCV's mass; under a binary collation this
        * reproduces the plain byte lookup. The probe bytes are key.str, NOT the raw constant:
-       * the sampler strips trailing spaces from stored CHAR values and histogram_extract_key
-       * strips the probe to match -- the raw constant would compare padded against stripped.
+       * histogram_extract_key normalized them by the column's rule (CHAR stripped, VARCHAR kept
+       * -- hist::string_key_size_for_column), the same rule the sampler stored them under.
        * Both sides are built under the resolved common collation, which db_string_compare ()
        * requires as a precondition. */
       int column_codeset, column_collation;
@@ -1232,7 +1317,7 @@ histogram_get_comp_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool is_ge
       return;
     }
   hist::histogram_key key;
-  if (!histogram_extract_key (rhs_db_value, key))
+  if (!histogram_extract_key (rhs_db_value, histogram_reader.value_type (), key))
     {
       *success = false;
       return;
@@ -1738,21 +1823,102 @@ pattern_heuristic_selectivity (const std::string &pattern, char escape_char)
   return sel;
 }
 
+/*
+ * histogram_repad_char_value () - undo the sampler's CHAR normalization for pattern matchers
+ *   value(in)            : stored MCV/bucket value (view into the histogram blob)
+ *   column_type(in)      : DB_TYPE of the histogram's column
+ *   repad(in) : column type, declared CHAR length in characters (<= 0 disables re-padding) and charset
+ *   column_codeset(in)   : column charset (decides bytes per character)
+ *   buf(in/out)          : storage for the padded copy; reused across calls by the caller
+ *   return               : value itself when nothing is padded, else a view into buf
+ *
+ * Stored CHAR values are stripped of trailing spaces (hist::string_key_size_for_column) but the
+ * executor runs LIKE/REGEXP on the heap value, which is padded to the column precision:
+ * 'abcd    ' LIKE 'abcd %' is TRUE at runtime and FALSE against the stripped 'abcd'. Re-pad to
+ * the declared width so the estimate matches what execution sees. Width is in characters, so
+ * count them under the column codeset (the pad character ' ' is one byte in every supported
+ * codeset). A column node without data_type gives no precision -> no re-padding: the estimate
+ * then degrades to the stripped comparison instead of guessing a width.
+ */
+/* What CHAR re-padding needs to know about the histogram's column: its type and declared width
+ * from the blob header (what the sampler saw), and the charset of the collation the predicate
+ * was resolved under (what the executor compares in). Built once per predicate by
+ * histogram_repad_ctx () and threaded through the match helpers unchanged. */
+struct hist_repad_ctx
+{
+  DB_TYPE type;
+  int precision;
+  INTL_CODESET codeset;
+};
+
+static hist_repad_ctx
+histogram_repad_ctx (const hist::HistogramReader &reader, int collation_id)
+{
+  const LANG_COLLATION *collation = lang_get_collation (collation_id);
+
+  /* a collation id the runtime does not know falls back to the system charset, as the string
+   * layer itself does; the type/width come from the blob, never from the query text */
+  return hist_repad_ctx { reader.value_type (), reader.value_precision (),
+			  (collation != NULL) ? collation->codeset : LANG_SYS_CODESET };
+}
+
+static std::string_view
+histogram_repad_char_value (std::string_view value, const hist_repad_ctx &repad, std::string &buf)
+{
+  int char_count = 0;
+  const int column_precision = repad.precision;
+
+  if (repad.type != DB_TYPE_CHAR || column_precision <= 0 || column_precision > DB_MAX_CHAR_PRECISION)
+    {
+      return value;
+    }
+
+  switch (repad.codeset)
+    {
+    case INTL_CODESET_ISO88591:
+    case INTL_CODESET_RAW_BYTES:
+    case INTL_CODESET_KSC5601_EUC:
+    case INTL_CODESET_UTF8:
+      /* the codesets intl_char_count () handles; anything else would assert there */
+      break;
+    default:
+      return value;
+    }
+
+  intl_char_count (reinterpret_cast<const unsigned char *> (value.data ()), static_cast<int> (value.size ()),
+		   repad.codeset, &char_count);
+  if (char_count >= column_precision)
+    {
+      return value;
+    }
+
+  buf.assign (value.data (), value.size ());
+  buf.append (static_cast<std::size_t> (column_precision - char_count), ' ');
+  return std::string_view (buf);
+}
+
 static bool
-like_match_value (const DB_VALUE *pattern_db_value, int src_collation_id, std::string_view value)
+like_match_value (const DB_VALUE *pattern_db_value, int src_collation_id, std::string_view value,
+		  const hist_repad_ctx &repad, std::string &pad_buf)
 {
   DB_VALUE src, pattern;
   int res = V_FALSE;
   int err;
   int common_coll_id = -1;
 
+  /* the executor matches the padded heap value, not the stripped stored one */
+  value = histogram_repad_char_value (value, repad, pad_buf);
+
   /* Match through the runtime evaluator (db_string_like) so the estimate cannot diverge from
    * execution: it matches '_' per character (not per byte) and folds case under the common
    * collation of the column and the pattern, neither of which a byte-wise matcher can do.
    * The string comparison layer requires pre-aligned collations, so both transient operands
    * are built under the resolved common collation of the column and the pattern -- the same
-   * alignment the executor guarantees. value is a string_view into the histogram blob (NOT
-   * NUL-terminated, not owned). */
+   * alignment the executor guarantees. value is a string_view into the histogram blob or, once
+   * re-padded, into pad_buf: NOT NUL-terminated and not owned. db_make_varchar () borrows the
+   * pointer instead of copying, so src stays valid only as long as pad_buf holds those bytes --
+   * db_string_like () consumes it synchronously below, before the caller's next iteration can
+   * re-pad into the same buffer. */
   LANG_RT_COMMON_COLL (src_collation_id, db_get_string_collation (pattern_db_value), common_coll_id);
   if (common_coll_id == -1)
     {
@@ -1919,6 +2085,12 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   int src_coll_id = (lhs_name != NULL && lhs_name->data_type != NULL)
 		    ? lhs_name->data_type->info.data_type.collation_id : db_get_string_collation (rhs_db_value);
 
+  /* CHAR re-padding context: width from the blob, charset from the collation resolved just
+   * above. A blob collected before CBRD-27251 carries width 0, which disables re-padding until
+   * the statistics are collected again. */
+  const hist_repad_ctx repad = histogram_repad_ctx (histogram_reader, src_coll_id);
+  std::string pad_buf;
+
   /* MCVs: exact LIKE test against each MCV value, weighted by its population frequency. */
   double matched_mcv_freq = 0.0;
   const double mcvsum = histogram_reader.mcv_total_frequency ();
@@ -1927,7 +2099,7 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   for (int i = 0; i < static_cast<int> (histogram_reader.mcv_count ()); i++)
     {
       const std::string_view mcv_val = histogram_reader.mcv_hi<std::string_view> (i);
-      if (like_match_value (rhs_db_value, src_coll_id, mcv_val))
+      if (like_match_value (rhs_db_value, src_coll_id, mcv_val, repad, pad_buf))
 	{
 	  matched_mcv_freq += histogram_reader.mcv_freq (i);
 	}
@@ -1942,7 +2114,8 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
   for (int i = 0; i < static_cast<int> (histogram_reader.bucket_count ()); i++)
     {
       non_mcv_buckets += 1.0;
-      if (like_match_value (rhs_db_value, src_coll_id, histogram_reader.bucket_hi<std::string_view> (i)))
+      if (like_match_value (rhs_db_value, src_coll_id, histogram_reader.bucket_hi<std::string_view> (i), repad,
+			    pad_buf))
 	{
 	  matched_non_mcv_buckets += 1.0;
 	}
@@ -2007,15 +2180,19 @@ histogram_get_like_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *se
 }
 
 static bool
-rlike_match_string (const cubregex::compiled_regex &reg, std::string_view value)
+rlike_match_string (const cubregex::compiled_regex &reg, std::string_view value, const hist_repad_ctx &repad,
+		    std::string &pad_buf)
 {
   int res = V_FALSE;
   int err;
 
+  /* the executor matches the padded heap value, not the stripped stored one (same as LIKE) */
+  value = histogram_repad_char_value (value, repad, pad_buf);
+
   /* cubregex::search () er_set()s on an execution failure (bad codeset, regex_error); like the
    * compile above, a planning probe must not leave that in the global error state -- shield it
-   * and treat the value as unmatched. value is a string_view into the histogram blob: NOT
-   * NUL-terminated, so copy by length. */
+   * and treat the value as unmatched. value is a string_view into the histogram blob or, once
+   * re-padded, into pad_buf: NOT NUL-terminated, so copy by length (std::string below). */
   er_stack_push ();
   err = cubregex::search (res, reg, std::string (value));
   er_stack_pop ();
@@ -2099,6 +2276,11 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
       return;
     }
 
+  /* CHAR re-padding context: width from the blob, charset from the collation the regex is
+   * compiled under (common_coll_id, resolved above). */
+  const hist_repad_ctx repad = histogram_repad_ctx (histogram_reader, common_coll_id);
+  std::string pad_buf;
+
   /* An invalid pattern must keep raising its error at execution time, not at planning time:
    * shield the global error state and fall back to the caller's guess on compile failure. */
   cubregex::compiled_regex *compiled = NULL;
@@ -2118,7 +2300,7 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
 
   for (int i = 0; i < static_cast<int> (histogram_reader.mcv_count ()); i++)
     {
-      if (rlike_match_string (*compiled, histogram_reader.mcv_hi<std::string_view> (i)))
+      if (rlike_match_string (*compiled, histogram_reader.mcv_hi<std::string_view> (i), repad, pad_buf))
 	{
 	  matched_mcv_freq += histogram_reader.mcv_freq (i);
 	}
@@ -2132,7 +2314,7 @@ histogram_get_rlike_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, bool case
   for (int i = 0; i < static_cast<int> (histogram_reader.bucket_count ()); i++)
     {
       non_mcv_buckets += 1.0;
-      if (rlike_match_string (*compiled, histogram_reader.bucket_hi<std::string_view> (i)))
+      if (rlike_match_string (*compiled, histogram_reader.bucket_hi<std::string_view> (i), repad, pad_buf))
 	{
 	  matched_non_mcv_buckets += 1.0;
 	}
@@ -2231,6 +2413,66 @@ db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
   return NO_ERROR;
 }
 
+/*
+ * db_get_histogram_committed () - locate a column's _db_histogram entry and read its latest committed version
+ *   return: NO_ERROR, or an error code
+ *   classop(in): class
+ *   attr_name(in): column name
+ *   histogram_obj(out): the entry, NULL when the column has none
+ *
+ * Note (CBRD-27369): db_get_histogram () goes through the object layer's locking lookup -- it S-locks the row it finds
+ *   and fetches its dirty version -- so while an UPDATE STATISTICS holds the class's _db_histogram rows X-locked (until
+ *   its transaction commits) every query compile on that class blocks behind it in stats_get_histogram (). The
+ *   optimizer only needs the last committed histogram: this reads that version without taking a lock and without
+ *   materializing the transaction's MVCC snapshot (obj_find_multi_attr_committed ()). Writers take the row X right at
+ *   the lookup instead (db_find_multi_unique_for_update ()), and the existence check reads committed, unlocked
+ *   (db_find_multi_unique_committed ()); db_get_histogram () is left to ;info histogram and the DDL paths.
+ */
+int
+db_get_histogram_committed (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj)
+{
+  int error = NO_ERROR;
+  int au_save;
+  DB_OBJECT *histogram_class;
+  DB_VALUE value[2];
+  const DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "key_attr" };
+
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      error = ER_BO_MISSING_OR_INVALID_CATALOG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  db_make_object (&value[0], classop);
+  db_make_string (&value[1], attr_name);
+
+  /* internal catalog read; bypass user authorization as db_get_histogram () does (CBRD-26667) */
+  AU_SAVE_AND_DISABLE (au_save);
+  *histogram_obj = obj_find_multi_attr_committed (histogram_class, 2, search_attrs, value_ptrs);
+  AU_RESTORE (au_save);
+
+  db_value_clear (&value[0]);
+  db_value_clear (&value[1]);
+
+  if (*histogram_obj == NULL)
+    {
+      /* a missing entry is reported as a benign ER_OBJ_OBJECT_NOT_FOUND warning; only real errors propagate */
+      if (er_errid () == ER_OBJ_OBJECT_NOT_FOUND)
+	{
+	  er_clear ();
+	}
+      else if (er_errid () != NO_ERROR)
+	{
+	  return er_errid ();
+	}
+    }
+
+  return NO_ERROR;
+}
+
 int
 stats_get_histogram (MOP classop, HIST_STATS **histogram)
 {
@@ -2310,7 +2552,8 @@ stats_get_histogram (MOP classop, HIST_STATS **histogram)
       const char *attname = (char *) att->header.name;
       DB_VALUE *histogram_value = NULL;
       DB_VALUE null_frequency_value;
-      error = db_get_histogram (classop, attname, &histogram_obj);
+      /* last committed entry, unlocked: must not wait on a concurrent UPDATE STATISTICS (CBRD-27369) */
+      error = db_get_histogram_committed (classop, attname, &histogram_obj);
 
       if (*histogram == NULL || (*histogram)->histogram == NULL || (*histogram)->null_frequency == NULL)
 	{
