@@ -4821,8 +4821,10 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
 
   if (pt_is_single_tuple (parser, select_node))
     {
-      if (where == NULL && pt_length_of_list (from) == 1 && pt_length_of_list (from->info.spec.flat_entity_list) == 1
-	  && from->info.spec.only_all != PT_ALL)
+      /* a hierarchical query aggregates the CONNECT BY expansion, not the class rows: the statistics/index based
+       * COUNT(*)/MIN/MAX evaluation would return the class count instead (CBRD-27461) */
+      if (where == NULL && select_node->info.query.q.select.connect_by == NULL && pt_length_of_list (from) == 1
+	  && pt_length_of_list (from->info.spec.flat_entity_list) == 1 && from->info.spec.only_all != PT_ALL)
 	{
 	  if (from->info.spec.entity_name)
 	    {
@@ -30071,6 +30073,10 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
     {
     case QO_PLANTYPE_SCAN:
       if (!qo_is_iscan (qo_plan) || (env = (qo_plan->info)->env) == NULL)
+	{
+	  return 0;
+	}
+      if (QO_ENV_PT_TREE (env)->info.query.q.select.connect_by != NULL)
 	{
 	  return 0;
 	}
