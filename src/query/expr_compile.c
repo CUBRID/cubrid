@@ -1549,11 +1549,16 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   a.peek_right = (step->arg2p != NULL && !(skip & 2)) ? *step->arg2p : NULL;
   a.peek_third = (step->arg3p != NULL && !(skip & 4)) ? *step->arg3p : NULL;
   a.peek_fourth = (step->arg4p != NULL) ? *step->arg4p : NULL;
-  if (step->aux == EXPR_GENERIC_WIDTH_BUCKET
-      && fetch_peek_min_max_value_of_width_bucket_func (ctx->thread_p, a.arithptr->rightptr, ctx->vd, ctx->obj_oid,
-							ctx->tpl, &a.peek_right, &a.peek_third) != NO_ERROR)
+  if (step->aux == EXPR_GENERIC_WIDTH_BUCKET)
     {
-      return ER_FAILED;
+      /* the interpreter's order: the two bounds, then the bucket count (neither is a step) */
+      if (fetch_peek_min_max_value_of_width_bucket_func (ctx->thread_p, a.arithptr->rightptr, ctx->vd, ctx->obj_oid,
+							 ctx->tpl, &a.peek_right, &a.peek_third) != NO_ERROR
+	  || fetch_peek_dbval (ctx->thread_p, a.arithptr->thirdptr, ctx->vd, NULL, ctx->obj_oid, ctx->tpl,
+			       &a.peek_fourth) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
     }
   fetch_arith_node_domains (ctx->vd, &a);
   rc = fetch_arith_node_resolve (ctx->vd, &a);
@@ -1677,6 +1682,8 @@ expr_share_slot_attr (const ACCESS_SPEC_TYPE * spec, const DB_VALUE * slot)
   return -1;
 }
 
+static bool expr_arith_side_effect (OPERATOR_TYPE opcode);
+
 /* is the consumer's subtree (mine) the same expression as the filter's (theirs)? */
 static bool
 expr_share_same (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * mine, const REGU_VARIABLE * theirs)
@@ -1720,10 +1727,18 @@ expr_share_same (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * mine, const 
 	  {
 	    return false;
 	  }
-	if (mine->domain == NULL || theirs->domain == NULL
-	    || TP_DOMAIN_TYPE (mine->domain) != TP_DOMAIN_TYPE (theirs->domain)
-	    || mine->domain->precision != theirs->domain->precision || mine->domain->scale != theirs->domain->scale)
+	if (expr_arith_side_effect (a->opcode))
 	  {
+	    /* RAND (1), a serial, a session variable: each node keeps a state of its own (the seed, the values it
+	     * consumed), so the filter's value is not the projection's (review 2026-10-15) */
+	    return false;
+	  }
+	if (mine->domain == NULL || theirs->domain == NULL || TP_DOMAIN_TYPE (mine->domain) == DB_TYPE_VARIABLE
+	    || !tp_domain_match (mine->domain, theirs->domain, TP_EXACT_MATCH))
+	  {
+	    /* the whole domain, not type/precision/scale alone: CAST (s AS ENUM ('b', 'a')) is not CAST (s AS
+	     * ENUM ('a', 'b')), and a VARCHAR COLLATE utf8_bin value is not a utf8_en_ci one -- a reader comparing
+	     * it with another string hits db_string_compare ()'s collation assert (review 2026-10-15) */
 	    return false;
 	  }
 	if (a->opcode == T_EXTRACT && a->misc_operand != b->misc_operand)
@@ -3176,6 +3191,15 @@ expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root)
 	{
 	  continue;
 	}
+      if (bctx->node_cells[i].regu->value.arithptr->plan_item != NULL
+	  && bctx->node_cells[i].regu->value.arithptr->plan_item->ref >= 0)
+	{
+	  /* a constant expression the gate evaluates per execution (plan_item->ref): on such an execution the
+	   * node's steps are jumped over (expr_k_resolved_value) and its slot is never written, so a consumer wired
+	   * to the slot would read NULL ("p - CAST (10 AS NUMERIC (10, 2))" shared from "WHERE p > CAST (10 AS
+	   * NUMERIC (10, 2))", review 2026-10-15).  A constant is not worth sharing anyway. */
+	  continue;
+	}
       /* the build-time steps still carry their encoded out cell and owned-slot marker */
       for (j = 0; j < bctx->n_steps; j++)
 	{
@@ -4156,15 +4180,13 @@ expr_compile_generic (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, TP_DOMAIN * e
 
       if (*p == '^')
 	{
-	  /* WIDTH_BUCKET: the step itself fetches the two bounds (fetch_peek_min_max_value_of_width_bucket_func) */
+	  /* WIDTH_BUCKET: only the left operand is a step; the step itself fetches the two bounds
+	   * (fetch_peek_min_max_value_of_width_bucket_func) and THEN the bucket count, in the interpreter's order
+	   * (fetch_peek_dbval's T_WIDTH_BUCKET arm) -- a bucket-count step would run before the bounds and change
+	   * which error a row reports and the order a serial in both is consumed (review 2026-10-15) */
 	  width_bucket = true;
 	  cells[0] = expr_compile_node (bctx, arith->leftptr, compiled_something);
 	  if (cells[0] < 0)
-	    {
-	      return -1;
-	    }
-	  cells[3] = expr_compile_node (bctx, arith->thirdptr, compiled_something);
-	  if (cells[3] < 0)
 	    {
 	      return -1;
 	    }
@@ -4317,6 +4339,31 @@ expr_arith_side_effect (OPERATOR_TYPE opcode)
     }
 }
 
+/*
+ * expr_regu_has_side_effect () - does the arithmetic subtree under regu contain an operator with a side effect
+ *				  (expr_arith_side_effect ())?  For a caller deciding whether compiling SOME of a
+ *				  list's expressions would reorder such operators against the rest of the list (the
+ *				  aggregate operand program, qdata_agg_operand_prog_compile ()).
+ *   return: true when it does
+ */
+bool
+expr_regu_has_side_effect (const REGU_VARIABLE * regu)
+{
+  const ARITH_TYPE *arith;
+
+  if (regu == NULL || (regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH) || regu->value.arithptr == NULL)
+    {
+      return false;
+    }
+  arith = regu->value.arithptr;
+  if (expr_arith_side_effect (arith->opcode))
+    {
+      return true;
+    }
+  return expr_regu_has_side_effect (arith->leftptr) || expr_regu_has_side_effect (arith->rightptr)
+    || expr_regu_has_side_effect (arith->thirdptr);
+}
+
 /* an arithmetic node, under the frame count of expr_compile_node () */
 static int
 expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_something)
@@ -4363,6 +4410,16 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
 	    {
 	      node_idx = j;	/* the last step publishing the cell is the producer */
 	    }
+	}
+      if (node_idx >= 0 && (bctx->step_prologue[node_idx] || bctx->step_exec_prologue[node_idx]))
+	{
+	  /* The producer was hoisted into a prologue: it computes the constant once per program (literals only) or
+	   * once per execution (a host variable), exactly as often as the gate does, so the check would save nothing
+	   * -- and it would break the program.  The check is a row step; a consumer hoisted with the producer (the
+	   * coercion of "? + 1" to NUMERIC) runs in the next execution's prologue BEFORE it, and reads the cell the
+	   * previous execution's check left pointing at the previous value array ("EXECUTE st USING 10" returned the
+	   * values of "USING 1", review 2026-10-15).  The node's own steps serve the constant. */
+	  node_idx = -1;
 	}
       check = (node_idx >= 0) ? expr_build_insert_step (bctx, first_step, expr_k_resolved_value, cell) : NULL;
       if (node_idx >= 0 && check == NULL)

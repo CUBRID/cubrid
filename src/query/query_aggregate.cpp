@@ -1034,6 +1034,23 @@ qdata_clear_value_array (DB_VALUE *values, int count)
  *        Alternate accumulators can not be used for DISTINCT processing or
  *        the GROUP_CONCAT and MEDIAN function.
  */
+/* does the arithmetic tree under regu contain a division?  (the one fused-path shape whose result can
+ * differ from the program's: the DOUBLE zero test, see qdata_agg_operand_prog_compile ()) */
+static bool
+qdata_agg_operand_has_div (const REGU_VARIABLE *regu)
+{
+  if (regu == NULL || regu->type != TYPE_INARITH || regu->value.arithptr == NULL)
+    {
+      return false;
+    }
+  if (regu->value.arithptr->opcode == T_DIV)
+    {
+      return true;
+    }
+  return qdata_agg_operand_has_div (regu->value.arithptr->leftptr)
+	 || qdata_agg_operand_has_div (regu->value.arithptr->rightptr);
+}
+
 /*
  * qdata_agg_operand_prog_compile () - lazily compile the operand expressions of a whole
  *				       aggregate list into one program (expr_compile.h)
@@ -1070,6 +1087,7 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
   int n = 0, k;
   int depth_budget = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
   EXPR_PROG *prog;
+  bool side_effect_covered = false, side_effect_uncovered = false;
 
   agg_list_p->operand_prog_state = 2;	/* disabled unless everything below succeeds */
 
@@ -1101,6 +1119,12 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
       agg_p->operand_prog_base = -1;
       if (!participates)
 	{
+	  /* an operand the program will not evaluate (GROUP_CONCAT's, say) keeps its place in the
+	   * interpreter's order: see the side-effect rule below the loop */
+	  for (REGU_VARIABLE_LIST operand = agg_p->operands; operand != NULL; operand = operand->next)
+	    {
+	      side_effect_uncovered |= expr_regu_has_side_effect (&operand->value);
+	    }
 	  continue;
 	}
 
@@ -1140,12 +1164,46 @@ qdata_agg_operand_prog_compile (cubthread::entry *thread_p, cubxasl::aggregate_l
 	    {
 	      word_operand = true;
 	    }
+	  /* And for a DOUBLE tree with a division that develop's fused register path takes
+	   * (fetch_peek_arith (), REGU_VARIABLE_AGG_OPERAND): that path divides doubles with its
+	   * own zero test (right == 0.0, fetch_agg_expr_eval_dbl ()) while the program has no
+	   * DOUBLE division kernel and its generic step goes through qdata_arith_dbval ()'s
+	   * DBL_EPSILON test, so SUM (d / x) over x = 1e-20 raised "divide by zero" where develop
+	   * returns a value (review 2026-10-15).  Only this shape differs: the INT trees and the
+	   * DOUBLE {+,-,*} trees compute the same in the fused registers, the kernels and the
+	   * interpreter, and keep the program (its leaf sharing and shared accumulators). */
+	  if (!word_operand && operand->value.type == TYPE_INARITH
+	      && REGU_VARIABLE_IS_FLAGED (&operand->value, REGU_VARIABLE_AGG_OPERAND)
+	      && operand->value.domain != NULL && TP_DOMAIN_TYPE (operand->value.domain) == DB_TYPE_DOUBLE
+	      && fetch_is_agg_expr_shape (&operand->value, depth_budget)
+	      && qdata_agg_operand_has_div (&operand->value))
+	    {
+	      word_operand = true;
+	    }
+	  if (word_operand)
+	    {
+	      side_effect_uncovered |= expr_regu_has_side_effect (&operand->value);
+	    }
+	  else
+	    {
+	      side_effect_covered |= expr_regu_has_side_effect (&operand->value);
+	    }
 	  roots[n++] = word_operand ? NULL : &operand->value;
 	}
     }
 
   if (n == 0)
     {
+      return;
+    }
+  if (side_effect_covered && side_effect_uncovered)
+    {
+      /* The program evaluates its operands before the loop, so a serial or a session variable in
+       * a compiled operand would be consumed before one in an operand the loop still fetches in
+       * list order: MAX (s.NEXT_VALUE * 1), GROUP_CONCAT (s.NEXT_VALUE) gave 5 / '2,4,6' where
+       * the interpreter gives 6 / '1,3,5' (review 2026-10-15).  The same rule as the projection
+       * list's (expr_prog_compile_roots_impl ()): when side effects would end up on both sides
+       * of the program, the whole list stays interpreted. */
       return;
     }
 

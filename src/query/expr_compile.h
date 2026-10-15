@@ -246,6 +246,10 @@ extern EXPR_PROG *expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VAR
  * node's execution domain for the consumers that read it (qexec_get_node_domain) */
 extern TP_DOMAIN *expr_regu_exec_domain (const VAL_DESCR * vd, REGU_VARIABLE * regu);
 
+/* does the arithmetic subtree under regu contain an operator with a side effect (a serial, RAND, a session
+ * variable, INCR)?  For a list that compiles only some of its expressions (the aggregate operand program) */
+extern bool expr_regu_has_side_effect (const REGU_VARIABLE * regu);
+
 /* true when the program's recorded host-variable type signature matches vd.  Walks every
  * bound value, so consumers call it through expr_prog_signature_ok () below rather than
  * per row. */
