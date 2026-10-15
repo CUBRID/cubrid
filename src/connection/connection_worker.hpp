@@ -123,7 +123,7 @@ namespace cubconn::connection
 	TAKEOVER_CLIENT,
 	SHUTDOWN_CLIENT, /* lazy queue */
 	RELEASE_PACKET,
-	RECV_RECHECK, /* an eager receiver left data behind: receive from this context again */
+	RECV_RECHECK, /* an eager receiver handed the socket back: receive from it again */
 
 	TYPE_COUNT
       };

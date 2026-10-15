@@ -182,7 +182,7 @@ namespace cubconn::connection
       /* true when the worker dropped an EPOLLIN edge while the eager receiver held the socket; under cmutex */
       bool m_missed_edge { false };
 
-      /* eager receivers that have not yet run what they received; raised under cmutex, dropped without it */
+      /* eager receivers that have not yet run what they received; raised under cmutex, lowered without it */
       std::atomic<int> m_eager_running { 0 };
 
       /* true while eager_drain () counts requests in m_eager_counted instead of pushing tasks; under rmutex */

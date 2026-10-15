@@ -549,7 +549,7 @@ namespace cubconn::connection
    *   1. Claim the socket; give up when it is busy or the connection is closing.
    *   2. Wait up to window_ms for the next request.
    *   3. Receive what came in, or leave an error to the worker.
-   *   4. Give the socket back. m_eager_running drops now,
+   *   4. Give the socket back. m_eager_running is lowered now,
    *      or in eager_finish () once the caller has run what was received.
    * When count_out > 0, the caller runs that many requests, then calls eager_finish (ctx_out).
    * Returns whether the caller may wait again. */
@@ -598,7 +598,7 @@ namespace cubconn::connection
 	hand_back = true;
       }
 
-    /* STEP 4. Give the socket back. m_eager_running drops now,
+    /* STEP 4. Give the socket back. m_eager_running is lowered now,
      * or in eager_finish () once the caller has run what was received. */
     hand_back = eager_release (conn, entry, ctx, fd, hand_back);
     if (count_out == 0)
@@ -613,7 +613,7 @@ namespace cubconn::connection
     return !hand_back && status == result::Ok && count_out > 0;
   }
 
-  /* drop m_eager_running; ctx is passed in because a failed takeover clears conn.context */
+  /* lower m_eager_running; ctx is passed in because a failed takeover clears conn.context */
   void worker::eager_finish (context *ctx)
   {
     ctx->m_recv.m_eager_running.fetch_sub (1, std::memory_order_release);
@@ -946,7 +946,6 @@ namespace cubconn::connection
     return ctx->m_conn->has_pending_request () || ctx->m_conn->has_working_task ();
   }
 
-  /* true while the close must wait for an eager receiver on this connection's socket */
   bool worker::must_defer_close_for_eager_receiver (context *ctx)
   {
     bool busy;
@@ -962,8 +961,8 @@ namespace cubconn::connection
 	return ctx->m_conn->has_working_task ();
       }
 
-    /* During shutdown queued tasks retire without end_working_task (), so wait on m_eager_running.
-     * eager_claim () checks CONN_OPEN under this cmutex, so the count cannot rise after the read.
+    /* During shutdown queued tasks retire without end_working_task (), so the close waits on m_eager_running.
+     * eager_claim () checks CONN_OPEN under this cmutex, so the count cannot be raised after the read.
      * m_recv_busy is not read: a close from handle_reception () would wait on this worker's own claim. */
     r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
     assert (r == NO_ERROR);
@@ -1689,8 +1688,8 @@ retry:
   }
 
   /* Receive again from a socket an eager receiver handed back.
-   *   1. Look up the context under cmutex; drop the message when the connection has none.
-   *   2. Drop a message meant for an older context, or forward it to the worker that took the connection over.
+   *   1. Look up the context under cmutex; discard the message when the connection has none.
+   *   2. Discard a message meant for an older context, or forward it to the connection's new worker.
    *   3. Put the message back when nested; the next queue pass serves it outside both cases.
    *   4. Receive from the socket, unless the eager receiver holds it again. */
   bool worker::handle_message_queue_recv_recheck (message &item)
@@ -1703,7 +1702,7 @@ retry:
 
     assert (item.conn);
 
-    /* STEP 1. Look up the context under cmutex; drop the message when the connection has none. */
+    /* STEP 1. Look up the context under cmutex; discard the message when the connection has none. */
     r = rmutex_lock (m_entry, &item.conn->cmutex);
     assert (r == NO_ERROR);
 
@@ -1715,7 +1714,7 @@ retry:
 	return true;
       }
 
-    /* STEP 2. Drop a message meant for an older context, or forward it to the worker that took the connection over. */
+    /* STEP 2. Discard a message meant for an older context, or forward it to the connection's new worker. */
     conn = item.conn;
     if (!this->validate_message_generation (item, ctx)
 	|| this->forward_message_to_successor (queue_type::IMMEDIATE, item, ctx))
