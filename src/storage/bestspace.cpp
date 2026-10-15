@@ -1260,12 +1260,6 @@ namespace cubstorage
     return i;
   }
 
-  std::uint16_t
-  bestspace::candidate_queue::max_freespace () const
-  {
-    return m_max_freespace.load (std::memory_order_acquire);
-  }
-
   std::size_t
   bestspace::candidate_queue::to_entries (bestspace_entry *candidates)
   {
@@ -1357,6 +1351,7 @@ namespace cubstorage
     : m_shards ()
     , m_distributed_insert (prm_get_bool_value (PRM_ID_BESTSPACE_DISTRIBUTED_INSERT))
     , m_unfill_space (unfill_space)
+    , m_nonheader_page_capacity (heap_nonheader_page_capacity ())
     , m_num_pages (num_pages)
     , m_recs_num (recs_num)
     , m_recs_sumlen (recs_sumlen)
@@ -1432,12 +1427,6 @@ namespace cubstorage
   bestspace::pop_candidates (bestspace_entry *candidates, std::uint16_t minimum, std::uint16_t needed_size)
   {
     return m_candidates.pop (candidates, minimum, needed_size);
-  }
-
-  bool
-  bestspace::has_candidate (std::uint16_t needed_size) const
-  {
-    return m_candidates.max_freespace () >= needed_size;
   }
 
   bool
@@ -1531,48 +1520,6 @@ namespace cubstorage
 
     // find
     return find_from_shards (thread_ref, class_oid, hfid, shard, needed_size, consume_size, bias, is_newrec, page_watcher);
-  }
-
-  bestspace::tier
-  bestspace::size_to_tier (std::uint16_t size)
-  {
-    assert (size <= DB_PAGESIZE);
-
-    // FS0: 1-7%
-    // FS1: 8-15%
-    // FS2: 16-24%
-    // FS3: 25-34%
-    // FS4: 35-45%
-    // FS5: 46-57%
-    // FS6: 58-70%
-    // FS7: 71-84%
-    // FS8: 85-100%
-    static constexpr std::int16_t threshold[] = { 7, 15, 24, 34, 45, 57, 70, 84 };
-    std::int16_t percentage;
-    std::int8_t i;
-
-    percentage = size * 100 / DB_PAGESIZE;
-    for (i = 0; i < static_cast<std::int8_t> (tier::FS8) + 1; i++)
-      {
-	if (percentage <= threshold[i])
-	  {
-	    return static_cast<tier> (i - 1);
-	  }
-      }
-    return tier::FS8;
-  }
-
-  int
-  bestspace::get_needed_size (int consume_size) const
-  {
-    int needed_size = consume_size + m_unfill_space;
-
-    // a record that cannot fit above the unfill reservation still gets a page
-    if (needed_size > heap_nonheader_page_capacity ())
-      {
-	return consume_size;
-      }
-    return needed_size;
   }
 
   void
