@@ -285,6 +285,10 @@ extern "C"
 
   extern const char *er_get_msglog_filename (void);
   extern int er_init (const char *msglog_filename, int exit_ask);
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  extern void er_init_sub_client_context (void);
+  extern void er_final_sub_client_context (void);
+#endif
   extern bool er_is_initialized (void);
   extern void er_set_print_property (int print_console);
   extern void er_final (ER_FINAL_CODE do_global_final);

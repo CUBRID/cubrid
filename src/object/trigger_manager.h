@@ -28,6 +28,7 @@
 #include "memory_alloc.h"
 #include "dbtype_def.h"
 #include "class_object.h"
+#include "db_multi_threads_connections.h"
 
 /*
  * TR_LOWEST_PRIORITY
@@ -224,15 +225,15 @@ extern const char *TR_ATT_COMMENT;
 extern const char *TR_ATT_CREATED_TIME;
 extern const char *TR_ATT_UPDATED_TIME;
 
-extern int tr_Current_depth;
-extern int tr_Maximum_depth;
-extern bool tr_Invalid_transaction;
-extern char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH + 2];
+extern CUB_THREAD_LOCAL int tr_Current_depth;
+extern CUB_THREAD_LOCAL int tr_Maximum_depth;
+extern CUB_THREAD_LOCAL bool tr_Invalid_transaction;
+extern CUB_THREAD_LOCAL char tr_Invalid_transaction_trigger[SM_MAX_IDENTIFIER_LENGTH + 2];
 
-extern bool tr_Trace;
+extern CUB_THREAD_LOCAL bool tr_Trace;
 
-extern TR_DEFERRED_CONTEXT *tr_Deferred_activities;
-extern TR_DEFERRED_CONTEXT *tr_Deferred_activities_tail;
+extern CUB_THREAD_LOCAL TR_DEFERRED_CONTEXT *tr_Deferred_activities;
+extern CUB_THREAD_LOCAL TR_DEFERRED_CONTEXT *tr_Deferred_activities_tail;
 
 extern int tr_Recursion_level;
 extern int tr_Recursion_level_max;

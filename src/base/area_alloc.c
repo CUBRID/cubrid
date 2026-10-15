@@ -46,12 +46,6 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-#if !defined (SERVER_MODE)
-#define pthread_mutex_init(a, b)
-#define pthread_mutex_destroy(a)
-#define pthread_mutex_lock(a)	0
-#define pthread_mutex_unlock(a)
-#endif
 
 #if !defined (NDEBUG)
 /* The size of the prefix containing allocation status, if we're
@@ -70,8 +64,13 @@ enum
  * Area_list - Global list of areas
  */
 static AREA *area_List = NULL;
-#if defined (SERVER_MODE)
+#if defined (SERVER_MODE) || (defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER))
 pthread_mutex_t area_List_lock = PTHREAD_MUTEX_INITIALIZER;
+#else
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)	0
+#define pthread_mutex_unlock(a)
 #endif
 
 #if defined (SERVER_MODE)
@@ -120,7 +119,9 @@ void
 area_final (void)
 {
   AREA *area, *next;
+  int rv;
 
+  rv = pthread_mutex_lock (&area_List_lock);
   for (area = area_List, next = NULL; area != NULL; area = next)
     {
       next = area->next;
@@ -128,10 +129,14 @@ area_final (void)
       free_and_init (area);
     }
   area_List = NULL;
+  pthread_mutex_unlock (&area_List_lock);
 
   set_area_reset ();
 
+#if defined (SERVER_MODE)
+  /* on the client, the statically initialized mutex is reused by the next area_init () (e.g., db_restart ()) */
   pthread_mutex_destroy (&area_List_lock);
+#endif
 }
 
 /*

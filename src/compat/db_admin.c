@@ -32,6 +32,9 @@
 #include <ctype.h>
 #include <assert.h>
 #include <signal.h>
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+#include <mutex>
+#endif
 
 #include "authenticate.h"
 #include "client_support.h"
@@ -123,6 +126,98 @@ static void install_static_methods (void);
 static int fetch_set_internal (DB_SET * set, DB_FETCH_MODE purpose, int quit_on_error);
 #if !defined(WINDOWS)
 void sigfpe_handler (int sig);
+#endif
+
+/*  db_Keep_session is set to true only when the mode is CAS; 
+ * otherwise, there is no code that resets it to false except for the initialization */
+static bool db_Keep_session = false;
+CUB_THREAD_LOCAL SESSION_ID db_Session_id = DB_EMPTY_SESSION;
+static CUB_THREAD_LOCAL int db_Row_count = DB_ROW_COUNT_NOT_SET;
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+static BOOT_CLIENT_CREDENTIAL gv_client_credential;
+
+// *INDENT-OFF* 
+static  std::atomic <bool> g_ready_to_sub = false; // flag indicating successful connection in db_restart()
+// *INDENT-ON*
+/* thread of the main client which succeeded in db_restart (); valid while g_ready_to_sub is true */
+static pthread_t gv_main_client_thread;
+
+/*
+ * db_is_main_client_thread () - whether the calling thread holds the main client
+ *   return: true if the calling thread succeeded in db_restart () and has not called db_shutdown () yet
+ *
+ * Note: It is true even after the server failure, while BOOT_IS_CLIENT_RESTARTED () is false.
+ */
+static bool
+db_is_main_client_thread (void)
+{
+  return (g_ready_to_sub.load (std::memory_order_acquire) && pthread_self () == gv_main_client_thread);
+}
+
+/*
+ * g_sub_client_mutex protects the changes of g_ready_to_sub, g_num_sub_clients and gv_client_credential, so that
+ * the main client is not restarted or shut down while a sub-client is starting or alive.
+ */
+/* *INDENT-OFF* */
+static std::mutex g_sub_client_mutex;
+/* *INDENT-ON* */
+static int g_num_sub_clients = 0;	/* number of sub-clients registered by db_register_sub_client () */
+static CUB_THREAD_LOCAL bool db_Is_sub_client_registered = false;
+
+/*
+ * db_register_sub_client () - register the calling thread as a sub-client
+ *   return: NO_ERROR, or ER_FAILED if the main client is not ready
+ *   client_credential(out): copy of the credential of the main client
+ */
+static int
+db_register_sub_client (BOOT_CLIENT_CREDENTIAL * client_credential)
+{
+  std::lock_guard < std::mutex > lock (g_sub_client_mutex);
+
+  assert (db_Is_sub_client_registered == false);
+
+  if (g_ready_to_sub.load (std::memory_order_acquire) == false)
+    {
+      // TODO: Assign independent error codes.
+      return ER_FAILED;
+    }
+
+  *client_credential = gv_client_credential;
+  g_num_sub_clients++;
+  db_Is_sub_client_registered = true;
+
+  return NO_ERROR;
+}
+
+/*
+ * db_unregister_sub_client () - unregister the calling thread, if it is registered as a sub-client
+ *   return: none
+ */
+static void
+db_unregister_sub_client (void)
+{
+  std::lock_guard < std::mutex > lock (g_sub_client_mutex);
+
+  if (db_Is_sub_client_registered)
+    {
+      assert (g_num_sub_clients > 0);
+      g_num_sub_clients--;
+      db_Is_sub_client_registered = false;
+    }
+}
+
+/*
+ * db_get_num_sub_clients () - get the number of alive sub-clients
+ *   return: number of sub-clients registered by db_restart_sub () and not shut down yet
+ */
+int
+db_get_num_sub_clients (void)
+{
+  std::lock_guard < std::mutex > lock (g_sub_client_mutex);
+
+  return g_num_sub_clients;
+}
 #endif
 
 /*
@@ -922,6 +1017,26 @@ db_restart (const char *program, int print_version, const char *volume)
   int error = NO_ERROR;
   BOOT_CLIENT_CREDENTIAL client_credential;
 
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  {
+    std::lock_guard < std::mutex > lock (g_sub_client_mutex);
+
+    if (g_num_sub_clients > 0)
+      {
+	/* restarting the main client finalizes the client modules shared with the alive sub-clients */
+	er_log_debug (ARG_FILE_LINE, "db_restart: %d sub-clients are still alive\n", g_num_sub_clients);
+	return ER_FAILED;
+      }
+
+    /*
+     * No more sub-clients can be started until this restart succeeds, since it finalizes and initializes the client
+     * modules shared with them. It is still true if the main client is restarted without db_shutdown ()
+     * (e.g., after a server failure). If the restart fails, it is left false: there is no main client to share.
+     */
+    (void) g_ready_to_sub.store (false, std::memory_order_release);
+  }
+#endif
+
   if (program == NULL || volume == NULL)
     {
       error = ER_OBJ_INVALID_ARGUMENTS;
@@ -961,11 +1076,121 @@ db_restart (const char *program, int print_version, const char *volume)
 	  prev_sigfpe_handler = os_set_signal_handler (SIGFPE, sigfpe_handler);
 #endif /* SA_MODE && (LINUX||X86_SOLARIS) */
 #endif /* !WINDOWS */
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+	  {
+	    std::lock_guard < std::mutex > lock (g_sub_client_mutex);
+
+	    gv_client_credential = client_credential;
+	    gv_main_client_thread = pthread_self ();
+	    (void) g_ready_to_sub.store (true, std::memory_order_release);
+	  }
+#endif
 	}
     }
 
   return (error);
 }
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+/*
+ * db_restart_sub() - restart a sub-client
+ * return : error code
+ * sub_index(in) : the index of the sub-client
+ *
+ * Note: The sub-client is bound to the calling thread. db_shutdown_sub () must be called
+ *       by the same thread before the thread exits. Otherwise, the transaction and the locks
+ *       of the sub-client remain in the server until the process exits.
+ *       db_shutdown () and db_restart () of the main client fail while a sub-client is alive,
+ *       because they finalize the client modules shared with the sub-clients.
+ *       If it fails, the resources of the sub-client are released by itself, so db_shutdown_sub ()
+ *       does not need to be called (calling it is harmless).
+ */
+int
+db_restart_sub (int sub_index)
+{
+  int error = NO_ERROR;
+  BOOT_CLIENT_CREDENTIAL client_credential;
+  char program_name[512];
+
+  if (db_is_main_client_thread ())
+    {
+      /* the main client thread cannot be restarted as a sub-client */
+      assert (false);
+      return ER_FAILED;
+    }
+
+  /*
+   * A sub-client does not create its own workspace heap (ws_init (true)) and the lea heap of the main client is
+   * not thread-safe. Let the threads other than the heap owner use malloc/free instead (see db_ws_alloc ()).
+   * It must be set before any workspace allocation in this thread.
+   */
+  db_set_use_utility_thread (true);
+
+  if (boot_is_sub_client ())
+    {
+      /*
+       * This thread still holds a sub-client (e.g., left by a server failure). Shut it down before the login below,
+       * otherwise au_final () during the cleanup resets the auth context and enables the password check again.
+       */
+      (void) db_shutdown_sub ();
+    }
+
+  /*
+   * The error context of this thread. It is created after the shutdown above, which destroys the previous one.
+   * It is kept after a failure, so that the caller can get the error.
+   */
+  er_init_sub_client_context ();
+
+  /* register as a sub-client, so that the main client is not restarted or shut down while this one is alive */
+  error = db_register_sub_client (&client_credential);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error =
+    snprintf (program_name, sizeof (program_name), "%s(%d)", client_credential.get_program_name (), sub_index + 1);
+  if (error < 0 || error >= (int) sizeof (program_name))
+    {
+      error = ER_FAILED;
+      goto error;
+    }
+
+  client_credential.program_name = program_name;
+
+  /* 
+   * Before reaching this point, db_restart() was already executed.
+   * Here, the connection is made using an already logged-in user account.
+   * Since this is an authorized user who has already gone through the login process, password verification is not strictly necessary.
+   */
+  AU_DISABLE_PASSWORDS ();
+  error = au_login (client_credential.get_db_user (), "", false);
+  if (error != NO_ERROR)
+    {
+      goto error;
+    }
+
+  db_Connect_status = DB_CONNECTION_STATUS_CONNECTED;
+
+  error = boot_restart_client_sub (&client_credential);
+  if (error != NO_ERROR)
+    {
+      /* the boot level resources of this thread are already released by boot_restart_client_sub () */
+      goto error;
+    }
+
+  return NO_ERROR;
+
+error:
+  /* release the resources of this thread, so that db_shutdown_sub () is not required after a failure */
+  db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+  db_Disable_modifications = 0;
+  au_ctx_destructor ();
+  db_unregister_sub_client ();
+
+  return error;
+}
+#endif
 
 /*
  * db_restart_ex() - extended db_restart()
@@ -1015,6 +1240,22 @@ db_shutdown (void)
 {
   int error = NO_ERROR;
 
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  {
+    std::lock_guard < std::mutex > lock (g_sub_client_mutex);
+
+    if (g_num_sub_clients > 0)
+      {
+	/* shutting down the main client finalizes the client modules shared with the alive sub-clients */
+	er_log_debug (ARG_FILE_LINE, "db_shutdown: %d sub-clients are still alive\n", g_num_sub_clients);
+	return ER_FAILED;
+      }
+
+    /* no more sub-clients can be started from now on */
+    (void) g_ready_to_sub.store (false, std::memory_order_release);
+  }
+#endif
+
   (void) db_end_session ();
 
   error = boot_shutdown_client (true);
@@ -1037,6 +1278,55 @@ db_shutdown_without_request_to_server (void)
   boot_client_all_finalize (OPTIONAL_FINALIZATION);
 }
 
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+/*
+ * db_shutdown_sub() - shutdown the sub-client of the calling thread
+ * return : error code
+ *
+ * Note: It must be called by the thread which called db_restart_sub (), before the thread exits.
+ *       It must not be called by the main client thread; db_shutdown () must be used for the main client.
+ *       Calling it on a thread without any client (e.g., after db_restart_sub () failed) is harmless.
+ */
+int
+db_shutdown_sub ()
+{
+  if (db_is_main_client_thread ())
+    {
+      /* the main client must not be shut down as a sub-client */
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (db_Is_sub_client_registered == false)
+    {
+      /*
+       * No sub-client on this thread (e.g., db_restart_sub () failed and released it by itself). Release only the
+       * error context, and do not touch the client modules: the main client may be finalizing or initializing them
+       * in db_restart () or db_shutdown (), which is allowed only while no sub-client is registered.
+       */
+      er_final_sub_client_context ();
+      return NO_ERROR;
+    }
+
+  (void) db_end_session ();
+  db_Disable_modifications = 0;
+
+  (void) boot_shutdown_client_sub ();
+  db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
+
+  /* the execution plan of this connection (thread-local); the query results are ended in boot_shutdown_client_sub () */
+  db_free_execution_plan ();
+
+  au_ctx_destructor ();
+  db_unregister_sub_client ();
+
+  /* the error context of this thread (see er_init_sub_client_context () in db_restart_sub ()) */
+  er_final_sub_client_context ();
+  return NO_ERROR;
+}
+#endif
+
+
 int
 db_ping_server (int client_val, int *server_val)
 {
@@ -1049,6 +1339,7 @@ db_ping_server (int client_val, int *server_val)
   return error;
 }
 
+#if !defined(SERVER_MODE)
 /*
  * db_disable_modification - Disable database modification operation
  *   return: error code
@@ -1059,6 +1350,7 @@ int
 db_disable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
+  assert (db_Disable_modifications >= 0);
   db_Disable_modifications++;
   return NO_ERROR;
 }
@@ -1074,8 +1366,10 @@ db_enable_modification (void)
 {
   /* CHECK_CONNECT_ERROR (); */
   db_Disable_modifications--;
+  assert (db_Disable_modifications >= 0);
   return NO_ERROR;
 }
+#endif
 
 /*
  * db_end_session - end current session
@@ -1083,7 +1377,7 @@ db_enable_modification (void)
  *
  * NOTE: This function ends the session identified by 'db_Session_id'
  */
-static int is_doing_end_session = -1;
+static CUB_THREAD_LOCAL int is_doing_end_session = -1;
 int
 db_end_session (void)
 {
@@ -2876,6 +3170,12 @@ db_chn (DB_OBJECT * obj, DB_FETCH_MODE purpose)
  * return    : error code
  * data (in) : string with new parameter values defined as:
  *	       "param1=new_val1; param2=new_val2; ..."
+ *
+ * Note: With multiple connections (MULTI_CONN_TO_A_SERVER), a change of a session parameter by a sub-client is
+ *	 kept in the session parameter values of that sub-client on the client (sysprm_Sub_client_session_params),
+ *	 like its session on server. The other parameters changeable on-line (not for session) are process-wide on
+ *	 the client (prm_Def), so a sub-client must not change them: the change is visible to all the connections,
+ *	 and a string value may be freed while another thread reads it.
  */
 int
 db_set_system_parameters (const char *data)

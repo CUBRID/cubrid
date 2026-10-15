@@ -46,6 +46,9 @@
 #include <string.h>
 #include <limits.h>
 #include <stdio.h>
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+#include <mutex>
+#endif
 
 #include "porting.h"
 
@@ -484,7 +487,7 @@ struct msgcat_def
   const char *name;
   MSG_CATD msg_catd;
 };
-struct msgcat_def msgcat_System[] = {
+static struct msgcat_def msgcat_System[] = {
   {MSGCAT_CATALOG_CUBRID /* 0 */ , "cubrid.cat", NULL},
   {MSGCAT_CATALOG_CSQL /* 1 */ , "csql.cat", NULL},
   {MSGCAT_CATALOG_UTILS /* 2 */ , "utils.cat", NULL}
@@ -492,6 +495,54 @@ struct msgcat_def msgcat_System[] = {
 
 #define MSGCAT_SYSTEM_DIM \
         (sizeof(msgcat_System) / sizeof(struct msgcat_def))
+
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+// To ensure safety in a multi-threaded environment, registration of msgcat_System[x].msg_catd must be protected
+// using a lock. In addition, msgcat_init() and msgcat_final() must not be called concurrently in a multi-thread
+// environment
+/* *INDENT-OFF* */
+static std::mutex g_msgcat_mutex;
+/* *INDENT-ON* */
+
+/*
+ * msgcat_open_system_catalog - open a system message catalog and register it
+ *   return: registered message catalog descriptor MSG_CATD or NULL
+ *   idx(in): index of msgcat_System
+ *
+ * Note: The catalog is opened outside g_msgcat_mutex, because msgcat_open () may call er_set (), which may call
+ *       msgcat_message () again and lock the mutex (deadlock). Only the registration is done under the mutex.
+ *       If another thread registered the catalog in the meantime, the one opened here is closed.
+ */
+static MSG_CATD
+msgcat_open_system_catalog (size_t idx)
+{
+  MSG_CATD catd;
+  MSG_CATD registered;
+
+  catd = msgcat_open (msgcat_System[idx].name);
+  if (catd == NULL)
+    {
+      return NULL;
+    }
+
+  {
+    std::lock_guard < std::mutex > lock (g_msgcat_mutex);
+
+    if (msgcat_System[idx].msg_catd == NULL)
+      {
+	msgcat_System[idx].msg_catd = catd;
+      }
+    registered = msgcat_System[idx].msg_catd;
+  }
+
+  if (registered != catd)
+    {
+      (void) msgcat_close (catd);
+    }
+
+  return registered;
+}
+#endif
 
 /*
  * msgcat_init - initialize message catalog module
@@ -507,8 +558,12 @@ msgcat_init (void)
     {
       if (msgcat_System[i].msg_catd == NULL)
 	{
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+	  if (msgcat_open_system_catalog (i) == NULL)
+#else
 	  msgcat_System[i].msg_catd = msgcat_open (msgcat_System[i].name);
 	  if (msgcat_System[i].msg_catd == NULL)
+#endif
 	    {
 	      // TODO: Need to decide whether to return immediately when an error occurs.  
 	      rc = ER_FAILED;
@@ -528,6 +583,9 @@ msgcat_final (void)
 {
   size_t i;
   int rc;
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+  std::lock_guard < std::mutex > lock (g_msgcat_mutex);
+#endif
 
   rc = NO_ERROR;
   for (i = 0; i < MSGCAT_SYSTEM_DIM; i++)
@@ -567,8 +625,12 @@ msgcat_message (int cat_id, int set_id, int msg_id)
 
   if (msgcat_System[cat_id].msg_catd == NULL)
     {
+#if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
+      if (msgcat_open_system_catalog (cat_id) == NULL)
+#else
       msgcat_System[cat_id].msg_catd = msgcat_open (msgcat_System[cat_id].name);
       if (msgcat_System[cat_id].msg_catd == NULL)
+#endif
 	{
 	  return NULL;
 	}

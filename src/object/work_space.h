@@ -33,6 +33,7 @@
 #include "quick_fit.h"
 #include "locator.h"
 #include "dbtype_def.h"
+#include "db_multi_threads_connections.h"
 
 #if defined (SERVER_MODE)
 // cppcheck-suppress preprocessorErrorDirective
@@ -454,12 +455,8 @@ struct ws_mop_table_entry
 /*
  * WORKSPACE GLOBALS
  */
-extern WS_MOP_TABLE_ENTRY *ws_Mop_table;
-extern unsigned int ws_Mop_table_size;
-extern DB_OBJLIST *ws_Resident_classes;
-extern MOP ws_Commit_mops;
-extern WS_STATISTICS ws_Stats;
-extern int ws_Num_dirty_mop;
+extern CUB_THREAD_LOCAL DB_OBJLIST *ws_Resident_classes;
+extern CUB_THREAD_LOCAL MOP ws_Commit_mops;
 extern int ws_Error_ignore_list[-ER_LAST_ERROR];
 extern int ws_Error_ignore_count;
 
@@ -470,8 +467,8 @@ extern int ws_Error_ignore_count;
 extern void ws_abort_transaction (void);
 
 /* startup, shutdown, reset functions */
-extern int ws_init (void);
-extern void ws_final (void);
+extern int ws_init (bool is_sub);
+extern void ws_final (bool is_sub);
 extern void ws_clear (void);
 extern int ws_area_init (void);
 extern void ws_area_final (void);
