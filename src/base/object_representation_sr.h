@@ -83,6 +83,8 @@ union or_aligned_oid
 struct or_auto_increment
 {
   std::atomic<or_aligned_oid> serial_obj;
+  std::atomic<char *> serial_name;
+  std::atomic<int> cached_num;	/* serial cache block size; -1 = unresolved. shared like the two above */
 };
 // *INDENT-ON*
 
@@ -114,15 +116,17 @@ struct or_attribute
   unsigned is_fixed:1;		/* non-zero if this is a fixed width attribute */
   unsigned is_autoincrement:1;	/* non-zero if att is auto increment att */
   unsigned is_notnull:1;	/* non-zero if has not null constraint */
+  unsigned is_invisible:1;	/* non-zero if att is invisible col */
 
   // Notice: Be sure to place "auto_increment" at the end of the structure.
   or_auto_increment auto_increment;
 
-  // *INDENT-OFF*  
+  // *INDENT-OFF*
   or_attribute () // constructor
   {
     memset (this, 0x00, offsetof (OR_ATTRIBUTE, auto_increment));
     auto_increment.serial_obj = oid_Null_oid;
+    auto_increment.cached_num = -1;
   }
   // *INDENT-ON*
 };
@@ -256,6 +260,7 @@ const char *or_get_constraint_comment (RECDES * record, const char *constraint_n
 extern void or_free_classrep (OR_CLASSREP * rep);
 extern int or_get_attrname (RECDES * record, int attrid, char **string, int *alloced_string);
 extern int or_get_attrcomment (RECDES * record, int attrid, char **string, int *alloced_string);
+extern int or_get_attrid (RECDES * record, const char *name, int *attrid);
 
 /* OLD STYLE INTERFACE */
 #if defined (ENABLE_UNUSED_FUNCTION)

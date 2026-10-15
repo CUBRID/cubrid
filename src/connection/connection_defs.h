@@ -75,6 +75,16 @@ enum css_command_type
   MAX_REQUEST
 };
 
+#define CSS_CLIENT_TYPE_INFO_SIZE ((int) sizeof (int))
+#define CSS_SERVER_REQUEST_CODE_MASK 0x0000ffff
+#define CSS_SERVER_REQUEST_CLIENT_TYPE_SHIFT 16
+#define CSS_PACK_SERVER_REQUEST(request, client_type) \
+  ((((unsigned int) ((client_type) + 1)) << CSS_SERVER_REQUEST_CLIENT_TYPE_SHIFT) \
+   | ((unsigned int) (request) & CSS_SERVER_REQUEST_CODE_MASK))
+#define CSS_UNPACK_SERVER_REQUEST_CODE(request) ((int) ((unsigned int) (request) & CSS_SERVER_REQUEST_CODE_MASK))
+#define CSS_UNPACK_SERVER_REQUEST_CLIENT_TYPE(request) \
+  ((int) (((unsigned int) (request)) >> CSS_SERVER_REQUEST_CLIENT_TYPE_SHIFT) - 1)
+
 /*
  * These are the responses from the master to a server
  * when it is trying to connect and register itself.
@@ -504,7 +514,16 @@ struct css_conn_entry
   // working task count manipulation
   void add_working_task ();
   size_t end_working_task ();
+  bool has_working_task () const;
   void init_working_task ();
+
+#if defined(SERVER_MODE)
+  // method callback count manipulation
+  void begin_method_callback ();
+  void end_method_callback ();
+  bool has_outstanding_method_callback () const;
+  void init_method_callback ();
+#endif
 
   void release_packet (void *buffer);
 
@@ -514,6 +533,9 @@ private:
   // *INDENT-OFF*
   std::atomic<size_t> pending_request_count;
   std::atomic<size_t> working_task_count;
+#if defined(SERVER_MODE)
+  std::atomic<size_t> method_callback_count;
+#endif
   // *INDENT-ON*
 #else				// not c++ = c
   int transaction_id;

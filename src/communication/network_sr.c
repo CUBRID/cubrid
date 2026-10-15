@@ -434,6 +434,10 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sbtree_get_key_type;
 
+  req_p = &net_Requests[NET_SERVER_BTREE_COMPACT_OVERFLOW];
+  req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
+  req_p->processing_function = sbtree_compact_overflow;
+
   /* disk */
   req_p = &net_Requests[NET_SERVER_DISK_TOTALPGS];
   req_p->processing_function = sdk_totalpgs;
@@ -451,6 +455,10 @@ net_server_init (void)
   req_p = &net_Requests[NET_SERVER_QST_GET_STATISTICS];
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sqst_server_get_statistics;
+
+  req_p = &net_Requests[NET_SERVER_QST_HISTOGRAM_BUILD_BY_RESERVOIR];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sqst_histogram_build_by_reservoir;
 
   req_p = &net_Requests[NET_SERVER_QST_UPDATE_STATISTICS];
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
@@ -660,6 +668,7 @@ net_server_init (void)
   req_p->processing_function = slogin_user;
 
   req_p = &net_Requests[NET_SERVER_BTREE_FIND_MULTI_UNIQUES];
+  req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sbtree_find_multi_uniques;
 
   req_p = &net_Requests[NET_SERVER_CSS_KILL_OR_INTERRUPT_TRANSACTION];
@@ -967,6 +976,8 @@ net_server_wakeup_workers (THREAD_ENTRY * thread_p, int tran_index, int client_i
 		    case THREAD_ALLOC_BCB_SUSPENDED:
 		    case THREAD_DWB_QUEUE_SUSPENDED:
 		    case THREAD_PGBUF_SUSPENDED:
+		    case THREAD_SLEEP_FUNC_SUSPENDED:
+		    case THREAD_CONCURRENCY_SLOT_SUSPENDED:
 		      wakeup_now = true;
 		      break;
 
@@ -984,6 +995,7 @@ net_server_wakeup_workers (THREAD_ENTRY * thread_p, int tran_index, int client_i
 		    case THREAD_LOGWR_RESUMED:
 		    case THREAD_ALLOC_BCB_RESUMED:
 		    case THREAD_DWB_QUEUE_RESUMED:
+		    case THREAD_CONCURRENCY_SLOT_RESUMED:
 		      /* thread is in resumed status, we don't need to wake up */
 		      wakeup_now = false;
 		      break;

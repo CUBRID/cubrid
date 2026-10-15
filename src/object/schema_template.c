@@ -1971,6 +1971,193 @@ smt_check_index_exist (SM_TEMPLATE * template_, char **out_shared_cons_name, DB_
   return error;
 }
 
+
+int
+smt_check_histogram_exist (MOP classop, const char *attr_name)
+{
+  int error = NO_ERROR;
+  int au_save;
+  DB_OBJECT *histogram_class, *histogram_obj = NULL;
+  DB_VALUE value[2];
+  DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "key_attr" };
+
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      error = ER_BO_MISSING_OR_INVALID_CATALOG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  /* class_of, key_attr */
+  db_make_object (&value[0], classop);
+  db_make_string (&value[1], attr_name);
+
+  /* _db_histogram is an internal catalog; bypass user authorization. (CBRD-26667)
+   * Read the row's existence without a lock (CBRD-27369): an S lock here would be held to
+   * commit and the store step's X on the same row would have to upgrade past every concurrent
+   * collector's S, deadlocking.  The committed lock-free read still sees this transaction's own
+   * uncommitted insert, so a re-check within one transaction is correct. */
+  AU_SAVE_AND_DISABLE (au_save);
+  histogram_obj = db_find_multi_unique_committed (histogram_class, 2, (char **) search_attrs, value_ptrs);
+  AU_RESTORE (au_save);
+  if (histogram_obj != NULL)
+    {
+      /* not error, just return ER_LC_CLASSNAME_EXIST */
+      error = ER_LC_CLASSNAME_EXIST;
+      goto end;
+    }
+end:
+  return error;
+}
+
+int
+smt_check_histogram_exist_and_delete (MOP classop, const char *attr_name, bool no_error_if_not_found)
+{
+  int error = NO_ERROR;
+  int au_save;
+  DB_OBJECT *histogram_class, *histogram_obj = NULL;
+  DB_VALUE value[2];
+  DB_VALUE *value_ptrs[2] = { &value[0], &value[1] };
+  const char *search_attrs[2] = { "class_of", "key_attr" };
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      error = ER_BO_MISSING_OR_INVALID_CATALOG;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+
+  /* class_of, key_attr */
+  db_make_object (&value[0], classop);
+  db_make_string (&value[1], attr_name);
+
+  /* _db_histogram is an internal catalog; bypass user authorization. (CBRD-26667)
+   * Take the row X at the lookup (CBRD-27369): DB_FETCH_WRITE would S-lock it first and upgrade
+   * in the fetch, the upgrade two concurrent writers deadlock on. */
+  AU_SAVE_AND_DISABLE (au_save);
+  histogram_obj = db_find_multi_unique_for_update (histogram_class, 2, (char **) search_attrs, value_ptrs);
+  AU_RESTORE (au_save);
+  if (histogram_obj == NULL)
+    {
+      if (!no_error_if_not_found)
+	{
+	  error = ER_LC_UNKNOWN_CLASSNAME;
+	  // ---- query buffer ---- (error_length + table_name_length + attr_name_length)
+	  char error_histogram[100 + 222 + 254];
+	  snprintf (error_histogram, sizeof (error_histogram), "histogram of %s(%s)", sm_get_ch_name (classop),
+		    attr_name);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, error_histogram);
+	  goto end;
+	}
+    }
+  else
+    {
+      /* Dropping the instance in the internal _db_histogram catalog also needs authorization bypass. (CBRD-26667) */
+      AU_SAVE_AND_DISABLE (au_save);
+      error = db_drop (histogram_obj);
+      AU_RESTORE (au_save);
+      if (error != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+end:
+  return error;
+}
+
+int
+smt_add_histogram (MOP classop, const char *attr_name, int bucket_count, bool with_fullscan)
+{
+  int au_save, error = NO_ERROR;
+  DB_OBJECT *ret_obj = NULL, *histogram_class = NULL;
+  DB_VALUE value;
+  DB_OTMPL *obj_tmpl = NULL;
+  double null_frequency = 0;
+  db_make_null (&value);
+
+  /* temporarily disable authorization to access db_serial class */
+  AU_SAVE_AND_DISABLE (au_save);
+
+  histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
+  if (histogram_class == NULL)
+    {
+      error = ER_QPROC_DB_SERIAL_NOT_FOUND;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto end;
+    }
+
+  obj_tmpl = dbt_create_object_internal ((MOP) histogram_class, false);
+
+  if (obj_tmpl == NULL)
+    {
+      error = er_errid ();
+      goto end;
+    }
+
+  db_make_object (&value, classop);
+
+  error = dbt_put_internal (obj_tmpl, "class_of", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      assert (false);
+      goto end;
+    }
+  /* key_attr */
+  db_make_string (&value, attr_name);
+  error = dbt_put_internal (obj_tmpl, "key_attr", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      assert (false);
+      goto end;
+    }
+
+  /* with_fullscan */
+  db_make_int (&value, with_fullscan);
+  error = dbt_put_internal (obj_tmpl, "with_fullscan", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+
+  db_make_double (&value, null_frequency);
+  error = dbt_put_internal (obj_tmpl, "null_frequency", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+
+  /* histogram_values */
+  db_make_null (&value);
+  error = dbt_put_internal (obj_tmpl, "histogram_values", &value);
+  pr_clear_value (&value);
+  if (error != NO_ERROR)
+    {
+      goto end;
+    }
+  ret_obj = dbt_finish_object (obj_tmpl);
+  if (ret_obj == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+
+end:
+  if (obj_tmpl != NULL && ret_obj == NULL)
+    {
+      dbt_abort_object (obj_tmpl);
+    }
+  AU_RESTORE (au_save);
+  return error;
+}
+
 /*
  * smt_add_constraint() - Adds the integrity constraint flags for an attribute.
  *   return: NO_ERROR on success, non-zero for ERROR
@@ -2000,9 +2187,6 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   SM_ATTRIBUTE_FLAG constraint;
   bool has_nulls = false;
   bool is_secondary_index = false;
-  int deduplicate_key_col_pos = -1;
-  int options = 0;
-  int deduplicate_key_level = 0;
 
   assert (template_ != NULL);
 
@@ -2021,17 +2205,11 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
     {
       while (att_names[n_atts] != NULL)
 	{
-	  if (IS_DEDUPLICATE_KEY_ATTR_NAME (att_names[n_atts]))
-	    {
-	      deduplicate_key_col_pos = n_atts;
-	      GET_DEDUPLICATE_KEY_ATTR_LEVEL_FROM_NAME (att_names[n_atts], deduplicate_key_level);
-	      SET_OPTION_DEDUPLICATE (options, deduplicate_key_level);
-	    }
 	  n_atts++;
 	}
     }
 
-  if ((n_atts == 0) || ((n_atts == 1) && (deduplicate_key_col_pos != -1)))
+  if (n_atts == 0)
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
       goto error_return;
@@ -2074,12 +2252,6 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
   for (i = 0; i < n_atts && error == NO_ERROR; i++)
     {
-      if (deduplicate_key_col_pos == i)
-	{
-	  atts[i] = dk_find_sm_deduplicate_key_attribute (-1, att_names[i]);
-	  continue;
-	}
-
       error = smt_find_attribute (template_, att_names[i], class_attribute, &atts[i]);
       if (error == ER_SM_INHERITED_ATTRIBUTE)
 	{
@@ -2216,9 +2388,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
       if (constraint == SM_ATTFLAG_FOREIGN_KEY)
 	{
-	  error =
-	    smt_check_foreign_key (template_, constraint_name, atts,
-				   ((deduplicate_key_col_pos == -1) ? n_atts : (n_atts - 1)), fk_info);
+	  error = smt_check_foreign_key (template_, constraint_name, atts, n_atts, fk_info);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_return;
@@ -2232,8 +2402,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
       /* Add the constraint. */
       error = smt_add_constraint_to_property (template_, SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT (constraint),
 					      constraint_name, atts, asc_desc, attrs_prefix_length, fk_info,
-					      shared_cons_name, filter_index, function_index, options, comment,
-					      index_status);
+					      shared_cons_name, filter_index, function_index, 0, comment, index_status);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
@@ -4047,6 +4216,26 @@ smt_add_query_spec (SM_TEMPLATE * template_, const char *specification)
 }
 
 /*
+ * smt_reset_vclass_definition() - Empties a template so a virtual class can be
+ *    re-defined in place.
+ *   return: none
+ *   template(in/out): schema template
+ */
+
+void
+smt_reset_vclass_definition (SM_TEMPLATE * template_)
+{
+  WS_LIST_FREE (template_->attributes, classobj_free_attribute);
+  template_->attributes = NULL;
+
+  WS_LIST_FREE (template_->class_methods, classobj_free_method);
+  template_->class_methods = NULL;
+
+  WS_LIST_FREE (template_->query_spec, classobj_free_query_spec);
+  template_->query_spec = NULL;
+}
+
+/*
  * smt_reset_query_spec() - Clears the query_spec list of a template.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   template(in/out): schema template
@@ -4717,6 +4906,41 @@ smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate, const char *constraint_na
     }
 
   return ctemplate->op;
+}
+
+/*
+ * smt_check_attribute_all_invisible() - Check whether all attributes of template are invisible
+ *
+ *   return: NO_ERROR if at least one attribute is VISIBLE, or if there are no attributes.
+ *           Non‑zero on error.
+ *   ctemplate(in): class template
+ *   class_name(in) : class name for error message
+ *
+ *   Note: This function only check attributes, not class attributes or shared attributes.
+ *         if there are no attributes, return NO_ERROR since CUBRID allows empty class.
+ */
+int
+smt_check_attribute_all_invisible (SM_TEMPLATE * ctemplate, const char *class_name)
+{
+  SM_ATTRIBUTE *attr;
+
+  assert (ctemplate != NULL);
+  attr = ctemplate->attributes;
+
+  if (attr == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  for (; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
+    {
+      if (!db_attribute_is_invisible_column ((DB_ATTRIBUTE *) attr))
+	{
+	  return NO_ERROR;
+	}
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATT_AT_LEAST_ONE_VISIBLE, 1, class_name);
+  return ER_SM_ATT_AT_LEAST_ONE_VISIBLE;
 }
 
 static int

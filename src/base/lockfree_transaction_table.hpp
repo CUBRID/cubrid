@@ -68,6 +68,10 @@ namespace lockfree
 	id get_current_global_tranid () const;
 	id get_new_global_tranid ();
 	id get_min_active_tranid () const;
+	/* Recompute the cached minimum and return it. get_min_active_tranid () alone is only refreshed once
+	 * every MATI_REFRESH_INTERVAL global ids, so a caller that would act on the value has to ask for a
+	 * fresh one first. */
+	id refresh_min_active_tranid ();
 
 	size_t get_total_retire_count () const;
 	size_t get_total_reclaim_count () const;
@@ -77,7 +81,7 @@ namespace lockfree
 	/* number of transactions between computing min_active_transaction_id */
 	static const id MATI_REFRESH_INTERVAL = 100;
 
-	void compute_min_active_tranid ();
+	id compute_min_active_tranid ();
 
 	system &m_sys;
 	descriptor *m_all;

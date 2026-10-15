@@ -144,14 +144,14 @@ show_statistics (OID * class_oid, bool unlocked_class, bool valid_class, bool pr
   class_mop = db_object (class_oid);
   if (class_mop == NULL)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INVALID_CLASS));
+      printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INVALID_CLASS));
       return;
     }
 
   temp_class_name = (char *) db_get_class_name (class_mop);
   if (temp_class_name == NULL || strlen (temp_class_name) == 0)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_UNKNOWN_CLASS_NAME));
+      printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_UNKNOWN_CLASS_NAME));
     }
   else
     {
@@ -160,20 +160,21 @@ show_statistics (OID * class_oid, bool unlocked_class, bool valid_class, bool pr
 
   if (!valid_class)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INVALID_CLASS));
+      printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_INVALID_CLASS));
 
       return;
     }
 
   if (!processed_class)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PROCESS_CLASS_ERROR));
+      printf ("%s",
+	      msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PROCESS_CLASS_ERROR));
 
     }
 
   if (!unlocked_class)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_LOCKED_CLASS));
+      printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_LOCKED_CLASS));
     }
 
   printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_TOTAL_OBJECTS), total_objects);
@@ -190,11 +191,12 @@ show_statistics (OID * class_oid, bool unlocked_class, bool valid_class, bool pr
     {
       if (old_repr_deleted)
 	{
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_REPR_DELETED));
+	  printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_REPR_DELETED));
 	}
       else
 	{
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_REPR_CANT_DELETE));
+	  printf ("%s",
+		  msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_REPR_CANT_DELETE));
 	}
     }
 }
@@ -228,13 +230,11 @@ get_name_from_class_oid (OID * class_oid)
       return NULL;
     }
 
-  result = (char *) malloc (sizeof (char) * (strlen (temp_class_name) + 1));
+  result = strdup (temp_class_name);
   if (result == NULL)
     {
       return NULL;
     }
-
-  strcpy (result, temp_class_name);
 
   return result;
 }
@@ -283,7 +283,8 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
     {
       if (status == ER_COMPACTDB_ALREADY_STARTED)
 	{
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_ALREADY_STARTED));
+	  printf ("%s",
+		  msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_ALREADY_STARTED));
 	}
 
       return ER_FAILED;
@@ -368,7 +369,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
 
   if (num_classes == 0)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_NOTHING_TO_PROCESS));
+      printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_NOTHING_TO_PROCESS));
       goto error;
     }
 
@@ -474,7 +475,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
 
   if (verbose_flag)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS1));
+      printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS1));
     }
 
   while (true)
@@ -484,7 +485,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
 	{
 	  if (verbose_flag)
 	    {
-	      printf (msgcat_message
+	      printf ("%s", msgcat_message
 		      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_ISOLATION_LEVEL_FAILURE));
 	    }
 
@@ -574,7 +575,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
 		{
 		  if (verbose_flag)
 		    {
-		      printf (msgcat_message
+		      printf ("%s", msgcat_message
 			      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_ISOLATION_LEVEL_FAILURE));
 		    }
 
@@ -604,7 +605,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
 
   if (verbose_flag)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS2));
+      printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS2));
     }
   status = do_reclaim_addresses (class_oids, num_classes, &num_classes_fully_compacted, verbose_flag,
 				 class_lock_timeout);
@@ -615,7 +616,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
 
   if (verbose_flag)
     {
-      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS3));
+      printf ("%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_PASS3));
     }
 
   for (i = 0; i < num_classes; i++)
@@ -625,7 +626,7 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
 	{
 	  if (verbose_flag)
 	    {
-	      printf (msgcat_message
+	      printf ("%s", msgcat_message
 		      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_ISOLATION_LEVEL_FAILURE));
 	    }
 
@@ -666,7 +667,8 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
       class_name = get_name_from_class_oid (class_oids[i]);
       if (class_name == NULL)
 	{
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_UNKNOWN_CLASS_NAME));
+	  printf ("%s",
+		  msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_UNKNOWN_CLASS_NAME));
 	}
       else
 	{
@@ -675,11 +677,12 @@ compactdb_start (bool verbose_flag, bool delete_old_repr_flag, char *input_filen
 
       if (status != NO_ERROR)
 	{
-	  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_HEAP_COMPACT_FAILED));
+	  printf ("%s",
+		  msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_HEAP_COMPACT_FAILED));
 	}
       else
 	{
-	  printf (msgcat_message
+	  printf ("%s", msgcat_message
 		  (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_HEAP_COMPACT_SUCCEEDED));
 	}
 
@@ -803,7 +806,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   pages = utility_get_option_int_value (arg_map, COMPACT_PAGES_COMMITED_ONCE_S);
   if (pages < COMPACT_MIN_PAGES || pages > COMPACT_MAX_PAGES)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_FAILURE));
+      fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_FAILURE));
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_OUT_OF_RANGE_PAGES),
 			     COMPACT_MIN_PAGES, COMPACT_MAX_PAGES);
@@ -828,7 +831,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   if (instance_lock_timeout < COMPACT_INSTANCE_MIN_LOCK_TIMEOUT
       || instance_lock_timeout > COMPACT_INSTANCE_MAX_LOCK_TIMEOUT)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_FAILURE));
+      fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_FAILURE));
 
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB,
@@ -841,7 +844,7 @@ compactdb (UTIL_FUNCTION_ARG * arg)
   class_lock_timeout = utility_get_option_int_value (arg_map, COMPACT_CLASS_LOCK_TIMEOUT_S);
   if (class_lock_timeout < COMPACT_CLASS_MIN_LOCK_TIMEOUT || class_lock_timeout > COMPACT_CLASS_MAX_LOCK_TIMEOUT)
     {
-      fprintf (stderr, msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_FAILURE));
+      fprintf (stderr, "%s", msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_FAILURE));
 
       PRINT_AND_LOG_ERR_MSG (msgcat_message
 			     (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB,
@@ -961,7 +964,7 @@ do_reclaim_addresses (OID * const *class_oids, const int num_class_oids, int *co
 	{
 	  if (class_name == NULL || strlen (class_name) == 0)
 	    {
-	      printf (msgcat_message
+	      printf ("%s", msgcat_message
 		      (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_UNKNOWN_CLASS_NAME));
 	    }
 	  else
@@ -973,17 +976,19 @@ do_reclaim_addresses (OID * const *class_oids, const int num_class_oids, int *co
 	    {
 	      if (addresses_reclaimed)
 		{
-		  printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_RECLAIMED));
+		  printf ("%s",
+			  msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_RECLAIMED));
 		}
 	      else
 		{
-		  printf (msgcat_message
+		  printf ("%s", msgcat_message
 			  (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_RECLAIM_SKIPPED));
 		}
 	    }
 	  else
 	    {
-	      printf (msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_RECLAIM_ERROR));
+	      printf ("%s",
+		      msgcat_message (MSGCAT_CATALOG_UTILS, MSGCAT_UTIL_SET_COMPACTDB, COMPACTDB_MSG_RECLAIM_ERROR));
 	    }
 	}
 

@@ -71,6 +71,7 @@ class au_auth_accessor
     int insert_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type, int grant_option);
     int update_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type, int grant_option);
     int delete_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, MOP obj_mop, DB_AUTH auth_type);
+    int delete_all_auth ();
 
     MOP get_auth_class_mop ()
     {
@@ -89,7 +90,7 @@ class au_auth_accessor
 extern int au_delete_auth_of_dropping_user (MOP user);
 
 /*
-* access db_authorization through executing query
+* access _db_authorization through executing query
 */
 extern int au_delete_authorizartion_of_dropping_user (MOP user);
 

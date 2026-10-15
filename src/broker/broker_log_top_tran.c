@@ -27,6 +27,11 @@
 #include <errno.h>
 #include <string.h>
 #include <stdlib.h>
+#if !defined(WINDOWS)
+#include <unistd.h>
+#endif
+#include <sys/stat.h>
+#include <sys/types.h>
 
 #include "cas_common.h"
 #include "broker_log_top.h"
@@ -60,13 +65,59 @@ log_top_tran (int argc, char *argv[], int arg_start)
   char *filename;
   FILE *fp;
   long start_offset, end_offset;
+  char splitdir[512] = "";
+  char prev_prefix[256] = "";
+  char curr_prefix[256] = "";
+  char org_cwd[PATH_MAX];
+  bool is_found_files = false;
+
+  if (getcwd (org_cwd, sizeof (org_cwd)) == NULL)
+    {
+      return -1;
+    }
+
+  if (output_mode == OUTPUT_SPLIT && make_splitdir (splitdir) < 0)
+    {
+      fprintf (stderr, "cannot make dir (%s).\n", splitdir);
+      return -1;
+    }
 
   info_arr_size = 0;
 
   for (i = arg_start; i < argc; i++)
     {
       filename = argv[i];
-      fprintf (stdout, "%s\n", filename);
+
+      struct stat st;
+#if defined(WINDOWS)
+      if (stat (filename, &st) == 0 && (st.st_mode & _S_IFMT) == _S_IFDIR)
+#else
+      if (stat (filename, &st) == 0 && S_ISDIR (st.st_mode))
+#endif
+	{
+	  /* skip if filename is directory */
+	  continue;
+	}
+
+      if (output_mode == OUTPUT_SPLIT)
+	{
+	  get_brokername_from_filename (filename, curr_prefix, sizeof (curr_prefix));
+
+	  if (strlen (prev_prefix) > 0 && strcmp (curr_prefix, prev_prefix) != 0)
+	    {
+	      if (make_change_split_brokerdir (splitdir, prev_prefix) < 0)
+		{
+		  fprintf (stderr, "cannot make and change dir (%s/%s).\n", splitdir, prev_prefix);
+		  return -1;
+		}
+	      fprintf (stdout, "Report files created: ./%s/%s/log_top.t\n", splitdir, prev_prefix);
+	      print_result ();
+	      chdir (org_cwd);
+
+	      info_arr_size = 0;
+	    }
+	  strcpy (prev_prefix, curr_prefix);
+	}
 
 #if defined(WINDOWS)
       fp = fopen (filename, "rb");
@@ -78,6 +129,12 @@ log_top_tran (int argc, char *argv[], int arg_start)
 	  fprintf (stderr, "%s[%s]\n", strerror (errno), filename);
 	  return -1;
 	}
+      else
+	{
+	  fprintf (stdout, "%s\n", get_basename (filename));
+	  is_found_files = true;
+	}
+
       if (get_file_offset (filename, &start_offset, &end_offset) < 0)
 	{
 	  start_offset = end_offset = -1;
@@ -91,7 +148,32 @@ log_top_tran (int argc, char *argv[], int arg_start)
 	}
     }
 
-  print_result ();
+  if (!is_found_files)
+    {
+      fprintf (stdout, "Result generation skipped: no analyzed files found.\n");
+    }
+  else if (output_mode == OUTPUT_SPLIT)
+    {
+      if (strlen (prev_prefix) > 0)
+	{
+	  if (make_change_split_brokerdir (splitdir, prev_prefix) < 0)
+	    {
+	      fprintf (stderr, "cannot make and change dir (%s/%s).\n", splitdir, prev_prefix);
+	      return -1;
+	    }
+	  fprintf (stdout, "Report files created: ./%s/%s/log_top.t\n", splitdir, prev_prefix);
+	  print_result ();
+	  chdir (org_cwd);
+	}
+    }
+  else
+    {
+      fprintf (stdout, "Report files created: ./log_top.t\n");
+      print_result ();
+    }
+
+
+  info_arr_size = 0;
 
   return 0;
 }

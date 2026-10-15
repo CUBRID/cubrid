@@ -57,12 +57,19 @@ typedef enum
   /* common */
   FI_TEST_HANG = 1,
 
-  /* IO & DISK MANAGER */
-  FI_TEST_FILE_IO_FORMAT = 100000,
-  FI_TEST_DISK_MANAGER_VOLUME_ADD = 100001,
-  FI_TEST_DISK_MANAGER_VOLUME_EXPAND = 100002,
-  FI_TEST_FILE_IO_WRITE_PARTS1 = 100003,
-  FI_TEST_FILE_IO_WRITE_PARTS2 = 100004,
+  /* IO & DISK MANAGER
+   * each module in this block reserves a range of 100 codes, so a new entry is appended to its own module
+   * without renumbering the others.
+   */
+  /* DISK MANAGER (100000 ~ 100099) */
+  FI_TEST_DISK_MANAGER_VOLUME_ADD = 100000,
+  FI_TEST_DISK_MANAGER_VOLUME_EXPAND = 100001,
+  FI_TEST_DISK_MANAGER_VOLHEADER_HOLD = 100002,	/* keep the volume header latched, to make contention observable */
+
+  /* FILE IO (100100 ~ 100199) */
+  FI_TEST_FILE_IO_FORMAT = 100100,
+  FI_TEST_FILE_IO_WRITE_PARTS1 = 100101,
+  FI_TEST_FILE_IO_WRITE_PARTS2 = 100102,
 
   /* FILE MANAGER */
   FI_TEST_FILE_MANAGER_UNDO_TRACKER_REGISTER = 200000,	/* unused */
@@ -76,6 +83,13 @@ typedef enum
   /* LOG MANAGER */
   FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_RUN_POSTPONE = 500000,
   FI_TEST_LOG_MANAGER_RANDOM_EXIT_AT_END_SYSTEMOP = 500001,
+
+  /* DBLINK 2PC RECOVERY */
+  FI_TEST_DBLINK_2PC_CRASH_BEFORE_1 = 600000,	/* before _db_global_tran INSERT (state 'P') */
+  FI_TEST_DBLINK_2PC_CRASH_BETWEEN_1_2 = 600001,	/* after (1) before (2) SEND XA PREPARE */
+  FI_TEST_DBLINK_2PC_CRASH_BETWEEN_2_4 = 600002,	/* after (2) before (4) UPDATE state to C/A */
+  FI_TEST_DBLINK_2PC_CRASH_BETWEEN_4_6 = 600003,	/* after (4),(3) before (5) enqueue to daemon */
+  FI_TEST_DBLINK_2PC_CRASH_BETWEEN_6_7 = 600004,	/* after (6) send decision, before (7) DELETE row */
 
   /* etc .... */
 

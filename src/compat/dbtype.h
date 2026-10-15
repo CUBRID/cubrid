@@ -81,10 +81,10 @@
 #define DB_NEED_CLEAR(v) \
       ((!DB_IS_NULL(v) \
 	&& ((v)->need_clear == true \
-	    || ((DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_VARCHAR) && (v)->data.ch.info.compressed_need_clear != 0))))
+	    || (TP_IS_CHAR_TYPE(DB_VALUE_DOMAIN_TYPE(v)) && (v)->data.ch.info.compressed_need_clear != 0))))
 
 #define DB_GET_COMPRESSED_STRING(v) \
-      ((DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_VARCHAR) ? NULL : (v)->data.ch.medium.compressed_buf)
+      (!TP_IS_CHAR_TYPE(DB_VALUE_DOMAIN_TYPE(v)) ? NULL : (v)->data.ch.medium.compressed_buf)
 
 #define DB_GET_ENUMERATION(v) \
       ((v)->data.enumeration)
@@ -120,11 +120,16 @@
 		   || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_BIT)), \
 	  (v)->data.ch.medium.buf))
 
-#define DB_GET_NUMERIC_PRECISION(val) \
-    ((val)->domain.numeric_info.precision)
+#define DB_VALUE_NUMERIC_HEADER_PRECISION(value)       ((value)->data.num.header.precision)
+#define DB_VALUE_NUMERIC_HEADER_SCALE(value)           ((value)->data.num.header.scale)
+#define DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE(value)      ((value)->domain.numeric_info.is_value_negative)
 
-#define DB_GET_NUMERIC_SCALE(val) \
-    ((val)->domain.numeric_info.scale)
+#define DB_GET_NUMERIC_PRECISION(value, is_float_numeric) \
+  db_get_numeric_precision(value, is_float_numeric)
+#define DB_GET_NUMERIC_SCALE(value, is_float_numeric) \
+  db_get_numeric_scale(value, is_float_numeric)
+#define DB_GET_NUMERIC_PRECISION_AND_SCALE(value, precision, scale, is_float_numeric) \
+  db_get_numeric_precision_and_scale(value, precision, scale, is_float_numeric)
 
 #define DB_GET_STRING_PRECISION(v) \
     ((v)->domain.char_info.length)
@@ -228,7 +233,7 @@ extern "C"
 
     DB_TYPE type = db_value_domain_type (src);
 
-    if (type == DB_TYPE_STRING)
+    if (TP_IS_CHAR_TYPE (type))
       {
 	dst->data.ch.info.compressed_need_clear = false;
       }

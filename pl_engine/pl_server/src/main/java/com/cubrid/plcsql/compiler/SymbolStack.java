@@ -406,6 +406,7 @@ public class SymbolStack {
 
                         // data type casting
                         "CAST",
+                        "COLLECTION_TO_STRING",
                         "DATE_FORMAT",
                         "FORMAT",
                         "STR_TO_DATE",
@@ -418,6 +419,7 @@ public class SymbolStack {
                         "TO_TIME",
                         "TO_TIMESTAMP",
                         "TO_TIMESTAMP_TZ",
+                        "UUID_FORMAT",
 
                         // aggregate and analytic
                         "AVG",
@@ -468,6 +470,10 @@ public class SymbolStack {
                         "DBTIMEZONE",
                         "DEFAULT",
                         "DISK_SIZE",
+                        "ESTIMATED_AVG_ROW_LENGTH",
+                        "ESTIMATED_DATA_FREE",
+                        "ESTIMATED_DATA_LENGTH",
+                        "ESTIMATED_TABLE_ROWS",
                         "INDEX_CARDINALITY",
                         "INET_ATON",
                         "INET_NTOA",
@@ -499,7 +505,8 @@ public class SymbolStack {
 
                         // others
                         "SLEEP",
-                        "SYS_GUID");
+                        "SYS_GUID",
+                        "UUID");
 
         for (String s : funcNames) {
             DeclFunc df =

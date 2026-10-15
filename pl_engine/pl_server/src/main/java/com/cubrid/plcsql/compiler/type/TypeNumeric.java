@@ -30,19 +30,39 @@
 
 package com.cubrid.plcsql.compiler.type;
 
+import com.cubrid.jsp.value.NumericValue;
 import com.cubrid.plcsql.compiler.InstanceStore;
 
 public class TypeNumeric extends Type {
 
     public final int precision;
     public final short scale;
+    /*
+     * unique key formula: precision * KEY_MULTIPLIER + scale
+     *
+     * scale range: MIN(-214) ~ MAX(252), total span = 466
+     * For two (precision, scale) pairs, (p1, s1) and (p2, s2) which have the same key,
+     * p1 * M + s1 = p2 * M + s2
+     * (p1 - p2) * M = (s2 - s1)
+     * Since | s2 - s1 | is a multiple of M (500) and is less than or equal to 466,
+     * (s2 - s1)  can only be zero and so is (p1 - p2). That is, p1 = p2 and s1 = s2.
+     * Therefore, two different (precision, scale) pairs cannot have the same key.
+     *
+     * using 500 for safety margin.
+     *
+     * Note: simple integer arithmetic is chosen over alternatives
+     *       (string key, composite object) for better performance.
+     */
+    private static final int KEY_MULTIPLIER = 500;
 
     public static TypeNumeric getInstance(InstanceStore iStore, int precision, short scale) {
 
-        assert precision <= 38 && precision >= 1;
-        assert scale <= precision && scale >= 0;
+        assert precision <= NumericValue.DB_MAX_NUMERIC_PRECISION
+                && precision >= NumericValue.DB_MIN_NUMERIC_PRECISION;
+        assert scale <= NumericValue.DB_MAX_NUMERIC_SCALE
+                && scale >= NumericValue.DB_MIN_NUMERIC_SCALE;
 
-        int key = precision * 100 + scale;
+        int key = precision * KEY_MULTIPLIER + scale;
         TypeNumeric ret = iStore.typeNumeric.get(key);
         if (ret == null) {
             ret = new TypeNumeric(precision, scale);
@@ -57,11 +77,19 @@ public class TypeNumeric extends Type {
     // ---------------------------------------------------------------------------
 
     private static String getPlcName(int precision, short scale) {
-        return String.format("Numeric(%d, %d)", precision, scale);
+        if (precision == NumericValue.DB_DEFAULT_NUMERIC_PRECISION) {
+            return "Numeric";
+        } else {
+            return String.format("Numeric(%d, %d)", precision, scale);
+        }
     }
 
     private static String getTypicalValueStr(int precision, short scale) {
-        return String.format("cast(0.1 as numeric(%d, %d))", precision, scale);
+        if (precision == NumericValue.DB_DEFAULT_NUMERIC_PRECISION) {
+            return "cast(0.1 as numeric)";
+        } else {
+            return String.format("cast(0.1 as numeric(%d, %d))", precision, scale);
+        }
     }
 
     private TypeNumeric(int precision, short scale) {

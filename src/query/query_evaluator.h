@@ -133,6 +133,8 @@ struct filter_info
 };
 
 extern DB_LOGICAL eval_pred (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid);
+extern void eval_mark_first_term_attrs (const PRED_EXPR * pr, HEAP_CACHE_ATTRINFO * attr_cache);
+extern void eval_disable_lazy_read (HEAP_CACHE_ATTRINFO * attr_cache);
 extern DB_LOGICAL eval_pred_comp0 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid);
 extern DB_LOGICAL eval_pred_comp1 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid);
 extern DB_LOGICAL eval_pred_comp2 (THREAD_ENTRY * thread_p, const PRED_EXPR * pr, val_descr * vd, OID * obj_oid);
@@ -147,5 +149,14 @@ extern DB_LOGICAL eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES *
 extern DB_LOGICAL eval_key_filter (THREAD_ENTRY * thread_p, DB_VALUE * value, int prefix_size, DB_VALUE * prefix_value,
 				   FILTER_INFO * filter);
 extern DB_LOGICAL update_logical_result (THREAD_ENTRY * thread_p, DB_LOGICAL ev_res, int *qualification);
+
+struct DOMAIN_COMPARE_PLAN;
+/* A comparison of two values the load resolved outside a predicate term: FIELD, NULLIF, LEAST and GREATEST,
+ * LIMIT's row count, a merge join's column, a PX instnum limit's rounding. */
+extern DB_VALUE_COMPARE_RESULT eval_compare_values_resolved (THREAD_ENTRY * thread_p,
+							     const DOMAIN_COMPARE_PLAN * comparison,
+							     const val_descr * vd, const DB_VALUE * value1,
+							     const DB_VALUE * value2, int total_order,
+							     bool * can_compare);
 
 #endif /* _QUERY_EVALUATOR_H_ */

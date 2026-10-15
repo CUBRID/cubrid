@@ -49,9 +49,9 @@
 #include "system_parameter.h"
 #include "dbtype.h"
 #include "object_primitive.h"
+#include "schema_system_catalog_constants.h"
+#include "authenticate.h"
 
-extern int set_size (DB_COLLECTION * set);
-extern int set_get_element (DB_COLLECTION * set, int index, DB_VALUE * value);
 
 #if defined(WINDOWS)
 #define OP_SERVER_SHM_OPEN(SHM_KEY, HANDLE_PTR)            \
@@ -365,10 +365,10 @@ cm_ts_delete_user (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   db_mode = uDatabaseMode (dbname, &ha_mode);
-  if (db_mode == DB_SERVICE_MODE_SA)
+  if (db_mode != DB_SERVICE_MODE_CS)
     {
       sprintf (_dbmt_error, "%s", dbname);
-      return ERR_STANDALONE_MODE;
+      return db_mode == DB_SERVICE_MODE_SA ? ERR_STANDALONE_MODE : ERR_DB_INACTIVE;
     }
 
   if (_op_db_login (res, req, ha_mode, _dbmt_error) < 0)
@@ -662,10 +662,10 @@ cm_ts_class (nvplist * in, nvplist * out, char *_dbmt_error)
     }
 
   db_mode = uDatabaseMode (dbname, &ha_mode);
-  if (db_mode == DB_SERVICE_MODE_SA)
+  if (db_mode != DB_SERVICE_MODE_CS)
     {
       sprintf (_dbmt_error, "%s", dbname);
-      return ERR_STANDALONE_MODE;
+      return db_mode == DB_SERVICE_MODE_SA ? ERR_STANDALONE_MODE : ERR_DB_INACTIVE;
     }
 
   if (_op_db_login (out, in, ha_mode, _dbmt_error) < 0)
@@ -788,10 +788,10 @@ cm_ts_update_attribute (nvplist * in, nvplist * out, char *_dbmt_error)
     }
 
   db_mode = uDatabaseMode (dbname, &ha_mode);
-  if (db_mode == DB_SERVICE_MODE_SA)
+  if (db_mode != DB_SERVICE_MODE_CS)
     {
       sprintf (_dbmt_error, "%s", dbname);
-      return ERR_STANDALONE_MODE;
+      return db_mode == DB_SERVICE_MODE_SA ? ERR_STANDALONE_MODE : ERR_DB_INACTIVE;
     }
 
   if (_op_db_login (out, in, ha_mode, _dbmt_error) < 0)
@@ -986,6 +986,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
   int i, sect, sect_len;
   char *tval, *sval;
   int anum;
+  int save = 0;
 
   db_passwd = nv_get_val (req, "_DBPASSWD");
   db_name = nv_get_val (req, "_DBNAME");
@@ -998,10 +999,10 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   db_mode = uDatabaseMode ((char *) db_name, &ha_mode);
-  if (db_mode == DB_SERVICE_MODE_SA)
+  if (db_mode != DB_SERVICE_MODE_CS)
     {
       sprintf (_dbmt_error, "%s", db_name);
-      return ERR_STANDALONE_MODE;
+      return db_mode == DB_SERVICE_MODE_SA ? ERR_STANDALONE_MODE : ERR_DB_INACTIVE;
     }
 
   if (_op_db_login (res, req, ha_mode, _dbmt_error) < 0)
@@ -1043,6 +1044,7 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   /* clear existing group - clear group, direct group */
+  AU_SAVE_AND_DISABLE (save);
   if (db_get (dbuser, "groups", &val) < 0)
     {
       goto error_return;
@@ -1185,10 +1187,12 @@ cm_ts_update_user (nvplist * req, nvplist * res, char *_dbmt_error)
       goto error_return;
     }
   db_shutdown ();
+  AU_RESTORE (save);
 
   return ERR_NO_ERROR;
 
 error_return:
+  AU_RESTORE (save);
   CUBRID_ERR_MSG_SET (_dbmt_error);
   db_shutdown ();
   return ERR_WITH_MSG;
@@ -1218,10 +1222,10 @@ cm_ts_create_user (nvplist * req, nvplist * res, char *_dbmt_error)
     }
 
   db_mode = uDatabaseMode (dbname, &ha_mode);
-  if (db_mode == DB_SERVICE_MODE_SA)
+  if (db_mode != DB_SERVICE_MODE_CS)
     {
       sprintf (_dbmt_error, "%s", dbname);
-      return ERR_STANDALONE_MODE;
+      return db_mode == DB_SERVICE_MODE_SA ? ERR_STANDALONE_MODE : ERR_DB_INACTIVE;
     }
 
   if (_op_db_login (res, req, ha_mode, _dbmt_error) < 0)
@@ -1331,6 +1335,7 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
   char *db_name;
   int ha_mode = 0;
   T_DB_SERVICE_MODE db_mode;
+  int save = 0;
 
   db_name = nv_get_val (in, "dbname");
   if (db_name == NULL)
@@ -1338,17 +1343,17 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
       return ERR_WITH_MSG;
     }
   db_mode = uDatabaseMode (db_name, &ha_mode);
-  if (db_mode == DB_SERVICE_MODE_SA)
+  if (db_mode != DB_SERVICE_MODE_CS)
     {
       sprintf (_dbmt_error, "%s", db_name);
-      return ERR_STANDALONE_MODE;
+      return db_mode == DB_SERVICE_MODE_SA ? ERR_STANDALONE_MODE : ERR_DB_INACTIVE;
     }
 
   if (_op_db_login (out, in, ha_mode, _dbmt_error) < 0)
     {
       return ERR_WITH_MSG;
     }
-  p_class_db_user = db_find_class ("db_user");
+  p_class_db_user = db_find_class (CT_USER_NAME);
   if (p_class_db_user == NULL)
     {
       goto error_return;
@@ -1364,6 +1369,7 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
 	  goto error_return;
 	}
     }
+  AU_SAVE_AND_DISABLE (save);
   temp = user_list;
   while (temp != NULL)
     {
@@ -1388,10 +1394,12 @@ cm_ts_userinfo (nvplist * in, nvplist * out, char *_dbmt_error)
     {
       goto error_return;
     }
+  AU_RESTORE (save);
   db_shutdown ();
   return ERR_NO_ERROR;
 
 error_return:
+  AU_RESTORE (save);
   CUBRID_ERR_MSG_SET (_dbmt_error);
   db_shutdown ();
   return ERR_WITH_MSG;
@@ -1606,7 +1614,7 @@ class_info_sa (const char *dbname, const char *uid, const char *passwd, char *cl
 
   if (run_child (argv, 1, NULL, NULL, NULL, NULL) < 0)
     {				/* cub_jobsa */
-      sprintf (_dbmt_error, argv[0]);
+      sprintf (_dbmt_error, "%s", argv[0]);
       return ERR_SYSTEM_CALL;
     }
 
@@ -2251,7 +2259,14 @@ _op_get_type_name (DB_DOMAIN * domain)
       int s;
       p = db_domain_precision (domain);
       s = db_domain_scale (domain);
-      snprintf (result, result_size, "%s(%d,%d)", db_get_type_name (type_id), p, s);
+      if (p == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  snprintf (result, result_size, "%s", db_get_type_name (type_id));
+	}
+      else
+	{
+	  snprintf (result, result_size, "%s(%d,%d)", db_get_type_name (type_id), p, s);
+	}
     }
   else if ((p = db_domain_precision (domain)) != 0)
     {
@@ -2302,7 +2317,7 @@ static char *
 _op_get_value_string (DB_VALUE * value)
 {
 #if !defined (NUMERIC_MAX_STRING_SIZE)
-#define NUMERIC_MAX_STRING_SIZE (80 + 1)
+#define NUMERIC_MAX_STRING_SIZE (((DB_MAX_NUMERIC_PRECISION - DB_MIN_NUMERIC_SCALE) + 2) * 2)
 #endif
   const char *db_string_p_tmp = NULL;
   char *result, *return_result, *db_string_p;
@@ -2603,7 +2618,7 @@ trigger_info_sa (const char *dbname, const char *uid, const char *passwd, nvplis
 
   if (run_child (argv, 1, NULL, NULL, NULL, NULL) < 0)
     {				/* cm_sainfo sa mode */
-      sprintf (_dbmt_error, argv[0]);
+      sprintf (_dbmt_error, "%s", argv[0]);
       return ERR_SYSTEM_CALL;
     }
 
@@ -2802,7 +2817,9 @@ revoke_all_from_user (DB_OBJECT * user)
   DB_OBJECT *obj, **auth_obj = NULL;
   int num_auth = 0;
   DB_COLLECTION *col;
+  int save;
 
+  AU_SAVE_AND_DISABLE (save);
   db_get (user, "authorization.grants", &v);
   col = db_get_collection (&v);
   for (i = 0; i < db_seq_size (col); i += GRANT_ENTRY_LENGTH)
@@ -2816,6 +2833,7 @@ revoke_all_from_user (DB_OBJECT * user)
       auth_obj = (DB_OBJECT **) (REALLOC (auth_obj, sizeof (DB_OBJECT *) * (num_auth + 1)));
       if (auth_obj == NULL)
 	{
+	  AU_RESTORE (save);
 	  return ERR_MEM_ALLOC;
 	}
       auth_obj[num_auth] = obj;
@@ -2827,6 +2845,7 @@ revoke_all_from_user (DB_OBJECT * user)
       db_revoke (user, auth_obj[i], DB_AUTH_ALL);
     }
   FREE_MEM (auth_obj);
+  AU_RESTORE (save);
   return ERR_NO_ERROR;
 }
 

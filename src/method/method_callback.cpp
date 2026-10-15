@@ -43,10 +43,24 @@
 #include "schema_manager.h"
 #include "network_callback_cl.hpp"
 
-extern int ux_create_srv_handle_with_method_query_result (DB_QUERY_RESULT *result, int stmt_type, int num_column,
-    DB_QUERY_TYPE *column_info, bool is_holdable);
-
 using namespace cubpl;
+
+static PT_NODE *
+pt_find_table_access (PARSER_CONTEXT *parser, PT_NODE *tree, void *arg, int *continue_walk)
+{
+  bool *has_table_access;
+
+  has_table_access = (bool *) arg;
+  assert (has_table_access != NULL);
+
+  if (tree && tree->node_type == PT_SPEC && PT_SPEC_IS_ENTITY (tree))
+    {
+      *has_table_access = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
 
 namespace cubmethod
 {
@@ -543,6 +557,7 @@ namespace cubmethod
 	error = handler->prepare_compile (s);
 	if (error == NO_ERROR && m_error_ctx.has_error () == false)
 	  {
+	    bool has_table_access;
 	    DB_SESSION *db_session = handler->get_db_session ();
 	    const prepare_info &info = handler->get_prepare_info ();
 
@@ -552,7 +567,15 @@ namespace cubmethod
 	    PT_NODE *stmt = db_get_statement (db_session, 0);
 
 	    parser->custom_print |= PT_CONVERT_RANGE;
+	    /* select-list aliases (e.g. "AS col1") must survive into rewritten_query: this text is
+	     * embedded verbatim in the compiled PL/CSQL class and re-parsed at runtime by Query.open(),
+	     * so a client reading column labels off that cursor needs them to still be there */
+	    parser->custom_print |= PT_PRINT_ALIAS;
 	    semantics.rewritten_query = parser_print_tree (parser, stmt);
+
+	    has_table_access = false;
+	    (void) parser_walk_tree (parser, stmt, pt_find_table_access, &has_table_access, NULL, NULL);
+	    semantics.has_table_access = has_table_access ? 1 : 0;
 
 	    const std::vector<column_info> &column_infos = info.column_infos;
 	    for (const column_info &c_info : column_infos)
@@ -719,7 +742,7 @@ namespace cubmethod
     int save;
     const char *name = question.name.c_str ();
 
-    AU_DISABLE (save);
+    AU_SAVE_AND_DISABLE (save);
     {
       // TODO
       mop_p = jsp_find_stored_procedure (name, DB_AUTH_NONE);
@@ -798,7 +821,7 @@ namespace cubmethod
     }
 
 exit:
-    AU_ENABLE (save);
+    AU_RESTORE (save);
 
     res.err_id = err;
     if (err != NO_ERROR)
@@ -917,12 +940,12 @@ exit:
 	const char *c_attr_name = db_attribute_name (attr);
 
 	std::string attr_name_string (c_attr_name? c_attr_name : "");
-	std::string class_name_string (realname? realname : "");
+	std::string class_name_string (realname);
 
 	std::string default_value_string = get_column_default_as_string (attr);
 
 	column_info info (db_type, set_type, scale, precision, charset,
-			  attr_name_string, default_value_string,
+			  attr_name_string, attr_name_string, default_value_string,
 			  auto_increment, unique_key, primary_key, reverse_index, reverse_unique, foreign_key, shared,
 			  attr_name_string, class_name_string, false);
 

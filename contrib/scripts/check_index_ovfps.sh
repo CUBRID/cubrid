@@ -191,7 +191,7 @@ function verify_user_pass ()
 	local USERNAME
 	local dbuser
 	local passwd
-	local qry_dba_grp="SELECT u.name FROM db_user AS u, TABLE(u.groups) AS g(x) where x.name = 'DBA'"
+	local qry_dba_grp="SELECT u.name FROM _db_user AS u, TABLE(u.groups) AS g(x) where x.name = 'DBA'"
 
 	dbuser=$(echo ${user} | cut -d' ' -f2-2)
 	USERNAME=$(echo ${dbuser} | tr [:lower:] [:upper:])
@@ -277,7 +277,7 @@ function do_get_index_name_list()
 	local i_qry=""
 	local csql_qry=""
 
-	i_qry="${i_qry} SELECT CAST (c.owner.name AS VARCHAR(255)) AS owner_name,"
+	i_qry="${i_qry} SELECT c.owner.name AS owner_name,"
 	i_qry="${i_qry}         c.class_name AS class_name,"
 	i_qry="${i_qry}         i.index_name AS index_name,"
 	i_qry="${i_qry}         NVL( (SELECT CASE WHEN pname IS NULL THEN 'P' ELSE 'S' END"

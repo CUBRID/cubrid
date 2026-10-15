@@ -28,7 +28,7 @@ namespace parallel_query
 {
   enum class parallel_type : int
   {
-    HEAP_SCAN = 0,
+    SCAN      = 0,	/* heap / list / index scan */
     HASH_JOIN = 1,
     SORT      = 2,
     SUBQUERY  = 3,
@@ -36,4 +36,8 @@ namespace parallel_query
 
   UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages,
 				  int hint_degree = -1 /* auto-compute */ ) noexcept;
+
+  /* true when the current thread's transaction is inside a system operation; no worker sharing the transaction
+   * may be started then (CBRD-27492). compute_parallel_degree () already applies it. */
+  bool is_under_system_operation () noexcept;
 }				/* namespace parallel_query */

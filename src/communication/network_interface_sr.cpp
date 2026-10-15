@@ -51,6 +51,7 @@
 #include "network.h"
 #include "log_comm.h"
 #include "network_interface_sr.h"
+#include "qfile_tuple_layout.h"
 #include "page_buffer.h"
 #include "file_manager.h"
 #include "boot_sr.h"
@@ -61,6 +62,7 @@
 #include "release_string.h"
 #include "critical_section.h"
 #include "statistics.h"
+#include "histogram_sampler_sr.hpp"
 #include "chartype.h"
 #include "heap_file.h"
 #include "pl_sr.h"
@@ -632,7 +634,16 @@ server_ping_with_handshake (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
     }
 
   /* update connection counters for reserved connections */
-  if (css_increment_num_conn ((BOOT_CLIENT_TYPE) client_type) != NO_ERROR)
+  if (thread_p->conn_entry->client_type != DB_CLIENT_TYPE_UNKNOWN)
+    {
+      if (thread_p->conn_entry->client_type != (BOOT_CLIENT_TYPE) client_type)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_NET_SERVER_HAND_SHAKE, 1, client_host);
+	  (void) return_error_to_client (thread_p, rid);
+	  status = CSS_UNPLANNED_SHUTDOWN;
+	}
+    }
+  else if (css_increment_num_conn ((BOOT_CLIENT_TYPE) client_type) != NO_ERROR)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CSS_CLIENTS_EXCEEDED, 1, NUM_NORMAL_TRANS);
       (void) return_error_to_client (thread_p, rid);
@@ -2069,6 +2080,236 @@ sqst_server_get_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
   };
   css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), buffer,
 				     buffer_length, std::move (deleter));
+}
+
+/*
+ * sqst_histogram_build_by_reservoir - server handler: build a column histogram by a
+ *   single full heap scan + reservoir sampling, returning the blob + exact null frequency.
+ */
+void
+sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OID class_oid;
+  HFID hfid;
+  int max_buckets = 0, sample_size = 0, attr_cnt = 0;
+  int i;
+  char *ptr;
+  char *send_buf = NULL;
+  int send_len = 0;
+  int status = NO_ERROR;
+  int with_fullscan = 0;
+  INT64 sample_seed = 0;
+  ATTR_ID *attr_ids = NULL;
+  DB_TYPE *attr_types = NULL;
+  double *null_freqs = NULL;
+  char **blobs = NULL;
+  int *blob_lens = NULL;
+  INT64 *ndvs = NULL;
+  int *attr_unique = NULL;
+  INT64 total_rows = 0;
+  INT64 pages_seen = 0, pages_kept = 0;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  /* fixed request header size, INCLUDING the alignment padding or_pack_int64 () inserts
+   * before the seed: OID + 3 ints, aligned up to MAX_ALIGNMENT, + int64 + attr_cnt int.
+   * Without the padding a 4-byte-short packet passes the check and attr_cnt is read past
+   * the end of the receive buffer. */
+  const int fixed_request_size =
+	  DB_ALIGN (OR_OID_SIZE + 3 * OR_INT_SIZE, MAX_ALIGNMENT) + OR_INT64_SIZE + OR_INT_SIZE;
+
+  if (reqlen < fixed_request_size)
+    {
+      /* short packet: the fixed header must be length-checked before it is unpacked */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      status = ER_OBJ_INVALID_ARGUMENTS;
+      (void) return_error_to_client (thread_p, rid);
+      goto send;
+    }
+
+  ptr = or_unpack_oid (request, &class_oid);
+  ptr = or_unpack_int (ptr, &max_buckets);
+  ptr = or_unpack_int (ptr, &sample_size);
+  ptr = or_unpack_int (ptr, &with_fullscan);
+  ptr = or_unpack_int64 (ptr, &sample_seed);
+  ptr = or_unpack_int (ptr, &attr_cnt);
+
+  if (attr_cnt <= 0
+      || (INT64) fixed_request_size + (INT64) attr_cnt * (3 * OR_INT_SIZE) > (INT64) reqlen)
+    {
+      /* also rejects a corrupt/hostile attr_cnt whose per-column triples could not possibly fit in
+       * the received request -- prevents unpacking past the request buffer and absurd allocations */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      status = ER_OBJ_INVALID_ARGUMENTS;
+      (void) return_error_to_client (thread_p, rid);
+      goto send;
+    }
+
+  attr_ids = (ATTR_ID *) db_private_alloc (thread_p, sizeof (ATTR_ID) * attr_cnt);
+  attr_types = (DB_TYPE *) db_private_alloc (thread_p, sizeof (DB_TYPE) * attr_cnt);
+  null_freqs = (double *) db_private_alloc (thread_p, sizeof (double) * attr_cnt);
+  blobs = (char **) db_private_alloc (thread_p, sizeof (char *) * attr_cnt);
+  blob_lens = (int *) db_private_alloc (thread_p, sizeof (int) * attr_cnt);
+  ndvs = (INT64 *) db_private_alloc (thread_p, sizeof (INT64) * attr_cnt);
+  attr_unique = (int *) db_private_alloc (thread_p, sizeof (int) * attr_cnt);
+  if (blobs != NULL)
+    {
+      /* cleanup frees blobs[i]; a partial allocation failure below would otherwise hand
+       * uninitialized garbage pointers to db_private_free */
+      memset (blobs, 0, sizeof (char *) * attr_cnt);
+    }
+  if (attr_ids == NULL || attr_types == NULL || null_freqs == NULL || blobs == NULL || blob_lens == NULL
+      || ndvs == NULL || attr_unique == NULL)
+    {
+      status = ER_OUT_OF_VIRTUAL_MEMORY;
+      (void) return_error_to_client (thread_p, rid);
+      goto cleanup;
+    }
+  for (i = 0; i < attr_cnt; i++)
+    {
+      int id = 0, t = 0, uq = 0;
+      ptr = or_unpack_int (ptr, &id);
+      ptr = or_unpack_int (ptr, &t);
+      ptr = or_unpack_int (ptr, &uq);
+      attr_ids[i] = (ATTR_ID) id;
+      attr_types[i] = (DB_TYPE) t;
+      attr_unique[i] = uq;
+      blobs[i] = NULL;
+      blob_lens[i] = 0;
+      null_freqs[i] = 0.0;
+    }
+
+  if (heap_get_class_hfid (thread_p, &class_oid, &hfid, NULL) != NO_ERROR)
+    {
+      status = ER_FAILED;
+      (void) return_error_to_client (thread_p, rid);
+      goto cleanup;
+    }
+
+  /* TODO(CBRD-26936 follow-up): enforce per-class authorization on the server here.
+   * The client SQL/API paths (do_update_histogram/do_drop_histogram, do_update_stats) already
+   * check AU_ALTER + AU_SELECT before issuing this request, so no legitimate client bypasses it.
+   * A client crafting the raw request directly, however, could pass a class OID it lacks rights
+   * on and infer that class's data distribution (MCV values, bucket bounds) or trigger repeated
+   * full scans. CUBRID authorization is client-side only (the server has no au_ layer and even
+   * DBA checks are passed as client-computed flags), so closing this needs a new server-side
+   * _db_auth reader that evaluates owner / direct grant / PUBLIC / DBA for (current user,
+   * class_oid) -- deferred to a dedicated security follow-up PR. */
+
+  status = xhistogram_build_multi_by_fullscan_reservoir (thread_p, &class_oid, &hfid, attr_ids, attr_types,
+	   attr_unique, attr_cnt, max_buckets, sample_size, with_fullscan != 0, (UINT64) sample_seed, null_freqs,
+	   blobs, blob_lens, ndvs, &total_rows, &pages_seen, &pages_kept);
+  if (status != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+      goto cleanup;
+    }
+
+  /* reply var-data (8-byte items first for natural alignment):
+   *   total_rows (int64), pages_seen (int64), pages_kept (int64) -- realized scan coverage, so
+   *   the client trace can report whether sampling actually happened -- then attr_cnt NDV
+   *   (int64), attr_cnt null_frequency (double), attr_cnt blob_length (int), then the blobs
+   *   concatenated in column order. */
+  send_len = 3 * OR_INT64_SIZE + attr_cnt * OR_INT64_SIZE + attr_cnt * OR_DOUBLE_SIZE + attr_cnt * OR_INT_SIZE;
+  for (i = 0; i < attr_cnt; i++)
+    {
+      if (blob_lens[i] > 0)
+	{
+	  send_len += blob_lens[i];
+	}
+    }
+  send_buf = (char *) malloc ((size_t) send_len);
+  if (send_buf != NULL)
+    {
+      char *sp = send_buf;
+      sp = or_pack_int64 (sp, total_rows);
+      sp = or_pack_int64 (sp, pages_seen);
+      sp = or_pack_int64 (sp, pages_kept);
+      for (i = 0; i < attr_cnt; i++)
+	{
+	  sp = or_pack_int64 (sp, ndvs[i]);
+	}
+      for (i = 0; i < attr_cnt; i++)
+	{
+	  sp = or_pack_double (sp, null_freqs[i]);
+	}
+      for (i = 0; i < attr_cnt; i++)
+	{
+	  sp = or_pack_int (sp, blob_lens[i] > 0 ? blob_lens[i] : 0);
+	}
+      for (i = 0; i < attr_cnt; i++)
+	{
+	  if (blob_lens[i] > 0 && blobs[i] != NULL)
+	    {
+	      memcpy (sp, blobs[i], (size_t) blob_lens[i]);
+	      sp += blob_lens[i];
+	    }
+	}
+    }
+  else
+    {
+      /* reply buffer allocation failed: return an explicit error instead of a zero-length reply,
+       * which the client would otherwise accept as "no data" and silently keep a stale histogram. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) send_len);
+      status = ER_OUT_OF_VIRTUAL_MEMORY;
+      (void) return_error_to_client (thread_p, rid);
+      send_len = 0;
+    }
+
+cleanup:
+  if (blobs != NULL)
+    {
+      for (i = 0; i < attr_cnt; i++)
+	{
+	  if (blobs[i] != NULL)
+	    {
+	      db_private_free_and_init (thread_p, blobs[i]);
+	    }
+	}
+      db_private_free_and_init (thread_p, blobs);
+    }
+  if (attr_ids != NULL)
+    {
+      db_private_free_and_init (thread_p, attr_ids);
+    }
+  if (attr_types != NULL)
+    {
+      db_private_free_and_init (thread_p, attr_types);
+    }
+  if (null_freqs != NULL)
+    {
+      db_private_free_and_init (thread_p, null_freqs);
+    }
+  if (blob_lens != NULL)
+    {
+      db_private_free_and_init (thread_p, blob_lens);
+    }
+  if (ndvs != NULL)
+    {
+      db_private_free_and_init (thread_p, ndvs);
+    }
+  if (attr_unique != NULL)
+    {
+      db_private_free_and_init (thread_p, attr_unique);
+    }
+
+send:
+  /* protocol: net_client_request2 requires the FIRST int of the reply to be the length of
+   * the variable-length data block that follows */
+  ptr = or_pack_int (reply, send_len);
+  ptr = or_pack_int (ptr, status);
+
+  {
+    auto deleter = [send_buf]() noexcept
+    {
+      if (send_buf != NULL)
+	{
+	  free (send_buf);
+	}
+    };
+    css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply), send_buf,
+				       send_len, std::move (deleter));
+  }
 }
 
 /*
@@ -4258,12 +4499,38 @@ sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   CLASS_ATTR_NDV class_attr_ndv = CLASS_ATTR_NDV_INITIALIZER;
 
+  if (reqlen < OR_INT_SIZE)
+    {
+      /* short packet: the fixed header must be length-checked before it is unpacked */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      error = ER_OBJ_INVALID_ARGUMENTS;
+      (void) return_error_to_client (thread_p, rid);
+      goto send;
+    }
+
   ptr = or_unpack_int (request, &class_attr_ndv.attr_cnt);
+
+  if (class_attr_ndv.attr_cnt < 0
+      || (INT64) OR_INT_SIZE + (INT64) sizeof (ATTR_NDV) * ((INT64) class_attr_ndv.attr_cnt + 1)
+      + OR_OID_SIZE + OR_INT_SIZE > (INT64) reqlen)
+    {
+      /* the body must fit in the received request: attr_cnt + 1 (id, ndv) entries followed by the
+       * class OID and the fullscan flag (the sender sizes the request with sizeof (ATTR_NDV) per
+       * entry, an upper bound of the wire cost). Also rejects a corrupt/hostile attr_cnt whose
+       * entries could not possibly fit -- prevents unpacking past the request buffer and absurd
+       * allocations below. */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      error = ER_OBJ_INVALID_ARGUMENTS;
+      (void) return_error_to_client (thread_p, rid);
+      goto send;
+    }
 
   class_attr_ndv.attr_ndv = (ATTR_NDV *) db_private_alloc (thread_p, sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1));
   if (class_attr_ndv.attr_ndv == NULL)
     {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
       (void) return_error_to_client (thread_p, rid);
+      goto send;
     }
 
   for (int i = 0; i < class_attr_ndv.attr_cnt + 1; i++)
@@ -4271,6 +4538,8 @@ sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
       ptr = or_unpack_int (ptr, &class_attr_ndv.attr_ndv[i].id);
       ptr = or_unpack_int64 (ptr, &class_attr_ndv.attr_ndv[i].ndv);
     }
+  /* the trailing sentinel entry's ndv carries the caller-provided exact row count (0 if none) */
+  class_attr_ndv.total_rows = class_attr_ndv.attr_ndv[class_attr_ndv.attr_cnt].ndv;
   ptr = or_unpack_oid (ptr, &classoid);
   ptr = or_unpack_int (ptr, &with_fullscan);
 
@@ -4282,6 +4551,7 @@ sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
       (void) return_error_to_client (thread_p, rid);
     }
 
+send:
   (void) or_pack_errcode (reply, error);
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 
@@ -4311,7 +4581,6 @@ sbtree_add_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
   OID class_oid;
   int attr_id, unique_pk;
   char *ptr;
-  int deduplicate_key_pos = -1;
 
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -4321,10 +4590,8 @@ sbtree_add_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &attr_id);
   ptr = or_unpack_int (ptr, &unique_pk);
-  ptr = or_unpack_int (ptr, &deduplicate_key_pos);	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
-  return_btid =
-	  xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos);
+  return_btid = xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0);
   if (return_btid == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -4374,7 +4641,10 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
   char *expr_stream = NULL;
   int csserror;
   int index_status = 0;
+  bool eligible_no_redo = false;
   int ib_thread_count = 0;
+  int no_logging_index = 0;
+  size_t tail_offset;
 
   ptr = or_unpack_btid (request, &btid);
   ptr = or_unpack_string_nocopy (ptr, &bt_name);
@@ -4462,6 +4732,17 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 
   ptr = or_unpack_int (ptr, &index_status);	/* Get index status. */
   ptr = or_unpack_int (ptr, &ib_thread_count);	/* Get thread count. */
+  /* Optional tail: older clients do not send this field and their request may end exactly at ptr, so
+   * bound it with integer offsets only (a pointer past one-past-the-end is UB even if only compared). */
+  tail_offset = DB_ALIGN ((size_t) (ptr - request), INT_ALIGNMENT);
+  if (tail_offset + OR_INT_SIZE <= (size_t) reqlen)
+    {
+      ptr = or_unpack_int (ptr, &no_logging_index);	/* Get no-logging index build request. */
+    }
+  /* The client flag is only a request; the server decides. Restricting the no-redo build to
+   * loaddb client types keeps it out of ordinary traffic no matter what a client sends. */
+  eligible_no_redo = no_logging_index != 0
+		     && BOOT_IS_LOADDB_CLIENT_TYPE (logtb_find_client_type (thread_p->tran_index));
 
   if (index_status == OR_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
@@ -4477,7 +4758,7 @@ sbtree_load_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int 
 	      xbtree_load_index (thread_p, &btid, bt_name, key_type, class_oids, n_classes, n_attrs, attr_ids,
 				 attr_prefix_lengths, hfids, unique_pk, not_null_flag, &fk_refcls_oid, &fk_refcls_pk_btid,
 				 fk_name, pred_stream, pred_stream_size, expr_stream, expr_stream_size, func_col_id,
-				 func_attr_index_start);
+				 func_attr_index_start, eligible_no_redo);
     }
 
   if (return_btid == NULL)
@@ -4825,6 +5106,46 @@ sbtree_class_test_unique (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
     }
 
   (void) or_pack_int (reply, (int) success);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sbtree_compact_overflow () - CBRD-27401: ALTER INDEX ... COMPACT. Compacts the overflow OID chains of an index.
+ *
+ * return :
+ * thread_p (in) :
+ * rid (in) :
+ * request (in) : packed BTID and fill factor
+ * reqlen (in) :
+ */
+void
+sbtree_compact_overflow (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  BTID btid;
+  int fill_factor;
+  INT64 keys_compacted = 0;
+  INT64 pages_freed = 0;
+  INT64 pairs_skipped = 0;
+  int error;
+  /* status, alignment padding before the first INT64 (or_pack_int64 () aligns to MAX_ALIGNMENT), three INT64 */
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT64_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  ptr = or_unpack_btid (request, &btid);
+  ptr = or_unpack_int (ptr, &fill_factor);
+
+  error = xbtree_compact_overflow (thread_p, &btid, fill_factor, &keys_compacted, &pages_freed, &pairs_skipped);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_int64 (ptr, keys_compacted);
+  ptr = or_pack_int64 (ptr, pages_freed);
+  ptr = or_pack_int64 (ptr, pairs_skipped);
+
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
@@ -5267,12 +5588,13 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 				     bool *can_end_transaction)
 {
   QFILE_LIST_SCAN_ID scan_id;
-  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
+  QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE qp_scan;
   OR_BUF buf;
   TP_DOMAIN **domains;
   const PR_TYPE *pr_type;
-  int i, flag, compressed_size = 0, decompressed_size = 0, diff_size, val_length;
+  int i, compressed_size = 0, decompressed_size = 0, diff_size, val_length;
+  bool is_null;
   char *tuple_p;
   bool found_compressible_string_domain, exceed_a_page;
 
@@ -5306,7 +5628,7 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
       pr_type = domains[i]->type;
       assert (pr_type != NULL);
 
-      if (pr_type->id == DB_TYPE_VARCHAR)
+      if (TP_IS_CHAR_TYPE (pr_type->id))
 	{
 	  found_compressible_string_domain = true;
 	  break;
@@ -5336,19 +5658,19 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 	  break;
 	}
 
-      tuple_p = tuple_record.tpl;
-      or_init (&buf, tuple_p, QFILE_GET_TUPLE_LENGTH (tuple_p));
-      tuple_p += QFILE_TUPLE_LENGTH_SIZE;
       for (i = 0; i < list_id->type_list.type_cnt; i++)
 	{
-	  flag = QFILE_GET_TUPLE_VALUE_FLAG (tuple_p);
-	  val_length = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p);
-	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
-
 	  pr_type = domains[i]->type;
-	  if (flag != V_UNBOUND && (pr_type->id == DB_TYPE_VARCHAR))
+	  if (!TP_IS_CHAR_TYPE (pr_type->id))
 	    {
-	      buf.ptr = tuple_p;
+	      continue;
+	    }
+
+	  /* the body carries the same compression prefix that or_get_varchar_compression_lengths () expects */
+	  tuple_p = (char *) qfile_slot_get_column_data (&tuple_record, i, &val_length, &is_null);
+	  if (!is_null)
+	    {
+	      or_init (&buf, tuple_p, val_length);
 	      or_get_varchar_compression_lengths (&buf, &compressed_size, &decompressed_size);
 	      if (compressed_size != 0)
 		{
@@ -5362,8 +5684,6 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 		    }
 		}
 	    }
-
-	  tuple_p += val_length;
 	}
     }
 
@@ -7852,7 +8172,7 @@ sbtree_get_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
 {
   BTREE_STATS stat_info;
   int success;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_INT64_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
@@ -7873,7 +8193,7 @@ sbtree_get_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
   ptr = or_pack_int (ptr, stat_info.leafs);
   ptr = or_pack_int (ptr, stat_info.pages);
   ptr = or_pack_int (ptr, stat_info.height);
-  ptr = or_pack_int (ptr, stat_info.keys);
+  ptr = or_pack_int64 (ptr, stat_info.keys);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -8412,12 +8732,12 @@ srepl_log_get_append_lsa (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
 {
   OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  LOG_LSA *lsa;
+  LOG_LSA lsa;
 
   lsa = xrepl_log_get_append_lsa ();
 
   reply = OR_ALIGNED_BUF_START (a_reply);
-  (void) or_pack_log_lsa (reply, lsa);
+  (void) or_pack_log_lsa (reply, &lsa);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -10878,6 +11198,19 @@ ssession_stop_attached_threads (THREAD_ENTRY *thread_p, void *session)
   session_stop_attached_threads (thread_p, session);
 }
 
+void
+ssession_interrupt_attached_threads (THREAD_ENTRY *thread_p, void *session)
+{
+  session_interrupt_attached_threads (thread_p, session);
+}
+
+void
+ssession_destroy_load_session (THREAD_ENTRY *thread_p, void *session)
+{
+  session_destroy_load_session (thread_p, session);
+}
+
+#if defined (ENABLE_UNUSED_FUNCTION)
 static bool
 cdc_check_client_connection ()
 {
@@ -10891,6 +11224,7 @@ cdc_check_client_connection ()
       return false;
     }
 }
+#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 spl_call (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
@@ -11133,23 +11467,41 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
       goto error;
     }
 
-  /* scdc_start_session more than once without scdc_end_session */
+  /* scdc_start_session may be called again without a preceding scdc_end_session when the previous CDC client
+   * terminated abnormally (e.g. killed with Ctrl+C) and therefore could not request NET_SERVER_CDC_END_SESSION.
+   * In that case always accept the new connection and forcibly shut down the previous connection (its socket)
+   * so that a restarted client can reconnect. */
   if (cdc_Gl.conn.fd != -1)
     {
-      if (thread_p->conn_entry->fd != cdc_Gl.conn.fd)
-	{
-	  /* check if existing connection is alive */
-	  if (cdc_check_client_connection ())
-	    {
-	      cdc_log ("%s : More than two clients attempt to connect", __func__);
+      SOCKET prev_fd = cdc_Gl.conn.fd;
+      int prev_client_id = cdc_Gl.conn.client_id;
 
-	      error_code = ER_CDC_NOT_AVAILABLE;
-	      er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_CDC_NOT_AVAILABLE, 0);
-	      goto error;
+      if (thread_p->conn_entry->fd != prev_fd)
+	{
+	  /* A new client is requesting a session while the previous one still holds the CDC connection.
+	   * Verify client_id as well as fd since a stale fd may be reused by an unrelated client. */
+	  CSS_CONN_ENTRY *prev_conn = css_find_conn_from_fd (prev_fd);
+
+	  if (prev_conn != NULL && prev_conn != thread_p->conn_entry)
+	    {
+	      int r = rmutex_lock (NULL, &prev_conn->rmutex);
+	      assert (r == NO_ERROR);
+
+	      if (prev_conn->status == CONN_OPEN && prev_conn->fd == prev_fd && prev_conn->client_id == prev_client_id)
+		{
+		  cdc_log ("%s : forcibly shut down the previous CDC connection (fd %d, client_id %d) "
+			   "for the new client (fd %d)", __func__, prev_fd, prev_client_id, thread_p->conn_entry->fd);
+
+		  /* 0 == cubconn::connection::ignore_level::DONT_IGNORE; no wait */
+		  css_request_shutdown_conn (prev_conn, 0, false, 0);
+		}
+
+	      r = rmutex_unlock (NULL, &prev_conn->rmutex);
+	      assert (r == NO_ERROR);
 	    }
 	}
 
-      /* if existing session is dead, then pause loginfo producer thread (cdc). */
+      /* the previous session is being replaced; pause loginfo producer thread (cdc). */
       if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
 	{
 	  cdc_pause_producer ();
@@ -11160,6 +11512,7 @@ scdc_start_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
 
   cdc_Gl.conn.fd = thread_p->conn_entry->fd;
   cdc_Gl.conn.status = thread_p->conn_entry->status;
+  cdc_Gl.conn.client_id = thread_p->conn_entry->client_id;
 
   ptr = or_unpack_int (request, &max_log_item);
   ptr = or_unpack_int (ptr, &extraction_timeout);
@@ -11283,6 +11636,12 @@ scdc_find_lsa (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
 
       cdc_set_extraction_lsa (&start_lsa);
 
+      /* The client is about to be told to resume from here, so the volume holding that position has to be
+       * kept from now on. Waiting for the first bundle leaves a window: extraction can come back as
+       * ER_CDC_EXTRACTION_TIMEOUT before the volume is ever recorded, and archive removal is free to run
+       * in between. */
+      cdc_update_arv_num_to_keep (thread_p, &start_lsa);
+
       cdc_reinitialize_queue (&start_lsa);
 
       cdc_wakeup_producer ();
@@ -11340,7 +11699,15 @@ scdc_get_loginfo_metadata (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
 	  goto error;
 	}
 
+      if (cdc_Gl.producer.state != CDC_PRODUCER_STATE_WAIT)
+	{
+	  cdc_pause_producer ();
+	}
+
       cdc_set_extraction_lsa (&start_lsa);
+
+      /* Same window as in scdc_find_lsa(): record the volume before the first bundle is attempted. */
+      cdc_update_arv_num_to_keep (thread_p, &start_lsa);
 
       cdc_reinitialize_queue (&start_lsa);
 
@@ -11418,12 +11785,13 @@ scdc_end_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error_code;
 
-  error_code = cdc_cleanup ();
+  error_code = cdc_cleanup (thread_p);
 
   cdc_log ("%s : clean up for cdc thread has done.", __func__);
 
   cdc_Gl.conn.fd = -1;
   cdc_Gl.conn.status = CONN_CLOSED;
+  cdc_Gl.conn.client_id = -1;
 
   or_pack_int (reply, error_code);
   (void) css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
@@ -11449,7 +11817,7 @@ sflashback_get_summary (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
   LC_FIND_CLASSNAME status;
 
-  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, };
+  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, {}, {}, };
 
   time_t start_time = 0;
   time_t end_time = 0;
@@ -11635,7 +12003,9 @@ sflashback_get_loginfo (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
   int threshold_to_remove_archive = 0;
 
-  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER, };
+  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER,
+					{}, {},
+				      };
 
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 

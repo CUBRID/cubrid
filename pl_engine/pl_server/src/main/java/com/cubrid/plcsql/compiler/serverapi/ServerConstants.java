@@ -51,4 +51,10 @@ public class ServerConstants {
     public static final byte CUBRID_CHARSET_ISO_8859_1 = 3;
     public static final byte CUBRID_CHARSET_EUC_KR = 4;
     public static final byte CUBRID_CHARSET_UTF8 = 5;
+
+    public static final int SP_SQL_TYPE_UNKNOWN = -1;
+    public static final int SP_SQL_TYPE_NO_SQL = 0;
+    public static final int SP_SQL_TYPE_CONTAINS_SQL = 1;
+    public static final int SP_SQL_TYPE_READS_SQL_DATA = 2;
+    public static final int SP_SQL_TYPE_MODIFIES_SQL_DATA = 3;
 }

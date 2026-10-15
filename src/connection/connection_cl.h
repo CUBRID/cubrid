@@ -57,13 +57,14 @@ private:
   void css_dealloc_conn (CSS_CONN_ENTRY * conn);
 
   int css_read_header (CSS_CONN_ENTRY * conn, NET_HEADER * local_header);
-  CSS_CONN_ENTRY *css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name, unsigned short *rid);
+  CSS_CONN_ENTRY *css_server_connect (char *host_name, CSS_CONN_ENTRY * conn, char *server_name,
+				      unsigned short *rid, int client_type);
   int css_return_queued_data (CSS_CONN_ENTRY * conn, unsigned short request_id, char **buffer, int *buffer_size,
 			      int *rc);
   int css_return_queued_request (CSS_CONN_ENTRY * conn, unsigned short *rid, int *request, int *buffer_size);
   CSS_CONN_ENTRY *css_common_connect (const char *host_name, CSS_CONN_ENTRY * conn, int connect_type,
 				      const char *server_name, int server_name_length, int port, int timeout,
-				      unsigned short *rid, bool send_magic);
+				      unsigned short *rid, bool send_magic, int client_type);
   bool css_is_valid_request_id (CSS_CONN_ENTRY * conn, unsigned short request_id);
 
 public:
@@ -76,7 +77,7 @@ public:
 
   CSS_CONN_ENTRY *css_connect_to_master_server (int master_port_id, const char *server_name, int name_length);
   int css_receive_error (CSS_CONN_ENTRY * conn, unsigned short req_id, char **buffer, int *buffer_size);
-  CSS_CONN_ENTRY *css_connect_to_cubrid_server (char *host_name, char *server_name);
+  CSS_CONN_ENTRY *css_connect_to_cubrid_server (char *host_name, char *server_name, int client_type);
   CSS_CONN_ENTRY *css_connect_to_master_for_info (const char *host_name, int port_id, unsigned short *rid);
   CSS_CONN_ENTRY *css_connect_to_master_timeout (const char *host_name, int port_id, int timeout, unsigned short *rid);
   bool css_does_master_exist (int port_id);
@@ -96,7 +97,7 @@ public:
   CSS_CONN_ENTRY *css_connect_to_log_server (const char *host_name, CSS_CONN_ENTRY * conn,
 					     const char *server_name, int port, int timeout, unsigned short *rid);
   CSS_CONN_ENTRY *css_server_connect_part_two (char *host_name, CSS_CONN_ENTRY * conn, int port_id,
-					       unsigned short *rid);
+					       unsigned short *rid, int client_type);
 };
 
 extern void css_shutdown_conn (CSS_CONN_ENTRY * conn);

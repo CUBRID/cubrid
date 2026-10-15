@@ -31,6 +31,7 @@
 
 package com.cubrid.jsp.value;
 
+import com.cubrid.jsp.ExecuteThread;
 import com.cubrid.jsp.Server;
 import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.data.SOID;
@@ -70,6 +71,17 @@ public class OidValue extends Value {
 
     private void createInstance() {
         if (oidValue != null && oidObject == null) {
+            if (ExecuteThread.isServerSideSqlForbiddenOnCurrentThread()) {
+                /*
+                 * A PARALLEL_ENABLE routine may still receive and pass around an OID: the value
+                 * itself is plain data. Only dereferencing it (getValues, getTableName, ...) is
+                 * server-side SQL, and the connection-less object refuses that on its own. Do not
+                 * touch the default connection here - connect() would refuse and leave the OID
+                 * null, which turned every OID argument into an NPE or a silent NULL.
+                 */
+                oidObject = new CUBRIDServerSideOID(oidValue);
+                return;
+            }
             try {
                 CUBRIDServerSideConnection con =
                         (CUBRIDServerSideConnection)

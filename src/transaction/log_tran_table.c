@@ -103,6 +103,10 @@ static BOOT_CLIENT_CREDENTIAL log_Client_credential;
 
 static const unsigned int LOGTB_RETRY_SLAM_MAX_TIMES = 10;
 
+/* When set, logtb_define/undefine_trantable_log_latch reuse the boot-time
+ * pgbuf/lock/file/mvcc pool instead of tearing it down and rebuilding it. */
+bool logtb_Reuse_boot_managers = false;
+
 static int logtb_expand_trantable (THREAD_ENTRY * thread_p, int num_new_indices);
 static int logtb_allocate_tran_index (THREAD_ENTRY * thread_p, TRANID trid, TRAN_STATE state,
 				      const BOOT_CLIENT_CREDENTIAL * client_credential, TRAN_STATE * current_state,
@@ -476,23 +480,27 @@ logtb_define_trantable_log_latch (THREAD_ENTRY * thread_p, int num_expected_tran
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, LOG_SYSTEM_TRAN_INDEX);
 
-  log_Gl.mvcc_table.initialize ();
+  /* Reusing the boot-time pool: skip re-initialization. */
+  if (!logtb_Reuse_boot_managers)
+    {
+      log_Gl.mvcc_table.initialize ();
 
-  /* Initialize the lock manager and the page buffer pool */
-  error_code = lock_initialize ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = pgbuf_initialize ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
-    }
-  error_code = file_manager_init ();
-  if (error_code != NO_ERROR)
-    {
-      goto error;
+      /* Initialize the lock manager and the page buffer pool */
+      error_code = lock_initialize ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      error_code = pgbuf_initialize ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
+      error_code = file_manager_init ();
+      if (error_code != NO_ERROR)
+	{
+	  goto error;
+	}
     }
   return error_code;
 
@@ -555,6 +563,7 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   tdes->client_id = -1;
   tdes->client.set_system_internal ();
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->block_global_oldest_active_until_commit = false;
 
@@ -575,10 +584,22 @@ logtb_undefine_trantable (THREAD_ENTRY * thread_p)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int i;
 
-  log_Gl.mvcc_table.finalize ();
-  lock_finalize ();
-  pgbuf_finalize ();
-  file_manager_final ();
+  /* Reusing the boot-time pool: keep the managers alive; only free the array below. */
+  if (!logtb_Reuse_boot_managers)
+    {
+      log_Gl.mvcc_table.finalize ();
+      lock_finalize ();
+      pgbuf_finalize ();
+      file_manager_final ();
+    }
+#if !defined (NDEBUG)
+  else
+    {
+      /* Carried into recovery while pristine: pre-recovery logs nothing (WAL),
+       * so no lock is held (hence no MVCCID assigned). */
+      assert (lock_get_number_object_locks () == 0);
+    }
+#endif /* !NDEBUG */
 
   if (log_Gl.trantable.area != NULL)
     {
@@ -1146,7 +1167,6 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
   tdes = LOG_FIND_TDES (tran_index);
   if (tran_index != LOG_SYSTEM_TRAN_INDEX && tdes != NULL)
     {
-      tdes->mvccinfo.reset ();
       TR_TABLE_CS_ENTER (thread_p);
 
       /*
@@ -1162,11 +1182,18 @@ logtb_release_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 
       if (LOG_ISTRAN_2PC_PREPARE (tdes))
 	{
+	  /* Do NOT reset mvccinfo here: the MVCC ID must survive until the 2PC daemon
+	   * attaches and commits this transaction.  Resetting it now would make
+	   * logtb_complete_mvcc() see MVCCID_NULL and skip updating the MVCC bitsets,
+	   * leaving all rows inserted by this transaction invisible to concurrent readers
+	   * even after the daemon successfully commits (data only becomes visible after
+	   * a server restart when log recovery rebuilds the MVCC state from the WAL). */
 	  tdes->isloose_end = true;
 	  log_Gl.trantable.num_prepared_loose_end_indices++;
 	}
       else
 	{
+	  tdes->mvccinfo.reset ();
 	  if (LOG_ISTRAN_2PC_INFORMING_PARTICIPANTS (tdes))
 	    {
 	      tdes->isloose_end = true;
@@ -1237,10 +1264,9 @@ logtb_free_tran_index (THREAD_ENTRY * thread_p, int tran_index)
 
   if (tran_index != LOG_SYSTEM_TRAN_INDEX)
     {
+      TR_TABLE_CS_ENTER (thread_p);
       tdes->trid = NULL_TRANID;
       tdes->client_id = -1;
-
-      TR_TABLE_CS_ENTER (thread_p);
       logtb_decrement_number_of_assigned_tran_indices ();
       if (log_Gl.trantable.hint_free_index > tran_index)
 	{
@@ -1566,6 +1592,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
   XASL_ID_SET_NULL (&tdes->xasl_id);
@@ -1656,6 +1683,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->suppress_replication = 0;
   tdes->lob_locator_root.init ();
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
   XASL_ID_SET_NULL (&tdes->xasl_id);
@@ -2523,6 +2551,9 @@ logtb_find_state (int tran_index)
  *               (in milliseconds)
  *
  * Note:Reset the default waiting time for the current transaction index(client).
+ *      Every thread working for the transaction reads it, and so do other transactions (deadlock victim choice,
+ *      lock dumps). A temporary waiting time that only the calling thread needs, in code that may run while other
+ *      threads of the same transaction run, belongs to logtb_set_thread_wait_msecs () instead.
  */
 int
 xlogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs)
@@ -2530,6 +2561,9 @@ xlogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int old_wait_msecs;		/* The old waiting time to be returned */
   int tran_index;
+
+  /* the requests of a thread with an override read the override first and would not see this value */
+  assert (thread_p == NULL || thread_p->wait_msecs_override == LK_WAIT_NOT_OVERRIDDEN);
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -2567,6 +2601,72 @@ logtb_find_wait_msecs (int tran_index)
       assert (false);
       return 0;
     }
+}
+
+/*
+ * logtb_set_thread_wait_msecs - override the waiting time of the current thread only
+ *
+ * return: the previous override of the thread; pass it back to restore it
+ *
+ *   thread_p(in): thread entry
+ *   wait_msecs(in): waiting time for the locks and page latches this thread requests until the override is
+ *                   restored, or LK_WAIT_NOT_OVERRIDDEN to wait as the transaction does
+ *
+ * Note: tdes->wait_msecs is read by every thread working for the transaction: parallel query, sort and index
+ *       build workers copy their parent's tran_index, and the daemons of the system transaction share one tdes.
+ *       A temporary value saved and restored there by one thread is seen by the others while it is set, and two
+ *       overlapping save/restore pairs can leave one thread's temporary value on the transaction after both are
+ *       done, where it stays until the client resets it or disconnects. Code that may run while other threads of
+ *       its transaction run sets its temporary waiting time here instead.
+ *       A waiting time other transactions must see stays in tdes->wait_msecs (xlogtb_reset_wait_msecs): a
+ *       statement's LOCK_TIMEOUT hint, which its parallel workers read as well, and the waits of lock requests
+ *       that the deadlock detector and lock dumps look at. The detector reading tdes->wait_msecs alone is
+ *       enough: the overrides wrap page fixes, except the one log_rollback () sets after its callers marked the
+ *       transaction TRAN_UNACTIVE_ABORTED, and the detector never picks an inactive transaction as a victim.
+ *       Workers do not inherit an override: each one is meant for the requests of the thread that set it, and
+ *       none starts a worker before restoring it (log_rollback () undoes on its own thread). A task restores its
+ *       override before it ends; entry_manager::recycle_context () asserts that.
+ */
+int
+logtb_set_thread_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs)
+{
+  int old_wait_msecs;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  old_wait_msecs = thread_p->wait_msecs_override;
+  thread_p->wait_msecs_override = wait_msecs;
+
+  return old_wait_msecs;
+}
+
+/*
+ * logtb_find_current_wait_msecs - find the waiting time of the current thread
+ *
+ * return: the override of the thread (see logtb_set_thread_wait_msecs), else the waiting time of its transaction
+ *
+ *   thread_p(in): thread entry
+ *
+ * Note: The page buffer applies the same rule through its inline pgbuf_find_current_wait_msecs (); change both
+ *       together.
+ */
+int
+logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p->wait_msecs_override != LK_WAIT_NOT_OVERRIDDEN)
+    {
+      return thread_p->wait_msecs_override;
+    }
+
+  return logtb_find_wait_msecs (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 }
 
 /*
@@ -2719,6 +2819,74 @@ xlogtb_set_interrupt (THREAD_ENTRY * thread_p, int set)
   logtb_set_tran_index_interrupt (thread_p, LOG_FIND_THREAD_TRAN_INDEX (thread_p), set);
 }
 
+#if defined (SERVER_MODE)
+/*
+ * logtb_interrupt_session_sleeper_mapfunc () - For a worker thread belonging to the given session, set its
+ *   transaction interrupt flag. If the worker is currently suspended inside SLEEP (), wake it as well.
+ *   Workers that do not belong to the given session are ignored.
+ */
+static void
+logtb_interrupt_session_sleeper_mapfunc (THREAD_ENTRY & thread_ref, bool & stop_mapper,
+					 THREAD_ENTRY * caller_thread, SESSION_ID session_id)
+{
+  (void) stop_mapper;		// suppress unused parameter warning
+
+  if (caller_thread == &thread_ref || thread_ref.type != TT_WORKER)
+    {
+      // not what we need
+      return;
+    }
+
+  bool match = false;
+  (void) pthread_mutex_lock (&thread_ref.tran_index_lock);
+
+  if (!thread_ref.is_on_current_thread ()
+      && thread_ref.m_status != cubthread::entry::status::TS_DEAD
+      && thread_ref.m_status != cubthread::entry::status::TS_FREE
+      && thread_ref.m_status != cubthread::entry::status::TS_CHECK
+      && thread_ref.conn_entry != NULL && thread_ref.conn_entry->session_id == session_id)
+    {
+      match = true;
+      if (thread_ref.tran_index != NULL_TRAN_INDEX && log_Gl.trantable.area != NULL)
+	{
+	  LOG_TDES *tdes = LOG_FIND_TDES (thread_ref.tran_index);
+	  if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->interrupt != (int) true)
+	    {
+	      tdes->interrupt = (int) true;
+#if defined (HAVE_ATOMIC_BUILTINS)
+	      ATOMIC_INC_32 (&log_Gl.trantable.num_interrupts, 1);
+#else
+	      log_Gl.trantable.num_interrupts++;
+#endif
+	    }
+	}
+    }
+
+  pthread_mutex_unlock (&thread_ref.tran_index_lock);
+
+  if (!match)
+    {
+      return;
+    }
+
+  thread_check_suspend_reason_and_wakeup (&thread_ref, THREAD_RESUME_DUE_TO_INTERRUPT, THREAD_SLEEP_FUNC_SUSPENDED);
+}
+
+/*
+ * logtb_interrupt_session_sleepers () - wake every worker of the given DB session suspended inside SLEEP()
+ *   (caller_thread excluded).
+ */
+static void
+logtb_interrupt_session_sleepers (THREAD_ENTRY * caller_thread, SESSION_ID session_id)
+{
+  if (session_id == DB_EMPTY_SESSION)
+    {
+      return;
+    }
+  thread_get_manager ()->map_entries (logtb_interrupt_session_sleeper_mapfunc, caller_thread, session_id);
+}
+#endif /* SERVER_MODE */
+
 /*
  * logtb_set_tran_index_interrupt - indicate interrupt to a future caller for an
  *                               specific transaction index
@@ -2805,6 +2973,25 @@ logtb_set_tran_index_interrupt (THREAD_ENTRY * thread_p, int tran_index, bool se
 		      session->set_interrupt (ER_INTERRUPTED);
 		    }
 		}
+
+#if defined (SERVER_MODE)
+	      /* Wake workers suspended inside the SLEEP() built-in so this cancel reaches them. */
+	      {
+		THREAD_ENTRY *tran_worker = logtb_find_thread_by_tran_index_except_me (tran_index);
+		if (tran_worker != NULL)
+		  {
+		    /* single regular SQL: wake this transaction's own suspended worker */
+		    thread_check_suspend_reason_and_wakeup (tran_worker, THREAD_RESUME_DUE_TO_INTERRUPT,
+							    THREAD_SLEEP_FUNC_SUSPENDED);
+		    if (tran_worker->conn_entry != NULL)
+		      {
+			/* parallel sibling workers, or nested SLEEP() in a PL/CSQL procedure:
+			 * wake all suspended workers of the same session */
+			logtb_interrupt_session_sleepers (thread_p, tran_worker->conn_entry->session_id);
+		      }
+		  }
+	      }
+#endif /* SERVER_MODE */
 	    }
 
 	  return true;
@@ -3928,6 +4115,79 @@ logtb_find_current_mvccid (THREAD_ENTRY * thread_p)
   return id;
 }
 
+#if defined (SERVER_MODE)
+/*
+ * logtb_acquire_mvccid_self_lock () - Acquire the transaction X self-lock on a specific MVCCID and record it as the
+ *				       transaction's self-locked MVCCID.
+ *
+ * return: NO_ERROR, or an error code if the X self-lock could not be granted.
+ *
+ *   thread_p(in): thread entry
+ *   curr_mvcc_info(in/out): current MVCC info; self_locked_mvccid is set on success
+ *   mvccid(in): the (NORMAL) MVCCID to self-lock
+ *
+ * Note: shared by the acquire-at-assignment choke points and logtb_ensure_mvccid_self_lock; takes the MVCCID
+ *	 explicitly so the choke points do not recurse through logtb_get_current_mvccid. Idempotent via the
+ *	 self_locked_mvccid hint. A fresh MVCCID is unknown to any other transaction, so the X never waits.
+ *	 A no-op during boot/recovery and for non-worker (system/vacuum) transactions -- the guard is here so
+ *	 both entry points inherit it.
+ */
+static int
+logtb_acquire_mvccid_self_lock (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvccid)
+{
+  int error_code = NO_ERROR;
+
+  assert (curr_mvcc_info != NULL);
+  assert (MVCCID_IS_NORMAL (mvccid));
+
+  if (curr_mvcc_info->self_locked_mvccid == mvccid)
+    {
+      /* already self-locked in this (sub-)transaction */
+      return NO_ERROR;
+    }
+
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  if (!BO_IS_SERVER_RESTARTED () || tdes == NULL || !tdes->is_active_worker_transaction ())
+    {
+      /* No self-lock during boot/recovery or for system/vacuum transactions: they never run lock_unlock_all, so
+       * the entry would leak and block later waiters keyed on this MVCCID; and no concurrent waiter exists there
+       * to serialize with. Shared by both entry points (the choke-point wrapper and the heap-site ensure). */
+      return NO_ERROR;
+    }
+
+  if (lock_transaction_mvccid (thread_p, mvccid, X_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      return error_code;
+    }
+
+  curr_mvcc_info->self_locked_mvccid = mvccid;
+  return NO_ERROR;
+}
+
+/*
+ * logtb_self_lock_assigned_mvccid () - Best-effort self-lock of a just-assigned MVCCID -- the choke point every
+ *					INSID producer passes, making "an observable INSID implies a held X
+ *					self-lock" hold by construction.
+ *
+ *   thread_p(in): thread entry
+ *   curr_mvcc_info(in/out): current MVCC info
+ *   mvccid(in): the MVCCID that was just assigned
+ *
+ * Note: best-effort variant for the choke points, which cannot return an error: a failure is logged and left
+ *	 for the heap-site logtb_ensure_mvccid_self_lock to surface before the stamp is observable.
+ */
+static void
+logtb_self_lock_assigned_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_mvcc_info, MVCCID mvccid)
+{
+  if (logtb_acquire_mvccid_self_lock (thread_p, curr_mvcc_info, mvccid) != NO_ERROR)
+    {
+      /* Unconditional (_er_log_debug): a silent failure here would make a later waiter-side breach undiagnosable. */
+      _er_log_debug (ARG_FILE_LINE, "could not self-lock assigned MVCCID %llu\n", (unsigned long long) mvccid);
+    }
+}
+#endif /* SERVER_MODE */
+
 /*
  * logtb_get_current_mvccid - return current transaction MVCC id. Assign
  *			      a new ID if not previously set.
@@ -3951,6 +4211,9 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
   if (MVCCID_IS_VALID (curr_mvcc_info->id) == false)
     {
       curr_mvcc_info->id = log_Gl.mvcc_table.get_new_mvccid ();
+#if defined (SERVER_MODE)
+      logtb_self_lock_assigned_mvccid (thread_p, curr_mvcc_info, curr_mvcc_info->id);
+#endif /* SERVER_MODE */
     }
 
   if (!tdes->mvccinfo.sub_ids.empty ())
@@ -3959,6 +4222,38 @@ logtb_get_current_mvccid (THREAD_ENTRY * thread_p)
     }
 
   return curr_mvcc_info->id;
+}
+
+/*
+ * logtb_ensure_mvccid_self_lock () - Acquire the transaction self-lock on the current MVCCID, at most once per
+ *				      (sub-)transaction.
+ *
+ * return: NO_ERROR, or an error code if the X self-lock could not be granted.
+ *
+ * Note: the error-propagating layer over the choke-point acquisition (logtb_self_lock_assigned_mvccid): a fast
+ *	 no-op via the self_locked_mvccid hint when the choke point succeeded, otherwise re-tries and returns the
+ *	 error so the caller can fail the statement before the INSID stamp becomes observable.
+ */
+int
+logtb_ensure_mvccid_self_lock (THREAD_ENTRY * thread_p)
+{
+#if defined (SERVER_MODE)
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+
+  if (!BO_IS_SERVER_RESTARTED () || tdes == NULL || !tdes->is_active_worker_transaction ())
+    {
+      /* Checked before touching mvccinfo: logtb_get_current_mvccid would dereference a NULL tdes and lazily
+       * assign an MVCCID -- neither may happen for boot/recovery or non-worker contexts. */
+      return NO_ERROR;
+    }
+
+  MVCC_INFO *curr_mvcc_info = &tdes->mvccinfo;
+  MVCCID my_mvccid = logtb_get_current_mvccid (thread_p);
+
+  return logtb_acquire_mvccid_self_lock (thread_p, curr_mvcc_info, my_mvccid);
+#else /* SERVER_MODE */
+  return NO_ERROR;
+#endif /* SERVER_MODE */
 }
 
 /*
@@ -4242,9 +4537,9 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 {
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
-  LOG_LSA *min_lsa = NULL;	/* The smallest lsa value */
+  LOG_LSA smallest_lsa;		/* The smallest lsa value */
 
-  LSA_SET_NULL (lsa);
+  LSA_SET_NULL (&smallest_lsa);
 
   TR_TABLE_CS_ENTER_READ_MODE (thread_p);
 
@@ -4255,19 +4550,32 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 	  tdes = log_Gl.trantable.all_tdes[i];
 
 	  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->head_lsa)
-	      && (min_lsa == NULL || LSA_LT (&tdes->head_lsa, min_lsa)))
+	      && (LSA_ISNULL (&smallest_lsa) || LSA_LT (&tdes->head_lsa, &smallest_lsa)))
 	    {
-	      min_lsa = &tdes->head_lsa;
+	      LSA_COPY (&smallest_lsa, &tdes->head_lsa);
 	    }
 	}
     }
 
-  if (min_lsa != NULL)
-    {
-      LSA_COPY (lsa, min_lsa);
-    }
-
   TR_TABLE_CS_EXIT (thread_p);
+
+  /* Consider system worker transactions (e.g. online index loaders) as well.
+   * Recovery undo processes them too (see logtb_rv_read_only_map_undo_tdes),
+   * so the smallest LSA that decides log archive retention must not skip
+   * their in-flight log.
+   */
+  // *INDENT-OFF*
+  log_system_tdes::map_all_tdes ([&smallest_lsa] (log_tdes & sys_tdes)
+    {
+      if (!LSA_ISNULL (&sys_tdes.head_lsa)
+	  && (LSA_ISNULL (&smallest_lsa) || LSA_LT (&sys_tdes.head_lsa, &smallest_lsa)))
+	{
+	  LSA_COPY (&smallest_lsa, &sys_tdes.head_lsa);
+	}
+    });
+  // *INDENT-ON*
+
+  LSA_COPY (lsa, &smallest_lsa);
 }
 
 /*
@@ -4561,9 +4869,18 @@ logtb_get_new_subtransaction_mvccid (THREAD_ENTRY * thread_p, MVCC_INFO * curr_m
   else
     {
       mvcc_table->get_two_new_mvccid (curr_mvcc_info->id, mvcc_subid);
+#if defined (SERVER_MODE)
+      /* The main id is assigned here too, and logtb_get_current_mvccid's lazy branch will never re-fire for it. */
+      logtb_self_lock_assigned_mvccid (thread_p, curr_mvcc_info, curr_mvcc_info->id);
+#endif /* SERVER_MODE */
     }
 
   logtb_assign_subtransaction_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
+
+#if defined (SERVER_MODE)
+  /* selupd/INCR stamps rows with the sub-MVCCID -- same choke-point self-lock as the main id. */
+  logtb_self_lock_assigned_mvccid (thread_p, curr_mvcc_info, mvcc_subid);
+#endif /* SERVER_MODE */
 }
 
 /*
@@ -4602,6 +4919,15 @@ logtb_complete_sub_mvcc (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   mvcc_sub_id = curr_mvcc_info->sub_ids.back ();
 
   mvcc_table->complete_sub_mvcc (mvcc_sub_id);
+
+#if defined (SERVER_MODE)
+  /* Release the inserter self-lock keyed by mvcc_sub_id (see heap_get_insert_location_with_lock) to wake
+   * unique/FK checkers at sub-transaction end, not main-transaction end -- holding it to main end was the
+   * original hang. Runs for both commit and abort (the selupd producer funnels both here) and fully releases
+   * regardless of acquire count, since a multi-row INCR re-takes the same key once per row. */
+  lock_unlock_transaction_mvccid (thread_p, mvcc_sub_id, X_LOCK);
+#endif /* SERVER_MODE */
+
   curr_mvcc_info->sub_ids.pop_back ();
 
   if (tdes->mvccinfo.snapshot.valid)
@@ -5657,7 +5983,7 @@ tran_abort_reason_to_string (TRAN_ABORT_REASON val)
  *
  * Note: Do not check system classes that are not part of catalog for rr isolation level error. Isolation consistency
  *	 is secured using locks anyway. These classes are in a way related to table schema's and can be accessed
- *	 before the actual classes. db_user instances are fetched to check authorizations, while db_root and _db_trigger
+ *	 before the actual classes. _db_user instances are fetched to check authorizations, while db_root and _db_trigger
  *	 are accessed when triggers are modified.
  *	 The RR isolation has to check if an instance that we want to lock was modified by concurrent transaction.
  *	 If the instance was modified, then this means we have an isolation conflict. The check must verify last
@@ -6285,6 +6611,7 @@ log_tdes::copy_to (LOG_TDES & dest) const
   REPLACE_COPY_2_DEST (dest, suppress_replication);
   REPLACE_COPY_2_DEST (dest, lob_locator_root);
   REPLACE_COPY_2_DEST (dest, query_timeout);
+  REPLACE_COPY_2_DEST (dest, last_query_deadline);
   REPLACE_COPY_2_DEST (dest, query_start_time);
   REPLACE_COPY_2_DEST (dest, tran_start_time);
   REPLACE_COPY_2_DEST (dest, xasl_id);

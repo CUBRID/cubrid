@@ -56,8 +56,6 @@ namespace cubconn
     m_stats (stats),
     m_buf (capacity)
   {
-    m_result.reserve (8);
-    this->reset ();
   }
 
   receiver::receiver () :
@@ -76,8 +74,21 @@ namespace cubconn
 #endif
   }
 
+  bool receiver::prepare ()
+  {
+    if (!m_buf.prepare ())
+      {
+	return false;
+      }
+
+    m_result.reserve (8);
+    this->reset ();
+    return true;
+  }
+
   void receiver::reset ()
   {
+    std::lock_guard<std::mutex> lock (m_mutex);
     cubbase::span<std::byte> buffer;
 
     m_state = state::Recv;
@@ -86,6 +97,10 @@ namespace cubconn
     m_size = 0;
 
     m_result.clear ();
+    for (std::byte *ptr : m_allocated)
+      {
+	delete[] ptr;
+      }
     m_allocated.clear ();
 
     /* if m_buf is already in use, it may be corrupted by subsequent reception. */
@@ -429,6 +444,7 @@ namespace cubconn
 
   result receiver::drain (int fd, size_t limit)
   {
+    std::lock_guard<std::mutex> lock (m_mutex);
     result status;
     size_t consumption;
 
@@ -490,7 +506,27 @@ namespace cubconn
     return result::Error;
   }
 
+  bool receiver::try_release (std::byte *ptr)
+  {
+    std::unique_lock<std::mutex> lock (m_mutex, std::try_to_lock);
+
+    if (!lock.owns_lock ())
+      {
+	return false;
+      }
+
+    this->release_unlocked (ptr);
+    return true;
+  }
+
   void receiver::release (std::byte *ptr)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    this->release_unlocked (ptr);
+  }
+
+  void receiver::release_unlocked (std::byte *ptr)
   {
     cubbase::span<std::byte> source;
     int size;
@@ -523,4 +559,3 @@ namespace cubconn
     return &m_result;
   }
 }
-

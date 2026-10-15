@@ -35,6 +35,7 @@ import com.cubrid.jsp.data.DBType;
 import com.cubrid.jsp.exception.TypeMismatchException;
 import com.cubrid.plcsql.predefined.sp.SpLib;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Timestamp;
 
 public class NumericValue extends Value {
@@ -44,6 +45,17 @@ public class NumericValue extends Value {
     }
 
     private BigDecimal value;
+    public static final int DB_MAX_FIXED_NUMERIC_PRECISION = 38;
+    public static final int DB_MIN_FIXED_NUMERIC_SCALE = -84;
+    public static final int DB_MAX_FIXED_NUMERIC_SCALE = 127;
+
+    public static final int DB_MAX_NUMERIC_PRECISION = 40;
+    public static final int DB_MIN_NUMERIC_PRECISION = 1;
+    public static final int DB_MAX_NUMERIC_SCALE = 252;
+    public static final int DB_MIN_NUMERIC_SCALE = -214;
+
+    public static final int DB_DEFAULT_NUMERIC_PRECISION = DB_MAX_NUMERIC_PRECISION;
+    public static final int DB_DEFAULT_NUMERIC_SCALE = 0;
 
     public NumericValue(String value) {
         super();
@@ -53,11 +65,74 @@ public class NumericValue extends Value {
 
     public NumericValue(BigDecimal value) throws TypeMismatchException {
         super();
-        if (value != null && value.precision() > 38) {
-            throw new TypeMismatchException("precision exceeds 38: " + value);
+        if (value != null) {
+            value = adjustPrecisionScale(value);
+            if (value == null) {
+                throw new TypeMismatchException("Data overflow on data type numeric");
+            }
         }
         this.value = value;
         this.dbType = DBType.DB_NUMERIC;
+    }
+
+    public static class PrecisionScale {
+        public final int precision;
+        public final int scale;
+
+        public PrecisionScale(int precision, int scale) {
+            this.precision = precision;
+            this.scale = scale;
+        }
+    }
+
+    public static PrecisionScale calculatePrecisionScale(String valStr) {
+        if (valStr == null) {
+            assert (false);
+            return null;
+        }
+
+        BigDecimal bd = new BigDecimal(valStr);
+        int precision = bd.precision();
+        int scale = bd.scale();
+
+        if (precision > DB_MAX_NUMERIC_PRECISION) {
+            scale -= (precision - DB_MAX_NUMERIC_PRECISION);
+            precision = DB_MAX_NUMERIC_PRECISION;
+        }
+
+        return new PrecisionScale(precision, scale);
+    }
+
+    public static BigDecimal adjustPrecisionScale(BigDecimal bd) {
+        if (bd == null) {
+            assert (false);
+            return null;
+        }
+
+        int precision = bd.precision();
+        int scale = bd.scale();
+
+        while (precision > DB_MAX_NUMERIC_PRECISION || scale > DB_MAX_NUMERIC_SCALE) {
+
+            if (scale > DB_MAX_NUMERIC_SCALE) {
+                bd = bd.setScale(DB_MAX_NUMERIC_SCALE, RoundingMode.HALF_UP);
+            } else {
+                scale -= (precision - DB_MAX_NUMERIC_PRECISION);
+                if (scale < DB_MIN_NUMERIC_SCALE) {
+                    break;
+                }
+                bd = bd.setScale(scale, RoundingMode.HALF_UP);
+            }
+
+            precision = bd.precision();
+            scale = bd.scale();
+        }
+
+        if (scale < DB_MIN_NUMERIC_SCALE) {
+            return null; // overflow
+        }
+
+        return bd;
     }
 
     @Override

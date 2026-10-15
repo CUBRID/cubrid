@@ -56,33 +56,12 @@ namespace parallel_query
       inline interrupt() : m_code (interrupt_code::NO_INTERRUPT) {}
   };
 
-  class atomic_instnum
-  {
-    public:
-
-      std::size_t m_destination_tuple_cnt;
-      std::atomic<std::size_t> m_current_tuple_cnt;
-      bool m_is_instnum_set;
-
-      inline atomic_instnum() : m_destination_tuple_cnt (0), m_current_tuple_cnt (0), m_is_instnum_set (false) {}
-      inline atomic_instnum (std::size_t destination_tuple_cnt) : m_destination_tuple_cnt (destination_tuple_cnt),
-	m_current_tuple_cnt (0), m_is_instnum_set (true) {}
-
-      inline void set_destination_tuple_cnt (std::size_t destination_tuple_cnt) noexcept
-      {
-	m_destination_tuple_cnt = destination_tuple_cnt;
-	m_is_instnum_set = true;
-      }
-
-      inline bool is_instnum_satisfies_after_1tuple_insert() noexcept
-      {
-	return m_is_instnum_set?m_current_tuple_cnt.fetch_add (1) >= m_destination_tuple_cnt:false;
-      }
-  };
   class err_messages_with_lock
   {
       using er_message = cuberr::er_message;
     public:
+      // er_message stores logging as `const bool&`; bind to static storage to avoid dangling temporary.
+      static constexpr bool s_no_logging = false;
       std::mutex m_mutex;
       std::vector<er_message *> m_error_messages;
       err_messages_with_lock()
@@ -101,7 +80,7 @@ namespace parallel_query
       {
 	int err_id = 0;
 	std::lock_guard<std::mutex> lock (m_mutex);
-	m_error_messages.push_back (new cuberr::er_message (false));
+	m_error_messages.push_back (new cuberr::er_message (s_no_logging));
 	err_id = cuberr::context::get_thread_local_context ().get_current_error_level ().err_id;
 	m_error_messages.back()->swap (cuberr::context::get_thread_local_context ().get_current_error_level ());
 	return err_id;

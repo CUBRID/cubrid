@@ -106,7 +106,6 @@ shard_shm_set_shm_as (T_SHM_APPL_SERVER * shm_as_p, T_BROKER_INFO * br_info_p)
   shm_as_p->max_string_length = br_info_p->max_string_length;
   shm_as_p->stripped_column_name = br_info_p->stripped_column_name;
   shm_as_p->keep_connection = br_info_p->keep_connection;
-  shm_as_p->cache_user_info = br_info_p->cache_user_info;
   shm_as_p->statement_pooling = br_info_p->statement_pooling;
   shm_as_p->access_mode = br_info_p->access_mode;
   shm_as_p->cci_pconnect = br_info_p->cci_pconnect;
@@ -733,16 +732,8 @@ shard_shm_set_as_client_info_with_db_param (T_PROXY_INFO * proxy_info_p, T_SHM_A
     }
 
   memcpy (&as_info_p->cas_clt_ip[0], &client_info_p->client_ip, sizeof (as_info_p->cas_clt_ip));
-  if (client_info_p->driver_info)
-    {
-      as_info_p->clt_version = CAS_MAKE_PROTO_VER (client_info_p->driver_info);
-      memcpy (as_info_p->driver_info, client_info_p->driver_info, SRV_CON_CLIENT_INFO_SIZE);
-    }
-  else
-    {
-      as_info_p->clt_version = 0;
-      memset (as_info_p->driver_info, 0, SRV_CON_CLIENT_INFO_SIZE);
-    }
+  as_info_p->clt_version = CAS_MAKE_PROTO_VER (client_info_p->driver_info);
+  memcpy (as_info_p->driver_info, client_info_p->driver_info, SRV_CON_CLIENT_INFO_SIZE);
   memcpy (as_info_p->driver_version, client_info_p->driver_version, SRV_CON_VER_STR_MAX_SIZE);
 
   as_info_p->isolation_level = client_info_p->isolation_level;

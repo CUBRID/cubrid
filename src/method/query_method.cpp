@@ -32,7 +32,7 @@
 #include "method_struct_invoke.hpp"
 
 #if !defined (SERVER_MODE)
-#include "authenticate.h"	/* AU_ENABLE, AU_DISABLE */
+#include "authenticate.h"	/* AU_RESTORE, AU_SAVE_AND_DISABLE */
 #include "dbi.h"		/* db_enable_modification(), db_disable_modification() */
 #include "object_accessor.h"	/* obj_ */
 #include "object_primitive.h"	/* pr_is_set_type() */
@@ -125,8 +125,9 @@ method_dispatch (unsigned int rc, char *methoddata, int methoddata_size)
 
   if (error == NO_ERROR)
     {
-      xs_set_conn_info (depth - 1, rc);
+      xs_set_method_eid (depth - 1, rc);
       error = method_dispatch_internal (unpacker);
+      xs_set_method_eid (depth - 1, 0);
     }
 
   tran_end_libcas_function ();
@@ -147,8 +148,9 @@ method_error (unsigned int rc, int error_id)
   int error = NO_ERROR;
   tran_begin_libcas_function();
   int depth = tran_get_libcas_depth ();
-  xs_set_conn_info (depth - 1, rc);
+  xs_set_method_eid (depth - 1, rc);
   error = xs_send_queue (METHOD_ERROR, error_id);
+  xs_set_method_eid (depth - 1, 0);
   tran_end_libcas_function();
   return error;
 }
@@ -376,11 +378,11 @@ method_invoke_builtin_internal (DB_VALUE & result, std::vector<DB_VALUE> &args, 
     {
       /* methods must run with authorization turned on and database modifications turned off. */
       turn_on_auth = 0;
-      AU_ENABLE (turn_on_auth);
+      AU_RESTORE (turn_on_auth);
       db_disable_modification ();
       error = obj_send_array (db_get_object (arg_val_p[0]), sig.name, &result, &arg_val_p[1]);
       db_enable_modification ();
-      AU_DISABLE (turn_on_auth);
+      AU_SAVE_AND_DISABLE (turn_on_auth);
     }
 
   /* error handling */

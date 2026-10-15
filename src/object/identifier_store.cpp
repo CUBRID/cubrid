@@ -113,7 +113,8 @@ namespace cubbase
 	    int size = str.size ();
 	    for (int i = 0; i < size; i++)
 	      {
-		if ((i == 0 && !char_isalpha (str[0])) || (i >= 1 && (!char_isalnum (str[i]) && str[i] != '_')))
+		if ((i == 0 && !char_isalpha (str[0]))
+		    || (i >= 1 && (!char_isalnum (str[i]) && str[i] != '_' && str[i] != '.')))
 		  {
 		    return false;
 		  }
