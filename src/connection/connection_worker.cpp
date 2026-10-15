@@ -952,23 +952,7 @@ namespace cubconn::connection
 
   /*
    * worker::must_defer_close_for_eager_receiver () - check whether the close must wait
-   *   for an eager receiver (a transaction thread waiting on this connection's socket).
-   *   The eager receiver carries no transaction index,
-   *   so outside shutdown only the working task count can see it.
-   *
-   *   During shutdown that count cannot be waited on: stop_execution () retires
-   *   queued tasks instead of running them, so their end_working_task () never comes.
-   *   The close waits on m_eager_running instead, which a claim holds until
-   *   the requests it received have run, so the close neither retires the context
-   *   under a receive nor releases the client's transaction before them.
-   *   The close sets CONN_CLOSING before it reads the count under cmutex,
-   *   and eager_claim () checks CONN_OPEN and raises the count under cmutex,
-   *   so the count cannot rise after the close has read it.
-   *   m_recv_busy is not read: a close that handle_reception () starts
-   *   runs under this worker's own claim and would defer on itself.
-   *
-   *   eager_drain () reads m_conn->fd without cmutex on the strength of this
-   *   deferral, so whoever changes this gate changes that read too.
+   *   for an eager receiver on this connection's socket.
    */
   bool worker::must_defer_close_for_eager_receiver (context *ctx)
   {
@@ -981,12 +965,19 @@ namespace cubconn::connection
       }
     if (m_status != status::TERMINATING && !css_is_shutdowning_server ())
       {
+	/* the eager receiver carries no transaction index; it runs inside a working task */
 	return ctx->m_conn->has_working_task ();
       }
 
+    /* During shutdown queued tasks are retired without end_working_task (), so the close waits
+     * on m_eager_running instead. eager_claim () checks CONN_OPEN under the same cmutex,
+     * so the count cannot rise after this read. m_recv_busy is not read:
+     * a close that handle_reception () starts would wait on this worker's own claim. */
     r = rmutex_lock (m_entry, &ctx->m_conn->cmutex);
     assert (r == NO_ERROR);
+
     busy = ctx->m_recv.m_eager_running.load (std::memory_order_acquire) > 0;
+
     r = rmutex_unlock (m_entry, &ctx->m_conn->cmutex);
     assert (r == NO_ERROR);
 
