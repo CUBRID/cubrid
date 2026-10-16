@@ -841,7 +841,7 @@ log_recovery (THREAD_ENTRY * thread_p, int ismedia_crash, time_t * stopat)
 
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_LOG_RECOVERY_PHASE_FINISHED, 1, "ANALYSIS");
 
-  LSA_COPY (&log_Gl.chkpt_redo_lsa, &start_redolsa);
+  log_Gl.chkpt_redo_lsa.store (start_redolsa);
 
   LOG_SET_CURRENT_TRAN_INDEX (thread_p, rcv_tran_index);
   if (logpb_fetch_start_append_page (thread_p) != NO_ERROR)
@@ -2557,8 +2557,9 @@ log_is_page_of_record_broken (THREAD_ENTRY * thread_p, const LOG_LSA * log_lsa,
   if (!LSA_ISNULL (&fwd_log_lsa))
     {
       /* log_Gl.hdr.eof_lsa can have a NULL_LSA value if recovery is started without an active log volume. Its value will be recovered during the log_recovery_analysis process. */
-      if (LSA_GE (log_lsa, &fwd_log_lsa)
-	  || (!LSA_ISNULL (&log_Gl.hdr.eof_lsa) && LSA_GT (&fwd_log_lsa, &log_Gl.hdr.eof_lsa)))
+      const LOG_LSA eof_lsa = log_Gl.hdr.eof_lsa;
+
+      if (LSA_GE (log_lsa, &fwd_log_lsa) || (!LSA_ISNULL (&eof_lsa) && LSA_GT (&fwd_log_lsa, &eof_lsa)))
 	{
 	  // check fwd_log_lsa value if it is corrupted or not
 	  is_log_page_broken = true;

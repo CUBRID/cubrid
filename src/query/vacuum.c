@@ -5664,7 +5664,7 @@ vacuum_recover_lost_block_data (THREAD_ENTRY * thread_p)
 	  LSA_COPY (&log_lsa, &vacuum_info.prev_mvcc_op_log_lsa);
 	}
 
-      if (data.blockid == vacuum_get_log_blockid (log_Gl.prior_info.prior_lsa.pageid))
+      if (data.blockid == vacuum_get_log_blockid (log_Gl.prior_info.prior_lsa.load ().pageid))
 	{
 	  log_Gl.hdr.oldest_visible_mvccid = data.oldest_visible_mvccid;
 	  log_Gl.hdr.newest_block_mvccid = data.newest_mvccid;

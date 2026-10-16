@@ -74,7 +74,7 @@ typedef struct log_append_info LOG_APPEND_INFO;
 struct log_append_info
 {
   int vdes;			/* Volume descriptor of active log */
-  std::atomic<LOG_LSA> nxio_lsa;  /* Lowest log sequence number which has not been written to disk (for WAL). */
+  LOG_LSA_ATOMIC nxio_lsa;	/* Lowest log sequence number which has not been written to disk (for WAL). */
 
   /* Record-aligned watermark: everything strictly below it has left the prior list, so logpb_fetch_page ()
    * reaches it. Exclusive, because the drain publishes append_lsa after copying a record and that is where
@@ -83,9 +83,8 @@ struct log_append_info
    * Published (release) by the drain and by LOG_RESET_APPEND_LSA (), read (acquire) by readers running
    * ahead of the flush. Invariant copied_lsa <= append_lsa - lagging only sends a caller through the
    * LOG_CS re-check, while running ahead makes one skip a drain it needed, so this is a store, never a
-   * max (). Distinct axis from nxio_lsa (what reached disk); do not maintain either from the other.
-   * todo - fold into LOG_LSA_ATOMIC together with nxio_lsa */
-  std::atomic<LOG_LSA> copied_lsa;
+   * max (). Distinct axis from nxio_lsa (what reached disk); do not maintain either from the other. */
+  LOG_LSA_ATOMIC copied_lsa;
 
   /* todo - not really belonging here. should be part of page buffer. */
   LOG_LSA_ATOMIC prev_lsa;		/* Address of last append log record */
@@ -130,8 +129,9 @@ struct log_prior_node
 typedef struct log_prior_lsa_info LOG_PRIOR_LSA_INFO;
 struct log_prior_lsa_info
 {
-  LOG_LSA prior_lsa;
-  LOG_LSA prev_lsa;
+  /* Advanced under prior_lsa_mutex while readers outside it sample them, so both are published whole. */
+  LOG_LSA_ATOMIC prior_lsa;
+  LOG_LSA_ATOMIC prev_lsa;
 
   /* list */
   LOG_PRIOR_NODE *prior_list_header;

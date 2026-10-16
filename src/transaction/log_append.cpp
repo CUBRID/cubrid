@@ -42,6 +42,10 @@ static int log_data_length = 0;
 bool log_Zip_support = false;
 int log_Zip_min_size_to_compress = 255;
 
+/* Append position that the holder of prior_lsa_mutex works on. log_Gl.prior_info.prior_lsa is its published copy:
+ * loaded when a record starts and stored back when the record ends. */
+static LOG_LSA log_Prior_lsa;
+
 size_t
 LOG_PRIOR_LSA_LAST_APPEND_OFFSET ()
 {
@@ -121,13 +125,13 @@ log_append_info::set_nxio_lsa (const LOG_LSA &next_io_lsa)
 LOG_LSA
 log_append_info::get_copied_lsa () const
 {
-  return copied_lsa.load (std::memory_order_acquire);
+  return copied_lsa.load ();
 }
 
 void
 log_append_info::set_copied_lsa (const LOG_LSA &copied)
 {
-  copied_lsa.store (copied, std::memory_order_release);
+  copied_lsa.store (copied);
 }
 
 log_prior_lsa_info::log_prior_lsa_info ()
@@ -146,7 +150,7 @@ LOG_RESET_APPEND_LSA (const LOG_LSA *lsa)
 {
   // todo - prior_info.prior_lsa is set without prior_lsa_mutex
   log_Gl.hdr.append_lsa.store (*lsa);
-  log_Gl.prior_info.prior_lsa = *lsa;
+  log_Gl.prior_info.prior_lsa.store (*lsa);
   /* The prior list is empty at *lsa now. Publishing here is what keeps copied_lsa <= append_lsa across
    * every reset. */
   log_Gl.append.set_copied_lsa (*lsa);
@@ -157,7 +161,7 @@ LOG_RESET_PREV_LSA (const LOG_LSA *lsa)
 {
   // todo - prior_info.prev_lsa is set without prior_lsa_mutex
   log_Gl.append.prev_lsa.store (*lsa);
-  log_Gl.prior_info.prev_lsa = *lsa;
+  log_Gl.prior_info.prev_lsa.store (*lsa);
 }
 
 char *
@@ -173,12 +177,13 @@ log_prior_has_worker_log_records (THREAD_ENTRY *thread_p)
 
   std::unique_lock<std::mutex> ulock (log_Gl.prior_info.prior_lsa_mutex);
   LOG_LSA nxio_lsa = log_Gl.append.get_nxio_lsa ();
+  const LOG_LSA prior_lsa = log_Gl.prior_info.prior_lsa.load ();
 
-  if (!LSA_EQ (&nxio_lsa, &log_Gl.prior_info.prior_lsa))
+  if (!LSA_EQ (&nxio_lsa, &prior_lsa))
     {
       LOG_PRIOR_NODE *node;
 
-      assert (LSA_LT (&nxio_lsa, &log_Gl.prior_info.prior_lsa));
+      assert (LSA_LT (&nxio_lsa, &prior_lsa));
       node = log_Gl.prior_info.prior_list_header;
       while (node != NULL)
 	{
@@ -1390,6 +1395,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
       log_Gl.prior_info.prior_lsa_mutex.lock ();
     }
 
+  log_Prior_lsa = log_Gl.prior_info.prior_lsa.load ();
+
   prior_lsa_start_append (thread_p, node, tdes);
 
   LSA_COPY (&start_lsa, &node->start_lsa);
@@ -1524,6 +1531,8 @@ prior_lsa_next_record_internal (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LO
   /* END append */
   prior_lsa_end_append (thread_p, node);
 
+  log_Gl.prior_info.prior_lsa.store (log_Prior_lsa);
+
   /* Nothing writes into the node again, so publish it now - in start_lsa order, the order the drain
    * retires in. */
   log_prior_inflight_register (start_lsa, node);
@@ -1628,7 +1637,7 @@ prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *
    * Link the record with the previous transaction record for quick undos.
    * Link the record backward for backward traversal of the log.
    */
-  LSA_COPY (&node->start_lsa, &log_Gl.prior_info.prior_lsa);
+  LSA_COPY (&node->start_lsa, &log_Prior_lsa);
 
   if (tdes->is_system_worker_transaction () && !tdes->is_under_sysop ())
     {
@@ -1641,7 +1650,7 @@ prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *
     {
       LSA_COPY (&node->log_header.prev_tranlsa, &tdes->tail_lsa);
 
-      LSA_COPY (&tdes->tail_lsa, &log_Gl.prior_info.prior_lsa);
+      LSA_COPY (&tdes->tail_lsa, &log_Prior_lsa);
 
       /*
        * Is this the first log record of transaction ?
@@ -1651,16 +1660,16 @@ prior_lsa_start_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, LOG_TDES *
 	  LSA_COPY (&tdes->head_lsa, &tdes->tail_lsa);
 	}
 
-      LSA_COPY (&tdes->undo_nxlsa, &log_Gl.prior_info.prior_lsa);
+      LSA_COPY (&tdes->undo_nxlsa, &log_Prior_lsa);
     }
 
   /*
    * Remember the address of new append record
    */
-  LSA_COPY (&node->log_header.back_lsa, &log_Gl.prior_info.prev_lsa);
+  node->log_header.back_lsa = log_Gl.prior_info.prev_lsa;
   LSA_SET_NULL (&node->log_header.forw_lsa);
 
-  LSA_COPY (&log_Gl.prior_info.prev_lsa, &log_Gl.prior_info.prior_lsa);
+  log_Gl.prior_info.prev_lsa.store (log_Prior_lsa);
 
   /*
    * Set the page dirty, increase and align the append offset
@@ -1681,7 +1690,7 @@ prior_lsa_end_append (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node)
   log_prior_lsa_append_align ();
   log_prior_lsa_append_advance_when_doesnot_fit (sizeof (LOG_RECORD_HEADER));
 
-  LSA_COPY (&node->log_header.forw_lsa, &log_Gl.prior_info.prior_lsa);
+  LSA_COPY (&node->log_header.forw_lsa, &log_Prior_lsa);
 }
 
 static void
@@ -1702,7 +1711,7 @@ prior_lsa_append_data (int length)
    */
   log_prior_lsa_append_align ();
 
-  current_offset = (int) log_Gl.prior_info.prior_lsa.offset;
+  current_offset = (int) log_Prior_lsa.offset;
   last_offset = (int) LOG_PRIOR_LSA_LAST_APPEND_OFFSET ();
 
   /* Does data fit completely in current page ? */
@@ -1715,8 +1724,8 @@ prior_lsa_append_data (int length)
 	      /*
 	       * Get next page and set the current one dirty
 	       */
-	      log_Gl.prior_info.prior_lsa.pageid++;
-	      log_Gl.prior_info.prior_lsa.offset = 0;
+	      log_Prior_lsa.pageid++;
+	      log_Prior_lsa.offset = 0;
 
 	      current_offset = 0;
 	      last_offset = (int) LOG_PRIOR_LSA_LAST_APPEND_OFFSET ();
@@ -1733,12 +1742,12 @@ prior_lsa_append_data (int length)
 
 	  current_offset += copy_length;
 	  length -= copy_length;
-	  log_Gl.prior_info.prior_lsa.offset += copy_length;
+	  log_Prior_lsa.offset += copy_length;
 	}
     }
   else
     {
-      log_Gl.prior_info.prior_lsa.offset += length;
+      log_Prior_lsa.offset += length;
     }
 
   /*
@@ -1948,33 +1957,33 @@ log_append_get_data_ptr (THREAD_ENTRY *thread_p)
 static void
 log_prior_lsa_append_align ()
 {
-  assert (log_Gl.prior_info.prior_lsa.offset >= 0);
+  assert (log_Prior_lsa.offset >= 0);
 
-  log_Gl.prior_info.prior_lsa.offset = DB_ALIGN (log_Gl.prior_info.prior_lsa.offset, DOUBLE_ALIGNMENT);
-  if ((size_t) log_Gl.prior_info.prior_lsa.offset >= (size_t) LOGAREA_SIZE)
+  log_Prior_lsa.offset = DB_ALIGN (log_Prior_lsa.offset, DOUBLE_ALIGNMENT);
+  if ((size_t) log_Prior_lsa.offset >= (size_t) LOGAREA_SIZE)
     {
-      log_Gl.prior_info.prior_lsa.pageid++;
-      log_Gl.prior_info.prior_lsa.offset = 0;
+      log_Prior_lsa.pageid++;
+      log_Prior_lsa.offset = 0;
     }
 }
 
 static void
 log_prior_lsa_append_advance_when_doesnot_fit (size_t length)
 {
-  assert (log_Gl.prior_info.prior_lsa.offset >= 0);
+  assert (log_Prior_lsa.offset >= 0);
 
-  if ((size_t) log_Gl.prior_info.prior_lsa.offset + length >= (size_t) LOGAREA_SIZE)
+  if ((size_t) log_Prior_lsa.offset + length >= (size_t) LOGAREA_SIZE)
     {
-      log_Gl.prior_info.prior_lsa.pageid++;
-      log_Gl.prior_info.prior_lsa.offset = 0;
+      log_Prior_lsa.pageid++;
+      log_Prior_lsa.offset = 0;
     }
 }
 
 static void
 log_prior_lsa_append_add_align (size_t add)
 {
-  assert (log_Gl.prior_info.prior_lsa.offset >= 0);
+  assert (log_Prior_lsa.offset >= 0);
 
-  log_Gl.prior_info.prior_lsa.offset += (add);
+  log_Prior_lsa.offset += (int) (add);
   log_prior_lsa_append_align ();
 }
