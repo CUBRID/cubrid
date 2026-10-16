@@ -1607,6 +1607,9 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
     }
   if (regu_is_variable_pos (regu))
     {
+#if !defined (NDEBUG)
+      er_log_debug (ARG_FILE_LINE, "CBRD-27583 derived bind [val_pos=%d ctx=%d]\n", regu->value.val_pos, context);
+#endif
       item->flags |= DOMAIN_PLAN_LATE_BIND;
       item->resolved_index = ctx->plan->n_resolved++;
       item->fixed.domain = NULL;
@@ -2616,6 +2619,34 @@ domain_link_source (DOMAIN_PLAN_ITEM * item)
   return item;
 }
 
+#if !defined (NDEBUG)
+/* CBRD-27583 census (removed with the load's derivations): an entry as context, opcode (an entry of a regu: its type)
+ * and the domain it carries */
+static void
+domain_describe_entry (const DOMAIN_LOAD_ENTRY * load_entry, const TP_DOMAIN * domain, char *buf, int size)
+{
+  snprintf (buf, size, "%s ctx=%d op=%d %s%s", load_entry->regu != NULL ? "regu" : "node", load_entry->cold.ctx,
+	    load_entry->cold.opcode, load_entry->item.resolved_index >= 0 ? "late"
+	    : domain_type_is_fixed (domain) ? pr_type_name (TP_DOMAIN_TYPE (domain)) : "variable",
+	    load_entry->item.resolved_index < 0 && domain_character_is_variable (domain) ? "~collation" : "");
+}
+
+/* CBRD-27583 census: a node the compiler left without a domain, and what its operands are */
+static void
+domain_log_derived_node (DOMAIN_LOAD_ENTRY * load_entry)
+{
+  char node[96], operand[3][96] = { "", "", "" };
+  domain_describe_entry (load_entry, load_entry->item.fixed.domain, node, sizeof (node));
+  for (int i = 0; i < load_entry->n_link && i < 3; i++)
+    {
+      const DOMAIN_LOAD_ENTRY *source = domain_owner_load_entry (domain_load_entry_of (load_entry->link[i]));
+      domain_describe_entry (source, source->item.fixed.domain, operand[i], sizeof (operand[i]));
+    }
+  er_log_debug (ARG_FILE_LINE, "CBRD-27583 derived node [%s] <- n=%d [%s] [%s] [%s]\n", node, load_entry->n_link,
+		operand[0], operand[1], operand[2]);
+}
+#endif
+
 /* A derived consumer reads its producer: the producer's resolved domain table entry (ALIAS) or its domain. A value
  * pointer takes the producer's domain even when it was compiled with another one (the reader's), because the value is
  * the producer's; a compiled list position or VALUES column keeps its domain, which is what its list holds. */
@@ -2624,6 +2655,9 @@ domain_link_producer (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry)
 {
   DOMAIN_PLAN_ITEM *item = &load_entry->item;
   const bool value_pointer = domain_is_value_pointer (load_entry);
+#if !defined (NDEBUG)
+  const TP_DOMAIN *compiled_domain = item->fixed.domain;
+#endif
   /* a compiled position keeps its domain unless the values give its collation: then its list's column does */
   if (!value_pointer && domain_type_is_fixed (item->fixed.domain) && !domain_character_is_variable (item->fixed.domain))
     {
@@ -2681,10 +2715,25 @@ domain_link_producer (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry)
       load_entry->n_link = 1;
       load_entry->consumer = item->fixed.domain;
       item->flags |= DOMAIN_PLAN_LATE_BIND_COLLATION;
+#if !defined (NDEBUG)
+      domain_log_derived_node (load_entry);
+#endif
       domain_mark_late_bind_node (ctx, load_entry);
       load_entry->known = !ctx->failed;
       return;
     }
+#if !defined (NDEBUG)
+  if (producer->item.resolved_index >= 0 || !domain_type_is_fixed (compiled_domain)
+      || producer->item.fixed.domain == NULL
+      || TP_DOMAIN_TYPE (compiled_domain) != TP_DOMAIN_TYPE (producer->item.fixed.domain))
+    {
+      /* CBRD-27583 census: a consumer whose domain the load takes from its producer */
+      char consumer[96], source[96];
+      domain_describe_entry (load_entry, compiled_domain, consumer, sizeof (consumer));
+      domain_describe_entry (producer, producer->item.fixed.domain, source, sizeof (source));
+      er_log_debug (ARG_FILE_LINE, "CBRD-27583 derived consumer [%s] <- [%s]\n", consumer, source);
+    }
+#endif
   if (producer->item.resolved_index >= 0)
     {
       item->flags |= DOMAIN_PLAN_ALIAS;
@@ -2787,6 +2836,9 @@ domain_resolve_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry)
 	  return;
 	}
     }
+#if !defined (NDEBUG)
+  domain_log_derived_node (load_entry);
+#endif
   domain_mark_late_bind_node (ctx, load_entry);
   if (load_entry->kind == DOMAIN_LOAD_NODE && load_entry->cold.ctx != DOMAIN_CTX_LIST_COLUMN)
     {

@@ -78,6 +78,12 @@ struct xasl_unpack_info
   bool index_stream;		/* a filter or function index predicate: loaded without resolve_domains */
   bool index_stream_late_bind;	/* such a stream holds a regu resolve_domains would resolve: the unresolved-domain check
 				 * (load) */
+#if !defined (NDEBUG)
+  /* CBRD-27583: what the compiler left without a domain (VARIABLE): regus, operator nodes, list positions */
+  int n_undecided_regu;
+  int n_undecided_arith;
+  int n_undecided_position;
+#endif
 };
 
 XASL_UNPACK_INFO *get_xasl_unpack_info_ptr (THREAD_ENTRY *thread_p);

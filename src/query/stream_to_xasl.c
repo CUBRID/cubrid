@@ -5833,6 +5833,12 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   if (ptr != NULL)
     {
       stx_set_fast_peek (regu_var);
+#if !defined (NDEBUG)
+      xasl_unpack_info->n_undecided_regu +=
+	regu_var->domain != NULL && TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE;
+      xasl_unpack_info->n_undecided_position += regu_var->type == TYPE_POSITION
+	&& regu_var->value.pos_descr.dom != NULL && TP_DOMAIN_TYPE (regu_var->value.pos_descr.dom) == DB_TYPE_VARIABLE;
+#endif
     }
 
   return ptr;
@@ -6185,6 +6191,11 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 
   /* This member is only used on server internally. */
   arith_type->rand_seed = NULL;
+
+#if !defined (NDEBUG)
+  xasl_unpack_info->n_undecided_arith +=
+    arith_type->domain != NULL && TP_DOMAIN_TYPE (arith_type->domain) == DB_TYPE_VARIABLE;
+#endif
 
   /* CBRD-27583: a cast converts its operand from the operand's domain into the node's, as an assignment */
   arith_type->conv = NULL;
