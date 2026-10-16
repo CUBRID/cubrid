@@ -6605,6 +6605,99 @@ pt_late_bind_limit_regu (REGU_VARIABLE * regu)
 }
 
 /*
+ * pt_unify_list_column () - CBRD-27583: one column of two set-operation or CTE branches, or of two VALUES rows,
+ *   unified as qfile_unify_types does (domain_resolve_list_column, 8022's rule): the compilation knows the domains of
+ *   a bind type signature's branches, so a mismatch is a compilation error (spec change 7)
+ *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES
+ *   unified(out): the column's domain; NULL when a side's domain is not fixed here (the load unifies it)
+ */
+static int
+pt_unify_list_column (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** unified)
+{
+  *unified = NULL;
+  if (first == NULL || second == NULL || TP_DOMAIN_TYPE (first) == DB_TYPE_VARIABLE
+      || TP_DOMAIN_TYPE (second) == DB_TYPE_VARIABLE)
+    {
+      return NO_ERROR;
+    }
+  const DOMAIN_OPERAND operands[2] = {
+    {first, TP_DOMAIN_TYPE (first), -1, false}, {second, TP_DOMAIN_TYPE (second), -1, false}
+  };
+  RESOLVED_DOMAIN result;
+  bool needs_late_bind = false;
+  const int error = domain_resolve (DOMAIN_CTX_LIST_COLUMN, 0, operands, 2, NULL, &result, &needs_late_bind);
+  if (error == NO_ERROR && !needs_late_bind)
+    {
+      *unified = result.domain;
+    }
+  return error;
+}
+
+/*
+ * pt_list_column_domain () - CBRD-27583: the domain of column pos of the list an XASL node makes: a block's output
+ *   column, a set operation's unified branches, a CTE's non-recursive part; NULL when it is not fixed here
+ */
+static const TP_DOMAIN *
+pt_list_column_domain (const XASL_NODE * xasl, int pos)
+{
+  const TP_DOMAIN *unified = NULL;
+  if (xasl == NULL)
+    {
+      return NULL;
+    }
+  switch (xasl->type)
+    {
+    case UNION_PROC:
+    case DIFFERENCE_PROC:
+    case INTERSECTION_PROC:
+      (void) pt_unify_list_column (pt_list_column_domain (xasl->proc.union_.left, pos),
+				   pt_list_column_domain (xasl->proc.union_.right, pos), &unified);
+      return unified;
+    case CTE_PROC:
+      return pt_list_column_domain (xasl->proc.cte.non_recursive_part, pos);
+    default:
+      break;
+    }
+  for (REGU_VARIABLE_LIST col = xasl->outptr_list != NULL ? xasl->outptr_list->valptrp : NULL; col != NULL;
+       col = col->next)
+    {
+      if (!REGU_VARIABLE_IS_FLAGED (&col->value, REGU_VARIABLE_HIDDEN_COLUMN) && pos-- == 0)
+	{
+	  return col->value.domain;
+	}
+    }
+  return NULL;
+}
+
+/*
+ * pt_check_list_branches () - CBRD-27583: the columns of a set operation's or a recursive CTE's two branches unify
+ *   (pt_unify_list_column); a mismatch is the statement's semantic error at XASL generation, in pt_union_compatible's
+ *   words
+ *   return: NO_ERROR or ER_QPROC_INCOMPATIBLE_TYPES (the parser holds the error)
+ */
+static int
+pt_check_list_branches (PARSER_CONTEXT * parser, PT_NODE * first_query, PT_NODE * second_query,
+			const XASL_NODE * first, const XASL_NODE * second)
+{
+  const int n_columns = pt_length_of_select_list (pt_get_select_list (parser, first_query), EXCLUDE_HIDDEN_COLUMNS);
+  PT_NODE *item[2] = { pt_get_select_list (parser, first_query), pt_get_select_list (parser, second_query) };
+  for (int pos = 0; pos < n_columns && item[0] != NULL && item[1] != NULL;
+       pos++, item[0] = item[0]->next, item[1] = item[1]->next)
+    {
+      const TP_DOMAIN *unified;
+      const int error = pt_unify_list_column (pt_list_column_domain (first, pos), pt_list_column_domain (second, pos),
+					      &unified);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORmf2 (parser, item[0], MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
+		       pt_short_print (parser, item[0]), pt_short_print (parser, item[1]));
+	  return error;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * pt_make_regu_reguvalues_list () - takes a pt_node of host variable and make
  *                                   a regu_variable of value list reference
  *   return: A NULL return indicates an error occurred
@@ -6654,6 +6747,15 @@ pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, const PT_NODE * node, UNB
 	  list_node->value = pt_to_regu_variable (parser, temp, unbox);
 	  if (list_node->value == NULL)
 	    {
+	      return NULL;
+	    }
+	  /* CBRD-27583: each row's column unifies with the first row's at compilation, as a set operation's */
+	  const TP_DOMAIN *unified;
+	  if (pt_unify_list_column (regu_list->regu_list->value->domain, list_node->value->domain, &unified) !=
+	      NO_ERROR)
+	    {
+	      PT_ERRORmf2 (parser, temp, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
+			   pt_short_print (parser, node->info.node_list.list), pt_short_print (parser, temp));
 	      return NULL;
 	    }
 	  regu_list->count += 1;
@@ -18164,7 +18266,9 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
   /* orderby can legitimately be null */
   orderby = pt_to_orderby (parser, node->info.query.order_by, node);
 
-  if (left && right && (orderby || !node->info.query.order_by))
+  if (left && right && (orderby || !node->info.query.order_by)
+      && pt_check_list_branches (parser, node->info.query.q.union_.arg1, node->info.query.q.union_.arg2, left,
+				 right) == NO_ERROR)
     {
       /* don't allocate till everything looks ok. */
       xasl = regu_xasl_node_alloc (type);
@@ -18304,6 +18408,12 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
   if (recursive_part)
     {
       recursive_part_xasl = (XASL_NODE *) recursive_part->info.query.xasl;
+      if (recursive_part_xasl != NULL
+	  && pt_check_list_branches (parser, non_recursive_part, recursive_part, non_recursive_part_xasl,
+				     recursive_part_xasl) != NO_ERROR)
+	{
+	  return NULL;
+	}
     }
 
   xasl = regu_xasl_node_alloc (proc_type);

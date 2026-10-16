@@ -463,7 +463,8 @@ eval_report_resolved_compare (const char *what, const DOMAIN_COMPARE * compare, 
 }
 
 /* the side's value has the type its converters were resolved for: a VARCHAR value bound to a CHAR(n) position keeps
- * its own type (do_cast_host_variables_to_expected_domain) */
+ * its own type (do_cast_host_variables_to_expected_domain); a CHAR and a VARCHAR source differ only in their string
+ * targets' converters, and a string compared with a string is DIRECT, without a converter */
 static bool
 eval_value_is_source (const DB_VALUE * value, int source)
 {
