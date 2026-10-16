@@ -6758,6 +6758,16 @@ pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, const PT_NODE * node, UNB
 			   pt_short_print (parser, node->info.node_list.list), pt_short_print (parser, temp));
 	      return NULL;
 	    }
+	  const TP_DOMAIN *head = regu_list->regu_list->value->domain;
+	  const TP_DOMAIN *row = list_node->value->domain;
+	  if (head != NULL && row != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (head))
+	      && TP_DOMAIN_TYPE (head) == TP_DOMAIN_TYPE (row)
+	      && TP_DOMAIN_COLLATION (head) != TP_DOMAIN_COLLATION (row))
+	    {
+	      /* a row's string in another collation than the first row's: develop's row check gave -1150 (fetch.c) */
+	      PT_ERRORmf (parser, temp, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATION_OP_ERROR, "VALUES");
+	      return NULL;
+	    }
 	  regu_list->count += 1;
 	}
       regu_list->current_value = regu_list->regu_list;
