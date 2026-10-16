@@ -6604,6 +6604,14 @@ pt_late_bind_limit_regu (REGU_VARIABLE * regu)
   return regu;
 }
 
+/* shortcut: a value another block gives (an aggregate, a subquery, a derived table's column) carries its parse tree's
+ * domain, not its producer's, until the producer lookups of step 2(c); upgrade then */
+static bool
+pt_regu_domain_from_parse_tree (const REGU_VARIABLE * regu)
+{
+  return regu->type == TYPE_CONSTANT || regu->type == TYPE_POSITION;
+}
+
 /*
  * pt_unify_list_column () - CBRD-27583: one column of two set-operation or CTE branches, or of two VALUES rows,
  *   unified as qfile_unify_types does (domain_resolve_list_column, 8022's rule): the compilation knows the domains of
@@ -6618,6 +6626,11 @@ pt_unify_list_column (const TP_DOMAIN * first, const TP_DOMAIN * second, const T
   if (first == NULL || second == NULL || TP_DOMAIN_TYPE (first) == DB_TYPE_VARIABLE
       || TP_DOMAIN_TYPE (second) == DB_TYPE_VARIABLE)
     {
+      return NO_ERROR;
+    }
+  if (TP_DOMAIN_TYPE (first) == DB_TYPE_OBJECT && TP_DOMAIN_TYPE (second) == DB_TYPE_OBJECT)
+    {
+      /* objects of two classes are union compatible to type checking: their rows unify (qfile_unify_types) */
       return NO_ERROR;
     }
   const DOMAIN_OPERAND operands[2] = {
@@ -6663,7 +6676,7 @@ pt_list_column_domain (const XASL_NODE * xasl, int pos)
     {
       if (!REGU_VARIABLE_IS_FLAGED (&col->value, REGU_VARIABLE_HIDDEN_COLUMN) && pos-- == 0)
 	{
-	  return col->value.domain;
+	  return pt_regu_domain_from_parse_tree (&col->value) ? NULL : col->value.domain;
 	}
     }
   return NULL;
@@ -6750,9 +6763,11 @@ pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, const PT_NODE * node, UNB
 	      return NULL;
 	    }
 	  /* CBRD-27583: each row's column unifies with the first row's at compilation, as a set operation's */
+	  const bool fixed = !pt_regu_domain_from_parse_tree (regu_list->regu_list->value)
+	    && !pt_regu_domain_from_parse_tree (list_node->value);
 	  const TP_DOMAIN *unified;
-	  if (pt_unify_list_column (regu_list->regu_list->value->domain, list_node->value->domain, &unified) !=
-	      NO_ERROR)
+	  if (fixed && pt_unify_list_column (regu_list->regu_list->value->domain, list_node->value->domain, &unified)
+	      != NO_ERROR)
 	    {
 	      PT_ERRORmf2 (parser, temp, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
 			   pt_short_print (parser, node->info.node_list.list), pt_short_print (parser, temp));
@@ -6760,7 +6775,7 @@ pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, const PT_NODE * node, UNB
 	    }
 	  const TP_DOMAIN *head = regu_list->regu_list->value->domain;
 	  const TP_DOMAIN *row = list_node->value->domain;
-	  if (head != NULL && row != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (head))
+	  if (fixed && head != NULL && row != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (head))
 	      && TP_DOMAIN_TYPE (head) == TP_DOMAIN_TYPE (row)
 	      && TP_DOMAIN_COLLATION (head) != TP_DOMAIN_COLLATION (row))
 	    {
