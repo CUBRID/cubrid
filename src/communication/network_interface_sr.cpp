@@ -4524,8 +4524,12 @@ event_log_update_statistics (THREAD_ENTRY *thread_p, const char *class_name, int
     }
   else
     {
+      /* elapsed_ms is truncated to msec by the client; truncate this class too so that the elapsed of the next
+       * class, measured by the client after this one returns, is never below this one */
+      INT64 finished_ms = (INT64) elapsed_ms + class_us / 1000;
+
       fprintf (log_fp, "%*cprogress: finished %d/%d, error: %d, time: %.3f sec, elapsed: %.3f sec\n\n", indent, ' ',
-	       seq, total, error, class_us / 1000000.0, elapsed_ms / 1000.0 + class_us / 1000000.0);
+	       seq, total, error, class_us / 1000000.0, finished_ms / 1000.0);
     }
 
   event_log_end (thread_p);
