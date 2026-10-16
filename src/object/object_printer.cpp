@@ -533,22 +533,27 @@ void object_printer::describe_attribute (const struct db_object &cls, const sm_a
 	      DB_VALUE min_val, inc_val;
 	      char buff[DB_MAX_FIXED_NUMERIC_PRECISION * 2 + 4];
 	      int offset;
+	      int save;
 
 	      assert (attribute.auto_increment != NULL);
 
 	      db_make_null (&min_val);
 	      db_make_null (&inc_val);
 
+	      AU_SAVE_AND_DISABLE (save);
 	      if (db_get (attribute.auto_increment, "min_val", &min_val) != NO_ERROR)
 		{
+		  AU_RESTORE (save);
 		  return;
 		}
 
 	      if (db_get (attribute.auto_increment, "increment_val", &inc_val) != NO_ERROR)
 		{
+		  AU_RESTORE (save);
 		  pr_clear_value (&min_val);
 		  return;
 		}
+	      AU_RESTORE (save);
 
 	      offset = snprintf (buff, DB_MAX_FIXED_NUMERIC_PRECISION + 3, "(%s, ",
 				 numeric_db_value_print (&min_val, str_buf));
