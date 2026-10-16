@@ -91,7 +91,7 @@ concurrency:
     gha-ci-${{ github.event_name == 'push'
     && format('push-{0}', github.sha)
     || github.event_name == 'workflow_dispatch' && inputs.tc != ''
-    && format('pr-{0}-tc-{1}', inputs.pr, inputs.tc)
+    && format('pr-{0}-tc-{1}-{2}', inputs.pr, inputs.tc, inputs.suite)
     || github.event_name == 'workflow_dispatch'
     && format('dispatch-{0}', inputs.sha)
     || github.event.issue.pull_request != null
@@ -1940,5 +1940,5 @@ jobs:
               fi ;;
           esac
           gh api -X POST "repos/CUBRID/${TC_REPO}/statuses/${TC_SHA}" --silent -f state="$state" \
-            -f context="gha-ci: tc trial (cubrid#${PR})" \
+            -f context="gha-ci: tc trial ${SUITE} (cubrid#${PR})" \
             -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" -f description="$desc"
