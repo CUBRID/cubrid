@@ -9715,7 +9715,7 @@ qexec_batch_eligible (const XASL_NODE * xasl)
  *   xasl_state(in): the execution
  *   tplrec(in): the tuple record the row path's end-of-iteration takes
  *
- * Each page the scan yields is taken in chunks of EXPR_BATCH_CHUNK_ROWS rows: a chunk is
+ * Each page the scan yields is taken in chunks (EXPR_BATCH_CHUNK_BYTES): a chunk is
  * evaluated as arrays (expr_batch_run ()) and accumulated in one loop per aggregate
  * (qdata_evaluate_aggregate_batch ()) before the next is collected.  A chunk the batch hands
  * back -- a record it does not decode, a value a kernel would reject -- is run with the rest

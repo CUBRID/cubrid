@@ -81,7 +81,7 @@ struct expr_batch
 {
   EXPR_BATCH_ROW *rows;
   int n_rows;
-  int cap;			/* rows the arrays hold: EXPR_BATCH_CHUNK_ROWS */
+  int cap;			/* rows a chunk holds: EXPR_BATCH_CHUNK_BYTES at the plan's bytes per row */
   int *sel;			/* indexes into rows[] that passed the filter, in row order */
   int n_sel;
 };
@@ -107,18 +107,19 @@ typedef struct expr_batch_plan EXPR_BATCH_PLAN;
  * path; no error is set */
 #define EXPR_BATCH_FALLBACK (1)
 
-/* The rows one run takes: a page is collected and evaluated in chunks of so many rows, each
- * accumulated before the next is collected (database-reference 참고: a fixed-size chunk is
- * written until it is full and handed to the next node; only a blocking node gathers them).
- * 64 rows keep an integer vector in 8 cache lines and a NUMERIC one in 32, so the whole
- * working set of a scan stays in L1 whatever the page size. */
-#define EXPR_BATCH_CHUNK_ROWS (64)
+/* The bytes one chunk takes: a page is collected and evaluated in chunks, each accumulated
+ * before the next is collected (database-reference 참고: a fixed-size chunk is written until
+ * it is full and handed to the next node; only a blocking node gathers them).  The chunk's
+ * rows are as many as these bytes hold at the plan's bytes per row -- its row references,
+ * selection, vectors and their NULL and scale bytes -- so a quarter of a 32 KB L1 data cache
+ * is left to them, the rest to the page being decoded and the accumulators. */
+#define EXPR_BATCH_CHUNK_BYTES (8192)
 
 extern EXPR_BATCH_PLAN *expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in,
 					       const char **why_not);
 extern void expr_batch_plan_free (EXPR_BATCH_PLAN * plan);
 
-/* the batch's arrays for EXPR_BATCH_CHUNK_ROWS rows, carved from the plan's blocks (which own them) */
+/* the batch's arrays for one chunk (EXPR_BATCH_CHUNK_BYTES), carved from the plan's blocks (which own them) */
 extern int expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch);
 extern void expr_batch_final (EXPR_BATCH * batch);
 

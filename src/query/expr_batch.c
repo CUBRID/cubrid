@@ -25,9 +25,11 @@
  *     the plan's representation (HEAP_RAW_LOCATOR) and the vector it fills;
  *   - a VECTOR is one value per row of the page -- a column, a step's result slot, or a
  *     scalar broadcast (a literal, a host variable, a prologue-computed constant) -- in one
- *     of three element types: int64 (every integer type and DATE), double (FLOAT, DOUBLE)
- *     and the NUMERIC word domain (NUMERIC_AGG_EXPR_VAL, numeric_opfunc.h) with a NULL byte
- *     per element;
+ *     of four element types: int64 (every integer type and DATE), double (FLOAT, DOUBLE),
+ *     and a NUMERIC as its signed coefficient -- int64 for a column of at most 18 digits,
+ *     int128 otherwise -- whose scale is the vector's (a column's, a scalar's) or, for a
+ *     step's result, one byte per element (a product with a zero operand has scale 0, as in
+ *     the word domain, NUMERIC_AGG_EXPR_VAL in numeric_opfunc.h); a NULL byte per element;
  *   - a STEP is one operation over the selection: a typed add/sub/mul, a widening, or a
  *     NULL-mask push/pop that reproduces a lazy right-hand side;
  *   - a KID is one term of the filter's AND chain: either a RAW leaf, "column op constant"
@@ -78,8 +80,12 @@ enum eb_etype
 {
   EB_I64 = 0,			/* SHORT, INTEGER, BIGINT, DATE */
   EB_F64,			/* FLOAT, DOUBLE */
-  EB_NUM			/* NUMERIC, in the word domain */
+  EB_NUM,			/* NUMERIC: an int128 coefficient */
+  EB_N64			/* NUMERIC column of at most 18 digits: an int64 coefficient */
 };
+
+#define EB_IS_NUM(etype) ((etype) == EB_NUM || (etype) == EB_N64)
+#define EB_N64_MAX_PRECISION (18)
 
 enum eb_vec_kind
 {
@@ -116,6 +122,8 @@ struct eb_vec
 {
   void *data;			/* the plan's cap elements, or 1 for a scalar */
   unsigned char *isnull;	/* the plan's cap bytes, or 1 for a scalar */
+  unsigned char *scales;	/* NUMERIC step result: the scale of each element; else NULL */
+  short scale;			/* NUMERIC column or scalar: the scale of every element */
   unsigned char kind;		/* eb_vec_kind */
   unsigned char etype;		/* eb_etype */
   unsigned char dbtype;		/* DB_TYPE: the type a value of this vector would carry */
@@ -205,7 +213,7 @@ struct eb_slot_map
   HEAP_CACHE_ATTRINFO *attr_cache;
 };
 
-/* The per-chunk areas (EXPR_BATCH_CHUNK_ROWS rows: the vectors, their NULL bytes, the UNKNOWN
+/* The per-chunk areas (the chunk's rows: the vectors, their NULL bytes, the UNKNOWN
  * marks, the masks, the rows and the selection) are 64-byte lines bumped out of a few blocks
  * the plan chains, carved once when the scan opens and reused by every chunk. */
 #define EB_LINE (64)
@@ -219,7 +227,7 @@ struct eb_block
 
 struct expr_batch_plan
 {
-  int cap;			/* rows the per-chunk arrays hold: EXPR_BATCH_CHUNK_ROWS once carved */
+  int cap;			/* rows a chunk holds (expr_batch_init ()) */
   EB_BLOCK *blocks;
   char *bump;			/* the next free line of the newest block, and its end */
   char *bump_end;
@@ -319,8 +327,41 @@ static void eb_pack_dbv (const EXPR_BATCH_PLAN * plan, const EB_VEC * vec, int r
 #define EB_IDX(vec, r) (((vec)->kind == EB_VK_SCALAR) ? 0 : (r))
 #define EB_I64_AT(vec, r) (((int64_t *) (vec)->data)[EB_IDX (vec, r)])
 #define EB_F64_AT(vec, r) (((double *) (vec)->data)[EB_IDX (vec, r)])
-#define EB_NUM_AT(vec, r) (((NUMERIC_AGG_EXPR_VAL *) (vec)->data)[EB_IDX (vec, r)])
 #define EB_NULL_AT(vec, r) ((vec)->isnull[EB_IDX (vec, r)])
+
+/* a NUMERIC element as the word domain sees it */
+static inline void
+eb_num_get (const EB_VEC * vec, int r, NUMERIC_AGG_EXPR_VAL * out)
+{
+  int i = EB_IDX (vec, r);
+  __int128 c = (vec->etype == EB_N64) ? (__int128) ((const int64_t *) vec->data)[i] : ((const __int128 *) vec->data)[i];
+
+  out->coefficient = (uint128_t) ((c < 0) ? -c : c);
+  out->scale = (vec->scales != NULL) ? vec->scales[i] : vec->scale;
+  out->is_negative = (c < 0);
+}
+
+/* a word-domain value into an int128 element; false when its magnitude needs the 128th bit */
+static inline bool
+eb_num_put (EB_VEC * vec, int r, const NUMERIC_AGG_EXPR_VAL * val)
+{
+  int i = EB_IDX (vec, r);
+
+  if (val->coefficient >> 127)
+    {
+      return false;
+    }
+  ((__int128 *) vec->data)[i] = val->is_negative ? -(__int128) val->coefficient : (__int128) val->coefficient;
+  if (vec->scales != NULL)
+    {
+      vec->scales[i] = (unsigned char) val->scale;
+    }
+  else
+    {
+      vec->scale = (short) val->scale;
+    }
+  return true;
+}
 
 static int
 eb_elem_size (int etype)
@@ -331,8 +372,10 @@ eb_elem_size (int etype)
       return (int) sizeof (int64_t);
     case EB_F64:
       return (int) sizeof (double);
+    case EB_N64:
+      return (int) sizeof (int64_t);
     default:
-      return (int) sizeof (NUMERIC_AGG_EXPR_VAL);
+      return (int) sizeof (__int128);
     }
 }
 
@@ -484,11 +527,16 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
   plan->fixed_length = loc.fixed_length;
   plan->repid_set = true;
 
+  if (etype == EB_NUM && loc.precision <= EB_N64_MAX_PRECISION)
+    {
+      etype = EB_N64;
+    }
   vec = eb_new_vec (b, EB_VK_COL, etype, loc.type);
   if (vec < 0)
     {
       return -1;
     }
+  plan->vecs[vec].scale = (short) loc.scale;
   {
     int cap = b->cap_cols;
 
@@ -1062,7 +1110,7 @@ eb_fused_leaf (EB_BUILD * b, const REGU_VARIABLE * regu, int group, bool wrapped
 	    }
 	  return eb_emit (b, EB_OP_INT2NUM, vec, -1, EB_NUM, DB_TYPE_NUMERIC, out_vec);
 	}
-      if (plan->vecs[vec].etype != EB_NUM)
+      if (!EB_IS_NUM (plan->vecs[vec].etype))
 	{
 	  return eb_decline (b, "a bare non-NUMERIC leaf under a NUMERIC tree");
 	}
@@ -1472,16 +1520,30 @@ expr_batch_plan_free (EXPR_BATCH_PLAN * plan)
   free_and_init (plan);
 }
 
-/* the chunk's arrays: the rows, the selection, every column and step vector, the UNKNOWN
- * marks and the masks, EXPR_BATCH_CHUNK_ROWS rows each */
+/* The chunk's arrays: the rows, the selection, every column and step vector (and a NUMERIC
+ * step's scale bytes), the UNKNOWN marks and the masks.  As many rows as EXPR_BATCH_CHUNK_BYTES
+ * holds at this plan's bytes per row, in whole 8-row steps (an int64 vector's cache line). */
 int
 expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 {
   EXPR_BATCH_ROW *rows;
   int *sel;
-  int cap = EXPR_BATCH_CHUNK_ROWS, i, d;
+  size_t per_row;
+  int cap, i, d;
 
   memset (batch, 0, sizeof (*batch));
+  per_row = sizeof (EXPR_BATCH_ROW) + sizeof (int) + 1 + (size_t) plan->n_masks;
+  for (i = 0; i < plan->n_vecs; i++)
+    {
+      const EB_VEC *v = &plan->vecs[i];
+
+      if (v->kind != EB_VK_SCALAR)
+	{
+	  per_row += (size_t) eb_elem_size (v->etype) + 1 + ((v->kind == EB_VK_SLOT && EB_IS_NUM (v->etype)) ? 1 : 0);
+	}
+    }
+  cap = (int) (EXPR_BATCH_CHUNK_BYTES / per_row);
+  cap = MAX (8, cap & ~7);
   rows = (EXPR_BATCH_ROW *) eb_arena_alloc (plan, sizeof (EXPR_BATCH_ROW) * cap);
   sel = (int *) eb_arena_alloc (plan, sizeof (int) * cap);
   if (rows == NULL || sel == NULL)
@@ -1492,7 +1554,7 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
     {
       EB_VEC *v = &plan->vecs[i];
       void *data;
-      unsigned char *isnull;
+      unsigned char *isnull, *scales = NULL;
 
       if (v->kind == EB_VK_SCALAR)
 	{
@@ -1500,12 +1562,21 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 	}
       data = eb_arena_alloc (plan, (size_t) eb_elem_size (v->etype) * cap);
       isnull = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
+      if (v->kind == EB_VK_SLOT && EB_IS_NUM (v->etype))
+	{
+	  scales = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
+	  if (scales == NULL)
+	    {
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	}
       if (data == NULL || isnull == NULL)
 	{
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       v->data = data;
       v->isnull = isnull;
+      v->scales = scales;
     }
   {
     unsigned char *unk = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
@@ -1572,7 +1643,9 @@ eb_load_scalars (EXPR_BATCH_PLAN * plan)
       v->isnull[0] = 0;
       if (vs->conv == EB_SC_NUMERIC_FROM_DBV)
 	{
-	  if (!numeric_agg_expr_from_dbv (src, &EB_NUM_AT (v, 0)))
+	  NUMERIC_AGG_EXPR_VAL nv;
+
+	  if (!numeric_agg_expr_from_dbv (src, &nv) || !eb_num_put (v, 0, &nv))
 	    {
 	      return EXPR_BATCH_FALLBACK;
 	    }
@@ -1604,11 +1677,15 @@ eb_load_scalars (EXPR_BATCH_PLAN * plan)
 	  EB_F64_AT (v, 0) = db_get_double (src);
 	  break;
 	case DB_TYPE_NUMERIC:
-	  if (!numeric_agg_expr_from_dbv (src, &EB_NUM_AT (v, 0)))
-	    {
-	      return EXPR_BATCH_FALLBACK;
-	    }
-	  break;
+	  {
+	    NUMERIC_AGG_EXPR_VAL nv;
+
+	    if (!numeric_agg_expr_from_dbv (src, &nv) || !eb_num_put (v, 0, &nv))
+	      {
+		return EXPR_BATCH_FALLBACK;
+	      }
+	    break;
+	  }
 	default:
 	  return EXPR_BATCH_FALLBACK;
 	}
@@ -1866,7 +1943,7 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
 	      int this_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (layout.var_table, col->location, layout.offset_size);
 	      int next_off =
 		OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (layout.var_table, col->location + 1, layout.offset_size);
-	      NUMERIC_AGG_EXPR_VAL *num = &((NUMERIC_AGG_EXPR_VAL *) v->data)[r];
+	      NUMERIC_AGG_EXPR_VAL num;
 
 	      if (next_off - this_off == 0)
 		{
@@ -1874,10 +1951,22 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
 		  continue;
 		}
 	      if (!numeric_agg_expr_from_disk
-		  ((const unsigned char *) layout.var_table + this_off, next_off - this_off, num)
-		  || num->scale != col->scale)
+		  ((const unsigned char *) layout.var_table + this_off, next_off - this_off, &num)
+		  || num.scale != col->scale)
 		{
 		  /* wider than the word domain, or a stored scale the domain does not describe */
+		  return EXPR_BATCH_FALLBACK;
+		}
+	      if (v->etype == EB_N64)
+		{
+		  if (num.coefficient > (uint128_t) INT64_MAX)
+		    {
+		      return EXPR_BATCH_FALLBACK;
+		    }
+		  ((int64_t *) v->data)[r] = num.is_negative ? -(int64_t) num.coefficient : (int64_t) num.coefficient;
+		}
+	      else if (!eb_num_put (v, r, &num))
+		{
 		  return EXPR_BATCH_FALLBACK;
 		}
 	      v->isnull[r] = 0;
@@ -1911,8 +2000,9 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	}
       if (leaf->etype == EB_NUM)
 	{
-	  const NUMERIC_AGG_EXPR_VAL *num = &((const NUMERIC_AGG_EXPR_VAL *) v->data)[r];
-	  __int128 a = num->is_negative ? -(__int128) num->coefficient : (__int128) num->coefficient;
+	  /* a column vector: every element at the column's scale, the constant's too */
+	  __int128 a =
+	    (v->etype == EB_N64) ? (__int128) ((const int64_t *) v->data)[r] : ((const __int128 *) v->data)[r];
 	  __int128 k = leaf->k.n;
 
 	  if (leaf->k_all != 0)
@@ -2127,20 +2217,14 @@ eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch)
 	  for (j = 0; j < n; j++)
 	    {
 	      int r = sel[j];
-	      int64_t v;
-	      uint64_t mag;
-	      NUMERIC_AGG_EXPR_VAL *o = &EB_NUM_AT (out, r);
-
 	      if ((mask != NULL && !mask[r]) || EB_NULL_AT (a, r))
 		{
 		  out->isnull[r] = 1;
 		  continue;
 		}
-	      v = EB_I64_AT (a, r);
-	      mag = (v < 0) ? (0 - (uint64_t) v) : (uint64_t) v;
-	      o->coefficient = (uint128_t) mag;
-	      o->scale = 0;
-	      o->is_negative = (v < 0);
+	      /* numeric_agg_expr_from_int_dbv (): the integer itself, scale 0 */
+	      ((__int128 *) out->data)[r] = (__int128) EB_I64_AT (a, r);
+	      out->scales[r] = 0;
 	      out->isnull[r] = 0;
 	    }
 	  break;
@@ -2216,6 +2300,7 @@ eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch)
 	      for (j = 0; j < n; j++)
 		{
 		  int r = sel[j];
+		  NUMERIC_AGG_EXPR_VAL x, y, z;
 		  bool ok;
 
 		  if ((mask != NULL && !mask[r]) || EB_NULL_AT (a, r) || EB_NULL_AT (c, r))
@@ -2223,16 +2308,18 @@ eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch)
 		      out->isnull[r] = 1;
 		      continue;
 		    }
+		  /* the word-domain operation itself, element by element */
+		  eb_num_get (a, r, &x);
+		  eb_num_get (c, r, &y);
 		  if (step->op == EB_OP_MUL)
 		    {
-		      ok = numeric_agg_expr_mul (&EB_NUM_AT (a, r), &EB_NUM_AT (c, r), &EB_NUM_AT (out, r));
+		      ok = numeric_agg_expr_mul (&x, &y, &z);
 		    }
 		  else
 		    {
-		      ok = numeric_agg_expr_add (&EB_NUM_AT (a, r), &EB_NUM_AT (c, r), step->op == EB_OP_SUB,
-						 &EB_NUM_AT (out, r));
+		      ok = numeric_agg_expr_add (&x, &y, step->op == EB_OP_SUB, &z);
 		    }
-		  if (!ok)
+		  if (!ok || !eb_num_put (out, r, &z))
 		    {
 		      return EXPR_BATCH_FALLBACK;
 		    }
@@ -2359,8 +2446,10 @@ eb_pack_dbv (const EXPR_BATCH_PLAN * plan, const EB_VEC * vec, int r, DB_VALUE *
       break;
     default:
       {
-	const NUMERIC_AGG_EXPR_VAL *num = &EB_NUM_AT (vec, r);
+	NUMERIC_AGG_EXPR_VAL nv;
+	const NUMERIC_AGG_EXPR_VAL *num = &nv;
 
+	eb_num_get (vec, r, &nv);
 	if (vec->kind == EB_VK_COL)
 	  {
 	    /* a stored column: the domain's precision and scale, as the record decode gives it */
@@ -2483,12 +2572,17 @@ expr_batch_agg_sum_rest (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch,
 	    }
 	  break;
 	case DB_TYPE_NUMERIC:
-	  if (numeric_sum_acc_add_expr_val (sum, &EB_NUM_AT (v, r)) != NO_ERROR)
-	    {
-	      *n_added = n;
-	      return ER_FAILED;
-	    }
-	  break;
+	  {
+	    NUMERIC_AGG_EXPR_VAL nv;
+
+	    eb_num_get (v, r, &nv);
+	    if (numeric_sum_acc_add_expr_val (sum, &nv) != NO_ERROR)
+	      {
+		*n_added = n;
+		return ER_FAILED;
+	      }
+	    break;
+	  }
 	default:
 	  assert (false);
 	  *n_added = n;

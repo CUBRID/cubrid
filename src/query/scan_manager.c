@@ -8189,7 +8189,7 @@ scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_T
  *   slot(in/out): the walk's position in the page, 0 before its first chunk
  *
  * heap_page_collect_visible (): the walk the row path makes over one page, slot by slot with
- * the same visibility decision, made EXPR_BATCH_CHUNK_ROWS rows at a time with the page held
+ * the same visibility decision, made a chunk (EXPR_BATCH_CHUNK_BYTES) at a time with the page held
  * throughout; the rows are peeked, so they are valid while the page stays fixed, which the
  * caller guarantees.  A record whose visible version is elsewhere -- relocated, in overflow
  * pages, or in the log for this snapshot -- sends the chunk and the rest of the page to the
