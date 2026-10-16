@@ -2698,7 +2698,12 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	{
 	  assert (parser->flag.set_host_var == 1);
 	}
-      if (parser->host_var_count > 0 || parser->auto_param_count > 0)
+      /* CBRD-27583 (D-10): a session-variable statement compiled for this execution's bind type signature runs its
+       * compilation: binding the values into the tree would type the binds as literals (their collation's
+       * coercibility, a compile-time collation error where develop's row gives -1150) */
+      const bool signature_compiled = parser->host_var_compiled_domains != NULL && db_is_plan_statement (statement)
+	&& pt_has_session_variable (parser, statement);
+      if ((parser->host_var_count > 0 || parser->auto_param_count > 0) && !signature_compiled)
 	{
 	  /* In this case, pt_bind_values_to_hostvars() will change PT_HOST_VAR node. Must duplicate the statement and
 	   * execute with the new one and free the copied one before returning */
