@@ -435,7 +435,8 @@ namespace cubmethod
 
     std::string res; // result for OID_CLASS_NAME
 
-    if (cmd == OID_DROP && sp_check_object_allowed (db_object (&oid), CUBRID_STMT_DELETE) != NO_ERROR)
+    if ((cmd == OID_DROP || cmd == OID_IS_INSTANCE)
+	&& sp_check_object_allowed (db_object (&oid), cmd == OID_DROP ? CUBRID_STMT_DELETE : CUBRID_STMT_SELECT) != NO_ERROR)
       {
 	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
@@ -463,7 +464,8 @@ namespace cubmethod
     collection_cmd_request request;
     request.unpack (unpacker);
 
-    if (sp_check_object_allowed (db_object (&request.oid), CUBRID_STMT_UPDATE) != NO_ERROR)
+    int stmt_type = (request.command == COL_GET || request.command == COL_SIZE) ? CUBRID_STMT_SELECT : CUBRID_STMT_UPDATE;
+    if (sp_check_object_allowed (db_object (&request.oid), stmt_type) != NO_ERROR)
       {
 	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
