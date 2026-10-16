@@ -123,6 +123,17 @@ struct heap_scan_id
   bool scanrange_inited;
   DB_VALUE **cache_recordinfo;	/* cache for record information */
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
+
+  /* Page batch (expr_batch.h): the scan's rows are taken a page at a time and the consumer
+   * evaluates them as arrays; the scan holds the page while a batch is out.  Opened by the
+   * consumer that can take a batch (scan_batch_open ()), released with the scan. */
+  struct expr_batch_plan *batch_plan;
+  struct expr_batch *batch;
+  int batch_state;		/* 0 untried, 1 active, 2 declined (the row path) */
+  VPID batch_vpid;		/* the page the batch holds */
+  bool batch_started;		/* serial walk: the first page was fixed */
+  bool batch_rowmode;		/* scan_next_scan () walks the held page row by row (a page the batch handed back) */
+  const char *batch_why_not;	/* trace: why the batch declined */
 };				/* Regular Heap File Scan Identifier */
 
 namespace parallel_scan
@@ -148,6 +159,15 @@ struct parallel_heap_scan_id
   bool scanrange_inited;
   DB_VALUE **cache_recordinfo;	/* cache for record information */
   regu_variable_list_node *recordinfo_regu_list;	/* regulator variable list for record info */
+  /* the page batch fields of heap_scan_id, in the same place: the two layouts alias each other
+   * (a scan goes between S_HEAP_SCAN and S_PARALLEL_HEAP_SCAN) */
+  struct expr_batch_plan *batch_plan;
+  struct expr_batch *batch;
+  int batch_state;
+  VPID batch_vpid;
+  bool batch_started;
+  bool batch_rowmode;
+  const char *batch_why_not;
   // *INDENT-OFF*
   #if !WINDOWS
   parallel_scan::RESULT_TYPE result_type;
@@ -470,6 +490,8 @@ struct scan_stats
   /* for heap & list scan */
   UINT64 read_rows;		/* # of rows read */
   UINT64 qualified_rows;	/* # of rows qualified by data filter */
+  UINT64 batch_pages;		/* heap scan: pages the page batch evaluated ... */
+  UINT64 batch_pages_rowpath;	/* ... and pages it handed back to the row path */
 
   /* for btree scan */
   UINT64 read_keys;		/* # of keys read */
@@ -654,6 +676,20 @@ extern SCAN_CODE scan_next_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_free_hash_list_scan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid_p);
 extern void scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
+/* page batch over a sequential heap scan (expr_batch.h): the consumer opens it with what it
+ * aggregates, takes pages with scan_batch_next_page () (serial) or scan_batch_collect_page ()
+ * (a page another walker fixed), and hands a page back to the row path with
+ * scan_batch_page_rowmode () when the batch declines it */
+struct access_spec_node;
+namespace cubxasl
+{
+  struct aggregate_list_node;
+}
+extern int scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const struct access_spec_node *spec,
+			    cubxasl::aggregate_list_node * agg_list, val_descr * vd);
+extern SCAN_CODE scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+extern SCAN_CODE scan_batch_collect_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid);
+extern void scan_batch_page_rowmode (SCAN_ID * scan_id, bool on);
 extern SCAN_CODE scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_prev_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_save_scan_pos (SCAN_ID * s_id, SCAN_POS * scan_pos);

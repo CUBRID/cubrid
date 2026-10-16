@@ -41,6 +41,7 @@
 #include "partition_sr.h"
 #include "query_aggregate.hpp"
 #include "query_analytic.hpp"
+#include "expr_batch.h"
 #include "expr_compile.h"
 #include "query_opfunc.h"
 #include "numeric_opfunc.h"
@@ -9671,6 +9672,108 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 }
 
 /*
+ * qexec_batch_eligible () - can this block take its scan's rows a page at a time (expr_batch.h)?
+ *   return: true when the block is a BUILDVALUE over one sequential heap scan and nothing
+ *           runs per row besides the aggregates
+ *   xasl(in): the block, its first spec opened
+ *
+ * Everything the row loop of qexec_intprt_fnc () does per row besides accumulating -- the
+ * object fetches, the correlated subqueries, the join and if predicates, inst_num (), the
+ * hierarchy, the single-tuple stop -- keeps the block on the row path.  The scan and the
+ * aggregates themselves are judged by scan_batch_open () and the plan it builds.
+ */
+bool
+qexec_batch_eligible (const XASL_NODE * xasl)
+{
+  const ACCESS_SPEC_TYPE *spec = xasl->spec_list;
+
+  if (xasl->type != BUILDVALUE_PROC || xasl->proc.buildvalue.agg_list == NULL || xasl->proc.buildvalue.is_always_false)
+    {
+      return false;
+    }
+  if (spec == NULL || spec->next != NULL || xasl->curr_spec != spec || spec->type != TARGET_CLASS
+      || spec->access != ACCESS_METHOD_SEQUENTIAL || spec->s_id.type != S_HEAP_SCAN || spec->parts != NULL
+      || spec->curent != NULL || spec->s_id.mvcc_select_lock_needed
+      || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN))
+    {
+      return false;
+    }
+  if (xasl->scan_ptr != NULL || xasl->bptr_list != NULL || xasl->fptr_list != NULL || xasl->dptr_list != NULL
+      || xasl->after_join_pred != NULL || xasl->if_pred != NULL || xasl->instnum_val != NULL
+      || xasl->instnum_pred != NULL || xasl->max_iterations != -1 || XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY)
+      || XASL_IS_FLAGED (xasl, XASL_NEED_SINGLE_TUPLE_SCAN))
+    {
+      return false;
+    }
+  return true;
+}
+
+/*
+ * qexec_batch_scan () - the page-at-a-time loop of a BUILDVALUE block over its heap scan
+ *   return: S_END when the scan is exhausted, S_ERROR otherwise (the error is set)
+ *   xasl(in): the block (qexec_batch_eligible (), scan_batch_open () == 1)
+ *   xasl_state(in): the execution
+ *   tplrec(in): the tuple record the row path's end-of-iteration takes
+ *
+ * Each page the scan yields is evaluated as arrays (expr_batch_run ()) and accumulated in one
+ * loop per aggregate (qdata_evaluate_aggregate_batch ()).  A page the batch hands back --
+ * a record it does not decode, a value a kernel would reject -- is run on the row path from
+ * its first slot, through the same scan_next_scan () / qexec_end_one_iteration () pair the
+ * row loop uses, so that it raises what the interpreter raises, where it raises it.
+ */
+static SCAN_CODE
+qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * tplrec)
+{
+  SCAN_ID *s_id = &xasl->curr_spec->s_id;
+  HEAP_SCAN_ID *hsidp = &s_id->s.hsid;
+  SCAN_CODE code, ls_scan;
+  int rc;
+
+  while ((code = scan_batch_next_page (thread_p, s_id)) == S_SUCCESS || code == S_DOESNT_FIT)
+    {
+      if (code == S_SUCCESS)
+	{
+	  rc = expr_batch_run (hsidp->batch_plan, hsidp->batch, thread_p, &xasl_state->vd);
+	  if (rc == NO_ERROR)
+	    {
+	      if (qdata_evaluate_aggregate_batch (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd,
+						  hsidp->batch_plan, hsidp->batch) != NO_ERROR)
+		{
+		  return S_ERROR;
+		}
+	      s_id->scan_stats.read_rows += hsidp->batch->n_rows;
+	      s_id->scan_stats.qualified_rows += hsidp->batch->n_sel;
+	      s_id->scan_stats.batch_pages++;
+	      expr_batch_plan_note_page (hsidp->batch_plan, false);
+	      continue;
+	    }
+	  if (rc != EXPR_BATCH_FALLBACK)
+	    {
+	      return S_ERROR;
+	    }
+	}
+      /* the page goes to the row path: nothing of it was accumulated */
+      s_id->scan_stats.batch_pages_rowpath++;
+      expr_batch_plan_note_page (hsidp->batch_plan, true);
+      scan_batch_page_rowmode (s_id, true);
+      while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
+	{
+	  if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
+	    {
+	      scan_batch_page_rowmode (s_id, false);
+	      return S_ERROR;
+	    }
+	}
+      scan_batch_page_rowmode (s_id, false);
+      if (ls_scan != S_END)
+	{
+	  return S_ERROR;
+	}
+    }
+  return code;
+}
+
+/*
  * qexec_intprt_fnc () -
  *   return: scan code
  *   xasl(in)   : XASL Tree pointer
@@ -9815,6 +9918,23 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  cte_start_new_iteration = true;
 	  recursive_iterations = 1;
+	}
+
+      /* a BUILDVALUE over one heap scan with nothing per row but the aggregates takes the scan a
+       * page at a time (expr_batch.h); the scan is started now, so its plan can be built */
+      if (xasl->type == BUILDVALUE_PROC && qexec_batch_eligible (xasl))
+	{
+	  (void) qdata_agg_operand_prog_ensure (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd);
+	  if (scan_batch_open (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec, xasl->proc.buildvalue.agg_list,
+			       &xasl_state->vd) == 1)
+	    {
+	      ls_scan = qexec_batch_scan (thread_p, xasl, xasl_state, tplrec);
+	      if (ls_scan != S_END)
+		{
+		  return S_ERROR;
+		}
+	      continue;
+	    }
 	}
 
       while ((ls_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id)) == S_SUCCESS)

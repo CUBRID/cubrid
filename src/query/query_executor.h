@@ -150,4 +150,6 @@ extern TOPN_STATUS qexec_add_tuple_to_topn (THREAD_ENTRY * thread_p, TOPN_TUPLES
 					    QFILE_TUPLE_DESCRIPTOR * tpldescr);
 extern int qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
 					 bool is_final, QFILE_LIST_ID * merged_results);
+extern bool qexec_batch_eligible (const xasl_node * xasl);
+
 #endif /* _QUERY_EXECUTOR_H_ */
