@@ -7442,9 +7442,12 @@ check_copied_log_volume_info_end:
 	    {
 	      lrec = LOG_GET_LOG_RECORD_HEADER (logpage, &lsa);
 
-	      printf ("offset:%04ld (tid:%d bck p:%lld,o:%ld frw p:%lld,o:%ld type:%d)\n", lsa.offset, lrec->trid,
-		      (long long int) lrec->back_lsa.pageid, lrec->back_lsa.offset,
-		      (long long int) lrec->forw_lsa.pageid, lrec->forw_lsa.offset, lrec->type);
+	      /* LOG_LSA::offset is a 16 bit bitfield of int64_t. Clang promotes it to int when
+	       * it is passed through "...", GCC passes it as a long, so neither %d nor %ld is
+	       * right for both. Cast explicitly to settle the argument type. */
+	      printf ("offset:%04d (tid:%d bck p:%lld,o:%d frw p:%lld,o:%d type:%d)\n", (int) lsa.offset,
+		      lrec->trid, (long long int) lrec->back_lsa.pageid, (int) lrec->back_lsa.offset,
+		      (long long int) lrec->forw_lsa.pageid, (int) lrec->forw_lsa.offset, lrec->type);
 	      LSA_COPY (&lsa, &lrec->forw_lsa);
 	    }
 	}

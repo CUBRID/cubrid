@@ -116,23 +116,6 @@ extern unsigned int db_on_server;
 #define PR_INHIBIT_OID_PROMOTION_DEFAULT 0
 #endif
 
-/*
- * NUMERIC_HEADER_SIZE
- * The numeric header is 3 bytes in size.
- * - header[0]: Total byte size of the numeric data (header + data).
- *              Bit 7 (0x80): Data sign bit (1 = negative, 0 = positive).
- *              Bits 0-6: Total byte size value (4 ~ 20 bytes).
- *                        Minimum: precision 1 -> data 1 byte + header 3 = 4 bytes (aligned to 4).
- *                        Maximum: precision 40 -> data 17 bytes + header 3 = 20 bytes (aligned to 20).
- * - header[1]: Precision and scale sign bit.
- *              Bit 7 (0x80): Scale sign bit (1 = negative scale, 0 = positive scale).
- *              Bits 0-6: Precision value (1 ~ 40).
- * - header[2]: Scale value.
- *              Bits 0-7: Scale absolute value (0 ~ 214).
- *                        Positive scale: 0 ~ 252.
- *                        Negative scale: -214 to -1 (stored as absolute value, sign in header[1] bit 7).
- */
-#define NUMERIC_HEADER_SIZE (3)
 #define FLOAT_NUMERIC_SIZE (NUMERIC_HEADER_SIZE + DB_NUMERIC_BUF_SIZE)
 
 #define STR_SIZE(prec, codeset)                                             \
@@ -9936,78 +9919,6 @@ error:
       midxkey->buf = NULL;
     }
   return ER_FAILED;
-}
-
-/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-int
-pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
-				   struct tp_domain *dbvals_domain_list, int tail_null_cnt)
-{
-  TP_DOMAIN *dom;
-  DB_MIDXKEY *midxkey;
-  int i, total_size, header_size, offset;
-  char *new_IDXbuf;
-  char *nullmap_ptr;
-  OR_BUF buf;
-
-  /* phase 1: find old */
-  midxkey = db_get_midxkey (keyval);
-  if (midxkey == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  assert (midxkey->ncolumns == 0 && midxkey->size == 0);
-
-  header_size = or_multi_header_size (num_dbvals + tail_null_cnt);
-  total_size = header_size;
-
-  /* phase 2: calculate how many bytes need */
-  total_size = pr_midxkey_get_vals_size (dbvals_domain_list, dbvals, total_size);
-
-  /* phase 3: initialize new_IDXbuf */
-  new_IDXbuf = (char *) db_private_alloc (NULL, total_size);
-  if (new_IDXbuf == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  or_init (&buf, new_IDXbuf, -1);
-
-  nullmap_ptr = new_IDXbuf;
-  or_multi_clear_header (nullmap_ptr, num_dbvals + tail_null_cnt);
-
-  or_advance (&buf, header_size);
-
-  /* phase 4: copy new_IDXbuf from old */
-  for (i = 0, dom = dbvals_domain_list; i < num_dbvals; i++, dom = dom->next)
-    {
-      /* check for added val is NULL */
-      if (DB_IS_NULL (&dbvals[i]))
-	{
-	  continue;		/* skip and go ahead */
-	}
-
-      dom->type->index_writeval (&buf, &dbvals[i]);
-
-      or_multi_set_not_null (nullmap_ptr, midxkey->ncolumns + i);
-    }				/* for (i = 0, ...) */
-
-  assert (total_size == CAST_BUFLEN (buf.ptr - buf.buffer));
-
-  for (i = num_dbvals; i < (num_dbvals + tail_null_cnt); i++)
-    {
-      assert (or_multi_is_null (nullmap_ptr, i));
-      or_multi_put_element_offset (nullmap_ptr, num_dbvals + tail_null_cnt, total_size, i);
-    }
-
-  or_multi_put_size_offset (nullmap_ptr, midxkey->ncolumns + num_dbvals + tail_null_cnt, total_size);
-
-  midxkey->buf = new_IDXbuf;
-  midxkey->size = total_size;
-  midxkey->ncolumns += (num_dbvals + tail_null_cnt);
-
-  return NO_ERROR;
 }
 
 /*
