@@ -886,9 +886,11 @@ struct qo_fk_join_info
   /* precomputed 1 / QO_NODE_NCARD(pk_node) */
   double floor_selectivity;
 
-  /* this constraint's own fk_node-side segment and equivalence class, per column */
+  /* this constraint's own fk_node-side segment and equivalence class, per column;
+   * a SEMI/ANTI equality has no equivalence class, so the term itself is kept instead */
   QO_SEGMENT **fk_col_segs;
   QO_EQCLASS **col_eqclasses;
+  QO_TERM **col_terms;
 
   /* number of entries in fk_col_segs and col_eqclasses */
   int n_cols;

@@ -9393,8 +9393,23 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			      continue;
 			    }
 
-			  if (QO_TERM_CLASS (term) != QO_TC_JOIN
-			      || QO_TERM_EQCLASS (term) != fkinfo->col_eqclasses[col])
+			  if (QO_TERM_CLASS (term) != QO_TC_JOIN)
+			    {
+			      continue;
+			    }
+
+			  if (fkinfo->col_eqclasses[col] == NULL)
+			    {
+			      /* a SEMI/ANTI equality, kept by qo_match_fk_prefix () */
+			      if (term == fkinfo->col_terms[col])
+				{
+				  bitset_add (&fk_col_terms, i);
+				  found = true;
+				}
+			      continue;
+			    }
+
+			  if (QO_TERM_EQCLASS (term) != fkinfo->col_eqclasses[col])
 			    {
 			      continue;
 			    }
@@ -9518,10 +9533,14 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 			  /* the terms are taken as independent, as in the INNER JOIN estimate: the equality with the
 			   * smallest hit ratio is the key (head_hit_prob, equi_selectivity), every other term filters
-			   * the inner rows sharing that key.  An equality that always holds with the key (a composite
-			   * FK) is underestimated; telling it apart needs the FK, which
-			   * qo_mark_fk_join_selectivity_floor () skips for SEMI/ANTI */
-			  if (is_equi_term && head_factor <= head_hit_prob)
+			   * the inner rows sharing that key.  The columns of a composite FK (fk_excluded_terms) match
+			   * together and are the key as a whole; any other equality tied to the key is underestimated */
+			  if (is_equi_term && BITSET_MEMBER (fk_excluded_terms, i))
+			    {
+			      head_hit_prob *= head_factor;
+			      equi_selectivity *= term_selectivity;
+			    }
+			  else if (is_equi_term && bitset_is_empty (&fk_excluded_terms) && head_factor <= head_hit_prob)
 			    {
 			      other_selectivity *= equi_selectivity;	/* the previous key, 1.0 if none */
 			      head_hit_prob = head_factor;
