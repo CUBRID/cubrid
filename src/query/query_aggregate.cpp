@@ -1135,7 +1135,15 @@ qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_l
 	  accumulator->curr_cnt += batch->n_sel;
 	  break;
 	case PT_COUNT:
-	  accumulator->curr_cnt += expr_batch_agg_count (plan, batch, i);
+	  cnt = expr_batch_agg_count (plan, batch, i);
+	  if (cnt > 0)
+	    {
+	      /* the row path keeps COUNT (x) in acc->value (qdata_aggregate_value_to_accumulator ())
+	       * and the finalize reads it from there; curr_cnt is kept beside it as the row path does */
+	      db_make_bigint (accumulator->value,
+			      (accumulator->curr_cnt < 1 ? (INT64) 0 : db_get_bigint (accumulator->value)) + cnt);
+	      accumulator->curr_cnt += cnt;
+	    }
 	  break;
 	case PT_SUM:
 	case PT_AVG:
