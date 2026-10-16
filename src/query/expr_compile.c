@@ -4493,6 +4493,12 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
       return expr_emit_fetch (bctx, regu, compiled_something);
     }
 
+  if (regu->conv != NULL)
+    {
+      /* CBRD-27583: the fetch path converts a regu's value into the domain its consumer wants, in the regu's holder */
+      return expr_emit_fetch (bctx, regu, compiled_something);
+    }
+
   switch (regu->type)
     {
     case TYPE_CONSTANT:

@@ -400,6 +400,9 @@ regu_init (regu_variable_node &regu)
   regu.value.val_pos = 0;
   regu.vfetch_to = NULL;
   regu.domain = NULL;
+  regu.original_domain = NULL;
+  regu.conv = NULL;
+  regu.conv_mode = 0;
   regu.xasl = NULL;
 }
 

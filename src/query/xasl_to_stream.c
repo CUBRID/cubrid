@@ -343,6 +343,7 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
     {
       p = or_pack_int (p, xasl_tree->tcard_list[i]);
     }
+
   /* set body size of new XASL format */
   body_size = xts_Free_offset_in_stream - offset;
   p = or_pack_int (p, body_size);
@@ -4550,18 +4551,6 @@ xts_process_comp_eval_term (char *ptr, const COMP_EVAL_TERM * comp_eval_term)
 
   ptr = or_pack_int (ptr, comp_eval_term->type);
 
-  /* CBRD-27583: the compiler's decision; a side kept as it is has no target */
-  for (int side = 0; side < 2; side++)
-    {
-      ptr = or_pack_int (ptr, comp_eval_term->cmp_target[side] != NULL);
-      if (comp_eval_term->cmp_target[side] != NULL)
-	{
-	  ptr = or_pack_domain (ptr, comp_eval_term->cmp_target[side], 0, 0);
-	}
-    }
-  ptr = or_pack_int (ptr, comp_eval_term->cmp_collation);
-  ptr = or_pack_int (ptr, comp_eval_term->cmp_method);
-
   return ptr;
 }
 
@@ -5388,6 +5377,14 @@ xts_process_val_list (char *ptr, const VAL_LIST * val_list)
   return ptr;
 }
 
+/* CBRD-27583: whether a regu's value is converted from the domain it is read in (original_domain) into domain */
+static bool
+xts_regu_converts (const REGU_VARIABLE * regu_var)
+{
+  assert (regu_var->original_domain == NULL || regu_var->domain != NULL);
+  return regu_var->original_domain != NULL && regu_var->original_domain != regu_var->domain;
+}
+
 static char *
 xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
 {
@@ -5395,6 +5392,14 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
 
   /* we prepend the domain before we pack the regu_variable */
   ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, regu_var->domain, 0, 0);
+
+  /* CBRD-27583: a value its consumer wants in another domain carries the domain it is read in and the mode */
+  ptr = or_pack_int (ptr, xts_regu_converts (regu_var));
+  if (xts_regu_converts (regu_var))
+    {
+      ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, regu_var->original_domain, 0, 0);
+      ptr = or_pack_int (ptr, regu_var->conv_mode);
+    }
 
   ptr = or_pack_int (ptr, regu_var->type);
 
@@ -6865,16 +6870,6 @@ xts_sizeof_comp_eval_term (const COMP_EVAL_TERM * comp_eval_term)
 	   + PTR_SIZE		/* rhs */
 	   + OR_INT_SIZE	/* rel_op */
 	   + OR_INT_SIZE);	/* type */
-  /* CBRD-27583: cmp_target[2], cmp_collation, cmp_method */
-  for (int side = 0; side < 2; side++)
-    {
-      size += OR_INT_SIZE;
-      if (comp_eval_term->cmp_target[side] != NULL)
-	{
-	  size += or_packed_domain_size (comp_eval_term->cmp_target[side], 0);
-	}
-    }
-  size += OR_INT_SIZE + OR_INT_SIZE;
 
   return size;
 }
@@ -7374,10 +7369,16 @@ xts_sizeof_regu_variable (const REGU_VARIABLE * regu_var)
 
   /* we prepend the domain before we pack the regu_variable */
   size += (or_packed_domain_size (regu_var->domain, 0)	/* domain */
+	   + OR_INT_SIZE	/* converts */
 	   + OR_INT_SIZE	/* type */
 	   + OR_INT_SIZE	/* flags */
 	   + PTR_SIZE		/* vfetch_to */
 	   + PTR_SIZE);		/* REGU_VARIABLE_XASL */
+  if (xts_regu_converts (regu_var))
+    {
+      /* original_domain, conv_mode */
+      size += or_packed_domain_size (regu_var->original_domain, 0) + OR_INT_SIZE;
+    }
 
   tmp_size = xts_get_regu_variable_value_size (regu_var);
   if (tmp_size == ER_FAILED)

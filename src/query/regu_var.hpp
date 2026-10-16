@@ -214,6 +214,11 @@ class regu_variable_node
 
     int flags;			/* flags */
     TP_DOMAIN *domain;		/* domain of the value in this regu variable */
+    /* CBRD-27583: the domain the value is read in, when its consumer wants it in another (domain); serialized with
+     * the mode the compiler converts it in. conv is the unpack's converter between the two, into vfetch_to */
+    TP_DOMAIN *original_domain = nullptr;
+    TP_VALUE_CONVERTER conv = nullptr;
+    unsigned char conv_mode = 0;	/* DOMAIN_CONVERT_MODE */
     domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
     DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
     xasl_node *xasl;		/* query xasl pointer */

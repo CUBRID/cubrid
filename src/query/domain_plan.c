@@ -1620,7 +1620,7 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
     }
   /* the load marks what the inline fetch_peek_dbval () may peek directly - a bind reference with its item, and
    * a stable regu whose domain is variable, once it took its domain (the stream load marked the fixed ones) */
-  if (!REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION)
+  if (!REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION) && regu->conv == NULL
       && ((regu->type == TYPE_POS_VALUE)
 	  || (variable && (regu->type == TYPE_DBVAL || regu->type == TYPE_ATTR_ID || regu->type == TYPE_SHARED_ATTR_ID
 			   || regu->type == TYPE_CLASS_ATTR_ID

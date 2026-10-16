@@ -181,6 +181,7 @@ namespace cubxasl
     dest->type = src->type;
     /* the leader's resolved comparison, as the copied operands take the leader's plan items */
     dest->domain_compare = src->domain_compare;
+    dest->compare = src->compare;
 
     return er_errid ();
   }
@@ -281,6 +282,10 @@ namespace cubxasl
     dest->type = src->type;
     dest->flags = src->flags;
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
+    dest->original_domain =
+	    src->original_domain == src->domain ? dest->domain : tp_domain_copy (src->original_domain, true);
+    dest->conv = src->conv;
+    dest->conv_mode = src->conv_mode;
     /* the leader's plan item: immutable and alive until the leader retires its clone, after every worker */
     dest->plan_item = src->plan_item;
     dest->vfetch_to = spawn (src->vfetch_to);

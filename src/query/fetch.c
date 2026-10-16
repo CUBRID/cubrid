@@ -1669,6 +1669,45 @@ fetch_read_plan_domain (REGU_VARIABLE * regu_var, val_descr * vd, const DB_VALUE
 }
 
 /*
+ * fetch_convert_regu_value () - CBRD-27583: a regu's value converted into the domain its consumer wants, in the regu's
+ *				 own holder (vfetch_to), which stays valid until the regu's next fetch
+ *   return: NO_ERROR or the conversion's error; an arithmetic operand's failure is NULL under
+ *	     return_null_on_function_errors, as qdata_coerce_arith_operands
+ *   regu_var(in): a regu with a converter
+ *   peek_dbval(in/out): the value read in the regu's original domain; the converted value
+ */
+static int
+fetch_convert_regu_value (const REGU_VARIABLE * regu_var, DB_VALUE ** peek_dbval)
+{
+  DB_VALUE *converted = regu_var->vfetch_to;
+  assert (converted != NULL && converted != *peek_dbval);
+  pr_clear_value (converted);
+  if (DB_IS_NULL (*peek_dbval))
+    {
+      db_value_domain_init (converted, TP_DOMAIN_TYPE (regu_var->domain), regu_var->domain->precision,
+			    regu_var->domain->scale);
+      *peek_dbval = converted;
+      return NO_ERROR;
+    }
+  const TP_DOMAIN_STATUS status = tp_value_convert (regu_var->conv, regu_var->domain, *peek_dbval, converted);
+  if (status != DOMAIN_COMPATIBLE)
+    {
+      if (regu_var->conv_mode != DOMAIN_CONVERT_OPERAND || !prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	{
+	  const int error = qdata_operand_coercion_error (status, *peek_dbval, regu_var->domain);
+	  pr_clear_value (converted);
+	  return error;
+	}
+      pr_clear_value (converted);
+      db_value_domain_init (converted, TP_DOMAIN_TYPE (regu_var->domain), regu_var->domain->precision,
+			    regu_var->domain->scale);
+      er_clear ();
+    }
+  *peek_dbval = converted;
+  return NO_ERROR;
+}
+
+/*
  * fetch_peek_dbval_slow () - full fetch path for every regu_var type; the hot cached-attribute case is
  *                            served by the inline fetch_peek_dbval () wrapper in fetch.h.
  *   return: NO_ERROR or ER_code
@@ -1691,6 +1730,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
   DB_TYPE head_type, cur_type;
   FUNCTION_TYPE *funcp = NULL;
   XASL_NODE *xasl;
+  DB_VALUE position_value;
 
   switch (regu_var->type)
     {
@@ -1766,7 +1806,8 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 
       pr_clear_value (regu_var->vfetch_to);
 
-      *peek_dbval = regu_var->vfetch_to;
+      /* a converting regu reads into a temporary: a conversion's result is not its source */
+      *peek_dbval = regu_var->conv != NULL ? &position_value : regu_var->vfetch_to;
 
       /* slot accessor: layout from the bound descriptor, domain from the position's execution domain - the list scan
        * or the block that reads the list gave a variable position its resolved domain; NULL column leaves vfetch_to
@@ -1943,7 +1984,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	{
 	  /* a constant function resolve_domains evaluated once */
 	  *peek_dbval = vd->dbval_ptr + regu_var->plan_item->ref;
-	  return NO_ERROR;
+	  return regu_var->conv != NULL ? fetch_convert_regu_value (regu_var, peek_dbval) : NO_ERROR;
 	}
 
       error = qdata_evaluate_function (thread_p, regu_var, vd, obj_oid, tplrec);
@@ -2048,6 +2089,11 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	  db_enum_put_cs_and_collation (*peek_dbval, collate->codeset, collate->collation_id);
 
 	}
+    }
+
+  if (regu_var->conv != NULL && fetch_convert_regu_value (regu_var, peek_dbval) != NO_ERROR)
+    {
+      goto exit_on_error;
     }
 
   if (*peek_dbval != NULL && !DB_IS_NULL (*peek_dbval))
@@ -2370,6 +2416,8 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * 
       regu_var = &regup->value;
       pos_descr = &regu_var->value.pos_descr;
       assert_release (regu_var->type == TYPE_POSITION);
+      /* a list's producers convert nothing: a consumer that wants another domain has its own regu */
+      assert (regu_var->conv == NULL);
 #if !defined(NDEBUG)
       assert (pos_descr->pos_no >= prev_pos);
       prev_pos = pos_descr->pos_no;

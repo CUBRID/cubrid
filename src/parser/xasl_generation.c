@@ -185,8 +185,8 @@ struct pred_regu_variable_p_list_node
    && (a)->info.sort_spec.nulls_first_or_last == (b)->info.sort_spec.nulls_first_or_last)
 
 static PRED_EXPR *pt_make_pred_term_not (const PRED_EXPR * arg1);
-static PRED_EXPR *pt_make_pred_term_comp (PARSER_CONTEXT * parser, const REGU_VARIABLE * arg1,
-					  const REGU_VARIABLE * arg2, const REL_OP rop, const DB_TYPE data_type);
+static PRED_EXPR *pt_make_pred_term_comp (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, const REL_OP rop,
+					  const DB_TYPE data_type);
 static PRED_EXPR *pt_make_pred_term_some_all (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, const REL_OP rop,
 					      const DB_TYPE data_type, const QL_FLAG some_all);
 static PRED_EXPR *pt_make_pred_term_like (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2,
@@ -1328,80 +1328,16 @@ pt_make_pred_term_not (const PRED_EXPR * arg1)
 
 
 /*
- * pt_make_pred_term_comp (parser, ) - makes a pred expr term comparison node
+ * pt_make_pred_term_comp () - makes a pred expr term comparison node
  *   return:
  *   arg1(in):
  *   arg2(in):
  *   rop(in):
  *   data_type(in):
  */
-/* CBRD-27583: whether the compiler can decide a side's comparison from its regu alone: a fixed domain */
-static bool
-pt_regu_has_fixed_domain (const REGU_VARIABLE * regu)
-{
-  return regu != NULL && regu->type != TYPE_LIST_ID && regu->domain != NULL
-    && TP_DOMAIN_TYPE (regu->domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (regu->domain) != DB_TYPE_NULL
-    && TP_DOMAIN_TYPE (regu->domain) != DB_TYPE_UNKNOWN && regu->domain->collation_flag == TP_DOMAIN_COLL_NORMAL;
-}
-
-/*
- * pt_decide_comparison () - CBRD-27583: decide a comparison term at compile time, from the two sides' domains, with
- *   the type rule module the executor shares: which side is converted into which domain (cmp_target) and how the two
- *   compare then (cmp_method, cmp_collation). It decides nothing about the binds: their domains were fixed by type
- *   checking. A side whose domain the compiler does not know keeps the term undecided (DOMAIN_COMPARE_LATE_BIND):
- *   the server's load derives it as before.
- */
-static void
-pt_decide_comparison (PARSER_CONTEXT * parser, COMP_EVAL_TERM * et_comp)
-{
-  et_comp->cmp_target[0] = et_comp->cmp_target[1] = NULL;
-  et_comp->cmp_collation = 0;
-  et_comp->cmp_method = DOMAIN_COMPARE_LATE_BIND;
-  et_comp->compare = NULL;
-  et_comp->domain_compare = NULL;	/* the server's load derives an undecided term */
-  switch (et_comp->rel_op)
-    {
-    case R_NULL:
-    case R_EXISTS:
-    case R_SUBSET:
-    case R_SUBSETEQ:
-    case R_SUPERSET:
-    case R_SUPERSETEQ:
-      return;
-    default:
-      break;
-    }
-  REGU_VARIABLE *regu[2] = { et_comp->lhs, et_comp->rhs };
-  if (!pt_regu_has_fixed_domain (regu[0]) || !pt_regu_has_fixed_domain (regu[1]))
-    {
-      return;
-    }
-  DOMAIN_COMPARE compare;
-  DOMAIN_COMPARE_KEY key[2];
-  domain_compare_key_of (regu[0]->domain, &key[0]);
-  domain_compare_key_of (regu[1]->domain, &key[1]);
-  if (domain_resolve_comparison (&key[0], &key[1], &compare) != NO_ERROR)
-    {
-      return;
-    }
-  if (compare.method != DOMAIN_COMPARE_DIRECT && compare.method != DOMAIN_COMPARE_CONVERT)
-    {
-      return;
-    }
-  /* A host variable arrives in the domain this comparison converts it into: type checking made the rule's target its
-   * expected domain (pt_typed_bind_comparison), or the translation gave it a derived position of that domain
-   * (pt_assign_host_var_positions), and the client cast the value before it sent it. A side the rule converts
-   * carries its target; a side compared as it is carries none (the unpack looks a converter up for every target it
-   * finds, and a type has no converter into itself). */
-  et_comp->cmp_target[0] = compare.conv[0] != NULL ? (TP_DOMAIN *) compare.target[0] : NULL;
-  et_comp->cmp_target[1] = compare.conv[1] != NULL ? (TP_DOMAIN *) compare.target[1] : NULL;
-  et_comp->cmp_collation = compare.collation;
-  et_comp->cmp_method = compare.method;
-}
-
 static PRED_EXPR *
-pt_make_pred_term_comp (PARSER_CONTEXT * parser, const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2,
-			const REL_OP rop, const DB_TYPE data_type)
+pt_make_pred_term_comp (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, const REL_OP rop,
+			const DB_TYPE data_type)
 {
   PRED_EXPR *pred = NULL;
 
@@ -1419,7 +1355,7 @@ pt_make_pred_term_comp (PARSER_CONTEXT * parser, const REGU_VARIABLE * arg1, con
 	  et_comp->rhs = (REGU_VARIABLE *) arg2;
 	  et_comp->rel_op = rop;
 	  et_comp->type = data_type;
-	  pt_decide_comparison (parser, et_comp);
+	  et_comp->domain_compare = NULL;	/* the server's load derives it */
 	}
     }
 
@@ -1572,7 +1508,7 @@ pt_make_pred_term_is (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, c
 
 	  /* make a R_EQ pred term for rhs boolean val */
 	  pred_rhs =
-	    pt_make_pred_term_comp (parser, pt_to_regu_variable (parser, dummy1, UNBOX_AS_VALUE),
+	    pt_make_pred_term_comp (pt_to_regu_variable (parser, dummy1, UNBOX_AS_VALUE),
 				    pt_to_regu_variable (parser, dummy2, UNBOX_AS_VALUE), R_EQ, data_type);
 
 	  pred = pt_make_pred_expr_pred (pt_to_pred_expr (parser, arg1), pred_rhs, bop);
@@ -1685,12 +1621,12 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	    case PT_SETEQ:
 	    case PT_EQ:
 	      pred =
-		pt_make_pred_term_comp (parser, regu_var1, regu_var2,
+		pt_make_pred_term_comp (regu_var1, regu_var2,
 					((node->info.expr.qualifier == PT_EQ_TORDER) ? R_EQ_TORDER : R_EQ), data_type);
 	      break;
 
 	    case PT_NULLSAFE_EQ:
-	      pred = pt_make_pred_term_comp (parser, regu_var1, regu_var2, R_NULLSAFE_EQ, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_NULLSAFE_EQ, data_type);
 	      break;
 
 	    case PT_IS:
@@ -1703,7 +1639,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 
 	    case PT_ISNULL:
 	      regu_var1 = pt_to_regu_variable (parser, node->info.expr.arg1, UNBOX_AS_VALUE);
-	      pred = pt_make_pred_term_comp (parser, regu_var1, NULL, R_NULL, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, NULL, R_NULL, data_type);
 	      break;
 
 	    case PT_XOR:
@@ -1719,39 +1655,39 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	      *argp |= PT_PRED_ARG_INSTNUM_CONTINUE;
 	      *argp |= PT_PRED_ARG_GRBYNUM_CONTINUE;
 	      *argp |= PT_PRED_ARG_ORDBYNUM_CONTINUE;
-	      pred = pt_make_pred_term_comp (parser, regu_var1, regu_var2, R_NE, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_NE, data_type);
 	      break;
 
 	    case PT_GE:
-	      pred = pt_make_pred_term_comp (parser, regu_var1, regu_var2, R_GE, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_GE, data_type);
 	      break;
 
 	    case PT_GT:
-	      pred = pt_make_pred_term_comp (parser, regu_var1, regu_var2, R_GT, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_GT, data_type);
 	      break;
 
 	    case PT_LT:
-	      pred = pt_make_pred_term_comp (parser, regu_var1, regu_var2, R_LT, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_LT, data_type);
 	      break;
 
 	    case PT_LE:
-	      pred = pt_make_pred_term_comp (parser, regu_var1, regu_var2, R_LE, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_LE, data_type);
 	      break;
 
 	    case PT_SUBSET:
-	      pred = pt_make_pred_term_comp (parser, regu_var1, regu_var2, R_SUBSET, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_SUBSET, data_type);
 	      break;
 
 	    case PT_SUBSETEQ:
-	      pred = pt_make_pred_term_comp (parser, regu_var1, regu_var2, R_SUBSETEQ, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_SUBSETEQ, data_type);
 	      break;
 
 	    case PT_SUPERSET:
-	      pred = pt_make_pred_term_comp (parser, regu_var1, regu_var2, R_SUPERSET, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_SUPERSET, data_type);
 	      break;
 
 	    case PT_SUPERSETEQ:
-	      pred = pt_make_pred_term_comp (parser, regu_var1, regu_var2, R_SUPERSETEQ, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_SUPERSETEQ, data_type);
 	      break;
 
 	    case PT_EXISTS:
@@ -1761,7 +1697,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 		{
 		  XASL_SET_FLAG (regu_var1->xasl, XASL_USES_SQ_CACHE);
 		}
-	      pred = pt_make_pred_term_comp (parser, regu_var1, NULL, R_EXISTS, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, NULL, R_EXISTS, data_type);
 
 	      /* exists op must fetch one tuple */
 	      if (!pt_has_having_with_predicate (parser, node->info.expr.arg1) && regu_var1 && regu_var1->xasl)
@@ -1773,7 +1709,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 	    case PT_IS_NULL:
 	    case PT_IS_NOT_NULL:
 	      regu_var1 = pt_to_regu_variable (parser, node->info.expr.arg1, UNBOX_AS_VALUE);
-	      pred = pt_make_pred_term_comp (parser, regu_var1, NULL, R_NULL, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, NULL, R_NULL, data_type);
 
 	      if (node->info.expr.op == PT_IS_NOT_NULL)
 		{
@@ -1867,7 +1803,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 		    if (op1)
 		      {
 			regu_var1 = pt_to_regu_variable (parser, lower, UNBOX_AS_VALUE);
-			pred1 = pt_make_pred_term_comp (parser, regu, regu_var1, op1, data_type);
+			pred1 = pt_make_pred_term_comp (regu, regu_var1, op1, data_type);
 		      }
 		    else
 		      {
@@ -1877,7 +1813,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 		    if (op2)
 		      {
 			regu_var2 = pt_to_regu_variable (parser, upper, UNBOX_AS_VALUE);
-			pred2 = pt_make_pred_term_comp (parser, regu, regu_var2, op2, data_type);
+			pred2 = pt_make_pred_term_comp (regu, regu_var2, op2, data_type);
 		      }
 		    else
 		      {
@@ -2081,7 +2017,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 
 	      regu_var1 = pt_to_regu_variable (parser, node, UNBOX_AS_VALUE);
 	      regu_var2 = pt_to_regu_variable (parser, arg2, UNBOX_AS_VALUE);
-	      pred = pt_make_pred_term_comp (parser, regu_var1, regu_var2, R_NE, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_NE, data_type);
 	    }
 	  else
 	    {
@@ -2116,7 +2052,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 		  regu_var1 = pt_to_regu_variable (parser, zero, UNBOX_AS_VALUE);
 		  regu_var2 = pt_to_regu_variable (parser, node, UNBOX_AS_VALUE);
 
-		  pred = pt_make_pred_term_comp (parser, regu_var1, regu_var2, R_NE, data_type);
+		  pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_NE, data_type);
 		}
 	      else
 		{
@@ -2152,7 +2088,7 @@ pt_to_pred_expr_local_with_arg (PARSER_CONTEXT * parser, PT_NODE * node, int *ar
 
 	      regu_var1 = pt_to_regu_variable (parser, arg1, UNBOX_AS_VALUE);
 	      regu_var2 = pt_to_regu_variable (parser, arg2, UNBOX_AS_VALUE);
-	      pred = pt_make_pred_term_comp (parser, regu_var1, regu_var2, R_EQ, data_type);
+	      pred = pt_make_pred_term_comp (regu_var1, regu_var2, R_EQ, data_type);
 	    }
 	  else
 	    {

@@ -4481,62 +4481,67 @@ stx_build_eval_term (THREAD_ENTRY * thread_p, char *ptr, EVAL_TERM * eval_term)
 }
 
 /*
- * stx_build_term_compare () - CBRD-27583: the function pointers of a comparison the compiler decided: the converter
- *   of each side into its target and the comparison function of the compared type. The server decides nothing here;
- *   it looks the pointers up for the decision the stream carries. NULL for an undecided term.
+ * stx_build_term_compare () - CBRD-27583: the comparison of a term's two values, which the type rule module picks from
+ *   the two sides' domains (a bind arrives in its regu's domain: the client cast it before it sent it). NULL for a
+ *   term that compares no two values, or a side whose domain is not fixed: the load derives those.
  */
 static const DOMAIN_COMPARE *
 stx_build_term_compare (THREAD_ENTRY * thread_p, const COMP_EVAL_TERM * term)
 {
-  if (term->cmp_method != DOMAIN_COMPARE_DIRECT && term->cmp_method != DOMAIN_COMPARE_CONVERT)
+  switch (term->rel_op)
+    {
+    case R_EQ:
+    case R_NE:
+    case R_GT:
+    case R_GE:
+    case R_LT:
+    case R_LE:
+    case R_EQ_TORDER:
+    case R_NULLSAFE_EQ:
+      break;
+    default:
+      return NULL;
+    }
+  const REGU_VARIABLE *regu[2] = { term->lhs, term->rhs };
+  DOMAIN_COMPARE_KEY key[2];
+  for (int side = 0; side < 2; side++)
+    {
+      const TP_DOMAIN *domain = regu[side] != NULL ? regu[side]->domain : NULL;
+      if (domain == NULL || regu[side]->type == TYPE_LIST_ID || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
+	  || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_UNKNOWN
+	  || domain->collation_flag != TP_DOMAIN_COLL_NORMAL)
+	{
+	  return NULL;
+	}
+      domain_compare_key_of (domain, &key[side]);
+    }
+  DOMAIN_COMPARE decided;
+  if (domain_resolve_comparison (&key[0], &key[1], &decided) != NO_ERROR
+      || (decided.method != DOMAIN_COMPARE_DIRECT && decided.method != DOMAIN_COMPARE_CONVERT))
     {
       return NULL;
     }
-  if (term->lhs == NULL || term->rhs == NULL || term->lhs->domain == NULL || term->rhs->domain == NULL)
+  for (int side = 0; side < 2; side++)
     {
-      return NULL;
+      if (decided.conv[side] != NULL
+	  && decided.conv[side] == tp_value_find_converter ((DB_TYPE) decided.source[side], NULL,
+							    DOMAIN_CONVERT_ASSIGN))
+	{
+	  /* a pair implicit coercion refuses: the load's derivation raises its error */
+	  return NULL;
+	}
+      if (decided.target[side] == NULL)
+	{
+	  /* a side compared as it is: its target is its own domain */
+	  decided.target[side] = regu[side]->domain;
+	}
     }
   DOMAIN_COMPARE *compare = (DOMAIN_COMPARE *) stx_alloc_struct (thread_p, sizeof (*compare));
   if (compare == NULL)
     {
       return NULL;
     }
-  memset (compare, 0, sizeof (*compare));
-  const DB_TYPE source[2] = { TP_DOMAIN_TYPE (term->lhs->domain), TP_DOMAIN_TYPE (term->rhs->domain) };
-  DB_TYPE after[2] = { source[0], source[1] };
-  compare->method = term->cmp_method;
-  compare->coercion = 1;
-  compare->collation = term->cmp_collation;
-  compare->value[0] = compare->value[1] = -1;
-  compare->compare_index = -1;
-  compare->codeset_side = -1;
-  compare->source[0] = (unsigned char) source[0];
-  compare->source[1] = (unsigned char) source[1];
-  for (int side = 0; side < 2; side++)
-    {
-      /* a side without a target is compared as it is: its target is its own domain */
-      compare->target[side] = term->cmp_target[side] != NULL ? term->cmp_target[side]
-	: (side == 0 ? term->lhs->domain : term->rhs->domain);
-      if (term->cmp_target[side] != NULL)
-	{
-	  compare->conv[side] = domain_compare_converter (source[side], term->cmp_target[side]);
-	  after[side] = TP_DOMAIN_TYPE (term->cmp_target[side]);
-	  if (compare->conv[side] == NULL)
-	    {
-	      /* no converter for the pair: the term stays with the load's derivation */
-	      return NULL;
-	    }
-	  if (compare->conv[side] == tp_value_find_converter (source[side], NULL, DOMAIN_CONVERT_ASSIGN))
-	    {
-	      /* the incompatible converter: the compiler decided a pair the rule refuses */
-	      assert (false);
-	      return NULL;
-	    }
-	}
-    }
-  compare->first = (unsigned char) (compare->conv[0] != NULL ? 0 : 1);
-  compare->converted_first = (unsigned char) after[compare->first];
-  compare->cmp = pr_type_from_id (after[0]);
+  *compare = decided;
   domain_compare_set_operator_functions (compare);
   return compare;
 }
@@ -4583,23 +4588,6 @@ stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * c
   ptr = or_unpack_int (ptr, &tmp);
   comp_eval_term->type = (DB_TYPE) tmp;
   comp_eval_term->domain_compare = NULL;
-
-  /* CBRD-27583: the compiler's decision, turned into the function pointers the rows call */
-  for (int side = 0; side < 2; side++)
-    {
-      int has_target, is_null;
-      ptr = or_unpack_int (ptr, &has_target);
-      comp_eval_term->cmp_target[side] = NULL;
-      if (has_target)
-	{
-	  ptr = or_unpack_domain (ptr, &comp_eval_term->cmp_target[side], &is_null);
-	  comp_eval_term->cmp_target[side] = tp_domain_cache (comp_eval_term->cmp_target[side]);
-	}
-    }
-  ptr = or_unpack_int (ptr, &tmp);
-  comp_eval_term->cmp_collation = (short) tmp;
-  ptr = or_unpack_int (ptr, &tmp);
-  comp_eval_term->cmp_method = (unsigned char) tmp;
   comp_eval_term->compare = stx_build_term_compare (thread_p, comp_eval_term);
 
   return ptr;
@@ -5784,6 +5772,22 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   ptr = or_unpack_domain (ptr, &regu_var->domain, NULL);
   regu_var->plan_item = NULL;
 
+  /* CBRD-27583: the domain the value is read in, and the converter into the domain its consumer wants */
+  ptr = or_unpack_int (ptr, &tmp);
+  regu_var->original_domain = regu_var->domain;
+  regu_var->conv = NULL;
+  regu_var->conv_mode = 0;
+  if (tmp)
+    {
+      ptr = or_unpack_domain (ptr, &regu_var->original_domain, NULL);
+      ptr = or_unpack_int (ptr, &tmp);
+      regu_var->conv_mode = (unsigned char) tmp;
+      regu_var->conv =
+	tp_value_find_converter (TP_DOMAIN_TYPE (regu_var->original_domain), regu_var->domain,
+				 (DOMAIN_CONVERT_MODE) tmp);
+      assert (regu_var->conv != NULL);
+    }
+
   ptr = or_unpack_int (ptr, &tmp);
   regu_var->type = (REGU_DATATYPE) tmp;
 
@@ -5822,6 +5826,11 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
 	}
     }
 
+  /* the converted value's holder: the compiler gave a converting regu its own. A constant converts nothing on the
+   * rows: a bind arrives in its regu's domain (the client cast it), and a literal is an auto-parameter */
+  assert (regu_var->conv == NULL
+	  || (regu_var->vfetch_to != NULL && regu_var->type != TYPE_DBVAL && regu_var->type != TYPE_POS_VALUE));
+
   ptr = stx_unpack_regu_variable_value (thread_p, ptr, regu_var);
   if (ptr != NULL)
     {
@@ -5839,13 +5848,14 @@ error:
  * stx_set_fast_peek () - a stable regu the inline fetch_peek_dbval () may peek directly, derived at load: a cached
  *   attribute, a literal, a value pointer without a linked subquery, whose compiled domain fixes its values. A bind
  *   reference gets it with its plan item, and a regu with a variable domain gets it with its execution domain
- *   (domain_plan.c). A COLLATE modifier's regu takes the slow path, which applies the collation.
+ *   (domain_plan.c). A COLLATE modifier's regu takes the slow path, which applies the collation, and a converting
+ *   regu the slow path, which converts its value.
  */
 static void
 stx_set_fast_peek (REGU_VARIABLE * regu_var)
 {
   if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION) || regu_var->domain == NULL
-      || domain_is_variable (regu_var->domain))
+      || domain_is_variable (regu_var->domain) || regu_var->conv != NULL)
     {
       return;
     }
@@ -7129,6 +7139,9 @@ stx_init_regu_variable (REGU_VARIABLE * regu)
   regu->value.val_pos = 0;
   regu->vfetch_to = NULL;
   regu->domain = NULL;
+  regu->original_domain = NULL;
+  regu->conv = NULL;
+  regu->conv_mode = 0;
   regu->xasl = NULL;
 }
 
