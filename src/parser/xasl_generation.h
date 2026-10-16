@@ -154,6 +154,8 @@ extern ACCESS_SPEC_TYPE *pt_make_dblink_access_spec (ACCESS_METHOD access,
 extern REGU_VARIABLE *pt_to_regu_variable (PARSER_CONTEXT * p, PT_NODE * node, UNBOX unbox);
 extern REGU_VARIABLE_LIST pt_to_position_regu_variable_list (PARSER_CONTEXT * parser, PT_NODE * node_list,
 							     VAL_LIST * value_list, int *attr_offsets);
+extern void pt_set_list_position_domains (REGU_VARIABLE_LIST positions, VAL_LIST * values,
+					  const XASL_NODE * producer, const OUTPTR_LIST * output);
 extern PRED_EXPR *pt_to_pred_expr (PARSER_CONTEXT * parser, PT_NODE * node);
 extern PRED_EXPR *pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * node_list, int *argp);
 extern XASL_NODE *parser_generate_xasl (PARSER_CONTEXT * p, PT_NODE * node);

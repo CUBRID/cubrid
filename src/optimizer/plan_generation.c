@@ -667,6 +667,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	    {
 	      regu->value.value.pos_descr.pos_no += outer_info->expr_count;
 	    }
+	  pt_set_list_position_domains (proc->outer.regu_list_pred, outer_name_val_list, outer_xasl, NULL);
 	}
 
       /* proc->inner.regu_list_pred */
@@ -710,6 +711,7 @@ make_hashjoin_proc (QO_ENV * env, QO_PLAN * plan, XASL_NODE * outer_xasl, XASL_N
 	    {
 	      regu->value.value.pos_descr.pos_no += inner_info->expr_count;
 	    }
+	  pt_set_list_position_domains (proc->inner.regu_list_pred, inner_name_val_list, inner_xasl, NULL);
 	}
 
       /* During/after-join predicates reference columns from both inputs.

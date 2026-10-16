@@ -6588,14 +6588,6 @@ error_exit:
   return NULL;
 }
 
-/* shortcut: a value another block gives (an aggregate, a subquery, a derived table's column) carries its parse tree's
- * domain, not its producer's, until the producer lookups of step 2(c); upgrade then */
-static bool
-pt_regu_domain_from_parse_tree (const REGU_VARIABLE * regu)
-{
-  return regu->type == TYPE_CONSTANT || regu->type == TYPE_POSITION;
-}
-
 /*
  * pt_unify_list_column () - CBRD-27583: one column of two set-operation or CTE branches, or of two VALUES rows,
  *   unified as qfile_unify_types does (domain_resolve_list_column, 8022's rule): the compilation knows the domains of
@@ -6630,40 +6622,153 @@ pt_unify_list_column (const TP_DOMAIN * first, const TP_DOMAIN * second, const T
   return error;
 }
 
+/* CBRD-27583: the domain of column pos of the list file an output list writes (hidden columns are not stored) */
+static TP_DOMAIN *
+pt_output_column_domain (const OUTPTR_LIST * output, int pos)
+{
+  for (REGU_VARIABLE_LIST col = output != NULL ? output->valptrp : NULL; col != NULL; col = col->next)
+    {
+      if (!REGU_VARIABLE_IS_FLAGED (&col->value, REGU_VARIABLE_HIDDEN_COLUMN) && pos-- == 0)
+	{
+	  return col->value.domain;
+	}
+    }
+  return NULL;
+}
+
 /*
- * pt_list_column_domain () - CBRD-27583: the domain of column pos of the list an XASL node makes: a block's output
- *   column, a set operation's unified branches, a CTE's non-recursive part; NULL when it is not fixed here
+ * pt_list_column_domain () - CBRD-27583: the domain of column pos of the list an XASL node makes (principle 1-6): a
+ *   block's output column, the unified column of a set operation's branches or of a recursive CTE's two parts; the
+ *   variable domain when the load unifies the column, NULL when no column is found
  */
-static const TP_DOMAIN *
+static TP_DOMAIN *
 pt_list_column_domain (const XASL_NODE * xasl, int pos)
 {
-  const TP_DOMAIN *unified = NULL;
   if (xasl == NULL)
     {
       return NULL;
     }
+  const XASL_NODE *first, *second;
   switch (xasl->type)
     {
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
-      (void) pt_unify_list_column (pt_list_column_domain (xasl->proc.union_.left, pos),
-				   pt_list_column_domain (xasl->proc.union_.right, pos), &unified);
-      return unified;
-    case CTE_PROC:
-      return pt_list_column_domain (xasl->proc.cte.non_recursive_part, pos);
-    default:
+      first = xasl->proc.union_.left;
+      second = xasl->proc.union_.right;
       break;
-    }
-  for (REGU_VARIABLE_LIST col = xasl->outptr_list != NULL ? xasl->outptr_list->valptrp : NULL; col != NULL;
-       col = col->next)
-    {
-      if (!REGU_VARIABLE_IS_FLAGED (&col->value, REGU_VARIABLE_HIDDEN_COLUMN) && pos-- == 0)
+    case CTE_PROC:
+      first = xasl->proc.cte.non_recursive_part;
+      second = xasl->proc.cte.recursive_part;
+      if (second == NULL)
 	{
-	  return pt_regu_domain_from_parse_tree (&col->value) ? NULL : col->value.domain;
+	  return pt_list_column_domain (first, pos);
+	}
+      break;
+    case BUILDLIST_PROC:
+      /* the list holds the analytic or the GROUP BY output when the block has one */
+      if (xasl->proc.buildlist.a_eval_list != NULL && xasl->proc.buildlist.a_outptr_list != NULL)
+	{
+	  return pt_output_column_domain (xasl->proc.buildlist.a_outptr_list, pos);
+	}
+      if (xasl->proc.buildlist.groupby_list != NULL && xasl->proc.buildlist.g_outptr_list != NULL)
+	{
+	  return pt_output_column_domain (xasl->proc.buildlist.g_outptr_list, pos);
+	}
+      return pt_output_column_domain (xasl->outptr_list, pos);
+    default:
+      return pt_output_column_domain (xasl->outptr_list, pos);
+    }
+  const TP_DOMAIN *left = pt_list_column_domain (first, pos);
+  const TP_DOMAIN *right = pt_list_column_domain (second, pos);
+  const TP_DOMAIN *unified;
+  if (left == NULL || right == NULL || pt_unify_list_column (left, right, &unified) != NO_ERROR
+      || (TP_DOMAIN_TYPE (left) == DB_TYPE_OBJECT && TP_DOMAIN_TYPE (right) == DB_TYPE_OBJECT))
+    {
+      return NULL;
+    }
+  return unified != NULL ? (TP_DOMAIN *) unified : &tp_Variable_domain;
+}
+
+/*
+ * pt_spec_list_producer () - CBRD-27583: the XASL node whose list a derived table's or a CTE's spec reads; NULL for
+ *   another spec or a producer generated later (a select-list subquery is generated before the FROM list)
+ */
+static const XASL_NODE *
+pt_spec_list_producer (const PT_NODE * spec)
+{
+  if (spec == NULL || spec->node_type != PT_SPEC)
+    {
+      return NULL;
+    }
+  if (PT_SPEC_IS_DERIVED (spec))
+    {
+      return spec->info.spec.derived_table_type == PT_IS_SUBQUERY
+	? (const XASL_NODE *) spec->info.spec.derived_table->info.query.xasl : NULL;
+    }
+  if (!PT_SPEC_IS_CTE (spec))
+    {
+      return NULL;
+    }
+  const PT_NODE *cte = spec->info.spec.cte_pointer->info.pointer.node;
+  if (cte->info.cte.xasl != NULL)
+    {
+      return (const XASL_NODE *) cte->info.cte.xasl;
+    }
+  /* a recursive CTE's list is not known while its recursive part, which reads it, is generated */
+  return cte->info.cte.recursive_part == NULL && cte->info.cte.non_recursive_part != NULL
+    ? (const XASL_NODE *) cte->info.cte.non_recursive_part->info.query.xasl : NULL;
+}
+
+/* CBRD-27583: the domain of a reader of another block's value: a fixed parse tree domain is its producer's type
+ * already, a variable one takes its producer's (principle 1-6) */
+static TP_DOMAIN *
+pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
+{
+  return parse_tree != NULL && TP_DOMAIN_TYPE (parse_tree) == DB_TYPE_VARIABLE && producer != NULL
+    ? producer : parse_tree;
+}
+
+/* CBRD-27583: the domain of a regu reading column pos of the list a derived table's or a CTE's spec reads */
+static TP_DOMAIN *
+pt_list_reader_domain (PARSER_CONTEXT * parser, const PT_NODE * spec, int pos, const PT_NODE * attr)
+{
+  return pt_reader_domain (pt_xasl_node_to_domain (parser, attr),
+			   pt_list_column_domain (pt_spec_list_producer (spec), pos));
+}
+
+/*
+ * pt_set_list_position_domains () - CBRD-27583: list positions read with the domains of the columns their producer
+ *   writes (pt_reader_domain): the list of the XASL node producer, or of the output list output (a block's
+ *   intermediate list, which its GROUP BY pass reads); the value list slots they fill (values) describe the same
+ *   values, as a CONNECT BY block copies their domains
+ */
+void
+pt_set_list_position_domains (REGU_VARIABLE_LIST positions, VAL_LIST * values, const XASL_NODE * producer,
+			      const OUTPTR_LIST * output)
+{
+  for (; positions != NULL; positions = positions->next)
+    {
+      REGU_VARIABLE *position = &positions->value;
+      const int pos = position->value.pos_descr.pos_no;
+      TP_DOMAIN *column =
+	output != NULL ? pt_output_column_domain (output, pos) : pt_list_column_domain (producer, pos);
+      TP_DOMAIN *domain = pt_reader_domain (position->domain, column);
+      if (domain == position->domain)
+	{
+	  continue;
+	}
+      position->domain = domain;
+      position->value.pos_descr.dom = domain;
+      for (QPROC_DB_VALUE_LIST slot = values != NULL ? values->valp : NULL; slot != NULL; slot = slot->next)
+	{
+	  if (slot->val == position->vfetch_to)
+	    {
+	      slot->dom = domain;
+	      break;
+	    }
 	}
     }
-  return NULL;
 }
 
 /*
@@ -6747,11 +6852,9 @@ pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, const PT_NODE * node, UNB
 	      return NULL;
 	    }
 	  /* CBRD-27583: each row's column unifies with the first row's at compilation, as a set operation's */
-	  const bool fixed = !pt_regu_domain_from_parse_tree (regu_list->regu_list->value)
-	    && !pt_regu_domain_from_parse_tree (list_node->value);
 	  const TP_DOMAIN *unified;
-	  if (fixed && pt_unify_list_column (regu_list->regu_list->value->domain, list_node->value->domain, &unified)
-	      != NO_ERROR)
+	  if (pt_unify_list_column (regu_list->regu_list->value->domain, list_node->value->domain, &unified) !=
+	      NO_ERROR)
 	    {
 	      PT_ERRORmf2 (parser, temp, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
 			   pt_short_print (parser, node->info.node_list.list), pt_short_print (parser, temp));
@@ -6759,7 +6862,7 @@ pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, const PT_NODE * node, UNB
 	    }
 	  const TP_DOMAIN *head = regu_list->regu_list->value->domain;
 	  const TP_DOMAIN *row = list_node->value->domain;
-	  if (fixed && head != NULL && row != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (head))
+	  if (head != NULL && row != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (head))
 	      && TP_DOMAIN_TYPE (head) == TP_DOMAIN_TYPE (row)
 	      && TP_DOMAIN_COLLATION (head) != TP_DOMAIN_COLLATION (row))
 	    {
@@ -7555,6 +7658,8 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
       xasl->is_single_tuple = (unbox != UNBOX_AS_TABLE);
       if (xasl->is_single_tuple)
 	{
+	  /* CBRD-27583: the value is the subquery's first column */
+	  regu->domain = pt_reader_domain (regu->domain, pt_list_column_domain (xasl, 0));
 	  if (!xasl->single_tuple)
 	    {
 	      xasl->single_tuple = pt_make_val_list (parser, (PT_NODE *) node);
@@ -10627,11 +10732,10 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 	      regu_alloc (regu);
 	      if (regu)
 		{
+		  const int index = pt_find_attribute (parser, attr, table_info->attribute_list);
 		  regu->type = TYPE_CONSTANT;
-		  regu->domain = pt_xasl_node_to_domain (parser, attr);
-		  dbval =
-		    pt_index_value (table_info->value_list,
-				    pt_find_attribute (parser, attr, table_info->attribute_list));
+		  regu->domain = pt_list_reader_domain (parser, table_info->class_spec, index, attr);
+		  dbval = pt_index_value (table_info->value_list, index);
 		  if (dbval)
 		    {
 		      regu->value.dbvalptr = dbval;
@@ -13442,6 +13546,8 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
    * which describes a type and index into a list file. */
   regu_attributes_pred = pt_to_position_regu_variable_list (parser, pred_attrs, tbl_info->value_list, pred_offsets);
   regu_attributes_rest = pt_to_position_regu_variable_list (parser, rest_attrs, tbl_info->value_list, rest_offsets);
+  pt_set_list_position_domains (regu_attributes_pred, tbl_info->value_list, subquery_proc, NULL);
+  pt_set_list_position_domains (regu_attributes_rest, tbl_info->value_list, subquery_proc, NULL);
 
   parser_free_tree (parser, pred_attrs);
   parser_free_tree (parser, rest_attrs);
@@ -13829,6 +13935,8 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
    */
   regu_attributes_pred = pt_to_position_regu_variable_list (parser, pred_attrs, tbl_info->value_list, pred_offsets);
   regu_attributes_rest = pt_to_position_regu_variable_list (parser, rest_attrs, tbl_info->value_list, rest_offsets);
+  pt_set_list_position_domains (regu_attributes_pred, tbl_info->value_list, pt_spec_list_producer (spec), NULL);
+  pt_set_list_position_domains (regu_attributes_rest, tbl_info->value_list, pt_spec_list_producer (spec), NULL);
 
   parser_free_tree (parser, pred_attrs);
   parser_free_tree (parser, rest_attrs);
@@ -14782,7 +14890,9 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		  if (xasl->is_single_tuple)
 		    {
 		      regu->type = TYPE_CONSTANT;
-		      regu->domain = pt_xasl_node_to_domain (parser, col);
+		      /* CBRD-27583: the value is the subquery's column; hidden columns come last */
+		      regu->domain =
+			pt_reader_domain (pt_xasl_node_to_domain (parser, col), pt_list_column_domain (xasl, i));
 		      regu->value.dbvalptr = value_list->val;
 		      /* move to next db_value holder */
 		      value_list = value_list->next;
@@ -15305,6 +15415,7 @@ ptqo_to_list_scan_proc (PARSER_CONTEXT * parser, XASL_NODE * xasl, PROC_TYPE pro
 	    }
 	}
       free_and_init (attr_offsets);
+      pt_set_list_position_domains (regu_attributes, xasl->val_list, listfile, NULL);
 
       xasl->spec_list =
 	pt_make_list_access_spec (listfile, ACCESS_METHOD_SEQUENTIAL, NULL, pred_expr, regu_attributes, NULL, NULL,
@@ -17147,6 +17258,9 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       aggregate =
 	pt_to_aggregate (parser, select_node, xasl->outptr_list, buildlist->g_val_list, buildlist->g_regu_list,
 			 buildlist->g_scan_regu_list, group_out_list, &buildlist->g_grbynum_val, qo_plan);
+      /* CBRD-27583: the GROUP BY pass reads the list the scan's output wrote, aggregate operands included */
+      pt_set_list_position_domains (buildlist->g_regu_list, buildlist->g_val_list, NULL, xasl->outptr_list);
+      pt_set_list_position_domains (buildlist->g_hk_sort_regu_list, buildlist->g_val_list, NULL, xasl->outptr_list);
 
       /* compute function count */
       buildlist->g_func_count = 0;
@@ -19766,6 +19880,7 @@ pt_make_aptr_parent_node (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE typ
 		    {
 		      free_and_init (attr_offsets);
 		    }
+		  pt_set_list_position_domains (regu_attributes, xasl->val_list, aptr, NULL);
 
 		  if (regu_attributes != NULL)
 		    {
