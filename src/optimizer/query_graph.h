@@ -879,7 +879,10 @@ struct qo_fk_join_info
   QO_SEGMENT **fk_col_segs;
   QO_EQCLASS **col_eqclasses;
 
-  /* number of entries in fk_col_segs and col_eqclasses */
+  /* pk_node's constant sarg per column, NULL for a join column */
+  QO_TERM **pk_const_terms;
+
+  /* number of entries in fk_col_segs, col_eqclasses and pk_const_terms */
   int n_cols;
 };
 typedef struct qo_fk_join_info QO_FK_JOIN_INFO;

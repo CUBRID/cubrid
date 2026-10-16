@@ -265,8 +265,10 @@ static int qo_get_ils_prefix_length (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENT
 static bool qo_is_iss_index (QO_ENV * env, QO_NODE * nodep, QO_INDEX_ENTRY * index_entry);
 static void qo_discover_sort_limit_join_nodes (QO_ENV * env, QO_NODE * nodep, BITSET * order_nodes, BITSET * dep_nodes);
 static bool qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node);
+static DB_VALUE *qo_eq_sarg_const_value (QO_ENV * env, QO_TERM * term);
 static int qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_idx,
-			       QO_SEGMENT ** fk_col_segs_out, QO_EQCLASS ** col_eqclasses_out);
+			       QO_SEGMENT ** fk_col_segs_out, QO_EQCLASS ** col_eqclasses_out,
+			       QO_TERM ** pk_const_terms_out, int *n_join_cols_out);
 static void qo_mark_fk_join_selectivity_floor (QO_ENV * env);
 static bool qo_is_non_mvcc_class_with_index (QO_CLASS_INFO_ENTRY * class_entry_p);
 
@@ -6225,6 +6227,7 @@ qo_env_free (QO_ENV * env)
 	    {
 	      free_and_init (env->fk_join_info[i].fk_col_segs);
 	      free_and_init (env->fk_join_info[i].col_eqclasses);
+	      free_and_init (env->fk_join_info[i].pk_const_terms);
 	    }
 	  free_and_init (env->fk_join_info);
 	}
@@ -10544,6 +10547,57 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
 }
 
 /*
+ * qo_eq_sarg_const_value () - get the non-NULL constant of a single-value equality sarg
+ * return : constant value, or NULL
+ * env (in)  : environment
+ * term (in) : sarg term
+ */
+static DB_VALUE *
+qo_eq_sarg_const_value (QO_ENV * env, QO_TERM * term)
+{
+  PT_NODE *expr, *val;
+  DB_VALUE *dbv;
+
+  /* keep out multi-value and derived terms */
+  if (QO_TERM_IS_FLAGED (term, QO_TERM_RANGELIST | QO_TERM_LIKE_DERIVED_RANGE | QO_TERM_OR_DERIVED))
+    {
+      return NULL;
+    }
+
+  /* keep out ON cond of outer/semi/anti join */
+  if (QO_ON_COND_TERM (term) && QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (env, QO_TERM_LOCATION (term))) != PT_JOIN_INNER)
+    {
+      return NULL;
+    }
+
+  expr = QO_TERM_PT_EXPR (term);
+  if (expr->info.expr.arg1 == NULL || expr->info.expr.arg1->node_type != PT_NAME)
+    {
+      return NULL;
+    }
+
+  val = expr->info.expr.arg2;
+  if (expr->info.expr.op == PT_RANGE)
+    {
+      val = val->info.expr.arg1;
+    }
+
+  switch (qo_classify (val))
+    {
+    case PC_CONST:
+      dbv = pt_value_to_db (QO_ENV_PARSER (env), val);
+      break;
+    case PC_HOST_VAR:
+      dbv = pt_host_var_db_value (QO_ENV_PARSER (env), val);
+      break;
+    default:
+      return NULL;
+    }
+
+  return (dbv == NULL || DB_IS_NULL (dbv)) ? NULL : dbv;
+}
+
+/*
  * qo_match_fk_prefix () - match composite FK columns with the referenced PK
  * return : number of leading columns matched
  * env (in)              : environment
@@ -10551,9 +10605,13 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
  * pk_idx (in)           : referenced PK index entry
  * fk_col_segs_out (out) : matched FK-side segments
  * col_eqclasses_out (out): matched equivalence classes
+ * pk_const_terms_out (out): pk_node constant sargs, NULL for a join column
+ * n_join_cols_out (out) : number of join columns
  *
  * Note: matching is based on equivalence classes so that it remains valid
  *  when redundant FK-PK join terms are removed by qo_check_skip_term().
+ *
+ * Note: a column fixed to the same constant on both sides is matched by its sargs instead.
  *
  * Note: a nullable FK column is matched the same as a NOT NULL one, with no separate NULL-ratio
  *  correction applied to the floor. A correction would double-count against an explicit IS NOT
@@ -10562,12 +10620,19 @@ qo_is_pk_fk_full_join (QO_ENV * env, QO_NODE * fk_node, QO_NODE * pk_node)
  */
 static int
 qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_idx, QO_SEGMENT ** fk_col_segs_out,
-		    QO_EQCLASS ** col_eqclasses_out)
+		    QO_EQCLASS ** col_eqclasses_out, QO_TERM ** pk_const_terms_out, int *n_join_cols_out)
 {
   int i, max_cols;
   QO_SEGMENT *fk_seg, *pk_seg;
   QO_EQCLASS *eqc;
+  QO_TERM *pk_const_term;
+  DB_VALUE *fk_val, *pk_val;
+  DB_VALUE fk_cast, pk_cast;
+  TP_DOMAIN *str_dom;
+  BITSET_ITERATOR fk_iter, pk_iter;
+  int fk_t, pk_t;
 
+  *n_join_cols_out = 0;
   max_cols = MIN (pk_idx->nsegs, fk_idx->nsegs);
 
   for (i = 0; i < max_cols; i++)
@@ -10582,13 +10647,87 @@ qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_i
       pk_seg = QO_ENV_SEG (env, pk_idx->seg_idxs[i]);
 
       eqc = QO_SEG_EQCLASS (fk_seg);
-      if (eqc == NULL || eqc == QO_UNORDERED || eqc != QO_SEG_EQCLASS (pk_seg))
+      if (eqc == QO_UNORDERED || eqc != QO_SEG_EQCLASS (pk_seg))
 	{
-	  break;
+	  eqc = NULL;
+	}
+
+      /* fk.a = pk.a AND fk.a = 5 leaves only a dummy join term, so check constants first */
+      pk_const_term = NULL;
+
+      /* compare strings in the column's domain, e.g. 'a ' = 'a' as CHAR literals but not in a VARCHAR column */
+      str_dom = tp_domain_cache (pt_node_to_db_domain (QO_ENV_PARSER (env), QO_SEG_PT_NODE (fk_seg), NULL));
+      if (str_dom != NULL && !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (str_dom)))
+	{
+	  str_dom = NULL;
+	}
+
+      for (fk_t = bitset_iterate (&(fk_idx->seg_equal_terms[i]), &fk_iter); fk_t != -1 && pk_const_term == NULL;
+	   fk_t = bitset_next_member (&fk_iter))
+	{
+	  fk_val = qo_eq_sarg_const_value (env, QO_ENV_TERM (env, fk_t));
+	  if (fk_val == NULL)
+	    {
+	      continue;
+	    }
+
+	  db_make_null (&fk_cast);
+	  if (str_dom != NULL)
+	    {
+	      if (tp_value_cast (fk_val, &fk_cast, str_dom, true) != DOMAIN_COMPATIBLE)
+		{
+		  pr_clear_value (&fk_cast);
+		  continue;
+		}
+	      fk_val = &fk_cast;
+	    }
+
+	  for (pk_t = bitset_iterate (&(pk_idx->seg_equal_terms[i]), &pk_iter); pk_t != -1;
+	       pk_t = bitset_next_member (&pk_iter))
+	    {
+	      pk_val = qo_eq_sarg_const_value (env, QO_ENV_TERM (env, pk_t));
+	      if (pk_val == NULL)
+		{
+		  continue;
+		}
+
+	      db_make_null (&pk_cast);
+	      if (str_dom != NULL)
+		{
+		  if (tp_value_cast (pk_val, &pk_cast, str_dom, true) != DOMAIN_COMPATIBLE)
+		    {
+		      pr_clear_value (&pk_cast);
+		      continue;
+		    }
+		  pk_val = &pk_cast;
+		}
+
+	      /* coerce numbers as the executor does, e.g. 1 = 1.0 */
+	      if (tp_value_equal (fk_val, pk_val, 1))
+		{
+		  pk_const_term = QO_ENV_TERM (env, pk_t);
+		}
+	      pr_clear_value (&pk_cast);
+	      if (pk_const_term != NULL)
+		{
+		  break;
+		}
+	    }
+	  pr_clear_value (&fk_cast);
+	}
+
+      if (pk_const_term == NULL)
+	{
+	  if (eqc == NULL)
+	    {
+	      break;
+	    }
+	  (*n_join_cols_out)++;
 	}
 
       fk_col_segs_out[i] = fk_seg;
       col_eqclasses_out[i] = eqc;
+      pk_const_terms_out[i] = pk_const_term;
     }
 
   return i;
@@ -10622,7 +10761,7 @@ qo_match_fk_prefix (QO_ENV * env, QO_INDEX_ENTRY * fk_idx, QO_INDEX_ENTRY * pk_i
 static void
 qo_mark_fk_join_selectivity_floor (QO_ENV * env)
 {
-  int i, j, k, m, n_matched;
+  int i, j, k, m, n_matched, n_join_cols;
   size_t n_pairs, cap, fi;
   QO_NODE *node_i, *node_j, *fk_node, *pk_node;
   QO_NODE_INDEX *fk_node_indexp, *pk_node_indexp;
@@ -10630,6 +10769,7 @@ qo_mark_fk_join_selectivity_floor (QO_ENV * env)
   QO_FK_JOIN_INFO *info_arr;
   QO_SEGMENT **fk_col_segs;
   QO_EQCLASS **col_eqclasses;
+  QO_TERM **pk_const_terms;
 
   info_arr = NULL;
   cap = 0;
@@ -10737,23 +10877,28 @@ qo_mark_fk_join_selectivity_floor (QO_ENV * env)
 
 	      fk_col_segs = (QO_SEGMENT **) malloc (sizeof (QO_SEGMENT *) * pk_idx->nsegs);
 	      col_eqclasses = (QO_EQCLASS **) malloc (sizeof (QO_EQCLASS *) * pk_idx->nsegs);
-	      if (fk_col_segs == NULL || col_eqclasses == NULL)
+	      pk_const_terms = (QO_TERM **) malloc (sizeof (QO_TERM *) * pk_idx->nsegs);
+	      if (fk_col_segs == NULL || col_eqclasses == NULL || pk_const_terms == NULL)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
 			  sizeof (QO_SEGMENT *) * pk_idx->nsegs);
 		  free_and_init (fk_col_segs);
 		  free_and_init (col_eqclasses);
+		  free_and_init (pk_const_terms);
 		  goto fk_join_info_fail;
 		}
 
-	      n_matched = qo_match_fk_prefix (env, fk_idx, pk_idx, fk_col_segs, col_eqclasses);
-	      if (n_matched < 2 || n_matched < MIN (pk_idx->nsegs, fk_idx->nsegs))
+	      n_matched = qo_match_fk_prefix (env, fk_idx, pk_idx, fk_col_segs, col_eqclasses, pk_const_terms,
+					      &n_join_cols);
+	      /* n_join_cols == 0: every column is fixed by a constant, no join term to replace */
+	      if (n_matched < 2 || n_matched < MIN (pk_idx->nsegs, fk_idx->nsegs) || n_join_cols < 1)
 		{
 		  /* single-column FK-PK join, or only a leading prefix of a composite FK/PK matched: a partial
 		   * key match does not guarantee each FK row matches exactly one parent row, so the floor must not
 		   * be applied; leave the ordinary per-term selectivity alone */
 		  free_and_init (fk_col_segs);
 		  free_and_init (col_eqclasses);
+		  free_and_init (pk_const_terms);
 		  continue;
 		}
 
@@ -10763,6 +10908,7 @@ qo_mark_fk_join_selectivity_floor (QO_ENV * env)
 	      info_arr[n_pairs].floor_selectivity = 1.0 / QO_NODE_NCARD (pk_node);
 	      info_arr[n_pairs].fk_col_segs = fk_col_segs;
 	      info_arr[n_pairs].col_eqclasses = col_eqclasses;
+	      info_arr[n_pairs].pk_const_terms = pk_const_terms;
 	      info_arr[n_pairs].n_cols = n_matched;
 	      n_pairs++;
 	    }
@@ -10788,6 +10934,7 @@ fk_join_info_fail:
     {
       free_and_init (info_arr[fi].fk_col_segs);
       free_and_init (info_arr[fi].col_eqclasses);
+      free_and_init (info_arr[fi].pk_const_terms);
     }
   free_and_init (info_arr);
 }

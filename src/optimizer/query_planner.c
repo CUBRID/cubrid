@@ -8990,6 +8990,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		  QO_FK_JOIN_INFO *fkinfo = &planner->env->fk_join_info[ei];
 		  bool fk_in_head, pk_in_head, fk_in_tail, pk_in_tail, all_cols_found;
 		  int col;
+		  double pk_const_sel, floor_sel;
 
 		  fk_in_head = BITSET_MEMBER (head_info->nodes, QO_NODE_IDX (fkinfo->fk_node));
 		  pk_in_head = BITSET_MEMBER (head_info->nodes, QO_NODE_IDX (fkinfo->pk_node));
@@ -9007,12 +9008,15 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 		  BITSET_CLEAR (fk_col_terms);
 		  all_cols_found = true;
+		  pk_const_sel = 1.0;
 
 		  for (col = 0; col < fkinfo->n_cols; col++)
 		    {
 		      bool found = false;
 
-		      for (i = bitset_iterate (&sarged_terms, &bi); i != -1; i = bitset_next_member (&bi))
+		      /* a constant column may still have a redundant join term */
+		      for (i = (fkinfo->col_eqclasses[col] != NULL) ? bitset_iterate (&sarged_terms, &bi) : -1; i != -1;
+			   i = bitset_next_member (&bi))
 			{
 			  term = &planner->term[i];
 
@@ -9063,10 +9067,13 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			  found = true;
 			}
 
-		      /* a column whose eqclass carries a constant (fk.a = 5 AND pk.a = 5) has no join term at all,
-		       * so it is never found here and the floor is skipped for this constraint -- conservative
-		       * (falls back to the per-term product). PostgreSQL counts such columns (nconst_ec) and
-		       * keeps applying the floor; left as a follow-up. */
+		      /* fixed to the same constant on both sides (cf. PostgreSQL's nconst_ec) */
+		      if (fkinfo->pk_const_terms[col] != NULL)
+			{
+			  pk_const_sel *= QO_TERM_SELECTIVITY (fkinfo->pk_const_terms[col]);
+			  found = true;
+			}
+
 		      if (!found)
 			{
 			  all_cols_found = false;
@@ -9084,7 +9091,14 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		       * Relationships among child nodes already joined in the head are represented
 		       * by their implied join terms. */
 		      bitset_union (&fk_excluded_terms, &fk_col_terms);
-		      fk_floor_product *= fkinfo->floor_selectivity;
+
+		      /* pk_node's cardinality already includes its constant sargs */
+		      floor_sel = fkinfo->floor_selectivity;
+		      if (pk_const_sel > 0.0 && pk_const_sel < 1.0)
+			{
+			  floor_sel = MIN (1.0, floor_sel / pk_const_sel);
+			}
+		      fk_floor_product *= floor_sel;
 		    }
 		}
 	    }
