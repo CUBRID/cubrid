@@ -78,23 +78,18 @@ namespace parallel_query_execute
   {
     public:
       trace_context()
-	:m_mutex (),
-	 m_stats ()
+	:m_mutex ()
       {
       }
-      ~trace_context() = default;
-      using stat = XASL_STATS;
+      ~trace_context()
+      {
+	free (m_px_stats);
+      }
 
       std::mutex m_mutex;
-      std::vector<stat> m_stats;
-      /* Stored-procedure (regu call) evaluation counters the job workers accumulated, guarded by
-       * m_mutex. The root executor folds them into the leader's own perfmon, which is what feeds
-       * xasl->func_stats and the trace's FUNC line; a worker's copy is otherwise discarded with
-       * its px_stats array. One aggregate, not per job, like the FUNC line itself. */
-      UINT64 m_sp_calls = 0;
-      UINT64 m_sp_time = 0;
-      UINT64 m_sp_fetches = 0;
-      UINT64 m_sp_ioreads = 0;
+      /* everything the jobs counted, summed when each job ends; run_jobs () merges it into the executor's thread.
+       * guarded by m_mutex */
+      UINT64 *m_px_stats = nullptr;
   };
   class job
   {
