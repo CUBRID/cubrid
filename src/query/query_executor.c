@@ -9687,7 +9687,26 @@ qexec_batch_eligible (const XASL_NODE * xasl)
 {
   const ACCESS_SPEC_TYPE *spec = xasl->spec_list;
 
-  if (xasl->type != BUILDVALUE_PROC || xasl->proc.buildvalue.agg_list == NULL || xasl->proc.buildvalue.is_always_false)
+  if (xasl->type == BUILDVALUE_PROC)
+    {
+      if (xasl->proc.buildvalue.agg_list == NULL || xasl->proc.buildvalue.is_always_false)
+	{
+	  return false;
+	}
+    }
+  else if (xasl->type == BUILDLIST_PROC)
+    {
+      /* a projection: the rows go to the list file one by one (qexec_end_one_iteration ()); grouping,
+       * analytics, a single-row subquery and a DML scan keep the row path */
+      if (xasl->proc.buildlist.groupby_list != NULL || xasl->proc.buildlist.g_agg_list != NULL
+	  || xasl->proc.buildlist.a_eval_list != NULL || xasl->selected_upd_list != NULL
+	  || xasl->scan_op_type != S_SELECT || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl)
+	  || XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT) || XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
+	{
+	  return false;
+	}
+    }
+  else
     {
       return false;
     }
@@ -9709,7 +9728,7 @@ qexec_batch_eligible (const XASL_NODE * xasl)
 }
 
 /*
- * qexec_batch_scan () - the page-at-a-time loop of a BUILDVALUE block over its heap scan
+ * qexec_batch_scan () - the page-at-a-time loop of a BUILDVALUE or projecting BUILDLIST block over its heap scan
  *   return: S_END when the scan is exhausted, S_ERROR otherwise (the error is set)
  *   xasl(in): the block (qexec_batch_eligible (), scan_batch_open () == 1)
  *   xasl_state(in): the execution
@@ -9723,6 +9742,23 @@ qexec_batch_eligible (const XASL_NODE * xasl)
  * / qexec_end_one_iteration () pair the row loop uses, so that it raises what the interpreter
  * raises, where it raises it.
  */
+/* the projection node's emit in the serial block: the row path's end of iteration for the row */
+typedef struct qexec_batch_emit QEXEC_BATCH_EMIT;
+struct qexec_batch_emit
+{
+  XASL_NODE *xasl;
+  XASL_STATE *xasl_state;
+  QFILE_TUPLE_RECORD *tplrec;
+};
+
+static int
+qexec_batch_emit_row (THREAD_ENTRY * thread_p, void *arg)
+{
+  QEXEC_BATCH_EMIT *e = (QEXEC_BATCH_EMIT *) arg;
+
+  return qexec_end_one_iteration (thread_p, e->xasl, e->xasl_state, e->tplrec);
+}
+
 static SCAN_CODE
 qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * tplrec)
 {
@@ -9730,12 +9766,22 @@ qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
   HEAP_SCAN_ID *hsidp = &s_id->s.hsid;
   SCAN_CODE code, ls_scan;
   int rc;
-  QDATA_AGG_CHUNK_STATE agg_state = { xasl->proc.buildvalue.agg_list, &xasl_state->vd, true };
-  EXPR_CHUNK_NODE agg_node, eval_node;
+  QDATA_AGG_CHUNK_STATE agg_state = { NULL, &xasl_state->vd, true };
+  QEXEC_BATCH_EMIT emit_state = { xasl, xasl_state, tplrec };
+  SCAN_BATCH_PROJECT project_state = { s_id, qexec_batch_emit_row, &emit_state };
+  EXPR_CHUNK_NODE tail_node, eval_node;
 
-  /* the chain: evaluation (filter, operand steps) -> the aggregate (the blocking node) */
-  expr_chunk_node_init (&agg_node, "aggregate", qdata_agg_chunk_consume, &agg_state, NULL);
-  expr_chunk_node_init (&eval_node, "evaluate", expr_chunk_eval_consume, &xasl_state->vd, &agg_node);
+  /* the chain: evaluation (filter, operand steps) -> the aggregate, or the projection into the list file */
+  if (xasl->type == BUILDVALUE_PROC)
+    {
+      agg_state.agg_list = xasl->proc.buildvalue.agg_list;
+      expr_chunk_node_init (&tail_node, "aggregate", qdata_agg_chunk_consume, &agg_state, NULL);
+    }
+  else
+    {
+      expr_chunk_node_init (&tail_node, "project", scan_batch_project_consume, &project_state, NULL);
+    }
+  expr_chunk_node_init (&eval_node, "evaluate", expr_chunk_eval_consume, &xasl_state->vd, &tail_node);
 
   while ((code = scan_batch_next_page (thread_p, s_id)) == S_SUCCESS)
     {
@@ -9944,13 +9990,19 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  recursive_iterations = 1;
 	}
 
-      /* a BUILDVALUE over one heap scan with nothing per row but the aggregates takes the scan a
-       * page at a time (expr_batch.h); the scan is started now, so its plan can be built */
-      if (xasl->type == BUILDVALUE_PROC && qexec_batch_eligible (xasl))
+      /* a BUILDVALUE over one heap scan with nothing per row but the aggregates, or a BUILDLIST that
+       * only projects, takes the scan a chunk at a time (expr_batch.h); the scan is started now, so
+       * its plan can be built */
+      if (qexec_batch_eligible (xasl))
 	{
-	  (void) qdata_agg_operand_prog_ensure (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd);
-	  if (scan_batch_open (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec, xasl->proc.buildvalue.agg_list,
-			       &xasl_state->vd) == 1)
+	  cubxasl::aggregate_list_node * agg_list =
+	    (xasl->type == BUILDVALUE_PROC) ? xasl->proc.buildvalue.agg_list : NULL;
+
+	  if (agg_list != NULL)
+	    {
+	      (void) qdata_agg_operand_prog_ensure (thread_p, agg_list, &xasl_state->vd);
+	    }
+	  if (scan_batch_open (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec, agg_list, &xasl_state->vd) == 1)
 	    {
 	      ls_scan = qexec_batch_scan (thread_p, xasl, xasl_state, tplrec);
 	      if (ls_scan != S_END)

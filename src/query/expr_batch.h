@@ -98,7 +98,8 @@ struct expr_batch_inputs
   const struct access_spec_node *spec;	/* the scan's spec: its regu lists map value-list slots to attributes */
   void *scan_pred_compiled;	/* PRED_EXPR.scan_prog when scan_prog_state == 1, else NULL */
   bool has_filter;		/* the scan has a data filter at all */
-    cubxasl::aggregate_list_node * agg_list;	/* the BUILDVALUE list; operand program state settled */
+    cubxasl::aggregate_list_node * agg_list;	/* the BUILDVALUE list (operand program state settled), or
+						 * NULL: a projection, which takes the rows the filter keeps */
   struct val_descr *vd;
   bool is_peeking;		/* records are peeked, not copied into one buffer */
 };

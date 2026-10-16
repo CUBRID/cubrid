@@ -1535,9 +1535,9 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
       *why_not = "records are copied, not peeked";
       return NULL;
     }
-  if (in->agg_list == NULL)
+  if (in->agg_list == NULL && !in->has_filter)
     {
-      *why_not = "no aggregate list";
+      *why_not = "neither a filter nor an aggregate for the batch to run";
       return NULL;
     }
   plan = (EXPR_BATCH_PLAN *) malloc (sizeof (EXPR_BATCH_PLAN));
@@ -1555,9 +1555,14 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
     {
       rc = eb_build_filter (&b);
     }
-  if (rc == NO_ERROR)
+  if (rc == NO_ERROR && in->agg_list != NULL)
     {
       rc = eb_build_aggs (thread_p, &b);
+    }
+  if (rc == NO_ERROR && in->agg_list == NULL && plan->n_raw_kids == 0)
+    {
+      /* a projection gains only from a filter the batch runs as arrays */
+      rc = eb_decline (&b, "no filter term the batch runs as arrays");
     }
   if (rc == NO_ERROR && plan->n_cols == 0 && plan->n_kids > 0)
     {

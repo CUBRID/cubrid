@@ -477,6 +477,15 @@ namespace parallel_scan
     else
       {
 	m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl, m_vd);
+	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST && ST == SCAN_TYPE::HEAP)
+	  {
+	    /* a projecting block takes its pages a chunk at a time too, the rows the filter keeps
+	     * written one by one through the result handler (expr_batch.h) */
+	    if (er_errid () == NO_ERROR && qexec_batch_eligible (m_xasl))
+	      {
+		(void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, NULL, m_vd);
+	      }
+	  }
       }
     /* set before the er_errid () check on purpose: an error still pending here (left by a callee whose
      * return code is not checked) is detected only after the handlers were initialized, and finalize ()
@@ -721,6 +730,20 @@ namespace parallel_scan
 
   /* Shared OID-drain helper: leaf-path + late-joiner. Returns S_END on completion, S_ERROR with stop=true on terminal failure. */
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  int task<result_type, ST>::emit_row (cubthread::entry *thread_p, void *arg)
+  {
+    /* the projection node's emit: the row, its value list filled, to the worker's result handler as
+     * the row loop below hands it (MERGEABLE_LIST) */
+    task<result_type, ST> *self = static_cast<task<result_type, ST> *> (arg);
+
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+      {
+	self->m_result_handler->write (thread_p, self->m_xasl->outptr_list);
+      }
+    return NO_ERROR;
+  }
+
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
   SCAN_CODE task<result_type, ST>::drain_slot_oids (cubthread::entry &thread_ref, bool &stop)
   {
     SCAN_CODE scan_code, xs_scan;
@@ -728,7 +751,8 @@ namespace parallel_scan
     result_handler<result_type> *result_handler_p = m_result_handler;
     const bool on_trace = thread_ref.on_trace;	/* per row below; the calls in the loop could reload the member */
 
-    if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT && ST == SCAN_TYPE::HEAP)
+    if constexpr ((result_type == RESULT_TYPE::BUILDVALUE_OPT || result_type == RESULT_TYPE::MERGEABLE_LIST)
+		  && ST == SCAN_TYPE::HEAP)
       {
 	/* the page as a batch (expr_batch.h): collected a chunk at a time, each evaluated as arrays and
 	 * accumulated in one loop per aggregate before the next; a chunk the batch hands back goes with
@@ -739,12 +763,21 @@ namespace parallel_scan
 	  {
 	    PGSLOTID slot = 0, chunk_start = 0;
 	    int rc = NO_ERROR;
-	    QDATA_AGG_CHUNK_STATE agg_state = { m_xasl->proc.buildvalue.agg_list, m_vd, false };
-	    EXPR_CHUNK_NODE agg_node, eval_node;
+	    QDATA_AGG_CHUNK_STATE agg_state = { NULL, m_vd, false };
+	    SCAN_BATCH_PROJECT project_state = { m_scan_id, emit_row, this };
+	    EXPR_CHUNK_NODE tail_node, eval_node;
 
-	    /* the chain: evaluation -> the worker's aggregate (the blocking node) */
-	    expr_chunk_node_init (&agg_node, "aggregate", qdata_agg_chunk_consume, &agg_state, NULL);
-	    expr_chunk_node_init (&eval_node, "evaluate", expr_chunk_eval_consume, m_vd, &agg_node);
+	    /* the chain: evaluation -> the worker's aggregate, or the projection into its result handler */
+	    if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
+	      {
+		agg_state.agg_list = m_xasl->proc.buildvalue.agg_list;
+		expr_chunk_node_init (&tail_node, "aggregate", qdata_agg_chunk_consume, &agg_state, NULL);
+	      }
+	    else
+	      {
+		expr_chunk_node_init (&tail_node, "project", scan_batch_project_consume, &project_state, NULL);
+	      }
+	    expr_chunk_node_init (&eval_node, "evaluate", expr_chunk_eval_consume, m_vd, &tail_node);
 
 	    do
 	      {

@@ -135,6 +135,7 @@ namespace parallel_scan
       int clone_xasl (cubthread::entry &thread_ref);
       void loop (cubthread::entry &thread_ref);
       SCAN_CODE drain_slot_oids (cubthread::entry &thread_ref, bool &stop);
+      static int emit_row (cubthread::entry *thread_p, void *arg);
       scan_fixes read_fixes (cubthread::entry &thread_ref);
       void add_scan_fixes (cubthread::entry &thread_ref, const scan_fixes &since);
       /* INDEX-only: after leaf supply exhausted, help drain remaining shared overflow chains. No-op otherwise. */

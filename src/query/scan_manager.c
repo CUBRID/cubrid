@@ -8302,6 +8302,68 @@ scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
+ * scan_batch_project_consume () - the projection node of a chunk chain (expr_batch.h)
+ *   return: NO_ERROR, or the error the row path raises at that row
+ *   node(in): its state is a SCAN_BATCH_PROJECT
+ *   plan(in), batch(in): the chunk, its filter run (the selection is the rows it kept)
+ *
+ * For each row kept, in row order, what scan_next_heap_scan () does once eval_data_filter ()
+ * accepted it: the predicate columns into the value list (eval_data_filter ()'s fetch after a
+ * TRUE row, their attribute cache armed for the row as the filter arms it), then the rest of
+ * the columns (heap_attrinfo_read_dbvalues () and fetch_val_list () over rest_regu_list); then
+ * the row goes to emit.  The records are peeked from the page the scan holds, as the row
+ * path's are, so the values are read while it stays fixed.
+ */
+int
+scan_batch_project_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
+{
+  SCAN_BATCH_PROJECT *st = (SCAN_BATCH_PROJECT *) node->state;
+  SCAN_ID *scan_id = st->scan_id;
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  int j, rc;
+
+  for (j = 0; j < batch->n_sel; j++)
+    {
+      EXPR_BATCH_ROW *row = &batch->rows[batch->sel[j]];
+
+      hsidp->curr_oid = row->oid;
+      if (hsidp->scan_pred.regu_list != NULL && scan_id->val_list != NULL)
+	{
+	  if (hsidp->pred_attrs.attr_cache != NULL
+	      && heap_attrinfo_read_dbvalues_lazy (thread_p, &row->oid, &row->recdes,
+						   hsidp->pred_attrs.attr_cache) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  if (fetch_val_list (thread_p, hsidp->scan_pred.regu_list, scan_id->vd, &hsidp->cls_oid, &row->oid, NULL, PEEK)
+	      != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      if (hsidp->rest_regu_list != NULL)
+	{
+	  if (heap_attrinfo_read_dbvalues (thread_p, &row->oid, &row->recdes, hsidp->rest_attrs.attr_cache) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  if (scan_id->val_list != NULL
+	      && fetch_val_list (thread_p, hsidp->rest_regu_list, scan_id->vd, &hsidp->cls_oid, &row->oid, NULL,
+				 PEEK) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      rc = st->emit (thread_p, st->emit_arg);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * scan_batch_page_rowmode () - walk the rest of the held page row by row through scan_next_scan ()
  *   scan_id(in/out): the heap scan
  *   on(in): true before the first row, false after the page's S_END

@@ -692,6 +692,19 @@ extern SCAN_CODE scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_i
 extern SCAN_CODE scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid,
 					   PGSLOTID * slot);
 extern void scan_batch_page_rowmode (SCAN_ID * scan_id, bool on, PGSLOTID after_slot);
+/* the projection node: each row the chunk kept gets the row path's tail -- its predicate and
+ * rest columns fetched into the value list -- and is handed to emit (the serial block's
+ * qexec_end_one_iteration (), a parallel worker's result handler) */
+typedef struct scan_batch_project SCAN_BATCH_PROJECT;
+struct scan_batch_project
+{
+  SCAN_ID *scan_id;
+  int (*emit) (THREAD_ENTRY * thread_p, void *arg);
+  void *emit_arg;
+};
+struct expr_chunk_node;
+extern int scan_batch_project_consume (THREAD_ENTRY * thread_p, struct expr_chunk_node *node,
+				       struct expr_batch_plan *plan, struct expr_batch *batch);
 extern SCAN_CODE scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_prev_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_save_scan_pos (SCAN_ID * s_id, SCAN_POS * scan_pos);
