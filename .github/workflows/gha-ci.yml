@@ -1384,6 +1384,7 @@ jobs:
       RUNDIR: ${{ needs.plan.outputs.rundir }}
       BUILD_NS: ${{ needs.plan.outputs.build_ns }}
       PR: ${{ needs.gate.outputs.pr }}
+      TC: ${{ needs.gate.outputs.tc }}
       SUITES_RUN: ${{ join(fromJson(needs.gate.outputs.suites), ' ') }}
     outputs:
       verdict_shell: ${{ steps.verdict.outputs.verdict_shell }}
@@ -1626,6 +1627,10 @@ jobs:
             {
               echo "## gha-ci: $suite suite"
               echo
+              if [ -n "$TC" ]; then
+                echo "> **tc trial: only the cases [$repo#$TC](https://github.com/CUBRID/$repo/pull/$TC) changes, from its head. Its verdict goes to that PR, not to this engine PR.**"
+                echo
+              fi
               if [ -n "$RERUN_FROM" ]; then
                 echo "> **Only what run \`$RERUN_FROM\` left unhandled was re-run. This is not a full run.**"
                 echo ">"
@@ -1721,9 +1726,13 @@ jobs:
               fi
               if [ -n "$PR" ] && { [ "$failed_n" -gt 0 ] || [ "$unrun_n" -gt 0 ]; }; then
                 # The CTP branch has to ride along, or the re-run silently takes develop.
-                rerun_cmd="/run rerun $GITHUB_RUN_ID"
+                if [ -n "$TC" ]; then
+                  rerun_cmd="/run $suite tc=$TC"; lead="A tc trial has no re-run. Run it again"
+                else
+                  rerun_cmd="/run rerun $GITHUB_RUN_ID"; lead="Re-run the failures and everything that never ran"
+                fi
                 [ "$CTP_BRANCH" = develop ] || rerun_cmd="$rerun_cmd testtools=$CTP_BRANCH"
-                echo "Re-run the failures and everything that never ran: \`$rerun_cmd\`"
+                echo "$lead: \`$rerun_cmd\`"
                 echo
               fi
               echo "[Artifacts]($ARTIFACT_URL_BASE/${d#$CI_ROOT/}/)"
@@ -1882,4 +1891,51 @@ jobs:
           esac
           gh api -X POST "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" --silent -f state="$state" \
             -f context="$(jq -r --arg s "$SUITE" '.[$s].status_ctx' <<<"$SUITES")" \
+            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" -f description="$desc"
+
+  # Until the testcase repos run CI of their own: then this job and the app's statuses: write go.
+  tc_status:
+    name: tc trial status
+    needs: [gate, collect]
+    if: ${{ always() && needs.gate.result == 'success' && needs.gate.outputs.run == 'true' && needs.gate.outputs.tc != '' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    defaults:
+      run:
+        shell: bash --noprofile --norc -euo pipefail {0}
+    steps:
+      - name: GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.TC_APP_ID }}
+          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
+          repositories: ${{ needs.gate.outputs.tc_repo }}
+          owner: CUBRID
+          permission-statuses: write
+
+      - name: Post the verdict to the tc PR head
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          TC_REPO: ${{ needs.gate.outputs.tc_repo }}
+          TC_SHA: ${{ needs.gate.outputs.tc_sha }}
+          PR: ${{ needs.gate.outputs.pr }}
+          SUITE: ${{ fromJson(needs.gate.outputs.suites)[0] }}
+          COLLECT: ${{ needs.collect.result }}
+          VERDICT: ${{ needs.collect.outputs[format('verdict_{0}', fromJson(needs.gate.outputs.suites)[0])] }}
+        run: |
+          case "$VERDICT" in
+            pass) state=success; desc="$SUITE trial passed" ;;
+            fail) state=failure; desc="$SUITE trial failed -- see the run" ;;
+            *)
+              state=error
+              if [ "$COLLECT" = cancelled ]; then
+                desc="trial was superseded or cancelled"
+              else
+                desc="$SUITE trial reached no verdict (collect $COLLECT)"
+              fi ;;
+          esac
+          gh api -X POST "repos/CUBRID/${TC_REPO}/statuses/${TC_SHA}" --silent -f state="$state" \
+            -f context="gha-ci: tc trial (cubrid#${PR})" \
             -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" -f description="$desc"
