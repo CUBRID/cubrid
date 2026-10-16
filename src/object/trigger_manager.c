@@ -5912,6 +5912,19 @@ tr_check_rollback_triggers (DB_TRIGGER_TIME time)
     }
 }
 
+/*
+ * tr_check_partial_rollback_triggers() - This is called when the transaction is rolled back to a savepoint.
+ *    return: none
+ */
+void
+tr_check_partial_rollback_triggers (void)
+{
+  if (tr_User_triggers_modified)
+    {
+      tr_User_triggers_valid = 0;
+    }
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 /*
  * tr_check_timeout_triggers() - This is called whenever a lock timeout ocurrs.
