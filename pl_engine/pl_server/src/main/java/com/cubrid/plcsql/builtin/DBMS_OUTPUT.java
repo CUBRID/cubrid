@@ -35,6 +35,8 @@ import com.cubrid.jsp.SysParam;
 import com.cubrid.jsp.context.Context;
 import com.cubrid.jsp.context.ContextManager;
 import com.cubrid.jsp.jdbc.CUBRIDServerSideConnection;
+import java.io.IOException;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Arrays;
 
@@ -46,7 +48,7 @@ public class DBMS_OUTPUT {
         return ContextManager.getContextofCurrentThread();
     }
 
-    public static void enable(int size) throws Exception {
+    public static void enable(int size) throws IOException, SQLException {
         Context c = getContext();
         c.getMessageBuffer().enable(size);
 
@@ -61,7 +63,7 @@ public class DBMS_OUTPUT {
                                                 true))));
     }
 
-    public static void disable() throws Exception {
+    public static void disable() throws IOException, SQLException {
         Context c = getContext();
         c.getMessageBuffer().disable();
 

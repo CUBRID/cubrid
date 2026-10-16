@@ -11424,7 +11424,7 @@ fileio_request_user_response (THREAD_ENTRY * thread_p, FILEIO_REMOTE_PROMPT_TYPE
     }
 
   /* Obtain the user's response from the client, without blocking the server. */
-  if (xs_receive_data_from_client (thread_p, &remote_data_p, &data_size) != NO_ERROR)
+  if (xs_receive_data_from_client (thread_p, &remote_data_p, &data_size, true) != NO_ERROR)
     {
       if (remote_data_p)
 	{

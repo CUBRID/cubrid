@@ -35,6 +35,7 @@ import com.cubrid.plcsql.compiler.ast.loopOpt.LocalRoutineCall;
 import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.serverapi.ServerConstants;
 import com.cubrid.plcsql.compiler.type.Type;
+import java.util.Locale;
 import java.util.Set;
 import java.util.Stack;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -137,6 +138,7 @@ public abstract class DeclRoutine extends Decl {
     }
 
     public StmtLoop.LoopOptimizables loopOptimizables;
+    public final boolean isPublic;
     public final NodeList<DeclParam> paramList;
     public final int directive;
     public final TypeSpec retTypeSpec;
@@ -149,6 +151,7 @@ public abstract class DeclRoutine extends Decl {
             String name,
             String comment,
             StmtLoop.LoopOptimizables loopOptimizables,
+            boolean isPublic,
             NodeList<DeclParam> paramList,
             int directive,
             TypeSpec retTypeSpec,
@@ -157,6 +160,7 @@ public abstract class DeclRoutine extends Decl {
         super(ctx, name, comment);
 
         this.loopOptimizables = loopOptimizables;
+        this.isPublic = isPublic;
         this.paramList = paramList;
         this.directive = directive;
         this.retTypeSpec = retTypeSpec;
@@ -210,7 +214,8 @@ public abstract class DeclRoutine extends Decl {
     }
 
     public String getDeclBlockName() {
-        return name.toLowerCase() + '_' + (scope.level + 1);
+        // name came from Misc.getNormalizedText (), so case-convert it back the same way
+        return name.toLowerCase(Locale.ROOT) + '_' + (scope.level + 1);
     }
 
     public boolean isProcedure() {

@@ -31,8 +31,10 @@
 
 package com.cubrid.jsp;
 
+import java.util.Locale;
+
 public class OSValidator {
-    private static String OS = System.getProperty("os.name").toLowerCase();
+    private static String OS = System.getProperty("os.name").toLowerCase(Locale.ROOT);
     public static boolean IS_WINDOWS = (OS.indexOf("win") >= 0);
     public static boolean IS_MAC = (OS.indexOf("mac") >= 0);
     public static boolean IS_UNIX =

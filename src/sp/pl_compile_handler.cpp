@@ -20,6 +20,9 @@
 
 #include <cstring>
 
+#include <string>
+
+#include "network_callback_sr.hpp"
 #include "pl_comm.h"
 #include "pl_execution_stack_context.hpp"
 
@@ -158,7 +161,7 @@ namespace cubpl
 		sql_semantics_request request;
 		respone_unpacker.unpack_all (request);
 
-		error_code = m_stack->send_data_to_client_recv (bypass_block, request);
+		error_code = m_stack->send_data_to_client_recv (bypass_block, true, request);
 	      }
 	    else if (code == METHOD_REQUEST_GLOBAL_SEMANTICS)
 	      {
@@ -166,7 +169,22 @@ namespace cubpl
 		global_semantics_request request;
 		respone_unpacker.unpack_all (request);
 
-		error_code = m_stack->send_data_to_client_recv (bypass_block, request);
+		error_code = m_stack->send_data_to_client_recv (bypass_block, true, request);
+	      }
+	    else if (code == METHOD_CALLBACK_GET_CODE_BY_NAME)
+	      {
+		// while compiling, the PL server fetches the object code of referenced SPs/packages
+		// so that their generated Java classes can be resolved by javac. The catalog is read
+		// on the client (CAS) side, so forward the request there and relay the reply - the
+		// same way the executor does at run time.
+		packing_unpacker respone_unpacker (payload_blk);
+		std::string class_name;
+		std::string req_compile_id;
+		respone_unpacker.unpack_all (class_name, req_compile_id);
+
+		error_code =
+			m_stack->send_data_to_client_recv (bypass_block, true, METHOD_CALLBACK_GET_CODE_BY_NAME,
+			    class_name, req_compile_id);
 	      }
 	    else
 	      {

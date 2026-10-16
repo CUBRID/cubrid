@@ -39,6 +39,8 @@ import java.util.Set;
 
 public class CompileResponse implements PackableObject {
 
+    private static long compileSeqNo = 1;
+
     public int errCode = -1; // 0: no error, < 0: error
     public int errLine = 0;
     public int errColumn = 0;
@@ -49,6 +51,7 @@ public class CompileResponse implements PackableObject {
     // common to sp and package spec
     public String translated = null;
     public String className = null;
+    public String compileId = null;
     public byte[] compiledCode = null;
     private Set<Dependency> dependencies = null;
 
@@ -62,6 +65,15 @@ public class CompileResponse implements PackableObject {
     // only for sp
     public String javaSignature = null;
     public int sqlDataAccess = ServerConstants.SP_SQL_TYPE_UNKNOWN;
+
+    private static synchronized String getCompileId() {
+        return String.format("%d_%d", compileSeqNo++, System.currentTimeMillis());
+    }
+
+    public void setCompiledCode(byte[] compiledCode) {
+        this.compileId = getCompileId();
+        this.compiledCode = compiledCode;
+    }
 
     public CompileResponse(int errCode, int line, int column, String msg) {
 
@@ -166,6 +178,7 @@ public class CompileResponse implements PackableObject {
                 case CompileRequest.PLCSQL_COMPILE_TYPE_SP:
                     packer.packString(translated);
                     packer.packString(className);
+                    packer.packString(compileId);
                     packer.packCString(compiledCode);
                     packer.packString(javaSignature);
                     packer.packInt(sqlDataAccess);
@@ -184,6 +197,7 @@ public class CompileResponse implements PackableObject {
                 case CompileRequest.PLCSQL_COMPILE_TYPE_PKG_SPEC:
                     packer.packString(translated);
                     packer.packString(className);
+                    packer.packString(compileId);
                     packer.packCString(compiledCode);
 
                     if (dependencies != null && dependencies.size() > 0) {

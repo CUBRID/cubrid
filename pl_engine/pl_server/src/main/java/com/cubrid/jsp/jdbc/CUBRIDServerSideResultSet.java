@@ -55,6 +55,7 @@ import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
 import java.util.Calendar;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -450,7 +451,7 @@ public class CUBRIDServerSideResultSet implements ResultSet {
         // In client-side JDBC, columnName argument must be "col" to find its index.
         // In server-side JDBC, however, both "T.col" and "col" are allowed.
 
-        String colName = columnName.toLowerCase();
+        String colName = columnName.toLowerCase(Locale.ROOT);
         Map<String, Integer> colNameToIdx = statementHandler.getColNameIndex();
 
         // first, try exact match

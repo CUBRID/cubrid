@@ -45,25 +45,221 @@ import java.util.Base64;
 public class ClassAccess {
 
     // get object code of the SP being invoked
-    public static CompiledCodeSet getObjectCode() {
-
-        CompiledCodeSet code = null;
+    public static CompiledCodeSet getObjectCodeOfCurrentInvoke() {
 
         try {
             byte[] jarCode = getObjectCodeBytes();
             if (jarCode != null) {
-                code = CompiledCodeSet.loadFromJar(jarCode);
+                return CompiledCodeSet.loadFromJar(jarCode);
+                // mainClassName, and compileId will be set later
+            } else {
+                return null;
             }
         } catch (Exception e) {
-            Server.log(e);
+            throw new RuntimeException(e);
         }
+    }
 
-        return code;
+    // duringCompile distinguishes the request framing: while compiling, the request is handled by
+    // the compile handler; at run time it is handled by the executor's callback loop.
+    public static CompiledCodeSet getObjectCodeOf(String mainClassName, boolean duringCompile) {
+
+        // get the object code of given class name from the ocode column of
+        // _db_stored_procedure_code or
+        // _db_package_code, or return null if no item is found for that class name.
+
+        try {
+            String[] compileIdRef = new String[1];
+            byte[] jarCode =
+                    getObjectCodeBytesWithNameAndId(
+                            mainClassName, null, compileIdRef, duringCompile);
+            if (jarCode == null) {
+                return null;
+            } else {
+                assert jarCode.length > 0;
+
+                CompiledCodeSet code = CompiledCodeSet.loadFromJar(jarCode);
+                code.setMainClassName(mainClassName);
+                code.setCompileId(compileIdRef[0]);
+                return code;
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static CompiledCodeSet getObjectCodeNewerThan(CompiledCodeSet codeSet) {
+
+        // get the object code of given class name from the ocode column of
+        // _db_stored_procedure_code or _db_package_code.
+        // if no record exist with the codeSet's main class name, then return null.
+        // if the current compileId of the code in the table is the same as that of codeSet, just
+        // return the given codeSet.
+        // otherwise, return a new CompiledCodeSet.
+
+        try {
+            String[] compileIdRef = new String[1];
+            byte[] jarCode =
+                    getObjectCodeBytesWithNameAndId(
+                            codeSet.mainClassName, codeSet.compileId, compileIdRef, false);
+            if (jarCode == null) {
+                return null;
+            } else if (jarCode.length == 0) {
+                return codeSet;
+            } else {
+                CompiledCodeSet code = CompiledCodeSet.loadFromJar(jarCode);
+                code.setMainClassName(codeSet.mainClassName);
+                code.setCompileId(compileIdRef[0]);
+                return code;
+            }
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    // Runtime EXECUTE authorization check for a directly-called PL/CSQL routine/package member.
+    // On success ownerRef[0] is set to the target's owner, which the caller switches the execution
+    // rights to before the call. On failure errMsgRef[0] is set to the reason the server gave,
+    // which is the only thing that tells a dropped routine from a revoked grant.
+    public static int checkExecuteAuth(String uniqueName, String[] ownerRef, String[] errMsgRef) {
+        try {
+            CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+            // the executor's callback loop reads the request code from the payload
+            packer.packInt(RequestCode.REQUEST_CHECK_EXECUTE_AUTH);
+            packer.packString(uniqueName);
+            Context.getCurrentExecuteThread().sendCommand(packer.getBuffer());
+
+            ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
+            CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
+
+            Header header = new Header(unpacker);
+            ByteBuffer payload = unpacker.unpackBuffer();
+            unpacker.setBuffer(payload);
+
+            int authError = unpacker.unpackInt();
+            String ownerName = unpacker.unpackCString(); // empty unless the check passed
+            String errMsg = unpacker.unpackCString(); // empty unless it failed
+            if (authError == 0) {
+                ownerRef[0] = ownerName;
+            } else if (!errMsg.isEmpty()) {
+                errMsgRef[0] = errMsg;
+            }
+            return authError;
+        } catch (Exception e) {
+            Server.log(e);
+            return -1; // treat a transport failure as "not authorized"
+        }
+    }
+
+    // Push/pop the execution rights around a direct call of an external PL/CSQL routine.
+    //
+    // A routine called through the server runs with its own owner's rights; a routine called
+    // directly would otherwise inherit the caller's. The server relays this to the CAS, which keeps
+    // a stack of users, so a push and its matching pop nest correctly.
+    public static void pushExecRights(String ownerName) throws Exception {
+        if (ownerName == null || ownerName.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "owner name is required to change the execution rights");
+        }
+        changeExecRights(EXEC_RIGHTS_PUSH, ownerName);
+    }
+
+    public static void popExecRights() throws Exception {
+        changeExecRights(EXEC_RIGHTS_POP, null);
     }
 
     // ======================
     // Private
     // ======================
+
+    private static byte[] EMPTY_BYTES = new byte[0];
+
+    // command of REQUEST_CHANGE_EXEC_RIGHTS (see EXEC_RIGHTS_COMMAND in sp_constants.hpp)
+    private static final int EXEC_RIGHTS_PUSH = 0;
+    private static final int EXEC_RIGHTS_POP = 1;
+
+    private static void changeExecRights(int command, String ownerName) throws Exception {
+        CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+        // the executor's callback loop reads the request code from the payload
+        packer.packInt(RequestCode.REQUEST_CHANGE_EXEC_RIGHTS);
+        packer.packInt(command);
+        if (command == EXEC_RIGHTS_PUSH) {
+            packer.packString(ownerName);
+        }
+        Context.getCurrentExecuteThread().sendCommand(packer.getBuffer());
+
+        ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
+        CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
+
+        Header header = new Header(unpacker);
+        ByteBuffer payload = unpacker.unpackBuffer();
+        unpacker.setBuffer(payload);
+
+        // the CAS answers with the error code of the switch (0 on success)
+        int errorCode = unpacker.unpackInt();
+        if (errorCode != 0) {
+            throw new RuntimeException(
+                    "changing the execution rights failed with error " + errorCode);
+        }
+    }
+
+    // status codes shared with the server (see SP_CODE_FETCH_STATUS in sp_code.hpp)
+    private static final int STATUS_NOT_FOUND = 0;
+    private static final int STATUS_UNCHANGED = 1;
+    private static final int STATUS_CHANGED = 2;
+
+    private static byte[] getObjectCodeBytesWithNameAndId(
+            String mainClassName, String compileId, String[] compileIdRef, boolean duringCompile)
+            throws IOException {
+        // Ask the server (via a dedicated protocol) for the ocode of the SP/package whose generated
+        // class name is mainClassName. The server reads the catalog with authorization disabled, so
+        // this works even when the referenced unit is owned by another user.
+        // The result of this method can be one of the following three:
+        //   - null        : no such SP/package (e.g. dropped)
+        //   - EMPTY_BYTES : compileId is given and equals the stored compile_id (i.e. caller is
+        // up-to-date)
+        //   - otherwise   : compileIdRef[0] is set to the stored compile_id and the ocode bytes are
+        //                    returned (the ocode column is a base64-encoded jar)
+        CUBRIDPacker packer = new CUBRIDPacker(ByteBuffer.allocate(1024));
+        if (duringCompile) {
+            // the compile handler dispatches on the explicit outer request code, so the payload
+            // carries only the arguments
+            packer.packString(mainClassName);
+            packer.packString(compileId == null ? "" : compileId);
+            Context.getCurrentExecuteThread()
+                    .sendCommand(RequestCode.REQUEST_CODE_BY_NAME, packer.getBuffer());
+        } else {
+            // the executor's callback loop reads the request code from the payload
+            packer.packInt(RequestCode.REQUEST_CODE_BY_NAME);
+            packer.packString(mainClassName);
+            packer.packString(compileId == null ? "" : compileId);
+            Context.getCurrentExecuteThread().sendCommand(packer.getBuffer());
+        }
+
+        ByteBuffer responseBuffer = Context.getCurrentExecuteThread().receiveBuffer();
+        CUBRIDUnpacker unpacker = new CUBRIDUnpacker(responseBuffer);
+
+        Header header = new Header(unpacker);
+        ByteBuffer payload = unpacker.unpackBuffer();
+        unpacker.setBuffer(payload);
+
+        int error = unpacker.unpackInt();
+        if (error != 0) {
+            return null;
+        }
+
+        int status = unpacker.unpackInt();
+        if (status == STATUS_NOT_FOUND) {
+            return null;
+        } else if (status == STATUS_UNCHANGED) {
+            return EMPTY_BYTES;
+        } else {
+            String newCompileId = unpacker.unpackCString();
+            String base64Str = unpacker.unpackCString();
+            compileIdRef[0] = newCompileId;
+            return Base64.getDecoder().decode(base64Str);
+        }
+    }
 
     private static byte[] getObjectCodeBytes() throws IOException, TypeMismatchException {
         byte[] jar = null;

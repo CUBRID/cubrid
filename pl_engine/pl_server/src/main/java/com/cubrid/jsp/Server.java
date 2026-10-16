@@ -42,6 +42,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -60,6 +61,12 @@ public class Server {
 
     private static List<String> jvmArguments = null;
     private static int portNumber = PORT_NUMBER_UNKNOWN;
+
+    // Locale of the database. It stays Locale.ROOT until bootstrap tells us the DB server's one.
+    // It is kept here rather than in ServerConfig so that a caller can read it without waiting
+    // for bootstrap. Written by the bootstrap request handler and read by the other request
+    // threads, hence volatile.
+    private static volatile Locale dbLocale = Locale.ROOT;
 
     private static Server serverInstance = null;
 
@@ -161,6 +168,10 @@ public class Server {
         return config;
     }
 
+    public static Locale getDbLocale() {
+        return dbLocale;
+    }
+
     public String getServerName() {
         return config.getName();
     }
@@ -256,7 +267,21 @@ public class Server {
             config.getSystemParameters().put(sysParam.getParamId(), sysParam);
         }
 
+        setDbLocale(request.getDbLocale());
         config.initializeCharset();
+    }
+
+    /*
+     * The server names a locale as e.g. "en_US" or "tr_TR"; a Java language tag uses a hyphen.
+     */
+    private static void setDbLocale(String localeName) {
+        if (localeName == null || localeName.isEmpty()) {
+            dbLocale = Locale.ROOT;
+            return;
+        }
+
+        Locale locale = Locale.forLanguageTag(localeName.replace('_', '-'));
+        dbLocale = locale.getLanguage().isEmpty() ? Locale.ROOT : locale;
     }
 
     public static void main(String[] args) throws Exception {

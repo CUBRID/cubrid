@@ -66,7 +66,12 @@ public class StoredProcedure {
     private static final int LANG_PLCSQL = 4;
 
     public StoredProcedure(
-            String signature, int lang, String authUser, Value[] args, int returnType)
+            String signature,
+            String compileId,
+            int lang,
+            String authUser,
+            Value[] args,
+            int returnType)
             throws Exception {
         this.signature = signature;
         this.authUser = authUser;
@@ -74,25 +79,29 @@ public class StoredProcedure {
         this.returnType = returnType;
         this.lang = lang;
 
-        this.target = findTargetMethod(signature);
+        this.target = findTargetMethod(signature, compileId);
 
         this.cachedResolved = null;
 
         checkArgs();
     }
 
-    private TargetMethod findTargetMethod(String sigString) throws Exception {
+    private TargetMethod findTargetMethod(String signature, String compileId) throws Exception {
 
         Context ctx = ContextManager.getContextofCurrentThread();
 
-        Signature sig = Signature.parse(sigString);
+        Signature sig = Signature.parse(signature);
         String mainClassName = sig.getClassName();
 
         Class<?> c = null;
 
         switch (lang) {
             case LANG_PLCSQL:
-                c = ctx.getCatalogClassLoaderRelay().loadClass(mainClassName);
+                // compileId is relevant only for LANG_PLCSQL
+                assert compileId != null && compileId.length() > 0;
+                c =
+                        ctx.getCatalogClassLoaderRelay()
+                                .findClassWithCompileId(mainClassName, compileId);
                 break;
 
             case LANG_JAVASP:
