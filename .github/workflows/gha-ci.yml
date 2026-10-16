@@ -243,6 +243,18 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           emit() { printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"; }
+          # A trial ran another PR's cases: re-running its failures must not grade the engine PR.
+          source_jobs() {
+            [[ "$1" =~ ^[0-9]{1,20}$ ]] || { echo "::error::rerun_from must be a run id (integer)"; exit 1; }
+            runjobs=$(gh api --paginate "repos/${REPO}/actions/runs/$1/jobs?per_page=100" \
+              --jq '.jobs[] | select(.name | test("^(shard|trial) ")) | [.conclusion, .name] | @tsv') || {
+              echo "::error::could not read the jobs of run $1"; exit 1; }
+            if grep -q $'\ttrial ' <<<"$runjobs"; then
+              echo "::error::run $1 is a tc trial, which has no re-run. Comment /run <suite> tc=<PR> again"
+              emit run false
+              exit 0
+            fi
+          }
           par=''; limit=0; force=false; rerun=''; sab=none; tt=''; tc=''; dup=''
           test_run=false; pr=''; ns='pr'; cache_write=false; sel=''
 
@@ -280,6 +292,7 @@ jobs:
               esac
               test_run=true
               if [ "$IN_NIGHTLY" = true ]; then ns=develop; fi
+              [ -z "$rerun" ] || source_jobs "$rerun"
               ;;
 
             issue_comment)
@@ -297,14 +310,7 @@ jobs:
               if [[ "$req" =~ ^/run[[:space:]]+rerun[[:space:]]+([0-9]{1,20})[[:space:]]*$ ]]; then
                 rerun="${BASH_REMATCH[1]}"
                 # No run directory here: the source run's job names carry the suites.
-                runjobs=$(gh api --paginate "repos/${REPO}/actions/runs/${rerun}/jobs?per_page=100" \
-                  --jq '.jobs[] | select(.name | test("^(shard|trial) ")) | [.conclusion, .name] | @tsv') || {
-                  echo "::error::could not read the jobs of run ${rerun}"; exit 1; }
-                if grep -q $'\ttrial ' <<<"$runjobs"; then
-                  echo "::error::run ${rerun} is a tc trial, which has no re-run. Comment /run <suite> tc=<PR> again"
-                  emit run false
-                  exit 0
-                fi
+                source_jobs "$rerun"
                 known=$(jq -r 'keys | join("|")' <<<"$SUITES")
                 sel=$(printf '%s\n' "$runjobs" \
                   | awk -F'\t' -v k="^(${known})$" \
@@ -373,6 +379,9 @@ jobs:
             if [ "$EV" = workflow_dispatch ]; then
               [ -n "$pr" ] || { echo "::error::tc needs pr: the trial's status names the engine PR"; exit 1; }
               { [ -z "$par" ] && [ "${limit:-0}" = 0 ]; } || { echo "::error::tc takes neither parallelism nor limit"; exit 1; }
+              [ "$force" != true ] || {
+                echo "::error::tc takes no force_build: a trial reuses the engine PR's build, and two forced publishes of one SHA race"; exit 1; }
+              [ "$IN_NIGHTLY" != true ] || { echo "::error::tc takes no nightly"; exit 1; }
             fi
             post_status=false
             tc_repo=$(jq -r --arg s "$sel" '.[$s].tc_repo' <<<"$SUITES")
@@ -391,7 +400,8 @@ jobs:
             tc_dirs=$(GH_TOKEN="$TC_TOKEN" gh api --paginate "repos/CUBRID/${tc_repo}/pulls/${tc}/files?per_page=100" \
                 --jq '.[] | select(.status != "removed") | .filename' \
               | sed -nE "s#^(${sel}/.*)/(cases|answers)/[^/]+\$#\1/cases#p" | sort -u \
-              | jq -Rsc 'split("\n") | map(select(length > 0))')
+              | jq -Rsc 'split("\n") | map(select(length > 0))') || {
+              echo "::error::could not list the files of ${tc_repo} PR ${tc}"; exit 1; }
             [ "$tc_dirs" != '[]' ] || {
               echo "::error::${tc_repo}#${tc} changes no ${sel} case: no file directly in a cases/ or answers/ directory under ${sel}/"
               exit 1; }
