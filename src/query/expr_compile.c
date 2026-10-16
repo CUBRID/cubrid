@@ -60,9 +60,13 @@
 
 #define EXPR_MAX_STEPS 128	/* a list needing more is left to the interpreted path */
 
-/* a node this deep in one program is compiled as a program of its own behind one step, before any table can run out:
- * a deep chain then costs one compile per EXPR_NEST_DEPTH levels instead of a rewind and recompile of its whole
- * subtree at every level where a table runs out */
+/* A node this deep in one program is compiled as a program of its own behind one step, before any table can run
+ * out: a deep chain then costs one compile per EXPR_NEST_DEPTH levels instead of a rewind and recompile of its whole
+ * subtree at every level where a table runs out (CBRD-27661: "1 + (2 + (3 + ...))" 399 levels deep took 312 s and was
+ * declined; now each level compiles once).  32 keeps a chain inside the 128-entry tables with room to spare: a level
+ * emits at most three steps (two operand coercions and the operator) and one guard (a lazy right-hand side), so 32
+ * levels take at most 96 steps and 32 guards, plus the leaves and literals the chain reads.  The nested program
+ * counts its depth from zero, so the next 32 levels nest again inside it. */
 #define EXPR_NEST_DEPTH 32
 
 /* how often the value in a cell can change (EXPR_BUILD_CTX.cell_fixed) */
@@ -206,7 +210,8 @@ struct expr_build_ctx
   bool full;			/* a table (steps, cells, guards) ran out: the node being compiled becomes a nested
 				 * program behind one step (expr_compile_node) */
   int force_nest_depth;		/* > 0: every arithmetic node at this depth is compiled as a nested program outright --
-				 * the retry of a nested program whose root overflowed its own table (expr_node_compile) */
+				 * the retry of a nested program whose root overflowed its own table (expr_node_compile).
+				 * Independent of EXPR_NEST_DEPTH, which nests every program's nodes at a fixed depth. */
 
   int n_slots;			/* slots are materialized after counting */
 
