@@ -49,6 +49,7 @@ struct sp_stmt_entry
   CUBRID_STMT_TYPE stmt_type;	/* SELECT, INSERT, UPDATE, DELETE or MERGE */
   std::vector<DB_OBJECT *> target_classes;	/* classes the statement writes to; empty for SELECT and a
 						 * single-row INSERT VALUES */
+  bool has_sp_call;		/* the statement itself calls a stored procedure */
 };
 
 struct sp_trigger_ctx
@@ -75,6 +76,11 @@ class sp_stmt_guard
   private:
     bool m_pushed;
 };
+
+/* Judges a trigger's condition or action statement before it runs: when a statement that calls a stored
+ * procedure is executing above, the trigger may not touch a mutating table either. Returns NO_ERROR or sets
+ * and returns ER_SP_TABLE_MUTATING. */
+extern int sp_check_trigger_statement (PARSER_CONTEXT *parser, PT_NODE *statement);
 
 /* Collecting every class a statement references, read or written: the query handler that compiles a procedure's
  * statement opens its list with sp_ref_tables_start () and closes it with sp_ref_tables_stop (); in between, name

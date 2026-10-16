@@ -17290,7 +17290,11 @@ do_scope (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      error = do_statement (parser, stmt->info.trigger_action.expression);
 	    }
 #else
-	  error = do_statement (parser, stmt->info.trigger_action.expression);
+	  error = sp_check_trigger_statement (parser, stmt->info.trigger_action.expression);
+	  if (error == NO_ERROR)
+	    {
+	      error = do_statement (parser, stmt->info.trigger_action.expression);
+	    }
 #endif
 	  /* Do not reset do_Trigger_involved here. This is intention. */
 	  break;

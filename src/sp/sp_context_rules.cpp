@@ -165,6 +165,7 @@ sp_stmt_guard::sp_stmt_guard (const PT_NODE *statement)
       return;
     }
 
+  entry.has_sp_call = statement->flag.has_sp_call;
   sp_Stmt_stack.push_back (std::move (entry));
   m_pushed = true;
 }
@@ -404,4 +405,57 @@ sp_check_object_allowed (DB_OBJECT *obj, int stmt_type)
     }
 
   return sp_check_statement_allowed (stmt_type, false, { sp_class_root (class_mop) });
+}
+
+/*
+ * sp_stmt_collect_spec () - parser_walk_tree callback: collect the classes of every spec into the vector in arg
+ */
+static PT_NODE *
+sp_stmt_collect_spec (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
+{
+  if (node->node_type == PT_SPEC)
+    {
+      sp_stmt_add_spec_classes (node, * (std::vector<DB_OBJECT *> *) arg);
+    }
+
+  return node;
+}
+
+/*
+ * sp_stmt_below_calls_sp () - whether a statement that calls a stored procedure is on the stack
+ */
+static bool
+sp_stmt_below_calls_sp (void)
+{
+  for (const sp_stmt_entry &entry : sp_Stmt_stack)
+    {
+      if (entry.has_sp_call)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+int
+sp_check_trigger_statement (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+  if (statement == NULL || statement->flag.has_sp_call || !sp_stmt_below_calls_sp ())
+    {
+      return NO_ERROR;
+    }
+
+  std::vector<DB_OBJECT *> ref_tables;
+
+  (void) parser_walk_tree (parser, statement, sp_stmt_collect_spec, &ref_tables, NULL, NULL);
+
+  DB_OBJECT *mutating = sp_stmt_find_mutating (ref_tables);
+  if (mutating != NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TABLE_MUTATING, 1, db_get_class_name (mutating));
+      return ER_SP_TABLE_MUTATING;
+    }
+
+  return NO_ERROR;
 }
