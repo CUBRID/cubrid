@@ -237,6 +237,11 @@ eval_resolved_comparison (const DOMAIN_COMPARE_PLAN * comparison, const val_desc
 static inline const DOMAIN_COMPARE *
 eval_resolved_compare (const COMP_EVAL_TERM * et_comp, const val_descr * vd)
 {
+  if (et_comp->compare != NULL)
+    {
+      /* CBRD-27583: the compiler's decision, carried by the term itself */
+      return et_comp->compare;
+    }
   const DOMAIN_COMPARE_PLAN *comparison = et_comp->domain_compare;
   if (comparison == NULL)
     {

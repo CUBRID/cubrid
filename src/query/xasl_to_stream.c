@@ -343,7 +343,6 @@ xts_map_xasl_to_stream (const XASL_NODE * xasl_tree, XASL_STREAM * stream)
     {
       p = or_pack_int (p, xasl_tree->tcard_list[i]);
     }
-
   /* set body size of new XASL format */
   body_size = xts_Free_offset_in_stream - offset;
   p = or_pack_int (p, body_size);
@@ -4551,6 +4550,18 @@ xts_process_comp_eval_term (char *ptr, const COMP_EVAL_TERM * comp_eval_term)
 
   ptr = or_pack_int (ptr, comp_eval_term->type);
 
+  /* CBRD-27583: the compiler's decision; a side kept as it is has no target */
+  for (int side = 0; side < 2; side++)
+    {
+      ptr = or_pack_int (ptr, comp_eval_term->cmp_target[side] != NULL);
+      if (comp_eval_term->cmp_target[side] != NULL)
+	{
+	  ptr = or_pack_domain (ptr, comp_eval_term->cmp_target[side], 0, 0);
+	}
+    }
+  ptr = or_pack_int (ptr, comp_eval_term->cmp_collation);
+  ptr = or_pack_int (ptr, comp_eval_term->cmp_method);
+
   return ptr;
 }
 
@@ -6854,6 +6865,16 @@ xts_sizeof_comp_eval_term (const COMP_EVAL_TERM * comp_eval_term)
 	   + PTR_SIZE		/* rhs */
 	   + OR_INT_SIZE	/* rel_op */
 	   + OR_INT_SIZE);	/* type */
+  /* CBRD-27583: cmp_target[2], cmp_collation, cmp_method */
+  for (int side = 0; side < 2; side++)
+    {
+      size += OR_INT_SIZE;
+      if (comp_eval_term->cmp_target[side] != NULL)
+	{
+	  size += or_packed_domain_size (comp_eval_term->cmp_target[side], 0);
+	}
+    }
+  size += OR_INT_SIZE + OR_INT_SIZE;
 
   return size;
 }

@@ -93,6 +93,7 @@ typedef enum
 
 struct DOMAIN_COMPARE_PLAN;
 struct DOMAIN_ELEMENT_COMPARE_PLAN;
+struct DOMAIN_COMPARE;
 
 namespace cubxasl
 {
@@ -112,6 +113,14 @@ namespace cubxasl
     regu_variable_node *rhs;
     REL_OP rel_op;
     DB_TYPE type;
+    /* CBRD-27583: the compiler's decision, serialized: side i is converted into cmp_target[i] (NULL: as it is) and
+     * the two are compared by cmp_method (DOMAIN_COMPARE_METHOD) under cmp_collation. The unpack turns it into
+     * `compare` (converter and comparison function pointers) and the rows call those. DOMAIN_COMPARE_LATE_BIND
+     * marks a term the compiler left undecided: the load derives it as before (domain_compare) */
+    tp_domain *cmp_target[2];
+    short cmp_collation;
+    unsigned char cmp_method;
+    const DOMAIN_COMPARE *compare;	/* unpack-arena, from the fields above; not serialized */
     /* load-derived, not serialized: the comparison the load or resolve_domains resolved; the union already
      * holds rlike_eval_term's four pointers, so this changes neither the node's size nor the stream */
     const DOMAIN_COMPARE_PLAN *domain_compare;

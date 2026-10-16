@@ -554,7 +554,8 @@ struct trace_json_t;
              i < (parser_->host_var_count + parser_->auto_param_count); i++, hv++) \
             db_value_clear(hv); \
         free_and_init(parser_->host_variables); \
-	free_and_init(parser_->host_var_expected_domains);} while (0)
+	free_and_init(parser_->host_var_expected_domains); \
+	free_and_init(parser_->host_var_compiled_domains);} while (0)
 
 #define SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT(parser_) \
     do { if (parent_parser) { \
@@ -563,6 +564,7 @@ struct trace_json_t;
                  CLEAR_HOST_VARIABLES(parser_); } \
              parser_->host_variables = parent_parser->host_variables; \
 	     parser_->host_var_expected_domains = parent_parser->host_var_expected_domains; \
+	     parser_->host_var_compiled_domains = parent_parser->host_var_compiled_domains; \
              parser_->host_var_count = parent_parser->host_var_count; \
              parser_->auto_param_count = parent_parser->auto_param_count; \
              parser_->flag.set_host_var = 1; } } while (0)
@@ -571,6 +573,7 @@ struct trace_json_t;
     do { if (parent_parser) { \
              parser_->host_variables = NULL; parser_->host_var_count = 0; \
 	     parser_->host_var_expected_domains = NULL; \
+	     parser_->host_var_compiled_domains = NULL; \
              parser_->auto_param_count = 0; parser_->flag.set_host_var = 0; } } while (0)
 
 #endif /* !SERVER_MODE */
@@ -954,7 +957,8 @@ enum pt_custom_print
   PT_PRINT_SUPPRESS_SERIAL_CONV = (0x1 << 26),
   /* suppress print various generated functions including suppress delete targe for dblink */
   PT_PRINT_SUPPRESS_FOR_DBLINK = (0x1 << 27),
-  PT_PRINT_HOST_VAR_COUNT = (0x1 << 28),
+  PT_PRINT_HOST_VAR_COUNT = (0x1 << 28),	/* the cache key text: the bind count suffix and (CBRD-27583) the type of
+						 * each host variable token */
   PT_PRINT_DBLINK_INFO = (0x1 << 29),	/* If you use DBLINK, specify it when generating the SHA hash value. */
   /* print lower case */
   PT_PRINT_LOWER = (0x1 << 30)
@@ -3916,7 +3920,14 @@ struct parser_context
 
   QUERY_ID query_id;		/* id assigned to current query */
   DB_VALUE *host_variables;	/* host variables place holder; DB_VALUE array */
-  TP_DOMAIN **host_var_expected_domains;	/* expected domains for host variables */
+  TP_DOMAIN **host_var_expected_domains;	/* expected domains for host variables: what the client casts each value
+						 * into before it sends it (the context's domain; CBRD-27583: or the rule's
+						 * target of a value-typed comparison bind) */
+  TP_DOMAIN **host_var_compiled_domains;	/* CBRD-27583: [host_var_count] the domain of the value a position was
+						 * bound with when its plan was compiled, for the positions the context
+						 * left untyped (value-typed positions); NULL for a context-typed
+						 * position. The plan is the plan of these bound types: a later value of
+						 * another type gets another plan (pt_set_host_variables flags it) */
   EXECUTION_STATE_VALUES execution_values;	/* values kept across the execution of statements during a client
 						 * session. */
   int host_var_count;		/* number of input host variables */
@@ -3993,6 +4004,9 @@ struct parser_context
     unsigned is_parsing_static_sql:1;	/* For PL/CSQL's static SQL: parameterize PL/CSQL variable symbols (to host variable) */
     unsigned is_unloading_plcsql_def:1;
     unsigned is_parsing_trigger:1;
+    unsigned bind_signature_changed:1;	/* CBRD-27583: a value pushed into a value-typed position has another type
+					 * than the plan was compiled for: the statement needs the plan of the new
+					 * signature */
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
     unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
   } flag;

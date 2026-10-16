@@ -43,6 +43,7 @@
 #include "parser.h"
 #include "parser_message.h"
 #include "object_domain.h"
+#include "object_representation.h"	/* db_string_put_cs_and_collation */
 #include "object_primitive.h"
 #include "schema_manager.h"
 #include "view_transform.h"
@@ -812,6 +813,44 @@ db_ensure_server_info (PARSER_CONTEXT * parser, int server_info_bits)
 }
 
 /*
+ * db_set_host_var_compiled_domains () - CBRD-27583: record, for every user host variable its context left untyped,
+ *   the domain of the value it is bound with at this compilation (an unbound position, a plain NULL, stays untyped).
+ *   The plan is the plan of these bound types: pt_set_host_variables flags a value of another type and the statement
+ *   is recompiled for it.
+ */
+static int
+db_set_host_var_compiled_domains (PARSER_CONTEXT * parser)
+{
+  if (parser->host_var_count <= 0 || parser->host_variables == NULL || parser->host_var_expected_domains == NULL)
+    {
+      return NO_ERROR;
+    }
+  if (parser->host_var_compiled_domains == NULL)
+    {
+      parser->host_var_compiled_domains = (TP_DOMAIN **) calloc (parser->host_var_count, sizeof (TP_DOMAIN *));
+      if (parser->host_var_compiled_domains == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  parser->host_var_count * sizeof (TP_DOMAIN *));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+    }
+  for (int i = 0; i < parser->host_var_count; i++)
+    {
+      const DB_VALUE *val = &parser->host_variables[i];
+      const TP_DOMAIN *expected = parser->host_var_expected_domains[i];
+      parser->host_var_compiled_domains[i] = NULL;
+      if (DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_NULL
+	  || (expected != NULL && TP_DOMAIN_TYPE (expected) != DB_TYPE_UNKNOWN))
+	{
+	  continue;
+	}
+      parser->host_var_compiled_domains[i] = tp_domain_cache (tp_domain_resolve_value ((DB_VALUE *) val, NULL));
+    }
+  return NO_ERROR;
+}
+
+/*
  * db_compile_statement_local() -
  * return:
  * session(in) :
@@ -1066,6 +1105,14 @@ db_compile_statement_local (DB_SESSION * session)
   session->statements[stmt_ndx] = statement;
   session->stage[stmt_ndx] = StatementCompiledStage;
 
+  /* CBRD-27583: the positions the context left untyped take the type of their bound value, when one is bound
+   * (the typed recompile; a PREPARE binds nothing): the cache key token and the regu domain read it, the plan is
+   * the plan of these bound types */
+  err = db_set_host_var_compiled_domains (parser);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
 
   /*
    * Preparation Stage
@@ -3117,6 +3164,10 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
     {
       free_and_init (parser->host_var_expected_domains);
     }
+  if (parser->host_var_compiled_domains)
+    {
+      free_and_init (parser->host_var_compiled_domains);
+    }
 
   parser->auto_param_count = 0;
   parser->host_var_count = 0;
@@ -3272,6 +3323,56 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
   session->parser->flag.set_host_var = 1;
 
   return NO_ERROR;
+}
+
+/*
+ * do_set_user_host_variable_types () - CBRD-27583: bind the TYPES of the USING values, not the values: each host
+ *   variable becomes a NULL that carries the value's type header (type, precision, scale, codeset, collation), a
+ *   real NULL stays a plain NULL. The compilation reads the types; the code the set_host_var
+ *   flag does not guard reads NULLs and bakes no value into a plan the cache keys by type.
+ */
+static int
+do_set_user_host_variable_types (DB_SESSION * session, PT_NODE * using_list)
+{
+  PARSER_CONTEXT *parser = session->parser;
+  DB_VALUE_ARRAY values_array;
+  int err = NO_ERROR;
+
+  values_array.size = 0;
+  values_array.vals = NULL;
+  if (values_list_to_values_array (parser, using_list, &values_array) != NO_ERROR)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+  if (parser->host_var_count != values_array.size)
+    {
+      err = ER_IT_INCORRECT_HOSTVAR_COUNT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, values_array.size, parser->host_var_count);
+    }
+  else
+    {
+      for (int i = 0; i < values_array.size; i++)
+	{
+	  const DB_VALUE *val = &values_array.vals[i];
+	  DB_VALUE *hv = &parser->host_variables[i];
+	  const DB_TYPE type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+	  pr_clear_value (hv);
+	  if (type == DB_TYPE_NULL)
+	    {
+	      db_make_null (hv);
+	      continue;
+	    }
+	  db_value_domain_init (hv, type, DB_VALUE_PRECISION (val), DB_VALUE_SCALE (val));
+	  if (TP_IS_CHAR_TYPE (type))
+	    {
+	      db_string_put_cs_and_collation (hv, db_get_string_codeset (val), db_get_string_collation (val));
+	    }
+	}
+    }
+  db_value_clear_array (&values_array);
+  free_and_init (values_array.vals);
+  return err;
 }
 
 /*
@@ -3605,10 +3706,19 @@ do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION
   assert (statement->node_type == PT_EXECUTE_PREPARE);
   assert (kept != NULL && kept->statements != NULL && kept->statements[0] != NULL);
 
+  kept->parser->flag.bind_signature_changed = 0;
   err = do_set_user_host_variables (kept, statement->info.execute.using_list);
   if (err != NO_ERROR)
     {
       return err;
+    }
+  if (kept->parser->flag.bind_signature_changed)
+    {
+      /* CBRD-27583: a value-typed position received another type: the kept tree is the plan of another
+       * signature. The caller discards it and recompiles the statement text for this execution's signature. */
+      kept->parser->flag.bind_signature_changed = 0;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_QPROC_INVALID_XASLNODE;
     }
 
   kept->parser->flag.set_host_var = 0;
@@ -3718,7 +3828,13 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
    * may legally bind different types on every execution. The values are bound afterwards.
    * DML keeps the original bind-then-compile order: its compilation consumes the values
    * (e.g. the OID-collecting subselect built for a client-side trigger UPDATE evaluates
-   * WHERE/LIMIT host variables at compile), so compiling unbound silently updates 0 rows. */
+   * WHERE/LIMIT host variables at compile), so compiling unbound silently updates 0 rows.
+   *
+   * CBRD-27583: either way the compilation is the one of this execution's bind type signature
+   * : the positions the context leaves untyped take the type of their bound value.
+   * The SELECT branch shows the compilation the values' TYPES only -- a NULL carrying each
+   * value's type header -- so that nothing the set_host_var flag does not guard (the LIKE
+   * rewrite, the MRO / SORT-LIMIT checks) reads a value into a plan that is cached by type. */
   if (statement->info.execute.stmt_type != CUBRID_STMT_SELECT || statement->info.execute.bind_before_compile
       || statement->info.execute.recompile)
     {
@@ -3749,6 +3865,11 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
        * in-compile expected-domain cast (db_compile_statement's subsession block) must not
        * run -- it has nothing to cast yet. The values are bound and cast to their expected
        * domains right below, like the db_compile/db_push_values flow. */
+      err = do_set_user_host_variable_types (new_session, statement->info.execute.using_list);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
       new_session->is_subsession_for_prepared = false;
       idx = db_compile_statement (new_session);
       new_session->is_subsession_for_prepared = true;
@@ -3768,14 +3889,14 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
       new_session->parser->flag.set_host_var = 0;
     }
 
-  if (new_session->parser->flag.set_host_var == 0)
+  /* Cast host variable to expected domain. CBRD-27583: also where db_compile_statement already cast -- the
+   * expected domains the compilation itself decided (a comparison's conversion of the bind side,
+   * pt_typed_bind_comparison) apply to this execution's values too; the cast is idempotent. */
+  new_session->parser->flag.set_host_var = 0;
+  err = do_cast_host_variables_to_expected_domain (new_session);
+  if (err != NO_ERROR)
     {
-      /* Cast host variable to expected domain, if not already casted in db_compile_statement. */
-      err = do_cast_host_variables_to_expected_domain (new_session);
-      if (err != NO_ERROR)
-	{
-	  return err;
-	}
+      return err;
     }
 
   if ((statement->info.execute.stmt_type == CUBRID_STMT_SELECT
@@ -4343,6 +4464,10 @@ db_close_session_local (DB_SESSION * session)
   if (parser->host_var_expected_domains)
     {
       free_and_init (parser->host_var_expected_domains);
+    }
+  if (parser->host_var_compiled_domains)
+    {
+      free_and_init (parser->host_var_compiled_domains);
     }
 
   parser->host_var_count = parser->auto_param_count = 0;

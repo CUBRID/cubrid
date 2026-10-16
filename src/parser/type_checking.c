@@ -43,6 +43,7 @@
 #include "dbtype_def.h"
 #include "error_manager.h"
 #include "parser.h"
+#include "domain_rules.h"
 #include "parser_message.h"
 #include "parse_type.hpp"
 #include "set_object.h"
@@ -4537,6 +4538,68 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 }
 
 /*
+ * pt_typed_bind_comparison () - CBRD-27583: a user host variable bound with a typed value at compile time (a value,
+ *   or the NULL carrying only the value's type that the typed SELECT recompile binds; never under set_host_var, the
+ *   compilation that consumes values) and compared with an operand of a known type takes its type from the value, and the type rule
+ *   module the executor shares decides the comparison of the pair as the row did: when the rule converts the bind
+ *   side, the position's expected domain is the target (the client casts the value before it sends it, the term
+ *   compares two values of one domain); else the position stays value-typed (no expected domain; the regu reads
+ *   host_var_compiled_domains, the term converts the other side). Either way the position records the value's domain:
+ *   a later value of another type recompiles the statement for its own signature instead of being cast into this
+ *   plan's domain (int_col = ? with 1.5 stays 1.5). Returns false when this is not such a bind: the caller types it
+ *   as before.
+ */
+static bool
+pt_typed_bind_comparison (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * hv)
+{
+  if (parser->flag.set_host_var != 0 || expr == NULL || expr->node_type != PT_EXPR
+      || !pt_is_comp_op (expr->info.expr.op) || hv->info.host_var.var_type != PT_HOST_IN
+      || hv->info.host_var.index >= parser->host_var_count || parser->host_variables == NULL
+      || parser->host_var_expected_domains == NULL)
+    {
+      return false;
+    }
+  const int index = hv->info.host_var.index;
+  const DB_VALUE *val = &parser->host_variables[index];
+  PT_NODE *mate = expr->info.expr.arg1 == hv ? expr->info.expr.arg2 : expr->info.expr.arg1;
+  if (DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_NULL || mate == NULL || mate->type_enum == PT_TYPE_MAYBE
+      || mate->type_enum == PT_TYPE_NONE
+      || mate->type_enum == PT_TYPE_NULL || PT_IS_COLLECTION_TYPE (mate->type_enum)
+      || TP_DOMAIN_TYPE (parser->host_var_expected_domains[index]) != DB_TYPE_UNKNOWN)
+    {
+      return false;
+    }
+  TP_DOMAIN *mate_domain = pt_xasl_node_to_domain (parser, mate);
+  if (mate_domain == NULL || TP_DOMAIN_TYPE (mate_domain) == DB_TYPE_VARIABLE)
+    {
+      return false;
+    }
+  if (parser->host_var_compiled_domains == NULL)
+    {
+      parser->host_var_compiled_domains = (TP_DOMAIN **) calloc (parser->host_var_count, sizeof (TP_DOMAIN *));
+      if (parser->host_var_compiled_domains == NULL)
+	{
+	  return false;
+	}
+    }
+  TP_DOMAIN *source = tp_domain_cache (tp_domain_resolve_value ((DB_VALUE *) val, NULL));
+  parser->host_var_compiled_domains[index] = source;
+
+  const bool hv_is_lhs = expr->info.expr.arg1 == hv;
+  DOMAIN_COMPARE_KEY key[2];
+  DOMAIN_COMPARE compare;
+  domain_compare_key_of (hv_is_lhs ? source : mate_domain, &key[0]);
+  domain_compare_key_of (hv_is_lhs ? mate_domain : source, &key[1]);
+  if (domain_resolve_comparison (&key[0], &key[1], &compare) == NO_ERROR
+      && (compare.method == DOMAIN_COMPARE_DIRECT || compare.method == DOMAIN_COMPARE_CONVERT)
+      && compare.conv[hv_is_lhs ? 0 : 1] != NULL)
+    {
+      SET_EXPECTED_DOMAIN (hv, (TP_DOMAIN *) compare.target[hv_is_lhs ? 0 : 1]);
+    }
+  return true;
+}
+
+/*
  * pt_coerce_expression_argument () - check if arg has the correct type and
  *				      wrap arg with a cast node to def_type
  *				      if needed.
@@ -4568,6 +4631,18 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
   if (node->type_enum == PT_TYPE_NULL)
     {
       /* no coercion needed for NULL arguments */
+      return NO_ERROR;
+    }
+
+  if (node->node_type == PT_HOST_VAR && node->type_enum == PT_TYPE_MAYBE
+      && pt_typed_bind_comparison (parser, expr, node))
+    {
+      /* CBRD-27583: a comparison bind the context leaves untyped (def_type MAYBE for a numeric mate), typed from
+       * its value in the compilation of a bind type signature */
+      if (node->expected_domain != NULL)
+	{
+	  pt_preset_hostvar (parser, node);
+	}
       return NO_ERROR;
     }
 

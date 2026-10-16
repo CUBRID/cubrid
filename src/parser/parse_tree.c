@@ -1269,6 +1269,10 @@ parser_free_parser (PARSER_CONTEXT * parser)
     {
       free_and_init (parser->host_var_expected_domains);
     }
+  if (parser->host_var_compiled_domains)
+    {
+      free_and_init (parser->host_var_compiled_domains);
+    }
 
   parser_free_lcks_classes (parser);
 

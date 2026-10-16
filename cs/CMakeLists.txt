@@ -264,6 +264,7 @@ set(QUERY_SOURCES
   ${QUERY_DIR}/cursor.c
   ${QUERY_DIR}/qfile_tuple_layout.c
   ${QUERY_DIR}/execute_schema.c
+  ${QUERY_DIR}/domain_rules.c
   ${QUERY_DIR}/execute_statement.c
   ${QUERY_DIR}/numeric_opfunc.c
   ${QUERY_DIR}/query_cl.c

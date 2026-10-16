@@ -4480,6 +4480,67 @@ stx_build_eval_term (THREAD_ENTRY * thread_p, char *ptr, EVAL_TERM * eval_term)
   return ptr;
 }
 
+/*
+ * stx_build_term_compare () - CBRD-27583: the function pointers of a comparison the compiler decided: the converter
+ *   of each side into its target and the comparison function of the compared type. The server decides nothing here;
+ *   it looks the pointers up for the decision the stream carries. NULL for an undecided term.
+ */
+static const DOMAIN_COMPARE *
+stx_build_term_compare (THREAD_ENTRY * thread_p, const COMP_EVAL_TERM * term)
+{
+  if (term->cmp_method != DOMAIN_COMPARE_DIRECT && term->cmp_method != DOMAIN_COMPARE_CONVERT)
+    {
+      return NULL;
+    }
+  if (term->lhs == NULL || term->rhs == NULL || term->lhs->domain == NULL || term->rhs->domain == NULL)
+    {
+      return NULL;
+    }
+  DOMAIN_COMPARE *compare = (DOMAIN_COMPARE *) stx_alloc_struct (thread_p, sizeof (*compare));
+  if (compare == NULL)
+    {
+      return NULL;
+    }
+  memset (compare, 0, sizeof (*compare));
+  const DB_TYPE source[2] = { TP_DOMAIN_TYPE (term->lhs->domain), TP_DOMAIN_TYPE (term->rhs->domain) };
+  DB_TYPE after[2] = { source[0], source[1] };
+  compare->method = term->cmp_method;
+  compare->coercion = 1;
+  compare->collation = term->cmp_collation;
+  compare->value[0] = compare->value[1] = -1;
+  compare->compare_index = -1;
+  compare->codeset_side = -1;
+  compare->source[0] = (unsigned char) source[0];
+  compare->source[1] = (unsigned char) source[1];
+  for (int side = 0; side < 2; side++)
+    {
+      /* a side without a target is compared as it is: its target is its own domain */
+      compare->target[side] = term->cmp_target[side] != NULL ? term->cmp_target[side]
+	: (side == 0 ? term->lhs->domain : term->rhs->domain);
+      if (term->cmp_target[side] != NULL)
+	{
+	  compare->conv[side] = domain_compare_converter (source[side], term->cmp_target[side]);
+	  after[side] = TP_DOMAIN_TYPE (term->cmp_target[side]);
+	  if (compare->conv[side] == NULL)
+	    {
+	      /* no converter for the pair: the term stays with the load's derivation */
+	      return NULL;
+	    }
+	  if (compare->conv[side] == tp_value_find_converter (source[side], NULL, DOMAIN_CONVERT_ASSIGN))
+	    {
+	      /* the incompatible converter: the compiler decided a pair the rule refuses */
+	      assert (false);
+	      return NULL;
+	    }
+	}
+    }
+  compare->first = (unsigned char) (compare->conv[0] != NULL ? 0 : 1);
+  compare->converted_first = (unsigned char) after[compare->first];
+  compare->cmp = pr_type_from_id (after[0]);
+  domain_compare_set_operator_functions (compare);
+  return compare;
+}
+
 static char *
 stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * comp_eval_term)
 {
@@ -4522,6 +4583,24 @@ stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * c
   ptr = or_unpack_int (ptr, &tmp);
   comp_eval_term->type = (DB_TYPE) tmp;
   comp_eval_term->domain_compare = NULL;
+
+  /* CBRD-27583: the compiler's decision, turned into the function pointers the rows call */
+  for (int side = 0; side < 2; side++)
+    {
+      int has_target, is_null;
+      ptr = or_unpack_int (ptr, &has_target);
+      comp_eval_term->cmp_target[side] = NULL;
+      if (has_target)
+	{
+	  ptr = or_unpack_domain (ptr, &comp_eval_term->cmp_target[side], &is_null);
+	  comp_eval_term->cmp_target[side] = tp_domain_cache (comp_eval_term->cmp_target[side]);
+	}
+    }
+  ptr = or_unpack_int (ptr, &tmp);
+  comp_eval_term->cmp_collation = (short) tmp;
+  ptr = or_unpack_int (ptr, &tmp);
+  comp_eval_term->cmp_method = (unsigned char) tmp;
+  comp_eval_term->compare = stx_build_term_compare (thread_p, comp_eval_term);
 
   return ptr;
 }

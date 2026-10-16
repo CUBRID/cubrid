@@ -13458,6 +13458,63 @@ pt_apply_host_var (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 }
 
 /*
+ * pt_print_host_var_type () - CBRD-27583: the type token of a host variable in the XASL cache key text, so that a
+ *   statement has one plan per bind type signature. A user host variable prints the domain the plan reads: the
+ *   expected domain its context gave it, else the value domain a typed compilation took (host_var_compiled_domains),
+ *   else '?' (a compilation without values, which no execution shares). An auto-parameter prints its literal's
+ *   domain. A string carries its codeset and collation - a literal's collation comes from the session, not the text.
+ */
+static void
+pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
+{
+  const TP_DOMAIN *domain = NULL;
+  DB_TYPE type = DB_TYPE_UNKNOWN;
+  int codeset = 0, collation = 0;
+
+  if (index < parser->host_var_count)
+    {
+      if (parser->host_var_expected_domains != NULL && parser->host_var_expected_domains[index] != NULL
+	  && TP_DOMAIN_TYPE (parser->host_var_expected_domains[index]) != DB_TYPE_UNKNOWN)
+	{
+	  domain = parser->host_var_expected_domains[index];
+	}
+      else if (parser->host_var_compiled_domains != NULL)
+	{
+	  domain = parser->host_var_compiled_domains[index];
+	}
+      if (domain != NULL)
+	{
+	  type = TP_DOMAIN_TYPE (domain);
+	  codeset = domain->codeset;
+	  collation = domain->collation_id;
+	}
+    }
+  else if (parser->host_variables != NULL && index < parser->host_var_count + parser->auto_param_count)
+    {
+      const DB_VALUE *val = &parser->host_variables[index];
+      type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+      if (TP_IS_CHAR_TYPE (type))
+	{
+	  codeset = db_get_string_codeset (val);
+	  collation = db_get_string_collation (val);
+	}
+    }
+
+  if (type == DB_TYPE_UNKNOWN)
+    {
+      strcpy (out, ":?");
+    }
+  else if (TP_IS_CHAR_TYPE (type))
+    {
+      sprintf (out, ":%d.%d.%d", (int) type, codeset, collation);
+    }
+  else
+    {
+      sprintf (out, ":%d", (int) type);
+    }
+}
+
+/*
  * pt_print_host_var () -
  *   return:
  *   parser(in):
@@ -13529,6 +13586,10 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
       else
 	{
 	  sprintf (s, ":%d", p->info.host_var.index);
+	  if ((parser->custom_print & PT_PRINT_HOST_VAR_COUNT) != 0)
+	    {
+	      pt_print_host_var_type (parser, p->info.host_var.index, s + strlen (s));
+	    }
 	}
       q = pt_append_nulstring (parser, q, s);
     }

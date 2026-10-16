@@ -1710,6 +1710,11 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
 static void
 domain_add_compare_term (DOMAIN_LOAD_CONTEXT * ctx, COMP_EVAL_TERM * term)
 {
+  if (term->compare != NULL)
+    {
+      /* CBRD-27583: the compiler decided this term; the rows call its pointers */
+      return;
+    }
   switch (term->rel_op)
     {
     case R_EQ:
@@ -4558,8 +4563,8 @@ domain_stream_walk_pred (DOMAIN_STREAM_CONTEXT * ctx, PRED_EXPR * pred)
 	    const bool value_comparison = comp->rel_op == R_EQ || comp->rel_op == R_NE || comp->rel_op == R_GT
 	      || comp->rel_op == R_GE || comp->rel_op == R_LT || comp->rel_op == R_LE || comp->rel_op == R_EQ_TORDER
 	      || comp->rel_op == R_NULLSAFE_EQ;
-	    if (value_comparison && comp->domain_compare == NULL && comp->lhs != NULL && comp->rhs != NULL
-		&& comp->lhs->type != TYPE_LIST_ID && comp->rhs->type != TYPE_LIST_ID)
+	    if (value_comparison && comp->domain_compare == NULL && comp->compare == NULL && comp->lhs != NULL
+		&& comp->rhs != NULL && comp->lhs->type != TYPE_LIST_ID && comp->rhs->type != TYPE_LIST_ID)
 	      {
 		DOMAIN_COMPARE_PLAN *comparison = domain_stream_compare (ctx, comp->lhs, comp->rhs);
 		if (comparison != NULL)

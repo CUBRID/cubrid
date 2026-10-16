@@ -167,6 +167,7 @@ extern "C"
   extern void pt_end_query (PARSER_CONTEXT * parser, QUERY_ID query_id_self);
 
   extern void pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values);
+  extern bool pt_value_has_domain_type (const DB_VALUE * val, const TP_DOMAIN * domain);
   extern DB_VALUE *pt_host_var_db_value (PARSER_CONTEXT * parser, PT_NODE * hv);
   extern PT_NODE *pt_bind_values_to_hostvars (PARSER_CONTEXT * parser, PT_NODE * node);
   extern int pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name);

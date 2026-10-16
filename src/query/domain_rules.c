@@ -1345,8 +1345,9 @@ domain_implicit_coercion_refused (DB_TYPE source, DB_TYPE target)
 }
 
 /* The converter a comparison runs on a side: the ASSIGN converter (tp_value_coerce's on the pairs a
- * comparison reaches), failing what implicit coercion refuses. */
-static TP_VALUE_CONVERTER
+ * comparison reaches), failing what implicit coercion refuses. The unpack of a comparison term the compiler decided
+ * (stx_build_term_compare) finds the same converter from the term's target. */
+TP_VALUE_CONVERTER
 domain_compare_converter (DB_TYPE source, const TP_DOMAIN * target)
 {
   if (domain_implicit_coercion_refused (source, TP_DOMAIN_TYPE (target)))

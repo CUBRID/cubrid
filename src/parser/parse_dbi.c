@@ -3058,6 +3058,22 @@ pt_bind_type_from_dbval (PARSER_CONTEXT * parser, PT_NODE * node, DB_VALUE * val
 }
 
 /*
+ * pt_value_has_domain_type () - CBRD-27583: whether a bound value has the type a value-typed position was compiled
+ *   for: the DB_TYPE, and for a string its codeset and collation (a NULL has type DB_TYPE_NULL)
+ */
+bool
+pt_value_has_domain_type (const DB_VALUE * val, const TP_DOMAIN * domain)
+{
+  const DB_TYPE type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+  if (type != TP_DOMAIN_TYPE (domain))
+    {
+      return false;
+    }
+  return !TP_IS_CHAR_TYPE (type)
+    || (db_get_string_codeset (val) == domain->codeset && db_get_string_collation (val) == domain->collation_id);
+}
+
+/*
  * pt_set_host_variables() - sets parser's host_variables & count
  *   return: none
  *   parser(in):  the parser context
@@ -3108,7 +3124,15 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 
       pr_clear_value (hv);
       hv_dom = parser->host_var_expected_domains[i];
-      if (TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_UNKNOWN || hv_dom->type->id == DB_TYPE_ENUMERATION)
+      if (parser->host_var_compiled_domains != NULL && parser->host_var_compiled_domains[i] != NULL
+	  && !pt_value_has_domain_type (val, parser->host_var_compiled_domains[i]))
+	{
+	  /* CBRD-27583: a value-typed position compiled for another type: the plan of this value's signature is
+	   * another one (the caller recompiles); the value is not cast into this plan's domain */
+	  parser->flag.bind_signature_changed = 1;
+	  pr_clone_value (val, hv);
+	}
+      else if (TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_UNKNOWN || hv_dom->type->id == DB_TYPE_ENUMERATION)
 	{
 	  pr_clone_value (val, hv);
 	}
