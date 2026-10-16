@@ -11007,6 +11007,45 @@ heap_attrinfo_raw_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP
 }
 
 /*
+ * heap_attrinfo_raw_key_locator () - where an attribute's bytes sit in records of the latest representation,
+ *				      whatever its type
+ *   return: NO_ERROR, or ER_FAILED (no error set) when the attribute is not in the representation
+ *   attr_info(in): the attribute cache (started)
+ *   attrid(in): the attribute
+ *   out(out): the locator (precision and scale as the domain has them)
+ *   disk_size(out): a fixed attribute's bytes (tp_domain_disk_size ()); 0 for a variable one
+ *
+ * For a reader that only compares a record's bytes with another record's (a page batch's GROUP BY key cache):
+ * equal bytes decode to equal values, whatever the type, so no decoding rule is needed here.
+ */
+int
+heap_attrinfo_raw_key_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out, int *disk_size)
+{
+  OR_ATTRIBUTE *attrepr;
+
+  if (attr_info == NULL || attr_info->last_classrepr == NULL || out == NULL)
+    {
+      return ER_FAILED;
+    }
+  attrepr = heap_locate_last_attrepr (attrid, attr_info);
+  if (attrepr == NULL || attrepr->domain == NULL)
+    {
+      return ER_FAILED;
+    }
+  out->repid = attr_info->last_classrepr->id;
+  out->n_variable = attr_info->last_classrepr->n_variable;
+  out->fixed_length = attr_info->last_classrepr->fixed_length;
+  out->is_fixed = (attrepr->is_fixed != 0);
+  out->location = attrepr->location;
+  out->position = attrepr->position;
+  out->type = attrepr->type;
+  out->precision = attrepr->domain->precision;
+  out->scale = attrepr->domain->scale;
+  *disk_size = out->is_fixed ? tp_domain_disk_size (attrepr->domain) : 0;
+  return (out->is_fixed && *disk_size <= 0) ? ER_FAILED : NO_ERROR;
+}
+
+/*
  * heap_attrvalue_point_fixed () -
  *
  *   return: NO_ERROR

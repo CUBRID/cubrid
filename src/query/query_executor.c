@@ -4661,6 +4661,9 @@ qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL
 				   output_tuple);
 }
 
+static bool qexec_hash_gby_selectivity_abandons (AGGREGATE_HASH_STATE state, int group_count, int tuple_count);
+static int qexec_hash_gby_abandon (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * context,
+				   QFILE_LIST_ID * groupby_list);
 /*
  * qexec_hash_gby_abandon_cutoff () - cumulative unique-ratio above which hash aggregation
  *                                    should be abandoned, given the tuples hashed so far
@@ -4955,29 +4958,18 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
    * ratio means hashing is not compressing the sort input.  The decaying cutoff starts
    * strict (0.95) so only a truly unhashable key is cut early, and relaxes toward the
    * compression break-even (0.5) as the evidence accumulates. */
-  if (context->state == HS_ACCEPT_ALL
-      && context->tuple_count >= HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD
-      && context->tuple_count % HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD == 0)
+  if (qexec_hash_gby_selectivity_abandons (context->state, context->group_count, context->tuple_count))
     {
-      float unique_ratio = (float) context->group_count / context->tuple_count;
-
-      if (unique_ratio > qexec_hash_gby_abandon_cutoff (context->tuple_count))
+      /* very high selectivity, abort hash aggregation */
+      rc = qexec_hash_gby_abandon (thread_p, context, groupby_list);
+      if (rc != NO_ERROR)
 	{
-	  /* very high selectivity, abort hash aggregation */
-	  context->state = HS_REJECT_ALL;
-
-	  /* dump hash table to list file, no need to keep it in memory */
-	  rc = qdata_save_agg_htable_to_list (thread_p, context->hash_table, groupby_list, context->part_list_id,
-					      context->temp_dbval_array);
-	  if (rc != NO_ERROR)
-	    {
-	      return rc;
-	    }
+	  return rc;
+	}
 
 #if !defined(NDEBUG)
-	  er_log_debug (ARG_FILE_LINE, "hash aggregation abandoned: very high selectivity");
+      er_log_debug (ARG_FILE_LINE, "hash aggregation abandoned: very high selectivity");
 #endif
-	}
     }
 
   if (thread_is_on_trace (thread_p))
@@ -4990,6 +4982,41 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
   /* all ok */
   return NO_ERROR;
+}
+
+/*
+ * qexec_hash_gby_selectivity_abandons () - does the very-high-selectivity check, made after the tuple that brings
+ *					     tuple_count to this value, abandon the hash table?
+ *   return: true when the table is to be dumped and hashing stopped (qexec_hash_gby_abandon ())
+ *
+ * Evaluated every TUPLE_THRESHOLD tuples on the cumulative unique ratio (groups / tuples) against a cutoff that
+ * decays with the number of tuples seen (see qexec_hash_gby_abandon_cutoff).  A single fixed cutoff cannot serve
+ * both ends of the stream: early on even a low-NDV key looks unique because repeats have not accumulated yet (a
+ * birthday-problem artifact), while late in the stream even a modest ratio means hashing is not compressing the
+ * sort input.  The decaying cutoff starts strict (0.95) so only a truly unhashable key is cut early, and relaxes
+ * toward the compression break-even (0.5) as the evidence accumulates.  A page batch (qexec_batch_gby_consume ())
+ * asks the same question at the same tuples.
+ */
+static bool
+qexec_hash_gby_selectivity_abandons (AGGREGATE_HASH_STATE state, int group_count, int tuple_count)
+{
+  return (state == HS_ACCEPT_ALL && tuple_count >= HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD
+	  && tuple_count % HASH_AGGREGATE_VH_SELECTIVITY_TUPLE_THRESHOLD == 0
+	  && (float) group_count / tuple_count > qexec_hash_gby_abandon_cutoff (tuple_count));
+}
+
+/*
+ * qexec_hash_gby_abandon () - stop hashing: dump the table to the partial list, every later tuple to the sort
+ *   return: error code or NO_ERROR
+ */
+static int
+qexec_hash_gby_abandon (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * context, QFILE_LIST_ID * groupby_list)
+{
+  context->state = HS_REJECT_ALL;
+
+  /* dump hash table to list file, no need to keep it in memory */
+  return qdata_save_agg_htable_to_list (thread_p, context->hash_table, groupby_list, context->part_list_id,
+					context->temp_dbval_array);
 }
 
 /*
@@ -9696,9 +9723,16 @@ qexec_batch_eligible (const XASL_NODE * xasl)
     }
   else if (xasl->type == BUILDLIST_PROC)
     {
-      /* a projection: the rows go to the list file one by one (qexec_end_one_iteration ()); grouping,
-       * analytics, a single-row subquery and a DML scan keep the row path */
-      if (xasl->proc.buildlist.groupby_list != NULL || xasl->proc.buildlist.g_agg_list != NULL
+      /* a projection: the rows go to the list file one by one (qexec_end_one_iteration ()); or a hash GROUP BY,
+       * whose rows the hash table takes (qexec_batch_gby_consume ()).  A sort-only GROUP BY, ROLLUP, analytics, a
+       * single-row subquery and a DML scan keep the row path */
+      if (xasl->proc.buildlist.groupby_list != NULL
+	  && (!xasl->proc.buildlist.g_hash_eligible || xasl->proc.buildlist.g_with_rollup
+	      || xasl->proc.buildlist.g_agg_list == NULL))
+	{
+	  return false;
+	}
+      if ((xasl->proc.buildlist.groupby_list == NULL && xasl->proc.buildlist.g_agg_list != NULL)
 	  || xasl->proc.buildlist.a_eval_list != NULL || xasl->selected_upd_list != NULL
 	  || xasl->scan_op_type != S_SELECT || QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl)
 	  || XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT) || XASL_IS_FLAGED (xasl, XASL_ANALYTIC_SKIP_SORT))
@@ -9742,6 +9776,679 @@ qexec_batch_eligible (const XASL_NODE * xasl)
  * / qexec_end_one_iteration () pair the row loop uses, so that it raises what the interpreter
  * raises, where it raises it.
  */
+/* ---------------------------------------------------------------------------------------- */
+/* the hash GROUP BY as a chunk's blocking node
+ *
+ * The row path gives each row of a hash GROUP BY its tuple, hashes the tuple's key into the hash table
+ * (mht_get ()) and accumulates the row into the group it finds or creates (qexec_hash_gby_agg_tuple ()).  The
+ * node keeps that table and everything it decides -- a group's creation and first tuple, the LRU dump past
+ * max_agg_hash_size, the selectivity check, the switch to the sort -- and takes over only the rows of groups the
+ * table already holds: a cache from the key's record bytes (expr_batch_key_bytes ()) to the group finds them,
+ * and their aggregates are accumulated a group at a time from the chunk's vectors
+ * (qdata_evaluate_aggregate_batch () into the group's accumulators), in row order within each group.  A key not
+ * in the cache -- a new group, or another spelling of an existing one -- goes through the row path, which also
+ * puts it in the cache; equal bytes are an equal key, so the cache never names a wrong group.
+ *
+ * What the row path would have done between rows is replayed where it matters: before any row-path call the
+ * pending rows are accumulated and their groups touched in the table's LRU in the order of their last row, so a
+ * dump evicts what the row path would evict; the selectivity check runs at the very tuple counts the row path
+ * runs it at; a call that dumps or creates nothing (mht_count () not one more) clears the cache, since its groups
+ * may be gone.  Once the table stops taking rows (HS_REJECT_ALL) every row goes to the row path, which sends it
+ * to the sort.
+ *
+ * database-reference 참고: a hash GROUP BY keeps one aggregate row per group -- its count and the states of the
+ * basis functions the aggregates decompose into (ExAggr) -- and a NUMBER sum accumulates digit positions
+ * without carries (NumberAccum), merged per group at the end (exaggr_apply); here the group is the table's
+ * AGGREGATE_HASH_VALUE with its accumulators (SUM_ACC the word sum), and a parallel worker's table is merged by
+ * the coordinator through the partial lists as before. */
+
+#define QEXEC_GBY_CACHE_SIZE (1024)	/* power of two; at most half of it is used */
+#define QEXEC_GBY_KEY_MAX (256)
+
+typedef struct qexec_gby_entry QEXEC_GBY_ENTRY;
+struct qexec_gby_entry
+{
+  unsigned int hash;
+  int len;			/* -1: empty */
+  unsigned char *bytes;
+  AGGREGATE_HASH_VALUE *value;
+  AGGREGATE_HASH_KEY *key;	/* a copy: touches the group in the table's LRU */
+  int count;			/* a flush's scratch: rows, first slot, rows placed, last row */
+  int start;
+  int placed;
+  int last;
+};
+
+struct qexec_batch_gby
+{
+  SCAN_BATCH_PROJECT row;	/* a row-path row: its columns and its emit (the hash table call) */
+  XASL_NODE *xasl;
+  val_descr *vd;
+  QFILE_LIST_ID *(*list) (void *arg);	/* the list a dump of the table goes to */
+  void (*sync) (void *arg);	/* the caller's copy of the hash state follows the context's */
+  void *arg;
+  bool off;			/* the table takes no more rows: all of them to the row path */
+  QEXEC_GBY_ENTRY *cache;
+  int n_cached;
+  int cap;			/* rows the scratch arrays hold */
+  int *pend_row;		/* a chunk's rows of cached groups, in row order, and their entries */
+  int *pend_ent;
+  int *grp_rows;		/* a flush's rows, regrouped by entry */
+  int *order;			/* a flush's entries, in first-row order */
+};
+
+static unsigned int
+qexec_gby_hash_bytes (const unsigned char *p, int len)
+{
+  unsigned int h = 2166136261u;
+  int i;
+
+  for (i = 0; i < len; i++)
+    {
+      h = (h ^ p[i]) * 16777619u;
+    }
+  return h;
+}
+
+static QEXEC_GBY_ENTRY *
+qexec_gby_cache_find (QEXEC_BATCH_GBY * st, const unsigned char *key, int len, unsigned int h)
+{
+  unsigned int i;
+
+  if (st->cache == NULL)
+    {
+      return NULL;
+    }
+  for (i = h & (QEXEC_GBY_CACHE_SIZE - 1);; i = (i + 1) & (QEXEC_GBY_CACHE_SIZE - 1))
+    {
+      QEXEC_GBY_ENTRY *e = &st->cache[i];
+
+      if (e->len < 0)
+	{
+	  return NULL;
+	}
+      if (e->hash == h && e->len == len && memcmp (e->bytes, key, len) == 0)
+	{
+	  return e;
+	}
+    }
+}
+
+static void
+qexec_gby_cache_clear (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st)
+{
+  int i;
+
+  if (st->cache == NULL)
+    {
+      return;
+    }
+  for (i = 0; i < QEXEC_GBY_CACHE_SIZE; i++)
+    {
+      QEXEC_GBY_ENTRY *e = &st->cache[i];
+
+      if (e->len >= 0)
+	{
+	  free_and_init (e->bytes);
+	  if (e->key != NULL)
+	    {
+	      qdata_free_agg_hkey (thread_p, e->key);
+	      e->key = NULL;
+	    }
+	  e->len = -1;
+	}
+    }
+  st->n_cached = 0;
+}
+
+/* the group the row path just put the row in (context->temp_key holds its key), under the row's bytes */
+static void
+qexec_gby_cache_add (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGATE_HASH_CONTEXT * ctx,
+		     const unsigned char *key, int len, unsigned int h)
+{
+  AGGREGATE_HASH_VALUE *value;
+  QEXEC_GBY_ENTRY *e;
+  unsigned int i;
+  int k;
+
+  if (st->cache == NULL)
+    {
+      st->cache = (QEXEC_GBY_ENTRY *) malloc (sizeof (QEXEC_GBY_ENTRY) * QEXEC_GBY_CACHE_SIZE);
+      if (st->cache == NULL)
+	{
+	  return;		/* only an accelerator: the rows keep the row path */
+	}
+      for (k = 0; k < QEXEC_GBY_CACHE_SIZE; k++)
+	{
+	  st->cache[k].len = -1;
+	}
+      st->n_cached = 0;
+    }
+  if (st->n_cached >= QEXEC_GBY_CACHE_SIZE / 2)
+    {
+      return;
+    }
+  /* the row path's last touch made the group the most recent: looking it up keeps it so */
+  value = (AGGREGATE_HASH_VALUE *) mht_get (ctx->hash_table, (void *) ctx->temp_key);
+  if (value == NULL)
+    {
+      return;
+    }
+  for (i = h & (QEXEC_GBY_CACHE_SIZE - 1); st->cache[i].len >= 0; i = (i + 1) & (QEXEC_GBY_CACHE_SIZE - 1))
+    ;
+  e = &st->cache[i];
+  e->bytes = (unsigned char *) malloc (MAX (1, len));
+  e->key = qdata_copy_agg_hkey (thread_p, ctx->temp_key);
+  if (e->bytes == NULL || e->key == NULL)
+    {
+      if (e->bytes != NULL)
+	{
+	  free_and_init (e->bytes);
+	}
+      if (e->key != NULL)
+	{
+	  qdata_free_agg_hkey (thread_p, e->key);
+	  e->key = NULL;
+	}
+      er_clear ();
+      return;
+    }
+  memcpy (e->bytes, key, len);
+  e->hash = h;
+  e->len = len;
+  e->value = value;
+  e->count = 0;
+  e->placed = 0;
+  st->n_cached++;
+}
+
+static int
+qexec_batch_gby_reserve (QEXEC_BATCH_GBY * st, int n)
+{
+  int *a, *b, *c, *d;
+
+  if (n <= st->cap)
+    {
+      return NO_ERROR;
+    }
+  a = (int *) realloc (st->pend_row, sizeof (int) * n);
+  if (a != NULL)
+    {
+      st->pend_row = a;
+    }
+  b = (int *) realloc (st->pend_ent, sizeof (int) * n);
+  if (b != NULL)
+    {
+      st->pend_ent = b;
+    }
+  c = (int *) realloc (st->grp_rows, sizeof (int) * n);
+  if (c != NULL)
+    {
+      st->grp_rows = c;
+    }
+  d = (int *) realloc (st->order, sizeof (int) * n);
+  if (d != NULL)
+    {
+      st->order = d;
+    }
+  if (a == NULL || b == NULL || c == NULL || d == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * n);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  st->cap = n;
+  return NO_ERROR;
+}
+
+/* rows to the row path, in order: the chunk's selection from position from on */
+static int
+qexec_batch_gby_rows (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, EXPR_BATCH * batch, int from)
+{
+  int j, rc;
+
+  for (j = from; j < batch->n_sel; j++)
+    {
+      rc = scan_batch_project_row (thread_p, &st->row, &batch->rows[batch->sel[j]]);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
+  return NO_ERROR;
+}
+
+/* Accumulate pending rows [0, n) into their groups, as the row path would have row by row up to the next
+ * row-path call: the counts, each group's rows in row order, the sizes, the LRU in last-row order, and the
+ * selectivity check where its tuple count falls.  *done: the pending rows taken (n, or fewer when the check
+ * abandoned the table after the last of them -- the rest go to the row path). */
+static int
+qexec_batch_gby_flush (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch,
+		       int n, int *done)
+{
+  AGGREGATE_HASH_CONTEXT *ctx = st->xasl->proc.buildlist.agg_hash_context;
+  int *saved_sel = batch->sel;
+  int saved_n_sel = batch->n_sel;
+  int t, k, n_groups = 0, stop = n, rc = NO_ERROR;
+  bool abandon = false;
+
+  *done = 0;
+  if (n == 0)
+    {
+      return NO_ERROR;
+    }
+  for (t = 0; t < n; t++)
+    {
+      if (qexec_hash_gby_selectivity_abandons (ctx->state, ctx->group_count, ctx->tuple_count + t + 1))
+	{
+	  stop = t + 1;
+	  abandon = true;
+	  break;
+	}
+    }
+
+  /* the rows regrouped by group, in row order within each */
+  for (t = 0; t < stop; t++)
+    {
+      QEXEC_GBY_ENTRY *e = &st->cache[st->pend_ent[t]];
+
+      if (e->count == 0)
+	{
+	  st->order[n_groups++] = st->pend_ent[t];
+	}
+      e->count++;
+      e->last = t;
+    }
+  for (k = 0, t = 0; k < n_groups; k++)
+    {
+      QEXEC_GBY_ENTRY *e = &st->cache[st->order[k]];
+
+      e->start = t;
+      e->placed = 0;
+      t += e->count;
+    }
+  for (t = 0; t < stop; t++)
+    {
+      QEXEC_GBY_ENTRY *e = &st->cache[st->pend_ent[t]];
+
+      st->grp_rows[e->start + e->placed++] = st->pend_row[t];
+    }
+  for (k = 0; k < n_groups && rc == NO_ERROR; k++)
+    {
+      QEXEC_GBY_ENTRY *e = &st->cache[st->order[k]];
+
+      batch->sel = &st->grp_rows[e->start];
+      batch->n_sel = e->count;
+      rc = qdata_evaluate_aggregate_batch (thread_p, st->xasl->proc.buildlist.g_agg_list, st->vd, plan, batch, false,
+					   e->value->accumulators);
+      if (rc == NO_ERROR)
+	{
+	  e->value->tuple_count += e->count;
+	  ctx->hash_size += qdata_get_agg_hvalue_size (e->value, true);
+	}
+    }
+  batch->sel = saved_sel;
+  batch->n_sel = saved_n_sel;
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  ctx->tuple_count += stop;
+
+  /* the LRU as the rows left it: the groups in the order of their last row */
+  for (k = 1; k < n_groups; k++)
+    {
+      int v = st->order[k], m = k - 1;
+
+      while (m >= 0 && st->cache[st->order[m]].last > st->cache[v].last)
+	{
+	  st->order[m + 1] = st->order[m];
+	  m--;
+	}
+      st->order[m + 1] = v;
+    }
+  for (k = 0; k < n_groups; k++)
+    {
+      QEXEC_GBY_ENTRY *e = &st->cache[st->order[k]];
+
+      (void) mht_get (ctx->hash_table, (void *) e->key);
+      e->count = 0;
+    }
+
+  *done = stop;
+  if (abandon)
+    {
+      rc = qexec_hash_gby_abandon (thread_p, ctx, st->list (st->arg));
+      if (st->sync != NULL)
+	{
+	  st->sync (st->arg);
+	}
+      st->off = true;
+      qexec_gby_cache_clear (thread_p, st);
+    }
+  return rc;
+}
+
+/*
+ * qexec_batch_gby_consume () - the hash GROUP BY node of a chunk chain (see above)
+ *   return: NO_ERROR, or an error
+ *   node(in): its state is a QEXEC_BATCH_GBY
+ *   plan(in), batch(in): the chunk, its filter and operand steps run
+ */
+int
+qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
+{
+  QEXEC_BATCH_GBY *st = (QEXEC_BATCH_GBY *) node->state;
+  AGGREGATE_HASH_CONTEXT *ctx = st->xasl->proc.buildlist.agg_hash_context;
+  unsigned char key[QEXEC_GBY_KEY_MAX];
+  int j, t, n_pend = 0, done, rc;
+
+  if (!st->off && (ctx == NULL || ctx->state != HS_ACCEPT_ALL))
+    {
+      st->off = true;
+      qexec_gby_cache_clear (thread_p, st);
+    }
+  if (st->off)
+    {
+      return qexec_batch_gby_rows (thread_p, st, batch, 0);
+    }
+  rc = qexec_batch_gby_reserve (st, batch->n_sel);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  for (j = 0; j < batch->n_sel; j++)
+    {
+      int r = batch->sel[j];
+      int len = expr_batch_key_bytes (plan, batch, r, key, (int) sizeof (key));
+      unsigned int h = (len >= 0) ? qexec_gby_hash_bytes (key, len) : 0;
+      QEXEC_GBY_ENTRY *e = (len >= 0) ? qexec_gby_cache_find (st, key, len, h) : NULL;
+      unsigned int before;
+      int tuples_before;
+
+      if (e != NULL)
+	{
+	  st->pend_row[n_pend] = r;
+	  st->pend_ent[n_pend] = (int) (e - st->cache);
+	  n_pend++;
+	  continue;
+	}
+
+      /* a key the cache does not know: the rows before it first, so the table is as the row path leaves it */
+      rc = qexec_batch_gby_flush (thread_p, st, plan, batch, n_pend, &done);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+      if (st->off)
+	{
+	  for (t = done; t < n_pend; t++)
+	    {
+	      rc = scan_batch_project_row (thread_p, &st->row, &batch->rows[st->pend_row[t]]);
+	      if (rc != NO_ERROR)
+		{
+		  return rc;
+		}
+	    }
+	  return qexec_batch_gby_rows (thread_p, st, batch, j);
+	}
+      n_pend = 0;
+
+      before = mht_count (ctx->hash_table);
+      tuples_before = ctx->tuple_count;
+      rc = scan_batch_project_row (thread_p, &st->row, &batch->rows[r]);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+      if (ctx->state != HS_ACCEPT_ALL)
+	{
+	  st->off = true;
+	  qexec_gby_cache_clear (thread_p, st);
+	  return qexec_batch_gby_rows (thread_p, st, batch, j + 1);
+	}
+      if (mht_count (ctx->hash_table) != before + 1)
+	{
+	  /* not a plain new group: an existing one under other bytes, or a dump; a dumped group is freed */
+	  qexec_gby_cache_clear (thread_p, st);
+	}
+      if (len >= 0 && ctx->tuple_count == tuples_before + 1)
+	{
+	  /* the row went into the table (not to a top-N heap or a retried big tuple): context->temp_key is its key */
+	  qexec_gby_cache_add (thread_p, st, ctx, key, len, h);
+	}
+    }
+  rc = qexec_batch_gby_flush (thread_p, st, plan, batch, n_pend, &done);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  for (t = done; t < n_pend; t++)
+    {
+      rc = scan_batch_project_row (thread_p, &st->row, &batch->rows[st->pend_row[t]]);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
+  return NO_ERROR;
+}
+
+QEXEC_BATCH_GBY *
+qexec_batch_gby_create (XASL_NODE * xasl, val_descr * vd, const SCAN_BATCH_PROJECT * row,
+			QFILE_LIST_ID * (*list) (void *arg), void (*sync) (void *arg), void *arg)
+{
+  QEXEC_BATCH_GBY *st = (QEXEC_BATCH_GBY *) calloc (1, sizeof (QEXEC_BATCH_GBY));
+
+  if (st == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QEXEC_BATCH_GBY));
+      return NULL;
+    }
+  st->row = *row;
+  st->xasl = xasl;
+  st->vd = vd;
+  st->list = list;
+  st->sync = sync;
+  st->arg = arg;
+  return st;
+}
+
+void
+qexec_batch_gby_destroy (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st)
+{
+  if (st == NULL)
+    {
+      return;
+    }
+  qexec_gby_cache_clear (thread_p, st);
+  if (st->cache != NULL)
+    {
+      free_and_init (st->cache);
+    }
+  if (st->pend_row != NULL)
+    {
+      free_and_init (st->pend_row);
+    }
+  if (st->pend_ent != NULL)
+    {
+      free_and_init (st->pend_ent);
+    }
+  if (st->grp_rows != NULL)
+    {
+      free_and_init (st->grp_rows);
+    }
+  if (st->order != NULL)
+    {
+      free_and_init (st->order);
+    }
+  free (st);
+}
+
+/*
+ * qexec_batch_gby_map_create () - how a hash GROUP BY's aggregates and keys read the scan, for a page batch
+ *   return: the mapping (qexec_batch_gby_map_destroy ()), or NULL when the block does not map (no error)
+ *
+ * The row path hands each tuple's columns -- the projection's values cast into the list's domains -- to the
+ * group value list through the projection columns' vfetch_to (qexec_hash_gby_agg_tuple ()), and the aggregates
+ * read those slots.  So an aggregate's operand is the projection column whose vfetch_to is its slot: its
+ * compiled program root, or a plain column of the scan, and the domain the tuple casts it into.  A key is the
+ * projection column at its GROUP BY position, which must be a plain column of the scan.  An aggregate fed by a
+ * hidden column (evaluated afresh per row) does not map.
+ */
+EXPR_BATCH_GBY_MAP *
+qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr * vd)
+{
+  BUILDLIST_PROC_NODE *proc = &xasl->proc.buildlist;
+  OUTPTR_LIST *outptr = xasl->outptr_list;
+  REGU_VARIABLE_LIST rl;
+  AGGREGATE_TYPE *agg;
+  SORT_LIST *sl;
+  EXPR_BATCH_GBY_MAP *map;
+  EXPR_PROG *prog;
+  REGU_VARIABLE **col;		/* the visible projection columns, by tuple position */
+  int *col_idx;
+  int n_aggs = 0, n_keys = 0, n_cols = 0, i, k;
+  char *mem;
+  size_t size;
+
+  if (proc->agg_hash_context == NULL || proc->agg_hash_context->state != HS_ACCEPT_ALL || outptr == NULL)
+    {
+      return NULL;
+    }
+  for (agg = proc->g_agg_list; agg != NULL; agg = agg->next)
+    {
+      n_aggs++;
+    }
+  for (sl = proc->groupby_list; sl != NULL; sl = sl->next)
+    {
+      n_keys++;
+    }
+  if (n_aggs == 0 || n_keys == 0)
+    {
+      return NULL;
+    }
+  size = sizeof (EXPR_BATCH_GBY_MAP) + sizeof (int) * n_aggs + sizeof (DB_VALUE *) * n_aggs
+    + sizeof (TP_DOMAIN *) * n_aggs + sizeof (DB_VALUE *) * n_keys + sizeof (REGU_VARIABLE *) * outptr->valptr_cnt
+    + sizeof (int) * outptr->valptr_cnt + 64;
+  mem = (char *) calloc (1, size);
+  if (mem == NULL)
+    {
+      return NULL;
+    }
+  map = (EXPR_BATCH_GBY_MAP *) mem;
+  {
+    char *p = mem + sizeof (EXPR_BATCH_GBY_MAP);
+    int *agg_root;
+    DB_VALUE **agg_slot, **key_slot;
+    TP_DOMAIN **agg_domain;
+
+    p = (char *) (((UINTPTR) p + 7) & ~(UINTPTR) 7);
+    agg_slot = (DB_VALUE **) p;
+    p += sizeof (DB_VALUE *) * n_aggs;
+    agg_domain = (TP_DOMAIN **) p;
+    p += sizeof (TP_DOMAIN *) * n_aggs;
+    key_slot = (DB_VALUE **) p;
+    p += sizeof (DB_VALUE *) * n_keys;
+    col = (REGU_VARIABLE **) p;
+    p += sizeof (REGU_VARIABLE *) * outptr->valptr_cnt;
+    agg_root = (int *) p;
+    p += sizeof (int) * n_aggs;
+    col_idx = (int *) p;
+
+    prog = (EXPR_PROG *) qdata_valptr_prog_settle (thread_p, outptr, vd);
+    for (rl = outptr->valptrp, i = 0; rl != NULL && i < outptr->valptr_cnt; rl = rl->next, i++)
+      {
+	if (REGU_VARIABLE_IS_FLAGED (&rl->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	  {
+	    continue;
+	  }
+	col[n_cols] = &rl->value;
+	col_idx[n_cols] = i;
+	n_cols++;
+      }
+
+    for (agg = proc->g_agg_list, k = 0; agg != NULL; agg = agg->next, k++)
+      {
+	const REGU_VARIABLE *operand;
+	int c;
+
+	agg_root[k] = -1;
+	if (agg->function == PT_COUNT_STAR)
+	  {
+	    continue;
+	  }
+	if (agg->operands == NULL)
+	  {
+	    goto no_map;
+	  }
+	operand = &agg->operands->value;
+	if (operand->type != TYPE_CONSTANT)
+	  {
+	    goto no_map;
+	  }
+	for (c = 0; c < n_cols; c++)
+	  {
+	    if (col[c]->vfetch_to == operand->value.dbvalptr)
+	      {
+		break;
+	      }
+	  }
+	if (c == n_cols)
+	  {
+	    goto no_map;	/* a hidden column's value, or one the batch does not see */
+	  }
+	if (prog != NULL && outptr->eval_prog_idx != NULL && outptr->eval_prog_idx[col_idx[c]] >= 0)
+	  {
+	    agg_root[k] = outptr->eval_prog_idx[col_idx[c]];
+	  }
+	else if (col[c]->type == TYPE_CONSTANT)
+	  {
+	    agg_slot[k] = col[c]->value.dbvalptr;
+	  }
+	else
+	  {
+	    goto no_map;
+	  }
+	agg_domain[k] = qdata_valptr_column_domain (col[c], vd);
+      }
+    for (sl = proc->groupby_list, k = 0; sl != NULL; sl = sl->next, k++)
+      {
+	int pos = sl->pos_descr.pos_no;
+
+	if (pos < 0 || pos >= n_cols || col[pos]->type != TYPE_CONSTANT)
+	  {
+	    goto no_map;
+	  }
+	key_slot[k] = col[pos]->value.dbvalptr;
+      }
+
+    map->proj_prog = prog;
+    map->n_aggs = n_aggs;
+    map->agg_root = agg_root;
+    map->agg_slot = agg_slot;
+    map->agg_domain = agg_domain;
+    map->n_keys = n_keys;
+    map->key_slot = key_slot;
+  }
+  return map;
+
+no_map:
+  free (mem);
+  return NULL;
+}
+
+void
+qexec_batch_gby_map_destroy (EXPR_BATCH_GBY_MAP * map)
+{
+  free (map);
+}
+
+static QFILE_LIST_ID *
+qexec_batch_gby_list_serial (void *arg)
+{
+  return ((XASL_NODE *) arg)->list_id;
+}
+
 /* the projection node's emit in the serial block: the row path's end of iteration for the row */
 typedef struct qexec_batch_emit QEXEC_BATCH_EMIT;
 struct qexec_batch_emit
@@ -9750,6 +10457,9 @@ struct qexec_batch_emit
   XASL_STATE *xasl_state;
   QFILE_TUPLE_RECORD *tplrec;
 };
+
+static SCAN_CODE qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+					 QFILE_TUPLE_RECORD * tplrec, EXPR_CHUNK_NODE * chain);
 
 static int
 qexec_batch_emit_row (THREAD_ENTRY * thread_p, void *arg)
@@ -9763,25 +10473,49 @@ static SCAN_CODE
 qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * tplrec)
 {
   SCAN_ID *s_id = &xasl->curr_spec->s_id;
-  HEAP_SCAN_ID *hsidp = &s_id->s.hsid;
-  SCAN_CODE code, ls_scan;
-  int rc;
   QDATA_AGG_CHUNK_STATE agg_state = { NULL, &xasl_state->vd, true };
   QEXEC_BATCH_EMIT emit_state = { xasl, xasl_state, tplrec };
   SCAN_BATCH_PROJECT project_state = { s_id, qexec_batch_emit_row, &emit_state };
+  QEXEC_BATCH_GBY *gby = NULL;
   EXPR_CHUNK_NODE tail_node, eval_node;
+  SCAN_CODE code;
 
-  /* the chain: evaluation (filter, operand steps) -> the aggregate, or the projection into the list file */
+  /* the chain: evaluation (filter, operand steps) -> the aggregate, the hash GROUP BY, or the projection into
+   * the list file */
   if (xasl->type == BUILDVALUE_PROC)
     {
       agg_state.agg_list = xasl->proc.buildvalue.agg_list;
       expr_chunk_node_init (&tail_node, "aggregate", qdata_agg_chunk_consume, &agg_state, NULL);
+    }
+  else if (xasl->proc.buildlist.groupby_list != NULL)
+    {
+      gby = qexec_batch_gby_create (xasl, &xasl_state->vd, &project_state, qexec_batch_gby_list_serial, NULL, xasl);
+      if (gby == NULL)
+	{
+	  return S_ERROR;
+	}
+      expr_chunk_node_init (&tail_node, "group by", qexec_batch_gby_consume, gby, NULL);
     }
   else
     {
       expr_chunk_node_init (&tail_node, "project", scan_batch_project_consume, &project_state, NULL);
     }
   expr_chunk_node_init (&eval_node, "evaluate", expr_chunk_eval_consume, &xasl_state->vd, &tail_node);
+
+  code = qexec_batch_scan_chain (thread_p, xasl, xasl_state, tplrec, &eval_node);
+  qexec_batch_gby_destroy (thread_p, gby);
+  return code;
+}
+
+/* qexec_batch_scan ()'s loop, with its chain built */
+static SCAN_CODE
+qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+			QFILE_TUPLE_RECORD * tplrec, EXPR_CHUNK_NODE * chain)
+{
+  SCAN_ID *s_id = &xasl->curr_spec->s_id;
+  HEAP_SCAN_ID *hsidp = &s_id->s.hsid;
+  SCAN_CODE code, ls_scan;
+  int rc;
 
   while ((code = scan_batch_next_page (thread_p, s_id)) == S_SUCCESS)
     {
@@ -9798,7 +10532,7 @@ qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	    }
 	  if (chunk != S_DOESNT_FIT && hsidp->batch->n_rows > 0)
 	    {
-	      rc = expr_chunk_push (thread_p, &eval_node, hsidp->batch_plan, hsidp->batch);
+	      rc = expr_chunk_push (thread_p, chain, hsidp->batch_plan, hsidp->batch);
 	      if (rc == NO_ERROR)
 		{
 		  s_id->scan_stats.read_rows += hsidp->batch->n_rows;
@@ -9806,12 +10540,17 @@ qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		}
 	      else if (rc == EXPR_BATCH_FALLBACK)
 		{
+		  hsidp->batch_why_not = expr_batch_fallback_why (hsidp->batch_plan);
 		  chunk = S_DOESNT_FIT;
 		}
 	      else
 		{
 		  return S_ERROR;
 		}
+	    }
+	  else if (chunk == S_DOESNT_FIT)
+	    {
+	      hsidp->batch_why_not = "a record its page does not answer for (relocated, overflow, or a log version)";
 	    }
 	}
       while (chunk == S_SUCCESS);
@@ -9995,14 +10734,24 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
        * its plan can be built */
       if (qexec_batch_eligible (xasl))
 	{
-	  cubxasl::aggregate_list_node * agg_list =
-	    (xasl->type == BUILDVALUE_PROC) ? xasl->proc.buildvalue.agg_list : NULL;
+	  cubxasl::aggregate_list_node * agg_list = NULL;
+	  EXPR_BATCH_GBY_MAP *gby_map = NULL;
+	  int opened;
 
-	  if (agg_list != NULL)
+	  if (xasl->type == BUILDVALUE_PROC)
 	    {
+	      agg_list = xasl->proc.buildvalue.agg_list;
 	      (void) qdata_agg_operand_prog_ensure (thread_p, agg_list, &xasl_state->vd);
 	    }
-	  if (scan_batch_open (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec, agg_list, &xasl_state->vd) == 1)
+	  else if (xasl->proc.buildlist.groupby_list != NULL)
+	    {
+	      agg_list = xasl->proc.buildlist.g_agg_list;
+	      gby_map = qexec_batch_gby_map_create (thread_p, xasl, &xasl_state->vd);
+	    }
+	  opened = (agg_list != NULL && gby_map == NULL && xasl->type == BUILDLIST_PROC) ? 0
+	    : scan_batch_open (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec, agg_list, &xasl_state->vd, gby_map);
+	  qexec_batch_gby_map_destroy (gby_map);
+	  if (opened == 1)
 	    {
 	      ls_scan = qexec_batch_scan (thread_p, xasl, xasl_state, tplrec);
 	      if (ls_scan != S_END)

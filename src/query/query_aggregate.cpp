@@ -1093,7 +1093,7 @@ qdata_agg_chunk_consume (cubthread::entry *thread_p, EXPR_CHUNK_NODE *node, EXPR
 {
   QDATA_AGG_CHUNK_STATE *st = (QDATA_AGG_CHUNK_STATE *) node->state;
 
-  return qdata_evaluate_aggregate_batch (thread_p, st->agg_list, st->vd, plan, batch, st->skip_optimized);
+  return qdata_evaluate_aggregate_batch (thread_p, st->agg_list, st->vd, plan, batch, st->skip_optimized, NULL);
 }
 
 /*
@@ -1105,6 +1105,8 @@ qdata_agg_chunk_consume (cubthread::entry *thread_p, EXPR_CHUNK_NODE *node, EXPR
  *   batch(in): the page batch expr_batch_run () evaluated
  *   skip_optimized(in): leave the aggregates the optimizer answered before the scan alone (the
  *                       serial loop's rule; a parallel worker accumulates them)
+ *   alt_acc_list(in): the accumulators to take the rows instead of the nodes' own -- a hash GROUP BY's group
+ *                     (AGGREGATE_HASH_VALUE.accumulators), as qdata_evaluate_aggregate_list () takes them -- or NULL
  *
  * One typed loop per aggregate over the page's selected rows, where the row path makes one
  * call per row and aggregate.  What the row path does on a value's first arrival -- keep it
@@ -1116,14 +1118,14 @@ qdata_agg_chunk_consume (cubthread::entry *thread_p, EXPR_CHUNK_NODE *node, EXPR
 int
 qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
 				val_descr *val_desc_p, EXPR_BATCH_PLAN *plan, const EXPR_BATCH *batch,
-				bool skip_optimized)
+				bool skip_optimized, cubxasl::aggregate_accumulator *alt_acc_list)
 {
   cubxasl::aggregate_list_node *agg_p;
   int i, error;
 
   for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
     {
-      cubxasl::aggregate_accumulator *accumulator = &agg_p->accumulator;
+      cubxasl::aggregate_accumulator *accumulator = (alt_acc_list != NULL) ? &alt_acc_list[i] : &agg_p->accumulator;
       cubxasl::aggregate_accumulator_domain *acc_dom;
       DB_VALUE dbv;
       int pos = 0, cnt;

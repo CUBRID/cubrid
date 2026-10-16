@@ -116,7 +116,8 @@ enum eb_op
   EB_OP_INT2NUM,		/* int64 -> NUMERIC word, scale 0 (an integer wrapped for a NUMERIC operator) */
   EB_OP_I2F,			/* int64 -> double (an integer widened for a DOUBLE tree) */
   EB_OP_MASK_PUSH,		/* rows whose in1 is NULL leave the mask until the matching pop */
-  EB_OP_MASK_POP
+  EB_OP_MASK_POP,
+  EB_OP_NUM_CAST		/* NUMERIC into a (precision, scale) domain: a scale raised exactly, else the row path */
 };
 
 #define EB_MASK_DEPTH (8)
@@ -145,6 +146,7 @@ struct eb_vec_src
   unsigned char conv;		/* eb_scalar_conv */
   short precision;		/* NUMERIC column: the domain's precision and scale (the row path's DB_VALUE domain) */
   short scale;
+  unsigned char packed_domain;	/* a NUMERIC cast into (precision, scale): packed as that domain, as a column is */
 };
 
 /* one use column: where it sits in a record of the plan's representation (the
@@ -159,6 +161,16 @@ struct eb_col
   unsigned char is_fixed;
   unsigned char decoded;	/* this page: decoded already, for the rows selected at that point */
   short scale;			/* NUMERIC: the stored scale must be the domain's */
+};
+
+/* a GROUP BY key column: where its bytes sit in a record of the plan's representation */
+typedef struct eb_key EB_KEY;
+struct eb_key
+{
+  int location;			/* fixed: byte offset in the fixed area; variable: offset-table index */
+  int position;			/* fixed: bound-bit index */
+  int size;			/* fixed: bytes */
+  unsigned char is_fixed;
 };
 
 typedef struct eb_step EB_STEP;
@@ -259,6 +271,8 @@ struct expr_batch_plan
   int n_kids;
   EB_AGG *aggs;
   int n_aggs;
+  EB_KEY *keys;			/* a hash GROUP BY's key columns */
+  int n_keys;
 
   void *filter;			/* the compiled scan filter (EXPR_PRED) */
   EXPR_PROG *prog;		/* the aggregate operand program, when one is active */
@@ -275,6 +289,7 @@ struct expr_batch_plan
   int n_row_kids;
   INT64 pages;
   INT64 pages_fallback;
+  const char *fallback_why;	/* the last chunk's cause for the row path */
 };
 
 /* the build: a few growable arrays, an address map for the program's wired cells, and the
@@ -295,6 +310,7 @@ struct eb_build
   ATTR_ID *col_attrid;		/* parallel to the plan's cols, build time only */
   int *cell_vec;		/* program cell -> vector, or -1 */
   int n_cell_vec;
+  bool *step_needed;		/* the program steps to translate (NULL: all) */
   int pending_pop[EB_MASK_DEPTH];	/* step index at which a pushed mask pops */
   int n_pending;
 };
@@ -314,12 +330,15 @@ static bool eb_slot_lookup (const EB_BUILD * b, const DB_VALUE * slot, ATTR_ID *
 static int eb_build_filter (EB_BUILD * b);
 static int eb_build_aggs (THREAD_ENTRY * thread_p, EB_BUILD * b);
 static int eb_build_program (EB_BUILD * b);
+static bool *eb_program_needed (const EXPR_PROG * prog, const int *roots, int n_roots);
+static int eb_build_gby (EB_BUILD * b);
 static int eb_program_cell_vec (EB_BUILD * b, int cell);
 static int eb_fused_tree (EB_BUILD * b, const REGU_VARIABLE * regu, int group, int *out_vec);
 static int eb_fused_leaf (EB_BUILD * b, const REGU_VARIABLE * regu, int group, bool wrapped, int *out_vec);
 static int eb_decline (EB_BUILD * b, const char *why);
 
 static void *eb_arena_alloc (EXPR_BATCH_PLAN * plan, size_t bytes);
+static int eb_fallback (EXPR_BATCH_PLAN * plan, const char *why);
 static int eb_load_scalars (EXPR_BATCH_PLAN * plan);
 static int eb_load_leaf_constants (EXPR_BATCH_PLAN * plan);
 static int eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, int n, int only_col);
@@ -917,7 +936,8 @@ eb_choose_pointed (EXPR_BATCH_PLAN * plan)
 	    {
 	      continue;
 	    }
-	  if (EB_IS_NUM (st->etype) && (st->op == EB_OP_ADD || st->op == EB_OP_SUB || st->op == EB_OP_MUL))
+	  if (EB_IS_NUM (st->etype)
+	      && (st->op == EB_OP_ADD || st->op == EB_OP_SUB || st->op == EB_OP_MUL || st->op == EB_OP_NUM_CAST))
 	    {
 	      arith_uses += uses;
 	    }
@@ -1026,7 +1046,8 @@ eb_bind_operand (EB_BUILD * b, int vec, DB_TYPE type, int etype)
       v->etype = (unsigned char) etype;
       return true;
     }
-  return v->dbtype == type && v->etype == etype;
+  /* a NUMERIC kernel reads either width of coefficient (eb_num_load ()) */
+  return v->dbtype == type && (v->etype == etype || (EB_IS_NUM (v->etype) && EB_IS_NUM (etype)));
 }
 
 static int
@@ -1077,6 +1098,10 @@ eb_build_program (EB_BUILD * b)
 	{
 	  continue;		/* its cell reads as a scalar (eb_program_cell_vec) */
 	}
+      if (b->step_needed != NULL && !b->step_needed[i])
+	{
+	  continue;		/* computes a column no aggregate reads (a projection's other columns) */
+	}
       switch (info.cls)
 	{
 	case EXPR_STEP_LEAF_FETCH:
@@ -1117,7 +1142,18 @@ eb_build_program (EB_BUILD * b)
 	case EXPR_STEP_MUL:
 	  if (info.coerces)
 	    {
-	      return eb_decline (b, "an arithmetic step coerces its result");
+	      if (info.type != DB_TYPE_NUMERIC || info.domain == NULL)
+		{
+		  return eb_decline (b, "an arithmetic step coerces a non-NUMERIC result");
+		}
+	      if (TP_DOMAIN_TYPE (info.domain) != DB_TYPE_NUMERIC)
+		{
+		  return eb_decline (b, "an arithmetic step coerces its NUMERIC into another type");
+		}
+	      if (info.domain->precision <= 0 || info.domain->precision > DB_MAX_NUMERIC_PRECISION)
+		{
+		  return eb_decline (b, "an arithmetic step coerces its NUMERIC into an unbounded domain");
+		}
 	    }
 	  if (!eb_etype_of (info.type, &etype) || (etype == EB_NUM && !info.numeric_pure))
 	    {
@@ -1135,6 +1171,22 @@ eb_build_program (EB_BUILD * b)
 	  if (rc != NO_ERROR)
 	    {
 	      return rc;
+	    }
+	  if (info.coerces && info.domain->precision < DB_DEFAULT_NUMERIC_PRECISION)
+	    {
+	      /* the kernel's epilogue coerces its NUMERIC into the node's (precision, scale) (EB_OP_NUM_CAST); into
+	       * the default precision it copies the value as it is (numeric_coerce_num_to_num ()) */
+	      int cast;
+
+	      rc = eb_emit (b, EB_OP_NUM_CAST, out, -1, EB_NUM, DB_TYPE_NUMERIC, &cast);
+	      if (rc != NO_ERROR)
+		{
+		  return rc;
+		}
+	      plan->vsrc[cast].precision = (short) info.domain->precision;
+	      plan->vsrc[cast].scale = (short) info.domain->scale;
+	      plan->vsrc[cast].packed_domain = 1;
+	      out = cast;
 	    }
 	  if (info.out_cell >= 0)
 	    {
@@ -1378,6 +1430,10 @@ eb_build_aggs (THREAD_ENTRY * thread_p, EB_BUILD * b)
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   plan->n_aggs = n;
+  if (b->in->gby != NULL)
+    {
+      return eb_build_gby (b);
+    }
   if (agg_list->operand_prog_state == 1)
     {
       plan->prog = (EXPR_PROG *) agg_list->operand_prog;
@@ -1518,6 +1574,303 @@ eb_build_aggs (THREAD_ENTRY * thread_p, EB_BUILD * b)
   return NO_ERROR;
 }
 
+/* The program steps a set of root cells depends on, walking back from the roots: a step whose cell is
+ * needed is needed, and so are the cells it reads; a lazy-right-side jump is needed when a needed step lies
+ * in the range it skips.  A projection's program also computes columns the aggregates never read. */
+static bool *
+eb_program_needed (const EXPR_PROG * prog, const int *roots, int n_roots)
+{
+  bool *cell = (bool *) calloc (MAX (1, prog->n_cells), sizeof (bool));
+  bool *step = (bool *) calloc (MAX (1, prog->n_steps), sizeof (bool));
+  int i, k;
+
+  if (cell == NULL || step == NULL)
+    {
+      free (cell);
+      free (step);
+      return NULL;
+    }
+  for (i = 0; i < n_roots; i++)
+    {
+      if (roots[i] >= 0 && roots[i] < prog->n_cells)
+	{
+	  cell[roots[i]] = true;
+	}
+    }
+  for (i = prog->n_steps - 1; i >= 0; i--)
+    {
+      EXPR_STEP_INFO info;
+
+      expr_prog_step_info (prog, i, &info);
+      if (info.cls == EXPR_STEP_JUMP_NULL_ARITH)
+	{
+	  for (k = i + 1; k < info.jump_to && k < prog->n_steps; k++)
+	    {
+	      if (step[k])
+		{
+		  step[i] = true;
+		  break;
+		}
+	    }
+	}
+      else if (info.out_cell >= 0 && info.out_cell < prog->n_cells && cell[info.out_cell])
+	{
+	  step[i] = true;
+	}
+      if (step[i])
+	{
+	  if (info.arg1_cell >= 0 && info.arg1_cell < prog->n_cells)
+	    {
+	      cell[info.arg1_cell] = true;
+	    }
+	  if (info.arg2_cell >= 0 && info.arg2_cell < prog->n_cells)
+	    {
+	      cell[info.arg2_cell] = true;
+	    }
+	}
+    }
+  free (cell);
+  return step;
+}
+
+/* A hash GROUP BY's plan: its key columns, and its aggregates' operands as the projection computes them
+ * (the program's roots, or plain columns), each cast into its list column's domain (EB_OP_NUM_CAST for a
+ * NUMERIC whose scale differs; any other type must already be the domain's). */
+static int
+eb_build_gby (EB_BUILD * b)
+{
+  EXPR_BATCH_PLAN *plan = b->plan;
+  const EXPR_BATCH_GBY_MAP *g = b->in->gby;
+  AGGREGATE_TYPE *agg;
+  int ord, rc, k;
+
+  if (g->n_aggs != plan->n_aggs || g->n_keys <= 0)
+    {
+      return eb_decline (b, "a GROUP BY the batch cannot map");
+    }
+
+  /* the key columns: their bytes only */
+  plan->keys = (EB_KEY *) calloc (g->n_keys, sizeof (EB_KEY));
+  if (plan->keys == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (EB_KEY) * g->n_keys);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  plan->n_keys = g->n_keys;
+  for (k = 0; k < g->n_keys; k++)
+    {
+      HEAP_RAW_LOCATOR loc;
+      ATTR_ID attrid;
+      HEAP_CACHE_ATTRINFO *attr_cache;
+      int size = 0;
+
+      if (g->key_slot[k] == NULL || !eb_slot_lookup (b, g->key_slot[k], &attrid, &attr_cache)
+	  || heap_attrinfo_raw_key_locator (attr_cache, attrid, &loc, &size) != NO_ERROR)
+	{
+	  return eb_decline (b, "a GROUP BY key that is not a column of this scan");
+	}
+      if (plan->repid_set && plan->repid != loc.repid)
+	{
+	  return eb_decline (b, "attribute caches disagree on the representation");
+	}
+      plan->repid = loc.repid;
+      plan->n_variable = loc.n_variable;
+      plan->fixed_length = loc.fixed_length;
+      plan->repid_set = true;
+      plan->keys[k].is_fixed = loc.is_fixed;
+      plan->keys[k].location = loc.location;
+      plan->keys[k].position = loc.position;
+      plan->keys[k].size = size;
+    }
+
+  /* the projection program, as far as the aggregates read it */
+  if (g->proj_prog != NULL)
+    {
+      const EXPR_PROG *prog = (const EXPR_PROG *) g->proj_prog;
+      int *roots = (int *) malloc (sizeof (int) * MAX (1, g->n_aggs));
+
+      if (roots == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * MAX (1, g->n_aggs));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      for (k = 0; k < g->n_aggs; k++)
+	{
+	  roots[k] = (g->agg_root[k] >= 0) ? prog->root_cells[g->agg_root[k]] : -1;
+	}
+      b->step_needed = eb_program_needed (prog, roots, g->n_aggs);
+      free (roots);
+      if (b->step_needed == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * prog->n_steps);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      plan->prog = (EXPR_PROG *) prog;
+      rc = eb_build_program (b);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
+
+  for (agg = b->in->agg_list, ord = 0; agg != NULL; agg = agg->next, ord++)
+    {
+      EB_AGG *a = &plan->aggs[ord];
+      const TP_DOMAIN *dom = g->agg_domain[ord];
+      int vec = -1;
+
+      a->func = (unsigned char) agg->function;
+      a->vec = -1;
+      a->covered = 0;
+      if (agg->accumulator.shared_from > 0)
+	{
+	  continue;
+	}
+      if (agg->option == Q_DISTINCT || agg->sort_list != NULL)
+	{
+	  return eb_decline (b, "an aggregate the batch does not take (DISTINCT or ordered)");
+	}
+      switch (agg->function)
+	{
+	case PT_COUNT_STAR:
+	  a->covered = 1;
+	  continue;
+	case PT_COUNT:
+	case PT_SUM:
+	case PT_AVG:
+	case PT_MIN:
+	case PT_MAX:
+	  break;
+	default:
+	  return eb_decline (b, "an aggregate function the batch does not take");
+	}
+      if (g->agg_root[ord] >= 0 && plan->prog != NULL)
+	{
+	  vec = eb_program_cell_vec (b, plan->prog->root_cells[g->agg_root[ord]]);
+	}
+      else if (g->agg_slot[ord] != NULL)
+	{
+	  ATTR_ID attrid;
+	  HEAP_CACHE_ATTRINFO *attr_cache;
+
+	  if (!eb_slot_lookup (b, g->agg_slot[ord], &attrid, &attr_cache))
+	    {
+	      return eb_decline (b, "an aggregate column that is not a column of this scan");
+	    }
+	  vec = eb_new_col_vec (b, attr_cache, attrid);
+	}
+      if (vec < 0 || plan->vecs[vec].dbtype == DB_TYPE_UNKNOWN || dom == NULL)
+	{
+	  return eb_decline (b, "an aggregate column the batch does not compute");
+	}
+      if (TP_DOMAIN_TYPE (dom) != (DB_TYPE) plan->vecs[vec].dbtype)
+	{
+	  return eb_decline (b, "an aggregate column the tuple casts to another type");
+	}
+      if (EB_IS_NUM (plan->vecs[vec].etype))
+	{
+	  int out;
+
+	  if (dom->precision <= 0 || dom->precision > DB_MAX_NUMERIC_PRECISION)
+	    {
+	      return eb_decline (b, "an aggregate column of an unbounded NUMERIC domain");
+	    }
+	  if (dom->precision < DB_DEFAULT_NUMERIC_PRECISION
+	      && !(plan->vecs[vec].kind == EB_VK_COL && plan->vsrc[vec].precision == dom->precision
+		   && plan->vsrc[vec].scale == dom->scale))
+	    {
+	      /* the tuple takes the value cast into the column's (precision, scale) */
+	      rc = eb_emit (b, EB_OP_NUM_CAST, vec, -1, EB_NUM, DB_TYPE_NUMERIC, &out);
+	      if (rc != NO_ERROR)
+		{
+		  return rc;
+		}
+	      plan->vsrc[out].precision = (short) dom->precision;
+	      plan->vsrc[out].scale = (short) dom->scale;
+	      plan->vsrc[out].packed_domain = 1;
+	      vec = out;
+	    }
+	}
+      switch (agg->function)
+	{
+	case PT_SUM:
+	case PT_AVG:
+	  if (!SUM_ACC_IS_AGG_SUPPORTED_TYPE (plan->vecs[vec].dbtype))
+	    {
+	      return eb_decline (b, "a SUM/AVG operand type the word accumulator does not take");
+	    }
+	  break;
+	case PT_MIN:
+	case PT_MAX:
+	  switch (plan->vecs[vec].dbtype)
+	    {
+	    case DB_TYPE_SHORT:
+	    case DB_TYPE_INTEGER:
+	    case DB_TYPE_BIGINT:
+	    case DB_TYPE_DATE:
+	      break;
+	    default:
+	      return eb_decline (b, "a MIN/MAX operand type the batch does not order");
+	    }
+	  break;
+	default:
+	  break;
+	}
+      a->vec = vec;
+      a->covered = 1;
+    }
+  return NO_ERROR;
+}
+
+int
+expr_batch_key_bytes (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, int r, unsigned char *buf, int cap)
+{
+  const HEAP_REC_LAYOUT *lay = &batch->layout[r];
+  int k, n = 0;
+
+  for (k = 0; k < plan->n_keys; k++)
+    {
+      const EB_KEY *key = &plan->keys[k];
+      const char *p;
+      int len;
+
+      if (key->is_fixed)
+	{
+	  if (lay->bound_bits != NULL && !OR_GET_BOUND_BIT (lay->bound_bits, key->position))
+	    {
+	      p = NULL;
+	      len = 0;
+	    }
+	  else
+	    {
+	      p = lay->fixed_base + key->location;
+	      len = key->size;
+	    }
+	}
+      else
+	{
+	  int this_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, key->location, lay->offset_size);
+	  int next_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, key->location + 1, lay->offset_size);
+
+	  len = next_off - this_off;
+	  p = (len > 0) ? lay->var_table + this_off : NULL;
+	}
+      if (n + 1 + (int) sizeof (int) + len > cap)
+	{
+	  return -1;
+	}
+      buf[n++] = (p != NULL) ? 1 : 0;
+      memcpy (buf + n, &len, sizeof (int));
+      n += (int) sizeof (int);
+      if (p != NULL)
+	{
+	  memcpy (buf + n, p, len);
+	  n += len;
+	}
+    }
+  return n;
+}
+
 /* ---------------------------------------------------------------------------------------- */
 
 EXPR_BATCH_PLAN *
@@ -1617,6 +1970,10 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
     {
       free_and_init (b.col_attrid);
     }
+  if (b.step_needed != NULL)
+    {
+      free_and_init (b.step_needed);
+    }
   if (rc != NO_ERROR)
     {
       *why_not = (b.why_not != NULL) ? b.why_not : ((rc == EXPR_BATCH_FALLBACK) ? "declined" : "error");
@@ -1673,6 +2030,10 @@ expr_batch_plan_free (EXPR_BATCH_PLAN * plan)
   if (plan->aggs != NULL)
     {
       free_and_init (plan->aggs);
+    }
+  if (plan->keys != NULL)
+    {
+      free_and_init (plan->keys);
     }
   free_and_init (plan);
 }
@@ -1779,6 +2140,14 @@ expr_batch_final (EXPR_BATCH * batch)
 /* ---------------------------------------------------------------------------------------- */
 /* per page */
 
+/* a chunk for the row path, and why (the trace's last cause) */
+static int
+eb_fallback (EXPR_BATCH_PLAN * plan, const char *why)
+{
+  plan->fallback_why = why;
+  return EXPR_BATCH_FALLBACK;
+}
+
 /* the scalars: a literal is the same every page, a program cell may change per execution */
 static int
 eb_load_scalars (EXPR_BATCH_PLAN * plan)
@@ -1808,14 +2177,14 @@ eb_load_scalars (EXPR_BATCH_PLAN * plan)
 
 	  if (!numeric_agg_expr_from_dbv (src, &nv) || !eb_num_put (v, 0, &nv))
 	    {
-	      return EXPR_BATCH_FALLBACK;
+	      return eb_fallback (plan, "a scalar NUMERIC beyond the word domain");
 	    }
 	  continue;
 	}
       if (DB_VALUE_DOMAIN_TYPE (src) != v->dbtype)
 	{
 	  /* the kernel would have taken the row through the interpreter */
-	  return EXPR_BATCH_FALLBACK;
+	  return eb_fallback (plan, "a scalar bound to another type");
 	}
       switch (v->dbtype)
 	{
@@ -1843,12 +2212,12 @@ eb_load_scalars (EXPR_BATCH_PLAN * plan)
 
 	    if (!numeric_agg_expr_from_dbv (src, &nv) || !eb_num_put (v, 0, &nv))
 	      {
-		return EXPR_BATCH_FALLBACK;
+		return eb_fallback (plan, "a scalar NUMERIC beyond the word domain");
 	      }
 	    break;
 	  }
 	default:
-	  return EXPR_BATCH_FALLBACK;
+	  return eb_fallback (plan, "a scalar of a type the batch does not load");
 	}
     }
   return NO_ERROR;
@@ -1867,7 +2236,7 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
       leaf->k_null = 0;
       if (k == NULL)
 	{
-	  return EXPR_BATCH_FALLBACK;
+	  return eb_fallback (plan, "a filter constant not set");
 	}
       if (DB_IS_NULL (k))
 	{
@@ -1879,14 +2248,14 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 	{
 	  if (eb_num_leaf_constant (leaf, k, plan->vsrc[leaf->vec].scale) != NO_ERROR)
 	    {
-	      return EXPR_BATCH_FALLBACK;
+	      return eb_fallback (plan, "a NUMERIC filter constant the batch does not take");
 	    }
 	  continue;
 	}
       if (DB_VALUE_DOMAIN_TYPE (k) != leaf->k_type)
 	{
 	  /* the leaf compares against something else than it was resolved for: its own guard case */
-	  return EXPR_BATCH_FALLBACK;
+	  return eb_fallback (plan, "a filter constant bound to another type");
 	}
       switch (leaf->k_type)
 	{
@@ -1903,7 +2272,7 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 	  leaf->k.d = db_get_double (k);
 	  break;
 	default:
-	  return EXPR_BATCH_FALLBACK;
+	  return eb_fallback (plan, "a filter constant of a type the batch does not load");
 	}
     }
   return NO_ERROR;
@@ -2030,7 +2399,7 @@ eb_layout_rows (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
       if (recdes->data == NULL || recdes->length < OR_HEADER_SIZE (recdes->data)
 	  || OR_GET_MVCC_REPID (recdes->data) != plan->repid)
 	{
-	  return EXPR_BATCH_FALLBACK;
+	  return eb_fallback (plan, "a record of another representation");
 	}
       heap_rec_layout_init_repr (&batch->layout[r], recdes->data, plan->n_variable, plan->fixed_length);
     }
@@ -2071,7 +2440,7 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
 	      rc = eb_cell_fixed (col, lay, &i, &d);
 	      if (rc < 0)
 		{
-		  return EXPR_BATCH_FALLBACK;
+		  return eb_fallback (plan, "a column cell the batch does not decode");
 		}
 	      v->isnull[r] = (rc == 0);
 	      if (rc > 0)
@@ -2093,7 +2462,7 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
 	      rc = eb_cell_num (col, lay, &num);
 	      if (rc < 0)
 		{
-		  return EXPR_BATCH_FALLBACK;
+		  return eb_fallback (plan, "a NUMERIC cell beyond the word domain or of another scale");
 		}
 	      v->isnull[r] = (rc == 0);
 	      if (rc == 0)
@@ -2104,13 +2473,13 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
 		{
 		  if (num.coefficient > (uint128_t) INT64_MAX)
 		    {
-		      return EXPR_BATCH_FALLBACK;
+		      return eb_fallback (plan, "a NUMERIC wider than its column vector");
 		    }
 		  ((int64_t *) v->data)[r] = num.is_negative ? -(int64_t) num.coefficient : (int64_t) num.coefficient;
 		}
 	      else if (!eb_num_put (v, r, &num))
 		{
-		  return EXPR_BATCH_FALLBACK;
+		  return eb_fallback (plan, "a NUMERIC cell beyond 127 bits");
 		}
 	    }
 	}
@@ -2162,7 +2531,7 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	    }
 	  if (got < 0)
 	    {
-	      return EXPR_BATCH_FALLBACK;
+	      return eb_fallback (plan, "a pointed cell the batch does not decode");
 	    }
 	}
       else
@@ -2346,7 +2715,7 @@ eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, 
 	  if (ev == V_ERROR)
 	    {
 	      /* the row path raises it at this row, after the terms before it */
-	      return EXPR_BATCH_FALLBACK;
+	      return eb_fallback (plan, "a filter term raises an error on the row");
 	    }
 	  if (ev == V_FALSE)
 	    {
@@ -2424,6 +2793,90 @@ eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch)
 	      out->isnull[r] = 0;
 	    }
 	  break;
+	case EB_OP_NUM_CAST:
+	  {
+	    const int to_scale = plan->vsrc[step->out].scale;
+	    const int to_precision = plan->vsrc[step->out].precision;
+	    __int128 bound = 1;	/* 10^precision: the domain's digits (an element is below 2^127 < 10^39) */
+	    int i;
+
+	    for (i = 0; i < to_precision && i < 38; i++)
+	      {
+		bound *= 10;
+	      }
+	    for (j = 0; j < n; j++)
+	      {
+		int r = sel[j];
+		NUMERIC_AGG_EXPR_VAL x;
+		int gx;
+
+		if (mask != NULL && !mask[r])
+		  {
+		    out->isnull[r] = 1;
+		    continue;
+		  }
+		gx = eb_num_load (plan, batch, a, r, &x);
+		if (gx < 0)
+		  {
+		    return eb_fallback (plan, "a pointed NUMERIC the batch does not decode");
+		  }
+		if (gx == 0)
+		  {
+		    out->isnull[r] = 1;
+		    continue;
+		  }
+		if (x.scale > to_scale)
+		  {
+		    /* a smaller scale: the dropped digits rounded half up, on the magnitude
+		     * (numeric_coerce_num_to_num ()) */
+		    int drop = x.scale - to_scale;
+
+		    if (drop > 38)
+		      {
+			x.coefficient = 0;
+		      }
+		    else
+		      {
+			uint128_t p10 = 1, rem;
+
+			for (i = 0; i < drop; i++)
+			  {
+			    p10 *= 10;
+			  }
+			rem = x.coefficient % p10;
+			x.coefficient /= p10;
+			if (rem / (p10 / 10) >= 5)
+			  {
+			    x.coefficient += 1;
+			  }
+		      }
+		    if (x.coefficient == 0)
+		      {
+			x.is_negative = false;
+		      }
+		    x.scale = to_scale;
+		  }
+		for (i = x.scale; i < to_scale; i++)
+		  {
+		    if (__builtin_mul_overflow (x.coefficient, (uint128_t) 10, &x.coefficient))
+		      {
+			return eb_fallback (plan, "a NUMERIC cast beyond 128 bits");
+		      }
+		  }
+		if (to_precision <= 38 && x.coefficient >= (uint128_t) bound)
+		  {
+		    /* more digits than the domain holds: the row path raises the overflow */
+		    return eb_fallback (plan, "a NUMERIC cast beyond the domain's digits");
+		  }
+		x.scale = to_scale;
+		if (!eb_num_put (out, r, &x))
+		  {
+		    return eb_fallback (plan, "a NUMERIC beyond 127 bits");
+		  }
+		out->isnull[r] = 0;
+	      }
+	    break;
+	  }
 	case EB_OP_I2F:
 	  for (j = 0; j < n; j++)
 	    {
@@ -2457,12 +2910,12 @@ eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch)
 		  if (step->op == EB_OP_ADD ? __builtin_add_overflow (x, y, &z)
 		      : step->op == EB_OP_SUB ? __builtin_sub_overflow (x, y, &z) : __builtin_mul_overflow (x, y, &z))
 		    {
-		      return EXPR_BATCH_FALLBACK;
+		      return eb_fallback (plan, "an integer step overflows");
 		    }
 		  if ((step->result_type == (unsigned char) DB_TYPE_INTEGER && OR_CHECK_INT_OVERFLOW (z))
 		      || (step->result_type == (unsigned char) DB_TYPE_SHORT && OR_CHECK_SHORT_OVERFLOW (z)))
 		    {
-		      return EXPR_BATCH_FALLBACK;
+		      return eb_fallback (plan, "an integer step leaves its type");
 		    }
 		  EB_I64_AT (out, r) = z;
 		  out->isnull[r] = 0;
@@ -2485,7 +2938,7 @@ eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch)
 		  z = (step->op == EB_OP_ADD) ? (x + y) : (step->op == EB_OP_SUB) ? (x - y) : (x * y);
 		  if (OR_CHECK_DOUBLE_OVERFLOW (z))
 		    {
-		      return EXPR_BATCH_FALLBACK;
+		      return eb_fallback (plan, "a DOUBLE step overflows");
 		    }
 		  EB_F64_AT (out, r) = z;
 		  out->isnull[r] = 0;
@@ -2510,7 +2963,7 @@ eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch)
 		  gy = eb_num_load (plan, batch, c, r, &y);
 		  if (gx < 0 || gy < 0)
 		    {
-		      return EXPR_BATCH_FALLBACK;
+		      return eb_fallback (plan, "a pointed NUMERIC the batch does not decode");
 		    }
 		  if (gx == 0 || gy == 0)
 		    {
@@ -2527,7 +2980,7 @@ eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch)
 		    }
 		  if (!ok || !eb_num_put (out, r, &z))
 		    {
-		      return EXPR_BATCH_FALLBACK;
+		      return eb_fallback (plan, "a NUMERIC step beyond the word domain");
 		    }
 		  out->isnull[r] = 0;
 		}
@@ -2551,7 +3004,7 @@ expr_batch_run (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * threa
     }
   if (batch->n_rows > plan->cap)
     {
-      return EXPR_BATCH_FALLBACK;
+      return eb_fallback (plan, "a chunk larger than the plan's arrays");
     }
   for (i = 0; i < plan->n_cols; i++)
     {
@@ -2661,7 +3114,7 @@ eb_pack_dbv (const EXPR_BATCH_PLAN * plan, const EB_VEC * vec, int r, DB_VALUE *
 	const NUMERIC_AGG_EXPR_VAL *num = &nv;
 
 	eb_num_get (vec, r, &nv);
-	if (vec->kind == EB_VK_COL)
+	if (vec->kind == EB_VK_COL || vs->packed_domain)
 	  {
 	    /* a stored column: the domain's precision and scale, as the record decode gives it */
 	    unsigned char buf[DB_NUMERIC_BUF_SIZE];
@@ -2894,6 +3347,12 @@ expr_chunk_eval_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
   return expr_chunk_push (thread_p, node->next, plan, batch);
 }
 
+const char *
+expr_batch_fallback_why (const EXPR_BATCH_PLAN * plan)
+{
+  return (plan != NULL) ? plan->fallback_why : NULL;
+}
+
 void
 expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback)
 {
@@ -2919,7 +3378,8 @@ expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, i
       n_pointed += (plan->vecs[plan->cols[i].vec].kind == EB_VK_PTR);
     }
   fprintf (fp, "%*cEXPR_BATCH: active, usecols %d (pointed %d), chunk %d rows, filter terms raw %d / row %d, "
-	   "vector steps %d, aggregates %d, pages %lld (row path %lld)\n", indent, ' ', plan->n_cols, n_pointed,
+	   "vector steps %d, aggregates %d, pages %lld (row path %lld%s%s)\n", indent, ' ', plan->n_cols, n_pointed,
 	   plan->cap, plan->n_raw_kids, plan->n_row_kids, plan->n_steps, plan->n_aggs, (long long) plan->pages,
-	   (long long) plan->pages_fallback);
+	   (long long) plan->pages_fallback, (plan->fallback_why != NULL) ? ", last: " : "",
+	   (plan->fallback_why != NULL) ? plan->fallback_why : "");
 }

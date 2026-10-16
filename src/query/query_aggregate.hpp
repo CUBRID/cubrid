@@ -130,7 +130,7 @@ expr_prog *qdata_agg_operand_prog_ensure (cubthread::entry *thread_p, cubxasl::a
     val_descr *val_desc_p);
 int qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
 				    val_descr *val_desc_p, expr_batch_plan *plan, const expr_batch *batch,
-				    bool skip_optimized);
+				    bool skip_optimized, cubxasl::aggregate_accumulator *alt_acc_list);
 /* the aggregate as the blocking node at the end of a chunk chain (expr_batch.h): its state is
  * a QDATA_AGG_CHUNK_STATE */
 typedef struct qdata_agg_chunk_state QDATA_AGG_CHUNK_STATE;

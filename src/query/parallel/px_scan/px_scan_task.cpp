@@ -470,7 +470,8 @@ namespace parallel_scan
 	    if (er_errid () == NO_ERROR && qexec_batch_eligible (m_xasl))
 	      {
 		(void) qdata_agg_operand_prog_ensure (&thread_ref, m_xasl->proc.buildvalue.agg_list, m_vd);
-		(void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl->proc.buildvalue.agg_list, m_vd);
+		(void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl->proc.buildvalue.agg_list, m_vd,
+					NULL);
 	      }
 	  }
       }
@@ -480,10 +481,33 @@ namespace parallel_scan
 	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST && ST == SCAN_TYPE::HEAP)
 	  {
 	    /* a projecting block takes its pages a chunk at a time too, the rows the filter keeps
-	     * written one by one through the result handler (expr_batch.h) */
+	     * written one by one through the result handler (expr_batch.h); a hash GROUP BY block feeds
+	     * this worker's hash table from the chunks (qexec_batch_gby_consume ()) */
 	    if (er_errid () == NO_ERROR && qexec_batch_eligible (m_xasl))
 	      {
-		(void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, NULL, m_vd);
+		if (m_xasl->proc.buildlist.groupby_list == NULL)
+		  {
+		    (void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, NULL, m_vd, NULL);
+		  }
+		else
+		  {
+		    EXPR_BATCH_GBY_MAP *gby_map = qexec_batch_gby_map_create (&thread_ref, m_xasl, m_vd);
+
+		    if (gby_map != NULL
+			&& scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl->proc.buildlist.g_agg_list,
+					    m_vd, gby_map) == 1)
+		      {
+			SCAN_BATCH_PROJECT row = { m_scan_id, emit_row, this };
+
+			m_batch_gby = qexec_batch_gby_create (m_xasl, m_vd, &row, gby_list, gby_sync, this);
+		      }
+		    qexec_batch_gby_map_destroy (gby_map);
+		    if (m_batch_gby == nullptr && m_scan_id->s.hsid.batch_state == 1)
+		      {
+			/* no node to take the chunks: the worker keeps its row loop */
+			m_scan_id->s.hsid.batch_state = 2;
+		      }
+		  }
 	      }
 	  }
       }
@@ -504,6 +528,13 @@ namespace parallel_scan
   {
     THREAD_ENTRY *main_thread_p = thread_get_main_thread (m_parent_thread_p);
     xasl_node *xptr;
+
+    if (m_batch_gby != nullptr)
+      {
+	/* before the handlers flush the hash table: the node only holds key copies and pointers into it */
+	qexec_batch_gby_destroy (&thread_ref, m_batch_gby);
+	m_batch_gby = nullptr;
+      }
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
       {
 	if (m_scan_func_ptr != nullptr)
@@ -738,9 +769,29 @@ namespace parallel_scan
 
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
-	self->m_result_handler->write (thread_p, self->m_xasl->outptr_list);
+	/* as the row loop: a failing write () moves its error out and raises the interrupt itself */
+	(void) self->m_result_handler->write (thread_p, self->m_xasl->outptr_list);
       }
     return NO_ERROR;
+  }
+
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  QFILE_LIST_ID *task<result_type, ST>::gby_list (void *arg)
+  {
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+      {
+	return static_cast<task<result_type, ST> *> (arg)->m_result_handler->gby_list ();
+      }
+    return nullptr;
+  }
+
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::gby_sync (void *arg)
+  {
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+      {
+	static_cast<task<result_type, ST> *> (arg)->m_result_handler->gby_sync ();
+      }
   }
 
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
@@ -767,11 +818,16 @@ namespace parallel_scan
 	    SCAN_BATCH_PROJECT project_state = { m_scan_id, emit_row, this };
 	    EXPR_CHUNK_NODE tail_node, eval_node;
 
-	    /* the chain: evaluation -> the worker's aggregate, or the projection into its result handler */
+	    /* the chain: evaluation -> the worker's aggregate, its hash GROUP BY, or the projection into its
+	     * result handler */
 	    if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
 	      {
 		agg_state.agg_list = m_xasl->proc.buildvalue.agg_list;
 		expr_chunk_node_init (&tail_node, "aggregate", qdata_agg_chunk_consume, &agg_state, NULL);
+	      }
+	    else if (m_batch_gby != nullptr)
+	      {
+		expr_chunk_node_init (&tail_node, "group by", qexec_batch_gby_consume, m_batch_gby, NULL);
 	      }
 	    else
 	      {

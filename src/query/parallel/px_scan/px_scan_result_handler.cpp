@@ -357,6 +357,28 @@ namespace parallel_scan
   }
 
   template <RESULT_TYPE result_type>
+  QFILE_LIST_ID *result_handler<result_type>::gby_list ()
+  {
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+      {
+	return tl.writer_result_p;
+      }
+    return nullptr;
+  }
+
+  template <RESULT_TYPE result_type>
+  void result_handler<result_type>::gby_sync ()
+  {
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+      {
+	if (tl.xasl != nullptr && tl.xasl->proc.buildlist.agg_hash_context != nullptr)
+	  {
+	    tl.agg_hash_state = tl.xasl->proc.buildlist.agg_hash_context->state;
+	  }
+      }
+  }
+
+  template <RESULT_TYPE result_type>
   void result_handler<result_type>::write_finalize (THREAD_ENTRY *thread_p)
   {
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)

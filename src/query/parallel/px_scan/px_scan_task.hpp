@@ -71,6 +71,7 @@ namespace parallel_scan
       m_vd (nullptr),
       m_xasl_state (nullptr),
       m_scan_func_ptr (nullptr),
+      m_batch_gby (nullptr),
       m_pre_execution_info (pre_exec_info),
       m_is_fixed (is_fixed),
       m_is_grouped (is_grouped),
@@ -108,6 +109,7 @@ namespace parallel_scan
       val_descr *m_vd;
       xasl_state *m_xasl_state;
       UINTPTR *m_scan_func_ptr;
+      QEXEC_BATCH_GBY *m_batch_gby;	/* the page batch's hash GROUP BY node, kept across the worker's pages */
       pre_execution_info *m_pre_execution_info;
       bool m_is_fixed;
       bool m_is_grouped;
@@ -136,6 +138,8 @@ namespace parallel_scan
       void loop (cubthread::entry &thread_ref);
       SCAN_CODE drain_slot_oids (cubthread::entry &thread_ref, bool &stop);
       static int emit_row (cubthread::entry *thread_p, void *arg);
+      static QFILE_LIST_ID *gby_list (void *arg);
+      static void gby_sync (void *arg);
       scan_fixes read_fixes (cubthread::entry &thread_ref);
       void add_scan_fixes (cubthread::entry &thread_ref, const scan_fixes &since);
       /* INDEX-only: after leaf supply exhausted, help drain remaining shared overflow chains. No-op otherwise. */

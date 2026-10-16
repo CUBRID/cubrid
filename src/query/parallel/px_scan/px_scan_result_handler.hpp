@@ -69,6 +69,10 @@ namespace parallel_scan
       bool write (THREAD_ENTRY *thread_p, write_dest_type *src);
       void write_finalize (THREAD_ENTRY *thread_p);
       void set_trace_handler (trace_handler *trace_handler_p);
+      /* a page batch's hash GROUP BY node (qexec_batch_gby_consume ()): the list a dump of this worker's table
+       * goes to, and this worker's copy of the table's state brought in line after the node changed it */
+      QFILE_LIST_ID *gby_list ();
+      void gby_sync ();
 
     private:
       void get_valid_read_spec ();

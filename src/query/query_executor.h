@@ -152,4 +152,21 @@ extern int qexec_topn_tuples_to_list_id (THREAD_ENTRY * thread_p, xasl_node * xa
 					 bool is_final, QFILE_LIST_ID * merged_results);
 extern bool qexec_batch_eligible (const xasl_node * xasl);
 
+/* the hash GROUP BY of a BUILDLIST block as a page batch's blocking node (expr_batch.h) */
+struct expr_chunk_node;
+struct expr_batch_plan;
+struct expr_batch;
+struct expr_batch_gby_map;
+struct scan_batch_project;
+typedef struct qexec_batch_gby QEXEC_BATCH_GBY;
+extern struct expr_batch_gby_map *qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, xasl_node * xasl,
+							      val_descr * vd);
+extern void qexec_batch_gby_map_destroy (struct expr_batch_gby_map *map);
+extern QEXEC_BATCH_GBY *qexec_batch_gby_create (xasl_node * xasl, val_descr * vd, const struct scan_batch_project *row,
+						QFILE_LIST_ID * (*list) (void *arg), void (*sync) (void *arg),
+						void *arg);
+extern void qexec_batch_gby_destroy (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * gby);
+extern int qexec_batch_gby_consume (THREAD_ENTRY * thread_p, struct expr_chunk_node *node,
+				    struct expr_batch_plan *plan, struct expr_batch *batch);
+
 #endif /* _QUERY_EXECUTOR_H_ */

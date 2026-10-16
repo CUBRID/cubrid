@@ -63,6 +63,7 @@
 #include "thread_compat.hpp"
 
 struct heap_cache_attrinfo;
+struct tp_domain;
 struct heap_page_row;
 struct heap_rec_layout;
 struct access_spec_node;
@@ -88,6 +89,22 @@ struct expr_batch
   struct heap_rec_layout *layout;	/* per row: its record's layout, found once a chunk (expr_batch_run ()) */
 };
 
+/* A hash GROUP BY over the scan (a BUILDLIST with GROUP BY, expr_batch_gby in query_executor.c): its aggregates
+ * read projection columns -- the tuple the row path writes and reads back -- and its groups are keyed by
+ * columns of the scan.  The plan computes each aggregate's column as the projection's compiled program does and
+ * casts it into the list column's domain, as the tuple write does (qdata_valptr_column_domain ()). */
+typedef struct expr_batch_gby_map EXPR_BATCH_GBY_MAP;
+struct expr_batch_gby_map
+{
+  void *proj_prog;		/* the projection list's compiled program (EXPR_PROG), or NULL */
+  int n_aggs;
+  const int *agg_root;		/* per aggregate: its column's root in proj_prog, or -1 */
+  DB_VALUE *const *agg_slot;	/* per aggregate: else its column's value-list slot; NULL for COUNT (*) */
+  struct tp_domain *const *agg_domain;	/* per aggregate: the list column's domain */
+  int n_keys;
+  DB_VALUE *const *key_slot;	/* per key: the key column's value-list slot */
+};
+
 /* what the plan is built from: the worker's own clone state, settled for this execution */
 typedef struct expr_batch_inputs EXPR_BATCH_INPUTS;
 struct expr_batch_inputs
@@ -101,6 +118,7 @@ struct expr_batch_inputs
     cubxasl::aggregate_list_node * agg_list;	/* the BUILDVALUE list (operand program state settled), or
 						 * NULL: a projection, which takes the rows the filter keeps */
   struct val_descr *vd;
+  const EXPR_BATCH_GBY_MAP *gby;	/* a hash GROUP BY's mapping (agg_list is its g_agg_list), or NULL */
   bool is_peeking;		/* records are peeked, not copied into one buffer */
 };
 
@@ -146,6 +164,11 @@ extern int expr_batch_agg_sum_rest (const EXPR_BATCH_PLAN * plan, const EXPR_BAT
 /* MIN/MAX: the page's extreme value and how many values were not NULL (0: out is untouched) */
 extern int expr_batch_agg_extremum (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, int node_ord,
 				    bool is_min, DB_VALUE * out);
+/* A GROUP BY key of row r of the chunk as its record's bytes (the key columns' bytes and NULL marks, in key
+ * order): equal bytes are equal keys.  The length, or -1 when the key does not fit cap bytes. */
+extern int expr_batch_key_bytes (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, int r, unsigned char *buf,
+				 int cap);
+
 /* the DB type of the node's operand vector (what its values would carry) */
 extern DB_TYPE expr_batch_agg_type (const EXPR_BATCH_PLAN * plan, int node_ord);
 
@@ -185,6 +208,8 @@ extern int expr_chunk_eval_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * n
 
 /* trace: pages taken and pages handed back */
 extern void expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback);
+/* why the last chunk went to the row path, or NULL */
+extern const char *expr_batch_fallback_why (const EXPR_BATCH_PLAN * plan);
 extern void expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, int indent);
 
 #endif /* _EXPR_BATCH_H_ */

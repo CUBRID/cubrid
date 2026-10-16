@@ -396,7 +396,8 @@ struct expr_step_info
   EXPR_STEP_CLASS cls;
   DB_TYPE type;			/* arithmetic: the kernel's operand and result type */
   bool numeric_pure;		/* NUMERIC arithmetic: the float family (both operands NUMERIC) */
-  bool coerces;			/* arithmetic: an epilogue coerces the result to a domain */
+  bool coerces;			/* arithmetic: an epilogue coerces the result to a domain ... */
+  const struct tp_domain *domain;	/* ... this one (tp_value_coerce ()) */
   int arg1_cell;		/* cell indexes, -1 when unused */
   int arg2_cell;
   int out_cell;			/* the cell this step publishes */

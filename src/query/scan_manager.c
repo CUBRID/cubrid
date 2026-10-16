@@ -8111,7 +8111,7 @@ exit_on_error:
  */
 int
 scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec,
-		 cubxasl::aggregate_list_node * agg_list, val_descr * vd)
+		 cubxasl::aggregate_list_node * agg_list, val_descr * vd, const EXPR_BATCH_GBY_MAP * gby)
 {
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
   EXPR_BATCH_INPUTS in;
@@ -8147,6 +8147,7 @@ scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_T
   in.scan_pred_compiled = (in.has_filter && hsidp->scan_pred.pred_expr->scan_prog_state == 1)
     ? hsidp->scan_pred.pred_expr->scan_prog : NULL;
   in.agg_list = agg_list;
+  in.gby = gby;
   in.vd = vd;
   in.is_peeking = true;		/* the batch holds the page: its records are peeked whatever the scan's own mode */
 
@@ -8318,49 +8319,58 @@ int
 scan_batch_project_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 {
   SCAN_BATCH_PROJECT *st = (SCAN_BATCH_PROJECT *) node->state;
-  SCAN_ID *scan_id = st->scan_id;
-  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
   int j, rc;
 
   for (j = 0; j < batch->n_sel; j++)
     {
-      EXPR_BATCH_ROW *row = &batch->rows[batch->sel[j]];
-
-      hsidp->curr_oid = row->oid;
-      if (hsidp->scan_pred.regu_list != NULL && scan_id->val_list != NULL)
-	{
-	  if (hsidp->pred_attrs.attr_cache != NULL
-	      && heap_attrinfo_read_dbvalues_lazy (thread_p, &row->oid, &row->recdes,
-						   hsidp->pred_attrs.attr_cache) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	  if (fetch_val_list (thread_p, hsidp->scan_pred.regu_list, scan_id->vd, &hsidp->cls_oid, &row->oid, NULL, PEEK)
-	      != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	}
-      if (hsidp->rest_regu_list != NULL)
-	{
-	  if (heap_attrinfo_read_dbvalues (thread_p, &row->oid, &row->recdes, hsidp->rest_attrs.attr_cache) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	  if (scan_id->val_list != NULL
-	      && fetch_val_list (thread_p, hsidp->rest_regu_list, scan_id->vd, &hsidp->cls_oid, &row->oid, NULL,
-				 PEEK) != NO_ERROR)
-	    {
-	      return ER_FAILED;
-	    }
-	}
-      rc = st->emit (thread_p, st->emit_arg);
+      rc = scan_batch_project_row (thread_p, st, &batch->rows[batch->sel[j]]);
       if (rc != NO_ERROR)
 	{
 	  return rc;
 	}
     }
   return NO_ERROR;
+}
+
+/*
+ * scan_batch_project_row () - one row through the projection's tail (scan_batch_project_consume ())
+ *   return: NO_ERROR, or the error the row path raises at the row
+ */
+int
+scan_batch_project_row (THREAD_ENTRY * thread_p, SCAN_BATCH_PROJECT * st, EXPR_BATCH_ROW * row)
+{
+  SCAN_ID *scan_id = st->scan_id;
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+
+  hsidp->curr_oid = row->oid;
+  if (hsidp->scan_pred.regu_list != NULL && scan_id->val_list != NULL)
+    {
+      if (hsidp->pred_attrs.attr_cache != NULL
+	  && heap_attrinfo_read_dbvalues_lazy (thread_p, &row->oid, &row->recdes,
+					       hsidp->pred_attrs.attr_cache) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      if (fetch_val_list (thread_p, hsidp->scan_pred.regu_list, scan_id->vd, &hsidp->cls_oid, &row->oid, NULL, PEEK)
+	  != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  if (hsidp->rest_regu_list != NULL)
+    {
+      if (heap_attrinfo_read_dbvalues (thread_p, &row->oid, &row->recdes, hsidp->rest_attrs.attr_cache) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      if (scan_id->val_list != NULL
+	  && fetch_val_list (thread_p, hsidp->rest_regu_list, scan_id->vd, &hsidp->cls_oid, &row->oid, NULL,
+			     PEEK) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  return st->emit (thread_p, st->emit_arg);
 }
 
 /*
@@ -9186,9 +9196,14 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	  /* the page batch (expr_batch.h): shown with the plan details only, like the compiler's sections */
 	  if (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0)
 	    {
-	      fprintf (fp, ", batch pages: %llu (row path: %llu)",
+	      /* the last chunk's cause for the row path, kept on the scan (the plan is gone by now) */
+	      const char *why = scan_id->s.hsid.batch_why_not;
+
+	      fprintf (fp, ", batch pages: %llu (row path: %llu%s%s)",
 		       (unsigned long long int) scan_id->scan_stats.batch_pages,
-		       (unsigned long long int) scan_id->scan_stats.batch_pages_rowpath);
+		       (unsigned long long int) scan_id->scan_stats.batch_pages_rowpath,
+		       (why != NULL && scan_id->scan_stats.batch_pages_rowpath > 0) ? ", last: " : "",
+		       (why != NULL && scan_id->scan_stats.batch_pages_rowpath > 0) ? why : "");
 	    }
 	  else
 	    {

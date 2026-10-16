@@ -6177,6 +6177,7 @@ expr_prog_step_info (const EXPR_PROG * prog, int step_idx, EXPR_STEP_INFO * out)
   out->in_prologue = (step_idx < prog->n_prologue + prog->n_exec_prologue);
   out->regu = step->regu;
   out->coerces = (step->domain != NULL);
+  out->domain = step->domain;
 
   if (k == expr_k_leaf_fetch)
     {
