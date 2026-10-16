@@ -12043,6 +12043,67 @@ pt_dblink_dml_pred_targets_can_overlap (PT_NODE * cond)
     }
 }
 
+/* the column a bare or dotted name refers to, or NULL when col is neither */
+static const char *
+pt_dblink_dml_column_name (PT_NODE * col)
+{
+  if (col == NULL)
+    {
+      return NULL;
+    }
+
+  if (col->node_type == PT_NAME)
+    {
+      return col->info.name.original;
+    }
+
+  if (col->node_type == PT_DOT_ && col->info.dot.arg2 != NULL && col->info.dot.arg2->node_type == PT_NAME)
+    {
+      return col->info.dot.arg2->info.name.original;
+    }
+
+  return NULL;
+}
+
+/* true iff an UPDATE that sends one statement per value also assigns the WHERE column in SET.
+ *
+ * A row one statement writes can then match the key of a later one, and that statement updates it again.
+ * With rows 1 and 2, SET id = id + 1 WHERE id IN (1, 2) moves row 1 to 2, and the statement for 2 moves
+ * both rows to 3. De-duplicating the values does not help, as it only removes repeats among the values
+ * before the update. A scalar comparison sends one statement, so it is not asked. MERGE refuses to update
+ * a column of its ON condition for the same reason. */
+static bool
+pt_dblink_update_set_writes_where_key (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *cond = node->info.update.search_cond;
+  PT_ASSIGNMENTS_HELPER ea;
+  const char *key_col, *set_col;
+
+  if (cond == NULL || cond->node_type != PT_EXPR
+      || (cond->info.expr.op != PT_IS_IN && cond->info.expr.op != PT_EQ_SOME))
+    {
+      return false;
+    }
+
+  key_col = pt_dblink_dml_column_name (cond->info.expr.arg1);
+  if (key_col == NULL)
+    {
+      return false;
+    }
+
+  pt_init_assignments_helper (parser, &ea, node->info.update.assignment);
+  while (pt_get_next_assignment (&ea))
+    {
+      set_col = pt_dblink_dml_column_name (ea.lhs);
+      if (set_col != NULL && intl_identifier_casecmp (set_col, key_col) == 0)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
 /*
  * pt_dblink_find_remote_spec () - walk pre: set *arg when a remote (tbl@srv) spec remains.
  *   Same-server rewrite turns those into dblink derived tables. Name resolution leaves flat_entity_list /
@@ -12573,6 +12634,10 @@ pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 	{
 	  accepted = "SET values that are a bare subquery or an expression the remote computes";
 	}
+      else if (pt_dblink_update_set_writes_where_key (parser, node))
+	{
+	  accepted = "a SET that leaves the IN or = ANY column unchanged; assigning it would update a row twice";
+	}
       break;
 
     default:
@@ -12630,10 +12695,13 @@ pt_dblink_dml_settle_sink (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_
   /* Decline diagnostics ahead of the generic catch-all, each kind asking its own shape gate -- a statement
    * its gate already refused must not be handed a decline reason that does not apply to it. Only DELETE and
    * UPDATE reach the body: for any other kind the accessor hands back NULL and the shared check turns it
-   * away. The UPDATE gate takes a NULL WHERE, so it is the shared side that draws that line. */
+   * away. The UPDATE gate takes a NULL WHERE, so it is the shared side that draws that line. An UPDATE whose
+   * SET assigns the WHERE key passes the WHERE gate but not the sink gate. It stays out of here, so the
+   * mixed-reference rejection names that reason instead of asking for a same-server mix it may already have. */
   if (remote_upd == 1 && local_upd == 0 && snl->local_cnt > 0
       && ((node->node_type == PT_UPDATE)
-	  ? pt_dblink_update_where_is_inscope (node, &shape_driving_pred)
+	  ? (pt_dblink_update_where_is_inscope (node, &shape_driving_pred)
+	     && !pt_dblink_update_set_writes_where_key (parser, node))
 	  : pt_dblink_dml_where_is_inscope (pt_dblink_dml_search_cond (node)))
       && pt_dblink_dml_reject_declined (parser, node, upd_spec))
     {
@@ -12771,7 +12839,8 @@ pt_convert_dblink_update_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_
       int num_set_subq = 0;
 
       if (pt_dblink_update_where_is_inscope (node, &where_driving_pred)
-	  && pt_dblink_update_set_is_inscope (parser, node, &num_set_subq) && (where_driving_pred || num_set_subq > 0))
+	  && pt_dblink_update_set_is_inscope (parser, node, &num_set_subq) && (where_driving_pred || num_set_subq > 0)
+	  && !pt_dblink_update_set_writes_where_key (parser, node))
 	{
 	  snl->sink_kind = DBLINK_REMOTE_SINK_UPDATE_LOCAL_SUBQ;
 	}
