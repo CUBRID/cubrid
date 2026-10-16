@@ -1270,6 +1270,17 @@ parser_free_parser (PARSER_CONTEXT * parser)
       free_and_init (parser->host_var_expected_domains);
     }
 
+  /* INTO labels of a static SQL which have not been taken by the caller (e.g. on a compile error) */
+  if (parser->external_into_label)
+    {
+      for (i = 0; i < parser->external_into_label_cnt; i++)
+	{
+	  free_and_init (parser->external_into_label[i]);
+	}
+      free_and_init (parser->external_into_label);
+      parser->external_into_label_cnt = 0;
+    }
+
   parser_free_lcks_classes (parser);
 
   /* free remaining plan trace string */
