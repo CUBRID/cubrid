@@ -393,16 +393,24 @@ wset_midxkey_hash (const OID *class_oid, const VFID *index_vfid, DB_VALUE *key, 
 	  else
 	    {
 	      /* 0xC1 tag followed by the packed element in its aligned size, so the layout does not depend on
-	       * how much of that size the packer used */
+	       * how much of that size the packer used. or_pack_mem_value aligns its start and its value to
+	       * MAX_ALIGNMENT, and OR_VALUE_ALIGNED_SIZE leaves room for that only from an aligned start, so
+	       * the element starts at the next aligned offset, as or_pack_value aligns its buffer first. The
+	       * buffer comes from malloc, so an aligned offset is an aligned address, and the skipped bytes
+	       * are zero. */
+	      if (pass == 1)
+		{
+		  buf[buf_len] = (char) 0xC1;
+		}
+	      buf_len = DB_ALIGN (buf_len + 1, MAX_ALIGNMENT);
 	      if (pass == 1)
 		{
 		  int used_len;
 
-		  buf[buf_len] = (char) 0xC1;
-		  (void) or_pack_mem_value (buf + buf_len + 1, &element, &used_len);
+		  (void) or_pack_mem_value (buf + buf_len, &element, &used_len);
 		}
 	      packed_len = OR_VALUE_ALIGNED_SIZE (&element);
-	      buf_len += 1 + packed_len;
+	      buf_len += packed_len;
 	    }
 
 	  pr_clear_value (&element);
