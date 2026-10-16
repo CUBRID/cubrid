@@ -159,6 +159,7 @@ struct eb_leaf
   unsigned char etype;
   unsigned char rel_op;		/* REL_OP, with the column on the left */
   unsigned char k_type;		/* DB_TYPE the constant must carry */
+  unsigned char k_null;		/* the constant is NULL this page: every row is UNKNOWN */
   union
   {
     int64_t i;
@@ -594,8 +595,9 @@ eb_build_filter (EB_BUILD * b)
       int etype, vec, rel_op, cap;
 
       plan->kid_leaf[i] = -1;
-      if (!expr_scan_pred_kid_raw_info (b->in->scan_pred_compiled, i, &info) || !eb_etype_of (info.fast_type, &etype)
-	  || etype == EB_NUM || info.col_regu->value.attr_descr.cache_attrinfo == NULL)
+      if (!expr_scan_pred_kid_raw_info (b->in->scan_pred_compiled, i, b->in->vd, &info)
+	  || !eb_etype_of (info.fast_type, &etype) || etype == EB_NUM
+	  || info.col_regu->value.attr_descr.cache_attrinfo == NULL)
 	{
 	  /* evaluated per surviving row by the compiled filter itself */
 	  plan->n_row_kids++;
@@ -1127,9 +1129,14 @@ eb_build_aggs (THREAD_ENTRY * thread_p, EB_BUILD * b)
 	  /* reads another node's accumulator at finalize: nothing to accumulate */
 	  continue;
 	}
-      if (agg->flag.agg_optimized || agg->flag.min_max_optimized || agg->option == Q_DISTINCT || agg->sort_list != NULL)
+      if (agg->flag.agg_optimized)
 	{
-	  return eb_decline (b, "an aggregate the batch does not take (DISTINCT, ordered, or optimized away)");
+	  /* answered from statistics or an index before the scan: the row path skips it too */
+	  continue;
+	}
+      if (agg->flag.min_max_optimized || agg->option == Q_DISTINCT || agg->sort_list != NULL)
+	{
+	  return eb_decline (b, "an aggregate the batch does not take (DISTINCT, ordered, or index min/max)");
 	}
       switch (agg->function)
 	{
@@ -1526,7 +1533,18 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
       EB_LEAF *leaf = &plan->leaves[i];
       const DB_VALUE *k = (plan->lsrc[i].cell != NULL) ? *plan->lsrc[i].cell : plan->lsrc[i].value;
 
-      if (k == NULL || DB_IS_NULL (k) || DB_VALUE_DOMAIN_TYPE (k) != leaf->k_type)
+      leaf->k_null = 0;
+      if (k == NULL)
+	{
+	  return EXPR_BATCH_FALLBACK;
+	}
+      if (DB_IS_NULL (k))
+	{
+	  /* a NULL bound value: the comparison is UNKNOWN for every row (the leaf's prologue) */
+	  leaf->k_null = 1;
+	  continue;
+	}
+      if (DB_VALUE_DOMAIN_TYPE (k) != leaf->k_type)
 	{
 	  /* the leaf compares against something else than it was resolved for: its own guard case */
 	  return EXPR_BATCH_FALLBACK;
@@ -1670,7 +1688,7 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
       int r = batch->sel[j];
       bool keep;
 
-      if (v->isnull[r])
+      if (v->isnull[r] || leaf->k_null)
 	{
 	  plan->unk[r] = 1;
 	  batch->sel[n++] = r;

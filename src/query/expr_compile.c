@@ -3489,7 +3489,7 @@ expr_scan_pred_root_shape (const void *compiled, int *n_kids)
 }
 
 bool
-expr_scan_pred_kid_raw_info (const void *compiled, int kid, EXPR_RAW_LEAF_INFO * out)
+expr_scan_pred_kid_raw_info (const void *compiled, int kid, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
 {
   const EXPR_PRED *root = (const EXPR_PRED *) compiled;
   const EXPR_PRED *pred;
@@ -3502,11 +3502,22 @@ expr_scan_pred_kid_raw_info (const void *compiled, int kid, EXPR_RAW_LEAF_INFO *
       return false;
     }
   pred = expr_scan_pred_kid ((EXPR_PRED *) root, kid);
-  if (pred == NULL || pred->kind != EXPR_PRED_COMP_FETCH || pred->need_type_guard || pred->fast_type == DB_TYPE_UNKNOWN)
+  if (pred == NULL || pred->kind != EXPR_PRED_COMP_FETCH || pred->fast_type == DB_TYPE_UNKNOWN)
     {
       return false;
     }
-  /* !need_type_guard: both sides are TYPE_ATTR_ID or TYPE_DBVAL, resolved to one type at compile time */
+  /* The sides a page can take: a column (TYPE_ATTR_ID) against a value fixed for the execution
+   * -- an inline literal (TYPE_DBVAL), a literal the leaf pinned, a prologue-computed constant,
+   * or an auto-parameterized literal / host variable (TYPE_POS_VALUE: the leaf guards its type
+   * per row because the slot is refilled between executions; within one execution it is one
+   * value, which the page checks once).  A TYPE_CONSTANT or TYPE_POSITION side is refilled per
+   * row by someone else and stays with the row path. */
+  if (pred->need_type_guard
+      && !((pred->fetch_lhs->type == TYPE_ATTR_ID && pred->fetch_rhs->type == TYPE_POS_VALUE)
+	   || (pred->fetch_rhs->type == TYPE_ATTR_ID && pred->fetch_lhs->type == TYPE_POS_VALUE)))
+    {
+      return false;
+    }
   if (pred->fetch_lhs->type == TYPE_ATTR_ID && !pred->lhs_compiled)
     {
       col = pred->fetch_lhs;
@@ -3557,6 +3568,28 @@ expr_scan_pred_kid_raw_info (const void *compiled, int kid, EXPR_RAW_LEAF_INFO *
     {
       out->k_value = &k->value.dbval;
       return !DB_IS_NULL (out->k_value) && DB_VALUE_DOMAIN_TYPE (out->k_value) == pred->fast_type;
+    }
+  if (k->type == TYPE_POS_VALUE && vd != NULL)
+    {
+      /* the bound value, or the gate's converted copy of it (expr_pos_value_index ()) */
+      int vidx = -1;
+
+      if (k->plan_item != NULL && k->plan_item->ref >= 0 && vd->xasl_state != NULL
+	  && vd->xasl_state->resolved_domain.readable && k->plan_item->ref < vd->xasl_state->resolved_domain.n_vals)
+	{
+	  vidx = k->plan_item->ref;
+	}
+      else if (k->value.val_pos >= 0 && k->value.val_pos < vd->dbval_cnt)
+	{
+	  vidx = k->value.val_pos;
+	}
+      if (vidx < 0)
+	{
+	  return false;
+	}
+      out->k_value = &vd->dbval_ptr[vidx];
+      out->k_is_bound = true;
+      return true;
     }
   return false;
 }

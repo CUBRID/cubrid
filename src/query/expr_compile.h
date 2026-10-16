@@ -355,16 +355,20 @@ struct expr_raw_leaf_info
   bool col_is_lhs;		/* the column is the left operand (else the constant is) */
   DB_TYPE fast_type;		/* the type both sides were resolved for */
   int rel_op;			/* REL_OP, as written: lhs rel_op rhs */
-  const DB_VALUE *k_value;	/* the constant side, when it is a literal the leaf pinned or holds */
+  const DB_VALUE *k_value;	/* the constant side: a literal the leaf pinned or holds, or the bound
+				 * value of an auto-parameterized literal / host variable (TYPE_POS_VALUE,
+				 * fixed for the execution; the leaf's signature recompiles when its
+				 * type changes between executions) */
   DB_VALUE *const *k_cell;	/* ... or the program cell a prologue computes it into (read after
 				 * expr_scan_pred_prepare ()); exactly one of k_value / k_cell is set */
+  bool k_is_bound;		/* k_value is a bound value: its type is checked when a page starts */
 };
 
 /* the shape of the root: 1 = a single comparison leaf (n_kids = 1), 2 = a flattened AND chain
  * (n_kids = its term count), -1 = anything else (OR, NOT, a term the compiler left alone) */
 extern int expr_scan_pred_root_shape (const void *compiled, int *n_kids);
 /* kid i of the root as a raw leaf; false when it is not "column op constant" with a direct-compare type */
-extern bool expr_scan_pred_kid_raw_info (const void *compiled, int kid, EXPR_RAW_LEAF_INFO * out);
+extern bool expr_scan_pred_kid_raw_info (const void *compiled, int kid, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
 /* the filter's prologues for this execution (the per-row entry does the same before its first row) */
 extern int expr_scan_pred_prepare (void *compiled, cubthread::entry * thread_p, val_descr * vd);
 /* evaluate kid i of the root alone for the current row (the batch's residual terms) */
