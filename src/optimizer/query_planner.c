@@ -295,7 +295,7 @@ static void qo_dump_planvec (QO_PLANVEC *, FILE *, int);
 static void qo_dump_info (QO_INFO *, FILE *);
 static void qo_dump_planner_info (QO_PLANNER *, QO_PARTITION *, FILE *);
 
-static void qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
+static bool qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
 				  double *out_head_factor, double *out_tail_factor);
 static void planner_visit_node (QO_PLANNER *, QO_PARTITION *, PT_HINT_ENUM, QO_NODE *, QO_NODE *, BITSET *, BITSET *,
 				BITSET *, BITSET *, BITSET *, BITSET *, BITSET *, int);
@@ -8677,13 +8677,16 @@ qo_dump_planner_info (QO_PLANNER * planner, QO_PARTITION * partition, FILE * f)
 /*
  * qo_get_term_hit_prob () -
  *
+ * return: true if both sides have a segment with usable NDV statistics, false otherwise.
+ *         On failure both output factors remain 1.0.
+ *
  * hit_prob = min(1, ndv(tail after its filters) / ndv(head))
  *
  * The NDV of a side's join key is reduced by that side's own
  * search conditions with qo_estimate_ndv (), the same estimate
  * GROUP BY uses for the number of groups after filtering.
  */
-static void
+static bool
 qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
 		      double *out_head_factor, double *out_tail_factor)
 {
@@ -8698,7 +8701,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
   *out_tail_factor = 1.0;
   if (bitset_cardinality (term_segs) != 2)
     {
-      return;
+      return false;
     }
 
   for (seg_idx = bitset_iterate (term_segs, &seg_iter); seg_idx != -1; seg_idx = bitset_next_member (&seg_iter))
@@ -8718,7 +8721,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
     }
   if (head_seg == NULL || tail_seg == NULL)
     {
-      return;
+      return false;
     }
 
   if (QO_SEG_INFO (head_seg) != NULL && QO_SEG_INFO (head_seg)->ndv > 0)
@@ -8727,7 +8730,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
     }
   else
     {
-      return;
+      return false;
     }
 
   if (QO_SEG_INFO (tail_seg) != NULL && QO_SEG_INFO (tail_seg)->ndv > 0)
@@ -8736,7 +8739,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
     }
   else
     {
-      return;
+      return false;
     }
 
   /* Distinct join-key values that survive each side's own search conditions: the NDV shrinks the way
@@ -8756,6 +8759,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
 
   *out_head_factor = MIN (1.0, tail_ndv_eff / (double) head_ndv);
   *out_tail_factor = MIN (1.0, head_ndv_eff / (double) tail_ndv);
+  return true;
 }
 
 static void
@@ -9486,15 +9490,37 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		      is_join_term = is_semi_anti
 			&& bitset_intersects (&(QO_TERM_NODES (term)), &(head_info->nodes))
 			&& bitset_intersects (&(QO_TERM_NODES (term)), &(tail_info->nodes));
-		      is_equi_term = is_join_term && qo_is_equi_join_term (term);
-		      if (is_join_term)
+		      if (!is_semi_anti)
+			{
+			  qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
+			  head_hit_prob *= head_factor;
+			  tail_hit_prob *= tail_factor;
+			}
+		      else if (is_join_term)
 			{
 			  double term_selectivity;
 
 			  term_selectivity = MAX (0.0, MIN (1.0, QO_TERM_SELECTIVITY (term)));
+			  /* An expression equality can use the same segment NDVs as a column equality.
+			   * Do not use range predicates as keys even when they have two segments. */
+			  is_equi_term = PT_IS_EXPR_NODE_WITH_OPERATOR (QO_TERM_PT_EXPR (term), PT_EQ)
+			    && qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor,
+						     &tail_factor);
 			  if (is_equi_term)
 			    {
-			      equi_selectivity *= term_selectivity;
+			      tail_hit_prob *= tail_factor;
+			    }
+
+			  /* the terms are taken as independent, as in the INNER JOIN estimate: the equality with the
+			   * smallest hit ratio is the key (head_hit_prob, equi_selectivity), every other term filters
+			   * the inner rows sharing that key.  An equality that always holds with the key (a composite
+			   * FK) is underestimated; telling it apart needs the FK, which
+			   * qo_mark_fk_join_selectivity_floor () skips for SEMI/ANTI */
+			  if (is_equi_term && head_factor <= head_hit_prob)
+			    {
+			      other_selectivity *= equi_selectivity;	/* the previous key, 1.0 if none */
+			      head_hit_prob = head_factor;
+			      equi_selectivity = term_selectivity;
 			    }
 			  else
 			    {
@@ -9502,13 +9528,6 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			       * Only predicates reading both inputs need this additional match estimate. */
 			      other_selectivity *= term_selectivity;
 			    }
-			}
-
-		      if (!is_semi_anti || is_equi_term)
-			{
-			  qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
-			  head_hit_prob *= head_factor;
-			  tail_hit_prob *= tail_factor;
 			}
 		    }
 		}
@@ -9531,7 +9550,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		{
 		  double inner_rows, hit_prob;
 
-		  /* Estimate matching inner rows for an outer row that has an equality match. */
+		  /* Estimate matching inner rows for an outer row that has an equality match on the key. */
 		  inner_rows = tail_info->cardinality * equi_selectivity / head_hit_prob;
 		  inner_rows = MAX (1.0, MIN (tail_info->cardinality, inner_rows));
 
