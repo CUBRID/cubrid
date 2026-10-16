@@ -1496,7 +1496,9 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1385 Invalid username or password.
 
-1386 Last Error
+1386 The secret of session %1$u does not match.
+
+1387 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

@@ -33,28 +33,30 @@
  *  xsession_create_new () - create a new session
  *  return		: error code
  *  id (in/out) : session id
+ *  secret (out) : the new session's secret
  * Note: this function allocates a new session id and creates a session for
  * it
  */
 int
-xsession_create_new (THREAD_ENTRY * thread_p, SESSION_ID * id)
+xsession_create_new (THREAD_ENTRY * thread_p, SESSION_ID * id, char *secret)
 {
   assert (id != NULL);
 
-  return session_state_create (thread_p, id);
+  return session_state_create (thread_p, id, secret);
 }
 
 /*
  *  xsession_check_session  () - validates the session with session_id
  *  return	    : error code
  *  id (in) : session id
+ *  secret (in) : the secret the session was created with
  * Note: this function checks if the session with session_id is still active
  * and updates the last access timeout for it
  */
 int
-xsession_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id)
+xsession_check_session (THREAD_ENTRY * thread_p, const SESSION_ID id, const char *secret)
 {
-  return session_check_session (thread_p, id);
+  return session_check_session (thread_p, id, secret);
 }
 
 /*

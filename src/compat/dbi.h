@@ -75,6 +75,8 @@ extern "C"
 			    const char *preferred_hosts, int client_type);
   extern void db_set_server_session_key (const char *key);
   extern char *db_get_server_session_key (void);
+  extern void db_set_session_secret (const char *secret);
+  extern char *db_get_session_secret (void);
   extern SESSION_ID db_get_session_id (void);
   extern void db_set_session_id (const SESSION_ID session_id);
   extern bool db_get_keep_session (void);
