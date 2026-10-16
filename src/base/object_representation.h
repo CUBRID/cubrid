@@ -58,14 +58,8 @@ struct setobj;
 
 #define OR_CHECK_ASSIGN_OVERFLOW(dest, src) \
   (((src) > 0 && (dest) < 0) || ((src) < 0 && (dest) > 0))
-#define OR_CHECK_ADD_OVERFLOW(a, b, c) \
-  (((a) > 0 && (b) > 0 && (c) < 0) \
-   || ((a) < 0 && (b) < 0 && (c) >= 0))
 #define OR_CHECK_UNS_ADD_OVERFLOW(a, b, c) \
   (c) < (a) || (c) < (b)
-#define OR_CHECK_SUB_UNDERFLOW(a, b, c) \
-  (((a) < (b) && (c) > 0) \
-   || ((a) > (b) && (c) < 0))
 #define OR_CHECK_UNS_SUB_UNDERFLOW(a, b, c) \
   (b) > (a)
 #define OR_CHECK_MULT_OVERFLOW(a, b, c) \
@@ -74,8 +68,42 @@ struct setobj;
 #if defined (__GNUC__) || defined (__clang__)
 #define OR_MULT_OVERFLOW(a, b, r) __builtin_mul_overflow ((a), (b), (r))
 #else
+/* Same reasoning as the OR_ADD_OVERFLOW fallback below: the product must not be
+ * formed with a signed *, because that is itself the undefined behaviour the check
+ * is meant to catch. It is formed in unsigned arithmetic, which wraps in a well
+ * defined way, and OR_CHECK_MULT_OVERFLOW then reads the overflow off the wrapped
+ * value. That macro special cases b == 0 and b == -1, so the division it ends with
+ * can never be DB_BIGINT_MIN / -1. */
 #define OR_MULT_OVERFLOW(a, b, r) \
-  (*(r) = (a) * (b), OR_CHECK_MULT_OVERFLOW ((a), (b), *(r)))
+  (*(r) = (long long) ((unsigned long long) (a) * (unsigned long long) (b)), \
+   OR_CHECK_MULT_OVERFLOW ((a), (b), *(r)))
+#endif
+
+/* Signed integer addition and subtraction with overflow detection.
+ *
+ * These replace OR_CHECK_ADD_OVERFLOW and OR_CHECK_SUB_UNDERFLOW, which inspected the sign
+ * of a sum the caller had already formed with a plain + or -. Forming it is itself signed
+ * overflow, so a compiler may assume it never happened and delete the check. Clang did:
+ * an overflowing addition returned a wrapped result instead of raising
+ * ER_QPROC_OVERFLOW_ADDITION. The old macros are deleted rather than left unused, so that
+ * writing one again is a compile error. The builtins store the wrapped result through r,
+ * which is the value the old code left behind on the error path. */
+#if defined (__GNUC__) || defined (__clang__)
+#define OR_ADD_OVERFLOW(a, b, r) __builtin_add_overflow ((a), (b), (r))
+#define OR_SUB_OVERFLOW(a, b, r) __builtin_sub_overflow ((a), (b), (r))
+#else
+/* The branch for a compiler without the builtins, which in practice means MSVC.
+ * It must not compute the result with a signed + or -, because that is the very
+ * undefined behaviour this pair of macros exists to avoid. The arithmetic is done
+ * in unsigned, which wraps in a well defined way, and the overflow is read off the
+ * signs afterwards. Both operands are expected to have the type of *(r), which
+ * holds at every call site, and each is evaluated more than once. */
+#define OR_ADD_OVERFLOW(a, b, r) \
+  (*(r) = (long long) ((unsigned long long) (a) + (unsigned long long) (b)), \
+   (((a) < 0) == ((b) < 0)) && ((*(r) < 0) != ((a) < 0)))
+#define OR_SUB_OVERFLOW(a, b, r) \
+  (*(r) = (long long) ((unsigned long long) (a) - (unsigned long long) (b)), \
+   (((a) < 0) != ((b) < 0)) && ((*(r) < 0) != ((a) < 0)))
 #endif
 #define OR_CHECK_SHORT_DIV_OVERFLOW(a, b) \
   ((a) == DB_INT16_MIN && (b) == -1)
@@ -89,6 +117,24 @@ struct setobj;
 #define OR_CHECK_BIGINT_OVERFLOW(i) ((i) > DB_BIGINT_MAX || (i) < DB_BIGINT_MIN)
 #define OR_CHECK_USHRT_OVERFLOW(i)  ((i) > (int) DB_UINT16_MAX || (i) < 0)
 #define OR_CHECK_UINT_OVERFLOW(i)   ((i) > DB_UINT32_MAX || (i) < 0)
+
+/* Exact bounds of the integer domains, as powers of two. Unlike DB_INT32_MAX
+ * and DB_BIGINT_MAX these are representable in float and double without any
+ * rounding, so they are the operands to use when the value being range checked
+ * is a floating point number. */
+#define OR_INT32_BOUND_D  2147483648.0	/* 2^31, that is DB_INT32_MAX + 1 */
+#define OR_BIGINT_BOUND_D 9223372036854775808.0	/* 2^63, that is DB_BIGINT_MAX + 1 */
+
+/* Overflow checks for a floating point value about to be narrowed to an integer
+ * domain. OR_CHECK_INT_OVERFLOW (2147483648.0f) answers false, because
+ * DB_INT32_MAX rounds *up* to 2^31 when it is converted to float, so the naive
+ * check lets the out of range value through and the narrowing cast is undefined.
+ * These macros compare against the exact bound instead. A NaN fails both
+ * comparisons and is therefore reported as an overflow. */
+#define OR_CHECK_INT_OVERFLOW_FROM_FP(v) \
+  (!((double) (v) >= -OR_INT32_BOUND_D && (double) (v) < OR_INT32_BOUND_D))
+#define OR_CHECK_BIGINT_OVERFLOW_FROM_FP(v) \
+  (!((double) (v) >= -OR_BIGINT_BOUND_D && (double) (v) < OR_BIGINT_BOUND_D))
 
 #define OR_CHECK_FLOAT_OVERFLOW(i)         ((i) > FLT_MAX || (-(i)) > FLT_MAX)
 #define OR_CHECK_DOUBLE_OVERFLOW(i)        ((i) > DBL_MAX || (-(i)) > DBL_MAX)

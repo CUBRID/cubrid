@@ -1784,12 +1784,14 @@
 
 #define ER_QPROC_SESSION_VARIABLE_TYPE              -1384
 
-#define ER_SP_TCL_DDL_IN_QUERY                      -1385
-#define ER_SP_TCL_DDL_IN_TRIGGER                    -1386
-#define ER_SP_DML_IN_QUERY                          -1387
-#define ER_SP_TABLE_MUTATING                        -1388
+#define ER_AU_REJECT_LOGIN                          -1385
 
-#define ER_LAST_ERROR                               -1389
+#define ER_SP_TCL_DDL_IN_QUERY                      -1386
+#define ER_SP_TCL_DDL_IN_TRIGGER                    -1387
+#define ER_SP_DML_IN_QUERY                          -1388
+#define ER_SP_TABLE_MUTATING                        -1389
+
+#define ER_LAST_ERROR                               -1390
 
 
 /*

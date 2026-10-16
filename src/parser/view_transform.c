@@ -6817,7 +6817,7 @@ mq_translate_update (PARSER_CONTEXT * parser, PT_NODE * update_statement)
 static PT_NODE *
 mq_resolve_insert_statement (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 {
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   PT_NODE *odku = insert_statement->info.insert.odku_assignments;
   PT_NODE *from = insert_statement->info.insert.spec;
   PT_NODE *attr;
@@ -6941,7 +6941,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   PT_NODE *subquery = NULL;
   PT_SPEC_INFO *from_spec = NULL;
   bool viable;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   int what_for = DB_AUTH_INSERT;
   int is_class = 0;
 
@@ -7171,7 +7171,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
       /* The odku_assignments might refer nodes from the SELECT statements. Even though name resolving was already
        * performed on odku_assigments, we have to redo it here. If the SELECT target was a view, it has been rewritten
        * by mq_translate_local and names which referenced it were not updated. */
-      SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+      SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
       PT_NODE *odku = insert_statement->info.insert.odku_assignments;
 
       from = insert_statement->info.insert.spec;
@@ -7265,7 +7265,7 @@ static PT_NODE *
 mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 {
   PT_NODE *from, *flat;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   DB_AUTH auth = DB_AUTH_NONE;
 
   from = merge_statement->info.merge.into;
@@ -7531,7 +7531,6 @@ mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg, int
       break;
 
     default:
-      statement = statement;
       break;
     }
 
@@ -7833,7 +7832,6 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
       break;
 
     default:
-      statement = statement;
       break;
     }
 
