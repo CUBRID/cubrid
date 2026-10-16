@@ -60,6 +60,11 @@
 
 #define EXPR_MAX_STEPS 128	/* a list needing more is left to the interpreted path */
 
+/* a node this deep in one program is compiled as a program of its own behind one step, before any table can run out:
+ * a deep chain then costs one compile per EXPR_NEST_DEPTH levels instead of a rewind and recompile of its whole
+ * subtree at every level where a table runs out */
+#define EXPR_NEST_DEPTH 32
+
 /* how often the value in a cell can change (EXPR_BUILD_CTX.cell_fixed) */
 #define EXPR_CELL_ROW 0		/* per row */
 #define EXPR_CELL_LITERAL 1	/* never: a literal or computed from literals only */
@@ -3750,9 +3755,10 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
       bctx->depth_max = bctx->depth;
     }
   expr_build_mark (bctx, &mark);
-  if (bctx->force_nest_depth > 0 && bctx->depth == bctx->force_nest_depth)
+  if ((bctx->force_nest_depth > 0 && bctx->depth == bctx->force_nest_depth) || bctx->depth == EXPR_NEST_DEPTH)
     {
-      /* the retry of an overflowing nested root: its operands go behind one step each */
+      /* this subtree goes behind one step as a program of its own: an operand of an overflowing nested root on its
+       * retry (force_nest_depth), or any node at EXPR_NEST_DEPTH */
       cell = expr_compile_nested (bctx, regu, compiled_something);
     }
   else
