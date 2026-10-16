@@ -53,8 +53,9 @@ struct sp_stmt_entry
 
 struct sp_trigger_ctx
 {
-  DB_OBJECT *class_mop;		/* class the triggering statement modifies */
+  DB_OBJECT *class_mop;		/* class the trigger is on; NULL for a COMMIT, ROLLBACK, ABORT or TIMEOUT trigger */
   bool is_row_level;		/* only a row-level trigger makes its class mutating */
+  int stmt_index;		/* sp_Stmt_stack entry of the statement that fired the trigger; -1 when none */
 };
 
 extern std::vector<sp_stmt_entry> sp_Stmt_stack;

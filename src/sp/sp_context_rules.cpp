@@ -28,7 +28,6 @@
 #include "error_manager.h"
 #include "execute_schema.h"
 #include "parser.h"
-#include "trigger_manager.h"
 
 std::vector<sp_stmt_entry> sp_Stmt_stack;
 std::vector<sp_trigger_ctx> sp_Trigger_stack;
@@ -246,7 +245,8 @@ sp_ref_tables_add_tree (PARSER_CONTEXT *parser, PT_NODE *tree)
 void
 sp_trigger_push (DB_OBJECT *class_mop, bool is_row_level)
 {
-  sp_Trigger_stack.push_back (sp_trigger_ctx { sp_class_root (class_mop), is_row_level });
+  sp_Trigger_stack.push_back (sp_trigger_ctx { class_mop != NULL ? sp_class_root (class_mop) : NULL, is_row_level,
+			      (int) sp_Stmt_stack.size () - 1 });
 }
 
 void
@@ -254,6 +254,26 @@ sp_trigger_pop (void)
 {
   assert (!sp_Trigger_stack.empty ());
   sp_Trigger_stack.pop_back ();
+}
+
+/*
+ * sp_stmt_in_statement_trigger () - whether a statement-level trigger on the class is running for the statement
+ *   return: bool
+ *   stmt_index(in): sp_Stmt_stack entry of the statement
+ *   class_mop(in): a class the statement writes
+ */
+static bool
+sp_stmt_in_statement_trigger (int stmt_index, DB_OBJECT *class_mop)
+{
+  for (const sp_trigger_ctx &trigger : sp_Trigger_stack)
+    {
+      if (!trigger.is_row_level && trigger.stmt_index == stmt_index && trigger.class_mop == class_mop)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 /*
@@ -266,11 +286,11 @@ sp_stmt_find_mutating (const std::vector<DB_OBJECT *> &ref_tables)
 {
   for (DB_OBJECT *ref : ref_tables)
     {
-      for (const sp_stmt_entry &entry : sp_Stmt_stack)
+      for (size_t i = 0; i < sp_Stmt_stack.size (); i++)
 	{
-	  for (DB_OBJECT *target : entry.target_classes)
+	  for (DB_OBJECT *target : sp_Stmt_stack[i].target_classes)
 	    {
-	      if (target == ref)
+	      if (target == ref && !sp_stmt_in_statement_trigger ((int) i, target))
 		{
 		  return ref;
 		}
@@ -336,8 +356,7 @@ int
 sp_check_statement_allowed (int stmt_type, bool is_ddl, const std::vector<DB_OBJECT *> &ref_tables)
 {
   const bool in_statement = !sp_Stmt_stack.empty ();
-  /* sp_Trigger_stack only knows triggers on a class; a COMMIT or DEFERRED trigger shows up in the depth alone */
-  const bool in_trigger = tr_Current_depth > 0 || !sp_Trigger_stack.empty ();
+  const bool in_trigger = !sp_Trigger_stack.empty ();
 
   if (!in_statement && !in_trigger)
     {

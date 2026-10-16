@@ -151,7 +151,6 @@ struct tr_activity
 typedef struct tr_state
 {
   TR_TRIGLIST *triggers;
-  bool sp_pushed;		/* the triggering statement's class is on sp_Trigger_stack until tr_finish () */
 } TR_STATE;
 
 
