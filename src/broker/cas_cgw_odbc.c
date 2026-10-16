@@ -1756,7 +1756,7 @@ cgw_sql_prepare (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, SQLCHAR * sql_stmt)
 
   in_string = (char *) sql_stmt;
 
-  if (srv_handle == NULL)
+  if (srv_handle == NULL || in_string == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CGW_INVALID_HANDLE, 0);
       return ER_FAILED;
@@ -1800,6 +1800,758 @@ cgw_sql_prepare (SQLHDBC hdbc, T_SRV_HANDLE * srv_handle, SQLCHAR * sql_stmt)
 ODBC_ERROR:
   FREE_MEM (out_string);
   return ER_FAILED;
+}
+
+/*
+ * cgw_escape_search_pattern () - escape the ODBC wildcards of an identifier so that
+ *   a pattern-value argument matches it literally
+ *   return: 0 on success, ER_FAILED when the escaped form does not fit in buf
+ *   hdbc(in): connected ODBC handle
+ *   name(in): identifier to be matched literally
+ *   buf(out): escaped pattern
+ *   buf_size(in): size of buf
+ *
+ * Note: the catalog functions take TableName as a pattern-value argument unless
+ *   SQL_ATTR_METADATA_ID is SQL_TRUE, so a name holding '_' or '%' would also match
+ *   other tables.  Escaping is preferred over SQL_ATTR_METADATA_ID because the latter
+ *   also folds the name to upper case, which breaks the case-sensitive remotes.
+ */
+static int
+cgw_escape_search_pattern (SQLHDBC hdbc, const char *name, char *buf, size_t buf_size)
+{
+  SQLCHAR esc[8] = { '\0' };
+  SQLSMALLINT esc_len = 0;
+  size_t i, n = 0;
+  char esc_ch = '\0';
+
+  if (SQL_SUCCEEDED (SQLGetInfo (hdbc, SQL_SEARCH_PATTERN_ESCAPE, esc, sizeof (esc), &esc_len)))
+    {
+      esc_ch = (char) esc[0];
+    }
+
+  for (i = 0; name[i] != '\0'; i++)
+    {
+      /* a driver reporting no escape character cannot match wildcards literally:
+       * the name is copied as is and the TABLE_NAME check below filters the extras */
+      if (esc_ch != '\0' && (name[i] == '%' || name[i] == '_' || name[i] == esc_ch))
+	{
+	  if (n + 1 >= buf_size)
+	    {
+	      return ER_FAILED;
+	    }
+	  buf[n++] = esc_ch;
+	}
+
+      if (n + 1 >= buf_size)
+	{
+	  return ER_FAILED;
+	}
+      buf[n++] = name[i];
+    }
+  buf[n] = '\0';
+
+  return NO_ERROR;
+}
+
+/*
+ * cgw_schema_attr_set_type () - copy the described type of a column onto its
+ *   schema_info row
+ */
+static void
+cgw_schema_attr_set_type (T_CGW_SCHEMA_ATTR * attr, const T_ODBC_COL_INFO * col_info)
+{
+  attr->cci_type = col_info->data_type;
+  attr->precision = (int) col_info->precision;
+  attr->scale = (short) col_info->scale;
+  attr->charset = col_info->charset;
+}
+
+/*
+ * cgw_fold_identifier () - store an identifier the way the remote stores an unquoted one
+ *   dst(out): folded copy; may be the same buffer as src
+ *   size(in): size of dst
+ *   src(in): identifier as the statement wrote it
+ *   id_case(in): SQL_IDENTIFIER_CASE as the driver reports it
+ */
+static void
+cgw_fold_identifier (char *dst, size_t size, const char *src, SQLUSMALLINT id_case)
+{
+  size_t i;
+
+  for (i = 0; i + 1 < size && src[i] != '\0'; i++)
+    {
+      if (id_case == SQL_IC_UPPER)
+	{
+	  dst[i] = (char) toupper ((unsigned char) src[i]);
+	}
+      else
+	{
+	  dst[i] = (char) tolower ((unsigned char) src[i]);
+	}
+    }
+  dst[i] = '\0';
+}
+
+/*
+ * cgw_qualifier_is_catalog () - Check if the owner name maps to CatalogName or SchemaName.
+ *   return: true for CatalogName argument, false for SchemaName.
+ *
+ * Note: Each DBMS uses a different argument for the table owner (Oracle=Schema, MySQL=Catalog).
+ *       To avoid SQLColumns failure and support unknown drivers, we query the driver's
+ *       SQL_SCHEMA_USAGE rather than hardcoding DBMS types.
+ *       If neither is clear, defaults to SchemaName(false) and relies on the fallback logic. */
+static bool
+cgw_qualifier_is_catalog (SQLHDBC hdbc)
+{
+  SQLUINTEGER schema_usage = 0;
+  SQLCHAR catalog_name[2] = { '\0' };
+
+  if (SQL_SUCCEEDED (SQLGetInfo (hdbc, SQL_SCHEMA_USAGE, &schema_usage, sizeof (schema_usage), NULL))
+      && schema_usage != 0)
+    {
+      return false;
+    }
+
+  return (SQL_SUCCEEDED (SQLGetInfo (hdbc, SQL_CATALOG_NAME, catalog_name, sizeof (catalog_name), NULL))
+	  && (catalog_name[0] == 'Y' || catalog_name[0] == 'y'));
+}
+
+/*
+ * cgw_describe_invisible_attrs () - type the invisible columns from a describe
+ *   return: 0 when every invisible column was typed (or there is none), ER_FAILED
+ *           otherwise - a describe that answers a different column count, or a label that
+ *           is not the identifier asked for, is a failure too, since the untyped column
+ *           would keep its SQLColumns metadata
+ *   hdbc(in): connected ODBC handle
+ *   table_name(in): remote table name
+ *   attrs(in/out): schema_info rows, is_invisible already resolved
+ *   count(in): number of rows
+ *
+ * Note: invisible columns never appear in "SELECT *", so they are selected by name.
+ *   Identifiers are quoted with the driver's quote character to keep names that are
+ *   reserved words or case sensitive resolvable.
+ */
+static int
+cgw_describe_invisible_attrs (SQLHDBC hdbc, const char *table_name, T_CGW_SCHEMA_ATTR * attrs, int count)
+{
+  SQLHSTMT hstmt = SQL_NULL_HSTMT;
+  SQLRETURN rc;
+  SQLCHAR quote[8] = { '\0' };
+  SQLSMALLINT quote_len = 0, num_cols = 0;
+  T_ODBC_COL_INFO col_info;
+  char *sql = NULL, *p;
+  size_t sql_len;
+  int i, c, num_invisible = 0, err = ER_FAILED;
+  char quote_ch = '\0';
+
+  for (i = 0; i < count; i++)
+    {
+      if (attrs[i].is_invisible)
+	{
+	  num_invisible++;
+	}
+    }
+
+  if (num_invisible == 0)
+    {
+      return NO_ERROR;
+    }
+
+  /* an error left set on return is this describe's own ODBC failure, nothing earlier */
+  er_clear ();
+
+  if (SQL_SUCCEEDED (SQLGetInfo (hdbc, SQL_IDENTIFIER_QUOTE_CHAR, quote, sizeof (quote), &quote_len))
+      && quote[0] != ' ')
+    {
+      quote_ch = (char) quote[0];
+    }
+
+  /* "SELECT " + per column (2 quotes + name + ", ") + " FROM " + table + NUL */
+  sql_len = COL_NAME_LEN + 4;
+  sql_len = strlen (table_name) + sql_len * num_invisible + 32;
+  sql = (char *) MALLOC (sql_len);
+  if (sql == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  p = sql + snprintf (sql, sql_len, "SELECT ");
+  for (i = 0, c = 0; i < count; i++)
+    {
+      if (!attrs[i].is_invisible)
+	{
+	  continue;
+	}
+
+      if (quote_ch != '\0')
+	{
+	  p += snprintf (p, sql_len - (size_t) (p - sql), "%s%c%s%c", (c++ > 0) ? ", " : "", quote_ch,
+			 attrs[i].attr_name, quote_ch);
+	}
+      else
+	{
+	  p += snprintf (p, sql_len - (size_t) (p - sql), "%s%s", (c++ > 0) ? ", " : "", attrs[i].attr_name);
+	}
+    }
+  /* WHERE 1=0: only the description is wanted, and a driver that describes on execute
+   * (cgw_get_num_cols ()) then runs it without producing a row */
+  snprintf (p, sql_len - (size_t) (p - sql), " FROM %s WHERE 1=0", table_name);
+
+  if (!SQL_SUCCEEDED (SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &hstmt)))
+    {
+      goto end;
+    }
+
+  rc = SQLPrepare (hstmt, (SQLCHAR *) sql, SQL_NTS);
+  if (!SQL_SUCCEEDED (rc))
+    {
+      cgw_error_msg (hstmt, SQL_HANDLE_STMT, rc);
+      goto end;
+    }
+
+  /* cgw_get_num_cols () rather than SQLNumResultCols () directly: a driver that fills
+   * the IRD only on execute needs the same execute retry the prepare path relies on.
+   *
+   * The result has to describe exactly the select list built above - one column per
+   * invisible attribute.  Fewer means the driver answered for a column it could not
+   * resolve, more means it expanded something; either way some attribute would keep its
+   * SQLColumns typing (no unsigned flag, no per-driver precision fixup) and the statement
+   * would compile against a wrong type.  Refuse, like a failed describe. */
+  if (cgw_get_num_cols (hstmt, &num_cols) < 0)
+    {
+      goto end;
+    }
+  if (num_cols != num_invisible)
+    {
+      er_clear ();		/* a warning the describe returned is not why it is refused */
+      goto end;
+    }
+
+  /* one result column per invisible attribute, in the order the select list named them:
+   * SQL keeps the select-list order, so the position is the mapping and the label is only
+   * checked to confirm the driver described the identifier that was asked for */
+  for (c = 1, i = 0; c <= num_cols; c++, i++)
+    {
+      while (i < count && !attrs[i].is_invisible)
+	{
+	  i++;
+	}
+
+      if (i >= count)
+	{
+	  er_clear ();
+	  goto end;
+	}
+      if (cgw_get_col_info (hstmt, c, &col_info) < 0)
+	{
+	  goto end;
+	}
+      if (strcasecmp (col_info.col_name, attrs[i].attr_name) != 0)
+	{
+	  er_clear ();
+	  goto end;
+	}
+
+      cgw_schema_attr_set_type (&attrs[i], &col_info);
+    }
+
+  err = NO_ERROR;
+
+end:
+  if (hstmt != SQL_NULL_HSTMT)
+    {
+      SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
+    }
+  FREE_MEM (sql);
+  return err;
+}
+
+/*
+ * cgw_oracle_name_resolve () - Oracle: the table or view a name reaches
+ *   return: 1 when it reaches one (owner and table written), 0 otherwise
+ *   name(in): the name as the statement wrote it, owner-qualified or not
+ *
+ * Note: DBMS_UTILITY.NAME_RESOLVE resolves the name the way SQL does - session schema, then
+ *   PUBLIC, through a synonym chain of any depth - in one call.  A synonym over a database
+ *   link, or anything but a table (2) or a view (4), is not described.
+ */
+static int
+cgw_oracle_name_resolve (SQLHDBC hdbc, const char *name, char *owner, size_t owner_size, char *table, size_t table_size)
+{
+  SQLHSTMT hstmt = SQL_NULL_HSTMT;
+  SQLLEN name_ind = SQL_NTS, owner_ind = SQL_NULL_DATA, table_ind = SQL_NULL_DATA;
+  int ret = 0;
+
+  owner[0] = '\0';
+  table[0] = '\0';
+  if (cgw_get_stmt_handle (hdbc, &hstmt) < 0)
+    {
+      return 0;
+    }
+
+  if (SQL_SUCCEEDED (SQLBindParameter (hstmt, 1, SQL_PARAM_INPUT, SQL_C_CHAR, SQL_VARCHAR, COL_NAME_LEN * 2 + 1, 0,
+				       (SQLPOINTER) name, 0, &name_ind))
+      && SQL_SUCCEEDED (SQLBindParameter (hstmt, 2, SQL_PARAM_OUTPUT, SQL_C_CHAR, SQL_VARCHAR, owner_size - 1, 0, owner,
+					  (SQLLEN) owner_size, &owner_ind))
+      && SQL_SUCCEEDED (SQLBindParameter (hstmt, 3, SQL_PARAM_OUTPUT, SQL_C_CHAR, SQL_VARCHAR, table_size - 1, 0, table,
+					  (SQLLEN) table_size, &table_ind))
+      && SQL_SUCCEEDED (SQLExecDirect (hstmt, (SQLCHAR *)
+				       "DECLARE s VARCHAR2(128); p1 VARCHAR2(128); p2 VARCHAR2(128); lnk VARCHAR2(128); "
+				       "t NUMBER; o NUMBER; BEGIN DBMS_UTILITY.NAME_RESOLVE(?, 0, s, p1, p2, lnk, t, o); "
+				       "IF lnk IS NULL AND t IN (2, 4) THEN ? := s; ? := p1; END IF; "
+				       "EXCEPTION WHEN OTHERS THEN NULL; END;", SQL_NTS))
+      && owner_ind > 0 && table_ind > 0)
+    {
+      ret = 1;
+    }
+
+  SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
+  return ret;
+}
+
+/*
+ * cgw_sqlcolumns_collect () - append the SQLColumns rows of one table to an attribute list
+ *   return: NO_ERROR (nothing appended when the catalog has no such table), ER_FAILED when the
+ *           catalog function failed or its result ended early
+ *   hdbc(in): connected ODBC handle
+ *   qual_is_catalog(in): the driver takes the owner as CatalogName rather than SchemaName
+ *   qualifier(in): owner (database), NULL for the connection's own
+ *   name(in): table name, folded to the case the remote stores it in
+ *   attrs, count, alloced(in/out): the attribute list, its length and its capacity
+ */
+static int
+cgw_sqlcolumns_collect (SQLHDBC hdbc, bool qual_is_catalog, const char *qualifier, const char *name,
+			T_CGW_SCHEMA_ATTR ** attrs, int *count, int *alloced)
+{
+  SQLHSTMT hstmt = SQL_NULL_HSTMT;
+  SQLRETURN rc;
+  SQLSMALLINT data_type, scale;
+  SQLINTEGER col_size;
+  SQLLEN ind;
+  T_CGW_SCHEMA_ATTR *attr, *tmp_attrs;
+  char name_pattern[COL_NAME_LEN * 2 + 1];
+  char qual_pattern[COL_NAME_LEN * 2 + 1];
+  char tbl_buf[COL_NAME_LEN + 1];
+  char schem_buf[COL_NAME_LEN + 1];
+  char first_schem[COL_NAME_LEN + 1] = { '\0' };
+  int err = ER_FAILED;
+
+  /* an error left set on return is this lookup's own ODBC failure, nothing earlier */
+  er_clear ();
+
+  /* both are pattern-value arguments of SQLColumns, so both need their wildcards escaped */
+  if (cgw_escape_search_pattern (hdbc, name, name_pattern, sizeof (name_pattern)) < 0
+      || (qualifier != NULL && cgw_escape_search_pattern (hdbc, qualifier, qual_pattern, sizeof (qual_pattern)) < 0))
+    {
+      return ER_FAILED;
+    }
+
+  if (!SQL_SUCCEEDED (SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &hstmt)))
+    {
+      return ER_FAILED;
+    }
+
+  if (qual_is_catalog)
+    {
+      rc = SQLColumns (hstmt, (SQLCHAR *) (qualifier ? qual_pattern : NULL), qualifier ? SQL_NTS : 0,
+		       NULL, 0, (SQLCHAR *) name_pattern, SQL_NTS, NULL, 0);
+    }
+  else
+    {
+      rc = SQLColumns (hstmt, NULL, 0, (SQLCHAR *) (qualifier ? qual_pattern : NULL),
+		       qualifier ? SQL_NTS : 0, (SQLCHAR *) name_pattern, SQL_NTS, NULL, 0);
+    }
+
+  if (!SQL_SUCCEEDED (rc))
+    {
+      cgw_error_msg (hstmt, SQL_HANDLE_STMT, rc);
+      goto end;
+    }
+
+  while (SQL_SUCCEEDED (rc = SQLFetch (hstmt)))
+    {
+      /* SQLColumns result: 2 TABLE_SCHEM, 3 TABLE_NAME, 4 COLUMN_NAME, 5 DATA_TYPE,
+       * 7 COLUMN_SIZE, 9 DECIMAL_DIGITS.  The columns are read in ascending order: a
+       * driver only has to support out-of-order SQLGetData when it reports
+       * SQL_GD_ANY_ORDER. */
+      rc = SQLGetData (hstmt, 2, SQL_C_CHAR, schem_buf, sizeof (schem_buf), &ind);
+      if (!SQL_SUCCEEDED (rc))
+	{
+	  /* the owner cannot be verified, so a same-named table of another owner cannot
+	   * be told apart: give up rather than describe the wrong table */
+	  cgw_error_msg (hstmt, SQL_HANDLE_STMT, rc);
+	  goto end;
+	}
+      if (ind == SQL_NULL_DATA)
+	{
+	  schem_buf[0] = '\0';
+	}
+
+      if (!SQL_SUCCEEDED (SQLGetData (hstmt, 3, SQL_C_CHAR, tbl_buf, sizeof (tbl_buf), &ind)) || ind == SQL_NULL_DATA)
+	{
+	  goto end;
+	}
+
+      if (strcasecmp (tbl_buf, name) != 0)
+	{
+	  /* a driver that ignored the escape returned another table's columns */
+	  continue;
+	}
+
+      /* With a qualifier the search already covers one owner.  Without one, rows of a
+       * same-named table of another owner can arrive; they are absent from the "SELECT *"
+       * describe and would be served as invisible columns, so keep the first owner only. */
+      if (qualifier != NULL)
+	{
+	  if (schem_buf[0] != '\0' && strcasecmp (schem_buf, qualifier) != 0)
+	    {
+	      continue;
+	    }
+	}
+      else if (schem_buf[0] != '\0')
+	{
+	  if (first_schem[0] == '\0')
+	    {
+	      snprintf (first_schem, sizeof (first_schem), "%s", schem_buf);
+	    }
+	  else if (strcasecmp (schem_buf, first_schem) != 0)
+	    {
+	      continue;
+	    }
+	}
+
+      if (*count >= *alloced)
+	{
+	  int new_alloced = *alloced ? *alloced * 2 : 16;
+
+	  tmp_attrs = (T_CGW_SCHEMA_ATTR *) REALLOC (*attrs, sizeof (T_CGW_SCHEMA_ATTR) * new_alloced);
+	  if (tmp_attrs == NULL)
+	    {
+	      goto end;
+	    }
+	  *attrs = tmp_attrs;
+	  *alloced = new_alloced;
+	}
+
+      attr = &(*attrs)[*count];
+      memset (attr, 0, sizeof (T_CGW_SCHEMA_ATTR));
+
+      if (SQLGetData (hstmt, 4, SQL_C_CHAR, attr->attr_name, sizeof (attr->attr_name), &ind) < 0
+	  || ind == SQL_NULL_DATA)
+	{
+	  goto end;
+	}
+      data_type = 0;
+      SQLGetData (hstmt, 5, SQL_C_SSHORT, &data_type, 0, &ind);
+      col_size = 0;
+      SQLGetData (hstmt, 7, SQL_C_SLONG, &col_size, 0, &ind);
+      if (ind == SQL_NULL_DATA)
+	{
+	  col_size = 0;
+	}
+      scale = 0;
+      SQLGetData (hstmt, 9, SQL_C_SSHORT, &scale, 0, &ind);
+      if (ind == SQL_NULL_DATA)
+	{
+	  scale = 0;
+	}
+
+      attr->cci_type = cgw_odbc_type_to_cci_u_type ((SQLLEN) data_type, 0);
+      attr->precision = (int) col_size;
+      attr->scale = scale;
+      attr->charset = cgw_odbc_type_to_charset ((SQLLEN) data_type, 0);
+      attr->is_invisible = 1;	/* until proven visible */
+      attr->attr_order = *count + 1;
+      (*count)++;
+    }
+
+  if (rc != SQL_NO_DATA)
+    {
+      /* the loop ended on an error, not at the end of the result: whatever was collected
+       * is a partial column list, and serving it would report existing columns as unknown */
+      cgw_error_msg (hstmt, SQL_HANDLE_STMT, rc);
+      goto end;
+    }
+
+  err = NO_ERROR;
+
+end:
+  SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
+  return err;
+}
+
+/*
+ * cgw_schema_info_attribute () - remote table attribute list for CAS_FC_SCHEMA_INFO
+ *   return: 0 on success (ret_attrs malloc'd, caller owns), ER_FAILED otherwise - with the
+ *           remote's own error set when one of its calls failed
+ *   hdbc(in): connected ODBC handle
+ *   table_name(in): remote table name as referenced by the dblink query
+ *   ret_attrs(out): attribute rows, invisible columns included
+ *   ret_count(out): number of rows
+ *
+ * Note: the "SELECT *" prepare is the remote's own reading of the name, so it goes first: a
+ *   name the remote does not resolve is refused there, with the remote's error, before any
+ *   catalog function runs.  SQLColumns then returns the full column list (invisible
+ *   included - verified on MySQL Connector/ODBC, MariaDB Connector/ODBC and Oracle Instant
+ *   Client ODBC) but carries no visibility marker, so a column absent from the "SELECT *"
+ *   describe is invisible.  SQLColumns looks through one synonym only; on Oracle a longer
+ *   chain is resolved by Oracle itself and looked up once more.
+ */
+int
+cgw_schema_info_attribute (SQLHDBC hdbc, char *table_name, T_CGW_SCHEMA_ATTR ** ret_attrs, int *ret_count)
+{
+  SQLHSTMT hstmt = SQL_NULL_HSTMT;
+  SQLRETURN rc;
+  SQLSMALLINT num_cols = 0;
+  T_CGW_SCHEMA_ATTR *attrs = NULL;
+  T_ODBC_COL_INFO *star_cols = NULL;
+  char *sql = NULL;
+  int count = 0, alloced = 0, i, c, err = ER_FAILED;
+  size_t sql_len;
+  char folded_name[COL_NAME_LEN + 1];
+  char qualifier[COL_NAME_LEN + 1];
+  char resolved_owner[COL_NAME_LEN + 1];
+  char resolved_table[COL_NAME_LEN + 1];
+  char *lookup_name, *lookup_qualifier, *dot;
+  SQLUSMALLINT id_case = SQL_IC_MIXED;
+  bool qual_is_catalog, qual_derived = false;
+  bool remote_failed = false;	/* a call to the remote failed: its error is the reason */
+  int num_visible = 0;
+
+  *ret_attrs = NULL;
+  *ret_count = 0;
+
+  er_clear ();
+
+  if (table_name == NULL || table_name[0] == '\0')
+    {
+      return ER_FAILED;
+    }
+
+  /* 1. visible set: the "SELECT *" expansion described at prepare time */
+  sql_len = strlen (table_name) + 32;
+  sql = (char *) MALLOC (sql_len);
+  if (sql == NULL)
+    {
+      goto end;
+    }
+  /* WHERE 1=0: only the description is wanted, and a driver that describes on execute
+   * (cgw_get_num_cols ()) then runs it without producing a row */
+  snprintf (sql, sql_len, "SELECT * FROM %s WHERE 1=0", table_name);
+
+  /* SQL_SUCCEEDED (): a driver may report a state on the first statement handle of a
+   * connection, and SQL_SUCCESS_WITH_INFO still hands back a usable handle */
+  if (!SQL_SUCCEEDED (SQLAllocHandle (SQL_HANDLE_STMT, hdbc, &hstmt)))
+    {
+      goto end;
+    }
+
+  rc = SQLPrepare (hstmt, (SQLCHAR *) sql, SQL_NTS);
+  if (!SQL_SUCCEEDED (rc))
+    {
+      cgw_error_msg (hstmt, SQL_HANDLE_STMT, rc);
+      remote_failed = true;
+      goto end;
+    }
+
+  /* cgw_get_num_cols () rather than SQLNumResultCols () directly: a driver that fills
+   * the IRD only on execute needs the same execute retry the prepare path relies on */
+  if (cgw_get_num_cols (hstmt, &num_cols) < 0)
+    {
+      remote_failed = true;
+      goto end;
+    }
+  if (num_cols <= 0)
+    {
+      goto end;
+    }
+
+  star_cols = (T_ODBC_COL_INFO *) MALLOC (sizeof (T_ODBC_COL_INFO) * num_cols);
+  if (star_cols == NULL)
+    {
+      goto end;
+    }
+
+  for (c = 0; c < num_cols; c++)
+    {
+      if (cgw_get_col_info (hstmt, c + 1, &star_cols[c]) < 0)
+	{
+	  remote_failed = true;
+	  goto end;
+	}
+    }
+
+  /* close it before the next statement: a driver that streams the result (MySQL
+   * Connector/ODBC 8.0 with NO_CACHE=1) keeps the connection busy until then, and the
+   * next statement fails with "Commands out of sync" */
+  SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
+  hstmt = SQL_NULL_HSTMT;
+
+  /* 2. full column list, invisible included.
+   *
+   * An owner-qualified name arrives as one string ("scott.emp", built by
+   * pt_convert_dblink_select_query ()), but the catalog functions take the owner in
+   * their own argument: passing the whole thing as TableName looks for a table literally
+   * named "scott.emp" and matches nothing.  Split it, and leave the qualifier NULL when
+   * there is none - the driver then uses the connected schema/catalog. */
+  qualifier[0] = '\0';
+  lookup_qualifier = NULL;
+  lookup_name = table_name;
+
+  dot = strrchr (table_name, '.');
+  if (dot != NULL && dot != table_name && dot[1] != '\0' && (size_t) (dot - table_name) <= COL_NAME_LEN)
+    {
+      memcpy (qualifier, table_name, (size_t) (dot - table_name));
+      qualifier[dot - table_name] = '\0';
+      lookup_qualifier = qualifier;
+      lookup_name = dot + 1;
+    }
+
+  /* ODBC hands the owner to one of two arguments and the driver declares which */
+  qual_is_catalog = cgw_qualifier_is_catalog (hdbc);
+
+  if (lookup_qualifier == NULL && !qual_is_catalog)
+    {
+      /* Given no SchemaName, SQLColumns searches every schema and answers with several
+       * owners at once.  Search the session schema only - the one the remote resolves an
+       * unqualified name in.  A catalog-based driver needs none of this: a NULL
+       * CatalogName already restricts it to the connected database. */
+      if (cgw_get_driver_info (hdbc, SQL_USER_NAME, qualifier, (SQLSMALLINT) sizeof (qualifier)) == NO_ERROR
+	  && qualifier[0] != '\0')
+	{
+	  lookup_qualifier = qualifier;
+	  qual_derived = true;
+	}
+      else
+	{
+	  qualifier[0] = '\0';
+	}
+    }
+
+  /* SQLColumns is a catalog function: its arguments are literal values and there is no
+   * parser behind them to fold an unquoted identifier the way the remote folds it in a
+   * query.  Ask the driver how it stores one and do the same, so this lookup and the
+   * "SELECT *" prepare above resolve the very same table.  Oracle reports SQL_IC_UPPER,
+   * MySQL/MariaDB report SQL_IC_MIXED and are left alone. */
+  if (!SQL_SUCCEEDED (SQLGetInfo (hdbc, SQL_IDENTIFIER_CASE, &id_case, sizeof (id_case), NULL)))
+    {
+      id_case = SQL_IC_MIXED;
+    }
+
+  if ((id_case == SQL_IC_UPPER || id_case == SQL_IC_LOWER) && strlen (lookup_name) <= COL_NAME_LEN)
+    {
+      cgw_fold_identifier (folded_name, sizeof (folded_name), lookup_name, id_case);
+      lookup_name = folded_name;
+
+      if (lookup_qualifier != NULL)
+	{
+	  cgw_fold_identifier (qualifier, sizeof (qualifier), qualifier, id_case);
+	}
+    }
+
+  if (cgw_sqlcolumns_collect (hdbc, qual_is_catalog, lookup_qualifier, lookup_name, &attrs, &count, &alloced) < 0)
+    {
+      remote_failed = true;
+      goto end;
+    }
+
+  /* The remote resolves an unqualified name in the session schema first and, on Oracle,
+   * through a PUBLIC synonym last - so search in that order.  Only a qualifier derived
+   * here may be replaced: one the statement wrote is the owner the remote would use. */
+  if (count == 0 && qual_derived
+      && cgw_sqlcolumns_collect (hdbc, qual_is_catalog, "PUBLIC", lookup_name, &attrs, &count, &alloced) < 0)
+    {
+      remote_failed = true;
+      goto end;
+    }
+
+  /* The "SELECT *" above proves the name resolves, and SQLColumns looks through one synonym
+   * only: on Oracle a catalog miss is a longer synonym chain, so let Oracle name the table
+   * it reaches and look that up. */
+  if (count == 0 && cgw_get_dbms_type () == CAS_CGW_DBMS_ORACLE
+      && cgw_oracle_name_resolve (hdbc, table_name, resolved_owner, sizeof (resolved_owner), resolved_table,
+				  sizeof (resolved_table))
+      && cgw_sqlcolumns_collect (hdbc, qual_is_catalog, resolved_owner, resolved_table, &attrs, &count, &alloced) < 0)
+    {
+      remote_failed = true;
+      goto end;
+    }
+
+  if (count == 0)
+    {
+      /* the remote resolves this name to no table or view the catalog describes: let the
+       * caller decide */
+      goto end;
+    }
+
+  /* 3. a column of the "SELECT *" describe is visible, and typed from that describe */
+  for (c = 0; c < num_cols; c++)
+    {
+      for (i = 0; i < count; i++)
+	{
+	  if (strcasecmp (star_cols[c].col_name, attrs[i].attr_name) == 0)
+	    {
+	      cgw_schema_attr_set_type (&attrs[i], &star_cols[c]);
+	      attrs[i].is_invisible = 0;
+	      num_visible++;
+	      break;
+	    }
+	}
+    }
+
+  if (num_visible != num_cols)
+    {
+      /* a column the remote expands "*" to is not in the catalog's list: the two describe
+       * different tables, and serving this list would drop that column */
+      cas_log_write (0, false, "cgw_schema_info: %d of the %d \"SELECT *\" columns of %s are not in SQLColumns",
+		     num_cols - num_visible, num_cols, table_name);
+      goto end;
+    }
+
+  /* 4. invisible columns are absent from the describe above: type them from a
+   * describe of their own, so that every column carries the same metadata the
+   * legacy "SELECT *" prepare produced (the SQLColumns values drop the unsigned
+   * flag and the per-driver precision fixups) */
+  if (cgw_describe_invisible_attrs (hdbc, table_name, attrs, count) < 0)
+    {
+      /* SQLColumns metadata carries no unsigned flag and none of the per-driver precision
+       * fixups, so serving it would compile those columns with the wrong type.  Fail
+       * instead and let the client decide. */
+      remote_failed = (db_error_code () != 0);
+      goto end;
+    }
+
+  *ret_attrs = attrs;
+  *ret_count = count;
+  attrs = NULL;
+  err = 0;
+
+end:
+  if (err < 0 && !remote_failed)
+    {
+      /* not a failed call to the remote: a warning an earlier call left must not be
+       * reported as the reason (ux_cgw_schema_info () sends an error that is set) */
+      er_clear ();
+    }
+
+  if (err < 0)
+    {
+      /* every failure above ends the same way - the client cannot tell an invisible column
+       * from an unknown one and refuses the statement - and the reason is only knowable
+       * here.  One line per failed request, at compile time, so log it once for all of
+       * them instead of at one path out of twelve. */
+      cas_log_write (0, false, "cgw_schema_info: could not describe %s, the client cannot compile the statement",
+		     table_name);
+    }
+
+  if (hstmt != SQL_NULL_HSTMT)
+    {
+      SQLFreeHandle (SQL_HANDLE_STMT, hstmt);
+    }
+  FREE_MEM (sql);
+  FREE_MEM (star_cols);
+  FREE_MEM (attrs);
+  return err;
 }
 
 int
