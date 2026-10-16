@@ -1838,6 +1838,7 @@ dblink_dml_build_merge_sql (THREAD_ENTRY * thread_p, const char *table_name, con
   while (0)
 // *INDENT-ON*
 
+  /* c<n> is the name pt_dblink_merge_rename_bind gives the source columns in the clause text */
   DBLINK_MERGE_SQL_APPEND ("/* DBLINK MERGE */ MERGE INTO %s %s USING (SELECT ", table_name,
 			   merge->remote_target_alias);
   for (i = 0; i < merge->remote_num_binds; i++)

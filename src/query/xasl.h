@@ -494,7 +494,8 @@ struct merge_proc_node
   XASL_NODE *insert_xasl;	/* XASL for INSERT part */
   bool has_delete;		/* MERGE statement has DELETE */
   /* remote MERGE + local source sink fields (MERGE INTO remote USING local). Each source row is sent as
-   * MERGE INTO <table> <target alias> USING (SELECT ? AS c1, ...) <source alias> <remote_clause_text> */
+   * MERGE INTO <table> <target alias> USING (SELECT ? AS c1, ...) <source alias> <remote_clause_text>.
+   * Bound value n (0-based) is the USING column c<n + 1>. */
   REMOTE_DML_SINK sink;
   char *remote_target_alias;	/* the name the clauses qualify target columns with */
   char *remote_source_alias;	/* the name the clauses qualify source columns with, the one-row USING's alias */
@@ -503,7 +504,8 @@ struct merge_proc_node
   char **remote_bind_cast;	/* per column: type the placeholder is cast to, NULL for a bare "?" */
   int *remote_bind_char_len;	/* per column: CHAR precision for a gateway target, 0 otherwise */
   int remote_num_keys;		/* number of ON keys */
-  int *remote_key_pos;		/* per key: the USING column holding its source value */
+  int *remote_key_pos;		/* per key: the 0-based position of its source value, in the source row and
+				 * the bound values. The USING column is c<pos + 1>. */
 };
 
 typedef struct cte_proc_node CTE_PROC_NODE;

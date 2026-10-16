@@ -582,7 +582,7 @@ static int qexec_init_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * b
 static void qexec_destroy_upddel_ehash_files (THREAD_ENTRY * thread_p, XASL_NODE * buildlist);
 static int qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete, XASL_STATE * xasl_state);
 static int qexec_execute_delete (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
-static int qexec_collect_remote_insert_vals (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VALUE ** vals, int val_no);
+static int qexec_collect_remote_row_vals (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VALUE ** vals, int val_no);
 static int qexec_collect_remote_delete_key (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VALUE ** bindv,
 					    bool * skip_row);
 static int qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -12753,7 +12753,7 @@ qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE *
 }
 
 /*
- * qexec_collect_remote_insert_vals () - Collect the leading val_no (visible) column values for the
+ * qexec_collect_remote_row_vals () - Collect the leading val_no (visible) column values for the
  *   scan's current row into vals, for one row of the remote INSERT SELECT or MERGE sink.
  *   return: NO_ERROR on success, ER_FAILED if the scan row is malformed (asserted, should not happen)
  *   s_id(in)       : scan id positioned at the current row
@@ -12762,7 +12762,7 @@ qexec_get_attr_default (THREAD_ENTRY * thread_p, OR_ATTRIBUTE * attr, DB_VALUE *
  *   val_no(in)     : number of leading (visible) columns to collect
  */
 static int
-qexec_collect_remote_insert_vals (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VALUE ** vals, int val_no)
+qexec_collect_remote_row_vals (SCAN_ID * s_id, XASL_STATE * xasl_state, DB_VALUE ** vals, int val_no)
 {
   QPROC_DB_VALUE_LIST vallist;
   int k;
@@ -13038,7 +13038,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	      {
 		INSERT_PROC_NODE *insert = &xasl->proc.insert;
 
-		if (qexec_collect_remote_insert_vals (s_id, xasl_state, insert->vals, val_no) != NO_ERROR)
+		if (qexec_collect_remote_row_vals (s_id, xasl_state, insert->vals, val_no) != NO_ERROR)
 		  {
 		    goto exit_on_error;
 		  }
@@ -13108,7 +13108,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	      }
 	    case DBLINK_DML_MERGE:
 	      {
-		if (qexec_collect_remote_insert_vals (s_id, xasl_state, merge_bindv, val_no) != NO_ERROR)
+		if (qexec_collect_remote_row_vals (s_id, xasl_state, merge_bindv, val_no) != NO_ERROR)
 		  {
 		    goto exit_on_error;
 		  }

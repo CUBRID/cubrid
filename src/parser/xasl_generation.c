@@ -27922,7 +27922,9 @@ pt_dblink_merge_count_bind (PARSER_CONTEXT * parser, PT_NODE * value, bool is_ke
 }
 
 /* pt_dblink_merge_walk_binds callback over a copy of the clauses. The source column becomes the USING column
- * that carries it: L.x turns into L.c<n>. The position of a key is kept too. */
+ * that carries it: L.x turns into L.c<n>. The server names the USING columns the same way
+ * (dblink_dml_build_merge_sql). The position of a key is kept too, 0-based, so key k is the USING column
+ * c<key_pos[k] + 1>. */
 static void
 pt_dblink_merge_rename_bind (PARSER_CONTEXT * parser, PT_NODE * value, bool is_key, void *arg)
 {
@@ -28361,6 +28363,7 @@ pt_to_merge_xasl_remote_source (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
+  /* This asks the remote for its key column types, so XASL generation makes one round trip to the remote */
   if (pt_dblink_merge_check_key_types (parser, statement, src_query, server_node, merge) != NO_ERROR)
     {
       return NULL;
