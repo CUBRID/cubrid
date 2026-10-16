@@ -3110,8 +3110,9 @@ pt_set_derived_host_variable (PARSER_CONTEXT * parser, int index, const DB_VALUE
 
 /*
  * pt_host_var_is_context_typed () - CBRD-27583: whether a position's expected domain is one the client casts the
- *   value into before it sends it (a context-typed position). An ENUM domain (CUBRIDSUS-9007) and the collation
- *   axis's ENFORCE domain convert no value's type: such a position is value-typed, as is one with no domain.
+ *   value into before it sends it (a context-typed position). An ENUM domain (CUBRIDSUS-9007) converts no value and
+ *   the collation axis's ENFORCE domain converts only a string value (pt_collation_rule_cast): such a position is
+ *   value-typed, as is one with no domain.
  */
 bool
 pt_host_var_is_context_typed (const TP_DOMAIN * expected)

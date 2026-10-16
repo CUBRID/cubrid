@@ -4708,10 +4708,10 @@ pt_type_bind_by_comparison (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * par
 
 /*
  * pt_collation_rule_cast () - CBRD-27583 (D-30): a value-typed string bind of a bind type signature coerced into
- *   another collation (pt_coerce_node_collation: the common collation of its operation) takes it by a rule cast - its
- *   node targets the value's type in that collation, a derived position the client fills - as develop's ENFORCE
- *   domain converted the value at the bind. Returns false when this is not such a bind: the caller coerces it as
- *   before.
+ *   another collation or string type (pt_coerce_node_collation: the common collation of its operation) takes it by a
+ *   rule cast - its node targets the expected string type (else the value's) in that collation, a derived position
+ *   the client fills - as develop's ENFORCE domain converted the value at the bind. Returns false when this is not
+ *   such a bind: the caller coerces it as before.
  */
 static bool
 pt_collation_rule_cast (PARSER_CONTEXT * parser, PT_NODE * hv, const int coll_id, const INTL_CODESET codeset)
@@ -4724,7 +4724,13 @@ pt_collation_rule_cast (PARSER_CONTEXT * parser, PT_NODE * hv, const int coll_id
       return false;
     }
   const TP_DOMAIN *value = pt_host_var_value_domain (parser, hv->info.host_var.index);
-  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (value)) || value->collation_id == coll_id)
+  /* develop's bind gave a CHAR value an expected VARCHAR's type even in its own collation, and kept a VARCHAR value */
+  DB_TYPE type = TP_DOMAIN_TYPE (value);
+  if (type != DB_TYPE_VARCHAR && hv->expected_domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (hv->expected_domain)))
+    {
+      type = TP_DOMAIN_TYPE (hv->expected_domain);
+    }
+  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (value)) || (value->collation_id == coll_id && TP_DOMAIN_TYPE (value) == type))
     {
       return false;
     }
@@ -4734,7 +4740,7 @@ pt_collation_rule_cast (PARSER_CONTEXT * parser, PT_NODE * hv, const int coll_id
       return true;
     }
   /* the type's default precision: the signature carries no string precision */
-  TP_DOMAIN *target = tp_domain_copy (tp_domain_resolve_default (TP_DOMAIN_TYPE (value)), false);
+  TP_DOMAIN *target = tp_domain_copy (tp_domain_resolve_default (type), false);
   if (target == NULL)
     {
       return false;
