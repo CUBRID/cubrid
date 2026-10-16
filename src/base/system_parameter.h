@@ -561,8 +561,11 @@ enum param_id
   PRM_ID_COST_EFFECTIVE_CACHE_PAGES,
   PRM_ID_COST_HEAP_FETCH_PER_OID,
 
+  /* eager receive: the transaction thread waits on its socket for the next request */
+  PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS,
+
   /* change PRM_LAST_ID when adding new system parameters */
-  PRM_LAST_ID = PRM_ID_COST_HEAP_FETCH_PER_OID
+  PRM_LAST_ID = PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS
 };
 typedef enum param_id PARAM_ID;
 

@@ -204,6 +204,9 @@ static int css_test_for_client_errors (CSS_CONN_ENTRY * conn, unsigned int eid);
 static bool css_check_ha_log_applier_done (void);
 static bool css_check_ha_log_applier_working (void);
 
+static void css_run_one_request (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+static void css_eager_receive_loop (THREAD_ENTRY & thread_ref, CSS_CONN_ENTRY & conn_ref);
+
 static void css_stop_non_log_writer (THREAD_ENTRY & thread_ref, bool &, THREAD_ENTRY & stopper_thread_ref);
 static void css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
 static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
@@ -2087,29 +2090,11 @@ css_push_external_task (CSS_CONN_ENTRY *conn, cubthread::entry_task *task)
 void
 css_server_task::execute (context_type &thread_ref)
 {
-  session_state *session_p;
+  /* run the request this task was pushed for */
+  css_run_one_request (thread_ref, m_conn);
 
-  thread_ref.conn_entry = &m_conn;
-  session_p = thread_ref.conn_entry->session_p;
-
-  m_conn.start_request ();
-
-  if (session_p != NULL)
-    {
-      thread_ref.private_lru_index = session_get_private_lru_idx (session_p);
-      pgbuf_thread_variables_init (&thread_ref);
-    }
-  else
-    {
-      assert (thread_ref.private_lru_index == -1);
-    }
-
-  thread_ref.m_status = cubthread::entry::status::TS_RUN;
-
-  // TODO: we lock tran_index_lock because css_internal_request_handler expects it to be locked. however, I am not
-  //       convinced we really need this
-  pthread_mutex_lock (&thread_ref.tran_index_lock);
-  (void) css_internal_request_handler (thread_ref, m_conn);
+  /* eager receive: run the next requests of this connection before giving the thread back */
+  css_eager_receive_loop (thread_ref, m_conn);
 
   thread_ref.conn_entry = NULL;
   thread_ref.m_status = cubthread::entry::status::TS_FREE;
@@ -2149,6 +2134,112 @@ css_server_external_task::execute (context_type &thread_ref)
 
   thread_ref.conn_entry = NULL;
   thread_ref.m_status = cubthread::entry::status::TS_FREE;
+}
+
+/*
+ * css_run_one_request() - put the thread in the state a task starts in, then
+ *                         run one request on this connection
+ *   return: void
+ *   thread_ref(in):
+ *   conn_ref(in):
+ */
+static void
+css_run_one_request (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
+{
+  session_state *session_p;
+
+  thread_ref.conn_entry = &conn_ref;
+  session_p = conn_ref.session_p;
+
+  conn_ref.start_request ();
+
+  if (session_p != NULL)
+    {
+      thread_ref.private_lru_index = session_get_private_lru_idx (session_p);
+      pgbuf_thread_variables_init (&thread_ref);
+    }
+  else
+    {
+      assert (thread_ref.private_lru_index == -1);
+    }
+
+  thread_ref.m_status = cubthread::entry::status::TS_RUN;
+
+  // TODO: we lock tran_index_lock because css_internal_request_handler expects it to be locked. however, I am not
+  //       convinced we really need this
+  pthread_mutex_lock (&thread_ref.tran_index_lock);
+  (void) css_internal_request_handler (thread_ref, conn_ref);
+}
+
+/*
+ * css_eager_receive_loop() - wait on this connection's socket for the next
+ *                            request and run it on this thread
+ *   return: void
+ *   thread_ref(in):
+ *   conn_ref(in):
+ *
+ * Note: 1. Stop on shutdown or when this connection's core has queued work.
+ *       2. Wait up to the window through worker::eager_poll_and_receive ().
+ *       3. Run what came in, resetting the thread before each request.
+ *       4. Call worker::eager_finish (), then wait again unless step 2 said to stop.
+ *       worker::must_defer_close_for_eager_receiver () keeps the connection open meanwhile.
+ */
+static void
+css_eager_receive_loop (THREAD_ENTRY &thread_ref, CSS_CONN_ENTRY &conn_ref)
+{
+  int window_ms, received, i;
+  bool keep_waiting, save_shutdown;
+  cubconn::connection::context *claimed;
+
+  window_ms = prm_get_integer_value (PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS);
+  if (window_ms <= 0 || css_Server_request_worker_pool == NULL)
+    {
+      return;
+    }
+
+  for (;;)
+    {
+      /* STEP 1. Stop on shutdown or when this connection's core has queued work. */
+      if (thread_ref.shutdown)
+	{
+	  return;
+	}
+      if (css_Server_request_worker_pool->has_queued_task_on_core (static_cast<size_t> (conn_ref.idx)))
+	{
+	  /* work waiting on this connection's core outranks this thread's wait */
+	  return;
+	}
+
+      /* STEP 2. Wait up to the window through worker::eager_poll_and_receive (). */
+      keep_waiting =
+	cubconn::connection::worker::eager_poll_and_receive (conn_ref, &thread_ref, window_ms, received, claimed);
+
+      /* STEP 3. Run what came in, resetting the thread before each request.
+       * The requests run before the loop decides to wait again, since each one owes a start_request (). */
+      for (i = 0; i < received; i++)
+	{
+	  /* recycle_context () clears entry::shutdown; restore it only if it was set,
+	   * as stop_execution () may raise it meanwhile */
+	  save_shutdown = thread_ref.shutdown;
+	  css_Server_request_worker_pool->get_entry_manager ().recycle_context (thread_ref);
+	  if (save_shutdown)
+	    {
+	      thread_ref.shutdown = true;
+	    }
+
+	  css_run_one_request (thread_ref, conn_ref);
+	}
+
+      /* STEP 4. Call worker::eager_finish (), then wait again unless step 2 said to stop. */
+      if (received > 0)
+	{
+	  cubconn::connection::worker::eager_finish (claimed);
+	}
+      if (!keep_waiting)
+	{
+	  return;
+	}
+    }
 }
 
 //

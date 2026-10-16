@@ -827,6 +827,9 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_COST_EFFECTIVE_CACHE_PAGES "cost_effective_cache_pages"
 #define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
 
+/* eager receive: the transaction thread waits on its socket for the next request */
+#define PRM_NAME_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS "eager_receive_window_in_msecs"
+
 // #endregion
 
 /*
@@ -5665,6 +5668,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 5}},
    {false, {.i = 100000}},
    {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS,
+   PRM_NAME_CSS_EAGER_RECEIVE_WINDOW_IN_MSECS,
+   (PRM_FOR_SERVER),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 2}},
+   {false, {.i = 2}},
+   {false, {.i = 50}},
+   {false, {.i = 0}},		/* 0 disables */
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

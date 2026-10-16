@@ -31,6 +31,7 @@
 #include "buffer.hpp"
 #include "span.hpp"
 
+#include <atomic>
 #include <condition_variable>
 
 namespace cubconn
@@ -172,6 +173,21 @@ namespace cubconn::connection
       /* if received command packet, task will be pushed into worker pool */
       /* when data packet is completely received. */
       bool m_command;
+
+      /* eager receiver: the transaction thread that waits on this socket for the next request */
+
+      /* true while the worker or the eager receiver receives; set under cmutex, cleared without it */
+      std::atomic<bool> m_recv_busy { false };
+
+      /* true when the worker dropped an EPOLLIN edge while the eager receiver held the socket; under cmutex */
+      bool m_missed_edge { false };
+
+      /* eager receivers that have not yet run what they received; raised under cmutex, lowered without it */
+      std::atomic<int> m_eager_running { 0 };
+
+      /* true while eager_drain () counts requests in m_eager_counted instead of pushing tasks; under rmutex */
+      bool m_eager_draining { false };
+      int m_eager_counted { 0 };
     } m_recv;
 
     /* --------------------------------------------------------------------------- */
