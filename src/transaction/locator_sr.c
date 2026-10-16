@@ -4978,6 +4978,16 @@ locator_finalize_oos_record (THREAD_ENTRY *thread_p, const OID *class_oid, RECDE
     }
   return heap_oos_finalize_record (thread_p, class_oid, *record, pending);
 }
+
+#if defined (CUBRID_UNIT_TEST_ENABLED)
+int
+locator_test_finalize_oos_record (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES **record,
+                                bool from_copyarea, heap_pending_record *pending,
+                                heap_pending_record *received, RECDES *converted)
+{
+  return locator_finalize_oos_record (thread_p, class_oid, record, from_copyarea, pending, received, converted);
+}
+#endif
 /* *INDENT-ON* */
 
 /*
