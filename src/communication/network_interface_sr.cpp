@@ -4489,10 +4489,55 @@ sboot_notify_ha_log_applier_state (THREAD_ENTRY *thread_p, unsigned int rid, cha
  *
  * NOTE:
  */
+/*
+ * event_log_update_statistics - log the progress of UPDATE STATISTICS ON ALL CLASSES to event log file
+ *
+ * return:
+ *
+ *   thread_p(in):
+ *   class_name(in):
+ *   seq(in): 1-based position of the class in the run
+ *   total(in): number of classes in the run
+ *   elapsed_ms(in): time spent on the run before this class
+ *   class_us(in): time spent on this class, or -1 when it is about to start
+ *   error(in): result of this class
+ */
+static void
+event_log_update_statistics (THREAD_ENTRY *thread_p, const char *class_name, int seq, int total, int elapsed_ms,
+			     INT64 class_us, int error)
+{
+  FILE *log_fp;
+  int indent = 2;
+
+  log_fp = event_log_start (thread_p, "UPDATE_STATISTICS");
+  if (log_fp == NULL)
+    {
+      return;
+    }
+
+  event_log_print_client_info (LOG_FIND_THREAD_TRAN_INDEX (thread_p), indent);
+  fprintf (log_fp, "%*cclass: %s\n", indent, ' ', class_name ? class_name : "*UNKNOWN-CLASS*");
+  if (class_us < 0)
+    {
+      fprintf (log_fp, "%*cprogress: started %d/%d, elapsed: %.3f sec\n\n", indent, ' ', seq, total,
+	       elapsed_ms / 1000.0);
+    }
+  else
+    {
+      fprintf (log_fp, "%*cprogress: finished %d/%d, error: %d, time: %.3f sec, elapsed: %.3f sec\n\n", indent, ' ',
+	       seq, total, error, class_us / 1000000.0, elapsed_ms / 1000.0 + class_us / 1000000.0);
+    }
+
+  event_log_end (thread_p);
+}
+
 void
 sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error, with_fullscan;
+  int progress_seq, progress_total, progress_elapsed_ms;
+  TSC_TICKS start_tick, end_tick;
+  char *class_name = NULL;
   OID classoid;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -4512,10 +4557,10 @@ sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
   if (class_attr_ndv.attr_cnt < 0
       || (INT64) OR_INT_SIZE + (INT64) sizeof (ATTR_NDV) * ((INT64) class_attr_ndv.attr_cnt + 1)
-      + OR_OID_SIZE + OR_INT_SIZE > (INT64) reqlen)
+      + OR_OID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * 3) > (INT64) reqlen)
     {
       /* the body must fit in the received request: attr_cnt + 1 (id, ndv) entries followed by the
-       * class OID and the fullscan flag (the sender sizes the request with sizeof (ATTR_NDV) per
+       * class OID, the fullscan flag and the progress (seq, total, elapsed) (the sender sizes the request with sizeof (ATTR_NDV) per
        * entry, an upper bound of the wire cost). Also rejects a corrupt/hostile attr_cnt whose
        * entries could not possibly fit -- prevents unpacking past the request buffer and absurd
        * allocations below. */
@@ -4542,10 +4587,39 @@ sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
   class_attr_ndv.total_rows = class_attr_ndv.attr_ndv[class_attr_ndv.attr_cnt].ndv;
   ptr = or_unpack_oid (ptr, &classoid);
   ptr = or_unpack_int (ptr, &with_fullscan);
+  ptr = or_unpack_int (ptr, &progress_seq);
+  ptr = or_unpack_int (ptr, &progress_total);
+  ptr = or_unpack_int (ptr, &progress_elapsed_ms);
+
+  if (progress_seq > 0)
+    {
+      /* UPDATE STATISTICS ON ALL CLASSES: keep the progress where it can be followed regardless of error_log_level */
+      if (heap_get_class_name (thread_p, &classoid, &class_name) != NO_ERROR)
+	{
+	  /* the name is only for logging; let xstats_update_statistics () report the real problem */
+	  er_clear ();
+	  class_name = NULL;
+	}
+      event_log_update_statistics (thread_p, class_name, progress_seq, progress_total, progress_elapsed_ms, -1,
+				   NO_ERROR);
+      tsc_getticks (&start_tick);
+    }
 
   error =
 	  xstats_update_statistics (thread_p, &classoid, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING),
 				    &class_attr_ndv);
+
+  if (progress_seq > 0)
+    {
+      tsc_getticks (&end_tick);
+      event_log_update_statistics (thread_p, class_name, progress_seq, progress_total, progress_elapsed_ms,
+				   (INT64) tsc_elapsed_utime (end_tick, start_tick), error);
+      if (class_name != NULL)
+	{
+	  free_and_init (class_name);
+	}
+    }
+
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);

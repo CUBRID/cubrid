@@ -29,6 +29,7 @@
 #include <assert.h>
 
 #include <algorithm>
+#include <chrono>
 
 #include "porting.h"
 #include "network.h"
@@ -6032,11 +6033,16 @@ histogram_build_multi_by_reservoir_request (OID * class_oid, int attr_cnt, const
  *
  *   classoid(in):
  *   with_fullscan(in):
+ *   provided_ndv(in):
+ *   progress_seq(in): 1-based position of this class in an UPDATE STATISTICS ON ALL CLASSES run (0 if none)
+ *   progress_total(in): number of classes in that run
+ *   progress_elapsed_ms(in): time spent on that run before this class
  *
- * NOTE:
+ * NOTE: when progress_seq > 0 the server records the progress to the event log.
  */
 int
-stats_update_statistics (MOP classop, int with_fullscan, CLASS_ATTR_NDV * provided_ndv)
+stats_update_statistics (MOP classop, int with_fullscan, CLASS_ATTR_NDV * provided_ndv, int progress_seq,
+			 int progress_total, int progress_elapsed_ms)
 {
   /* provided_ndv (optional): per-column NDV already computed elsewhere (the histogram full scan).
    * When present the server reuses it and skips its own NDV scan; otherwise an empty placeholder
@@ -6069,7 +6075,8 @@ stats_update_statistics (MOP classop, int with_fullscan, CLASS_ATTR_NDV * provid
   class_attr_ndv.attr_ndv[provided_cnt].ndv = prov_rows;
   class_attr_ndv.total_rows = prov_rows;
 
-  request_size = OR_INT_SIZE + (sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1)) + OR_INT_SIZE + OR_OID_SIZE;
+  request_size = OR_INT_SIZE + (sizeof (ATTR_NDV) * (class_attr_ndv.attr_cnt + 1)) + OR_INT_SIZE + OR_OID_SIZE
+    + (OR_INT_SIZE * 3);
   request = (char *) malloc (request_size);
   if (request == NULL)
     {
@@ -6086,6 +6093,9 @@ stats_update_statistics (MOP classop, int with_fullscan, CLASS_ATTR_NDV * provid
     }
   ptr = or_pack_oid (ptr, WS_OID (classop));
   ptr = or_pack_int (ptr, with_fullscan);
+  ptr = or_pack_int (ptr, progress_seq);
+  ptr = or_pack_int (ptr, progress_total);
+  ptr = or_pack_int (ptr, progress_elapsed_ms);
 
   reply = OR_ALIGNED_BUF_START (a_reply);
 
@@ -6171,6 +6181,7 @@ stats_update_all_statistics (int with_fullscan, int print_summary)
   MOP class_mop = NULL;
   LIST_MOPS *lmops = NULL;
   int n_tables = 0, n_cols = 0;
+  std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now ();
 
   lmops = locator_get_all_class_mops (DB_FETCH_READ, is_top_level_class);
   if (lmops == NULL)
@@ -6183,7 +6194,12 @@ stats_update_all_statistics (int with_fullscan, int print_summary)
       class_mop = lmops->mops[i];
       if (locator_fetch_class (class_mop, DB_FETCH_READ) != NULL)
 	{
-	  error = stats_update_statistics (class_mop, with_fullscan);
+	  /* the progress (i + 1 of num, time spent so far) goes to the server event log */
+	  long long elapsed_ms = std::chrono::duration_cast < std::chrono::milliseconds >
+	    (std::chrono::steady_clock::now () - start_time).count ();
+
+	  error = stats_update_statistics (class_mop, with_fullscan, NULL, i + 1, lmops->num,
+					   (int) std::min (elapsed_ms, (long long) INT_MAX));
 	  if (error != NO_ERROR)
 	    {
 	      break;
