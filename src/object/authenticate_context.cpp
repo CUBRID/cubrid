@@ -692,7 +692,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 		  sm_bump_local_schema_version ();
 
 		  /* the user trigger cache holds the triggers owned by the previous user */
-		  if (error == NO_ERROR && is_user_changed)
+		  if (is_user_changed)
 		    {
 		      tr_invalidate_user_cache ();
 		    }
