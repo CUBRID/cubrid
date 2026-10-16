@@ -370,6 +370,8 @@ extern int expr_scan_pred_root_shape (const void *compiled, int *n_kids);
  * type.  fast_type DB_TYPE_NUMERIC: a NUMERIC column against an exact-numeric constant, compared
  * exactly whatever the two scales (the generic leaf, or a term with an integer constant) */
 extern bool expr_scan_pred_kid_raw_info (const void *compiled, int kid, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
+/* an interpreted filter's AND chain as raw NUMERIC leaves: the count, or -1 */
+extern int expr_pred_raw_leaves (const void *pred_expr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap);
 /* the constants such a NUMERIC comparison takes: SHORT, INTEGER, NUMERIC, a BIGINT of 15 digits */
 extern bool expr_numeric_cmp_const_ok (const DB_VALUE * k);
 /* the filter's prologues for this execution (the per-row entry does the same before its first row) */

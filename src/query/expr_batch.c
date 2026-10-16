@@ -798,6 +798,110 @@ eb_slot_lookup (const EB_BUILD * b, const DB_VALUE * slot, ATTR_ID * attrid, HEA
 /* ---------------------------------------------------------------------------------------- */
 /* the filter: the AND chain's terms in order, raw where "column op constant" */
 
+/* A raw leaf for one filter term: *out the leaf's index, or -1 when the term is not one the batch runs as a leaf
+ * (the compiled filter runs it per row).  NO_ERROR, or an allocation error. */
+static int
+eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
+{
+  EXPR_BATCH_PLAN *plan = b->plan;
+  EB_LEAF *leaf;
+  int etype, vec, rel_op, cap;
+
+  *out = -1;
+  if (!eb_etype_of (info->fast_type, &etype) || info->col_regu->value.attr_descr.cache_attrinfo == NULL
+      || (etype == EB_NUM && info->k_value != NULL && !DB_IS_NULL (info->k_value)
+	  && !expr_numeric_cmp_const_ok (info->k_value)))
+    {
+      return NO_ERROR;
+    }
+  vec = eb_new_col_vec (b, info->col_regu->value.attr_descr.cache_attrinfo, info->col_regu->value.attr_descr.id);
+  if (vec < 0)
+    {
+      /* the column is not one the batch decodes: the term can still run per row */
+      b->why_not = NULL;
+      return NO_ERROR;
+    }
+  if (plan->vecs[vec].dbtype != info->fast_type)
+    {
+      return NO_ERROR;
+    }
+  cap = b->cap_leaves;
+  if (eb_grow ((void **) &plan->leaves, &cap, plan->n_leaves, sizeof (EB_LEAF)) != NO_ERROR
+      || eb_grow ((void **) &plan->lsrc, &b->cap_leaves, plan->n_leaves, sizeof (EB_LEAF_SRC)) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  leaf = &plan->leaves[plan->n_leaves];
+  memset (leaf, 0, sizeof (*leaf));
+  leaf->vec = vec;
+  leaf->col = eb_col_of_vec (plan, vec);
+  leaf->etype = (unsigned char) etype;
+  leaf->k_type = (unsigned char) info->fast_type;
+  plan->lsrc[plan->n_leaves].value = info->k_value;
+  plan->lsrc[plan->n_leaves].cell = info->k_cell;
+  rel_op = info->rel_op;
+  if (!info->col_is_lhs)
+    {
+      /* "constant op column" reads as "column op' constant" */
+      switch (info->rel_op)
+	{
+	case R_LT:
+	  rel_op = R_GT;
+	  break;
+	case R_LE:
+	  rel_op = R_GE;
+	  break;
+	case R_GT:
+	  rel_op = R_LT;
+	  break;
+	case R_GE:
+	  rel_op = R_LE;
+	  break;
+	default:
+	  break;
+	}
+    }
+  leaf->rel_op = (unsigned char) rel_op;
+  plan->n_raw_kids++;
+  *out = plan->n_leaves++;
+  return NO_ERROR;
+}
+
+/* an interpreted filter: every term of its AND chain a raw leaf, or no batch (nothing runs its terms per row) */
+static int
+eb_build_filter_interpreted (EB_BUILD * b)
+{
+  EXPR_BATCH_PLAN *plan = b->plan;
+  EXPR_RAW_LEAF_INFO info[32];
+  int n, i, leaf;
+
+  n = expr_pred_raw_leaves (b->in->pred_expr, b->in->vd, info, (int) DIM (info));
+  if (n <= 0)
+    {
+      return eb_decline (b, "the data filter is interpreted");
+    }
+  plan->kid_leaf = (int *) malloc (sizeof (int) * n);
+  if (plan->kid_leaf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * n);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  plan->n_kids = n;
+  for (i = 0; i < n; i++)
+    {
+      if (eb_add_raw_leaf (b, &info[i], &leaf) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      if (leaf < 0)
+	{
+	  return eb_decline (b, "the data filter is interpreted");
+	}
+      plan->kid_leaf[i] = leaf;
+    }
+  return NO_ERROR;
+}
+
 static int
 eb_build_filter (EB_BUILD * b)
 {
@@ -811,7 +915,7 @@ eb_build_filter (EB_BUILD * b)
     }
   if (b->in->scan_pred_compiled == NULL)
     {
-      return eb_decline (b, "the data filter is interpreted");
+      return eb_build_filter_interpreted (b);
     }
   shape = expr_scan_pred_root_shape (b->in->scan_pred_compiled, &n_kids);
   if (shape < 0)
@@ -829,71 +933,21 @@ eb_build_filter (EB_BUILD * b)
   for (i = 0; i < n_kids; i++)
     {
       EXPR_RAW_LEAF_INFO info;
-      EB_LEAF *leaf;
-      int etype, vec, rel_op, cap;
+      int leaf = -1;
 
-      plan->kid_leaf[i] = -1;
-      if (!expr_scan_pred_kid_raw_info (b->in->scan_pred_compiled, i, b->in->vd, &info)
-	  || !eb_etype_of (info.fast_type, &etype) || info.col_regu->value.attr_descr.cache_attrinfo == NULL
-	  || (etype == EB_NUM && info.k_value != NULL && !DB_IS_NULL (info.k_value)
-	      && !expr_numeric_cmp_const_ok (info.k_value)))
+      if (expr_scan_pred_kid_raw_info (b->in->scan_pred_compiled, i, b->in->vd, &info))
+	{
+	  if (eb_add_raw_leaf (b, &info, &leaf) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      plan->kid_leaf[i] = (leaf >= 0) ? leaf : -1;
+      if (leaf < 0)
 	{
 	  /* evaluated per surviving row by the compiled filter itself */
 	  plan->n_row_kids++;
-	  continue;
 	}
-      vec = eb_new_col_vec (b, info.col_regu->value.attr_descr.cache_attrinfo, info.col_regu->value.attr_descr.id);
-      if (vec < 0)
-	{
-	  /* the column is not one the batch decodes: the term can still run per row */
-	  b->why_not = NULL;
-	  plan->n_row_kids++;
-	  continue;
-	}
-      if (plan->vecs[vec].dbtype != info.fast_type)
-	{
-	  plan->n_row_kids++;
-	  continue;
-	}
-      cap = b->cap_leaves;
-      if (eb_grow ((void **) &plan->leaves, &cap, plan->n_leaves, sizeof (EB_LEAF)) != NO_ERROR
-	  || eb_grow ((void **) &plan->lsrc, &b->cap_leaves, plan->n_leaves, sizeof (EB_LEAF_SRC)) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-      leaf = &plan->leaves[plan->n_leaves];
-      memset (leaf, 0, sizeof (*leaf));
-      leaf->vec = vec;
-      leaf->col = eb_col_of_vec (plan, vec);
-      leaf->etype = (unsigned char) etype;
-      leaf->k_type = (unsigned char) info.fast_type;
-      plan->lsrc[plan->n_leaves].value = info.k_value;
-      plan->lsrc[plan->n_leaves].cell = info.k_cell;
-      rel_op = info.rel_op;
-      if (!info.col_is_lhs)
-	{
-	  /* "constant op column" reads as "column op' constant" */
-	  switch (info.rel_op)
-	    {
-	    case R_LT:
-	      rel_op = R_GT;
-	      break;
-	    case R_LE:
-	      rel_op = R_GE;
-	      break;
-	    case R_GT:
-	      rel_op = R_LT;
-	      break;
-	    case R_GE:
-	      rel_op = R_LE;
-	      break;
-	    default:
-	      break;
-	    }
-	}
-      leaf->rel_op = (unsigned char) rel_op;
-      plan->kid_leaf[i] = plan->n_leaves++;
-      plan->n_raw_kids++;
     }
   if (plan->n_row_kids > 0)
     {

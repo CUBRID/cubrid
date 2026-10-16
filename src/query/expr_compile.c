@@ -3490,6 +3490,7 @@ expr_scan_pred_root_shape (const void *compiled, int *n_kids)
 
 static const DB_VALUE *expr_raw_pos_value (const REGU_VARIABLE * k, const val_descr * vd);
 static bool expr_scan_pred_numeric_term_info (const EXPR_PRED * pred, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
+static bool expr_pred_term_numeric_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
 
 bool
 expr_scan_pred_kid_raw_info (const void *compiled, int kid, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
@@ -3628,7 +3629,13 @@ expr_raw_pos_value (const REGU_VARIABLE * k, const val_descr * vd)
 static bool
 expr_scan_pred_numeric_term_info (const EXPR_PRED * pred, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
 {
-  const PRED_EXPR *pr = (const PRED_EXPR *) pred->fetch_src;
+  return expr_pred_term_numeric_info ((const PRED_EXPR *) pred->fetch_src, vd, out);
+}
+
+/* the same for a term of an interpreted filter (a PRED_EXPR the compiler left alone) */
+static bool
+expr_pred_term_numeric_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
+{
   const COMP_EVAL_TERM *et;
   const REGU_VARIABLE *col, *k;
   const DB_VALUE *kv = NULL;
@@ -3693,6 +3700,41 @@ expr_scan_pred_numeric_term_info (const EXPR_PRED * pred, const val_descr * vd, 
   out->rel_op = et->rel_op;
   out->k_value = kv;
   return true;
+}
+
+/*
+ * expr_pred_raw_leaves () - an interpreted data filter as raw leaves
+ *   return: the terms of its AND chain (left to right, the order eval_pred () visits them), or -1 when a term
+ *	     is not "NUMERIC column op exact-numeric constant" or the chain is longer than cap
+ *
+ * A filter whose terms all compare a NUMERIC column with an integer constant has nothing the compiler takes
+ * (eval_pred_comp0 () coerces the constant per row), so it stays interpreted; a page batch runs such terms as
+ * raw leaves all the same (expr_scan_pred_numeric_term_info ()).
+ */
+int
+expr_pred_raw_leaves (const void *pred_expr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap)
+{
+  const PRED_EXPR *terms[64];
+  int n, i;
+
+  if (pred_expr == NULL)
+    {
+      return -1;
+    }
+  n = expr_scan_pred_chain_collect ((const PRED_EXPR *) pred_expr, B_AND, terms, 0, (int) DIM (terms));
+  if (n <= 0 || n > cap)
+    {
+      return -1;
+    }
+  for (i = 0; i < n; i++)
+    {
+      memset (&out[i], 0, sizeof (out[i]));
+      if (!expr_pred_term_numeric_info (terms[i], vd, &out[i]))
+	{
+	  return -1;
+	}
+    }
+  return n;
 }
 
 /* the constants a NUMERIC column compares with exactly, whichever of the two forms the term took */

@@ -114,6 +114,7 @@ struct expr_batch_inputs
   bool pred_has_regu_list;	/* the filter arms its cache per row (eval_data_filter ()) */
   const struct access_spec_node *spec;	/* the scan's spec: its regu lists map value-list slots to attributes */
   void *scan_pred_compiled;	/* PRED_EXPR.scan_prog when scan_prog_state == 1, else NULL */
+  const void *pred_expr;	/* the filter itself (PRED_EXPR): read when it stayed interpreted */
   bool has_filter;		/* the scan has a data filter at all */
     cubxasl::aggregate_list_node * agg_list;	/* the BUILDVALUE list (operand program state settled), or
 						 * NULL: a projection, which takes the rows the filter keeps */

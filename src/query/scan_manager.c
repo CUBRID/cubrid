@@ -8148,6 +8148,7 @@ scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_T
     ? hsidp->scan_pred.pred_expr->scan_prog : NULL;
   in.agg_list = agg_list;
   in.gby = gby;
+  in.pred_expr = hsidp->scan_pred.pred_expr;
   in.vd = vd;
   in.is_peeking = true;		/* the batch holds the page: its records are peeked whatever the scan's own mode */
 
