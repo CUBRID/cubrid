@@ -4792,8 +4792,15 @@ hjoin_bloom_find_key_regus (OUTPTR_LIST * outptr_list, const int *value_indexes,
 	}
       switch (regus[k]->type)
 	{
-	case TYPE_ATTR_ID:
 	case TYPE_CONSTANT:
+	  if (regus[k]->xasl != NULL)
+	    {
+	      /* a linked subquery computes it (a scalar subquery's value): fetching it here would run the subquery
+	       * before the projection, and a failure's error would go with the check's er_clear */
+	      return false;
+	    }
+	  break;
+	case TYPE_ATTR_ID:
 	case TYPE_POSITION:
 	case TYPE_DBVAL:
 	  break;
@@ -4875,8 +4882,17 @@ hjoin_bloom_fetch_key_values (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fet
       if (!hjoin_bloom_value_in_domain (value, domains[key_index]))
 	{
 	  pr_clear_value (&cast[key_index]);
-	  domain_status = tp_value_coerce (value, &cast[key_index], domains[key_index]);
-	  if (domain_status != DOMAIN_COMPATIBLE)
+	  if (DB_VALUE_DOMAIN_TYPE (value) == TP_DOMAIN_TYPE (domains[key_index])
+	      && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domains[key_index])))
+	    {
+	      /* a string of the column's type: the projection writes its bytes as they are (it casts only another type
+	       * or a NUMERIC of another precision / scale) and the list reads them back under the column's codeset and
+	       * collation - relabel, do not convert */
+	      pr_share_value (value, &cast[key_index]);
+	      db_string_put_cs_and_collation (&cast[key_index], TP_DOMAIN_CODESET (domains[key_index]),
+					      TP_DOMAIN_COLLATION (domains[key_index]));
+	    }
+	  else if ((domain_status = tp_value_coerce (value, &cast[key_index], domains[key_index])) != DOMAIN_COMPATIBLE)
 	    {
 	      tp_domain_status_er_set (domain_status, ARG_FILE_LINE, value, domains[key_index]);
 	      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
