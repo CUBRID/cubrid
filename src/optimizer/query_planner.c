@@ -7708,6 +7708,37 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   /* inner_node is the single-class inner used for the key-limit / index checks below. */
   inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
 
+  /* The parser rejects a subquery in an ON clause, but view merging can bring one in.
+   * A hash outer/semi/anti join decides each outer row by its probe, which cannot run the subquery,
+   * so leave such a join to nested loops. */
+  if (IS_OUTER_JOIN_TYPE (join_type) || QO_NODE_IS_SEMI_ANTI_JOIN (inner_node))
+    {
+      bool has_subquery;
+
+      /* sarged_terms holds every term of this join, ON clause terms included (a semi join's are nowhere else) */
+      for (bitset_index = bitset_iterate (sarged_terms, &bitset_iter); bitset_index != -1;
+	   bitset_index = bitset_next_member (&bitset_iter))
+	{
+	  term = QO_ENV_TERM (info->env, bitset_index);
+	  if (!QO_ON_COND_TERM (term))
+	    {
+	      continue;
+	    }
+
+	  /* QO_TERM_SUBQUERIES holds only correlated ones; walk the term for uncorrelated ones too. */
+	  has_subquery = !bitset_is_empty (&(QO_TERM_SUBQUERIES (term)));
+	  if (!has_subquery && QO_TERM_PT_EXPR (term) != NULL)
+	    {
+	      (void) parser_walk_tree (QO_ENV_PARSER (info->env), QO_TERM_PT_EXPR (term), pt_check_subquery_pre, NULL,
+				       pt_check_subquery_post, &has_subquery);
+	    }
+	  if (has_subquery)
+	    {
+	      goto exit;	/* give up */
+	    }
+	}
+    }
+
   /* Determine the node that carries the join-method hint.  For a right outer join the
    * hinted (inner-after-conversion) side is the 'outer' operand, so the hint is read
    * from there - consistent with qo_examine_idx_join / qo_examine_nl_join - so that
