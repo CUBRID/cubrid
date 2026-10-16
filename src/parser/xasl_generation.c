@@ -1388,13 +1388,11 @@ pt_decide_comparison (PARSER_CONTEXT * parser, COMP_EVAL_TERM * et_comp)
     {
       return;
     }
-  /* A user host variable the rule converts was cast by the client before it was sent (type checking gave the
-   * position the target as its expected domain, pt_typed_bind_comparison), so its regu domain is the target and the
-   * rule converts nothing on that side. shortcut: a position two terms want in two domains keeps its converter here
-   * and the term converts the bind at the row; the full implementation gives the second occurrence a derived
-   * position the client fills. */
-  /* a side the rule converts carries its target; a side compared as it is carries none (the unpack looks a
-   * converter up for every target it finds, and a type has no converter into itself) */
+  /* A host variable arrives in the domain this comparison converts it into: type checking made the rule's target its
+   * expected domain (pt_typed_bind_comparison), or the translation gave it a derived position of that domain
+   * (pt_assign_host_var_positions), and the client cast the value before it sent it. A side the rule converts
+   * carries its target; a side compared as it is carries none (the unpack looks a converter up for every target it
+   * finds, and a type has no converter into itself). */
   et_comp->cmp_target[0] = compare.conv[0] != NULL ? (TP_DOMAIN *) compare.target[0] : NULL;
   et_comp->cmp_target[1] = compare.conv[1] != NULL ? (TP_DOMAIN *) compare.target[1] : NULL;
   et_comp->cmp_collation = compare.collation;
@@ -6533,9 +6531,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	    {
 	      cast_domain = parser->host_var_expected_domains[node->info.host_var.index];
 	    }
-	  if (cast_domain != NULL && TP_DOMAIN_TYPE (cast_domain) != DB_TYPE_UNKNOWN
-	      && TP_DOMAIN_TYPE (cast_domain) != DB_TYPE_ENUMERATION
-	      && cast_domain->collation_flag != TP_DOMAIN_COLL_ENFORCE)
+	  if (pt_host_var_is_context_typed (cast_domain))
 	    {
 	      /* an ENFORCE domain (the collation axis's sibling collation) casts nothing: the client gives a
 	       * string value the sibling's collation and passes any other value through (tp_value_cast_internal),
@@ -6543,6 +6539,11 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	       * collation */
 	      regu->domain = cast_domain;
 	    }
+	}
+      else if (pt_is_derived_host_var (parser, node->info.host_var.index))
+	{
+	  /* CBRD-27583: a derived position: the client converts the user's value into its domain */
+	  regu->domain = parser->host_var_expected_domains[node->info.host_var.index];
 	}
       else if (node->data_type)
 	{

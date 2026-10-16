@@ -10303,7 +10303,7 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 
 	  /* check host variables are filled : values from orderby_for may not have been auto-parameterized as host
 	   * variables; if that is the case, do it now */
-	  if (statement->info.update.orderby_for != NULL && parser->auto_param_count == 0)
+	  if (statement->info.update.orderby_for != NULL && PT_AUTO_PARAM_LITERAL_COUNT (parser) == 0)
 	    {
 	      assert ((parser->host_variables == NULL && parser->host_var_count == 0)
 		      || (parser->host_variables != NULL && parser->host_var_count > 0));

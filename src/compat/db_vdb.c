@@ -30,6 +30,7 @@
 #include <sys/timeb.h>
 #include <time.h>
 #include <assert.h>
+#include <utility>
 
 #include "authenticate.h"
 #include "db.h"
@@ -92,6 +93,10 @@ static int do_process_prepare_statement (DB_SESSION * session, PT_NODE * stateme
 static int do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquery_num,
 					   DB_PREPARE_SUBQUERY_INFO ** subquery_info);
 static int do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list);
+static void db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
+static void db_untype_null_host_variables (PARSER_CONTEXT * parser);
+static bool db_needs_bind_signature_plan (const DB_SESSION * session);
+static int db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * values);
 static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
 							DB_QUERY_RESULT ** result);
@@ -812,16 +817,35 @@ db_ensure_server_info (PARSER_CONTEXT * parser, int server_info_bits)
   return err;
 }
 
+/* CBRD-27583: a statement do_prepare_statement makes a plan for */
+static bool
+db_is_plan_statement (const PT_NODE * statement)
+{
+  switch (statement->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+    case PT_INSERT:
+    case PT_UPDATE:
+    case PT_DELETE:
+    case PT_MERGE:
+      return true;
+    default:
+      return false;
+    }
+}
+
 /*
- * db_set_host_var_compiled_domains () - CBRD-27583: record, for every user host variable its context left untyped,
- *   the domain of the value it is bound with at this compilation (an unbound position, a plain NULL, stays untyped).
- *   The plan is the plan of these bound types: pt_set_host_variables flags a value of another type and the statement
- *   is recompiled for it.
+ * db_begin_signature_compile () - CBRD-27583: the values (or their types) of an execution are bound for the
+ *   compilation of their bind type signature: the positions get their compiled domains from it
+ *   (pt_typed_bind_comparison, db_set_host_var_compiled_domains). A compilation without values has none.
  */
 static int
-db_set_host_var_compiled_domains (PARSER_CONTEXT * parser)
+db_begin_signature_compile (PARSER_CONTEXT * parser)
 {
-  if (parser->host_var_count <= 0 || parser->host_variables == NULL || parser->host_var_expected_domains == NULL)
+  if (parser->host_var_count <= 0)
     {
       return NO_ERROR;
     }
@@ -835,19 +859,51 @@ db_set_host_var_compiled_domains (PARSER_CONTEXT * parser)
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
+  return NO_ERROR;
+}
+
+/*
+ * db_set_host_var_compiled_domains () - CBRD-27583: after the compilation of a bind type signature, a value-typed
+ *   position the translation did not assign (pt_assign_host_var_positions; a statement without one) records the domain
+ *   of the value it was compiled with (a NULL value: the NULL domain). The plan is the plan of these types:
+ *   pt_set_host_variables flags a value of another type and the statement is recompiled for it.
+ */
+static void
+db_set_host_var_compiled_domains (PARSER_CONTEXT * parser)
+{
+  if (parser->host_var_compiled_domains == NULL || parser->host_variables == NULL)
+    {
+      return;
+    }
   for (int i = 0; i < parser->host_var_count; i++)
     {
-      const DB_VALUE *val = &parser->host_variables[i];
-      const TP_DOMAIN *expected = parser->host_var_expected_domains[i];
-      parser->host_var_compiled_domains[i] = NULL;
-      if (DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_NULL
-	  || (expected != NULL && TP_DOMAIN_TYPE (expected) != DB_TYPE_UNKNOWN))
+      if (pt_host_var_is_context_typed (parser->host_var_expected_domains[i]))
 	{
 	  continue;
 	}
-      parser->host_var_compiled_domains[i] = tp_domain_cache (tp_domain_resolve_value ((DB_VALUE *) val, NULL));
+      if (parser->host_var_compiled_domains[i] == NULL)
+	{
+	  parser->host_var_compiled_domains[i] = pt_host_var_value_domain (parser, i);
+	}
     }
-  return NO_ERROR;
+}
+
+/*
+ * db_has_untyped_host_var () - CBRD-27583: whether a value-typed position has no compiled domain yet: the statement
+ *   was compiled without values and has no plan until an execution compiles the plan of its signature
+ */
+static bool
+db_has_untyped_host_var (const PARSER_CONTEXT * parser)
+{
+  for (int i = 0; i < parser->host_var_count; i++)
+    {
+      if (!pt_host_var_is_context_typed (parser->host_var_expected_domains[i])
+	  && (parser->host_var_compiled_domains == NULL || parser->host_var_compiled_domains[i] == NULL))
+	{
+	  return true;
+	}
+    }
+  return false;
 }
 
 /*
@@ -929,6 +985,17 @@ db_compile_statement_local (DB_SESSION * session)
 
   /* forget about any previous parsing errors, if any */
   pt_reset_error (parser);
+
+  if (parser->flag.set_host_var == 1)
+    {
+      /* CBRD-27583: values pushed before the compilation: the plan is the plan of their types */
+      err = db_begin_signature_compile (parser);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      db_untype_null_host_variables (parser);
+    }
 
   /*
      pt_rewrite_for_dblink:
@@ -1105,14 +1172,8 @@ db_compile_statement_local (DB_SESSION * session)
   session->statements[stmt_ndx] = statement;
   session->stage[stmt_ndx] = StatementCompiledStage;
 
-  /* CBRD-27583: the positions the context left untyped take the type of their bound value, when one is bound
-   * (the typed recompile; a PREPARE binds nothing): the cache key token and the regu domain read it, the plan is
-   * the plan of these bound types */
-  err = db_set_host_var_compiled_domains (parser);
-  if (err != NO_ERROR)
-    {
-      return err;
-    }
+  /* CBRD-27583: the cache key token and the regu domain of a value-typed position read its compiled domain */
+  db_set_host_var_compiled_domains (parser);
 
   /*
    * Preparation Stage
@@ -1127,6 +1188,14 @@ db_compile_statement_local (DB_SESSION * session)
   if (!parser->flag.is_parsing_static_sql && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0
       && statement->flag.cannot_prepare == 0)
     {
+      if (db_is_plan_statement (statement) && db_has_untyped_host_var (parser))
+	{
+	  /* CBRD-27583: compiled without values, a value-typed position has no type yet: no plan now; the first
+	   * execution compiles the plan of its bind type signature (db_push_values) */
+	  session->stage[stmt_ndx] = StatementPreparedStage;
+	  return stmt_ndx + 1;
+	}
+
       if (session->is_subsession_for_prepared)
 	{
 	  /* cast host variables to their expected domain, before XASL generation. */
@@ -1968,10 +2037,148 @@ db_push_values (DB_SESSION * session, int count, DB_VALUE * in_values)
 		  return ER_PT_SEMANTIC;
 		}
 	    }
+
+	  if (db_needs_bind_signature_plan (session))
+	    {
+	      return db_recompile_for_bind_signature (session, count, in_values);
+	    }
 	}
     }
 
   return NO_ERROR;
+}
+
+/*
+ * db_needs_bind_signature_plan () - CBRD-27583: whether the values just pushed into a driver session (db_compile_statement,
+ *   db_push_values, db_execute_and_keep_statement) have a bind type signature its compilation has no plan for: the
+ *   statement was prepared without values (a value-typed position has no type yet), or a value-typed position received
+ *   a value of another type. The SQL-level EXECUTE recompiles in its own subsessions (do_recompile_and_execute_prepared_
+ *   statement, the kept trees), so their pushes are not this one's.
+ */
+static bool
+db_needs_bind_signature_plan (const DB_SESSION * session)
+{
+  const PARSER_CONTEXT *parser = session->parser;
+
+  if (session->is_subsession_for_prepared || session->kept_stmt_name != NULL || session->dimension != 1
+      || session->stage == NULL || session->stage[0] < StatementPreparedStage || parser->flag.set_host_var == 0
+      || parser->flag.is_parsing_static_sql || prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) <= 0)
+    {
+      return false;
+    }
+
+  const PT_NODE *statement = session->statements[0];
+  if (statement == NULL || statement->flag.cannot_prepare || !db_is_plan_statement (statement))
+    {
+      return false;
+    }
+  return parser->flag.bind_signature_changed || db_has_untyped_host_var (parser);
+}
+
+/*
+ * db_recompile_for_bind_signature () - CBRD-27583: compile the driver session's statement text again for the bind
+ *   type signature of the values just pushed, as the SQL-level EXECUTE does (a SELECT sees the values' types only,
+ *   DML the values), and let that compilation replace the session's: the driver keeps its handle and the later
+ *   executions of the same signature reuse it without compiling.
+ */
+static int
+db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * values)
+{
+  const PT_NODE *statement = session->statements[0];
+  PARSER_CONTEXT *old_parser = session->parser;
+  DB_SESSION *typed = NULL;
+  char *text;
+  int err = NO_ERROR;
+
+  if (statement->sql_user_text == NULL || statement->sql_user_text_len <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_QPROC_INVALID_XASLNODE;
+    }
+
+  typed = db_open_local ();
+  if (typed == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+  /* the new parser owns the text its statement points into */
+  text = (char *) parser_alloc (typed->parser, statement->sql_user_text_len + 1);
+  if (text == NULL)
+    {
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, (size_t) statement->sql_user_text_len + 1);
+      goto end;
+    }
+  memcpy (text, statement->sql_user_text, statement->sql_user_text_len);
+  text[statement->sql_user_text_len] = '\0';
+  typed->statements = parser_parse_string_with_escapes (typed->parser, text, false);
+  if (typed->statements == NULL || pt_has_error (typed->parser))
+    {
+      pt_report_to_ersys (typed->parser, PT_SYNTAX);
+      err = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+      goto end;
+    }
+  (void) initialize_session (typed);
+  if (typed->dimension != 1 || typed->parser->host_var_count != old_parser->host_var_count)
+    {
+      err = ER_IT_INCORRECT_HOSTVAR_COUNT;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, old_parser->host_var_count, typed->parser->host_var_count);
+      goto end;
+    }
+
+  typed->include_oid = session->include_oid;
+  typed->parser->flag.is_holdable = old_parser->flag.is_holdable;
+  typed->parser->flag.is_auto_commit = old_parser->flag.is_auto_commit;
+  typed->parser->flag.return_generated_keys = old_parser->flag.return_generated_keys;
+  typed->parser->flag.is_xasl_pinned_reference = old_parser->flag.is_xasl_pinned_reference;
+  typed->parser->flag.recompile_xasl_pinned = old_parser->flag.recompile_xasl_pinned;
+  typed->parser->flag.is_system_generated_stmt = old_parser->flag.is_system_generated_stmt;
+
+  err = db_begin_signature_compile (typed->parser);
+  if (err != NO_ERROR)
+    {
+      goto end;
+    }
+  if (pt_node_to_cmd_type (typed->statements[0]) == CUBRID_STMT_SELECT)
+    {
+      db_bind_value_types (typed->parser, count, values);
+    }
+  else
+    {
+      /* DML compiles with the values bound, as develop does: a client-side trigger UPDATE evaluates them at compile */
+      pt_set_host_variables (typed->parser, count, values);
+      typed->parser->flag.set_host_var = 0;
+      db_untype_null_host_variables (typed->parser);
+    }
+  err = db_compile_statement_local (typed);
+  if (err < 0)
+    {
+      goto end;
+    }
+  err = NO_ERROR;
+
+  pt_set_host_variables (typed->parser, count, values);
+  if (typed->parser->flag.set_host_var == 0 && pt_has_error (typed->parser))
+    {
+      pt_report_to_ersys (typed->parser, PT_SEMANTIC);
+      pt_reset_error (typed->parser);
+      err = ER_PT_SEMANTIC;
+      goto end;
+    }
+
+  /* the new compilation becomes the session's; closing `typed` releases the old one */
+  std::swap (session->parser, typed->parser);
+  std::swap (session->statements, typed->statements);
+  std::swap (session->type_list, typed->type_list);
+  std::swap (session->stage, typed->stage);
+  std::swap (session->dimension, typed->dimension);
+  std::swap (session->stmt_ndx, typed->stmt_ndx);
+  std::swap (session->include_oid, typed->include_oid);
+
+end:
+  db_close_session_local (typed);
+  return err;
 }
 
 /*
@@ -2999,6 +3206,8 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
     prepared_session->parser->host_var_count + prepared_session->parser->auto_param_count;
   prepare_info.host_variables.vals = prepared_session->parser->host_variables;
   prepare_info.host_var_expected_domains = prepared_session->parser->host_var_expected_domains;
+  prepare_info.host_var_derived_from = prepared_session->parser->host_var_derived_from;
+  prepare_info.host_var_derived_count = prepared_session->parser->host_var_derived_count;
   /* set autoparam count */
   prepare_info.auto_param_count = prepared_session->parser->auto_param_count;
   /* set recompile */
@@ -3168,6 +3377,10 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
     {
       free_and_init (parser->host_var_compiled_domains);
     }
+  if (parser->host_var_derived_from)
+    {
+      free_and_init (parser->host_var_derived_from);
+    }
 
   parser->auto_param_count = 0;
   parser->host_var_count = 0;
@@ -3175,8 +3388,11 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
   parser->auto_param_count = prepare_info.auto_param_count;
   parser->host_variables = prepare_info.host_variables.vals;
   parser->host_var_expected_domains = prepare_info.host_var_expected_domains;
+  parser->host_var_derived_from = prepare_info.host_var_derived_from;
+  parser->host_var_derived_count = prepare_info.host_var_derived_count;
   parser->host_var_count = prepare_info.host_variables.size - prepare_info.auto_param_count;
 
+  /* CBRD-27583: the bind fills the derived positions from the user values too (pt_set_host_variables) */
   err = do_set_user_host_variables (session, statement->info.execute.using_list);
   if (err != NO_ERROR)
     {
@@ -3185,6 +3401,11 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
 
   parser->host_var_count += prepare_info.auto_param_count;
   parser->auto_param_count = 0;
+  parser->host_var_derived_count = 0;
+  if (parser->host_var_derived_from)
+    {
+      free_and_init (parser->host_var_derived_from);
+    }
   parser->flag.set_host_var = 1;
 
   /* Like optimization check: if host-variables were used in LIKE conditions, check if query needs to be recompiled
@@ -3285,8 +3506,22 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
   DB_VALUE *host_vars = session->parser->host_variables;
   TP_DOMAIN **expected_domains = session->parser->host_var_expected_domains;
   DB_VALUE *hv = NULL;
-  TP_DOMAIN *hv_dom = NULL, *d = NULL;
+  TP_DOMAIN *hv_dom = NULL;
   int i = 0;
+
+  /* CBRD-27583: the derived positions a compilation made after the values were bound take their user value before
+   * it is cast for its own position */
+  for (i = hv_count; i < hv_count + session->parser->auto_param_count; i++)
+    {
+      if (pt_is_derived_host_var (session->parser, i) && DB_IS_NULL (&host_vars[i])
+	  && pt_set_derived_host_variable (session->parser, i,
+					   &host_vars[session->parser->host_var_derived_from[i]]) != NO_ERROR)
+	{
+	  pt_report_to_ersys (session->parser, PT_EXECUTION);
+	  pt_reset_error (session->parser);
+	  return ER_PT_EXECUTE;
+	}
+    }
 
   for (i = 0; i < hv_count; i++)
     {
@@ -3309,10 +3544,8 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
       if (tp_value_cast_preserve_domain (hv, keep_varchar ? &char_cast : hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
 	{
 	  pr_clear_value (&char_cast);
-	  d = pt_type_enum_to_db_domain (pt_db_to_type_enum (TP_DOMAIN_TYPE (hv_dom)));
 	  PT_ERRORmf2 (session->parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
-		       d);
-	  tp_domain_free (d);
+		       pt_type_enum_to_db_domain_name (pt_db_to_type_enum (TP_DOMAIN_TYPE (hv_dom))));
 	  pt_report_to_ersys (session->parser, PT_EXECUTION);
 	  pt_reset_error (session->parser);
 	  return ER_PT_EXECUTE;
@@ -3326,10 +3559,54 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
 }
 
 /*
- * do_set_user_host_variable_types () - CBRD-27583: bind the TYPES of the USING values, not the values: each host
- *   variable becomes a NULL that carries the value's type header (type, precision, scale, codeset, collation), a
- *   real NULL stays a plain NULL. The compilation reads the types; the code the set_host_var
- *   flag does not guard reads NULLs and bakes no value into a plan the cache keys by type.
+ * db_bind_value_types () - CBRD-27583: bind the TYPES of an execution's values, not the values: each host variable
+ *   becomes a NULL that carries the value's type header (type, precision, scale, codeset, collation), a NULL value a
+ *   plain NULL. The compilation of their bind type signature reads the types; the code the set_host_var flag does not
+ *   guard reads NULLs and bakes no value into a plan the cache keys by type.
+ */
+static void
+db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VALUE * values)
+{
+  for (int i = 0; i < parser->host_var_count && i < count; i++)
+    {
+      const DB_VALUE *val = &values[i];
+      DB_VALUE *hv = &parser->host_variables[i];
+      const DB_TYPE type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+      pr_clear_value (hv);
+      if (type == DB_TYPE_NULL)
+	{
+	  db_make_null (hv);
+	  continue;
+	}
+      db_value_domain_init (hv, type, DB_VALUE_PRECISION (val), DB_VALUE_SCALE (val));
+      if (TP_IS_CHAR_TYPE (type))
+	{
+	  db_string_put_cs_and_collation (hv, db_get_string_codeset (val), db_get_string_collation (val));
+	}
+    }
+}
+
+/*
+ * db_untype_null_host_variables () - CBRD-27583: a NULL value bound for a compilation is a plain NULL, whatever type
+ *   header the driver gave it: the signature of a NULL is NULL (pt_value_has_domain_type), and a typed NULL in
+ *   the host variables of a compilation stands for a value of that type (db_bind_value_types)
+ */
+static void
+db_untype_null_host_variables (PARSER_CONTEXT * parser)
+{
+  for (int i = 0; i < parser->host_var_count; i++)
+    {
+      DB_VALUE *hv = &parser->host_variables[i];
+      if (DB_IS_NULL (hv) && DB_VALUE_DOMAIN_TYPE (hv) != DB_TYPE_NULL)
+	{
+	  pr_clear_value (hv);
+	  db_make_null (hv);
+	}
+    }
+}
+
+/*
+ * do_set_user_host_variable_types () - CBRD-27583: bind the TYPES of the USING values (db_bind_value_types)
  */
 static int
 do_set_user_host_variable_types (DB_SESSION * session, PT_NODE * using_list)
@@ -3352,22 +3629,10 @@ do_set_user_host_variable_types (DB_SESSION * session, PT_NODE * using_list)
     }
   else
     {
-      for (int i = 0; i < values_array.size; i++)
+      err = db_begin_signature_compile (parser);
+      if (err == NO_ERROR)
 	{
-	  const DB_VALUE *val = &values_array.vals[i];
-	  DB_VALUE *hv = &parser->host_variables[i];
-	  const DB_TYPE type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
-	  pr_clear_value (hv);
-	  if (type == DB_TYPE_NULL)
-	    {
-	      db_make_null (hv);
-	      continue;
-	    }
-	  db_value_domain_init (hv, type, DB_VALUE_PRECISION (val), DB_VALUE_SCALE (val));
-	  if (TP_IS_CHAR_TYPE (type))
-	    {
-	      db_string_put_cs_and_collation (hv, db_get_string_codeset (val), db_get_string_collation (val));
-	    }
+	  db_bind_value_types (parser, values_array.size, values_array.vals);
 	}
     }
   db_value_clear_array (&values_array);
@@ -3851,6 +4116,12 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 	  return err;
 	}
       new_session->parser->flag.set_host_var = 0;
+      err = db_begin_signature_compile (new_session->parser);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+      db_untype_null_host_variables (new_session->parser);
 
       idx = db_compile_statement (new_session);
       if (idx < 0)
@@ -4469,8 +4740,13 @@ db_close_session_local (DB_SESSION * session)
     {
       free_and_init (parser->host_var_compiled_domains);
     }
+  if (parser->host_var_derived_from)
+    {
+      free_and_init (parser->host_var_derived_from);
+    }
 
   parser->host_var_count = parser->auto_param_count = 0;
+  parser->host_var_derived_count = 0;
 
   pt_free_orphans (session->parser);
   parser_free_parser (session->parser);

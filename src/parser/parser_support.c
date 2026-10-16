@@ -4832,6 +4832,54 @@ pt_create_param_for_value (PARSER_CONTEXT * parser, PT_NODE * value, int host_va
  *   parser(in):
  *   value(in): the value to be replaced by a host variable parameter
  */
+/*
+ * pt_grow_host_var_positions () - CBRD-27583: once a compilation assigned the positions of its bind type signature
+ *   (host_var_derived_from), the per-position arrays cover every position, host_var_count + auto_param_count, the
+ *   auto-parameters and derived positions after the user's included. A position from old_count on has no expected
+ *   domain, no compiled domain and no user position.
+ */
+static int
+pt_grow_host_var_positions (PARSER_CONTEXT * parser, int old_count, int count)
+{
+  const int first_derived = parser->host_var_derived_from == NULL ? 0 : old_count;
+  int *derived_from = (int *) realloc (parser->host_var_derived_from, count * sizeof (int));
+  if (derived_from == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  parser->host_var_derived_from = derived_from;
+  TP_DOMAIN **expected = (TP_DOMAIN **) realloc (parser->host_var_expected_domains, count * sizeof (TP_DOMAIN *));
+  if (expected == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  parser->host_var_expected_domains = expected;
+  /* the compiled domains exist only in the compilation of a bind type signature */
+  TP_DOMAIN **compiled = NULL;
+  if (parser->host_var_compiled_domains != NULL)
+    {
+      compiled = (TP_DOMAIN **) realloc (parser->host_var_compiled_domains, count * sizeof (TP_DOMAIN *));
+      if (compiled == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      parser->host_var_compiled_domains = compiled;
+    }
+  for (int k = first_derived; k < count; k++)
+    {
+      derived_from[k] = -1;
+    }
+  for (int k = MAX (old_count, parser->host_var_count); k < count; k++)
+    {
+      expected[k] = NULL;
+      if (compiled != NULL)
+	{
+	  compiled[k] = NULL;
+	}
+    }
+  return NO_ERROR;
+}
+
 PT_NODE *
 pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value)
 {
@@ -4877,6 +4925,13 @@ pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value)
       parser->host_variables = larger_host_variables;
       ++parser->auto_param_count;
       larger_host_variables = NULL;
+      if (parser->host_var_derived_from != NULL
+	  && pt_grow_host_var_positions (parser, parser->host_var_count + parser->auto_param_count - 1,
+					 parser->host_var_count + parser->auto_param_count) != NO_ERROR)
+	{
+	  PT_ERRORm (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  goto error_exit;
+	}
 
       /* Copy the DB_VALUE to parser->host_variables */
       host_var_val = parser->host_variables + host_var->info.host_var.index;
@@ -4902,6 +4957,287 @@ error_exit:
       host_var = NULL;
     }
   return NULL;
+}
+
+/*
+ * pt_host_var_value_domain () - CBRD-27583: the domain of the value bound at user position index for the compilation
+ *   of a bind type signature (the value's, or the type header of the NULL a SELECT compilation binds); the NULL
+ *   domain for a NULL value
+ */
+TP_DOMAIN *
+pt_host_var_value_domain (PARSER_CONTEXT * parser, int index)
+{
+  DB_VALUE *val = &parser->host_variables[index];
+  return DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_NULL ? &tp_Null_domain
+    : tp_domain_cache (tp_domain_resolve_value (val, NULL));
+}
+
+/* CBRD-27583: whether a position after the user's is a derived position (pt_assign_host_var_positions) */
+bool
+pt_is_derived_host_var (const PARSER_CONTEXT * parser, int index)
+{
+  return parser->host_var_derived_from != NULL && index >= parser->host_var_count
+    && index < parser->host_var_count + parser->auto_param_count && parser->host_var_derived_from[index] >= 0;
+}
+
+/* the walk of pt_assign_host_var_positions: the open nodes from the statement down to the visited one */
+typedef struct pt_host_var_position_walk PT_HOST_VAR_POSITION_WALK;
+struct pt_host_var_position_walk
+{
+  PT_NODE **open;
+  int depth;
+  int capacity;
+  bool *seen;			/* [host_var_count] the walk met the position's first node */
+  bool *cast;			/* [host_var_count] the first node is a rule cast */
+#if !defined (NDEBUG)
+  TP_DOMAIN **checked;		/* [host_var_count] the domain type checking gave the position */
+#endif
+  bool assign;			/* the first pass of the compilation: the first node of a position decides its domain */
+  int error;
+};
+
+/*
+ * pt_derive_host_var_position () - CBRD-27583: the host variable node needs its user position's value in another
+ *   domain: it moves to a derived position of that domain (one per user position and domain), numbered after the
+ *   auto-parameters; the client converts the user's value into it at every bind (pt_set_derived_host_variable).
+ */
+static int
+pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_index, TP_DOMAIN * domain)
+{
+  const int count = parser->host_var_count + parser->auto_param_count;
+  int k;
+
+  for (k = parser->host_var_count; k < count; k++)
+    {
+      if (parser->host_var_derived_from[k] == user_index
+	  && tp_domain_match (parser->host_var_expected_domains[k], domain, TP_EXACT_MATCH))
+	{
+	  break;
+	}
+    }
+  if (k == count)
+    {
+      DB_VALUE *host_variables = (DB_VALUE *) realloc (parser->host_variables, (count + 1) * sizeof (DB_VALUE));
+      if (host_variables == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      parser->host_variables = host_variables;
+      db_make_null (&parser->host_variables[k]);
+      if (pt_grow_host_var_positions (parser, count, count + 1) != NO_ERROR)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      parser->host_var_expected_domains[k] = domain;
+      parser->host_var_derived_from[k] = user_index;
+      ++parser->auto_param_count;
+      ++parser->host_var_derived_count;
+      /* the compilation sees what the binds give it: the value (DML), the type (SELECT: a typed NULL) or nothing */
+      if (pt_set_derived_host_variable (parser, k, &parser->host_variables[user_index]) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  hv->info.host_var.index = k;
+  hv->info.host_var.rule_cast = false;
+  hv->expected_domain = domain;
+  return NO_ERROR;
+}
+
+/*
+ * pt_assign_host_var_position () - CBRD-27583: the domain one host variable node needs, against the domain of its
+ *   position. The first node of a user position decides the position's domain in the first pass: its context's
+ *   expected domain, the rule's target when its comparison converts the bind (a rule cast; the position still records
+ *   the value's domain, its plan's premise), or the value's domain. A later node needs its own context's domain, or in
+ *   a relational comparison the target the type rule gives the position's domain against its mate - the decision of
+ *   type checking (pt_bind_comparison_target); a node that needs another domain moves to a derived position.
+ */
+static int
+pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent, PT_HOST_VAR_POSITION_WALK * walk)
+{
+  const int i = hv->info.host_var.index;
+  TP_DOMAIN *own = pt_host_var_is_context_typed (hv->expected_domain) ? hv->expected_domain : NULL;
+
+  if (walk->assign && !walk->seen[i])
+    {
+      walk->seen[i] = true;
+#if !defined (NDEBUG)
+      walk->checked[i] = parser->host_var_expected_domains[i];
+#endif
+      if (own == NULL && parser->host_var_compiled_domains != NULL)
+	{
+	  /* a value-typed operand of an operator whose rule converts the bind side: a rule cast (comparisons: type
+	   * checking decided the same with the same function) */
+	  own = pt_bind_operand_target (parser, pt_host_var_value_domain (parser, i), parent, hv);
+	  if (own != NULL)
+	    {
+	      hv->expected_domain = own;
+	      hv->info.host_var.rule_cast = true;
+	    }
+	}
+      walk->cast[i] = own != NULL && hv->info.host_var.rule_cast;
+      parser->host_var_expected_domains[i] = own != NULL ? own : tp_domain_resolve_default (DB_TYPE_UNKNOWN);
+      if (parser->host_var_compiled_domains != NULL)
+	{
+	  parser->host_var_compiled_domains[i] = (own == NULL || hv->info.host_var.rule_cast)
+	    ? pt_host_var_value_domain (parser, i) : NULL;
+	}
+      return NO_ERROR;
+    }
+
+  /* a value-typed position compiled without values has no domain yet: no plan is made (db_compile_statement) */
+  TP_DOMAIN *position = pt_host_var_is_context_typed (parser->host_var_expected_domains[i])
+    ? parser->host_var_expected_domains[i]
+    : (parser->host_var_compiled_domains != NULL ? parser->host_var_compiled_domains[i] : NULL);
+  if (position == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  TP_DOMAIN *need = position;
+  if (own != NULL && !hv->info.host_var.rule_cast)
+    {
+      need = own;
+    }
+  else
+    {
+      TP_DOMAIN *target = pt_bind_operand_target (parser, position, parent, hv);
+      if (target != NULL)
+	{
+	  need = target;
+	}
+    }
+  if (tp_domain_match (need, position, TP_EXACT_MATCH))
+    {
+      return NO_ERROR;
+    }
+  return pt_derive_host_var_position (parser, hv, i, need);
+}
+
+static PT_NODE *
+pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_HOST_VAR_POSITION_WALK *walk = (PT_HOST_VAR_POSITION_WALK *) arg;
+
+  if (walk->error != NO_ERROR)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+  if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN
+      && node->info.host_var.index >= 0 && node->info.host_var.index < parser->host_var_count)
+    {
+      /* the arrays grow at the first host variable met: a statement without one (an EXECUTE, whose parser holds the
+       * prepared statement's positions) leaves them as they are */
+      if (walk->assign && parser->host_var_derived_from == NULL
+	  && pt_grow_host_var_positions (parser, parser->host_var_count,
+					 parser->host_var_count + parser->auto_param_count) != NO_ERROR)
+	{
+	  walk->error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+      walk->error = pt_assign_host_var_position (parser, node, walk->depth > 0 ? walk->open[walk->depth - 1] : NULL,
+						 walk);
+    }
+  if (walk->depth == walk->capacity)
+    {
+      PT_NODE **open = (PT_NODE **) realloc (walk->open, (walk->capacity * 2 + 16) * sizeof (PT_NODE *));
+      if (open == NULL)
+	{
+	  walk->error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  *continue_walk = PT_STOP_WALK;
+	  return node;
+	}
+      walk->open = open;
+      walk->capacity = walk->capacity * 2 + 16;
+    }
+  walk->open[walk->depth++] = node;
+  return node;
+}
+
+static PT_NODE *
+pt_assign_host_var_positions_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_HOST_VAR_POSITION_WALK *walk = (PT_HOST_VAR_POSITION_WALK *) arg;
+
+  if (walk->depth > 0 && walk->open[walk->depth - 1] == node)
+    {
+      walk->depth--;
+    }
+  return node;
+}
+
+/*
+ * pt_assign_host_var_positions () - CBRD-27583: at the end of every translation (mq_translate), in the compilation of
+ *   a bind type signature, give each host variable node the position whose domain it needs. One user host variable
+ *   can need two domains after the rewrites copied it into another context (an optimizer transitive term
+ *   cast(t2.vc as double) = ?:0, a term pushed into a derived table, an explicit ?:0 reused): the later node gets a
+ *   derived position the client fills with the user's value converted into its domain, so the server never converts
+ *   a bind. Every session translating the text computes the same positions, cache hits included: the hash text is
+ *   printed after the translation. Without typed values (a PREPARE) only context-typed nodes derive; a value-typed
+ *   position stays untyped and no plan is made.
+ */
+void
+pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  PT_HOST_VAR_POSITION_WALK walk;
+
+  if (statement == NULL || parser->host_var_count <= 0 || parser->host_variables == NULL
+      || parser->host_var_expected_domains == NULL || pt_has_error (parser))
+    {
+      return;
+    }
+
+  walk.open = NULL;
+  walk.depth = walk.capacity = 0;
+  walk.error = NO_ERROR;
+  walk.assign = parser->host_var_derived_from == NULL;
+  walk.seen = (bool *) calloc (2 * parser->host_var_count, sizeof (bool));
+  if (walk.seen == NULL)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+      return;
+    }
+  walk.cast = walk.seen + parser->host_var_count;
+#if !defined (NDEBUG)
+  walk.checked = (TP_DOMAIN **) calloc (parser->host_var_count, sizeof (TP_DOMAIN *));
+  assert (walk.checked != NULL);
+#endif
+
+  (void) parser_walk_tree (parser, statement, pt_assign_host_var_positions_pre, &walk,
+			   pt_assign_host_var_positions_post, &walk);
+
+#if !defined (NDEBUG)
+  /* a typed position all of whose nodes need one domain has the domain type checking gave it, unless the walk made
+   * its first node a rule cast */
+  for (int i = 0; walk.assign && walk.error == NO_ERROR && i < parser->host_var_count; i++)
+    {
+      if (!walk.seen[i] || walk.cast[i])
+	{
+	  continue;
+	}
+      bool derived = false;
+      for (int k = parser->host_var_count; k < parser->host_var_count + parser->auto_param_count; k++)
+	{
+	  derived = derived || parser->host_var_derived_from[k] == i;
+	}
+      const bool typed = pt_host_var_is_context_typed (parser->host_var_expected_domains[i])
+	|| (parser->host_var_compiled_domains != NULL && parser->host_var_compiled_domains[i] != NULL);
+      assert (derived || !typed
+	      || (pt_host_var_is_context_typed (walk.checked[i])
+		  ? tp_domain_match (walk.checked[i], parser->host_var_expected_domains[i], TP_EXACT_MATCH)
+		  : !pt_host_var_is_context_typed (parser->host_var_expected_domains[i])));
+    }
+  free (walk.checked);
+#endif
+
+  free (walk.seen);
+  free (walk.open);
+  if (walk.error == ER_OUT_OF_VIRTUAL_MEMORY)
+    {
+      PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+    }
 }
 
 /*

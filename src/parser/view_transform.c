@@ -9547,6 +9547,9 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 
   return_node = mq_translate_helper (parser, node);
 
+  /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions */
+  pt_assign_host_var_positions (parser, (PT_NODE *) return_node);
+
   PT_CLEAR_JMP_ENV (parser);
 
   return (PT_NODE *) return_node;

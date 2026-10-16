@@ -4538,34 +4538,41 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 }
 
 /*
- * pt_typed_bind_comparison () - CBRD-27583: a user host variable bound with a typed value at compile time (a value,
- *   or the NULL carrying only the value's type that the typed SELECT recompile binds; never under set_host_var, the
- *   compilation that consumes values) and compared with an operand of a known type takes its type from the value, and the type rule
- *   module the executor shares decides the comparison of the pair as the row did: when the rule converts the bind
- *   side, the position's expected domain is the target (the client casts the value before it sends it, the term
- *   compares two values of one domain); else the position stays value-typed (no expected domain; the regu reads
- *   host_var_compiled_domains, the term converts the other side). Either way the position records the value's domain:
- *   a later value of another type recompiles the statement for its own signature instead of being cast into this
- *   plan's domain (int_col = ? with 1.5 stays 1.5). Returns false when this is not such a bind: the caller types it
- *   as before.
+ * pt_is_bind_comparison_op () - CBRD-27583: the relational comparisons whose bind side the type rule module decides
+ *   (pt_bind_comparison_target); LIKE, ranges, IN and quantified comparisons type their binds as before
  */
-static bool
-pt_typed_bind_comparison (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * hv)
+bool
+pt_is_bind_comparison_op (PT_OP_TYPE op)
 {
-  if (parser->flag.set_host_var != 0 || expr == NULL || expr->node_type != PT_EXPR
-      || !pt_is_comp_op (expr->info.expr.op) || hv->info.host_var.var_type != PT_HOST_IN
-      || hv->info.host_var.index >= parser->host_var_count || parser->host_variables == NULL
-      || parser->host_var_expected_domains == NULL)
+  switch (op)
     {
+    case PT_EQ:
+    case PT_NE:
+    case PT_GE:
+    case PT_GT:
+    case PT_LT:
+    case PT_LE:
+    case PT_NULLSAFE_EQ:
+      return true;
+    default:
       return false;
     }
-  const int index = hv->info.host_var.index;
-  const DB_VALUE *val = &parser->host_variables[index];
-  PT_NODE *mate = expr->info.expr.arg1 == hv ? expr->info.expr.arg2 : expr->info.expr.arg1;
-  if (DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_NULL || mate == NULL || mate->type_enum == PT_TYPE_MAYBE
-      || mate->type_enum == PT_TYPE_NONE
-      || mate->type_enum == PT_TYPE_NULL || PT_IS_COLLECTION_TYPE (mate->type_enum)
-      || TP_DOMAIN_TYPE (parser->host_var_expected_domains[index]) != DB_TYPE_UNKNOWN)
+}
+
+/*
+ * pt_bind_comparison_target () - CBRD-27583: the type rule module the executor shares decides the comparison of a host
+ *   variable arriving in bind_domain with the operand mate as the row decides it (the row's rule, not the literal's:
+ *   int_col = '1.5' compares 1.5). *target is the bind side's target when the rule converts the bind side, else NULL
+ *   (the term converts the other side or nothing). Returns false when the mate's type is not fixed: nothing decided.
+ *   Type checking and the derived positions (pt_assign_host_var_positions) decide with this one function.
+ */
+bool
+pt_bind_comparison_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, PT_NODE * mate, bool bind_is_lhs,
+			   TP_DOMAIN ** target)
+{
+  *target = NULL;
+  if (bind_domain == NULL || mate == NULL || mate->type_enum == PT_TYPE_MAYBE || mate->type_enum == PT_TYPE_NONE
+      || mate->type_enum == PT_TYPE_NULL || PT_IS_COLLECTION_TYPE (mate->type_enum))
     {
       return false;
     }
@@ -4574,27 +4581,149 @@ pt_typed_bind_comparison (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * hv)
     {
       return false;
     }
-  if (parser->host_var_compiled_domains == NULL)
-    {
-      parser->host_var_compiled_domains = (TP_DOMAIN **) calloc (parser->host_var_count, sizeof (TP_DOMAIN *));
-      if (parser->host_var_compiled_domains == NULL)
-	{
-	  return false;
-	}
-    }
-  TP_DOMAIN *source = tp_domain_cache (tp_domain_resolve_value ((DB_VALUE *) val, NULL));
-  parser->host_var_compiled_domains[index] = source;
 
-  const bool hv_is_lhs = expr->info.expr.arg1 == hv;
   DOMAIN_COMPARE_KEY key[2];
   DOMAIN_COMPARE compare;
-  domain_compare_key_of (hv_is_lhs ? source : mate_domain, &key[0]);
-  domain_compare_key_of (hv_is_lhs ? mate_domain : source, &key[1]);
+  domain_compare_key_of (bind_is_lhs ? bind_domain : mate_domain, &key[0]);
+  domain_compare_key_of (bind_is_lhs ? mate_domain : bind_domain, &key[1]);
   if (domain_resolve_comparison (&key[0], &key[1], &compare) == NO_ERROR
       && (compare.method == DOMAIN_COMPARE_DIRECT || compare.method == DOMAIN_COMPARE_CONVERT)
-      && compare.conv[hv_is_lhs ? 0 : 1] != NULL)
+      && compare.conv[bind_is_lhs ? 0 : 1] != NULL)
     {
-      SET_EXPECTED_DOMAIN (hv, (TP_DOMAIN *) compare.target[hv_is_lhs ? 0 : 1]);
+      *target = (TP_DOMAIN *) compare.target[bind_is_lhs ? 0 : 1];
+    }
+  return true;
+}
+
+/*
+ * pt_bind_arith_target () - CBRD-27583: the type rule module decides an addition, subtraction, multiplication or
+ *   division of a host variable arriving in bind_domain with the other operand of expr as the row decides it
+ *   (qdata_{add,subtract,multiply,divide}_dbval): *target is the domain the rule converts the bind side into, else
+ *   NULL. Returns false when expr is no such operator or the mate's type is not fixed: nothing decided.
+ */
+static bool
+pt_bind_arith_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, PT_NODE * expr, bool bind_is_lhs,
+		      TP_DOMAIN ** target)
+{
+  int opcode;
+
+  *target = NULL;
+  switch (expr->info.expr.op)
+    {
+    case PT_PLUS:
+      opcode = T_ADD;
+      break;
+    case PT_MINUS:
+      opcode = T_SUB;
+      break;
+    case PT_TIMES:
+      opcode = T_MUL;
+      break;
+    case PT_DIVIDE:
+      opcode = T_DIV;
+      break;
+    default:
+      return false;
+    }
+  PT_NODE *mate = bind_is_lhs ? expr->info.expr.arg2 : expr->info.expr.arg1;
+  if (bind_domain == NULL || mate == NULL || mate->type_enum == PT_TYPE_MAYBE || mate->type_enum == PT_TYPE_NONE
+      || mate->type_enum == PT_TYPE_NULL || PT_IS_COLLECTION_TYPE (mate->type_enum))
+    {
+      return false;
+    }
+  TP_DOMAIN *mate_domain = pt_xasl_node_to_domain (parser, mate);
+  if (mate_domain == NULL || TP_DOMAIN_TYPE (mate_domain) == DB_TYPE_VARIABLE)
+    {
+      return false;
+    }
+
+  DOMAIN_OPERAND operands[2];
+  const int b = bind_is_lhs ? 0 : 1;
+  operands[b] = DOMAIN_OPERAND
+  {
+  bind_domain, DB_TYPE_NULL, TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (bind_domain)) ? bind_domain->collation_id : -1, false};
+  operands[1 - b] = DOMAIN_OPERAND
+  {
+  mate_domain, DB_TYPE_NULL, TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (mate_domain)) ? mate_domain->collation_id : -1, false};
+  RESOLVED_DOMAIN result;
+  bool needs_late_bind;
+  if (domain_resolve (DOMAIN_CTX_ARITH, opcode, operands, 2, NULL, &result, &needs_late_bind) == NO_ERROR
+      && !needs_late_bind && result.conv[b] != NULL)
+    {
+      *target = (TP_DOMAIN *) result.operand_domain[b];
+    }
+  return true;
+}
+
+/*
+ * pt_bind_operand_target () - CBRD-27583: the domain the operator expr converts a host variable arriving in
+ *   bind_domain into, as the type rule module decides it for a relational comparison (pt_bind_comparison_target) or
+ *   an arithmetic operator (pt_bind_arith_target): the target, or NULL when the operator takes the bind as it is or
+ *   decides nothing about it
+ */
+TP_DOMAIN *
+pt_bind_operand_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, PT_NODE * expr, PT_NODE * hv)
+{
+  TP_DOMAIN *target = NULL;
+
+  if (expr == NULL || expr->node_type != PT_EXPR || (expr->info.expr.arg1 != hv && expr->info.expr.arg2 != hv))
+    {
+      return NULL;
+    }
+  const bool hv_is_lhs = expr->info.expr.arg1 == hv;
+  if (pt_is_bind_comparison_op (expr->info.expr.op))
+    {
+      (void) pt_bind_comparison_target (parser, bind_domain, hv_is_lhs ? expr->info.expr.arg2 : expr->info.expr.arg1,
+					hv_is_lhs, &target);
+    }
+  else
+    {
+      (void) pt_bind_arith_target (parser, bind_domain, expr, hv_is_lhs, &target);
+    }
+  return target;
+}
+
+/*
+ * pt_typed_bind_comparison () - CBRD-27583: a user host variable compared with an operand of a known type, in the
+ *   compilation of a bind type signature (its value, or the NULL carrying only the value's type that the SELECT
+ *   compilation binds; never under set_host_var, the compilation that consumes values), takes the type of its value,
+ *   and pt_bind_comparison_target decides the pair: when the rule converts the bind side, the position's expected
+ *   domain is the target (a rule cast: the client casts the value before it sends it); else the position stays
+ *   value-typed (the regu reads host_var_compiled_domains, the term converts the other side). Either way the
+ *   position records the value's domain: a later value of another type recompiles the statement for its own
+ *   signature instead of being cast into this plan's domain (int_col = ? with 1.5 stays 1.5). Returns false when
+ *   this is not such a bind: the caller types it as before.
+ */
+static bool
+pt_typed_bind_comparison (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * hv)
+{
+  if (parser->flag.set_host_var != 0 || expr == NULL || expr->node_type != PT_EXPR
+      || !pt_is_bind_comparison_op (expr->info.expr.op) || hv->info.host_var.var_type != PT_HOST_IN
+      || hv->info.host_var.index >= parser->host_var_count || parser->host_variables == NULL
+      || parser->host_var_expected_domains == NULL || parser->host_var_compiled_domains == NULL)
+    {
+      return false;
+    }
+  const int index = hv->info.host_var.index;
+  const DB_VALUE *val = &parser->host_variables[index];
+  if (DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_NULL
+      || TP_DOMAIN_TYPE (parser->host_var_expected_domains[index]) != DB_TYPE_UNKNOWN)
+    {
+      return false;
+    }
+  TP_DOMAIN *source = pt_host_var_value_domain (parser, index);
+  TP_DOMAIN *target;
+  const bool hv_is_lhs = expr->info.expr.arg1 == hv;
+  if (!pt_bind_comparison_target (parser, source, hv_is_lhs ? expr->info.expr.arg2 : expr->info.expr.arg1, hv_is_lhs,
+				  &target))
+    {
+      return false;
+    }
+  parser->host_var_compiled_domains[index] = source;
+  if (target != NULL)
+    {
+      SET_EXPECTED_DOMAIN (hv, target);
+      hv->info.host_var.rule_cast = true;
     }
   return true;
 }
@@ -4634,7 +4763,7 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
       return NO_ERROR;
     }
 
-  if (node->node_type == PT_HOST_VAR && node->type_enum == PT_TYPE_MAYBE
+  if (node->node_type == PT_HOST_VAR && node->type_enum == PT_TYPE_MAYBE && def_type == PT_TYPE_MAYBE
       && pt_typed_bind_comparison (parser, expr, node))
     {
       /* CBRD-27583: a comparison bind the context leaves untyped (def_type MAYBE for a numeric mate), typed from

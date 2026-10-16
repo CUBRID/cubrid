@@ -555,7 +555,12 @@ struct trace_json_t;
             db_value_clear(hv); \
         free_and_init(parser_->host_variables); \
 	free_and_init(parser_->host_var_expected_domains); \
-	free_and_init(parser_->host_var_compiled_domains);} while (0)
+	free_and_init(parser_->host_var_compiled_domains); \
+	free_and_init(parser_->host_var_derived_from); \
+	parser_->host_var_derived_count = 0;} while (0)
+
+/* CBRD-27583: the auto-parameterized literals among the positions after the user's (the rest are derived positions) */
+#define PT_AUTO_PARAM_LITERAL_COUNT(parser_) ((parser_)->auto_param_count - (parser_)->host_var_derived_count)
 
 #define SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT(parser_) \
     do { if (parent_parser) { \
@@ -565,6 +570,8 @@ struct trace_json_t;
              parser_->host_variables = parent_parser->host_variables; \
 	     parser_->host_var_expected_domains = parent_parser->host_var_expected_domains; \
 	     parser_->host_var_compiled_domains = parent_parser->host_var_compiled_domains; \
+	     parser_->host_var_derived_from = parent_parser->host_var_derived_from; \
+	     parser_->host_var_derived_count = parent_parser->host_var_derived_count; \
              parser_->host_var_count = parent_parser->host_var_count; \
              parser_->auto_param_count = parent_parser->auto_param_count; \
              parser_->flag.set_host_var = 1; } } while (0)
@@ -574,6 +581,7 @@ struct trace_json_t;
              parser_->host_variables = NULL; parser_->host_var_count = 0; \
 	     parser_->host_var_expected_domains = NULL; \
 	     parser_->host_var_compiled_domains = NULL; \
+	     parser_->host_var_derived_from = NULL; parser_->host_var_derived_count = 0; \
              parser_->auto_param_count = 0; parser_->flag.set_host_var = 0; } } while (0)
 
 #endif /* !SERVER_MODE */
@@ -2467,6 +2475,8 @@ struct pt_host_var_info
   /* for processing subquery's result cache */
   int saved;			/* for saving the main query's host_var indexes */
   PT_NODE *next;		/* for linking to same host_var indexes */
+  bool rule_cast;		/* CBRD-27583: the expected domain is the type rule's target for a value-typed comparison
+				 * (pt_typed_bind_comparison), not the context's: the position keeps its compiled domain */
 };
 
 /* Info for lists of PT_NODE */
@@ -3928,10 +3938,14 @@ struct parser_context
 						 * left untyped (value-typed positions); NULL for a context-typed
 						 * position. The plan is the plan of these bound types: a later value of
 						 * another type gets another plan (pt_set_host_variables flags it) */
+  int *host_var_derived_from;	/* CBRD-27583: [host_var_count + auto_param_count] once a compilation of a bind type
+				 * signature assigned its positions (pt_assign_host_var_positions): for a derived position
+				 * the user position whose value the client converts into it, else -1 */
   EXECUTION_STATE_VALUES execution_values;	/* values kept across the execution of statements during a client
 						 * session. */
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
+  int host_var_derived_count;	/* CBRD-27583: how many of the auto_param_count positions are derived positions */
 
   int dbval_cnt;		/* to be assigned to XASL */
   int line, column;		/* current input line and column */

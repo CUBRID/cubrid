@@ -3074,6 +3074,46 @@ pt_value_has_domain_type (const DB_VALUE * val, const TP_DOMAIN * domain)
 }
 
 /*
+ * pt_set_derived_host_variable () - CBRD-27583: a derived position holds the value of its user position converted
+ *   into the derived position's domain, the conversion a context-typed position gets (pt_set_host_variables). A value
+ *   that does not convert is a bind-time error naming the derived position's type.
+ */
+int
+pt_set_derived_host_variable (PARSER_CONTEXT * parser, int index, const DB_VALUE * source)
+{
+  DB_VALUE *hv = &parser->host_variables[index];
+  TP_DOMAIN *domain = parser->host_var_expected_domains[index];
+
+  pr_clear_value (hv);
+  if (tp_value_cast_preserve_domain (source, hv, domain, false, true) != DOMAIN_COMPATIBLE)
+    {
+      PT_ERRORmf2 (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
+		   pt_type_enum_to_db_domain_name (pt_db_to_type_enum (TP_DOMAIN_TYPE (domain))));
+      return ER_FAILED;
+    }
+  if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) && TP_DOMAIN_TYPE (domain) != DB_VALUE_DOMAIN_TYPE (source)
+      && DB_VALUE_DOMAIN_TYPE (source) == DB_TYPE_VARCHAR)
+    {
+      /* as pt_set_host_variables: a VARCHAR value bound to a CHAR(n) keeps its original value once the cast accepts it */
+      pr_clear_value (hv);
+      pr_clone_value (source, hv);
+    }
+  return NO_ERROR;
+}
+
+/*
+ * pt_host_var_is_context_typed () - CBRD-27583: whether a position's expected domain is one the client casts the
+ *   value into before it sends it (a context-typed position). An ENUM domain (CUBRIDSUS-9007) and the collation
+ *   axis's ENFORCE domain convert no value's type: such a position is value-typed, as is one with no domain.
+ */
+bool
+pt_host_var_is_context_typed (const TP_DOMAIN * expected)
+{
+  return expected != NULL && TP_DOMAIN_TYPE (expected) != DB_TYPE_UNKNOWN && TP_DOMAIN_TYPE (expected) != DB_TYPE_NULL
+    && TP_DOMAIN_TYPE (expected) != DB_TYPE_ENUMERATION && expected->collation_flag != TP_DOMAIN_COLL_ENFORCE;
+}
+
+/*
  * pt_set_host_variables() - sets parser's host_variables & count
  *   return: none
  *   parser(in):  the parser context
@@ -3098,6 +3138,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
     }
 
   parser->flag.set_host_var = 0;
+  parser->flag.bind_signature_changed = 0;
 
   if (parser->host_var_count > count)
     {
@@ -3157,6 +3198,15 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	}
     }
 
+  for (i = parser->host_var_count; i < parser->host_var_count + parser->auto_param_count; i++)
+    {
+      if (pt_is_derived_host_var (parser, i)
+	  && pt_set_derived_host_variable (parser, i, &values[parser->host_var_derived_from[i]]) != NO_ERROR)
+	{
+	  return;
+	}
+    }
+
   parser->flag.set_host_var = 1;	/* OK */
 }
 
@@ -3179,8 +3229,10 @@ pt_host_var_db_value (PARSER_CONTEXT * parser, PT_NODE * hv)
 	{
 	  val = &parser->host_variables[idx];
 	}
-      else if (idx >= parser->host_var_count && idx < parser->host_var_count + parser->auto_param_count)
+      else if (idx >= parser->host_var_count && idx < parser->host_var_count + parser->auto_param_count
+	       && (parser->flag.set_host_var || !pt_is_derived_host_var (parser, idx)))
 	{
+	  /* a literal's value; a derived position's, like a user position's, only once the user's values are set */
 	  val = &parser->host_variables[idx];
 	}
     }

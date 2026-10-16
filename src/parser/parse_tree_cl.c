@@ -3021,7 +3021,7 @@ pt_conv_values_2_hash_text (PARSER_CONTEXT * parser, const PT_NODE * node)
   PT_PRINT_VALUE_FUNC saved_print_db_value;
   unsigned int saved_dont_prt_long_string;
 
-  if (parser->auto_param_count <= 0)
+  if (PT_AUTO_PARAM_LITERAL_COUNT (parser) <= 0)
     {
       /* nothing was auto-parameterized: the values are still visible in the printed text */
       return NULL;
@@ -13461,8 +13461,9 @@ pt_apply_host_var (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
  * pt_print_host_var_type () - CBRD-27583: the type token of a host variable in the XASL cache key text, so that a
  *   statement has one plan per bind type signature. A user host variable prints the domain the plan reads: the
  *   expected domain its context gave it, else the value domain a typed compilation took (host_var_compiled_domains),
- *   else '?' (a compilation without values, which no execution shares). An auto-parameter prints its literal's
- *   domain. A string carries its codeset and collation - a literal's collation comes from the session, not the text.
+ *   else '?' (a compilation without values, which no execution shares). A derived position prints its domain, an
+ *   auto-parameter its literal's. A string carries its codeset and collation - a literal's collation comes from the
+ *   session, not the text.
  */
 static void
 pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
@@ -13473,8 +13474,8 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
 
   if (index < parser->host_var_count)
     {
-      if (parser->host_var_expected_domains != NULL && parser->host_var_expected_domains[index] != NULL
-	  && TP_DOMAIN_TYPE (parser->host_var_expected_domains[index]) != DB_TYPE_UNKNOWN)
+      if (parser->host_var_expected_domains != NULL
+	  && pt_host_var_is_context_typed (parser->host_var_expected_domains[index]))
 	{
 	  domain = parser->host_var_expected_domains[index];
 	}
@@ -13488,6 +13489,13 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
 	  codeset = domain->codeset;
 	  collation = domain->collation_id;
 	}
+    }
+  else if (pt_is_derived_host_var (parser, index))
+    {
+      domain = parser->host_var_expected_domains[index];
+      type = TP_DOMAIN_TYPE (domain);
+      codeset = domain->codeset;
+      collation = domain->collation_id;
     }
   else if (parser->host_variables != NULL && index < parser->host_var_count + parser->auto_param_count)
     {
