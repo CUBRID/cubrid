@@ -3488,13 +3488,16 @@ expr_scan_pred_root_shape (const void *compiled, int *n_kids)
   return -1;
 }
 
+static const DB_VALUE *expr_raw_pos_value (const REGU_VARIABLE * k, const val_descr * vd);
+static bool expr_scan_pred_numeric_term_info (const EXPR_PRED * pred, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
+
 bool
 expr_scan_pred_kid_raw_info (const void *compiled, int kid, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
 {
   const EXPR_PRED *root = (const EXPR_PRED *) compiled;
   const EXPR_PRED *pred;
   const REGU_VARIABLE *col, *k;
-  bool col_is_lhs;
+  bool col_is_lhs, numeric = false;
 
   memset (out, 0, sizeof (*out));
   if (root == NULL)
@@ -3502,9 +3505,25 @@ expr_scan_pred_kid_raw_info (const void *compiled, int kid, const val_descr * vd
       return false;
     }
   pred = expr_scan_pred_kid ((EXPR_PRED *) root, kid);
-  if (pred == NULL || pred->kind != EXPR_PRED_COMP_FETCH || pred->fast_type == DB_TYPE_UNKNOWN)
+  if (pred != NULL && pred->kind == EXPR_PRED_INTERP_COMP0)
+    {
+      return expr_scan_pred_numeric_term_info (pred, vd, out);
+    }
+  if (pred == NULL || pred->kind != EXPR_PRED_COMP_FETCH)
     {
       return false;
+    }
+  if (pred->fast_type == DB_TYPE_UNKNOWN)
+    {
+      /* the generic comparison: of its types only NUMERIC has an exact typed form here (both
+       * sides were resolved to NUMERIC; the constant's scale may differ from the column's) */
+      const REGU_VARIABLE *c = (pred->fetch_lhs->type == TYPE_ATTR_ID) ? pred->fetch_lhs : pred->fetch_rhs;
+
+      if (c->type != TYPE_ATTR_ID || c->domain == NULL || TP_DOMAIN_TYPE (c->domain) != DB_TYPE_NUMERIC)
+	{
+	  return false;
+	}
+      numeric = true;
     }
   /* The sides a page can take: a column (TYPE_ATTR_ID) against a value fixed for the execution
    * -- an inline literal (TYPE_DBVAL), a literal the leaf pinned, a prologue-computed constant,
@@ -3536,7 +3555,7 @@ expr_scan_pred_kid_raw_info (const void *compiled, int kid, const val_descr * vd
     }
   out->col_regu = col;
   out->col_is_lhs = col_is_lhs;
-  out->fast_type = pred->fast_type;
+  out->fast_type = numeric ? DB_TYPE_NUMERIC : pred->fast_type;
   out->rel_op = pred->rel_op;
   if (!col_is_lhs && pred->lhs_compiled)
     {
@@ -3567,31 +3586,131 @@ expr_scan_pred_kid_raw_info (const void *compiled, int kid, const val_descr * vd
   if (k->type == TYPE_DBVAL)
     {
       out->k_value = &k->value.dbval;
-      return !DB_IS_NULL (out->k_value) && DB_VALUE_DOMAIN_TYPE (out->k_value) == pred->fast_type;
+      return !DB_IS_NULL (out->k_value) && DB_VALUE_DOMAIN_TYPE (out->k_value) == out->fast_type;
     }
-  if (k->type == TYPE_POS_VALUE && vd != NULL)
+  if (k->type == TYPE_POS_VALUE)
     {
-      /* the bound value, or the gate's converted copy of it (expr_pos_value_index ()) */
-      int vidx = -1;
-
-      if (k->plan_item != NULL && k->plan_item->ref >= 0 && vd->xasl_state != NULL
-	  && vd->xasl_state->resolved_domain.readable && k->plan_item->ref < vd->xasl_state->resolved_domain.n_vals)
-	{
-	  vidx = k->plan_item->ref;
-	}
-      else if (k->value.val_pos >= 0 && k->value.val_pos < vd->dbval_cnt)
-	{
-	  vidx = k->value.val_pos;
-	}
-      if (vidx < 0)
-	{
-	  return false;
-	}
-      out->k_value = &vd->dbval_ptr[vidx];
-      out->k_is_bound = true;
-      return true;
+      out->k_value = expr_raw_pos_value (k, vd);
+      return out->k_value != NULL;
     }
   return false;
+}
+
+/* the value a TYPE_POS_VALUE operand reads in this execution: the bound value, or the gate's
+ * converted copy of it (the index rule of expr_pos_value_index ()) */
+static const DB_VALUE *
+expr_raw_pos_value (const REGU_VARIABLE * k, const val_descr * vd)
+{
+  int vidx = -1;
+
+  if (vd == NULL)
+    {
+      return NULL;
+    }
+  if (k->plan_item != NULL && k->plan_item->ref >= 0 && vd->xasl_state != NULL
+      && vd->xasl_state->resolved_domain.readable && k->plan_item->ref < vd->xasl_state->resolved_domain.n_vals)
+    {
+      vidx = k->plan_item->ref;
+    }
+  else if (k->value.val_pos >= 0 && k->value.val_pos < vd->dbval_cnt)
+    {
+      vidx = k->value.val_pos;
+    }
+  return (vidx >= 0) ? &vd->dbval_ptr[vidx] : NULL;
+}
+
+/* A term the compiler left to eval_pred_comp0 () because its sides differ in type: a NUMERIC
+ * column against an integer constant ("l_quantity < 24", the literal auto-parameterized).
+ * eval_value_rel_cmp () coerces the constant to NUMERIC and compares exactly, which a typed
+ * loop reproduces.  Only the constants that coercion takes without loss are offered
+ * (expr_numeric_cmp_const_ok ()); the batch checks the value again when a page starts, a host
+ * variable being rebindable between executions. */
+static bool
+expr_scan_pred_numeric_term_info (const EXPR_PRED * pred, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
+{
+  const PRED_EXPR *pr = (const PRED_EXPR *) pred->fetch_src;
+  const COMP_EVAL_TERM *et;
+  const REGU_VARIABLE *col, *k;
+  const DB_VALUE *kv = NULL;
+  bool col_is_lhs;
+
+  if (pr == NULL || pr->type != T_EVAL_TERM || pr->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
+    {
+      return false;
+    }
+  et = &pr->pe.m_eval_term.et.et_comp;
+  switch (et->rel_op)
+    {
+    case R_EQ:
+    case R_NE:
+    case R_LT:
+    case R_LE:
+    case R_GT:
+    case R_GE:
+      break;
+    default:
+      return false;
+    }
+  if (et->lhs == NULL || et->rhs == NULL)
+    {
+      return false;
+    }
+  if (et->lhs->type == TYPE_ATTR_ID)
+    {
+      col = et->lhs;
+      k = et->rhs;
+      col_is_lhs = true;
+    }
+  else if (et->rhs->type == TYPE_ATTR_ID)
+    {
+      col = et->rhs;
+      k = et->lhs;
+      col_is_lhs = false;
+    }
+  else
+    {
+      return false;
+    }
+  if (col->domain == NULL || TP_DOMAIN_TYPE (col->domain) != DB_TYPE_NUMERIC)
+    {
+      return false;
+    }
+  if (k->type == TYPE_DBVAL)
+    {
+      kv = &k->value.dbval;
+    }
+  else if (k->type == TYPE_POS_VALUE)
+    {
+      kv = expr_raw_pos_value (k, vd);
+    }
+  if (kv == NULL || DB_IS_NULL (kv) || !expr_numeric_cmp_const_ok (kv))
+    {
+      return false;
+    }
+  out->col_regu = col;
+  out->col_is_lhs = col_is_lhs;
+  out->fast_type = DB_TYPE_NUMERIC;
+  out->rel_op = et->rel_op;
+  out->k_value = kv;
+  return true;
+}
+
+/* the constants a NUMERIC column compares with exactly, whichever of the two forms the term took */
+bool
+expr_numeric_cmp_const_ok (const DB_VALUE * k)
+{
+  switch (DB_VALUE_DOMAIN_TYPE (k))
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_NUMERIC:
+      return true;
+    case DB_TYPE_BIGINT:
+      /* eval_value_rel_cmp () coerces to tp_domain_resolve_default (DB_TYPE_NUMERIC), NUMERIC(15,0) */
+      return db_get_bigint (k) < 1000000000000000LL && db_get_bigint (k) > -1000000000000000LL;
+    default:
+      return false;
+    }
 }
 
 int

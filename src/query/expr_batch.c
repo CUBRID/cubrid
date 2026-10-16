@@ -33,6 +33,11 @@
  *   - a KID is one term of the filter's AND chain: either a RAW leaf, "column op constant"
  *     over a vector, or a ROW term the compiled filter evaluates per surviving row.
  *
+ * A column is decoded when something first reads it, over the rows still selected at that
+ * point: a raw leaf's column just before the leaf runs, the operands' columns after the
+ * filter.  The selection only shrinks, so a column decoded for a leaf covers every row the
+ * operands later read.
+ *
  * Every typed loop mirrors one row kernel and declines (EXPR_BATCH_FALLBACK) where that
  * kernel would raise an error, so the row path re-runs the page and raises it.
  */
@@ -136,7 +141,7 @@ struct eb_col
   int vec;
   unsigned char type;		/* DB_TYPE on disk */
   unsigned char is_fixed;
-  unsigned char for_filter;	/* decoded for every row of the page (else for the selected rows only) */
+  unsigned char decoded;	/* this page: decoded already, for the rows selected at that point */
   short scale;			/* NUMERIC: the stored scale must be the domain's */
 };
 
@@ -156,16 +161,25 @@ typedef struct eb_leaf EB_LEAF;
 struct eb_leaf
 {
   int vec;			/* the column, always on the left here */
+  int col;			/* its index in the plan's columns */
   unsigned char etype;
   unsigned char rel_op;		/* REL_OP, with the column on the left */
-  unsigned char k_type;		/* DB_TYPE the constant must carry */
+  unsigned char k_type;		/* DB_TYPE the constant must carry (EB_NUM: expr_numeric_cmp_const_ok ()) */
   unsigned char k_null;		/* the constant is NULL this page: every row is UNKNOWN */
+  /* EB_NUM: the constant brought to the column's scale, which may change the operator
+   * ("n < 2.345" over scale 2 is "n <= 234") or settle it for every row ("n = 2.345") */
+  unsigned char k_op;
+  unsigned char k_all;		/* EB_NUM: 0, or the result of every non-NULL row (EB_ALL_FALSE / EB_ALL_TRUE) */
   union
   {
     int64_t i;
     double d;
+    __int128 n;			/* EB_NUM: the signed coefficient at the column's scale */
   } k;				/* the constant for the current page */
 };
+
+#define EB_ALL_FALSE (1)
+#define EB_ALL_TRUE (2)
 
 typedef struct eb_leaf_src EB_LEAF_SRC;
 struct eb_leaf_src
@@ -256,7 +270,8 @@ struct eb_build
 static int eb_elem_size (int etype);
 static int eb_grow (void **arr, int *cap, int n, size_t elem);
 static int eb_new_vec (EB_BUILD * b, int kind, int etype, DB_TYPE dbtype);
-static int eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid, bool for_filter);
+static int eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid);
+static int eb_col_of_vec (const EXPR_BATCH_PLAN * plan, int vec);
 static int eb_new_scalar_vec (EB_BUILD * b, int etype, DB_TYPE dbtype, const DB_VALUE * value,
 			      DB_VALUE * const *cell, int conv);
 static int eb_emit (EB_BUILD * b, int op, int in1, int in2, int etype, DB_TYPE result_type, int *out_vec);
@@ -274,7 +289,8 @@ static int eb_decline (EB_BUILD * b, const char *why);
 
 static int eb_load_scalars (EXPR_BATCH_PLAN * plan);
 static int eb_load_leaf_constants (EXPR_BATCH_PLAN * plan);
-static int eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, int n, bool for_filter);
+static int eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, int n, int only_col);
+static int eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale);
 static int eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, struct val_descr *vd);
 static void eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf);
 static int eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch);
@@ -382,7 +398,7 @@ eb_new_vec (EB_BUILD * b, int kind, int etype, DB_TYPE dbtype)
 
 /* the vector of a column: one per (attribute, cache), created on first use */
 static int
-eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid, bool for_filter)
+eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
 {
   EXPR_BATCH_PLAN *plan = b->plan;
   HEAP_RAW_LOCATOR loc;
@@ -393,7 +409,6 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid, 
     {
       if (b->col_attrid[i] == attrid)
 	{
-	  plan->cols[i].for_filter = plan->cols[i].for_filter || for_filter;
 	  return plan->cols[i].vec;
 	}
     }
@@ -445,11 +460,26 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid, 
   col->vec = vec;
   col->type = (unsigned char) loc.type;
   col->is_fixed = loc.is_fixed;
-  col->for_filter = for_filter;
+  col->decoded = 0;
   col->scale = (short) loc.scale;
   plan->vsrc[vec].precision = (short) loc.precision;
   plan->vsrc[vec].scale = (short) loc.scale;
   return vec;
+}
+
+static int
+eb_col_of_vec (const EXPR_BATCH_PLAN * plan, int vec)
+{
+  int c;
+
+  for (c = 0; c < plan->n_cols; c++)
+    {
+      if (plan->cols[c].vec == vec)
+	{
+	  return c;
+	}
+    }
+  return -1;
 }
 
 static int
@@ -596,15 +626,15 @@ eb_build_filter (EB_BUILD * b)
 
       plan->kid_leaf[i] = -1;
       if (!expr_scan_pred_kid_raw_info (b->in->scan_pred_compiled, i, b->in->vd, &info)
-	  || !eb_etype_of (info.fast_type, &etype) || etype == EB_NUM
-	  || info.col_regu->value.attr_descr.cache_attrinfo == NULL)
+	  || !eb_etype_of (info.fast_type, &etype) || info.col_regu->value.attr_descr.cache_attrinfo == NULL
+	  || (etype == EB_NUM && info.k_value != NULL && !DB_IS_NULL (info.k_value)
+	      && !expr_numeric_cmp_const_ok (info.k_value)))
 	{
 	  /* evaluated per surviving row by the compiled filter itself */
 	  plan->n_row_kids++;
 	  continue;
 	}
-      vec =
-	eb_new_col_vec (b, info.col_regu->value.attr_descr.cache_attrinfo, info.col_regu->value.attr_descr.id, true);
+      vec = eb_new_col_vec (b, info.col_regu->value.attr_descr.cache_attrinfo, info.col_regu->value.attr_descr.id);
       if (vec < 0)
 	{
 	  /* the column is not one the batch decodes: the term can still run per row */
@@ -626,6 +656,7 @@ eb_build_filter (EB_BUILD * b)
       leaf = &plan->leaves[plan->n_leaves];
       memset (leaf, 0, sizeof (*leaf));
       leaf->vec = vec;
+      leaf->col = eb_col_of_vec (plan, vec);
       leaf->etype = (unsigned char) etype;
       leaf->k_type = (unsigned char) info.fast_type;
       plan->lsrc[plan->n_leaves].value = info.k_value;
@@ -713,7 +744,7 @@ eb_program_cell_vec (EB_BUILD * b, int cell)
       }
     if (eb_slot_lookup (b, addr, &attrid, &attr_cache))
       {
-	b->cell_vec[cell] = eb_new_col_vec (b, attr_cache, attrid, false);
+	b->cell_vec[cell] = eb_new_col_vec (b, attr_cache, attrid);
 	return b->cell_vec[cell];
       }
     /* not a column of this scan: a literal the plan holds, constant for the clone's life */
@@ -831,7 +862,7 @@ eb_build_program (EB_BUILD * b)
 	      {
 		return eb_decline (b, "a leaf that is not a column of this scan");
 	      }
-	    vec = eb_new_col_vec (b, attr_cache, attrid, false);
+	    vec = eb_new_col_vec (b, attr_cache, attrid);
 	    if (vec < 0)
 	      {
 		return EXPR_BATCH_FALLBACK;
@@ -945,7 +976,7 @@ eb_fused_leaf (EB_BUILD * b, const REGU_VARIABLE * regu, int group, bool wrapped
 	{
 	  return eb_decline (b, "an operand leaf that is not a column of this scan");
 	}
-      vec = eb_new_col_vec (b, attr_cache, attrid, false);
+      vec = eb_new_col_vec (b, attr_cache, attrid);
       if (vec < 0)
 	{
 	  return EXPR_BATCH_FALLBACK;
@@ -1178,7 +1209,7 @@ eb_build_aggs (THREAD_ENTRY * thread_p, EB_BUILD * b)
 	    {
 	      return eb_decline (b, "an operand that is not a column of this scan");
 	    }
-	  vec = eb_new_col_vec (b, attr_cache, attrid, false);
+	  vec = eb_new_col_vec (b, attr_cache, attrid);
 	  if (vec < 0)
 	    {
 	      return EXPR_BATCH_FALLBACK;
@@ -1542,6 +1573,14 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 	  leaf->k_null = 1;
 	  continue;
 	}
+      if (leaf->etype == EB_NUM)
+	{
+	  if (eb_num_leaf_constant (leaf, k, plan->vsrc[leaf->vec].scale) != NO_ERROR)
+	    {
+	      return EXPR_BATCH_FALLBACK;
+	    }
+	  continue;
+	}
       if (DB_VALUE_DOMAIN_TYPE (k) != leaf->k_type)
 	{
 	  /* the leaf compares against something else than it was resolved for: its own guard case */
@@ -1568,10 +1607,117 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
   return NO_ERROR;
 }
 
-/* decode the columns of one phase for the given rows: record-outer, so each record's bytes
- * are touched once for all its columns */
+/* A NUMERIC leaf's constant at the column's scale sc.  The comparison the row path makes is
+ * exact (numeric_db_value_compare () aligns the scales; an integer constant is coerced to
+ * NUMERIC first), and a column value is an integer c at scale sc, so:
+ *   - a constant of scale sk <= sc is K * 10^(sc - sk), exactly -- unless that leaves the 38
+ *     digits every column value fits in, when the comparison has one result for every row;
+ *   - a constant of scale sk > sc is q + f with q = floor (K / 10^(sk - sc)), 0 <= f < 1: when
+ *     f = 0 it is q; otherwise no c equals it, c < K is c <= q and c > K is c > q. */
 static int
-eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, int n, bool for_filter)
+eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale)
+{
+  NUMERIC_AGG_EXPR_VAL nv;
+  __int128 kv, p10 = 1;
+  int d, i;
+  bool ok;
+
+  if (!expr_numeric_cmp_const_ok (k))
+    {
+      /* rebound to another type: the leaf's own guard case */
+      return EXPR_BATCH_FALLBACK;
+    }
+  ok = (DB_VALUE_DOMAIN_TYPE (k) == DB_TYPE_NUMERIC) ? numeric_agg_expr_from_dbv (k, &nv)
+    : numeric_agg_expr_from_int_dbv (k, &nv);
+  if (!ok)
+    {
+      return EXPR_BATCH_FALLBACK;
+    }
+  /* the coefficient is below 10^38, well inside the signed 128-bit range */
+  kv = nv.is_negative ? -(__int128) nv.coefficient : (__int128) nv.coefficient;
+  leaf->k_op = leaf->rel_op;
+  leaf->k_all = 0;
+  d = col_scale - nv.scale;
+  if (d >= 0)
+    {
+      __int128 lim = 1;		/* 10^38: no column value reaches it */
+
+      for (i = 0; i < 38; i++)
+	{
+	  lim *= 10;
+	}
+      for (i = 0; i < d; i++)
+	{
+	  p10 *= 10;
+	}
+      if (kv != 0 && (kv > 0 ? kv : -kv) > (lim - 1) / p10)
+	{
+	  /* |K| at the column's scale is beyond every value the column holds */
+	  bool k_positive = kv > 0;
+
+	  switch (leaf->rel_op)
+	    {
+	    case R_EQ:
+	      leaf->k_all = EB_ALL_FALSE;
+	      break;
+	    case R_NE:
+	      leaf->k_all = EB_ALL_TRUE;
+	      break;
+	    case R_LT:
+	    case R_LE:
+	      leaf->k_all = k_positive ? EB_ALL_TRUE : EB_ALL_FALSE;
+	      break;
+	    default:
+	      leaf->k_all = k_positive ? EB_ALL_FALSE : EB_ALL_TRUE;
+	      break;
+	    }
+	  return NO_ERROR;
+	}
+      leaf->k.n = kv * p10;
+      return NO_ERROR;
+    }
+  for (i = 0; i < -d; i++)
+    {
+      p10 *= 10;
+    }
+  {
+    __int128 q = kv / p10, r = kv % p10;
+
+    if (r < 0)
+      {
+	/* C division truncates: floor it */
+	q -= 1;
+	r += p10;
+      }
+    leaf->k.n = q;
+    if (r == 0)
+      {
+	return NO_ERROR;
+      }
+    switch (leaf->rel_op)
+      {
+      case R_EQ:
+	leaf->k_all = EB_ALL_FALSE;
+	break;
+      case R_NE:
+	leaf->k_all = EB_ALL_TRUE;
+	break;
+      case R_LT:
+      case R_LE:
+	leaf->k_op = R_LE;
+	break;
+      default:
+	leaf->k_op = R_GT;
+	break;
+      }
+  }
+  return NO_ERROR;
+}
+
+/* Decode columns for the given rows: one column (only_col), or every column not decoded yet
+ * this page (-1).  Record-outer, so each record's bytes are touched once for its columns. */
+static int
+eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, int n, int only_col)
 {
   int j, c;
 
@@ -1588,15 +1734,18 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
 	  return EXPR_BATCH_FALLBACK;
 	}
       heap_rec_layout_init_repr (&layout, recdes->data, plan->n_variable, plan->fixed_length);
-      for (c = 0; c < plan->n_cols; c++)
+      for (c = (only_col >= 0) ? only_col : 0; c < plan->n_cols; c++)
 	{
 	  const EB_COL *col = &plan->cols[c];
 	  EB_VEC *v = &plan->vecs[col->vec];
 	  const char *p;
 
-	  if (col->for_filter != for_filter && (for_filter || col->for_filter))
+	  if (only_col >= 0 && c != only_col)
 	    {
-	      /* phase 0 decodes the filter's columns, phase 1 the rest */
+	      break;
+	    }
+	  if (col->decoded)
+	    {
 	      continue;
 	    }
 	  if (col->is_fixed)
@@ -1671,6 +1820,10 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
 	    }
 	}
     }
+  for (c = (only_col >= 0) ? only_col : 0; c < ((only_col >= 0) ? only_col + 1 : plan->n_cols); c++)
+    {
+      plan->cols[c].decoded = 1;
+    }
   return NO_ERROR;
 }
 
@@ -1692,7 +1845,42 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	  batch->sel[n++] = r;
 	  continue;
 	}
-      if (leaf->etype == EB_I64)
+      if (leaf->etype == EB_NUM)
+	{
+	  const NUMERIC_AGG_EXPR_VAL *num = &((const NUMERIC_AGG_EXPR_VAL *) v->data)[r];
+	  __int128 a = num->is_negative ? -(__int128) num->coefficient : (__int128) num->coefficient;
+	  __int128 k = leaf->k.n;
+
+	  if (leaf->k_all != 0)
+	    {
+	      keep = (leaf->k_all == EB_ALL_TRUE);
+	    }
+	  else
+	    {
+	      switch (leaf->k_op)
+		{
+		case R_EQ:
+		  keep = (a == k);
+		  break;
+		case R_NE:
+		  keep = (a != k);
+		  break;
+		case R_LT:
+		  keep = (a < k);
+		  break;
+		case R_LE:
+		  keep = (a <= k);
+		  break;
+		case R_GT:
+		  keep = (a > k);
+		  break;
+		default:
+		  keep = (a >= k);
+		  break;
+		}
+	    }
+	}
+      else if (leaf->etype == EB_I64)
 	{
 	  int64_t a = ((const int64_t *) v->data)[r], k = leaf->k.i;
 
@@ -1771,7 +1959,22 @@ eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, 
     {
       if (plan->kid_leaf[i] >= 0)
 	{
-	  eb_raw_kid (plan, batch, &plan->leaves[plan->kid_leaf[i]]);
+	  const EB_LEAF *leaf = &plan->leaves[plan->kid_leaf[i]];
+	  int rc;
+
+	  if (batch->n_sel == 0)
+	    {
+	      break;
+	    }
+	  if (!plan->cols[leaf->col].decoded)
+	    {
+	      rc = eb_extract (plan, batch, batch->sel, batch->n_sel, leaf->col);
+	      if (rc != NO_ERROR)
+		{
+		  return rc;
+		}
+	    }
+	  eb_raw_kid (plan, batch, leaf);
 	  continue;
 	}
       /* a term the compiled filter evaluates itself, on each row still in the selection, in
@@ -1982,7 +2185,7 @@ eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch)
 int
 expr_batch_run (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, struct val_descr *vd)
 {
-  int rc;
+  int rc, i;
 
   if (batch->n_rows == 0)
     {
@@ -1993,7 +2196,14 @@ expr_batch_run (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * threa
     {
       return EXPR_BATCH_FALLBACK;
     }
-  /* the prologues (literal and host-variable steps) once per execution, as the row path's first row does */
+  for (i = 0; i < plan->n_cols; i++)
+    {
+      plan->cols[i].decoded = 0;
+    }
+  /* The prologues (literal and host-variable steps) once per execution, where the row path
+   * runs them: the filter's before its first row, the operand program's at the first row the
+   * filter accepts -- a prologue that can fail (an overflowing "? + 1") must not fail a scan
+   * whose filter rejects every row. */
   if (plan->filter != NULL)
     {
       rc = expr_scan_pred_prepare (plan->filter, thread_p, vd);
@@ -2001,6 +2211,20 @@ expr_batch_run (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * threa
 	{
 	  return rc;
 	}
+    }
+  rc = eb_load_leaf_constants (plan);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  rc = eb_filter (plan, batch, thread_p, vd);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  if (batch->n_sel == 0)
+    {
+      return NO_ERROR;
     }
   if (plan->prog != NULL)
     {
@@ -2015,26 +2239,7 @@ expr_batch_run (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * threa
     {
       return rc;
     }
-  rc = eb_load_leaf_constants (plan);
-  if (rc != NO_ERROR)
-    {
-      return rc;
-    }
-  rc = eb_extract (plan, batch, NULL, batch->n_rows, true);
-  if (rc != NO_ERROR)
-    {
-      return rc;
-    }
-  rc = eb_filter (plan, batch, thread_p, vd);
-  if (rc != NO_ERROR)
-    {
-      return rc;
-    }
-  if (batch->n_sel == 0)
-    {
-      return NO_ERROR;
-    }
-  rc = eb_extract (plan, batch, batch->sel, batch->n_sel, false);
+  rc = eb_extract (plan, batch, batch->sel, batch->n_sel, -1);
   if (rc != NO_ERROR)
     {
       return rc;
