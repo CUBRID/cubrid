@@ -4813,6 +4813,39 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   indent += 2;
 
+  if (proc->bloom_stats.attached)
+    {
+      /* CBRD-27659 (prototype): the Bloom filter of the first input's keys on the second-materialized input */
+      const HASHJOIN_BLOOM_STATS *bs = &proc->bloom_stats;
+
+      switch (bs->state)
+	{
+	case HASHJOIN_BLOOM_NOT_BUILT:
+	  fprintf (fp, "%*cBLOOM (not built: second input gave %lld rows, threshold %lld)\n", indent, ' ',
+		   (long long) bs->seen, (long long) bs->threshold);
+	  break;
+	case HASHJOIN_BLOOM_OFF_FAILED:
+	  fprintf (fp, "%*cBLOOM (off: could not be built)\n", indent, ' ');
+	  break;
+	case HASHJOIN_BLOOM_FIRST_LATE:
+	  fprintf (fp, "%*cBLOOM (not built: first input finished after the second, which gave %lld rows)\n", indent,
+		   ' ', (long long) bs->seen);
+	  break;
+	case HASHJOIN_BLOOM_OFF_FIRST_ROWS:
+	  fprintf (fp, "%*cBLOOM (off: first input empty, failed or too large)\n", indent, ' ');
+	  break;
+	case HASHJOIN_BLOOM_ENDED_FIRST:
+	  fprintf (fp, "%*cBLOOM (not built: the second input ended, %lld rows, before the filter was filled)\n",
+		   indent, ' ', (long long) bs->seen);
+	  break;
+	default:
+	  fprintf (fp, "%*cBLOOM (keys: %lld, seen: %lld, tested: %lld, skipped: %lld%s)\n", indent, ' ',
+		   (long long) bs->keys, (long long) bs->seen, (long long) bs->tested, (long long) bs->skipped,
+		   bs->state == HASHJOIN_BLOOM_OFF_LOW_SKIP ? ", stopped: low skip ratio" : "");
+	  break;
+	}
+    }
+
   if (!is_partition_parallel)
     {
       XASL_NODE *build_xasl, *probe_xasl;

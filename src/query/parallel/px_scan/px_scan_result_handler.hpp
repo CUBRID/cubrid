@@ -38,6 +38,9 @@
 #include <type_traits>
 #include <vector>
 
+struct hjoin_bloom;		/* query_hash_join.c, CBRD-27659 prototype */
+struct hjoin_bloom_worker;
+
 namespace parallel_scan
 {
   class list_id_header;
@@ -69,6 +72,7 @@ namespace parallel_scan
       bool write (THREAD_ENTRY *thread_p, write_dest_type *src);
       void write_finalize (THREAD_ENTRY *thread_p);
       void set_trace_handler (trace_handler *trace_handler_p);
+      void set_hjoin_bloom (hjoin_bloom *bloom);
 
     private:
       void get_valid_read_spec ();
@@ -100,6 +104,9 @@ namespace parallel_scan
       parallel_scan::instnum_mode instnum_mode = parallel_scan::instnum_mode::NONE;
       std::vector<int> rownum_col_indices;	/* RENUMBER: ROWNUM positions in the valptr list */
       parallel_scan::atomic_instnum instnum_draw;	/* ATOMIC_DRAW */
+      /* CBRD-27659: the hash join filter the scanned node checks its rows against (set up before the workers start,
+       * filled by the owner while it waits for them - hjoin_bloom_poll); nullptr when there is none */
+      hjoin_bloom *bloom = nullptr;
   };
 
   class xasl_snapshot_variables
@@ -137,6 +144,8 @@ namespace parallel_scan
       bool write_initialized;
       /* once this worker has seen the atomic-draw quota exhausted, stop touching the shared counter. */
       bool instnum_quota_done = false;
+      /* CBRD-27659: this worker's key and row buffer for m_.bloom (nullptr: rows go through unchecked) */
+      hjoin_bloom_worker *bloom_worker = nullptr;
   };
 
   class xasl_snapshot_tls

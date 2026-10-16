@@ -21,6 +21,7 @@
  */
 
 #include "px_query_task.hpp"
+#include "query_hash_join.h"	/* hjoin_bloom_input_done (CBRD-27659) */
 #include "list_file.h"
 #include "log_impl.h"
 #include "perf_monitor.h"
@@ -212,6 +213,11 @@ namespace parallel_query_execute
       {
 	qfile_copy_list_id (xasl->list_id,&list_id, true, QFILE_MOVE_DEPENDENT);
 	qfile_clear_list_id (&list_id);
+      }
+    if (xasl->hj_bloom != nullptr)
+      {
+	/* CBRD-27659: a hash join input with a Bloom filter is done and its list final */
+	hjoin_bloom_input_done (cur_thread_p, xasl, err_code == NO_ERROR);
       }
     /* restore original values */
     if (collect_stats)
