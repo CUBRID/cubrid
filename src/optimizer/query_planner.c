@@ -13743,20 +13743,22 @@ struct qo_analytic_cover_arg
   QO_ENV *env;
   QO_INDEX_ENTRY *index_entryp;
   PT_NODE *select_list;
-  bool covered;
+  bool is_desc_scan;		/* USE_DESC_IDX: the index is scanned backward */
+  int max_full_len;		/* longest sort list the index order covers entirely */
+  int max_partial_len;		/* longest covered prefix of a sort list the index order does not cover entirely */
 };
 
 /*
- * qo_index_covers_analytic_sort_pre () - parser_walk_tree pre-callback that sets cover->covered when the sort list
- *					  of the visited analytic function is a prefix of the index key order
+ * qo_index_covers_analytic_sort_pre () - parser_walk_tree pre-callback that measures how much of the sort list of
+ *					  the visited analytic function the index key order covers
  *   return: tree
  *   parser(in):
  *   tree(in):
  *   arg(in/out): QO_ANALYTIC_COVER_ARG *
  *   continue_walk(in/out):
  *
- * Note: The sort list is PARTITION BY followed by ORDER BY, the list pt_count_analytic_covered_sort_list () matches
- *   with the same rules when it decides to skip the sort at XASL generation.
+ * Note: The sort list is PARTITION BY followed by ORDER BY, matched with the rules of
+ *   pt_count_analytic_covered_sort_list (), which decides the sort skip at XASL generation.
  */
 static PT_NODE *
 qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
@@ -13765,14 +13767,8 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
   QO_INDEX_ENTRY *index_entryp = cover->index_entryp;
   QO_SEGMENT *seg;
   PT_NODE *spec_lists[2], *spec, *expr;
-  int i, list_idx, seg_idx, pos;
-  bool is_desc;
-
-  if (cover->covered)
-    {
-      *continue_walk = PT_STOP_WALK;
-      return tree;
-    }
+  int list_idx, seg_idx, pos, sort_len, covered_len;
+  bool is_desc, is_covering;
 
   if (PT_IS_QUERY (tree))
     {
@@ -13791,20 +13787,28 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
   spec_lists[0] = tree->info.function.analytic.partition_by;
   spec_lists[1] = tree->info.function.analytic.order_by;
 
-  i = 0;
+  sort_len = covered_len = 0;
+  is_covering = true;
   for (list_idx = 0; list_idx < 2; list_idx++)
     {
-      for (spec = spec_lists[list_idx]; spec != NULL; spec = spec->next, i++)
+      for (spec = spec_lists[list_idx]; spec != NULL; spec = spec->next)
 	{
-	  if (spec->node_type != PT_SORT_SPEC || i >= index_entryp->nsegs)
+	  sort_len++;
+	  if (!is_covering)
 	    {
-	      return tree;
+	      continue;
 	    }
 
-	  seg_idx = index_entryp->seg_idxs[i];
+	  is_covering = false;
+	  if (spec->node_type != PT_SORT_SPEC || covered_len >= index_entryp->nsegs)
+	    {
+	      continue;
+	    }
+
+	  seg_idx = index_entryp->seg_idxs[covered_len];
 	  if (seg_idx == -1)
 	    {
-	      return tree;
+	      continue;
 	    }
 
 	  seg = QO_ENV_SEG (cover->env, seg_idx);
@@ -13814,7 +13818,12 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
 	    }
 	  else
 	    {
-	      is_desc = index_entryp->constraints->asc_desc[i];
+	      is_desc = index_entryp->constraints->asc_desc[covered_len];
+	    }
+
+	  if (cover->is_desc_scan)
+	    {
+	      is_desc = !is_desc;
 	    }
 
 	  /* an ascending index run supplies NULLs first and a descending run supplies NULLs last */
@@ -13822,14 +13831,14 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
 	    {
 	      if (!is_desc || pt_to_null_ordering (spec) != S_NULLS_LAST)
 		{
-		  return tree;
+		  continue;
 		}
 	    }
 	  else
 	    {
 	      if (is_desc || pt_to_null_ordering (spec) != S_NULLS_FIRST)
 		{
-		  return tree;
+		  continue;
 		}
 	    }
 
@@ -13846,15 +13855,21 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
 
 	  if (expr == NULL || pt_check_path_eq (parser, expr, QO_SEG_PT_NODE (seg)) != 0)
 	    {
-	      return tree;
+	      continue;
 	    }
+
+	  covered_len++;
+	  is_covering = true;
 	}
     }
 
-  if (i > 0)
+  if (sort_len > 0 && covered_len == sort_len)
     {
-      cover->covered = true;
-      *continue_walk = PT_STOP_WALK;
+      cover->max_full_len = MAX (cover->max_full_len, sort_len);
+    }
+  else
+    {
+      cover->max_partial_len = MAX (cover->max_partial_len, covered_len);
     }
 
   return tree;
@@ -13862,12 +13877,17 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
 
 /*
  * qo_index_covers_analytic_sort () - checks whether a full scan of the index returns the rows in the sort order of
- *				      one of the analytic functions of the query, so that the analytic evaluation
- *				      can skip its sort (CBRD-26473)
- *   return: true if the index order covers the PARTITION BY + ORDER BY list of an analytic function
+ *				      an analytic sort group of the query, so that the analytic evaluation can skip
+ *				      its sort (CBRD-26473)
+ *   return: true if the index order covers the PARTITION BY + ORDER BY list of an analytic function that does not
+ *	     share its sort with a function the index order does not cover
  *   env(in): pointer to the optimizer environment
  *   node(in): the node scanned by the index
  *   ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
+ *
+ * Note: Analytic functions whose sort lists extend one another are evaluated in one group sorted by the longest
+ *   list. A covered list of length n therefore keeps its own sort-skipping group only if no partially covered list
+ *   starts with the same n index columns, i.e. covers n or more of them.
  */
 static bool
 qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp)
@@ -13899,11 +13919,13 @@ qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY
   cover.env = env;
   cover.index_entryp = index_entryp;
   cover.select_list = tree->info.query.q.select.list;
-  cover.covered = false;
+  cover.is_desc_scan = (tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC) != 0;
+  cover.max_full_len = 0;
+  cover.max_partial_len = 0;
   (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_index_covers_analytic_sort_pre, &cover, NULL,
 			   NULL);
 
-  return cover.covered;
+  return cover.max_full_len > cover.max_partial_len;
 }
 
 /*

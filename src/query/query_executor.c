@@ -23015,9 +23015,11 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
 	  instnum_stage = ANALYTIC_GROUP_PROC;
 	}
 
-      if (instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
+      if ((instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
+	  && !XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_SKIP_SORT))
 	{
-	  /* we're selecting INST_NUM() so we must evaluate it when writing the output file */
+	  /* we're selecting INST_NUM() so we must evaluate it when writing the output file. Without the sort, the output
+	   * file is written by qexec_analytic_update_group_result () at ANALYTIC_INTERM_PROC */
 	  instnum_stage = ANALYTIC_GROUP_PROC;
 	}
     }
