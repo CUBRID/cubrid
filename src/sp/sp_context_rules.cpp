@@ -65,7 +65,7 @@ sp_class_root (DB_OBJECT *class_mop)
 static void
 sp_stmt_add_spec_classes (const PT_NODE *spec, std::vector<DB_OBJECT *> &target_classes)
 {
-  if (spec == NULL || spec->node_type != PT_SPEC || !PT_SPEC_IS_ENTITY (spec))
+  if (spec == NULL || spec->node_type != PT_SPEC)
     {
       return;
     }
