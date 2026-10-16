@@ -4489,59 +4489,10 @@ sboot_notify_ha_log_applier_state (THREAD_ENTRY *thread_p, unsigned int rid, cha
  *
  * NOTE:
  */
-/*
- * event_log_update_statistics - log the progress of UPDATE STATISTICS ON ALL CLASSES to event log file
- *
- * return:
- *
- *   thread_p(in):
- *   class_name(in):
- *   seq(in): 1-based position of the class in the run
- *   total(in): number of classes in the run
- *   elapsed_ms(in): time spent on the run before this class
- *   class_us(in): time spent on this class, or -1 when it is about to start
- *   error(in): result of this class
- */
-static void
-event_log_update_statistics (THREAD_ENTRY *thread_p, const char *class_name, int seq, int total, int elapsed_ms,
-			     INT64 class_us, int error)
-{
-  FILE *log_fp;
-  int indent = 2;
-
-  log_fp = event_log_start (thread_p, "UPDATE_STATISTICS");
-  if (log_fp == NULL)
-    {
-      return;
-    }
-
-  event_log_print_client_info (LOG_FIND_THREAD_TRAN_INDEX (thread_p), indent);
-  fprintf (log_fp, "%*cclass: %s\n", indent, ' ', class_name ? class_name : "*UNKNOWN-CLASS*");
-  if (class_us < 0)
-    {
-      fprintf (log_fp, "%*cprogress: started %d/%d, elapsed: %.3f sec\n\n", indent, ' ', seq, total,
-	       elapsed_ms / 1000.0);
-    }
-  else
-    {
-      /* elapsed_ms is truncated to msec by the client; truncate this class too so that the elapsed of the next
-       * class, measured by the client after this one returns, is never below this one */
-      INT64 finished_ms = (INT64) elapsed_ms + class_us / 1000;
-
-      fprintf (log_fp, "%*cprogress: finished %d/%d, error: %d, time: %.3f sec, elapsed: %.3f sec\n\n", indent, ' ',
-	       seq, total, error, class_us / 1000000.0, finished_ms / 1000.0);
-    }
-
-  event_log_end (thread_p);
-}
-
 void
 sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
 {
   int error, with_fullscan;
-  int progress_seq, progress_total, progress_elapsed_ms;
-  TSC_TICKS start_tick, end_tick;
-  char *class_name = NULL;
   OID classoid;
   char *ptr;
   OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
@@ -4561,10 +4512,10 @@ sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
   if (class_attr_ndv.attr_cnt < 0
       || (INT64) OR_INT_SIZE + (INT64) sizeof (ATTR_NDV) * ((INT64) class_attr_ndv.attr_cnt + 1)
-      + OR_OID_SIZE + OR_INT_SIZE + (OR_INT_SIZE * 3) > (INT64) reqlen)
+      + OR_OID_SIZE + OR_INT_SIZE > (INT64) reqlen)
     {
       /* the body must fit in the received request: attr_cnt + 1 (id, ndv) entries followed by the
-       * class OID, the fullscan flag and the progress (seq, total, elapsed) (the sender sizes the request with sizeof (ATTR_NDV) per
+       * class OID and the fullscan flag (the sender sizes the request with sizeof (ATTR_NDV) per
        * entry, an upper bound of the wire cost). Also rejects a corrupt/hostile attr_cnt whose
        * entries could not possibly fit -- prevents unpacking past the request buffer and absurd
        * allocations below. */
@@ -4591,39 +4542,10 @@ sqst_update_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
   class_attr_ndv.total_rows = class_attr_ndv.attr_ndv[class_attr_ndv.attr_cnt].ndv;
   ptr = or_unpack_oid (ptr, &classoid);
   ptr = or_unpack_int (ptr, &with_fullscan);
-  ptr = or_unpack_int (ptr, &progress_seq);
-  ptr = or_unpack_int (ptr, &progress_total);
-  ptr = or_unpack_int (ptr, &progress_elapsed_ms);
-
-  if (progress_seq > 0)
-    {
-      /* UPDATE STATISTICS ON ALL CLASSES: keep the progress where it can be followed regardless of error_log_level */
-      if (heap_get_class_name (thread_p, &classoid, &class_name) != NO_ERROR)
-	{
-	  /* the name is only for logging; let xstats_update_statistics () report the real problem */
-	  er_clear ();
-	  class_name = NULL;
-	}
-      event_log_update_statistics (thread_p, class_name, progress_seq, progress_total, progress_elapsed_ms, -1,
-				   NO_ERROR);
-      tsc_getticks (&start_tick);
-    }
 
   error =
 	  xstats_update_statistics (thread_p, &classoid, (with_fullscan ? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING),
 				    &class_attr_ndv);
-
-  if (progress_seq > 0)
-    {
-      tsc_getticks (&end_tick);
-      event_log_update_statistics (thread_p, class_name, progress_seq, progress_total, progress_elapsed_ms,
-				   (INT64) tsc_elapsed_utime (end_tick, start_tick), error);
-      if (class_name != NULL)
-	{
-	  free_and_init (class_name);
-	}
-    }
-
   if (error != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -4637,6 +4559,80 @@ send:
     {
       db_private_free_and_init (thread_p, class_attr_ndv.attr_ndv);
     }
+}
+
+/*
+ * sqst_log_stats_progress - write the progress of UPDATE STATISTICS ON ALL CLASSES to the event log
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in): class oid, phase, state, seq, total, class_ms, elapsed_ms, error
+ *   reqlen(in):
+ *
+ * NOTE: the event log is written regardless of error_log_level, so the progress of a long run can be followed in
+ *       production. Nothing here may fail the run: a failure to log is dropped.
+ */
+void
+sqst_log_stats_progress (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OID classoid;
+  int phase, state, seq, total, class_ms, elapsed_ms, error;
+  char *class_name = NULL;
+  FILE *log_fp;
+  int indent = 2;
+  char *ptr;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  if (reqlen >= OR_OID_SIZE + OR_INT_SIZE * 7)
+    {
+      ptr = or_unpack_oid (request, &classoid);
+      ptr = or_unpack_int (ptr, &phase);
+      ptr = or_unpack_int (ptr, &state);
+      ptr = or_unpack_int (ptr, &seq);
+      ptr = or_unpack_int (ptr, &total);
+      ptr = or_unpack_int (ptr, &class_ms);
+      ptr = or_unpack_int (ptr, &elapsed_ms);
+      ptr = or_unpack_int (ptr, &error);
+
+      /* keep whatever the logging sets (e.g. the event log file cannot be reopened) away from the caller */
+      er_stack_push ();
+
+      if (heap_get_class_name (thread_p, &classoid, &class_name) != NO_ERROR)
+	{
+	  class_name = NULL;
+	}
+
+      log_fp = event_log_start (thread_p, "UPDATE_STATISTICS");
+      if (log_fp != NULL)
+	{
+	  event_log_print_client_info (LOG_FIND_THREAD_TRAN_INDEX (thread_p), indent);
+	  fprintf (log_fp, "%*cclass: %s\n", indent, ' ', class_name ? class_name : "*UNKNOWN-CLASS*");
+	  if (state == STATS_PROGRESS_STARTED)
+	    {
+	      fprintf (log_fp, "%*cprogress: %s started %d/%d, elapsed: %.3f sec\n\n", indent, ' ',
+		       phase == STATS_PROGRESS_HISTOGRAM ? "histogram" : "statistics", seq, total, elapsed_ms / 1000.0);
+	    }
+	  else
+	    {
+	      fprintf (log_fp, "%*cprogress: %s finished %d/%d, error: %d, time: %.3f sec, elapsed: %.3f sec\n\n",
+		       indent, ' ', phase == STATS_PROGRESS_HISTOGRAM ? "histogram" : "statistics", seq, total, error,
+		       class_ms / 1000.0, elapsed_ms / 1000.0);
+	    }
+	  event_log_end (thread_p);
+	}
+
+      if (class_name != NULL)
+	{
+	  free_and_init (class_name);
+	}
+
+      er_stack_pop ();
+    }
+
+  (void) or_pack_int (reply, NO_ERROR);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*

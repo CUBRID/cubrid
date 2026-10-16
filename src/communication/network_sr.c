@@ -464,6 +464,10 @@ net_server_init (void)
   req_p->action_attribute = (CHECK_DB_MODIFICATION | IN_TRANSACTION);
   req_p->processing_function = sqst_update_statistics;
 
+  req_p = &net_Requests[NET_SERVER_QST_LOG_STATS_PROGRESS];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sqst_log_stats_progress;
+
   /* query manager */
   req_p = &net_Requests[NET_SERVER_QM_QUERY_PREPARE];
   req_p->action_attribute = IN_TRANSACTION;

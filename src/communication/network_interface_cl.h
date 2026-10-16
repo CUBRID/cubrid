@@ -250,10 +250,12 @@ extern int histogram_build_multi_by_reservoir_request (OID * class_oid, int attr
 						       double *null_frequency, char **blob, int *blob_length,
 						       INT64 * out_ndv, INT64 * out_total_rows,
 						       INT64 * out_pages_seen = NULL, INT64 * out_pages_kept = NULL);
-extern int stats_update_statistics (MOP classop, int with_fullscan, CLASS_ATTR_NDV * provided_ndv = NULL,
-				    int progress_seq = 0, int progress_total = 0, int progress_elapsed_ms = 0);
-extern int stats_update_all_statistics (int with_fullscan, int print_summary);
-extern int update_histogram_for_all_classes (int random_seed);
+extern int stats_update_statistics (MOP classop, int with_fullscan, CLASS_ATTR_NDV * provided_ndv = NULL);
+extern int stats_update_all_statistics (int with_fullscan, int print_summary, INT64 run_start_msec);
+extern int update_histogram_for_all_classes (int random_seed, INT64 run_start_msec);
+extern INT64 stats_progress_clock_msec (void);
+extern void stats_log_update_progress (MOP classop, int phase, int state, int seq, int total, INT64 class_start_msec,
+				       INT64 run_start_msec, int error);
 
 extern int btree_add_index (BTID * btid, TP_DOMAIN * key_type, OID * class_oid, int attr_id, int unique_pk);
 extern void btree_set_no_logging_index (bool no_logging_index);
