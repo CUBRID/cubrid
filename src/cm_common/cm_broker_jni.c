@@ -261,6 +261,8 @@ put_float (JNIEnv * env, jobject map, const char *key, float val)
 JNIEXPORT jobjectArray JNICALL
 Java_com_cubrid_jni_BrokerJni_getAllBrokerInfo0 (JNIEnv * env, jclass clazz)
 {
+  /* clazz is part of the JNI static method signature and is unused here. */
+  (void) clazz;
   jobjectArray res;
   T_CM_BROKER_INFO_ALL br_info_all;
   int count;
@@ -369,6 +371,8 @@ fail:
 JNIEXPORT jobjectArray JNICALL
 Java_com_cubrid_jni_BrokerJni_getAllCasInfo0 (JNIEnv * env, jclass clazz, jstring name, jboolean only_active)
 {
+  /* clazz is part of the JNI static method signature and is unused here. */
+  (void) clazz;
   jobjectArray res;
   T_CM_CAS_INFO_ALL cas_info_all;
   T_CM_JOB_INFO_ALL dummy;
@@ -476,6 +480,12 @@ fail:
 JNIEXPORT jobjectArray JNICALL
 Java_com_cubrid_jni_BrokerJni_getAllJobInfo0 (JNIEnv * env, jclass clazz, jstring name, jboolean only_active)
 {
+  /* clazz is part of the JNI static method signature and is unused here. */
+  (void) clazz;
+  /* NOTE: unlike getAllCasInfo0(), this entry point ignores only_active. Every
+   * queued job is by definition active, so there is nothing to filter, but the
+   * Java side still passes the flag. Kept as is; see the CUBRID Manager caller. */
+  (void) only_active;
   jobjectArray res;
   T_CM_JOB_INFO_ALL job_info_all;
   T_CM_CAS_INFO_ALL dummy;

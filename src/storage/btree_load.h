@@ -248,14 +248,7 @@ struct btree_root_header
   OID topclass_oid;		/* topclass oid or NULL OID(non unique index) */
   int unique_pk;		/* unique or non-unique, is primary key */
 
-  /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-  struct
-  {
-    int rev_level:16;		/* Btree revision level */
-    int deduplicate_key_idx:16;
-#define SET_DECOMPRESS_IDX_HEADER(hdr, idx)  ((hdr)->_32.deduplicate_key_idx = ((idx) + 1))
-#define GET_DECOMPRESS_IDX_HEADER(hdr)       ((hdr)->_32.deduplicate_key_idx - 1)
-  } _32;
+  int rev_level;		/* Btree revision level */
 
   VFID ovfid;			/* Overflow file */
   MVCCID creator_mvccid;	/* MVCCID of creator transaction. */

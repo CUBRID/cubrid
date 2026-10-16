@@ -114,23 +114,21 @@ static int css_fd_error (SOCKET fd);
 int
 css_gethostname (char *name, size_t namelen)
 {
-  if (namelen <= 0)
+  if (name == NULL || namelen == 0)
     {
       return ER_FAILED;
     }
 
-  size_t namelen_ = (size_t) namelen;
-
-  char hostname[namelen_];
-  hostname[namelen_ - 1] = '\0';
-  if (gethostname (hostname, namelen_) < 0)
+  if (gethostname (name, namelen) < 0)
     {
       return ER_FAILED;
     }
-  else
-    {
-      strncpy (name, hostname, namelen);
-    }
+
+  /* gethostname() is not required to null terminate the name when it does not
+   * fit, and the bounce buffer this function used to copy through was a
+   * caller sized variable length array. Write into the caller buffer directly
+   * and terminate it here. */
+  name[namelen - 1] = '\0';
 
   return NO_ERROR;
 }
