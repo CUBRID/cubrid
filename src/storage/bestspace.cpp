@@ -1003,12 +1003,17 @@ namespace cubstorage
     STATS_INC (allocated, ALLOC_BATCH_SIZE - num_candidates);
 
     freespace = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
-    // page_watcher.pgptr fixes the page pointer of the last candidates
-    for (i = ALLOC_BATCH_SIZE - 1; i >= static_cast<int> (num_candidates); i--)
+    // page_watcher.pgptr fixes vpids[0], the page returned to the caller, which takes the last candidate.
+    // the other new pages take the remaining candidates in heap chain order, so the inserts that follow
+    // fill the batch in ascending page order instead of from the last page down.
+    candidates[ALLOC_BATCH_SIZE - 1].freespace = freespace;
+    candidates[ALLOC_BATCH_SIZE - 1].volid = vpids[0].volid;
+    candidates[ALLOC_BATCH_SIZE - 1].pageid = vpids[0].pageid;
+    for (i = 1; i < static_cast<int> (ALLOC_BATCH_SIZE - num_candidates); i++)
       {
-	candidates[i].freespace = freespace;
-	candidates[i].volid = vpids[ALLOC_BATCH_SIZE - 1 - i].volid;
-	candidates[i].pageid = vpids[ALLOC_BATCH_SIZE - 1 - i].pageid;
+	candidates[num_candidates + i - 1].freespace = freespace;
+	candidates[num_candidates + i - 1].volid = vpids[i].volid;
+	candidates[num_candidates + i - 1].pageid = vpids[i].pageid;
       }
     return NO_ERROR;
   }
