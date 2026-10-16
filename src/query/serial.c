@@ -161,10 +161,15 @@ int serial_Num_attrs = -1;
 static int xserial_get_current_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp);
 static int xserial_get_next_value_internal (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OID * serial_oidp,
 					    int num_alloc, SERIAL_CACHE_ENTRY * claimed_entry);
-static int serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
+static int serial_next_value_from_entry (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB_VALUE * result_num,
+					 const OID * oid_p, int num_alloc);
+static int serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc,
+					 bool * stale);
 static int serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB_VALUE * store_val,
-					   int num_alloc, bool log_supplemental, DB_VALUE * prior_val);
-static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc);
+					   int num_alloc, bool log_supplemental, DB_VALUE * prior_val,
+					   bool * row_moved);
+static int serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry,
+					    DB_VALUE * new_last_val, int num_alloc, bool * row_moved);
 static int serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
 static void serial_flush_entry_best_effort (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry);
 static int serial_update_serial_object (THREAD_ENTRY * thread_p, PAGE_PTR pgptr, RECDES * recdesc,
@@ -436,12 +441,7 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OI
       entry = serial_Cache_hashmap.find (thread_p, key);
       if (entry != NULL)
 	{
-	  ret = serial_get_next_cached_value (thread_p, entry, num_alloc);
-	  if (ret == NO_ERROR)
-	    {
-	      pr_clone_value (&entry->cur_val, result_num);
-	    }
-	  pthread_mutex_unlock (&entry->mutex);
+	  ret = serial_next_value_from_entry (thread_p, entry, result_num, oid_p, num_alloc);
 	}
       else
 	{
@@ -470,12 +470,7 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OI
 	  else
 	    {
 	      /* Another thread initialized the entry first; reuse it. */
-	      ret = serial_get_next_cached_value (thread_p, entry, num_alloc);
-	      if (ret == NO_ERROR)
-		{
-		  pr_clone_value (&entry->cur_val, result_num);
-		}
-	      pthread_mutex_unlock (&entry->mutex);
+	      ret = serial_next_value_from_entry (thread_p, entry, result_num, oid_p, num_alloc);
 	    }
 	}
     }
@@ -491,13 +486,47 @@ xserial_get_next_value (THREAD_ENTRY * thread_p, DB_VALUE * result_num, const OI
 }
 
 /*
+ * serial_next_value_from_entry () - draw from a locked cache entry, and release it.
+ *   return: NO_ERROR, or ER_status
+ *   entry(in)    : locked by the caller
+ */
+static int
+serial_next_value_from_entry (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB_VALUE * result_num,
+			      const OID * oid_p, int num_alloc)
+{
+  bool stale = false;
+  int ret;
+
+  ret = serial_get_next_cached_value (thread_p, entry, num_alloc, &stale);
+  if (ret == NO_ERROR && stale)
+    {
+      /* drawing through the row installs a fresh entry while the serial is still cached */
+      OID key = *oid_p;
+
+      if (!serial_Cache_hashmap.erase_locked (thread_p, key, entry) && entry != NULL)
+	{
+	  pthread_mutex_unlock (&entry->mutex);
+	}
+      return xserial_get_next_value_internal (thread_p, result_num, oid_p, num_alloc, NULL);
+    }
+
+  if (ret == NO_ERROR)
+    {
+      pr_clone_value (&entry->cur_val, result_num);
+    }
+  pthread_mutex_unlock (&entry->mutex);
+  return ret;
+}
+
+/*
  * serial_get_next_cached_value () -
  *   return: NO_ERROR, or ER_status
  *   entry(in/out)    :
  *   num_alloc(in)    :
+ *   stale(out)       : set when the entry has to be dropped instead; nothing is drawn then
  */
 static int
-serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc)
+serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc, bool * stale)
 {
   DB_VALUE cmp_result;
   DB_VALUE next_val;
@@ -574,14 +603,19 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
        * and a durable write per failing call buys nothing. */
       if (db_get_int (&cmp_result) != 0)
 	{
-	  pr_clone_value (&new_last_cached_val, &entry->last_cached_val);
+	  bool row_moved = false;
 
-	  /* cur_val of _db_serial is updated to last_cached_val of entry */
-	  error = serial_update_cur_val_of_serial (thread_p, entry, num_alloc);
+	  error = serial_update_cur_val_of_serial (thread_p, entry, &new_last_cached_val, num_alloc, &row_moved);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
 	    }
+	  if (row_moved)
+	    {
+	      *stale = true;
+	      return NO_ERROR;
+	    }
+	  pr_clone_value (&new_last_cached_val, &entry->last_cached_val);
 	}
     }
 
@@ -613,10 +647,12 @@ serial_get_next_cached_value (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entr
  *                          "SELECT SERIAL_NEXT_VALUE (name, num_alloc)" statement, so only a write
  *                          that hands values out may append it.
  *   prior_val(in)        : NULL, or the cur_val a write-back replaces (see serial_repl_image_is_stale)
+ *   row_moved(out)       : NULL, or set when the row no longer holds the entry's block end; nothing is
+ *                          written then
  */
 static int
 serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB_VALUE * store_val,
-				int num_alloc, bool log_supplemental, DB_VALUE * prior_val)
+				int num_alloc, bool log_supplemental, DB_VALUE * prior_val, bool * row_moved)
 {
   int ret = NO_ERROR;
   HEAP_SCANCACHE scan_cache;
@@ -683,6 +719,26 @@ serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
       goto exit_on_error;
     }
   assert (attrid != NOT_FOUND);
+
+  if (row_moved != NULL)
+    {
+      /* any other writer since the entry's block end - a draw through the row, a restart - owns the row now */
+      DB_VALUE cmp_result;
+      ATTR_ID started_attrid;
+
+      ret = numeric_db_value_compare (heap_attrinfo_access (attrid, attr_info_p), &entry->last_cached_val, &cmp_result);
+      if (ret != NO_ERROR || serial_get_attrid (thread_p, SERIAL_ATTR_STARTED_INDEX, started_attrid) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
+      assert (started_attrid != NOT_FOUND);
+      if (db_get_int (&cmp_result) != 0 || db_get_int (heap_attrinfo_access (started_attrid, attr_info_p)) == 0)
+	{
+	  *row_moved = true;
+	  goto exit;
+	}
+    }
+
   ret = heap_attrinfo_set (&entry->oid, attrid, store_val, attr_info_p);
   if (ret != NO_ERROR)
     {
@@ -715,6 +771,7 @@ serial_store_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
       (void) log_append_supplemental_serial (thread_p, db_get_string (&key_val), num_alloc, NULL, &entry->oid);
     }
 
+exit:
   pr_clear_value (&key_val);
 
   heap_attrinfo_end (thread_p, attr_info_p);
@@ -738,15 +795,17 @@ exit_on_error:
 }
 
 /*
- * serial_update_cur_val_of_serial () - reserve the block durably: advance cur_val to the entry's
- *                last_cached_val, so one write covers the whole block.
+ * serial_update_cur_val_of_serial () - reserve the next block durably: advance cur_val from the entry's
+ *                last_cached_val to new_last_val, so one write covers the whole block.
  *   return: NO_ERROR, or ER_status
  *   entry(in)    :
+ *   row_moved(out) : set when the row no longer holds the entry's block end; nothing is written then
  */
 static int
-serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, int num_alloc)
+serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry, DB_VALUE * new_last_val,
+				 int num_alloc, bool * row_moved)
 {
-  return serial_store_cur_val_of_serial (thread_p, entry, &entry->last_cached_val, num_alloc, true, NULL);
+  return serial_store_cur_val_of_serial (thread_p, entry, new_last_val, num_alloc, true, NULL, row_moved);
 }
 
 /*
@@ -771,8 +830,8 @@ serial_update_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * e
 static int
 serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * entry)
 {
-  DB_VALUE durable_val;
   DB_VALUE cmp_result;
+  bool row_moved = false;
   int error;
 
   if (DB_IS_NULL (&entry->cur_val) || DB_IS_NULL (&entry->last_cached_val))
@@ -803,27 +862,8 @@ serial_flush_cur_val_of_serial (THREAD_ENTRY * thread_p, SERIAL_CACHE_ENTRY * en
   /* Only hand the tail back while the durable value is still the block end this entry reserved. A
    * reset/rebase DDL writes cur_val itself and owns it from then on; it decaches before it writes,
    * so the flush it triggers still runs here, while the block end is what is on disk. */
-  db_make_null (&durable_val);
-  if (xserial_get_current_value_internal (thread_p, &durable_val, &entry->oid) != NO_ERROR)
-    {
-      /* the row is gone (dropped serial); nothing to write back */
-      er_clear ();
-      return NO_ERROR;
-    }
-
-  error = numeric_db_value_compare (&durable_val, &entry->last_cached_val, &cmp_result);
-  pr_clear_value (&durable_val);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  if (db_get_int (&cmp_result) != 0)
-    {
-      return NO_ERROR;
-    }
-
-  return serial_store_cur_val_of_serial (thread_p, entry, &entry->cur_val, 0, false, &entry->last_cached_val);
+  return serial_store_cur_val_of_serial (thread_p, entry, &entry->cur_val, 0, false, &entry->last_cached_val,
+					 &row_moved);
 }
 
 /*
