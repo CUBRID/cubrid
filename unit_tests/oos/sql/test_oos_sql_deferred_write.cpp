@@ -40,7 +40,6 @@
 #include "xserver_interface.h"
 #include "object_representation.h"
 #include "object_representation_sr.h"
-#include "scope_exit.hpp"
 #include "transform_cl.h"
 
 #include "test_oos_sql_heap_fixture.hpp"
@@ -186,6 +185,44 @@ namespace
     }
   };
 
+  // Keep the native call visible in each test while this scope owns the invalid transaction index.
+  class missing_tdes_call
+  {
+    public:
+      explicit missing_tdes_call (THREAD_ENTRY *thread_p)
+	: m_thread_p (thread_p), m_saved_index (LOG_FIND_THREAD_TRAN_INDEX (thread_p))
+      {
+	LOG_SET_CURRENT_TRAN_INDEX (m_thread_p, NULL_TRAN_INDEX);
+	er_clear ();
+      }
+
+      ~missing_tdes_call ()
+      {
+	restore ();
+      }
+
+      int capture_error_and_restore ()
+      {
+	const int error = er_errid ();
+	restore ();
+	return error;
+      }
+
+    private:
+      void restore ()
+      {
+	if (m_active)
+	  {
+	    LOG_SET_CURRENT_TRAN_INDEX (m_thread_p, m_saved_index);
+	    m_active = false;
+	  }
+      }
+
+      THREAD_ENTRY *m_thread_p;
+      const int m_saved_index;
+      bool m_active = true;
+  };
+
   enum class write_failure
   {
     preparation, vfid_lookup, partial_batch, heap_insert
@@ -271,19 +308,11 @@ TEST_F (OosSqlDeferredWrite, OwnerlessCopyAreaBypassMissingTdesPreservesPairAndF
   RECDES converted = RECDES_INITIALIZER;
   RECDES *active = &input.record;
   ASSERT_NO_FATAL_FAILURE (input.seed ());
-  scope_exit restore_tran_index ([&] () noexcept
-  {
-    LOG_SET_CURRENT_TRAN_INDEX (input.thread_p, input.saved_tran_index);
-  });
-
   // SA reads log_Tran_index. Keep the genuine current class representation fixed during this call.
-  LOG_SET_CURRENT_TRAN_INDEX (input.thread_p, NULL_TRAN_INDEX);
-  er_clear ();
+  missing_tdes_call call (input.thread_p);
   const int error = locator_test_finalize_oos_record (input.thread_p, &input.class_oid, &active, true, nullptr,
 		    &received, &converted);
-  const int reported_error = er_errid ();
-  LOG_SET_CURRENT_TRAN_INDEX (input.thread_p, input.saved_tran_index);
-  restore_tran_index.release ();
+  const int reported_error = call.capture_error_and_restore ();
 
   EXPECT_EQ (error, ER_LOG_UNKNOWN_TRANINDEX);
   EXPECT_EQ (reported_error, ER_LOG_UNKNOWN_TRANINDEX);
@@ -305,19 +334,11 @@ TEST_F (OosSqlDeferredWrite, CopyAreaInsertMissingTdesDoesNotEnterSuccessContinu
   ASSERT_EQ (force_count, 37);
   ASSERT_TRUE (OID_ISNULL (&inserted_oid));
   ASSERT_NO_FATAL_FAILURE (input.seed ());
-  scope_exit restore_tran_index ([&] () noexcept
-  {
-    LOG_SET_CURRENT_TRAN_INDEX (input.thread_p, input.saved_tran_index);
-  });
-
-  LOG_SET_CURRENT_TRAN_INDEX (input.thread_p, NULL_TRAN_INDEX);
-  er_clear ();
+  missing_tdes_call call (input.thread_p);
   const int error = locator_insert_force (input.thread_p, &input.hfid, &input.class_oid, &inserted_oid, &input.record,
 					  false, SINGLE_ROW_INSERT, nullptr, &force_count, DB_NOT_PARTITIONED_CLASS,
 					  nullptr, nullptr, UPDATE_INPLACE_NONE, nullptr, false, false, false, true, nullptr);
-  const int reported_error = er_errid ();
-  LOG_SET_CURRENT_TRAN_INDEX (input.thread_p, input.saved_tran_index);
-  restore_tran_index.release ();
+  const int reported_error = call.capture_error_and_restore ();
 
   EXPECT_EQ (error, ER_LOG_UNKNOWN_TRANINDEX);
   EXPECT_EQ (reported_error, ER_LOG_UNKNOWN_TRANINDEX);
