@@ -13520,6 +13520,20 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
     {
       sprintf (out, ":%d", (int) type);
     }
+  if (index < parser->host_var_count && parser->host_var_format_classes != NULL
+      && (parser->host_var_format_classes[index] & PT_HOST_VAR_FORMAT_POSITION))
+    {
+      /* a STR_TO_DATE format: its class types the result, a NULL one as the NULL literal */
+      const int format_class = PT_HOST_VAR_FORMAT_CLASS (parser->host_var_format_classes[index]);
+      if (format_class == PT_HOST_VAR_FORMAT_NULL)
+	{
+	  sprintf (out, ":%d", (int) DB_TYPE_NULL);
+	}
+      else
+	{
+	  sprintf (out + strlen (out), ":f%d", format_class);
+	}
+    }
 }
 
 /*

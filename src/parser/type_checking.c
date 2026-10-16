@@ -4538,25 +4538,54 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 }
 
 /*
- * pt_is_bind_comparison_op () - CBRD-27583: the relational comparisons whose bind side the type rule module decides
- *   (pt_bind_comparison_target); LIKE, ranges, IN and quantified comparisons type their binds as before
+ * pt_bind_comparison_mate () - CBRD-27583: the operand the row compares a host variable with: the other side of a
+ *   relational comparison, else the left side of the BETWEEN or RANGE whose bound it is (type checking's three-operand
+ *   BETWEEN included) or of the IN, SOME or ALL whose list holds it. parent holds hv, grandparent holds parent (NULL
+ *   when not known). NULL when hv is not compared with a single operand.
  */
-bool
-pt_is_bind_comparison_op (PT_OP_TYPE op)
+PT_NODE *
+pt_bind_comparison_mate (PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent, bool * bind_is_lhs)
 {
-  switch (op)
+  *bind_is_lhs = false;
+  if (parent == NULL)
     {
-    case PT_EQ:
-    case PT_NE:
-    case PT_GE:
-    case PT_GT:
-    case PT_LT:
-    case PT_LE:
-    case PT_NULLSAFE_EQ:
-      return true;
-    default:
-      return false;
+      return NULL;
     }
+  if (parent->node_type == PT_EXPR)
+    {
+      switch (parent->info.expr.op)
+	{
+	case PT_EQ:
+	case PT_NE:
+	case PT_GE:
+	case PT_GT:
+	case PT_LT:
+	case PT_LE:
+	case PT_NULLSAFE_EQ:
+	  *bind_is_lhs = parent->info.expr.arg1 == hv;
+	  return *bind_is_lhs ? parent->info.expr.arg2 : (parent->info.expr.arg2 == hv ? parent->info.expr.arg1 : NULL);
+	case PT_BETWEEN:
+	case PT_NOT_BETWEEN:
+	  return parent->info.expr.arg2 == hv || parent->info.expr.arg3 == hv ? parent->info.expr.arg1 : NULL;
+	default:
+	  break;
+	}
+      if (pt_is_between_range_op (parent->info.expr.op) && grandparent != NULL && grandparent->node_type == PT_EXPR
+	  && (grandparent->info.expr.op == PT_BETWEEN || grandparent->info.expr.op == PT_NOT_BETWEEN
+	      || grandparent->info.expr.op == PT_RANGE)
+	  && (parent->info.expr.arg1 == hv || parent->info.expr.arg2 == hv))
+	{
+	  return grandparent->info.expr.arg1;
+	}
+      return NULL;
+    }
+  if (PT_IS_COLLECTION_TYPE (parent->type_enum) && (parent->node_type == PT_VALUE || parent->node_type == PT_FUNCTION)
+      && grandparent != NULL && grandparent->node_type == PT_EXPR && pt_is_range_expression (grandparent->info.expr.op)
+      && grandparent->info.expr.arg2 == parent)
+    {
+      return grandparent->info.expr.arg1;
+    }
+  return NULL;
 }
 
 /*
@@ -4656,29 +4685,27 @@ pt_bind_arith_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, PT
 }
 
 /*
- * pt_bind_operand_target () - CBRD-27583: the domain the operator expr converts a host variable arriving in
- *   bind_domain into, as the type rule module decides it for a relational comparison (pt_bind_comparison_target) or
- *   an arithmetic operator (pt_bind_arith_target): the target, or NULL when the operator takes the bind as it is or
- *   decides nothing about it
+ * pt_bind_operand_target () - CBRD-27583: the domain the operator holding a host variable arriving in bind_domain
+ *   converts it into, as the type rule module decides it for a comparison (pt_bind_comparison_mate,
+ *   pt_bind_comparison_target) or an arithmetic operator (pt_bind_arith_target): the target, or NULL when the
+ *   operator takes the bind as it is or decides nothing about it
  */
 TP_DOMAIN *
-pt_bind_operand_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, PT_NODE * expr, PT_NODE * hv)
+pt_bind_operand_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, PT_NODE * hv, PT_NODE * parent,
+			PT_NODE * grandparent)
 {
   TP_DOMAIN *target = NULL;
+  bool hv_is_lhs;
 
-  if (expr == NULL || expr->node_type != PT_EXPR || (expr->info.expr.arg1 != hv && expr->info.expr.arg2 != hv))
+  PT_NODE *mate = pt_bind_comparison_mate (hv, parent, grandparent, &hv_is_lhs);
+  if (mate != NULL)
     {
-      return NULL;
+      (void) pt_bind_comparison_target (parser, bind_domain, mate, hv_is_lhs, &target);
     }
-  const bool hv_is_lhs = expr->info.expr.arg1 == hv;
-  if (pt_is_bind_comparison_op (expr->info.expr.op))
+  else if (parent != NULL && parent->node_type == PT_EXPR
+	   && (parent->info.expr.arg1 == hv || parent->info.expr.arg2 == hv))
     {
-      (void) pt_bind_comparison_target (parser, bind_domain, hv_is_lhs ? expr->info.expr.arg2 : expr->info.expr.arg1,
-					hv_is_lhs, &target);
-    }
-  else
-    {
-      (void) pt_bind_arith_target (parser, bind_domain, expr, hv_is_lhs, &target);
+      (void) pt_bind_arith_target (parser, bind_domain, parent, parent->info.expr.arg1 == hv, &target);
     }
   return target;
 }
@@ -4695,12 +4722,17 @@ pt_bind_operand_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, 
  *   this is not such a bind: the caller types it as before.
  */
 static bool
-pt_typed_bind_comparison (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * hv)
+pt_typed_bind_comparison (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent)
 {
-  if (parser->flag.set_host_var != 0 || expr == NULL || expr->node_type != PT_EXPR
-      || !pt_is_bind_comparison_op (expr->info.expr.op) || hv->info.host_var.var_type != PT_HOST_IN
+  if (parser->flag.set_host_var != 0 || hv->node_type != PT_HOST_VAR || hv->info.host_var.var_type != PT_HOST_IN
       || hv->info.host_var.index >= parser->host_var_count || parser->host_variables == NULL
       || parser->host_var_expected_domains == NULL || parser->host_var_compiled_domains == NULL)
+    {
+      return false;
+    }
+  bool hv_is_lhs;
+  PT_NODE *mate = pt_bind_comparison_mate (hv, parent, grandparent, &hv_is_lhs);
+  if (mate == NULL)
     {
       return false;
     }
@@ -4713,9 +4745,7 @@ pt_typed_bind_comparison (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * hv)
     }
   TP_DOMAIN *source = pt_host_var_value_domain (parser, index);
   TP_DOMAIN *target;
-  const bool hv_is_lhs = expr->info.expr.arg1 == hv;
-  if (!pt_bind_comparison_target (parser, source, hv_is_lhs ? expr->info.expr.arg2 : expr->info.expr.arg1, hv_is_lhs,
-				  &target))
+  if (!pt_bind_comparison_target (parser, source, mate, hv_is_lhs, &target))
     {
       return false;
     }
@@ -4726,6 +4756,20 @@ pt_typed_bind_comparison (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * hv)
       hv->info.host_var.rule_cast = true;
     }
   return true;
+}
+
+/*
+ * pt_type_bind_by_comparison () - CBRD-27583: a host variable of a list or a range the context leaves untyped (an IN,
+ *   SOME or ALL element, a RANGE bound), typed by the comparison with the list's left side
+ */
+static void
+pt_type_bind_by_comparison (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent)
+{
+  if (hv != NULL && hv->node_type == PT_HOST_VAR && hv->type_enum == PT_TYPE_MAYBE && hv->expected_domain == NULL
+      && pt_typed_bind_comparison (parser, hv, parent, grandparent) && hv->expected_domain != NULL)
+    {
+      pt_preset_hostvar (parser, hv);
+    }
 }
 
 /*
@@ -4764,7 +4808,7 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
     }
 
   if (node->node_type == PT_HOST_VAR && node->type_enum == PT_TYPE_MAYBE && def_type == PT_TYPE_MAYBE
-      && pt_typed_bind_comparison (parser, expr, node))
+      && pt_typed_bind_comparison (parser, node, expr, NULL))
     {
       /* CBRD-27583: a comparison bind the context leaves untyped (def_type MAYBE for a numeric mate), typed from
        * its value in the compilation of a bind type signature */
@@ -5319,6 +5363,12 @@ pt_coerce_range_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE
       PT_TYPE_ENUM arg1_type = arg1->type_enum;
       bool should_cast = false;
       PT_NODE *data_type = NULL;
+
+      for (PT_NODE * elem = arg2->node_type == PT_VALUE ? arg2->info.value.data_value.set : NULL; elem != NULL;
+	   elem = elem->next)
+	{
+	  pt_type_bind_by_comparison (parser, elem, arg2, expr);
+	}
 
       if (pt_is_enumeration_special_comparison (arg1, op, arg2))
 	{
@@ -10253,6 +10303,14 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  goto error;
 	}
+      for (PT_NODE * range = arg2; range != NULL; range = range->or_next)
+	{
+	  if (range->node_type == PT_EXPR)
+	    {
+	      pt_type_bind_by_comparison (parser, range->info.expr.arg1, range, node);
+	      pt_type_bind_by_comparison (parser, range->info.expr.arg2, range, node);
+	    }
+	}
       node->type_enum = PT_TYPE_LOGICAL;
       break;
 
@@ -10314,6 +10372,21 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
 	if (arg2->node_type == PT_VALUE)
 	  {
 	    type_specifier = db_check_time_date_format ((char *) arg2->info.value.data_value.str->bytes);
+	  }
+	else if (PT_IS_INPUT_HOSTVAR (arg2) && arg2->info.host_var.index < parser->host_var_count
+		 && pt_host_var_format_classes (parser) != NULL)
+	  {
+	    /* CBRD-27583: a bound format types the result by its class, which the bind type signature carries */
+	    int *format_class = &parser->host_var_format_classes[arg2->info.host_var.index];
+	    *format_class |= PT_HOST_VAR_FORMAT_POSITION;
+	    if (PT_HOST_VAR_FORMAT_CLASS (*format_class) == PT_HOST_VAR_FORMAT_NULL)
+	      {
+		/* as a NULL literal format */
+		node->type_enum = PT_TYPE_NULL;
+		break;
+	      }
+	    type_specifier = PT_HOST_VAR_FORMAT_CLASS (*format_class) == PT_HOST_VAR_FORMAT_UNKNOWN
+	      ? PT_TYPE_MAYBE : PT_HOST_VAR_FORMAT_CLASS (*format_class);
 	  }
 	else
 	  {

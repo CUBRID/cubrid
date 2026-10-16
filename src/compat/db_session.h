@@ -46,6 +46,9 @@ struct db_session
 				 * kept_trees list instead of the transient `next` chain. NULL otherwise. */
   DB_SESSION *kept_trees;	/* owner sessions only: the kept subsessions, linked through their `next`. Scoped
 				 * to this session, so closing it releases them; see db_close_session_local (). */
+  DB_SESSION *signature_plans;	/* CBRD-27583: a driver session's compilations of its statement for the other bind
+				 * type signatures it executed, linked through their `next`; a push makes the one
+				 * of its values' signature current (db_push_values) */
 };
 
 #endif /* _DB_SESSION_H_ */

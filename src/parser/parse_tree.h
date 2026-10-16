@@ -556,11 +556,19 @@ struct trace_json_t;
         free_and_init(parser_->host_variables); \
 	free_and_init(parser_->host_var_expected_domains); \
 	free_and_init(parser_->host_var_compiled_domains); \
+	free_and_init(parser_->host_var_format_classes); \
 	free_and_init(parser_->host_var_derived_from); \
 	parser_->host_var_derived_count = 0;} while (0)
 
 /* CBRD-27583: the auto-parameterized literals among the positions after the user's (the rest are derived positions) */
 #define PT_AUTO_PARAM_LITERAL_COUNT(parser_) ((parser_)->auto_param_count - (parser_)->host_var_derived_count)
+
+/* CBRD-27583: host_var_format_classes holds the format class of the bound value (db_check_time_date_format; NULL for a
+ * NULL value, unknown without a value) and the bit marking a STR_TO_DATE format position */
+#define PT_HOST_VAR_FORMAT_NULL 0xfe
+#define PT_HOST_VAR_FORMAT_UNKNOWN 0xff
+#define PT_HOST_VAR_FORMAT_POSITION 0x100
+#define PT_HOST_VAR_FORMAT_CLASS(c_) ((c_) & 0xff)
 
 #define SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT(parser_) \
     do { if (parent_parser) { \
@@ -570,6 +578,7 @@ struct trace_json_t;
              parser_->host_variables = parent_parser->host_variables; \
 	     parser_->host_var_expected_domains = parent_parser->host_var_expected_domains; \
 	     parser_->host_var_compiled_domains = parent_parser->host_var_compiled_domains; \
+	     parser_->host_var_format_classes = parent_parser->host_var_format_classes; \
 	     parser_->host_var_derived_from = parent_parser->host_var_derived_from; \
 	     parser_->host_var_derived_count = parent_parser->host_var_derived_count; \
              parser_->host_var_count = parent_parser->host_var_count; \
@@ -581,6 +590,7 @@ struct trace_json_t;
              parser_->host_variables = NULL; parser_->host_var_count = 0; \
 	     parser_->host_var_expected_domains = NULL; \
 	     parser_->host_var_compiled_domains = NULL; \
+	     parser_->host_var_format_classes = NULL; \
 	     parser_->host_var_derived_from = NULL; parser_->host_var_derived_count = 0; \
              parser_->auto_param_count = 0; parser_->flag.set_host_var = 0; } } while (0)
 
@@ -3938,6 +3948,10 @@ struct parser_context
 						 * left untyped (value-typed positions); NULL for a context-typed
 						 * position. The plan is the plan of these bound types: a later value of
 						 * another type gets another plan (pt_set_host_variables flags it) */
+  int *host_var_format_classes;	/* CBRD-27583: [host_var_count] the STR_TO_DATE format class
+				 * (db_check_time_date_format) of the value a position was compiled with, in the
+				 * compilation of a bind type signature; PT_HOST_VAR_FORMAT_POSITION marks a position
+				 * a STR_TO_DATE typed its result by */
   int *host_var_derived_from;	/* CBRD-27583: [host_var_count + auto_param_count] once a compilation of a bind type
 				 * signature assigned its positions (pt_assign_host_var_positions): for a derived position
 				 * the user position whose value the client converts into it, else -1 */

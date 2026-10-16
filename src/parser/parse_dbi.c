@@ -3114,6 +3114,17 @@ pt_host_var_is_context_typed (const TP_DOMAIN * expected)
 }
 
 /*
+ * pt_host_var_format_differs () - CBRD-27583: whether a STR_TO_DATE format position receives a format of another class
+ *   than the one its plan typed the result by (or than none, compiled without a value)
+ */
+static bool
+pt_host_var_format_differs (const PARSER_CONTEXT * parser, int index, const DB_VALUE * val)
+{
+  const int c = parser->host_var_format_classes != NULL ? parser->host_var_format_classes[index] : 0;
+  return (c & PT_HOST_VAR_FORMAT_POSITION) && pt_value_format_class (val) != PT_HOST_VAR_FORMAT_CLASS (c);
+}
+
+/*
  * pt_set_host_variables() - sets parser's host_variables & count
  *   return: none
  *   parser(in):  the parser context
@@ -3165,6 +3176,11 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 
       pr_clear_value (hv);
       hv_dom = parser->host_var_expected_domains[i];
+      if (pt_host_var_format_differs (parser, i, val))
+	{
+	  /* CBRD-27583: a STR_TO_DATE format of another class: the result type of this plan is not the value's */
+	  parser->flag.bind_signature_changed = 1;
+	}
       if (parser->host_var_compiled_domains != NULL && parser->host_var_compiled_domains[i] != NULL
 	  && !pt_value_has_domain_type (val, parser->host_var_compiled_domains[i]))
 	{
@@ -3198,7 +3214,9 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	}
     }
 
-  for (i = parser->host_var_count; i < parser->host_var_count + parser->auto_param_count; i++)
+  /* the derived positions of another signature's plan are not this plan's: they are not filled */
+  for (i = parser->host_var_count;
+       !parser->flag.bind_signature_changed && i < parser->host_var_count + parser->auto_param_count; i++)
     {
       if (pt_is_derived_host_var (parser, i)
 	  && pt_set_derived_host_variable (parser, i, &values[parser->host_var_derived_from[i]]) != NO_ERROR)
@@ -3208,6 +3226,98 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
     }
 
   parser->flag.set_host_var = 1;	/* OK */
+}
+
+/*
+ * pt_host_vars_match_signature () - CBRD-27583: whether the compilation of a bind type signature is the plan of these
+ *   values: every value-typed position receives a value of its compiled domain and every STR_TO_DATE format position
+ *   a format of its class (pt_set_host_variables)
+ */
+bool
+pt_host_vars_match_signature (const PARSER_CONTEXT * parser, int count, const DB_VALUE * values)
+{
+  if (parser->host_var_compiled_domains == NULL || count < parser->host_var_count)
+    {
+      return false;
+    }
+  for (int i = 0; i < parser->host_var_count; i++)
+    {
+      if ((parser->host_var_compiled_domains[i] != NULL
+	   && !pt_value_has_domain_type (&values[i], parser->host_var_compiled_domains[i]))
+	  || pt_host_var_format_differs (parser, i, &values[i]))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
+ * pt_value_format_class () - CBRD-27583: the STR_TO_DATE format class of a bound value: db_check_time_date_format of a
+ *   string, as type checking classifies a literal format; PT_HOST_VAR_FORMAT_NULL for NULL; 0 for any other value (its
+ *   string form has no specifier)
+ */
+int
+pt_value_format_class (const DB_VALUE * val)
+{
+  if (DB_IS_NULL (val))
+    {
+      return PT_HOST_VAR_FORMAT_NULL;
+    }
+  if (!TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (val)))
+    {
+      return 0;
+    }
+  const int size = db_get_string_size (val);
+  char *format = (char *) malloc (size + 1);
+  if (format == NULL)
+    {
+      return 0;
+    }
+  memcpy (format, db_get_string (val), size);
+  format[size] = '\0';
+  const int format_class = db_check_time_date_format (format);
+  free (format);
+  return format_class;
+}
+
+/*
+ * pt_host_var_format_classes () - CBRD-27583: the parser's format classes of the user positions, allocated as unknown
+ *   on first use
+ */
+int *
+pt_host_var_format_classes (PARSER_CONTEXT * parser)
+{
+  if (parser->host_var_format_classes == NULL && parser->host_var_count > 0)
+    {
+      parser->host_var_format_classes = (int *) malloc (parser->host_var_count * sizeof (int));
+      for (int i = 0; parser->host_var_format_classes != NULL && i < parser->host_var_count; i++)
+	{
+	  parser->host_var_format_classes[i] = PT_HOST_VAR_FORMAT_UNKNOWN;
+	}
+    }
+  return parser->host_var_format_classes;
+}
+
+/*
+ * pt_set_host_var_format_classes () - CBRD-27583: before the compilation of a bind type signature, the format class of
+ *   each value (the compilation may bind only the values' types): a STR_TO_DATE whose format is a user position types
+ *   its result by it
+ */
+int
+pt_set_host_var_format_classes (PARSER_CONTEXT * parser, int count, const DB_VALUE * values)
+{
+  int *classes = pt_host_var_format_classes (parser);
+  if (classes == NULL && parser->host_var_count > 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, parser->host_var_count * sizeof (int));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  for (int i = 0; i < parser->host_var_count && i < count; i++)
+    {
+      classes[i] = pt_value_format_class (&values[i]);
+    }
+  return NO_ERROR;
 }
 
 /*

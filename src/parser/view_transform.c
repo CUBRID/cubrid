@@ -9549,6 +9549,15 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 
   /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions */
   pt_assign_host_var_positions (parser, (PT_NODE *) return_node);
+  if (return_node != NULL
+      && (PT_IS_QUERY_NODE_TYPE (return_node->node_type) || return_node->node_type == PT_INSERT
+	  || return_node->node_type == PT_UPDATE || return_node->node_type == PT_DELETE
+	  || return_node->node_type == PT_MERGE) && pt_has_session_variable (parser, (PT_NODE *) return_node))
+    {
+      /* CBRD-27583: the session variables' types are the session's at each execution: a plan statement is compiled
+       * every time, not cached (SET and DROP VARIABLE keep their own execution) */
+      ((PT_NODE *) return_node)->flag.cannot_prepare = 1;
+    }
 
   PT_CLEAR_JMP_ENV (parser);
 

@@ -5002,7 +5002,7 @@ struct pt_host_var_position_walk
  *   auto-parameters; the client converts the user's value into it at every bind (pt_set_derived_host_variable).
  */
 static int
-pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_index, TP_DOMAIN * domain)
+pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_index, TP_DOMAIN * domain, bool create)
 {
   const int count = parser->host_var_count + parser->auto_param_count;
   int k;
@@ -5014,6 +5014,13 @@ pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_ind
 	{
 	  break;
 	}
+    }
+  if (k == count && !create)
+    {
+      /* a later translation (a SELECT built from the translated statement) copies terms the first one already gave
+       * their positions: a new derived position here would be unknown to the sessions that hit the cache */
+      assert (false);
+      return NO_ERROR;
     }
   if (k == count)
     {
@@ -5053,7 +5060,8 @@ pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_ind
  *   type checking (pt_bind_comparison_target); a node that needs another domain moves to a derived position.
  */
 static int
-pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent, PT_HOST_VAR_POSITION_WALK * walk)
+pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent,
+			     PT_HOST_VAR_POSITION_WALK * walk)
 {
   const int i = hv->info.host_var.index;
   TP_DOMAIN *own = pt_host_var_is_context_typed (hv->expected_domain) ? hv->expected_domain : NULL;
@@ -5068,7 +5076,7 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
 	{
 	  /* a value-typed operand of an operator whose rule converts the bind side: a rule cast (comparisons: type
 	   * checking decided the same with the same function) */
-	  own = pt_bind_operand_target (parser, pt_host_var_value_domain (parser, i), parent, hv);
+	  own = pt_bind_operand_target (parser, pt_host_var_value_domain (parser, i), hv, parent, grandparent);
 	  if (own != NULL)
 	    {
 	      hv->expected_domain = own;
@@ -5101,7 +5109,7 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
     }
   else
     {
-      TP_DOMAIN *target = pt_bind_operand_target (parser, position, parent, hv);
+      TP_DOMAIN *target = pt_bind_operand_target (parser, position, hv, parent, grandparent);
       if (target != NULL)
 	{
 	  need = target;
@@ -5111,7 +5119,7 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
     {
       return NO_ERROR;
     }
-  return pt_derive_host_var_position (parser, hv, i, need);
+  return pt_derive_host_var_position (parser, hv, i, need, walk->assign);
 }
 
 static PT_NODE *
@@ -5123,6 +5131,11 @@ pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void 
     {
       *continue_walk = PT_STOP_WALK;
       return node;
+    }
+  if (walk->depth > 0 && (walk->open[walk->depth - 1]->next == node || walk->open[walk->depth - 1]->or_next == node))
+    {
+      /* the walk visits a node's list successor before it leaves the node: the node is done, not the parent */
+      walk->depth--;
     }
   if (node->node_type == PT_HOST_VAR && node->info.host_var.var_type == PT_HOST_IN
       && node->info.host_var.index >= 0 && node->info.host_var.index < parser->host_var_count)
@@ -5138,7 +5151,7 @@ pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void 
 	  return node;
 	}
       walk->error = pt_assign_host_var_position (parser, node, walk->depth > 0 ? walk->open[walk->depth - 1] : NULL,
-						 walk);
+						 walk->depth > 1 ? walk->open[walk->depth - 2] : NULL, walk);
     }
   if (walk->depth == walk->capacity)
     {
@@ -5176,15 +5189,17 @@ pt_assign_host_var_positions_post (PARSER_CONTEXT * parser, PT_NODE * node, void
  *   derived position the client fills with the user's value converted into its domain, so the server never converts
  *   a bind. Every session translating the text computes the same positions, cache hits included: the hash text is
  *   printed after the translation. Without typed values (a PREPARE) only context-typed nodes derive; a value-typed
- *   position stays untyped and no plan is made.
+ *   position stays untyped and no plan is made. A later translation in the same compilation (a SELECT built from the
+ *   translated statement) reuses the positions and makes none.
  */
 void
 pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   PT_HOST_VAR_POSITION_WALK walk;
 
+  /* the semantic compilation of PL static SQL only prints the text again: its execution binds and derives */
   if (statement == NULL || parser->host_var_count <= 0 || parser->host_variables == NULL
-      || parser->host_var_expected_domains == NULL || pt_has_error (parser))
+      || parser->host_var_expected_domains == NULL || pt_has_error (parser) || parser->flag.is_parsing_static_sql)
     {
       return;
     }
@@ -5238,6 +5253,27 @@ pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
     }
+}
+
+static PT_NODE *
+pt_find_session_variable (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node->node_type == PT_EXPR
+      && (node->info.expr.op == PT_EVALUATE_VARIABLE || node->info.expr.op == PT_DEFINE_VARIABLE))
+    {
+      *(bool *) arg = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return node;
+}
+
+/* CBRD-27583: whether a statement reads or assigns a session variable */
+bool
+pt_has_session_variable (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  bool found = false;
+  (void) parser_walk_tree (parser, statement, pt_find_session_variable, &found, NULL, NULL);
+  return found;
 }
 
 /*
