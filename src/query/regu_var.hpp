@@ -162,6 +162,8 @@ struct arith_list_node
   OPERATOR_TYPE opcode;		/* operator value */
   MISC_OPERAND misc_operand;	/* currently used for trim qualifier and datetime extract field specifier */
   cubxasl::pred_expr *pred;		/* predicate expression */
+  /* CBRD-27583: a cast's converter of its operand's domain into the node's, found at unpack; not serialized */
+  TP_VALUE_CONVERTER conv = nullptr;
 
   /* NOTE: The following member is only used on server internally. */
   struct drand48_data *rand_seed;	/* seed to be used to generate pseudo-random sequence */

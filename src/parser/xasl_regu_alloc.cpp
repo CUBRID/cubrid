@@ -287,6 +287,7 @@ regu_init (arith_list_node &arith)
   arith.thirdptr = NULL;
   arith.misc_operand = LEADING;
   arith.rand_seed = NULL;
+  arith.conv = NULL;
 
   regu_alloc (arith.value);
 }

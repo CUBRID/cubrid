@@ -6081,6 +6081,14 @@ stx_build_pos_descr (char *ptr, QFILE_TUPLE_VALUE_POSITION * position_descr)
   return ptr;
 }
 
+/* CBRD-27583: whether a domain fixes the type of its values and their collation */
+static bool
+stx_domain_is_fixed (const TP_DOMAIN * domain)
+{
+  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
+    && domain->collation_flag != TP_DOMAIN_COLL_LEAVE;
+}
+
 static char *
 stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_type)
 {
@@ -6177,6 +6185,17 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 
   /* This member is only used on server internally. */
   arith_type->rand_seed = NULL;
+
+  /* CBRD-27583: a cast converts its operand from the operand's domain into the node's, as an assignment */
+  arith_type->conv = NULL;
+  if ((arith_type->opcode == T_CAST || arith_type->opcode == T_CAST_WRAP || arith_type->opcode == T_CAST_NOFAIL)
+      && arith_type->rightptr != NULL && stx_domain_is_fixed (arith_type->rightptr->domain)
+      && stx_domain_is_fixed (arith_type->domain))
+    {
+      arith_type->conv =
+	tp_value_find_converter (TP_DOMAIN_TYPE (arith_type->rightptr->domain), arith_type->domain,
+				 DOMAIN_CONVERT_ASSIGN);
+    }
 
   return ptr;
 

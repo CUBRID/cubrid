@@ -6775,12 +6775,19 @@ pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value, const DB_TY
 }
 
 
+/* CBRD-27583: whether a domain fixes the type of its values and their collation */
+static bool
+pt_regu_domain_is_fixed_domain (const TP_DOMAIN * domain)
+{
+  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
+    && domain->collation_flag != TP_DOMAIN_COLL_LEAVE;
+}
+
 /* CBRD-27583: whether the compiler knows the type of a regu's values and their collation */
 static bool
 pt_regu_domain_is_fixed (const REGU_VARIABLE * regu)
 {
-  return regu != NULL && regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) != DB_TYPE_VARIABLE
-    && regu->domain->collation_flag != TP_DOMAIN_COLL_LEAVE
+  return regu != NULL && pt_regu_domain_is_fixed_domain (regu->domain)
     && (regu->type != TYPE_POSITION || (regu->value.pos_descr.dom != NULL
 					&& TP_DOMAIN_TYPE (regu->value.pos_descr.dom) != DB_TYPE_VARIABLE));
 }
@@ -6889,6 +6896,48 @@ pt_decide_node_domain (REGU_VARIABLE * regu)
   arith->domain = (TP_DOMAIN *) result.domain;
   regu->domain = arith->domain;
   regu_dbval_type_init (arith->value, TP_DOMAIN_TYPE (arith->domain));
+}
+
+/*
+ * pt_decide_branch_casts () - CBRD-27583: NVL, IFNULL and COALESCE cast the operand a row picks, NVL2 its second or
+ *   third, into the node's domain: each such operand converts on its fetch, as an assignment that fails with an error
+ *   (fetch_cast_operand); the node fetches only the operand it picks
+ */
+static void
+pt_decide_branch_casts (ARITH_TYPE * arith)
+{
+  if (!pt_regu_domain_is_fixed_domain (arith->domain))
+    {
+      return;
+    }
+  REGU_VARIABLE *branch[2];
+  switch (arith->opcode)
+    {
+    case T_NVL:
+    case T_IFNULL:
+    case T_COALESCE:
+      branch[0] = arith->leftptr;
+      branch[1] = arith->rightptr;
+      break;
+    case T_NVL2:
+      branch[0] = arith->rightptr;
+      branch[1] = arith->thirdptr;
+      break;
+    default:
+      return;
+    }
+  for (int i = 0; i < 2; i++)
+    {
+      if (!pt_regu_domain_is_fixed (branch[i]) || branch[i]->domain == arith->domain
+	  || TP_DOMAIN_TYPE (branch[i]->domain) == DB_TYPE_NULL)
+	{
+	  continue;
+	}
+      if (tp_value_find_converter (TP_DOMAIN_TYPE (branch[i]->domain), arith->domain, DOMAIN_CONVERT_ASSIGN) != NULL)
+	{
+	  pt_set_operand_conversion (branch[i], arith->domain, DOMAIN_CONVERT_ASSIGN);
+	}
+    }
 }
 
 /*
@@ -9841,6 +9890,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      if (regu != NULL && regu->type == TYPE_INARITH)
 		{
 		  pt_decide_node_domain (regu);
+		  pt_decide_branch_casts (regu->value.arithptr);
 		}
 	      if (regu != NULL && regu->type == TYPE_INARITH && regu->value.arithptr->leftptr != NULL
 		  && regu->value.arithptr->rightptr != NULL

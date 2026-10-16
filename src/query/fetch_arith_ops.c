@@ -295,6 +295,12 @@ fetch_cast_operand (const val_descr * vd, const ARITH_TYPE * arithptr, int i, co
 {
   const DOMAIN_PLAN_ITEM *item = arithptr->plan_item;
   const REGU_VARIABLE *operand = i == 0 ? arithptr->leftptr : i == 1 ? arithptr->rightptr : arithptr->thirdptr;
+  if (arithptr->conv != NULL && domain == arithptr->domain)
+    {
+      /* CBRD-27583: a cast's converter, found at unpack from its operand's domain */
+      return tp_value_cast_with_converter (value, result, domain, force, TP_DOMAIN_TYPE (operand->domain),
+					   arithptr->conv);
+    }
   if (item != NULL && item->fixed.conv[i] != NULL && item->fixed.operand_domain[i] == domain && operand != NULL
       && operand->domain != NULL)
     {

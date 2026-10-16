@@ -416,6 +416,7 @@ namespace cubxasl
     dest->thirdptr = spawn (src->thirdptr);
     dest->opcode = src->opcode;
     dest->misc_operand = src->misc_operand;
+    dest->conv = src->conv;
 
     /* ref: stx_build_arith_type */
     switch (src->opcode)

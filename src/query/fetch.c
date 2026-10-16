@@ -1672,7 +1672,7 @@ fetch_read_plan_domain (REGU_VARIABLE * regu_var, val_descr * vd, const DB_VALUE
  * fetch_convert_regu_value () - CBRD-27583: a regu's value converted into the domain its consumer wants, in the regu's
  *				 own holder (vfetch_to), which stays valid until the regu's next fetch
  *   return: NO_ERROR or the conversion's error; an arithmetic operand's failure is NULL under
- *	     return_null_on_function_errors, as qdata_coerce_arith_operands
+ *	     return_null_on_function_errors, as qdata_coerce_arith_operands (REGU_CONV_NULL_ON_FUNCTION_ERRORS)
  *   regu_var(in): a regu with a converter
  *   peek_dbval(in/out): the value read in the regu's original domain; the converted value
  */
@@ -1696,8 +1696,14 @@ fetch_convert_regu_value (const REGU_VARIABLE * regu_var, DB_VALUE ** peek_dbval
   const TP_DOMAIN_STATUS status = tp_value_convert (regu_var->conv, regu_var->domain, *peek_dbval, converted);
   if (status != DOMAIN_COMPATIBLE)
     {
-      if (!(regu_var->conv_mode & REGU_CONV_NULL_ON_FUNCTION_ERRORS)
-	  || !prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+      if (!(regu_var->conv_mode & REGU_CONV_NULL_ON_FUNCTION_ERRORS))
+	{
+	  /* an assignment's failure, as fetch_cast_operand's caller reports it */
+	  const int error = tp_domain_status_er_set (status, ARG_FILE_LINE, *peek_dbval, regu_var->domain);
+	  pr_clear_value (converted);
+	  return error;
+	}
+      if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  const int error = qdata_operand_coercion_error (status, *peek_dbval, regu_var->domain);
 	  pr_clear_value (converted);
