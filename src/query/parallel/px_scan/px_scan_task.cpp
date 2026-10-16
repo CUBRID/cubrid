@@ -739,6 +739,12 @@ namespace parallel_scan
 	  {
 	    PGSLOTID slot = 0, chunk_start = 0;
 	    int rc = NO_ERROR;
+	    QDATA_AGG_CHUNK_STATE agg_state = { m_xasl->proc.buildvalue.agg_list, m_vd, false };
+	    EXPR_CHUNK_NODE agg_node, eval_node;
+
+	    /* the chain: evaluation -> the worker's aggregate (the blocking node) */
+	    expr_chunk_node_init (&agg_node, "aggregate", qdata_agg_chunk_consume, &agg_state, NULL);
+	    expr_chunk_node_init (&eval_node, "evaluate", expr_chunk_eval_consume, m_vd, &agg_node);
 
 	    do
 	      {
@@ -757,13 +763,7 @@ namespace parallel_scan
 		rc = NO_ERROR;
 		if ((scan_code == S_SUCCESS || scan_code == S_END) && hsidp->batch->n_rows > 0)
 		  {
-		    rc = expr_batch_run (hsidp->batch_plan, hsidp->batch, &thread_ref, m_vd);
-		    if (rc == NO_ERROR
-			&& qdata_evaluate_aggregate_batch (&thread_ref, m_xasl->proc.buildvalue.agg_list, m_vd,
-							   hsidp->batch_plan, hsidp->batch, false) != NO_ERROR)
-		      {
-			rc = ER_FAILED;
-		      }
+		    rc = expr_chunk_push (&thread_ref, &eval_node, hsidp->batch_plan, hsidp->batch);
 		    if (rc == NO_ERROR && on_trace)
 		      {
 			m_scan_id->scan_stats.read_rows += hsidp->batch->n_rows;

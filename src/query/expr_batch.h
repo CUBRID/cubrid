@@ -148,6 +148,40 @@ extern int expr_batch_agg_extremum (const EXPR_BATCH_PLAN * plan, const EXPR_BAT
 /* the DB type of the node's operand vector (what its values would carry) */
 extern DB_TYPE expr_batch_agg_type (const EXPR_BATCH_PLAN * plan, int node_ord);
 
+/* ---------------------------------------------------------------------------------------- */
+/* Chunks between nodes.  The heap scan produces a page's rows a chunk at a time and pushes
+ * each into the first node of a chain; a node consumes the chunk and pushes it on
+ * (expr_chunk_push () on its next), or, being a blocking node -- an aggregate, later a hash
+ * GROUP BY or a join's build side -- ends the chain and keeps what it needs.  A chunk's rows
+ * are peeked, valid only until the producer moves on, so a node that keeps anything of them
+ * copies it (database-reference 참고: a blocking node gathers what the chunks bring into
+ * blocks of its own).
+ *
+ * consume returns NO_ERROR, an error, or EXPR_BATCH_FALLBACK: the chunk goes to the row path.
+ * Only the blocking node at the end changes state, and only after every node before it took
+ * the chunk, so a FALLBACK from any node leaves nothing of the chunk anywhere. */
+typedef struct expr_chunk_node EXPR_CHUNK_NODE;
+typedef int (*EXPR_CHUNK_CONSUME) (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan,
+				   EXPR_BATCH * batch);
+struct expr_chunk_node
+{
+  const char *name;
+  EXPR_CHUNK_CONSUME consume;
+  EXPR_CHUNK_NODE *next;
+  void *state;			/* the node's own */
+  INT64 chunks;			/* trace: chunks taken, rows in */
+  INT64 rows;
+};
+
+extern void expr_chunk_node_init (EXPR_CHUNK_NODE * node, const char *name, EXPR_CHUNK_CONSUME consume, void *state,
+				  EXPR_CHUNK_NODE * next);
+extern int expr_chunk_push (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan,
+			    EXPR_BATCH * batch);
+/* the evaluation node: the filter, then the operand steps over the rows it kept (expr_batch_run ());
+ * its state is the execution's struct val_descr; an empty selection ends the chunk here */
+extern int expr_chunk_eval_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan,
+				    EXPR_BATCH * batch);
+
 /* trace: pages taken and pages handed back */
 extern void expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback);
 extern void expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, int indent);

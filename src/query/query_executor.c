@@ -9730,6 +9730,12 @@ qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
   HEAP_SCAN_ID *hsidp = &s_id->s.hsid;
   SCAN_CODE code, ls_scan;
   int rc;
+  QDATA_AGG_CHUNK_STATE agg_state = { xasl->proc.buildvalue.agg_list, &xasl_state->vd, true };
+  EXPR_CHUNK_NODE agg_node, eval_node;
+
+  /* the chain: evaluation (filter, operand steps) -> the aggregate (the blocking node) */
+  expr_chunk_node_init (&agg_node, "aggregate", qdata_agg_chunk_consume, &agg_state, NULL);
+  expr_chunk_node_init (&eval_node, "evaluate", expr_chunk_eval_consume, &xasl_state->vd, &agg_node);
 
   while ((code = scan_batch_next_page (thread_p, s_id)) == S_SUCCESS)
     {
@@ -9746,14 +9752,9 @@ qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	    }
 	  if (chunk != S_DOESNT_FIT && hsidp->batch->n_rows > 0)
 	    {
-	      rc = expr_batch_run (hsidp->batch_plan, hsidp->batch, thread_p, &xasl_state->vd);
+	      rc = expr_chunk_push (thread_p, &eval_node, hsidp->batch_plan, hsidp->batch);
 	      if (rc == NO_ERROR)
 		{
-		  if (qdata_evaluate_aggregate_batch (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd,
-						      hsidp->batch_plan, hsidp->batch, true) != NO_ERROR)
-		    {
-		      return S_ERROR;
-		    }
 		  s_id->scan_stats.read_rows += hsidp->batch->n_rows;
 		  s_id->scan_stats.qualified_rows += hsidp->batch->n_sel;
 		}

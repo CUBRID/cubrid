@@ -1084,6 +1084,19 @@ qdata_agg_operand_prog_ensure (cubthread::entry *thread_p, cubxasl::aggregate_li
 }
 
 /*
+ * qdata_agg_chunk_consume () - the aggregate node of a chunk chain: accumulate the chunk's selected rows
+ *   return: NO_ERROR, or an error code
+ *   node(in): its state is a QDATA_AGG_CHUNK_STATE
+ */
+int
+qdata_agg_chunk_consume (cubthread::entry *thread_p, EXPR_CHUNK_NODE *node, EXPR_BATCH_PLAN *plan, EXPR_BATCH *batch)
+{
+  QDATA_AGG_CHUNK_STATE *st = (QDATA_AGG_CHUNK_STATE *) node->state;
+
+  return qdata_evaluate_aggregate_batch (thread_p, st->agg_list, st->vd, plan, batch, st->skip_optimized);
+}
+
+/*
  * qdata_evaluate_aggregate_batch () - accumulate the rows of one page batch
  *   return: NO_ERROR, or an error code
  *   agg_list_p(in/out): the aggregate list (the accumulators are its nodes' own)

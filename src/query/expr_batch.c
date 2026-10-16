@@ -2850,6 +2850,45 @@ expr_batch_agg_extremum (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch,
 
 /* ---------------------------------------------------------------------------------------- */
 
+/* ---------------------------------------------------------------------------------------- */
+/* chunks between nodes */
+
+void
+expr_chunk_node_init (EXPR_CHUNK_NODE * node, const char *name, EXPR_CHUNK_CONSUME consume, void *state,
+		      EXPR_CHUNK_NODE * next)
+{
+  node->name = name;
+  node->consume = consume;
+  node->next = next;
+  node->state = state;
+  node->chunks = 0;
+  node->rows = 0;
+}
+
+int
+expr_chunk_push (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
+{
+  if (node == NULL)
+    {
+      return NO_ERROR;
+    }
+  node->chunks++;
+  node->rows += batch->n_rows;
+  return node->consume (thread_p, node, plan, batch);
+}
+
+int
+expr_chunk_eval_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
+{
+  int rc = expr_batch_run (plan, batch, thread_p, (struct val_descr *) node->state);
+
+  if (rc != NO_ERROR || batch->n_sel == 0)
+    {
+      return rc;
+    }
+  return expr_chunk_push (thread_p, node->next, plan, batch);
+}
+
 void
 expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback)
 {
