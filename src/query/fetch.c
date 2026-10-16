@@ -103,12 +103,13 @@ static int fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPL
 static AGG_EXPR_TYPE_GROUP
 fetch_agg_expr_type_group (const REGU_VARIABLE * regu_var)
 {
-  if (regu_var->domain == NULL)
+  const TP_DOMAIN *domain = regu_produced_domain (regu_var);
+  if (domain == NULL)
     {
       return AGG_EXPR_TYPE_GROUP_NONE;
     }
 
-  switch (TP_DOMAIN_TYPE (regu_var->domain))
+  switch (TP_DOMAIN_TYPE (domain))
     {
     case DB_TYPE_NUMERIC:
       return AGG_EXPR_TYPE_GROUP_NUMERIC;
@@ -231,9 +232,9 @@ fetch_is_agg_expr_wrap_leaf (const REGU_VARIABLE * regu_var, AGG_EXPR_TYPE_GROUP
 
   if (type_group == AGG_EXPR_TYPE_GROUP_NUMERIC)
     {
-      return (regu_var->domain != NULL && TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_NUMERIC
-	      && regu_var->domain->precision == DB_DEFAULT_NUMERIC_PRECISION
-	      && regu_var->domain->scale == DB_DEFAULT_NUMERIC_SCALE
+      const TP_DOMAIN *domain = regu_produced_domain (regu_var);
+      return (domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_NUMERIC
+	      && domain->precision == DB_DEFAULT_NUMERIC_PRECISION && domain->scale == DB_DEFAULT_NUMERIC_SCALE
 	      && fetch_is_agg_expr_int_source (arithptr->rightptr));
     }
 
@@ -273,6 +274,11 @@ fetch_is_agg_expr_node (const REGU_VARIABLE * regu_var, AGG_EXPR_TYPE_GROUP type
       return true;
 
     case TYPE_INARITH:
+      if (regu_var->conv != NULL)
+	{
+	  /* CBRD-27583: the fused tree computes an interior node without fetching it, so its conversion would not run */
+	  return false;
+	}
       break;
 
     default:
@@ -474,7 +480,7 @@ fetch_agg_expr_eval_int (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_
       return false;
     }
 
-  switch (TP_DOMAIN_TYPE (regu_var->domain))
+  switch (TP_DOMAIN_TYPE (regu_produced_domain (regu_var)))
     {
     case DB_TYPE_SHORT:
       if (result > DB_INT16_MAX || result < DB_INT16_MIN)
@@ -719,7 +725,9 @@ fetch_arith_constant_evaluated (const val_descr * vd, const DOMAIN_PLAN_ITEM * i
 void
 fetch_arith_node_domains (val_descr * vd, FETCH_ARITH_ARGS * a)
 {
-  a->domain = qexec_get_node_domain (vd, a->regu_var->domain, a->regu_var->plan_item);
+  /* CBRD-27583: a converting regu's domain is its consumer's; the node computes in the one it is read in */
+  TP_DOMAIN *node_domain = regu_produced_domain (a->regu_var);
+  a->domain = qexec_get_node_domain (vd, node_domain, a->regu_var->plan_item);
   a->arith_domain = qexec_get_node_domain (vd, a->arithptr->domain, a->arithptr->plan_item);
   a->no_value_domain = NULL;
 }
@@ -2084,7 +2092,8 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 
   if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION))
     {
-      const TP_DOMAIN *collate = qexec_get_node_domain (vd, regu_var->domain, regu_var->plan_item);
+      /* the collation the value is read in, before a converting regu converts it */
+      const TP_DOMAIN *collate = qexec_get_node_domain (vd, regu_produced_domain (regu_var), regu_var->plan_item);
       if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (collate)))
 	{
 	  if (!DB_IS_NULL (*peek_dbval))

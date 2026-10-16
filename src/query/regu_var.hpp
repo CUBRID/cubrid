@@ -302,6 +302,7 @@ inline void REGU_VARIABLE_SET_FLAG (regu_variable_node *regu, int flag);
 inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag);
 inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
 inline bool regu_is_variable_pos (const regu_variable_node *regu);
+inline TP_DOMAIN *regu_produced_domain (const regu_variable_node *regu);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
@@ -341,5 +342,13 @@ bool
 regu_is_variable_pos (const regu_variable_node *regu)
 {
   return regu->type == TYPE_POS_VALUE && regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE;
+}
+
+/* CBRD-27583: the domain a regu's own evaluation produces its value in; domain is the one it delivers to its consumer,
+ * after the conversion */
+TP_DOMAIN *
+regu_produced_domain (const regu_variable_node *regu)
+{
+  return regu->conv != NULL ? regu->original_domain : regu->domain;
 }
 #endif /* _REGU_VAR_HPP_ */

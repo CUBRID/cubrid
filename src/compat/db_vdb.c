@@ -998,7 +998,15 @@ db_compile_statement_local (DB_SESSION * session)
   /* forget about any previous parsing errors, if any */
   pt_reset_error (parser);
 
-  if (parser->flag.set_host_var == 1)
+  /* CBRD-27583: the session's host variables are this statement's only when it has markers of its own: an EXECUTE
+   * leaves the prepared statement's values in the session's parser */
+  int n_markers = 0;
+  if (parser->host_var_count > 0)
+    {
+      (void) parser_walk_tree (parser, statement, pt_count_input_markers, &n_markers, NULL, NULL);
+    }
+
+  if (parser->flag.set_host_var == 1 && n_markers > 0)
     {
       /* CBRD-27583: values pushed before the compilation: the plan is the plan of their types */
       err = db_begin_signature_compile (parser, parser->host_var_count, parser->host_variables);
@@ -1185,7 +1193,10 @@ db_compile_statement_local (DB_SESSION * session)
   session->stage[stmt_ndx] = StatementCompiledStage;
 
   /* CBRD-27583: the cache key token and the regu domain of a value-typed position read its compiled domain */
-  db_set_host_var_compiled_domains (parser);
+  if (n_markers > 0)
+    {
+      db_set_host_var_compiled_domains (parser);
+    }
 
   /*
    * Preparation Stage
@@ -1200,7 +1211,7 @@ db_compile_statement_local (DB_SESSION * session)
   if (!parser->flag.is_parsing_static_sql && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0
       && statement->flag.cannot_prepare == 0)
     {
-      if (db_is_plan_statement (statement) && db_has_untyped_host_var (parser))
+      if (n_markers > 0 && db_is_plan_statement (statement) && db_has_untyped_host_var (parser))
 	{
 	  /* CBRD-27583: compiled without values, a value-typed position has no type yet: no plan now; the first
 	   * execution compiles the plan of its bind type signature (db_push_values) */

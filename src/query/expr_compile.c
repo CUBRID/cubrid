@@ -1464,7 +1464,7 @@ expr_k_fetch (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 static int
 expr_k_relabel (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
-  const TP_DOMAIN *collate = qexec_get_node_domain (ctx->vd, step->regu->domain, step->regu->plan_item);
+  const TP_DOMAIN *collate = qexec_get_node_domain (ctx->vd, regu_produced_domain (step->regu), step->regu->plan_item);
 
   pr_clear_value (step->out);
   if (pr_clone_value (*step->arg1p, step->out) != NO_ERROR)
@@ -2468,7 +2468,7 @@ expr_item_resolution (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
 static TP_DOMAIN *
 expr_arith_exec_domain (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
 {
-  TP_DOMAIN *domain = regu->domain;
+  TP_DOMAIN *domain = regu_produced_domain (regu);
   const ARITH_TYPE *arith = regu->value.arithptr;
 
   if (domain == NULL || arith == NULL)

@@ -841,11 +841,14 @@ domain_interpolation_final (int function, const TP_DOMAIN * domain, DB_TYPE argu
 }
 
 /* Whether an aggregate's or an analytic function's domain is late-bound, typed by its argument's value: the operand
- * was VARIABLE when compiled (opr_dbtype, not the function's domain) or the function domain leaves collation. */
+ * was VARIABLE when compiled (opr_dbtype, not the function's domain), the function domain leaves collation, or
+ * (CBRD-27583, interim until 4.3 decides the function at generation; an assert in (d)) the function domain is
+ * VARIABLE over an argument XASL generation decided. */
 static bool
 domain_function_is_late_bound (const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand)
 {
-  return operand->is_variable_pos || compiled == NULL || TP_DOMAIN_COLLATION_FLAG (compiled) != TP_DOMAIN_COLL_NORMAL;
+  return operand->is_variable_pos || compiled == NULL || TP_DOMAIN_TYPE (compiled) == DB_TYPE_VARIABLE
+    || TP_DOMAIN_COLLATION_FLAG (compiled) != TP_DOMAIN_COLL_NORMAL;
 }
 
 /*

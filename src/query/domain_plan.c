@@ -2799,7 +2799,9 @@ domain_resolve_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry)
   /* a string function the compiler typed with its collation left to the argument (MIN / MAX, LAG / LEAD, FIRST_VALUE
    * / NTH_VALUE over CAST (? AS VARCHAR (n)): ENFORCE over an argument it could not type) is a late-binding node
    * whatever its argument: resolve_domains gives it the argument's resolved domain, as it does the variable ones */
-  if (load_entry->kind == DOMAIN_LOAD_FIXED_AGG && compiled && !any_variable_pos
+  /* CBRD-27583: an argument the compiler did not type (opr_dbtype VARIABLE) over a node XASL generation decided is
+   * resolved from that node, as develop resolves it from a late-binding one (until 4.3 decides the function) */
+  if (load_entry->kind == DOMAIN_LOAD_FIXED_AGG && compiled && !any_variable_pos && load_entry->argument != NULL
       && !domain_character_is_variable (item->fixed.domain))
     {
       const DOMAIN_PLAN_ITEM *argument = load_entry->link[0];
@@ -2987,7 +2989,9 @@ static DOMAIN_PLAN_ITEM *
 domain_constant_of (const DOMAIN_LOAD_ENTRY * load_entry)
 {
   const REGU_VARIABLE *regu = load_entry->regu;
-  if (regu == NULL)
+  /* CBRD-27583: a converting regu's fetch delivers another domain than its node computes in, which the node's
+   * stored value would have to be: such a node computes at its rows (interim, with the load) */
+  if (regu == NULL || regu->conv != NULL)
     {
       return NULL;
     }

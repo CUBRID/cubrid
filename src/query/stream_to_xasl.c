@@ -4507,7 +4507,10 @@ stx_build_term_compare (THREAD_ENTRY * thread_p, const COMP_EVAL_TERM * term)
   for (int side = 0; side < 2; side++)
     {
       const TP_DOMAIN *domain = regu[side] != NULL ? regu[side]->domain : NULL;
-      if (domain == NULL || regu[side]->type == TYPE_LIST_ID || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
+      /* a value pointer or a list position holds what its producer wrote, whose domain XASL generation does not look
+       * up yet (D-13, step 2(c)): the load's derivation compares it */
+      if (domain == NULL || regu[side]->type == TYPE_LIST_ID || regu[side]->type == TYPE_CONSTANT
+	  || regu[side]->type == TYPE_POSITION || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
 	  || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_UNKNOWN
 	  || domain->collation_flag != TP_DOMAIN_COLL_NORMAL)
 	{

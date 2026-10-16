@@ -6118,7 +6118,7 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
       return ER_FAILED;
     }
 
-  domain_p = qexec_get_node_domain (val_desc_p, function_p->domain, function_p->plan_item);
+  domain_p = qexec_get_node_domain (val_desc_p, regu_produced_domain (function_p), function_p->plan_item);
   list_id_p = operand->value.value.srlist_id->list_id;
   db_make_null (&dbval);
 
