@@ -8181,71 +8181,33 @@ scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_T
 /*
  * scan_batch_collect_page () - the rows of the page the scan cache holds, into the batch
  *   return: S_SUCCESS (the batch holds the page's rows), S_DOESNT_FIT (the page is for the
- *           row path: a record not stored in this page, more rows than the batch takes, or
- *           the page changed under a peek), or S_ERROR
+ *           row path: a record not answered by this page alone, or more rows than the batch
+ *           takes), or S_ERROR
  *   scan_id(in/out): the heap scan
- *   vpid(in): the page, fixed in the scan cache's watcher (or fixed here by heap_next_1page ())
+ *   vpid(in): the page, fixed in the scan cache's watcher (or fixed here)
  *
- * The same walk the row path makes over one page (heap_next_1page (): slot by slot, the
- * visibility of each record decided as always), the page kept fixed throughout; the rows
- * are peeked, so they are valid while the page stays fixed, which the caller guarantees.
+ * heap_page_collect_visible (): the walk the row path makes over one page, slot by slot with
+ * the same visibility decision, made in one pass with the page held throughout; the rows are
+ * peeked, so they are valid while the page stays fixed, which the caller guarantees.  A page
+ * with a record whose visible version is elsewhere -- relocated, in overflow pages, or in the
+ * log for this snapshot -- goes to the row path whole, before any of its rows is used.
  */
 SCAN_CODE
 scan_batch_collect_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid)
 {
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
-  HEAP_SCANCACHE *scan_cache = &hsidp->scan_cache;
   EXPR_BATCH *batch = hsidp->batch;
-  OID oid;
-  RECDES recdes;
   SCAN_CODE code;
-  LOG_LSA ref_lsa;
-  bool have_lsa = false;
-  int cache_last_fix_page_save = scan_cache->cache_last_fix_page;
 
   batch->n_rows = 0;
   batch->n_sel = 0;
-  OID_SET_NULL (&oid);
-  scan_cache->cache_last_fix_page = true;	/* hold the page across its rows */
-  while (true)
-    {
-      recdes = RECDES_INITIALIZER;
-      code = heap_next_1page (thread_p, &hsidp->hfid, vpid, &hsidp->cls_oid, &oid, &recdes, scan_cache, PEEK);
-      if (code != S_SUCCESS)
-	{
-	  break;
-	}
-      if (!have_lsa && scan_cache->page_watcher.pgptr != NULL)
-	{
-	  LSA_COPY (&ref_lsa, pgbuf_get_lsa (scan_cache->page_watcher.pgptr));
-	  have_lsa = true;
-	}
-      if (recdes.type != REC_HOME || batch->n_rows >= batch->cap || scan_cache->page_watcher.pgptr == NULL
-	  || recdes.data < (char *) scan_cache->page_watcher.pgptr
-	  || recdes.data >= (char *) scan_cache->page_watcher.pgptr + DB_PAGESIZE)
-	{
-	  /* A record assembled elsewhere than in this page lands in the scan cache's one buffer,
-	   * which the next one overwrites: an overflow or relocated record, and also the previous
-	   * version of a record too new for the snapshot, which comes from the log with the type
-	   * of the record it was (REC_HOME) -- and whose walk may release the page the rows before
-	   * it were peeked from.  Such a page is for the row path. */
-	  code = S_DOESNT_FIT;
-	  break;
-	}
-      batch->rows[batch->n_rows].oid = oid;
-      batch->rows[batch->n_rows].recdes = recdes;
-      batch->n_rows++;
-    }
-  scan_cache->cache_last_fix_page = cache_last_fix_page_save;
+  code =
+    heap_page_collect_visible (thread_p, vpid, &hsidp->cls_oid, &hsidp->scan_cache, batch->rows, batch->cap,
+			       &batch->n_rows);
   hsidp->batch_vpid = *vpid;
-  if (code == S_END)
+  if (code != S_SUCCESS)
     {
-      code = S_SUCCESS;
-      if (have_lsa && scan_cache->page_watcher.pgptr != NULL
-	  && PGBUF_IS_PAGE_CHANGED (scan_cache->page_watcher.pgptr, &ref_lsa))
-	{
-	  code = S_DOESNT_FIT;
-	}
+      batch->n_rows = 0;
     }
   return code;
 }

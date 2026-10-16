@@ -47,8 +47,9 @@
  * its use columns, a selection vector, row positions -- and goes one step further by
  * running the evaluation itself over the arrays rather than per pointed row.
  *
- * Visibility is not part of this module: the caller's rows come from heap_next_1page (),
- * record by record, as they always did.
+ * Visibility is not part of this module: the caller's rows come from
+ * heap_page_collect_visible (), which decides it for a whole page as heap_next_1page () does
+ * record by record.
  */
 
 #ifndef _EXPR_BATCH_H_
@@ -62,6 +63,7 @@
 #include "thread_compat.hpp"
 
 struct heap_cache_attrinfo;
+struct heap_page_row;
 struct access_spec_node;
 struct val_descr;
 namespace cubxasl
@@ -69,13 +71,9 @@ namespace cubxasl
   struct aggregate_list_node;
 }
 
-/* one row the page yielded: its identity and the record bytes (PEEK, valid while the page is latched) */
-typedef struct expr_batch_row EXPR_BATCH_ROW;
-struct expr_batch_row
-{
-  OID oid;
-  RECDES recdes;
-};
+/* one row the page yielded (HEAP_PAGE_ROW, heap_file.h): its identity and the record bytes
+ * (PEEK, valid while the page is latched) */
+typedef struct heap_page_row EXPR_BATCH_ROW;
 
 /* the rows of one page and, after expr_batch_run (), the ones the filter kept */
 typedef struct expr_batch EXPR_BATCH;

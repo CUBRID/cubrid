@@ -8172,6 +8172,129 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
 
 /*
+ * heap_page_collect_visible () - every record heap_next_1page () would return for one page, at once
+ *   return: S_SUCCESS (rows[0 .. *n_rows) are those records, peeked, in slot order),
+ *           S_DOESNT_FIT (a record the page alone cannot answer for: the caller walks the page
+ *           with heap_next_1page ()), or S_ERROR
+ *   vpid(in): the page
+ *   class_oid(in): the class scanned (the scan cache's)
+ *   scan_cache(in/out): the scan cache; its watcher holds the page on return
+ *   rows(out): cap slots
+ *   cap(in): at most so many rows
+ *   n_rows(out): the rows collected
+ *
+ * The walk heap_next_1page () makes, record after record, made once: the same slots skipped
+ * (the header, REC_NEWHOME, REC_ASSIGN_ADDRESS, REC_UNKNOWN), and for a REC_HOME record the
+ * visibility heap_scan_get_visible_version () decides -- an all-visible header, a class
+ * without MVCC or no snapshot is visible, otherwise the snapshot function says.  A record
+ * whose answer is not in this page -- relocated, in overflow pages, or too new for the
+ * snapshot (its visible version is in the log) -- hands the whole page back, so the page
+ * stays fixed and every row points into it.
+ */
+SCAN_CODE
+heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
+			   HEAP_SCANCACHE * scan_cache, HEAP_PAGE_ROW * rows, int cap, int *n_rows)
+{
+  MVCC_SNAPSHOT *snapshot = NULL;
+  PAGE_PTR pgptr;
+  RECDES rec;
+  OID oid;
+  SCAN_CODE scan;
+  int n = 0;
+
+  *n_rows = 0;
+  if (HEAP_SCAN_IS_LOCAL_CACHE_READ (scan_cache))
+    {
+      /* a cached scan reads a copy of the page: heap_next_1page () keeps that protocol */
+      return S_DOESNT_FIT;
+    }
+  if (scan_cache->page_watcher.pgptr != NULL && !VPID_EQ (vpid, pgbuf_get_vpid_ptr (scan_cache->page_watcher.pgptr)))
+    {
+      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+    }
+  if (scan_cache->page_watcher.pgptr == NULL)
+    {
+      scan_cache->page_watcher.pgptr =
+	heap_scan_pb_latch_and_fetch (thread_p, vpid, OLD_PAGE, PGBUF_LATCH_READ, scan_cache,
+				      &scan_cache->page_watcher);
+      if (scan_cache->page_watcher.pgptr == NULL)
+	{
+	  if (er_errid () == ER_PB_BAD_PAGEID)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_UNKNOWN_OBJECT, 3, vpid->volid, vpid->pageid, 0);
+	    }
+	  return S_ERROR;
+	}
+    }
+  pgptr = scan_cache->page_watcher.pgptr;
+  if (heap_page_is_bestspace (thread_p, pgptr))
+    {
+      return S_SUCCESS;
+    }
+  if (!scan_cache->mvcc_disabled_class && scan_cache->mvcc_snapshot != NULL
+      && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
+    {
+      snapshot = scan_cache->mvcc_snapshot;
+    }
+
+  oid.volid = vpid->volid;
+  oid.pageid = vpid->pageid;
+  oid.slotid = 0;		/* the walk starts at slot 1 */
+  while (true)
+    {
+      MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
+
+      scan = spage_next_record (pgptr, &oid.slotid, &rec, PEEK);
+      if (scan == S_END)
+	{
+	  break;
+	}
+      if (scan != S_SUCCESS)
+	{
+	  return scan;
+	}
+      if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID || rec.type == REC_NEWHOME || rec.type == REC_ASSIGN_ADDRESS
+	  || rec.type == REC_UNKNOWN)
+	{
+	  continue;
+	}
+      if (rec.type != REC_HOME || n >= cap)
+	{
+	  return S_DOESNT_FIT;
+	}
+      if (or_mvcc_get_header (&rec, &mvcc_header) != NO_ERROR)
+	{
+	  assert (false);
+	  return S_ERROR;
+	}
+      if (snapshot != NULL && !MVCC_IS_HEADER_ALL_VISIBLE (&mvcc_header))
+	{
+	  MVCC_SATISFIES_SNAPSHOT_RESULT res = snapshot->snapshot_fnc (thread_p, &mvcc_header, snapshot);
+
+	  if (res == TOO_OLD_FOR_SNAPSHOT)
+	    {
+	      /* deleted for this snapshot: S_SNAPSHOT_NOT_SATISFIED, the walk goes on */
+	      continue;
+	    }
+	  if (res != SNAPSHOT_SATISFIED)
+	    {
+	      /* its visible version is a previous one, in the log */
+	      return S_DOESNT_FIT;
+	    }
+	}
+      if (class_oid != NULL && !OID_ISNULL (class_oid) && OID_IS_ROOTOID (&oid))
+	{
+	  continue;
+	}
+      rows[n].oid = oid;
+      rows[n].recdes = rec;
+      n++;
+    }
+  *n_rows = n;
+  return S_SUCCESS;
+}
+
+/*
  * heap_first () - Retrieve or peek first object of heap
  *   return: SCAN_CODE (Either of S_SUCCESS, S_DOESNT_FIT, S_END, S_ERROR)
  *   hfid(in):
