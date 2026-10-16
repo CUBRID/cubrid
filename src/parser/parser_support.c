@@ -5053,10 +5053,11 @@ pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_ind
 /*
  * pt_assign_host_var_position () - CBRD-27583: the domain one host variable node needs, against the domain of its
  *   position. The first node of a user position decides the position's domain in the first pass: its context's
- *   expected domain, else the value's domain. A node needs its own context's domain, or in a relational comparison
- *   the target the type rule gives the position's domain against its mate (a rule cast; type checking decided the
- *   same with the same function, pt_bind_comparison_target), or the position's domain; a node that needs another
- *   domain moves to a derived position. A rule cast is a derived position: the user position holds the value as bound.
+ *   expected domain, else the value's domain. A node needs its own context's domain, the target of its rule cast
+ *   (type checking: a comparison's type rule, pt_bind_comparison_target, or a collation, pt_collation_rule_cast), in a
+ *   relational comparison the target the type rule gives the position's domain against its mate, or the position's
+ *   domain; a node that needs another domain moves to a derived position. A rule cast is a derived position: the user
+ *   position holds the value as bound.
  */
 static int
 pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent,
@@ -5091,7 +5092,9 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
   TP_DOMAIN *need = own;
   if (need == NULL)
     {
-      need = pt_bind_operand_target (parser, position, hv, parent, grandparent);
+      /* a rule cast's target (a comparison's or a collation's), or the comparison rule of a copied term */
+      need = hv->info.host_var.rule_cast ? hv->expected_domain
+	: pt_bind_operand_target (parser, position, hv, parent, grandparent);
     }
   if (need == NULL || tp_domain_match (need, position, TP_EXACT_MATCH))
     {

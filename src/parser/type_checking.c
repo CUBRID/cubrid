@@ -4707,6 +4707,47 @@ pt_type_bind_by_comparison (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * par
 }
 
 /*
+ * pt_collation_rule_cast () - CBRD-27583 (D-30): a value-typed string bind of a bind type signature coerced into
+ *   another collation (pt_coerce_node_collation: the common collation of its operation) takes it by a rule cast - its
+ *   node targets the value's type in that collation, a derived position the client fills - as develop's ENFORCE
+ *   domain converted the value at the bind. Returns false when this is not such a bind: the caller coerces it as
+ *   before.
+ */
+static bool
+pt_collation_rule_cast (PARSER_CONTEXT * parser, PT_NODE * hv, const int coll_id, const INTL_CODESET codeset)
+{
+  if (parser->flag.set_host_var != 0 || parser->host_var_compiled_domains == NULL || parser->host_variables == NULL
+      || hv->node_type != PT_HOST_VAR || hv->info.host_var.var_type != PT_HOST_IN
+      || hv->info.host_var.index >= parser->host_var_count || hv->type_enum != PT_TYPE_MAYBE
+      || (!hv->info.host_var.rule_cast && pt_host_var_is_context_typed (hv->expected_domain)))
+    {
+      return false;
+    }
+  const TP_DOMAIN *value = pt_host_var_value_domain (parser, hv->info.host_var.index);
+  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (value)) || value->collation_id == coll_id)
+    {
+      return false;
+    }
+  if (hv->info.host_var.rule_cast && !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (hv->expected_domain)))
+    {
+      /* the comparison's rule converts the value into a type without collation */
+      return true;
+    }
+  /* the type's default precision: the signature carries no string precision */
+  TP_DOMAIN *target = tp_domain_copy (tp_domain_resolve_default (TP_DOMAIN_TYPE (value)), false);
+  if (target == NULL)
+    {
+      return false;
+    }
+  target->codeset = (unsigned char) codeset;
+  target->collation_id = coll_id;
+  target->collation_flag = TP_DOMAIN_COLL_NORMAL;
+  hv->expected_domain = tp_domain_cache (target);
+  hv->info.host_var.rule_cast = true;
+  return true;
+}
+
+/*
  * pt_coerce_expression_argument () - check if arg has the correct type and
  *				      wrap arg with a cast node to def_type
  *				      if needed.
@@ -22248,6 +22289,10 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 	}
       break;
     case PT_HOST_VAR:
+      if (pt_collation_rule_cast (parser, node, coll_id, codeset))
+	{
+	  break;
+	}
       if (node->expected_domain != NULL)
 	{
 	  pt_preset_hostvar (parser, node);
@@ -22272,7 +22317,7 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 	  arg = node->info.function.arg_list;
 	  while (arg != NULL)
 	    {
-	      if (arg->node_type != PT_HOST_VAR)
+	      if (arg->node_type != PT_HOST_VAR || pt_collation_rule_cast (parser, arg, coll_id, codeset))
 		{
 		  arg = arg->next;
 		  continue;
