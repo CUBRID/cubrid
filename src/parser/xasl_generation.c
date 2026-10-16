@@ -17225,9 +17225,15 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      xasl->proc.buildlist.a_eval_list = pt_generate_simple_analytic_eval_type (parser, &analytic_info_clone);
 	    }
 
-	  if (xasl->proc.buildlist.a_eval_list == NULL && analytic_info.head_list != NULL)
+	  if (xasl->proc.buildlist.a_eval_list == NULL)
 	    {
-	      /* input functions were provided but optimizer messed up */
+	      /* either the optimizer lost the input functions, or the select was flagged as having
+	       * analytics but none reached here (a rewrite moved them out); both are dereferenced
+	       * below, so fail the compile instead of crashing the client (CBRD-27503) */
+	      if (!pt_has_error (parser))
+		{
+		  PT_INTERNAL_ERROR (parser, "analytic evaluation list is empty");
+		}
 	      goto analytic_exit_on_error;
 	    }
 	  else
