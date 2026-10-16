@@ -753,7 +753,7 @@ namespace parallel_scan
 		rc = expr_batch_run (hsidp->batch_plan, hsidp->batch, &thread_ref, m_vd);
 		if (rc == NO_ERROR
 		    && qdata_evaluate_aggregate_batch (&thread_ref, m_xasl->proc.buildvalue.agg_list, m_vd,
-						       hsidp->batch_plan, hsidp->batch) != NO_ERROR)
+						       hsidp->batch_plan, hsidp->batch, false) != NO_ERROR)
 		  {
 		    rc = ER_FAILED;
 		  }

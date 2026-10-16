@@ -9737,7 +9737,7 @@ qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  if (rc == NO_ERROR)
 	    {
 	      if (qdata_evaluate_aggregate_batch (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd,
-						  hsidp->batch_plan, hsidp->batch) != NO_ERROR)
+						  hsidp->batch_plan, hsidp->batch, true) != NO_ERROR)
 		{
 		  return S_ERROR;
 		}

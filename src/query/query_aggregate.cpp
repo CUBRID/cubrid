@@ -1090,6 +1090,8 @@ qdata_agg_operand_prog_ensure (cubthread::entry *thread_p, cubxasl::aggregate_li
  *   val_desc_p(in): the execution's value descriptor
  *   plan(in): the batch plan built over this list (expr_batch.h)
  *   batch(in): the page batch expr_batch_run () evaluated
+ *   skip_optimized(in): leave the aggregates the optimizer answered before the scan alone (the
+ *                       serial loop's rule; a parallel worker accumulates them)
  *
  * One typed loop per aggregate over the page's selected rows, where the row path makes one
  * call per row and aggregate.  What the row path does on a value's first arrival -- keep it
@@ -1100,7 +1102,8 @@ qdata_agg_operand_prog_ensure (cubthread::entry *thread_p, cubxasl::aggregate_li
  */
 int
 qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
-				val_descr *val_desc_p, EXPR_BATCH_PLAN *plan, const EXPR_BATCH *batch)
+				val_descr *val_desc_p, EXPR_BATCH_PLAN *plan, const EXPR_BATCH *batch,
+				bool skip_optimized)
 {
   cubxasl::aggregate_list_node *agg_p;
   int i, error;
@@ -1113,7 +1116,10 @@ qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_l
       int pos = 0, cnt;
       INT64 n_added = 0;
 
-      if (agg_p->flag.agg_optimized || agg_p->is_ended || accumulator->shared_from > 0)
+      /* skip_optimized: the serial loop leaves an aggregate the optimizer answered before the
+       * scan (agg_optimized) and an ended one alone; a parallel worker's loop accumulates them
+       * like any other, and the coordinator takes the workers' sums */
+      if (accumulator->shared_from > 0 || (skip_optimized && (agg_p->flag.agg_optimized || agg_p->is_ended)))
 	{
 	  continue;
 	}

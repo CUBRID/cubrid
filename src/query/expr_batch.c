@@ -1129,11 +1129,9 @@ eb_build_aggs (THREAD_ENTRY * thread_p, EB_BUILD * b)
 	  /* reads another node's accumulator at finalize: nothing to accumulate */
 	  continue;
 	}
-      if (agg->flag.agg_optimized)
-	{
-	  /* answered from statistics or an index before the scan: the row path skips it too */
-	  continue;
-	}
+      /* an aggregate the statistics or an index answered before the scan (agg_optimized) is
+       * still planned: the serial consumer skips it, the parallel worker counts it as its
+       * row path does (the coordinator takes the workers' sums), so the consumer decides */
       if (agg->flag.min_max_optimized || agg->option == Q_DISTINCT || agg->sort_list != NULL)
 	{
 	  return eb_decline (b, "an aggregate the batch does not take (DISTINCT, ordered, or index min/max)");

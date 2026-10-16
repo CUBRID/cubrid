@@ -129,7 +129,8 @@ struct expr_batch;
 expr_prog *qdata_agg_operand_prog_ensure (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
     val_descr *val_desc_p);
 int qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
-				    val_descr *val_desc_p, expr_batch_plan *plan, const expr_batch *batch);
+				    val_descr *val_desc_p, expr_batch_plan *plan, const expr_batch *batch,
+				    bool skip_optimized);
 int qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list, val_descr *vd,
 				   cubxasl::aggregate_accumulator *alt_acc_list, bool use_desc_index);
 int qdata_evaluate_aggregate_optimize (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_ptr, HFID *hfid,
