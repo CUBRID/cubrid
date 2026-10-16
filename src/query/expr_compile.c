@@ -3452,6 +3452,164 @@ expr_scan_pred_dump (FILE * fp, const void *compiled, int indent)
     }
 }
 
+/* ---- views for the page batch (expr_compile.h) ---------------------------------------- */
+
+/* the kids of a root the batch can take term by term: the single leaf itself, or the AND chain's terms */
+static EXPR_PRED *
+expr_scan_pred_kid (EXPR_PRED * root, int kid)
+{
+  if (root->kind == EXPR_PRED_AND_N)
+    {
+      return (kid >= 0 && kid < root->n_kids) ? root->kids[kid] : NULL;
+    }
+  return (kid == 0 && root->kind == EXPR_PRED_COMP_FETCH) ? root : NULL;
+}
+
+int
+expr_scan_pred_root_shape (const void *compiled, int *n_kids)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+
+  *n_kids = 0;
+  if (root == NULL)
+    {
+      return -1;
+    }
+  if (root->kind == EXPR_PRED_COMP_FETCH)
+    {
+      *n_kids = 1;
+      return 1;
+    }
+  if (root->kind == EXPR_PRED_AND_N)
+    {
+      *n_kids = root->n_kids;
+      return 2;
+    }
+  return -1;
+}
+
+bool
+expr_scan_pred_kid_raw_info (const void *compiled, int kid, EXPR_RAW_LEAF_INFO * out)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+  const EXPR_PRED *pred;
+  const REGU_VARIABLE *col, *k;
+  bool col_is_lhs;
+
+  memset (out, 0, sizeof (*out));
+  if (root == NULL)
+    {
+      return false;
+    }
+  pred = expr_scan_pred_kid ((EXPR_PRED *) root, kid);
+  if (pred == NULL || pred->kind != EXPR_PRED_COMP_FETCH || pred->need_type_guard || pred->fast_type == DB_TYPE_UNKNOWN)
+    {
+      return false;
+    }
+  /* !need_type_guard: both sides are TYPE_ATTR_ID or TYPE_DBVAL, resolved to one type at compile time */
+  if (pred->fetch_lhs->type == TYPE_ATTR_ID && !pred->lhs_compiled)
+    {
+      col = pred->fetch_lhs;
+      k = pred->fetch_rhs;
+      col_is_lhs = true;
+    }
+  else if (pred->fetch_rhs->type == TYPE_ATTR_ID && !pred->rhs_compiled && !pred->rhs_pinned)
+    {
+      col = pred->fetch_rhs;
+      k = pred->fetch_lhs;
+      col_is_lhs = false;
+    }
+  else
+    {
+      return false;
+    }
+  out->col_regu = col;
+  out->col_is_lhs = col_is_lhs;
+  out->fast_type = pred->fast_type;
+  out->rel_op = pred->rel_op;
+  if (!col_is_lhs && pred->lhs_compiled)
+    {
+      /* a constant the program computes: only when it does so before the rows */
+      if (pred->lhs_n > 0 && root->prog != NULL
+	  && pred->lhs_start + pred->lhs_n <= root->prog->n_prologue + root->prog->n_exec_prologue)
+	{
+	  out->k_cell = pred->arg1p;
+	  return true;
+	}
+      return false;
+    }
+  if (col_is_lhs && pred->rhs_compiled)
+    {
+      if (pred->rhs_n > 0 && root->prog != NULL
+	  && pred->rhs_start + pred->rhs_n <= root->prog->n_prologue + root->prog->n_exec_prologue)
+	{
+	  out->k_cell = pred->arg2p;
+	  return true;
+	}
+      return false;
+    }
+  if (col_is_lhs && pred->rhs_pinned)
+    {
+      out->k_value = &pred->pinned_rhs;
+      return true;
+    }
+  if (k->type == TYPE_DBVAL)
+    {
+      out->k_value = &k->value.dbval;
+      return !DB_IS_NULL (out->k_value) && DB_VALUE_DOMAIN_TYPE (out->k_value) == pred->fast_type;
+    }
+  return false;
+}
+
+int
+expr_scan_pred_prepare (void *compiled, cubthread::entry * thread_p, val_descr * vd)
+{
+  EXPR_PRED *root = (EXPR_PRED *) compiled;
+  EXPR_EVAL_CTX ctx;
+
+  if (root == NULL || root->prog == NULL)
+    {
+      return NO_ERROR;
+    }
+  ctx.thread_p = thread_p;
+  ctx.vd = vd;
+  ctx.obj_oid = NULL;
+  ctx.tpl = NULL;
+  ctx.prog = root->prog;
+  ctx.checked = false;
+  expr_ctx_arm_depth (&ctx, root->prog);
+  return expr_prog_prepare (root->prog, &ctx);
+}
+
+DB_LOGICAL
+expr_scan_pred_eval_kid (void *compiled, int kid, cubthread::entry * thread_p, val_descr * vd, OID * obj_oid)
+{
+  EXPR_PRED *root = (EXPR_PRED *) compiled;
+  EXPR_PRED *pred = (root != NULL) ? expr_scan_pred_kid (root, kid) : NULL;
+  EXPR_EVAL_CTX ctx;
+
+  if (pred == NULL)
+    {
+      assert (false);
+      return V_ERROR;
+    }
+  ctx.thread_p = thread_p;
+  ctx.vd = vd;
+  ctx.obj_oid = obj_oid;
+  ctx.tpl = NULL;
+  ctx.prog = root->prog;
+  ctx.checked = false;
+  if (root->prog != NULL)
+    {
+      expr_ctx_arm_depth (&ctx, root->prog);
+      if (unlikely (expr_prog_prepare (root->prog, &ctx) != NO_ERROR))
+	{
+	  return V_ERROR;
+	}
+    }
+  return expr_scan_pred_eval_node (pred, &ctx);
+}
+
 /* compile a PRED_EXPR into an EXPR_PRED tree; NULL when any construct is unsupported.
  * Operand sub-expressions compile through expr_compile_node (), so their steps run
  * unconditionally in the main loop.  eval_pred () does not: its AND/OR loops stop at the
@@ -5837,6 +5995,106 @@ expr_run_range_checked (EXPR_PROG * prog, int start, int end, EXPR_EVAL_CTX * ct
       i++;
     }
   return NO_ERROR;
+}
+
+/* ---- views for the page batch (expr_compile.h) ---------------------------------------- */
+
+static int
+expr_prog_cell_index (const EXPR_PROG * prog, DB_VALUE ** cellp)
+{
+  if (cellp == NULL || cellp < prog->cells || cellp >= prog->cells + prog->n_cells)
+    {
+      return -1;
+    }
+  return (int) (cellp - prog->cells);
+}
+
+void
+expr_prog_step_info (const EXPR_PROG * prog, int step_idx, EXPR_STEP_INFO * out)
+{
+  const EXPR_STEP *step = &prog->steps[step_idx];
+  EXPR_KERNEL_FN k = step->kernel;
+
+  memset (out, 0, sizeof (*out));
+  out->cls = EXPR_STEP_OTHER;
+  out->type = DB_TYPE_UNKNOWN;
+  out->arg1_cell = expr_prog_cell_index (prog, step->arg1p);
+  out->arg2_cell = expr_prog_cell_index (prog, step->arg2p);
+  out->out_cell = expr_prog_cell_index (prog, step->out_cell);
+  out->jump_to = step->jump_to;
+  out->in_prologue = (step_idx < prog->n_prologue + prog->n_exec_prologue);
+  out->regu = step->regu;
+  out->coerces = (step->domain != NULL);
+
+  if (k == expr_k_leaf_fetch)
+    {
+      out->cls = EXPR_STEP_LEAF_FETCH;
+    }
+  else if (k == expr_k_hostvar)
+    {
+      out->cls = EXPR_STEP_HOSTVAR;
+    }
+  else if (k == expr_k_jump_null_arith)
+    {
+      out->cls = EXPR_STEP_JUMP_NULL_ARITH;
+    }
+  else if (k == expr_k_add_int || k == expr_k_sub_int || k == expr_k_mul_int)
+    {
+      out->cls = (k == expr_k_add_int) ? EXPR_STEP_ADD : (k == expr_k_sub_int) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
+      out->type = DB_TYPE_INTEGER;
+    }
+  else if (k == expr_k_add_bigint || k == expr_k_sub_bigint || k == expr_k_mul_bigint)
+    {
+      out->cls = (k == expr_k_add_bigint) ? EXPR_STEP_ADD : (k == expr_k_sub_bigint) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
+      out->type = DB_TYPE_BIGINT;
+    }
+  else if (k == expr_k_add_double || k == expr_k_sub_double || k == expr_k_mul_double)
+    {
+      out->cls = (k == expr_k_add_double) ? EXPR_STEP_ADD : (k == expr_k_sub_double) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
+      out->type = DB_TYPE_DOUBLE;
+    }
+  else if (k == expr_k_add_numeric_float || k == expr_k_sub_numeric_float || k == expr_k_mul_numeric)
+    {
+      /* the float family only: the plain family (a coerced integer side) rounds differently */
+      out->cls =
+	(k == expr_k_add_numeric_float) ? EXPR_STEP_ADD : (k ==
+							   expr_k_sub_numeric_float) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
+      out->type = DB_TYPE_NUMERIC;
+      out->numeric_pure = true;
+    }
+}
+
+int
+expr_prog_cell_publisher (const EXPR_PROG * prog, int cell)
+{
+  int i;
+
+  if (cell < 0 || cell >= prog->n_cells)
+    {
+      return -1;
+    }
+  for (i = 0; i < prog->n_steps; i++)
+    {
+      if (prog->steps[i].out_cell == &prog->cells[cell])
+	{
+	  return i;
+	}
+    }
+  return -1;
+}
+
+int
+expr_prog_prepare_execution (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd)
+{
+  EXPR_EVAL_CTX ctx;
+
+  ctx.thread_p = thread_p;
+  ctx.vd = vd;
+  ctx.obj_oid = NULL;
+  ctx.tpl = NULL;
+  ctx.prog = prog;
+  expr_ctx_arm_depth (&ctx, prog);
+  return expr_prog_prepare (prog, &ctx);
 }
 
 int

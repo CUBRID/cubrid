@@ -338,4 +338,71 @@ extern bool expr_scan_pred_signature_ok (void *compiled, const val_descr * vd, u
 /* the operand program of a compiled scan filter, if it has one (SQL trace) */
 extern void expr_scan_pred_dump (FILE * fp, const void *compiled, int indent);
 
+/* ---- Views a page batch takes of the compiled products (expr_batch.c) -------------------
+ *
+ * The batch evaluates the filter's comparison leaves and the operand program's steps over
+ * a page's rows at a time.  It does not run the trees and programs; it reads what they
+ * resolved once per clone -- which column a leaf compares, against which constant, with
+ * which operator, and which typed kernel a step was given -- and drives its own vector
+ * loops with that.  Everything the batch cannot classify it leaves to the row path, so a
+ * reading that declines (returns false / EXPR_STEP_OTHER) is a capability, not an error. */
+
+/* a comparison leaf "column op constant" of a compiled scan filter */
+typedef struct expr_raw_leaf_info EXPR_RAW_LEAF_INFO;
+struct expr_raw_leaf_info
+{
+  const REGU_VARIABLE *col_regu;	/* the TYPE_ATTR_ID side */
+  bool col_is_lhs;		/* the column is the left operand (else the constant is) */
+  DB_TYPE fast_type;		/* the type both sides were resolved for */
+  int rel_op;			/* REL_OP, as written: lhs rel_op rhs */
+  const DB_VALUE *k_value;	/* the constant side, when it is a literal the leaf pinned or holds */
+  DB_VALUE *const *k_cell;	/* ... or the program cell a prologue computes it into (read after
+				 * expr_scan_pred_prepare ()); exactly one of k_value / k_cell is set */
+};
+
+/* the shape of the root: 1 = a single comparison leaf (n_kids = 1), 2 = a flattened AND chain
+ * (n_kids = its term count), -1 = anything else (OR, NOT, a term the compiler left alone) */
+extern int expr_scan_pred_root_shape (const void *compiled, int *n_kids);
+/* kid i of the root as a raw leaf; false when it is not "column op constant" with a direct-compare type */
+extern bool expr_scan_pred_kid_raw_info (const void *compiled, int kid, EXPR_RAW_LEAF_INFO * out);
+/* the filter's prologues for this execution (the per-row entry does the same before its first row) */
+extern int expr_scan_pred_prepare (void *compiled, cubthread::entry * thread_p, val_descr * vd);
+/* evaluate kid i of the root alone for the current row (the batch's residual terms) */
+extern DB_LOGICAL expr_scan_pred_eval_kid (void *compiled, int kid, cubthread::entry * thread_p, val_descr * vd,
+					   OID * obj_oid);
+
+/* what a program step computes, as far as a vector kernel can reproduce it */
+typedef enum
+{
+  EXPR_STEP_OTHER = 0,		/* not reproduced: the program stays on the row path */
+  EXPR_STEP_LEAF_FETCH,		/* publishes a column (TYPE_ATTR_ID / TYPE_CONSTANT) or list value */
+  EXPR_STEP_HOSTVAR,		/* publishes a host variable (exec prologue) */
+  EXPR_STEP_ADD,		/* typed arithmetic: type says INTEGER / BIGINT / DOUBLE / NUMERIC */
+  EXPR_STEP_SUB,
+  EXPR_STEP_MUL,
+  EXPR_STEP_JUMP_NULL_ARITH	/* lazy right side: when arg1 is NULL the row skips to jump_to */
+} EXPR_STEP_CLASS;
+
+typedef struct expr_step_info EXPR_STEP_INFO;
+struct expr_step_info
+{
+  EXPR_STEP_CLASS cls;
+  DB_TYPE type;			/* arithmetic: the kernel's operand and result type */
+  bool numeric_pure;		/* NUMERIC arithmetic: the float family (both operands NUMERIC) */
+  bool coerces;			/* arithmetic: an epilogue coerces the result to a domain */
+  int arg1_cell;		/* cell indexes, -1 when unused */
+  int arg2_cell;
+  int out_cell;			/* the cell this step publishes */
+  int jump_to;			/* JUMP_NULL_ARITH: the step the row continues at */
+  bool in_prologue;		/* runs once per program / execution, not per row */
+  const REGU_VARIABLE *regu;	/* LEAF_FETCH: what it fetches */
+};
+
+extern void expr_prog_step_info (const EXPR_PROG * prog, int step, EXPR_STEP_INFO * out);
+/* the step that publishes a cell, or -1 for a cell wired to a stable address (a literal, a
+ * value-list slot) at compile time */
+extern int expr_prog_cell_publisher (const EXPR_PROG * prog, int cell);
+/* run the prologues for this execution without running a row */
+extern int expr_prog_prepare_execution (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd);
+
 #endif /* _EXPR_COMPILE_H_ */
