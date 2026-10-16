@@ -12464,7 +12464,7 @@ pt_dblink_merge_walk_keys (PARSER_CONTEXT * parser, PT_NODE * merge, PT_DBLINK_M
 static void
 pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl)
 {
-  PT_NODE *target, *source;
+  PT_NODE *target, *source, *written_name;
   bool remote_target = false;
 
   target = node->info.merge.into;
@@ -12495,6 +12495,22 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
 	  if (pt_dblink_merge_is_inscope (parser, node))
 	    {
 	      snl->sink_kind = DBLINK_REMOTE_SINK_MERGE_LOCAL_SRC;
+
+	      /* The gate matched the clauses against the source's name as written. A source with no alias is
+	       * later renamed to owner.name, and the clauses are not. Keep the written name as its alias so
+	       * that the later steps match the same name. */
+	      if (source->info.spec.range_var == NULL && source->info.spec.entity_name != NULL
+		  && source->info.spec.entity_name->node_type == PT_NAME)
+		{
+		  /* pt_name () returns the node even when copying the name fails */
+		  written_name = pt_name (parser, source->info.spec.entity_name->info.name.original);
+		  if (written_name == NULL || written_name->info.name.original == NULL)
+		    {
+		      PT_ERRORm (parser, source, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      return;
+		    }
+		  source->info.spec.range_var = written_name;
+		}
 	    }
 	}
       else
