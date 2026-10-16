@@ -8499,7 +8499,13 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
 	}
       else if (local_query)
 	{
+	  PT_NODE *left = statements;
+
 	  statements = pt_union (parser, statements, local_query);
+	  if (statements != NULL)
+	    {
+	      statements->flag.has_sp_call = (left->flag.has_sp_call || local_query->flag.has_sp_call);
+	    }
 	}
 
       db_query_spec = db_query_spec_next (db_query_spec);
