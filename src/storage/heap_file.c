@@ -10805,19 +10805,74 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 STATIC_INLINE void
 heap_rec_layout_init (HEAP_REC_LAYOUT * layout, const RECDES * recdes, const HEAP_CACHE_ATTRINFO * attr_info)
 {
-  char *obj = (char *) recdes->data;
-  int nvars;
-
   /* the caller has recached the record's representation; NULL_REPRID (a record too short for
    * its header) leaves none and must be handled before laying the record out */
   assert (attr_info->read_classrepr != NULL);
-  nvars = attr_info->read_classrepr->n_variable;
+  heap_rec_layout_init_repr (layout, recdes->data, attr_info->read_classrepr->n_variable,
+			     attr_info->read_classrepr->fixed_length);
+}
 
-  layout->offset_size = OR_GET_OFFSET_SIZE (obj);
-  layout->var_table = obj + OR_HEADER_SIZE (obj);
-  layout->fixed_base = layout->var_table + OR_VAR_TABLE_SIZE_INTERNAL (nvars, layout->offset_size);
-  layout->bound_bits =
-    OR_GET_BOUND_BIT_FLAG (obj) ? layout->fixed_base + attr_info->read_classrepr->fixed_length : NULL;
+/*
+ * heap_attrinfo_raw_locator () - where an attribute sits in records of the latest representation
+ *   return: NO_ERROR when the attribute can be decoded straight from record bytes, ER_FAILED
+ *           otherwise (no error is set: the answer is a capability, not a fault)
+ *   attr_info(in): the attribute cache (started: last_classrepr is loaded)
+ *   attrid(in): the attribute
+ *   out(out): the locator
+ *
+ * A page batch (expr_batch.c) decodes one representation's records without the attribute
+ * cache: it compares each record's representation id with the one recorded here and reads
+ * the fixed area at location, or the variable area through the offset table at location.
+ * Only the types the batch decodes qualify -- the fixed-width numbers and dates, and
+ * NUMERIC, which is a variable attribute today (see heap_attrvalue_resolve_plan ()).
+ */
+int
+heap_attrinfo_raw_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP_RAW_LOCATOR * out)
+{
+  OR_ATTRIBUTE *attrepr;
+
+  if (attr_info == NULL || attr_info->last_classrepr == NULL || out == NULL)
+    {
+      return ER_FAILED;
+    }
+  attrepr = heap_locate_last_attrepr (attrid, attr_info);
+  if (attrepr == NULL || attrepr->domain == NULL)
+    {
+      return ER_FAILED;
+    }
+  switch (attrepr->type)
+    {
+    case DB_TYPE_SHORT:
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_DATE:
+      if (attrepr->is_fixed == 0)
+	{
+	  return ER_FAILED;
+	}
+      break;
+    case DB_TYPE_NUMERIC:
+      if (attrepr->is_fixed != 0)
+	{
+	  return ER_FAILED;	/* a fixed NUMERIC would need the kernel this file does not have */
+	}
+      break;
+    default:
+      return ER_FAILED;
+    }
+
+  out->repid = attr_info->last_classrepr->id;
+  out->n_variable = attr_info->last_classrepr->n_variable;
+  out->fixed_length = attr_info->last_classrepr->fixed_length;
+  out->is_fixed = (attrepr->is_fixed != 0);
+  out->location = attrepr->location;
+  out->position = attrepr->position;
+  out->type = attrepr->type;
+  out->precision = attrepr->domain->precision;
+  out->scale = attrepr->domain->scale;
+  return NO_ERROR;
 }
 
 /*
