@@ -38,7 +38,9 @@ namespace cubload
   {
     public:
       attribute () = delete; // Not DefaultConstructible
-      attribute (const std::string &name, std::size_t index, or_attribute *repr);
+      attribute (const std::string &name, std::size_t index, const or_attribute *repr);
+      attribute (const std::string &name, std::size_t index, const tp_domain *domain, bool is_not_null,
+		 int repr_id);
 
       attribute (attribute &&other) = delete; // Not MoveConstructible
       attribute (const attribute &copy) = delete; // Not CopyConstructible
@@ -48,13 +50,16 @@ namespace cubload
 
       const char *get_name () const;
       std::size_t get_index () const;
-      const or_attribute &get_repr () const;
       const tp_domain &get_domain () const;
+      bool is_not_null () const;
+      int get_repr_id () const;
 
     private:
       const std::string m_name;
       const std::size_t m_index;
-      const or_attribute *m_repr;
+      const tp_domain *m_domain;
+      const bool m_is_not_null;
+      const int m_repr_id;
   };
 
   class class_entry
