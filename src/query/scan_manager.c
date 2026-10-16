@@ -8278,17 +8278,20 @@ scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  return S_ERROR;
 	}
       hsidp->batch_started = true;
+      scan_id->position = S_ON;	/* as the row path's first row does */
+    }
+  else if (scan_cache->page_watcher.pgptr == NULL)
+    {
+      /* past the last page already: the scan block ended; a second ask is the same answer */
+      assert (VPID_ISNULL (&hsidp->batch_vpid));
+      scan_id->position = S_AFTER;
+      return S_END;
     }
   else
     {
       PGBUF_WATCHER old_page_watcher;
 
       PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, &hsidp->hfid);
-      if (scan_cache->page_watcher.pgptr == NULL)
-	{
-	  assert (false);
-	  return S_ERROR;
-	}
       if (heap_vpid_next (thread_p, &hsidp->hfid, scan_cache->page_watcher.pgptr, &vpid) != NO_ERROR)
 	{
 	  return S_ERROR;
@@ -8298,6 +8301,9 @@ scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 	  OID_SET_NULL (&hsidp->curr_oid);
 	  VPID_SET_NULL (&hsidp->batch_vpid);
+	  /* the invariant scan_handle_single_scan () keeps for the row path: S_END means the scan
+	   * is past its block, so qexec_next_scan_block_iterations () does not open it again */
+	  scan_id->position = S_AFTER;
 	  return S_END;
 	}
       pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &old_page_watcher);
