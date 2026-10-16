@@ -644,6 +644,7 @@ namespace cubstorage
     // is this page still belongs to the class (class_oid) ?
     if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
 	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr)
+	|| heap_page_is_bestspace (thread_p, page_watcher.pgptr)
 	|| heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid) != NO_ERROR
 	|| !OID_EQ (&page_class_oid, class_oid))
       {
@@ -741,7 +742,10 @@ namespace cubstorage
 	if (m_parent.m_fcmap != nullptr)
 	  {
 	    // the page left the heap (or this class): it is no longer a data page of this heap
-	    m_parent.m_fcmap->remove (expected.get_vpid ());
+	    {
+	    VPID removed_vpid = expected.get_vpid ();
+	    m_parent.m_fcmap->remove (removed_vpid.volid, removed_vpid.pageid);
+	  }
 	  }
       }
   }
@@ -934,8 +938,10 @@ namespace cubstorage
 	return status::FAILURE;
       }
 
+    // a bestspace page (develop's entries or a POC-2 map page) is never an insert target
     if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
-	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr))
+	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr)
+	|| heap_page_is_bestspace (thread_p, page_watcher.pgptr))
       {
 	valid = false;
 	pgbuf_ordered_unfix (thread_p, &page_watcher);
@@ -1132,9 +1138,10 @@ namespace cubstorage
     std::array<bestspace_entry, ALLOC_BATCH_SIZE> claimed;
     std::array<bestspace_entry, ALLOC_BATCH_SIZE> candidates;
     fcmap *map = m_parent.m_fcmap;
+    static constexpr std::size_t FC_SCRUB_BUDGET = 256;
     std::size_t num_claimed, num_candidates, fit_index, i, j;
     std::uint8_t min_code;
-    bool found, valid;
+    bool found, valid, scrubbed = false;
     status result;
     int error;
 
@@ -1148,18 +1155,23 @@ namespace cubstorage
     // pick four pages with the smallest free space as replacement victims.
     allocate_pick_victims (residents, victims);
 
+claim_again:
     // claim pages whose tier is above the request's: their lower bound fits it when the map is accurate.
     // a page of the same tier may or may not fit (tiers are 8~15% wide), so it is left for smaller requests;
     // only a request in the top tier has nothing above it and tries its own tier.
-    min_code = fcmap::code_of (needed_size);
-    if (min_code < fcmap::CODE_MAX_TIER)
-      {
-	num_claimed = map->claim (min_code + 1, claimed.data (), ALLOC_BATCH_SIZE);
-      }
-    else
-      {
-	num_claimed = map->claim (fcmap::CODE_MAX_TIER, claimed.data (), ALLOC_BATCH_SIZE);
-      }
+    min_code = fc_code_of (needed_size);
+    {
+      fcmap::claimed picked[ALLOC_BATCH_SIZE];
+
+      num_claimed = map->claim (min_code < fcmap::CODE_MAX_TIER ? min_code + 1 : fcmap::CODE_MAX_TIER, picked,
+				ALLOC_BATCH_SIZE);
+      for (i = 0; i < num_claimed; i++)
+	{
+	  claimed[i].volid = picked[i].volid;
+	  claimed[i].pageid = picked[i].pageid;
+	  claimed[i].freespace = fc_optimistic_freespace (picked[i].code);
+	}
+    }
 
     // verify the claimed pages in order until one really fits; the rest become unverified replacements.
     found = false;
@@ -1187,7 +1199,7 @@ namespace cubstorage
 	  {
 	    for (j = i; j < num_claimed; j++)
 	      {
-		map->release ({ claimed[j].pageid, claimed[j].volid }, fcmap::code_of (claimed[j].freespace), false);
+		map->release (claimed[j].volid, claimed[j].pageid, fc_code_of (claimed[j].freespace), false);
 	      }
 	    allocate_unmark ();
 	    return status::FAILURE;
@@ -1198,12 +1210,19 @@ namespace cubstorage
 	if (valid)
 	  {
 	    // the page was measured: record its exact tier
-	    map->release ({ claimed[i].pageid, claimed[i].volid }, fcmap::code_of (claimed[i].freespace), true);
+	    map->release (claimed[i].volid, claimed[i].pageid, fc_code_of (claimed[i].freespace), true);
 	  }
 	else
 	  {
-	    map->remove ({ claimed[i].pageid, claimed[i].volid });
+	    map->remove (claimed[i].volid, claimed[i].pageid);
 	  }
+      }
+
+    if (!found && !scrubbed && m_parent.fc_is_suspect () && m_parent.fc_scrub (class_oid, FC_SCRUB_BUDGET) > 0)
+      {
+	// the map may have missed space freed before an unclean restart: pages were measured, look again once
+	scrubbed = true;
+	goto claim_again;
       }
 
     if (found)
@@ -1229,11 +1248,11 @@ namespace cubstorage
 	// only the latched page was measured; the others are new and empty
 	for (i = 0; i < ALLOC_BATCH_SIZE - 1; i++)
 	  {
-	    candidates[i].freespace = fcmap::optimistic_freespace (fcmap::CODE_MAX_TIER);
+	    candidates[i].freespace = fc_optimistic_freespace (fcmap::CODE_MAX_TIER);
 	  }
 	for (i = 0; i < ALLOC_BATCH_SIZE; i++)
 	  {
-	    map->set_resident ({ candidates[i].pageid, candidates[i].volid }, fcmap::code_of (candidates[i].freespace));
+	    map->set_resident (candidates[i].volid, candidates[i].pageid, fc_code_of (candidates[i].freespace));
 	  }
 
 	if (candidates[ALLOC_BATCH_SIZE - 1].freespace < needed_size)
@@ -1288,7 +1307,7 @@ namespace cubstorage
 	if (i == num_candidates - 1 && candidates[i].freespace <= victims[i].second)
 	  {
 	    // the returned page has less room than the victim: keep the victim, the page stays in the map
-	    map->release ({ candidates[i].pageid, candidates[i].volid }, fcmap::code_of (candidates[i].freespace), true);
+	    map->release (candidates[i].volid, candidates[i].pageid, fc_code_of (candidates[i].freespace), true);
 	    continue;
 	  }
 
@@ -1303,570 +1322,36 @@ namespace cubstorage
 	old_vpid = old.get_vpid ();
 	if (!VPID_ISNULL (&old_vpid))
 	  {
-	    map->release (old_vpid, fcmap::code_of (old.get_freespace ()), false);
+	    map->release (old_vpid.volid, old_vpid.pageid, fc_code_of (old.get_freespace ()), false);
 	  }
       }
   }
 
   //////////////////////////////////////////////////////////////////////////
-  // POC full coverage map
+  // POC full coverage: tier codes
   //////////////////////////////////////////////////////////////////////////
 
-  static inline std::size_t
-  fcmap_floor_log2 (std::size_t v)
-  {
-    return 63 - __builtin_clzll (static_cast<unsigned long long> (v));
-  }
-
-  static inline std::uint64_t
-  fcmap_hash (std::uint64_t x)
-  {
-    x += 0x9E3779B97F4A7C15ULL;
-    x = (x ^ (x >> 30)) * 0xBF58476D1CE4E5B9ULL;
-    x = (x ^ (x >> 27)) * 0x94D049BB133111EBULL;
-    return x ^ (x >> 31);
-  }
-
-  bestspace::fcmap::fcmap ()
-    : m_num_sectors (0)
-    , m_index (nullptr)
-    , m_retired ()
-    , m_grow_mutex ()
-    , m_cursor (0)
-    , m_bytes (0)
-  {
-    std::size_t i;
-
-    for (i = 0; i < MAX_SEGMENTS; i++)
-      {
-	m_segments[i].store (nullptr);
-      }
-    for (i = 0; i < CNT_LAST; i++)
-      {
-	m_counters[i].store (0);
-      }
-  }
-
-  bestspace::fcmap::~fcmap ()
-  {
-    std::size_t i;
-    index_table *table;
-
-    for (i = 0; i < MAX_SEGMENTS; i++)
-      {
-	delete[] m_segments[i].load ();
-      }
-    table = m_index.load ();
-    if (table != nullptr)
-      {
-	m_retired.push_back (table);
-      }
-    for (index_table *t : m_retired)
-      {
-	delete[] t->keys;
-	delete[] t->values;
-	delete t;
-      }
-  }
-
   std::uint8_t
-  bestspace::fcmap::code_of (std::uint16_t freespace)
+  bestspace::fc_code_of (std::uint16_t freespace)
   {
-    tier fs;
-
-    fs = size_to_tier (MIN (freespace, static_cast<std::uint16_t> (DB_PAGESIZE)));
-    if (fs == tier::FS0)
-      {
-	return CODE_NONE;
-      }
-    return static_cast<std::uint8_t> (static_cast<std::int8_t> (fs) + 1);
+    tier fs = size_to_tier (MIN (freespace, static_cast<std::uint16_t> (DB_PAGESIZE)));
+    return fs == tier::FS0 ? fcmap::CODE_NONE : static_cast<std::uint8_t> (static_cast<std::int8_t> (fs) + 1);
   }
 
   std::uint16_t
-  bestspace::fcmap::optimistic_freespace (std::uint8_t code)
+  bestspace::fc_optimistic_freespace (std::uint8_t code)
   {
     // the upper bound of each tier; a too-high value is corrected the first time the page is fixed
     static constexpr std::int16_t upper[] = { 0, 15, 24, 34, 45, 57, 70, 84, 100 };
     int bytes, capacity;
 
-    if (code == CODE_NONE || code > CODE_MAX_TIER)
+    if (code == fcmap::CODE_NONE || code > fcmap::CODE_MAX_TIER)
       {
 	return 0;
       }
     bytes = upper[code] * DB_PAGESIZE / 100;
     capacity = heap_nonheader_page_capacity ();
     return static_cast<std::uint16_t> (MIN (bytes, capacity));
-  }
-
-  std::uint64_t
-  bestspace::fcmap::make_key (VPID vpid)
-  {
-    std::uint64_t sectid;
-
-    sectid = static_cast<std::uint64_t> (static_cast<std::uint32_t> (vpid.pageid)) / PAGES_PER_SECTOR;
-    return ((static_cast<std::uint64_t> (static_cast<std::uint16_t> (vpid.volid)) + 1) << 32) | sectid;
-  }
-
-  std::uint8_t
-  bestspace::fcmap::get_code (record *rec, std::size_t offset)
-  {
-    return static_cast<std::uint8_t> ((rec->codes[offset / 16].load () >> ((offset % 16) * 4)) & 0xF);
-  }
-
-  bestspace::fcmap::group *
-  bestspace::fcmap::group_at (std::size_t group_index)
-  {
-    std::size_t k;
-    group *segment;
-
-    k = fcmap_floor_log2 (group_index + 1);
-    segment = m_segments[k].load (std::memory_order_acquire);
-    assert (segment != nullptr);
-    return segment + (group_index + 1 - (static_cast<std::size_t> (1) << k));
-  }
-
-  bestspace::fcmap::record *
-  bestspace::fcmap::sector_at (std::size_t sector_index)
-  {
-    return &group_at (sector_index / SECTORS_PER_GROUP)->sectors[sector_index % SECTORS_PER_GROUP];
-  }
-
-  bestspace::fcmap::record *
-  bestspace::fcmap::find_sector (std::uint64_t key, std::size_t &sector_index)
-  {
-    index_table *table;
-    std::uint64_t k;
-    std::size_t i;
-
-    table = m_index.load (std::memory_order_acquire);
-    if (table == nullptr)
-      {
-	return nullptr;
-      }
-    for (i = fcmap_hash (key) & table->mask; ; i = (i + 1) & table->mask)
-      {
-	k = table->keys[i].load (std::memory_order_acquire);
-	if (k == key)
-	  {
-	    sector_index = table->values[i];
-	    return sector_at (sector_index);
-	  }
-	if (k == 0)
-	  {
-	    return nullptr;
-	  }
-      }
-  }
-
-  void
-  bestspace::fcmap::index_insert (std::uint64_t key, std::uint32_t value)
-  {
-    index_table *table, *grown;
-    std::size_t entries, capacity, i, pos;
-    std::uint64_t k;
-
-    // caller holds m_grow_mutex
-    table = m_index.load (std::memory_order_relaxed);
-    entries = m_num_sectors.load (std::memory_order_relaxed) + 1;
-    if (table == nullptr || entries * 2 > table->mask + 1)
-      {
-	capacity = (table == nullptr) ? 64 : (table->mask + 1) * 2;
-	while (entries * 2 > capacity)
-	  {
-	    capacity *= 2;
-	  }
-	grown = new index_table;
-	grown->mask = capacity - 1;
-	grown->keys = new std::atomic<std::uint64_t>[capacity] ();
-	grown->values = new std::uint32_t[capacity] ();
-	m_bytes += sizeof (index_table) + capacity * (sizeof (std::uint64_t) + sizeof (std::uint32_t));
-	if (table != nullptr)
-	  {
-	    for (i = 0; i <= table->mask; i++)
-	      {
-		k = table->keys[i].load (std::memory_order_relaxed);
-		if (k == 0)
-		  {
-		    continue;
-		  }
-		for (pos = fcmap_hash (k) & grown->mask; grown->keys[pos].load (std::memory_order_relaxed) != 0;
-		     pos = (pos + 1) & grown->mask);
-		grown->values[pos] = table->values[i];
-		grown->keys[pos].store (k, std::memory_order_relaxed);
-	      }
-	    m_retired.push_back (table);	// readers may still hold it; freed with the map
-	  }
-	m_index.store (grown, std::memory_order_release);
-	table = grown;
-      }
-
-    for (pos = fcmap_hash (key) & table->mask; table->keys[pos].load (std::memory_order_relaxed) != 0;
-	 pos = (pos + 1) & table->mask);
-    table->values[pos] = value;
-    table->keys[pos].store (key, std::memory_order_release);
-  }
-
-  bestspace::fcmap::record *
-  bestspace::fcmap::get_or_add_sector (std::uint64_t key, std::size_t &sector_index)
-  {
-    std::size_t s, g, k, n, i;
-    group *segment;
-    record *rec;
-
-    rec = find_sector (key, sector_index);
-    if (rec != nullptr)
-      {
-	return rec;
-      }
-
-    std::lock_guard<std::mutex> lock (m_grow_mutex);
-
-    rec = find_sector (key, sector_index);
-    if (rec != nullptr)
-      {
-	return rec;
-      }
-
-    s = m_num_sectors.load (std::memory_order_relaxed);
-    g = s / SECTORS_PER_GROUP;
-    k = fcmap_floor_log2 (g + 1);
-    if (k >= MAX_SEGMENTS)
-      {
-	return nullptr;
-      }
-    if (m_segments[k].load (std::memory_order_relaxed) == nullptr)
-      {
-	n = static_cast<std::size_t> (1) << k;
-	segment = new group[n] ();
-	if (segment == nullptr)
-	  {
-	    return nullptr;
-	  }
-	m_bytes += n * sizeof (group);
-	m_segments[k].store (segment, std::memory_order_release);
-      }
-
-    rec = sector_at (s);
-    rec->key = key;
-    for (i = 0; i < 4; i++)
-      {
-	// pages of a new sector are not heap data pages until they are allocated or fed back
-	rec->codes[i].store (0xEEEEEEEEEEEEEEEEULL, std::memory_order_relaxed);
-      }
-    rec->resident.store (0, std::memory_order_relaxed);
-    rec->dirty.store (0, std::memory_order_relaxed);
-    rec->version.store (0, std::memory_order_relaxed);
-
-    index_insert (key, static_cast<std::uint32_t> (s));
-    m_num_sectors.store (s + 1, std::memory_order_release);
-
-    sector_index = s;
-    return rec;
-  }
-
-  void
-  bestspace::fcmap::publish (record *rec, std::size_t sector_index, std::size_t offset)
-  {
-    std::uint8_t code;
-
-    // bump the version before the hint bit so a concurrent claim that clears the bit can see the change
-    rec->version.fetch_add (1);
-    code = get_code (rec, offset);
-    if (code >= 1 && code <= CODE_MAX_TIER && (rec->resident.load () & (1ULL << offset)) == 0)
-      {
-	group_at (sector_index / SECTORS_PER_GROUP)->bits[code - 1].fetch_or (1ULL << (sector_index % SECTORS_PER_GROUP));
-      }
-  }
-
-  void
-  bestspace::fcmap::set_code (record *rec, std::size_t sector_index, std::size_t offset, std::uint8_t code)
-  {
-    std::size_t word, shift;
-    std::uint64_t expected, desired;
-
-    word = offset / 16;
-    shift = (offset % 16) * 4;
-    expected = rec->codes[word].load ();
-    do
-      {
-	desired = (expected & ~(0xFULL << shift)) | (static_cast<std::uint64_t> (code) << shift);
-	if (desired == expected)
-	  {
-	    break;
-	  }
-      }
-    while (!rec->codes[word].compare_exchange_weak (expected, desired));
-
-    publish (rec, sector_index, offset);
-  }
-
-  void
-  bestspace::fcmap::feedback (VPID vpid, std::uint8_t code)
-  {
-    std::size_t s, offset;
-    record *rec;
-
-    rec = get_or_add_sector (make_key (vpid), s);
-    if (rec == nullptr)
-      {
-	return;
-      }
-    offset = static_cast<std::uint32_t> (vpid.pageid) % PAGES_PER_SECTOR;
-    set_code (rec, s, offset, code);
-    // a shard that releases this page later keeps this value instead of its own stale one
-    rec->dirty.fetch_or (1ULL << offset);
-    count (CNT_FEEDBACK);
-  }
-
-  void
-  bestspace::fcmap::set_resident (VPID vpid, std::uint8_t code)
-  {
-    std::size_t s, offset;
-    std::uint64_t bit;
-    record *rec;
-
-    rec = get_or_add_sector (make_key (vpid), s);
-    if (rec == nullptr)
-      {
-	return;
-      }
-    offset = static_cast<std::uint32_t> (vpid.pageid) % PAGES_PER_SECTOR;
-    bit = 1ULL << offset;
-    rec->resident.fetch_or (bit);
-    rec->dirty.fetch_and (~bit);
-    set_code (rec, s, offset, code);
-  }
-
-  void
-  bestspace::fcmap::release (VPID vpid, std::uint8_t code, bool measured)
-  {
-    std::size_t s, offset;
-    std::uint64_t bit;
-    bool dirty;
-    record *rec;
-
-    rec = get_or_add_sector (make_key (vpid), s);
-    if (rec == nullptr)
-      {
-	return;
-      }
-    offset = static_cast<std::uint32_t> (vpid.pageid) % PAGES_PER_SECTOR;
-    bit = 1ULL << offset;
-    dirty = (rec->dirty.fetch_and (~bit) & bit) != 0;
-    rec->resident.fetch_and (~bit);
-    if (measured || !dirty)
-      {
-	set_code (rec, s, offset, code);
-      }
-    else
-      {
-	publish (rec, s, offset);
-      }
-    count (CNT_RELEASED);
-  }
-
-  void
-  bestspace::fcmap::remove (VPID vpid)
-  {
-    std::size_t s, offset;
-    std::uint64_t bit;
-    record *rec;
-
-    rec = find_sector (make_key (vpid), s);
-    if (rec == nullptr)
-      {
-	return;
-      }
-    offset = static_cast<std::uint32_t> (vpid.pageid) % PAGES_PER_SECTOR;
-    bit = 1ULL << offset;
-    rec->resident.fetch_and (~bit);
-    rec->dirty.fetch_and (~bit);
-    set_code (rec, s, offset, CODE_NOT_DATA);
-  }
-
-  void
-  bestspace::fcmap::clear_all_resident ()
-  {
-    std::size_t n, s, offset;
-    std::uint64_t resident;
-    record *rec;
-
-    n = m_num_sectors.load (std::memory_order_acquire);
-    for (s = 0; s < n; s++)
-      {
-	rec = sector_at (s);
-	resident = rec->resident.exchange (0);
-	rec->dirty.store (0);
-	while (resident != 0)
-	  {
-	    offset = __builtin_ctzll (resident);
-	    resident &= resident - 1;
-	    publish (rec, s, offset);
-	  }
-      }
-  }
-
-  std::size_t
-  bestspace::fcmap::claim (std::uint8_t min_code, bestspace_entry *out, std::size_t max_count)
-  {
-    std::size_t n, num_groups, start, found, gi, g, si, s, offset, p;
-    std::uint64_t mask, bit, sbit, resident, version;
-    bool left[CODE_MAX_TIER + 1];
-    std::uint8_t c;
-    group *grp;
-    record *rec;
-
-    assert (min_code >= 1 && min_code <= CODE_MAX_TIER);
-
-    n = m_num_sectors.load (std::memory_order_acquire);
-    if (n == 0 || max_count == 0)
-      {
-	return 0;
-      }
-    num_groups = (n + SECTORS_PER_GROUP - 1) / SECTORS_PER_GROUP;
-    start = m_cursor.load (std::memory_order_relaxed);
-    if (start >= num_groups)
-      {
-	start = 0;
-      }
-
-    found = 0;
-    for (gi = 0; gi < num_groups && found < max_count; gi++)
-      {
-	g = (start + gi) % num_groups;
-	grp = group_at (g);
-	mask = 0;
-	for (c = min_code; c <= CODE_MAX_TIER; c++)
-	  {
-	    mask |= grp->bits[c - 1].load ();
-	  }
-
-	while (mask != 0 && found < max_count)
-	  {
-	    si = __builtin_ctzll (mask);
-	    mask &= mask - 1;
-	    s = g * SECTORS_PER_GROUP + si;
-	    if (s >= n)
-	      {
-		break;
-	      }
-	    rec = &grp->sectors[si];
-	    version = rec->version.load ();
-
-	    for (offset = 0; offset < PAGES_PER_SECTOR && found < max_count; offset++)
-	      {
-		c = get_code (rec, offset);
-		bit = 1ULL << offset;
-		if (c < min_code || c > CODE_MAX_TIER || (rec->resident.load () & bit) != 0)
-		  {
-		    continue;
-		  }
-		if ((rec->resident.fetch_or (bit) & bit) != 0)
-		  {
-		    continue;
-		  }
-		rec->dirty.fetch_and (~bit);
-		c = get_code (rec, offset);
-		out[found].volid = static_cast<short> ((rec->key >> 32) - 1);
-		out[found].pageid = static_cast<std::int32_t> ((rec->key & 0xFFFFFFFFULL) * PAGES_PER_SECTOR + offset);
-		out[found].freespace = optimistic_freespace (c);
-		found++;
-	      }
-
-	    if (offset == PAGES_PER_SECTOR)
-	      {
-		// the whole sector was scanned: drop the hint bits of codes with no claimable page left
-		for (c = 0; c <= CODE_MAX_TIER; c++)
-		  {
-		    left[c] = false;
-		  }
-		resident = rec->resident.load ();
-		for (p = 0; p < PAGES_PER_SECTOR; p++)
-		  {
-		    if ((resident & (1ULL << p)) == 0)
-		      {
-			c = get_code (rec, p);
-			if (c >= 1 && c <= CODE_MAX_TIER)
-			  {
-			    left[c] = true;
-			  }
-		      }
-		  }
-		sbit = 1ULL << si;
-		for (c = min_code; c <= CODE_MAX_TIER; c++)
-		  {
-		    if (!left[c] && (grp->bits[c - 1].load () & sbit) != 0)
-		      {
-			grp->bits[c - 1].fetch_and (~sbit);
-			if (rec->version.load () != version)
-			  {
-			    grp->bits[c - 1].fetch_or (sbit);
-			  }
-		      }
-		  }
-	      }
-	  }
-
-	if (found > 0)
-	  {
-	    m_cursor.store (g, std::memory_order_relaxed);
-	  }
-      }
-
-    count (CNT_CLAIMED, found);
-    return found;
-  }
-
-  std::size_t
-  bestspace::fcmap::collect (bestspace_entry *out, std::size_t max_count)
-  {
-    std::size_t n, s, offset, found;
-    std::uint8_t c, low, high;
-    std::uint64_t resident;
-    record *rec;
-    int pass;
-
-    n = m_num_sectors.load (std::memory_order_acquire);
-    found = 0;
-    for (pass = 0; pass < 2 && found < max_count; pass++)
-      {
-	low = (pass == 0) ? 5 : 1;
-	high = (pass == 0) ? CODE_MAX_TIER : 4;
-	for (s = 0; s < n && found < max_count; s++)
-	  {
-	    rec = sector_at (s);
-	    resident = rec->resident.load ();
-	    for (offset = 0; offset < PAGES_PER_SECTOR && found < max_count; offset++)
-	      {
-		c = get_code (rec, offset);
-		if (c < low || c > high || (resident & (1ULL << offset)) != 0)
-		  {
-		    continue;
-		  }
-		out[found].volid = static_cast<short> ((rec->key >> 32) - 1);
-		out[found].pageid = static_cast<std::int32_t> ((rec->key & 0xFFFFFFFFULL) * PAGES_PER_SECTOR + offset);
-		out[found].freespace = optimistic_freespace (c);
-		found++;
-	      }
-	  }
-      }
-    return found;
-  }
-
-  void
-  bestspace::fcmap::get_usage (std::size_t &num_sectors, std::size_t &bytes, std::uint64_t counters[CNT_LAST])
-  {
-    std::size_t i;
-
-    num_sectors = m_num_sectors.load ();
-    {
-      std::lock_guard<std::mutex> lock (m_grow_mutex);
-      bytes = m_bytes;
-    }
-    for (i = 0; i < CNT_LAST; i++)
-      {
-	counters[i] = m_counters[i].load ();
-      }
   }
 
   bestspace::candidate_queue::candidate_queue ()
@@ -2063,6 +1548,13 @@ namespace cubstorage
 			std::uint16_t unfill_space)
     : m_shards ()
     , m_fcmap (prm_get_bool_value (PRM_ID_BESTSPACE_FULL_COVERAGE) ? new fcmap () : nullptr)
+    , m_fc_pages ()
+    , m_fc_flush_mutex ()
+    , m_fc_suspect (false)
+    , m_fc_loaded (false)
+    , m_fc_rewrite (false)
+    , m_fc_scrub_mutex ()
+    , m_fc_scrub_cursor (0)
     , m_distributed_insert (prm_get_bool_value (PRM_ID_BESTSPACE_DISTRIBUTED_INSERT))
     , m_unfill_space (unfill_space)
     , m_num_pages (num_pages)
@@ -2105,12 +1597,74 @@ namespace cubstorage
       }
   }
 
+  std::size_t
+  bestspace::fc_scrub (OID *class_oid, std::size_t budget)
+  {
+    cubthread::entry *thread_p = thread_get_thread_entry_info ();
+    std::vector<fcmap::claimed> cand (budget);
+    PGBUF_WATCHER watcher;
+    OID page_class_oid;
+    std::size_t n, i, found = 0;
+    std::uint8_t code;
+    VPID vpid;
+    int wait_msecs, error;
+
+    if (m_fcmap == nullptr || !m_fc_suspect.load ())
+      {
+	return 0;
+      }
+    std::unique_lock<std::mutex> lock (m_fc_scrub_mutex, std::try_to_lock);
+    if (!lock.owns_lock ())
+      {
+	return 0;
+      }
+
+    n = m_fcmap->scrub_candidates (m_fc_scrub_cursor, cand.data (), budget);
+    if (n == 0)
+      {
+	// one full pass over the map: every page has been measured since the unclean restart
+	m_fc_suspect.store (false);
+	return 0;
+      }
+
+    for (i = 0; i < n; i++)
+      {
+	vpid.volid = cand[i].volid;
+	vpid.pageid = cand[i].pageid;
+	PGBUF_INIT_WATCHER (&watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+	wait_msecs = logtb_set_thread_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+	error = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, &watcher);
+	(void) logtb_set_thread_wait_msecs (thread_p, wait_msecs);
+	if (error != NO_ERROR)
+	  {
+	    er_clear ();
+	    continue;
+	  }
+	if (pgbuf_get_page_ptype (thread_p, watcher.pgptr) == PAGE_HEAP && !heap_page_is_bestspace (thread_p, watcher.pgptr)
+	    && !heap_page_is_not_in_heap (thread_p, watcher.pgptr)
+	    && heap_get_class_oid_from_page (thread_p, watcher.pgptr, &page_class_oid) == NO_ERROR
+	    && OID_EQ (&page_class_oid, class_oid))
+	  {
+	    code = fc_code_of (spage_max_space_for_new_record (thread_p, watcher.pgptr));
+	    m_fcmap->count (fcmap::CNT_SCRUB_READ);
+	    if (code != fcmap::CODE_NONE)
+	      {
+		m_fcmap->feedback (vpid.volid, vpid.pageid, code);
+		m_fcmap->count (fcmap::CNT_SCRUB_FOUND);
+		found++;
+	      }
+	  }
+	pgbuf_ordered_unfix (thread_p, &watcher);
+      }
+    return found;
+  }
+
   void
   bestspace::forget_page (VPID vpid)
   {
     if (m_fcmap != nullptr)
       {
-	m_fcmap->remove (vpid);
+	m_fcmap->remove (vpid.volid, vpid.pageid);
       }
   }
 
@@ -2153,7 +1707,7 @@ namespace cubstorage
 	  {
 	    if (entries[i].pageid != NULL_PAGEID && entries[i].volid != NULL_VOLID)
 	      {
-		m_fcmap->set_resident ({ entries[i].pageid, entries[i].volid }, fcmap::code_of (entries[i].freespace));
+		m_fcmap->set_resident (entries[i].volid, entries[i].pageid, fc_code_of (entries[i].freespace));
 	      }
 	  }
       }
@@ -2185,7 +1739,7 @@ namespace cubstorage
       {
 	for (i = 0; i < num_candidates; i++)
 	  {
-	    m_fcmap->feedback ({ candidates[i].pageid, candidates[i].volid }, fcmap::code_of (candidates[i].freespace));
+	    m_fcmap->feedback (candidates[i].volid, candidates[i].pageid, fc_code_of (candidates[i].freespace));
 	  }
 	return;
       }
@@ -2403,7 +1957,15 @@ namespace cubstorage
 
     if (m_fcmap != nullptr)
       {
-	num_candidates = m_fcmap->collect (candidates, MAX_CANDIDATES_QUEUE_SIZE);
+	fcmap::claimed picked[MAX_CANDIDATES_QUEUE_SIZE];
+
+	num_candidates = m_fcmap->collect (picked, MAX_CANDIDATES_QUEUE_SIZE);
+	for (i = 0; i < num_candidates; i++)
+	  {
+	    candidates[i].volid = picked[i].volid;
+	    candidates[i].pageid = picked[i].pageid;
+	    candidates[i].freespace = fc_optimistic_freespace (picked[i].code);
+	  }
 	return;
       }
     num_candidates = m_candidates.to_entries (candidates);
@@ -2510,13 +2072,19 @@ namespace cubstorage
   void
   bestspace_registry::create (HFID *hfid, std::size_t shard_count, bestspace_entry *entries, std::size_t num_entries,
 			      bestspace_entry *candidates, std::size_t num_candidates, int num_pages, std::uint64_t recs_num,
-			      std::uint64_t recs_sumlen, std::uint16_t unfill_space)
+			      std::uint64_t recs_sumlen, std::uint16_t unfill_space, init_callback init, void *init_args)
   {
     registry_entry *node;
 
     node = new registry_entry;
     node->hfid = *hfid;
     node->entry = new bestspace (shard_count, num_pages, recs_num, recs_sumlen, unfill_space);
+    if (init != nullptr)
+      {
+	// load the persisted map before the hot cache touches it: the map numbers sectors in load order, and the
+	// persisted entries are laid out in that order
+	init (node->entry, init_args);
+      }
     node->entry->reset (entries, num_entries);
     node->entry->push_candidates (candidates, num_candidates);
 
@@ -2680,6 +2248,19 @@ namespace cubstorage
   void
   bestspace_registry::destroy_entry (registry_entry *entry)
   {
+    if (entry->entry->full_coverage ())
+      {
+	// POC diagnostics: the counters of a map that is dropped without a flush
+	std::size_t sectors, bytes;
+	std::uint64_t c[bestspace::FC_NUM_COUNTERS];
+
+	entry->entry->get_fc_usage (sectors, bytes, c);
+	er_log_debug (ARG_FILE_LINE, "bestspace_fc destroy: hfid=%d|%d|%d sectors=%zu feedback=%llu claimed=%llu"
+		      " verify_fail=%llu released=%llu alloc_batch=%llu reused=%llu scrub_read=%llu\n",
+		      HFID_AS_ARGS (&entry->hfid), sectors, (unsigned long long) c[0], (unsigned long long) c[1],
+		      (unsigned long long) c[2], (unsigned long long) c[3], (unsigned long long) c[4],
+		      (unsigned long long) c[5], (unsigned long long) c[6]);
+      }
     delete entry->entry;
     delete entry;
   }

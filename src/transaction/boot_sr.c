@@ -3099,6 +3099,12 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   (void) fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
 
   /* persist the latest heap bestspace hints before the log and buffer managers are finalized. */
+  if (prm_get_bool_value (PRM_ID_BESTSPACE_FULL_COVERAGE) && thread_p->get_system_tdes () == NULL)
+    {
+      /* POC-2: a map flush may add a map page, which opens a system operation; the system main transaction may
+       * not, so borrow a system worker (the serial cache flush below reuses it and retires it). */
+      thread_p->claim_system_worker ();
+    }
   (void) heap_update_all_bestspaces (thread_p);
 
   /* Hand the unissued tail of every reserved serial cache block back to _db_serial, so a restart
