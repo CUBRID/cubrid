@@ -4651,46 +4651,97 @@ hjoin_print_tuple (QFILE_LIST_ID * list_id, QFILE_TUPLE tuple, HASHJOIN_PRINT_ST
  * (qdata_hash_scan_key). A Bloom filter has no false negatives, so a row it rejects has no equal key on the
  * first side; a false positive only lets a row through.
  *
- * The filter is built lazily, at the second input's first row: the second list's type list is open by then and
- * the common domains need both.
+ * The filter is decided at run time, in two steps. Set-up (the common domains and the keys) happens at the second
+ * input's first row - the second list's type list is open by then and the common domains need both - or before its
+ * parallel scan starts. Filling the bits costs a pass over the first input, so it waits until the second input has
+ * given threshold rows, max (HJOIN_BLOOM_MIN_SECOND_ROWS, first rows / HJOIN_BLOOM_FIRST_PER_SECOND): a second input
+ * that stays small, or much smaller than the first, never pays for it, and the rows given before pass unchecked.
+ * Once filled, the first HJOIN_BLOOM_SAMPLE_ROWS checked rows decide whether checking goes on: when fewer than
+ * HJOIN_BLOOM_MIN_SKIP_PERCENT of them are dropped, the rest go through unchecked.
  *
  * Parallel paths. Under a parallel subquery executor the two inputs would run as concurrent jobs, so a hash join
  * that can take a filter has its two inputs run one after the other on the executing thread instead
  * (hjoin_bloom_wants_serial); the other subqueries stay jobs. When the second input then scans in parallel, its
- * workers write rows to lists of their own from cloned xasl nodes: the scan builds the filter before it starts
- * them (hjoin_bloom_prepare), and each worker checks its rows against the shared bits with a key and a row buffer
- * of its own (hjoin_bloom_worker_*), adding its counts at the end. Only the node the filter was attached to frees
- * it, after the second input - its workers included - is done.
+ * workers write rows to lists of their own from cloned xasl nodes: the scan sets the filter up before it starts
+ * them (hjoin_bloom_prepare); the workers add the rows they see to a shared count in batches, and the owner thread,
+ * which polls for the workers' end, fills the bits once the count passes the threshold (hjoin_bloom_poll) and
+ * publishes it. From then on each worker checks its rows against the shared bits with a key and a row buffer of
+ * its own (hjoin_bloom_worker_*), turns the filter off for all when its own sample drops too few rows, and adds its
+ * counts at the end. Only the owner reads the first input and frees the filter, after the second input - its
+ * workers included - is done.
  */
 
 
 #define HJOIN_BLOOM_MAX_FIRST_ROWS	10000000	/* 2^27 bits (16 MB) at 10 bits per key, rounded up to a power of two */
 #define HJOIN_BLOOM_BITS_PER_KEY	10
 #define HJOIN_BLOOM_HASHES		3
+#define HJOIN_BLOOM_MIN_SECOND_ROWS	1024	/* the second input must give this many rows before the bits are filled */
+#define HJOIN_BLOOM_FIRST_PER_SECOND	2	/* ... and at least first rows / this */
+#define HJOIN_BLOOM_SAMPLE_ROWS		4096	/* checked rows that decide whether checking goes on */
+#define HJOIN_BLOOM_MIN_SKIP_PERCENT	50	/* ... it stops when fewer of them are dropped */
+#define HJOIN_BLOOM_SEEN_BATCH		256	/* a worker adds the rows it saw to the shared count this often */
+
+enum
+{
+  HJOIN_BLOOM_WAITING = 0,	/* set up or about to be; the bits are not filled: rows go through unchecked */
+  HJOIN_BLOOM_READY,		/* filled and published: rows are checked */
+  HJOIN_BLOOM_OFF		/* not applicable, failed or not worth it: rows go through unchecked */
+};
 
 struct hjoin_bloom
 {
   XASL_NODE *hj_xasl;		/* the hash join */
   XASL_NODE *owner_xasl;	/* the second input the filter is attached to */
-  THREAD_ENTRY *owner_thread;	/* the thread materializing it */
+  THREAD_ENTRY *owner_thread;	/* the thread materializing it: the only one that reads the first input */
   bool first_is_outer;
-  bool built;
-  bool disabled;		/* not applicable after all, or the build failed: let every row through */
+  bool set_up;			/* domains and the owner's key are decided */
+
+  /* HJOIN_BLOOM_WAITING -> READY or OFF; READY -> OFF. Read by the workers (acquire), published by the owner
+   * (release) once the bits are filled; any thread may turn it off. */
+  volatile INT64 state;
+  INT64 off_reason;		/* HASHJOIN_BLOOM_OFF_*, written once before the state goes off */
+
+  INT64 first_rows;		/* the first input's row count */
+  INT64 threshold;		/* second-input rows to see before the bits are filled */
+  volatile INT64 seen;		/* second-input rows seen so far (the owner's and the workers' batches) */
 
   UINT64 *bits;
   UINT32 mask;			/* number of bits - 1, a power of two minus one */
 
-  HASH_SCAN_KEY *key;
+  HASH_SCAN_KEY *key;		/* the owner's */
   HASHJOIN_FETCH_INFO first;
   HASHJOIN_FETCH_INFO second;
 
-  char *row_buf;		/* the second input's row serialized for hjoin_fetch_key */
+  char *row_buf;		/* the owner's: the second input's row serialized for hjoin_fetch_key */
   int row_buf_size;
 
   INT64 keys;
-  INT64 tested;
-  INT64 skipped;
+  volatile INT64 tested;
+  volatile INT64 skipped;
 };
+
+static INT64
+hjoin_bloom_state (HJOIN_BLOOM * bloom)
+{
+  return ATOMIC_LOAD_64_ACQUIRE (&bloom->state);
+}
+
+/* off for every thread; the first reason given is the one kept */
+static void
+hjoin_bloom_turn_off (HJOIN_BLOOM * bloom, INT64 reason)
+{
+  INT64 cur = hjoin_bloom_state (bloom);
+
+  while (cur != HJOIN_BLOOM_OFF)
+    {
+      if (ATOMIC_CAS (&bloom->state, cur, (INT64) HJOIN_BLOOM_OFF))
+	{
+	  bloom->off_reason = reason;
+	  return;
+	}
+      cur = hjoin_bloom_state (bloom);
+    }
+}
 
 static inline void
 hjoin_bloom_positions (UINT32 hash, UINT32 * h1, UINT32 * h2)
@@ -4880,33 +4931,26 @@ hjoin_bloom_attach (THREAD_ENTRY * thread_p, XASL_NODE * hj_xasl, XASL_NODE * se
   bloom->owner_xasl = second_xasl;
   bloom->owner_thread = thread_p;
   bloom->first_is_outer = first_is_outer;
+  bloom->state = HJOIN_BLOOM_WAITING;
+  bloom->first_rows = first_xasl->list_id->tuple_cnt;
+  bloom->threshold = MAX ((INT64) HJOIN_BLOOM_MIN_SECOND_ROWS, bloom->first_rows / HJOIN_BLOOM_FIRST_PER_SECOND);
 
   second_xasl->hj_bloom = bloom;
 }
 
-/* first use: common domains from both lists, then every first-input key hashed into the bits */
+/* the owner, once: the common domains from both lists and the owner's key - cheap, no pass over the first input */
 static void
-hjoin_bloom_build (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
+hjoin_bloom_setup (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
 {
   HASHJOIN_PROC_NODE *proc = &bloom->hj_xasl->proc.hashjoin;
   HASHJOIN_MANAGER manager;
   HASHJOIN_DOMAIN_INFO *domain_info = &proc->domain_info;
-  QFILE_LIST_ID *first_list_id;
-  QFILE_LIST_SCAN_ID scan_id;
-  // *INDENT-OFF*
-  QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
-  // *INDENT-ON*
-  UINT64 nbits;
-  bool need_skip_next = false;
-  bool scan_open = false;
-  SCAN_CODE scan_code;
-  int key_cnt;
 
-  bloom->built = true;
-  bloom->disabled = true;	/* until the build completes */
+  bloom->set_up = true;
 
   if (proc->outer.xasl->list_id->type_list.type_cnt == 0 || proc->inner.xasl->list_id->type_list.type_cnt == 0)
     {
+      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
       return;
     }
 
@@ -4917,14 +4961,15 @@ hjoin_bloom_build (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   if (hjoin_init_domain_info (thread_p, &manager, domain_info) != NO_ERROR)
     {
       er_clear ();
+      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
       return;
     }
 
-  key_cnt = proc->merge_info.ls_column_cnt;
-  bloom->key = qdata_alloc_hscan_key (thread_p, key_cnt, true);
+  bloom->key = qdata_alloc_hscan_key (thread_p, proc->merge_info.ls_column_cnt, true);
   if (bloom->key == NULL)
     {
       er_clear ();
+      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
       return;
     }
 
@@ -4934,6 +4979,25 @@ hjoin_bloom_build (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   bloom->second.input = bloom->first_is_outer ? &domain_info->inner : &domain_info->outer;
   bloom->second.coerce_domains = domain_info->coerce_domains;
   bloom->second.need_coerce_domains = domain_info->need_coerce_domains;
+}
+
+/* the owner, once the second input has given threshold rows: every first-input key hashed into the bits, then
+ * the filter published (or off when the pass fails: a filter missing some of the first input's keys would drop
+ * rows that join) */
+static void
+hjoin_bloom_fill (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
+{
+  HASHJOIN_PROC_NODE *proc = &bloom->hj_xasl->proc.hashjoin;
+  QFILE_LIST_ID *first_list_id;
+  QFILE_LIST_SCAN_ID scan_id;
+  // *INDENT-OFF*
+  QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
+  // *INDENT-ON*
+  UINT64 nbits;
+  bool need_skip_next = false;
+  SCAN_CODE scan_code;
+
+  assert (bloom->set_up && bloom->state == HJOIN_BLOOM_WAITING);
 
   first_list_id = bloom->first_is_outer ? proc->outer.xasl->list_id : proc->inner.xasl->list_id;
 
@@ -4948,6 +5012,7 @@ hjoin_bloom_build (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   if (bloom->bits == NULL)
     {
       er_clear ();
+      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
       return;
     }
   memset (bloom->bits, 0, (size_t) (nbits / 64) * sizeof (UINT64));
@@ -4955,16 +5020,16 @@ hjoin_bloom_build (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   if (qfile_open_list_scan (first_list_id, &scan_id) != NO_ERROR)
     {
       er_clear ();
+      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
       return;
     }
-  scan_open = true;
 
   while ((scan_code = qfile_scan_list_next (thread_p, &scan_id, &tuple_record, PEEK)) == S_SUCCESS)
     {
       if (hjoin_fetch_key (thread_p, &bloom->first, &tuple_record, bloom->key, NULL, &need_skip_next) != NO_ERROR)
 	{
-	  er_clear ();
-	  goto end;
+	  scan_code = S_ERROR;
+	  break;
 	}
       if (need_skip_next)
 	{
@@ -4975,20 +5040,17 @@ hjoin_bloom_build (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
       hjoin_bloom_add (bloom, qdata_hash_scan_key (bloom->key, UINT_MAX, HASH_METH_IN_MEM));
       bloom->keys++;
     }
+  qfile_close_scan (thread_p, &scan_id);
 
   if (scan_code != S_END || er_errid () != NO_ERROR)
     {
-      /* a filter missing some of the first input's keys would drop rows that join */
       er_clear ();
-      goto end;
+      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
+      return;
     }
-  bloom->disabled = false;
 
-end:
-  if (scan_open)
-    {
-      qfile_close_scan (thread_p, &scan_id);
-    }
+  /* the bits before the state: a worker that reads READY reads them filled */
+  ATOMIC_STORE_64_RELEASE (&bloom->state, (INT64) HJOIN_BLOOM_READY);
 }
 
 /* the decision on one serialized second-input row; key is the caller's (the owner's or a worker's). The bits and
@@ -5010,6 +5072,40 @@ hjoin_bloom_check (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom, HASH_SCAN_KEY *
   return need_skip_next || !hjoin_bloom_may_contain (bloom, qdata_hash_scan_key (key, UINT_MAX, HASH_METH_IN_MEM));
 }
 
+/* a checker's sample is in: too few rows dropped turns the filter off for everyone */
+static void
+hjoin_bloom_judge_sample (HJOIN_BLOOM * bloom, INT64 tested, INT64 skipped)
+{
+  if (tested == HJOIN_BLOOM_SAMPLE_ROWS && skipped * 100 < tested * HJOIN_BLOOM_MIN_SKIP_PERCENT)
+    {
+      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_LOW_SKIP);
+    }
+}
+
+/* the owner's view: NULL unless xasl is the node the filter was attached to, on its thread, and the filter is
+ * checking. Counts the row; sets up on the first one and fills once the second input has given threshold rows. */
+static HJOIN_BLOOM *
+hjoin_bloom_owner_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  HJOIN_BLOOM *bloom = xasl->hj_bloom;
+  INT64 seen;
+
+  if (bloom == NULL || bloom->owner_xasl != xasl || bloom->owner_thread != thread_p)
+    {
+      return NULL;
+    }
+  if (!bloom->set_up)
+    {
+      hjoin_bloom_setup (thread_p, bloom);
+    }
+  seen = ATOMIC_INC_64 (&bloom->seen, 1);
+  if (bloom->state == HJOIN_BLOOM_WAITING && seen >= bloom->threshold)
+    {
+      hjoin_bloom_fill (thread_p, bloom);
+    }
+  return hjoin_bloom_state (bloom) == HJOIN_BLOOM_READY ? bloom : NULL;
+}
+
 static bool
 hjoin_bloom_skip_record (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom, QFILE_TUPLE_RECORD * record)
 {
@@ -5018,7 +5114,7 @@ hjoin_bloom_skip_record (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom, QFILE_TUP
 
   if (failed)
     {
-      bloom->disabled = true;
+      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
       return false;
     }
   bloom->tested++;
@@ -5026,23 +5122,8 @@ hjoin_bloom_skip_record (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom, QFILE_TUP
     {
       bloom->skipped++;
     }
+  hjoin_bloom_judge_sample (bloom, bloom->tested, bloom->skipped);
   return skip;
-}
-
-static HJOIN_BLOOM *
-hjoin_bloom_ready (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
-{
-  HJOIN_BLOOM *bloom = xasl->hj_bloom;
-
-  if (bloom == NULL || bloom->owner_xasl != xasl || bloom->owner_thread != thread_p)
-    {
-      return NULL;
-    }
-  if (!bloom->built)
-    {
-      hjoin_bloom_build (thread_p, bloom);
-    }
-  return bloom->disabled ? NULL : bloom;
 }
 
 /*
@@ -5055,7 +5136,7 @@ hjoin_bloom_ready (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 bool
 hjoin_bloom_skip_descr (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
-  HJOIN_BLOOM *bloom = hjoin_bloom_ready (thread_p, xasl);
+  HJOIN_BLOOM *bloom = hjoin_bloom_owner_row (thread_p, xasl);
   QFILE_TUPLE_DESCRIPTOR *descr;
   // *INDENT-OFF*
   QFILE_TUPLE_RECORD record = QFILE_TUPLE_RECORD_INITIALIZER;
@@ -5073,7 +5154,7 @@ hjoin_bloom_skip_descr (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       if (buf == NULL)
 	{
 	  er_clear ();
-	  bloom->disabled = true;
+	  hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
 	  return false;
 	}
       bloom->row_buf = buf;
@@ -5084,7 +5165,7 @@ hjoin_bloom_skip_descr (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 				    bloom->row_buf, descr->tpl_size, descr->has_null) != NO_ERROR)
     {
       er_clear ();
-      bloom->disabled = true;
+      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
       return false;
     }
 
@@ -5098,12 +5179,17 @@ hjoin_bloom_skip_descr (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 bool
 hjoin_bloom_skip_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, char *tuple)
 {
-  HJOIN_BLOOM *bloom = hjoin_bloom_ready (thread_p, xasl);
+  HJOIN_BLOOM *bloom;
   // *INDENT-OFF*
   QFILE_TUPLE_RECORD record = QFILE_TUPLE_RECORD_INITIALIZER;
   // *INDENT-ON*
 
-  if (bloom == NULL || tuple == NULL)
+  if (tuple == NULL)
+    {
+      return false;
+    }
+  bloom = hjoin_bloom_owner_row (thread_p, xasl);
+  if (bloom == NULL)
     {
       return false;
     }
@@ -5112,24 +5198,53 @@ hjoin_bloom_skip_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, char *tuple)
 }
 
 /*
- * hjoin_bloom_prepare () - build the filter of xasl now, on the thread that owns it, before a parallel scan of xasl
- *			     starts its workers
- *   return: the filter for the workers to share, or NULL when there is none (or it is not usable)
+ * hjoin_bloom_prepare () - set the filter of xasl up now, on the thread that owns it, before a parallel scan of
+ *			     xasl starts its workers (the bits are filled later, by hjoin_bloom_poll)
+ *   return: the filter for the workers to share, or NULL when there is none (or it is off)
  */
 HJOIN_BLOOM *
 hjoin_bloom_prepare (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
-  return (xasl != NULL && xasl->hj_bloom != NULL) ? hjoin_bloom_ready (thread_p, xasl) : NULL;
+  HJOIN_BLOOM *bloom = (xasl != NULL) ? xasl->hj_bloom : NULL;
+
+  if (bloom == NULL || bloom->owner_xasl != xasl || bloom->owner_thread != thread_p)
+    {
+      return NULL;
+    }
+  if (!bloom->set_up)
+    {
+      hjoin_bloom_setup (thread_p, bloom);
+    }
+  return hjoin_bloom_state (bloom) == HJOIN_BLOOM_OFF ? NULL : bloom;
+}
+
+/*
+ * hjoin_bloom_poll () - the owner, while it waits for a parallel scan's workers: fill the bits once they have seen
+ *			  threshold rows
+ */
+void
+hjoin_bloom_poll (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
+{
+  if (bloom == NULL || bloom->owner_thread != thread_p || !bloom->set_up)
+    {
+      return;
+    }
+  if (hjoin_bloom_state (bloom) == HJOIN_BLOOM_WAITING && ATOMIC_LOAD_64 (&bloom->seen) >= bloom->threshold)
+    {
+      hjoin_bloom_fill (thread_p, bloom);
+    }
 }
 
 /* one parallel scan worker's view of a shared filter */
 struct hjoin_bloom_worker
 {
-  HJOIN_BLOOM *bloom;		/* shared, only read while the workers run */
+  HJOIN_BLOOM *bloom;		/* shared: its bits only read, its state read and turned off */
   HASH_SCAN_KEY *key;		/* this worker's */
   char *row_buf;
   int row_buf_size;
-  bool disabled;
+  bool disabled;		/* this worker gave up (a failed key or buffer): its rows go through */
+  bool ready;			/* the filter's state as of the last batch: checking */
+  INT64 seen_unflushed;
   INT64 tested;
   INT64 skipped;
 };
@@ -5159,7 +5274,22 @@ hjoin_bloom_worker_begin (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
       db_private_free (thread_p, worker);
       return NULL;
     }
+  worker->ready = hjoin_bloom_state (bloom) == HJOIN_BLOOM_READY;
   return worker;
+}
+
+/* count the row; every batch hand the count over and look at the filter's state again. True when this row is to
+ * be checked. */
+static bool
+hjoin_bloom_worker_row (HJOIN_BLOOM_WORKER * worker)
+{
+  if (++worker->seen_unflushed >= HJOIN_BLOOM_SEEN_BATCH)
+    {
+      ATOMIC_INC_64 (&worker->bloom->seen, worker->seen_unflushed);
+      worker->seen_unflushed = 0;
+      worker->ready = hjoin_bloom_state (worker->bloom) == HJOIN_BLOOM_READY;
+    }
+  return worker->ready && !worker->disabled;
 }
 
 static bool
@@ -5168,10 +5298,6 @@ hjoin_bloom_worker_skip_record (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * wo
   bool failed = false;
   bool skip;
 
-  if (worker->disabled)
-    {
-      return false;
-    }
   skip = hjoin_bloom_check (thread_p, worker->bloom, worker->key, record, &failed);
   if (failed)
     {
@@ -5183,6 +5309,7 @@ hjoin_bloom_worker_skip_record (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * wo
     {
       worker->skipped++;
     }
+  hjoin_bloom_judge_sample (worker->bloom, worker->tested, worker->skipped);
   return skip;
 }
 
@@ -5195,7 +5322,7 @@ hjoin_bloom_worker_skip_descr (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * wor
   QFILE_TUPLE_RECORD record = QFILE_TUPLE_RECORD_INITIALIZER;
   // *INDENT-ON*
 
-  if (worker == NULL || worker->disabled)
+  if (worker == NULL || !hjoin_bloom_worker_row (worker))
     {
       return false;
     }
@@ -5232,7 +5359,7 @@ hjoin_bloom_worker_skip_tuple (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * wor
   QFILE_TUPLE_RECORD record = QFILE_TUPLE_RECORD_INITIALIZER;
   // *INDENT-ON*
 
-  if (worker == NULL || worker->disabled || tuple == NULL)
+  if (worker == NULL || tuple == NULL || !hjoin_bloom_worker_row (worker))
     {
       return false;
     }
@@ -5248,6 +5375,7 @@ hjoin_bloom_worker_end (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * worker)
     {
       return;
     }
+  ATOMIC_INC_64 (&worker->bloom->seen, worker->seen_unflushed);
   ATOMIC_INC_64 (&worker->bloom->tested, worker->tested);
   ATOMIC_INC_64 (&worker->bloom->skipped, worker->skipped);
   qdata_free_hscan_key (thread_p, worker->key, worker->bloom->hj_xasl->proc.hashjoin.merge_info.ls_column_cnt);
@@ -5290,7 +5418,7 @@ hjoin_bloom_release (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   db_private_free (thread_p, bloom);
 }
 
-/* after the second input is materialized: keep the counters for trace and free the filter */
+/* after the second input is materialized: keep what the filter did for trace and free it */
 void
 hjoin_bloom_detach (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
@@ -5303,8 +5431,19 @@ hjoin_bloom_detach (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     }
 
   stats = &bloom->hj_xasl->proc.hashjoin.bloom_stats;
-  stats->used = bloom->built && !bloom->disabled;
+  stats->attached = true;
+  if (bloom->state == HJOIN_BLOOM_OFF)
+    {
+      stats->state = (int) bloom->off_reason;
+    }
+  else
+    {
+      stats->state =
+	(bloom->state == HJOIN_BLOOM_READY) ? (int) HASHJOIN_BLOOM_CHECKED : (int) HASHJOIN_BLOOM_NOT_BUILT;
+    }
   stats->keys = bloom->keys;
+  stats->threshold = bloom->threshold;
+  stats->seen = bloom->seen;
   stats->tested = bloom->tested;
   stats->skipped = bloom->skipped;
 

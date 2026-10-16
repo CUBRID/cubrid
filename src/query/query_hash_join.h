@@ -261,13 +261,25 @@ typedef struct hashjoin_stats_group
   UINT32 context_cnt;
 } HASHJOIN_STATS_GROUP;
 
+/* CBRD-27659 (prototype): how the Bloom filter on the second-materialized input ended (HASHJOIN_BLOOM_STATS) */
+enum hashjoin_bloom_outcome
+{
+  HASHJOIN_BLOOM_NOT_BUILT = 0,	/* the second input gave fewer rows than the threshold: the bits were never filled */
+  HASHJOIN_BLOOM_CHECKED,	/* filled and checked to the end */
+  HASHJOIN_BLOOM_OFF_LOW_SKIP,	/* filled, then turned off: its sample dropped too few rows */
+  HASHJOIN_BLOOM_OFF_FAILED	/* could not be set up or filled */
+};
+
 /* CBRD-27659 (prototype): what the Bloom filter on the second-materialized input did (hjoin_bloom_*). Not part of
  * HASHJOIN_STATS_GROUP: the join clears that when it starts, which is after its inputs are materialized. */
 typedef struct hashjoin_bloom_stats
 {
-  bool used;
+  bool attached;
+  int state;			/* enum hashjoin_bloom_outcome */
   INT64 keys;			/* first-input keys hashed into the filter */
-  INT64 tested;			/* second-input rows checked against it */
+  INT64 threshold;		/* second-input rows it waited for before filling */
+  INT64 seen;			/* second-input rows seen */
+  INT64 tested;			/* of those, rows checked against it */
   INT64 skipped;		/* of those, rows not written to the second input's list */
 } HASHJOIN_BLOOM_STATS;
 
@@ -492,6 +504,7 @@ bool hjoin_bloom_worker_skip_descr (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER 
 bool hjoin_bloom_worker_skip_tuple (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * worker, QFILE_LIST_ID * list_id,
 				    char *tuple);
 void hjoin_bloom_worker_end (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * worker);
+void hjoin_bloom_poll (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom);
 
 /* Hash Join Execution */
 int hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);

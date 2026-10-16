@@ -668,6 +668,14 @@ namespace parallel_scan
 	      while (m_.active_results != 0)
 		{
 		  m_result_cv.wait_for (lock, std::chrono::microseconds (50));
+		  if (m_.bloom != nullptr)
+		    {
+		      /* CBRD-27659: the owner fills the hash join filter once the workers have seen enough rows - not
+		       * under the lock a worker takes to report done */
+		      lock.unlock ();
+		      hjoin_bloom_poll (thread_p, m_.bloom);
+		      lock.lock ();
+		    }
 		  parallel_query::interrupt::interrupt_code code = m_interrupt_p->get_code();
 		  /* INST_NUM_SATISFIED is a benign early-stop: keep waiting for workers to finalize. */
 		  if (code != parallel_query::interrupt::interrupt_code::NO_INTERRUPT

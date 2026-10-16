@@ -104,8 +104,8 @@ namespace parallel_scan
       parallel_scan::instnum_mode instnum_mode = parallel_scan::instnum_mode::NONE;
       std::vector<int> rownum_col_indices;	/* RENUMBER: ROWNUM positions in the valptr list */
       parallel_scan::atomic_instnum instnum_draw;	/* ATOMIC_DRAW */
-      /* CBRD-27659: the hash join filter the scanned node checks its rows against (built before the workers start,
-       * only read by them); nullptr when there is none */
+      /* CBRD-27659: the hash join filter the scanned node checks its rows against (set up before the workers start,
+       * filled by the owner while it waits for them - hjoin_bloom_poll); nullptr when there is none */
       hjoin_bloom *bloom = nullptr;
   };
 

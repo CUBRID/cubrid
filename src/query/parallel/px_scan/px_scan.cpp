@@ -1745,7 +1745,7 @@ namespace parallel_scan
 	m_result_handler = placement_new ((result_handler<RESULT_TYPE::MERGEABLE_LIST> *) m_result_handler, m_query_id,
 					  &m_interrupt, &m_err_messages, m_parallelism, m_xasl);
 	m_result_handler->set_trace_handler (&m_trace_handler);
-	/* CBRD-27659: a hash join filter on this node is built here, on the owner thread, before any worker runs */
+	/* CBRD-27659: a hash join filter on this node is set up here, on the owner thread, before any worker runs */
 	m_result_handler->set_hjoin_bloom (hjoin_bloom_prepare (m_thread_p, m_xasl));
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
