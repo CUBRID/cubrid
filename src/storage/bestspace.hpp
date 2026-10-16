@@ -397,6 +397,23 @@ namespace cubstorage
 	return m_fcmap != nullptr;
       }
       void get_fc_usage (std::size_t &num_sectors, std::size_t &bytes, std::uint64_t *counters);
+      // POC verification: refill (allocate) and map claim latency histograms, see fctest::bucket_of
+      void record_alloc_usec (std::uint64_t usec)
+      {
+	m_alloc_hist[fctest::bucket_of (usec)].fetch_add (1, std::memory_order_relaxed);
+      }
+      void record_claim_usec (std::uint64_t usec)
+      {
+	m_claim_hist[fctest::bucket_of (usec)].fetch_add (1, std::memory_order_relaxed);
+      }
+      void get_hist (std::uint64_t *alloc_hist, std::uint64_t *claim_hist)
+      {
+	for (int i = 0; i < fctest::HIST_BUCKETS; i++)
+	  {
+	    alloc_hist[i] = m_alloc_hist[i].load (std::memory_order_relaxed);
+	    claim_hist[i] = m_claim_hist[i].load (std::memory_order_relaxed);
+	  }
+      }
       void forget_page (VPID vpid);
 
       // POC-2 persistence: the map, its pages on disk, and the scrub that runs after an unclean restart
@@ -414,6 +431,11 @@ namespace cubstorage
       }
       void fc_set_suspect (bool suspect)
       {
+	if (suspect)
+	  {
+	    // a new suspicion needs a new full pass
+	    m_fc_scrub_restart.store (true);
+	  }
 	m_fc_suspect.store (suspect);
       }
       bool fc_is_suspect () const
@@ -451,6 +473,9 @@ namespace cubstorage
       std::atomic<bool> m_fc_suspect;
       std::atomic<bool> m_fc_loaded;
       std::atomic<bool> m_fc_rewrite;
+      std::atomic<bool> m_fc_scrub_restart = { false };
+      std::atomic<std::uint64_t> m_alloc_hist[fctest::HIST_BUCKETS] = {};
+      std::atomic<std::uint64_t> m_claim_hist[fctest::HIST_BUCKETS] = {};
       std::mutex m_fc_scrub_mutex;
       std::size_t m_fc_scrub_cursor;
 

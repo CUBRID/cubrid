@@ -1085,6 +1085,18 @@ namespace cubstorage
     std::array<bestspace_entry, ALLOC_BATCH_SIZE> candidates;
     std::size_t num_candidates;
     status result;
+    // POC verification: refill latency, both paths
+    struct alloc_timer
+    {
+      bestspace &bs;
+      std::chrono::steady_clock::time_point t0;
+      alloc_timer (bestspace &b) : bs (b), t0 (std::chrono::steady_clock::now ()) {}
+      ~alloc_timer ()
+      {
+	bs.record_alloc_usec ((std::uint64_t) std::chrono::duration_cast<std::chrono::microseconds> (
+				std::chrono::steady_clock::now () - t0).count ());
+      }
+    } timer (m_parent);
 
     if (m_parent.m_fcmap != nullptr)
       {
@@ -1163,8 +1175,15 @@ claim_again:
     {
       fcmap::claimed picked[ALLOC_BATCH_SIZE];
 
+      std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now ();
       num_claimed = map->claim (min_code < fcmap::CODE_MAX_TIER ? min_code + 1 : fcmap::CODE_MAX_TIER, picked,
 				ALLOC_BATCH_SIZE);
+      m_parent.record_claim_usec ((std::uint64_t) std::chrono::duration_cast<std::chrono::microseconds> (
+				    std::chrono::steady_clock::now () - t0).count ());
+      if (num_claimed > 0)
+	{
+	  fctest::delay (fctest::P_CLAIM_VERIFY);
+	}
       for (i = 0; i < num_claimed; i++)
 	{
 	  claimed[i].volid = picked[i].volid;
@@ -1618,8 +1637,13 @@ claim_again:
       {
 	return 0;
       }
+    if (m_fc_scrub_restart.exchange (false))
+      {
+	m_fc_scrub_cursor = 0;
+      }
 
     n = m_fcmap->scrub_candidates (m_fc_scrub_cursor, cand.data (), budget);
+    fctest::delay (fctest::P_SCRUB_MID);
     if (n == 0)
       {
 	// one full pass over the map: every page has been measured since the unclean restart
@@ -1627,6 +1651,8 @@ claim_again:
 	return 0;
       }
 
+    // page fixes below must not consume the statement's interrupt (the error would be swallowed)
+    bool check_interrupt = logtb_set_check_interrupt (thread_p, false);
     for (i = 0; i < n; i++)
       {
 	vpid.volid = cand[i].volid;
@@ -1645,16 +1671,24 @@ claim_again:
 	    && heap_get_class_oid_from_page (thread_p, watcher.pgptr, &page_class_oid) == NO_ERROR
 	    && OID_EQ (&page_class_oid, class_oid))
 	  {
-	    code = fc_code_of (spage_max_space_for_new_record (thread_p, watcher.pgptr));
+	    // the same measure feedback uses: space other transactions saved for rollback still counts
+	    code = fc_code_of ((std::uint16_t) MIN (spage_get_free_space_without_saving (thread_p, watcher.pgptr), 0xFFFF));
 	    m_fcmap->count (fcmap::CNT_SCRUB_READ);
-	    if (code != fcmap::CODE_NONE)
+	    if (code > cand[i].code)
 	      {
-		m_fcmap->feedback (vpid.volid, vpid.pageid, code);
 		m_fcmap->count (fcmap::CNT_SCRUB_FOUND);
 		found++;
 	      }
+	    if (code != cand[i].code)
+	      {
+		m_fcmap->feedback (vpid.volid, vpid.pageid, code);
+	      }
 	  }
 	pgbuf_ordered_unfix (thread_p, &watcher);
+      }
+    if (check_interrupt)
+      {
+	(void) logtb_set_check_interrupt (thread_p, true);
       }
     return found;
   }
@@ -1759,7 +1793,7 @@ claim_again:
   bool
   bestspace::updatable ()
   {
-    constexpr std::uint64_t UPDATE_TIME_THRESHOLD = 30;
+    const std::uint64_t UPDATE_TIME_THRESHOLD = (std::uint64_t) fctest::cfg ().flush_sec;	// POC verification knob
     std::uint64_t last_updated, now;
 
     last_updated = m_last_updated.load ();
@@ -1957,15 +1991,8 @@ claim_again:
 
     if (m_fcmap != nullptr)
       {
-	fcmap::claimed picked[MAX_CANDIDATES_QUEUE_SIZE];
-
-	num_candidates = m_fcmap->collect (picked, MAX_CANDIDATES_QUEUE_SIZE);
-	for (i = 0; i < num_candidates; i++)
-	  {
-	    candidates[i].volid = picked[i].volid;
-	    candidates[i].pageid = picked[i].pageid;
-	    candidates[i].freespace = fc_optimistic_freespace (picked[i].code);
-	  }
+	// the persisted map has every page; collecting header candidates would scan it under the header latch
+	num_candidates = 0;
 	return;
       }
     num_candidates = m_candidates.to_entries (candidates);

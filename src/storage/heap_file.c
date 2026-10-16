@@ -34,6 +34,7 @@
 #include <errno.h>
 
 #include "bestspace.hpp"
+#include <algorithm>
 #include <unordered_map>
 #include <vector>
 #include <mutex>
@@ -3332,6 +3333,7 @@ error:
 bool
 heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID * hfid)
 {
+  bool fc_forgot = false;	/* POC-2 */
   VPID page_vpid = VPID_INITIALIZER;	/* VPID of page being removed. */
   VPID prev_vpid = VPID_INITIALIZER;	/* VPID of previous page. */
   VPID next_vpid = VPID_INITIALIZER;	/* VPID of next page. */
@@ -3587,6 +3589,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
     }
   memcpy (&chain, copy_recdes.data, sizeof (chain));
   HEAP_PAGE_SET_NOT_IN_HEAP (&chain);
+  cubstorage::fctest::delay (cubstorage::fctest::P_VAC_REMOVE);
   if (prm_get_bool_value (PRM_ID_BESTSPACE_FULL_COVERAGE))
     {
       /* POC full coverage: the page leaves the heap; forget it before it can be deallocated and reused, so no
@@ -3595,6 +3598,7 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
       if (bs != NULL)
 	{
 	  bs->forget_page (page_vpid);
+	  fc_forgot = true;
 	}
     }
   update_recdes.data = (char *) &chain;
@@ -3644,6 +3648,15 @@ error:
   if (is_system_op_started)
     {
       log_sysop_abort (thread_p);
+    }
+  if (fc_forgot)
+    {
+      /* POC-2: the page stays in the heap (empty); give it back to the map */
+      cubstorage::bestspace * bs = heap_find_bestspace (thread_p, NULL, hfid, NULL);
+      if (bs != NULL && bs->full_coverage ())
+	{
+	  (void) bs->get_fcmap ()->feedback (page_vpid.volid, page_vpid.pageid, cubstorage::fcmap::CODE_MAX_TIER);
+	}
     }
   if (next_watcher.pgptr != NULL)
     {
@@ -4351,7 +4364,21 @@ struct heap_fc_init_args
   THREAD_ENTRY *thread_p;
   HFID *hfid;
   const HEAP_HDR_STATS *header;
+  PAGE_PTR header_page;		/* latched by the builder */
 };
+
+/* POC-2: the generation started by the last crash recovery / map-off run (log_initialize) */
+static int
+heap_fc_generation (void)
+{
+  return (log_Gl.hdr.perm_status_obsolete >> 1) & 0x3FFFFFFF;
+}
+
+static bool
+heap_fc_stamp_valid (int reserve2)
+{
+  return (reserve2 & HEAP_FC_CLEAN) != 0 && ((reserve2 >> 1) & 0x3FFFFFFF) == heap_fc_generation ();
+}
 
 static UINT64
 heap_fc_file_key (const VFID * vfid)
@@ -4460,7 +4487,54 @@ heap_fc_pending_forget (const VFID * vfid)
     }
 }
 
-/* append one map page to the heap chain, flag it BESTSPACE and link it after the previous map page */
+/* measure one page and feed the map (or the pending queue when the heap's bestspace is not loaded) */
+static void
+heap_fc_feed_page (THREAD_ENTRY * thread_p, HFID * hfid, const VPID * vpid)
+{
+  // *INDENT-OFF*
+  cubstorage::bestspace *bs;
+  // *INDENT-ON*
+  PGBUF_WATCHER watcher;
+  VPID fix_vpid = *vpid;
+  std::uint8_t code;
+  bool check_interrupt = logtb_set_check_interrupt (thread_p, false);
+
+  PGBUF_INIT_WATCHER (&watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+  if (pgbuf_ordered_fix (thread_p, &fix_vpid, OLD_PAGE, PGBUF_LATCH_READ, &watcher) != NO_ERROR)
+    {
+      er_clear ();
+    }
+  else
+    {
+      code = cubstorage::bestspace::fc_code_of ((std::uint16_t)
+						 MIN (spage_get_free_space_without_saving (thread_p, watcher.pgptr), 0xFFFF));
+      pgbuf_ordered_unfix (thread_p, &watcher);
+      bs = heap_find_bestspace (thread_p, NULL, hfid, NULL);
+      if (bs != NULL && bs->full_coverage ())
+	{
+	  (void) bs->get_fcmap ()->feedback (vpid->volid, vpid->pageid, code);
+	}
+      else
+	{
+	  heap_fc_pending_add (hfid, vpid, code);
+	}
+    }
+  if (check_interrupt)
+    {
+      (void) logtb_set_check_interrupt (thread_p, true);
+    }
+}
+
+static int heap_alloc_new_pages_internal (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * new_page_vpids,
+					  PGBUF_WATCHER * new_pg_watcher, bool bestspace_page);
+
+/*
+ * heap_fc_add_map_page () - append one map page to the heap chain and link it after the previous map page.
+ *
+ * The page is born flagged BESTSPACE (like develop's bestspace pages), so it is never an ordinary data page: no
+ * inserter can take it and nothing on it ever has to be undone. Every later step is redo-only; a failure leaves an
+ * unreachable but harmless map page behind.
+ */
 // *INDENT-OFF*
 static int
 heap_fc_add_map_page (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspace * bestspace)
@@ -4468,48 +4542,36 @@ heap_fc_add_map_page (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspac
 {
   char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *area = PTR_ALIGN (buf, MAX_ALIGNMENT);
-  PGBUF_WATCHER page_watcher, prev_watcher, hdr_watcher;
-  HEAP_CHAIN chain_old, *chain;
-  HEAP_HDR_STATS hdr_prev, *hdr;
+  PGBUF_WATCHER page_watcher, link_watcher;
+  HEAP_HDR_STATS *hdr;
   HEAP_FC_PAGE_HDR *phdr;
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
   LOG_TDES *tdes;
-  RECDES recdes, update_recdes;
+  RECDES recdes, link_recdes;
   INT16 slotid;
-  VPID vpid, prev, hdr_vpid;
+  VPID vpid, link_vpid;
   int capacity = heap_fc_capacity ();
   int error;
 
   tdes = LOG_FIND_CURRENT_TDES (thread_p);
   if (tdes == NULL || !tdes->is_allowed_sysop ())
     {
-      /* e.g. the system main transaction while booting: a later flush adds the page */
+      /* allocation opens a system operation, which e.g. the system main transaction while booting may not */
+      return ER_FAILED;
+    }
+  if (cubstorage::fctest::fail (cubstorage::fctest::P_MAPPAGE_ADD))
+    {
       return ER_FAILED;
     }
 
-  error = heap_alloc_new_pages (thread_p, hfid, 1, &vpid, &page_watcher);
+  error = heap_alloc_new_pages_internal (thread_p, hfid, 1, &vpid, &page_watcher, true);
   if (error != NO_ERROR)
     {
       return error;
     }
+  cubstorage::fctest::delay (cubstorage::fctest::P_MAPPAGE_ALLOC);
 
-  log_sysop_start (thread_p);
-
-  /* flag the chain record so scans, vacuum, checkdb and inserters treat it like a bestspace page */
-  if (spage_get_record (thread_p, page_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &recdes, PEEK) != S_SUCCESS)
-    {
-      error = ER_FAILED;
-      goto exit_on_error;
-    }
-  memcpy (&chain_old, recdes.data, sizeof (HEAP_CHAIN));
-  chain = (HEAP_CHAIN *) recdes.data;
-  HEAP_PAGE_SET_BESTSPACE (chain);
-  addr.vfid = &hfid->vfid;
-  addr.pgptr = page_watcher.pgptr;
-  addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
-  log_append_undoredo_data (thread_p, RVHF_CHAIN, &addr, sizeof (HEAP_CHAIN), sizeof (HEAP_CHAIN), &chain_old, chain);
-
-  /* the entries record; an old map hint may have let an inserter use the page before it was flagged */
+  /* the entries record */
   memset (area, 0, sizeof (HEAP_FC_PAGE_HDR) + capacity * sizeof (HEAP_FC_ENTRY));
   phdr = (HEAP_FC_PAGE_HDR *) area;
   phdr->magic = HEAP_FC_MAGIC;
@@ -4519,95 +4581,68 @@ heap_fc_add_map_page (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspac
   recdes.area_size = recdes.length = (int) (sizeof (HEAP_FC_PAGE_HDR) + capacity * sizeof (HEAP_FC_ENTRY));
   recdes.type = REC_HOME;
   recdes.data = area;
-  if (spage_number_of_records (page_watcher.pgptr) != 1
-      || spage_insert (thread_p, page_watcher.pgptr, &recdes, &slotid) != SP_SUCCESS
+  if (spage_insert (thread_p, page_watcher.pgptr, &recdes, &slotid) != SP_SUCCESS
       || slotid != HEAP_BESTSPACE_ENTRIES_SLOTID)
     {
-      error = ER_FAILED;
-      goto exit_on_error;
+      pgbuf_ordered_unfix (thread_p, &page_watcher);
+      return ER_FAILED;
     }
+  addr.vfid = &hfid->vfid;
   addr.pgptr = page_watcher.pgptr;
   addr.offset = slotid;
   log_append_redo_recdes (thread_p, RVHF_INSERT_NEWHOME, &addr, &recdes);
   pgbuf_set_dirty (thread_p, page_watcher.pgptr, DONT_FREE);
+  pgbuf_ordered_unfix (thread_p, &page_watcher);
 
+  /* make it reachable: from the header for the first map page, from the previous map page otherwise */
   if (bestspace->fc_pages ().empty ())
     {
-      /* the first map page is reached through the header: record it in the same system operation */
-      hdr_vpid.volid = hfid->vfid.volid;
-      hdr_vpid.pageid = hfid->hpgid;
-      PGBUF_INIT_WATCHER (&hdr_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
-      error = pgbuf_ordered_fix (thread_p, &hdr_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &hdr_watcher);
+      link_vpid.volid = hfid->vfid.volid;
+      link_vpid.pageid = hfid->hpgid;
+      PGBUF_INIT_WATCHER (&link_watcher, PGBUF_ORDERED_HEAP_HDR, hfid);
+      error = pgbuf_ordered_fix (thread_p, &link_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &link_watcher);
       if (error != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  return error;
 	}
-      hdr = heap_get_header_stats_ptr (thread_p, hdr_watcher.pgptr);
+      hdr = heap_get_header_stats_ptr (thread_p, link_watcher.pgptr);
       if (hdr == NULL)
 	{
-	  pgbuf_ordered_unfix (thread_p, &hdr_watcher);
-	  error = ER_FAILED;
-	  goto exit_on_error;
+	  pgbuf_ordered_unfix (thread_p, &link_watcher);
+	  return ER_FAILED;
 	}
-      hdr_prev = *hdr;
       hdr->reserve0 = vpid.pageid;
       hdr->reserve1 = vpid.volid;
-      addr.pgptr = hdr_watcher.pgptr;
+      addr.pgptr = link_watcher.pgptr;
       addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
-      log_append_undoredo_data (thread_p, RVHF_STATS, &addr, sizeof (HEAP_HDR_STATS), sizeof (HEAP_HDR_STATS),
-				&hdr_prev, hdr);
-      pgbuf_set_dirty (thread_p, hdr_watcher.pgptr, DONT_FREE);
-      pgbuf_ordered_unfix (thread_p, &hdr_watcher);
+      log_append_redo_data (thread_p, RVHF_STATS, &addr, sizeof (HEAP_HDR_STATS), hdr);
     }
   else
     {
-      /* link from the previous map page */
-      prev = bestspace->fc_pages ().back ();
-      PGBUF_INIT_WATCHER (&prev_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
-      error = pgbuf_ordered_fix (thread_p, &prev, OLD_PAGE, PGBUF_LATCH_WRITE, &prev_watcher);
+      link_vpid = bestspace->fc_pages ().back ();
+      PGBUF_INIT_WATCHER (&link_watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
+      error = pgbuf_ordered_fix (thread_p, &link_vpid, OLD_PAGE, PGBUF_LATCH_WRITE, &link_watcher);
       if (error != NO_ERROR)
 	{
-	  goto exit_on_error;
+	  return error;
 	}
-      if (spage_get_record (thread_p, prev_watcher.pgptr, HEAP_BESTSPACE_ENTRIES_SLOTID, &update_recdes, PEEK) !=
+      if (spage_get_record (thread_p, link_watcher.pgptr, HEAP_BESTSPACE_ENTRIES_SLOTID, &link_recdes, PEEK) !=
 	  S_SUCCESS)
 	{
-	  pgbuf_ordered_unfix (thread_p, &prev_watcher);
-	  error = ER_FAILED;
-	  goto exit_on_error;
+	  pgbuf_ordered_unfix (thread_p, &link_watcher);
+	  return ER_FAILED;
 	}
-      phdr = (HEAP_FC_PAGE_HDR *) update_recdes.data;
+      phdr = (HEAP_FC_PAGE_HDR *) link_recdes.data;
       phdr->next_pageid = vpid.pageid;
       phdr->next_volid = vpid.volid;
-      addr.pgptr = prev_watcher.pgptr;
+      addr.pgptr = link_watcher.pgptr;
       addr.offset = HEAP_BESTSPACE_ENTRIES_SLOTID;
-      log_append_redo_recdes (thread_p, RVHF_UPDATE_BESTSPACE_ENTRIES, &addr, &update_recdes);
-      pgbuf_set_dirty (thread_p, prev_watcher.pgptr, DONT_FREE);
-      pgbuf_ordered_unfix (thread_p, &prev_watcher);
+      log_append_redo_recdes (thread_p, RVHF_UPDATE_BESTSPACE_ENTRIES, &addr, &link_recdes);
     }
-
-  log_sysop_commit (thread_p);
-  pgbuf_ordered_unfix (thread_p, &page_watcher);
+  pgbuf_set_dirty (thread_p, link_watcher.pgptr, DONT_FREE);
+  pgbuf_ordered_unfix (thread_p, &link_watcher);
   bestspace->fc_pages ().push_back (vpid);
   return NO_ERROR;
-
-exit_on_error:
-  log_sysop_abort (thread_p);
-  if (page_watcher.pgptr != NULL)
-    {
-      /* the page stays in the heap as an ordinary data page: let inserters find it */
-      bestspace->get_fcmap ()->feedback (vpid.volid, vpid.pageid,
-					 cubstorage::bestspace::fc_code_of ((std::uint16_t)
-									    spage_max_space_for_new_record (thread_p,
-													    page_watcher.
-													    pgptr)));
-      pgbuf_ordered_unfix (thread_p, &page_watcher);
-    }
-  if (error == NO_ERROR)
-    {
-      error = ER_FAILED;
-    }
-  return error;
 }
 
 /*
@@ -4619,13 +4654,38 @@ exit_on_error:
  * memory, so its persisted entries always follow the in-memory numbering.
  */
 // *INDENT-OFF*
+static int heap_fc_flush_locked (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspace * bestspace,
+				 VPID * first_vpid);
+
+/* the flush is opportunistic: a caller that would wait on another flush (it may hold the header latch the other one
+ * needs) skips it. Page fixes inside run without interrupt checks so a cancel stays pending for the statement. */
 static int
 heap_fc_flush (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspace * bestspace, VPID * first_vpid)
+{
+  std::unique_lock<std::mutex> lock (bestspace->fc_flush_mutex (), std::try_to_lock);
+  bool check_interrupt;
+  int error;
+
+  VPID_SET_NULL (first_vpid);
+  if (!lock.owns_lock ())
+    {
+      return ER_FAILED;
+    }
+  check_interrupt = logtb_set_check_interrupt (thread_p, false);
+  error = heap_fc_flush_locked (thread_p, hfid, bestspace, first_vpid);
+  if (check_interrupt)
+    {
+      (void) logtb_set_check_interrupt (thread_p, true);
+    }
+  return error;
+}
+
+static int
+heap_fc_flush_locked (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspace * bestspace, VPID * first_vpid)
 {
   char buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *area = PTR_ALIGN (buf, MAX_ALIGNMENT);
   cubstorage::fcmap *map = bestspace->get_fcmap ();
-  std::lock_guard<std::mutex> lock (bestspace->fc_flush_mutex ());
   std::vector<std::pair<std::size_t, std::uint64_t>> taken;
   std::vector<char> touched;
   const std::size_t fanout = cubstorage::fcmap::FANOUT;
@@ -4696,11 +4756,17 @@ heap_fc_flush (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspace * bes
 	}
     }
 
+  cubstorage::fctest::delay (cubstorage::fctest::P_FLUSH_MID);
   for (p = 0; p < touched.size (); p++)
     {
       if (!touched[p])
 	{
 	  continue;
+	}
+      if (cubstorage::fctest::fail (cubstorage::fctest::P_FLUSH_PAGE))
+	{
+	  error = ER_FAILED;
+	  break;
 	}
       VPID vpid = bestspace->fc_pages ()[p];
       PGBUF_INIT_WATCHER (&watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
@@ -4820,6 +4886,12 @@ heap_fc_load (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspace * best
       vpid.volid = (VOLID) header->reserve1;
       while (!VPID_ISNULL (&vpid))
 	{
+	  cubstorage::fctest::delay (cubstorage::fctest::P_LOAD_MID);
+	  if (cubstorage::fctest::fail (cubstorage::fctest::P_LOAD_PAGE))
+	    {
+	      suspect = mismatch = true;
+	      break;
+	    }
 	  PGBUF_INIT_WATCHER (&watcher, PGBUF_ORDERED_HEAP_NORMAL, hfid);
 	  if (pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, &watcher) != NO_ERROR)
 	    {
@@ -4871,15 +4943,28 @@ heap_fc_load (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspace * best
       suspect = true;
     }
 
-  if ((header->reserve2 & HEAP_FC_CLEAN) == 0 && have_map)
+  if (have_map && !heap_fc_stamp_valid (header->reserve2))
     {
-      /* not written by a clean shutdown: space freed after the last flush may be missing */
+      /* not written by a clean shutdown of the current generation: space freed after the last flush may be missing */
       suspect = true;
     }
 
   if (suspect && !heap_fc_init_from_file (thread_p, hfid, map))
     {
       mismatch = true;
+    }
+  if (suspect)
+    {
+      /* known non-data pages: nothing for the scrub to measure */
+      for (VPID & mp:bestspace->fc_pages ())
+	{
+	  map->remove (mp.volid, mp.pageid);
+	}
+      for (i = 0; i < (int) header->bestspace.num_pages && i < (int) cubstorage::bestspace::MAX_SHARD_PAGE_COUNT; i++)
+	{
+	  map->remove (header->bestspace.pages[i].volid, header->bestspace.pages[i].pageid);
+	}
+      map->remove (hfid->vfid.volid, hfid->vfid.fileid);	/* the file header page */
     }
 
   if (!mismatch && have_map)
@@ -4906,6 +4991,143 @@ heap_fc_load (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspace * best
 }
 // *INDENT-ON*
 
+/*
+ * heap_fc_audit () - POC verification (CUBRID_FC_AUDIT): compare the map with every page of the heap chain.
+ *   under = the map holds a lower tier than the page has (space the map hides), missing = a data page the map does
+ *   not know, stale = the map offers space on a page that is not in the chain, over = the map holds a higher tier
+ *   (corrected by verification). Pages handed to the hot cache (resident) are not compared.
+ */
+// *INDENT-OFF*
+static void
+heap_fc_audit (THREAD_ENTRY * thread_p, HFID * hfid, cubstorage::bestspace * bestspace, const char *when,
+	       const HEAP_HDR_STATS * held_header)
+{
+  cubstorage::fcmap *map = bestspace->get_fcmap ();
+  std::vector<std::uint64_t> chain_keys;
+  PGBUF_WATCHER watcher;
+  VPID vpid, next;
+  int pages = 0, data = 0, map_pages = 0, eq = 0, under = 0, under3 = 0, over = 0, missing = 0, missing_space = 0;
+  int resident = 0, stale = 0, with_space = 0, errors = 0;
+  std::uint8_t code, actual;
+  std::size_t n, sec, off;
+  bool res, is_header;
+
+  if (held_header != NULL)
+    {
+      /* the caller holds the header page latch: start after it */
+      pages++;
+      chain_keys.push_back (((std::uint64_t) (std::uint16_t) hfid->vfid.volid << 32) | (std::uint32_t) hfid->hpgid);
+      vpid = held_header->next_vpid;
+    }
+  else
+    {
+      vpid.volid = hfid->vfid.volid;
+      vpid.pageid = hfid->hpgid;
+    }
+  while (!VPID_ISNULL (&vpid))
+    {
+      is_header = (vpid.volid == hfid->vfid.volid && vpid.pageid == hfid->hpgid);
+      PGBUF_INIT_WATCHER (&watcher, is_header ? PGBUF_ORDERED_HEAP_HDR : PGBUF_ORDERED_HEAP_NORMAL, hfid);
+      if (pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, &watcher) != NO_ERROR)
+	{
+	  er_clear ();
+	  errors++;
+	  break;
+	}
+      pages++;
+      chain_keys.push_back (((std::uint64_t) (std::uint16_t) vpid.volid << 32) | (std::uint32_t) vpid.pageid);
+      if (!is_header && heap_page_is_bestspace (thread_p, watcher.pgptr))
+	{
+	  map_pages++;
+	}
+      else
+	{
+	  data++;
+	  actual = cubstorage::bestspace::fc_code_of ((std::uint16_t)
+						       MIN (spage_get_free_space_without_saving (thread_p, watcher.pgptr),
+							    0xFFFF));
+	  if (actual > 0)
+	    {
+	      with_space++;
+	    }
+	  if (!map->peek (vpid.volid, vpid.pageid, code, res) || code > cubstorage::fcmap::CODE_MAX_TIER)
+	    {
+	      missing++;
+	      if (actual > 0)
+		{
+		  missing_space++;
+		}
+	    }
+	  else if (res)
+	    {
+	      resident++;
+	    }
+	  else if (code == actual)
+	    {
+	      eq++;
+	    }
+	  else if (code < actual)
+	    {
+	      under++;
+	      if (actual - code >= 3)
+		{
+		  under3++;
+		}
+	    }
+	  else
+	    {
+	      over++;
+	    }
+	}
+      if (heap_vpid_next (thread_p, hfid, watcher.pgptr, &next) != NO_ERROR)
+	{
+	  er_clear ();
+	  errors++;
+	  pgbuf_ordered_unfix (thread_p, &watcher);
+	  break;
+	}
+      pgbuf_ordered_unfix (thread_p, &watcher);
+      vpid = next;
+    }
+
+  std::sort (chain_keys.begin (), chain_keys.end ());
+  n = map->num_sectors ();
+  for (sec = 0; sec < n; sec++)
+    {
+      std::uint64_t key, codes[4];
+      map->snapshot_sector (sec, key, codes);
+      short volid = (short) ((key >> 32) - 1);
+      std::uint32_t first = (std::uint32_t) ((key & 0xFFFFFFFFULL) * cubstorage::fcmap::PAGES_PER_SECTOR);
+      for (off = 0; off < cubstorage::fcmap::PAGES_PER_SECTOR; off++)
+	{
+	  std::uint8_t c = (std::uint8_t) ((codes[off / 16] >> ((off % 16) * 4)) & 0xF);
+	  if (c >= 1 && c <= cubstorage::fcmap::CODE_MAX_TIER
+	      && !std::binary_search (chain_keys.begin (), chain_keys.end (),
+				      ((std::uint64_t) (std::uint16_t) volid << 32) | (first + (std::uint32_t) off)))
+	    {
+	      stale++;
+	    }
+	}
+    }
+  er_log_debug (ARG_FILE_LINE, "bestspace_fc audit[%s]: hfid=%d|%d|%d pages=%d data=%d with_space=%d map_pages=%d"
+		" eq=%d under=%d under3=%d over=%d missing=%d missing_space=%d resident=%d stale=%d suspect=%d"
+		" errors=%d\n", when, HFID_AS_ARGS (hfid), pages, data, with_space, map_pages, eq, under, under3, over,
+		missing, missing_space, resident, stale, (int) bestspace->fc_is_suspect (), errors);
+}
+// *INDENT-ON*
+
+static void
+heap_fc_hist_str (char *buf, std::size_t size, const std::uint64_t * hist)
+{
+  int i, len = 0;
+
+  buf[0] = '\0';
+  for (i = 0; i < cubstorage::fctest::HIST_BUCKETS && len < (int) size; i++)
+    {
+      len += snprintf (buf + len, size - len, i == 0 ? "%llu" : "/%llu", (unsigned long long) hist[i]);
+    }
+}
+
 /* runs inside bestspace_registry::create, before the new bestspace is visible */
 // *INDENT-OFF*
 static void
@@ -4915,11 +5137,24 @@ heap_fc_init_bestspace (cubstorage::bestspace * bestspace, void *args)
   HEAP_FC_INIT_ARGS *init = (HEAP_FC_INIT_ARGS *) args;
   int flags;
 
+  bool check_interrupt;
+
   if (!bestspace->full_coverage ())
     {
       return;
     }
+  check_interrupt = logtb_set_check_interrupt (init->thread_p, false);
   heap_fc_load (init->thread_p, init->hfid, bestspace, init->header);
+  if (check_interrupt)
+    {
+      (void) logtb_set_check_interrupt (init->thread_p, true);
+    }
+  /* the header page holds records too; develop's hot cache used to carry it, the map must */
+  (void) bestspace->get_fcmap ()->feedback (init->hfid->vfid.volid, init->hfid->hpgid,
+					    cubstorage::bestspace::fc_code_of ((std::uint16_t)
+										MIN (spage_get_free_space_without_saving
+										     (init->thread_p, init->header_page),
+										     0xFFFF)));
   flags = heap_fc_pending_drain (init->hfid, bestspace->get_fcmap ());
   if (flags & HEAP_FC_DRAIN_OVERFLOW)
     {
@@ -4930,20 +5165,36 @@ heap_fc_init_bestspace (cubstorage::bestspace * bestspace, void *args)
       /* heap_reuse queued every page of the heap since it emptied them */
       bestspace->fc_set_suspect (false);
     }
+  if (cubstorage::fctest::cfg ().audit_load)
+    {
+      heap_fc_audit (init->thread_p, init->hfid, bestspace, "load", init->header);
+    }
   bestspace->fc_set_loaded ();
 }
 
-/* heap_reuse: the map of the previous incarnation is void; keep the page, empty it */
+/* heap_reuse: the map of the previous incarnation is void; keep the page, empty it, tag it with the new class */
 static void
-heap_fc_reset_map_page (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr)
+heap_fc_reset_map_page (THREAD_ENTRY * thread_p, const HFID * hfid, PAGE_PTR pgptr, const OID * class_oid)
 {
   LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
-  RECDES recdes;
+  RECDES recdes, chain_recdes;
+  HEAP_CHAIN chain;
 
   if (spage_get_record (thread_p, pgptr, HEAP_BESTSPACE_ENTRIES_SLOTID, &recdes, PEEK) != S_SUCCESS
       || recdes.length < (int) sizeof (HEAP_FC_PAGE_HDR) || ((HEAP_FC_PAGE_HDR *) recdes.data)->magic != HEAP_FC_MAGIC)
     {
       return;
+    }
+  if (spage_get_record (thread_p, pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &chain_recdes, PEEK) == S_SUCCESS
+      && chain_recdes.length == (int) sizeof (HEAP_CHAIN))
+    {
+      memcpy (&chain, chain_recdes.data, sizeof (HEAP_CHAIN));
+      COPY_OID (&chain.class_oid, class_oid);
+      memcpy (chain_recdes.data, &chain, sizeof (HEAP_CHAIN));
+      addr.vfid = (VFID *) & hfid->vfid;
+      addr.pgptr = pgptr;
+      addr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
+      log_append_redo_data (thread_p, RVHF_CHAIN, &addr, sizeof (HEAP_CHAIN), &chain);
     }
   ((HEAP_FC_PAGE_HDR *) recdes.data)->count = 0;
   memset (recdes.data + sizeof (HEAP_FC_PAGE_HDR), 0, recdes.length - sizeof (HEAP_FC_PAGE_HDR));
@@ -5031,6 +5282,10 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::b
 	{
 	  bestspace->fc_set_suspect (true);
 	}
+      if (heap_Fc_shutdown_flush && cubstorage::fctest::cfg ().audit_shutdown)
+	{
+	  heap_fc_audit (thread_p, (HFID *) hfid, bestspace, "shutdown", NULL);
+	}
       fc_complete = heap_fc_flush (thread_p, (HFID *) hfid, bestspace, &fc_first_vpid) == NO_ERROR;
     }
 
@@ -5076,6 +5331,17 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::b
 		    (unsigned long long) fc_counters[6], (unsigned long long) fc_counters[7], bestspace->fc_pages ().size (),
 		    (int) bestspace->fc_is_suspect (), (int) fc_complete, (int) heap_Fc_shutdown_flush);
     }
+  {
+    /* POC verification: refill and claim latency histograms (log2 usec buckets), both modes */
+    std::uint64_t alloc_hist[cubstorage::fctest::HIST_BUCKETS], claim_hist[cubstorage::fctest::HIST_BUCKETS];
+    char alloc_buf[512], claim_buf[512];
+
+    bestspace->get_hist (alloc_hist, claim_hist);
+    heap_fc_hist_str (alloc_buf, sizeof (alloc_buf), alloc_hist);
+    heap_fc_hist_str (claim_buf, sizeof (claim_buf), claim_hist);
+    er_log_debug (ARG_FILE_LINE, "bestspace_hist: hfid=%d|%d|%d fc=%d pages=%d alloc_us=%s claim_us=%s\n",
+		  HFID_AS_ARGS (hfid), (int) bestspace->full_coverage (), num_pages, alloc_buf, claim_buf);
+  }
 
   heap_hdr = heap_get_header_stats_ptr (thread_p, header_watcher.pgptr);
   if (!heap_hdr)
@@ -5134,10 +5400,11 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::b
 	  heap_hdr->reserve0 = fc_first_vpid.pageid;
 	  heap_hdr->reserve1 = fc_first_vpid.volid;
 	}
-      /* clean only if a shutdown wrote every change and the map is not waiting for a scrub */
+      /* clean only if a shutdown wrote every change and the map is not waiting for a scrub; stamped with the
+       * current generation so a later crash or map-off run invalidates it */
       if (heap_Fc_shutdown_flush && fc_complete && !bestspace->fc_is_suspect ())
 	{
-	  heap_hdr->reserve2 |= HEAP_FC_CLEAN;
+	  heap_hdr->reserve2 = (heap_fc_generation () << 1) | HEAP_FC_CLEAN;
 	}
       else
 	{
@@ -5364,6 +5631,14 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
   fc_init_args.thread_p = thread_p;
   fc_init_args.hfid = hfid;
   fc_init_args.header = header;
+  fc_init_args.header_page = header_watcher->pgptr;
+  if (prm_get_bool_value (PRM_ID_BESTSPACE_FULL_COVERAGE))
+    {
+      /* POC-2: the map holds every page; restoring develop's older hot-cache codes on top of it would overwrite
+       * fresher map codes (and feedback queued while the heap was not loaded) */
+      num_entries = 0;
+      num_candidates = 0;
+    }
   cubstorage::bestspaces.create (hfid, num_shards, entries,
 				 MIN (num_entries, num_shards * cubstorage::bestspace::ENTRIES_PER_SHARD), candidates,
 				 num_candidates, header->num_pages, header->num_recs, header->recs_sumlen,
@@ -5396,6 +5671,7 @@ heap_build_bestspace (THREAD_ENTRY * thread_p, OID * class_oid, HFID * hfid, PGB
       LOG_DATA_ADDR fc_addr = LOG_DATA_ADDR_INITIALIZER;
 
       /* POC-2: feedback queued between the load and the bestspace becoming visible */
+      cubstorage::fctest::delay (cubstorage::fctest::P_BUILD_VISIBLE);
       if (heap_fc_pending_drain (hfid, bestspace->get_fcmap ()) & HEAP_FC_DRAIN_OVERFLOW)
 	{
 	  bestspace->fc_set_suspect (true);
@@ -5557,6 +5833,7 @@ heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::ui
   if (prm_get_bool_value (PRM_ID_BESTSPACE_FULL_COVERAGE))
     {
       /* POC full coverage: the map keeps every page, so record each change unconditionally. */
+      cubstorage::fctest::delay (cubstorage::fctest::P_FEEDBACK);
       if (heap_page_is_not_in_heap (thread_p, pgptr))
 	{
 	  return;
@@ -6067,7 +6344,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
 	      goto error;
 	    }
 	  /* the map of the previous incarnation is void (develop's entry pages have no map magic) */
-	  heap_fc_reset_map_page (thread_p, hfid, pgptr);
+	  heap_fc_reset_map_page (thread_p, hfid, pgptr, class_oid);
 
 	  last_vpid = vpid;
 
@@ -27862,6 +28139,14 @@ heap_alloc_new_page (THREAD_ENTRY * thread_p, HFID * hfid, OID class_oid, PGBUF_
 int
 heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * new_page_vpids, PGBUF_WATCHER * new_pg_watcher)
 {
+  return heap_alloc_new_pages_internal (thread_p, hfid, npages, new_page_vpids, new_pg_watcher, false);
+}
+
+/* bestspace_page: the new pages are born flagged BESTSPACE (POC-2 map pages), never usable as data pages */
+static int
+heap_alloc_new_pages_internal (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * new_page_vpids,
+			       PGBUF_WATCHER * new_pg_watcher, bool bestspace_page)
+{
   PGBUF_WATCHER heap_hdr_watcher, last_pg_watcher;
   PGBUF_WATCHER page_watcher;
   HEAP_CHAIN new_page_chain, last_chain_prev;
@@ -27920,6 +28205,10 @@ heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * n
   new_page_chain.max_mvccid = MVCCID_NULL;
   new_page_chain.flags = 0;
   HEAP_PAGE_SET_VACUUM_STATUS (&new_page_chain, HEAP_PAGE_VACUUM_NONE);
+  if (bestspace_page)
+    {
+      HEAP_PAGE_SET_BESTSPACE (&new_page_chain);
+    }
 
   log_sysop_start (thread_p);
   is_sysop_started = true;
@@ -28002,6 +28291,8 @@ heap_alloc_new_pages (THREAD_ENTRY * thread_p, HFID * hfid, int npages, VPID * n
   pgbuf_ordered_unfix (thread_p, &heap_hdr_watcher);
   heap_hdr_watcher.pgptr = NULL;
 
+  /* POC verification: the new pages are in the chain and committed, not latched yet */
+  cubstorage::fctest::delay (cubstorage::fctest::P_NEWPAGE_WINDOW);
   new_pg_watcher->pgptr =
     heap_scan_pb_latch_and_fetch (thread_p, &new_page_vpids[0], OLD_PAGE, PGBUF_LATCH_WRITE, NULL, new_pg_watcher);
   if (new_pg_watcher->pgptr == NULL)
@@ -28405,6 +28696,15 @@ cleanup:
   if (page_watcher.pgptr != NULL)
     {
       pgbuf_ordered_unfix_and_init (thread_p, page_watcher.pgptr, &page_watcher);
+    }
+
+  if (error_code == NO_ERROR && prm_get_bool_value (PRM_ID_BESTSPACE_FULL_COVERAGE))
+    {
+      /* POC-2: the appended pages are heap pages now; the map must know their space */
+      for (size_t i = 0; i < heap_pages_array.size (); i++)
+	{
+	  heap_fc_feed_page (thread_p, &hfid, &heap_pages_array[i]);
+	}
     }
 
   return error_code;

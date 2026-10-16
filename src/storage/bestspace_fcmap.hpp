@@ -37,9 +37,148 @@
 #include <cstring>
 #include <mutex>
 #include <new>
+#include <chrono>
+#include <cstdlib>
+#include <string>
+#include <thread>
 
 namespace cubstorage
 {
+  // POC verification hooks, all off unless the server process has the environment variable:
+  //   CUBRID_FC_DELAY="point:usec,..."  sleep at a point (every call, or 1 in CUBRID_FC_DELAY_EVERY calls at random)
+  //   CUBRID_FC_FAIL="point:N,..."      make every Nth call of a point fail
+  //   CUBRID_FC_FLUSH_SEC=n             bestspace sync interval (default 30)
+  //   CUBRID_FC_AUDIT="load,shutdown"   compare the map with every page of the heap and log the result
+  namespace fctest
+  {
+    enum point
+    {
+      P_FLUSH_MID, P_MAPPAGE_ALLOC, P_LOAD_MID, P_CLAIM_VERIFY, P_VAC_REMOVE, P_NEWPAGE_WINDOW, P_BUILD_VISIBLE,
+      P_SCRUB_MID, P_FEEDBACK, P_FLUSH_PAGE, P_MAPPAGE_ADD, P_LOAD_PAGE, P_COUNT
+    };
+    static const char *const POINT_NAMES[P_COUNT] =
+    {
+      "flush_mid", "mappage_alloc", "load_mid", "claim_verify", "vac_remove", "newpage_window", "build_visible",
+      "scrub_mid", "feedback", "flush_page", "mappage_add", "load_page"
+    };
+
+    struct config
+    {
+      long delay_us[P_COUNT];
+      long fail_every[P_COUNT];
+      long every;
+      long flush_sec;
+      bool audit_load;
+      bool audit_shutdown;
+      std::atomic<std::uint64_t> calls[P_COUNT];
+
+      static void parse (const char *env, long *out)
+      {
+	const char *v = std::getenv (env);
+	if (v == nullptr)
+	  {
+	    return;
+	  }
+	std::string s (v);
+	std::size_t pos = 0;
+	while (pos < s.size ())
+	  {
+	    std::size_t comma = s.find (',', pos);
+	    std::string item = s.substr (pos, comma == std::string::npos ? std::string::npos : comma - pos);
+	    std::size_t colon = item.find (':');
+	    if (colon != std::string::npos)
+	      {
+		for (int i = 0; i < P_COUNT; i++)
+		  {
+		    if (item.compare (0, colon, POINT_NAMES[i]) == 0 && std::strlen (POINT_NAMES[i]) == colon)
+		      {
+			out[i] = std::atol (item.c_str () + colon + 1);
+		      }
+		  }
+	      }
+	    if (comma == std::string::npos)
+	      {
+		break;
+	      }
+	    pos = comma + 1;
+	  }
+      }
+
+      config ()
+      {
+	const char *v;
+	for (int i = 0; i < P_COUNT; i++)
+	  {
+	    delay_us[i] = 0;
+	    fail_every[i] = 0;
+	    calls[i].store (0);
+	  }
+	parse ("CUBRID_FC_DELAY", delay_us);
+	parse ("CUBRID_FC_FAIL", fail_every);
+	v = std::getenv ("CUBRID_FC_DELAY_EVERY");
+	every = v != nullptr ? std::atol (v) : 1;
+	if (every < 1)
+	  {
+	    every = 1;
+	  }
+	v = std::getenv ("CUBRID_FC_FLUSH_SEC");
+	flush_sec = v != nullptr ? std::atol (v) : 30;
+	v = std::getenv ("CUBRID_FC_AUDIT");
+	audit_load = v != nullptr && std::strstr (v, "load") != nullptr;
+	audit_shutdown = v != nullptr && std::strstr (v, "shutdown") != nullptr;
+      }
+    };
+
+    inline config &cfg ()
+    {
+      static config c;
+      return c;
+    }
+
+    inline void delay (point p)
+    {
+      config &c = cfg ();
+      if (c.delay_us[p] <= 0)
+	{
+	  return;
+	}
+      if (c.every > 1)
+	{
+	  thread_local std::uint64_t x = 0x9E3779B97F4A7C15ULL ^ reinterpret_cast<std::uintptr_t> (&x);
+	  x ^= x << 13;
+	  x ^= x >> 7;
+	  x ^= x << 17;
+	  if (x % static_cast<std::uint64_t> (c.every) != 0)
+	    {
+	      return;
+	    }
+	}
+      std::this_thread::sleep_for (std::chrono::microseconds (c.delay_us[p]));
+    }
+
+    inline bool fail (point p)
+    {
+      config &c = cfg ();
+      if (c.fail_every[p] <= 0)
+	{
+	  return false;
+	}
+      return (c.calls[p].fetch_add (1) + 1) % static_cast<std::uint64_t> (c.fail_every[p]) == 0;
+    }
+
+    // log2 latency buckets: [0] < 1us, [k] < 2^k us, [15] >= 2^14 us (16 ms)
+    static constexpr int HIST_BUCKETS = 16;
+    inline int bucket_of (std::uint64_t usec)
+    {
+      int b = 0;
+      while (b < HIST_BUCKETS - 1 && usec >= (1ULL << b))
+	{
+	  b++;
+	}
+      return b;
+    }
+  }
+
   class fcmap
   {
     public:
@@ -175,8 +314,9 @@ namespace cubstorage
 	    return false;
 	  }
 	std::size_t off = static_cast<std::uint32_t> (pageid) % PAGES_PER_SECTOR;
-	set_code (rec, n, off, code);
+	// dirty first: a release that clears it after this point keeps this code instead of writing its older one
 	rec->dirty.fetch_or (1ULL << off);
+	set_code (rec, n, off, code);
 	count (CNT_FEEDBACK);
 	return true;
       }
@@ -345,6 +485,21 @@ namespace cubstorage
 	return found;
       }
 
+      // POC verification: the code and residency the map holds for one page; false if its sector is unknown
+      bool peek (short volid, std::int32_t pageid, std::uint8_t &code, bool &resident)
+      {
+	std::size_t n;
+	record *rec = find (volid, pageid, n);
+	if (rec == nullptr)
+	  {
+	    return false;
+	  }
+	std::size_t off = static_cast<std::uint32_t> (pageid) % PAGES_PER_SECTOR;
+	code = get_code (rec, off);
+	resident = (rec->resident.load () & (1ULL << off)) != 0;
+	return true;
+      }
+
       // ------------------------------------------------------------------ persistence helpers
       std::size_t num_sectors () const
       {
@@ -382,9 +537,11 @@ namespace cubstorage
 	  {
 	    std::size_t s = cursor / PAGES_PER_SECTOR, off = cursor % PAGES_PER_SECTOR;
 	    record *rec = sector_at (s);
-	    if (get_code (rec, off) == CODE_NONE && (rec->resident.load () & (1ULL << off)) == 0)
+	    // after an unclean restart any recorded tier may be too low, not only "no space"
+	    std::uint8_t c = get_code (rec, off);
+	    if (c < CODE_MAX_TIER && (rec->resident.load () & (1ULL << off)) == 0)
 	      {
-		out[found++] = to_claimed (key_at (s), off, CODE_NONE);
+		out[found++] = to_claimed (key_at (s), off, c);
 	      }
 	    cursor++;
 	  }
