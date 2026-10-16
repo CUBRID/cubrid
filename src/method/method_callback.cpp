@@ -384,6 +384,12 @@ namespace cubmethod
     oid_get_request request;
     request.unpack (unpacker);
 
+    if (sp_check_object_allowed (db_object (&request.oid), CUBRID_STMT_SELECT) != NO_ERROR)
+      {
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+      }
+
     oid_get_info info = get_oid_handler()->oid_get (request.oid, request.attr_names);
     if (m_error_ctx.has_error())
       {
@@ -400,6 +406,12 @@ namespace cubmethod
   {
     oid_put_request request;
     request.unpack (unpacker);
+
+    if (sp_check_object_allowed (db_object (&request.oid), CUBRID_STMT_UPDATE) != NO_ERROR)
+      {
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+      }
 
     int result = get_oid_handler()->oid_put (request.oid, request.attr_names, request.db_values);
     if (m_error_ctx.has_error())
@@ -423,6 +435,12 @@ namespace cubmethod
 
     std::string res; // result for OID_CLASS_NAME
 
+    if (cmd == OID_DROP && sp_check_object_allowed (db_object (&oid), CUBRID_STMT_DELETE) != NO_ERROR)
+      {
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+      }
+
     int res_code = get_oid_handler()->oid_cmd (oid, cmd, res);
     if (m_error_ctx.has_error())
       {
@@ -444,6 +462,12 @@ namespace cubmethod
     // args
     collection_cmd_request request;
     request.unpack (unpacker);
+
+    if (sp_check_object_allowed (db_object (&request.oid), CUBRID_STMT_UPDATE) != NO_ERROR)
+      {
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
+      }
 
     int result = m_oid_handler->collection_cmd (request.oid, request.command, request.index, request.attr_name,
 		 request.value);

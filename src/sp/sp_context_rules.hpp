@@ -94,4 +94,8 @@ extern void sp_trigger_pop (void);
  * references. Returns NO_ERROR or sets and returns the error. */
 extern int sp_check_statement_allowed (int stmt_type, bool is_ddl, const std::vector<DB_OBJECT *> &ref_tables);
 
+/* The same decision for an object the procedure reads or modifies through the OID API, as a statement of
+ * stmt_type on the object's class. A NULL or classless object is left to the caller's own error. */
+extern int sp_check_object_allowed (DB_OBJECT *obj, int stmt_type);
+
 #endif /* _SP_CONTEXT_RULES_HPP_ */

@@ -391,3 +391,16 @@ sp_check_statement_allowed (int stmt_type, bool is_ddl, const std::vector<DB_OBJ
 
   return NO_ERROR;
 }
+
+int
+sp_check_object_allowed (DB_OBJECT *obj, int stmt_type)
+{
+  DB_OBJECT *class_mop = (obj != NULL) ? db_get_class (obj) : NULL;
+
+  if (class_mop == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  return sp_check_statement_allowed (stmt_type, false, { sp_class_root (class_mop) });
+}
