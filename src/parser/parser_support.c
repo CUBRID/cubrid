@@ -4999,6 +4999,7 @@ struct pt_host_var_position_walk
  * pt_derive_host_var_position () - CBRD-27583: the host variable node needs its user position's value in another
  *   domain: it moves to a derived position of that domain (one per user position and domain), numbered after the
  *   auto-parameters; the client converts the user's value into it at every bind (pt_set_derived_host_variable).
+ *   Without a node the position is made for a later translation's node (pt_derive_column_host_var_position).
  */
 static int
 pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_index, TP_DOMAIN * domain, bool create)
@@ -5044,9 +5045,12 @@ pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_ind
 	  return ER_FAILED;
 	}
     }
-  hv->info.host_var.index = k;
-  hv->info.host_var.rule_cast = false;
-  hv->expected_domain = domain;
+  if (hv != NULL)
+    {
+      hv->info.host_var.index = k;
+      hv->info.host_var.rule_cast = false;
+      hv->expected_domain = domain;
+    }
   return NO_ERROR;
 }
 
@@ -5103,6 +5107,62 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
   return pt_derive_host_var_position (parser, hv, i, need, walk->assign);
 }
 
+/*
+ * pt_derive_column_host_var_position () - CBRD-27583 (D-32): in a DML statement, a comparison operand naming a derived
+ *   table's column whose select list item is a value-typed user host variable. A later translation (the SELECT the
+ *   statement's XASL generation builds, as pt_to_merge_update_xasl) merges the derived table and compares the host
+ *   variable itself; a later translation makes no derived position, so the first one makes it here, by the rule the
+ *   host variable node would take in that comparison.
+ */
+static int
+pt_derive_column_host_var_position (PARSER_CONTEXT * parser, PT_NODE * name, PT_HOST_VAR_POSITION_WALK * walk)
+{
+  PT_NODE *spec = NULL;
+  for (int d = walk->depth - 1; d >= 0 && spec == NULL; d--)
+    {
+      const PT_NODE *open = walk->open[d];
+      spec = open->node_type == PT_SELECT ? pt_find_spec (parser, open->info.query.q.select.from, name)
+	: pt_find_spec_in_statement (parser, open, name);
+    }
+  if (spec == NULL || spec->info.spec.derived_table_type != PT_IS_SUBQUERY || spec->info.spec.derived_table == NULL
+      || spec->info.spec.derived_table->node_type != PT_SELECT)
+    {
+      return NO_ERROR;
+    }
+  PT_NODE *item = pt_get_select_list (parser, spec->info.spec.derived_table);
+  PT_NODE *column = spec->info.spec.as_attr_list;
+  for (; column != NULL && item != NULL; column = column->next, item = item->next)
+    {
+      if (column->node_type == PT_NAME && column->info.name.original != NULL && name->info.name.original != NULL
+	  && intl_identifier_casecmp (column->info.name.original, name->info.name.original) == 0)
+	{
+	  break;
+	}
+    }
+  if (column == NULL || item == NULL || item->node_type != PT_HOST_VAR || item->info.host_var.var_type != PT_HOST_IN
+      || item->info.host_var.index < 0 || item->info.host_var.index >= parser->host_var_count
+      || DB_VALUE_DOMAIN_TYPE (&parser->host_variables[item->info.host_var.index]) == DB_TYPE_NULL
+      || (!item->info.host_var.rule_cast && pt_host_var_is_context_typed (item->expected_domain)))
+    {
+      return NO_ERROR;
+    }
+  const int i = item->info.host_var.index;
+  TP_DOMAIN *value = pt_host_var_value_domain (parser, i);
+  TP_DOMAIN *target = pt_bind_operand_target (parser, value, name, walk->open[walk->depth - 1],
+					      walk->depth > 1 ? walk->open[walk->depth - 2] : NULL);
+  if (target == NULL || tp_domain_match (target, value, TP_EXACT_MATCH))
+    {
+      return NO_ERROR;
+    }
+  if (parser->host_var_derived_from == NULL
+      && pt_grow_host_var_positions (parser, parser->host_var_count,
+				     parser->host_var_count + parser->auto_param_count) != NO_ERROR)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  return pt_derive_host_var_position (parser, NULL, i, target, true);
+}
+
 static PT_NODE *
 pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -5133,6 +5193,12 @@ pt_assign_host_var_positions_pre (PARSER_CONTEXT * parser, PT_NODE * node, void 
 	}
       walk->error = pt_assign_host_var_position (parser, node, walk->depth > 0 ? walk->open[walk->depth - 1] : NULL,
 						 walk->depth > 1 ? walk->open[walk->depth - 2] : NULL, walk);
+    }
+  else if (node->node_type == PT_NAME && walk->assign && walk->depth > 0 && parser->host_var_compiled_domains != NULL
+	   && (walk->open[0]->node_type == PT_MERGE || walk->open[0]->node_type == PT_UPDATE
+	       || walk->open[0]->node_type == PT_DELETE))
+    {
+      walk->error = pt_derive_column_host_var_position (parser, node, walk);
     }
   if (walk->depth == walk->capacity)
     {
