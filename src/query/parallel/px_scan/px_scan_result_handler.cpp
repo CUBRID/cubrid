@@ -345,7 +345,7 @@ namespace parallel_scan
 	      }
 	  }
 	/* CBRD-27659: nullptr when there is no filter or the worker could not set up (its rows then go through) */
-	tl.bloom_worker = hjoin_bloom_worker_begin (thread_p, m_.bloom);
+	tl.bloom_worker = hjoin_bloom_worker_begin (thread_p, m_.bloom, outptr_list);
 	tl.write_initialized = true;
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
@@ -668,7 +668,7 @@ namespace parallel_scan
 	      while (m_.active_results != 0)
 		{
 		  m_result_cv.wait_for (lock, std::chrono::microseconds (50));
-		  if (m_.bloom != nullptr)
+		  if (m_.bloom != nullptr && m_.active_results != 0)
 		    {
 		      /* CBRD-27659: the owner fills the hash join filter once the workers have seen enough rows - not
 		       * under the lock a worker takes to report done */
@@ -924,6 +924,12 @@ namespace parallel_scan
 	  }
 
 	prefetch (tl.writer_result_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
+
+	if (tl.bloom_worker != nullptr && hjoin_bloom_worker_skip_row (thread_p, tl.bloom_worker, tl.vd))
+	  {
+	    /* CBRD-27659: no row of the other hash join input has this key - neither projected nor written */
+	    return true;
+	  }
 
 	/* Each worker sizes against its own destination list, which opened with the plan's domains. */
 	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, tl.writer_result_p);

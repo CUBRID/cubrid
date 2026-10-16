@@ -1194,6 +1194,12 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	    }
 	}
 
+      if (xasl->hj_bloom != NULL && hjoin_bloom_skip_row (thread_p, xasl, &xasl_state->vd))
+	{
+	  /* CBRD-27659: no row of the other hash join input has this key - neither projected nor written */
+	  return ret;
+	}
+
       tpldescr_status = qexec_generate_tuple_descriptor (thread_p, xasl->list_id, xasl->outptr_list, &xasl_state->vd);
       if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
 	{

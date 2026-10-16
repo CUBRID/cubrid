@@ -4834,6 +4834,10 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	case HASHJOIN_BLOOM_OFF_FIRST_ROWS:
 	  fprintf (fp, "%*cBLOOM (off: first input empty, failed or too large)\n", indent, ' ');
 	  break;
+	case HASHJOIN_BLOOM_ENDED_FIRST:
+	  fprintf (fp, "%*cBLOOM (not built: the second input ended, %lld rows, before the filter was filled)\n",
+		   indent, ' ', (long long) bs->seen);
+	  break;
 	default:
 	  fprintf (fp, "%*cBLOOM (keys: %lld, seen: %lld, tested: %lld, skipped: %lld%s)\n", indent, ' ',
 		   (long long) bs->keys, (long long) bs->seen, (long long) bs->tested, (long long) bs->skipped,

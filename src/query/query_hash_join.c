@@ -4718,6 +4718,12 @@ struct hjoin_bloom
   HASHJOIN_FETCH_INFO first;
   HASHJOIN_FETCH_INFO second;
 
+  /* the checked input's key columns as plain column references in its output list (the hash join thread's, read
+   * only): the row is checked before the projection, from these values. NULL: some key is computed - the row is
+   * checked after the projection, from its serialized tuple. */
+  REGU_VARIABLE **key_regus;
+  DB_VALUE *key_cast;		/* the owner's: per key, a value not of its list column's domain is cast here */
+
   char *row_buf;		/* the owner's: the second input's row serialized for hjoin_fetch_key */
   int row_buf_size;
 
@@ -4747,6 +4753,164 @@ hjoin_bloom_turn_off (HJOIN_BLOOM * bloom, INT64 reason)
 	}
       cur = hjoin_bloom_state (bloom);
     }
+}
+
+/*
+ * hjoin_bloom_find_key_regus () - the regu variables of the key columns in an input's output list, when every one is
+ *				    a plain reference to a value the scan already holds (no evaluation to fetch it)
+ *   return: false when a key column is computed or hidden, or the list does not hold it
+ *   value_indexes(in): the key columns' positions in the input's list (hidden columns are not in the list)
+ */
+static bool
+hjoin_bloom_find_key_regus (OUTPTR_LIST * outptr_list, const int *value_indexes, int key_cnt, REGU_VARIABLE ** regus)
+{
+  REGU_VARIABLE_LIST reg;
+  int k, list_index;
+
+  if (outptr_list == NULL)
+    {
+      return false;
+    }
+  for (k = 0; k < key_cnt; k++)
+    {
+      regus[k] = NULL;
+      for (reg = outptr_list->valptrp, list_index = 0; reg != NULL; reg = reg->next)
+	{
+	  if (reg->value.flags & REGU_VARIABLE_HIDDEN_COLUMN)
+	    {
+	      continue;
+	    }
+	  if (list_index++ == value_indexes[k])
+	    {
+	      regus[k] = &reg->value;
+	      break;
+	    }
+	}
+      if (regus[k] == NULL)
+	{
+	  return false;
+	}
+      switch (regus[k]->type)
+	{
+	case TYPE_ATTR_ID:
+	case TYPE_CONSTANT:
+	case TYPE_POSITION:
+	case TYPE_DBVAL:
+	  break;
+	default:
+	  return false;
+	}
+      if (REGU_VARIABLE_IS_FLAGED (regus[k], REGU_VARIABLE_ANALYTIC_WINDOW)
+	  || REGU_VARIABLE_IS_FLAGED (regus[k], REGU_VARIABLE_UPD_INS_LIST))
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/* the checked input's key positions in its list */
+static const int *
+hjoin_bloom_second_value_indexes (const HJOIN_BLOOM * bloom)
+{
+  const QFILE_LIST_MERGE_INFO *merge_info = &bloom->hj_xasl->proc.hashjoin.merge_info;
+
+  return bloom->first_is_outer ? merge_info->ls_inner_column : merge_info->ls_outer_column;
+}
+
+/* does the value already have the list column's domain, as the list would hand it back? */
+static bool
+hjoin_bloom_value_in_domain (const DB_VALUE * value, const TP_DOMAIN * domain)
+{
+  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+
+  if (type != TP_DOMAIN_TYPE (domain))
+    {
+      return false;
+    }
+  if (type == DB_TYPE_NUMERIC)
+    {
+      return value->domain.numeric_info.precision == domain->precision
+	&& value->domain.numeric_info.scale == domain->scale;
+    }
+  if (TP_IS_CHAR_TYPE (type))
+    {
+      return db_get_string_collation (value) == domain->collation_id
+	&& db_get_string_codeset (value) == TP_DOMAIN_CODESET (domain);
+    }
+  return true;
+}
+
+/*
+ * hjoin_bloom_fetch_key_values () - hjoin_fetch_key for a row that is not serialized yet: the key values straight
+ *				      from the row, brought to the list column's domain (as the list will hold
+ *				      them) and then coerced as hjoin_fetch_key coerces what it reads from the list
+ *   regus(in): the key columns' plain references (hjoin_bloom_find_key_regus)
+ *   cast(in/out): per key, a value to cast into when the row's value is not of the list column's domain
+ */
+static int
+hjoin_bloom_fetch_key_values (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, REGU_VARIABLE ** regus,
+			      DB_VALUE * cast, VAL_DESCR * vd, HASH_SCAN_KEY * key, bool * need_skip_next)
+{
+  TP_DOMAIN **domains = fetch_info->input->domains;
+  TP_DOMAIN **coerce_domains = fetch_info->coerce_domains;
+  DB_VALUE *value, pre_coerce_value;
+  TP_DOMAIN_STATUS domain_status;
+  int key_index;
+
+  for (key_index = 0; key_index < key->val_count; key_index++)
+    {
+      pr_clear_value (key->values[key_index]);
+
+      if (fetch_peek_dbval (thread_p, regus[key_index], vd, NULL, NULL, NULL, &value) != NO_ERROR)
+	{
+	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	}
+      if (DB_IS_NULL (value))
+	{
+	  /* a NULL key never joins */
+	  *need_skip_next = true;
+	  return NO_ERROR;
+	}
+      if (!hjoin_bloom_value_in_domain (value, domains[key_index]))
+	{
+	  pr_clear_value (&cast[key_index]);
+	  domain_status = tp_value_coerce (value, &cast[key_index], domains[key_index]);
+	  if (domain_status != DOMAIN_COMPATIBLE)
+	    {
+	      tp_domain_status_er_set (domain_status, ARG_FILE_LINE, value, domains[key_index]);
+	      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	    }
+	  value = &cast[key_index];
+	}
+
+      if (fetch_info->need_coerce_domains && coerce_domains[key_index] != NULL
+	  && coerce_domains[key_index] != domains[key_index])
+	{
+	  /* as hjoin_fetch_key does after it reads the value from the list */
+	  pre_coerce_value = *value;
+	  if (coerce_domains[key_index]->type->id == DB_TYPE_NUMERIC
+	      && pre_coerce_value.domain.general_info.type == DB_TYPE_NUMERIC
+	      && coerce_domains[key_index]->precision == DB_DEFAULT_NUMERIC_PRECISION
+	      && pre_coerce_value.domain.numeric_info.precision != DB_DEFAULT_NUMERIC_PRECISION
+	      && pre_coerce_value.domain.numeric_info.scale < 0)
+	    {
+	      pre_coerce_value.domain.numeric_info.precision = DB_HJOIN_NUMERIC_PRECISION_DEFERRED;
+	    }
+	  domain_status = tp_value_coerce (&pre_coerce_value, key->values[key_index], coerce_domains[key_index]);
+	  if (domain_status != DOMAIN_COMPATIBLE)
+	    {
+	      tp_domain_status_er_set (domain_status, ARG_FILE_LINE, &pre_coerce_value, coerce_domains[key_index]);
+	      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+	    }
+	}
+      else
+	{
+	  /* read without a copy, as hjoin_fetch_key peeks into the list's page */
+	  pr_share_value (value, key->values[key_index]);
+	}
+    }
+  return NO_ERROR;
 }
 
 static inline void
@@ -4902,6 +5066,19 @@ hjoin_bloom_attach (THREAD_ENTRY * thread_p, XASL_NODE * hj_xasl)
   bloom->state = HJOIN_BLOOM_WAITING;
   bloom->threshold = HJOIN_BLOOM_MIN_SECOND_ROWS;	/* raised when the first input's row count is known */
 
+  bloom->key_regus =
+    (REGU_VARIABLE **) db_private_alloc (thread_p, proc->merge_info.ls_column_cnt * sizeof (REGU_VARIABLE *));
+  if (bloom->key_regus == NULL)
+    {
+      er_clear ();		/* a failed allocation only means the later check */
+    }
+  else if (!hjoin_bloom_find_key_regus (second_xasl->outptr_list, hjoin_bloom_second_value_indexes (bloom),
+					proc->merge_info.ls_column_cnt, bloom->key_regus))
+    {
+      /* a computed key: checked after the projection */
+      db_private_free_and_init (thread_p, bloom->key_regus);
+    }
+
   first_xasl->hj_bloom = bloom;
   second_xasl->hj_bloom = bloom;
 }
@@ -4922,6 +5099,16 @@ hjoin_bloom_free_owned (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   if (bloom->row_buf != NULL)
     {
       db_private_free_and_init (thread_p, bloom->row_buf);
+    }
+  if (bloom->key_cast != NULL)
+    {
+      int k;
+
+      for (k = 0; k < bloom->hj_xasl->proc.hashjoin.merge_info.ls_column_cnt; k++)
+	{
+	  pr_clear_value (&bloom->key_cast[k]);
+	}
+      db_private_free_and_init (thread_p, bloom->key_cast);
     }
 }
 
@@ -4990,15 +5177,27 @@ hjoin_bloom_setup (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   manager.inner = &proc->inner;
   if (hjoin_init_domain_info (thread_p, &manager, domain_info) != NO_ERROR)
     {
-      er_clear ();
       return false;
     }
 
   bloom->key = qdata_alloc_hscan_key (thread_p, proc->merge_info.ls_column_cnt, true);
   if (bloom->key == NULL)
     {
-      er_clear ();
       return false;
+    }
+  if (bloom->key_regus != NULL)
+    {
+      int k;
+
+      bloom->key_cast = (DB_VALUE *) db_private_alloc (thread_p, proc->merge_info.ls_column_cnt * sizeof (DB_VALUE));
+      if (bloom->key_cast == NULL)
+	{
+	  return false;
+	}
+      for (k = 0; k < proc->merge_info.ls_column_cnt; k++)
+	{
+	  db_make_null (&bloom->key_cast[k]);
+	}
     }
 
   bloom->first.input = bloom->first_is_outer ? &domain_info->outer : &domain_info->inner;
@@ -5010,11 +5209,10 @@ hjoin_bloom_setup (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   return true;
 }
 
-/* the owner, once the first input is done and the second has given threshold rows: set up, hash every first-input
- * key into the bits, then publish the filter (or turn it off when that fails: a filter missing some of the first
- * input's keys would drop rows that join) */
-static void
-hjoin_bloom_fill (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
+/* set up and hash every first-input key into the bits; false when any of it fails (a filter missing some of the
+ * first input's keys would drop rows that join) */
+static bool
+hjoin_bloom_fill_bits (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
 {
   QFILE_LIST_ID *first_list_id = bloom->first_xasl->list_id;
   QFILE_LIST_SCAN_ID scan_id;
@@ -5025,12 +5223,9 @@ hjoin_bloom_fill (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   bool need_skip_next = false;
   SCAN_CODE scan_code;
 
-  assert (bloom->state == HJOIN_BLOOM_WAITING && bloom->first_done != 0);
-
   if (!bloom->set_up && !hjoin_bloom_setup (thread_p, bloom))
     {
-      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
-      return;
+      return false;
     }
 
   /* power of two >= keys * bits-per-key, at least one word */
@@ -5043,17 +5238,13 @@ hjoin_bloom_fill (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   bloom->bits = (UINT64 *) db_private_alloc (thread_p, (size_t) (nbits / 64) * sizeof (UINT64));
   if (bloom->bits == NULL)
     {
-      er_clear ();
-      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
-      return;
+      return false;
     }
   memset (bloom->bits, 0, (size_t) (nbits / 64) * sizeof (UINT64));
 
   if (qfile_open_list_scan (first_list_id, &scan_id) != NO_ERROR)
     {
-      er_clear ();
-      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
-      return;
+      return false;
     }
 
   while ((scan_code = qfile_scan_list_next (thread_p, &scan_id, &tuple_record, PEEK)) == S_SUCCESS)
@@ -5074,13 +5265,29 @@ hjoin_bloom_fill (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
     }
   qfile_close_scan (thread_p, &scan_id);
 
-  if (scan_code != S_END || er_errid () != NO_ERROR)
+  /* the error stack frame of hjoin_bloom_fill starts clear: an error id here was set by the fill itself */
+  return scan_code == S_END && er_errid () == NO_ERROR;
+}
+
+/* the owner, once the first input is done and the second has given threshold rows: fill the bits and publish the
+ * filter, or turn it off. The fill runs in an error stack frame of its own, so what it may set is dropped and an
+ * error the query had already set stays as it was. */
+static void
+hjoin_bloom_fill (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
+{
+  bool filled;
+
+  assert (bloom->state == HJOIN_BLOOM_WAITING && bloom->first_done != 0);
+
+  er_stack_push ();
+  filled = hjoin_bloom_fill_bits (thread_p, bloom);
+  er_stack_pop ();
+
+  if (!filled)
     {
-      er_clear ();
       hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
       return;
     }
-
   /* the bits before the state: a worker that reads READY reads them filled */
   ATOMIC_STORE_64_RELEASE (&bloom->state, (INT64) HJOIN_BLOOM_READY);
 }
@@ -5109,6 +5316,29 @@ hjoin_bloom_is_owner (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom, XASL_NODE * 
       bloom->owner_thread = thread_p;
     }
   return bloom->owner_thread == thread_p;
+}
+
+/* the decision on a key already fetched */
+static bool
+hjoin_bloom_key_absent (HJOIN_BLOOM * bloom, HASH_SCAN_KEY * key)
+{
+  return !hjoin_bloom_may_contain (bloom, qdata_hash_scan_key (key, UINT_MAX, HASH_METH_IN_MEM));
+}
+
+/* the decision on a row before its projection, from its key columns' values */
+static bool
+hjoin_bloom_check_values (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom, REGU_VARIABLE ** regus, DB_VALUE * cast,
+			  VAL_DESCR * vd, HASH_SCAN_KEY * key, bool * failed)
+{
+  bool need_skip_next = false;
+
+  if (hjoin_bloom_fetch_key_values (thread_p, &bloom->second, regus, cast, vd, key, &need_skip_next) != NO_ERROR)
+    {
+      er_clear ();
+      *failed = true;
+      return false;
+    }
+  return need_skip_next || hjoin_bloom_key_absent (bloom, key);
 }
 
 /* the decision on one serialized second-input row; key is the caller's (the owner's or a worker's). The bits and
@@ -5176,6 +5406,42 @@ hjoin_bloom_skip_record (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom, QFILE_TUP
 }
 
 /*
+ * hjoin_bloom_skip_row () - should the row xasl is about to project be left out of its list? Checked before the
+ *			      projection from the key columns' values, when every key is a plain column reference.
+ *   vd(in): the value descriptor the projection would use
+ */
+bool
+hjoin_bloom_skip_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd)
+{
+  HJOIN_BLOOM *bloom = xasl->hj_bloom;
+  bool failed = false;
+  bool skip;
+
+  if (bloom == NULL || bloom->key_regus == NULL)
+    {
+      return false;
+    }
+  bloom = hjoin_bloom_owner_row (thread_p, xasl);
+  if (bloom == NULL)
+    {
+      return false;
+    }
+  skip = hjoin_bloom_check_values (thread_p, bloom, bloom->key_regus, bloom->key_cast, vd, bloom->key, &failed);
+  if (failed)
+    {
+      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
+      return false;
+    }
+  bloom->tested++;
+  if (skip)
+    {
+      bloom->skipped++;
+    }
+  hjoin_bloom_judge_sample (bloom, bloom->tested, bloom->skipped);
+  return skip;
+}
+
+/*
  * hjoin_bloom_skip_descr () - should the row in xasl's tuple descriptor be left out of its list?
  *   xasl(in): a BUILDLIST xasl whose qexec_generate_tuple_descriptor succeeded for the current row
  *
@@ -5185,7 +5451,8 @@ hjoin_bloom_skip_record (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom, QFILE_TUP
 bool
 hjoin_bloom_skip_descr (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
-  HJOIN_BLOOM *bloom = hjoin_bloom_owner_row (thread_p, xasl);
+  HJOIN_BLOOM *bloom = (xasl->hj_bloom != NULL && xasl->hj_bloom->key_regus != NULL)
+    ? NULL : hjoin_bloom_owner_row (thread_p, xasl);
   QFILE_TUPLE_DESCRIPTOR *descr;
   // *INDENT-OFF*
   QFILE_TUPLE_RECORD record = QFILE_TUPLE_RECORD_INITIALIZER;
@@ -5233,8 +5500,9 @@ hjoin_bloom_skip_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, char *tuple)
   QFILE_TUPLE_RECORD record = QFILE_TUPLE_RECORD_INITIALIZER;
   // *INDENT-ON*
 
-  if (tuple == NULL)
+  if (tuple == NULL || (xasl->hj_bloom != NULL && xasl->hj_bloom->key_regus != NULL))
     {
+      /* no tuple, or the row was checked before its projection (hjoin_bloom_skip_row) */
       return false;
     }
   bloom = hjoin_bloom_owner_row (thread_p, xasl);
@@ -5285,6 +5553,8 @@ struct hjoin_bloom_worker
   int row_buf_size;
   bool disabled;		/* this worker gave up (a failed key or buffer): its rows go through */
   bool ready;			/* the filter's state as of the last batch: checking */
+  REGU_VARIABLE **key_regus;	/* its clone's key columns (when the owner checks before the projection) */
+  DB_VALUE *key_cast;
   INT64 seen_unflushed;
   INT64 tested;
   INT64 skipped;
@@ -5292,7 +5562,7 @@ struct hjoin_bloom_worker
 
 /* a worker's state, on the worker's own heap; NULL lets every row through */
 HJOIN_BLOOM_WORKER *
-hjoin_bloom_worker_begin (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
+hjoin_bloom_worker_begin (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom, OUTPTR_LIST * outptr_list)
 {
   HJOIN_BLOOM_WORKER *worker;
 
@@ -5315,8 +5585,59 @@ hjoin_bloom_worker_begin (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
       db_private_free (thread_p, worker);
       return NULL;
     }
+  if (bloom->key_regus != NULL)
+    {
+      int key_cnt = bloom->hj_xasl->proc.hashjoin.merge_info.ls_column_cnt, k;
+
+      worker->key_regus = (REGU_VARIABLE **) db_private_alloc (thread_p, key_cnt * sizeof (REGU_VARIABLE *));
+      worker->key_cast = (DB_VALUE *) db_private_alloc (thread_p, key_cnt * sizeof (DB_VALUE));
+      if (worker->key_regus == NULL || worker->key_cast == NULL
+	  || !hjoin_bloom_find_key_regus (outptr_list, hjoin_bloom_second_value_indexes (bloom), key_cnt,
+					  worker->key_regus))
+	{
+	  /* the clone's list does not match the owner's: this worker lets its rows through */
+	  er_clear ();
+	  worker->disabled = true;
+	}
+      if (worker->key_cast != NULL)
+	{
+	  for (k = 0; k < key_cnt; k++)
+	    {
+	      db_make_null (&worker->key_cast[k]);
+	    }
+	}
+    }
   worker->ready = hjoin_bloom_state (bloom) == HJOIN_BLOOM_READY;
   return worker;
+}
+
+static bool hjoin_bloom_worker_row (HJOIN_BLOOM_WORKER * worker);
+
+/* a worker's row before its projection (see hjoin_bloom_skip_row) */
+bool
+hjoin_bloom_worker_skip_row (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * worker, VAL_DESCR * vd)
+{
+  bool failed = false;
+  bool skip;
+
+  if (worker == NULL || worker->bloom->key_regus == NULL || !hjoin_bloom_worker_row (worker))
+    {
+      return false;
+    }
+  skip = hjoin_bloom_check_values (thread_p, worker->bloom, worker->key_regus, worker->key_cast, vd, worker->key,
+				   &failed);
+  if (failed)
+    {
+      worker->disabled = true;
+      return false;
+    }
+  worker->tested++;
+  if (skip)
+    {
+      worker->skipped++;
+    }
+  hjoin_bloom_judge_sample (worker->bloom, worker->tested, worker->skipped);
+  return skip;
 }
 
 /* count the row; every batch hand the count over and look at the filter's state again. True when this row is to
@@ -5363,7 +5684,7 @@ hjoin_bloom_worker_skip_descr (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * wor
   QFILE_TUPLE_RECORD record = QFILE_TUPLE_RECORD_INITIALIZER;
   // *INDENT-ON*
 
-  if (worker == NULL || !hjoin_bloom_worker_row (worker))
+  if (worker == NULL || worker->bloom->key_regus != NULL || !hjoin_bloom_worker_row (worker))
     {
       return false;
     }
@@ -5400,7 +5721,7 @@ hjoin_bloom_worker_skip_tuple (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * wor
   QFILE_TUPLE_RECORD record = QFILE_TUPLE_RECORD_INITIALIZER;
   // *INDENT-ON*
 
-  if (worker == NULL || tuple == NULL || !hjoin_bloom_worker_row (worker))
+  if (worker == NULL || tuple == NULL || worker->bloom->key_regus != NULL || !hjoin_bloom_worker_row (worker))
     {
       return false;
     }
@@ -5424,6 +5745,20 @@ hjoin_bloom_worker_end (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * worker)
     {
       db_private_free (thread_p, worker->row_buf);
     }
+  if (worker->key_cast != NULL)
+    {
+      int k;
+
+      for (k = 0; k < worker->bloom->hj_xasl->proc.hashjoin.merge_info.ls_column_cnt; k++)
+	{
+	  pr_clear_value (&worker->key_cast[k]);
+	}
+      db_private_free (thread_p, worker->key_cast);
+    }
+  if (worker->key_regus != NULL)
+    {
+      db_private_free (thread_p, worker->key_regus);
+    }
   db_private_free (thread_p, worker);
 }
 
@@ -5443,6 +5778,10 @@ hjoin_bloom_free (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   if (bloom->owner_xasl->hj_bloom == bloom)
     {
       bloom->owner_xasl->hj_bloom = NULL;
+    }
+  if (bloom->key_regus != NULL)
+    {
+      db_private_free (thread_p, bloom->key_regus);
     }
   db_private_free (thread_p, bloom);
 }
@@ -5500,8 +5839,19 @@ hjoin_bloom_finish (THREAD_ENTRY * thread_p, XASL_NODE * hj_xasl)
     }
   else
     {
-      stats->state =
-	(bloom->state == HJOIN_BLOOM_READY) ? (int) HASHJOIN_BLOOM_CHECKED : (int) HASHJOIN_BLOOM_NOT_BUILT;
+      if (bloom->state == HJOIN_BLOOM_READY)
+	{
+	  stats->state = (int) HASHJOIN_BLOOM_CHECKED;
+	}
+      else if (bloom->first_done != 0 && bloom->seen >= bloom->threshold)
+	{
+	  /* due, but the second input ended before the owner got to fill it (a parallel scan's last batch) */
+	  stats->state = (int) HASHJOIN_BLOOM_ENDED_FIRST;
+	}
+      else
+	{
+	  stats->state = (int) HASHJOIN_BLOOM_NOT_BUILT;
+	}
     }
   stats->keys = bloom->keys;
   stats->threshold = bloom->threshold;
