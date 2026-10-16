@@ -71,6 +71,8 @@
 #define PT_MEMB_ERR_BUF_SIZE    256
 #define MAX_STRING_SEGMENT_LENGTH 254
 #define DONT_PRT_LONG_STRING_LENGTH 256
+/* CBRD-27583: the cache key text prints a LIMIT rewritten into a numbering predicate too: the plan reads its binds */
+#define PT_PRINT_LIMIT(parser, rewrite_limit) ((rewrite_limit) || ((parser)->custom_print & PT_PRINT_HOST_VAR_COUNT))
 
 #define PT_APPLY_WALK(parser, ptr, arg) do { \
          if((ptr))                           \
@@ -9499,7 +9501,7 @@ pt_print_delete (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
     }
 
-  if (p->info.delete_.limit && p->info.delete_.rewrite_limit)
+  if (p->info.delete_.limit && PT_PRINT_LIMIT (parser, p->info.delete_.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.delete_.limit);
       q = pt_append_nulstring (parser, q, " limit ");
@@ -9589,7 +9591,7 @@ pt_print_difference (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_varchar (parser, q, r1);
     }
 
-  if (p->info.query.limit && p->info.query.flag.rewrite_limit)
+  if (p->info.query.limit && PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.query.limit);
       q = pt_append_nulstring (parser, q, " limit ");
@@ -13969,7 +13971,7 @@ pt_print_intersection (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " for");
       q = pt_append_varchar (parser, q, r1);
     }
-  if (p->info.query.limit && p->info.query.flag.rewrite_limit)
+  if (p->info.query.limit && PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.query.limit);
       q = pt_append_nulstring (parser, q, " limit ");
@@ -15723,7 +15725,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
 	  q = pt_append_varchar (parser, q, r1);
 	}
 
-      if (p->info.query.limit && p->info.query.flag.rewrite_limit)
+      if (p->info.query.limit && PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit))
 	{
 	  r1 = pt_print_bytes_l (parser, p->info.query.limit);
 	  q = pt_append_nulstring (parser, q, " limit ");
@@ -16347,7 +16349,7 @@ pt_print_union_stmt (PARSER_CONTEXT * parser, PT_NODE * p)
       q = pt_append_nulstring (parser, q, " for ");
       q = pt_append_varchar (parser, q, r1);
     }
-  if (p->info.query.limit && p->info.query.flag.rewrite_limit)
+  if (p->info.query.limit && PT_PRINT_LIMIT (parser, p->info.query.flag.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.query.limit);
       q = pt_append_nulstring (parser, q, " limit ");
@@ -16663,7 +16665,7 @@ pt_print_update (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r1);
     }
 
-  if (p->info.update.limit && p->info.update.rewrite_limit)
+  if (p->info.update.limit && PT_PRINT_LIMIT (parser, p->info.update.rewrite_limit))
     {
       r1 = pt_print_bytes_l (parser, p->info.update.limit);
       b = pt_append_nulstring (parser, b, " limit ");
