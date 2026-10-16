@@ -11970,7 +11970,9 @@ pt_dblink_merge_value_leaf (PT_NODE * node, void *arg)
   PT_DBLINK_MERGE_REFS *refs = (PT_DBLINK_MERGE_REFS *) arg;
   PT_NODE *qual;
 
-  if (node->node_type != PT_DOT_)
+  /* A column has a name after the qualifier. A method call written R.foo () is a PT_DOT_ as well, but names
+   * no column. It must not pass for one, or it would be taken for an ON key or a bound value. */
+  if (node->node_type != PT_DOT_ || node->info.dot.arg2 == NULL || node->info.dot.arg2->node_type != PT_NAME)
     {
       return PT_DBLINK_LEAF_NONE;
     }
@@ -12165,6 +12167,11 @@ pt_dblink_merge_set_ok (PARSER_CONTEXT * parser, PT_NODE * assignments, PT_DBLIN
 	    {
 	      /* A written column named with the source is a qualifier problem. It is not an expression shape. */
 	      refs->seen_unsupported = true;
+	      return false;
+	    }
+	  if (lhs->info.dot.arg2 == NULL || lhs->info.dot.arg2->node_type != PT_NAME)
+	    {
+	      /* a method call R.foo (), which names no column to write */
 	      return false;
 	    }
 	}
