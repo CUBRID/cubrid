@@ -4738,6 +4738,16 @@ pt_index_value (const VAL_LIST * value, int index)
   return dbval;
 }
 
+/* CBRD-27583: the domain value list slot index describes, the domain its writer fills it with (NULL: no slot) */
+static TP_DOMAIN *
+pt_index_value_domain (const VAL_LIST * value, int index)
+{
+  QPROC_DB_VALUE_LIST slot = value != NULL && index >= 0 ? value->valp : NULL;
+  for (; slot != NULL && index > 0; slot = slot->next, index--)
+    ;
+  return slot != NULL ? slot->dom : NULL;
+}
+
 /*
  * pt_to_aggregate () - Generates an aggregate list from a select node
  *   return: aggregate XASL node
@@ -10703,7 +10713,11 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 		  regu_alloc (regu);
 		  if (regu)
 		    {
-		      regu->domain = pt_xasl_node_to_domain (parser, attr);
+		      /* CBRD-27583: the value is what the slot's writer put there (principle 1-6): an INSERT's or an
+		       * UPDATE's constraint reads the selected value, not the target column's */
+		      TP_DOMAIN *slot = pt_index_value_domain (symbols->listfile_value_list, list_index);
+		      regu->domain = slot != NULL && TP_DOMAIN_TYPE (slot) != DB_TYPE_VARIABLE
+			? slot : pt_xasl_node_to_domain (parser, attr);
 		      regu->type = TYPE_CONSTANT;
 		      dbval = pt_index_value (symbols->listfile_value_list, list_index);
 
