@@ -764,6 +764,9 @@ jobs:
       WORKDIR: /home
       BUILD_NS: ${{ needs.gate.outputs.build_ns }}
       SUITES_RUN: ${{ join(fromJson(needs.gate.outputs.suites), ' ') }}
+      TC_PR: ${{ needs.gate.outputs.tc }}
+      TC_SHA: ${{ needs.gate.outputs.tc_sha }}
+      TC_DIRS: ${{ needs.gate.outputs.tc_dirs }}
     outputs:
       matrix: ${{ steps.split.outputs.matrix }}
       rundir: ${{ steps.split.outputs.rundir }}
@@ -772,6 +775,7 @@ jobs:
       build_run_id: ${{ steps.build.outputs.build_run_id }}
       ctp_sha: ${{ steps.tc.outputs.ctp_sha }}
       ctp_branch: ${{ steps.tc.outputs.ctp_branch }}
+      tc_pr: ${{ needs.gate.outputs.tc }}
 
     steps:
       - name: Validate inputs
@@ -905,16 +909,17 @@ jobs:
             use_token
             # No fallback to develop: the verdict would be against the wrong cases.
             TC_REPO_URL="https://github.com/CUBRID/${repo}.git"
-            if [ -n "$INPUT_PR" ]; then TC_BRANCH="tc/pr-${INPUT_PR}"; else TC_BRANCH=develop; fi
+            if [ -n "$TC_SHA" ]; then TC_BRANCH="pull/${TC_PR}/head"
+            elif [ -n "$INPUT_PR" ]; then TC_BRANCH="tc/pr-${INPUT_PR}"; else TC_BRANCH=develop; fi
             probe_rc=0
-            probe_branch "$TC_REPO_URL" "$TC_BRANCH" || probe_rc=$?
+            [ -n "$TC_SHA" ] || probe_branch "$TC_REPO_URL" "$TC_BRANCH" || probe_rc=$?
             case "$probe_rc" in
               0) ;;
               2) echo "::error::$repo has no $TC_BRANCH. TC Branch Sync creates tc/pr-<N> when the pull request opens"; exit 1 ;;
               *) echo "::error::could not reach $TC_REPO_URL after 5 attempts"; exit 1 ;;
             esac
 
-            export BRANCH_TESTCASES="$TC_BRANCH"
+            export BRANCH_TESTCASES="${TC_SHA:-$TC_BRANCH}"
             # Only the node mirror answers as of a past instant: the entrypoint fetches --depth 1.
             if [ -n "$TC_UNTIL" ]; then
               mirror="${seed}.git"
@@ -960,6 +965,8 @@ jobs:
             par="${PAR:-$(attr "$suite" par_default)}"
             # One light-lane shard for a re-run: spread out, it would delay other PRs' first runs.
             if [ -n "$RERUN_FROM" ]; then par=1; runner=cubrid-arc-light; fi
+            # Its cases sit inside top-level directories of thousands; the trial runs them alone.
+            if [ -n "$TC_DIRS" ]; then unit=case; par=1; runner=cubrid-arc-light; fi
             dir="$WORKDIR/$repo"
             root="$dir/$suite"
             out="$rundir/$suite"
@@ -974,6 +981,10 @@ jobs:
                 find "$root" -mindepth 1 -maxdepth 1 -type d -name '_*' | sed "s#^$WORKDIR/##" | sort > /tmp/all.list ;;
               *) echo "::error::unknown unit '$unit' for suite $suite"; exit 1 ;;
             esac
+            if [ -n "$TC_DIRS" ]; then
+              jq -r --arg r "$repo" '.[] | "\($r)/\(.)"' <<<"$TC_DIRS" > /tmp/tc_dirs.list
+              awk 'NR == FNR {d[$0]; next} {p = $0; sub(/\/[^\/]*$/, "", p)} p in d' /tmp/tc_dirs.list /tmp/cases.list > /tmp/all.list
+            fi
 
             if [ -n "$RERUN_FROM" ]; then
               src="$CI_ROOT/runs/$RERUN_FROM/$suite/collect/failed.list"
@@ -1043,6 +1054,8 @@ jobs:
             if [ "$nunit" -eq 0 ]; then
               if [ -n "$RERUN_FROM" ]; then
                 echo "::error::nothing to run: none of the $want ${unit}s run $RERUN_FROM left unhandled can run now. Use /run $suite"
+              elif [ -n "$TC_DIRS" ]; then
+                echo "::error::no $suite case in the cases/ directories tc PR #$TC_PR changes${excl:+, or they are in $excl, which no run takes}"
               else
                 echo "::error::no cases at all: the glob matched nothing. Check the testcase tree"
               fi
@@ -1123,6 +1136,7 @@ jobs:
             # Quoted: shard and collect source it.
             {
               echo "total=$total"
+              echo "unit=$unit"
               echo "units=$nunit"
               echo "par=$par"
               echo "timed=$timed"
@@ -1176,7 +1190,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   shard:
-    name: "shard ${{ matrix.suite }} ${{ matrix.i }}"
+    name: "${{ needs.plan.outputs.tc_pr != '' && 'trial' || 'shard' }} ${{ matrix.suite }} ${{ matrix.i }}"
     needs: plan
     # success() is false for a failed job anywhere behind this one, such as the release leg.
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
@@ -1210,7 +1224,6 @@ jobs:
           {
             echo "TC_DIR=$WORKDIR/$(attr tc_repo)"
             echo "TC_SEED=$(attr tc_seed)"
-            echo "UNIT=$(attr unit)"
             echo "STAMP=$STAMPS/shard-$SUITE-$IDX.tsv"
           } >> "$GITHUB_ENV"
           echo "tc_private=$(attr tc_private)" >> "$GITHUB_OUTPUT"
@@ -1303,7 +1316,9 @@ jobs:
           printf 'tc_sha=%s\ntc_branch=%s\n' "$(git -C "$TC_DIR" rev-parse HEAD)" "$tc_branch" > "$SHARD_DIR/tc.read"
 
       - name: Keep only my share
-        run: /entrypoint.sh keep "$UNIT" "$TC_DIR/$SUITE" "$PLAN_DIR/shards/$IDX.list"
+        run: |
+          . "$PLAN_DIR/split.meta"
+          /entrypoint.sh keep "$unit" "$TC_DIR/$SUITE" "$PLAN_DIR/shards/$IDX.list"
 
       - name: Run CTP
         id: ctp
@@ -1744,7 +1759,7 @@ jobs:
             if [ "$srb" -eq 0 ]; then v=pass; else v=fail; rc=1; fi
             echo "verdict_$suite=$v" >> "$GITHUB_OUTPUT"
             echo "$v" > "$d/collect/verdict"
-            unset total units par timed tc_sha tc_branch rerun_unrun rerun_short rerun_gone \
+            unset total unit units par timed tc_sha tc_branch rerun_unrun rerun_short rerun_gone \
                   shard_max shard_med shard_span shard_n
           done
 
