@@ -975,7 +975,7 @@ jobs:
               fi
               exit 1
             fi
-            # More shards than units leaves the tail empty and trips the check below.
+            # More shards than units leaves the tail empty, and the matrix loop below rejects an empty shard.
             if [ "$par" -gt "$nunit" ]; then
               echo "::notice::parallelism $par exceeds the $nunit selected units; using $nunit shards"
               par="$nunit"
