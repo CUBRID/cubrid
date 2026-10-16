@@ -893,7 +893,7 @@ jobs:
             out="$rundir/$suite"
             want=0; unrun=0; short=0; gone=0
 
-            # After the checkout, which restores it.
+            # After the previous step's checkout: its reset --hard brings $excl back.
             [ -z "$excl" ] || rm -rf "${root:?}/$excl"
             /entrypoint.sh cases "$suite" "$root" | sed "s#^$WORKDIR/##" | sort > /tmp/cases.list
             case "$unit" in
@@ -976,6 +976,7 @@ jobs:
               fi
               exit 1
             fi
+            # More shards than units leaves the tail empty and trips the check below.
             if [ "$par" -gt "$nunit" ]; then
               echo "::notice::parallelism $par exceeds the $nunit selected units; using $nunit shards"
               par="$nunit"
@@ -1035,7 +1036,7 @@ jobs:
             fi
 
             got=$(awk -F'\t' '{s+=$2} END {print s+0}' /tmp/plan.tsv)
-            [ "$got" -eq "$total" ] || { echo "::error::the split lost cases ($got != $total)"; exit 1; }
+            [ "$got" -eq "$total" ] || { echo "::error::guard 1 of 3: the split lost cases ($got != $total)"; exit 1; }
 
             mkdir -p "$out/plan/shards" "$out/shard" "$out/collect"
             for i in $(seq 0 $((par - 1))); do
@@ -1259,7 +1260,7 @@ jobs:
           WANT: ${{ steps.mine.outputs.n }}
           TEST_RC: ${{ steps.ctp.outputs.rc }}
         run: |
-          /entrypoint.sh results "$SUITE" "$SHARD_DIR"
+          /entrypoint.sh results "$SUITE" "$SHARD_DIR" || echo "::warning::could not copy all of the results"
           eval "$COUNT_RESULTS"
           eval "$(count "$SHARD_DIR")"
           # Only on failure: a green 50-shard run would write 50 archives nobody reads.
@@ -1331,6 +1332,8 @@ jobs:
         run: |
           for f in "$RUNDIR"/*/shard/*/artifacts/feedback.log; do
             [ -f "$f" ] || continue
+            # A line is `[OK]:  <case path> <milliseconds> EnvId=...`. A log without one is grep exit 1,
+            # and failing this step would skip Wall clock and Guard 3.
             { grep -E '^\[(OK|NOK)\]' "$f" || :; } | awk '
               { ms = ""; path = ""
                 for (i = NF; i > 1; i--) if ($i ~ /^EnvId=/) { ms = $(i-1); path = $(i-2); break }
