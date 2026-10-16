@@ -160,7 +160,7 @@ struct expr_batch_gby_map;
 struct scan_batch_project;
 typedef struct qexec_batch_gby QEXEC_BATCH_GBY;
 extern struct expr_batch_gby_map *qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, xasl_node * xasl,
-							      val_descr * vd);
+							      val_descr * vd, const char **why_not);
 extern void qexec_batch_gby_map_destroy (struct expr_batch_gby_map *map);
 extern QEXEC_BATCH_GBY *qexec_batch_gby_create (xasl_node * xasl, val_descr * vd, const struct scan_batch_project *row,
 						QFILE_LIST_ID * (*list) (void *arg), void (*sync) (void *arg),

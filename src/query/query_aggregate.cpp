@@ -3257,6 +3257,7 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggre
     }
 
   value->func_count = func_cnt;
+  value->batch_slot = -1;
   /* alloc DB_VALUEs */
   for (i = 0; i < func_cnt; i++)
     {
@@ -3421,6 +3422,74 @@ qdata_free_agg_hentry (const void *key, void *data, void *args)
 
   /* all ok */
   return NO_ERROR;
+}
+
+/*
+ * qdata_key_sketch_add () - note a GROUP BY key in a distinct-key sketch (HyperLogLog: a register per hash prefix
+ *			      keeps the longest run of leading zeros after it)
+ */
+void
+qdata_key_sketch_add (unsigned char *regs, const aggregate_hash_key *key)
+{
+  unsigned int h = qdata_hash_agg_hkey (key, 0xffffffffu);
+  unsigned int w;
+  unsigned char rank = 1;
+
+  /* the key's hash mixed again: an integer key's is little more than the integer */
+  h ^= h >> 16;
+  h *= 0x7feb352du;
+  h ^= h >> 15;
+  h *= 0x846ca68bu;
+  h ^= h >> 16;
+  w = h << 10;
+  while (rank <= 22 && (w & 0x80000000u) == 0)
+    {
+      rank++;
+      w <<= 1;
+    }
+  if (regs[h >> 22] < rank)
+    {
+      regs[h >> 22] = rank;
+    }
+}
+
+void
+qdata_key_sketch_merge (unsigned char *regs, const unsigned char *other)
+{
+  int i;
+
+  for (i = 0; i < QDATA_KEY_SKETCH_REGS; i++)
+    {
+      if (regs[i] < other[i])
+	{
+	  regs[i] = other[i];
+	}
+    }
+}
+
+/* the distinct keys a sketch saw, about: the harmonic mean of the registers, linear counting while few are set */
+double
+qdata_key_sketch_estimate (const unsigned char *regs)
+{
+  const double m = QDATA_KEY_SKETCH_REGS;
+  double sum = 0, est;
+  int i, zeros = 0;
+
+  for (i = 0; i < QDATA_KEY_SKETCH_REGS; i++)
+    {
+      sum += ldexp (1.0, - (int) regs[i]);
+      zeros += (regs[i] == 0);
+    }
+  est = (0.7213 / (1 + 1.079 / m)) * m * m / sum;
+  if (est <= 2.5 * m && zeros > 0)
+    {
+      est = m * log (m / zeros);
+    }
+  else if (est > 4294967296.0 / 30)
+    {
+      est = -4294967296.0 * log (1 - est / 4294967296.0);
+    }
+  return est;
 }
 
 /*

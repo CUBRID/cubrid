@@ -491,7 +491,14 @@ namespace parallel_scan
 		  }
 		else
 		  {
-		    EXPR_BATCH_GBY_MAP *gby_map = qexec_batch_gby_map_create (&thread_ref, m_xasl, m_vd);
+		    const char *why_not = NULL;
+		    EXPR_BATCH_GBY_MAP *gby_map = qexec_batch_gby_map_create (&thread_ref, m_xasl, m_vd, &why_not);
+
+		    if (gby_map == NULL)
+		      {
+			/* the scan's trace says why its rows stay on the row path */
+			m_scan_id->s.hsid.batch_why_not = why_not;
+		      }
 
 		    if (gby_map != NULL
 			&& scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl->proc.buildlist.g_agg_list,

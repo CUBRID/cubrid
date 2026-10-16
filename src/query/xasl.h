@@ -1023,6 +1023,8 @@ struct groupby_stat
   int rows;
   INT64 read_rows;
   AGGREGATE_HASH_STATE groupby_hash;
+  int groupby_hash_merge_parts;	/* partitions of the hash merge of the leftovers (qexec_gby_hash_merge ()), or 0 */
+  INT64 groupby_hash_groups;	/* the groups the hash merge estimated (its distinct-key sketch), or 0 */
   bool run_groupby;
   bool groupby_sort;
   int parallel_num;

@@ -3892,6 +3892,11 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 	{
 	  trace_json_object_set_new (groupby, "sort", trace_json_false ());
 	}
+      if (gstats->groupby_hash_merge_parts > 0)
+	{
+	  trace_json_object_set_new (groupby, "hash_merge_partitions",
+				     trace_json_integer (gstats->groupby_hash_merge_parts));
+	}
 
       trace_json_object_set_new (groupby, "rows", trace_json_integer (gstats->rows));
       trace_json_object_set_new (groupby, "readrows", trace_json_integer (gstats->read_rows));
@@ -4642,6 +4647,14 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       else
 	{
 	  fprintf (fp, ", sort: false");
+	}
+      if (gstats->groupby_hash_merge_parts > 0)
+	{
+	  fprintf (fp, ", hash merge partitions: %d", gstats->groupby_hash_merge_parts);
+	}
+      if (gstats->groupby_hash_groups > 0)
+	{
+	  fprintf (fp, ", groups (est.): %lld", (long long) gstats->groupby_hash_groups);
 	}
       fprintf (fp, ", readrows: %lld", (long long int) gstats->read_rows);
       fprintf (fp, ", rows: %d)\n", gstats->rows);

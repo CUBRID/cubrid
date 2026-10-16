@@ -56,6 +56,8 @@ namespace cubquery
     int curr_size;		/* last computed size of structure */
     int tuple_count;		/* # of tuples aggregated in structure */
     int func_count;		/* # of functions (i.e. accumulators) */
+    int batch_slot;		/* the page batch GROUP BY node's cache slot that named this group last, or -1; a hint
+				 * only, checked against the slot's own value pointer (qexec_batch_gby_consume ()) */
     cubxasl::aggregate_accumulator *accumulators;	/* function accumulators */
     qfile_tuple_record first_tuple;	/* first aggregated tuple */
   };
@@ -68,6 +70,9 @@ namespace cubquery
     db_value **values;		/* value array */
   };
 
+
+  /* the registers of a hash GROUP BY's distinct-key sketch (HyperLogLog, about 3% error) */
+#define QDATA_KEY_SKETCH_REGS (1024)
 
   struct aggregate_hash_context
   {
@@ -99,6 +104,11 @@ namespace cubquery
     aggregate_hash_value *curr_part_value;	/* current partial value */
     aggregate_hash_value *temp_part_value;	/* temporary partial value */
     int sorted_count;
+
+    /* distinct keys the table saw (qdata_key_sketch_*): what hashing the leftovers would fold them to
+     * (qexec_gby_hash_merge ()); a parallel scan's workers merge theirs into the leader's */
+    unsigned char key_sketch[QDATA_KEY_SKETCH_REGS];
+    bool key_sketch_partial;	/* rows went by the table (it stopped taking them): the sketch missed some keys */
   };
 
 
@@ -169,6 +179,10 @@ int qdata_agg_hkey_eq (const void *key1, const void *key2);
 cubquery::aggregate_hash_key *qdata_copy_agg_hkey (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key);
 void qdata_load_agg_hvalue_in_agg_list (cubquery::aggregate_hash_value *value, cubxasl::aggregate_list_node *agg_list,
 					bool copy_vals);
+/* a hash GROUP BY's distinct-key sketch: add a key, merge another sketch in, estimate the distinct keys */
+void qdata_key_sketch_add (unsigned char *regs, const cubquery::aggregate_hash_key *key);
+void qdata_key_sketch_merge (unsigned char *regs, const unsigned char *other);
+double qdata_key_sketch_estimate (const unsigned char *regs);
 int qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key,
 				   cubquery::aggregate_hash_value *value, DB_VALUE *temp_dbval_array,
 				   qfile_list_id *list_id);

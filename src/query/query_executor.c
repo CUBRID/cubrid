@@ -4731,6 +4731,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   if (context->state == HS_REJECT_ALL)
     {
       /* no tuples should be allowed */
+      context->key_sketch_partial = true;
       return NO_ERROR;
     }
 
@@ -4758,6 +4759,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     {
       return rc;
     }
+  qdata_key_sketch_add (context->key_sketch, key);
 
   /* probe hash table */
   value = (AGGREGATE_HASH_VALUE *) mht_get (context->hash_table, (void *) key);
@@ -5513,6 +5515,938 @@ exit_on_error:
   goto wrapup;
 }
 
+/* ---------------------------------------------------------------------------------------- */
+/* the hash merge of a GROUP BY's leftovers
+ *
+ * A hash GROUP BY whose table could not hold every group leaves the rest in two lists: the unsorted list -- the
+ * first tuple of each group it let go, and every row once it stopped taking rows -- and the partial list, the
+ * accumulators of each group it let go after more than one row (qexec_hash_gby_agg_tuple ()).  A parallel scan
+ * leaves the same two lists, its workers' appended.  qexec_groupby () sorts both on the key and merges them.
+ *
+ * When the order of the groups does not reach the result -- the block's own DISTINCT sorts its rows on every
+ * column again, or agg_hash_respect_order is off -- the lists are hashed instead: split by the key's hash into
+ * partitions that each fit the budget (max_agg_hash_size for each table the scan had), and each partition's
+ * groups built in one table and written out the way the table's own groups are when nothing was let go.  When
+ * the order reaches the result but the unsorted list holds several rows per group, the partitions are collapsed
+ * to one first tuple and one partial entry per group, and the sort takes those instead.
+ *
+ * database-reference 참고: a hash aggregation that outgrows its memory spills the rest into partitions by the
+ * key's hash and aggregates each partition by itself, one table at a time, instead of sorting it.
+ */
+
+/* a list being appended to keeps its last page fixed, and a thread pays for each page it holds whenever it dirties
+ * one: the partitions are few, and may outgrow the budget rather than multiply */
+#define QEXEC_GBY_MERGE_MAX_PARTS (64)
+#define QEXEC_GBY_MERGE_GROUP_BYTES (96)	/* a group's table memory besides its first tuple, per key and accumulator */
+#define QEXEC_GBY_MERGE_MIN_FOLD (3)	/* the lists' entries per group below which the sort is left to them */
+
+typedef enum
+{
+  QEXEC_GBY_MERGE_NONE,		/* the sort takes the lists as they are */
+  QEXEC_GBY_MERGE_DONE,		/* every group is in the output */
+  QEXEC_GBY_MERGE_COLLAPSED	/* one first tuple and at most one partial entry per group: the sort takes them */
+} QEXEC_GBY_MERGE_RESULT;
+
+/* does the order of the groups reach the block's result (and so their sort)? */
+static bool
+qexec_gby_order_reaches_result (const XASL_NODE * xasl)
+{
+  const BUILDLIST_PROC_NODE *proc = &xasl->proc.buildlist;
+
+  if (!prm_get_bool_value (PRM_ID_AGG_HASH_RESPECT_ORDER))
+    {
+      return false;
+    }
+  /* the block's DISTINCT sorts its rows on all their columns: nothing of the groups' order survives it, unless
+   * something reads the rows before it (a limit, a row or group number, analytics) */
+  if (xasl->option == Q_DISTINCT && xasl->orderby_list == NULL && proc->a_eval_list == NULL
+      && proc->g_grbynum_val == NULL && proc->g_grbynum_pred == NULL && xasl->instnum_val == NULL
+      && xasl->instnum_pred == NULL && xasl->ordbynum_val == NULL && xasl->limit_row_count == NULL)
+    {
+      return false;
+    }
+  return true;
+}
+
+/* the partition of a key: its hash, mixed again so that it does not follow the tables' own buckets */
+static int
+qexec_gby_merge_part_of (AGGREGATE_HASH_KEY * key, int n_parts)
+{
+  unsigned int h = qdata_hash_agg_hkey (key, 0xffffffffu);
+
+  h ^= h >> 16;
+  h *= 0x85ebca6bu;
+  h ^= h >> 13;
+  h *= 0xc2b2ae35u;
+  h ^= h >> 16;
+  return (int) (((UINT64) h * (UINT64) n_parts) >> 32);
+}
+
+/* a new list with the layout of another; a partial list's also gets the tuple descriptor its entries are saved
+ * through (qdata_save_agg_hentry_to_list ()) */
+static QFILE_LIST_ID *
+qexec_gby_merge_open_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * like, QUERY_ID query_id, bool with_descr)
+{
+  /* the same tuple header as the other list's (its backward capability): tuples are copied between them as bytes */
+  QFILE_LIST_ID *list = qfile_open_list (thread_p, &like->type_list, NULL, query_id, QFILE_LIST_BACKWARD_FLAG (like),
+					 NULL);
+
+  if (list != NULL && with_descr)
+    {
+      list->tpl_descr.f_cnt = like->type_list.type_cnt;
+      if (qfile_tpl_descr_alloc_values (&list->tpl_descr, like->type_list.type_cnt) != NO_ERROR)
+	{
+	  qfile_close_list (thread_p, list);
+	  qfile_destroy_list (thread_p, list);
+	  QFILE_FREE_AND_INIT_LIST_ID (list);
+	}
+    }
+  return list;
+}
+
+static void
+qexec_gby_merge_free_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID ** list)
+{
+  if (*list != NULL)
+    {
+      qfile_close_list (thread_p, *list);
+      qfile_destroy_list (thread_p, *list);
+      QFILE_FREE_AND_INIT_LIST_ID (*list);
+    }
+}
+
+/* A partition's groups live in one arena and one open-addressing table, both kept across partitions and rewound
+ * after each: a group's first tuple, key, value and accumulators are carved from the arena where the row path's
+ * table allocates each of them and frees each again (qdata_alloc_agg_hvalue (), qdata_copy_agg_hkey ()).  Only
+ * what a value holds outside the arena -- a key or an accumulator that copied a string -- is cleared one by one. */
+#define QEXEC_GBY_ARENA_BLOCK (1024 * 1024)
+
+typedef struct qexec_gby_arena QEXEC_GBY_ARENA;
+struct qexec_gby_arena
+{
+  char **blocks;
+  int n_blocks;
+  int cap_blocks;
+  size_t used;			/* in the last block */
+  size_t last_size;		/* the last block's size */
+};
+
+static void *
+qexec_gby_arena_alloc (QEXEC_GBY_ARENA * a, size_t n)
+{
+  void *p;
+
+  n = DB_ALIGN (n, MAX_ALIGNMENT);
+  if (a->n_blocks == 0 || a->used + n > a->last_size)
+    {
+      size_t size = MAX (n, (size_t) QEXEC_GBY_ARENA_BLOCK);
+
+      if (a->n_blocks == a->cap_blocks)
+	{
+	  int cap = MAX (8, a->cap_blocks * 2);
+	  char **blocks = (char **) realloc (a->blocks, sizeof (char *) * cap);
+
+	  if (blocks == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char *) * cap);
+	      return NULL;
+	    }
+	  a->blocks = blocks;
+	  a->cap_blocks = cap;
+	}
+      a->blocks[a->n_blocks] = (char *) malloc (size);
+      if (a->blocks[a->n_blocks] == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  return NULL;
+	}
+      a->n_blocks++;
+      a->used = 0;
+      a->last_size = size;
+    }
+  p = a->blocks[a->n_blocks - 1] + a->used;
+  a->used += n;
+  return p;
+}
+
+/* back to empty, the first block kept */
+static void
+qexec_gby_arena_rewind (QEXEC_GBY_ARENA * a)
+{
+  int i;
+
+  for (i = 1; i < a->n_blocks; i++)
+    {
+      free (a->blocks[i]);
+    }
+  a->n_blocks = MIN (a->n_blocks, 1);
+  a->used = 0;
+  a->last_size = (a->n_blocks == 1) ? (size_t) QEXEC_GBY_ARENA_BLOCK : 0;
+}
+
+static void
+qexec_gby_arena_free (QEXEC_GBY_ARENA * a)
+{
+  int i;
+
+  for (i = 0; i < a->n_blocks; i++)
+    {
+      free (a->blocks[i]);
+    }
+  free (a->blocks);
+  memset (a, 0, sizeof (*a));
+}
+
+typedef struct qexec_gby_slot QEXEC_GBY_SLOT;
+struct qexec_gby_slot
+{
+  unsigned int hash;
+  AGGREGATE_HASH_KEY *key;	/* NULL: empty */
+  AGGREGATE_HASH_VALUE *value;
+};
+
+typedef struct qexec_gby_mtable QEXEC_GBY_MTABLE;
+struct qexec_gby_mtable
+{
+  QEXEC_GBY_SLOT *slots;
+  unsigned int mask;
+  int count;
+  QEXEC_GBY_ARENA arena;
+  int n_keys;
+  int n_funcs;
+};
+
+static unsigned int
+qexec_gby_mtable_hash (AGGREGATE_HASH_KEY * key)
+{
+  unsigned int h = qdata_hash_agg_hkey (key, 0xffffffffu);
+
+  /* another mix than the partition's (qexec_gby_merge_part_of ()), whose high bits are one per partition */
+  h ^= h >> 15;
+  h *= 0x2c1b3c6du;
+  h ^= h >> 12;
+  h *= 0x297a2d39u;
+  h ^= h >> 15;
+  return h;
+}
+
+static int
+qexec_gby_mtable_init (QEXEC_GBY_MTABLE * t, int n_keys, int n_funcs)
+{
+  memset (t, 0, sizeof (*t));
+  t->slots = (QEXEC_GBY_SLOT *) calloc (1024, sizeof (QEXEC_GBY_SLOT));
+  if (t->slots == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 1024 * sizeof (QEXEC_GBY_SLOT));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  t->mask = 1023;
+  t->n_keys = n_keys;
+  t->n_funcs = n_funcs;
+  return NO_ERROR;
+}
+
+static QEXEC_GBY_SLOT *
+qexec_gby_mtable_find (QEXEC_GBY_MTABLE * t, AGGREGATE_HASH_KEY * key, unsigned int h)
+{
+  unsigned int i;
+
+  for (i = h & t->mask;; i = (i + 1) & t->mask)
+    {
+      QEXEC_GBY_SLOT *s = &t->slots[i];
+
+      if (s->key == NULL || (s->hash == h && qdata_agg_hkey_eq (s->key, key)))
+	{
+	  return s;
+	}
+    }
+}
+
+static int
+qexec_gby_mtable_grow (QEXEC_GBY_MTABLE * t)
+{
+  unsigned int n = (t->mask + 1) * 2, i, j;
+  QEXEC_GBY_SLOT *slots = (QEXEC_GBY_SLOT *) calloc (n, sizeof (QEXEC_GBY_SLOT));
+
+  if (slots == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, n * sizeof (QEXEC_GBY_SLOT));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  for (i = 0; i <= t->mask; i++)
+    {
+      if (t->slots[i].key != NULL)
+	{
+	  for (j = t->slots[i].hash & (n - 1); slots[j].key != NULL; j = (j + 1) & (n - 1))
+	    ;
+	  slots[j] = t->slots[i];
+	}
+    }
+  free (t->slots);
+  t->slots = slots;
+  t->mask = n - 1;
+  return NO_ERROR;
+}
+
+/* empty again: the values that hold memory of their own cleared, the arena rewound */
+static void
+qexec_gby_mtable_rewind (QEXEC_GBY_MTABLE * t)
+{
+  unsigned int i;
+  int k;
+
+  for (i = 0; i <= t->mask; i++)
+    {
+      QEXEC_GBY_SLOT *s = &t->slots[i];
+
+      if (s->key == NULL)
+	{
+	  continue;
+	}
+      for (k = 0; k < s->key->val_count; k++)
+	{
+	  pr_clear_value (s->key->values[k]);
+	}
+      for (k = 0; k < s->value->func_count; k++)
+	{
+	  pr_clear_value (s->value->accumulators[k].value);
+	  pr_clear_value (s->value->accumulators[k].value2);
+	}
+      s->key = NULL;
+    }
+  t->count = 0;
+  qexec_gby_arena_rewind (&t->arena);
+}
+
+static void
+qexec_gby_mtable_free (QEXEC_GBY_MTABLE * t)
+{
+  if (t->slots != NULL)
+    {
+      qexec_gby_mtable_rewind (t);
+      free (t->slots);
+    }
+  qexec_gby_arena_free (&t->arena);
+  memset (t, 0, sizeof (*t));
+}
+
+/* a new group in slot s: the row's tuple copied into the arena as its first tuple, its key read from that copy
+ * (the row's values fetched from it: a key that points into the row points into the copy), the value set up as
+ * qdata_alloc_agg_hvalue () sets it up */
+static int
+qexec_gby_mtable_add (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QEXEC_GBY_MTABLE * t, QEXEC_GBY_SLOT * s,
+		      unsigned int h, QFILE_TUPLE tpl, const QFILE_TUPLE_VALUE_TYPE_LIST * layout)
+{
+  AGGREGATE_HASH_CONTEXT *ctx = gbstate->agg_hash_context;
+  BUILDLIST_PROC_NODE *proc = &gbstate->xasl->proc.buildlist;
+  int size = QFILE_GET_TUPLE_LENGTH (tpl);
+  size_t bytes = DB_ALIGN (size, MAX_ALIGNMENT) + sizeof (AGGREGATE_HASH_KEY) + sizeof (DB_VALUE *) * t->n_keys
+    + sizeof (DB_VALUE) * t->n_keys + sizeof (AGGREGATE_HASH_VALUE) + sizeof (AGGREGATE_ACCUMULATOR) * t->n_funcs
+    + sizeof (DB_VALUE) * 2 * t->n_funcs + 8 * MAX_ALIGNMENT;
+  char *p = (char *) qexec_gby_arena_alloc (&t->arena, bytes);
+  AGGREGATE_HASH_KEY *key;
+  AGGREGATE_HASH_VALUE *value;
+  DB_VALUE *vals;
+  AGGREGATE_TYPE *agg;
+  int k;
+
+  if (p == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memcpy (p, tpl, size);
+  tpl = p;
+  p += DB_ALIGN (size, MAX_ALIGNMENT);
+  key = (AGGREGATE_HASH_KEY *) p;
+  p += DB_ALIGN (sizeof (AGGREGATE_HASH_KEY), MAX_ALIGNMENT);
+  key->values = (DB_VALUE **) p;
+  p += DB_ALIGN (sizeof (DB_VALUE *) * t->n_keys, MAX_ALIGNMENT);
+  vals = (DB_VALUE *) p;
+  p += DB_ALIGN (sizeof (DB_VALUE) * t->n_keys, MAX_ALIGNMENT);
+  value = (AGGREGATE_HASH_VALUE *) p;
+  p += DB_ALIGN (sizeof (AGGREGATE_HASH_VALUE), MAX_ALIGNMENT);
+  memset (value, 0, sizeof (*value));
+  value->accumulators = (t->n_funcs > 0) ? (AGGREGATE_ACCUMULATOR *) p : NULL;
+  p += DB_ALIGN (sizeof (AGGREGATE_ACCUMULATOR) * t->n_funcs, MAX_ALIGNMENT);
+  value->func_count = t->n_funcs;
+  value->batch_slot = -1;
+  value->first_tuple = QFILE_TUPLE_RECORD_INITIALIZER;
+  qfile_slot_set_tuple_ptr_and_layout (&value->first_tuple, tpl, 0, layout);
+  for (agg = proc->g_agg_list, k = 0; k < t->n_funcs; k++, agg = (agg != NULL) ? agg->next : NULL)
+    {
+      AGGREGATE_ACCUMULATOR *acc = &value->accumulators[k];
+
+      memset (acc, 0, sizeof (*acc));
+      acc->value = (DB_VALUE *) p;
+      acc->value2 = (DB_VALUE *) p + 1;
+      p += sizeof (DB_VALUE) * 2;
+      db_make_null (acc->value);
+      db_make_null (acc->value2);
+      acc->sum_acc.is_active = false;
+      acc->shared_from = (agg != NULL) ? agg->accumulator.shared_from : 0;
+      if (agg != NULL && agg->function != PT_GROUPBY_NUM)
+	{
+	  acc->curr_cnt = 0;
+	  if (agg->function == PT_COUNT_STAR || agg->function == PT_COUNT)
+	    {
+	      db_make_bigint (acc->value, 0);
+	    }
+	}
+    }
+
+  /* the key, read from the copy */
+  if (fetch_val_list (thread_p, gbstate->g_regu_list, &gbstate->xasl_state->vd, NULL, NULL, &value->first_tuple,
+		      PEEK) != NO_ERROR
+      || qexec_build_agg_hkey (thread_p, gbstate->xasl_state, gbstate->g_hk_regu_list, &value->first_tuple,
+			       ctx->temp_key) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  key->val_count = ctx->temp_key->val_count;
+  key->free_values = false;
+  for (k = 0; k < key->val_count; k++)
+    {
+      key->values[k] = &vals[k];
+      if (DB_NEED_CLEAR (ctx->temp_key->values[k]))
+	{
+	  /* a value the read made (not one pointing into the copy): the key takes a copy of its own */
+	  if (pr_clone_value (ctx->temp_key->values[k], &vals[k]) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
+	  vals[k] = *ctx->temp_key->values[k];
+	}
+    }
+  s->hash = h;
+  s->key = key;
+  s->value = value;
+  t->count++;
+  if ((unsigned int) t->count * 2 > t->mask)
+    {
+      return qexec_gby_mtable_grow (t);
+    }
+  return NO_ERROR;
+}
+
+/* The groups the unsorted list folds to, estimated from its first rows when no sketch saw them all: the keys of a
+ * sample counted, and the unseen ones estimated from those seen once and twice (Chao1).  A list whose sample
+ * repeats no key has about as many groups as rows. */
+#define QEXEC_GBY_SAMPLE_ROWS (65536)
+
+static int
+qexec_gby_merge_sample_groups (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST_ID * rows, double *groups)
+{
+  AGGREGATE_HASH_CONTEXT *ctx = gbstate->agg_hash_context;
+  const unsigned int size = QEXEC_GBY_SAMPLE_ROWS * 2, mask = size - 1;
+  unsigned int *hashes = (unsigned int *) calloc (size, sizeof (unsigned int));
+  int *counts = (int *) calloc (size, sizeof (int));
+  QFILE_LIST_SCAN_ID scan;
+  QFILE_TUPLE_RECORD tpl = QFILE_TUPLE_RECORD_INITIALIZER;
+  int n = 0, d = 0, f1 = 0, f2 = 0, rc = NO_ERROR;
+  unsigned int i;
+
+  if (hashes == NULL || counts == NULL || qfile_open_list_scan (rows, &scan) != NO_ERROR)
+    {
+      free (hashes);
+      free (counts);
+      return ER_FAILED;
+    }
+  while (n < QEXEC_GBY_SAMPLE_ROWS && qfile_scan_list_next (thread_p, &scan, &tpl, PEEK) == S_SUCCESS)
+    {
+      unsigned int h;
+
+      if (fetch_val_list (thread_p, gbstate->g_regu_list, &gbstate->xasl_state->vd, NULL, NULL, &tpl, PEEK) !=
+	  NO_ERROR
+	  || qexec_build_agg_hkey (thread_p, gbstate->xasl_state, gbstate->g_hk_regu_list, &tpl,
+				   ctx->temp_key) != NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	  break;
+	}
+      /* the key by its hash (0 is the empty mark): two keys of one hash count as one, rarely */
+      h = qexec_gby_mtable_hash (ctx->temp_key) | 1;
+      for (i = h & mask; hashes[i] != 0 && hashes[i] != h; i = (i + 1) & mask)
+	;
+      hashes[i] = h;
+      counts[i]++;
+      n++;
+    }
+  qfile_close_scan (thread_p, &scan);
+  for (i = 0; i < size; i++)
+    {
+      d += (hashes[i] != 0);
+      f1 += (counts[i] == 1);
+      f2 += (counts[i] == 2);
+    }
+  free (hashes);
+  free (counts);
+  if (n < QEXEC_GBY_SAMPLE_ROWS)
+    {
+      /* the whole list */
+      *groups = d;
+    }
+  else
+    {
+      *groups = MIN ((double) d + (double) f1 * (f1 - 1) / (2.0 * (f2 + 1)), (double) rows->tuple_cnt);
+    }
+  return rc;
+}
+
+/* the unsorted rows of a partition into the table: a new key's row is its group's first tuple (aggregated when
+ * the group is written out, as the table's own first tuples are), any other row is aggregated into its group.
+ * layout: the unsorted list's, which outlives the partition the first tuples are read back after */
+static int
+qexec_gby_merge_rows (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QEXEC_GBY_MTABLE * t, QFILE_LIST_ID * rows,
+		      const QFILE_TUPLE_VALUE_TYPE_LIST * layout)
+{
+  AGGREGATE_HASH_CONTEXT *ctx = gbstate->agg_hash_context;
+  VAL_DESCR *vd = &gbstate->xasl_state->vd;
+  QFILE_LIST_SCAN_ID scan;
+  QFILE_TUPLE_RECORD tpl = QFILE_TUPLE_RECORD_INITIALIZER;
+  SCAN_CODE sc;
+  int rc = NO_ERROR;
+
+  if (rows->tuple_cnt == 0)
+    {
+      return NO_ERROR;
+    }
+  qfile_close_list (thread_p, rows);
+  if (qfile_open_list_scan (rows, &scan) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  while ((sc = qfile_scan_list_next (thread_p, &scan, &tpl, PEEK)) == S_SUCCESS)
+    {
+      QEXEC_GBY_SLOT *s;
+      unsigned int h;
+
+      /* the row's values, as the sort's qexec_gby_agg_tuple () reads them: the key reads them too */
+      rc = fetch_val_list (thread_p, gbstate->g_regu_list, vd, NULL, NULL, &tpl, PEEK);
+      if (rc == NO_ERROR)
+	{
+	  rc = qexec_build_agg_hkey (thread_p, gbstate->xasl_state, gbstate->g_hk_regu_list, &tpl, ctx->temp_key);
+	}
+      if (rc != NO_ERROR)
+	{
+	  break;
+	}
+      h = qexec_gby_mtable_hash (ctx->temp_key);
+      s = qexec_gby_mtable_find (t, ctx->temp_key, h);
+      if (s->key == NULL)
+	{
+	  rc = qexec_gby_mtable_add (thread_p, gbstate, t, s, h, tpl.tpl, layout);
+	  if (rc != NO_ERROR)
+	    {
+	      break;
+	    }
+	  continue;
+	}
+      /* the row into the group's accumulators */
+      if (qdata_evaluate_aggregate_list (thread_p, gbstate->g_dim[0].d_agg_list, vd, s->value->accumulators, false)
+	  != NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	  break;
+	}
+      s->value->tuple_count++;
+    }
+  if (sc == S_ERROR && rc == NO_ERROR)
+    {
+      rc = ER_FAILED;
+    }
+  qfile_close_scan (thread_p, &scan);
+  return rc;
+}
+
+/* the partial entries of a partition into the groups their first tuples made */
+static int
+qexec_gby_merge_partials (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QEXEC_GBY_MTABLE * t,
+			  QFILE_LIST_ID * partials)
+{
+  AGGREGATE_HASH_CONTEXT *ctx = gbstate->agg_hash_context;
+  VAL_DESCR *vd = &gbstate->xasl_state->vd;
+  QFILE_LIST_SCAN_ID scan;
+  QFILE_TUPLE_RECORD tpl = QFILE_TUPLE_RECORD_INITIALIZER;
+  SCAN_CODE sc;
+  int rc = NO_ERROR;
+
+  if (partials->tuple_cnt == 0)
+    {
+      return NO_ERROR;
+    }
+  qfile_close_list (thread_p, partials);
+  if (qfile_open_list_scan (partials, &scan) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  while ((sc = qfile_scan_list_next (thread_p, &scan, &tpl, PEEK)) == S_SUCCESS)
+    {
+      QEXEC_GBY_SLOT *s;
+      AGGREGATE_TYPE *agg;
+      int i;
+
+      if (qdata_load_agg_hentry_from_tuple (thread_p, tpl.tpl, partials->type_list.hdr_size, ctx->temp_part_key,
+					    ctx->temp_part_value, ctx->key_domains,
+					    ctx->accumulator_domains) != NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	  break;
+	}
+      s = qexec_gby_mtable_find (t, ctx->temp_part_key, qexec_gby_mtable_hash (ctx->temp_part_key));
+      if (s->key == NULL)
+	{
+	  /* every partial entry was let go together with its group's first tuple */
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  rc = ER_FAILED;
+	  break;
+	}
+      for (agg = gbstate->g_output_agg_list, i = 0; agg != NULL; agg = agg->next, i++)
+	{
+	  rc = qdata_aggregate_accumulator_to_accumulator (thread_p, &s->value->accumulators[i],
+							   qexec_accumulator_domain (vd, agg->plan_item),
+							   agg->function,
+							   qexec_get_node_domain (vd, agg->domain, agg->plan_item),
+							   &ctx->temp_part_value->accumulators[i]);
+	  if (rc != NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+      if (rc != NO_ERROR)
+	{
+	  break;
+	}
+      s->value->tuple_count += ctx->temp_part_value->tuple_count;
+    }
+  if (sc == S_ERROR && rc == NO_ERROR)
+    {
+      rc = ER_FAILED;
+    }
+  qfile_close_scan (thread_p, &scan);
+  return rc;
+}
+
+/* the table's groups to the output, as qexec_groupby () writes them when nothing was let go; the table is emptied */
+static int
+qexec_gby_merge_write (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QEXEC_GBY_MTABLE * t)
+{
+  unsigned int i;
+
+  for (i = 0; i <= t->mask && gbstate->state == NO_ERROR; i++)
+    {
+      AGGREGATE_HASH_VALUE *value = t->slots[i].value;
+
+      if (t->slots[i].key == NULL)
+	{
+	  continue;
+	}
+      qexec_gby_start_group_dim (thread_p, gbstate, NULL);
+      qdata_load_agg_hvalue_in_agg_list (value, gbstate->g_dim[0].d_agg_list, false);
+      qexec_gby_agg_tuple (thread_p, gbstate, &value->first_tuple, PEEK);
+      (void) qexec_gby_finalize_group_dim (thread_p, gbstate, NULL);
+      gbstate->input_recs += value->tuple_count + 1;
+    }
+  qexec_gby_mtable_rewind (t);
+  /* SORT_PUT_STOP: the group count limit was reached, the caller stops */
+  return (gbstate->state == NO_ERROR || gbstate->state == SORT_PUT_STOP) ? NO_ERROR : gbstate->state;
+}
+
+/* the table's groups collapsed for the sort: each group's first tuple, and its accumulators when it took more rows
+ * (qdata_save_agg_htable_to_list ()); the table is emptied */
+static int
+qexec_gby_merge_collapse (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QEXEC_GBY_MTABLE * t,
+			  QFILE_LIST_ID * rows_out, QFILE_LIST_ID * partials_out)
+{
+  unsigned int i;
+  int rc = NO_ERROR;
+
+  for (i = 0; i <= t->mask && rc == NO_ERROR; i++)
+    {
+      QEXEC_GBY_SLOT *s = &t->slots[i];
+
+      if (s->key == NULL)
+	{
+	  continue;
+	}
+      rc = qfile_add_tuple_to_list (thread_p, rows_out, s->value->first_tuple.tpl);
+      if (rc == NO_ERROR && s->value->tuple_count > 0)
+	{
+	  rc = qdata_save_agg_hentry_to_list (thread_p, s->key, s->value, gbstate->agg_hash_context->temp_dbval_array,
+					      partials_out);
+	}
+    }
+  qexec_gby_mtable_rewind (t);
+  return rc;
+}
+
+/* one list's tuples into the partitions of their keys; partials: the list holds partial entries */
+static int
+qexec_gby_merge_split_list (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST_ID * from, bool partials,
+			    int n_parts, QFILE_LIST_ID ** parts)
+{
+  AGGREGATE_HASH_CONTEXT *ctx = gbstate->agg_hash_context;
+  QFILE_LIST_SCAN_ID scan;
+  QFILE_TUPLE_RECORD tpl = QFILE_TUPLE_RECORD_INITIALIZER;
+  SCAN_CODE sc;
+  int k, rc = NO_ERROR;
+
+  if (from->tuple_cnt == 0)
+    {
+      return NO_ERROR;
+    }
+  if (qfile_open_list_scan (from, &scan) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  while ((sc = qfile_scan_list_next (thread_p, &scan, &tpl, PEEK)) == S_SUCCESS)
+    {
+      if (partials)
+	{
+	  rc = qdata_load_agg_hentry_from_tuple (thread_p, tpl.tpl, from->type_list.hdr_size, ctx->temp_part_key,
+						 ctx->temp_part_value, ctx->key_domains, ctx->accumulator_domains);
+	  k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (ctx->temp_part_key, n_parts) : 0;
+	}
+      else
+	{
+	  /* the key reads the row's values (fetched as qexec_gby_agg_tuple () fetches them) */
+	  rc = fetch_val_list (thread_p, gbstate->g_regu_list, &gbstate->xasl_state->vd, NULL, NULL, &tpl, PEEK);
+	  if (rc == NO_ERROR)
+	    {
+	      rc = qexec_build_agg_hkey (thread_p, gbstate->xasl_state, gbstate->g_hk_regu_list, &tpl, ctx->temp_key);
+	    }
+	  k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (ctx->temp_key, n_parts) : 0;
+	}
+      if (rc == NO_ERROR)
+	{
+	  rc = qfile_add_tuple_to_list (thread_p, parts[k], tpl.tpl);
+	}
+      if (rc != NO_ERROR)
+	{
+	  break;
+	}
+    }
+  if (sc == S_ERROR && rc == NO_ERROR)
+    {
+      rc = ER_FAILED;
+    }
+  qfile_close_scan (thread_p, &scan);
+  return rc;
+}
+
+/* split the unsorted rows and the partial entries by their key's partition */
+static int
+qexec_gby_merge_split (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST_ID * rows,
+		       QFILE_LIST_ID * partials, int n_parts, QFILE_LIST_ID ** row_parts, QFILE_LIST_ID ** part_parts)
+{
+  int rc = qexec_gby_merge_split_list (thread_p, gbstate, rows, false, n_parts, row_parts);
+
+  if (rc == NO_ERROR)
+    {
+      rc = qexec_gby_merge_split_list (thread_p, gbstate, partials, true, n_parts, part_parts);
+    }
+  return rc;
+}
+
+/*
+ * qexec_gby_hash_merge () - finish a hash GROUP BY's leftovers by hashing them (see above)
+ *   return: NO_ERROR, or an error
+ *   gbstate(in): the GROUP BY, its table empty (dumped into the lists)
+ *   list_id(in/out): the unsorted list; on QEXEC_GBY_MERGE_COLLAPSED, the collapsed one
+ *   result(out): what is left for the sort
+ */
+static int
+qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NODE * xasl, QFILE_LIST_ID * list_id,
+		      QEXEC_GBY_MERGE_RESULT * result)
+{
+  AGGREGATE_HASH_CONTEXT *ctx = gbstate->agg_hash_context;
+  QFILE_LIST_ID *partials = (ctx != NULL) ? ctx->part_list_id : NULL;
+  QUERY_ID query_id = gbstate->xasl_state->query_id;
+  QFILE_LIST_ID **row_parts = NULL, **part_parts = NULL;
+  QFILE_LIST_ID *rows_out = NULL, *partials_out = NULL;
+  QEXEC_GBY_MTABLE table;
+  bool order_free;
+  double groups;
+  UINT64 budget, bytes;
+  int n_parts, p, rc = NO_ERROR;
+
+  *result = QEXEC_GBY_MERGE_NONE;
+  if (gbstate->with_rollup || ctx == NULL || ctx->hash_table == NULL || partials == NULL || list_id->tuple_cnt == 0
+      || mht_count (ctx->hash_table) != 0 || xasl->proc.buildlist.g_output_first_tuple
+      || XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
+    {
+      return NO_ERROR;
+    }
+  order_free = !qexec_gby_order_reaches_result (xasl);
+  if (ctx->key_sketch_partial || ctx->state == HS_REJECT_ALL)
+    {
+      /* a table stopped taking rows (the rows after it go by the table without a call): their keys went by the
+       * sketch, so the unsorted list -- those rows themselves, mostly -- is sampled instead */
+      qfile_close_list (thread_p, list_id);
+      if (qexec_gby_merge_sample_groups (thread_p, gbstate, list_id, &groups) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  else
+    {
+      groups = qdata_key_sketch_estimate (ctx->key_sketch);
+    }
+  if (thread_is_on_trace (thread_p))
+    {
+      xasl->groupby_stats.groupby_hash_groups = (INT64) groups;
+    }
+  if (groups * QEXEC_GBY_MERGE_MIN_FOLD > (double) (list_id->tuple_cnt + partials->tuple_cnt))
+    {
+      /* the lists fold little: the sort runs in parallel, where a table would build every group one by one */
+      return NO_ERROR;
+    }
+
+  budget = (UINT64) prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE) * (UINT64) MAX (1, xasl->parallelism);
+  /* a group's memory: its first tuple, its key, its accumulators, the table's entry */
+  bytes = (UINT64) (groups * ((double) list_id->page_cnt * DB_PAGESIZE / MAX (list_id->tuple_cnt, 1)
+			      + QEXEC_GBY_MERGE_GROUP_BYTES * (1 + xasl->proc.buildlist.g_func_count)));
+  n_parts = (int) MIN ((bytes + budget - 1) / MAX (budget, 1), (UINT64) QEXEC_GBY_MERGE_MAX_PARTS);
+  n_parts = MAX (n_parts, 1);
+
+  memset (&table, 0, sizeof (table));
+  if (qexec_gby_mtable_init (&table, xasl->proc.buildlist.g_hkey_size, xasl->proc.buildlist.g_func_count) != NO_ERROR)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  qfile_close_list (thread_p, list_id);
+  qfile_close_list (thread_p, partials);
+  if (!order_free)
+    {
+      rows_out = qexec_gby_merge_open_list (thread_p, list_id, query_id, false);
+      partials_out = qexec_gby_merge_open_list (thread_p, partials, query_id, true);
+      if (rows_out == NULL || partials_out == NULL)
+	{
+	  rc = ER_FAILED;
+	  goto end;
+	}
+    }
+
+  if (n_parts > 1)
+    {
+      row_parts = (QFILE_LIST_ID **) calloc (n_parts, sizeof (QFILE_LIST_ID *));
+      part_parts = (QFILE_LIST_ID **) calloc (n_parts, sizeof (QFILE_LIST_ID *));
+      if (row_parts == NULL || part_parts == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, n_parts * sizeof (QFILE_LIST_ID *));
+	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+      for (p = 0; p < n_parts; p++)
+	{
+	  row_parts[p] = qexec_gby_merge_open_list (thread_p, list_id, query_id, false);
+	  part_parts[p] = qexec_gby_merge_open_list (thread_p, partials, query_id, false);
+	  if (row_parts[p] == NULL || part_parts[p] == NULL)
+	    {
+	      rc = ER_FAILED;
+	      goto end;
+	    }
+	}
+      rc = qexec_gby_merge_split (thread_p, gbstate, list_id, partials, n_parts, row_parts, part_parts);
+      if (rc != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+
+  for (p = 0; p < n_parts && rc == NO_ERROR && gbstate->state == NO_ERROR; p++)
+    {
+      QFILE_LIST_ID *rows = (n_parts > 1) ? row_parts[p] : list_id;
+      QFILE_LIST_ID *parts = (n_parts > 1) ? part_parts[p] : partials;
+
+      rc = qexec_gby_merge_rows (thread_p, gbstate, &table, rows, &list_id->type_list);
+      if (rc == NO_ERROR)
+	{
+	  rc = qexec_gby_merge_partials (thread_p, gbstate, &table, parts);
+	}
+      if (n_parts > 1)
+	{
+	  /* the partition is in the table now */
+	  qexec_gby_merge_free_list (thread_p, &row_parts[p]);
+	  qexec_gby_merge_free_list (thread_p, &part_parts[p]);
+	}
+      if (rc != NO_ERROR)
+	{
+	  break;
+	}
+      if (order_free)
+	{
+	  rc = qexec_gby_merge_write (thread_p, gbstate, &table);
+	}
+      else
+	{
+	  /* one first tuple and one partial entry (if more than one row) per group */
+	  rc = qexec_gby_merge_collapse (thread_p, gbstate, &table, rows_out, partials_out);
+	}
+    }
+  if (rc != NO_ERROR)
+    {
+      goto end;
+    }
+
+  if (order_free)
+    {
+      *result = QEXEC_GBY_MERGE_DONE;
+    }
+  else
+    {
+      /* the collapsed lists replace the originals for the sort */
+      qfile_close_list (thread_p, rows_out);
+      qfile_close_list (thread_p, partials_out);
+      qfile_destroy_list (thread_p, list_id);
+      if (qfile_copy_list_id (list_id, rows_out, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	{
+	  rc = ER_FAILED;
+	  goto end;
+	}
+      QFILE_FREE_AND_INIT_LIST_ID (rows_out);
+      qexec_gby_merge_free_list (thread_p, &ctx->part_list_id);
+      ctx->part_list_id = partials_out;
+      partials_out = NULL;
+      *result = QEXEC_GBY_MERGE_COLLAPSED;
+    }
+  if (thread_is_on_trace (thread_p))
+    {
+      xasl->groupby_stats.groupby_hash_merge_parts = n_parts;
+    }
+
+end:
+  if (row_parts != NULL)
+    {
+      for (p = 0; p < n_parts; p++)
+	{
+	  qexec_gby_merge_free_list (thread_p, &row_parts[p]);
+	}
+      free (row_parts);
+    }
+  if (part_parts != NULL)
+    {
+      for (p = 0; p < n_parts; p++)
+	{
+	  qexec_gby_merge_free_list (thread_p, &part_parts[p]);
+	}
+      free (part_parts);
+    }
+  qexec_gby_merge_free_list (thread_p, &rows_out);
+  qexec_gby_merge_free_list (thread_p, &partials_out);
+  qexec_gby_mtable_free (&table);
+  if (rc != NO_ERROR)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	}
+    }
+  return rc;
+}
+
 /*
  * qexec_groupby () -
  *   return: NO_ERROR, or ER_code
@@ -5720,6 +6654,28 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 
       /* close unsorted list */
       qfile_close_list (thread_p, list_id);
+    }
+
+  /* the leftovers hashed by partition rather than sorted, when the order allows (qexec_gby_hash_merge ()) */
+  if (gbstate.hash_eligible)
+    {
+      QEXEC_GBY_MERGE_RESULT merged;
+
+      if (qexec_gby_hash_merge (thread_p, &gbstate, xasl, list_id, &merged) != NO_ERROR)
+	{
+	  GOTO_EXIT_ON_ERROR;
+	}
+      if (merged == QEXEC_GBY_MERGE_DONE)
+	{
+	  if (thread_is_on_trace (thread_p))
+	    {
+	      xasl->groupby_stats.groupby_sort = false;
+	    }
+	  qfile_destroy_list (thread_p, list_id);
+	  qfile_close_list (thread_p, gbstate.output_file);
+	  qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+	  goto wrapup;
+	}
     }
 
   /* sort partial list and open a scan on it */
@@ -9792,8 +10748,10 @@ qexec_batch_eligible (const XASL_NODE * xasl)
  * What the row path would have done between rows is replayed where it matters: before any row-path call the
  * pending rows are accumulated and their groups touched in the table's LRU in the order of their last row, so a
  * dump evicts what the row path would evict; the selectivity check runs at the very tuple counts the row path
- * runs it at; a call that dumps or creates nothing (mht_count () not one more) clears the cache, since its groups
- * may be gone.  Once the table stops taking rows (HS_REJECT_ALL) every row goes to the row path, which sends it
+ * runs it at.  A call that creates a group and evicts a few from the head of the LRU (the table at its budget,
+ * max_agg_hash_size) drops just those groups from the cache: the head is noted before the call, and the evicted
+ * groups are its first entries.  Any other call that does not add exactly one group clears the cache, since its
+ * groups may be gone.  Once the table stops taking rows (HS_REJECT_ALL) every row goes to the row path, which sends it
  * to the sort.
  *
  * database-reference 참고: a hash GROUP BY keeps one aggregate row per group -- its count and the states of the
@@ -9804,6 +10762,7 @@ qexec_batch_eligible (const XASL_NODE * xasl)
 
 #define QEXEC_GBY_CACHE_SIZE (1024)	/* power of two; at most half of it is used */
 #define QEXEC_GBY_KEY_MAX (256)
+#define QEXEC_GBY_EVICT_NOTE (8)	/* LRU head entries noted before a row-path call */
 
 typedef struct qexec_gby_entry QEXEC_GBY_ENTRY;
 struct qexec_gby_entry
@@ -9901,6 +10860,44 @@ qexec_gby_cache_clear (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st)
   st->n_cached = 0;
 }
 
+/* drop the entry in slot i, then shift the entries of its probe run back so lookups still find them */
+static void
+qexec_gby_cache_remove (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, unsigned int i)
+{
+  const unsigned int mask = QEXEC_GBY_CACHE_SIZE - 1;
+  unsigned int j = i, home;
+  QEXEC_GBY_ENTRY *e = &st->cache[i];
+
+  free_and_init (e->bytes);
+  if (e->key != NULL)
+    {
+      qdata_free_agg_hkey (thread_p, e->key);
+      e->key = NULL;
+    }
+  e->len = -1;
+  st->n_cached--;
+  for (;;)
+    {
+      j = (j + 1) & mask;
+      if (st->cache[j].len < 0)
+	{
+	  return;
+	}
+      home = st->cache[j].hash & mask;
+      /* the entry stays when its home lies cyclically in (i, j] */
+      if ((i < j) ? (i < home && home <= j) : (i < home || home <= j))
+	{
+	  continue;
+	}
+      st->cache[i] = st->cache[j];
+      st->cache[i].value->batch_slot = (int) i;
+      st->cache[j].len = -1;
+      st->cache[j].bytes = NULL;
+      st->cache[j].key = NULL;
+      i = j;
+    }
+}
+
 /* the group the row path just put the row in (context->temp_key holds its key), under the row's bytes */
 static void
 qexec_gby_cache_add (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGATE_HASH_CONTEXT * ctx,
@@ -9926,7 +10923,8 @@ qexec_gby_cache_add (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGATE_HA
     }
   if (st->n_cached >= QEXEC_GBY_CACHE_SIZE / 2)
     {
-      return;
+      /* full: start over with the groups to come (a stream of new groups keeps its recent ones) */
+      qexec_gby_cache_clear (thread_p, st);
     }
   /* the row path's last touch made the group the most recent: looking it up keeps it so */
   value = (AGGREGATE_HASH_VALUE *) mht_get (ctx->hash_table, (void *) ctx->temp_key);
@@ -9959,7 +10957,27 @@ qexec_gby_cache_add (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGATE_HA
   e->value = value;
   e->count = 0;
   e->placed = 0;
+  value->batch_slot = (int) i;
   st->n_cached++;
+}
+
+/* the cache entries of the groups a row-path call evicted: the first n of the LRU head noted before it */
+static void
+qexec_gby_cache_evicted (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGATE_HASH_VALUE ** note_val,
+			 const int *note_slot, int n)
+{
+  int i;
+
+  for (i = 0; i < n; i++)
+    {
+      int slot = note_slot[i];
+
+      /* the value pointer compares as a number: a freed group's slot may hold another group by now */
+      if (slot >= 0 && slot < QEXEC_GBY_CACHE_SIZE && st->cache[slot].len >= 0 && st->cache[slot].value == note_val[i])
+	{
+	  qexec_gby_cache_remove (thread_p, st, (unsigned int) slot);
+	}
+    }
 }
 
 static int
@@ -10162,6 +11180,10 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
       int len = expr_batch_key_bytes (plan, batch, r, key, (int) sizeof (key));
       unsigned int h = (len >= 0) ? qexec_gby_hash_bytes (key, len) : 0;
       QEXEC_GBY_ENTRY *e = (len >= 0) ? qexec_gby_cache_find (st, key, len, h) : NULL;
+      AGGREGATE_HASH_VALUE *note_val[QEXEC_GBY_EVICT_NOTE];
+      int note_slot[QEXEC_GBY_EVICT_NOTE];
+      int n_note = 0, groups_before, evicted;
+      HENTRY_PTR he;
       unsigned int before;
       int tuples_before;
 
@@ -10195,6 +11217,16 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
 
       before = mht_count (ctx->hash_table);
       tuples_before = ctx->tuple_count;
+      groups_before = ctx->group_count;
+      if (st->n_cached > 0)
+	{
+	  for (he = ctx->hash_table->lru_head; he != NULL && n_note < QEXEC_GBY_EVICT_NOTE; he = he->lru_next)
+	    {
+	      note_val[n_note] = (AGGREGATE_HASH_VALUE *) he->data;
+	      note_slot[n_note] = note_val[n_note]->batch_slot;
+	      n_note++;
+	    }
+	}
       rc = scan_batch_project_row (thread_p, &st->row, &batch->rows[r]);
       if (rc != NO_ERROR)
 	{
@@ -10206,7 +11238,13 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
 	  qexec_gby_cache_clear (thread_p, st);
 	  return qexec_batch_gby_rows (thread_p, st, batch, j + 1);
 	}
-      if (mht_count (ctx->hash_table) != before + 1)
+      evicted = (int) before + 1 - (int) mht_count (ctx->hash_table);
+      if (evicted > 0 && evicted <= n_note && ctx->group_count == groups_before + 1)
+	{
+	  /* a new group at the tail and the LRU head evicted for it, entry by entry */
+	  qexec_gby_cache_evicted (thread_p, st, note_val, note_slot, evicted);
+	}
+      else if (evicted != 0)
 	{
 	  /* not a plain new group: an existing one under other bytes, or a dump; a dumped group is freed */
 	  qexec_gby_cache_clear (thread_p, st);
@@ -10293,10 +11331,10 @@ qexec_batch_gby_destroy (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st)
  * read those slots.  So an aggregate's operand is the projection column whose vfetch_to is its slot: its
  * compiled program root, or a plain column of the scan, and the domain the tuple casts it into.  A key is the
  * projection column at its GROUP BY position, which must be a plain column of the scan.  An aggregate fed by a
- * hidden column (evaluated afresh per row) does not map.
+ * hidden column (evaluated afresh per row) does not map.  *why_not says why a map was not made (the scan's trace).
  */
 EXPR_BATCH_GBY_MAP *
-qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr * vd)
+qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr * vd, const char **why_not)
 {
   BUILDLIST_PROC_NODE *proc = &xasl->proc.buildlist;
   OUTPTR_LIST *outptr = xasl->outptr_list;
@@ -10311,6 +11349,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
   char *mem;
   size_t size;
 
+  *why_not = "the hash GROUP BY no longer takes rows";
   if (proc->agg_hash_context == NULL || proc->agg_hash_context->state != HS_ACCEPT_ALL || outptr == NULL)
     {
       return NULL;
@@ -10323,10 +11362,12 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
     {
       n_keys++;
     }
+  *why_not = "a GROUP BY without aggregates";
   if (n_aggs == 0 || n_keys == 0)
     {
       return NULL;
     }
+  *why_not = "out of memory";
   size = sizeof (EXPR_BATCH_GBY_MAP) + sizeof (int) * n_aggs + sizeof (DB_VALUE *) * n_aggs
     + sizeof (TP_DOMAIN *) * n_aggs + sizeof (DB_VALUE *) * n_keys + sizeof (REGU_VARIABLE *) * outptr->valptr_cnt
     + sizeof (int) * outptr->valptr_cnt + 64;
@@ -10377,6 +11418,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
 	  {
 	    continue;
 	  }
+	*why_not = "an aggregate operand that is not a column of the scan's tuple";
 	if (agg->operands == NULL)
 	  {
 	    goto no_map;
@@ -10395,6 +11437,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
 	  }
 	if (c == n_cols)
 	  {
+	    *why_not = "an aggregate operand in a hidden column";
 	    goto no_map;	/* a hidden column's value, or one the batch does not see */
 	  }
 	if (prog != NULL && outptr->eval_prog_idx != NULL && outptr->eval_prog_idx[col_idx[c]] >= 0)
@@ -10407,6 +11450,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
 	  }
 	else
 	  {
+	    *why_not = "an aggregate operand the projection computes without a program";
 	    goto no_map;
 	  }
 	agg_domain[k] = qdata_valptr_column_domain (col[c], vd);
@@ -10417,6 +11461,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
 
 	if (pos < 0 || pos >= n_cols || col[pos]->type != TYPE_CONSTANT)
 	  {
+	    *why_not = "a GROUP BY key that is not a plain column of the tuple";
 	    goto no_map;
 	  }
 	key_slot[k] = col[pos]->value.dbvalptr;
@@ -10430,6 +11475,7 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
     map->n_keys = n_keys;
     map->key_slot = key_slot;
   }
+  *why_not = NULL;
   return map;
 
 no_map:
@@ -10745,8 +11791,14 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	    }
 	  else if (xasl->proc.buildlist.groupby_list != NULL)
 	    {
+	      const char *why_not = NULL;
+
 	      agg_list = xasl->proc.buildlist.g_agg_list;
-	      gby_map = qexec_batch_gby_map_create (thread_p, xasl, &xasl_state->vd);
+	      gby_map = qexec_batch_gby_map_create (thread_p, xasl, &xasl_state->vd, &why_not);
+	      if (gby_map == NULL && xasl->curr_spec->s_id.type == S_HEAP_SCAN)
+		{
+		  xasl->curr_spec->s_id.s.hsid.batch_why_not = why_not;
+		}
 	    }
 	  opened = (agg_list != NULL && gby_map == NULL && xasl->type == BUILDLIST_PROC) ? 0
 	    : scan_batch_open (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec, agg_list, &xasl_state->vd, gby_map);
@@ -29166,6 +30218,8 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   proc->agg_hash_context->tuple_count = 0;
   proc->agg_hash_context->sorted_count = 0;
   proc->agg_hash_context->state = HS_ACCEPT_ALL;
+  memset (proc->agg_hash_context->key_sketch, 0, sizeof (proc->agg_hash_context->key_sketch));
+  proc->agg_hash_context->key_sketch_partial = false;
 
   /* all ok */
   return NO_ERROR;

@@ -453,8 +453,16 @@ namespace parallel_scan
 
 	  if (hash_aggregate_append)
 	    {
+	      AGGREGATE_HASH_CONTEXT *leader = m_.orig_xasl->proc.buildlist.agg_hash_context;
+
 	      m_.hgby_results.push_back (context->part_list_id);
 	      context->part_list_id = NULL;
+	      /* the keys this worker's table saw, for the leader's merge of the leftovers */
+	      if (leader != NULL)
+		{
+		  qdata_key_sketch_merge (leader->key_sketch, context->key_sketch);
+		  leader->key_sketch_partial |= (context->key_sketch_partial || context->state == HS_REJECT_ALL);
+		}
 	    }
 
 	  m_.active_results--;
