@@ -12233,6 +12233,111 @@ pt_dblink_merge_values_ok (PARSER_CONTEXT * parser, PT_NODE * value_clauses, PT_
   return true;
 }
 
+/* the column name of col, bare or qualified. NULL when col is not a column. */
+static const char *
+pt_dblink_merge_col_name (PT_NODE * col)
+{
+  if (col->node_type == PT_NAME)
+    {
+      return col->info.name.original;
+    }
+  if (col->node_type == PT_DOT_ && col->info.dot.arg2 != NULL && col->info.dot.arg2->node_type == PT_NAME)
+    {
+      return col->info.dot.arg2->info.name.original;
+    }
+  return NULL;
+}
+
+/* Do the clauses keep every ON key in cond as the source row has it? The sink sends one MERGE per source row,
+ * so a row whose key one statement writes can be matched by a later source row. One MERGE over the whole
+ * source decides every row's match before any write. The engine does not refuse a SET of an ON column, so the
+ * gate refuses it. An INSERT must write each key's target column with that key's source column. Source keys
+ * are distinct (the sink checks before sending), so a row that keeps its key meets no later source row.
+ *   return: NULL when every key is kept; otherwise the rejection message
+ */
+static const char *
+pt_dblink_merge_keys_kept (PARSER_CONTEXT * parser, PT_NODE * cond, PT_MERGE_INFO * merge, PT_DBLINK_MERGE_REFS * refs)
+{
+  PT_NODE *target_col, *source_col, *assign, *attr, *val;
+  const char *target_name, *source_name, *name, *reason;
+  bool written;
+
+  for (; cond != NULL; cond = cond->next)
+    {
+      if (cond->node_type == PT_EXPR && cond->info.expr.op == PT_AND)
+	{
+	  reason = pt_dblink_merge_keys_kept (parser, cond->info.expr.arg1, merge, refs);
+	  if (reason == NULL)
+	    {
+	      reason = pt_dblink_merge_keys_kept (parser, cond->info.expr.arg2, merge, refs);
+	    }
+	  if (reason != NULL)
+	    {
+	      return reason;
+	    }
+	  continue;
+	}
+
+      source_col = pt_dblink_merge_on_key (parser, cond, refs, &target_col);
+      if (source_col == NULL)
+	{
+	  continue;
+	}
+
+      target_name = pt_dblink_merge_col_name (target_col);
+      source_name = pt_dblink_merge_col_name (source_col);
+      if (target_name == NULL || source_name == NULL)
+	{
+	  return "dblink: remote MERGE with a local source supports only an ON key between two columns";
+	}
+
+      for (assign = merge->update.assignment; assign != NULL; assign = assign->next)
+	{
+	  name = pt_dblink_merge_col_name (assign->info.expr.arg1);
+	  if (name != NULL && intl_identifier_casecmp (name, target_name) == 0)
+	    {
+	      return "dblink: remote MERGE with a local source supports only a SET that leaves the ON key columns "
+		"unchanged; a row whose key changes could be matched by a later source row";
+	    }
+	}
+
+      if (merge->insert.value_clauses == NULL)
+	{
+	  continue;
+	}
+
+      /* Every value written to the key's target column. A column named twice is checked at each place. Without
+       * a column list the positions are the remote table's, which this side does not know. */
+      written = false;
+      for (attr = merge->insert.attr_list, val = merge->insert.value_clauses->info.node_list.list;
+	   attr != NULL && val != NULL; attr = attr->next, val = val->next)
+	{
+	  name = pt_dblink_merge_col_name (attr);
+	  if (name == NULL || intl_identifier_casecmp (name, target_name) != 0)
+	    {
+	      continue;
+	    }
+
+	  name = pt_dblink_merge_col_name (val);
+	  if (pt_dblink_merge_value_leaf (val, refs) != PT_DBLINK_LEAF_LOCAL || name == NULL
+	      || intl_identifier_casecmp (name, source_name) != 0)
+	    {
+	      written = false;
+	      break;
+	    }
+	  written = true;
+	}
+      if (!written)
+	{
+	  return "dblink: remote MERGE with a local source needs its INSERT to name every ON key's target column "
+	    "and write it with that key's source column as is; a row inserted under another key could be matched "
+	    "by a later source row";
+	}
+    }
+
+  return NULL;
+}
+
 /*
  * pt_dblink_merge_is_inscope () - Can a remote MERGE whose source is local go to the value-push sink?
  *   return: true when it can; otherwise a reason is raised on the statement and false returned
@@ -12246,6 +12351,7 @@ pt_dblink_merge_is_inscope (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_DBLINK_MERGE_REFS refs;
   int num_keys = 0;
   bool on_ok, clauses_ok;
+  const char *reason;
 
   memset (&refs, 0, sizeof (refs));
   refs.target_name = pt_dblink_dml_target_range_name (merge->into);
@@ -12267,6 +12373,16 @@ pt_dblink_merge_is_inscope (PARSER_CONTEXT * parser, PT_NODE * node)
     && pt_dblink_merge_attrs_ok (parser, merge->insert.attr_list, &refs)
     && (merge->insert.value_clauses == NULL || pt_dblink_merge_values_ok (parser, merge->insert.value_clauses, &refs))
     && pt_dblink_merge_pred_list_ok (parser, merge->insert.search_cond, &refs);
+
+  if (clauses_ok)
+    {
+      reason = pt_dblink_merge_keys_kept (parser, merge->search_cond, merge, &refs);
+      if (reason != NULL)
+	{
+	  PT_ERRORf (parser, node, "%s", reason);
+	  return false;
+	}
+    }
 
   if (clauses_ok)
     {
