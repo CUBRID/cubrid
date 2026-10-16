@@ -37,6 +37,7 @@
 #include <mutex>
 #include <type_traits>
 #include <deque>
+#include <vector>
 
 namespace cubstorage
 {
@@ -79,6 +80,7 @@ namespace cubstorage
       static constexpr std::size_t L2_FANOUT = 8;
       static constexpr std::size_t ENTRIES_PER_SHARD = L3_FANOUT * L2_FANOUT;
       static constexpr std::size_t DEFAULT_SHARD_COUNT = 8;
+      static constexpr std::size_t FC_NUM_COUNTERS = 6;	// POC: number of full coverage counters
 
       enum class tier : std::int8_t
       {
@@ -327,6 +329,12 @@ namespace cubstorage
 
 	  status allocate (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
 			   PGBUF_WATCHER &page_watcher);
+
+	  // POC full coverage: refill from the sector map instead of the candidate queue
+	  status allocate_fc (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
+			      PGBUF_WATCHER &page_watcher);
+	  void allocate_install_fc (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
+				    std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::size_t num_candidates);
       };
 
       class candidate_queue
@@ -356,10 +364,97 @@ namespace cubstorage
 	  void insert (bestspace_entry &candidate);
       };
 
+      // POC full coverage: a complete map of every heap page known to this heap, one record per sector
+      // (64 pages = one shard). each page has a 4-bit code: 0 = no usable space, 1..8 = FS1..FS8,
+      // 0xE = not a heap data page. pages held by a shard are marked resident; the map is a hint and
+      // every page it proposes is verified under latch like any L1 entry.
+      class fcmap
+      {
+	public:
+	  static constexpr std::uint8_t CODE_NONE = 0;
+	  static constexpr std::uint8_t CODE_MAX_TIER = 8;
+	  static constexpr std::uint8_t CODE_NOT_DATA = 0xE;
+	  static constexpr std::size_t PAGES_PER_SECTOR = 64;
+	  static constexpr std::size_t SECTORS_PER_GROUP = 64;
+	  static constexpr std::size_t MAX_SEGMENTS = 24;	// segment k holds 2^k groups
+
+	  enum counter
+	  {
+	    CNT_FEEDBACK,
+	    CNT_CLAIMED,
+	    CNT_VERIFY_FAIL,
+	    CNT_RELEASED,
+	    CNT_ALLOC_BATCH,
+	    CNT_REUSED,
+	    CNT_LAST
+	  };
+
+	  fcmap ();
+	  ~fcmap ();
+
+	  static std::uint8_t code_of (std::uint16_t freespace);
+	  static std::uint16_t optimistic_freespace (std::uint8_t code);
+
+	  void feedback (VPID vpid, std::uint8_t code);
+	  void set_resident (VPID vpid, std::uint8_t code);
+	  void release (VPID vpid, std::uint8_t code, bool measured);
+	  void remove (VPID vpid);
+	  void clear_all_resident ();
+	  std::size_t claim (std::uint8_t min_code, bestspace_entry *out, std::size_t max_count);
+	  std::size_t collect (bestspace_entry *out, std::size_t max_count);
+	  void get_usage (std::size_t &num_sectors, std::size_t &bytes, std::uint64_t counters[CNT_LAST]);
+	  void count (counter id, std::uint64_t value = 1)
+	  {
+	    m_counters[id].fetch_add (value, std::memory_order_relaxed);
+	  }
+
+	private:
+	  struct record
+	  {
+	    std::uint64_t key;				// ((volid + 1) << 32) | sectid, immutable once published
+	    std::atomic<std::uint64_t> codes[4];	// 64 x 4-bit page codes
+	    std::atomic<std::uint64_t> resident;	// page is held by a shard L1 slot
+	    std::atomic<std::uint64_t> dirty;		// free space was fed back while resident
+	    std::atomic<std::uint64_t> version;	// bumped by every published code change
+	  };
+
+	  struct group
+	  {
+	    std::atomic<std::uint64_t> bits[CODE_MAX_TIER];	// bit s: sector s may hold a non-resident page of code i+1
+	    record sectors[SECTORS_PER_GROUP];
+	  };
+
+	  struct index_table
+	  {
+	    std::size_t mask;
+	    std::atomic<std::uint64_t> *keys;
+	    std::uint32_t *values;
+	  };
+
+	  std::atomic<group *> m_segments[MAX_SEGMENTS];
+	  std::atomic<std::size_t> m_num_sectors;
+	  std::atomic<index_table *> m_index;
+	  std::vector<index_table *> m_retired;
+	  std::mutex m_grow_mutex;
+	  std::atomic<std::size_t> m_cursor;
+	  std::size_t m_bytes;
+	  std::atomic<std::uint64_t> m_counters[CNT_LAST];
+
+	  static std::uint64_t make_key (VPID vpid);
+	  static std::uint8_t get_code (record *rec, std::size_t offset);
+	  group *group_at (std::size_t group_index);
+	  record *sector_at (std::size_t sector_index);
+	  record *find_sector (std::uint64_t key, std::size_t &sector_index);
+	  record *get_or_add_sector (std::uint64_t key, std::size_t &sector_index);
+	  void index_insert (std::uint64_t key, std::uint32_t value);
+	  void set_code (record *rec, std::size_t sector_index, std::size_t offset, std::uint8_t code);
+	  void publish (record *rec, std::size_t sector_index, std::size_t offset);
+      };
+
     public:
       explicit bestspace (std::size_t shard_count, int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen,
 			  std::uint16_t unfill_space);
-      ~bestspace () = default;
+      ~bestspace ();
 
       void reset (const bestspace_entry *entries, std::size_t num_entries);
 
@@ -381,11 +476,19 @@ namespace cubstorage
 
       std::size_t get_num_shards ();
 
+      bool full_coverage () const
+      {
+	return m_fcmap != nullptr;
+      }
+      void get_fc_usage (std::size_t &num_sectors, std::size_t &bytes, std::uint64_t *counters);
+      void forget_page (VPID vpid);
+
       void to_entries (bestspace_entry *entries, bestspace_entry *candidates, std::size_t &num_candidates);
 
     private:
       std::deque<shard> m_shards;
       candidate_queue m_candidates;
+      fcmap *m_fcmap;
 
       // parameter
       const bool m_distributed_insert;
@@ -486,6 +589,9 @@ namespace cubstorage
   };
 
   extern bestspace_registry bestspaces;
+
+  // POC diagnostics: how the last page handed out by this thread was chosen
+  void bestspace_debug_last_found (VPID *vpid, int *source, int *measured, int *needed);
 }
 
 #endif // _BESTSPACE_HPP_

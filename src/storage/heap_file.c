@@ -3584,6 +3584,16 @@ heap_remove_page_on_vacuum (THREAD_ENTRY * thread_p, PAGE_PTR * page_ptr, HFID *
     }
   memcpy (&chain, copy_recdes.data, sizeof (chain));
   HEAP_PAGE_SET_NOT_IN_HEAP (&chain);
+  if (prm_get_bool_value (PRM_ID_BESTSPACE_FULL_COVERAGE))
+    {
+      /* POC full coverage: the page leaves the heap; forget it before it can be deallocated and reused, so no
+       * inserter reaches the next owner through an old map entry. */
+      cubstorage::bestspace * bs = heap_find_bestspace (thread_p, NULL, hfid, NULL);
+      if (bs != NULL)
+	{
+	  bs->forget_page (page_vpid);
+	}
+    }
   update_recdes.data = (char *) &chain;
   update_recdes.length = sizeof (chain);
   if (spage_update (thread_p, crt_watcher.pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &update_recdes) != SP_SUCCESS)
@@ -4338,6 +4348,21 @@ heap_update_bestspace (THREAD_ENTRY * thread_p, const HFID * hfid, cubstorage::b
   bestspace->to_entries (entries, candidates, num_candidates);
   bestspace->get_estimates (num_pages, num_recs, recs_sumlen);
 
+  if (bestspace->full_coverage ())
+    {
+      /* POC diagnostics */
+      std::size_t fc_sectors, fc_bytes;
+      std::uint64_t fc_counters[cubstorage::bestspace::FC_NUM_COUNTERS];
+
+      bestspace->get_fc_usage (fc_sectors, fc_bytes, fc_counters);
+      er_log_debug (ARG_FILE_LINE,
+		    "bestspace_fc: hfid=%d|%d|%d pages=%d sectors=%zu bytes=%zu feedback=%llu claimed=%llu"
+		    " verify_fail=%llu released=%llu alloc_batch=%llu reused=%llu\n", HFID_AS_ARGS (hfid), num_pages,
+		    fc_sectors, fc_bytes, (unsigned long long) fc_counters[0], (unsigned long long) fc_counters[1],
+		    (unsigned long long) fc_counters[2], (unsigned long long) fc_counters[3],
+		    (unsigned long long) fc_counters[4], (unsigned long long) fc_counters[5]);
+    }
+
   heap_hdr = heap_get_header_stats_ptr (thread_p, header_watcher.pgptr);
   if (!heap_hdr)
     {
@@ -4756,6 +4781,28 @@ heap_add_bestpage (THREAD_ENTRY * thread_p, HFID * hfid, PAGE_PTR pgptr, std::ui
   VPID *vpid;
 
   freespace = spage_get_free_space_without_saving (thread_p, pgptr);
+
+  if (prm_get_bool_value (PRM_ID_BESTSPACE_FULL_COVERAGE))
+    {
+      /* POC full coverage: the map keeps every page, so record each change unconditionally. */
+      if (heap_page_is_not_in_heap (thread_p, pgptr))
+	{
+	  return;
+	}
+      bestspace = heap_find_bestspace (thread_p, NULL, hfid, header_watcher);
+      if (!bestspace)
+	{
+	  return;
+	}
+      vpid = pgbuf_get_vpid_ptr (pgptr);
+      assert_release (vpid != NULL);
+      candidate.freespace = freespace;
+      candidate.volid = vpid->volid;
+      candidate.pageid = vpid->pageid;
+      bestspace->push_candidates (&candidate, 1);
+      return;
+    }
+
   if (freespace == 0)
     {
       return;
@@ -21772,9 +21819,26 @@ heap_insert_physical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 #endif
 
   /* physical insertion */
-  if (spage_insert_at (thread_p, context->home_page_watcher_p->pgptr, context->res_oid.slotid, context->recdes_p) !=
-      SP_SUCCESS)
+  int sp_status = spage_insert_at (thread_p, context->home_page_watcher_p->pgptr, context->res_oid.slotid,
+				   context->recdes_p);
+  if (sp_status != SP_SUCCESS)
     {
+      {
+	/* POC diagnostics */
+	VPID dbg_vpid, *page_vpid = pgbuf_get_vpid_ptr (context->home_page_watcher_p->pgptr);
+	int dbg_source, dbg_measured, dbg_needed;
+	cubstorage::bestspace_debug_last_found (&dbg_vpid, &dbg_source, &dbg_measured, &dbg_needed);
+	_er_log_debug (ARG_FILE_LINE,
+		       "fcpoc insert fail: page=%d|%d slot=%d len=%d type=%d sp=%d maxnew=%d nslots=%d nrecs=%d"
+		       " free_wo_saving=%d | last_found page=%d|%d src=%d measured=%d needed=%d\n",
+		       page_vpid->volid, page_vpid->pageid, context->res_oid.slotid, context->recdes_p->length,
+		       context->recdes_p->type, sp_status,
+		       spage_max_space_for_new_record (thread_p, context->home_page_watcher_p->pgptr),
+		       spage_number_of_slots (context->home_page_watcher_p->pgptr),
+		       spage_number_of_records (context->home_page_watcher_p->pgptr),
+		       spage_get_free_space_without_saving (thread_p, context->home_page_watcher_p->pgptr),
+		       dbg_vpid.volid, dbg_vpid.pageid, dbg_source, dbg_measured, dbg_needed);
+      }
       er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
       OID_SET_NULL (&context->res_oid);
       return ER_FAILED;
