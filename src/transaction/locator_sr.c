@@ -4963,23 +4963,6 @@ locator_finalize_oos_record (THREAD_ENTRY *thread_p, const OID *class_oid, RECDE
 	  return error;
 	}
       *converted = received->get_recdes ();
-#if defined (SA_MODE)
-      if (from_workspace && pending == nullptr && !OR_RECORD_HAS_OOS ((*record)->data)
-          && !OR_RECORD_HAS_OOS (converted->data) && or_rep_id (*record) == or_rep_id (converted))
-        {
-          /* A current inline workspace row needs no replacement. Complete the
-           * inline publication transition before releasing the unused owner. */
-          error = heap_oos_finalize_record (thread_p, class_oid, converted, received);
-          if (error != NO_ERROR)
-            {
-              return error;
-            }
-          received->record ().set_external_buffer (nullptr, 0);
-          received->record ().set_record_length (0);
-          *converted = received->get_recdes ();
-          return heap_oos_validate_disk_record (thread_p, class_oid, *record);
-        }
-#endif
       *record = converted;
       pending = received;
     }

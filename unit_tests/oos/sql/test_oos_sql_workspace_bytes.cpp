@@ -244,10 +244,16 @@ class OosWorkspaceBytes : public ::testing::Test
 	  ASSERT_EQ (db_put (workspace_object, name, &value), NO_ERROR);
 	}
       ASSERT_EQ (locator_flush_instance (workspace_object), NO_ERROR);
+      MOBJ workspace_data = nullptr;
+      ASSERT_EQ (ws_find (workspace_object, &workspace_data), WS_FIND_MOP_NOTDELETED);
+      ASSERT_NE (workspace_data, nullptr);
+      const int workspace_chn = ws_chn (workspace_data);
       ASSERT_EQ (db_commit_transaction (), NO_ERROR);
       std::vector<char> workspace_bytes;
       RECDES actual = RECDES_INITIALIZER;
       ASSERT_NO_FATAL_FAILURE (capture (*WS_OID (workspace_object), class_oid, hfid, workspace_bytes, actual));
+      // Storage preparation must not advance the workspace-assigned CHN again.
+      EXPECT_EQ (OR_GET_MVCC_CHN (actual.data), workspace_chn);
       ASSERT_NO_FATAL_FAILURE (expect_storage (stored, class_oid, alter == nullptr ? current : old));
       ASSERT_NO_FATAL_FAILURE (expect_storage (actual, class_oid, current));
 
