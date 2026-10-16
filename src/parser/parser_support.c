@@ -4988,7 +4988,6 @@ struct pt_host_var_position_walk
   int depth;
   int capacity;
   bool *seen;			/* [host_var_count] the walk met the position's first node */
-  bool *cast;			/* [host_var_count] the first node is a rule cast */
 #if !defined (NDEBUG)
   TP_DOMAIN **checked;		/* [host_var_count] the domain type checking gave the position */
 #endif
@@ -5054,18 +5053,18 @@ pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_ind
 /*
  * pt_assign_host_var_position () - CBRD-27583: the domain one host variable node needs, against the domain of its
  *   position. The first node of a user position decides the position's domain in the first pass: its context's
- *   expected domain, the rule's target when its comparison converts the bind (a rule cast; the position still records
- *   the value's domain, its plan's premise), or the value's domain. A later node needs its own context's domain, or in
- *   a relational comparison the target the type rule gives the bound value's domain against its mate - the decision of
- *   type checking (pt_bind_comparison_target), or the bound value's domain; a node that needs another domain moves to
- *   a derived position.
+ *   expected domain, else the value's domain. A node needs its own context's domain, or in a relational comparison
+ *   the target the type rule gives the position's domain against its mate (a rule cast; type checking decided the
+ *   same with the same function, pt_bind_comparison_target), or the position's domain; a node that needs another
+ *   domain moves to a derived position. A rule cast is a derived position: the user position holds the value as bound.
  */
 static int
 pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent,
 			     PT_HOST_VAR_POSITION_WALK * walk)
 {
   const int i = hv->info.host_var.index;
-  TP_DOMAIN *own = pt_host_var_is_context_typed (hv->expected_domain) ? hv->expected_domain : NULL;
+  TP_DOMAIN *own = !hv->info.host_var.rule_cast && pt_host_var_is_context_typed (hv->expected_domain)
+    ? hv->expected_domain : NULL;
 
   if (walk->assign && !walk->seen[i])
     {
@@ -5073,25 +5072,11 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
 #if !defined (NDEBUG)
       walk->checked[i] = parser->host_var_expected_domains[i];
 #endif
-      if (own == NULL && parser->host_var_compiled_domains != NULL)
-	{
-	  /* a value-typed side of a comparison whose rule converts the bind side: a rule cast (type checking decided
-	   * the same with the same function) */
-	  own = pt_bind_operand_target (parser, pt_host_var_value_domain (parser, i), hv, parent, grandparent);
-	  if (own != NULL)
-	    {
-	      hv->expected_domain = own;
-	      hv->info.host_var.rule_cast = true;
-	    }
-	}
-      walk->cast[i] = own != NULL && hv->info.host_var.rule_cast;
       parser->host_var_expected_domains[i] = own != NULL ? own : tp_domain_resolve_default (DB_TYPE_UNKNOWN);
       if (parser->host_var_compiled_domains != NULL)
 	{
-	  parser->host_var_compiled_domains[i] = (own == NULL || hv->info.host_var.rule_cast)
-	    ? pt_host_var_value_domain (parser, i) : NULL;
+	  parser->host_var_compiled_domains[i] = own == NULL ? pt_host_var_value_domain (parser, i) : NULL;
 	}
-      return NO_ERROR;
     }
 
   /* a value-typed position compiled without values has no domain yet: no plan is made (db_compile_statement) */
@@ -5103,23 +5088,12 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
       return NO_ERROR;
     }
 
-  /* a rule cast converts the value for its own comparison: the position's other nodes read the value as bound */
-  TP_DOMAIN *bound = (parser->host_var_compiled_domains != NULL && parser->host_var_compiled_domains[i] != NULL)
-    ? parser->host_var_compiled_domains[i] : position;
-  TP_DOMAIN *need = bound;
-  if (own != NULL && !hv->info.host_var.rule_cast)
+  TP_DOMAIN *need = own;
+  if (need == NULL)
     {
-      need = own;
+      need = pt_bind_operand_target (parser, position, hv, parent, grandparent);
     }
-  else
-    {
-      TP_DOMAIN *target = pt_bind_operand_target (parser, bound, hv, parent, grandparent);
-      if (target != NULL)
-	{
-	  need = target;
-	}
-    }
-  if (tp_domain_match (need, position, TP_EXACT_MATCH))
+  if (need == NULL || tp_domain_match (need, position, TP_EXACT_MATCH))
     {
       return NO_ERROR;
     }
@@ -5188,13 +5162,14 @@ pt_assign_host_var_positions_post (PARSER_CONTEXT * parser, PT_NODE * node, void
 /*
  * pt_assign_host_var_positions () - CBRD-27583: at the end of every translation (mq_translate), in the compilation of
  *   a bind type signature, give each host variable node the position whose domain it needs. One user host variable
- *   can need two domains after the rewrites copied it into another context (an optimizer transitive term
- *   cast(t2.vc as double) = ?:0, a term pushed into a derived table, an explicit ?:0 reused): the later node gets a
- *   derived position the client fills with the user's value converted into its domain, so the server never converts
- *   a bind. Every session translating the text computes the same positions, cache hits included: the hash text is
- *   printed after the translation. Without typed values (a PREPARE) only context-typed nodes derive; a value-typed
- *   position stays untyped and no plan is made. A later translation in the same compilation (a SELECT built from the
- *   translated statement) reuses the positions and makes none.
+ *   can need two domains: a comparison whose type rule converts the value-typed bind (a rule cast), or a copy the
+ *   rewrites put into another context (an optimizer transitive term cast(t2.vc as double) = ?:0, a term pushed into a
+ *   derived table, an explicit ?:0 reused): that node gets a derived position the client fills with the user's value
+ *   converted into its domain, so the server never converts a bind. Every session translating the text computes the
+ *   same positions, cache hits included: the hash text is printed after the translation. Without typed values (a
+ *   PREPARE) only context-typed nodes derive; a value-typed position stays untyped and no plan is made. A later
+ *   translation in the same compilation (a SELECT built from the translated statement) reuses the positions and makes
+ *   none.
  */
 void
 pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
@@ -5212,13 +5187,12 @@ pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
   walk.depth = walk.capacity = 0;
   walk.error = NO_ERROR;
   walk.assign = parser->host_var_derived_from == NULL;
-  walk.seen = (bool *) calloc (2 * parser->host_var_count, sizeof (bool));
+  walk.seen = (bool *) calloc (parser->host_var_count, sizeof (bool));
   if (walk.seen == NULL)
     {
       PT_ERRORm (parser, statement, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
       return;
     }
-  walk.cast = walk.seen + parser->host_var_count;
 #if !defined (NDEBUG)
   walk.checked = (TP_DOMAIN **) calloc (parser->host_var_count, sizeof (TP_DOMAIN *));
   assert (walk.checked != NULL);
@@ -5228,11 +5202,10 @@ pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
 			   pt_assign_host_var_positions_post, &walk);
 
 #if !defined (NDEBUG)
-  /* a typed position all of whose nodes need one domain has the domain type checking gave it, unless the walk made
-   * its first node a rule cast */
+  /* a typed position all of whose nodes need one domain has the domain type checking gave it */
   for (int i = 0; walk.assign && walk.error == NO_ERROR && i < parser->host_var_count; i++)
     {
-      if (!walk.seen[i] || walk.cast[i])
+      if (!walk.seen[i])
 	{
 	  continue;
 	}

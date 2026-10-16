@@ -4649,10 +4649,10 @@ pt_bind_operand_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, 
  * pt_typed_bind_comparison () - CBRD-27583: a user host variable compared with an operand of a known type, in the
  *   compilation of a bind type signature (its value, or the NULL carrying only the value's type that the SELECT
  *   compilation binds; never under set_host_var, the compilation that consumes values), takes the type of its value,
- *   and pt_bind_comparison_target decides the pair: when the rule converts the bind side, the position's expected
- *   domain is the target (a rule cast: the client casts the value before it sends it); else the position stays
- *   value-typed (the regu reads host_var_compiled_domains, the term converts the other side). Either way the
- *   position records the value's domain: a later value of another type recompiles the statement for its own
+ *   and pt_bind_comparison_target decides the pair: when the rule converts the bind side, the node's expected
+ *   domain is the target (a rule cast: pt_assign_host_var_positions moves the node to a derived position of the
+ *   target, which the client fills); else the term converts the other side. Either way the position stays
+ *   value-typed and records the value's domain: a later value of another type recompiles the statement for its own
  *   signature instead of being cast into this plan's domain (int_col = ? with 1.5 stays 1.5). Returns false when
  *   this is not such a bind: the caller types it as before.
  */
@@ -4700,10 +4700,9 @@ pt_typed_bind_comparison (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * paren
 static void
 pt_type_bind_by_comparison (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent)
 {
-  if (hv != NULL && hv->node_type == PT_HOST_VAR && hv->type_enum == PT_TYPE_MAYBE && hv->expected_domain == NULL
-      && pt_typed_bind_comparison (parser, hv, parent, grandparent) && hv->expected_domain != NULL)
+  if (hv != NULL && hv->node_type == PT_HOST_VAR && hv->type_enum == PT_TYPE_MAYBE && hv->expected_domain == NULL)
     {
-      pt_preset_hostvar (parser, hv);
+      (void) pt_typed_bind_comparison (parser, hv, parent, grandparent);
     }
 }
 
@@ -4747,10 +4746,6 @@ pt_coerce_expression_argument (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE 
     {
       /* CBRD-27583: a comparison bind the context leaves untyped (def_type MAYBE for a numeric mate), typed from
        * its value in the compilation of a bind type signature */
-      if (node->expected_domain != NULL)
-	{
-	  pt_preset_hostvar (parser, node);
-	}
       return NO_ERROR;
     }
 
