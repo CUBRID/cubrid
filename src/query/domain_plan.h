@@ -103,9 +103,11 @@ enum DOMAIN_PLAN_FLAGS
 						 * (LIMIT's offset + count, an ORDERBY_NUM bound): its domain is the
 						 * compiled one, the resolve_domains resolves its operands' operand
 						 * coercion from their resolved domains */
-  DOMAIN_PLAN_LIST_BIND = 0x2000	/* a bind the compiler typed that an output list writes: resolve_domains
+  DOMAIN_PLAN_LIST_BIND = 0x2000,	/* a bind the compiler typed that an output list writes: resolve_domains
 					 * converts a value of another type into the column's domain, as the tuple
 					 * write would */
+  DOMAIN_PLAN_REGU_CONVERTS = 0x4000	/* CBRD-27583: the regu converts its value (REGU_VARIABLE.conv): a bind's value
+					 * is in the regu's original domain, the item's is the regu's domain */
 };
 
 struct DOMAIN_COMPARE_PLAN;

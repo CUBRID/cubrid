@@ -79,6 +79,9 @@ struct DOMAIN_OPERAND
 /* The converter mode of a resolver context: the mode tp_value_find_converter finds its converters in */
 DOMAIN_CONVERT_MODE domain_convert_mode (DOMAIN_CTX context);
 
+/* The resolver context of an operator node (OPERATOR_TYPE) whose domain is resolved from its operands' */
+DOMAIN_CTX domain_late_bind_context (int opcode);
+
 /*
  * The single home of the server type rules: the value-type rules execution applied at the row in
  * qdata_{add,subtract,multiply,divide}_dbval, tp_value_compare_with_error, tp_infer_common_domain, the row-time

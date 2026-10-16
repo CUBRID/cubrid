@@ -1689,10 +1689,15 @@ fetch_convert_regu_value (const REGU_VARIABLE * regu_var, DB_VALUE ** peek_dbval
       *peek_dbval = converted;
       return NO_ERROR;
     }
+  /* the converter was found for the domain the compiler says the value is read in */
+  assert (DB_VALUE_DOMAIN_TYPE (*peek_dbval) == TP_DOMAIN_TYPE (regu_var->original_domain)
+	  || (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (*peek_dbval))
+	      && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu_var->original_domain))));
   const TP_DOMAIN_STATUS status = tp_value_convert (regu_var->conv, regu_var->domain, *peek_dbval, converted);
   if (status != DOMAIN_COMPATIBLE)
     {
-      if (regu_var->conv_mode != DOMAIN_CONVERT_OPERAND || !prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+      if (!(regu_var->conv_mode & REGU_CONV_NULL_ON_FUNCTION_ERRORS)
+	  || !prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
 	  const int error = qdata_operand_coercion_error (status, *peek_dbval, regu_var->domain);
 	  pr_clear_value (converted);
@@ -1806,8 +1811,14 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 
       pr_clear_value (regu_var->vfetch_to);
 
-      /* a converting regu reads into a temporary: a conversion's result is not its source */
-      *peek_dbval = regu_var->conv != NULL ? &position_value : regu_var->vfetch_to;
+      /* a converting regu reads into a temporary (a conversion's result is not its source), which a NULL column
+       * leaves as it is */
+      *peek_dbval = regu_var->vfetch_to;
+      if (regu_var->conv != NULL)
+	{
+	  db_make_null (&position_value);
+	  *peek_dbval = &position_value;
+	}
 
       /* slot accessor: layout from the bound descriptor, domain from the position's execution domain - the list scan
        * or the block that reads the list gave a variable position its resolved domain; NULL column leaves vfetch_to

@@ -4625,70 +4625,10 @@ pt_bind_comparison_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domai
 }
 
 /*
- * pt_bind_arith_target () - CBRD-27583: the type rule module decides an addition, subtraction, multiplication or
- *   division of a host variable arriving in bind_domain with the other operand of expr as the row decides it
- *   (qdata_{add,subtract,multiply,divide}_dbval): *target is the domain the rule converts the bind side into, else
- *   NULL. Returns false when expr is no such operator or the mate's type is not fixed: nothing decided.
- */
-static bool
-pt_bind_arith_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, PT_NODE * expr, bool bind_is_lhs,
-		      TP_DOMAIN ** target)
-{
-  int opcode;
-
-  *target = NULL;
-  switch (expr->info.expr.op)
-    {
-    case PT_PLUS:
-      opcode = T_ADD;
-      break;
-    case PT_MINUS:
-      opcode = T_SUB;
-      break;
-    case PT_TIMES:
-      opcode = T_MUL;
-      break;
-    case PT_DIVIDE:
-      opcode = T_DIV;
-      break;
-    default:
-      return false;
-    }
-  PT_NODE *mate = bind_is_lhs ? expr->info.expr.arg2 : expr->info.expr.arg1;
-  if (bind_domain == NULL || mate == NULL || mate->type_enum == PT_TYPE_MAYBE || mate->type_enum == PT_TYPE_NONE
-      || mate->type_enum == PT_TYPE_NULL || PT_IS_COLLECTION_TYPE (mate->type_enum))
-    {
-      return false;
-    }
-  TP_DOMAIN *mate_domain = pt_xasl_node_to_domain (parser, mate);
-  if (mate_domain == NULL || TP_DOMAIN_TYPE (mate_domain) == DB_TYPE_VARIABLE)
-    {
-      return false;
-    }
-
-  DOMAIN_OPERAND operands[2];
-  const int b = bind_is_lhs ? 0 : 1;
-  operands[b] = DOMAIN_OPERAND
-  {
-  bind_domain, DB_TYPE_NULL, TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (bind_domain)) ? bind_domain->collation_id : -1, false};
-  operands[1 - b] = DOMAIN_OPERAND
-  {
-  mate_domain, DB_TYPE_NULL, TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (mate_domain)) ? mate_domain->collation_id : -1, false};
-  RESOLVED_DOMAIN result;
-  bool needs_late_bind;
-  if (domain_resolve (DOMAIN_CTX_ARITH, opcode, operands, 2, NULL, &result, &needs_late_bind) == NO_ERROR
-      && !needs_late_bind && result.conv[b] != NULL)
-    {
-      *target = (TP_DOMAIN *) result.operand_domain[b];
-    }
-  return true;
-}
-
-/*
- * pt_bind_operand_target () - CBRD-27583: the domain the operator holding a host variable arriving in bind_domain
- *   converts it into, as the type rule module decides it for a comparison (pt_bind_comparison_mate,
- *   pt_bind_comparison_target) or an arithmetic operator (pt_bind_arith_target): the target, or NULL when the
- *   operator takes the bind as it is or decides nothing about it
+ * pt_bind_operand_target () - CBRD-27583: the domain the comparison holding a host variable arriving in bind_domain
+ *   converts it into, as the type rule module decides it (pt_bind_comparison_mate, pt_bind_comparison_target): the
+ *   target, or NULL when the comparison takes the bind as it is or there is no comparison. A value consumer (an
+ *   operator, a function, an aggregate) converts a bind on the server, as any operand (REGU_VARIABLE.conv).
  */
 TP_DOMAIN *
 pt_bind_operand_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, PT_NODE * hv, PT_NODE * parent,
@@ -4701,11 +4641,6 @@ pt_bind_operand_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, 
   if (mate != NULL)
     {
       (void) pt_bind_comparison_target (parser, bind_domain, mate, hv_is_lhs, &target);
-    }
-  else if (parent != NULL && parent->node_type == PT_EXPR
-	   && (parent->info.expr.arg1 == hv || parent->info.expr.arg2 == hv))
-    {
-      (void) pt_bind_arith_target (parser, bind_domain, parent, parent->info.expr.arg1 == hv, &target);
     }
   return target;
 }

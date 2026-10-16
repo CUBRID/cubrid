@@ -199,6 +199,14 @@ const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may re
 						 * at load for a stable regu */
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
 
+/* CBRD-27583: REGU_VARIABLE.conv_mode - the converter (a DOMAIN_CONVERT_MODE, or the ENUM name converter) and what
+ * a failed conversion gives */
+const int REGU_CONV_SELECTION = 0x07;
+const int REGU_CONV_ENUM_NAME =
+	0x04;	/* T_ADD's ENUM into DOUBLE through its name (domain_enumeration_name_converter) */
+const int REGU_CONV_NULL_ON_FUNCTION_ERRORS =
+	0x10;	/* an arithmetic operand: NULL under return_null_on_function_errors */
+
 const int REGU_VARIABLE_VARIABLE_DOMAIN = 0x8000;	/* load-derived: the regu's compiled domain is variable, so the
 					 * inline fetch_peek_dbval () peeks it only once it took its domain in this
 					 * execution (qexec_node_domain_is_set). Set exactly when the regu's plan item
@@ -218,7 +226,7 @@ class regu_variable_node
      * the mode the compiler converts it in. conv is the unpack's converter between the two, into vfetch_to */
     TP_DOMAIN *original_domain = nullptr;
     TP_VALUE_CONVERTER conv = nullptr;
-    unsigned char conv_mode = 0;	/* DOMAIN_CONVERT_MODE */
+    unsigned char conv_mode = 0;	/* REGU_CONV_* */
     domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
     DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
     xasl_node *xasl;		/* query xasl pointer */

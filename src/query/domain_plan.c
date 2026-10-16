@@ -320,37 +320,6 @@ domain_give_node_domain (DOMAIN_PLAN_ITEM * item, bool variable)
   load_entry->variable = load_entry->variable || variable;
 }
 
-/* The resolver context of a late-binding operator node. */
-static DOMAIN_CTX
-domain_late_bind_context (OPERATOR_TYPE opcode)
-{
-  switch (opcode)
-    {
-    case T_ADD:
-    case T_SUB:
-    case T_MUL:
-    case T_DIV:
-    case T_MOD:
-    case T_UNMINUS:
-    case T_ABS:
-    case T_FLOOR:
-    case T_CEIL:
-    case T_ROUND:
-    case T_TRUNC:
-      return DOMAIN_CTX_ARITH;
-    case T_NVL:
-    case T_NVL2:
-    case T_IFNULL:
-    case T_COALESCE:
-    case T_NULLIF:
-    case T_LEAST:
-    case T_GREATEST:
-      return DOMAIN_CTX_COMMON_VALUE;
-    default:
-      return DOMAIN_CTX_FUNC_ARG;
-    }
-}
-
 /* Records the operands a node the compiler left without a type is resolved from (resolution pass). A load entry links
  * three operands in place; a function with more links an array of its own, freed with the load entries. */
 static void
@@ -1657,6 +1626,13 @@ domain_walk_regu (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DOMAIN_CTX co
        * is not coerced into the assigned column's type */
       item->flags |= DOMAIN_PLAN_LIST_BIND;
     }
+  if (regu->conv != NULL)
+    {
+      /* CBRD-27583: a regu that converts its value delivers its domain, whatever its producer holds */
+      item->flags |= DOMAIN_PLAN_REGU_CONVERTS;
+      domain_fixed_operand (item, 0, regu->domain, regu->domain, DOMAIN_CTX_FUNC_ARG);
+      return;
+    }
   if (regu->type == TYPE_CONSTANT)
     {
       /* a value pointer holds what its producer wrote there, whatever domain the reader was compiled with (an
@@ -2814,7 +2790,7 @@ domain_resolve_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry)
   domain_mark_late_bind_node (ctx, load_entry);
   if (load_entry->kind == DOMAIN_LOAD_NODE && load_entry->cold.ctx != DOMAIN_CTX_LIST_COLUMN)
     {
-      load_entry->cold.ctx = domain_late_bind_context ((OPERATOR_TYPE) load_entry->cold.opcode);
+      load_entry->cold.ctx = domain_late_bind_context (load_entry->cold.opcode);
     }
   load_entry->known = !ctx->failed;
 }

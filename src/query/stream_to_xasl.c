@@ -5782,9 +5782,9 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
       ptr = or_unpack_domain (ptr, &regu_var->original_domain, NULL);
       ptr = or_unpack_int (ptr, &tmp);
       regu_var->conv_mode = (unsigned char) tmp;
-      regu_var->conv =
-	tp_value_find_converter (TP_DOMAIN_TYPE (regu_var->original_domain), regu_var->domain,
-				 (DOMAIN_CONVERT_MODE) tmp);
+      regu_var->conv = (tmp & REGU_CONV_SELECTION) == REGU_CONV_ENUM_NAME ? domain_enumeration_name_converter ()
+	: tp_value_find_converter (TP_DOMAIN_TYPE (regu_var->original_domain), regu_var->domain,
+				   (DOMAIN_CONVERT_MODE) (tmp & REGU_CONV_SELECTION));
       assert (regu_var->conv != NULL);
     }
 
@@ -5826,10 +5826,8 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
 	}
     }
 
-  /* the converted value's holder: the compiler gave a converting regu its own. A constant converts nothing on the
-   * rows: a bind arrives in its regu's domain (the client cast it), and a literal is an auto-parameter */
-  assert (regu_var->conv == NULL
-	  || (regu_var->vfetch_to != NULL && regu_var->type != TYPE_DBVAL && regu_var->type != TYPE_POS_VALUE));
+  /* the converted value's holder: the compiler gave a converting regu its own */
+  assert (regu_var->conv == NULL || regu_var->vfetch_to != NULL);
 
   ptr = stx_unpack_regu_variable_value (thread_p, ptr, regu_var);
   if (ptr != NULL)

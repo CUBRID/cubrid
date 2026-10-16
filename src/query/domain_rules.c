@@ -51,6 +51,37 @@ domain_convert_mode (DOMAIN_CTX context)
     : context == DOMAIN_CTX_COMPARE || context == DOMAIN_CTX_KEY_ELEM ? DOMAIN_CONVERT_COMPARE : DOMAIN_CONVERT_OPERAND;
 }
 
+/* The resolver context of a late-binding operator node. */
+DOMAIN_CTX
+domain_late_bind_context (int opcode)
+{
+  switch (opcode)
+    {
+    case T_ADD:
+    case T_SUB:
+    case T_MUL:
+    case T_DIV:
+    case T_MOD:
+    case T_UNMINUS:
+    case T_ABS:
+    case T_FLOOR:
+    case T_CEIL:
+    case T_ROUND:
+    case T_TRUNC:
+      return DOMAIN_CTX_ARITH;
+    case T_NVL:
+    case T_NVL2:
+    case T_IFNULL:
+    case T_COALESCE:
+    case T_NULLIF:
+    case T_LEAST:
+    case T_GREATEST:
+      return DOMAIN_CTX_COMMON_VALUE;
+    default:
+      return DOMAIN_CTX_FUNC_ARG;
+    }
+}
+
 static DB_TYPE
 domain_operand_type (const DOMAIN_OPERAND * operand)
 {

@@ -5074,8 +5074,8 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
 #endif
       if (own == NULL && parser->host_var_compiled_domains != NULL)
 	{
-	  /* a value-typed operand of an operator whose rule converts the bind side: a rule cast (comparisons: type
-	   * checking decided the same with the same function) */
+	  /* a value-typed side of a comparison whose rule converts the bind side: a rule cast (type checking decided
+	   * the same with the same function) */
 	  own = pt_bind_operand_target (parser, pt_host_var_value_domain (parser, i), hv, parent, grandparent);
 	  if (own != NULL)
 	    {

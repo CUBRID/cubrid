@@ -6775,6 +6775,122 @@ pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value, const DB_TY
 }
 
 
+/* CBRD-27583: whether the compiler knows the type of a regu's values and their collation */
+static bool
+pt_regu_domain_is_fixed (const REGU_VARIABLE * regu)
+{
+  return regu != NULL && regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) != DB_TYPE_VARIABLE
+    && regu->domain->collation_flag != TP_DOMAIN_COLL_LEAVE
+    && (regu->type != TYPE_POSITION || (regu->value.pos_descr.dom != NULL
+					&& TP_DOMAIN_TYPE (regu->value.pos_descr.dom) != DB_TYPE_VARIABLE));
+}
+
+/*
+ * pt_set_operand_conversion () - CBRD-27583: the domain a consumer wants an operand's values in: the operand converts
+ *   them on its fetch, into a holder of its own (vfetch_to); original_domain keeps the domain it reads them in
+ */
+static void
+pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, unsigned char conv_mode)
+{
+  /* a regu has one consumer: a second one that wants another domain has a regu of its own */
+  assert (operand->original_domain == NULL && operand->vfetch_to == NULL);
+  regu_alloc (operand->vfetch_to);
+  if (operand->vfetch_to == NULL)
+    {
+      return;
+    }
+  operand->original_domain = operand->domain;
+  operand->domain = (TP_DOMAIN *) target;
+  operand->conv_mode = conv_mode;
+}
+
+/*
+ * pt_decide_operand_coercion () - CBRD-27583: the operand coercion of an addition, subtraction, multiplication or
+ *   division, by the type rule module over its operands' domains; an operand of a type the compiler does not know
+ *   leaves the node to the load
+ */
+static void
+pt_decide_operand_coercion (ARITH_TYPE * arith)
+{
+  REGU_VARIABLE *operand[2] = { arith->leftptr, arith->rightptr };
+  DOMAIN_OPERAND operands[2];
+  for (int i = 0; i < 2; i++)
+    {
+      if (!pt_regu_domain_is_fixed (operand[i]))
+	{
+	  return;
+	}
+      const TP_DOMAIN *domain = operand[i]->domain;
+      operands[i] = DOMAIN_OPERAND
+      {
+      domain, DB_TYPE_NULL, TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) ? domain->collation_id : -1, false};
+    }
+  DOMAIN_OPERAND_COERCION coercion;
+  domain_resolve_operand_coercion (arith->opcode, operands, &coercion);
+  for (int i = 0; i < 2; i++)
+    {
+      if (coercion.conv[i] != NULL)
+	{
+	  /* tp_value_auto_cast's conversion (ASSIGN), and an ENUM added to a string reaches DOUBLE through its name */
+	  const unsigned char selection =
+	    coercion.conv[i] == domain_enumeration_name_converter ()? REGU_CONV_ENUM_NAME : DOMAIN_CONVERT_ASSIGN;
+	  pt_set_operand_conversion (operand[i], coercion.operand_domain[i],
+				     selection | REGU_CONV_NULL_ON_FUNCTION_ERRORS);
+	}
+    }
+}
+
+/*
+ * pt_decide_node_domain () - CBRD-27583: the domain of an operator node type checking left to its operands' values
+ *   (a value-typed bind), resolved with the type rule module from its operands' domains as the bind type signature
+ *   fixes them; a node over an operand of a type the compiler does not know, or one the rule does not resolve, is
+ *   left to the load
+ */
+static void
+pt_decide_node_domain (REGU_VARIABLE * regu)
+{
+  ARITH_TYPE *arith = regu->value.arithptr;
+  if (arith->domain == NULL || TP_DOMAIN_TYPE (arith->domain) != DB_TYPE_VARIABLE || arith->pred != NULL)
+    {
+      return;
+    }
+  /* CONNECT_BY_ROOT and QPRIOR carry their block in the third operand */
+  const int n_value_operands = (arith->opcode == T_CONNECT_BY_ROOT || arith->opcode == T_QPRIOR) ? 2 : 3;
+  REGU_VARIABLE *operand[3] = { arith->leftptr, arith->rightptr, arith->thirdptr };
+  DOMAIN_OPERAND operands[3];
+  int n = 0;
+  for (int i = 0; i < n_value_operands; i++)
+    {
+      if (operand[i] == NULL)
+	{
+	  continue;
+	}
+      if (!pt_regu_domain_is_fixed (operand[i]))
+	{
+	  return;
+	}
+      const TP_DOMAIN *domain = operand[i]->domain;
+      operands[n++] = DOMAIN_OPERAND
+      {
+      domain, TP_DOMAIN_TYPE (domain), TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) ? domain->collation_id : -1, false};
+    }
+  if (n == 0)
+    {
+      return;
+    }
+  RESOLVED_DOMAIN result;
+  bool needs_late_bind = false;
+  if (domain_resolve (domain_late_bind_context (arith->opcode), arith->opcode, operands, n, arith->domain, &result,
+		      &needs_late_bind) != NO_ERROR || needs_late_bind || result.domain == NULL
+      || TP_DOMAIN_TYPE (result.domain) == DB_TYPE_VARIABLE || TP_DOMAIN_TYPE (result.domain) == DB_TYPE_NULL)
+    {
+      return;
+    }
+  arith->domain = (TP_DOMAIN *) result.domain;
+  regu->domain = arith->domain;
+  regu_dbval_type_init (arith->value, TP_DOMAIN_TYPE (arith->domain));
+}
+
 /*
  * pt_make_regu_arith () - takes a regu_variable pair,
  *                         and makes an regu arith type
@@ -9721,6 +9837,18 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      if (regu && domain)
 		{
 		  regu->domain = domain;
+		}
+	      if (regu != NULL && regu->type == TYPE_INARITH)
+		{
+		  pt_decide_node_domain (regu);
+		}
+	      if (regu != NULL && regu->type == TYPE_INARITH && regu->value.arithptr->leftptr != NULL
+		  && regu->value.arithptr->rightptr != NULL
+		  && (regu->value.arithptr->opcode == T_ADD || regu->value.arithptr->opcode == T_SUB
+		      || regu->value.arithptr->opcode == T_MUL || regu->value.arithptr->opcode == T_DIV))
+		{
+		  /* CBRD-27583: the operands were made for this node alone */
+		  pt_decide_operand_coercion (regu->value.arithptr);
 		}
 	      break;
 
