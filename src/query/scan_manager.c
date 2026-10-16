@@ -8116,7 +8116,6 @@ scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_T
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
   EXPR_BATCH_INPUTS in;
   FILTER_INFO data_filter;
-  int cap;
 
   if (hsidp->batch_state != 0)
     {
@@ -8149,9 +8148,6 @@ scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_T
     ? hsidp->scan_pred.pred_expr->scan_prog : NULL;
   in.agg_list = agg_list;
   in.vd = vd;
-  /* rows a page can hold at most: a slot and the smallest record take more than 8 bytes */
-  cap = DB_PAGESIZE / 8;
-  in.max_rows = cap;
   in.is_peeking = true;		/* the batch holds the page: its records are peeked whatever the scan's own mode */
 
   hsidp->batch_plan = expr_batch_plan_build (thread_p, &in, &hsidp->batch_why_not);
@@ -8160,17 +8156,14 @@ scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_T
       return hsidp->batch_state;
     }
   hsidp->batch = (EXPR_BATCH *) malloc (sizeof (EXPR_BATCH));
-  if (hsidp->batch == NULL || expr_batch_init (hsidp->batch, cap) != NO_ERROR)
+  if (hsidp->batch == NULL)
     {
-      if (hsidp->batch != NULL)
-	{
-	  free_and_init (hsidp->batch);
-	}
       expr_batch_plan_free (hsidp->batch_plan);
       hsidp->batch_plan = NULL;
       hsidp->batch_why_not = "out of memory";
       return hsidp->batch_state;
     }
+  expr_batch_init (hsidp->batch);	/* its arrays are sized by the first page (expr_batch_reserve ()) */
   VPID_SET_NULL (&hsidp->batch_vpid);
   hsidp->batch_started = false;
   hsidp->batch_rowmode = false;
@@ -8198,12 +8191,24 @@ scan_batch_collect_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID 
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
   EXPR_BATCH *batch = hsidp->batch;
   SCAN_CODE code;
+  int need = 0;
 
   batch->n_rows = 0;
   batch->n_sel = 0;
   code =
     heap_page_collect_visible (thread_p, vpid, &hsidp->cls_oid, &hsidp->scan_cache, batch->rows, batch->cap,
-			       &batch->n_rows);
+			       &batch->n_rows, &need);
+  if (code == S_DOESNT_FIT && need > batch->cap)
+    {
+      /* the arrays are smaller than this page: carve them for it, the page is still held */
+      if (expr_batch_reserve (hsidp->batch_plan, batch, need) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      code =
+	heap_page_collect_visible (thread_p, vpid, &hsidp->cls_oid, &hsidp->scan_cache, batch->rows, batch->cap,
+				   &batch->n_rows, &need);
+    }
   hsidp->batch_vpid = *vpid;
   if (code != S_SUCCESS)
     {

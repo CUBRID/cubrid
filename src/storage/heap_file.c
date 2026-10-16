@@ -8182,6 +8182,7 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
  *   rows(out): cap slots
  *   cap(in): at most so many rows
  *   n_rows(out): the rows collected
+ *   n_need(out): S_DOESNT_FIT for want of room only: the records of the page (more than cap)
  *
  * The walk heap_next_1page () makes, record after record, made once: the same slots skipped
  * (the header, REC_NEWHOME, REC_ASSIGN_ADDRESS, REC_UNKNOWN), and for a REC_HOME record the
@@ -8193,7 +8194,7 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
  */
 SCAN_CODE
 heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
-			   HEAP_SCANCACHE * scan_cache, HEAP_PAGE_ROW * rows, int cap, int *n_rows)
+			   HEAP_SCANCACHE * scan_cache, HEAP_PAGE_ROW * rows, int cap, int *n_rows, int *n_need)
 {
   MVCC_SNAPSHOT *snapshot = NULL;
   PAGE_PTR pgptr;
@@ -8203,6 +8204,7 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
   int n = 0;
 
   *n_rows = 0;
+  *n_need = 0;
   if (HEAP_SCAN_IS_LOCAL_CACHE_READ (scan_cache))
     {
       /* a cached scan reads a copy of the page: heap_next_1page () keeps that protocol */
@@ -8258,8 +8260,14 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 	{
 	  continue;
 	}
-      if (rec.type != REC_HOME || n >= cap)
+      if (rec.type != REC_HOME)
 	{
+	  return S_DOESNT_FIT;
+	}
+      if (n >= cap)
+	{
+	  /* the page's records bound its rows (the header slot among them) */
+	  *n_need = MAX (cap + 1, spage_number_of_records (pgptr));
 	  return S_DOESNT_FIT;
 	}
       if (or_mvcc_get_header (&rec, &mvcc_header) != NO_ERROR)

@@ -114,8 +114,8 @@ enum eb_op
 typedef struct eb_vec EB_VEC;
 struct eb_vec
 {
-  void *data;			/* cap elements, or 1 for a scalar */
-  unsigned char *isnull;	/* cap bytes, or 1 for a scalar */
+  void *data;			/* the plan's cap elements, or 1 for a scalar */
+  unsigned char *isnull;	/* the plan's cap bytes, or 1 for a scalar */
   unsigned char kind;		/* eb_vec_kind */
   unsigned char etype;		/* eb_etype */
   unsigned char dbtype;		/* DB_TYPE: the type a value of this vector would carry */
@@ -205,9 +205,27 @@ struct eb_slot_map
   HEAP_CACHE_ATTRINFO *attr_cache;
 };
 
+/* The per-page areas come from 64-byte lines bumped out of a few blocks the plan chains:
+ * a page's arrays are sized by the rows pages actually yield, not by the most a page could
+ * hold, so a scan over ~90-row pages keeps them in a few kilobytes of L1.  When a page yields
+ * more rows than the arrays hold they are carved again at twice the size; the old lines stay
+ * in their block until the plan is freed (nothing in them outlives a page). */
+#define EB_LINE (64)
+#define EB_BLOCK_BYTES (4096)
+
+typedef struct eb_block EB_BLOCK;
+struct eb_block
+{
+  EB_BLOCK *next;
+};
+
 struct expr_batch_plan
 {
-  int cap;
+  int cap;			/* rows the per-page arrays hold now (0 until the first page) */
+  EB_BLOCK *blocks;
+  char *bump;			/* the next free line of the newest block, and its end */
+  char *bump_end;
+  int n_masks;			/* the NULL-mask depth the steps reach */
   REPR_ID repid;		/* the one representation the plan decodes; other records send the page to the row path */
   int n_variable;
   int fixed_length;
@@ -287,6 +305,7 @@ static int eb_fused_tree (EB_BUILD * b, const REGU_VARIABLE * regu, int group, i
 static int eb_fused_leaf (EB_BUILD * b, const REGU_VARIABLE * regu, int group, bool wrapped, int *out_vec);
 static int eb_decline (EB_BUILD * b, const char *why);
 
+static void *eb_arena_alloc (EXPR_BATCH_PLAN * plan, size_t bytes);
 static int eb_load_scalars (EXPR_BATCH_PLAN * plan);
 static int eb_load_leaf_constants (EXPR_BATCH_PLAN * plan);
 static int eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, int n, int only_col);
@@ -340,6 +359,35 @@ eb_grow (void **arr, int *cap, int n, size_t elem)
   *arr = p;
   *cap = new_cap;
   return NO_ERROR;
+}
+
+/* a 64-byte aligned area of at least bytes, from the plan's blocks; NULL (error set) on OOM */
+static void *
+eb_arena_alloc (EXPR_BATCH_PLAN * plan, size_t bytes)
+{
+  char *p;
+
+  bytes = (bytes + EB_LINE - 1) & ~((size_t) EB_LINE - 1);
+  if (plan->bump == NULL || (size_t) (plan->bump_end - plan->bump) < bytes)
+    {
+      size_t size = MAX (bytes, (size_t) EB_BLOCK_BYTES) + sizeof (EB_BLOCK) + EB_LINE;
+      EB_BLOCK *block = (EB_BLOCK *) malloc (size);
+      uintptr_t start;
+
+      if (block == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  return NULL;
+	}
+      block->next = plan->blocks;
+      plan->blocks = block;
+      start = ((uintptr_t) (block + 1) + EB_LINE - 1) & ~((uintptr_t) EB_LINE - 1);
+      plan->bump = (char *) start;
+      plan->bump_end = (char *) block + size;
+    }
+  p = plan->bump;
+  plan->bump += bytes;
+  return p;
 }
 
 static int
@@ -1293,7 +1341,7 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
       *why_not = "records are copied, not peeked";
       return NULL;
     }
-  if (in->agg_list == NULL || in->max_rows <= 0)
+  if (in->agg_list == NULL)
     {
       *why_not = "no aggregate list";
       return NULL;
@@ -1306,7 +1354,6 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
       return NULL;
     }
   memset (plan, 0, sizeof (*plan));
-  plan->cap = in->max_rows;
   b.plan = plan;
 
   rc = eb_build_slot_map (&b);
@@ -1325,40 +1372,34 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
     }
   if (rc == NO_ERROR)
     {
-      /* the per-page areas: vectors, the UNKNOWN marks and the masks */
+      /* the scalars' one element each; the per-page arrays wait for the first page
+       * (expr_batch_reserve ()), and the masks for the depth the steps reach */
       for (i = 0; i < plan->n_vecs && rc == NO_ERROR; i++)
 	{
 	  EB_VEC *v = &plan->vecs[i];
-	  int n = (v->kind == EB_VK_SCALAR) ? 1 : plan->cap;
 
-	  v->data = malloc ((size_t) eb_elem_size (v->etype) * n);
-	  v->isnull = (unsigned char *) malloc ((size_t) n);
+	  if (v->kind != EB_VK_SCALAR)
+	    {
+	      continue;
+	    }
+	  v->data = eb_arena_alloc (plan, (size_t) eb_elem_size (v->etype));
+	  v->isnull = (unsigned char *) eb_arena_alloc (plan, 1);
 	  if (v->data == NULL || v->isnull == NULL)
 	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-		      (size_t) eb_elem_size (v->etype) * n);
 	      rc = ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
 	}
-      if (rc == NO_ERROR)
+      for (i = 0, d = 0; i < plan->n_steps; i++)
 	{
-	  plan->unk = (unsigned char *) malloc ((size_t) plan->cap);
-	  if (plan->unk == NULL)
+	  if (plan->steps[i].op == EB_OP_MASK_PUSH)
 	    {
-	      rc = ER_OUT_OF_VIRTUAL_MEMORY;
+	      d++;
+	      plan->n_masks = MAX (plan->n_masks, d);
 	    }
-	}
-      for (d = 0; d < EB_MASK_DEPTH && rc == NO_ERROR; d++)
-	{
-	  plan->mask[d] = (unsigned char *) malloc ((size_t) plan->cap);
-	  if (plan->mask[d] == NULL)
+	  else if (plan->steps[i].op == EB_OP_MASK_POP)
 	    {
-	      rc = ER_OUT_OF_VIRTUAL_MEMORY;
+	      d--;
 	    }
-	}
-      if (rc == ER_OUT_OF_VIRTUAL_MEMORY)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) plan->cap);
 	}
     }
   if (b.slots != NULL)
@@ -1391,16 +1432,12 @@ expr_batch_plan_free (EXPR_BATCH_PLAN * plan)
     {
       return;
     }
-  for (i = 0; i < plan->n_vecs; i++)
+  while (plan->blocks != NULL)
     {
-      if (plan->vecs[i].data != NULL)
-	{
-	  free_and_init (plan->vecs[i].data);
-	}
-      if (plan->vecs[i].isnull != NULL)
-	{
-	  free_and_init (plan->vecs[i].isnull);
-	}
+      EB_BLOCK *next = plan->blocks->next;
+
+      free (plan->blocks);
+      plan->blocks = next;
     }
   if (plan->vecs != NULL)
     {
@@ -1434,47 +1471,89 @@ expr_batch_plan_free (EXPR_BATCH_PLAN * plan)
     {
       free_and_init (plan->aggs);
     }
-  if (plan->unk != NULL)
-    {
-      free_and_init (plan->unk);
-    }
-  for (i = 0; i < EB_MASK_DEPTH; i++)
-    {
-      if (plan->mask[i] != NULL)
-	{
-	  free_and_init (plan->mask[i]);
-	}
-    }
   free_and_init (plan);
 }
 
-int
-expr_batch_init (EXPR_BATCH * batch, int cap)
+void
+expr_batch_init (EXPR_BATCH * batch)
 {
   memset (batch, 0, sizeof (*batch));
-  batch->rows = (EXPR_BATCH_ROW *) malloc (sizeof (EXPR_BATCH_ROW) * cap);
-  batch->sel = (int *) malloc (sizeof (int) * cap);
-  if (batch->rows == NULL || batch->sel == NULL)
+}
+
+/* Arrays for n rows a page: the rows, the selection, every column and step vector, the
+ * UNKNOWN marks and the masks.  At least twice the previous size, in whole 64-byte lines of
+ * int64 (8 rows).  The capacity changes only when every array was carved, so a failure leaves
+ * the previous, still valid, arrays in use. */
+int
+expr_batch_reserve (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, int n)
+{
+  EXPR_BATCH_ROW *rows;
+  int *sel;
+  int cap, i, d;
+
+  if (n <= plan->cap)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (EXPR_BATCH_ROW) * cap);
-      expr_batch_final (batch);
+      return NO_ERROR;
+    }
+  cap = MAX (n, plan->cap * 2);
+  cap = (cap + 7) & ~7;
+  rows = (EXPR_BATCH_ROW *) eb_arena_alloc (plan, sizeof (EXPR_BATCH_ROW) * cap);
+  sel = (int *) eb_arena_alloc (plan, sizeof (int) * cap);
+  if (rows == NULL || sel == NULL)
+    {
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  for (i = 0; i < plan->n_vecs; i++)
+    {
+      EB_VEC *v = &plan->vecs[i];
+      void *data;
+      unsigned char *isnull;
+
+      if (v->kind == EB_VK_SCALAR)
+	{
+	  continue;
+	}
+      data = eb_arena_alloc (plan, (size_t) eb_elem_size (v->etype) * cap);
+      isnull = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
+      if (data == NULL || isnull == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      v->data = data;
+      v->isnull = isnull;
+    }
+  {
+    unsigned char *unk = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
+
+    if (unk == NULL)
+      {
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
+    plan->unk = unk;
+  }
+  for (d = 0; d < plan->n_masks; d++)
+    {
+      unsigned char *m = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
+
+      if (m == NULL)
+	{
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      plan->mask[d] = m;
+    }
+  batch->rows = rows;
+  batch->sel = sel;
   batch->cap = cap;
+  plan->cap = cap;
   return NO_ERROR;
 }
 
+/* the arrays belong to the plan's blocks: nothing to free here */
 void
 expr_batch_final (EXPR_BATCH * batch)
 {
-  if (batch->rows != NULL)
-    {
-      free_and_init (batch->rows);
-    }
-  if (batch->sel != NULL)
-    {
-      free_and_init (batch->sel);
-    }
+  batch->rows = NULL;
+  batch->sel = NULL;
   batch->cap = 0;
   batch->n_rows = 0;
   batch->n_sel = 0;

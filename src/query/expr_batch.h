@@ -81,7 +81,7 @@ struct expr_batch
 {
   EXPR_BATCH_ROW *rows;
   int n_rows;
-  int cap;
+  int cap;			/* rows the arrays hold (expr_batch_reserve ()) */
   int *sel;			/* indexes into rows[] that passed the filter, in row order */
   int n_sel;
 };
@@ -98,7 +98,6 @@ struct expr_batch_inputs
   bool has_filter;		/* the scan has a data filter at all */
     cubxasl::aggregate_list_node * agg_list;	/* the BUILDVALUE list; operand program state settled */
   struct val_descr *vd;
-  int max_rows;			/* rows a page can yield at most */
   bool is_peeking;		/* records are peeked, not copied into one buffer */
 };
 
@@ -111,7 +110,9 @@ extern EXPR_BATCH_PLAN *expr_batch_plan_build (THREAD_ENTRY * thread_p, const EX
 					       const char **why_not);
 extern void expr_batch_plan_free (EXPR_BATCH_PLAN * plan);
 
-extern int expr_batch_init (EXPR_BATCH * batch, int cap);
+extern void expr_batch_init (EXPR_BATCH * batch);
+/* arrays for pages of up to n rows, carved from the plan's blocks (which own them) */
+extern int expr_batch_reserve (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, int n);
 extern void expr_batch_final (EXPR_BATCH * batch);
 
 /* decode the use columns, filter, run the operand steps: NO_ERROR, EXPR_BATCH_FALLBACK, or an error */
