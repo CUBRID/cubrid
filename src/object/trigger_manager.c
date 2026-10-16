@@ -2055,7 +2055,7 @@ unregister_user_trigger (TR_TRIGGER * trigger, DB_OBJECT * owner, int rollback)
 }
 
 /*
- * get_user_trigger_objects() - This is used to build and return a list of all the user triggers currently defined
+ * get_user_trigger_objects() - This is used to build and return a list of the user triggers owned by the current user
  *    return: error code
  *    event(in): event type
  *    active_filter(in): non-zero to filter out inactive triggers
@@ -2075,13 +2075,13 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
 
   *trigger_list = NULL;
 
-  if (Au_user == NULL)
+  if (Au_user == NULL || Au_root == NULL)
     {
       return NO_ERROR;
     }
 
   AU_SAVE_AND_DISABLE (save);
-  error = obj_get (Au_user, "triggers", &value);
+  error = obj_get (Au_root, "triggers", &value);
   if (error != NO_ERROR)
     {
       AU_RESTORE (save);
@@ -2102,7 +2102,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
       error = set_filter (table);
       max = set_size (table);
 
-      for (i = 0; i < max && error == NO_ERROR; i++)
+      for (i = 1; i < max && error == NO_ERROR; i += 2)
 	{
 	  error = set_get_element (table, i, &value);
 	  if (error == NO_ERROR)
@@ -2115,7 +2115,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
 		    {
 		      ASSERT_ERROR_AND_SET (error);
 		    }
-		  else
+		  else if (trigger->class_mop == NULL && ws_is_same_object (trigger->owner, Au_user))
 		    {
 		      if (!active_filter || trigger->status == TR_STATUS_ACTIVE)
 			{
@@ -2161,7 +2161,7 @@ get_user_trigger_objects (DB_TRIGGER_EVENT event, bool active_filter, DB_OBJLIST
  *    return: error
  *
  * Note:
- *    It goes through the trigger objects defined for the user, maps them to trigger objects and
+ *    It goes through the user triggers owned by the current user, maps them to trigger objects and
  *    stores them on specific lists for quick access.
  */
 int
@@ -2183,7 +2183,7 @@ tr_update_user_cache (void)
   int save;
   AU_SAVE_AND_DISABLE (save);
 
-  if (Au_user != NULL && (error = obj_get (Au_user, "triggers", &value)) == NO_ERROR)
+  if (Au_user != NULL && Au_root != NULL && (error = obj_get (Au_root, "triggers", &value)) == NO_ERROR)
     {
       if (DB_IS_NULL (&value))
 	{
@@ -2199,7 +2199,7 @@ tr_update_user_cache (void)
 	  error = set_filter (table);
 	  max = set_size (table);
 
-	  for (i = 0; i < max && error == NO_ERROR; i++)
+	  for (i = 1; i < max && error == NO_ERROR; i += 2)
 	    {
 	      error = set_get_element (table, i, &value);
 	      if (error == NO_ERROR)
@@ -2214,7 +2214,7 @@ tr_update_user_cache (void)
 			  assert (er_errid () != NO_ERROR);
 			  error = er_errid ();
 			}
-		      else
+		      else if (trigger->class_mop == NULL && ws_is_same_object (trigger->owner, Au_user))
 			{
 			  error = insert_trigger_list (&tr_User_triggers, trigger);
 			}
