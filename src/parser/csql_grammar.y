@@ -13430,6 +13430,8 @@ select_list
 			if (node)
 			  node->type_enum = PT_TYPE_STAR;
 
+			/* the end of "*" (see pt_record_static_sql_star ()) */
+			PARSER_SAVE_ERR_CONTEXT (node, @1.buffer_pos)
 			$$ = parser_make_link (node, $3);
 			PARSER_SAVE_ERR_CONTEXT ($$, @$.buffer_pos)
 		}}
