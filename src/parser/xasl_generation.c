@@ -20258,10 +20258,12 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
    * remote row twice -- the count grows past the rows that changed, a SET expression reading the row's own
    * value is applied twice, and a remote trigger fires twice. De-duplicate the values instead of counting
    * the repetition: the quantified shapes this sink admits compare equality, where distinct values match
-   * disjoint rows, and a scalar comparison has only one value. DELETE's count comes out right without this
-   * -- the second statement finds the row gone and reports 0 -- and the flag would only add a sort, so it
-   * is set here and not in the shared WHERE translation. */
-  if (driving_subq != NULL && PT_IS_QUERY (driving_subq))
+   * disjoint rows. A scalar comparison is left as written. Its subquery must yield one row, and DISTINCT
+   * would fold repeated values into one and hide the "more than a single tuple" error. DELETE's count comes
+   * out right without this -- the second statement finds the row gone and reports 0 -- and the flag would
+   * only add a sort, so it is set here and not in the shared WHERE translation. */
+  if (driving_subq != NULL && PT_IS_QUERY (driving_subq)
+      && (cond->info.expr.op == PT_IS_IN || cond->info.expr.op == PT_EQ_SOME))
     {
       driving_subq->info.query.all_distinct = PT_DISTINCT;
     }
