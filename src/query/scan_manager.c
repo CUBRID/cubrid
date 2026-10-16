@@ -33,6 +33,7 @@
 #include "json_builder.h"
 
 #include "error_manager.h"
+#include "expr_batch.h"
 #include "heap_file.h"
 #include "ftab_set.hpp"
 #include "fetch.h"
@@ -3534,6 +3535,14 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->cache_recordinfo = cache_recordinfo;
   hsidp->recordinfo_regu_list = regu_list_recordinfo;
 
+  hsidp->batch_plan = NULL;
+  hsidp->batch = NULL;
+  hsidp->batch_state = 0;
+  VPID_SET_NULL (&hsidp->batch_vpid);
+  hsidp->batch_started = false;
+  hsidp->batch_rowmode = false;
+  hsidp->batch_why_not = NULL;
+
   /* sampling pick owned by qexec_prepare_table_sampling (gated by prepared); no re-pick here */
 
   return NO_ERROR;
@@ -5461,11 +5470,30 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       else
 	{
+	  if (hsidp->batch_started && hsidp->scan_cache.page_watcher.pgptr != NULL
+	      && !hsidp->scan_cache.cache_last_fix_page)
+	    {
+	      /* the batch held its page past what the scan cache releases on its own */
+	      pgbuf_ordered_unfix (thread_p, &hsidp->scan_cache.page_watcher);
+	    }
 	  if (hsidp->scancache_inited)
 	    {
 	      (void) heap_scancache_end (thread_p, &hsidp->scan_cache);
 	    }
 	}
+      if (hsidp->batch != NULL)
+	{
+	  expr_batch_final (hsidp->batch);
+	  free_and_init (hsidp->batch);
+	}
+      if (hsidp->batch_plan != NULL)
+	{
+	  expr_batch_plan_free (hsidp->batch_plan);
+	  hsidp->batch_plan = NULL;
+	}
+      hsidp->batch_state = 0;
+      hsidp->batch_started = false;
+      hsidp->batch_rowmode = false;
 
       /* switch scan direction for further iterations */
       if (scan_id->direction == S_FORWARD)
@@ -6165,9 +6193,24 @@ scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      /* move forward */
 	      if (scan_id->type == S_HEAP_SCAN)
 		{
-		  sp_scan =
-		    heap_next (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes, &hsidp->scan_cache,
-			       is_peeking);
+		  if (hsidp->batch_rowmode)
+		    {
+		      /* a page the batch handed back (scan_batch_page_rowmode ()): its rows one by one,
+		       * the page held for the whole of it as the batch held it */
+		      int cache_last_fix_page_save = hsidp->scan_cache.cache_last_fix_page;
+
+		      hsidp->scan_cache.cache_last_fix_page = true;
+		      sp_scan =
+			heap_next_1page (thread_p, &hsidp->hfid, &hsidp->batch_vpid, &hsidp->cls_oid, &hsidp->curr_oid,
+					 &recdes, &hsidp->scan_cache, is_peeking);
+		      hsidp->scan_cache.cache_last_fix_page = cache_last_fix_page_save;
+		    }
+		  else
+		    {
+		      sp_scan =
+			heap_next (thread_p, &hsidp->hfid, &hsidp->cls_oid, &hsidp->curr_oid, &recdes,
+				   &hsidp->scan_cache, is_peeking);
+		    }
 		}
 	      else
 		{
@@ -8054,6 +8097,245 @@ exit_on_error:
 }
 
 /*
+ * scan_batch_open () - open a page batch over a sequential heap scan
+ *   return: the batch state: 1 active, 2 declined (the row path serves the scan)
+ *   scan_id(in/out): the started heap scan
+ *   spec(in): its access spec (the regu lists that map value-list slots to attributes)
+ *   agg_list(in): the aggregate list the consumer accumulates
+ *   vd(in): the execution's value descriptor
+ *
+ * The consumer calls it once the scan is started (its attribute caches are up); the plan it
+ * builds lives as long as the scan (scan_end_scan ()).  The compiled filter and the operand
+ * program are settled here, before any row, the way the row path settles them on its first
+ * row, so the batch reads the forms this execution would use.
+ */
+int
+scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec,
+		 cubxasl::aggregate_list_node * agg_list, val_descr * vd)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  EXPR_BATCH_INPUTS in;
+  FILTER_INFO data_filter;
+  int cap;
+
+  if (hsidp->batch_state != 0)
+    {
+      return hsidp->batch_state;
+    }
+  hsidp->batch_state = 2;
+  if (scan_id->type != S_HEAP_SCAN || scan_id->grouped || scan_id->cached_scan || scan_id->direction != S_FORWARD
+      || scan_id->mvcc_select_lock_needed || scan_id->scan_op_type != S_SELECT || !hsidp->scancache_inited
+      || hsidp->scan_cache.mvcc_disabled_class || hsidp->recordinfo_regu_list != NULL
+      || scan_id->single_fetch != QPROC_NO_SINGLE_INNER || scan_id->qualification != QPROC_QUALIFIED)
+    {
+      hsidp->batch_why_not = "a scan the batch does not take";
+      return hsidp->batch_state;
+    }
+
+  /* the filter's compiled form, now instead of on the first row */
+  data_filter =
+  {
+  &hsidp->scan_pred, &hsidp->pred_attrs, NULL, NULL, scan_id->val_list, scan_id->vd, &hsidp->cls_oid, NULL, NULL,
+      NULL, 0, -1};
+  (void) eval_data_filter_ensure_prog (thread_p, &data_filter);
+
+  memset (&in, 0, sizeof (in));
+  in.pred_attr_cache = hsidp->pred_attrs.attr_cache;
+  in.rest_attr_cache = hsidp->rest_attrs.attr_cache;
+  in.pred_has_regu_list = (hsidp->pred_attrs.attr_cache != NULL && hsidp->scan_pred.regu_list != NULL);
+  in.spec = spec;
+  in.has_filter = (hsidp->scan_pred.pred_expr != NULL);
+  in.scan_pred_compiled = (in.has_filter && hsidp->scan_pred.pred_expr->scan_prog_state == 1)
+    ? hsidp->scan_pred.pred_expr->scan_prog : NULL;
+  in.agg_list = agg_list;
+  in.vd = vd;
+  /* rows a page can hold at most: a slot and the smallest record take more than 8 bytes */
+  cap = DB_PAGESIZE / 8;
+  in.max_rows = cap;
+  in.is_peeking = true;		/* the batch holds the page: its records are peeked whatever the scan's own mode */
+
+  hsidp->batch_plan = expr_batch_plan_build (thread_p, &in, &hsidp->batch_why_not);
+  if (hsidp->batch_plan == NULL)
+    {
+      return hsidp->batch_state;
+    }
+  hsidp->batch = (EXPR_BATCH *) malloc (sizeof (EXPR_BATCH));
+  if (hsidp->batch == NULL || expr_batch_init (hsidp->batch, cap) != NO_ERROR)
+    {
+      if (hsidp->batch != NULL)
+	{
+	  free_and_init (hsidp->batch);
+	}
+      expr_batch_plan_free (hsidp->batch_plan);
+      hsidp->batch_plan = NULL;
+      hsidp->batch_why_not = "out of memory";
+      return hsidp->batch_state;
+    }
+  VPID_SET_NULL (&hsidp->batch_vpid);
+  hsidp->batch_started = false;
+  hsidp->batch_rowmode = false;
+  hsidp->batch_state = 1;
+  return hsidp->batch_state;
+}
+
+/*
+ * scan_batch_collect_page () - the rows of the page the scan cache holds, into the batch
+ *   return: S_SUCCESS (the batch holds the page's rows), S_DOESNT_FIT (the page is for the
+ *           row path: a record not stored in this page, more rows than the batch takes, or
+ *           the page changed under a peek), or S_ERROR
+ *   scan_id(in/out): the heap scan
+ *   vpid(in): the page, fixed in the scan cache's watcher (or fixed here by heap_next_1page ())
+ *
+ * The same walk the row path makes over one page (heap_next_1page (): slot by slot, the
+ * visibility of each record decided as always), the page kept fixed throughout; the rows
+ * are peeked, so they are valid while the page stays fixed, which the caller guarantees.
+ */
+SCAN_CODE
+scan_batch_collect_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  HEAP_SCANCACHE *scan_cache = &hsidp->scan_cache;
+  EXPR_BATCH *batch = hsidp->batch;
+  OID oid;
+  RECDES recdes;
+  SCAN_CODE code;
+  LOG_LSA ref_lsa;
+  bool have_lsa = false;
+  int cache_last_fix_page_save = scan_cache->cache_last_fix_page;
+
+  batch->n_rows = 0;
+  batch->n_sel = 0;
+  OID_SET_NULL (&oid);
+  scan_cache->cache_last_fix_page = true;	/* hold the page across its rows */
+  while (true)
+    {
+      recdes = RECDES_INITIALIZER;
+      code = heap_next_1page (thread_p, &hsidp->hfid, vpid, &hsidp->cls_oid, &oid, &recdes, scan_cache, PEEK);
+      if (code != S_SUCCESS)
+	{
+	  break;
+	}
+      if (!have_lsa && scan_cache->page_watcher.pgptr != NULL)
+	{
+	  LSA_COPY (&ref_lsa, pgbuf_get_lsa (scan_cache->page_watcher.pgptr));
+	  have_lsa = true;
+	}
+      if (recdes.type != REC_HOME || batch->n_rows >= batch->cap)
+	{
+	  /* a record assembled elsewhere than in this page (an overflow or relocated record
+	   * lands in the scan cache's one buffer, which the next one overwrites) */
+	  code = S_DOESNT_FIT;
+	  break;
+	}
+      batch->rows[batch->n_rows].oid = oid;
+      batch->rows[batch->n_rows].recdes = recdes;
+      batch->n_rows++;
+    }
+  scan_cache->cache_last_fix_page = cache_last_fix_page_save;
+  hsidp->batch_vpid = *vpid;
+  if (code == S_END)
+    {
+      code = S_SUCCESS;
+      if (have_lsa && scan_cache->page_watcher.pgptr != NULL
+	  && PGBUF_IS_PAGE_CHANGED (scan_cache->page_watcher.pgptr, &ref_lsa))
+	{
+	  code = S_DOESNT_FIT;
+	}
+    }
+  return code;
+}
+
+/*
+ * scan_batch_next_page () - the serial walk: step to the heap's next page and collect its rows
+ *   return: S_SUCCESS / S_DOESNT_FIT as scan_batch_collect_page (), S_END past the last page, S_ERROR
+ *   scan_id(in/out): the heap scan
+ *
+ * The pages in the order heap_next () takes them: the header page first, then the chain
+ * (heap_vpid_next ()), the next page fixed before the held one is released so that it cannot
+ * be deallocated in between (OLD_PAGE_PREVENT_DEALLOC, as heap_next_internal ()).  The page
+ * stays fixed until the next step or the scan's end, whatever the scan's own fix mode: the
+ * consumer that takes a batch runs nothing under it that could need the page released.
+ */
+SCAN_CODE
+scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  HEAP_SCANCACHE *scan_cache = &hsidp->scan_cache;
+  VPID vpid;
+  int rc;
+
+  if (!hsidp->batch_started)
+    {
+      vpid.volid = hsidp->hfid.vfid.volid;
+      vpid.pageid = hsidp->hfid.hpgid;
+      if (scan_cache->page_watcher.pgptr != NULL)
+	{
+	  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+	}
+      rc = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, &scan_cache->page_watcher);
+      if (rc != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      hsidp->batch_started = true;
+    }
+  else
+    {
+      PGBUF_WATCHER old_page_watcher;
+
+      PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, &hsidp->hfid);
+      if (scan_cache->page_watcher.pgptr == NULL)
+	{
+	  assert (false);
+	  return S_ERROR;
+	}
+      if (heap_vpid_next (thread_p, &hsidp->hfid, scan_cache->page_watcher.pgptr, &vpid) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      if (VPID_ISNULL (&vpid))
+	{
+	  pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+	  OID_SET_NULL (&hsidp->curr_oid);
+	  VPID_SET_NULL (&hsidp->batch_vpid);
+	  return S_END;
+	}
+      pgbuf_replace_watcher (thread_p, &scan_cache->page_watcher, &old_page_watcher);
+      rc = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ, &scan_cache->page_watcher);
+      pgbuf_ordered_unfix (thread_p, &old_page_watcher);
+      if (rc != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+    }
+  hsidp->batch_vpid = vpid;
+  if (heap_page_is_bestspace (thread_p, scan_cache->page_watcher.pgptr))
+    {
+      hsidp->batch->n_rows = 0;
+      hsidp->batch->n_sel = 0;
+      return S_SUCCESS;
+    }
+  return scan_batch_collect_page (thread_p, scan_id, &vpid);
+}
+
+/*
+ * scan_batch_page_rowmode () - walk the held page row by row through scan_next_scan ()
+ *   scan_id(in/out): the heap scan
+ *   on(in): true before the first row of the page, false after its S_END
+ *
+ * A page the batch hands back is served by the row path from its first slot, every row
+ * going through the same filter, fetch and retry the row path always made.
+ */
+void
+scan_batch_page_rowmode (SCAN_ID * scan_id, bool on)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+
+  hsidp->batch_rowmode = on;
+  OID_SET_NULL (&hsidp->curr_oid);
+}
+
+/*
  * scan_next_scan () -
  *   return: SCAN_CODE (S_SUCCESS, S_END, S_ERROR)
  *   scan_id(in/out): Scan identifier
@@ -8844,6 +9126,22 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
     case S_LIST_SCAN:
       fprintf (fp, ", readrows: %llu, rows: %llu", (unsigned long long int) scan_id->scan_stats.read_rows,
 	       (unsigned long long int) scan_id->scan_stats.qualified_rows);
+      if (thread_get_thread_entry_info ()->trace_plan_detail && scan_id->type == S_HEAP_SCAN
+	  && (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0
+	      || scan_id->s.hsid.batch_why_not != NULL))
+	{
+	  /* the page batch (expr_batch.h): shown with the plan details only, like the compiler's sections */
+	  if (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0)
+	    {
+	      fprintf (fp, ", batch pages: %llu (row path: %llu)",
+		       (unsigned long long int) scan_id->scan_stats.batch_pages,
+		       (unsigned long long int) scan_id->scan_stats.batch_pages_rowpath);
+	    }
+	  else
+	    {
+	      fprintf (fp, ", batch: no (%s)", scan_id->s.hsid.batch_why_not);
+	    }
+	}
       if (scan_id->scan_stats.agl)
 	{
 	  SCAN_AGL *agl;
