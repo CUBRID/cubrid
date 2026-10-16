@@ -13469,7 +13469,9 @@ static void
 pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
 {
   const TP_DOMAIN *domain = NULL;
-  DB_TYPE type = DB_TYPE_UNKNOWN;
+  DB_TYPE type = DB_TYPE_NULL;
+  /* DB_TYPE_UNKNOWN is DB_TYPE_NULL: a NULL bind's position is typed, its token is the NULL type's */
+  bool typed = false;
   int codeset = 0, collation = 0;
 
   if (index < parser->host_var_count)
@@ -13485,6 +13487,7 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
 	}
       if (domain != NULL)
 	{
+	  typed = true;
 	  type = TP_DOMAIN_TYPE (domain);
 	  codeset = domain->codeset;
 	  collation = domain->collation_id;
@@ -13492,6 +13495,7 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
     }
   else if (pt_is_derived_host_var (parser, index))
     {
+      typed = true;
       domain = parser->host_var_expected_domains[index];
       type = TP_DOMAIN_TYPE (domain);
       codeset = domain->codeset;
@@ -13500,6 +13504,7 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
   else if (parser->host_variables != NULL && index < parser->host_var_count + parser->auto_param_count)
     {
       const DB_VALUE *val = &parser->host_variables[index];
+      typed = true;
       type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
       if (TP_IS_CHAR_TYPE (type))
 	{
@@ -13508,7 +13513,7 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
 	}
     }
 
-  if (type == DB_TYPE_UNKNOWN)
+  if (!typed)
     {
       strcpy (out, ":?");
     }
