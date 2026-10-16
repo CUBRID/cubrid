@@ -119,7 +119,7 @@ sp_stmt_is_single_row_values (const PT_NODE *statement)
 sp_stmt_guard::sp_stmt_guard (const PT_NODE *statement)
   : m_pushed (false)
 {
-  if (statement == NULL || !statement->flag.has_sp_call)
+  if (statement == NULL || (!statement->flag.has_sp_call && sp_Stmt_stack.empty () && sp_Trigger_stack.empty ()))
     {
       return;
     }
