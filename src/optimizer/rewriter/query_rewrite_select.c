@@ -4179,9 +4179,12 @@ qo_hq_strip_prior (PT_NODE * node)
 
 /*
  * qo_hq_is_hashed_apart () - checks whether the hash list scan can hash values
- *   that one PT_EQ conjunct finds equal into different buckets
- * Note: same-type keys are hashed as is, JSON by its text and NUMERIC by its
- *       unscaled digits, so only NUMERIC columns of one scale hash alike
+ *   that one PT_EQ conjunct finds equal into different buckets, or fail on them
+ * Note: the build values are coerced to the domain of the probe side, so sides
+ *       of different types can raise a coercion error (INT into SMALLINT) or
+ *       lose precision (DOUBLE into BIGINT). Same-type keys are hashed as is,
+ *       JSON by its text and NUMERIC by its unscaled digits, so only NUMERIC
+ *       columns of one scale hash alike.
  */
 static bool
 qo_hq_is_hashed_apart (PT_NODE * term)
@@ -4194,12 +4197,12 @@ qo_hq_is_hashed_apart (PT_NODE * term)
       return false;
     }
 
-  if (arg1->type_enum == PT_TYPE_JSON || arg2->type_enum == PT_TYPE_JSON)
+  if (arg1->type_enum != arg2->type_enum || arg1->type_enum == PT_TYPE_JSON)
     {
       return true;
     }
 
-  if (arg1->type_enum != PT_TYPE_NUMERIC || arg2->type_enum != PT_TYPE_NUMERIC)
+  if (arg1->type_enum != PT_TYPE_NUMERIC)
     {
       return false;
     }
@@ -4253,7 +4256,10 @@ qo_hq_has_hashed_apart_eq_term (PT_NODE * pred)
  *       of a hashable equality, since only such an index finds the children of
  *       a parent by a key range: (pid) or (grp, pid) for PRIOR id = pid AND
  *       grp = 7 or grp IN (7, 8). An expression over the column
- *       (PRIOR id = pid + 0) cannot use any index.
+ *       (PRIOR id = pid + 0) cannot use any index. It is also kept when an
+ *       equality conjunct would be hashed apart (see qo_hq_is_hashed_apart):
+ *       sides of different types, a JSON side or NUMERIC sides of different
+ *       scales.
  */
 static bool
 qo_hq_prefer_hash_over_single_table (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * spec)
