@@ -3968,6 +3968,11 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
       return NULL;
     }
   owner = owner_name[0] == '\0' ? Au_user : db_find_user (owner_name);
+  if (owner == NULL)
+    {
+      ERROR_SET_ERROR_1ARG (error, ER_AU_INVALID_USER, owner_name);
+      goto error;
+    }
 
   if (!ws_is_same_object (owner, Au_user) && !au_is_dba_group_member (Au_user))
     {
