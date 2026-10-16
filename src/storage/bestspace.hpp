@@ -433,7 +433,8 @@ namespace cubstorage
       {
 	if (suspect)
 	  {
-	    // a new suspicion needs a new full pass
+	    // a new suspicion needs a new full pass; the epoch keeps a pass that started earlier from clearing it
+	    m_fc_suspect_epoch.fetch_add (1);
 	    m_fc_scrub_restart.store (true);
 	  }
 	m_fc_suspect.store (suspect);
@@ -474,6 +475,8 @@ namespace cubstorage
       std::atomic<bool> m_fc_loaded;
       std::atomic<bool> m_fc_rewrite;
       std::atomic<bool> m_fc_scrub_restart = { false };
+      std::atomic<std::uint64_t> m_fc_suspect_epoch = { 0 };
+      std::uint64_t m_fc_scrub_epoch = 0;	// under m_fc_scrub_mutex: the epoch the current pass started in
       std::atomic<std::uint64_t> m_alloc_hist[fctest::HIST_BUCKETS] = {};
       std::atomic<std::uint64_t> m_claim_hist[fctest::HIST_BUCKETS] = {};
       std::mutex m_fc_scrub_mutex;

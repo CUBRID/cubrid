@@ -1485,7 +1485,14 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
 
     if (fc_recovered || init_emergency || (prev & 1) == 0 || !fc_on)
       {
+	/* seeded from the clock so a re-created log header (copydb, log recreate, restore without the active log)
+	 * can never come back to a generation an old map was stamped with */
+	int now = (int) (time (NULL) & 0x3FFFFFFF);
 	generation = (generation + 1) & 0x3FFFFFFF;
+	if (now > generation)
+	  {
+	    generation = now;
+	  }
       }
     log_Gl.hdr.perm_status_obsolete = (generation << 1) | (fc_on ? 1 : 0);
     if (log_Gl.hdr.perm_status_obsolete != prev)

@@ -1637,17 +1637,23 @@ claim_again:
       {
 	return 0;
       }
-    if (m_fc_scrub_restart.exchange (false))
+    if (m_fc_scrub_restart.exchange (false) || m_fc_scrub_cursor == 0)
       {
 	m_fc_scrub_cursor = 0;
+	m_fc_scrub_epoch = m_fc_suspect_epoch.load ();
       }
 
     n = m_fcmap->scrub_candidates (m_fc_scrub_cursor, cand.data (), budget);
     fctest::delay (fctest::P_SCRUB_MID);
     if (n == 0)
       {
-	// one full pass over the map: every page has been measured since the unclean restart
-	m_fc_suspect.store (false);
+	// one full pass over the map: every page has been measured since the suspicion that started this pass;
+	// a newer suspicion needs its own pass
+	if (m_fc_suspect_epoch.load () == m_fc_scrub_epoch)
+	  {
+	    m_fc_suspect.store (false);
+	  }
+	m_fc_scrub_cursor = 0;
 	return 0;
       }
 
@@ -1666,10 +1672,15 @@ claim_again:
 	    er_clear ();
 	    continue;
 	  }
-	if (pgbuf_get_page_ptype (thread_p, watcher.pgptr) == PAGE_HEAP && !heap_page_is_bestspace (thread_p, watcher.pgptr)
-	    && !heap_page_is_not_in_heap (thread_p, watcher.pgptr)
-	    && heap_get_class_oid_from_page (thread_p, watcher.pgptr, &page_class_oid) == NO_ERROR
-	    && OID_EQ (&page_class_oid, class_oid))
+	if (pgbuf_get_page_ptype (thread_p, watcher.pgptr) != PAGE_HEAP || heap_page_is_bestspace (thread_p, watcher.pgptr)
+	    || heap_get_class_oid_from_page (thread_p, watcher.pgptr, &page_class_oid) != NO_ERROR
+	    || !OID_EQ (&page_class_oid, class_oid))
+	  {
+	    // not a data page of this heap (a map or develop bestspace page, an orphaned map page, a page of another
+	    // file): never measure it again
+	    m_fcmap->remove (vpid.volid, vpid.pageid);
+	  }
+	else if (!heap_page_is_not_in_heap (thread_p, watcher.pgptr))
 	  {
 	    // the same measure feedback uses: space other transactions saved for rollback still counts
 	    code = fc_code_of ((std::uint16_t) MIN (spage_get_free_space_without_saving (thread_p, watcher.pgptr), 0xFFFF));
