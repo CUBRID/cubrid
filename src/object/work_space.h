@@ -692,6 +692,7 @@ public:
   void ws_init_repl_objs (void);
   void ws_clear_all_repl_objs (void);
   void ws_free_repl_obj (WS_REPL_OBJ * obj);
+  int ws_get_repl_obj_count (void) const;
   WS_REPL_OBJ *ws_get_repl_obj_from_list (void);
   void ws_set_repl_error_into_error_link (LC_COPYAREA_ONEOBJ * obj, char *content_ptr);
   WS_REPL_FLUSH_ERR *ws_get_repl_error_from_error_link (void);

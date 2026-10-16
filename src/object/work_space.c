@@ -5296,6 +5296,18 @@ ws_repl::ws_init_repl_objs (void)
 }
 
 /*
+ * ws_get_repl_obj_count() -
+ *    return: number of pending replication objects
+ */
+/* *INDENT-OFF* */
+int
+ws_repl::ws_get_repl_obj_count (void) const
+{
+  return m_Repl_objs.num_items;
+}
+/* *INDENT-ON* */
+
+/*
  * ws_get_repl_obj_from_list() -
  *    return: repl object
  */
