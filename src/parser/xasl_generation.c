@@ -6988,11 +6988,12 @@ pt_decide_node_domain (REGU_VARIABLE * regu)
     {
       return;
     }
+  /* a rule that gives no value (a NULL operand) types the node NULL: every row gives NULL (D-25) */
   RESOLVED_DOMAIN result;
   bool needs_late_bind = false;
   if (domain_resolve (domain_late_bind_context (arith->opcode), arith->opcode, operands, n, arith->domain, &result,
 		      &needs_late_bind) != NO_ERROR || needs_late_bind || result.domain == NULL
-      || TP_DOMAIN_TYPE (result.domain) == DB_TYPE_VARIABLE || TP_DOMAIN_TYPE (result.domain) == DB_TYPE_NULL)
+      || TP_DOMAIN_TYPE (result.domain) == DB_TYPE_VARIABLE)
     {
       return;
     }
