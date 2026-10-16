@@ -261,6 +261,16 @@ typedef struct hashjoin_stats_group
   UINT32 context_cnt;
 } HASHJOIN_STATS_GROUP;
 
+/* CBRD-27659 (prototype): what the Bloom filter on the second-materialized input did (hjoin_bloom_*). Not part of
+ * HASHJOIN_STATS_GROUP: the join clears that when it starts, which is after its inputs are materialized. */
+typedef struct hashjoin_bloom_stats
+{
+  bool used;
+  INT64 keys;			/* first-input keys hashed into the filter */
+  INT64 tested;			/* second-input rows checked against it */
+  INT64 skipped;		/* of those, rows not written to the second input's list */
+} HASHJOIN_BLOOM_STATS;
+
 /* HASHJOIN_FETCH_INFO */
 typedef struct hashjoin_fetch_info
 {
@@ -465,6 +475,15 @@ typedef struct hashjoin_manager
  */
 
 int qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, VAL_DESCR * val_descr);
+
+/* CBRD-27659 (prototype): Bloom join filter pushed into the second-materialized hash join input */
+struct qfile_list_id;
+struct qfile_tuple_descriptor;
+void hjoin_bloom_attach (THREAD_ENTRY * thread_p, XASL_NODE * hj_xasl, XASL_NODE * second_xasl);
+bool hjoin_bloom_skip_descr (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+bool hjoin_bloom_skip_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, char *tuple);
+void hjoin_bloom_detach (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+void hjoin_bloom_release (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 
 /* Hash Join Execution */
 int hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);

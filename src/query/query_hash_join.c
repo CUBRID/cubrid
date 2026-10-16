@@ -4636,3 +4636,445 @@ hjoin_print_tuple (QFILE_LIST_ID * list_id, QFILE_TUPLE tuple, HASHJOIN_PRINT_ST
   qfile_print_tuple (&list_id->type_list, tuple);
 }
 #endif /* !NDEBUG && HASHJOIN_DUMP_PROBE */
+
+/*
+ * Bloom join filter (CBRD-27659, prototype)
+ *
+ * The two inputs of a hash join are materialized one after the other before the join runs (the aptr loop of
+ * qexec_execute_mainblock_internal). Once the first is done, its join keys can tell the second which of its rows
+ * can never find a partner. When the second input is the side the join does not preserve (either side of an
+ * inner join, the inner side of a left join, the outer side of a right join), such rows never reach the result,
+ * so they need not be written to its list at all.
+ *
+ * Correctness rests on hashing both sides exactly as the join compares them: the same common domains
+ * (hjoin_init_domain_info), the same key extraction and coercion (hjoin_fetch_key) and the same hash
+ * (qdata_hash_scan_key). A Bloom filter has no false negatives, so a row it rejects has no equal key on the
+ * first side; a false positive only lets a row through.
+ *
+ * The filter is built lazily, at the second input's first row: the second list's type list is open by then and
+ * the common domains need both. Rows the second input writes from other threads (parallel scan workers run on
+ * cloned xasl nodes) are let through, and only the node the filter was attached to frees it.
+ */
+
+typedef struct hjoin_bloom HJOIN_BLOOM;
+
+#define HJOIN_BLOOM_MAX_FIRST_ROWS	10000000	/* about 12 MB of bits at 10 bits per key */
+#define HJOIN_BLOOM_BITS_PER_KEY	10
+#define HJOIN_BLOOM_HASHES		3
+
+struct hjoin_bloom
+{
+  XASL_NODE *hj_xasl;		/* the hash join */
+  XASL_NODE *owner_xasl;	/* the second input the filter is attached to */
+  THREAD_ENTRY *owner_thread;	/* the thread materializing it */
+  bool first_is_outer;
+  bool built;
+  bool disabled;		/* not applicable after all, or the build failed: let every row through */
+
+  UINT64 *bits;
+  UINT32 mask;			/* number of bits - 1, a power of two minus one */
+
+  HASH_SCAN_KEY *key;
+  HASHJOIN_FETCH_INFO first;
+  HASHJOIN_FETCH_INFO second;
+
+  char *row_buf;		/* the second input's row serialized for hjoin_fetch_key */
+  int row_buf_size;
+
+  INT64 keys;
+  INT64 tested;
+  INT64 skipped;
+};
+
+static inline void
+hjoin_bloom_positions (UINT32 hash, UINT32 * h1, UINT32 * h2)
+{
+  /* double hashing over one 32-bit hash: the second stride is odd, so with a power-of-two table the probes
+   * visit distinct positions */
+  *h1 = hash;
+  *h2 = ((hash >> 16) | (hash << 16)) | 1;
+}
+
+static void
+hjoin_bloom_add (HJOIN_BLOOM * bloom, UINT32 hash)
+{
+  UINT32 h1, h2, pos;
+  int i;
+
+  hjoin_bloom_positions (hash, &h1, &h2);
+  for (i = 0; i < HJOIN_BLOOM_HASHES; i++)
+    {
+      pos = (h1 + (UINT32) i * h2) & bloom->mask;
+      bloom->bits[pos >> 6] |= ((UINT64) 1) << (pos & 63);
+    }
+}
+
+static bool
+hjoin_bloom_may_contain (const HJOIN_BLOOM * bloom, UINT32 hash)
+{
+  UINT32 h1, h2, pos;
+  int i;
+
+  hjoin_bloom_positions (hash, &h1, &h2);
+  for (i = 0; i < HJOIN_BLOOM_HASHES; i++)
+    {
+      pos = (h1 + (UINT32) i * h2) & bloom->mask;
+      if ((bloom->bits[pos >> 6] & (((UINT64) 1) << (pos & 63))) == 0)
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
+ * hjoin_bloom_attach () - attach a Bloom filter to the hash join input about to be materialized second
+ *   hj_xasl(in): the hash join
+ *   second_xasl(in): the input the aptr loop is about to execute; the other one is already materialized
+ *
+ * Nothing is attached unless the parameter is on, the second input is a side the join does not preserve, the
+ * first input has finished (XASL_SUCCESS: a list still being written by a parallel worker would give the filter
+ * false negatives) with rows (an empty one already skips the second) and not too many, and the second input writes
+ * its rows straight to its list (no grouping, analytic, top-n, limit, ORDERBY_NUM () or distinct between the row and
+ * the list: dropping a row there would change which rows those keep or how they are numbered). Nor when its list
+ * comes from the subquery result cache (another execution's) or it is the SELECT of an UPDATE / DELETE (its rows
+ * carry the OIDs to change).
+ */
+void
+hjoin_bloom_attach (THREAD_ENTRY * thread_p, XASL_NODE * hj_xasl, XASL_NODE * second_xasl)
+{
+  HASHJOIN_PROC_NODE *proc;
+  XASL_NODE *first_xasl;
+  HJOIN_BLOOM *bloom;
+  bool first_is_outer;
+  JOIN_TYPE join_type;
+
+  if (hj_xasl == NULL || hj_xasl->type != HASHJOIN_PROC)
+    {
+      return;
+    }
+
+  proc = &hj_xasl->proc.hashjoin;
+  /* the trace of this execution starts empty (the call for the first input lands here too; the detach after the
+   * second input fills it) */
+  memset (&proc->bloom_stats, 0, sizeof (proc->bloom_stats));
+
+  if (!prm_get_bool_value (PRM_ID_HASH_JOIN_BLOOM_FILTER) || second_xasl == NULL || second_xasl->hj_bloom != NULL)
+    {
+      return;
+    }
+
+  if (second_xasl == proc->inner.xasl)
+    {
+      first_xasl = proc->outer.xasl;
+      first_is_outer = true;
+    }
+  else if (second_xasl == proc->outer.xasl)
+    {
+      first_xasl = proc->inner.xasl;
+      first_is_outer = false;
+    }
+  else
+    {
+      return;
+    }
+
+  join_type = proc->merge_info.join_type;
+  if (!(join_type == JOIN_INNER || (join_type == JOIN_LEFT && first_is_outer)
+	|| (join_type == JOIN_RIGHT && !first_is_outer)))
+    {
+      /* the second input is a preserved side: its unmatched rows are part of the result */
+      return;
+    }
+
+  if (first_xasl == NULL || first_xasl->status != XASL_SUCCESS || first_xasl->list_id == NULL
+      || first_xasl->list_id->type_list.type_cnt == 0
+      || first_xasl->list_id->tuple_cnt <= 0 || first_xasl->list_id->tuple_cnt > HJOIN_BLOOM_MAX_FIRST_ROWS)
+    {
+      return;
+    }
+
+  if (second_xasl->type != BUILDLIST_PROC || second_xasl->proc.buildlist.groupby_list != NULL
+      || second_xasl->proc.buildlist.a_eval_list != NULL || second_xasl->proc.buildlist.g_hash_eligible
+      || second_xasl->limit_row_count != NULL || second_xasl->limit_offset != NULL
+      || second_xasl->option == Q_DISTINCT || second_xasl->connect_by_ptr != NULL
+      || second_xasl->ordbynum_pred != NULL || second_xasl->ordbynum_val != NULL || second_xasl->orderby_limit != NULL
+      || second_xasl->selected_upd_list != NULL || second_xasl->upd_del_class_cnt > 0
+      || second_xasl->sub_xasl_id != NULL || XASL_IS_FLAGED (second_xasl, XASL_TOP_MOST_XASL))
+    {
+      return;
+    }
+
+  bloom = (HJOIN_BLOOM *) db_private_alloc (thread_p, sizeof (HJOIN_BLOOM));
+  if (bloom == NULL)
+    {
+      er_clear ();		/* the filter is an optimization: run without it */
+      return;
+    }
+  memset (bloom, 0, sizeof (HJOIN_BLOOM));
+  bloom->hj_xasl = hj_xasl;
+  bloom->owner_xasl = second_xasl;
+  bloom->owner_thread = thread_p;
+  bloom->first_is_outer = first_is_outer;
+
+  second_xasl->hj_bloom = bloom;
+}
+
+/* first use: common domains from both lists, then every first-input key hashed into the bits */
+static void
+hjoin_bloom_build (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
+{
+  HASHJOIN_PROC_NODE *proc = &bloom->hj_xasl->proc.hashjoin;
+  HASHJOIN_MANAGER manager;
+  HASHJOIN_DOMAIN_INFO *domain_info = &proc->domain_info;
+  QFILE_LIST_ID *first_list_id;
+  QFILE_LIST_SCAN_ID scan_id;
+  // *INDENT-OFF*
+  QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
+  // *INDENT-ON*
+  UINT64 nbits;
+  bool need_skip_next = false;
+  bool scan_open = false;
+  int key_cnt;
+
+  bloom->built = true;
+  bloom->disabled = true;	/* until the build completes */
+
+  if (proc->outer.xasl->list_id->type_list.type_cnt == 0 || proc->inner.xasl->list_id->type_list.type_cnt == 0)
+    {
+      return;
+    }
+
+  memset (&manager, 0, sizeof (HASHJOIN_MANAGER));
+  manager.merge_info = &proc->merge_info;
+  manager.outer = &proc->outer;
+  manager.inner = &proc->inner;
+  if (hjoin_init_domain_info (thread_p, &manager, domain_info) != NO_ERROR)
+    {
+      er_clear ();
+      return;
+    }
+
+  key_cnt = proc->merge_info.ls_column_cnt;
+  bloom->key = qdata_alloc_hscan_key (thread_p, key_cnt, true);
+  if (bloom->key == NULL)
+    {
+      er_clear ();
+      return;
+    }
+
+  bloom->first.input = bloom->first_is_outer ? &domain_info->outer : &domain_info->inner;
+  bloom->first.coerce_domains = domain_info->coerce_domains;
+  bloom->first.need_coerce_domains = domain_info->need_coerce_domains;
+  bloom->second.input = bloom->first_is_outer ? &domain_info->inner : &domain_info->outer;
+  bloom->second.coerce_domains = domain_info->coerce_domains;
+  bloom->second.need_coerce_domains = domain_info->need_coerce_domains;
+
+  first_list_id = bloom->first_is_outer ? proc->outer.xasl->list_id : proc->inner.xasl->list_id;
+
+  /* power of two >= keys * bits-per-key, at least one word */
+  nbits = 64;
+  while (nbits < (UINT64) first_list_id->tuple_cnt * HJOIN_BLOOM_BITS_PER_KEY)
+    {
+      nbits <<= 1;
+    }
+  bloom->mask = (UINT32) (nbits - 1);
+  bloom->bits = (UINT64 *) db_private_alloc (thread_p, (size_t) (nbits / 64) * sizeof (UINT64));
+  if (bloom->bits == NULL)
+    {
+      er_clear ();
+      return;
+    }
+  memset (bloom->bits, 0, (size_t) (nbits / 64) * sizeof (UINT64));
+
+  if (qfile_open_list_scan (first_list_id, &scan_id) != NO_ERROR)
+    {
+      er_clear ();
+      return;
+    }
+  scan_open = true;
+
+  while (qfile_scan_list_next (thread_p, &scan_id, &tuple_record, PEEK) == S_SUCCESS)
+    {
+      if (hjoin_fetch_key (thread_p, &bloom->first, &tuple_record, bloom->key, NULL, &need_skip_next) != NO_ERROR)
+	{
+	  er_clear ();
+	  goto end;
+	}
+      if (need_skip_next)
+	{
+	  /* a NULL key never joins */
+	  need_skip_next = false;
+	  continue;
+	}
+      hjoin_bloom_add (bloom, qdata_hash_scan_key (bloom->key, UINT_MAX, HASH_METH_IN_MEM));
+      bloom->keys++;
+    }
+
+  if (er_errid () != NO_ERROR)
+    {
+      er_clear ();
+      goto end;
+    }
+  bloom->disabled = false;
+
+end:
+  if (scan_open)
+    {
+      qfile_close_scan (thread_p, &scan_id);
+    }
+}
+
+/* the decision on one serialized second-input row */
+static bool
+hjoin_bloom_skip_record (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom, QFILE_TUPLE_RECORD * record)
+{
+  bool need_skip_next = false;
+
+  if (hjoin_fetch_key (thread_p, &bloom->second, record, bloom->key, NULL, &need_skip_next) != NO_ERROR)
+    {
+      er_clear ();
+      bloom->disabled = true;
+      return false;
+    }
+
+  bloom->tested++;
+  if (need_skip_next || !hjoin_bloom_may_contain (bloom, qdata_hash_scan_key (bloom->key, UINT_MAX, HASH_METH_IN_MEM)))
+    {
+      /* a NULL key, or a key no first-input row has */
+      bloom->skipped++;
+      return true;
+    }
+  return false;
+}
+
+static HJOIN_BLOOM *
+hjoin_bloom_ready (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  HJOIN_BLOOM *bloom = xasl->hj_bloom;
+
+  if (bloom == NULL || bloom->owner_xasl != xasl || bloom->owner_thread != thread_p)
+    {
+      return NULL;
+    }
+  if (!bloom->built)
+    {
+      hjoin_bloom_build (thread_p, bloom);
+    }
+  return bloom->disabled ? NULL : bloom;
+}
+
+/*
+ * hjoin_bloom_skip_descr () - should the row in xasl's tuple descriptor be left out of its list?
+ *   xasl(in): a BUILDLIST xasl whose qexec_generate_tuple_descriptor succeeded for the current row
+ *
+ * The descriptor's values are already evaluated; they are serialized as they would be written to the list, so
+ * hjoin_fetch_key reads the key exactly as the join will.
+ */
+bool
+hjoin_bloom_skip_descr (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  HJOIN_BLOOM *bloom = hjoin_bloom_ready (thread_p, xasl);
+  QFILE_TUPLE_DESCRIPTOR *descr;
+  QFILE_TUPLE_RECORD record;
+
+  if (bloom == NULL)
+    {
+      return false;
+    }
+
+  descr = &xasl->list_id->tpl_descr;
+  if (bloom->row_buf_size < descr->tpl_size)
+    {
+      char *buf = (char *) db_private_realloc (thread_p, bloom->row_buf, descr->tpl_size);
+      if (buf == NULL)
+	{
+	  er_clear ();
+	  bloom->disabled = true;
+	  return false;
+	}
+      bloom->row_buf = buf;
+      bloom->row_buf_size = descr->tpl_size;
+    }
+
+  if (qfile_tuple_fill_from_values (&xasl->list_id->type_list, descr->f_valp, descr->f_len, descr->f_cnt,
+				    bloom->row_buf, descr->tpl_size, descr->has_null) != NO_ERROR)
+    {
+      er_clear ();
+      bloom->disabled = true;
+      return false;
+    }
+
+  record.tpl = bloom->row_buf;
+  record.size = descr->tpl_size;
+  return hjoin_bloom_skip_record (thread_p, bloom, &record);
+}
+
+/* the same for a row already serialized into a tuple (the big-record / set path) */
+bool
+hjoin_bloom_skip_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, char *tuple)
+{
+  HJOIN_BLOOM *bloom = hjoin_bloom_ready (thread_p, xasl);
+  QFILE_TUPLE_RECORD record;
+
+  if (bloom == NULL || tuple == NULL)
+    {
+      return false;
+    }
+  record.tpl = tuple;
+  record.size = QFILE_GET_TUPLE_LENGTH (tuple);
+  return hjoin_bloom_skip_record (thread_p, bloom, &record);
+}
+
+/* free the filter if xasl owns it */
+void
+hjoin_bloom_release (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  HJOIN_BLOOM *bloom = xasl->hj_bloom;
+
+  if (bloom == NULL)
+    {
+      return;
+    }
+  xasl->hj_bloom = NULL;
+  if (bloom->owner_xasl != xasl)
+    {
+      /* a cloned node carrying the original's pointer: the owner frees it */
+      return;
+    }
+
+  if (bloom->key != NULL)
+    {
+      qdata_free_hscan_key (thread_p, bloom->key, bloom->hj_xasl->proc.hashjoin.merge_info.ls_column_cnt);
+    }
+  if (bloom->bits != NULL)
+    {
+      db_private_free (thread_p, bloom->bits);
+    }
+  if (bloom->row_buf != NULL)
+    {
+      db_private_free (thread_p, bloom->row_buf);
+    }
+  db_private_free (thread_p, bloom);
+}
+
+/* after the second input is materialized: keep the counters for trace and free the filter */
+void
+hjoin_bloom_detach (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  HJOIN_BLOOM *bloom = xasl->hj_bloom;
+  HASHJOIN_BLOOM_STATS *stats;
+
+  if (bloom == NULL || bloom->owner_xasl != xasl)
+    {
+      return;
+    }
+
+  stats = &bloom->hj_xasl->proc.hashjoin.bloom_stats;
+  stats->used = bloom->built && !bloom->disabled;
+  stats->keys = bloom->keys;
+  stats->tested = bloom->tested;
+  stats->skipped = bloom->skipped;
+
+  hjoin_bloom_release (thread_p, xasl);
+}

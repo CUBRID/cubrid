@@ -1243,6 +1243,12 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		}
 	    }
 
+	  if (output_tuple && xasl->hj_bloom != NULL && hjoin_bloom_skip_descr (thread_p, xasl))
+	    {
+	      /* CBRD-27659: no row of the other hash join input has this key */
+	      output_tuple = false;
+	    }
+
 	  if (output_tuple)
 	    {
 	      /* generate tuple into list file page */
@@ -1271,6 +1277,12 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 						tplrec) != NO_ERROR))
 	    {
 	      GOTO_EXIT_ON_ERROR;
+	    }
+
+	  if (xasl->hj_bloom != NULL && hjoin_bloom_skip_tuple (thread_p, xasl, tplrec->tpl))
+	    {
+	      /* CBRD-27659: no row of the other hash join input has this key */
+	      break;
 	    }
 
 	  if ((qfile_add_tuple_to_list (thread_p, xasl->list_id, tplrec->tpl) != NO_ERROR))
@@ -2320,6 +2332,11 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
       xasl->px_executor = NULL;
     }
 #endif // SERVER_MODE
+  if (xasl->hj_bloom != NULL)
+    {
+      /* CBRD-27659: a filter an error path did not detach */
+      hjoin_bloom_release (thread_p, xasl);
+    }
   if (xasl->memoize_storage)
     {
       clear_memoize_storage (thread_p, xasl);
@@ -16685,6 +16702,13 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		  continue;
 		}
 
+	      if (merge_infop != NULL && xptr->type == HASHJOIN_PROC && xasl->px_executor == NULL
+		  && IS_XASL_INITIAL_STATUS (xptr2->status))
+		{
+		  /* CBRD-27659 (prototype): the other input is done; let it filter this one's rows */
+		  hjoin_bloom_attach (thread_p, xptr, xptr2);
+		}
+
 	      if (IS_XASL_INITIAL_STATUS (xptr2->status))
 		{
 		  if (QEXEC_IS_SUBQUERY_CACHE (xptr2))
@@ -16786,6 +16810,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		      qexec_failure_line (__LINE__, xasl_state);
 		      GOTO_EXIT_ON_ERROR;
 		    }
+		}
+
+	      if (xptr2->hj_bloom != NULL)
+		{
+		  /* CBRD-27659: counters to the hash join for trace, filter freed */
+		  hjoin_bloom_detach (thread_p, xptr2);
 		}
 	    }
 	}

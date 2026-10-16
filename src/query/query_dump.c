@@ -4813,6 +4813,14 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   indent += 2;
 
+  if (proc->bloom_stats.used)
+    {
+      /* CBRD-27659 (prototype): the second-materialized input was filtered by the first's keys */
+      fprintf (fp, "%*cBLOOM (keys: %lld, tested: %lld, skipped: %lld)\n", indent, ' ',
+	       (long long) proc->bloom_stats.keys, (long long) proc->bloom_stats.tested,
+	       (long long) proc->bloom_stats.skipped);
+    }
+
   if (!is_partition_parallel)
     {
       XASL_NODE *build_xasl, *probe_xasl;
