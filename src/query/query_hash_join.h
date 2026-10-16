@@ -477,13 +477,21 @@ typedef struct hashjoin_manager
 int qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, VAL_DESCR * val_descr);
 
 /* CBRD-27659 (prototype): Bloom join filter pushed into the second-materialized hash join input */
-struct qfile_list_id;
-struct qfile_tuple_descriptor;
+typedef struct hjoin_bloom HJOIN_BLOOM;
+typedef struct hjoin_bloom_worker HJOIN_BLOOM_WORKER;
+bool hjoin_bloom_wants_serial (XASL_NODE * hj_xasl);
 void hjoin_bloom_attach (THREAD_ENTRY * thread_p, XASL_NODE * hj_xasl, XASL_NODE * second_xasl);
 bool hjoin_bloom_skip_descr (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 bool hjoin_bloom_skip_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, char *tuple);
 void hjoin_bloom_detach (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 void hjoin_bloom_release (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+/* a parallel scan of the second input: the owner builds the filter first, each worker checks with its own key */
+HJOIN_BLOOM *hjoin_bloom_prepare (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
+HJOIN_BLOOM_WORKER *hjoin_bloom_worker_begin (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom);
+bool hjoin_bloom_worker_skip_descr (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * worker, QFILE_LIST_ID * list_id);
+bool hjoin_bloom_worker_skip_tuple (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * worker, QFILE_LIST_ID * list_id,
+				    char *tuple);
+void hjoin_bloom_worker_end (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * worker);
 
 /* Hash Join Execution */
 int hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
