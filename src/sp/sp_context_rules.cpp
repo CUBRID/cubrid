@@ -113,7 +113,8 @@ sp_stmt_is_single_row_values (const PT_NODE *statement)
   const PT_NODE *values = statement->info.insert.value_clauses;
 
   return (values != NULL && values->next == NULL && values->node_type == PT_NODE_LIST
-	  && values->info.node_list.list_type != PT_IS_SUBQUERY);
+	  && values->info.node_list.list_type != PT_IS_SUBQUERY && statement->info.insert.odku_assignments == NULL
+	  && !statement->info.insert.do_replace);
 }
 
 sp_stmt_guard::sp_stmt_guard (const PT_NODE *statement)
