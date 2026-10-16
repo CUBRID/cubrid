@@ -8172,19 +8172,21 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 
 
 /*
- * heap_page_collect_visible () - every record heap_next_1page () would return for one page, at once
- *   return: S_SUCCESS (rows[0 .. *n_rows) are those records, peeked, in slot order),
- *           S_DOESNT_FIT (a record the page alone cannot answer for: the caller walks the page
- *           with heap_next_1page ()), or S_ERROR
+ * heap_page_collect_visible () - the next records heap_next_1page () would return for one page, a chunk at a time
+ *   return: S_SUCCESS (cap rows collected; the page may have more), S_END (the page has no more:
+ *           *n_rows may be below cap, even 0), S_DOESNT_FIT (a record the page alone cannot
+ *           answer for: the caller walks the page from where this call started with
+ *           heap_next_1page ()), or S_ERROR
  *   vpid(in): the page
  *   class_oid(in): the class scanned (the scan cache's)
  *   scan_cache(in/out): the scan cache; its watcher holds the page on return
- *   rows(out): cap slots
+ *   slot(in/out): the last slot looked at, 0 before the first call for the page; on S_SUCCESS
+ *                 the slot of the last row collected, where the next call resumes
+ *   rows(out): cap slots, peeked, in slot order
  *   cap(in): at most so many rows
  *   n_rows(out): the rows collected
- *   n_need(out): S_DOESNT_FIT for want of room only: the records of the page (more than cap)
  *
- * The walk heap_next_1page () makes, record after record, made once: the same slots skipped
+ * The walk heap_next_1page () makes, record after record, made in runs: the same slots skipped
  * (the header, REC_NEWHOME, REC_ASSIGN_ADDRESS, REC_UNKNOWN), and for a REC_HOME record the
  * visibility heap_scan_get_visible_version () decides -- an all-visible header, a class
  * without MVCC or no snapshot is visible, otherwise the snapshot function says.  A record
@@ -8194,7 +8196,7 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
  */
 SCAN_CODE
 heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
-			   HEAP_SCANCACHE * scan_cache, HEAP_PAGE_ROW * rows, int cap, int *n_rows, int *n_need)
+			   HEAP_SCANCACHE * scan_cache, PGSLOTID * slot, HEAP_PAGE_ROW * rows, int cap, int *n_rows)
 {
   MVCC_SNAPSHOT *snapshot = NULL;
   PAGE_PTR pgptr;
@@ -8204,7 +8206,6 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
   int n = 0;
 
   *n_rows = 0;
-  *n_need = 0;
   if (HEAP_SCAN_IS_LOCAL_CACHE_READ (scan_cache))
     {
       /* a cached scan reads a copy of the page: heap_next_1page () keeps that protocol */
@@ -8231,7 +8232,7 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
   pgptr = scan_cache->page_watcher.pgptr;
   if (heap_page_is_bestspace (thread_p, pgptr))
     {
-      return S_SUCCESS;
+      return S_END;
     }
   if (!scan_cache->mvcc_disabled_class && scan_cache->mvcc_snapshot != NULL
       && scan_cache->mvcc_snapshot->snapshot_fnc != NULL)
@@ -8241,7 +8242,7 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 
   oid.volid = vpid->volid;
   oid.pageid = vpid->pageid;
-  oid.slotid = 0;		/* the walk starts at slot 1 */
+  oid.slotid = *slot;		/* 0: the walk starts at slot 1 */
   while (true)
     {
       MVCC_REC_HEADER mvcc_header = MVCC_REC_HEADER_INITIALIZER;
@@ -8249,11 +8250,12 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
       scan = spage_next_record (pgptr, &oid.slotid, &rec, PEEK);
       if (scan == S_END)
 	{
-	  break;
+	  *n_rows = n;
+	  return S_END;
 	}
       if (scan != S_SUCCESS)
 	{
-	  return scan;
+	  return S_ERROR;
 	}
       if (oid.slotid == HEAP_HEADER_AND_CHAIN_SLOTID || rec.type == REC_NEWHOME || rec.type == REC_ASSIGN_ADDRESS
 	  || rec.type == REC_UNKNOWN)
@@ -8262,12 +8264,6 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 	}
       if (rec.type != REC_HOME)
 	{
-	  return S_DOESNT_FIT;
-	}
-      if (n >= cap)
-	{
-	  /* the page's records bound its rows (the header slot among them) */
-	  *n_need = MAX (cap + 1, spage_number_of_records (pgptr));
 	  return S_DOESNT_FIT;
 	}
       if (or_mvcc_get_header (&rec, &mvcc_header) != NO_ERROR)
@@ -8297,9 +8293,13 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
       rows[n].oid = oid;
       rows[n].recdes = rec;
       n++;
+      if (n == cap)
+	{
+	  *slot = oid.slotid;
+	  *n_rows = n;
+	  return S_SUCCESS;
+	}
     }
-  *n_rows = n;
-  return S_SUCCESS;
 }
 
 /*

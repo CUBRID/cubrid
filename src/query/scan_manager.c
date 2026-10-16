@@ -8163,7 +8163,14 @@ scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_T
       hsidp->batch_why_not = "out of memory";
       return hsidp->batch_state;
     }
-  expr_batch_init (hsidp->batch);	/* its arrays are sized by the first page (expr_batch_reserve ()) */
+  if (expr_batch_init (hsidp->batch_plan, hsidp->batch) != NO_ERROR)
+    {
+      free_and_init (hsidp->batch);
+      expr_batch_plan_free (hsidp->batch_plan);
+      hsidp->batch_plan = NULL;
+      hsidp->batch_why_not = "out of memory";
+      return hsidp->batch_state;
+    }
   VPID_SET_NULL (&hsidp->batch_vpid);
   hsidp->batch_started = false;
   hsidp->batch_rowmode = false;
@@ -8172,45 +8179,36 @@ scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_T
 }
 
 /*
- * scan_batch_collect_page () - the rows of the page the scan cache holds, into the batch
- *   return: S_SUCCESS (the batch holds the page's rows), S_DOESNT_FIT (the page is for the
- *           row path: a record not answered by this page alone, or more rows than the batch
- *           takes), or S_ERROR
+ * scan_batch_collect_chunk () - the next rows of the page the scan cache holds, into the batch
+ *   return: S_SUCCESS (the batch holds a full chunk; the page may have more), S_END (the
+ *           batch holds the page's last rows, maybe none), S_DOESNT_FIT (the page is for the
+ *           row path from where this call started: a record not answered by this page
+ *           alone), or S_ERROR
  *   scan_id(in/out): the heap scan
  *   vpid(in): the page, fixed in the scan cache's watcher (or fixed here)
+ *   slot(in/out): the walk's position in the page, 0 before its first chunk
  *
  * heap_page_collect_visible (): the walk the row path makes over one page, slot by slot with
- * the same visibility decision, made in one pass with the page held throughout; the rows are
- * peeked, so they are valid while the page stays fixed, which the caller guarantees.  A page
- * with a record whose visible version is elsewhere -- relocated, in overflow pages, or in the
- * log for this snapshot -- goes to the row path whole, before any of its rows is used.
+ * the same visibility decision, made EXPR_BATCH_CHUNK_ROWS rows at a time with the page held
+ * throughout; the rows are peeked, so they are valid while the page stays fixed, which the
+ * caller guarantees.  A record whose visible version is elsewhere -- relocated, in overflow
+ * pages, or in the log for this snapshot -- sends the chunk and the rest of the page to the
+ * row path, before any row of the chunk is used.
  */
 SCAN_CODE
-scan_batch_collect_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid)
+scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid, PGSLOTID * slot)
 {
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
   EXPR_BATCH *batch = hsidp->batch;
   SCAN_CODE code;
-  int need = 0;
 
   batch->n_rows = 0;
   batch->n_sel = 0;
   code =
-    heap_page_collect_visible (thread_p, vpid, &hsidp->cls_oid, &hsidp->scan_cache, batch->rows, batch->cap,
-			       &batch->n_rows, &need);
-  if (code == S_DOESNT_FIT && need > batch->cap)
-    {
-      /* the arrays are smaller than this page: carve them for it, the page is still held */
-      if (expr_batch_reserve (hsidp->batch_plan, batch, need) != NO_ERROR)
-	{
-	  return S_ERROR;
-	}
-      code =
-	heap_page_collect_visible (thread_p, vpid, &hsidp->cls_oid, &hsidp->scan_cache, batch->rows, batch->cap,
-				   &batch->n_rows, &need);
-    }
+    heap_page_collect_visible (thread_p, vpid, &hsidp->cls_oid, &hsidp->scan_cache, slot, batch->rows, batch->cap,
+			       &batch->n_rows);
   hsidp->batch_vpid = *vpid;
-  if (code != S_SUCCESS)
+  if (code == S_DOESNT_FIT || code == S_ERROR)
     {
       batch->n_rows = 0;
     }
@@ -8218,8 +8216,9 @@ scan_batch_collect_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID 
 }
 
 /*
- * scan_batch_next_page () - the serial walk: step to the heap's next page and collect its rows
- *   return: S_SUCCESS / S_DOESNT_FIT as scan_batch_collect_page (), S_END past the last page, S_ERROR
+ * scan_batch_next_page () - the serial walk: step to the heap's next page
+ *   return: S_SUCCESS (the page is held: hsidp->batch_vpid; its rows come by
+ *           scan_batch_collect_chunk ()), S_END past the last page, S_ERROR
  *   scan_id(in/out): the heap scan
  *
  * The pages in the order heap_next () takes them: the header page first, then the chain
@@ -8299,30 +8298,32 @@ scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
     }
   hsidp->batch_vpid = vpid;
-  if (heap_page_is_bestspace (thread_p, scan_cache->page_watcher.pgptr))
-    {
-      hsidp->batch->n_rows = 0;
-      hsidp->batch->n_sel = 0;
-      return S_SUCCESS;
-    }
-  return scan_batch_collect_page (thread_p, scan_id, &vpid);
+  return S_SUCCESS;
 }
 
 /*
- * scan_batch_page_rowmode () - walk the held page row by row through scan_next_scan ()
+ * scan_batch_page_rowmode () - walk the rest of the held page row by row through scan_next_scan ()
  *   scan_id(in/out): the heap scan
- *   on(in): true before the first row of the page, false after its S_END
+ *   on(in): true before the first row, false after the page's S_END
+ *   after_slot(in): on: the walk resumes after this slot (0: at the page's first slot)
  *
- * A page the batch hands back is served by the row path from its first slot, every row
- * going through the same filter, fetch and retry the row path always made.
+ * A chunk the batch hands back is served by the row path from its first slot to the end of
+ * its page -- the chunks before it were accumulated -- every row going through the same
+ * filter, fetch and retry the row path always made.
  */
 void
-scan_batch_page_rowmode (SCAN_ID * scan_id, bool on)
+scan_batch_page_rowmode (SCAN_ID * scan_id, bool on, PGSLOTID after_slot)
 {
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
 
   hsidp->batch_rowmode = on;
   OID_SET_NULL (&hsidp->curr_oid);
+  if (on && after_slot > 0)
+    {
+      hsidp->curr_oid.volid = hsidp->batch_vpid.volid;
+      hsidp->curr_oid.pageid = hsidp->batch_vpid.pageid;
+      hsidp->curr_oid.slotid = after_slot;
+    }
 }
 
 /*

@@ -25,7 +25,7 @@
  * loop inside out for one page: the rows the page yields are collected first, then every
  * operation runs over all of them in a short typed loop.
  *
- *   page -> rows[]                         (expr_batch_run: the caller collected them)
+ *   page -> rows[], a chunk at a time      (expr_batch_run: the caller collected them)
  *        -> column arrays for the columns the filter and the operands use ("usecols")
  *        -> the filter's terms in order, each over the surviving rows -> sel[]
  *        -> the operand steps in order, each over sel[] -> vector cells
@@ -81,7 +81,7 @@ struct expr_batch
 {
   EXPR_BATCH_ROW *rows;
   int n_rows;
-  int cap;			/* rows the arrays hold (expr_batch_reserve ()) */
+  int cap;			/* rows the arrays hold: EXPR_BATCH_CHUNK_ROWS */
   int *sel;			/* indexes into rows[] that passed the filter, in row order */
   int n_sel;
 };
@@ -103,16 +103,23 @@ struct expr_batch_inputs
 
 typedef struct expr_batch_plan EXPR_BATCH_PLAN;
 
-/* expr_batch_run () asks the caller to run the page on the row path; no error is set */
+/* expr_batch_run () asks the caller to run the chunk (and the rest of its page) on the row
+ * path; no error is set */
 #define EXPR_BATCH_FALLBACK (1)
+
+/* The rows one run takes: a page is collected and evaluated in chunks of so many rows, each
+ * accumulated before the next is collected (database-reference 참고: a fixed-size chunk is
+ * written until it is full and handed to the next node; only a blocking node gathers them).
+ * 64 rows keep an integer vector in 8 cache lines and a NUMERIC one in 32, so the whole
+ * working set of a scan stays in L1 whatever the page size. */
+#define EXPR_BATCH_CHUNK_ROWS (64)
 
 extern EXPR_BATCH_PLAN *expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in,
 					       const char **why_not);
 extern void expr_batch_plan_free (EXPR_BATCH_PLAN * plan);
 
-extern void expr_batch_init (EXPR_BATCH * batch);
-/* arrays for pages of up to n rows, carved from the plan's blocks (which own them) */
-extern int expr_batch_reserve (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, int n);
+/* the batch's arrays for EXPR_BATCH_CHUNK_ROWS rows, carved from the plan's blocks (which own them) */
+extern int expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch);
 extern void expr_batch_final (EXPR_BATCH * batch);
 
 /* decode the use columns, filter, run the operand steps: NO_ERROR, EXPR_BATCH_FALLBACK, or an error */

@@ -439,8 +439,8 @@ struct heap_page_row
   RECDES recdes;
 };
 extern SCAN_CODE heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
-					    HEAP_SCANCACHE * scan_cache, HEAP_PAGE_ROW * rows, int cap, int *n_rows,
-					    int *n_need);
+					    HEAP_SCANCACHE * scan_cache, PGSLOTID * slot, HEAP_PAGE_ROW * rows, int cap,
+					    int *n_rows);
 
 extern bool heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
 extern bool heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);

@@ -677,9 +677,10 @@ extern void scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_free_hash_list_scan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hlsid_p);
 extern void scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 /* page batch over a sequential heap scan (expr_batch.h): the consumer opens it with what it
- * aggregates, takes pages with scan_batch_next_page () (serial) or scan_batch_collect_page ()
- * (a page another walker fixed), and hands a page back to the row path with
- * scan_batch_page_rowmode () when the batch declines it */
+ * aggregates, steps to a page with scan_batch_next_page () (serial; a parallel worker's walker
+ * fixes its own), takes the page's rows a chunk at a time with scan_batch_collect_chunk (), and
+ * hands a chunk and the rest of its page back to the row path with scan_batch_page_rowmode ()
+ * (serial) when the batch declines it */
 struct access_spec_node;
 namespace cubxasl
 {
@@ -688,8 +689,9 @@ namespace cubxasl
 extern int scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const struct access_spec_node *spec,
 			    cubxasl::aggregate_list_node * agg_list, val_descr * vd);
 extern SCAN_CODE scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-extern SCAN_CODE scan_batch_collect_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid);
-extern void scan_batch_page_rowmode (SCAN_ID * scan_id, bool on);
+extern SCAN_CODE scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid,
+					   PGSLOTID * slot);
+extern void scan_batch_page_rowmode (SCAN_ID * scan_id, bool on, PGSLOTID after_slot);
 extern SCAN_CODE scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern SCAN_CODE scan_prev_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 extern void scan_save_scan_pos (SCAN_ID * s_id, SCAN_POS * scan_pos);

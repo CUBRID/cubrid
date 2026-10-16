@@ -730,55 +730,71 @@ namespace parallel_scan
 
     if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT && ST == SCAN_TYPE::HEAP)
       {
-	/* the page as a batch (expr_batch.h): collected, evaluated as arrays and accumulated in one loop
-	 * per aggregate; a page the batch hands back goes through the row loop below from its first slot */
+	/* the page as a batch (expr_batch.h): collected a chunk at a time, each evaluated as arrays and
+	 * accumulated in one loop per aggregate before the next; a chunk the batch hands back goes with
+	 * the rest of its page through the row loop below, from the chunk's first slot */
 	HEAP_SCAN_ID *hsidp = &m_scan_id->s.hsid;
 
 	if (hsidp->batch_state == 1 && !stop)
 	  {
-	    scan_fixes since = {};
-	    int rc = EXPR_BATCH_FALLBACK;
+	    PGSLOTID slot = 0, chunk_start = 0;
+	    int rc = NO_ERROR;
 
-	    if (on_trace)
+	    do
 	      {
-		since = read_fixes (thread_ref);
-	      }
-	    scan_code = scan_batch_collect_page (&thread_ref, m_scan_id, m_slot_iterator.vpid ());
-	    if (on_trace)
-	      {
-		add_scan_fixes (thread_ref, since);
-	      }
-	    if (scan_code == S_SUCCESS)
-	      {
-		rc = expr_batch_run (hsidp->batch_plan, hsidp->batch, &thread_ref, m_vd);
-		if (rc == NO_ERROR
-		    && qdata_evaluate_aggregate_batch (&thread_ref, m_xasl->proc.buildvalue.agg_list, m_vd,
-						       hsidp->batch_plan, hsidp->batch, false) != NO_ERROR)
-		  {
-		    rc = ER_FAILED;
-		  }
-	      }
-	    if (scan_code == S_ERROR || (rc != NO_ERROR && rc != EXPR_BATCH_FALLBACK))
-	      {
-		m_err_messages->move_top_error_message_to_this();
-		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		stop = true;
-		return S_ERROR;
-	      }
-	    if (rc == NO_ERROR)
-	      {
+		scan_fixes since = {};
+
+		chunk_start = slot;
 		if (on_trace)
 		  {
-		    m_scan_id->scan_stats.read_rows += hsidp->batch->n_rows;
-		    m_scan_id->scan_stats.qualified_rows += hsidp->batch->n_sel;
+		    since = read_fixes (thread_ref);
 		  }
+		scan_code = scan_batch_collect_chunk (&thread_ref, m_scan_id, m_slot_iterator.vpid (), &slot);
+		if (on_trace)
+		  {
+		    add_scan_fixes (thread_ref, since);
+		  }
+		rc = NO_ERROR;
+		if ((scan_code == S_SUCCESS || scan_code == S_END) && hsidp->batch->n_rows > 0)
+		  {
+		    rc = expr_batch_run (hsidp->batch_plan, hsidp->batch, &thread_ref, m_vd);
+		    if (rc == NO_ERROR
+			&& qdata_evaluate_aggregate_batch (&thread_ref, m_xasl->proc.buildvalue.agg_list, m_vd,
+							   hsidp->batch_plan, hsidp->batch, false) != NO_ERROR)
+		      {
+			rc = ER_FAILED;
+		      }
+		    if (rc == NO_ERROR && on_trace)
+		      {
+			m_scan_id->scan_stats.read_rows += hsidp->batch->n_rows;
+			m_scan_id->scan_stats.qualified_rows += hsidp->batch->n_sel;
+		      }
+		  }
+		if (scan_code == S_ERROR || (rc != NO_ERROR && rc != EXPR_BATCH_FALLBACK))
+		  {
+		    m_err_messages->move_top_error_message_to_this ();
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    stop = true;
+		    return S_ERROR;
+		  }
+	      }
+	    while (scan_code == S_SUCCESS && rc == NO_ERROR && !stop);
+
+	    if (scan_code == S_END && rc == NO_ERROR)
+	      {
+		/* every chunk of the page was accumulated: the slot is done (the row loop's own S_END) */
 		m_scan_id->scan_stats.batch_pages++;
 		expr_batch_plan_note_page (hsidp->batch_plan, false);
 		return S_END;
 	      }
-	    /* the row path for this page: the iterator starts at the page's first slot */
+	    if (stop)
+	      {
+		return S_END;
+	      }
+	    /* the row path for the chunk and the rest of the page */
 	    m_scan_id->scan_stats.batch_pages_rowpath++;
 	    expr_batch_plan_note_page (hsidp->batch_plan, true);
+	    m_slot_iterator.resume_after (chunk_start);
 	  }
       }
 

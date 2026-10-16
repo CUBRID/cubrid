@@ -9715,11 +9715,13 @@ qexec_batch_eligible (const XASL_NODE * xasl)
  *   xasl_state(in): the execution
  *   tplrec(in): the tuple record the row path's end-of-iteration takes
  *
- * Each page the scan yields is evaluated as arrays (expr_batch_run ()) and accumulated in one
- * loop per aggregate (qdata_evaluate_aggregate_batch ()).  A page the batch hands back --
- * a record it does not decode, a value a kernel would reject -- is run on the row path from
- * its first slot, through the same scan_next_scan () / qexec_end_one_iteration () pair the
- * row loop uses, so that it raises what the interpreter raises, where it raises it.
+ * Each page the scan yields is taken in chunks of EXPR_BATCH_CHUNK_ROWS rows: a chunk is
+ * evaluated as arrays (expr_batch_run ()) and accumulated in one loop per aggregate
+ * (qdata_evaluate_aggregate_batch ()) before the next is collected.  A chunk the batch hands
+ * back -- a record it does not decode, a value a kernel would reject -- is run with the rest
+ * of its page on the row path, from the chunk's first slot, through the same scan_next_scan ()
+ * / qexec_end_one_iteration () pair the row loop uses, so that it raises what the interpreter
+ * raises, where it raises it.
  */
 static SCAN_CODE
 qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, QFILE_TUPLE_RECORD * tplrec)
@@ -9729,42 +9731,63 @@ qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
   SCAN_CODE code, ls_scan;
   int rc;
 
-  while ((code = scan_batch_next_page (thread_p, s_id)) == S_SUCCESS || code == S_DOESNT_FIT)
+  while ((code = scan_batch_next_page (thread_p, s_id)) == S_SUCCESS)
     {
-      if (code == S_SUCCESS)
+      PGSLOTID slot = 0, chunk_start;
+      SCAN_CODE chunk;
+
+      do
 	{
-	  rc = expr_batch_run (hsidp->batch_plan, hsidp->batch, thread_p, &xasl_state->vd);
-	  if (rc == NO_ERROR)
-	    {
-	      if (qdata_evaluate_aggregate_batch (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd,
-						  hsidp->batch_plan, hsidp->batch, true) != NO_ERROR)
-		{
-		  return S_ERROR;
-		}
-	      s_id->scan_stats.read_rows += hsidp->batch->n_rows;
-	      s_id->scan_stats.qualified_rows += hsidp->batch->n_sel;
-	      s_id->scan_stats.batch_pages++;
-	      expr_batch_plan_note_page (hsidp->batch_plan, false);
-	      continue;
-	    }
-	  if (rc != EXPR_BATCH_FALLBACK)
+	  chunk_start = slot;
+	  chunk = scan_batch_collect_chunk (thread_p, s_id, &hsidp->batch_vpid, &slot);
+	  if (chunk == S_ERROR)
 	    {
 	      return S_ERROR;
 	    }
+	  if (chunk != S_DOESNT_FIT && hsidp->batch->n_rows > 0)
+	    {
+	      rc = expr_batch_run (hsidp->batch_plan, hsidp->batch, thread_p, &xasl_state->vd);
+	      if (rc == NO_ERROR)
+		{
+		  if (qdata_evaluate_aggregate_batch (thread_p, xasl->proc.buildvalue.agg_list, &xasl_state->vd,
+						      hsidp->batch_plan, hsidp->batch, true) != NO_ERROR)
+		    {
+		      return S_ERROR;
+		    }
+		  s_id->scan_stats.read_rows += hsidp->batch->n_rows;
+		  s_id->scan_stats.qualified_rows += hsidp->batch->n_sel;
+		}
+	      else if (rc == EXPR_BATCH_FALLBACK)
+		{
+		  chunk = S_DOESNT_FIT;
+		}
+	      else
+		{
+		  return S_ERROR;
+		}
+	    }
 	}
-      /* the page goes to the row path: nothing of it was accumulated */
+      while (chunk == S_SUCCESS);
+
+      if (chunk != S_DOESNT_FIT)
+	{
+	  s_id->scan_stats.batch_pages++;
+	  expr_batch_plan_note_page (hsidp->batch_plan, false);
+	  continue;
+	}
+      /* the chunk and the rest of its page go to the row path: nothing of the chunk was accumulated */
       s_id->scan_stats.batch_pages_rowpath++;
       expr_batch_plan_note_page (hsidp->batch_plan, true);
-      scan_batch_page_rowmode (s_id, true);
+      scan_batch_page_rowmode (s_id, true, chunk_start);
       while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
 	{
 	  if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
 	    {
-	      scan_batch_page_rowmode (s_id, false);
+	      scan_batch_page_rowmode (s_id, false, 0);
 	      return S_ERROR;
 	    }
 	}
-      scan_batch_page_rowmode (s_id, false);
+      scan_batch_page_rowmode (s_id, false, 0);
       if (ls_scan != S_END)
 	{
 	  return S_ERROR;

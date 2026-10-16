@@ -205,11 +205,9 @@ struct eb_slot_map
   HEAP_CACHE_ATTRINFO *attr_cache;
 };
 
-/* The per-page areas come from 64-byte lines bumped out of a few blocks the plan chains:
- * a page's arrays are sized by the rows pages actually yield, not by the most a page could
- * hold, so a scan over ~90-row pages keeps them in a few kilobytes of L1.  When a page yields
- * more rows than the arrays hold they are carved again at twice the size; the old lines stay
- * in their block until the plan is freed (nothing in them outlives a page). */
+/* The per-chunk areas (EXPR_BATCH_CHUNK_ROWS rows: the vectors, their NULL bytes, the UNKNOWN
+ * marks, the masks, the rows and the selection) are 64-byte lines bumped out of a few blocks
+ * the plan chains, carved once when the scan opens and reused by every chunk. */
 #define EB_LINE (64)
 #define EB_BLOCK_BYTES (4096)
 
@@ -221,7 +219,7 @@ struct eb_block
 
 struct expr_batch_plan
 {
-  int cap;			/* rows the per-page arrays hold now (0 until the first page) */
+  int cap;			/* rows the per-chunk arrays hold: EXPR_BATCH_CHUNK_ROWS once carved */
   EB_BLOCK *blocks;
   char *bump;			/* the next free line of the newest block, and its end */
   char *bump_end;
@@ -1372,8 +1370,8 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
     }
   if (rc == NO_ERROR)
     {
-      /* the scalars' one element each; the per-page arrays wait for the first page
-       * (expr_batch_reserve ()), and the masks for the depth the steps reach */
+      /* the scalars' one element each; the per-chunk arrays come with the batch
+       * (expr_batch_init ()), the masks as deep as the steps reach */
       for (i = 0; i < plan->n_vecs && rc == NO_ERROR; i++)
 	{
 	  EB_VEC *v = &plan->vecs[i];
@@ -1474,29 +1472,16 @@ expr_batch_plan_free (EXPR_BATCH_PLAN * plan)
   free_and_init (plan);
 }
 
-void
-expr_batch_init (EXPR_BATCH * batch)
-{
-  memset (batch, 0, sizeof (*batch));
-}
-
-/* Arrays for n rows a page: the rows, the selection, every column and step vector, the
- * UNKNOWN marks and the masks.  At least twice the previous size, in whole 64-byte lines of
- * int64 (8 rows).  The capacity changes only when every array was carved, so a failure leaves
- * the previous, still valid, arrays in use. */
+/* the chunk's arrays: the rows, the selection, every column and step vector, the UNKNOWN
+ * marks and the masks, EXPR_BATCH_CHUNK_ROWS rows each */
 int
-expr_batch_reserve (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, int n)
+expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 {
   EXPR_BATCH_ROW *rows;
   int *sel;
-  int cap, i, d;
+  int cap = EXPR_BATCH_CHUNK_ROWS, i, d;
 
-  if (n <= plan->cap)
-    {
-      return NO_ERROR;
-    }
-  cap = MAX (n, plan->cap * 2);
-  cap = (cap + 7) & ~7;
+  memset (batch, 0, sizeof (*batch));
   rows = (EXPR_BATCH_ROW *) eb_arena_alloc (plan, sizeof (EXPR_BATCH_ROW) * cap);
   sel = (int *) eb_arena_alloc (plan, sizeof (int) * cap);
   if (rows == NULL || sel == NULL)
