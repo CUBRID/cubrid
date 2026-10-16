@@ -43,6 +43,7 @@
 #include "execute_statement.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
+#include "sp_context_rules.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -956,8 +957,58 @@ make_state (void)
     }
 
   state->triggers = NULL;
+  state->sp_pushed = false;
 
   return state;
+}
+
+/*
+ * record_mutating_class() - tell the stored procedure callback layer which class the triggering statement
+ *                           modifies, once per state
+ *    return: none
+ *    state(in): trigger state
+ *    class_mop(in): class the statement is touching
+ *    event(in): trigger event
+ */
+static void
+record_mutating_class (TR_STATE * state, MOP class_mop, DB_TRIGGER_EVENT event)
+{
+  bool is_row_level;
+
+  if (state == NULL || class_mop == NULL)
+    {
+      return;
+    }
+
+  switch (event)
+    {
+    case TR_EVENT_INSERT:
+    case TR_EVENT_UPDATE:
+    case TR_EVENT_DELETE:
+      is_row_level = true;
+      break;
+    case TR_EVENT_STATEMENT_INSERT:
+    case TR_EVENT_STATEMENT_UPDATE:
+    case TR_EVENT_STATEMENT_DELETE:
+      is_row_level = false;
+      break;
+    default:
+      return;
+    }
+
+  if (state->sp_pushed)
+    {
+      /* a statement prepares its statement-level and row-level events into one state; the class becomes
+       * mutating as soon as any row-level event is among them */
+      if (is_row_level)
+	{
+	  sp_Trigger_stack.back ().is_row_level = true;
+	}
+      return;
+    }
+
+  sp_trigger_push (class_mop, is_row_level);
+  state->sp_pushed = true;
 }
 
 /*
@@ -5437,6 +5488,7 @@ tr_prepare_statement (TR_STATE ** state_p, DB_TRIGGER_EVENT event, DB_OBJECT * c
 	}
       else
 	{
+	  record_mutating_class (state, class_mop, event);
 	  if (state->triggers == NULL)
 	    {
 	      state->triggers = triggers;
@@ -5564,6 +5616,7 @@ tr_prepare_class (TR_STATE ** state_p, TR_SCHEMA_CACHE * cache, MOP class_mop, D
 	}
       else
 	{
+	  record_mutating_class (state, class_mop, event);
 	  merge_trigger_list (&state->triggers, triggers, 0);
 	}
     }
@@ -5592,6 +5645,10 @@ tr_finish (TR_STATE * state)
 
   if (state)
     {
+      if (state->sp_pushed)
+	{
+	  sp_trigger_pop ();
+	}
       free_state (state);
       --tr_Current_depth;
     }

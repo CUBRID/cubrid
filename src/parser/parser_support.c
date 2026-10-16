@@ -4923,6 +4923,7 @@ pt_copy_statement_flags (PT_NODE * source, PT_NODE * destination)
   destination->flag.cannot_prepare = source->flag.cannot_prepare;
   destination->flag.si_datetime = source->flag.si_datetime;
   destination->flag.si_tran_id = source->flag.si_tran_id;
+  destination->flag.has_sp_call = source->flag.has_sp_call;
 }
 
 /*
