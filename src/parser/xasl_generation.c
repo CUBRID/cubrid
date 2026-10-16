@@ -6780,7 +6780,8 @@ static bool
 pt_regu_domain_is_fixed_domain (const TP_DOMAIN * domain)
 {
   return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
-    && domain->collation_flag != TP_DOMAIN_COLL_LEAVE;
+    /* LEAVE takes the value's collation, ENFORCE leaves a non-string value as it is */
+    && domain->collation_flag == TP_DOMAIN_COLL_NORMAL;
 }
 
 /* CBRD-27583: whether the compiler knows the type of a regu's values and their collation */

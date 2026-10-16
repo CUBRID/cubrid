@@ -6055,6 +6055,8 @@ xts_process_regu_value_list (char *ptr, const REGU_VALUE_LIST * regu_value_list)
 	  return NULL;
 	}
       ptr = or_pack_int (ptr, type);
+      /* CBRD-27583: a row keeps its own domain; the row check compares it with the first row's (-456) */
+      ptr = or_pack_domain (ptr, regu_value_item->value->domain, 0, 0);
 
       ptr = xts_pack_regu_variable_value (ptr, regu_value_item->value);
       if (ptr == NULL)
@@ -7788,7 +7790,7 @@ xts_sizeof_regu_value_list (const REGU_VALUE_LIST * regu_value_list)
 	  return ER_FAILED;
 	}
 
-      size += OR_INT_SIZE + tmp_size;	/* OR_INT_SIZE for type */
+      size += OR_INT_SIZE + or_packed_domain_size (regu_value_item->value->domain, 0) + tmp_size;	/* type, domain */
     }
 
   return size;

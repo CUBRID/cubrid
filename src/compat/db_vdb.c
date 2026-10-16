@@ -1233,6 +1233,12 @@ db_compile_statement_local (DB_SESSION * session)
 		}
 	      return err;
 	    }
+	  if (n_markers > 0)
+	    {
+	      /* CBRD-27583: the plan of a bind type signature is shared by every value of it: its generation must not
+	       * fold the values in (1-3) */
+	      session->parser->flag.set_host_var = 0;
+	    }
 	}
 
       /* now, prepare the statement by calling do_prepare_statement() */
@@ -3990,6 +3996,23 @@ db_reset_cte_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
        * status (check_parallel_subquery_possible ()) */
       node->info.query.correlation_level = 0;
       node->info.query.flag.uncorr_hoisted = 0;
+    }
+  if (node != NULL && node->node_type == PT_SELECT)
+    {
+      /* the previous generation's planner marked the parallel scan of its driving spec
+       * (qo_apply_parallel_index_scan_threshold): this generation's plan decides again, the hints' marks stay */
+      const PT_HINT_ENUM hint = node->info.query.q.select.hint;
+      for (PT_NODE * from = node->info.query.q.select.from; from != NULL; from = from->next)
+	{
+	  if (!(hint & PT_HINT_NO_PARALLEL_SCAN))
+	    {
+	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag & ~PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+	    }
+	  if (!(hint & PT_HINT_PARALLEL))
+	    {
+	      from->info.spec.flag = (PT_SPEC_FLAG) (from->info.spec.flag & ~PT_SPEC_FLAG_PARALLEL_THREAD);
+	    }
+	}
     }
   return node;
 }

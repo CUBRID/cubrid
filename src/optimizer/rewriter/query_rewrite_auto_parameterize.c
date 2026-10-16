@@ -295,7 +295,7 @@ qo_auto_parameterize_keylimit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
   PT_NODE *using_index = NULL;
   PT_NODE *key_limit_lower_boundp, *key_limit_upper_boundp;
 
-  if (node == NULL)
+  if (node == NULL || parser->flag.is_skip_auto_parameterize == 1)
     {
       return;
     }

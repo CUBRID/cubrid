@@ -1096,6 +1096,13 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 
       db_value = pt_host_var_db_value (parser, value);
 
+      if (db_value && value->info.host_var.index < parser->host_var_count && parser->host_var_compiled_domains != NULL
+	  && parser->host_var_compiled_domains[value->info.host_var.index] != NULL)
+	{
+	  /* CBRD-27583: the plan reads a value-typed position's value as bound; a compile-time read leaves it so */
+	  return db_value;
+	}
+
       if (db_value)
 	{
 	  if (value->type_enum != PT_TYPE_NONE && value->type_enum != PT_TYPE_NULL && value->type_enum != PT_TYPE_MAYBE

@@ -462,6 +462,15 @@ eval_report_resolved_compare (const char *what, const DOMAIN_COMPARE * compare, 
     }
 }
 
+/* the side's value has the type its converters were resolved for: a VARCHAR value bound to a CHAR(n) position keeps
+ * its own type (do_cast_host_variables_to_expected_domain) */
+static bool
+eval_value_is_source (const DB_VALUE * value, int source)
+{
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+  return type == (DB_TYPE) source || (TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE ((DB_TYPE) source));
+}
+
 /*
  * eval_assert_resolved_sides () - debug cross-check before the comparison method: a side read from the row has the type
  *				  its converters and cmpval were resolved for (a constant side compares resolve_domains'
@@ -476,10 +485,8 @@ eval_assert_resolved_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbv
       /* the key pair table reads the values' own keys */
       return;
     }
-  const bool lhs = compare->value[0] != -1 || DB_IS_NULL (dbval1)
-    || DB_VALUE_DOMAIN_TYPE (dbval1) == (DB_TYPE) compare->source[0];
-  const bool rhs = compare->value[1] != -1 || DB_IS_NULL (dbval2)
-    || DB_VALUE_DOMAIN_TYPE (dbval2) == (DB_TYPE) compare->source[1];
+  const bool lhs = compare->value[0] != -1 || DB_IS_NULL (dbval1) || eval_value_is_source (dbval1, compare->source[0]);
+  const bool rhs = compare->value[1] != -1 || DB_IS_NULL (dbval2) || eval_value_is_source (dbval2, compare->source[1]);
   if (!lhs || !rhs)
     {
       eval_report_resolved_compare ("side type", compare, dbval1, dbval2, et_comp, vd);

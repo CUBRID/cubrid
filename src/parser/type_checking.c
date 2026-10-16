@@ -8334,8 +8334,19 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 	}
       break;
 
-    case PT_VALUE:
     case PT_NAME:
+      /* a key limit bind is a BIGINT position (principle 2-3-1): the token, the plan and the bound value agree */
+      for (PT_NODE * limit = node->info.name.indx_key_limit; limit != NULL; limit = limit->next)
+	{
+	  if (limit->node_type == PT_HOST_VAR && limit->type_enum == PT_TYPE_MAYBE && limit->expected_domain == NULL)
+	    {
+	      SET_EXPECTED_DOMAIN (limit, tp_domain_resolve_default (DB_TYPE_BIGINT));
+	      pt_preset_hostvar (parser, limit);
+	    }
+	}
+      break;
+
+    case PT_VALUE:
     case PT_DOT_:
       /* these cases have types already assigned to them by parser and semantic name resolution. */
       break;
@@ -14112,6 +14123,8 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		{
 		  pr_clear_value (arg1);
 		  *arg1 = tmp_val;
+		  /* the cases below pick the operand reader by typ1 */
+		  typ1 = typ;
 		}
 	    }
 
@@ -14130,6 +14143,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		{
 		  pr_clear_value (arg2);
 		  *arg2 = tmp_val;
+		  typ2 = typ;
 		}
 	    }
 	}

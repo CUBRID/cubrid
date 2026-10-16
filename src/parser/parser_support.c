@@ -5056,8 +5056,9 @@ pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_ind
  *   position. The first node of a user position decides the position's domain in the first pass: its context's
  *   expected domain, the rule's target when its comparison converts the bind (a rule cast; the position still records
  *   the value's domain, its plan's premise), or the value's domain. A later node needs its own context's domain, or in
- *   a relational comparison the target the type rule gives the position's domain against its mate - the decision of
- *   type checking (pt_bind_comparison_target); a node that needs another domain moves to a derived position.
+ *   a relational comparison the target the type rule gives the bound value's domain against its mate - the decision of
+ *   type checking (pt_bind_comparison_target), or the bound value's domain; a node that needs another domain moves to
+ *   a derived position.
  */
 static int
 pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent,
@@ -5102,14 +5103,17 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
       return NO_ERROR;
     }
 
-  TP_DOMAIN *need = position;
+  /* a rule cast converts the value for its own comparison: the position's other nodes read the value as bound */
+  TP_DOMAIN *bound = (parser->host_var_compiled_domains != NULL && parser->host_var_compiled_domains[i] != NULL)
+    ? parser->host_var_compiled_domains[i] : position;
+  TP_DOMAIN *need = bound;
   if (own != NULL && !hv->info.host_var.rule_cast)
     {
       need = own;
     }
   else
     {
-      TP_DOMAIN *target = pt_bind_operand_target (parser, position, hv, parent, grandparent);
+      TP_DOMAIN *target = pt_bind_operand_target (parser, bound, hv, parent, grandparent);
       if (target != NULL)
 	{
 	  need = target;

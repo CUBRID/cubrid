@@ -7331,14 +7331,12 @@ tp_value_convert_json_scalar_to_clob (const DB_VALUE *src, DB_VALUE *target, con
   return status;
 }
 
-#if !defined (SERVER_MODE)
 static TP_DOMAIN_STATUS
 tp_value_convert_oid_to_oid (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *, date_conversion_error *)
 {
   pr_clone_value (src, target);
   return DOMAIN_COMPATIBLE;
 }
-#endif /* !defined (SERVER_MODE) */
 
 /*
  * tp_value_convert_enumeration_name_to_double () - an ENUM added to a string without plus_as_concat: its name, then
@@ -8327,13 +8325,9 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
     case DB_TYPE_OID:
       switch (src)
 	{
-#if !defined (SERVER_MODE)
 	case DB_TYPE_OID:
+	  /* CBRD-27583: the server too, as tp_value_cast_internal clones an OID into an OID domain */
 	  return tp_value_convert_oid_to_oid;
-#else /* !defined (SERVER_MODE) */
-	case DB_TYPE_OID:
-	  return tp_value_convert_incompatible;
-#endif /* !defined (SERVER_MODE) */
 	default:
 	  break;
 	}
