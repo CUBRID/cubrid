@@ -54,7 +54,6 @@
 typedef int mode_t;
 #endif /* WINDOWS */
 
-#define CAS_LOG_BUFFER_SIZE (8192)
 #define SQL_LOG_BUFFER_SIZE 163840
 #define ACCESS_LOG_IS_DENIED_TYPE(T)  ((T)==ACL_REJECTED)
 
