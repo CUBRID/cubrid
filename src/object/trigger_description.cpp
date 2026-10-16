@@ -272,8 +272,6 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 	  class_name = sm_remove_qualifier_name (name);
 	}
 
-      /* automatically filter out invalid triggers */
-      output_ctx ("CREATE TRIGGER ");
       if (ctxt.is_dba_user || ctxt.is_dba_group_member)
 	{
 	  if (sm_qualifier_name (trigger->name, trigger_owner_name, DB_MAX_USER_LENGTH) == NULL)
@@ -282,6 +280,12 @@ tr_dump_trigger (extract_context &ctxt, print_output &output_ctx, DB_OBJECT *tri
 	      AU_RESTORE (save);
 	      return error;
 	    }
+	}
+
+      /* automatically filter out invalid triggers */
+      output_ctx ("CREATE TRIGGER ");
+      if (ctxt.is_dba_user || ctxt.is_dba_group_member)
+	{
 	  output_ctx ("[%s].[%s]\n", trigger_owner_name, sm_remove_qualifier_name (trigger->name));
 	}
       else
