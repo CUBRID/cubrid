@@ -64,6 +64,7 @@
 
 struct heap_cache_attrinfo;
 struct heap_page_row;
+struct heap_rec_layout;
 struct access_spec_node;
 struct val_descr;
 namespace cubxasl
@@ -84,6 +85,7 @@ struct expr_batch
   int cap;			/* rows a chunk holds: EXPR_BATCH_CHUNK_BYTES at the plan's bytes per row */
   int *sel;			/* indexes into rows[] that passed the filter, in row order */
   int n_sel;
+  struct heap_rec_layout *layout;	/* per row: its record's layout, found once a chunk (expr_batch_run ()) */
 };
 
 /* what the plan is built from: the worker's own clone state, settled for this execution */

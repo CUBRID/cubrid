@@ -35,10 +35,16 @@
  *   - a KID is one term of the filter's AND chain: either a RAW leaf, "column op constant"
  *     over a vector, or a ROW term the compiled filter evaluates per surviving row.
  *
- * A column is decoded when something first reads it, over the rows still selected at that
- * point: a raw leaf's column just before the leaf runs, the operands' columns after the
- * filter.  The selection only shrinks, so a column decoded for a leaf covers every row the
- * operands later read.
+ * Each row's layout (where its fixed area, offset table and bound bits are) is found once,
+ * when the chunk starts.  A column is then either POINTED or decoded:
+ *   - pointed: its consumers read it straight from the record when they need a value -- a
+ *     fixed-area column that only raw leaves read (a byte swap per comparison), or a NUMERIC
+ *     with one consumer (a leaf or an arithmetic step): nothing is written for it
+ *     (database-reference 참고: ColumnBuilder points a row's values into the block);
+ *   - decoded: into its vector, when something first reads it, over the rows still selected
+ *     at that point -- a raw leaf's column just before the leaf runs, the operands' columns
+ *     after the filter.  The selection only shrinks, so a column decoded for a leaf covers
+ *     every row the operands later read.
  *
  * Every typed loop mirrors one row kernel and declines (EXPR_BATCH_FALLBACK) where that
  * kernel would raise an error, so the row path re-runs the page and raises it.
@@ -91,7 +97,8 @@ enum eb_vec_kind
 {
   EB_VK_COL = 0,		/* a decoded column */
   EB_VK_SLOT,			/* a step's result */
-  EB_VK_SCALAR			/* one value for every row: read from a DB_VALUE when the page starts */
+  EB_VK_SCALAR,			/* one value for every row: read from a DB_VALUE when the page starts */
+  EB_VK_PTR			/* a column its consumers read from the record (no data, no NULL bytes) */
 };
 
 /* how a scalar's DB_VALUE is converted into its element type */
@@ -124,6 +131,7 @@ struct eb_vec
   unsigned char *isnull;	/* the plan's cap bytes, or 1 for a scalar */
   unsigned char *scales;	/* NUMERIC step result: the scale of each element; else NULL */
   short scale;			/* NUMERIC column or scalar: the scale of every element */
+  short col;			/* EB_VK_COL / EB_VK_PTR: the column (plan->cols) */
   unsigned char kind;		/* eb_vec_kind */
   unsigned char etype;		/* eb_etype */
   unsigned char dbtype;		/* DB_TYPE: the type a value of this vector would carry */
@@ -317,7 +325,9 @@ static int eb_load_leaf_constants (EXPR_BATCH_PLAN * plan);
 static int eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, int n, int only_col);
 static int eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale);
 static int eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, struct val_descr *vd);
-static void eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf);
+static int eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf);
+static int eb_layout_rows (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch);
+static void eb_choose_pointed (EXPR_BATCH_PLAN * plan);
 static int eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch);
 static void eb_pack_dbv (const EXPR_BATCH_PLAN * plan, const EB_VEC * vec, int r, DB_VALUE * out);
 
@@ -361,6 +371,90 @@ eb_num_put (EB_VEC * vec, int r, const NUMERIC_AGG_EXPR_VAL * val)
       vec->scale = (short) val->scale;
     }
   return true;
+}
+
+/* One cell of a column straight from its record: 1 a value, 0 NULL, -1 the chunk is for the
+ * row path (a type or a stored value the batch does not reproduce). */
+static inline int
+eb_cell_fixed (const EB_COL * col, const HEAP_REC_LAYOUT * lay, int64_t * i, double *d)
+{
+  const char *p;
+
+  if (lay->bound_bits != NULL && !OR_GET_BOUND_BIT (lay->bound_bits, col->position))
+    {
+      return 0;
+    }
+  p = lay->fixed_base + col->location;
+  switch (col->type)
+    {
+    case DB_TYPE_SHORT:
+      *i = OR_GET_SHORT (p);
+      return 1;
+    case DB_TYPE_INTEGER:
+      *i = OR_GET_INT (p);
+      return 1;
+    case DB_TYPE_BIGINT:
+      {
+	INT64 bi;
+
+	OR_GET_BIGINT (p, &bi);
+	*i = bi;
+	return 1;
+      }
+    case DB_TYPE_DATE:
+      *i = (int64_t) (DB_DATE) OR_GET_INT (p);
+      return 1;
+    case DB_TYPE_FLOAT:
+      {
+	float f;
+
+	OR_GET_FLOAT (p, &f);
+	*d = (double) f;
+	return 1;
+      }
+    case DB_TYPE_DOUBLE:
+      OR_GET_DOUBLE (p, d);
+      return 1;
+    default:
+      return -1;
+    }
+}
+
+/* a NUMERIC in the variable area: the offset table brackets its bytes (heap_attrvalue_point_variable) */
+static inline int
+eb_cell_num (const EB_COL * col, const HEAP_REC_LAYOUT * lay, NUMERIC_AGG_EXPR_VAL * num)
+{
+  int this_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, col->location, lay->offset_size);
+  int next_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, col->location + 1, lay->offset_size);
+
+  if (next_off - this_off == 0)
+    {
+      return 0;
+    }
+  if (!numeric_agg_expr_from_disk ((const unsigned char *) lay->var_table + this_off, next_off - this_off, num)
+      || num->scale != col->scale)
+    {
+      /* wider than the word domain, or a stored scale the domain does not describe */
+      return -1;
+    }
+  return 1;
+}
+
+/* a NUMERIC operand of an arithmetic step: 1 a value, 0 NULL, -1 the chunk is for the row path */
+static inline int
+eb_num_load (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const EB_VEC * vec, int r,
+	     NUMERIC_AGG_EXPR_VAL * out)
+{
+  if (vec->kind == EB_VK_PTR)
+    {
+      return eb_cell_num (&plan->cols[vec->col], &batch->layout[r], out);
+    }
+  if (EB_NULL_AT (vec, r))
+    {
+      return 0;
+    }
+  eb_num_get (vec, r, out);
+  return 1;
 }
 
 static int
@@ -537,6 +631,7 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
       return -1;
     }
   plan->vecs[vec].scale = (short) loc.scale;
+  plan->vecs[vec].col = (short) plan->n_cols;
   {
     int cap = b->cap_cols;
 
@@ -791,6 +886,59 @@ eb_build_filter (EB_BUILD * b)
       plan->arm_pred_cache = b->in->pred_has_regu_list;
     }
   return NO_ERROR;
+}
+
+/* Which columns are pointed (EB_VK_PTR) rather than decoded: a fixed-area column only raw
+ * leaves read -- a comparison reads its cell with a byte swap, cheaper than writing and
+ * reading it back -- and a NUMERIC with a single consumer, a raw leaf or an arithmetic step
+ * (eb_num_load ()), whose one parse is the decode anyway.  A column more than one consumer
+ * reads, or one an aggregate or another step reads, keeps its vector. */
+static void
+eb_choose_pointed (EXPR_BATCH_PLAN * plan)
+{
+  int c, i;
+
+  for (c = 0; c < plan->n_cols; c++)
+    {
+      const EB_COL *col = &plan->cols[c];
+      EB_VEC *v = &plan->vecs[col->vec];
+      int leaf_uses = 0, arith_uses = 0, other_uses = 0;
+
+      for (i = 0; i < plan->n_leaves; i++)
+	{
+	  leaf_uses += (plan->leaves[i].vec == col->vec);
+	}
+      for (i = 0; i < plan->n_steps; i++)
+	{
+	  const EB_STEP *st = &plan->steps[i];
+	  int uses = (st->in1 == col->vec) + (st->in2 == col->vec);
+
+	  if (uses == 0)
+	    {
+	      continue;
+	    }
+	  if (EB_IS_NUM (st->etype) && (st->op == EB_OP_ADD || st->op == EB_OP_SUB || st->op == EB_OP_MUL))
+	    {
+	      arith_uses += uses;
+	    }
+	  else
+	    {
+	      other_uses += uses;
+	    }
+	}
+      for (i = 0; i < plan->n_aggs; i++)
+	{
+	  other_uses += (plan->aggs[i].vec == col->vec);
+	}
+      if (other_uses > 0)
+	{
+	  continue;
+	}
+      if (col->is_fixed ? (arith_uses == 0 && leaf_uses > 0) : (leaf_uses + arith_uses == 1))
+	{
+	  v->kind = EB_VK_PTR;
+	}
+    }
 }
 
 /* ---------------------------------------------------------------------------------------- */
@@ -1418,6 +1566,10 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
     }
   if (rc == NO_ERROR)
     {
+      eb_choose_pointed (plan);
+    }
+  if (rc == NO_ERROR)
+    {
       /* the scalars' one element each; the per-chunk arrays come with the batch
        * (expr_batch_init ()), the masks as deep as the steps reach */
       for (i = 0; i < plan->n_vecs && rc == NO_ERROR; i++)
@@ -1527,17 +1679,18 @@ int
 expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 {
   EXPR_BATCH_ROW *rows;
+  HEAP_REC_LAYOUT *layout;
   int *sel;
   size_t per_row;
   int cap, i, d;
 
   memset (batch, 0, sizeof (*batch));
-  per_row = sizeof (EXPR_BATCH_ROW) + sizeof (int) + 1 + (size_t) plan->n_masks;
+  per_row = sizeof (EXPR_BATCH_ROW) + sizeof (HEAP_REC_LAYOUT) + sizeof (int) + 1 + (size_t) plan->n_masks;
   for (i = 0; i < plan->n_vecs; i++)
     {
       const EB_VEC *v = &plan->vecs[i];
 
-      if (v->kind != EB_VK_SCALAR)
+      if (v->kind != EB_VK_SCALAR && v->kind != EB_VK_PTR)
 	{
 	  per_row += (size_t) eb_elem_size (v->etype) + 1 + ((v->kind == EB_VK_SLOT && EB_IS_NUM (v->etype)) ? 1 : 0);
 	}
@@ -1546,7 +1699,8 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
   cap = MAX (8, cap & ~7);
   rows = (EXPR_BATCH_ROW *) eb_arena_alloc (plan, sizeof (EXPR_BATCH_ROW) * cap);
   sel = (int *) eb_arena_alloc (plan, sizeof (int) * cap);
-  if (rows == NULL || sel == NULL)
+  layout = (HEAP_REC_LAYOUT *) eb_arena_alloc (plan, sizeof (HEAP_REC_LAYOUT) * cap);
+  if (rows == NULL || sel == NULL || layout == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
@@ -1556,7 +1710,7 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
       void *data;
       unsigned char *isnull, *scales = NULL;
 
-      if (v->kind == EB_VK_SCALAR)
+      if (v->kind == EB_VK_SCALAR || v->kind == EB_VK_PTR)
 	{
 	  continue;
 	}
@@ -1599,6 +1753,7 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
     }
   batch->rows = rows;
   batch->sel = sel;
+  batch->layout = layout;
   batch->cap = cap;
   plan->cap = cap;
   return NO_ERROR;
@@ -1610,6 +1765,7 @@ expr_batch_final (EXPR_BATCH * batch)
 {
   batch->rows = NULL;
   batch->sel = NULL;
+  batch->layout = NULL;
   batch->cap = 0;
   batch->n_rows = 0;
   batch->n_sel = 0;
@@ -1855,107 +2011,89 @@ eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale)
   return NO_ERROR;
 }
 
-/* Decode columns for the given rows: one column (only_col), or every column not decoded yet
- * this page (-1).  Record-outer, so each record's bytes are touched once for its columns. */
+/* each row's layout, once a chunk: the rows of another representation (an ALTER since the
+ * plan) send the chunk to the row path, which decodes them */
 static int
-eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, int n, int only_col)
+eb_layout_rows (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 {
-  int j, c;
+  int r;
 
-  for (j = 0; j < n; j++)
+  for (r = 0; r < batch->n_rows; r++)
     {
-      int r = (rows != NULL) ? rows[j] : j;
       const RECDES *recdes = &batch->rows[r].recdes;
-      HEAP_REC_LAYOUT layout;
 
       if (recdes->data == NULL || recdes->length < OR_HEADER_SIZE (recdes->data)
 	  || OR_GET_MVCC_REPID (recdes->data) != plan->repid)
 	{
-	  /* another representation (an ALTER since the plan): the row path decodes it */
 	  return EXPR_BATCH_FALLBACK;
 	}
-      heap_rec_layout_init_repr (&layout, recdes->data, plan->n_variable, plan->fixed_length);
+      heap_rec_layout_init_repr (&batch->layout[r], recdes->data, plan->n_variable, plan->fixed_length);
+    }
+  return NO_ERROR;
+}
+
+/* Decode columns for the given rows: one column (only_col), or every decoded column not
+ * decoded yet this chunk (-1); a pointed column is never decoded.  Record-outer, so each
+ * record's bytes are touched once for its columns. */
+static int
+eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, int n, int only_col)
+{
+  int j, c, rc;
+
+  for (j = 0; j < n; j++)
+    {
+      int r = (rows != NULL) ? rows[j] : j;
+      const HEAP_REC_LAYOUT *lay = &batch->layout[r];
+
       for (c = (only_col >= 0) ? only_col : 0; c < plan->n_cols; c++)
 	{
 	  const EB_COL *col = &plan->cols[c];
 	  EB_VEC *v = &plan->vecs[col->vec];
-	  const char *p;
 
 	  if (only_col >= 0 && c != only_col)
 	    {
 	      break;
 	    }
-	  if (col->decoded)
+	  if (col->decoded || v->kind == EB_VK_PTR)
 	    {
 	      continue;
 	    }
 	  if (col->is_fixed)
 	    {
-	      if (layout.bound_bits != NULL && !OR_GET_BOUND_BIT (layout.bound_bits, col->position))
+	      int64_t i = 0;
+	      double d = 0;
+
+	      rc = eb_cell_fixed (col, lay, &i, &d);
+	      if (rc < 0)
 		{
-		  v->isnull[r] = 1;
-		  continue;
-		}
-	      p = layout.fixed_base + col->location;
-	      v->isnull[r] = 0;
-	      switch (col->type)
-		{
-		case DB_TYPE_SHORT:
-		  ((int64_t *) v->data)[r] = OR_GET_SHORT (p);
-		  break;
-		case DB_TYPE_INTEGER:
-		  ((int64_t *) v->data)[r] = OR_GET_INT (p);
-		  break;
-		case DB_TYPE_BIGINT:
-		  {
-		    INT64 bi;
-
-		    OR_GET_BIGINT (p, &bi);
-		    ((int64_t *) v->data)[r] = bi;
-		    break;
-		  }
-		case DB_TYPE_DATE:
-		  ((int64_t *) v->data)[r] = (int64_t) (DB_DATE) OR_GET_INT (p);
-		  break;
-		case DB_TYPE_FLOAT:
-		  {
-		    float f;
-
-		    OR_GET_FLOAT (p, &f);
-		    ((double *) v->data)[r] = (double) f;
-		    break;
-		  }
-		case DB_TYPE_DOUBLE:
-		  {
-		    double d;
-
-		    OR_GET_DOUBLE (p, &d);
-		    ((double *) v->data)[r] = d;
-		    break;
-		  }
-		default:
 		  return EXPR_BATCH_FALLBACK;
+		}
+	      v->isnull[r] = (rc == 0);
+	      if (rc > 0)
+		{
+		  if (v->etype == EB_F64)
+		    {
+		      ((double *) v->data)[r] = d;
+		    }
+		  else
+		    {
+		      ((int64_t *) v->data)[r] = i;
+		    }
 		}
 	    }
 	  else
 	    {
-	      /* NUMERIC in the variable area: the offset table brackets its bytes (heap_attrvalue_point_variable) */
-	      int this_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (layout.var_table, col->location, layout.offset_size);
-	      int next_off =
-		OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (layout.var_table, col->location + 1, layout.offset_size);
 	      NUMERIC_AGG_EXPR_VAL num;
 
-	      if (next_off - this_off == 0)
+	      rc = eb_cell_num (col, lay, &num);
+	      if (rc < 0)
 		{
-		  v->isnull[r] = 1;
-		  continue;
-		}
-	      if (!numeric_agg_expr_from_disk
-		  ((const unsigned char *) layout.var_table + this_off, next_off - this_off, &num)
-		  || num.scale != col->scale)
-		{
-		  /* wider than the word domain, or a stored scale the domain does not describe */
 		  return EXPR_BATCH_FALLBACK;
+		}
+	      v->isnull[r] = (rc == 0);
+	      if (rc == 0)
+		{
+		  continue;
 		}
 	      if (v->etype == EB_N64)
 		{
@@ -1969,7 +2107,6 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
 		{
 		  return EXPR_BATCH_FALLBACK;
 		}
-	      v->isnull[r] = 0;
 	    }
 	}
     }
@@ -1980,19 +2117,70 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
   return NO_ERROR;
 }
 
-/* one raw term over the selection: FALSE rows leave, NULL rows stay marked UNKNOWN */
-static void
+/* one raw term over the selection: FALSE rows leave, NULL rows stay marked UNKNOWN; NO_ERROR,
+ * or EXPR_BATCH_FALLBACK for a pointed cell the batch does not read */
+static int
 eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 {
   const EB_VEC *v = &plan->vecs[leaf->vec];
+  const EB_COL *col = &plan->cols[leaf->col];
+  const bool pointed = (v->kind == EB_VK_PTR);
   int j, n = 0;
 
   for (j = 0; j < batch->n_sel; j++)
     {
       int r = batch->sel[j];
+      int64_t ai = 0;
+      double ad = 0;
+      __int128 an = 0;
+      int got;
       bool keep;
 
-      if (v->isnull[r] || leaf->k_null)
+      if (leaf->k_null)
+	{
+	  plan->unk[r] = 1;
+	  batch->sel[n++] = r;
+	  continue;
+	}
+      if (pointed)
+	{
+	  if (leaf->etype == EB_NUM)
+	    {
+	      NUMERIC_AGG_EXPR_VAL nv;
+
+	      got = eb_cell_num (col, &batch->layout[r], &nv);
+	      an = nv.is_negative ? -(__int128) nv.coefficient : (__int128) nv.coefficient;
+	    }
+	  else
+	    {
+	      got = eb_cell_fixed (col, &batch->layout[r], &ai, &ad);
+	    }
+	  if (got < 0)
+	    {
+	      return EXPR_BATCH_FALLBACK;
+	    }
+	}
+      else
+	{
+	  got = !v->isnull[r];
+	  if (got)
+	    {
+	      if (leaf->etype == EB_NUM)
+		{
+		  an =
+		    (v->etype == EB_N64) ? (__int128) ((const int64_t *) v->data)[r] : ((const __int128 *) v->data)[r];
+		}
+	      else if (leaf->etype == EB_I64)
+		{
+		  ai = ((const int64_t *) v->data)[r];
+		}
+	      else
+		{
+		  ad = ((const double *) v->data)[r];
+		}
+	    }
+	}
+      if (!got)
 	{
 	  plan->unk[r] = 1;
 	  batch->sel[n++] = r;
@@ -2000,9 +2188,7 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	}
       if (leaf->etype == EB_NUM)
 	{
-	  /* a column vector: every element at the column's scale, the constant's too */
-	  __int128 a =
-	    (v->etype == EB_N64) ? (__int128) ((const int64_t *) v->data)[r] : ((const __int128 *) v->data)[r];
+	  /* the column's elements and the constant are both at the column's scale */
 	  __int128 k = leaf->k.n;
 
 	  if (leaf->k_all != 0)
@@ -2014,75 +2200,75 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	      switch (leaf->k_op)
 		{
 		case R_EQ:
-		  keep = (a == k);
+		  keep = (an == k);
 		  break;
 		case R_NE:
-		  keep = (a != k);
+		  keep = (an != k);
 		  break;
 		case R_LT:
-		  keep = (a < k);
+		  keep = (an < k);
 		  break;
 		case R_LE:
-		  keep = (a <= k);
+		  keep = (an <= k);
 		  break;
 		case R_GT:
-		  keep = (a > k);
+		  keep = (an > k);
 		  break;
 		default:
-		  keep = (a >= k);
+		  keep = (an >= k);
 		  break;
 		}
 	    }
 	}
       else if (leaf->etype == EB_I64)
 	{
-	  int64_t a = ((const int64_t *) v->data)[r], k = leaf->k.i;
+	  int64_t k = leaf->k.i;
 
 	  switch (leaf->rel_op)
 	    {
 	    case R_EQ:
-	      keep = (a == k);
+	      keep = (ai == k);
 	      break;
 	    case R_NE:
-	      keep = (a != k);
+	      keep = (ai != k);
 	      break;
 	    case R_LT:
-	      keep = (a < k);
+	      keep = (ai < k);
 	      break;
 	    case R_LE:
-	      keep = (a <= k);
+	      keep = (ai <= k);
 	      break;
 	    case R_GT:
-	      keep = (a > k);
+	      keep = (ai > k);
 	      break;
 	    default:
-	      keep = (a >= k);
+	      keep = (ai >= k);
 	      break;
 	    }
 	}
       else
 	{
-	  double a = ((const double *) v->data)[r], k = leaf->k.d;
+	  double k = leaf->k.d;
 
 	  switch (leaf->rel_op)
 	    {
 	    case R_EQ:
-	      keep = (a == k);
+	      keep = (ad == k);
 	      break;
 	    case R_NE:
-	      keep = (a != k);
+	      keep = (ad != k);
 	      break;
 	    case R_LT:
-	      keep = (a < k);
+	      keep = (ad < k);
 	      break;
 	    case R_LE:
-	      keep = (a <= k);
+	      keep = (ad <= k);
 	      break;
 	    case R_GT:
-	      keep = (a > k);
+	      keep = (ad > k);
 	      break;
 	    default:
-	      keep = (a >= k);
+	      keep = (ad >= k);
 	      break;
 	    }
 	}
@@ -2092,6 +2278,7 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	}
     }
   batch->n_sel = n;
+  return NO_ERROR;
 }
 
 static int
@@ -2120,7 +2307,7 @@ eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, 
 	    {
 	      break;
 	    }
-	  if (!plan->cols[leaf->col].decoded)
+	  if (plan->vecs[leaf->vec].kind != EB_VK_PTR && !plan->cols[leaf->col].decoded)
 	    {
 	      rc = eb_extract (plan, batch, batch->sel, batch->n_sel, leaf->col);
 	      if (rc != NO_ERROR)
@@ -2128,7 +2315,11 @@ eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, 
 		  return rc;
 		}
 	    }
-	  eb_raw_kid (plan, batch, leaf);
+	  rc = eb_raw_kid (plan, batch, leaf);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
 	  continue;
 	}
       /* a term the compiled filter evaluates itself, on each row still in the selection, in
@@ -2301,16 +2492,26 @@ eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch)
 		{
 		  int r = sel[j];
 		  NUMERIC_AGG_EXPR_VAL x, y, z;
+		  int gx, gy;
 		  bool ok;
 
-		  if ((mask != NULL && !mask[r]) || EB_NULL_AT (a, r) || EB_NULL_AT (c, r))
+		  if (mask != NULL && !mask[r])
 		    {
 		      out->isnull[r] = 1;
 		      continue;
 		    }
-		  /* the word-domain operation itself, element by element */
-		  eb_num_get (a, r, &x);
-		  eb_num_get (c, r, &y);
+		  /* the operands, pointed or decoded; then the word-domain operation itself */
+		  gx = eb_num_load (plan, batch, a, r, &x);
+		  gy = eb_num_load (plan, batch, c, r, &y);
+		  if (gx < 0 || gy < 0)
+		    {
+		      return EXPR_BATCH_FALLBACK;
+		    }
+		  if (gx == 0 || gy == 0)
+		    {
+		      out->isnull[r] = 1;
+		      continue;
+		    }
 		  if (step->op == EB_OP_MUL)
 		    {
 		      ok = numeric_agg_expr_mul (&x, &y, &z);
@@ -2350,6 +2551,11 @@ expr_batch_run (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * threa
   for (i = 0; i < plan->n_cols; i++)
     {
       plan->cols[i].decoded = 0;
+    }
+  rc = eb_layout_rows (plan, batch);
+  if (rc != NO_ERROR)
+    {
+      return rc;
     }
   /* The prologues (literal and host-variable steps) once per execution, where the row path
    * runs them: the filter's before its first row, the operand program's at the first row the
@@ -2657,12 +2863,19 @@ expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback)
 void
 expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, int indent)
 {
+  int i, n_pointed = 0;
+
   if (plan == NULL)
     {
       fprintf (fp, "%*cEXPR_BATCH: inactive (%s)\n", indent, ' ', (why_not != NULL) ? why_not : "not tried");
       return;
     }
-  fprintf (fp, "%*cEXPR_BATCH: active, usecols %d, filter terms raw %d / row %d, vector steps %d, aggregates %d, "
-	   "pages %lld (row path %lld)\n", indent, ' ', plan->n_cols, plan->n_raw_kids, plan->n_row_kids, plan->n_steps,
-	   plan->n_aggs, (long long) plan->pages, (long long) plan->pages_fallback);
+  for (i = 0; i < plan->n_cols; i++)
+    {
+      n_pointed += (plan->vecs[plan->cols[i].vec].kind == EB_VK_PTR);
+    }
+  fprintf (fp, "%*cEXPR_BATCH: active, usecols %d (pointed %d), chunk %d rows, filter terms raw %d / row %d, "
+	   "vector steps %d, aggregates %d, pages %lld (row path %lld)\n", indent, ' ', plan->n_cols, n_pointed,
+	   plan->cap, plan->n_raw_kids, plan->n_row_kids, plan->n_steps, plan->n_aggs, (long long) plan->pages,
+	   (long long) plan->pages_fallback);
 }
