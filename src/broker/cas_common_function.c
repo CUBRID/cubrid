@@ -372,14 +372,6 @@ cas_common_bind_value_log (struct timeval *log_time, int start, int argc, void *
       write2_func ("\n");
     }
 
-  /*
-   * The bind lines above skip the per-line flush,
-   * so flush them here in one call before the statement is executed.
-   */
-  if (!slow_log)
-    {
-      cas_log_flush_if_needed ();
-    }
 }
 
 FN_RETURN
