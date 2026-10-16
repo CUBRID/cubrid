@@ -23,6 +23,7 @@
 #include "px_scan_task.hpp"
 #include "error_code.h"
 #include "error_manager.h"
+#include "expr_batch.h"
 #include "heap_file.h"
 #include "storage_common.h"
 #include "xasl.h"
@@ -36,6 +37,7 @@
 #include "scan_manager.h"
 #include "partition_sr.h"
 #include "object_primitive.h"
+#include "query_aggregate.hpp"
 #include "scope_exit.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -460,6 +462,17 @@ namespace parallel_scan
     if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
       {
 	m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl->proc.buildvalue.agg_list, m_vd, m_xasl);
+	if constexpr (ST == SCAN_TYPE::HEAP)
+	  {
+	    /* the worker takes its pages a page at a time when the block allows it (expr_batch.h), the same
+	     * gate and plan the serial qexec_intprt_fnc () uses over its own scan; the operand program is
+	     * settled first, as the row path's write () would settle it on the first row */
+	    if (er_errid () == NO_ERROR && qexec_batch_eligible (m_xasl))
+	      {
+		(void) qdata_agg_operand_prog_ensure (&thread_ref, m_xasl->proc.buildvalue.agg_list, m_vd);
+		(void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl->proc.buildvalue.agg_list, m_vd);
+	      }
+	  }
       }
     else
       {
@@ -504,7 +517,7 @@ namespace parallel_scan
 	    m_trace_handler->m_trace_storage_for_sibling_xasl.merge_xasl_tree (m_xasl);
 	  }
 	/* this clone's compiled programs are still alive here (qexec_clear_xasl () below frees them) */
-	m_trace_handler->add_expr_compile_dump (m_xasl);
+	m_trace_handler->add_expr_compile_dump (m_xasl, m_scan_id);
 	m_trace_handler->add_trace (m_scan_fixes.fetches, m_scan_fixes.ioreads, m_scan_fixes.fetch_time, m_scan_id,
 				    elapsed_time);
       }
@@ -714,6 +727,60 @@ namespace parallel_scan
     DB_LOGICAL ev_res;
     result_handler<result_type> *result_handler_p = m_result_handler;
     const bool on_trace = thread_ref.on_trace;	/* per row below; the calls in the loop could reload the member */
+
+    if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT && ST == SCAN_TYPE::HEAP)
+      {
+	/* the page as a batch (expr_batch.h): collected, evaluated as arrays and accumulated in one loop
+	 * per aggregate; a page the batch hands back goes through the row loop below from its first slot */
+	HEAP_SCAN_ID *hsidp = &m_scan_id->s.hsid;
+
+	if (hsidp->batch_state == 1 && !stop)
+	  {
+	    scan_fixes since = {};
+	    int rc = EXPR_BATCH_FALLBACK;
+
+	    if (on_trace)
+	      {
+		since = read_fixes (thread_ref);
+	      }
+	    scan_code = scan_batch_collect_page (&thread_ref, m_scan_id, m_slot_iterator.vpid ());
+	    if (on_trace)
+	      {
+		add_scan_fixes (thread_ref, since);
+	      }
+	    if (scan_code == S_SUCCESS)
+	      {
+		rc = expr_batch_run (hsidp->batch_plan, hsidp->batch, &thread_ref, m_vd);
+		if (rc == NO_ERROR
+		    && qdata_evaluate_aggregate_batch (&thread_ref, m_xasl->proc.buildvalue.agg_list, m_vd,
+						       hsidp->batch_plan, hsidp->batch, false) != NO_ERROR)
+		  {
+		    rc = ER_FAILED;
+		  }
+	      }
+	    if (scan_code == S_ERROR || (rc != NO_ERROR && rc != EXPR_BATCH_FALLBACK))
+	      {
+		m_err_messages->move_top_error_message_to_this();
+		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		stop = true;
+		return S_ERROR;
+	      }
+	    if (rc == NO_ERROR)
+	      {
+		if (on_trace)
+		  {
+		    m_scan_id->scan_stats.read_rows += hsidp->batch->n_rows;
+		    m_scan_id->scan_stats.qualified_rows += hsidp->batch->n_sel;
+		  }
+		m_scan_id->scan_stats.batch_pages++;
+		expr_batch_plan_note_page (hsidp->batch_plan, false);
+		return S_END;
+	      }
+	    /* the row path for this page: the iterator starts at the page's first slot */
+	    m_scan_id->scan_stats.batch_pages_rowpath++;
+	    expr_batch_plan_note_page (hsidp->batch_plan, true);
+	  }
+      }
 
     while (!stop)
       {

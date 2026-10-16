@@ -35,6 +35,7 @@
 #include "object_domain.h"
 #include "object_primitive.h"
 #include "object_representation.h"
+#include "expr_batch.h"
 #include "expr_compile.h"
 #include "query_executor.h"
 #include "query_opfunc.h"
@@ -1023,6 +1024,201 @@ qdata_clear_value_array (DB_VALUE *values, int count)
 }
 
 /*
+ * qdata_agg_operand_prog_ensure () - the list's compiled operand program for this execution
+ *   return: the active program, or NULL when the operands are interpreted
+ *   agg_list_p(in/out): the aggregate list; its head carries the program state
+ *   val_desc_p(in): the execution's value descriptor
+ *
+ * The same lazy per-execution hook every consumer of the list makes before its first row --
+ * compile on first use, recompile when the bound types or the scan filter it shares values
+ * with changed, and derive the cell-based accumulator links once per execution.  Pulled out
+ * of qdata_evaluate_aggregate_list () so that a page batch (qdata_evaluate_aggregate_batch ())
+ * and a parallel worker settle the program the same way.
+ */
+EXPR_PROG *
+qdata_agg_operand_prog_ensure (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
+			       val_descr *val_desc_p)
+{
+  EXPR_PROG *operand_prog = NULL;
+  bool compiled_now = false;
+
+  if (agg_list_p->operand_prog_state == 0)
+    {
+      qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
+      compiled_now = true;
+    }
+  if (agg_list_p->operand_prog_state == 1)
+    {
+      operand_prog = (EXPR_PROG *) agg_list_p->operand_prog;
+      if (!expr_prog_signature_ok (operand_prog, val_desc_p, EXPR_PROG_EXEC_STAMP (val_desc_p))
+	  || !expr_prog_share_current (operand_prog, agg_list_p->operand_prog_share_spec))
+	{
+	  /* different bind types than the program was specialized for, or the scan filter
+	   * whose slots it reads was recompiled: recompile */
+	  expr_prog_free (operand_prog);
+	  free_and_init (agg_list_p->operand_prog_idx);
+	  agg_list_p->operand_prog = NULL;
+	  agg_list_p->operand_prog_state = 0;
+	  qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
+	  operand_prog = (agg_list_p->operand_prog_state == 1) ? (EXPR_PROG *) agg_list_p->operand_prog : NULL;
+	  compiled_now = true;
+	}
+    }
+  if (operand_prog != NULL)
+    {
+      /* The program (verified for this execution's bind types just above) says which
+       * operands are one and the same cell: let SUM/AVG over them share an accumulator.
+       * Derived once per execution -- qdata_link_shared_accumulators () reset the links
+       * at execution start -- from the program of THIS execution, never from a program a
+       * later row may replace.  A hash GROUP BY entry created before this row keeps its
+       * own links and accumulates such a pair separately (correct, just not shared). */
+      unsigned long long stamp = EXPR_PROG_EXEC_STAMP (val_desc_p);
+
+      if (compiled_now || (stamp != 0 && agg_list_p->operand_prog_link_stamp != stamp))
+	{
+	  qdata_link_shared_accumulators_by_cell (agg_list_p, val_desc_p);
+	  agg_list_p->operand_prog_link_stamp = stamp;
+	}
+    }
+  return operand_prog;
+}
+
+/*
+ * qdata_evaluate_aggregate_batch () - accumulate the rows of one page batch
+ *   return: NO_ERROR, or an error code
+ *   agg_list_p(in/out): the aggregate list (the accumulators are its nodes' own)
+ *   val_desc_p(in): the execution's value descriptor
+ *   plan(in): the batch plan built over this list (expr_batch.h)
+ *   batch(in): the page batch expr_batch_run () evaluated
+ *   skip_optimized(in): leave the aggregates the optimizer answered before the scan alone (the
+ *                       serial loop's rule; a parallel worker accumulates them)
+ *
+ * One typed loop per aggregate over the page's selected rows, where the row path makes one
+ * call per row and aggregate.  What the row path does on a value's first arrival -- keep it
+ * in acc->value, seed the word accumulator through qdata_aggregate_value_to_accumulator ()
+ * -- happens here on the first value of the page the same way, as a DB_VALUE; the values
+ * after it go straight into the word accumulator (expr_batch_agg_sum_rest ()).  MIN/MAX take
+ * the page's extreme value in that one call; COUNT takes a count.
+ */
+int
+qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
+				val_descr *val_desc_p, EXPR_BATCH_PLAN *plan, const EXPR_BATCH *batch,
+				bool skip_optimized)
+{
+  cubxasl::aggregate_list_node *agg_p;
+  int i, error;
+
+  for (agg_p = agg_list_p, i = 0; agg_p != NULL; agg_p = agg_p->next, i++)
+    {
+      cubxasl::aggregate_accumulator *accumulator = &agg_p->accumulator;
+      cubxasl::aggregate_accumulator_domain *acc_dom;
+      DB_VALUE dbv;
+      int pos = 0, cnt;
+      INT64 n_added = 0;
+
+      /* skip_optimized: the serial loop leaves an aggregate the optimizer answered before the
+       * scan (agg_optimized) and an ended one alone; a parallel worker's loop accumulates them
+       * like any other, and the coordinator takes the workers' sums */
+      if (accumulator->shared_from > 0 || (skip_optimized && (agg_p->flag.agg_optimized || agg_p->is_ended)))
+	{
+	  continue;
+	}
+      if (!expr_batch_agg_covered (plan, i))
+	{
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	  return ER_FAILED;
+	}
+      switch (agg_p->function)
+	{
+	case PT_COUNT_STAR:
+	  accumulator->curr_cnt += batch->n_sel;
+	  break;
+	case PT_COUNT:
+	  cnt = expr_batch_agg_count (plan, batch, i);
+	  if (cnt > 0)
+	    {
+	      /* the row path keeps COUNT (x) in acc->value (qdata_aggregate_value_to_accumulator ())
+	       * and the finalize reads it from there; curr_cnt is kept beside it as the row path does */
+	      db_make_bigint (accumulator->value,
+			      (accumulator->curr_cnt < 1 ? (INT64) 0 : db_get_bigint (accumulator->value)) + cnt);
+	      accumulator->curr_cnt += cnt;
+	    }
+	  break;
+	case PT_SUM:
+	case PT_AVG:
+	  if (!accumulator->sum_acc.is_active
+	      || accumulator->sum_acc.sum_type != sum_acc_agg_sum_type_for (expr_batch_agg_type (plan, i)))
+	    {
+	      /* the first value of the group (or an accumulator a spill emptied): the same call the
+	       * row path makes for it, which keeps it in acc->value and seeds the word accumulator */
+	      if (!expr_batch_agg_next_value (plan, batch, i, &pos, &dbv))
+		{
+		  break;		/* every value of the page is NULL */
+		}
+	      acc_dom = qexec_accumulator_domain (val_desc_p, agg_p->plan_item);
+	      {
+		const DOMAIN_OPERAND_COERCION *coercion = &acc_dom->operand_coercion;
+		const DB_VALUE *temporary = acc_dom->temporary >= 0 && accumulator->curr_cnt >= 1
+					    ? qexec_execution_temporary (thread_p, val_desc_p, acc_dom->temporary,
+						coercion->conv[1], coercion->operand_domain[1], &dbv) : NULL;
+
+		error = qdata_aggregate_value_to_accumulator (thread_p, accumulator, acc_dom, agg_p->function,
+			qexec_get_node_domain (val_desc_p, agg_p->domain,
+					       agg_p->plan_item), &dbv, false,
+			temporary);
+	      }
+	      pr_clear_value (&dbv);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	      accumulator->curr_cnt++;
+	      if (!accumulator->sum_acc.is_active
+		  || accumulator->sum_acc.sum_type != sum_acc_agg_sum_type_for (expr_batch_agg_type (plan, i)))
+		{
+		  /* the accumulator did not open in the vector's type: the plan admits only the
+		   * word accumulator's types, so this cannot happen */
+		  assert (false);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+		  return ER_FAILED;
+		}
+	    }
+	  error = expr_batch_agg_sum_rest (plan, batch, i, pos, &accumulator->sum_acc, &n_added);
+	  accumulator->curr_cnt += n_added;
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  break;
+	case PT_MIN:
+	case PT_MAX:
+	  cnt = expr_batch_agg_extremum (plan, batch, i, agg_p->function == PT_MIN, &dbv);
+	  if (cnt > 0)
+	    {
+	      error = qdata_aggregate_value_to_accumulator (thread_p, accumulator,
+		      qexec_accumulator_domain (val_desc_p, agg_p->plan_item),
+		      agg_p->function,
+		      qexec_get_node_domain (val_desc_p, agg_p->domain,
+					     agg_p->plan_item), &dbv, false);
+	      pr_clear_value (&dbv);
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	      accumulator->curr_cnt += cnt;
+	    }
+	  break;
+	default:
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+	  return ER_FAILED;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * qdata_evaluate_aggregate_list () -
  *   return: NO_ERROR, or ER_code
  *   agg_list(in): aggregate expression node list
@@ -1271,50 +1467,12 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
   cubxasl::aggregate_percentile_info *percentile = NULL;
   DB_VALUE *db_value_p = NULL;
   EXPR_PROG *operand_prog = NULL;
-  bool compiled_now = false;
   DB_VALUE stack_values[AGG_MAX_OPERANDS];
   int n_values = 0;
 
   if (agg_list_p != NULL)
     {
-      if (agg_list_p->operand_prog_state == 0)
-	{
-	  qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
-	  compiled_now = true;
-	}
-      if (agg_list_p->operand_prog_state == 1)
-	{
-	  operand_prog = (EXPR_PROG *) agg_list_p->operand_prog;
-	  if (!expr_prog_signature_ok (operand_prog, val_desc_p, EXPR_PROG_EXEC_STAMP (val_desc_p))
-	      || !expr_prog_share_current (operand_prog, agg_list_p->operand_prog_share_spec))
-	    {
-	      /* different bind types than the program was specialized for, or the scan filter
-	       * whose slots it reads was recompiled: recompile */
-	      expr_prog_free (operand_prog);
-	      free_and_init (agg_list_p->operand_prog_idx);
-	      agg_list_p->operand_prog = NULL;
-	      agg_list_p->operand_prog_state = 0;
-	      qdata_agg_operand_prog_compile (thread_p, agg_list_p, val_desc_p);
-	      operand_prog = (agg_list_p->operand_prog_state == 1) ? (EXPR_PROG *) agg_list_p->operand_prog : NULL;
-	      compiled_now = true;
-	    }
-	}
-      if (operand_prog != NULL)
-	{
-	  /* The program (verified for this execution's bind types just above) says which
-	   * operands are one and the same cell: let SUM/AVG over them share an accumulator.
-	   * Derived once per execution -- qdata_link_shared_accumulators () reset the links
-	   * at execution start -- from the program of THIS execution, never from a program a
-	   * later row may replace.  A hash GROUP BY entry created before this row keeps its
-	   * own links and accumulates such a pair separately (correct, just not shared). */
-	  unsigned long long stamp = EXPR_PROG_EXEC_STAMP (val_desc_p);
-
-	  if (compiled_now || (stamp != 0 && agg_list_p->operand_prog_link_stamp != stamp))
-	    {
-	      qdata_link_shared_accumulators_by_cell (agg_list_p, val_desc_p);
-	      agg_list_p->operand_prog_link_stamp = stamp;
-	    }
-	}
+      operand_prog = qdata_agg_operand_prog_ensure (thread_p, agg_list_p, val_desc_p);
       /* every participating operand of the row is evaluated here, before any aggregate
        * accumulates; see qdata_agg_operand_prog_compile () for why and for the error
        * precedence this implies on a row that fails twice */

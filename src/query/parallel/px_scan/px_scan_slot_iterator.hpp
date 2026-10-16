@@ -40,6 +40,10 @@ namespace parallel_scan
       int finalize (THREAD_ENTRY *thread_p);
       int set_page (THREAD_ENTRY *thread_p, VPID *vpid);
       SCAN_CODE next_qualified_slot_with_peek (THREAD_ENTRY *thread_p);
+      const VPID *vpid () const
+      {
+	return &m_vpid;
+      }
 
     private:
       FILTER_INFO m_data_filter;
