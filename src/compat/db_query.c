@@ -1605,7 +1605,7 @@ db_execute_with_values (const char *CSQL_query, DB_QUERY_RESULT ** result, DB_QU
   int stmt_no;
   DB_SESSION *session = NULL;
 
-  error = db_open_buffer_and_compile_first_statement (CSQL_query, query_error, DB_NO_OIDS, &session, &stmt_no);
+  error = db_open_buffer_and_compile_first_statement (CSQL_query, query_error, DB_NO_OIDS, false, &session, &stmt_no);
   if (session == NULL)
     {
       return error;

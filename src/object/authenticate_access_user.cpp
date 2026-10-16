@@ -847,7 +847,7 @@ au_compute_groups (MOP member, const char *name)
   db_make_object (&val[0], member);
   db_make_string (&val[1], name);
 
-  session = db_open_buffer (qstr);
+  session = db_open_buffer_local (qstr);
   if (!session)
     {
       assert (er_errid () != NO_ERROR);
@@ -857,7 +857,7 @@ au_compute_groups (MOP member, const char *name)
 
   db_push_values (session, 2, val);
 
-  stmt_id = db_compile_statement (session);
+  stmt_id = db_compile_statement_local (session);
   if (stmt_id != 1)
     {
       assert (er_errid () != NO_ERROR);
@@ -1245,7 +1245,7 @@ au_drop_user (MOP user)
   for (i = 0; AU_OBJECT_CLASS_NAME[i] != NULL; i++)
     {
       sprintf (query_buf, "select count(*) from [%s] where [owner] = ?;", AU_OBJECT_CLASS_NAME[i]);
-      session = db_open_buffer (query_buf);
+      session = db_open_buffer_local (query_buf);
       if (session == NULL)
 	{
 	  goto error;
@@ -1253,7 +1253,7 @@ au_drop_user (MOP user)
 
       db_make_object (&val[0], user);
       db_push_values (session, 1, &val[0]);
-      stmt_id = db_compile_statement (session);
+      stmt_id = db_compile_statement_local (session);
       if (stmt_id != 1)
 	{
 	  assert (er_errid () != NO_ERROR);
@@ -1305,8 +1305,8 @@ au_drop_user (MOP user)
   db_make_object (&val[1], user);
 
   session =
-	  db_open_buffer ("update [_db_user] [d] set "
-			  "[d].[direct_groups] = [d].[direct_groups] - ? where ? in [d].[direct_groups];");
+	  db_open_buffer_local ("update [_db_user] [d] set "
+				"[d].[direct_groups] = [d].[direct_groups] - ? where ? in [d].[direct_groups];");
   if (session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -1322,7 +1322,7 @@ au_drop_user (MOP user)
 	{
 	  db_make_set (&val[0], new_groups);
 	  db_push_values (session, 2, val);
-	  stmt_id = db_compile_statement (session);
+	  stmt_id = db_compile_statement_local (session);
 	  if (stmt_id == 1)
 	    {
 	      error = db_execute_statement_local (session, stmt_id, &result);
@@ -1348,7 +1348,7 @@ au_drop_user (MOP user)
       goto error;
     }
 
-  session = db_open_buffer ("select [d] from [_db_user] [d] where ? in [d].[groups];");
+  session = db_open_buffer_local ("select [d] from [_db_user] [d] where ? in [d].[groups];");
   if (session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -1357,7 +1357,7 @@ au_drop_user (MOP user)
     }
 
   db_push_values (session, 1, &val[1]);
-  stmt_id = db_compile_statement (session);
+  stmt_id = db_compile_statement_local (session);
   if (stmt_id == 1)
     {
       error = db_execute_statement_local (session, stmt_id, &result);

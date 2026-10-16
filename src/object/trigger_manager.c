@@ -1644,6 +1644,8 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
+      /* the trigger action is SQL the user wrote */
+      ((PARSER_CONTEXT *) activity->parser)->flag.is_system_generated_stmt = 0;
 
       get_reference_names (trigger, activity, &curname, &tempname);
 
