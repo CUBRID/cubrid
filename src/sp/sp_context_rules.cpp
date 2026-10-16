@@ -181,6 +181,7 @@ sp_stmt_guard::~sp_stmt_guard ()
 
 /* the list being filled while a procedure's statement is compiled; NULL for every other compile */
 static std::vector<DB_OBJECT *> *sp_Ref_tables = NULL;
+static int sp_Ref_tables_suspended = 0;
 
 void
 sp_ref_tables_start (std::vector<DB_OBJECT *> *ref_tables)
@@ -197,6 +198,23 @@ sp_ref_tables_stop (void)
 }
 
 /*
+ * sp_ref_tables_suspend () - stop collecting while a trigger's statement is compiled on behalf of the
+ *                            procedure's statement; its classes are not the procedure's references
+ */
+void
+sp_ref_tables_suspend (void)
+{
+  sp_Ref_tables_suspended++;
+}
+
+void
+sp_ref_tables_resume (void)
+{
+  assert (sp_Ref_tables_suspended > 0);
+  sp_Ref_tables_suspended--;
+}
+
+/*
  * sp_ref_tables_add () - called by name resolution for every class a spec resolves to
  *   return: none
  *   class_mop(in): the class
@@ -204,7 +222,7 @@ sp_ref_tables_stop (void)
 void
 sp_ref_tables_add (DB_OBJECT *class_mop)
 {
-  if (sp_Ref_tables != NULL)
+  if (sp_Ref_tables != NULL && sp_Ref_tables_suspended == 0)
     {
       sp_Ref_tables->push_back (sp_class_root (class_mop));
     }
@@ -237,7 +255,7 @@ sp_ref_tables_add_spec (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *c
 void
 sp_ref_tables_add_tree (PARSER_CONTEXT *parser, PT_NODE *tree)
 {
-  if (sp_Ref_tables == NULL || tree == NULL)
+  if (sp_Ref_tables == NULL || sp_Ref_tables_suspended > 0 || tree == NULL)
     {
       return;
     }

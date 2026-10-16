@@ -89,6 +89,8 @@ extern int sp_check_trigger_statement (PARSER_CONTEXT *parser, PT_NODE *statemen
  * recorded as its partitioned table. */
 extern void sp_ref_tables_start (std::vector<DB_OBJECT *> *ref_tables);
 extern void sp_ref_tables_stop (void);
+extern void sp_ref_tables_suspend (void);
+extern void sp_ref_tables_resume (void);
 extern void sp_ref_tables_add (DB_OBJECT *class_mop);
 extern void sp_ref_tables_add_tree (PARSER_CONTEXT *parser, PT_NODE *tree);
 
