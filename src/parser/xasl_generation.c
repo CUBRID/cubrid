@@ -6588,22 +6588,6 @@ error_exit:
   return NULL;
 }
 
-/*
- * pt_late_bind_limit_regu () - a LIMIT / KEYLIMIT operand that is a host variable (a variable POS) leaves its domain to
- *   resolve_domains: auto-parameterized limits of different literal types (`limit 4`, `limit 2147483648`, `limit 3/2`)
- *   share one plan, and execution reads the bound value (qexec_check_limit_clause: tp_value_compare against 0), so no
- *   compiled domain describes every execution.
- */
-static REGU_VARIABLE *
-pt_late_bind_limit_regu (REGU_VARIABLE * regu)
-{
-  if (regu != NULL && regu->type == TYPE_POS_VALUE)
-    {
-      regu->domain = &tp_Variable_domain;
-    }
-  return regu;
-}
-
 /* shortcut: a value another block gives (an aggregate, a subquery, a derived table's column) carries its parse tree's
  * domain, not its producer's, until the producer lookups of step 2(c); upgrade then */
 static bool
@@ -16996,10 +16980,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
     {
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+      xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
     }
 
   /* set references of INST_NUM and ORDERBY_NUM values in parse tree */
@@ -18358,10 +18342,10 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
 	  limit = node->info.query.limit;
 	  if (limit->next)
 	    {
-	      xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	      xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	      limit = limit->next;
 	    }
-	  xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	}
     }				/* end xasl */
   else
@@ -18468,10 +18452,10 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
 	  limit = non_recursive_part->info.query.limit;
 	  if (limit->next)
 	    {
-	      xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	      xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	      limit = limit->next;
 	    }
-	  xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	}
     }
 
@@ -22801,10 +22785,10 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+      xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
     }
   if (aptr_statement)
     {
@@ -23728,10 +23712,10 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 
       if (limit->next)
 	{
-	  xasl->limit_offset = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+	  xasl->limit_offset = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
 	  limit = limit->next;
 	}
-      xasl->limit_row_count = pt_late_bind_limit_regu (pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE));
+      xasl->limit_row_count = pt_to_regu_variable (parser, limit, UNBOX_AS_VALUE);
     }
 
 cleanup:
