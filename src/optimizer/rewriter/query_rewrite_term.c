@@ -31,7 +31,6 @@ static void qo_rewrite_like_terms (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_convert_to_range (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_apply_range_intersection (PARSER_CONTEXT * parser, PT_NODE ** wherep);
 static void qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** wherep);
-static bool qo_check_nullable_op (PT_NODE * node);
 
 /*
  * qo_rewrite_terms () - checks all subqueries for rewrite optimizations
@@ -237,10 +236,10 @@ qo_get_name_by_spec_id (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int 
  *   return: true if the operator is nullable-unsafe for 'node' as given
  *   node(in): the expression node to classify
  *
- * Note: shared by qo_check_nullable_expr () and qo_check_nullable_expr_with_spec (),
- *	 so the two callers can never end up checking a different operator list.
+ * Note: shared by qo_check_nullable_expr (), qo_check_nullable_expr_with_spec () and
+ *	 pt_where_rejects_column_null (), so the callers can never end up checking a different operator list.
  */
-static bool
+bool
 qo_check_nullable_op (PT_NODE * node)
 {
   if (node->node_type != PT_EXPR)
@@ -1547,8 +1546,8 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
 	  continue;
 	}
 
-      /* search if there's a term that make this IS NULL/IS NOT NULL node meaningless; that is, a term that has the
-       * same attribute */
+      /* Find a sibling that proves this NULL test redundant or contradictory. Referencing the same
+       * attribute is not enough: a value function or NOT IN over an empty set may accept NULL. */
       found = false;
       for (sibling = *wherep; sibling; sibling = sibling->next)
 	{
@@ -1574,6 +1573,28 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
 	  if (pt_check_path_eq (parser, node_prior, sibling_prior) == 0
 	      || pt_check_path_eq (parser, node_prior, sibling->info.expr.arg2) == 0)
 	    {
+	      if (sibling->info.expr.op != PT_IS_NULL && sibling->info.expr.op != PT_IS_NOT_NULL
+		  && sibling->info.expr.op != PT_NULLSAFE_EQ)
+		{
+		  PT_NODE *save_next;
+		  bool has_subquery = false;
+
+		  if (!pt_is_comp_op (sibling->info.expr.op) || qo_check_nullable_op (sibling))
+		    {
+		      continue;
+		    }
+
+		  save_next = sibling->next;
+		  sibling->next = NULL;
+		  (void) parser_walk_tree (parser, sibling, pt_check_subquery_pre, NULL,
+					   pt_check_subquery_post, &has_subquery);
+		  sibling->next = save_next;
+		  if (has_subquery)
+		    {
+		      continue;
+		    }
+		}
+
 	      found = true;
 	      break;
 	    }
