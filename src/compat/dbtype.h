@@ -81,11 +81,11 @@
 #define DB_NEED_CLEAR(v) \
       ((!DB_IS_NULL(v) \
 	&& ((v)->need_clear == true \
-	    || ((TP_IS_CHAR_TYPE(DB_VALUE_DOMAIN_TYPE(v)) || (DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CLOB)) \
+	    || ((TP_IS_CHAR_TYPE(DB_VALUE_DOMAIN_TYPE(v)) || DB_VALUE_DOMAIN_TYPE(v) == DB_TYPE_CLOB) \
 		&& (v)->data.ch.info.compressed_need_clear != 0))))
 
 #define DB_GET_COMPRESSED_STRING(v) \
-      ((!TP_IS_CHAR_TYPE(DB_VALUE_DOMAIN_TYPE(v)) && (DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_CLOB)) \
+      ((!TP_IS_CHAR_TYPE(DB_VALUE_DOMAIN_TYPE(v)) && DB_VALUE_DOMAIN_TYPE(v) != DB_TYPE_CLOB) \
 	? NULL : (v)->data.ch.medium.compressed_buf)
 
 #define DB_GET_ENUMERATION(v) \
@@ -205,6 +205,10 @@ extern "C"
   extern char *db_get_json_raw_body (const DB_VALUE * value);
 
   extern bool db_value_is_corrupted (const DB_VALUE * value);
+  extern bool db_get_internal_lob_marker_text (const DB_VALUE * value, int marker, DB_TYPE * type, const char **data,
+					       int *size);
+  extern int db_make_internal_lob_marker_value (DB_VALUE * value, DB_TYPE type, const char *text, int text_len,
+						int marker);
 
   extern int db_json_val_from_str (const char *raw_str, const int str_size, DB_VALUE * json_val);
 
@@ -235,6 +239,8 @@ extern "C"
 
     DB_TYPE type = db_value_domain_type (src);
 
+    /* CHAR is compressed too (mr_readval_char_internal / mr_lengthval_char_internal), so it must hand over
+     * ownership of compressed_buf like VARCHAR and CLOB do. */
     if (TP_IS_CHAR_TYPE (type) || type == DB_TYPE_CLOB)
       {
 	dst->data.ch.info.compressed_need_clear = false;

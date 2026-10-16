@@ -65,6 +65,7 @@
 #include "chartype.h"
 #include "heap_file.h"
 #include "oos_file.hpp"
+#include "internal_lob_file.hpp"
 #include "pl_sr.h"
 #include "replication.h"
 #include "server_support.h"
@@ -83,6 +84,7 @@
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "compile_context.h"
 #include "load_session.hpp"
+#include "stream_session.hpp"
 #include "session.h"
 #include "xasl.h"
 #include "xasl_cache.h"
@@ -166,7 +168,17 @@ stran_server_commit_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool ret
   assert (should_conn_reset != NULL);
   has_updated = logtb_has_updated (thread_p);
 
-  state = xtran_server_commit (thread_p, retain_lock);
+  /* an open stream is one statement still running, and nothing commits inside it */
+  if (session_has_stream_session (thread_p))
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "commit inside an open stream session");
+      state = TRAN_ACTIVE;
+    }
+  else
+    {
+      state = xtran_server_commit (thread_p, retain_lock);
+    }
 
   PL_SESSION *session = cubpl::get_session ();
   if (!session || session->is_sp_running () == false)
@@ -203,6 +215,9 @@ stran_server_abort_internal (THREAD_ENTRY *thread_p, unsigned int rid, bool *sho
   bool has_updated;
 
   has_updated = logtb_has_updated (thread_p);
+
+  /* the transaction ends here, and with it any stream session opened in it */
+  session_end_stream_session (thread_p);
 
   state = xtran_server_abort (thread_p);
 
@@ -407,6 +422,17 @@ return_error_to_client (THREAD_ENTRY *thread_p, unsigned int rid)
     {
       /* need to hide the previous error, ER_LK_UNILATERALLY_ABORTED to rollback the current transaction. */
       er_stack_push ();
+
+      /* This is the one transaction end that does not arrive as a commit/abort request: a deadlock
+       * victim is rolled back here, on its own worker. The stream session has to go with it for the
+       * same reason as in stran_server_abort_internal () -- the next chunk would otherwise build on work
+       * that was already rolled back. Before the rollback, so the session never sees a transaction
+       * that has ended, and inside the pushed stack, because reaching for a session that is already
+       * gone raises an error of its own and the error being reported to the client is the one that
+       * has to survive. Freeing it is safe here for the reason it is safe there: this is the worker
+       * that would be running receive_chunk, and the stream is lockstep. */
+      session_end_stream_session (thread_p);
+
       tran_state = tran_server_unilaterally_abort_tran (thread_p);
       er_stack_pop ();
     }
@@ -902,6 +928,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   int content_size;
   int num_objs = 0;
   int nparallel_process, nparallel_process_idx, request_pages;
+  int keep_oos_locators = 0;
   NET_ENDIAN server_endian = get_endian_type ();
   int client_endian;
   int encode_endian = 1;
@@ -916,6 +943,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   ptr = or_unpack_int (ptr, &request_pages);
   ptr = or_unpack_int (ptr, &nparallel_process);
   ptr = or_unpack_int (ptr, &nparallel_process_idx);
+  ptr = or_unpack_int (ptr, &keep_oos_locators);
   ptr = or_unpack_int (ptr, &client_endian);
 
   if ((NET_ENDIAN) client_endian == server_endian && server_endian != NET_ENDIAN_UNKNOWN)
@@ -939,7 +967,7 @@ slocator_fetch_all (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int
   copy_area = NULL;
   success =
 	  xlocator_fetch_all (thread_p, &hfid, &lock, (LC_FETCH_VERSION_TYPE) fetch_version_type, &class_oid, &nobjects,
-			      &nfetched, &last_oid, &copy_area, request_pages);
+			      &nfetched, &last_oid, &copy_area, request_pages, keep_oos_locators != 0);
 
   if (nparallel_process > 1)
     {
@@ -3578,7 +3606,19 @@ stran_server_partial_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 
   ptr = or_unpack_string_nocopy (request, &savept_name);
 
-  state = xtran_server_partial_abort (thread_p, savept_name, &savept_lsa);
+  /* for the reason stran_server_commit_internal () gives: the savepoint may predate the stream */
+  if (session_has_stream_session (thread_p))
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "rollback to a savepoint inside an open stream session");
+      state = TRAN_ACTIVE;
+      LSA_SET_NULL (&savept_lsa);
+    }
+  else
+    {
+      state = xtran_server_partial_abort (thread_p, savept_name, &savept_lsa);
+    }
   if (state != TRAN_UNACTIVE_ABORTED)
     {
       /* Likely the abort failed.. somehow */
@@ -10225,13 +10265,25 @@ soos_stats (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
   OOS_STATS_INFO info;
   int err = NO_ERROR;
 
-  (void) or_unpack_oid (request, &class_oid);
-
   memset (&info, 0, sizeof (info));
-  err = xoos_get_stats_by_class_oid (thread_p, &class_oid, &info);
-  if (err != NO_ERROR)
+
+  /* A request with no payload leaves the buffer NULL: css_internal_request_handler only receives data when the
+   * size is non-zero.  Unpacking it unchecked dereferences NULL and takes the server down. */
+  if (request == NULL || reqlen < OR_OID_SIZE)
     {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
       (void) return_error_to_client (thread_p, rid);
+    }
+  else
+    {
+      (void) or_unpack_oid (request, &class_oid);
+
+      err = xoos_get_stats_by_class_oid (thread_p, &class_oid, &info);
+      if (err != NO_ERROR)
+	{
+	  (void) return_error_to_client (thread_p, rid);
+	}
     }
 
   char *ptr = or_pack_int (reply, err);
@@ -10244,6 +10296,220 @@ soos_stats (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
   ptr = or_pack_int64 (ptr, info.recs_sumlen);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * stream_reply_error_code () - Send the reply of a stream request whose reply is only its error code.
+ *   On error the error (code + message) is staged first so it travels with the reply.
+ */
+static void
+stream_reply_error_code (THREAD_ENTRY *thread_p, unsigned int rid, int error_code)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+  (void) or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * unpack_client_locator () - Read a locator string out of an untrusted request buffer.
+ *
+ * The buffer may be NULL and the packed length is whatever the client claims, so both are checked and the string
+ * must end with a NUL inside the bytes that actually arrived.  Its length comes back in locator_len.
+ *
+ *   fixed_len: bytes of fixed arguments ahead of the string.
+ */
+static int
+unpack_client_locator (char *request, int reqlen, int fixed_len, const char **locator, int *locator_len)
+{
+  char *ptr;
+  int packed_len;
+  int string_len;
+
+  *locator = NULL;
+  *locator_len = 0;
+
+  if (request == NULL || reqlen < fixed_len + OR_INT_SIZE)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  ptr = request + fixed_len;
+  packed_len = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+
+  if (packed_len < 1 || packed_len > reqlen - fixed_len - OR_INT_SIZE)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  /* or_pack_string_with_length stores the NUL and the padding to a 4-byte boundary in the length, so the
+   * string ends at the first NUL within it.  strnlen keeps the scan inside the bytes that arrived; reaching
+   * the end without one means the payload is not a packed string. */
+  string_len = (int) strnlen (ptr, (size_t) packed_len);
+  if (string_len == packed_len)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  *locator = ptr;
+  *locator_len = string_len;
+  return NO_ERROR;
+}
+
+/*
+ * sinternal_lob_stream_open - Open a forward-only server-side reader cursor.
+ *   Request : start_offset (int64) + locator string
+ *   Reply   : token (int64) + err (int)
+ */
+void
+sinternal_lob_stream_open (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  const char *locator_string = NULL;
+  char *ptr = NULL;
+  INT64 token = 0;
+  INT64 start_offset = 0;
+  int locator_len = 0;
+  int err = NO_ERROR;
+  INTERNAL_LOB_LOCATOR locator;
+  unsigned long long locator_sig = 0;
+
+  if (unpack_client_locator (request, reqlen, OR_INT64_SIZE, &locator_string, &locator_len) != NO_ERROR
+      || !internal_lob_parse_locator_string (locator_string, locator_len, &locator, &locator_sig))
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  /* a client may read only a locator this session issued, so it cannot reach content it was not given */
+  if (!internal_lob_verify_locator_sig (thread_p, locator, locator_sig))
+    {
+      err = ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  err = internal_lob_lock_locator_class (thread_p, locator);
+  if (err != NO_ERROR)
+    {
+      goto reply;
+    }
+
+  (void) or_unpack_int64 (request, &start_offset);
+  err = xinternal_lob_stream_open (thread_p, locator, start_offset, &token);
+
+reply:
+  ptr = or_pack_int64 (reply, token);
+  (void) or_pack_int (ptr, err);
+
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sinternal_lob_stream_read - Read the next bytes from a server-side reader cursor.
+ *   Request : token (int64) + count (int)
+ *   Reply   : data_size (int) + err (int)
+ *   Data    : raw bytes when err is NO_ERROR and data_size > 0
+ */
+void
+sinternal_lob_stream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = request;
+  char *buffer = NULL;
+  INT64 token = 0;
+  int count = 0;
+  int nread = 0;
+  int err = NO_ERROR;
+
+  if (reqlen != OR_INT64_SIZE + OR_INT_SIZE)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  ptr = or_unpack_int64 (ptr, &token);
+  (void) or_unpack_int (ptr, &count);
+
+  if (token <= 0 || count < 0 || count > INTERNAL_LOB_READ_MAX_CHUNK)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  if (count > 0)
+    {
+      buffer = (char *) malloc ((size_t) count);
+      if (buffer == NULL)
+	{
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, (size_t) count);
+	  goto reply;
+	}
+    }
+
+  err = xinternal_lob_stream_read (thread_p, token, buffer, count, &nread);
+
+reply:
+  ptr = or_pack_int (reply, nread);
+  (void) or_pack_int (ptr, err);
+
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  auto deleter = [buffer]() noexcept
+  {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
+  /* css_send_reply_and_data_to_client () asserts !!buffer == !!buffer_size, so pass NULL when nothing was read;
+   * the deleter still frees buffer. */
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				     nread > 0 ? buffer : NULL, nread, std::move (deleter));
+}
+
+/*
+ * sinternal_lob_stream_close - Close a server-side reader cursor.
+ *   Request : token (int64)
+ *   Reply   : err (int)
+ */
+void
+sinternal_lob_stream_close (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  INT64 token = 0;
+  int err = NO_ERROR;
+
+  if (reqlen != OR_INT64_SIZE)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+    }
+  else
+    {
+      (void) or_unpack_int64 (request, &token);
+      err = xinternal_lob_stream_close (thread_p, token);
+    }
+
+  stream_reply_error_code (thread_p, rid, err);
 }
 
 /*
@@ -11209,9 +11475,9 @@ ssession_interrupt_attached_threads (THREAD_ENTRY *thread_p, void *session)
 }
 
 void
-ssession_destroy_load_session (THREAD_ENTRY *thread_p, void *session)
+ssession_destroy_attached_sessions (THREAD_ENTRY *thread_p, void *session)
 {
-  session_destroy_load_session (thread_p, session);
+  session_destroy_attached_sessions (thread_p, session);
 }
 
 #if defined (ENABLE_UNUSED_FUNCTION)
@@ -12589,3 +12855,215 @@ sfile_tracker_delete_target_file (THREAD_ENTRY *thread_p, unsigned int rid, char
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 #endif
+
+/*
+ * sstream_from_init () - Open a client->server byte-stream session
+ *   request format: stream_kind (int), consumer config blob
+ *   reply format: error_code (int)
+ */
+void
+sstream_from_init (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  char *ptr = request;
+  int stream_kind = 0;
+  int error_code = NO_ERROR;
+  bool ends_unit_of_work = false;
+  stream_session *session = NULL;
+
+  if (request == NULL || reqlen < OR_INT_SIZE)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "truncated stream session request");
+      error_code = ER_STREAM_SESSION_ERROR;
+      goto send_reply;
+    }
+
+  ptr = or_unpack_int (ptr, &stream_kind);
+
+  /* before the factory runs: what it acquires for the transaction, deleting the session does not give back */
+  if (session_has_stream_session (thread_p))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a stream session is already active on this connection");
+      error_code = ER_STREAM_SESSION_ERROR;
+      goto send_reply;
+    }
+
+  session = stream_session_create (thread_p, stream_kind, ptr, reqlen - OR_INT_SIZE, &error_code);
+  if (session != NULL)
+    {
+      error_code = session_set_stream_session (thread_p, session);
+      if (error_code != NO_ERROR)
+	{
+	  session->abort (thread_p);
+	  delete session;
+	}
+      else
+	{
+	  ends_unit_of_work = stream_session_kind_ends_unit_of_work (stream_kind);
+	}
+    }
+  else if (error_code == NO_ERROR)
+    {
+      /* a factory lives outside the transport and cannot be checked at compile
+       * time; without this the client would read "opened" and start sending */
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "stream session was not opened");
+      error_code = ER_STREAM_SESSION_ERROR;
+    }
+
+send_reply:
+  /* On error, stage the error (code + message) so it travels with the reply;
+   * the reply itself is always sent (the request/reply protocol requires it). */
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  {
+    /* the kind's answer rides back with the open so the CAS knows, without naming
+     * the consumer, whether this stream's END finishes a statement */
+    OR_ALIGNED_BUF (2 * OR_INT_SIZE) a_reply;
+    char *reply = OR_ALIGNED_BUF_START (a_reply);
+    char *ptr_reply;
+
+    ptr_reply = or_pack_int (reply, error_code);
+    (void) or_pack_int (ptr_reply, ends_unit_of_work ? 1 : 0);
+    css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  }
+}
+
+/*
+ * sstream_send_data () - Hand one chunk of the byte stream to the open session
+ *   request format: raw binary data
+ *   reply format: error_code (int)
+ */
+void
+sstream_send_data (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+
+  stream_session *session = NULL;
+  error_code = session_get_stream_session (thread_p, session);
+  if (error_code != NO_ERROR || session == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "no active stream session");
+      error_code = ER_STREAM_SESSION_ERROR;
+    }
+  else
+    {
+      error_code = session->receive_chunk (thread_p, request, reqlen);
+      if (error_code != NO_ERROR)
+	{
+	  session->abort (thread_p);
+	  delete session;
+	  (void) session_set_stream_session (thread_p, NULL);
+	}
+    }
+
+  /* On error, stage the error (code + message) so it travels with the reply;
+   * the reply itself is always sent (the request/reply protocol requires it). */
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sstream_end () - End the stream and report the session's result
+ *   request format: (empty)
+ *   reply format: error_code (int), count (int64) -- rows for COPY and internal-LOB DML,
+ *                 the upload token for an upload, the batch-local slot for a load
+ *                 (see stream_result in stream_session.hpp)
+ */
+void
+sstream_end (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  INT64 count = 0;
+
+  stream_session *session = NULL;
+  error_code = session_get_stream_session (thread_p, session);
+  if (error_code != NO_ERROR || session == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "no active stream session");
+      error_code = ER_STREAM_SESSION_ERROR;
+    }
+  else
+    {
+      stream_result result;
+
+      result.count = 0;
+      error_code = session->finish (thread_p, &result);	/* the binding may still have buffered work */
+      count = (INT64) result.count;
+
+      if (error_code != NO_ERROR)
+	{
+	  session->abort (thread_p);
+	}
+      delete session;
+      (void) session_set_stream_session (thread_p, NULL);
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  {
+    /* two ints ahead of the count, so or_pack_int64 () lands on its alignment */
+    OR_ALIGNED_BUF (2 * OR_INT_SIZE + OR_BIGINT_SIZE) a_reply;
+    char *reply = OR_ALIGNED_BUF_START (a_reply);
+    char *ptr;
+
+    ptr = or_pack_int (reply, error_code);
+    ptr = or_pack_int (ptr, 0);	/* the padding or_pack_int64 () would skip over */
+    ptr = or_pack_int64 (ptr, count);
+    css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+  }
+}
+
+/*
+ * sstream_abort () - Drop the open stream session at the client's request
+ *   request format: (empty)
+ *   reply format: error_code (int)
+ *
+ * The server already drops the session on a chunk it cannot consume. This is the
+ * other direction: the consumer's client half failed -- its encoder threw, the
+ * user cancelled -- and there is nothing left to send. Without it the session
+ * would sit in the connection until the transaction ended, refusing the next
+ * statement's open with "a stream session is already active".
+ */
+void
+sstream_abort (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int error_code = NO_ERROR;
+  stream_session *session = NULL;
+
+  error_code = session_get_stream_session (thread_p, session);
+  if (error_code != NO_ERROR || session == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1, "no active stream session");
+      error_code = ER_STREAM_SESSION_ERROR;
+    }
+  else
+    {
+      session->abort (thread_p);
+      delete session;
+      (void) session_set_stream_session (thread_p, NULL);
+    }
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}

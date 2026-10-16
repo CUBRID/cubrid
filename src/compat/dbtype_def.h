@@ -588,6 +588,9 @@ extern "C"
 /* This constant defines the maximum length of a LOB value that can be used as the value of an attribute. */
 #define DB_MAX_LOB_LENGTH 0x3fffffff
 
+/* Maximum physical payload accepted by the internal LOB streaming storage path (4 GiB). */
+#define DB_MAX_INTERNAL_LOB_LENGTH 0x100000000LL
+
 /* The maximum precision that can be specified for a numeric domain. */
 #define DB_MAX_NUMERIC_PRECISION (40)
 

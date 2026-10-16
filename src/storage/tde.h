@@ -139,6 +139,7 @@ typedef struct tde_mk_file_item
    || (rcvindex) == RVOOS_INSERT \
    || (rcvindex) == RVOOS_DELETE \
    || (rcvindex) == RVREPL_OOS_INSERT \
+   || (rcvindex) == RVREPL_INTERNAL_LOB_INSERT \
    || (rcvindex) == RVREPL_OOS_DELETE \
    || (rcvindex) == RVREPL_DUMMY_OOS_RECORD)
 
