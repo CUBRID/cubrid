@@ -126,6 +126,11 @@ env:
         echo "found=no exec=0 pass=0 fail=0 skip=0"
       fi
     }
+  OVERLAY: |
+    overlay() {   # <lower> <rw dir> <mount point>
+      mkdir -p "$2/upper" "$2/work" "$3"
+      mount -t overlay overlay -o "lowerdir=$1,upperdir=$2/upper,workdir=$2/work" "$3"
+    }
   # A new suite also needs a row in the test image's resolve_category.
   SUITES: |-
     {
@@ -537,11 +542,9 @@ jobs:
         if: steps.reuse.outputs.reuse != 'reused'
         run: |
           cd "$GITHUB_WORKSPACE"
+          eval "$OVERLAY"
           # upper and work on the node disk: overlayfs refuses an upperdir on overlayfs, which / is.
-          mkdir -p "$RUNNER_TEMP/src-upper" "$RUNNER_TEMP/src-work" cubrid
-          mount -t overlay overlay \
-            -o "lowerdir=$BUILD_MIRROR/cubrid,upperdir=$RUNNER_TEMP/src-upper,workdir=$RUNNER_TEMP/src-work" \
-            cubrid
+          overlay "$BUILD_MIRROR/cubrid" "$RUNNER_TEMP/src" cubrid
           # Never shallow: build.sh reads the serial off `git rev-list --count`.
           /entrypoint.sh checkout "$SHA"
 
@@ -745,7 +748,7 @@ jobs:
       - name: GitHub App token
         id: app-token
         uses: actions/create-github-app-token@v3
-        with:
+        with: &tc-app-token
           app-id: ${{ secrets.TC_APP_ID }}
           private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
           # One repo only: naming cubrid-testtools too fails the issuance.
@@ -762,6 +765,7 @@ jobs:
           TC_UNTIL: ${{ needs.gate.outputs.tc_until }}
         run: |
           echo "::add-mask::$GHI_TOKEN"
+          eval "$OVERLAY"
           attr() { jq -r --arg s "$1" --arg k "$2" '.[$s][$k] // ""' <<<"$SUITES"; }
           probe_branch() {
             local i rc
@@ -804,10 +808,7 @@ jobs:
           git config --global fetch.unpackLimit 1
 
           if [ -d "$CTP_SEED/.git" ]; then
-            mkdir -p /rw/ctp-upper /rw/ctp-work "$WORKDIR/cubrid-testtools"
-            mount -t overlay overlay \
-              -o "lowerdir=$CTP_SEED,upperdir=/rw/ctp-upper,workdir=/rw/ctp-work" \
-              "$WORKDIR/cubrid-testtools"
+            overlay "$CTP_SEED" /rw/ctp "$WORKDIR/cubrid-testtools"
             git -C "$WORKDIR/cubrid-testtools" remote set-url origin "$CTP_REPO"
           else
             echo "::warning::no usable CTP seed at $CTP_SEED; the entrypoint will clone"
@@ -826,9 +827,7 @@ jobs:
             [ -d "$seed" ] || {
               echo "::error::no testcase seed for $suite: $seed; gha-node-seed swaps it, so it can be absent for a moment"
               exit 1; }
-            mkdir -p "/rw/$repo-upper" "/rw/$repo-work" "$dir"
-            mount -t overlay overlay \
-              -o "lowerdir=$seed,upperdir=/rw/$repo-upper,workdir=/rw/$repo-work" "$dir"
+            overlay "$seed" "/rw/$repo" "$dir"
 
             use_token
             # No fallback to develop: the verdict would be against the wrong cases.
@@ -1172,16 +1171,14 @@ jobs:
           SHA: ${{ needs.plan.outputs.sha }}
           WANT_BRID: ${{ needs.plan.outputs.build_run_id }}
         run: |
+          eval "$OVERLAY"
           for seed in "$TC_SEED" "$CTP_SEED"; do
             [ -d "$seed/.git" ] || {
               echo "::error::no node copy at $seed; gha-node-seed swaps it, so it can be absent for a moment"
               exit 1; }
           done
-          mkdir -p /rw/upper /rw/work "$TC_DIR"
-          mount -t overlay overlay -o "lowerdir=$TC_SEED,upperdir=/rw/upper,workdir=/rw/work" "$TC_DIR"
-          mkdir -p /rw/ctp-upper /rw/ctp-work "$WORKDIR/cubrid-testtools"
-          mount -t overlay overlay \
-            -o "lowerdir=$CTP_SEED,upperdir=/rw/ctp-upper,workdir=/rw/ctp-work" "$WORKDIR/cubrid-testtools"
+          overlay "$TC_SEED" /rw/tc "$TC_DIR"
+          overlay "$CTP_SEED" /rw/ctp "$WORKDIR/cubrid-testtools"
           [ -x "$CTP_HOME/bin/ctp.sh" ] || { echo "::error::no CTP at the image's CTP_HOME ($CTP_HOME)"; exit 1; }
 
           base="$CI_BUILD_ROOT/$BUILD_NS/$SHA/debug"
@@ -1196,9 +1193,7 @@ jobs:
             echo "::error::no build: $base/CUBRID.tar.gz"; exit 1
           fi
           echo "build unpacked in $(( $(date +%s) - t0 ))s"
-          mkdir -p /build-rw/upper /build-rw/work "$CUBRID_DIR"
-          mount -t overlay overlay \
-            -o lowerdir="$lower",upperdir=/build-rw/upper,workdir=/build-rw/work "$CUBRID_DIR"
+          overlay "$lower" /build-rw "$CUBRID_DIR"
 
           m="$CUBRID_DIR/$BUILD_META"
           [ -f "$m" ] || { echo "::error::no $BUILD_META inside the mounted CUBRID"; exit 1; }
@@ -1216,13 +1211,7 @@ jobs:
         id: app-token
         if: steps.suite.outputs.tc_private == 'yes'
         uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.TC_APP_ID }}
-          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
-          # One repo only: naming cubrid-testtools too fails the issuance.
-          repositories: cubrid-testcases-private-ex
-          owner: CUBRID
-          permission-contents: read
+        with: *tc-app-token
 
       - name: Align CTP and testcases to the commits plan saw
         env:
