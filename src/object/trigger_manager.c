@@ -3427,7 +3427,8 @@ end:
  *
  * Note:
  *    If the trigger is associated with a class, the current user must have appropriate class authorization.
- *    If the trigger is associated with a user, the current user must be the owner of the trigger.
+ *    If the trigger is associated with a user, the current user must be the owner of the trigger or a member
+ *    of the DBA group.
  *    If the alter flag is set, it means that the trigger is about to be modified in some way.
  */
 static bool
@@ -3474,8 +3475,8 @@ check_authorization (TR_TRIGGER * trigger, bool alter_flag)
     }
   else
     {
-      /* its a user trigger, must be the active user */
-      if (ws_is_same_object (trigger->owner, Au_user))
+      /* its a user trigger, must be the owner or a member of the DBA group */
+      if (ws_is_same_object (trigger->owner, Au_user) || au_is_dba_group_member (Au_user))
 	{
 	  status = true;
 	}
