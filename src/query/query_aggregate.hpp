@@ -123,6 +123,13 @@ int qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubx
     tp_domain *func_domain, cubxasl::aggregate_accumulator *new_acc);
 void qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list, const val_descr *vd);
 void qdata_link_shared_accumulators_by_cell (cubxasl::aggregate_list_node *agg_list, const val_descr *vd);
+struct expr_prog;
+struct expr_batch_plan;
+struct expr_batch;
+expr_prog *qdata_agg_operand_prog_ensure (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
+    val_descr *val_desc_p);
+int qdata_evaluate_aggregate_batch (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list_p,
+				    val_descr *val_desc_p, expr_batch_plan *plan, const expr_batch *batch);
 int qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list, val_descr *vd,
 				   cubxasl::aggregate_accumulator *alt_acc_list, bool use_desc_index);
 int qdata_evaluate_aggregate_optimize (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_ptr, HFID *hfid,
