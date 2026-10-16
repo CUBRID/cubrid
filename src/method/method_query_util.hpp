@@ -32,7 +32,6 @@ namespace cubmethod
   std::string convert_db_value_to_string (DB_VALUE *value, DB_VALUE *value_string);
   char *get_backslash_escape_string (void);
 
-#if !defined(SERVER_MODE)
   typedef enum
   {
     NONE_TOKENS,
@@ -43,9 +42,12 @@ namespace cubmethod
     DOUBLE_QUOTED_STRING
   } STATEMENT_STATUS;
 
+  int consume_tokens (const std::string &sql, int index, STATEMENT_STATUS stmt_status);
+  std::size_t skip_leading_whitespace_and_comment (const std::string &sql, std::size_t index);
+
+#if !defined(SERVER_MODE)
   int get_stmt_type (std::string sql);
   int calculate_num_markers (const std::string &sql);
-  int consume_tokens (std::string sql, int index, STATEMENT_STATUS stmt_status);
 
   std::string get_column_default_as_string (DB_ATTRIBUTE *attr);
   void serialize_collection_as_string (DB_VALUE *col, std::string &out);

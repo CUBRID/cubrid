@@ -417,8 +417,7 @@ fn_prepare_internal (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf,
    * by temporarily NUL-terminating its argument in place (hide_password.cpp) -- writing
    * through that pointer would fault.  ux_prepare() already made a writable heap copy of
    * the very same text in srv_handle->sql_stmt, so log through that instead of copying
-   * again.  the copy is skipped for CCI_PREPARE_CALL (never rewritten), whose handle
-   * text ux_prepare() trims in place. */
+   * again. */
   log_sql = (replace_rule_idx >= 0 && srv_handle != NULL) ? srv_handle->sql_stmt : effective_sql;
   effective_size = (int) strlen (log_sql) + 1;
 
