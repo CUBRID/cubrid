@@ -229,7 +229,7 @@ namespace parallel_query
 	  return;
 	}
 
-      if (thread_is_on_trace (&thread_ref))
+      if (m_manager->px_worker_stats != nullptr)
 	{
 	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager, m_index);
 	  thread_ref.m_uses_px_stats = true;
@@ -590,7 +590,7 @@ namespace parallel_query
 	  return;
 	}
 
-      if (thread_is_on_trace (&thread_ref))
+      if (m_manager->px_worker_stats != nullptr)
 	{
 	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager, m_index);
 	  thread_ref.m_uses_px_stats = true;
@@ -774,7 +774,7 @@ namespace parallel_query
 	  return;
 	}
 
-      if (thread_is_on_trace (&thread_ref))
+      if (m_manager->px_worker_stats != nullptr)
 	{
 	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager, m_index);
 	  thread_ref.m_uses_px_stats = true;

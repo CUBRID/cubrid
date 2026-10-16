@@ -36,7 +36,6 @@
 #include "qfile_tuple_layout.h"
 
 #include "binaryheap.h"
-#include "deduplicate_key.h"
 #include "porting.h"
 #include "error_manager.h"
 #include "partition_sr.h"
@@ -445,6 +444,7 @@ static int qexec_clear_agg_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, AG
 				 bool for_parallel_aptr);
 static void qexec_clear_head_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
+static bool qexec_is_list_reusable_by_truncate (const XASL_NODE * xasl);
 static void qexec_clear_all_lists (THREAD_ENTRY * thread_p, XASL_NODE * xasl_list);
 static void qexec_final_close_dblink_specs (XASL_NODE * xasl);
 static int qexec_clear_update_assignment (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, UPDATE_ASSIGNMENT * assignment,
@@ -3292,6 +3292,14 @@ qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_
 	  /* skip out zero correlation-level uncorrelated subquery */
 	  continue;
 	}
+      if (!qexec_is_list_reusable_by_truncate (xasl))
+	{
+	  /* the execution leaves a list_id of a different shape (GROUP BY, analytic, set operation) or with a sort_list
+	   * (ORDER BY, DISTINCT); destroy it so that the next execution opens it again */
+	  qexec_clear_xasl_head (thread_p, xasl);
+	  continue;
+	}
+
       if (xasl->list_id && !xasl->list_id->is_result_cached)
 	{
 	  qfile_truncate_list (thread_p, xasl->list_id);
@@ -3328,6 +3336,35 @@ qexec_clear_head_lists_with_truncate (THREAD_ENTRY * thread_p, XASL_NODE * xasl_
 	{
 	  xasl->status = XASL_CLEARED;
 	}
+    }
+}
+
+/*
+ * qexec_is_list_reusable_by_truncate () - check whether the list file of a correlated subquery can be truncated and
+ *					    reused by its next execution
+ *   return: true if the list file keeps the shape it was opened with until the end of the execution
+ *   xasl(in): XASL procedure block
+ *
+ * Note: a truncated list file keeps its type_list and sort_list, so the next execution skips opening it and writes
+ *	 into it as is. That is right only when the list file stays as opened by qexec_start_mainblock_iterations ()
+ *	 or qexec_end_buildvalueblock_iterations (). GROUP BY, analytic functions and set operations replace it with
+ *	 a result list file of a different shape, and ORDER BY and DISTINCT leave a sort_list on it.
+ */
+static bool
+qexec_is_list_reusable_by_truncate (const XASL_NODE * xasl)
+{
+  switch (xasl->type)
+    {
+    case BUILDVALUE_PROC:
+      return true;
+
+    case BUILDLIST_PROC:
+      return (xasl->proc.buildlist.groupby_list == NULL && xasl->proc.buildlist.a_eval_list == NULL
+	      && (xasl->orderby_list == NULL || XASL_IS_FLAGED (xasl, XASL_SKIP_ORDERBY_LIST))
+	      && xasl->option != Q_DISTINCT);
+
+    default:
+      return false;
     }
 }
 
@@ -3971,11 +4008,9 @@ qexec_orderby_distinct (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_OPTIONS
     {
       tsc_getticks (&start_tick);
 
-      if (xasl->orderby_stats.orderby_filesort)
-	{
-	  old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
-	  old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
-	}
+      /* not under orderby_filesort: the sort below is what sets it on the first execution */
+      old_sort_pages = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_DATA_PAGES);
+      old_sort_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_SORT_NUM_IO_PAGES);
     }
 
   if (xasl->topn_items != NULL)
@@ -5024,6 +5059,9 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	      agg_list = agg_list->next;
 	      i++;
 	    }
+
+	  /* a group evicted from the hash table more than once has one entry per eviction */
+	  context->curr_part_value->tuple_count += context->temp_part_value->tuple_count;
 	}
       else
 	{
@@ -9178,14 +9216,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	    {
 	      if (spec->s_id.s.phsid.trace_storage)
 		{
-		  if (thread_p->m_px_stats != NULL)
-		    {
-		      spec->s_id.scan_stats.num_fetches +=
-			thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
-		      spec->s_id.scan_stats.num_ioreads +=
-			thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
-		    }
-
+		  /* the workers' fixes reached scan_stats in manager::merge_stats () */
 		  spec->s_id.s.phsid.trace_storage->set_last_partition_stats (&spec->curent->scan_stats);
 		}
 	    }
@@ -9193,14 +9224,7 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	    {
 	      if (spec->s_id.s.pisid.trace_storage)
 		{
-		  if (thread_p->m_px_stats != NULL)
-		    {
-		      spec->s_id.scan_stats.num_fetches +=
-			thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset];
-		      spec->s_id.scan_stats.num_ioreads +=
-			thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset];
-		    }
-
+		  /* the workers' fixes reached scan_stats in manager::merge_stats () */
 		  spec->s_id.s.pisid.trace_storage->set_last_partition_stats (&spec->curent->scan_stats);
 		}
 	    }
@@ -9590,11 +9614,26 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 	  if (!buildvalue->is_always_false)
 	    {
-	      error =
-		qexec_evaluate_aggregates_optimize (thread_p, buildvalue->agg_list, xasl->spec_list, &is_scan_needed);
-	      if (error != NO_ERROR)
+	      if (XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
 		{
+		  /* A hierarchical query aggregates the CONNECT BY expansion, not the class rows, so the
+		   * statistics/index based evaluation (which counts the class) does not apply. Clear the flag
+		   * so that the regular accumulation is not skipped either. */
+		  for (agg_ptr = buildvalue->agg_list; agg_ptr; agg_ptr = agg_ptr->next)
+		    {
+		      agg_ptr->flag.agg_optimized = false;
+		    }
 		  is_scan_needed = true;
+		}
+	      else
+		{
+		  error =
+		    qexec_evaluate_aggregates_optimize (thread_p, buildvalue->agg_list, xasl->spec_list,
+							&is_scan_needed);
+		  if (error != NO_ERROR)
+		    {
+		      is_scan_needed = true;
+		    }
 		}
 	    }
 
@@ -9609,12 +9648,13 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	    }
 
 	  agg_ptr = buildvalue->agg_list;
-	  /* check only one count(*) function
+	  /* check only one count(*) function. A hierarchical query is excluded: its scan feeds the START WITH list
+	   * and the hierarchy expansion is what gets counted, not the index keys (CBRD-27461).
 	   * TO_DO : this routine can be moved to XASL generator */
 	  if (!xasl->fptr_list	/* no path expressions */
 	      && !xasl->instnum_pred	/* no instnum predicate */
 	      && agg_ptr->next == NULL	/* no other aggregate functions */
-	      && agg_ptr->function == PT_COUNT_STAR)
+	      && agg_ptr->function == PT_COUNT_STAR && !XASL_IS_FLAGED (xasl, XASL_HAS_CONNECT_BY))
 	    {
 	      ACCESS_SPEC_TYPE *specp;
 	      bool is_scan_ptr = xasl->scan_ptr ? true : false;
@@ -12155,8 +12195,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       HFID_COPY (&pruned_hfid, &class_hfid);
       BTID_COPY (&btid, &index->btid);
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
-				NULL, false);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &new_recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
       /* TODO: unique with prefix length */
       if (key_dbvalue == NULL)
 	{
@@ -12386,8 +12425,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       is_global_index = false;
 
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
-				NULL, false);
+	heap_attrvalue_get_key (thread_p, i, index_attr_info, &recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
       if (key_dbvalue == NULL)
 	{
 	  goto error_exit;
@@ -13358,7 +13396,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
   if (insert->has_uniques && (insert->do_replace || odku_assignments != NULL))
     {
-      if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info, false) < 0)
+      if (heap_attrinfo_start_with_index (thread_p, &class_oid, NULL, &index_attr_info, &idx_info) < 0)
 	{
 	  GOTO_EXIT_ON_ERROR;
 	}
@@ -17863,7 +17901,9 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 {
   QFILE_LIST_ID *listfile0 = NULL, *listfile1 = NULL, *listfile2 = NULL;
   QFILE_LIST_ID *listfile2_tmp = NULL;	/* for order siblings by */
-  QFILE_TUPLE_VALUE_TYPE_LIST type_list = { NULL, 0 };
+  /* Value initialise the whole struct: naming a prefix of the members is what let a
+   * later field be added without this initialiser following it. */
+  QFILE_TUPLE_VALUE_TYPE_LIST type_list = { };
   QFILE_TUPLE_POSITION parent_pos;
   QFILE_LIST_SCAN_ID lfscan_id_lst2tmp, input_lfscan_id;
   QFILE_TUPLE_RECORD tpl_lst2tmp = QFILE_TUPLE_RECORD_INITIALIZER;
@@ -24720,13 +24760,7 @@ qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	{
 	  index_att = index->atts[j];
 	  att_id = index_att->id;
-	  assert (att_id >= 0 || IS_DEDUPLICATE_KEY_ATTR_ID (att_id));
-
-	  if (IS_DEDUPLICATE_KEY_ATTR_ID (att_id))
-	    {
-	      assert ((j + 1) == num_idx_att);
-	      break;
-	    }
+	  assert (att_id >= 0);
 
 	  if (index_position == function_index_pos)
 	    {
