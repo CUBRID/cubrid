@@ -133,6 +133,7 @@ sp_stmt_guard::sp_stmt_guard (const PT_NODE *statement)
     case PT_UNION:
     case PT_DIFFERENCE:
     case PT_INTERSECTION:
+    case PT_DO:
       entry.stmt_type = CUBRID_STMT_SELECT;
       break;
 
