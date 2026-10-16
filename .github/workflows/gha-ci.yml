@@ -366,6 +366,7 @@ jobs:
 
           tc_repo=''; tc_sha=''; tc_dirs=''
           if [ -n "$tc" ]; then
+            tc="${tc#\#}"
             [[ "$tc" =~ ^[0-9]{1,7}$ ]] || { echo "::error::tc must be a PR number, got: ${tc}"; exit 1; }
             [ -z "$rerun" ] || { echo "::error::a tc trial has no re-run. Comment /run <suite> tc=${tc} again"; exit 1; }
             [ "$(wc -w <<<"$sel")" -eq 1 ] || { echo "::error::tc takes exactly one suite: shell, sql or medium"; exit 1; }
