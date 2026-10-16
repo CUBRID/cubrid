@@ -376,13 +376,16 @@ jobs:
             post_status=false
             tc_repo=$(jq -r --arg s "$sel" '.[$s].tc_repo' <<<"$SUITES")
             pull=$(GH_TOKEN="$TC_TOKEN" gh api "repos/CUBRID/${tc_repo}/pulls/${tc}" \
-              --jq '[.head.sha, .author_association, .user.login] | @tsv') || {
+              --jq '[.head.sha, .user.login] | @tsv') || {
               echo "::error::could not read ${tc_repo} PR ${tc}"; exit 1; }
-            read -r tc_sha assoc author <<<"$pull"
-            # Shards are privileged pods on the internal network.
-            case "$assoc" in
-              OWNER|MEMBER|COLLABORATOR) ;;
-              *) echo "::error::${tc_repo}#${tc} is by ${author} (${assoc}); only an owner's, member's or collaborator's testcases run here"; exit 1 ;;
+            read -r tc_sha author <<<"$pull"
+            # Shards are privileged pods on the internal network. Not author_association: to an app, a
+            # member who hides the membership is a CONTRIBUTOR.
+            perm=$(GH_TOKEN="$TC_TOKEN" gh api "repos/CUBRID/${tc_repo}/collaborators/${author}/permission" --jq .permission) || {
+              echo "::error::could not read the permission of ${author} on ${tc_repo}"; exit 1; }
+            case "$perm" in
+              admin|write) ;;
+              *) echo "::error::${tc_repo}#${tc} is by ${author}, who has ${perm} access there; only the cases of someone who can push to ${tc_repo} run here"; exit 1 ;;
             esac
             tc_dirs=$(GH_TOKEN="$TC_TOKEN" gh api --paginate "repos/CUBRID/${tc_repo}/pulls/${tc}/files?per_page=100" \
                 --jq '.[] | select(.status != "removed") | .filename' \
