@@ -4120,7 +4120,8 @@ qo_hq_column_is_bound (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NODE * spec, 
 
 /*
  * qo_hq_index_serves_child_lookup () - checks whether a normal index of the
- *   class can find the children of a parent row by a key range
+ *   class without a filter predicate can find the children of a parent row by
+ *   a key range
  *   return: whether the leading columns of an index are all fixed by the
  *           CONNECT BY predicate and one of them is the build side of a PRIOR
  *           link
@@ -4135,8 +4136,9 @@ qo_hq_index_serves_child_lookup (PARSER_CONTEXT * parser, PT_NODE * pred, PT_NOD
 
   for (cons = constraints; cons != NULL; cons = cons->next)
     {
+      /* a filter index is considered only with USING INDEX, which keeps the single-table plan anyway */
       if (!SM_IS_CONSTRAINT_INDEX_FAMILY (cons->type) || cons->index_status != SM_NORMAL_INDEX
-	  || cons->attributes == NULL)
+	  || cons->attributes == NULL || cons->filter_predicate != NULL)
 	{
 	  continue;
 	}
