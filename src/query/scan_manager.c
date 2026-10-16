@@ -8220,10 +8220,15 @@ scan_batch_collect_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID 
 	  LSA_COPY (&ref_lsa, pgbuf_get_lsa (scan_cache->page_watcher.pgptr));
 	  have_lsa = true;
 	}
-      if (recdes.type != REC_HOME || batch->n_rows >= batch->cap)
+      if (recdes.type != REC_HOME || batch->n_rows >= batch->cap || scan_cache->page_watcher.pgptr == NULL
+	  || recdes.data < (char *) scan_cache->page_watcher.pgptr
+	  || recdes.data >= (char *) scan_cache->page_watcher.pgptr + DB_PAGESIZE)
 	{
-	  /* a record assembled elsewhere than in this page (an overflow or relocated record
-	   * lands in the scan cache's one buffer, which the next one overwrites) */
+	  /* A record assembled elsewhere than in this page lands in the scan cache's one buffer,
+	   * which the next one overwrites: an overflow or relocated record, and also the previous
+	   * version of a record too new for the snapshot, which comes from the log with the type
+	   * of the record it was (REC_HOME) -- and whose walk may release the page the rows before
+	   * it were peeked from.  Such a page is for the row path. */
 	  code = S_DOESNT_FIT;
 	  break;
 	}
@@ -8280,10 +8285,10 @@ scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       hsidp->batch_started = true;
       scan_id->position = S_ON;	/* as the row path's first row does */
     }
-  else if (scan_cache->page_watcher.pgptr == NULL)
+  else if (VPID_ISNULL (&hsidp->batch_vpid))
     {
       /* past the last page already: the scan block ended; a second ask is the same answer */
-      assert (VPID_ISNULL (&hsidp->batch_vpid));
+      assert (scan_cache->page_watcher.pgptr == NULL);
       scan_id->position = S_AFTER;
       return S_END;
     }
@@ -8291,6 +8296,18 @@ scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
       PGBUF_WATCHER old_page_watcher;
 
+      if (scan_cache->page_watcher.pgptr == NULL)
+	{
+	  /* A previous-version walk released the page (heap_get_visible_version_from_log ()); the
+	   * version it read keeps the page from being deallocated, so it is fixed again only to
+	   * find its successor, as the row path finds it from its last OID. */
+	  rc = pgbuf_ordered_fix (thread_p, &hsidp->batch_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ,
+				  &scan_cache->page_watcher);
+	  if (rc != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	}
       PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_HEAP_NORMAL, &hsidp->hfid);
       if (heap_vpid_next (thread_p, &hsidp->hfid, scan_cache->page_watcher.pgptr, &vpid) != NO_ERROR)
 	{
