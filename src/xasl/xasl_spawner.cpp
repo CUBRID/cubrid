@@ -338,7 +338,7 @@ namespace cubxasl
 	return er_errid ();
 
       case TYPE_FUNC:
-	dest->value.funcp = spawn (dest->value.funcp);
+	dest->value.funcp = spawn (src->value.funcp);
 	break;
 
       case TYPE_REGUVAL_LIST:
