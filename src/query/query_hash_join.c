@@ -4659,16 +4659,18 @@ hjoin_print_tuple (QFILE_LIST_ID * list_id, QFILE_TUPLE tuple, HASHJOIN_PRINT_ST
  * Once filled, the first HJOIN_BLOOM_SAMPLE_ROWS checked rows decide whether checking goes on: when fewer than
  * HJOIN_BLOOM_MIN_SKIP_PERCENT of them are dropped, the rest go through unchecked.
  *
- * Parallel paths. Under a parallel subquery executor the two inputs would run as concurrent jobs, so a hash join
- * that can take a filter has its two inputs run one after the other on the executing thread instead
- * (hjoin_bloom_wants_serial); the other subqueries stay jobs. When the second input then scans in parallel, its
- * workers write rows to lists of their own from cloned xasl nodes: the scan sets the filter up before it starts
- * them (hjoin_bloom_prepare); the workers add the rows they see to a shared count in batches, and the owner thread,
- * which polls for the workers' end, fills the bits once the count passes the threshold (hjoin_bloom_poll) and
- * publishes it. From then on each worker checks its rows against the shared bits with a key and a row buffer of
- * its own (hjoin_bloom_worker_*), turns the filter off for all when its own sample drops too few rows, and adds its
- * counts at the end. Only the owner reads the first input and frees the filter, after the second input - its
- * workers included - is done.
+ * Parallel paths. Under a parallel subquery executor the two inputs run as concurrent jobs on other threads. The
+ * filter is attached to both before they start: the first input's job, once its list is final, publishes its row
+ * count (hjoin_bloom_input_done) - only then can the bits be filled - and the second input counts the rows it
+ * gives meanwhile, unchecked. The thread that runs the second input (the owner) fills the bits when the first is
+ * done and the second has given threshold rows, so a first input that finishes late, or a second that stays
+ * small, costs nothing but the counting. When the second input scans in parallel, its workers write rows to lists
+ * of their own from cloned xasl nodes: they add the rows they see to the shared count in batches, the owner, which
+ * polls for the workers' end, fills the bits (hjoin_bloom_poll) and publishes them, and from then on each worker
+ * checks its rows against the shared bits with a key and a row buffer of its own (hjoin_bloom_worker_*), turns the
+ * filter off for all when its own sample drops too few rows, and adds its counts at the end. Everything the owner
+ * allocates it frees when the second input is done, on its own thread; the hash join's thread frees the filter
+ * itself after both inputs are done (hjoin_bloom_finish).
  */
 
 
@@ -4683,24 +4685,28 @@ hjoin_print_tuple (QFILE_LIST_ID * list_id, QFILE_TUPLE tuple, HASHJOIN_PRINT_ST
 
 enum
 {
-  HJOIN_BLOOM_WAITING = 0,	/* set up or about to be; the bits are not filled: rows go through unchecked */
+  HJOIN_BLOOM_WAITING = 0,	/* the bits are not filled: rows go through unchecked */
   HJOIN_BLOOM_READY,		/* filled and published: rows are checked */
   HJOIN_BLOOM_OFF		/* not applicable, failed or not worth it: rows go through unchecked */
 };
 
 struct hjoin_bloom
 {
-  XASL_NODE *hj_xasl;		/* the hash join */
-  XASL_NODE *owner_xasl;	/* the second input the filter is attached to */
-  THREAD_ENTRY *owner_thread;	/* the thread materializing it: the only one that reads the first input */
+  XASL_NODE *hj_xasl;		/* the hash join; its thread allocates and frees this struct */
+  XASL_NODE *first_xasl;	/* the input whose keys fill the bits */
+  XASL_NODE *owner_xasl;	/* the input whose rows are checked */
+  THREAD_ENTRY *owner_thread;	/* the thread running owner_xasl, bound at its first use: reads the first input and
+				 * owns key, row_buf and bits */
   bool first_is_outer;
   bool set_up;			/* domains and the owner's key are decided */
 
   /* HJOIN_BLOOM_WAITING -> READY or OFF; READY -> OFF. Read by the workers (acquire), published by the owner
    * (release) once the bits are filled; any thread may turn it off. */
   volatile INT64 state;
-  INT64 off_reason;		/* HASHJOIN_BLOOM_OFF_*, written once before the state goes off */
+  INT64 off_reason;		/* HASHJOIN_BLOOM_*, written once before the state goes off */
 
+  /* published by the first input's thread once its list is final (release), read by the owner (acquire) */
+  volatile INT64 first_done;
   INT64 first_rows;		/* the first input's row count */
   INT64 threshold;		/* second-input rows to see before the bits are filled */
   volatile INT64 seen;		/* second-input rows seen so far (the owner's and the workers' batches) */
@@ -4827,24 +4833,35 @@ hjoin_bloom_second_eligible (const HASHJOIN_PROC_NODE * proc, const XASL_NODE * 
 }
 
 /*
- * hjoin_bloom_wants_serial () - should the inputs of this hash join run one after the other on the executing thread
- *				 rather than as concurrent jobs of a parallel subquery executor?
- *   hj_xasl(in): a hash join whose aptr loop is about to run
+ * hjoin_bloom_attach () - attach a Bloom filter to the inputs of a hash join before they run
+ *   hj_xasl(in): a hash join whose aptr loop is about to run its inputs (inline or as parallel jobs)
  *
- * True when the parameter is on and the input its aptr list runs second could take a filter of the first one's
- * keys; whether it does (the first input's row count) is decided by hjoin_bloom_attach once the first is done.
+ * The input its aptr list runs first gives the keys, the other one is checked. Nothing is attached unless the
+ * parameter is on and the checked input is a side the join does not preserve and writes its rows straight to its
+ * list (no grouping, analytic, top-n, limit, ORDERBY_NUM () or distinct between the row and the list: dropping a
+ * row there would change which rows those keep or how they are numbered), nor when its list comes from the
+ * subquery result cache (another execution's) or it is the SELECT of an UPDATE / DELETE (its rows carry the OIDs
+ * to change). Whether the bits are ever filled is decided as the inputs run.
  */
-bool
-hjoin_bloom_wants_serial (XASL_NODE * hj_xasl)
+void
+hjoin_bloom_attach (THREAD_ENTRY * thread_p, XASL_NODE * hj_xasl)
 {
   HASHJOIN_PROC_NODE *proc;
   XASL_NODE *xptr, *first_xasl = NULL, *second_xasl = NULL;
+  HJOIN_BLOOM *bloom;
 
-  if (!prm_get_bool_value (PRM_ID_HASH_JOIN_BLOOM_FILTER) || hj_xasl == NULL || hj_xasl->type != HASHJOIN_PROC)
+  if (hj_xasl == NULL || hj_xasl->type != HASHJOIN_PROC)
     {
-      return false;
+      return;
     }
   proc = &hj_xasl->proc.hashjoin;
+  /* the trace of this execution starts empty (hjoin_bloom_finish fills it) */
+  memset (&proc->bloom_stats, 0, sizeof (proc->bloom_stats));
+
+  if (!prm_get_bool_value (PRM_ID_HASH_JOIN_BLOOM_FILTER))
+    {
+      return;
+    }
 
   for (xptr = hj_xasl->aptr_list; xptr != NULL; xptr = xptr->next)
     {
@@ -4863,59 +4880,10 @@ hjoin_bloom_wants_serial (XASL_NODE * hj_xasl)
 	}
     }
   if (first_xasl == NULL || second_xasl == NULL || XASL_IS_FLAGED (first_xasl, XASL_LINK_TO_REGU_VARIABLE)
-      || XASL_IS_FLAGED (second_xasl, XASL_LINK_TO_REGU_VARIABLE))
-    {
-      return false;
-    }
-  return hjoin_bloom_second_eligible (proc, second_xasl, first_xasl == proc->outer.xasl);
-}
-
-void
-hjoin_bloom_attach (THREAD_ENTRY * thread_p, XASL_NODE * hj_xasl, XASL_NODE * second_xasl)
-{
-  HASHJOIN_PROC_NODE *proc;
-  XASL_NODE *first_xasl;
-  HJOIN_BLOOM *bloom;
-  bool first_is_outer;
-
-  if (hj_xasl == NULL || hj_xasl->type != HASHJOIN_PROC)
-    {
-      return;
-    }
-
-  proc = &hj_xasl->proc.hashjoin;
-  /* the trace of this execution starts empty (the call for the first input lands here too; the detach after the
-   * second input fills it) */
-  memset (&proc->bloom_stats, 0, sizeof (proc->bloom_stats));
-
-  if (!prm_get_bool_value (PRM_ID_HASH_JOIN_BLOOM_FILTER) || second_xasl == NULL || second_xasl->hj_bloom != NULL)
-    {
-      return;
-    }
-
-  if (second_xasl == proc->inner.xasl)
-    {
-      first_xasl = proc->outer.xasl;
-      first_is_outer = true;
-    }
-  else if (second_xasl == proc->outer.xasl)
-    {
-      first_xasl = proc->inner.xasl;
-      first_is_outer = false;
-    }
-  else
-    {
-      return;
-    }
-
-  if (!hjoin_bloom_second_eligible (proc, second_xasl, first_is_outer))
-    {
-      return;
-    }
-
-  if (first_xasl == NULL || first_xasl->status != XASL_SUCCESS || first_xasl->list_id == NULL
-      || first_xasl->list_id->type_list.type_cnt == 0
-      || first_xasl->list_id->tuple_cnt <= 0 || first_xasl->list_id->tuple_cnt > HJOIN_BLOOM_MAX_FIRST_ROWS)
+      || XASL_IS_FLAGED (second_xasl, XASL_LINK_TO_REGU_VARIABLE) || first_xasl->hj_bloom != NULL
+      || second_xasl->hj_bloom != NULL || !IS_XASL_INITIAL_STATUS (first_xasl->status)
+      || !IS_XASL_INITIAL_STATUS (second_xasl->status)
+      || !hjoin_bloom_second_eligible (proc, second_xasl, first_xasl == proc->outer.xasl))
     {
       return;
     }
@@ -4928,18 +4896,81 @@ hjoin_bloom_attach (THREAD_ENTRY * thread_p, XASL_NODE * hj_xasl, XASL_NODE * se
     }
   memset (bloom, 0, sizeof (HJOIN_BLOOM));
   bloom->hj_xasl = hj_xasl;
+  bloom->first_xasl = first_xasl;
   bloom->owner_xasl = second_xasl;
-  bloom->owner_thread = thread_p;
-  bloom->first_is_outer = first_is_outer;
+  bloom->first_is_outer = (first_xasl == proc->outer.xasl);
   bloom->state = HJOIN_BLOOM_WAITING;
-  bloom->first_rows = first_xasl->list_id->tuple_cnt;
-  bloom->threshold = MAX ((INT64) HJOIN_BLOOM_MIN_SECOND_ROWS, bloom->first_rows / HJOIN_BLOOM_FIRST_PER_SECOND);
+  bloom->threshold = HJOIN_BLOOM_MIN_SECOND_ROWS;	/* raised when the first input's row count is known */
 
+  first_xasl->hj_bloom = bloom;
   second_xasl->hj_bloom = bloom;
 }
 
-/* the owner, once: the common domains from both lists and the owner's key - cheap, no pass over the first input */
+/* the owner's key, buffer and bits, freed on the owner's thread */
 static void
+hjoin_bloom_free_owned (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
+{
+  if (bloom->key != NULL)
+    {
+      qdata_free_hscan_key (thread_p, bloom->key, bloom->hj_xasl->proc.hashjoin.merge_info.ls_column_cnt);
+      bloom->key = NULL;
+    }
+  if (bloom->bits != NULL)
+    {
+      db_private_free_and_init (thread_p, bloom->bits);
+    }
+  if (bloom->row_buf != NULL)
+    {
+      db_private_free_and_init (thread_p, bloom->row_buf);
+    }
+}
+
+/*
+ * hjoin_bloom_input_done () - an input of a hash join with a filter has finished running, on the thread that ran it
+ *   xasl(in): the input; its list is final (after a parallel job's own list hand-over)
+ *   success(in): it ran to the end
+ *
+ * The first input publishes its row count, which sets the threshold and lets the bits be filled. The checked input
+ * frees what its thread allocated, and records that the first input was not done in time when the bits were never
+ * filled for that reason.
+ */
+void
+hjoin_bloom_input_done (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool success)
+{
+  HJOIN_BLOOM *bloom = xasl->hj_bloom;
+
+  if (bloom == NULL)
+    {
+      return;
+    }
+
+  if (xasl == bloom->first_xasl)
+    {
+      if (!success || xasl->list_id == NULL || xasl->list_id->tuple_cnt <= 0
+	  || xasl->list_id->tuple_cnt > HJOIN_BLOOM_MAX_FIRST_ROWS)
+	{
+	  hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FIRST_ROWS);
+	}
+      bloom->first_rows = xasl->list_id != NULL ? xasl->list_id->tuple_cnt : 0;
+      bloom->threshold = MAX ((INT64) HJOIN_BLOOM_MIN_SECOND_ROWS, bloom->first_rows / HJOIN_BLOOM_FIRST_PER_SECOND);
+      /* the row count and the list before the flag */
+      ATOMIC_STORE_64_RELEASE (&bloom->first_done, (INT64) 1);
+    }
+  else if (xasl == bloom->owner_xasl)
+    {
+      if (hjoin_bloom_state (bloom) == HJOIN_BLOOM_WAITING && ATOMIC_LOAD_64_ACQUIRE (&bloom->first_done) == 0)
+	{
+	  hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_FIRST_LATE);
+	}
+      if (bloom->owner_thread == thread_p)
+	{
+	  hjoin_bloom_free_owned (thread_p, bloom);
+	}
+    }
+}
+
+/* the owner, before the bits are filled: the common domains from both lists and the owner's key */
+static bool
 hjoin_bloom_setup (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
 {
   HASHJOIN_PROC_NODE *proc = &bloom->hj_xasl->proc.hashjoin;
@@ -4950,8 +4981,7 @@ hjoin_bloom_setup (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
 
   if (proc->outer.xasl->list_id->type_list.type_cnt == 0 || proc->inner.xasl->list_id->type_list.type_cnt == 0)
     {
-      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
-      return;
+      return false;
     }
 
   memset (&manager, 0, sizeof (HASHJOIN_MANAGER));
@@ -4961,16 +4991,14 @@ hjoin_bloom_setup (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   if (hjoin_init_domain_info (thread_p, &manager, domain_info) != NO_ERROR)
     {
       er_clear ();
-      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
-      return;
+      return false;
     }
 
   bloom->key = qdata_alloc_hscan_key (thread_p, proc->merge_info.ls_column_cnt, true);
   if (bloom->key == NULL)
     {
       er_clear ();
-      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
-      return;
+      return false;
     }
 
   bloom->first.input = bloom->first_is_outer ? &domain_info->outer : &domain_info->inner;
@@ -4979,16 +5007,16 @@ hjoin_bloom_setup (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   bloom->second.input = bloom->first_is_outer ? &domain_info->inner : &domain_info->outer;
   bloom->second.coerce_domains = domain_info->coerce_domains;
   bloom->second.need_coerce_domains = domain_info->need_coerce_domains;
+  return true;
 }
 
-/* the owner, once the second input has given threshold rows: every first-input key hashed into the bits, then
- * the filter published (or off when the pass fails: a filter missing some of the first input's keys would drop
- * rows that join) */
+/* the owner, once the first input is done and the second has given threshold rows: set up, hash every first-input
+ * key into the bits, then publish the filter (or turn it off when that fails: a filter missing some of the first
+ * input's keys would drop rows that join) */
 static void
 hjoin_bloom_fill (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
 {
-  HASHJOIN_PROC_NODE *proc = &bloom->hj_xasl->proc.hashjoin;
-  QFILE_LIST_ID *first_list_id;
+  QFILE_LIST_ID *first_list_id = bloom->first_xasl->list_id;
   QFILE_LIST_SCAN_ID scan_id;
   // *INDENT-OFF*
   QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
@@ -4997,9 +5025,13 @@ hjoin_bloom_fill (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   bool need_skip_next = false;
   SCAN_CODE scan_code;
 
-  assert (bloom->set_up && bloom->state == HJOIN_BLOOM_WAITING);
+  assert (bloom->state == HJOIN_BLOOM_WAITING && bloom->first_done != 0);
 
-  first_list_id = bloom->first_is_outer ? proc->outer.xasl->list_id : proc->inner.xasl->list_id;
+  if (!bloom->set_up && !hjoin_bloom_setup (thread_p, bloom))
+    {
+      hjoin_bloom_turn_off (bloom, HASHJOIN_BLOOM_OFF_FAILED);
+      return;
+    }
 
   /* power of two >= keys * bits-per-key, at least one word */
   nbits = 64;
@@ -5053,6 +5085,32 @@ hjoin_bloom_fill (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   ATOMIC_STORE_64_RELEASE (&bloom->state, (INT64) HJOIN_BLOOM_READY);
 }
 
+/* fill when the first input is done and the second has given threshold rows */
+static void
+hjoin_bloom_fill_if_due (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom, INT64 seen)
+{
+  if (hjoin_bloom_state (bloom) == HJOIN_BLOOM_WAITING && ATOMIC_LOAD_64_ACQUIRE (&bloom->first_done) != 0
+      && seen >= bloom->threshold)
+    {
+      hjoin_bloom_fill (thread_p, bloom);
+    }
+}
+
+/* is thread_p, running xasl, the owner? Binds the owner at its first use. */
+static bool
+hjoin_bloom_is_owner (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom, XASL_NODE * xasl)
+{
+  if (bloom == NULL || bloom->owner_xasl != xasl)
+    {
+      return false;
+    }
+  if (bloom->owner_thread == NULL)
+    {
+      bloom->owner_thread = thread_p;
+    }
+  return bloom->owner_thread == thread_p;
+}
+
 /* the decision on one serialized second-input row; key is the caller's (the owner's or a worker's). The bits and
  * the fetch info are only read. */
 static bool
@@ -5082,27 +5140,18 @@ hjoin_bloom_judge_sample (HJOIN_BLOOM * bloom, INT64 tested, INT64 skipped)
     }
 }
 
-/* the owner's view: NULL unless xasl is the node the filter was attached to, on its thread, and the filter is
- * checking. Counts the row; sets up on the first one and fills once the second input has given threshold rows. */
+/* the owner's view: NULL unless xasl is the checked input, on the thread running it, and the filter is checking.
+ * Counts the row and fills the bits when they are due. */
 static HJOIN_BLOOM *
 hjoin_bloom_owner_row (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
   HJOIN_BLOOM *bloom = xasl->hj_bloom;
-  INT64 seen;
 
-  if (bloom == NULL || bloom->owner_xasl != xasl || bloom->owner_thread != thread_p)
+  if (!hjoin_bloom_is_owner (thread_p, bloom, xasl))
     {
       return NULL;
     }
-  if (!bloom->set_up)
-    {
-      hjoin_bloom_setup (thread_p, bloom);
-    }
-  seen = ATOMIC_INC_64 (&bloom->seen, 1);
-  if (bloom->state == HJOIN_BLOOM_WAITING && seen >= bloom->threshold)
-    {
-      hjoin_bloom_fill (thread_p, bloom);
-    }
+  hjoin_bloom_fill_if_due (thread_p, bloom, ATOMIC_INC_64 (&bloom->seen, 1));
   return hjoin_bloom_state (bloom) == HJOIN_BLOOM_READY ? bloom : NULL;
 }
 
@@ -5198,41 +5247,33 @@ hjoin_bloom_skip_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, char *tuple)
 }
 
 /*
- * hjoin_bloom_prepare () - set the filter of xasl up now, on the thread that owns it, before a parallel scan of
- *			     xasl starts its workers (the bits are filled later, by hjoin_bloom_poll)
- *   return: the filter for the workers to share, or NULL when there is none (or it is off)
+ * hjoin_bloom_prepare () - before a parallel scan of xasl starts its workers: the filter they are to share, or NULL
+ *			     when xasl is not the checked input on this thread or the filter is off (the bits are filled
+ *			     later, by hjoin_bloom_poll)
  */
 HJOIN_BLOOM *
 hjoin_bloom_prepare (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
   HJOIN_BLOOM *bloom = (xasl != NULL) ? xasl->hj_bloom : NULL;
 
-  if (bloom == NULL || bloom->owner_xasl != xasl || bloom->owner_thread != thread_p)
+  if (!hjoin_bloom_is_owner (thread_p, bloom, xasl))
     {
       return NULL;
-    }
-  if (!bloom->set_up)
-    {
-      hjoin_bloom_setup (thread_p, bloom);
     }
   return hjoin_bloom_state (bloom) == HJOIN_BLOOM_OFF ? NULL : bloom;
 }
 
 /*
- * hjoin_bloom_poll () - the owner, while it waits for a parallel scan's workers: fill the bits once they have seen
- *			  threshold rows
+ * hjoin_bloom_poll () - the owner, while it waits for a parallel scan's workers: fill the bits once they are due
  */
 void
 hjoin_bloom_poll (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
 {
-  if (bloom == NULL || bloom->owner_thread != thread_p || !bloom->set_up)
+  if (bloom == NULL || bloom->owner_thread != thread_p)
     {
       return;
     }
-  if (hjoin_bloom_state (bloom) == HJOIN_BLOOM_WAITING && ATOMIC_LOAD_64 (&bloom->seen) >= bloom->threshold)
-    {
-      hjoin_bloom_fill (thread_p, bloom);
-    }
+  hjoin_bloom_fill_if_due (thread_p, bloom, ATOMIC_LOAD_64 (&bloom->seen));
 }
 
 /* one parallel scan worker's view of a shared filter */
@@ -5386,7 +5427,27 @@ hjoin_bloom_worker_end (THREAD_ENTRY * thread_p, HJOIN_BLOOM_WORKER * worker)
   db_private_free (thread_p, worker);
 }
 
-/* free the filter if xasl owns it */
+/* unlink the filter from both inputs and free it - the hash join's thread; whatever the owner allocated is freed
+ * here only when the owner is this thread (otherwise the owner freed it in hjoin_bloom_input_done) */
+static void
+hjoin_bloom_free (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
+{
+  if (bloom->owner_thread == NULL || bloom->owner_thread == thread_p)
+    {
+      hjoin_bloom_free_owned (thread_p, bloom);
+    }
+  if (bloom->first_xasl->hj_bloom == bloom)
+    {
+      bloom->first_xasl->hj_bloom = NULL;
+    }
+  if (bloom->owner_xasl->hj_bloom == bloom)
+    {
+      bloom->owner_xasl->hj_bloom = NULL;
+    }
+  db_private_free (thread_p, bloom);
+}
+
+/* an error path's clear of either input: the filter goes with the checked one */
 void
 hjoin_bloom_release (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
@@ -5396,41 +5457,42 @@ hjoin_bloom_release (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
     {
       return;
     }
-  xasl->hj_bloom = NULL;
-  if (bloom->owner_xasl != xasl)
+  if (xasl != bloom->owner_xasl && xasl != bloom->first_xasl)
     {
-      /* a cloned node carrying the original's pointer: the owner frees it */
+      /* a cloned node carrying the original's pointer */
+      xasl->hj_bloom = NULL;
       return;
     }
-
-  if (bloom->key != NULL)
-    {
-      qdata_free_hscan_key (thread_p, bloom->key, bloom->hj_xasl->proc.hashjoin.merge_info.ls_column_cnt);
-    }
-  if (bloom->bits != NULL)
-    {
-      db_private_free (thread_p, bloom->bits);
-    }
-  if (bloom->row_buf != NULL)
-    {
-      db_private_free (thread_p, bloom->row_buf);
-    }
-  db_private_free (thread_p, bloom);
+  hjoin_bloom_free (thread_p, bloom);
 }
 
-/* after the second input is materialized: keep what the filter did for trace and free it */
+/*
+ * hjoin_bloom_finish () - both inputs of the hash join are done (inline, or every parallel job joined): keep what
+ *			    the filter did for trace and free it, on the hash join's thread
+ */
 void
-hjoin_bloom_detach (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+hjoin_bloom_finish (THREAD_ENTRY * thread_p, XASL_NODE * hj_xasl)
 {
-  HJOIN_BLOOM *bloom = xasl->hj_bloom;
+  HASHJOIN_PROC_NODE *proc;
+  HJOIN_BLOOM *bloom;
   HASHJOIN_BLOOM_STATS *stats;
 
-  if (bloom == NULL || bloom->owner_xasl != xasl)
+  if (hj_xasl == NULL || hj_xasl->type != HASHJOIN_PROC)
+    {
+      return;
+    }
+  proc = &hj_xasl->proc.hashjoin;
+  bloom = proc->outer.xasl != NULL ? proc->outer.xasl->hj_bloom : NULL;
+  if (bloom == NULL && proc->inner.xasl != NULL)
+    {
+      bloom = proc->inner.xasl->hj_bloom;
+    }
+  if (bloom == NULL || bloom->hj_xasl != hj_xasl)
     {
       return;
     }
 
-  stats = &bloom->hj_xasl->proc.hashjoin.bloom_stats;
+  stats = &proc->bloom_stats;
   stats->attached = true;
   if (bloom->state == HJOIN_BLOOM_OFF)
     {
@@ -5447,5 +5509,5 @@ hjoin_bloom_detach (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
   stats->tested = bloom->tested;
   stats->skipped = bloom->skipped;
 
-  hjoin_bloom_release (thread_p, xasl);
+  hjoin_bloom_free (thread_p, bloom);
 }

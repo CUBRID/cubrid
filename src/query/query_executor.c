@@ -16294,7 +16294,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
   int multi_upddel = false;
   QFILE_LIST_MERGE_INFO *merge_infop;
   XASL_NODE *outer_xasl = NULL, *inner_xasl = NULL;
-  bool serial_hj_inputs = false;	/* CBRD-27659: see the aptr loop */
   XASL_NODE *fixed_scan_xasl = NULL;
   bool iscan_oid_order, force_select_lock = false;
   bool has_index_scan = false;
@@ -16668,14 +16667,18 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	      /* nothing to do */
 	    }
 
-	  /* CBRD-27659 (prototype): a hash join that can filter its second input by the first's keys runs the two one
-	   * after the other on this thread rather than as concurrent jobs (other subqueries stay jobs) */
-	  serial_hj_inputs = (xasl->px_executor != NULL && xptr->type == HASHJOIN_PROC
-			      && hjoin_bloom_wants_serial (xptr));
+	  if (xptr->type == HASHJOIN_PROC)
+	    {
+	      /* CBRD-27659 (prototype): a Bloom filter of the first input's keys on the second's rows, decided as the
+	       * two run (inline here, or as concurrent parallel jobs) */
+	      hjoin_bloom_attach (thread_p, xptr);
+	    }
 
 	  for (xptr2 = xptr->aptr_list; xptr2; xptr2 = xptr2->next)
 	    {
-	      if (merge_infop && (!xasl->px_executor || serial_hj_inputs))
+	      bool run_as_job = false;
+
+	      if (merge_infop && !xasl->px_executor)
 		{
 		  if (merge_infop->join_type == JOIN_INNER || merge_infop->join_type == JOIN_LEFT)
 		    {
@@ -16706,13 +16709,6 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		{
 		  /* skip if linked to regu var */
 		  continue;
-		}
-
-	      if (merge_infop != NULL && xptr->type == HASHJOIN_PROC && (xasl->px_executor == NULL || serial_hj_inputs)
-		  && IS_XASL_INITIAL_STATUS (xptr2->status))
-		{
-		  /* CBRD-27659 (prototype): the other input is done; let it filter this one's rows */
-		  hjoin_bloom_attach (thread_p, xptr, xptr2);
 		}
 
 	      if (IS_XASL_INITIAL_STATUS (xptr2->status))
@@ -16765,9 +16761,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		      /* a subquery flagged XASL_NO_PARALLEL_SUBQUERY on its own node contains an
 		       * SP/method call somewhere in its subtree: run it inline on the main thread
 		       * while unflagged siblings still go to px workers */
-		      if (xasl->px_executor && !XASL_IS_FLAGED (xptr2, XASL_NO_PARALLEL_SUBQUERY) && !serial_hj_inputs)
+		      if (xasl->px_executor && !XASL_IS_FLAGED (xptr2, XASL_NO_PARALLEL_SUBQUERY))
 			{
-			  if (!xasl->px_executor->add_job (thread_p, xptr2, xasl_state))
+			  run_as_job = xasl->px_executor->add_job (thread_p, xptr2, xasl_state);
+			  if (!run_as_job)
 			    {
 			      if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 				{
@@ -16818,10 +16815,10 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		    }
 		}
 
-	      if (xptr2->hj_bloom != NULL)
+	      if (xptr2->hj_bloom != NULL && !run_as_job)
 		{
-		  /* CBRD-27659: counters to the hash join for trace, filter freed */
-		  hjoin_bloom_detach (thread_p, xptr2);
+		  /* CBRD-27659: ran inline - its list is final (a parallel job says so when it ends) */
+		  hjoin_bloom_input_done (thread_p, xptr2, true);
 		}
 	    }
 	}
@@ -16843,6 +16840,15 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	}
 #endif
+
+      for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
+	{
+	  if (xptr->type == HASHJOIN_PROC)
+	    {
+	      /* CBRD-27659: both inputs are done - trace counters, filter freed */
+	      hjoin_bloom_finish (thread_p, xptr);
+	    }
+	}
 
       /* precompute uncorrelated scalar subqueries (precomp_owner_regu set) once on the main thread before the consuming scan opens; workers inject instead of re-executing (px_scan_task.cpp). fetch_peek_dbval reuses the lazy TYPE_CONSTANT path (SQ-/result-cache + owning regu dbvalptr preserved); errors propagate as in lazy eval. aptr_list only -- dptr_list (correlated) must never be precomputed. */
       for (xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr)

@@ -267,7 +267,9 @@ enum hashjoin_bloom_outcome
   HASHJOIN_BLOOM_NOT_BUILT = 0,	/* the second input gave fewer rows than the threshold: the bits were never filled */
   HASHJOIN_BLOOM_CHECKED,	/* filled and checked to the end */
   HASHJOIN_BLOOM_OFF_LOW_SKIP,	/* filled, then turned off: its sample dropped too few rows */
-  HASHJOIN_BLOOM_OFF_FAILED	/* could not be set up or filled */
+  HASHJOIN_BLOOM_OFF_FAILED,	/* could not be set up or filled */
+  HASHJOIN_BLOOM_FIRST_LATE,	/* the first input finished after the second: never filled */
+  HASHJOIN_BLOOM_OFF_FIRST_ROWS	/* the first input failed, was empty or too large to hash */
 };
 
 /* CBRD-27659 (prototype): what the Bloom filter on the second-materialized input did (hjoin_bloom_*). Not part of
@@ -491,11 +493,11 @@ int qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_i
 /* CBRD-27659 (prototype): Bloom join filter pushed into the second-materialized hash join input */
 typedef struct hjoin_bloom HJOIN_BLOOM;
 typedef struct hjoin_bloom_worker HJOIN_BLOOM_WORKER;
-bool hjoin_bloom_wants_serial (XASL_NODE * hj_xasl);
-void hjoin_bloom_attach (THREAD_ENTRY * thread_p, XASL_NODE * hj_xasl, XASL_NODE * second_xasl);
+void hjoin_bloom_attach (THREAD_ENTRY * thread_p, XASL_NODE * hj_xasl);
+void hjoin_bloom_input_done (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool success);
+void hjoin_bloom_finish (THREAD_ENTRY * thread_p, XASL_NODE * hj_xasl);
 bool hjoin_bloom_skip_descr (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 bool hjoin_bloom_skip_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, char *tuple);
-void hjoin_bloom_detach (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 void hjoin_bloom_release (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 /* a parallel scan of the second input: the owner builds the filter first, each worker checks with its own key */
 HJOIN_BLOOM *hjoin_bloom_prepare (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
