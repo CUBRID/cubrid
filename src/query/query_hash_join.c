@@ -4658,7 +4658,7 @@ hjoin_print_tuple (QFILE_LIST_ID * list_id, QFILE_TUPLE tuple, HASHJOIN_PRINT_ST
 
 typedef struct hjoin_bloom HJOIN_BLOOM;
 
-#define HJOIN_BLOOM_MAX_FIRST_ROWS	10000000	/* about 12 MB of bits at 10 bits per key */
+#define HJOIN_BLOOM_MAX_FIRST_ROWS	10000000	/* 2^27 bits (16 MB) at 10 bits per key, rounded up to a power of two */
 #define HJOIN_BLOOM_BITS_PER_KEY	10
 #define HJOIN_BLOOM_HASHES		3
 
@@ -4690,9 +4690,12 @@ static inline void
 hjoin_bloom_positions (UINT32 hash, UINT32 * h1, UINT32 * h2)
 {
   /* double hashing over one 32-bit hash: the second stride is odd, so with a power-of-two table the probes
-   * visit distinct positions */
+   * visit distinct positions. It is drawn from the hash multiplied by the golden ratio constant, not from the hash
+   * itself: a plain rotation shares the low bits with the first probe and doubled the false positive rate. */
+  UINT32 mixed = hash * 0x9E3779B1U;
+
   *h1 = hash;
-  *h2 = ((hash >> 16) | (hash << 16)) | 1;
+  *h2 = ((mixed >> 16) | (mixed << 16)) | 1;
 }
 
 static void
@@ -4835,6 +4838,7 @@ hjoin_bloom_build (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
   UINT64 nbits;
   bool need_skip_next = false;
   bool scan_open = false;
+  SCAN_CODE scan_code;
   int key_cnt;
 
   bloom->built = true;
@@ -4894,7 +4898,7 @@ hjoin_bloom_build (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
     }
   scan_open = true;
 
-  while (qfile_scan_list_next (thread_p, &scan_id, &tuple_record, PEEK) == S_SUCCESS)
+  while ((scan_code = qfile_scan_list_next (thread_p, &scan_id, &tuple_record, PEEK)) == S_SUCCESS)
     {
       if (hjoin_fetch_key (thread_p, &bloom->first, &tuple_record, bloom->key, NULL, &need_skip_next) != NO_ERROR)
 	{
@@ -4911,8 +4915,9 @@ hjoin_bloom_build (THREAD_ENTRY * thread_p, HJOIN_BLOOM * bloom)
       bloom->keys++;
     }
 
-  if (er_errid () != NO_ERROR)
+  if (scan_code != S_END || er_errid () != NO_ERROR)
     {
+      /* a filter missing some of the first input's keys would drop rows that join */
       er_clear ();
       goto end;
     }
@@ -4976,7 +4981,9 @@ hjoin_bloom_skip_descr (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 {
   HJOIN_BLOOM *bloom = hjoin_bloom_ready (thread_p, xasl);
   QFILE_TUPLE_DESCRIPTOR *descr;
-  QFILE_TUPLE_RECORD record;
+  // *INDENT-OFF*
+  QFILE_TUPLE_RECORD record = QFILE_TUPLE_RECORD_INITIALIZER;
+  // *INDENT-ON*
 
   if (bloom == NULL)
     {
@@ -5005,8 +5012,9 @@ hjoin_bloom_skip_descr (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       return false;
     }
 
-  record.tpl = bloom->row_buf;
-  record.size = descr->tpl_size;
+  /* hjoin_fetch_key finds the columns through the record's layout binding: bind it to the list the row is for */
+  qfile_slot_set_tuple_ptr_and_layout (&record, bloom->row_buf, 0 /* PEEK: the buffer is the filter's */ ,
+				       &xasl->list_id->type_list);
   return hjoin_bloom_skip_record (thread_p, bloom, &record);
 }
 
@@ -5015,14 +5023,15 @@ bool
 hjoin_bloom_skip_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, char *tuple)
 {
   HJOIN_BLOOM *bloom = hjoin_bloom_ready (thread_p, xasl);
-  QFILE_TUPLE_RECORD record;
+  // *INDENT-OFF*
+  QFILE_TUPLE_RECORD record = QFILE_TUPLE_RECORD_INITIALIZER;
+  // *INDENT-ON*
 
   if (bloom == NULL || tuple == NULL)
     {
       return false;
     }
-  record.tpl = tuple;
-  record.size = QFILE_GET_TUPLE_LENGTH (tuple);
+  qfile_slot_set_tuple_ptr_and_layout (&record, tuple, 0 /* PEEK: the caller's tuple */ , &xasl->list_id->type_list);
   return hjoin_bloom_skip_record (thread_p, bloom, &record);
 }
 
