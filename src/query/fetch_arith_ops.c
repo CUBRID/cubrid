@@ -64,12 +64,10 @@ static int get_hour_minute_or_second (const DB_VALUE * datetime, OPERATOR_TYPE o
 static int get_year_month_or_day (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
 static int get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
 /* An arithmetic node's row: the typed operator inline, the operand coercion out of line */
-STATIC_INLINE int fetch_arith_binary (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * arithptr,
-				      DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain)
-  __attribute__ ((ALWAYS_INLINE));
-static int fetch_arith_binary_operand_coercion (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * arithptr,
-						const RESOLVED_DOMAIN * plan, DB_VALUE * left, DB_VALUE * right,
-						TP_DOMAIN * domain) __attribute__ ((noinline));
+STATIC_INLINE int fetch_arith_binary (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right,
+				      TP_DOMAIN * domain) __attribute__ ((ALWAYS_INLINE));
+static int fetch_arith_binary_operand_coercion (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left,
+						DB_VALUE * right, TP_DOMAIN * domain) __attribute__ ((noinline));
 
 /*
  * fetch_session_read_value () - CBRD-27583 (4.8, D-40): a session variable read's value in the type the compilation gave
@@ -199,118 +197,61 @@ fetch_least_or_greatest (THREAD_ENTRY * thread_p, ARITH_TYPE * arithptr, val_des
 }
 
 /*
- * fetch_arith_binary () - an addition, subtraction, multiplication or division: its operands' operand coercion,
- *   resolved before any row, then the typed operator, which casts nothing (qdata_coerce_arith_operands)
+ * fetch_arith_binary () - an addition, subtraction, multiplication or division: the typed operator over the operand
+ *   coercion the node found at unpack (ARITH_TYPE.coercion), which casts nothing (qdata_coerce_arith_operands)
  *   return: NO_ERROR or ER_code
  *
- * The plan is the resolved domain for a node whose type resolve_domains resolves, the load's for any other node - a
- * compiled node, one whose collation alone resolve_domains resolves, a stream's node (domain_plan_operand_coercion). A
- * NULL operand converts nothing, resolved or not: an operator answers a NULL operand before any operand coercion.
- *
- * Inline at every call, with the operator called directly: the operand coercion's frame - its execution temporary
- * arrays, the stack protector they bring, the calls it makes - is fetch_arith_binary_operand_coercion's, which only a
- * plan that converts an operand, or a missing plan, reaches.
+ * XASL generation converts an operand of another type at its regu, so the coercion converts neither operand and the
+ * operator is called directly. A NULL operand converts nothing: an operator answers it before any operand coercion.
  */
 static inline int
-fetch_arith_binary (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left,
-		    DB_VALUE * right, TP_DOMAIN * domain)
+fetch_arith_binary (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain)
 {
-  const DOMAIN_PLAN_ITEM *item = arithptr->plan_item;
-  const RESOLVED_DOMAIN *plan = item != NULL ? &item->fixed : NULL;
-  if (item != NULL && (item->flags & DOMAIN_PLAN_LATE_BIND) && !(item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION))
+  const DOMAIN_OPERAND_COERCION *coercion = &arithptr->coercion;
+  if (coercion->conv[0] == NULL && coercion->conv[1] == NULL && coercion->arith.kind != DOMAIN_ARITH_UNRESOLVED)
     {
-      plan = qexec_late_bind_domain (vd, item);
+      /* its optdebug check still holds the decision to the rule over the values (qdata_assert_arith_planned) */
+      return qdata_arith_dbval (arithptr->opcode, &coercion->arith, left, right, arithptr->value, domain);
     }
-  if (plan != NULL && plan->arith.kind == DOMAIN_ARITH_UNRESOLVED)
-    {
-      /* a plan nothing resolved - the load met a variable operand and resolve_domains gave no entry: the
-       * unresolved-domain check (execution), as a missing plan */
-      plan = NULL;
-    }
-  if (plan != NULL && plan->conv[0] == NULL && plan->conv[1] == NULL)
-    {
-      /* an operand coercion that converts neither operand calls the operator directly, which dispatches on the plan's
-       * value (arith); its optdebug check still holds the plan to the rule over the values (qdata_assert_arith_planned)
-       */
-      return qdata_arith_dbval (arithptr->opcode, &plan->arith, left, right, arithptr->value, domain);
-    }
-  return fetch_arith_binary_operand_coercion (thread_p, vd, arithptr, plan, left, right, domain);
+  return fetch_arith_binary_operand_coercion (vd, arithptr, left, right, domain);
 }
 
-/* fetch_arith_binary's operand coercion: the operands the plan converts, a scope's execution temporary, or the
- * unresolved-domain check (execution) of a node without its plan (out of line) */
+/* fetch_arith_binary's operand coercion that converts an operand, or the unresolved-domain check (execution) of a node
+ * over an operand of a variable domain (out of line) */
 static int
-fetch_arith_binary_operand_coercion (THREAD_ENTRY * thread_p, const val_descr * vd, ARITH_TYPE * arithptr,
-				     const RESOLVED_DOMAIN * plan, DB_VALUE * left, DB_VALUE * right,
+fetch_arith_binary_operand_coercion (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right,
 				     TP_DOMAIN * domain)
 {
-  const DOMAIN_PLAN_ITEM *item = arithptr->plan_item;
-  if (plan == NULL && left != NULL && right != NULL && !DB_IS_NULL (left) && !DB_IS_NULL (right))
+  const DOMAIN_OPERAND_COERCION *coercion = &arithptr->coercion;
+  if (coercion->arith.kind == DOMAIN_ARITH_UNRESOLVED)
     {
-      /* every node of a loaded tree or stream carries its operand coercion, and resolve_domains resolved every node
-       * whose type it resolves before the main block: the unresolved-domain check (execution) */
-      return qexec_domain_unresolved (vd, item, arithptr->domain);
-    }
-  assert (item == NULL || !(item->flags & DOMAIN_PLAN_ITEM_COMPARES));
-  if (plan != NULL && (item->temporaries[0] >= 0 || item->temporaries[1] >= 0) && left != NULL && right != NULL
-      && !DB_IS_NULL (left) && !DB_IS_NULL (right))
-    {
-      /* an operand a scope fixes - a constant for the execution, a correlated value for its
-       * outer row - is converted once per scope */
-      DB_VALUE *const operands[2] = { left, right };
-      const DB_VALUE *temporaries[2] = { NULL, NULL };
-      for (int i = 0; i < 2; i++)
+      if (left != NULL && right != NULL && !DB_IS_NULL (left) && !DB_IS_NULL (right))
 	{
-	  if (item->temporaries[i] >= 0 && plan->conv[i] != NULL)
-	    {
-	      temporaries[i] =
-		qexec_execution_temporary (thread_p, vd, item->temporaries[i], plan->conv[i], plan->operand_domain[i],
-					   operands[i]);
-	    }
+	  return qexec_domain_unresolved (vd, arithptr->plan_item, arithptr->domain);
 	}
-      return qdata_coerce_arith_operands (arithptr->opcode, plan->conv, plan->operand_domain, &plan->arith, left,
-					  right, arithptr->value, domain, temporaries);
+      /* a NULL operand: the operator answers it before any dispatch */
+      return qdata_coerce_arith_operands (arithptr->opcode, NULL, NULL, NULL, left, right, arithptr->value, domain);
     }
-  /* without a plan an operand is NULL (the check above): the operator answers it before any dispatch */
-  return qdata_coerce_arith_operands (arithptr->opcode, plan != NULL ? plan->conv : NULL,
-				      plan != NULL ? plan->operand_domain : NULL, plan != NULL ? &plan->arith : NULL,
+  return qdata_coerce_arith_operands (arithptr->opcode, coercion->conv, coercion->operand_domain, &coercion->arith,
 				      left, right, arithptr->value, domain);
 }
 
 /*
  * fetch_cast_operand () - the cast of operand i's value into the node's domain (a CAST; the operand a NVL,
- *   IFNULL, COALESCE or NVL2 row picks), with the converter the load found for the operand's compiled type
- *   (domain_fixed_operand): the cast skips its per-value lookup for a value of that type
+ *   IFNULL, COALESCE or NVL2 row picks): a cast with the converter its node found at unpack from its operand's domain,
+ *   any other with the cast's per-value lookup
  *   force(in): tp_value_cast_force's coercion, else tp_value_cast's
  */
 static inline TP_DOMAIN_STATUS
-fetch_cast_operand (const val_descr * vd, const ARITH_TYPE * arithptr, int i, const DB_VALUE * value,
-		    DB_VALUE * result, const TP_DOMAIN * domain, bool force)
+fetch_cast_operand (const ARITH_TYPE * arithptr, int i, const DB_VALUE * value, DB_VALUE * result,
+		    const TP_DOMAIN * domain, bool force)
 {
-  const DOMAIN_PLAN_ITEM *item = arithptr->plan_item;
   const REGU_VARIABLE *operand = i == 0 ? arithptr->leftptr : i == 1 ? arithptr->rightptr : arithptr->thirdptr;
   if (arithptr->conv != NULL && domain == arithptr->domain)
     {
       /* CBRD-27583: a cast's converter, found at unpack from its operand's domain */
       return tp_value_cast_with_converter (value, result, domain, force, TP_DOMAIN_TYPE (operand->domain),
 					   arithptr->conv);
-    }
-  if (item != NULL && item->fixed.conv[i] != NULL && item->fixed.operand_domain[i] == domain && operand != NULL
-      && operand->domain != NULL)
-    {
-      return tp_value_cast_with_converter (value, result, domain, force, TP_DOMAIN_TYPE (operand->domain),
-					   item->fixed.conv[i]);
-    }
-  if (item != NULL && (item->flags & DOMAIN_PLAN_LATE_BIND_COERCION) && value != NULL && !DB_IS_NULL (value))
-    {
-      /* an operand the compiler did not type: resolve_domains found the converter from its resolved type
-       * (qexec_resolve_cast_coercion) */
-      const RESOLVED_DOMAIN *resolved = qexec_late_bind_domain (vd, item);
-      if (resolved != NULL && resolved->conv[i] != NULL && resolved->operand_domain[i] == domain)
-	{
-	  return tp_value_cast_with_converter (value, result, domain, force, DB_VALUE_DOMAIN_TYPE (value),
-					       resolved->conv[i]);
-	}
     }
   return force ? tp_value_cast_force (value, result, domain, false) : tp_value_cast (value, result, domain, false);
 }
@@ -547,7 +488,7 @@ fetch_op_add (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     }
   else
     {
-      if (fetch_arith_binary (thread_p, vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
+      if (fetch_arith_binary (vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -683,7 +624,7 @@ fetch_op_sub (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
 
-  if (fetch_arith_binary (thread_p, vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
+  if (fetch_arith_binary (vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -701,7 +642,7 @@ fetch_op_mul (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
 
-  if (fetch_arith_binary (thread_p, vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
+  if (fetch_arith_binary (vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -719,7 +660,7 @@ fetch_op_div (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
 
-  if (fetch_arith_binary (thread_p, vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
+  if (fetch_arith_binary (vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -3462,7 +3403,7 @@ fetch_op_cast (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     }
   else
     {
-      dom_status = fetch_cast_operand (vd, arithptr, 1, peek_right, arithptr->value, arith_domain,
+      dom_status = fetch_cast_operand (arithptr, 1, peek_right, arithptr->value, arith_domain,
 				       !REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_STRICT_TYPE_CAST)
 				       || arithptr->opcode != T_CAST_WRAP);
 
@@ -3516,7 +3457,7 @@ fetch_op_cast_nofail (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   else
     {
       /* the planned converter, as T_CAST takes it (fetch_cast_operand); a cast that fails leaves NULL */
-      if (fetch_cast_operand (vd, arithptr, 1, peek_right, arithptr->value, arith_domain, false) != DOMAIN_COMPATIBLE)
+      if (fetch_cast_operand (arithptr, 1, peek_right, arithptr->value, arith_domain, false) != DOMAIN_COMPATIBLE)
 	{
 	  PRIM_SET_NULL (arithptr->value);
 	}
@@ -3662,7 +3603,7 @@ fetch_op_nvl (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     }
 
   src = DB_IS_NULL (peek_left) ? peek_right : peek_left;
-  dom_status = fetch_cast_operand (vd, arithptr, DB_IS_NULL (peek_left) ? 1 : 0, src, arithptr->value,
+  dom_status = fetch_cast_operand (arithptr, DB_IS_NULL (peek_left) ? 1 : 0, src, arithptr->value,
 				   target_domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
@@ -3748,7 +3689,7 @@ fetch_op_nvl2 (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       src = peek_right;
     }
 
-  dom_status = fetch_cast_operand (vd, arithptr, DB_IS_NULL (peek_left) ? 2 : 1, src, arithptr->value,
+  dom_status = fetch_cast_operand (arithptr, DB_IS_NULL (peek_left) ? 2 : 1, src, arithptr->value,
 				   target_domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
     {

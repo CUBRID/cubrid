@@ -2526,36 +2526,22 @@ expr_regu_exec_domain (const VAL_DESCR * vd, REGU_VARIABLE * regu)
   return domain;
 }
 
-/* The plan of a binary arithmetic node the kernels can take: an operand coercion that
- * converts neither operand (fetch_arith_binary's direct typed-operator path) and names a
- * number -- the kernels are that typed number operator, computing in the plan's type
- * (arith.type, what qdata_number_operator reads both operands as).  NULL for any other
- * node, which stays interpreted: a plan that converts an operand on the row (plan->conv[i])
- * until a kernel mirrors the planned converter, an unresolved plan (the fetch's
- * unresolved-domain error), a date, string or collection plan (another operator's). */
-static const RESOLVED_DOMAIN *
-expr_arith_number_plan (const EXPR_BUILD_CTX * bctx, const ARITH_TYPE * arith)
+/* The operand coercion of a binary arithmetic node the kernels can take (ARITH_TYPE.coercion, found at
+ * unpack): one that converts neither operand (fetch_arith_binary's direct typed-operator path) and
+ * names a number -- the kernels are that typed number operator, computing in its type (arith.type,
+ * what qdata_number_operator reads both operands as).  NULL for any other node, which stays
+ * interpreted: a coercion that converts an operand on the row (conv[i]), an unresolved one (the
+ * fetch's unresolved-domain error), a date, string or collection one (another operator's). */
+static const DOMAIN_OPERAND_COERCION *
+expr_arith_number_plan (const ARITH_TYPE * arith)
 {
-  const DOMAIN_PLAN_ITEM *item = arith->plan_item;
-  const RESOLVED_DOMAIN *plan;
+  const DOMAIN_OPERAND_COERCION *coercion = &arith->coercion;
 
-  if (item == NULL)
+  if (coercion->conv[0] != NULL || coercion->conv[1] != NULL || coercion->arith.kind != DOMAIN_ARITH_NUMBER)
     {
       return NULL;
     }
-  if ((item->flags & DOMAIN_PLAN_LATE_BIND) && !(item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION))
-    {
-      plan = expr_item_resolution (bctx->vd, item);
-    }
-  else
-    {
-      plan = &item->fixed;
-    }
-  if (plan == NULL || plan->conv[0] != NULL || plan->conv[1] != NULL || plan->arith.kind != DOMAIN_ARITH_NUMBER)
-    {
-      return NULL;
-    }
-  return plan;
+  return coercion;
 }
 
 /* the DB_TYPE a leaf will produce, as known at compile time */
@@ -5041,7 +5027,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	 * (qdata_number_numeric) -- which is what expr_k_coerce_numeric mirrors below.  A pair the
 	 * rule does convert (a division of two integers under oracle_compat_number_behavior) is the
 	 * planned converters' and stays interpreted. */
-	const RESOLVED_DOMAIN *const plan = expr_arith_number_plan (bctx, arith);
+	const DOMAIN_OPERAND_COERCION *const plan = expr_arith_number_plan (arith);
 
 	if (plan == NULL)
 	  {

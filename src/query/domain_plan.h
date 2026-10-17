@@ -161,13 +161,9 @@ struct DOMAIN_LATE_BIND_LINK
   const TP_DOMAIN *argument;	/* AGG / ANALYTIC: the argument's compiled domain when it is fixed (opr_dbtype); NULL
 				 * when the function is late-bound from its argument */
   int n_operands;
-  bool elt_index;		/* ELT: operands[0] is the index, a bind or a literal whose value picks the branch; the
-				 * other operands are the branches in order */
   bool after_constants;		/* resolve_domains resolves the node in the constant expression step, once the constant
 				 * expressions it reads were evaluated: a common value folds a constant operand's value
 				 * domain, and a node above one reads its resolution */
-  const TP_DOMAIN *elt_index_cast;	/* ELT: the domain the compiler casts that index to (BIGINT for an index of
-					 * another type, func_type.cpp); NULL: the index as it is */
 };
 
 /*

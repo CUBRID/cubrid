@@ -6220,6 +6220,21 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 				 DOMAIN_CONVERT_ASSIGN);
     }
 
+  /* CBRD-27583 (d2): an addition, subtraction, multiplication or division computes over its operands' domains, which
+   * XASL generation fixed (an operand of another type converts at its regu); a variable one leaves it unresolved */
+  arith_type->coercion = DOMAIN_OPERAND_COERCION ();
+  if ((arith_type->opcode == T_ADD || arith_type->opcode == T_SUB || arith_type->opcode == T_MUL
+       || arith_type->opcode == T_DIV) && arith_type->leftptr != NULL && arith_type->rightptr != NULL
+      && arith_type->leftptr->domain != NULL && TP_DOMAIN_TYPE (arith_type->leftptr->domain) != DB_TYPE_VARIABLE
+      && arith_type->rightptr->domain != NULL && TP_DOMAIN_TYPE (arith_type->rightptr->domain) != DB_TYPE_VARIABLE)
+    {
+      const DOMAIN_OPERAND operands[2] = {
+	{arith_type->leftptr->domain, TP_DOMAIN_TYPE (arith_type->leftptr->domain), -1, false},
+	{arith_type->rightptr->domain, TP_DOMAIN_TYPE (arith_type->rightptr->domain), -1, false}
+      };
+      domain_resolve_operand_coercion (arith_type->opcode, operands, &arith_type->coercion);
+    }
+
   return ptr;
 
 error:

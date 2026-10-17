@@ -33,6 +33,7 @@ struct DOMAIN_COMPARE_PLAN;
 #include "object_primitive.h"
 #include "db_function.hpp"
 #include "xasl_sp.hpp"
+#include "domain_rules.h"
 
 #include <functional>
 
@@ -167,6 +168,9 @@ struct arith_list_node
   /* CBRD-27583 (spec 5): the error the operator raises where a row computes it over operands that are not NULL -
    * XASL generation found it rejects their types (the node's domain is the NULL type) - or NO_ERROR */
   int fails = NO_ERROR;
+  /* CBRD-27583 (d2): T_ADD, T_SUB, T_MUL, T_DIV: what the operator makes of its operands' values, over the domains XASL
+   * generation gave them (domain_resolve_operand_coercion), found at unpack; not serialized */
+  DOMAIN_OPERAND_COERCION coercion = {};
 
   /* NOTE: The following member is only used on server internally. */
   struct drand48_data *rand_seed;	/* seed to be used to generate pseudo-random sequence */

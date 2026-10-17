@@ -93,8 +93,6 @@ struct DOMAIN_LOAD_ENTRY
   DOMAIN_PLAN_ITEM *link_inline[3];
   const DB_VALUE *literal_inline[3];
   int n_link;
-  bool elt_index;		/* ELT: link[0] is the index, a bind or a literal (DOMAIN_LATE_BIND_LINK) */
-  const TP_DOMAIN *elt_index_cast;	/* ELT: the cast the compiler wraps that index in (DOMAIN_LATE_BIND_LINK) */
   const TP_DOMAIN *consumer;
   const TP_DOMAIN *argument;	/* FIXED_AGG: the argument's compiled domain when it is fixed (DOMAIN_LATE_BIND_LINK) */
   DOMAIN_PLAN_ITEM *self_owner;	/* owner storage of a synthetic entry (a set-operation column) */
@@ -1367,24 +1365,10 @@ domain_link_string_function (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DO
 			     DOMAIN_LOAD_ENTRY * load_entry)
 {
   /* a function the compiler typed as a string whose collation its values give is resolved by resolve_domains from
-   * its string operands, every one of them (a node links as many as it has). ELT links all its operands in
-   * order: resolve_domains picks the branch its index names, or merges the branches' collations. */
+   * its string operands, every one of them (a node links as many as it has). ELT links its branches, whose
+   * collations resolve_domains merges: XASL generation picks the branch of a bind or a literal index (D-38). */
   const bool elt = regu->value.funcp->ftype == F_ELT;
   REGU_VARIABLE_LIST index = regu->value.funcp->operand;
-  /* the index joins the links only where resolve_domains reads its value: a bind or a literal, which the compiler wraps
-   * in a cast to BIGINT when its type is another (func_type.cpp) - resolve_domains applies that cast as the row does */
-  REGU_VARIABLE *index_value = &index->value;
-  const TP_DOMAIN *index_cast = NULL;
-  if (elt && (index_value->type == TYPE_INARITH || index_value->type == TYPE_OUTARITH)
-      && index_value->value.arithptr->rightptr != NULL
-      && (index_value->value.arithptr->opcode == T_CAST || index_value->value.arithptr->opcode == T_CAST_WRAP
-	  || index_value->value.arithptr->opcode == T_CAST_NOFAIL))
-    {
-      index_cast = index_value->value.arithptr->domain;
-      index_value = index_value->value.arithptr->rightptr;
-    }
-  const bool elt_index = elt && (index_value->type == TYPE_DBVAL
-				 || (index_value->type == TYPE_POS_VALUE && index_value->domain != NULL));
   int n_all = 0;
   for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
     {
@@ -1402,12 +1386,12 @@ domain_link_string_function (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DO
   for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
     {
       const TP_DOMAIN *d = op->value.domain;
-      if (elt ? (op == index && !elt_index)
+      if (elt ? op == index
 	  : (d != NULL && TP_DOMAIN_TYPE (d) != DB_TYPE_VARIABLE && !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (d))))
 	{
 	  continue;
 	}
-      operands[n_operands++] = elt && op == index ? index_value : &op->value;
+      operands[n_operands++] = &op->value;
     }
   if (n_operands == 0)
     {
@@ -1416,8 +1400,6 @@ domain_link_string_function (DOMAIN_LOAD_CONTEXT * ctx, REGU_VARIABLE * regu, DO
   load_entry->kind = DOMAIN_LOAD_NODE;
   item->flags |= DOMAIN_PLAN_LATE_BIND_COLLATION;
   load_entry->cold.opcode = regu->value.funcp->ftype;
-  load_entry->elt_index = elt_index;
-  load_entry->elt_index_cast = elt_index ? index_cast : NULL;
   domain_set_links (ctx, load_entry, operands, n_operands, regu->domain);
   for (int i = 0; i < n_operands; i++)
     {
@@ -4937,8 +4919,6 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	      break;
 	    }
 	  link->n_operands = r->n_link;
-	  link->elt_index = r->elt_index;
-	  link->elt_index_cast = r->elt_index_cast;
 	  link->consumer = r->consumer;
 	  link->argument = r->argument;
 	  /* a node's resolution inherits its sources' limits (producers come first, so theirs are set) */

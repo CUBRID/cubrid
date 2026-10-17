@@ -656,56 +656,6 @@ qexec_resolve_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const 
   return true;
 }
 
-/*
- * qexec_resolve_elt_branch () - the branch ELT's index names at resolve_domains, the index being a bind or a literal
- *   (DOMAIN_LATE_BIND_LINK.elt_index), under the cast the compiler wrapped it in: 1..n, or 0 where every row gives NULL
- *   - a NULL, non-positive or too large index - or where the cast rejects the index: that cast is a constant subtree,
- *   whose error the constant expression step (qexec_evaluate_constant_expression) raises before any row
- */
-static int
-qexec_resolve_elt_branch (const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & resolved,
-			  const DOMAIN_LATE_BIND_LINK * link)
-{
-  const int val_pos = plan->items_cold[link->operands[0] - plan->items].val_pos;
-  const DB_VALUE *index = val_pos >= 0 ? &resolved.in[val_pos] : link->literal[0];
-  DB_VALUE cast;
-  db_make_null (&cast);
-  if (index != NULL && !DB_IS_NULL (index) && link->elt_index_cast != NULL)
-    {
-      /* the cast the row would compute (fetch_peek_arith T_CAST: tp_value_cast_force) before ELT reads the index; a
-       * cast that fails is the constant expression step's error */
-      const int saved_error = er_errid ();
-      if (tp_value_cast_force (index, &cast, link->elt_index_cast, false) != DOMAIN_COMPATIBLE)
-	{
-	  if (er_errid () != saved_error)
-	    {
-	      er_clear ();
-	    }
-	  pr_clear_value (&cast);
-	  return 0;
-	}
-      index = &cast;
-    }
-  DB_BIGINT branch;
-  switch (index != NULL ? DB_VALUE_DOMAIN_TYPE (index) : DB_TYPE_NULL)
-    {
-    case DB_TYPE_SHORT:
-      branch = db_get_short (index);
-      break;
-    case DB_TYPE_INTEGER:
-      branch = db_get_int (index);
-      break;
-    case DB_TYPE_BIGINT:
-      branch = db_get_bigint (index);
-      break;
-    default:
-      branch = 0;
-      break;
-    }
-  pr_clear_value (&cast);
-  return branch > 0 && branch < link->n_operands ? (int) branch : 0;
-}
-
 /* A late-binding cast's resolution: the converter into the node's compiled domain for every operand the node casts
  * into it (the cast's source; the two arms of NVL / IFNULL / COALESCE; the second and third of NVL2), at the operand's
  * fetch index - the link skips a cast's empty first operand, so its source is link operand 0 and fetch operand 1. An
@@ -810,18 +760,9 @@ qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xa
       int error = domain_resolve_character (cold->opcode, operands, link->n_operands, link->consumer, entry);
       if (error == ER_QPROC_DOMAIN_UNRESOLVED)
 	{
-	  /* the branch a row picks carries another domain than its siblings. ELT whose index resolve_domains reads
-	   * picks one branch for every row; any other pick is the row's, so the branches' collations merge into one
+	  /* the branch a row picks carries another domain than its siblings: the branches' collations merge into one
 	   * domain, the row converting the value it picks - and branches that do not merge are rejected here */
-	  if (link->elt_index)
-	    {
-	      error = domain_resolve_branch_pick (operands, link->n_operands,
-						  qexec_resolve_elt_branch (plan, resolved, link), entry);
-	    }
-	  else
-	    {
-	      error = domain_resolve_branch_merge (operands, link->n_operands, entry);
-	    }
+	  error = domain_resolve_branch_merge (operands, link->n_operands, entry);
 	  if (error == ER_QSTR_INCOMPATIBLE_COLLATIONS)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
