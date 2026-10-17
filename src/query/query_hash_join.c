@@ -4668,3 +4668,392 @@ hjoin_print_tuple (QFILE_LIST_ID * list_id, QFILE_TUPLE tuple, HASHJOIN_PRINT_ST
   qfile_print_tuple (&list_id->type_list, tuple);
 }
 #endif /* !NDEBUG && HASHJOIN_DUMP_PROBE */
+
+/* ---------------------------------------------------------------------------------------------------------------- */
+/* Runtime filter (database-reference 참고: a hash join hands the keys of its build input to the probe input's scan,
+ * which drops the rows that cannot match before the joins and lookups above that scan run on them).
+ *
+ * A join's two inputs are lists made before the join (the HASHJOIN_PROC's aptr_list, outer then inner).  When one
+ * input is small -- at most HJOIN_RTF_MAX_KEYS rows -- and the join drops the other input's unmatched rows (an
+ * INNER join either way, a SEMI join's outer), the small input runs first and its keys go into an exact set of
+ * integers.  The other input's outermost scan then lets a row through only when its key is in the set: rows it
+ * drops have no partner, so the join's result is the same.  Q18: the 624 orders of the IN subquery spare 15M
+ * customer lookups under the scan of orders. */
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+
+#define HJOIN_RTF_MAX_KEYS (1 << 20)
+
+struct hjoin_runtime_filter
+{
+  INT64 *slots;			/* open addressing, power-of-two size */
+  unsigned char *used;
+  UINT64 mask;
+  INT64 n_keys;
+  bool is_date;			/* DATE keys (else SHORT/INTEGER/BIGINT, compared as integers) */
+  int val_index;		/* the key's cell in the target's value list (a worker's clone finds it by position) */
+  INT64 rows;			/* rows seen / dropped, added to by parallel workers */
+  INT64 dropped;
+};
+
+static UINT64
+hjoin_rtf_hash (INT64 v)
+{
+  UINT64 x = (UINT64) v * 0x9E3779B97F4A7C15ULL;
+  return x ^ (x >> 29);
+}
+
+/* the key as an integer: 1, or 0 for NULL, or -1 for a type the filter does not compare */
+static int
+hjoin_rtf_key (const DB_VALUE * v, bool is_date, INT64 * out)
+{
+  if (DB_IS_NULL (v))
+    {
+      return 0;
+    }
+  switch (DB_VALUE_TYPE (v))
+    {
+    case DB_TYPE_SHORT:
+      *out = db_get_short (v);
+      return is_date ? -1 : 1;
+    case DB_TYPE_INTEGER:
+      *out = db_get_int (v);
+      return is_date ? -1 : 1;
+    case DB_TYPE_BIGINT:
+      *out = db_get_bigint (v);
+      return is_date ? -1 : 1;
+    case DB_TYPE_DATE:
+      *out = (INT64) * db_get_date (v);
+      return is_date ? 1 : -1;
+    default:
+      return -1;
+    }
+}
+
+static bool
+hjoin_rtf_type_ok (DB_TYPE t, bool * is_date)
+{
+  *is_date = (t == DB_TYPE_DATE);
+  return t == DB_TYPE_SHORT || t == DB_TYPE_INTEGER || t == DB_TYPE_BIGINT || t == DB_TYPE_DATE;
+}
+
+/* the cell of target's value list that the outermost scan fetches list column col into, and its position; NULL
+ * when the column is anything else (an expression, a nested scan's value, a hidden column) */
+static DB_VALUE *
+hjoin_rtf_target_cell (XASL_NODE * target, int col, int *val_index)
+{
+  REGU_VARIABLE_LIST r;
+  QPROC_DB_VALUE_LIST v;
+  ACCESS_SPEC_TYPE *spec = target->spec_list;
+  DB_VALUE *cell = NULL;
+  int i = 0, n;
+
+  if (target->outptr_list == NULL || target->val_list == NULL || spec == NULL || spec->next != NULL
+      || spec->type != TARGET_CLASS || spec->parts != NULL)
+    {
+      return NULL;
+    }
+  for (r = target->outptr_list->valptrp; r != NULL; r = r->next)
+    {
+      if (REGU_VARIABLE_IS_FLAGED (&r->value, REGU_VARIABLE_HIDDEN_COLUMN))
+	{
+	  continue;
+	}
+      if (i++ == col)
+	{
+	  if (r->value.type != TYPE_CONSTANT)
+	    {
+	      return NULL;
+	    }
+	  cell = r->value.value.dbvalptr;
+	  break;
+	}
+    }
+  if (cell == NULL)
+    {
+      return NULL;
+    }
+  for (n = 0, v = target->val_list->valp; v != NULL && v->val != cell; v = v->next, n++)
+    {
+      ;
+    }
+  if (v == NULL)
+    {
+      return NULL;
+    }
+  /* fetched by the outermost spec itself */
+  for (i = 0; i < 2; i++)
+    {
+      for (r =
+	   (i == 0) ? ACCESS_SPEC_CLS_SPEC (spec).cls_regu_list_pred : ACCESS_SPEC_CLS_SPEC (spec).cls_regu_list_rest;
+	   r != NULL; r = r->next)
+	{
+	  if (r->value.type == TYPE_ATTR_ID && r->value.vfetch_to == cell)
+	    {
+	      *val_index = n;
+	      return cell;
+	    }
+	}
+    }
+  return NULL;
+}
+
+/* the target's rows may be dropped one by one: nothing in it counts, numbers or groups them */
+static bool
+hjoin_rtf_target_ok (XASL_NODE * target)
+{
+  return target->type == BUILDLIST_PROC && IS_XASL_INITIAL_STATUS (target->status)
+    && target->proc.buildlist.groupby_list == NULL && target->proc.buildlist.a_eval_list == NULL
+    && target->instnum_pred == NULL && target->ordbynum_pred == NULL && target->limit_row_count == NULL
+    && target->connect_by_ptr == NULL && !XASL_IS_FLAGED (target, XASL_LINK_TO_REGU_VARIABLE);
+}
+
+XASL_NODE *
+hjoin_rtf_first_input (XASL_NODE * hashjoin_xasl, XASL_NODE ** target)
+{
+  HASHJOIN_PROC_NODE *hj = &hashjoin_xasl->proc.hashjoin;
+  XASL_NODE *outer = hj->outer.xasl, *inner = hj->inner.xasl, *first;
+  int col, idx;
+
+  *target = NULL;
+  hj->rtf_keys = -1;
+  if (outer == NULL || inner == NULL || hj->merge_info.ls_column_cnt != 1 || hj->rtf != NULL)
+    {
+      return NULL;
+    }
+  switch (hj->merge_info.join_type)
+    {
+    case JOIN_INNER:
+      /* the inner (the plan's build side) runs first and filters the outer, or the other way round when only the
+       * inner can take a filter; a first input that turns out big builds none (hjoin_rtf_build ()) */
+      first = inner;
+      break;
+    case JOIN_SEMI:
+      /* the outer's rows without a match in the inner leave */
+      first = inner;
+      break;
+    default:
+      /* an outer join keeps its unmatched rows, an anti join wants exactly those */
+      return NULL;
+    }
+  for (;;)
+    {
+      *target = (first == inner) ? outer : inner;
+      col = (*target == outer) ? hj->merge_info.ls_outer_column[0] : hj->merge_info.ls_inner_column[0];
+      if (IS_XASL_INITIAL_STATUS (first->status) && hjoin_rtf_target_ok (*target)
+	  && hjoin_rtf_target_cell (*target, col, &idx) != NULL)
+	{
+	  break;
+	}
+      if (hj->merge_info.join_type != JOIN_INNER || first == outer)
+	{
+	  *target = NULL;
+	  return NULL;
+	}
+      first = outer;
+    }
+  return first;
+}
+
+int
+hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE * first, XASL_NODE * target)
+{
+  HASHJOIN_PROC_NODE *hj = &hashjoin_xasl->proc.hashjoin;
+  QFILE_LIST_ID *list = first->list_id;
+  HJOIN_RUNTIME_FILTER *rtf;
+  QFILE_LIST_SCAN_ID sid;
+  QFILE_TUPLE_RECORD tr = { NULL, 0 };
+  TP_DOMAIN *dom;
+  DB_VALUE *cell;
+  DB_VALUE v;
+  int fcol, tcol, val_index, error = NO_ERROR;
+  bool f_date, t_date;
+  UINT64 cap;
+  INT64 k;
+
+  fcol = (first == hj->outer.xasl) ? hj->merge_info.ls_outer_column[0] : hj->merge_info.ls_inner_column[0];
+  tcol = (target == hj->outer.xasl) ? hj->merge_info.ls_outer_column[0] : hj->merge_info.ls_inner_column[0];
+  if (list == NULL || list->tuple_cnt <= 0 || list->tuple_cnt > HJOIN_RTF_MAX_KEYS || fcol >= list->type_list.type_cnt
+      || !IS_XASL_INITIAL_STATUS (target->status))
+    {
+      /* an empty first input empties the join anyway (the caller skips the other one) */
+      return NO_ERROR;
+    }
+  cell = hjoin_rtf_target_cell (target, tcol, &val_index);
+  dom = list->type_list.domp[fcol];
+  if (cell == NULL || dom == NULL || !hjoin_rtf_type_ok (TP_DOMAIN_TYPE (dom), &f_date))
+    {
+      return NO_ERROR;
+    }
+  {
+    /* the target's column must compare as the first's does: both integers, or both DATE */
+    REGU_VARIABLE_LIST r;
+    int i = 0;
+
+    for (r = target->outptr_list->valptrp; r != NULL; r = r->next)
+      {
+	if (!REGU_VARIABLE_IS_FLAGED (&r->value, REGU_VARIABLE_HIDDEN_COLUMN) && i++ == tcol)
+	  {
+	    break;
+	  }
+      }
+    if (r == NULL || r->value.domain == NULL || !hjoin_rtf_type_ok (TP_DOMAIN_TYPE (r->value.domain), &t_date)
+	|| t_date != f_date)
+      {
+	return NO_ERROR;
+      }
+  }
+
+  for (cap = 16; cap < (UINT64) list->tuple_cnt * 2; cap <<= 1)
+    {
+      ;
+    }
+  rtf = (HJOIN_RUNTIME_FILTER *) calloc (1, sizeof (HJOIN_RUNTIME_FILTER));
+  if (rtf == NULL)
+    {
+      return NO_ERROR;
+    }
+  rtf->slots = (INT64 *) malloc (sizeof (INT64) * cap);
+  rtf->used = (unsigned char *) calloc (cap, 1);
+  if (rtf->slots == NULL || rtf->used == NULL)
+    {
+      free_and_init (rtf->slots);
+      free_and_init (rtf->used);
+      free_and_init (rtf);
+      return NO_ERROR;
+    }
+  rtf->mask = cap - 1;
+  rtf->is_date = f_date;
+  rtf->val_index = val_index;
+
+  if (qfile_open_list_scan (list, &sid) != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      goto fail;
+    }
+  db_make_null (&v);
+  while (qfile_scan_list_next (thread_p, &sid, &tr, PEEK) == S_SUCCESS)
+    {
+      bool is_null = false;
+      UINT64 h;
+
+      if (qfile_slot_read_column_value (&tr, fcol, dom, &v, false, &is_null) != NO_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  qfile_close_scan (thread_p, &sid);
+	  goto fail;
+	}
+      if (is_null || hjoin_rtf_key (&v, f_date, &k) != 1)
+	{
+	  pr_clear_value (&v);
+	  continue;
+	}
+      pr_clear_value (&v);
+      for (h = hjoin_rtf_hash (k) & rtf->mask; rtf->used[h] && rtf->slots[h] != k; h = (h + 1) & rtf->mask)
+	{
+	  ;
+	}
+      if (!rtf->used[h])
+	{
+	  rtf->used[h] = 1;
+	  rtf->slots[h] = k;
+	  rtf->n_keys++;
+	}
+    }
+  qfile_close_scan (thread_p, &sid);
+
+  hj->rtf = rtf;
+  hj->rtf_keys = rtf->n_keys;
+  hj->rtf_rows = 0;
+  hj->rtf_dropped = 0;
+  target->rtf = rtf;
+  target->rtf_val = cell;
+  return NO_ERROR;
+
+fail:
+  free_and_init (rtf->slots);
+  free_and_init (rtf->used);
+  free_and_init (rtf);
+  return error;
+}
+
+bool
+hjoin_rtf_pass (HJOIN_RUNTIME_FILTER * rtf, const DB_VALUE * key)
+{
+  INT64 k = 0;
+  UINT64 h;
+  int got = hjoin_rtf_key (key, rtf->is_date, &k);
+
+  __atomic_add_fetch (&rtf->rows, 1, __ATOMIC_RELAXED);
+  if (got < 0)
+    {
+      /* a value the filter does not compare: the join decides */
+      return true;
+    }
+  if (got == 1)
+    {
+      for (h = hjoin_rtf_hash (k) & rtf->mask; rtf->used[h]; h = (h + 1) & rtf->mask)
+	{
+	  if (rtf->slots[h] == k)
+	    {
+	      return true;
+	    }
+	}
+    }
+  /* no build row has the key (a NULL key matches none either) */
+  __atomic_add_fetch (&rtf->dropped, 1, __ATOMIC_RELAXED);
+  return false;
+}
+
+void
+hjoin_rtf_bind_clone (XASL_NODE * clone, const XASL_NODE * orig)
+{
+  QPROC_DB_VALUE_LIST v;
+  int n;
+
+  clone->rtf = NULL;
+  clone->rtf_val = NULL;
+  if (orig->rtf == NULL || clone->val_list == NULL)
+    {
+      return;
+    }
+  for (n = 0, v = clone->val_list->valp; v != NULL && n < orig->rtf->val_index; v = v->next, n++)
+    {
+      ;
+    }
+  if (v != NULL)
+    {
+      clone->rtf = orig->rtf;
+      clone->rtf_val = v->val;
+    }
+}
+
+void
+hjoin_rtf_release (XASL_NODE * hashjoin_xasl)
+{
+  HASHJOIN_PROC_NODE *hj = &hashjoin_xasl->proc.hashjoin;
+  HJOIN_RUNTIME_FILTER *rtf = hj->rtf;
+
+  if (rtf == NULL)
+    {
+      return;
+    }
+  hj->rtf_rows = rtf->rows;
+  hj->rtf_dropped = rtf->dropped;
+  if (hj->outer.xasl != NULL && hj->outer.xasl->rtf == rtf)
+    {
+      hj->outer.xasl->rtf = NULL;
+      hj->outer.xasl->rtf_val = NULL;
+    }
+  if (hj->inner.xasl != NULL && hj->inner.xasl->rtf == rtf)
+    {
+      hj->inner.xasl->rtf = NULL;
+      hj->inner.xasl->rtf_val = NULL;
+    }
+  free_and_init (rtf->slots);
+  free_and_init (rtf->used);
+  free_and_init (rtf);
+  hj->rtf = NULL;
+}
+
+#endif /* SERVER_MODE || SA_MODE */

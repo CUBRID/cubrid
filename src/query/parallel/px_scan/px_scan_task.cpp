@@ -38,6 +38,7 @@
 #include "partition_sr.h"
 #include "object_primitive.h"
 #include "query_aggregate.hpp"
+#include "query_hash_join.h"
 #include "scope_exit.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -117,6 +118,8 @@ namespace parallel_scan
       {
 	return err_code;
       }
+    /* a hash join's runtime filter on this scan (hjoin_rtf_build ()): the leader's, on the clone's value cell */
+    hjoin_rtf_bind_clone (m_xasl, m_orig_xasl);
 
     /* inject precomputed scalar values into the clone so predicate eval reads them instead of re-executing per worker; precomp_owner_regu aliases the clone's predicate operand (serialization preserves source-pointer aliasing); aptr_list only (correlated dptr_list never injected); one back-pointer serves all operands (same single_tuple->valp->val slot) via slot write + status=XASL_SUCCESS. */
     for (xasl_node *cnode = m_xasl; cnode != nullptr; cnode = cnode->scan_ptr)
@@ -956,6 +959,12 @@ namespace parallel_scan
     SCAN_CODE xs_scan;
     DB_LOGICAL ev_res;
     result_handler<result_type> *result_handler_p = m_result_handler;
+
+    if (m_xasl->rtf != nullptr && !hjoin_rtf_pass (m_xasl->rtf, m_xasl->rtf_val))
+      {
+	/* a hash join's runtime filter: no build row has this key (qexec_intprt_fnc () drops it the same way) */
+	return S_SUCCESS;
+      }
 
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
       {

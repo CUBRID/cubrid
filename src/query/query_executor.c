@@ -2331,6 +2331,10 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
     {
       clear_memoize_storage (thread_p, xasl);
     }
+  if (xasl->type == HASHJOIN_PROC)
+    {
+      hjoin_rtf_release (xasl);
+    }
   xasl->executed_parallelism = 0;
 
   /* clear the head node */
@@ -12740,6 +12744,12 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  qualified = true;
 	  scan_ptr_qualified = false;
 
+	  if (xasl->rtf != NULL && !hjoin_rtf_pass (xasl->rtf, xasl->rtf_val))
+	    {
+	      /* a hash join's runtime filter: no build row has this key, so nothing below it can join */
+	      continue;
+	    }
+
 	  if (xasl->bptr_list)
 	    {
 	      scan_operation_type =
@@ -18790,6 +18800,7 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
       break;
 
     case HASHJOIN_PROC:
+      hjoin_rtf_release (xasl);	/* both inputs are lists now */
       if (qexec_hash_join (thread_p, xasl, xasl_state->query_id, &xasl_state->vd) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
@@ -19526,6 +19537,24 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	  else
 	    {
 	      /* nothing to do */
+	    }
+
+	  if (xptr->type == HASHJOIN_PROC && !xasl->px_executor)
+	    {
+	      /* runtime filter: the input expected smaller runs now, and its keys filter the other one's outermost
+	       * scan when it turned out small (hjoin_rtf_first_input ()); the loop below skips the one that ran */
+	      XASL_NODE *rtf_target = NULL;
+	      XASL_NODE *rtf_first = hjoin_rtf_first_input (xptr, &rtf_target);
+
+	      if (rtf_first != NULL)
+		{
+		  if (qexec_execute_mainblock (thread_p, rtf_first, xasl_state, NULL) != NO_ERROR
+		      || hjoin_rtf_build (thread_p, xptr, rtf_first, rtf_target) != NO_ERROR)
+		    {
+		      qexec_failure_line (__LINE__, xasl_state);
+		      GOTO_EXIT_ON_ERROR;
+		    }
+		}
 	    }
 
 	  for (xptr2 = xptr->aptr_list; xptr2; xptr2 = xptr2->next)

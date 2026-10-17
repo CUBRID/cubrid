@@ -384,6 +384,10 @@ typedef struct hashjoin_proc_node
 #if defined (SERVER_MODE) || defined (SA_MODE)
   HASHJOIN_DOMAIN_INFO domain_info;
   HASHJOIN_STATS_GROUP stats_group;
+  struct hjoin_runtime_filter *rtf;	/* the runtime filter this join built for its other input, or NULL */
+  INT64 rtf_keys;		/* trace: the filter's distinct keys, the rows it saw and dropped (-1: not built) */
+  INT64 rtf_rows;
+  INT64 rtf_dropped;
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 } HASHJOIN_PROC_NODE;
 
@@ -1269,6 +1273,8 @@ struct xasl_node
   int executed_parallelism;	/* parallelism of the query */
   memoize::storage *memoize_storage;
   // *INDENT-ON*
+  struct hjoin_runtime_filter *rtf;	/* a hash join's runtime filter on this input's outermost scan (not owned) */
+  DB_VALUE *rtf_val;		/* ... and the value list cell its key is fetched into */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

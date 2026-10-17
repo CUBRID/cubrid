@@ -4788,6 +4788,13 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
   status = stats_group->status;
   stats = &stats_group->stats;
   part_stats = stats_group->context_stats;
+
+  if (proc->rtf_keys > 0)
+    {
+      /* the runtime filter one input's keys made for the other input's outermost scan (hjoin_rtf_build ()) */
+      fprintf (fp, "%*cRUNTIME FILTER (keys: %lld, rows: %lld, dropped: %lld)\n", indent + 2, ' ',
+	       (long long) proc->rtf_keys, (long long) proc->rtf_rows, (long long) proc->rtf_dropped);
+    }
   part_cnt = stats_group->context_cnt;
 
   const bool is_partition_parallel = (status == HASHJOIN_STATUS_PARTITION || status == HASHJOIN_STATUS_PARALLEL);

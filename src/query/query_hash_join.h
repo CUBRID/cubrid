@@ -111,6 +111,10 @@ typedef enum hashjoin_print_step
  * Struct & Typedef Definitions
  */
 
+/* A hash join's runtime filter (query_hash_join.c, hjoin_rtf_*): the build input's keys, checked on the probe
+ * input's outermost scan before its nested scans run, so rows that cannot match never reach them. */
+typedef struct hjoin_runtime_filter HJOIN_RUNTIME_FILTER;
+
 typedef struct hashjoin_input
 {
   XASL_NODE *xasl;
@@ -508,5 +512,17 @@ void hjoin_profile_end (THREAD_ENTRY * thread_p, HASHJOIN_PROFILE_STATS * stats,
 #endif /* HASHJOIN_PROFILE_TIME */
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/* runtime filter: which input runs first (NULL: none) and which one the filter goes on */
+extern XASL_NODE *hjoin_rtf_first_input (XASL_NODE * hashjoin_xasl, XASL_NODE ** target);
+/* after the first input ran: build the filter from its list and put it on the target, when it is small enough */
+extern int hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE * first, XASL_NODE * target);
+/* a row of the target's outermost scan: false when its key is in no build row */
+extern bool hjoin_rtf_pass (HJOIN_RUNTIME_FILTER * rtf, const DB_VALUE * key);
+/* a parallel worker's own XASL: the same filter, on the worker's value list cell */
+extern void hjoin_rtf_bind_clone (XASL_NODE * clone, const XASL_NODE * orig);
+extern void hjoin_rtf_release (XASL_NODE * hashjoin_xasl);
+#endif
 
 #endif /* _QUERY_HASH_JOIN_H_ */
