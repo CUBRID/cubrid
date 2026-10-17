@@ -1758,10 +1758,9 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 		       OID * obj_oid, QFILE_TUPLE_RECORD * tplrec, DB_VALUE ** peek_dbval)
 {
   bool is_null;
-  REGU_VARIABLE *head_regu = NULL, *regu = NULL;
+  REGU_VARIABLE *regu = NULL;
   int error = NO_ERROR;
   REGU_VALUE_LIST *reguval_list = NULL;
-  DB_TYPE head_type, cur_type;
   FUNCTION_TYPE *funcp = NULL;
   XASL_NODE *xasl;
   DB_VALUE position_value;
@@ -2146,42 +2145,6 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	  if (fetch_read_plan_domain (regu_var, vd, *peek_dbval) != NO_ERROR)
 	    {
 	      goto exit_on_error;
-	    }
-	}
-
-      /* for REGUVAL_LIST compare type with the corresponding column of first row if not compatible, raise an error
-       * This is the same behavior as "union" */
-      if (regu_var->type == TYPE_REGUVAL_LIST)
-	{
-	  head_regu = reguval_list->regu_list->value;
-	  regu = reguval_list->current_value->value;
-
-	  if (regu->domain == NULL || qexec_node_domain_is_variable (vd, regu->plan_item))
-	    {
-	      /* the row's own resolution, read as above */
-	      if (fetch_read_plan_domain (regu, vd, *peek_dbval) != NO_ERROR)
-		{
-		  goto exit_on_error;
-		}
-	    }
-	  const TP_DOMAIN *row_domain = qexec_get_node_domain (vd, regu->domain, regu->plan_item);
-	  const TP_DOMAIN *head_domain = qexec_get_node_domain (vd, head_regu->domain, head_regu->plan_item);
-	  head_type = TP_DOMAIN_TYPE (head_domain);
-	  cur_type = TP_DOMAIN_TYPE (row_domain);
-
-	  /* compare the type */
-	  if (head_type != DB_TYPE_NULL && cur_type != DB_TYPE_NULL && head_domain != row_domain)
-	    {
-	      if (head_type != cur_type || !pr_is_string_type (head_type) || !pr_is_variable_type (head_type))
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INCOMPATIBLE_TYPES, 0);
-		  goto exit_on_error;
-		}
-	      else if (TP_DOMAIN_COLLATION (head_domain) != TP_DOMAIN_COLLATION (row_domain))
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
-		  goto exit_on_error;
-		}
 	    }
 	}
     }

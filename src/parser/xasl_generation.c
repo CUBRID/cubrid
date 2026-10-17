@@ -6829,10 +6829,10 @@ pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, const PT_NODE * node, UNB
 	  const TP_DOMAIN *head = regu_list->regu_list->value->domain;
 	  const TP_DOMAIN *row = list_node->value->domain;
 	  if (head != NULL && row != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (head))
-	      && TP_DOMAIN_TYPE (head) == TP_DOMAIN_TYPE (row)
-	      && TP_DOMAIN_COLLATION (head) != TP_DOMAIN_COLLATION (row))
+	      && TP_DOMAIN_TYPE (head) == TP_DOMAIN_TYPE (row) && TP_DOMAIN_CODESET (head) != TP_DOMAIN_CODESET (row))
 	    {
-	      /* a row's string in another collation than the first row's: develop's row check gave -1150 (fetch.c) */
+	      /* a row's string in another codeset than the first row's: develop's row check gave -1150 (fetch.c); another
+	       * collation of the codeset (a literal's COLLATE) takes the first row's, as the list column holds it */
 	      PT_ERRORmf (parser, temp, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_COLLATION_OP_ERROR, "VALUES");
 	      return NULL;
 	    }
