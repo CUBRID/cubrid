@@ -2605,6 +2605,12 @@ fast_path:
  *   vpid(in): Complete Page identifier
  *
  * Note:
+ *       Fetch accounting and fix-time measurement are intentionally omitted for performance.
+ *       On a buffer miss, pgbuf_claim_bcb_for_fix() still increments ioreads without a matching fetch.
+ *       Workloads that use this path heavily, such as large ORDER BY queries whose sort keys are a subset of the
+ *       selected columns, can report Data_page_buffer_hit_ratio below the actual hit ratio, even 0.00.
+ *       TODO: Review how to resolve this fetch/ioread accounting asymmetry.
+ *
  *       WARNING:
  *       This is only for reading temporary file.
  *       if bcb is on buffer, only fcnt++. it is latchless and LRU mutexless.
