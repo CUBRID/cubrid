@@ -3925,6 +3925,31 @@ end:
  *   key_dom(in): key domains
  *   acc_dom(in): accumulator domains
  */
+int
+qdata_load_agg_hkey_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size, aggregate_hash_key *key,
+				tp_domain **key_dom)
+{
+  QFILE_TUPLE_WALK walk;
+  bool is_null;
+  int i, rc = NO_ERROR;
+
+  qfile_tuple_walk_init (&walk, tuple, hdr_size, key->val_count);
+  for (i = 0; i < key->val_count; i++)
+    {
+      (void) pr_clear_value (key->values[i]);
+      rc = qfile_tuple_walk_read_value (&walk, key_dom[i], key->values[i], true, &is_null);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+      if (is_null)
+	{
+	  db_make_null (key->values[i]);
+	}
+    }
+  return NO_ERROR;
+}
+
 SCAN_CODE
 qdata_load_agg_hentry_from_list (cubthread::entry *thread_p, qfile_list_scan_id *list_scan_id,
 				 aggregate_hash_key *key, aggregate_hash_value *value, tp_domain **key_dom,

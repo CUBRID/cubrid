@@ -4651,6 +4651,14 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       if (gstats->groupby_hash_merge_parts > 0)
 	{
 	  fprintf (fp, ", hash merge partitions: %d", gstats->groupby_hash_merge_parts);
+	  if (gstats->groupby_hash_merge_workers > 0)
+	    {
+	      fprintf (fp, " (workers: %d)", gstats->groupby_hash_merge_workers);
+	    }
+	  else if (gstats->groupby_hash_merge_why != NULL)
+	    {
+	      fprintf (fp, " (workers: none, %s)", gstats->groupby_hash_merge_why);
+	    }
 	}
       if (gstats->groupby_hash_groups > 0)
 	{
