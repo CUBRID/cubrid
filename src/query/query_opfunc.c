@@ -2308,8 +2308,6 @@ qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CON
  *   conv(in), operand_domain(in), arith(in): conv[0..1], operand_domain[0..1] and arith of the operand coercion - a
  *	       node's RESOLVED_DOMAIN, a SUM's or AVG's DOMAIN_OPERAND_COERCION (domain_resolve_operand_coercion); conv
  *	       NULL converts nothing
- *   temporaries(in): [2] an operand its scope converted once already: the operator takes it in place
- *	       of the conversion; NULL none
  *
  * Over two values that are not NULL, each operand the plan converts gets a value of its own, in this order - the
  * second operand first but for a subtraction - and a conversion that fails has tp_value_auto_cast's outcome: NULL
@@ -2319,8 +2317,7 @@ qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CON
 int
 qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
 			     const TP_DOMAIN * const *operand_domain, const DOMAIN_ARITH * arith, DB_VALUE * dbval1_p,
-			     DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p,
-			     const DB_VALUE * const *temporaries)
+			     DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
   assert (opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV);
   if (conv == NULL || dbval1_p == NULL || dbval2_p == NULL || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
@@ -2339,14 +2336,6 @@ qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * co
       const int i = opcode == T_SUB ? k : 1 - k;
       if (conv[i] == NULL)
 	{
-	  continue;
-	}
-      if (temporaries != NULL && temporaries[i] != NULL)
-	{
-	  /* a copy that frees nothing: the scope's value stays its owner's */
-	  converted[i] = *temporaries[i];
-	  converted[i].need_clear = false;
-	  operand[i] = &converted[i];
 	  continue;
 	}
       used |= 1 << i;

@@ -2527,17 +2527,17 @@ expr_regu_exec_domain (const VAL_DESCR * vd, REGU_VARIABLE * regu)
 }
 
 /* The operand coercion of a binary arithmetic node the kernels can take (ARITH_TYPE.coercion, found at
- * unpack): one that converts neither operand (fetch_arith_binary's direct typed-operator path) and
- * names a number -- the kernels are that typed number operator, computing in its type (arith.type,
- * what qdata_number_operator reads both operands as).  NULL for any other node, which stays
- * interpreted: a coercion that converts an operand on the row (conv[i]), an unresolved one (the
- * fetch's unresolved-domain error), a date, string or collection one (another operator's). */
+ * unpack, which converts no operand: generation converts it at its regu): one that names a number --
+ * the kernels are that typed number operator, computing in its type (arith.type, what
+ * qdata_number_operator reads both operands as).  NULL for any other node, which stays interpreted:
+ * an unresolved one (the fetch's unresolved-domain error), a date, string or collection one (another
+ * operator's). */
 static const DOMAIN_OPERAND_COERCION *
 expr_arith_number_plan (const ARITH_TYPE * arith)
 {
   const DOMAIN_OPERAND_COERCION *coercion = &arith->coercion;
 
-  if (coercion->conv[0] != NULL || coercion->conv[1] != NULL || coercion->arith.kind != DOMAIN_ARITH_NUMBER)
+  if (coercion->arith.kind != DOMAIN_ARITH_NUMBER)
     {
       return NULL;
     }
@@ -5020,13 +5020,12 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    return cell;
 	  }
 
-	/* The operand coercion the plan (or the gate) chose for this node: the kernels below are
-	 * the direct number operator, so a node whose plan converts an operand on the row stays
-	 * interpreted.  The NUMERIC mix is no exception: the ARITH rule converts neither of two
-	 * numbers (domain_arith_rule), and the number operator coerces the integer side itself
-	 * (qdata_number_numeric) -- which is what expr_k_coerce_numeric mirrors below.  A pair the
-	 * rule does convert (a division of two integers under oracle_compat_number_behavior) is the
-	 * planned converters' and stays interpreted. */
+	/* The operand coercion the node found at unpack: the kernels below are the direct number
+	 * operator.  A pair the rule converts (a division of two integers under
+	 * oracle_compat_number_behavior) has its operands converted at their regus by generation;
+	 * the ARITH rule converts neither of two numbers of a NUMERIC mix (domain_arith_rule), and the
+	 * number operator coerces the integer side itself (qdata_number_numeric) -- which is what
+	 * expr_k_coerce_numeric mirrors below. */
 	const DOMAIN_OPERAND_COERCION *const plan = expr_arith_number_plan (arith);
 
 	if (plan == NULL)

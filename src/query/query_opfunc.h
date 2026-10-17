@@ -91,12 +91,10 @@ extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * 
 extern int qdata_operand_coercion_error (TP_DOMAIN_STATUS status, const DB_VALUE * value, const TP_DOMAIN * target);
 /* T_ADD, T_SUB, T_MUL or T_DIV over its operands' operand coercion, resolved before any row
  * (domain_resolve_operand_coercion): conv[i] converts operand i into operand_domain[i] and arith is what the operator
- * makes of the coerced operands - a RESOLVED_DOMAIN's or a DOMAIN_OPERAND_COERCION's; conv NULL converts nothing;
- * temporaries[i]: operand i converted once for its scope already */
+ * makes of the coerced operands - a RESOLVED_DOMAIN's or a DOMAIN_OPERAND_COERCION's; conv NULL converts nothing */
 extern int qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
 					const TP_DOMAIN * const *operand_domain, const DOMAIN_ARITH * arith,
-					DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p,
-					const DB_VALUE * const *temporaries = NULL);
+					DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p);
 
 extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
 						val_list_node * single_tuple);

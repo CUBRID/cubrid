@@ -63,11 +63,11 @@
 static int get_hour_minute_or_second (const DB_VALUE * datetime, OPERATOR_TYPE op_type, DB_VALUE * db_value);
 static int get_year_month_or_day (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
 static int get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
-/* An arithmetic node's row: the typed operator inline, the operand coercion out of line */
+/* An arithmetic node's row: the typed operator inline, a node over an operand of a variable domain out of line */
 STATIC_INLINE int fetch_arith_binary (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right,
 				      TP_DOMAIN * domain) __attribute__ ((ALWAYS_INLINE));
-static int fetch_arith_binary_operand_coercion (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left,
-						DB_VALUE * right, TP_DOMAIN * domain) __attribute__ ((noinline));
+static int fetch_arith_binary_unresolved (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left,
+					  DB_VALUE * right, TP_DOMAIN * domain) __attribute__ ((noinline));
 
 /*
  * fetch_session_read_value () - CBRD-27583 (4.8, D-40): a session variable read's value in the type the compilation gave
@@ -196,43 +196,36 @@ fetch_least_or_greatest (THREAD_ENTRY * thread_p, ARITH_TYPE * arithptr, val_des
 }
 
 /*
- * fetch_arith_binary () - an addition, subtraction, multiplication or division: the typed operator over the operand
- *   coercion the node found at unpack (ARITH_TYPE.coercion), which casts nothing (qdata_coerce_arith_operands)
+ * fetch_arith_binary () - an addition, subtraction, multiplication or division: the typed operator the node found at
+ *   unpack over its operands' domains (ARITH_TYPE.coercion), which casts nothing
  *   return: NO_ERROR or ER_code
  *
- * XASL generation converts an operand of another type at its regu, so the coercion converts neither operand and the
- * operator is called directly. A NULL operand converts nothing: an operator answers it before any operand coercion.
+ * XASL generation converts an operand of another type at its regu (pt_decide_operand_coercion), so the node converts
+ * neither operand (stx_build_arith_type asserts it) and the operator is called directly.
  */
 static inline int
 fetch_arith_binary (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain)
 {
-  const DOMAIN_OPERAND_COERCION *coercion = &arithptr->coercion;
-  if (coercion->conv[0] == NULL && coercion->conv[1] == NULL && coercion->arith.kind != DOMAIN_ARITH_UNRESOLVED)
+  const DOMAIN_ARITH *arith = &arithptr->coercion.arith;
+  if (arith->kind != DOMAIN_ARITH_UNRESOLVED)
     {
       /* its optdebug check still holds the decision to the rule over the values (qdata_assert_arith_planned) */
-      return qdata_arith_dbval (arithptr->opcode, &coercion->arith, left, right, arithptr->value, domain);
+      return qdata_arith_dbval (arithptr->opcode, arith, left, right, arithptr->value, domain);
     }
-  return fetch_arith_binary_operand_coercion (vd, arithptr, left, right, domain);
+  return fetch_arith_binary_unresolved (vd, arithptr, left, right, domain);
 }
 
-/* fetch_arith_binary's operand coercion that converts an operand, or the unresolved-domain check (execution) of a node
- * over an operand of a variable domain (out of line) */
+/* fetch_arith_binary of a node over an operand of a variable domain (out of line): a NULL operand is no value, as the
+ * operator answers it before any dispatch; two values are the unresolved-domain check (execution) */
 static int
-fetch_arith_binary_operand_coercion (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right,
-				     TP_DOMAIN * domain)
+fetch_arith_binary_unresolved (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right,
+			       TP_DOMAIN * domain)
 {
-  const DOMAIN_OPERAND_COERCION *coercion = &arithptr->coercion;
-  if (coercion->arith.kind == DOMAIN_ARITH_UNRESOLVED)
+  if (left != NULL && right != NULL && !DB_IS_NULL (left) && !DB_IS_NULL (right))
     {
-      if (left != NULL && right != NULL && !DB_IS_NULL (left) && !DB_IS_NULL (right))
-	{
-	  return qexec_domain_unresolved (vd, arithptr->plan_item, arithptr->domain);
-	}
-      /* a NULL operand: the operator answers it before any dispatch */
-      return qdata_coerce_arith_operands (arithptr->opcode, NULL, NULL, NULL, left, right, arithptr->value, domain);
+      return qexec_domain_unresolved (vd, arithptr->plan_item, arithptr->domain);
     }
-  return qdata_coerce_arith_operands (arithptr->opcode, coercion->conv, coercion->operand_domain, &coercion->arith,
-				      left, right, arithptr->value, domain);
+  return qdata_arith_dbval (arithptr->opcode, NULL, left, right, arithptr->value, domain);
 }
 
 /*

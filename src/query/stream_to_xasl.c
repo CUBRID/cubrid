@@ -6235,6 +6235,8 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	{arith_type->rightptr->domain, TP_DOMAIN_TYPE (arith_type->rightptr->domain), -1, false}
       };
       domain_resolve_operand_coercion (arith_type->opcode, operands, &arith_type->coercion);
+      /* generation retyped every operand the rule converts (pt_decide_operand_coercion): conversion is the regu's */
+      assert (arith_type->coercion.conv[0] == NULL && arith_type->coercion.conv[1] == NULL);
     }
 
   return ptr;
