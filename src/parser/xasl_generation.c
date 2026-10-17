@@ -6725,17 +6725,25 @@ pt_spec_list_producer (const PT_NODE * spec)
     {
       return (const XASL_NODE *) cte->info.cte.xasl;
     }
-  /* a recursive CTE's list is not known while its recursive part, which reads it, is generated */
-  return cte->info.cte.recursive_part == NULL && cte->info.cte.non_recursive_part != NULL
+  /* the recursive part being generated reads the non-recursive part's rows first: they are its producer (D-34); a CTE
+   * read by a later one before its own XASL is made has none here */
+  const PT_NODE *recursive_part = cte->info.cte.recursive_part;
+  return cte->info.cte.non_recursive_part != NULL && (recursive_part == NULL || recursive_part->info.query.xasl == NULL)
     ? (const XASL_NODE *) cte->info.cte.non_recursive_part->info.query.xasl : NULL;
 }
 
-/* CBRD-27583: the domain of a reader of another block's value: a fixed parse tree domain is its producer's type
- * already, a variable one takes its producer's (principle 1-6) */
+/* CBRD-27583: the domain of a reader of another block's value (principle 1-6): a variable parse tree domain takes its
+ * producer's; a fixed one is the producer's type already, but for a recursive CTE's self-reference, which type
+ * checking typed before the cast of the non-recursive part (D-34) */
 static TP_DOMAIN *
 pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
 {
-  return parse_tree != NULL && TP_DOMAIN_TYPE (parse_tree) == DB_TYPE_VARIABLE && producer != NULL
+  if (parse_tree == NULL || producer == NULL)
+    {
+      return parse_tree;
+    }
+  return TP_DOMAIN_TYPE (parse_tree) == DB_TYPE_VARIABLE
+    || (TP_DOMAIN_TYPE (producer) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (producer) != TP_DOMAIN_TYPE (parse_tree))
     ? producer : parse_tree;
 }
 
@@ -7073,22 +7081,63 @@ pt_decide_operand_coercion (ARITH_TYPE * arith)
 }
 
 /*
+ * pt_operand_retyped () - CBRD-27583 (D-34): whether an operand regu of an operator node holds another type than
+ *   type checking gave its argument: a recursive CTE's self-reference reads its producer's type, not the one before
+ *   the non-recursive part's cast. The operands pair with the arguments in order; other shapes are not retyped.
+ */
+static bool
+pt_operand_retyped (const REGU_VARIABLE * const *operand, int n_operands, const PT_NODE * node)
+{
+  const PT_NODE *arg[3] = { node->info.expr.arg1, node->info.expr.arg2, node->info.expr.arg3 };
+  const PT_NODE *args[3];
+  const REGU_VARIABLE *operands[3];
+  int n_args = 0, n = 0;
+  for (int i = 0; i < 3; i++)
+    {
+      if (arg[i] != NULL)
+	{
+	  args[n_args++] = arg[i];
+	}
+      if (i < n_operands && operand[i] != NULL)
+	{
+	  operands[n++] = operand[i];
+	}
+    }
+  if (n != n_args)
+    {
+      return false;
+    }
+  for (int i = 0; i < n; i++)
+    {
+      const PT_TYPE_ENUM type = args[i]->type_enum;
+      if (type != PT_TYPE_MAYBE && type != PT_TYPE_NONE && type != PT_TYPE_NULL && operands[i]->domain != NULL
+	  && TP_DOMAIN_TYPE (operands[i]->domain) != DB_TYPE_VARIABLE
+	  && TP_DOMAIN_TYPE (operands[i]->domain) != pt_type_enum_to_db (type))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
  * pt_decide_node_domain () - CBRD-27583: the domain of an operator node type checking left to its operands' values
- *   (a value-typed bind), resolved with the type rule module from its operands' domains as the bind type signature
- *   fixes them; a node over an operand of a type the compiler does not know, or one the rule does not resolve, is
- *   left to the load
+ *   (a value-typed bind) or typed over an argument its operand regu retypes (D-34), resolved with the type rule module
+ *   from its operands' domains as the bind type signature fixes them; a node over an operand of a type the compiler
+ *   does not know, or one the rule does not resolve, is left to the load
  */
 static void
-pt_decide_node_domain (REGU_VARIABLE * regu)
+pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
 {
   ARITH_TYPE *arith = regu->value.arithptr;
-  if (arith->domain == NULL || TP_DOMAIN_TYPE (arith->domain) != DB_TYPE_VARIABLE || arith->pred != NULL)
-    {
-      return;
-    }
   /* CONNECT_BY_ROOT and QPRIOR carry their block in the third operand */
   const int n_value_operands = (arith->opcode == T_CONNECT_BY_ROOT || arith->opcode == T_QPRIOR) ? 2 : 3;
   REGU_VARIABLE *operand[3] = { arith->leftptr, arith->rightptr, arith->thirdptr };
+  if (arith->domain == NULL || arith->pred != NULL
+      || (TP_DOMAIN_TYPE (arith->domain) != DB_TYPE_VARIABLE && !pt_operand_retyped (operand, n_value_operands, node)))
+    {
+      return;
+    }
   DOMAIN_OPERAND operands[3];
   int n = 0;
   for (int i = 0; i < n_value_operands; i++)
@@ -10117,7 +10166,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		}
 	      if (regu != NULL && regu->type == TYPE_INARITH)
 		{
-		  pt_decide_node_domain (regu);
+		  pt_decide_node_domain (regu, node);
 		  pt_decide_branch_casts (regu->value.arithptr);
 		}
 	      if (regu != NULL && regu->type == TYPE_INARITH && regu->value.arithptr->leftptr != NULL
@@ -17565,6 +17614,18 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      goto analytic_exit_on_error;
 	    }
 
+	  /* generate initial outlist (for data fetching) */
+	  buildlist->a_outptr_list_ex = pt_to_outlist (parser, select_list_ex, &xasl->selected_upd_list, unbox);
+
+	  if (buildlist->a_regu_list == NULL)
+	    {
+	      goto analytic_exit_on_error;
+	    }
+	  /* CBRD-27583: the regu list reads the list the initial outlist writes (D-34), before the window list copies the
+	   * value list's domains */
+	  pt_set_list_position_domains (buildlist->a_regu_list, buildlist->a_val_list, NULL,
+					buildlist->a_outptr_list_ex);
+
 	  /* generate intermediate output list (identity writing) */
 	  buildlist->a_outptr_list_interm = pt_make_outlist_from_vallist (parser, buildlist->a_val_list);
 
@@ -17581,14 +17642,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 	  assert (i == buildlist->a_outptr_list_interm->valptr_cnt);
 	  assert (regu_var_p == NULL);
-
-	  /* generate initial outlist (for data fetching) */
-	  buildlist->a_outptr_list_ex = pt_to_outlist (parser, select_list_ex, &xasl->selected_upd_list, unbox);
-
-	  if (buildlist->a_regu_list == NULL)
-	    {
-	      goto analytic_exit_on_error;
-	    }
 
 	  /* generate final outlist */
 	  buildlist->a_outptr_list = pt_to_outlist (parser, select_list_final, NULL, unbox);
