@@ -72,7 +72,9 @@
 #include "object_representation.h"
 #include "query_opfunc.h"
 #include "query_sum_accumulator.h"
+#include "language_support.h"
 #include "regu_var.hpp"
+#include "string_opfunc.h"
 #include "system_parameter.h"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
@@ -87,7 +89,8 @@ enum eb_etype
   EB_I64 = 0,			/* SHORT, INTEGER, BIGINT, DATE */
   EB_F64,			/* FLOAT, DOUBLE */
   EB_NUM,			/* NUMERIC: an int128 coefficient */
-  EB_N64			/* NUMERIC column of at most 18 digits: an int64 coefficient */
+  EB_N64,			/* NUMERIC column of at most 18 digits: an int64 coefficient */
+  EB_STR			/* VARCHAR: pointed only, read by string leaves from the record */
 };
 
 #define EB_IS_NUM(etype) ((etype) == EB_NUM || (etype) == EB_N64)
@@ -161,6 +164,8 @@ struct eb_col
   unsigned char is_fixed;
   unsigned char decoded;	/* this page: decoded already, for the rows selected at that point */
   short scale;			/* NUMERIC: the stored scale must be the domain's */
+  int collation;		/* VARCHAR: the domain's collation and codeset */
+  int codeset;
 };
 
 /* a GROUP BY key column: where its bytes sit in a record of the plan's representation */
@@ -192,6 +197,11 @@ struct eb_leaf
   int col;			/* its index in the plan's columns */
   int vec2;			/* another column on the right instead of the constant ("a < b"), or -1 */
   int col2;
+  /* EB_STR: "= / <>" the constant (rel_op), or [NOT] LIKE a pattern of literals and '%' */
+  unsigned char like;
+  unsigned char negate;
+  const char *k_str;		/* the constant's bytes for the current page */
+  int k_len;
   unsigned char etype;
   unsigned char rel_op;		/* REL_OP, with the column on the left */
   unsigned char k_type;		/* DB_TYPE the constant must carry (EB_NUM: expr_numeric_cmp_const_ok ()) */
@@ -320,11 +330,14 @@ struct eb_build
   int *cell_vec;		/* program cell -> vector, or -1 */
   int n_cell_vec;
   bool *step_needed;		/* the program steps to translate (NULL: all) */
+  bool allow_str;		/* a VARCHAR column may be placed (a string leaf asks; nothing else reads one) */
   int pending_pop[EB_MASK_DEPTH];	/* step index at which a pushed mask pops */
   int n_pending;
 };
 
 static int eb_elem_size (int etype);
+struct expr_raw_leaf_info;
+static int eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out);
 static int eb_grow (void **arr, int *cap, int n, size_t elem);
 static int eb_new_vec (EB_BUILD * b, int kind, int etype, DB_TYPE dbtype);
 static int eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid);
@@ -620,6 +633,11 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
     {
       if (b->col_attrid[i] == attrid)
 	{
+	  if (plan->vecs[plan->cols[i].vec].etype == EB_STR && !b->allow_str)
+	    {
+	      eb_decline (b, "a column type the batch does not decode");
+	      return -1;
+	    }
 	  return plan->cols[i].vec;
 	}
     }
@@ -634,7 +652,11 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
       eb_decline (b, "a floating NUMERIC column");
       return -1;
     }
-  if (!eb_etype_of (loc.type, &etype))
+  if (loc.type == DB_TYPE_VARCHAR && b->allow_str)
+    {
+      etype = EB_STR;
+    }
+  else if (!eb_etype_of (loc.type, &etype))
     {
       eb_decline (b, "a column type the batch does not decode");
       return -1;
@@ -653,7 +675,7 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
     {
       etype = EB_N64;
     }
-  vec = eb_new_vec (b, EB_VK_COL, etype, loc.type);
+  vec = eb_new_vec (b, (etype == EB_STR) ? EB_VK_PTR : EB_VK_COL, etype, loc.type);
   if (vec < 0)
     {
       return -1;
@@ -679,6 +701,8 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
   col->is_fixed = loc.is_fixed;
   col->decoded = 0;
   col->scale = (short) loc.scale;
+  col->collation = loc.collation;
+  col->codeset = loc.codeset;
   plan->vsrc[vec].precision = (short) loc.precision;
   plan->vsrc[vec].scale = (short) loc.scale;
   return vec;
@@ -817,6 +841,10 @@ eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   int etype, vec, vec2 = -1, rel_op, cap;
 
   *out = -1;
+  if (info->fast_type == DB_TYPE_VARCHAR)
+    {
+      return eb_add_str_leaf (b, info, out);
+    }
   if (!eb_etype_of (info->fast_type, &etype) || info->col_regu->value.attr_descr.cache_attrinfo == NULL
       || (etype == EB_NUM && info->k_value != NULL && !DB_IS_NULL (info->k_value)
 	  && !expr_numeric_cmp_const_ok (info->k_value)))
@@ -892,6 +920,228 @@ eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   leaf->rel_op = (unsigned char) rel_op;
   plan->n_raw_kids++;
   *out = plan->n_leaves++;
+  return NO_ERROR;
+}
+
+/* ---------------------------------------------------------------------------------------- */
+/* string leaves: a VARCHAR column read from the record, against a string constant */
+
+/* a VARCHAR in the variable area: 1 its bytes, 0 NULL, -1 a long or compressed string (the row path's) */
+static inline int
+eb_cell_str (const EB_COL * col, const HEAP_REC_LAYOUT * lay, const char **str, int *len)
+{
+  int this_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, col->location, lay->offset_size);
+  int next_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, col->location + 1, lay->offset_size);
+  const unsigned char *d;
+
+  if (next_off - this_off == 0)
+    {
+      return 0;
+    }
+  d = (const unsigned char *) lay->var_table + this_off;
+  if (d[0] >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION || d[0] + 1 > next_off - this_off)
+    {
+      return -1;
+    }
+  *len = d[0];
+  *str = (const char *) d + 1;
+  return 1;
+}
+
+/* the pattern a LIKE leaf matches itself: literals and '%' only ('_' and the escape stay with the row path) */
+static bool
+eb_like_pattern_ok (const char *p, int len)
+{
+  int i;
+
+  for (i = 0; i < len; i++)
+    {
+      if (p[i] == '_' || p[i] == '\\')
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+static const char *
+eb_find (const char *s, int slen, const char *t, int tlen)
+{
+  int i;
+
+  if (tlen == 0)
+    {
+      return s;
+    }
+  for (i = 0; i + tlen <= slen; i++)
+    {
+      const char *q = (const char *) memchr (s + i, t[0], slen - tlen - i + 1);
+
+      if (q == NULL)
+	{
+	  return NULL;
+	}
+      i = (int) (q - s);
+      if (memcmp (q, t, tlen) == 0)
+	{
+	  return q;
+	}
+    }
+  return NULL;
+}
+
+/* LIKE over a binary collation with a pattern of literals and '%': the literals in order, the first at the start
+ * unless the pattern opens with '%', the last at the end unless it closes with '%' (byte runs: a UTF-8 literal
+ * matches only at character boundaries) */
+static bool
+eb_like_match (const char *s, int slen, const char *p, int plen)
+{
+  const char *seg;
+  int seglen, pos = 0, i = 0, start;
+  bool first = true;
+
+  while (true)
+    {
+      start = i;
+      while (i < plen && p[i] != '%')
+	{
+	  i++;
+	}
+      seg = p + start;
+      seglen = i - start;
+      if (i == plen)
+	{
+	  /* the last literal: at the end, after pos (the whole string when the pattern has no '%') */
+	  if (first)
+	    {
+	      return slen == seglen && memcmp (s, seg, seglen) == 0;
+	    }
+	  return slen - pos >= seglen && memcmp (s + slen - seglen, seg, seglen) == 0;
+	}
+      if (first)
+	{
+	  if (seglen > slen || memcmp (s, seg, seglen) != 0)
+	    {
+	      return false;
+	    }
+	  pos = seglen;
+	  first = false;
+	}
+      else if (seglen > 0)
+	{
+	  const char *q = eb_find (s + pos, slen - pos, seg, seglen);
+
+	  if (q == NULL)
+	    {
+	      return false;
+	    }
+	  pos = (int) (q - s) + seglen;
+	}
+      i++;			/* past the '%' */
+    }
+}
+
+/* a string leaf (expr_pred_term_string_info ()): -1 when the term stays with the row path */
+static int
+eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
+{
+  EXPR_BATCH_PLAN *plan = b->plan;
+  const DB_VALUE *k = info->k_value;
+  EB_LEAF *leaf;
+  const EB_COL *col;
+  int vec, cap;
+
+  if (info->col_regu->value.attr_descr.cache_attrinfo == NULL || k == NULL || info->col2_regu != NULL)
+    {
+      return NO_ERROR;
+    }
+  b->allow_str = true;
+  vec = eb_new_col_vec (b, info->col_regu->value.attr_descr.cache_attrinfo, info->col_regu->value.attr_descr.id);
+  b->allow_str = false;
+  if (vec < 0 || plan->vecs[vec].etype != EB_STR)
+    {
+      b->why_not = NULL;
+      return NO_ERROR;
+    }
+  col = &plan->cols[eb_col_of_vec (plan, vec)];
+  /* the constant must read as the column does: its codeset, and its collation (a LIKE: a binary one on both
+   * sides, where '%' matches bytes) */
+  if (DB_IS_NULL (k) || db_get_string_codeset (k) != col->codeset
+      || (info->
+	  like ? !(LANG_IS_COERCIBLE_COLL (col->collation)
+		   && LANG_IS_COERCIBLE_COLL (db_get_string_collation (k))) : db_get_string_collation (k) !=
+	  col->collation) || (info->like && !eb_like_pattern_ok (db_get_string (k), db_get_string_size (k))))
+    {
+      return NO_ERROR;
+    }
+  cap = b->cap_leaves;
+  if (eb_grow ((void **) &plan->leaves, &cap, plan->n_leaves, sizeof (EB_LEAF)) != NO_ERROR
+      || eb_grow ((void **) &plan->lsrc, &b->cap_leaves, plan->n_leaves, sizeof (EB_LEAF_SRC)) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  leaf = &plan->leaves[plan->n_leaves];
+  memset (leaf, 0, sizeof (*leaf));
+  leaf->vec = vec;
+  leaf->col = eb_col_of_vec (plan, vec);
+  leaf->vec2 = -1;
+  leaf->col2 = -1;
+  leaf->etype = EB_STR;
+  leaf->k_type = DB_TYPE_VARCHAR;
+  leaf->rel_op = (unsigned char) info->rel_op;
+  leaf->like = info->like ? 1 : 0;
+  leaf->negate = info->negate ? 1 : 0;
+  plan->lsrc[plan->n_leaves].value = info->k_value;
+  plan->lsrc[plan->n_leaves].cell = info->k_cell;
+  plan->n_raw_kids++;
+  *out = plan->n_leaves++;
+  return NO_ERROR;
+}
+
+/* a string leaf over the selection: the collation's comparison ("="), or the pattern; NULL is UNKNOWN */
+static int
+eb_raw_kid_str (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
+{
+  static const bool ti = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+  const EB_COL *col = &plan->cols[leaf->col];
+  int j, n = 0;
+
+  for (j = 0; j < batch->n_sel; j++)
+    {
+      int r = batch->sel[j];
+      const char *str = NULL;
+      int len = 0, got;
+      bool keep;
+
+      got = eb_cell_str (col, &batch->layout[r], &str, &len);
+      if (got < 0)
+	{
+	  return eb_fallback (plan, "a string the batch does not read from the record");
+	}
+      if (got == 0)
+	{
+	  plan->unk[r] = 1;
+	  batch->sel[n++] = r;
+	  continue;
+	}
+      if (leaf->like)
+	{
+	  keep = eb_like_match (str, len, leaf->k_str, leaf->k_len);
+	  keep = leaf->negate ? !keep : keep;
+	}
+      else
+	{
+	  int c = QSTR_COMPARE (col->collation, (const unsigned char *) str, len,
+				(const unsigned char *) leaf->k_str, leaf->k_len, ti);
+
+	  keep = (leaf->rel_op == R_EQ) ? (c == 0) : (c != 0);
+	}
+      if (keep)
+	{
+	  batch->sel[n++] = r;
+	}
+    }
+  batch->n_sel = n;
   return NO_ERROR;
 }
 
@@ -1005,6 +1255,10 @@ eb_choose_pointed (EXPR_BATCH_PLAN * plan)
       EB_VEC *v = &plan->vecs[col->vec];
       int leaf_uses = 0, arith_uses = 0, other_uses = 0;
 
+      if (v->etype == EB_STR)
+	{
+	  continue;		/* pointed from the start: only string leaves read it */
+	}
       for (i = 0; i < plan->n_leaves; i++)
 	{
 	  leaf_uses += (plan->leaves[i].vec == col->vec) + (plan->leaves[i].vec2 == col->vec);
@@ -2360,6 +2614,24 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 	  /* two columns: nothing to load */
 	  continue;
 	}
+      if (leaf->etype == EB_STR)
+	{
+	  const EB_COL *col = &plan->cols[leaf->col];
+
+	  if (k == NULL || DB_IS_NULL (k)
+	      || (DB_VALUE_DOMAIN_TYPE (k) != DB_TYPE_VARCHAR && DB_VALUE_DOMAIN_TYPE (k) != DB_TYPE_CHAR)
+	      || db_get_string_codeset (k) != col->codeset
+	      || (leaf->like ? !LANG_IS_COERCIBLE_COLL (db_get_string_collation (k))
+		  : db_get_string_collation (k) != col->collation)
+	      || (leaf->like && !eb_like_pattern_ok (db_get_string (k), db_get_string_size (k))))
+	    {
+	      /* a host variable bound to something the leaf was not built for this execution */
+	      return eb_fallback (plan, "a string constant the batch does not take");
+	    }
+	  leaf->k_str = db_get_string (k);
+	  leaf->k_len = db_get_string_size (k);
+	  continue;
+	}
       if (k == NULL)
 	{
 	  return eb_fallback (plan, "a filter constant not set");
@@ -2720,6 +2992,10 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
   if (leaf->vec2 >= 0)
     {
       return eb_raw_kid_cols (plan, batch, leaf);
+    }
+  if (leaf->etype == EB_STR)
+    {
+      return eb_raw_kid_str (plan, batch, leaf);
     }
 
   for (j = 0; j < batch->n_sel; j++)

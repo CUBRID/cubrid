@@ -3719,6 +3719,93 @@ expr_pred_term_numeric_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RA
   return true;
 }
 
+/* A term on a VARCHAR column of the scan against a string constant: "col = 'x'", "col <> 'x'", "col [NOT] LIKE
+ * 'pattern'" without an ESCAPE (a page batch compares the record's bytes with the collation's own function, and
+ * matches a pattern of literals and '%' over a binary collation, expr_batch.c) */
+static bool
+expr_pred_term_string_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
+{
+  const REGU_VARIABLE *col, *k;
+  const DB_VALUE *kv = NULL;
+  bool negate = false, like = false;
+  int rel_op = R_EQ;
+
+  if (pr != NULL && pr->type == T_NOT_TERM)
+    {
+      negate = true;
+      pr = pr->pe.m_not_term;
+    }
+  if (pr == NULL || pr->type != T_EVAL_TERM)
+    {
+      return false;
+    }
+  if (pr->pe.m_eval_term.et_type == T_LIKE_EVAL_TERM)
+    {
+      const LIKE_EVAL_TERM *lk = &pr->pe.m_eval_term.et.et_like;
+
+      if (lk->esc_char != NULL || lk->src == NULL || lk->pattern == NULL || lk->src->type != TYPE_ATTR_ID)
+	{
+	  return false;
+	}
+      col = lk->src;
+      k = lk->pattern;
+      like = true;
+    }
+  else if (!negate && pr->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
+    {
+      const COMP_EVAL_TERM *et = &pr->pe.m_eval_term.et.et_comp;
+
+      if ((et->rel_op != R_EQ && et->rel_op != R_NE) || et->lhs == NULL || et->rhs == NULL)
+	{
+	  return false;
+	}
+      if (et->lhs->type == TYPE_ATTR_ID)
+	{
+	  col = et->lhs;
+	  k = et->rhs;
+	}
+      else if (et->rhs->type == TYPE_ATTR_ID)
+	{
+	  col = et->rhs;
+	  k = et->lhs;
+	}
+      else
+	{
+	  return false;
+	}
+      rel_op = et->rel_op;
+    }
+  else
+    {
+      return false;
+    }
+  if (col->domain == NULL || TP_DOMAIN_TYPE (col->domain) != DB_TYPE_VARCHAR)
+    {
+      return false;
+    }
+  if (k->type == TYPE_DBVAL)
+    {
+      kv = &k->value.dbval;
+    }
+  else if (k->type == TYPE_POS_VALUE)
+    {
+      kv = expr_raw_pos_value (k, vd);
+    }
+  if (kv == NULL || DB_IS_NULL (kv)
+      || (DB_VALUE_DOMAIN_TYPE (kv) != DB_TYPE_VARCHAR && DB_VALUE_DOMAIN_TYPE (kv) != DB_TYPE_CHAR))
+    {
+      return false;
+    }
+  out->col_regu = col;
+  out->col_is_lhs = true;
+  out->fast_type = DB_TYPE_VARCHAR;
+  out->rel_op = rel_op;
+  out->k_value = kv;
+  out->like = like;
+  out->negate = negate;
+  return true;
+}
+
 /*
  * expr_pred_raw_leaves () - an interpreted data filter as raw leaves
  *   return: the terms of its AND chain (left to right, the order eval_pred () visits them), or -1 when a term
@@ -3746,7 +3833,8 @@ expr_pred_raw_leaves (const void *pred_expr, const val_descr * vd, EXPR_RAW_LEAF
   for (i = 0; i < n; i++)
     {
       memset (&out[i], 0, sizeof (out[i]));
-      if (!expr_pred_term_numeric_info (terms[i], vd, &out[i]))
+      if (!expr_pred_term_numeric_info (terms[i], vd, &out[i])
+	  && (memset (&out[i], 0, sizeof (out[i])), !expr_pred_term_string_info (terms[i], vd, &out[i])))
 	{
 	  return -1;
 	}

@@ -363,6 +363,8 @@ struct expr_raw_leaf_info
 				 * expr_scan_pred_prepare ()); exactly one of k_value / k_cell is set */
   const REGU_VARIABLE *col2_regu;	/* instead of a constant, another column of the scan ("a < b"): the right
 					 * operand, col_regu the left; neither k_value nor k_cell is set */
+  bool like;			/* a VARCHAR column LIKE the constant pattern k_value (rel_op unused), ... */
+  bool negate;			/* ... under a NOT */
 };
 
 /* the shape of the root: 1 = a single comparison leaf (n_kids = 1), 2 = a flattened AND chain

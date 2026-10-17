@@ -10988,10 +10988,18 @@ heap_attrinfo_raw_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP
 	  return ER_FAILED;	/* a fixed NUMERIC would need the kernel this file does not have */
 	}
       break;
+    case DB_TYPE_VARCHAR:
+      if (attrepr->is_fixed != 0)
+	{
+	  return ER_FAILED;
+	}
+      break;
     default:
       return ER_FAILED;
     }
 
+  out->collation = TP_DOMAIN_COLLATION (attrepr->domain);
+  out->codeset = TP_DOMAIN_CODESET (attrepr->domain);
   out->repid = attr_info->last_classrepr->id;
   out->n_variable = attr_info->last_classrepr->n_variable;
   out->fixed_length = attr_info->last_classrepr->fixed_length;
