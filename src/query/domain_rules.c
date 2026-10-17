@@ -2717,6 +2717,28 @@ domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_V
   return DB_VALUE_DOMAIN_TYPE (value);
 }
 
+/* The name of a session variable's type in its type error: a string's codeset too */
+static const char *
+domain_session_variable_type_name (DB_TYPE type, int codeset, char *buffer, size_t size)
+{
+  if (!TP_IS_CHAR_TYPE (type))
+    {
+      return pr_type_name (type);
+    }
+  snprintf (buffer, size, "%s charset %s", pr_type_name (type), lang_get_codeset_name (codeset));
+  return buffer;
+}
+
+int
+domain_session_variable_type_error (const char *name, DB_TYPE type, int codeset, DB_TYPE other_type, int other_codeset)
+{
+  char type_buffer[128], other_buffer[128];
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_VARIABLE_TYPE_FIXED, 3, name,
+	  domain_session_variable_type_name (type, codeset, type_buffer, sizeof (type_buffer)),
+	  domain_session_variable_type_name (other_type, other_codeset, other_buffer, sizeof (other_buffer)));
+  return ER_SES_VARIABLE_TYPE_FIXED;
+}
+
 /*
  * the character results of compiled nodes whose collation the compiler left to the values (LEAVE) or enforced
  * over an operand it could not type (ENFORCE). Each rule is what the operator gives its value at execution

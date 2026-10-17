@@ -9568,7 +9568,10 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
     {
       ((PT_NODE *) return_node)->flag.cannot_prepare = 1;
       /* CBRD-27583 (4.8): the types its session variable reads take, asked of the session now */
-      pt_type_session_variables (parser, (PT_NODE *) return_node);
+      if (pt_type_session_variables (parser, (PT_NODE *) return_node) != NO_ERROR)
+	{
+	  return_node = NULL;
+	}
     }
 
   PT_CLEAR_JMP_ENV (parser);

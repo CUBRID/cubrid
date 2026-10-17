@@ -3977,7 +3977,8 @@ struct parser_context
 				 * reads or assigns (pt_type_session_variables) */
   const char **session_variable_names;	/* [session_variable_count] their names */
   TP_DOMAIN **session_variable_domains;	/* [session_variable_count] the type each has for the statement: the
-					 * session's, else the one its first assignment gives, else the NULL type */
+					 * one its assignments give, else the session's, else the NULL type */
+  bool *session_variable_assigned;	/* [session_variable_count] whether an assignment gave that type */
 
   int dbval_cnt;		/* to be assigned to XASL */
   int line, column;		/* current input line and column */

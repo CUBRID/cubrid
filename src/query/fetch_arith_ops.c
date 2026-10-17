@@ -71,14 +71,13 @@ static int fetch_arith_binary_operand_coercion (const val_descr * vd, ARITH_TYPE
 
 /*
  * fetch_session_read_value () - CBRD-27583 (4.8, D-40): a session variable read's value in the type the compilation gave
- *   the read: the variable's type when the statement was compiled, or the one its first assignment in the statement
- *   gives a variable without a type
+ *   the read: the type the statement's assignments give the variable, else the type of its value when the statement
+ *   was compiled
  *   return: NO_ERROR, or ER_SES_VARIABLE_TYPE_FIXED for a value of another type
  *
- * An assignment within the statement keeps the variable's type (session_variable_value), so a value of another type
- * comes from a writer the compilation did not see (a SET VARIABLE in a stored procedure the statement calls). A string
- * has one type per codeset: a value of another collation, or a fixed-length one the statement's assignments made
- * variable-length, converts into the read's domain.
+ * A value of another type is one the variable held before the statement's first assignment to it, or one a writer the
+ * compilation did not see stored (a SET VARIABLE in a stored procedure the statement calls). A string has one type per
+ * codeset: a value of another collation, or a fixed-length one, converts into the read's domain.
  */
 static int
 fetch_session_read_value (ARITH_TYPE * arithptr, const DB_VALUE * name)
@@ -104,8 +103,8 @@ fetch_session_read_value (ARITH_TYPE * arithptr, const DB_VALUE * name)
     {
       return NO_ERROR;
     }
-  return session_variable_type_error (db_get_string (name), read_type,
-				      TP_IS_CHAR_TYPE (read_type) ? TP_DOMAIN_CODESET (type) : 0, value);
+  return domain_session_variable_type_error (db_get_string (name), read_type, TP_DOMAIN_CODESET (type), value_type,
+					     TP_IS_CHAR_TYPE (value_type) ? db_get_string_codeset (value) : 0);
 }
 
 /*

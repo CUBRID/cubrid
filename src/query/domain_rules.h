@@ -139,6 +139,12 @@ bool domain_argument_type_depends_on_value (DOMAIN_CTX context, int opcode, int 
  * DB_TYPE_NULL when the value cannot be typed: the function's own error. */
 DB_TYPE domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_VALUE * value);
 
+/* CBRD-27583 (D-40): ER_SES_VARIABLE_TYPE_FIXED, a session variable that has a type for the statement meets one of
+ * another type - a value its read finds (the server), an assignment of the statement (the compilation). A string type
+ * names its codeset, which may be all that differs. */
+int domain_session_variable_type_error (const char *name, DB_TYPE type, int codeset, DB_TYPE other_type,
+					int other_codeset);
+
 /*
  * The character result of a node the compiler typed but whose collation it left to the values (LEAVE) or enforced
  * over an operand it could not type (ENFORCE), resolved at resolve_domains from the operands' resolved domains: the

@@ -1494,7 +1494,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1385 Invalid username or password.
 
-1386 Session variable @%1$s has the type %2$s in this statement: a value of %3$s cannot be assigned to it.
+1386 Session variable @%1$s has the type %2$s in this statement, not %3$s.
 
 1387 Last Error
 
