@@ -96,11 +96,10 @@ struct DOMAIN_LOAD_ENTRY
   const TP_DOMAIN *consumer;
   const TP_DOMAIN *argument;	/* FIXED_AGG: the argument's compiled domain when it is fixed (DOMAIN_LATE_BIND_LINK) */
   DOMAIN_PLAN_ITEM *self_owner;	/* owner storage of a synthetic entry (a set-operation column) */
-  /* T_ADD, T_SUB, T_MUL, T_DIV, a SUM or AVG: the operands whose operand coercion the execution may convert once per
-   * scope ([1]: the value an aggregate adds), and for a correlated one the block whose scans fix it */
+  /* T_ADD, T_SUB, T_MUL, T_DIV: the operands whose operand coercion the execution may convert once per scope, and for
+   * a correlated one the block whose scans fix it */
   REGU_VARIABLE *temporary_operand[2];
   XASL_NODE *temporary_scope[2];
-  const AGGREGATE_TYPE *temporary_aggregate;	/* a SUM or AVG: the function */
   /* T_ADD, T_SUB, T_MUL, T_DIV the compiler typed: the operands its operand coercion is planned over once the
    * producers are linked (domain_plan_compiled_operand_coercion) */
   REGU_VARIABLE *coercion_operand[2];
@@ -1878,13 +1877,6 @@ domain_walk_agg (DOMAIN_LOAD_CONTEXT * ctx, AGGREGATE_TYPE * agg)
 	      if (operand->plan_item == NULL)
 		{
 		  load_entry->n_link = -1;
-		}
-	      if ((agg->function == PT_SUM || agg->function == PT_AVG) && agg->option != Q_DISTINCT)
-		{
-		  /* the value SUM and AVG add, when a scope fixes it (domain_plan_add_temporaries) */
-		  load_entry->temporary_operand[1] = operand;
-		  load_entry->temporary_scope[1] = domain_outer_scope (ctx, operand);
-		  load_entry->temporary_aggregate = agg;
 		}
 	    }
 	}
@@ -3751,7 +3743,6 @@ domain_plan_add_temporaries (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx,
 		  DOMAIN_PLAN_CONSTANT_OPERAND *constant = &plan->constant_operands[n];
 		  constant->item = item;
 		  constant->operand = r->temporary_operand[i];
-		  constant->aggregate = r->cold.ctx == DOMAIN_CTX_AGG ? r->temporary_aggregate : NULL;
 		  constant->operand_index = i;
 		  constant->temporary = item->temporaries[i];
 		}

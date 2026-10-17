@@ -30,6 +30,7 @@ struct domain_plan_item;
 #include "query_sum_accumulator.h"  // SUM_ACC
 #include "regu_var.hpp"             // regu_variable_node
 #include "storage_common.h"         // QUERY_OPTIONS
+#include "xasl_aggregate.hpp"        // aggregate_accumulator_domain
 
 // forward definitions
 struct qfile_list_id;
@@ -101,6 +102,11 @@ namespace cubxasl
     db_value part_value;		/* partition temporary accumulator */
     SUM_ACC sum_acc;	                /* word accumulator for NUMERIC SUM/AVG */
     INT64 curr_cnt;			/* current number of items */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+    aggregate_accumulator_domain accumulator_domain;	/* CBRD-27583 (4.3): a SUM / AVG's or STDDEV / VARIANCE's,
+							 * chosen at unpack (qdata_plan_analytic_accumulator); not
+							 * serialized */
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
     void init ();
   };

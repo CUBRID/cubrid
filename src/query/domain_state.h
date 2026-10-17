@@ -35,11 +35,6 @@ struct RESOLVED_INDEX_KEYS;
 struct DOMAIN_EXECUTION_TEMPORARY;
 struct domain_plan;
 struct tp_domain;
-namespace cubxasl
-{
-  struct aggregate_accumulator_domain;
-}
-
 /*
  * RESOLVED_DOMAIN_TABLE - what resolve_domains (qexec_resolve_domains) resolved for one execution before its first row:
  *   the values the execution reads, and the domains, comparisons, ALL/SOME terms and index keys its plan left to the
@@ -81,7 +76,7 @@ struct RESOLVED_DOMAIN_TABLE
 
 /*
  * DOMAIN_EXECUTION_STATE - what an execution's rows change of its domain state: the domain, list domain and operand
- *   type each node took, the aggregates' accumulator domains, and the values converted once per scope.
+ *   type each node took, and the values converted once per scope.
  *   XASL_STATE.domain_execution. Only the owner
  *   (resolved_domain.owner) writes it. A PX worker's copy (qexec_copy_resolved_domains) takes the node state of the
  *   leader's nodes it runs, or starts it anew over its own load, and starts with no value converted.
@@ -96,11 +91,6 @@ struct DOMAIN_EXECUTION_STATE
 							 * holds and its key sorts (qexec_setup_interpolation_list); NULL */
   int *operand_types;		/* [n_operand_types] an aggregate's or analytic function's operand type (opr_dbtype);
 				 * -1 */
-  // *INDENT-OFF*
-  cubxasl::aggregate_accumulator_domain *accumulator_domains;	/* [n_operand_types] an aggregate's accumulator
-								 * domains, an analytic SUM / AVG's operand coercion
-								 * (qexec_accumulator_domain) */
-  // *INDENT-ON*
   int n_node_domains;
   int n_operand_types;		/* the load numbers the aggregates and analytic functions' execution domains first,
 				 * MEDIAN / PERCENTILE aggregates first among them (DOMAIN_PLAN.n_operand_types) */

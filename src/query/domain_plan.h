@@ -68,7 +68,6 @@ class regu_variable_node;
 namespace cubxasl
 {
   struct pred_expr;
-  struct aggregate_list_node;
 }
 
 enum DOMAIN_OPERAND_CLASS
@@ -293,17 +292,14 @@ struct DOMAIN_PLAN_CONSTANT_EXPRESSION
   regu_variable_node *regu;
 };
 
-/* A constant an addition, subtraction, multiplication or division converts for its operand coercion, or the constant a
- * SUM or AVG converts for the values it adds after the first: an execution temporary of the execution's scope, which
- * resolve_domains converts before the main block (qexec_convert_constant_operands). */
+/* A constant an addition, subtraction, multiplication or division converts for its operand coercion: an execution
+ * temporary of the execution's scope, which resolve_domains converts before the main block
+ * (qexec_convert_constant_operands). */
 struct DOMAIN_PLAN_CONSTANT_OPERAND
 {
-  const DOMAIN_PLAN_ITEM *item;	/* the arithmetic node's, or the aggregate's */
+  const DOMAIN_PLAN_ITEM *item;	/* the arithmetic node's */
   const regu_variable_node *operand;	/* the constant: a literal, a bind or a constant expression */
-  // *INDENT-OFF*
-  const cubxasl::aggregate_list_node *aggregate;	/* the SUM or AVG; NULL for an arithmetic node */
-  // *INDENT-ON*
-  int operand_index;		/* the arithmetic node's operand, 0 or 1; 1 for an aggregate */
+  int operand_index;		/* the arithmetic node's operand, 0 or 1 */
   int temporary;		/* its domain_execution.temporaries index */
 };
 

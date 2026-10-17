@@ -116,6 +116,7 @@ using AGGREGATE_HASH_KEY = cubquery::aggregate_hash_key;
 using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
 using HIERARCHY_AGGREGATE_HELPER = cubquery::hierarchy_aggregate_helper;
 
+void qdata_plan_aggregate_accumulator (cubxasl::aggregate_list_node *agg_p);
 int qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list,
 				     QUERY_ID query_id, const struct val_descr *vd);
 int qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,

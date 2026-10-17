@@ -7857,6 +7857,24 @@ pt_reject_unaddable_operand (PARSER_CONTEXT * parser, PT_NODE * statement, FUNC_
 }
 
 /*
+ * pt_set_interpolation_list_domain () - CBRD-27583 (4.3): the domain a MEDIAN / PERCENTILE list holds and its key
+ *   sorts: the argument's where it is of the function's type (a NUMERIC column keeps its precision and scale), the
+ *   function's otherwise - every value converts to the function's type before it goes into the list
+ */
+static void
+pt_set_interpolation_list_domain (AGGREGATE_TYPE * agg)
+{
+  if (!QPROC_IS_INTERPOLATION_FUNC (agg) || agg->sort_list == NULL || !pt_regu_domain_is_fixed_domain (agg->domain)
+      || TP_DOMAIN_TYPE (agg->domain) == DB_TYPE_NULL)
+    {
+      return;
+    }
+  const TP_DOMAIN *argument = agg->operands->value.domain;
+  agg->sort_list->pos_descr.dom = argument != NULL && TP_DOMAIN_TYPE (argument) == TP_DOMAIN_TYPE (agg->domain)
+    ? (TP_DOMAIN *) argument : agg->domain;
+}
+
+/*
  * pt_decide_aggregate_domains () - CBRD-27583 (4.3): a block's aggregates over their operands' domains: an operand
  *   reading a slot of values takes the domain its writer fills it with, and a function type checking left to its
  *   argument's value takes its domain and operand type from it, before any reader of its value is generated
@@ -7874,11 +7892,14 @@ pt_decide_aggregate_domains (PARSER_CONTEXT * parser, PT_NODE * statement, AGGRE
 	{
 	  continue;
 	}
-      QPROC_DB_VALUE_LIST slot = operand->type == TYPE_CONSTANT ? pt_value_list_slot (values, operand->value.dbvalptr)
-	: NULL;
-      if (slot != NULL)
+      for (REGU_VARIABLE_LIST each = agg->operands; each != NULL; each = each->next)
 	{
-	  operand->domain = pt_reader_domain (operand->domain, slot->dom);
+	  QPROC_DB_VALUE_LIST slot = each->value.type == TYPE_CONSTANT
+	    ? pt_value_list_slot (values, each->value.value.dbvalptr) : NULL;
+	  if (slot != NULL)
+	    {
+	      each->value.domain = pt_reader_domain (each->value.domain, slot->dom);
+	    }
 	}
       if (pt_reject_unaddable_operand (parser, statement, agg->function, operand, agg->accumulator.value) != NO_ERROR)
 	{
@@ -7888,6 +7909,7 @@ pt_decide_aggregate_domains (PARSER_CONTEXT * parser, PT_NODE * statement, AGGRE
 						     operand);
       if (domain == NULL)
 	{
+	  pt_set_interpolation_list_domain (agg);
 	  continue;
 	}
       if (agg->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (agg->domain) != TP_DOMAIN_COLL_NORMAL)
@@ -7901,6 +7923,7 @@ pt_decide_aggregate_domains (PARSER_CONTEXT * parser, PT_NODE * statement, AGGRE
 	  regu_dbval_type_init (agg->accumulator.value, TP_DOMAIN_TYPE (domain));
 	}
       agg->domain = domain;
+      pt_set_interpolation_list_domain (agg);
     }
   return NO_ERROR;
 }
@@ -30354,6 +30377,7 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
     }
 
   regu->type = TYPE_REGU_VAR_LIST;
+  /* CBRD-27583: a container of values, not a value: no domain of its own */
   regu->domain = tp_domain_resolve_default (DB_TYPE_VARIABLE);
   /* for cume_dist and percent_rank, regu_variable should be hidden */
   REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_HIDDEN_COLUMN);

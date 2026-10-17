@@ -34,11 +34,6 @@
 #include "xasl_aggregate.hpp"
 
 // forward definitions
-namespace cubxasl
-{
-  struct aggregate_list_node;
-  struct analytic_eval_type;
-}
 struct buildlist_proc_node;
 struct regu_variable_list_node;
 struct val_list_node;
@@ -63,14 +58,6 @@ inline bool qexec_position_domain_is_variable (const VAL_DESCR * vd, const DOMAI
   __attribute__ ((ALWAYS_INLINE));
 inline void qexec_set_node_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * compiled,
 				   const TP_DOMAIN * domain) __attribute__ ((ALWAYS_INLINE));
-inline TP_DOMAIN *qexec_interpolation_list_domain (const VAL_DESCR * vd, TP_DOMAIN * compiled,
-						   const DOMAIN_PLAN_ITEM * item) __attribute__ ((ALWAYS_INLINE));
-inline void qexec_take_interpolation_list_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item,
-						  const TP_DOMAIN * domain) __attribute__ ((ALWAYS_INLINE));
-inline DB_TYPE qexec_node_operand_type (const VAL_DESCR * vd, DB_TYPE compiled, const DOMAIN_PLAN_ITEM * item)
-  __attribute__ ((ALWAYS_INLINE));
-inline void qexec_take_operand_type (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, DB_TYPE compiled,
-				     DB_TYPE type) __attribute__ ((ALWAYS_INLINE));
 inline int qexec_item_index (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item) __attribute__ ((ALWAYS_INLINE));
 inline const DB_VALUE *qexec_execution_temporary (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int temporary,
 						  TP_VALUE_CONVERTER conv, const TP_DOMAIN * target,
@@ -211,75 +198,6 @@ qexec_set_node_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, cons
   vd->xasl_state->domain_execution.node_domains[node_domain_index] = domain == compiled ? NULL : domain;
 }
 
-/* The domain a MEDIAN / PERCENTILE list holds and its sort key sorts in this execution
- * (qexec_setup_interpolation_list): the key's compiled domain until the setup gives the function its type. The key
- * shares the function's item, so the list domain has execution domains of its own. Only a MEDIAN / PERCENTILE
- * aggregate has one: the load numbers those first, and only their items come here. The assert checks that numbering;
- * the rows do not check per row what the load fixed. */
-inline TP_DOMAIN *
-qexec_interpolation_list_domain (const VAL_DESCR * vd, TP_DOMAIN * compiled, const DOMAIN_PLAN_ITEM * item)
-{
-  const int node_domain_index = qexec_node_domain_index (vd, item);
-  assert (node_domain_index < 0 || node_domain_index < vd->xasl_state->domain_execution.n_interpolation_list_domains);
-  if (node_domain_index < 0 || vd->xasl_state->domain_execution.interpolation_list_domains[node_domain_index] == NULL)
-    {
-      return compiled;
-    }
-  return (TP_DOMAIN *) vd->xasl_state->domain_execution.interpolation_list_domains[node_domain_index];
-}
-
-inline void
-qexec_take_interpolation_list_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, const TP_DOMAIN * domain)
-{
-  const int node_domain_index = qexec_node_domain_index (vd, item);
-  assert (node_domain_index >= 0 && node_domain_index < vd->xasl_state->domain_execution.n_interpolation_list_domains);
-  if (node_domain_index >= 0)
-    {
-      vd->xasl_state->domain_execution.interpolation_list_domains[node_domain_index] = domain;
-    }
-}
-
-/* An aggregate's or an analytic function's operand type now in this execution: the one it took, or
- * its compiled opr_dbtype. The load numbers the functions' execution domains first, so theirs are the operand types'
- * indexes; only the functions' own items come here, and the rows do not check the bound the assert checks. */
-inline DB_TYPE
-qexec_node_operand_type (const VAL_DESCR * vd, DB_TYPE compiled, const DOMAIN_PLAN_ITEM * item)
-{
-  const int node_domain_index = qexec_node_domain_index (vd, item);
-  assert (node_domain_index < 0 || node_domain_index < vd->xasl_state->domain_execution.n_operand_types);
-  if (node_domain_index < 0 || vd->xasl_state->domain_execution.operand_types[node_domain_index] < 0)
-    {
-      return compiled;
-    }
-  return (DB_TYPE) vd->xasl_state->domain_execution.operand_types[node_domain_index];
-}
-
-inline void
-qexec_take_operand_type (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item, DB_TYPE compiled, DB_TYPE type)
-{
-  const int node_domain_index = qexec_node_domain_index (vd, item);
-  if (node_domain_index < 0)
-    {
-      assert (type == compiled);
-      return;
-    }
-  assert (node_domain_index < vd->xasl_state->domain_execution.n_operand_types);
-  vd->xasl_state->domain_execution.operand_types[node_domain_index] = type == compiled ? -1 : (int) type;
-}
-
-/* An aggregate's accumulator domains, or an analytic SUM / AVG's operand coercion, in this execution: the entry under
- * the function's execution domain index (the load numbers every aggregate and analytic function there). The setup
- * writes it before the first row; the rows read it. */
-inline AGGREGATE_ACCUMULATOR_DOMAIN *
-qexec_accumulator_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
-{
-  assert (vd != NULL && vd->xasl_state != NULL && item != NULL && qexec_owns_node_domain (*vd->xasl_state, item)
-	  && item->node_domain_index >= 0
-	  && item->node_domain_index < vd->xasl_state->domain_execution.n_operand_types);
-  return &vd->xasl_state->domain_execution.accumulator_domains[item->node_domain_index];
-}
-
-
 extern const TP_DOMAIN *qexec_resolved_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item);
 extern const TP_DOMAIN *qexec_null_bind_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item);
 extern const TP_DOMAIN *qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item);
@@ -305,7 +223,6 @@ qexec_query_alias (const VAL_DESCR * vd)
   return vd != NULL && vd->xasl_state != NULL && vd->xasl_state->query_alias != NULL ? vd->xasl_state->query_alias : "";
 }
 
-extern const TP_DOMAIN *qexec_value_domain (const VAL_DESCR * vd, const regu_variable_node * regu);
 extern void qexec_enter_temporary_scope (const VAL_DESCR * vd, const val_list_node * val_list);
 extern const DB_VALUE *qexec_convert_execution_temporary (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
 							  DOMAIN_EXECUTION_TEMPORARY * entry, TP_VALUE_CONVERTER conv,
@@ -370,9 +287,5 @@ extern int qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR
 					SORT_LIST ** resolved_groupby);
 extern void qexec_finish_group_by_domains (const VAL_DESCR * vd, buildlist_proc_node * buildlist);
 extern void qexec_setup_hash_aggregate_lists (const VAL_DESCR * vd, buildlist_proc_node * buildlist);
-extern int qexec_setup_aggregate_domains (cubxasl::aggregate_list_node * agg_list, const VAL_DESCR * vd);
-extern void qexec_type_accumulator_outputs (const VAL_DESCR * vd, xasl_node * xasl);
-extern int qexec_setup_analytic_domains (const VAL_DESCR * vd, cubxasl::analytic_eval_type * eval_list);
-extern int qexec_setup_parallel_aggregates (xasl_node * xasl, const VAL_DESCR * vd);
 
 #endif /* _DOMAIN_RESOLVE_H_ */

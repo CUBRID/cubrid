@@ -202,10 +202,6 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   static_assert (sizeof (DOMAIN_COMPARE) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
   static_assert (sizeof (RESOLVED_DOMAIN) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
   static_assert (sizeof (DB_VALUE) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
-  static_assert (alignof (AGGREGATE_ACCUMULATOR_DOMAIN) <= alignof (const TP_DOMAIN *), "accumulators alignment");
-  static_assert (sizeof (AGGREGATE_ACCUMULATOR_DOMAIN) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0,
-		 "temporaries alignment");
-  static_assert (sizeof (AGGREGATE_ACCUMULATOR_DOMAIN) % alignof (int) == 0, "operand types alignment");
   static_assert (sizeof (const TP_DOMAIN *) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
   static_assert (sizeof (RESOLVED_INDEX_KEYS) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
   static_assert (sizeof (DOMAIN_ELEMENTS) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
@@ -217,13 +213,12 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   static_assert (sizeof (unsigned long long) % alignof (int) == 0, "operand types alignment");
   static_assert (sizeof (const TP_DOMAIN *) % alignof (int) == 0, "operand types alignment");
   /* values, resolved domain table, comparison resolutions, ALL/SOME resolutions, key resolutions, the nodes' execution
-   * domains and list domains, the functions' accumulator domains, the execution temporaries and the scopes'
-   * generations, the operand types, then the constant flags */
+   * domains and list domains, the execution temporaries and the scopes' generations, the operand types, then the
+   * constant flags */
   const size_t bytes = sizeof (DB_VALUE) * (size_t) n_vals + sizeof (RESOLVED_DOMAIN) * (size_t) n_resolved
     + sizeof (DOMAIN_COMPARE) * (size_t) n_compares + sizeof (DOMAIN_ELEMENTS) * (size_t) n_elements
     + sizeof (RESOLVED_INDEX_KEYS) * (size_t) n_indexes
     + sizeof (const TP_DOMAIN *) * ((size_t) n_node_domains + (size_t) n_interpolation_list_domains)
-    + sizeof (AGGREGATE_ACCUMULATOR_DOMAIN) * (size_t) n_operand_types
     + sizeof (DOMAIN_EXECUTION_TEMPORARY) * (size_t) n_temporaries + sizeof (unsigned long long) * (size_t) n_scopes
     + sizeof (int) * (size_t) n_operand_types + (size_t) n_vals;
   if (bytes == 0)
@@ -288,17 +283,6 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
       memset (execution.interpolation_list_domains, 0,
 	      sizeof (*execution.interpolation_list_domains) * n_interpolation_list_domains);
       next += sizeof (*execution.interpolation_list_domains) * n_interpolation_list_domains;
-    }
-  /* no accumulator domain set up yet; a SUM or AVG converts no value once per scope yet */
-  if (n_operand_types != 0)
-    {
-      execution.accumulator_domains = (AGGREGATE_ACCUMULATOR_DOMAIN *) next;
-      for (int i = 0; i < n_operand_types; i++)
-	{
-	  execution.accumulator_domains[i] = AGGREGATE_ACCUMULATOR_DOMAIN ();
-	  execution.accumulator_domains[i].temporary = -1;
-	}
-      next += sizeof (*execution.accumulator_domains) * n_operand_types;
     }
   /* initialized by qexec_init_execution_temporaries, once the block is made */
   if (n_temporaries != 0)
@@ -454,9 +438,6 @@ qexec_copy_resolved_domains (THREAD_ENTRY * thread_p, const XASL_STATE * from, X
 	{
 	  memcpy (execution.operand_types, src_execution.operand_types,
 		  sizeof (*execution.operand_types) * src_execution.n_operand_types);
-	  /* the leader's aggregates were set up before its scan: the worker reads their accumulator domains */
-	  memcpy (execution.accumulator_domains, src_execution.accumulator_domains,
-		  sizeof (*execution.accumulator_domains) * src_execution.n_operand_types);
 	}
     }
   resolved.in = src.in;
@@ -2381,16 +2362,11 @@ qexec_constant_branch_reached (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
   return reached ? 1 : 0;
 }
 
-static const TP_DOMAIN *qexec_aggregate_accumulator (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p);
-static void qexec_sum_avg_operand_coercion (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p,
-					    const TP_DOMAIN * accumulator, DOMAIN_OPERAND_COERCION * coercion);
-
 /*
  * qexec_constant_operand_conversion () - what converts a constant operand, as the row reads it: the arithmetic node's
- *   operand coercion (fetch_arith_binary's plan), or the one a SUM or AVG's setup resolves for the values it adds after
- *   the first (qexec_setup_aggregate_accumulators)
+ *   operand coercion (fetch_arith_binary's plan)
  *   return: the constant's value; NULL when nothing converts it - no converter, a NULL, a constant expression whose
- *	     computation failed below a constant branch, an aggregate its setup refuses
+ *	     computation failed below a constant branch
  *   conv(out), target(out): the converter and its target
  */
 static const DB_VALUE *
@@ -2401,27 +2377,12 @@ qexec_constant_operand_conversion (const VAL_DESCR * vd, const DOMAIN_PLAN_CONST
   const DOMAIN_PLAN_ITEM *item = constant->item;
   *conv = NULL;
   *target = NULL;
-  if (constant->aggregate == NULL)
+  const RESOLVED_DOMAIN *plan = (item->flags & DOMAIN_PLAN_LATE_BIND)
+    && !(item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION) ? qexec_late_bind_domain (vd, item) : &item->fixed;
+  if (plan != NULL)
     {
-      const RESOLVED_DOMAIN *plan = (item->flags & DOMAIN_PLAN_LATE_BIND)
-	&& !(item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION) ? qexec_late_bind_domain (vd, item) : &item->fixed;
-      if (plan != NULL)
-	{
-	  *conv = plan->conv[constant->operand_index];
-	  *target = plan->operand_domain[constant->operand_index];
-	}
-    }
-  else
-    {
-      const TP_DOMAIN *accumulator = qexec_aggregate_accumulator (vd, constant->aggregate);
-      if (accumulator != NULL && TP_DOMAIN_TYPE (accumulator) != DB_TYPE_VARIABLE
-	  && TP_DOMAIN_TYPE (accumulator) != DB_TYPE_NULL)
-	{
-	  DOMAIN_OPERAND_COERCION coercion = { };
-	  qexec_sum_avg_operand_coercion (vd, constant->aggregate, accumulator, &coercion);
-	  *conv = coercion.conv[1];
-	  *target = coercion.operand_domain[1];
-	}
+      *conv = plan->conv[constant->operand_index];
+      *target = plan->operand_domain[constant->operand_index];
     }
   if (*conv == NULL)
     {
@@ -2444,8 +2405,8 @@ qexec_constant_operand_conversion (const VAL_DESCR * vd, const DOMAIN_PLAN_CONST
 }
 
 /*
- * qexec_convert_constant_operands () - resolve_domains' constant operand step: each constant an arithmetic node or a
- *   SUM or AVG converts (plan->constant_operands) converted once into its execution temporary, before any row
+ * qexec_convert_constant_operands () - resolve_domains' constant operand step: each constant an arithmetic node
+ *   converts (plan->constant_operands) converted once into its execution temporary, before any row
  *   return: NO_ERROR, or the constant's conversion error
  *
  * A failure is resolve_domains' error, as a constant's conversion is everywhere else: whether any row reaches the node
@@ -3263,8 +3224,8 @@ qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SOR
  *
  * A hash key or an output
  * column the plan has no resolution for keeps its domain: the position it follows gives it
- * (qexec_finish_group_by_domains), or its value when it is fetched. The aggregates were set up before the scan
- * (qexec_setup_aggregate_domains). The regus take their domains as their execution domains.
+ * (qexec_finish_group_by_domains), or its value when it is fetched. The aggregates' accumulator domains were planned
+ * at unpack (qdata_plan_aggregate_accumulator). The regus take their domains as their execution domains.
  */
 int
 qexec_plan_group_by_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, BUILDLIST_PROC_NODE * buildlist,
@@ -3322,7 +3283,7 @@ qexec_finish_group_by_domains (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * build
   /* treat case with only NULL values */
   for (agg_p = buildlist->g_agg_list; agg_p; agg_p = agg_p->next)
     {
-      AGGREGATE_ACCUMULATOR_DOMAIN *accumulator = qexec_accumulator_domain (vd, agg_p->plan_item);
+      AGGREGATE_ACCUMULATOR_DOMAIN *accumulator = &agg_p->accumulator_domain;
       if (accumulator->value_dom == NULL)
 	{
 	  accumulator->value_dom = &tp_Null_domain;
@@ -3363,7 +3324,7 @@ qexec_finish_group_by_domains (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * build
  *
  * The lists' tuples are laid out by their column domains (qfile_set_layout), and the hash aggregation writes partial
  * results during the scan, so every column takes its domain before a tuple holds a value there: a key the plan's
- * domain for this execution, an accumulator the domain its setup gave it (qexec_setup_aggregate_domains). A column
+ * domain for this execution, an accumulator the domain its unpack planned (qdata_plan_aggregate_accumulator). A column
  * without one yet - an accumulator that sees only NULL values - takes only NULLs until qexec_finish_group_by_domains
  * gives it the NULL domain. A column that has a domain keeps it: tuples may hold values there already.
  */
@@ -3417,634 +3378,4 @@ qexec_setup_hash_aggregate_lists (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * bu
       qfile_set_layout (lists[0]);
       qfile_set_layout (lists[1]);
     }
-}
-
-/*
- * qexec_apply_aggregate_resolved_domain () - the resolved domain for an aggregate resolve_domains resolves, applied
- *   where the first value's domain would be applied at the row
- *   return: the accumulator domain the resolver derived, or NULL when the resolution has no value
- *
- * The function domain is the resolved domain: the compiled domain for a compiled argument, the first value's for a
- * late-bound one (qexec_resolve_late_bind_node here). opr_dbtype changes for a late-bound function (an operand
- * compiled VARIABLE or a function domain that leaves collation): to the resolution's
- * type, except for MEDIAN / PERCENTILE, whose operand keeps its own type there: a string's values convert to the
- * function's type as they are accumulated (qdata_update_agg_interpolation_func_value_and_domain).
- */
-static const TP_DOMAIN *
-qexec_apply_aggregate_resolved_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
-{
-  const RESOLVED_DOMAIN *late_bind_node = qexec_late_bind_domain (vd, agg_p->plan_item);
-  const TP_DOMAIN *resolved = qexec_resolved_domain (vd, agg_p->plan_item);
-  if (late_bind_node == NULL || resolved == NULL)
-    {
-      return NULL;
-    }
-  /* the domains the aggregate has now: an earlier setup of this execution may have given them */
-  const TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
-  if (qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->plan_item) == DB_TYPE_VARIABLE || domain == NULL
-      || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
-    {
-      if (QPROC_IS_INTERPOLATION_FUNC (agg_p))
-	{
-	  const TP_DOMAIN *argument = qexec_plan_domain (vd, agg_p->operands->value.plan_item);
-	  if (argument == NULL)
-	    {
-	      return NULL;
-	    }
-	  qexec_take_operand_type (vd, agg_p->plan_item, agg_p->opr_dbtype, TP_DOMAIN_TYPE (argument));
-	}
-      else
-	{
-	  qexec_take_operand_type (vd, agg_p->plan_item, agg_p->opr_dbtype, TP_DOMAIN_TYPE (resolved));
-	}
-    }
-  qexec_set_node_domain (vd, agg_p->plan_item, agg_p->domain, resolved);
-  return qexec_aggregate_accumulator (vd, agg_p);
-}
-
-/*
- * qexec_aggregate_accumulator () - the accumulator domain an aggregate's setup derives from its argument's
- *   (qexec_setup_aggregate_domains), read without setting anything up: resolve_domains converts the constant a SUM or
- *   AVG adds before any setup (qexec_convert_constant_operands)
- *   return: the resolved operand domain or the resolved domain of a function resolve_domains resolves, the compiled
- *	     accumulator of one it does not; NULL for a function that sees only NULLs or has none
- */
-static const TP_DOMAIN *
-qexec_aggregate_accumulator (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
-{
-  const DOMAIN_PLAN_ITEM *item = agg_p->plan_item;
-  const RESOLVED_DOMAIN *late_bind_node = qexec_late_bind_domain (vd, item);
-  if (late_bind_node != NULL)
-    {
-      const TP_DOMAIN *resolved = qexec_resolved_domain (vd, item);
-      return resolved == NULL
-	|| late_bind_node->operand_domain[0] == NULL ? resolved : late_bind_node->operand_domain[0];
-    }
-  return item != NULL && (item->flags & DOMAIN_PLAN_ACCUMULATOR) ? item->fixed.operand_domain[0] : NULL;
-}
-
-/*
- * qexec_sum_avg_operand_coercion () - the operand coercion of a value a SUM or AVG adds after the first - a string into
- *   the DOUBLE accumulator - from the accumulator and the argument's domain in this execution; none when the argument
- *   has no type
- */
-static void
-qexec_sum_avg_operand_coercion (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p, const TP_DOMAIN * accumulator,
-				DOMAIN_OPERAND_COERCION * coercion)
-{
-  const TP_DOMAIN *argument = qexec_value_domain (vd, agg_p->operands != NULL ? &agg_p->operands->value : NULL);
-  if (argument != NULL && TP_DOMAIN_TYPE (argument) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL)
-    {
-      const DOMAIN_OPERAND operands[2] = {
-	{accumulator, TP_DOMAIN_TYPE (accumulator), -1, false},
-	{argument, TP_DOMAIN_TYPE (argument), -1, false}
-      };
-      domain_resolve_operand_coercion (T_ADD, operands, coercion);
-    }
-}
-
-/* Whether a MEDIAN / PERCENTILE argument holds only NULLs: resolve_domains resolved it has no value. */
-static bool
-qexec_interpolation_sees_nulls (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
-{
-  const TP_DOMAIN *domain = qexec_consumer_domain (vd, NULL, agg_p->operands->value.plan_item);
-  return domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL;
-}
-
-
-/*
- * qexec_setup_aggregate_accumulators () - the accumulator domains of an aggregate whose function domain is set
- *   return: error code or NO_ERROR
- *   accumulator(in): the accumulator domain derived from the argument's (SUM, AVG)
- *
- * They are the ones the first non-NULL value would give: the accumulator follows the function (or, for SUM and AVG, the
- * argument). A MEDIAN / PERCENTILE over a number or a date leaves them unset, as the first value did; over
- * a string, the type the setup or resolve_domains gave sets them. SUM and AVG also get the operand coercion of a
- * value added after the first and the execution temporary of that value where a scope fixes it.
- */
-/*
- * qexec_value_domain () - the domain a regu gives its values in this execution: its compiled domain when that
- *   fixes them, the plan's otherwise - the resolved domain for a bind or a node over one,
- *   or the producer's that an alias reads (a hash GROUP BY argument over a bind), as qexec_consumer_domain gives it.
- *   An aggregate's or an analytic function's operand type is not it: it holds the function's domain (DOUBLE for a
- *   SUM over strings).
- */
-const TP_DOMAIN *
-qexec_value_domain (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
-{
-  if (regu == NULL)
-    {
-      return NULL;
-    }
-  const bool arith = (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH) && regu->value.arithptr != NULL;
-  return qexec_consumer_domain (vd, arith ? regu->value.arithptr->domain : regu->domain,
-				arith ? regu->value.arithptr->plan_item : regu->plan_item);
-}
-
-static int
-qexec_setup_aggregate_accumulators (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const TP_DOMAIN * accumulator)
-{
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
-  AGGREGATE_ACCUMULATOR_DOMAIN *accumulator_domain = qexec_accumulator_domain (vd, agg_p->plan_item);
-  memset (&accumulator_domain->operand_coercion, 0, sizeof (accumulator_domain->operand_coercion));
-  accumulator_domain->temporary = -1;
-  switch (agg_p->function)
-    {
-    case PT_AGG_BIT_AND:
-    case PT_AGG_BIT_OR:
-    case PT_AGG_BIT_XOR:
-      /* qdata_bit_and/or/xor_dbval always produce a BIGINT accumulator; describe what's actually stored */
-      accumulator_domain->value_dom = &tp_Bigint_domain;
-      accumulator_domain->value2_dom = &tp_Null_domain;
-      break;
-
-    case PT_MIN:
-    case PT_MAX:
-    case PT_GROUP_CONCAT:
-      accumulator_domain->value_dom = domain;
-      accumulator_domain->value2_dom = &tp_Null_domain;
-      break;
-
-    case PT_AVG:
-    case PT_SUM:
-      if (accumulator == NULL || TP_DOMAIN_TYPE (accumulator) == DB_TYPE_VARIABLE
-	  || TP_DOMAIN_TYPE (accumulator) == DB_TYPE_NULL)
-	{
-	  return qexec_domain_unresolved (vd, agg_p->plan_item, agg_p->domain);
-	}
-      accumulator_domain->value_dom = (TP_DOMAIN *) accumulator;
-      accumulator_domain->value2_dom = &tp_Null_domain;
-      {
-	/* a value added after the first takes the addition's operand coercion for its type */
-	qexec_sum_avg_operand_coercion (vd, agg_p, accumulator, &accumulator_domain->operand_coercion);
-	/* a value a scope fixes, which that operand coercion converts, is converted once per scope
-	 * (qexec_execution_temporary; a constant by resolve_domains): the rows read the index set here, not the plan
-	 * item and the operand coercion */
-	const DOMAIN_PLAN_ITEM *item = agg_p->plan_item;
-	assert (item == NULL || !(item->flags & DOMAIN_PLAN_ITEM_COMPARES));
-	if (item != NULL && item->temporaries[1] >= 0 && accumulator_domain->operand_coercion.conv[1] != NULL)
-	  {
-	    accumulator_domain->temporary = item->temporaries[1];
-	  }
-      }
-      break;
-
-    case PT_STDDEV:
-    case PT_STDDEV_POP:
-    case PT_STDDEV_SAMP:
-    case PT_VARIANCE:
-    case PT_VAR_POP:
-    case PT_VAR_SAMP:
-      accumulator_domain->value_dom = &tp_Double_domain;
-      accumulator_domain->value2_dom = &tp_Double_domain;
-      break;
-
-    case PT_MEDIAN:
-    case PT_PERCENTILE_CONT:
-    case PT_PERCENTILE_DISC:
-      {
-	/* a number or a date keeps the accumulator unset, as develop's first value left it; a string column,
-	 * expression or value argument whose type is set (DOUBLE for a string column: qexec_setup_aggregate_domains,
-	 * resolve_domains' for a value argument) takes it now, and every value is cast to it at the row. One that
-	 * sees only NULLs has none. */
-	const DB_TYPE operand_type = qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->plan_item);
-	if (!TP_IS_NUMERIC_TYPE (operand_type) && !TP_IS_DATE_OR_TIME_TYPE (operand_type)
-	    && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
-	  {
-	    accumulator_domain->value_dom = domain;
-	    accumulator_domain->value2_dom = &tp_Null_domain;
-	  }
-      }
-      break;
-
-    default:
-      break;
-    }
-
-  if (agg_p->accumulator.value != NULL && accumulator_domain->value_dom != NULL
-      && DB_VALUE_TYPE (agg_p->accumulator.value) == DB_TYPE_NULL
-      && db_value_domain_init (agg_p->accumulator.value, TP_DOMAIN_TYPE (accumulator_domain->value_dom),
-			       DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  if (agg_p->accumulator.value2 != NULL && accumulator_domain->value2_dom != NULL
-      && DB_VALUE_TYPE (agg_p->accumulator.value2) == DB_TYPE_NULL
-      && db_value_domain_init (agg_p->accumulator.value2, TP_DOMAIN_TYPE (accumulator_domain->value2_dom),
-			       DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  return NO_ERROR;
-}
-
-/*
- * qexec_setup_aggregate_lists () - the domain the distinct or sorted list of an aggregate opens with, and its sort keys
- *   return: error code, or ER_QPROC_DOMAIN_UNRESOLVED (the unresolved-domain check (execution)) when the plan has no
- *	     domain for the argument
- *   column(in): the list's domain; NULL: the argument's, from the plan
- *
- * The list opens with the argument regu's domain after this setup (qdata_process_distinct_or_sort), and GROUP BY opens
- * one per group; the list holds that one column, which its keys sort. A MEDIAN / PERCENTILE list is set up with its
- * function (qexec_setup_interpolation_list).
- */
-static int
-qexec_setup_aggregate_lists (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p, const TP_DOMAIN * column)
-{
-  if ((agg_p->option != Q_DISTINCT && agg_p->sort_list == NULL) || agg_p->function == PT_MIN
-      || agg_p->function == PT_MAX || QPROC_IS_INTERPOLATION_FUNC (agg_p))
-    {
-      return NO_ERROR;
-    }
-  REGU_VARIABLE *argument = &agg_p->operands->value;
-  if (column == NULL)
-    {
-      column = qexec_consumer_domain (vd, qexec_get_node_domain (vd, argument->domain, argument->plan_item),
-				      argument->plan_item);
-      if (column == NULL)
-	{
-	  return qexec_domain_unresolved (vd, argument->plan_item, argument->domain);
-	}
-    }
-  qexec_set_node_domain (vd, argument->plan_item, argument->type == TYPE_POSITION ? NULL : argument->domain, column);
-  /* the keys sort the list's one column: the list opens with the argument's domain (qdata_aggregate_list_domain), and
-   * the finalization sorts it with that type (qdata_finalize_aggregate_list); the plan's keys keep theirs */
-  for (SORT_LIST * key = agg_p->sort_list; key != NULL; key = key->next)
-    {
-      assert (key->pos_descr.pos_no == 0 || (TP_DOMAIN_TYPE (key->pos_descr.dom) != DB_TYPE_VARIABLE
-					     && TP_DOMAIN_COLLATION_FLAG (key->pos_descr.dom) ==
-					     TP_DOMAIN_COLL_NORMAL));
-    }
-  return NO_ERROR;
-}
-
-/*
- * qexec_setup_interpolation_list () - the domain a MEDIAN / PERCENTILE list opens with, and its key sorts, once the
- *   function has its domain
- *
- * The values convert to the function's domain before they go into the list
- * (qdata_update_agg_interpolation_func_value_and_domain), so the list holds that type: the argument's domain where it
- * is of that type - a NUMERIC column keeps its precision and scale - and the function's otherwise. This is
- * the domain the list would take from its first value. A function without a domain (resolve_domains could not type its
- * value, which its first value rejects) keeps the argument's. A function over
- * a constant or a host variable has no sort list and no list: its one value is kept (qdata_evaluate_aggregate_list).
- */
-static void
-qexec_setup_interpolation_list (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
-{
-  assert (QPROC_IS_INTERPOLATION_FUNC (agg_p));
-  if (agg_p->sort_list == NULL)
-    {
-      return;
-    }
-  assert (agg_p->sort_list->pos_descr.pos_no == 0);
-  const TP_DOMAIN *list = qexec_get_node_domain (vd, agg_p->operands->value.domain, agg_p->operands->value.plan_item);
-  const TP_DOMAIN *function = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
-  if (TP_DOMAIN_TYPE (function) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (function) != DB_TYPE_NULL
-      && (list == NULL || TP_DOMAIN_TYPE (list) != TP_DOMAIN_TYPE (function)))
-    {
-      list = function;
-    }
-  /* the key shares the function's item: the list domain has its own execution domains */
-  qexec_take_interpolation_list_domain (vd, agg_p->plan_item, list);
-}
-
-/*
- * qexec_setup_aggregate_domains () - the function, accumulator and list domains of a block's aggregates, set from the
- *   plan before the first row
- *   return: error code, or ER_QPROC_DOMAIN_UNRESOLVED (the unresolved-domain check (execution)) at an aggregate the
- *	     plan should have resolved
- *   agg_list(in/out): the block's aggregates, their accumulator domains just emptied
- *   vd(in): the execution's value descriptor
- *
- * The domains are the ones the first non-NULL value would give: the resolved domain for a function resolve_domains
- * resolves (its accumulator is the resolver's), the compiled function and the accumulator the load derived from the
- * argument for a compiled one. A function whose resolution has no value (a NULL bind, a node over one) sees only NULLs:
- * its accumulators stay unset, as no value resolves them. A MEDIAN / PERCENTILE list takes its domain here too
- * (qexec_setup_interpolation_list). No row resolves an aggregate's domain, and the shared accumulators are linked
- * here, once the domains are set.
- */
-int
-qexec_setup_aggregate_domains (AGGREGATE_TYPE * agg_list, const VAL_DESCR * vd)
-{
-  for (AGGREGATE_TYPE * agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next)
-    {
-      int error;
-      /* every block execution sets its aggregates up anew: none of the last execution's accumulator domains stays */
-      AGGREGATE_ACCUMULATOR_DOMAIN *accumulator_domain = qexec_accumulator_domain (vd, agg_p->plan_item);
-      *accumulator_domain = AGGREGATE_ACCUMULATOR_DOMAIN ();
-      accumulator_domain->temporary = -1;
-      switch (agg_p->function)
-	{
-	case PT_CUME_DIST:
-	case PT_PERCENT_RANK:
-	  continue;
-
-	case PT_JSON_ARRAYAGG:
-	case PT_JSON_OBJECTAGG:
-	  accumulator_domain->value_dom = &tp_Json_domain;
-	  accumulator_domain->value2_dom = &tp_Null_domain;
-	  continue;
-
-	case PT_GROUPBY_NUM:
-	  /* no argument: the GROUP BY numbers its groups (the setup used to leave the block to its rows) */
-	  accumulator_domain->value_dom = &tp_Null_domain;
-	  accumulator_domain->value2_dom = &tp_Null_domain;
-	  continue;
-
-	default:
-	  break;
-	}
-      if (agg_p->function == PT_COUNT || agg_p->function == PT_COUNT_STAR)
-	{
-	  accumulator_domain->value_dom = &tp_Bigint_domain;
-	  accumulator_domain->value2_dom = &tp_Null_domain;
-	  error = qexec_setup_aggregate_lists (vd, agg_p, NULL);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	  continue;
-	}
-
-      const bool interpolation = QPROC_IS_INTERPOLATION_FUNC (agg_p);
-      const TP_DOMAIN *accumulator = NULL;
-      const RESOLVED_DOMAIN *late_bind_node = qexec_late_bind_domain (vd, agg_p->plan_item);
-      if (late_bind_node == NULL && (agg_p->function == PT_SUM || agg_p->function == PT_AVG)
-	  && qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->plan_item) == DB_TYPE_NULL)
-	{
-	  /* an argument the compiler typed NULL - SUM (NULL), SUM (CAST (NULL AS INT)), a CASE whose arms are all
-	   * NULL: the function sees only NULLs and yields NULL, like a function whose resolution has no value; no
-	   * accumulator domain is derived from a NULL (the load's is the NULL domain) */
-	  error = qexec_setup_aggregate_lists (vd, agg_p, NULL);
-	  if (error != NO_ERROR)
-	    {
-	      return error;
-	    }
-	  continue;
-	}
-      if (late_bind_node != NULL && !interpolation && TP_DOMAIN_TYPE (late_bind_node->domain) == DB_TYPE_VARIABLE)
-	{
-	  /* resolve_domains types every aggregate, and no row resolves one; a MEDIAN / PERCENTILE without a type
-	   * takes its type below */
-	  return qexec_domain_unresolved (vd, agg_p->plan_item, agg_p->domain);
-	}
-      if (late_bind_node != NULL)
-	{
-	  accumulator = qexec_apply_aggregate_resolved_domain (vd, agg_p);
-	  if (accumulator == NULL && !interpolation)
-	    {
-	      /* the function sees only NULLs; so does its list */
-	      error = qexec_setup_aggregate_lists (vd, agg_p, NULL);
-	      if (error != NO_ERROR)
-		{
-		  return error;
-		}
-	      continue;
-	    }
-	}
-      else if (qexec_node_operand_type (vd, agg_p->opr_dbtype, agg_p->plan_item) != DB_TYPE_VARIABLE
-	       && qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item) != NULL
-	       && !domain_is_variable (qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item))
-	       && agg_p->plan_item != NULL && ((agg_p->plan_item->flags & DOMAIN_PLAN_ACCUMULATOR) || interpolation))
-	{
-	  accumulator = agg_p->plan_item->fixed.operand_domain[0];
-	}
-      else if (!interpolation || agg_p->plan_item == NULL || !(agg_p->plan_item->flags & DOMAIN_PLAN_LATE_BIND))
-	{
-	  return qexec_domain_unresolved (vd, agg_p->plan_item, agg_p->domain);
-	}
-      /* a MEDIAN / PERCENTILE resolve_domains gave no type: it sees only NULLs (no value), or its first value is
-       * rejected (a value resolve_domains could not type). A string column or expression without a type is a number all
-       * the same: its values are cast to DOUBLE at the row. */
-      if (interpolation && accumulator == NULL && !(agg_p->plan_item->flags & DOMAIN_PLAN_VALUE_ARGUMENT)
-	  && (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item)) == DB_TYPE_VARIABLE
-	      || TP_DOMAIN_TYPE (qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item)) == DB_TYPE_NULL)
-	  && !qexec_interpolation_sees_nulls (vd, agg_p))
-	{
-	  qexec_set_node_domain (vd, agg_p->plan_item, agg_p->domain, tp_domain_resolve_default (DB_TYPE_DOUBLE));
-	}
-
-      error = qexec_setup_aggregate_accumulators (vd, agg_p, accumulator);
-      if (error == NO_ERROR)
-	{
-	  error = qexec_setup_aggregate_lists (vd, agg_p, NULL);
-	}
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-      if (interpolation)
-	{
-	  qexec_setup_interpolation_list (vd, agg_p);
-	}
-    }
-  qdata_link_shared_accumulators (agg_list, vd);
-  return NO_ERROR;
-}
-
-
-/*
- * qexec_setup_analytic_domains () - the domains of a block's analytic functions, settled before its scan: a function
- *   whose operand type the plan left variable (or whose collation the values give) takes resolve_domains' resolution
- *   as its execution domain and operand type (develop's first binding, which converted no value: the operand keeps
- *   its own type, and the function converts what it reads where it always did); one whose resolution has no value (a
- *   NULL bind) sees only NULLs and keeps its domains. A MEDIAN / PERCENTILE whose function
- *   domain is still variable takes resolve_domains' type for a value argument (a literal, a bind: DOUBLE, DATETIME or
- *   TIME, as the first value would have cast), else the type its operand's domain gives (DOUBLE for a number, the
- *   operand's own type for PERCENTILE_DISC and a constant operand, a date or time type's own, the compiled DOUBLE for
- *   a string). No value is read.
- *   return: NO_ERROR
- */
-/*
- * qexec_setup_analytic_accumulator () - an analytic SUM / AVG's or STDDEV / VARIANCE's accumulator domains, once per
- *   execution, from the function's domain and its argument's resolved domain; the partitions read them
- *   (qdata_initialize_analytic_func) and derive nothing
- *   domain(in): the function's domain in this execution
- *
- * SUM / AVG: the sum has one domain for the partition, the function's - the first value is converted into it
- * (first_conv) and every addition's result is coerced to it - except a sum kept floating, which keeps the argument's
- * NUMERIC as it is (value_dom NULL): an AVG over a NUMERIC argument, a SUM whose domain is NUMERIC. Every value is
- * added with the operand coercion of (sum, argument). An argument type the resident accumulator takes
- * (accumulator_takes) is summed by the accumulator's typed sum instead, the values as they are; a DISTINCT list's
- * values are always added. An AVG divides the sum by the count at the partition's end with the operand coercion of
- * (the sum's type, DOUBLE).
- * STDDEV / VARIANCE accumulate in DOUBLE: [1] the converter of the argument's resolved type into DOUBLE
- * (tp_value_coerce's implicit mode), which runs at every value that is not a DOUBLE already.
- */
-static void
-qexec_setup_analytic_accumulator (const VAL_DESCR * vd, ANALYTIC_TYPE * func_p, const TP_DOMAIN * domain)
-{
-  const FUNC_CODE fcode = func_p->function;
-  const bool sum_or_avg = fcode == PT_SUM || fcode == PT_AVG;
-  const bool stddev = fcode == PT_STDDEV || fcode == PT_STDDEV_POP || fcode == PT_STDDEV_SAMP || fcode == PT_VARIANCE
-    || fcode == PT_VAR_POP || fcode == PT_VAR_SAMP;
-  if (!sum_or_avg && !stddev)
-    {
-      return;
-    }
-  AGGREGATE_ACCUMULATOR_DOMAIN *acc_dom = qexec_accumulator_domain (vd, func_p->plan_item);
-  memset (acc_dom, 0, sizeof (*acc_dom));
-  acc_dom->temporary = -1;
-  const TP_DOMAIN *argument = qexec_value_domain (vd, &func_p->operand);
-  const bool argument_typed = argument != NULL && TP_DOMAIN_TYPE (argument) != DB_TYPE_VARIABLE
-    && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL;
-  if (stddev)
-    {
-      acc_dom->value_dom = &tp_Double_domain;
-      acc_dom->value2_dom = &tp_Double_domain;
-      if (argument_typed)
-	{
-	  acc_dom->operand_coercion.operand_domain[1] = &tp_Double_domain;
-	  acc_dom->operand_coercion.conv[1] = TP_DOMAIN_TYPE (argument) == DB_TYPE_DOUBLE ? NULL
-	    : tp_value_find_converter (TP_DOMAIN_TYPE (argument), &tp_Double_domain, DOMAIN_CONVERT_IMPLICIT);
-	}
-      return;
-    }
-  const TP_DOMAIN *function = qexec_resolved_domain (vd, func_p->plan_item);
-  if (function == NULL)
-    {
-      function = domain;
-    }
-  if (!argument_typed || function == NULL || TP_DOMAIN_TYPE (function) == DB_TYPE_VARIABLE)
-    {
-      /* no plan: a value the partition meets fails the unresolved-domain check */
-      return;
-    }
-  const DB_TYPE argument_type = TP_DOMAIN_TYPE (argument);
-  const DB_TYPE function_type = TP_DOMAIN_TYPE (function);
-  /* the typed addition coerced its result to the function's domain unless an AVG summed a NUMERIC first value - a
-   * string's is the function's domain - or a SUM's domain is NUMERIC */
-  const DB_TYPE kept = fcode == PT_AVG ? (TP_IS_CHAR_TYPE (argument_type) ? function_type : argument_type)
-    : function_type;
-  const TP_DOMAIN *sum = kept == DB_TYPE_NUMERIC ? argument : function;
-  acc_dom->value_dom = kept == DB_TYPE_NUMERIC ? NULL : (TP_DOMAIN *) function;
-  const DOMAIN_OPERAND operands[2] = {
-    {sum, TP_DOMAIN_TYPE (sum), -1, false}, {argument, argument_type, -1, false}
-  };
-  domain_resolve_operand_coercion (T_ADD, operands, &acc_dom->operand_coercion);
-  if (acc_dom->value_dom != NULL && argument_type != function_type)
-    {
-      /* the first value into the sum's domain: the operand coercion's converter where the rule converts the argument
-       * (a string into DOUBLE), the type pair's converter otherwise (a FLOAT into DOUBLE) */
-      acc_dom->first_conv = acc_dom->operand_coercion.conv[1] != NULL ? acc_dom->operand_coercion.conv[1]
-	: tp_value_find_converter (argument_type, function, DOMAIN_CONVERT_IMPLICIT);
-    }
-  acc_dom->accumulator_takes = SUM_ACC_IS_ANALYTIC_SUPPORTED_TYPE (argument_type);
-  if (fcode == PT_AVG)
-    {
-      /* the sum the partition's end divides: the accumulator's typed sum, the added values' domain for a type it does
-       * not take and for a DISTINCT list, whose values are added */
-      const DB_TYPE sum_type = acc_dom->accumulator_takes && func_p->option != Q_DISTINCT
-	? sum_acc_analytic_sum_type_for (argument_type) : TP_DOMAIN_TYPE (sum);
-      const DOMAIN_OPERAND divide[2] = {
-	{NULL, sum_type, -1, false}, {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false}
-      };
-      domain_resolve_operand_coercion (T_DIV, divide, &acc_dom->divide_coercion);
-    }
-}
-
-int
-qexec_setup_analytic_domains (const VAL_DESCR * vd, ANALYTIC_EVAL_TYPE * eval_list)
-{
-  for (ANALYTIC_EVAL_TYPE * eval = eval_list; eval != NULL; eval = eval->next)
-    {
-      for (ANALYTIC_TYPE * func_p = eval->head; func_p != NULL; func_p = func_p->next)
-	{
-	  TP_DOMAIN *domain = qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
-	  const DB_TYPE opr_type = qexec_node_operand_type (vd, func_p->opr_dbtype, func_p->plan_item);
-	  if (opr_type == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
-	    {
-	      const TP_DOMAIN *resolved = qexec_resolved_domain (vd, func_p->plan_item);
-	      if (resolved != NULL)
-		{
-		  domain = (TP_DOMAIN *) resolved;
-		  qexec_set_node_domain (vd, func_p->plan_item, func_p->domain, domain);
-		  qexec_take_operand_type (vd, func_p->plan_item, func_p->opr_dbtype, TP_DOMAIN_TYPE (domain));
-		}
-	    }
-	  if (QPROC_IS_INTERPOLATION_FUNC (func_p) && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-	    {
-	      const TP_DOMAIN *resolved = qexec_resolved_domain (vd, func_p->plan_item);
-	      const TP_DOMAIN *operand = qexec_value_domain (vd, &func_p->operand);
-	      const DB_TYPE type = operand != NULL ? TP_DOMAIN_TYPE (operand) : DB_TYPE_NULL;
-	      const TP_DOMAIN *settled;
-	      if (resolved != NULL)
-		{
-		  /* a value argument resolve_domains typed by its value (a date string is DATETIME) */
-		  settled = resolved;
-		}
-	      else if (TP_IS_NUMERIC_TYPE (type))
-		{
-		  settled = func_p->is_const_operand || func_p->function == PT_PERCENTILE_DISC
-		    ? tp_domain_resolve_default (type) : tp_domain_resolve_default (DB_TYPE_DOUBLE);
-		}
-	      else if (TP_IS_DATE_OR_TIME_TYPE (type))
-		{
-		  settled = tp_domain_resolve_default (type);
-		}
-	      else if (func_p->plan_item != NULL && func_p->plan_item->fixed.domain != NULL
-		       && TP_DOMAIN_TYPE (func_p->plan_item->fixed.domain) != DB_TYPE_VARIABLE)
-		{
-		  /* a string column or expression: the compiled DOUBLE */
-		  settled = tp_domain_resolve_default (TP_DOMAIN_TYPE (func_p->plan_item->fixed.domain));
-		}
-	      else
-		{
-		  /* only NULLs (a value resolve_domains could not type was its -1118 before any row) */
-		  settled = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-		}
-	      qexec_set_node_domain (vd, func_p->plan_item, func_p->domain, settled);
-	    }
-	  qexec_setup_analytic_accumulator (vd, func_p, qexec_get_node_domain (vd, func_p->domain, func_p->plan_item));
-	}
-    }
-  return NO_ERROR;
-}
-
-/*
- * qexec_type_accumulator_outputs () - the output columns of a BUILDVALUE block that read an accumulator take its
- *   function's domain once the function has one
- *   xasl(in/out): the BUILDVALUE block
- *
- * The value converts to that domain when the column is fetched (qdata_get_dbval_from_constant_regu_variable), as
- * the copy after each row would make it: a GROUP_CONCAT of a CHAR bind builds a VARCHAR. The setup gives a column the
- * plan's resolution before the first row. A column the compiler typed keeps its domain.
- */
-void
-qexec_type_accumulator_outputs (const VAL_DESCR * vd, XASL_NODE * xasl)
-{
-  for (REGU_VARIABLE_LIST out = xasl->outptr_list != NULL ? xasl->outptr_list->valptrp : NULL; out != NULL;
-       out = out->next)
-    {
-      /* a column the compiler typed keeps its domain; the others take one as their execution domain */
-      if (out->value.type != TYPE_CONSTANT || out->value.plan_item == NULL
-	  || !(out->value.plan_item->flags & DOMAIN_PLAN_VARIABLE))
-	{
-	  continue;
-	}
-      for (AGGREGATE_TYPE * agg_p = xasl->proc.buildvalue.agg_list; agg_p != NULL; agg_p = agg_p->next)
-	{
-	  const TP_DOMAIN *domain = qexec_get_node_domain (vd, agg_p->domain, agg_p->plan_item);
-	  if (out->value.value.dbvalptr == agg_p->accumulator.value
-	      && !domain_is_variable (domain) && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
-	    {
-	      qexec_set_node_domain (vd, out->value.plan_item, out->value.domain, domain);
-	      break;
-	    }
-	}
-    }
-}
-
-/*
- * qexec_setup_parallel_aggregates () - a PX worker's clone: its aggregates' domains from the plan resolutions it
- *   copied from the leader, set before the worker's first row
- *   return: error code or NO_ERROR
- */
-int
-qexec_setup_parallel_aggregates (XASL_NODE * xasl, const VAL_DESCR * vd)
-{
-  AGGREGATE_TYPE *agg_list = xasl->type == BUILDLIST_PROC ? xasl->proc.buildlist.g_agg_list
-    : xasl->proc.buildvalue.agg_list;
-  return qexec_setup_aggregate_domains (agg_list, vd);
 }

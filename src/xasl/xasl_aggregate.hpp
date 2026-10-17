@@ -80,10 +80,8 @@ namespace cubxasl
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 
-  /* An aggregate's or an analytic function's accumulator domains in one execution, kept in the execution state and
-   * not in the plan node (domain_execution.accumulator_domains[], by the function's node_domain_index,
-   * qexec_accumulator_domain): the setup writes them once before the first row (qexec_setup_aggregate_accumulators,
-   * qexec_setup_analytic_accumulator); the partitions and the rows read them. */
+  /* An aggregate's or an analytic function's accumulator domains, planned at unpack (qdata_plan_aggregate_accumulator,
+   * qdata_plan_analytic_accumulator); the partitions and the rows read them. */
   struct aggregate_accumulator_domain
   {
     tp_domain *value_dom;		/* domain of value; an analytic SUM / AVG: the sum's domain, which the first
@@ -101,9 +99,6 @@ namespace cubxasl
     DOMAIN_OPERAND_COERCION divide_coercion;	/* an analytic AVG: the operand coercion of sum / count at the
 						 * partition's end, over the sum's type - the accumulator's for a
 						 * type it takes, value_dom's or the argument's otherwise */
-    int temporary;			/* SUM / AVG: the domain_execution.temporaries index of a value added after the
-				 * first that a scope fixes and operand_coercion converts; -1 none. Set with
-				 * operand_coercion (qexec_setup_aggregate_accumulators) */
   };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
@@ -122,6 +117,9 @@ namespace cubxasl
     aggregate_specific_function_info info;	/* variables for specific functions */
     aggregate_accumulator accumulator;	/* holds runtime values, only for evaluation */
 #if defined (SERVER_MODE) || defined (SA_MODE)
+    aggregate_accumulator_domain accumulator_domain;	/* CBRD-27583 (4.3): chosen at unpack from the node's domain and
+							 * its operand's (qdata_plan_aggregate_accumulator); not
+							 * serialized */
     /* compiled operand-evaluation program covering the WHOLE aggregate list; kept on the
      * list HEAD node only.  Server-side runtime state -- never serialized.  See
      * expr_compile.h; built lazily on the first evaluated row when the bound host

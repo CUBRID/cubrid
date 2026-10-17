@@ -492,12 +492,10 @@ static int qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 static int qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
 				QFILE_TUPLE_RECORD * tplrec);
 static int qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
-static TP_DOMAIN *qexec_analytic_value_domain (const VAL_DESCR * vd, const ANALYTIC_TYPE * func_p);
 static int qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNCTION_STATE * func_state,
 						     ANALYTIC_TYPE * func_p, XASL_STATE * xasl_state,
 						     bool is_skip_sort);
-static void qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYPE * a_func_list,
-					       const VAL_DESCR * vd);
+static void qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYPE * a_func_list);
 static ANALYTIC_STATE *qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analytic_state,
 							ANALYTIC_TYPE * a_func_list, SORT_LIST * sort_list,
 							REGU_VARIABLE_LIST a_regu_list, VAL_LIST * a_val_list,
@@ -1305,8 +1303,7 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	      GOTO_EXIT_ON_ERROR;
 	    }
 
-	  /* the output columns over an accumulator took their domains before the first row
-	   * (qexec_type_accumulator_outputs), not after each row */
+	  /* the output columns over an accumulator took their domains at XASL generation, not after each row */
 	}
     }
 
@@ -5119,12 +5116,8 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	    {
 	      rc =
 		qdata_aggregate_accumulator_to_accumulator (thread_p, &context->curr_part_value->accumulators[i],
-							    qexec_accumulator_domain (&state->xasl_state->vd,
-										      agg_list->plan_item),
-							    agg_list->function,
-							    qexec_get_node_domain (&state->xasl_state->vd,
-										   agg_list->domain,
-										   agg_list->plan_item),
+							    &agg_list->accumulator_domain, agg_list->function,
+							    agg_list->domain,
 							    &context->temp_part_value->accumulators[i]);
 	      if (rc != NO_ERROR)
 		{
@@ -5414,16 +5407,10 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 
 			  while (ru_agg_list)
 			    {
-			      TP_DOMAIN *ru_domain = qexec_get_node_domain (&info->xasl_state->vd, ru_agg_list->domain,
-									    ru_agg_list->plan_item);
-			      /* a rollup dimension's copy keeps its aggregate's plan item, so its accumulator
-			       * domains */
-			      AGGREGATE_ACCUMULATOR_DOMAIN *ru_accumulator_domain =
-				qexec_accumulator_domain (&info->xasl_state->vd, ru_agg_list->plan_item);
 			      if (qdata_aggregate_accumulator_to_accumulator (thread_p, &ru_agg_list->accumulator,
-									      ru_accumulator_domain,
-									      ru_agg_list->function, ru_domain,
-									      &acc[j]) != NO_ERROR)
+									      &ru_agg_list->accumulator_domain,
+									      ru_agg_list->function,
+									      ru_agg_list->domain, &acc[j]) != NO_ERROR)
 				{
 				  goto exit_on_error;
 				}
@@ -15737,13 +15724,6 @@ qexec_end_buildvalueblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
       GOTO_EXIT_ON_ERROR;
     }
 
-  /* the output columns over an accumulator took their function's domain before the first row; here they
-   * take the one an interpolation function's finalization writes (qdata_aggregate_interpolation) */
-  if (buildvalue->agg_list != NULL)
-    {
-      qexec_type_accumulator_outputs (&xasl_state->vd, xasl);
-    }
-
   /* evaluate having predicate */
   if (buildvalue->having_pred != NULL)
     {
@@ -16591,26 +16571,17 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		}
 	    }
 
-	  /* the plan sets the aggregates up before the scan, each accumulator domain anew, and links the shared
-	   * accumulators. The aggregate-only operand expressions are marked at load
-	   * (domain_mark_aggregate_operands). */
+	  /* the accumulator domains were planned at unpack, so the shared accumulators are linked before the scan.
+	   * The aggregate-only operand expressions are marked at load (domain_mark_aggregate_operands). */
 	  if (xasl->proc.buildlist.g_agg_list != NULL)
 	    {
-	      if (qexec_setup_aggregate_domains (xasl->proc.buildlist.g_agg_list, &xasl_state->vd) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
+	      qdata_link_shared_accumulators (xasl->proc.buildlist.g_agg_list, &xasl_state->vd);
 	      /* the hash aggregation writes partial results during the scan: its lists take their domains now */
 	      qexec_setup_hash_aggregate_lists (&xasl_state->vd, &xasl->proc.buildlist);
 	    }
 
 	  if (xasl->proc.buildlist.a_eval_list)
 	    {
-	      /* the analytic functions' domains, settled before the scan: no value settles one */
-	      if (qexec_setup_analytic_domains (&xasl_state->vd, xasl->proc.buildlist.a_eval_list) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
 	      if (qdata_setup_analytic_eval_list (thread_p, xasl, xasl_state) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
@@ -16619,17 +16590,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	}
       else if (xasl->type == BUILDVALUE_PROC)
 	{
-	  /* the plan sets the aggregates up before the scan, each accumulator domain anew, and links the shared
-	   * accumulators. The aggregate operand expressions are marked at load
-	   * (domain_mark_aggregate_operands). */
+	  /* the accumulator domains were planned at unpack, so the shared accumulators are linked before the scan.
+	   * The aggregate operand expressions are marked at load (domain_mark_aggregate_operands). */
 	  if (xasl->proc.buildvalue.agg_list != NULL)
 	    {
-	      if (qexec_setup_aggregate_domains (xasl->proc.buildvalue.agg_list, &xasl_state->vd) != NO_ERROR)
-		{
-		  GOTO_EXIT_ON_ERROR;
-		}
-	      /* the output columns over an accumulator take the plan's resolution before the first row */
-	      qexec_type_accumulator_outputs (&xasl_state->vd, xasl);
+	      qdata_link_shared_accumulators (xasl->proc.buildvalue.agg_list, &xasl_state->vd);
 	    }
 	}
 
@@ -22263,7 +22228,7 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 
   for (a_func_list = a_eval_list->head; a_func_list; a_func_list = a_func_list->next)
     {
-      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id, &xasl_state->vd) != NO_ERROR)
+      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -22301,7 +22266,7 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
 	      return ER_FAILED;
 	    }
 	  value_type_list.domp[0] = &tp_Integer_domain;
-	  value_type_list.domp[1] = qexec_analytic_value_domain (&xasl_state->vd, a_func_list);
+	  value_type_list.domp[1] = a_func_list->domain;
 
 	  a_func_list->order_list_id =
 	    qfile_open_list (thread_p, &value_type_list, NULL, xasl_state->query_id, QFILE_FLAG_BACKWARD, NULL);
@@ -22315,20 +22280,6 @@ qdata_setup_analytic_eval_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
     }
 
   return NO_ERROR;
-}
-
-/*
- * qexec_analytic_value_domain () - the domain of the values an analytic function's finalization writes into its value
- *   list: the function's domain in this execution, which the plan gives before any row (qexec_consumer_domain) - its
- *   first binding (qdata_evaluate_analytic_func) takes the same one. The list's tuples are laid out by it, so no row
- *   decides it; without a plan answer the column stays variable and takes only NULLs.
- */
-static TP_DOMAIN *
-qexec_analytic_value_domain (const VAL_DESCR * vd, const ANALYTIC_TYPE * func_p)
-{
-  TP_DOMAIN *compiled = qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
-  const TP_DOMAIN *domain = qexec_consumer_domain (vd, compiled, func_p->plan_item);
-  return domain != NULL ? (TP_DOMAIN *) domain : compiled;
 }
 
 /*
@@ -22378,7 +22329,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
   if (is_skip_sort)
     {
       /* finalize function */
-      if (qdata_finalize_analytic_func (thread_p, func_p, false, &xasl_state->vd) != NO_ERROR)
+      if (qdata_finalize_analytic_func (thread_p, func_p, false) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -22435,7 +22386,7 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
 	  return ER_FAILED;
 	}
       value_type_list.domp[0] = &tp_Integer_domain;
-      value_type_list.domp[1] = qexec_analytic_value_domain (&xasl_state->vd, func_p);
+      value_type_list.domp[1] = func_p->domain;
 
       func_state->value_list_id =
 	qfile_open_list (thread_p, &value_type_list, NULL, xasl_state->query_id, QFILE_FLAG_BACKWARD, NULL);
@@ -22467,18 +22418,15 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
  *   operand in, resolved before the sort
  *   analytic_state(in/out): the state whose sort keys it sets up
  *   a_func_list(in): the state's functions
- *   vd(in): the execution's value descriptor
  *
  * MEDIAN and PERCENTILE sort their operand after their PARTITION BY keys, one key the interpolation functions of a
  * state share (pt_metadomains_compatible). A string operand sorts in the function's type, the type its values
- * interpolate in: the compiled function domain (a string column or expression is DOUBLE), or the resolved domain - the
- * type it gave a value argument, DOUBLE for a late-binding string - known before the first pair of values the sort
- * compares (qfile_compare_with_interpolation_domain). A value argument resolve_domains could not type has no type,
- * and the sort rejects its values as the typing of the first value does. Any other key of the state - another
- * function's ORDER BY that shares the sort - compares in its own domain, the type its first value gives.
+ * interpolate in, which XASL generation decided (DOUBLE for any string, spec change 3), before the first pair of
+ * values the sort compares (qfile_compare_with_interpolation_domain). Any other key of the state - another function's
+ * ORDER BY that shares the sort - compares in its own domain, the type its first value gives.
  */
 static void
-qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYPE * a_func_list, const VAL_DESCR * vd)
+qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYPE * a_func_list)
 {
   for (ANALYTIC_TYPE * func_p = a_func_list; func_p != NULL; func_p = func_p->next)
     {
@@ -22497,14 +22445,10 @@ qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYP
 	{
 	  return;
 	}
-      const DOMAIN_PLAN_ITEM *item = func_p->plan_item;
-      const TP_DOMAIN *fixed = item != NULL ? item->fixed.domain : NULL;
-      const TP_DOMAIN *resolved_domain = fixed != NULL && TP_DOMAIN_TYPE (fixed) != DB_TYPE_VARIABLE
-	? fixed : qexec_resolved_domain (vd, item);
-      assert (resolved_domain == NULL || TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (resolved_domain))
-	      || TP_IS_DATE_OR_TIME_TYPE (TP_DOMAIN_TYPE (resolved_domain)));
+      assert (TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (func_p->domain))
+	      || TP_IS_DATE_OR_TIME_TYPE (TP_DOMAIN_TYPE (func_p->domain)));
       subkey->use_cmp_dom = true;
-      subkey->cmp_dom = resolved_domain != NULL ? tp_domain_resolve_default (TP_DOMAIN_TYPE (resolved_domain)) : NULL;
+      subkey->cmp_dom = tp_domain_resolve_default (TP_DOMAIN_TYPE (func_p->domain));
       return;
     }
 }
@@ -22631,7 +22575,7 @@ qexec_initialize_analytic_state (THREAD_ENTRY * thread_p, ANALYTIC_STATE * analy
   /* set SUBKEY_INFO.cmp_dom */
   if (has_interpolation_func)
     {
-      qexec_plan_interpolation_sort_key (analytic_state, a_func_list, &xasl_state->vd);
+      qexec_plan_interpolation_sort_key (analytic_state, a_func_list);
     }
 
 resolve_domain:
@@ -23009,7 +22953,7 @@ qexec_analytic_start_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, AN
   if (reinit)
     {
       /* starting a new group */
-      error = qdata_initialize_analytic_func (thread_p, func_state->func_p, xasl_state->query_id, &xasl_state->vd);
+      error = qdata_initialize_analytic_func (thread_p, func_state->func_p, xasl_state->query_id);
       if (error != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
@@ -23076,7 +23020,7 @@ qexec_analytic_finalize_group (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state,
   int rc = NO_ERROR;
 
   /* finalize function */
-  if (qdata_finalize_analytic_func (thread_p, func_state->func_p, is_same_group, &xasl_state->vd) != NO_ERROR)
+  if (qdata_finalize_analytic_func (thread_p, func_state->func_p, is_same_group) != NO_ERROR)
     {
       rc = ER_FAILED;
       goto cleanup;
@@ -23531,7 +23475,7 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCT
   if (put_default)
     {
       /* coerce value to default domain */
-      TP_DOMAIN *domain = qexec_get_node_domain (func_state->vd, func_p->domain, func_p->plan_item);
+      TP_DOMAIN *domain = func_p->domain;
       dom_status = tp_value_coerce (default_val_p, &default_val, domain);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -23684,14 +23628,14 @@ qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p, ANALYTI
 	  return ER_FAILED;
 	}
 
-      /* coerce accordingly: the function takes the domain the coercion gives as its execution domain */
-      TP_DOMAIN *domain = qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
+      /* coerce accordingly: the values took the function's domain at evaluation, which the coercion keeps */
+      TP_DOMAIN *domain = func_p->domain;
       error = qdata_apply_interpolation_function_coercion (func_p->value, &domain, func_p->value, func_p->function);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
-      qexec_set_node_domain (vd, func_p->plan_item, func_p->domain, domain);
+      assert (domain == func_p->domain);
     }
   else
     {
@@ -23718,7 +23662,7 @@ qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p, ANALYTI
 	}
 
       pr_clear_value (func_p->value);
-      TP_DOMAIN *domain = qexec_get_node_domain (vd, func_p->domain, func_p->plan_item);
+      TP_DOMAIN *domain = func_p->domain;
       error =
 	qdata_interpolation_function_values (&f_value, &c_value, row_num_d, f_row_num_d, c_row_num_d, &domain,
 					     func_p->value, func_p->function);
@@ -23726,7 +23670,7 @@ qexec_analytic_evaluate_interpolation_function (THREAD_ENTRY * thread_p, ANALYTI
 	{
 	  return error;
 	}
-      qexec_set_node_domain (vd, func_p->plan_item, func_p->domain, domain);
+      assert (domain == func_p->domain);
     }
 
   /* all ok */
@@ -23804,10 +23748,10 @@ qexec_analytic_sort_key_header_load (ANALYTIC_FUNCTION_STATE * func_state, bool 
   /* clear current value */
   pr_clear_value (func_state->func_p->value);
 
-  /* deserialize value: the function's domain in this execution, which its first binding took */
-  TP_DOMAIN *domain = qexec_get_node_domain (func_state->vd, func_state->func_p->domain,
-					     func_state->func_p->plan_item);
-  rc = qfile_slot_read_column_value (&func_state->value_tplrec, 1, domain, func_state->func_p->value, false, &is_null);
+  /* deserialize value */
+  rc =
+    qfile_slot_read_column_value (&func_state->value_tplrec, 1, func_state->func_p->domain, func_state->func_p->value,
+				  false, &is_null);
   if (rc != NO_ERROR)
     {
       return ER_FAILED;
@@ -24429,7 +24373,7 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 		}
 	    }
 
-	  if (qdata_finalize_analytic_func (thread_p, a_func_list, is_same_group, &xasl_state->vd) != NO_ERROR)
+	  if (qdata_finalize_analytic_func (thread_p, a_func_list, is_same_group) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -24455,8 +24399,7 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 		}
 
 	      pr_clear_value (a_func_list->value);
-	      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id,
-						  &xasl_state->vd) != NO_ERROR)
+	      if (qdata_initialize_analytic_func (thread_p, a_func_list, xasl_state->query_id) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -28110,9 +28053,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
       for (i = 0; i < proc->g_func_count; i++, agg_list = agg_list->next)
 	{
 	  assert (agg_list);
-	  /* the execution's entry: the setup writes it before the scan, the context reads it through this pointer */
-	  proc->agg_hash_context->accumulator_domains[i] =
-	    qexec_accumulator_domain (&xasl_state->vd, agg_list->plan_item);
+	  proc->agg_hash_context->accumulator_domains[i] = &agg_list->accumulator_domain;
 	}
     }
 

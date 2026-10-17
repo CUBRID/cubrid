@@ -37,6 +37,7 @@
 #include "dbtype.h"
 #include "error_manager.h"
 #include "query_aggregate.hpp"
+#include "query_analytic.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_analytic.hpp"
@@ -5837,8 +5838,9 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
     {
       stx_set_fast_peek (regu_var);
 #if !defined (NDEBUG)
-      xasl_unpack_info->n_undecided_regu +=
-	regu_var->domain != NULL && TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE;
+      /* a regu value list is a container of values, not a value: no domain of its own (its elements count) */
+      xasl_unpack_info->n_undecided_regu += regu_var->type != TYPE_REGU_VAR_LIST && regu_var->domain != NULL
+	&& TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_VARIABLE;
       xasl_unpack_info->n_undecided_position += regu_var->type == TYPE_POSITION
 	&& regu_var->value.pos_descr.dom != NULL && TP_DOMAIN_TYPE (regu_var->value.pos_descr.dom) == DB_TYPE_VARIABLE;
 #endif
@@ -6414,7 +6416,8 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   ptr = or_unpack_int (ptr, &offset);
   aggregate->is_ended = false;
 
-  /* the accumulator domains are the execution's (domain_execution.accumulator_domains) */
+  /* CBRD-27583 (4.3): from the decided domains, once per unpacked node */
+  qdata_plan_aggregate_accumulator (aggregate);
 
   return ptr;
 
@@ -6684,6 +6687,9 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
       /* Other functions need specific variables if any in the future */
       ;
     }
+
+  /* CBRD-27583 (4.3): from the decided domains, once per unpacked node */
+  qdata_plan_analytic_accumulator (analytic);
 
   return ptr;
 
