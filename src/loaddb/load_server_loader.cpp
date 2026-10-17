@@ -24,6 +24,7 @@
 
 #include "btree.h"
 #include "dbtype.h"
+#include "heap_file.h"
 #include "load_class_registry.hpp"
 #include "load_db_value_converter.hpp"
 #include "load_driver.hpp"
@@ -32,6 +33,7 @@
 #include "locator_sr.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
+#include "partition_sr.h"
 #include "record_descriptor.hpp"
 #include "set_object.h"
 #include "string_opfunc.h"
@@ -570,6 +572,71 @@ namespace cubload
     intl_identifier_lower (idname, eb.get_ptr ());
   }
 
+  //
+  // get_class_pruning_type () - decide which partition pruning type loaddb must use for the given target class
+  //
+  // return       : NO_ERROR or error code
+  // thread_ref   : thread entry
+  // class_oid    : OID of the class named by the %class line
+  // pruning_type : DB_PARTITION_CLASS when class_oid is a partition of a partitioned class, so that
+  //                locator_insert_force () validates each record against the partition definition;
+  //                DB_NOT_PARTITIONED_CLASS otherwise
+  //
+  // Rows loaded into a partitioned class itself would need a pruning context to be routed to the right
+  // partitions, which the loader does not maintain; that case keeps pruning disabled here.
+  //
+  static int
+  get_class_pruning_type (cubthread::entry *thread_ref, const OID &class_oid, int &pruning_type)
+  {
+    int error_code = NO_ERROR;
+    OID root_oid;
+    OR_PARTITION *partitions = NULL;
+    int parts_count = 0;
+
+    pruning_type = DB_NOT_PARTITIONED_CLASS;
+
+    OID_SET_NULL (&root_oid);
+    error_code = partition_find_root_class_oid (thread_ref, &class_oid, &root_oid);
+    if (error_code != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return error_code;
+      }
+
+    if (OID_ISNULL (&root_oid) || OID_EQ (&root_oid, &class_oid))
+      {
+	// several superclasses, or not a subclass at all: class_oid cannot be a partition
+	return NO_ERROR;
+      }
+
+    error_code = heap_get_class_partitions (thread_ref, &root_oid, &partitions, &parts_count);
+    if (error_code != NO_ERROR)
+      {
+	ASSERT_ERROR ();
+	return error_code;
+      }
+
+    if (partitions == NULL)
+      {
+	// plain inheritance: the superclass is not partitioned
+	return NO_ERROR;
+      }
+
+    // partitions[0] describes the partitioned class itself; the actual partitions follow
+    for (int i = 1; i < parts_count; i++)
+      {
+	if (OID_EQ (&partitions[i].class_oid, &class_oid))
+	  {
+	    pruning_type = DB_PARTITION_CLASS;
+	    break;
+	  }
+      }
+
+    heap_clear_partition_info (thread_ref, partitions, parts_count);
+
+    return NO_ERROR;
+  }
+
   server_object_loader::server_object_loader (session &session, error_handler &error_handler)
     : m_session (session)
     , m_error_handler (error_handler)
@@ -582,6 +649,7 @@ namespace cubload
     , m_recdes_collected ()
     , m_scancache_started (false)
     , m_scancache ()
+    , m_pruning_type (DB_NOT_PARTITIONED_CLASS)
     , m_rows (0)
   {
     //
@@ -602,6 +670,13 @@ namespace cubload
 
     const OID &class_oid = m_class_entry->get_class_oid ();
 
+    int error_code = get_class_pruning_type (m_thread_ref, class_oid, m_pruning_type);
+    if (error_code != NO_ERROR)
+      {
+	m_error_handler.on_failure_with_line (LOADDB_MSG_LOAD_FAIL);
+	return;
+      }
+
     start_scancache (class_oid);
     start_attrinfo (class_oid);
 
@@ -616,6 +691,8 @@ namespace cubload
     stop_scancache ();
 
     m_recdes_collected.clear ();
+
+    m_pruning_type = DB_NOT_PARTITIONED_CLASS;
 
     m_clsid = NULL_CLASS_ID;
     m_class_entry = NULL;
@@ -728,7 +805,7 @@ namespace cubload
   server_object_loader::flush_records ()
   {
     int force_count = 0;
-    int pruning_type = 0;
+    int pruning_type = m_pruning_type;
     int op_type = MULTI_ROW_INSERT;
     int records_inserted = 0;
     bool insert_errors_filtered = false;

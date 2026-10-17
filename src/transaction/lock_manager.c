@@ -6704,6 +6704,22 @@ lock_subclass (THREAD_ENTRY * thread_p, const OID * subclass_oid, const OID * su
       return LK_GRANTED;
     }
 
+  if (thread_p->type == TT_LOADDB)
+    {
+      // load workers don't lock; they rely on the bulk-update lock held on the class hierarchy
+      if (lock_has_lock_on_object (subclass_oid, oid_Root_class_oid, BU_LOCK))
+	{
+	  // the BU lock already covers the subclass, no subclass locking is required
+	  return LK_GRANTED;
+	}
+      else
+	{
+	  // should be locked
+	  assert (false);
+	  return LK_NOTGRANTED;
+	}
+    }
+
 #if defined (EnableThreadMonitoring)
   if (0 < prm_get_integer_value (PRM_ID_MNT_WAITING_THREAD))
     {
