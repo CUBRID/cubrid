@@ -461,6 +461,7 @@ regu_init (update_assignment &assign)
   assign.cls_idx = -1;
   assign.constant = NULL;
   assign.regu_var = NULL;
+  assign.domain = NULL;
 }
 
 void

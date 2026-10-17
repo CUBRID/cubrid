@@ -111,6 +111,10 @@ static char *stx_build_update_proc (THREAD_ENTRY * thread_p, char *tmp, UPDATE_P
 static char *stx_restore_remote_dml_sink (THREAD_ENTRY * thread_p, char *ptr, REMOTE_DML_SINK * sink);
 static char *stx_build_delete_proc (THREAD_ENTRY * thread_p, char *tmp, DELETE_PROC_NODE * ptr);
 static char *stx_build_insert_proc (THREAD_ENTRY * thread_p, char *tmp, INSERT_PROC_NODE * ptr);
+static DB_TYPE stx_value_type_of (const TP_DOMAIN * domain);
+static void stx_plan_assignment (UPDATE_ASSIGNMENT * assign, DB_TYPE value_type);
+static void stx_plan_update_assignments (XASL_NODE * xasl, bool has_delete);
+static int stx_plan_insert_assignments (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static char *stx_build_merge_proc (THREAD_ENTRY * thread_p, char *tmp, MERGE_PROC_NODE * ptr);
 static char *stx_build_cte_proc (THREAD_ENTRY * thread_p, char *tmp, CTE_PROC_NODE * ptr);
 static char *stx_build_outptr_list (THREAD_ENTRY * thread_p, char *tmp, OUTPTR_LIST * ptr);
@@ -1418,7 +1422,6 @@ stx_restore_db_value_array_extra (THREAD_ENTRY * thread_p, char *ptr, int neleme
   return value_array;
 }
 
-#if defined(ENABLE_UNUSED_FUNCTION)
 static TP_DOMAIN **
 stx_restore_domain_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
 {
@@ -1438,7 +1441,6 @@ stx_restore_domain_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
 
   return domains;
 }
-#endif
 
 static int *
 stx_restore_int_array (THREAD_ENTRY * thread_p, char *ptr, int nelements)
@@ -2430,6 +2432,11 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
     case UPDATE_PROC:
       ptr = stx_build_update_proc (thread_p, ptr, &xasl->proc.update);
+      if (ptr != NULL)
+	{
+	  /* a MERGE with DELETE plans its UPDATE again (stx_build_merge_proc) */
+	  stx_plan_update_assignments (xasl, false);
+	}
       break;
 
     case DELETE_PROC:
@@ -2438,6 +2445,10 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 
     case INSERT_PROC:
       ptr = stx_build_insert_proc (thread_p, ptr, &xasl->proc.insert);
+      if (ptr != NULL && stx_plan_insert_assignments (thread_p, xasl) != NO_ERROR)
+	{
+	  return NULL;
+	}
       break;
 
     case UNION_PROC:
@@ -3902,6 +3913,11 @@ stx_build_update_assignment (THREAD_ENTRY * thread_p, char *ptr, UPDATE_ASSIGNME
 	}
     }
 
+  /* domain; the converter is planned where the value's domain is known (stx_plan_assignment) */
+  ptr = or_unpack_domain (ptr, &assign->domain, NULL);
+  assign->value_type = DB_TYPE_VARIABLE;
+  assign->conv = NULL;
+
   return ptr;
 }
 
@@ -3977,6 +3993,12 @@ stx_restore_odku_info (THREAD_ENTRY * thread_p, char *ptr)
       if (odku_info->assignments == NULL)
 	{
 	  return NULL;
+	}
+      for (int i = 0; i < odku_info->num_assigns; i++)
+	{
+	  UPDATE_ASSIGNMENT *assign = &odku_info->assignments[i];
+	  stx_plan_assignment (assign, assign->constant != NULL ? DB_VALUE_DOMAIN_TYPE (assign->constant)
+			       : stx_value_type_of (assign->regu_var != NULL ? assign->regu_var->domain : NULL));
 	}
     }
 
@@ -4331,11 +4353,134 @@ stx_build_insert_proc (THREAD_ENTRY * thread_p, char *ptr, INSERT_PROC_NODE * in
 	}
     }
 
+  ptr = or_unpack_int (ptr, &offset);
+  insert_info->att_domains = NULL;
+  if (offset != 0 && insert_info->num_vals > 0)
+    {
+      insert_info->att_domains =
+	stx_restore_domain_array (thread_p, &xasl_unpack_info->packed_xasl[offset], insert_info->num_vals);
+      if (insert_info->att_domains == NULL)
+	{
+	  return NULL;
+	}
+    }
+  /* planned with the node's value list (stx_plan_insert_assignments) */
+  insert_info->value_types = NULL;
+  insert_info->convs = NULL;
+
   return ptr;
 
 error:
   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
   return NULL;
+}
+
+/* CBRD-27583 (D-45): the type a value of the domain comes in, VARIABLE for one the compiler does not know */
+static DB_TYPE
+stx_value_type_of (const TP_DOMAIN * domain)
+{
+  return domain == NULL || domain_is_variable (domain) ? DB_TYPE_VARIABLE : TP_DOMAIN_TYPE (domain);
+}
+
+/*
+ * stx_plan_assignment () - CBRD-27583 (D-45): an assignment's converter of the type its value comes in into the
+ *   attribute's domain (ASSIGN); none for NULL and for a type the compiler does not know, whose rows look it up
+ */
+static void
+stx_plan_assignment (UPDATE_ASSIGNMENT * assign, DB_TYPE value_type)
+{
+  assign->value_type = value_type;
+  assign->conv = assign->domain == NULL || value_type == DB_TYPE_VARIABLE || value_type == DB_TYPE_NULL ? NULL
+    : tp_value_find_converter (value_type, assign->domain, DOMAIN_CONVERT_ASSIGN);
+}
+
+/*
+ * stx_plan_update_assignments () - CBRD-27583 (D-45): an UPDATE's converters, from the domains of the slots of the
+ *   node's value list its scan of the SELECT's list fills - after the OID - class OID pairs of its classes and of
+ *   the other classes its MVCC reevaluation reads, and a MERGE's should_delete, as qexec_execute_update walks them -
+ *   or of a constant
+ */
+static void
+stx_plan_update_assignments (XASL_NODE * xasl, bool has_delete)
+{
+  UPDATE_PROC_NODE *update = &xasl->proc.update;
+  /* not the SELECT's outptr_list: a multi-table UPDATE's SELECT groups by the OIDs and lists its g_outptr_list */
+  QPROC_DB_VALUE_LIST slot = xasl->val_list != NULL ? xasl->val_list->valp : NULL;
+  /* not the SELECT's upd_del_class_cnt, 0 in an UPDATE with a session variable */
+  int reev_idx = 0;
+  for (int c = 0; c < update->num_classes; c++)
+    {
+      slot = slot != NULL && slot->next != NULL ? slot->next->next : NULL;
+      if (reev_idx < update->num_reev_classes && update->mvcc_reev_classes[reev_idx] == c)
+	{
+	  reev_idx++;
+	}
+    }
+  for (; reev_idx < update->num_reev_classes; reev_idx++)
+    {
+      slot = slot != NULL && slot->next != NULL ? slot->next->next : NULL;
+    }
+  if (has_delete && slot != NULL)
+    {
+      slot = slot->next;
+    }
+  for (int i = 0; i < update->num_assigns; i++)
+    {
+      UPDATE_ASSIGNMENT *assign = &update->assigns[i];
+      if (assign->constant != NULL)
+	{
+	  stx_plan_assignment (assign, DB_VALUE_DOMAIN_TYPE (assign->constant));
+	  continue;
+	}
+      stx_plan_assignment (assign, stx_value_type_of (slot != NULL ? slot->dom : NULL));
+      slot = slot != NULL ? slot->next : NULL;
+    }
+}
+
+/*
+ * stx_plan_insert_assignments () - CBRD-27583 (D-45): an INSERT's converters of each value into its attribute's
+ *   domain: a default value comes in the attribute's domain, a row of values from its regus, a SELECT's (and a
+ *   MERGE's) from the slots of the node's value list its scan fills
+ *   return: NO_ERROR, or ER_FAILED out of memory
+ */
+static int
+stx_plan_insert_assignments (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
+{
+  INSERT_PROC_NODE *insert = &xasl->proc.insert;
+  if (insert->num_vals == 0 || insert->att_domains == NULL)
+    {
+      return NO_ERROR;
+    }
+  const bool from_select = xasl->spec_list != NULL;
+  const int rows = from_select || insert->num_val_lists == 0 ? 1 : insert->num_val_lists;
+  insert->value_types = (DB_TYPE *) stx_alloc_struct (thread_p, sizeof (DB_TYPE) * rows * insert->num_vals);
+  insert->convs =
+    (TP_VALUE_CONVERTER *) stx_alloc_struct (thread_p, sizeof (TP_VALUE_CONVERTER) * rows * insert->num_vals);
+  if (insert->value_types == NULL || insert->convs == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      return ER_FAILED;
+    }
+  for (int r = 0; r < rows; r++)
+    {
+      REGU_VARIABLE_LIST regu = !from_select && insert->num_val_lists > 0 ? insert->valptr_lists[r]->valptrp : NULL;
+      QPROC_DB_VALUE_LIST slot = from_select && xasl->val_list != NULL ? xasl->val_list->valp : NULL;
+      for (int k = 0; k < insert->num_vals; k++)
+	{
+	  const TP_DOMAIN *domain = insert->att_domains[k];
+	  DB_TYPE value_type = stx_value_type_of (domain);
+	  if (k >= insert->num_default_expr)
+	    {
+	      value_type = stx_value_type_of (regu != NULL ? regu->value.domain : slot != NULL ? slot->dom : NULL);
+	      regu = regu != NULL ? regu->next : NULL;
+	      slot = slot != NULL ? slot->next : NULL;
+	    }
+	  insert->value_types[r * insert->num_vals + k] = value_type;
+	  insert->convs[r * insert->num_vals + k] = value_type == DB_TYPE_VARIABLE || value_type == DB_TYPE_NULL ? NULL
+	    : tp_value_find_converter (value_type, domain, DOMAIN_CONVERT_ASSIGN);
+	}
+    }
+  return NO_ERROR;
 }
 
 static char *
@@ -4375,6 +4520,11 @@ stx_build_merge_proc (THREAD_ENTRY * thread_p, char *ptr, MERGE_PROC_NODE * merg
 
   ptr = or_unpack_int (ptr, &tmp);
   merge_info->has_delete = (bool) tmp;
+  if (merge_info->has_delete && merge_info->update_xasl != NULL)
+    {
+      /* the UPDATE's SELECT carries should_delete before the values assigned */
+      stx_plan_update_assignments (merge_info->update_xasl, true);
+    }
 
   return ptr;
 

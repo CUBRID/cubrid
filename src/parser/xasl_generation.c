@@ -21552,6 +21552,27 @@ pt_finish_remote_dml_xasl (XASL_NODE * xasl)
  * parser (in) : Parser context.
  * statement (in): PT_INSERT node (remote target + SELECT value_clauses).
  */
+/*
+ * pt_assigned_attribute_domain () - CBRD-27583 (D-45): the domain of an attribute an INSERT, UPDATE or MERGE assigns,
+ *   found as sm_att_id finds the attribute; the XASL streams it with the assignment
+ *   return: the domain, NULL with the error set
+ */
+static TP_DOMAIN *
+pt_assigned_attribute_domain (DB_OBJECT * class_obj, const char *name)
+{
+  int id, shared;
+  TP_DOMAIN *domain = NULL;
+  if (sm_att_info (class_obj, name, &id, &domain, &shared, 0) != NO_ERROR || domain == NULL)
+    {
+      if (er_errid () == NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 1, name);
+	}
+      return NULL;
+    }
+  return domain;
+}
+
 static XASL_NODE *
 pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
@@ -22147,7 +22168,8 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
       if (error >= NO_ERROR && (num_vals + num_default_expr > 0))
 	{
 	  insert->att_id = regu_int_array_alloc (num_vals + num_default_expr);
-	  if (insert->att_id)
+	  regu_array_alloc (&insert->att_domains, num_vals + num_default_expr);
+	  if (insert->att_id && insert->att_domains)
 	    {
 	      /* the identifiers of the attributes that have a default expression are placed first */
 	      int save_au;
@@ -22157,7 +22179,8 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      for (attr = default_expr_attrs, a = 0; error >= NO_ERROR && a < num_default_expr; attr = attr->next, ++a)
 		{
 		  insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original);
-		  if (insert->att_id[a] < 0)
+		  insert->att_domains[a] = pt_assigned_attribute_domain (class_obj, attr->info.name.original);
+		  if (insert->att_id[a] < 0 || insert->att_domains[a] == NULL)
 		    {
 		      ASSERT_ERROR_AND_SET (error);
 		    }
@@ -22167,7 +22190,8 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 		   attr = attr->next, ++a)
 		{
 		  insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original);
-		  if (insert->att_id[a] < 0)
+		  insert->att_domains[a] = pt_assigned_attribute_domain (class_obj, attr->info.name.original);
+		  if (insert->att_id[a] < 0 || insert->att_domains[a] == NULL)
 		    {
 		      ASSERT_ERROR_AND_SET (error);
 		    }
@@ -22538,6 +22562,7 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
       odku->attr_ids[i] = attr->id;
       odku->assignments[i].att_idx = i;
       odku->assignments[i].cls_idx = -1;
+      odku->assignments[i].domain = db_attribute_domain (attr);
       if (assignments_helper.is_rhs_const)
 	{
 	  val = pt_value_to_db (parser, assignments_helper.rhs);
@@ -24876,8 +24901,13 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
 		  assign->att_idx = a;
 		  upd_cls->att_id[cl * upd_cls->num_attrs + a] =
 		    sm_att_id (class_obj, att_name_node->info.name.original);
+		  if (assign->domain == NULL)
+		    {
+		      /* a subclass inherits the attribute's domain */
+		      assign->domain = pt_assigned_attribute_domain (class_obj, att_name_node->info.name.original);
+		    }
 
-		  if (upd_cls->att_id[cl * upd_cls->num_attrs + a] < 0)
+		  if (upd_cls->att_id[cl * upd_cls->num_attrs + a] < 0 || assign->domain == NULL)
 		    {
 		      assert (er_errid () != NO_ERROR);
 		      error = er_errid ();
@@ -29772,8 +29802,13 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	      assign->cls_idx = 0;
 	      assign->att_idx = a;
 	      upd_cls->att_id[cl * upd_cls->num_attrs + a] = sm_att_id (class_obj, att_name_node->info.name.original);
+	      if (assign->domain == NULL)
+		{
+		  /* a subclass inherits the attribute's domain */
+		  assign->domain = pt_assigned_attribute_domain (class_obj, att_name_node->info.name.original);
+		}
 
-	      if (upd_cls->att_id[cl * upd_cls->num_attrs + a] < 0)
+	      if (upd_cls->att_id[cl * upd_cls->num_attrs + a] < 0 || assign->domain == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
@@ -30146,12 +30181,15 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
   if (num_vals + num_default_expr > 0)
     {
       insert->att_id = regu_int_array_alloc (num_vals + num_default_expr);
-      if (insert->att_id)
+      regu_array_alloc (&insert->att_domains, num_vals + num_default_expr);
+      if (insert->att_id && insert->att_domains)
 	{
 	  /* the identifiers of the attributes that have a default expression are placed first */
 	  for (attr = default_expr_attrs, a = 0; error >= 0 && a < num_default_expr; attr = attr->next, ++a)
 	    {
-	      if ((insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original)) < 0)
+	      if ((insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original)) < 0
+		  || (insert->att_domains[a] =
+		      pt_assigned_attribute_domain (class_obj, attr->info.name.original)) == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();
@@ -30160,7 +30198,9 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	  for (attr = attrs, a = num_default_expr; error >= 0 && a < num_default_expr + num_vals;
 	       attr = attr->next, ++a)
 	    {
-	      if ((insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original)) < 0)
+	      if ((insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original)) < 0
+		  || (insert->att_domains[a] =
+		      pt_assigned_attribute_domain (class_obj, attr->info.name.original)) == NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();

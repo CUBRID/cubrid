@@ -2420,7 +2420,7 @@ end:
   return offset;
 }
 
-#if defined (ENABLE_UNUSED_FUNCTION)
+/* CBRD-27583 (D-45): an object domain keeps its class (include_classoids), as the catalog's does */
 static int
 xts_save_domain_array (TP_DOMAIN ** domain_array_p, int nelements)
 {
@@ -2434,7 +2434,7 @@ xts_save_domain_array (TP_DOMAIN ** domain_array_p, int nelements)
 
   for (len = 0, i = 0; i < nelements; i++)
     {
-      len += or_packed_domain_size (domain_array_p[i], 0);
+      len += or_packed_domain_size (domain_array_p[i], 1);
     }
 
   offset = xts_reserve_location_in_stream (len);
@@ -2446,12 +2446,11 @@ xts_save_domain_array (TP_DOMAIN ** domain_array_p, int nelements)
   ptr = &xts_Stream_buffer[offset];
   for (i = 0; i < nelements; i++)
     {
-      ptr = or_pack_domain (ptr, domain_array_p[i], 0, 0);
+      ptr = or_pack_domain (ptr, domain_array_p[i], 1, 0);
     }
 
   return offset;
 }
-#endif
 
 static int
 xts_save_int_array (int *int_array, int nelements)
@@ -3921,6 +3920,9 @@ xts_save_update_assignment (char *ptr, const UPDATE_ASSIGNMENT * assign)
     }
   ptr = or_pack_int (ptr, offset);
 
+  /* domain: the attribute's, with an object domain's class */
+  ptr = or_pack_domain (ptr, assign->domain, 1, 0);
+
   return ptr;
 }
 
@@ -3929,7 +3931,12 @@ xts_save_update_assignment_array (const UPDATE_ASSIGNMENT * assigns, int nelemen
 {
   char *ptr = NULL, *buf = NULL;
   int offset = ER_FAILED, idx;
-  int size = xts_sizeof_update_assignment (assigns) * nelements;
+  int size = 0;
+
+  for (idx = 0; idx < nelements; idx++)
+    {
+      size += xts_sizeof_update_assignment (&assigns[idx]);
+    }
 
   assert (nelements > 0);
   assert (size > 0);
@@ -4343,6 +4350,13 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
 	}
       ptr = or_pack_int (ptr, offset);
     }
+
+  offset = xts_save_domain_array (insert_info->att_domains, insert_info->num_vals);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
 
   return ptr;
 }
@@ -6552,7 +6566,8 @@ xts_sizeof_update_assignment (const UPDATE_ASSIGNMENT * assign)
   size += (OR_INT_SIZE		/* cls_idx */
 	   + OR_INT_SIZE	/* att_idx */
 	   + PTR_SIZE		/* constant */
-	   + PTR_SIZE);		/* regu_var */
+	   + PTR_SIZE		/* regu_var */
+	   + or_packed_domain_size (assign->domain, 1));	/* domain */
 
   return size;
 }
@@ -6663,7 +6678,8 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + (insert_info->num_val_lists * PTR_SIZE)	/* valptr_lists */
 	   + xts_sizeof_remote_dml_sink ()	/* remote INSERT SELECT fields */
 	   + OR_INT_SIZE	/* remote_num_attrs */
-	   + (insert_info->remote_num_attrs * PTR_SIZE));	/* remote_attr_names */
+	   + (insert_info->remote_num_attrs * PTR_SIZE)	/* remote_attr_names */
+	   + PTR_SIZE);		/* att_domains */
 
   return size;
 }

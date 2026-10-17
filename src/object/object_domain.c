@@ -7252,6 +7252,19 @@ tp_domain_references_objects (const TP_DOMAIN * dom)
 TP_DOMAIN_STATUS
 tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
+  return tp_value_auto_cast_with_converter (src, dest, desired_domain, DB_VALUE_TYPE (src), NULL);
+}
+
+/*
+ * tp_value_auto_cast_with_converter () - tp_value_auto_cast_with_precision_check with the converter a plan found
+ *   before any row for values of type src_type into desired_domain (tp_value_cast_with_converter)
+ *   return: TP_DOMAIN_STATUS
+ *   converter(in): tp_value_find_converter (src_type, desired_domain, DOMAIN_CONVERT_ASSIGN); NULL: none found
+ */
+TP_DOMAIN_STATUS
+tp_value_auto_cast_with_converter (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
+				   DB_TYPE src_type, TP_VALUE_CONVERTER converter)
+{
   TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
   static const INT64 max_value[DB_BIGINT_PRECISION] = {
     1LL,
@@ -7325,7 +7338,15 @@ tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, 
 
   if (dom_status != DOMAIN_OVERFLOW)
     {
-      dom_status = tp_value_auto_cast (src, dest, desired_domain);
+      /* tp_value_auto_cast with the converter */
+      dom_status = tp_value_cast_with_converter (src, dest, desired_domain, false, src_type, converter);
+      if (dom_status != DOMAIN_COMPATIBLE && prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	{
+	  dom_status = DOMAIN_COMPATIBLE;
+	  pr_clear_value (dest);
+	  db_make_null (dest);
+	  er_clear ();
+	}
     }
 
   return dom_status;

@@ -13491,9 +13491,11 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
 	}
       for (; assign != NULL; assign = assign->next)
 	{
+	  const UPDATE_ASSIGNMENT *plan = assign->assignment;
 	  if (assign->constant != NULL)
 	    {
-	      rc = heap_attrinfo_set (oid, assign->att_id, assign->constant, mvcc_reev_data->curr_attrinfo);
+	      rc = heap_attrinfo_set_converted (oid, assign->att_id, assign->constant, mvcc_reev_data->curr_attrinfo,
+						plan->domain, plan->value_type, plan->conv);
 	    }
 	  else
 	    {
@@ -13503,7 +13505,8 @@ locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const 
 		  ev_res = V_ERROR;
 		  goto end;
 		}
-	      rc = heap_attrinfo_set (oid, assign->att_id, dbval, mvcc_reev_data->curr_attrinfo);
+	      rc = heap_attrinfo_set_converted (oid, assign->att_id, dbval, mvcc_reev_data->curr_attrinfo, plan->domain,
+						plan->value_type, plan->conv);
 	      if (dbval->need_clear)
 		{
 		  pr_clear_value (dbval);

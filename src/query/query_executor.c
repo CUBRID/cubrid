@@ -11232,11 +11232,13 @@ qexec_execute_update (THREAD_ENTRY * thread_p, XASL_NODE * xasl, bool has_delete
 
 	      if (assign->constant != NULL)
 		{
-		  rc = heap_attrinfo_set (oid, attr_id, assign->constant, attr_info);
+		  rc = heap_attrinfo_set_converted (oid, attr_id, assign->constant, attr_info, assign->domain,
+						    assign->value_type, assign->conv);
 		}
 	      else
 		{
-		  rc = heap_attrinfo_set (oid, attr_id, vallist->val, attr_info);
+		  rc = heap_attrinfo_set_converted (oid, attr_id, vallist->val, attr_info, assign->domain,
+						    assign->value_type, assign->conv);
 		  vallist = vallist->next;
 		}
 	      if (rc != NO_ERROR)
@@ -12774,7 +12776,8 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
       assign = &odku->assignments[assign_idx];
       if (assign->constant)
 	{
-	  error = heap_attrinfo_set (&unique_oid, odku->attr_ids[assign_idx], assign->constant, attr_info);
+	  error = heap_attrinfo_set_converted (&unique_oid, odku->attr_ids[assign_idx], assign->constant, attr_info,
+					       assign->domain, assign->value_type, assign->conv);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -12791,7 +12794,8 @@ qexec_execute_duplicate_key_update (THREAD_ENTRY * thread_p, ODKU_INFO * odku, H
 	      goto exit_on_error;
 	    }
 
-	  error = heap_attrinfo_set (&unique_oid, odku->attr_ids[assign_idx], val, attr_info);
+	  error = heap_attrinfo_set_converted (&unique_oid, odku->attr_ids[assign_idx], val, attr_info, assign->domain,
+					       assign->value_type, assign->conv);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -13909,7 +13913,8 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 			}
 		    }
 
-		  rc = heap_attrinfo_set (NULL, insert->att_id[k], insert->vals[k], &attr_info);
+		  rc = heap_attrinfo_set_converted (NULL, insert->att_id[k], insert->vals[k], &attr_info,
+						    insert->att_domains[k], insert->value_types[k], insert->convs[k]);
 		  if (rc != NO_ERROR)
 		    {
 		      GOTO_EXIT_ON_ERROR;
@@ -14093,7 +14098,9 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		      continue;
 		    }
 		}
-	      rc = heap_attrinfo_set (NULL, insert->att_id[k], insert->vals[k], &attr_info);
+	      rc = heap_attrinfo_set_converted (NULL, insert->att_id[k], insert->vals[k], &attr_info,
+						insert->att_domains[k], insert->value_types[i * val_no + k],
+						insert->convs[i * val_no + k]);
 	      if (rc != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
@@ -26249,6 +26256,7 @@ qexec_create_mvcc_reev_assignments (THREAD_ENTRY * thread_p, XASL_NODE * aptr, b
       claz = &classes[assign->cls_idx];
 
       new_assign = &new_assigns[new_assign_idx++];
+      new_assign->assignment = assign;
       new_assign->constant = assign->constant;
       if (new_assign->constant == NULL)
 	{

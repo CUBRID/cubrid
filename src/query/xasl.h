@@ -264,6 +264,11 @@ struct update_assignment
   DB_VALUE *constant;		/* constant to be assigned to an attribute or NULL */
   REGU_VARIABLE *regu_var;	/* regu variable for rhs in assignment */
   bool clear_value_at_clone_decache;	/* true, if need to clear constant db_value at clone decache */
+  TP_DOMAIN *domain;		/* CBRD-27583 (D-45): the attribute's domain, which the value converts into */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  DB_TYPE value_type;		/* CBRD-27583 (D-45): the type the value comes in, chosen at unpack */
+  TP_VALUE_CONVERTER conv;	/* CBRD-27583 (D-45): value_type into domain (ASSIGN), chosen at unpack */
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
 /*on duplicate key update info structure */
@@ -443,6 +448,12 @@ struct insert_proc_node
   REMOTE_DML_SINK sink;
   char **remote_attr_names;	/* remote target column names (array) */
   int remote_num_attrs;		/* length of remote_attr_names */
+  TP_DOMAIN **att_domains;	/* CBRD-27583 (D-45): the domain of each attribute, in att_id order */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  DB_TYPE *value_types;		/* CBRD-27583 (D-45): the type each value comes in - per row of values and
+				 * attribute, a single row for a SELECT - chosen at unpack */
+  TP_VALUE_CONVERTER *convs;	/* CBRD-27583 (D-45): each value_types entry into its attribute's domain */
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
