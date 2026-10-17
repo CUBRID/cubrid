@@ -46,6 +46,7 @@
 #include <syslog.h>
 #endif
 
+#include "background_process.hpp"
 #include "connection_cl.h"
 #include "dbi.h"
 #include "environment_variable.h"
@@ -190,7 +191,8 @@ static void hb_remove_all_procs (HB_PROC_ENTRY * first);
 static HB_PROC_ENTRY *hb_return_proc_by_args (char *args);
 static HB_PROC_ENTRY *hb_return_proc_by_pid (int pid);
 static HB_PROC_ENTRY *hb_return_proc_by_fd (int sfd);
-static void hb_proc_make_arg (char **arg, char *args);
+static int hb_proc_make_arg (char **arg, char *args);
+static int hb_spawn_process (const char *path, char *const *argv);
 static HB_JOB_ARG *hb_deregister_process (HB_PROC_ENTRY * proc);
 #if defined (ENABLE_UNUSED_FUNCTION)
 static void hb_deregister_nodes (char *node_to_dereg);
@@ -3076,7 +3078,8 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
   struct timeval now;
   HB_PROC_ENTRY *proc;
   HB_RESOURCE_JOB_ARG *proc_arg = (arg) ? &(arg->resource_job_arg) : NULL;
-  char *argv[HB_MAX_NUM_PROC_ARGV] = { NULL, }, *args;
+  char *argv[HB_MAX_NUM_PROC_ARGV] = { NULL, };
+  char args[HB_MAX_SZ_PROC_ARGS];
 
   if (arg == NULL || proc_arg == NULL)
     {
@@ -3131,10 +3134,19 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
   snprintf (error_string, LINE_MAX, "(args:%s)", proc->args);
   MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HB_PROCESS_EVENT, 2, "Restart the process", error_string);
 
-  args = strdup (proc->args);
-  hb_proc_make_arg (argv, args);
-
-  pid = fork ();
+  memcpy (args, proc->args, sizeof (args));
+  args[sizeof (args) - 1] = '\0';
+  error = hb_proc_make_arg (argv, args);
+#if defined (HB_VERBOSE_DEBUG)
+  MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
+		       "execute:{%s} arg[0]:{%s} arg[1]:{%s} arg[2]:{%s} "
+		       "arg[3]:{%s} arg{4}:{%s} arg[5]:{%s} arg[6]:{%s} " "arg[7]:{%s} arg[8]:{%s} arg[9]:{%s}.\n",
+		       proc->exec_path, (argv[0]) ? argv[0] : "", (argv[1]) ? argv[1] : "",
+		       (argv[2]) ? argv[2] : "", (argv[3]) ? argv[3] : "", (argv[4]) ? argv[4] : "",
+		       (argv[5]) ? argv[5] : "", (argv[6]) ? argv[6] : "", (argv[7]) ? argv[7] : "",
+		       (argv[8]) ? argv[8] : "", (argv[9]) ? argv[9] : "");
+#endif
+  pid = error == NO_ERROR ? hb_spawn_process (proc->exec_path, argv) : -1;
   if (pid < 0)
     {
       pthread_mutex_unlock (&hb_Resource->lock);
@@ -3147,37 +3159,12 @@ hb_resource_job_proc_start (HB_JOB_ARG * arg)
 	  assert (false);
 	  free_and_init (arg);
 	}
-
-      free (args);
-
       return;
     }
-  else if (pid == 0)
-    {
-#if defined (HB_VERBOSE_DEBUG)
-      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE,
-			   "execute:{%s} arg[0]:{%s} arg[1]:{%s} arg[2]:{%s} "
-			   "arg[3]:{%s} arg{4}:{%s} arg[5]:{%s} arg[6]:{%s} " "arg[7]:{%s} arg[8]:{%s} arg[9]:{%s}.\n",
-			   proc->exec_path, (argv[0]) ? argv[0] : "", (argv[1]) ? argv[1] : "",
-			   (argv[2]) ? argv[2] : "", (argv[3]) ? argv[3] : "", (argv[4]) ? argv[4] : "",
-			   (argv[5]) ? argv[5] : "", (argv[6]) ? argv[6] : "", (argv[7]) ? argv[7] : "",
-			   (argv[8]) ? argv[8] : "", (argv[9]) ? argv[9] : "");
-#endif
-      error = execv (proc->exec_path, argv);
-      pthread_mutex_unlock (&hb_Resource->lock);
 
-      free_and_init (arg);
-      css_master_cleanup (SIGTERM);
-      return;
-    }
-  else
-    {
-      proc->pid = pid;
-      proc->state = HB_PSTATE_STARTED;
-      gettimeofday (&proc->stime, NULL);
-
-      free (args);
-    }
+  proc->pid = pid;
+  proc->state = HB_PSTATE_STARTED;
+  gettimeofday (&proc->stime, NULL);
 
   pthread_mutex_unlock (&hb_Resource->lock);
 
@@ -4052,26 +4039,59 @@ hb_return_proc_by_fd (int sfd)
 
 /*
  * hb_proc_make_arg() -
- *   return: none
+ *   return: NO_ERROR, or ER_FAILED for empty/oversized arguments
  *
  *   arg(out):
  *   argv(in):
  */
-static void
+static int
 hb_proc_make_arg (char **arg, char *args)
 {
   char *tok, *save;
+  int count = 0;
 
   tok = strtok_r (args, " \t\n", &save);
-
   while (tok)
     {
-      (*arg++) = tok;
+      /* Leave room for exec's terminating NULL, including malformed IPC input. */
+      if (count >= HB_MAX_NUM_PROC_ARGV - 1)
+	{
+	  return ER_FAILED;
+	}
+      arg[count++] = tok;
       tok = strtok_r (NULL, " \t\n", &save);
     }
-
-  return;
+  arg[count] = NULL;
+  return count > 0 ? NO_ERROR : ER_FAILED;
 }
+
+/*
+ * HA children register their own connections after exec. No master socket or
+ * internal log is an exec handoff. The master already owns SIGCHLD auto-reaping.
+ */
+/* *INDENT-OFF* */
+static int
+hb_spawn_process (const char *path, char *const *argv)
+{
+  char relay[PATH_MAX], console[PATH_MAX];
+  envvar_bindir_file (relay, sizeof (relay), "cub_console");
+  envvar_logdir_file (console, sizeof (console), "server-console.log");
+  background_process process;
+  if (background_process_start (path, argv, relay, console, process) != 0)
+    {
+      return -1;
+    }
+  /* Automatic recovery has no CLI collector; management IPC carries only a
+   * status reply. Finish the bounded attempt now, preserving any early output
+   * on the master's existing streams. Later producer output stays in the server
+   * console log. HB_RJOB_CONFIRM_START still owns registration readiness. */
+  if (background_process_finish_start (process) != 0)
+    {
+      MASTER_ER_LOG_DEBUG (ARG_FILE_LINE, "Failed to finish HA console startup capture.\n");
+    }
+  return process.pid;
+}
+/* *INDENT-ON* */
 
 
 /*
@@ -6653,12 +6673,10 @@ hb_start_util_process (char *args)
   int pid;
 
   char executable_path[PATH_MAX];
-  int i, num_args = 0;
-  char *s, *save;
-  char argvs[HB_MAX_NUM_PROC_ARGV][HB_MAX_SZ_PROC_ARGV];
+  char args_copy[HB_MAX_SZ_PROC_ARGS];
   char *argvp[HB_MAX_NUM_PROC_ARGV];
 
-  if (hb_Resource == NULL)
+  if (hb_Resource == NULL || args == NULL)
     {
       return ER_FAILED;
     }
@@ -6675,40 +6693,25 @@ hb_start_util_process (char *args)
       return NO_ERROR;
     }
 
-  pid = fork ();
-  if (pid < 0)
+  /* Prepare paths and arguments before the multithreaded fork boundary. */
+  if (strlen (args) >= sizeof (args_copy))
     {
       (void) pthread_mutex_unlock (&hb_Resource->lock);
-
-      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_CANNOT_FORK, 0);
       return ER_FAILED;
     }
-  else if (pid == 0)
+  strcpy (args_copy, args);
+  if (hb_proc_make_arg (argvp, args_copy) != NO_ERROR)
     {
-      memset (argvp, 0, sizeof (argvp));
-      memset (argvs, 0, sizeof (argvs));
-      s = strtok_r (args, " \t\n", &save);
-      while (s)
-	{
-	  strncpy (argvs[num_args++], s, HB_MAX_SZ_PROC_ARGV - 1);
-	  s = strtok_r (NULL, " \t\n", &save);
-	}
-
-      for (i = 0; i < num_args; i++)
-	{
-	  argvp[i] = argvs[i];
-	}
-
-      envvar_bindir_file (executable_path, PATH_MAX, argvp[0]);
-      (void) execv (executable_path, argvp);
-
       (void) pthread_mutex_unlock (&hb_Resource->lock);
-      css_master_cleanup (SIGTERM);
-      return NO_ERROR;
+      return ER_FAILED;
     }
-  else
+  envvar_bindir_file (executable_path, sizeof (executable_path), argvp[0]);
+  pid = hb_spawn_process (executable_path, argvp);
+  (void) pthread_mutex_unlock (&hb_Resource->lock);
+  if (pid < 0)
     {
-      (void) pthread_mutex_unlock (&hb_Resource->lock);
+      MASTER_ER_SET (ER_ERROR_SEVERITY, ARG_FILE_LINE, ERR_CSS_CANNOT_FORK, 0);
+      return ER_FAILED;
     }
 
   return NO_ERROR;
