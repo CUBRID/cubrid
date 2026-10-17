@@ -16222,6 +16222,40 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 	      /* append to outlist */
 	      (*regulist)->value = *regu;
 
+	      /* CBRD-27583 (4.6e): a constant column's value in its domain, converted here as the column's cast did at
+	       * the row - a folded ADDTIME of a zoned string is a DATETIMETZ its VARCHAR node takes */
+	      if (regu->type == TYPE_DBVAL && regu->domain != NULL && !DB_IS_NULL (&regu->value.dbval)
+		  && TP_DOMAIN_TYPE (regu->domain) != DB_TYPE_NULL && TP_DOMAIN_TYPE (regu->domain) != DB_TYPE_VARIABLE
+		  && (DB_VALUE_DOMAIN_TYPE (&regu->value.dbval) != TP_DOMAIN_TYPE (regu->domain)
+		      || (DB_VALUE_DOMAIN_TYPE (&regu->value.dbval) == DB_TYPE_NUMERIC
+			  && (db_value_precision (&regu->value.dbval) != regu->domain->precision
+			      || db_value_scale (&regu->value.dbval) != regu->domain->scale))))
+		{
+		  DB_VALUE converted;
+		  db_make_null (&converted);
+		  /* shortcut: a cast that fails keeps the value (unreachable for a folded ADDTIME; the optdebug column check
+		   * reports another kind), raise it at the row if a constant kind that can fail appears */
+		  if (tp_value_auto_cast (&regu->value.dbval, &converted, regu->domain) == DOMAIN_COMPATIBLE)
+		    {
+		      (*regulist)->value.value.dbval = converted;
+		    }
+		}
+
+	      /* CBRD-27583 (4.6e): INDEX_PREFIX gives its CHAR first argument's type (a B-tree key's unique prefix): its
+	       * column takes the prefix's bytes into the node's VARCHAR, as develop's column cast did; an operand takes
+	       * the CHAR. shortcut: a host variable first argument is MAYBE when PREPARE plans it (the optdebug column
+	       * check reports a CHAR prefix that reaches the column), plan it at execution if CHAR binds appear */
+	      if (regu->type == TYPE_INARITH && col->node_type == PT_EXPR && col->info.expr.op == PT_INDEX_PREFIX
+		  && col->info.expr.arg1->type_enum == PT_TYPE_CHAR && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARCHAR
+		  && (*regulist)->value.original_domain == NULL)
+		{
+		  (*regulist)->value.domain = pt_xasl_node_to_domain (parser, col->info.expr.arg1);
+		  if ((*regulist)->value.domain == NULL)
+		    {
+		      goto exit_on_error;
+		    }
+		  pt_set_operand_conversion (&(*regulist)->value, regu->domain, REGU_CONV_CHAR_PREFIX);
+		}
 	      /* in case of increment expr, find a target class to do the expr, and link the regulist to a node which
 	       * contains update info for the target class */
 	      if (selupd_list_ptr != NULL && col->node_type == PT_EXPR
@@ -18966,6 +19000,25 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	       *
 	       * For example, index (c1, c2, c3) can satisfy sort_list (c1), (c1, c2), (c1, c2, c3), but not (c1, c3). */
 	      XASL_SET_FLAG (xasl, XASL_ANALYTIC_SKIP_SORT);
+
+	      /* CBRD-27583 (D-49): the scan list is the intermediate file, whose column of an AVG's value the end
+	       * overwrites from the function's lists (qexec_analytic_update_group_result): a NULL of the column's domain,
+	       * as a sorted evaluation writes it, not the sum in the argument's type the scan fills.
+	       * shortcut: AVG only - the end of a skipped sort reads the column as the result of RANK, DENSE_RANK,
+	       * FIRST_VALUE and ROW_NUMBER (qexec_analytic_sort_key_header_load); widen it if another function shows in the
+	       * output column census */
+	      for (ANALYTIC_TYPE * func = xasl->proc.buildlist.a_eval_list->head; func != NULL; func = func->next)
+		{
+		  for (REGU_VARIABLE_LIST out = buildlist->a_outptr_list_ex->valptrp;
+		       out != NULL && func->function == PT_AVG; out = out->next)
+		    {
+		      if (out->value.type == TYPE_CONSTANT && out->value.value.dbvalptr == func->value)
+			{
+			  out->value.type = TYPE_DBVAL;
+			  db_make_null (&out->value.value.dbval);
+			}
+		    }
+		}
 	    }
 
 	  /* substitute references of analytic arguments */
@@ -22628,6 +22681,18 @@ pt_to_odku_info (PARSER_CONTEXT * parser, PT_NODE * insert, XASL_NODE * xasl)
 		}
 	    }
 
+	  if (assignments_helper.rhs->node_type == PT_EXPR && assignments_helper.rhs->type_enum == PT_TYPE_NONE)
+	    {
+	      /* CBRD-27583: an ON UPDATE default appended after type checking
+	       * (pt_append_omitted_on_update_expr_assignments) takes its type, not folded: the row evaluates it */
+	      assignments_helper.rhs->flag.do_not_fold = true;
+	      assignments_helper.rhs = pt_semantic_type (parser, assignments_helper.rhs, NULL);
+	      if (assignments_helper.rhs == NULL)
+		{
+		  goto exit_on_error;
+		}
+	      assignments_helper.assignment->info.expr.arg2 = assignments_helper.rhs;
+	    }
 	  odku->assignments[i].regu_var = pt_to_regu_variable (parser, assignments_helper.rhs, UNBOX_AS_VALUE);
 	  if (odku->assignments[i].regu_var == NULL)
 	    {

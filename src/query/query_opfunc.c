@@ -193,7 +193,7 @@ static int qdata_collection_operator (OPERATOR_TYPE opcode, DB_TYPE result_type,
 				      DB_VALUE * value2, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 
 static DB_VALUE *qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
-							      VAL_DESCR * val_desc_p, DB_VALUE * cast_into);
+							      VAL_DESCR * val_desc_p);
 static int qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABLE * func,
 					VAL_DESCR * val_desc_p, OID * obj_oid_p, QFILE_TUPLE_RECORD * tplrec);
 static int qdata_evaluate_generic_function (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR * val_desc_p,
@@ -528,19 +528,83 @@ qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valp
 }
 
 /*
- * qdata_get_dbval_from_prog () - a column's value from the evaluated program, run
- *				  through the same trailing domain enforcement as
- *				  qdata_get_dbval_from_constant_regu_variable ()
+ * qdata_cast_sp_return () - CBRD-27583 (4.6e) exception - until 4.9: the data carries its type; the PL server returns
+ *   a value of another type than the function's declared one (a VARCHAR for a CHAR %TYPE), which a column of a stored
+ *   function converts into its domain in place, as develop's column cast did; deleted when the PL server sends the
+ *   declared type
+ *   return: NO_ERROR, or the conversion's error
+ */
+static int
+qdata_cast_sp_return (THREAD_ENTRY * thread_p, const REGU_VARIABLE * regu_var_p, DB_VALUE * value)
+{
+  const TP_DOMAIN *domain = regu_var_p->domain;
+  if (DB_IS_NULL (value) || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
+      || (DB_VALUE_TYPE (value) == TP_DOMAIN_TYPE (domain)
+	  && (DB_VALUE_TYPE (value) != DB_TYPE_NUMERIC
+	      || (value->domain.numeric_info.precision == domain->precision
+		  && value->domain.numeric_info.scale == domain->scale))))
+    {
+      return NO_ERROR;
+    }
+
+  HL_HEAPID save_heapid = 0;
+  if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
+    {
+      save_heapid = db_change_private_heap (thread_p, 0);
+    }
+  const TP_DOMAIN_STATUS status = tp_value_auto_cast (value, value, domain);
+  if (save_heapid != 0)
+    {
+      (void) db_change_private_heap (thread_p, save_heapid);
+    }
+  return status == DOMAIN_COMPATIBLE ? NO_ERROR : tp_domain_status_er_set (status, ARG_FILE_LINE, value, domain);
+}
+
+#if !defined (NDEBUG)
+/*
+ * qdata_check_output_column () - CBRD-27583 (4.6e): an output column's value comes in the column's domain - its
+ *   producer's, now that no column cast converts it; a NUMERIC domain of the default precision takes a NUMERIC of any
+ *   precision and scale, as the cast into it kept them, and one of precision 0 too: the cast into it kept the default
+ *   precision and the column reads as NULL (mr_data_readval_numeric, develop's defect workspace #444)
+ *   site(in): the census line's name of the reading
+ */
+static void
+qdata_check_output_column (const char *site, const REGU_VARIABLE * regu_var_p, const TP_DOMAIN * domain,
+			   const DB_VALUE * value)
+{
+  if (domain == NULL || DB_IS_NULL (value) || REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_ANALYTIC_WINDOW))
+    {
+      return;
+    }
+  const DB_TYPE dom_type = TP_DOMAIN_TYPE (domain);
+  const DB_TYPE val_type = DB_VALUE_TYPE (value);
+  if (dom_type == DB_TYPE_NULL || dom_type == DB_TYPE_VARIABLE
+      || (val_type == DB_TYPE_OID && (dom_type == DB_TYPE_OID || dom_type == DB_TYPE_VOBJ))
+      || (val_type == dom_type
+	  && (val_type != DB_TYPE_NUMERIC || domain->precision == DB_DEFAULT_NUMERIC_PRECISION || domain->precision == 0
+	      || (value->domain.numeric_info.precision == domain->precision
+		  && value->domain.numeric_info.scale == domain->scale))))
+    {
+      return;
+    }
+  er_log_debug (ARG_FILE_LINE, "CBRD-27583 output column %s value type %d domain type %d p=%d/%d s=%d/%d regu=%d\n",
+		site, (int) val_type, (int) dom_type,
+		val_type == DB_TYPE_NUMERIC ? value->domain.numeric_info.precision : -1, domain->precision,
+		val_type == DB_TYPE_NUMERIC ? value->domain.numeric_info.scale : -1, domain->scale,
+		(int) regu_var_p->type);
+  assert (false);
+}
+#endif /* !NDEBUG */
+
+/*
+ * qdata_get_dbval_from_prog () - a column's value from the evaluated program, read as
+ *				  qdata_get_dbval_from_constant_regu_variable () reads it
  */
 static DB_VALUE *
 qdata_get_dbval_from_prog (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p, EXPR_PROG * prog, int root_idx,
 			   const val_descr * val_desc_p)
 {
   DB_VALUE *peek_value_p = expr_prog_value (prog, root_idx);
-  DB_TYPE dom_type, val_type;
-  TP_DOMAIN_STATUS dom_status;
-  HL_HEAPID save_heapid = 0;
-  TP_DOMAIN *domain;
 
   assert (regu_var_p != NULL);
   assert (regu_var_p->domain != NULL);
@@ -548,67 +612,23 @@ qdata_get_dbval_from_prog (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p, 
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_UPD_INS_LIST));
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_ANALYTIC_WINDOW));
 
-  /* the column's domain in this execution, as qdata_get_dbval_from_constant_regu_variable () reads it: the one the
-   * node took -- a generic step's node protocol sets it on the row (a collation the values give, fetch_arith_node_end),
-   * a kernel-served variable node takes the gate's resolution here (expr_regu_exec_domain) -- else its plan's, then
-   * the consumer's.  Reading regu->domain itself was wrong for a node whose compiled type is fixed but whose domain is
-   * variable (DOMAIN_PLAN_VARIABLE): a CAST_WRAP over an ENUM + bind is STRING by type, yet the row's domain is the
-   * resolved one, and the cast into the collation-only STRING domain leaves the value's type (gha-ci 38388019045). */
-  {
-    TP_DOMAIN *now = qexec_get_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->plan_item);
+  if (regu_var_p->type == TYPE_SP && qdata_cast_sp_return (thread_p, regu_var_p, peek_value_p) != NO_ERROR)
+    {
+      return NULL;
+    }
 
+#if !defined (NDEBUG)
+  {
+    /* the column's domain in this execution: the one the node took, else its plan's, then the consumer's */
+    TP_DOMAIN *now = qexec_get_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->plan_item);
     if (now != NULL && TP_DOMAIN_TYPE (now) == DB_TYPE_VARIABLE)
       {
 	now = expr_regu_exec_domain (val_desc_p, regu_var_p);
       }
-    domain = (now != NULL) ? (TP_DOMAIN *) qexec_consumer_domain (val_desc_p, now, regu_var_p->plan_item) : NULL;
-    if (domain == NULL)
-      {
-	domain = now;
-      }
+    const TP_DOMAIN *consumer = now != NULL ? qexec_consumer_domain (val_desc_p, now, regu_var_p->plan_item) : NULL;
+    qdata_check_output_column ("prog", regu_var_p, consumer != NULL ? consumer : now, peek_value_p);
   }
-  if (domain == NULL)
-    {
-      /* a node that takes no value in this execution: nothing to enforce */
-      return peek_value_p;
-    }
-
-  if (!DB_IS_NULL (peek_value_p))
-    {
-      val_type = DB_VALUE_TYPE (peek_value_p);
-      dom_type = TP_DOMAIN_TYPE (domain);
-
-      if (dom_type != DB_TYPE_NULL)
-	{
-	  if (val_type == DB_TYPE_OID)
-	    {
-	      assert ((dom_type == DB_TYPE_OID) || (dom_type == DB_TYPE_VOBJ));
-	    }
-	  else if (val_type != dom_type
-		   || (val_type == DB_TYPE_NUMERIC
-		       && (peek_value_p->domain.numeric_info.precision != domain->precision
-			   || peek_value_p->domain.numeric_info.scale != domain->scale)))
-	    {
-	      if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
-		{
-		  save_heapid = db_change_private_heap (thread_p, 0);
-		}
-
-	      dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, domain);
-	      if (save_heapid != 0)
-		{
-		  (void) db_change_private_heap (thread_p, save_heapid);
-		}
-	      if (dom_status != DOMAIN_COMPATIBLE)
-		{
-		  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, domain);
-		  return NULL;
-		}
-	      assert (dom_type == DB_VALUE_TYPE (peek_value_p)
-		      || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) && DB_IS_NULL (peek_value_p)));
-	    }
-	}
-    }
+#endif
 
   return peek_value_p;
 }
@@ -632,9 +652,6 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
 {
   REGU_VARIABLE_LIST reg_var_p;
   DB_VALUE *vals_buf[QDATA_TUPLE_VALS_STACK], **vals = vals_buf;
-  /* a column's value cast into the column's domain, kept off the value its producer owns; a column past the stack
-   * array casts in place, as every column did (qdata_get_dbval_from_constant_regu_variable) */
-  DB_VALUE cast_buf[QDATA_TUPLE_VALS_STACK];
   int k, n, error = NO_ERROR;
   EXPR_PROG *eval_prog;
   int prog_error;
@@ -644,11 +661,6 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
   if (prog_error != NO_ERROR)
     {
       return ER_FAILED;
-    }
-
-  for (k = 0; k < QDATA_TUPLE_VALS_STACK; k++)
-    {
-      db_make_null (&cast_buf[k]);
     }
 
   if (valptr_list_p->valptr_cnt > QDATA_TUPLE_VALS_STACK)
@@ -672,15 +684,13 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
 	}
       if (eval_prog != NULL && valptr_list_p->eval_prog_idx[k] >= 0)
 	{
-	  /* the program owns the cell: a column cast into its domain is cast in place */
 	  vals[n] =
 	    qdata_get_dbval_from_prog (thread_p, &reg_var_p->value, eval_prog, valptr_list_p->eval_prog_idx[k],
 				       val_desc_p);
 	}
       else
 	{
-	  vals[n] = qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p,
-								 n < QDATA_TUPLE_VALS_STACK ? &cast_buf[n] : NULL);
+	  vals[n] = qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
 	}
       if (vals[n] == NULL)
 	{
@@ -693,10 +703,6 @@ qdata_copy_valptr_list_to_tuple (THREAD_ENTRY * thread_p, valptr_list_node * val
   error = qdata_copy_values_to_tuple (thread_p, vals, n, type_list, tuple_record_p);
 
 end:
-  for (k = 0; k < n && k < QDATA_TUPLE_VALS_STACK; k++)
-    {
-      pr_clear_value (&cast_buf[k]);
-    }
   if (vals != vals_buf)
     {
       db_private_free (thread_p, vals);
@@ -868,15 +874,12 @@ qdata_collect_tuple_values (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
 	}
       if (eval_prog != NULL && valptr_list_p->eval_prog_idx[i] >= 0)
 	{
-	  /* the program owns the cell: a column cast into its domain is cast in place */
 	  value =
 	    qdata_get_dbval_from_prog (thread_p, regu_var_p, eval_prog, valptr_list_p->eval_prog_idx[i], val_desc_p);
 	}
       else
 	{
-	  value = qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p,
-							       tuple_desc_p->f_cnt < tuple_desc_p->f_cast_cnt
-							       ? &tuple_desc_p->f_cast[tuple_desc_p->f_cnt] : NULL);
+	  value = qdata_get_dbval_from_constant_regu_variable (thread_p, regu_var_p, val_desc_p);
 	}
       tuple_desc_p->f_valp[tuple_desc_p->f_cnt] = value;
       if (value == NULL)
@@ -968,7 +971,7 @@ qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valpt
   reg_var_p = valptr_list_p->valptrp;
   for (i = 0; i < valptr_list_p->valptr_cnt; i++)
     {
-      dbval_p = qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p, NULL);
+      dbval_p = qdata_get_dbval_from_constant_regu_variable (thread_p, &reg_var_p->value, val_desc_p);
 
       if (dbval_p != NULL)
 	{
@@ -5589,19 +5592,14 @@ qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfil
  *       return a pointer to it.
  *
  * Note: Regulator variable should point to only constant values.
- *   cast_into(in): the value a value not of the column's domain is cast into, so the peeked value keeps its own
- *		    type; NULL casts the peeked value in place (qdata_set_valptr_list_unbound, a column past the
- *		    stack array of qdata_copy_valptr_list_to_tuple)
+ *   CBRD-27583 (4.6e): the value comes in the column's domain - its producer's; no column cast converts it but a stored
+ *   function's (qdata_cast_sp_return)
  */
 static DB_VALUE *
 qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p,
-					     VAL_DESCR * val_desc_p, DB_VALUE * cast_into)
+					     VAL_DESCR * val_desc_p)
 {
   DB_VALUE *peek_value_p;
-  DB_TYPE dom_type, val_type;
-  TP_DOMAIN_STATUS dom_status;
-  int result;
-  HL_HEAPID save_heapid = 0;
 
   assert (regu_var_p != NULL);
   assert (regu_var_p->domain != NULL);
@@ -5611,90 +5609,24 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
       REGU_VARIABLE_SET_FLAG (regu_var_p, REGU_VARIABLE_STRICT_TYPE_CAST);
     }
 
-  result = fetch_peek_dbval (thread_p, regu_var_p, val_desc_p, NULL, NULL, NULL, &peek_value_p);
-  if (result != NO_ERROR)
+  if (fetch_peek_dbval (thread_p, regu_var_p, val_desc_p, NULL, NULL, NULL, &peek_value_p) != NO_ERROR)
     {
       return NULL;
     }
 
-  if (!DB_IS_NULL (peek_value_p))
+  if (regu_var_p->type == TYPE_SP && qdata_cast_sp_return (thread_p, regu_var_p, peek_value_p) != NO_ERROR)
     {
-      val_type = DB_VALUE_TYPE (peek_value_p);
-      assert (val_type != DB_TYPE_NULL);
-
-      /* the column's domain in this execution: the one its fetch took, or its plan's - the list was opened with the
-       * plan's domains (qdata_get_valptr_type_list), so the value is cast to the same domain the column holds */
-      TP_DOMAIN *now = qexec_get_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->plan_item);
-      TP_DOMAIN *domain = (TP_DOMAIN *) qexec_consumer_domain (val_desc_p, now, regu_var_p->plan_item);
-      if (domain == NULL)
-	{
-	  domain = now;
-	}
-      dom_type = TP_DOMAIN_TYPE (domain);
-      if (dom_type != DB_TYPE_NULL)
-	{
-	  assert (dom_type != DB_TYPE_NULL);
-
-	  if (val_type == DB_TYPE_OID)
-	    {
-	      assert ((dom_type == DB_TYPE_OID) || (dom_type == DB_TYPE_VOBJ));
-	    }
-	  else if (val_type != dom_type
-		   || (val_type == DB_TYPE_NUMERIC
-		       && (peek_value_p->domain.numeric_info.precision != domain->precision
-			   || peek_value_p->domain.numeric_info.scale != domain->scale)))
-	    {
-	      if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_ANALYTIC_WINDOW))
-		{
-		  /* do not cast at here, is handled at analytic function evaluation later */
-		  ;
-		}
-	      else
-		{
-		  if (cast_into != NULL)
-		    {
-		      /* a copy, cast in place as the value itself was: the peeked value - a scan's value another column
-		       * reads too - keeps the type its producer gave it, which the plan of that column's node
-		       * describes; the cast of a copy is the cast of the value (a string cast over itself keeps its
-		       * own padding, a cast into another value pads anew) */
-		      pr_clear_value (cast_into);
-		      if (pr_clone_value (peek_value_p, cast_into) != NO_ERROR)
-			{
-			  return NULL;
-			}
-		      dom_status = tp_value_auto_cast (cast_into, cast_into, domain);
-		      if (dom_status != DOMAIN_COMPATIBLE)
-			{
-			  result = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, cast_into, domain);
-			  return NULL;
-			}
-		      peek_value_p = cast_into;
-		    }
-		  else
-		    {
-		      if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
-			{
-			  save_heapid = db_change_private_heap (thread_p, 0);
-			}
-
-		      dom_status = tp_value_auto_cast (peek_value_p, peek_value_p, domain);
-		      if (save_heapid != 0)
-			{
-			  (void) db_change_private_heap (thread_p, save_heapid);
-			  save_heapid = 0;
-			}
-		      if (dom_status != DOMAIN_COMPATIBLE)
-			{
-			  result = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_value_p, domain);
-			  return NULL;
-			}
-		    }
-		  assert (dom_type == DB_VALUE_TYPE (peek_value_p)
-			  || (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS) && DB_IS_NULL (peek_value_p)));
-		}
-	    }
-	}
+      return NULL;
     }
+
+#if !defined (NDEBUG)
+  {
+    /* the column's domain in this execution: the one its fetch took, or its plan's, then the consumer's */
+    TP_DOMAIN *now = qexec_get_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->plan_item);
+    const TP_DOMAIN *consumer = qexec_consumer_domain (val_desc_p, now, regu_var_p->plan_item);
+    qdata_check_output_column ("regu", regu_var_p, consumer != NULL ? consumer : now, peek_value_p);
+  }
+#endif
 
   return peek_value_p;
 }

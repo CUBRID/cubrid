@@ -3200,6 +3200,28 @@ tp_value_convert_varchar_to_varchar (const DB_VALUE *src, DB_VALUE *target, cons
   return status;
 }
 
+/*
+ * tp_value_convert_char_prefix_to_varchar () - CBRD-27583 (4.6e): INDEX_PREFIX's prefix of a CHAR, shorter than its
+ *   precision, into a VARCHAR of its bytes, as develop's column cast relabelled it in place (tp_can_steal_string); the
+ *   CHAR to VARCHAR converter pads it to its precision. Deleted with develop's defect, workspace #445.
+ */
+static TP_DOMAIN_STATUS
+tp_value_convert_char_prefix_to_varchar (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
+    date_conversion_error *error)
+{
+  DB_VALUE prefix;
+
+  db_make_varchar (&prefix, DB_DEFAULT_PRECISION, db_get_string (src), db_get_string_size (src),
+		   db_get_string_codeset (src), db_get_string_collation (src));
+  return tp_value_convert_varchar_to_varchar (&prefix, target, desired_domain, error);
+}
+
+TP_VALUE_CONVERTER
+domain_char_prefix_converter (void)
+{
+  return tp_value_convert_char_prefix_to_varchar;
+}
+
 static TP_DOMAIN_STATUS
 tp_value_convert_date_to_varchar (const DB_VALUE *src, DB_VALUE *target, const TP_DOMAIN *desired_domain,
 				  date_conversion_error *error)

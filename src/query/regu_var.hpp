@@ -208,11 +208,13 @@ const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may re
 						 * at load for a stable regu */
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
 
-/* CBRD-27583: REGU_VARIABLE.conv_mode - the converter (a DOMAIN_CONVERT_MODE, or the ENUM name converter) and what
- * a failed conversion gives */
+/* CBRD-27583: REGU_VARIABLE.conv_mode - the converter (a DOMAIN_CONVERT_MODE, the ENUM name converter or the CHAR
+ * prefix converter) and what a failed conversion gives */
 const int REGU_CONV_SELECTION = 0x07;
 const int REGU_CONV_ENUM_NAME =
 	0x04;	/* T_ADD's ENUM into DOUBLE through its name (domain_enumeration_name_converter) */
+const int REGU_CONV_CHAR_PREFIX =
+	0x05;	/* INDEX_PREFIX's CHAR into its column's VARCHAR through its bytes (domain_char_prefix_converter) */
 const int REGU_CONV_NULL_ON_FUNCTION_ERRORS =
 	0x10;	/* an arithmetic operand: NULL under return_null_on_function_errors */
 

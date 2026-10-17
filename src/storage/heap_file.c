@@ -12470,6 +12470,8 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
     }
   const TP_DOMAIN *catalog = value->last_attrepr->domain;
   assert (TP_DOMAIN_TYPE (catalog) == TP_DOMAIN_TYPE (domain));
+  /* exception - until 4.9: a PL static SQL bind comes in another type than its declared one (a VARCHAR for a CHAR),
+   * whose converter the cast looks up; deleted when the PL server sends the declared type */
 #if !defined (NDEBUG)
   if (!DB_IS_NULL (attr_val) && DB_VALUE_DOMAIN_TYPE (attr_val) != value_type)
     {
