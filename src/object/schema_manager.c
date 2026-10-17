@@ -4361,6 +4361,8 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram)
   int error = NO_ERROR;
   DB_OBJLIST *cl;
   SM_CLASS *class_;
+  /* both phases report their progress against the same start */
+  INT64 run_start_msec = stats_progress_clock_msec ();
 
   /* make sure the workspace is flushed before calculating stats */
   if (locator_all_flush () != NO_ERROR)
@@ -4369,7 +4371,7 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram)
       return er_errid ();
     }
 
-  error = stats_update_all_statistics (with_fullscan, no_histogram /* print_summary */ );
+  error = stats_update_all_statistics (with_fullscan, no_histogram /* print_summary */ , run_start_msec);
   if (error == NO_ERROR)
     {
       /* Need to reset the statistics cache for all resident classes */
@@ -4404,7 +4406,7 @@ sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram)
 
   if (!no_histogram)
     {
-      error = update_histogram_for_all_classes (random_seed);
+      error = update_histogram_for_all_classes (random_seed, run_start_msec);
       if (error != NO_ERROR)
 	{
 	  return error;

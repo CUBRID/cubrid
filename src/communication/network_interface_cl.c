@@ -29,6 +29,7 @@
 #include <assert.h>
 
 #include <algorithm>
+#include <chrono>
 
 #include "porting.h"
 #include "network.h"
@@ -6157,15 +6158,74 @@ is_top_level_class (MOBJ mobj)
 }
 
 /*
+ * stats_progress_clock_msec - monotonic clock for the progress of UPDATE STATISTICS ON ALL CLASSES
+ *
+ * return: msec from an arbitrary origin
+ */
+INT64
+stats_progress_clock_msec (void)
+{
+  return std::chrono::duration_cast < std::chrono::milliseconds >
+    (std::chrono::steady_clock::now ().time_since_epoch ()).count ();
+}
+
+/*
+ * stats_log_update_progress - report the progress of UPDATE STATISTICS ON ALL CLASSES to the server event log
+ *
+ * return: none; a failure to report never fails the run and leaves the current error as it was
+ *
+ *   classop(in):
+ *   phase(in): STATS_PROGRESS_STATISTICS or STATS_PROGRESS_HISTOGRAM
+ *   state(in): STATS_PROGRESS_STARTED or STATS_PROGRESS_FINISHED
+ *   seq(in): 1-based position of the class in the phase
+ *   total(in): number of classes in the phase
+ *   class_start_msec(in): stats_progress_clock_msec () when the class started
+ *   run_start_msec(in): stats_progress_clock_msec () when the run started
+ *   error(in): result of the class (finished only)
+ */
+void
+stats_log_update_progress (MOP classop, int phase, int state, int seq, int total, INT64 class_start_msec,
+			   INT64 run_start_msec, int error)
+{
+#if defined(CS_MODE)
+  OR_ALIGNED_BUF (OR_OID_SIZE + OR_INT_SIZE * 7) a_request;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  INT64 now = stats_progress_clock_msec ();
+  INT64 class_ms = now - class_start_msec;
+  INT64 elapsed_ms = now - run_start_msec;
+
+  ptr = or_pack_oid (request, WS_OID (classop));
+  ptr = or_pack_int (ptr, phase);
+  ptr = or_pack_int (ptr, state);
+  ptr = or_pack_int (ptr, seq);
+  ptr = or_pack_int (ptr, total);
+  ptr = or_pack_int (ptr, (int) std::min (class_ms, (INT64) INT_MAX));
+  ptr = or_pack_int (ptr, (int) std::min (elapsed_ms, (INT64) INT_MAX));
+  ptr = or_pack_int (ptr, error);
+
+  er_stack_push ();
+  (void) net_client_request (NET_SERVER_QST_LOG_STATS_PROGRESS, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			     OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  er_stack_pop ();
+#endif /* CS_MODE */
+  /* SA_MODE has no server event log */
+}
+
+/*
  * stats_update_all_statistics -
  *
  * return:
  *   with_fullscan(in): true iff WITH FULLSCAN
+ *   print_summary(in):
+ *   run_start_msec(in): stats_progress_clock_msec () when the run started
  *
- * NOTE:
+ * NOTE: the progress of each class goes to the server event log.
  */
 int
-stats_update_all_statistics (int with_fullscan, int print_summary)
+stats_update_all_statistics (int with_fullscan, int print_summary, INT64 run_start_msec)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
@@ -6183,7 +6243,13 @@ stats_update_all_statistics (int with_fullscan, int print_summary)
       class_mop = lmops->mops[i];
       if (locator_fetch_class (class_mop, DB_FETCH_READ) != NULL)
 	{
+	  INT64 class_start_msec = stats_progress_clock_msec ();
+
+	  stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_STARTED, i + 1, lmops->num,
+				     class_start_msec, run_start_msec, NO_ERROR);
 	  error = stats_update_statistics (class_mop, with_fullscan);
+	  stats_log_update_progress (class_mop, STATS_PROGRESS_STATISTICS, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
+				     class_start_msec, run_start_msec, error);
 	  if (error != NO_ERROR)
 	    {
 	      break;
@@ -6210,7 +6276,7 @@ stats_update_all_statistics (int with_fullscan, int print_summary)
 }
 
 int
-update_histogram_for_all_classes (int random_seed)
+update_histogram_for_all_classes (int random_seed, INT64 run_start_msec)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
@@ -6246,9 +6312,14 @@ update_histogram_for_all_classes (int random_seed)
       histogram_info.with_fullscan = false;
       histogram_info.random_seed = random_seed;
       int hist_skipped = 0;
+      INT64 class_start_msec = stats_progress_clock_msec ();
 
+      stats_log_update_progress (class_mop, STATS_PROGRESS_HISTOGRAM, STATS_PROGRESS_STARTED, i + 1, lmops->num,
+				 class_start_msec, run_start_msec, NO_ERROR);
       error = update_or_drop_histogram_helper (NULL, obj, true /* quiet */ , &histogram_info, DO_HISTOGRAM_CREATE,
 					       &hist_skipped);
+      stats_log_update_progress (class_mop, STATS_PROGRESS_HISTOGRAM, STATS_PROGRESS_FINISHED, i + 1, lmops->num,
+				 class_start_msec, run_start_msec, error);
       n_hist_skipped += hist_skipped;
       if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
 	{
