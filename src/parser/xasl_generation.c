@@ -6733,9 +6733,31 @@ pt_spec_list_producer (const PT_NODE * spec)
     ? (const XASL_NODE *) cte->info.cte.non_recursive_part->info.query.xasl : NULL;
 }
 
+/* CBRD-27583: a string domain whose collation type checking left to the values (LEAVE), in the collation decided
+ * (collation); NULL for a domain that has its collation, or a decided one without */
+static TP_DOMAIN *
+pt_domain_in_collation (TP_DOMAIN * domain, const TP_DOMAIN * collation)
+{
+  if (TP_DOMAIN_COLLATION_FLAG (domain) == TP_DOMAIN_COLL_NORMAL || !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain))
+      || !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (collation)) || TP_DOMAIN_COLLATION_FLAG (collation) != TP_DOMAIN_COLL_NORMAL)
+    {
+      return NULL;
+    }
+  TP_DOMAIN *copy = tp_domain_copy (domain, false);
+  if (copy == NULL)
+    {
+      return NULL;
+    }
+  copy->codeset = collation->codeset;
+  copy->collation_id = collation->collation_id;
+  copy->collation_flag = TP_DOMAIN_COLL_NORMAL;
+  return tp_domain_cache (copy);
+}
+
 /* CBRD-27583: the domain of a reader of another block's value (principle 1-6): a variable parse tree domain takes its
  * producer's; a fixed one is the producer's type already, but for a recursive CTE's self-reference, which type
- * checking typed before the cast of the non-recursive part (D-34) */
+ * checking typed before the cast of the non-recursive part (D-34); a string type whose collation type checking left
+ * to the values takes the producer's collation */
 static TP_DOMAIN *
 pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
 {
@@ -6744,9 +6766,14 @@ pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
       return parse_tree;
     }
   /* a NULL producer column (a derived table whose query is false) types nothing */
-  return TP_DOMAIN_TYPE (parse_tree) == DB_TYPE_VARIABLE
-    || (TP_DOMAIN_TYPE (producer) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (producer) != DB_TYPE_NULL
-	&& TP_DOMAIN_TYPE (producer) != TP_DOMAIN_TYPE (parse_tree)) ? producer : parse_tree;
+  if (TP_DOMAIN_TYPE (parse_tree) == DB_TYPE_VARIABLE
+      || (TP_DOMAIN_TYPE (producer) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (producer) != DB_TYPE_NULL
+	  && TP_DOMAIN_TYPE (producer) != TP_DOMAIN_TYPE (parse_tree)))
+    {
+      return producer;
+    }
+  TP_DOMAIN *collated = pt_domain_in_collation (parse_tree, producer);
+  return collated != NULL ? collated : parse_tree;
 }
 
 /* CBRD-27583: the domain of a regu reading column pos of the list a derived table's or a CTE's spec reads */
@@ -6755,6 +6782,16 @@ pt_list_reader_domain (PARSER_CONTEXT * parser, const PT_NODE * spec, int pos, c
 {
   return pt_reader_domain (pt_xasl_node_to_domain (parser, attr),
 			   pt_list_column_domain (pt_spec_list_producer (spec), pos));
+}
+
+/* CBRD-27583: the slot of values that holds value, NULL for none */
+static QPROC_DB_VALUE_LIST
+pt_value_list_slot (const VAL_LIST * values, const DB_VALUE * value)
+{
+  QPROC_DB_VALUE_LIST slot = values != NULL ? values->valp : NULL;
+  for (; slot != NULL && slot->val != value; slot = slot->next)
+    ;
+  return slot;
 }
 
 /*
@@ -6780,13 +6817,10 @@ pt_set_list_position_domains (REGU_VARIABLE_LIST positions, VAL_LIST * values, c
 	}
       position->domain = domain;
       position->value.pos_descr.dom = domain;
-      for (QPROC_DB_VALUE_LIST slot = values != NULL ? values->valp : NULL; slot != NULL; slot = slot->next)
+      QPROC_DB_VALUE_LIST slot = pt_value_list_slot (values, position->vfetch_to);
+      if (slot != NULL)
 	{
-	  if (slot->val == position->vfetch_to)
-	    {
-	      slot->dom = domain;
-	      break;
-	    }
+	  slot->dom = domain;
 	}
     }
 }
@@ -7173,6 +7207,162 @@ pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
   arith->domain = (TP_DOMAIN *) result.domain;
   regu->domain = arith->domain;
   regu_dbval_type_init (arith->value, TP_DOMAIN_TYPE (arith->domain));
+}
+
+/*
+ * pt_function_reader_domain () - CBRD-27583 (4.3): the domain a reader of an aggregate's or an analytic function's
+ *   value takes: the decided one where type checking left the result type to the argument's value, the parse tree's
+ *   string type in the decided collation where it left only the collation (GROUP_CONCAT over a bind), the parse
+ *   tree's otherwise - an AVG over an INTEGER bind decides INTEGER and yields a DOUBLE, as develop did (D-36)
+ */
+static TP_DOMAIN *
+pt_function_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * decided)
+{
+  if (decided == NULL || TP_DOMAIN_TYPE (parse_tree) == DB_TYPE_VARIABLE)
+    {
+      return decided != NULL ? decided : parse_tree;
+    }
+  TP_DOMAIN *collated = pt_domain_in_collation (parse_tree, decided);
+  return collated != NULL ? collated : parse_tree;
+}
+
+/*
+ * pt_decide_function_domain () - CBRD-27583 (4.3): the domain of an aggregate or an analytic function that type
+ *   checking left to its argument's value - a variable domain or operand type, or a collation the values give - by
+ *   the rule develop's first value typed it with, over its operand's domain
+ *   return: the decided domain; NULL keeps the compiled one (a fixed function over a retyped operand keeps it too: only
+ *	     its accumulator follows the operand, D-36)
+ */
+static TP_DOMAIN *
+pt_decide_function_domain (DOMAIN_CTX context, FUNC_CODE function, TP_DOMAIN * compiled, DB_TYPE opr_dbtype,
+			   const REGU_VARIABLE * operand)
+{
+  if (compiled == NULL || !pt_regu_domain_is_fixed (operand)
+      || (TP_DOMAIN_TYPE (compiled) != DB_TYPE_VARIABLE && opr_dbtype != DB_TYPE_VARIABLE
+	  && TP_DOMAIN_COLLATION_FLAG (compiled) == TP_DOMAIN_COLL_NORMAL))
+    {
+      return NULL;
+    }
+  const TP_DOMAIN *domain = operand->domain;
+  const DB_TYPE type = TP_DOMAIN_TYPE (domain);
+  const DOMAIN_OPERAND operand_rule = { domain, type, TP_IS_CHAR_TYPE (type) ? domain->collation_id : -1,
+    opr_dbtype == DB_TYPE_VARIABLE
+  };
+  RESOLVED_DOMAIN result;
+  bool needs_late_bind = false;
+  switch (domain_resolve (context, function, &operand_rule, 1, compiled, &result, &needs_late_bind))
+    {
+    case NO_ERROR:
+      return needs_late_bind ? NULL : (TP_DOMAIN *) result.domain;
+    case ER_QPROC_INVALID_DATATYPE:
+      /* a SUM / AVG over a date: the execution raises the addition's error */
+      return NULL;
+    case ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN:
+      /* a MEDIAN / PERCENTILE over a type none of DOUBLE, DATETIME, TIME takes: the row's cast of a value raises it */
+      return &tp_Double_domain;
+    default:
+      return NULL;
+    }
+}
+
+/*
+ * pt_decide_aggregate_domains () - CBRD-27583 (4.3): a block's aggregates over their operands' domains: an operand
+ *   reading a slot of values takes the domain its writer fills it with, and a function type checking left to its
+ *   argument's value takes its domain and operand type from it, before any reader of its value is generated
+ */
+static void
+pt_decide_aggregate_domains (AGGREGATE_TYPE * aggregates, const VAL_LIST * values)
+{
+  for (AGGREGATE_TYPE * agg = aggregates; agg != NULL; agg = agg->next)
+    {
+      REGU_VARIABLE *operand = agg->operands != NULL ? &agg->operands->value : NULL;
+      /* CUME_DIST and PERCENT_RANK read a list of their arguments and ORDER BY keys and yield a fixed DOUBLE */
+      if (operand == NULL || agg->function == PT_CUME_DIST || agg->function == PT_PERCENT_RANK)
+	{
+	  continue;
+	}
+      QPROC_DB_VALUE_LIST slot = operand->type == TYPE_CONSTANT ? pt_value_list_slot (values, operand->value.dbvalptr)
+	: NULL;
+      if (slot != NULL)
+	{
+	  operand->domain = pt_reader_domain (operand->domain, slot->dom);
+	}
+      TP_DOMAIN *domain = pt_decide_function_domain (DOMAIN_CTX_AGG, agg->function, agg->domain, agg->opr_dbtype,
+						     operand);
+      if (domain == NULL)
+	{
+	  continue;
+	}
+      if (agg->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (agg->domain) != TP_DOMAIN_COLL_NORMAL)
+	{
+	  /* a MEDIAN / PERCENTILE converts each value of its own type to the function's (develop's operand type) */
+	  agg->opr_dbtype = TP_DOMAIN_TYPE (QPROC_IS_INTERPOLATION_FUNC (agg) ? operand->domain : domain);
+	}
+      if (TP_DOMAIN_TYPE (agg->domain) == DB_TYPE_VARIABLE)
+	{
+	  /* the accumulator starts in the decided type, as develop's first value did */
+	  regu_dbval_type_init (agg->accumulator.value, TP_DOMAIN_TYPE (domain));
+	}
+      agg->domain = domain;
+    }
+}
+
+/*
+ * pt_decide_analytic_domains () - CBRD-27583 (4.3): the analytic functions over their operands' domains, as
+ *   pt_decide_aggregate_domains; the readers of a function's value generated before (the initial outlist's column,
+ *   the scan's load into the value list: readers) take the domain the rule gave a variable result type
+ */
+static void
+pt_decide_analytic_domains (ANALYTIC_TYPE * functions, const VAL_LIST * values, REGU_VARIABLE_LIST readers[2])
+{
+  for (ANALYTIC_TYPE * func = functions; func != NULL; func = func->next)
+    {
+      REGU_VARIABLE *operand = &func->operand;
+      QPROC_DB_VALUE_LIST slot = operand->type == TYPE_CONSTANT ? pt_value_list_slot (values, operand->value.dbvalptr)
+	: NULL;
+      if (slot != NULL)
+	{
+	  operand->domain = pt_reader_domain (operand->domain, slot->dom);
+	}
+      TP_DOMAIN *domain = pt_decide_function_domain (DOMAIN_CTX_ANALYTIC, func->function, func->domain,
+						     func->opr_dbtype, operand);
+      if (domain == NULL)
+	{
+	  continue;
+	}
+      if (func->opr_dbtype == DB_TYPE_VARIABLE || TP_DOMAIN_COLLATION_FLAG (func->domain) != TP_DOMAIN_COLL_NORMAL)
+	{
+	  func->opr_dbtype = TP_DOMAIN_TYPE (domain);
+	}
+      if (TP_DOMAIN_TYPE (func->domain) == DB_TYPE_VARIABLE)
+	{
+	  /* the value starts in the decided type, as develop's first binding did */
+	  regu_dbval_type_init (func->value, TP_DOMAIN_TYPE (domain));
+	}
+      func->domain = domain;
+      for (int i = 0; readers != NULL && i < 2; i++)
+	{
+	  for (REGU_VARIABLE_LIST reader = readers[i]; reader != NULL; reader = reader->next)
+	    {
+	      if (reader->value.type == TYPE_CONSTANT && reader->value.value.dbvalptr == func->value)
+		{
+		  reader->value.domain = pt_function_reader_domain (reader->value.domain, domain);
+		}
+	    }
+	}
+    }
+}
+
+/* CBRD-27583 (4.3): the aggregate of the block being generated whose value value is, NULL for none */
+static const AGGREGATE_TYPE *
+pt_block_aggregate (const PARSER_CONTEXT * parser, const DB_VALUE * value)
+{
+  const XASL_NODE *xasl = parser->parent_proc_xasl;
+  const AGGREGATE_TYPE *agg = xasl == NULL ? NULL : xasl->type == BUILDVALUE_PROC ? xasl->proc.buildvalue.agg_list
+    : xasl->type == BUILDLIST_PROC ? xasl->proc.buildlist.g_agg_list : NULL;
+  for (; agg != NULL && agg->accumulator.value != value; agg = agg->next)
+    ;
+  return agg;
 }
 
 /*
@@ -7576,6 +7766,13 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	    {
 	      regu->type = TYPE_CONSTANT;
 	      regu->domain = pt_xasl_node_to_domain (parser, function);
+	      /* CBRD-27583 (4.3): a result type checking left to the argument's value takes the node's decision */
+	      const AGGREGATE_TYPE *agg = is_aggregate && !pt_regu_domain_is_fixed_domain (regu->domain)
+		? pt_block_aggregate (parser, dbval) : NULL;
+	      if (agg != NULL)
+		{
+		  regu->domain = pt_function_reader_domain (regu->domain, agg->domain);
+		}
 	      regu->value.dbvalptr = dbval;
 	    }
 	  else
@@ -8233,6 +8430,15 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
       if (domain == NULL)
 	{
 	  domain = tp_domain_resolve_value ((DB_VALUE *) node->etc, NULL);
+	}
+
+      /* CBRD-27583 (4.3): a reference into the analytic pass's values reads the domain their writer fills them with */
+      const XASL_NODE *block = parser->parent_proc_xasl;
+      QPROC_DB_VALUE_LIST slot = block != NULL && block->type == BUILDLIST_PROC
+	? pt_value_list_slot (block->proc.buildlist.a_val_list, (DB_VALUE *) node->etc) : NULL;
+      if (slot != NULL && pt_regu_domain_is_fixed_domain (slot->dom))
+	{
+	  domain = slot->dom;
 	}
 
       /* set up regu var */
@@ -17326,6 +17532,9 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       /* CBRD-27583: the GROUP BY pass reads the list the scan's output wrote, aggregate operands included */
       pt_set_list_position_domains (buildlist->g_regu_list, buildlist->g_val_list, NULL, xasl->outptr_list);
       pt_set_list_position_domains (buildlist->g_hk_sort_regu_list, buildlist->g_val_list, NULL, xasl->outptr_list);
+      pt_decide_aggregate_domains (aggregate, buildlist->g_val_list);
+      /* the readers of the aggregates below find their domains here (pt_block_aggregate) */
+      buildlist->g_agg_list = aggregate;
 
       /* compute function count */
       buildlist->g_func_count = 0;
@@ -17440,8 +17649,6 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	{
 	  parser_free_tree (parser, group_out_list);
 	}
-
-      buildlist->g_agg_list = aggregate;
 
       buildlist->g_with_rollup = select_node->info.query.q.select.group_by->flag.with_rollup;
     }
@@ -17624,7 +17831,14 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      goto analytic_exit_on_error;
 	    }
 	  /* CBRD-27583: the regu list reads the list the initial outlist writes (D-34), before the window list copies the
-	   * value list's domains */
+	   * value list's domains; the functions over the operands it reads then type their own columns (4.3) */
+	  pt_set_list_position_domains (buildlist->a_regu_list, buildlist->a_val_list, NULL,
+					buildlist->a_outptr_list_ex);
+	  {
+	    REGU_VARIABLE_LIST readers[2] = { buildlist->a_outptr_list_ex->valptrp, buildlist->a_scan_regu_list };
+	    pt_decide_analytic_domains (analytic_info.head_list, buildlist->a_val_list, readers);
+	    pt_decide_analytic_domains (analytic_info_clone.head_list, buildlist->a_val_list, NULL);
+	  }
 	  pt_set_list_position_domains (buildlist->a_regu_list, buildlist->a_val_list, NULL,
 					buildlist->a_outptr_list_ex);
 
@@ -18231,6 +18445,9 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
   pt_set_qprior_node_etc (parser, select_node->info.query.q.select.having, xasl);
 
   aggregate = pt_to_aggregate (parser, select_node, NULL, NULL, NULL, NULL, NULL, &buildvalue->grbynum_val, qo_plan);
+  /* CBRD-27583 (4.3): decided before the output list reads them (pt_block_aggregate) */
+  pt_decide_aggregate_domains (aggregate, NULL);
+  buildvalue->agg_list = aggregate;
 
   /* the calls pt_to_out_list, pt_to_spec_list, and pt_to_if_pred, record information in the "symbol_info" structure
    * used by subsequent calls, and must be done first, before calculating subquery lists, etc. */
