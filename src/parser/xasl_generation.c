@@ -6725,10 +6725,11 @@ pt_spec_list_producer (const PT_NODE * spec)
     {
       return (const XASL_NODE *) cte->info.cte.xasl;
     }
-  /* the recursive part being generated reads the non-recursive part's rows first: they are its producer (D-34); a CTE
-   * read by a later one before its own XASL is made has none here */
-  const PT_NODE *recursive_part = cte->info.cte.recursive_part;
-  return cte->info.cte.non_recursive_part != NULL && (recursive_part == NULL || recursive_part->info.query.xasl == NULL)
+  /* only the recursive part being generated reads its CTE before the CTE's XASL is made (the WITH clause makes its
+   * CTEs one at a time, pt_generate_ctes_and_derived_tables): it reads the non-recursive part's rows first, so they
+   * are its producer (D-34) */
+  assert (cte->info.cte.recursive_part != NULL && cte->info.cte.recursive_part->info.query.xasl == NULL);
+  return cte->info.cte.non_recursive_part != NULL
     ? (const XASL_NODE *) cte->info.cte.non_recursive_part->info.query.xasl : NULL;
 }
 
@@ -10850,11 +10851,11 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 
 		  if (table_info)
 		    {
+		      const int index = pt_find_attribute (parser, attr, table_info->attribute_list);
 		      regu->type = TYPE_CONSTANT;
-		      regu->domain = pt_xasl_node_to_domain (parser, attr);
-		      dbval =
-			pt_index_value (table_info->value_list,
-					pt_find_attribute (parser, attr, table_info->attribute_list));
+		      /* CBRD-27583 (D-35): the enclosing block made its derived tables before this subquery */
+		      regu->domain = pt_list_reader_domain (parser, table_info->class_spec, index, attr);
+		      dbval = pt_index_value (table_info->value_list, index);
 		      if (dbval)
 			{
 			  regu->value.dbvalptr = dbval;
@@ -24142,6 +24143,40 @@ pt_append_omitted_on_update_expr_assignments (PARSER_CONTEXT * parser, PT_NODE *
 }
 
 /*
+ * pt_generate_ctes_and_derived_tables () - CBRD-27583 (D-35): the XASL of the subqueries of a SELECT's FROM list, made
+ *   before its select list, whose correlated subqueries read their columns' domains (principle 1-6), after the CTEs
+ *   of its WITH clause, which they may read; the walk then skips the WITH clause and their specs
+ *   (parser_generate_xasl_pre)
+ */
+static void
+pt_generate_ctes_and_derived_tables (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  PT_NODE *with = query->info.query.with;
+  for (PT_NODE * cte = with != NULL ? with->info.with_clause.cte_definition_list : NULL;
+       cte != NULL && !pt_has_error (parser); cte = cte->next)
+    {
+      /* one at a time: a CTE reading an earlier one finds the earlier one's XASL made (pt_spec_list_producer) */
+      PT_NODE *next = cte->next;
+      cte->next = NULL;
+      (void) parser_walk_tree (parser, cte, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
+      cte->next = next;
+    }
+  if (query->node_type != PT_SELECT)
+    {
+      return;
+    }
+  for (PT_NODE * spec = query->info.query.q.select.from; spec != NULL && !pt_has_error (parser); spec = spec->next)
+    {
+      if (spec->info.spec.derived_table_type == PT_IS_SUBQUERY && spec->info.spec.derived_table != NULL)
+	{
+	  spec->info.spec.derived_table =
+	    parser_walk_tree (parser, spec->info.spec.derived_table, parser_generate_xasl_pre, NULL,
+			      parser_generate_xasl_post, &xasl_Supp_info);
+	}
+    }
+}
+
+/*
  * parser_generate_xasl_pre () - builds xasl for query nodes,
  *                     and remembers uncorrelated queries
  *   return:
@@ -24178,6 +24213,21 @@ parser_generate_xasl_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, in
 
       (void) pt_query_set_reference (parser, node);
       pt_push_symbol_info (parser, node);
+      pt_generate_ctes_and_derived_tables (parser, node);
+      break;
+
+    case PT_WITH_CLAUSE:
+      /* CBRD-27583 (D-35): made by its query's pre (pt_generate_ctes_and_derived_tables) */
+      *continue_walk = PT_LIST_WALK;
+      break;
+
+    case PT_SPEC:
+      if (node->info.spec.derived_table_type == PT_IS_SUBQUERY && node->info.spec.derived_table != NULL
+	  && node->info.spec.derived_table->info.query.xasl != NULL)
+	{
+	  /* CBRD-27583 (D-35): made by its SELECT's pre (pt_generate_ctes_and_derived_tables) */
+	  *continue_walk = PT_LIST_WALK;
+	}
       break;
 
     default:
