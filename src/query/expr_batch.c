@@ -74,6 +74,7 @@
 #include "query_sum_accumulator.h"
 #include "language_support.h"
 #include "regu_var.hpp"
+#include "set_object.h"
 #include "string_opfunc.h"
 #include "system_parameter.h"
 #include "xasl.h"
@@ -1154,11 +1155,15 @@ eb_add_in_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
     {
       return NO_ERROR;
     }
-  for (op = info->k_set->value.funcp->operand; op != NULL; op = op->next)
+  if (info->k_set->type == TYPE_DBVAL)
+    {
+      n = set_size (db_get_set (&info->k_set->value.dbval));
+    }
+  for (op = (info->k_set->type == TYPE_FUNC) ? info->k_set->value.funcp->operand : NULL; op != NULL; op = op->next)
     {
       n++;
     }
-  if (n == 0 || n > 1024)
+  if (n <= 0 || n > 1024)
     {
       return NO_ERROR;
     }
@@ -1178,10 +1183,36 @@ eb_add_in_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
     {
       return ER_FAILED;
     }
+  if (info->k_set->type == TYPE_DBVAL)
+    {
+      /* a set literal: its elements peeked into the plan's arena, the set living as long as the plan */
+      DB_COLLECTION *coll = db_get_set (&info->k_set->value.dbval);
+      DB_VALUE *elems = (DB_VALUE *) eb_arena_alloc (plan, sizeof (DB_VALUE) * n);
+      int e;
+
+      if (elems == NULL)
+	{
+	  return ER_FAILED;
+	}
+      for (e = 0; e < n; e++)
+	{
+	  if (set_get_element_nocopy (coll, e, &elems[e]) != NO_ERROR)
+	    {
+	      /* the term stays with the row path */
+	      er_clear ();
+	      return NO_ERROR;
+	    }
+	  leaf->k_list[e] = &elems[e];
+	}
+    }
   n = 0;
-  for (op = info->k_set->value.funcp->operand; op != NULL; op = op->next)
+  for (op = (info->k_set->type == TYPE_FUNC) ? info->k_set->value.funcp->operand : NULL; op != NULL; op = op->next)
     {
       leaf->k_list[n++] = expr_raw_const_value (&op->value, b->in->vd);
+    }
+  if (info->k_set->type == TYPE_DBVAL)
+    {
+      n = set_size (db_get_set (&info->k_set->value.dbval));
     }
   leaf->k_n = n;
   leaf->sub_start_v = info->sub_start;

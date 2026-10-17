@@ -3827,7 +3827,9 @@ expr_pred_term_in_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEA
     }
   al = &pr->pe.m_eval_term.et.et_alsm;
   if (al->eq_flag != F_SOME || al->rel_op != R_EQ || al->elem == NULL || al->elemset == NULL
-      || al->elemset->type != TYPE_FUNC || al->elemset->value.funcp == NULL)
+      || (al->elemset->type == TYPE_FUNC ? al->elemset->value.funcp == NULL
+	  : (al->elemset->type != TYPE_DBVAL || !TP_IS_SET_TYPE (DB_VALUE_TYPE (&al->elemset->value.dbval))
+	     || DB_IS_NULL (&al->elemset->value.dbval))))
     {
       return false;
     }
@@ -3859,12 +3861,16 @@ expr_pred_term_in_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEA
       return false;
     }
   set = al->elemset;
-  if (set->value.funcp->ftype != F_SET && set->value.funcp->ftype != F_SEQUENCE
-      && set->value.funcp->ftype != F_MULTISET)
+  if (set->type == TYPE_DBVAL)
+    {
+      /* a set literal ("in set{...}"): its elements are read where it is (expr_batch.c) */
+    }
+  else if (set->value.funcp->ftype != F_SET && set->value.funcp->ftype != F_SEQUENCE
+	   && set->value.funcp->ftype != F_MULTISET)
     {
       return false;
     }
-  for (op = set->value.funcp->operand; op != NULL; op = op->next)
+  for (op = (set->type == TYPE_FUNC) ? set->value.funcp->operand : NULL; op != NULL; op = op->next)
     {
       if (expr_raw_const_value (&op->value, vd) == NULL)
 	{
