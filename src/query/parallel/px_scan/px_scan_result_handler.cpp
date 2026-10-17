@@ -1619,21 +1619,10 @@ namespace parallel_scan
 	if (acc->curr_cnt < 1
 	    || acc_dom->value_dom->type->cmpval (acc->value, db_value_p, 1, 1, NULL, coll_id) > 0)
 	  {
-	    DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
 	    pr_clear_value (acc->value);
-	    if (TP_DOMAIN_TYPE (acc_dom->value_dom) != type)
+	    if (qdata_copy_to_accumulator (acc_dom, db_value_p, acc->value, false) != NO_ERROR)
 	      {
-		if (db_value_coerce (db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
-		  {
-		    return false;
-		  }
-	      }
-	    else
-	      {
-		if (pr_clone_value (db_value_p, acc->value) != NO_ERROR)
-		  {
-		    return false;
-		  }
+		return false;
 	      }
 	  }
 	acc->curr_cnt++;
@@ -1644,21 +1633,10 @@ namespace parallel_scan
 	if (acc->curr_cnt < 1
 	    || acc_dom->value_dom->type->cmpval (acc->value, db_value_p, 1, 1, NULL, coll_id) < 0)
 	  {
-	    DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
 	    pr_clear_value (acc->value);
-	    if (TP_DOMAIN_TYPE (acc_dom->value_dom) != type)
+	    if (qdata_copy_to_accumulator (acc_dom, db_value_p, acc->value, false) != NO_ERROR)
 	      {
-		if (db_value_coerce (db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
-		  {
-		    return false;
-		  }
-	      }
-	    else
-	      {
-		if (pr_clone_value (db_value_p, acc->value) != NO_ERROR)
-		  {
-		    return false;
-		  }
+		return false;
 	      }
 	  }
 	acc->curr_cnt++;
@@ -1670,7 +1648,7 @@ namespace parallel_scan
 	 * qdata_aggregate_accumulator_to_accumulator (). acc->value retains the
 	 * first value so its domain information is preserved.
 	 */
-	if (SUM_ACC_IS_AGG_SUPPORTED_TYPE (DB_VALUE_DOMAIN_TYPE (db_value_p)))
+	if (acc_dom->accumulator_takes)
 	  {
 	    if (acc->curr_cnt < 1)
 	      {
@@ -1703,21 +1681,10 @@ namespace parallel_scan
 
 	if (acc->curr_cnt < 1)
 	  {
-	    DB_TYPE type = DB_VALUE_DOMAIN_TYPE (db_value_p);
 	    pr_clear_value (acc->value);
-	    if (TP_DOMAIN_TYPE (acc_dom->value_dom) != type)
+	    if (qdata_copy_to_accumulator (acc_dom, db_value_p, acc->value, false) != NO_ERROR)
 	      {
-		if (db_value_coerce (db_value_p, acc->value, acc_dom->value_dom) != NO_ERROR)
-		  {
-		    return false;
-		  }
-	      }
-	    else
-	      {
-		if (pr_clone_value (db_value_p, acc->value) != NO_ERROR)
-		  {
-		    return false;
-		  }
+		return false;
 	      }
 	  }
 	else
@@ -1740,7 +1707,16 @@ namespace parallel_scan
 	db_make_null (&coerced);
 	db_make_null (&squared);
 
-	if (tp_value_coerce (db_value_p, &coerced, acc_dom->value_dom) != DOMAIN_COMPATIBLE)
+	/* into DOUBLE with the converter the node planned for its argument's type, none for a DOUBLE */
+	const TP_VALUE_CONVERTER into_double = acc_dom->operand_coercion.conv[1];
+	if (into_double == NULL)
+	  {
+	    if (pr_clone_value (db_value_p, &coerced) != NO_ERROR)
+	      {
+		return false;
+	      }
+	  }
+	else if (tp_value_convert (into_double, acc_dom->value_dom, db_value_p, &coerced) != DOMAIN_COMPATIBLE)
 	  {
 	    pr_clear_value (&coerced);
 	    return false;
@@ -1926,7 +1902,9 @@ namespace parallel_scan
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		return false;
 	      }
-	    if (DB_VALUE_TYPE (pct_val_p) != DB_TYPE_DOUBLE)
+	    /* XASL generation casts the ratio to DOUBLE: a NULL is the value without its type */
+	    assert (DB_IS_NULL (pct_val_p) || DB_VALUE_TYPE (pct_val_p) == DB_TYPE_DOUBLE);
+	    if (DB_IS_NULL (pct_val_p))
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 		m_err_messages_p->move_top_error_message_to_this ();

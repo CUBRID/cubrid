@@ -89,12 +89,16 @@ namespace cubxasl
 				 * kept floating (an AVG over a NUMERIC argument, a SUM whose domain is NUMERIC) */
     tp_domain *value2_dom;	/* domain of value2 */
     DOMAIN_OPERAND_COERCION operand_coercion;	/* SUM / AVG: the operand coercion of value + a value, set with
-						 * value_dom; STDDEV / VARIANCE: [1] the converter of a value into
-						 * DOUBLE */
-    bool accumulator_takes;	/* an analytic SUM / AVG: the resident accumulator takes the argument's type
-				 * (SUM_ACC_IS_ANALYTIC_SUPPORTED_TYPE) - its typed sum is the partition's sum;
-				 * else the values are added into value_dom (and a DISTINCT list's values always) */
-    TP_VALUE_CONVERTER first_conv;	/* an analytic SUM / AVG: the converter of the first value into value_dom,
+						 * value_dom; STDDEV / VARIANCE, NTILE: [1] the converter of a value
+						 * into DOUBLE; MEDIAN / PERCENTILE: [1] into the function's domain;
+						 * LEAD / LAG / NTH_VALUE: [0] the offset's into INTEGER (NTH_VALUE:
+						 * DOUBLE), [1] the default's into the function's domain */
+    bool accumulator_takes;	/* SUM / AVG: the resident accumulator takes the argument's type
+				 * (SUM_ACC_IS_AGG_SUPPORTED_TYPE, an analytic's SUM_ACC_IS_ANALYTIC_SUPPORTED_TYPE) -
+				 * its typed sum is the sum; else the values are added into value_dom (and a DISTINCT
+				 * list's values always) */
+    TP_VALUE_CONVERTER first_conv;	/* the converter of a value copied into the accumulator into value_dom: MIN /
+					 * MAX's every new extreme, SUM / AVG's first value (tp_value_cast_force);
 					 * NULL when it is of that type already */
     DOMAIN_OPERAND_COERCION divide_coercion;	/* an analytic AVG: the operand coercion of sum / count at the
 						 * partition's end, over the sum's type - the accumulator's for a

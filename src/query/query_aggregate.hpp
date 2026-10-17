@@ -122,6 +122,8 @@ int qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggreg
 int qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,
     cubxasl::aggregate_accumulator_domain *acc_dom, FUNC_CODE func_type,
     tp_domain *func_domain, cubxasl::aggregate_accumulator *new_acc);
+int qdata_copy_to_accumulator (const cubxasl::aggregate_accumulator_domain *acc_dom, const DB_VALUE *value,
+			       DB_VALUE *acc_value, bool is_acc_to_acc);
 void qdata_link_shared_accumulators (cubxasl::aggregate_list_node *agg_list, const val_descr *vd);
 void qdata_link_shared_accumulators_by_cell (cubxasl::aggregate_list_node *agg_list, const val_descr *vd);
 int qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list, val_descr *vd,

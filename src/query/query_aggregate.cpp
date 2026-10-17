@@ -293,9 +293,11 @@ qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_
 /*
  * qdata_plan_aggregate_accumulator () - CBRD-27583 (4.3): an aggregate's accumulator domains, chosen at unpack from
  *   its domain and its operand's, which XASL generation decided: the ones develop's first non-NULL value gave. A SUM or
- *   AVG also gets the operand coercion of a value it adds; one whose argument is typed NULL sees only NULLs and gets
- *   none, and one over a date adds as develop did, raising the addition's error at its second value. A MEDIAN /
- *   PERCENTILE gets [1] the converter of its argument's type into its domain, which every value takes.
+ *   AVG also gets the operand coercion of a value it adds, the converter of its first value and whether its typed
+ *   accumulator takes the argument; one whose argument is typed NULL sees only NULLs and gets none, and one over a date
+ *   adds as develop did, raising the addition's error at its second value. A MIN / MAX gets the converter of a new
+ *   extreme into its domain, a STDDEV / VARIANCE [1] the converter of a value into DOUBLE, a MEDIAN / PERCENTILE [1]
+ *   the converter of its argument's type into its domain, which every value takes.
  */
 void
 qdata_plan_aggregate_accumulator (cubxasl::aggregate_list_node *agg_p)
@@ -337,6 +339,13 @@ qdata_plan_aggregate_accumulator (cubxasl::aggregate_list_node *agg_p)
 
     case PT_MIN:
     case PT_MAX:
+      acc_dom->value_dom = agg_p->domain;
+      acc_dom->value2_dom = &tp_Null_domain;
+      /* XASL generation gave MIN / MAX its argument's domain (D-36): a new extreme copies as it is (first_conv NULL) */
+      assert (!argument_typed || domain_is_variable (agg_p->domain)
+	      || TP_DOMAIN_TYPE (argument) == TP_DOMAIN_TYPE (agg_p->domain));
+      break;
+
     case PT_GROUP_CONCAT:
       acc_dom->value_dom = agg_p->domain;
       acc_dom->value2_dom = &tp_Null_domain;
@@ -350,6 +359,14 @@ qdata_plan_aggregate_accumulator (cubxasl::aggregate_list_node *agg_p)
     case PT_VAR_SAMP:
       acc_dom->value_dom = &tp_Double_domain;
       acc_dom->value2_dom = &tp_Double_domain;
+      if (argument_typed)
+	{
+	  /* tp_value_coerce's conversion of a value into DOUBLE, none for a DOUBLE */
+	  acc_dom->operand_coercion.operand_domain[1] = &tp_Double_domain;
+	  acc_dom->operand_coercion.conv[1] = TP_DOMAIN_TYPE (argument) == DB_TYPE_DOUBLE ? NULL
+					      : tp_value_find_converter (TP_DOMAIN_TYPE (argument), &tp_Double_domain,
+						  DOMAIN_CONVERT_IMPLICIT);
+	}
       break;
 
     case PT_MEDIAN:
@@ -401,6 +418,12 @@ qdata_plan_aggregate_accumulator (cubxasl::aggregate_list_node *agg_p)
 	{acc_dom->value_dom, TP_DOMAIN_TYPE (acc_dom->value_dom), -1, false}, operands[1]
       };
       domain_resolve_operand_coercion (T_ADD, add, &acc_dom->operand_coercion);
+      /* the first value of another type than the sum's domain is converted into it (tp_value_cast_force), and a type the
+       * typed accumulator takes sums there */
+      acc_dom->first_conv = TP_DOMAIN_TYPE (argument) == TP_DOMAIN_TYPE (acc_dom->value_dom) ? NULL
+			    : tp_value_find_converter (TP_DOMAIN_TYPE (argument), acc_dom->value_dom,
+				DOMAIN_CONVERT_ASSIGN);
+      acc_dom->accumulator_takes = SUM_ACC_IS_AGG_SUPPORTED_TYPE (TP_DOMAIN_TYPE (argument));
     }
     break;
 
@@ -605,6 +628,35 @@ qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl:
 }
 
 /*
+ * qdata_copy_to_accumulator () - CBRD-27583 (4.3): a value copied into an aggregate's accumulator, in value_dom: with
+ *   the converter the node planned for its argument's type (first_conv, tp_value_cast_force's conversion), a clone
+ *   where it planned none
+ *   return: NO_ERROR or the conversion's error
+ *   is_acc_to_acc(in): an accumulator merged in, which comes in the type its state left it (a spilled partial):
+ *		       tp_value_cast_force converts it, as develop did
+ */
+int
+qdata_copy_to_accumulator (const cubxasl::aggregate_accumulator_domain *acc_dom, const DB_VALUE *value,
+			   DB_VALUE *acc_value, bool is_acc_to_acc)
+{
+  if (is_acc_to_acc)
+    {
+      return TP_DOMAIN_TYPE (acc_dom->value_dom) != DB_VALUE_DOMAIN_TYPE (value)
+	     ? db_value_coerce (value, acc_value, acc_dom->value_dom) : pr_clone_value (value, acc_value);
+    }
+  if (acc_dom->first_conv == NULL)
+    {
+      /* a value of the argument's type, which the node found to be value_dom's */
+      assert (DB_IS_NULL (value) || DB_VALUE_DOMAIN_TYPE (value) == TP_DOMAIN_TYPE (acc_dom->value_dom));
+      return pr_clone_value (value, acc_value);
+    }
+  const TP_DOMAIN_STATUS status = tp_value_cast_with_converter (value, acc_value, acc_dom->value_dom, true,
+				  DB_VALUE_DOMAIN_TYPE (value), acc_dom->first_conv);
+  return status == DOMAIN_COMPATIBLE ? NO_ERROR : tp_domain_status_er_set (status, ARG_FILE_LINE, value,
+	 acc_dom->value_dom);
+}
+
+/*
  * qdata_aggregate_value_to_accumulator () - aggregate a value to accumulator
  *   returns: error code or NO_ERROR
  *   thread_p(in): thread
@@ -744,8 +796,10 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
     case PT_AVG:
     case PT_SUM:
     {
-      /* whether the accumulator takes this value's type */
-      bool use_sum_acc = SUM_ACC_IS_AGG_SUPPORTED_TYPE (DB_VALUE_DOMAIN_TYPE (value));
+      /* whether the typed accumulator takes the value: the node planned it for its argument's type; an accumulator
+       * merged in comes in the type its state left it */
+      bool use_sum_acc = is_acc_to_acc ? SUM_ACC_IS_AGG_SUPPORTED_TYPE (DB_VALUE_DOMAIN_TYPE (value))
+			 : domain->accumulator_takes;
 
       if (acc->curr_cnt < 1)
 	{
@@ -786,10 +840,19 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
     case PT_VARIANCE:
     case PT_VAR_POP:
     case PT_VAR_SAMP:
-      /* coerce value to DOUBLE domain */
-      if (tp_value_coerce (value, value, domain->value_dom) != DOMAIN_COMPATIBLE)
+      /* into DOUBLE with the converter the node planned for its argument's type, none for a DOUBLE */
+      if (!is_acc_to_acc && domain->operand_coercion.conv[1] != NULL)
 	{
-	  return ER_FAILED;
+	  DB_VALUE coerced;
+	  db_make_null (&coerced);
+	  if (tp_value_convert (domain->operand_coercion.conv[1], domain->value_dom, value, &coerced)
+	      != DOMAIN_COMPATIBLE)
+	    {
+	      pr_clear_value (&coerced);
+	      return ER_FAILED;
+	    }
+	  pr_clear_value (value);
+	  *value = coerced;
 	}
 
       if (acc->curr_cnt < 1)
@@ -852,21 +915,10 @@ qdata_aggregate_value_to_accumulator (cubthread::entry *thread_p, cubxasl::aggre
   /* copy operator if necessary */
   if (copy_operator)
     {
-      DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
       pr_clear_value (acc->value);
-
-      if (TP_DOMAIN_TYPE (domain->value_dom) != type)
+      if (qdata_copy_to_accumulator (domain, value, acc->value, is_acc_to_acc) != NO_ERROR)
 	{
-	  int coerce_error = db_value_coerce (value, acc->value, domain->value_dom);
-	  if (coerce_error != NO_ERROR)
-	    {
-	      /* set error here */
-	      return ER_FAILED;
-	    }
-	}
-      else
-	{
-	  pr_clone_value (value, acc->value);
+	  return ER_FAILED;
 	}
     }
 
@@ -1559,9 +1611,10 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	      continue;
 	    }
 
-	  if (accumulator->sum_acc.is_active
-	      && accumulator->sum_acc.sum_type == sum_acc_agg_sum_type_for (DB_VALUE_DOMAIN_TYPE (peek_val)))
+	  /* an active typed accumulator takes the argument's type (accumulator_takes), every value's */
+	  if (accumulator->sum_acc.is_active)
 	    {
+	      assert (accumulator->sum_acc.sum_type == sum_acc_agg_sum_type_for (DB_VALUE_DOMAIN_TYPE (peek_val)));
 	      if (qdata_sum_acc_add_dbv (&accumulator->sum_acc, peek_val) != NO_ERROR)
 		{
 		  return ER_FAILED;
@@ -1634,21 +1687,11 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    case PT_MIN:
 	      if (use_desc_index == agg_p->flag.part_key_descending)
 		{
-		  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (&stack_values[0]);
 		  pr_clear_value (accumulator->value);
-
-		  if (TP_DOMAIN_TYPE (agg_domain) != type)
+		  if (qdata_copy_to_accumulator (&agg_p->accumulator_domain, &stack_values[0], accumulator->value,
+						 false) != NO_ERROR)
 		    {
-		      int coerce_error = db_value_coerce (&stack_values[0], accumulator->value, agg_domain);
-		      if (coerce_error != NO_ERROR)
-			{
-			  /* set error here */
-			  return ER_FAILED;
-			}
-		    }
-		  else
-		    {
-		      pr_clone_value (&stack_values[0], accumulator->value);
+		      return ER_FAILED;
 		    }
 		  agg_p->is_ended = true;
 		  qdata_clear_value_array (stack_values, n_values);
@@ -1660,21 +1703,11 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    case PT_MAX:
 	      if (use_desc_index != agg_p->flag.part_key_descending)
 		{
-		  DB_TYPE type = DB_VALUE_DOMAIN_TYPE (&stack_values[0]);
 		  pr_clear_value (accumulator->value);
-
-		  if (TP_DOMAIN_TYPE (agg_domain) != type)
+		  if (qdata_copy_to_accumulator (&agg_p->accumulator_domain, &stack_values[0], accumulator->value,
+						 false) != NO_ERROR)
 		    {
-		      int coerce_error = db_value_coerce (&stack_values[0], accumulator->value, agg_domain);
-		      if (coerce_error != NO_ERROR)
-			{
-			  /* set error here */
-			  return ER_FAILED;
-			}
-		    }
-		  else
-		    {
-		      pr_clone_value (&stack_values[0], accumulator->value);
+		      return ER_FAILED;
 		    }
 		  agg_p->is_ended = true;
 		  qdata_clear_value_array (stack_values, n_values);
@@ -1802,7 +1835,9 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	    {
 	      if (agg_p->function == PT_PERCENTILE_CONT || agg_p->function == PT_PERCENTILE_DISC)
 		{
-		  if (DB_VALUE_TYPE (percentile_val) != DB_TYPE_DOUBLE)
+		  /* XASL generation casts the ratio to DOUBLE: a NULL is the value without its type */
+		  assert (DB_IS_NULL (percentile_val) || DB_VALUE_TYPE (percentile_val) == DB_TYPE_DOUBLE);
+		  if (DB_IS_NULL (percentile_val))
 		    {
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 		      return ER_FAILED;
@@ -1819,7 +1854,6 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	      if (agg_p->sort_list == NULL)
 		{
-		  TP_DOMAIN *tmp_domain_p = NULL;
 		  TP_DOMAIN_STATUS status;
 
 		  /* host var or constant */
@@ -1845,12 +1879,25 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		      assert (agg_p->operands->value.type == TYPE_CONSTANT || agg_p->operands->value.type == TYPE_DBVAL
 			      || agg_p->operands->value.type == TYPE_POS_VALUE);
 
-		      /* XASL generation gave the function its type (DOUBLE for a string), which the value takes */
+		      /* XASL generation gave the function its type (DOUBLE for a string), which the value takes with the
+		       * converter the node planned for its argument's type, as a listed value does */
 		      assert (TP_DOMAIN_TYPE (agg_domain) == DB_TYPE_DOUBLE
 			      || TP_DOMAIN_TYPE (agg_domain) == DB_TYPE_DATETIME
 			      || TP_DOMAIN_TYPE (agg_domain) == DB_TYPE_TIME);
-		      tmp_domain_p = tp_domain_resolve_default (TP_DOMAIN_TYPE (agg_domain));
-		      status = tp_value_cast (db_value_p, db_value_p, tmp_domain_p, false);
+		      const DOMAIN_OPERAND_COERCION *coercion = &agg_p->accumulator_domain.operand_coercion;
+		      DB_VALUE converted;
+		      db_make_null (&converted);
+		      status = coercion->conv[1] == NULL ? DOMAIN_INCOMPATIBLE
+			       : tp_value_convert (coercion->conv[1], coercion->operand_domain[1], db_value_p, &converted);
+		      if (status == DOMAIN_COMPATIBLE)
+			{
+			  pr_clear_value (db_value_p);
+			  *db_value_p = converted;
+			}
+		      else
+			{
+			  pr_clear_value (&converted);
+			}
 		      if (status != DOMAIN_COMPATIBLE)
 			{
 			  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
@@ -1878,8 +1925,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	  /* percentile value check */
 	  if (agg_p->function == PT_PERCENTILE_CONT || agg_p->function == PT_PERCENTILE_DISC)
 	    {
-	      if (DB_VALUE_TYPE (percentile_val) != DB_TYPE_DOUBLE
-		  || db_get_double (percentile_val) != percentile->cur_group_percentile)
+	      if (DB_IS_NULL (percentile_val) || db_get_double (percentile_val) != percentile->cur_group_percentile)
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_PERCENTILE_FUNC_PERCENTILE_CHANGED_IN_GROUP, 0);
 		  return ER_FAILED;
@@ -2529,14 +2575,26 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			      || agg_p->function == PT_VAR_POP || agg_p->function == PT_STDDEV_POP
 			      || agg_p->function == PT_VAR_SAMP || agg_p->function == PT_STDDEV_SAMP)
 			    {
-			      if (tp_value_coerce (&dbval, &dbval, tmp_domain_ptr) != DOMAIN_COMPATIBLE)
+			      /* the list holds the argument's type: the converter into DOUBLE the node planned */
+			      const TP_VALUE_CONVERTER into_double = agg_p->accumulator_domain.operand_coercion.conv[1];
+			      if (into_double != NULL)
 				{
-				  ASSERT_ERROR_AND_SET (error);
+				  DB_VALUE coerced;
+				  db_make_null (&coerced);
+				  const TP_DOMAIN_STATUS status = tp_value_convert (into_double, tmp_domain_ptr, &dbval,
+								  &coerced);
+				  if (status != DOMAIN_COMPATIBLE)
+				    {
+				      error = tp_domain_status_er_set (status, ARG_FILE_LINE, &dbval, tmp_domain_ptr);
+				      (void) pr_clear_value (&coerced);
+				      (void) pr_clear_value (&dbval);
+				      qfile_close_scan (thread_p, &scan_id);
+				      qfile_close_list (thread_p, list_id_p);
+				      qfile_destroy_list (thread_p, list_id_p);
+				      goto exit;
+				    }
 				  (void) pr_clear_value (&dbval);
-				  qfile_close_scan (thread_p, &scan_id);
-				  qfile_close_list (thread_p, list_id_p);
-				  qfile_destroy_list (thread_p, list_id_p);
-				  goto exit;
+				  dbval = coerced;
 				}
 			    }
 
@@ -2736,13 +2794,10 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	  if (agg_p->function == PT_AVG)
 	    {
+	      /* the division's result domain made it a DOUBLE */
+	      assert (DB_IS_NULL (&xavgval) || DB_VALUE_DOMAIN_TYPE (&xavgval) == DB_TYPE_DOUBLE);
 	      (void) pr_clear_value (agg_p->accumulator.value);
-	      if (tp_value_coerce (&xavgval, agg_p->accumulator.value, double_domain_ptr) != DOMAIN_COMPATIBLE)
-		{
-		  ASSERT_ERROR_AND_SET (error);
-		  goto exit;
-		}
-
+	      (void) pr_clone_value (&xavgval, agg_p->accumulator.value);
 	      continue;
 	    }
 
@@ -2811,18 +2866,9 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 
 	  if (agg_p->function == PT_STDDEV || agg_p->function == PT_STDDEV_POP || agg_p->function == PT_STDDEV_SAMP)
 	    {
-	      TP_DOMAIN *tmp_domain_ptr;
-
-	      db_value_domain_init (&dval, DB_TYPE_DOUBLE, DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
-	      /* Construct TP_DOMAIN whose type is DB_TYPE_DOUBLE */
-	      tmp_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
-	      if (tp_value_coerce (&varval, &dval, tmp_domain_ptr) != DOMAIN_COMPATIBLE)
-		{
-		  ASSERT_ERROR_AND_SET (error);
-		  goto exit;
-		}
-
-	      dtmp = db_get_double (&dval);
+	      /* the subtraction's result domain made the variance a DOUBLE */
+	      assert (DB_VALUE_DOMAIN_TYPE (&varval) == DB_TYPE_DOUBLE);
+	      dtmp = db_get_double (&varval);
 
 	      /* mathematically, dtmp should be zero or positive; however, due to some precision errors, in some cases
 	       * it can be a very small negative number of which we cannot extract the square root */
@@ -3021,10 +3067,12 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
 	}
       else
 	{
-	  /* non-NULL values comparison */
-	  pr_type_p = pr_type_from_id (DB_VALUE_DOMAIN_TYPE (val_node));
-	  cmp = pr_type_p->cmpval (val_node, info_p->const_array[i], 1, 0, NULL,
-				   regu_var_node->value.domain->collation_id);
+	  /* non-NULL values comparison, in the ORDER BY item's domain the constant was coerced into; a list column of a
+	   * variable domain (4.6) compares in its value's type */
+	  const TP_DOMAIN *order_domain = regu_var_node->value.domain;
+	  pr_type_p = TP_DOMAIN_TYPE (order_domain) != DB_TYPE_VARIABLE ? order_domain->type
+		      : pr_type_from_id (DB_VALUE_DOMAIN_TYPE (val_node));
+	  cmp = pr_type_p->cmpval (val_node, info_p->const_array[i], 1, 0, NULL, order_domain->collation_id);
 
 	  assert (cmp != DB_UNK);
 	}

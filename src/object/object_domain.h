@@ -469,6 +469,9 @@ extern "C"
   extern TP_DOMAIN_STATUS tp_value_cast_with_converter (const DB_VALUE * src, DB_VALUE * dest,
 							const TP_DOMAIN * desired_domain, bool force, DB_TYPE src_type,
 							TP_VALUE_CONVERTER converter);
+  extern TP_DOMAIN_STATUS tp_value_coerce_with_converter (const DB_VALUE * src, DB_VALUE * dest,
+							  const TP_DOMAIN * desired_domain, DB_TYPE src_type,
+							  TP_VALUE_CONVERTER converter);
 
   extern TP_DOMAIN_STATUS tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest,
 							 const TP_DOMAIN * desired_domain, bool implicit_coercion,

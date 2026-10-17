@@ -22422,7 +22422,8 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
  * MEDIAN and PERCENTILE sort their operand after their PARTITION BY keys, one key the interpolation functions of a
  * state share (pt_metadomains_compatible). A string operand sorts in the function's type, the type its values
  * interpolate in, which XASL generation decided (DOUBLE for any string, spec change 3), before the first pair of
- * values the sort compares (qfile_compare_with_interpolation_domain). Any other key of the state - another function's
+ * values the sort compares (qfile_compare_with_interpolation_domain), with the converter of the key's string type into
+ * it. Any other key of the state - another function's
  * ORDER BY that shares the sort - compares in its own domain, the type its first value gives.
  */
 static void
@@ -22449,6 +22450,8 @@ qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYP
 	      || TP_IS_DATE_OR_TIME_TYPE (TP_DOMAIN_TYPE (func_p->domain)));
       subkey->use_cmp_dom = true;
       subkey->cmp_dom = tp_domain_resolve_default (TP_DOMAIN_TYPE (func_p->domain));
+      subkey->cmp_conv = tp_value_find_converter (TP_DOMAIN_TYPE (subkey->col_dom), subkey->cmp_dom,
+						  DOMAIN_CONVERT_ASSIGN);
       return;
     }
 }
@@ -23293,8 +23296,10 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCT
   ANALYTIC_TYPE *func_p;
   REGU_VARIABLE_LIST regulist;
   DB_VALUE *default_val_p;
+  DB_TYPE default_type;
   DB_VALUE offset_val;
   DB_VALUE default_val;
+  TP_VALUE_CONVERTER offset_conv;
   int regu_idx;
   int target_idx;
   int group_tuple_count;
@@ -23331,7 +23336,8 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCT
       group_tuple_count = func_state->curr_group_tuple_count;
     }
 
-  /* find offset reguvar and get int value */
+  /* find offset reguvar and get int value, with the converters planned at unpack (qdata_plan_analytic_offset) */
+  offset_conv = func_p->accumulator_domain.operand_coercion.conv[0];
   regulist = analytic_state->a_regu_list;
   regu_idx = func_p->offset_idx;
   while (regu_idx > 0 && regulist != NULL)
@@ -23350,7 +23356,8 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCT
     {
     case PT_LEAD:
     case PT_LAG:
-      dom_status = tp_value_coerce (regulist->value.vfetch_to, &offset_val, &tp_Integer_domain);
+      dom_status = tp_value_coerce_with_converter (regulist->value.vfetch_to, &offset_val, &tp_Integer_domain,
+						   TP_DOMAIN_TYPE (regulist->value.domain), offset_conv);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, regulist->value.vfetch_to, &tp_Integer_domain);
@@ -23387,7 +23394,8 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCT
       break;
 
     case PT_NTH_VALUE:
-      dom_status = tp_value_coerce (regulist->value.vfetch_to, &offset_val, &tp_Double_domain);
+      dom_status = tp_value_coerce_with_converter (regulist->value.vfetch_to, &offset_val, &tp_Double_domain,
+						   TP_DOMAIN_TYPE (regulist->value.domain), offset_conv);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, regulist->value.vfetch_to, &tp_Double_domain);
@@ -23448,6 +23456,7 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCT
       return ER_FAILED;
     }
   default_val_p = regulist->value.vfetch_to;
+  default_type = TP_DOMAIN_TYPE (regulist->value.domain);
 
   /* put value */
   if (target_idx >= 0 && target_idx < group_tuple_count)
@@ -23476,7 +23485,8 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCT
     {
       /* coerce value to default domain */
       TP_DOMAIN *domain = func_p->domain;
-      dom_status = tp_value_coerce (default_val_p, &default_val, domain);
+      dom_status = tp_value_coerce_with_converter (default_val_p, &default_val, domain, default_type,
+						   func_p->accumulator_domain.operand_coercion.conv[1]);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, default_val_p, domain);

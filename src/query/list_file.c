@@ -4343,6 +4343,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->col = p->pos_descr.pos_no;
 	  subkey->col_dom = p->pos_descr.dom;
 	  subkey->cmp_dom = NULL;
+	  subkey->cmp_conv = NULL;
 	  subkey->use_cmp_dom = false;
 
 	  /* the key's domain is the plan's */
@@ -4371,6 +4372,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->permuted_col = i;
 	  subkey->col_dom = types->domp[i];
 	  subkey->cmp_dom = NULL;
+	  subkey->cmp_conv = NULL;
 	  subkey->use_cmp_dom = false;
 	  subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
 	  subkey->is_desc = 0;
@@ -7135,32 +7137,27 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUP
  * qfile_check_interpolation_type () - debug cross-check (optdebug): the type the analytic setup gave the key before
  *   the sort is the one the first value gives it (qdata_update_interpolation_func_value_and_domain), unless that
  *   type rejects the value (a string column or expression is DOUBLE, the function's evaluation rejects the value
- *   too); a key without a type holds values that function cannot type either
+ *   too)
  */
 static void
 qfile_check_interpolation_type (DB_VALUE * value, const TP_DOMAIN * resolved)
 {
   DB_VALUE converted;
   TP_DOMAIN *expected = NULL;
-  bool resolved_rejects = true;
 
   db_make_null (&converted);
   er_stack_push ();
   const int error = qdata_update_interpolation_func_value_and_domain (value, &converted, &expected);
   pr_clear_value (&converted);
-  if (resolved != NULL)
-    {
-      resolved_rejects = tp_value_cast (value, &converted, (TP_DOMAIN *) resolved, false) != DOMAIN_COMPATIBLE;
-      pr_clear_value (&converted);
-    }
+  const bool resolved_rejects = tp_value_cast (value, &converted, resolved, false) != DOMAIN_COMPATIBLE;
+  pr_clear_value (&converted);
   er_stack_pop ();
 
-  const bool same = resolved == NULL ? error != NO_ERROR
-    : resolved_rejects || (error == NO_ERROR && TP_DOMAIN_TYPE (expected) == TP_DOMAIN_TYPE (resolved));
+  const bool same = resolved_rejects || (error == NO_ERROR && TP_DOMAIN_TYPE (expected) == TP_DOMAIN_TYPE (resolved));
   if (!same)
     {
       fprintf (stderr, "interpolation sort key class: value type %d planned %d expected %d error %d\n",
-	       (int) DB_VALUE_DOMAIN_TYPE (value), resolved != NULL ? (int) TP_DOMAIN_TYPE (resolved) : -1,
+	       (int) DB_VALUE_DOMAIN_TYPE (value), (int) TP_DOMAIN_TYPE (resolved),
 	       expected != NULL ? (int) TP_DOMAIN_TYPE (expected) : -1, error);
     }
   assert (same);
@@ -7186,41 +7183,19 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
 {
   int order = 0;
   DB_VALUE val0, val1;
-  TP_DOMAIN *cast_domain = NULL;
+  const TP_DOMAIN *cast_domain = subkey->cmp_dom;
   TP_DOMAIN_STATUS status = DOMAIN_COMPATIBLE;
   int error = NO_ERROR;
 
   assert (d0 != NULL && d1 != NULL && subkey != NULL && key_info != NULL);
   /* col_dom is a string type (see qexec_initialize_analytic_state): the bodies decode without a scratch copy */
   assert (!qfile_col_body_needs_copy (c, subkey->col_dom));
+  assert (cast_domain != NULL);
 
   db_make_null (&val0);
   db_make_null (&val1);
 
-  if (subkey->cmp_dom == NULL)
-    {
-      /* NOTE: col_dom is string type.  See qexec_plan_interpolation_sort_key */
-      pr_clear_value (&val0);
-
-      error = qfile_col_read_body (c, d0, l0, subkey->col_dom, &val0, false);
-      if (error != NO_ERROR || DB_IS_NULL (&val0))
-	{
-	  goto end;
-	}
-
-      /* a value argument resolve_domains could not type: every value is that one, whose typing
-       * fails for the first value too */
-#if !defined (NDEBUG)
-      qfile_check_interpolation_type (&val0, NULL);
-#endif
-      error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
-      goto end;
-    }
-
-  /* cast to proper domain, then compare */
-  pr_clear_value (&val0);
-  pr_clear_value (&val1);
-
+  /* cast to proper domain with the converter planned with it, then compare */
   error = qfile_col_read_body (c, d0, l0, subkey->col_dom, &val0, false);
   if (error != NO_ERROR)
     {
@@ -7238,15 +7213,16 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
   qfile_check_interpolation_type (&val1, subkey->cmp_dom);
 #endif
 
-  cast_domain = subkey->cmp_dom;
-  status = tp_value_cast (&val0, &val0, cast_domain, false);
+  status = tp_value_cast_with_converter (&val0, &val0, cast_domain, false, TP_DOMAIN_TYPE (subkey->col_dom),
+					 subkey->cmp_conv);
   if (status != DOMAIN_COMPATIBLE)
     {
       error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
       goto end;
     }
 
-  status = tp_value_cast (&val1, &val1, cast_domain, false);
+  status = tp_value_cast_with_converter (&val1, &val1, cast_domain, false, TP_DOMAIN_TYPE (subkey->col_dom),
+					 subkey->cmp_conv);
   if (status != DOMAIN_COMPATIBLE)
     {
       error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;

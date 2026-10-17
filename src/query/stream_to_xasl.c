@@ -3037,6 +3037,8 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	  goto error;
 	}
     }
+  /* CBRD-27583: a LEAD / LAG / NTH_VALUE's offset and default are read through a_regu_list */
+  qdata_plan_analytic_offset (stx_build_list_proc->a_eval_list, stx_build_list_proc->a_regu_list);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

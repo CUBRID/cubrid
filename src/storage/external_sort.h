@@ -108,6 +108,7 @@ struct SUBKEY_INFO
   TP_DOMAIN *col_dom;
 
   TP_DOMAIN *cmp_dom;		/* for median sorting string in different domain */
+  TP_VALUE_CONVERTER cmp_conv;	/* the converter of a col_dom value into cmp_dom, found with it */
 
   // signature should match pr_type::data_cmpdisk_function_type
   // todo - use a function type for both sort_f and pr_type::data_cmpdisk_function_type

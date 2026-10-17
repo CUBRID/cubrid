@@ -30,6 +30,7 @@
 #include "system.h"               // QUERY_ID
 
 // forward definitions
+struct regu_variable_list_node;
 struct val_descr;
 
 namespace cubthread
@@ -39,10 +40,12 @@ namespace cubthread
 
 namespace cubxasl
 {
+  struct analytic_eval_type;
   struct analytic_list_node;
 } // namespace cubxasl
 
 void qdata_plan_analytic_accumulator (cubxasl::analytic_list_node *func_p);
+void qdata_plan_analytic_offset (cubxasl::analytic_eval_type *eval_list, regu_variable_list_node *read_list);
 int qdata_initialize_analytic_func (cubthread::entry *thread_p, cubxasl::analytic_list_node *func_p, QUERY_ID query_id);
 int qdata_evaluate_analytic_func (cubthread::entry *thread_p, cubxasl::analytic_list_node *func_p, val_descr *vd);
 int qdata_finalize_analytic_func (cubthread::entry *thread_p, cubxasl::analytic_list_node *func_p, bool is_same_group);

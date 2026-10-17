@@ -5837,9 +5837,8 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	? DOMAIN_CONVERT_IMPLICIT : DOMAIN_CONVERT_ASSIGN;
       TP_VALUE_CONVERTER converter;
       /* the plan found a converter before any row for the type of the caller's operand and the caller's domain
-       * (tp_value_cast_with_converter, an explicit cast): a value of another type, or a domain this function
-       * selected from a domain list or made for an ENFORCE collation above, looks its converter up */
-      assert (found == NULL || mode == DOMAIN_CONVERT_ASSIGN);
+       * (tp_value_cast_with_converter, tp_value_coerce_with_converter): a value of another type, or a domain this
+       * function selected from a domain list or made for an ENFORCE collation above, looks its converter up */
       if (found != NULL && found->src_type == original_type && found->domain == desired_domain)
 	{
 	  converter = found->converter;
@@ -5986,6 +5985,21 @@ tp_value_cast_with_converter (const DB_VALUE * src, DB_VALUE * dest, const TP_DO
   const tp_cast_converter found = { src_type, desired_domain, converter };
   return tp_value_cast_internal (src, dest, desired_domain, force ? TP_FORCE_COERCION : TP_EXPLICIT_COERCION, true,
 				 false, converter != NULL ? &found : NULL);
+}
+
+/*
+ * tp_value_coerce_with_converter () - tp_value_coerce with the converter a plan found before any row for values of
+ *   type src_type into desired_domain: the coercion skips its lookup for such a value
+ *   return: as tp_value_coerce
+ *   converter(in): tp_value_find_converter (src_type, desired_domain, DOMAIN_CONVERT_IMPLICIT); NULL: none found
+ */
+TP_DOMAIN_STATUS
+tp_value_coerce_with_converter (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
+				DB_TYPE src_type, TP_VALUE_CONVERTER converter)
+{
+  const tp_cast_converter found = { src_type, desired_domain, converter };
+  return tp_value_cast_internal (src, dest, desired_domain, TP_IMPLICIT_COERCION, true, false,
+				 converter != NULL ? &found : NULL);
 }
 
 /*
