@@ -8120,35 +8120,53 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  && xasl->curr_spec->parts != NULL && xasl->curr_spec->curent == NULL
 	  && xasl->curr_spec->access != ACCESS_METHOD_INDEX_NODE_INFO)
 	{
-	  /* initialize the scan_id for partitioned classes */
-	  if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL
-	      || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
+	  if (xasl->curr_spec->s_id.scan_op_type == S_SELECT)
 	    {
-	      class_oid = &xasl->curr_spec->s_id.s.hsid.cls_oid;
-	      class_hfid = &xasl->curr_spec->s_id.s.hsid.hfid;
-	    }
-	  else if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
-	    {
-	      class_oid = &xasl->curr_spec->s_id.s.hpsid.cls_oid;
-	      class_hfid = &xasl->curr_spec->s_id.s.hpsid.hfid;
-	    }
-	  else if (xasl->curr_spec->access == ACCESS_METHOD_INDEX
-		   || xasl->curr_spec->access == ACCESS_METHOD_INDEX_KEY_INFO)
-	    {
-	      class_oid = &xasl->curr_spec->s_id.s.isid.cls_oid;
-	      class_hfid = &xasl->curr_spec->s_id.s.isid.hfid;
+	      /* qexec_open_scan starts a select on its first partition, and the block iterator may close it there:
+	       * restart on the first partition, since a root block would keep that partition's btid and read it twice */
+	      if (qexec_init_next_partition (thread_p, xasl->curr_spec, xasl) != S_SUCCESS)
+		{
+		  ASSERT_ERROR ();
+		  return S_ERROR;
+		}
 	    }
 	  else
 	    {
-	      assert (false);
-	      return S_ERROR;
+	      /* other scans start on the root class, as qexec_open_scan opened them: its heap can still hold rows
+	       * that ALTER ... PARTITION BY moves into the partitions */
+	      if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL
+		  || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
+		{
+		  class_oid = &xasl->curr_spec->s_id.s.hsid.cls_oid;
+		  class_hfid = &xasl->curr_spec->s_id.s.hsid.hfid;
+		}
+	      else if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
+		{
+		  class_oid = &xasl->curr_spec->s_id.s.hpsid.cls_oid;
+		  class_hfid = &xasl->curr_spec->s_id.s.hpsid.hfid;
+		}
+	      else if (xasl->curr_spec->access == ACCESS_METHOD_INDEX
+		       || xasl->curr_spec->access == ACCESS_METHOD_INDEX_KEY_INFO)
+		{
+		  class_oid = &xasl->curr_spec->s_id.s.isid.cls_oid;
+		  class_hfid = &xasl->curr_spec->s_id.s.isid.hfid;
+		}
+	      else
+		{
+		  assert (false);
+		  return S_ERROR;
+		}
+
+	      COPY_OID (class_oid, &ACCESS_SPEC_CLS_OID (xasl->curr_spec));
+	      HFID_COPY (class_hfid, &ACCESS_SPEC_HFID (xasl->curr_spec));
+
+	      if (scan_start_scan (thread_p, &xasl->curr_spec->s_id) != NO_ERROR)
+		{
+		  return S_ERROR;
+		}
 	    }
-
-	  COPY_OID (class_oid, &ACCESS_SPEC_CLS_OID (xasl->curr_spec));
-	  HFID_COPY (class_hfid, &ACCESS_SPEC_HFID (xasl->curr_spec));
 	}
-
-      if (scan_start_scan (thread_p, &xasl->curr_spec->s_id) != NO_ERROR)
+      else if (scan_start_scan (thread_p, &xasl->curr_spec->s_id) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
