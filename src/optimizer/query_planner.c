@@ -142,7 +142,7 @@
  * nested loop (22,415 + 2 * (C - 100) > 23,032 needs C > 408).  Re-measure JOB when either
  * bound moves. */
 #define HJ_MEM_ALLOC_CONSTANT 800
-#define HJ_FILE_IO_WEIGHT 0.5	/* per-row IO weight for partitioned hash-join spill */
+#define HJ_FILE_IO_WEIGHT 0.5	/* per-row IO weight for partitioned hash-join spill (unused, see qo_hjoin_cost) */
 #define HJ_PARTITION_FILL_FACTOR 0.8	/* must match PARTITION_FILL_FACTOR in query_hash_join.c:
 					   the executor spills to a partitioned hash join once the build
 					   entries exceed mem_limit * fill-factor, not the raw mem_limit */
@@ -4598,6 +4598,10 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   outer_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
   outer_build_io_cost = outer_pages * QO_COST_SEQ_PAGE;
 
+#if 0
+  /* Spill IO is not charged (CBRD-27457): any positive weight priced large spilling hash joins
+   * above slower index nested loops. */
+
   /* Partitioned hash join spills to disk once the build input exceeds the in-memory
    * hash limit. The executor switches to a partitioned (spilling) hash join at
    * mem_limit * PARTITION_FILL_FACTOR, not the raw max_hash_list_scan_size, so apply the
@@ -4622,6 +4626,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
 	outer_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT * QO_COST_SEQ_PAGE;
       }
   }
+#endif
 
   /**
    * STEP 4: Choose the lowest cost.
