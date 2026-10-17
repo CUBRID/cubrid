@@ -177,6 +177,7 @@ extern "C"
   extern int pt_type_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern bool pt_host_var_is_context_typed (const TP_DOMAIN * expected);
   extern bool pt_host_var_is_leave_typed (const TP_DOMAIN * expected);
+  extern bool pt_host_var_is_char_typed (const TP_DOMAIN * expected);
   extern int pt_host_var_leave_collation (DB_TYPE type, int collation);
   extern DB_VALUE *pt_host_var_db_value (PARSER_CONTEXT * parser, PT_NODE * hv);
   extern PT_NODE *pt_bind_values_to_hostvars (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -620,6 +621,7 @@ extern "C"
   extern PT_NODE *pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value);
   extern void pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern TP_DOMAIN *pt_host_var_value_domain (PARSER_CONTEXT * parser, int index);
+  extern TP_DOMAIN *pt_host_var_sent_domain (PARSER_CONTEXT * parser, int index, TP_DOMAIN * expected);
   extern bool pt_is_derived_host_var (const PARSER_CONTEXT * parser, int index);
   extern int pt_set_derived_host_variable (PARSER_CONTEXT * parser, int index, const DB_VALUE * source);
   extern PT_NODE *pt_bind_comparison_mate (PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent, bool * bind_is_lhs);

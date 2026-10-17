@@ -6485,12 +6485,26 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	       * so the variable POS's type is the value's -- a variable POS whose value already carries the enforced
 	       * collation */
 	      regu->domain = cast_domain;
+	      if (pt_host_var_is_char_typed (cast_domain) && parser->host_var_compiled_domains != NULL
+		  && parser->host_var_compiled_domains[node->info.host_var.index] != NULL
+		  && TP_DOMAIN_TYPE (parser->host_var_compiled_domains[node->info.host_var.index]) == DB_TYPE_VARCHAR)
+		{
+		  /* D-53: a CHAR position's VARCHAR value is sent as it is (any other value is cast into the CHAR) */
+		  regu->domain = parser->host_var_compiled_domains[node->info.host_var.index];
+		}
 	    }
 	}
       else if (pt_is_derived_host_var (parser, node->info.host_var.index))
 	{
-	  /* CBRD-27583: a derived position: the client converts the user's value into its domain */
+	  /* CBRD-27583: a derived position: the client converts the user's value into its domain; D-53: a CHAR one
+	   * keeps a VARCHAR user value, as the compilation's value shows (pt_set_derived_host_variable).
+	   * shortcut: a context-typed user position of another type than CHAR casts its value before the compilation
+	   * sees it, not before the derived bind does - plan from the bound type if such a derived CHAR position appears */
 	  regu->domain = parser->host_var_expected_domains[node->info.host_var.index];
+	  if (pt_host_var_is_char_typed (regu->domain))
+	    {
+	      regu->domain = pt_host_var_sent_domain (parser, node->info.host_var.index, regu->domain);
+	    }
 	}
       else if (node->data_type)
 	{

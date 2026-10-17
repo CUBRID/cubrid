@@ -9375,7 +9375,9 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       /* Check if arguments have been handled by PT_LIKE and only the result type needs to be set */
       if (arg1->type_enum == PT_TYPE_MAYBE && arg1->expected_domain)
 	{
-	  node->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (arg1->expected_domain));
+	  /* CBRD-27583 (D-52): the bound is the VARCHAR the function makes (db_get_like_optimization_bounds), not its
+	   * pattern's CHAR: a key element of a CHAR column keeps its own domain, as develop's row kept it */
+	  node->type_enum = PT_TYPE_VARCHAR;
 	  goto error;
 	}
       break;

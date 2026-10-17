@@ -882,14 +882,17 @@ db_set_host_var_compiled_domains (PARSER_CONTEXT * parser)
     }
   for (int i = 0; i < parser->host_var_count; i++)
     {
-      if (pt_host_var_is_context_typed (parser->host_var_expected_domains[i])
-	  && !pt_host_var_is_leave_typed (parser->host_var_expected_domains[i]))
+      TP_DOMAIN *expected = parser->host_var_expected_domains[i];
+      if (pt_host_var_is_context_typed (expected) && !pt_host_var_is_leave_typed (expected)
+	  && !pt_host_var_is_char_typed (expected))
 	{
 	  continue;
 	}
       if (parser->host_var_compiled_domains[i] == NULL)
 	{
-	  parser->host_var_compiled_domains[i] = pt_host_var_value_domain (parser, i);
+	  parser->host_var_compiled_domains[i] = pt_host_var_is_char_typed (expected)
+	    && !pt_host_var_is_leave_typed (expected)
+	    ? pt_host_var_sent_domain (parser, i, expected) : pt_host_var_value_domain (parser, i);
 	}
     }
 }
@@ -905,7 +908,8 @@ db_has_untyped_host_var (const PARSER_CONTEXT * parser)
   for (int i = 0; i < parser->host_var_count; i++)
     {
       if ((!pt_host_var_is_context_typed (parser->host_var_expected_domains[i])
-	   || pt_host_var_is_leave_typed (parser->host_var_expected_domains[i]))
+	   || pt_host_var_is_leave_typed (parser->host_var_expected_domains[i])
+	   || pt_host_var_is_char_typed (parser->host_var_expected_domains[i]))
 	  && (parser->host_var_compiled_domains == NULL || parser->host_var_compiled_domains[i] == NULL))
 	{
 	  return true;

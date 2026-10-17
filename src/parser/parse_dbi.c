@@ -3135,6 +3135,18 @@ pt_host_var_is_leave_typed (const TP_DOMAIN * expected)
 }
 
 /*
+ * pt_host_var_is_char_typed () - CBRD-27583 (D-53): whether a context-typed position's expected domain is a CHAR: the
+ *   client sends a VARCHAR value as it is and casts any other into the CHAR (pt_set_host_variables), so its plan is the
+ *   one of the type the client sends, which its compiled domain keeps (pt_host_var_sent_domain; a LEAVE CHAR
+ *   position's is the value's, D-26)
+ */
+bool
+pt_host_var_is_char_typed (const TP_DOMAIN * expected)
+{
+  return pt_host_var_is_context_typed (expected) && TP_DOMAIN_TYPE (expected) == DB_TYPE_CHAR;
+}
+
+/*
  * pt_host_var_leave_collation () - CBRD-27583 (D-26): the collation a LEAVE position takes from a value of this type and
  *   collation: a string's own, -1 for another type (the client casts it into the expected domain's), -2 for a NULL
  */
@@ -3145,12 +3157,30 @@ pt_host_var_leave_collation (DB_TYPE type, int collation)
 }
 
 /* CBRD-27583: whether a value is one the compilation of a position's plan took: a value-typed position's value of its
- * compiled domain, a LEAVE position's value of the compiled value's collation (D-26) */
+ * compiled domain, a LEAVE position's value of the compiled value's collation (D-26), a CHAR position's VARCHAR of the
+ * compiled VARCHAR's collation or another value of the compiled CHAR (D-53; a LEAVE CHAR one's of the collation) */
 static bool
 pt_host_var_matches_compiled (const PARSER_CONTEXT * parser, int index, const DB_VALUE * val)
 {
   const TP_DOMAIN *compiled = parser->host_var_compiled_domains[index];
-  if (!pt_host_var_is_leave_typed (parser->host_var_expected_domains[index]))
+  const bool leave = pt_host_var_is_leave_typed (parser->host_var_expected_domains[index]);
+  if (pt_host_var_is_char_typed (parser->host_var_expected_domains[index]))
+    {
+      const bool sent_varchar = !DB_IS_NULL (val) && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_VARCHAR;
+      if (sent_varchar != (TP_DOMAIN_TYPE (compiled) == DB_TYPE_VARCHAR))
+	{
+	  return false;
+	}
+      if (sent_varchar)
+	{
+	  return db_get_string_collation (val) == compiled->collation_id;
+	}
+      if (!leave)
+	{
+	  return true;
+	}
+    }
+  if (!leave)
     {
       return pt_value_has_domain_type (val, compiled);
     }

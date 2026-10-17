@@ -2011,6 +2011,9 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
 	  ret = domain_unresolved_error ("", -1, TP_DOMAIN_TYPE (column));
 	  goto err_exit;
 	}
+      /* CBRD-27583 (D-52): XASL generation planned the column's type for the value; a string of the other kind would
+       * be written by the column's writer (a CHAR's pads to the value's precision) */
+      assert (type == TP_DOMAIN_TYPE (column) || (type == DB_TYPE_OID && TP_DOMAIN_TYPE (column) == DB_TYPE_OBJECT));
 
       buf_size += column->type->get_index_size_of_value (val);
       values[written++] = val;

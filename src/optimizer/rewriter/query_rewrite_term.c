@@ -2295,7 +2295,10 @@ qo_allocate_like_bound_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * 
     }
   bound->info.expr.location = like->info.expr.location;
 
-  bound->type_enum = pattern->type_enum;
+  /* CBRD-27583 (D-52): the bound is the VARCHAR the function makes (db_get_like_optimization_bounds), in the pattern's
+   * codeset and collation, not a CHAR pattern's CHAR: a key element of a CHAR column keeps its own domain, as develop's
+   * row kept it */
+  bound->type_enum = pattern->type_enum == PT_TYPE_CHAR ? PT_TYPE_VARCHAR : pattern->type_enum;
 
   expr_pattern = parser_copy_tree (parser, pattern);
   if (expr_pattern == NULL)
@@ -2347,6 +2350,10 @@ qo_allocate_like_bound_for_index_scan (PARSER_CONTEXT * const parser, PT_NODE * 
   /* copy data type */
   assert (bound->data_type == NULL);
   bound->data_type = parser_copy_tree (parser, pattern->data_type);
+  if (bound->data_type != NULL)
+    {
+      bound->data_type->type_enum = bound->type_enum;
+    }
 
   return bound;
 

@@ -4972,6 +4972,18 @@ pt_host_var_value_domain (PARSER_CONTEXT * parser, int index)
     : tp_domain_cache (tp_domain_resolve_value (val, NULL));
 }
 
+/*
+ * pt_host_var_sent_domain () - CBRD-27583 (D-53): the domain of what the client sends at a CHAR position, the value
+ *   bound at position index: a VARCHAR as it is (pt_set_host_variables keeps it), any other cast into the CHAR. A
+ *   compilation's typed NULL stands for a value of its type (db_bind_value_types), a NULL is a plain one.
+ */
+TP_DOMAIN *
+pt_host_var_sent_domain (PARSER_CONTEXT * parser, int index, TP_DOMAIN * expected)
+{
+  return DB_VALUE_DOMAIN_TYPE (&parser->host_variables[index]) == DB_TYPE_VARCHAR
+    ? pt_host_var_value_domain (parser, index) : expected;
+}
+
 /* CBRD-27583: whether a position after the user's is a derived position (pt_assign_host_var_positions) */
 bool
 pt_is_derived_host_var (const PARSER_CONTEXT * parser, int index)
@@ -5080,8 +5092,15 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
       parser->host_var_expected_domains[i] = own != NULL ? own : tp_domain_resolve_default (DB_TYPE_UNKNOWN);
       if (parser->host_var_compiled_domains != NULL)
 	{
-	  parser->host_var_compiled_domains[i] = own == NULL || pt_host_var_is_leave_typed (own)
-	    ? pt_host_var_value_domain (parser, i) : NULL;
+	  parser->host_var_compiled_domains[i] = NULL;
+	  if (own == NULL || pt_host_var_is_leave_typed (own))
+	    {
+	      parser->host_var_compiled_domains[i] = pt_host_var_value_domain (parser, i);
+	    }
+	  else if (pt_host_var_is_char_typed (own))
+	    {
+	      parser->host_var_compiled_domains[i] = pt_host_var_sent_domain (parser, i, own);
+	    }
 	}
     }
 
