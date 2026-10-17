@@ -3526,6 +3526,23 @@ expr_scan_pred_kid_raw_info (const void *compiled, int kid, const val_descr * vd
 	}
       numeric = true;
     }
+  /* two columns of the scan of one type ("l_commitdate < l_receiptdate"): a fixed-size type the fast kernel
+   * compares as it is */
+  if (!numeric && !pred->need_type_guard && pred->fetch_lhs->type == TYPE_ATTR_ID
+      && pred->fetch_rhs->type == TYPE_ATTR_ID && !pred->lhs_compiled && !pred->rhs_compiled && !pred->rhs_pinned
+      && pred->fetch_lhs->domain != NULL && pred->fetch_rhs->domain != NULL
+      && TP_DOMAIN_TYPE (pred->fetch_lhs->domain) == pred->fast_type
+      && TP_DOMAIN_TYPE (pred->fetch_rhs->domain) == pred->fast_type
+      && (pred->fast_type == DB_TYPE_INTEGER || pred->fast_type == DB_TYPE_BIGINT || pred->fast_type == DB_TYPE_DATE
+	  || pred->fast_type == DB_TYPE_DOUBLE))
+    {
+      out->col_regu = pred->fetch_lhs;
+      out->col2_regu = pred->fetch_rhs;
+      out->col_is_lhs = true;
+      out->fast_type = pred->fast_type;
+      out->rel_op = pred->rel_op;
+      return true;
+    }
   /* The sides a page can take: a column (TYPE_ATTR_ID) against a value fixed for the execution
    * -- an inline literal (TYPE_DBVAL), a literal the leaf pinned, a prologue-computed constant,
    * or an auto-parameterized literal / host variable (TYPE_POS_VALUE: the leaf guards its type
@@ -6233,6 +6250,14 @@ expr_prog_step_info (const EXPR_PROG * prog, int step_idx, EXPR_STEP_INFO * out)
     {
       out->cls = EXPR_STEP_JUMP_NULL_ARITH;
     }
+  else if (k == expr_k_resolved_value)
+    {
+      out->cls = EXPR_STEP_RESOLVED;
+    }
+  else if (k == expr_k_cast || k == expr_k_cast_strict)
+    {
+      out->cls = EXPR_STEP_CAST;
+    }
   else if (k == expr_k_add_int || k == expr_k_sub_int || k == expr_k_mul_int)
     {
       out->cls = (k == expr_k_add_int) ? EXPR_STEP_ADD : (k == expr_k_sub_int) ? EXPR_STEP_SUB : EXPR_STEP_MUL;
@@ -6276,6 +6301,20 @@ expr_prog_cell_publisher (const EXPR_PROG * prog, int cell)
 	}
     }
   return -1;
+}
+
+int
+expr_prog_run_steps (EXPR_PROG * prog, int from, int to, cubthread::entry * thread_p, val_descr * vd)
+{
+  EXPR_EVAL_CTX ctx;
+
+  ctx.thread_p = thread_p;
+  ctx.vd = vd;
+  ctx.obj_oid = NULL;
+  ctx.tpl = NULL;
+  ctx.prog = prog;
+  expr_ctx_arm_depth (&ctx, prog);
+  return expr_run_range (prog, from, to, &ctx);
 }
 
 int

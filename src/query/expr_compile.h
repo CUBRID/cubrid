@@ -361,6 +361,8 @@ struct expr_raw_leaf_info
 				 * type changes between executions) */
   DB_VALUE *const *k_cell;	/* ... or the program cell a prologue computes it into (read after
 				 * expr_scan_pred_prepare ()); exactly one of k_value / k_cell is set */
+  const REGU_VARIABLE *col2_regu;	/* instead of a constant, another column of the scan ("a < b"): the right
+					 * operand, col_regu the left; neither k_value nor k_cell is set */
 };
 
 /* the shape of the root: 1 = a single comparison leaf (n_kids = 1), 2 = a flattened AND chain
@@ -389,7 +391,10 @@ typedef enum
   EXPR_STEP_ADD,		/* typed arithmetic: type says INTEGER / BIGINT / DOUBLE / NUMERIC */
   EXPR_STEP_SUB,
   EXPR_STEP_MUL,
-  EXPR_STEP_JUMP_NULL_ARITH	/* lazy right side: when arg1 is NULL the row skips to jump_to */
+  EXPR_STEP_JUMP_NULL_ARITH,	/* lazy right side: when arg1 is NULL the row skips to jump_to */
+  EXPR_STEP_RESOLVED,		/* a constant expression's gate: its value from the execution, or the steps up to
+				 * jump_to compute it (expr_k_resolved_value ()) */
+  EXPR_STEP_CAST		/* CAST of arg1 into domain */
 } EXPR_STEP_CLASS;
 
 typedef struct expr_step_info EXPR_STEP_INFO;
@@ -412,6 +417,8 @@ extern void expr_prog_step_info (const EXPR_PROG * prog, int step, EXPR_STEP_INF
 /* the step that publishes a cell, or -1 for a cell wired to a stable address (a literal, a
  * value-list slot) at compile time */
 extern int expr_prog_cell_publisher (const EXPR_PROG * prog, int cell);
+/* run steps [from, to) without a row: a constant expression's steps, whose operands are constants */
+extern int expr_prog_run_steps (EXPR_PROG * prog, int from, int to, cubthread::entry * thread_p, val_descr * vd);
 /* run the prologues for this execution without running a row */
 extern int expr_prog_prepare_execution (EXPR_PROG * prog, cubthread::entry * thread_p, val_descr * vd);
 

@@ -190,6 +190,8 @@ struct eb_leaf
 {
   int vec;			/* the column, always on the left here */
   int col;			/* its index in the plan's columns */
+  int vec2;			/* another column on the right instead of the constant ("a < b"), or -1 */
+  int col2;
   unsigned char etype;
   unsigned char rel_op;		/* REL_OP, with the column on the left */
   unsigned char k_type;		/* DB_TYPE the constant must carry (EB_NUM: expr_numeric_cmp_const_ok ()) */
@@ -245,9 +247,16 @@ struct eb_block
   EB_BLOCK *next;
 };
 
+#define EB_MAX_CONST_RANGES (4)
+
 struct expr_batch_plan
 {
   int cap;			/* rows a chunk holds (expr_batch_init ()) */
+  /* constant expressions of the operand program (a resolved value and the CAST it gates): their steps run
+   * before the page, their result read as a scalar */
+  int n_const_ranges;
+  int const_from[EB_MAX_CONST_RANGES];
+  int const_to[EB_MAX_CONST_RANGES];
   EB_BLOCK *blocks;
   char *bump;			/* the next free line of the newest block, and its end */
   char *bump_end;
@@ -805,7 +814,7 @@ eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
 {
   EXPR_BATCH_PLAN *plan = b->plan;
   EB_LEAF *leaf;
-  int etype, vec, rel_op, cap;
+  int etype, vec, vec2 = -1, rel_op, cap;
 
   *out = -1;
   if (!eb_etype_of (info->fast_type, &etype) || info->col_regu->value.attr_descr.cache_attrinfo == NULL
@@ -825,6 +834,23 @@ eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
     {
       return NO_ERROR;
     }
+  if (info->col2_regu != NULL)
+    {
+      if (etype == EB_NUM || info->col2_regu->value.attr_descr.cache_attrinfo == NULL)
+	{
+	  return NO_ERROR;
+	}
+      vec2 = eb_new_col_vec (b, info->col2_regu->value.attr_descr.cache_attrinfo, info->col2_regu->value.attr_descr.id);
+      if (vec2 < 0)
+	{
+	  b->why_not = NULL;
+	  return NO_ERROR;
+	}
+      if (plan->vecs[vec2].dbtype != info->fast_type)
+	{
+	  return NO_ERROR;
+	}
+    }
   cap = b->cap_leaves;
   if (eb_grow ((void **) &plan->leaves, &cap, plan->n_leaves, sizeof (EB_LEAF)) != NO_ERROR
       || eb_grow ((void **) &plan->lsrc, &b->cap_leaves, plan->n_leaves, sizeof (EB_LEAF_SRC)) != NO_ERROR)
@@ -835,6 +861,8 @@ eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   memset (leaf, 0, sizeof (*leaf));
   leaf->vec = vec;
   leaf->col = eb_col_of_vec (plan, vec);
+  leaf->vec2 = vec2;
+  leaf->col2 = (vec2 >= 0) ? eb_col_of_vec (plan, vec2) : -1;
   leaf->etype = (unsigned char) etype;
   leaf->k_type = (unsigned char) info->fast_type;
   plan->lsrc[plan->n_leaves].value = info->k_value;
@@ -979,7 +1007,7 @@ eb_choose_pointed (EXPR_BATCH_PLAN * plan)
 
       for (i = 0; i < plan->n_leaves; i++)
 	{
-	  leaf_uses += (plan->leaves[i].vec == col->vec);
+	  leaf_uses += (plan->leaves[i].vec == col->vec) + (plan->leaves[i].vec2 == col->vec);
 	}
       for (i = 0; i < plan->n_steps; i++)
 	{
@@ -1247,6 +1275,45 @@ eb_build_program (EB_BUILD * b)
 	      b->cell_vec[info.out_cell] = out;
 	    }
 	  break;
+	case EXPR_STEP_RESOLVED:
+	  {
+	    /* a constant expression: its gate and the steps up to jump_to, each a CAST of a constant, run once
+	     * before the page (expr_prog_run_steps ()); the gate's cell is then the value */
+	    int k;
+
+	    if (info.out_cell < 0 || info.jump_to <= i + 1 || info.jump_to > prog->n_steps
+		|| plan->n_const_ranges >= EB_MAX_CONST_RANGES)
+	      {
+		return eb_decline (b, "a constant expression the batch cannot run before the page");
+	      }
+	    for (k = i + 1; k < info.jump_to; k++)
+	      {
+		EXPR_STEP_INFO ki;
+		int src;
+
+		expr_prog_step_info (prog, k, &ki);
+		src = (ki.cls == EXPR_STEP_CAST) ? eb_program_cell_vec (b, ki.arg1_cell) : -1;
+		if (src < 0 || plan->vecs[src].kind != EB_VK_SCALAR || ki.out_cell != info.out_cell)
+		  {
+		    return eb_decline (b, "a constant expression the batch cannot run before the page");
+		  }
+		if (b->n_pending > 0 && b->pending_pop[b->n_pending - 1] <= k)
+		  {
+		    return eb_decline (b, "a constant expression the batch cannot run before the page");
+		  }
+	      }
+	    plan->const_from[plan->n_const_ranges] = i;
+	    plan->const_to[plan->n_const_ranges] = info.jump_to;
+	    plan->n_const_ranges++;
+	    b->cell_vec[info.out_cell] =
+	      eb_new_scalar_vec (b, EB_I64, DB_TYPE_UNKNOWN, NULL, &prog->cells[info.out_cell], EB_SC_EXACT);
+	    if (b->cell_vec[info.out_cell] < 0)
+	      {
+		return ER_FAILED;
+	      }
+	    i = info.jump_to - 1;
+	    break;
+	  }
 	case EXPR_STEP_JUMP_NULL_ARITH:
 	  in1 = eb_program_cell_vec (b, info.arg1_cell);
 	  if (in1 < 0 || info.jump_to <= i || b->n_pending >= EB_MASK_DEPTH)
@@ -2288,6 +2355,11 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
       const DB_VALUE *k = (plan->lsrc[i].cell != NULL) ? *plan->lsrc[i].cell : plan->lsrc[i].value;
 
       leaf->k_null = 0;
+      if (leaf->vec2 >= 0)
+	{
+	  /* two columns: nothing to load */
+	  continue;
+	}
       if (k == NULL)
 	{
 	  return eb_fallback (plan, "a filter constant not set");
@@ -2547,6 +2619,96 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
 
 /* one raw term over the selection: FALSE rows leave, NULL rows stay marked UNKNOWN; NO_ERROR,
  * or EXPR_BATCH_FALLBACK for a pointed cell the batch does not read */
+/* one side of a two-column leaf for row r: 1 with its value, 0 NULL, -1 a cell the batch does not decode */
+static int
+eb_leaf_side (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, int vec, int col, int r, int64_t * i, double *d)
+{
+  const EB_VEC *v = &plan->vecs[vec];
+
+  if (v->kind == EB_VK_PTR)
+    {
+      return eb_cell_fixed (&plan->cols[col], &batch->layout[r], i, d);
+    }
+  if (v->isnull[r])
+    {
+      return 0;
+    }
+  if (v->etype == EB_I64)
+    {
+      *i = ((const int64_t *) v->data)[r];
+    }
+  else
+    {
+      *d = ((const double *) v->data)[r];
+    }
+  return 1;
+}
+
+/* a leaf comparing two columns of the row, as the fast kernel compares two values of their one type; a NULL on
+ * either side is UNKNOWN */
+static int
+eb_raw_kid_cols (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
+{
+  int j, n = 0;
+
+  for (j = 0; j < batch->n_sel; j++)
+    {
+      int r = batch->sel[j];
+      int64_t ai = 0, bi = 0;
+      double ad = 0, bd = 0;
+      int ga = eb_leaf_side (plan, batch, leaf->vec, leaf->col, r, &ai, &ad);
+      int gb = eb_leaf_side (plan, batch, leaf->vec2, leaf->col2, r, &bi, &bd);
+      int c;
+      bool keep;
+
+      if (ga < 0 || gb < 0)
+	{
+	  return eb_fallback (plan, "a pointed cell the batch does not decode");
+	}
+      if (ga == 0 || gb == 0)
+	{
+	  plan->unk[r] = 1;
+	  batch->sel[n++] = r;
+	  continue;
+	}
+      if (leaf->etype == EB_I64)
+	{
+	  c = (ai < bi) ? -1 : (ai > bi);
+	}
+      else
+	{
+	  c = (ad < bd) ? -1 : (ad > bd);
+	}
+      switch (leaf->rel_op)
+	{
+	case R_EQ:
+	  keep = (c == 0);
+	  break;
+	case R_NE:
+	  keep = (c != 0);
+	  break;
+	case R_LT:
+	  keep = (c < 0);
+	  break;
+	case R_LE:
+	  keep = (c <= 0);
+	  break;
+	case R_GT:
+	  keep = (c > 0);
+	  break;
+	default:
+	  keep = (c >= 0);
+	  break;
+	}
+      if (keep)
+	{
+	  batch->sel[n++] = r;
+	}
+    }
+  batch->n_sel = n;
+  return NO_ERROR;
+}
+
 static int
 eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 {
@@ -2554,6 +2716,11 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
   const EB_COL *col = &plan->cols[leaf->col];
   const bool pointed = (v->kind == EB_VK_PTR);
   int j, n = 0;
+
+  if (leaf->vec2 >= 0)
+    {
+      return eb_raw_kid_cols (plan, batch, leaf);
+    }
 
   for (j = 0; j < batch->n_sel; j++)
     {
@@ -2738,6 +2905,14 @@ eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, 
 	  if (plan->vecs[leaf->vec].kind != EB_VK_PTR && !plan->cols[leaf->col].decoded)
 	    {
 	      rc = eb_extract (plan, batch, batch->sel, batch->n_sel, leaf->col);
+	      if (rc != NO_ERROR)
+		{
+		  return rc;
+		}
+	    }
+	  if (leaf->vec2 >= 0 && plan->vecs[leaf->vec2].kind != EB_VK_PTR && !plan->cols[leaf->col2].decoded)
+	    {
+	      rc = eb_extract (plan, batch, batch->sel, batch->n_sel, leaf->col2);
 	      if (rc != NO_ERROR)
 		{
 		  return rc;
@@ -3097,10 +3272,22 @@ expr_batch_run (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * threa
     }
   if (plan->prog != NULL)
     {
+      int c;
+
       rc = expr_prog_prepare_execution (plan->prog, thread_p, vd);
       if (rc != NO_ERROR)
 	{
 	  return rc;
+	}
+      for (c = 0; c < plan->n_const_ranges; c++)
+	{
+	  rc = expr_prog_run_steps (plan->prog, plan->const_from[c], plan->const_to[c], thread_p, vd);
+	  if (rc != NO_ERROR)
+	    {
+	      /* the row path raises it at the page's first row */
+	      er_clear ();
+	      return eb_fallback (plan, "a constant expression raised an error");
+	    }
 	}
     }
   rc = eb_load_scalars (plan);
