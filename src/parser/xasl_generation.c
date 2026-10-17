@@ -7255,7 +7255,8 @@ pt_decide_function_domain (DOMAIN_CTX context, FUNC_CODE function, TP_DOMAIN * c
     case NO_ERROR:
       return needs_late_bind ? NULL : (TP_DOMAIN *) result.domain;
     case ER_QPROC_INVALID_DATATYPE:
-      /* a SUM / AVG over a date: the execution raises the addition's error */
+      /* a SUM / AVG over a date or time: rejected before, as type checking rejects the literal (D-37) */
+      assert (false);
       return NULL;
     case ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN:
       /* a MEDIAN / PERCENTILE over a type none of DOUBLE, DATETIME, TIME takes: the row's cast of a value raises it */
@@ -7265,13 +7266,59 @@ pt_decide_function_domain (DOMAIN_CTX context, FUNC_CODE function, TP_DOMAIN * c
     }
 }
 
+/* CBRD-27583 (D-37): the aggregate or analytic function of the parse tree that holds a value (PT_FUNCTION.etc);
+ * arg: { the value, the function found } */
+static PT_NODE *
+pt_find_function_of_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  void **search = (void **) arg;
+  if (tree->node_type == PT_FUNCTION && tree->etc == search[0])
+    {
+      search[1] = tree;
+      *continue_walk = PT_STOP_WALK;
+    }
+  return tree;
+}
+
+/*
+ * pt_reject_unaddable_operand () - CBRD-27583 (D-37): a SUM or AVG over an operand of a date or time type - a
+ *   value-typed position, which type checking saw MAYBE (nvl (?, d) over a NULL bind) - is type checking's error for
+ *   the literal: its type arrives at XASL generation
+ *   return: NO_ERROR, or ER_FAILED with the error set on the function's argument
+ *   statement(in): the parse tree that holds the function: the block, or the analytic functions' list
+ */
+static int
+pt_reject_unaddable_operand (PARSER_CONTEXT * parser, PT_NODE * statement, FUNC_CODE function,
+			     const REGU_VARIABLE * operand, DB_VALUE * value)
+{
+  if ((function != PT_SUM && function != PT_AVG) || !pt_regu_domain_is_fixed (operand)
+      || !TP_IS_DATE_OR_TIME_TYPE (TP_DOMAIN_TYPE (operand->domain)))
+    {
+      return NO_ERROR;
+    }
+  void *search[2] = { value, NULL };
+  parser_walk_tree (parser, statement, pt_find_function_of_value, search, NULL, NULL);
+  PT_NODE *function_node = (PT_NODE *) search[1];
+  if (function_node == NULL || function_node->info.function.arg_list == NULL)
+    {
+      PT_INTERNAL_ERROR (parser, "a SUM or AVG over a date or time");
+      return ER_FAILED;
+    }
+  PT_NODE *arg = function_node->info.function.arg_list;
+  PT_ERRORmf2 (parser, arg, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, pt_short_print (parser, arg),
+	       pt_show_type_enum (PT_TYPE_DOUBLE));
+  return ER_FAILED;
+}
+
 /*
  * pt_decide_aggregate_domains () - CBRD-27583 (4.3): a block's aggregates over their operands' domains: an operand
  *   reading a slot of values takes the domain its writer fills it with, and a function type checking left to its
  *   argument's value takes its domain and operand type from it, before any reader of its value is generated
+ *   return: NO_ERROR, or ER_FAILED for a SUM or AVG over a date or time (pt_reject_unaddable_operand)
  */
-static void
-pt_decide_aggregate_domains (AGGREGATE_TYPE * aggregates, const VAL_LIST * values)
+static int
+pt_decide_aggregate_domains (PARSER_CONTEXT * parser, PT_NODE * statement, AGGREGATE_TYPE * aggregates,
+			     const VAL_LIST * values)
 {
   for (AGGREGATE_TYPE * agg = aggregates; agg != NULL; agg = agg->next)
     {
@@ -7286,6 +7333,10 @@ pt_decide_aggregate_domains (AGGREGATE_TYPE * aggregates, const VAL_LIST * value
       if (slot != NULL)
 	{
 	  operand->domain = pt_reader_domain (operand->domain, slot->dom);
+	}
+      if (pt_reject_unaddable_operand (parser, statement, agg->function, operand, agg->accumulator.value) != NO_ERROR)
+	{
+	  return ER_FAILED;
 	}
       TP_DOMAIN *domain = pt_decide_function_domain (DOMAIN_CTX_AGG, agg->function, agg->domain, agg->opr_dbtype,
 						     operand);
@@ -7305,6 +7356,7 @@ pt_decide_aggregate_domains (AGGREGATE_TYPE * aggregates, const VAL_LIST * value
 	}
       agg->domain = domain;
     }
+  return NO_ERROR;
 }
 
 /*
@@ -7312,8 +7364,9 @@ pt_decide_aggregate_domains (AGGREGATE_TYPE * aggregates, const VAL_LIST * value
  *   pt_decide_aggregate_domains; the readers of a function's value generated before (the initial outlist's column,
  *   the scan's load into the value list: readers) take the domain the rule gave a variable result type
  */
-static void
-pt_decide_analytic_domains (ANALYTIC_TYPE * functions, const VAL_LIST * values, REGU_VARIABLE_LIST readers[2])
+static int
+pt_decide_analytic_domains (PARSER_CONTEXT * parser, PT_NODE * statement, ANALYTIC_TYPE * functions,
+			    const VAL_LIST * values, REGU_VARIABLE_LIST readers[2])
 {
   for (ANALYTIC_TYPE * func = functions; func != NULL; func = func->next)
     {
@@ -7323,6 +7376,10 @@ pt_decide_analytic_domains (ANALYTIC_TYPE * functions, const VAL_LIST * values, 
       if (slot != NULL)
 	{
 	  operand->domain = pt_reader_domain (operand->domain, slot->dom);
+	}
+      if (pt_reject_unaddable_operand (parser, statement, func->function, operand, func->value) != NO_ERROR)
+	{
+	  return ER_FAILED;
 	}
       TP_DOMAIN *domain = pt_decide_function_domain (DOMAIN_CTX_ANALYTIC, func->function, func->domain,
 						     func->opr_dbtype, operand);
@@ -7351,6 +7408,7 @@ pt_decide_analytic_domains (ANALYTIC_TYPE * functions, const VAL_LIST * values, 
 	    }
 	}
     }
+  return NO_ERROR;
 }
 
 /* CBRD-27583 (4.3): the aggregate of the block being generated whose value value is, NULL for none */
@@ -17532,7 +17590,10 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       /* CBRD-27583: the GROUP BY pass reads the list the scan's output wrote, aggregate operands included */
       pt_set_list_position_domains (buildlist->g_regu_list, buildlist->g_val_list, NULL, xasl->outptr_list);
       pt_set_list_position_domains (buildlist->g_hk_sort_regu_list, buildlist->g_val_list, NULL, xasl->outptr_list);
-      pt_decide_aggregate_domains (aggregate, buildlist->g_val_list);
+      if (pt_decide_aggregate_domains (parser, select_node, aggregate, buildlist->g_val_list) != NO_ERROR)
+	{
+	  goto exit_on_error;
+	}
       /* the readers of the aggregates below find their domains here (pt_block_aggregate) */
       buildlist->g_agg_list = aggregate;
 
@@ -17836,8 +17897,13 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 					buildlist->a_outptr_list_ex);
 	  {
 	    REGU_VARIABLE_LIST readers[2] = { buildlist->a_outptr_list_ex->valptrp, buildlist->a_scan_regu_list };
-	    pt_decide_analytic_domains (analytic_info.head_list, buildlist->a_val_list, readers);
-	    pt_decide_analytic_domains (analytic_info_clone.head_list, buildlist->a_val_list, NULL);
+	    if (pt_decide_analytic_domains
+		(parser, select_list_ex, analytic_info.head_list, buildlist->a_val_list, readers) != NO_ERROR
+		|| pt_decide_analytic_domains (parser, select_list_ex, analytic_info_clone.head_list,
+					       buildlist->a_val_list, NULL) != NO_ERROR)
+	      {
+		goto analytic_exit_on_error;
+	      }
 	  }
 	  pt_set_list_position_domains (buildlist->a_regu_list, buildlist->a_val_list, NULL,
 					buildlist->a_outptr_list_ex);
@@ -18446,7 +18512,10 @@ pt_to_buildvalue_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 
   aggregate = pt_to_aggregate (parser, select_node, NULL, NULL, NULL, NULL, NULL, &buildvalue->grbynum_val, qo_plan);
   /* CBRD-27583 (4.3): decided before the output list reads them (pt_block_aggregate) */
-  pt_decide_aggregate_domains (aggregate, NULL);
+  if (pt_decide_aggregate_domains (parser, select_node, aggregate, NULL) != NO_ERROR)
+    {
+      goto exit_on_error;
+    }
   buildvalue->agg_list = aggregate;
 
   /* the calls pt_to_out_list, pt_to_spec_list, and pt_to_if_pred, record information in the "symbol_info" structure
