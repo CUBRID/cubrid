@@ -3462,7 +3462,7 @@ expr_scan_pred_kid (EXPR_PRED * root, int kid)
     {
       return (kid >= 0 && kid < root->n_kids) ? root->kids[kid] : NULL;
     }
-  return (kid == 0 && root->kind == EXPR_PRED_COMP_FETCH) ? root : NULL;
+  return (kid == 0 && (root->kind == EXPR_PRED_COMP_FETCH || root->kind == EXPR_PRED_OR_N)) ? root : NULL;
 }
 
 int
@@ -3475,8 +3475,9 @@ expr_scan_pred_root_shape (const void *compiled, int *n_kids)
     {
       return -1;
     }
-  if (root->kind == EXPR_PRED_COMP_FETCH)
+  if (root->kind == EXPR_PRED_COMP_FETCH || root->kind == EXPR_PRED_OR_N)
     {
+      /* an OR root is one term: the batch runs it as an OR of raw leaves, or per row */
       *n_kids = 1;
       return 1;
     }
@@ -3492,23 +3493,96 @@ static const DB_VALUE *expr_raw_pos_value (const REGU_VARIABLE * k, const val_de
 static bool expr_scan_pred_numeric_term_info (const EXPR_PRED * pred, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
 static bool expr_pred_term_numeric_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
 
+static bool expr_pred_term_raw_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
+static bool expr_scan_pred_node_raw_info (const EXPR_PRED * root, const EXPR_PRED * pred, const val_descr * vd,
+					  EXPR_RAW_LEAF_INFO * out);
+
 bool
 expr_scan_pred_kid_raw_info (const void *compiled, int kid, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
 {
   const EXPR_PRED *root = (const EXPR_PRED *) compiled;
-  const EXPR_PRED *pred;
-  const REGU_VARIABLE *col, *k;
-  bool col_is_lhs, numeric = false;
 
   memset (out, 0, sizeof (*out));
   if (root == NULL)
     {
       return false;
     }
-  pred = expr_scan_pred_kid ((EXPR_PRED *) root, kid);
-  if (pred != NULL && pred->kind == EXPR_PRED_INTERP_COMP0)
+  return expr_scan_pred_node_raw_info (root, expr_scan_pred_kid ((EXPR_PRED *) root, kid), vd, out);
+}
+
+/* A compiled OR (an OR_N node, or a term left to the interpreter whose source is an OR) of disjuncts that are raw
+ * leaves or AND chains of them */
+int
+expr_scan_pred_kid_or_leaves (const void *compiled, int kid, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap,
+			      int *n_disj, int disj_cap)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+  const EXPR_PRED *pred = (root != NULL) ? expr_scan_pred_kid ((EXPR_PRED *) root, kid) : NULL;
+  int d, i, n = 0;
+
+  if (pred == NULL)
     {
-      return expr_scan_pred_numeric_term_info (pred, vd, out);
+      return -1;
+    }
+  if (pred->kind == EXPR_PRED_INTERP)
+    {
+      return expr_pred_or_raw_leaves (pred->fetch_src, vd, out, cap, n_disj, disj_cap);
+    }
+  if (pred->kind != EXPR_PRED_OR_N || pred->n_kids < 2 || pred->n_kids > disj_cap)
+    {
+      return -1;
+    }
+  for (d = 0; d < pred->n_kids; d++)
+    {
+      const EXPR_PRED *dj = pred->kids[d];
+
+      if (dj->kind == EXPR_PRED_AND_N)
+	{
+	  if (n + dj->n_kids > cap)
+	    {
+	      return -1;
+	    }
+	  for (i = 0; i < dj->n_kids; i++)
+	    {
+	      memset (&out[n], 0, sizeof (out[n]));
+	      if (!expr_scan_pred_node_raw_info (root, dj->kids[i], vd, &out[n]))
+		{
+		  return -1;
+		}
+	      n++;
+	    }
+	  n_disj[d] = dj->n_kids;
+	}
+      else
+	{
+	  if (n + 1 > cap)
+	    {
+	      return -1;
+	    }
+	  memset (&out[n], 0, sizeof (out[n]));
+	  if (!expr_scan_pred_node_raw_info (root, dj, vd, &out[n]))
+	    {
+	      return -1;
+	    }
+	  n++;
+	  n_disj[d] = 1;
+	}
+    }
+  return pred->n_kids;
+}
+
+/* a node of the compiled filter as a raw leaf */
+static bool
+expr_scan_pred_node_raw_info (const EXPR_PRED * root, const EXPR_PRED * pred, const val_descr * vd,
+			      EXPR_RAW_LEAF_INFO * out)
+{
+  const REGU_VARIABLE *col, *k;
+  bool col_is_lhs, numeric = false;
+
+  if (pred != NULL && (pred->kind == EXPR_PRED_INTERP_COMP0 || pred->kind == EXPR_PRED_INTERP))
+    {
+      /* a term the compiler left to the interpreter: as the terms of an interpreted filter */
+      return expr_pred_term_raw_info ((const PRED_EXPR *) pred->fetch_src, vd, out);
     }
   if (pred == NULL || pred->kind != EXPR_PRED_COMP_FETCH)
     {
@@ -3719,6 +3793,97 @@ expr_pred_term_numeric_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RA
   return true;
 }
 
+const DB_VALUE *
+expr_raw_const_value (const REGU_VARIABLE * k, const val_descr * vd)
+{
+  if (k == NULL)
+    {
+      return NULL;
+    }
+  if (k->type == TYPE_DBVAL)
+    {
+      return &k->value.dbval;
+    }
+  if (k->type == TYPE_POS_VALUE)
+    {
+      return expr_raw_pos_value (k, vd);
+    }
+  return NULL;
+}
+
+/* "column IN (c1, c2, ...)" over an integer or string column of the scan, the list a set of literals and host
+ * variables (fixed for the execution) */
+static bool
+expr_pred_term_in_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
+{
+  const ALSM_EVAL_TERM *al;
+  const REGU_VARIABLE *set, *col;
+  REGU_VARIABLE_LIST op;
+  DB_TYPE ct;
+
+  if (pr == NULL || pr->type != T_EVAL_TERM || pr->pe.m_eval_term.et_type != T_ALSM_EVAL_TERM)
+    {
+      return false;
+    }
+  al = &pr->pe.m_eval_term.et.et_alsm;
+  if (al->eq_flag != F_SOME || al->rel_op != R_EQ || al->elem == NULL || al->elemset == NULL
+      || al->elemset->type != TYPE_FUNC || al->elemset->value.funcp == NULL)
+    {
+      return false;
+    }
+  if (al->elem->type == TYPE_INARITH && al->elem->value.arithptr != NULL
+      && al->elem->value.arithptr->opcode == T_SUBSTRING)
+    {
+      /* SUBSTRING (string column, start, length) with the two fixed for the execution: the batch takes the
+       * characters from the record's bytes (qstr_substring ()); the result is a VARCHAR of the column's collation */
+      const ARITH_TYPE *a = al->elem->value.arithptr;
+
+      if (a->leftptr == NULL || a->leftptr->type != TYPE_ATTR_ID || a->leftptr->domain == NULL
+	  || (TP_DOMAIN_TYPE (a->leftptr->domain) != DB_TYPE_VARCHAR
+	      && TP_DOMAIN_TYPE (a->leftptr->domain) != DB_TYPE_CHAR) || a->thirdptr == NULL
+	  || (out->sub_start = expr_raw_const_value (a->rightptr, vd)) == NULL
+	  || (out->sub_len = expr_raw_const_value (a->thirdptr, vd)) == NULL)
+	{
+	  return false;
+	}
+      col = a->leftptr;
+      ct = DB_TYPE_VARCHAR;
+    }
+  else if (al->elem->type == TYPE_ATTR_ID && al->elem->domain != NULL)
+    {
+      col = al->elem;
+      ct = TP_DOMAIN_TYPE (al->elem->domain);
+    }
+  else
+    {
+      return false;
+    }
+  set = al->elemset;
+  if (set->value.funcp->ftype != F_SET && set->value.funcp->ftype != F_SEQUENCE
+      && set->value.funcp->ftype != F_MULTISET)
+    {
+      return false;
+    }
+  for (op = set->value.funcp->operand; op != NULL; op = op->next)
+    {
+      if (expr_raw_const_value (&op->value, vd) == NULL)
+	{
+	  return false;
+	}
+    }
+  if (ct != DB_TYPE_INTEGER && ct != DB_TYPE_SHORT && ct != DB_TYPE_BIGINT && ct != DB_TYPE_DATE
+      && ct != DB_TYPE_VARCHAR && ct != DB_TYPE_CHAR)
+    {
+      return false;
+    }
+  out->col_regu = col;
+  out->col_is_lhs = true;
+  out->fast_type = ct;
+  out->rel_op = R_EQ;
+  out->k_set = set;
+  return true;
+}
+
 /* A term on a VARCHAR column of the scan against a string constant: "col = 'x'", "col <> 'x'", "col [NOT] LIKE
  * 'pattern'" without an ESCAPE (a page batch compares the record's bytes with the collation's own function, and
  * matches a pattern of literals and '%' over a binary collation, expr_batch.c) */
@@ -3779,7 +3944,8 @@ expr_pred_term_string_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW
     {
       return false;
     }
-  if (col->domain == NULL || TP_DOMAIN_TYPE (col->domain) != DB_TYPE_VARCHAR)
+  if (col->domain == NULL
+      || (TP_DOMAIN_TYPE (col->domain) != DB_TYPE_VARCHAR && (TP_DOMAIN_TYPE (col->domain) != DB_TYPE_CHAR || like)))
     {
       return false;
     }
@@ -3798,7 +3964,7 @@ expr_pred_term_string_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW
     }
   out->col_regu = col;
   out->col_is_lhs = true;
-  out->fast_type = DB_TYPE_VARCHAR;
+  out->fast_type = TP_DOMAIN_TYPE (col->domain);
   out->rel_op = rel_op;
   out->k_value = kv;
   out->like = like;
@@ -3832,14 +3998,83 @@ expr_pred_raw_leaves (const void *pred_expr, const val_descr * vd, EXPR_RAW_LEAF
     }
   for (i = 0; i < n; i++)
     {
-      memset (&out[i], 0, sizeof (out[i]));
-      if (!expr_pred_term_numeric_info (terms[i], vd, &out[i])
-	  && (memset (&out[i], 0, sizeof (out[i])), !expr_pred_term_string_info (terms[i], vd, &out[i])))
+      if (!expr_pred_term_raw_info (terms[i], vd, &out[i]))
 	{
-	  return -1;
+	  memset (&out[i], 0, sizeof (out[i]));
+	  if (terms[i]->type != T_PRED || terms[i]->pe.m_pred.bool_op != B_OR)
+	    {
+	      return -1;
+	    }
+	  /* an OR term: the batch reads its disjuncts (expr_pred_or_raw_leaves ()) */
+	  out[i].or_src = terms[i];
 	}
     }
   return n;
+}
+
+/* a term of an interpreted filter as a raw leaf: a NUMERIC comparison, a string one, or an IN list */
+static bool
+expr_pred_term_raw_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
+{
+  memset (out, 0, sizeof (*out));
+  if (pr == NULL)
+    {
+      return false;
+    }
+  if (expr_pred_term_numeric_info (pr, vd, out))
+    {
+      return true;
+    }
+  memset (out, 0, sizeof (*out));
+  if (expr_pred_term_string_info (pr, vd, out))
+    {
+      return true;
+    }
+  memset (out, 0, sizeof (*out));
+  if (expr_pred_term_in_info (pr, vd, out))
+    {
+      return true;
+    }
+  memset (out, 0, sizeof (*out));
+  return false;
+}
+
+int
+expr_pred_or_raw_leaves (const void *or_src, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap, int *n_disj,
+			 int disj_cap)
+{
+  const PRED_EXPR *disj[16];
+  const PRED_EXPR *terms[32];
+  int nd, d, i, nt, n = 0;
+
+  if (or_src == NULL || ((const PRED_EXPR *) or_src)->type != T_PRED
+      || ((const PRED_EXPR *) or_src)->pe.m_pred.bool_op != B_OR)
+    {
+      return -1;
+    }
+  nd = expr_scan_pred_chain_collect ((const PRED_EXPR *) or_src, B_OR, disj, 0, MIN ((int) DIM (disj), disj_cap));
+  if (nd < 2)
+    {
+      return -1;
+    }
+  for (d = 0; d < nd; d++)
+    {
+      nt = expr_scan_pred_chain_collect (disj[d], B_AND, terms, 0, (int) DIM (terms));
+      if (nt <= 0 || n + nt > cap)
+	{
+	  return -1;
+	}
+      for (i = 0; i < nt; i++)
+	{
+	  if (!expr_pred_term_raw_info (terms[i], vd, &out[n + i]))
+	    {
+	      return -1;
+	    }
+	}
+      n += nt;
+      n_disj[d] = nt;
+    }
+  return nd;
 }
 
 /* the constants a NUMERIC column compares with exactly, whichever of the two forms the term took */

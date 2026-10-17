@@ -10989,6 +10989,7 @@ heap_attrinfo_raw_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, HEAP
 	}
       break;
     case DB_TYPE_VARCHAR:
+    case DB_TYPE_CHAR:
       if (attrepr->is_fixed != 0)
 	{
 	  return ER_FAILED;

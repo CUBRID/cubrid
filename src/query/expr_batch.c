@@ -202,6 +202,23 @@ struct eb_leaf
   unsigned char negate;
   const char *k_str;		/* the constant's bytes for the current page */
   int k_len;
+  unsigned char ti;		/* the comparison ignores trailing spaces (eb_str_ti ()) */
+  /* "IN (list)": the list's values (their DB_VALUEs, fixed for the execution), loaded a page at a time */
+  int k_n;
+  const DB_VALUE **k_list;
+  int64_t *k_i64;
+  const char **k_strs;
+  int *k_lens;
+  unsigned char k_has_null;
+  /* "SUBSTRING (column, start, length) IN (list)": the two constants, and their values this page */
+  const DB_VALUE *sub_start_v;
+  const DB_VALUE *sub_len_v;
+  int sub_start;
+  int sub_len;
+  /* an OR of AND chains of leaves: or_n disjuncts, or_len[d] leaves each, their indexes in or_leaf (vec is -1) */
+  int or_n;
+  const int *or_len;
+  const int *or_leaf;
   unsigned char etype;
   unsigned char rel_op;		/* REL_OP, with the column on the left */
   unsigned char k_type;		/* DB_TYPE the constant must carry (EB_NUM: expr_numeric_cmp_const_ok ()) */
@@ -300,6 +317,9 @@ struct expr_batch_plan
 
   /* per-page work areas */
   unsigned char *unk;		/* a term returned UNKNOWN for the row (not TRUE, but later terms still run) */
+  int *or_sel;			/* an OR leaf's work areas: its selection, each row's result so far, the rows' UNKNOWN */
+  unsigned char *or_res;
+  unsigned char *or_unk;
   unsigned char *mask[EB_MASK_DEPTH];
   int mask_depth;
 
@@ -338,6 +358,9 @@ struct eb_build
 static int eb_elem_size (int etype);
 struct expr_raw_leaf_info;
 static int eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out);
+static int eb_add_in_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out);
+static int eb_leaf_side (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, int vec, int col, int r,
+			 int64_t * i, double *d);
 static int eb_grow (void **arr, int *cap, int n, size_t elem);
 static int eb_new_vec (EB_BUILD * b, int kind, int etype, DB_TYPE dbtype);
 static int eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid);
@@ -366,7 +389,6 @@ static int eb_load_leaf_constants (EXPR_BATCH_PLAN * plan);
 static int eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, int n, int only_col);
 static int eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale);
 static int eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, struct val_descr *vd);
-static int eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf);
 static int eb_layout_rows (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch);
 static void eb_choose_pointed (EXPR_BATCH_PLAN * plan);
 static int eb_run_steps (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch);
@@ -652,7 +674,7 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
       eb_decline (b, "a floating NUMERIC column");
       return -1;
     }
-  if (loc.type == DB_TYPE_VARCHAR && b->allow_str)
+  if ((loc.type == DB_TYPE_VARCHAR || loc.type == DB_TYPE_CHAR) && b->allow_str)
     {
       etype = EB_STR;
     }
@@ -841,7 +863,11 @@ eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   int etype, vec, vec2 = -1, rel_op, cap;
 
   *out = -1;
-  if (info->fast_type == DB_TYPE_VARCHAR)
+  if (info->k_set != NULL)
+    {
+      return eb_add_in_leaf (b, info, out);
+    }
+  if (info->fast_type == DB_TYPE_VARCHAR || info->fast_type == DB_TYPE_CHAR)
     {
       return eb_add_str_leaf (b, info, out);
     }
@@ -1067,9 +1093,8 @@ eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   /* the constant must read as the column does: its codeset, and its collation (a LIKE: a binary one on both
    * sides, where '%' matches bytes) */
   if (DB_IS_NULL (k) || db_get_string_codeset (k) != col->codeset
-      || (info->
-	  like ? !(LANG_IS_COERCIBLE_COLL (col->collation)
-		   && LANG_IS_COERCIBLE_COLL (db_get_string_collation (k))) : db_get_string_collation (k) !=
+      || (info->like ? !(LANG_IS_COERCIBLE_COLL (col->collation)
+			 && LANG_IS_COERCIBLE_COLL (db_get_string_collation (k))) : db_get_string_collation (k) !=
 	  col->collation) || (info->like && !eb_like_pattern_ok (db_get_string (k), db_get_string_size (k))))
     {
       return NO_ERROR;
@@ -1087,7 +1112,7 @@ eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   leaf->vec2 = -1;
   leaf->col2 = -1;
   leaf->etype = EB_STR;
-  leaf->k_type = DB_TYPE_VARCHAR;
+  leaf->k_type = (unsigned char) info->fast_type;
   leaf->rel_op = (unsigned char) info->rel_op;
   leaf->like = info->like ? 1 : 0;
   leaf->negate = info->negate ? 1 : 0;
@@ -1098,11 +1123,265 @@ eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   return NO_ERROR;
 }
 
+/* an IN leaf (expr_pred_term_in_info ()): the column, and the list's values for this execution; -1 when the term
+ * stays with the row path */
+static int
+eb_add_in_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
+{
+  EXPR_BATCH_PLAN *plan = b->plan;
+  REGU_VARIABLE_LIST op;
+  EB_LEAF *leaf;
+  int vec, cap, n = 0, etype;
+  bool is_str = (info->fast_type == DB_TYPE_VARCHAR || info->fast_type == DB_TYPE_CHAR);
+
+  if (info->col_regu->value.attr_descr.cache_attrinfo == NULL)
+    {
+      return NO_ERROR;
+    }
+  if (is_str)
+    {
+      b->allow_str = true;
+    }
+  vec = eb_new_col_vec (b, info->col_regu->value.attr_descr.cache_attrinfo, info->col_regu->value.attr_descr.id);
+  b->allow_str = false;
+  if (vec < 0)
+    {
+      b->why_not = NULL;
+      return NO_ERROR;
+    }
+  etype = plan->vecs[vec].etype;
+  if (is_str ? (etype != EB_STR) : (etype != EB_I64 || plan->vecs[vec].dbtype != info->fast_type))
+    {
+      return NO_ERROR;
+    }
+  for (op = info->k_set->value.funcp->operand; op != NULL; op = op->next)
+    {
+      n++;
+    }
+  if (n == 0 || n > 1024)
+    {
+      return NO_ERROR;
+    }
+  cap = b->cap_leaves;
+  if (eb_grow ((void **) &plan->leaves, &cap, plan->n_leaves, sizeof (EB_LEAF)) != NO_ERROR
+      || eb_grow ((void **) &plan->lsrc, &b->cap_leaves, plan->n_leaves, sizeof (EB_LEAF_SRC)) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  leaf = &plan->leaves[plan->n_leaves];
+  memset (leaf, 0, sizeof (*leaf));
+  leaf->k_list = (const DB_VALUE **) eb_arena_alloc (plan, sizeof (DB_VALUE *) * n);
+  leaf->k_i64 = (int64_t *) eb_arena_alloc (plan, sizeof (int64_t) * n);
+  leaf->k_strs = (const char **) eb_arena_alloc (plan, sizeof (char *) * n);
+  leaf->k_lens = (int *) eb_arena_alloc (plan, sizeof (int) * n);
+  if (leaf->k_list == NULL || leaf->k_i64 == NULL || leaf->k_strs == NULL || leaf->k_lens == NULL)
+    {
+      return ER_FAILED;
+    }
+  n = 0;
+  for (op = info->k_set->value.funcp->operand; op != NULL; op = op->next)
+    {
+      leaf->k_list[n++] = expr_raw_const_value (&op->value, b->in->vd);
+    }
+  leaf->k_n = n;
+  leaf->sub_start_v = info->sub_start;
+  leaf->sub_len_v = info->sub_len;
+  leaf->vec = vec;
+  leaf->col = eb_col_of_vec (plan, vec);
+  leaf->vec2 = -1;
+  leaf->col2 = -1;
+  leaf->etype = (unsigned char) etype;
+  leaf->k_type = (unsigned char) info->fast_type;
+  leaf->rel_op = R_EQ;
+  plan->lsrc[plan->n_leaves].value = NULL;
+  plan->lsrc[plan->n_leaves].cell = NULL;
+  plan->n_raw_kids++;
+  *out = plan->n_leaves++;
+  return NO_ERROR;
+}
+
+/* whether a string leaf's comparison ignores trailing spaces, as mr_cmpval_char () and mr_cmpval_string () decide:
+ * always between two fixed-length strings (a CHAR column and a CHAR literal), else by the system parameter */
+static unsigned char
+eb_str_ti (const EB_LEAF * leaf, const DB_VALUE * k)
+{
+  static const bool ti = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
+  return (ti || (leaf->k_type == DB_TYPE_CHAR && DB_VALUE_DOMAIN_TYPE (k) == DB_TYPE_CHAR)) ? 1 : 0;
+}
+
+/* an IN leaf's list for this page: each value of the column's kind (an exact integer for an integer column, a
+ * string of its codeset and collation for a string one), else the page goes to the row path */
+static int
+eb_load_in_list (EXPR_BATCH_PLAN * plan, EB_LEAF * leaf)
+{
+  const EB_COL *col = &plan->cols[leaf->col];
+  int i, n_str = 0;
+
+  leaf->k_has_null = 0;
+  leaf->sub_len = 0;
+  if (leaf->sub_start_v != NULL)
+    {
+      /* a start and a length the two SUBSTRING modes agree on (SUBSTR differs below 1) */
+      if (DB_IS_NULL (leaf->sub_start_v) || DB_IS_NULL (leaf->sub_len_v)
+	  || DB_VALUE_DOMAIN_TYPE (leaf->sub_start_v) != DB_TYPE_INTEGER
+	  || DB_VALUE_DOMAIN_TYPE (leaf->sub_len_v) != DB_TYPE_INTEGER || db_get_int (leaf->sub_start_v) < 1
+	  || db_get_int (leaf->sub_len_v) < 1)
+	{
+	  return eb_fallback (plan, "a SUBSTRING position the batch does not take");
+	}
+      leaf->sub_start = db_get_int (leaf->sub_start_v);
+      leaf->sub_len = db_get_int (leaf->sub_len_v);
+    }
+  for (i = 0; i < leaf->k_n; i++)
+    {
+      const DB_VALUE *k = leaf->k_list[i];
+      DB_TYPE t;
+
+      if (k == NULL)
+	{
+	  return eb_fallback (plan, "an IN list value not set");
+	}
+      if (DB_IS_NULL (k))
+	{
+	  leaf->k_has_null = 1;
+	  leaf->k_lens[i] = -1;
+	  continue;
+	}
+      leaf->k_lens[i] = 0;
+      t = DB_VALUE_DOMAIN_TYPE (k);
+      if (leaf->etype == EB_STR)
+	{
+	  if ((t != DB_TYPE_VARCHAR && t != DB_TYPE_CHAR) || db_get_string_codeset (k) != col->codeset
+	      || db_get_string_collation (k) != col->collation)
+	    {
+	      return eb_fallback (plan, "an IN list value the batch does not compare");
+	    }
+	  if (n_str++ > 0 && eb_str_ti (leaf, k) != leaf->ti)
+	    {
+	      return eb_fallback (plan, "an IN list of fixed and varying strings");
+	    }
+	  leaf->ti = eb_str_ti (leaf, k);
+	  leaf->k_strs[i] = db_get_string (k);
+	  leaf->k_lens[i] = db_get_string_size (k);
+	}
+      else if (leaf->k_type == DB_TYPE_DATE)
+	{
+	  if (t != DB_TYPE_DATE)
+	    {
+	      return eb_fallback (plan, "an IN list value the batch does not compare");
+	    }
+	  leaf->k_i64[i] = (int64_t) * db_get_date (k);
+	}
+      else if (t == DB_TYPE_INTEGER)
+	{
+	  leaf->k_i64[i] = db_get_int (k);
+	}
+      else if (t == DB_TYPE_SHORT)
+	{
+	  leaf->k_i64[i] = db_get_short (k);
+	}
+      else if (t == DB_TYPE_BIGINT)
+	{
+	  leaf->k_i64[i] = db_get_bigint (k);
+	}
+      else
+	{
+	  return eb_fallback (plan, "an IN list value the batch does not compare");
+	}
+    }
+  return NO_ERROR;
+}
+
+/* an IN leaf over the selection: TRUE on a value of the list, UNKNOWN on a NULL column or (no value matching) a
+ * list with a NULL, FALSE otherwise -- eval_some_eval () */
+static int
+eb_raw_kid_in (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
+{
+  const EB_COL *col = &plan->cols[leaf->col];
+  int j, i, n = 0;
+
+  for (j = 0; j < batch->n_sel; j++)
+    {
+      int r = batch->sel[j];
+      int got;
+      bool hit = false;
+
+      if (leaf->etype == EB_STR)
+	{
+	  const char *str = NULL;
+	  int len = 0;
+
+	  got = eb_cell_str (col, &batch->layout[r], &str, &len);
+	  if (got < 0)
+	    {
+	      return eb_fallback (plan, "a string the batch does not read from the record");
+	    }
+	  if (got > 0 && leaf->sub_len > 0)
+	    {
+	      /* qstr_substring () on the characters */
+	      int nchars = 0, start = leaf->sub_start, nsub = leaf->sub_len, lead = 0, size = 0;
+
+	      intl_char_count ((const unsigned char *) str, len, (INTL_CODESET) col->codeset, &nchars);
+	      if (start > nchars)
+		{
+		  start = 1;
+		  nsub = 0;
+		}
+	      if (start + nsub - 1 > nchars)
+		{
+		  nsub = nchars - start + 1;
+		}
+	      intl_char_size ((unsigned char *) str, start - 1, (INTL_CODESET) col->codeset, &lead);
+	      intl_char_size ((unsigned char *) str + lead, nsub, (INTL_CODESET) col->codeset, &size);
+	      if (size == 0)
+		{
+		  /* an empty result, which a parameter may make NULL */
+		  return eb_fallback (plan, "an empty SUBSTRING");
+		}
+	      str += lead;
+	      len = size;
+	    }
+	  for (i = 0; got > 0 && i < leaf->k_n && !hit; i++)
+	    {
+	      hit = (leaf->k_lens[i] >= 0
+		     && QSTR_COMPARE (col->collation, (const unsigned char *) str, len,
+				      (const unsigned char *) leaf->k_strs[i], leaf->k_lens[i], leaf->ti) == 0);
+	    }
+	}
+      else
+	{
+	  int64_t v = 0;
+	  double d = 0;
+
+	  got = eb_leaf_side (plan, batch, leaf->vec, leaf->col, r, &v, &d);
+	  if (got < 0)
+	    {
+	      return eb_fallback (plan, "a pointed cell the batch does not decode");
+	    }
+	  for (i = 0; got > 0 && i < leaf->k_n && !hit; i++)
+	    {
+	      hit = (leaf->k_lens[i] >= 0 && leaf->k_i64[i] == v);
+	    }
+	}
+      if (hit)
+	{
+	  batch->sel[n++] = r;
+	}
+      else if (got == 0 || leaf->k_has_null)
+	{
+	  plan->unk[r] = 1;
+	  batch->sel[n++] = r;
+	}
+    }
+  batch->n_sel = n;
+  return NO_ERROR;
+}
+
 /* a string leaf over the selection: the collation's comparison ("="), or the pattern; NULL is UNKNOWN */
 static int
 eb_raw_kid_str (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 {
-  static const bool ti = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
   const EB_COL *col = &plan->cols[leaf->col];
   int j, n = 0;
 
@@ -1132,7 +1411,7 @@ eb_raw_kid_str (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf
       else
 	{
 	  int c = QSTR_COMPARE (col->collation, (const unsigned char *) str, len,
-				(const unsigned char *) leaf->k_str, leaf->k_len, ti);
+				(const unsigned char *) leaf->k_str, leaf->k_len, leaf->ti);
 
 	  keep = (leaf->rel_op == R_EQ) ? (c == 0) : (c != 0);
 	}
@@ -1142,6 +1421,64 @@ eb_raw_kid_str (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf
 	}
     }
   batch->n_sel = n;
+  return NO_ERROR;
+}
+
+/* An OR leaf over the disjuncts' leaves (expr_pred_or_raw_leaves ()); -1 in *out, the plan as it was, when one of
+ * them is not a leaf the batch runs */
+static int
+eb_add_or_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, const int *len, int nd, int *out)
+{
+  EXPR_BATCH_PLAN *plan = b->plan;
+  int n_leaves0 = plan->n_leaves, n_raw0 = plan->n_raw_kids;
+  int total = 0, d, k, cap, sub;
+  int *or_len, *or_leaf;
+  EB_LEAF *leaf;
+
+  *out = -1;
+  for (d = 0; d < nd; d++)
+    {
+      total += len[d];
+    }
+  or_len = (int *) eb_arena_alloc (plan, sizeof (int) * nd);
+  or_leaf = (int *) eb_arena_alloc (plan, sizeof (int) * total);
+  if (or_len == NULL || or_leaf == NULL)
+    {
+      return ER_FAILED;
+    }
+  for (k = 0; k < total; k++)
+    {
+      if (eb_add_raw_leaf (b, &info[k], &sub) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      if (sub < 0)
+	{
+	  plan->n_leaves = n_leaves0;
+	  plan->n_raw_kids = n_raw0;
+	  return NO_ERROR;
+	}
+      or_leaf[k] = sub;
+    }
+  memcpy (or_len, len, sizeof (int) * nd);
+  cap = b->cap_leaves;
+  if (eb_grow ((void **) &plan->leaves, &cap, plan->n_leaves, sizeof (EB_LEAF)) != NO_ERROR
+      || eb_grow ((void **) &plan->lsrc, &b->cap_leaves, plan->n_leaves, sizeof (EB_LEAF_SRC)) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  leaf = &plan->leaves[plan->n_leaves];
+  memset (leaf, 0, sizeof (*leaf));
+  leaf->vec = -1;
+  leaf->col = -1;
+  leaf->vec2 = -1;
+  leaf->col2 = -1;
+  leaf->or_n = nd;
+  leaf->or_len = or_len;
+  leaf->or_leaf = or_leaf;
+  plan->lsrc[plan->n_leaves].value = NULL;
+  plan->lsrc[plan->n_leaves].cell = NULL;
+  *out = plan->n_leaves++;
   return NO_ERROR;
 }
 
@@ -1167,7 +1504,22 @@ eb_build_filter_interpreted (EB_BUILD * b)
   plan->n_kids = n;
   for (i = 0; i < n; i++)
     {
-      if (eb_add_raw_leaf (b, &info[i], &leaf) != NO_ERROR)
+      if (info[i].or_src != NULL)
+	{
+	  EXPR_RAW_LEAF_INFO sub[32];
+	  int len[16], nd;
+
+	  nd = expr_pred_or_raw_leaves (info[i].or_src, b->in->vd, sub, (int) DIM (sub), len, (int) DIM (len));
+	  if (nd < 0)
+	    {
+	      return eb_decline (b, "the data filter is interpreted");
+	    }
+	  if (eb_add_or_leaf (b, sub, len, nd, &leaf) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else if (eb_add_raw_leaf (b, &info[i], &leaf) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -1216,6 +1568,18 @@ eb_build_filter (EB_BUILD * b)
       if (expr_scan_pred_kid_raw_info (b->in->scan_pred_compiled, i, b->in->vd, &info))
 	{
 	  if (eb_add_raw_leaf (b, &info, &leaf) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else
+	{
+	  EXPR_RAW_LEAF_INFO sub[32];
+	  int len[16], nd;
+
+	  nd = expr_scan_pred_kid_or_leaves (b->in->scan_pred_compiled, i, b->in->vd, sub, (int) DIM (sub), len,
+					     (int) DIM (len));
+	  if (nd > 0 && eb_add_or_leaf (b, sub, len, nd, &leaf) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
@@ -2481,6 +2845,13 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 	return ER_OUT_OF_VIRTUAL_MEMORY;
       }
     plan->unk = unk;
+    plan->or_sel = (int *) eb_arena_alloc (plan, sizeof (int) * (size_t) cap);
+    plan->or_res = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
+    plan->or_unk = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
+    if (plan->or_sel == NULL || plan->or_res == NULL || plan->or_unk == NULL)
+      {
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
   }
   for (d = 0; d < plan->n_masks; d++)
     {
@@ -2609,9 +2980,17 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
       const DB_VALUE *k = (plan->lsrc[i].cell != NULL) ? *plan->lsrc[i].cell : plan->lsrc[i].value;
 
       leaf->k_null = 0;
-      if (leaf->vec2 >= 0)
+      if (leaf->vec2 >= 0 || leaf->or_n > 0)
 	{
-	  /* two columns: nothing to load */
+	  /* two columns, or an OR (its leaves load themselves): nothing to load */
+	  continue;
+	}
+      if (leaf->k_n > 0)
+	{
+	  if (eb_load_in_list (plan, leaf) != NO_ERROR)
+	    {
+	      return EXPR_BATCH_FALLBACK;
+	    }
 	  continue;
 	}
       if (leaf->etype == EB_STR)
@@ -2630,6 +3009,7 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 	    }
 	  leaf->k_str = db_get_string (k);
 	  leaf->k_len = db_get_string_size (k);
+	  leaf->ti = eb_str_ti (leaf, k);
 	  continue;
 	}
       if (k == NULL)
@@ -2916,6 +3296,95 @@ eb_leaf_side (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, int vec, i
   return 1;
 }
 
+static int eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf);
+
+/* An OR leaf over the selection, eval_pred ()'s Kleene OR: TRUE when a disjunct is, else UNKNOWN when one is, else
+ * FALSE.  Each disjunct runs as an AND chain on the rows no disjunct before it made TRUE; its leaves raise no errors
+ * (what they cannot decide falls the chunk back), so the order they run in shows in nothing but the result. */
+static int
+eb_raw_kid_or (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
+{
+  const int n0 = batch->n_sel;
+  int *sel0 = plan->or_sel;
+  unsigned char *res = plan->or_res, *unk0 = plan->or_unk;
+  int d, j, k, first = 0, total = 0, n, rc;
+
+  for (d = 0; d < leaf->or_n; d++)
+    {
+      total += leaf->or_len[d];
+    }
+  /* the disjuncts' columns over the whole selection: a later disjunct reads rows an earlier one dropped */
+  for (k = 0; k < total; k++)
+    {
+      const EB_LEAF *sub = &plan->leaves[leaf->or_leaf[k]];
+
+      if (plan->vecs[sub->vec].kind != EB_VK_PTR && !plan->cols[sub->col].decoded)
+	{
+	  rc = eb_extract (plan, batch, batch->sel, n0, sub->col);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+	}
+      if (sub->vec2 >= 0 && plan->vecs[sub->vec2].kind != EB_VK_PTR && !plan->cols[sub->col2].decoded)
+	{
+	  rc = eb_extract (plan, batch, batch->sel, n0, sub->col2);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+	}
+    }
+  memcpy (sel0, batch->sel, sizeof (int) * n0);
+  for (j = 0; j < n0; j++)
+    {
+      unk0[sel0[j]] = plan->unk[sel0[j]];
+      res[sel0[j]] = 0;
+    }
+  for (d = 0; d < leaf->or_n; first += leaf->or_len[d], d++)
+    {
+      n = 0;
+      for (j = 0; j < n0; j++)
+	{
+	  int r = sel0[j];
+
+	  if (res[r] != 2)
+	    {
+	      plan->unk[r] = 0;
+	      batch->sel[n++] = r;
+	    }
+	}
+      batch->n_sel = n;
+      for (k = first; k < first + leaf->or_len[d] && batch->n_sel > 0; k++)
+	{
+	  rc = eb_raw_kid (plan, batch, &plan->leaves[leaf->or_leaf[k]]);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+	}
+      for (j = 0; j < batch->n_sel; j++)
+	{
+	  int r = batch->sel[j];
+
+	  res[r] = plan->unk[r] ? MAX (res[r], 1) : 2;
+	}
+    }
+  n = 0;
+  for (j = 0; j < n0; j++)
+    {
+      int r = sel0[j];
+
+      plan->unk[r] = unk0[r] | (res[r] == 1);
+      if (res[r] != 0)
+	{
+	  batch->sel[n++] = r;
+	}
+    }
+  batch->n_sel = n;
+  return NO_ERROR;
+}
+
 /* a leaf comparing two columns of the row, as the fast kernel compares two values of their one type; a NULL on
  * either side is UNKNOWN */
 static int
@@ -2992,6 +3461,10 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
   if (leaf->vec2 >= 0)
     {
       return eb_raw_kid_cols (plan, batch, leaf);
+    }
+  if (leaf->k_n > 0)
+    {
+      return eb_raw_kid_in (plan, batch, leaf);
     }
   if (leaf->etype == EB_STR)
     {
@@ -3177,6 +3650,15 @@ eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, 
 	  if (batch->n_sel == 0)
 	    {
 	      break;
+	    }
+	  if (leaf->or_n > 0)
+	    {
+	      rc = eb_raw_kid_or (plan, batch, leaf);
+	      if (rc != NO_ERROR)
+		{
+		  return rc;
+		}
+	      continue;
 	    }
 	  if (plan->vecs[leaf->vec].kind != EB_VK_PTR && !plan->cols[leaf->col].decoded)
 	    {

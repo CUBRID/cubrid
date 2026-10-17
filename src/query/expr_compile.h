@@ -365,10 +365,17 @@ struct expr_raw_leaf_info
 					 * operand, col_regu the left; neither k_value nor k_cell is set */
   bool like;			/* a VARCHAR column LIKE the constant pattern k_value (rel_op unused), ... */
   bool negate;			/* ... under a NOT */
+  const REGU_VARIABLE *k_set;	/* "column IN (constants)": the set (a TYPE_FUNC of literals and host variables) */
+  const DB_VALUE *sub_start;	/* "SUBSTRING (column, start, length) IN (constants)": the two constants */
+  const DB_VALUE *sub_len;
+  const void *or_src;		/* an interpreted filter's OR term (a PRED_EXPR) for expr_pred_or_raw_leaves (); nothing
+				 * else is set */
 };
+/* a literal's or host variable's value for this execution, or NULL for any other operand */
+extern const DB_VALUE *expr_raw_const_value (const REGU_VARIABLE * k, const val_descr * vd);
 
-/* the shape of the root: 1 = a single comparison leaf (n_kids = 1), 2 = a flattened AND chain
- * (n_kids = its term count), -1 = anything else (OR, NOT, a term the compiler left alone) */
+/* the shape of the root: 1 = a single comparison leaf or OR (n_kids = 1), 2 = a flattened AND chain
+ * (n_kids = its term count), -1 = anything else (NOT, a term the compiler left alone) */
 extern int expr_scan_pred_root_shape (const void *compiled, int *n_kids);
 /* kid i of the root as a raw leaf; false when it is not "column op constant" with a direct-compare
  * type.  fast_type DB_TYPE_NUMERIC: a NUMERIC column against an exact-numeric constant, compared
@@ -376,6 +383,13 @@ extern int expr_scan_pred_root_shape (const void *compiled, int *n_kids);
 extern bool expr_scan_pred_kid_raw_info (const void *compiled, int kid, const val_descr * vd, EXPR_RAW_LEAF_INFO * out);
 /* an interpreted filter's AND chain as raw NUMERIC leaves: the count, or -1 */
 extern int expr_pred_raw_leaves (const void *pred_expr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap);
+/* An OR of raw leaves and AND chains of raw leaves ("(a = 1 and b < 2) or c in (3, 4)"): the leaves of every
+ * disjunct in order, n_disj[d] the count of disjunct d; the disjunct count, or -1.  Of a term of an interpreted
+ * filter (or_src), or of kid i of a compiled one. */
+extern int expr_pred_or_raw_leaves (const void *or_src, const val_descr * vd, EXPR_RAW_LEAF_INFO * out, int cap,
+				    int *n_disj, int disj_cap);
+extern int expr_scan_pred_kid_or_leaves (const void *compiled, int kid, const val_descr * vd, EXPR_RAW_LEAF_INFO * out,
+					 int cap, int *n_disj, int disj_cap);
 /* the constants such a NUMERIC comparison takes: SHORT, INTEGER, NUMERIC, a BIGINT of 15 digits */
 extern bool expr_numeric_cmp_const_ok (const DB_VALUE * k);
 /* the filter's prologues for this execution (the per-row entry does the same before its first row) */
