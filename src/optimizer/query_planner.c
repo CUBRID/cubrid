@@ -8725,7 +8725,11 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	      }
 	    else if (QO_IS_EDGE_TERM (term))
 	      {
-		found_edge = true;
+		/* wait for the term's RIGHT OUTER on_nodes to join first */
+		if (bitset_subset (visited_nodes, &(QO_TERM_OUTER_DEP_SET (term))))
+		  {
+		    found_edge = true;
+		  }
 	      }
 	  }
 
