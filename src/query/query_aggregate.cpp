@@ -3128,9 +3128,10 @@ exit_on_error:
  *   thread_p(in): thread
  *   val_cnt(in): size of key
  *   alloc_vals(in): if true will allocate dbvalues
+ *   compares(in): per key column, the domain its values compare in (the context's key_compares)
  */
 aggregate_hash_key *
-qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals)
+qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals, const tp_domain **compares)
 {
   aggregate_hash_key *key;
   int i;
@@ -3160,6 +3161,7 @@ qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals)
 
   key->val_count = val_cnt;
   key->free_values = alloc_vals;
+  key->compares = compares;
   return key;
 }
 
@@ -3460,8 +3462,7 @@ qdata_agg_hkey_compare (aggregate_hash_key *ckey1, aggregate_hash_key *ckey2, in
     {
       /* a key from the scan and one read back from a partial list are values of the key's one domain (the scan's key
        * regu's, which types the partial list's column): they hash alike exactly when they compare equal */
-      assert (!domain_value_domains_differ (ckey1->values[i], ckey2->values[i]));
-      result = tp_value_compare (ckey1->values[i], ckey2->values[i], 0, 1);
+      result = domain_compare_in_domain (ckey1->compares[i], ckey1->values[i], ckey2->values[i], 0, 1);
       if (result != DB_EQ)
 	{
 	  *diff_pos = i;
@@ -3505,7 +3506,7 @@ qdata_copy_agg_hkey (cubthread::entry *thread_p, aggregate_hash_key *key)
   if (key)
     {
       /* make a copy */
-      new_key = qdata_alloc_agg_hkey (thread_p, key->val_count, false);
+      new_key = qdata_alloc_agg_hkey (thread_p, key->val_count, false, key->compares);
     }
 
   if (new_key)

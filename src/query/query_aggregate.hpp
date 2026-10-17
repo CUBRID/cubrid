@@ -66,6 +66,7 @@ namespace cubquery
     int val_count;		/* key size */
     bool free_values;		/* true if values need to be freed */
     db_value **values;		/* value array */
+    const tp_domain **compares;	/* the context's key_compares: the keys mht compares carry them */
   };
 
 
@@ -76,6 +77,7 @@ namespace cubquery
     aggregate_hash_key *temp_key;	/* temporary key used for fetch */
     AGGREGATE_HASH_STATE state;	/* state of hash aggregation */
     tp_domain **key_domains;	/* hash key domains */
+    const tp_domain **key_compares;	/* per key column, the domain its values compare in (g_hk_compares) */
     cubxasl::aggregate_accumulator_domain **accumulator_domains;	/* accumulator domains */
 
     /* runtime statistics stuff */
@@ -137,7 +139,8 @@ int qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::agg
 int qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list,
 				   bool keep_list_file, const struct val_descr *vd);
 
-cubquery::aggregate_hash_key *qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals);
+cubquery::aggregate_hash_key *qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals,
+    const tp_domain **compares);
 void qdata_free_agg_hkey (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key);
 cubquery::aggregate_hash_value *qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt,
     cubxasl::aggregate_list_node *g_agg_list);

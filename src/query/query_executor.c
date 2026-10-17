@@ -27999,6 +27999,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
 
   /* clear fields (in case of error, things will get properly disposed) */
   proc->agg_hash_context->key_domains = NULL;
+  proc->agg_hash_context->key_compares = NULL;
   proc->agg_hash_context->accumulator_domains = NULL;
   proc->agg_hash_context->temp_dbval_array = NULL;
   proc->agg_hash_context->part_list_id = NULL;
@@ -28043,7 +28044,14 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
       assert (regu_list);
       proc->agg_hash_context->key_domains[i] =
 	qexec_get_node_domain (&xasl_state->vd, regu_list->value.domain, regu_list->value.plan_item);
+      assert (proc->g_hk_compares == NULL
+	      || (TP_DOMAIN_TYPE (proc->g_hk_compares[i]) == TP_DOMAIN_TYPE (proc->agg_hash_context->key_domains[i])
+		  && TP_DOMAIN_COLLATION (proc->g_hk_compares[i])
+		  == TP_DOMAIN_COLLATION (proc->agg_hash_context->key_domains[i])));
     }
+  /* the comparisons unpack decided, else this execution's key domains (resolve_domains fixes a variable one) */
+  proc->agg_hash_context->key_compares =
+    proc->g_hk_compares != NULL ? proc->g_hk_compares : (const TP_DOMAIN **) proc->agg_hash_context->key_domains;
 
   /*
    * keep accumulator domains
@@ -28152,9 +28160,12 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   /*
    * create temp keys
    */
-  proc->agg_hash_context->temp_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, false);
-  proc->agg_hash_context->temp_part_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, true);
-  proc->agg_hash_context->curr_part_key = qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, true);
+  proc->agg_hash_context->temp_key =
+    qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, false, proc->agg_hash_context->key_compares);
+  proc->agg_hash_context->temp_part_key =
+    qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, true, proc->agg_hash_context->key_compares);
+  proc->agg_hash_context->curr_part_key =
+    qdata_alloc_agg_hkey (thread_p, proc->g_hkey_size, true, proc->agg_hash_context->key_compares);
 
   if (proc->agg_hash_context->temp_key == NULL || proc->agg_hash_context->temp_part_key == NULL
       || proc->agg_hash_context->curr_part_key == NULL)
@@ -28246,6 +28257,7 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc
       db_private_free (thread_p, proc->agg_hash_context->key_domains);
       proc->agg_hash_context->key_domains = NULL;
     }
+  proc->agg_hash_context->key_compares = NULL;
 
   /* free sort key */
   qfile_clear_sort_key_info (&proc->agg_hash_context->sort_key);

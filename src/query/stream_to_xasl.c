@@ -3027,6 +3027,35 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	}
     }
 
+  /* each hash key column compares in its compiled domain; a domain the execution fixes leaves the key's comparisons to
+   * each execution (qexec_alloc_agg_hash_context) */
+  stx_build_list_proc->g_hk_compares = NULL;
+  if (stx_build_list_proc->g_hash_eligible && stx_build_list_proc->g_hkey_size > 0)
+    {
+      const int n_keys = stx_build_list_proc->g_hkey_size;
+      const TP_DOMAIN **compares = (const TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * n_keys);
+      if (compares == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN *) * n_keys);
+	  goto error;
+	}
+      int k = 0;
+      for (REGU_VARIABLE_LIST key = stx_build_list_proc->g_hk_scan_regu_list;
+	   k < n_keys && key != NULL && domain_fixes_values (key->value.domain); key = key->next)
+	{
+	  compares[k++] = key->value.domain;
+	}
+      if (k == n_keys)
+	{
+	  stx_build_list_proc->g_hk_compares = compares;
+	}
+      else
+	{
+	  /* CBRD-27583 census (removed with the load's derivations): a hash GROUP BY each execution decides */
+	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 left hash group by\n");
+	}
+    }
+
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
     {
