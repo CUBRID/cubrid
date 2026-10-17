@@ -204,6 +204,8 @@ typedef enum
 #define LC_FLAG_HAS_UNIQUE_INDEX 0x04	/* Used for flushing, set if object has unique index */
 #define LC_FLAG_TRIGGER_INVOLVED 0x08	/* Used for supplemental logging to know whether trigger is involved
 					   or not, set if do_Trigger_involved is true */
+#define LC_FLAG_HAS_PRIOR_VALUE 0x10	/* Used for replication: a _db_serial write-back's replaced value
+					   follows the key */
 
 #define LC_ONEOBJ_SET_HAS_INDEX(obj) \
   (obj)->flag |= LC_FLAG_HAS_INDEX
@@ -222,6 +224,12 @@ typedef enum
 
 #define LC_ONEOBJ_IS_TRIGGER_INVOLVED(obj) \
   (((obj)->flag & LC_FLAG_TRIGGER_INVOLVED) != 0)
+
+#define LC_ONEOBJ_SET_HAS_PRIOR_VALUE(obj) \
+  (obj)->flag |= LC_FLAG_HAS_PRIOR_VALUE
+
+#define LC_ONEOBJ_HAS_PRIOR_VALUE(obj) \
+  (((obj)->flag & LC_FLAG_HAS_PRIOR_VALUE) != 0)
 
 typedef struct lc_copyarea_oneobj LC_COPYAREA_ONEOBJ;
 struct lc_copyarea_oneobj
