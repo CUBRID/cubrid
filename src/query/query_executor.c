@@ -1960,8 +1960,6 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 	      heap_attrinfo_end (thread_p, isidp->rest_attrs.attr_cache);
 	      isidp->caches_inited = false;
 	    }
-	  /* a scan torn down without scan_close_scan still lets its key plan storage go */
-	  scan_close_index_key_plan (thread_p, isidp);
 	  break;
 	case S_PARALLEL_INDEX_SCAN:
 #if SERVER_MODE
@@ -1980,8 +1978,6 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
 		}
 	    }
 #endif
-	  /* the coordinator's key plan storage; pisid mirrors isid */
-	  scan_close_index_key_plan (thread_p, &p->s_id.s.isid);
 	  break;
 	case S_INDX_KEY_INFO_SCAN:
 	  isidp = &p->s_id.s.isid;
@@ -21711,11 +21707,11 @@ query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p, XASL_NODE * x
       multi_range_opt->sort_att_idx[index] = sort_index_pos;
     }
 
-  /* the sort columns' domains: the index's columns, ascending (the sort order is is_desc_order's), from the scan's key
-   * plan (scan_open_index_key_plan made it when the scan opened), before any key */
+  /* the sort columns' domains: the index's columns, ascending (the sort order is is_desc_order's), before any key */
   {
-    const domain_plan_index *key_plan = spec->s_id.s.isid.key_plan;
-    if (key_plan == NULL)
+    const INDX_INFO *indx_info = spec->s_id.s.isid.indx_info;
+    const TP_DOMAIN *asc_key_type = indx_info != NULL ? domain_ascending_key_type (indx_info->key_type) : NULL;
+    if (asc_key_type == NULL)
       {
 	error = domain_unresolved_error ("", -1, DB_TYPE_MIDXKEY);
 	goto exit;
@@ -21729,7 +21725,7 @@ query_multi_range_opt_check_set_sort_col (THREAD_ENTRY * thread_p, XASL_NODE * x
     for (index = 0; index < count; index++)
       {
 	multi_range_opt->sort_col_dom[index] =
-	  (TP_DOMAIN *) domain_key_column (key_plan->asc_key_type, multi_range_opt->sort_att_idx[index]);
+	  (TP_DOMAIN *) domain_key_column (asc_key_type, multi_range_opt->sort_att_idx[index]);
 	assert (multi_range_opt->sort_col_dom[index] != NULL);
       }
   }

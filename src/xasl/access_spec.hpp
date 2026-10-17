@@ -30,7 +30,6 @@
 // forward definitions
 class regu_variable_node;
 struct tp_domain;
-struct domain_plan_index;
 
 typedef enum			/* range search option */
 {
@@ -70,6 +69,9 @@ struct key_range
   regu_variable_node *key1;		/* pointer to first key value */
   regu_variable_node *key2;		/* pointer to second key value */
   RANGE range;			/* range spec; GE_LE, GT_LE, GE_LT, GT_LT, GE_INF, GT_INF, INF_LT, INF_LE, INF_INF */
+  tp_domain *key1_domain;	/* CBRD-27583 (4.4): the domain a multi-column key1 is written with when a column keeps
+				 * its value's own domain (DOMAIN_KEY_KEEP); NULL: the index's */
+  tp_domain *key2_domain;	/* the same for key2 */
 };				/* key range structure */
 
 typedef struct key_info KEY_INFO;
@@ -104,7 +106,8 @@ struct indx_info
   KEY_RANGE iss_range;		/* placeholder range used for ISS; must be created on the broker */
   int ils_prefix_len;		/* index loose scan prefix length */
   tp_domain *key_type;		/* the B-tree's key domain, its root header's */
-  const domain_plan_index *key_plan;	/* the key plan the load derives from key_type; not streamed */
+  bool other_keys;		/* CBRD-27583 (4.4): a key column takes values of a key other than its own
+				 * (domain_key_differs), which compare by the type pair comparison table */
 };				/* index information structure */
 
 // TODO - move access specification code here; note - this is supposed to be common to both client and server.

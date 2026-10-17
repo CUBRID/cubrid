@@ -19135,60 +19135,11 @@ btree_coerce_key (DB_VALUE * keyp, int keysize, TP_DOMAIN * btree_domainp, int k
 	  db_private_free_and_init (NULL, dbvals);
 	}
     }
-  else if (
-	    /* check if they are string or bit type */
-	    /* compatible if two types are same (except for sequence type) */
-	    (stype == dtype)
-	    /* CHAR type and VARCHAR type are compatible with each other */
-	    || (stype == DB_TYPE_CHAR && dtype == DB_TYPE_VARCHAR)
-	    || (stype == DB_TYPE_VARCHAR && dtype == DB_TYPE_CHAR)
-	    /* BIT type and VARBIT type are compatible with each other */
-	    || (stype == DB_TYPE_BIT && dtype == DB_TYPE_VARBIT) || (stype == DB_TYPE_VARBIT && dtype == DB_TYPE_BIT)
-	    /* OID type and OBJECT type are compatible with each other */
-	    /* Keys can come in with a type of DB_TYPE_OID, but the B+tree domain itself will always be a
-	     * DB_TYPE_OBJECT. The comparison routines can handle OID and OBJECT as compatible type with each other . */
-	    || (stype == DB_TYPE_OID || stype == DB_TYPE_OBJECT))
-    {
-      err = NO_ERROR;
-    }
   else
     {
-      DB_VALUE temp_val;
-
-      db_make_null (&temp_val);
-
-      if (tp_more_general_type (dtype, stype) > 0)
-	{
-	  /* the other case, do real coercing using 'tp_value_coerce()' */
-	  if (tp_value_coerce (keyp, &temp_val, btree_domainp) == DOMAIN_COMPATIBLE)
-	    {
-	      pr_clear_value (keyp);
-	      pr_clone_value (&temp_val, keyp);
-	    }
-
-	  pr_clear_value (&temp_val);
-	}
-      else if (TP_IS_NUMERIC_TYPE (dtype) || TP_IS_DATE_OR_TIME_TYPE (dtype))
-	{
-	  /* try to strict cast keyp to dtype */
-	  err = tp_value_coerce_strict (keyp, &temp_val, btree_domainp);
-	  if (err == NO_ERROR)
-	    {
-	      pr_clear_value (keyp);
-	      pr_clone_value (&temp_val, keyp);
-	    }
-	  else
-	    {
-	      /* unsuccessful, */
-	      err = NO_ERROR;
-	    }
-
-	  pr_clear_value (&temp_val);
-	}
-      else
-	{
-	  err = NO_ERROR;
-	}
+      /* a search key is a multi-column key's: a single-column key takes its value as XASL generation decided */
+      assert (false);
+      err = ER_FAILED;
     }
 
   if (err != NO_ERROR)
@@ -22935,7 +22886,7 @@ btree_compare_key (DB_VALUE * key1, DB_VALUE * key2, TP_DOMAIN * key_domain, int
 
 /*
  * btree_compare_search_key () - an index scan's comparison of a key with a key of its search: the columns whose
- *   values do not compare as they are compare as the scan's key plan resolved before any row
+ *   values do not compare as they are compare by the type pair comparison table (INDX_INFO.other_keys)
  *
  * The scan chose the comparison when it opened (BTID_INT.search_compare): a search whose values all have their
  * index columns' types and collations compares a single-column key by the column's cmpval and a multi-column key
@@ -23290,7 +23241,7 @@ btree_range_opt_check_add_index_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, 
 	}
     }
 
-  /* the sort columns' domains were made from the scan's key plan when the block set its sort columns
+  /* the sort columns' domains were made from the index's key domain when the block set its sort columns
    * (query_multi_range_opt_check_set_sort_col), before any key */
   assert (multi_range_opt->sort_col_dom != NULL);
 

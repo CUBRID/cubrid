@@ -1758,35 +1758,46 @@ domain_copy_one (const TP_DOMAIN * domain)
   return tp_domain_copy (&one, false);
 }
 
-TP_VALUE_CONVERTER
-domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column)
+/* Whether every value of type source converts into the column's domain without failure, rounding or change of order:
+ * the integers into wider integers, into a NUMERIC holding all their digits and the two shorter ones into DOUBLE, FLOAT
+ * into DOUBLE, DATE and TIMESTAMP into DATETIME, a time zone TIMESTAMP into the DATETIME of its family. */
+static bool
+domain_key_converts_losslessly (DB_TYPE source, const TP_DOMAIN * column)
 {
   const DB_TYPE target = TP_DOMAIN_TYPE (column);
-  /* tp_value_coerce_strict refuses any other target */
-  if (!TP_IS_NUMERIC_TYPE (target) && !TP_IS_DATE_OR_TIME_TYPE (target))
+  const int integer_digits = target == DB_TYPE_NUMERIC ? column->precision - column->scale : 0;
+  switch (source)
     {
-      return NULL;
+    case DB_TYPE_SHORT:
+      return target == DB_TYPE_INTEGER || target == DB_TYPE_BIGINT || target == DB_TYPE_DOUBLE || integer_digits >= 5;
+    case DB_TYPE_INTEGER:
+      return target == DB_TYPE_BIGINT || target == DB_TYPE_DOUBLE || integer_digits >= 10;
+    case DB_TYPE_BIGINT:
+      return integer_digits >= 19;
+    case DB_TYPE_FLOAT:
+      return target == DB_TYPE_DOUBLE;
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIMESTAMP:
+      return target == DB_TYPE_DATETIME;
+    case DB_TYPE_TIMESTAMPTZ:
+      return target == DB_TYPE_DATETIMETZ;
+    case DB_TYPE_TIMESTAMPLTZ:
+      return target == DB_TYPE_DATETIMELTZ;
+    default:
+      return false;
     }
-  return tp_value_find_converter (source, column, DOMAIN_CONVERT_COMPARE);
 }
 
 DOMAIN_KEY_RULE
-domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey, TP_VALUE_CONVERTER * strict_conv)
+domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey)
 {
-  *strict_conv = NULL;
-  if (!midxkey)
-    {
-      /* a single-column key takes its value as it is */
-      return DOMAIN_KEY_INDEX;
-    }
   const DB_TYPE type = TP_DOMAIN_TYPE (element);
   const DB_TYPE column_type = TP_DOMAIN_TYPE (column);
   if (type != column_type)
     {
-      *strict_conv = domain_key_strict_converter (type, column);
-      return *strict_conv != NULL ? DOMAIN_KEY_STRICT : DOMAIN_KEY_KEEP;
+      return domain_key_converts_losslessly (type, column) ? DOMAIN_KEY_CONVERT : DOMAIN_KEY_KEEP;
     }
-  if (column_type == DB_TYPE_NUMERIC || column_type == DB_TYPE_CHAR || column_type == DB_TYPE_BIT)
+  if (midxkey && (column_type == DB_TYPE_NUMERIC || column_type == DB_TYPE_CHAR || column_type == DB_TYPE_BIT))
     {
       /* the parameters too: precision and scale, length, collation */
       return tp_domain_match_ignore_order (column, element, TP_EXACT_MATCH) ? DOMAIN_KEY_INDEX : DOMAIN_KEY_KEEP;

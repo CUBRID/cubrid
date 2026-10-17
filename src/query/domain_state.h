@@ -31,19 +31,18 @@
 struct RESOLVED_DOMAIN;
 struct DOMAIN_COMPARE;
 struct DOMAIN_ELEMENTS;
-struct RESOLVED_INDEX_KEYS;
 struct DOMAIN_EXECUTION_TEMPORARY;
 struct domain_plan;
 struct tp_domain;
 /*
  * RESOLVED_DOMAIN_TABLE - what resolve_domains (qexec_resolve_domains) resolved for one execution before its first row:
- *   the values the execution reads, and the domains, comparisons, ALL/SOME terms and index keys its plan left to the
- *   execution. XASL_STATE.resolved_domain. The rows read it and change none of it; what they change is
+ *   the values the execution reads, and the domains, comparisons and ALL/SOME terms its plan left to the execution.
+ *   XASL_STATE.resolved_domain. The rows read it and change none of it; what they change is
  *   XASL_STATE.domain_execution.
  *
  * The owner allocates vals and every array of the table and of domain_execution (its node state, its temporaries and
  * the scope generations) as one block, whose address is vals (qexec_alloc_resolved_domains): only vals is freed. An
- * ALL/SOME term's and an index scan's own blocks are theirs to free; the domains are cached domains, never freed here.
+ * ALL/SOME term's own blocks are its to free; the domains are cached domains, never freed here.
  * A PX worker's copy has blocks and values of its own (qexec_copy_resolved_domains).
  */
 struct RESOLVED_DOMAIN_TABLE
@@ -60,18 +59,14 @@ struct RESOLVED_DOMAIN_TABLE
   const struct domain_plan *plan;	/* the plan the load derived; a PX copy keeps the leader's */
   bool readable;		/* the values and resolutions may be read (REGU_RESOLVED_VALUE,
 				 * qexec_owns_resolved_index): set before the constant expression step, whose
-				 * computations fetch through them. resolve_domains goes on resolving what a constant,
-				 * a session variable or an index key decides until it returns; the rows start after
-				 * that */
+				 * computations fetch through them. resolve_domains goes on resolving what a constant
+				 * or a session variable decides until it returns; the rows start after that */
   bool copied_from_leader;	/* a PX worker's copy (qexec_deep_copy_xasl_state): the worker's own load of the same
 				 * stream numbers its items and resolved indexes as the plan does */
   DOMAIN_COMPARE *compares;	/* [n_compare_indexes] this execution's comparison resolutions (compare_index) */
   DOMAIN_ELEMENTS *elements;	/* [n_elements] this execution's ALL/SOME resolutions (resolved_elements_index); their
 				 * arrays are the owner's */
   unsigned char *value_states;	/* [n_vals] DOMAIN_VALUE_STATE of a constant expression's value: the row reads it */
-  RESOLVED_INDEX_KEYS *indexes;	/* [n_indexes] this execution's key resolutions by index key plan
-				 * (resolved_keys_index); their blocks are the owner's */
-  int n_indexes;
 };
 
 /*

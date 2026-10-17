@@ -399,22 +399,18 @@ domain_value_domains_differ (const DB_VALUE * value1, const DB_VALUE * value2)
 const TP_DOMAIN *domain_value_domain (const DB_VALUE * value);
 
 /*
- * How a column of a search key takes its value. A multi-column key follows
- * scan_dbvals_to_midxkey: a value of another type is converted strictly into the index column's domain or else kept
- * under its own domain, a NUMERIC, CHAR or BIT value of the column's type with other parameters is kept, any
- * other value is written under the column's domain; once a column is kept, every column is written under its value's
- * domain. A single-column key takes its value as it is: only the comparisons of a value
- * its index column does not compare as it is are resolved (domain_search_key_compare).
+ * How a column of a search key takes its value, decided by XASL generation from the element's domain and the index
+ * column's (CBRD-27583 4.4). A value of another type that every value of its type converts into without failure,
+ * rounding or change of order is converted into the column's domain (by the element's regu); any other value of
+ * another type, and a NUMERIC, CHAR or BIT value of the column's type with other parameters, is kept under its own
+ * domain, which its index column compares by the type pair comparison table when its key differs; once a column of a
+ * multi-column key is kept, every column is written under its value's domain.
  */
 enum DOMAIN_KEY_RULE
 {
   DOMAIN_KEY_INDEX,		/* the value under the index column's domain */
-  DOMAIN_KEY_STRICT,		/* the strict converter brings it into the index column's domain, or else it is kept */
-  DOMAIN_KEY_KEEP,		/* the value under its own domain */
-  DOMAIN_KEY_CONSTANT,		/* a constant: resolve_domains converts or keeps its value once per execution */
-  DOMAIN_KEY_LATE_BIND		/* an element whose domain resolve_domains resolves (a variable POS or node):
-				 * resolve_domains derives its rule from that domain once per
-				 * execution */
+  DOMAIN_KEY_CONVERT,		/* the value converted into the index column's domain */
+  DOMAIN_KEY_KEEP		/* the value under its own domain */
 };
 
 /* The domain of the values an element of this plan domain gives on the server: an OBJECT's are OIDs. */
@@ -436,12 +432,9 @@ TP_DOMAIN *domain_copy_one (const TP_DOMAIN * domain);
 /* The converter tp_value_coerce_strict runs to bring a value of a type into an index column's domain; NULL
  * where it refuses the column's type (only a number or a date and time is a strict target). */
 TP_VALUE_CONVERTER domain_compare_converter (DB_TYPE source, const TP_DOMAIN * target);
-TP_VALUE_CONVERTER domain_key_strict_converter (DB_TYPE source, const TP_DOMAIN * column);
 
-/* The rule a column of a search key follows for values of an element's domain (DOMAIN_KEY_INDEX, _STRICT or _KEEP),
- * and the strict converter of rule STRICT. */
-DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey,
-				 TP_VALUE_CONVERTER * strict_conv);
+/* The rule a column of a search key follows for values of an element's domain. */
+DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey);
 
 /* Whether values of this domain have a key other than an index column's own (a NULL domain or key has none): an index
  * scan whose key column takes such values compares them by the type pair comparison table

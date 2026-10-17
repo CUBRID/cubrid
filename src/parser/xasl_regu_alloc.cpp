@@ -234,8 +234,10 @@ regu_init (indx_info &ii)
   ii.iss_range.range = NA_NA;
   ii.iss_range.key1 = NULL;
   ii.iss_range.key2 = NULL;
+  ii.iss_range.key1_domain = NULL;
+  ii.iss_range.key2_domain = NULL;
   ii.key_type = NULL;
-  ii.key_plan = NULL;
+  ii.other_keys = false;
 }
 
 void
@@ -244,6 +246,8 @@ regu_init (key_range &kr)
   kr.range = NA_NA;
   kr.key1 = NULL;
   kr.key2 = NULL;
+  kr.key1_domain = NULL;
+  kr.key2_domain = NULL;
 }
 
 void

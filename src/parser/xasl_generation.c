@@ -393,6 +393,12 @@ static int pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIM
 			    KEY_INFO * key_infop, bool key_limit_reset);
 static int pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static int pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
+static const TP_DOMAIN *pt_key_element_domain (const REGU_VARIABLE * regu);
+static bool pt_convert_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column);
+static int pt_decide_key_element (INDX_INFO * indx_infop, REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midxkey,
+				  const TP_DOMAIN ** written, bool * kept);
+static int pt_decide_key_bound (INDX_INFO * indx_infop, REGU_VARIABLE * bound, TP_DOMAIN ** written_domain);
+static int pt_decide_index_keys (INDX_INFO * indx_infop);
 static INDX_INFO *pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where_pred, QO_PLAN * plan,
 				    QO_XASL_INDEX_INFO * qo_index_infop);
 static ACCESS_SPEC_TYPE *pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_part,
@@ -13572,6 +13578,220 @@ error:
 }
 
 /*
+ * pt_key_element_domain () - CBRD-27583 (4.4): the domain a search key element's values have on the server: a
+ *   literal's value's own, which its regu's may widen, unless a COLLATE modifier gives it the regu's collation at the
+ *   fetch; an OBJECT's are OIDs
+ */
+static const TP_DOMAIN *
+pt_key_element_domain (const REGU_VARIABLE * regu)
+{
+  if (regu->type == TYPE_DBVAL && !DB_IS_NULL (&regu->value.dbval)
+      && !REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION))
+    {
+      return domain_key_value_domain (domain_value_domain (&regu->value.dbval));
+    }
+  return domain_key_value_domain (regu->domain);
+}
+
+/*
+ * pt_convert_key_element () - CBRD-27583 (4.4): a search key element converted into its index column's domain: a
+ *   literal here, any other element by its regu at each fetch
+ *   return: false where the element keeps its value - a list column read into its slot, or a regu that converts already
+ */
+static bool
+pt_convert_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column)
+{
+  if (regu->type == TYPE_DBVAL)
+    {
+      DB_VALUE converted;
+      db_make_null (&converted);
+      if (tp_value_coerce (&regu->value.dbval, &converted, column) != DOMAIN_COMPATIBLE)
+	{
+	  assert (false);
+	  pr_clear_value (&converted);
+	  return false;
+	}
+      pr_clear_value (&regu->value.dbval);
+      regu->value.dbval = converted;
+      regu->domain = (TP_DOMAIN *) column;
+      return true;
+    }
+  if (regu->type == TYPE_POSITION)
+    {
+      return false;
+    }
+  /* a bind arrives in the domain its comparison's rule cast gave it, the column's: no second conversion */
+  assert (regu->original_domain == NULL && regu->vfetch_to == NULL);
+  if (regu->original_domain != NULL || regu->vfetch_to != NULL)
+    {
+      return false;
+    }
+  pt_set_operand_conversion (regu, column, DOMAIN_CONVERT_ASSIGN);
+  return regu->vfetch_to != NULL;
+}
+
+/*
+ * pt_decide_key_element () - CBRD-27583 (4.4): how one column of a search key bound takes its element's values
+ *   (domain_key_rule from the element's domain and the column's)
+ *   written(out): the domain the column is written with in a key that has a kept column
+ *   kept(out): the column keeps its value's own domain
+ */
+static int
+pt_decide_key_element (INDX_INFO * indx_infop, REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midxkey,
+		       const TP_DOMAIN ** written, bool * kept)
+{
+  *written = column;
+  *kept = false;
+  const TP_DOMAIN *element = pt_key_element_domain (regu);
+  if (element == NULL || domain_is_variable (element))
+    {
+      /* every element has its domain before the scan */
+      assert (false);
+      return ER_FAILED;
+    }
+  if (TP_DOMAIN_TYPE (element) == DB_TYPE_NULL)
+    {
+      /* only NULLs, which end the key */
+      return NO_ERROR;
+    }
+  DOMAIN_KEY_RULE rule = domain_key_rule (element, column, midxkey);
+  if (rule == DOMAIN_KEY_CONVERT)
+    {
+      /* into the column's domain alone: a multi-column key's column links the next column's, which a coercion would
+       * select from and a regu domain would carry into the stream */
+      TP_DOMAIN *one = domain_copy_one (column);
+      if (one == NULL)
+	{
+	  return ER_FAILED;
+	}
+      one->is_desc = 0;
+      const TP_DOMAIN *target = tp_domain_cache (one);
+      if (target == NULL)
+	{
+	  return ER_FAILED;
+	}
+      if (pt_convert_key_element (regu, target))
+	{
+	  return NO_ERROR;
+	}
+      rule = DOMAIN_KEY_KEEP;
+    }
+  *written = domain_in_key_direction (element, column);
+  *kept = rule == DOMAIN_KEY_KEEP;
+  indx_infop->other_keys = indx_infop->other_keys || domain_key_differs (element, column);
+  return *written != NULL ? NO_ERROR : ER_FAILED;
+}
+
+/*
+ * pt_decide_key_bound () - CBRD-27583 (4.4): each column of a search key bound; a multi-column bound with a kept
+ *   column gets the domain it is written with: each column's in its index column's direction - a kept or as-is
+ *   column's value domain, the index's for a converted column, the skip value and every column after the elements
+ *   written_domain(out): that domain; NULL for a key written with the index's
+ */
+static int
+pt_decide_key_bound (INDX_INFO * indx_infop, REGU_VARIABLE * bound, TP_DOMAIN ** written_domain)
+{
+  const TP_DOMAIN *key_type = indx_infop->key_type;
+  const TP_DOMAIN *written;
+  bool kept;
+
+  *written_domain = NULL;
+  if (bound == NULL)
+    {
+      return NO_ERROR;
+    }
+  if (TP_DOMAIN_TYPE (key_type) != DB_TYPE_MIDXKEY)
+    {
+      /* a single-column key takes its value as it is or converted, under no key domain of its own */
+      return pt_decide_key_element (indx_infop, bound, key_type, false, &written, &kept);
+    }
+
+  assert (bound->type == TYPE_FUNC && bound->value.funcp->ftype == F_MIDXKEY);
+  REGU_VARIABLE_LIST first = bound->value.funcp->operand, operand = first;
+  TP_DOMAIN *columns = NULL, *last = NULL;
+  bool mixed = false;
+  int error = NO_ERROR;
+  for (const TP_DOMAIN * column = key_type->setdomain; column != NULL; column = column->next)
+    {
+      written = column;
+      if (operand != NULL)
+	{
+	  /* an index skip scan's first column is the skip value, read from the index */
+	  if (!(indx_infop->use_iss && operand == first))
+	    {
+	      error = pt_decide_key_element (indx_infop, &operand->value, column, true, &written, &kept);
+	      mixed = mixed || kept;
+	    }
+	  operand = operand->next;
+	}
+      TP_DOMAIN *copy = error == NO_ERROR ? domain_copy_one (written) : NULL;
+      if (copy == NULL)
+	{
+	  error = ER_FAILED;
+	  break;
+	}
+      copy->is_desc = column->is_desc;
+      if (last == NULL)
+	{
+	  columns = copy;
+	}
+      else
+	{
+	  last->next = copy;
+	}
+      last = copy;
+    }
+  assert (operand == NULL || error != NO_ERROR);
+
+  if (error == NO_ERROR && mixed)
+    {
+      TP_DOMAIN *domain = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, key_type->precision, key_type->scale, columns);
+      if (domain != NULL)
+	{
+	  *written_domain = tp_domain_cache (domain);
+	  return *written_domain != NULL ? NO_ERROR : ER_FAILED;
+	}
+      error = ER_FAILED;
+    }
+  while (columns != NULL)
+    {
+      TP_DOMAIN *next = columns->next;
+      tp_domain_free (columns);
+      columns = next;
+    }
+  return error;
+}
+
+/*
+ * pt_decide_index_keys () - CBRD-27583 (4.4): how every search key bound of an index scan takes its values, and
+ *   whether a key column takes values of a key other than its own (INDX_INFO.other_keys); the index skip scan's fetch
+ *   range is the skip value alone, written with the index's domain
+ */
+static int
+pt_decide_index_keys (INDX_INFO * indx_infop)
+{
+  KEY_INFO *key_infop = &indx_infop->key_info;
+  indx_infop->other_keys = false;
+  for (int i = 0; i < key_infop->key_cnt; i++)
+    {
+      KEY_RANGE *range = &key_infop->key_ranges[i];
+      if (pt_decide_key_bound (indx_infop, range->key1, &range->key1_domain) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      if (range->key2 == range->key1)
+	{
+	  range->key2_domain = range->key1_domain;
+	}
+      else if (pt_decide_key_bound (indx_infop, range->key2, &range->key2_domain) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * pt_to_index_info () - Create an INDX_INFO structure for communication
  * 	to a class access spec for eventual incorporation into an index scan
  *   return:
@@ -13828,8 +14048,8 @@ pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where
       return NULL;
     }
 
-  /* the B-tree's key domain, from which the server derives its key plan: the bytes of its root header
-   * the index statistics carry, or else the domain the index was allocated with */
+  /* the B-tree's key domain, against which the search keys are decided (pt_decide_index_keys): the bytes of its root
+   * header the index statistics carry, or else the domain the index was allocated with */
   indx_infop->key_type = index_entryp->key_type;
   if (indx_infop->key_type == NULL || TP_DOMAIN_TYPE (indx_infop->key_type) == DB_TYPE_NULL)
     {
@@ -13948,6 +14168,11 @@ end:
 	  PT_INTERNAL_ERROR (parser, "index plan generation - memory alloc");
 	  return NULL;
 	}
+    }
+  if (pt_decide_index_keys (indx_infop) != NO_ERROR)
+    {
+      PT_INTERNAL_ERROR (parser, "index plan generation - search key domains");
+      return NULL;
     }
   return indx_infop;
 }

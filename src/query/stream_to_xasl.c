@@ -4974,9 +4974,30 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
 
   ptr = or_unpack_int (ptr, &indx_info->func_idx_col_id);
 
-  /* the B-tree's key domain; the key plan is derived from it once the tree is loaded */
+  /* the B-tree's key domain */
   ptr = or_unpack_domain (ptr, &indx_info->key_type, NULL);
-  indx_info->key_plan = NULL;
+
+  /* CBRD-27583 (4.4): whether a key column takes other keys, then each key range's written key domains */
+  ptr = or_unpack_int (ptr, &tmp);
+  indx_info->other_keys = tmp != 0;
+  for (int i = 0; i < indx_info->key_info.key_cnt; i++)
+    {
+      KEY_RANGE *range = &indx_info->key_info.key_ranges[i];
+      int mask;
+      ptr = or_unpack_int (ptr, &mask);
+      range->key1_domain = NULL;
+      range->key2_domain = NULL;
+      if (mask & 1)
+	{
+	  ptr = or_unpack_domain (ptr, &range->key1_domain, NULL);
+	}
+      if (mask & 2)
+	{
+	  ptr = or_unpack_domain (ptr, &range->key2_domain, NULL);
+	}
+    }
+  indx_info->iss_range.key1_domain = NULL;
+  indx_info->iss_range.key2_domain = NULL;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

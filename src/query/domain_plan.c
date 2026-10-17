@@ -168,10 +168,6 @@ struct DOMAIN_LOAD_CONTEXT
   int n_element_terms;
   DOMAIN_LOAD_COMPARE_PAIR *compare_pairs;	/* the comparisons outside a term met, last first */
   int n_compare_pairs;
-  INDX_INFO **indexes;		/* the index scans met, in walk order */
-  int *index_constant_branches;	/* [max_indexes] the constant branch around each scan */
-  int n_indexes;
-  int max_indexes;
   /* the branches taken by a constant condition: the innermost one around the walk's position, and all of them,
    * outer ones first */
   int constant_branch;
@@ -1946,42 +1942,6 @@ domain_walk_analytic (DOMAIN_LOAD_CONTEXT * ctx, ANALYTIC_EVAL_TYPE * eval, OUTP
     }
 }
 
-/* An index scan the walk meets: its key plan is published once its elements' items are. */
-static void
-domain_add_index (DOMAIN_LOAD_CONTEXT * ctx, INDX_INFO * index)
-{
-  for (int i = 0; i < ctx->n_indexes; i++)
-    {
-      if (ctx->indexes[i] == index)
-	{
-	  domain_note_met_again (ctx, ctx->index_constant_branches[i]);
-	  return;
-	}
-    }
-  if (ctx->n_indexes == ctx->max_indexes)
-    {
-      const int max = ctx->max_indexes == 0 ? 4 : ctx->max_indexes * 2;
-      INDX_INFO **indexes = (INDX_INFO **) db_private_realloc (ctx->thread_p, ctx->indexes, max * sizeof (*indexes));
-      if (indexes == NULL)
-	{
-	  ctx->failed = true;
-	  return;
-	}
-      ctx->indexes = indexes;
-      int *constant_branches =
-	(int *) db_private_realloc (ctx->thread_p, ctx->index_constant_branches, max * sizeof (*constant_branches));
-      if (constant_branches == NULL)
-	{
-	  ctx->failed = true;
-	  return;
-	}
-      ctx->index_constant_branches = constant_branches;
-      ctx->max_indexes = max;
-    }
-  ctx->index_constant_branches[ctx->n_indexes] = ctx->constant_branch;
-  ctx->indexes[ctx->n_indexes++] = index;
-}
-
 static void
 domain_walk_specs (DOMAIN_LOAD_CONTEXT * ctx, ACCESS_SPEC_TYPE * spec)
 {
@@ -1989,7 +1949,6 @@ domain_walk_specs (DOMAIN_LOAD_CONTEXT * ctx, ACCESS_SPEC_TYPE * spec)
     {
       if (spec->indexptr != NULL)
 	{
-	  domain_add_index (ctx, spec->indexptr);
 	  KEY_INFO *key = &spec->indexptr->key_info;
 	  for (int i = 0; i < key->key_cnt; i++)
 	    {
@@ -3875,260 +3834,6 @@ domain_plan_add_constant_comparisons (THREAD_ENTRY * thread_p, DOMAIN_PLAN * pla
 }
 
 /*
- * domain_key_literal () - the domain of a literal key element's value, which the load reads once; NULL for a constant
- *   resolve_domains forms at every execution: a bind (a WHERE literal the parser auto-parameterized is one,
- *   qo_auto_parameterize) or a constant expression, a NULL (the range answers it), a value no index key holds
- *   (resolve_domains' error before any row), a literal under a COLLATE modifier (the fetch gives its value the
- *   modifier's collation)
- */
-static const TP_DOMAIN *
-domain_key_literal (const REGU_VARIABLE * regu)
-{
-  if (regu->type != TYPE_DBVAL || REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION)
-      || DB_IS_NULL (&regu->value.dbval) || !tp_valid_indextype (DB_VALUE_DOMAIN_TYPE (&regu->value.dbval)))
-    {
-      return NULL;
-    }
-  const TP_DOMAIN *domain = domain_value_domain (&regu->value.dbval);
-  return domain_fixes_values (domain) ? domain : NULL;
-}
-
-/* Whether key2's constant element reads key1's value at its column: two binds of one reference - resolve_domains'
- * vals[ref] - without a COLLATE modifier, against the same column. */
-static bool
-domain_key_same_bind (const domain_plan_key_elem * pair, const domain_plan_key_elem * elem)
-{
-  if (pair == NULL || pair->rule != DOMAIN_KEY_CONSTANT || pair->shared || pair->index_elem != elem->index_elem)
-    {
-      return false;
-    }
-  const REGU_VARIABLE *first = pair->regu, *second = elem->regu;
-  return first != NULL && second != NULL && first->type == TYPE_POS_VALUE && second->type == TYPE_POS_VALUE
-    && first->plan_item != NULL && second->plan_item != NULL && first->plan_item->ref >= 0
-    && first->plan_item->ref == second->plan_item->ref
-    && !REGU_VARIABLE_IS_FLAGED (first, REGU_VARIABLE_APPLY_COLLATION)
-    && !REGU_VARIABLE_IS_FLAGED (second, REGU_VARIABLE_APPLY_COLLATION);
-}
-
-/*
- * domain_plan_key_element () - how one column of a search key takes its value
- *
- * A constant is resolve_domains' (its value, once per execution); so is an element whose domain resolve_domains
- * resolves (its rule, from that domain). The load derives the rule of any other element from its domain: the column's
- * type, strict or kept (domain_key_rule). keep_elem is the element's domain in the column's direction, which a
- * multi-column key writes the value with once any column is kept.
- *
- * A literal is the load's: its value's domain gives the rule resolve_domains gave it at every execution
- * (qexec_resolve_key_constant). One resolve_domains converts strictly stays resolve_domains': resolve_domains converts
- * it once per execution, the range would at every range it builds.
- *
- * pair(in): key1's element at this column when this is key2's, else NULL. A key2 constant over the same bind (an IN
- * list's range, key1 = key2 = ?) takes key1's resolution: the same value against the same column in the same index is
- * one resolution, which resolve_domains makes once.
- */
-static bool
-domain_plan_key_element (domain_plan_index * index, bool midxkey, REGU_VARIABLE * regu, const TP_DOMAIN * column,
-			 bool skip_value, const domain_plan_key_elem * pair, domain_plan_key_elem * elem)
-{
-  elem->regu = regu;
-  elem->index_elem = column;
-  elem->keep_elem = column;
-  elem->strict_conv = NULL;
-  elem->resolved_element = -1;
-  elem->rule = DOMAIN_KEY_INDEX;
-  elem->shared = false;
-  if (skip_value)
-    {
-      /* an index skip scan's skip value is read from the index */
-      return true;
-    }
-  const DOMAIN_PLAN_ITEM *item = regu != NULL ? regu->plan_item : NULL;
-  if (item != NULL && item->operand_class == OPERAND_CONST)
-    {
-      const TP_DOMAIN *literal = domain_key_literal (regu);
-      TP_VALUE_CONVERTER strict_conv = NULL;
-      const DOMAIN_KEY_RULE rule = literal != NULL ? domain_key_rule (literal, column, midxkey, &strict_conv)
-	: DOMAIN_KEY_CONSTANT;
-      if (rule == DOMAIN_KEY_INDEX || rule == DOMAIN_KEY_KEEP)
-	{
-	  elem->rule = rule;
-	  elem->keep_elem = domain_in_key_direction (literal, column);
-	  return elem->keep_elem != NULL;
-	}
-      elem->rule = DOMAIN_KEY_CONSTANT;
-      if (domain_key_same_bind (pair, elem))
-	{
-	  elem->resolved_element = pair->resolved_element;
-	  elem->shared = true;
-	  return true;
-	}
-      elem->resolved_element = index->n_resolved_elements++;
-      return true;
-    }
-  const TP_DOMAIN *domain = item != NULL && item->resolved_index < 0 ? item->fixed.domain : NULL;
-  if (item == NULL || item->operand_class == OPERAND_NON_CACHEABLE || !domain_fixes_values (domain))
-    {
-      elem->rule = DOMAIN_KEY_LATE_BIND;
-      elem->resolved_element = index->n_resolved_elements++;
-      return true;
-    }
-  domain = domain_key_value_domain (domain);
-  elem->rule = domain_key_rule (domain, column, midxkey, &elem->strict_conv);
-  elem->keep_elem = domain_in_key_direction (domain, column);
-  return elem->keep_elem != NULL;
-}
-
-/* One bound of a key range: the columns of a multi-column key's F_MIDXKEY, or the single-column key itself.
- * pair(in): key1's bound when this is key2's (domain_plan_key_element), else NULL */
-static bool
-domain_plan_key_bound (THREAD_ENTRY * thread_p, domain_plan_index * index, REGU_VARIABLE * bound_regu, bool skip_first,
-		       const domain_plan_key * pair, domain_plan_key * bound)
-{
-  memset (bound, 0, sizeof (*bound));
-  bound->mixed_key_cache = -1;
-  if (bound_regu == NULL)
-    {
-      return true;
-    }
-  bound->midxkey = TP_DOMAIN_TYPE (index->key_type) == DB_TYPE_MIDXKEY;
-  REGU_VARIABLE_LIST operand = NULL;
-  int n = 1;
-  if (bound->midxkey)
-    {
-      assert (bound_regu->type == TYPE_FUNC && bound_regu->value.funcp->ftype == F_MIDXKEY);
-      operand = bound_regu->value.funcp->operand;
-      n = 0;
-      for (REGU_VARIABLE_LIST op = operand; op != NULL; op = op->next)
-	{
-	  n++;
-	}
-    }
-  bound->elems = (domain_plan_key_elem *) domain_plan_alloc (thread_p, n, sizeof (*bound->elems));
-  if (n > 0 && bound->elems == NULL)
-    {
-      return false;
-    }
-  bool mixes = false, constant = false, row = false;
-  for (int i = 0; i < n; i++)
-    {
-      REGU_VARIABLE *regu = bound->midxkey ? &operand->value : bound_regu;
-      const TP_DOMAIN *column = domain_key_column (index->key_type, i);
-      if (column == NULL)
-	{
-	  /* more columns than the index has: not a key of this index */
-	  assert (false);
-	  return false;
-	}
-      domain_plan_key_elem *elem = &bound->elems[bound->n_elems++];
-      const domain_plan_key_elem *pair_elem = pair != NULL && i < pair->n_elems ? &pair->elems[i] : NULL;
-      if (!domain_plan_key_element (index, bound->midxkey, regu, column, skip_first && i == 0, pair_elem, elem))
-	{
-	  return false;
-	}
-      mixes = mixes || elem->rule != DOMAIN_KEY_INDEX;
-      constant = constant || elem->rule == DOMAIN_KEY_CONSTANT;
-      row = row || (elem->rule != DOMAIN_KEY_INDEX && elem->rule != DOMAIN_KEY_CONSTANT);
-      operand = operand != NULL ? operand->next : NULL;
-    }
-  if (bound->midxkey && mixes)
-    {
-      /* constants only: resolve_domains writes the domain once per execution (every constant has its value before any
-       * row); the scan fills a mixed key domain cache otherwise */
-      bound->constant = constant && !row;
-      bound->mixed_key_cache = bound->constant ? -1 : index->n_mixed_key_caches++;
-    }
-  return true;
-}
-
-/* Whether a key column takes values of a key other than its own under a load-fixed element: the scan compares them
- * by the type pair comparison table. resolve_domains resolves it for an index whose elements wait for it
- * (qexec_resolve_index_keys). */
-static bool
-domain_key_other_keys (const domain_plan_index * index)
-{
-  for (int b = 0; b < 2 * index->n_ranges + 1; b++)
-    {
-      const domain_plan_key *bound = &index->bounds[b];
-      for (int i = 0; i < bound->n_elems; i++)
-	{
-	  const domain_plan_key_elem *elem = &bound->elems[i];
-	  if (elem->rule != DOMAIN_KEY_CONSTANT && elem->rule != DOMAIN_KEY_LATE_BIND
-	      && domain_key_differs (elem->keep_elem, elem->index_elem))
-	    {
-	      return true;
-	    }
-	}
-    }
-  return false;
-}
-
-/*
- * domain_plan_add_indexes () - every index scan's key plan: its bounds' elements and their
- *   rules, from INDX_INFO.key_type; the scan finds it through INDX_INFO.key_plan
- */
-static bool
-domain_plan_add_indexes (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_PLAN * plan)
-{
-  plan->n_indexes = ctx->n_indexes;
-  plan->indexes = (domain_plan_index *) domain_plan_alloc (thread_p, plan->n_indexes, sizeof (*plan->indexes));
-  if (plan->n_indexes > 0 && plan->indexes == NULL)
-    {
-      return false;
-    }
-  for (int j = 0; j < ctx->n_indexes; j++)
-    {
-      INDX_INFO *indx_info = ctx->indexes[j];
-      domain_plan_index *index = &plan->indexes[j];
-      memset (index, 0, sizeof (*index));
-      index->resolved_keys_index = -1;
-      index->constant_branch = ctx->index_constant_branches[j];
-      indx_info->key_plan = NULL;
-      if (indx_info->key_type == NULL)
-	{
-	  /* no key domain in the stream: the scan fails the unresolved-domain check (execution) */
-	  continue;
-	}
-      index->key_type = indx_info->key_type;
-      index->asc_key_type = domain_ascending_key_type (index->key_type);
-      index->n_ranges = indx_info->key_info.key_cnt;
-      index->bounds =
-	(domain_plan_key *) domain_plan_alloc (thread_p, 2 * index->n_ranges + 1, sizeof (*index->bounds));
-      if (index->asc_key_type == NULL || index->bounds == NULL)
-	{
-	  return false;
-	}
-      const bool iss = indx_info->use_iss != 0;
-      for (int i = 0; i < index->n_ranges; i++)
-	{
-	  KEY_RANGE *range = &indx_info->key_info.key_ranges[i];
-	  /* an index skip scan's ranges start with its skip value */
-	  if (!domain_plan_key_bound (thread_p, index, range->key1, iss, NULL, &index->bounds[2 * i])
-	      || !domain_plan_key_bound (thread_p, index, range->key2, iss, &index->bounds[2 * i],
-					 &index->bounds[2 * i + 1]))
-	    {
-	      return false;
-	    }
-	}
-      /* the index skip scan's fetch range: its one column is the skip value */
-      if (!domain_plan_key_bound (thread_p, index, iss ? indx_info->iss_range.key1 : NULL, true, NULL,
-				  &index->bounds[2 * index->n_ranges]))
-	{
-	  return false;
-	}
-      if (index->n_resolved_elements > 0)
-	{
-	  index->resolved_keys_index = plan->n_resolved_index_keys++;
-	}
-      else
-	{
-	  index->other_keys = domain_key_other_keys (index);
-	}
-      indx_info->key_plan = index;
-    }
-  return true;
-}
-
-/*
  * Predicate and function streams: a filter index predicate, a function index expression and a partition expression are
  * loaded without an execution and evaluated without resolve_domains. A regu resolve_domains would resolve refuses the
  * stream at its load (stx_index_stream_rejected), but the stream's domains need not describe its values either: the
@@ -4504,10 +4209,6 @@ domain_load_context_free (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx)
     {
       db_private_free (thread_p, ctx->block_constant_branches);
     }
-  if (ctx->index_constant_branches != NULL)
-    {
-      db_private_free (thread_p, ctx->index_constant_branches);
-    }
   if (ctx->compare_term_constant_branches != NULL)
     {
       db_private_free (thread_p, ctx->compare_term_constant_branches);
@@ -4535,10 +4236,6 @@ domain_load_context_free (THREAD_ENTRY * thread_p, DOMAIN_LOAD_CONTEXT * ctx)
   if (ctx->late_bind_order != NULL)
     {
       db_private_free (thread_p, ctx->late_bind_order);
-    }
-  if (ctx->indexes != NULL)
-    {
-      db_private_free (thread_p, ctx->indexes);
     }
   if (ctx->compare_terms != NULL)
     {
@@ -4960,7 +4657,6 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	}
       ctx.failed = ctx.failed || !domain_plan_add_compares (thread_p, &ctx, plan, constant_base)
 	|| !domain_plan_add_constant_comparisons (thread_p, plan, constant_base)
-	|| !domain_plan_add_indexes (thread_p, &ctx, plan)
 	|| !domain_plan_add_temporaries (thread_p, &ctx, plan, constant_base);
     }
   if (!ctx.failed && ctx.constant_branches_ambiguous)
@@ -4978,10 +4674,6 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
       for (int k = 0; k < plan->n_element_comparisons; k++)
 	{
 	  plan->element_comparisons[k]->pair.constant_branch = -1;
-	}
-      for (int j = 0; j < plan->n_indexes; j++)
-	{
-	  plan->indexes[j].constant_branch = -1;
 	}
     }
   else if (!ctx.failed && ctx.n_constant_branches > 0)

@@ -2161,7 +2161,7 @@ qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggrega
 	    }
 	  else
 	    {
-
+	      /* exception: once per execution (per partition); its total order puts an empty partition's NULL first */
 	      cmp = tp_value_compare (agg_p->accumulator.value, &result, true, true);
 	      if (cmp == DB_LT)
 		{
@@ -2187,6 +2187,7 @@ qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggrega
 	    }
 	  else
 	    {
+	      /* exception: once per execution (per partition) */
 	      cmp = tp_value_compare (agg_p->accumulator.value, &result, true, true);
 	      if (cmp == DB_GT)
 		{

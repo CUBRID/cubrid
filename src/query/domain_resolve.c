@@ -162,22 +162,19 @@ qexec_copy_elements (THREAD_ENTRY * thread_p, const DOMAIN_ELEMENTS * src, DOMAI
   return NO_ERROR;
 }
 
-static void qexec_clear_index_keys (THREAD_ENTRY * thread_p, RESOLVED_INDEX_KEYS * out);
-static int qexec_copy_index_keys (THREAD_ENTRY * thread_p, const RESOLVED_INDEX_KEYS * src, RESOLVED_INDEX_KEYS * dest);
-
 /* Allocate the values, the resolved domain table's arrays and the node state's arrays (domain_execution), the
  * execution temporaries and the scope generations as one owner-local block, whose address is resolved_domain.vals.
  * Every value starts as NULL so the common error exit can clear a partial fill. Temporaries without scopes, or scopes
  * without temporaries, are none: nothing converts once per scope then. */
 static int
 qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolved, int n_compares, int n_elements,
-			      int n_indexes, int n_node_domains, int n_operand_types, int n_interpolation_list_domains,
+			      int n_node_domains, int n_operand_types, int n_interpolation_list_domains,
 			      int n_temporaries, int n_scopes, XASL_STATE * xasl_state)
 {
   RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved_domain;
   DOMAIN_EXECUTION_STATE & execution = xasl_state->domain_execution;
   assert (resolved.vals == NULL && n_vals >= 0 && n_resolved >= 0 && n_compares >= 0 && n_elements >= 0
-	  && n_indexes >= 0 && n_node_domains >= 0);
+	  && n_node_domains >= 0);
   /* the load numbers the nodes that keep a list domain or an operand type first (DOMAIN_PLAN.n_operand_types) */
   assert (0 <= n_interpolation_list_domains && n_interpolation_list_domains <= n_operand_types
 	  && n_operand_types <= n_node_domains);
@@ -193,17 +190,11 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   static_assert (sizeof (DOMAIN_COMPARE) % alignof (DOMAIN_ELEMENTS) == 0, "element decisions alignment");
   static_assert (sizeof (RESOLVED_DOMAIN) % alignof (DOMAIN_ELEMENTS) == 0, "element decisions alignment");
   static_assert (sizeof (DB_VALUE) % alignof (DOMAIN_ELEMENTS) == 0, "element decisions alignment");
-  static_assert (sizeof (DOMAIN_ELEMENTS) % alignof (RESOLVED_INDEX_KEYS) == 0, "key decisions alignment");
-  static_assert (sizeof (DOMAIN_COMPARE) % alignof (RESOLVED_INDEX_KEYS) == 0, "key decisions alignment");
-  static_assert (sizeof (RESOLVED_DOMAIN) % alignof (RESOLVED_INDEX_KEYS) == 0, "key decisions alignment");
-  static_assert (sizeof (DB_VALUE) % alignof (RESOLVED_INDEX_KEYS) == 0, "key decisions alignment");
-  static_assert (sizeof (RESOLVED_INDEX_KEYS) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
   static_assert (sizeof (DOMAIN_ELEMENTS) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
   static_assert (sizeof (DOMAIN_COMPARE) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
   static_assert (sizeof (RESOLVED_DOMAIN) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
   static_assert (sizeof (DB_VALUE) % alignof (const TP_DOMAIN *) == 0, "cells alignment");
   static_assert (sizeof (const TP_DOMAIN *) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
-  static_assert (sizeof (RESOLVED_INDEX_KEYS) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
   static_assert (sizeof (DOMAIN_ELEMENTS) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
   static_assert (sizeof (DOMAIN_COMPARE) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
   static_assert (sizeof (RESOLVED_DOMAIN) % alignof (DOMAIN_EXECUTION_TEMPORARY) == 0, "temporaries alignment");
@@ -212,12 +203,10 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   static_assert (sizeof (const TP_DOMAIN *) % alignof (unsigned long long) == 0, "generations alignment");
   static_assert (sizeof (unsigned long long) % alignof (int) == 0, "operand types alignment");
   static_assert (sizeof (const TP_DOMAIN *) % alignof (int) == 0, "operand types alignment");
-  /* values, resolved domain table, comparison resolutions, ALL/SOME resolutions, key resolutions, the nodes' execution
-   * domains and list domains, the execution temporaries and the scopes' generations, the operand types, then the
-   * constant flags */
+  /* values, resolved domain table, comparison resolutions, ALL/SOME resolutions, the nodes' execution domains and list
+   * domains, the execution temporaries and the scopes' generations, the operand types, then the constant flags */
   const size_t bytes = sizeof (DB_VALUE) * (size_t) n_vals + sizeof (RESOLVED_DOMAIN) * (size_t) n_resolved
     + sizeof (DOMAIN_COMPARE) * (size_t) n_compares + sizeof (DOMAIN_ELEMENTS) * (size_t) n_elements
-    + sizeof (RESOLVED_INDEX_KEYS) * (size_t) n_indexes
     + sizeof (const TP_DOMAIN *) * ((size_t) n_node_domains + (size_t) n_interpolation_list_domains)
     + sizeof (DOMAIN_EXECUTION_TEMPORARY) * (size_t) n_temporaries + sizeof (unsigned long long) * (size_t) n_scopes
     + sizeof (int) * (size_t) n_operand_types + (size_t) n_vals;
@@ -239,7 +228,6 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
   resolved.n_resolved = n_resolved;
   resolved.n_compare_indexes = n_compares;
   resolved.n_elements = n_elements;
-  resolved.n_indexes = n_indexes;
   execution.n_node_domains = n_node_domains;
   execution.n_operand_types = n_operand_types;
   execution.n_interpolation_list_domains = n_interpolation_list_domains;
@@ -263,12 +251,6 @@ qexec_alloc_resolved_domains (THREAD_ENTRY * thread_p, int n_vals, int n_resolve
       resolved.elements = (DOMAIN_ELEMENTS *) next;
       memset (resolved.elements, 0, sizeof (*resolved.elements) * n_elements);
       next += sizeof (*resolved.elements) * n_elements;
-    }
-  if (n_indexes != 0)
-    {
-      resolved.indexes = (RESOLVED_INDEX_KEYS *) next;
-      memset (resolved.indexes, 0, sizeof (*resolved.indexes) * n_indexes);
-      next += sizeof (*resolved.indexes) * n_indexes;
     }
   /* nothing taken yet: every node has its compiled domain, list domain and operand type */
   if (n_node_domains != 0)
@@ -357,9 +339,9 @@ qexec_copy_resolved_domains (THREAD_ENTRY * thread_p, const XASL_STATE * from, X
   memset (&resolved, 0, sizeof (resolved));
   memset (&execution, 0, sizeof (execution));
   if (qexec_alloc_resolved_domains
-      (thread_p, src.n_vals, src.n_resolved, src.n_compare_indexes, src.n_elements, src.n_indexes,
-       src_execution.n_node_domains, src_execution.n_operand_types, src_execution.n_interpolation_list_domains,
-       src_execution.n_temporaries, src_execution.n_scopes, to) != NO_ERROR)
+      (thread_p, src.n_vals, src.n_resolved, src.n_compare_indexes, src.n_elements, src_execution.n_node_domains,
+       src_execution.n_operand_types, src_execution.n_interpolation_list_domains, src_execution.n_temporaries,
+       src_execution.n_scopes, to) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -390,14 +372,6 @@ qexec_copy_resolved_domains (THREAD_ENTRY * thread_p, const XASL_STATE * from, X
   for (int k = 0; k < src.n_elements; k++)
     {
       if (qexec_copy_elements (thread_p, &src.elements[k], &resolved.elements[k]) != NO_ERROR)
-	{
-	  qexec_clear_resolved_domains (thread_p, to);
-	  return ER_FAILED;
-	}
-    }
-  for (int k = 0; k < src.n_indexes; k++)
-    {
-      if (qexec_copy_index_keys (thread_p, &src.indexes[k], &resolved.indexes[k]) != NO_ERROR)
 	{
 	  qexec_clear_resolved_domains (thread_p, to);
 	  return ER_FAILED;
@@ -466,16 +440,13 @@ qexec_init_resolved_domains (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, 
   const int n_resolved = plan == NULL ? 0 : plan->n_resolved;
   const int n_compares = plan == NULL ? 0 : plan->n_compare_indexes;
   const int n_elements = plan == NULL ? 0 : plan->n_element_comparisons;
-  const int n_indexes = plan == NULL ? 0 : plan->n_resolved_index_keys;
   const int n_node_domains = plan == NULL ? 0 : plan->n_node_domains;
   const int n_operand_types = plan == NULL ? 0 : plan->n_operand_types;
   const int n_list_domains = plan == NULL ? 0 : plan->n_interpolation_list_domains;
   const int n_temporaries = plan == NULL ? 0 : plan->n_temporaries;
   const int n_scopes = plan == NULL ? 0 : plan->n_scopes;
-  const int error =
-    qexec_alloc_resolved_domains (thread_p, n_vals, n_resolved, n_compares, n_elements, n_indexes, n_node_domains,
-				  n_operand_types, n_list_domains, n_temporaries, n_scopes,
-				  xasl_state);
+  const int error = qexec_alloc_resolved_domains (thread_p, n_vals, n_resolved, n_compares, n_elements, n_node_domains,
+						  n_operand_types, n_list_domains, n_temporaries, n_scopes, xasl_state);
   if (error != NO_ERROR || plan == NULL)
     {
       return error;
@@ -490,8 +461,6 @@ enum DOMAIN_DEFERRED_ERROR_KIND
   DOMAIN_DEFERRED_ERROR_CONSTANT,	/* a constant expression's computation: index = plan->constant_expressions
 					 * index */
   DOMAIN_DEFERRED_ERROR_COMPARE,	/* a term's constant conversion: compare, failed, comparison.key_range */
-  DOMAIN_DEFERRED_ERROR_KEY,	/* a key constant no index key holds: key.first, key.second = the two types of the key
-				 * search's -181 in its order */
   DOMAIN_DEFERRED_ERROR_ARGUMENT_TYPE,	/* a MEDIAN / PERCENTILE value without an argument type:
 					 * argument_type.function */
   DOMAIN_DEFERRED_ERROR_OPERAND,	/* a constant operand's conversion: index = plan->constant_operands index,
@@ -510,10 +479,6 @@ struct DOMAIN_DEFERRED_ERROR
     {
       bool key_range;		/* the term is of an index scan's key range */
     } comparison;
-    struct
-    {
-      DB_TYPE first, second;	/* the two types of the -181, in the search's order */
-    } key;
     struct
     {
       int function;		/* the function's code */
@@ -1781,421 +1746,6 @@ qexec_evaluate_constant_expression (THREAD_ENTRY * thread_p, XASL_STATE * xasl_s
   return NO_ERROR;
 }
 
-/* The value of a constant key element once resolve_domains formed it: a bind's own value, a literal, or a constant
- * subtree the constant expression step evaluated; every constant has its value by the index key step, so NULL fails the
- * unresolved-domain check (execution) at the caller. */
-static const DB_VALUE *
-qexec_key_constant_value (const XASL_STATE * xasl_state, const REGU_VARIABLE * regu)
-{
-  const RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved_domain;
-  switch (regu->type)
-    {
-    case TYPE_POS_VALUE:
-      return REGU_RESOLVED_VALUE (&xasl_state->vd, regu);
-    case TYPE_DBVAL:
-      return &regu->value.dbval;
-    default:
-      {
-	const DOMAIN_PLAN_ITEM *item = (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
-	  ? regu->value.arithptr->plan_item : regu->plan_item;
-	return item != NULL && item->ref >= 0 && item->ref < resolved.n_vals
-	  && resolved.value_states[item->ref] == DOMAIN_VALUE_EVALUATED ? &resolved.vals[item->ref] : NULL;
-      }
-    }
-}
-
-/* The domain a key element's values have in this execution when resolve_domains resolved it: the resolved domain or the
- * load's fixed domain; NULL where it holds no value. */
-static const TP_DOMAIN *
-qexec_key_element_domain (const XASL_STATE * xasl_state, const DOMAIN_PLAN_ITEM * item)
-{
-  if (item == NULL)
-    {
-      return NULL;
-    }
-  const TP_DOMAIN *domain =
-    item->resolved_index < 0 ? item->fixed.domain : qexec_resolved_domain (&xasl_state->vd, item);
-  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL
-    && domain_fixes_values (domain) ? domain_key_value_domain (domain) : NULL;
-}
-
-#if !defined (NDEBUG)
-/* The debug cross-check of a strict key conversion: the resolved converter gives tp_value_coerce_strict's outcome,
- * and a kept value leaves no error behind. */
-static void
-qexec_check_key_strict (const DB_VALUE * value, const TP_DOMAIN * column, const DB_VALUE * converted)
-{
-  DB_VALUE expected;
-  db_make_null (&expected);
-  const bool expected_converts = tp_value_coerce_strict (value, &expected, column) == NO_ERROR;
-  assert (expected_converts == (converted != NULL));
-  assert (converted == NULL || tp_value_compare (&expected, (DB_VALUE *) converted, 0, 1) == DB_EQ);
-  pr_clear_value (&expected);
-  assert (converted != NULL || er_errid () == NO_ERROR);
-}
-#endif /* !NDEBUG */
-
-/*
- * qexec_resolve_key_constant () - a constant key element's value for this execution
- *
- * scan_dbvals_to_midxkey's rule on the value, once: another type is converted strictly into the index column's
- * domain or else kept, a NUMERIC, CHAR or BIT of the column's type with other parameters is kept. A single-column key
- * takes the value as it is. A NULL is the range's to answer. A value no index key can hold is the range's error,
- * raised here before any row, whatever a NULL column before it.
- *
- * A value the key takes as it is is shared, not copied: it is the execution's own - a bind's, a literal of the plan, a
- * constant expression's - and outlives the resolution, which qexec_clear_resolved_domains clears first. A converted
- * value is the resolution's. A single-column key's resolution holds no value: its range reads the value from its own
- * fetch, and only a multi-column key is written from the resolution's value.
- */
-static int
-qexec_resolve_key_constant (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, DOMAIN_DEFERRED_ERRORS & deferred,
-			    bool midxkey, int constant_branch, const domain_plan_key_elem * elem,
-			    RESOLVED_KEY_ELEMENT * resolved_domain)
-{
-  const TP_DOMAIN *column = elem->index_elem;
-  const DB_VALUE *value = qexec_key_constant_value (xasl_state, elem->regu);
-  if (value == NULL)
-    {
-      const DOMAIN_PLAN_ITEM *item = (elem->regu->type == TYPE_INARITH || elem->regu->type == TYPE_OUTARITH)
-	? elem->regu->value.arithptr->plan_item : elem->regu->plan_item;
-      if (item != NULL && item->ref >= 0 && item->ref < xasl_state->resolved_domain.n_vals
-	  && xasl_state->resolved_domain.value_states[item->ref] == DOMAIN_VALUE_FAILED)
-	{
-	  /* a constant whose computation failed below a constant branch: no row opens the scan, or resolve_domains
-	   * raises the failure; the resolution stays without a domain */
-	  return NO_ERROR;
-	}
-      /* the unresolved-domain check (execution): every constant has its value by the index key step */
-      return domain_unresolved_error ("", elem->resolved_element, TP_DOMAIN_TYPE (column));
-    }
-  resolved_domain->domain = column;
-  if (DB_IS_NULL (value))
-    {
-      return NO_ERROR;
-    }
-  if (!tp_valid_indextype (DB_VALUE_DOMAIN_TYPE (value)))
-    {
-      /* the -181 names the column first where scan_dbvals_to_midxkey refuses a multi-column key's element, the
-       * value first where the B-tree search compares a single-column search key with the index key */
-      const DB_TYPE first = midxkey ? TP_DOMAIN_TYPE (column) : DB_VALUE_DOMAIN_TYPE (value);
-      const DB_TYPE second = midxkey ? DB_VALUE_DOMAIN_TYPE (value) : TP_DOMAIN_TYPE (column);
-      if (constant_branch < 0)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (first), pr_type_name (second));
-	  return ER_TP_CANT_COERCE;
-	}
-      /* below a constant branch: resolve_domains' error only if a row opens the scan */
-      DOMAIN_DEFERRED_ERROR deferred_error =
-	qexec_deferred_error (NULL, constant_branch, -1, DOMAIN_DEFERRED_ERROR_KEY, 0);
-      deferred_error.key.first = first;
-      deferred_error.key.second = second;
-      const int noted = qexec_defer_constant_error (thread_p, deferred, deferred_error);
-      return noted != NO_ERROR ? noted : pr_clone_value (value, &resolved_domain->value);
-    }
-  const TP_DOMAIN *value_domain = domain_value_domain (value);
-  if (value_domain == NULL)
-    {
-      /* a set whose element domains could not be built, or no memory: the cause is the error, as at the bind step */
-      if (er_errid () == NO_ERROR)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
-	}
-      return er_errid ();
-    }
-  if (!midxkey)
-    {
-      /* a single-column range reads the value from its own fetch (scan_key_single_column): the resolution is its
-       * domain alone */
-      resolved_domain->domain = value_domain;
-      return NO_ERROR;
-    }
-  TP_VALUE_CONVERTER strict_conv = NULL;
-  const DOMAIN_KEY_RULE rule = domain_key_rule (value_domain, column, true, &strict_conv);
-  if (rule == DOMAIN_KEY_STRICT)
-    {
-      if (tp_value_convert (strict_conv, column, value, &resolved_domain->value) == DOMAIN_COMPATIBLE)
-	{
-#if !defined (NDEBUG)
-	  qexec_check_key_strict (value, column, &resolved_domain->value);
-#endif
-	  return NO_ERROR;
-	}
-      pr_clear_value (&resolved_domain->value);
-#if !defined (NDEBUG)
-      qexec_check_key_strict (value, column, NULL);
-#endif
-    }
-  resolved_domain->kept = rule != DOMAIN_KEY_INDEX;
-  resolved_domain->domain = domain_in_key_direction (value_domain, column);
-  if (resolved_domain->domain == NULL)
-    {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  pr_share_value (const_cast < DB_VALUE * >(value), &resolved_domain->value);
-  return NO_ERROR;
-}
-
-/*
- * qexec_key_constant_domain () - a constant multi-column bound's domain for this execution
- *   return: the index's when no column is kept; else the mix - each column under its value's domain up to a
- *	     maximum string, the index's columns from there - cached; NULL on error
- */
-static const TP_DOMAIN *
-qexec_key_constant_domain (const domain_plan_index * index, const domain_plan_key * bound,
-			   const RESOLVED_INDEX_KEYS * out)
-{
-  bool kept = false;
-  int written = 0;
-  for (; written < bound->n_elems; written++)
-    {
-      const domain_plan_key_elem *elem = &bound->elems[written];
-      if (elem->rule != DOMAIN_KEY_CONSTANT)
-	{
-	  continue;
-	}
-      const RESOLVED_KEY_ELEMENT *resolved_domain = &out->elements[elem->resolved_element];
-      assert (resolved_domain->domain != NULL);
-      const DB_VALUE *value = &resolved_domain->value;
-      if (!DB_IS_NULL (value) && TP_IS_STRING_TYPE (DB_VALUE_DOMAIN_TYPE (value))
-	  && value->data.ch.medium.is_max_string)
-	{
-	  break;
-	}
-      kept = kept || resolved_domain->kept;
-    }
-  if (!kept)
-    {
-      return index->key_type;
-    }
-  TP_DOMAIN *head = NULL, *tail = NULL;
-  for (int i = 0; i < written; i++)
-    {
-      const domain_plan_key_elem *elem = &bound->elems[i];
-      const TP_DOMAIN *source = elem->rule == DOMAIN_KEY_CONSTANT ? out->elements[elem->resolved_element].domain
-	: elem->keep_elem;
-      TP_DOMAIN *node = domain_copy_one (source);
-      if (node == NULL)
-	{
-	  goto error;
-	}
-      node->is_desc = elem->index_elem->is_desc;
-      if (head == NULL)
-	{
-	  head = node;
-	}
-      else
-	{
-	  tail->next = node;
-	}
-      tail = node;
-    }
-  if (written < index->key_type->precision)
-    {
-      /* the columns the key does not write keep the index's domains */
-      TP_DOMAIN *rest = tp_domain_copy (domain_key_column (index->key_type, written), false);
-      if (rest == NULL)
-	{
-	  goto error;
-	}
-      if (head == NULL)
-	{
-	  head = rest;
-	}
-      else
-	{
-	  tail->next = rest;
-	}
-    }
-  {
-    TP_DOMAIN *mixed = tp_domain_construct (DB_TYPE_MIDXKEY, NULL, index->key_type->precision, 0, head);
-    if (mixed == NULL)
-      {
-	goto error;
-      }
-    return tp_domain_cache (mixed);
-  }
-
-error:
-  while (head != NULL)
-    {
-      TP_DOMAIN *next = head->next;
-      head->next = NULL;
-      tp_domain_free (head);
-      head = next;
-    }
-  return NULL;
-}
-
-/*
- * qexec_resolve_index_keys () - the index key step (qexec_resolve_index_keys) for one index scan's key plan
- *   return: NO_ERROR, or ER_code
- *
- * Each constant key element is converted or kept once, by scan_dbvals_to_midxkey's rule on its value; an element
- * whose domain the
- * resolve_domains resolved takes its rule from that domain; a constant multi-column bound gets its domain; and the scan
- * learns whether a key column takes values of a key other than its own, which compare by the type pair comparison
- * table. A constant no index key can hold is an error here, before any row; every other outcome of a value is the
- * range's.
- *
- * Only a scan with an element to resolve has a comparison (domain_plan_add_indexes): one with none - its literals
- * included, which the load fixes - allocates and resolves nothing here, and the load resolved whether it takes other
- * keys.
- */
-static int
-qexec_resolve_index_keys (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, DOMAIN_DEFERRED_ERRORS & deferred,
-			  const domain_plan_index * index)
-{
-  assert (index->n_resolved_elements > 0);
-  RESOLVED_DOMAIN_TABLE & resolved = xasl_state->resolved_domain;
-  RESOLVED_INDEX_KEYS *out = &resolved.indexes[index->resolved_keys_index];
-  const int n_bounds = 2 * index->n_ranges + 1;
-  static_assert (sizeof (RESOLVED_KEY_ELEMENT) % alignof (const TP_DOMAIN *) == 0, "key decisions alignment");
-  const size_t domains_offset = sizeof (RESOLVED_KEY_ELEMENT) * (size_t) index->n_resolved_elements;
-  const size_t bytes = domains_offset + sizeof (const TP_DOMAIN *) * (size_t) n_bounds;
-  char *block = (char *) db_private_alloc (thread_p, bytes);
-  if (block == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, bytes);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  /* zero leaves each bound without a domain, and each resolution without its value's NULL mark and its rule */
-  memset (block, 0, bytes);
-  out->elements = (RESOLVED_KEY_ELEMENT *) block;
-  out->domains = (const TP_DOMAIN **) (block + domains_offset);
-  out->n_elements = index->n_resolved_elements;
-  out->n_bounds = n_bounds;
-  out->other_keys = false;
-  for (int i = 0; i < index->n_resolved_elements; i++)
-    {
-      db_make_null (&out->elements[i].value);
-      out->elements[i].rule = DOMAIN_KEY_LATE_BIND;
-    }
-
-  int error = NO_ERROR;
-  for (int b = 0; b < n_bounds && error == NO_ERROR; b++)
-    {
-      const domain_plan_key *bound = &index->bounds[b];
-      for (int i = 0; i < bound->n_elems && error == NO_ERROR; i++)
-	{
-	  const domain_plan_key_elem *elem = &bound->elems[i];
-	  /* the domain the element gives its values: the load's, or resolve_domains' for a constant or a resolved
-	   * element */
-	  const TP_DOMAIN *domain = elem->keep_elem;
-	  if (elem->rule == DOMAIN_KEY_CONSTANT)
-	    {
-	      RESOLVED_KEY_ELEMENT *resolved_domain = &out->elements[elem->resolved_element];
-	      if (!elem->shared)
-		{
-		  error =
-		    qexec_resolve_key_constant (thread_p, xasl_state, deferred, bound->midxkey, index->constant_branch,
-						elem, resolved_domain);
-		}
-	      /* a shared element's resolution is key1's, made above */
-	      domain = resolved_domain->domain;
-	    }
-	  else if (elem->rule == DOMAIN_KEY_LATE_BIND)
-	    {
-	      RESOLVED_KEY_ELEMENT *resolved_domain = &out->elements[elem->resolved_element];
-	      domain = qexec_key_element_domain (xasl_state, elem->regu != NULL ? elem->regu->plan_item : NULL);
-	      if (domain != NULL)
-		{
-		  resolved_domain->rule =
-		    domain_key_rule (domain, elem->index_elem, bound->midxkey, &resolved_domain->strict_conv);
-		  resolved_domain->keep_elem = domain_in_key_direction (domain, elem->index_elem);
-		  domain = resolved_domain->keep_elem;
-		  error = domain == NULL ? ER_OUT_OF_VIRTUAL_MEMORY : NO_ERROR;
-		}
-	    }
-	  if (error == NO_ERROR && domain != NULL && domain != elem->index_elem)
-	    {
-	      out->other_keys = out->other_keys || domain_key_differs (domain, elem->index_elem);
-	    }
-	}
-      if (error == NO_ERROR && bound->constant)
-	{
-	  /* every element has its value by now: the range writes the key with this domain - unless one
-	   * failed below a constant branch, and no row opens the scan */
-	  bool failed = false;
-	  for (int i = 0; i < bound->n_elems; i++)
-	    {
-	      failed = failed || (bound->elems[i].rule == DOMAIN_KEY_CONSTANT
-				  && out->elements[bound->elems[i].resolved_element].domain == NULL);
-	    }
-	  out->domains[b] = failed ? NULL : qexec_key_constant_domain (index, bound, out);
-	  error = !failed && out->domains[b] == NULL ? ER_OUT_OF_VIRTUAL_MEMORY : NO_ERROR;
-	}
-    }
-  if (error == ER_OUT_OF_VIRTUAL_MEMORY && er_errid () == NO_ERROR)
-    {
-      /* a domain resolve_domains could not cache */
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
-    }
-  return error;
-}
-
-/* Releases one execution's key resolutions for an index scan: the block, and whatever its values own - a value
- * shared with the execution's own owns nothing but the compressed string a range may write into it. */
-static void
-qexec_clear_index_keys (THREAD_ENTRY * thread_p, RESOLVED_INDEX_KEYS * out)
-{
-  for (int i = 0; out->elements != NULL && i < out->n_elements; i++)
-    {
-      if (qexec_value_needs_clear (&out->elements[i].value))
-	{
-	  pr_clear_value (&out->elements[i].value);
-	}
-    }
-  if (out->elements != NULL)
-    {
-      /* the resolutions and the bounds' domains are one block */
-      db_private_free (thread_p, out->elements);
-    }
-  else if (out->domains != NULL)
-    {
-      db_private_free (thread_p, out->domains);
-    }
-  memset (out, 0, sizeof (*out));
-}
-
-/* A PX copy of one execution's key resolutions for an index scan, on the worker's heap: its own values; the
- * domains are cached. */
-static int
-qexec_copy_index_keys (THREAD_ENTRY * thread_p, const RESOLVED_INDEX_KEYS * src, RESOLVED_INDEX_KEYS * dest)
-{
-  memset (dest, 0, sizeof (*dest));
-  dest->other_keys = src->other_keys;
-  if (src->elements == NULL && src->domains == NULL)
-    {
-      return NO_ERROR;
-    }
-  const size_t domains_offset = sizeof (RESOLVED_KEY_ELEMENT) * (size_t) src->n_elements;
-  const size_t bytes = domains_offset + sizeof (const TP_DOMAIN *) * (size_t) src->n_bounds;
-  char *block = (char *) db_private_alloc (thread_p, bytes);
-  if (block == NULL)
-    {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  dest->elements = (RESOLVED_KEY_ELEMENT *) block;
-  dest->domains = (const TP_DOMAIN **) (block + domains_offset);
-  dest->n_elements = src->n_elements;
-  dest->n_bounds = src->n_bounds;
-  memcpy (dest->domains, src->domains, sizeof (const TP_DOMAIN *) * (size_t) src->n_bounds);
-  for (int i = 0; i < src->n_elements; i++)
-    {
-      dest->elements[i] = src->elements[i];
-      db_make_null (&dest->elements[i].value);
-    }
-  for (int i = 0; i < src->n_elements; i++)
-    {
-      if (pr_clone_value (&src->elements[i].value, &dest->elements[i].value) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
-  return NO_ERROR;
-}
-
 static void qexec_release_selector_pred (PRED_EXPR * pred);
 
 /*
@@ -2519,11 +2069,6 @@ qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, c
 	    qexec_compare_constant_failed (deferred_error->compare, deferred_error->failed,
 					   deferred_error->comparison.key_range);
 	  break;
-	case DOMAIN_DEFERRED_ERROR_KEY:
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (deferred_error->key.first),
-		  pr_type_name (deferred_error->key.second));
-	  error = ER_TP_CANT_COERCE;
-	  break;
 	case DOMAIN_DEFERRED_ERROR_ARGUMENT_TYPE:
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
 		  fcode_get_uppercase_name ((FUNC_CODE) deferred_error->argument_type.function),
@@ -2582,7 +2127,6 @@ qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, c
  *                                      fetches through them
  *   qexec_evaluate_constant_expression each constant expression evaluated once, and the comparisons and nodes that
  *                                      waited for it just before the next one
- *   qexec_resolve_index_keys           the index scans' key elements and key comparison tables
  *   qexec_convert_constant_operands    the constants arithmetic nodes and SUM / AVG convert, into their execution
  *                                      temporaries
  *   qexec_raise_deferred_errors        the failures below constant branches, raised if a row reaches them
@@ -2747,7 +2291,7 @@ qexec_resolve_domains_internal (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_
 
   /* the constant expression step's computations fetch through the values and resolutions made so far
    * (REGU_RESOLVED_VALUE, qexec_late_bind_domain): they are readable from here on; the steps below go on resolving
-   * what a constant or an index key decides */
+   * what a constant decides */
   resolved.readable = true;
 
   /* the constant expression step (qexec_evaluate_constant_expression): each constant
@@ -2820,23 +2364,6 @@ qexec_resolve_domains_internal (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_
   if (error != NO_ERROR)
     {
       return error;
-    }
-
-  /* the index key step (qexec_resolve_index_keys): every index scan's constant key elements are converted or kept once,
-   * the rules of the elements whose domain resolve_domains resolved are derived from it, and each scan's key comparison
-   * table is built - after the constant expression step, since a constant expression's value resolves its key
-   * element */
-  for (int j = 0; plan != NULL && j < plan->n_indexes; j++)
-    {
-      if (plan->indexes[j].resolved_keys_index < 0)
-	{
-	  continue;
-	}
-      error = qexec_resolve_index_keys (thread_p, xasl_state, deferred, &plan->indexes[j]);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
     }
 
   /* the constant operand step: after every resolution its operand coercions read */
@@ -3018,10 +2545,6 @@ qexec_clear_resolved_domains (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
   for (int k = 0; k < resolved.n_elements; k++)
     {
       qexec_clear_elements (thread_p, &resolved.elements[k]);
-    }
-  for (int k = 0; k < resolved.n_indexes; k++)
-    {
-      qexec_clear_index_keys (thread_p, &resolved.indexes[k]);
     }
   /* only a value with something to free: the block goes next (qexec_value_needs_clear is pr_clear_value's own
    * condition, so a skipped value is one it would only make NULL) */

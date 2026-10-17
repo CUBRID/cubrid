@@ -4785,9 +4785,26 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 
   ptr = or_pack_int (ptr, indx_info->func_idx_col_id);
 
-  /* the B-tree's key domain: the server derives the key plan from it at load and matches it with the root
-   * header's, which keeps an OBJECT key as OBJECT (its key values are OIDs) - so no OBJECT-to-OID packing here */
+  /* the B-tree's key domain: the server matches it with the root header's, which keeps an OBJECT key as OBJECT (its
+   * key values are OIDs) - so no OBJECT-to-OID packing here */
   ptr = or_pack_domain (ptr, indx_info->key_type, 0, 0);
+
+  /* CBRD-27583 (4.4): whether a key column takes other keys, then each key range's written key domains, after a mask
+   * of the ones it has */
+  ptr = or_pack_int (ptr, indx_info->other_keys ? 1 : 0);
+  for (int i = 0; i < indx_info->key_info.key_cnt; i++)
+    {
+      const KEY_RANGE *range = &indx_info->key_info.key_ranges[i];
+      ptr = or_pack_int (ptr, (range->key1_domain != NULL ? 1 : 0) | (range->key2_domain != NULL ? 2 : 0));
+      if (range->key1_domain != NULL)
+	{
+	  ptr = or_pack_domain (ptr, range->key1_domain, 0, 0);
+	}
+      if (range->key2_domain != NULL)
+	{
+	  ptr = or_pack_domain (ptr, range->key2_domain, 0, 0);
+	}
+    }
 
   if (indx_info->cov_list_id == NULL)
     {
@@ -7070,6 +7087,15 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
 	   + PTR_SIZE);		/* iss_range's key1 */
 
   size += or_packed_domain_size (indx_info->key_type, 0);	/* key_type */
+
+  size += OR_INT_SIZE;		/* other_keys */
+  for (int i = 0; i < indx_info->key_info.key_cnt; i++)
+    {
+      const KEY_RANGE *range = &indx_info->key_info.key_ranges[i];
+      size += OR_INT_SIZE;	/* the written key domains' mask */
+      size += range->key1_domain != NULL ? or_packed_domain_size (range->key1_domain, 0) : 0;
+      size += range->key2_domain != NULL ? or_packed_domain_size (range->key2_domain, 0) : 0;
+    }
 
   return size;
 }

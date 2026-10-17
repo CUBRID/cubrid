@@ -303,82 +303,6 @@ struct DOMAIN_PLAN_CONSTANT_OPERAND
   int temporary;		/* its domain_execution.temporaries index */
 };
 
-/* One column of one bound of a key range. */
-struct domain_plan_key_elem
-{
-  regu_variable_node *regu;	/* the element; NULL: an index skip scan's skip value, read from the index */
-  const TP_DOMAIN *index_elem;	/* the index column's domain */
-  const TP_DOMAIN *keep_elem;	/* STRICT, KEEP: the element's domain in the column's direction */
-  TP_VALUE_CONVERTER strict_conv;	/* STRICT: the element's type into index_elem, COMPARE mode
-					 * (tp_value_coerce_strict) */
-  int resolved_element;		/* CONSTANT, LATE_BIND: the element's resolution in its index's resolutions; -1 */
-  unsigned char rule;		/* DOMAIN_KEY_RULE */
-  bool shared;			/* a key2 CONSTANT over key1's bind at the same column: it reads key1's resolution,
-				 * which resolve_domains makes once */
-};
-
-/* One bound of a key range, key1 or key2: the two bounds of a range are resolved apart. */
-struct domain_plan_key
-{
-  domain_plan_key_elem *elems;	/* [n_elems]: the key columns in index order; one for a single-column key */
-  int n_elems;			/* 0: no bound */
-  int mixed_key_cache;		/* a multi-column bound with an element that may be kept: its mixed key domain cache
-				 * in the scan's key state; -1 */
-  bool midxkey;			/* a multi-column key (F_MIDXKEY) */
-  bool constant;		/* every element CONSTANT: resolve_domains assembles its domain once per execution */
-};
-
-/*
- * An index scan's key plan: the load derives it from INDX_INFO.key_type, the one stream item it adds, and
- * INDX_INFO points at it. Its bounds are each key range's key1 and key2, then the index skip scan's
- * fetch range (its one element is the skip value).
- */
-struct domain_plan_index
-{
-  const TP_DOMAIN *key_type;	/* the B-tree's key domain */
-  const TP_DOMAIN *asc_key_type;	/* key_type with every column ascending: a multi-range optimization's sort
-					 * column domains */
-  domain_plan_key *bounds;	/* [2 * n_ranges + 1] */
-  int n_ranges;
-  int n_resolved_elements;	/* the CONSTANT and LATE_BIND elements */
-  int n_mixed_key_caches;	/* the bounds with a mixed key domain cache */
-  int resolved_keys_index;	/* resolved_domain.indexes index: resolve_domains resolves the CONSTANT and LATE_BIND
-				 * elements and whether a key column takes other keys once per execution; -1 none */
-  int constant_branch;		/* the innermost constant branch around the scan (DOMAIN_PLAN_CONSTANT_BRANCH); -1
-				 * none */
-  bool other_keys;		/* comparison -1: a key column takes values of a key other than its own
-				 * (domain_key_differs), which compare by the type pair comparison table; false: every
-				 * value compares with its index column as it is */
-};
-
-/* One execution's resolution for a key element resolve_domains resolves. */
-struct RESOLVED_KEY_ELEMENT
-{
-  DB_VALUE value;		/* CONSTANT: the value the key writes - converted into the index column's domain, the
-				 * owner's, or as it is, shared with the execution's own value */
-  const TP_DOMAIN *domain;	/* CONSTANT: the domain a mixed key writes the value with (its own, in the column's
-				 * direction; the column's once converted); every constant has one */
-  const TP_DOMAIN *keep_elem;	/* LATE_BIND: the element's domain in the column's direction */
-  TP_VALUE_CONVERTER strict_conv;	/* LATE_BIND STRICT */
-  unsigned char rule;		/* LATE_BIND: INDEX, STRICT or KEEP; LATE_BIND itself when resolve_domains has no domain
-				 * for it: its values are NULL (a value there fails the unresolved-domain check
-				 * (execution)) */
-  bool kept;			/* CONSTANT: its column is kept, so its key is mixed */
-};
-
-/* One execution's key resolutions for an index scan: one block with the element resolutions and the bounds' domains;
- * the owner's. */
-struct RESOLVED_INDEX_KEYS
-{
-  RESOLVED_KEY_ELEMENT *elements;	/* [n_elements] */
-  const TP_DOMAIN **domains;	/* [2 * n_ranges + 1] a constant multi-column bound's domain (the index's, or its kept
-				 * columns' mix, cached) */
-  int n_elements;
-  int n_bounds;
-  bool other_keys;		/* a key column takes values of a key other than its own (domain_key_differs); false: no
-				 * value compares with its index column other than as it is */
-};
-
 typedef struct domain_plan DOMAIN_PLAN;
 struct domain_plan
 {
@@ -398,9 +322,6 @@ struct domain_plan
   int *const_ref_pos;		/* [n_const_refs] each constant reference's bind position (its val_pos), -1 for a
 				 * constant subtree: the bind step (qexec_share_value) reads it without the item's cold
 				 * part */
-  int n_indexes;
-  domain_plan_index *indexes;	/* the index scans' key plans, in walk order */
-  int n_resolved_index_keys;	/* the key plans resolve_domains resolves something for (their comparison) */
   int n_compare_indexes;
   DOMAIN_COMPARE_PLAN **compares;	/* the comparisons to resolve resolve_domains resolves, in
 					 * resolved_domain.compares order */

@@ -118,17 +118,17 @@ struct leaf_rec
 enum DOMAIN_SEARCH_KEYS : unsigned char;
 // *INDENT-ON*
 
-/* How an index scan's B-tree compares its search key values with the index keys: the scan's choice from its key
- * plan, made before any row (scan_index_search_compare). */
+/* How an index scan's B-tree compares its search key values with the index keys: the scan's choice from what XASL
+ * generation decided (INDX_INFO.other_keys), made before any row (scan_index_search_compare). */
 enum BTREE_SEARCH_COMPARE
 {
-  BTREE_SEARCH_COMPARE_RESOLVED = 0,	/* btree_compare_key_with's type and collation checks, then the key plan's
+  BTREE_SEARCH_COMPARE_RESOLVED = 0,	/* btree_compare_key_with's type and collation checks, then the type pair
 					 * comparison of a value that does not compare as it is (by value outside a
 					 * query plan) */
   BTREE_SEARCH_COMPARE_DIRECT,	/* a single-column key whose values all have the index column's type and collation:
 				 * the column's cmpval */
   BTREE_SEARCH_COMPARE_MIDXKEY_PLAIN	/* a multi-column key whose values all have their columns' types and
-					 * collations: the midxkey comparison without the plan's element comparison */
+					 * collations: the midxkey comparison without the type pair comparison */
 };
 
 /* BTID_INT structure from btree_load.h */
@@ -149,7 +149,7 @@ struct btid_int
   BTREE_SEARCH_COMPARE search_compare;	/* how the comparisons of an index scan's search key values compare; derived
 					 * with search_keys; RESOLVED outside an index scan */
   DOMAIN_SEARCH_KEYS search_keys;	/* what the comparisons of an index scan's search key values read; derived
-					 * from INDX_SCAN_ID's key plan; DOMAIN_SEARCH_KEYS_NONE outside an index scan */
+					 * from INDX_INFO.other_keys; DOMAIN_SEARCH_KEYS_NONE outside an index scan */
   int rev_level;
   OID topclass_oid;		/* class oid for which index is created */
 };
