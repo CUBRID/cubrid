@@ -26868,6 +26868,8 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
    * digits) + sign (1 digit) + NULL terminator (1 byte) */
   char num_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
   unsigned char res_str[UINT64_MAX_BIN_DIGITS + 2] = { 0 };
+  /* num_str, or a heap copy of an input too long for it; cutting the input would drop its last digits */
+  char *num_buf = num_str;
   char *num_p_str = num_str, *res_p_str = NULL;
   char *num_end_ptr = NULL;
   char str_buf[NUMERIC_MAX_STRING_SIZE];
@@ -26974,12 +26976,22 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
       char *str_start = NULL, *str_end = NULL;
       char *prev_char = NULL;
 
-      if (str_size >= 0)
+      if (str_size >= (int) sizeof (num_str))
 	{
-	  str_size = MIN (str_size, (int) (sizeof (num_str) - 1));
-	  strncpy (num_str, db_get_string (num), str_size);
-	  str_start = num_str;
-	  str_end = num_str + str_size;
+	  num_buf = (char *) db_private_alloc (NULL, str_size + 1);
+	  if (num_buf == NULL)
+	    {
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	}
+      str_start = str_end = num_buf;
+
+      /* an empty string has no char to trim; intl_prev_char () needs one */
+      if (str_size > 0)
+	{
+	  strncpy (num_buf, db_get_string (num), str_size);
+	  str_end = num_buf + str_size;
 
 	  /* trim the tailing white spaces */
 	  do
@@ -27008,8 +27020,8 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
 	  str_size = 0;
 	}
 
-      num_str[str_size] = '\0';
-      num_p_str = num_str;
+      num_buf[str_size] = '\0';
+      num_p_str = num_buf;
 
       if (!is_str_valid_number (num_p_str, str_end, from_base_int, codeset))
 	{
@@ -27023,14 +27035,30 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
       const char *num_bit_str = db_get_bit (num, &num_size);
       num_size = QSTR_NUM_BYTES (num_size);
 
-      /* convert to hex; NOTE: qstr_bin_to_hex returns number of converted bytes, not the size of the hex string; also,
-       * we convert at most 64 digits even if we need only 16 in order to let strtoll handle overflow (weird stuff
-       * happens there ...) */
-      num_size = qstr_bin_to_hex (num_str, UINT64_MAX_BIN_DIGITS, num_bit_str, num_size);
-      num_str[num_size * 2] = '\0';
+      /* an empty bit string has no digit, as an empty string has none */
+      if (num_size == 0)
+	{
+	  error_code = ER_OBJ_INVALID_ARGUMENTS;
+	  goto error;
+	}
+
+      if (num_size * 2 >= (int) sizeof (num_str))
+	{
+	  num_buf = (char *) db_private_alloc (NULL, num_size * 2 + 1);
+	  if (num_buf == NULL)
+	    {
+	      error_code = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto error;
+	    }
+	}
+
+      /* convert to hex; NOTE: qstr_bin_to_hex returns number of converted bytes, not the size of the hex string; all
+       * the bytes are converted, and strtoull reports a value beyond UINT64 as an overflow */
+      num_size = qstr_bin_to_hex (num_buf, num_size * 2, num_bit_str, num_size);
+      num_buf[num_size * 2] = '\0';
 
       /* set up variables for hex -> base10 conversion */
-      num_p_str = num_str;
+      num_p_str = num_buf;
       from_base_int = 16;
       num_is_signed = false;
     }
@@ -27116,10 +27144,19 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
   db_make_string (result, res_p_str);
   result->need_clear = true;
 
+  if (num_buf != num_str)
+    {
+      db_private_free (NULL, num_buf);
+    }
+
   /* all ok */
   return NO_ERROR;
 
 error:
+  if (num_buf != num_str)
+    {
+      db_private_free (NULL, num_buf);
+    }
   if (result)
     {
       db_make_null (result);
