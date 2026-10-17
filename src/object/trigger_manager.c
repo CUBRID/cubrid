@@ -1754,7 +1754,6 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
  * Note:
  *    This is used to check the validity of a cached trigger structure.
  *    It should be called once before any API level trigger operation takes place.
- *    Among other things, this must make sure the condition and action statements are compiled and ready to go.
  *    It also checks "quickly" to see if the associated trigger instance was modified since the last time the trigger
  *    was cached. This could be faster.
  */
@@ -1789,27 +1788,6 @@ validate_trigger (TR_TRIGGER * trigger)
 
       tr_clear_trigger (trigger);
       *trigger = new_trigger;
-
-      if (compile_trigger_activity (trigger, trigger->condition, 1))
-	{
-	  trigger->status = TR_STATUS_INVALID;
-	  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()))
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      return error;
-	    }
-	}
-
-      if (compile_trigger_activity (trigger, trigger->action, 0))
-	{
-	  trigger->status = TR_STATUS_INVALID;
-	  if (ER_IS_ABORTED_DUE_TO_DEADLOCK (er_errid ()))
-	    {
-	      ASSERT_ERROR_AND_SET (error);
-	      return error;
-	    }
-	}
-
     }
 
   return NO_ERROR;
@@ -4517,13 +4495,7 @@ tr_drop_trigger (DB_OBJECT * obj, bool call_from_api)
   /* Do we need to disable authorization just for check_authorization ? */
   AU_SAVE_AND_DISABLE (save);
 
-  /*
-   * Turn off the "fetch" flag to tr_map_trigger so we don't attempt to validate the trigger by compiling
-   * the statements, etc.  As we're going to delete it, we don't care if the trigger is valid or not.
-   * In particular this is necessary if any of the triggers referenced classes have been deleted
-   * because the validation will fail tr_map_trigger would return an error.
-   */
-
+  /* no need to validate the cached trigger, as it is going to be deleted */
   trigger = tr_map_trigger (obj, false);
   if (trigger == NULL)
     {
