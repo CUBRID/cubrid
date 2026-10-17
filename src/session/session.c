@@ -87,9 +87,6 @@ struct session_variable
 {
   char *name;
   DB_VALUE *value;
-  /* CBRD-27583 (spec 2): the type of the first value that is not NULL, kept through NULLs until DROP VARIABLE; NULL
-   * while the variable has had no such value */
-  const TP_DOMAIN *type;
   SESSION_VARIABLE *next;
 };
 
@@ -214,14 +211,15 @@ static int session_check_timeout (SESSION_STATE * session_p, SESSION_INFO * acti
 
 static void session_free_prepared_statement (PREPARED_STATEMENT * stmt_p);
 
-static int session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE * value);
+static int session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE * value, bool in_statement);
 
 static int session_drop_variable (SESSION_STATE * state_p, const DB_VALUE * name);
 
 static void free_session_variable (SESSION_VARIABLE * var);
 
-static int update_session_variable (SESSION_VARIABLE * var, const DB_VALUE * new_value);
-static DB_VALUE *session_variable_value (SESSION_VARIABLE * var, const DB_VALUE * value);
+static int update_session_variable (SESSION_VARIABLE * var, const DB_VALUE * new_value, bool in_statement);
+static DB_VALUE *session_variable_value (const char *name, const DB_VALUE * current, const DB_VALUE * value,
+					 bool in_statement);
 
 static DB_VALUE *db_value_alloc_and_copy (const DB_VALUE * src);
 
@@ -1126,9 +1124,10 @@ free_session_variable (SESSION_VARIABLE * var)
  * state_p (in)	  : session state object
  * name (in)	  : name of the variable
  * value (in)	  : variable value
+ * in_statement (in) : an assignment within a statement (:=), which keeps the variable's type (CBRD-27583 D-40)
  */
 static int
-session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE * value)
+session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE * value, bool in_statement)
 {
   SESSION_VARIABLE *var = NULL;
   SESSION_VARIABLE *current = NULL;
@@ -1174,7 +1173,7 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
       if (intl_identifier_casecmp (name_str, current->name) == 0)
 	{
 	  /* if it already exists, just update the value */
-	  return update_session_variable (current, value);
+	  return update_session_variable (current, value, in_statement);
 	}
 
       current = current->next;
@@ -1206,8 +1205,7 @@ session_add_variable (SESSION_STATE * state_p, const DB_VALUE * name, DB_VALUE *
   memcpy (var->name, name_str, len);
   var->name[len] = 0;
 
-  var->type = NULL;
-  var->value = session_variable_value (var, value);
+  var->value = session_variable_value (var->name, NULL, value, in_statement);
   if (var->value == NULL)
     {
       goto error;
@@ -1336,11 +1334,12 @@ db_value_alloc_and_copy (const DB_VALUE * src)
  * return : void
  * var (in/out)	  : the variable to update
  * new_value (in) : the new value
+ * in_statement (in) : an assignment within a statement (:=)
  */
 static int
-update_session_variable (SESSION_VARIABLE * var, const DB_VALUE * new_value)
+update_session_variable (SESSION_VARIABLE * var, const DB_VALUE * new_value, bool in_statement)
 {
-  DB_VALUE *value = session_variable_value (var, new_value);
+  DB_VALUE *value = session_variable_value (var->name, var->value, new_value, in_statement);
   if (value == NULL)
     {
       return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
@@ -1360,82 +1359,74 @@ update_session_variable (SESSION_VARIABLE * var, const DB_VALUE * new_value)
   return NO_ERROR;
 }
 
-/* The name of a session variable's type in its type error: a string's collation too, which may be all that differs */
+/* The name of a session variable's type in its type error: a string's codeset too, which may be all that differs */
 static const char *
-session_variable_type_name (DB_TYPE type, int collation, char *buffer, size_t size)
+session_variable_type_name (DB_TYPE type, int codeset, char *buffer, size_t size)
 {
   if (!TP_IS_CHAR_TYPE (type))
     {
       return pr_type_name (type);
     }
-  snprintf (buffer, size, "%s collate %s", pr_type_name (type), lang_get_collation_name (collation));
+  snprintf (buffer, size, "%s charset %s", pr_type_name (type), lang_get_codeset_name (codeset));
   return buffer;
 }
 
 /*
- * session_variable_type_error () - CBRD-27583 (spec 2): ER_SES_VARIABLE_TYPE_FIXED, a session variable of a type meets
- *   a value of another
+ * session_variable_type_error () - CBRD-27583 (spec 2, D-40): ER_SES_VARIABLE_TYPE_FIXED, a session variable that has
+ *   a type for the statement meets a value of another within it
  *   return: ER_SES_VARIABLE_TYPE_FIXED
  */
 int
-session_variable_type_error (const char *name, const TP_DOMAIN * type, const DB_VALUE * value)
+session_variable_type_error (const char *name, DB_TYPE type, int codeset, const DB_VALUE * value)
 {
   char type_buffer[128], value_buffer[128];
   const DB_TYPE value_type = DB_VALUE_DOMAIN_TYPE (value);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SES_VARIABLE_TYPE_FIXED, 3, name,
-	  session_variable_type_name (TP_DOMAIN_TYPE (type), TP_DOMAIN_COLLATION (type), type_buffer,
-				      sizeof (type_buffer)),
-	  session_variable_type_name (value_type, TP_IS_CHAR_TYPE (value_type) ? db_get_string_collation (value) : 0,
+	  session_variable_type_name (type, codeset, type_buffer, sizeof (type_buffer)),
+	  session_variable_type_name (value_type, TP_IS_CHAR_TYPE (value_type) ? db_get_string_codeset (value) : 0,
 				      value_buffer, sizeof (value_buffer)));
   return ER_SES_VARIABLE_TYPE_FIXED;
 }
 
 /*
- * session_variable_value () - CBRD-27583 (spec 2): the value a session variable stores, held to its type: the first
- *   value that is not NULL fixes the type, a value of another type is rejected (ER_SES_VARIABLE_TYPE_FIXED) and a NULL
- *   keeps the type, stored as a NULL of it
+ * session_variable_value () - CBRD-27583 (spec 2, D-40): the value a session variable stores: a SET VARIABLE gives the
+ *   variable its value's type, an assignment within a statement (:=) must keep the type the variable has
+ *   (ER_SES_VARIABLE_TYPE_FIXED), and a NULL keeps that type, stored as a NULL of it
  *   return: the value to store (the caller owns it), or NULL with the error set
+ *   name(in): the variable's name
+ *   current(in): the value the variable holds; NULL for a new variable
  *
- * The type is the stored value's (db_value_alloc_and_copy keeps a number, a string and a bit string and keeps any other
- * value as VARCHAR): a string of the same codeset and collation whatever its length or fixed or varying kind, the same
- * type otherwise.
+ * The variable's type is its stored value's domain (db_value_alloc_and_copy keeps a number, a string and a bit string
+ * and keeps any other value as VARCHAR): a string has one type per codeset, whatever its collation, length or fixed or
+ * varying kind; any other value its DB type.
  */
 static DB_VALUE *
-session_variable_value (SESSION_VARIABLE * var, const DB_VALUE * value)
+session_variable_value (const char *name, const DB_VALUE * current, const DB_VALUE * value, bool in_statement)
 {
   DB_VALUE *stored = db_value_alloc_and_copy (value);
-  if (stored == NULL)
+  const DB_TYPE type = current != NULL ? DB_VALUE_DOMAIN_TYPE (current) : DB_TYPE_NULL;
+  if (stored == NULL || type == DB_TYPE_NULL)
     {
-      return NULL;
-    }
-  if (var->type == NULL)
-    {
-      if (!DB_IS_NULL (stored))
-	{
-	  var->type = tp_domain_resolve_value (stored, NULL);
-	}
       return stored;
     }
-  const DB_TYPE type = TP_DOMAIN_TYPE (var->type);
   if (DB_IS_NULL (stored))
     {
-      db_value_domain_init (stored, type, var->type->precision, var->type->scale);
+      db_value_domain_init (stored, type, db_value_precision (current), db_value_scale (current));
       if (TP_IS_CHAR_TYPE (type))
 	{
 	  stored->data.ch.medium.buf = NULL;
-	  db_string_put_cs_and_collation (stored, TP_DOMAIN_CODESET (var->type), TP_DOMAIN_COLLATION (var->type));
+	  db_string_put_cs_and_collation (stored, db_get_string_codeset (current), db_get_string_collation (current));
 	}
       return stored;
     }
   const DB_TYPE stored_type = DB_VALUE_DOMAIN_TYPE (stored);
   const bool same = TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE (stored_type)
-    ? db_get_string_codeset (stored) == TP_DOMAIN_CODESET (var->type)
-    && db_get_string_collation (stored) == TP_DOMAIN_COLLATION (var->type) : type == stored_type;
-  if (same)
+    ? db_get_string_codeset (stored) == db_get_string_codeset (current) : type == stored_type;
+  if (!in_statement || same)
     {
       return stored;
     }
-  (void) session_variable_type_error (var->name, var->type, stored);
+  (void) session_variable_type_error (name, type, TP_IS_CHAR_TYPE (type) ? db_get_string_codeset (current) : 0, stored);
   if (QSTR_IS_ANY_CHAR_OR_BIT (stored_type))
     {
       free_and_init (stored->data.ch.medium.buf);
@@ -2128,7 +2119,7 @@ session_set_session_variables (THREAD_ENTRY * thread_p, DB_VALUE * values, const
 
   for (i = 0; i < count; i += 2)
     {
-      const int error = session_add_variable (state_p, &values[i], &values[i + 1]);
+      const int error = session_add_variable (state_p, &values[i], &values[i + 1], false);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -2158,7 +2149,7 @@ session_define_variable (THREAD_ENTRY * thread_p, DB_VALUE * name, DB_VALUE * va
       return ER_FAILED;
     }
 
-  err = session_add_variable (state_p, name, value);
+  err = session_add_variable (state_p, name, value, true);
   if (err == NO_ERROR)
     {
       pr_clone_value (value, result);

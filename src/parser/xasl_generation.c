@@ -7428,12 +7428,13 @@ pt_count_session_variables (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, 
 }
 
 /*
- * pt_type_session_variables () - CBRD-27583 (4.8): the type each session variable a statement compiled at every
- *   execution reads or assigns has for its compilation, which the reads take (T_EVALUATE_VARIABLE): the session's -
- *   the type of the variable's first value that is not NULL, asked once per variable - else the type the statement's
- *   first assignment that gives one gives it, its reads in the types found so far, else none (the NULL type). A string
- *   variable the statement assigns takes its variable-length string (a fixed-length value converts at the read). A
- *   variable assigned another type than its own fails at that assignment (ER_SES_VARIABLE_TYPE_FIXED).
+ * pt_type_session_variables () - CBRD-27583 (4.8, D-40): the type each session variable a statement compiled at every
+ *   execution reads or assigns has for the statement, which the reads take (T_EVALUATE_VARIABLE): the session's - the
+ *   domain of the variable's value (the last SET VARIABLE's type; a NULL keeps the type), asked once per variable - else
+ *   the type the statement's first assignment that gives one gives it, its reads in the types found so far, else none
+ *   (the NULL type). A string variable the statement assigns takes its variable-length string (a fixed-length value or
+ *   another collation converts at the read). An assignment of another type within the statement fails at that
+ *   assignment (ER_SES_VARIABLE_TYPE_FIXED).
  */
 void
 pt_type_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)

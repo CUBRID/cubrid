@@ -72,16 +72,15 @@ static int fetch_arith_binary_operand_coercion (THREAD_ENTRY * thread_p, const v
 						TP_DOMAIN * domain) __attribute__ ((noinline));
 
 /*
- * fetch_session_read_value () - CBRD-27583 (4.8): a session variable read's value in the type the compilation gave the
- *   read: the variable's type when the statement was compiled, or the one its first assignment in the statement gives
- *   a variable without a type
+ * fetch_session_read_value () - CBRD-27583 (4.8, D-40): a session variable read's value in the type the compilation gave
+ *   the read: the variable's type when the statement was compiled, or the one its first assignment in the statement
+ *   gives a variable without a type
  *   return: NO_ERROR, or ER_SES_VARIABLE_TYPE_FIXED for a value of another type
  *
- * A variable keeps the type of its first value that is not NULL (session_variable_value), so a value of another type
- * comes from an assignment of the statement the compilation did not take for the first one. A value is of the read's
- * type when it has its DB type, a string also its codeset and collation, whatever its length. A fixed-length string of
- * a variable the statement assigns strings converts into the variable-length string the compilation gave it, whose
- * longest precision holds it.
+ * An assignment within the statement keeps the variable's type (session_variable_value), so a value of another type
+ * comes from a writer the compilation did not see (a SET VARIABLE in a stored procedure the statement calls). A string
+ * has one type per codeset: a value of another collation, or a fixed-length one the statement's assignments made
+ * variable-length, converts into the read's domain.
  */
 static int
 fetch_session_read_value (ARITH_TYPE * arithptr, const DB_VALUE * name)
@@ -93,20 +92,22 @@ fetch_session_read_value (ARITH_TYPE * arithptr, const DB_VALUE * name)
       return NO_ERROR;
     }
   const DB_TYPE value_type = DB_VALUE_DOMAIN_TYPE (value);
-  const bool same_collation = !TP_IS_CHAR_TYPE (value_type) || !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (type))
-    || (db_get_string_codeset (value) == TP_DOMAIN_CODESET (type)
-	&& db_get_string_collation (value) == TP_DOMAIN_COLLATION (type));
-  if (value_type == TP_DOMAIN_TYPE (type) && same_collation)
+  const DB_TYPE read_type = TP_DOMAIN_TYPE (type);
+  if (TP_IS_CHAR_TYPE (value_type) && TP_IS_CHAR_TYPE (read_type)
+      && db_get_string_codeset (value) == TP_DOMAIN_CODESET (type))
+    {
+      if ((value_type == read_type && db_get_string_collation (value) == TP_DOMAIN_COLLATION (type))
+	  || tp_value_cast (value, value, type, false) == DOMAIN_COMPATIBLE)
+	{
+	  return NO_ERROR;
+	}
+    }
+  else if (value_type == read_type)
     {
       return NO_ERROR;
     }
-  if (value_type == DB_TYPE_CHAR && TP_DOMAIN_TYPE (type) == DB_TYPE_VARCHAR
-      && type->precision == DB_MAX_VARCHAR_PRECISION && same_collation
-      && tp_value_cast (value, value, type, false) == DOMAIN_COMPATIBLE)
-    {
-      return NO_ERROR;
-    }
-  return session_variable_type_error (db_get_string (name), type, value);
+  return session_variable_type_error (db_get_string (name), read_type,
+				      TP_IS_CHAR_TYPE (read_type) ? TP_DOMAIN_CODESET (type) : 0, value);
 }
 
 /*
