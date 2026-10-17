@@ -3596,7 +3596,10 @@ expr_scan_pred_node_raw_info (const EXPR_PRED * root, const EXPR_PRED * pred, co
 
       if (c->type != TYPE_ATTR_ID || c->domain == NULL || TP_DOMAIN_TYPE (c->domain) != DB_TYPE_NUMERIC)
 	{
-	  return false;
+	  /* another type compared generically (a CHAR column inside an OR the optimizer made of an IN list): the
+	   * original term, read as an interpreted filter's term */
+	  memset (out, 0, sizeof (*out));
+	  return pred->fetch_src != NULL && expr_pred_term_raw_info ((const PRED_EXPR *) pred->fetch_src, vd, out);
 	}
       numeric = true;
     }
