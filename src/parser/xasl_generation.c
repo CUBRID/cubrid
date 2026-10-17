@@ -7215,6 +7215,312 @@ pt_operand_retyped (const REGU_VARIABLE * const *operand, int n_operands, const 
   return false;
 }
 
+/* CBRD-27583 (4.8): the name a session variable read or assignment carries in its first argument */
+static const char *
+pt_session_variable_name (PARSER_CONTEXT * parser, PT_NODE * expr)
+{
+  DB_VALUE *name = expr->info.expr.arg1 != NULL ? pt_value_to_db (parser, expr->info.expr.arg1) : NULL;
+  return name != NULL && DB_VALUE_DOMAIN_TYPE (name) == DB_TYPE_CHAR ? db_get_string (name) : NULL;
+}
+
+/* CBRD-27583 (4.8): a session variable's slot in the type table of the statement, -1 for none */
+static int
+pt_session_variable_index (const PARSER_CONTEXT * parser, const char *name)
+{
+  for (int i = 0; name != NULL && i < parser->session_variable_count; i++)
+    {
+      if (intl_identifier_casecmp (parser->session_variable_names[i], name) == 0)
+	{
+	  return i;
+	}
+    }
+  return -1;
+}
+
+/*
+ * pt_session_expr_domain () - CBRD-27583 (4.8): the domain of an expression a statement assigns a session variable,
+ *   with the variables' reads in the types the table gives them so far: the type checking's type, or for an operator
+ *   it left to a read or a bind the type rule over its operands' domains; NULL where neither gives one
+ */
+static const TP_DOMAIN *
+pt_session_expr_domain (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  if (node == NULL)
+    {
+      return NULL;
+    }
+  if (node->node_type == PT_EXPR && node->info.expr.op == PT_EVALUATE_VARIABLE)
+    {
+      const int v = pt_session_variable_index (parser, pt_session_variable_name (parser, node));
+      return v >= 0
+	&& parser->session_variable_domains[v] != NULL ? parser->session_variable_domains[v] : &tp_Null_domain;
+    }
+  if (node->node_type == PT_EXPR && node->info.expr.op == PT_DEFINE_VARIABLE)
+    {
+      return pt_session_expr_domain (parser, node->info.expr.arg2);
+    }
+  if (node->node_type == PT_HOST_VAR)
+    {
+      const int index = node->info.host_var.index;
+      if (index < parser->host_var_count && parser->host_var_compiled_domains != NULL
+	  && parser->host_var_compiled_domains[index] != NULL)
+	{
+	  return parser->host_var_compiled_domains[index];
+	}
+      return pt_host_var_value_domain (parser, index);
+    }
+  if (node->type_enum != PT_TYPE_MAYBE && node->type_enum != PT_TYPE_NONE)
+    {
+      return pt_xasl_node_to_domain (parser, node);
+    }
+  if (node->node_type != PT_EXPR)
+    {
+      return NULL;
+    }
+  OPERATOR_TYPE opcode;
+  switch (node->info.expr.op)
+    {
+    case PT_PLUS:
+      opcode = T_ADD;
+      break;
+    case PT_MINUS:
+      opcode = T_SUB;
+      break;
+    case PT_TIMES:
+      opcode = T_MUL;
+      break;
+    case PT_DIVIDE:
+      opcode = T_DIV;
+      break;
+    case PT_MODULUS:
+      opcode = T_MOD;
+      break;
+    case PT_UNARY_MINUS:
+      opcode = T_UNMINUS;
+      break;
+    case PT_STRCAT:
+      opcode = T_STRCAT;
+      break;
+    case PT_IFNULL:
+      opcode = T_IFNULL;
+      break;
+    case PT_NVL:
+      opcode = T_NVL;
+      break;
+    case PT_COALESCE:
+      opcode = T_COALESCE;
+      break;
+    case PT_NVL2:
+      opcode = T_NVL2;
+      break;
+    default:
+      return NULL;
+    }
+  PT_NODE *arg[3] = { node->info.expr.arg1, node->info.expr.arg2, node->info.expr.arg3 };
+  DOMAIN_OPERAND operands[3];
+  int n = 0;
+  for (int i = 0; i < 3; i++)
+    {
+      if (arg[i] == NULL)
+	{
+	  continue;
+	}
+      const TP_DOMAIN *domain = pt_session_expr_domain (parser, arg[i]);
+      if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+	{
+	  return NULL;
+	}
+      operands[n++] = DOMAIN_OPERAND
+      {
+      domain, TP_DOMAIN_TYPE (domain), TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) ? domain->collation_id : -1, false};
+    }
+  RESOLVED_DOMAIN result;
+  bool needs_late_bind = false;
+  if (n == 0
+      || domain_resolve (domain_late_bind_context (opcode), opcode, operands, n, NULL, &result, &needs_late_bind)
+      != NO_ERROR || needs_late_bind || result.domain == NULL || TP_DOMAIN_TYPE (result.domain) == DB_TYPE_VARIABLE)
+    {
+      return NULL;
+    }
+  return result.domain;
+}
+
+/*
+ * pt_session_stored_domain () - CBRD-27583 (4.8): the type a session variable takes from a value of a domain, as the
+ *   server stores it (db_value_alloc_and_copy): a number its own, a string the variable-length string of its codeset
+ *   and collation, a bit string its own, any other value a VARCHAR; NULL for a value that gives no type
+ */
+static TP_DOMAIN *
+pt_session_stored_domain (const TP_DOMAIN * domain)
+{
+  const DB_TYPE type = TP_DOMAIN_TYPE (domain);
+  if (type == DB_TYPE_NULL || type == DB_TYPE_VARIABLE || TP_IS_SET_TYPE (type))
+    {
+      return NULL;
+    }
+  if (TP_IS_NUMERIC_TYPE (type) || type == DB_TYPE_BIT || type == DB_TYPE_VARBIT)
+    {
+      return (TP_DOMAIN *) domain;
+    }
+  return tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL,
+			    TP_IS_CHAR_TYPE (type) ? TP_DOMAIN_COLLATION (domain) : LANG_SYS_COLLATION);
+}
+
+/* CBRD-27583 (4.8): the session's type of a session variable - its stored value's domain, a NULL of a variable that
+ * had a value carrying its type - asked once by the name a read or an assignment carries (the value SET and the row
+ * send); NULL for a variable without one or not defined */
+static TP_DOMAIN *
+pt_session_start_domain (PARSER_CONTEXT * parser, PT_NODE * expr)
+{
+  DB_VALUE value;
+  TP_DOMAIN *domain = NULL;
+  db_make_null (&value);
+  er_stack_push ();
+  if (db_get_variable (pt_value_to_db (parser, expr->info.expr.arg1), &value) == NO_ERROR)
+    {
+      const TP_DOMAIN *start = domain_value_domain (&value);
+      domain = start != NULL && TP_DOMAIN_TYPE (start) != DB_TYPE_NULL ? (TP_DOMAIN *) start : NULL;
+    }
+  er_stack_pop ();
+  pr_clear_value (&value);
+  return domain;
+}
+
+static PT_NODE *
+pt_collect_session_variables (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE **defines = (PT_NODE **) arg;
+  if (node->node_type != PT_EXPR
+      || (node->info.expr.op != PT_EVALUATE_VARIABLE && node->info.expr.op != PT_DEFINE_VARIABLE))
+    {
+      return node;
+    }
+  const char *name = pt_session_variable_name (parser, node);
+  if (name != NULL && pt_session_variable_index (parser, name) < 0)
+    {
+      parser->session_variable_names[parser->session_variable_count] = pt_append_string (parser, NULL, name);
+      parser->session_variable_domains[parser->session_variable_count] = pt_session_start_domain (parser, node);
+      parser->session_variable_count++;
+    }
+  if (node->info.expr.op == PT_DEFINE_VARIABLE && defines != NULL)
+    {
+      for (int d = 0;; d++)
+	{
+	  if (defines[d] == NULL)
+	    {
+	      defines[d] = node;
+	      break;
+	    }
+	}
+    }
+  return node;
+}
+
+static PT_NODE *
+pt_count_session_variables (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node->node_type == PT_EXPR
+      && (node->info.expr.op == PT_EVALUATE_VARIABLE || node->info.expr.op == PT_DEFINE_VARIABLE))
+    {
+      (*(int *) arg)++;
+    }
+  return node;
+}
+
+/*
+ * pt_type_session_variables () - CBRD-27583 (4.8): the type each session variable a statement compiled at every
+ *   execution reads or assigns has for its compilation, which the reads take (T_EVALUATE_VARIABLE): the session's -
+ *   the type of the variable's first value that is not NULL, asked once per variable - else the type the statement's
+ *   first assignment that gives one gives it, its reads in the types found so far, else none (the NULL type). A string
+ *   variable the statement assigns takes its variable-length string (a fixed-length value converts at the read). A
+ *   variable assigned another type than its own fails at that assignment (ER_SES_VARIABLE_TYPE_FIXED).
+ */
+void
+pt_type_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  int n_nodes = 0;
+  parser->session_variable_count = 0;
+  (void) parser_walk_tree (parser, statement, pt_count_session_variables, &n_nodes, NULL, NULL);
+  if (n_nodes == 0)
+    {
+      return;
+    }
+  parser->session_variable_names = (const char **) parser_alloc (parser, n_nodes * sizeof (const char *));
+  parser->session_variable_domains = (TP_DOMAIN **) parser_alloc (parser, n_nodes * sizeof (TP_DOMAIN *));
+  PT_NODE **defines = (PT_NODE **) parser_alloc (parser, (n_nodes + 1) * sizeof (PT_NODE *));
+  if (parser->session_variable_names == NULL || parser->session_variable_domains == NULL || defines == NULL)
+    {
+      parser->session_variable_count = 0;
+      return;
+    }
+  (void) parser_walk_tree (parser, statement, pt_collect_session_variables, defines, NULL, NULL);
+  bool *assigned = (bool *) parser_alloc (parser, parser->session_variable_count * sizeof (bool));
+  if (assigned == NULL)
+    {
+      parser->session_variable_count = 0;
+      return;
+    }
+  /* the first assignment that gives a type types a variable without one, its reads included: passes until none
+   * changes, at most one per variable */
+  bool changed = true;
+  for (int pass = 0; changed && pass <= parser->session_variable_count; pass++)
+    {
+      changed = false;
+      for (int d = 0; defines[d] != NULL; d++)
+	{
+	  const int v = pt_session_variable_index (parser, pt_session_variable_name (parser, defines[d]));
+	  if (v < 0)
+	    {
+	      continue;
+	    }
+	  assigned[v] = true;
+	  const TP_DOMAIN *domain = pt_session_expr_domain (parser, defines[d]->info.expr.arg2);
+	  TP_DOMAIN *stored = domain != NULL ? pt_session_stored_domain (domain) : NULL;
+	  if (stored != NULL && parser->session_variable_domains[v] == NULL)
+	    {
+	      parser->session_variable_domains[v] = stored;
+	      changed = true;
+	    }
+	}
+    }
+  for (int v = 0; v < parser->session_variable_count; v++)
+    {
+      TP_DOMAIN *domain = parser->session_variable_domains[v];
+      if (domain != NULL && assigned[v] && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)))
+	{
+	  /* the statement may store any string of the collation (session_variable_value), longer or of the other kind */
+	  parser->session_variable_domains[v] = pt_session_stored_domain (domain);
+	}
+    }
+}
+
+/* CBRD-27583 (4.8): an assignment the parse tree gave no type (pt_session_expr_domain) types a variable still without
+ * one by the domain its generated value has, for the reads generated after it */
+static void
+pt_type_session_variable_by_assignment (PARSER_CONTEXT * parser, PT_NODE * define, const REGU_VARIABLE * value)
+{
+  const int v = pt_session_variable_index (parser, pt_session_variable_name (parser, define));
+  if (v >= 0 && parser->session_variable_domains[v] == NULL && pt_regu_domain_is_fixed (value))
+    {
+      parser->session_variable_domains[v] = pt_session_stored_domain (value->domain);
+    }
+}
+
+/*
+ * pt_session_variable_domain () - CBRD-27583 (4.8): the domain of a session variable read: its type in the statement's
+ *   table (pt_type_session_variables) - a read of a statement no table was made for asks the session - the NULL type
+ *   for a variable without one
+ */
+static TP_DOMAIN *
+pt_session_variable_domain (PARSER_CONTEXT * parser, PT_NODE * read)
+{
+  const char *name = pt_session_variable_name (parser, read);
+  const int v = pt_session_variable_index (parser, name);
+  TP_DOMAIN *domain =
+    v >= 0 ? parser->session_variable_domains[v] : name != NULL ? pt_session_start_domain (parser, read) : NULL;
+  return domain != NULL ? domain : &tp_Null_domain;
+}
+
 /*
  * pt_incompatible_collation_domain () - CBRD-27583 (d1): the domain of a string node or function over operands whose
  *   collations do not merge: the row raises the error where it computes it, so no value has this domain - the type
@@ -7268,6 +7574,33 @@ pt_merge_branch_collations (REGU_VARIABLE * const *branch, int n_branches, const
 }
 
 /*
+ * pt_session_read_value_type () - CBRD-27583 (4.8): the type the rule takes an operand as: a session variable read at a
+ *   value-dependent argument (domain_argument_type_depends_on_value) takes the class of the value the session holds
+ *   for the statement compiled at its execution, as the load took it at the execution's start; a NULL or no value, and
+ *   any other operand, its type
+ */
+static DB_TYPE
+pt_session_read_value_type (const REGU_VARIABLE * operand, DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE type)
+{
+  const ARITH_TYPE *read = operand->type == TYPE_INARITH ? operand->value.arithptr : NULL;
+  if (read == NULL || read->opcode != T_EVALUATE_VARIABLE || read->rightptr == NULL
+      || read->rightptr->type != TYPE_DBVAL
+      || !domain_argument_type_depends_on_value (context, opcode, arg_index, type))
+    {
+      return type;
+    }
+  DB_VALUE value;
+  db_make_null (&value);
+  er_stack_push ();
+  const DB_TYPE value_type =
+    db_get_variable ((DB_VALUE *) & read->rightptr->value.dbval, &value) == NO_ERROR && !DB_IS_NULL (&value)
+    ? domain_classify_value (context, opcode, arg_index, &value) : type;
+  er_stack_pop ();
+  pr_clear_value (&value);
+  return value_type;
+}
+
+/*
  * pt_decide_node_domain () - CBRD-27583: the domain of an operator node type checking left to its operands' values
  *   (a value-typed bind) or typed over an argument its operand regu retypes (D-34), resolved with the type rule module
  *   from its operands' domains as the bind type signature fixes them, and the collation of a string type checking
@@ -7290,6 +7623,7 @@ pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
     {
       return;
     }
+  const DOMAIN_CTX context = domain_late_bind_context (arith->opcode);
   DOMAIN_OPERAND operands[3];
   int n = 0;
   for (int i = 0; i < n_value_operands; i++)
@@ -7303,9 +7637,12 @@ pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
 	  return;
 	}
       const TP_DOMAIN *domain = operand[i]->domain;
-      operands[n++] = DOMAIN_OPERAND
+      const DB_TYPE type = TP_DOMAIN_TYPE (domain);
+      operands[n] = DOMAIN_OPERAND
       {
-      domain, TP_DOMAIN_TYPE (domain), TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) ? domain->collation_id : -1, false};
+      domain, pt_session_read_value_type (operand[i], context, arith->opcode, n, type),
+	  TP_IS_CHAR_TYPE (type) ? domain->collation_id : -1, false};
+      n++;
     }
   if (n == 0)
     {
@@ -7316,8 +7653,7 @@ pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
   bool needs_late_bind = false;
   int error = collation_variable
     ? domain_resolve_character (arith->opcode, operands, n, arith->domain, &result)
-    : domain_resolve (domain_late_bind_context (arith->opcode), arith->opcode, operands, n, arith->domain, &result,
-		      &needs_late_bind);
+    : domain_resolve (context, arith->opcode, operands, n, arith->domain, &result, &needs_late_bind);
   if (collation_variable && error == ER_QPROC_DOMAIN_UNRESOLVED
       && (arith->opcode == T_CASE || arith->opcode == T_DECODE || arith->opcode == T_IF))
     {
@@ -9536,10 +9872,13 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  break;
 
 		case PT_EVALUATE_VARIABLE:
+		  /* CBRD-27583 (4.8): the variable's type for the statement, not its value's at each row */
+		  domain = pt_session_variable_domain (parser, node);
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_EVALUATE_VARIABLE, domain);
 		  break;
 
 		case PT_DEFINE_VARIABLE:
+		  pt_type_session_variable_by_assignment (parser, node, r2);
 		  regu = pt_make_regu_arith (r1, r2, NULL, T_DEFINE_VARIABLE, domain);
 		  break;
 

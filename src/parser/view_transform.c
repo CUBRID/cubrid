@@ -9563,9 +9563,12 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 
   /* CBRD-27583: the rewrites are done; every session translating the text gets the same derived positions */
   pt_assign_host_var_positions (parser, (PT_NODE *) return_node);
+  parser->session_variable_count = 0;
   if (return_node != NULL && compiled_every_time)
     {
       ((PT_NODE *) return_node)->flag.cannot_prepare = 1;
+      /* CBRD-27583 (4.8): the types its session variable reads take, asked of the session now */
+      pt_type_session_variables (parser, (PT_NODE *) return_node);
     }
 
   PT_CLEAR_JMP_ENV (parser);

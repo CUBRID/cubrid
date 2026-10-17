@@ -3973,6 +3973,11 @@ struct parser_context
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
   int host_var_derived_count;	/* CBRD-27583: how many of the auto_param_count positions are derived positions */
+  int session_variable_count;	/* CBRD-27583 (4.8): the session variables the statement mq_translate translated last
+				 * reads or assigns (pt_type_session_variables) */
+  const char **session_variable_names;	/* [session_variable_count] their names */
+  TP_DOMAIN **session_variable_domains;	/* [session_variable_count] the type each has for the statement: the
+					 * session's, else the one its first assignment gives, else the NULL type */
 
   int dbval_cnt;		/* to be assigned to XASL */
   int line, column;		/* current input line and column */

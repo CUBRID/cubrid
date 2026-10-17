@@ -174,6 +174,7 @@ extern "C"
   extern int *pt_host_var_format_classes (PARSER_CONTEXT * parser);
   extern int pt_set_host_var_format_classes (PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
   extern bool pt_has_session_variable (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern void pt_type_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern bool pt_host_var_is_context_typed (const TP_DOMAIN * expected);
   extern bool pt_host_var_is_leave_typed (const TP_DOMAIN * expected);
   extern int pt_host_var_leave_collation (DB_TYPE type, int collation);

@@ -72,28 +72,26 @@ static int fetch_arith_binary_operand_coercion (THREAD_ENTRY * thread_p, const v
 						TP_DOMAIN * domain) __attribute__ ((noinline));
 
 /*
- * fetch_session_read_value () - a session variable read's value in the type resolve_domains gave the variable for the
- *   statement
- *   return: NO_ERROR, or ER_QPROC_SESSION_VARIABLE_TYPE for a value of another type
+ * fetch_session_read_value () - CBRD-27583 (4.8): a session variable read's value in the type the compilation gave the
+ *   read: the variable's type when the statement was compiled, or the one its first assignment in the statement gives
+ *   a variable without a type
+ *   return: NO_ERROR, or ER_SES_VARIABLE_TYPE_FIXED for a value of another type
  *
- * resolve_domains gave every variable the statement reads one type, from its value when the execution started and the
- * values the statement assigns it (qexec_resolve_session_variables), so a value of another type comes from a writer
- * resolve_domains does not see (a stored procedure the statement calls): the statement stops, as it stops at
- * resolve_domains for an assignment of another type. A value is of the variable's type when it has the type's DB type,
- * a string also its codeset and collation, whatever its length. A fixed-length string of a variable the statement
- * assigns converts into the variable-length string resolve_domains gave it, whose longest precision holds it. A read
- * outside an execution with resolved-domain state reads the value as it is.
+ * A variable keeps the type of its first value that is not NULL (session_variable_value), so a value of another type
+ * comes from an assignment of the statement the compilation did not take for the first one. A value is of the read's
+ * type when it has its DB type, a string also its codeset and collation, whatever its length. A fixed-length string of
+ * a variable the statement assigns strings converts into the variable-length string the compilation gave it, whose
+ * longest precision holds it.
  */
 static int
-fetch_session_read_value (const VAL_DESCR * vd, ARITH_TYPE * arithptr, const DB_VALUE * name)
+fetch_session_read_value (ARITH_TYPE * arithptr, const DB_VALUE * name)
 {
   DB_VALUE *value = arithptr->value;
-  const RESOLVED_DOMAIN *resolved_domain = qexec_late_bind_domain (vd, arithptr->plan_item);
-  if (DB_IS_NULL (value) || resolved_domain == NULL)
+  const TP_DOMAIN *type = arithptr->domain;
+  if (DB_IS_NULL (value) || type == NULL || TP_DOMAIN_TYPE (type) == DB_TYPE_VARIABLE)
     {
       return NO_ERROR;
     }
-  const TP_DOMAIN *type = resolved_domain->domain;
   const DB_TYPE value_type = DB_VALUE_DOMAIN_TYPE (value);
   const bool same_collation = !TP_IS_CHAR_TYPE (value_type) || !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (type))
     || (db_get_string_codeset (value) == TP_DOMAIN_CODESET (type)
@@ -102,18 +100,13 @@ fetch_session_read_value (const VAL_DESCR * vd, ARITH_TYPE * arithptr, const DB_
     {
       return NO_ERROR;
     }
-  const TP_DOMAIN *value_domain = tp_domain_resolve_value (value, NULL);
-  if (value_domain == NULL)
-    {
-      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
-    }
   if (value_type == DB_TYPE_CHAR && TP_DOMAIN_TYPE (type) == DB_TYPE_VARCHAR
       && type->precision == DB_MAX_VARCHAR_PRECISION && same_collation
       && tp_value_cast (value, value, type, false) == DOMAIN_COMPATIBLE)
     {
       return NO_ERROR;
     }
-  return qexec_session_variable_type_error (name, type, value_domain);
+  return session_variable_type_error (db_get_string (name), type, value);
 }
 
 /*
@@ -4617,14 +4610,13 @@ static int
 fetch_op_evaluate_variable (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
   ARITH_TYPE *arithptr = a->arithptr;
-  val_descr *vd = a->vd;
   DB_VALUE *peek_right = a->peek_right;
 
   if (session_get_variable (thread_p, peek_right, arithptr->value) != NO_ERROR)
     {
       return ER_FAILED;
     }
-  if (fetch_session_read_value (vd, arithptr, peek_right) != NO_ERROR)
+  if (fetch_session_read_value (arithptr, peek_right) != NO_ERROR)
     {
       return ER_FAILED;
     }

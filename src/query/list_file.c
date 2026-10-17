@@ -4344,7 +4344,6 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->col_dom = p->pos_descr.dom;
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
-	  subkey->cmp_dom_session_read = false;
 
 	  /* the key's domain is the plan's */
 	  subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
@@ -4373,7 +4372,6 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->col_dom = types->domp[i];
 	  subkey->cmp_dom = NULL;
 	  subkey->use_cmp_dom = false;
-	  subkey->cmp_dom_session_read = false;
 	  subkey->sort_f = types->domp[i]->type->get_data_cmpdisk_function ();
 	  subkey->is_desc = 0;
 	  subkey->is_nulls_first = 1;
@@ -7211,12 +7209,9 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
 	}
 
       /* a value argument resolve_domains could not type: every value is that one, whose typing
-       * fails for the first value too; a session variable read keeps that for the statement */
+       * fails for the first value too */
 #if !defined (NDEBUG)
-      if (!subkey->cmp_dom_session_read)
-	{
-	  qfile_check_interpolation_type (&val0, NULL);
-	}
+      qfile_check_interpolation_type (&val0, NULL);
 #endif
       error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
       goto end;
@@ -7239,11 +7234,8 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
     }
 
 #if !defined (NDEBUG)
-  if (!subkey->cmp_dom_session_read)
-    {
-      qfile_check_interpolation_type (&val0, subkey->cmp_dom);
-      qfile_check_interpolation_type (&val1, subkey->cmp_dom);
-    }
+  qfile_check_interpolation_type (&val0, subkey->cmp_dom);
+  qfile_check_interpolation_type (&val1, subkey->cmp_dom);
 #endif
 
   cast_domain = subkey->cmp_dom;

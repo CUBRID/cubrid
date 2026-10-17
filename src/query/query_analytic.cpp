@@ -67,7 +67,7 @@ qdata_analytic_is_plain_sum_avg (const ANALYTIC_TYPE *func_p, const VAL_DESCR *v
     {
       /* resolve_domains resolved the domain before the first row, so the domain does not block the fast path. The
        * first non-NULL value still takes the general path (curr_cnt < 1, sum_acc inactive), which applies that
-       * resolution before the accumulator is activated (a resolution over a session variable read too); a
+       * resolution before the accumulator is activated; a
        * resolution without a value leaves only NULLs. */
       return qexec_resolved_domain (val_desc_p, func_p->plan_item) != NULL;
     }

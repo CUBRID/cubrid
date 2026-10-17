@@ -1463,7 +1463,7 @@ qdump_print_compare_plan (const DOMAIN_COMPARE_PLAN * comparison)
     {
       return;
     }
-  const char *methods[] = { "LATE_BIND", "LATE_BIND_SESSION", "VALUES", "DIRECT", "CONVERT", "COLLATIONS", "OBJECT",
+  const char *methods[] = { "LATE_BIND", "VALUES", "DIRECT", "CONVERT", "COLLATIONS", "OBJECT",
     "RANK", "KEYS"
   };
   const int method = (int) comparison->fixed.method;

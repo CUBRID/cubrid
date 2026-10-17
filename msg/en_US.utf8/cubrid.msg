@@ -1492,11 +1492,11 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1383 Domain of a query node is unresolved at %1$s (query %2$s, node %3$d, domain %4$s).
 
-1384 Session variable @%1$s would hold %2$s and %3$s within a statement that reads it; cast the value to one type.
-
 1385 Invalid username or password.
 
-1386 Last Error
+1386 Session variable @%1$s has the type %2$s of its first value: a value of %3$s cannot be assigned to it.
+
+1387 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

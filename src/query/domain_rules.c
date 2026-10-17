@@ -2678,6 +2678,23 @@ domain_classify_str_to_date_format (const DB_VALUE * value)
   return type;
 }
 
+/* Whether the rule takes this operand's type from its value (a value-dependent argument type): an interpolation
+ * argument, the ADDTIME left string, the STR_TO_DATE format. An interpolation argument of a type that is neither a
+ * number nor a date (a string, a BIT, a LOB, a collection) is typed as its first value would be, by the cascade to
+ * DOUBLE, DATETIME and TIME, the aggregate's and the analytic's alike (no row types it; a value that takes none is the
+ * resolve_domains' error). */
+bool
+domain_argument_type_depends_on_value (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE type)
+{
+  if (context == DOMAIN_CTX_AGG || context == DOMAIN_CTX_ANALYTIC)
+    {
+      return arg_index == 0 && (opcode == PT_MEDIAN || opcode == PT_PERCENTILE_CONT || opcode == PT_PERCENTILE_DISC)
+	&& !TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type);
+    }
+  return context == DOMAIN_CTX_FUNC_ARG && ((opcode == T_ADDTIME && arg_index == 0 && TP_IS_CHAR_TYPE (type))
+					    || (opcode == T_STR_TO_DATE && arg_index == 1));
+}
+
 DB_TYPE
 domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_VALUE * value)
 {

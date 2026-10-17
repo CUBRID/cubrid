@@ -845,7 +845,7 @@ fetch_arith_node_end (val_descr * vd, FETCH_ARITH_ARGS * a)
 	}
       else
 	{
-	  /* resolve_domains resolves every string, a string over a session variable read too: a string
+	  /* resolve_domains resolves every string: a string
 	   * without a resolution fails the unresolved-domain check (execution) */
 	  (void) domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, arithptr->plan_item),
 					  TP_DOMAIN_TYPE (arith_domain));
@@ -1656,8 +1656,7 @@ error:
  *
  * resolve_domains recorded a variable POS's bound value domain (codeset and collation included), and a derived consumer
  * or a string function reads its producer's or its own resolution, so the domain the first value would give is
- * already there, a resolution over a session variable read included: the variable keeps the type resolve_domains gave
- * it for the statement. A bind value is the one resolve_domains saw: a comparison converts its constant into a value of
+ * already there. A bind value is the one resolve_domains saw: a comparison converts its constant into a value of
  * its own, not in place.
  */
 static inline int
@@ -1686,7 +1685,7 @@ fetch_read_plan_domain (REGU_VARIABLE * regu_var, val_descr * vd, const DB_VALUE
       qexec_set_node_domain (vd, regu_var->plan_item, regu_var->domain, resolved);
       return NO_ERROR;
     }
-  /* resolve_domains resolves every variable regu, one over a session variable read too: none here fails the
+  /* resolve_domains resolves every variable regu: none here fails the
    * unresolved-domain check (execution) */
   return domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, item),
 				  TP_DOMAIN_TYPE (regu_var->domain));

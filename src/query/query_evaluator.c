@@ -206,7 +206,7 @@ static inline const DOMAIN_COMPARE *
 eval_resolved_comparison (const DOMAIN_COMPARE_PLAN * comparison, const val_descr * vd)
 {
   const DOMAIN_COMPARE *compare = &comparison->fixed;
-  if (compare->method == DOMAIN_COMPARE_LATE_BIND || compare->method == DOMAIN_COMPARE_LATE_BIND_SESSION)
+  if (compare->method == DOMAIN_COMPARE_LATE_BIND)
     {
       if (vd == NULL || vd->xasl_state == NULL || vd->xasl_state->resolved_domain.compares == NULL)
 	{

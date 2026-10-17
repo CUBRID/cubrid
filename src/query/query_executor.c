@@ -22474,10 +22474,8 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
  * interpolate in: the compiled function domain (a string column or expression is DOUBLE), or the resolved domain - the
  * type it gave a value argument, DOUBLE for a late-binding string - known before the first pair of values the sort
  * compares (qfile_compare_with_interpolation_domain). A value argument resolve_domains could not type has no type,
- * and the sort rejects its values as the typing of the first value does. A type over a session variable read is the
- * one the variable's value gave when the execution started, for the whole statement: a value of another type converts
- * to it or fails. Any other key of the state - another function's ORDER BY that shares the sort - compares in its own
- * domain, the type its first value gives.
+ * and the sort rejects its values as the typing of the first value does. Any other key of the state - another
+ * function's ORDER BY that shares the sort - compares in its own domain, the type its first value gives.
  */
 static void
 qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYPE * a_func_list, const VAL_DESCR * vd)
@@ -22507,9 +22505,6 @@ qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYP
 	      || TP_IS_DATE_OR_TIME_TYPE (TP_DOMAIN_TYPE (resolved_domain)));
       subkey->use_cmp_dom = true;
       subkey->cmp_dom = resolved_domain != NULL ? tp_domain_resolve_default (TP_DOMAIN_TYPE (resolved_domain)) : NULL;
-      subkey->cmp_dom_session_read = item != NULL && item->resolved_index >= 0 && vd->xasl_state != NULL
-	&& qexec_owns_resolved_index (vd->xasl_state->resolved_domain, item)
-	&& vd->xasl_state->resolved_domain.plan->resolved_session_dependent[item->resolved_index];
       return;
     }
 }

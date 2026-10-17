@@ -343,7 +343,6 @@ qexec_execution_temporary (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, int te
   return qexec_convert_execution_temporary (thread_p, vd->xasl_state, entry, conv, target, value);
 }
 
-extern int qexec_session_variable_type_error (const DB_VALUE * name, const TP_DOMAIN * type, const TP_DOMAIN * other);
 
 /* Read-only execution view. Peek callers retain the existing no-write
  * contract even though their public DB_VALUE ** output is not const. The row path calls it: inlined at every call

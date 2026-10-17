@@ -176,8 +176,8 @@ struct DOMAIN_LATE_BIND_LINK
  */
 struct DOMAIN_COMPARE_PLAN
 {
-  DOMAIN_COMPARE fixed;		/* the load's resolution; comparison method LATE_BIND / LATE_BIND_SESSION when
-				 * resolve_domains resolves it */
+  DOMAIN_COMPARE fixed;		/* the load's resolution; comparison method LATE_BIND when resolve_domains
+				 * resolves it */
   const DOMAIN_PLAN_ITEM *operand[2];	/* each side's plan item; NULL: the side's key is domain[] */
   const TP_DOMAIN *domain[2];	/* a side without an item: its compiled domain, or the domain the load fixed for its
 				 * values (a reader of an aggregate that finalizes to DOUBLE) */
@@ -263,8 +263,6 @@ struct DOMAIN_ELEMENT_COMPARE_PLAN
   int row;			/* ROW: the item's row (domain_compare_key_row); -1: the item's key has none, and each
 				 * element compares by the two values' keys */
   int resolved_elements_index;	/* LATE_BIND: resolved_domain.elements index; -1 */
-  bool session_dependent;	/* LATE_BIND: a side rests on a session variable read: qexec_resolve_session_variables
-				 * resolves the term */
   unsigned char kind;		/* DOMAIN_ELEMENTS_KIND */
 };
 
@@ -289,18 +287,6 @@ struct DOMAIN_ELEMENTS
   int n;
   int n_compares;
   unsigned char read;		/* DOMAIN_ELEMENTS_READ */
-};
-
-/* A session variable the statement reads: its reads and the values its assignments store. resolve_domains
- * gives it one type per execution, from the value it holds when the execution starts and those assignments. */
-struct DOMAIN_SESSION_VARIABLE
-{
-  const DB_VALUE *name;
-  int *reads;			/* [n_reads] the late_bind_nodes indices of its reads (T_EVALUATE_VARIABLE) */
-  const DOMAIN_PLAN_ITEM **assigns;	/* [n_assigns] the items of the values its assignments store
-					 * (T_DEFINE_VARIABLE's value operand) */
-  int n_reads;
-  int n_assigns;
 };
 
 /* A constant expression resolve_domains evaluates once before the main block: its item holds the value's
@@ -414,11 +400,7 @@ struct domain_plan
   DOMAIN_PLAN_ITEM **late_bind_nodes;	/* producers first: every operand entry is resolved before its consumer */
   DOMAIN_LATE_BIND_LINK *late_bind_links;	/* parallel to late_bind_nodes */
   int *resolved_late_bind_node;	/* [n_resolved] the late_bind_nodes index resolving the entry; -1 for a bind */
-  bool *resolved_non_cacheable;	/* [n_resolved] a resolution's sources include one a fetch never caches, a
-				 * session variable read among them: a resolution over a read waits for
-				 * qexec_resolve_session_variables (resolved_session_dependent) */
-  bool *resolved_session_dependent;	/* [n_resolved] a resolution rests on a session variable read, a read itself
-					 * included: qexec_resolve_session_variables resolves it */
+  bool *resolved_non_cacheable;	/* [n_resolved] a resolution's sources include one a fetch never caches */
   int n_const_refs;
   DOMAIN_PLAN_ITEM **const_refs;
   int *const_ref_pos;		/* [n_const_refs] each constant reference's bind position (its val_pos), -1 for a
@@ -448,8 +430,6 @@ struct domain_plan
 				 * whose executions also record an operand type */
   int n_interpolation_list_domains;	/* the first of those: the MEDIAN / PERCENTILE aggregates, whose executions
 					 * also record the domain their list holds */
-  int n_session_variables;
-  DOMAIN_SESSION_VARIABLE *session_variables;	/* the session variables the statement reads */
   int n_constant_branches;
   DOMAIN_PLAN_CONSTANT_BRANCH *constant_branches;	/* the branches taken by a constant condition, outer ones
 							 * first */

@@ -572,23 +572,6 @@ struct DOMAIN_DEFERRED_ERRORS
 static int qexec_defer_constant_error (THREAD_ENTRY * thread_p, DOMAIN_DEFERRED_ERRORS & deferred,
 				       const DOMAIN_DEFERRED_ERROR & deferred_error);
 
-/* Whether the resolver takes this operand's type from its value (a value-dependent argument type): an interpolation
- * argument, the ADDTIME left string, the STR_TO_DATE format. An interpolation argument of a type that is neither a
- * number nor a date (a string, a BIT, a LOB, a collection) is typed as its first value would be, by the cascade to
- * DOUBLE, DATETIME and TIME, the aggregate's and the analytic's alike (no row types it; a value that takes none is the
- * resolve_domains' error). */
-static bool
-qexec_argument_type_depends_on_value (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE type)
-{
-  if (context == DOMAIN_CTX_AGG || context == DOMAIN_CTX_ANALYTIC)
-    {
-      return arg_index == 0 && (opcode == PT_MEDIAN || opcode == PT_PERCENTILE_CONT || opcode == PT_PERCENTILE_DISC)
-	&& !TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type);
-    }
-  return context == DOMAIN_CTX_FUNC_ARG && ((opcode == T_ADDTIME && arg_index == 0 && TP_IS_CHAR_TYPE (type))
-					    || (opcode == T_STR_TO_DATE && arg_index == 1));
-}
-
 /*
  * qexec_resolve_operand () - one operand of a late-binding node at resolve_domains
  *
@@ -596,12 +579,11 @@ qexec_argument_type_depends_on_value (DOMAIN_CTX context, int opcode, int arg_in
  * with a compiled domain keeps the type the client sent it with. A late-binding producer gives its entry (resolved
  * first, producer order) and any other producer its compiled domain. An arithmetic operator gives no value for a NULL
  * operand before it looks at the types, so a NULL resolve_domains can see is DB_TYPE_NULL there. A value the resolver
- * types by its value (an interpolation argument, the ADDTIME left string, the STR_TO_DATE format) gives its type - a
- * session variable read's value included, which resolve_domains reads as its read node does; a string without a value
- * keeps its string type and the resolver types it statically. A common value folds its operands' value domains:
- * a constant expression resolve_domains evaluated in the constant expression step gives its value's type
- * there, so a NULL without a type drops out of the fold; the node waits for that value, which every constant has once
- * the constant expression step evaluated it.
+ * types by its value (an interpolation argument, the ADDTIME left string, the STR_TO_DATE format) gives its type; a
+ * string without a value keeps its string type and the resolver types it statically. A common value folds its
+ * operands' value domains: a constant expression resolve_domains evaluated in the constant expression step gives its
+ * value's type there, so a NULL without a type drops out of the fold; the node waits for that value, which every
+ * constant has once the constant expression step evaluated it.
  */
 static bool
 qexec_resolve_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const RESOLVED_DOMAIN_TABLE & resolved,
@@ -614,7 +596,6 @@ qexec_resolve_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const 
    * bind into its column's domain (qexec_convert_list_bind), and the row casts that value, not the client's */
   assert (val_pos < 0 || (item->ref >= 0 && item->ref < resolved.n_vals));
   const DB_VALUE *value = val_pos >= 0 ? &resolved.vals[item->ref] : link->literal[arg_index];
-  const DB_VALUE *session_name = NULL;
   DB_VALUE no_value;
   if (value == NULL && context == DOMAIN_CTX_COMMON_VALUE && item->ref >= 0)
     {
@@ -654,12 +635,6 @@ qexec_resolve_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const 
 	{
 	  return false;
 	}
-      const int producer = plan->resolved_late_bind_node[item->resolved_index];
-      if (producer >= 0
-	  && plan->items_cold[plan->late_bind_nodes[producer] - plan->items].opcode == T_EVALUATE_VARIABLE)
-	{
-	  session_name = plan->late_bind_links[producer].literal[0];
-	}
     }
   else
     {
@@ -674,27 +649,9 @@ qexec_resolve_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const 
       operand->val_type = DB_TYPE_NULL;
     }
   else if (value != NULL && !DB_IS_NULL (value)
-	   && qexec_argument_type_depends_on_value (context, opcode, arg_index, operand->val_type))
+	   && domain_argument_type_depends_on_value (context, opcode, arg_index, operand->val_type))
     {
       operand->val_type = domain_classify_value (context, opcode, arg_index, value);
-    }
-  else if (session_name != NULL && qexec_argument_type_depends_on_value (context, opcode, arg_index, operand->val_type))
-    {
-      /* the variable's value when the execution began, which gives its type for the statement */
-      DB_VALUE current;
-      db_make_null (&current);
-      if (session_get_variable (thread_p, session_name, &current) == NO_ERROR)
-	{
-	  if (!DB_IS_NULL (&current))
-	    {
-	      operand->val_type = domain_classify_value (context, opcode, arg_index, &current);
-	    }
-	}
-      else
-	{
-	  er_clear ();
-	}
-      pr_clear_value (&current);
     }
   return true;
 }
@@ -817,8 +774,7 @@ qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xa
   RESOLVED_DOMAIN *entry = &resolved.domains[node->resolved_index];
   bool needs_late_bind = false;
 
-  /* a session variable read takes its variable's type for the statement in the session variable step
-   * (qexec_resolve_session_variables) */
+  /* a session variable read has the type the compilation gave it (CBRD-27583 4.8) */
   assert (node->resolved_index >= 0 && node->resolved_index < resolved.n_resolved && link->n_operands > 0
 	  && cold->opcode != T_EVALUATE_VARIABLE);
   for (int i = 0; i < link->n_operands; i++)
@@ -973,11 +929,10 @@ qexec_resolve_late_bind_node_over (THREAD_ENTRY * thread_p, const xasl_node * xa
 	  && operands[0].val_type == DB_TYPE_NULL && operands[0].domain != NULL
 	  && TP_DOMAIN_TYPE (operands[0].domain) != DB_TYPE_NULL)
 	{
-	  /* a MEDIAN / PERCENTILE value - a literal, a bind, a session variable's value when the execution began - that
+	  /* a MEDIAN / PERCENTILE value - a literal or a bind - that
 	   * none of DOUBLE, DATETIME, TIME takes (resolve_domains' typing of a value that is not NULL failed):
 	   * at the rows the first value would raise this, and no row or only NULLs none; resolve_domains raises it
-	   * before any row. A NULL value, or a variable without a type yet (the session variable step's first pass), takes no
-	   * type and raises nothing. */
+	   * before any row. A NULL value takes no type and raises nothing. */
 	  if (cold->constant_branch < 0)
 	    {
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
@@ -1020,20 +975,11 @@ qexec_resolve_late_bind_node (THREAD_ENTRY * thread_p, const xasl_node * xasl, c
   return error;
 }
 
-/* Whether a late-binding node's resolution rests on a session variable read: resolve_domains resolves it in the session
- * variable step, once the variable has its type for the statement. */
-static bool
-qexec_rests_on_session_read (const DOMAIN_PLAN * plan, const DOMAIN_PLAN_ITEM * node)
-{
-  return node->resolved_index >= 0 && plan->resolved_session_dependent[node->resolved_index];
-}
-
 /*
  * qexec_resolve_late_bind_node_after_constants () - the constant expression step (qexec_evaluate_constant_expression)
  *   for a late-binding node that waits for the constant expressions it reads (DOMAIN_LATE_BIND_LINK.after_constants),
  *   once: a constant node just before its own evaluation - its constant operands, nested, were evaluated before it -
- *   and any other node after the last constant. A node over a session variable read waits for the session variable
- *   step.
+ *   and any other node after the last constant.
  */
 static int
 qexec_resolve_late_bind_node_after_constants (THREAD_ENTRY * thread_p, const xasl_node * xasl, const DOMAIN_PLAN * plan,
@@ -1041,125 +987,11 @@ qexec_resolve_late_bind_node_after_constants (THREAD_ENTRY * thread_p, const xas
 					      DOMAIN_DEFERRED_ERRORS & deferred)
 {
   if (!plan->late_bind_links[index].after_constants
-      || resolved.domains[plan->late_bind_nodes[index]->resolved_index].domain != NULL
-      || qexec_rests_on_session_read (plan, plan->late_bind_nodes[index]))
+      || resolved.domains[plan->late_bind_nodes[index]->resolved_index].domain != NULL)
     {
       return NO_ERROR;
     }
   return qexec_resolve_late_bind_node (thread_p, xasl, plan, index, resolved, deferred);
-}
-
-/* The domain a session variable's value has when the execution starts; NULL for none: an undefined variable, whose
- * read raises its error at the row, or a NULL. */
-static const TP_DOMAIN *
-qexec_session_start_type (THREAD_ENTRY * thread_p, const DB_VALUE * name)
-{
-  DB_VALUE current;
-  const TP_DOMAIN *type = NULL;
-  db_make_null (&current);
-  if (session_get_variable (thread_p, name, &current) == NO_ERROR)
-    {
-      type = DB_IS_NULL (&current) ? NULL : domain_value_domain (&current);
-    }
-  else
-    {
-      er_clear ();
-    }
-  pr_clear_value (&current);
-  return type;
-}
-
-/* Whether two values are of one type for a session variable: a string of the same codeset and
- * collation whatever its length or fixed or varying kind, the same type otherwise. */
-static bool
-qexec_session_same_type (const TP_DOMAIN * a, const TP_DOMAIN * b)
-{
-  const DB_TYPE type_a = TP_DOMAIN_TYPE (a);
-  const DB_TYPE type_b = TP_DOMAIN_TYPE (b);
-  if (TP_IS_CHAR_TYPE (type_a) && TP_IS_CHAR_TYPE (type_b))
-    {
-      return TP_DOMAIN_CODESET (a) == TP_DOMAIN_CODESET (b) && TP_DOMAIN_COLLATION (a) == TP_DOMAIN_COLLATION (b);
-    }
-  return type_a == type_b;
-}
-
-/* The type a session variable the statement assigns takes: a string takes the variable-length string of
- * its codeset and collation, read as a value's domain reads; anything else its own domain. */
-static const TP_DOMAIN *
-qexec_session_assigned_type (const TP_DOMAIN * domain)
-{
-  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)))
-    {
-      return domain;
-    }
-  return tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL, TP_DOMAIN_COLLATION (domain));
-}
-
-/* The type name a session variable type error shows: a string's collation too, which may be all that differs. */
-static const char *
-qexec_session_type_name (const TP_DOMAIN * domain, char *buffer, size_t size)
-{
-  if (!TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)))
-    {
-      return pr_type_name (TP_DOMAIN_TYPE (domain));
-    }
-  snprintf (buffer, size, "%s collate %s", pr_type_name (TP_DOMAIN_TYPE (domain)),
-	    lang_get_collation_name (TP_DOMAIN_COLLATION (domain)));
-  return buffer;
-}
-
-/* ER_QPROC_SESSION_VARIABLE_TYPE: the variable would hold two types within a statement that reads it. */
-int
-qexec_session_variable_type_error (const DB_VALUE * name, const TP_DOMAIN * type, const TP_DOMAIN * other)
-{
-  char type_buffer[128], other_buffer[128];
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_SESSION_VARIABLE_TYPE, 3, db_get_string (name),
-	  qexec_session_type_name (type, type_buffer, sizeof (type_buffer)),
-	  qexec_session_type_name (other, other_buffer, sizeof (other_buffer)));
-  return ER_QPROC_SESSION_VARIABLE_TYPE;
-}
-
-/*
- * qexec_session_variable_type () - a session variable's type after the values the statement assigns it
- *   return: NO_ERROR, or ER_QPROC_SESSION_VARIABLE_TYPE for an assignment of another type (it needs a cast)
- *   type(in/out): the variable's type so far; NULL for none
- *   changed(in/out): set when the type changed: the resolutions over the reads are made again
- *
- * An assignment's type is its value's resolved domain: a column that is NULL in a row still assigns the column's type.
- * An explicit NULL, or a value resolve_domains found none for, assigns no type.
- */
-static int
-qexec_session_variable_type (const RESOLVED_DOMAIN_TABLE & resolved, const DOMAIN_SESSION_VARIABLE * variable,
-			     const TP_DOMAIN ** type, bool * changed)
-{
-  for (int a = 0; a < variable->n_assigns; a++)
-    {
-      const DOMAIN_PLAN_ITEM *item = variable->assigns[a];
-      const TP_DOMAIN *assigned =
-	item->resolved_index >= 0 ? resolved.domains[item->resolved_index].domain : item->fixed.domain;
-      if (assigned == NULL || TP_DOMAIN_TYPE (assigned) == DB_TYPE_NULL
-	  || TP_DOMAIN_TYPE (assigned) == DB_TYPE_VARIABLE)
-	{
-	  continue;
-	}
-      if (*type != NULL && !qexec_session_same_type (*type, assigned))
-	{
-	  return qexec_session_variable_type_error (variable->name, *type, assigned);
-	}
-      const TP_DOMAIN *typed = qexec_session_assigned_type (assigned);
-      if (typed == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
-	  return ER_OUT_OF_VIRTUAL_MEMORY;
-	}
-      if (*type == NULL || (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (*type)) && *type != typed))
-	{
-	  /* a first type, or a string the statement assigns: its variable-length string */
-	  *type = typed;
-	  *changed = true;
-	}
-    }
-  return NO_ERROR;
 }
 
 /*
@@ -1894,8 +1726,7 @@ qexec_resolve_comparisons_after_constants (THREAD_ENTRY * thread_p, RESOLVED_DOM
   for (int k = 0; k < plan->n_compare_indexes; k++)
     {
       const DOMAIN_COMPARE_PLAN *comparison = plan->compares[k];
-      if (!comparison->after_constants || comparison_resolved[k]
-	  || comparison->fixed.method == DOMAIN_COMPARE_LATE_BIND_SESSION)
+      if (!comparison->after_constants || comparison_resolved[k])
 	{
 	  continue;
 	}
@@ -1921,7 +1752,7 @@ qexec_resolve_comparisons_after_constants (THREAD_ENTRY * thread_p, RESOLVED_DOM
     {
       const DOMAIN_ELEMENT_COMPARE_PLAN *comparison = plan->element_comparisons[k];
       unsigned char *element_resolved = &comparison_resolved[plan->n_compare_indexes + k];
-      if (!comparison->pair.after_constants || *element_resolved || comparison->session_dependent)
+      if (!comparison->pair.after_constants || *element_resolved)
 	{
 	  continue;
 	}
@@ -2051,8 +1882,8 @@ qexec_key_constant_value (const XASL_STATE * xasl_state, const REGU_VARIABLE * r
     }
 }
 
-/* The domain a key element's values have in this execution when resolve_domains resolved it: the resolved domain - a
- * session variable read's too - or the load's fixed domain; NULL where it holds no value. */
+/* The domain a key element's values have in this execution when resolve_domains resolved it: the resolved domain or the
+ * load's fixed domain; NULL where it holds no value. */
 static const TP_DOMAIN *
 qexec_key_element_domain (const XASL_STATE * xasl_state, const DOMAIN_PLAN_ITEM * item)
 {
@@ -2441,97 +2272,6 @@ qexec_copy_index_keys (THREAD_ENTRY * thread_p, const RESOLVED_INDEX_KEYS * src,
 	}
     }
   return NO_ERROR;
-}
-
-/*
- * qexec_resolve_session_variables () - qexec_resolve_session_variables: one type for each session variable the
- *   statement reads, then every resolution over its reads
- *   return: NO_ERROR, or ER_QPROC_SESSION_VARIABLE_TYPE when a variable would hold two types within the statement,
- *	     or the error of a resolution over a read
- *
- * A variable's type is the one its value has when the execution starts, and the one every value the statement assigns
- * it has (qexec_session_variable_type); a variable the statement does not assign keeps its value's domain, as its
- * reads always had. The resolutions over the reads rest on that type, and an assignment's value may rest on a read
- * (`@n := ifnull (@n, 0) + 1`): a type the assignments changed resolves them again. A variable's type changes at most
- * twice (none to a type, a string to its variable-length string), so the passes end. These resolutions come after every
- * other one, which none of them feeds, and after the constant expressions, which a node over a read may wait for.
- */
-static int
-qexec_resolve_session_variables (THREAD_ENTRY * thread_p, const xasl_node * xasl, const DOMAIN_PLAN * plan,
-				 RESOLVED_DOMAIN_TABLE & resolved, DOMAIN_DEFERRED_ERRORS & deferred)
-{
-  const int n_variables = plan->n_session_variables;
-  if (n_variables == 0)
-    {
-      return NO_ERROR;
-    }
-  const TP_DOMAIN **types = (const TP_DOMAIN **) db_private_alloc (thread_p, n_variables * sizeof (*types));
-  if (types == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, n_variables * sizeof (*types));
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  for (int v = 0; v < n_variables; v++)
-    {
-      types[v] = qexec_session_start_type (thread_p, plan->session_variables[v].name);
-    }
-  int error = NO_ERROR;
-  bool changed = true;
-  for (int pass = 0; changed && error == NO_ERROR; pass++)
-    {
-      /* each variable's type changes at most twice */
-      assert (pass <= 2 * n_variables);
-      for (int v = 0; v < n_variables; v++)
-	{
-	  const DOMAIN_SESSION_VARIABLE *variable = &plan->session_variables[v];
-	  for (int r = 0; r < variable->n_reads; r++)
-	    {
-	      RESOLVED_DOMAIN *entry = &resolved.domains[plan->late_bind_nodes[variable->reads[r]]->resolved_index];
-	      *entry = RESOLVED_DOMAIN
-	      {
-	      };
-	      entry->domain = types[v] != NULL ? types[v] : &tp_Null_domain;
-	    }
-	}
-      /* every resolution over the reads, producer first */
-      for (int g = 0; error == NO_ERROR && g < plan->n_late_bind_nodes; g++)
-	{
-	  if (qexec_rests_on_session_read (plan, plan->late_bind_nodes[g])
-	      && plan->items_cold[plan->late_bind_nodes[g] - plan->items].opcode != T_EVALUATE_VARIABLE)
-	    {
-	      error = qexec_resolve_late_bind_node (thread_p, xasl, plan, g, resolved, deferred);
-	    }
-	}
-      changed = false;
-      for (int v = 0; error == NO_ERROR && v < n_variables; v++)
-	{
-	  error = qexec_session_variable_type (resolved, &plan->session_variables[v], &types[v], &changed);
-	}
-    }
-  db_private_free (thread_p, types);
-  /* the comparisons over the reads */
-  for (int k = 0; error == NO_ERROR && k < plan->n_compare_indexes; k++)
-    {
-      if (plan->compares[k]->fixed.method != DOMAIN_COMPARE_LATE_BIND_SESSION)
-	{
-	  continue;
-	}
-      if (qexec_compare_reads_failed (resolved, plan->compares[k]))
-	{
-	  /* over a constant whose computation failed below a constant branch */
-	  qexec_compare_unreached (&resolved.compares[plan->compares[k]->fixed.compare_index]);
-	  continue;
-	}
-      error = qexec_resolve_compare (thread_p, resolved, deferred, plan->compares[k]);
-    }
-  for (int k = 0; error == NO_ERROR && k < plan->n_element_comparisons; k++)
-    {
-      if (plan->element_comparisons[k]->session_dependent)
-	{
-	  error = qexec_resolve_elements (thread_p, resolved, deferred, plan->element_comparisons[k]);
-	}
-    }
-  return error;
 }
 
 static void qexec_release_selector_pred (PRED_EXPR * pred);
@@ -2931,8 +2671,8 @@ qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, c
  *   qexec_init_resolved_domains        one block for the values and the resolutions, vd.dbval_ptr pointed at the values
  *   the bind step                      each bind reference's value (qexec_share_value), a variable POS's domain from
  *                                      its bound value
- *   qexec_resolve_late_bind_node       the late-binding nodes, producers first; a node over a constant expression or a
- *                                      session variable read waits for the step that gives it a value or a type
+ *   qexec_resolve_late_bind_node       the late-binding nodes, producers first; a node over a constant expression
+ *                                      waits for the step that gives it a value
  *   qexec_resolve_compare /
  *   qexec_resolve_elements             the comparisons to resolve and ALL/SOME terms over binds, literals and
  *                                      resolutions
@@ -2940,8 +2680,6 @@ qexec_raise_deferred_errors (THREAD_ENTRY * thread_p, XASL_STATE * xasl_state, c
  *                                      fetches through them
  *   qexec_evaluate_constant_expression each constant expression evaluated once, and the comparisons and nodes that
  *                                      waited for it just before the next one
- *   qexec_resolve_session_variables    each session variable's type for the statement, then the resolutions over its
- *                                      reads
  *   qexec_resolve_index_keys           the index scans' key elements and key comparison tables
  *   qexec_convert_constant_operands    the constants arithmetic nodes and SUM / AVG convert, into their execution
  *                                      temporaries
@@ -3062,11 +2800,10 @@ qexec_resolve_domains_internal (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_
     }
 
   /* the late-binding node step: late-binding nodes in producer order, each once. A node that waits for the constant
-   * expressions it reads is resolved in the constant expression step, a node over a session variable read in the
-   * session variable step. */
+   * expressions it reads is resolved in the constant expression step. */
   for (int i = 0; plan != NULL && i < plan->n_late_bind_nodes; i++)
     {
-      if (plan->late_bind_links[i].after_constants || qexec_rests_on_session_read (plan, plan->late_bind_nodes[i]))
+      if (plan->late_bind_links[i].after_constants)
 	{
 	  continue;
 	}
@@ -3079,11 +2816,10 @@ qexec_resolve_domains_internal (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_
 
   /* the comparison step: every comparison to resolve over binds, literals and resolutions, from its sides' values and
    * resolutions; each constant side it converts gets a value of its own now (qexec_resolve_compare). A comparison over
-   * a constant expression waits for the constant expression step, a comparison over a session variable read for the
-   * session variable step. */
+   * a constant expression waits for the constant expression step. */
   for (int k = 0; plan != NULL && k < plan->n_compare_indexes; k++)
     {
-      if (plan->compares[k]->after_constants || plan->compares[k]->fixed.method == DOMAIN_COMPARE_LATE_BIND_SESSION)
+      if (plan->compares[k]->after_constants)
 	{
 	  continue;
 	}
@@ -3096,7 +2832,7 @@ qexec_resolve_domains_internal (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_
   /* likewise every ALL/SOME term resolve_domains resolves: a constant right side element by element */
   for (int k = 0; plan != NULL && k < plan->n_element_comparisons; k++)
     {
-      if (plan->element_comparisons[k]->pair.after_constants || plan->element_comparisons[k]->session_dependent)
+      if (plan->element_comparisons[k]->pair.after_constants)
 	{
 	  continue;
 	}
@@ -3109,7 +2845,7 @@ qexec_resolve_domains_internal (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_
 
   /* the constant expression step's computations fetch through the values and resolutions made so far
    * (REGU_RESOLVED_VALUE, qexec_late_bind_domain): they are readable from here on; the steps below go on resolving
-   * what a constant, a session variable or an index key decides */
+   * what a constant or an index key decides */
   resolved.readable = true;
 
   /* the constant expression step (qexec_evaluate_constant_expression): each constant
@@ -3178,12 +2914,6 @@ qexec_resolve_domains_internal (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_
   if (comparison_resolved != NULL)
     {
       db_private_free (thread_p, comparison_resolved);
-    }
-  /* qexec_resolve_session_variables: each session variable the statement reads gets one type, then every resolution
-   * over its reads */
-  if (error == NO_ERROR && plan != NULL)
-    {
-      error = qexec_resolve_session_variables (thread_p, xasl, plan, resolved, deferred);
     }
   if (error != NO_ERROR)
     {
@@ -3267,8 +2997,7 @@ qexec_resolution (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
  *   vd(in): the execution's value descriptor
  *   item(in): the consumer's plan item: a variable POS, a late-binding node, or an alias of one
  *
- * The resolution is the domain the first value would give the consumer; a resolution over a session variable read
- * holds too, since the variable keeps the type resolve_domains gave it for the statement. MySQL compatibility mode
+ * The resolution is the domain the first value would give the consumer. MySQL compatibility mode
  * reads the resolutions too: its date helpers type a result by the result buffer, which holds the resolved type from
  * the first row on. A node without resolved-domain state has no resolution here; resolve_domains leaves no node
  * unresolved. A PX worker reads the resolutions it copied from the leader with its own load's items.
@@ -3336,8 +3065,7 @@ qexec_plan_domain (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
  * has no value holds only NULLs - a NULL bind, a node over one (a value there fails the fetch's unresolved-domain
  * check) - so its consumers take the NULL domain, as a NULL bind's list column does - a LEAD / LAG over a NULL operand
  * too: a row past its window's end converts the default to the function's NULL or variable domain, which rejects a
- * value (ER_TP_CANT_COERCE). A resolution over a session variable read holds before any row too: the
- * variable keeps the type resolve_domains gave it for the statement. A set-operation column whose branches
+ * value (ER_TP_CANT_COERCE). A set-operation column whose branches
  * resolve_domains cannot unify never gets here: resolve_domains rejects it.
  */
 const TP_DOMAIN *
@@ -3495,9 +3223,8 @@ qexec_convert_execution_temporary (THREAD_ENTRY * thread_p, XASL_STATE * xasl_st
  *   resolved_list(out): order_list when every key keeps its compiled domain, or the copy, which the caller frees with
  *			qfile_free_sort_list once the sort's key information is built
  *
- * A key's item is its column's: resolve_domains resolved that column once for the execution, a column over a session
- * variable read too. The sort reads the keys' domains when it builds its key information
- * (qfile_initialize_sort_key_info): the loop's preparation point.
+ * A key's item is its column's: resolve_domains resolved that column once for the execution. The sort reads the keys'
+ * domains when it builds its key information (qfile_initialize_sort_key_info): the loop's preparation point.
  */
 /*
  * qexec_plan_position_list_domains () - the execution domains of the positions of a regu list a block reads from a
@@ -3593,7 +3320,7 @@ qexec_plan_sort_list_domains (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, SOR
  *   resolved_groupby(out): the GROUP BY sort list the sort runs with (qexec_plan_sort_list_domains); the caller frees
  *			   it when it is not the plan's
  *
- * A key or a position over a session variable read reads the resolved domain too. A hash key or an output
+ * A hash key or an output
  * column the plan has no resolution for keeps its domain: the position it follows gives it
  * (qexec_finish_group_by_domains), or its value when it is fetched. The aggregates were set up before the scan
  * (qexec_setup_aggregate_domains). The regus take their domains as their execution domains.
@@ -3760,8 +3487,7 @@ qexec_setup_hash_aggregate_lists (const VAL_DESCR * vd, BUILDLIST_PROC_NODE * bu
  * late-bound one (qexec_resolve_late_bind_node here). opr_dbtype changes for a late-bound function (an operand
  * compiled VARIABLE or a function domain that leaves collation): to the resolution's
  * type, except for MEDIAN / PERCENTILE, whose operand keeps its own type there: a string's values convert to the
- * function's type as they are accumulated (qdata_update_agg_interpolation_func_value_and_domain). resolve_domains types
- * a session variable's string from the value it holds when the execution starts, for the whole statement.
+ * function's type as they are accumulated (qdata_update_agg_interpolation_func_value_and_domain).
  */
 static const TP_DOMAIN *
 qexec_apply_aggregate_resolved_domain (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_p)
@@ -3836,8 +3562,7 @@ qexec_sum_avg_operand_coercion (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg
     }
 }
 
-/* Whether a MEDIAN / PERCENTILE argument holds only NULLs: resolve_domains resolved it has no value - a session
- * variable read too, which keeps its type for the statement. */
+/* Whether a MEDIAN / PERCENTILE argument holds only NULLs: resolve_domains resolved it has no value. */
 static bool
 qexec_interpolation_sees_nulls (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg_p)
 {
@@ -3858,7 +3583,7 @@ qexec_interpolation_sees_nulls (const VAL_DESCR * vd, const AGGREGATE_TYPE * agg
  */
 /*
  * qexec_value_domain () - the domain a regu gives its values in this execution: its compiled domain when that
- *   fixes them, the plan's otherwise - the resolved domain for a bind, a session variable read or a node over them,
+ *   fixes them, the plan's otherwise - the resolved domain for a bind or a node over one,
  *   or the producer's that an alias reads (a hash GROUP BY argument over a bind), as qexec_consumer_domain gives it.
  *   An aggregate's or an analytic function's operand type is not it: it holds the function's domain (DOUBLE for a
  *   SUM over strings).

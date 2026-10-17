@@ -130,9 +130,13 @@ int domain_arith_rule (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_t
  * in place of a resolution; the operator's debug cross-check holds it to the rule at every use. */
 extern const DOMAIN_ARITH domain_arith_double;
 
+/* Whether an operand of this type at this argument is a value-dependent argument: its val_type is its value's class
+ * (domain_classify_value). */
+bool domain_argument_type_depends_on_value (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE type);
+
 /* val_type of a value-dependent argument (MEDIAN/PERCENTILE argument, STR_TO_DATE format, ADDTIME left).
- * resolve_domains only, once, before domain_resolve. DB_TYPE_NULL when the value cannot be typed: the function's own
- * error. */
+ * resolve_domains and XASL generation (a session variable read, CBRD-27583 4.8), once, before domain_resolve.
+ * DB_TYPE_NULL when the value cannot be typed: the function's own error. */
 DB_TYPE domain_classify_value (DOMAIN_CTX context, int opcode, int arg_index, const DB_VALUE * value);
 
 /*
@@ -178,8 +182,6 @@ enum DOMAIN_COMPARE_METHOD
 {
   DOMAIN_COMPARE_LATE_BIND,	/* a comparison resolve_domains resolves: this execution's resolution is
 				 * resolved_domain.compares[compare_index] */
-  DOMAIN_COMPARE_LATE_BIND_SESSION,	/* likewise, over a session variable read: resolve_domains resolves it once the
-					 * variable has its type for the statement (qexec_resolve_session_variables) */
   DOMAIN_COMPARE_VALUES,	/* tp_value_compare_with_error on the values: a NULL side, a side the plan leaves
 				 * variable, a comparison no resolution holds. The unresolved-domain check (execution)
 				 * holds for each: the values may not decide a coercion or a collation there */
@@ -404,8 +406,8 @@ enum DOMAIN_KEY_RULE
   DOMAIN_KEY_STRICT,		/* the strict converter brings it into the index column's domain, or else it is kept */
   DOMAIN_KEY_KEEP,		/* the value under its own domain */
   DOMAIN_KEY_CONSTANT,		/* a constant: resolve_domains converts or keeps its value once per execution */
-  DOMAIN_KEY_LATE_BIND		/* an element whose domain resolve_domains resolves (a variable POS or node, a session
-				 * variable read): resolve_domains derives its rule from that domain once per
+  DOMAIN_KEY_LATE_BIND		/* an element whose domain resolve_domains resolves (a variable POS or node):
+				 * resolve_domains derives its rule from that domain once per
 				 * execution */
 };
 
