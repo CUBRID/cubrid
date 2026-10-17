@@ -12747,6 +12747,21 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
+  if (fcode == F_ELT)
+    {
+      /* CBRD-27583 (D-38): a bound index picks the branch that types the result: the bind type signature carries it */
+      const PT_NODE *index = arg_list;
+      if (index->node_type == PT_EXPR && index->info.expr.op == PT_CAST && index->info.expr.arg1 != NULL)
+	{
+	  index = index->info.expr.arg1;
+	}
+      if (PT_IS_INPUT_HOSTVAR (index) && index->info.host_var.index < parser->host_var_count
+	  && pt_host_var_format_classes (parser) != NULL)
+	{
+	  parser->host_var_format_classes[index->info.host_var.index] |= PT_HOST_VAR_ELT_POSITION;
+	}
+    }
+
   if (pt_is_function_new_type_checking (fcode))
     {
       func_type::Node funcNode (parser, node);

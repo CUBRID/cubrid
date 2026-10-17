@@ -1097,7 +1097,8 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
       db_value = pt_host_var_db_value (parser, value);
 
       if (db_value && value->info.host_var.index < parser->host_var_count && parser->host_var_compiled_domains != NULL
-	  && parser->host_var_compiled_domains[value->info.host_var.index] != NULL)
+	  && parser->host_var_compiled_domains[value->info.host_var.index] != NULL
+	  && !pt_host_var_is_context_typed (parser->host_var_expected_domains[value->info.host_var.index]))
 	{
 	  /* CBRD-27583: the plan reads a value-typed position's value as bound; a compile-time read leaves it so */
 	  return db_value;
@@ -3122,6 +3123,43 @@ pt_host_var_is_context_typed (const TP_DOMAIN * expected)
 }
 
 /*
+ * pt_host_var_is_leave_typed () - CBRD-27583 (D-26): whether a context-typed position is a string whose expected domain
+ *   leaves the collation to the value (LEAVE): its plan is the one of the value's collation, which its compiled domain
+ *   (the value's) keeps
+ */
+bool
+pt_host_var_is_leave_typed (const TP_DOMAIN * expected)
+{
+  return pt_host_var_is_context_typed (expected) && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (expected))
+    && expected->collation_flag == TP_DOMAIN_COLL_LEAVE;
+}
+
+/*
+ * pt_host_var_leave_collation () - CBRD-27583 (D-26): the collation a LEAVE position takes from a value of this type and
+ *   collation: a string's own, -1 for another type (the client casts it into the expected domain's), -2 for a NULL
+ */
+int
+pt_host_var_leave_collation (DB_TYPE type, int collation)
+{
+  return type == DB_TYPE_NULL ? -2 : TP_IS_CHAR_TYPE (type) ? collation : -1;
+}
+
+/* CBRD-27583: whether a value is one the compilation of a position's plan took: a value-typed position's value of its
+ * compiled domain, a LEAVE position's value of the compiled value's collation (D-26) */
+static bool
+pt_host_var_matches_compiled (const PARSER_CONTEXT * parser, int index, const DB_VALUE * val)
+{
+  const TP_DOMAIN *compiled = parser->host_var_compiled_domains[index];
+  if (!pt_host_var_is_leave_typed (parser->host_var_expected_domains[index]))
+    {
+      return pt_value_has_domain_type (val, compiled);
+    }
+  const DB_TYPE type = DB_IS_NULL (val) ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (val);
+  return pt_host_var_leave_collation (type, TP_IS_CHAR_TYPE (type) ? db_get_string_collation (val) : -1)
+    == pt_host_var_leave_collation (TP_DOMAIN_TYPE (compiled), compiled->collation_id);
+}
+
+/*
  * pt_host_var_format_differs () - CBRD-27583: whether a STR_TO_DATE format position receives a format of another class
  *   than the one its plan typed the result by (or than none, compiled without a value)
  */
@@ -3129,7 +3167,9 @@ static bool
 pt_host_var_format_differs (const PARSER_CONTEXT * parser, int index, const DB_VALUE * val)
 {
   const int c = parser->host_var_format_classes != NULL ? parser->host_var_format_classes[index] : 0;
-  return (c & PT_HOST_VAR_FORMAT_POSITION) && pt_value_format_class (val) != PT_HOST_VAR_FORMAT_CLASS (c);
+  return ((c & PT_HOST_VAR_FORMAT_POSITION) && pt_value_format_class (val) != PT_HOST_VAR_FORMAT_CLASS (c))
+    || ((c & PT_HOST_VAR_ELT_POSITION) && parser->host_var_elt_indexes != NULL
+	&& pt_value_elt_index (val) != parser->host_var_elt_indexes[index]);
 }
 
 /*
@@ -3190,7 +3230,7 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 	  parser->flag.bind_signature_changed = 1;
 	}
       if (parser->host_var_compiled_domains != NULL && parser->host_var_compiled_domains[i] != NULL
-	  && !pt_value_has_domain_type (val, parser->host_var_compiled_domains[i]))
+	  && !pt_host_var_matches_compiled (parser, i, val))
 	{
 	  /* CBRD-27583: a value-typed position compiled for another type: the plan of this value's signature is
 	   * another one (the caller recompiles); the value is not cast into this plan's domain */
@@ -3250,8 +3290,7 @@ pt_host_vars_match_signature (const PARSER_CONTEXT * parser, int count, const DB
     }
   for (int i = 0; i < parser->host_var_count; i++)
     {
-      if ((parser->host_var_compiled_domains[i] != NULL
-	   && !pt_value_has_domain_type (&values[i], parser->host_var_compiled_domains[i]))
+      if ((parser->host_var_compiled_domains[i] != NULL && !pt_host_var_matches_compiled (parser, i, &values[i]))
 	  || pt_host_var_format_differs (parser, i, &values[i]))
 	{
 	  return false;
@@ -3290,6 +3329,25 @@ pt_value_format_class (const DB_VALUE * val)
 }
 
 /*
+ * pt_value_elt_index () - CBRD-27583 (D-38): a bound value as ELT's index: the BIGINT the row casts it to, or
+ *   PT_HOST_VAR_ELT_NULL / PT_HOST_VAR_ELT_INVALID for a NULL / a value of no BIGINT
+ */
+DB_BIGINT
+pt_value_elt_index (const DB_VALUE * val)
+{
+  if (DB_IS_NULL (val))
+    {
+      return PT_HOST_VAR_ELT_NULL;
+    }
+  DB_VALUE index;
+  db_make_null (&index);
+  const DB_BIGINT result = tp_value_coerce (val, &index, &tp_Bigint_domain) == DOMAIN_COMPATIBLE
+    ? db_get_bigint (&index) : PT_HOST_VAR_ELT_INVALID;
+  pr_clear_value (&index);
+  return result;
+}
+
+/*
  * pt_host_var_format_classes () - CBRD-27583: the parser's format classes of the user positions, allocated as unknown
  *   on first use
  */
@@ -3321,9 +3379,25 @@ pt_set_host_var_format_classes (PARSER_CONTEXT * parser, int count, const DB_VAL
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, parser->host_var_count * sizeof (int));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  if (parser->host_var_elt_indexes == NULL && parser->host_var_count > 0)
+    {
+      parser->host_var_elt_indexes = (DB_BIGINT *) malloc (parser->host_var_count * sizeof (DB_BIGINT));
+      if (parser->host_var_elt_indexes == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  parser->host_var_count * sizeof (DB_BIGINT));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      for (int i = 0; i < parser->host_var_count; i++)
+	{
+	  parser->host_var_elt_indexes[i] = PT_HOST_VAR_ELT_UNKNOWN;
+	}
+    }
   for (int i = 0; i < parser->host_var_count && i < count; i++)
     {
       classes[i] = pt_value_format_class (&values[i]);
+      /* D-38: and its index value, which an ELT index position's plan takes */
+      parser->host_var_elt_indexes[i] = pt_value_elt_index (&values[i]);
     }
   return NO_ERROR;
 }

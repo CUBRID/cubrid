@@ -164,6 +164,9 @@ struct arith_list_node
   cubxasl::pred_expr *pred;		/* predicate expression */
   /* CBRD-27583: a cast's converter of its operand's domain into the node's, found at unpack; not serialized */
   TP_VALUE_CONVERTER conv = nullptr;
+  /* CBRD-27583 (spec 5): the error the operator raises where a row computes it over operands that are not NULL -
+   * XASL generation found it rejects their types (the node's domain is the NULL type) - or NO_ERROR */
+  int fails = NO_ERROR;
 
   /* NOTE: The following member is only used on server internally. */
   struct drand48_data *rand_seed;	/* seed to be used to generate pseudo-random sequence */

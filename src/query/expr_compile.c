@@ -4371,6 +4371,11 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
   const int first_step = bctx->n_steps;
   int cell;
 
+  if (regu->value.arithptr->fails != NO_ERROR)
+    {
+      /* CBRD-27583 (spec 5): a node that raises its rule's error has no kernel; the interpreter raises it */
+      return -1;
+    }
   if (expr_arith_side_effect (regu->value.arithptr->opcode))
     {
       bctx->side_effect = true;

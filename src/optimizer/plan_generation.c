@@ -4267,12 +4267,11 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	}
 
       if (!(regu_one = pt_to_regu_variable (parser, node_one, UNBOX_AS_VALUE))
-	  || !(regu_low = pt_make_regu_arith (rhs, regu_one, NULL, T_SUB, dom_bigint)))
+	  || !(regu_low = pt_make_regu_arith_over_copies (rhs, regu_one, T_SUB, dom_bigint)))
 	{
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
-      regu_low->domain = dom_bigint;
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
       *upper = regu_ptr_list_add_regu (rhs, *upper);
@@ -4291,12 +4290,11 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	}
 
       if (!(regu_one = pt_to_regu_variable (parser, node_one, UNBOX_AS_VALUE))
-	  || !(regu_low = pt_make_regu_arith (rhs, regu_one, NULL, T_SUB, dom_bigint)))
+	  || !(regu_low = pt_make_regu_arith_over_copies (rhs, regu_one, T_SUB, dom_bigint)))
 	{
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
-      regu_low->domain = dom_bigint;
 
       *upper = regu_ptr_list_add_regu (regu_low, *upper);
       break;
@@ -4310,12 +4308,11 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	}
 
       if (!(regu_one = pt_to_regu_variable (parser, node_one, UNBOX_AS_VALUE))
-	  || !(regu_low = pt_make_regu_arith (rhs, regu_one, NULL, T_SUB, dom_bigint)))
+	  || !(regu_low = pt_make_regu_arith_over_copies (rhs, regu_one, T_SUB, dom_bigint)))
 	{
 	  parser_free_node (parser, node_one);
 	  return false;
 	}
-      regu_low->domain = dom_bigint;
 
       *lower = regu_ptr_list_add_regu (regu_low, *lower);
       break;

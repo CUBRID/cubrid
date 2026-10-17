@@ -557,6 +557,7 @@ struct trace_json_t;
 	free_and_init(parser_->host_var_expected_domains); \
 	free_and_init(parser_->host_var_compiled_domains); \
 	free_and_init(parser_->host_var_format_classes); \
+	free_and_init(parser_->host_var_elt_indexes); \
 	free_and_init(parser_->host_var_derived_from); \
 	parser_->host_var_derived_count = 0;} while (0)
 
@@ -569,6 +570,12 @@ struct trace_json_t;
 #define PT_HOST_VAR_FORMAT_UNKNOWN 0xff
 #define PT_HOST_VAR_FORMAT_POSITION 0x100
 #define PT_HOST_VAR_FORMAT_CLASS(c_) ((c_) & 0xff)
+/* CBRD-27583 (D-38): host_var_format_classes' mark of an ELT index position, and host_var_elt_indexes' values of no index:
+ * no value bound, a NULL, a value that is no BIGINT */
+#define PT_HOST_VAR_ELT_POSITION 0x200
+#define PT_HOST_VAR_ELT_UNKNOWN DB_BIGINT_MIN
+#define PT_HOST_VAR_ELT_NULL (DB_BIGINT_MIN + 1)
+#define PT_HOST_VAR_ELT_INVALID (DB_BIGINT_MIN + 2)
 
 #define SET_HOST_VARIABLES_IF_INTERNAL_STATEMENT(parser_) \
     do { if (parent_parser) { \
@@ -579,6 +586,7 @@ struct trace_json_t;
 	     parser_->host_var_expected_domains = parent_parser->host_var_expected_domains; \
 	     parser_->host_var_compiled_domains = parent_parser->host_var_compiled_domains; \
 	     parser_->host_var_format_classes = parent_parser->host_var_format_classes; \
+	     parser_->host_var_elt_indexes = parent_parser->host_var_elt_indexes; \
 	     parser_->host_var_derived_from = parent_parser->host_var_derived_from; \
 	     parser_->host_var_derived_count = parent_parser->host_var_derived_count; \
              parser_->host_var_count = parent_parser->host_var_count; \
@@ -591,6 +599,7 @@ struct trace_json_t;
 	     parser_->host_var_expected_domains = NULL; \
 	     parser_->host_var_compiled_domains = NULL; \
 	     parser_->host_var_format_classes = NULL; \
+	     parser_->host_var_elt_indexes = NULL; \
 	     parser_->host_var_derived_from = NULL; parser_->host_var_derived_count = 0; \
              parser_->auto_param_count = 0; parser_->flag.set_host_var = 0; } } while (0)
 
@@ -3952,6 +3961,10 @@ struct parser_context
 				 * (db_check_time_date_format) of the value a position was compiled with, in the
 				 * compilation of a bind type signature; PT_HOST_VAR_FORMAT_POSITION marks a position
 				 * a STR_TO_DATE typed its result by */
+  DB_BIGINT *host_var_elt_indexes;	/* CBRD-27583 (D-38): [host_var_count] the value a position was compiled
+					 * with as an ELT index (PT_HOST_VAR_ELT_*), in the compilation of a bind type
+					 * signature; PT_HOST_VAR_ELT_POSITION in host_var_format_classes marks an ELT's
+					 * index, whose value picks the branch the plan types the result by */
   int *host_var_derived_from;	/* CBRD-27583: [host_var_count + auto_param_count] once a compilation of a bind type
 				 * signature assigned its positions (pt_assign_host_var_positions): for a derived position
 				 * the user position whose value the client converts into it, else -1 */

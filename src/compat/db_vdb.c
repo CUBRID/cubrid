@@ -882,7 +882,8 @@ db_set_host_var_compiled_domains (PARSER_CONTEXT * parser)
     }
   for (int i = 0; i < parser->host_var_count; i++)
     {
-      if (pt_host_var_is_context_typed (parser->host_var_expected_domains[i]))
+      if (pt_host_var_is_context_typed (parser->host_var_expected_domains[i])
+	  && !pt_host_var_is_leave_typed (parser->host_var_expected_domains[i]))
 	{
 	  continue;
 	}
@@ -903,15 +904,23 @@ db_has_untyped_host_var (const PARSER_CONTEXT * parser)
 {
   for (int i = 0; i < parser->host_var_count; i++)
     {
-      if (!pt_host_var_is_context_typed (parser->host_var_expected_domains[i])
+      if ((!pt_host_var_is_context_typed (parser->host_var_expected_domains[i])
+	   || pt_host_var_is_leave_typed (parser->host_var_expected_domains[i]))
 	  && (parser->host_var_compiled_domains == NULL || parser->host_var_compiled_domains[i] == NULL))
 	{
 	  return true;
 	}
-      if (parser->host_var_format_classes != NULL
-	  && parser->host_var_format_classes[i] == (PT_HOST_VAR_FORMAT_POSITION | PT_HOST_VAR_FORMAT_UNKNOWN))
+      const int format_class = parser->host_var_format_classes != NULL ? parser->host_var_format_classes[i] : 0;
+      if ((format_class & PT_HOST_VAR_FORMAT_POSITION)
+	  && PT_HOST_VAR_FORMAT_CLASS (format_class) == PT_HOST_VAR_FORMAT_UNKNOWN)
 	{
 	  /* a STR_TO_DATE format position compiled without its format: the result type is not known */
+	  return true;
+	}
+      if ((format_class & PT_HOST_VAR_ELT_POSITION)
+	  && (parser->host_var_elt_indexes == NULL || parser->host_var_elt_indexes[i] == PT_HOST_VAR_ELT_UNKNOWN))
+	{
+	  /* D-38: an ELT index position compiled without its value: the branch that types the result is not known */
 	  return true;
 	}
     }
@@ -3500,6 +3509,10 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
     {
       free_and_init (parser->host_var_format_classes);
     }
+  if (parser->host_var_elt_indexes)
+    {
+      free_and_init (parser->host_var_elt_indexes);
+    }
   if (parser->host_var_derived_from)
     {
       free_and_init (parser->host_var_derived_from);
@@ -4894,6 +4907,10 @@ db_close_session_local (DB_SESSION * session)
   if (parser->host_var_format_classes)
     {
       free_and_init (parser->host_var_format_classes);
+    }
+  if (parser->host_var_elt_indexes)
+    {
+      free_and_init (parser->host_var_elt_indexes);
     }
   if (parser->host_var_derived_from)
     {

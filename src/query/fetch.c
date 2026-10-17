@@ -1546,6 +1546,22 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       goto error;
     }
 
+  if (arithptr->fails != NO_ERROR)
+    {
+      /* CBRD-27583 (spec 5): the operator rejects its operands' types; over values it raises the error, as it did at
+       * the row, and a NULL operand gives no value (the fetch skips the operands after a NULL one) */
+      pr_clear_value (arithptr->value);
+      const bool null_operand = (peek_left != NULL && DB_IS_NULL (peek_left))
+	|| (peek_right != NULL && DB_IS_NULL (peek_right)) || (peek_third != NULL && DB_IS_NULL (peek_third));
+      if (!null_operand)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, arithptr->fails, 0);
+	  goto error;
+	}
+      *peek_dbval = arithptr->value;
+      goto fetch_peek_arith_end;
+    }
+
   if (fetch_arith_node_resolve (vd, &args) != NO_ERROR)
     {
       goto error;

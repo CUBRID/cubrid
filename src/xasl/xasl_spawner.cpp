@@ -417,6 +417,7 @@ namespace cubxasl
     dest->opcode = src->opcode;
     dest->misc_operand = src->misc_operand;
     dest->conv = src->conv;
+    dest->fails = src->fails;
 
     /* ref: stx_build_arith_type */
     switch (src->opcode)

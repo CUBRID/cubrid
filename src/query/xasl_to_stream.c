@@ -5612,6 +5612,7 @@ xts_process_arith_type (char *ptr, const ARITH_TYPE * arith)
   ptr = or_pack_int (ptr, offset);
 
   ptr = or_pack_int (ptr, arith->misc_operand);
+  ptr = or_pack_int (ptr, arith->fails);
 
   if (arith->opcode == T_CASE || arith->opcode == T_DECODE || arith->opcode == T_PREDICATE || arith->opcode == T_IF)
     {
@@ -7528,6 +7529,7 @@ xts_sizeof_arith_type (const ARITH_TYPE * arith)
 	   + PTR_SIZE		/* rightptr */
 	   + PTR_SIZE		/* thirdptr */
 	   + OR_INT_SIZE	/* misc_operand */
+	   + OR_INT_SIZE	/* fails */
 	   + case_pred_size	/* case pred */
 	   + or_packed_domain_size (arith->domain, 0));
 

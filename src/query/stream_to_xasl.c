@@ -6170,6 +6170,14 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 
   ptr = or_unpack_int (ptr, &tmp);
   arith_type->misc_operand = (MISC_OPERAND) tmp;
+  ptr = or_unpack_int (ptr, &arith_type->fails);
+#if !defined (NDEBUG)
+  if (arith_type->fails != NO_ERROR)
+    {
+      /* CBRD-27583 census (removed with the load's derivations): a node decided to raise its rule's error */
+      er_log_debug (ARG_FILE_LINE, "CBRD-27583 decided: fails %d op=%d\n", arith_type->fails, arith_type->opcode);
+    }
+#endif
 
   if (arith_type->opcode == T_CASE || arith_type->opcode == T_DECODE || arith_type->opcode == T_PREDICATE
       || arith_type->opcode == T_IF)

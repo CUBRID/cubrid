@@ -6435,6 +6435,37 @@ failure:
 
 
 /*
+ * pt_decide_position_collation () - CBRD-27583 (d1): the domain of a string position whose collation type checking left
+ *   to the value (LEAVE) or enforced over the value the client sends as it is (ENFORCE), as the server receives the
+ *   value: an auto-parameter's literal, cast here, has its own domain (its session collation); the client casts a user
+ *   or derived position's value into the position's domain - a string takes the position's type in the enforced
+ *   collation (LEAVE: the value's), any other value passes an ENFORCE cast as it is; a NULL value has no type
+ */
+static TP_DOMAIN *
+pt_decide_position_collation (PARSER_CONTEXT * parser, int index, TP_DOMAIN * compiled)
+{
+  if (index >= parser->host_var_count && !pt_is_derived_host_var (parser, index))
+    {
+      return pt_host_var_value_domain (parser, index);
+    }
+  const int user = index < parser->host_var_count ? index : parser->host_var_derived_from[index];
+  const TP_DOMAIN *value = pt_host_var_value_domain (parser, user);
+  if (value == NULL || TP_DOMAIN_TYPE (value) == DB_TYPE_NULL)
+    {
+      return &tp_Null_domain;
+    }
+  const DOMAIN_OPERAND source = {
+    value, TP_DOMAIN_TYPE (value), TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (value)) ? value->collation_id : -1, false
+  };
+  RESOLVED_DOMAIN result;
+  if (domain_resolve_character (T_CAST, &source, 1, compiled, &result) != NO_ERROR || result.domain == NULL)
+    {
+      return compiled;
+    }
+  return (TP_DOMAIN *) result.domain;
+}
+
+/*
  * pt_make_regu_hostvar () - takes a pt_node of host variable and make
  *                           a regu_variable of host variable reference
  *   return:
@@ -6507,6 +6538,14 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	{
 	  /* CBRD-27583: a value-typed position of a typed plan: the domain the plan was compiled for */
 	  regu->domain = parser->host_var_compiled_domains[node->info.host_var.index];
+	}
+
+      if (regu->domain == NULL && node->info.host_var.index < parser->host_var_count
+	  && parser->host_var_compiled_domains == NULL && parser->flag.set_host_var == 1)
+	{
+	  /* CBRD-27583 (d1): a value-typed position compiled with its value but no bind type signature - a statement no
+	   * cache keeps compiles at each execution (do_statement): the value's own domain, the NULL type for a NULL */
+	  regu->domain = pt_host_var_value_domain (parser, node->info.host_var.index);
 	}
 
       if (regu->domain == NULL && node->info.host_var.index >= parser->host_var_count && typ != DB_TYPE_NULL)
@@ -6585,6 +6624,11 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 			   pr_type_name (DB_VALUE_DOMAIN_TYPE (val)), pr_type_name (TP_DOMAIN_TYPE (regu->domain)));
 	      regu = NULL;
 	    }
+	}
+      if (regu != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain))
+	  && regu->domain->collation_flag != TP_DOMAIN_COLL_NORMAL)
+	{
+	  regu->domain = pt_decide_position_collation (parser, node->info.host_var.index, regu->domain);
 	}
     }
   else
@@ -7116,6 +7160,15 @@ pt_decide_operand_coercion (ARITH_TYPE * arith)
     }
 }
 
+/* CBRD-27583 (d1): the cast type checking wraps around an operand it could not type, into a string of the collation
+ * the other operand enforces */
+static bool
+pt_is_enforced_collation_cast (const PT_NODE * arg)
+{
+  return arg->node_type == PT_EXPR && arg->info.expr.op == PT_CAST && arg->info.expr.cast_type != NULL
+    && arg->info.expr.cast_type->info.data_type.collation_flag == TP_DOMAIN_COLL_ENFORCE;
+}
+
 /*
  * pt_operand_retyped () - CBRD-27583 (D-34): whether an operand regu of an operator node holds another type than
  *   type checking gave its argument: a recursive CTE's self-reference reads its producer's type, not the one before
@@ -7146,6 +7199,12 @@ pt_operand_retyped (const REGU_VARIABLE * const *operand, int n_operands, const 
   for (int i = 0; i < n; i++)
     {
       const PT_TYPE_ENUM type = args[i]->type_enum;
+      if (pt_is_enforced_collation_cast (args[i]))
+	{
+	  /* the cast keeps a value of another type as it is: the node computes over it as typed (the load's operand
+	   * coercion), it is not retyped */
+	  continue;
+	}
       if (type != PT_TYPE_MAYBE && type != PT_TYPE_NONE && type != PT_TYPE_NULL && operands[i]->domain != NULL
 	  && TP_DOMAIN_TYPE (operands[i]->domain) != DB_TYPE_VARIABLE
 	  && TP_DOMAIN_TYPE (operands[i]->domain) != pt_type_enum_to_db (type))
@@ -7157,10 +7216,64 @@ pt_operand_retyped (const REGU_VARIABLE * const *operand, int n_operands, const 
 }
 
 /*
+ * pt_incompatible_collation_domain () - CBRD-27583 (d1): the domain of a string node or function over operands whose
+ *   collations do not merge: the row raises the error where it computes it, so no value has this domain - the type
+ *   checking's string type in the first string operand's collation
+ */
+static const TP_DOMAIN *
+pt_incompatible_collation_domain (const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operands, int n_operands)
+{
+  for (int i = 0; i < n_operands; i++)
+    {
+      if (operands[i].domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (operands[i].domain)))
+	{
+	  return tp_domain_resolve (TP_DOMAIN_TYPE (compiled), NULL, compiled->precision, 0, NULL,
+				    operands[i].domain->collation_id);
+	}
+    }
+  return NULL;
+}
+
+/*
+ * pt_merge_branch_collations () - CBRD-27583 (d1): the domain of a node whose value is one of its string branches, of
+ *   different domains (CASE, DECODE, IF; ELT over a computed index): the branches' merged collation, into which each
+ *   branch converts (the load's domain_resolve_branch_merge); false for collations that do not merge (the execution
+ *   rejects them) or a branch that converts for another consumer
+ */
+static bool
+pt_merge_branch_collations (REGU_VARIABLE * const *branch, int n_branches, const DOMAIN_OPERAND * operands,
+			    int n_operands, RESOLVED_DOMAIN * result)
+{
+  if (domain_resolve_branch_merge (operands, n_operands, result) != NO_ERROR || result->domain == NULL)
+    {
+      return false;
+    }
+  for (int i = 0; i < n_branches; i++)
+    {
+      if (branch[i] != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (branch[i]->domain))
+	  && (branch[i]->vfetch_to != NULL || branch[i]->original_domain != NULL))
+	{
+	  return false;
+	}
+    }
+  for (int i = 0; i < n_branches; i++)
+    {
+      if (branch[i] != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (branch[i]->domain))
+	  && branch[i]->domain != result->domain)
+	{
+	  pt_set_operand_conversion (branch[i], result->domain, DOMAIN_CONVERT_ASSIGN);
+	}
+    }
+  return true;
+}
+
+/*
  * pt_decide_node_domain () - CBRD-27583: the domain of an operator node type checking left to its operands' values
  *   (a value-typed bind) or typed over an argument its operand regu retypes (D-34), resolved with the type rule module
- *   from its operands' domains as the bind type signature fixes them; a node over an operand of a type the compiler
- *   does not know, or one the rule does not resolve, is left to the load
+ *   from its operands' domains as the bind type signature fixes them, and the collation of a string type checking
+ *   left to the values (LEAVE) or enforced over an operand it could not type (ENFORCE) ((d1)); a node whose operands'
+ *   types the rule rejects gives no value and raises the rule's error where a row computes it (spec 5); a node over an
+ *   operand of a type the compiler does not know, or one the rule does not resolve, is left to the load
  */
 static void
 pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
@@ -7169,8 +7282,11 @@ pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
   /* CONNECT_BY_ROOT and QPRIOR carry their block in the third operand */
   const int n_value_operands = (arith->opcode == T_CONNECT_BY_ROOT || arith->opcode == T_QPRIOR) ? 2 : 3;
   REGU_VARIABLE *operand[3] = { arith->leftptr, arith->rightptr, arith->thirdptr };
-  if (arith->domain == NULL || arith->pred != NULL
-      || (TP_DOMAIN_TYPE (arith->domain) != DB_TYPE_VARIABLE && !pt_operand_retyped (operand, n_value_operands, node)))
+  const bool collation_variable = arith->domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (arith->domain))
+    && TP_DOMAIN_COLLATION_FLAG (arith->domain) != TP_DOMAIN_COLL_NORMAL;
+  if (arith->domain == NULL || (arith->pred != NULL && !collation_variable)
+      || (TP_DOMAIN_TYPE (arith->domain) != DB_TYPE_VARIABLE && !collation_variable
+	  && !pt_operand_retyped (operand, n_value_operands, node)))
     {
       return;
     }
@@ -7198,8 +7314,33 @@ pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
   /* a rule that gives no value (a NULL operand) types the node NULL: every row gives NULL (D-25) */
   RESOLVED_DOMAIN result;
   bool needs_late_bind = false;
-  if (domain_resolve (domain_late_bind_context (arith->opcode), arith->opcode, operands, n, arith->domain, &result,
-		      &needs_late_bind) != NO_ERROR || needs_late_bind || result.domain == NULL
+  int error = collation_variable
+    ? domain_resolve_character (arith->opcode, operands, n, arith->domain, &result)
+    : domain_resolve (domain_late_bind_context (arith->opcode), arith->opcode, operands, n, arith->domain, &result,
+		      &needs_late_bind);
+  if (collation_variable && error == ER_QPROC_DOMAIN_UNRESOLVED
+      && (arith->opcode == T_CASE || arith->opcode == T_DECODE || arith->opcode == T_IF))
+    {
+      REGU_VARIABLE *branch[2] = { arith->leftptr, arith->rightptr };
+      error = pt_merge_branch_collations (branch, 2, operands, n, &result) ? NO_ERROR : error;
+    }
+  else if (collation_variable && error == ER_QSTR_INCOMPATIBLE_COLLATIONS)
+    {
+      result = RESOLVED_DOMAIN ();
+      result.domain = pt_incompatible_collation_domain (arith->domain, operands, n);
+      error = result.domain != NULL ? NO_ERROR : error;
+    }
+  if (!needs_late_bind && (error == ER_QPROC_INVALID_DATATYPE || error == ER_QSTR_INVALID_DATA_TYPE
+			   || error == ER_QSTR_INCOMPATIBLE_CODE_SETS || error == ER_QSTR_INCOMPATIBLE_COLLATIONS))
+    {
+      /* the operator rejects its operands' types: no value, and a row that computes it over values raises the error
+       * (spec 5) */
+      arith->fails = error;
+      result = RESOLVED_DOMAIN ();
+      result.domain = &tp_Null_domain;
+      error = NO_ERROR;
+    }
+  if (error != NO_ERROR || needs_late_bind || result.domain == NULL
       || TP_DOMAIN_TYPE (result.domain) == DB_TYPE_VARIABLE)
     {
       return;
@@ -7463,6 +7604,35 @@ pt_decide_branch_casts (ARITH_TYPE * arith)
 	  pt_set_operand_conversion (branch[i], arith->domain, DOMAIN_CONVERT_ASSIGN);
 	}
     }
+}
+
+/*
+ * pt_make_regu_arith_over_copies () - CBRD-27583 (d1, D-21 A4): a subtraction plan generation makes over regus another
+ *   consumer reads as they are (a ROWNUM bound, the comparison's bind): the node reads second regus of its own, which
+ *   convert for its operand coercion
+ */
+REGU_VARIABLE *
+pt_make_regu_arith_over_copies (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, const OPERATOR_TYPE op,
+				const TP_DOMAIN * domain)
+{
+  const REGU_VARIABLE *arg[2] = { arg1, arg2 };
+  REGU_VARIABLE *copy[2];
+  for (int i = 0; i < 2; i++)
+    {
+      regu_alloc (copy[i]);
+      if (copy[i] == NULL)
+	{
+	  return NULL;
+	}
+      *copy[i] = *arg[i];
+    }
+  REGU_VARIABLE *regu = pt_make_regu_arith (copy[0], copy[1], NULL, op, domain);
+  if (regu != NULL)
+    {
+      regu->domain = (TP_DOMAIN *) domain;
+      pt_decide_operand_coercion (regu->value.arithptr);
+    }
+  return regu;
 }
 
 /*
@@ -7800,6 +7970,131 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
  * Note :
  * currently only aggregate functions are known and handled
  */
+/* CBRD-27583 (d1): ELT's index under the cast to BIGINT the compiler may wrap it in */
+static const REGU_VARIABLE *
+pt_elt_index_source (const REGU_VARIABLE * index)
+{
+  if ((index->type == TYPE_INARITH || index->type == TYPE_OUTARITH) && index->value.arithptr != NULL
+      && index->value.arithptr->rightptr != NULL
+      && (index->value.arithptr->opcode == T_CAST || index->value.arithptr->opcode == T_CAST_WRAP
+	  || index->value.arithptr->opcode == T_CAST_NOFAIL))
+    {
+      return index->value.arithptr->rightptr;
+    }
+  return index;
+}
+
+/* CBRD-27583 (d1): whether ELT's index is a bind or a literal: its value picks the branch for every row of an
+ * execution (domain_link_string_function) */
+static bool
+pt_elt_index_is_value (const REGU_VARIABLE * index)
+{
+  index = pt_elt_index_source (index);
+  return index->type == TYPE_DBVAL || index->type == TYPE_POS_VALUE;
+}
+
+/* CBRD-27583 (D-38): the value of ELT's index the plan is compiled for: a literal's, or a user position's, which the
+ * bind type signature carries (PT_HOST_VAR_ELT_POSITION); PT_HOST_VAR_ELT_UNKNOWN for another position */
+static DB_BIGINT
+pt_elt_index_value (PARSER_CONTEXT * parser, const REGU_VARIABLE * index)
+{
+  index = pt_elt_index_source (index);
+  if (index->type == TYPE_DBVAL)
+    {
+      return pt_value_elt_index (&index->value.dbval);
+    }
+  const int position = index->value.val_pos;
+  if (index->type == TYPE_POS_VALUE && position < parser->host_var_count && parser->host_var_elt_indexes != NULL
+      && parser->host_var_format_classes != NULL
+      && (parser->host_var_format_classes[position] & PT_HOST_VAR_ELT_POSITION))
+    {
+      return parser->host_var_elt_indexes[position];
+    }
+  return PT_HOST_VAR_ELT_UNKNOWN;
+}
+
+/*
+ * pt_decide_function_collation () - CBRD-27583 (d1): a string function result whose collation type checking left to its
+ *   string operands (LEAVE, ENFORCE) takes it from their domains, as the load did (domain_link_string_function); ELT's
+ *   branches of different domains are merged where a row computes the index, and the one a bind or a literal picks
+ *   types the result where the plan is compiled for that index value (D-38)
+ */
+static void
+pt_decide_function_collation (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
+{
+  if (regu->type != TYPE_FUNC || regu->domain == NULL || !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain))
+      || regu->domain->collation_flag == TP_DOMAIN_COLL_NORMAL || regu->value.funcp == NULL
+      || regu->value.funcp->operand == NULL)
+    {
+      return;
+    }
+  const bool elt = regu->value.funcp->ftype == F_ELT;
+  DOMAIN_OPERAND operands[16];
+  int n = 0;
+  for (REGU_VARIABLE_LIST op = regu->value.funcp->operand; op != NULL; op = op->next)
+    {
+      if (!pt_regu_domain_is_fixed (&op->value) || n == (int) (sizeof (operands) / sizeof (operands[0])))
+	{
+	  return;
+	}
+      const TP_DOMAIN *domain = op->value.domain;
+      if (elt ? op == regu->value.funcp->operand : !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)))
+	{
+	  continue;
+	}
+      operands[n++] = DOMAIN_OPERAND
+      {
+      domain, TP_DOMAIN_TYPE (domain), TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) ? domain->collation_id : -1, false};
+    }
+  if (n == 0)
+    {
+      const TP_DOMAIN *domain = regu->value.funcp->operand->value.domain;
+      operands[n++] = DOMAIN_OPERAND
+      {
+      domain, TP_DOMAIN_TYPE (domain), TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) ? domain->collation_id : -1, false};
+    }
+  RESOLVED_DOMAIN result;
+  int error = domain_resolve_character (regu->value.funcp->ftype, operands, n, regu->domain, &result);
+  const REGU_VARIABLE *index = &regu->value.funcp->operand->value;
+  if (error == ER_QPROC_DOMAIN_UNRESOLVED && elt && pt_elt_index_is_value (index))
+    {
+      /* D-38: the index value the plan is compiled for picks the branch; a NULL or one out of the branches gives NULL */
+      const DB_BIGINT pick = pt_elt_index_value (parser, index);
+      if (pick != PT_HOST_VAR_ELT_UNKNOWN)
+	{
+	  DOMAIN_OPERAND picked[17];
+	  picked[0] = DOMAIN_OPERAND ();
+	  for (int i = 0; i < n; i++)
+	    {
+	      picked[i + 1] = operands[i];
+	    }
+	  error = domain_resolve_branch_pick (picked, n + 1, pick >= 1 && pick <= n ? (int) pick : 0, &result);
+	}
+    }
+  else if (error == ER_QPROC_DOMAIN_UNRESOLVED && elt)
+    {
+      /* the index a row computes picks its branch: the branches' merged collation */
+      REGU_VARIABLE *branch[16];
+      int n_branches = 0;
+      for (REGU_VARIABLE_LIST op = regu->value.funcp->operand->next; op != NULL; op = op->next)
+	{
+	  branch[n_branches++] = &op->value;
+	}
+      error = pt_merge_branch_collations (branch, n_branches, operands, n, &result) ? NO_ERROR : error;
+    }
+  else if (error == ER_QSTR_INCOMPATIBLE_COLLATIONS)
+    {
+      result = RESOLVED_DOMAIN ();
+      result.domain = pt_incompatible_collation_domain (regu->domain, operands, n);
+      error = result.domain != NULL ? NO_ERROR : error;
+    }
+  if (error != NO_ERROR || result.domain == NULL || TP_DOMAIN_TYPE (result.domain) == DB_TYPE_VARIABLE)
+    {
+      return;
+    }
+  regu->domain = (TP_DOMAIN *) result.domain;
+}
+
 static REGU_VARIABLE *
 pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 {
@@ -7931,6 +8226,10 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
       if (args)
 	{
 	  regu = pt_make_function (parser, function->info.function.function_type, args, result_type, function);
+	  if (regu != NULL)
+	    {
+	      pt_decide_function_collation (parser, regu);
+	    }
 	  if (DB_TYPE_VOBJ == pt_node_to_db_type (function) && function->info.function.function_type != F_VID)
 	    {
 	      regu = pt_make_vid (parser, function->data_type, regu);
@@ -10436,7 +10735,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		  pt_decide_branch_casts (regu->value.arithptr);
 		}
 	      if (regu != NULL && regu->type == TYPE_INARITH && regu->value.arithptr->leftptr != NULL
-		  && regu->value.arithptr->rightptr != NULL
+		  && regu->value.arithptr->rightptr != NULL && regu->value.arithptr->fails == NO_ERROR
 		  && (regu->value.arithptr->opcode == T_ADD || regu->value.arithptr->opcode == T_SUB
 		      || regu->value.arithptr->opcode == T_MUL || regu->value.arithptr->opcode == T_DIV))
 		{
@@ -12577,13 +12876,12 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
 	{
 	  TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
 
-	  limit_infop->upper = pt_make_regu_arith (limit_infop->upper, limit_infop->lower, NULL, T_SUB, dom_bigint);
+	  limit_infop->upper =
+	    pt_make_regu_arith_over_copies (limit_infop->upper, limit_infop->lower, T_SUB, dom_bigint);
 	  if (limit_infop->upper == NULL)
 	    {
 	      goto exit_on_error;
 	    }
-
-	  limit_infop->upper->domain = dom_bigint;
 	}
 
       /* we must also delete the instnum predicate, because we don't want two sets of lower limits for the same data */
@@ -24635,6 +24933,10 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   next = node->next;
   node->next = NULL;
   parser->dbval_cnt = 0;
+#if !defined (NDEBUG)
+  /* CBRD-27583 census (SA; removed with the load's derivations): the statement whose load lines follow */
+  er_log_debug (ARG_FILE_LINE, "CBRD-27583 generate: %.300s\n", parser->original_buffer ? parser->original_buffer : "");
+#endif
 
   is_system_generated_stmt = node->flag.is_system_generated_stmt;
 

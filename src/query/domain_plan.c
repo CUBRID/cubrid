@@ -264,18 +264,6 @@ domain_cast_operand_is_variable (const ARITH_TYPE * arith, REGU_VARIABLE * const
   return variable;
 }
 
-/* A bind the compiler typed whose reference a comparison, an index key or an assignment reads by the value
- * (DOMAIN_PLAN_CONSUMER_CONVERTS): the client sends such a value as it is - a number compared with ORDERBY_NUM stays
- * the NUMERIC the statement bound - so a node over it computes over the value's type, as over a bind the compiler
- * did not type. The ORDERBY_NUM bound (qo_get_limit_from_eval_term) reuses the comparison's own regu, walked before
- * the bound (domain_walk_xasl: ordbynum_pred, then orderby_limit). */
-static bool
-domain_bind_read_by_value (const REGU_VARIABLE * operand)
-{
-  return operand->type == TYPE_POS_VALUE && operand->plan_item != NULL
-    && (operand->plan_item->flags & DOMAIN_PLAN_CONSUMER_CONVERTS) != 0;
-}
-
 /* A cast into a character domain whose collation is enforced (the wrapper the compiler puts around an operand it
  * could not type, (1 + ?) + '3'): tp_value_cast_internal leaves a value of any other type as it is, so the type
  * the cast gives is its operand's, which resolve_domains resolves (domain_character_cast). */
@@ -1111,8 +1099,9 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
        * parent tuple's value (qexec_replace_prior_regu_vars); the node's value is its argument's (rightptr) */
       operands[2] = NULL;
     }
+  /* CBRD-27583 (spec 5): a node that raises its rule's error computes at the rows that reach it, never before */
   DOMAIN_OPERAND_CLASS cls = domain_non_cacheable_operator (arith->opcode) || arith->pred != NULL
-    ? OPERAND_NON_CACHEABLE : OPERAND_CONST;
+    || arith->fails != NO_ERROR ? OPERAND_NON_CACHEABLE : OPERAND_CONST;
   /* CASE, DECODE and IF take one arm by their predicate, which they evaluate first; COALESCE, NVL, IFNULL and NVL2
    * read their other operands by the first one's NULL-ness - when the node's domain is fixed: of a variable (VARIABLE)
    * domain, every operand counts as read (fetch_peek_arith read each to infer the domain from the values). A
@@ -1178,7 +1167,7 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
   /* no row changes a CASE, DECODE, IF or predicate node over operands no row changes, though a fetch computes it
    * every time (its class stays NON_CACHEABLE); a non-cacheable operator's value is the row's */
   bool row_invariant = (!domain_non_cacheable_operator (arith->opcode) || domain_branch_operator (arith->opcode))
-    && (arith->pred == NULL || domain_pred_is_row_invariant (arith->pred));
+    && (arith->pred == NULL || domain_pred_is_row_invariant (arith->pred)) && arith->fails == NO_ERROR;
   for (int i = 0; i < 3 && row_invariant; i++)
     {
       row_invariant = operands[i] == NULL || domain_regu_is_row_invariant (operands[i]);
@@ -1215,17 +1204,17 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
   /* a string the compiler typed but whose collation its values give (LEAVE, ENFORCE) is resolved by resolve_domains
    * from its operands' resolved domains, as a late-binding node on the collation axis */
   const bool collation_variable = !late_bound && domain_character_is_variable (arith->domain);
-  /* an addition, subtraction, multiplication or division the compiler typed over an operand it did not (LIMIT's offset
-   * + count, an ORDERBY_NUM bound over a bind) keeps its compiled domain; resolve_domains resolves its operands'
-   * operand coercion from their resolved domains */
+  /* an addition, subtraction, multiplication or division the compiler typed over an operand it did not keeps its
+   * compiled domain; resolve_domains resolves its operands' operand coercion from their resolved domains. A bind's value
+   * has its compiled type (CBRD-27583: a value-typed bind compiles per type signature, the client casts a context-typed
+   * one), so a bind a comparison or a key limit reads by its value is typed here (XASL generation coerces the
+   * ROWNUM bound's arithmetic over its own regus) */
   const bool coercion_variable = domain_operand_coercion_operator (arith->opcode) && !late_bound && !collation_variable
     && operands[0] != NULL && operands[1] != NULL && operands[0]->plan_item != NULL
     && operands[1]->plan_item != NULL && (!domain_type_is_fixed (operands[0]->domain)
 					  || !domain_type_is_fixed (operands[1]->domain)
 					  || domain_cast_keeps_source_type (operands[0])
-					  || domain_cast_keeps_source_type (operands[1])
-					  || domain_bind_read_by_value (operands[0])
-					  || domain_bind_read_by_value (operands[1]));
+					  || domain_cast_keeps_source_type (operands[1]));
   /* a cast, or a NVL / IFNULL / COALESCE / NVL2 that casts the operand the row picks into the node's compiled domain,
    * over an operand the compiler did not type (a bind, a late-binding node): the converter into that domain is
    * resolve_domains', from the operand's resolved type (qexec_resolve_cast_coercion); the row calls it
@@ -5167,6 +5156,24 @@ stx_build_domain_plan (THREAD_ENTRY * thread_p, XASL_NODE * root, XASL_UNPACK_IN
 	  plan->resolved_session_dependent[r->item.resolved_index] = session_dependent;
 	}
     }
+#if !defined (NDEBUG)
+  /* CBRD-27583 census (removed with the load's derivations): every entry the execution still resolves, by axis */
+  for (DOMAIN_LOAD_ENTRY * r = ctx.head; r != NULL && !ctx.failed; r = r->next)
+    {
+      if (r->alias != NULL || r->item.resolved_index < 0)
+	{
+	  continue;
+	}
+      const TP_DOMAIN *compiled = r->regu != NULL ? r->regu->domain : r->consumer;
+      er_log_debug (ARG_FILE_LINE, "CBRD-27583 late %s %s ctx=%d op=%d compiled=%s coll=%d reader=%d links=%d\n",
+		    (r->item.flags & DOMAIN_PLAN_LATE_BIND_COLLATION) ? "collation"
+		    : (r->item.flags & DOMAIN_PLAN_LATE_BIND_COERCION) ? "coercion" : "domain",
+		    r->regu != NULL ? "regu" : "node", r->cold.ctx, r->cold.opcode,
+		    compiled != NULL ? pr_type_name (TP_DOMAIN_TYPE (compiled)) : "none",
+		    compiled != NULL ? (int) TP_DOMAIN_COLLATION_FLAG (compiled) : -1, (int) r->follows_producer,
+		    r->n_link);
+    }
+#endif
   if (!ctx.failed)
     {
       /* constant expressions before comparisons, whose constant sides read them */

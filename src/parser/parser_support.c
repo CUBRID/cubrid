@@ -5080,7 +5080,8 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
       parser->host_var_expected_domains[i] = own != NULL ? own : tp_domain_resolve_default (DB_TYPE_UNKNOWN);
       if (parser->host_var_compiled_domains != NULL)
 	{
-	  parser->host_var_compiled_domains[i] = own == NULL ? pt_host_var_value_domain (parser, i) : NULL;
+	  parser->host_var_compiled_domains[i] = own == NULL || pt_host_var_is_leave_typed (own)
+	    ? pt_host_var_value_domain (parser, i) : NULL;
 	}
     }
 

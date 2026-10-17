@@ -170,10 +170,13 @@ extern "C"
   extern bool pt_value_has_domain_type (const DB_VALUE * val, const TP_DOMAIN * domain);
   extern bool pt_host_vars_match_signature (const PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
   extern int pt_value_format_class (const DB_VALUE * val);
+  extern DB_BIGINT pt_value_elt_index (const DB_VALUE * val);
   extern int *pt_host_var_format_classes (PARSER_CONTEXT * parser);
   extern int pt_set_host_var_format_classes (PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
   extern bool pt_has_session_variable (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern bool pt_host_var_is_context_typed (const TP_DOMAIN * expected);
+  extern bool pt_host_var_is_leave_typed (const TP_DOMAIN * expected);
+  extern int pt_host_var_leave_collation (DB_TYPE type, int collation);
   extern DB_VALUE *pt_host_var_db_value (PARSER_CONTEXT * parser, PT_NODE * hv);
   extern PT_NODE *pt_bind_values_to_hostvars (PARSER_CONTEXT * parser, PT_NODE * node);
   extern int pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name);

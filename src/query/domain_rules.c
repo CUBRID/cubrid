@@ -1188,6 +1188,11 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
 	  result_type = DB_TYPE_TIME;
 	  break;
 	default:
+	  /* db_add_time gives no value under return_null_on_function_errors */
+	  if (prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
+	    {
+	      goto set_operands;
+	    }
 	  return ER_QSTR_INVALID_DATA_TYPE;
 	}
       break;

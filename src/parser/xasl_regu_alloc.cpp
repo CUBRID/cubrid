@@ -288,6 +288,7 @@ regu_init (arith_list_node &arith)
   arith.misc_operand = LEADING;
   arith.rand_seed = NULL;
   arith.conv = NULL;
+  arith.fails = NO_ERROR;
 
   regu_alloc (arith.value);
 }

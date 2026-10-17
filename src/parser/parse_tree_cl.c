@@ -13494,6 +13494,22 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
 	  codeset = domain->codeset;
 	  collation = domain->collation_id;
 	}
+      const TP_DOMAIN *value =
+	parser->host_var_compiled_domains != NULL ? parser->host_var_compiled_domains[index] : NULL;
+      if (domain != NULL && value != NULL && pt_host_var_is_leave_typed (domain))
+	{
+	  /* D-26: a LEAVE string position prints the value's codeset and collation, or the NULL type for a NULL */
+	  const int leave = pt_host_var_leave_collation (TP_DOMAIN_TYPE (value), value->collation_id);
+	  if (leave == -2)
+	    {
+	      type = DB_TYPE_NULL;
+	    }
+	  else if (leave >= 0)
+	    {
+	      codeset = value->codeset;
+	      collation = value->collation_id;
+	    }
+	}
     }
   else if (pt_is_derived_host_var (parser, index))
     {
@@ -13539,6 +13555,24 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
       else
 	{
 	  sprintf (out + strlen (out), ":f%d", format_class);
+	}
+    }
+  if (index < parser->host_var_count && parser->host_var_format_classes != NULL
+      && (parser->host_var_format_classes[index] & PT_HOST_VAR_ELT_POSITION) && parser->host_var_elt_indexes != NULL)
+    {
+      /* D-38: an ELT index: its value picks the branch that types the result */
+      const DB_BIGINT elt_index = parser->host_var_elt_indexes[index];
+      if (elt_index == PT_HOST_VAR_ELT_NULL)
+	{
+	  strcat (out, ":en");
+	}
+      else if (elt_index == PT_HOST_VAR_ELT_INVALID || elt_index == PT_HOST_VAR_ELT_UNKNOWN)
+	{
+	  strcat (out, ":ex");
+	}
+      else
+	{
+	  sprintf (out + strlen (out), ":e%lld", (long long) elt_index);
 	}
     }
 }
