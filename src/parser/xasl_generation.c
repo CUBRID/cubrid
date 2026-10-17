@@ -6742,9 +6742,10 @@ pt_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * producer)
     {
       return parse_tree;
     }
+  /* a NULL producer column (a derived table whose query is false) types nothing */
   return TP_DOMAIN_TYPE (parse_tree) == DB_TYPE_VARIABLE
-    || (TP_DOMAIN_TYPE (producer) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (producer) != TP_DOMAIN_TYPE (parse_tree))
-    ? producer : parse_tree;
+    || (TP_DOMAIN_TYPE (producer) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (producer) != DB_TYPE_NULL
+	&& TP_DOMAIN_TYPE (producer) != TP_DOMAIN_TYPE (parse_tree)) ? producer : parse_tree;
 }
 
 /* CBRD-27583: the domain of a regu reading column pos of the list a derived table's or a CTE's spec reads */
