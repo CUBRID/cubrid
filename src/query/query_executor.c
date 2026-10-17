@@ -10718,6 +10718,23 @@ qexec_batch_eligible (const XASL_NODE * xasl)
 }
 
 /*
+ * qexec_batch_filter_eligible () - can the block's driving heap scan run its filter a chunk at a time while its rows
+ *				     go on one by one (scan_batch_open_filter ())?
+ *   return: a sequential heap scan of a SELECT with a data filter; what the block does per row is the row loop's
+ */
+bool
+qexec_batch_filter_eligible (const XASL_NODE * xasl)
+{
+  const ACCESS_SPEC_TYPE *spec = xasl->spec_list;
+
+  return (spec != NULL && spec->next == NULL && xasl->curr_spec == spec && spec->type == TARGET_CLASS
+	  && spec->access == ACCESS_METHOD_SEQUENTIAL && spec->s_id.type == S_HEAP_SCAN && spec->parts == NULL
+	  && spec->curent == NULL && !spec->s_id.mvcc_select_lock_needed && spec->where_pred != NULL
+	  && xasl->scan_op_type == S_SELECT && !QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl)
+	  && xasl->selected_upd_list == NULL && !ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
+}
+
+/*
  * qexec_batch_scan () - the page-at-a-time loop of a BUILDVALUE or projecting BUILDLIST block over its heap scan
  *   return: S_END when the scan is exhausted, S_ERROR otherwise (the error is set)
  *   xasl(in): the block (qexec_batch_eligible (), scan_batch_open () == 1)
@@ -11812,6 +11829,11 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		}
 	      continue;
 	    }
+	}
+      else if (qexec_batch_filter_eligible (xasl))
+	{
+	  /* the rows go on one by one (a join, a subquery, ...), but the scan runs its filter a chunk at a time */
+	  (void) scan_batch_open_filter (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec, &xasl_state->vd);
 	}
 
       while ((ls_scan = scan_next_scan (thread_p, &xasl->curr_spec->s_id)) == S_SUCCESS)

@@ -134,6 +134,15 @@ struct heap_scan_id
   bool batch_started;		/* serial walk: the first page was fixed */
   bool batch_rowmode;		/* scan_next_scan () walks the held page row by row (a page the batch handed back) */
   const char *batch_why_not;	/* trace: why the batch declined */
+  /* the filter iterator (scan_batch_open_filter ()): scan_next_scan () itself runs the filter a chunk at a time and
+   * hands out the rows it kept one by one */
+  bool batch_iter;
+  bool batch_page_more;		/* the held page has rows past the chunk */
+  int batch_pos;		/* the next kept row of the chunk to hand out */
+  int batch_slot;		/* the page walk's position (scan_batch_collect_chunk ()) */
+  int batch_last_slot;		/* the slot of the row handed out last */
+  char *batch_copy;		/* the kept rows' records, copied before the page is let go */
+  size_t batch_copy_cap;
 };				/* Regular Heap File Scan Identifier */
 
 namespace parallel_scan
@@ -168,6 +177,13 @@ struct parallel_heap_scan_id
   bool batch_started;
   bool batch_rowmode;
   const char *batch_why_not;
+  bool batch_iter;
+  bool batch_page_more;
+  int batch_pos;
+  int batch_slot;
+  int batch_last_slot;
+  char *batch_copy;
+  size_t batch_copy_cap;
   // *INDENT-OFF*
   #if !WINDOWS
   parallel_scan::RESULT_TYPE result_type;
@@ -686,6 +702,13 @@ namespace cubxasl
 {
   struct aggregate_list_node;
 }
+/* a heap scan whose rows go on row by row (a join, a subquery, ...): its filter run a chunk at a time inside
+ * scan_next_scan (); true when it does */
+extern bool scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const struct access_spec_node *spec,
+				    val_descr * vd);
+/* the same for a parallel worker's scan, whose rows go through the rows node (scan_batch_rows_consume ()) */
+extern bool scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const struct access_spec_node *spec,
+				  val_descr * vd);
 extern int scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const struct access_spec_node *spec,
 			    cubxasl::aggregate_list_node * agg_list, val_descr * vd,
 			    const struct expr_batch_gby_map *gby);
@@ -706,6 +729,10 @@ struct scan_batch_project
 struct expr_chunk_node;
 extern int scan_batch_project_consume (THREAD_ENTRY * thread_p, struct expr_chunk_node *node,
 				       struct expr_batch_plan *plan, struct expr_batch *batch);
+/* the rows node of a chunk chain: the kept rows' records copied out of the page, then each row's values read and
+ * the row emitted -- for a consumer whose per-row work may let the page go (a join's inner scans) */
+extern int scan_batch_rows_consume (THREAD_ENTRY * thread_p, struct expr_chunk_node *node,
+				    struct expr_batch_plan *plan, struct expr_batch *batch);
 /* one row of a chunk through the projection's tail: its columns into the value list, then emit */
 extern int scan_batch_project_row (THREAD_ENTRY * thread_p, SCAN_BATCH_PROJECT * st, struct heap_page_row *row);
 extern SCAN_CODE scan_next_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);

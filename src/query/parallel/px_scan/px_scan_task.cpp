@@ -473,6 +473,11 @@ namespace parallel_scan
 		(void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl->proc.buildvalue.agg_list, m_vd,
 					NULL);
 	      }
+	    else if (er_errid () == NO_ERROR && qexec_batch_filter_eligible (m_xasl))
+	      {
+		/* the rows go on one by one (a join, a subquery, ...): the filter alone runs a chunk at a time */
+		m_batch_rows = scan_batch_open_rows (&thread_ref, m_scan_id, m_xasl->spec_list, m_vd);
+	      }
 	  }
       }
     else
@@ -515,6 +520,11 @@ namespace parallel_scan
 			m_scan_id->s.hsid.batch_state = 2;
 		      }
 		  }
+	      }
+	    else if (er_errid () == NO_ERROR && qexec_batch_filter_eligible (m_xasl))
+	      {
+		/* the rows go on one by one (a join, a subquery, ...): the filter alone runs a chunk at a time */
+		m_batch_rows = scan_batch_open_rows (&thread_ref, m_scan_id, m_xasl->spec_list, m_vd);
 	      }
 	  }
       }
@@ -804,9 +814,7 @@ namespace parallel_scan
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
   SCAN_CODE task<result_type, ST>::drain_slot_oids (cubthread::entry &thread_ref, bool &stop)
   {
-    SCAN_CODE scan_code, xs_scan;
-    DB_LOGICAL ev_res;
-    result_handler<result_type> *result_handler_p = m_result_handler;
+    SCAN_CODE scan_code;
     const bool on_trace = thread_ref.on_trace;	/* per row below; the calls in the loop could reload the member */
 
     if constexpr ((result_type == RESULT_TYPE::BUILDVALUE_OPT || result_type == RESULT_TYPE::MERGEABLE_LIST)
@@ -823,11 +831,19 @@ namespace parallel_scan
 	    int rc = NO_ERROR;
 	    QDATA_AGG_CHUNK_STATE agg_state = { NULL, m_vd, false };
 	    SCAN_BATCH_PROJECT project_state = { m_scan_id, emit_row, this };
+	    SCAN_BATCH_PROJECT rows_state = { m_scan_id, emit_row_body, this };
 	    EXPR_CHUNK_NODE tail_node, eval_node;
+
+	    m_drain_stop = &stop;
 
 	    /* the chain: evaluation -> the worker's aggregate, its hash GROUP BY, or the projection into its
 	     * result handler */
-	    if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
+	    if (m_batch_rows)
+	      {
+		/* the filter only: the kept rows, copied out of the page, through the row loop's body */
+		expr_chunk_node_init (&tail_node, "rows", scan_batch_rows_consume, &rows_state, NULL);
+	      }
+	    else if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
 	      {
 		agg_state.agg_list = m_xasl->proc.buildvalue.agg_list;
 		expr_chunk_node_init (&tail_node, "aggregate", qdata_agg_chunk_consume, &agg_state, NULL);
@@ -868,8 +884,12 @@ namespace parallel_scan
 		  }
 		if (scan_code == S_ERROR || (rc != NO_ERROR && rc != EXPR_BATCH_FALLBACK))
 		  {
-		    m_err_messages->move_top_error_message_to_this ();
-		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    if (!stop)
+		      {
+			/* (a row the rows node handed to row_body () raised and reported its error itself) */
+			m_err_messages->move_top_error_message_to_this ();
+			m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		      }
 		    stop = true;
 		    return S_ERROR;
 		  }
@@ -887,7 +907,9 @@ namespace parallel_scan
 	      {
 		return S_END;
 	      }
-	    /* the row path for the chunk and the rest of the page */
+	    /* the row path for the chunk and the rest of the page; a local copy of the page a cached scan read earlier
+	     * is not this walk's */
+	    VPID_SET_NULL (&hsidp->scan_cache.local_cache_vpid);
 	    m_scan_id->scan_stats.batch_pages_rowpath++;
 	    expr_batch_plan_note_page (hsidp->batch_plan, true);
 	    m_slot_iterator.resume_after (chunk_start);
@@ -918,11 +940,47 @@ namespace parallel_scan
 	    return S_ERROR;
 	  }
 
-	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
+	if (row_body (thread_ref, stop) == S_ERROR)
 	  {
-	    /* dptrs must run before after_join_pred/if_pred, as in qexec_intprt_fnc */
-	    if (m_run_nonlinked_dptr
-		&& qexec_execute_dptr_list (&thread_ref, m_xasl->dptr_list, m_xasl_state, true) != NO_ERROR)
+	    return S_ERROR;
+	  }
+      }
+    return S_END;
+  }
+
+  /* the row loop's work for one row the scan qualified, its values in the value list: S_SUCCESS (written, or
+   * dropped by a join or if predicate), or S_ERROR with stop set and the error reported */
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  SCAN_CODE task<result_type, ST>::row_body (cubthread::entry &thread_ref, bool &stop)
+  {
+    SCAN_CODE xs_scan;
+    DB_LOGICAL ev_res;
+    result_handler<result_type> *result_handler_p = m_result_handler;
+
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
+      {
+	/* dptrs must run before after_join_pred/if_pred, as in qexec_intprt_fnc */
+	if (m_run_nonlinked_dptr
+	    && qexec_execute_dptr_list (&thread_ref, m_xasl->dptr_list, m_xasl_state, true) != NO_ERROR)
+	  {
+	    m_err_messages->move_top_error_message_to_this();
+	    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	    stop = true;
+	    return S_ERROR;
+	  }
+      }
+
+    if (m_xasl->after_join_pred)
+      {
+	ev_res = eval_pred (&thread_ref, m_xasl->after_join_pred, m_vd, NULL);
+	if (ev_res != V_TRUE)
+	  {
+	    qexec_clear_scan_all_lists (&thread_ref, m_xasl);
+	    if (ev_res == V_FALSE || ev_res == V_UNKNOWN)
+	      {
+		return S_SUCCESS;
+	      }
+	    else
 	      {
 		m_err_messages->move_top_error_message_to_this();
 		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
@@ -930,102 +988,51 @@ namespace parallel_scan
 		return S_ERROR;
 	      }
 	  }
+      }
 
-	if (m_xasl->after_join_pred)
+    if (m_xasl->if_pred)
+      {
+	ev_res = eval_pred (&thread_ref, m_xasl->if_pred, m_vd, NULL);
+	if (ev_res != V_TRUE)
 	  {
-	    ev_res = eval_pred (&thread_ref, m_xasl->after_join_pred, m_vd, NULL);
-	    if (ev_res != V_TRUE)
+	    qexec_clear_scan_all_lists (&thread_ref, m_xasl);
+	    if (ev_res == V_FALSE || ev_res == V_UNKNOWN)
 	      {
-		qexec_clear_scan_all_lists (&thread_ref, m_xasl);
-		if (ev_res == V_FALSE || ev_res == V_UNKNOWN)
-		  {
-		    continue;
-		  }
-		else
-		  {
-		    m_err_messages->move_top_error_message_to_this();
-		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		    stop = true;
-		    return S_ERROR;
-		  }
-	      }
-	  }
-
-	if (m_xasl->if_pred)
-	  {
-	    ev_res = eval_pred (&thread_ref, m_xasl->if_pred, m_vd, NULL);
-	    if (ev_res != V_TRUE)
-	      {
-		qexec_clear_scan_all_lists (&thread_ref, m_xasl);
-		if (ev_res == V_FALSE || ev_res == V_UNKNOWN)
-		  {
-		    continue;
-		  }
-		else
-		  {
-		    m_err_messages->move_top_error_message_to_this();
-		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		    stop = true;
-		    return S_ERROR;
-		  }
-	      }
-	  }
-	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
-	  {
-	    if (m_xasl->scan_ptr)
-	      {
-		m_xasl->curr_spec->s_id.qualified_block = true;
-
-		/* handle the scan procedure */
-		m_xasl->scan_ptr->next_scan_on = false;
-		/* as qexec_intprt_fnc: rewind a partitioned SEMI / ANTI inner to its first partition (its
-		 * curr_spec is NULL once the previous probe went through every partition) */
-		if (qexec_reset_sa_inner_scan_block (&thread_ref, m_xasl->scan_ptr) == S_ERROR)
-		  {
-		    m_err_messages->move_top_error_message_to_this();
-		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		    stop = true;
-		    return S_ERROR;
-		  }
-
-		m_xasl->next_scan_on = true;
-		if (m_xasl->scan_ptr->memoize_storage)
-		  {
-		    m_xasl->scan_ptr->memoize_storage->set_key_changed ();
-		  }
-		while ((xs_scan = qexec_execute_scan_ptr (&thread_ref, m_xasl->scan_ptr, m_xasl_state, m_scan_func_ptr)) == S_SUCCESS)
-		  {
-		    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
-		      {
-			result_handler_p->write (&thread_ref, m_xasl->outptr_list);
-		      }
-		    else if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
-		      {
-			if (!result_handler_p->write (&thread_ref))
-			  {
-			    /* write()'s return is otherwise ignored; a per-row error would be silently
-			     * skipped and diverge from serial. Stop the worker like the S_ERROR path.
-			     * Some write() paths already raise the interrupt; avoid a double move. */
-			    if (m_interrupt->get_code () == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
-			      {
-				m_err_messages->move_top_error_message_to_this ();
-				m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-			      }
-			    stop = true;
-			    return S_ERROR;
-			  }
-		      }
-		  }
-		if (xs_scan == S_ERROR)
-		  {
-		    m_err_messages->move_top_error_message_to_this();
-		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
-		    stop = true;
-		    return S_ERROR;
-		  }
-		m_xasl->next_scan_on = false;
+		return S_SUCCESS;
 	      }
 	    else
+	      {
+		m_err_messages->move_top_error_message_to_this();
+		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		stop = true;
+		return S_ERROR;
+	      }
+	  }
+      }
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
+      {
+	if (m_xasl->scan_ptr)
+	  {
+	    m_xasl->curr_spec->s_id.qualified_block = true;
+
+	    /* handle the scan procedure */
+	    m_xasl->scan_ptr->next_scan_on = false;
+	    /* as qexec_intprt_fnc: rewind a partitioned SEMI / ANTI inner to its first partition (its
+	     * curr_spec is NULL once the previous probe went through every partition) */
+	    if (qexec_reset_sa_inner_scan_block (&thread_ref, m_xasl->scan_ptr) == S_ERROR)
+	      {
+		m_err_messages->move_top_error_message_to_this();
+		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		stop = true;
+		return S_ERROR;
+	      }
+
+	    m_xasl->next_scan_on = true;
+	    if (m_xasl->scan_ptr->memoize_storage)
+	      {
+		m_xasl->scan_ptr->memoize_storage->set_key_changed ();
+	      }
+	    while ((xs_scan = qexec_execute_scan_ptr (&thread_ref, m_xasl->scan_ptr, m_xasl_state, m_scan_func_ptr)) == S_SUCCESS)
 	      {
 		if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
 		  {
@@ -1048,15 +1055,54 @@ namespace parallel_scan
 		      }
 		  }
 	      }
+	    if (xs_scan == S_ERROR)
+	      {
+		m_err_messages->move_top_error_message_to_this();
+		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		stop = true;
+		return S_ERROR;
+	      }
+	    m_xasl->next_scan_on = false;
 	  }
-	else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
+	else
 	  {
-	    result_handler_p->write (&thread_ref, m_xasl->val_list);
+	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+	      {
+		result_handler_p->write (&thread_ref, m_xasl->outptr_list);
+	      }
+	    else if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
+	      {
+		if (!result_handler_p->write (&thread_ref))
+		  {
+		    /* write()'s return is otherwise ignored; a per-row error would be silently
+		     * skipped and diverge from serial. Stop the worker like the S_ERROR path.
+		     * Some write() paths already raise the interrupt; avoid a double move. */
+		    if (m_interrupt->get_code () == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+		      {
+			m_err_messages->move_top_error_message_to_this ();
+			m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		      }
+		    stop = true;
+		    return S_ERROR;
+		  }
+	      }
 	  }
-
-	qexec_clear_scan_all_lists (&thread_ref, m_xasl);
       }
-    return S_END;
+    else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
+      {
+	result_handler_p->write (&thread_ref, m_xasl->val_list);
+      }
+
+    qexec_clear_scan_all_lists (&thread_ref, m_xasl);
+    return S_SUCCESS;
+  }
+
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  int task<result_type, ST>::emit_row_body (cubthread::entry *thread_p, void *arg)
+  {
+    task<result_type, ST> *self = static_cast<task<result_type, ST> *> (arg);
+
+    return (self->row_body (*thread_p, *self->m_drain_stop) == S_ERROR) ? ER_FAILED : NO_ERROR;
   }
 
   template <RESULT_TYPE result_type, SCAN_TYPE ST>

@@ -192,6 +192,13 @@ static int scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_
 static int scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * isidp, KEY_INFO * key_infop,
 				      VAL_DESCR * vd);
 static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static SCAN_CODE scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static int scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec,
+				     cubxasl::aggregate_list_node * agg_list, val_descr * vd,
+				     const EXPR_BATCH_GBY_MAP * gby, bool cached_ok);
+static SCAN_CODE scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static int scan_batch_copy_kept (SCAN_ID * scan_id);
+static int scan_batch_row_values (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, EXPR_BATCH_ROW * row);
 static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -3542,6 +3549,13 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->batch_started = false;
   hsidp->batch_rowmode = false;
   hsidp->batch_why_not = NULL;
+  hsidp->batch_iter = false;
+  hsidp->batch_page_more = false;
+  hsidp->batch_pos = 0;
+  hsidp->batch_slot = 0;
+  hsidp->batch_last_slot = 0;
+  hsidp->batch_copy = NULL;
+  hsidp->batch_copy_cap = 0;
 
   /* sampling pick owned by qexec_prepare_table_sampling (gated by prepared); no re-pick here */
 
@@ -5486,6 +5500,11 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  expr_batch_final (hsidp->batch);
 	  free_and_init (hsidp->batch);
 	}
+      if (hsidp->batch_copy != NULL)
+	{
+	  free_and_init (hsidp->batch_copy);
+	  hsidp->batch_copy_cap = 0;
+	}
       if (hsidp->batch_plan != NULL)
 	{
 	  expr_batch_plan_free (hsidp->batch_plan);
@@ -5494,6 +5513,9 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       hsidp->batch_state = 0;
       hsidp->batch_started = false;
       hsidp->batch_rowmode = false;
+      hsidp->batch_iter = false;
+      hsidp->batch_page_more = false;
+      hsidp->batch_pos = 0;
 
       /* switch scan direction for further iterations */
       if (scan_id->direction == S_FORWARD)
@@ -6131,6 +6153,39 @@ typedef enum
  */
 static SCAN_CODE
 scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  SCAN_CODE code;
+
+  if (!hsidp->batch_iter)
+    {
+      return scan_next_heap_scan_rows (thread_p, scan_id);
+    }
+  for (;;)
+    {
+      if (hsidp->batch_rowmode)
+	{
+	  /* a page the filter handed back, its rows one by one; then the iterator takes the next page */
+	  code = scan_next_heap_scan_rows (thread_p, scan_id);
+	  if (code != S_END)
+	    {
+	      return code;
+	    }
+	  scan_batch_page_rowmode (scan_id, false, 0);
+	}
+      code = scan_batch_iter_next (thread_p, scan_id);
+      if (code != S_DOESNT_FIT)
+	{
+	  return code;
+	}
+    }
+}
+
+/*
+ * scan_next_heap_scan_rows () - the heap scan's next row, the row path: record by record, each through the filter
+ */
+static SCAN_CODE
+scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   HEAP_SCAN_ID *hsidp;
   FILTER_INFO data_filter;
@@ -8113,6 +8168,16 @@ int
 scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec,
 		 cubxasl::aggregate_list_node * agg_list, val_descr * vd, const EXPR_BATCH_GBY_MAP * gby)
 {
+  return scan_batch_open_internal (thread_p, scan_id, spec, agg_list, vd, gby, false);
+}
+
+/* scan_batch_open (); cached_ok: the scan may read its pages through a local copy (the filter iterator fixes the
+ * page itself for each chunk) */
+static int
+scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec,
+			  cubxasl::aggregate_list_node * agg_list, val_descr * vd, const EXPR_BATCH_GBY_MAP * gby,
+			  bool cached_ok)
+{
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
   EXPR_BATCH_INPUTS in;
   FILTER_INFO data_filter;
@@ -8122,12 +8187,30 @@ scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_T
       return hsidp->batch_state;
     }
   hsidp->batch_state = 2;
-  if (scan_id->type != S_HEAP_SCAN || scan_id->grouped || scan_id->cached_scan || scan_id->direction != S_FORWARD
-      || scan_id->mvcc_select_lock_needed || scan_id->scan_op_type != S_SELECT || !hsidp->scancache_inited
-      || hsidp->scan_cache.mvcc_disabled_class || hsidp->recordinfo_regu_list != NULL
-      || scan_id->single_fetch != QPROC_NO_SINGLE_INNER || scan_id->qualification != QPROC_QUALIFIED)
+  if (scan_id->type != S_HEAP_SCAN || scan_id->grouped || (scan_id->cached_scan && !cached_ok)
+      || scan_id->direction != S_FORWARD || hsidp->recordinfo_regu_list != NULL)
     {
-      hsidp->batch_why_not = "a scan the batch does not take";
+      hsidp->batch_why_not = "a scan the batch does not take (grouped, cached, backward or record info)";
+      return hsidp->batch_state;
+    }
+  if (scan_id->mvcc_select_lock_needed || scan_id->scan_op_type != S_SELECT || hsidp->scan_cache.mvcc_disabled_class)
+    {
+      hsidp->batch_why_not = "a scan the batch does not take (it locks, or not a SELECT)";
+      return hsidp->batch_state;
+    }
+  if (!hsidp->scancache_inited)
+    {
+      hsidp->batch_why_not = "a scan the batch does not take (not started)";
+      return hsidp->batch_state;
+    }
+  if (scan_id->single_fetch != QPROC_NO_SINGLE_INNER)
+    {
+      hsidp->batch_why_not = "a scan the batch does not take (single fetch)";
+      return hsidp->batch_state;
+    }
+  if (scan_id->qualification != QPROC_QUALIFIED)
+    {
+      hsidp->batch_why_not = "a scan the batch does not take (qualification)";
       return hsidp->batch_state;
     }
 
@@ -8334,13 +8417,63 @@ scan_batch_project_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXP
 }
 
 /*
+ * scan_batch_rows_consume () - the rows node (scan_manager.h): copies first, then the rows one by one
+ *   return: NO_ERROR, or the error a row raised
+ */
+int
+scan_batch_rows_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
+{
+  SCAN_BATCH_PROJECT *st = (SCAN_BATCH_PROJECT *) node->state;
+  int j, rc;
+
+  if (batch->n_sel == 0)
+    {
+      return NO_ERROR;
+    }
+  rc = scan_batch_copy_kept (st->scan_id);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  if (st->scan_id->cached_scan && st->scan_id->s.hsid.scan_cache.page_watcher.pgptr != NULL)
+    {
+      /* a cached scan holds no page while its rows are out (heap_next_1page ()): the next chunk fixes it again */
+      pgbuf_ordered_unfix (thread_p, &st->scan_id->s.hsid.scan_cache.page_watcher);
+    }
+  for (j = 0; j < batch->n_sel; j++)
+    {
+      rc = scan_batch_project_row (thread_p, st, &batch->rows[batch->sel[j]]);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * scan_batch_project_row () - one row through the projection's tail (scan_batch_project_consume ())
  *   return: NO_ERROR, or the error the row path raises at the row
  */
 int
 scan_batch_project_row (THREAD_ENTRY * thread_p, SCAN_BATCH_PROJECT * st, EXPR_BATCH_ROW * row)
 {
-  SCAN_ID *scan_id = st->scan_id;
+  if (scan_batch_row_values (thread_p, st->scan_id, row) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  return st->emit (thread_p, st->emit_arg);
+}
+
+/*
+ * scan_batch_row_values () - what scan_next_heap_scan () leaves for a row the filter accepted: the row's OID, the
+ *			       predicate columns in the value list (eval_data_filter ()'s fetch after a TRUE row,
+ *			       their attribute cache armed for the row), then the rest of the columns
+ *   return: NO_ERROR, or the error the read raises
+ */
+static int
+scan_batch_row_values (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, EXPR_BATCH_ROW * row)
+{
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
 
   hsidp->curr_oid = row->oid;
@@ -8371,7 +8504,208 @@ scan_batch_project_row (THREAD_ENTRY * thread_p, SCAN_BATCH_PROJECT * st, EXPR_B
 	  return ER_FAILED;
 	}
     }
-  return st->emit (thread_p, st->emit_arg);
+  return NO_ERROR;
+}
+
+/*
+ * scan_batch_open_filter () - the filter iterator over a heap scan whose rows go on one by one
+ *   return: true when scan_next_scan () runs the filter a chunk at a time from now on
+ *
+ * A block that does more per row than the page batch takes -- a join's inner scans, subqueries, row numbers --
+ * still reads its driving heap scan row by row, but the filter need not run so: scan_next_scan () collects a
+ * chunk of the page, runs the filter over it as arrays (expr_batch_run ()), copies the records of the rows it kept
+ * and lets the page go before it hands those rows out one per call, their values read from the copies as the row
+ * path reads them (scan_batch_row_values ()).  So no page is held while the caller works on a row -- what the row
+ * path itself does unless the block chose a fixed scan -- and the next chunk fixes the page again where the walk
+ * left it, as the row path fixes it again from its last OID.  A chunk the batch hands back sends the rest of its
+ * page to the row path (scan_batch_page_rowmode ()).
+ */
+bool
+scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec, val_descr * vd)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+
+  if (scan_id->type != S_HEAP_SCAN || hsidp->scan_pred.pred_expr == NULL)
+    {
+      return false;
+    }
+  if (scan_batch_open_internal (thread_p, scan_id, spec, NULL, vd, NULL, true) != 1)
+    {
+      return false;
+    }
+  hsidp->batch_iter = true;
+  hsidp->batch_page_more = false;
+  hsidp->batch_pos = 0;
+  hsidp->batch_slot = 0;
+  hsidp->batch_last_slot = 0;
+  hsidp->batch->n_sel = 0;
+  return true;
+}
+
+bool
+scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec, val_descr * vd)
+{
+  return (scan_id->type == S_HEAP_SCAN && scan_id->s.hsid.scan_pred.pred_expr != NULL
+	  && scan_batch_open_internal (thread_p, scan_id, spec, NULL, vd, NULL, true) == 1);
+}
+
+/* the kept rows' records copied out of the page, the rows pointed at the copies */
+static int
+scan_batch_copy_kept (SCAN_ID * scan_id)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  EXPR_BATCH *batch = hsidp->batch;
+  size_t need = 0, off = 0;
+  int j;
+
+  for (j = 0; j < batch->n_sel; j++)
+    {
+      need += DB_ALIGN (batch->rows[batch->sel[j]].recdes.length, MAX_ALIGNMENT);
+    }
+  if (need > hsidp->batch_copy_cap)
+    {
+      size_t cap = MAX (need, hsidp->batch_copy_cap * 2);
+      char *copy = (char *) realloc (hsidp->batch_copy, cap);
+
+      if (copy == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cap);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      hsidp->batch_copy = copy;
+      hsidp->batch_copy_cap = cap;
+    }
+  for (j = 0; j < batch->n_sel; j++)
+    {
+      RECDES *rec = &batch->rows[batch->sel[j]].recdes;
+
+      memcpy (hsidp->batch_copy + off, rec->data, rec->length);
+      rec->data = hsidp->batch_copy + off;
+      rec->area_size = rec->length;
+      off += DB_ALIGN (rec->length, MAX_ALIGNMENT);
+    }
+  return NO_ERROR;
+}
+
+/*
+ * scan_batch_iter_next () - the filter iterator's next row (scan_batch_open_filter ())
+ *   return: S_SUCCESS (a kept row, its values read), S_END, S_ERROR, or S_DOESNT_FIT: the rest of the held page
+ *	     goes to the row path (scan_batch_page_rowmode () is on)
+ */
+static SCAN_CODE
+scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  HEAP_SCANCACHE *scan_cache = &hsidp->scan_cache;
+  EXPR_BATCH *batch = hsidp->batch;
+
+  for (;;)
+    {
+      PGSLOTID slot, chunk_start;
+      SCAN_CODE chunk;
+      int rc;
+
+      if (hsidp->batch_pos < batch->n_sel)
+	{
+	  EXPR_BATCH_ROW *row = &batch->rows[batch->sel[hsidp->batch_pos++]];
+
+	  hsidp->batch_last_slot = row->oid.slotid;
+	  if (scan_batch_row_values (thread_p, scan_id, row) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  return S_SUCCESS;
+	}
+
+      if (!hsidp->batch_page_more)
+	{
+	  SCAN_CODE page = scan_batch_next_page (thread_p, scan_id);
+
+	  if (page != S_SUCCESS)
+	    {
+	      return page;
+	    }
+	  hsidp->batch_slot = 0;
+	  hsidp->batch_page_more = true;
+	}
+      else if (scan_cache->page_watcher.pgptr == NULL)
+	{
+	  /* the page the walk is in, fixed again after the rows of its last chunk went out */
+	  if (pgbuf_ordered_fix (thread_p, &hsidp->batch_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ,
+				 &scan_cache->page_watcher) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	}
+
+      slot = (PGSLOTID) hsidp->batch_slot;
+      chunk_start = slot;
+      chunk = scan_batch_collect_chunk (thread_p, scan_id, &hsidp->batch_vpid, &slot);
+      hsidp->batch_slot = slot;
+      batch->n_sel = 0;
+      hsidp->batch_pos = 0;
+      if (chunk == S_ERROR)
+	{
+	  return S_ERROR;
+	}
+      hsidp->batch_page_more = (chunk == S_SUCCESS);
+      if (chunk != S_DOESNT_FIT && batch->n_rows > 0)
+	{
+	  rc = expr_batch_run (hsidp->batch_plan, batch, thread_p, scan_id->vd);
+	  if (rc == NO_ERROR)
+	    {
+	      scan_id->scan_stats.read_rows += batch->n_rows;
+	      scan_id->scan_stats.qualified_rows += batch->n_sel;
+	    }
+	  else if (rc == EXPR_BATCH_FALLBACK)
+	    {
+	      hsidp->batch_why_not = expr_batch_fallback_why (hsidp->batch_plan);
+	      batch->n_sel = 0;
+	      chunk = S_DOESNT_FIT;
+	    }
+	  else
+	    {
+	      return S_ERROR;
+	    }
+	}
+      else if (chunk == S_DOESNT_FIT)
+	{
+	  hsidp->batch_why_not = "a record its page does not answer for (relocated, overflow, or a log version)";
+	}
+      if (chunk == S_DOESNT_FIT)
+	{
+	  if (scan_cache->page_watcher.pgptr == NULL
+	      && pgbuf_ordered_fix (thread_p, &hsidp->batch_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ,
+				    &scan_cache->page_watcher) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  scan_id->scan_stats.batch_pages_rowpath++;
+	  expr_batch_plan_note_page (hsidp->batch_plan, true);
+	  hsidp->batch_page_more = false;
+	  /* a local copy of the page the scan read earlier is not this walk's */
+	  VPID_SET_NULL (&scan_cache->local_cache_vpid);
+	  scan_batch_page_rowmode (scan_id, true, chunk_start);
+	  return S_DOESNT_FIT;
+	}
+      if (!hsidp->batch_page_more)
+	{
+	  scan_id->scan_stats.batch_pages++;
+	  expr_batch_plan_note_page (hsidp->batch_plan, false);
+	}
+      if (batch->n_sel > 0)
+	{
+	  /* the rows go out with copies of their records, the page let go meanwhile */
+	  if (scan_batch_copy_kept (scan_id) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  if (scan_cache->page_watcher.pgptr != NULL)
+	    {
+	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+	    }
+	}
+    }
 }
 
 /*

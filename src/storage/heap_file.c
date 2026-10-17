@@ -8206,11 +8206,9 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
   int n = 0;
 
   *n_rows = 0;
-  if (HEAP_SCAN_IS_LOCAL_CACHE_READ (scan_cache))
-    {
-      /* a cached scan reads a copy of the page: heap_next_1page () keeps that protocol */
-      return S_DOESNT_FIT;
-    }
+  /* A cached scan (HEAP_SCAN_IS_LOCAL_CACHE_READ) reads a copy of the page so that it holds no latch while its rows
+   * are out; the one caller with such a scan, the filter iterator (scan_batch_open_filter ()), keeps that promise
+   * itself: it copies the records of the rows it keeps and lets the page go before they go out. */
   if (scan_cache->page_watcher.pgptr != NULL && !VPID_EQ (vpid, pgbuf_get_vpid_ptr (scan_cache->page_watcher.pgptr)))
     {
       pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
