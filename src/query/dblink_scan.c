@@ -471,7 +471,7 @@ dblink_refuse_undeclared_codeset (DB_VALUE * dbval)
 static int
 dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, DB_VALUE * dbval)
 {
-  int ret, num_size = 0;
+  int ret, num_size = 0, length = UNMEASURED_LENGTH;
   T_CCI_A_TYPE a_type;
   T_CCI_U_TYPE u_type;
   void *value;
@@ -550,6 +550,9 @@ dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, D
 	{
 	  return dblink_refuse_undeclared_codeset (dbval);
 	}
+      /* A string peeked from a temp list tuple has no NUL terminator: the next column's bytes follow
+       * it. Bind it by its size, which CCI otherwise measures with strlen. */
+      length = db_get_string_size (dbval);
       break;
     case DB_TYPE_DATE:
       a_type = CCI_A_TYPE_DATE;
@@ -627,7 +630,7 @@ dblink_bind_dbval_to_param (int conn_handle, int stmt_handle, int param_index, D
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK_UNSUPPORTED_TYPE, 1, "unknown");
       return ER_DBLINK_UNSUPPORTED_TYPE;
     }
-  ret = cci_bind_param (stmt_handle, param_index, a_type, value, u_type, 0);
+  ret = cci_bind_param_ex (stmt_handle, param_index, a_type, value, length, u_type, 0);
   /* CCI copies the value unless the bind flag is CCI_BIND_PTR, so the JSON body can be released
    * as soon as it is bound. */
   db_private_free_and_init (NULL, json_body);
@@ -647,7 +650,12 @@ dblink_bind_param (int conn_handle, int stmt_handle, VAL_DESCR * vd, DBLINK_HOST
   for (n = 0; n < host_vars->count; n++)
     {
       i = host_vars->index[n];
-      ret = dblink_bind_dbval_to_param (conn_handle, stmt_handle, n + 1, &vd->dbval_ptr[i]);
+      /* The remote server binds the original value, not resolve_domains' converted one. `in` is read-only and shared
+       * with the PX workers' copies: dblink_bind_dbval_to_param only reads its value (its parameter is not const
+       * because of the develop helpers it calls). */
+      ret =
+	dblink_bind_dbval_to_param (conn_handle, stmt_handle, n + 1,
+				    (DB_VALUE *) & vd->xasl_state->resolved_domain.in[i]);
       if (ret != NO_ERROR)
 	{
 	  return ret;
@@ -1207,7 +1215,7 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
   T_CCI_DATE date_time;		/* for date or time type */
   T_CCI_DATE_TZ date_time_tz;	/* for date or time with zone */
   void *value;			/* for any other type */
-  DB_VALUE cci_value = { 0 };	/* from cci interface */
+  DB_VALUE cci_value = { };	/* from cci interface */
   QPROC_DB_VALUE_LIST valptrp;
   T_CCI_COL_INFO *col_info = (T_CCI_COL_INFO *) scan_info->col_info;
 

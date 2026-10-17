@@ -195,7 +195,7 @@ namespace parallel_query
       unsigned int hash_key;
       UINT32 part_cnt, part_id;
 
-      bool is_outer_join = false;
+      bool has_null_fill_side = false;
       bool need_skip_next = false;
 
       int error = NO_ERROR;
@@ -205,7 +205,7 @@ namespace parallel_query
       * validation is expected to be handled by the constructor */
       part_cnt = m_manager->context_cnt;
 
-      is_outer_join = IS_OUTER_JOIN_TYPE (m_manager->join_type);
+      has_null_fill_side = IS_NULL_FILL_JOIN_TYPE (m_manager->join_type);
 
       error = part_writer.init (&thread_ref, *m_shared_info->part_set, m_manager->part_spools[m_index]);
       if (error != NO_ERROR)
@@ -223,7 +223,7 @@ namespace parallel_query
 	  return;
 	}
 
-      if (thread_is_on_trace (&thread_ref))
+      if (m_manager->px_worker_stats != nullptr)
 	{
 	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager, m_index);
 	  thread_ref.m_uses_px_stats = true;
@@ -323,10 +323,12 @@ namespace parallel_query
 		{
 		  need_skip_next = false;	/* init */
 
-		  if (is_outer_join)
+		  if (has_null_fill_side)
 		    {
-		      /* In outer joins, tuples with NULL in any join column are placed in the last partition.
-		      * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
+		      /* In joins that NULL-fill one side,
+		       * tuples with NULL in any join column are placed in the last partition.
+		       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition.
+		       */
 		      part_id = part_cnt - 1;
 		    }
 		  else
@@ -339,7 +341,7 @@ namespace parallel_query
 		{
 		  hash_key = qdata_hash_scan_key (temp_key, UINT_MAX, HASH_METH_IN_MEM);
 		  part_id = HJOIN_HASH_TO_PARTITION (HJOIN_HASH_MIX (hash_key),
-						     (is_outer_join) ? part_cnt - 1 : part_cnt);
+						     (has_null_fill_side) ? part_cnt - 1 : part_cnt);
 
 		  hjoin_update_tuple_hash_key (&thread_ref, &tuple_record, hash_key);
 		}
@@ -430,7 +432,7 @@ namespace parallel_query
 	  return;
 	}
 
-      if (thread_is_on_trace (&thread_ref))
+      if (m_manager->px_worker_stats != nullptr)
 	{
 	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager, m_index);
 	  thread_ref.m_uses_px_stats = true;
@@ -629,7 +631,7 @@ namespace parallel_query
 	  return;
 	}
 
-      if (thread_is_on_trace (&thread_ref))
+      if (m_manager->px_worker_stats != nullptr)
 	{
 	  thread_ref.m_px_stats = hjoin_trace_get_worker_stats (m_manager, m_index);
 	  thread_ref.m_uses_px_stats = true;
@@ -694,7 +696,7 @@ namespace parallel_query
 	}
       m_context->hash_scan.hash_list_scan_type = single_context->hash_scan.hash_list_scan_type;
 
-      if (IS_OUTER_JOIN_TYPE (m_manager->join_type))
+      if (IS_NULL_FILL_JOIN_TYPE (m_manager->join_type))
 	{
 	  execute_outer (thread_ref);
 	}
@@ -1018,6 +1020,13 @@ cleanup:
 		  if (error != NO_ERROR)
 		    {
 		      break;		/* error_exit */
+		    }
+
+		  if (m_manager->join_type == JOIN_SEMI)
+		    {
+		      /* semi join: one match is enough to emit this row, so stop scanning. */
+		      qfile_slot_reset (&build->tuple_record);
+		      break;
 		    }
 		}
 	      while (true);
@@ -1365,6 +1374,16 @@ cleanup:
 		    }			/* if (m_context->during_join_pred != nullptr) */
 
 		  any_key_matched = true;
+
+		  if (m_manager->join_type == JOIN_ANTI)
+		    {
+		      /* anti join: one match is enough to suppress this row, so stop scanning.
+		       * The unnested subquery condition becomes the ON clause,
+		       * so after_join_pred does not decide the match.
+		       */
+		      qfile_slot_reset (&build->tuple_record);
+		      break;
+		    }
 
 		  if (m_context->after_join_pred != nullptr)
 		    {

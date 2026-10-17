@@ -106,6 +106,7 @@
 #ifdef CCI_XA
 #include "dblink_2pc_daemon.h"
 #endif /* CCI_XA */
+#include "domain_rules.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -2650,6 +2651,10 @@ boot_restart_server (THREAD_ENTRY * thread_p, bool print_restart, const char *db
 	}
     }
 
+  /* the key pair table, the comparison of every pair of value keys, before the first query needs it: its time
+   * and memory move from the first comparison to the boot */
+  domain_type_pair_table_init ();
+
 #if defined (SA_MODE)
   /* Completely vacuum database. */
   if (r_args == NULL || r_args->is_restore_from_backup == false)
@@ -3425,6 +3430,8 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 #endif
 
       perfmon_stop_watch (thread_p);
+      /* a trace counts in these without a watch; the next client of this index must not read them */
+      memset (pstat_Global.tran_stats[tran_index], 0, pstat_Global.n_stat_values * sizeof (UINT64));
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
       CUBRID_CONN_END (client_id, tdes->client.get_db_user ());
@@ -3917,6 +3924,8 @@ boot_server_all_finalize (THREAD_ENTRY * thread_p, ER_FINAL_CODE is_er_final,
   if (shutdown_common_modules == BOOT_SHUTDOWN_ALL_MODULES)
     {
       es_final ();
+      /* the key pair table's string targets are cached domains */
+      domain_type_pair_table_final ();
       tp_final ();
       locator_free_areas ();
       set_final ();
