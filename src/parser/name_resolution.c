@@ -49,6 +49,7 @@
 #include "execute_statement.h"
 #include "show_meta.h"
 #include "network_interface_cl.h"
+#include "sp_context_rules.hpp"
 #include "locator_cl.h"
 #include "db_json.hpp"
 
@@ -4757,6 +4758,19 @@ pt_flat_spec_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	      q = pt_make_flat_name_list (parser, node, info->spec_parent, info->for_update);
 
 	      node->info.spec.flat_entity_list = q;
+	    }
+
+	  if (PT_SPEC_IS_ENTITY (node))
+	    {
+	      /* while a stored procedure's statement is being compiled, the callback layer collects every class it
+	       * references, read or written, to compare with the statements executing outside */
+	      for (q = node->info.spec.flat_entity_list; q != NULL; q = q->next)
+		{
+		  if (q->node_type == PT_NAME && q->info.name.db_object != NULL)
+		    {
+		      sp_ref_tables_add (q->info.name.db_object);
+		    }
+		}
 	    }
 
 	  if (PT_SPEC_IS_ENTITY (node))

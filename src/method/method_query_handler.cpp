@@ -28,6 +28,7 @@
 #include "method_schema_info.hpp"
 #include "object_primitive.h"
 #include "optimizer.h" /* qo_get_optimization_param, qo_set_optimization_param */
+#include "sp_context_rules.hpp"
 
 /* from jsp_cl.c */
 extern void jsp_set_prepare_call ();
@@ -729,6 +730,15 @@ namespace cubmethod
 	stmt_id = m_query_result.stmt_id;
       }
 
+    /* the procedure may not end the transaction, run DDL or DML, or touch a mutating table while the
+     * statement or trigger that invoked it is still executing */
+    bool is_ddl = pt_is_ddl_statement (db_get_statement (m_session, stmt_id - 1)) != 0;	/* stmt_id counts from 1 */
+    if (sp_check_statement_allowed (m_stmt_type, is_ddl, m_ref_tables, m_written_tables) != NO_ERROR)
+      {
+	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
+	return ER_FAILED;
+      }
+
     DB_QUERY_RESULT *result = NULL;
     int n = db_execute_and_keep_statement (m_session, stmt_id, &result);
     if (n < 0)
@@ -827,7 +837,12 @@ namespace cubmethod
       }
 
     m_stmt_type = CUBRID_STMT_NONE;
+
+    /* a procedure's statement is always compiled here, so name resolution and view translation hand over
+     * every class it references while it compiles */
+    sp_ref_tables_start (&m_ref_tables);
     int stmt_id = db_compile_statement (m_session);
+    sp_ref_tables_stop ();
     if (stmt_id < 0)
       {
 	m_stmt_type = get_stmt_type (m_sql_stmt);
@@ -843,6 +858,8 @@ namespace cubmethod
       {
 	m_stmt_type = db_get_statement_type (m_session, stmt_id);
 	m_is_prepared = true;
+	m_written_tables.clear ();
+	sp_stmt_written_classes (db_get_statement (m_session, stmt_id - 1), m_written_tables);
       }
 
     db_get_cacheinfo (m_session, stmt_id, &m_use_plan_cache, NULL);

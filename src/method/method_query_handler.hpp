@@ -172,6 +172,8 @@ namespace cubmethod
       int m_stmt_type; /* statement type, CUBRID_STMT_TYPE or err_id */
       int m_prepare_flag;
       DB_SESSION *m_session;
+      std::vector<DB_OBJECT *> m_ref_tables; /* classes the statement references, collected while it is compiled */
+      std::vector<DB_OBJECT *> m_written_tables; /* classes the statement writes */
       bool m_is_prepared;
       bool m_use_plan_cache;
       int m_num_markers; /* # of input markers */

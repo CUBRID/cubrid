@@ -1659,6 +1659,7 @@ typedef struct pt_partition_info PT_PARTITION_INFO;
 typedef struct pt_parts_info PT_PARTS_INFO;
 typedef struct pt_data_type_info PT_DATA_TYPE_INFO;
 typedef struct pt_delete_info PT_DELETE_INFO;
+typedef struct pt_sp_ref_classes PT_SP_REF_CLASSES;
 typedef struct pt_dot_info PT_DOT_INFO;
 typedef struct pt_drop_info PT_DROP_INFO;
 typedef struct pt_drop_user_info PT_DROP_USER_INFO;
@@ -1828,6 +1829,15 @@ struct parser_hint
   PT_HINT_ENUM hint;
   int length;			/* strlen(tokens) */
   bool is_hit;
+};
+
+/* classes a DML statement that calls a stored procedure writes and only reads; parser-allocated arrays */
+struct pt_sp_ref_classes
+{
+  DB_OBJECT **written;
+  int written_count;
+  DB_OBJECT **read;
+  int read_count;
 };
 
 struct pt_alter_info
@@ -2193,6 +2203,8 @@ struct pt_delete_info
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
+  PT_SP_REF_CLASSES sp_ref_classes;	/* classes the statement writes and only reads, recorded at compile when it calls a
+					 * stored procedure */
   unsigned has_trigger:1;	/* whether it has triggers */
   unsigned server_delete:1;	/* whether it can be server-side deletion */
   unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
@@ -2492,6 +2504,8 @@ struct pt_insert_info
   PT_NODE *odku_non_null_attrs;	/* attributes with not null constraint in odku assignments */
   int has_uniques;		/* class has unique constraints */
   SERVER_INSERT_ALLOWED server_allowed;	/* is insert allowed on server */
+  PT_SP_REF_CLASSES sp_ref_classes;	/* classes the statement writes and only reads, recorded at compile when it calls a
+					 * stored procedure */
   unsigned execute_with_commit_allowed:1;	/* true, if execute with commit allowed. */
 };
 
@@ -3056,6 +3070,8 @@ struct pt_update_info
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
+  PT_SP_REF_CLASSES sp_ref_classes;	/* classes the statement writes and only reads, recorded at compile when it calls a
+					 * stored procedure */
   unsigned has_trigger:1;	/* whether it has triggers */
   unsigned has_unique:1;	/* whether there's unique constraint */
   unsigned server_update:1;	/* whether it can be server-side update */
@@ -3129,6 +3145,8 @@ struct pt_merge_info
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *no_use_hash;		/* NO_USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *use_hash;		/* USE_HASH hint's arguments (PT_NAME list) */
+  PT_SP_REF_CLASSES sp_ref_classes;	/* classes the statement writes and only reads, recorded at compile when it calls a
+					 * stored procedure */
 #define PT_MERGE_INFO_HAS_UNIQUE  1	/* has unique constraints */
 #define PT_MERGE_INFO_SERVER_OP	  2	/* server side operation */
 #define PT_MERGE_INFO_INSERT_ONLY 4	/* merge condition always false */
@@ -3824,6 +3842,9 @@ struct parser_node
 					 * Set in do_prepare_select () -- the driver-neutral prepare path --
 					 * because the SQL-level PREPARE/EXECUTE consumer of that header flag
 					 * is not reached by CCI/JDBC prepared statements. */
+    unsigned has_sp_call:1;	/* a stored procedure is called somewhere in this statement, directly or through a
+				 * view; set by the semantic check and by view translation so that execution records
+				 * the statement for sp_check_statement_allowed () */
   } flag;
   PT_STATEMENT_INFO info;	/* depends on 'node_type' field */
 };
@@ -3995,6 +4016,8 @@ struct parser_context
     unsigned is_parsing_trigger:1;
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
     unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
+    unsigned view_has_sp_call:1;	/* a view expanded by the running mq_translate () calls a stored procedure; mq_translate ()
+					 * moves it to the statement's has_sp_call */
   } flag;
 };
 

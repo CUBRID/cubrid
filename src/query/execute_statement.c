@@ -96,6 +96,7 @@
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
 #include "network.h"
+#include "sp_context_rules.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -3442,6 +3443,10 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
   RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
 
+  /* records this statement while it runs if it calls a stored procedure, so the procedure's callbacks can
+   * be judged against it; nothing is recorded otherwise */
+  sp_stmt_guard sp_guard (statement);
+
   /* save old read fetch instance version */
   read_fetch_instance_version = TM_TRAN_READ_FETCH_VERSION ();
   /* If it is an internally created statement, set its host variable info again to search host variables at parent
@@ -4152,6 +4157,9 @@ do_execute_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   RESERVED_CLASS_INFO_LIST reserved_cls_info = { NULL, 0 };
   OID *reserved_oid = NULL;
+
+  /* see do_statement () */
+  sp_stmt_guard sp_guard (statement);
 
   assert (parser->query_id == NULL_QUERY_ID);
   /* save old read fetch instance version */
@@ -17283,7 +17291,11 @@ do_scope (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      error = do_statement (parser, stmt->info.trigger_action.expression);
 	    }
 #else
-	  error = do_statement (parser, stmt->info.trigger_action.expression);
+	  error = sp_check_trigger_statement (parser, stmt->info.trigger_action.expression);
+	  if (error == NO_ERROR)
+	    {
+	      error = do_statement (parser, stmt->info.trigger_action.expression);
+	    }
 #endif
 	  /* Do not reset do_Trigger_involved here. This is intention. */
 	  break;

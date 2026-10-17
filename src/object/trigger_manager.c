@@ -43,6 +43,7 @@
 #include "execute_statement.h"
 #include "dbtype.h"
 #include "string_opfunc.h"
+#include "sp_context_rules.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1665,9 +1666,11 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
        */
       class_mop = ((curname == NULL && tempname == NULL) ? NULL : trigger->class_mop);
 
+      sp_ref_tables_suspend ();
       activity->statement =
 	pt_compile_trigger_stmt ((PARSER_CONTEXT *) activity->parser, text, class_mop, curname, tempname,
 				 &activity->source, with_evaluate);
+      sp_ref_tables_resume ();
       if (activity->statement == NULL || pt_has_error ((PARSER_CONTEXT *) activity->parser))
 	{
 	  error = er_errid ();
@@ -5043,6 +5046,7 @@ execute_activity (TR_TRIGGER * trigger, DB_TRIGGER_TIME tr_time, DB_OBJECT * cur
 {
   int rstatus;
   bool execute_action;
+  bool is_row_level;
   DB_OBJECT *save_user;
 
   save_user = NULL;
@@ -5067,6 +5071,10 @@ execute_activity (TR_TRIGGER * trigger, DB_TRIGGER_TIME tr_time, DB_OBJECT * cur
    */
   if (trigger->status == TR_STATUS_ACTIVE)
     {
+      is_row_level = (trigger->event == TR_EVENT_INSERT || trigger->event == TR_EVENT_UPDATE
+		      || trigger->event == TR_EVENT_DELETE);
+      sp_trigger_push (trigger->class_mop, is_row_level && tr_time != TR_TIME_DEFERRED);
+
       if (trigger->condition != NULL)
 	{
 	  execute_action = false;
@@ -5113,6 +5121,8 @@ execute_activity (TR_TRIGGER * trigger, DB_TRIGGER_TIME tr_time, DB_OBJECT * cur
 	      rstatus = TR_RETURN_FALSE;
 	    }
 	}
+
+      sp_trigger_pop ();
     }
 
   if (save_user != NULL)

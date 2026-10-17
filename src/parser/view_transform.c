@@ -40,6 +40,7 @@
 #include "virtual_object.h"
 #include "dbtype.h"
 #include "boot.h"
+#include "sp_context_rules.hpp"
 
 #define MAX_STACK_OBJECTS 500
 
@@ -234,6 +235,7 @@ static int mq_translatable_class (PARSER_CONTEXT * parser, PT_NODE * class_);
 static int mq_is_union_translation (PARSER_CONTEXT * parser, PT_NODE * spec);
 static int mq_check_authorization_path_entities (PARSER_CONTEXT * parser, PT_NODE * class_spec, int what_for);
 static int mq_check_subqueries_for_prepare (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * subquery);
+static void mq_mark_sp_call (PARSER_CONTEXT * parser, PT_NODE * subquery);
 static PT_NODE *mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list, PT_NODE * order_by,
 				   int what_for);
 static PT_NODE *mq_class_meth_corr_subq_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *void_arg,
@@ -3494,6 +3496,30 @@ mq_check_authorization_path_entities (PARSER_CONTEXT * parser, PT_NODE * class_s
 }
 
 /*
+ * mq_mark_sp_call () - note that a view being expanded calls a stored procedure
+ *   return: none
+ *   parser(in):
+ *   subquery(in): the view's query, one node per query spec
+ *
+ * Note: the semantic check set has_sp_call on the view's own tree when the view cache was compiled, before the
+ *       view was expanded into this statement. The guard reads the flag from the statement's top node, and the
+ *       view may sit in a subquery of it, so the note is kept on the parser until mq_translate () returns the
+ *       statement; a view cache being built does the same for the view's own root, so a view over it sees it.
+ */
+static void
+mq_mark_sp_call (PARSER_CONTEXT * parser, PT_NODE * subquery)
+{
+  for (; subquery != NULL; subquery = subquery->next)
+    {
+      if (subquery->flag.has_sp_call)
+	{
+	  parser->flag.view_has_sp_call = 1;
+	  return;
+	}
+    }
+}
+
+/*
  * mq_check_subqueries_for_prepare () -
  *   return:
  *   parser(in):
@@ -3679,6 +3705,8 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 			}
 
 		      tree->flag.cannot_prepare = mq_check_subqueries_for_prepare (parser, tree, subquery);
+		      mq_mark_sp_call (parser, subquery);
+		      sp_ref_tables_add_tree (parser, subquery);
 #if defined(CUBRID_DEBUG)
 		      fprintf (stdout, "\n<subqueries of %s are>\n  %s\n", entity->info.name.original,
 			       parser_print_tree_list (parser, subquery));
@@ -5794,6 +5822,7 @@ mq_rewrite_vclass_spec_as_derived (PARSER_CONTEXT * parser, PT_NODE * statement,
   new_query->info.query.q.select.from = new_spec;
   new_query->info.query.is_subquery = PT_IS_SUBQUERY;
   new_query->flag.cannot_prepare = statement->flag.cannot_prepare;
+  new_query->flag.has_sp_call = statement->flag.has_sp_call;
 
   /* free path entities, which will be handled by push_path */
   parser_free_tree (parser, new_spec->info.spec.path_entities);
@@ -8444,7 +8473,13 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
        * as CNF. if subquery is in the expression, it may be copied several times. To avoid repeatedly convert the
        * expressions in subqueries and improve performance, we put mq_push_paths as post function. */
       local_query = parser_walk_tree (parser, query_spec, NULL, NULL, mq_push_paths, NULL);
+      parser->flag.view_has_sp_call = 0;
       local_query = parser_walk_tree (parser, query_spec, NULL, NULL, mq_translate_local, NULL);
+      if (local_query != NULL && (query_spec->flag.has_sp_call || parser->flag.view_has_sp_call))
+	{
+	  /* this view, or a view it reads, calls a stored procedure: the root tells the statements that expand it */
+	  local_query->flag.has_sp_call = 1;
+	}
 
       local_query = pt_add_row_oid_name (parser, local_query);
 
@@ -8464,7 +8499,13 @@ mq_translate_subqueries (PARSER_CONTEXT * parser, DB_OBJECT * class_object, PT_N
 	}
       else if (local_query)
 	{
+	  PT_NODE *left = statements;
+
 	  statements = pt_union (parser, statements, local_query);
+	  if (statements != NULL)
+	    {
+	      statements->flag.has_sp_call = (left->flag.has_sp_call || local_query->flag.has_sp_call);
+	    }
 	}
 
       db_query_spec = db_query_spec_next (db_query_spec);
@@ -9535,6 +9576,7 @@ PT_NODE *
 mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
 {
   volatile PT_NODE *return_node = NULL;
+  volatile unsigned save_view_has_sp_call;
 
   if (!node)
     {
@@ -9545,7 +9587,19 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
    * unless PT_CLEAR_JMP_ENV is called to clear the environment. */
   PT_SET_JMP_ENV (parser);
 
+  save_view_has_sp_call = parser->flag.view_has_sp_call;
+  parser->flag.view_has_sp_call = 0;
+
   return_node = mq_translate_helper (parser, node);
+
+  if (return_node != NULL && parser->flag.view_has_sp_call)
+    {
+      /* a view expanded somewhere in the statement calls a stored procedure (see mq_mark_sp_call ()) */
+      return_node->flag.has_sp_call = 1;
+      return_node->flag.cannot_prepare = 1;
+    }
+  sp_stmt_record_classes (parser, (PT_NODE *) return_node);
+  parser->flag.view_has_sp_call |= save_view_has_sp_call;
 
   PT_CLEAR_JMP_ENV (parser);
 

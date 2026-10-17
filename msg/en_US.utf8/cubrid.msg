@@ -1496,7 +1496,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1385 Invalid username or password.
 
-1386 Last Error
+1386 Cannot perform %1$s inside a query or DML statement.
+1387 Cannot perform %1$s in a trigger.
+1388 Cannot perform a DML operation inside a query.
+1389 Table "%1$s" is mutating, the stored procedure may not read or modify it.
+1390 Table "%1$s" is referenced by the statement, the stored procedure may not modify it.
+
+1391 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

@@ -11368,6 +11368,12 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
       if (node->info.method_call.call_or_expr == PT_IS_MTHD_EXPR)
 	{
 	  pt_check_method (parser, node);
+	  if (top_node != NULL)
+	    {
+	      /* a procedure or function evaluated inside this statement: execution must record the statement
+	       * so that the procedure's own COMMIT or SQL can be judged against it */
+	      top_node->flag.has_sp_call = 1;
+	    }
 	}
       else if (node->info.method_call.call_or_expr == PT_IS_CALL_STMT)
 	{
