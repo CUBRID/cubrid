@@ -85,7 +85,10 @@ namespace parallel_index_scan
 	bool found = false;
 	VPID leaf_vpid;
 	VPID_SET_NULL (&leaf_vpid);
-	int err = btree_locate_key (thread_p, btid_int, descent_key, &leaf_vpid, &slot_id, &leaf, &found);
+	/* of the keys that compare equal to a bound of another type, the first in the scan's direction: the walker checks
+	 * both bounds at each key */
+	int err = btree_locate_key (thread_p, btid_int, descent_key, use_desc_index ? DB_GT : DB_LT, &leaf_vpid, &slot_id,
+				    &leaf, &found);
 	if (err != NO_ERROR || leaf == NULL)
 	  {
 	    if (leaf != NULL)

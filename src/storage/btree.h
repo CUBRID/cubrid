@@ -959,11 +959,13 @@ extern unsigned int btree_hash_btid (void *btid, int hash_size);
 extern int btree_create_file (THREAD_ENTRY * thread_p, const OID * class_oid, int attrid, BTID * btid);
 extern int btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 
-extern int btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid,
-			     INT16 * slot_id, PAGE_PTR * leaf_page_out, bool * found_p);
+extern int btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key,
+			     DB_VALUE_COMPARE_RESULT equal_as, VPID * pg_vpid, INT16 * slot_id,
+			     PAGE_PTR * leaf_page_out, bool * found_p);
 /* exposed for parallel index scan key-comparison descent */
 extern int btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
-				      INT16 * slot_id, VPID * child_vpid, page_key_boundary * page_bounds);
+				      DB_VALUE_COMPARE_RESULT equal_as, INT16 * slot_id, VPID * child_vpid,
+				      page_key_boundary * page_bounds);
 extern int btree_get_num_visible_from_leaf_and_ovf (THREAD_ENTRY * thread_p, BTID_INT * btid_int, RECDES * leaf_record,
 						    int offset_after_key, LEAF_REC * leaf_info, int *max_visible_oids,
 						    MVCC_SNAPSHOT * mvcc_snapshot, int *num_visible);

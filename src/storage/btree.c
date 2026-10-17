@@ -376,11 +376,15 @@ struct btree_search_key_helper
   PGSLOTID slotid;		/* Slot ID of found key or slot ID of the biggest key smaller then key (if not found). */
 
   fence_key_presence has_fence_key;
+
+  DB_VALUE_COMPARE_RESULT equal_as;	/* in: what an index key that compares equal to a searched key of another type
+					 * counts as (search keys OTHER, where several can): DB_LT keeps searching left
+					 * of it for the first, DB_GT right of it for the last, DB_EQ stops at it */
 };
 /* BTREE_SEARCH_KEY_HELPER static initializer. */
 // *INDENT-OFF*
 #define BTREE_SEARCH_KEY_HELPER_INITIALIZER \
-  { BTREE_KEY_NOTFOUND, NULL_SLOTID, btree_search_key_helper::NO_FENCE_KEY }
+  { BTREE_KEY_NOTFOUND, NULL_SLOTID, btree_search_key_helper::NO_FENCE_KEY, DB_EQ }
 // *INDENT-ON*
 
 /* BTREE_FIND_UNIQUE_HELPER -
@@ -5353,6 +5357,7 @@ btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
  *   btid(in):
  *   page_ptr(in): Pointer to the non_leaf page to be searched
  *   key(in): Key to find
+ *   equal_as(in): what a separator that compares equal to a key of another type counts as (BTREE_SEARCH_KEY_HELPER)
  *   slot_id(out): Set to the record number that contains the key
  *   child_vpid(out): Set to the child page identifier to be followed, or NULL_PAGEID
  *
@@ -5360,8 +5365,9 @@ btree_initialize_new_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args)
  *       the key, and return the page identifier for this child page.
  */
 int
-btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key, INT16 * slot_id,
-			   VPID * child_vpid, page_key_boundary * page_bounds)
+btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_ptr, DB_VALUE * key,
+			   DB_VALUE_COMPARE_RESULT equal_as, INT16 * slot_id, VPID * child_vpid,
+			   page_key_boundary * page_bounds)
 {
   int key_cnt, offset;
   int c;
@@ -5452,6 +5458,12 @@ btree_search_nonleaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pa
 	{
 	  btree_clear_key_value (&clear_key, &temp_key);
 	  return ER_FAILED;
+	}
+
+      if (c == 0 && btid->search_keys == DOMAIN_SEARCH_KEYS_OTHER)
+	{
+	  /* the first index key that compares equal can be in a child left of this one, the last in one right of it */
+	  c = equal_as;
 	}
 
       if (c == 0)
@@ -5722,6 +5734,9 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
   bool is_record_read = false;
   LEAF_REC leaf_pnt;
   int error = NO_ERROR;
+  /* search keys OTHER: the slot of the last key found that compares equal, and whether the upper fence did */
+  INT16 equal_slot = NULL_SLOTID;
+  bool upper_fence_equal = false;
 
   /* Assert expected arguments. */
   assert (btid != NULL);
@@ -5767,9 +5782,13 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 	  return error;
 	}
 
+      /* a search for the first of the keys that compare equal (search keys OTHER) descends left of a separator equal
+       * to the key, into the page whose upper fence it is */
       assert (debug_search_key.result == BTREE_KEY_FOUND || debug_search_key.result == BTREE_KEY_BETWEEN
 	      || (debug_search_key.result == BTREE_KEY_SMALLER && VPID_ISNULL (&node_header->prev_vpid))
-	      || (debug_search_key.result == BTREE_KEY_BIGGER && VPID_ISNULL (&node_header->next_vpid)));
+	      || (debug_search_key.result == BTREE_KEY_BIGGER && VPID_ISNULL (&node_header->next_vpid))
+	      || (debug_search_key.result == BTREE_KEY_BIGGER && btid->search_keys == DOMAIN_SEARCH_KEYS_OTHER
+		  && search_key->equal_as == DB_LT));
     }
 #endif /* !NDEBUG */
 
@@ -5846,6 +5865,13 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 		  /* Set c = DB_GT and fall through to compare with next key. */
 		  c = DB_GT;
 		}
+	      else if (middle == key_cnt && btid->search_keys == DOMAIN_SEARCH_KEYS_OTHER
+		       && search_key->equal_as != DB_EQ)
+		{
+		  /* keys before the fence can compare equal too */
+		  upper_fence_equal = true;
+		  c = DB_LT;
+		}
 	      else if (middle == key_cnt)
 		{
 		  /* Key is bigger than all in page?? I have to understand these fence keys better. */
@@ -5853,6 +5879,12 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 		  search_key->slotid = key_cnt;
 		  return NO_ERROR;
 		}
+	    }
+	  else if (btid->search_keys == DOMAIN_SEARCH_KEYS_OTHER && search_key->equal_as != DB_EQ)
+	    {
+	      /* several keys can compare equal to a key of another type: keep searching for the first or the last */
+	      equal_slot = middle;
+	      c = search_key->equal_as;
 	    }
 	  else
 	    {
@@ -5875,6 +5907,20 @@ btree_search_leaf_page (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR page_
 	  left = middle + 1;
 	  left_start_col = start_col;
 	}
+    }
+
+  if (equal_slot != NULL_SLOTID)
+    {
+      search_key->result = BTREE_KEY_FOUND;
+      search_key->slotid = equal_slot;
+      return NO_ERROR;
+    }
+  if (upper_fence_equal)
+    {
+      /* no key before the fence compares equal: as the fence's own answer */
+      search_key->result = BTREE_KEY_BIGGER;
+      search_key->slotid = key_cnt;
+      return NO_ERROR;
     }
 
   if (is_record_read && btree_leaf_is_flaged (&rec, BTREE_LEAF_RECORD_FENCE))
@@ -7317,7 +7363,7 @@ btree_get_stats_prefix_skip_scan_level (THREAD_ENTRY * thread_p, BTREE_STATS_ENV
       btree_clear_key_value (&clear_cur_key, &cur_key);
       pgbuf_unfix_and_init (thread_p, page);
 
-      ret = btree_locate_key (thread_p, btid_int, &seek_key, &vpid, &slot_id, &page, &found);
+      ret = btree_locate_key (thread_p, btid_int, &seek_key, DB_EQ, &vpid, &slot_id, &page, &found);
       if (ret != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -14756,7 +14802,7 @@ retry_root:
     {
       if (key != NULL)
 	{
-	  error_code = btree_search_nonleaf_page (thread_p, btid_int, page, key, &child_slot, &child_vpid, NULL);
+	  error_code = btree_search_nonleaf_page (thread_p, btid_int, page, key, DB_EQ, &child_slot, &child_vpid, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -18334,6 +18380,8 @@ exit:
  *   return: error code.
  *   btid_int (in) : B+tree index info.
  *   key (in) : Key to locate
+ *   equal_as (in) : what an index key that compares equal to a key of another type counts as
+ *		      (BTREE_SEARCH_KEY_HELPER); DB_EQ for a key the index holds
  *   pg_vpid (out) : Outputs Leaf node page VPID.
  *   slot_id (out) : Outputs slot ID of key if found, or slot ID of key if it was to be inserted.
  *   leaf_page_out(out): Page pointer
@@ -18343,8 +18391,8 @@ exit:
  *	 the key, or would contain the key if the key was to be located.
  */
 int
-btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, VPID * pg_vpid, INT16 * slot_id,
-		  PAGE_PTR * leaf_page_out, bool * found_p)
+btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, DB_VALUE_COMPARE_RESULT equal_as,
+		  VPID * pg_vpid, INT16 * slot_id, PAGE_PTR * leaf_page_out, bool * found_p)
 {
   PAGE_PTR leaf_page = NULL;	/* Leaf node page pointer. */
   int error = NO_ERROR;
@@ -18362,6 +18410,7 @@ btree_locate_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, 
 
   *found_p = false;
   bool reuse_btid_int = true;
+  search_key.equal_as = equal_as;
 
   /* Advance in b-tree following key until leaf node is reached. */
   error = btree_search_key_and_apply_functions (thread_p, btid_int->sys_btid, btid_int, key, NULL, &reuse_btid_int,
@@ -19947,7 +19996,8 @@ btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, boo
 	  if (bts->key_range.range == GE_LE || bts->key_range.range == GT_LE || bts->key_range.range == INF_LE)
 	    {
 	      *is_key_range_satisfied = true;
-	      bts->key_range_max_value_equal = true;
+	      /* the next key can compare equal to a limit of another type too (search keys OTHER): it is compared */
+	      bts->key_range_max_value_equal = bts->btid_int.search_keys != DOMAIN_SEARCH_KEYS_OTHER;
 	    }
 	  else
 	    {
@@ -26670,7 +26720,8 @@ btree_search_key_and_apply_functions (THREAD_ENTRY * thread_p, BTID * btid, BTID
   bool is_leaf = false;		/* Set to true if crt_page is a leaf node. */
   bool stop = false;		/* Set to true to stop advancing in b-tree. */
   bool restart = false;		/* Set to true to restart b-tree traversal from root. */
-  BTREE_SEARCH_KEY_HELPER local_search_key;	/* Store search key result if search key pointer argument is NULL. */
+  BTREE_SEARCH_KEY_HELPER local_search_key = BTREE_SEARCH_KEY_HELPER_INITIALIZER;	/* Store search key result if search
+											 * key pointer argument is NULL. */
 
   /* Assert expected arguments. */
   assert (btid != NULL);
@@ -26971,8 +27022,8 @@ btree_advance_and_find_key (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VAL
       /* Non-leaf page. */
       *is_leaf = false;
 
-      error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &search_key->slotid, &child_vpid,
-					      NULL);
+      error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, search_key->equal_as,
+					      &search_key->slotid, &child_vpid, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -28575,9 +28626,14 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   else
     {
       /* Has lower limit. Try to locate the key. */
+      /* of the keys that compare equal to a limit of another type, an inclusive start lands on the first in the
+       * scan's direction and an exclusive one on the last, which it consumes below */
+      const bool exclusive = (bts->key_range.range == GT_LT || bts->key_range.range == GT_LE
+			      || bts->key_range.range == GT_INF);
       error_code =
-	btree_locate_key (thread_p, &bts->btid_int, bts->key_range.lower_key, &bts->C_vpid, &bts->slot_id,
-			  &bts->C_page, &found);
+	btree_locate_key (thread_p, &bts->btid_int, bts->key_range.lower_key,
+			  bts->use_desc_index != exclusive ? DB_GT : DB_LT, &bts->C_vpid, &bts->slot_id, &bts->C_page,
+			  &found);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -28593,7 +28649,7 @@ btree_range_scan_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 	      bts->slot_id--;
 	    }
 	}
-      else if (bts->key_range.range == GT_LT || bts->key_range.range == GT_LE || bts->key_range.range == GT_INF)
+      else if (exclusive)
 	{
 	  /* Lower limit key was found, but the scan range must be bigger than the limit. Go to next key. */
 	  /* Mark the key as consumed and let btree_range_scan_advance_over_filtered_keys handle it. */
@@ -28763,7 +28819,7 @@ btree_range_scan_resume (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
   bts->force_restart_from_root = false;
 
   /* Search key from top. */
-  error_code = btree_locate_key (thread_p, &bts->btid_int, &bts->cur_key, &bts->C_vpid, &bts->slot_id,
+  error_code = btree_locate_key (thread_p, &bts->btid_int, &bts->cur_key, DB_EQ, &bts->C_vpid, &bts->slot_id,
 				 &bts->C_page, &found);
   if (error_code != NO_ERROR)
     {
@@ -31535,7 +31591,7 @@ btree_split_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 
   /* Find and fix the child to advance to. Use write latch if the child is leaf or if it is already known that it will
    * require an update of max key length. */
-  error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &child_slotid, &child_vpid,
+  error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, DB_EQ, &child_slotid, &child_vpid,
 					  page_boundaries);
   if (error_code != NO_ERROR)
     {
@@ -34892,8 +34948,8 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
 	}
       /* Root was not merged. */
       /* Advance to one of the children. */
-      error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &search_key->slotid, &child_vpid,
-					      NULL);
+      error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, DB_EQ, &search_key->slotid,
+					      &child_vpid, NULL);
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
@@ -34931,7 +34987,8 @@ btree_merge_node_and_advance (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_V
   assert (right_page == NULL);
 
   /* Choose the node to advance to. Then check whether it can be merged with any of its neighbors. */
-  error_code = btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, &search_key->slotid, &child_vpid, NULL);
+  error_code =
+    btree_search_nonleaf_page (thread_p, btid_int, *crt_page, key, DB_EQ, &search_key->slotid, &child_vpid, NULL);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
