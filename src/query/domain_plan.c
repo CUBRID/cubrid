@@ -989,6 +989,12 @@ domain_list_column (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl, int pos)
     {
       load_entry->n_link = -1;
     }
+  /* CBRD-27583 (D-13): the column XASL generation unified, by the rule unpack shares */
+  TP_DOMAIN *compiled = domain_list_column_of (xasl, pos);
+  if (domain_type_is_fixed (compiled))
+    {
+      load_entry->item.fixed.domain = compiled;
+    }
   return &load_entry->item;
 }
 
@@ -1013,8 +1019,8 @@ domain_block_output (XASL_NODE * xasl)
 }
 
 /* Every column of a set operation's or a CTE's list is a node over its branches' columns, read or not: resolve_domains
- * rejects branches it cannot unify before execution (qexec_resolve_late_bind_node), whether a reader asks for the
- * column or the list is the statement's result. */
+ * rejects branches the compiler did not unify before execution (qexec_resolve_late_bind_node), whether a reader asks
+ * for the column or the list is the statement's result. */
 static void
 domain_walk_set_columns (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 {
@@ -2671,6 +2677,12 @@ domain_resolve_node (DOMAIN_LOAD_CONTEXT * ctx, DOMAIN_LOAD_ENTRY * load_entry)
   if (load_entry->regu == NULL && load_entry->kind == DOMAIN_LOAD_NODE && load_entry->cold.ctx == DOMAIN_CTX_LIST_COLUMN
       && !any_variable_pos)
     {
+      if (compiled)
+	{
+	  /* the compiler unified the branches (domain_list_column) */
+	  load_entry->known = true;
+	  return;
+	}
       /* a set-operation column over compiled branches: one type, or resolve_domains unifies them at execution */
       const TP_DOMAIN *first = load_entry->link[0]->fixed.domain;
       bool same = true;

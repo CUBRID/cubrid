@@ -97,6 +97,25 @@ DOMAIN_CTX domain_late_bind_context (int opcode);
 int domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands, int n_operands,
 		    const TP_DOMAIN * consumer_domain, RESOLVED_DOMAIN * result, bool * needs_late_bind);
 
+/*
+ * The domains of the columns of the list files XASL nodes make (principle 1-6), one rule for XASL generation and
+ * for unpack.
+ * domain_unify_list_column () - one column of two set-operation or CTE branches, or of two VALUES rows, unified as
+ *   qfile_unify_types does (domain_resolve_list_column)
+ *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES
+ *   unified(out): the column's domain; NULL when a side's domain is not fixed
+ * domain_output_column () - column pos of the list an output list writes (hidden columns are not stored)
+ * domain_list_column_of () - column pos of the list an XASL node makes: a block's output column (its analytic or
+ *   GROUP BY output when it has one), the unified column of a set operation's branches or of a recursive CTE's two
+ *   parts; the variable domain where a side's domain is not fixed, NULL where no column is found, the branches do
+ *   not unify or both are objects
+ */
+struct xasl_node;
+struct valptr_list_node;
+int domain_unify_list_column (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** unified);
+TP_DOMAIN *domain_output_column (const struct valptr_list_node *output, int pos);
+TP_DOMAIN *domain_list_column_of (const struct xasl_node *xasl, int pos);
+
 /* The operand coercion of T_ADD, T_SUB, T_MUL or T_DIV: conv[i] converts operand i into operand_domain[i], NULL
  * converts nothing. SUM and AVG keep one for the values they add; an arithmetic node's RESOLVED_DOMAIN holds the same
  * two pairs in its conv[] and operand_domain[], and qdata_coerce_arith_operands reads either through those arrays. */

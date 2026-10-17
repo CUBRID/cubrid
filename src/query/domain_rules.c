@@ -31,6 +31,7 @@
 #include "language_support.h"
 #include "error_manager.h"
 #include "string_opfunc.h"
+#include "xasl.h"
 #include <atomic>
 #include <cstddef>
 #include <cstring>
@@ -2678,6 +2679,95 @@ domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands,
 
   assert (false);
   return ER_FAILED;
+}
+
+int
+domain_unify_list_column (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** unified)
+{
+  *unified = NULL;
+  if (first == NULL || second == NULL || TP_DOMAIN_TYPE (first) == DB_TYPE_VARIABLE
+      || TP_DOMAIN_TYPE (second) == DB_TYPE_VARIABLE)
+    {
+      return NO_ERROR;
+    }
+  if (TP_DOMAIN_TYPE (first) == DB_TYPE_OBJECT && TP_DOMAIN_TYPE (second) == DB_TYPE_OBJECT)
+    {
+      /* objects of two classes are union compatible to type checking: their rows unify (qfile_unify_types) */
+      return NO_ERROR;
+    }
+  const DOMAIN_OPERAND operands[2] = {
+    {first, TP_DOMAIN_TYPE (first), -1, false}, {second, TP_DOMAIN_TYPE (second), -1, false}
+  };
+  RESOLVED_DOMAIN result;
+  bool needs_late_bind = false;
+  const int error = domain_resolve (DOMAIN_CTX_LIST_COLUMN, 0, operands, 2, NULL, &result, &needs_late_bind);
+  if (error == NO_ERROR && !needs_late_bind)
+    {
+      *unified = result.domain;
+    }
+  return error;
+}
+
+TP_DOMAIN *
+domain_output_column (const OUTPTR_LIST * output, int pos)
+{
+  for (REGU_VARIABLE_LIST col = output != NULL ? output->valptrp : NULL; col != NULL; col = col->next)
+    {
+      if (!REGU_VARIABLE_IS_FLAGED (&col->value, REGU_VARIABLE_HIDDEN_COLUMN) && pos-- == 0)
+	{
+	  return col->value.domain;
+	}
+    }
+  return NULL;
+}
+
+TP_DOMAIN *
+domain_list_column_of (const XASL_NODE * xasl, int pos)
+{
+  if (xasl == NULL)
+    {
+      return NULL;
+    }
+  const XASL_NODE *first, *second;
+  switch (xasl->type)
+    {
+    case UNION_PROC:
+    case DIFFERENCE_PROC:
+    case INTERSECTION_PROC:
+      first = xasl->proc.union_.left;
+      second = xasl->proc.union_.right;
+      break;
+    case CTE_PROC:
+      first = xasl->proc.cte.non_recursive_part;
+      second = xasl->proc.cte.recursive_part;
+      if (second == NULL)
+	{
+	  return domain_list_column_of (first, pos);
+	}
+      break;
+    case BUILDLIST_PROC:
+      /* the list holds the analytic or the GROUP BY output when the block has one */
+      if (xasl->proc.buildlist.a_eval_list != NULL && xasl->proc.buildlist.a_outptr_list != NULL)
+	{
+	  return domain_output_column (xasl->proc.buildlist.a_outptr_list, pos);
+	}
+      if (xasl->proc.buildlist.groupby_list != NULL && xasl->proc.buildlist.g_outptr_list != NULL)
+	{
+	  return domain_output_column (xasl->proc.buildlist.g_outptr_list, pos);
+	}
+      return domain_output_column (xasl->outptr_list, pos);
+    default:
+      return domain_output_column (xasl->outptr_list, pos);
+    }
+  const TP_DOMAIN *left = domain_list_column_of (first, pos);
+  const TP_DOMAIN *right = domain_list_column_of (second, pos);
+  const TP_DOMAIN *unified;
+  if (left == NULL || right == NULL || domain_unify_list_column (left, right, &unified) != NO_ERROR
+      || (TP_DOMAIN_TYPE (left) == DB_TYPE_OBJECT && TP_DOMAIN_TYPE (right) == DB_TYPE_OBJECT))
+    {
+      return NULL;
+    }
+  return unified != NULL ? (TP_DOMAIN *) unified : &tp_Variable_domain;
 }
 
 /* MEDIAN/PERCENTILE: DOUBLE, then DATETIME, then TIME, as tp_value_cast (…, false) would. */

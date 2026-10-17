@@ -6613,108 +6613,6 @@ error_exit:
 }
 
 /*
- * pt_unify_list_column () - CBRD-27583: one column of two set-operation or CTE branches, or of two VALUES rows,
- *   unified as qfile_unify_types does (domain_resolve_list_column, 8022's rule): the compilation knows the domains of
- *   a bind type signature's branches, so a mismatch is a compilation error (spec change 7)
- *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES
- *   unified(out): the column's domain; NULL when a side's domain is not fixed here (the load unifies it)
- */
-static int
-pt_unify_list_column (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** unified)
-{
-  *unified = NULL;
-  if (first == NULL || second == NULL || TP_DOMAIN_TYPE (first) == DB_TYPE_VARIABLE
-      || TP_DOMAIN_TYPE (second) == DB_TYPE_VARIABLE)
-    {
-      return NO_ERROR;
-    }
-  if (TP_DOMAIN_TYPE (first) == DB_TYPE_OBJECT && TP_DOMAIN_TYPE (second) == DB_TYPE_OBJECT)
-    {
-      /* objects of two classes are union compatible to type checking: their rows unify (qfile_unify_types) */
-      return NO_ERROR;
-    }
-  const DOMAIN_OPERAND operands[2] = {
-    {first, TP_DOMAIN_TYPE (first), -1, false}, {second, TP_DOMAIN_TYPE (second), -1, false}
-  };
-  RESOLVED_DOMAIN result;
-  bool needs_late_bind = false;
-  const int error = domain_resolve (DOMAIN_CTX_LIST_COLUMN, 0, operands, 2, NULL, &result, &needs_late_bind);
-  if (error == NO_ERROR && !needs_late_bind)
-    {
-      *unified = result.domain;
-    }
-  return error;
-}
-
-/* CBRD-27583: the domain of column pos of the list file an output list writes (hidden columns are not stored) */
-static TP_DOMAIN *
-pt_output_column_domain (const OUTPTR_LIST * output, int pos)
-{
-  for (REGU_VARIABLE_LIST col = output != NULL ? output->valptrp : NULL; col != NULL; col = col->next)
-    {
-      if (!REGU_VARIABLE_IS_FLAGED (&col->value, REGU_VARIABLE_HIDDEN_COLUMN) && pos-- == 0)
-	{
-	  return col->value.domain;
-	}
-    }
-  return NULL;
-}
-
-/*
- * pt_list_column_domain () - CBRD-27583: the domain of column pos of the list an XASL node makes (principle 1-6): a
- *   block's output column, the unified column of a set operation's branches or of a recursive CTE's two parts; the
- *   variable domain when the load unifies the column, NULL when no column is found
- */
-static TP_DOMAIN *
-pt_list_column_domain (const XASL_NODE * xasl, int pos)
-{
-  if (xasl == NULL)
-    {
-      return NULL;
-    }
-  const XASL_NODE *first, *second;
-  switch (xasl->type)
-    {
-    case UNION_PROC:
-    case DIFFERENCE_PROC:
-    case INTERSECTION_PROC:
-      first = xasl->proc.union_.left;
-      second = xasl->proc.union_.right;
-      break;
-    case CTE_PROC:
-      first = xasl->proc.cte.non_recursive_part;
-      second = xasl->proc.cte.recursive_part;
-      if (second == NULL)
-	{
-	  return pt_list_column_domain (first, pos);
-	}
-      break;
-    case BUILDLIST_PROC:
-      /* the list holds the analytic or the GROUP BY output when the block has one */
-      if (xasl->proc.buildlist.a_eval_list != NULL && xasl->proc.buildlist.a_outptr_list != NULL)
-	{
-	  return pt_output_column_domain (xasl->proc.buildlist.a_outptr_list, pos);
-	}
-      if (xasl->proc.buildlist.groupby_list != NULL && xasl->proc.buildlist.g_outptr_list != NULL)
-	{
-	  return pt_output_column_domain (xasl->proc.buildlist.g_outptr_list, pos);
-	}
-      return pt_output_column_domain (xasl->outptr_list, pos);
-    default:
-      return pt_output_column_domain (xasl->outptr_list, pos);
-    }
-  const TP_DOMAIN *left = pt_list_column_domain (first, pos);
-  const TP_DOMAIN *right = pt_list_column_domain (second, pos);
-  const TP_DOMAIN *unified;
-  if (left == NULL || right == NULL || pt_unify_list_column (left, right, &unified) != NO_ERROR
-      || (TP_DOMAIN_TYPE (left) == DB_TYPE_OBJECT && TP_DOMAIN_TYPE (right) == DB_TYPE_OBJECT))
-    {
-      return NULL;
-    }
-  return unified != NULL ? (TP_DOMAIN *) unified : &tp_Variable_domain;
-}
-
-/*
  * pt_spec_list_producer () - CBRD-27583: the XASL node whose list a derived table's or a CTE's spec reads; NULL for
  *   another spec or a producer generated later (a select-list subquery is generated before the FROM list)
  */
@@ -6795,7 +6693,7 @@ static TP_DOMAIN *
 pt_list_reader_domain (PARSER_CONTEXT * parser, const PT_NODE * spec, int pos, const PT_NODE * attr)
 {
   return pt_reader_domain (pt_xasl_node_to_domain (parser, attr),
-			   pt_list_column_domain (pt_spec_list_producer (spec), pos));
+			   domain_list_column_of (pt_spec_list_producer (spec), pos));
 }
 
 /* CBRD-27583: the slot of values that holds value, NULL for none */
@@ -6822,8 +6720,7 @@ pt_set_list_position_domains (REGU_VARIABLE_LIST positions, VAL_LIST * values, c
     {
       REGU_VARIABLE *position = &positions->value;
       const int pos = position->value.pos_descr.pos_no;
-      TP_DOMAIN *column =
-	output != NULL ? pt_output_column_domain (output, pos) : pt_list_column_domain (producer, pos);
+      TP_DOMAIN *column = output != NULL ? domain_output_column (output, pos) : domain_list_column_of (producer, pos);
       TP_DOMAIN *domain = pt_reader_domain (position->domain, column);
       if (domain == position->domain)
 	{
@@ -6841,7 +6738,7 @@ pt_set_list_position_domains (REGU_VARIABLE_LIST positions, VAL_LIST * values, c
 
 /*
  * pt_check_list_branches () - CBRD-27583: the columns of a set operation's or a recursive CTE's two branches unify
- *   (pt_unify_list_column); a mismatch is the statement's semantic error at XASL generation, in pt_union_compatible's
+ *   (domain_unify_list_column); a mismatch is the statement's semantic error at XASL generation, in pt_union_compatible's
  *   words
  *   return: NO_ERROR or ER_QPROC_INCOMPATIBLE_TYPES (the parser holds the error)
  */
@@ -6855,8 +6752,9 @@ pt_check_list_branches (PARSER_CONTEXT * parser, PT_NODE * first_query, PT_NODE 
        pos++, item[0] = item[0]->next, item[1] = item[1]->next)
     {
       const TP_DOMAIN *unified;
-      const int error = pt_unify_list_column (pt_list_column_domain (first, pos), pt_list_column_domain (second, pos),
-					      &unified);
+      const int error =
+	domain_unify_list_column (domain_list_column_of (first, pos), domain_list_column_of (second, pos),
+				  &unified);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORmf2 (parser, item[0], MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
@@ -6921,7 +6819,7 @@ pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, const PT_NODE * node, UNB
 	    }
 	  /* CBRD-27583: each row's column unifies with the first row's at compilation, as a set operation's */
 	  const TP_DOMAIN *unified;
-	  if (pt_unify_list_column (regu_list->regu_list->value->domain, list_node->value->domain, &unified) !=
+	  if (domain_unify_list_column (regu_list->regu_list->value->domain, list_node->value->domain, &unified) !=
 	      NO_ERROR)
 	    {
 	      PT_ERRORmf2 (parser, temp, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
@@ -8771,7 +8669,7 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
       if (xasl->is_single_tuple)
 	{
 	  /* CBRD-27583: the value is the subquery's first column */
-	  regu->domain = pt_reader_domain (regu->domain, pt_list_column_domain (xasl, 0));
+	  regu->domain = pt_reader_domain (regu->domain, domain_list_column_of (xasl, 0));
 	  if (!xasl->single_tuple)
 	    {
 	      xasl->single_tuple = pt_make_val_list (parser, (PT_NODE *) node);
@@ -16239,7 +16137,7 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		      regu->type = TYPE_CONSTANT;
 		      /* CBRD-27583: the value is the subquery's column; hidden columns come last */
 		      regu->domain =
-			pt_reader_domain (pt_xasl_node_to_domain (parser, col), pt_list_column_domain (xasl, i));
+			pt_reader_domain (pt_xasl_node_to_domain (parser, col), domain_list_column_of (xasl, i));
 		      regu->value.dbvalptr = value_list->val;
 		      /* move to next db_value holder */
 		      value_list = value_list->next;

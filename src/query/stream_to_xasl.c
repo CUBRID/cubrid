@@ -1774,27 +1774,14 @@ stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg)
 }
 
 /*
- * stx_list_column_domain () - the compiled domain of column pos of the list a plain BUILDLIST_PROC makes (hidden
- *   columns are not stored); NULL for another node, or a domain the execution fixes (variable, NULL)
+ * stx_list_column_domain () - the compiled domain of column pos of the list an XASL node makes (domain_list_column_of,
+ *   XASL generation's rule); NULL for a domain the execution fixes (variable, NULL) or no column
  */
 static TP_DOMAIN *
 stx_list_column_domain (const XASL_NODE * xasl, int pos)
 {
-  if (xasl->type != BUILDLIST_PROC || xasl->proc.buildlist.groupby_list != NULL
-      || xasl->proc.buildlist.a_eval_list != NULL || xasl->outptr_list == NULL)
-    {
-      return NULL;
-    }
-  for (REGU_VARIABLE_LIST col = xasl->outptr_list->valptrp; col != NULL; col = col->next)
-    {
-      if (!REGU_VARIABLE_IS_FLAGED (&col->value, REGU_VARIABLE_HIDDEN_COLUMN) && pos-- == 0)
-	{
-	  TP_DOMAIN *domain = col->value.domain;
-	  return domain == NULL || domain_is_variable (domain)
-	    || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL ? NULL : domain;
-	}
-    }
-  return NULL;
+  TP_DOMAIN *domain = domain_list_column_of (xasl, pos);
+  return domain == NULL || domain_is_variable (domain) || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL ? NULL : domain;
 }
 
 /*
