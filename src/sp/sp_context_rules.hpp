@@ -21,7 +21,7 @@
  *
  * A stored procedure runs on the PL server, but its SQL, COMMIT and ROLLBACK are carried out by this
  * client through callbacks. The callback alone does not say which statement invoked the procedure, so
- * every statement that can reach a procedure records itself here while it runs (CBRD-27579):
+ * every statement that can reach a procedure records itself here while it runs:
  *
  *   sp_Stmt_stack    the statements executing right now that contain a stored procedure call, outermost
  *                    first; a DML entry also lists the classes the statement writes
@@ -49,6 +49,8 @@ struct sp_stmt_entry
   CUBRID_STMT_TYPE stmt_type;	/* SELECT, INSERT, UPDATE, DELETE or MERGE */
   std::vector<DB_OBJECT *> target_classes;	/* classes the statement writes to; empty for SELECT and a
 						 * single-row INSERT VALUES */
+  std::vector<DB_OBJECT *> read_classes;	/* classes the statement only reads; filled for a statement that
+						 * calls a stored procedure */
   bool has_sp_call;		/* the statement itself calls a stored procedure */
 };
 
@@ -82,6 +84,14 @@ class sp_stmt_guard
  * and returns ER_SP_TABLE_MUTATING. */
 extern int sp_check_trigger_statement (PARSER_CONTEXT *parser, PT_NODE *statement);
 
+/* Records on a DML statement that calls a stored procedure the classes it writes and the classes it only
+ * reads, after view translation; the guard copies them when the statement executes. */
+extern void sp_stmt_record_classes (PARSER_CONTEXT *parser, PT_NODE *statement);
+
+/* The classes a statement writes (INSERT target unless a single-row VALUES, UPDATE / DELETE written specs,
+ * MERGE INTO), read from the node fields. */
+extern void sp_stmt_written_classes (const PT_NODE *statement, std::vector<DB_OBJECT *> &classes);
+
 /* Collecting every class a statement references, read or written: the query handler that compiles a procedure's
  * statement opens its list with sp_ref_tables_start () and closes it with sp_ref_tables_stop (); in between, name
  * resolution fills it through sp_ref_tables_add () and view translation adds the tables behind each view through
@@ -99,8 +109,9 @@ extern void sp_trigger_pop (void);
 
 /* Decides whether a statement the stored procedure asked this client to run is allowed where the
  * procedure is executing. stmt_type is a CUBRID_STMT_TYPE; ref_tables lists every class the statement
- * references. Returns NO_ERROR or sets and returns the error. */
-extern int sp_check_statement_allowed (int stmt_type, bool is_ddl, const std::vector<DB_OBJECT *> &ref_tables);
+ * references, written_tables the classes it writes. Returns NO_ERROR or sets and returns the error. */
+extern int sp_check_statement_allowed (int stmt_type, bool is_ddl, const std::vector<DB_OBJECT *> &ref_tables,
+				       const std::vector<DB_OBJECT *> &written_tables);
 
 /* The same decision for an object the procedure reads or modifies through the OID API, as a statement of
  * stmt_type on the object's class. A NULL or classless object is left to the caller's own error. */

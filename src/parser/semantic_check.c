@@ -11371,7 +11371,7 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  if (top_node != NULL)
 	    {
 	      /* a procedure or function evaluated inside this statement: execution must record the statement
-	       * so that the procedure's own COMMIT or SQL can be judged against it (CBRD-27579) */
+	       * so that the procedure's own COMMIT or SQL can be judged against it */
 	      top_node->flag.has_sp_call = 1;
 	    }
 	}

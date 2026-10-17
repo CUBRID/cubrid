@@ -22,6 +22,7 @@
 
 #include "sp_context_rules.hpp"
 
+#include <algorithm>
 #include <cassert>
 
 #include "db.h"
@@ -31,6 +32,17 @@
 
 std::vector<sp_stmt_entry> sp_Stmt_stack;
 std::vector<sp_trigger_ctx> sp_Trigger_stack;
+
+/* the list being filled while a procedure's statement is compiled; NULL for every other compile */
+static std::vector<DB_OBJECT *> *sp_Ref_tables = NULL;
+static int sp_Ref_tables_suspended = 0;
+
+struct sp_stmt_collect_ctx
+{
+  const PT_NODE *statement;
+  std::vector<DB_OBJECT *> written;
+  std::vector<DB_OBJECT *> read;
+};
 
 /*
  * sp_class_root () - the class to compare: a partition stands for its partitioned table
@@ -80,26 +92,6 @@ sp_stmt_add_spec_classes (const PT_NODE *spec, std::vector<DB_OBJECT *> &target_
 }
 
 /*
- * sp_stmt_add_written_specs () - append the classes of the specs an UPDATE or DELETE writes
- *   return: none
- *   spec_list(in): the statement's spec list, which also holds the specs that only join in
- *   written_flag(in): PT_SPEC_FLAG_UPDATE or PT_SPEC_FLAG_DELETE, the mark the parser put on the written specs
- *   target_classes(out): classes collected
- */
-static void
-sp_stmt_add_written_specs (const PT_NODE *spec_list, PT_SPEC_FLAG written_flag,
-			   std::vector<DB_OBJECT *> &target_classes)
-{
-  for (const PT_NODE *spec = spec_list; spec != NULL; spec = spec->next)
-    {
-      if (spec->node_type == PT_SPEC && (spec->info.spec.flag & written_flag))
-	{
-	  sp_stmt_add_spec_classes (spec, target_classes);
-	}
-    }
-}
-
-/*
  * sp_stmt_is_single_row_values () - true for INSERT ... VALUES with one row and no subquery
  *   return: bool
  *   statement(in): a PT_INSERT node
@@ -117,6 +109,110 @@ sp_stmt_is_single_row_values (const PT_NODE *statement)
 	  && !statement->info.insert.do_replace);
 }
 
+/*
+ * sp_spec_is_written () - whether the statement writes the spec
+ *   return: bool
+ *   statement(in): a DML node
+ *   spec(in): a PT_SPEC anywhere in the statement
+ */
+static bool
+sp_spec_is_written (const PT_NODE *statement, const PT_NODE *spec)
+{
+  switch (statement->node_type)
+    {
+    case PT_INSERT:
+      return spec == statement->info.insert.spec && !sp_stmt_is_single_row_values (statement);
+    case PT_UPDATE:
+      return (spec->info.spec.flag & PT_SPEC_FLAG_UPDATE) != 0;
+    case PT_DELETE:
+      return (spec->info.spec.flag & PT_SPEC_FLAG_DELETE) != 0;
+    case PT_MERGE:
+      return spec == statement->info.merge.into;
+    default:
+      return false;
+    }
+}
+
+/*
+ * sp_stmt_type_of () - the CUBRID_STMT_TYPE the guard records for a node, or CUBRID_STMT_NONE
+ */
+static CUBRID_STMT_TYPE
+sp_stmt_type_of (const PT_NODE *statement)
+{
+  switch (statement->node_type)
+    {
+    case PT_SELECT:
+    case PT_UNION:
+    case PT_DIFFERENCE:
+    case PT_INTERSECTION:
+    case PT_DO:
+      return CUBRID_STMT_SELECT;
+    case PT_INSERT:
+      return CUBRID_STMT_INSERT;
+    case PT_UPDATE:
+      return CUBRID_STMT_UPDATE;
+    case PT_DELETE:
+      return CUBRID_STMT_DELETE;
+    case PT_MERGE:
+      return CUBRID_STMT_MERGE;
+    default:
+      return CUBRID_STMT_NONE;
+    }
+}
+
+void
+sp_stmt_written_classes (const PT_NODE *statement, std::vector<DB_OBJECT *> &classes)
+{
+  const PT_NODE *spec_list;
+
+  switch (statement->node_type)
+    {
+    case PT_INSERT:
+      spec_list = statement->info.insert.spec;
+      break;
+    case PT_UPDATE:
+      spec_list = statement->info.update.spec;
+      break;
+    case PT_DELETE:
+      spec_list = statement->info.delete_.spec;
+      break;
+    case PT_MERGE:
+      spec_list = statement->info.merge.into;
+      break;
+    default:
+      return;
+    }
+
+  for (const PT_NODE *spec = spec_list; spec != NULL; spec = spec->next)
+    {
+      if (spec->node_type == PT_SPEC && sp_spec_is_written (statement, spec))
+	{
+	  sp_stmt_add_spec_classes (spec, classes);
+	}
+    }
+}
+
+/*
+ * sp_stmt_ref_classes () - the classes recorded on a DML node, or NULL for any other node
+ */
+static PT_SP_REF_CLASSES *
+sp_stmt_ref_classes (PT_NODE *statement)
+{
+  switch (statement->node_type)
+    {
+    case PT_INSERT:
+      return &statement->info.insert.sp_ref_classes;
+    case PT_UPDATE:
+      return &statement->info.update.sp_ref_classes;
+    case PT_DELETE:
+      return &statement->info.delete_.sp_ref_classes;
+    case PT_MERGE:
+      return &statement->info.merge.sp_ref_classes;
+    default:
+      return NULL;
+    }
+}
+
 sp_stmt_guard::sp_stmt_guard (const PT_NODE *statement)
   : m_pushed (false)
 {
@@ -127,42 +223,24 @@ sp_stmt_guard::sp_stmt_guard (const PT_NODE *statement)
 
   sp_stmt_entry entry;
 
-  switch (statement->node_type)
+  entry.stmt_type = sp_stmt_type_of (statement);
+  if (entry.stmt_type == CUBRID_STMT_NONE)
     {
-    case PT_SELECT:
-    case PT_UNION:
-    case PT_DIFFERENCE:
-    case PT_INTERSECTION:
-    case PT_DO:
-      entry.stmt_type = CUBRID_STMT_SELECT;
-      break;
-
-    case PT_INSERT:
-      entry.stmt_type = CUBRID_STMT_INSERT;
-      if (!sp_stmt_is_single_row_values (statement))
-	{
-	  sp_stmt_add_spec_classes (statement->info.insert.spec, entry.target_classes);
-	}
-      break;
-
-    case PT_UPDATE:
-      entry.stmt_type = CUBRID_STMT_UPDATE;
-      sp_stmt_add_written_specs (statement->info.update.spec, PT_SPEC_FLAG_UPDATE, entry.target_classes);
-      break;
-
-    case PT_DELETE:
-      entry.stmt_type = CUBRID_STMT_DELETE;
-      sp_stmt_add_written_specs (statement->info.delete_.spec, PT_SPEC_FLAG_DELETE, entry.target_classes);
-      break;
-
-    case PT_MERGE:
-      entry.stmt_type = CUBRID_STMT_MERGE;
-      sp_stmt_add_spec_classes (statement->info.merge.into, entry.target_classes);
-      break;
-
-    default:
       /* a CALL statement or anything else that is not a query: a procedure it runs is a call alone */
       return;
+    }
+
+  const PT_SP_REF_CLASSES *classes = sp_stmt_ref_classes ((PT_NODE *) statement);
+  if (classes != NULL && (classes->written != NULL || classes->read != NULL))
+    {
+      /* sp_stmt_record_classes () recorded these when the statement was compiled */
+      entry.target_classes.assign (classes->written, classes->written + classes->written_count);
+      entry.read_classes.assign (classes->read, classes->read + classes->read_count);
+    }
+  else
+    {
+      /* a statement run inside a procedure or a trigger gives only the classes it writes */
+      sp_stmt_written_classes (statement, entry.target_classes);
     }
 
   entry.has_sp_call = statement->flag.has_sp_call;
@@ -178,10 +256,6 @@ sp_stmt_guard::~sp_stmt_guard ()
       sp_Stmt_stack.pop_back ();
     }
 }
-
-/* the list being filled while a procedure's statement is compiled; NULL for every other compile */
-static std::vector<DB_OBJECT *> *sp_Ref_tables = NULL;
-static int sp_Ref_tables_suspended = 0;
 
 void
 sp_ref_tables_start (std::vector<DB_OBJECT *> *ref_tables)
@@ -298,31 +372,52 @@ sp_stmt_in_statement_trigger (int stmt_index, DB_OBJECT *class_mop)
 }
 
 /*
- * sp_stmt_find_mutating () - the first referenced class that an executing statement or trigger is writing
+ * sp_has_class () - whether the list holds the class
+ */
+static bool
+sp_has_class (const std::vector<DB_OBJECT *> &classes, DB_OBJECT *class_mop)
+{
+  return std::find (classes.begin (), classes.end (), class_mop) != classes.end ();
+}
+
+/*
+ * sp_find_table_used_by_outer () - the first of the procedure's tables that an executing statement or trigger uses
  *   return: the class, or NULL
- *   ref_tables(in): classes the stored procedure's statement references
+ *   tables(in): classes the stored procedure's statement references (mutating) or writes (!mutating)
+ *   mutating(in): true to look for the classes an executing DML statement or a row-level trigger is writing,
+ *                 false for the classes an executing DML statement only reads
  */
 static DB_OBJECT *
-sp_stmt_find_mutating (const std::vector<DB_OBJECT *> &ref_tables)
+sp_find_table_used_by_outer (const std::vector<DB_OBJECT *> &tables, bool mutating)
 {
-  for (DB_OBJECT *ref : ref_tables)
+  for (DB_OBJECT *table : tables)
     {
-      for (size_t i = 0; i < sp_Stmt_stack.size (); i++)
+      if (mutating)
 	{
-	  for (DB_OBJECT *target : sp_Stmt_stack[i].target_classes)
+	  for (size_t i = 0; i < sp_Stmt_stack.size (); i++)
 	    {
-	      if (target == ref && !sp_stmt_in_statement_trigger ((int) i, target))
+	      if (sp_has_class (sp_Stmt_stack[i].target_classes, table) && !sp_stmt_in_statement_trigger ((int) i, table))
 		{
-		  return ref;
+		  return table;
+		}
+	    }
+
+	  for (const sp_trigger_ctx &trigger : sp_Trigger_stack)
+	    {
+	      if (trigger.is_row_level && trigger.class_mop == table)
+		{
+		  return table;
 		}
 	    }
 	}
-
-      for (const sp_trigger_ctx &trigger : sp_Trigger_stack)
+      else
 	{
-	  if (trigger.is_row_level && trigger.class_mop == ref)
+	  for (const sp_stmt_entry &entry : sp_Stmt_stack)
 	    {
-	      return ref;
+	      if (sp_has_class (entry.read_classes, table))
+		{
+		  return table;
+		}
 	    }
 	}
     }
@@ -331,7 +426,7 @@ sp_stmt_find_mutating (const std::vector<DB_OBJECT *> &ref_tables)
 }
 
 static bool
-sp_stmt_has_query (void)
+sp_outer_has_select (void)
 {
   for (const sp_stmt_entry &entry : sp_Stmt_stack)
     {
@@ -366,15 +461,19 @@ sp_stmt_entry_name (int stmt_type, bool is_ddl)
  *   stmt_type(in): CUBRID_STMT_TYPE of the statement
  *   is_ddl(in): true when the statement is DDL
  *   ref_tables(in): classes the statement references (reads or writes)
+ *   written_tables(in): classes the statement writes
  *
  * Note: the rules, in the order they are checked:
  *       1. nothing is executing (a CALL alone): allowed
  *       2. transaction control or DDL inside a statement or a trigger: rejected
  *       3. DML while a query is executing anywhere above: rejected, whatever the table
  *       4. touching a class an executing DML statement or a row-level trigger is writing: rejected
+ *       5. writing a class an executing DML statement reads: rejected (CUBRID: the statement's scan holds the
+ *          page the procedure's DML needs)
  */
 int
-sp_check_statement_allowed (int stmt_type, bool is_ddl, const std::vector<DB_OBJECT *> &ref_tables)
+sp_check_statement_allowed (int stmt_type, bool is_ddl, const std::vector<DB_OBJECT *> &ref_tables,
+			    const std::vector<DB_OBJECT *> &written_tables)
 {
   const bool in_statement = !sp_Stmt_stack.empty ();
   const bool in_trigger = !sp_Trigger_stack.empty ();
@@ -384,6 +483,7 @@ sp_check_statement_allowed (int stmt_type, bool is_ddl, const std::vector<DB_OBJ
       return NO_ERROR;
     }
 
+  /* rule 1: no transaction control or DDL inside a statement, no DML inside a query */
   if (stmt_type == CUBRID_STMT_COMMIT_WORK || stmt_type == CUBRID_STMT_ROLLBACK_WORK
       || stmt_type == CUBRID_STMT_SAVEPOINT || is_ddl)
     {
@@ -396,17 +496,26 @@ sp_check_statement_allowed (int stmt_type, bool is_ddl, const std::vector<DB_OBJ
   const bool is_dml = (stmt_type == CUBRID_STMT_INSERT || stmt_type == CUBRID_STMT_UPDATE
 		       || stmt_type == CUBRID_STMT_DELETE || stmt_type == CUBRID_STMT_MERGE);
 
-  if (is_dml && sp_stmt_has_query ())
+  if (is_dml && sp_outer_has_select ())
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_DML_IN_QUERY, 0);
       return ER_SP_DML_IN_QUERY;
     }
 
-  DB_OBJECT *mutating = sp_stmt_find_mutating (ref_tables);
+  /* rule 2: a table the outer statement is modifying */
+  DB_OBJECT *mutating = sp_find_table_used_by_outer (ref_tables, true);
   if (mutating != NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TABLE_MUTATING, 1, db_get_class_name (mutating));
       return ER_SP_TABLE_MUTATING;
+    }
+
+  /* rule 3: a table the outer statement is reading */
+  DB_OBJECT *referenced = sp_find_table_used_by_outer (written_tables, false);
+  if (referenced != NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TABLE_REFERENCED, 1, db_get_class_name (referenced));
+      return ER_SP_TABLE_REFERENCED;
     }
 
   return NO_ERROR;
@@ -422,28 +531,97 @@ sp_check_object_allowed (DB_OBJECT *obj, int stmt_type)
       return NO_ERROR;
     }
 
-  return sp_check_statement_allowed (stmt_type, false, { sp_class_root (class_mop) });
+  const std::vector<DB_OBJECT *> classes { sp_class_root (class_mop) };
+  const bool writes = (stmt_type == CUBRID_STMT_UPDATE || stmt_type == CUBRID_STMT_DELETE);
+
+  return sp_check_statement_allowed (stmt_type, false, classes, writes ? classes : std::vector<DB_OBJECT *> ());
 }
 
 /*
- * sp_stmt_collect_spec () - parser_walk_tree callback: collect the classes of every spec into the vector in arg
+ * sp_stmt_collect_spec () - parser_walk_tree callback: sort the classes of every spec into the written or the
+ *                           read list of the context in arg
  */
 static PT_NODE *
 sp_stmt_collect_spec (PARSER_CONTEXT *parser, PT_NODE *node, void *arg, int *continue_walk)
 {
+  sp_stmt_collect_ctx *ctx = (sp_stmt_collect_ctx *) arg;
+
   if (node->node_type == PT_SPEC)
     {
-      sp_stmt_add_spec_classes (node, * (std::vector<DB_OBJECT *> *) arg);
+      sp_stmt_add_spec_classes (node, sp_spec_is_written (ctx->statement, node) ? ctx->written : ctx->read);
     }
 
   return node;
 }
 
 /*
- * sp_stmt_below_calls_sp () - whether a statement that calls a stored procedure is on the stack
+ * sp_stmt_collect () - the classes a statement writes and the classes it only reads
+ */
+static void
+sp_stmt_collect (PARSER_CONTEXT *parser, PT_NODE *statement, sp_stmt_collect_ctx &ctx)
+{
+  ctx.statement = statement;
+  (void) parser_walk_tree (parser, statement, sp_stmt_collect_spec, &ctx, NULL, NULL);
+}
+
+static DB_OBJECT **
+sp_stmt_alloc_classes (PARSER_CONTEXT *parser, const std::vector<DB_OBJECT *> &classes,
+		       const std::vector<DB_OBJECT *> &excluded, int *array_count)
+{
+  int filled = 0;
+
+  *array_count = 0;
+  if (classes.empty ())
+    {
+      return NULL;
+    }
+
+  DB_OBJECT **array = (DB_OBJECT **) parser_alloc (parser, (int) (classes.size () * sizeof (DB_OBJECT *)));
+  if (array == NULL)
+    {
+      return NULL;
+    }
+
+  /* a class may repeat; the rules only test membership, so duplicates are left in place */
+  for (DB_OBJECT *class_mop : classes)
+    {
+      if (!sp_has_class (excluded, class_mop))
+	{
+	  array[filled++] = class_mop;
+	}
+    }
+
+  *array_count = filled;
+  return array;
+}
+
+void
+sp_stmt_record_classes (PARSER_CONTEXT *parser, PT_NODE *statement)
+{
+  if (statement == NULL || !statement->flag.has_sp_call)
+    {
+      return;
+    }
+
+  PT_SP_REF_CLASSES *classes = sp_stmt_ref_classes (statement);
+  if (classes == NULL)
+    {
+      return;
+    }
+
+  sp_stmt_collect_ctx ctx;
+
+  sp_stmt_collect (parser, statement, ctx);
+
+  classes->written = sp_stmt_alloc_classes (parser, ctx.written, {}, &classes->written_count);
+  classes->read = sp_stmt_alloc_classes (parser, ctx.read, ctx.written, &classes->read_count);
+}
+
+/*
+ * sp_outer_calls_sp () - whether a statement that calls a stored procedure is on the stack
  */
 static bool
-sp_stmt_below_calls_sp (void)
+sp_outer_calls_sp (void)
 {
   for (const sp_stmt_entry &entry : sp_Stmt_stack)
     {
@@ -459,20 +637,30 @@ sp_stmt_below_calls_sp (void)
 int
 sp_check_trigger_statement (PARSER_CONTEXT *parser, PT_NODE *statement)
 {
-  if (statement == NULL || statement->flag.has_sp_call || !sp_stmt_below_calls_sp ())
+  if (statement == NULL || !sp_outer_calls_sp ())
     {
       return NO_ERROR;
     }
 
-  std::vector<DB_OBJECT *> ref_tables;
+  sp_stmt_collect_ctx ctx;
 
-  (void) parser_walk_tree (parser, statement, sp_stmt_collect_spec, &ref_tables, NULL, NULL);
+  sp_stmt_collect (parser, statement, ctx);
 
-  DB_OBJECT *mutating = sp_stmt_find_mutating (ref_tables);
+  std::vector<DB_OBJECT *> ref_tables (ctx.written);
+  ref_tables.insert (ref_tables.end (), ctx.read.begin (), ctx.read.end ());
+
+  DB_OBJECT *mutating = sp_find_table_used_by_outer (ref_tables, true);
   if (mutating != NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TABLE_MUTATING, 1, db_get_class_name (mutating));
       return ER_SP_TABLE_MUTATING;
+    }
+
+  DB_OBJECT *referenced = sp_find_table_used_by_outer (ctx.written, false);
+  if (referenced != NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SP_TABLE_REFERENCED, 1, db_get_class_name (referenced));
+      return ER_SP_TABLE_REFERENCED;
     }
 
   return NO_ERROR;

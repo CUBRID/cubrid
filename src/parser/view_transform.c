@@ -9598,6 +9598,7 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
       return_node->flag.has_sp_call = 1;
       return_node->flag.cannot_prepare = 1;
     }
+  sp_stmt_record_classes (parser, (PT_NODE *) return_node);
   parser->flag.view_has_sp_call |= save_view_has_sp_call;
 
   PT_CLEAR_JMP_ENV (parser);

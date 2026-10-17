@@ -156,8 +156,8 @@ namespace cubmethod
     int command; // commit : 1, abort : 2
     unpacker.unpack_all (command);
 
-    /* a procedure may end the transaction only when nothing invoked it from a statement or a trigger (CBRD-27579) */
-    if (sp_check_statement_allowed (command == 1 ? CUBRID_STMT_COMMIT_WORK : CUBRID_STMT_ROLLBACK_WORK, false, {})
+    /* a procedure may end the transaction only when nothing invoked it from a statement or a trigger */
+    if (sp_check_statement_allowed (command == 1 ? CUBRID_STMT_COMMIT_WORK : CUBRID_STMT_ROLLBACK_WORK, false, {}, {})
 	!= NO_ERROR)
       {
 	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
