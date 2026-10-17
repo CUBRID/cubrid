@@ -18959,7 +18959,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	      && qfile_copy_list_id (non_recursive_part->list_id, recursive_part->list_id, true,
 				     QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
 	    {
-	      QFILE_FREE_AND_INIT_LIST_ID (non_recursive_part->list_id);
+	      /* the list id is part of the XASL tree, and the failed copy left it empty */
 	      GOTO_EXIT_ON_ERROR;
 	    }
 	  qfile_clear_list_id (recursive_part->list_id);
@@ -18991,10 +18991,12 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 
       /* copy all results back to non_recursive_part list id; other CTEs from the same WITH clause have access only to
        * non_recursive_part; see how pt_to_cte_table_spec_list works for interdependent CTEs.
+       * Both list ids stay readable, and a parallel list scan finds the pages of the dependent lists only through
+       * the list id it reads, so each keeps its own copy of them.
        */
-      if (qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true, QFILE_MOVE_DEPENDENT) != NO_ERROR)
+      if (qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true, QFILE_COPY_DEPENDENT) != NO_ERROR)
 	{
-	  QFILE_FREE_AND_INIT_LIST_ID (non_recursive_part->list_id);
+	  /* the list id is part of the XASL tree, and the failed copy left it empty */
 	  GOTO_EXIT_ON_ERROR;
 	}
 
@@ -19006,12 +19008,13 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
     }
   /* copy list id from non-recursive part to CTE XASL (even if no tuples are in non recursive part) to get domain types
    * into CTE xasl's main list (this also executes if we have a recursive part but no tuples in non recursive part
-   * (no results at all)
+   * (no results at all). Another CTE of the same WITH clause still reads non_recursive_part, so it keeps the
+   * dependent lists too (see above).
    */
   else if (qexec_assert_result_list_backward (xasl, non_recursive_part->list_id),	/* debug check, then copy */
-	   qfile_copy_list_id (xasl->list_id, non_recursive_part->list_id, true, QFILE_MOVE_DEPENDENT) != NO_ERROR)
+	   qfile_copy_list_id (xasl->list_id, non_recursive_part->list_id, true, QFILE_COPY_DEPENDENT) != NO_ERROR)
     {
-      QFILE_FREE_AND_INIT_LIST_ID (xasl->list_id);
+      /* the list id is part of the XASL tree, and the failed copy left it empty */
       GOTO_EXIT_ON_ERROR;
     }
 
@@ -19034,6 +19037,11 @@ exit_on_error:
   if (recursive_part != NULL)
     {
       recursive_part->max_iterations = -1;
+    }
+
+  if (t_list_id)
+    {
+      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
     }
 
   xasl->status = XASL_FAILURE;
