@@ -1774,6 +1774,73 @@ stx_restore_access_spec_type (THREAD_ENTRY * thread_p, char **ptr, void *arg)
 }
 
 /*
+ * stx_list_column_domain () - the compiled domain of column pos of the list a plain BUILDLIST_PROC makes (hidden
+ *   columns are not stored); NULL for another node, or a domain the execution fixes (variable, NULL)
+ */
+static TP_DOMAIN *
+stx_list_column_domain (const XASL_NODE * xasl, int pos)
+{
+  if (xasl->type != BUILDLIST_PROC || xasl->proc.buildlist.groupby_list != NULL
+      || xasl->proc.buildlist.a_eval_list != NULL || xasl->outptr_list == NULL)
+    {
+      return NULL;
+    }
+  for (REGU_VARIABLE_LIST col = xasl->outptr_list->valptrp; col != NULL; col = col->next)
+    {
+      if (!REGU_VARIABLE_IS_FLAGED (&col->value, REGU_VARIABLE_HIDDEN_COLUMN) && pos-- == 0)
+	{
+	  TP_DOMAIN *domain = col->value.domain;
+	  return domain == NULL || domain_is_variable (domain)
+	    || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL ? NULL : domain;
+	}
+    }
+  return NULL;
+}
+
+/*
+ * stx_decide_compare () - CBRD-27583: the comparison of a value of each of two domains, as the type rule module
+ *   picks it before any row
+ *   return: false for a domain the execution fixes (variable, NULL), a comparison method other than DIRECT or CONVERT,
+ *	     or a pair implicit coercion refuses: the load derives those
+ */
+static bool
+stx_decide_compare (const TP_DOMAIN * const domain[2], DOMAIN_COMPARE * decided)
+{
+  DOMAIN_COMPARE_KEY key[2];
+  for (int side = 0; side < 2; side++)
+    {
+      if (domain[side] == NULL || TP_DOMAIN_TYPE (domain[side]) == DB_TYPE_VARIABLE
+	  || TP_DOMAIN_TYPE (domain[side]) == DB_TYPE_NULL || TP_DOMAIN_TYPE (domain[side]) == DB_TYPE_UNKNOWN
+	  || domain[side]->collation_flag != TP_DOMAIN_COLL_NORMAL)
+	{
+	  return false;
+	}
+      domain_compare_key_of (domain[side], &key[side]);
+    }
+  if (domain_resolve_comparison (&key[0], &key[1], decided) != NO_ERROR
+      || (decided->method != DOMAIN_COMPARE_DIRECT && decided->method != DOMAIN_COMPARE_CONVERT))
+    {
+      return false;
+    }
+  for (int side = 0; side < 2; side++)
+    {
+      if (decided->conv[side] != NULL
+	  && decided->conv[side] == tp_value_find_converter ((DB_TYPE) decided->source[side], NULL,
+							     DOMAIN_CONVERT_ASSIGN))
+	{
+	  /* a pair implicit coercion refuses: the load's derivation raises its error */
+	  return false;
+	}
+      if (decided->target[side] == NULL)
+	{
+	  /* a side compared as it is: its target is its own domain */
+	  decided->target[side] = domain[side];
+	}
+    }
+  return true;
+}
+
+/*
  * stx_build_xasl_header () - Unpack XASL node header from buffer.
  *
  * return	     : buffer pointer after the unpacked XASL node header
@@ -3265,6 +3332,59 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr, MERGELIST_PROC_NOD
 
   ptr = stx_build_ls_merge_info (thread_p, ptr, &merge_list_info->ls_merge);
   merge_list_info->merge_compares = NULL;
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
+
+  /* CBRD-27583: each merge column pair's comparison from the two lists' compiled column domains; the load's derivation
+   * keeps a pair stx_decide_compare leaves (domain_add_merge_compares) */
+  if (merge_list_info->ls_merge.ls_column_cnt > 0 && merge_list_info->outer_xasl != NULL
+      && merge_list_info->inner_xasl != NULL)
+    {
+      const int n_pairs = merge_list_info->ls_merge.ls_column_cnt;
+      const DOMAIN_COMPARE_PLAN **compares =
+	(const DOMAIN_COMPARE_PLAN **) stx_alloc_struct (thread_p, sizeof (*compares) * n_pairs);
+      if (compares == NULL)
+	{
+	  goto error;
+	}
+      for (int k = 0; k < n_pairs; k++)
+	{
+	  compares[k] = NULL;
+	  const TP_DOMAIN *domain[2] = {
+	    stx_list_column_domain (merge_list_info->outer_xasl, merge_list_info->ls_merge.ls_outer_column[k]),
+	    stx_list_column_domain (merge_list_info->inner_xasl, merge_list_info->ls_merge.ls_inner_column[k])
+	  };
+	  DOMAIN_COMPARE decided;
+	  if (!stx_decide_compare (domain, &decided))
+	    {
+	      /* CBRD-27583 census (removed with the load's derivations): a pair unpack leaves to the load */
+	      er_log_debug (ARG_FILE_LINE, "CBRD-27583 left merge pair %d %d\n",
+			    domain[0] != NULL ? (int) TP_DOMAIN_TYPE (domain[0]) : -1,
+			    domain[1] != NULL ? (int) TP_DOMAIN_TYPE (domain[1]) : -1);
+	      continue;
+	    }
+	  DOMAIN_COMPARE_PLAN *plan = (DOMAIN_COMPARE_PLAN *) stx_alloc_struct (thread_p, sizeof (*plan));
+	  if (plan == NULL)
+	    {
+	      goto error;
+	    }
+	  *plan = DOMAIN_COMPARE_PLAN
+	  {
+	  };
+	  plan->fixed = decided;
+	  for (int side = 0; side < 2; side++)
+	    {
+	      plan->domain[side] = domain[side];
+	      plan->value[side] = -1;
+	      plan->temporaries[side] = -1;
+	    }
+	  plan->constant_branch = -1;
+	  compares[k] = plan;
+	}
+      merge_list_info->merge_compares = compares;
+    }
 
   return ptr;
 
@@ -3379,13 +3499,52 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	  goto exit_on_error;
 	}
 
-      /* It is initialized before execution, so initialization here is unnecessary. */
+      TP_VALUE_CONVERTER *converters =
+	(TP_VALUE_CONVERTER *) stx_alloc_struct (thread_p, sizeof (TP_VALUE_CONVERTER) * domain_cnt * 2);
+      DOMAIN_COMPARE *compares = (DOMAIN_COMPARE *) stx_alloc_struct (thread_p, sizeof (DOMAIN_COMPARE) * domain_cnt);
+      if (converters == NULL || compares == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (DOMAIN_COMPARE) * domain_cnt);
+	  goto exit_on_error;
+	}
+
       node_p->domain_info.outer.domains = all_domains;
       node_p->domain_info.inner.domains = all_domains + domain_cnt;
       node_p->domain_info.coerce_domains = all_domains + domain_cnt * 2;
 
       node_p->domain_info.outer.value_indexes = node_p->merge_info.ls_outer_column;
       node_p->domain_info.inner.value_indexes = node_p->merge_info.ls_inner_column;
+
+      node_p->domain_info.outer.converters = converters;
+      node_p->domain_info.inner.converters = converters + domain_cnt;
+      node_p->domain_info.outer.compares = compares;
+      node_p->domain_info.inner.compares = compares;
+
+      /* the join columns' decisions from the inputs' compiled column domains; a column whose domain the execution
+       * fixes leaves them to each execution (hjoin_init_domain_info) */
+      bool fixed = true;
+      for (int i = 0; i < domain_cnt && fixed; i++)
+	{
+	  all_domains[i] = stx_list_column_domain (node_p->outer.xasl, node_p->merge_info.ls_outer_column[i]);
+	  all_domains[domain_cnt + i] =
+	    stx_list_column_domain (node_p->inner.xasl, node_p->merge_info.ls_inner_column[i]);
+	  fixed = all_domains[i] != NULL && all_domains[domain_cnt + i] != NULL;
+	}
+      if (fixed)
+	{
+	  error = hjoin_decide_domains (&node_p->domain_info, domain_cnt);
+	  if (error != NO_ERROR)
+	    {
+	      stx_set_xasl_errcode (thread_p, error);
+	      goto exit_on_error;
+	    }
+	  node_p->domain_info.decided = true;
+	}
+      else
+	{
+	  /* CBRD-27583 census (removed with the load's derivations): a join each execution decides */
+	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 left hash join\n");
+	}
     }
 
   return ptr;
@@ -4506,41 +4665,22 @@ stx_build_term_compare (THREAD_ENTRY * thread_p, const COMP_EVAL_TERM * term)
       return NULL;
     }
   const REGU_VARIABLE *regu[2] = { term->lhs, term->rhs };
-  DOMAIN_COMPARE_KEY key[2];
+  const TP_DOMAIN *domain[2];
   for (int side = 0; side < 2; side++)
     {
-      const TP_DOMAIN *domain = regu[side] != NULL ? regu[side]->domain : NULL;
       /* a value pointer or a list position holds what its producer wrote, whose domain XASL generation does not look
        * up yet (D-13, step 2(c)): the load's derivation compares it */
-      if (domain == NULL || regu[side]->type == TYPE_LIST_ID || regu[side]->type == TYPE_CONSTANT
-	  || regu[side]->type == TYPE_POSITION || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
-	  || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_UNKNOWN
-	  || domain->collation_flag != TP_DOMAIN_COLL_NORMAL)
+      if (regu[side] == NULL || regu[side]->type == TYPE_LIST_ID || regu[side]->type == TYPE_CONSTANT
+	  || regu[side]->type == TYPE_POSITION)
 	{
 	  return NULL;
 	}
-      domain_compare_key_of (domain, &key[side]);
+      domain[side] = regu[side]->domain;
     }
   DOMAIN_COMPARE decided;
-  if (domain_resolve_comparison (&key[0], &key[1], &decided) != NO_ERROR
-      || (decided.method != DOMAIN_COMPARE_DIRECT && decided.method != DOMAIN_COMPARE_CONVERT))
+  if (!stx_decide_compare (domain, &decided))
     {
       return NULL;
-    }
-  for (int side = 0; side < 2; side++)
-    {
-      if (decided.conv[side] != NULL
-	  && decided.conv[side] == tp_value_find_converter ((DB_TYPE) decided.source[side], NULL,
-							    DOMAIN_CONVERT_ASSIGN))
-	{
-	  /* a pair implicit coercion refuses: the load's derivation raises its error */
-	  return NULL;
-	}
-      if (decided.target[side] == NULL)
-	{
-	  /* a side compared as it is: its target is its own domain */
-	  decided.target[side] = regu[side]->domain;
-	}
     }
   DOMAIN_COMPARE *compare = (DOMAIN_COMPARE *) stx_alloc_struct (thread_p, sizeof (*compare));
   if (compare == NULL)

@@ -18105,7 +18105,6 @@ qexec_execute_connect_by (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  qexec_replace_prior_regu_vars (thread_p, &regu_list->value, xasl);
 	  regu_list = regu_list->next;
 	}
-      /* the probe domain the hash list scan coerces to was fixed at load (domain_fix_connect_by_probe) */
     }
 
   if (xasl->spec_list->access == ACCESS_METHOD_INDEX && xasl->spec_list->indexptr)
@@ -21450,9 +21449,9 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 	      goto exit_on_error;
 	    }
 
-	  if (qexec_get_tuple_column_value (&tuple_rec, i, &val,
-					    qexec_get_node_domain (&xasl_state->vd, regu_list->value.domain,
-								   regu_list->value.plan_item)) != NO_ERROR)
+	  TP_DOMAIN *column = qexec_get_node_domain (&xasl_state->vd, regu_list->value.domain,
+						     regu_list->value.plan_item);
+	  if (qexec_get_tuple_column_value (&tuple_rec, i, &val, column) != NO_ERROR)
 	    {
 	      gbstate.state = ER_FAILED;
 	      goto exit_on_error;
@@ -21460,8 +21459,10 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 
 	  if (gbstate.input_recs > 0)
 	    {
-	      /* compare old value with current total_order is 1. Then NULLs are equal. */
-	      int c = tp_value_compare (&list_dbvals[i], &val, 1, 1);
+	      /* compare old value with current total_order is 1. Then NULLs are equal. Both are the column's values;
+	       * a column whose domain the execution fixes compares by the values' types until step 3 */
+	      int c = column == NULL || domain_is_variable (column) ? tp_value_compare (&list_dbvals[i], &val, 1, 1)
+		: domain_compare_in_domain (column, &list_dbvals[i], &val, 1, 1);
 
 	      if (c != DB_EQ)
 		{
@@ -24359,11 +24360,16 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	{
 	  int sort_list_idx = 0;
 	  bool is_same_group = true;
-	  for (sort_list_idx = 0; sort_list_idx < a_func_list->sort_list_size; sort_list_idx++)
+	  /* a function's sort keys lead its evaluation group's (the values' order) */
+	  SORT_LIST *key = a_eval_list->sort_list;
+	  for (sort_list_idx = 0; sort_list_idx < a_func_list->sort_list_size; sort_list_idx++, key = key->next)
 	    {
-	      if (tp_value_compare
-		  (&a_eval_list->current_values[sort_list_idx], &a_eval_list->temp_values[sort_list_idx], 1,
-		   0) != DB_EQ)
+	      /* a key whose domain the execution fixes compares by the values' types until step 3 */
+	      const DB_VALUE *current = &a_eval_list->current_values[sort_list_idx];
+	      const DB_VALUE *value = &a_eval_list->temp_values[sort_list_idx];
+	      if ((key->pos_descr.dom == NULL || domain_is_variable (key->pos_descr.dom)
+		   ? tp_value_compare (current, value, 1, 0)
+		   : domain_compare_in_domain (key->pos_descr.dom, current, value, 1, 0)) != DB_EQ)
 		{
 		  is_same_group = (sort_list_idx >= a_func_list->sort_prefix_size);
 		  break;
@@ -27693,7 +27699,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	}
 
       /* a bound has its term's type and an AND keeps the smaller one, so only the values know the keys: the key pair
-       * table's comparison of the two bounds */
+       * table's comparison of the two bounds, once per execution (no row) */
       cmp = domain_compare_by_type_pair (&left_bound, &right_bound, 1, 1, NULL);
       if (cmp == DB_GT)
 	{

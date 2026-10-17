@@ -224,8 +224,7 @@ static int scan_key_compare (DB_VALUE * val1, DB_VALUE * val2, int num_index_ter
 static SCAN_CODE scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * tuple);
-static HASH_METHOD check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_type,
-					 const VAL_DESCR * vd);
+static HASH_METHOD check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_type);
 
 /*
  * scan_init_iss () - initialize index skip scan structure
@@ -3925,13 +3924,11 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   /* regulator variable list for build, probe */
   llsidp->hlsid.build_regu_list = regu_list_build;
   llsidp->hlsid.probe_regu_list = regu_list_probe;
-  llsidp->hlsid.need_coerce_type = false;
-  llsidp->hlsid.key_plan = NULL;
 
   llsidp->is_read_only = is_read_only;
 
   /* check if hash list scan is possible? */
-  llsidp->hlsid.hash_list_scan_type = check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn, vd);
+  llsidp->hlsid.hash_list_scan_type = check_hash_list_scan (llsidp, &val_cnt, hash_list_scan_yn);
   if (llsidp->hlsid.hash_list_scan_type != HASH_METH_NOT_USE)
     {
       bool on_trace;
@@ -3967,7 +3964,6 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 	}
       /* alloc temp key */
       llsidp->hlsid.temp_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
-      llsidp->hlsid.temp_new_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
       if (scan_start_scan (thread_p, scan_id) != NO_ERROR)
 	{
 	  return S_ERROR;
@@ -5323,18 +5319,11 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
 #endif
       scan_free_hash_list_scan (thread_p, &llsidp->hlsid);
-      qdata_free_hscan_key_plan (thread_p, &llsidp->hlsid);
       /* free temp keys and values */
       if (llsidp->hlsid.temp_key != NULL)
 	{
 	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_key, llsidp->hlsid.temp_key->val_count);
 	  llsidp->hlsid.temp_key = NULL;
-	}
-      /* free temp new keys and values */
-      if (llsidp->hlsid.temp_new_key != NULL)
-	{
-	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_new_key, llsidp->hlsid.temp_new_key->val_count);
-	  llsidp->hlsid.temp_new_key = NULL;
 	}
       break;
 
@@ -8478,22 +8467,15 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   LLIST_SCAN_ID *llsidp;
   SCAN_CODE qp_scan;
   QFILE_TUPLE_RECORD tplrec = QFILE_TUPLE_RECORD_INITIALIZER;
-  HASH_SCAN_KEY *key, *new_key;
+  HASH_SCAN_KEY *key;
   unsigned int hash_key;
   MHT_HLS_ENTRY *entry;
   TFTID tftid;
 
   llsidp = &scan_id->s.llsid;
   key = llsidp->hlsid.temp_key;
-  new_key = llsidp->hlsid.temp_new_key;
 
   if (scan_plan_list_scan_domains (scan_id->vd, llsidp) != NO_ERROR)
-    {
-      return S_ERROR;
-    }
-  /* each build key's copy or conversion, from the domains the positions above now read */
-  if (llsidp->hlsid.need_coerce_type
-      && qdata_plan_hscan_keys (thread_p, scan_id->vd, &llsidp->hlsid, llsidp->scan_pred.regu_list) != NO_ERROR)
     {
       return S_ERROR;
     }
@@ -8511,27 +8493,14 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       scan_id->scan_stats.read_rows++;
 
-      /* build key */
+      /* build key: XASL generation put the key pair's values in the domain they hash alike in */
       if (qdata_build_hscan_key (thread_p, scan_id->vd, llsidp->hlsid.build_regu_list, key) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
-      /* create new key */
-      if (llsidp->hlsid.need_coerce_type)
-	{
-	  new_key = qdata_copy_hscan_key_without_alloc (thread_p, key, llsidp->hlsid.key_plan, new_key);
-	  if (new_key == NULL)
-	    {
-	      return S_ERROR;
-	    }
-	}
-      else
-	{
-	  new_key = key;
-	}
 
       /* make hash key */
-      hash_key = qdata_hash_scan_key (new_key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
+      hash_key = qdata_hash_scan_key (key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
 
       switch (llsidp->hlsid.hash_list_scan_type)
 	{
@@ -8867,27 +8836,25 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
  * check_hash_list_scan () - Check if hash list scan is possible
  *   return: int  1: in-memory 2: hybrid in-memory
  *   llsidp (in): list scan id pointer
- *   vd (in): the execution's value descriptor: the keys' domains in this execution
  *   node :
  *      1. count of tuple of list file > 0
  *      2. list file size check
  *      3. regu_list_build, regu_list_probe is not null
  *      4. The number of probe regu_var and build regu match
- *      5. type of regu var is not oid && vobj
+ *      5. XASL generation found a domain each key pair hashes alike in (pt_decide_hash_list_keys)
  *      6. list file from dptr is not allowed
 */
 static HASH_METHOD
-check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn, const VAL_DESCR * vd)
+check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_yn)
 {
   int build_cnt;
   regu_variable_list_node *build, *probe;
-  DB_TYPE vtype1, vtype2;
   UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
   INT64 tuple_cnt;
   UINT64 slot_array_size, entries_size, payload_size, in_mem_size, hybrid_size;
 
   assert (hash_list_scan_yn == 0 || hash_list_scan_yn == 1);
-  /* no_hash_list_scan sql hint check */
+  /* no_hash_list_scan sql hint check, or key pairs XASL generation found no domain for */
   if (hash_list_scan_yn == 0)
     {
       return HASH_METH_NOT_USE;
@@ -8912,23 +8879,6 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
 
   for (build_cnt = 0; build && probe; build_cnt++)
     {
-      /* type of regu var is not oid && vobj */
-      /* This is the case when type coercion is impossible. so use list scan */
-      /* In the list scan, Vobj is converted to oid for comparison at tp_value_compare_with_error(). */
-      /* the keys' domains now, read from the nodes: a node computed earlier in this execution holds the domain it
-       * took there (its execution domain), any other its compiled one */
-      vtype1 = TP_DOMAIN_TYPE (qexec_get_node_domain (vd, probe->value.domain, probe->value.plan_item));
-      vtype2 = TP_DOMAIN_TYPE (qexec_get_node_domain (vd, build->value.domain, build->value.plan_item));
-
-      if ((vtype1 == DB_TYPE_OBJECT && vtype2 == DB_TYPE_OID) || (vtype2 == DB_TYPE_OBJECT && vtype1 == DB_TYPE_OID)
-	  || (vtype1 == DB_TYPE_VOBJ || vtype2 == DB_TYPE_VOBJ))
-	{
-	  return HASH_METH_NOT_USE;
-	}
-      if (vtype1 != vtype2)
-	{
-	  llsidp->hlsid.need_coerce_type = true;
-	}
       build = build->next;
       probe = probe->next;
     }

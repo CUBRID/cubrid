@@ -288,13 +288,11 @@ error_exit:
       context->outer.list_id = single_context->outer.list_id;
       context->outer.input = single_context->outer.input;
       context->outer.coerce_domains = single_context->outer.coerce_domains;
-      context->outer.need_coerce_domains = single_context->outer.need_coerce_domains;
       context->outer.regu_list_pred = single_context->outer.regu_list_pred;
 
       context->inner.list_id = single_context->inner.list_id;
       context->inner.input = single_context->inner.input;
       context->inner.coerce_domains = single_context->inner.coerce_domains;
-      context->inner.need_coerce_domains = single_context->inner.need_coerce_domains;
       context->inner.regu_list_pred = single_context->inner.regu_list_pred;
 
       assert (context->list_id == nullptr);

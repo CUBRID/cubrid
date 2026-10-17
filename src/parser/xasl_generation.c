@@ -563,7 +563,7 @@ static ACCESS_SPEC_TYPE *pt_make_list_access_spec (XASL_NODE * xasl, ACCESS_METH
 						   REGU_VARIABLE_LIST attr_list_rest,
 						   REGU_VARIABLE_LIST attr_list_build,
 						   REGU_VARIABLE_LIST attr_list_probe);
-static void pt_set_hq_probe_numeric_domain (ACCESS_SPEC_TYPE * spec);
+static void pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec);
 
 static ACCESS_SPEC_TYPE *pt_make_showstmt_access_spec (PRED_EXPR * where_pred, SHOWSTMT_TYPE show_type,
 						       REGU_VARIABLE_LIST arg_list);
@@ -949,7 +949,7 @@ pt_make_connect_by_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, XASL_NO
 	{
 	  xasl->spec_list->s.list_node.hash_list_scan_yn = 0;
 	}
-      pt_set_hq_probe_numeric_domain (xasl->spec_list);
+      pt_decide_hash_list_keys (xasl->spec_list);
     }
 
   /* sepparate after CONNECT BY predicate regu list */
@@ -5463,42 +5463,6 @@ pt_make_list_access_spec (XASL_NODE * xasl, ACCESS_METHOD access, INDX_INFO * in
 }
 
 /*
- * pt_set_hq_probe_numeric_domain () - give the hash probe key of a hierarchical join the precision and scale of the
- *                                     first fixed NUMERIC list column
- *   spec(in/out): the CONNECT BY list scan spec
- *
- * The key is typed float NUMERIC when a join or an expression widened it. Its values are cast to the key domain
- * before hashing, so a float NUMERIC key would hash integer values unscaled, unlike the fixed NUMERIC build column.
- * qexec_execute_connect_by copies the list column's precision and scale into a float NUMERIC key domain at every
- * execution; the compiled key domain carries them instead, so that condition no longer holds.
- */
-static void
-pt_set_hq_probe_numeric_domain (ACCESS_SPEC_TYPE * spec)
-{
-  REGU_VARIABLE *probe = spec->s.list_node.list_regu_list_probe == NULL ? NULL
-    : &spec->s.list_node.list_regu_list_probe->value;
-  if (probe == NULL || probe->domain == NULL || TP_DOMAIN_TYPE (probe->domain) != DB_TYPE_NUMERIC
-      || probe->domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      return;
-    }
-  for (REGU_VARIABLE_LIST rest = spec->s.list_node.list_regu_list_rest; rest != NULL; rest = rest->next)
-    {
-      const TP_DOMAIN *column = rest->value.domain;
-      if (column != NULL && TP_DOMAIN_TYPE (column) == DB_TYPE_NUMERIC
-	  && column->precision != DB_DEFAULT_NUMERIC_PRECISION)
-	{
-	  TP_DOMAIN *domain = tp_domain_resolve (DB_TYPE_NUMERIC, NULL, column->precision, column->scale, NULL, 0);
-	  if (domain != NULL)
-	    {
-	      probe->domain = domain;
-	    }
-	  return;
-	}
-    }
-}
-
-/*
  * pt_make_showstmt_access_spec () - Create an initialized
  *                               ACCESS_SPEC_TYPE TARGET_SHOWSTMT structure
  *   return:
@@ -7128,6 +7092,105 @@ pt_set_operand_conversion (REGU_VARIABLE * operand, const TP_DOMAIN * target, un
   operand->original_domain = operand->domain;
   operand->domain = (TP_DOMAIN *) target;
   operand->conv_mode = conv_mode;
+}
+
+/*
+ * pt_hash_key_domain () - CBRD-27583 (D-43): the domain a hash list scan hashes a build and a probe key's values in,
+ *   so that the values the scan's predicate finds equal hash alike and none that it compares fails to hash
+ *   return: false where no domain is (another type pair, a domain the execution fixes): the scan reads the list
+ *   common(out): NULL to hash the values as they are - one type, strings of one collation (their hash is the
+ *		  collation's, trailing spaces ignored), fixed NUMERICs of one scale; else the domain both convert to
+ *
+ * Two numbers, or NUMERICs of two scales, hash in the pair's common domain (domain_resolve_hash_key, the
+ * comparison's type). A NUMERIC pair with a floating side hashes in DOUBLE: a floating NUMERIC hashes a value
+ * normalized and a fixed one its scaled digits, and a floating key can hold fixed values (a CONNECT BY PRIOR column),
+ * while numbers the comparison finds equal are one DOUBLE.
+ */
+static bool
+pt_hash_key_domain (const REGU_VARIABLE * build, const REGU_VARIABLE * probe, const TP_DOMAIN ** common)
+{
+  *common = NULL;
+  if (!pt_regu_domain_is_fixed (build) || !pt_regu_domain_is_fixed (probe))
+    {
+      return false;
+    }
+  const TP_DOMAIN *domain[2] = { build->domain, probe->domain };
+  const DB_TYPE type[2] = { TP_DOMAIN_TYPE (domain[0]), TP_DOMAIN_TYPE (domain[1]) };
+  if (TP_IS_CHAR_TYPE (type[0]) && TP_IS_CHAR_TYPE (type[1]))
+    {
+      return domain[0]->collation_id == domain[1]->collation_id;
+    }
+  if (type[0] == type[1] && type[0] != DB_TYPE_NUMERIC)
+    {
+      /* an ENUM hashes its index: two ENUM types' equal strings would not */
+      return type[0] != DB_TYPE_NULL && type[0] != DB_TYPE_VOBJ
+	&& (type[0] != DB_TYPE_ENUMERATION || tp_domain_match (domain[0], domain[1], TP_EXACT_MATCH));
+    }
+  if (!TP_IS_NUMERIC_TYPE (type[0]) || !TP_IS_NUMERIC_TYPE (type[1]))
+    {
+      return false;
+    }
+  const bool floating = domain[0]->precision == DB_DEFAULT_NUMERIC_PRECISION
+    || domain[1]->precision == DB_DEFAULT_NUMERIC_PRECISION;
+  if (type[0] == type[1] && domain[0]->scale == domain[1]->scale && !floating)
+    {
+      return true;
+    }
+  if (domain_resolve_hash_key (domain[0], domain[1], common) != NO_ERROR)
+    {
+      er_clear ();
+      return false;
+    }
+  if (TP_DOMAIN_TYPE (*common) == DB_TYPE_NUMERIC && (floating || (*common)->precision == DB_DEFAULT_NUMERIC_PRECISION))
+    {
+      *common = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+    }
+  return true;
+}
+
+/*
+ * pt_decide_hash_list_keys () - CBRD-27583 (D-43): each key pair of a hash list scan converted into the domain it
+ *   hashes in (pt_hash_key_domain), on the key regus' fetch; a pair without one turns the scan's hash off
+ *   spec(in/out): a list scan spec
+ */
+static void
+pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec)
+{
+  if (spec == NULL || spec->s.list_node.hash_list_scan_yn == 0)
+    {
+      return;
+    }
+  REGU_VARIABLE_LIST build, probe;
+  const TP_DOMAIN *common;
+  /* every pair decides before any converts: a scan whose hash goes off keeps its keys as generated */
+  for (build = spec->s.list_node.list_regu_list_build, probe = spec->s.list_node.list_regu_list_probe;
+       build != NULL && probe != NULL; build = build->next, probe = probe->next)
+    {
+      if (!pt_hash_key_domain (&build->value, &probe->value, &common)
+	  || (common != NULL && (build->value.original_domain != NULL || build->value.vfetch_to != NULL
+				 || probe->value.original_domain != NULL || probe->value.vfetch_to != NULL)))
+	{
+	  /* CBRD-27583 census (removed with the load's derivations): a hash list scan the key domains turn off */
+	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 left hash list scan %d %d\n",
+			build->value.domain != NULL ? (int) TP_DOMAIN_TYPE (build->value.domain) : -1,
+			probe->value.domain != NULL ? (int) TP_DOMAIN_TYPE (probe->value.domain) : -1);
+	  spec->s.list_node.hash_list_scan_yn = 0;
+	  return;
+	}
+    }
+  for (build = spec->s.list_node.list_regu_list_build, probe = spec->s.list_node.list_regu_list_probe;
+       build != NULL && probe != NULL; build = build->next, probe = probe->next)
+    {
+      (void) pt_hash_key_domain (&build->value, &probe->value, &common);
+      REGU_VARIABLE *const key[2] = { &build->value, &probe->value };
+      for (int side = 0; side < 2; side++)
+	{
+	  if (common != NULL && key[side]->domain != common)
+	    {
+	      pt_set_operand_conversion (key[side], common, DOMAIN_CONVERT_IMPLICIT);
+	    }
+	}
+    }
 }
 
 /*
@@ -14862,6 +14925,7 @@ pt_to_subquery_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE
   access =
     pt_make_list_access_spec (subquery_proc, ACCESS_METHOD_SEQUENTIAL, NULL, where, regu_attributes_pred,
 			      regu_attributes_rest, regu_attributes_build, regu_attributes_probe);
+  pt_decide_hash_list_keys (access);
 
   if (access && subquery_proc && (regu_attributes_pred || regu_attributes_rest || !spec->info.spec.as_attr_list))
     {

@@ -2348,6 +2348,123 @@ domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
 }
 
 int
+domain_resolve_hash_key (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common)
+{
+  const DB_TYPE first_type = TP_DOMAIN_TYPE (first);
+  const DB_TYPE second_type = TP_DOMAIN_TYPE (second);
+  DB_TYPE type = first_type;
+  if (first_type != second_type)
+    {
+      DOMAIN_COMPARE_KEY key[2];
+      domain_compare_key_of (first, &key[0]);
+      domain_compare_key_of (second, &key[1]);
+      DOMAIN_COMPARE compare;
+      if (domain_resolve_comparison (&key[0], &key[1], &compare) != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (TP_DOMAIN));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      if (compare.conv[0] != NULL || compare.conv[1] != NULL)
+	{
+	  type = compare.cmp->get_id ();
+	}
+      else if (tp_more_general_type (first_type, second_type) < 0)
+	{
+	  type = second_type;
+	}
+    }
+  if (type != first_type && type != second_type)
+    {
+      /* a string against a number or a date, which type checking casts before a hash key pair sees it */
+      *common = tp_domain_resolve_default (type);
+      return NO_ERROR;
+    }
+
+  int precision, scale;
+  if (first->precision == second->precision && first->scale == second->scale)
+    {
+      precision = second->precision;
+      scale = second->scale;
+    }
+  else if (first->precision == TP_FLOATING_PRECISION_VALUE || second->precision == TP_FLOATING_PRECISION_VALUE)
+    {
+      precision = TP_FLOATING_PRECISION_VALUE;
+      scale = 0;
+    }
+  else if (type == DB_TYPE_NUMERIC)
+    {
+      if (first->precision == DB_DEFAULT_NUMERIC_PRECISION || second->precision == DB_DEFAULT_NUMERIC_PRECISION)
+	{
+	  precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  scale = DB_DEFAULT_NUMERIC_SCALE;
+	}
+      else
+	{
+	  scale = MAX (first->scale, second->scale);
+	  precision = MAX (first->precision - first->scale, second->precision - second->scale) + scale;
+	  if (precision > DB_MAX_FIXED_NUMERIC_PRECISION)
+	    {
+	      precision = DB_DEFAULT_NUMERIC_PRECISION;
+	      scale = DB_DEFAULT_NUMERIC_SCALE;
+	    }
+	}
+    }
+  else
+    {
+      precision = MAX (first->precision, second->precision);
+      scale = 0;
+    }
+
+  if (type == first_type && precision == first->precision && scale == first->scale)
+    {
+      *common = first;
+      return NO_ERROR;
+    }
+  if (type == second_type && precision == second->precision && scale == second->scale)
+    {
+      *common = second;
+      return NO_ERROR;
+    }
+  TP_DOMAIN *copy = tp_domain_copy (type == first_type ? first : second, false);
+  if (copy == NULL)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+  copy->precision = precision;
+  copy->scale = scale;
+  *common = tp_domain_cache (copy);
+  return NO_ERROR;
+}
+
+DB_VALUE_COMPARE_RESULT
+domain_compare_in_domain (const TP_DOMAIN * domain, const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion,
+			  int total_order)
+{
+  if (DB_IS_NULL (value1))
+    {
+      return !total_order ? DB_UNK : DB_IS_NULL (value2) ? DB_EQ : DB_LT;
+    }
+  if (DB_IS_NULL (value2))
+    {
+      return total_order ? DB_GT : DB_UNK;
+    }
+  const DB_TYPE type = TP_DOMAIN_TYPE (domain) == DB_TYPE_OBJECT ? DB_TYPE_OID : TP_DOMAIN_TYPE (domain);
+#if !defined (NDEBUG)
+  const DB_VALUE *values[2] = { value1, value2 };
+  for (int i = 0; i < 2; i++)
+    {
+      /* the compiler's claim: the key's values are of its domain */
+      assert (TP_IS_CHAR_TYPE (type) ? TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (values[i]))
+	      && db_get_string_collation (values[i]) == domain->collation_id
+	      : DB_VALUE_DOMAIN_TYPE (values[i]) == type);
+    }
+#endif
+  return pr_type_from_id (type)->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, do_coercion, total_order, NULL,
+					 domain->collation_id);
+}
+
+int
 domain_compare_key_row (const DOMAIN_COMPARE_KEY * key)
 {
   const DOMAIN_TYPE_PAIR_TABLE *pairs = domain_key_pairs ();

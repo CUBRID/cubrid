@@ -3458,20 +3458,10 @@ qdata_agg_hkey_compare (aggregate_hash_key *ckey1, aggregate_hash_key *ckey2, in
 
   for (i = 0; i < ckey1->val_count; i++)
     {
-      /* a key from the scan against one read back from a partial list: two sources whose types can differ, compared
-       * by the key pair table; one type without a collation compares as it is, which is
-       * domain_compare_by_type_pair's first answer, here without its call at every probe */
-      const DB_VALUE *value1 = ckey1->values[i];
-      const DB_VALUE *value2 = ckey2->values[i];
-      const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value1);
-      if (type == DB_VALUE_DOMAIN_TYPE (value2) && !TP_TYPE_HAS_COLLATION (type))
-	{
-	  result = tp_value_compare_with_error (value1, value2, 0, 1, NULL);
-	}
-      else
-	{
-	  result = domain_compare_by_type_pair (value1, value2, 0, 1, NULL);
-	}
+      /* a key from the scan and one read back from a partial list are values of the key's one domain (the scan's key
+       * regu's, which types the partial list's column): they hash alike exactly when they compare equal */
+      assert (!domain_value_domains_differ (ckey1->values[i], ckey2->values[i]));
+      result = tp_value_compare (ckey1->values[i], ckey2->values[i], 0, 1);
       if (result != DB_EQ)
 	{
 	  *diff_pos = i;

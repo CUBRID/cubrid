@@ -301,6 +301,26 @@ void domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const 
 					  DOMAIN_COMPARE * result);
 
 /*
+ * domain_resolve_hash_key () - the domain a hash table holds the values of a pair of key columns in, so that the
+ *   values the pair's comparison finds equal hash alike: the type that comparison converts both sides to
+ *   (domain_resolve_comparison; two types it compares as they are, the more general one), with a precision and scale
+ *   that hold both columns' values (a NUMERIC's integral digits and scale, the default NUMERIC past 38 digits:
+ *   CBRD-27575)
+ *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
+ *   common(out): first or second where it has that type, precision and scale (first for two of one), else a cached
+ *		  domain
+ */
+int domain_resolve_hash_key (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common);
+
+/*
+ * domain_compare_in_domain () - two values of one domain fixed before any row (a GROUP BY or an analytic sort key's),
+ *   compared as tp_value_compare_with_error compares two values of its type: the domain's cmpval under its collation
+ *   (an OBJECT's values are OIDs on the server); a NULL is first and equal to a NULL under total_order, else DB_UNK
+ */
+DB_VALUE_COMPARE_RESULT domain_compare_in_domain (const TP_DOMAIN * domain, const DB_VALUE * value1,
+						  const DB_VALUE * value2, int do_coercion, int total_order);
+
+/*
  * An item's comparisons with the elements of a collection the row computes: one row of the type pair comparison
  * table, the item's key's, and the cell of each element's key in it.
  * domain_compare_key_row () - the row of an item's key; -1 for a key the table has no row for (a NULL key, or a
