@@ -4769,7 +4769,42 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 
   /* probe hash table */
   value = (AGGREGATE_HASH_VALUE *) mht_get (context->hash_table, (void *) key);
-  if (value == NULL)
+  if (value == NULL && !proc->g_output_first_tuple
+      && (context->slab != NULL
+	  || (context->slab =
+	      qdata_slab_create (key->val_count, proc->g_func_count, MIN (2 * tpldesc->tpl_size, 512))) != NULL))
+    {
+      AGGREGATE_HASH_KEY *new_key;
+      AGGREGATE_HASH_VALUE *new_value;
+
+      /* the group in one block of the context's slab (qdata_slab_new_group ()) */
+      rc = qdata_slab_new_group (thread_p, context->slab, key, proc->g_agg_list, tpldesc->tpl_size, &new_key,
+				 &new_value);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+      if (qfile_save_tuple (&groupby_list->type_list, tpldesc, T_NORMAL, new_value->first_tuple.tpl,
+			    tpldesc->tpl_size) != NO_ERROR)
+	{
+	  qdata_free_agg_hkey (thread_p, new_key);
+	  qdata_free_agg_hvalue (thread_p, new_value);
+	  return ER_FAILED;
+	}
+#if !defined(NDEBUG)
+      qfile_type_list_note_tuple (&groupby_list->type_list, new_value->first_tuple.tpl,
+				  groupby_list->type_list.hdr_size);
+#endif
+      qfile_slot_set_tuple_ptr_and_layout (&new_value->first_tuple, new_value->first_tuple.tpl,
+					   new_value->first_tuple.size, &groupby_list->type_list);
+      *output_tuple = false;
+      mht_put (context->hash_table, (void *) new_key, (void *) new_value);
+      context->tuple_count++;
+      context->group_count++;
+      context->hash_size += qdata_get_agg_hkey_size (new_key);
+      context->hash_size += qdata_get_agg_hvalue_size (new_value, false);
+    }
+  else if (value == NULL)
     {
       AGGREGATE_HASH_KEY *new_key;
       AGGREGATE_HASH_VALUE *new_value;
@@ -30869,6 +30904,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   proc->agg_hash_context->key_domains = NULL;
   proc->agg_hash_context->accumulator_domains = NULL;
   proc->agg_hash_context->temp_dbval_array = NULL;
+  proc->agg_hash_context->slab = NULL;
   proc->agg_hash_context->part_list_id = NULL;
   proc->agg_hash_context->sorted_part_list_id = NULL;
   proc->agg_hash_context->hash_table = NULL;
@@ -31130,6 +31166,9 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc
 
       proc->agg_hash_context->hash_table = NULL;
     }
+  /* every group is back in the slab now */
+  qdata_slab_destroy (proc->agg_hash_context->slab);
+  proc->agg_hash_context->slab = NULL;
 
   /* close scan */
   qfile_close_scan (thread_p, &proc->agg_hash_context->part_scan_id);

@@ -3179,6 +3179,7 @@ qdata_alloc_agg_hkey (cubthread::entry *thread_p, int val_cnt, bool alloc_vals)
 
   key->val_count = val_cnt;
   key->free_values = alloc_vals;
+  key->in_slab = false;
   return key;
 }
 
@@ -3194,6 +3195,15 @@ qdata_free_agg_hkey (cubthread::entry *thread_p, aggregate_hash_key *key)
 
   if (key == NULL)
     {
+      return;
+    }
+  if (key->in_slab)
+    {
+      /* its block goes with the value (qdata_free_agg_hvalue ()): the values' own memory only */
+      for (i = 0; i < key->val_count; i++)
+	{
+	  pr_clear_value (key->values[i]);
+	}
       return;
     }
 
@@ -3258,6 +3268,7 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggre
 
   value->func_count = func_cnt;
   value->batch_slot = -1;
+  value->slab = NULL;
   /* alloc DB_VALUEs */
   for (i = 0; i < func_cnt; i++)
     {
@@ -3296,6 +3307,8 @@ qdata_alloc_agg_hvalue (cubthread::entry *thread_p, int func_cnt, cubxasl::aggre
   return value;
 }
 
+static void qdata_slab_release (cubthread::entry *thread_p, aggregate_hash_value *value);
+
 /*
  * qdata_free_agg_hkey () - free hash aggregate key
  *   thread_p(in): thread
@@ -3308,6 +3321,11 @@ qdata_free_agg_hvalue (cubthread::entry *thread_p, aggregate_hash_value *value)
 
   if (value == NULL)
     {
+      return;
+    }
+  if (value->slab != NULL)
+    {
+      qdata_slab_release (thread_p, value);
       return;
     }
 
@@ -3398,6 +3416,234 @@ qdata_get_agg_hvalue_size (aggregate_hash_value *value, bool ret_delta)
   size -= old_size;
 
   return size;
+}
+
+/* ---------------------------------------------------------------------------------------- */
+/* the groups' slab (query_aggregate.hpp) */
+
+#define QDATA_SLAB_CHUNK (256 * 1024)
+
+struct agg_group_slab
+{
+  size_t block_size;
+  int n_keys;
+  int n_funcs;
+  int inline_cap;
+  size_t off_keyptrs, off_keyvals, off_value, off_accs, off_accvals, off_tuple;
+  char **chunks;
+  int n_chunks;
+  int cap_chunks;
+  char *bump;
+  char *bump_end;
+  void *free_list;		/* a freed block's first word links the next */
+};
+
+agg_group_slab *
+qdata_slab_create (int n_keys, int n_funcs, int inline_cap)
+{
+  agg_group_slab *slab = (agg_group_slab *) calloc (1, sizeof (agg_group_slab));
+  size_t off;
+
+  if (slab == NULL)
+    {
+      return NULL;
+    }
+  slab->n_keys = n_keys;
+  slab->n_funcs = n_funcs;
+  slab->inline_cap = DB_ALIGN (MAX (inline_cap, 0), MAX_ALIGNMENT);
+  off = DB_ALIGN (sizeof (aggregate_hash_key), MAX_ALIGNMENT);
+  slab->off_keyptrs = off;
+  off += DB_ALIGN (sizeof (DB_VALUE *) * n_keys, MAX_ALIGNMENT);
+  slab->off_keyvals = off;
+  off += DB_ALIGN (sizeof (DB_VALUE) * n_keys, MAX_ALIGNMENT);
+  slab->off_value = off;
+  off += DB_ALIGN (sizeof (aggregate_hash_value), MAX_ALIGNMENT);
+  slab->off_accs = off;
+  off += DB_ALIGN (sizeof (cubxasl::aggregate_accumulator) * n_funcs, MAX_ALIGNMENT);
+  slab->off_accvals = off;
+  off += DB_ALIGN (sizeof (DB_VALUE) * 2 * n_funcs, MAX_ALIGNMENT);
+  slab->off_tuple = off;
+  off += slab->inline_cap;
+  slab->block_size = DB_ALIGN (off, MAX_ALIGNMENT);
+  return slab;
+}
+
+void
+qdata_slab_destroy (agg_group_slab *slab)
+{
+  int i;
+
+  if (slab == NULL)
+    {
+      return;
+    }
+  for (i = 0; i < slab->n_chunks; i++)
+    {
+      free (slab->chunks[i]);
+    }
+  free (slab->chunks);
+  free (slab);
+}
+
+static char *
+qdata_slab_block (agg_group_slab *slab)
+{
+  char *p;
+
+  if (slab->free_list != NULL)
+    {
+      p = (char *) slab->free_list;
+      slab->free_list = * (void **) p;
+      return p;
+    }
+  if (slab->bump == NULL || slab->bump + slab->block_size > slab->bump_end)
+    {
+      size_t size = MAX ((size_t) QDATA_SLAB_CHUNK, slab->block_size);
+
+      if (slab->n_chunks == slab->cap_chunks)
+	{
+	  int cap = MAX (8, slab->cap_chunks * 2);
+	  char **chunks = (char **) realloc (slab->chunks, sizeof (char *) * cap);
+
+	  if (chunks == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char *) * cap);
+	      return NULL;
+	    }
+	  slab->chunks = chunks;
+	  slab->cap_chunks = cap;
+	}
+      slab->chunks[slab->n_chunks] = (char *) malloc (size);
+      if (slab->chunks[slab->n_chunks] == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  return NULL;
+	}
+      slab->bump = slab->chunks[slab->n_chunks++];
+      slab->bump_end = slab->bump + size;
+    }
+  p = slab->bump;
+  slab->bump += slab->block_size;
+  return p;
+}
+
+/*
+ * qdata_slab_new_group () - a new group's key (a copy of key) and value (as qdata_alloc_agg_hvalue () sets it up)
+ *			     in one block; a first tuple of tuple_size bytes fits the block or is allocated alone
+ *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY / the copy's error
+ */
+int
+qdata_slab_new_group (cubthread::entry *thread_p, agg_group_slab *slab, aggregate_hash_key *key,
+		      cubxasl::aggregate_list_node *g_agg_list, int tuple_size, aggregate_hash_key **out_key,
+		      aggregate_hash_value **out_value)
+{
+  char *b = qdata_slab_block (slab);
+  aggregate_hash_key *k;
+  aggregate_hash_value *v;
+  DB_VALUE *kv, *av;
+  cubxasl::aggregate_list_node *agg_p;
+  int i;
+
+  if (b == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  k = (aggregate_hash_key *) b;
+  k->values = (DB_VALUE **) (b + slab->off_keyptrs);
+  kv = (DB_VALUE *) (b + slab->off_keyvals);
+  k->val_count = key->val_count;
+  k->free_values = false;
+  k->in_slab = true;
+  for (i = 0; i < key->val_count; i++)
+    {
+      k->values[i] = &kv[i];
+      if (pr_clone_value (key->values[i], &kv[i]) != NO_ERROR)
+	{
+	  while (--i >= 0)
+	    {
+	      pr_clear_value (&kv[i]);
+	    }
+	  * (void **) b = slab->free_list;
+	  slab->free_list = b;
+	  return ER_FAILED;
+	}
+    }
+
+  v = (aggregate_hash_value *) (b + slab->off_value);
+  memset (v, 0, sizeof (*v));
+  v->slab = slab;
+  v->batch_slot = -1;
+  v->func_count = slab->n_funcs;
+  v->accumulators = (slab->n_funcs > 0) ? (cubxasl::aggregate_accumulator *) (b + slab->off_accs) : NULL;
+  av = (DB_VALUE *) (b + slab->off_accvals);
+  for (i = 0; i < slab->n_funcs; i++)
+    {
+      memset (&v->accumulators[i], 0, sizeof (v->accumulators[i]));
+      v->accumulators[i].value = &av[2 * i];
+      v->accumulators[i].value2 = &av[2 * i + 1];
+      db_make_null (v->accumulators[i].value);
+      db_make_null (v->accumulators[i].value2);
+      v->accumulators[i].sum_acc.is_active = false;
+      v->accumulators[i].shared_from = 0;
+    }
+  for (i = 0, agg_p = g_agg_list; agg_p != NULL && i < slab->n_funcs; agg_p = agg_p->next, i++)
+    {
+      v->accumulators[i].shared_from = agg_p->accumulator.shared_from;
+      if (agg_p->function == PT_GROUPBY_NUM)
+	{
+	  continue;
+	}
+      v->accumulators[i].curr_cnt = 0;
+      if (agg_p->function == PT_COUNT_STAR || agg_p->function == PT_COUNT)
+	{
+	  db_make_bigint (v->accumulators[i].value, 0);
+	}
+    }
+  v->tuple_count = 0;
+  v->first_tuple = QFILE_TUPLE_RECORD_INITIALIZER;
+  if (tuple_size > 0)
+    {
+      char *tpl = (tuple_size <= slab->inline_cap) ? b + slab->off_tuple
+		  : (char *) db_private_alloc (thread_p, tuple_size);
+
+      if (tpl == NULL)
+	{
+	  qdata_free_agg_hkey (thread_p, k);
+	  * (void **) b = slab->free_list;
+	  slab->free_list = b;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, tuple_size);
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      v->first_tuple.tpl = tpl;
+      v->first_tuple.size = tuple_size;
+    }
+  *out_key = k;
+  *out_value = v;
+  return NO_ERROR;
+}
+
+/* a group's block back to its slab: what its values hold of their own freed (the key's values were cleared by
+ * qdata_free_agg_hkey () before), a first tuple allocated alone freed */
+static void
+qdata_slab_release (cubthread::entry *thread_p, aggregate_hash_value *value)
+{
+  agg_group_slab *slab = value->slab;
+  char *b = (char *) value - slab->off_value;
+  int i;
+
+  for (i = 0; i < value->func_count; i++)
+    {
+      pr_clear_value (value->accumulators[i].value);
+      pr_clear_value (value->accumulators[i].value2);
+    }
+  if (value->first_tuple.tpl != NULL && value->first_tuple.tpl != b + slab->off_tuple)
+    {
+      db_private_free (thread_p, value->first_tuple.tpl);
+    }
+  value->first_tuple.tpl = NULL;
+  value->first_tuple.size = 0;
+  * (void **) b = slab->free_list;
+  slab->free_list = b;
 }
 
 /*

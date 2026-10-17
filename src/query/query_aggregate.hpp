@@ -40,6 +40,7 @@ struct db_value;
 struct mht_table;
 struct tp_domain;
 struct val_descr;
+struct agg_group_slab;
 
 namespace cubxasl
 {
@@ -56,6 +57,7 @@ namespace cubquery
     int curr_size;		/* last computed size of structure */
     int tuple_count;		/* # of tuples aggregated in structure */
     int func_count;		/* # of functions (i.e. accumulators) */
+    struct agg_group_slab *slab;	/* the slab block this group lives in (key and value in one), or NULL */
     int batch_slot;		/* the page batch GROUP BY node's cache slot that named this group last, or -1; a hint
 				 * only, checked against the slot's own value pointer (qexec_batch_gby_consume ()) */
     cubxasl::aggregate_accumulator *accumulators;	/* function accumulators */
@@ -67,6 +69,7 @@ namespace cubquery
   {
     int val_count;		/* key size */
     bool free_values;		/* true if values need to be freed */
+    bool in_slab;		/* lives in its value's slab block (aggregate_hash_value::slab) */
     db_value **values;		/* value array */
   };
 
@@ -107,6 +110,7 @@ namespace cubquery
 
     /* distinct keys the table saw (qdata_key_sketch_*): what hashing the leftovers would fold them to
      * (qexec_gby_hash_merge ()); a parallel scan's workers merge theirs into the leader's */
+    struct agg_group_slab *slab;	/* the groups' blocks (qdata_slab_new_group ()), or NULL */
     unsigned char key_sketch[QDATA_KEY_SKETCH_REGS];
     bool key_sketch_partial;	/* rows went by the table (it stopped taking them): the sketch missed some keys */
   };
@@ -179,6 +183,18 @@ int qdata_agg_hkey_eq (const void *key1, const void *key2);
 cubquery::aggregate_hash_key *qdata_copy_agg_hkey (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key);
 void qdata_load_agg_hvalue_in_agg_list (cubquery::aggregate_hash_value *value, cubxasl::aggregate_list_node *agg_list,
 					bool copy_vals);
+/* A hash GROUP BY's groups as blocks of one size, carved from large chunks: a group's key, its key values, its
+ * value, accumulators and their values, and a first tuple up to inline_cap bytes -- one allocation where the generic
+ * path makes about ten, and given back to a free list when the table lets the group go (the LRU dump), the chunks
+ * freed with the table's context (database-reference 참고: a memory context per operator, reset as a whole, and a
+ * slab of fixed-size chunks for its fixed-size objects).  The generic free functions see the block and give it back
+ * (qdata_free_agg_hentry ()). */
+struct agg_group_slab;
+struct agg_group_slab *qdata_slab_create (int n_keys, int n_funcs, int inline_cap);
+void qdata_slab_destroy (struct agg_group_slab *slab);
+int qdata_slab_new_group (cubthread::entry *thread_p, struct agg_group_slab *slab, cubquery::aggregate_hash_key *key,
+			  cubxasl::aggregate_list_node *g_agg_list, int tuple_size, cubquery::aggregate_hash_key **out_key,
+			  cubquery::aggregate_hash_value **out_value);
 /* a hash GROUP BY's distinct-key sketch: add a key, merge another sketch in, estimate the distinct keys */
 void qdata_key_sketch_add (unsigned char *regs, const cubquery::aggregate_hash_key *key);
 void qdata_key_sketch_merge (unsigned char *regs, const unsigned char *other);
