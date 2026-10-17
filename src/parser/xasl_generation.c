@@ -7824,6 +7824,39 @@ pt_reject_unaddable_operand (PARSER_CONTEXT * parser, PT_NODE * statement, FUNC_
 }
 
 /*
+ * pt_cast_unnumbered_operand () - CBRD-27583 (D-46): a SUM or AVG over an operand of no number type - a session
+ *   variable read or a bind, which type checking saw MAYBE - reads it through a cast to DOUBLE, as type checking casts
+ *   a typed argument; a collection under SUM, NULL and a type the compiler does not know keep theirs
+ *   return: NO_ERROR, or ER_FAILED out of memory
+ */
+static int
+pt_cast_unnumbered_operand (PARSER_CONTEXT * parser, PT_NODE * statement, FUNC_CODE function, REGU_VARIABLE * operand)
+{
+  if ((function != PT_SUM && function != PT_AVG) || !pt_regu_domain_is_fixed (operand))
+    {
+      return NO_ERROR;
+    }
+  const DB_TYPE type = TP_DOMAIN_TYPE (operand->domain);
+  if (TP_IS_NUMERIC_TYPE (type) || type == DB_TYPE_NULL || TP_IS_SET_TYPE (type))
+    {
+      return NO_ERROR;
+    }
+  REGU_VARIABLE *value;
+  regu_alloc (value);
+  REGU_VARIABLE *cast = value != NULL ? pt_make_regu_arith (NULL, value, NULL, T_CAST, &tp_Double_domain) : NULL;
+  if (cast == NULL)
+    {
+      PT_ERROR (parser, statement, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+						   MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+      return ER_FAILED;
+    }
+  *value = *operand;
+  cast->domain = &tp_Double_domain;
+  *operand = *cast;
+  return NO_ERROR;
+}
+
+/*
  * pt_set_interpolation_list_domain () - CBRD-27583 (4.3): the domain a MEDIAN / PERCENTILE list holds and its key
  *   sorts: the argument's where it is of the function's type (a NUMERIC column keeps its precision and scale), the
  *   function's otherwise - every value converts to the function's type before it goes into the list
@@ -7845,7 +7878,7 @@ pt_set_interpolation_list_domain (AGGREGATE_TYPE * agg)
  * pt_decide_aggregate_domains () - CBRD-27583 (4.3): a block's aggregates over their operands' domains: an operand
  *   reading a slot of values takes the domain its writer fills it with, and a function type checking left to its
  *   argument's value takes its domain and operand type from it, before any reader of its value is generated
- *   return: NO_ERROR, or ER_FAILED for a SUM or AVG over a date or time (pt_reject_unaddable_operand)
+ *   return: NO_ERROR, or ER_FAILED for a SUM or AVG over a date or time (pt_reject_unaddable_operand) or out of memory
  */
 static int
 pt_decide_aggregate_domains (PARSER_CONTEXT * parser, PT_NODE * statement, AGGREGATE_TYPE * aggregates,
@@ -7868,7 +7901,8 @@ pt_decide_aggregate_domains (PARSER_CONTEXT * parser, PT_NODE * statement, AGGRE
 	      each->value.domain = pt_reader_domain (each->value.domain, slot->dom);
 	    }
 	}
-      if (pt_reject_unaddable_operand (parser, statement, agg->function, operand, agg->accumulator.value) != NO_ERROR)
+      if (pt_reject_unaddable_operand (parser, statement, agg->function, operand, agg->accumulator.value) != NO_ERROR
+	  || pt_cast_unnumbered_operand (parser, statement, agg->function, operand) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}

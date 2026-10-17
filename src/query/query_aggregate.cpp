@@ -294,10 +294,12 @@ qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_
  * qdata_plan_aggregate_accumulator () - CBRD-27583 (4.3): an aggregate's accumulator domains, chosen at unpack from
  *   its domain and its operand's, which XASL generation decided: the ones develop's first non-NULL value gave. A SUM or
  *   AVG also gets the operand coercion of a value it adds, the converter of its first value and whether its typed
- *   accumulator takes the argument; one whose argument is typed NULL sees only NULLs and gets none, and one over a date
- *   adds as develop did, raising the addition's error at its second value. A MIN / MAX gets the converter of a new
- *   extreme into its domain, a STDDEV / VARIANCE [1] the converter of a value into DOUBLE, a MEDIAN / PERCENTILE [1]
- *   the converter of its argument's type into its domain, which every value takes.
+ *   accumulator takes the argument, the operand coercion of a DISTINCT list's second value, an AVG its division's and
+ *   a SUM the converter of its sum into its domain (4.6c); one whose argument is typed NULL sees only NULLs and gets
+ *   none, and one over a date adds as develop did, raising the addition's error at its second value. A MIN / MAX gets
+ *   the converter of a new extreme into its domain, a STDDEV / VARIANCE [1] the converter of a value into DOUBLE and
+ *   its division's operand coercion, a MEDIAN / PERCENTILE [1] the converter of its argument's type into its domain,
+ *   which every value takes.
  */
 void
 qdata_plan_aggregate_accumulator (cubxasl::aggregate_list_node *agg_p)
@@ -367,6 +369,14 @@ qdata_plan_aggregate_accumulator (cubxasl::aggregate_list_node *agg_p)
 					      : tp_value_find_converter (TP_DOMAIN_TYPE (argument), &tp_Double_domain,
 						  DOMAIN_CONVERT_IMPLICIT);
 	}
+      {
+	/* the sum of the DOUBLEs divided by the count, as an AVG's */
+	const DOMAIN_OPERAND divide[2] =
+	{
+	  {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false}, {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false}
+	};
+	domain_resolve_operand_coercion (T_DIV, divide, &acc_dom->divide_coercion);
+      }
       break;
 
     case PT_MEDIAN:
@@ -394,6 +404,7 @@ qdata_plan_aggregate_accumulator (cubxasl::aggregate_list_node *agg_p)
     {
       if (!argument_typed)
 	{
+	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 left untyped sum function=%d\n", (int) agg_p->function);
 	  break;
 	}
       const DOMAIN_OPERAND operands[2] =
@@ -424,6 +435,30 @@ qdata_plan_aggregate_accumulator (cubxasl::aggregate_list_node *agg_p)
 			    : tp_value_find_converter (TP_DOMAIN_TYPE (argument), acc_dom->value_dom,
 				DOMAIN_CONVERT_ASSIGN);
       acc_dom->accumulator_takes = SUM_ACC_IS_AGG_SUPPORTED_TYPE (TP_DOMAIN_TYPE (argument));
+      /* a DISTINCT list holds the argument's type: a number, or a collection under SUM (XASL generation casts any
+       * other, D-46) */
+      assert (agg_p->option != Q_DISTINCT
+	      || TP_DOMAIN_TYPE (qdata_aggregate_list_domain (NULL, agg_p)) == TP_DOMAIN_TYPE (argument));
+      if (!TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (argument)) && !TP_IS_SET_TYPE (TP_DOMAIN_TYPE (argument)))
+	{
+	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 unnumbered sum argument function=%d type=%d\n",
+			(int) agg_p->function, (int) TP_DOMAIN_TYPE (argument));
+	  assert (false);
+	}
+      const DOMAIN_OPERAND pair[2] = { operands[1], operands[1] };
+      domain_resolve_operand_coercion (T_ADD, pair, &acc_dom->distinct_coercion);
+      if (agg_p->function == PT_AVG)
+	{
+	  /* a number divided by DOUBLE converts nothing: a single distinct value held in the argument's type divides
+	   * as the sum in value_dom does */
+	  const DOMAIN_OPERAND divide[2] = { add[0], {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false} };
+	  domain_resolve_operand_coercion (T_DIV, divide, &acc_dom->divide_coercion);
+	}
+      else if (agg_p->domain != acc_dom->value_dom && !domain_is_variable (agg_p->domain))
+	{
+	  acc_dom->final_conv = tp_value_find_converter (TP_DOMAIN_TYPE (acc_dom->value_dom), agg_p->domain,
+				DOMAIN_CONVERT_ASSIGN);
+	}
     }
     break;
 
@@ -2336,8 +2371,6 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
     {
       TP_DOMAIN *tmp_domain_ptr = NULL;
       TP_DOMAIN *agg_domain = agg_p->domain;
-      /* a SUM / AVG over distinct values holds the first one as it is until it adds another */
-      const TP_DOMAIN *raw_domain = NULL;
 
       if (agg_p->function == PT_VARIANCE || agg_p->function == PT_STDDEV || agg_p->function == PT_VAR_POP
 	  || agg_p->function == PT_STDDEV_POP || agg_p->function == PT_VAR_SAMP || agg_p->function == PT_STDDEV_SAMP)
@@ -2510,28 +2543,8 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 		  else
 		    {
 		      /* the first distinct value is taken as it is, the second added to it and every later one to the
-		       * sum's domain, each with the operand coercion of the values' types: a SUM or an AVG plans both
-		       * from the list's column domain */
+		       * sum, with the operand coercions the node planned (distinct_coercion, operand_coercion) */
 		      const bool sum_or_avg = agg_p->function == PT_SUM || agg_p->function == PT_AVG;
-		      const TP_DOMAIN *column = list_id_p->type_list.domp[0];
-		      const TP_DOMAIN *sum_domain = agg_p->function == PT_AVG && TP_DOMAIN_TYPE (column) == DB_TYPE_NUMERIC
-						    ? column
-						    : agg_p->accumulator_domain.value_dom;
-		      DOMAIN_OPERAND_COERCION coerce_second = {}, coerce_later = {};
-		      if (sum_or_avg && sum_domain != NULL)
-			{
-			  const DOMAIN_OPERAND second[2] =
-			  {
-			    {column, TP_DOMAIN_TYPE (column), -1, false}, {column, TP_DOMAIN_TYPE (column), -1, false}
-			  };
-			  const DOMAIN_OPERAND later[2] =
-			  {
-			    {sum_domain, TP_DOMAIN_TYPE (sum_domain), -1, false},
-			    {column, TP_DOMAIN_TYPE (column), -1, false}
-			  };
-			  domain_resolve_operand_coercion (T_ADD, second, &coerce_second);
-			  domain_resolve_operand_coercion (T_ADD, later, &coerce_later);
-			}
 		      bool added = false;
 		      while (true)
 			{
@@ -2653,7 +2666,6 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 				}
 			      else
 				{
-				  raw_domain = sum_or_avg ? column : NULL;
 				  if (tmp_pr_type->setval (agg_p->accumulator.value, &dbval, true) != NO_ERROR)
 				    {
 				      assert (false);
@@ -2709,19 +2721,17 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			      else
 				{
 
+				  const cubxasl::aggregate_accumulator_domain *acc_dom = &agg_p->accumulator_domain;
+				  /* the sum in value_dom, cast to agg_p->domain at the end; an AVG over a NUMERIC keeps
+				   * the sum floating */
 				  TP_DOMAIN *domain_ptr =
 					  tmp_domain_ptr != NULL ? tmp_domain_ptr
-					  : agg_p->accumulator_domain.value_dom;
-				  /* accumulator domain should be used instead of agg_p->domain for SUM/AVG evaluation
-				   * at the end cast the result to agg_p->domain */
-				  if ((agg_p->function == PT_AVG)
-				      && (dbval.domain.general_info.type == DB_TYPE_NUMERIC))
-				    {
-				      domain_ptr = NULL;
-				    }
+					  : agg_p->function == PT_AVG && acc_dom->value_dom != NULL
+					  && TP_DOMAIN_TYPE (acc_dom->value_dom) == DB_TYPE_NUMERIC ? NULL : acc_dom->value_dom;
 
 				  /* a STDDEV / VARIANCE adds two DOUBLEs by construction */
-				  const DOMAIN_OPERAND_COERCION *coercion = added ? &coerce_later : &coerce_second;
+				  const DOMAIN_OPERAND_COERCION *coercion =
+					  added ? &acc_dom->operand_coercion : &acc_dom->distinct_coercion;
 				  error = qdata_coerce_arith_operands (T_ADD,
 								       sum_or_avg ? coercion->conv : NULL,
 								       coercion->operand_domain,
@@ -2729,7 +2739,6 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 								       agg_p->accumulator.value, &dbval,
 								       agg_p->accumulator.value, domain_ptr);
 				  added = true;
-				  raw_domain = NULL;
 				  if (error != NO_ERROR)
 				    {
 				      ASSERT_ERROR ();
@@ -2769,24 +2778,12 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	{
 	  TP_DOMAIN *double_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
-	  /* compute AVG(X) = SUM(X)/COUNT(X), with the division's operand coercion for the sum's type - a distinct string
-	   * held as it is - resolved from the sum's domain */
+	  /* compute AVG(X) = SUM(X)/COUNT(X), with the division's operand coercion the node planned */
 	  (void) pr_clear_value (&dbval);
 	  db_make_double (&dbval, agg_p->accumulator.curr_cnt);
-	  const TP_DOMAIN *sum_domain =
-		  raw_domain != NULL ? raw_domain : agg_p->accumulator_domain.value_dom;
-	  DOMAIN_OPERAND_COERCION operand_coercion = {};
-	  if (sum_domain != NULL)
-	    {
-	      const DOMAIN_OPERAND operands[2] =
-	      {
-		{sum_domain, TP_DOMAIN_TYPE (sum_domain), -1, false}, {double_domain_ptr, DB_TYPE_DOUBLE, -1, false}
-	      };
-	      domain_resolve_operand_coercion (T_DIV, operands, &operand_coercion);
-	    }
-	  error = qdata_coerce_arith_operands (T_DIV, operand_coercion.conv, operand_coercion.operand_domain,
-					       &operand_coercion.arith, agg_p->accumulator.value, &dbval, &xavgval,
-					       double_domain_ptr);
+	  const DOMAIN_OPERAND_COERCION *divide = &agg_p->accumulator_domain.divide_coercion;
+	  error = qdata_coerce_arith_operands (T_DIV, divide->conv, divide->operand_domain, &divide->arith,
+					       agg_p->accumulator.value, &dbval, &xavgval, double_domain_ptr);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -2885,10 +2882,24 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       /* Resolve the final result of aggregate function. Since the evaluation value might be changed to keep the
        * precision during the aggregate function evaluation, for example, use DOUBLE instead FLOAT, we need to cast the
        * result to the original domain. */
-      if (agg_p->function == PT_SUM && agg_domain != agg_p->accumulator_domain.value_dom)
+      const TP_DOMAIN *value_dom = agg_p->accumulator_domain.value_dom;
+      if (agg_p->function == PT_SUM && agg_domain != value_dom)
 	{
-	  /* cast value */
-	  error = db_value_coerce (agg_p->accumulator.value, agg_p->accumulator.value, agg_domain);
+	  /* exception: a SUM of an argument of no type converts by its value's type until step 3 */
+	  if (value_dom == NULL)
+	    {
+	      error = db_value_coerce (agg_p->accumulator.value, agg_p->accumulator.value, agg_domain);
+	    }
+	  else
+	    {
+	      /* the sum in value_dom - a single distinct FLOAT, held as it is, casts to the FLOAT it is - with the
+	       * converter the node planned */
+	      const TP_DOMAIN_STATUS status =
+		      tp_value_cast_with_converter (agg_p->accumulator.value, agg_p->accumulator.value, agg_domain, true,
+						    TP_DOMAIN_TYPE (value_dom), agg_p->accumulator_domain.final_conv);
+	      error = status == DOMAIN_COMPATIBLE ? NO_ERROR
+		      : tp_domain_status_er_set (status, ARG_FILE_LINE, agg_p->accumulator.value, agg_domain);
+	    }
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();

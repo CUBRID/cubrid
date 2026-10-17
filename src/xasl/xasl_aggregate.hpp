@@ -100,9 +100,16 @@ namespace cubxasl
     TP_VALUE_CONVERTER first_conv;	/* the converter of a value copied into the accumulator into value_dom: MIN /
 					 * MAX's every new extreme, SUM / AVG's first value (tp_value_cast_force);
 					 * NULL when it is of that type already */
-    DOMAIN_OPERAND_COERCION divide_coercion;	/* an analytic AVG: the operand coercion of sum / count at the
-						 * partition's end, over the sum's type - the accumulator's for a
-						 * type it takes, value_dom's or the argument's otherwise */
+    TP_VALUE_CONVERTER final_conv;	/* an aggregate SUM: the converter of the sum in value_dom into the function's
+					 * domain at the group's end (tp_value_cast_force) */
+    DOMAIN_OPERAND_COERCION distinct_coercion;	/* an aggregate SUM / AVG: the operand coercion of a DISTINCT
+						 * list's second value added to its first, which is held in the
+						 * argument's type until then (two FLOATs add as FLOAT); a later
+						 * value adds with operand_coercion */
+    DOMAIN_OPERAND_COERCION divide_coercion;	/* an AVG: the operand coercion of sum / count at the group's or
+						 * partition's end, over the sum's type - an aggregate's value_dom,
+						 * an analytic's accumulator's for a type it takes, value_dom's or
+						 * the argument's otherwise */
   };
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
