@@ -51,6 +51,12 @@ extern int css_net_send_no_block (SOCKET fd, const char *buffer, int size);
 #endif
 
 typedef void (*CSS_SERVER_TIMEOUT_FN) (void);
+/*
+ * Invoked whenever a server wait is interrupted by a signal.
+ * Returning true aborts the wait, causing the caller to raise a read/write
+ * error and begin cleanup/unwinding procedures.
+ */
+typedef bool (*CSS_ABORT_SERVER_WAIT_FN) (void);
 /* check server alive */
 typedef bool (*CSS_CHECK_SERVER_ALIVE_FN) (const char *, const char *);
 extern CSS_CHECK_SERVER_ALIVE_FN css_check_server_alive_fn;
@@ -88,6 +94,7 @@ extern const char *css_ha_mode_string (HA_MODE mode);
 
 #if !defined (SERVER_MODE)
 extern void css_register_server_timeout_fn (CSS_SERVER_TIMEOUT_FN callback_fn);
+extern void css_register_abort_server_wait_fn (CSS_ABORT_SERVER_WAIT_FN callback_fn);
 extern void css_register_check_server_alive_fn (CSS_CHECK_SERVER_ALIVE_FN callback_fn);
 #endif /* !SERVER_MODE */
 

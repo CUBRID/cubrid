@@ -218,17 +218,7 @@ main (int argc, char *argv[])
   int res = 0;
 
 #if !defined(WINDOWS)
-  signal (SIGTERM, cas_sig_handler);
-  signal (SIGINT, cas_sig_handler);
-  signal (SIGSEGV, cas_sig_handler);
-  signal (SIGABRT, cas_sig_handler);
-  signal (SIGFPE, cas_sig_handler);
-  signal (SIGILL, cas_sig_handler);
-  signal (SIGBUS, cas_sig_handler);
-  signal (SIGSYS, cas_sig_handler);
-  signal (SIGUSR1, SIG_IGN);
-  signal (SIGPIPE, SIG_IGN);
-  signal (SIGXFSZ, SIG_IGN);
+  cas_register_signal_handlers ();
 #endif /* WINDOWS */
 
   if (cgw_cas_init () < 0)
@@ -538,7 +528,11 @@ process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info, SOC
 
 	  if (cas_log_msg == NULL)
 	    {
-	      if (is_net_timed_out ())
+	      if (cas_shutdown_signo)
+		{
+		  cas_log_msg = "SHUTDOWN REQUESTED";
+		}
+	      else if (is_net_timed_out ())
 		{
 		  if (as_info->reset_flag == TRUE)
 		    {
