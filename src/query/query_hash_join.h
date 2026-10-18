@@ -310,7 +310,7 @@ typedef struct hashjoin_split_info
 /* HASHJOIN_PART_STAGING */
 typedef struct hashjoin_part_staging
 {
-  /* Last page of each partition list, kept in memory until it is full (qfile_add_tuple_to_staged_list).
+  /* Last page of each partition list, kept in memory until it is full (qfile_add_tuple_to_staged_page).
    * NULL until the partition gets a tuple. */
   PAGE_PTR *pages;
   UINT32 page_cnt;		/* number of partitions */
@@ -340,7 +340,7 @@ typedef struct hashjoin_split_writer
 {
   QFILE_LIST_ID **part_list_id;
   HASHJOIN_PART_STAGING *staging;
-  struct qmgr_temp_file *spool;	/* pages of this writer are allocated from it */
+  struct qmgr_temp_file *worker_tfile;	/* pages of this writer are allocated from it */
   // *INDENT-OFF*
   std::mutex *part_mutexes;	/* nullptr in serial split */
   // *INDENT-ON*
@@ -422,8 +422,8 @@ typedef struct hashjoin_context
 
   HASHJOIN_STATUS status;
 
-  /* The pages of outer.list_id and inner.list_id belong to HASHJOIN_MANAGER.part_spools, not to the lists. */
-  bool is_input_spooled;
+  /* The pages of outer.list_id and inner.list_id belong to HASHJOIN_MANAGER.worker_tfiles, not to the lists. */
+  bool is_input_in_worker_tfile;
 
   /* Pointer to a member of HASHJOIN_MANAGER. */
   HASHJOIN_STATS *stats;
@@ -459,8 +459,8 @@ typedef struct hashjoin_manager
   int qlist_flag;
 
   /* Temporary files the partition lists are written to, one per split worker. */
-  struct qmgr_temp_file **part_spools;
-  int part_spool_cnt;
+  struct qmgr_temp_file **worker_tfiles;
+  int worker_tfile_cnt;
 
   // *INDENT-OFF*
   parallel_query::worker_manager *px_worker_manager;
@@ -519,7 +519,7 @@ int qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_i
 /* Hash Join Execution */
 int hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 int hjoin_execute_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
-			   struct qmgr_temp_file *spool);
+			   struct qmgr_temp_file *worker_tfile);
 int hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 int hjoin_merge_qlist_into (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, QFILE_LIST_ID ** dest_list_id,
 			    QFILE_LIST_ID ** list_id);
@@ -530,21 +530,21 @@ int hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
 void hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 				    HASHJOIN_SHARED_SPLIT_INFO * shared_info);
 
-/* Hash Join Partition Spool */
-int hjoin_init_part_spools (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info,
-			    int spool_cnt);
-void hjoin_clear_part_spools (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
+/* Hash Join Worker Temporary File */
+int hjoin_init_worker_tfiles (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info,
+			      int worker_cnt);
+void hjoin_clear_worker_tfiles (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
 
 /* Hash Join Partition Staging */
 int hjoin_init_part_staging (THREAD_ENTRY * thread_p, HASHJOIN_PART_STAGING * staging, UINT32 part_cnt);
 int hjoin_flush_part_staging (THREAD_ENTRY * thread_p, HASHJOIN_PART_STAGING * staging, QFILE_LIST_ID ** part_list_id,
-			      struct qmgr_temp_file *spool);
+			      struct qmgr_temp_file *worker_tfile);
 void hjoin_clear_part_staging (HASHJOIN_PART_STAGING * staging);
 
 /* Hash Join Partition Writer */
 // *INDENT-OFF*
 int hjoin_init_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer, QFILE_LIST_ID ** part_list_id,
-			    HASHJOIN_PART_STAGING * staging, struct qmgr_temp_file *spool, UINT32 part_cnt,
+			    HASHJOIN_PART_STAGING * staging, struct qmgr_temp_file *worker_tfile, UINT32 part_cnt,
 			    std::mutex * part_mutexes);
 // *INDENT-ON*
 void hjoin_clear_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer);

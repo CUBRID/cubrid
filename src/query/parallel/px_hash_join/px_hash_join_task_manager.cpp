@@ -208,7 +208,7 @@ namespace parallel_query
 
       part_list_id = m_split_info->part_list_id;
       error = hjoin_init_split_writer (&thread_ref, &split_writer, part_list_id, &m_shared_info->staging,
-				       m_manager->part_spools[m_index], part_cnt, m_shared_info->part_mutexes);
+				       m_manager->worker_tfiles[m_index], part_cnt, m_shared_info->part_mutexes);
       if (error != NO_ERROR)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
@@ -496,8 +496,8 @@ namespace parallel_query
 
 	  context->list_id = m_shared_info->list_ids[m_index];
 
-	  assert (m_index < m_manager->part_spool_cnt);
-	  error = hjoin_execute_context (&thread_ref, m_manager, context, m_manager->part_spools[m_index]);
+	  assert (m_index < m_manager->worker_tfile_cnt);
+	  error = hjoin_execute_context (&thread_ref, m_manager, context, m_manager->worker_tfiles[m_index]);
 	  context->list_id = nullptr;
 
 	  if (thread_is_on_trace (&thread_ref))

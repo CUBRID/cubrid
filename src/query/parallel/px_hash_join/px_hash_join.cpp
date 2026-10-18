@@ -70,7 +70,7 @@ namespace parallel_query
 	  goto error_exit;
 	}
 
-      error = hjoin_init_part_spools (&thread_ref, manager, split_info, task_cnt);
+      error = hjoin_init_worker_tfiles (&thread_ref, manager, split_info, task_cnt);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -105,7 +105,7 @@ namespace parallel_query
       if (!task_manager.has_error ())
 	{
 	  error = hjoin_flush_part_staging (&thread_ref, &shared_info.staging, outer->part_list_id,
-					    manager->part_spools[0]);
+					    manager->worker_tfiles[0]);
 	}
       hjoin_clear_part_staging (&shared_info.staging);
 
@@ -158,7 +158,7 @@ namespace parallel_query
       if (!task_manager.has_error ())
 	{
 	  error = hjoin_flush_part_staging (&thread_ref, &shared_info.staging, inner->part_list_id,
-					    manager->part_spools[0]);
+					    manager->worker_tfiles[0]);
 	}
       hjoin_clear_part_staging (&shared_info.staging);
 
@@ -250,10 +250,10 @@ error_exit:
 
       task_manager.join ();
 
-      /* every context is done, so no list reads the spool pages; do not hold them while the results are merged */
+      /* every context is done, so no list reads the pages of the worker tfiles; do not hold them while the results are merged */
       if (!task_manager.has_error ())
 	{
-	  hjoin_clear_part_spools (&thread_ref, manager);
+	  hjoin_clear_worker_tfiles (&thread_ref, manager);
 	}
 
       /* merge the result list of each task, or destroy them if a task failed */

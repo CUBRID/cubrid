@@ -101,12 +101,12 @@ static int hjoin_build_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * m
 				   HASHJOIN_SPLIT_INFO * split_info);
 static int hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 			      HASHJOIN_INPUT_SPLIT_INFO * split_info, HASH_SCAN_KEY * temp_key);
-static void hjoin_detach_spooled_qlist (QFILE_LIST_ID * list_id);
+static void hjoin_detach_worker_tfile (QFILE_LIST_ID * list_id);
 static UINT32 hjoin_estimate_partition_count (INT64 min_tuple_cnt, double fill_factor);
 static int hjoin_execute_sub_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
-				       UINT32 sub_cnt, struct qmgr_temp_file *spool);
+				       UINT32 sub_cnt, struct qmgr_temp_file *worker_tfile);
 static int hjoin_resplit_qlist (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_LIST_ID ** part_list_id,
-				UINT32 part_cnt, UINT32 divisor, struct qmgr_temp_file *spool);
+				UINT32 part_cnt, UINT32 divisor, struct qmgr_temp_file *worker_tfile);
 static QFILE_TUPLE hjoin_locate_tuple_hash_key (QFILE_TUPLE_RECORD * tuple_record);
 static int hjoin_append_to_part_list (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer, UINT32 part_id,
 				      QFILE_TUPLE tuple);
@@ -351,7 +351,7 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
       current_context = &manager->contexts[context_index];
       current_context->list_id = manager->single_context.list_id;
 
-      error = hjoin_execute_context (thread_p, manager, current_context, manager->part_spools[0]);
+      error = hjoin_execute_context (thread_p, manager, current_context, manager->worker_tfiles[0]);
 
       /* the list is not the context's own: hjoin_clear_context () must not destroy it */
       current_context->list_id = NULL;
@@ -386,14 +386,14 @@ error_exit:
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   context(in/out): Hash join context containing per-partition state.
- *   spool(in): Temporary file the pages of the sub-partitions are allocated from; not used by another thread meanwhile.
+ *   worker_tfile(in): Temporary file the pages of the sub-partitions are allocated from; not used by another thread meanwhile.
  *
  * Note: The first split makes at most HASHJOIN_PART_MAX_CNT partitions, so a partition may still be larger than
  *       max_hash_list_scan_size. It is split again by the hash keys stored in its tuples.
  */
 int
 hjoin_execute_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
-		       struct qmgr_temp_file *spool)
+		       struct qmgr_temp_file *worker_tfile)
 {
   INT64 min_tuple_cnt;
   UINT32 sub_cnt;
@@ -416,7 +416,7 @@ hjoin_execute_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
     }
 
   sub_cnt = hjoin_estimate_partition_count (min_tuple_cnt, PARTITION_FILL_FACTOR);
-  return hjoin_execute_sub_contexts (thread_p, manager, context, MIN (sub_cnt, HASHJOIN_PART_MAX_CNT), spool);
+  return hjoin_execute_sub_contexts (thread_p, manager, context, MIN (sub_cnt, HASHJOIN_PART_MAX_CNT), worker_tfile);
 }
 
 /*
@@ -427,11 +427,11 @@ hjoin_execute_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
  *   manager(in): Hash join manager containing shared state.
  *   context(in/out): Hash join context containing per-partition state.
  *   sub_cnt(in): Number of sub-contexts.
- *   spool(in): Temporary file the pages of the sub-partitions are allocated from.
+ *   worker_tfile(in): Temporary file the pages of the sub-partitions are allocated from.
  */
 static int
 hjoin_execute_sub_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
-			    UINT32 sub_cnt, struct qmgr_temp_file *spool)
+			    UINT32 sub_cnt, struct qmgr_temp_file *worker_tfile)
 {
   HASHJOIN_CONTEXT *sub_contexts = NULL, *sub_context;
   QFILE_LIST_ID **sub_list_id[2] = { NULL, NULL };
@@ -475,12 +475,12 @@ hjoin_execute_sub_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 	      goto error_exit;
 	    }
 
-	  /* the pages are allocated from the spool, as for the partition lists (hjoin_init_part_spools) */
+	  /* the pages are allocated from the worker_tfile, as for the partition lists (hjoin_init_worker_tfiles) */
 	  (void) qmgr_free_list_temp_file (thread_p, manager->query_id, sub_list_id[side][sub_index]->tfile_vfid);
-	  sub_list_id[side][sub_index]->tfile_vfid = spool;
+	  sub_list_id[side][sub_index]->tfile_vfid = worker_tfile;
 	}
 
-      error = hjoin_resplit_qlist (thread_p, fetch_info->list_id, sub_list_id[side], sub_cnt, divisor, spool);
+      error = hjoin_resplit_qlist (thread_p, fetch_info->list_id, sub_list_id[side], sub_cnt, divisor, worker_tfile);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -510,7 +510,7 @@ hjoin_execute_sub_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
       sub_context->during_join_pred = context->during_join_pred;
       sub_context->after_join_pred = context->after_join_pred;
       sub_context->val_descr = context->val_descr;
-      sub_context->is_input_spooled = true;
+      sub_context->is_input_in_worker_tfile = true;
       assert (context->list_id != NULL);
       sub_context->list_id = context->list_id;
 
@@ -553,7 +553,7 @@ cleanup:
 	  if (sub_list_id[side][sub_index] != NULL)
 	    {
 	      qfile_close_list (thread_p, sub_list_id[side][sub_index]);
-	      hjoin_detach_spooled_qlist (sub_list_id[side][sub_index]);
+	      hjoin_detach_worker_tfile (sub_list_id[side][sub_index]);
 	      qfile_destroy_list (thread_p, sub_list_id[side][sub_index]);
 	      QFILE_FREE_AND_INIT_LIST_ID (sub_list_id[side][sub_index]);
 	    }
@@ -590,11 +590,11 @@ error_exit:
  *   part_list_id(in): Sub-partition lists.
  *   part_cnt(in): Number of sub-partitions.
  *   divisor(in): Number of partitions of the first split.
- *   spool(in): Temporary file the pages of the sub-partitions are allocated from.
+ *   worker_tfile(in): Temporary file the pages of the sub-partitions are allocated from.
  */
 static int
 hjoin_resplit_qlist (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_LIST_ID ** part_list_id, UINT32 part_cnt,
-		     UINT32 divisor, struct qmgr_temp_file *spool)
+		     UINT32 divisor, struct qmgr_temp_file *worker_tfile)
 {
   QFILE_LIST_SCAN_ID list_scan_id;
   QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
@@ -608,7 +608,7 @@ hjoin_resplit_qlist (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_LIS
   assert (list_id != NULL);
   assert (part_list_id != NULL);
   assert (part_cnt > 1);
-  assert (spool != NULL);
+  assert (worker_tfile != NULL);
 
   /* Prevent faults when qfile_close_scan is called */
   list_scan_id.status = S_CLOSED;
@@ -619,7 +619,7 @@ hjoin_resplit_qlist (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_LIS
       goto error_exit;
     }
 
-  error = hjoin_init_split_writer (thread_p, &split_writer, part_list_id, &staging, spool, part_cnt, NULL);
+  error = hjoin_init_split_writer (thread_p, &split_writer, part_list_id, &staging, worker_tfile, part_cnt, NULL);
   if (error != NO_ERROR)
     {
       hjoin_clear_part_staging (&staging);
@@ -659,7 +659,7 @@ hjoin_resplit_qlist (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, QFILE_LIS
 
   if (scan_code != S_ERROR && error == NO_ERROR)
     {
-      error = hjoin_flush_part_staging (thread_p, &staging, part_list_id, spool);
+      error = hjoin_flush_part_staging (thread_p, &staging, part_list_id, worker_tfile);
     }
   hjoin_clear_part_staging (&staging);
 
@@ -1227,7 +1227,7 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
     }
 
   /* after the partition lists, which only refer to them */
-  hjoin_clear_part_spools (thread_p, manager);
+  hjoin_clear_worker_tfiles (thread_p, manager);
 
   if (manager->type_list.domp != NULL)
     {
@@ -1585,8 +1585,8 @@ error_exit:
       manager->context_cnt = 0;
     }
 
-  /* no list refers to the spools now; the single join that follows needs the temporary space they hold */
-  hjoin_clear_part_spools (thread_p, manager);
+  /* no list refers to the worker tfiles now; the single join that follows needs the temporary space they hold */
+  hjoin_clear_worker_tfiles (thread_p, manager);
 
   if (thread_is_on_trace (thread_p))
     {
@@ -1895,7 +1895,7 @@ hjoin_build_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
       goto error_exit;
     }
 
-  error = hjoin_init_part_spools (thread_p, manager, split_info, 1);
+  error = hjoin_init_worker_tfiles (thread_p, manager, split_info, 1);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -1990,7 +1990,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
       goto error_exit;
     }
 
-  error = hjoin_init_split_writer (thread_p, &split_writer, part_list_id, &staging, manager->part_spools[0], part_cnt,
+  error = hjoin_init_split_writer (thread_p, &split_writer, part_list_id, &staging, manager->worker_tfiles[0], part_cnt,
 				   NULL);
   if (error != NO_ERROR)
     {
@@ -2060,7 +2060,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
   if (scan_code != S_ERROR && error == NO_ERROR)
     {
-      error = hjoin_flush_part_staging (thread_p, &staging, part_list_id, manager->part_spools[0]);
+      error = hjoin_flush_part_staging (thread_p, &staging, part_list_id, manager->worker_tfiles[0]);
     }
   hjoin_clear_part_staging (&staging);
 
@@ -2519,9 +2519,9 @@ hjoin_clear_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 	  for (part_index = 0; part_index < part_cnt; part_index++)
 	    {
 	      qfile_close_list (thread_p, outer->part_list_id[part_index]);
-	      if (manager->part_spools != NULL)
+	      if (manager->worker_tfiles != NULL)
 		{
-		  hjoin_detach_spooled_qlist (outer->part_list_id[part_index]);
+		  hjoin_detach_worker_tfile (outer->part_list_id[part_index]);
 		}
 	      qfile_destroy_list (thread_p, outer->part_list_id[part_index]);
 	      QFILE_FREE_AND_INIT_LIST_ID (outer->part_list_id[part_index]);
@@ -2542,9 +2542,9 @@ hjoin_clear_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 	  for (part_index = 0; part_index < part_cnt; part_index++)
 	    {
 	      qfile_close_list (thread_p, inner->part_list_id[part_index]);
-	      if (manager->part_spools != NULL)
+	      if (manager->worker_tfiles != NULL)
 		{
-		  hjoin_detach_spooled_qlist (inner->part_list_id[part_index]);
+		  hjoin_detach_worker_tfile (inner->part_list_id[part_index]);
 		}
 	      qfile_destroy_list (thread_p, inner->part_list_id[part_index]);
 	      QFILE_FREE_AND_INIT_LIST_ID (inner->part_list_id[part_index]);
@@ -2671,14 +2671,14 @@ hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manag
  *   writer(out): Partition writer to initialize.
  *   part_list_id(in): Partition lists to write to.
  *   staging(in): Staged last pages of the partition lists, shared by the writers.
- *   spool(in): Temporary file the pages written by this writer are allocated from.
+ *   worker_tfile(in): Temporary file the pages written by this writer are allocated from.
  *   part_cnt(in): Number of partitions.
  *   part_mutexes(in): Mutex of each partition list, or nullptr in serial split.
  */
 // *INDENT-OFF*
 int
 hjoin_init_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer, QFILE_LIST_ID ** part_list_id,
-			HASHJOIN_PART_STAGING * staging, struct qmgr_temp_file *spool, UINT32 part_cnt,
+			HASHJOIN_PART_STAGING * staging, struct qmgr_temp_file *worker_tfile, UINT32 part_cnt,
 			std::mutex * part_mutexes)
 // *INDENT-ON*
 {
@@ -2688,12 +2688,12 @@ hjoin_init_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer
   assert (writer != NULL);
   assert (part_list_id != NULL);
   assert (staging != NULL);
-  assert (spool != NULL);
+  assert (worker_tfile != NULL);
   assert (part_cnt > 1);
 
   writer->part_list_id = part_list_id;
   writer->staging = staging;
-  writer->spool = spool;
+  writer->worker_tfile = worker_tfile;
   writer->part_mutexes = part_mutexes;
   writer->part_cnt = part_cnt;
   writer->buffer_used = 0;
@@ -2901,7 +2901,7 @@ hjoin_append_to_part_list (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writ
 
   while (next_tuple != NULL)
     {
-      error = qfile_add_tuple_to_staged_list (thread_p, list_id, *staged_page, writer->spool, next_tuple);
+      error = qfile_add_tuple_to_staged_page (thread_p, list_id, *staged_page, writer->worker_tfile, next_tuple);
       if (error != NO_ERROR)
 	{
 	  break;
@@ -2923,50 +2923,50 @@ hjoin_append_to_part_list (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writ
 }
 
 /*
- * hjoin_init_part_spools() - create the temporary files the partition lists are written to
+ * hjoin_init_worker_tfiles() - create the temporary files the partition lists are written to
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
- *   manager(in/out): Hash join manager; owns the spools.
- *   split_info(in): Split information whose partition lists come to refer to the spools.
- *   spool_cnt(in): Number of split workers; each writes to its own spool.
+ *   manager(in/out): Hash join manager; owns the worker tfiles.
+ *   split_info(in): Split information whose partition lists come to refer to the worker tfiles.
+ *   worker_cnt(in): Number of split workers; each writes to its own tfile.
  *
- * Note: The pages of the partition lists are allocated from the spools, so no partition list holds a file of its own.
+ * Note: The pages of the partition lists are allocated from the worker tfiles, so no partition list holds a file of its own.
  */
 int
-hjoin_init_part_spools (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info,
-			int spool_cnt)
+hjoin_init_worker_tfiles (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info,
+			  int worker_cnt)
 {
   QFILE_LIST_ID **part_list_id;
   UINT32 part_cnt, part_index;
-  int spool_index, side;
+  int worker_index, side;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
   assert (split_info != NULL);
-  assert (spool_cnt > 0);
-  assert (manager->part_spools == NULL);
+  assert (worker_cnt > 0);
+  assert (manager->worker_tfiles == NULL);
 
-  manager->part_spools = (QMGR_TEMP_FILE **) malloc (spool_cnt * sizeof (QMGR_TEMP_FILE *));
-  if (manager->part_spools == NULL)
+  manager->worker_tfiles = (QMGR_TEMP_FILE **) malloc (worker_cnt * sizeof (QMGR_TEMP_FILE *));
+  if (manager->worker_tfiles == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, spool_cnt * sizeof (QMGR_TEMP_FILE *));
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, worker_cnt * sizeof (QMGR_TEMP_FILE *));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
 
-  for (spool_index = 0; spool_index < spool_cnt; spool_index++)
+  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
     {
-      manager->part_spools[spool_index] =
+      manager->worker_tfiles[worker_index] =
 	qmgr_create_new_temp_file (thread_p, manager->query_id, TEMP_FILE_MEMBUF_NONE);
-      if (manager->part_spools[spool_index] == NULL)
+      if (manager->worker_tfiles[worker_index] == NULL)
 	{
-	  manager->part_spool_cnt = spool_index;
-	  hjoin_clear_part_spools (thread_p, manager);
+	  manager->worker_tfile_cnt = worker_index;
+	  hjoin_clear_worker_tfiles (thread_p, manager);
 
 	  assert_release_error (er_errid () != NO_ERROR);
 	  return er_errid ();
 	}
     }
-  manager->part_spool_cnt = spool_cnt;
+  manager->worker_tfile_cnt = worker_cnt;
 
   part_cnt = manager->context_cnt;
   for (side = 0; side < 2; side++)
@@ -2979,50 +2979,50 @@ hjoin_init_part_spools (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 	  assert (VFID_ISNULL (&part_list_id[part_index]->tfile_vfid->temp_vfid));
 
 	  (void) qmgr_free_list_temp_file (thread_p, manager->query_id, part_list_id[part_index]->tfile_vfid);
-	  part_list_id[part_index]->tfile_vfid = manager->part_spools[0];
+	  part_list_id[part_index]->tfile_vfid = manager->worker_tfiles[0];
 	}
     }
 
   for (part_index = 0; part_index < part_cnt; part_index++)
     {
-      manager->contexts[part_index].is_input_spooled = true;
+      manager->contexts[part_index].is_input_in_worker_tfile = true;
     }
 
   return NO_ERROR;
 }
 
 /*
- * hjoin_clear_part_spools() - destroy the temporary files the partition lists were written to
+ * hjoin_clear_worker_tfiles() - destroy the temporary files the partition lists were written to
  *   return: None.
  *   thread_p(in): Thread entry.
  *   manager(in/out): Hash join manager.
  */
 void
-hjoin_clear_part_spools (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
+hjoin_clear_worker_tfiles (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 {
-  int spool_index;
+  int worker_index;
 
-  if (manager->part_spools == NULL)
+  if (manager->worker_tfiles == NULL)
     {
       return;
     }
 
-  for (spool_index = 0; spool_index < manager->part_spool_cnt; spool_index++)
+  for (worker_index = 0; worker_index < manager->worker_tfile_cnt; worker_index++)
     {
-      (void) qmgr_free_list_temp_file (thread_p, manager->query_id, manager->part_spools[spool_index]);
+      (void) qmgr_free_list_temp_file (thread_p, manager->query_id, manager->worker_tfiles[worker_index]);
     }
 
-  free_and_init (manager->part_spools);
-  manager->part_spool_cnt = 0;
+  free_and_init (manager->worker_tfiles);
+  manager->worker_tfile_cnt = 0;
 }
 
 /*
- * hjoin_detach_spooled_qlist() - make a partition list forget the spool, so that destroying it keeps the spool
+ * hjoin_detach_worker_tfile() - make a partition list forget the worker_tfile, so that destroying it keeps the worker_tfile
  *   return: None.
- *   list_id(in/out): Partition list whose pages belong to HASHJOIN_MANAGER.part_spools.
+ *   list_id(in/out): Partition list whose pages belong to HASHJOIN_MANAGER.worker_tfiles.
  */
 static void
-hjoin_detach_spooled_qlist (QFILE_LIST_ID * list_id)
+hjoin_detach_worker_tfile (QFILE_LIST_ID * list_id)
 {
   assert (list_id != NULL);
   assert (list_id->last_pgptr == NULL);
@@ -3066,11 +3066,11 @@ hjoin_init_part_staging (THREAD_ENTRY * thread_p, HASHJOIN_PART_STAGING * stagin
  *   thread_p(in): Thread entry.
  *   staging(in): Staged last pages.
  *   part_list_id(in): Partition lists.
- *   spool(in): One of the spools; its TDE setting is used for the pages.
+ *   worker_tfile(in): One of the worker tfiles; its TDE setting is used for the pages.
  */
 int
 hjoin_flush_part_staging (THREAD_ENTRY * thread_p, HASHJOIN_PART_STAGING * staging, QFILE_LIST_ID ** part_list_id,
-			  struct qmgr_temp_file *spool)
+			  struct qmgr_temp_file *worker_tfile)
 {
   UINT32 part_index;
   int error;
@@ -3086,7 +3086,8 @@ hjoin_flush_part_staging (THREAD_ENTRY * thread_p, HASHJOIN_PART_STAGING * stagi
 	  continue;
 	}
 
-      error = qfile_copy_to_external_file_page (thread_p, part_list_id[part_index], staging->pages[part_index], spool);
+      error =
+	qfile_copy_to_external_file_page (thread_p, part_list_id[part_index], staging->pages[part_index], worker_tfile);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -3288,9 +3289,9 @@ hjoin_clear_context (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
   if (outer->list_id != NULL)
     {
       qfile_close_list (thread_p, outer->list_id);
-      if (context->is_input_spooled)
+      if (context->is_input_in_worker_tfile)
 	{
-	  hjoin_detach_spooled_qlist (outer->list_id);
+	  hjoin_detach_worker_tfile (outer->list_id);
 	}
       qfile_destroy_list (thread_p, outer->list_id);
       QFILE_FREE_AND_INIT_LIST_ID (outer->list_id);
@@ -3299,9 +3300,9 @@ hjoin_clear_context (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
   if (inner->list_id != NULL)
     {
       qfile_close_list (thread_p, inner->list_id);
-      if (context->is_input_spooled)
+      if (context->is_input_in_worker_tfile)
 	{
-	  hjoin_detach_spooled_qlist (inner->list_id);
+	  hjoin_detach_worker_tfile (inner->list_id);
 	}
       qfile_destroy_list (thread_p, inner->list_id);
       QFILE_FREE_AND_INIT_LIST_ID (inner->list_id);
@@ -3328,9 +3329,9 @@ hjoin_destroy_qlist (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
   if (outer->list_id != NULL)
     {
       qfile_close_list (thread_p, outer->list_id);
-      if (context->is_input_spooled)
+      if (context->is_input_in_worker_tfile)
 	{
-	  hjoin_detach_spooled_qlist (outer->list_id);
+	  hjoin_detach_worker_tfile (outer->list_id);
 	}
       qfile_destroy_list (thread_p, outer->list_id);
     }
@@ -3338,9 +3339,9 @@ hjoin_destroy_qlist (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
   if (inner->list_id != NULL)
     {
       qfile_close_list (thread_p, inner->list_id);
-      if (context->is_input_spooled)
+      if (context->is_input_in_worker_tfile)
 	{
-	  hjoin_detach_spooled_qlist (inner->list_id);
+	  hjoin_detach_worker_tfile (inner->list_id);
 	}
       qfile_destroy_list (thread_p, inner->list_id);
     }
