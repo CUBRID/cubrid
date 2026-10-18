@@ -43,6 +43,15 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if !defined (SERVER_MODE)
+/* the hash map locks entries in SERVER_MODE only, so the mutex calls here must not run either */
+#define pthread_mutex_init(a, b)
+#define pthread_mutex_destroy(a)
+#define pthread_mutex_lock(a)   0
+#define pthread_mutex_trylock(a)   0
+#define pthread_mutex_unlock(a)
+#endif /* !SERVER_MODE */
+
 /* attribute of _db_serial class */
 #define SERIAL_ATTR_LIST \
   MAP_LIST_ITEM (UNIQUE_NAME) \
@@ -1428,8 +1437,13 @@ serial_initialize_cache_pool (THREAD_ENTRY * thread_p, bool load_attr_info)
       return NO_ERROR;
     }
 
-  serial_Cache_hashmap.init (serial_Cache_Ts, THREAD_TS_SERIAL_CACHE, SERIAL_CACHE_HASH_SIZE, freelist_block_size,
-			     freelist_block_count, serial_Cache_entry_descriptor);
+  if (serial_Cache_hashmap.init (serial_Cache_Ts, THREAD_TS_SERIAL_CACHE, SERIAL_CACHE_HASH_SIZE,
+				 freelist_block_size, freelist_block_count, serial_Cache_entry_descriptor) != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      serial_finalize_cache_pool ();
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
   serial_Cache_initialized = true;
 
   for (i = 0; i < sizeof (serial_Attrs_id) / sizeof (ATTR_ID); i++)

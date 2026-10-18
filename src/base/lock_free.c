@@ -1940,7 +1940,7 @@ lf_hash_init (LF_HASH_TABLE * table, LF_FREELIST * freelist, unsigned int hash_s
   table->backbuffer = (void **) malloc (sizeof (void *) * hash_size);
   if (table->backbuffer == NULL)
     {
-      free (table->buckets);
+      free_and_init (table->buckets);
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (void *) * hash_size);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
