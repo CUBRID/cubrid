@@ -3706,9 +3706,11 @@ do_cast_host_variables_to_expected_domain (DB_SESSION * session)
       db_make_null (&char_cast);
       if (tp_value_cast_preserve_domain (hv, keep_varchar ? &char_cast : hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
 	{
+	  const char *target = pt_type_enum_to_db_domain_name (pt_db_to_type_enum (TP_DOMAIN_TYPE (hv_dom)));
+	  char name[256];
 	  pr_clear_value (&char_cast);
 	  PT_ERRORmf2 (session->parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
-		       pt_type_enum_to_db_domain_name (pt_db_to_type_enum (TP_DOMAIN_TYPE (hv_dom))));
+		       pt_host_var_coerce_target (session->parser, i, typ, target, name, sizeof (name)));
 	  pt_report_to_ersys (session->parser, PT_EXECUTION);
 	  pt_reset_error (session->parser);
 	  return ER_PT_EXECUTE;

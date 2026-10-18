@@ -795,7 +795,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  er_clear ();
 	  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, fcode_get_uppercase_name (func_p->function),
-		  TP_DOMAIN_TYPE (domain) == DB_TYPE_TIME ? "DOUBLE, DATETIME, TIME" : "DOUBLE");
+		  pr_type_name (TP_DOMAIN_TYPE (domain)));
 	  goto exit;
 	}
       break;

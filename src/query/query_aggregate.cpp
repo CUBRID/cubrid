@@ -1943,7 +1943,7 @@ qdata_evaluate_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 			{
 			  error = ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2,
-				  fcode_get_uppercase_name (agg_p->function), "DOUBLE, DATETIME, TIME");
+				  fcode_get_uppercase_name (agg_p->function), pr_type_name (TP_DOMAIN_TYPE (agg_domain)));
 
 			  qdata_clear_value_array (stack_values, n_values);
 			  return error;
@@ -3913,7 +3913,7 @@ qdata_update_agg_interpolation_func_value_and_domain (const VAL_DESCR *vd, cubxa
       pr_clear_value (&converted);
       er_clear ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
-	      fcode_get_uppercase_name (agg_p->function), "DOUBLE, DATETIME, TIME");
+	      fcode_get_uppercase_name (agg_p->function), pr_type_name (TP_DOMAIN_TYPE (domain)));
       return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
     }
   pr_clear_value (dbval);

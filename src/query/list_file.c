@@ -4261,6 +4261,35 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p, SORTKEY_INFO *
   return prorated_pages + sort_key_overhead;
 }
 
+#if !defined (NDEBUG)
+/*
+ * qfile_sort_key_reads_column () - CBRD-27583 (D-64): a sort key reads its list column's values: the same type and
+ *   collation, and the same precision and scale where the disk length depends on them; an object column (a view
+ *   object) keeps its object key, as develop sorts it
+ */
+static bool
+qfile_sort_key_reads_column (const TP_DOMAIN * key, const TP_DOMAIN * column)
+{
+  const DB_TYPE key_type = TP_DOMAIN_TYPE (key);
+  const DB_TYPE column_type = TP_DOMAIN_TYPE (column);
+  if (key == column)
+    {
+      return true;
+    }
+  if (column_type == DB_TYPE_OBJECT || column_type == DB_TYPE_OID || column_type == DB_TYPE_VOBJ)
+    {
+      return key_type == DB_TYPE_OBJECT || key_type == DB_TYPE_OID || key_type == DB_TYPE_VOBJ;
+    }
+  if (key_type != column_type
+      || (TP_TYPE_HAS_COLLATION (key_type) && TP_DOMAIN_COLLATION (key) != TP_DOMAIN_COLLATION (column)))
+    {
+      return false;
+    }
+  return (key_type != DB_TYPE_NUMERIC && key_type != DB_TYPE_CHAR && key_type != DB_TYPE_BIT)
+    || (key->precision == column->precision && key->scale == column->scale);
+}
+#endif
+
 /* qfile_initialize_sort_key_info () -
  *   return:
  *   info(in):
@@ -4333,6 +4362,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 			    (int) TP_DOMAIN_TYPE (p->pos_descr.dom), (int) TP_DOMAIN_TYPE (column),
 			    p->pos_descr.dom->precision, column->precision, p->pos_descr.dom->scale, column->scale,
 			    p->pos_descr.dom->collation_id, column->collation_id, p->pos_descr.pos_no);
+	      assert (qfile_sort_key_reads_column (p->pos_descr.dom, column));
 	    }
 #endif
 	  subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();

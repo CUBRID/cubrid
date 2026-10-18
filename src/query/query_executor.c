@@ -22081,7 +22081,8 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
       if (analytic_state.key_info.error == ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN, 2,
-		  fcode_get_uppercase_name (analytic_eval->head->function), "DOUBLE, DATETIME or TIME");
+		  fcode_get_uppercase_name (analytic_eval->head->function),
+		  pr_type_name (TP_DOMAIN_TYPE (analytic_eval->head->domain)));
 	}
 
       GOTO_EXIT_ON_ERROR;

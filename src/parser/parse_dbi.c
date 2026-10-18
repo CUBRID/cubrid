@@ -1106,6 +1106,9 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 
       if (db_value)
 	{
+	  const DB_TYPE bound_type = DB_VALUE_DOMAIN_TYPE (db_value);
+	  char name[256];
+
 	  if (value->type_enum != PT_TYPE_NONE && value->type_enum != PT_TYPE_NULL && value->type_enum != PT_TYPE_MAYBE
 	      && value->type_enum != PT_TYPE_NUMERIC
 	      && value->type_enum != PT_TYPE_CHAR && value->type_enum != PT_TYPE_VARCHAR
@@ -1119,8 +1122,10 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 	      if (!hv_dom	/* must be cached before use! */
 		  || tp_value_cast (db_value, db_value, hv_dom, false) != DOMAIN_COMPATIBLE)
 		{
-		  PT_ERRORmf2 (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
-			       pt_node_to_db_domain_name (value));
+		  PT_ERRORmf2 (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
+			       "host var", pt_host_var_coerce_target (parser, value->info.host_var.index, bound_type,
+								      pt_node_to_db_domain_name (value), name,
+								      sizeof (name)));
 		  return NULL;
 		}
 
@@ -1160,7 +1165,10 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 			       != DOMAIN_COMPATIBLE)
 			{
 			  PT_ERRORmf2 (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-				       "host var", pr_type_name (expected_db_type));
+				       "host var", pt_host_var_coerce_target (parser, value->info.host_var.index,
+									      bound_type,
+									      pr_type_name (expected_db_type), name,
+									      sizeof (name)));
 			  return NULL;
 			}
 		    }
@@ -1182,7 +1190,9 @@ pt_value_to_db (PARSER_CONTEXT * parser, PT_NODE * value)
 		      || tp_value_coerce (db_value, db_value, hv_dom) != DOMAIN_COMPATIBLE)
 		    {
 		      PT_ERRORmf2 (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO,
-				   "host var", pt_node_to_db_domain_name (value));
+				   "host var", pt_host_var_coerce_target (parser, value->info.host_var.index,
+									  bound_type, pt_node_to_db_domain_name (value),
+									  name, sizeof (name)));
 		      return NULL;
 		    }
 		  value->expected_domain = hv_dom;
@@ -3082,6 +3092,27 @@ pt_value_has_domain_type (const DB_VALUE * val, const TP_DOMAIN * domain)
 }
 
 /*
+ * pt_host_var_coerce_target () - CBRD-27583 (D-63): the target a bind-time conversion error names, followed by the
+ *   host variable's user position (from 0; a derived position names the user position its value comes from) and the
+ *   type of the bound value, never the value: "short (?:0 of type character varying)"; develop's sentence stays in
+ *   front of it, and a literal's position names the target alone
+ *   return: buf, or target
+ */
+const char *
+pt_host_var_coerce_target (const PARSER_CONTEXT * parser, int index, DB_TYPE type, const char *target, char *buf,
+			   int size)
+{
+  const int position = index < parser->host_var_count ? index
+    : pt_is_derived_host_var (parser, index) ? parser->host_var_derived_from[index] : -1;
+  if (position < 0)
+    {
+      return target;
+    }
+  snprintf (buf, size, "%s (?:%d of type %s)", target, position, pr_type_name (type));
+  return buf;
+}
+
+/*
  * pt_set_derived_host_variable () - CBRD-27583: a derived position holds the value of its user position converted
  *   into the derived position's domain, the conversion a context-typed position gets (pt_set_host_variables). A value
  *   that does not convert is a bind-time error naming the derived position's type.
@@ -3095,8 +3126,11 @@ pt_set_derived_host_variable (PARSER_CONTEXT * parser, int index, const DB_VALUE
   pr_clear_value (hv);
   if (tp_value_cast_preserve_domain (source, hv, domain, false, true) != DOMAIN_COMPATIBLE)
     {
+      const char *target = pt_type_enum_to_db_domain_name (pt_db_to_type_enum (TP_DOMAIN_TYPE (domain)));
+      char name[256];
       PT_ERRORmf2 (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
-		   pt_type_enum_to_db_domain_name (pt_db_to_type_enum (TP_DOMAIN_TYPE (domain))));
+		   pt_host_var_coerce_target (parser, index, DB_VALUE_DOMAIN_TYPE (source), target, name,
+					      sizeof (name)));
       return ER_FAILED;
     }
   if (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) && TP_DOMAIN_TYPE (domain) != DB_VALUE_DOMAIN_TYPE (source)
@@ -3278,9 +3312,11 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 
 	  if (tp_value_cast_preserve_domain (val, hv, hv_dom, false, true) != DOMAIN_COMPATIBLE)
 	    {
+	      char name[256];
 	      typ = TP_DOMAIN_TYPE (hv_dom);
+	      const char *target = pt_type_enum_to_db_domain_name (pt_db_to_type_enum (typ));
 	      PT_ERRORmf2 (parser, NULL, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_CANT_COERCE_TO, "host var",
-			   pt_type_enum_to_db_domain_name (pt_db_to_type_enum (typ)));
+			   pt_host_var_coerce_target (parser, i, val_type, target, name, sizeof (name)));
 	      return;
 	    }
 	  if (TP_IS_CHAR_TYPE (hv_dom->type->id))
