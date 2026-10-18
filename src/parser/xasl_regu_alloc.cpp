@@ -291,7 +291,7 @@ regu_init (arith_list_node &arith)
   arith.rand_seed = NULL;
   arith.conv = NULL;
   arith.fails = NO_ERROR;
-  arith.decided.arith = DOMAIN_ARITH ();
+  arith.decided = {};
 
   regu_alloc (arith.value);
 }

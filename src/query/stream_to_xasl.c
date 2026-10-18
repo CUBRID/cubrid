@@ -6702,8 +6702,9 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
     }
 
   /* CBRD-27583 (d2): an addition, subtraction, multiplication or division computes over its operands' domains, which
-   * XASL generation fixed (an operand of another type converts at its regu); a variable one leaves it unresolved */
-  arith_type->decided.arith = DOMAIN_ARITH ();
+   * XASL generation fixed (an operand of another type converts at its regu); a variable one leaves it unresolved.
+   * The reset zeroes the whole union: FIELD, NULLIF, LEAST and GREATEST set compares below, any other node keeps NULL */
+  memset (&arith_type->decided, 0, sizeof (arith_type->decided));
   if ((arith_type->opcode == T_ADD || arith_type->opcode == T_SUB || arith_type->opcode == T_MUL
        || arith_type->opcode == T_DIV) && arith_type->leftptr != NULL && arith_type->rightptr != NULL
       && arith_type->leftptr->domain != NULL && TP_DOMAIN_TYPE (arith_type->leftptr->domain) != DB_TYPE_VARIABLE
@@ -6722,7 +6723,6 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 
   /* CBRD-27583: the comparisons FIELD, NULLIF, LEAST and GREATEST make, from their operands' domains (a filter or
    * function index stream's by stx_decide_stream_compare) */
-  arith_type->decided.compares = NULL;
   if (arith_type->opcode == T_FIELD || arith_type->opcode == T_NULLIF || arith_type->opcode == T_LEAST
       || arith_type->opcode == T_GREATEST)
     {

@@ -167,6 +167,10 @@ static int
 fetch_arith_binary_unresolved (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right,
 			       TP_DOMAIN * domain)
 {
+  /* stx_build_arith_type leaves only a node over an operand of no fixed domain unresolved */
+  assert (arithptr->leftptr == NULL || arithptr->rightptr == NULL || arithptr->leftptr->domain == NULL
+	  || TP_DOMAIN_TYPE (arithptr->leftptr->domain) == DB_TYPE_VARIABLE || arithptr->rightptr->domain == NULL
+	  || TP_DOMAIN_TYPE (arithptr->rightptr->domain) == DB_TYPE_VARIABLE);
   if (left == NULL || right == NULL || DB_IS_NULL (left) || DB_IS_NULL (right))
     {
       return qdata_arith_dbval (arithptr->opcode, NULL, left, right, arithptr->value, domain);
