@@ -229,6 +229,8 @@ static PT_NODE *pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 static PT_NODE *pt_fold_constants_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_fold_constants_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static void pt_chop_to_one_select_item (PARSER_CONTEXT * parser, PT_NODE * node);
+static void pt_record_host_var_bind_domain (PARSER_CONTEXT * parser, const PT_NODE * hv_node);
+static void pt_preset_hostvar_domain (PARSER_CONTEXT * parser, PT_NODE * hv_node, bool develop);
 static bool pt_is_able_to_determine_return_type (const PT_OP_TYPE op);
 static PT_NODE *pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_eval_opt_type (PARSER_CONTEXT * parser, PT_NODE * node);
@@ -4755,6 +4757,11 @@ pt_collation_rule_cast (PARSER_CONTEXT * parser, PT_NODE * hv, const int coll_id
   target->codeset = (unsigned char) codeset;
   target->collation_id = coll_id;
   target->collation_flag = TP_DOMAIN_COLL_NORMAL;
+  if (hv->expected_domain != NULL)
+    {
+      /* D-76: develop writes the domain it coerced the bind into */
+      pt_record_host_var_bind_domain (parser, hv);
+    }
   hv->expected_domain = tp_domain_cache (target);
   hv->info.host_var.rule_cast = true;
   return true;
@@ -4788,7 +4795,7 @@ pt_type_null_signature_binds (PARSER_CONTEXT * parser, PT_NODE * node)
 	{
 	  hv->type_enum = PT_TYPE_INTEGER;
 	  SET_EXPECTED_DOMAIN (hv, tp_domain_resolve_default (DB_TYPE_INTEGER));
-	  pt_preset_hostvar (parser, hv);
+	  pt_preset_hostvar_domain (parser, hv, false);
 	}
       else if (kind == PT_HOST_VAR_CLASS_NVL_ARG && parser->flag.set_host_var == 0
 	       && parser->host_var_compiled_domains != NULL && parser->host_variables != NULL
@@ -8446,7 +8453,7 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 	  if (limit->node_type == PT_HOST_VAR && limit->type_enum == PT_TYPE_MAYBE && limit->expected_domain == NULL)
 	    {
 	      SET_EXPECTED_DOMAIN (limit, tp_domain_resolve_default (DB_TYPE_BIGINT));
-	      pt_preset_hostvar (parser, limit);
+	      pt_preset_hostvar_domain (parser, limit, false);
 	    }
 	}
       break;
@@ -8907,13 +8914,28 @@ pt_wrap_with_cast_op (PARSER_CONTEXT * parser, PT_NODE * arg, PT_TYPE_ENUM new_t
 }
 
 /*
- * pt_preset_hostvar () -
- *   return: none
- *   parser(in):
- *   hv_node(in):
+ * pt_record_host_var_bind_domain () - CBRD-27583 (D-76): the expected domain develop's type checking gives a user host
+ *   variable node is its position's bind domain (host_var_bind_domains), the last one of the first translation; not a
+ *   rule cast's target. The second compilation of a signature keeps the one the first converted the value into.
  */
-void
-pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node)
+static void
+pt_record_host_var_bind_domain (PARSER_CONTEXT * parser, const PT_NODE * hv_node)
+{
+  const int index = hv_node->info.host_var.index;
+  if (index < parser->host_var_count && parser->host_var_derived_from == NULL && parser->host_var_bind_domains != NULL
+      && !hv_node->info.host_var.rule_cast && !(parser->host_var_format_classes[index] & PT_HOST_VAR_BIND_DOMAIN))
+    {
+      parser->host_var_bind_domains[index] = hv_node->expected_domain;
+    }
+}
+
+/*
+ * pt_preset_hostvar_domain () - the expected domain of a host variable node is its position's
+ *   develop(in): CBRD-27583 (D-76): a write develop makes too (pt_record_host_var_bind_domain); not the D-70 INTEGER
+ *		  or the BIGINT of a key limit
+ */
+static void
+pt_preset_hostvar_domain (PARSER_CONTEXT * parser, PT_NODE * hv_node, bool develop)
 {
   pt_hv_consistent_data_type_with_domain (parser, hv_node);
   if (parser->host_var_count <= hv_node->info.host_var.index)
@@ -8928,6 +8950,22 @@ pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node)
     {
       parser->host_var_expected_domains[hv_node->info.host_var.index] = hv_node->expected_domain;
     }
+  if (develop)
+    {
+      pt_record_host_var_bind_domain (parser, hv_node);
+    }
+}
+
+/*
+ * pt_preset_hostvar () -
+ *   return: none
+ *   parser(in):
+ *   hv_node(in):
+ */
+void
+pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node)
+{
+  pt_preset_hostvar_domain (parser, hv_node, true);
 }
 
 /* pt_set_expected_domain - set the expected tomain of a PT_NODE
@@ -22424,6 +22462,9 @@ pt_coerce_node_collation (PARSER_CONTEXT * parser, PT_NODE * node, const int col
 	  arg = node->info.function.arg_list;
 	  while (arg != NULL)
 	    {
+	      /* shortcut: CBRD-27583 (D-76) records no bind domain for the ENFORCE domain develop writes below for a bind
+	       * without one that the rule cast takes instead, so a ?:N reused in an IN collection and in a string context
+	       * can answer unlike develop; record it (pt_record_host_var_bind_domain) when such a case is met */
 	      if (arg->node_type != PT_HOST_VAR || pt_collation_rule_cast (parser, arg, coll_id, codeset))
 		{
 		  arg = arg->next;

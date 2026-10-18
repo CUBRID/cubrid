@@ -101,6 +101,8 @@ static bool db_needs_bind_signature_plan (const DB_SESSION * session);
 static int db_use_bind_signature_plan (DB_SESSION * session, int count, DB_VALUE * values);
 static bool db_compiles_at_execution (DB_SESSION * session, int stmt_ndx);
 static void db_swap_compilation (DB_SESSION * a, DB_SESSION * b);
+static int db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
+				      const PARSER_CONTEXT * bind_domains_from, DB_SESSION ** typed_p);
 static int db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * values);
 static int do_cast_host_variables_to_expected_domain (DB_SESSION * session);
 static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * statement,
@@ -446,6 +448,7 @@ db_open_local (void)
   session->kept_stmt_name = NULL;
   session->kept_trees = NULL;
   session->signature_plans = NULL;
+  session->bind_domains_from = NULL;
 
   return session;
 }
@@ -846,8 +849,8 @@ db_is_plan_statement (const PT_NODE * statement)
 /*
  * db_begin_signature_compile () - CBRD-27583: the values (or their types) of an execution are bound for the
  *   compilation of their bind type signature: the positions get their compiled domains from it
- *   (pt_typed_bind_comparison, db_set_host_var_compiled_domains) and their STR_TO_DATE format classes from the values.
- *   A compilation without values has none.
+ *   (pt_typed_bind_comparison, db_set_host_var_compiled_domains), their STR_TO_DATE format classes from the values and
+ *   their bind domains from type checking (D-76). A compilation without values has none.
  */
 static int
 db_begin_signature_compile (PARSER_CONTEXT * parser, int count, const DB_VALUE * values)
@@ -866,7 +869,17 @@ db_begin_signature_compile (PARSER_CONTEXT * parser, int count, const DB_VALUE *
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
-  return pt_set_host_var_format_classes (parser, count, values);
+  int err = pt_set_host_var_format_classes (parser, count, values);
+  if (err == NO_ERROR && parser->host_var_bind_domains == NULL)
+    {
+      parser->host_var_bind_domains = (TP_DOMAIN **) calloc (parser->host_var_count, sizeof (TP_DOMAIN *));
+      if (parser->host_var_bind_domains == NULL)
+	{
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, parser->host_var_count * sizeof (TP_DOMAIN *));
+	}
+    }
+  return err;
 }
 
 /*
@@ -1111,6 +1124,12 @@ db_compile_statement_local (DB_SESSION * session)
       srand48 (seed = (long) time (NULL));
     }
 
+  /* CBRD-27583 (D-76): the second compilation of a signature takes the bind domains the first one differs from */
+  if (session->bind_domains_from != NULL && n_markers > 0)
+    {
+      pt_take_host_var_bind_domains (parser, session->bind_domains_from);
+    }
+
   /* CBRD-27583 (D-70): the positions where a NULL cannot change the answer, before type checking types the binds */
   if (n_markers > 0)
     {
@@ -1217,6 +1236,18 @@ db_compile_statement_local (DB_SESSION * session)
   if (n_markers > 0)
     {
       db_set_host_var_compiled_domains (parser);
+    }
+
+  /* CBRD-27583 (D-76): develop's bind converts a value into another type than this compilation planned its position
+   * with: no plan; the caller compiles the text once more, the positions taking their bind domains. Only where develop
+   * compiles before it binds and this compilation makes the plan: not a compilation that consumes the values
+   * (set_host_var), an EXECUTE's that binds them first (a subsession for a prepared statement: DML, a stored function,
+   * RECOMPILE), nor a statement its execution compiles with the values (cannot_prepare, D-73). */
+  if (n_markers > 0 && parser->flag.set_host_var == 0 && !session->is_subsession_for_prepared
+      && !statement->flag.cannot_prepare && pt_host_var_bind_domains_differ (parser))
+    {
+      parser->flag.bind_domains_differ = 1;
+      return stmt_ndx + 1;
     }
 
   /*
@@ -2189,14 +2220,14 @@ db_swap_compilation (DB_SESSION * a, DB_SESSION * b)
 }
 
 /*
- * db_recompile_for_bind_signature () - CBRD-27583: compile the driver session's statement text again for the bind
- *   type signature of the values just pushed, as the SQL-level EXECUTE does (a SELECT sees the values' types only,
- *   DML the values), and make that compilation the session's current one. The session keeps the compilation it
- *   replaces when that one has a plan (signature_plans): the driver keeps its handle and every later execution of
- *   either signature runs without compiling.
+ * db_compile_signature_text () - CBRD-27583: compile the driver session's statement text in a new session for the bind
+ *   type signature of these values, as the SQL-level EXECUTE does (a SELECT sees the values' types only, DML the
+ *   values); the second compilation of a signature takes the bind domains the first one found (D-76)
+ *   typed(out): the new session, which the caller closes
  */
 static int
-db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * values)
+db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
+			   const PARSER_CONTEXT * bind_domains_from, DB_SESSION ** typed_p)
 {
   const PT_NODE *statement = session->statements[0];
   PARSER_CONTEXT *old_parser = session->parser;
@@ -2204,13 +2235,7 @@ db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * val
   char *text;
   int err = NO_ERROR;
 
-  if (statement->sql_user_text == NULL || statement->sql_user_text_len <= 0)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
-      return ER_QPROC_INVALID_XASLNODE;
-    }
-
-  typed = db_open_local ();
+  typed = *typed_p = db_open_local ();
   if (typed == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -2222,7 +2247,7 @@ db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * val
     {
       err = ER_OUT_OF_VIRTUAL_MEMORY;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, (size_t) statement->sql_user_text_len + 1);
-      goto end;
+      return err;
     }
   memcpy (text, statement->sql_user_text, statement->sql_user_text_len);
   text[statement->sql_user_text_len] = '\0';
@@ -2230,15 +2255,14 @@ db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * val
   if (typed->statements == NULL || pt_has_error (typed->parser))
     {
       pt_report_to_ersys (typed->parser, PT_SYNTAX);
-      err = er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
-      goto end;
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
     }
   (void) initialize_session (typed);
   if (typed->dimension != 1 || typed->parser->host_var_count != old_parser->host_var_count)
     {
       err = ER_IT_INCORRECT_HOSTVAR_COUNT;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 2, old_parser->host_var_count, typed->parser->host_var_count);
-      goto end;
+      return err;
     }
 
   typed->include_oid = session->include_oid;
@@ -2252,7 +2276,7 @@ db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * val
   err = db_begin_signature_compile (typed->parser, count, values);
   if (err != NO_ERROR)
     {
-      goto end;
+      return err;
     }
   if (pt_node_to_cmd_type (typed->statements[0]) == CUBRID_STMT_SELECT)
     {
@@ -2265,12 +2289,43 @@ db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * val
       typed->parser->flag.set_host_var = 0;
       db_untype_null_host_variables (typed->parser);
     }
+  typed->bind_domains_from = bind_domains_from;
   err = db_compile_statement_local (typed);
-  if (err < 0)
+  typed->bind_domains_from = NULL;
+  return err < 0 ? err : NO_ERROR;
+}
+
+/*
+ * db_recompile_for_bind_signature () - CBRD-27583: compile the driver session's statement text again for the bind
+ *   type signature of the values just pushed (db_compile_signature_text; D-76: once more when develop's bind converts
+ *   a value into another type than the compilation planned it with), and make that compilation the session's current
+ *   one. The session keeps the compilation it replaces when that one has a plan (signature_plans): the driver keeps
+ *   its handle and every later execution of either signature runs without compiling.
+ */
+static int
+db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * values)
+{
+  const PT_NODE *statement = session->statements[0];
+  DB_SESSION *typed = NULL;
+  int err = NO_ERROR;
+
+  if (statement->sql_user_text == NULL || statement->sql_user_text_len <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      return ER_QPROC_INVALID_XASLNODE;
+    }
+
+  err = db_compile_signature_text (session, count, values, NULL, &typed);
+  if (err == NO_ERROR && typed->parser->flag.bind_domains_differ)
+    {
+      DB_SESSION *first = typed;
+      err = db_compile_signature_text (session, count, values, first->parser, &typed);
+      db_close_session_local (first);
+    }
+  if (err != NO_ERROR)
     {
       goto end;
     }
-  err = NO_ERROR;
 
   pt_set_host_variables (typed->parser, count, values);
   if (typed->parser->flag.set_host_var == 0 && pt_has_error (typed->parser))
@@ -4249,10 +4304,12 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   int err = NO_ERROR;
   int idx = 0;
   DB_SESSION *new_session = NULL;
+  DB_SESSION *first = NULL;
   bool is_bind_candidate = false;
   assert (statement->info.execute.query->node_type == PT_VALUE);
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
+compile_text:
   new_session = db_open_buffer_local ((char *) statement->info.execute.query->info.value.data_value.str->bytes);
   if (new_session == NULL)
     {
@@ -4261,6 +4318,10 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
     }
 
   new_session->is_subsession_for_prepared = true;
+  /* CBRD-27583 (D-76): the second compilation of this signature, when develop's bind converts a value of the first one
+   * into another type than it planned the position with (the compile-first SELECT); the first one stays among the
+   * subsessions */
+  new_session->bind_domains_from = first != NULL ? first->parser : NULL;
 
   /* add the new session to the subsessions list */
   if (session->next == NULL)
@@ -4342,6 +4403,11 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
 	{
 	  assert (er_errid () != NO_ERROR);
 	  return er_errid ();
+	}
+      if (new_session->parser->flag.bind_domains_differ)
+	{
+	  first = new_session;
+	  goto compile_text;
 	}
 
       /* set host variable values in new session */

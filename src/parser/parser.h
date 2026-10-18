@@ -169,6 +169,8 @@ extern "C"
   extern void pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values);
   extern bool pt_value_has_domain_type (const DB_VALUE * val, const TP_DOMAIN * domain);
   extern bool pt_host_vars_match_signature (const PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
+  extern bool pt_host_var_bind_domains_differ (const PARSER_CONTEXT * parser);
+  extern void pt_take_host_var_bind_domains (PARSER_CONTEXT * parser, const PARSER_CONTEXT * first);
   extern int pt_value_format_class (const DB_VALUE * val);
   extern DB_BIGINT pt_value_elt_index (const DB_VALUE * val);
   extern DB_BIGINT pt_elt_index_signature (int format_class, DB_BIGINT elt_index);

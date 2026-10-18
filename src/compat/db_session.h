@@ -49,6 +49,8 @@ struct db_session
   DB_SESSION *signature_plans;	/* CBRD-27583: a driver session's compilations of its statement for the other bind
 				 * type signatures it executed, linked through their `next`; a push makes the one
 				 * of its values' signature current (db_push_values) */
+  const PARSER_CONTEXT *bind_domains_from;	/* CBRD-27583 (D-76): in the second compilation of a bind type
+						 * signature, the first one, whose bind domains it takes when it compiles */
 };
 
 #endif /* _DB_SESSION_H_ */

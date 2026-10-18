@@ -559,6 +559,7 @@ struct trace_json_t;
 	free_and_init(parser_->host_var_format_classes); \
 	free_and_init(parser_->host_var_elt_indexes); \
 	free_and_init(parser_->host_var_derived_from); \
+	free_and_init(parser_->host_var_bind_domains); \
 	parser_->host_var_derived_count = 0;} while (0)
 
 /* CBRD-27583: the auto-parameterized literals among the positions after the user's (the rest are derived positions) */
@@ -582,8 +583,11 @@ struct trace_json_t;
 #define PT_HOST_VAR_CLASS_NVL_ARG 0xc00
 #define PT_HOST_VAR_CLASS(c_) ((c_) & 0xc00)
 #define PT_HOST_VAR_NULL_MATCHES 0x1000
+/* CBRD-27583 (D-76): a position that took its bind domain (host_var_bind_domains): the client converts its value into it
+ * as develop's bind does, and the compilation planned it so (pt_take_host_var_bind_domains) */
+#define PT_HOST_VAR_BIND_DOMAIN 0x2000
 /* and above them the number of the ELT's branches: an index that picks none of them shares one signature */
-#define PT_HOST_VAR_ELT_BRANCHES_SHIFT 13
+#define PT_HOST_VAR_ELT_BRANCHES_SHIFT 14
 #define PT_HOST_VAR_ELT_UNKNOWN DB_BIGINT_MIN
 #define PT_HOST_VAR_ELT_NULL (DB_BIGINT_MIN + 1)
 #define PT_HOST_VAR_ELT_INVALID (DB_BIGINT_MIN + 2)
@@ -3979,6 +3983,11 @@ struct parser_context
   int *host_var_derived_from;	/* CBRD-27583: [host_var_count + auto_param_count] once a compilation of a bind type
 				 * signature assigned its positions (pt_assign_host_var_positions): for a derived position
 				 * the user position whose value the client converts into it, else -1 */
+  TP_DOMAIN **host_var_bind_domains;	/* CBRD-27583 (D-76): [host_var_count] in the compilation of a bind type
+					 * signature, a position's bind domain: the last expected domain the first
+					 * translation's type checking gave a node of it (develop's pt_preset_hostvar
+					 * writes, not a rule cast's or the D-70 INTEGER), which develop casts the bound
+					 * value into; NULL for none */
   EXECUTION_STATE_VALUES execution_values;	/* values kept across the execution of statements during a client
 						 * session. */
   int host_var_count;		/* number of input host variables */
@@ -4066,6 +4075,9 @@ struct parser_context
     unsigned bind_signature_changed:1;	/* CBRD-27583: a value pushed into a value-typed position has another type
 					 * than the plan was compiled for: the statement needs the plan of the new
 					 * signature */
+    unsigned bind_domains_differ:1;	/* CBRD-27583 (D-76): this compilation of a bind type signature planned a
+					 * position with another type than develop's bind converts its value into: it
+					 * made no plan, the text compiles again (pt_take_host_var_bind_domains) */
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
     unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
   } flag;

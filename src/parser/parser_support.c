@@ -5209,8 +5209,12 @@ pt_check_null_takes_plan (PARSER_CONTEXT * parser, PT_NODE * node, bool assign)
 	{
 	  continue;
 	}
+      /* D-76: a NULL the client converts into the position's bind domain is a NULL of it */
+      const TP_DOMAIN *bind = parser->host_var_bind_domains != NULL ? parser->host_var_bind_domains[user] : NULL;
+      const TP_DOMAIN *null = bind != NULL && TP_DOMAIN_TYPE (bind) != DB_TYPE_UNKNOWN
+	&& TP_DOMAIN_TYPE (bind) != DB_TYPE_ENUMERATION ? bind : &tp_Null_domain;
       const TP_DOMAIN *with = pt_nvl_node_domain (parser, node, j, pt_host_var_position_domain (parser, index));
-      const TP_DOMAIN *without = pt_nvl_node_domain (parser, node, j, &tp_Null_domain);
+      const TP_DOMAIN *without = pt_nvl_node_domain (parser, node, j, null);
       const bool holds = with != NULL && without != NULL && tp_domain_match (with, without, TP_EXACT_MATCH);
       if (!holds)
 	{
@@ -5302,17 +5306,20 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
 #if !defined (NDEBUG)
       walk->checked[i] = parser->host_var_expected_domains[i];
 #endif
-      parser->host_var_expected_domains[i] = own != NULL ? own : tp_domain_resolve_default (DB_TYPE_UNKNOWN);
+      /* D-76: a position that took its bind domain is of it, its value converted into it */
+      TP_DOMAIN *domain = parser->host_var_format_classes != NULL
+	&& (parser->host_var_format_classes[i] & PT_HOST_VAR_BIND_DOMAIN) ? parser->host_var_bind_domains[i] : own;
+      parser->host_var_expected_domains[i] = domain != NULL ? domain : tp_domain_resolve_default (DB_TYPE_UNKNOWN);
       if (parser->host_var_compiled_domains != NULL)
 	{
 	  parser->host_var_compiled_domains[i] = NULL;
-	  if (own == NULL || pt_host_var_is_leave_typed (own))
+	  if (!pt_host_var_is_context_typed (domain) || pt_host_var_is_leave_typed (domain))
 	    {
 	      parser->host_var_compiled_domains[i] = pt_host_var_value_domain (parser, i);
 	    }
-	  else if (pt_host_var_is_char_typed (own))
+	  else if (pt_host_var_is_char_typed (domain))
 	    {
-	      parser->host_var_compiled_domains[i] = pt_host_var_sent_domain (parser, i, own);
+	      parser->host_var_compiled_domains[i] = pt_host_var_sent_domain (parser, i, domain);
 	    }
 	}
     }
@@ -5562,7 +5569,8 @@ pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
 			   pt_assign_host_var_positions_post, &walk);
 
 #if !defined (NDEBUG)
-  /* a typed position all of whose nodes need one domain has the domain type checking gave it */
+  /* a typed position all of whose nodes need one domain has the domain type checking gave it (a value-typed first node
+   * and a context of its value's domain: the plan's) */
   for (int i = 0; walk.assign && walk.error == NO_ERROR && i < parser->host_var_count; i++)
     {
       if (!walk.seen[i])
@@ -5579,6 +5587,7 @@ pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
       assert (derived || !typed
 	      || (pt_host_var_is_context_typed (walk.checked[i])
 		  ? tp_domain_match (walk.checked[i], parser->host_var_expected_domains[i], TP_EXACT_MATCH)
+		  || tp_domain_match (walk.checked[i], pt_host_var_position_domain (parser, i), TP_EXACT_MATCH)
 		  : !pt_host_var_is_context_typed (parser->host_var_expected_domains[i])));
     }
   free (walk.checked);

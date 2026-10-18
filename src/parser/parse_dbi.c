@@ -3223,6 +3223,11 @@ pt_host_var_matches_compiled (const PARSER_CONTEXT * parser, int index, const DB
       return true;
     }
   const TP_DOMAIN *compiled = parser->host_var_compiled_domains[index];
+  if (DB_IS_NULL (val) && (format_class & PT_HOST_VAR_BIND_DOMAIN))
+    {
+      /* D-76: the client converts a NULL into a NULL of the bind domain the position took */
+      return TP_DOMAIN_TYPE (compiled) == TP_DOMAIN_TYPE (parser->host_var_bind_domains[index]);
+    }
   const bool leave = pt_host_var_is_leave_typed (parser->host_var_expected_domains[index]);
   if (pt_host_var_is_char_typed (parser->host_var_expected_domains[index]))
     {
@@ -3398,6 +3403,94 @@ pt_host_vars_match_signature (const PARSER_CONTEXT * parser, int count, const DB
 	}
     }
   return true;
+}
+
+/*
+ * pt_host_var_bind_domain_differs () - CBRD-27583 (D-76): whether develop's bind converts the value of a user position
+ *   into another type than this compilation of its signature planned the position with: develop casts the value into
+ *   the position's bind domain (host_var_bind_domains; tp_value_cast_preserve_domain in pt_set_host_variables) and
+ *   every use reads it converted. A collation-enforcing domain types only a NULL (a string takes its collation), a CHAR
+ *   keeps a VARCHAR, an ENUM converts nothing; a position that took its bind domain, or that holds only whether its
+ *   value is NULL (AGNOSTIC), does not differ.
+ */
+static bool
+pt_host_var_bind_domain_differs (const PARSER_CONTEXT * parser, int index)
+{
+  const TP_DOMAIN *bind = parser->host_var_bind_domains[index];
+  const int format_class = parser->host_var_format_classes[index];
+  if (bind == NULL || TP_DOMAIN_TYPE (bind) == DB_TYPE_UNKNOWN || TP_DOMAIN_TYPE (bind) == DB_TYPE_NULL
+      || TP_DOMAIN_TYPE (bind) == DB_TYPE_ENUMERATION || (format_class & PT_HOST_VAR_BIND_DOMAIN)
+      || PT_HOST_VAR_CLASS (format_class) == PT_HOST_VAR_CLASS_AGNOSTIC)
+    {
+      return false;
+    }
+  /* the value's NULL-ness is the bound value's: a NULL's host variable can hold a stand-in's type (D-70) */
+  const bool null = PT_HOST_VAR_FORMAT_CLASS (format_class) == PT_HOST_VAR_FORMAT_NULL;
+  const DB_TYPE type = null ? DB_TYPE_NULL : DB_VALUE_DOMAIN_TYPE (&parser->host_variables[index]);
+  const DB_TYPE converted = (bind->collation_flag == TP_DOMAIN_COLL_ENFORCE && !null)
+    || (TP_DOMAIN_TYPE (bind) == DB_TYPE_CHAR && type == DB_TYPE_VARCHAR) ? type : TP_DOMAIN_TYPE (bind);
+  const TP_DOMAIN *planned = pt_host_var_position_domain ((PARSER_CONTEXT *) parser, index);
+  return converted != (planned != NULL ? TP_DOMAIN_TYPE (planned) : DB_TYPE_NULL);
+}
+
+/*
+ * pt_host_var_bind_domains_differ () - CBRD-27583 (D-76): whether a user position of this compilation of a bind type
+ *   signature differs (pt_host_var_bind_domain_differs): the statement compiles once more, its positions taking their
+ *   bind domains (pt_take_host_var_bind_domains); that compilation differs at no position
+ */
+bool
+pt_host_var_bind_domains_differ (const PARSER_CONTEXT * parser)
+{
+  bool differs = false, took = false;
+  for (int i = 0; parser->host_var_bind_domains != NULL && i < parser->host_var_count; i++)
+    {
+      took = took || (parser->host_var_format_classes[i] & PT_HOST_VAR_BIND_DOMAIN);
+      if (!pt_host_var_bind_domain_differs (parser, i))
+	{
+	  continue;
+	}
+      differs = true;
+#if !defined (NDEBUG)
+      {
+	/* CBRD-27583 census (removed at S3-14): a position develop's bind converts into another type */
+	const TP_DOMAIN *planned = pt_host_var_position_domain ((PARSER_CONTEXT *) parser, i);
+	er_log_debug (ARG_FILE_LINE, "CBRD-27583 develop domain differs: %d %d %d: %.300s\n", i,
+		      (int) TP_DOMAIN_TYPE (parser->host_var_bind_domains[i]),
+		      planned != NULL ? (int) TP_DOMAIN_TYPE (planned) : (int) DB_TYPE_NULL,
+		      parser->original_buffer != NULL ? parser->original_buffer : "");
+      }
+#endif
+    }
+  assert (!took || !differs);
+  return differs && !took;
+}
+
+/*
+ * pt_take_host_var_bind_domains () - CBRD-27583 (D-76): in the second compilation of a bind type signature, every
+ *   position keeps the bind domain the first compilation found, and a position where it differs
+ *   (pt_host_var_bind_domain_differs) takes it (PT_HOST_VAR_BIND_DOMAIN): a NULL bound there becomes a NULL of it, as
+ *   develop's bind makes it; the bind converts any other value as a context-typed position's (a collation-enforcing
+ *   domain differs only for a NULL)
+ */
+void
+pt_take_host_var_bind_domains (PARSER_CONTEXT * parser, const PARSER_CONTEXT * first)
+{
+  assert (parser->host_var_bind_domains != NULL && first->host_var_bind_domains != NULL
+	  && parser->host_var_count == first->host_var_count);
+  for (int i = 0; i < parser->host_var_count; i++)
+    {
+      parser->host_var_bind_domains[i] = first->host_var_bind_domains[i];
+      if (!pt_host_var_bind_domain_differs (first, i))
+	{
+	  continue;
+	}
+      parser->host_var_format_classes[i] |= PT_HOST_VAR_BIND_DOMAIN;
+      if (PT_HOST_VAR_FORMAT_CLASS (parser->host_var_format_classes[i]) == PT_HOST_VAR_FORMAT_NULL)
+	{
+	  DB_VALUE *hv = &parser->host_variables[i];
+	  (void) tp_value_cast_preserve_domain (hv, hv, parser->host_var_bind_domains[i], false, true);
+	}
+    }
 }
 
 /*
