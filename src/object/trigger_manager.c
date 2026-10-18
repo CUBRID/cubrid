@@ -202,6 +202,7 @@ static int object_to_trigger (DB_OBJECT * object, TR_TRIGGER * trigger);
 static void get_reference_names (TR_TRIGGER * trigger, TR_ACTIVITY * activity, const char **curname,
 				 const char **tempname);
 static int compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with_evaluate);
+static int free_stale_statement (TR_ACTIVITY * activity);
 static int validate_trigger (TR_TRIGGER * trigger);
 
 static int register_user_trigger (DB_OBJECT * object);
@@ -335,6 +336,7 @@ make_activity (void)
   act->parser = NULL;
   act->statement = NULL;
   act->exec_cnt = 0;
+  act->in_use = 0;
 
   return act;
 }
@@ -1738,6 +1740,47 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 	{
 	  free_and_init (text);
 	}
+    }
+
+  return error;
+}
+
+/*
+ * free_stale_statement() - Free the compiled statement of an activity if a class it refers to has changed.
+ *    return: error code
+ *    activity(in/out): activity
+ *
+ * Note:
+ *    The compiled statement is bound to the classes resolved at compile time, so it would not follow a later change.
+ */
+static int
+free_stale_statement (TR_ACTIVITY * activity)
+{
+  int error = NO_ERROR;
+
+  /* a nested firing may run inside the statement this would free */
+  if (activity->parser == NULL || activity->in_use > 0)
+    {
+      return NO_ERROR;
+    }
+
+  switch (pt_has_modified_class ((PARSER_CONTEXT *) activity->parser, (PT_NODE *) activity->statement))
+    {
+    case DB_CLASS_NOT_MODIFIED:
+      break;
+
+    case DB_CLASS_MODIFIED:
+      /* a dropped class leaves ER_HEAP_UNKNOWN_OBJECT behind */
+      er_clear ();
+      parser_free_tree ((PARSER_CONTEXT *) activity->parser, (PT_NODE *) activity->statement);
+      parser_free_parser ((PARSER_CONTEXT *) activity->parser);
+      activity->parser = NULL;
+      activity->statement = NULL;
+      break;
+
+    default:
+      ASSERT_ERROR_AND_SET (error);
+      break;
     }
 
   return error;
@@ -4694,7 +4737,6 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, boo
     }
   else
     {
-      /* should have been done by now */
       if (tr_Current_depth <= 1 && ++act->exec_cnt > prm_get_integer_value (PRM_ID_RESET_TR_PARSER)
 	  && prm_get_integer_value (PRM_ID_RESET_TR_PARSER) > 0)
 	{
@@ -4706,7 +4748,8 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, boo
 	  act->exec_cnt = 0;
 	}
 
-      if (act->parser == NULL)
+      error = free_stale_statement (act);
+      if (error == NO_ERROR && act->parser == NULL)
 	{
 	  error = compile_trigger_activity (trigger, act, 1);
 	}
@@ -4727,8 +4770,10 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, boo
 		  temp = NULL;
 		}
 
+	      act->in_use++;
 	      pt_status = pt_exec_trigger_stmt ((PARSER_CONTEXT *) act->parser, (PT_NODE *) act->statement, current,
 						temp, &value);
+	      act->in_use--;
 	      /*
 	       * recall that pt_exec_trigger_stmt can return a positive
 	       * value for success, errors must be checked against negative
@@ -4908,7 +4953,8 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 		}
 	      act->exec_cnt = 0;
 	    }
-	  if (act->parser == NULL)
+	  error = free_stale_statement (act);
+	  if (error == NO_ERROR && act->parser == NULL)
 	    {
 	      error = compile_trigger_activity (trigger, act, 0);
 	      used_cached_statement = false;
@@ -4933,9 +4979,11 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 		  temp = NULL;
 		}
 
+	      act->in_use++;
 	      pt_status =
 		pt_exec_trigger_stmt ((PARSER_CONTEXT *) act->parser, (PT_NODE *) act->statement, current, temp,
 				      &value);
+	      act->in_use--;
 
 	      /* If using the cached statement and ER_QPROC_INVALID_XASLNODE error returned, It means that the
 	       * act->statement is old or invalid. It should be re-compiled again.

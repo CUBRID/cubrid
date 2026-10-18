@@ -1388,6 +1388,9 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
 	}
     }
 
+  /* record each class's CHN as of compile, so that pt_has_modified_class () can detect a later change */
+  (void) parser_walk_tree (parser, statement, pt_set_class_chn, NULL, NULL, NULL);
+
   return statement;
 }
 
@@ -1653,6 +1656,7 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT
 	   * instance, not sure that's really necessary. */
 	  temp = node->info.update.spec->info.spec.flat_entity_list;
 	  temp->info.name.db_object = db_get_class (object1);
+	  temp->info.name.db_object_chn = locator_get_cache_coherency_number (temp->info.name.db_object);
 
 	  /* first object will be the parameter */
 	  temp = node->info.update.object_parameter;
