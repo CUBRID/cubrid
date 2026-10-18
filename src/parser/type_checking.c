@@ -1376,6 +1376,28 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
       def->overloads_count = num;
       break;
 
+    case PT_UUID:
+      num = 0;
+
+      /* first overload: UUID() -> BIT (defaults to UUID(4)) */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_NONE;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_BIT;
+
+      def->overloads[num++] = sig;
+
+      /* second overload: UUID(int) -> BIT */
+      sig.arg1_type.type = pt_arg_type::NORMAL;
+      sig.arg1_type.val.type = PT_TYPE_INTEGER;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_BIT;
+
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_LOCAL_TRANSACTION_ID:
       num = 0;
 
@@ -1860,6 +1882,27 @@ pt_get_expression_definition (const PT_OP_TYPE op, EXPRESSION_DEFINITION * def)
 
       def->overloads_count = num;
       break;
+
+    case PT_UUID_FORMAT:
+      num = 0;
+
+      /* UUID_FORMAT (STRING) */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_STRING;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      /* UUID_FORMAT (BIT) */
+      sig.arg1_type.type = pt_arg_type::GENERIC;
+      sig.arg1_type.val.generic_type = PT_GENERIC_TYPE_BIT;
+      sig.return_type.type = pt_arg_type::NORMAL;
+      sig.return_type.val.type = PT_TYPE_VARCHAR;
+      def->overloads[num++] = sig;
+
+      def->overloads_count = num;
+      break;
+
     case PT_SHA_ONE:
       num = 0;
 
@@ -5796,6 +5839,7 @@ does_op_specially_treat_null_arg (PT_OP_TYPE op)
     case PT_CONCAT:
     case PT_CONCAT_WS:
     case PT_TO_CHAR:
+    case PT_UUID:
       return true;
     case PT_REPLACE:
     case PT_STRCAT:
@@ -5878,6 +5922,13 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
       return NO_ERROR;
     }
 
+  /* UUID does not accept a NULL version argument */
+  if (op == PT_UUID && arg1 != NULL && arg1_type == PT_TYPE_NULL)
+    {
+      PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
+      return ER_FAILED;
+    }
+
   best_match = 0;
   matches = -1;
   for (i = 0; i < def.overloads_count; i++)
@@ -5946,8 +5997,11 @@ pt_apply_expressions_definition (PARSER_CONTEXT * parser, PT_NODE ** node)
     }
 
   if (pt_is_op_hv_late_bind (op)
-      && (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE || arg3_type == PT_TYPE_MAYBE))
+      && (arg1_type == PT_TYPE_MAYBE || arg2_type == PT_TYPE_MAYBE || arg3_type == PT_TYPE_MAYBE)
+      && !(op == PT_ADDTIME && PT_IS_STRING_TYPE (arg1_type)))
     {
+      /* an operator whose result type an undetermined argument can still change; ADDTIME's result is resolved by its
+       * first argument alone, and a string first argument is VARCHAR (the manual's "date/time string" row) */
       expr->type_enum = PT_TYPE_MAYBE;
     }
   else
@@ -6307,6 +6361,7 @@ pt_is_symmetric_op (const PT_OP_TYPE op)
     case PT_STR_TO_DATE:
     case PT_LIST_DBS:
     case PT_SYS_GUID:
+    case PT_UUID:
     case PT_IF:
     case PT_POWER:
     case PT_BIT_TO_BLOB:
@@ -6905,6 +6960,40 @@ pt_false_search_condition (PARSER_CONTEXT * parser, const PT_NODE * node)
     }
 
   return false;
+}
+
+/*
+ * pt_true_search_condition () - Test for constant-folded search condition
+ * 				  that evaluated true
+ *   return: true if there is no search condition or all of the conjuncts are
+ *           effectively true, false otherwise
+ *   parser(in):
+ *   node(in):
+ *
+ * Note: A search condition folded to TRUE is a no-op, but it is not removed
+ *       from the CNF list. pt_where_type () removes such a conjunct while it
+ *       runs in the type checking walk of pt_semantic_type (), which is done
+ *       before the constant folding walk. So an expression of constants like
+ *       '1=1' is still an expression when it is checked and it becomes a
+ *       folded TRUE value only afterwards.
+ *       Use this function instead of a plain 'where == NULL' test to keep a
+ *       no-op predicate from being treated as a real one.
+ */
+bool
+pt_true_search_condition (PARSER_CONTEXT * parser, const PT_NODE * node)
+{
+  while (node)
+    {
+      if (node->or_next != NULL || node->node_type != PT_VALUE || node->type_enum != PT_TYPE_LOGICAL
+	  || node->info.value.data_value.i != 1)
+	{
+	  return false;
+	}
+
+      node = node->next;
+    }
+
+  return true;
 }
 
 /*
@@ -7925,7 +8014,17 @@ pt_eval_type (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_
 	  node->info.query.q.select.connect_by = pt_where_type_keep_true (parser, node->info.query.q.select.connect_by);
 	  node->info.query.q.select.start_with = pt_where_type (parser, node->info.query.q.select.start_with);
 	  node->info.query.q.select.after_cb_filter = pt_where_type (parser, node->info.query.q.select.after_cb_filter);
-	  node->info.query.q.select.having = pt_where_type (parser, node->info.query.q.select.having);
+	  if (node->info.query.q.select.group_by == NULL)
+	    {
+	      /* HAVING without GROUP BY makes the query a single-group aggregate; if a constant-true
+	       * HAVING were dropped here, the rewritten text (xasl cache key) would collide with the
+	       * plain query's although their results differ. Keep a TRUE marker instead. */
+	      node->info.query.q.select.having = pt_where_type_keep_true (parser, node->info.query.q.select.having);
+	    }
+	  else
+	    {
+	      node->info.query.q.select.having = pt_where_type (parser, node->info.query.q.select.having);
+	    }
 	  node->info.query.orderby_for = pt_where_type (parser, node->info.query.orderby_for);
 	}
       break;
@@ -11446,7 +11545,7 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       || op == PT_CONCAT_WS || op == PT_FIELD || op == PT_UNIX_TIMESTAMP || op == PT_BIT_COUNT || op == PT_REPEAT
       || op == PT_SPACE || op == PT_MD5 || op == PT_TIMEF || op == PT_AES_ENCRYPT || op == PT_AES_DECRYPT
       || op == PT_SHA_TWO || op == PT_SHA_ONE || op == PT_TO_BASE64 || op == PT_FROM_BASE64 || op == PT_DEFAULTF
-      || op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE)
+      || op == PT_NEXT_VALUE || op == PT_CURRENT_VALUE || op == PT_UUID_FORMAT)
     {
       dt = parser_new_node (parser, PT_DATA_TYPE);
       if (dt == NULL)
@@ -11767,6 +11866,12 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
       /* Set a large enough precision so that CUBRID is able to handle GUID like 'B5B2D2FA9633460F820589FFDBD8C309'. */
       dt->info.data_type.precision = 32;
       break;
+    case PT_UUID:
+      assert (dt == NULL);
+      dt = pt_make_prim_data_type (parser, PT_TYPE_VARBIT);
+      /* UUID returns 16 bytes = 128 bits */
+      dt->info.data_type.precision = 128;
+      break;
     case PT_CHR:
       assert (dt != NULL);
       dt->info.data_type.precision = TP_FLOATING_PRECISION_VALUE;
@@ -11797,6 +11902,11 @@ pt_upd_domain_info (PARSER_CONTEXT * parser, PT_NODE * arg1, PT_NODE * arg2, PT_
     case PT_SHA_ONE:
       assert (dt != NULL);
       dt->info.data_type.precision = 40;
+      break;
+
+    case PT_UUID_FORMAT:
+      assert (dt != NULL);
+      dt->info.data_type.precision = 36;
       break;
 
     case PT_TO_BASE64:
@@ -12847,6 +12957,22 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 			db_make_short (result, (INT16) (bi[0] / bi[1]));
 		      }
 		  }
+		else if (OR_CHECK_BIGINT_DIV_OVERFLOW (bi[0], bi[1]))
+		  {
+		    /* MIN % -1 is 0; computing it would trap on the machine divide instruction */
+		    if (typ1 == DB_TYPE_INTEGER)
+		      {
+			db_make_int (result, 0);
+		      }
+		    else if (typ1 == DB_TYPE_BIGINT)
+		      {
+			db_make_bigint (result, 0);
+		      }
+		    else
+		      {
+			db_make_short (result, 0);
+		      }
+		  }
 		else
 		  {
 		    if (typ1 == DB_TYPE_INTEGER)
@@ -13827,8 +13953,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		i1 = db_get_int (arg1);
 		i2 = db_get_int (arg2);
-		itmp = i1 + i2;
-		if (OR_CHECK_ADD_OVERFLOW (i1, i2, itmp))
+		if (OR_ADD_OVERFLOW (i1, i2, &itmp))
 		  goto overflow;
 		else
 		  db_make_int (result, itmp);
@@ -13841,8 +13966,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		bi1 = db_get_bigint (arg1);
 		bi2 = db_get_bigint (arg2);
-		bitmp = bi1 + bi2;
-		if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, bitmp))
+		if (OR_ADD_OVERFLOW (bi1, bi2, &bitmp))
 		  goto overflow;
 		else
 		  db_make_bigint (result, bitmp);
@@ -13855,8 +13979,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		s1 = db_get_short (arg1);
 		s2 = db_get_short (arg2);
-		stmp = s1 + s2;
-		if (OR_CHECK_ADD_OVERFLOW (s1, s2, stmp))
+		if (OR_ADD_OVERFLOW (s1, s2, &stmp))
 		  goto overflow;
 		else
 		  db_make_short (result, stmp);
@@ -13976,6 +14099,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_TIMESTAMPLTZ:
 	      {
 		DB_UTIME *utime, result_utime;
+		DB_BIGINT utime_sum;
 		DB_VALUE *other;
 		DB_BIGINT bi;
 
@@ -14039,11 +14163,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  }
 		else
 		  {
-		    result_utime = (DB_UTIME) (*utime + bi);
-		    if (OR_CHECK_UNS_ADD_OVERFLOW (*utime, bi, result_utime) || INT_MAX < result_utime)
+		    DB_BIGINT utime_sum;
+
+		    /* The sum was formed with a plain + and then inspected with
+		     * OR_CHECK_UNS_ADD_OVERFLOW, an unsigned wraparound test. bi is a DB_BIGINT,
+		     * so the addition is signed, and forming it is itself the overflow: undefined
+		     * behaviour the compiler may assume away, taking the test with it. The builtin
+		     * decides before the sum exists. */
+		    if (OR_ADD_OVERFLOW ((DB_BIGINT) * utime, bi, &utime_sum) || INT_MAX < utime_sum)
 		      {
 			goto overflow;
 		      }
+		    result_utime = (DB_UTIME) utime_sum;
 		  }
 
 		if (typ == DB_TYPE_TIMESTAMPLTZ)
@@ -14126,11 +14257,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  }
 		else
 		  {
-		    result_utime = (DB_UTIME) (utime + bi);
-		    if (OR_CHECK_UNS_ADD_OVERFLOW (utime, bi, result_utime) || INT_MAX < result_utime)
+		    DB_BIGINT utime_sum;
+
+		    /* The sum was formed with a plain + and then inspected with
+		     * OR_CHECK_UNS_ADD_OVERFLOW, an unsigned wraparound test. bi is a DB_BIGINT,
+		     * so the addition is signed, and forming it is itself the overflow: undefined
+		     * behaviour the compiler may assume away, taking the test with it. The builtin
+		     * decides before the sum exists. */
+		    if (OR_ADD_OVERFLOW ((DB_BIGINT) utime, bi, &utime_sum) || INT_MAX < utime_sum)
 		      {
 			goto overflow;
 		      }
+		    result_utime = (DB_UTIME) utime_sum;
 		  }
 
 		ts_tz_res.timestamp = result_utime;
@@ -14190,25 +14328,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		bi1 = ((DB_BIGINT) datetime->date) * MILLISECONDS_OF_ONE_DAY + datetime->time;
 
-		if (bi2 < 0)
+		/* bi1 is a millisecond count and is never negative, so a negative bi2 cannot
+		 * make the sum wrap. The code this replaced still ran a check on that branch,
+		 * but with bi1 >= 0 > bi2 it reduced to "the sum came out negative", which the
+		 * tmp_bi < DB_DATE_MIN test below rejects anyway. Only a positive bi2 can
+		 * actually overflow, and that is what the builtin reports. */
+		if (OR_ADD_OVERFLOW (bi1, bi2, &result_bi))
 		  {
-		    if (bi2 == DB_BIGINT_MIN)
-		      {
-			goto overflow;
-		      }
-		    result_bi = bi1 + bi2;
-		    if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, result_bi))
-		      {
-			goto overflow;
-		      }
-		  }
-		else
-		  {
-		    result_bi = bi1 + bi2;
-		    if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result_bi))
-		      {
-			goto overflow;
-		      }
+		    goto overflow;
 		  }
 
 		tmp_bi = (DB_BIGINT) (result_bi / MILLISECONDS_OF_ONE_DAY);
@@ -14277,25 +14404,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		bi1 = ((DB_BIGINT) datetime.date) * MILLISECONDS_OF_ONE_DAY + datetime.time;
 
-		if (bi2 < 0)
+		/* bi1 is a millisecond count and is never negative, so a negative bi2 cannot
+		 * make the sum wrap. The code this replaced still ran a check on that branch,
+		 * but with bi1 >= 0 > bi2 it reduced to "the sum came out negative", which the
+		 * tmp_bi < DB_DATE_MIN test below rejects anyway. Only a positive bi2 can
+		 * actually overflow, and that is what the builtin reports. */
+		if (OR_ADD_OVERFLOW (bi1, bi2, &result_bi))
 		  {
-		    if (bi2 == DB_BIGINT_MIN)
-		      {
-			goto overflow;
-		      }
-		    result_bi = bi1 + bi2;
-		    if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, result_bi))
-		      {
-			goto overflow;
-		      }
-		  }
-		else
-		  {
-		    result_bi = bi1 + bi2;
-		    if (OR_CHECK_ADD_OVERFLOW (bi1, bi2, result_bi))
-		      {
-			goto overflow;
-		      }
+		    goto overflow;
 		  }
 
 		tmp_bi = (DB_BIGINT) (result_bi / MILLISECONDS_OF_ONE_DAY);
@@ -14378,11 +14494,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		  }
 		else
 		  {
-		    result_date = (DB_DATE) (*date + bi);
-		    if (OR_CHECK_UNS_ADD_OVERFLOW (*date, bi, result_date) || result_date > DB_DATE_MAX)
+		    DB_BIGINT date_sum;
+
+		    /* The sum was formed with a plain + and then inspected with
+		     * OR_CHECK_UNS_ADD_OVERFLOW, an unsigned wraparound test. bi is a DB_BIGINT,
+		     * so the addition is signed, and forming it is itself the overflow: undefined
+		     * behaviour the compiler may assume away, taking the test with it. The builtin
+		     * decides before the sum exists. */
+		    if (OR_ADD_OVERFLOW ((DB_BIGINT) * date, bi, &date_sum) || date_sum > DB_DATE_MAX)
 		      {
 			goto overflow;
 		      }
+		    result_date = (DB_DATE) date_sum;
 		  }
 
 		db_value_put_encoded_date (result, &result_date);
@@ -14410,8 +14533,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		i1 = db_get_int (arg1);
 		i2 = db_get_int (arg2);
-		itmp = i1 - i2;
-		if (OR_CHECK_SUB_UNDERFLOW (i1, i2, itmp))
+		if (OR_SUB_OVERFLOW (i1, i2, &itmp))
 		  goto overflow;
 		else
 		  db_make_int (result, itmp);
@@ -14516,8 +14638,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		    break;
 		  }
 
-		result_bi = bi1 - bi2;
-		if (OR_CHECK_SUB_UNDERFLOW (bi1, bi2, result_bi))
+		if (OR_SUB_OVERFLOW (bi1, bi2, &result_bi))
 		  {
 		    goto overflow;
 		  }
@@ -14534,8 +14655,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 		s1 = db_get_short (arg1);
 		s2 = db_get_short (arg2);
-		stmp = s1 - s2;
-		if (OR_CHECK_SUB_UNDERFLOW (s1, s2, stmp))
+		if (OR_SUB_OVERFLOW (s1, s2, &stmp))
 		  goto overflow;
 		else
 		  db_make_short (result, stmp);
@@ -14689,11 +14809,20 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		if (bi < 0)
 		  {
 		    /* we're adding */
-		    result_utime = (DB_UTIME) (utime - bi);
-		    if (OR_CHECK_UNS_ADD_OVERFLOW (utime, -bi, result_utime) || INT_MAX < result_utime)
+		    DB_BIGINT utime_sum;
+
+		    /* The sum was formed with a plain + and then inspected with
+		     * OR_CHECK_UNS_ADD_OVERFLOW, an unsigned wraparound test. bi is a DB_BIGINT,
+		     * so the addition is signed, and forming it is itself the overflow: undefined
+		     * behaviour the compiler may assume away, taking the test with it. The builtin
+		     * decides before the sum exists. */
+		    /* bi may be DB_BIGINT_MIN here, which made the -bi in the old test undefined
+		     * on its own. OR_SUB_OVERFLOW needs neither the negation nor the sum. */
+		    if (OR_SUB_OVERFLOW ((DB_BIGINT) utime, bi, &utime_sum) || INT_MAX < utime_sum)
 		      {
 			goto overflow;
 		      }
+		    result_utime = (DB_UTIME) utime_sum;
 		  }
 		else
 		  {
@@ -14835,11 +14964,20 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 		if (bi < 0)
 		  {
 		    /* we're adding */
-		    result_date = (DB_DATE) (*date - bi);
-		    if (OR_CHECK_UNS_ADD_OVERFLOW (*date, -bi, result_date) || result_date > DB_DATE_MAX)
+		    DB_BIGINT date_sum;
+
+		    /* The sum was formed with a plain + and then inspected with
+		     * OR_CHECK_UNS_ADD_OVERFLOW, an unsigned wraparound test. bi is a DB_BIGINT,
+		     * so the addition is signed, and forming it is itself the overflow: undefined
+		     * behaviour the compiler may assume away, taking the test with it. The builtin
+		     * decides before the sum exists. */
+		    /* bi may be DB_BIGINT_MIN here, which made the -bi in the old test undefined
+		     * on its own. OR_SUB_OVERFLOW needs neither the negation nor the sum. */
+		    if (OR_SUB_OVERFLOW ((DB_BIGINT) * date, bi, &date_sum) || date_sum > DB_DATE_MAX)
 		      {
 			goto overflow;
 		      }
+		    result_date = (DB_DATE) date_sum;
 		  }
 		else
 		  {
@@ -14874,15 +15012,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    case DB_TYPE_INTEGER:
 	      {
-		/* NOTE that we need volatile to prevent optimizer from generating division expression as
-		 * multiplication.
-		 */
-		volatile int i1, i2, itmp;
+		int i1 = db_get_int (arg1);
+		int i2 = db_get_int (arg2);
+		int itmp;
 
-		i1 = db_get_int (arg1);
-		i2 = db_get_int (arg2);
-		itmp = i1 * i2;
-		if (OR_CHECK_MULT_OVERFLOW (i1, i2, itmp))
+		if (OR_MULT_OVERFLOW (i1, i2, &itmp))
 		  {
 		    goto overflow;
 		  }
@@ -14895,15 +15029,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    case DB_TYPE_BIGINT:
 	      {
-		/* NOTE that we need volatile to prevent optimizer from generating division expression as
-		 * multiplication.
-		 */
-		volatile DB_BIGINT bi1, bi2, bitmp;
+		DB_BIGINT bi1 = db_get_bigint (arg1);
+		DB_BIGINT bi2 = db_get_bigint (arg2);
+		DB_BIGINT bitmp;
 
-		bi1 = db_get_bigint (arg1);
-		bi2 = db_get_bigint (arg2);
-		bitmp = bi1 * bi2;
-		if (OR_CHECK_MULT_OVERFLOW (bi1, bi2, bitmp))
+		if (OR_MULT_OVERFLOW (bi1, bi2, &bitmp))
 		  {
 		    goto overflow;
 		  }
@@ -14916,15 +15046,11 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	    case DB_TYPE_SHORT:
 	      {
-		/* NOTE that we need volatile to prevent optimizer from generating division expression as
-		 * multiplication.
-		 */
-		volatile short s1, s2, stmp;
+		short s1 = db_get_short (arg1);
+		short s2 = db_get_short (arg2);
+		short stmp;
 
-		s1 = db_get_short (arg1);
-		s2 = db_get_short (arg2);
-		stmp = s1 * s2;
-		if (OR_CHECK_MULT_OVERFLOW (s1, s2, stmp))
+		if (OR_MULT_OVERFLOW (s1, s2, &stmp))
 		  {
 		    goto overflow;
 		  }
@@ -15015,6 +15141,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_SHORT:
 	      if (db_get_short (arg2) != 0)
 		{
+		  if (OR_CHECK_SHORT_DIV_OVERFLOW (db_get_short (arg1), db_get_short (arg2)))
+		    {
+		      goto overflow;
+		    }
 		  db_make_short (result, db_get_short (arg1) / db_get_short (arg2));
 		  return 1;
 		}
@@ -15023,6 +15153,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_INTEGER:
 	      if (db_get_int (arg2) != 0)
 		{
+		  if (OR_CHECK_INT_DIV_OVERFLOW (db_get_int (arg1), db_get_int (arg2)))
+		    {
+		      goto overflow;
+		    }
 		  db_make_int (result, (db_get_int (arg1) / db_get_int (arg2)));
 		  return 1;
 		}
@@ -15030,6 +15164,10 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	    case DB_TYPE_BIGINT:
 	      if (db_get_bigint (arg2) != 0)
 		{
+		  if (OR_CHECK_BIGINT_DIV_OVERFLOW (db_get_bigint (arg1), db_get_bigint (arg2)))
+		    {
+		      goto overflow;
+		    }
 		  db_make_bigint (result, (db_get_bigint (arg1) / db_get_bigint (arg2)));
 		  return 1;
 		}
@@ -15865,6 +16003,18 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
     case PT_MD5:
       error = db_string_md5 (arg1, result);
+      if (error < 0)
+	{
+	  PT_ERRORc (parser, o1, er_msg ());
+	  return 0;
+	}
+      else
+	{
+	  return 1;
+	}
+
+    case PT_UUID_FORMAT:
+      error = db_uuid_format (arg1, result);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17281,6 +17431,60 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	db_make_null (result);
       break;
 
+    case PT_SYS_GUID:
+      error = db_uuidv4 (result);
+      if (error != NO_ERROR)
+	{
+	  PT_ERRORc (parser, expr, er_msg ());
+	  return 0;
+	}
+      return 1;
+
+    case PT_UUID:
+      {
+	int version = 4;
+	UINT64 epoch_ms = 0;
+	UUID_STATE uuid_state;
+
+	if (o1 != NULL)
+	  {
+	    if (DB_VALUE_TYPE (arg1) == DB_TYPE_NULL)
+	      {
+		/* NULL version argument is not allowed; UUID() with no argument has no arg1 node */
+		PT_ERRORm (parser, expr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UUID_INVALID_ARG);
+		return 0;
+	      }
+	    version = db_get_int (arg1);
+	  }
+
+	if (version == 0 || version == 4)
+	  {
+	    error = db_uuid_bin (UUID_V4, NULL, 0, result);
+	  }
+	else if (version == 7)
+	  {
+	    assert (!DB_IS_NULL (&parser->sys_epochtime));
+	    assert (!DB_IS_NULL (&parser->sys_datetime));
+
+	    uuid_state.last_ms = &parser->uuidv7_last_ms;
+	    uuid_state.seq = &parser->uuidv7_seq;
+	    epoch_ms = ((UINT64) (*db_get_timestamp (&parser->sys_epochtime)) * 1000ULL)
+	      + (UINT64) (db_get_datetime (&parser->sys_datetime)->time % 1000);
+	    error = db_uuid_bin (UUID_V7, &uuid_state, epoch_ms, result);
+	  }
+	else
+	  {
+	    error = db_uuid_bin (UUID_UNSUPPORTED, NULL, 0, result);
+	  }
+
+	if (error != NO_ERROR)
+	  {
+	    PT_ERRORc (parser, expr, er_msg ());
+	    return 0;
+	  }
+      }
+      return 1;
+
     case PT_INDEX_CARDINALITY:
     case PT_ESTIMATED_TABLE_ROWS:
     case PT_ESTIMATED_AVG_ROW_LENGTH:
@@ -17289,7 +17493,6 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
       /* constant folding for this expression is never performed : is always resolved on server */
       return 0;
     case PT_LIST_DBS:
-    case PT_SYS_GUID:
     case PT_ASSIGN:
     case PT_LIKE_ESCAPE:
     case PT_BETWEEN_AND:
@@ -19864,7 +20067,14 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_FLOAT:
-	  if (db_get_float (rhs_val) > DB_INT32_MAX)
+	  /* OR_INT32_BOUND_D is 2^31. The comparison used to read "> DB_INT32_MAX", where
+	   * the int operand was converted to float and so already rounded up to 2^31: this
+	   * spells out the bound that was actually being used, without changing it. Note
+	   * that the PT_TYPE_DOUBLE / NUMERIC / MONETARY arms below keep comparing against
+	   * DB_INT32_MAX itself, which double represents exactly, so they and this arm
+	   * disagree for a right hand side of exactly 2^31. That predates this change and
+	   * is left alone; making the arms agree is a behaviour change of its own. */
+	  if (db_get_float (rhs_val) > OR_INT32_BOUND_D)
 	    lhs_less = true;
 	  else if (db_get_float (rhs_val) < DB_INT32_MIN)
 	    lhs_greater = true;
@@ -19901,27 +20111,27 @@ pt_compare_bounds_to_value (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE 
       switch (rhs_type)
 	{
 	case PT_TYPE_FLOAT:
-	  if (db_get_float (rhs_val) > DB_BIGINT_MAX)
+	  if (db_get_float (rhs_val) > OR_BIGINT_BOUND_D)
 	    lhs_less = true;
 	  else if (db_get_float (rhs_val) < DB_BIGINT_MIN)
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_DOUBLE:
-	  if (db_get_double (rhs_val) > DB_BIGINT_MAX)
+	  if (db_get_double (rhs_val) > OR_BIGINT_BOUND_D)
 	    lhs_less = true;
 	  else if (db_get_double (rhs_val) < DB_BIGINT_MIN)
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_NUMERIC:
 	  numeric_coerce_num_to_double (rhs_val, db_get_numeric_scale (rhs_val, NULL), &dtmp);
-	  if (dtmp > DB_BIGINT_MAX)
+	  if (dtmp > OR_BIGINT_BOUND_D)
 	    lhs_less = true;
 	  else if (dtmp < DB_BIGINT_MIN)
 	    lhs_greater = true;
 	  break;
 	case PT_TYPE_MONETARY:
 	  dtmp = (db_get_monetary (rhs_val))->amount;
-	  if (dtmp > DB_BIGINT_MAX)
+	  if (dtmp > OR_BIGINT_BOUND_D)
 	    lhs_less = true;
 	  else if (dtmp < DB_BIGINT_MIN)
 	    lhs_greater = true;
@@ -20318,19 +20528,17 @@ pt_get_equivalent_type_with_op (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM a
 }
 
 /*
- * pt_is_op_hv_late_bind () - checks if the operator is in the list of
- *			      operators that should perform late binding on
- *			      their host variable arguments
+ * pt_is_op_hv_late_bind () - the operators whose result type is resolved at execution when a host variable
+ *			       argument has no compile-time type
  *
- *   return: true if arguments types should be mirrored
+ *   return: true if the operator leaves a MAYBE host variable argument to the execution's domain resolution
  *   op(in): operator type
  *
- *  Note: this functions is used by type inference algorithm to check if an
- *	  expression should leave its HV arguments as TYPE_MAYBE (the default
- *	  type inference behavior would be to match it with a concrete type
- *	  according to one of its signatures). Also, such expression is
- *	  wrapped with cast rather then its result type be forced to an
- *	  "expected domain" dictated by the expression context.
+ *  Note: type inference leaves such an argument as TYPE_MAYBE (the default behavior would match it with a concrete
+ *	  type from one of the operator's signatures) and gives the expression the VARIABLE result type; the
+ *	  expression is wrapped with a cast rather than forced to the "expected domain" of its context. The
+ *	  server resolves the argument and result domains once per execution from the bound values, before any row
+ *	  (qexec_resolve_domains).
  */
 bool
 pt_is_op_hv_late_bind (PT_OP_TYPE op)

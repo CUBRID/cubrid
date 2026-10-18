@@ -147,7 +147,7 @@ namespace cubconn::connection
     m_scaling_statistics.previous_scale = m_max_worker;
 
     /* task statistics */
-    m_task_statistics.workers = static_cast<std::size_t> (prm_get_integer_value (PRM_ID_TASK_WORKER));
+    m_task_statistics.workers = static_cast<std::size_t> (prm_get_integer_value (PRM_ID_MAX_REQUEST_CONCURRENCY));
     m_task_statistics.time_ns = get_monotonic_ns ();
     m_task_statistics.requested = { 0, 0 };
     m_task_statistics.started = { 0, 0 };
@@ -1222,8 +1222,11 @@ not_transferred:
     /* set name */
     pthread_setname_np (pthread_self (), "coordinator");
 
-    /* pin myself */
-    os::resources::cpu::setaffinity (m_core);
+    if (prm_get_bool_value (PRM_ID_HARDWARE_AFFINITY))
+      {
+	/* pin the current thread to the core */
+	os::resources::cpu::setaffinity (m_core);
+      }
 
     /* entry */
     m_entry = cubthread::get_manager ()->claim_entry ();

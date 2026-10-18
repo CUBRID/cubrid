@@ -134,6 +134,8 @@ typedef struct pr_type
 
     void set_data_cmpdisk_function (data_cmpdisk_function_type data_cmpdisk_arg);
     data_cmpdisk_function_type get_data_cmpdisk_function () const;
+    index_cmpdisk_function_type get_index_cmpdisk_function () const;	/* compares in the index encoding */
+    void set_index_cmpdisk_function (index_cmpdisk_function_type index_cmpdisk_arg);
 
     void set_cmpval_function (cmpval_function_type cmpval_arg);
     cmpval_function_type get_cmpval_function () const;
@@ -141,6 +143,8 @@ typedef struct pr_type
     // is fixed/variable
     inline bool is_always_variable () const;
     inline bool is_size_computed () const;
+    inline bool has_index_readval () const;	/* true if this type has an index-encoding read function */
+    inline bool has_computed_disk_size () const;	/* true if the disk size is not a fixed constant */
 
     // size functions
     inline int get_mem_size_of_mem (const void *mem, const tp_domain * domain = NULL) const;
@@ -306,13 +310,19 @@ extern int pr_free_ext_value (DB_VALUE * value);
 extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion,
 						   int total_order, int num_index_term, int *start_colp,
 						   int *diff_column, bool * dom_is_desc, int *result_size);
+/* The comparison of two midxkey elements whose domains differ, when the caller resolved it: an index scan's
+ * comparisons of its search key values. */
+typedef DB_VALUE_COMPARE_RESULT (*PR_MIDXKEY_ELEMENT_COMPARE) (int column, DB_VALUE * value1, DB_VALUE * value2,
+							       int do_coercion, int total_order, bool * can_compare);
+extern DB_VALUE_COMPARE_RESULT pr_midxkey_compare_resolved (DB_MIDXKEY * mul1, DB_MIDXKEY * mul2, int do_coercion,
+							    int total_order, int num_index_term, int *start_colp,
+							    int *diff_column, bool * dom_is_desc, int *result_size,
+							    PR_MIDXKEY_ELEMENT_COMPARE element_compare);
 STATIC_INLINE int pr_midxkey_element_disk_size (char *mem, DB_DOMAIN * domain) __attribute__ ((ALWAYS_INLINE));
 extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index, DB_VALUE * value, int *prev_indexp,
 					  char **prev_ptrp);
 extern int pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
 				    struct tp_domain *dbvals_domain_list);
-extern int pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
-					      struct tp_domain *dbvals_domain_list, int tail_null_cnt);
 
 extern int pr_index_writeval_disk_size (DB_VALUE * value);
 extern int pr_data_writeval_disk_size (DB_VALUE * value);
@@ -336,17 +346,17 @@ extern int pr_complete_enum_value (DB_VALUE * value, struct tp_domain *domain);
 extern int pr_get_compression_length (const char *string, int str_length);
 extern int pr_get_compressed_data_from_buffer (struct or_buf *buf, char *data, int compressed_size,
 					       int expected_decompressed_size);
+extern int pr_get_size_and_write_string_to_buffer (struct or_buf *buf, char *val_p, DB_VALUE * value, int *val_size,
+						   int align);
+
 extern int pr_data_compress_string (const char *string, int str_length, char *compressed_string,
 				    int compress_buffer_size, int *compressed_length);
 
 extern int pr_clear_compressed_string (DB_VALUE * value);
 extern int pr_do_db_value_string_compression (DB_VALUE * value);
-extern int pr_pad_char_to_precision (DB_VALUE * value, int precision);
 
-#if defined(ENABLE_UNUSED_FUNCTION)	// Unused macro — temporarily preserved to minimize review diff; will be removed in a follow-up PR
 #define PRIM_TEMPORARY_DISK_SIZE 256
 #define PRIM_COMPRESSION_LENGTH_OFFSET 4
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 extern int pr_Enable_string_compression;
 
@@ -447,6 +457,19 @@ pr_type::is_size_computed () const
 {
   assert ((f_data_lengthmem == NULL) == (f_data_lengthval == NULL));
   return f_data_lengthmem != NULL && f_data_lengthval != NULL;
+}
+
+bool
+pr_type::has_index_readval () const
+{
+  return f_index_readval != NULL;
+}
+
+/* True when either length function is present, unlike is_size_computed () which requires both to be set. */
+bool
+pr_type::has_computed_disk_size () const
+{
+  return f_data_lengthmem != NULL || f_data_lengthval != NULL;
 }
 
 int

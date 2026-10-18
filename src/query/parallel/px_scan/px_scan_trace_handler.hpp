@@ -28,7 +28,7 @@
 #include <vector>
 #include "thread_entry.hpp"
 #include "scan_manager.h"
-#include "jansson.h"
+#include "json_builder.h"
 #include "px_scan_result_type.hpp"
 #include "px_scan_type_enum.hpp"
 
@@ -73,10 +73,13 @@ namespace parallel_scan
   {
     public:
       trace_handler() = default;
-      ~trace_handler() = default;
+      ~trace_handler();
 
       void add_trace (UINT64 fetches, UINT64 ioreads, UINT64 fetch_time, SCAN_ID *scan_id,
 		      struct timeval elapsed_time);
+      /* a worker hands over everything it counted when it ends; merge_stats () merges the sum into the leader */
+      void add_px_stats (const UINT64 *worker_stats);
+      /* once per scan (re)open, however the scan ends: the end path and the close path may both call it */
       void merge_stats (THREAD_ENTRY *thread_p, SCAN_STATS *scan_stats);
       void clear();
       void set_topnsort_used()
@@ -89,6 +92,9 @@ namespace parallel_scan
       }
       std::vector<child_stats> m_stats;
       std::mutex m_stats_mutex;
+      /* guarded by m_stats_mutex */
+      UINT64 *m_px_stats = nullptr;	/* the workers' statistics, summed */
+      bool m_merged = false;
       trace_storage_for_sibling_xasl m_trace_storage_for_sibling_xasl;
     private:
       std::atomic<bool> m_topnsort_used {false};
@@ -106,7 +112,7 @@ namespace parallel_scan
 
       void add_stats (trace_handler &trace_handler);
       void dump_stats_text (FILE *fp, int indent, char *class_name);
-      void dump_stats_json (json_t *scan, char *class_name);
+      void dump_stats_json (trace_json_t *scan, char *class_name);
       void set_last_partition_stats (SCAN_STATS *partition_stats);
     private:
       std::vector<child_stats> m_stats;

@@ -1495,7 +1495,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		    while (error == NO_ERROR && retry_in)
 		      {
 			/* Display prompt, then get user's input. */
-			fprintf (stdout, display_string);
+			fprintf (stdout, "%s", display_string);
 			pr_status = ER_FAILED;
 			pr_len = 0;
 			retry_in = false;
@@ -1513,7 +1513,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				    result = str_to_int32 (&x, &a_ptr, user_response_ptr, 10);
 				    if (result != 0 || x < range_lower || x > range_higher)
 				      {
-					fprintf (stdout, failure_prompt);
+					fprintf (stdout, "%s", failure_prompt);
 					retry_in = true;
 				      }
 				    else
@@ -1559,7 +1559,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 				    result = str_to_int32 (&x, &a_ptr, user_response_ptr, 10);
 				    if (result != 0 || x < range_lower || x > range_higher)
 				      {
-					fprintf (stdout, failure_prompt);
+					fprintf (stdout, "%s", failure_prompt);
 					retry_in = true;
 				      }
 				    else if (x == reprompt_value)
@@ -1688,7 +1688,7 @@ net_client_request_with_callback (int request, char *argbuf, int argsize, char *
 		    else
 		      {
 			ptr = or_unpack_string_nocopy (reply, &print_str);
-			fprintf (stdout, print_str);
+			fprintf (stdout, "%s", print_str);
 			fflush (stdout);
 		      }
 		    free_and_init (print_data);

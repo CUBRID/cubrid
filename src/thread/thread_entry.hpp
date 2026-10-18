@@ -32,6 +32,7 @@
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
+#include <memory>
 #include <atomic>
 #include <thread>
 
@@ -39,6 +40,11 @@
 
 // forward definitions
 
+// from concurrency_slot.hpp
+namespace cubthread
+{
+  class concurrency_slot;
+};
 // from connection_defs.h
 struct css_conn_entry;
 // from connection_defs.h
@@ -91,6 +97,7 @@ enum
   THREAD_TS_XCACHE,
   THREAD_TS_FPCACHE,
   THREAD_TS_DWB_SLOTS,
+  THREAD_TS_SERIAL_CACHE,
   THREAD_TS_LAST
 };
 #define THREAD_TS_COUNT  THREAD_TS_LAST
@@ -106,6 +113,7 @@ struct event_stat
   struct timeval cs_waits;
   struct timeval lock_waits;
   struct timeval latch_waits;
+  struct timeval slot_waits;
 
   /* volume expand stats */
   struct timeval extend_time;
@@ -163,7 +171,9 @@ enum thread_resume_suspend_status
   THREAD_ALLOC_BCB_RESUMED = 22,
   THREAD_DWB_QUEUE_SUSPENDED = 23,
   THREAD_DWB_QUEUE_RESUMED = 24,
-  THREAD_SLEEP_FUNC_SUSPENDED = 25
+  THREAD_SLEEP_FUNC_SUSPENDED = 25,
+  THREAD_CONCURRENCY_SLOT_SUSPENDED = 26,
+  THREAD_CONCURRENCY_SLOT_RESUMED = 27,
 };
 
 namespace cubthread
@@ -230,6 +240,8 @@ namespace cubthread
       unsigned int rid;		/* request id which this thread is processing */
       status m_status;			/* thread status */
 
+      /* both m_core_mutex and th_entry_lock can be held simultaneously. */
+      /* to avoid deadlocks, you must follow a consistent locking order; th_entry_lock should be acquired first. */
       pthread_mutex_t th_entry_lock;	/* latch for this thread entry */
       pthread_cond_t wakeup_cond;	/* wakeup condition */
 
@@ -251,6 +263,11 @@ namespace cubthread
       bool interrupted;		/* is this request/transaction interrupted ? */
       std::atomic_bool shutdown;		/* is server going down? */
       bool check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
+      int wait_msecs_override;	/* lock and page latch waiting time of this thread alone, or LK_WAIT_NOT_OVERRIDDEN
+				 * to wait as its transaction does. a task changes it through
+				 * logtb_set_thread_wait_msecs () and restores it before it ends; the constructor and
+				 * entry_manager (recycle_context, retire_context) reset it. see
+				 * logtb_set_thread_wait_msecs () for why this lives here and not in LOG_TDES. */
       bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
       entry *next_wait_thrd;
 
@@ -264,6 +281,7 @@ namespace cubthread
 
       struct log_zip *log_zip_undo;
       struct log_zip *log_zip_redo;
+      struct log_zip *log_unzip_undo;	/* reader side: decompressing an undo image back out */
       char *log_data_ptr;
       int log_data_length;
 
@@ -316,6 +334,14 @@ namespace cubthread
 
       bool m_is_private_lru_enabled;
       struct pgbuf_holder_anchor *m_holder_anchor;
+
+      /* UUIDv7 per-thread state for monotonic generation */
+      uint64_t uuidv7_last_ms;        /* last used millisecond timestamp */
+      uint8_t uuidv7_seq;            /* sequence counter within same millisecond (GUID_V7_SEQ_BITS : 8 bits) */
+#if defined (SERVER_MODE)
+      /* concurrency slot held by the entry; only set for workers from an elastic worker pool */
+      std::unique_ptr<cubthread::concurrency_slot> m_slot;
+#endif
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();
@@ -370,6 +396,11 @@ namespace cubthread
       void assign_lf_tran_index (lockfree::tran::index idx);
       lockfree::tran::index pull_lf_tran_index ();
       lockfree::tran::index get_lf_tran_index ();
+
+#if defined (SERVER_MODE)
+      void start_waiting ();
+      void stop_waiting ();
+#endif
 
     private:
       void clear_resources (void);
@@ -540,4 +571,22 @@ int thread_suspend_with_other_mutex (cubthread::entry *p, pthread_mutex_t *mutex
 const char *thread_type_to_string (thread_type type);
 const char *thread_status_to_string (cubthread::entry::status status);
 const char *thread_resume_status_to_string (thread_resume_suspend_status resume_status);
+
+/* UUIDv7 state accessors */
+inline void
+thread_get_uuidv7_state (cubthread::entry *thread_p, uint64_t *last_ms, uint8_t *seq)
+{
+  assert (thread_p != NULL);
+  *last_ms = thread_p->uuidv7_last_ms;
+  *seq = thread_p->uuidv7_seq;
+}
+
+inline void
+thread_set_uuidv7_state (cubthread::entry *thread_p, uint64_t last_ms, uint8_t seq)
+{
+  assert (thread_p != NULL);
+  thread_p->uuidv7_last_ms = last_ms;
+  thread_p->uuidv7_seq = seq;
+}
+
 #endif // _THREAD_ENTRY_HPP_

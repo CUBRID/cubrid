@@ -29,6 +29,7 @@
 #include "DMRBMemoryPool.hpp"
 
 #include <cstring>
+#include <mutex>
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <fcntl.h>
@@ -57,12 +58,15 @@ namespace cubconn
       void reset ();
 
       result drain (int fd, size_t limit = 0);
+      bool try_release (std::byte *ptr);
       void release (std::byte *ptr);
 
       std::vector<cubbase::span<std::byte>> *get_result ();
 
     private:
       statistics::metrics<statistics::context> *m_stats;
+
+      std::mutex m_mutex;
 
       state m_state;
       cubbase::DMRBMemoryPool m_buf;
@@ -91,6 +95,8 @@ namespace cubconn
 
       result parse_size (size_t consumption, size_t limit);
       result receive (int fd, size_t &consumption, size_t limit);
+
+      void release_unlocked (std::byte *ptr);
   };
 }
 

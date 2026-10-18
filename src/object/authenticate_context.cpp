@@ -37,6 +37,8 @@
 #include "schema_system_catalog_constants.h"
 #include "locator_cl.h" /* locator_create_heap_if_needed () */
 
+bool use_console_password = false; // If true, allows password input from the console
+
 // static functions
 static int au_add_method_check_authorization (void);
 
@@ -270,9 +272,9 @@ authenticate_context::login (const char *name, const char *password, bool ignore
   else
     {
       /* Change users within an active database. */
-      AU_DISABLE (save);
+      AU_SAVE_AND_DISABLE (save);
       error = perform_login (name, password, ignore_dba_privilege);
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
   return (error);
 }
@@ -291,7 +293,7 @@ authenticate_context::install (void)
   AU_USER_CACHE *user_cache;
   int exists, save, index;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   /*
    * create the system authorization objects, add attributes later since they
@@ -500,7 +502,7 @@ authenticate_context::install (void)
 
   au_add_method_check_authorization ();
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return NO_ERROR;
 
@@ -542,7 +544,7 @@ exit_on_error:
       db_drop_class (root_cls);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return (er_errid () == NO_ERROR ? ER_FAILED : er_errid ());
 }
 
@@ -569,6 +571,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 
   dbuser = (char *) name;
   dbpassword = (char *) password;
+  use_console_password = false;
 
   if (dbuser == NULL || strlen (dbuser) == 0)
     {
@@ -595,8 +598,8 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 	  error = er_errid ();
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
 	    {
-	      error = ER_AU_INVALID_USER;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, dbuser);
+	      error = ER_AU_REJECT_LOGIN;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 	}
       else
@@ -652,7 +655,8 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 		      if ((dbpassword == NULL) || (strlen (dbpassword) == 0)
 			  || !match_password (dbpassword, db_get_string (&value)))
 			{
-			  error = ER_AU_INVALID_PASSWORD;
+			  use_console_password = (dbpassword == NULL || *dbpassword == '\0');
+			  error = ER_AU_REJECT_LOGIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			}
 		    }
@@ -668,7 +672,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 		       */
 		      if (dbpassword != NULL && strlen (dbpassword))
 			{
-			  error = ER_AU_INVALID_PASSWORD;
+			  error = ER_AU_REJECT_LOGIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			}
 		    }
@@ -882,7 +886,7 @@ authenticate_context::get_current_user_name (void)
 	  return ws_copy_string (upper_sc_name);
 	}
 
-      AU_DISABLE (save);
+      AU_SAVE_AND_DISABLE (save);
 
       if (obj_get (current_user, "name", &value) == NO_ERROR)
 	{
@@ -903,7 +907,7 @@ authenticate_context::get_current_user_name (void)
 	    }
 	}
 
-      AU_ENABLE (save);
+      AU_RESTORE (save);
     }
 
   return name;
@@ -996,7 +1000,7 @@ authenticate_context::create_information_schema_user (MOP root_cls, MOP user_cls
   au_grant (DB_OBJECT_CLASS, information_schema_user, user_cls, AU_SELECT, false);
   au_grant (DB_OBJECT_CLASS, information_schema_user, auth_cls, AU_SELECT, false);
 
-  if (disable_login (information_schema_user) != NO_ERROR)
+  if (set_loginable (information_schema_user, false) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1043,20 +1047,13 @@ authenticate_context::is_system_user (MOP user)
 }
 
 int
-authenticate_context::disable_login (MOP user)
+authenticate_context::set_loginable (MOP user, bool loginable)
 {
   DB_VALUE value;
-  int error = NO_ERROR;
 
-  db_make_int (&value, false);
+  db_make_int (&value, loginable);
 
-  error = obj_set (user, AU_USER_ATTR_IS_LOGINABLE, &value);
-  if (error != NO_ERROR)
-    {
-      return error;
-    }
-
-  return NO_ERROR;
+  return obj_set (user, AU_USER_ATTR_IS_LOGINABLE, &value);
 }
 
 int authenticate_context::is_loginable_user (MOP user)
@@ -1087,7 +1084,7 @@ au_add_method_check_authorization (void)
   SM_TEMPLATE *def;
   int save;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   auth = db_find_class (AU_AUTH_CLASS_NAME);
   if (auth == NULL)
@@ -1107,10 +1104,10 @@ au_add_method_check_authorization (void)
   smt_assign_argument_domain (def, "check_authorization", true, NULL, 2, "integer", (DB_DOMAIN *) 0);
   sm_update_class (def, NULL);
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return NO_ERROR;
 
 exit_on_error:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return ER_FAILED;
 }

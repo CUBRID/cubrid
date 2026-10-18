@@ -114,23 +114,21 @@ static int css_fd_error (SOCKET fd);
 int
 css_gethostname (char *name, size_t namelen)
 {
-  if (namelen <= 0)
+  if (name == NULL || namelen == 0)
     {
       return ER_FAILED;
     }
 
-  size_t namelen_ = (size_t) namelen;
-
-  char hostname[namelen_];
-  hostname[namelen_ - 1] = '\0';
-  if (gethostname (hostname, namelen_) < 0)
+  if (gethostname (name, namelen) < 0)
     {
       return ER_FAILED;
     }
-  else
-    {
-      strncpy (name, hostname, namelen);
-    }
+
+  /* gethostname() is not required to null terminate the name when it does not
+   * fit, and the bounce buffer this function used to copy through was a
+   * caller sized variable length array. Write into the caller buffer directly
+   * and terminate it here. */
+  name[namelen - 1] = '\0';
 
   return NO_ERROR;
 }
@@ -370,10 +368,11 @@ css_sockaddr (const char *host, int port, struct sockaddr *saddr, socklen_t * sl
 
   /*
    * Compare with the TCP address with localhost.
-   * If it is, use Unix domain socket rather than TCP for the performance
+   * If it is and the requested port is the local master port, use Unix domain socket rather than TCP for the
+   * performance. Otherwise, keep the explicitly requested port by using TCP.
    */
   memcpy ((void *) &in_addr, (void *) &tcp_saddr.sin_addr, sizeof (in_addr));
-  if (in_addr == inet_addr ("127.0.0.1"))
+  if (in_addr == inet_addr ("127.0.0.1") && port == prm_get_master_port_id ())
     {
       memset ((void *) &unix_saddr, 0, sizeof (unix_saddr));
       unix_saddr.sun_family = AF_UNIX;

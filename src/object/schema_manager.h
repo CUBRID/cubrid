@@ -118,15 +118,14 @@ extern int sm_drop_constraint (MOP classop, DB_CONSTRAINT_TYPE constraint_type, 
 			       const char **att_names, bool class_attributes, bool mysql_index_name);
 extern int sm_drop_index (MOP classop, const char *constraint_name);
 extern int sm_exist_index (MOP classop, const char *idxname, BTID * btid);
+extern TP_DOMAIN *sm_constraint_key_domain (const SM_CLASS_CONSTRAINT * con);
 
 /* Misc schema operations */
 extern int sm_rename_class (MOP op, const char *new_name);
 extern int sm_update_all_catalog_statistics (bool with_fullscan);
 extern int sm_update_catalog_statistics (const char *class_name, bool with_fullscan);
 extern int sm_force_write_all_classes (void);
-#ifdef SA_MODE
-extern void sm_mark_system_class_for_catalog (void);
-#endif /* SA_MODE */
+extern bool sm_is_catcls_disabled (void);
 extern int sm_mark_system_class (MOP classop, int on_or_off);
 extern int sm_is_system_class (MOP op);
 extern bool sm_is_reuse_oid_class (MOP op);
@@ -195,8 +194,11 @@ extern int sm_touch_class (MOP classmop);
 /* Statistics functions */
 extern SM_CLASS *sm_get_class_with_statistics (MOP classop);
 extern CLASS_STATS *sm_get_statistics_force (MOP classop);
-extern int sm_update_statistics (MOP classop, bool with_fullscan);
-extern int sm_update_all_statistics (bool with_fullscan);
+struct class_attr_ndv;
+/* provided_ndv (optional): pre-computed per-column NDV (e.g. from the histogram full scan) so the
+ * server reuses it and skips its own NDV scan. NULL => server computes NDV itself. */
+extern int sm_update_statistics (MOP classop, bool with_fullscan, struct class_attr_ndv *provided_ndv = NULL);
+extern int sm_update_all_statistics (bool with_fullscan, int random_seed, int no_histogram);
 
 /* Misc information functions */
 extern const char *sm_get_ch_name (MOP op);

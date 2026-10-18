@@ -45,7 +45,7 @@ namespace memoize
       VAL_LIST *val_list = xasl->val_list;
       bool subquery_result = true;
 
-      if (spec == nullptr || val_list == nullptr || val_list->val_cnt == 0)
+      if (spec == nullptr || val_list == nullptr)
 	{
 	  return false;
 	}
@@ -102,7 +102,6 @@ namespace memoize
 	case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
 	case ACCESS_METHOD_INDEX_KEY_INFO:
 	case ACCESS_METHOD_INDEX_NODE_INFO:
-	case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
 	  return false;
 	  break;
 
@@ -690,7 +689,7 @@ namespace memoize
     return true;
   }
 
-  storage *storage::new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl)
+  storage *storage::new_storage (THREAD_ENTRY *thread_p, size_t max_storage_size, xasl_node *xasl, bool match_only)
   {
     ACCESS_SPEC_TYPE *spec = xasl->curr_spec ? xasl->curr_spec : xasl->spec_list;
     VAL_LIST *val_list = xasl->val_list;
@@ -718,7 +717,7 @@ namespace memoize
 	return nullptr;
       }
 
-    if (key_cnt == 0 || value_cnt == 0)
+    if (key_cnt == 0 || (value_cnt == 0 && !match_only))
       {
 	return nullptr;
       }
@@ -729,18 +728,21 @@ namespace memoize
       {
 	return NULL;
       }
-    storage_p = placement_new (storage_p, thread_p, max_storage_size, key_cnt, value_cnt, val_list);
+    storage_p = placement_new (storage_p, thread_p, max_storage_size, key_cnt, value_cnt, val_list, match_only);
     storage_p->init (key_ptr_src);
 
     return storage_p;
   }
 
-  storage::storage (THREAD_ENTRY *thread_p, size_t max_storage_size, int key_cnt, int value_cnt, VAL_LIST *val_list)
+  storage::storage (THREAD_ENTRY *thread_p, size_t max_storage_size, int key_cnt, int value_cnt, VAL_LIST *val_list,
+		    bool match_only)
     : hit (0)
     , miss (0)
     , m_max_storage_size (max_storage_size)
     , m_key_cnt (key_cnt)
     , m_value_cnt (value_cnt)
+    , m_match_only (match_only)
+    , m_matched ()
     , m_thread_p (thread_p)
     , m_val_list (val_list)
     , m_key_fixed_allocator ()
@@ -752,6 +754,7 @@ namespace memoize
     , m_key_value_map ()
     , m_current_value_list ()
     , disabled (false)
+    , insert_stopped (false)
     , has_range (false)
     , key_changed (false)
     , current_key_joined (false)
@@ -775,7 +778,7 @@ namespace memoize
     for (auto it = m_key_value_map.begin(); it != m_key_value_map.end(); it++)
       {
 	it->first->~key();
-	if (it->second != nullptr)
+	if (it->second != nullptr && it->second != &m_matched)
 	  {
 	    it->second->~value();
 	    free (it->second);
@@ -818,9 +821,8 @@ namespace memoize
       db_change_private_heap (thread_get_thread_entry_info(), heap_id);
     });
     value *v;
-    if (disabled || get_current_size() >= m_max_storage_size)
+    if (disabled)
       {
-	disabled = true;
 	return result_code::FULL;
       }
 
@@ -835,6 +837,11 @@ namespace memoize
 
 	m_last_key = get_key();
 	key_changed = false;
+	/* a new key starts with no replay range. Without this a caller that stops after one
+	 * SUCCESS (an ANTI inner drops the outer on a cached match and is not re-entered) leaves
+	 * has_range set; the next key's cached "no match" then answers ENDED twice, once here and
+	 * once on the re-entry below, and the outer is emitted twice (CBRD-27465). */
+	has_range = false;
 
 	auto range = m_key_value_map.equal_range (m_last_key);
 
@@ -900,29 +907,23 @@ namespace memoize
 
     try
       {
-	if (disabled || get_current_size() >= m_max_storage_size)
+	if (!can_insert ())
 	  {
-	    disabled = true;
-	    return result_code::FULL;
-	  }
-	if (hit+miss > MEMOIZE_FREE_ITERATION_LIMIT)
-	  {
-	    if (((double)hit)/ (hit+miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
-	      {
-		disabled = true;
-		return result_code::FULL;
-	      }
+	    return disabled ? result_code::FULL : result_code::SUCCESS;
 	  }
 
 	current_key_joined = true;
 	assert (m_last_key != nullptr);
 
 	key *k = get_key();
-	value *v = get_value();
+	value *v = m_match_only ? &m_matched : get_value();
 
 	m_key_sz += k->get_size();
 	m_hash_sz += hash_entry_sz;
-	m_value_sz += v->get_size();
+	if (!m_match_only)
+	  {
+	    m_value_sz += v->get_size();
+	  }
 
 	m_key_value_map.insert ({k, v});
 
@@ -946,19 +947,9 @@ namespace memoize
       {
 	if (!current_key_joined)
 	  {
-	    if (disabled || get_current_size() >= m_max_storage_size)
+	    if (!can_insert ())
 	      {
-		disabled = true;
-		return result_code::FULL;
-	      }
-
-	    if (hit+miss > MEMOIZE_FREE_ITERATION_LIMIT)
-	      {
-		if (((double)hit)/ (hit+miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
-		  {
-		    disabled = true;
-		    return result_code::FULL;
-		  }
+		return disabled ? result_code::FULL : result_code::SUCCESS;
 	      }
 
 	    assert (m_last_key != nullptr);
@@ -976,6 +967,76 @@ namespace memoize
       {
 	return result_code::ERROR;
       }
+  }
+
+  /* Whether put () and put_nullptr () may add an entry; false either because the storage was disabled just now
+   * or before (the caller then returns FULL and frees it) or because its budget is used up. */
+  bool storage::can_insert ()
+  {
+    if (disabled)
+      {
+	return false;
+      }
+
+    size_t size = get_current_size ();
+
+    /* Until the storage holds 60% of its budget every key has cost one miss at most, so a low hit ratio says
+     * nothing yet: keys that repeat but have not come round again look like distinct keys. Judging after a fixed
+     * 1,000 probes turned memoize off whenever the keys outnumbered ~630 (CBRD-27487).
+     * Once inserts have stopped, every miss is judged whatever the size: taking out the partial key in
+     * stop_insert () can bring the storage back under 60%, and it must not then be kept unjudged. */
+    if ((insert_stopped || size > m_max_storage_size * MEMOIZE_HIT_RATIO_CHECK_SIZE)
+	&& ((double) hit) / (hit + miss) < MEMOIZE_HIT_RATIO_THRESHOLD)
+      {
+	disabled = true;
+	return false;
+      }
+
+    if (insert_stopped)
+      {
+	return false;
+      }
+
+    if (size >= m_max_storage_size)
+      {
+	stop_insert ();
+	return false;
+      }
+
+    return true;
+  }
+
+  /* The budget is used up: keep answering from what is stored instead of dropping it all (CBRD-27487);
+   * can_insert () goes on judging the hit ratio on every miss and releases the storage below the threshold.
+   * put () stores one entry per inner row, so the current key holds only part of its result; a later hit
+   * would replay just that part, so its entries are taken out. */
+  void storage::stop_insert ()
+  {
+    if (current_key_joined)
+      {
+	auto range = m_key_value_map.equal_range (m_last_key);
+
+	for (auto it = range.first; it != range.second;)
+	  {
+	    key *k = it->first;
+	    value *v = it->second;
+
+	    m_key_sz -= k->get_size ();
+	    m_hash_sz -= hash_entry_sz;
+	    it = m_key_value_map.erase (it);
+
+	    k->~key ();
+	    m_key_fixed_allocator.deallocate (k);
+	    if (v != nullptr && v != &m_matched)
+	      {
+		m_value_sz -= v->get_size ();
+		v->~value ();
+		free (v);
+	      }
+	  }
+      }
+
+    insert_stopped = true;
   }
 
   key *storage::get_key()
@@ -1025,6 +1086,10 @@ namespace memoize
   result_code storage::set_value (value *v)
   {
     int i=0;
+    if (v == &m_matched)
+      {
+	return result_code::SUCCESS;
+      }
     for (QPROC_DB_VALUE_LIST it = m_val_list->valp; it!=nullptr; it=it->next, i++)
       {
 	pr_clear_value (it->val);
@@ -1042,7 +1107,7 @@ namespace memoize
 extern "C"
 {
   using namespace memoize;
-  int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl)
+  int new_memoize_storage (THREAD_ENTRY *thread_p, xasl_node *xasl, bool match_only)
   {
     UINT64 storage_size = prm_get_bigint_value (PRM_ID_MEMOIZE_MEMORY_LIMIT);
 
@@ -1051,12 +1116,18 @@ extern "C"
 	return NO_ERROR;
       }
 
+    if (XASL_IS_FLAGED (xasl, XASL_NO_MEMOIZE))
+      {
+	/* the optimizer found from statistics that the outer key hardly repeats (CBRD-27543) */
+	return NO_ERROR;
+      }
+
     if (xasl->memoize_storage != nullptr)
       {
 	clear_memoize_storage (thread_p, xasl);
       }
 
-    xasl->memoize_storage = storage::new_storage (thread_p, (size_t)storage_size, xasl);
+    xasl->memoize_storage = storage::new_storage (thread_p, (size_t)storage_size, xasl, match_only);
 
     return NO_ERROR;
   }

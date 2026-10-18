@@ -744,7 +744,7 @@ export_serial (extract_context & ctxt, print_output & output_ctx)
   db_make_null (&diff_value);
   db_make_null (&answer_value);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   error = db_compile_and_execute_local (((query == NULL) ? query_all : query), &query_result, &query_error);
   if (error < 0)
@@ -883,7 +883,7 @@ err:
       free_and_init (uppercase_user);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -953,7 +953,7 @@ emit_class_alter_serial (extract_context & ctxt, print_output & output_ctx)
   db_make_null (&diff_value);
   db_make_null (&answer_value);
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   error = db_compile_and_execute_local (((query == NULL) ? query_all : query), &query_result, &query_error);
   if (error < 0)
@@ -1122,7 +1122,7 @@ err:
       free_and_init (uppercase_user);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 
@@ -1180,8 +1180,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
   query_error.err_lineno = 0;
   query_error.err_posno = 0;
 
-  // TODO: it should be moved to before db_compile_and_execute_local(). It can be returned without AU_ENABLE().
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   if (ctxt.is_dba_user == false && ctxt.is_dba_group_member == false)
     {
@@ -1190,6 +1189,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
       if (uppercase_user == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, uppercase_user_size);
+	  AU_RESTORE (save);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -1205,6 +1205,7 @@ export_synonym (extract_context & ctxt, print_output & output_ctx)
 	    }
 
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, query_size);
+	  AU_RESTORE (save);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
 
@@ -1365,7 +1366,7 @@ end:
       free_and_init (uppercase_user);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return error;
 }
@@ -3654,7 +3655,6 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
   const int *prefix_length;
   int k, n_attrs = 0;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
-  char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
 
   PARSER_CONTEXT *parser = NULL;
   PARSER_VARCHAR *res_vstr = NULL;
@@ -3680,7 +3680,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
   if (partitioned_subclass)
     {
       DB_OBJECT *root_op = NULL;
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
       if (do_get_partition_parent (class_, &root_op) == NO_ERROR)
 	{
 	  if (au_fetch_class (root_op, &supclass, AU_FETCH_READ, AU_SELECT) != NO_ERROR)
@@ -3689,7 +3689,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	    }
 	}
 
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
     }
 
   for (constraint = constraint_list; constraint != NULL; constraint = db_constraint_next (constraint))
@@ -3759,26 +3759,6 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
 	  for (att = atts; *att != NULL; att++)
 	    {
 	      n_attrs++;
-	    }
-	}
-
-      reserved_col_buf[0] = '\0';
-      if (!DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
-	{
-	  k = dk_sm_deduplicate_key_position (n_attrs, atts, constraint->func_index_info);
-	  if (k != -1)
-	    {
-	      if (constraint->func_index_info && constraint->func_index_info->attr_index_start > 0)
-		{
-		  k--;
-		}
-
-	      if (IS_DEDUPLICATE_KEY_ATTR_ID (atts[k]->id))
-		{
-		  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf),
-						 GET_DEDUPLICATE_KEY_ATTR_LEVEL (atts[k]->id));
-		  n_attrs--;	/* Hidden column should not be displayed. */
-		}
 	    }
 	}
 
@@ -3873,22 +3853,7 @@ emit_index_def (extract_context & ctxt, print_output & output_ctx, DB_OBJECT * c
       assert ((constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	      || (ctype != DB_CONSTRAINT_UNIQUE && ctype != DB_CONSTRAINT_REVERSE_UNIQUE));
 
-      if ((reserved_col_buf[0] == '\0') && !DB_IS_CONSTRAINT_UNIQUE_FAMILY (ctype))
-	{
-	  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
-	}
-      if (reserved_col_buf[0])
-	{
-	  if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	    {
-	      output_ctx (" WITH %s, ONLINE", reserved_col_buf);
-	    }
-	  else
-	    {
-	      output_ctx (" WITH %s", reserved_col_buf);
-	    }
-	}
-      else if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
+      if (constraint->index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
 	{
 	  output_ctx (" WITH ONLINE");
 	}
@@ -4362,7 +4327,7 @@ emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg
   int err;
   int err_count = 0;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   for (i = 0; i < arg_cnt; i++)
     {
@@ -4414,7 +4379,7 @@ emit_stored_procedure_args (print_output & output_ctx, int arg_cnt, DB_SET * arg
       pr_clear_value (&arg_val);
     }
 
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return err_count;
 }
 
@@ -4431,7 +4396,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
   DB_VALUE unique_name_val, sp_name_val, pkg_name_val, sp_type_val, arg_cnt_val, lang_val, generated_val, args_val,
     rtn_type_val, class_val, method_val, directive_val, comment_val;
   DB_VALUE owner_val, owner_name_val;
-  int sp_type, rtn_type, arg_cnt, directive, save;
+  int sp_lang, sp_type, rtn_type, arg_cnt, directive, save;
   DB_SET *arg_set;
   int err;
   int err_count = 0;
@@ -4440,12 +4405,12 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
   char output_owner[DB_MAX_USER_LENGTH + 4];
   output_owner[0] = '\0';
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   cls = db_find_class (SP_CLASS_NAME);
   if (cls == NULL)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return 1;
     }
 
@@ -4498,6 +4463,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	  continue;
 	}
 
+      sp_lang = db_get_int (&lang_val);
       sp_type = db_get_int (&sp_type_val);
 
       output_ctx ("\nCREATE %s", sp_type == SP_TYPE_PROCEDURE ? "PROCEDURE" : "FUNCTION");
@@ -4537,7 +4503,14 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 
 	  if (rtn_type == DB_TYPE_RESULTSET)
 	    {
-	      output_ctx ("RETURN CURSOR ");
+	      if (sp_lang == SP_LANG_PLCSQL)
+		{
+		  output_ctx ("RETURN SYS_REFCURSOR ");
+		}
+	      else
+		{
+		  output_ctx ("RETURN CURSOR ");
+		}
 	    }
 	  else
 	    {
@@ -4562,7 +4535,12 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
 	  output_ctx ("DETERMINISTIC ");
 	}
 
-      int sp_lang = db_get_int (&lang_val);
+      // parallel_enable
+      if (directive & SP_DIRECTIVE_ENUM::SP_DIRECTIVE_PARALLEL_ENABLE)
+	{
+	  output_ctx ("PARALLEL_ENABLE ");
+	}
+
       if (sp_lang == SP_LANG_PLCSQL)
 	{
 	  output_ctx ("AS LANGUAGE PLCSQL BEGIN ");
@@ -4599,7 +4577,7 @@ emit_stored_procedure_pre (extract_context & ctxt, print_output & output_ctx)
     }
 
   db_objlist_free (sp_list);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return err_count;
 }
@@ -4620,12 +4598,12 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
   int err_count = 0;
   const char *owner_name;
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   cls = db_find_class (SP_CLASS_NAME);
   if (cls == NULL)
     {
-      AU_ENABLE (save);
+      AU_RESTORE (save);
       return 1;
     }
 
@@ -4692,7 +4670,7 @@ emit_stored_procedure_post (extract_context & ctxt, print_output & output_ctx)
     }
 
   db_objlist_free (sp_list);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return err_count;
 }
@@ -4717,7 +4695,7 @@ emit_stored_procedure_code (extract_context & ctxt, print_output & output_ctx, c
   char downcase_owner_name[DB_MAX_USER_LENGTH];
   downcase_owner_name[0] = '\0';
 
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
 
   db_make_string (&value, code_name);
   obj = db_find_unique (db_find_class (SP_CODE_CLASS_NAME), SP_CODE_ATTR_NAME, &value);
@@ -4798,7 +4776,7 @@ exit:
 
   db_value_clear (&value);
   db_value_clear (&scode_val);
-  AU_ENABLE (save);
+  AU_RESTORE (save);
 
   return err;
 }
@@ -4821,7 +4799,6 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
   char class_name[DB_MAX_CLASS_LENGTH] = { '\0' };
   MOP ref_clsop;
   char output_owner[DB_MAX_USER_LENGTH + 4] = { '\0' };
-  char reserved_col_buf[RESERVED_INDEX_ATTR_NAME_BUF_SIZE] = { 0x00, };
 
   for (cl = classes; cl != NULL; cl = cl->next)
     {
@@ -4841,12 +4818,6 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	    {
 	      if (db_attribute_class (*att) != cl->op)
 		{
-		  if (IS_DEDUPLICATE_KEY_ATTR_ID ((*att)->id))
-		    {
-		      assert (!SM_IS_CONSTRAINT_UNIQUE_FAMILY (constraint->type));
-		      assert (att[1] == NULL);
-		      break;
-		    }
 		  has_inherited_atts = true;
 		  break;
 		}
@@ -4865,17 +4836,8 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 	  output_ctx ("\nALTER CLASS %s%s%s%s ADD", output_owner, PRINT_IDENTIFIER (class_name));
 	  output_ctx (" CONSTRAINT [%s] FOREIGN KEY(", constraint->name);
 
-	  reserved_col_buf[0] = '\0';
 	  for (att = atts; *att != NULL; att++)
 	    {
-	      if (IS_DEDUPLICATE_KEY_ATTR_ID (att[0]->id))
-		{
-		  assert (att[1] == NULL);
-		  dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf),
-						 GET_DEDUPLICATE_KEY_ATTR_LEVEL (att[0]->id));
-		  break;
-		}
-
 	      att_name = db_attribute_name (*att);
 	      if (att != atts)
 		{
@@ -4887,15 +4849,6 @@ emit_foreign_key (extract_context & ctxt, print_output & output_ctx, DB_OBJLIST 
 		}
 	    }
 	  output_ctx (")");
-
-	  if (reserved_col_buf[0] == '\0')
-	    {
-	      dk_print_deduplicate_key_info (reserved_col_buf, sizeof (reserved_col_buf), DEDUPLICATE_KEY_LEVEL_OFF);
-	    }
-	  if (reserved_col_buf[0])
-	    {
-	      output_ctx (" WITH %s", reserved_col_buf);
-	    }
 
 	  ref_clsop = ws_mop (&(constraint->fk_info->ref_class_oid), NULL);
 	  SPLIT_USER_SPECIFIED_NAME (db_get_class_name (ref_clsop), owner_name, class_name);
@@ -4989,7 +4942,7 @@ export_server (extract_context & ctxt, print_output & output_ctx)
     }
 
   int au_save;
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   error = db_compile_and_execute_local (((query == NULL) ? query_all : query), &query_result, &query_error);
   if (error <= 0)
@@ -5081,7 +5034,7 @@ err:
       free_and_init (uppercase_user);
     }
 
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
   return error;
 }
 
@@ -6308,7 +6261,7 @@ filter_user_classes (DB_OBJLIST ** class_list, const char *user)
       name = db_get_class_name (cl->op);
       sm_qualifier_name (name, owner_name, DB_MAX_IDENTIFIER_LENGTH);
 
-      if (owner_name != NULL && strcmp (owner_name, user) == 0)
+      if (strcmp (owner_name, user) == 0)
 	{
 	  prev = cl;
 	}
@@ -6440,7 +6393,7 @@ do_recreate_where_clause_or_function_attr (PARSER_CONTEXT ** parser, const char 
 {
   PT_NODE **stmt;
   PT_NODE *expr;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   PARSER_VARCHAR *res = NULL;
   char qry_buf[4096];
   char *query_str = qry_buf;

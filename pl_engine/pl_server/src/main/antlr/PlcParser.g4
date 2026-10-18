@@ -40,7 +40,7 @@ create_routine
 
 routine_definition
     : (PROCEDURE | FUNCTION) routine_uniq_name ( (LPAREN parameter_list RPAREN)? | LPAREN RPAREN ) (RETURN type_spec)?
-      (authid_spec? deterministic_spec? | deterministic_spec authid_spec) (IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body (SEMICOLON)?
+      (authid_spec | deterministic_spec | parallel_enable_spec)* (IS | AS) (LANGUAGE PLCSQL)? seq_of_declare_specs? body (SEMICOLON)?
     ;
 
 routine_uniq_name
@@ -67,6 +67,10 @@ deterministic_spec
     | DETERMINISTIC
     ;
 
+parallel_enable_spec
+    : PARALLEL_ENABLE
+    ;
+
 default_value_part
     : (':=' | DEFAULT) expression
     ;
@@ -76,8 +80,7 @@ seq_of_declare_specs
     ;
 
 declare_spec
-    : pragma_declaration
-    | constant_declaration
+    : constant_declaration
     | exception_declaration
     | variable_declaration
     | cursor_definition
@@ -107,10 +110,6 @@ cursor_parameter
 
 exception_declaration
     : identifier EXCEPTION SEMICOLON
-    ;
-
-pragma_declaration
-    : PRAGMA AUTONOMOUS_TRANSACTION SEMICOLON
     ;
 
 seq_of_statements
@@ -286,6 +285,7 @@ fetch_statement
 
 open_for_statement
     : OPEN identifier FOR static_sql
+    | OPEN identifier FOR dyn_sql restricted_using_clause?
     ;
 
 transaction_control_statement

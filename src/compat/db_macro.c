@@ -2928,6 +2928,12 @@ db_default_expression_string (DB_DEFAULT_EXPR_TYPE default_expr_type)
       return "CURRENT_DATE";
     case DB_DEFAULT_SYSTIME:
       return "SYS_TIME";
+    case DB_DEFAULT_SYSGUID:
+      return "SYS_GUID()";
+    case DB_DEFAULT_UUIDV4:
+      return "UUID(4)";
+    case DB_DEFAULT_UUIDV7:
+      return "UUID(7)";
     default:
       return NULL;
     }

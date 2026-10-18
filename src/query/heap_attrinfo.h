@@ -31,7 +31,9 @@ typedef enum
   HEAP_READ_ATTRVALUE,
   HEAP_WRITTEN_ATTRVALUE,
   HEAP_UNINIT_ATTRVALUE,
-  HEAP_WRITTEN_LOB_ATTRVALUE
+  HEAP_WRITTEN_LOB_ATTRVALUE,
+  HEAP_LAZY_ATTRVALUE		/* deferred: no dbvalue yet; read on demand from attr_info->lazy_recdes
+				 * by heap_attrvalue_peek_lazy () */
 } HEAP_ATTRVALUE_STATE;
 
 typedef enum
@@ -52,6 +54,8 @@ struct heap_attrvalue
   OR_ATTRIBUTE *last_attrepr;	/* Used for default values */
   OR_ATTRIBUTE *read_attrepr;	/* Pointer to a desired attribute information */
   DB_VALUE dbvalue;		/* DB values of the attribute in memory */
+  bool lazy_always_eager;	/* lazy mode: read this attribute now instead of deferring (column of the
+				 * first-evaluated predicate term, touched on nearly every row) */
 };
 
 typedef struct heap_cache_attrinfo HEAP_CACHE_ATTRINFO;
@@ -68,7 +72,16 @@ struct heap_cache_attrinfo
   int inst_chn;			/* Current chn of instance object */
   int num_values;		/* Number of desired attribute values */
   HEAP_ATTRVALUE *values;	/* Value for the attributes */
+  RECDES *lazy_recdes;		/* lazy mode when non-NULL: record the deferred attrs are read from */
+  /* deferring is worth it or not depending on the data, so it is measured over the first
+   * HEAP_LAZY_CALIBRATE_ROWS rows (see heap_attrinfo_read_dbvalues_lazy ()). */
+  INT64 lazy_rows;		/* rows prepared in lazy mode */
+  INT64 lazy_deferred;		/* slots marked HEAP_LAZY_ATTRVALUE (reads lazy could have skipped) */
+  INT64 lazy_decoded;		/* those actually read on demand (reads it did not skip) */
+  bool lazy_disabled;		/* true: read predicate columns eagerly - nothing to defer, or not worth it */
 };
+
+extern DB_VALUE *heap_attrvalue_peek_lazy (HEAP_ATTRVALUE * slot, HEAP_CACHE_ATTRINFO * attr_info);
 
 #else /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 

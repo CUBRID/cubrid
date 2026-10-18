@@ -29,11 +29,13 @@
 #include "xasl_cache.h"
 #include "xasl_iteration.hpp"
 #include "query_executor.h"
+#include "domain_plan.h"
 #include "stream_to_xasl.h"
 #include "xasl_unpack_info.hpp"
 #include "memoize.hpp"
 #include "scan_manager.h"
 #include "partition_sr.h"
+#include "object_primitive.h"
 #include "scope_exit.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -57,6 +59,8 @@ namespace parallel_scan
       {
 	m_err_messages->move_top_error_message_to_this();
 	m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+	/* release what initialize () already acquired: the XASL clone and its cache entry fix above all */
+	finalize (thread_ref);
 	return;
       }
     loop (thread_ref);
@@ -95,9 +99,14 @@ namespace parallel_scan
     thread_ref.tran_index = m_parent_thread_p->tran_index;
     thread_ref.on_trace = m_parent_thread_p->on_trace;
 
-    if (thread_ref.on_trace)
+    /* the worker keeps its own statistics whenever anyone reads them, trace or not; finalize () hands them over */
+    if (perfmon_parallel_stats_needed (&thread_ref))
       {
 	perfmon_initialize_parallel_stats (&thread_ref);
+      }
+    m_scan_fixes = {};
+    if (thread_ref.on_trace)
+      {
 	tsc_getticks (&m_start_tick);
       }
 
@@ -106,6 +115,54 @@ namespace parallel_scan
       {
 	return err_code;
       }
+
+    /* inject precomputed scalar values into the clone so predicate eval reads them instead of re-executing per worker; precomp_owner_regu aliases the clone's predicate operand (serialization preserves source-pointer aliasing); aptr_list only (correlated dptr_list never injected); one back-pointer serves all operands (same single_tuple->valp->val slot) via slot write + status=XASL_SUCCESS. */
+    for (xasl_node *cnode = m_xasl; cnode != nullptr; cnode = cnode->scan_ptr)
+      {
+	for (xasl_node *clone_subq = cnode->aptr_list; clone_subq != nullptr; clone_subq = clone_subq->next)
+	  {
+	    REGU_VARIABLE *regu = clone_subq->precomp_owner_regu;
+	    if (regu == nullptr)
+	      {
+		continue;
+	      }
+	    const DB_VALUE *map_val = m_pre_execution_info->find_precomp_val (clone_subq->header.id);
+	    if (map_val == nullptr || clone_subq->single_tuple == nullptr || clone_subq->single_tuple->valp == nullptr
+		|| clone_subq->single_tuple->valp->val == nullptr)
+	      {
+		continue;
+	      }
+	    DB_VALUE *slot = clone_subq->single_tuple->valp->val;
+	    /* the back-pointer must still resolve to this subquery after unpack and clone; otherwise the
+	       slot rewrite below would clobber an unrelated operand, so report a malformed node up front. */
+	    if (regu->xasl != clone_subq)
+	      {
+		assert (false);
+		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+		return ER_QPROC_INVALID_XASLNODE;
+	      }
+	    /* release clone's stale operand value, unless it already aliases the target slot. */
+	    if (regu->value.dbvalptr != nullptr && regu->value.dbvalptr != slot)
+	      {
+		pr_clear_value (regu->value.dbvalptr);
+	      }
+	    /* copy precomputed value into the single_tuple slot. */
+	    pr_clone_value (map_val, slot);
+	    /* alias the predicate operand to that slot -- no second copy. */
+	    regu->value.dbvalptr = slot;
+	    /* regu operand now aliases single_tuple->valp->val (one DB_VALUE). On clone teardown the
+	       single_tuple clear loop (qexec_clear_xasl_head) always clears that slot, and the
+	       TYPE_CONSTANT regu cleanup may pr_clear_value the same pointer again; pr_clear_value is
+	       idempotent (DB_IS_NULL guard makes the second call a no-op), so there is no double free
+	       regardless of this flag. Normalize the marker to unset for consistency across clone kinds. */
+	    REGU_VARIABLE_CLEAR_FLAG (regu, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE);
+	    /* mark executed so EXECUTE_REGU_VARIABLE_XASL's status guard skips re-execution. */
+	    clone_subq->status = XASL_SUCCESS;
+	    /* force non-cache fetch branch so the worker uses the redirected dbvalptr. */
+	    XASL_CLEAR_FLAG (clone_subq, XASL_USES_SQ_CACHE);
+	  }
+      }
+
     if constexpr (ST != SCAN_TYPE::LIST)
       {
 	hsidp = &m_scan_id->s.hsid;
@@ -178,7 +235,8 @@ namespace parallel_scan
 				     cls->cls_regu_list_pred, spec->where_pred, cls->cls_regu_list_rest,
 				     cls->num_attrs_pred, cls->attrids_pred, cls->cache_pred,
 				     cls->num_attrs_rest, cls->attrids_rest, cls->cache_rest,
-				     S_HEAP_SCAN, cls->cache_reserved, cls->cls_regu_list_reserved);
+				     S_HEAP_SCAN, cls->cache_reserved, cls->cls_regu_list_reserved,
+				     m_is_cached_scan);
 		err_code = scan_start_scan (&thread_ref, m_scan_id);
 	      }
 	  }
@@ -186,7 +244,7 @@ namespace parallel_scan
 	  {
 	    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
 	      {
-		scan_info scan_info = m_join_info->get_scan_info (xptr->header.id);
+		scan_info scan_info = m_pre_execution_info->get_scan_info (xptr->header.id);
 		ACCESS_SPEC_TYPE *specp = xptr->curr_spec? xptr->curr_spec : xptr->spec_list;
 		xptr->curr_spec = xptr->spec_list;
 		if (spec_ptr->type == TARGET_CLASS && IS_ANY_INDEX_ACCESS (spec_ptr->access)
@@ -197,14 +255,31 @@ namespace parallel_scan
 
 		if (specp->type == TARGET_LIST)
 		  {
-		    assert_release_error (scan_info.list_id != NULL);
+		    QFILE_LIST_ID *open_list_id = scan_info.list_id;
+		    XASL_NODE *src_xasl = specp->s.list_node.xasl_node;
+		    if (src_xasl != NULL)
+		      {
+			for (xasl_node *lv = m_xasl; lv != nullptr && open_list_id != src_xasl->list_id;
+			     lv = lv->scan_ptr)
+			  {
+			    for (xasl_node *dp = lv->dptr_list; dp != nullptr; dp = dp->next)
+			      {
+				if (dp == src_xasl)
+				  {
+				    open_list_id = src_xasl->list_id;
+				    break;
+				  }
+			      }
+			  }
+		      }
+		    assert_release_error (open_list_id != NULL);
 		    if (er_errid() != NO_ERROR)
 		      {
 			return er_errid();
 		      }
 		    err_code =
 			    scan_open_list_scan (&thread_ref, &specp->s_id, specp->s_id.grouped, specp->single_fetch, specp->s_dbval,xptr->val_list,
-						 m_vd,scan_info.list_id, specp->s.list_node.list_regu_list_pred,specp->where_pred,
+						 m_vd,open_list_id, specp->s.list_node.list_regu_list_pred,specp->where_pred,
 						 specp->s.list_node.list_regu_list_rest,specp->s.list_node.list_regu_list_build, specp->s.list_node.list_regu_list_probe,
 						 specp->s.list_node.hash_list_scan_yn,true);
 		    if (err_code != NO_ERROR)
@@ -214,12 +289,31 @@ namespace parallel_scan
 		  }
 		else if (specp->type == TARGET_CLASS)
 		  {
+		    bool inner_cached_scan = false;
+		    bool chain_has_dptr = false;
+		    for (xasl_node *cn = m_xasl; cn != nullptr && !chain_has_dptr; cn = cn->scan_ptr)
+		      {
+			chain_has_dptr = (cn->dptr_list != nullptr);
+		      }
 		    if (xptr->scan_ptr == NULL)
 		      {
-			fixed_scan = true;
+			if (!chain_has_dptr)
+			  {
+			    fixed_scan = true;
+			  }
+			else if (!specp->s_id.grouped)
+			  {
+			    inner_cached_scan = true;
+			  }
 		      }
 
-		    if (thread_ref.on_trace && HFID_EQ (&xptr->curr_spec->s.cls_node.hfid, &scan_info.hfid) == false)
+		    /* a partitioned SEMI / ANTI inner, or a following join after one (CBRD-27493), is not advanced
+		     * partition by partition by the main thread's scan-block iteration
+		     * (qexec_next_scan_block_iterations skips it); qexec_execute_scan walks every partition per outer
+		     * row itself, so the clone needs the pruned partition list the main thread got in qexec_open_scan,
+		     * or it probes only the one captured partition (CBRD-27485) */
+		    if ((thread_ref.on_trace || XASL_IS_PER_OUTER_ROW (xptr))
+			&& HFID_EQ (&xptr->curr_spec->s.cls_node.hfid, &scan_info.hfid) == false)
 		      {
 			err_code = partition_prune_spec (&thread_ref, m_vd, xptr->curr_spec);
 			if (err_code != NO_ERROR)
@@ -227,7 +321,8 @@ namespace parallel_scan
 			    return err_code;
 			  }
 			/* prune partition stats */
-			for (PARTITION_SPEC_TYPE *part_spec = xptr->curr_spec->parts; part_spec != NULL; part_spec = part_spec->next)
+			for (PARTITION_SPEC_TYPE *part_spec = xptr->curr_spec->parts;
+			     thread_ref.on_trace && part_spec != NULL; part_spec = part_spec->next)
 			  {
 			    if (HFID_EQ (&part_spec->hfid, &scan_info.hfid))
 			      {
@@ -250,7 +345,7 @@ namespace parallel_scan
 							specp->s.cls_node.attrids_pred, specp->s.cls_node.cache_pred,
 							specp->s.cls_node.num_attrs_rest, specp->s.cls_node.attrids_rest,
 							specp->s.cls_node.cache_rest, S_HEAP_SCAN, specp->s.cls_node.cache_reserved,
-							specp->s.cls_node.cls_regu_list_reserved);
+							specp->s.cls_node.cls_regu_list_reserved, inner_cached_scan);
 			if (err_code != NO_ERROR)
 			  {
 			    return err_code;
@@ -285,7 +380,6 @@ namespace parallel_scan
 		      }
 		      break;
 		      case ACCESS_METHOD_SEQUENTIAL_RECORD_INFO:
-		      case ACCESS_METHOD_SEQUENTIAL_SAMPLING_SCAN:
 		      case ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN:
 		      case ACCESS_METHOD_JSON_TABLE:
 		      case ACCESS_METHOD_SCHEMA:
@@ -308,7 +402,8 @@ namespace parallel_scan
 		    return err_code;
 		  }
 
-		err_code = new_memoize_storage (&thread_ref, xptr);
+		/* a SEMI / ANTI inner memoizes only whether the key matched (match-only), as the serial path does */
+		err_code = new_memoize_storage (&thread_ref, xptr, XASL_IS_NL_SEMI_OR_ANTI (xptr));
 		if (err_code != NO_ERROR)
 		  {
 		    return err_code;
@@ -370,6 +465,11 @@ namespace parallel_scan
       {
 	m_result_handler->write_initialize (&thread_ref, m_xasl->outptr_list, m_xasl, m_vd);
       }
+    /* set before the er_errid () check on purpose: an error still pending here (left by a callee whose
+     * return code is not checked) is detected only after the handlers were initialized, and finalize ()
+     * must still run their finalizers. write_initialize () moves its own errors out, so its early
+     * returns do not depend on this order. */
+    m_handlers_initialized = true;
     if (er_errid () != NO_ERROR)
       {
 	return er_errid ();
@@ -390,7 +490,8 @@ namespace parallel_scan
 	  }
       }
 
-    if (thread_ref.on_trace)
+    /* finalize () also runs after a failed initialize (); what it did not reach is skipped below */
+    if (thread_ref.on_trace && m_handlers_initialized)
       {
 	TSC_TICKS end_tick;
 	TSCTIMEVAL tv_diff;
@@ -402,57 +503,75 @@ namespace parallel_scan
 	  {
 	    m_trace_handler->m_trace_storage_for_sibling_xasl.merge_xasl_tree (m_xasl);
 	  }
-	m_trace_handler->add_trace (perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
-				    perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
-				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
-				    m_scan_id,
+	m_trace_handler->add_trace (m_scan_fixes.fetches, m_scan_fixes.ioreads, m_scan_fixes.fetch_time, m_scan_id,
 				    elapsed_time);
-	perfmon_destroy_parallel_stats (&thread_ref);
       }
-    m_result_handler->write_finalize (&thread_ref);
-    m_input_handler->finalize (&thread_ref);
-    m_slot_iterator.finalize (&thread_ref);
+    if (m_handlers_initialized)
+      {
+	m_result_handler->write_finalize (&thread_ref);
+	m_input_handler->finalize (&thread_ref);
+	m_slot_iterator.finalize (&thread_ref);
+      }
 
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
       {
 	for (xptr = m_xasl; xptr != NULL; xptr = xptr->scan_ptr)
 	  {
+	    /* a partitioned SEMI / ANTI inner, or a following join after one (CBRD-27493), that went through its
+	     * last partition is left with curr_spec NULL; point it back at its spec so the record below and
+	     * qexec_clear_xasl () close its scan */
+	    if (xptr->curr_spec == NULL)
+	      {
+		xptr->curr_spec = xptr->spec_list;
+	      }
+
 	    if (xptr->spec_list->type == TARGET_CLASS && xptr->spec_list->parts != NULL)
 	      {
 		xptr->spec_list->curent = NULL;
-
-		/* init btid */
-		if (xptr->spec_list->indexptr)
-		  {
-		    BTID_COPY (&xptr->spec_list->indexptr->btid, &xptr->spec_list->btid);
-		  }
 	      }
 
-	    m_join_info->record_join_info (xptr->header.id, xptr);
+	    /* init btid regardless of parts: initialize () overwrites indexptr->btid with the partition BTID
+	     * even when this clone was not pruned (only trace, a SEMI / ANTI inner or a following join after one
+	     * prunes it). The clone goes back to the shared XASL cache clone pool, and a leader that picks it up
+	     * would prune the partitioned class with a partition BTID, which heap_get_indexinfo_of_btid ()
+	     * rejects without setting an error (CBRD-27484). */
+	    if (xptr->spec_list->type == TARGET_CLASS && xptr->spec_list->indexptr)
+	      {
+		BTID_COPY (&xptr->spec_list->indexptr->btid, &xptr->spec_list->btid);
+	      }
+
+	    if (m_handlers_initialized)
+	      {
+		m_pre_execution_info->record_pre_execution_info (xptr->header.id, xptr);
+	      }
 
 	  }
 
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {
-	scan_end_scan (&thread_ref, m_scan_id);
-	scan_close_scan (&thread_ref, m_scan_id);
+	if (m_handlers_initialized)
+	  {
+	    scan_end_scan (&thread_ref, m_scan_id);
+	    scan_close_scan (&thread_ref, m_scan_id);
+	  }
       }
 
-    for (int i = 0; i < m_vd->dbval_cnt; i++)
-      {
-	pr_clear_value (&m_vd->dbval_ptr[i]);
-      }
-
-    db_private_free (&thread_ref, m_vd->dbval_ptr);
-    db_private_free (&thread_ref, m_xasl_state);
+    qexec_free_xasl_state (&thread_ref, m_xasl_state);
     qexec_clear_xasl (&thread_ref, m_xasl, true, false);
 
     pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
     if (m_uses_xasl_clone)
       {
-	xcache_retire_clone (&thread_ref, m_xasl_cache_entry, &m_xasl_clone);
-	xcache_unfix (&thread_ref, m_xasl_cache_entry);
+	/* clone_xasl () can fail before it holds a clone or a fixed cache entry */
+	if (m_xasl_clone.xasl != nullptr)
+	  {
+	    xcache_retire_clone (&thread_ref, m_xasl_cache_entry, &m_xasl_clone);
+	  }
+	if (m_xasl_cache_entry != nullptr)
+	  {
+	    xcache_unfix (&thread_ref, m_xasl_cache_entry);
+	  }
       }
     else
       {
@@ -464,53 +583,32 @@ namespace parallel_scan
       }
     pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
 
+    /* last, so the cleanup above is counted too: hand everything this worker counted (page fixes, the SPs of
+     * if_pred and of outptr_list, ...) to the leader, which merges it once in trace_handler::merge_stats () */
+    if (thread_ref.m_px_stats != nullptr)
+      {
+	m_trace_handler->add_px_stats (thread_ref.m_px_stats);
+      }
+    perfmon_destroy_parallel_stats (&thread_ref);
+
     return NO_ERROR;
   }
 
-  static void clear_xasl_dptr_node (THREAD_ENTRY *thread_p, XASL_NODE *xaslp, bool uses_clones)
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  typename task<result_type, ST>::scan_fixes task<result_type, ST>::read_fixes (cubthread::entry &thread_ref)
   {
-    if (uses_clones)
-      {
-	if (XASL_IS_FLAGED (xaslp, XASL_DECACHE_CLONE))
-	  {
-	    xaslp->status = XASL_CLEARED;
-	  }
-	else
-	  {
-	    /* The values allocated during execution will be cleared and the xasl is reused. */
-	    xaslp->status = XASL_INITIALIZED;
-	  }
-      }
-    else
-      {
-	xaslp->status = XASL_CLEARED;
-      }
-    if (xaslp->list_id->tuple_cnt > 0)
-      {
-	qfile_truncate_list (thread_p, xaslp->list_id);
-      }
-    if (xaslp->single_tuple)
-      {
-	QPROC_DB_VALUE_LIST value_list;
-	int i;
-	for (value_list = xaslp->single_tuple->valp, i = 0; i < xaslp->single_tuple->val_cnt;
-	     value_list = value_list->next, i++)
-	  {
-	    pr_clear_value (value_list->val);
-	  }
-      }
+    return { perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
+	     perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
+	     perfmon_get_from_statistic (&thread_ref, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) };
   }
 
-  /* walk the full scan_ptr chain; mainline qexec_clear_scan_all_lists does the same. */
-  static void clear_xasl_dptr_list (THREAD_ENTRY *thread_p, XASL_NODE *xasl, bool uses_clones)
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::add_scan_fixes (cubthread::entry &thread_ref, const scan_fixes &since)
   {
-    for (XASL_NODE *scan_xasl = xasl; scan_xasl != nullptr; scan_xasl = scan_xasl->scan_ptr)
-      {
-	for (XASL_NODE *xaslp = scan_xasl->dptr_list; xaslp != nullptr; xaslp = xaslp->next)
-	  {
-	    clear_xasl_dptr_node (thread_p, xaslp, uses_clones);
-	  }
-      }
+    scan_fixes now = read_fixes (thread_ref);
+    m_scan_fixes.fetches += now.fetches - since.fetches;
+    m_scan_fixes.ioreads += now.ioreads - since.ioreads;
+    m_scan_fixes.fetch_time += now.fetch_time - since.fetch_time;
   }
 
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
@@ -518,7 +616,6 @@ namespace parallel_scan
   {
     THREAD_ENTRY *main_thread_p = thread_get_main_thread (m_parent_thread_p);
     int err_code = NO_ERROR;
-    int i;
 
     if (m_uses_xasl_clone)
       {
@@ -558,34 +655,36 @@ namespace parallel_scan
 	pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
       }
 
+    /* the agg-expr marking is the clone's load's (domain_mark_aggregate_operands) */
     m_scan_id = &m_xasl->spec_list->s_id;
 
-    m_xasl_state = (xasl_state *) db_private_alloc (&thread_ref, sizeof (xasl_state));
+    for (xasl_node *dptr = m_xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
+      {
+	if (!XASL_IS_FLAGED (dptr, XASL_LINK_TO_REGU_VARIABLE))
+	  {
+	    m_run_nonlinked_dptr = true;
+	    break;
+	  }
+      }
+
+    /* The worker's own copy on its own heap: it frees it in finalize. */
+    assert (m_orig_vd == &m_orig_vd->xasl_state->vd);
+    m_xasl_state = qexec_deep_copy_xasl_state (&thread_ref, m_orig_vd->xasl_state, true);
     if (m_xasl_state == nullptr)
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
+	/* the copy of the resolved domains sets its own error (the block size, a value's clone) */
+	if (er_errid () == NO_ERROR)
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (xasl_state));
+	  }
 	return ER_FAILED;
       }
-    m_xasl_state->qp_xasl_line = m_orig_vd->xasl_state->qp_xasl_line;
-    m_xasl_state->query_id = m_orig_vd->xasl_state->query_id;
+    /* the worker's own load numbers its items and resolved indexes as the leader's plan does: it reads the leader's
+     * resolutions with its own items (copied_from_leader) */
+    assert (m_xasl->domain_plan == nullptr || m_xasl_state->resolved_domain.plan == nullptr
+	    || (m_xasl->domain_plan->n_items == m_xasl_state->resolved_domain.plan->n_items
+		&& m_xasl->domain_plan->n_resolved == m_xasl_state->resolved_domain.plan->n_resolved));
     m_vd = &m_xasl_state->vd;
-    memcpy (m_vd, m_orig_vd, sizeof (val_descr));
-    m_vd->xasl_state = m_xasl_state;
-    if (m_orig_vd->dbval_cnt > 0)
-      {
-	m_vd->dbval_ptr = (DB_VALUE *) db_private_alloc (&thread_ref, sizeof (DB_VALUE) * m_orig_vd->dbval_cnt);
-	if (m_vd->dbval_ptr == nullptr)
-	  {
-	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 0);
-	    db_private_free_and_init (&thread_ref, m_xasl_state);
-	    m_vd = nullptr;
-	    return ER_FAILED;
-	  }
-	for (i = 0; i < m_orig_vd->dbval_cnt; i++)
-	  {
-	    pr_clone_value (&m_orig_vd->dbval_ptr[i], &m_vd->dbval_ptr[i]);
-	  }
-      }
     return NO_ERROR;
   }
 
@@ -594,13 +693,22 @@ namespace parallel_scan
   SCAN_CODE task<result_type, ST>::drain_slot_oids (cubthread::entry &thread_ref, bool &stop)
   {
     SCAN_CODE scan_code, xs_scan;
-    bool uses_clones = xcache_uses_clones ();
     DB_LOGICAL ev_res;
     result_handler<result_type> *result_handler_p = m_result_handler;
+    const bool on_trace = thread_ref.on_trace;	/* per row below; the calls in the loop could reload the member */
 
     while (!stop)
       {
+	scan_fixes since = {};
+	if (on_trace)
+	  {
+	    since = read_fixes (thread_ref);
+	  }
 	scan_code = m_slot_iterator.next_qualified_slot_with_peek (&thread_ref);
+	if (on_trace)
+	  {
+	    add_scan_fixes (thread_ref, since);
+	  }
 	if (scan_code == S_END)
 	  {
 	    return S_END;
@@ -613,12 +721,45 @@ namespace parallel_scan
 	    return S_ERROR;
 	  }
 
+	if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
+	  {
+	    /* dptrs must run before after_join_pred/if_pred, as in qexec_intprt_fnc */
+	    if (m_run_nonlinked_dptr
+		&& qexec_execute_dptr_list (&thread_ref, m_xasl->dptr_list, m_xasl_state, true) != NO_ERROR)
+	      {
+		m_err_messages->move_top_error_message_to_this();
+		m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		stop = true;
+		return S_ERROR;
+	      }
+	  }
+
+	if (m_xasl->after_join_pred)
+	  {
+	    ev_res = eval_pred (&thread_ref, m_xasl->after_join_pred, m_vd, NULL);
+	    if (ev_res != V_TRUE)
+	      {
+		qexec_clear_scan_all_lists (&thread_ref, m_xasl);
+		if (ev_res == V_FALSE || ev_res == V_UNKNOWN)
+		  {
+		    continue;
+		  }
+		else
+		  {
+		    m_err_messages->move_top_error_message_to_this();
+		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+		    stop = true;
+		    return S_ERROR;
+		  }
+	      }
+	  }
+
 	if (m_xasl->if_pred)
 	  {
 	    ev_res = eval_pred (&thread_ref, m_xasl->if_pred, m_vd, NULL);
 	    if (ev_res != V_TRUE)
 	      {
-		clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
+		qexec_clear_scan_all_lists (&thread_ref, m_xasl);
 		if (ev_res == V_FALSE || ev_res == V_UNKNOWN)
 		  {
 		    continue;
@@ -640,7 +781,9 @@ namespace parallel_scan
 
 		/* handle the scan procedure */
 		m_xasl->scan_ptr->next_scan_on = false;
-		if (scan_reset_scan_block (&thread_ref, &m_xasl->scan_ptr->curr_spec->s_id) == S_ERROR)
+		/* as qexec_intprt_fnc: rewind a partitioned SEMI / ANTI inner to its first partition (its
+		 * curr_spec is NULL once the previous probe went through every partition) */
+		if (qexec_reset_sa_inner_scan_block (&thread_ref, m_xasl->scan_ptr) == S_ERROR)
 		  {
 		    m_err_messages->move_top_error_message_to_this();
 		    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
@@ -661,7 +804,19 @@ namespace parallel_scan
 		      }
 		    else if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
 		      {
-			result_handler_p->write (&thread_ref);
+			if (!result_handler_p->write (&thread_ref))
+			  {
+			    /* write()'s return is otherwise ignored; a per-row error would be silently
+			     * skipped and diverge from serial. Stop the worker like the S_ERROR path.
+			     * Some write() paths already raise the interrupt; avoid a double move. */
+			    if (m_interrupt->get_code () == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+			      {
+				m_err_messages->move_top_error_message_to_this ();
+				m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			      }
+			    stop = true;
+			    return S_ERROR;
+			  }
 		      }
 		  }
 		if (xs_scan == S_ERROR)
@@ -681,7 +836,19 @@ namespace parallel_scan
 		  }
 		else if constexpr (result_type == RESULT_TYPE::BUILDVALUE_OPT)
 		  {
-		    result_handler_p->write (&thread_ref);
+		    if (!result_handler_p->write (&thread_ref))
+		      {
+			/* write()'s return is otherwise ignored; a per-row error would be silently
+			 * skipped and diverge from serial. Stop the worker like the S_ERROR path.
+			 * Some write() paths already raise the interrupt; avoid a double move. */
+			if (m_interrupt->get_code () == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+			  {
+			    m_err_messages->move_top_error_message_to_this ();
+			    m_interrupt->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
+			  }
+			stop = true;
+			return S_ERROR;
+		      }
 		  }
 	      }
 	  }
@@ -690,9 +857,7 @@ namespace parallel_scan
 	    result_handler_p->write (&thread_ref, m_xasl->val_list);
 	  }
 
-	/* dptrs reaching here are per-row re-evaluated correlated subqueries; checker blocks join-type and IN-clause variants. clear all. */
-
-	clear_xasl_dptr_list (&thread_ref, m_xasl, uses_clones);
+	qexec_clear_scan_all_lists (&thread_ref, m_xasl);
       }
     return S_END;
   }
@@ -748,7 +913,11 @@ namespace parallel_scan
 		      && logtb_is_interrupted_tran (&thread_ref, true, &dummy, thread_ref.tran_index);
 	if (is_interrupt)
 	  {
-	    if (m_interrupt->get_code() == parallel_query::interrupt::interrupt_code::NO_INTERRUPT)
+	    /* logtb_is_interrupted_tran() above cleared the transaction flag, so record the cancellation
+	     * even if a benign INST_NUM_SATISFIED got here first. Real error codes still win. */
+	    parallel_query::interrupt::interrupt_code code = m_interrupt->get_code();
+	    if (code == parallel_query::interrupt::interrupt_code::NO_INTERRUPT
+		|| code == parallel_query::interrupt::interrupt_code::INST_NUM_SATISFIED)
 	      {
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
 		m_err_messages->move_top_error_message_to_this();
@@ -758,6 +927,11 @@ namespace parallel_scan
 	  }
 	/* LIST/INDEX: handler hands fixed page to iterator. HEAP: vpid; page lives in scan_cache->page_watcher. */
 
+	scan_fixes since = {};
+	if (thread_ref.on_trace)
+	  {
+	    since = read_fixes (thread_ref);
+	  }
 	if constexpr (ST == SCAN_TYPE::LIST)
 	  {
 	    list_page = nullptr;
@@ -775,6 +949,10 @@ namespace parallel_scan
 	else
 	  {
 	    scan_code = m_input_handler->get_next_vpid_with_fix (&thread_ref, &vpid);
+	  }
+	if (thread_ref.on_trace)
+	  {
+	    add_scan_fixes (thread_ref, since);
 	  }
 	if (scan_code == S_END)
 	  {
@@ -859,8 +1037,17 @@ namespace parallel_scan
 	    int ovf_range = -1;
 	    int ovf_slot_idx = -1;
 	    db_make_null (&ovf_local_key);
+	    scan_fixes since = {};
+	    if (thread_ref.on_trace)
+	      {
+		since = read_fixes (thread_ref);
+	      }
 	    SCAN_CODE help = m_input_handler->wait_or_help_overflow (&thread_ref, ovf_page,
 			     &ovf_local_key, &ovf_local_clear_key, ovf_range, ovf_slot_idx);
+	    if (thread_ref.on_trace)
+	      {
+		add_scan_fixes (thread_ref, since);
+	      }
 	    if (help == S_END)
 	      {
 		break;

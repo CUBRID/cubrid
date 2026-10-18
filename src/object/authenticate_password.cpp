@@ -126,7 +126,9 @@ encrypt_password_sha2_512 (const char *pass, char *dest)
     }
   else
     {
-      error_status = crypt_sha_two (NULL, pass, strlen (pass), 512, &result_strp, &result_len);
+      /* pass is a plaintext password: no context reuse, so that the digest context is
+       * cleansed as soon as the hash is done. */
+      error_status = crypt_sha_two (NULL, pass, strlen (pass), 512, &result_strp, &result_len, false);
       if (error_status == NO_ERROR)
 	{
 	  assert (result_strp != NULL);
@@ -256,7 +258,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
   char pbuf[AU_MAX_PASSWORD_BUF + 4];
 
   /* check if the current user has permission to change the password */
-  AU_DISABLE (save);
+  AU_SAVE_AND_DISABLE (save);
   if (!ws_is_same_object (Au_user, user) && !au_is_dba_group_member (Au_user))
     {
       error = ER_AU_UPDATE_FAILURE;
@@ -357,7 +359,7 @@ au_set_password_internal (MOP user, const char *password, int encode, char encry
     }
 
 end:
-  AU_ENABLE (save);
+  AU_RESTORE (save);
   return error;
 }
 

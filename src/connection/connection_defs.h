@@ -517,6 +517,14 @@ struct css_conn_entry
   bool has_working_task () const;
   void init_working_task ();
 
+#if defined(SERVER_MODE)
+  // method callback count manipulation
+  void begin_method_callback ();
+  void end_method_callback ();
+  bool has_outstanding_method_callback () const;
+  void init_method_callback ();
+#endif
+
   void release_packet (void *buffer);
 
 private:
@@ -525,6 +533,9 @@ private:
   // *INDENT-OFF*
   std::atomic<size_t> pending_request_count;
   std::atomic<size_t> working_task_count;
+#if defined(SERVER_MODE)
+  std::atomic<size_t> method_callback_count;
+#endif
   // *INDENT-ON*
 #else				// not c++ = c
   int transaction_id;

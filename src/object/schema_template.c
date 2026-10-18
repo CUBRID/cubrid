@@ -117,7 +117,6 @@ static MOP smt_find_owner_of_constraint (SM_TEMPLATE * ctemplate, const char *co
 
 static int change_constraints_status_partitioned_class (MOP obj, const char *index_name, SM_INDEX_STATUS index_status);
 static SM_CLASS_CONSTRAINT *smt_find_constraint (SM_TEMPLATE * ctemplate, const char *constraint_name);
-static MOP find_index_catalog_class (const char *name);
 
 /* TEMPLATE SEARCH FUNCTIONS */
 /*
@@ -1995,10 +1994,14 @@ smt_check_histogram_exist (MOP classop, const char *attr_name)
   db_make_object (&value[0], classop);
   db_make_string (&value[1], attr_name);
 
-  /* _db_histogram is an internal catalog; bypass user authorization. (CBRD-26667) */
-  AU_DISABLE (au_save);
-  histogram_obj = db_find_multi_unique (histogram_class, 2, (char **) search_attrs, value_ptrs, DB_FETCH_READ);
-  AU_ENABLE (au_save);
+  /* _db_histogram is an internal catalog; bypass user authorization. (CBRD-26667)
+   * Read the row's existence without a lock (CBRD-27369): an S lock here would be held to
+   * commit and the store step's X on the same row would have to upgrade past every concurrent
+   * collector's S, deadlocking.  The committed lock-free read still sees this transaction's own
+   * uncommitted insert, so a re-check within one transaction is correct. */
+  AU_SAVE_AND_DISABLE (au_save);
+  histogram_obj = db_find_multi_unique_committed (histogram_class, 2, (char **) search_attrs, value_ptrs);
+  AU_RESTORE (au_save);
   if (histogram_obj != NULL)
     {
       /* not error, just return ER_LC_CLASSNAME_EXIST */
@@ -2031,10 +2034,12 @@ smt_check_histogram_exist_and_delete (MOP classop, const char *attr_name, bool n
   db_make_object (&value[0], classop);
   db_make_string (&value[1], attr_name);
 
-  /* _db_histogram is an internal catalog; bypass user authorization. (CBRD-26667) */
-  AU_DISABLE (au_save);
-  histogram_obj = db_find_multi_unique (histogram_class, 2, (char **) search_attrs, value_ptrs, DB_FETCH_WRITE);
-  AU_ENABLE (au_save);
+  /* _db_histogram is an internal catalog; bypass user authorization. (CBRD-26667)
+   * Take the row X at the lookup (CBRD-27369): DB_FETCH_WRITE would S-lock it first and upgrade
+   * in the fetch, the upgrade two concurrent writers deadlock on. */
+  AU_SAVE_AND_DISABLE (au_save);
+  histogram_obj = db_find_multi_unique_for_update (histogram_class, 2, (char **) search_attrs, value_ptrs);
+  AU_RESTORE (au_save);
   if (histogram_obj == NULL)
     {
       if (!no_error_if_not_found)
@@ -2051,9 +2056,9 @@ smt_check_histogram_exist_and_delete (MOP classop, const char *attr_name, bool n
   else
     {
       /* Dropping the instance in the internal _db_histogram catalog also needs authorization bypass. (CBRD-26667) */
-      AU_DISABLE (au_save);
+      AU_SAVE_AND_DISABLE (au_save);
       error = db_drop (histogram_obj);
-      AU_ENABLE (au_save);
+      AU_RESTORE (au_save);
       if (error != NO_ERROR)
 	{
 	  goto end;
@@ -2074,7 +2079,7 @@ smt_add_histogram (MOP classop, const char *attr_name, int bucket_count, bool wi
   db_make_null (&value);
 
   /* temporarily disable authorization to access db_serial class */
-  AU_DISABLE (au_save);
+  AU_SAVE_AND_DISABLE (au_save);
 
   histogram_class = sm_find_class (CT_HISTOGRAM_NAME);
   if (histogram_class == NULL)
@@ -2149,7 +2154,7 @@ end:
     {
       dbt_abort_object (obj_tmpl);
     }
-  AU_ENABLE (au_save);
+  AU_RESTORE (au_save);
   return error;
 }
 
@@ -2182,9 +2187,6 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   SM_ATTRIBUTE_FLAG constraint;
   bool has_nulls = false;
   bool is_secondary_index = false;
-  int deduplicate_key_col_pos = -1;
-  int options = 0;
-  int deduplicate_key_level = 0;
 
   assert (template_ != NULL);
 
@@ -2203,17 +2205,11 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
     {
       while (att_names[n_atts] != NULL)
 	{
-	  if (IS_DEDUPLICATE_KEY_ATTR_NAME (att_names[n_atts]))
-	    {
-	      deduplicate_key_col_pos = n_atts;
-	      GET_DEDUPLICATE_KEY_ATTR_LEVEL_FROM_NAME (att_names[n_atts], deduplicate_key_level);
-	      SET_OPTION_DEDUPLICATE (options, deduplicate_key_level);
-	    }
 	  n_atts++;
 	}
     }
 
-  if ((n_atts == 0) || ((n_atts == 1) && (deduplicate_key_col_pos != -1)))
+  if (n_atts == 0)
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
       goto error_return;
@@ -2256,12 +2252,6 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
   for (i = 0; i < n_atts && error == NO_ERROR; i++)
     {
-      if (deduplicate_key_col_pos == i)
-	{
-	  atts[i] = dk_find_sm_deduplicate_key_attribute (-1, att_names[i]);
-	  continue;
-	}
-
       error = smt_find_attribute (template_, att_names[i], class_attribute, &atts[i]);
       if (error == ER_SM_INHERITED_ATTRIBUTE)
 	{
@@ -2398,9 +2388,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
       if (constraint == SM_ATTFLAG_FOREIGN_KEY)
 	{
-	  error =
-	    smt_check_foreign_key (template_, constraint_name, atts,
-				   ((deduplicate_key_col_pos == -1) ? n_atts : (n_atts - 1)), fk_info);
+	  error = smt_check_foreign_key (template_, constraint_name, atts, n_atts, fk_info);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_return;
@@ -2414,8 +2402,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
       /* Add the constraint. */
       error = smt_add_constraint_to_property (template_, SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT (constraint),
 					      constraint_name, atts, asc_desc, attrs_prefix_length, fk_info,
-					      shared_cons_name, filter_index, function_index, options, comment,
-					      index_status);
+					      shared_cons_name, filter_index, function_index, 0, comment, index_status);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
@@ -4229,6 +4216,26 @@ smt_add_query_spec (SM_TEMPLATE * template_, const char *specification)
 }
 
 /*
+ * smt_reset_vclass_definition() - Empties a template so a virtual class can be
+ *    re-defined in place.
+ *   return: none
+ *   template(in/out): schema template
+ */
+
+void
+smt_reset_vclass_definition (SM_TEMPLATE * template_)
+{
+  WS_LIST_FREE (template_->attributes, classobj_free_attribute);
+  template_->attributes = NULL;
+
+  WS_LIST_FREE (template_->class_methods, classobj_free_method);
+  template_->class_methods = NULL;
+
+  WS_LIST_FREE (template_->query_spec, classobj_free_query_spec);
+  template_->query_spec = NULL;
+}
+
+/*
  * smt_reset_query_spec() - Clears the query_spec list of a template.
  *   return: NO_ERROR on success, non-zero for ERROR
  *   template(in/out): schema template
@@ -5128,32 +5135,4 @@ smt_change_constraint_status (SM_TEMPLATE * ctemplate, const char *index_name, S
     }
 
   return NO_ERROR;
-}
-
-static MOP
-find_index_catalog_class (const char *index_name)
-{
-  assert (index_name != NULL);
-
-  MOP index_class = NULL;
-  DB_VALUE value;
-  MOP index_catalog_class = NULL;
-  int save;
-
-  AU_DISABLE (save);
-
-  index_class = db_find_class (CT_INDEX_NAME);
-  if (index_class == NULL)
-    {
-      assert (false);
-      goto end;
-    }
-
-  db_make_string (&value, index_name);
-  index_catalog_class = db_find_unique (index_class, "index_name", &value);
-
-end:
-  AU_ENABLE (save);
-
-  return index_catalog_class;
 }

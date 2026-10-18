@@ -76,18 +76,21 @@ namespace cubconn::connection
     m_id (0),
     m_ignore (ignore_level::DONT_IGNORE),
     m_removed (false),
+    m_epoll_registered (false),
     m_recv
   {
     .m_state = state::HEADER,
     .m_receiver = receiver (capacity, &m_stats),
-    .m_header = { nullptr, 0 },
+    .m_header = DEFAULT_HEADER_DATA,
     .m_request_id = -1,
+    .m_command_flags = 0,
     .m_command = false
   },
   m_send
   {
     .m_transmitter = transmitter (&m_stats),
-    .m_blocker = nullptr
+    .m_blocker = nullptr,
+    .m_room = nullptr
   }
   {
   }
@@ -98,18 +101,21 @@ namespace cubconn::connection
     m_id (0),
     m_ignore (ignore_level::DONT_IGNORE),
     m_removed (false),
+    m_epoll_registered (false),
     m_recv
   {
     .m_state = state::HEADER,
     .m_receiver = receiver (),
-    .m_header = { nullptr, 0 },
+    .m_header = DEFAULT_HEADER_DATA,
     .m_request_id = -1,
+    .m_command_flags = 0,
     .m_command = false
   },
   m_send
   {
     .m_transmitter = transmitter (),
-    .m_blocker = nullptr
+    .m_blocker = nullptr,
+    .m_room = nullptr
   }
   {
   }
@@ -130,16 +136,20 @@ namespace cubconn::connection
     m_id = 0;
     m_ignore = ignore_level::DONT_IGNORE;
     m_removed = false;
+    m_epoll_registered = false;
 
     m_recv.m_state = state::HEADER;
     m_recv.m_receiver.reset ();
-    m_recv.m_header = { nullptr, 0 };
+    m_recv.m_header = DEFAULT_HEADER_DATA;
     m_recv.m_request_id = -1;
+    m_recv.m_command_flags = 0;
     m_recv.m_command = false;
 
     m_send.m_transmitter.clear ();
     m_send.m_blocker = nullptr;
+    m_send.m_room = nullptr;
 
+    m_guarded_stats.bytes_out_total = 0;
     m_stats.reset ();
   }
 }

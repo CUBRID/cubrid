@@ -23,6 +23,10 @@
 #ifndef _FTAB_SET_HPP_
 #define _FTAB_SET_HPP_
 
+#include <cstddef>
+#include <utility>
+#include <vector>
+
 #include "file_manager.h"
 
 
@@ -142,13 +146,5 @@ class ftab_set
     }
 };
 
-// table-wide pick over N partitions: one stride over merged sectors, per-partition offsets
-int collect_strided_vpids_multi (THREAD_ENTRY *thread_p,
-				 const HFID *hfids,
-				 int n_hfids,
-				 VPID **out_picked,
-				 int *out_count,
-				 int **out_part_offsets,
-				 int *out_weight);
 
 #endif // _FTAB_SET_HPP_

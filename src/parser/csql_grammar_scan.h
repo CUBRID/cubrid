@@ -18,11 +18,11 @@
 
 
 /*
- * scanner_support.h - scanner support functions
+ * csql_grammar_scan.h 
  */
 
-#ifndef _SCANNER_SUPPORT_H_
-#define _SCANNER_SUPPORT_H_
+#ifndef _CSQL_GRAMMAR_SCAN_H_
+#define _CSQL_GRAMMAR_SCAN_H_
 
 #ident "$Id$"
 
@@ -76,8 +76,15 @@ extern "C"
   extern bool pt_check_ipv4 (char *p);
   extern bool pt_check_hostname (char *p);
 
+#define parser_column_position()    (yybuffer_pos - yyline_start_pos + 1)
+  extern int yybuffer_pos;
+  extern int yyline_start_pos;
+  extern int yylineno_prev;
+  extern int yytoken_start_line;
+  extern int yytoken_start_column;
+
 #ifdef __cplusplus
 }
 #endif
 
-#endif				/* _SCANNER_SUPPORT_H_ */
+#endif				/* _CSQL_GRAMMAR_SCAN_H_ */

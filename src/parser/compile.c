@@ -27,6 +27,7 @@
 #include <assert.h>
 
 #include "authenticate.h"
+#include "db.h"
 #include "dbi.h"
 #include "parser.h"
 #include "semantic_check.h"
@@ -1248,8 +1249,20 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
 	}
       *new_trigger_stmt = new_trigger_stmt_str;
 
-      statement->info.scope.stmt->info.trigger_action.expression =
-	mq_translate (parser, statement->info.scope.stmt->info.trigger_action.expression);
+      PT_NODE *expression = statement->info.scope.stmt->info.trigger_action.expression;
+
+      /*
+       * A remote DML action is shipped as text and executed on the remote server.
+       * Like db_compile_statement_local (), it must skip mq_translate ()
+       */
+      if (expression != NULL && PT_IS_DBLINK_DML_QUERY (expression))
+	{
+	  expression->flag.recompile = 1;
+	}
+      else
+	{
+	  statement->info.scope.stmt->info.trigger_action.expression = mq_translate (parser, expression);
+	}
       /*
        * Trigger statement node must use the datetime information of the
        * node corresponding the action to be made.
@@ -1508,10 +1521,9 @@ pt_exec_trigger_stmt (PARSER_CONTEXT * parser, PT_NODE * trigger_stmt, DB_OBJECT
       server_info_bits |= SI_LOCAL_TRANSACTION_ID;
     }
 
-  /* request to the server */
   if (server_info_bits)
     {
-      error = qp_get_server_info (parser, server_info_bits);
+      error = db_ensure_server_info (parser, server_info_bits);
       if (error != NO_ERROR)
 	{
 	  return error;

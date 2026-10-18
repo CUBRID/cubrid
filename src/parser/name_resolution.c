@@ -110,6 +110,9 @@ enum
 };
 
 static const char *CPTR_PT_NAME_IN_GROUP_HAVING = "name_in_group_having";
+/* a name in group by/having/order by of a static SQL, not resolved by name binding. it is resolved as an alias or
+ * converted to a host variable after the alias resolution */
+static const char *CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL = "name_deferred_for_static_sql";
 
 typedef struct pt_bind_names_data_type PT_BIND_NAMES_DATA_TYPE;
 struct pt_bind_names_data_type
@@ -126,7 +129,6 @@ static void pt_bind_type_of_host_var (PARSER_CONTEXT * parser, PT_NODE * hv);
 static void pt_bind_spec_attrs (PARSER_CONTEXT * parser, PT_NODE * spec);
 static void pt_bind_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg);
 static FUNC_CODE pt_find_function_type (const char *name);
-static PT_NODE *pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_bind_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_check_Oracle_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_clear_Oracle_outerjoin_spec_id (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
@@ -221,6 +223,11 @@ static int generate_natural_join_attrs_from_subquery (PT_NODE * subquery_attrs_l
 static int generate_natural_join_attrs_from_db_attrs (DB_ATTRIBUTE * db_attrs, NATURAL_JOIN_ATTR_INFO ** attrs_p);
 
 static bool is_pt_name_in_group_having (PT_NODE * node);
+
+static bool is_pt_name_deferred_for_static_sql (PT_NODE * node);
+
+static PT_NODE *pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+							      int *continue_walk);
 
 static PT_NODE *pt_mark_pt_name (PARSER_CONTEXT * parser, PT_NODE * node, void *chk_parent, int *continue_walk);
 
@@ -435,6 +442,15 @@ pt_undef_names_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *con
       return node;
     }
 
+  /* A remote (dblink) target spec cannot be referenced from the value clause, and it is not
+   * bound in this scope (info.spec.id stays 0), so the spec_id equality below would misfire
+   * on any unbound name in the value clause. */
+  if (spec->info.spec.remote_server_name)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
   level_p = (short *) spec->etc;
 
   switch (node->node_type)
@@ -489,6 +505,14 @@ pt_undef_names_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
   short *level_p = NULL;
 
   if (spec == NULL)
+    {
+      return node;
+    }
+
+  /* Mirrors the remote-target guard in pt_undef_names_pre(): that function never runs the
+   * PT_SELECT/PT_UNION/... branch that increments *level_p for a remote target spec, so this
+   * post callback must not decrement it either, or *level_p underflows. */
+  if (spec->info.spec.remote_server_name)
     {
       return node;
     }
@@ -1402,7 +1426,7 @@ pt_find_function_type (const char *name)
  *   arg(in):
  *   continue_walk(in):
  */
-static PT_NODE *
+PT_NODE *
 pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   short *location = (short *) arg;
@@ -1424,6 +1448,26 @@ pt_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 
   return node;
 }				/* pt_mark_location() */
+
+/*
+ * pt_mark_anti_join_on () - mark each expr of an ANTI JOIN ON condition so that
+ *			     qo_reduce_equality_terms() leaves it as a join predicate
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in):
+ */
+PT_NODE *
+pt_mark_anti_join_on (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  if (node->node_type == PT_EXPR)
+    {
+      PT_EXPR_INFO_SET_FLAG (node, PT_EXPR_INFO_ANTI_JOIN_ON);
+    }
+
+  return node;
+}				/* pt_mark_anti_join_on() */
 
 /*
  * pt_set_is_view_spec () -
@@ -1841,8 +1885,8 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
 
   assert (node->node_type == PT_INSERT || node->node_type == PT_MERGE);
 
-  /* if an attribute has a default expression as default value and that expression refers to the current date and time,
-   * then we make sure that we mark this statement as one that needs the system datetime from the server */
+  /* If an attribute default expression needs server time information, make sure this statement fetches it before any
+   * client-side evaluation path uses the cached default value. */
   if (node->node_type == PT_INSERT)
     {
       cls_name = node->info.insert.spec->info.spec.entity_name;
@@ -1861,10 +1905,12 @@ fill_in_insert_default_function_arguments (PARSER_CONTEXT * parser, PT_NODE * co
     {
       for (attr = smclass->attributes; attr != NULL; attr = (SM_ATTRIBUTE *) attr->header.next)
 	{
-	  if (DB_IS_DATETIME_DEFAULT_EXPR (attr->default_value.default_expr.default_expr_type))
+	  if (DB_IS_DEFAULT_DATETIME_EXPR (attr->default_value.default_expr.default_expr_type)
+	      || DB_IS_DEFAULT_UUID_TIMEBASE_EXPR (attr->default_value.default_expr.default_expr_type))
 	    {
 	      node->flag.si_datetime = true;
 	      db_make_null (&parser->sys_datetime);
+	      db_make_null (&parser->sys_epochtime);
 	      break;
 	    }
 	}
@@ -2069,12 +2115,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	      /* mark spec to scan for record info */
 	      node->info.query.q.select.from->info.spec.flag =
 		(PT_SPEC_FLAG) (node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_RECORD_INFO_SCAN);
-	    }
-	  else if (node->info.query.q.select.hint & PT_HINT_SAMPLING_SCAN)
-	    {
-	      /* mark spec to scan for sampling scan */
-	      node->info.query.q.select.from->info.spec.flag =
-		(PT_SPEC_FLAG) (node->info.query.q.select.from->info.spec.flag | PT_SPEC_FLAG_SAMPLING_SCAN);
 	    }
 	  else if (node->info.query.q.select.hint & PT_HINT_SELECT_PAGE_INFO)
 	    {
@@ -3296,23 +3336,6 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
       *continue_walk = PT_LIST_WALK;
       break;
 
-    case PT_UPDATE_HISTOGRAM:
-    case PT_DROP_HISTOGRAM:
-    case PT_SHOW_HISTOGRAM:
-      scopestack.specs = node->info.histogram.target_table_spec;
-      bind_arg->scopes = &scopestack;
-      spec_frame.next = bind_arg->spec_frames;
-      spec_frame.extra_specs = NULL;
-      bind_arg->spec_frames = &spec_frame;
-      pt_bind_scope (parser, bind_arg);
-
-      parser_walk_leaves (parser, node, pt_bind_names, bind_arg, pt_bind_names_post, bind_arg);
-
-      bind_arg->spec_frames = bind_arg->spec_frames->next;
-      bind_arg->scopes = bind_arg->scopes->next;
-
-      *continue_walk = PT_LIST_WALK;
-      break;
     case PT_METHOD_CALL:
       /*
        * We accept two different method call syntax:
@@ -3439,11 +3462,18 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	  {
 	    if (parser->flag.is_parsing_static_sql == 1 && er_errid () == ER_OBJ_INVALID_ATTRIBUTE)
 	      {
-		// clear unknown attribute error, the unknown symbol will be converted (paramterized) to host variable
 		er_clear ();
 		pt_reset_error (parser);
 
-		node = pt_parameterize_for_static_sql (parser, node);
+		if (is_pt_name_in_group_having (node))
+		  {
+		    // it may be an alias of the select list. it will be converted after pt_resolve_group_having_alias ()
+		    node->etc = (void *) pt_append_string (parser, NULL, CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL);
+		  }
+		else
+		  {
+		    node = pt_parameterize_for_static_sql (parser, node);
+		  }
 
 		/* don't visit leaves */
 		*continue_walk = PT_LIST_WALK;
@@ -3679,8 +3709,15 @@ pt_bind_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue
 	    case PT_JOIN_INNER:
 	    case PT_JOIN_LEFT_OUTER:
 	    case PT_JOIN_RIGHT_OUTER:
+	    case PT_JOIN_SEMI:	/* ON predicate is a join predicate at the inner's level */
 	      parser_walk_tree (parser, node->info.spec.on_cond, pt_mark_location, &(node->info.spec.location), NULL,
 				NULL);
+	      break;
+	    case PT_JOIN_ANTI:
+	      parser_walk_tree (parser, node->info.spec.on_cond, pt_mark_location, &(node->info.spec.location), NULL,
+				NULL);
+	      /* flag ANTI ON terms so qo_reduce_equality_terms() keeps them as join predicates */
+	      parser_walk_tree (parser, node->info.spec.on_cond, pt_mark_anti_join_on, NULL, NULL, NULL);
 	      break;
 	      /* case PT_JOIN_FULL_OUTER: *//* not supported */
 
@@ -3843,9 +3880,6 @@ int
 pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
 {
   DB_ATTRIBUTE *att = NULL;
-  const char *lang_str;
-  int flag = 0;
-  bool has_user_format;
 
   if (name->node_type != PT_NAME)
     {
@@ -3879,51 +3913,12 @@ pt_resolve_default_value (PARSER_CONTEXT * parser, PT_NODE * name)
   if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
     {
       /* if the default value is an expression, make a node for it */
-      PT_OP_TYPE op;
-      PT_NODE *default_op_value_node;
-
-      op = pt_op_type_from_default_expr_type (att->default_value.default_expr.default_expr_type);
-      assert (op != (PT_OP_TYPE) 0);
-      default_op_value_node = pt_expression_0 (parser, op);
-
-      if (att->default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+      name->info.name.default_value =
+	pt_make_default_value_tree_from_default_expr (parser, &att->default_value.default_expr);
+      if (name->info.name.default_value == NULL)
 	{
-	  name->info.name.default_value = default_op_value_node;
-	}
-      else
-	{
-	  PT_NODE *arg1, *arg2, *arg3;
-	  arg1 = default_op_value_node;
-	  has_user_format = att->default_value.default_expr.default_expr_format ? 1 : 0;
-	  arg2 = pt_make_string_value (parser, att->default_value.default_expr.default_expr_format);
-	  if (arg2 == NULL)
-	    {
-	      parser_free_tree (parser, default_op_value_node);
-	      PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return ER_FAILED;
-	    }
-
-	  arg3 = parser_new_node (parser, PT_VALUE);
-	  if (arg3 == NULL)
-	    {
-	      parser_free_tree (parser, default_op_value_node);
-	      parser_free_tree (parser, arg2);
-	      PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-	      return ER_FAILED;
-	    }
-	  arg3->type_enum = PT_TYPE_INTEGER;
-	  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-	  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-	  arg3->info.value.data_value.i = (long) flag;
-
-	  name->info.name.default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
-	  if (name->info.name.default_value == NULL)
-	    {
-	      parser_free_tree (parser, default_op_value_node);
-	      parser_free_tree (parser, arg2);
-	      parser_free_tree (parser, arg3);
-	      return ER_FAILED;
-	    }
+	  PT_ERRORm (parser, name, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	  return ER_FAILED;
 	}
     }
   else
@@ -3959,9 +3954,6 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
   DB_ATTRIBUTE *att = 0;
   DB_OBJECT *db = 0;
   PT_NODE *cname = flat;
-  const char *lang_str;
-  int flag = 0;
-  bool has_user_format;
 
   if (!flat || !attr)
     {
@@ -4024,52 +4016,12 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 	  if (att->default_value.default_expr.default_expr_type != DB_DEFAULT_NONE)
 	    {
 	      /* if the default value is an expression, make a node for it */
-	      PT_OP_TYPE op;
-	      PT_NODE *default_op_value_node;
-
-	      op = pt_op_type_from_default_expr_type (att->default_value.default_expr.default_expr_type);
-	      assert (op != (PT_OP_TYPE) 0);
-	      default_op_value_node = pt_expression_0 (parser, op);
-
-	      if (att->default_value.default_expr.default_expr_op == NULL_DEFAULT_EXPRESSION_OPERATOR)
+	      attr->info.name.default_value =
+		pt_make_default_value_tree_from_default_expr (parser, &att->default_value.default_expr);
+	      if (attr->info.name.default_value == NULL)
 		{
-		  attr->info.name.default_value = default_op_value_node;
-		}
-	      else
-		{
-		  PT_NODE *arg1, *arg2, *arg3;
-		  arg1 = default_op_value_node;
-		  has_user_format = att->default_value.default_expr.default_expr_format ? 1 : 0;
-		  arg2 = pt_make_string_value (parser, att->default_value.default_expr.default_expr_format);
-		  if (arg2 == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value_node);
-		      PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      return 0;
-		    }
-
-		  arg3 = parser_new_node (parser, PT_VALUE);
-		  if (arg3 == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value_node);
-		      parser_free_tree (parser, arg2);
-		      PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      return 0;
-		    }
-		  arg3->type_enum = PT_TYPE_INTEGER;
-		  lang_str = prm_get_string_value (PRM_ID_INTL_DATE_LANG);
-		  lang_set_flag_from_lang (lang_str, has_user_format, 0, &flag);
-		  arg3->info.value.data_value.i = (long) flag;
-
-		  attr->info.name.default_value = parser_make_expression (parser, PT_TO_CHAR, arg1, arg2, arg3);
-		  if (attr->info.name.default_value == NULL)
-		    {
-		      parser_free_tree (parser, default_op_value_node);
-		      parser_free_tree (parser, arg2);
-		      parser_free_tree (parser, arg3);
-		      PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      return 0;
-		    }
+		  PT_ERRORm (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		  return 0;
 		}
 	    }
 	  else
@@ -5065,7 +5017,7 @@ pt_get_all_json_table_attributes_and_types (PARSER_CONTEXT * parser, PT_NODE * j
 #define DBLINK_ATTR_PRECISION (4)
 #define DBLINK_ATTR_CLASS_NAME (11)
 
-PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
+static PT_TYPE_ENUM pt_type[CCI_U_TYPE_LAST + 1] = {
   PT_TYPE_NULL,
   PT_TYPE_CHAR,
   PT_TYPE_VARCHAR,
@@ -7532,6 +7484,12 @@ pt_resolve_star (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE * attr)
 	      continue;
 	    }
 	}
+      else if (spec->info.spec.join_type == PT_JOIN_SEMI || spec->info.spec.join_type == PT_JOIN_ANTI)
+	{
+	  /* SELECT * : SEMI / ANTI inner columns are not part of the output (right columns are not referenceable) */
+	  spec = spec->next;
+	  continue;
+	}
 
       /* spec_att := all attributes of this entity spec */
       spec_att = NULL;
@@ -8907,7 +8865,12 @@ pt_create_pt_name (PARSER_CONTEXT * parser, PT_NODE * spec, NATURAL_JOIN_ATTR_IN
   name->info.name.original = pt_append_string (parser, NULL, attr->name);
   name->type_enum = attr->type_enum;
   name->info.name.meta_class = attr->meta_class;
-  if (PT_SPEC_IS_ENTITY (spec))
+  if (spec->info.spec.range_var != NULL)
+    {
+      /* qualify the name with the range variable, as name binding does. the join condition is printed with it */
+      name->info.name.resolved = pt_append_string (parser, NULL, spec->info.spec.range_var->info.name.original);
+    }
+  else if (PT_SPEC_IS_ENTITY (spec))
     {
       name->info.name.resolved = pt_append_string (parser, NULL, spec->info.spec.entity_name->info.name.original);
     }
@@ -9117,12 +9080,57 @@ is_pt_name_in_group_having (PT_NODE * node)
       return false;
     }
 
-  if (intl_identifier_casecmp ((char *) node->etc, CPTR_PT_NAME_IN_GROUP_HAVING) == 0)
+  if (strcmp ((char *) node->etc, CPTR_PT_NAME_IN_GROUP_HAVING) == 0)
     {
       return true;
     }
 
   return false;
+}
+
+/*
+ * is_pt_name_deferred_for_static_sql () - check if the name in group by/having/order by of a static SQL
+ *                                         was not resolved by name binding
+ *   return:
+ *   node(in):
+ */
+static bool
+is_pt_name_deferred_for_static_sql (PT_NODE * node)
+{
+  if (node == NULL || node->node_type != PT_NAME || node->etc == NULL)
+    {
+      return false;
+    }
+
+  return strcmp ((char *) node->etc, CPTR_PT_NAME_DEFERRED_FOR_STATIC_SQL) == 0;
+}
+
+/*
+ * pt_parameterize_deferred_name_for_static_sql () - convert a name deferred by name binding of a static SQL,
+ *                                                   which is not resolved as an alias either, to a host variable
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in):
+ *   continue_walk(in/out):
+ *
+ * Note: names are resolved in the order of a column, an alias of the select list and a PL/CSQL variable
+ */
+static PT_NODE *
+pt_parameterize_deferred_name_for_static_sql (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (is_pt_name_deferred_for_static_sql (node))
+    {
+      node = pt_parameterize_for_static_sql (parser, node);
+      if (node == NULL)
+	{
+	  *continue_walk = PT_STOP_WALK;
+	}
+    }
+
+  return node;
 }
 
 /*
@@ -9253,6 +9261,12 @@ pt_resolve_group_having_alias_pt_name (PARSER_CONTEXT * parser, PT_NODE ** node_
   /* We can not resolve the pt_name. */
   if (col == NULL)
     {
+      if (is_pt_name_deferred_for_static_sql (node))
+	{
+	  /* it will be converted to a host variable (see pt_parameterize_deferred_name_for_static_sql ()) */
+	  return;
+	}
+
       PT_ERRORmf (parser, (*node_p), MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_IS_NOT_DEFINED,
 		  pt_short_print (parser, (*node_p)));
     }
@@ -9472,6 +9486,17 @@ pt_resolve_names (PARSER_CONTEXT * parser, PT_NODE * statement, SEMANTIC_CHK_INF
       if (pt_has_error (parser))
 	{
 	  return NULL;
+	}
+
+      if (parser->flag.is_parsing_static_sql == 1)
+	{
+	  /* names in group by/having/order by which are not aliases are converted to host variables */
+	  statement =
+	    parser_walk_tree (parser, statement, pt_parameterize_deferred_name_for_static_sql, NULL, NULL, NULL);
+	  if (pt_has_error (parser))
+	    {
+	      return NULL;
+	    }
 	}
 
       /*
@@ -10694,9 +10719,63 @@ pt_op_type_from_default_expr_type (DB_DEFAULT_EXPR_TYPE expr_type)
     case DB_DEFAULT_CURRENTDATE:
       return PT_CURRENT_DATE;
 
+    case DB_DEFAULT_SYSGUID:
+      return PT_SYS_GUID;
+
+    case DB_DEFAULT_UUIDV4:
+    case DB_DEFAULT_UUIDV7:
+      return PT_UUID;
+
     default:
       return (PT_OP_TYPE) 0;
     }
+}
+
+PT_NODE *
+pt_make_expression_default_expr (PARSER_CONTEXT * parser, PT_NODE * node, DB_DEFAULT_EXPR_TYPE expr_type)
+{
+  PT_OP_TYPE op;
+
+  op = pt_op_type_from_default_expr_type (expr_type);
+  assert (op != (PT_OP_TYPE) 0);
+
+  if (node == NULL)
+    {
+      node = pt_expression_0 (parser, op);
+      if (node == NULL)
+	{
+	  return NULL;
+	}
+    }
+
+  switch (expr_type)
+    {
+    case DB_DEFAULT_UUIDV4:
+    case DB_DEFAULT_UUIDV7:
+      {
+	PT_NODE *arg1 = parser_new_node (parser, PT_VALUE);
+	if (arg1 == NULL)
+	  {
+	    parser_free_tree (parser, node);
+	    return NULL;
+	  }
+
+	arg1->type_enum = PT_TYPE_INTEGER;
+	arg1->info.value.data_value.i = (expr_type == DB_DEFAULT_UUIDV4) ? 4 : 7;
+	node->info.expr.arg1 = arg1;
+	node->flag.do_not_fold = true;
+      }
+      break;
+
+    case DB_DEFAULT_SYSGUID:
+      node->flag.do_not_fold = true;
+      break;
+
+    default:
+      break;
+    }
+
+  return node;
 }
 
 DB_OBJECT *
@@ -12125,6 +12204,16 @@ pt_gather_dblink_colums (PARSER_CONTEXT * parser, PT_NODE * query_stmt)
 	      lkcol.col_list = table->info.dblink_table.sel_list;
 
 	      lkcol.tbl_name_node = spec->info.spec.range_var;
+
+	      /* pt_resolve_natural_join () runs after this and derives the join columns from
+	       * the spec's column list, so a natural-join participant needs every visible
+	       * column (star), not only the ones the statement references.  The flag is on
+	       * the right-hand spec; the preceding spec is the left-hand side. */
+	      if (spec->info.spec.natural || (spec->next && spec->next->info.spec.natural))
+		{
+		  check_for_already_exists (parser, &lkcol, lkcol.tbl_name_node->info.name.original, NULL);
+		}
+
 	      pt_get_cols_for_dblink (parser, &lkcol, query, spec->info.spec.on_cond);
 
 	      table->info.dblink_table.sel_list = lkcol.col_list;

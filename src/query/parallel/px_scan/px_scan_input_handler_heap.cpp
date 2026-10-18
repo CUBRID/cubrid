@@ -23,6 +23,7 @@
 #include "px_scan_input_handler_heap.hpp"
 #include "error_code.h"
 #include "bit.h"
+#include "heap_file.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -30,7 +31,7 @@
 namespace parallel_scan
 {
   thread_local HEAP_SCANCACHE *input_handler_heap::m_tl_scan_cache = NULL;
-  thread_local PGBUF_WATCHER input_handler_heap::m_tl_old_page_watcher = {0};
+  thread_local PGBUF_WATCHER input_handler_heap::m_tl_old_page_watcher = {};
   thread_local ftab_set *input_handler_heap::m_tl_ftab_set = NULL;
   thread_local VPID input_handler_heap::m_tl_vpid = VPID_INITIALIZER;
   thread_local size_t input_handler_heap::m_tl_pgoffset = 0;
@@ -156,6 +157,15 @@ namespace parallel_scan
 		    m_err_messages_p->move_top_error_message_to_this();
 		    m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		    return S_ERROR;
+		  }
+
+		if (heap_page_is_bestspace (thread_p, m_tl_scan_cache->page_watcher.pgptr))
+		  {
+		    pgbuf_ordered_unfix (thread_p, &m_tl_scan_cache->page_watcher);
+		    PGBUF_CLEAR_WATCHER (&m_tl_scan_cache->page_watcher);
+		    /* the manual advance is only needed on the S_SUCCESS return path */
+		    found = false;
+		    continue;
 		  }
 
 		*vpid = m_tl_vpid;
