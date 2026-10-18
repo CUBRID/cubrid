@@ -3330,6 +3330,12 @@ rkcheck (UTIL_FUNCTION_ARG * arg)
    * normally, in order to avoid generating unnecessary files.
    */
   fp = open_violation_list_file (database_name, arg->command_name, violation_list_file, PATH_MAX);
+  if (fp == NULL)
+    {
+      err = ER_FAILED;
+      PRINT_AND_LOG_ERR_MSG (utility_get_generic_message (MSGCAT_UTIL_GENERIC_FILEOPEN_ERROR), violation_list_file);
+      goto end1;
+    }
 
   classes = db_get_all_classes ();
   if (classes == NULL)
