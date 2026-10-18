@@ -164,24 +164,27 @@ fetch_arith_convert_to_resolved_branch (const val_descr * vd, const DOMAIN_PLAN_
   return fetch_convert_to_resolved_branch (vd, item, value);
 }
 
-/* The resolved comparison k an arithmetic node makes: its plan item carries them. A stream's
- * FIELD, NULLIF, LEAST or GREATEST has a bare item for them. */
-static inline const DOMAIN_COMPARE_PLAN *
-fetch_arith_compare (const ARITH_TYPE * arithptr, int k)
+/* The comparison k an arithmetic node makes of two values: unpack's decision, or the plan its item carries - the
+ * load's for a comparison unpack left, a filter or function index stream's */
+static inline DB_VALUE_COMPARE_RESULT
+fetch_arith_compare (THREAD_ENTRY * thread_p, const ARITH_TYPE * arithptr, int k, val_descr * vd,
+		     const DB_VALUE * value1, const DB_VALUE * value2, bool * can_compare)
 {
-  const DOMAIN_PLAN_ITEM *item = arithptr->plan_item;
-  if (item == NULL || !(item->flags & DOMAIN_PLAN_ITEM_COMPARES))
-    {
-      return NULL;
-    }
   assert (arithptr->opcode == T_FIELD || arithptr->opcode == T_NULLIF || arithptr->opcode == T_LEAST
 	  || arithptr->opcode == T_GREATEST);
-  return item->compares[k];
+  if (arithptr->compares != NULL)
+    {
+      return eval_compare_values_resolved (thread_p, &arithptr->compares[k], vd, value1, value2, 0, can_compare);
+    }
+  const DOMAIN_PLAN_ITEM *item = arithptr->plan_item;
+  const DOMAIN_COMPARE_PLAN *comparison = item != NULL && (item->flags & DOMAIN_PLAN_ITEM_COMPARES)
+    ? item->compares[k] : NULL;
+  return eval_compare_values_planned (thread_p, comparison, vd, value1, value2, 0, can_compare);
 }
 
 /*
- * fetch_least_or_greatest () - LEAST or GREATEST of an arithmetic node's two operands, compared as the load or
- *				resolve_domains resolved
+ * fetch_least_or_greatest () - LEAST or GREATEST of an arithmetic node's two operands, compared as the node
+ *				compares them (fetch_arith_compare)
  *   return: NO_ERROR, or ER_FAILED where they do not compare
  */
 static int
@@ -190,8 +193,7 @@ fetch_least_or_greatest (THREAD_ENTRY * thread_p, ARITH_TYPE * arithptr, val_des
 {
   bool can_compare = true;
   const DB_VALUE_COMPARE_RESULT cmp_result =
-    eval_compare_values_resolved (thread_p, fetch_arith_compare (arithptr, 0), vd, peek_left, peek_right, 0,
-				  &can_compare);
+    fetch_arith_compare (thread_p, arithptr, 0, vd, peek_left, peek_right, &can_compare);
   return db_least_or_greatest_by (peek_left, peek_right, cmp_result, can_compare, arithptr->value, least);
 }
 
@@ -3841,10 +3843,8 @@ fetch_op_field (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       bool can_compare = false;
       int cmp_res = DB_UNK;
 
-      /* the comparisons the load or resolve_domains resolved */
-      cmp_res =
-	eval_compare_values_resolved (thread_p, fetch_arith_compare (arithptr, 0), vd, peek_third, peek_left, 0,
-				      &can_compare);
+      /* the node's comparisons (fetch_arith_compare) */
+      cmp_res = fetch_arith_compare (thread_p, arithptr, 0, vd, peek_third, peek_left, &can_compare);
       if (cmp_res == DB_EQ)
 	{
 	  db_make_int (arithptr->value, 1);
@@ -3856,9 +3856,7 @@ fetch_op_field (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	}
 
 
-      cmp_res =
-	eval_compare_values_resolved (thread_p, fetch_arith_compare (arithptr, 1), vd, peek_third, peek_right, 0,
-				      &can_compare);
+      cmp_res = fetch_arith_compare (thread_p, arithptr, 1, vd, peek_third, peek_right, &can_compare);
       if (cmp_res == DB_EQ)
 	{
 	  db_make_int (arithptr->value, 2);
@@ -3892,9 +3890,7 @@ fetch_op_field (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	  bool can_compare = false;
 	  int cmp_res = DB_UNK;
 
-	  cmp_res =
-	    eval_compare_values_resolved (thread_p, fetch_arith_compare (arithptr, 1), vd, peek_third, peek_right,
-					  0, &can_compare);
+	  cmp_res = fetch_arith_compare (thread_p, arithptr, 1, vd, peek_third, peek_right, &can_compare);
 	  if (cmp_res == DB_EQ)
 	    {
 	      /* match */
@@ -4320,10 +4316,8 @@ fetch_op_nullif (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       return ER_FAILED;
     }
 
-  /* the comparison the load or resolve_domains resolved */
-  cmp_res =
-    eval_compare_values_resolved (thread_p, fetch_arith_compare (arithptr, 0), vd, peek_left, peek_right, 0,
-				  &can_compare);
+  /* the node's comparison (fetch_arith_compare) */
+  cmp_res = fetch_arith_compare (thread_p, arithptr, 0, vd, peek_left, peek_right, &can_compare);
   if (cmp_res == DB_EQ)
     {
       PRIM_SET_NULL (arithptr->value);

@@ -526,25 +526,24 @@ eval_assert_resolved_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * d
 #endif
 
 /*
- * eval_compare_values_resolved () - a comparison of two values resolved before any row outside a predicate term: the
- *				    comparison's resolution in this execution, tp_value_compare_with_error's NULL rule
- *				    and the comparison method it names
+ * eval_compare_values_with () - a comparison of two values resolved before any row outside a predicate term:
+ *				tp_value_compare_with_error's NULL rule and the comparison method it names
  *   return: the result; *can_compare false with tp_value_compare_with_error's error where the values do not compare,
  *	     and at the unresolved-domain check (execution) (ER_QPROC_DOMAIN_UNRESOLVED)
- *   comparison(in): the resolved comparison; NULL is the load's omission
- *   vd(in): value descriptor of the execution (the resolved domains and converted constants)
+ *   compare(in): the comparison this execution makes
+ *   comparison(in): its plan, whose correlated sides are converted once per scope; NULL for unpack's decision
  *   can_compare(out): NULL for tp_value_compare's contract, which asks nothing: values that do not compare answer by
  *		       their rank without an error
  */
-DB_VALUE_COMPARE_RESULT
-eval_compare_values_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN * comparison, const val_descr * vd,
-			      const DB_VALUE * value1, const DB_VALUE * value2, int total_order, bool * can_compare)
+static DB_VALUE_COMPARE_RESULT
+eval_compare_values_with (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare,
+			  const DOMAIN_COMPARE_PLAN * comparison, const val_descr * vd, const DB_VALUE * value1,
+			  const DB_VALUE * value2, int total_order, bool * can_compare)
 {
   if (can_compare != NULL)
     {
       *can_compare = true;
     }
-  const DOMAIN_COMPARE *compare = comparison != NULL ? eval_resolved_comparison (comparison, vd) : &eval_Compare_values;
   if (compare->method != DOMAIN_COMPARE_VALUES)
     {
 #if !defined (NDEBUG)
@@ -574,6 +573,33 @@ eval_compare_values_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN
     }
   /* NULL answers first */
   return tp_value_compare_with_error (value1, value2, 1, total_order, can_compare);
+}
+
+/*
+ * eval_compare_values_resolved () - eval_compare_values_with over a comparison unpack decided: a merge column pair, a
+ *				    LIMIT, an instnum bound, FIELD, NULLIF, LEAST and GREATEST
+ *   compare(in): the decided comparison; NULL compares by the values (comparison method VALUES)
+ */
+DB_VALUE_COMPARE_RESULT
+eval_compare_values_resolved (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compare, const val_descr * vd,
+			      const DB_VALUE * value1, const DB_VALUE * value2, int total_order, bool * can_compare)
+{
+  return eval_compare_values_with (thread_p, compare != NULL ? compare : &eval_Compare_values, NULL, vd, value1, value2,
+				   total_order, can_compare);
+}
+
+/*
+ * eval_compare_values_planned () - eval_compare_values_with over a plan's comparison in this execution: the load's for
+ *				   a FIELD, NULLIF, LEAST or GREATEST comparison unpack left, a filter or function index
+ *				   stream's
+ *   comparison(in): the plan; NULL is the load's omission
+ */
+DB_VALUE_COMPARE_RESULT
+eval_compare_values_planned (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE_PLAN * comparison, const val_descr * vd,
+			     const DB_VALUE * value1, const DB_VALUE * value2, int total_order, bool * can_compare)
+{
+  return eval_compare_values_with (thread_p, comparison != NULL ? eval_resolved_comparison (comparison, vd)
+				   : &eval_Compare_values, comparison, vd, value1, value2, total_order, can_compare);
 }
 
 /* a comparison's result as its relational operator reads it (eval_value_rel_cmp and the operator functions) */

@@ -535,15 +535,13 @@ static DB_VALUE_COMPARE_RESULT qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p
 							 int *left_ind, TP_DOMAIN ** left_dom,
 							 QFILE_TUPLE_RECORD * rght, int *rght_ind,
 							 TP_DOMAIN ** rght_dom, int tval_cnt,
-							 const DOMAIN_COMPARE_PLAN * const *compares,
-							 const VAL_DESCR * vd);
+							 const DOMAIN_COMPARE * compares, const VAL_DESCR * vd);
 static QFILE_LIST_ID *qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp,
 					QFILE_LIST_ID * inner_list_idp, QFILE_LIST_MERGE_INFO * merge_infop,
-					int ls_flag, const DOMAIN_COMPARE_PLAN * const *compares, const VAL_DESCR * vd);
+					int ls_flag, const DOMAIN_COMPARE * compares, const VAL_DESCR * vd);
 static QFILE_LIST_ID *qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * inner_sid,
 					      QFILE_LIST_MERGE_INFO * merge_infop, PRED_EXPR * other_outer_join_pred,
-					      XASL_STATE * xasl_state, int ls_flag,
-					      const DOMAIN_COMPARE_PLAN * const *compares);
+					      XASL_STATE * xasl_state, int ls_flag, const DOMAIN_COMPARE * compares);
 static int qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_add_intint_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, int v1, int v2);
 static int qexec_add_intval_tuple (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id, int v1, DB_VALUE * v2);
@@ -5932,7 +5930,7 @@ qexec_collection_has_null (DB_VALUE * colval)
  *   rght(in)           : right tuple slot; rght_ind: its merge columns
  *   rght_dom(in)       : Domains of the right merge columns
  *   tval_cnt(in)       : tuple values count
- *   compares(in)       : [tval_cnt] each column pair's comparison, as the load or resolve_domains resolved it
+ *   compares(in)       : [tval_cnt] each column pair's comparison, as unpack decided it
  *   vd(in)             : value descriptor of the execution
  *
  * Note: This routine checks if two tuple values are equal. Coercion
@@ -5951,7 +5949,7 @@ qexec_collection_has_null (DB_VALUE * colval)
 static DB_VALUE_COMPARE_RESULT
 qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * left, int *left_ind, TP_DOMAIN ** left_dom,
 			  QFILE_TUPLE_RECORD * rght, int *rght_ind, TP_DOMAIN ** rght_dom, int tval_cnt,
-			  const DOMAIN_COMPARE_PLAN * const *compares, const VAL_DESCR * vd)
+			  const DOMAIN_COMPARE * compares, const VAL_DESCR * vd)
 {
   DB_VALUE left_dbval, right_dbval;
   int i, cmp;
@@ -5994,11 +5992,11 @@ qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * left, in
 	  goto clear;
 	}
 
-      /* both left_dbval, right_dbval is non-null: the comparison the load or resolve_domains resolved for the column
-       * pair, as tp_value_compare asks it */
+      /* both left_dbval, right_dbval is non-null: the comparison unpack decided for the column pair, as
+       * tp_value_compare asks it */
       cmp =
-	eval_compare_values_resolved (thread_p, compares != NULL ? compares[i] : NULL, vd, &left_dbval, &right_dbval, 0,
-				      NULL);
+	eval_compare_values_resolved (thread_p, compares != NULL ? &compares[i] : NULL, vd, &left_dbval, &right_dbval,
+				      0, NULL);
 
       if (left_is_set && cmp == DB_UNK && qexec_collection_has_null (&left_dbval))
 	{
@@ -6147,7 +6145,7 @@ qexec_cmp_tpl_vals_merge (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * left, in
  */
 static QFILE_LIST_ID *
 qexec_merge_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * outer_list_idp, QFILE_LIST_ID * inner_list_idp,
-		  QFILE_LIST_MERGE_INFO * merge_infop, int ls_flag, const DOMAIN_COMPARE_PLAN * const *compares,
+		  QFILE_LIST_MERGE_INFO * merge_infop, int ls_flag, const DOMAIN_COMPARE * compares,
 		  const VAL_DESCR * vd)
 {
   /* outer -> left scan, inner -> right scan */
@@ -6612,7 +6610,7 @@ exit_on_error:
 static QFILE_LIST_ID *
 qexec_merge_list_outer (THREAD_ENTRY * thread_p, SCAN_ID * outer_sid, SCAN_ID * inner_sid,
 			QFILE_LIST_MERGE_INFO * merge_infop, PRED_EXPR * other_outer_join_pred, XASL_STATE * xasl_state,
-			int ls_flag, const DOMAIN_COMPARE_PLAN * const *compares)
+			int ls_flag, const DOMAIN_COMPARE * compares)
 {
   const VAL_DESCR *vd = &xasl_state->vd;
   /* outer -> left scan, inner -> right scan */
@@ -16225,7 +16223,7 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	  return ER_FAILED;
 	}
 
-      /* the comparison the load or resolve_domains resolved, as tp_value_compare asks it */
+      /* the comparison unpack decided, as tp_value_compare asks it */
       cmp_with_zero =
 	eval_compare_values_resolved (thread_p, xasl->limit_compare, &xasl_state->vd, limit_valp, &zero_val, 0, NULL);
       if (cmp_with_zero == DB_GT)

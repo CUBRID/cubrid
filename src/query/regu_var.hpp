@@ -171,6 +171,9 @@ struct arith_list_node
   /* CBRD-27583 (d2): T_ADD, T_SUB, T_MUL, T_DIV: what the operator makes of its operands' values, over the domains XASL
    * generation gave them (domain_resolve_operand_coercion), found at unpack; not serialized */
   DOMAIN_OPERAND_COERCION coercion = {};
+  /* CBRD-27583: FIELD, NULLIF, LEAST, GREATEST: the comparisons the node makes, decided at unpack - [0] the left operand
+   * (FIELD: the third against the left), [1] FIELD's third against the right; not serialized */
+  const DOMAIN_COMPARE *compares = nullptr;
 
   /* NOTE: The following member is only used on server internally. */
   struct drand48_data *rand_seed;	/* seed to be used to generate pseudo-random sequence */

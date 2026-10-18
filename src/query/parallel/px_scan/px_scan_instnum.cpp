@@ -239,7 +239,7 @@ namespace parallel_scan
       }
 
     /* the limit itself is resolved later, once a VAL_DESCR is available. */
-    draw.limit_rhs = get_instnum_upper_limit_rhs (x, &draw.is_less_than, &draw.limit_compare);
+    draw.limit_rhs = get_instnum_upper_limit_rhs (x, &draw.is_less_than, &draw.limit_term);
     if (draw.limit_rhs != nullptr)
       {
 	mode = instnum_mode::ATOMIC_DRAW;
@@ -277,9 +277,12 @@ namespace parallel_scan
 		/* The coercion rounds, so ask the comparison itself - the question serial asks every
 		 * row - whether the rounded candidate qualifies, and step down once if it does not.
 		 * Rounding lands within 1, so that candidate and its predecessor are the only two.
-		 * It is the term's own comparison, as the load or resolve_domains resolved it. */
-		DB_VALUE_COMPARE_RESULT cmp =
-			eval_compare_values_resolved (thread_p, draw.limit_compare, vd, &coerced, limit_val, 0, NULL);
+		 * It is the term's own comparison, as unpack decided it or the load planned it. */
+		DB_VALUE_COMPARE_RESULT cmp = draw.limit_term->compare != nullptr
+					      ? eval_compare_values_resolved (thread_p, draw.limit_term->compare, vd, &coerced,
+						  limit_val, 0, NULL)
+					      : eval_compare_values_planned (thread_p, draw.limit_term->domain_compare, vd,
+						  &coerced, limit_val, 0, NULL);
 		const bool qualifies = draw.is_less_than ? (cmp == DB_LT) : (cmp != DB_GT);
 		if (!qualifies)
 		  {

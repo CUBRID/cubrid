@@ -1142,10 +1142,15 @@ domain_walk_arith (DOMAIN_LOAD_CONTEXT * ctx, ARITH_TYPE * arith, bool field_bot
       domain_walk_pred (ctx, arith->pred);
     }
   /* the comparisons the node makes are resolved like a term's: FIELD compares its third operand with each value,
-   * NULLIF and LEAST / GREATEST their two operands; the node's item carries them */
-  const DOMAIN_COMPARE_PLAN **compares = domain_arith_compares (ctx->thread_p, arith->opcode, &ctx->failed);
+   * NULLIF and LEAST / GREATEST their two operands; the node's item carries them - unless unpack decided them */
+  const DOMAIN_COMPARE_PLAN **compares =
+    arith->compares != NULL ? NULL : domain_arith_compares (ctx->thread_p, arith->opcode, &ctx->failed);
   if (compares != NULL)
     {
+#if !defined (NDEBUG)
+      /* CBRD-27583 census (removed with the load): comparisons unpack left to the load */
+      er_log_debug (ARG_FILE_LINE, "CBRD-27583 left arith compare op=%d\n", (int) arith->opcode);
+#endif
       if (arith->opcode == T_FIELD)
 	{
 	  if (field_bottom)
@@ -1683,6 +1688,15 @@ domain_add_compare_term (DOMAIN_LOAD_CONTEXT * ctx, COMP_EVAL_TERM * term)
     {
       return;
     }
+#if !defined (NDEBUG)
+  /* CBRD-27583 census (removed with the load): a term unpack left to the load - each side's regu type, domain type and
+   * collation flag */
+  er_log_debug (ARG_FILE_LINE, "CBRD-27583 left term compare %d/%d/%d %d/%d/%d\n", (int) term->lhs->type,
+		term->lhs->domain != NULL ? (int) TP_DOMAIN_TYPE (term->lhs->domain) : -1,
+		term->lhs->domain != NULL ? (int) term->lhs->domain->collation_flag : -1, (int) term->rhs->type,
+		term->rhs->domain != NULL ? (int) TP_DOMAIN_TYPE (term->rhs->domain) : -1,
+		term->rhs->domain != NULL ? (int) term->rhs->domain->collation_flag : -1);
+#endif
   if (ctx->n_compare_terms == ctx->max_compare_terms)
     {
       int max = ctx->max_compare_terms == 0 ? 16 : ctx->max_compare_terms * 2;
@@ -1730,10 +1744,18 @@ domain_add_compare_term (DOMAIN_LOAD_CONTEXT * ctx, COMP_EVAL_TERM * term)
 static void
 domain_add_element_term (DOMAIN_LOAD_CONTEXT * ctx, ALSM_EVAL_TERM * term)
 {
-  if (term->elem == NULL || term->elemset == NULL || ctx->failed)
+  if (term->elem == NULL || term->elemset == NULL || ctx->failed || term->domain_compare != NULL)
     {
+      /* CBRD-27583: unpack decided it (stx_build_element_compares) */
       return;
     }
+#if !defined (NDEBUG)
+  /* CBRD-27583 census (removed with the load): an ALL/SOME term unpack left to the load - the item's regu type, domain
+   * type and collation flag, the right side's regu type */
+  er_log_debug (ARG_FILE_LINE, "CBRD-27583 left element term %d/%d/%d %d\n", (int) term->elem->type,
+		term->elem->domain != NULL ? (int) TP_DOMAIN_TYPE (term->elem->domain) : -1,
+		term->elem->domain != NULL ? (int) term->elem->domain->collation_flag : -1, (int) term->elemset->type);
+#endif
   DOMAIN_LOAD_ELEMENT_TERM *entry = (DOMAIN_LOAD_ELEMENT_TERM *) db_private_alloc (ctx->thread_p, sizeof (*entry));
   if (entry == NULL)
     {
@@ -2089,46 +2111,6 @@ domain_mark_aggregate_operands (XASL_NODE * xasl)
     }
 }
 
-/* The INT 0 a LIMIT row count is compared with (qexec_check_limit_clause). */
-/* *INDENT-OFF* */
-static const DB_VALUE domain_Int_zero = []
-{
-  DB_VALUE zero;
-  db_make_int (&zero, 0);
-  return zero;
-} ();
-/* *INDENT-ON* */
-
-/* A merge join compares each pair of merge columns, the outer list's with the inner list's (qexec_cmp_tpl_vals_merge):
- * one resolved comparison per pair. */
-static void
-domain_add_merge_compares (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
-{
-  MERGELIST_PROC_NODE *merge = &xasl->proc.mergelist;
-  const QFILE_LIST_MERGE_INFO *info = &merge->ls_merge;
-  if (info->ls_column_cnt <= 0 || ctx->failed || merge->merge_compares == NULL)
-    {
-      /* CBRD-27583: unpack made the pairs' array (stx_build_mergelist_proc) */
-      return;
-    }
-  for (int k = 0; k < info->ls_column_cnt; k++)
-    {
-      if (merge->merge_compares[k] != NULL)
-	{
-	  /* CBRD-27583: decided at unpack from the lists' compiled column domains */
-	  continue;
-	}
-      REGU_VARIABLE *const regu[2] = { NULL, NULL };
-      DOMAIN_PLAN_ITEM *const column[2] = {
-	domain_list_column (ctx, merge->outer_xasl, info->ls_outer_column[k]),
-	domain_list_column (ctx, merge->inner_xasl, info->ls_inner_column[k])
-      };
-      const DB_VALUE *const literal[2] = { NULL, NULL };
-      domain_add_compare_pair (ctx, regu, column, literal, &merge->merge_compares[k]);
-    }
-}
-
-
 static void
 domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 {
@@ -2236,7 +2218,6 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
       domain_walk_xasl (ctx, xasl->proc.mergelist.inner_xasl);
       domain_walk_specs (ctx, xasl->proc.mergelist.outer_spec_list);
       domain_walk_specs (ctx, xasl->proc.mergelist.inner_spec_list);
-      domain_add_merge_compares (ctx, xasl);
       break;
     case HASHJOIN_PROC:
       domain_walk_xasl (ctx, xasl->proc.hashjoin.outer.xasl);
@@ -2270,14 +2251,6 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
   domain_walk_regu (ctx, xasl->limit_offset);
   domain_walk_regu (ctx, xasl->limit_row_count);
   ctx->constant_branch = block_constant_branch;
-  if (xasl->limit_row_count != NULL)
-    {
-      /* qexec_check_limit_clause runs the query only for a row count greater than an INT 0 */
-      REGU_VARIABLE *const regu[2] = { xasl->limit_row_count, NULL };
-      DOMAIN_PLAN_ITEM *const column[2] = { NULL, NULL };
-      const DB_VALUE *const literal[2] = { NULL, &domain_Int_zero };
-      domain_add_compare_pair (ctx, regu, column, literal, &xasl->limit_compare);
-    }
   domain_walk_regu (ctx, xasl->level_regu);
   domain_walk_regu (ctx, xasl->isleaf_regu);
   domain_walk_regu (ctx, xasl->iscycle_regu);
