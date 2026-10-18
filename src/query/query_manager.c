@@ -2985,7 +2985,7 @@ qmgr_alloc_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP
  * qmgr_copy_to_external_file_page () - copy a page image to a page allocated by qmgr_alloc_external_file_page ()
  *   return: NO_ERROR or error code
  *   vpid_p(in): page to copy to
- *   tfile_vfid_p(in): temporary file the page belongs to
+ *   tfile_vfid_p(in): temporary file of the query the page belongs to, for its TDE setting
  *   page_image(in): whole content of the page
  *
  * Note: A list whose last page is filled in memory (qfile_add_tuple_to_staged_list ()) uses this function to fix the

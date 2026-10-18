@@ -38,7 +38,7 @@ namespace cubquery
    * hjoin_part_set - the partition lists of one input, written by one or more hjoin_part_writer
    *
    * The last page of each partition list is kept in memory until it is full (qfile_add_tuple_to_staged_list), and
-   * finish () writes the remaining ones after all writers are done. The partition lists and the mutexes are not owned.
+   * finish () copies the remaining ones after all writers are done. The partition lists and the mutexes are not owned.
    */
   class hjoin_part_set
   {

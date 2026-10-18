@@ -23,7 +23,7 @@
 #include "query_hash_join_split.hpp"
 
 #include "error_manager.h"		/* er_set, er_errid, assert_release_error */
-#include "list_file.h"			/* qfile_add_tuple_to_staged_list, qfile_write_staged_list_page */
+#include "list_file.h"			/* qfile_add_tuple_to_staged_list, qfile_copy_to_external_file_page */
 #include "memory_alloc.h"		/* db_private_alloc, db_private_free_and_init, DB_ALIGN */
 #include "object_representation.h"	/* OR_GET_INT for QFILE_GET_TUPLE_LENGTH */
 
@@ -83,7 +83,7 @@ namespace cubquery
   }
 
   /*
-   * hjoin_part_set::finish () - write the last page of each partition list, after all writers are done
+   * hjoin_part_set::finish () - copy the last page of each partition list, after all writers are done
    *   return: Error code (NO_ERROR if successful, error code otherwise).
    *   thread_p(in): Thread entry.
    *   spool(in): One of the spools; its TDE setting is used for the pages.
@@ -103,7 +103,7 @@ namespace cubquery
 	    continue;
 	  }
 
-	error = qfile_write_staged_list_page (thread_p, m_part_lists[part_index], m_last_pages[part_index], spool);
+	error = qfile_copy_to_external_file_page (thread_p, m_part_lists[part_index], m_last_pages[part_index], spool);
 	if (error != NO_ERROR)
 	  {
 	    return error;
@@ -114,7 +114,7 @@ namespace cubquery
   }
 
   /*
-   * hjoin_part_set::clear () - free the last pages; pages not yet written are discarded
+   * hjoin_part_set::clear () - free the last pages; pages not yet copied are discarded
    */
   void
   hjoin_part_set::clear ()
