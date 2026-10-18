@@ -425,7 +425,7 @@ au_change_trigger_owner (MOP trigger_mop, MOP owner_mop)
        * tr_rename_trigger above admits a user trigger only for its owner,
        * so the current user is the old owner and its cache must be invalidated.
        */
-      tr_invalidate_user_cache ();
+      tr_mark_user_triggers_modified ();
     }
 
 end:

@@ -1893,8 +1893,18 @@ tr_unmap_trigger (TR_TRIGGER * trigger)
 void
 tr_invalidate_user_cache (void)
 {
-  tr_User_triggers_modified = 1;
   tr_User_triggers_valid = 0;
+}
+
+/*
+ * tr_mark_user_triggers_modified() - Marks the user triggers as changed by the current transaction
+ *    return: none
+ */
+void
+tr_mark_user_triggers_modified (void)
+{
+  tr_User_triggers_modified = 1;
+  tr_invalidate_user_cache ();
 }
 
 /*
@@ -3671,7 +3681,7 @@ tr_create_trigger (const char *name, DB_TRIGGER_STATUS status, double priority, 
     }
   else
     {
-      tr_invalidate_user_cache ();
+      tr_mark_user_triggers_modified ();
     }
 
   return object;
@@ -3930,7 +3940,7 @@ tr_drop_trigger_internal (TR_TRIGGER * trigger, int rollback, bool need_savepoin
   /* remove it from the class or user cache */
   if (trigger->class_mop == NULL)
     {
-      tr_invalidate_user_cache ();
+      tr_mark_user_triggers_modified ();
     }
   else
     {
