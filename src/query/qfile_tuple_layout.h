@@ -539,7 +539,7 @@ qfile_tuple_check_col_type (const QFILE_TUPLE_VALUE_TYPE_LIST * type_list, int c
 
 /*
  * qfile_tuple_column_unresolved () - the unresolved-domain check (execution) of a value written into a column whose
- *   domain is still VARIABLE: a list opens with the plan's domains, so no row resolves a column's domain
+ *   domain is still VARIABLE: a list opens with its columns' compiled domains, so no row resolves a column's domain
  *   return: ER_FAILED, with ER_QPROC_DOMAIN_UNRESOLVED set
  */
 inline int

@@ -1167,7 +1167,7 @@ xcache_find_xasl_id_for_execute (THREAD_ENTRY * thread_p, const XASL_ID * xid, X
     }
   assert (xclone->xasl != NULL && xclone->xasl_buf != NULL);
 #if !defined (NDEBUG)
-  /* CBRD-27583 census: what the compiler left without a domain; the load's derived lines before this one are its */
+  /* CBRD-27583 census (removed at S3-14): what the compiler left without a domain */
   er_log_debug (ARG_FILE_LINE, "CBRD-27583 load undecided regu=%d arith=%d position=%d: %s\n",
 		xclone->xasl_buf->n_undecided_regu, xclone->xasl_buf->n_undecided_arith,
 		xclone->xasl_buf->n_undecided_position, EXEINFO_HASH_TEXT_STRING (&(*xcache_entry)->sql_info));

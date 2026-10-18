@@ -107,79 +107,23 @@ fetch_session_read_value (ARITH_TYPE * arithptr, const DB_VALUE * name)
 					     TP_IS_CHAR_TYPE (value_type) ? db_get_string_codeset (value) : 0);
 }
 
-/*
- * fetch_convert_to_branch_value () - a value a row picked among branches whose collations resolve_domains merged into
- *   one domain (domain_resolve_branch_merge), brought into it by the converter resolve_domains chose for its string
- *   type
- *   return: NO_ERROR, the conversion's error, or ER_QPROC_DOMAIN_UNRESOLVED (the unresolved-domain check (execution))
- *	     for a value of a type resolve_domains chose no converter for
- */
-static int
-fetch_convert_to_branch_value (const val_descr * vd, const DOMAIN_PLAN_ITEM * item,
-			       const RESOLVED_DOMAIN * resolved_domain, DB_VALUE * value)
+/* the common domain of two values, for a node whose compiled domain leaves its type to the data: an exception to
+ * deciding before the rows, the type the operator inferred from its values before CBRD-27583 */
+static TP_DOMAIN *
+fetch_common_value_domain (DB_VALUE * value1, DB_VALUE * value2)
 {
-  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
-  const TP_VALUE_CONVERTER converter = type == DB_TYPE_VARCHAR ? resolved_domain->conv[0]
-    : type == DB_TYPE_CHAR ? resolved_domain->conv[1] : NULL;
-  if (converter == NULL)
-    {
-      return domain_unresolved_error (qexec_query_alias (vd), qexec_item_index (vd, item), type);
-    }
-  DB_VALUE converted;
-  const TP_DOMAIN_STATUS status = tp_value_convert (converter, resolved_domain->domain, value, &converted);
-  if (status != DOMAIN_COMPATIBLE)
-    {
-      pr_clear_value (&converted);
-      return tp_domain_status_er_set (status, ARG_FILE_LINE, value, resolved_domain->domain);
-    }
-  pr_clear_value (value);
-  *value = converted;
-  return NO_ERROR;
+  TP_DOMAIN tmp1, tmp2;
+  return tp_infer_common_domain (tp_domain_resolve_value (value1, &tmp1), tp_domain_resolve_value (value2, &tmp2));
 }
 
-/* The row's test before fetch_convert_to_branch_value, inline: a collation late-binding node's resolution carries
- * converters only for merged branches (a type-dependent node's are its operands'), so any other node costs a flag
- * test. */
-static inline int
-fetch_convert_to_resolved_branch (const val_descr * vd, const DOMAIN_PLAN_ITEM * item, DB_VALUE * value)
-{
-  if (item == NULL || !(item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION))
-    {
-      return NO_ERROR;
-    }
-  const RESOLVED_DOMAIN *resolved_domain = qexec_late_bind_domain (vd, item);
-  if (resolved_domain == NULL || (resolved_domain->conv[0] == NULL && resolved_domain->conv[1] == NULL)
-      || DB_IS_NULL (value))
-    {
-      return NO_ERROR;
-    }
-  return fetch_convert_to_branch_value (vd, item, resolved_domain, value);
-}
-
-/* the same test for a function result (fetch_peek_dbval_slow's TYPE_FUNC), out of line: that path's one caller
- * outside this file */
-int
-fetch_arith_convert_to_resolved_branch (const val_descr * vd, const DOMAIN_PLAN_ITEM * item, DB_VALUE * value)
-{
-  return fetch_convert_to_resolved_branch (vd, item, value);
-}
-
-/* The comparison k an arithmetic node makes of two values: unpack's decision, or the plan its item carries - the
- * load's for a comparison unpack left, a filter or function index stream's */
+/* The comparison k an arithmetic node makes of two values, which the unpack decided for every such node */
 static inline DB_VALUE_COMPARE_RESULT
 fetch_arith_compare (THREAD_ENTRY * thread_p, const ARITH_TYPE * arithptr, int k, val_descr * vd,
 		     const DB_VALUE * value1, const DB_VALUE * value2, bool * can_compare)
 {
-  assert (arithptr->opcode == T_FIELD || arithptr->opcode == T_NULLIF || arithptr->opcode == T_LEAST
-	  || arithptr->opcode == T_GREATEST);
-  if (arithptr->compares != NULL)
-    {
-      return eval_compare_values_resolved (thread_p, &arithptr->compares[k], vd, value1, value2, 0, can_compare);
-    }
-  const DOMAIN_PLAN_ITEM *item = arithptr->plan_item;
-  const DOMAIN_COMPARE_PLAN *comparison = item != NULL && (item->flags & DOMAIN_PLAN_ITEM_COMPARES)
-    ? item->compares[k] : NULL;
-  return eval_compare_values_planned (thread_p, comparison, vd, value1, value2, 0, can_compare);
+  assert ((arithptr->opcode == T_FIELD || arithptr->opcode == T_NULLIF || arithptr->opcode == T_LEAST
+	   || arithptr->opcode == T_GREATEST) && arithptr->compares != NULL);
+  return eval_compare_values_resolved (thread_p, &arithptr->compares[k], vd, value1, value2, 0, can_compare);
 }
 
 /*
@@ -218,16 +162,29 @@ fetch_arith_binary (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left
 }
 
 /* fetch_arith_binary of a node over an operand of a variable domain (out of line): a NULL operand is no value, as the
- * operator answers it before any dispatch; two values are the unresolved-domain check (execution) */
+ * operator answers it before any dispatch */
 static int
 fetch_arith_binary_unresolved (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right,
 			       TP_DOMAIN * domain)
 {
-  if (left != NULL && right != NULL && !DB_IS_NULL (left) && !DB_IS_NULL (right))
+  if (left == NULL || right == NULL || DB_IS_NULL (left) || DB_IS_NULL (right))
     {
-      return qexec_domain_unresolved (vd, arithptr->plan_item, arithptr->domain);
+      return qdata_arith_dbval (arithptr->opcode, NULL, left, right, arithptr->value, domain);
     }
-  return qdata_arith_dbval (arithptr->opcode, NULL, left, right, arithptr->value, domain);
+  /* exception to deciding before the rows: the operand coercion over the values' domains, the rule the unpack applies
+   * to the compiled ones */
+  const DOMAIN_OPERAND operands[2] = {
+    {domain_value_domain (left), DB_VALUE_DOMAIN_TYPE (left), -1, false},
+    {domain_value_domain (right), DB_VALUE_DOMAIN_TYPE (right), -1, false}
+  };
+  if (operands[0].domain == NULL || operands[1].domain == NULL)
+    {
+      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
+    }
+  DOMAIN_OPERAND_COERCION coercion = DOMAIN_OPERAND_COERCION ();
+  domain_resolve_operand_coercion (arithptr->opcode, operands, &coercion);
+  return qdata_coerce_arith_operands (arithptr->opcode, coercion.conv, coercion.operand_domain, &coercion.arith, left,
+				      right, arithptr->value, domain);
 }
 
 /*
@@ -1315,8 +1272,7 @@ fetch_op_substring (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       pos = db_get_int (peek_right);
       if (pos < 0)
 	{
-	  if (QSTR_IS_BIT (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, arithptr->leftptr->domain,
-								  arithptr->leftptr->plan_item))))
+	  if (QSTR_IS_BIT (TP_DOMAIN_TYPE (arithptr->leftptr->domain)))
 	    {
 	      if (db_string_bit_length (peek_left, &tmp_len) != NO_ERROR)
 		{
@@ -3500,11 +3456,6 @@ fetch_op_case (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
       return ER_FAILED;
     }
-  /* branches whose collations resolve_domains merged: the picked value takes the merged domain */
-  if (fetch_convert_to_resolved_branch (vd, arithptr->plan_item, arithptr->value) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
   return NO_ERROR;
 }
 
@@ -3561,7 +3512,6 @@ fetch_op_nvl (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
-  TP_DOMAIN *no_value_domain = a->no_value_domain;
   TP_DOMAIN_STATUS dom_status;
 
   DB_VALUE *src;
@@ -3582,18 +3532,9 @@ fetch_op_nvl (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	}
     }
 
-  if (target_domain == NULL && no_value_domain != NULL && DB_IS_NULL (peek_left) && DB_IS_NULL (peek_right))
-    {
-      /* resolve_domains found no value: every argument is NULL */
-      PRIM_SET_NULL (arithptr->value);
-      return NO_ERROR;
-    }
   if (target_domain == NULL)
     {
-      /* no row infers a common domain: resolve_domains resolved the node, or found it takes no value, which only
-       * NULL arguments give */
-      (void) qexec_domain_unresolved (vd, arithptr->plan_item, regu_var->domain);
-      return ER_FAILED;
+      target_domain = fetch_common_value_domain (peek_left, peek_right);
     }
 
   src = DB_IS_NULL (peek_left) ? peek_right : peek_left;
@@ -3622,7 +3563,6 @@ fetch_op_nvl2 (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   DB_VALUE *peek_third = a->peek_third;
   TP_DOMAIN *domain = a->domain;
-  TP_DOMAIN *no_value_domain = a->no_value_domain;
   TP_DOMAIN_STATUS dom_status;
 
   DB_VALUE *src;
@@ -3647,16 +3587,10 @@ fetch_op_nvl2 (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	  return ER_FAILED;
 	}
 
-      if (no_value_domain != NULL && DB_IS_NULL (peek_right) && DB_IS_NULL (peek_third))
-	{
-	  /* resolve_domains found no value: both results are NULL */
-	  PRIM_SET_NULL (arithptr->value);
-	  return NO_ERROR;
-	}
-      /* no row infers a common domain: resolve_domains resolved the node, or found it takes no value, which only
-       * NULL arguments give */
-      (void) qexec_domain_unresolved (vd, arithptr->plan_item, regu_var->domain);
-      return ER_FAILED;
+      TP_DOMAIN tmp_third;
+      target_domain =
+	tp_infer_common_domain (fetch_common_value_domain (peek_left, peek_right),
+				tp_domain_resolve_value (peek_third, &tmp_third));
     }
 
   if (DB_IS_NULL (peek_left))
@@ -3994,8 +3928,7 @@ fetch_op_right (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     {
       DB_VALUE tmp_val, tmp_val2;
 
-      if (QSTR_IS_BIT (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, arithptr->leftptr->domain,
-							      arithptr->leftptr->plan_item))))
+      if (QSTR_IS_BIT (TP_DOMAIN_TYPE (arithptr->leftptr->domain)))
 	{
 	  if (db_string_bit_length (peek_left, &tmp_val) != NO_ERROR)
 	    {
@@ -4160,8 +4093,7 @@ fetch_op_mid (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 
       if (pos < 0)
 	{
-	  if (QSTR_IS_BIT (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, arithptr->leftptr->domain,
-								  arithptr->leftptr->plan_item))))
+	  if (QSTR_IS_BIT (TP_DOMAIN_TYPE (arithptr->leftptr->domain)))
 	    {
 	      if (db_string_bit_length (peek_left, &tmp_len) != NO_ERROR)
 		{
@@ -4310,10 +4242,7 @@ fetch_op_nullif (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     }
   else if (target_domain == NULL)
     {
-      /* no row infers a common domain: resolve_domains resolved the node, or found it takes no value, which only
-       * NULL arguments give */
-      (void) qexec_domain_unresolved (vd, arithptr->plan_item, regu_var->domain);
-      return ER_FAILED;
+      target_domain = fetch_common_value_domain (peek_left, peek_right);
     }
 
   /* the node's comparison (fetch_arith_compare) */
@@ -4366,7 +4295,6 @@ fetch_op_least (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
-  TP_DOMAIN *no_value_domain = a->no_value_domain;
   TP_DOMAIN_STATUS dom_status;
 
   int error;
@@ -4379,17 +4307,9 @@ fetch_op_least (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     }
 
   target_domain = domain;
-  if (target_domain == NULL && no_value_domain != NULL && DB_IS_NULL (arithptr->value))
-    {
-      /* resolve_domains found no value */
-      return NO_ERROR;
-    }
   if (target_domain == NULL)
     {
-      /* no row infers a common domain: resolve_domains resolved the node, or found it takes no value, which only
-       * NULL arguments give */
-      (void) qexec_domain_unresolved (vd, arithptr->plan_item, regu_var->domain);
-      return ER_FAILED;
+      target_domain = fetch_common_value_domain (peek_left, peek_right);
     }
 
   dom_status = tp_value_cast (arithptr->value, arithptr->value, target_domain, false);
@@ -4412,7 +4332,6 @@ fetch_op_greatest (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
-  TP_DOMAIN *no_value_domain = a->no_value_domain;
   TP_DOMAIN_STATUS dom_status;
 
   int error;
@@ -4425,17 +4344,9 @@ fetch_op_greatest (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     }
 
   target_domain = domain;
-  if (target_domain == NULL && no_value_domain != NULL && DB_IS_NULL (arithptr->value))
-    {
-      /* resolve_domains found no value */
-      return NO_ERROR;
-    }
   if (target_domain == NULL)
     {
-      /* no row infers a common domain: resolve_domains resolved the node, or found it takes no value, which only
-       * NULL arguments give */
-      (void) qexec_domain_unresolved (vd, arithptr->plan_item, regu_var->domain);
-      return ER_FAILED;
+      target_domain = fetch_common_value_domain (peek_left, peek_right);
     }
 
   dom_status = tp_value_cast (arithptr->value, arithptr->value, target_domain, false);

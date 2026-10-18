@@ -724,7 +724,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	{
 	  if (func_p->function == PT_PERCENTILE_CONT || func_p->function == PT_PERCENTILE_DISC)
 	    {
-	      /* the execution's descriptor: a constant ratio reads resolve_domains' value */
+	      /* the execution's descriptor: a bind ratio reads its value */
 	      error =
 		      fetch_peek_dbval (thread_p, percentile_info_p->percentile_reguvar, val_desc_p, NULL, NULL, NULL,
 					&peek_value_p);

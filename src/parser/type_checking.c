@@ -20828,8 +20828,7 @@ pt_get_equivalent_type_with_op (const PT_ARG_TYPE def_type, const PT_TYPE_ENUM a
  *  Note: type inference leaves such an argument as TYPE_MAYBE (the default behavior would match it with a concrete
  *	  type from one of the operator's signatures) and gives the expression the VARIABLE result type; the
  *	  expression is wrapped with a cast rather than forced to the "expected domain" of its context. The
- *	  server resolves the argument and result domains once per execution from the bound values, before any row
- *	  (qexec_resolve_domains).
+ *	  compilation of the bind type signature types the argument by its value.
  */
 bool
 pt_is_op_hv_late_bind (PT_OP_TYPE op)

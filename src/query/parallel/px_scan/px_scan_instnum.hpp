@@ -51,7 +51,7 @@ namespace parallel_scan
   };
 
   /* rhs of a single-term "inst_num() <= ?" (or "< ?") instnum_pred, else nullptr; *term gets the term, whose comparison
-   * unpack decided or the load planned. */
+   * unpack decided. */
   inline REGU_VARIABLE *
   get_instnum_upper_limit_rhs (XASL_NODE *x, bool *is_less_than, const COMP_EVAL_TERM **term = nullptr)
   {

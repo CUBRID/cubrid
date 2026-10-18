@@ -1361,7 +1361,6 @@ pt_make_pred_term_comp (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, 
 	  et_comp->rhs = (REGU_VARIABLE *) arg2;
 	  et_comp->rel_op = rop;
 	  et_comp->type = data_type;
-	  et_comp->domain_compare = NULL;	/* the server's load derives it */
 	}
     }
 
@@ -1399,7 +1398,6 @@ pt_make_pred_term_some_all (const REGU_VARIABLE * arg1, const REGU_VARIABLE * ar
 	  et_alsm->rel_op = rop;
 	  et_alsm->item_type = data_type;
 	  et_alsm->eq_flag = some_all;
-	  et_alsm->domain_compare = NULL;	/* the server's load derives it */
 	}
     }
 
@@ -6468,10 +6466,10 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
       if (node->info.host_var.index < parser->host_var_count)
 	{
 	  /* A user host variable: the plan states the domain the client casts the bound value into
-	   * (host_var_expected_domains), so value type == plan domain holds by construction. It
-	   * is left to resolve_domains when the client does not cast: no expected domain, an ENUM domain (never cast,
-	   * CUBRIDSUS-9007; `enum_col op ?` compares the bound value), or an untyped copy (the LIMIT
-	   * operand). A compile-only expected domain the client does not apply -- the collation axis's ENFORCE
+	   * (host_var_expected_domains), so value type == plan domain holds by construction. When the
+	   * client does not cast - no expected domain, an ENUM domain (never cast, CUBRIDSUS-9007; `enum_col op ?`
+	   * compares the bound value), or an untyped copy (the LIMIT operand) - the position is typed by its value
+	   * below. A compile-only expected domain the client does not apply -- the collation axis's ENFORCE
 	   * on `str_col + ?` / `enum_col + ?` -- is not a plan domain. */
 	  TP_DOMAIN *cast_domain = NULL;
 	  if (parser->host_var_expected_domains != NULL)
@@ -6576,8 +6574,7 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 
       if (regu->domain == NULL || TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
 	{
-	  /* no sibling fixes this variable POS; resolve_domains takes the
-	   * bound value's own domain, once per execution. */
+	  /* no sibling fixes this variable POS: the bound value keeps its own type */
 	  regu->domain = &tp_Variable_domain;
 	}
 
@@ -6749,6 +6746,34 @@ pt_set_list_position_domains (REGU_VARIABLE_LIST positions, VAL_LIST * values, c
 	{
 	  /* CBRD-27583 census (D-60): a join output column its input list leaves untyped */
 	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 hash join output position %d proc %d\n", pos, (int) producer->type);
+	}
+    }
+}
+
+/*
+ * pt_set_sort_list_domains () - CBRD-27583 (D-64): a sort key sorts in the decided domain of the list column it sorts,
+ *   which can differ from its parse tree domain (VARIABLE, a collation its values give, or a recursive CTE column
+ *   the branches unify to BIGINT): the column of the output list output (a block's intermediate list), or of the list
+ *   of the XASL node producer; a column left open keeps a decided key, and so does an object column: a view object
+ *   (VOBJ) sorts in its object key's OID order, as develop sorts it (medium derpath)
+ */
+void
+pt_set_sort_list_domains (SORT_LIST * keys, const XASL_NODE * producer, const OUTPTR_LIST * output)
+{
+  for (; keys != NULL; keys = keys->next)
+    {
+      const int pos = keys->pos_descr.pos_no;
+      TP_DOMAIN *column = output != NULL ? domain_output_column (output, pos) : domain_list_column_of (producer, pos);
+      if (column == NULL)
+	{
+	  continue;
+	}
+      const DB_TYPE type = TP_DOMAIN_TYPE (column);
+      const bool keeps_key = domain_is_variable (column) || type == DB_TYPE_OBJECT || type == DB_TYPE_OID
+	|| type == DB_TYPE_VOBJ;
+      if (!keeps_key || keys->pos_descr.dom == NULL || domain_is_variable (keys->pos_descr.dom))
+	{
+	  keys->pos_descr.dom = column;
 	}
     }
 }
@@ -7085,7 +7110,7 @@ pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec)
 	  || (common != NULL && (build->value.original_domain != NULL || build->value.vfetch_to != NULL
 				 || probe->value.original_domain != NULL || probe->value.vfetch_to != NULL)))
 	{
-	  /* CBRD-27583 census (removed with the load's derivations): a hash list scan the key domains turn off */
+	  /* CBRD-27583 census (removed at S3-14): a hash list scan the key domains turn off */
 	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 left hash list scan %d %d\n",
 			build->value.domain != NULL ? (int) TP_DOMAIN_TYPE (build->value.domain) : -1,
 			probe->value.domain != NULL ? (int) TP_DOMAIN_TYPE (probe->value.domain) : -1);
@@ -7111,7 +7136,7 @@ pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec)
 /*
  * pt_decide_operand_coercion () - CBRD-27583: the operand coercion of an addition, subtraction, multiplication or
  *   division, by the type rule module over its operands' domains; an operand of a type the compiler does not know
- *   leaves the node to the load
+ *   leaves the node without one: its values decide at the row
  */
 static void
 pt_decide_operand_coercion (ARITH_TYPE * arith)
@@ -7256,8 +7281,8 @@ pt_operand_retyped (const REGU_VARIABLE * const *operand, int n_operands, const 
       const PT_TYPE_ENUM type = args[i]->type_enum;
       if (pt_is_enforced_collation_cast (args[i]))
 	{
-	  /* the cast keeps a value of another type as it is: the node computes over it as typed (the load's operand
-	   * coercion), it is not retyped */
+	  /* the cast keeps a value of another type as it is: the node computes over it as typed
+	   * (fetch_arith_binary_unresolved), it is not retyped */
 	  continue;
 	}
       if (type != PT_TYPE_MAYBE && type != PT_TYPE_NONE && type != PT_TYPE_NULL && operands[i]->domain != NULL
@@ -7675,7 +7700,7 @@ pt_incompatible_collation_domain (const TP_DOMAIN * compiled, const DOMAIN_OPERA
 /*
  * pt_merge_branch_collations () - CBRD-27583 (d1): the domain of a node whose value is one of its string branches, of
  *   different domains (CASE, DECODE, IF; ELT over a computed index): the branches' merged collation, into which each
- *   branch converts (the load's domain_resolve_branch_merge); false for collations that do not merge (the execution
+ *   branch converts; false for collations that do not merge (the execution
  *   rejects them) or a branch that converts for another consumer
  */
 static bool
@@ -7708,7 +7733,7 @@ pt_merge_branch_collations (REGU_VARIABLE * const *branch, int n_branches, const
 /*
  * pt_session_read_value_type () - CBRD-27583 (4.8): the type the rule takes an operand as: a session variable read at a
  *   value-dependent argument (domain_argument_type_depends_on_value) takes the class of the value the session holds
- *   for the statement compiled at its execution, as the load took it at the execution's start; a NULL or no value, and
+ *   for the statement compiled at its execution; a NULL or no value, and
  *   any other operand, its type
  */
 static DB_TYPE
@@ -7738,7 +7763,8 @@ pt_session_read_value_type (const REGU_VARIABLE * operand, DOMAIN_CTX context, i
  *   from its operands' domains as the bind type signature fixes them, and the collation of a string type checking
  *   left to the values (LEAVE) or enforced over an operand it could not type (ENFORCE) ((d1)); a node whose operands'
  *   types the rule rejects gives no value and raises the rule's error where a row computes it (spec 5); a node over an
- *   operand of a type the compiler does not know, or one the rule does not resolve, is left to the load
+ *   operand of a type the compiler does not know, or one the rule does not resolve, is left VARIABLE: its values decide
+ *   at the row
  */
 static void
 pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
@@ -8020,6 +8046,14 @@ pt_decide_aggregate_domains (PARSER_CONTEXT * parser, PT_NODE * statement, AGGRE
 	  || pt_cast_unnumbered_operand (parser, statement, agg->function, operand) != NO_ERROR)
 	{
 	  return ER_FAILED;
+	}
+      for (SORT_LIST * key = QPROC_IS_INTERPOLATION_FUNC (agg) ? NULL : agg->sort_list; key != NULL; key = key->next)
+	{
+	  /* a GROUP_CONCAT key sorts the list of its operand's values (qdata_aggregate_list_domain, D-64) */
+	  if (!domain_is_variable (operand->domain) || domain_is_variable (key->pos_descr.dom))
+	    {
+	      key->pos_descr.dom = operand->domain;
+	    }
 	}
       TP_DOMAIN *domain = pt_decide_function_domain (DOMAIN_CTX_AGG, agg->function, agg->domain, agg->opr_dbtype,
 						     operand);
@@ -8560,11 +8594,11 @@ pt_elt_index_value (PARSER_CONTEXT * parser, const REGU_VARIABLE * index)
 
 /*
  * pt_decide_function_collation () - CBRD-27583 (d1): a string function result whose collation type checking left to its
- *   string operands (LEAVE, ENFORCE) takes it from their domains, as the load did (domain_link_string_function); ELT's
+ *   string operands (LEAVE, ENFORCE) takes it from their domains; ELT's
  *   branches of different domains are merged where a row computes the index, and the one a bind or a literal picks
  *   types the result where the plan is compiled for that index value (D-38)
  *   return: ER_QSTR_INCOMPATIBLE_COLLATIONS for ELT branches a row picks among whose collations do not merge (4.7 (5):
- *	     before any row, as the load raised it), else NO_ERROR
+ *	     before any row), else NO_ERROR
  */
 static int
 pt_decide_function_collation (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
@@ -9712,7 +9746,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 			      && (node->info.expr.op == PT_QPRIOR || node->info.expr.op == PT_CONNECT_BY_ROOT))
 			    {
 			      /* PRIOR / CONNECT_BY_ROOT over a host variable, or a derived column one types, passes
-			       * its operand's value through: a late-binding node resolve_domains types from the operand
+			       * its operand's value through: a VARIABLE node whose operand's value carries the type
 			       * (a user host variable has no expected domain to give it) */
 			      domain = &tp_Variable_domain;
 			    }
@@ -19528,6 +19562,14 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       goto exit_on_error;
     }
 
+  /* CBRD-27583 (D-64): the sort keys over the block's lists, whose columns are decided by now */
+  pt_set_sort_list_domains (buildlist->groupby_list, NULL, xasl->outptr_list);
+  for (ANALYTIC_EVAL_TYPE * eval = buildlist->a_eval_list; eval != NULL; eval = eval->next)
+    {
+      pt_set_sort_list_domains (eval->sort_list, NULL, buildlist->a_outptr_list_ex);
+    }
+  pt_set_sort_list_domains (xasl->orderby_list, xasl, NULL);
+
   /* set CONNECT BY xasl */
   xasl = pt_set_connect_by_xasl (parser, select_node, xasl);
   if (!xasl)
@@ -19912,6 +19954,7 @@ pt_to_union_proc (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE type)
       xasl->option = (node->info.query.all_distinct == PT_ALL) ? Q_ALL : Q_DISTINCT;
 
       xasl->orderby_list = orderby;
+      pt_set_sort_list_domains (xasl->orderby_list, xasl, NULL);
 
       /* clear flag */
       XASL_CLEAR_FLAG (xasl, XASL_SKIP_ORDERBY_LIST);
@@ -25822,7 +25865,7 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   node->next = NULL;
   parser->dbval_cnt = 0;
 #if !defined (NDEBUG)
-  /* CBRD-27583 census (SA; removed with the load's derivations): the statement whose load lines follow */
+  /* CBRD-27583 census (removed at S3-14): the statement whose census lines follow */
   er_log_debug (ARG_FILE_LINE, "CBRD-27583 generate: %.300s\n", parser->original_buffer ? parser->original_buffer : "");
 #endif
 

@@ -43,7 +43,6 @@
 #include "fetch.h"
 #include "fetch_arith_ops.h"
 #include "query_dump.h"		/* qdump_arith_opcode_name () for the listing */
-#include "domain_resolve.h"
 #include "memory_alloc.h"
 #include "numeric_opfunc.h"
 #include "object_domain.h"
@@ -1464,7 +1463,7 @@ expr_k_fetch (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 static int
 expr_k_relabel (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
-  const TP_DOMAIN *collate = qexec_get_node_domain (ctx->vd, regu_produced_domain (step->regu), step->regu->plan_item);
+  const TP_DOMAIN *collate = regu_produced_domain (step->regu);
 
   pr_clear_value (step->out);
   if (pr_clone_value (*step->arg1p, step->out) != NO_ERROR)
@@ -1479,28 +1478,6 @@ expr_k_relabel (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     {
       assert (TP_DOMAIN_TYPE (collate) == DB_TYPE_ENUMERATION);
       db_enum_put_cs_and_collation (step->out, collate->codeset, collate->collation_id);
-    }
-  return NO_ERROR;
-}
-
-/* A constant expression resolve_domains evaluates once per execution (plan_item->ref): when it did, the gate's value
- * is the node's and the node's own steps are jumped over; when it did not (the evaluation is deferred to the rows),
- * the node computes as usual -- and its slot address goes back into the cell, which an earlier execution may have
- * pointed at the gate's value (a slot-owning step publishes its slot once, at materialization). */
-static int
-expr_k_resolved_value (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
-{
-  const ARITH_TYPE *arith = step->regu->value.arithptr;
-
-  if (fetch_arith_constant_evaluated (ctx->vd, arith->plan_item))
-    {
-      *step->out_cell = ctx->vd->dbval_ptr + arith->plan_item->ref;
-      ctx->jump = step->jump_to;
-      return EXPR_JUMPED;
-    }
-  if (step->out != NULL)
-    {
-      *step->out_cell = step->out;	/* the node's slot (alias_of) */
     }
   return NO_ERROR;
 }
@@ -1526,9 +1503,8 @@ expr_k_nested_prog (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 /* ---- the generic step: an operator the kernel table does not cover ----
  *
  * The step runs the opcode's body (fetch_arith_ops.c) on the operand cells its emitter wired, inside the node protocol
- * the interpreter runs around the same body (fetch_arith_node_resolve / fetch_arith_node_end): the node's domains of
- * this execution, its slot cleared, a variable domain resolved; after the body the no-value check and the collation
- * relabel.  The result is the node's own slot (arithptr->value), published by pointer like a leaf fetch -- the body
+ * the interpreter runs around the same body (fetch_arith_node_resolve): the node's domains, its slot cleared.  The
+ * result is the node's own slot (arithptr->value), published by pointer like a leaf fetch -- the body
  * writes there and the interpreter's consumers read there, so nothing is copied.  T_INCR/T_DECR publish their left
  * operand itself (FETCH_ARITH_RAW_LEFT), outside the epilogue, as the interpreter does. */
 static int
@@ -1577,11 +1553,6 @@ expr_k_generic (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   if (rc != NO_ERROR)
     {
       return ER_FAILED;		/* the interpreter's error exit: the body set the error */
-    }
-  rc = fetch_arith_node_end (ctx->vd, &a);
-  if (rc != NO_ERROR)
-    {
-      return rc;
     }
   *step->out_cell = a.arithptr->value;
   return NO_ERROR;
@@ -2412,19 +2383,14 @@ expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type, bool numeric_pure)
 }
 
 /******************************************************************************
- * domains in this execution (PR#8022, CBRD-27510)
+ * domains (PR#8022, CBRD-27510, CBRD-27583)
  *
- * The compiler leaves a node whose type a value decides as DB_TYPE_VARIABLE; resolve_domains
- * resolves every such node once per execution, before the main block, into XASL_STATE
- * (domain_plan.h).  A program is compiled after that gate -- lazily, on the first row that
- * needs it -- so it reads the resolutions the interpreted path reads (fetch_arith_resolved_
- * domain (), REGU_RESOLVED_VALUE ()) and never waits for a row to resolve a type.  A node
- * the gate did not resolve, or resolved to no value (every row NULL), is declined.
+ * The compiler fixes a node's domain; a node it leaves DB_TYPE_VARIABLE leaves its type to its values, which the
+ * interpreted path computes with (an exception to deciding before the rows).  A program declines such a node.
  ******************************************************************************/
 
-/* The value a TYPE_POS_VALUE publishes in this execution: resolve_domains' converted copy
- * when the plan converts the bind (REGU_RESOLVED_VALUE), else the bound value itself.
- * The index is into vd->dbval_ptr; -1 when the descriptor holds no such value. */
+/* The value a TYPE_POS_VALUE publishes: the bound value itself.  The index is into vd->dbval_ptr; -1 when the
+ * descriptor holds no such value. */
 static int
 expr_pos_value_index (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
 {
@@ -2434,94 +2400,19 @@ expr_pos_value_index (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
     {
       return -1;
     }
-  if (regu->plan_item != NULL && regu->plan_item->ref >= 0 && vd->xasl_state != NULL
-      && vd->xasl_state->resolved_domain.readable && regu->plan_item->ref < vd->xasl_state->resolved_domain.n_vals)
-    {
-      return regu->plan_item->ref;
-    }
   return (regu->value.val_pos >= 0 && regu->value.val_pos < vd->dbval_cnt) ? regu->value.val_pos : -1;
 }
 
-/* resolve_domains' resolution of a late-binding node, or NULL: the node has none, the
- * descriptor carries no resolved-domain state (a stream's), or the resolution is one a
- * program kept across executions must not bake in (a session variable's type, a source a
- * fetch never caches: plan->resolved_non_cacheable). */
-static const RESOLVED_DOMAIN *
-expr_item_resolution (const VAL_DESCR * vd, const DOMAIN_PLAN_ITEM * item)
-{
-  if (vd == NULL || vd->xasl_state == NULL || item == NULL || !(item->flags & DOMAIN_PLAN_LATE_BIND))
-    {
-      return NULL;
-    }
-  const RESOLVED_DOMAIN_TABLE & resolved = vd->xasl_state->resolved_domain;
-  if (!qexec_owns_resolved_index (resolved, item) || resolved.plan->resolved_non_cacheable[item->resolved_index])
-    {
-      return NULL;
-    }
-  return qexec_late_bind_domain (vd, item);
-}
-
-/* The domain an arithmetic node has in this execution, as fetch_peek_arith () reads it: its
- * compiled domain, or for a node the compiler left variable the resolution the gate made.
- * NULL: the node takes no value (a CAST into a variable target, a resolution of type NULL)
- * or has no resolution the program may use -- the node is declined. */
+/* The domain an arithmetic node computes in, as fetch_peek_arith () reads it: its compiled domain.  NULL: the node
+ * leaves its type to its values -- the node is declined. */
 static TP_DOMAIN *
 expr_arith_exec_domain (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
 {
   TP_DOMAIN *domain = regu_produced_domain (regu);
-  const ARITH_TYPE *arith = regu->value.arithptr;
 
-  if (domain == NULL || arith == NULL)
+  if (domain == NULL || regu->value.arithptr == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
     {
       return NULL;
-    }
-  if (TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE)
-    {
-      return domain;
-    }
-  if (arith->opcode == T_CAST || arith->opcode == T_CAST_WRAP || arith->opcode == T_CAST_NOFAIL)
-    {
-      /* a target the compiler left variable casts no value */
-      return NULL;
-    }
-  const RESOLVED_DOMAIN *resolved = expr_item_resolution (vd, arith->plan_item);
-  if (resolved == NULL || resolved->domain == NULL || TP_DOMAIN_TYPE (resolved->domain) == DB_TYPE_NULL
-      || TP_DOMAIN_TYPE (resolved->domain) == DB_TYPE_VARIABLE)
-    {
-      return NULL;
-    }
-  return (TP_DOMAIN *) resolved->domain;
-}
-
-/*
- * expr_regu_exec_domain () - the domain a compiled arithmetic node has in this execution, taken as the
- *			      node's execution domain the way fetch_peek_arith () takes it on the node's
- *			      first computation (qexec_set_node_domain) -- a program-served node never
- *			      reaches that fetch, so its consumer takes it here
- *   return: the domain, or NULL when the node takes no value in this execution (every row NULL)
- */
-TP_DOMAIN *
-expr_regu_exec_domain (const VAL_DESCR * vd, REGU_VARIABLE * regu)
-{
-  TP_DOMAIN *domain = qexec_get_node_domain (vd, regu->domain, regu->plan_item);
-
-  if (domain == NULL || TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE)
-    {
-      return domain;
-    }
-  if (regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH)
-    {
-      return NULL;
-    }
-  domain = expr_arith_exec_domain (vd, regu);
-  if (domain != NULL && vd != NULL && vd->xasl_state != NULL)
-    {
-      ARITH_TYPE *arith = regu->value.arithptr;
-      qexec_set_node_domain (vd, regu->plan_item, regu->domain, domain);
-      if (arith->plan_item != regu->plan_item)
-	{
-	  qexec_set_node_domain (vd, arith->plan_item, arith->domain, domain);
-	}
     }
   return domain;
 }
@@ -2550,7 +2441,7 @@ expr_leaf_type (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu)
 {
   if (regu->type == TYPE_POS_VALUE)
     {
-      /* the value this execution binds (or the gate's converted copy of it) */
+      /* the value this execution binds */
       const int vidx = expr_pos_value_index (bctx, regu);
       if (vidx >= 0)
 	{
@@ -3175,15 +3066,6 @@ expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root)
 
       if (!bctx->node_cells[i].shareable)
 	{
-	  continue;
-	}
-      if (bctx->node_cells[i].regu->value.arithptr->plan_item != NULL
-	  && bctx->node_cells[i].regu->value.arithptr->plan_item->ref >= 0)
-	{
-	  /* a constant expression the gate evaluates per execution (plan_item->ref): on such an execution the
-	   * node's steps are jumped over (expr_k_resolved_value) and its slot is never written, so a consumer wired
-	   * to the slot would read NULL ("p - CAST (10 AS NUMERIC (10, 2))" shared from "WHERE p > CAST (10 AS
-	   * NUMERIC (10, 2))", review 2026-10-15).  A constant is not worth sharing anyway. */
 	  continue;
 	}
       /* the build-time steps still carry their encoded out cell and owned-slot marker */
@@ -4132,7 +4014,7 @@ expr_generic_operand_spec (OPERATOR_TYPE op, const TP_DOMAIN * exec_domain)
 /* An arithmetic node the kernel table does not cover: its operands compiled in the interpreter's fetch order, then
  * one generic step running the opcode's body (expr_k_generic).  -1 when an operand declines or the program is full:
  * the node stays interpreted.  No CSE and no hoisting: a body may be non-deterministic (RAND, SYS_*) or have a side
- * effect (INCR, DEFINE_VARIABLE), and the gate already evaluates a constant expression once (plan_item->ref).
+ * effect (INCR, DEFINE_VARIABLE).
  *
  * A '?' rule always gets its check step, fallible right side or not (unlike the arithmetic kernels' lazy region):
  * the body sees the operands the interpreter fetched and no other -- INCR/DECR read the right operand only, and a
@@ -4386,44 +4268,6 @@ expr_compile_node_arith (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * com
     }
 
   cell = expr_compile_node_impl (bctx, regu, compiled_something);
-  if (cell >= 0 && regu->value.arithptr->plan_item != NULL && regu->value.arithptr->plan_item->ref >= 0
-      && bctx->n_steps > first_step)
-    {
-      /* a constant expression the gate evaluates once per execution: the check before the node's steps publishes
-       * the gate's value and skips them when it did (a CSE hit emits no step and needs none: the twin's value is the
-       * same constant) */
-      int node_idx = -1, j;
-      EXPR_STEP *check;
-
-      for (j = first_step; j < bctx->n_steps; j++)
-	{
-	  if ((int) (intptr_t) bctx->steps[j].out_cell == cell)
-	    {
-	      node_idx = j;	/* the last step publishing the cell is the producer */
-	    }
-	}
-      if (node_idx >= 0 && (bctx->step_prologue[node_idx] || bctx->step_exec_prologue[node_idx]))
-	{
-	  /* The producer was hoisted into a prologue: it computes the constant once per program (literals only) or
-	   * once per execution (a host variable), exactly as often as the gate does, so the check would save nothing
-	   * -- and it would break the program.  The check is a row step; a consumer hoisted with the producer (the
-	   * coercion of "? + 1" to NUMERIC) runs in the next execution's prologue BEFORE it, and reads the cell the
-	   * previous execution's check left pointing at the previous value array ("EXECUTE st USING 10" returned the
-	   * values of "USING 1", review 2026-10-15).  The node's own steps serve the constant. */
-	  node_idx = -1;
-	}
-      check = (node_idx >= 0) ? expr_build_insert_step (bctx, first_step, expr_k_resolved_value, cell) : NULL;
-      if (node_idx >= 0 && check == NULL)
-	{
-	  return -1;
-	}
-      if (check != NULL)
-	{
-	  check->regu = regu;
-	  check->alias_of = node_idx + 1;	/* the producer moved by one */
-	  check->jump_to = bctx->n_steps;
-	}
-    }
   if (cell >= 0 && REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION))
     {
       /* the COLLATE modifier: the node's value re-labeled with the node's domain, in a slot of its own */
@@ -4465,13 +4309,11 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 
   /* A variable domain must not be baked into a program.  A host variable leaf takes its
    * type from the value this execution binds, and an arithmetic node the compiler left
-   * variable takes the domain resolve_domains resolved before the main block
-   * (expr_arith_exec_domain ()).  Any other node still variable here has nothing the
-   * program may read: decline it and let the interpreter run it. */
+   * variable is declined (expr_arith_exec_domain ()).  Any other node still variable here
+   * leaves its type to its value: the fetch path reads it. */
   if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE && regu->type != TYPE_POS_VALUE
       && regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH)
     {
-      /* a leaf still variable here: the fetch path reads its resolution (fetch_read_plan_domain) */
       return expr_emit_fetch (bctx, regu, compiled_something);
     }
 
@@ -4543,7 +4385,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	 * through a tiny step instead of wiring the address */
 	EXPR_STEP *step;
 
-	/* the value this execution binds, or the gate's converted copy (REGU_RESOLVED_VALUE) */
+	/* the value this execution binds */
 	const int vidx = expr_pos_value_index (bctx, regu);
 
 	if (vidx < 0)
@@ -4607,7 +4449,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	DB_TYPE rtype;
 	int c1, c2;
 
-	/* the node's domain in this execution: compiled, or the gate's resolution of a variable one */
+	/* the node's compiled domain; NULL where it leaves its type to the values */
 	TP_DOMAIN *const exec_domain = expr_arith_exec_domain (bctx->vd, regu);
 
 	if (arith == NULL)
@@ -4619,12 +4461,10 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  {
 	    return -1;
 	  }
-	if (exec_domain == NULL
-	    || (arith->plan_item != NULL && (arith->plan_item->flags & DOMAIN_PLAN_LATE_BIND_COLLATION)))
+	if (exec_domain == NULL || TP_DOMAIN_COLLATION_FLAG (exec_domain) != TP_DOMAIN_COLL_NORMAL)
 	  {
-	    /* a node that takes no value in this execution (or has no resolution a program may bake in), or one
-	     * whose collation the values give: no kernel, the generic step's node protocol reads the node's domains
-	     * on the row as the interpreter does */
+	    /* a node whose type or collation the values give: no kernel, the generic step's node protocol computes
+	     * it on the row as the interpreter does */
 	    return expr_compile_generic (bctx, regu, NULL, compiled_something);
 	  }
 
@@ -5479,7 +5319,7 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
 	    && step->kernel != expr_k_jump && step->kernel != expr_k_jump_null_arith
 	    && step->kernel != expr_k_jump_null_nullif && step->kernel != expr_k_jump_notnull_nvl
 	    && step->kernel != expr_k_jump_skip_generic && step->kernel != expr_k_try_operand
-	    && step->kernel != expr_k_fetch && step->kernel != expr_k_resolved_value)
+	    && step->kernel != expr_k_fetch)
 	  {
 	    prog->n_compute++;
 	  }
@@ -5958,8 +5798,6 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     expr_k_fetch, "fetch"},
     {
     expr_k_relabel, "relabel"},
-    {
-    expr_k_resolved_value, "resolved_value"},
     {
   expr_k_nested_prog, "nested_prog"},};
   size_t i;

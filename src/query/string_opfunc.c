@@ -7540,8 +7540,8 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 
   /* the compiler types a string column or expression VARCHAR (the manual's "date/time string" row), and
    * the zone such a string carries goes into the result string. A string literal, bind or session variable keeps the
-   * type its value gives (a zone makes it DATETIMETZ): the client folds a literal without a domain, and resolve_domains
-   * types a bind or a session variable's value into the domain it passes. */
+   * type its value gives (a zone makes it DATETIMETZ): the client folds a literal without a domain, and XASL generation
+   * types a bind or a session variable's read by its value. */
   zone_to_string = domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR && result_type == DB_TYPE_DATETIMETZ;
   if (domain != NULL && !zone_to_string)
     {
@@ -22681,7 +22681,7 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 
 #if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
   {
-    /* debug cross-check: resolve_domains' format type and domain_resolve (DOMAIN_CTX_FUNC_ARG) answer res_type */
+    /* debug cross-check: the format's value type and domain_resolve (DOMAIN_CTX_FUNC_ARG) answer res_type */
     DB_TYPE format_class = domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_STR_TO_DATE, 1, format);
     DOMAIN_OPERAND operands[2] = {
       {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (str)), DB_VALUE_DOMAIN_TYPE (str), -1, false}

@@ -23,7 +23,6 @@
 #ifndef _XASL_AGGREGATE_HPP_
 #define _XASL_AGGREGATE_HPP_
 
-struct domain_plan_item;
 
 #include "dbtype_def.h"
 #include "query_sum_accumulator.h"
@@ -117,7 +116,6 @@ namespace cubxasl
   {
     aggregate_list_node *next;		/* next aggregate node */
     tp_domain *domain;		/* domain of the result */
-    domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
     FUNC_CODE function;		/* aggregate function name */
     QUERY_OPTIONS option;		/* DISTINCT/ALL option */
     DB_TYPE opr_dbtype;		/* Operand values data type */

@@ -32,10 +32,11 @@
 #include <string.h>
 
 #include "stream_to_xasl.h"
-#include "domain_plan.h"
 
 #include "dbtype.h"
+#include "domain_rules.h"
 #include "error_manager.h"
+#include "fetch.h"
 #include "query_aggregate.hpp"
 #include "query_analytic.hpp"
 #include "xasl.h"
@@ -223,7 +224,6 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   char *p;
   int header_size;
   int offset;
-  int domain_plan_error = NO_ERROR;
   XASL_UNPACK_INFO *unpack_info_p = NULL;
   XASL_UNPACK_INFO *unpack_info_p_orig = thread_p->xasl_unpack_info_ptr;
 
@@ -271,51 +271,13 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
    * server side flag. */
   xasl->query_in_progress = false;
-  domain_plan_error = stx_build_domain_plan (thread_p, xasl, unpack_info_p);
-  if (domain_plan_error != NO_ERROR)
-    {
-      stx_set_xasl_errcode (thread_p, domain_plan_error);
-      *xasl_tree = NULL;
-      *xasl_unpack_info_ptr = NULL;
-    }
 end:
-  /* the visited-pointer blocks live in the unpack info: release them before the block itself */
   stx_free_visited_ptrs (thread_p);
-  if (domain_plan_error != NO_ERROR)
-    {
-      free_xasl_unpack_info (thread_p, unpack_info_p);
-#if !defined (SERVER_MODE)
-      /* the stand-alone pointer is a global; a freed block must not stay behind it */
-      set_xasl_unpack_info_ptr (thread_p, NULL);
-#endif
-    }
 #if defined(SERVER_MODE)
   set_xasl_unpack_info_ptr (thread_p, unpack_info_p_orig);
 #endif /* SERVER_MODE */
 
   return stx_get_xasl_errcode (thread_p);
-}
-
-/*
- * stx_index_stream_rejected () - the unresolved-domain check (load) of a filter or function index stream
- *   return: true when the stream is rejected (error set, unpack info freed)
- *
- * Such a stream is loaded and evaluated without resolve_domains, so a regu resolve_domains would resolve - a variable
- * POS or node - has no resolution anywhere. The catalog streams carry none (no host variable reaches a stored
- * predicate); one is refused rather than evaluated with a variable domain.
- */
-static bool
-stx_index_stream_rejected (THREAD_ENTRY * thread_p, XASL_UNPACK_INFO * unpack_info_p)
-{
-  if (!unpack_info_p->index_stream_late_bind)
-    {
-      return false;
-    }
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "load", "", -1,
-	  pr_type_name (DB_TYPE_VARIABLE));
-  stx_set_xasl_errcode (thread_p, ER_QPROC_DOMAIN_UNRESOLVED);
-  free_xasl_unpack_info (thread_p, unpack_info_p);
-  return true;
 }
 
 /*
@@ -367,17 +329,6 @@ stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context *
   pwc = stx_restore_filter_pred_node (thread_p, pred_stream + offset);
   if (pwc == NULL)
     {
-      free_xasl_unpack_info (thread_p, unpack_info_p);
-      goto end;
-    }
-  if (stx_index_stream_rejected (thread_p, unpack_info_p))
-    {
-      goto end;
-    }
-  /* the predicate's comparisons, resolved from the stream's fixed domains */
-  if (domain_plan_stream_compares (thread_p, pwc->pred, NULL) != NO_ERROR)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
       free_xasl_unpack_info (thread_p, unpack_info_p);
       goto end;
     }
@@ -437,17 +388,6 @@ stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *x
   p_xasl = stx_restore_func_pred (thread_p, xasl_stream + offset);
   if (p_xasl == NULL)
     {
-      free_xasl_unpack_info (thread_p, unpack_info_p);
-      goto end;
-    }
-  if (stx_index_stream_rejected (thread_p, unpack_info_p))
-    {
-      goto end;
-    }
-  /* the expression's comparisons, resolved from the stream's fixed domains */
-  if (domain_plan_stream_compares (thread_p, NULL, p_xasl->func_regu) != NO_ERROR)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
       free_xasl_unpack_info (thread_p, unpack_info_p);
       goto end;
     }
@@ -1823,8 +1763,7 @@ stx_decide_compare (const TP_DOMAIN * const domain[2], DOMAIN_COMPARE * decided,
       {
       };
       decided->method = DOMAIN_COMPARE_VALUES;
-      decided->value[0] = decided->value[1] = decided->codeset_side = -1;
-      decided->compare_index = -1;
+      decided->codeset_side = -1;
       return NO_ERROR;
     }
   const int error = domain_resolve_comparison (&key[0], &key[1], decided);
@@ -1872,6 +1811,118 @@ stx_alloc_compares (THREAD_ENTRY * thread_p, int n)
   return compares;
 }
 
+/* CBRD-27583: a literal side's domain and key - its value's, with the codeset and collation a COLLATE modifier gives
+ * it; false for any other side */
+static bool
+stx_literal_key (const REGU_VARIABLE * regu, const TP_DOMAIN ** domain, DOMAIN_COMPARE_KEY * key)
+{
+  if (regu == NULL || regu->type != TYPE_DBVAL)
+    {
+      return false;
+    }
+  const DB_VALUE *literal = &regu->value.dbval;
+  const TP_DOMAIN *value_domain = DB_IS_NULL (literal) ? &tp_Null_domain : tp_domain_resolve_value (literal, NULL);
+  const bool collate = REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION) && regu->domain != NULL
+    && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (regu->domain));
+  domain_compare_key_of (value_domain, key);
+  if (collate)
+    {
+      domain_compare_key_collate (key, regu->domain);
+    }
+  *domain = collate && !DB_IS_NULL (literal) ? regu->domain : value_domain;
+  return true;
+}
+
+/*
+ * stx_decide_stream_compare () - CBRD-27583: a comparison of a filter or function index stream, whose domains need not
+ *   describe its values (the catalog keeps a stream compiled against a column's type across an ALTER that changes that
+ *   type, filtered_index_basicfunction_delete_004): two literals by the type rule on their values' keys, any other pair
+ *   by the two values' keys (comparison method KEYS)
+ *   return: NO_ERROR, or the error of the type rule module
+ */
+static int
+stx_decide_stream_compare (const REGU_VARIABLE * lhs, const REGU_VARIABLE * rhs, DOMAIN_COMPARE * decided)
+{
+  const TP_DOMAIN *domain[2];
+  DOMAIN_COMPARE_KEY key[2];
+  if (!stx_literal_key (lhs, &domain[0], &key[0]) || !stx_literal_key (rhs, &domain[1], &key[1]))
+    {
+      *decided = DOMAIN_COMPARE
+      {
+      };
+      decided->method = DOMAIN_COMPARE_KEYS;
+      decided->codeset_side = -1;
+      return NO_ERROR;
+    }
+  const int error = domain_resolve_comparison (&key[0], &key[1], decided);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  for (int side = 0; side < 2; side++)
+    {
+      if (decided->target[side] == NULL)
+	{
+	  /* a side compared as it is: its target is its own domain */
+	  decided->target[side] = domain[side];
+	}
+    }
+  domain_compare_set_operator_functions (decided);
+  return NO_ERROR;
+}
+
+/*
+ * stx_mark_aggregate_operands () - flag the expressions that only feed a SUM / AVG (REGU_VARIABLE_AGG_OPERAND), once
+ *   per unpack (each XASL clone and each PX worker's copy unpacks its own)
+ *
+ * BUILDLIST reaches the aggregate through a TYPE_CONSTANT operand pointing to the DB_VALUE the scan's expression writes
+ * (regu->vfetch_to); BUILDVALUE's operand is the expression itself. fetch_peek_arith evaluates a flagged expression in
+ * one register pass; the shape check reads the compiled domains. Analytic functions read their operands from list
+ * columns: nothing to mark there.
+ */
+static void
+stx_mark_aggregate_operands (XASL_NODE * xasl)
+{
+  const int budget = prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH);
+  if (xasl->type == BUILDVALUE_PROC)
+    {
+      for (AGGREGATE_TYPE * agg = xasl->proc.buildvalue.agg_list; agg != NULL; agg = agg->next)
+	{
+	  if ((agg->function == PT_SUM || agg->function == PT_AVG) && agg->option != Q_DISTINCT
+	      && agg->operands != NULL && agg->operands->value.type == TYPE_INARITH
+	      && fetch_is_agg_expr_shape (&agg->operands->value, budget))
+	    {
+	      REGU_VARIABLE_SET_FLAG (&agg->operands->value, REGU_VARIABLE_AGG_OPERAND);
+	    }
+	}
+      return;
+    }
+  if (xasl->type != BUILDLIST_PROC || xasl->proc.buildlist.g_agg_list == NULL || xasl->outptr_list == NULL)
+    {
+      return;
+    }
+  for (REGU_VARIABLE_LIST regu = xasl->outptr_list->valptrp; regu != NULL; regu = regu->next)
+    {
+      if (regu->value.type != TYPE_INARITH || regu->value.vfetch_to == NULL)
+	{
+	  continue;
+	}
+      for (AGGREGATE_TYPE * agg = xasl->proc.buildlist.g_agg_list; agg != NULL; agg = agg->next)
+	{
+	  if ((agg->function == PT_SUM || agg->function == PT_AVG) && agg->option != Q_DISTINCT
+	      && agg->operands != NULL && agg->operands->value.type == TYPE_CONSTANT
+	      && agg->operands->value.value.dbvalptr == regu->value.vfetch_to)
+	    {
+	      if (fetch_is_agg_expr_shape (&regu->value, budget))
+		{
+		  REGU_VARIABLE_SET_FLAG (&regu->value, REGU_VARIABLE_AGG_OPERAND);
+		}
+	      break;
+	    }
+	}
+    }
+}
+
 /*
  * stx_build_xasl_header () - Unpack XASL node header from buffer.
  *
@@ -1896,7 +1947,6 @@ stx_build_xasl_header (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE_HEADER * xa
 static char *
 stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 {
-  xasl->domain_plan = NULL;
   xasl->limit_compare = NULL;
   int offset;
   int tmp, i;
@@ -2551,6 +2601,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     {
       return NULL;
     }
+  stx_mark_aggregate_operands (xasl);
 
   /* Prevent faults when qdump_print_xasl is called. */
   xasl->n_oid_list = 0;
@@ -3089,8 +3140,8 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	}
     }
 
-  /* each hash key column compares in its compiled domain; a domain the execution fixes leaves the key's comparisons to
-   * each execution (qexec_alloc_agg_hash_context) */
+  /* each hash key column compares in its compiled domain; a domain that leaves its values' type to the data leaves
+   * the keys to compare by their values (qdata_agg_hkey_compare) */
   stx_build_list_proc->g_hk_compares = NULL;
   if (stx_build_list_proc->g_hash_eligible && stx_build_list_proc->g_hkey_size > 0)
     {
@@ -3113,7 +3164,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	}
       else
 	{
-	  /* CBRD-27583 census (removed with the load's derivations): a hash GROUP BY each execution decides */
+	  /* CBRD-27583 census (removed at S3-14): a hash GROUP BY whose keys compare by their values */
 	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 left hash group by\n");
 	}
     }
@@ -3617,7 +3668,7 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	}
       else
 	{
-	  /* CBRD-27583 census (removed with the load's derivations): a join each execution decides */
+	  /* CBRD-27583 census (removed at S3-14): a join each execution decides */
 	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 left hash join\n");
 	}
     }
@@ -4905,19 +4956,26 @@ stx_build_term_compare (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * term)
   DOMAIN_COMPARE decided;
   bool by_type;
   int error = stx_decide_compare (domain, &decided, &by_type);
+  if (error == NO_ERROR && get_xasl_unpack_info_ptr (thread_p)->index_stream
+      && (!by_type || (decided.method != DOMAIN_COMPARE_DIRECT && decided.method != DOMAIN_COMPARE_CONVERT)
+	  || stx_compare_refused (&decided)))
+    {
+      /* a filter or function index stream's domains decide only what compares as it is or converts */
+      error = stx_decide_stream_compare (term->lhs, term->rhs, &decided);
+      by_type = true;
+    }
   if (error != NO_ERROR)
     {
       stx_set_xasl_errcode (thread_p, error);
       return error;
     }
-  if (!by_type
-      || (get_xasl_unpack_info_ptr (thread_p)->index_stream
-	  && ((decided.method != DOMAIN_COMPARE_DIRECT && decided.method != DOMAIN_COMPARE_CONVERT)
-	      || stx_compare_refused (&decided))))
+  if (!by_type)
     {
-      /* a side whose domain leaves its values' type or collation to the data stays the load's (census "left term
-       * compare"); a filter or function index stream's domains need not describe its values: it decides only what
-       * compares as it is or converts, the rest is the stream's comparison (domain_plan_stream_compares) */
+      /* exception to deciding before the rows: a side whose domain leaves its values' type or collation to the data
+       * compares by the values (no comparison: method VALUES) */
+#if !defined (NDEBUG)
+      stx_log_compare_by_value ("term", term->lhs, term->rhs, domain);
+#endif
       return NO_ERROR;
     }
   DOMAIN_COMPARE *compare = stx_alloc_compares (thread_p, 1);
@@ -4971,7 +5029,6 @@ stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * c
 
   ptr = or_unpack_int (ptr, &tmp);
   comp_eval_term->type = (DB_TYPE) tmp;
-  comp_eval_term->domain_compare = NULL;
   if (stx_build_term_compare (thread_p, comp_eval_term) != NO_ERROR)
     {
       return NULL;
@@ -4982,53 +5039,65 @@ stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * c
 
 /*
  * stx_build_element_compares () - CBRD-27583: what an ALL/SOME term compares its item with, from the domains: a list's
- *   column or a right side that is no collection by one comparison (PAIR), a collection's elements - its data, a
- *   constant's too (spec 9: an element fails where a row compares it) - by the item's row of the type pair comparison
- *   table (ROW); a side whose domain leaves its values' type or collation to the data stays the load's (census "left
- *   element term")
+ *   column or a right side that is no collection by one comparison (ALSM_EVAL_TERM.compare), a collection's elements -
+ *   its data, a constant's too (spec 9: an element fails where a row compares it) - by the item's row of the type pair
+ *   comparison table (compare_row)
  *   return: NO_ERROR, or the unpack error
  */
 static int
 stx_build_element_compares (THREAD_ENTRY * thread_p, ALSM_EVAL_TERM * term)
 {
-  DOMAIN_ELEMENT_COMPARE_PLAN *comparison =
-    (DOMAIN_ELEMENT_COMPARE_PLAN *) stx_alloc_struct (thread_p, (int) sizeof (*comparison));
-  if (comparison == NULL)
-    {
-      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  memset (comparison, 0, sizeof (*comparison));
-  comparison->row = -1;
-  comparison->resolved_elements_index = -1;
-  comparison->pair.value[0] = comparison->pair.value[1] = -1;
-  comparison->pair.temporaries[0] = comparison->pair.temporaries[1] = -1;
-  comparison->pair.constant_branch = -1;
   const bool list = term->elemset->type == TYPE_LIST_ID;
   /* the item compares with column 0 of the list its subquery produces (eval_some_list_eval) */
   const TP_DOMAIN *domain[2] = { term->elem->domain, list ? stx_list_column_domain (term->elemset->xasl, 0)
       : term->elemset->domain
   };
+  DOMAIN_COMPARE decided;
+  DOMAIN_COMPARE_KEY item;
   bool by_type;
-  int error = stx_decide_compare (domain, &comparison->pair.fixed, &by_type);
-  if (error != NO_ERROR)
+  if (get_xasl_unpack_info_ptr (thread_p)->index_stream)
     {
-      stx_set_xasl_errcode (thread_p, error);
-      return error;
+      /* a filter or function index stream's domains need not describe its values (stx_decide_stream_compare): a
+       * literal item by its value's row, any other by the two values' keys */
+      const TP_DOMAIN *literal;
+      if (stx_literal_key (term->elem, &literal, &item))
+	{
+	  term->compare_row = domain_compare_key_row (&item);
+	  return NO_ERROR;
+	}
+      (void) stx_decide_stream_compare (NULL, NULL, &decided);
     }
-  if (!by_type)
+  else
     {
-      return NO_ERROR;
+      int error = stx_decide_compare (domain, &decided, &by_type);
+      if (error != NO_ERROR)
+	{
+	  stx_set_xasl_errcode (thread_p, error);
+	  return error;
+	}
+      if (!by_type)
+	{
+	  /* exception to deciding before the rows: a side whose domain leaves its values' type or collation to the
+	   * data compares by the values */
+#if !defined (NDEBUG)
+	  stx_log_compare_by_value ("element", term->elem, list ? NULL : term->elemset, domain);
+#endif
+	  return NO_ERROR;
+	}
+      if (!list && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (domain[1])))
+	{
+	  domain_compare_key_of (domain[0], &item);
+	  term->compare_row = domain_compare_key_row (&item);
+	  return NO_ERROR;
+	}
     }
-  comparison->kind = DOMAIN_ELEMENTS_PAIR;
-  if (!list && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (domain[1])))
+  DOMAIN_COMPARE *compare = stx_alloc_compares (thread_p, 1);
+  if (compare == NULL)
     {
-      DOMAIN_COMPARE_KEY item;
-      domain_compare_key_of (domain[0], &item);
-      comparison->kind = DOMAIN_ELEMENTS_ROW;
-      comparison->row = domain_compare_key_row (&item);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
     }
-  term->domain_compare = comparison;
+  *compare = decided;
+  term->compare = compare;
   return NO_ERROR;
 }
 
@@ -5076,9 +5145,9 @@ stx_build_alsm_eval_term (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM * a
 
   ptr = or_unpack_int (ptr, &tmp);
   alsm_eval_term->item_type = (DB_TYPE) tmp;
-  alsm_eval_term->domain_compare = NULL;
-  /* a filter or function index stream keeps the stream's comparisons (domain_plan_stream_compares) */
-  if (!xasl_unpack_info->index_stream && alsm_eval_term->elem != NULL && alsm_eval_term->elemset != NULL
+  alsm_eval_term->compare = NULL;
+  alsm_eval_term->compare_row = -1;
+  if (alsm_eval_term->elem != NULL && alsm_eval_term->elemset != NULL
       && stx_build_element_compares (thread_p, alsm_eval_term) != NO_ERROR)
     {
       return NULL;
@@ -6132,8 +6201,6 @@ stx_build_val_list (THREAD_ENTRY * thread_p, char *ptr, VAL_LIST * val_list)
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_int (ptr, &val_list->val_cnt);
-  /* the load gives it its block's scope, if any */
-  val_list->domain_scope = 0;
 
   value_list =
     (QPROC_DB_VALUE_LIST) stx_alloc_struct (thread_p, sizeof (struct qproc_db_value_list) * val_list->val_cnt);
@@ -6236,7 +6303,6 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_domain (ptr, &regu_var->domain, NULL);
-  regu_var->plan_item = NULL;
 
   /* CBRD-27583: the domain the value is read in, and the converter into the domain its consumer wants */
   ptr = or_unpack_int (ptr, &tmp);
@@ -6259,11 +6325,6 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   regu_var->type = (REGU_DATATYPE) tmp;
 
   ptr = or_unpack_int (ptr, &regu_var->flags);
-  if (xasl_unpack_info->index_stream && regu_is_variable_pos (regu_var))
-    {
-      /* a filter or function index stream has no resolve_domains to resolve it (stx_index_stream_rejected) */
-      xasl_unpack_info->index_stream_late_bind = true;
-    }
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -6317,17 +6378,14 @@ error:
 }
 
 /*
- * stx_set_fast_peek () - a stable regu the inline fetch_peek_dbval () may peek directly, derived at load: a cached
- *   attribute, a literal, a value pointer without a linked subquery, whose compiled domain fixes its values. A bind
- *   reference gets it with its plan item, and a regu with a variable domain gets it with its execution domain
- *   (domain_plan.c). A COLLATE modifier's regu takes the slow path, which applies the collation, and a converting
- *   regu the slow path, which converts its value.
+ * stx_set_fast_peek () - a stable regu the inline fetch_peek_dbval () may peek directly, derived at unpack: a cached
+ *   attribute, a literal, a bind value, a value pointer without a linked subquery. A COLLATE modifier's regu takes the
+ *   slow path, which applies the collation, and a converting regu the slow path, which converts its value.
  */
 static void
 stx_set_fast_peek (REGU_VARIABLE * regu_var)
 {
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION) || regu_var->domain == NULL
-      || domain_is_variable (regu_var->domain) || regu_var->conv != NULL)
+  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION) || regu_var->conv != NULL)
     {
       return;
     }
@@ -6337,6 +6395,7 @@ stx_set_fast_peek (REGU_VARIABLE * regu_var)
     case TYPE_SHARED_ATTR_ID:
     case TYPE_CLASS_ATTR_ID:
     case TYPE_DBVAL:
+    case TYPE_POS_VALUE:
       break;
     case TYPE_CONSTANT:
       if (regu_var->xasl != NULL || regu_var->value.dbvalptr == NULL)
@@ -6550,7 +6609,6 @@ stx_build_pos_descr (char *ptr, QFILE_TUPLE_VALUE_POSITION * position_descr)
 {
   ptr = or_unpack_int (ptr, &position_descr->pos_no);
   ptr = or_unpack_domain (ptr, &position_descr->dom, NULL);
-  position_descr->plan_item = NULL;
 
   return ptr;
 }
@@ -6562,7 +6620,6 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
   XASL_UNPACK_INFO *xasl_unpack_info = get_xasl_unpack_info_ptr (thread_p);
 
   ptr = or_unpack_domain (ptr, &arith_type->domain, NULL);
-  arith_type->plan_item = NULL;
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -6630,7 +6687,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 #if !defined (NDEBUG)
   if (arith_type->fails != NO_ERROR)
     {
-      /* CBRD-27583 census (removed with the load's derivations): a node decided to raise its rule's error */
+      /* CBRD-27583 census (removed at S3-14): a node decided to raise its rule's error */
       er_log_debug (ARG_FILE_LINE, "CBRD-27583 decided: fails %d op=%d\n", arith_type->fails, arith_type->opcode);
     }
 #endif
@@ -6693,12 +6750,11 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
       assert (arith_type->coercion.conv[0] == NULL && arith_type->coercion.conv[1] == NULL);
     }
 
-  /* CBRD-27583: the comparisons FIELD, NULLIF, LEAST and GREATEST make, from their operands' domains; an operand whose
-   * domain leaves its values' type or collation to the data leaves them to the load (census "left arith compare"), a
-   * filter or function index stream to the stream's (domain_plan_stream_compares) */
+  /* CBRD-27583: the comparisons FIELD, NULLIF, LEAST and GREATEST make, from their operands' domains (a filter or
+   * function index stream's by stx_decide_stream_compare) */
   arith_type->compares = NULL;
-  if ((arith_type->opcode == T_FIELD || arith_type->opcode == T_NULLIF || arith_type->opcode == T_LEAST
-       || arith_type->opcode == T_GREATEST) && !xasl_unpack_info->index_stream)
+  if (arith_type->opcode == T_FIELD || arith_type->opcode == T_NULLIF || arith_type->opcode == T_LEAST
+      || arith_type->opcode == T_GREATEST)
     {
       /* FIELD compares its third operand with the left (the innermost node of a FIELD, REGU_VARIABLE_FIELD_COMPARE)
        * and the right, the others their two operands */
@@ -6712,20 +6768,29 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	{
 	  return NULL;
 	}
-      bool by_type = true;
-      for (int k = 0; k < (field ? 2 : 1) && by_type; k++)
+      for (int k = 0; k < (field ? 2 : 1); k++)
 	{
 	  const TP_DOMAIN *domain[2] = { sides[k][0] != NULL ? sides[k][0]->domain : NULL,
 	    sides[k][1] != NULL ? sides[k][1]->domain : NULL
 	  };
-	  const int error = stx_decide_compare (domain, &compares[k], &by_type);
+	  bool by_type = true;
+	  const int error = xasl_unpack_info->index_stream
+	    ? stx_decide_stream_compare (sides[k][0], sides[k][1], &compares[k])
+	    : stx_decide_compare (domain, &compares[k], &by_type);
 	  if (error != NO_ERROR)
 	    {
 	      stx_set_xasl_errcode (thread_p, error);
 	      return NULL;
 	    }
+#if !defined (NDEBUG)
+	  if (!by_type)
+	    {
+	      /* exception to deciding before the rows: the values decide (method VALUES) */
+	      stx_log_compare_by_value ("arith", sides[k][0], sides[k][1], domain);
+	    }
+#endif
 	}
-      arith_type->compares = by_type ? compares : NULL;
+      arith_type->compares = compares;
     }
 
   return ptr;
@@ -6754,7 +6819,6 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 
   /* domain */
   ptr = or_unpack_domain (ptr, &aggregate->domain, NULL);
-  aggregate->plan_item = NULL;
 
   /* accumulator */
   aggregate->accumulator.clear_value_at_clone_decache = false;
@@ -7029,7 +7093,6 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 
   /* domain */
   ptr = or_unpack_domain (ptr, &analytic->domain, NULL);
-  analytic->plan_item = NULL;
 
   /* value */
   ptr = or_unpack_int (ptr, &offset);
@@ -7621,12 +7684,6 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VALUE_LIST *
 	  stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
 	  goto error;
 	}
-      if (get_xasl_unpack_info_ptr (thread_p)->index_stream && regu_is_variable_pos (regu))
-	{
-	  /* the second maker of a REGU_VARIABLE checks as stx_build_regu_variable does: a filter or function index
-	   * stream has no resolve_domains to resolve it (stx_index_stream_rejected) */
-	  get_xasl_unpack_info_ptr (thread_p)->index_stream_late_bind = true;
-	}
       ptr = stx_unpack_regu_variable_value (thread_p, ptr, regu);
       if (ptr == NULL)
 	{
@@ -7685,7 +7742,6 @@ stx_init_regu_variable (REGU_VARIABLE * regu)
 {
   assert (regu);
 
-  regu->plan_item = NULL;
   regu->type = TYPE_POS_VALUE;
   regu->flags = 0;
   regu->value.val_pos = 0;

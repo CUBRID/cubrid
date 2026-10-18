@@ -91,8 +91,6 @@ typedef enum
   F_SOME
 } QL_FLAG;
 
-struct DOMAIN_COMPARE_PLAN;
-struct DOMAIN_ELEMENT_COMPARE_PLAN;
 struct DOMAIN_COMPARE;
 
 namespace cubxasl
@@ -114,11 +112,9 @@ namespace cubxasl
     REL_OP rel_op;
     DB_TYPE type;
     /* CBRD-27583: the comparison of the two sides' domains, which the unpack picks with the type rule module (unpack
-     * arena, not serialized); NULL for a side whose domain is not fixed: the load derives it (domain_compare) */
+     * arena, not serialized); NULL where a side's domain leaves its values' type or collation to the data: the values
+     * decide (comparison method VALUES) */
     const DOMAIN_COMPARE *compare;
-    /* load-derived, not serialized: the comparison the load or resolve_domains resolved; the union already
-     * holds rlike_eval_term's four pointers, so this changes neither the node's size nor the stream */
-    const DOMAIN_COMPARE_PLAN *domain_compare;
   };
 
   struct alsm_eval_term
@@ -128,9 +124,11 @@ namespace cubxasl
     QL_FLAG eq_flag;
     REL_OP rel_op;
     DB_TYPE item_type;
-    /* load-derived, not serialized: the element comparisons the load or resolve_domains resolved; the union
-     * grows to 40 bytes in memory, the stream is unchanged */
-    const DOMAIN_ELEMENT_COMPARE_PLAN *domain_compare;
+    /* CBRD-27583: what the unpack decided the item compares with (unpack arena, not serialized): a list's column or a
+     * right side that is no collection by compare; NULL: a collection's elements by the item's row of the type pair
+     * comparison table (compare_row), or by the two values' keys where the row is -1 */
+    int compare_row;
+    const DOMAIN_COMPARE *compare;
   };
 
   struct like_eval_term

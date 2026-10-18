@@ -1014,11 +1014,11 @@ partition_do_regu_variables_match (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 
     case TYPE_POS_VALUE:
       {
-	/* each reference reads its own value */
+	/* use val_pos for host variable references */
 	const DB_VALUE *val_left, *val_right;
 
-	val_left = REGU_RESOLVED_VALUE (pinfo->vd, left);
-	val_right = REGU_RESOLVED_VALUE (pinfo->vd, right);
+	val_left = pinfo->vd->dbval_ptr + left->value.val_pos;
+	val_right = pinfo->vd->dbval_ptr + right->value.val_pos;
 
 	if (domain_compare_by_type_pair (val_left, val_right, 1, 1, NULL) != DB_EQ)
 	  {
@@ -1642,7 +1642,7 @@ partition_get_value_from_regu_var (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE 
 
     case TYPE_POS_VALUE:
       {
-	const DB_VALUE *arg_val = REGU_RESOLVED_VALUE (pinfo->vd, regu);
+	const DB_VALUE *arg_val = pinfo->vd->dbval_ptr + regu->value.val_pos;
 	if (pr_clone_value (arg_val, value_p) != NO_ERROR)
 	  {
 	    goto error;
@@ -1801,8 +1801,8 @@ partition_get_value_from_key (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * key
 
     case TYPE_POS_VALUE:
       {
-	/* each reference reads its own value */
-	const DB_VALUE *val = REGU_RESOLVED_VALUE (pinfo->vd, key);
+	/* use val_pos for host variable references */
+	const DB_VALUE *val = pinfo->vd->dbval_ptr + key->value.val_pos;
 	error = pr_clone_value (val, attr_key);
 
 	*is_present = true;

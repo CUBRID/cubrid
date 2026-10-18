@@ -60,9 +60,9 @@ namespace parallel_scan
   /* A function that sees a value has its accumulator domain from the worker's unpack
    * (qdata_plan_aggregate_accumulator); a worker neither resolves one nor falls back to its values: no domain here
    * fails the unresolved-domain check. */
-  /* A worker's list opens with the plan's domains (qdata_get_valptr_type_list): no column waits for a first tuple to
-   * type it - PX keeps session variable reads off (px_scan_checker) and resolve_domains resolves every other column.
-   * A variable column here fails the unresolved-domain check (execution). */
+  /* A worker's list opens with its columns' compiled domains (qdata_get_valptr_type_list): no column waits for a first
+   * tuple to type it - PX keeps session variable reads off (px_scan_checker) and XASL generation types every other
+   * column. A variable column here fails the unresolved-domain check (execution). */
   /* Whether a column of a worker's list has no domain; the first such column sets the unresolved-domain error
    * (ER_QPROC_DOMAIN_UNRESOLVED), which the caller moves to the leader. */
   static bool list_columns_unresolved (const qfile_tuple_value_type_list &type_list)
@@ -72,7 +72,7 @@ namespace parallel_scan
 	const TP_DOMAIN *domain = type_list.domp[i];
 	if (domain == NULL || domain_is_variable (domain))
 	  {
-	    (void) domain_unresolved_error ("", i, domain != NULL ? TP_DOMAIN_TYPE (domain) : DB_TYPE_NULL);
+	    (void) domain_unresolved_error (i, domain != NULL ? TP_DOMAIN_TYPE (domain) : DB_TYPE_NULL);
 	    return true;
 	  }
       }
@@ -230,7 +230,7 @@ namespace parallel_scan
 	  qfile_tuple_value_type_list type_list;
 	  int err_code = NO_ERROR;
 	  QFILE_LIST_ID *list_id;
-	  err_code = qdata_get_valptr_type_list (thread_p, outptr_list, &type_list, vd);
+	  err_code = qdata_get_valptr_type_list (thread_p, outptr_list, &type_list);
 	  if (err_code == NO_ERROR && list_columns_unresolved (type_list))
 	    {
 	      err_code = ER_QPROC_DOMAIN_UNRESOLVED;
@@ -305,7 +305,7 @@ namespace parallel_scan
 	    tl.agg_hash_state = HS_ACCEPT_ALL;
 	    qdata_link_shared_accumulators (curr_xasl->proc.buildlist.g_agg_list, vd);
 	    /* the worker's partial list is written at its finalize: it takes its domains as the leader's does */
-	    qexec_setup_hash_aggregate_lists (vd, &curr_xasl->proc.buildlist);
+	    qexec_setup_hash_aggregate_lists (&curr_xasl->proc.buildlist);
 	  }
 	/* setup failure leaves curr_xasl->topn_items NULL; worker falls back to plain BUILDLIST and final ORDER BY+LIMIT runs on main's concat list_id via qexec_orderby_distinct_by_sorting. */
 	tl.is_topn = false;
@@ -894,7 +894,7 @@ namespace parallel_scan
 
 	prefetch (tl.writer_result_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
 
-	/* Each worker sizes against its own destination list, which opened with the plan's domains. */
+	/* Each worker sizes against its own destination list, which opened with its columns' compiled domains. */
 	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, tl.writer_result_p);
 	if (unlikely (status == QPROC_TPLDESCR_FAILURE))
 	  {
@@ -1603,7 +1603,7 @@ namespace parallel_scan
 	if ((F != PT_GROUP_CONCAT || agg_node->sort_list == NULL)
 	    && (acc_dom->value_dom == NULL || acc_dom->value_dom == &tp_Null_domain))
 	  {
-	    (void) domain_unresolved_error ("", -1,
+	    (void) domain_unresolved_error (-1,
 					    agg_node->domain != NULL ? TP_DOMAIN_TYPE (agg_node->domain) : DB_TYPE_NULL);
 	    return false;
 	  }

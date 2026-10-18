@@ -66,7 +66,8 @@ namespace cubquery
     int val_count;		/* key size */
     bool free_values;		/* true if values need to be freed */
     db_value **values;		/* value array */
-    const tp_domain **compares;	/* the context's key_compares: the keys mht compares carry them */
+    const tp_domain **compares;	/* the context's key_compares (NULL: the values compare): the keys mht compares
+				 * carry them */
   };
 
 
@@ -77,7 +78,8 @@ namespace cubquery
     aggregate_hash_key *temp_key;	/* temporary key used for fetch */
     AGGREGATE_HASH_STATE state;	/* state of hash aggregation */
     tp_domain **key_domains;	/* hash key domains */
-    const tp_domain **key_compares;	/* per key column, the domain its values compare in (g_hk_compares) */
+    const tp_domain **key_compares;	/* per key column, the domain its values compare in (g_hk_compares), NULL
+					 * when a key's domain leaves its values' type to the data */
     cubxasl::aggregate_accumulator_domain **accumulator_domains;	/* accumulator domains */
 
     /* runtime statistics stuff */

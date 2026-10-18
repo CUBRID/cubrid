@@ -23,9 +23,6 @@
 #ifndef _REGU_VAR_HPP_
 #define _REGU_VAR_HPP_
 
-struct domain_plan_item;
-struct DOMAIN_COMPARE_PLAN;
-
 #include "heap_attrinfo.h"
 #include "object_domain.h"
 #include "query_list.h"
@@ -155,7 +152,6 @@ typedef struct arith_list_node ARITH_TYPE;
 struct arith_list_node
 {
   TP_DOMAIN *domain;		/* resultant domain */
-  domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
   DB_VALUE *value;		/* value of the subtree */
   REGU_VARIABLE *leftptr;	/* left operand */
   REGU_VARIABLE *rightptr;	/* right operand */
@@ -208,7 +204,7 @@ const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
 const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
 const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly: set
-						 * at load for a stable regu */
+						 * at unpack for a stable regu */
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
 
 /* CBRD-27583: REGU_VARIABLE.conv_mode - the converter (a DOMAIN_CONVERT_MODE, the ENUM name converter or the CHAR
@@ -223,14 +219,6 @@ const int REGU_CONV_NULL_ON_FUNCTION_ERRORS =
 const int REGU_CONV_INVALID_DATATYPE =
 	0x20;	/* ROUND's and TRUNC's operand: ER_QPROC_INVALID_DATATYPE, NULL under return_null_on_function_errors */
 
-const int REGU_VARIABLE_VARIABLE_DOMAIN = 0x8000;	/* load-derived: the regu's compiled domain is variable, so the
-					 * inline fetch_peek_dbval () peeks it only once it took its domain in this
-					 * execution (qexec_node_domain_is_set). Set exactly when the regu's plan item
-					 * carries DOMAIN_PLAN_VARIABLE or DOMAIN_PLAN_VARIABLE_POSITION (asserted when
-					 * stx_build_domain_plan publishes the item); regu_is_variable_pos () is the
-					 * compile-time view - a TYPE_POS_VALUE whose domain is DB_TYPE_VARIABLE -
-					 * which implies the flag for such a regu */
-
 class regu_variable_node
 {
   public:
@@ -243,7 +231,6 @@ class regu_variable_node
     TP_DOMAIN *original_domain = nullptr;
     TP_VALUE_CONVERTER conv = nullptr;
     unsigned char conv_mode = 0;	/* REGU_CONV_* */
-    domain_plan_item *plan_item = nullptr; /* load-derived, not serialized */
     DB_VALUE *vfetch_to;		/* src db_value to fetch into in qp_fetchvlist */
     xasl_node *xasl;		/* query xasl pointer */
     union regu_data_value
@@ -350,8 +337,8 @@ REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu)
   return DB_TYPE_UNKNOWN;
 }
 
-/* A variable POS: a host variable position whose domain the compiler left VARIABLE. The execution takes its domain
- * from the bound value before its first row. */
+/* A variable POS: a host variable position whose domain the compiler left VARIABLE: the bound value carries its
+ * type. */
 bool
 regu_is_variable_pos (const regu_variable_node *regu)
 {

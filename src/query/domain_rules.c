@@ -628,7 +628,7 @@ domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operand
       }
 
     default:
-      /* an operator the type rules do not know: resolve_domains must not guess */
+      /* an operator the type rules do not know: the caller must not guess */
       return ER_QPROC_DOMAIN_UNRESOLVED;
     }
 
@@ -816,7 +816,7 @@ domain_is_interpolation_type (DB_TYPE type)
  *   (qdata_update_agg_interpolation_func_value_and_domain; the analytic first-execution block)
  *   return: the final domain, or NULL when only a value could tell (a string nobody typed)
  *   domain(in): the domain the function holds before that value (never VARIABLE here)
- *   argument_type(in): the type resolve_domains gave a string value (DOUBLE, DATETIME or TIME), DB_TYPE_NULL otherwise
+ *   argument_type(in): the type a string value was compiled with (DOUBLE, DATETIME or TIME), DB_TYPE_NULL otherwise
  *
  * A date or time stays; a DOUBLE (MEDIAN, PERCENTILE_CONT) or any number (PERCENTILE_DISC) stays; any other number
  * becomes DOUBLE, and a string becomes the first of DOUBLE, DATETIME, TIME it casts to.
@@ -855,12 +855,11 @@ domain_function_is_late_bound (const TP_DOMAIN * compiled, const DOMAIN_OPERAND 
 /*
  * domain_resolve_aggregate - an aggregate's function and accumulator domains, as its argument's value types them
  *   compiled(in): consumer = the aggregate's compiled domain (agg_p->domain, set by xasl_generation.c)
- *   operand(in): the argument; domain = its compiled domain (opr_dbtype), or its value domain when resolve_domains
- *		  resolves it (is_variable_pos: opr_dbtype is VARIABLE); val_type = value type, typed by its value at
- *		  resolve_domains
+ *   operand(in): the argument; domain = its compiled domain (opr_dbtype), or its value domain (is_variable_pos:
+ *		  opr_dbtype is VARIABLE); val_type = value type, typed by its value at XASL generation
  *   result(out): domain = the function domain (agg_p->domain after the row-time resolve, which the result is cast
  *		  to); operand_domain[0] / conv[0] = the accumulator domain (value_dom) the argument values are coerced
- *		  to. value2_dom is a per-function constant the load puts in domain_plan_acc.
+ *		  to. value2_dom is a per-function constant (qdata_plan_aggregate_accumulator).
  */
 static int
 domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand,
@@ -888,7 +887,7 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
   if ((function == PT_SUM || function == PT_AVG) && TP_IS_DATE_OR_TIME_TYPE (operand_type))
     {
       /* SUM and AVG add their values, and a date or time value does not add (qdata_add_dbval, -454 at the second
-       * value); the compiler rejects a date column, a NULL bind lets one through (nvl (?, d)): resolve_domains raises
+       * value); the compiler rejects a date column, a NULL bind lets one through (nvl (?, d)): the caller raises
        * the row's error before any row. return_null_on_function_errors keeps the row's NULL. */
       int error = domain_arith_reject ();
       if (error != NO_ERROR)
@@ -957,20 +956,20 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
       if (operand->val_type == DB_TYPE_NULL && operand->domain != NULL
 	  && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (operand->domain)))
 	{
-	  /* a string value none of DOUBLE, DATETIME, TIME takes (resolve_domains could not type it): no domain;
-	   * the first value would raise the error; resolve_domains raises it */
+	  /* a string value none of DOUBLE, DATETIME, TIME takes (its compilation could not type it): no domain;
+	   * the first value would raise the error; the caller raises it */
 	  return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	}
       if (!domain_is_interpolation_type (operand_type))
 	{
 	  if (domain_is_interpolation_type (val_type))
 	    {
-	      /* resolve_domains typed the value as DOUBLE, DATETIME or TIME */
+	      /* the compilation typed the value as DOUBLE, DATETIME or TIME */
 	      function_domain = tp_domain_resolve_default (val_type);
 	    }
 	  else if (TP_IS_CHAR_TYPE (val_type))
 	    {
-	      /* a string resolve_domains has no value for (a column, an expression) is a number */
+	      /* a string the compilation has no value for (a column, an expression) is a number */
 	      function_domain = &tp_Double_domain;
 	    }
 	  else
@@ -984,7 +983,7 @@ domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN
 	   * the first value gives it the default domain of its type */
 	  function_domain = tp_domain_resolve_default (operand_type);
 	}
-      /* then the value takes the function's final type: resolve_domains records that domain */
+      /* then the value takes the function's final type */
       {
 	const TP_DOMAIN *final_domain = domain_interpolation_final (function, function_domain, val_type);
 	if (final_domain != NULL)
@@ -1078,7 +1077,7 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
     {
       /* an interpolation function is typed as its first execution types it: a function the compiler left variable takes
        * its operand's domain, then a number becomes DOUBLE (PERCENTILE_DISC keeps it) and a string the type
-       * resolve_domains gave its value, or DOUBLE when it has no value */
+       * its value was compiled with, or DOUBLE when it has no value */
       const TP_DOMAIN *start_domain = argument == NULL || TP_DOMAIN_TYPE (argument) == DB_TYPE_VARIABLE
 	? domain_operand_domain (operand) : argument;
       if (start_domain != NULL && TP_DOMAIN_TYPE (start_domain) != DB_TYPE_VARIABLE)
@@ -1086,8 +1085,8 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
 	  if (!domain_is_interpolation_type (TP_DOMAIN_TYPE (start_domain))
 	      && TP_DOMAIN_TYPE (start_domain) != DB_TYPE_NULL && operand->val_type == DB_TYPE_NULL)
 	    {
-	      /* a value none of DOUBLE, DATETIME, TIME takes (resolve_domains types a string, a BIT, a LOB, a
-	       * collection): the first execution would raise the error; resolve_domains raises it */
+	      /* a value none of DOUBLE, DATETIME, TIME takes (a string, a BIT, a LOB, a collection the compilation
+	       * types): the first execution would raise the error; the caller raises it */
 	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	    }
 	  const TP_DOMAIN *final_domain = domain_interpolation_final (function, start_domain, val_type);
@@ -1110,7 +1109,7 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
  * domain_resolve_function - result types of the late-bound functions (pt_is_op_hv_late_bind) and the value copies
  *   return: NO_ERROR, or the error the function raises for this argument type
  *
- * The value-dependent ones take their type from resolve_domains (ADDTIME and STR_TO_DATE in string_opfunc.c); the
+ * The value-dependent ones take their type from their values (ADDTIME and STR_TO_DATE in string_opfunc.c); the
  * others have a fixed result type or the type of the argument they copy. fetch_peek_arith gives no
  * value for a NULL first argument, and for any NULL argument of ADDTIME, STR_TO_DATE, NEW_TIME, FROM_TZ and CONV.
  */
@@ -1168,8 +1167,8 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
 	{
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
-	  /* a value is typed before this (VARCHAR without a zone, DATETIMETZ with one); a string resolve_domains has no
-	   * value for (a column, an expression) is VARCHAR, the manual's "date/time string" row */
+	  /* a value is typed before this (VARCHAR without a zone, DATETIMETZ with one); a string the compilation has
+	   * no value for (a column, an expression) is VARCHAR, the manual's "date/time string" row */
 	  result_type = DB_TYPE_VARCHAR;
 	  break;
 	case DB_TYPE_DATETIME:
@@ -1311,7 +1310,7 @@ domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_oper
       goto copy_operands;
 
     default:
-      /* a function the type rules do not know: resolve_domains must not guess */
+      /* a function the type rules do not know: the caller must not guess */
       return ER_QPROC_DOMAIN_UNRESOLVED;
     }
 
@@ -1444,15 +1443,12 @@ domain_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_con
 
 /*
  * domain_compare_converted () - comparison method CONVERT: tp_value_compare_with_error's coercion with its converters
- *				 resolved - the first side, then the other, then an ENUM's codeset for the string it
+ *				 decided - the first side, then the other, then an ENUM's codeset for the string it
  *				 meets - and cmpval
- *
- * A constant side resolve_domains converted comes in converted; one whose conversion failed gives the failure's
- * outcome at its turn. A correlated side its scope converted comes in converted too (preconverted).
  */
 DB_VALUE_COMPARE_RESULT
 domain_compare_converted (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2,
-			  int total_order, bool * can_compare, unsigned char preconverted)
+			  int total_order, bool * can_compare)
 {
   const DB_VALUE *side[2] = { value1, value2 };
   DB_VALUE converted[2], codeset_value;
@@ -1462,12 +1458,7 @@ domain_compare_converted (const DOMAIN_COMPARE * compare, const DB_VALUE * value
   for (int k = 0; k < 2; k++)
     {
       const int s = k == 0 ? compare->first : 1 - compare->first;
-      if (compare->failed & (1 << s))
-	{
-	  result = domain_compare_conversion_failed (compare, k == 1, can_compare);
-	  goto end;
-	}
-      if (compare->conv[s] == NULL || (preconverted & (1 << s)))
+      if (compare->conv[s] == NULL)
 	{
 	  continue;
 	}
@@ -1524,7 +1515,7 @@ domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, 
       return compare->cmp->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, compare->coercion, total_order, NULL,
 				   compare->collation);
     case DOMAIN_COMPARE_CONVERT:
-      return domain_compare_converted (compare, value1, value2, total_order, can_compare, 0);
+      return domain_compare_converted (compare, value1, value2, total_order, can_compare);
     case DOMAIN_COMPARE_RANK:
       /* types that do not compare as they are, without coercion: the answer is their rank */
       if (can_compare != NULL)
@@ -1539,8 +1530,8 @@ domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, 
 #if !defined (NDEBUG)
       if (compare->method != DOMAIN_COMPARE_COLLATIONS)
 	{
-	  fprintf (stderr, "planned comparison kernel: kernel=%d site=%d source=%d,%d values=%d,%d\n",
-		   (int) compare->method, compare->compare_index, (int) compare->source[0], (int) compare->source[1],
+	  fprintf (stderr, "planned comparison kernel: kernel=%d source=%d,%d values=%d,%d\n",
+		   (int) compare->method, (int) compare->source[0], (int) compare->source[1],
 		   (int) DB_VALUE_DOMAIN_TYPE (value1), (int) DB_VALUE_DOMAIN_TYPE (value2));
 	}
 #endif
@@ -1861,9 +1852,7 @@ domain_compute_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
   *result = DOMAIN_COMPARE
   {
   };
-  result->value[0] = result->value[1] = -1;
   result->codeset_side = -1;
-  result->compare_index = -1;
   result->source[0] = (unsigned char) lhs->type;
   result->source[1] = (unsigned char) rhs->type;
   result->method = DOMAIN_COMPARE_DIRECT;
@@ -2039,9 +2028,7 @@ domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAI
   *result = DOMAIN_COMPARE
   {
   };
-  result->value[0] = result->value[1] = -1;
   result->codeset_side = -1;
-  result->compare_index = -1;
   result->source[0] = (unsigned char) lhs->type;
   result->source[1] = (unsigned char) rhs->type;
   result->coercion = 0;
@@ -2103,10 +2090,9 @@ static bool
 domain_compare_equal (const DOMAIN_COMPARE * a, const DOMAIN_COMPARE * b)
 {
   return a->method == b->method && a->first == b->first && a->source[0] == b->source[0]
-    && a->source[1] == b->source[1] && a->converted_first == b->converted_first && a->failed == b->failed
+    && a->source[1] == b->source[1] && a->converted_first == b->converted_first
     && a->coercion == b->coercion && a->rank == b->rank && a->collation == b->collation
-    && a->value[0] == b->value[0] && a->value[1] == b->value[1] && a->codeset_side == b->codeset_side
-    && a->compare_index == b->compare_index && a->cmp == b->cmp && a->conv[0] == b->conv[0] && a->conv[1] == b->conv[1]
+    && a->codeset_side == b->codeset_side && a->cmp == b->cmp && a->conv[0] == b->conv[0] && a->conv[1] == b->conv[1]
     && a->target[0] == b->target[0] && a->target[1] == b->target[1] && a->operator_functions == b->operator_functions;
 }
 
@@ -2264,44 +2250,11 @@ domain_type_pair_table_final (void)
   domain_key_pairs_free (domain_Key_pairs.exchange (NULL));
 }
 
-void
-domain_alias_statement (const char *alias, char *statement, size_t size)
-{
-  /* the alias is the plan cache key: the statement, then '?' and the system parameters it was compiled under
-   * (parser_print_tree), the user and the bind count; a message carries the statement alone */
-  size_t length = 0;
-  if (alias != NULL)
-    {
-      /* a key compiled without the system parameters (a recompiled statement) goes straight to "user=..." */
-      const char *user = strstr (alias, ";bind_var_cnt=");
-      const char *tail = NULL;
-      if (user != NULL)
-	{
-	  for (tail = user; tail > alias && strncmp (tail, "user=", 5) != 0; tail--)
-	    ;
-	}
-      while (alias[length] != '\0' && length < size - 1 && !(alias[length] == '?' && char_isdigit (alias[length + 1]))
-	     && (tail == NULL || alias + length < tail))
-	{
-	  length++;
-	}
-      while (length > 0 && alias[length - 1] == ' ')
-	{
-	  length--;
-	}
-      memcpy (statement, alias, length);
-    }
-  statement[length] = '\0';
-}
-
 int
-domain_unresolved_error (const char *alias, int index, DB_TYPE type)
+domain_unresolved_error (int index, DB_TYPE type)
 {
-  char statement[1024];
   assert (false);
-  domain_alias_statement (alias, statement, sizeof (statement));
-  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", statement, index,
-	  pr_type_name (type));
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_DOMAIN_UNRESOLVED, 4, "execute", "", index, pr_type_name (type));
   return ER_QPROC_DOMAIN_UNRESOLVED;
 }
 
@@ -2916,7 +2869,7 @@ domain_classify_str_to_date_format (const DB_VALUE * value)
  * argument, the ADDTIME left string, the STR_TO_DATE format. An interpolation argument of a type that is neither a
  * number nor a date (a string, a BIT, a LOB, a collection) is typed as its first value would be, by the cascade to
  * DOUBLE, DATETIME and TIME, the aggregate's and the analytic's alike (no row types it; a value that takes none is the
- * resolve_domains' error). */
+ * compilation's error). */
 bool
 domain_argument_type_depends_on_value (DOMAIN_CTX context, int opcode, int arg_index, DB_TYPE type)
 {
@@ -2976,7 +2929,7 @@ domain_session_variable_type_error (const char *name, DB_TYPE type, int codeset,
 /*
  * the character results of compiled nodes whose collation the compiler left to the values (LEAVE) or enforced
  * over an operand it could not type (ENFORCE). Each rule is what the operator gives its value at execution
- * (string_opfunc.c, tp_value_cast_internal); resolve_domains applies it once to the operands' resolved domains, as
+ * (string_opfunc.c, tp_value_cast_internal); XASL generation applies it once to the operands' domains, as
  * tp_domain_resolve_value would read the value.
  */
 
@@ -3228,8 +3181,8 @@ domain_character_result (int opcode, const DOMAIN_OPERAND * operands, int n_oper
   else if (compiled != NULL && opcode == PT_GROUP_CONCAT)
     {
       /* a reader of a GROUP_CONCAT accumulator: qdata_group_concat_first_value makes the accumulator in its
-       * compiled string type under the function domain's codeset and collation, of its own length; a function the
-       * resolve_domains saw no value for gives no value */
+       * compiled string type under the function domain's codeset and collation, of its own length; a function no
+       * value reached gives no value */
       const TP_DOMAIN *function = n_operands > 0 ? domain_operand_domain (&operands[0]) : NULL;
       if (function == NULL || !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (function)))
 	{

@@ -565,7 +565,9 @@ qdata_cast_sp_return (THREAD_ENTRY * thread_p, const REGU_VARIABLE * regu_var_p,
  * qdata_check_output_column () - CBRD-27583 (4.6e): an output column's value comes in the column's domain - its
  *   producer's, now that no column cast converts it; a NUMERIC domain of the default precision takes a NUMERIC of any
  *   precision and scale, as the cast into it kept them, and one of precision 0 too: the cast into it kept the default
- *   precision and the column reads as NULL (mr_data_readval_numeric, develop's defect workspace #444)
+ *   precision and the column reads as NULL (mr_data_readval_numeric, develop's defect workspace #444); a bound value
+ *   comes as the client sent it, as before CBRD-27510 (D-65, D-66): of the column's type with its own precision, scale
+ *   and collation (num_idx's UPDATE), or a string as CHAR or VARCHAR (cbrd_27615's MERGE)
  *   site(in): the census line's name of the reading
  */
 static void
@@ -580,6 +582,8 @@ qdata_check_output_column (const char *site, const REGU_VARIABLE * regu_var_p, c
   const DB_TYPE val_type = DB_VALUE_TYPE (value);
   if (dom_type == DB_TYPE_NULL || dom_type == DB_TYPE_VARIABLE
       || (val_type == DB_TYPE_OID && (dom_type == DB_TYPE_OID || dom_type == DB_TYPE_VOBJ))
+      || (regu_var_p->type == TYPE_POS_VALUE
+	  && (val_type == dom_type || (TP_IS_CHAR_TYPE (val_type) && TP_IS_CHAR_TYPE (dom_type))))
       || (val_type == dom_type
 	  && (val_type != DB_TYPE_NUMERIC || domain->precision == DB_DEFAULT_NUMERIC_PRECISION || domain->precision == 0
 	      || (value->domain.numeric_info.precision == domain->precision
@@ -618,16 +622,7 @@ qdata_get_dbval_from_prog (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p, 
     }
 
 #if !defined (NDEBUG)
-  {
-    /* the column's domain in this execution: the one the node took, else its plan's, then the consumer's */
-    TP_DOMAIN *now = qexec_get_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->plan_item);
-    if (now != NULL && TP_DOMAIN_TYPE (now) == DB_TYPE_VARIABLE)
-      {
-	now = expr_regu_exec_domain (val_desc_p, regu_var_p);
-      }
-    const TP_DOMAIN *consumer = now != NULL ? qexec_consumer_domain (val_desc_p, now, regu_var_p->plan_item) : NULL;
-    qdata_check_output_column ("prog", regu_var_p, consumer != NULL ? consumer : now, peek_value_p);
-  }
+  qdata_check_output_column ("prog", regu_var_p, regu_var_p->domain, peek_value_p);
 #endif
 
   return peek_value_p;
@@ -925,8 +920,8 @@ qdata_collect_tuple_values (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
  *   return: QPROC_TPLDESCR_SUCCESS, QPROC_TPLDESCR_RETRY_xxx, or QPROC_TPLDESCR_FAILURE
  *   list_id(in/out): destination with f_valp/f_len already allocated
  *
- * The list opened with the plan's domains (qdata_get_valptr_type_list), so its layout is settled before the first
- * tuple and no row resolves a column: collection and sizing are one pass. The compressed string, if any, is
+ * The list opened with its columns' compiled domains (qdata_get_valptr_type_list), so its layout is settled before the
+ * first tuple and no row resolves a column: collection and sizing are one pass. The compressed string, if any, is
  * deallocated later, after copying the db_value into the tuple.
  */
 QPROC_TPLDESCR_STATUS
@@ -5480,14 +5475,10 @@ qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * li
  * type list.  Regu variables that are hidden columns are not
  * entered as part of the type list because they are not entered
  * in the list file.
- *
- * A column the compiler left variable takes the plan's domain for this execution: the list holds that domain
- * from its first tuple on, a column over a session variable read too. A variable column without one fails the
- * unresolved-domain check (execution).
  */
 int
 qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p,
-			    qfile_tuple_value_type_list * type_list_p, const VAL_DESCR * vd)
+			    qfile_tuple_value_type_list * type_list_p)
 {
   REGU_VARIABLE_LIST reg_var_p;
   int i, count;
@@ -5528,15 +5519,7 @@ qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_l
     {
       if (!REGU_VARIABLE_IS_FLAGED (&reg_var_p->value, REGU_VARIABLE_HIDDEN_COLUMN))
 	{
-	  /* the column regu's domain now: its execution domain once this execution gave it one */
-	  TP_DOMAIN *now = qexec_get_node_domain (vd, reg_var_p->value.domain, reg_var_p->value.plan_item);
-	  const TP_DOMAIN *domain = qexec_consumer_domain (vd, now, reg_var_p->value.plan_item);
-	  if (domain == NULL)
-	    {
-	      db_private_free_and_init (thread_p, type_list_p->domp);
-	      return qexec_domain_unresolved (vd, reg_var_p->value.plan_item, reg_var_p->value.domain);
-	    }
-	  type_list_p->domp[i++] = (TP_DOMAIN *) domain;
+	  type_list_p->domp[i++] = reg_var_p->value.domain;
 	}
 
       reg_var_p = reg_var_p->next;
@@ -5620,12 +5603,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
     }
 
 #if !defined (NDEBUG)
-  {
-    /* the column's domain in this execution: the one its fetch took, or its plan's, then the consumer's */
-    TP_DOMAIN *now = qexec_get_node_domain (val_desc_p, regu_var_p->domain, regu_var_p->plan_item);
-    const TP_DOMAIN *consumer = qexec_consumer_domain (val_desc_p, now, regu_var_p->plan_item);
-    qdata_check_output_column ("regu", regu_var_p, consumer != NULL ? consumer : now, peek_value_p);
-  }
+  qdata_check_output_column ("regu", regu_var_p, regu_var_p->domain, peek_value_p);
 #endif
 
   return peek_value_p;
@@ -5656,7 +5634,7 @@ qdata_convert_dbvals_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIAB
 
   result_p = regu_func_p->value.funcp->value;
   operand = regu_func_p->value.funcp->operand;
-  domain_p = qexec_get_node_domain (val_desc_p, regu_func_p->domain, regu_func_p->plan_item);
+  domain_p = regu_func_p->domain;
   db_make_null (&dbval);
 
   if (stype == DB_TYPE_SET)
@@ -6039,7 +6017,7 @@ qdata_convert_table_to_set (THREAD_ENTRY * thread_p, DB_TYPE stype, REGU_VARIABL
       return ER_FAILED;
     }
 
-  domain_p = qexec_get_node_domain (val_desc_p, regu_produced_domain (function_p), function_p->plan_item);
+  domain_p = regu_produced_domain (function_p);
   list_id_p = operand->value.value.srlist_id->list_id;
   db_make_null (&dbval);
 
@@ -6246,16 +6224,10 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
 
   if (i < xptr->val_list->val_cnt)
     {
-      /* the column's domain in this execution: the argument reads a value pointer, whose domain is its producer's
-       * resolution (a derived-table column a bind types) when the compiler left it variable */
-      const TP_DOMAIN *column_domain = qexec_consumer_domain (vd, regu_p->domain, regu_p->plan_item);
-      if (column_domain == NULL)
-	{
-	  qfile_close_scan (thread_p, &s_id);
-	  (void) qexec_domain_unresolved (vd, regu_p->plan_item, regu_p->domain);
-	  return false;
-	}
-      if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p, (TP_DOMAIN *) column_domain) != NO_ERROR)
+      /* exception to deciding before the rows: an argument whose domain leaves its values' type to the data reads the
+       * list's column as the list holds it */
+      TP_DOMAIN *column_domain = domain_is_variable (regu_p->domain) ? s_id.list_id.type_list.domp[i] : regu_p->domain;
+      if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p, column_domain) != NO_ERROR)
 	{
 	  qfile_close_scan (thread_p, &s_id);
 	  return false;
@@ -6579,16 +6551,12 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
       need_clear_arg_dbval = false;
       if (!use_extended)
 	{
-	  /* get the required column, in its domain of this execution (as CONNECT_BY_ROOT reads its argument) */
+	  /* get the required column, as CONNECT_BY_ROOT reads its argument */
 	  if (i < xptr->val_list->val_cnt)
 	    {
-	      const TP_DOMAIN *column_domain = qexec_consumer_domain (vd, regu_p->domain, regu_p->plan_item);
-	      if (column_domain == NULL)
-		{
-		  (void) qexec_domain_unresolved (vd, regu_p->plan_item, regu_p->domain);
-		  goto error;
-		}
-	      if (qexec_get_tuple_column_value (&tuple_rec, i, arg_dbval_p, (TP_DOMAIN *) column_domain) != NO_ERROR)
+	      TP_DOMAIN *column_domain =
+		domain_is_variable (regu_p->domain) ? s_id.list_id.type_list.domp[i] : regu_p->domain;
+	      if (qexec_get_tuple_column_value (&tuple_rec, i, arg_dbval_p, column_domain) != NO_ERROR)
 		{
 		  goto error;
 		}
@@ -7607,8 +7575,7 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
   for (INT64 step = 0; step < count; step++)
     {
       // we're trying to benchmark the expression in target reguvar by running it many times. even if all operands are
-      // constant, we still have to repeat the operations: the load marks the target's nodes as row operands, so the
-      // resolve_domains never evaluates them once
+      // constant, we still have to repeat the operations: no fetch keeps a constant expression's value
       //
       // node that they still may be other optimizations that are not so easily disabled
       error = fetch_peek_dbval (thread_p, target_reguvar, val_desc_p, NULL, obj_oid_p, tplrec, &target_value);

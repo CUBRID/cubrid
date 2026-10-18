@@ -874,7 +874,7 @@ qfile_compare_tuple_values (QFILE_TUPLE_RECORD * lhs, QFILE_TUPLE_RECORD * rhs, 
  *       set it to the source type.
  *       This should probably set an error for non-null mismatches.
  *
- * A list opens with the plan's domains: an empty side contributes no values, so its domain does not
+ * A list opens with its columns' compiled domains: an empty side contributes no values, so its domain does not
  * constrain the other side's, as a column no tuple typed (DB_TYPE_VARIABLE) did not.
  */
 int
@@ -899,9 +899,8 @@ qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p,
       type1 = TP_DOMAIN_TYPE (list_id1_p->type_list.domp[i]);
       type2 = TP_DOMAIN_TYPE (list_id2_p->type_list.domp[i]);
 
-      /* An empty side skips the collation flag check below as well: its column opened with the plan's domain, and
-       * the load check keeps a plan domain NORMAL (a string whose collation the values give is resolved before the
-       * execution) */
+      /* An empty side skips the collation flag check below as well: it holds no value whose collation could
+       * disagree */
       if (type1 == DB_TYPE_VARIABLE || (list1_empty && list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
 	{
 	  /* list1 holds no value of this column: its tuples store only NULL (0 bytes) there, so list2's domain reads them */
@@ -4322,7 +4321,20 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 	  subkey->cmp_conv = NULL;
 	  subkey->use_cmp_dom = false;
 
-	  /* the key's domain is the plan's */
+	  /* XASL generation sorts each key in its list column's decided domain (D-64) */
+	  assert (TP_DOMAIN_TYPE (p->pos_descr.dom) != DB_TYPE_VARIABLE
+		  && TP_DOMAIN_COLLATION_FLAG (p->pos_descr.dom) == TP_DOMAIN_COLL_NORMAL);
+#if !defined (NDEBUG)
+	  if (p->pos_descr.pos_no < types->type_cnt && p->pos_descr.dom != types->domp[p->pos_descr.pos_no])
+	    {
+	      const TP_DOMAIN *column = types->domp[p->pos_descr.pos_no];
+	      /* CBRD-27583 census (D-64, removed at S3-14): a key domain other than its list column's */
+	      er_log_debug (ARG_FILE_LINE, "CBRD-27583 sort key domain type %d/%d p=%d/%d s=%d/%d coll %d/%d pos %d\n",
+			    (int) TP_DOMAIN_TYPE (p->pos_descr.dom), (int) TP_DOMAIN_TYPE (column),
+			    p->pos_descr.dom->precision, column->precision, p->pos_descr.dom->scale, column->scale,
+			    p->pos_descr.dom->collation_id, column->collation_id, p->pos_descr.pos_no);
+	    }
+#endif
 	  subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
 
 	  subkey->is_desc = (p->s_order == S_ASC) ? 0 : 1;

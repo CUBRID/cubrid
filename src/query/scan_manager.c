@@ -208,7 +208,6 @@ static SCAN_CODE scan_next_method_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_
 static SCAN_CODE scan_next_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_handle_single_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id, QP_SCAN_FUNC next_scan);
 static SCAN_CODE scan_prev_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_plan_list_scan_domains (const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp);
 static int scan_init_multi_range_optimization (THREAD_ENTRY * thread_p, MULTI_RANGE_OPT * multi_range_opt,
 					       bool use_range_opt, int max_size);
 static int scan_dump_key_into_tuple (THREAD_ENTRY * thread_p, INDX_SCAN_ID * iscan_id, DB_VALUE * key, OID * oid,
@@ -750,7 +749,7 @@ scan_init_indx_coverage (THREAD_ENTRY * thread_p, int coverage_enabled, valptr_l
       goto exit_on_error;
     }
 
-  if (qdata_get_valptr_type_list (thread_p, output_val_list, indx_cov->type_list, vd) != NO_ERROR)
+  if (qdata_get_valptr_type_list (thread_p, output_val_list, indx_cov->type_list) != NO_ERROR)
     {
       err = ER_FAILED;
       goto exit_on_error;
@@ -909,8 +908,7 @@ scan_check_user_given_keylimit_overflow (THREAD_ENTRY * thread_p, REGU_VARIABLE 
   DB_VALUE *dbvalp = NULL;
 
   assert (numeric_operand != NULL);
-  assert (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, numeric_operand->domain, numeric_operand->plan_item))
-	  == DB_TYPE_NUMERIC);
+  assert (TP_DOMAIN_TYPE (numeric_operand->domain) == DB_TYPE_NUMERIC);
 
   if (fetch_peek_dbval (thread_p, numeric_operand, vd, NULL, NULL, NULL, &dbvalp) != NO_ERROR || dbvalp == NULL)
     {
@@ -1021,7 +1019,7 @@ scan_handle_overflow_subtraction_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * 
   assert (left && right);
 
   left_is_inarith = (left->type == TYPE_INARITH || left->type == TYPE_OUTARITH);
-  left_is_numeric = (TP_DOMAIN_TYPE (qexec_get_node_domain (vd, left->domain, left->plan_item)) == DB_TYPE_NUMERIC);
+  left_is_numeric = (TP_DOMAIN_TYPE (left->domain) == DB_TYPE_NUMERIC);
 
   if (left_is_inarith)
     {
@@ -1218,8 +1216,7 @@ scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
 	}
     }
 
-  /* coerce fetched value to BIGINT, into the caller's value: the fetched one can be a bind value other readers share
-   * (resolve_domains' value array) */
+  /* coerce fetched value to BIGINT, into the caller's value: the fetched one can be a bind value other readers share */
   dom_status = tp_value_coerce (*out_dbvalp, coerced, domainp);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
@@ -2008,7 +2005,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       if (type != TP_DOMAIN_TYPE (column) && !(TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (column)))
 	  && !(type == DB_TYPE_OID && TP_DOMAIN_TYPE (column) == DB_TYPE_OBJECT))
 	{
-	  ret = domain_unresolved_error ("", -1, TP_DOMAIN_TYPE (column));
+	  ret = domain_unresolved_error (-1, TP_DOMAIN_TYPE (column));
 	  goto err_exit;
 	}
       /* CBRD-27583 (D-52): XASL generation planned the column's type for the value; a string of the other kind would
@@ -3347,7 +3344,7 @@ scan_open_index_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
    * fails the unresolved-domain check (execution) */
   if (indx_info->key_type == NULL || !tp_domain_match (indx_info->key_type, BTS->btid_int.key_type, TP_EXACT_MATCH))
     {
-      (void) domain_unresolved_error ("", -1, TP_DOMAIN_TYPE (BTS->btid_int.key_type));
+      (void) domain_unresolved_error (-1, TP_DOMAIN_TYPE (BTS->btid_int.key_type));
       goto exit_on_error;
     }
 
@@ -4324,9 +4321,6 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   JSON_TABLE_SCAN_ID *jtidp = NULL;
 
-  /* the outer values its block reads converted are converted anew */
-  qexec_enter_temporary_scope (scan_id->vd, scan_id->val_list);
-
 #if SERVER_MODE && !WINDOWS
   /* attempt parallel-index promotion now that need_count_only is resolved; may rewrite scan_id->type to S_PARALLEL_INDEX_SCAN. */
   if (scan_id->type == S_INDX_SCAN && scan_id->s.isid.parallel_pending != NULL)
@@ -4576,12 +4570,6 @@ scan_start_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
     case S_LIST_SCAN:
       llsidp = &scan_id->s.llsid;
-      /* the domains its positions and predicate operands take for the execution, once per start rather than at every
-       * row it returns */
-      if (scan_plan_list_scan_domains (scan_id->vd, llsidp) != NO_ERROR)
-	{
-	  goto exit_on_error;
-	}
       /* open list file scan */
       if (qfile_open_list_scan (llsidp->list_id, &llsidp->lsid) != NO_ERROR)
 	{
@@ -4663,8 +4651,6 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 
   s_id->single_fetched = false;
   s_id->null_fetched = false;
-  /* an inner scan restarts for the next outer row, whose values it reads converted anew */
-  qexec_enter_temporary_scope (s_id->vd, s_id->val_list);
 
   switch (s_id->type)
     {
@@ -7966,71 +7952,6 @@ reverse_key_list (KEY_VAL_RANGE * key_vals, int key_cnt, DOMAIN_SEARCH_KEYS sear
 }
 
 /*
- * scan_plan_list_scan_domains () - the domains of a list scan's positions and predicate operands the compiler left
- *   open, read from the plan
- *   return: NO_ERROR, or ER_QPROC_DOMAIN_UNRESOLVED (the unresolved-domain check (execution))
- *
- * A list position reads its list's column and a value pointer its producer: resolve_domains resolved both once for the
- * execution, a column over a session variable read too.
- */
-static int
-scan_plan_list_scan_domains (const VAL_DESCR * vd, LLIST_SCAN_ID * llsidp)
-{
-  regu_variable_list_node *lists[] = { llsidp->scan_pred.regu_list, llsidp->rest_regu_list };
-  for (int l = 0; l < 2; l++)
-    {
-      for (regu_variable_list_node * scan_regu = lists[l]; scan_regu != NULL; scan_regu = scan_regu->next)
-	{
-	  QFILE_TUPLE_VALUE_POSITION *pos_descr = &scan_regu->value.value.pos_descr;
-	  if (scan_regu->value.type != TYPE_POSITION)
-	    {
-	      continue;
-	    }
-	  /* the position and its value descriptor share one item: variable until an open of this execution resolved
-	   * it */
-	  if (!qexec_node_domain_is_variable (vd, scan_regu->value.plan_item)
-	      && !qexec_position_domain_is_variable (vd, scan_regu->value.plan_item))
-	    {
-	      continue;
-	    }
-	  const TP_DOMAIN *resolved = qexec_consumer_domain (vd, NULL, scan_regu->value.plan_item);
-	  if (resolved == NULL)
-	    {
-	      return qexec_domain_unresolved (vd, scan_regu->value.plan_item, pos_descr->dom);
-	    }
-	  /* the position and its value descriptor share one item and one execution domain */
-	  qexec_set_node_domain (vd, scan_regu->value.plan_item, NULL, resolved);
-	}
-    }
-  if (llsidp->scan_pred.pred_expr != NULL && llsidp->scan_pred.pred_expr->type == T_EVAL_TERM
-      && llsidp->scan_pred.pred_expr->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
-    {
-      COMP_EVAL_TERM *comp = &llsidp->scan_pred.pred_expr->pe.m_eval_term.et.et_comp;
-      REGU_VARIABLE *operands[] = { comp->lhs, comp->rhs };
-      for (int k = 0; k < 2; k++)
-	{
-	  REGU_VARIABLE *operand = operands[k];
-	  if (operand == NULL)
-	    {
-	      continue;
-	    }
-	  if (operand->domain != NULL && !qexec_node_domain_is_variable (vd, operand->plan_item))
-	    {
-	      /* a fixed domain is its own plan */
-	      continue;
-	    }
-	  const TP_DOMAIN *resolved = qexec_consumer_domain (vd, NULL, operand->plan_item);
-	  if (resolved != NULL)
-	    {
-	      qexec_set_node_domain (vd, operand->plan_item, operand->type == TYPE_POSITION ? NULL : operand->domain,
-				     resolved);
-	    }
-	}
-    }
-  return NO_ERROR;
-}
-
-/*
  * scan_init_multi_range_optimization () - initialize structure for multiple range optimization
  *
  *   return: error code
@@ -8477,11 +8398,6 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
   llsidp = &scan_id->s.llsid;
   key = llsidp->hlsid.temp_key;
-
-  if (scan_plan_list_scan_domains (scan_id->vd, llsidp) != NO_ERROR)
-    {
-      return S_ERROR;
-    }
 
   while ((qp_scan = qfile_scan_list_next (thread_p, &llsidp->lsid, &tplrec, PEEK)) == S_SUCCESS)
     {

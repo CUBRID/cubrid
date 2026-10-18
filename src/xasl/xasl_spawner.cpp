@@ -179,8 +179,6 @@ namespace cubxasl
     dest->rhs = spawner::spawn (src->rhs);
     dest->rel_op = src->rel_op;
     dest->type = src->type;
-    /* the leader's resolved comparison, as the copied operands take the leader's plan items */
-    dest->domain_compare = src->domain_compare;
     dest->compare = src->compare;
 
     return er_errid ();
@@ -199,8 +197,8 @@ namespace cubxasl
     dest->eq_flag = src->eq_flag;
     dest->rel_op = src->rel_op;
     dest->item_type = src->item_type;
-    /* the leader's element comparisons, as the copied operands take the leader's plan items */
-    dest->domain_compare = src->domain_compare;
+    dest->compare_row = src->compare_row;
+    dest->compare = src->compare;
 
     return er_errid ();
   }
@@ -286,8 +284,6 @@ namespace cubxasl
 	    src->original_domain == src->domain ? dest->domain : tp_domain_copy (src->original_domain, true);
     dest->conv = src->conv;
     dest->conv_mode = src->conv_mode;
-    /* the leader's plan item: immutable and alive until the leader retires its clone, after every worker */
-    dest->plan_item = src->plan_item;
     dest->vfetch_to = spawn (src->vfetch_to);
 
     /* TODO: unsupported */
@@ -408,8 +404,6 @@ namespace cubxasl
       }
 
     dest->domain = tp_domain_copy (src->domain, true);	/* TODO: check freed */
-    /* the plan item carries the node's resolved comparisons, as a term's */
-    dest->plan_item = src->plan_item;
     dest->value = spawn (src->value);
     dest->leftptr = spawn (src->leftptr);
     dest->rightptr = spawn (src->rightptr);
@@ -419,6 +413,8 @@ namespace cubxasl
     dest->conv = src->conv;
     dest->fails = src->fails;
     dest->coercion = src->coercion;
+    /* the unpack's decisions are immutable and live in the leader's unpack arena, after every worker */
+    dest->compares = src->compares;
 
     /* ref: stx_build_arith_type */
     switch (src->opcode)
@@ -578,7 +574,6 @@ namespace cubxasl
       }
 
     dest->dom = tp_domain_copy (src->dom, true);	/* TODO: check freed */
-    dest->plan_item = src->plan_item;
     dest->pos_no = src->pos_no;
 
     return er_errid ();
@@ -870,8 +865,6 @@ namespace cubxasl
     assert_release_error (i == src->val_cnt);
 
     dest->val_cnt = src->val_cnt;
-    /* the spawned nodes share the source's plan items, which number the scopes */
-    dest->domain_scope = src->domain_scope;
 
     return dest;
   }
@@ -891,14 +884,6 @@ namespace cubxasl
     return er_errid ();
   }
 
-  /* frees a worker's copy of resolve_domains state on the thread that made it */
-  static void
-  spawner_free_xasl_state (cubthread::entry *thread_p, void *ptr, int)
-  {
-    VAL_DESCR *vd = static_cast<VAL_DESCR *> (ptr);
-    qexec_free_xasl_state (thread_p, vd->xasl_state);
-  }
-
   VAL_DESCR *
   spawner::spawn (const VAL_DESCR *src)
   {
@@ -908,32 +893,6 @@ namespace cubxasl
     if (dest != nullptr)
       {
 	return dest;
-      }
-
-    if (src != nullptr && src->xasl_state != nullptr)
-      {
-	/* the worker inherits the resolved domains and values through the one PX copy: every reference value (secondary
-	 * references included) and the resolved domain table, owned and freed by this thread */
-	xasl_state *copy = qexec_deep_copy_xasl_state (&m_thread_ref, src->xasl_state, false);
-	if (copy == nullptr)
-	  {
-	    if (er_errid () == NO_ERROR)
-	      {
-		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (xasl_state));
-	      }
-	    return nullptr;
-	  }
-	cached_entry entry;
-	entry.ptr = &copy->vd;
-	entry.count = 1;
-	entry.deleter = spawner_free_xasl_state;
-	if (!m_cached_ptrs.try_emplace (src, std::move (entry)).second)
-	  {
-	    assert_release_error (false);
-	    qexec_free_xasl_state (&m_thread_ref, copy);
-	    return nullptr;
-	  }
-	return &copy->vd;
       }
 
     dest = alloc (src);
@@ -960,7 +919,10 @@ namespace cubxasl
     dest->lrand = src->lrand;
     dest->drand = src->drand;
 
-    /* a descriptor no resolve_domains made (no resolved-domain state) copies its values only */
+    /* TODO: unsupported */
+#if 0
+    assert_release_error (src->xasl_state == nullptr);
+#endif
     dest->xasl_state = NULL;
 
     return dest;

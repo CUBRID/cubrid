@@ -99,7 +99,7 @@ extern int qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CON
 extern int qdata_get_single_tuple_from_list_id (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
 						val_list_node * single_tuple);
 extern int qdata_get_valptr_type_list (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list,
-				       qfile_tuple_value_type_list * type_list, const val_descr * vd);
+				       qfile_tuple_value_type_list * type_list);
 extern int qdata_evaluate_function (THREAD_ENTRY * thread_p, regu_variable_node * func, val_descr * vd, OID * obj_oid,
 				    QFILE_TUPLE_RECORD * tplrec);
 extern int qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list,

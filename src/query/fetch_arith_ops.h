@@ -40,7 +40,7 @@
 typedef struct fetch_arith_args FETCH_ARITH_ARGS;
 struct fetch_arith_args
 {
-  REGU_VARIABLE *regu_var;	/* the node's regu: its flags, compiled domain and plan item */
+  REGU_VARIABLE *regu_var;	/* the node's regu: its flags and compiled domain */
   ARITH_TYPE *arithptr;		/* the node: operands, predicate, result slot (value) */
   val_descr *vd;
   OID *obj_oid;			/* for the operands an operator fetches itself (a branch, a lazy operand) */
@@ -49,9 +49,8 @@ struct fetch_arith_args
   DB_VALUE *peek_right;
   DB_VALUE *peek_third;
   DB_VALUE *peek_fourth;
-  TP_DOMAIN *domain;		/* the node's execution domain; NULL when resolve_domains found it takes no value */
-  TP_DOMAIN *arith_domain;	/* the ARITH_TYPE's, as the execution has it */
-  TP_DOMAIN *no_value_domain;	/* FETCH_RESOLVED_NO_VALUE: the compiled domain the node keeps */
+  TP_DOMAIN *domain;		/* the node's domain; NULL where its operands leave its type to the data */
+  TP_DOMAIN *arith_domain;	/* the ARITH_TYPE's */
 };
 
 /* an operator returns NO_ERROR with its result in arithptr->value, an error code (the error is set), or this: the node's
@@ -63,13 +62,9 @@ typedef int (*FETCH_ARITH_OP) (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a);
 extern FETCH_ARITH_OP fetch_arith_op (OPERATOR_TYPE opcode);
 
 /* The node protocol around an operator (fetch.c), shared by the interpreter and a program's generic step: the node's
- * domains in this execution, its result slot cleared and a variable domain resolved, then after the operator the
- * no-value check and the merged-collation relabel. */
+ * domains, then its result slot cleared and a variable domain left to the values. */
 extern void fetch_arith_node_domains (val_descr * vd, FETCH_ARITH_ARGS * a);
 extern int fetch_arith_node_resolve (val_descr * vd, FETCH_ARITH_ARGS * a);
-extern int fetch_arith_node_end (val_descr * vd, FETCH_ARITH_ARGS * a);
-/* whether resolve_domains evaluated this constant expression in this execution (its value is at vd->dbval_ptr + ref) */
-extern bool fetch_arith_constant_evaluated (const val_descr * vd, const DOMAIN_PLAN_ITEM * item);
 
 /* two of the interpreter's operand rules the generic step's emitter mirrors (fetch.c): the operand whose fetch error
  * a date/time function replaces with a conversion error, and WIDTH_BUCKET's two bounds out of its PT_BETWEEN operand */
@@ -77,8 +72,5 @@ extern bool is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var);
 extern int fetch_peek_min_max_value_of_width_bucket_func (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 							  val_descr * vd, OID * obj_oid, QFILE_TUPLE_RECORD * tplrec,
 							  DB_VALUE ** min, DB_VALUE ** max);
-/* a value a row picked among branches whose collations resolve_domains merged, brought into the merged domain */
-extern int fetch_arith_convert_to_resolved_branch (const val_descr * vd, const DOMAIN_PLAN_ITEM * item,
-						   DB_VALUE * value);
 
 #endif /* _FETCH_ARITH_OPS_H_ */

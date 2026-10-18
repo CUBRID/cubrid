@@ -219,8 +219,6 @@ struct val_list_node
 {
   QPROC_DB_VALUE_LIST valp;	/* first value node */
   int val_cnt;			/* value count */
-  int domain_scope;		/* server, load-derived, not serialized: the scope of the correlated values its block
-				 * reads converted once, which a scan filling this list starts anew; 0 none */
 };
 
 /* To handle selected update list, click counter related */
@@ -1147,11 +1145,8 @@ namespace memoize
   class storage;
 }
 // *INDENT-ON*
-struct domain_plan;
-
 struct xasl_node
 {
-  struct domain_plan *domain_plan;	/* tree-wide unpack-arena plan, not serialized */
   XASL_NODE_HEADER header;	/* XASL header */
   XASL_NODE *next;		/* next XASL block */
   PROC_TYPE type;		/* XASL type */

@@ -2453,46 +2453,9 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
 	{
 	  if (agg_p->flag.agg_optimized == false)
 	    {
-	      /* the key sorts the list's column, which the plan typed (a MEDIAN / PERCENTILE key sorts its
-	       * list's domain, pt_set_interpolation_list_domain), in a sort list the execution owns */
-	      SORT_LIST *sort_list = agg_p->sort_list;
-	      if (sort_list != NULL)
-		{
-		  TP_DOMAIN *key_domain = sort_list->pos_descr.dom;
-		  if (domain_is_variable (key_domain))
-		    {
-		      assert (sort_list->pos_descr.pos_no < agg_p->list_id->type_list.type_cnt);
-		      key_domain = agg_p->list_id->type_list.domp[sort_list->pos_descr.pos_no];
-		    }
-		  if (key_domain != sort_list->pos_descr.dom)
-		    {
-		      int n_keys = 0;
-		      for (SORT_LIST *key = agg_p->sort_list; key != NULL; key = key->next)
-			{
-			  n_keys++;
-			}
-		      sort_list = qfile_allocate_sort_list (thread_p, n_keys);
-		      if (sort_list == NULL)
-			{
-			  error = ER_FAILED;
-			  goto exit;
-			}
-		      for (SORT_LIST *src = agg_p->sort_list, *dest = sort_list; src != NULL;
-			   src = src->next, dest = dest->next)
-			{
-			  dest->s_order = src->s_order;
-			  dest->s_nulls = src->s_nulls;
-			  dest->pos_descr = src->pos_descr;
-			}
-		      sort_list->pos_descr.dom = key_domain;
-		    }
-		}
-
-	      list_id_p = qfile_sort_list (thread_p, agg_p->list_id, sort_list, agg_p->option, false);
-	      if (sort_list != agg_p->sort_list)
-		{
-		  qfile_free_sort_list (thread_p, sort_list);
-		}
+	      /* the keys sort the list's column in its compiled domain (pt_set_interpolation_list_domain,
+	       * pt_decide_aggregate_domains) */
+	      list_id_p = qfile_sort_list (thread_p, agg_p->list_id, agg_p->sort_list, agg_p->option, false);
 
 	      if (list_id_p != NULL && er_has_error ())
 		{
@@ -3442,8 +3405,11 @@ qdata_agg_hkey_compare (aggregate_hash_key *ckey1, aggregate_hash_key *ckey2, in
   for (i = 0; i < ckey1->val_count; i++)
     {
       /* a key from the scan and one read back from a partial list are values of the key's one domain (the scan's key
-       * regu's, which types the partial list's column): they hash alike exactly when they compare equal */
-      result = domain_compare_in_domain (ckey1->compares[i], ckey1->values[i], ckey2->values[i], 0, 1);
+       * regu's, which types the partial list's column): they hash alike exactly when they compare equal. Exception to
+       * deciding before the rows: keys whose domains leave a value's type to the data compare by their values */
+      result = ckey1->compares != NULL ? domain_compare_in_domain (ckey1->compares[i], ckey1->values[i],
+	       ckey2->values[i], 0, 1)
+	       : tp_value_compare (ckey1->values[i], ckey2->values[i], 0, 1);
       if (result != DB_EQ)
 	{
 	  *diff_pos = i;
