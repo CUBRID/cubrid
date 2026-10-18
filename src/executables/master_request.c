@@ -2024,11 +2024,6 @@ css_master_request_is_local (SOCKET fd)
 	struct sockaddr_in *addr_in = (struct sockaddr_in *) &addr;
 	return (ntohl (addr_in->sin_addr.s_addr) == INADDR_LOOPBACK);
       }
-    case AF_INET6:
-      {
-	struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *) &addr;
-	return (IN6_IS_ADDR_LOOPBACK (&addr_in6->sin6_addr) != 0);
-      }
     default:
       return false;
     }
@@ -2044,69 +2039,43 @@ css_master_request_is_local (SOCKET fd)
  * Note: unlike css_master_request_is_local () (loopback/unix only, used for the
  *   admin commands commdb issues over localhost), a co-located cub_server
  *   registers with cub_master by connecting to the resolved local host name
- *   (css_connect_to_master_server () -> GETHOSTNAME ()), so its source address
- *   may be a non-loopback interface address of this same host. This accepts
- *   those while still rejecting a genuinely remote peer.
+ *   (master::connector::connect_to_master () -> GETHOSTNAME ()), so its source
+ *   address may be a non-loopback interface address of this same host. This
+ *   accepts those while still rejecting a genuinely remote peer. The master
+ *   only listens on AF_INET and AF_UNIX sockets, so there is no IPv6 peer.
  */
 bool
 css_peer_is_local_host (SOCKET fd)
 {
   struct sockaddr_storage peer;
   socklen_t peer_len = sizeof (peer);
+  struct in_addr peer_addr;
   struct ifaddrs *ifaddr, *ifa;
   bool is_local = false;
 
-  if (getpeername (fd, (struct sockaddr *) &peer, &peer_len) < 0)
+  /* a unix-domain or loopback peer */
+  if (css_master_request_is_local (fd))
     {
-      return false;
-    }
-
-  switch (peer.ss_family)
-    {
-    case AF_UNIX:
       return true;
-    case AF_INET:
-      if (ntohl (((struct sockaddr_in *) &peer)->sin_addr.s_addr) == INADDR_LOOPBACK)
-	{
-	  return true;
-	}
-      break;
-    case AF_INET6:
-      if (IN6_IS_ADDR_LOOPBACK (&((struct sockaddr_in6 *) &peer)->sin6_addr) != 0)
-	{
-	  return true;
-	}
-      break;
-    default:
-      return false;
     }
 
-  /* a non-loopback IP peer: accept only if it is one of this host's own addresses */
+  /* otherwise accept only an IPv4 peer whose address is one of this host's own */
+  if (getpeername (fd, (struct sockaddr *) &peer, &peer_len) < 0 || peer.ss_family != AF_INET)
+    {
+      return false;
+    }
+  peer_addr = ((struct sockaddr_in *) &peer)->sin_addr;
+
   if (getifaddrs (&ifaddr) != 0)
     {
       return false;
     }
   for (ifa = ifaddr; ifa != NULL && !is_local; ifa = ifa->ifa_next)
     {
-      if (ifa->ifa_addr == NULL || ifa->ifa_addr->sa_family != peer.ss_family)
+      if (ifa->ifa_addr != NULL && ifa->ifa_addr->sa_family == AF_INET
+	  && ((struct sockaddr_in *) ifa->ifa_addr)->sin_addr.s_addr == peer_addr.s_addr)
 	{
-	  continue;
-	}
-      if (peer.ss_family == AF_INET)
-	{
-	  if (((struct sockaddr_in *) &peer)->sin_addr.s_addr
-	      == ((struct sockaddr_in *) ifa->ifa_addr)->sin_addr.s_addr)
-	    {
-	      is_local = true;
-	    }
-	}
-      else if (peer.ss_family == AF_INET6)
-	{
-	  if (memcmp (&((struct sockaddr_in6 *) &peer)->sin6_addr,
-		      &((struct sockaddr_in6 *) ifa->ifa_addr)->sin6_addr, sizeof (struct in6_addr)) == 0)
-	    {
-	      is_local = true;
-	    }
+	  is_local = true;
 	}
     }
   freeifaddrs (ifaddr);

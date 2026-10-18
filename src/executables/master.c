@@ -369,12 +369,6 @@ css_validate_proc_register (const CSS_SERVER_PROC_REGISTER * proc_register, int 
       return false;
     }
 
-  /* server_name, and the strings packed within it, must be terminated inside
-   * the field so every strlen()/strdup() on it below stays in bounds */
-  if (proc_register->server_name[proc_register->CSS_SERVER_MAX_SZ_SERVER_NAME - 1] != '\0')
-    {
-      return false;
-    }
   if (proc_register->server_name_length <= 0
       || proc_register->server_name_length > proc_register->CSS_SERVER_MAX_SZ_SERVER_NAME)
     {
@@ -382,7 +376,8 @@ css_validate_proc_register (const CSS_SERVER_PROC_REGISTER * proc_register, int 
     }
 
   /* the packed name (name\0[version\0env\0pid\0]) must end within its declared
-   * length so the packed-string parser cannot read past it */
+   * length so the packed-string parser cannot read past it. Only the length is
+   * trusted: cub_server does not initialize the bytes of server_name past it. */
   if (proc_register->server_name[proc_register->server_name_length - 1] != '\0')
     {
       return false;
@@ -403,19 +398,16 @@ static char *
 css_extract_packed_string (const char **pp, const char *limit)
 {
   const char *start = *pp;
-  const char *q;
+  const char *nul = (const char *) memchr (start, '\0', limit - start);
 
-  for (q = start; q < limit; q++)
+  if (nul == NULL)
     {
-      if (*q == '\0')
-	{
-	  *pp = q + 1;
-	  return strdup (start);
-	}
+      *pp = limit;
+      return NULL;
     }
 
-  *pp = limit;
-  return NULL;
+  *pp = nul + 1;
+  return strdup (start);
 }
 
 #if !defined(WINDOWS)
@@ -641,13 +633,13 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid, bool is_clie
   SOCKET_QUEUE_ENTRY *entry;
 
 #if !defined(WINDOWS)
-  /* CBRD-27511: server self-registration (SERVER_REQUEST_FROM_SERVER) ultimately
-   * leads to process registration and, on connection loss, execv() of the
-   * registered exec_path. A legitimate cub_server always registers with its
-   * co-located cub_master from the same host, so a peer that is not on this
-   * path is the unauthenticated remote registration/execv vector and is rejected
-   * here. is_client (SERVER_REQUEST_FROM_CLIENT) is the remote client-redirect
-   * path and must stay reachable from remote peers. */
+  /* CBRD-27511: server self-registration (SERVER_REQUEST_FROM_SERVER) leads to
+   * process registration and, on connection loss, a revive of the server by the
+   * server monitor. A legitimate cub_server always registers with its co-located
+   * cub_master from the same host, so a peer that is not on this host is rejected
+   * here. is_client (SERVER_REQUEST_FROM_CLIENT) is the self-registration of the
+   * HA log processes (copylogdb/applylogdb) and is not gated here; a remote client
+   * reaches the master through DATA_REQUEST instead. */
   if (!is_client && !css_peer_is_local_host (conn->fd))
     {
       __gv_cvar.css_free_conn (conn);
@@ -666,7 +658,8 @@ css_register_new_server (CSS_CONN_ENTRY * conn, unsigned short rid, bool is_clie
 #if !defined(WINDOWS)
       /* CBRD-27511: the received buffer is used as a NUL-terminated server name
        * by css_return_entry_of_server () below and, for a server self-registration,
-       * its exec_path/args later reach execv (); validate it before any use. */
+       * as a CSS_SERVER_PROC_REGISTER whose packed name is parsed later; validate
+       * it before any use. */
       if (data == NULL || data_length <= 0 || memchr (data, '\0', (size_t) data_length) == NULL)
 	{
 	  free_and_init (data);
