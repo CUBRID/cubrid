@@ -1687,8 +1687,8 @@ int
 qfile_add_tuple_to_staged_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAGE_PTR staged_page,
 				QMGR_TEMP_FILE * spool_p, QFILE_TUPLE tuple)
 {
-  VPID new_vpid, ovf_vpid, prev_ovf_vpid;
-  char *ovf_page = NULL;
+  VPID new_vpid, ovf_vpid;
+  PAGE_PTR ovf_page = NULL, prev_ovf_page = NULL;
   int tuple_length, tuple_page_size, offset;
   int error = NO_ERROR;
 
@@ -1771,47 +1771,37 @@ qfile_add_tuple_to_staged_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
   /* overflow: none if the whole tuple fits in the page */
   if (tuple_page_size == tuple_length)
     {
-      /* the next link of the last page stays NULL between calls; qfile_copy_to_external_file_page () relies on it */
+      /* the next link of the last page is NULL between calls: it is set to NULL when the page starts, and it is set to
+       * the next page only at the page transition, right before the page is copied and staged_page starts the next
+       * page; the copy at the end of the split (qfile_copy_to_external_file_page ()) relies on it */
       assert (QFILE_GET_NEXT_PAGE_ID (staged_page) == NULL_PAGEID);
+
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
       return NO_ERROR;
     }
 
-  /* the rest of the tuple goes to overflow pages, copied at once since they are never appended to */
-  ovf_page = (char *) db_private_alloc (thread_p, DB_PAGESIZE);
-  if (ovf_page == NULL)
-    {
-      goto error_exit;
-    }
-  memset (ovf_page, 0, DB_PAGESIZE);
-  qfile_initialize_page_header ((PAGE_PTR) ovf_page);	/* prev and next stay NULL in overflow pages */
-
-  /* each part is copied when the place of the next part is known, as the data pages are */
-  VPID_SET_NULL (&prev_ovf_vpid);
+  /* the rest of the tuple goes to overflow pages, written in place since they are never appended to;
+   * each page is released when the page of the next part is linked to it, as qfile_add_tuple_to_list_from () does */
   for (offset = tuple_page_size; offset < tuple_length; offset += tuple_page_size)
     {
       tuple_page_size = MIN (tuple_length - offset, qfile_Max_tuple_page_size);
 
-      error = qmgr_alloc_external_file_page (thread_p, &ovf_vpid, spool_p);
-      if (error != NO_ERROR)
+      ovf_page = qmgr_get_new_page (thread_p, &ovf_vpid, spool_p);
+      if (ovf_page == NULL)
 	{
 	  goto error_exit;
 	}
 
-      if (VPID_ISNULL (&prev_ovf_vpid))
+      if (prev_ovf_page == NULL)
 	{
 	  /* the first part: the data page links to it */
 	  QFILE_PUT_OVERFLOW_VPID (staged_page, &ovf_vpid);
 	}
       else
 	{
-	  /* the previous part links to this one, and is copied now that its link is known */
-	  QFILE_PUT_OVERFLOW_VPID (ovf_page, &ovf_vpid);
-	  error = qmgr_copy_to_external_file_page (thread_p, &prev_ovf_vpid, spool_p, ovf_page);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
+	  /* the previous part links to this one, and is released now that its link is set */
+	  QFILE_PUT_OVERFLOW_VPID (prev_ovf_page, &ovf_vpid);
+	  qfile_set_dirty_page (thread_p, prev_ovf_page, FREE, spool_p);
 	}
 
       /* page header: an overflow page holding this part */
@@ -1819,30 +1809,28 @@ qfile_add_tuple_to_staged_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
       QFILE_PUT_OVERFLOW_TUPLE_PAGE_SIZE (ovf_page, tuple_page_size);
 
       /* tuple: this part */
-      memcpy (ovf_page + QFILE_PAGE_HEADER_SIZE, (char *) tuple + offset, tuple_page_size);
+      memcpy ((char *) ovf_page + QFILE_PAGE_HEADER_SIZE, (char *) tuple + offset, tuple_page_size);
 
       /* list descriptor: an overflow page is counted in page_cnt, as a data page is */
       list_id_p->page_cnt++;
 
-      prev_ovf_vpid = ovf_vpid;
+      prev_ovf_page = ovf_page;
     }
 
-  /* the last part */
-  QFILE_PUT_OVERFLOW_VPID_NULL (ovf_page);
-  error = qmgr_copy_to_external_file_page (thread_p, &prev_ovf_vpid, spool_p, ovf_page);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  db_private_free_and_init (thread_p, ovf_page);
+  /* the last part: no part follows */
+  QFILE_PUT_OVERFLOW_VPID_NULL (prev_ovf_page);
+  qfile_set_dirty_page (thread_p, prev_ovf_page, FREE, spool_p);
 
   assert (QFILE_GET_NEXT_PAGE_ID (staged_page) == NULL_PAGEID);
+
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 error_exit:
-  db_private_free_and_init (thread_p, ovf_page);
+  if (prev_ovf_page != NULL)
+    {
+      qmgr_free_old_page_and_init (thread_p, prev_ovf_page, spool_p);
+    }
 
   assert_release_error (er_errid () != NO_ERROR);
   return er_errid ();
