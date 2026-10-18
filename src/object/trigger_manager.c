@@ -5910,13 +5910,6 @@ tr_check_abort_triggers (void)
       return;
     }
 
-  (void) run_user_triggers (TR_EVENT_ABORT, TR_TIME_AFTER);
-
-  /*
-   * can the abort triggers have deferred activities ? if so
-   * need to execute the deferred list now
-   */
-
   /* ignore any deferred activities */
   flush_deferred_activities ();
 
