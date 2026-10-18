@@ -89,6 +89,7 @@ static char *change_trigger_action_query (PARSER_CONTEXT * parser, PT_NODE * sta
 static PT_NODE *pt_set_trigger_obj_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_set_trigger_obj_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 
 /*
  * pt_spec_to_oid_attr () - Generate an oid attribute from a resolved spec.
@@ -645,6 +646,110 @@ pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	    }
 
 	  class_->info.name.db_object_chn = locator_get_cache_coherency_number (clsmop);
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_has_modified_class -
+ *   return:
+ *
+ *   parser(in):
+ *   statement(in/out):
+ */
+DB_CLASS_MODIFICATION_STATUS
+pt_has_modified_class (PARSER_CONTEXT * parser, PT_NODE * statement)
+{
+  DB_CLASS_MODIFICATION_STATUS status = DB_CLASS_NOT_MODIFIED;
+
+  parser_walk_tree (parser, statement, pt_has_modified_class_helper, &status, NULL, NULL);
+
+  return status;
+}
+
+/*
+ * pt_has_modified_class_helper -
+ *   return:
+ *
+ *   parser(in):
+ *   node(in/out):
+ *   arg(in/out):
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  DB_CLASS_MODIFICATION_STATUS *status = (DB_CLASS_MODIFICATION_STATUS *) arg;
+  PT_NODE *class_;
+  MOP clsmop = NULL;
+  SM_CLASS *sm_class = NULL;
+  int error = NO_ERROR;
+
+  if (*status != DB_CLASS_NOT_MODIFIED)
+    {
+      *continue_walk = PT_STOP_WALK;
+      return node;
+    }
+
+  *continue_walk = PT_CONTINUE_WALK;
+  if (node->node_type == PT_SPEC)
+    {
+      for (class_ = node->info.spec.flat_entity_list; class_; class_ = class_->next)
+	{
+	  clsmop = class_->info.name.db_object;
+
+	  if (clsmop == NULL)
+	    {
+	      continue;
+	    }
+
+	  if (clsmop->decached)
+	    {
+	      /* the class might be aborted. */
+	      *status = DB_CLASS_MODIFIED;
+	    }
+	  else
+	    {
+	      error = au_fetch_class_force (clsmop, &sm_class, AU_FETCH_READ);
+	      if (error != NO_ERROR)
+		{
+		  if (error == ER_HEAP_UNKNOWN_OBJECT)
+		    {
+		      /* the class might be dropped. */
+		      *status = DB_CLASS_MODIFIED;
+		    }
+		  else
+		    {
+		      *status = DB_CLASS_ERROR;
+		    }
+		}
+	    }
+	  if (*status != DB_CLASS_NOT_MODIFIED)
+	    {
+	      /* don't revisit leaves */
+	      *continue_walk = PT_STOP_WALK;
+	      break;
+	    }
+
+	  if (sm_get_class_type (sm_class) != SM_CLASS_CT)
+	    {
+	      continue;
+	    }
+
+	  if (class_->info.name.db_object_chn == NULL_CHN)
+	    {
+	      class_->info.name.db_object_chn = locator_get_cache_coherency_number (clsmop);
+	    }
+	  else if (class_->info.name.db_object_chn != locator_get_cache_coherency_number (clsmop))
+	    {
+	      *status = DB_CLASS_MODIFIED;
+
+	      /* don't revisit leaves */
+	      *continue_walk = PT_STOP_WALK;
+	      break;
+	    }
 	}
     }
 
