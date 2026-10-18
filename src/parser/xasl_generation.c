@@ -7281,8 +7281,7 @@ pt_operand_retyped (const REGU_VARIABLE * const *operand, int n_operands, const 
       const PT_TYPE_ENUM type = args[i]->type_enum;
       if (pt_is_enforced_collation_cast (args[i]))
 	{
-	  /* the cast keeps a value of another type as it is: the node computes over it as typed
-	   * (fetch_arith_binary_unresolved), it is not retyped */
+	  /* the cast keeps a value of another type as it is: the node computes over it as typed, it is not retyped */
 	  continue;
 	}
       if (type != PT_TYPE_MAYBE && type != PT_TYPE_NONE && type != PT_TYPE_NULL && operands[i]->domain != NULL

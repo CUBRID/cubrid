@@ -6326,6 +6326,7 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   ptr = or_unpack_int (ptr, &regu_var->flags);
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION));
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -6702,14 +6703,19 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
     }
 
   /* CBRD-27583 (d2): an addition, subtraction, multiplication or division computes over its operands' domains, which
-   * XASL generation fixed (an operand of another type converts at its regu); a variable one leaves it unresolved.
+   * XASL generation fixed (an operand of another type converts at its regu); an operand of no fixed domain is the
+   * generation's defect, refused here rather than decided at each row.
    * The reset zeroes the whole union: FIELD, NULLIF, LEAST and GREATEST set compares below, any other node keeps NULL */
   memset (&arith_type->decided, 0, sizeof (arith_type->decided));
-  if ((arith_type->opcode == T_ADD || arith_type->opcode == T_SUB || arith_type->opcode == T_MUL
-       || arith_type->opcode == T_DIV) && arith_type->leftptr != NULL && arith_type->rightptr != NULL
-      && arith_type->leftptr->domain != NULL && TP_DOMAIN_TYPE (arith_type->leftptr->domain) != DB_TYPE_VARIABLE
-      && arith_type->rightptr->domain != NULL && TP_DOMAIN_TYPE (arith_type->rightptr->domain) != DB_TYPE_VARIABLE)
+  if (arith_decides_arith (arith_type))
     {
+      if (arith_type->leftptr == NULL || arith_type->rightptr == NULL || arith_type->leftptr->domain == NULL
+	  || TP_DOMAIN_TYPE (arith_type->leftptr->domain) == DB_TYPE_VARIABLE || arith_type->rightptr->domain == NULL
+	  || TP_DOMAIN_TYPE (arith_type->rightptr->domain) == DB_TYPE_VARIABLE)
+	{
+	  stx_set_xasl_errcode (thread_p, domain_unresolved_error (-1, DB_TYPE_VARIABLE));
+	  return NULL;
+	}
       const DOMAIN_OPERAND operands[2] = {
 	{arith_type->leftptr->domain, TP_DOMAIN_TYPE (arith_type->leftptr->domain), -1, false},
 	{arith_type->rightptr->domain, TP_DOMAIN_TYPE (arith_type->rightptr->domain), -1, false}

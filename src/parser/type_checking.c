@@ -9376,8 +9376,18 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       if (arg1->type_enum == PT_TYPE_MAYBE && arg1->expected_domain)
 	{
 	  /* CBRD-27583 (D-52): the bound is the VARCHAR the function makes (db_get_like_optimization_bounds), not its
-	   * pattern's CHAR: a key element of a CHAR column keeps its own domain, as develop's row kept it */
+	   * pattern's CHAR: a key element of a CHAR column keeps its own domain, as develop's row kept it. It is in the
+	   * pattern's codeset and collation (DOMAIN_CHAR_FIRST), not the system's */
 	  node->type_enum = PT_TYPE_VARCHAR;
+	  PT_NODE *bound_type = TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (arg1->expected_domain))
+	    ? pt_make_prim_data_type (parser, PT_TYPE_VARCHAR) : NULL;
+	  if (bound_type != NULL)
+	    {
+	      bound_type->info.data_type.units = TP_DOMAIN_CODESET (arg1->expected_domain);
+	      bound_type->info.data_type.collation_id = TP_DOMAIN_COLLATION (arg1->expected_domain);
+	      bound_type->info.data_type.collation_flag = TP_DOMAIN_COLLATION_FLAG (arg1->expected_domain);
+	      node->data_type = bound_type;
+	    }
 	  goto error;
 	}
       break;

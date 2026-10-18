@@ -3309,17 +3309,8 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
        * operand types eval_pred () re-discovers per row are fixed in the XASL, so they
        * are resolved once here, on the scan's first row, and kept with the clone
        * (qexec_clear_pred () releases the slot values when the execution ends).  The leaves
-       * and operand steps were resolved for the bound types of the compiling execution:
-       * an execution that binds other types recompiles.  Anything not covered keeps
-       * pr_eval_fnc. */
-      if (pred_root->scan_prog_state == 1
-	  && unlikely (!expr_scan_pred_signature_ok (pred_root->scan_prog, filterp->val_descr,
-						     EXPR_PROG_EXEC_STAMP (filterp->val_descr))))
-	{
-	  expr_scan_pred_free (pred_root->scan_prog);
-	  pred_root->scan_prog = NULL;
-	  pred_root->scan_prog_state = 0;
-	}
+       * and operand steps take the compiled domains, which the XASL fixes for every execution.
+       * Anything not covered keeps pr_eval_fnc. */
       if (unlikely (pred_root->scan_prog_state == 0))
 	{
 	  /* compile on the first row (expr_compile.c) */

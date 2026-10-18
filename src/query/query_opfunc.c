@@ -453,11 +453,9 @@ qdata_valptr_prog_ensure (THREAD_ENTRY * thread_p, valptr_list_node * valptr_lis
   if (valptr_list_p->eval_prog_state == 1)
     {
       prog = (EXPR_PROG *) valptr_list_p->eval_prog;
-      if (!expr_prog_signature_ok (prog, val_desc_p, EXPR_PROG_EXEC_STAMP (val_desc_p))
-	  || !expr_prog_share_current (prog, valptr_list_p->eval_prog_share_spec))
+      if (!expr_prog_share_current (prog, valptr_list_p->eval_prog_share_spec))
 	{
-	  /* different bind types than the program was specialized for, or the scan filter
-	   * whose slots it reads was recompiled: recompile */
+	  /* the scan filter whose slots it reads was recompiled: recompile */
 	  qdata_free_valptr_list_prog (thread_p, valptr_list_p);
 	  valptr_list_p->eval_prog_state = 0;
 	  qdata_valptr_prog_compile (thread_p, valptr_list_p, val_desc_p);
@@ -500,10 +498,10 @@ qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_
  * free_it: the XASL clone is being released (XASL_DECACHE_CLONE): free the program.
  * is_final: the execution is over.  The program stays with the clone for its next execution
  * and only its slot values are released (expr_prog_reset ()), which also re-arms the
- * prologues and the bind-type signature check for that next execution.
+ * prologues for that next execution.
  * A clear that is neither -- a correlated subquery rewound for the next outer row -- keeps
  * the slots and the prologues: the bound values and the literals do not change within one
- * execution, so re-running the prologue and the signature check per outer row would only
+ * execution, so re-running the prologue per outer row would only
  * repeat work (that is exactly the per-execution cost this program was compiled to save).
  * The row-ready mark is dropped on every clear; it costs nothing and cannot outlive its row
  * anyway (qdata_valptr_prog_ensure () consumes it).
@@ -4925,9 +4923,8 @@ qdata_assert_arith_value (const DOMAIN_ARITH * arith, const DB_VALUE * result_p)
  *   concatenation (qdata_strcat_dbval answers a NULL string, as the typed addition let it).
  *   return: NO_ERROR, or ER_code
  *   opcode(in): T_ADD, T_SUB, T_MUL or T_DIV
- *   arith(in): the plan - a node's RESOLVED_DOMAIN, a SUM's or AVG's DOMAIN_OPERAND_COERCION, domain_arith_double
- *	       for an accumulation in DOUBLE; a plan nothing resolved (DOMAIN_ARITH_UNRESOLVED) is the caller's
- *	       unresolved-domain check, never seen here
+ *   arith(in): the plan - a node's ARITH_TYPE.decided.arith (the unpack refuses a node it cannot decide), a SUM's or
+ *	       AVG's DOMAIN_OPERAND_COERCION, domain_arith_double for an accumulation in DOUBLE
  *   domain_p(in): the domain the result is coerced to; NULL none
  */
 int
@@ -4945,9 +4942,9 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * 
 
   if (dbval1_p == NULL || dbval2_p == NULL || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
-      /* a NULL operand: no value, before any plan (a node without one answers its NULL operand too), but under plus
-       * as concatenation a NULL string, which qdata_strcat_dbval answers (oracle_style_empty_string); a NULL without a
-       * string type (a NULL made bare) is no value */
+      /* a NULL operand: no value, before any plan, but under plus as concatenation a NULL string, which
+       * qdata_strcat_dbval answers (oracle_style_empty_string); a NULL without a string type (a NULL made bare) is no
+       * value */
       if (arith != NULL && arith->kind == DOMAIN_ARITH_CONCAT && dbval1_p != NULL && dbval2_p != NULL
 	  && TP_IS_CHAR_BIT_TYPE (DB_VALUE_DOMAIN_TYPE (dbval1_p))
 	  && TP_IS_CHAR_BIT_TYPE (DB_VALUE_DOMAIN_TYPE (dbval2_p)))

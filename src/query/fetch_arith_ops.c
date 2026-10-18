@@ -63,11 +63,8 @@
 static int get_hour_minute_or_second (const DB_VALUE * datetime, OPERATOR_TYPE op_type, DB_VALUE * db_value);
 static int get_year_month_or_day (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
 static int get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VALUE * result);
-/* An arithmetic node's row: the typed operator inline, a node over an operand of a variable domain out of line */
-STATIC_INLINE int fetch_arith_binary (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right,
-				      TP_DOMAIN * domain) __attribute__ ((ALWAYS_INLINE));
-static int fetch_arith_binary_unresolved (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left,
-					  DB_VALUE * right, TP_DOMAIN * domain) __attribute__ ((noinline));
+STATIC_INLINE int fetch_arith_binary (ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain)
+  __attribute__ ((ALWAYS_INLINE));
 
 /*
  * fetch_session_read_value () - CBRD-27583 (4.8, D-40): a session variable read's value in the type the compilation gave
@@ -150,45 +147,10 @@ fetch_least_or_greatest (THREAD_ENTRY * thread_p, ARITH_TYPE * arithptr, val_des
  * neither operand (stx_build_arith_type asserts it) and the operator is called directly.
  */
 static inline int
-fetch_arith_binary (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain)
+fetch_arith_binary (ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain)
 {
-  const DOMAIN_ARITH *arith = arith_decided_arith (arithptr);
-  if (arith->kind != DOMAIN_ARITH_UNRESOLVED)
-    {
-      /* its optdebug check still holds the decision to the rule over the values (qdata_assert_arith_planned) */
-      return qdata_arith_dbval (arithptr->opcode, arith, left, right, arithptr->value, domain);
-    }
-  return fetch_arith_binary_unresolved (vd, arithptr, left, right, domain);
-}
-
-/* fetch_arith_binary of a node over an operand of a variable domain (out of line): a NULL operand is no value, as the
- * operator answers it before any dispatch */
-static int
-fetch_arith_binary_unresolved (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right,
-			       TP_DOMAIN * domain)
-{
-  /* stx_build_arith_type leaves only a node over an operand of no fixed domain unresolved */
-  assert (arithptr->leftptr == NULL || arithptr->rightptr == NULL || arithptr->leftptr->domain == NULL
-	  || TP_DOMAIN_TYPE (arithptr->leftptr->domain) == DB_TYPE_VARIABLE || arithptr->rightptr->domain == NULL
-	  || TP_DOMAIN_TYPE (arithptr->rightptr->domain) == DB_TYPE_VARIABLE);
-  if (left == NULL || right == NULL || DB_IS_NULL (left) || DB_IS_NULL (right))
-    {
-      return qdata_arith_dbval (arithptr->opcode, NULL, left, right, arithptr->value, domain);
-    }
-  /* exception to deciding before the rows: the operand coercion over the values' domains, the rule the unpack applies
-   * to the compiled ones */
-  const DOMAIN_OPERAND operands[2] = {
-    {domain_value_domain (left), DB_VALUE_DOMAIN_TYPE (left), -1, false},
-    {domain_value_domain (right), DB_VALUE_DOMAIN_TYPE (right), -1, false}
-  };
-  if (operands[0].domain == NULL || operands[1].domain == NULL)
-    {
-      return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
-    }
-  DOMAIN_OPERAND_COERCION coercion = DOMAIN_OPERAND_COERCION ();
-  domain_resolve_operand_coercion (arithptr->opcode, operands, &coercion);
-  return qdata_coerce_arith_operands (arithptr->opcode, coercion.conv, coercion.operand_domain, &coercion.arith, left,
-				      right, arithptr->value, domain);
+  /* its optdebug check still holds the decision to the rule over the values (qdata_assert_arith_planned) */
+  return qdata_arith_dbval (arithptr->opcode, arith_decided_arith (arithptr), left, right, arithptr->value, domain);
 }
 
 /*
@@ -443,7 +405,7 @@ fetch_op_add (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     }
   else
     {
-      if (fetch_arith_binary (vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
+      if (fetch_arith_binary (arithptr, peek_left, peek_right, domain) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -579,7 +541,7 @@ fetch_op_sub (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
 
-  if (fetch_arith_binary (vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
+  if (fetch_arith_binary (arithptr, peek_left, peek_right, domain) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -597,7 +559,7 @@ fetch_op_mul (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
 
-  if (fetch_arith_binary (vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
+  if (fetch_arith_binary (arithptr, peek_left, peek_right, domain) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -615,7 +577,7 @@ fetch_op_div (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
 
-  if (fetch_arith_binary (vd, arithptr, peek_left, peek_right, domain) != NO_ERROR)
+  if (fetch_arith_binary (arithptr, peek_left, peek_right, domain) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1767,25 +1729,10 @@ fetch_op_space (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static int
 fetch_op_trim (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
-  REGU_VARIABLE *regu_var = a->regu_var;
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
 
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left) && peek_right
-      && !DB_IS_NULL (peek_right))
-    {
-      TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_right, peek_right,
-								  db_get_string_collation (peek_left),
-								  db_get_string_codeset (peek_left));
-
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_TYPE (peek_right)),
-		  pr_type_name (DB_VALUE_TYPE (peek_left)));
-	  return ER_FAILED;
-	}
-    }
   if (DB_IS_NULL (peek_left) || (peek_right && DB_IS_NULL (peek_right)))
     {
       PRIM_SET_NULL (arithptr->value);
@@ -1802,25 +1749,10 @@ fetch_op_trim (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static int
 fetch_op_ltrim (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
-  REGU_VARIABLE *regu_var = a->regu_var;
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
 
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left) && peek_right
-      && !DB_IS_NULL (peek_right))
-    {
-      TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_right, peek_right,
-								  db_get_string_collation (peek_left),
-								  db_get_string_codeset (peek_left));
-
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_TYPE (peek_right)),
-		  pr_type_name (DB_VALUE_TYPE (peek_left)));
-	  return ER_FAILED;
-	}
-    }
   if (DB_IS_NULL (peek_left) || (peek_right && DB_IS_NULL (peek_right)))
     {
       PRIM_SET_NULL (arithptr->value);
@@ -1837,25 +1769,10 @@ fetch_op_ltrim (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static int
 fetch_op_rtrim (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
-  REGU_VARIABLE *regu_var = a->regu_var;
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
 
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left) && peek_right
-      && !DB_IS_NULL (peek_right))
-    {
-      TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_right, peek_right,
-								  db_get_string_collation (peek_left),
-								  db_get_string_codeset (peek_left));
-
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_TYPE (peek_right)),
-		  pr_type_name (DB_VALUE_TYPE (peek_left)));
-	  return ER_FAILED;
-	}
-    }
   if (DB_IS_NULL (peek_left) || (peek_right && DB_IS_NULL (peek_right)))
     {
       PRIM_SET_NULL (arithptr->value);
@@ -1894,26 +1811,11 @@ fetch_op_from_unixtime (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static int
 fetch_op_lpad (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
-  REGU_VARIABLE *regu_var = a->regu_var;
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
   DB_VALUE *peek_third = a->peek_third;
 
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left) && peek_third
-      && !DB_IS_NULL (peek_third))
-    {
-      TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_third, peek_third,
-								  db_get_string_collation (peek_left),
-								  db_get_string_codeset (peek_left));
-
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_TYPE (peek_third)),
-		  pr_type_name (DB_VALUE_TYPE (peek_left)));
-	  return ER_FAILED;
-	}
-    }
   if (DB_IS_NULL (peek_left) || (peek_third && DB_IS_NULL (peek_third)))
     {
       PRIM_SET_NULL (arithptr->value);
@@ -1930,26 +1832,11 @@ fetch_op_lpad (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static int
 fetch_op_rpad (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
-  REGU_VARIABLE *regu_var = a->regu_var;
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
   DB_VALUE *peek_third = a->peek_third;
 
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left) && peek_third
-      && !DB_IS_NULL (peek_third))
-    {
-      TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_third, peek_third,
-								  db_get_string_collation (peek_left),
-								  db_get_string_codeset (peek_left));
-
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_TYPE (peek_third)),
-		  pr_type_name (DB_VALUE_TYPE (peek_left)));
-	  return ER_FAILED;
-	}
-    }
   if (DB_IS_NULL (peek_left) || (peek_third && DB_IS_NULL (peek_third)))
     {
       PRIM_SET_NULL (arithptr->value);
@@ -1966,26 +1853,11 @@ fetch_op_rpad (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static int
 fetch_op_replace (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
-  REGU_VARIABLE *regu_var = a->regu_var;
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
   DB_VALUE *peek_third = a->peek_third;
 
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left) && peek_third
-      && !DB_IS_NULL (peek_third))
-    {
-      TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_third, peek_third,
-								  db_get_string_collation (peek_left),
-								  db_get_string_codeset (peek_left));
-
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_TYPE (peek_third)),
-		  pr_type_name (DB_VALUE_TYPE (peek_left)));
-	  return ER_FAILED;
-	}
-    }
   if (!prm_get_bool_value (PRM_ID_ORACLE_STYLE_EMPTY_STRING)
       && (DB_IS_NULL (peek_left) || DB_IS_NULL (peek_right) || (peek_third && DB_IS_NULL (peek_third))))
     {
@@ -2003,25 +1875,11 @@ fetch_op_replace (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 static int
 fetch_op_translate (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 {
-  REGU_VARIABLE *regu_var = a->regu_var;
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
   DB_VALUE *peek_third = a->peek_third;
 
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INFER_COLLATION) && !DB_IS_NULL (peek_left))
-    {
-      TP_DOMAIN_STATUS status = tp_value_change_coll_and_codeset (peek_third, peek_third,
-								  db_get_string_collation (peek_left),
-								  db_get_string_codeset (peek_left));
-
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (DB_VALUE_TYPE (peek_third)),
-		  pr_type_name (DB_VALUE_TYPE (peek_left)));
-	  return ER_FAILED;
-	}
-    }
   if (DB_IS_NULL (peek_left))
     {
       PRIM_SET_NULL (arithptr->value);

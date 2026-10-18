@@ -127,15 +127,6 @@ struct expr_step
   int jump_to;			/* jump kernels: the step the row continues at; -1 otherwise */
   int alias_of;			/* a step that writes ANOTHER step's slot (the NULL check of a lazy
 				 * arithmetic node, the ELSE publisher of a CASE): that step; -1 otherwise */
-  /* An OPEN step: its domain, and the type its kernel was chosen for, came from the gate's
-   * resolution of a node the compiler left variable (step->regu).  The resolution is
-   * remade every execution, so the step re-reads it at every execution entry
-   * (expr_prog_refill_open ()): the same type keeps the kernel and takes the new domain
-   * (a NUMERIC's precision, a string's collation); another type means the program's
-   * shape no longer fits and the consumer recompiles.  A step with a fixed domain is
-   * never open. */
-  bool open;
-  DB_TYPE open_type;		/* the type the open step was compiled for */
 };
 
 struct expr_prog
@@ -183,26 +174,13 @@ struct expr_prog
    * already computes for the row, read here instead of recomputed (see share_spec) */
   int n_shared;
 
-  /* host variable domain signature recorded at compile time: the DB_TYPE of every bound
-   * value the execution supplied.  A program lives with its XASL clone across executions
-   * (see "lifetime" below), and a later execution may bind other types (a JDBC prepared
-   * statement re-executed with different parameter types); every kernel and comparison
-   * leaf was specialized for the recorded types, so a consumer verifies the signature on
-   * the first row of each execution (expr_prog_signature_ok ()) and recompiles on a
-   * mismatch.  sig_stamp records the execution the signature was last verified for, so
-   * the walk is charged once per execution rather than once per row. */
-  DB_TYPE *hv_types;
-  int n_hv;
-  unsigned long long sig_stamp;
-  bool sig_stamp_valid;
-
   /* Lifetime.  A program is compiled on the first row of an execution and then KEPT with
    * the XASL clone: when the execution ends (qexec_clear_xasl () with is_final) the owner
    * calls expr_prog_reset () -- the slot VALUES are released (they may own memory of the
    * executing thread's private heap, which is reclaimed with the request) and the
    * prologues are re-armed, while the steps, cells and slot array stay.  The next
    * execution of the same clone, on any thread, re-runs the prologues (host variable
-   * cells are rebound), re-verifies the signature above, and reuses the steps.  The
+   * cells are rebound) and reuses the steps.  The
    * program is freed only when the clone itself is released (XASL_DECACHE_CLONE).
    * n_executions counts the executions that entered this program (;trace shows it). */
   int n_executions;
@@ -246,15 +224,6 @@ extern EXPR_PROG *expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VAR
  * variable, INCR)?  For a list that compiles only some of its expressions (the aggregate operand program) */
 extern bool expr_regu_has_side_effect (const REGU_VARIABLE * regu);
 
-/* true when the program's recorded host-variable type signature matches vd.  Walks every
- * bound value, so consumers call it through expr_prog_signature_ok () below rather than
- * per row. */
-extern bool expr_prog_signature_matches (const EXPR_PROG * prog, const val_descr * vd);
-
-/* re-read the gate's resolution into every open step for this execution; false when a node's
- * type changed, so the consumer must recompile (expr_prog_signature_ok () calls it) */
-extern bool expr_prog_refill_open (EXPR_PROG * prog, const val_descr * vd);
-
 /* end of an execution: release the slot values and re-arm the prologues, keep the program
  * for the clone's next execution (see the lifetime note on struct expr_prog) */
 extern void expr_prog_reset (EXPR_PROG * prog);
@@ -264,28 +233,7 @@ extern void expr_prog_reset (EXPR_PROG * prog);
  * compiled with */
 extern bool expr_prog_share_current (const EXPR_PROG * prog, const void *share_spec);
 
-/* Host variables are bound before an execution starts and cannot change while it runs, so
- * the signature only has to be verified when the executing query changes.  This charges the
- * walk once per execution instead of once per row.  exec_stamp identifies the execution
- * (the query id); 0 means "no identity available" and falls back to verifying every time.
- * The caller passes it because val_descr is only forward declared here. */
-STATIC_INLINE bool
-expr_prog_signature_ok (EXPR_PROG * prog, const val_descr * vd, unsigned long long exec_stamp)
-{
-  if (exec_stamp != 0 && prog->sig_stamp_valid && prog->sig_stamp == exec_stamp)
-    {
-      return true;
-    }
-  if (!expr_prog_signature_matches (prog, vd) || !expr_prog_refill_open (prog, vd))
-    {
-      return false;
-    }
-  prog->sig_stamp = exec_stamp;
-  prog->sig_stamp_valid = (exec_stamp != 0);
-  return true;
-}
-
-/* the execution identity a consumer feeds to expr_prog_signature_ok () */
+/* the execution identity of a val_descr (the query id), 0 when there is none */
 #define EXPR_PROG_EXEC_STAMP(vd) \
   (((vd) != NULL && (vd)->xasl_state != NULL) ? (unsigned long long) (vd)->xasl_state->query_id : 0ULL)
 
@@ -328,9 +276,6 @@ extern void expr_scan_pred_free (void *compiled);
 /* end of an execution for a compiled scan filter: expr_prog_reset () of its operand program */
 extern void expr_scan_pred_reset (void *compiled);
 
-/* the filter's host-variable type signature check, once per execution (the leaves and the
- * operand steps were resolved for the bound types of the compiling execution) */
-extern bool expr_scan_pred_signature_ok (void *compiled, const val_descr * vd, unsigned long long exec_stamp);
 /* the operand program of a compiled scan filter, if it has one (SQL trace) */
 extern void expr_scan_pred_dump (FILE * fp, const void *compiled, int indent);
 

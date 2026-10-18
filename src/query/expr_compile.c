@@ -109,7 +109,11 @@ struct expr_pred
   DB_VALUE **arg2p;
   DB_VALUE **arg3p;		/* LIKE escape, when present */
   REL_OP rel_op;
-  DB_TYPE fast_type;		/* direct-compare type, or DB_TYPE_UNKNOWN -> tp_value_compare */
+  DB_TYPE fast_type;		/* direct-compare type, or DB_TYPE_UNKNOWN -> the term's decided comparison */
+  /* comp leaves: the comparison the unpack decided for the term (COMP_EVAL_TERM.compare), which a leaf that is not a
+   * direct compare makes as eval_value_rel_cmp () does; NULL for a term left to its values and for a pinned literal
+   * (both sides are then of the left side's type) */
+  const DOMAIN_COMPARE *compare;
 
   /* scan-filter leaves (EXPR_PRED_COMP_FETCH): the operands are fetched per row through
    * the regular fetch path into the two holders below, which arg1p/arg2p were wired to
@@ -143,15 +147,6 @@ struct expr_pred
    * evaluated (see expr_scan_pred_build ()), with the slot the node publishes into */
   struct expr_share *share;
   int n_share;
-
-  /* the tree's root only: the host-variable type signature the leaves and operand steps were
-   * resolved for, verified once per execution (expr_scan_pred_signature_ok ()) -- same
-   * contract as EXPR_PROG.hv_types, kept here because a tree without compiled operand
-   * steps has no program to carry it */
-  DB_TYPE *sig_types;
-  int sig_n;
-  unsigned long long sig_stamp;
-  bool sig_stamp_valid;
 };
 
 /* growable build-time buffers, sized once and converted to tight arrays at the end */
@@ -795,9 +790,9 @@ expr_k_extract_timestamp_time (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
-/* T_NULLIF: NULL when the two sides compare equal, else the left value cast to the
- * regu domain -- mirror of the fetch_peek_arith () T_NULLIF case.  The compiler only
- * accepts a fixed regu->domain, so the interpreted domain-infer arm cannot arise. */
+/* T_NULLIF: NULL when the two sides compare equal (the comparison the unpack decided for the node, as
+ * fetch_op_nullif () makes it), else the left value cast to the regu domain -- mirror of the fetch_peek_arith ()
+ * T_NULLIF case.  The compiler only accepts a fixed regu->domain, so the interpreted domain-infer arm cannot arise. */
 static int
 expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
@@ -815,7 +810,8 @@ expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     }
   v2 = *step->arg2p;
 
-  cmp_res = tp_value_compare_with_error (v1, v2, 1, 0, &can_compare);
+  cmp_res = eval_compare_values_resolved (ctx->thread_p, arith_decided_compares (step->regu->value.arithptr), ctx->vd,
+					  v1, v2, 0, &can_compare);
   if (cmp_res == DB_EQ)
     {
       return NO_ERROR;		/* the cleared slot IS the NULL result */
@@ -838,7 +834,7 @@ expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
  * predicate is compiled, so the per-row work is one indirect call to a leaf that knows
  * both -- no switch on the type and no switch on the operator inside the row loop.  The
  * leaves below are the (type x operator) cross product for the direct-compare types; every
- * other type resolves to the generic leaf that calls tp_value_compare_with_error (). */
+ * other type resolves to the generic leaf, which makes the term's decided comparison (expr_pred_compare ()). */
 
 /* mirror of eval_pred () T_COMP_EVAL_TERM: a NULL side is V_UNKNOWN before any comparison
  * (rel_ops needing different NULL handling are rejected at compile time) */
@@ -923,9 +919,36 @@ expr_pred_map_cmp (int result, REL_OP rel_op)
     }
 }
 
-/* the type is not one of the direct-compare kinds: same call the interpreted path makes */
+/* the comparison of a leaf's two values: the term's decided one, as eval_value_rel_cmp () makes it; exception to
+ * deciding before the rows: a term left to its values (no comparison, or the VALUES method) and a pinned literal
+ * compare the values */
+static DB_VALUE_COMPARE_RESULT
+expr_pred_compare (const EXPR_PRED * pred, const DB_VALUE * v1, const DB_VALUE * v2, int total_order, bool * comparable)
+{
+  return eval_compare_values_resolved (NULL, pred->compare, NULL, v1, v2, total_order, comparable);
+}
+
+/* the type is not one of the direct-compare kinds: the term's decided comparison */
 static DB_LOGICAL
 expr_pred_generic_cmp (const EXPR_PRED * pred)
+{
+  bool comparable = true;
+  int result;
+
+  EXPR_PRED_CMP_PROLOGUE (v1, v2);
+
+  result = expr_pred_compare (pred, v1, v2, 0, &comparable);
+  if (!comparable)
+    {
+      return V_ERROR;
+    }
+  return expr_pred_map_cmp (result, pred->rel_op);
+}
+
+/* exception to deciding before the rows: a row whose operand drifted from the leaf's compiled type compares the values,
+ * as the interpreter's VALUES method does (the leaf's direct kernel and its decided comparison both read that type) */
+static DB_LOGICAL
+expr_pred_drifted_cmp (const EXPR_PRED * pred)
 {
   bool comparable = true;
   int result;
@@ -1030,7 +1053,7 @@ expr_pred_eval (const EXPR_PRED * pred)
 	  if (!DB_IS_NULL (v1) && !DB_IS_NULL (v2)
 	      && (DB_VALUE_DOMAIN_TYPE (v1) != pred->fast_type || DB_VALUE_DOMAIN_TYPE (v2) != pred->fast_type))
 	    {
-	      return expr_pred_generic_cmp (pred);
+	      return expr_pred_drifted_cmp (pred);
 	    }
 	}
       return pred->eval (pred);
@@ -1051,7 +1074,8 @@ expr_pred_eval (const EXPR_PRED * pred)
 	  }
 
 	/* the direct reads are only valid while both values are of the resolved type (see the
-	 * EXPR_PRED_COMP case above); otherwise the total-order comparison with coercion */
+	 * EXPR_PRED_COMP case above); exception to deciding before the rows: a drifted row compares
+	 * the values in total order */
 	if (unlikely (pred->need_type_guard) && pred->fast_type != DB_TYPE_UNKNOWN
 	    && (DB_VALUE_DOMAIN_TYPE (v1) != pred->fast_type || DB_VALUE_DOMAIN_TYPE (v2) != pred->fast_type))
 	  {
@@ -1075,7 +1099,7 @@ expr_pred_eval (const EXPR_PRED * pred)
 		result = (db_get_double (v1) == db_get_double (v2)) ? DB_EQ : DB_NE;
 		break;
 	      default:
-		result = tp_value_compare_with_error (v1, v2, 1, 1, &comparable);
+		result = expr_pred_compare (pred, v1, v2, 1, &comparable);
 		if (!comparable)
 		  {
 		    return V_ERROR;
@@ -1405,12 +1429,32 @@ expr_k_leaf_fetch (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   return NO_ERROR;
 }
 
+/* The domain a host variable leaf's value is of: its compiled domain, which the XASL fixes for every execution (a
+ * value without a converter is of its type, expr_k_hostvar asserts it). The one place where a position the plan leaves
+ * to its value's type would be excepted. */
+static const TP_DOMAIN *
+expr_hostvar_domain (const REGU_VARIABLE * regu)
+{
+  assert (regu->type == TYPE_POS_VALUE);
+  return regu->domain;
+}
+
 /* publish the address of a host variable; rebinding per evaluation keeps the program
  * valid when a new request supplies a different value array */
 static int
 expr_k_hostvar (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   *step->out_cell = ctx->vd->dbval_ptr + step->aux;
+#if !defined (NDEBUG)
+  /* the kernels were chosen for that domain. shortcut: a fixed and a varying character string count as one type,
+   * because a later MERGE translation's cast rewrites a user position's domain (cbrd_27615 Case 1); back to the same
+   * type once S3-31 fixes the generation */
+  const TP_DOMAIN *domain = expr_hostvar_domain (step->regu);
+  const DB_TYPE value_type = DB_VALUE_DOMAIN_TYPE (*step->out_cell);
+  assert (DB_IS_NULL (*step->out_cell) || domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
+	  || value_type == TP_DOMAIN_TYPE (domain) || (TP_IS_CHAR_TYPE (value_type)
+						       && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain))));
+#endif
   return NO_ERROR;
 }
 
@@ -2278,8 +2322,7 @@ expr_rhs_end (EXPR_BUILD_CTX * bctx, int saved, int guard, int cse_start, int no
  *
  * One cell per (operator, result type, operand mix): the kernel a binary arithmetic node
  * runs, or NULL where no kernel exists and the node stays interpreted.  The table is the
- * whole policy -- a reviewer reads a cell, not a switch -- and the slot a program leaves
- * open for a variable node is filled from it once the gate has resolved the node's types
+ * whole policy -- a reviewer reads a cell, not a switch
  * (database-reference 참고: the compiler's operator/type tables).
  *
  *   mix SAME         both operands already have the result type: the typed operator
@@ -2418,8 +2461,7 @@ expr_arith_exec_domain (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
  * unpack, which converts no operand: generation converts it at its regu): one that names a number --
  * the kernels are that typed number operator, computing in its type (arith.type, what
  * qdata_number_operator reads both operands as).  NULL for any other node, which stays interpreted:
- * an unresolved one (the fetch's unresolved-domain error), a date, string or collection one (another
- * operator's). */
+ * a date, string or collection one (another operator's). */
 static const DOMAIN_ARITH *
 expr_arith_number_plan (const ARITH_TYPE * arith)
 {
@@ -2430,18 +2472,14 @@ expr_arith_number_plan (const ARITH_TYPE * arith)
   return arith_decided_arith (arith);
 }
 
-/* the DB_TYPE a leaf will produce, as known at compile time */
+/* the DB_TYPE a leaf will produce, as known at compile time: its compiled domain's */
 static DB_TYPE
 expr_leaf_type (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu)
 {
   if (regu->type == TYPE_POS_VALUE)
     {
-      /* the value this execution binds */
-      const int vidx = expr_pos_value_index (bctx, regu);
-      if (vidx >= 0)
-	{
-	  return DB_VALUE_DOMAIN_TYPE (&bctx->vd->dbval_ptr[vidx]);
-	}
+      const TP_DOMAIN *domain = expr_hostvar_domain (regu);
+      return domain != NULL ? TP_DOMAIN_TYPE (domain) : DB_TYPE_UNKNOWN;
     }
   if (regu->domain != NULL)
     {
@@ -2526,16 +2564,8 @@ expr_scan_operand_type (const EXPR_BUILD_CTX * bctx, const REGU_VARIABLE * regu)
     }
   if (regu->type == TYPE_POS_VALUE)
     {
-      /* A host variable's regu stays DB_TYPE_VARIABLE in the plan: its type is the bound
-       * value's (or the gate's converted copy's) -- the same source expr_leaf_type () uses --
-       * and the tree records it in its signature, so an execution that binds another type
-       * recompiles (expr_scan_pred_signature_ok ()).  Within one execution a drifting
-       * operand is still caught per row by the leaf's type guard. */
-      const int vidx = expr_pos_value_index (bctx, regu);
-      if (vidx >= 0)
-	{
-	  return DB_VALUE_DOMAIN_TYPE (&bctx->vd->dbval_ptr[vidx]);
-	}
+      const TP_DOMAIN *domain = expr_hostvar_domain (regu);
+      return domain != NULL ? TP_DOMAIN_TYPE (domain) : DB_TYPE_UNKNOWN;
     }
   if (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
     {
@@ -2857,6 +2887,7 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	  }
 	pred->rel_op = et->rel_op;
 	pred->fast_type = fast_type;
+	pred->compare = pin_rhs ? NULL : et->compare;
 	pred->eval = expr_pred_cmp_leaf (fast_type, et->rel_op);
 	/* A heap attribute decodes to its domain type and an inline literal (TYPE_DBVAL) is
 	 * the value baked into the plan, so a leaf over those two alone never meets another
@@ -3003,24 +3034,6 @@ expr_scan_pred_compile (cubthread::entry * thread_p, const PRED_EXPR * pr, val_d
 	  return NULL;
 	}
       expr_scan_pred_share_build (bctx, pred);
-    }
-  /* the bound types the leaves and operand steps were resolved for (see sig_types) */
-  if (vd != NULL && vd->dbval_cnt > 0)
-    {
-      int i;
-
-      pred->sig_types = (DB_TYPE *) malloc (sizeof (DB_TYPE) * vd->dbval_cnt);
-      if (pred->sig_types == NULL)
-	{
-	  expr_scan_pred_free (pred);
-	  free_and_init (bctx);
-	  return NULL;
-	}
-      pred->sig_n = vd->dbval_cnt;
-      for (i = 0; i < pred->sig_n; i++)
-	{
-	  pred->sig_types[i] = DB_VALUE_DOMAIN_TYPE (&vd->dbval_ptr[i]);
-	}
     }
   free_and_init (bctx);
   return pred;
@@ -3240,10 +3253,6 @@ expr_scan_pred_free (void *compiled)
     {
       free_and_init (root->share);
     }
-  if (root->sig_types != NULL)
-    {
-      free_and_init (root->sig_types);
-    }
   expr_pred_free (root);
 }
 
@@ -3254,49 +3263,11 @@ expr_scan_pred_reset (void *compiled)
 
   if (root != NULL)
     {
-      root->sig_stamp_valid = false;
       if (root->prog != NULL)
 	{
 	  expr_prog_reset (root->prog);
 	}
     }
-}
-
-bool
-expr_scan_pred_signature_ok (void *compiled, const val_descr * vd, unsigned long long exec_stamp)
-{
-  EXPR_PRED *root = (EXPR_PRED *) compiled;
-  int i;
-
-  if (root == NULL)
-    {
-      return true;
-    }
-  if (exec_stamp != 0 && root->sig_stamp_valid && root->sig_stamp == exec_stamp)
-    {
-      return true;
-    }
-  if (root->sig_n > 0)
-    {
-      if (vd == NULL || vd->dbval_cnt != root->sig_n)
-	{
-	  return false;
-	}
-      for (i = 0; i < root->sig_n; i++)
-	{
-	  if (DB_VALUE_DOMAIN_TYPE (&vd->dbval_ptr[i]) != root->sig_types[i])
-	    {
-	      return false;
-	    }
-	}
-    }
-  if (root->prog != NULL && !expr_prog_refill_open (root->prog, vd))
-    {
-      return false;
-    }
-  root->sig_stamp = exec_stamp;
-  root->sig_stamp_valid = (exec_stamp != 0);
-  return true;
 }
 
 void
@@ -3524,7 +3495,7 @@ expr_compile_pred_impl (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * comp
 	  }
 	else if (expr_pred_generic_cmp_type (t1))
 	  {
-	    fast_type = DB_TYPE_UNKNOWN;	/* tp_value_compare_with_error */
+	    fast_type = DB_TYPE_UNKNOWN;	/* the term's decided comparison (expr_pred_compare) */
 	  }
 	else
 	  {
@@ -3561,6 +3532,7 @@ expr_compile_pred_impl (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * comp
 	pred->arg2p = EXPR_ARG_ENCODE (c2);
 	pred->rel_op = et->rel_op;
 	pred->fast_type = fast_type;
+	pred->compare = et->compare;
 	/* a heap attribute, an inline literal and a compiled arithmetic node always carry the
 	 * type they were compiled for; a list slot (TYPE_CONSTANT/TYPE_POSITION -- a recursive
 	 * CTE refills it with another type) or a host variable can drift and is verified per row */
@@ -3596,7 +3568,9 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
       return expr_compile_node_impl (bctx, regu, compiled_something);
     }
 
+#if !defined (NDEBUG)
   const int first_step = bctx->n_steps;
+#endif
   EXPR_BUILD_MARK mark;
 
   /* the depth is the interpreter's frame count at this node (expr_step.level); a node too deep is not declined
@@ -3625,68 +3599,19 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
       cell = expr_compile_nested (bctx, regu, compiled_something);
     }
   bctx->depth--;
+#if !defined (NDEBUG)
   if (cell >= 0 && regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
     {
-      /* a node the compiler left variable: its steps took their domain and kernel type from the gate's
-       * resolution of this execution -- mark them open so every later execution re-reads it */
-      const TP_DOMAIN *exec_domain = expr_arith_exec_domain (bctx->vd, regu);
-      int j;
-
-      for (j = first_step; j < bctx->n_steps; j++)
+      /* a node the compiler left variable is declined (expr_arith_exec_domain ()): no typed kernel of its own */
+      for (int j = first_step; j < bctx->n_steps; j++)
 	{
-	  if (bctx->steps[j].regu == regu && bctx->steps[j].kernel != expr_k_generic
-	      && bctx->steps[j].kernel != expr_k_nested_prog)
-	    {
-	      bctx->steps[j].open = true;
-	      bctx->steps[j].open_type = exec_domain != NULL ? TP_DOMAIN_TYPE (exec_domain) : DB_TYPE_UNKNOWN;
-	    }
+	  assert (bctx->steps[j].regu != regu || bctx->steps[j].kernel == expr_k_generic
+		  || bctx->steps[j].kernel == expr_k_nested_prog);
 	}
     }
+#endif
   return cell;
 }
-
-/*
- * expr_prog_refill_open () - give every open step the gate's resolution of this execution
- *   return: true when every open node kept its type (the kernels still fit; the domains are
- *	     refreshed), false when one changed -- the consumer recompiles
- *
- * The gate resolves a variable node anew for each execution.  A program kept with the clone
- * was compiled against one execution's resolution, so before its steps run again each open
- * step reads the current one: the same type keeps the kernel the table gave the step and
- * takes the domain (a NUMERIC's precision and scale, a string's collation) as the row would
- * read it through fetch_peek_arith ().  No step is rebuilt here.
- */
-bool
-expr_prog_refill_open (EXPR_PROG * prog, const val_descr * vd)
-{
-  int i;
-
-  for (i = 0; i < prog->n_steps; i++)
-    {
-      EXPR_STEP *step = &prog->steps[i];
-      TP_DOMAIN *domain;
-
-      if (step->kernel == expr_k_nested_prog && !expr_prog_refill_open ((EXPR_PROG *) step->fn, vd))
-	{
-	  return false;
-	}
-      if (!step->open)
-	{
-	  continue;
-	}
-      domain = expr_arith_exec_domain (vd, step->regu);
-      if (domain == NULL || TP_DOMAIN_TYPE (domain) != step->open_type)
-	{
-	  return false;
-	}
-      if (step->domain != NULL)
-	{
-	  step->domain = domain;
-	}
-    }
-  return true;
-}
-
 
 /* a leaf the fetch path evaluates (expr_k_fetch): the step, or -1 when the program is full */
 static int
@@ -4296,12 +4221,11 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
       return -1;
     }
 
-  /* A variable domain must not be baked into a program.  A host variable leaf takes its
-   * type from the value this execution binds, and an arithmetic node the compiler left
-   * variable is declined (expr_arith_exec_domain ()).  Any other node still variable here
-   * leaves its type to its value: the fetch path reads it. */
-  if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE && regu->type != TYPE_POS_VALUE
-      && regu->type != TYPE_INARITH && regu->type != TYPE_OUTARITH)
+  /* A variable domain must not be baked into a program.  An arithmetic node the compiler left variable is declined
+   * (expr_arith_exec_domain ()).  Any other node still variable here leaves its type to its value: the fetch path
+   * reads it. */
+  if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE && regu->type != TYPE_INARITH
+      && regu->type != TYPE_OUTARITH)
     {
       return expr_emit_fetch (bctx, regu, compiled_something);
     }
@@ -4869,8 +4793,8 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	 * whenever the domain is not what the kernel already produces -- a NUMERIC's precision and
 	 * scale, or a domain wider than the operation's type.  Today the parser gives a fixed node
 	 * the operation's own type (a wider consumer gets a T_CAST_WRAP around the node, compiled
-	 * above) and the gate resolves a variable node to the number type it computes in
-	 * (domain_resolve_arith), so the second case is the mirror kept for a plan that names a
+	 * above) and a variable node is declined (expr_arith_exec_domain), so the second case is
+	 * the mirror kept for a plan that names a
 	 * narrower type than the node's domain, not a path a statement reaches today.  A domain
 	 * that is not a number is declined: the arithmetic kernels' slots never own heap memory
 	 * (they skip the per-row clear), which a coercion into a string domain would break. */
@@ -5163,7 +5087,7 @@ expr_prog_compile (cubthread::entry * thread_p, regu_variable_list_node * list, 
 
 /* Turn the build context into a program: allocate the arrays, lay the steps out as
  * [literal prologue][host-variable prologue][row steps], resolve every cell index and
- * owned-slot marker into an address, and record the host-variable signature.  root_cells
+ * owned-slot marker into an address.  root_cells
  * lists the cell of each list element (n_roots may be 0 for a program that only serves
  * regions, e.g. a scan filter's operands); extra_pred is a caller-owned predicate tree
  * (NULL when none) whose cells and regions are resolved against this program as well.
@@ -5368,22 +5292,6 @@ expr_prog_finish (EXPR_BUILD_CTX * bctx, const int *root_cells, int n_roots, val
    * operand regions against the same program */
   expr_pred_materialize (extra_pred, prog, remap);
 
-  /* record the host-variable type signature this program was specialized for */
-  if (vd != NULL && vd->dbval_cnt > 0)
-    {
-      prog->n_hv = vd->dbval_cnt;
-      prog->hv_types = (DB_TYPE *) malloc (sizeof (DB_TYPE) * prog->n_hv);
-      if (prog->hv_types == NULL)
-	{
-	  expr_prog_free (prog);
-	  return NULL;
-	}
-      for (i = 0; i < prog->n_hv; i++)
-	{
-	  prog->hv_types[i] = DB_VALUE_DOMAIN_TYPE (&vd->dbval_ptr[i]);
-	}
-    }
-
   return prog;
 }
 
@@ -5550,29 +5458,6 @@ expr_prog_compile_roots (cubthread::entry * thread_p, REGU_VARIABLE ** roots, in
 {
   return expr_prog_compile_roots_ex (thread_p, roots, in_roots, vd, allow_fallback_roots, allow_wired_only,
 				     only_compute_roots, root_idx_out, share_spec, 0);
-}
-
-bool
-expr_prog_signature_matches (const EXPR_PROG * prog, const val_descr * vd)
-{
-  int i;
-
-  if (prog->n_hv == 0)
-    {
-      return true;
-    }
-  if (vd == NULL || vd->dbval_cnt != prog->n_hv)
-    {
-      return false;
-    }
-  for (i = 0; i < prog->n_hv; i++)
-    {
-      if (DB_VALUE_DOMAIN_TYPE (&vd->dbval_ptr[i]) != prog->hv_types[i])
-	{
-	  return false;
-	}
-    }
-  return true;
 }
 
 /* Cold half of expr_prog_eval (): decide which prologue steps this row must still run and
@@ -5874,9 +5759,9 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
     }
 
   fprintf (fp,
-	   "%*csteps: %d (prologue: %d, exec-prologue: %d, compute: %d), cells: %d, slots: %d, roots: %d, hostvar types: %d",
+	   "%*csteps: %d (prologue: %d, exec-prologue: %d, compute: %d), cells: %d, slots: %d, roots: %d",
 	   indent, ' ', prog->n_steps, prog->n_prologue, prog->n_exec_prologue, prog->n_compute, prog->n_cells,
-	   prog->n_slots, prog->n_roots, prog->n_hv);
+	   prog->n_slots, prog->n_roots);
   if (prog->n_shared > 0)
     {
       fprintf (fp, ", shared from data filter: %d", prog->n_shared);
@@ -5944,10 +5829,6 @@ expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent)
 	      fprintf (fp, "(%d,%d)", step->domain->precision, step->domain->scale);
 	    }
 	}
-      if (step->open)
-	{
-	  fprintf (fp, " open:%s", pr_type_name (step->open_type));
-	}
       if (step->alias_of >= 0)
 	{
 	  fprintf (fp, " (slot of [%d])", step->alias_of);
@@ -6012,7 +5893,6 @@ expr_prog_reset (EXPR_PROG * prog)
     }
   prog->prologue_done = false;
   prog->exec_stamp_valid = false;
-  prog->sig_stamp_valid = false;
 }
 
 bool
@@ -6064,10 +5944,6 @@ expr_prog_free (EXPR_PROG * prog)
   if (prog->root_cells != NULL)
     {
       free_and_init (prog->root_cells);
-    }
-  if (prog->hv_types != NULL)
-    {
-      free_and_init (prog->hv_types);
     }
   free_and_init (prog);
 }

@@ -203,7 +203,8 @@ const int REGU_VARIABLE_FIELD_NESTED = 0x04;	/* for FIELD function, reguvar is c
 const int REGU_VARIABLE_APPLY_COLLATION = 0x08;	/* Apply collation from domain; flag used in context of COLLATE
 						 * modifier */
 const int REGU_VARIABLE_ANALYTIC_WINDOW = 0x10;	/* for analytic window func */
-const int REGU_VARIABLE_INFER_COLLATION = 0x20;	/* infer collation for default parameter */
+const int REGU_VARIABLE_INFER_COLLATION = 0x20;	/* retired: no setter since 2015, the pack and the unpack assert it
+						 * absent; never reuse the bit */
 const int REGU_VARIABLE_FETCH_ALL_CONST = 0x40;	/* is all constant: this execution's cache mark, not a type decision */
 const int REGU_VARIABLE_FETCH_NOT_CONST = 0x80;	/* is not constant */
 const int REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE = 0x100;	/* clears regu variable at clone decache */
