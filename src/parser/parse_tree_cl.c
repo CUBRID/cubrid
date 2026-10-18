@@ -13573,7 +13573,8 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
       && (parser->host_var_format_classes[index] & PT_HOST_VAR_ELT_POSITION) && parser->host_var_elt_indexes != NULL)
     {
       /* D-38: an ELT index: its value picks the branch that types the result */
-      const DB_BIGINT elt_index = parser->host_var_elt_indexes[index];
+      const DB_BIGINT elt_index =
+	pt_elt_index_signature (parser->host_var_format_classes[index], parser->host_var_elt_indexes[index]);
       if (elt_index == PT_HOST_VAR_ELT_NULL)
 	{
 	  strcat (out, ":en");

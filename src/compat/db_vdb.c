@@ -66,6 +66,8 @@
 
 #define MAX_SERVER_TIME_CACHE	60	/* secs */
 
+#define DB_MAX_SIGNATURE_PLANS 16	/* compilations a statement handle keeps for its other bind signatures */
+
 enum
 {
   StatementInitialStage = 0,
@@ -2125,14 +2127,18 @@ db_needs_bind_signature_plan (const DB_SESSION * session)
 static int
 db_use_bind_signature_plan (DB_SESSION * session, int count, DB_VALUE * values)
 {
-  for (DB_SESSION * plan = session->signature_plans; plan != NULL; plan = plan->next)
+  for (DB_SESSION ** link = &session->signature_plans; *link != NULL; link = &(*link)->next)
     {
+      DB_SESSION *plan = *link;
       if (!pt_host_vars_match_signature (plan->parser, count, values))
 	{
 	  continue;
 	}
-      /* the current compilation takes the matching one's place in the list */
+      /* the current compilation takes the matching one's place, the most recently used first in the list */
       db_swap_compilation (session, plan);
+      *link = plan->next;
+      plan->next = session->signature_plans;
+      session->signature_plans = plan;
       pt_set_host_variables (session->parser, count, values);
       if (session->parser->flag.set_host_var == 0 && pt_has_error (session->parser))
 	{
@@ -2288,9 +2294,26 @@ db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * val
   if (typed->parser->host_var_compiled_domains != NULL && !db_has_untyped_host_var (typed->parser)
       && !typed->statements[0]->flag.cannot_prepare)
     {
-      /* the replaced compilation is the plan of its own signature: kept */
+      /* the replaced compilation is the plan of its own signature: kept, the least recently used one beyond
+       * DB_MAX_SIGNATURE_PLANS closed */
       typed->next = session->signature_plans;
       session->signature_plans = typed;
+      DB_SESSION **link = &session->signature_plans;
+      int kept = 0;
+      for (; *link != NULL && kept < DB_MAX_SIGNATURE_PLANS; kept++)
+	{
+	  link = &(*link)->next;
+	}
+      while (*link != NULL)
+	{
+	  DB_SESSION *plan = *link;
+	  *link = plan->next;
+	  plan->next = NULL;
+	  db_close_session_local (plan);
+	}
+#if !defined (NDEBUG)
+      er_log_debug (ARG_FILE_LINE, "CBRD-27583 signature plans kept=%d\n", kept);
+#endif
       return NO_ERROR;
     }
 

@@ -573,6 +573,8 @@ struct trace_json_t;
 /* CBRD-27583 (D-38): host_var_format_classes' mark of an ELT index position, and host_var_elt_indexes' values of no index:
  * no value bound, a NULL, a value that is no BIGINT */
 #define PT_HOST_VAR_ELT_POSITION 0x200
+/* and above it the number of the ELT's branches: an index that picks none of them shares one signature */
+#define PT_HOST_VAR_ELT_BRANCHES_SHIFT 12
 #define PT_HOST_VAR_ELT_UNKNOWN DB_BIGINT_MIN
 #define PT_HOST_VAR_ELT_NULL (DB_BIGINT_MIN + 1)
 #define PT_HOST_VAR_ELT_INVALID (DB_BIGINT_MIN + 2)
@@ -3979,6 +3981,7 @@ struct parser_context
   TP_DOMAIN **session_variable_domains;	/* [session_variable_count] the type each has for the statement: the
 					 * one its assignments give, else the session's, else the NULL type */
   bool *session_variable_assigned;	/* [session_variable_count] whether an assignment gave that type */
+  bool *session_variable_read;	/* [session_variable_count] whether XASL generation generated a read of it */
 
   int dbval_cnt;		/* to be assigned to XASL */
   int line, column;		/* current input line and column */

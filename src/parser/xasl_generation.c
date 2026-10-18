@@ -7524,10 +7524,12 @@ pt_type_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
   parser->session_variable_names = (const char **) parser_alloc (parser, n_nodes * sizeof (const char *));
   parser->session_variable_domains = (TP_DOMAIN **) parser_alloc (parser, n_nodes * sizeof (TP_DOMAIN *));
   parser->session_variable_assigned = (bool *) parser_alloc (parser, n_nodes * sizeof (bool));
+  parser->session_variable_read = (bool *) parser_alloc (parser, n_nodes * sizeof (bool));
   PT_NODE **defines = (PT_NODE **) parser_alloc (parser, (n_nodes + 1) * sizeof (PT_NODE *));
   TP_DOMAIN **assigned = (TP_DOMAIN **) parser_alloc (parser, n_nodes * sizeof (TP_DOMAIN *));
   if (parser->session_variable_names == NULL || parser->session_variable_domains == NULL
-      || parser->session_variable_assigned == NULL || defines == NULL || assigned == NULL)
+      || parser->session_variable_assigned == NULL || parser->session_variable_read == NULL || defines == NULL
+      || assigned == NULL)
     {
       parser->session_variable_count = 0;
       return NO_ERROR;
@@ -7596,8 +7598,8 @@ pt_type_session_variables (PARSER_CONTEXT * parser, PT_NODE * statement)
 }
 
 /* CBRD-27583 (D-40): an assignment the parse tree gave no type (pt_session_expr_domain) gives its variable the type of
- * its generated value - for the reads generated after it, those generated before keeping the type they took - unless
- * another assignment of the statement gave it one: a value of another type than that one is the error */
+ * its generated value unless another assignment of the statement gave it one or a read generated before took the
+ * variable's type: a value of another type than that one is the error */
 static int
 pt_type_session_variable_by_assignment (PARSER_CONTEXT * parser, PT_NODE * define, const REGU_VARIABLE * value)
 {
@@ -7616,11 +7618,13 @@ pt_type_session_variable_by_assignment (PARSER_CONTEXT * parser, PT_NODE * defin
   TP_DOMAIN *current = parser->session_variable_domains[v];
   if (current != NULL && pt_session_same_type (current, type))
     {
+      /* the type is now an assignment's: a later one of another type conflicts with it */
+      parser->session_variable_assigned[v] = true;
       return NO_ERROR;
     }
-  if (parser->session_variable_assigned[v])
+  if (parser->session_variable_assigned[v] || parser->session_variable_read[v])
     {
-      return pt_session_variable_type_conflict (parser, define, current, type);
+      return pt_session_variable_type_conflict (parser, define, current != NULL ? current : &tp_Null_domain, type);
     }
   parser->session_variable_domains[v] = type;
   parser->session_variable_assigned[v] = true;
@@ -7639,6 +7643,10 @@ pt_session_variable_domain (PARSER_CONTEXT * parser, PT_NODE * read)
   const int v = pt_session_variable_index (parser, name);
   TP_DOMAIN *domain =
     v >= 0 ? parser->session_variable_domains[v] : name != NULL ? pt_session_start_domain (parser, read) : NULL;
+  if (v >= 0)
+    {
+      parser->session_variable_read[v] = true;
+    }
   return domain != NULL ? domain : &tp_Null_domain;
 }
 

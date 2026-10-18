@@ -12760,7 +12760,13 @@ pt_eval_function_type (PARSER_CONTEXT * parser, PT_NODE * node)
       if (PT_IS_INPUT_HOSTVAR (index) && index->info.host_var.index < parser->host_var_count
 	  && pt_host_var_format_classes (parser) != NULL)
 	{
-	  parser->host_var_format_classes[index->info.host_var.index] |= PT_HOST_VAR_ELT_POSITION;
+	  int branches = 0;
+	  for (const PT_NODE * branch = arg_list->next; branch != NULL; branch = branch->next)
+	    {
+	      branches++;
+	    }
+	  parser->host_var_format_classes[index->info.host_var.index] |=
+	    PT_HOST_VAR_ELT_POSITION | (branches << PT_HOST_VAR_ELT_BRANCHES_SHIFT);
 	}
     }
 

@@ -3199,7 +3199,8 @@ pt_host_var_format_differs (const PARSER_CONTEXT * parser, int index, const DB_V
   const int c = parser->host_var_format_classes != NULL ? parser->host_var_format_classes[index] : 0;
   return ((c & PT_HOST_VAR_FORMAT_POSITION) && pt_value_format_class (val) != PT_HOST_VAR_FORMAT_CLASS (c))
     || ((c & PT_HOST_VAR_ELT_POSITION) && parser->host_var_elt_indexes != NULL
-	&& pt_value_elt_index (val) != parser->host_var_elt_indexes[index]);
+	&& pt_elt_index_signature (c, pt_value_elt_index (val))
+	!= pt_elt_index_signature (c, parser->host_var_elt_indexes[index]));
 }
 
 /*
@@ -3375,6 +3376,20 @@ pt_value_elt_index (const DB_VALUE * val)
     ? db_get_bigint (&index) : PT_HOST_VAR_ELT_INVALID;
   pr_clear_value (&index);
   return result;
+}
+
+/*
+ * pt_elt_index_signature () - CBRD-27583 (D-38): an ELT index position's value as the bind type signature carries it:
+ *   the branch it picks, PT_HOST_VAR_ELT_NULL / PT_HOST_VAR_ELT_UNKNOWN, or PT_HOST_VAR_ELT_INVALID for every value
+ *   that picks no branch (they type the result alike)
+ *   format_class(in): the position's host_var_format_classes, which holds the ELT's number of branches
+ */
+DB_BIGINT
+pt_elt_index_signature (int format_class, DB_BIGINT elt_index)
+{
+  const bool picks = elt_index >= 1 && elt_index <= (format_class >> PT_HOST_VAR_ELT_BRANCHES_SHIFT);
+  return picks || elt_index == PT_HOST_VAR_ELT_NULL || elt_index == PT_HOST_VAR_ELT_UNKNOWN
+    ? elt_index : PT_HOST_VAR_ELT_INVALID;
 }
 
 /*

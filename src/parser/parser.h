@@ -171,6 +171,7 @@ extern "C"
   extern bool pt_host_vars_match_signature (const PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
   extern int pt_value_format_class (const DB_VALUE * val);
   extern DB_BIGINT pt_value_elt_index (const DB_VALUE * val);
+  extern DB_BIGINT pt_elt_index_signature (int format_class, DB_BIGINT elt_index);
   extern int *pt_host_var_format_classes (PARSER_CONTEXT * parser);
   extern int pt_set_host_var_format_classes (PARSER_CONTEXT * parser, int count, const DB_VALUE * values);
   extern bool pt_has_session_variable (PARSER_CONTEXT * parser, PT_NODE * statement);
