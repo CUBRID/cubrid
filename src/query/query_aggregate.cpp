@@ -404,7 +404,13 @@ qdata_plan_aggregate_accumulator (cubxasl::aggregate_list_node *agg_p)
     {
       if (!argument_typed)
 	{
-	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 left untyped sum function=%d\n", (int) agg_p->function);
+	  /* an argument typed NULL sums nothing: the accumulator stays a NULL of the function's domain */
+	  acc_dom->value_dom = agg_p->domain;
+	  acc_dom->value2_dom = &tp_Null_domain;
+	  if (argument == NULL || domain_is_variable (argument))
+	    {
+	      er_log_debug (ARG_FILE_LINE, "CBRD-27583 left untyped sum function=%d\n", (int) agg_p->function);
+	    }
 	  break;
 	}
       const DOMAIN_OPERAND operands[2] =
@@ -2885,21 +2891,13 @@ qdata_finalize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_li
       const TP_DOMAIN *value_dom = agg_p->accumulator_domain.value_dom;
       if (agg_p->function == PT_SUM && agg_domain != value_dom)
 	{
-	  /* exception: a SUM of an argument of no type converts by its value's type until step 3 */
-	  if (value_dom == NULL)
-	    {
-	      error = db_value_coerce (agg_p->accumulator.value, agg_p->accumulator.value, agg_domain);
-	    }
-	  else
-	    {
-	      /* the sum in value_dom - a single distinct FLOAT, held as it is, casts to the FLOAT it is - with the
-	       * converter the node planned */
-	      const TP_DOMAIN_STATUS status =
-		      tp_value_cast_with_converter (agg_p->accumulator.value, agg_p->accumulator.value, agg_domain, true,
-						    TP_DOMAIN_TYPE (value_dom), agg_p->accumulator_domain.final_conv);
-	      error = status == DOMAIN_COMPATIBLE ? NO_ERROR
-		      : tp_domain_status_er_set (status, ARG_FILE_LINE, agg_p->accumulator.value, agg_domain);
-	    }
+	  /* the sum in value_dom - a single distinct FLOAT, held as it is, casts to the FLOAT it is - with the converter
+	   * the node planned */
+	  const TP_DOMAIN_STATUS status =
+		  tp_value_cast_with_converter (agg_p->accumulator.value, agg_p->accumulator.value, agg_domain, true,
+						TP_DOMAIN_TYPE (value_dom), agg_p->accumulator_domain.final_conv);
+	  error = status == DOMAIN_COMPATIBLE ? NO_ERROR
+		  : tp_domain_status_er_set (status, ARG_FILE_LINE, agg_p->accumulator.value, agg_domain);
 	  if (error != NO_ERROR)
 	    {
 	      ASSERT_ERROR ();
@@ -2944,8 +2942,6 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
   SORT_LIST *sort_p;
   SORT_ORDER s_order;
   SORT_NULLS s_nulls;
-  DB_DOMAIN *dom;
-  HL_HEAPID save_heapid = 0;
 
   assert (agg_p != NULL && agg_p->sort_list != NULL && agg_p->operands->value.type == TYPE_REGU_VAR_LIST);
 
@@ -2989,42 +2985,16 @@ qdata_calculate_aggregate_cume_dist_percent_rank (cubthread::entry *thread_p, cu
 	}
 
       /* now we have found the start of the const list, fetch DB_VALUE from the list into info.dist_percent */
-      regu_tmp_node = regu_var_list;
       for (i = 0; i < nloops; i++)
 	{
 	  val_node_p = &info_p->const_array[i];
+	  /* in the ORDER BY item's domain: XASL generation cast the value into it (S3-4) */
 	  if (fetch_peek_dbval (thread_p, &regu_var_node->value, val_desc_p, NULL, NULL, NULL, val_node_p) != NO_ERROR)
 	    {
 	      goto exit_on_error;
 	    }
 
-	  /* Note: we must cast the const value to the same domain as the compared field in the order by clause */
-	  dom = regu_tmp_node->value.domain;
-
-	  if (REGU_VARIABLE_IS_FLAGED (&regu_var_node->value, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
-	    {
-	      save_heapid = db_change_private_heap (thread_p, 0);
-	    }
-
-	  if (db_value_coerce (*val_node_p, *val_node_p, dom) != NO_ERROR)
-	    {
-	      if (save_heapid != 0)
-		{
-		  (void) db_change_private_heap (thread_p, save_heapid);
-		  save_heapid = 0;
-		}
-
-	      goto exit_on_error;
-	    }
-
-	  if (save_heapid != 0)
-	    {
-	      (void) db_change_private_heap (thread_p, save_heapid);
-	      save_heapid = 0;
-	    }
-
 	  regu_var_node = regu_var_node->next;
-	  regu_tmp_node = regu_tmp_node->next;
 	}
     }
 

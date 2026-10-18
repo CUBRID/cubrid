@@ -147,10 +147,10 @@ qdata_plan_analytic_accumulator (ANALYTIC_TYPE *func_p)
     }
   const DB_TYPE argument_type = TP_DOMAIN_TYPE (argument);
   const DB_TYPE function_type = TP_DOMAIN_TYPE (function);
-  /* the typed addition coerced its result to the function's domain unless an AVG summed a NUMERIC first value - a
-   * string's is the function's domain - or a SUM's domain is NUMERIC */
-  const DB_TYPE kept = fcode == PT_AVG ? (TP_IS_CHAR_TYPE (argument_type) ? function_type : argument_type)
-		       : function_type;
+  /* the typed addition coerced its result to the function's domain unless an AVG summed a NUMERIC first value or a
+   * SUM's domain is NUMERIC; XASL generation casts an argument of no number type to DOUBLE (S3-17, D-46) */
+  assert (!TP_IS_CHAR_TYPE (argument_type));
+  const DB_TYPE kept = fcode == PT_AVG ? argument_type : function_type;
   const TP_DOMAIN *sum = kept == DB_TYPE_NUMERIC ? argument : function;
   acc_dom->value_dom = kept == DB_TYPE_NUMERIC ? NULL : (TP_DOMAIN *) function;
   const DOMAIN_OPERAND operands[2] =
@@ -160,8 +160,8 @@ qdata_plan_analytic_accumulator (ANALYTIC_TYPE *func_p)
   domain_resolve_operand_coercion (T_ADD, operands, &acc_dom->operand_coercion);
   if (acc_dom->value_dom != NULL && argument_type != function_type)
     {
-      /* the first value into the sum's domain: the operand coercion's converter where the rule converts the argument
-       * (a string into DOUBLE), the type pair's converter otherwise (a FLOAT into DOUBLE) */
+      /* the first value into the sum's domain: the operand coercion's converter where the rule converts the argument,
+       * the type pair's converter otherwise (a FLOAT into DOUBLE) */
       acc_dom->first_conv = acc_dom->operand_coercion.conv[1] != NULL ? acc_dom->operand_coercion.conv[1]
 			    : tp_value_find_converter (argument_type, function, DOMAIN_CONVERT_IMPLICIT);
     }

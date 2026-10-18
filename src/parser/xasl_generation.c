@@ -7805,6 +7805,11 @@ pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
   arith->domain = (TP_DOMAIN *) result.domain;
   regu->domain = arith->domain;
   regu_dbval_type_init (arith->value, TP_DOMAIN_TYPE (arith->domain));
+  if (n_value_operands == 2 && arith->thirdptr != NULL)
+    {
+      /* the block carrier holds no value: it types as its node, as one type checking typed does */
+      arith->thirdptr->domain = arith->domain;
+    }
 }
 
 /*
@@ -7909,6 +7914,26 @@ pt_reject_unaddable_operand (PARSER_CONTEXT * parser, PT_NODE * statement, FUNC_
 }
 
 /*
+ * pt_cast_regu () - CBRD-27583: operand read through a T_CAST into domain (tp_value_cast_force's coercion)
+ *   return: false out of memory
+ */
+static bool
+pt_cast_regu (REGU_VARIABLE * operand, TP_DOMAIN * domain)
+{
+  REGU_VARIABLE *value;
+  regu_alloc (value);
+  REGU_VARIABLE *cast = value != NULL ? pt_make_regu_arith (NULL, value, NULL, T_CAST, domain) : NULL;
+  if (cast == NULL)
+    {
+      return false;
+    }
+  *value = *operand;
+  cast->domain = domain;
+  *operand = *cast;
+  return true;
+}
+
+/*
  * pt_cast_unnumbered_operand () - CBRD-27583 (D-46): a SUM or AVG over an operand of no number type - a session
  *   variable read or a bind, which type checking saw MAYBE - reads it through a cast to DOUBLE, as type checking casts
  *   a typed argument; a collection under SUM, NULL and a type the compiler does not know keep theirs
@@ -7926,18 +7951,12 @@ pt_cast_unnumbered_operand (PARSER_CONTEXT * parser, PT_NODE * statement, FUNC_C
     {
       return NO_ERROR;
     }
-  REGU_VARIABLE *value;
-  regu_alloc (value);
-  REGU_VARIABLE *cast = value != NULL ? pt_make_regu_arith (NULL, value, NULL, T_CAST, &tp_Double_domain) : NULL;
-  if (cast == NULL)
+  if (!pt_cast_regu (operand, &tp_Double_domain))
     {
       PT_ERROR (parser, statement, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
 						   MSGCAT_SEMANTIC_OUT_OF_MEMORY));
       return ER_FAILED;
     }
-  *value = *operand;
-  cast->domain = &tp_Double_domain;
-  *operand = *cast;
   return NO_ERROR;
 }
 
@@ -8032,7 +8051,8 @@ pt_decide_analytic_domains (PARSER_CONTEXT * parser, PT_NODE * statement, ANALYT
 	{
 	  operand->domain = pt_reader_domain (operand->domain, slot->dom);
 	}
-      if (pt_reject_unaddable_operand (parser, statement, func->function, operand, func->value) != NO_ERROR)
+      if (pt_reject_unaddable_operand (parser, statement, func->function, operand, func->value) != NO_ERROR
+	  || pt_cast_unnumbered_operand (parser, statement, func->function, operand) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -8823,6 +8843,11 @@ pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX un
 	}
       else
 	{
+	  /* CBRD-27583: a list a type checking left variable reads as its first column, as a single tuple does */
+	  if (regu->domain != NULL && TP_DOMAIN_TYPE (regu->domain) == DB_TYPE_VARIABLE)
+	    {
+	      regu->domain = pt_reader_domain (regu->domain, domain_list_column_of (xasl, 0));
+	    }
 	  regu_alloc (srlist_id);
 	  if (srlist_id)
 	    {
@@ -9311,10 +9336,18 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	  domain = tp_domain_resolve_value ((DB_VALUE *) node->etc, NULL);
 	}
 
-      /* CBRD-27583 (4.3): a reference into the analytic pass's values reads the domain their writer fills them with */
+      /* CBRD-27583 (4.3): a reference into the analytic or the GROUP BY pass's values reads the domain their writer
+       * fills them with */
       const XASL_NODE *block = parser->parent_proc_xasl;
-      QPROC_DB_VALUE_LIST slot = block != NULL && block->type == BUILDLIST_PROC
-	? pt_value_list_slot (block->proc.buildlist.a_val_list, (DB_VALUE *) node->etc) : NULL;
+      QPROC_DB_VALUE_LIST slot = NULL;
+      if (block != NULL && block->type == BUILDLIST_PROC)
+	{
+	  slot = pt_value_list_slot (block->proc.buildlist.a_val_list, (DB_VALUE *) node->etc);
+	  if (slot == NULL)
+	    {
+	      slot = pt_value_list_slot (block->proc.buildlist.g_val_list, (DB_VALUE *) node->etc);
+	    }
+	}
       if (slot != NULL && pt_regu_domain_is_fixed_domain (slot->dom))
 	{
 	  domain = slot->dom;
@@ -30825,6 +30858,22 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
 
   /* order by items have been attached, now the arguments */
   regu_var->next = pt_to_regu_variable_list (parser, arg_list, UNBOX_AS_VALUE, NULL, NULL);
+
+  /* CBRD-27583 (S3-4): each hypothetical value compares in its ORDER BY item's domain, which a cast gives it (the
+   * coercion the aggregate made at the group's first row) */
+  for (REGU_VARIABLE_LIST item = regu_var_list, value = regu_var->next; item != regu_var->next && value != NULL;
+       item = item->next, value = value->next)
+    {
+      TP_DOMAIN *domain = item->value.domain;
+      if (domain == value->value.domain || !pt_regu_domain_is_fixed_domain (domain))
+	{
+	  continue;
+	}
+      if (!pt_cast_regu (&value->value, domain))
+	{
+	  return NULL;
+	}
+    }
 
   /* finally setup regu: */
   regu->value.regu_var_list = regu_var_list;
