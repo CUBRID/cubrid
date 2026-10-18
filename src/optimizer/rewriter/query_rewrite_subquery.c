@@ -142,6 +142,16 @@ qo_is_unnestable_subquery (PARSER_CONTEXT * parser, PT_NODE * subq, bool require
       return false;
     }
 
+  /* the WHERE becomes an ON condition and the IN forms lift the select item into it too;
+   * the grammar forbids a path expression there (MSGCAT_SEMANTIC_OUTERJOIN_PATH_EXPR).
+   * an EXISTS select item is dropped, but its path still adds a path node to the plan.
+   * checked after the constant-time spec check, as it walks both trees */
+  if (pt_has_path_expr (parser, subq->info.query.q.select.where)
+      || pt_has_path_expr (parser, subq->info.query.q.select.list))
+    {
+      return false;
+    }
+
   return true;
 }
 
@@ -308,11 +318,11 @@ qo_conjunct_is_unnestable (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * cn
 	  return false;
 	}
 
-      /* like the subquery WHERE and select list, the lhs joins the ON; a subquery inside it would land
-       * where the grammar forbids one */
+      /* like the subquery WHERE and select list, the lhs joins the ON;
+       * the grammar forbids a subquery or a path expression there */
       has_subquery = false;
       (void) parser_walk_tree (parser, lhs, pt_check_subquery_pre, NULL, pt_check_subquery_post, &has_subquery);
-      if (has_subquery)
+      if (has_subquery || pt_has_path_expr (parser, lhs))
 	{
 	  return false;
 	}

@@ -47,7 +47,6 @@
 
 #include "porting.h"
 #include "chartype.h"
-#include "deduplicate_key.h"
 #include "misc_string.h"
 #include "error_manager.h"
 #include "storage_common.h"
@@ -563,6 +562,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 
 #define PRM_NAME_SQL_TRACE_SLOW "sql_trace_slow"
 
+
 #define PRM_NAME_LOG_TRACE_FLUSH_TIME "log_trace_flush_time"
 
 #define PRM_NAME_INTL_COLLATION "intl_collation"
@@ -762,7 +762,6 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_VACUUM_OVFP_CHECK_THRESHOLD "vacuum_ovfp_check_threshold"
 
 #define PRM_NAME_DEDUPLICATE_KEY_LEVEL     "deduplicate_key_level"
-#define PRM_NAME_PRINT_INDEX_DETAIL        "print_index_detail"
 
 #define PRM_NAME_MAX_SUBQUERY_CACHE_SIZE    "max_subquery_cache_size"
 
@@ -4962,27 +4961,16 @@ SYSPRM_PARAM prm_Def[] = {
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
+  /* The DEDUPLICATE index feature was removed; the value is accepted and ignored. */
   {PRM_ID_DEDUPLICATE_KEY_LEVEL,
    PRM_NAME_DEDUPLICATE_KEY_LEVEL,
-   // It is not specified in the manual that it can be changed in the session.
-   (PRM_FOR_SERVER | PRM_FORCE_SERVER | PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_FOR_HA_CONTEXT),
+   (PRM_FOR_SERVER | PRM_FOR_CLIENT | PRM_FOR_SESSION | PRM_USER_CHANGE | PRM_DEPRECATED),
    PRM_INTEGER,
    PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.i = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT}},
-   {false, {.i = DEDUPLICATE_KEY_LEVEL_SYSPARAM_DFLT}},
-   {false, {.i = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MAX}},
-   {false, {.i = DEDUPLICATE_KEY_LEVEL_SYSPARAM_MIN}},
-   (char *) NULL,
-   (DUP_PRM_FUNC) NULL,
-   (DUP_PRM_FUNC) NULL},
-  {PRM_ID_PRINT_INDEX_DETAIL,
-   PRM_NAME_PRINT_INDEX_DETAIL,
-   (PRM_FOR_CLIENT | PRM_FOR_SERVER | PRM_FOR_SESSION | PRM_USER_CHANGE),
-   PRM_BOOLEAN,
-   PRM_CLEAR_DYNAMIC_FLAG,
-   {false, {.b = false}},
-   {false, {.b = false}},
-   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
+   {false, {.i = -1}},
+   {false, {.i = -1}},
+   {false, {.i = 14}},
+   {false, {.i = -1}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
@@ -5696,7 +5684,7 @@ static_assert (PRM_ID_INTL_DATE_LANG == 194, "update SysParam.java");
 static_assert (PRM_ID_INTL_COLLATION == 206, "update SysParam.java");
 static_assert (PRM_ID_TIMEZONE == 249, "update SysParam.java");
 static_assert (PRM_ID_ORACLE_COMPAT_NUMBER_BEHAVIOR == 334, "update SysParam.java");
-static_assert (PRM_ID_STORED_PROCEDURE_DUMP_ICODE == 354, "update SysParam.java");
+static_assert (PRM_ID_STORED_PROCEDURE_DUMP_ICODE == 353, "update SysParam.java");
 
 SYSPRM_INDIRECT_POS prm_Def_session_idx[DIM (prm_Def)];
 
@@ -7960,7 +7948,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = PRM_GET_INT (*prm_value);
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -8055,7 +8043,7 @@ prm_print (const SYSPRM_PARAM * prm, char *buf, size_t len, PRM_PRINT_MODE print
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = PRM_GET_FLOAT (*prm_value);
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -8181,7 +8169,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = value.i;
 
 	  if (PRM_DIFFERENT_UNIT (prm))
@@ -8276,7 +8264,7 @@ sysprm_print_sysprm_value (PARAM_ID prm_id, SYSPRM_VALUE value, char *buf, size_
 
       if (PRM_HAS_SIZE_UNIT (prm))
 	{
-	  UINT64 dup_val;
+	  UINT64 dup_val = 0;
 	  val = value.f;
 
 	  if (PRM_DIFFERENT_UNIT (prm))

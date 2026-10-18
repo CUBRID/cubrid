@@ -46,6 +46,7 @@
 #include "porting.h"
 #include "cas_common.h"
 #include "cas_common_vars.h"
+#include "cas_common_main.h"
 #include "cas_network.h"
 #include "cas_error.h"
 #include "cas_protocol.h"
@@ -222,10 +223,6 @@ net_connect_proxy (void)
 
   ut_get_proxy_port_name (port_name, shm_appl->broker_name, as_info->proxy_id, BROKER_PATH_MAX);
 
-  if (port_name == NULL)
-    {
-      return (INVALID_SOCKET);
-    }
   /* FOR DEBUG */
   SHARD_ERR ("<CAS> connect to unixdoamin:[%s].\n", port_name);
 
@@ -535,6 +532,12 @@ read_buffer (SOCKET sock_fd, char *buf, int size)
       return -1;
     }
 
+  if (cas_shutdown_signo)
+    {
+      net_error_flag = 1;
+      return -1;
+    }
+
 #if defined(ASYNC_MODE)
   timeout = net_timeout < 0 ? -1 : net_timeout * 1000;
 
@@ -566,6 +569,15 @@ retry_poll:
     {
       if (errno == EINTR)
 	{
+	  /* Resuming execution after cas_sig_handler() means this EINTR is a shutdown request.
+	   * Retrying unconditionally will ignore the request and block until session_timeout,
+	   * with nothing else to wake it up. 
+	   */
+	  if (cas_shutdown_signo)
+	    {
+	      net_error_flag = 1;
+	      return -1;
+	    }
 	  goto retry_poll;
 	}
       else
@@ -624,6 +636,12 @@ write_buffer (SOCKET sock_fd, const char *buf, int size)
       return -1;
     }
 
+  if (cas_shutdown_signo)
+    {
+      net_error_flag = 1;
+      return -1;
+    }
+
 #ifdef ASYNC_MODE
   po[0].fd = sock_fd;
   po[0].events = POLLOUT;
@@ -634,6 +652,11 @@ retry_poll:
     {
       if (errno == EINTR)
 	{
+	  if (cas_shutdown_signo)
+	    {
+	      net_error_flag = 1;
+	      return -1;
+	    }
 	  goto retry_poll;
 	}
       else

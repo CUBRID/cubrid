@@ -56,6 +56,9 @@
 #include "string_regex.hpp"
 #include "tz_support.h"
 #include "util_func.h"
+#if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
+#include "domain_rules.h"
+#endif
 
 #include <algorithm>
 #include <string>
@@ -254,6 +257,10 @@ typedef enum
   COMPOSITE_MILLISECOND,
   COMPOSITE_MAX
 } EN_COMPOSITE_POS;
+
+/* milliseconds of 10000 years: a larger amount of any interval unit leaves the date range, so clamping to it
+ * keeps the result an error and the date arithmetic free of overflow */
+#define INTERVAL_AMOUNT_MAX ((DB_BIGINT) 10000 * 366 * 24 * 60 * 60 * 1000)
 
 static int db_string_prefix_compare (const DB_VALUE * string1, const DB_VALUE * string2, DB_VALUE * result);
 static char db_string_escape_char (char c);
@@ -7317,6 +7324,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
   int collation_id;
   TZ_ID tz_id = 0;
   DB_DATETIMETZ ldatetimetz;
+  bool zone_to_string = false;
 
   if (DB_IS_NULL (left) || DB_IS_NULL (right))
     {
@@ -7529,10 +7537,36 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 
   /* depending on the first argument, the result is either result_date or result_time */
 
-  if (domain != NULL)
+  /* the compiler types a string column or expression VARCHAR (the manual's "date/time string" row), and
+   * the zone such a string carries goes into the result string. A string literal, bind or session variable keeps the
+   * type its value gives (a zone makes it DATETIMETZ): the client folds a literal without a domain, and resolve_domains
+   * types a bind or a session variable's value into the domain it passes. */
+  zone_to_string = domain != NULL && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARCHAR && result_type == DB_TYPE_DATETIMETZ;
+  if (domain != NULL && !zone_to_string)
     {
       assert (TP_DOMAIN_TYPE (domain) == result_type);
     }
+
+#if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
+  {
+    /* debug cross-check: domain_resolve (DOMAIN_CTX_FUNC_ARG) answers the result type - from the value's type,
+     * but for a string the compiler typed VARCHAR whose zone goes into the result string */
+    DB_TYPE left_class = !zone_to_string ? domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, 0, left)
+      : DB_VALUE_DOMAIN_TYPE (left);
+    DOMAIN_OPERAND operands[2] = {
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (left)), left_class, -1, false}
+      ,
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (right)), DB_VALUE_DOMAIN_TYPE (right), -1, false}
+    };
+    RESOLVED_DOMAIN resolved;
+    bool needs_late_bind;
+    int cross_check_error =
+      domain_resolve (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, operands, 2, NULL, &resolved, &needs_late_bind);
+    assert (cross_check_error == NO_ERROR && !needs_late_bind);
+    assert (cross_check_error != NO_ERROR
+	    || TP_DOMAIN_TYPE (resolved.domain) == (zone_to_string ? DB_TYPE_VARCHAR : result_type));
+  }
+#endif
 
   switch (result_type)
     {
@@ -7587,6 +7621,20 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
 	if (error != NO_ERROR)
 	  {
 	    goto error_return;
+	  }
+	if (zone_to_string)
+	  {
+	    res_s = (char *) db_private_alloc (NULL, DATETIMETZ_BUF_SIZE);
+	    if (res_s == NULL)
+	      {
+		error = ER_DATE_CONVERSION;
+		goto error_return;
+	      }
+	    db_datetimetz_to_string (res_s, DATETIMETZ_BUF_SIZE, &dt_tz.datetime, &dt_tz.tz_id);
+	    db_make_varchar (result, strlen (res_s), res_s, strlen (res_s), TP_DOMAIN_CODESET (domain),
+			     TP_DOMAIN_COLLATION (domain));
+	    result->need_clear = true;
+	    break;
 	  }
 	db_make_datetimetz (result, &dt_tz);
 	break;
@@ -16724,6 +16772,14 @@ date_to_char (const DB_VALUE * src_value, const DB_VALUE * format_str, const DB_
 	  goto exit;
 	}
 
+      /* a host variable is bound here without a cast (late binding), so the format can be any type */
+      if (!is_char_string (format_str))
+	{
+	  error_status = ER_QSTR_INVALID_DATA_TYPE;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
+	  goto exit;
+	}
+
       /* compute allocation size : trade-off exact size (and small mem usage) vs speed */
       result_len = (db_get_string_length (format_str) * QSTR_TO_CHAR_LEN_MULTIPLIER_RATIO);
 
@@ -20294,7 +20350,8 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 
   /* simple case, where just a number of days is added to date */
   days = db_get_int (db_days);
-  composite_values[COMPOSITE_DAY] = abs (days);
+  /* widen before abs: abs (INT_MIN) overflows int */
+  composite_values[COMPOSITE_DAY] = llabs ((DB_BIGINT) days);
 
   switch (res_type)
     {
@@ -20837,7 +20894,7 @@ db_date_add_sub_interval_composite_value (const char *expr_s, int unit, DB_BIGIN
 	    }
 
 	  ms_ptr = expr_s;
-	  values[base + cnt] = strtoll (expr_s, &endptr, 10);
+	  values[base + cnt] = std::min ((DB_BIGINT) strtoll (expr_s, &endptr, 10), INTERVAL_AMOUNT_MAX);
 	  cnt++;
 	  expr_s = endptr;
 	}
@@ -20968,6 +21025,8 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       assert (unit == PT_MILLISECOND || unit == PT_SECOND || unit == PT_MINUTE || unit == PT_HOUR ||
 	      unit == PT_DAY || unit == PT_WEEK || unit == PT_MONTH || unit == PT_QUARTER || unit == PT_YEAR);
 
+      /* the negation and the WEEK and QUARTER products below overflow at the BIGINT ends */
+      unit_int_val = std::clamp (unit_int_val, -INTERVAL_AMOUNT_MAX, INTERVAL_AMOUNT_MAX);
       if (unit_int_val >= 0)
 	{
 	  is_positive_value = 1;
@@ -22612,6 +22671,25 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 	  goto error;
 	}
     }
+
+#if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
+  {
+    /* debug cross-check: resolve_domains' format type and domain_resolve (DOMAIN_CTX_FUNC_ARG) answer res_type */
+    DB_TYPE format_class = domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_STR_TO_DATE, 1, format);
+    DOMAIN_OPERAND operands[2] = {
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (str)), DB_VALUE_DOMAIN_TYPE (str), -1, false}
+      ,
+      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (format)), format_class, -1, false}
+    };
+    RESOLVED_DOMAIN resolved;
+    bool needs_late_bind;
+    int cross_check_error = domain_resolve (DOMAIN_CTX_FUNC_ARG, T_STR_TO_DATE, operands, 2, domain, &resolved,
+					    &needs_late_bind);
+    assert (domain != NULL || format_class == res_type);
+    assert (cross_check_error == NO_ERROR && !needs_late_bind);
+    assert (cross_check_error != NO_ERROR || TP_DOMAIN_TYPE (resolved.domain) == res_type);
+  }
+#endif
 
   /*
    * 1. Get information according to format specifiers
@@ -26898,7 +26976,7 @@ db_conv (const DB_VALUE * num, const DB_VALUE * from_base, const DB_VALUE * to_b
 
       if (str_size >= 0)
 	{
-	  str_size = MIN (str_size, sizeof (num_str) - 1);
+	  str_size = MIN (str_size, (int) (sizeof (num_str) - 1));
 	  strncpy (num_str, db_get_string (num), str_size);
 	  str_start = num_str;
 	  str_end = num_str + str_size;
