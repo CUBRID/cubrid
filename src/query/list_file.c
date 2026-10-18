@@ -1167,7 +1167,7 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
     {
       list_id_p->tfile_vfid = qmgr_create_result_file (thread_p, query_id);
     }
-  else if (QFILE_IS_FLAG_SET (flag, QFILE_NOT_USE_MEMBUF))
+  else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_NO_MEMBUF))
     {
       list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_NONE);
     }
@@ -1733,7 +1733,7 @@ qfile_add_tuple_to_staged_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 	}
 #endif /* SERVER_MODE */
 
-      error = qmgr_alloc_temp_page (thread_p, spool_p, &new_vpid);
+      error = qmgr_alloc_external_file_page (thread_p, &new_vpid, spool_p);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -1746,7 +1746,7 @@ qfile_add_tuple_to_staged_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
       else
 	{
 	  QFILE_PUT_NEXT_VPID (staged_page, &new_vpid);
-	  error = qmgr_write_temp_page (thread_p, spool_p, &list_id_p->last_vpid, staged_page);
+	  error = qmgr_copy_to_external_file_page (thread_p, &list_id_p->last_vpid, spool_p, staged_page);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -1783,7 +1783,7 @@ qfile_add_tuple_to_staged_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
     }
   memset (ovf_page, 0, DB_PAGESIZE);
 
-  error = qmgr_alloc_temp_page (thread_p, spool_p, &ovf_vpid);
+  error = qmgr_alloc_external_file_page (thread_p, &ovf_vpid, spool_p);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -1800,7 +1800,7 @@ qfile_add_tuple_to_staged_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 
       if (offset + tuple_page_size < tuple_length)
 	{
-	  error = qmgr_alloc_temp_page (thread_p, spool_p, &next_ovf_vpid);
+	  error = qmgr_alloc_external_file_page (thread_p, &next_ovf_vpid, spool_p);
 	  if (error != NO_ERROR)
 	    {
 	      goto exit;
@@ -1812,7 +1812,7 @@ qfile_add_tuple_to_staged_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 	  VPID_SET_NULL (&next_ovf_vpid);
 	}
 
-      error = qmgr_write_temp_page (thread_p, spool_p, &ovf_vpid, ovf_page);
+      error = qmgr_copy_to_external_file_page (thread_p, &ovf_vpid, spool_p, ovf_page);
       if (error != NO_ERROR)
 	{
 	  goto exit;
@@ -1847,7 +1847,7 @@ qfile_write_staged_list_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p
     }
 
   QFILE_PUT_NEXT_VPID_NULL (staged_page);
-  return qmgr_write_temp_page (thread_p, spool_p, &list_id_p->last_vpid, staged_page);
+  return qmgr_copy_to_external_file_page (thread_p, &list_id_p->last_vpid, spool_p, staged_page);
 }
 
 /*

@@ -173,8 +173,11 @@ static void qmgr_clear_relative_cache_entries (THREAD_ENTRY * thread_p, QMGR_TRA
 static bool qmgr_is_related_class_modified (THREAD_ENTRY * thread_p, XASL_CACHE_ENTRY * xasl_cache, int tran_index);
 static OID_BLOCK_LIST *qmgr_allocate_oid_block (THREAD_ENTRY * thread_p);
 static void qmgr_free_oid_block (THREAD_ENTRY * thread_p, OID_BLOCK_LIST * oid_block);
+
+static int qmgr_create_external_file (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p);
 static int qmgr_init_external_file_page (THREAD_ENTRY * thread_p, PAGE_PTR page, void *args);
 static PAGE_PTR qmgr_get_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid, QMGR_TEMP_FILE * vfid);
+
 static int qmgr_free_query_temp_file_helper (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * query_p);
 static int qmgr_free_query_temp_file (THREAD_ENTRY * thread_p, QMGR_QUERY_ENTRY * qptr, int tran_idx);
 static QMGR_TEMP_FILE *qmgr_allocate_tempfile_with_buffer (int num_buffer_pages);
@@ -193,7 +196,6 @@ static void qmgr_initialize_temp_file_list (QMGR_TEMP_FILE_LIST * temp_file_list
 static void qmgr_finalize_temp_file_list (QMGR_TEMP_FILE_LIST * temp_file_list_p);
 static QMGR_TEMP_FILE *qmgr_get_temp_file_from_list (QMGR_TEMP_FILE_LIST * temp_file_list_p);
 static void qmgr_put_temp_file_into_list (QMGR_TEMP_FILE * temp_file_p);
-static int qmgr_create_temp_file_on_disk (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p);
 
 static int copy_bind_value_to_tdes (THREAD_ENTRY * thread_p, int num_bind_vals, DB_VALUE * bind_vals);
 
@@ -2897,63 +2899,15 @@ qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_p, int free_page, LO
 }
 
 /*
- * qmgr_get_new_page () -
- *   return: PAGE_PTR
- *   vpidp(in)  : Set to the allocated real page identifier
- *   tfile_vfidp(in)    : Query Associated with the XASL tree
+ * qmgr_create_external_file () - create the external file of a temporary file unless it already has one
+ *   return: NO_ERROR or error code
+ *   tfile_vfid_p(in/out): temporary file; its temp_vfid and temp_file_type are set
  *
- * Note: A new query file page is allocated and returned. The page fetched and returned, is not locked.
- * This routine is called succesively to allocate pages for the query result files (list files) or XASL tree files.
- * If an error occurs, NULL pointer is returned.
- */
-PAGE_PTR
-qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfile_vfid_p)
-{
-  PAGE_PTR page_p;
-  QMGR_QUERY_ENTRY *query_p = NULL;
-
-  if (tfile_vfid_p == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_TEMP_FILE, 1, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
-      return NULL;
-    }
-
-  /* first page, return memory buffer instead real temp file page */
-  if (tfile_vfid_p->membuf != NULL && tfile_vfid_p->membuf_last < tfile_vfid_p->membuf_npages - 1)
-    {
-      vpid_p->volid = NULL_VOLID;
-      vpid_p->pageid = ++(tfile_vfid_p->membuf_last);
-      return tfile_vfid_p->membuf[tfile_vfid_p->membuf_last];
-    }
-
-  /* memory buffer is exhausted; create temp file */
-  if (qmgr_create_temp_file_on_disk (thread_p, tfile_vfid_p) != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  /* try to get pages from an external temp file */
-  page_p = qmgr_get_external_file_page (thread_p, vpid_p, tfile_vfid_p);
-  if (page_p == NULL)
-    {
-      /* more temp file page is unavailable; cause error to stop the query */
-      vpid_p->pageid = NULL_PAGEID;
-      if (er_errid () == ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OUT_OF_TEMP_SPACE, 0);
-	}
-    }
-
-  return page_p;
-}
-
-/*
- * qmgr_create_temp_file_on_disk () - create the disk file of a temporary file if it does not have one yet
- *   return: error code
- *   tfile_vfid_p(in): temporary file
+ * Note: The external file takes the TDE algorithm if the temporary file is TDE encrypted.
+ *       On failure, the temporary file is left without an external file.
  */
 static int
-qmgr_create_temp_file_on_disk (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p)
+qmgr_create_external_file (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p)
 {
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
@@ -2986,27 +2940,33 @@ qmgr_create_temp_file_on_disk (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_v
 }
 
 /*
- * qmgr_alloc_temp_page () - allocate a page of a temporary file without fixing it
- *   return: error code
- *   tfile_vfid_p(in): temporary file without memory buffer
+ * qmgr_alloc_external_file_page () - allocate a page of an external file without fixing it
+ *   return: NO_ERROR or error code
  *   vpid_p(out): allocated page
+ *   tfile_vfid_p(in/out): temporary file without memory buffer; its external file is created if it has none
  *
- * Note: The page is not initialized; the caller writes the whole page later with qmgr_write_temp_page ().
+ * Note: Unlike qmgr_get_new_page (), it does not take a page of the memory buffer, and it does not fix or initialize
+ *       the page; it only allocates a page of the external file. The caller copies the whole page later with
+ *       qmgr_copy_to_external_file_page ().
+ *       The temporary file must have no memory buffer: a list mixing memory buffer pages with these pages cannot
+ *       be copied by qmgr_copy_to_external_file_page (), which fixes the page by its VPID.
  */
 int
-qmgr_alloc_temp_page (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p, VPID * vpid_p)
+qmgr_alloc_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfile_vfid_p)
 {
   int error;
 
   assert (tfile_vfid_p != NULL);
   assert (tfile_vfid_p->membuf == NULL);
 
-  error = qmgr_create_temp_file_on_disk (thread_p, tfile_vfid_p);
+  error = qmgr_create_external_file (thread_p, tfile_vfid_p);
   if (error != NO_ERROR)
     {
       return error;
     }
 
+  /* no init function and no page_out: file_alloc () neither fixes nor initializes the page,
+   * since qmgr_copy_to_external_file_page () copies the whole page once (unlike qmgr_get_external_file_page ()) */
   error = file_alloc (thread_p, &tfile_vfid_p->temp_vfid, NULL, NULL, vpid_p, NULL);
   if (error != NO_ERROR)
     {
@@ -3022,18 +2982,21 @@ qmgr_alloc_temp_page (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p, VP
 }
 
 /*
- * qmgr_write_temp_page () - write a page image to a page allocated by qmgr_alloc_temp_page ()
- *   return: error code
+ * qmgr_copy_to_external_file_page () - copy a page image to a page allocated by qmgr_alloc_external_file_page ()
+ *   return: NO_ERROR or error code
+ *   vpid_p(in): page to copy to
  *   tfile_vfid_p(in): temporary file the page belongs to
- *   vpid_p(in): page to write
  *   page_image(in): whole content of the page
+ *
+ * Note: A list whose last page is filled in memory (qfile_add_tuple_to_staged_list ()) uses this function to fix the
+ *       page once, when the page is full, instead of keeping it fixed or fixing it again while tuples are added.
  */
 int
-qmgr_write_temp_page (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p, const VPID * vpid_p,
-		      const char *page_image)
+qmgr_copy_to_external_file_page (THREAD_ENTRY * thread_p, const VPID * vpid_p, QMGR_TEMP_FILE * tfile_vfid_p,
+				 const char *page_image)
 {
   PAGE_PTR page_p;
-  TDE_ALGORITHM tde_algo;
+  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 
   assert (tfile_vfid_p != NULL);
   assert (vpid_p != NULL && vpid_p->volid != NULL_VOLID);
@@ -3048,14 +3011,67 @@ qmgr_write_temp_page (THREAD_ENTRY * thread_p, QMGR_TEMP_FILE * tfile_vfid_p, co
   memcpy (page_p, page_image, DB_PAGESIZE);
   pgbuf_set_page_ptype (thread_p, page_p, PAGE_QRESULT);
 
-  /* as file_alloc () does for an initialized page; the algorithm is the one qmgr_create_temp_file_on_disk () applied */
-  tde_algo = (tfile_vfid_p->tde_encrypted) ? (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM)
-    : TDE_ALGORITHM_NONE;
+  /* as file_alloc () does for an initialized page; the algorithm is the one qmgr_create_external_file () applied */
+  if (tfile_vfid_p->tde_encrypted)
+    {
+      tde_algo = (TDE_ALGORITHM) prm_get_integer_value (PRM_ID_TDE_DEFAULT_ALGORITHM);
+    }
   pgbuf_set_tde_algorithm (thread_p, page_p, tde_algo, true);
 
   pgbuf_set_dirty (thread_p, page_p, FREE);
 
   return NO_ERROR;
+}
+
+/*
+ * qmgr_get_new_page () -
+ *   return: PAGE_PTR
+ *   vpidp(in)  : Set to the allocated real page identifier
+ *   tfile_vfidp(in)    : Query Associated with the XASL tree
+ *
+ * Note: A new query file page is allocated and returned. The page fetched and returned, is not locked.
+ * This routine is called succesively to allocate pages for the query result files (list files) or XASL tree files.
+ * If an error occurs, NULL pointer is returned.
+ */
+PAGE_PTR
+qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfile_vfid_p)
+{
+  PAGE_PTR page_p;
+  QMGR_QUERY_ENTRY *query_p = NULL;
+
+  if (tfile_vfid_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_TEMP_FILE, 1, LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+      return NULL;
+    }
+
+  /* first page, return memory buffer instead real temp file page */
+  if (tfile_vfid_p->membuf != NULL && tfile_vfid_p->membuf_last < tfile_vfid_p->membuf_npages - 1)
+    {
+      vpid_p->volid = NULL_VOLID;
+      vpid_p->pageid = ++(tfile_vfid_p->membuf_last);
+      return tfile_vfid_p->membuf[tfile_vfid_p->membuf_last];
+    }
+
+  /* memory buffer is exhausted; create temp file */
+  if (qmgr_create_external_file (thread_p, tfile_vfid_p) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  /* try to get pages from an external temp file */
+  page_p = qmgr_get_external_file_page (thread_p, vpid_p, tfile_vfid_p);
+  if (page_p == NULL)
+    {
+      /* more temp file page is unavailable; cause error to stop the query */
+      vpid_p->pageid = NULL_PAGEID;
+      if (er_errid () == ER_FILE_NOT_ENOUGH_PAGES_IN_VOLUME)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_OUT_OF_TEMP_SPACE, 0);
+	}
+    }
+
+  return page_p;
 }
 
 /*
@@ -3142,8 +3158,6 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
   static int temp_mem_buffer_pages = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES);
   static int index_scan_key_buffer_pages = prm_get_integer_value (PRM_ID_INDEX_SCAN_KEY_BUFFER_PAGES);
 
-  assert (QMGR_IS_VALID_MEMBUF_TYPE (membuf_type) || membuf_type == TEMP_FILE_MEMBUF_NONE);
-
   if (membuf_type == TEMP_FILE_MEMBUF_NONE)
     {
       /* not taken from the free list, since qmgr_put_temp_file_into_list () frees it instead of caching it */
@@ -3163,6 +3177,7 @@ qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id, QMGR_TEMP
     }
   else
     {
+      assert (false);		/* impossible case: an invalid membuf type */
       return NULL;
     }
 

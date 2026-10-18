@@ -465,7 +465,7 @@ hjoin_execute_sub_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 	{
 	  sub_list_id[side][sub_index] =
 	    qfile_open_list (thread_p, &fetch_info->list_id->type_list, NULL, manager->query_id,
-			     QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF | QFILE_LIST_BACKWARD_FLAG (fetch_info->list_id),
+			     QFILE_FLAG_ALL | QFILE_FLAG_NO_MEMBUF | QFILE_LIST_BACKWARD_FLAG (fetch_info->list_id),
 			     NULL);
 	  if (sub_list_id[side][sub_index] == NULL)
 	    {
@@ -1150,7 +1150,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 
   manager->qlist_merge_method = HASHJOIN_MERGE_CONNECT;
   manager->qlist_flag =
-    (manager->qlist_merge_method == HASHJOIN_MERGE_CONNECT) ? QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF : QFILE_FLAG_ALL;
+    (manager->qlist_merge_method == HASHJOIN_MERGE_CONNECT) ? QFILE_FLAG_ALL | QFILE_FLAG_NO_MEMBUF : QFILE_FLAG_ALL;
   manager->qlist_flag |= XASL_LIST_BACKWARD_FLAG (xasl);	/* result lists are promoted to xasl->list_id */
 
   assert (manager->px_worker_manager == NULL);
@@ -1771,7 +1771,7 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
 
       outer_part_list_id[part_index] =
 	qfile_open_list (thread_p, &outer_list_id->type_list, NULL, outer_list_id->query_id,
-			 QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF | QFILE_LIST_BACKWARD_FLAG (outer_list_id), NULL);
+			 QFILE_FLAG_ALL | QFILE_FLAG_NO_MEMBUF | QFILE_LIST_BACKWARD_FLAG (outer_list_id), NULL);
       if (outer_part_list_id[part_index] == NULL)
 	{
 	  goto error_exit;
@@ -1779,7 +1779,7 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
 
       inner_part_list_id[part_index] =
 	qfile_open_list (thread_p, &inner_list_id->type_list, NULL, inner_list_id->query_id,
-			 QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF | QFILE_LIST_BACKWARD_FLAG (inner_list_id), NULL);
+			 QFILE_FLAG_ALL | QFILE_FLAG_NO_MEMBUF | QFILE_LIST_BACKWARD_FLAG (inner_list_id), NULL);
       if (inner_part_list_id[part_index] == NULL)
 	{
 	  goto error_exit;

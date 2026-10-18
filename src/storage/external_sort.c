@@ -5161,7 +5161,7 @@ sort_put_result_for_parallel (cubthread::entry & thread_ref, SORT_PARAM * sort_p
 	{
 	  sort_info_p->output_file =
 	    qfile_open_list (thread_p, &ori_sort_info_p->input_file->type_list, ori_sort_info_p->sort_list_p,
-			     ori_sort_info_p->input_file->query_id, ori_sort_info_p->flag | QFILE_NOT_USE_MEMBUF, NULL);
+			     ori_sort_info_p->input_file->query_id, ori_sort_info_p->flag | QFILE_FLAG_NO_MEMBUF, NULL);
 	}
     }
 
