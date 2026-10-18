@@ -1446,14 +1446,10 @@ expr_k_hostvar (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   *step->out_cell = ctx->vd->dbval_ptr + step->aux;
 #if !defined (NDEBUG)
-  /* the kernels were chosen for that domain. shortcut: a fixed and a varying character string count as one type,
-   * because a later MERGE translation's cast rewrites a user position's domain (cbrd_27615 Case 1); back to the same
-   * type once S3-31 fixes the generation */
+  /* the kernels were chosen for that domain */
   const TP_DOMAIN *domain = expr_hostvar_domain (step->regu);
-  const DB_TYPE value_type = DB_VALUE_DOMAIN_TYPE (*step->out_cell);
-  assert (DB_IS_NULL (*step->out_cell) || domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
-	  || value_type == TP_DOMAIN_TYPE (domain) || (TP_IS_CHAR_TYPE (value_type)
-						       && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain))));
+  assert (domain != NULL
+	  && (DB_IS_NULL (*step->out_cell) || DB_VALUE_DOMAIN_TYPE (*step->out_cell) == TP_DOMAIN_TYPE (domain)));
 #endif
   return NO_ERROR;
 }

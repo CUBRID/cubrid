@@ -5078,7 +5078,7 @@ pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_ind
  *   (type checking: a comparison's type rule, pt_bind_comparison_target, or a collation, pt_collation_rule_cast), in a
  *   relational comparison the target the type rule gives the position's domain against its mate, or the position's
  *   domain; a node that needs another domain moves to a derived position. A rule cast is a derived position: the user
- *   position holds the value as bound.
+ *   position holds the value as bound. A later translation's node reads its position whatever its own context.
  */
 static int
 pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent,
@@ -5118,7 +5118,21 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
       return NO_ERROR;
     }
 
-  TP_DOMAIN *need = own;
+#if !defined (NDEBUG)
+  if (!walk->assign && own != NULL
+      && (TP_DOMAIN_TYPE (own) != TP_DOMAIN_TYPE (position) || own->codeset != position->codeset
+	  || own->collation_id != position->collation_id))
+    {
+      /* CBRD-27583 census (removed at S3-14): a later translation's context of another type than the position */
+      er_log_debug (ARG_FILE_LINE, "CBRD-27583 later context position=%d own=%d.%d.%d sent=%d.%d.%d: %.300s\n", i,
+		    (int) TP_DOMAIN_TYPE (own), own->codeset, own->collation_id, (int) TP_DOMAIN_TYPE (position),
+		    position->codeset, position->collation_id,
+		    parser->original_buffer != NULL ? parser->original_buffer : "");
+    }
+#endif
+
+  /* S3-31: a later translation's own context reads the position as the client sends it (its consumer converts) */
+  TP_DOMAIN *need = walk->assign ? own : NULL;
   if (need == NULL)
     {
       /* a rule cast's target (a comparison's or a collation's), or the comparison rule of a copied term */

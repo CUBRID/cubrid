@@ -8859,7 +8859,12 @@ pt_preset_hostvar (PARSER_CONTEXT * parser, PT_NODE * hv_node)
       return;
     }
 
-  parser->host_var_expected_domains[hv_node->info.host_var.index] = hv_node->expected_domain;
+  /* CBRD-27583 (S3-31): a position's domain is what the client sends, set once when the first translation assigns the
+   * positions (pt_assign_host_var_positions); a later translation's node keeps its expected domain to itself */
+  if (parser->host_var_derived_from == NULL)
+    {
+      parser->host_var_expected_domains[hv_node->info.host_var.index] = hv_node->expected_domain;
+    }
 }
 
 /* pt_set_expected_domain - set the expected tomain of a PT_NODE
