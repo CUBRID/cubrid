@@ -4648,13 +4648,13 @@ pt_bind_operand_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, 
 /*
  * pt_typed_bind_comparison () - CBRD-27583: a user host variable compared with an operand of a known type, in the
  *   compilation of a bind type signature (its value, or the NULL carrying only the value's type that the SELECT
- *   compilation binds; never under set_host_var, the compilation that consumes values), takes the type of its value,
- *   and pt_bind_comparison_target decides the pair: when the rule converts the bind side, the node's expected
- *   domain is the target (a rule cast: pt_assign_host_var_positions moves the node to a derived position of the
- *   target, which the client fills); else the term converts the other side. Either way the position stays
- *   value-typed and records the value's domain: a later value of another type recompiles the statement for its own
- *   signature instead of being cast into this plan's domain (int_col = ? with 1.5 stays 1.5). Returns false when
- *   this is not such a bind: the caller types it as before.
+ *   compilation binds; never under set_host_var, the compilation that consumes values), takes the type of its value
+ *   (D-70: a NULL at a COMPARE position its mate's, pt_host_var_stand_in), and pt_bind_comparison_target decides the
+ *   pair: when the rule converts the bind side, the node's expected domain is the target (a rule cast:
+ *   pt_assign_host_var_positions moves the node to a derived position of the target, which the client fills); else
+ *   the term converts the other side. Either way the position stays value-typed and records the value's domain: a
+ *   later value of another type recompiles the statement for its own signature instead of being cast into this plan's
+ *   domain (int_col = ? with 1.5 stays 1.5). Returns false when this is not such a bind: the caller types it as before.
  */
 static bool
 pt_typed_bind_comparison (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent)
@@ -4672,10 +4672,17 @@ pt_typed_bind_comparison (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * paren
       return false;
     }
   const int index = hv->info.host_var.index;
-  const DB_VALUE *val = &parser->host_variables[index];
-  if (DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_NULL
-      || TP_DOMAIN_TYPE (parser->host_var_expected_domains[index]) != DB_TYPE_UNKNOWN)
+  if (TP_DOMAIN_TYPE (parser->host_var_expected_domains[index]) != DB_TYPE_UNKNOWN)
     {
+      return false;
+    }
+  if (DB_VALUE_DOMAIN_TYPE (&parser->host_variables[index]) == DB_TYPE_NULL
+      && (parser->host_var_derived_from != NULL || parser->host_var_format_classes == NULL
+	  || PT_HOST_VAR_CLASS (parser->host_var_format_classes[index]) != PT_HOST_VAR_CLASS_COMPARE
+	  || mate->type_enum == PT_TYPE_MAYBE || mate->type_enum == PT_TYPE_NONE || mate->type_enum == PT_TYPE_NULL
+	  || !pt_host_var_stand_in (parser, index, pt_xasl_node_to_domain (parser, mate))))
+    {
+      /* D-70: a comparison operand's NULL compiles as a value of its mate's domain, unless no client binds one */
       return false;
     }
   TP_DOMAIN *source = pt_host_var_value_domain (parser, index);
@@ -4751,6 +4758,62 @@ pt_collation_rule_cast (PARSER_CONTEXT * parser, PT_NODE * hv, const int coll_id
   hv->expected_domain = tp_domain_cache (target);
   hv->info.host_var.rule_cast = true;
   return true;
+}
+
+/*
+ * pt_type_null_signature_binds () - CBRD-27583 (D-70): before an operator node types its operands, an operand of an
+ *   AGNOSTIC position (pt_classify_host_var_positions) is the INTEGER of whether its value is NULL; and in the
+ *   compilation of a bind type signature, the NULL bound at an operand of an NVL_ARG position compiles as a value of
+ *   the domain the node has with it NULL (pt_host_var_stand_in), of the types D-72 allows
+ */
+static void
+pt_type_null_signature_binds (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *arg[3] = { node->info.expr.arg1, node->info.expr.arg2, node->info.expr.arg3 };
+  for (int j = 0; j < 3 && parser->host_var_format_classes != NULL; j++)
+    {
+      PT_NODE *hv = arg[j];
+      if (hv == NULL || hv->node_type != PT_HOST_VAR || hv->info.host_var.var_type != PT_HOST_IN
+	  || hv->info.host_var.index >= parser->host_var_count || hv->type_enum != PT_TYPE_MAYBE)
+	{
+	  continue;
+	}
+      const int index = hv->info.host_var.index;
+      const int kind = PT_HOST_VAR_CLASS (parser->host_var_format_classes[index]);
+      if (kind == 0 || pt_host_var_occurrence_class (parser, hv, node, NULL) != kind)
+	{
+	  continue;
+	}
+      if (kind == PT_HOST_VAR_CLASS_AGNOSTIC)
+	{
+	  hv->type_enum = PT_TYPE_INTEGER;
+	  SET_EXPECTED_DOMAIN (hv, tp_domain_resolve_default (DB_TYPE_INTEGER));
+	  pt_preset_hostvar (parser, hv);
+	}
+      else if (kind == PT_HOST_VAR_CLASS_NVL_ARG && parser->flag.set_host_var == 0
+	       && parser->host_var_compiled_domains != NULL && parser->host_variables != NULL
+	       && parser->host_var_derived_from == NULL && !pt_host_var_is_context_typed (hv->expected_domain)
+	       && DB_VALUE_DOMAIN_TYPE (&parser->host_variables[index]) == DB_TYPE_NULL)
+	{
+	  const TP_DOMAIN *domain = pt_nvl_node_domain (parser, node, j, &tp_Null_domain);
+	  const DB_TYPE type = domain != NULL ? TP_DOMAIN_TYPE (domain) : DB_TYPE_NULL;
+	  /* D-72: only where a client's value plans the node as the NULL does; a NUMERIC's precision, a CHAR's or BIT's
+	   * length, a TIMESTAMP's zone, an ENUM's elements ... are the value's own */
+	  if ((type == DB_TYPE_SHORT || type == DB_TYPE_INTEGER || type == DB_TYPE_BIGINT || type == DB_TYPE_FLOAT
+	       || type == DB_TYPE_DOUBLE || type == DB_TYPE_DATE || type == DB_TYPE_TIME || type == DB_TYPE_DATETIME
+	       || type == DB_TYPE_VARCHAR) && pt_host_var_stand_in (parser, index, domain))
+	    {
+	      const TP_DOMAIN *with = pt_nvl_node_domain (parser, node, j, pt_host_var_value_domain (parser, index));
+	      if (with == NULL || !tp_domain_match (with, domain, TP_EXACT_MATCH))
+		{
+		  /* the NULL would not take the plan the stand-in compiles (pt_check_null_takes_plan): a VARCHAR (20)
+		   * operand's node is a VARCHAR (20), a client string's the longest: it keeps a signature of its own */
+		  pr_clear_value (&parser->host_variables[index]);
+		  db_make_null (&parser->host_variables[index]);
+		}
+	    }
+	}
+    }
 }
 
 /*
@@ -9158,6 +9221,7 @@ pt_eval_expr_type (PARSER_CONTEXT * parser, PT_NODE * node)
       return node;
     }
 
+  pt_type_null_signature_binds (parser, node);
 
   arg1 = node->info.expr.arg1;
   if (arg1)

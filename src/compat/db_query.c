@@ -418,6 +418,7 @@ db_init_prepare_info (DB_PREPARE_INFO * info)
   info->host_var_expected_domains = NULL;
   info->host_var_derived_from = NULL;
   info->host_var_derived_count = 0;
+  info->host_var_format_classes = NULL;
   info->auto_param_count = 0;
   info->recompile = 0;
   info->oids_included = 0;
@@ -463,6 +464,8 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
 	  size += or_packed_domain_size (info->host_var_expected_domains[i], 0);
 	}
       packed_size += size;
+      /* CBRD-27583 (D-70): and each one's class */
+      packed_size += OR_INT_SIZE * (info->host_variables.size - info->auto_param_count);
     }
   /* CBRD-27583: the derived positions: count, then each one's index, user position and domain */
   packed_size += OR_INT_SIZE;
@@ -556,6 +559,11 @@ db_pack_prepare_info (const DB_PREPARE_INFO * info, char **buffer)
       for (i = 0; i < info->host_variables.size - info->auto_param_count; i++)
 	{
 	  ptr = or_pack_domain (ptr, info->host_var_expected_domains[i], 0, 0);
+	}
+      for (i = 0; i < info->host_variables.size - info->auto_param_count; i++)
+	{
+	  ptr = or_pack_int (ptr, info->host_var_format_classes != NULL
+			     ? PT_HOST_VAR_CLASS (info->host_var_format_classes[i]) : 0);
 	}
     }
   ptr = or_pack_int (ptr, info->host_var_derived_count);
@@ -660,6 +668,18 @@ db_unpack_prepare_info (DB_PREPARE_INFO * info, char *buffer)
       for (i = 0; i < var_count; i++)
 	{
 	  ptr = or_unpack_domain (ptr, &info->host_var_expected_domains[i], NULL);
+	}
+      /* every position's, as the EXECUTE's parser counts the auto-parameters among its host variables */
+      info->host_var_format_classes = (int *) calloc (info->host_variables.size, sizeof (int));
+      if (info->host_var_format_classes == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  info->host_variables.size * sizeof (int));
+	  goto error;
+	}
+      for (i = 0; i < var_count; i++)
+	{
+	  ptr = or_unpack_int (ptr, &info->host_var_format_classes[i]);
 	}
     }
   ptr = or_unpack_int (ptr, &info->host_var_derived_count);
@@ -778,6 +798,10 @@ error:
   if (info->host_var_derived_from)
     {
       free_and_init (info->host_var_derived_from);
+    }
+  if (info->host_var_format_classes)
+    {
+      free_and_init (info->host_var_format_classes);
     }
   if (info->host_var_expected_domains)
     {

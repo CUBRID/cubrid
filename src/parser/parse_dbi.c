@@ -3144,6 +3144,25 @@ pt_set_derived_host_variable (PARSER_CONTEXT * parser, int index, const DB_VALUE
 }
 
 /*
+ * pt_set_agnostic_host_variable () - CBRD-27583 (D-70): an AGNOSTIC position (pt_classify_host_var_positions) holds
+ *   only whether its value is NULL: NULL, or the INTEGER 1 for any other value
+ */
+void
+pt_set_agnostic_host_variable (const DB_VALUE * val, DB_VALUE * hv)
+{
+  const bool null = DB_IS_NULL (val);
+  pr_clear_value (hv);
+  if (null)
+    {
+      db_make_null (hv);
+    }
+  else
+    {
+      db_make_int (hv, 1);
+    }
+}
+
+/*
  * pt_host_var_is_context_typed () - CBRD-27583: whether a position's expected domain is one the client casts the
  *   value into before it sends it (a context-typed position). An ENUM domain (CUBRIDSUS-9007) converts no value and
  *   the collation axis's ENFORCE domain converts only a string value (pt_collation_rule_cast): such a position is
@@ -3192,10 +3211,17 @@ pt_host_var_leave_collation (DB_TYPE type, int collation)
 
 /* CBRD-27583: whether a value is one the compilation of a position's plan took: a value-typed position's value of its
  * compiled domain, a LEAVE position's value of the compiled value's collation (D-26), a CHAR position's VARCHAR of the
- * compiled VARCHAR's collation or another value of the compiled CHAR (D-53; a LEAVE CHAR one's of the collation) */
+ * compiled VARCHAR's collation or another value of the compiled CHAR (D-53; a LEAVE CHAR one's of the collation); D-70:
+ * a NULL at a comparison operand, or at an NVL family operand whose node keeps its domain without it */
 static bool
 pt_host_var_matches_compiled (const PARSER_CONTEXT * parser, int index, const DB_VALUE * val)
 {
+  const int format_class = parser->host_var_format_classes != NULL ? parser->host_var_format_classes[index] : 0;
+  if (DB_IS_NULL (val) && (PT_HOST_VAR_CLASS (format_class) == PT_HOST_VAR_CLASS_COMPARE
+			   || (format_class & PT_HOST_VAR_NULL_MATCHES)))
+    {
+      return true;
+    }
   const TP_DOMAIN *compiled = parser->host_var_compiled_domains[index];
   const bool leave = pt_host_var_is_leave_typed (parser->host_var_expected_domains[index]);
   if (pt_host_var_is_char_typed (parser->host_var_expected_domains[index]))
@@ -3289,6 +3315,14 @@ pt_set_host_variables (PARSER_CONTEXT * parser, int count, DB_VALUE * values)
 
       pr_clear_value (hv);
       hv_dom = parser->host_var_expected_domains[i];
+      if (parser->host_var_format_classes != NULL
+	  && PT_HOST_VAR_CLASS (parser->host_var_format_classes[i]) == PT_HOST_VAR_CLASS_AGNOSTIC
+	  && TP_DOMAIN_TYPE (hv_dom) == DB_TYPE_INTEGER)
+	{
+	  /* CBRD-27583 (D-70): only whether the value is NULL reaches the plan, whatever its type */
+	  pt_set_agnostic_host_variable (val, hv);
+	  continue;
+	}
       if (pt_host_var_format_differs (parser, i, val))
 	{
 	  /* CBRD-27583: a STR_TO_DATE format of another class: the result type of this plan is not the value's */
@@ -3476,7 +3510,9 @@ pt_set_host_var_format_classes (PARSER_CONTEXT * parser, int count, const DB_VAL
     }
   for (int i = 0; i < parser->host_var_count && i < count; i++)
     {
-      classes[i] = pt_value_format_class (&values[i]);
+      /* D-70: the class of the position's occurrences is the statement's, not the value's */
+      classes[i] = pt_value_format_class (&values[i])
+	| (classes[i] & (PT_HOST_VAR_CLASS_NVL_ARG | PT_HOST_VAR_NULL_MATCHES));
       /* D-38: and its index value, which an ELT index position's plan takes */
       parser->host_var_elt_indexes[i] = pt_value_elt_index (&values[i]);
     }

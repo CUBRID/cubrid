@@ -573,8 +573,17 @@ struct trace_json_t;
 /* CBRD-27583 (D-38): host_var_format_classes' mark of an ELT index position, and host_var_elt_indexes' values of no index:
  * no value bound, a NULL, a value that is no BIGINT */
 #define PT_HOST_VAR_ELT_POSITION 0x200
-/* and above it the number of the ELT's branches: an index that picks none of them shares one signature */
-#define PT_HOST_VAR_ELT_BRANCHES_SHIFT 12
+/* CBRD-27583 (D-70): the kind of every occurrence of a user position where a NULL cannot change the answer
+ * (pt_classify_host_var_positions; none for any other position): an IS [NOT] NULL / ISNULL operand, a comparison
+ * operand whose mate holds no bind, an NVL / IFNULL / COALESCE / NVL2 operand; and for the last, whether a NULL takes
+ * this compilation's plan (the node's domain is the one it has without the operand) */
+#define PT_HOST_VAR_CLASS_AGNOSTIC 0x400
+#define PT_HOST_VAR_CLASS_COMPARE 0x800
+#define PT_HOST_VAR_CLASS_NVL_ARG 0xc00
+#define PT_HOST_VAR_CLASS(c_) ((c_) & 0xc00)
+#define PT_HOST_VAR_NULL_MATCHES 0x1000
+/* and above them the number of the ELT's branches: an index that picks none of them shares one signature */
+#define PT_HOST_VAR_ELT_BRANCHES_SHIFT 13
 #define PT_HOST_VAR_ELT_UNKNOWN DB_BIGINT_MIN
 #define PT_HOST_VAR_ELT_NULL (DB_BIGINT_MIN + 1)
 #define PT_HOST_VAR_ELT_INVALID (DB_BIGINT_MIN + 2)
@@ -3962,7 +3971,7 @@ struct parser_context
   int *host_var_format_classes;	/* CBRD-27583: [host_var_count] the STR_TO_DATE format class
 				 * (db_check_time_date_format) of the value a position was compiled with, in the
 				 * compilation of a bind type signature; PT_HOST_VAR_FORMAT_POSITION marks a position
-				 * a STR_TO_DATE typed its result by */
+				 * a STR_TO_DATE typed its result by; D-70: PT_HOST_VAR_CLASS of its occurrences */
   DB_BIGINT *host_var_elt_indexes;	/* CBRD-27583 (D-38): [host_var_count] the value a position was compiled
 					 * with as an ELT index (PT_HOST_VAR_ELT_*), in the compilation of a bind type
 					 * signature; PT_HOST_VAR_ELT_POSITION in host_var_format_classes marks an ELT's

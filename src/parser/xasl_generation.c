@@ -6460,66 +6460,17 @@ pt_make_regu_hostvar (PARSER_CONTEXT * parser, const PT_NODE * node)
 	  parser->dbval_cnt = node->info.host_var.index + 1;
 	}
 
-      /* determine the domain of this host var */
-      regu->domain = NULL;
-
-      if (node->info.host_var.index < parser->host_var_count)
+      /* determine the domain of this host var: a user host variable's is the domain the client casts the bound value
+       * into (host_var_expected_domains), so value type == plan domain holds by construction; when the client does
+       * not cast - no expected domain, an ENUM domain (never cast, CUBRIDSUS-9007; `enum_col op ?` compares the bound
+       * value), the collation axis's ENFORCE on `str_col + ?` (a compile-only domain), an untyped copy (the LIMIT
+       * operand) - the domain the plan was compiled for (CBRD-27583: a value-typed position of a typed plan), or below
+       * its value's; a derived position's is the one the client converts the user's value into */
+      regu->domain = pt_host_var_position_domain (parser, node->info.host_var.index);
+      if (regu->domain == NULL && node->info.host_var.index >= parser->host_var_count && node->data_type)
 	{
-	  /* A user host variable: the plan states the domain the client casts the bound value into
-	   * (host_var_expected_domains), so value type == plan domain holds by construction. When the
-	   * client does not cast - no expected domain, an ENUM domain (never cast, CUBRIDSUS-9007; `enum_col op ?`
-	   * compares the bound value), or an untyped copy (the LIMIT operand) - the position is typed by its value
-	   * below. A compile-only expected domain the client does not apply -- the collation axis's ENFORCE
-	   * on `str_col + ?` / `enum_col + ?` -- is not a plan domain. */
-	  TP_DOMAIN *cast_domain = NULL;
-	  if (parser->host_var_expected_domains != NULL)
-	    {
-	      cast_domain = parser->host_var_expected_domains[node->info.host_var.index];
-	    }
-	  if (pt_host_var_is_context_typed (cast_domain))
-	    {
-	      /* an ENFORCE domain (the collation axis's sibling collation) casts nothing: the client gives a
-	       * string value the sibling's collation and passes any other value through (tp_value_cast_internal),
-	       * so the variable POS's type is the value's -- a variable POS whose value already carries the enforced
-	       * collation */
-	      regu->domain = cast_domain;
-	      if (pt_host_var_is_char_typed (cast_domain) && parser->host_var_compiled_domains != NULL
-		  && parser->host_var_compiled_domains[node->info.host_var.index] != NULL
-		  && TP_DOMAIN_TYPE (parser->host_var_compiled_domains[node->info.host_var.index]) == DB_TYPE_VARCHAR)
-		{
-		  /* D-53: a CHAR position's VARCHAR value is sent as it is (any other value is cast into the CHAR) */
-		  regu->domain = parser->host_var_compiled_domains[node->info.host_var.index];
-		}
-	    }
-	}
-      else if (pt_is_derived_host_var (parser, node->info.host_var.index))
-	{
-	  /* CBRD-27583: a derived position: the client converts the user's value into its domain; D-53: a CHAR one
-	   * keeps a VARCHAR user value, as the compilation's value shows (pt_set_derived_host_variable).
-	   * shortcut: a context-typed user position of another type than CHAR casts its value before the compilation
-	   * sees it, not before the derived bind does - plan from the bound type if such a derived CHAR position appears */
-	  regu->domain = parser->host_var_expected_domains[node->info.host_var.index];
-	  if (pt_host_var_is_char_typed (regu->domain))
-	    {
-	      regu->domain = pt_host_var_sent_domain (parser, node->info.host_var.index, regu->domain);
-	    }
-	}
-      else if (node->data_type)
-	{
-	  /* an auto-parameter: try to get domain info from its data_type */
+	  /* an auto-parameter: its value is its literal, which keeps the literal domain */
 	  regu->domain = pt_xasl_node_to_domain (parser, node);
-	}
-
-      /* A user host variable never takes its domain from the bound value, so the plan does
-       * not depend on the values; the client casts the value to its expected
-       * domain. An auto-parameter's value is its literal, so it keeps the literal
-       * domain. */
-      if (regu->domain == NULL && node->info.host_var.index < parser->host_var_count
-	  && parser->host_var_compiled_domains != NULL
-	  && parser->host_var_compiled_domains[node->info.host_var.index] != NULL)
-	{
-	  /* CBRD-27583: a value-typed position of a typed plan: the domain the plan was compiled for */
-	  regu->domain = parser->host_var_compiled_domains[node->info.host_var.index];
 	}
 
       if (regu->domain == NULL && node->info.host_var.index < parser->host_var_count
@@ -7846,6 +7797,106 @@ pt_decide_node_domain (REGU_VARIABLE * regu, const PT_NODE * node)
       /* the block carrier holds no value: it types as its node, as one type checking typed does */
       arith->thirdptr->domain = arith->domain;
     }
+}
+
+/*
+ * pt_nvl_node_domain () - CBRD-27583 (D-70): the domain an NVL, IFNULL, COALESCE or NVL2 node resolves to by the rule
+ *   pt_decide_node_domain resolves it with, its operand at slot j of domain at_j and the others as the plan reads them
+ *   (a user or derived position's domain, any other operand's type); NULL when an operand's domain is not fixed
+ */
+const TP_DOMAIN *
+pt_nvl_node_domain (PARSER_CONTEXT * parser, const PT_NODE * node, int j, const TP_DOMAIN * at_j)
+{
+  OPERATOR_TYPE opcode;
+  switch (node->info.expr.op)
+    {
+    case PT_NVL:
+      opcode = T_NVL;
+      break;
+    case PT_IFNULL:
+      opcode = T_IFNULL;
+      break;
+    case PT_COALESCE:
+      opcode = T_COALESCE;
+      break;
+    case PT_NVL2:
+      opcode = T_NVL2;
+      break;
+    default:
+      return NULL;
+    }
+  const PT_NODE *arg[3] = { node->info.expr.arg1, node->info.expr.arg2, node->info.expr.arg3 };
+  DOMAIN_OPERAND operands[3];
+  int n = 0;
+  for (int k = 0; k < 3; k++)
+    {
+      if (arg[k] == NULL)
+	{
+	  continue;
+	}
+      const TP_DOMAIN *domain = k == j ? at_j : NULL;
+      if (k != j && arg[k]->node_type == PT_HOST_VAR)
+	{
+	  domain = pt_host_var_position_domain (parser, arg[k]->info.host_var.index);
+	}
+      if (k != j && domain == NULL)
+	{
+	  domain = arg[k]->type_enum == PT_TYPE_NULL ? &tp_Null_domain
+	    : arg[k]->type_enum != PT_TYPE_MAYBE && arg[k]->type_enum != PT_TYPE_NONE
+	    ? pt_xasl_node_to_domain (parser, arg[k]) : NULL;
+	}
+      if (domain == NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
+	{
+	  return NULL;
+	}
+      operands[n++] = DOMAIN_OPERAND
+      {
+      domain, TP_DOMAIN_TYPE (domain), TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) ? domain->collation_id : -1, false};
+    }
+  RESOLVED_DOMAIN result;
+  bool needs_late_bind = false;
+  if (n == 0
+      || domain_resolve (domain_late_bind_context (opcode), opcode, operands, n, NULL, &result, &needs_late_bind)
+      != NO_ERROR || needs_late_bind || result.domain == NULL || TP_DOMAIN_TYPE (result.domain) == DB_TYPE_VARIABLE)
+    {
+      return NULL;
+    }
+  return result.domain;
+}
+
+/*
+ * pt_check_nvl_null_domain () - CBRD-27583 (D-72): an NVL family node whose operand position a NULL takes the plan of
+ *   (PT_HOST_VAR_NULL_MATCHES) has the domain pt_check_null_takes_plan judged that by
+ */
+static void
+pt_check_nvl_null_domain (PARSER_CONTEXT * parser, const REGU_VARIABLE * regu, const PT_NODE * node)
+{
+#if !defined (NDEBUG)
+  const PT_OP_TYPE op = node->info.expr.op;
+  /* a compilation that consumes values (set_host_var) plans that execution only: no NULL takes it by signature */
+  if ((op != PT_NVL && op != PT_IFNULL && op != PT_COALESCE && op != PT_NVL2) || parser->flag.set_host_var)
+    {
+      return;
+    }
+  const PT_NODE *arg[3] = { node->info.expr.arg1, node->info.expr.arg2, node->info.expr.arg3 };
+  for (int j = 0; j < 3 && parser->host_var_format_classes != NULL; j++)
+    {
+      if (arg[j] == NULL || arg[j]->node_type != PT_HOST_VAR || arg[j]->info.host_var.var_type != PT_HOST_IN)
+	{
+	  continue;
+	}
+      const int index = arg[j]->info.host_var.index;
+      const int user = index < parser->host_var_count ? index
+	: pt_is_derived_host_var (parser, index) ? parser->host_var_derived_from[index] : -1;
+      if (user < 0 || PT_HOST_VAR_CLASS (parser->host_var_format_classes[user]) != PT_HOST_VAR_CLASS_NVL_ARG
+	  || !(parser->host_var_format_classes[user] & PT_HOST_VAR_NULL_MATCHES))
+	{
+	  continue;
+	}
+      const TP_DOMAIN *with = pt_nvl_node_domain (parser, node, j, pt_host_var_position_domain (parser, index));
+      assert (with != NULL && regu->domain != NULL && tp_domain_match (regu->domain, with, TP_EXACT_MATCH));
+    }
+#endif
 }
 
 /*
@@ -11334,6 +11385,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 	      if (regu != NULL && regu->type == TYPE_INARITH)
 		{
 		  pt_decide_node_domain (regu, node);
+		  pt_check_nvl_null_domain (parser, regu, node);
 		  pt_decide_branch_casts (regu->value.arithptr);
 		}
 	      if (regu != NULL && regu->type == TYPE_INARITH && regu->value.arithptr->leftptr != NULL

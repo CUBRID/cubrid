@@ -166,6 +166,8 @@ extern REGU_VARIABLE *pt_make_regu_arith_over_copies (const REGU_VARIABLE * arg1
 						      const OPERATOR_TYPE op, const TP_DOMAIN * domain);
 extern TP_DOMAIN *pt_xasl_type_enum_to_domain (const PT_TYPE_ENUM type);
 extern TP_DOMAIN *pt_xasl_node_to_domain (PARSER_CONTEXT * parser, const PT_NODE * node);
+extern const TP_DOMAIN *pt_nvl_node_domain (PARSER_CONTEXT * parser, const PT_NODE * node, int j,
+					    const TP_DOMAIN * at_j);
 extern PT_NODE *pt_to_upd_del_query (PARSER_CONTEXT * parser, PT_NODE * select_names, PT_NODE * select_list,
 				     PT_NODE * from, PT_NODE * with, PT_NODE * class_specs, PT_NODE * where,
 				     PT_NODE * using_index, PT_NODE * order_by, PT_NODE * orderby_for,

@@ -621,12 +621,18 @@ extern "C"
 					      bool is_gby_num);
   extern PT_NODE *pt_rewrite_to_auto_param (PARSER_CONTEXT * parser, PT_NODE * value);
   extern void pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement);
+  extern void pt_classify_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement);
   extern TP_DOMAIN *pt_host_var_value_domain (PARSER_CONTEXT * parser, int index);
   extern TP_DOMAIN *pt_host_var_sent_domain (PARSER_CONTEXT * parser, int index, TP_DOMAIN * expected);
   extern bool pt_is_derived_host_var (const PARSER_CONTEXT * parser, int index);
+  extern TP_DOMAIN *pt_host_var_position_domain (PARSER_CONTEXT * parser, int index);
+  extern bool pt_host_var_stand_in (PARSER_CONTEXT * parser, int index, const TP_DOMAIN * domain);
+  extern int pt_host_var_occurrence_class (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * parent,
+					   PT_NODE * grandparent);
   extern const char *pt_host_var_coerce_target (const PARSER_CONTEXT * parser, int index, DB_TYPE type,
 						const char *target, char *buf, int size);
   extern int pt_set_derived_host_variable (PARSER_CONTEXT * parser, int index, const DB_VALUE * source);
+  extern void pt_set_agnostic_host_variable (const DB_VALUE * val, DB_VALUE * hv);
   extern PT_NODE *pt_bind_comparison_mate (PT_NODE * hv, PT_NODE * parent, PT_NODE * grandparent, bool * bind_is_lhs);
   extern bool pt_bind_comparison_target (PARSER_CONTEXT * parser, const TP_DOMAIN * bind_domain, PT_NODE * mate,
 					 bool bind_is_lhs, TP_DOMAIN ** target);

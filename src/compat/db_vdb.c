@@ -1111,6 +1111,12 @@ db_compile_statement_local (DB_SESSION * session)
       srand48 (seed = (long) time (NULL));
     }
 
+  /* CBRD-27583 (D-70): the positions where a NULL cannot change the answer, before type checking types the binds */
+  if (n_markers > 0)
+    {
+      pt_classify_host_var_positions (parser, statement);
+    }
+
   /* do semantic check for the statement */
   statement_result = pt_compile (parser, statement);
 
@@ -2274,6 +2280,8 @@ db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * val
       err = ER_PT_SEMANTIC;
       goto end;
     }
+  /* the values a signature was compiled for take its plan (D-70: a NULL compiled as another type's value too) */
+  assert (!typed->parser->flag.bind_signature_changed);
 
 #if !defined (NDEBUG)
   /* one statement text: one column list */
@@ -3363,6 +3371,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   prepare_info.host_var_expected_domains = prepared_session->parser->host_var_expected_domains;
   prepare_info.host_var_derived_from = prepared_session->parser->host_var_derived_from;
   prepare_info.host_var_derived_count = prepared_session->parser->host_var_derived_count;
+  prepare_info.host_var_format_classes = prepared_session->parser->host_var_format_classes;
   /* set autoparam count */
   prepare_info.auto_param_count = prepared_session->parser->auto_param_count;
   /* set recompile */
@@ -3553,6 +3562,8 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
   parser->host_var_expected_domains = prepare_info.host_var_expected_domains;
   parser->host_var_derived_from = prepare_info.host_var_derived_from;
   parser->host_var_derived_count = prepare_info.host_var_derived_count;
+  /* D-70: an AGNOSTIC position binds whether its value is NULL */
+  parser->host_var_format_classes = prepare_info.host_var_format_classes;
   parser->host_var_count = prepare_info.host_variables.size - prepare_info.auto_param_count;
 
   /* CBRD-27583: the bind fills the derived positions from the user values too (pt_set_host_variables) */
