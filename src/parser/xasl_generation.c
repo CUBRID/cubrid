@@ -7141,6 +7141,77 @@ pt_decide_operand_coercion (ARITH_TYPE * arith)
     }
 }
 
+/*
+ * pt_decide_function_operands () - CBRD-27583 (4.7, D-51): an operand whose type an operator's body converted to compute
+ *   in converts on its fetch instead, so that the server body never takes that branch (the client fold calls the body
+ *   as it was). A string type checking could not type reaches here (a session variable's read; it casts a column):
+ *   FLOOR, CEIL, ABS, a unary minus and MOD read it as DOUBLE (tp_value_str_auto_cast_to_number: tp_value_auto_cast's
+ *   conversion, NULL under return_null_on_function_errors), ROUND and TRUNC coerce it to DOUBLE (tp_value_coerce:
+ *   ER_QPROC_INVALID_DATATYPE or NULL); ROUND coerces a NUMERIC, FLOAT or MONETARY format of a number to INTEGER alike;
+ *   BIT_COUNT reads a NUMERIC as DOUBLE (it cannot fail).
+ */
+static void
+pt_decide_function_operands (ARITH_TYPE * arith)
+{
+  REGU_VARIABLE *left = arith->leftptr, *right = arith->rightptr;
+  /* an operand that converts for another consumer keeps that; the body converts its value as it did */
+  const bool left_fixed = left != NULL && pt_regu_domain_is_fixed (left) && left->original_domain == NULL
+    && left->vfetch_to == NULL;
+  const bool right_fixed = right != NULL && pt_regu_domain_is_fixed (right) && right->original_domain == NULL
+    && right->vfetch_to == NULL;
+  const DB_TYPE left_type = left_fixed ? TP_DOMAIN_TYPE (left->domain) : DB_TYPE_NULL;
+  const DB_TYPE right_type = right_fixed ? TP_DOMAIN_TYPE (right->domain) : DB_TYPE_NULL;
+  const TP_DOMAIN *double_domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
+  const unsigned char read_number = DOMAIN_CONVERT_ASSIGN | REGU_CONV_NULL_ON_FUNCTION_ERRORS;
+  const unsigned char coerce = DOMAIN_CONVERT_IMPLICIT | REGU_CONV_INVALID_DATATYPE;
+
+  switch (arith->opcode)
+    {
+    case T_FLOOR:
+    case T_CEIL:
+    case T_ABS:
+    case T_UNMINUS:
+      if (left == NULL && TP_IS_CHAR_TYPE (right_type))
+	{
+	  pt_set_operand_conversion (right, double_domain, read_number);
+	}
+      break;
+    case T_BIT_COUNT:
+      if (left == NULL && right_type == DB_TYPE_NUMERIC)
+	{
+	  pt_set_operand_conversion (right, double_domain, DOMAIN_CONVERT_ASSIGN);
+	}
+      break;
+    case T_MOD:
+      if (TP_IS_CHAR_TYPE (left_type))
+	{
+	  pt_set_operand_conversion (left, double_domain, read_number);
+	}
+      if (TP_IS_CHAR_TYPE (right_type))
+	{
+	  pt_set_operand_conversion (right, double_domain, read_number);
+	}
+      break;
+    case T_ROUND:
+      if ((TP_IS_NUMERIC_TYPE (left_type) || TP_IS_CHAR_TYPE (left_type))
+	  && (right_type == DB_TYPE_NUMERIC || right_type == DB_TYPE_FLOAT || right_type == DB_TYPE_MONETARY))
+	{
+	  pt_set_operand_conversion (right, tp_domain_resolve_default (DB_TYPE_INTEGER), coerce);
+	}
+      [[fallthrough]];
+    case T_TRUNC:
+      /* exception (D-51): TRUNC's format into BIGINT fails as ER_QSTR_INVALID_FORMAT, a string format is checked for
+       * 'default' first: the body converts them */
+      if (TP_IS_CHAR_TYPE (left_type))
+	{
+	  pt_set_operand_conversion (left, double_domain, coerce);
+	}
+      break;
+    default:
+      break;
+    }
+}
+
 /* CBRD-27583 (d1): the cast type checking wraps around an operand it could not type, into a string of the collation
  * the other operand enforces */
 static bool
@@ -8461,15 +8532,17 @@ pt_elt_index_value (PARSER_CONTEXT * parser, const REGU_VARIABLE * index)
  *   string operands (LEAVE, ENFORCE) takes it from their domains, as the load did (domain_link_string_function); ELT's
  *   branches of different domains are merged where a row computes the index, and the one a bind or a literal picks
  *   types the result where the plan is compiled for that index value (D-38)
+ *   return: ER_QSTR_INCOMPATIBLE_COLLATIONS for ELT branches a row picks among whose collations do not merge (4.7 (5):
+ *	     before any row, as the load raised it), else NO_ERROR
  */
-static void
+static int
 pt_decide_function_collation (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
 {
   if (regu->type != TYPE_FUNC || regu->domain == NULL || !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain))
       || regu->domain->collation_flag == TP_DOMAIN_COLL_NORMAL || regu->value.funcp == NULL
       || regu->value.funcp->operand == NULL)
     {
-      return;
+      return NO_ERROR;
     }
   const bool elt = regu->value.funcp->ftype == F_ELT;
   DOMAIN_OPERAND operands[16];
@@ -8478,7 +8551,7 @@ pt_decide_function_collation (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
     {
       if (!pt_regu_domain_is_fixed (&op->value) || n == (int) (sizeof (operands) / sizeof (operands[0])))
 	{
-	  return;
+	  return NO_ERROR;
 	}
       const TP_DOMAIN *domain = op->value.domain;
       if (elt ? op == regu->value.funcp->operand : !TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (domain)))
@@ -8524,6 +8597,11 @@ pt_decide_function_collation (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
 	  branch[n_branches++] = &op->value;
 	}
       error = pt_merge_branch_collations (branch, n_branches, operands, n, &result) ? NO_ERROR : error;
+      if (error != NO_ERROR && domain_resolve_branch_merge (operands, n, &result) == ER_QSTR_INCOMPATIBLE_COLLATIONS)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
+	  return ER_QSTR_INCOMPATIBLE_COLLATIONS;
+	}
     }
   else if (error == ER_QSTR_INCOMPATIBLE_COLLATIONS)
     {
@@ -8533,9 +8611,10 @@ pt_decide_function_collation (PARSER_CONTEXT * parser, REGU_VARIABLE * regu)
     }
   if (error != NO_ERROR || result.domain == NULL || TP_DOMAIN_TYPE (result.domain) == DB_TYPE_VARIABLE)
     {
-      return;
+      return NO_ERROR;
     }
   regu->domain = (TP_DOMAIN *) result.domain;
+  return NO_ERROR;
 }
 
 static REGU_VARIABLE *
@@ -8669,9 +8748,9 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
       if (args)
 	{
 	  regu = pt_make_function (parser, function->info.function.function_type, args, result_type, function);
-	  if (regu != NULL)
+	  if (regu != NULL && pt_decide_function_collation (parser, regu) != NO_ERROR)
 	    {
-	      pt_decide_function_collation (parser, regu);
+	      return NULL;
 	    }
 	  if (DB_TYPE_VOBJ == pt_node_to_db_type (function) && function->info.function.function_type != F_VID)
 	    {
@@ -11187,6 +11266,10 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		{
 		  /* CBRD-27583: the operands were made for this node alone */
 		  pt_decide_operand_coercion (regu->value.arithptr);
+		}
+	      if (regu != NULL && regu->type == TYPE_INARITH && regu->value.arithptr->fails == NO_ERROR)
+		{
+		  pt_decide_function_operands (regu->value.arithptr);
 		}
 	      break;
 

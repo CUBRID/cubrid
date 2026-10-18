@@ -217,6 +217,8 @@ const int REGU_CONV_CHAR_PREFIX =
 	0x05;	/* INDEX_PREFIX's CHAR into its column's VARCHAR through its bytes (domain_char_prefix_converter) */
 const int REGU_CONV_NULL_ON_FUNCTION_ERRORS =
 	0x10;	/* an arithmetic operand: NULL under return_null_on_function_errors */
+const int REGU_CONV_INVALID_DATATYPE =
+	0x20;	/* ROUND's and TRUNC's operand: ER_QPROC_INVALID_DATATYPE, NULL under return_null_on_function_errors */
 
 const int REGU_VARIABLE_VARIABLE_DOMAIN = 0x8000;	/* load-derived: the regu's compiled domain is variable, so the
 					 * inline fetch_peek_dbval () peeks it only once it took its domain in this

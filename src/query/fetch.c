@@ -1719,7 +1719,7 @@ fetch_convert_regu_value (const REGU_VARIABLE * regu_var, DB_VALUE ** peek_dbval
   const TP_DOMAIN_STATUS status = tp_value_convert (regu_var->conv, regu_var->domain, *peek_dbval, converted);
   if (status != DOMAIN_COMPATIBLE)
     {
-      if (!(regu_var->conv_mode & REGU_CONV_NULL_ON_FUNCTION_ERRORS))
+      if (!(regu_var->conv_mode & (REGU_CONV_NULL_ON_FUNCTION_ERRORS | REGU_CONV_INVALID_DATATYPE)))
 	{
 	  /* an assignment's failure, as fetch_cast_operand's caller reports it */
 	  const int error = tp_domain_status_er_set (status, ARG_FILE_LINE, *peek_dbval, regu_var->domain);
@@ -1728,7 +1728,16 @@ fetch_convert_regu_value (const REGU_VARIABLE * regu_var, DB_VALUE ** peek_dbval
 	}
       if (!prm_get_bool_value (PRM_ID_RETURN_NULL_ON_FUNCTION_ERRORS))
 	{
-	  const int error = qdata_operand_coercion_error (status, *peek_dbval, regu_var->domain);
+	  int error = ER_QPROC_INVALID_DATATYPE;
+	  if (regu_var->conv_mode & REGU_CONV_INVALID_DATATYPE)
+	    {
+	      /* the error ROUND's and TRUNC's tp_value_coerce gave */
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	    }
+	  else
+	    {
+	      error = qdata_operand_coercion_error (status, *peek_dbval, regu_var->domain);
+	    }
 	  pr_clear_value (converted);
 	  return error;
 	}

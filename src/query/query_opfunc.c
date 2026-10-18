@@ -6622,7 +6622,8 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	}
       else
 	{
-	  /* cast result to string; this call also allocates the container */
+	  /* cast result to string; this call also allocates the container. CBRD-27583 exception (D-51): the simple path
+	   * reads the ancestor tuple's column, not the argument regu, so the body converts */
 	  if (qdata_cast_to_domain (arg_dbval_p, &cast_value, &tp_String_domain) != NO_ERROR)
 	    {
 	      goto error;
