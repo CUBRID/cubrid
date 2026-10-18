@@ -24347,7 +24347,8 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	      tmp_regu_list = tmp_regu_list->next;
 	    }
 	  pr_clear_value (&a_eval_list->current_values[key_idx]);
-	  pr_clone_value (tmp_regu_list->value.value.dbvalptr, &a_eval_list->current_values[key_idx]);
+	  /* the value fetch_val_list () fetched: an expression key (TYPE_INARITH) has no value pointer */
+	  pr_clone_value (tmp_regu_list->value.vfetch_to, &a_eval_list->current_values[key_idx]);
 	  key_idx++;
 	}
 
@@ -24369,7 +24370,7 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	      tmp_regu_list = tmp_regu_list->next;
 	    }
 	  pr_clear_value (&a_eval_list->temp_values[key_idx]);
-	  pr_clone_value (tmp_regu_list->value.value.dbvalptr, &a_eval_list->temp_values[key_idx]);
+	  pr_clone_value (tmp_regu_list->value.vfetch_to, &a_eval_list->temp_values[key_idx]);
 	  key_idx++;
 	}
 
