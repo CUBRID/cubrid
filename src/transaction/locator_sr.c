@@ -4341,6 +4341,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   INDX_SCAN_ID isid;
   KEY_VAL_RANGE key_val_range;
   bool is_upd_scan_init;
+  bool lob_exist;
   int error_code = NO_ERROR;
   HEAP_CACHE_ATTRINFO attr_info;
   DB_VALUE null_value;
@@ -4469,6 +4470,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	    }
 	  scan_init_index_scan (&isid, &oid_list, &child_snapshot);
 	  is_upd_scan_init = false;
+	  lob_exist = false;
 
 	  if (!is_newly)
 	    {
@@ -4482,8 +4484,6 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 
 	  do
 	    {
-	      bool lob_exist = false;
-
 	      error_code =
 		btree_prepare_bts (thread_p, &bt_scan, &fkref->self_btid, &isid, &key_val_range, NULL, &fkref->self_oid,
 				   NULL, NULL, false, NULL);
