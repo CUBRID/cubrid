@@ -27789,12 +27789,13 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 
       if (op == R_LT)
 	{
-	  /* add 1 so we can use R_LE, after the subtraction's operand coercion for the bound's type - a string as
-	   * DOUBLE - resolved once for this execution's bound */
+	  /* add 1 so we can use R_LE, after the subtraction's operand coercion for the bound's compiled type - a string
+	   * as DOUBLE */
 	  DB_VALUE one_val;
 	  db_make_int (&one_val, 1);
+	  assert (DB_IS_NULL (val) || DB_VALUE_DOMAIN_TYPE (val) == TP_DOMAIN_TYPE (rhs->domain));
 	  const DOMAIN_OPERAND operands[2] = {
-	    {NULL, DB_VALUE_DOMAIN_TYPE (val), -1, false}, {NULL, DB_TYPE_INTEGER, -1, false}
+	    {NULL, TP_DOMAIN_TYPE (rhs->domain), -1, false}, {NULL, DB_TYPE_INTEGER, -1, false}
 	  };
 	  DOMAIN_OPERAND_COERCION operand_coercion;
 	  domain_resolve_operand_coercion (T_SUB, operands, &operand_coercion);

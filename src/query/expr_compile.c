@@ -2414,22 +2414,20 @@ expr_arith_exec_domain (const VAL_DESCR * vd, const REGU_VARIABLE * regu)
   return domain;
 }
 
-/* The operand coercion of a binary arithmetic node the kernels can take (ARITH_TYPE.coercion, found at
+/* What a binary arithmetic node the kernels can take makes of its operands (ARITH_TYPE.decided.arith, found at
  * unpack, which converts no operand: generation converts it at its regu): one that names a number --
  * the kernels are that typed number operator, computing in its type (arith.type, what
  * qdata_number_operator reads both operands as).  NULL for any other node, which stays interpreted:
  * an unresolved one (the fetch's unresolved-domain error), a date, string or collection one (another
  * operator's). */
-static const DOMAIN_OPERAND_COERCION *
+static const DOMAIN_ARITH *
 expr_arith_number_plan (const ARITH_TYPE * arith)
 {
-  const DOMAIN_OPERAND_COERCION *coercion = &arith->coercion;
-
-  if (coercion->arith.kind != DOMAIN_ARITH_NUMBER)
+  if (!arith_decides_arith (arith) || arith_decided_arith (arith)->kind != DOMAIN_ARITH_NUMBER)
     {
       return NULL;
     }
-  return coercion;
+  return arith_decided_arith (arith);
 }
 
 /* the DB_TYPE a leaf will produce, as known at compile time */
@@ -4857,7 +4855,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	 * the ARITH rule converts neither of two numbers of a NUMERIC mix (domain_arith_rule), and the
 	 * number operator coerces the integer side itself (qdata_number_numeric) -- which is what
 	 * expr_k_coerce_numeric mirrors below. */
-	const DOMAIN_OPERAND_COERCION *const plan = expr_arith_number_plan (arith);
+	const DOMAIN_ARITH *const plan = expr_arith_number_plan (arith);
 
 	if (plan == NULL)
 	  {
@@ -4876,7 +4874,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	 * narrower type than the node's domain, not a path a statement reaches today.  A domain
 	 * that is not a number is declined: the arithmetic kernels' slots never own heap memory
 	 * (they skip the per-row clear), which a coercion into a string domain would break. */
-	const DB_TYPE ktype = plan->arith.type;
+	const DB_TYPE ktype = plan->type;
 	const bool coerce_result = (ktype == DB_TYPE_NUMERIC || ktype != rtype);
 	TP_DOMAIN *const result_domain = coerce_result ? exec_domain : NULL;
 

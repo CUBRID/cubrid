@@ -412,9 +412,8 @@ namespace cubxasl
     dest->misc_operand = src->misc_operand;
     dest->conv = src->conv;
     dest->fails = src->fails;
-    dest->coercion = src->coercion;
     /* the unpack's decisions are immutable and live in the leader's unpack arena, after every worker */
-    dest->compares = src->compares;
+    dest->decided = src->decided;
 
     /* ref: stx_build_arith_type */
     switch (src->opcode)

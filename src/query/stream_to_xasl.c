@@ -6703,7 +6703,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 
   /* CBRD-27583 (d2): an addition, subtraction, multiplication or division computes over its operands' domains, which
    * XASL generation fixed (an operand of another type converts at its regu); a variable one leaves it unresolved */
-  arith_type->coercion = DOMAIN_OPERAND_COERCION ();
+  arith_type->decided.arith = DOMAIN_ARITH ();
   if ((arith_type->opcode == T_ADD || arith_type->opcode == T_SUB || arith_type->opcode == T_MUL
        || arith_type->opcode == T_DIV) && arith_type->leftptr != NULL && arith_type->rightptr != NULL
       && arith_type->leftptr->domain != NULL && TP_DOMAIN_TYPE (arith_type->leftptr->domain) != DB_TYPE_VARIABLE
@@ -6713,14 +6713,16 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	{arith_type->leftptr->domain, TP_DOMAIN_TYPE (arith_type->leftptr->domain), -1, false},
 	{arith_type->rightptr->domain, TP_DOMAIN_TYPE (arith_type->rightptr->domain), -1, false}
       };
-      domain_resolve_operand_coercion (arith_type->opcode, operands, &arith_type->coercion);
+      DOMAIN_OPERAND_COERCION coercion = DOMAIN_OPERAND_COERCION ();
+      domain_resolve_operand_coercion (arith_type->opcode, operands, &coercion);
       /* generation retyped every operand the rule converts (pt_decide_operand_coercion): conversion is the regu's */
-      assert (arith_type->coercion.conv[0] == NULL && arith_type->coercion.conv[1] == NULL);
+      assert (coercion.conv[0] == NULL && coercion.conv[1] == NULL);
+      arith_type->decided.arith = coercion.arith;
     }
 
   /* CBRD-27583: the comparisons FIELD, NULLIF, LEAST and GREATEST make, from their operands' domains (a filter or
    * function index stream's by stx_decide_stream_compare) */
-  arith_type->compares = NULL;
+  arith_type->decided.compares = NULL;
   if (arith_type->opcode == T_FIELD || arith_type->opcode == T_NULLIF || arith_type->opcode == T_LEAST
       || arith_type->opcode == T_GREATEST)
     {
@@ -6758,7 +6760,7 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	    }
 #endif
 	}
-      arith_type->compares = compares;
+      arith_type->decided.compares = compares;
     }
 
   return ptr;

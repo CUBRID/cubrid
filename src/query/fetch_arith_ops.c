@@ -121,9 +121,9 @@ static inline DB_VALUE_COMPARE_RESULT
 fetch_arith_compare (THREAD_ENTRY * thread_p, const ARITH_TYPE * arithptr, int k, val_descr * vd,
 		     const DB_VALUE * value1, const DB_VALUE * value2, bool * can_compare)
 {
-  assert ((arithptr->opcode == T_FIELD || arithptr->opcode == T_NULLIF || arithptr->opcode == T_LEAST
-	   || arithptr->opcode == T_GREATEST) && arithptr->compares != NULL);
-  return eval_compare_values_resolved (thread_p, &arithptr->compares[k], vd, value1, value2, 0, can_compare);
+  const DOMAIN_COMPARE *compares = arith_decided_compares (arithptr);
+  assert (compares != NULL);
+  return eval_compare_values_resolved (thread_p, &compares[k], vd, value1, value2, 0, can_compare);
 }
 
 /*
@@ -143,7 +143,7 @@ fetch_least_or_greatest (THREAD_ENTRY * thread_p, ARITH_TYPE * arithptr, val_des
 
 /*
  * fetch_arith_binary () - an addition, subtraction, multiplication or division: the typed operator the node found at
- *   unpack over its operands' domains (ARITH_TYPE.coercion), which casts nothing
+ *   unpack over its operands' domains (ARITH_TYPE.decided.arith), which casts nothing
  *   return: NO_ERROR or ER_code
  *
  * XASL generation converts an operand of another type at its regu (pt_decide_operand_coercion), so the node converts
@@ -152,7 +152,7 @@ fetch_least_or_greatest (THREAD_ENTRY * thread_p, ARITH_TYPE * arithptr, val_des
 static inline int
 fetch_arith_binary (const val_descr * vd, ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain)
 {
-  const DOMAIN_ARITH *arith = &arithptr->coercion.arith;
+  const DOMAIN_ARITH *arith = arith_decided_arith (arithptr);
   if (arith->kind != DOMAIN_ARITH_UNRESOLVED)
     {
       /* its optdebug check still holds the decision to the rule over the values (qdata_assert_arith_planned) */

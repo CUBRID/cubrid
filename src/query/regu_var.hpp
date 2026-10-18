@@ -164,12 +164,17 @@ struct arith_list_node
   /* CBRD-27583 (spec 5): the error the operator raises where a row computes it over operands that are not NULL -
    * XASL generation found it rejects their types (the node's domain is the NULL type) - or NO_ERROR */
   int fails = NO_ERROR;
-  /* CBRD-27583 (d2): T_ADD, T_SUB, T_MUL, T_DIV: what the operator makes of its operands' values, over the domains XASL
-   * generation gave them (domain_resolve_operand_coercion), found at unpack; not serialized */
-  DOMAIN_OPERAND_COERCION coercion = {};
-  /* CBRD-27583: FIELD, NULLIF, LEAST, GREATEST: the comparisons the node makes, decided at unpack - [0] the left operand
-   * (FIELD: the third against the left), [1] FIELD's third against the right; not serialized */
-  const DOMAIN_COMPARE *compares = nullptr;
+  /* CBRD-27583: the decision the operator reads, found at unpack; not serialized. The opcode picks the member
+   * (arith_decided_arith, arith_decided_compares):
+   * - T_ADD, T_SUB, T_MUL, T_DIV: arith, what the operator makes of its operands' values, over the domains XASL
+   *   generation gave them (d2, domain_resolve_operand_coercion);
+   * - FIELD, NULLIF, LEAST, GREATEST: compares, the comparisons the node makes - [0] the left operand (FIELD: the third
+   *   against the left), [1] FIELD's third against the right. */
+  union
+  {
+    DOMAIN_ARITH arith;
+    const DOMAIN_COMPARE *compares;
+  } decided = {};
 
   /* NOTE: The following member is only used on server internally. */
   struct drand48_data *rand_seed;	/* seed to be used to generate pseudo-random sequence */
@@ -305,6 +310,9 @@ inline void REGU_VARIABLE_CLEAR_FLAG (regu_variable_node *regu, int flag);
 inline DB_TYPE REGU_VARIABLE_GET_TYPE (const regu_variable_node *regu);
 inline bool regu_is_variable_pos (const regu_variable_node *regu);
 inline TP_DOMAIN *regu_produced_domain (const regu_variable_node *regu);
+inline bool arith_decides_arith (const arith_list_node *arith);
+inline const DOMAIN_ARITH *arith_decided_arith (const arith_list_node *arith);
+inline const DOMAIN_COMPARE *arith_decided_compares (const arith_list_node *arith);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
@@ -352,5 +360,28 @@ TP_DOMAIN *
 regu_produced_domain (const regu_variable_node *regu)
 {
   return regu->conv != NULL ? regu->original_domain : regu->domain;
+}
+
+/* CBRD-27583: whether a node's decision is its arith (T_ADD, T_SUB, T_MUL, T_DIV); else FIELD, NULLIF, LEAST and
+ * GREATEST read compares */
+bool
+arith_decides_arith (const arith_list_node *arith)
+{
+  return arith->opcode == T_ADD || arith->opcode == T_SUB || arith->opcode == T_MUL || arith->opcode == T_DIV;
+}
+
+const DOMAIN_ARITH *
+arith_decided_arith (const arith_list_node *arith)
+{
+  assert (arith_decides_arith (arith));
+  return &arith->decided.arith;
+}
+
+const DOMAIN_COMPARE *
+arith_decided_compares (const arith_list_node *arith)
+{
+  assert (arith->opcode == T_FIELD || arith->opcode == T_NULLIF || arith->opcode == T_LEAST
+	  || arith->opcode == T_GREATEST);
+  return arith->decided.compares;
 }
 #endif /* _REGU_VAR_HPP_ */
