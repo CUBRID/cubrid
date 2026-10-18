@@ -3133,8 +3133,9 @@ domain_first_character_operand (const DOMAIN_OPERAND * operands, int n_operands)
 
 /* CAST, CAST_WRAP, CAST_NOFAIL to a character target: tp_value_cast_internal. ENFORCE coerces a character source
  * into the value it initialized with the target type and precision, under the target's collation (the domain it
- * then makes from the source gives the converter alone), and leaves any other value as it is; LEAVE makes the
- * target type and precision under a character source's collation, or the target's own for any other source. */
+ * then makes from the source gives the converter alone), and leaves any other value but an ENUM as it is (D-75);
+ * LEAVE makes the target type and precision under a character source's collation, or the target's own for any other
+ * source. */
 static const TP_DOMAIN *
 domain_character_cast (const DOMAIN_OPERAND * source, const TP_DOMAIN * compiled)
 {
@@ -3142,7 +3143,9 @@ domain_character_cast (const DOMAIN_OPERAND * source, const TP_DOMAIN * compiled
   const bool char_source = from != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (from));
   if (TP_DOMAIN_COLLATION_FLAG (compiled) == TP_DOMAIN_COLL_ENFORCE)
     {
-      if (!char_source)
+      /* CBRD-27583 (D-75): an ENUM takes the cast's string, as type checking declares the node and develop decides
+       * every consumer by it (an ENUM value's domain keeps no elements) */
+      if (!char_source && (from == NULL || TP_DOMAIN_TYPE (from) != DB_TYPE_ENUMERATION))
 	{
 	  return from;
 	}

@@ -7900,6 +7900,43 @@ pt_check_nvl_null_domain (PARSER_CONTEXT * parser, const REGU_VARIABLE * regu, c
 }
 
 /*
+ * pt_check_cast_wrap_domain () - CBRD-27583 (D-75): a CAST_WRAP node's decided domain is of the type class type
+ *   checking declared the node with (a string for a string), or its source's type where the cast passes the value as
+ *   it is (a collation-enforcing cast over a value that is no string and no ENUM)
+ */
+static void
+pt_check_cast_wrap_domain (PARSER_CONTEXT * parser, const REGU_VARIABLE * regu, const PT_NODE * node)
+{
+#if !defined (NDEBUG)
+  const ARITH_TYPE *arith = regu->value.arithptr;
+  if (arith->opcode != T_CAST_WRAP || arith->domain == NULL || node->node_type != PT_EXPR
+      || node->info.expr.op != PT_CAST)
+    {
+      return;
+    }
+  const DB_TYPE decided = TP_DOMAIN_TYPE (arith->domain);
+  const DB_TYPE declared = pt_type_enum_to_db (node->type_enum);
+  if (decided == DB_TYPE_VARIABLE || decided == DB_TYPE_NULL || declared == DB_TYPE_VARIABLE
+      || declared == DB_TYPE_NULL)
+    {
+      return;
+    }
+  const DB_TYPE source = arith->rightptr != NULL && arith->rightptr->domain != NULL
+    ? TP_DOMAIN_TYPE (arith->rightptr->domain) : DB_TYPE_NULL;
+  const TP_DOMAIN *cast = pt_xasl_data_type_to_domain (parser, node->info.expr.cast_type);
+  if (cast != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (cast))
+      && TP_DOMAIN_COLLATION_FLAG (cast) == TP_DOMAIN_COLL_ENFORCE)
+    {
+      /* CBRD-27583 census (D-75, removed at S3-14): the source and decided types of a collation-enforcing cast */
+      er_log_debug (ARG_FILE_LINE, "CBRD-27583 enforce cast source=%d.%d: %.300s\n", (int) source, (int) decided,
+		    parser->original_buffer != NULL ? parser->original_buffer : "");
+    }
+  assert ((TP_IS_CHAR_TYPE (declared) ? TP_IS_CHAR_TYPE (decided) : decided == declared)
+	  || (decided == source && decided != DB_TYPE_ENUMERATION));
+#endif
+}
+
+/*
  * pt_function_reader_domain () - CBRD-27583 (4.3): the domain a reader of an aggregate's or an analytic function's
  *   value takes: the decided one where type checking left the result type to the argument's value, the parse tree's
  *   string type in the decided collation where it left only the collation (GROUP_CONCAT over a bind), the parse
@@ -8123,6 +8160,8 @@ pt_decide_aggregate_domains (PARSER_CONTEXT * parser, PT_NODE * statement, AGGRE
 	  regu_dbval_type_init (agg->accumulator.value, TP_DOMAIN_TYPE (domain));
 	}
       agg->domain = domain;
+      /* a function value reads an ENUM by its elements */
+      assert (TP_DOMAIN_TYPE (domain) != DB_TYPE_ENUMERATION || DOM_GET_ENUM_ELEMS_COUNT (domain) > 0);
       pt_set_interpolation_list_domain (agg);
     }
   return NO_ERROR;
@@ -11386,6 +11425,7 @@ pt_to_regu_variable (PARSER_CONTEXT * parser, PT_NODE * node, UNBOX unbox)
 		{
 		  pt_decide_node_domain (regu, node);
 		  pt_check_nvl_null_domain (parser, regu, node);
+		  pt_check_cast_wrap_domain (parser, regu, node);
 		  pt_decide_branch_casts (regu->value.arithptr);
 		}
 	      if (regu != NULL && regu->type == TYPE_INARITH && regu->value.arithptr->leftptr != NULL
@@ -16482,6 +16522,10 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 		    }
 		  pt_set_operand_conversion (&(*regulist)->value, regu->domain, REGU_CONV_CHAR_PREFIX);
 		}
+	      /* a list column reads an ENUM by its elements */
+	      assert ((*regulist)->value.domain == NULL
+		      || TP_DOMAIN_TYPE ((*regulist)->value.domain) != DB_TYPE_ENUMERATION
+		      || DOM_GET_ENUM_ELEMS_COUNT ((*regulist)->value.domain) > 0);
 	      /* in case of increment expr, find a target class to do the expr, and link the regulist to a node which
 	       * contains update info for the target class */
 	      if (selupd_list_ptr != NULL && col->node_type == PT_EXPR
