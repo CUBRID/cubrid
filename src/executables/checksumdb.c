@@ -1693,6 +1693,7 @@ chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp, cons
   const char *query;
   int res;
   int error = NO_ERROR;
+  int suppress_repl_error = NO_ERROR;
 
   checksum_query = chksum_print_checksum_query (parser, table_name, attributes, lower_bound, chunk_id, chunk_size);
   if (checksum_query == NULL)
@@ -1736,13 +1737,24 @@ chksum_calculate_checksum (PARSER_CONTEXT * parser, const OID * class_oidp, cons
 
   res = db_execute (query, &query_result, &query_error);
 
-  /* resume row-based replication right after the local execution; keep its result as the error baseline,
-   * an actual execution failure below supersedes it */
-  error = db_set_suppress_repl_on_transaction (false);
+  /* resume row-based replication right after the local execution */
+  suppress_repl_error = db_set_suppress_repl_on_transaction (false);
+  if (suppress_repl_error != NO_ERROR)
+    {
+      snprintf (err_msg, LINE_MAX,
+		"Failed to resume the row-based replication log." " (table name: %s, chunk id: %d)", table_name,
+		chunk_id);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_CHKSUM_GENERIC_ERR, 2, err_msg, suppress_repl_error);
+    }
 
   if (res >= 0)
     {
       db_query_end (query_result);
+
+      if (suppress_repl_error != NO_ERROR)
+	{
+	  return suppress_repl_error;
+	}
 
       res = chksum_update_master_checksum (parser, table_name, chunk_id);
       if (res < 0)
