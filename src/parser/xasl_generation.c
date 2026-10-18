@@ -6736,16 +6736,19 @@ pt_set_list_position_domains (REGU_VARIABLE_LIST positions, VAL_LIST * values, c
       const int pos = position->value.pos_descr.pos_no;
       TP_DOMAIN *column = output != NULL ? domain_output_column (output, pos) : domain_list_column_of (producer, pos);
       TP_DOMAIN *domain = pt_reader_domain (position->domain, column);
-      if (domain == position->domain)
+      QPROC_DB_VALUE_LIST slot = pt_value_list_slot (values, position->vfetch_to);
+      /* a slot made from a parse tree VARIABLE takes the type its position already had */
+      if (slot != NULL && (domain != position->domain || TP_DOMAIN_TYPE (slot->dom) == DB_TYPE_VARIABLE))
 	{
-	  continue;
+	  slot->dom = domain;
 	}
       position->domain = domain;
       position->value.pos_descr.dom = domain;
-      QPROC_DB_VALUE_LIST slot = pt_value_list_slot (values, position->vfetch_to);
-      if (slot != NULL)
+      if (producer != NULL && (producer->type == MERGELIST_PROC || producer->type == HASHJOIN_PROC)
+	  && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
 	{
-	  slot->dom = domain;
+	  /* CBRD-27583 census (D-60): a join output column its input list leaves untyped */
+	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 hash join output position %d proc %d\n", pos, (int) producer->type);
 	}
     }
 }

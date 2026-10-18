@@ -107,8 +107,8 @@ int domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * opera
  * domain_output_column () - column pos of the list an output list writes (hidden columns are not stored)
  * domain_list_column_of () - column pos of the list an XASL node makes: a block's output column (its analytic or
  *   GROUP BY output when it has one), the unified column of a set operation's branches or of a recursive CTE's two
- *   parts; the variable domain where a side's domain is not fixed, NULL where no column is found, the branches do
- *   not unify or both are objects
+ *   parts, a merge or hash join's column of the input it takes that column from; the variable domain where a side's
+ *   domain is not fixed, NULL where no column is found, the branches do not unify or both are objects
  */
 struct xasl_node;
 struct valptr_list_node;

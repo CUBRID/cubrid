@@ -2745,6 +2745,22 @@ domain_list_column_of (const XASL_NODE * xasl, int pos)
 	  return domain_list_column_of (first, pos);
 	}
       break;
+    case MERGELIST_PROC:
+    case HASHJOIN_PROC:
+      {
+	/* a join's list holds each output column from its outer or its inner list, as the join writes its type list
+	 * (qexec_merge_list) */
+	const bool merge = xasl->type == MERGELIST_PROC;
+	const QFILE_LIST_MERGE_INFO *info = merge ? &xasl->proc.mergelist.ls_merge : &xasl->proc.hashjoin.merge_info;
+	if (pos < 0 || pos >= info->ls_pos_cnt)
+	  {
+	    return NULL;
+	  }
+	const XASL_NODE *input = info->ls_outer_inner_list[pos] == QFILE_OUTER_LIST
+	  ? (merge ? xasl->proc.mergelist.outer_xasl : xasl->proc.hashjoin.outer.xasl)
+	  : (merge ? xasl->proc.mergelist.inner_xasl : xasl->proc.hashjoin.inner.xasl);
+	return domain_list_column_of (input, info->ls_pos_list[pos]);
+      }
     case BUILDLIST_PROC:
       /* the list holds the analytic or the GROUP BY output when the block has one */
       if (xasl->proc.buildlist.a_eval_list != NULL && xasl->proc.buildlist.a_outptr_list != NULL)
