@@ -199,12 +199,13 @@ const int REGU_VARIABLE_APPLY_COLLATION = 0x08;	/* Apply collation from domain; 
 						 * modifier */
 const int REGU_VARIABLE_ANALYTIC_WINDOW = 0x10;	/* for analytic window func */
 const int REGU_VARIABLE_INFER_COLLATION = 0x20;	/* infer collation for default parameter */
+const int REGU_VARIABLE_FETCH_ALL_CONST = 0x40;	/* is all constant: this execution's cache mark, not a type decision */
+const int REGU_VARIABLE_FETCH_NOT_CONST = 0x80;	/* is not constant */
 const int REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE = 0x100;	/* clears regu variable at clone decache */
 const int REGU_VARIABLE_UPD_INS_LIST = 0x200;	/* for update or insert query */
 const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query */
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
-const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly: set
-						 * at unpack for a stable regu */
+const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly */
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
 
 /* CBRD-27583: REGU_VARIABLE.conv_mode - the converter (a DOMAIN_CONVERT_MODE, the ENUM name converter or the CHAR

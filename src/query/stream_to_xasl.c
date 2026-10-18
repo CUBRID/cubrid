@@ -144,7 +144,6 @@ static char *stx_build_db_value_list (THREAD_ENTRY * thread_p, char *tmp, QPROC_
 #endif
 static char *stx_build_regu_variable (THREAD_ENTRY * thread_p, char *tmp, REGU_VARIABLE * ptr);
 static char *stx_unpack_regu_variable_value (THREAD_ENTRY * thread_p, char *tmp, REGU_VARIABLE * ptr);
-static void stx_set_fast_peek (REGU_VARIABLE * regu_var);
 static char *stx_build_attr_descr (THREAD_ENTRY * thread_p, char *tmp, ATTR_DESCR * ptr);
 static char *stx_build_pos_descr (char *tmp, QFILE_TUPLE_VALUE_POSITION * ptr);
 static char *stx_build_arith_type (THREAD_ENTRY * thread_p, char *tmp, ARITH_TYPE * ptr);
@@ -6325,6 +6324,8 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   regu_var->type = (REGU_DATATYPE) tmp;
 
   ptr = or_unpack_int (ptr, &regu_var->flags);
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
+  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -6360,7 +6361,6 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
   ptr = stx_unpack_regu_variable_value (thread_p, ptr, regu_var);
   if (ptr != NULL)
     {
-      stx_set_fast_peek (regu_var);
 #if !defined (NDEBUG)
       /* a regu value list is a container of values, not a value: no domain of its own (its elements count) */
       xasl_unpack_info->n_undecided_regu += regu_var->type != TYPE_REGU_VAR_LIST && regu_var->domain != NULL
@@ -6375,38 +6375,6 @@ stx_build_regu_variable (THREAD_ENTRY * thread_p, char *ptr, REGU_VARIABLE * reg
 error:
   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
   return NULL;
-}
-
-/*
- * stx_set_fast_peek () - a stable regu the inline fetch_peek_dbval () may peek directly, derived at unpack: a cached
- *   attribute, a literal, a bind value, a value pointer without a linked subquery. A COLLATE modifier's regu takes the
- *   slow path, which applies the collation, and a converting regu the slow path, which converts its value.
- */
-static void
-stx_set_fast_peek (REGU_VARIABLE * regu_var)
-{
-  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION) || regu_var->conv != NULL)
-    {
-      return;
-    }
-  switch (regu_var->type)
-    {
-    case TYPE_ATTR_ID:
-    case TYPE_SHARED_ATTR_ID:
-    case TYPE_CLASS_ATTR_ID:
-    case TYPE_DBVAL:
-    case TYPE_POS_VALUE:
-      break;
-    case TYPE_CONSTANT:
-      if (regu_var->xasl != NULL || regu_var->value.dbvalptr == NULL)
-	{
-	  return;
-	}
-      break;
-    default:
-      return;
-    }
-  REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FAST_PEEK);
 }
 
 static char *
@@ -7689,8 +7657,6 @@ stx_build_regu_value_list (THREAD_ENTRY * thread_p, char *ptr, REGU_VALUE_LIST *
 	{
 	  goto error;
 	}
-      stx_set_fast_peek (regu);
-
       regu_value_list->count += 1;
     }
   regu_value_list->current_value = regu_value_list->regu_list;

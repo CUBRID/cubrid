@@ -7575,9 +7575,11 @@ qdata_benchmark (THREAD_ENTRY * thread_p, FUNCTION_TYPE * function_p, VAL_DESCR 
   for (INT64 step = 0; step < count; step++)
     {
       // we're trying to benchmark the expression in target reguvar by running it many times. even if all operands are
-      // constant, we still have to repeat the operations: no fetch keeps a constant expression's value
+      // constant, we still have to repeat the operations. for that, we need to make sure nested regu variables are not
+      // flagged as constants
       //
       // node that they still may be other optimizations that are not so easily disabled
+      fetch_force_not_const_recursive (*target_reguvar);
       error = fetch_peek_dbval (thread_p, target_reguvar, val_desc_p, NULL, obj_oid_p, tplrec, &target_value);
       if (error != NO_ERROR)
 	{

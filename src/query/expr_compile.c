@@ -131,9 +131,8 @@ struct expr_pred
   bool lhs_compiled, rhs_compiled;
   int lhs_start, lhs_n;
   int rhs_start, rhs_n;
-  /* a literal right side of another type than the left: eval_value_rel_cmp () coerces such
-   * a FETCH_ALL_CONST operand to the left side's type before comparing (once, in place);
-   * the leaf carries that coerced value, so the row compares same-typed values directly */
+  /* a literal right side of another type than the left, coerced once to the left side's type
+   * (expr_scan_pred_build ()); the row compares same-typed values directly */
   bool rhs_pinned;
   DB_VALUE pinned_rhs;
   EXPR_PROG *prog;		/* the tree's root only: the operand program it owns */
@@ -924,9 +923,7 @@ expr_pred_map_cmp (int result, REL_OP rel_op)
     }
 }
 
-/* the type is not one of the direct-compare kinds: same call the interpreted path makes
- * (the constant-side pre-coercion in eval_value_rel_cmp () only fires when the value types
- * differ, which the compiler already excluded) */
+/* the type is not one of the direct-compare kinds: same call the interpreted path makes */
 static DB_LOGICAL
 expr_pred_generic_cmp (const EXPR_PRED * pred)
 {
@@ -2804,11 +2801,10 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	if (t1 != t2 && t1 != DB_TYPE_UNKNOWN && t2 != DB_TYPE_UNKNOWN && et->rhs->type == TYPE_DBVAL
 	    && !DB_IS_NULL (&et->rhs->value.dbval))
 	  {
-	    /* mirror of the constant-side coercion of eval_value_rel_cmp (): a literal right
-	     * operand is coerced to the left side's type when that type is the more general
-	     * numeric one ("n * m > 1") or a date/time type compared with a string
-	     * ("dt >= '2024-01-01'").  The interpreter does it on the first row, in place; the
-	     * leaf does it here, into its own value, and then compares same-typed sides. */
+	    /* a literal right operand is coerced to the left side's type when that type is the
+	     * more general numeric one ("n * m > 1") or a date/time type compared with a string
+	     * ("dt >= '2024-01-01'"), into the leaf's own value; the leaf then compares
+	     * same-typed sides. */
 	    TP_DOMAIN *dom = NULL;
 
 	    if (TP_IS_NUMERIC_TYPE (t1) && TP_IS_NUMERIC_TYPE (t2) && tp_more_general_type (t1, t2) > 0)
@@ -2834,8 +2830,7 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	    || !(t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE
 		 || expr_pred_generic_cmp_type (t1)))
 	  {
-	    /* differing sides would hit the constant-side coercion in
-	     * eval_value_rel_cmp (); the plain term evaluator applies it as before */
+	    /* differing sides: the plain term evaluator compares them */
 	    pr_clear_value (&pinned);
 	    return expr_scan_pred_interp_leaf (pr, true);
 	  }
@@ -2873,12 +2868,9 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	 * which a recursive CTE refills with the BIGINT of count () in an INTEGER-domain slot)
 	 * or a computed operand -- and can drift from the type the leaf was resolved for, so
 	 * the leaf verifies the runtime types per row and hands a drifted row to
-	 * eval_pred_comp0 (), which compares it exactly as the interpreter does: the
-	 * cross-type tp_value_compare_with_error (), after eval_value_rel_cmp ()'s coercion of
-	 * a FETCH_ALL_CONST right side (a TYPE_CONSTANT is FETCH_NOT_CONST and is not coerced).
+	 * eval_pred_comp0 (), which compares it exactly as the interpreter does.
 	 * This is the same rule expr_compile_pred () applies through expr_regu_may_drift ().
-	 * The literal stays pinned because that constant-side coercion, its only writer, is
-	 * reached only from the guarded path, never for a leaf whose sides are both pinned.
+	 * The pinned literal is the leaf's own value: nothing else writes it.
 	 *
 	 * The attribute half of that claim holds across old-representation records too:
 	 * ALTER changes that keep the schema-only path (SM_ATTR_CHG_ONLY_SCHEMA,
@@ -3525,8 +3517,7 @@ expr_compile_pred_impl (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * comp
 	t2 = expr_node_type (bctx, et->rhs);
 	if (t1 != t2 || t1 == DB_TYPE_UNKNOWN)
 	  {
-	    /* differing sides would hit the constant-side coercion in
-	     * eval_value_rel_cmp (); left interpreted */
+	    /* differing sides compare by the values in eval_value_rel_cmp (); left interpreted */
 	    return NULL;
 	  }
 	if (t1 == DB_TYPE_INTEGER || t1 == DB_TYPE_BIGINT || t1 == DB_TYPE_DOUBLE || t1 == DB_TYPE_DATE)

@@ -671,6 +671,166 @@ fetch_arith_node_resolve (val_descr * vd, FETCH_ARITH_ARGS * a)
 }
 
 /*
+ * fetch_arith_caches () - whether an arithmetic node over constant operands keeps its value for the rest of the
+ *   execution (FETCH_ALL_CONST): not an operator whose value changes without its operands (a serial, a variable, a
+ *   random number, a statistic, a predicate the fetch does not analyze, another tuple of the CONNECT BY list)
+ */
+static bool
+fetch_arith_caches (const ARITH_TYPE * arithptr)
+{
+  if (arithptr->pred != NULL)
+    {
+      return false;
+    }
+  switch (arithptr->opcode)
+    {
+    case T_INCR:
+    case T_DECR:
+    case T_CURRENT_VALUE:
+    case T_NEXT_VALUE:
+    case T_CASE:
+    case T_DECODE:
+    case T_IF:
+    case T_PREDICATE:
+    case T_ROW_COUNT:
+    case T_LAST_INSERT_ID:
+    case T_EVALUATE_VARIABLE:
+    case T_DEFINE_VARIABLE:
+    case T_RAND:
+    case T_RANDOM:
+    case T_DRAND:
+    case T_DRANDOM:
+    case T_SYS_GUID:
+    case T_UUID:
+    case T_EXEC_STATS:
+    case T_TRACE_STATS:
+    case T_SLEEP:
+    case T_PRIOR:
+    case T_QPRIOR:
+    case T_CONNECT_BY_ROOT:
+    case T_SYS_CONNECT_BY_PATH:
+      return false;
+    default:
+      return true;
+    }
+}
+
+/* an operand a constant node reads: none, or one this execution marked constant */
+static bool
+fetch_regu_is_all_const (const REGU_VARIABLE * regu)
+{
+  return regu == NULL || REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_FETCH_ALL_CONST);
+}
+
+/*
+ * fetch_function_caches () - whether a function keeps its value for the rest of the execution (FETCH_ALL_CONST): a
+ *   JSON, REGEXP, INSERT or ELT function whose operands are constant; an operand it did not fetch (an ELT branch it did
+ *   not pick) counts when it is a value or a bind
+ */
+static bool
+fetch_function_caches (const FUNCTION_TYPE * funcp)
+{
+  switch (funcp->ftype)
+    {
+    case F_JSON_ARRAY:
+    case F_JSON_ARRAY_APPEND:
+    case F_JSON_ARRAY_INSERT:
+    case F_JSON_CONTAINS:
+    case F_JSON_CONTAINS_PATH:
+    case F_JSON_DEPTH:
+    case F_JSON_EXTRACT:
+    case F_JSON_GET_ALL_PATHS:
+    case F_JSON_KEYS:
+    case F_JSON_INSERT:
+    case F_JSON_LENGTH:
+    case F_JSON_MERGE:
+    case F_JSON_MERGE_PATCH:
+    case F_JSON_OBJECT:
+    case F_JSON_PRETTY:
+    case F_JSON_QUOTE:
+    case F_JSON_REMOVE:
+    case F_JSON_REPLACE:
+    case F_JSON_SEARCH:
+    case F_JSON_SET:
+    case F_JSON_TYPE:
+    case F_JSON_UNQUOTE:
+    case F_JSON_VALID:
+    case F_REGEXP_COUNT:
+    case F_REGEXP_INSTR:
+    case F_REGEXP_LIKE:
+    case F_REGEXP_REPLACE:
+    case F_REGEXP_SUBSTR:
+    case F_INSERT_SUBSTRING:
+    case F_ELT:
+      break;
+    default:
+      return false;
+    }
+  for (REGU_VARIABLE_LIST operand = funcp->operand; operand != NULL; operand = operand->next)
+    {
+      if (!fetch_regu_is_all_const (&operand->value) && operand->value.type != TYPE_DBVAL
+	  && operand->value.type != TYPE_POS_VALUE)
+	{
+	  return false;
+	}
+    }
+  return true;
+}
+
+/*
+ * fetch_set_fast_peek () - after the first fetch of this execution, a value the regu holds or points at, unconverted,
+ *   is peeked by the inline fetch_peek_dbval (); cleared with the constant marks (qexec_clear_regu_var)
+ */
+static void
+fetch_set_fast_peek (REGU_VARIABLE * regu_var)
+{
+  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_APPLY_COLLATION) || regu_var->conv != NULL)
+    {
+      return;
+    }
+  switch (regu_var->type)
+    {
+    case TYPE_ATTR_ID:
+    case TYPE_SHARED_ATTR_ID:
+    case TYPE_CLASS_ATTR_ID:
+    case TYPE_DBVAL:
+    case TYPE_POS_VALUE:
+      break;
+    case TYPE_CONSTANT:
+      if (regu_var->xasl != NULL || regu_var->value.dbvalptr == NULL)
+	{
+	  return;
+	}
+      break;
+    default:
+      return;
+    }
+  REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FAST_PEEK);
+}
+
+// *INDENT-OFF*
+void
+fetch_force_not_const_recursive (REGU_VARIABLE & reguvar)
+{
+  auto map_func = [&] (regu_variable_node &regu, bool & stop)
+    {
+    switch (regu.type)
+      {
+      case TYPE_INARITH:
+      case TYPE_OUTARITH:
+      case TYPE_FUNC:
+      case TYPE_SP:
+        REGU_VARIABLE_SET_FLAG (&regu, REGU_VARIABLE_FETCH_NOT_CONST);
+        break;
+      default:
+        break;
+      }
+    };
+  reguvar.map_regu (map_func);
+}
+// *INDENT-ON*
+
+/*
  * fetch_peek_arith () -
  *   return: NO_ERROR or ER_code
  *   regu_var(in/out): Regulator Variable of an ARITH node.
@@ -688,6 +848,13 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
   assert (regu_var != NULL);
   arithptr = regu_var->value.arithptr;
+  if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST))
+    {
+      *peek_dbval = arithptr->value;
+
+      return NO_ERROR;
+    }
+
   /* the node and the domains it computes in (fetch_arith_node_domains); the operand fetch rules read the node's
    * domain (T_ADD's oracle_style_empty_string) */
   FETCH_ARITH_ARGS args;
@@ -770,6 +937,7 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       if (fused)
 	{
 	  /* aggregate operands read columns: computed for each row */
+	  REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
 	  *peek_dbval = arithptr->value;
 
 	  return NO_ERROR;
@@ -1396,6 +1564,14 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
 fetch_peek_arith_end:
 
+  /* check for the first time */
+  if (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST))
+    {
+      const bool all_const = fetch_arith_caches (arithptr) && fetch_regu_is_all_const (arithptr->leftptr)
+	&& fetch_regu_is_all_const (arithptr->rightptr) && fetch_regu_is_all_const (arithptr->thirdptr);
+      REGU_VARIABLE_SET_FLAG (regu_var, all_const ? REGU_VARIABLE_FETCH_ALL_CONST : REGU_VARIABLE_FETCH_NOT_CONST);
+    }
+
   thread_dec_recursion_depth (thread_p);
 
   return NO_ERROR;
@@ -1495,6 +1671,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
     case TYPE_ATTR_ID:		/* fetch object attribute value */
     case TYPE_SHARED_ATTR_ID:
     case TYPE_CLASS_ATTR_ID:
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       if (regu_var->value.attr_descr.cache_slot != NULL
 	  && regu_var->value.attr_descr.cache_slot->state == HEAP_LAZY_ATTRVALUE
 	  && regu_var->value.attr_descr.cache_attrinfo->lazy_recdes != NULL)
@@ -1551,16 +1728,21 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       break;
 
     case TYPE_OID:		/* fetch object identifier value */
+      /* the row's object: not constant (develop's answers; before #8022 it was marked constant) */
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       *peek_dbval = &regu_var->value.dbval;
       db_make_oid (*peek_dbval, obj_oid);
       break;
 
     case TYPE_CLASSOID:	/* fetch class identifier value */
+      /* the scan's class (a partition's): not constant */
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       *peek_dbval = &regu_var->value.dbval;
       db_make_oid (*peek_dbval, class_oid);
       break;
 
     case TYPE_POSITION:	/* fetch list file tuple value */
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
 
       pr_clear_value (regu_var->vfetch_to);
 
@@ -1604,9 +1786,11 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 #endif
 
       *peek_dbval = (DB_VALUE *) vd->dbval_ptr + regu_var->value.val_pos;
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_ALL_CONST);
       break;
 
     case TYPE_CONSTANT:	/* fetch constant-column value */
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       xasl = regu_var->xasl;
       if (xasl && XASL_IS_FLAGED (xasl, XASL_USES_SQ_CACHE) && !(SQ_CACHE_HT (xasl) && !SQ_CACHE_ENABLED (xasl)))
 	{
@@ -1648,14 +1832,17 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       break;
 
     case TYPE_ORDERBY_NUM:
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       *peek_dbval = regu_var->value.dbvalptr;
       break;
 
     case TYPE_DBVAL:		/* fetch db_value */
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_ALL_CONST);
       *peek_dbval = &regu_var->value.dbval;
       break;
 
     case TYPE_REGUVAL_LIST:
+      REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_NOT_CONST);
       reguval_list = regu_var->value.reguval_list;
       assert (reguval_list != NULL);
       assert (reguval_list->current_value != NULL);
@@ -1693,6 +1880,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 
 	/* clear any value from a previous iteration */
 	pr_clear_value (regu_var->value.sp_ptr->value);
+	fetch_force_not_const_recursive (*regu_var);
 
 	if (thread_is_on_trace (thread_p))
 	  {
@@ -1743,16 +1931,28 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
       break;
 
     case TYPE_FUNC:		/* fetch function value */
+      funcp = regu_var->value.funcp;
+      assert (funcp != NULL);
+      if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST))
+	{
+	  *peek_dbval = funcp->value;
+	  break;
+	}
+
       error = qdata_evaluate_function (thread_p, regu_var, vd, obj_oid, tplrec);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      funcp = regu_var->value.funcp;
-      assert (funcp != NULL);
-
       *peek_dbval = funcp->value;
+
+      /* check for the first time */
+      if (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST))
+	{
+	  REGU_VARIABLE_SET_FLAG (regu_var, fetch_function_caches (funcp) ? REGU_VARIABLE_FETCH_ALL_CONST
+				  : REGU_VARIABLE_FETCH_NOT_CONST);
+	}
       break;
 
     default:
@@ -1791,6 +1991,10 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
     {
       goto exit_on_error;
     }
+
+  assert (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST)
+	  || REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
+  fetch_set_fast_peek (regu_var);
 
   return NO_ERROR;
 
