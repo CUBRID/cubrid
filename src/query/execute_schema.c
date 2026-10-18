@@ -80,6 +80,7 @@
 #define UNIQUE_SAVEPOINT_CHANGE_DEF_COLL "cHANGEdEFAULTcOLL"
 #define UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT "cHANGEtBLcOMMENT"
 #define UNIQUE_SAVEPOINT_CHANGE_COLUMN_COMMENT "cHANGEcOLUMNcOMMENT"
+#define UNIQUE_SAVEPOINT_CHANGE_REPLICATION "cHANGErEPLICATION"
 #define UNIQUE_SAVEPOINT_CREATE_USER_ENTITY "cREATEuSEReNTITY"
 #define UNIQUE_SAVEPOINT_DROP_USER_ENTITY "dROPuSEReNTITY"
 #define UNIQUE_SAVEPOINT_ALTER_USER_ENTITY "aLTERuSEReNTITY"
@@ -2063,6 +2064,11 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   if (need_check_repl_constraint)
     {
       vclass = db_find_class (entity_name);
+      if (vclass == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error_exit;
+	}
 
       if (!sm_is_replication_class (vclass))
 	{
@@ -8057,8 +8063,6 @@ do_promote_partition (SM_CLASS * class_)
   SM_ATTRIBUTE *smattr = NULL;
   bool has_notnull_unique = false;
 
-  DB_CONSTRAINT *tmp;
-  SM_CLASS_CONSTRAINT *c;
   CHECK_1ARG_ERROR (class_);
 
   if (class_->partition == NULL)
@@ -11904,7 +11908,7 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
       goto exit;
     }
 
-  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
+  error = tran_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_REPLICATION);
   if (error != NO_ERROR)
     {
       goto exit;
@@ -11980,7 +11984,7 @@ exit:
 
   if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
     {
-      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT);
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_CHANGE_REPLICATION);
     }
 
   return error;
