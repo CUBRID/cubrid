@@ -29,6 +29,7 @@
 #include "thread_compat.hpp"
 #include "thread_manager.hpp"
 #include "xasl.h"
+#include "xasl_aggregate.hpp"
 #include "scope_exit.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -142,6 +143,19 @@ namespace memoize
 
       if (level >= 1)
 	{
+	  /* key_maker keys a subquery by the correlated references it finds in the subquery. It does not visit
+	   * GROUP BY keys, analytic functions, HAVING subqueries or CONNECT BY, so refuse those shapes (CBRD-27567). */
+	  if (xasl->connect_by_ptr != nullptr)
+	    {
+	      return false;
+	    }
+	  if (xasl->type == BUILDLIST_PROC
+	      && (xasl->proc.buildlist.groupby_list != nullptr || xasl->proc.buildlist.a_eval_list != nullptr
+		  || xasl->proc.buildlist.eptr_list != nullptr))
+	    {
+	      return false;
+	    }
+
 	  if (xasl->aptr_list)
 	    {
 	      for (XASL_NODE *aptr = xasl->aptr_list; aptr != NULL; aptr = aptr->next)
@@ -198,6 +212,21 @@ namespace memoize
 	    {
 	      (*this) (thread_p, dptr, const_regu_var_vector);
 	    }
+
+	  /* a correlated subquery runs again for every inner row, after the memo is probed, so its result is not an
+	   * input of the probe. Its correlated references, collected just above, key it instead (CBRD-27567). */
+	  const_regu_var_vector.erase (std::remove_if (const_regu_var_vector.begin(),
+				       const_regu_var_vector.end(), [xasl] (regu_variable_node *regu_var)
+	  {
+	    for (XASL_NODE *dptr = xasl->dptr_list; dptr != NULL; dptr = dptr->next)
+	      {
+		if (regu_var->xasl == dptr)
+		  {
+		    return true;
+		  }
+	      }
+	    return false;
+	  }), const_regu_var_vector.end());
 	}
 
       if constexpr (target_type == TARGET_LIST)
@@ -330,6 +359,38 @@ namespace memoize
 	{
 	  (*this) (subquery->outptr_list->valptrp, subquery_const_regu_var_vector);
 	}
+      if (subquery->instnum_pred)
+	{
+	  (*this) (subquery->instnum_pred, subquery_const_regu_var_vector);
+	}
+      if (subquery->ordbynum_pred)
+	{
+	  (*this) (subquery->ordbynum_pred, subquery_const_regu_var_vector);
+	}
+      if (subquery->type == BUILDVALUE_PROC)
+	{
+	  for (AGGREGATE_TYPE *agg = subquery->proc.buildvalue.agg_list; agg != NULL; agg = agg->next)
+	    {
+	      (*this) (agg->operands, subquery_const_regu_var_vector);
+	      if (agg->function == PT_PERCENTILE_CONT || agg->function == PT_PERCENTILE_DISC)
+		{
+		  (*this) (agg->info.percentile.percentile_reguvar, subquery_const_regu_var_vector);
+		}
+	    }
+	  if (subquery->proc.buildvalue.having_pred)
+	    {
+	      (*this) (subquery->proc.buildvalue.having_pred, subquery_const_regu_var_vector);
+	    }
+	}
+
+      /* only the subquery's correlated references come from outside it. Every other constant (its own columns, an
+       * aggregate's accumulator, a nested subquery's result) is computed by the subquery itself, so its value when
+       * the memo is probed is left over from the previous row and must not be part of the key (CBRD-27567). */
+      subquery_const_regu_var_vector.erase (std::remove_if (subquery_const_regu_var_vector.begin(),
+					    subquery_const_regu_var_vector.end(), [] (regu_variable_node *regu_var)
+      {
+	return !REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_CORRELATED);
+      }), subquery_const_regu_var_vector.end());
 
       if constexpr (target_type == TARGET_LIST)
 	{
