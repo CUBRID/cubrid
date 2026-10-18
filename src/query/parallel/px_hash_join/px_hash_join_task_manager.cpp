@@ -33,7 +33,6 @@
 #include "perf_monitor.h"		/* perfmon_update_max_timeval, perfmon_update_min_timeval */
 #include "query_evaluator.h"		/* eval_pred, V_ERROR, V_TRUE */
 #include "query_hash_join.h"
-#include "query_hash_join_split.hpp"
 #include "query_hash_scan.h"
 #include "query_manager.h"		/* qmgr_get_old_page, qmgr_free_old_page_and_init, ... */
 #include "storage_common.h"		/* OID_INITIALIZER, S_CLOSED, VPID_SET_NULL, ... */
@@ -176,7 +175,6 @@ namespace parallel_query
 
       assert (m_shared_info != nullptr);
       assert (m_shared_info->part_mutexes != nullptr);
-      assert (m_shared_info->part_set != nullptr);
     }
 
     void
@@ -184,7 +182,8 @@ namespace parallel_query
     {
       task_execution_guard guard (thread_ref, m_task_manager);
 
-      cubquery::hjoin_part_writer part_writer;
+      QFILE_LIST_ID **part_list_id;
+      HASHJOIN_SPLIT_WRITER split_writer;
 
       PAGE_PTR page = nullptr;
       QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
@@ -207,7 +206,9 @@ namespace parallel_query
 
       has_null_fill_side = IS_NULL_FILL_JOIN_TYPE (m_manager->join_type);
 
-      error = part_writer.init (&thread_ref, *m_shared_info->part_set, m_manager->part_spools[m_index]);
+      part_list_id = m_split_info->part_list_id;
+      error = hjoin_init_split_writer (&thread_ref, &split_writer, part_list_id, &m_shared_info->staging,
+				       m_manager->part_spools[m_index], part_cnt, m_shared_info->part_mutexes);
       if (error != NO_ERROR)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
@@ -220,6 +221,10 @@ namespace parallel_query
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
 	  m_task_manager.handle_error (thread_ref);
+
+	  /* cleanup */
+	  hjoin_clear_split_writer (&thread_ref, &split_writer);
+
 	  return;
 	}
 
@@ -346,7 +351,7 @@ namespace parallel_query
 		  hjoin_update_tuple_hash_key (&thread_ref, &tuple_record, hash_key);
 		}
 
-	      error = part_writer.add (part_id, tuple_record.tpl);
+	      error = hjoin_add_to_split_writer (&thread_ref, &split_writer, part_id, tuple_record.tpl);
 	      if (error != NO_ERROR)
 		{
 		  assert_release_error (er_errid () != NO_ERROR);
@@ -378,13 +383,15 @@ namespace parallel_query
 
       if (!has_error)
 	{
-	  error = part_writer.flush ();
+	  error = hjoin_flush_split_writer (&thread_ref, &split_writer);
 	  if (error != NO_ERROR)
 	    {
 	      assert_release_error (er_errid () != NO_ERROR);
 	      m_task_manager.handle_error (thread_ref);
 	    }
 	}
+
+      hjoin_clear_split_writer (&thread_ref, &split_writer);
 
       /* cleanup */
       qdata_free_hscan_key (&thread_ref, temp_key, m_manager->key_cnt);
