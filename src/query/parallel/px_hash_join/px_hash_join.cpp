@@ -230,8 +230,8 @@ error_exit:
       task_manager task_manager (manager->px_worker_manager, *main_thread_p);
       join_task *task = nullptr;
 
-      shared_info.result_list_ids = (QFILE_LIST_ID **) calloc (task_cnt, sizeof (QFILE_LIST_ID *));
-      if (shared_info.result_list_ids == nullptr)
+      shared_info.list_ids = (QFILE_LIST_ID **) calloc (task_cnt, sizeof (QFILE_LIST_ID *));
+      if (shared_info.list_ids == nullptr)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, task_cnt * sizeof (QFILE_LIST_ID *));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -259,7 +259,7 @@ error_exit:
       /* merge the result list of each task, or destroy them if a task failed */
       for (task_index = 0; task_index < task_cnt; task_index++)
 	{
-	  if (shared_info.result_list_ids[task_index] == nullptr)
+	  if (shared_info.list_ids[task_index] == nullptr)
 	    {
 	      continue;
 	    }
@@ -268,20 +268,20 @@ error_exit:
 	    {
 	      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_MERGE);
 	      error = hjoin_merge_qlist_into (&thread_ref, manager, &manager->single_context.list_id,
-					      &shared_info.result_list_ids[task_index]);
+					      &shared_info.list_ids[task_index]);
 	      HJOIN_PROFILE_MERGE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_MERGE,
 				       (manager->single_context.list_id != nullptr)
 				       ? manager->single_context.list_id->tuple_cnt : 0);
 	    }
 
-	  if (shared_info.result_list_ids[task_index] != nullptr)
+	  if (shared_info.list_ids[task_index] != nullptr)
 	    {
-	      qfile_close_list (&thread_ref, shared_info.result_list_ids[task_index]);
-	      qfile_destroy_list (&thread_ref, shared_info.result_list_ids[task_index]);
-	      QFILE_FREE_AND_INIT_LIST_ID (shared_info.result_list_ids[task_index]);
+	      qfile_close_list (&thread_ref, shared_info.list_ids[task_index]);
+	      qfile_destroy_list (&thread_ref, shared_info.list_ids[task_index]);
+	      QFILE_FREE_AND_INIT_LIST_ID (shared_info.list_ids[task_index]);
 	    }
 	}
-      free_and_init (shared_info.result_list_ids);
+      free_and_init (shared_info.list_ids);
 
       if (manager->px_worker_stats != nullptr)
 	{

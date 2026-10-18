@@ -387,7 +387,7 @@ typedef struct hashjoin_shared_join_info
   HASHJOIN_RANGE_TIME_STATS build_range_time;
   HASHJOIN_RANGE_TIME_STATS probe_range_time;
 
-  QFILE_LIST_ID **result_list_ids;	/* result list of each join task */
+  QFILE_LIST_ID **list_ids;	/* result list of each join task */
 
   hashjoin_shared_join_info ()
     : scan_mutex ()
@@ -396,7 +396,7 @@ typedef struct hashjoin_shared_join_info
     , stats_mutex ()
     , build_range_time HASHJOIN_RANGE_TIME_STATS_INITIALIZER
     , probe_range_time HASHJOIN_RANGE_TIME_STATS_INITIALIZER
-    , result_list_ids (nullptr)
+    , list_ids (nullptr)
   {
     //
   }
@@ -424,9 +424,6 @@ typedef struct hashjoin_context
 
   /* The pages of outer.list_id and inner.list_id belong to HASHJOIN_MANAGER.part_spools, not to the lists. */
   bool is_input_spooled;
-
-  /* When set, the result is appended to this list, shared with other partitions, instead of list_id. */
-  QFILE_LIST_ID *result_list_id;
 
   /* Pointer to a member of HASHJOIN_MANAGER. */
   HASHJOIN_STATS *stats;

@@ -188,6 +188,18 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 
   status = hjoin_check_empty_inputs (&manager, single_context);
   single_context->status = status;
+
+  if (status != HASHJOIN_STATUS_END)
+    {
+      /* every context appends to this list: the single context, the partitions, or the merged lists of the join tasks */
+      single_context->list_id =
+	qfile_open_list (thread_p, &manager.type_list, NULL, manager.query_id, manager.qlist_flag, NULL);
+      if (single_context->list_id == NULL)
+	{
+	  goto error_exit;
+	}
+    }
+
   switch (status)
     {
     case HASHJOIN_STATUS_FILL_NULL_VALUES:
@@ -281,20 +293,13 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
       assert (!XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) || QFILE_LIST_IS_BACKWARD (single_context->list_id));
       qfile_copy_list_id (xasl->list_id, single_context->list_id, false, QFILE_MOVE_DEPENDENT);
       QFILE_FREE_AND_INIT_LIST_ID (single_context->list_id);
-
-      ASSERT_NO_ERROR_OR_INTERRUPTED ();
-    }
-  else if (status == HASHJOIN_STATUS_END)
-    {
-      ASSERT_NO_ERROR_OR_INTERRUPTED ();
     }
   else
     {
-      /* list_id can be NULL when the join result is empty.
-       * In this case, it is NO_ERROR.
-       * Otherwise, an error may be set. */
-      error = er_errid ();
+      assert (status == HASHJOIN_STATUS_END);
     }
+
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
   if (thread_is_on_trace (thread_p) && manager.stats_group != NULL)
@@ -339,22 +344,18 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   context_cnt = manager->context_cnt;
 
   /* the contexts are executed one by one, so all of them append to the final result list */
-  if (manager->single_context.list_id == NULL)
-    {
-      manager->single_context.list_id =
-	qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, manager->qlist_flag, NULL);
-      if (manager->single_context.list_id == NULL)
-	{
-	  goto error_exit;
-	}
-    }
+  assert (manager->single_context.list_id != NULL);
 
   for (context_index = 0; context_index < context_cnt; context_index++)
     {
       current_context = &manager->contexts[context_index];
-      current_context->result_list_id = manager->single_context.list_id;
+      current_context->list_id = manager->single_context.list_id;
 
       error = hjoin_execute_context (thread_p, manager, current_context, manager->part_spools[0]);
+
+      /* the list is not the context's own: hjoin_clear_context () must not destroy it */
+      current_context->list_id = NULL;
+
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -364,9 +365,6 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	{
 	  hjoin_trace_merge_stats (stats, current_context->stats, manager->single_context.status);
 	}
-
-      /* the result went to result_list_id, so there is no list of the context to merge */
-      assert (current_context->list_id == NULL);
     }
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -513,8 +511,8 @@ hjoin_execute_sub_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
       sub_context->after_join_pred = context->after_join_pred;
       sub_context->val_descr = context->val_descr;
       sub_context->is_input_spooled = true;
-      assert (context->result_list_id != NULL);
-      sub_context->result_list_id = context->result_list_id;
+      assert (context->list_id != NULL);
+      sub_context->list_id = context->list_id;
 
       /* each sub-context counts by itself, then adds to the context, since a context sets its stats only once */
       if (context->stats != NULL)
@@ -524,6 +522,7 @@ hjoin_execute_sub_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 	}
 
       error = hjoin_execute (thread_p, manager, sub_context);
+      sub_context->list_id = NULL;
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -536,7 +535,6 @@ hjoin_execute_sub_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 	  sub_context->stats = NULL;
 	}
 
-      assert (sub_context->list_id == NULL);
       hjoin_clear_context (thread_p, sub_context);
     }
 
@@ -737,7 +735,7 @@ hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CON
     }
 
   /* Check if qfile_close_list was called */
-  assert (context->list_id == NULL || context->list_id->last_pgptr == NULL);
+  assert (context->list_id->last_pgptr == NULL);
 
   return error;
 }
@@ -805,22 +803,12 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
   build->fill_record = NULL;
   probe->fill_record = &probe->tuple_record;
 
-  if (context->result_list_id == NULL)
+  assert (context->list_id != NULL);
+  list_id = context->list_id;
+  error = qfile_reopen_list_as_append_mode (thread_p, list_id);
+  if (error != NO_ERROR)
     {
-      list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, manager->qlist_flag, NULL);
-      if (list_id == NULL)
-	{
-	  goto error_exit;
-	}
-    }
-  else
-    {
-      list_id = context->result_list_id;
-      error = qfile_reopen_list_as_append_mode (thread_p, list_id);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
+      goto error_exit;
     }
   start_tuple_cnt = list_id->tuple_cnt;
 
@@ -898,10 +886,6 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
     }
 
   qfile_close_list (thread_p, list_id);
-  if (list_id != context->result_list_id)
-    {
-      context->list_id = list_id;
-    }
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
@@ -922,11 +906,6 @@ error_exit:
   if (list_id != NULL)
     {
       qfile_close_list (thread_p, list_id);
-      if (list_id != context->result_list_id)
-	{
-	  qfile_destroy_list (thread_p, list_id);
-	  QFILE_FREE_AND_INIT_LIST_ID (list_id);
-	}
     }
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
@@ -956,7 +935,7 @@ hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
   assert (thread_p != NULL);
   assert (manager != NULL);
   assert (context != NULL);
-  assert (context->list_id == NULL);
+  assert (context->list_id != NULL);
 
   outer = &context->outer;
   inner = &context->inner;
@@ -4068,7 +4047,7 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
   assert (thread_p != NULL);
   assert (manager != NULL);
   assert (context != NULL);
-  assert (context->list_id == NULL);
+  assert (context->list_id != NULL);
 
 #if defined (SERVER_MODE)
   if (context->status == HASHJOIN_STATUS_PARALLEL_PROBE)
@@ -4092,22 +4071,11 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
   else
 #endif /* defined (SERVER_MODE) */
     {
-      if (context->result_list_id == NULL)
+      list_id = context->list_id;
+      error = qfile_reopen_list_as_append_mode (thread_p, list_id);
+      if (error != NO_ERROR)
 	{
-	  list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, manager->qlist_flag, NULL);
-	  if (list_id == NULL)
-	    {
-	      goto error_exit;
-	    }
-	}
-      else
-	{
-	  list_id = context->result_list_id;
-	  error = qfile_reopen_list_as_append_mode (thread_p, list_id);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
+	  goto error_exit;
 	}
       start_tuple_cnt = list_id->tuple_cnt;
 
@@ -4122,17 +4090,10 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 
       qfile_close_list (thread_p, list_id);
 
-      if (list_id == context->result_list_id)
+      /* the probe counted the tuples of the shared list */
+      if (context->stats != NULL)
 	{
-	  /* the probe counted the tuples of the shared list */
-	  if (context->stats != NULL)
-	    {
-	      context->stats->probe.qualified_rows -= start_tuple_cnt;
-	    }
-	}
-      else
-	{
-	  context->list_id = list_id;
+	  context->stats->probe.qualified_rows -= start_tuple_cnt;
 	}
     }
 
@@ -4146,11 +4107,6 @@ error_exit:
   if (list_id != NULL)
     {
       qfile_close_list (thread_p, list_id);
-      if (list_id != context->result_list_id)
-	{
-	  qfile_destroy_list (thread_p, list_id);
-	  QFILE_FREE_AND_INIT_LIST_ID (list_id);
-	}
     }
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)

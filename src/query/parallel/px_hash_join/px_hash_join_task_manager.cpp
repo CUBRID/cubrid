@@ -450,9 +450,9 @@ namespace parallel_query
 	}
 
       /* the contexts of this task append their results to one list, merged by the main thread */
-      m_shared_info->result_list_ids[m_index] =
+      m_shared_info->list_ids[m_index] =
 	      qfile_open_list (&thread_ref, &m_manager->type_list, nullptr, m_manager->query_id, m_manager->qlist_flag, nullptr);
-      if (m_shared_info->result_list_ids[m_index] == nullptr)
+      if (m_shared_info->list_ids[m_index] == nullptr)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
 	  m_task_manager.handle_error (thread_ref);
@@ -494,10 +494,11 @@ namespace parallel_query
 	      break;		/* error_exit */
 	    }
 
-	  context->result_list_id = m_shared_info->result_list_ids[m_index];
+	  context->list_id = m_shared_info->list_ids[m_index];
 
 	  assert (m_index < m_manager->part_spool_cnt);
 	  error = hjoin_execute_context (&thread_ref, m_manager, context, m_manager->part_spools[m_index]);
+	  context->list_id = nullptr;
 
 	  if (thread_is_on_trace (&thread_ref))
 	    {
