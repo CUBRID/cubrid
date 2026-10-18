@@ -4243,6 +4243,7 @@ locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p, MVCC_REC_HEAD
  *
  * return: NO_ERROR or error code
  *
+ *   attr_info(in): the child class's foreign key columns
  *   parent_key(in): the key being deleted or updated; a midxkey carries the domain it was written with
  *   refers(out): true when the child's foreign key still equals parent_key, or its latest version is ours
  *
@@ -4344,6 +4345,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   bool lob_exist;
   int error_code = NO_ERROR;
   HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_CACHE_ATTRINFO fk_attr_info;
   DB_VALUE null_value;
   ATTR_ID *attr_ids = NULL;
   int num_attrs = 0;
@@ -4373,6 +4375,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   db_make_null (&key_val_range.key2);
 
   heap_attrinfo_start (thread_p, NULL, 0, NULL, &attr_info);
+  heap_attrinfo_start (thread_p, NULL, 0, NULL, &fk_attr_info);
 
   for (fkref = index->fk; fkref != NULL; fkref = fkref->next)
     {
@@ -4549,6 +4552,11 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 			{
 			  goto error1;
 			}
+		      error_code = heap_attrinfo_start (thread_p, &fkref->self_oid, num_attrs, attr_ids, &fk_attr_info);
+		      if (error_code != NO_ERROR)
+			{
+			  goto error1;
+			}
 
 		      for (i = 0; i < attr_info.num_values; i++)
 			{
@@ -4592,8 +4600,8 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		    }
 
 		  error_code =
-		    locator_child_still_refers (thread_p, &attr_info, &fkref->self_btid, oid_ptr, &recdes, &parent_key,
-						&refers);
+		    locator_child_still_refers (thread_p, &fk_attr_info, &fkref->self_btid, oid_ptr, &recdes,
+						&parent_key, &refers);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error1;
@@ -4677,6 +4685,7 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      if (fkref->del_action == SM_FOREIGN_KEY_CASCADE || fkref->del_action == SM_FOREIGN_KEY_SET_NULL)
 		{
 		  heap_attrinfo_end (thread_p, &attr_info);
+		  heap_attrinfo_end (thread_p, &fk_attr_info);
 		}
 	    }
 
@@ -4723,6 +4732,7 @@ error2:
 
 error3:
   heap_attrinfo_end (thread_p, &attr_info);
+  heap_attrinfo_end (thread_p, &fk_attr_info);
 
   goto end;
 }
@@ -4749,6 +4759,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   bool is_upd_scan_init;
   int error_code = NO_ERROR;
   HEAP_CACHE_ATTRINFO attr_info;
+  HEAP_CACHE_ATTRINFO fk_attr_info;
   DB_VALUE null_value;
   ATTR_ID *attr_ids = NULL;
   int num_attrs = 0;
@@ -4777,6 +4788,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   db_make_null (&key_val_range.key2);
   db_make_null (&null_value);
   heap_attrinfo_start (thread_p, NULL, 0, NULL, &attr_info);
+  heap_attrinfo_start (thread_p, NULL, 0, NULL, &fk_attr_info);
 
   for (fkref = index->fk; fkref != NULL; fkref = fkref->next)
     {
@@ -4942,6 +4954,11 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		    {
 		      goto error1;
 		    }
+		  error_code = heap_attrinfo_start (thread_p, &fkref->self_oid, num_attrs, attr_ids, &fk_attr_info);
+		  if (error_code != NO_ERROR)
+		    {
+		      goto error1;
+		    }
 		}
 
 	      for (i = 0; i < oid_cnt; i++)
@@ -4973,8 +4990,8 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 		    }
 
 		  error_code =
-		    locator_child_still_refers (thread_p, &attr_info, &fkref->self_btid, oid_ptr, &recdes, &parent_key,
-						&refers);
+		    locator_child_still_refers (thread_p, &fk_attr_info, &fkref->self_btid, oid_ptr, &recdes,
+						&parent_key, &refers);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error1;
@@ -5038,6 +5055,7 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	    {
 	      heap_scancache_end_modify (thread_p, &scan_cache);
 	      heap_attrinfo_end (thread_p, &attr_info);
+	      heap_attrinfo_end (thread_p, &fk_attr_info);
 	    }
 
 	  btree_scan_clear_key (&bt_scan);
@@ -5083,6 +5101,7 @@ error2:
 
 error3:
   heap_attrinfo_end (thread_p, &attr_info);
+  heap_attrinfo_end (thread_p, &fk_attr_info);
 
   goto end;
 }
