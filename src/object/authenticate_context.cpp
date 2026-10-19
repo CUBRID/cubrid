@@ -35,6 +35,7 @@
 #include "schema_manager.h" /* sm_find_class() */
 #include "schema_system_catalog_constants.h"
 #include "locator_cl.h" /* locator_create_heap_if_needed () */
+#include "trigger_manager.h" /* tr_invalidate_user_cache () */
 
 /*
  * Authorization Class Names
@@ -601,6 +602,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
   DB_VALUE value;
   const char *pass;
   char *dbuser = NULL, *dbpassword = NULL;
+  bool is_user_changed;
 
   dbuser = (char *) name;
   dbpassword = (char *) password;
@@ -707,10 +709,17 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 
 	      if (error == NO_ERROR)
 		{
+		  is_user_changed = !ws_is_same_object (user, current_user);
+
 		  error = set_user (user);
 
 		  /* necessary to invalidate vclass cache */
 		  sm_bump_local_schema_version ();
+
+		  if (is_user_changed)
+		    {
+		      tr_invalidate_user_cache ();
+		    }
 		}
 	    }
 	}
