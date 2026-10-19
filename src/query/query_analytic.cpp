@@ -62,8 +62,10 @@ qdata_analytic_is_plain_sum_avg (const ANALYTIC_TYPE *func_p)
 	  && TP_DOMAIN_COLLATION_FLAG (func_p->domain) == TP_DOMAIN_COLL_NORMAL);
 }
 
+#if !defined (NDEBUG)
 /*
- * qdata_plan_analytic_accumulator () - CBRD-27583 (4.3): an analytic SUM / AVG's or STDDEV / VARIANCE's accumulator
+ * qdata_plan_analytic_accumulator () - CBRD-27583 (4.3; since D-83 the debug cross-check of the compiler's plan,
+ *   domain_plan_analytic_accumulator, removed at S3-14): an analytic SUM / AVG's or STDDEV / VARIANCE's accumulator
  *   domains, or a MEDIAN / PERCENTILE's value converter, chosen at unpack from the function's domain and its
  *   argument's, which XASL generation decided; the partitions read them and derive nothing
  *
@@ -181,7 +183,8 @@ qdata_plan_analytic_accumulator (ANALYTIC_TYPE *func_p)
 }
 
 /*
- * qdata_plan_analytic_offset () - CBRD-27583: a LEAD / LAG / NTH_VALUE's converters of its offset into INTEGER (an
+ * qdata_plan_analytic_offset () - CBRD-27583 (since D-83 the debug cross-check of the compiler's plan,
+ *   domain_plan_analytic_offset, removed at S3-14): a LEAD / LAG / NTH_VALUE's converters of its offset into INTEGER (an
  *   NTH_VALUE's into DOUBLE), [0], and of its default into the function's domain, [1], found at unpack from the
  *   domains XASL generation gave their regus in the read list (tp_value_coerce_with_converter at every row); none for
  *   a value of the target's type and for a regu of a domain decided at the row
@@ -219,6 +222,7 @@ qdata_plan_analytic_offset (cubxasl::analytic_eval_type *eval_list, regu_variabl
 	}
     }
 }
+#endif
 
 /*
  * qdata_initialize_analytic_func () -
@@ -925,7 +929,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	    }
 	  else
 	    {
-	      /* the distinct values are summed as planned at unpack (qdata_plan_analytic_accumulator): the first into
+	      /* the distinct values are summed as planned (domain_plan_analytic_accumulator): the first into
 	       * the sum's domain, every later one with the operand coercion of (sum, argument), the result coerced to
 	       * the sum's domain unless the sum is kept floating */
 	      const AGGREGATE_ACCUMULATOR_DOMAIN *acc_dom = &func_p->accumulator_domain;
@@ -1117,8 +1121,8 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
       double_domain_ptr = tp_domain_resolve_default (DB_TYPE_DOUBLE);
 
-      /* compute AVG(X) = SUM(X)/COUNT(X): an AVG divides with the operand coercion planned at unpack for the sum's
-       * type (qdata_plan_analytic_accumulator), a STDDEV / VARIANCE two DOUBLEs by construction */
+      /* compute AVG(X) = SUM(X)/COUNT(X): an AVG divides with the operand coercion planned for the sum's type
+       * (domain_plan_analytic_accumulator), a STDDEV / VARIANCE two DOUBLEs by construction */
       db_make_double (&dbval, func_p->curr_cnt);
       const DOMAIN_OPERAND_COERCION *divide =
 	      func_p->function == PT_AVG ? &func_p->accumulator_domain.divide_coercion : NULL;

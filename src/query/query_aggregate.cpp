@@ -290,8 +290,10 @@ qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_
   return NO_ERROR;
 }
 
+#if !defined (NDEBUG)
 /*
- * qdata_plan_aggregate_accumulator () - CBRD-27583 (4.3): an aggregate's accumulator domains, chosen at unpack from
+ * qdata_plan_aggregate_accumulator () - CBRD-27583 (4.3; since D-83 the debug cross-check of the compiler's plan,
+ *   domain_plan_aggregate_accumulator, removed at S3-14): an aggregate's accumulator domains, chosen at unpack from
  *   its domain and its operand's, which XASL generation decided: the ones develop's first non-NULL value gave. A SUM or
  *   AVG also gets the operand coercion of a value it adds, the converter of its first value and whether its typed
  *   accumulator takes the argument, the operand coercion of a DISTINCT list's second value, an AVG its division's and
@@ -486,6 +488,7 @@ qdata_plan_aggregate_accumulator (cubxasl::aggregate_list_node *agg_p)
 				   DB_DEFAULT_PRECISION, DB_DEFAULT_SCALE);
     }
 }
+#endif
 
 /*
  * qdata_aggregate_accumulator_to_accumulator () - aggregate two accumulators
@@ -3899,7 +3902,8 @@ qdata_update_agg_interpolation_func_value_and_domain (const VAL_DESCR *vd, cubxa
 
   TP_DOMAIN *domain = agg_p->domain;
   assert (TP_DOMAIN_TYPE (agg_p->list_id->type_list.domp[0]) == TP_DOMAIN_TYPE (domain));
-  /* the converter planned at unpack (qdata_plan_aggregate_accumulator); none for an argument of the function's type */
+  /* the converter the compiler planned (domain_plan_aggregate_accumulator); none for an argument of the function's
+   * type */
   const TP_VALUE_CONVERTER conv = agg_p->accumulator_domain.operand_coercion.conv[1];
   if (conv == NULL)
     {

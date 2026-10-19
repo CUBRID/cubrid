@@ -44,8 +44,11 @@ namespace cubxasl
   struct analytic_list_node;
 } // namespace cubxasl
 
+#if !defined (NDEBUG)
+/* CBRD-27583: the plans unpack made before D-83, the debug cross-check of the compiler's (removed at S3-14) */
 void qdata_plan_analytic_accumulator (cubxasl::analytic_list_node *func_p);
 void qdata_plan_analytic_offset (cubxasl::analytic_eval_type *eval_list, regu_variable_list_node *read_list);
+#endif
 int qdata_initialize_analytic_func (cubthread::entry *thread_p, cubxasl::analytic_list_node *func_p, QUERY_ID query_id);
 int qdata_evaluate_analytic_func (cubthread::entry *thread_p, cubxasl::analytic_list_node *func_p, val_descr *vd);
 int qdata_finalize_analytic_func (cubthread::entry *thread_p, cubxasl::analytic_list_node *func_p, bool is_same_group);

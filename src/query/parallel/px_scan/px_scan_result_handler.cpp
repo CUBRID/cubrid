@@ -57,8 +57,8 @@ namespace parallel_scan
   thread_local QFILE_TUPLE_RECORD result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_tpl_buf;
   thread_local OR_BUF result_handler<RESULT_TYPE::BUILDVALUE_OPT>::tl_or_buf;
 
-  /* A function that sees a value has its accumulator domain from the worker's unpack
-   * (qdata_plan_aggregate_accumulator); a worker neither resolves one nor falls back to its values: no domain here
+  /* A function that sees a value has its accumulator domain from the worker's unpack of the compiler's plan
+   * (domain_plan_aggregate_accumulator); a worker neither resolves one nor falls back to its values: no domain here
    * fails the unresolved-domain check. */
   /* A worker's list opens with its columns' compiled domains (qdata_get_valptr_type_list): no column waits for a first
    * tuple to type it - PX keeps session variable reads off (px_scan_checker) and XASL generation types every other

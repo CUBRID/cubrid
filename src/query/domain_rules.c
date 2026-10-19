@@ -32,6 +32,7 @@
 #include "error_manager.h"
 #include "string_opfunc.h"
 #include "xasl.h"
+#include "query_sum_accumulator.h"
 #include <atomic>
 #include <cfloat>
 #include <cstddef>
@@ -669,6 +670,368 @@ domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DO
 
 const DOMAIN_ARITH domain_arith_double = { DOMAIN_ARITH_NUMBER, DB_TYPE_DOUBLE };
 
+/* CBRD-27583 (D-83): the conversion of a value of type source into target in a mode */
+static DOMAIN_CONVERSION
+domain_conversion (DB_TYPE source, const TP_DOMAIN * target, DOMAIN_CONVERT_MODE mode)
+{
+  const DOMAIN_CONVERSION conversion = { source, target, mode };
+  return conversion;
+}
+
+void
+domain_plan_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_COERCION_PLAN * plan)
+{
+  DOMAIN_OPERAND_COERCION coercion;
+  domain_resolve_operand_coercion (opcode, operands, &coercion);
+  *plan = DOMAIN_COERCION_PLAN ();
+  plan->arith = coercion.arith;
+  for (int i = 0; i < 2; i++)
+    {
+      plan->operand_domain[i] = coercion.operand_domain[i];
+      if (coercion.conv[i] != NULL)
+	{
+	  /* an ENUM's name into DOUBLE is a plus over a string, which no plan adds (D-46 casts such an operand) */
+	  assert (coercion.conv[i] != domain_enumeration_name_converter ());
+	  plan->conv[i] = domain_conversion (domain_operand_type (&operands[i]), coercion.operand_domain[i],
+					     DOMAIN_CONVERT_ASSIGN);
+	}
+    }
+}
+
+/*
+ * domain_plan_aggregate_accumulator () - an aggregate's accumulator domains, from its domain and its operand's, which
+ *   XASL generation decided: the ones develop's first non-NULL value gave. A SUM or AVG also gets the operand coercion
+ *   of a value it adds, the conversion of its first value and whether its typed accumulator takes the argument, the
+ *   operand coercion of a DISTINCT list's second value, an AVG its division's and a SUM the conversion of its sum into
+ *   its domain (4.6c); one whose argument is typed NULL sees only NULLs and gets none, and one over a date adds as
+ *   develop did, raising the addition's error at its second value. A STDDEV / VARIANCE gets [1] the conversion of a
+ *   value into DOUBLE and its division's operand coercion, a MEDIAN / PERCENTILE [1] the conversion of its argument's
+ *   type into its domain, which every value takes.
+ */
+void
+domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DOMAIN * domain,
+				   const TP_DOMAIN * argument, DOMAIN_ACCUMULATOR_PLAN * plan)
+{
+  *plan = DOMAIN_ACCUMULATOR_PLAN ();
+  const bool argument_typed = argument != NULL && !domain_is_variable (argument)
+    && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL;
+  switch (function)
+    {
+    case PT_CUME_DIST:
+    case PT_PERCENT_RANK:
+      break;
+
+    case PT_JSON_ARRAYAGG:
+    case PT_JSON_OBJECTAGG:
+      plan->value_dom = &tp_Json_domain;
+      plan->value2_dom = &tp_Null_domain;
+      break;
+
+    case PT_GROUPBY_NUM:
+      plan->value_dom = &tp_Null_domain;
+      plan->value2_dom = &tp_Null_domain;
+      break;
+
+    case PT_COUNT:
+    case PT_COUNT_STAR:
+    case PT_AGG_BIT_AND:
+    case PT_AGG_BIT_OR:
+    case PT_AGG_BIT_XOR:
+      /* qdata_bit_and/or/xor_dbval always produce a BIGINT accumulator */
+      plan->value_dom = &tp_Bigint_domain;
+      plan->value2_dom = &tp_Null_domain;
+      break;
+
+    case PT_MIN:
+    case PT_MAX:
+      plan->value_dom = domain;
+      plan->value2_dom = &tp_Null_domain;
+      /* XASL generation gave MIN / MAX its argument's domain (D-36): a new extreme copies as it is (first_conv none) */
+      assert (!argument_typed || domain_is_variable (domain) || TP_DOMAIN_TYPE (argument) == TP_DOMAIN_TYPE (domain));
+      break;
+
+    case PT_GROUP_CONCAT:
+      plan->value_dom = domain;
+      plan->value2_dom = &tp_Null_domain;
+      break;
+
+    case PT_STDDEV:
+    case PT_STDDEV_POP:
+    case PT_STDDEV_SAMP:
+    case PT_VARIANCE:
+    case PT_VAR_POP:
+    case PT_VAR_SAMP:
+      plan->value_dom = &tp_Double_domain;
+      plan->value2_dom = &tp_Double_domain;
+      if (argument_typed)
+	{
+	  /* tp_value_coerce's conversion of a value into DOUBLE, none for a DOUBLE */
+	  plan->operand_coercion.operand_domain[1] = &tp_Double_domain;
+	  if (TP_DOMAIN_TYPE (argument) != DB_TYPE_DOUBLE)
+	    {
+	      plan->operand_coercion.conv[1] =
+		domain_conversion (TP_DOMAIN_TYPE (argument), &tp_Double_domain, DOMAIN_CONVERT_IMPLICIT);
+	    }
+	}
+      {
+	/* the sum of the DOUBLEs divided by the count, as an AVG's */
+	const DOMAIN_OPERAND divide[2] = {
+	  {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false}, {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false}
+	};
+	domain_plan_operand_coercion (T_DIV, divide, &plan->divide_coercion);
+      }
+      break;
+
+    case PT_MEDIAN:
+    case PT_PERCENTILE_CONT:
+    case PT_PERCENTILE_DISC:
+      /* a number or a date keeps the accumulator unset, as develop's first value left it */
+      if (!TP_IS_NUMERIC_TYPE (opr_dbtype) && !TP_IS_DATE_OR_TIME_TYPE (opr_dbtype) && !domain_is_variable (domain)
+	  && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
+	{
+	  plan->value_dom = domain;
+	  plan->value2_dom = &tp_Null_domain;
+	}
+      /* each value converts to the function's domain, which its list holds: the converter of the argument's type
+       * (none for the same type) */
+      if (argument_typed && !domain_is_variable (domain) && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
+	{
+	  plan->operand_coercion.operand_domain[1] = domain;
+	  plan->operand_coercion.conv[1] =
+	    domain_conversion (TP_DOMAIN_TYPE (argument), domain, DOMAIN_CONVERT_IMPLICIT);
+	}
+      break;
+
+    case PT_SUM:
+    case PT_AVG:
+      {
+	if (!argument_typed)
+	  {
+	    /* an argument typed NULL sums nothing: the accumulator stays a NULL of the function's domain */
+	    plan->value_dom = domain;
+	    plan->value2_dom = &tp_Null_domain;
+	    if (argument == NULL || domain_is_variable (argument))
+	      {
+		er_log_debug (ARG_FILE_LINE, "CBRD-27583 left untyped sum function=%d\n", function);
+	      }
+	    break;
+	  }
+	const DOMAIN_OPERAND operands[2] = {
+	  {NULL, DB_TYPE_NULL, -1, false}, {argument, TP_DOMAIN_TYPE (argument), -1, false}
+	};
+	RESOLVED_DOMAIN resolved;
+	bool needs_late_bind = false;
+	if (domain_resolve (DOMAIN_CTX_AGG, function, &operands[1], 1, domain, &resolved, &needs_late_bind) == NO_ERROR
+	    && !needs_late_bind && resolved.operand_domain[0] != NULL)
+	  {
+	    plan->value_dom = resolved.operand_domain[0];
+	  }
+	else
+	  {
+	    /* a date the addition rejects: the accumulator holds the function's domain, as develop's first value did */
+	    plan->value_dom = domain;
+	  }
+	plan->value2_dom = &tp_Null_domain;
+	const DOMAIN_OPERAND add[2] = {
+	  {plan->value_dom, TP_DOMAIN_TYPE (plan->value_dom), -1, false}, operands[1]
+	};
+	domain_plan_operand_coercion (T_ADD, add, &plan->operand_coercion);
+	/* the first value of another type than the sum's domain is converted into it (tp_value_cast_force), and a type
+	 * the typed accumulator takes sums there */
+	if (TP_DOMAIN_TYPE (argument) != TP_DOMAIN_TYPE (plan->value_dom))
+	  {
+	    plan->first_conv = domain_conversion (TP_DOMAIN_TYPE (argument), plan->value_dom, DOMAIN_CONVERT_ASSIGN);
+	  }
+	plan->accumulator_takes = SUM_ACC_IS_AGG_SUPPORTED_TYPE (TP_DOMAIN_TYPE (argument));
+	if (!TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (argument)) && !TP_IS_SET_TYPE (TP_DOMAIN_TYPE (argument)))
+	  {
+	    er_log_debug (ARG_FILE_LINE, "CBRD-27583 unnumbered sum argument function=%d type=%d\n", function,
+			  (int) TP_DOMAIN_TYPE (argument));
+	    assert (false);
+	  }
+	const DOMAIN_OPERAND pair[2] = { operands[1], operands[1] };
+	domain_plan_operand_coercion (T_ADD, pair, &plan->distinct_coercion);
+	if (function == PT_AVG)
+	  {
+	    /* a number divided by DOUBLE converts nothing: a single distinct value held in the argument's type divides
+	     * as the sum in value_dom does */
+	    const DOMAIN_OPERAND divide[2] = { add[0], {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false} };
+	    domain_plan_operand_coercion (T_DIV, divide, &plan->divide_coercion);
+	  }
+	else if (domain != plan->value_dom && !domain_is_variable (domain))
+	  {
+	    plan->final_conv = domain_conversion (TP_DOMAIN_TYPE (plan->value_dom), domain, DOMAIN_CONVERT_ASSIGN);
+	  }
+      }
+      break;
+
+    default:
+      break;
+    }
+}
+
+/*
+ * domain_plan_analytic_accumulator () - an analytic SUM / AVG's or STDDEV / VARIANCE's accumulator domains, or a
+ *   MEDIAN / PERCENTILE's or NTILE's value conversion, from the function's domain and its argument's, which XASL
+ *   generation decided; the partitions read them and derive nothing
+ *
+ * MEDIAN / PERCENTILE: [1] the conversion of the argument's type into the function's domain, which its value list
+ * holds; none for the same type.
+ * SUM / AVG: the sum has one domain for the partition, the function's - the first value is converted into it
+ * (first_conv) and every addition's result is coerced to it - except a sum kept floating, which keeps the argument's
+ * NUMERIC as it is (value_dom NULL): an AVG over a NUMERIC argument, a SUM whose domain is NUMERIC. Every value is
+ * added with the operand coercion of (sum, argument). An argument type the resident accumulator takes
+ * (accumulator_takes) is summed by the accumulator's typed sum instead, the values as they are; a DISTINCT list's
+ * values are always added. An AVG divides the sum by the count at the partition's end with the operand coercion of
+ * (the sum's type, DOUBLE).
+ * STDDEV / VARIANCE accumulate in DOUBLE: [1] the conversion of the argument's type into DOUBLE (tp_value_coerce's
+ * implicit mode), which runs at every value that is not a DOUBLE already; NTILE takes its bucket count into DOUBLE
+ * the same way.
+ * MIN / MAX copy a new extreme as it is: XASL generation gave the function its argument's domain (D-36).
+ */
+void
+domain_plan_analytic_accumulator (int function, int option, const TP_DOMAIN * domain, const TP_DOMAIN * argument,
+				  DOMAIN_ACCUMULATOR_PLAN * plan)
+{
+  *plan = DOMAIN_ACCUMULATOR_PLAN ();
+  const bool sum_or_avg = function == PT_SUM || function == PT_AVG;
+  const bool stddev = function == PT_STDDEV || function == PT_STDDEV_POP || function == PT_STDDEV_SAMP
+    || function == PT_VARIANCE || function == PT_VAR_POP || function == PT_VAR_SAMP;
+  const bool argument_typed = argument != NULL && !domain_is_variable (argument)
+    && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL;
+  if (function == PT_MEDIAN || function == PT_PERCENTILE_CONT || function == PT_PERCENTILE_DISC)
+    {
+      if (argument_typed && !domain_is_variable (domain) && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL)
+	{
+	  plan->operand_coercion.operand_domain[1] = domain;
+	  plan->operand_coercion.conv[1] =
+	    domain_conversion (TP_DOMAIN_TYPE (argument), domain, DOMAIN_CONVERT_IMPLICIT);
+	}
+      return;
+    }
+  if (function == PT_MIN || function == PT_MAX)
+    {
+      assert (!argument_typed || domain_is_variable (domain) || TP_DOMAIN_TYPE (argument) == TP_DOMAIN_TYPE (domain));
+      return;
+    }
+  if (function == PT_NTILE || stddev)
+    {
+      if (stddev)
+	{
+	  plan->value_dom = &tp_Double_domain;
+	  plan->value2_dom = &tp_Double_domain;
+	}
+      if (argument_typed)
+	{
+	  plan->operand_coercion.operand_domain[1] = &tp_Double_domain;
+	  if (TP_DOMAIN_TYPE (argument) != DB_TYPE_DOUBLE)
+	    {
+	      plan->operand_coercion.conv[1] =
+		domain_conversion (TP_DOMAIN_TYPE (argument), &tp_Double_domain, DOMAIN_CONVERT_IMPLICIT);
+	    }
+	}
+      return;
+    }
+  if (!sum_or_avg || !argument_typed || domain == NULL || domain_is_variable (domain))
+    {
+      /* only NULLs reach a function over an argument typed NULL */
+      return;
+    }
+  const DB_TYPE argument_type = TP_DOMAIN_TYPE (argument);
+  const DB_TYPE function_type = TP_DOMAIN_TYPE (domain);
+  /* the typed addition coerced its result to the function's domain unless an AVG summed a NUMERIC first value or a
+   * SUM's domain is NUMERIC; XASL generation casts an argument of no number type to DOUBLE (S3-17, D-46) */
+  assert (!TP_IS_CHAR_TYPE (argument_type));
+  const DB_TYPE kept = function == PT_AVG ? argument_type : function_type;
+  const TP_DOMAIN *sum = kept == DB_TYPE_NUMERIC ? argument : domain;
+  plan->value_dom = kept == DB_TYPE_NUMERIC ? NULL : domain;
+  const DOMAIN_OPERAND operands[2] = {
+    {sum, TP_DOMAIN_TYPE (sum), -1, false}, {argument, argument_type, -1, false}
+  };
+  domain_plan_operand_coercion (T_ADD, operands, &plan->operand_coercion);
+  if (plan->value_dom != NULL && argument_type != function_type)
+    {
+      /* the first value into the sum's domain: the operand coercion's conversion where the rule converts the
+       * argument, the type pair's otherwise (a FLOAT into DOUBLE) */
+      plan->first_conv = plan->operand_coercion.conv[1].target != NULL ? plan->operand_coercion.conv[1]
+	: domain_conversion (argument_type, domain, DOMAIN_CONVERT_IMPLICIT);
+    }
+  plan->accumulator_takes = SUM_ACC_IS_ANALYTIC_SUPPORTED_TYPE (argument_type);
+  if (function == PT_AVG)
+    {
+      /* the sum the partition's end divides: the accumulator's typed sum, the added values' domain for a type it does
+       * not take and for a DISTINCT list, whose values are added */
+      const DB_TYPE sum_type = plan->accumulator_takes && option != Q_DISTINCT
+	? sum_acc_analytic_sum_type_for (argument_type) : TP_DOMAIN_TYPE (sum);
+      const DOMAIN_OPERAND divide[2] = {
+	{NULL, sum_type, -1, false}, {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false}
+      };
+      domain_plan_operand_coercion (T_DIV, divide, &plan->divide_coercion);
+    }
+}
+
+void
+domain_plan_analytic_offset (int function, const TP_DOMAIN * domain, const TP_DOMAIN * offset,
+			     const TP_DOMAIN * default_value, DOMAIN_COERCION_PLAN * plan)
+{
+  *plan = DOMAIN_COERCION_PLAN ();
+  plan->operand_domain[0] = function == PT_NTH_VALUE ? &tp_Double_domain : &tp_Integer_domain;
+  plan->operand_domain[1] = domain;
+  const TP_DOMAIN *const source[2] = { offset, default_value };
+  for (int i = 0; i < 2; i++)
+    {
+      const TP_DOMAIN *target = plan->operand_domain[i];
+      if (source[i] != NULL && !domain_is_variable (source[i]) && TP_DOMAIN_TYPE (source[i]) != DB_TYPE_NULL
+	  && target != NULL && !domain_is_variable (target))
+	{
+	  plan->conv[i] = domain_conversion (TP_DOMAIN_TYPE (source[i]), target, DOMAIN_CONVERT_IMPLICIT);
+	}
+    }
+}
+
+TP_VALUE_CONVERTER
+domain_find_conversion (const DOMAIN_CONVERSION * conversion)
+{
+  return conversion->target == NULL ? NULL
+    : tp_value_find_converter (conversion->source, conversion->target, conversion->mode);
+}
+
+void
+domain_coercion_of_plan (const DOMAIN_COERCION_PLAN * plan, DOMAIN_OPERAND_COERCION * coercion)
+{
+  for (int i = 0; i < 2; i++)
+    {
+      coercion->conv[i] = domain_find_conversion (&plan->conv[i]);
+      coercion->operand_domain[i] = plan->operand_domain[i];
+    }
+  coercion->arith = plan->arith;
+}
+
+static bool
+domain_conversion_equal (const DOMAIN_CONVERSION * a, const DOMAIN_CONVERSION * b)
+{
+  return a->target == b->target && (a->target == NULL || (a->source == b->source && a->mode == b->mode));
+}
+
+bool
+domain_coercion_plan_equal (const DOMAIN_COERCION_PLAN * a, const DOMAIN_COERCION_PLAN * b)
+{
+  return domain_conversion_equal (&a->conv[0], &b->conv[0]) && domain_conversion_equal (&a->conv[1], &b->conv[1])
+    && a->operand_domain[0] == b->operand_domain[0] && a->operand_domain[1] == b->operand_domain[1]
+    && a->arith.kind == b->arith.kind && a->arith.type == b->arith.type;
+}
+
+bool
+domain_accumulator_plan_equal (const DOMAIN_ACCUMULATOR_PLAN * a, const DOMAIN_ACCUMULATOR_PLAN * b)
+{
+  return a->value_dom == b->value_dom && a->value2_dom == b->value2_dom
+    && domain_coercion_plan_equal (&a->operand_coercion, &b->operand_coercion)
+    && domain_coercion_plan_equal (&a->distinct_coercion, &b->distinct_coercion)
+    && domain_coercion_plan_equal (&a->divide_coercion, &b->divide_coercion)
+    && domain_conversion_equal (&a->first_conv, &b->first_conv)
+    && domain_conversion_equal (&a->final_conv, &b->final_conv) && a->accumulator_takes == b->accumulator_takes;
+}
+
 /* The cached domain tp_domain_resolve (type, NULL, precision, 0, NULL, collation_id) gives a string (the collation's
  * codeset) or a bit string, found without the transient domain tp_domain_resolve makes and frees; a domain not
  * cached yet, and one of another type, are tp_domain_resolve's. */
@@ -860,7 +1223,7 @@ domain_function_is_late_bound (const TP_DOMAIN * compiled, const DOMAIN_OPERAND 
  *		  opr_dbtype is VARIABLE); val_type = value type, typed by its value at XASL generation
  *   result(out): domain = the function domain (agg_p->domain after the row-time resolve, which the result is cast
  *		  to); operand_domain[0] / conv[0] = the accumulator domain (value_dom) the argument values are coerced
- *		  to. value2_dom is a per-function constant (qdata_plan_aggregate_accumulator).
+ *		  to. value2_dom is a per-function constant (domain_plan_aggregate_accumulator).
  */
 static int
 domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand,

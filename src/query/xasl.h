@@ -38,6 +38,7 @@
 #include "storage_common.h"
 #include "string_opfunc.h"
 #include "subquery_cache.h"
+#include "xasl_predicate.hpp"
 #include "pl_signature.hpp"
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
@@ -637,6 +638,66 @@ struct cte_proc_node
 #define QPROC_IS_CONTINUOUS_INTERPOLATION_FUNC(func_p) \
   (((func_p)->function == PT_MEDIAN) \
    || ((func_p)->function == PT_PERCENTILE_CONT))
+
+/*
+ * CBRD-27583 (S3-18): the terms an ORDERBY_NUM predicate's upper bound comes from (qexec_get_orderbynum_upper_bound):
+ * the comparisons of its AND tree's leaves of ORDERBY_NUM () (a constant) with a value, a host variable or an
+ * expression, on either side. xasl_orderbynum_upper_bound gives the bound and the relation with the bound on the
+ * right, NULL for another term or relation than < and <=. The compiler decides the operand coercion of bound - 1 of
+ * each < (xasl_for_each_orderbynum_less_than, in that order), which the stream carries after the predicate with their
+ * count. The compiler, unpack and the execution pick the terms with these two functions alone, which is why they pick
+ * the same terms (unpack checks the count).
+ */
+inline REGU_VARIABLE *
+xasl_orderbynum_upper_bound (const PRED_EXPR * pred, REL_OP * op)
+{
+  if (pred->type != T_EVAL_TERM || pred->pe.m_eval_term.et_type != T_COMP_EVAL_TERM)
+    {
+      return NULL;
+    }
+  const COMP_EVAL_TERM *term = &pred->pe.m_eval_term.et.et_comp;
+  REGU_VARIABLE *bound = term->rhs;
+  *op = term->rel_op;
+  if (term->lhs->type != TYPE_CONSTANT)
+    {
+      /* the bound on the left: the reversed comparison */
+      if (term->rhs->type != TYPE_CONSTANT)
+	{
+	  return NULL;
+	}
+      bound = term->lhs;
+      *op = *op == R_GT ? R_LT : *op == R_GE ? R_LE : *op == R_LT ? R_GT : *op == R_LE ? R_GE : R_NONE;
+    }
+  if (bound->type != TYPE_POS_VALUE && bound->type != TYPE_DBVAL && bound->type != TYPE_INARITH)
+    {
+      return NULL;
+    }
+  return *op == R_LT || *op == R_LE ? bound : NULL;
+}
+
+/* *INDENT-OFF* */
+template <typename PRED, typename VISIT>
+inline void
+xasl_for_each_orderbynum_less_than (PRED * pred, VISIT && visit)
+{
+  if (pred == NULL)
+    {
+      return;
+    }
+  if (pred->type == T_PRED && pred->pe.m_pred.bool_op == B_AND)
+    {
+      xasl_for_each_orderbynum_less_than (pred->pe.m_pred.lhs, visit);
+      xasl_for_each_orderbynum_less_than (pred->pe.m_pred.rhs, visit);
+      return;
+    }
+  REL_OP op;
+  const REGU_VARIABLE *bound = xasl_orderbynum_upper_bound (pred, &op);
+  if (bound != NULL && op == R_LT)
+    {
+      visit (&pred->pe.m_eval_term.et.et_comp, bound);
+    }
+}
+/* *INDENT-ON* */
 
  /* pseudocolumns offsets in tuple (from end) */
 #define	PCOL_ISCYCLE_TUPLE_OFFSET	1

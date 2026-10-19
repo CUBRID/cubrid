@@ -46,6 +46,9 @@
 #include "xasl_stream.hpp"
 #include "xasl_unpack_info.hpp"
 #include "pl_signature.hpp"
+#if !defined (NDEBUG)
+#include <vector>
+#endif
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1974,6 +1977,208 @@ stx_check_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs, const DOMAIN_CO
 #endif
 
 /*
+ * CBRD-27583 (D-83): a plan of the server's arithmetic outside a node, as the compiler decided it
+ *   (xts_pack_conversion, xts_pack_coercion_plan, xts_pack_accumulator_plan): its fields and domains; the converters
+ *   are looked up (domain_find_conversion), nothing is decided here
+ */
+static char *
+stx_unpack_conversion (char *ptr, DOMAIN_CONVERSION * conversion)
+{
+  int bits;
+  ptr = or_unpack_int (ptr, &bits);
+  *conversion = DOMAIN_CONVERSION ();
+  if (bits != 0)
+    {
+      TP_DOMAIN *target = NULL;
+      ptr = or_unpack_domain (ptr, &target, NULL);
+      conversion->source = (DB_TYPE) ((bits >> 8) & 0xFF);
+      conversion->mode = (DOMAIN_CONVERT_MODE) ((bits >> 4) & 0xF);
+      conversion->target = target;
+    }
+  return ptr;
+}
+
+static char *
+stx_unpack_coercion_plan (char *ptr, DOMAIN_COERCION_PLAN * plan)
+{
+  int bits;
+  *plan = DOMAIN_COERCION_PLAN ();
+  ptr = or_unpack_int (ptr, &bits);
+  plan->arith.kind = (DOMAIN_ARITH_KIND) (bits & 0xFF);
+  plan->arith.type = (DB_TYPE) ((bits >> 8) & 0xFF);
+  for (int i = 0; i < 2; i++)
+    {
+      ptr = or_unpack_int (ptr, &bits);
+      if (bits & 1)
+	{
+	  TP_DOMAIN *domain = NULL;
+	  ptr = or_unpack_domain (ptr, &domain, NULL);
+	  plan->operand_domain[i] = domain;
+	}
+      if (bits & 2)
+	{
+	  plan->conv[i].source = (DB_TYPE) ((bits >> 8) & 0xFF);
+	  plan->conv[i].mode = (DOMAIN_CONVERT_MODE) ((bits >> 4) & 0xF);
+	  plan->conv[i].target = plan->operand_domain[i];
+	}
+    }
+  return ptr;
+}
+
+/* an accumulator's plan (xts_pack_accumulator_plan) into its domains, the converters looked up */
+static char *
+stx_unpack_accumulator_domain (char *ptr, cubxasl::aggregate_accumulator_domain * acc_dom)
+{
+  DOMAIN_ACCUMULATOR_PLAN plan = DOMAIN_ACCUMULATOR_PLAN ();
+  int bits;
+  ptr = or_unpack_int (ptr, &bits);
+  TP_DOMAIN *domain[2] = { NULL, NULL };
+  for (int i = 0; i < 2; i++)
+    {
+      if (bits & (1 << i))
+	{
+	  ptr = or_unpack_domain (ptr, &domain[i], NULL);
+	}
+    }
+  ptr = stx_unpack_coercion_plan (ptr, &plan.operand_coercion);
+  ptr = stx_unpack_coercion_plan (ptr, &plan.distinct_coercion);
+  ptr = stx_unpack_coercion_plan (ptr, &plan.divide_coercion);
+  ptr = stx_unpack_conversion (ptr, &plan.first_conv);
+  ptr = stx_unpack_conversion (ptr, &plan.final_conv);
+  acc_dom->value_dom = domain[0];
+  acc_dom->value2_dom = domain[1];
+  domain_coercion_of_plan (&plan.operand_coercion, &acc_dom->operand_coercion);
+  domain_coercion_of_plan (&plan.distinct_coercion, &acc_dom->distinct_coercion);
+  domain_coercion_of_plan (&plan.divide_coercion, &acc_dom->divide_coercion);
+  acc_dom->first_conv = domain_find_conversion (&plan.first_conv);
+  acc_dom->final_conv = domain_find_conversion (&plan.final_conv);
+  acc_dom->accumulator_takes = (bits & 4) != 0;
+  return ptr;
+}
+
+#if !defined (NDEBUG)
+static bool
+stx_operand_coercion_equal (const DOMAIN_OPERAND_COERCION * a, const DOMAIN_OPERAND_COERCION * b)
+{
+  return a->conv[0] == b->conv[0] && a->conv[1] == b->conv[1] && a->operand_domain[0] == b->operand_domain[0]
+    && a->operand_domain[1] == b->operand_domain[1] && a->arith.kind == b->arith.kind && a->arith.type == b->arith.type;
+}
+
+/*
+ * stx_check_accumulator_domain () - CBRD-27583 (D-83) debug cross-check (removed at S3-14, with qdata_plan_*): the
+ *   accumulator domain the compiler's plan gave is the one unpack planned before
+ */
+static void
+stx_check_accumulator_domain (const cubxasl::aggregate_accumulator_domain * planned,
+			      const cubxasl::aggregate_accumulator_domain * before)
+{
+  assert (planned->value_dom == before->value_dom && planned->value2_dom == before->value2_dom
+	  && stx_operand_coercion_equal (&planned->operand_coercion, &before->operand_coercion)
+	  && stx_operand_coercion_equal (&planned->distinct_coercion, &before->distinct_coercion)
+	  && stx_operand_coercion_equal (&planned->divide_coercion, &before->divide_coercion)
+	  && planned->first_conv == before->first_conv && planned->final_conv == before->final_conv
+	  && planned->accumulator_takes == before->accumulator_takes);
+}
+#endif
+
+/*
+ * stx_build_analytic_offsets () - CBRD-27583 (D-83): each LEAD / LAG / NTH_VALUE's offset and default conversions
+ *   (xts_pack_analytic_offsets), in the order of the analytic evaluations and their functions
+ */
+static char *
+stx_build_analytic_offsets (char *ptr, BUILDLIST_PROC_NODE * node)
+{
+  for (ANALYTIC_EVAL_TYPE * eval = node->a_eval_list; eval != NULL; eval = eval->next)
+    {
+      for (ANALYTIC_TYPE * func_p = eval->head; func_p != NULL; func_p = func_p->next)
+	{
+	  if (QPROC_ANALYTIC_IS_OFFSET_FUNCTION (func_p))
+	    {
+	      DOMAIN_COERCION_PLAN plan;
+	      ptr = stx_unpack_coercion_plan (ptr, &plan);
+	      domain_coercion_of_plan (&plan, &func_p->accumulator_domain.operand_coercion);
+	    }
+	}
+    }
+#if !defined (NDEBUG)
+  /* the conversions unpack planned before (removed at S3-14) */
+  std::vector < DOMAIN_OPERAND_COERCION > planned;
+  for (ANALYTIC_EVAL_TYPE * eval = node->a_eval_list; eval != NULL; eval = eval->next)
+    {
+      for (ANALYTIC_TYPE * func_p = eval->head; func_p != NULL; func_p = func_p->next)
+	{
+	  planned.push_back (func_p->accumulator_domain.operand_coercion);
+	}
+    }
+  qdata_plan_analytic_offset (node->a_eval_list, node->a_regu_list);
+  size_t k = 0;
+  for (ANALYTIC_EVAL_TYPE * eval = node->a_eval_list; eval != NULL; eval = eval->next)
+    {
+      for (ANALYTIC_TYPE * func_p = eval->head; func_p != NULL; func_p = func_p->next, k++)
+	{
+	  assert (stx_operand_coercion_equal (&planned[k], &func_p->accumulator_domain.operand_coercion));
+	  func_p->accumulator_domain.operand_coercion = planned[k];
+	}
+    }
+#endif
+  return ptr;
+}
+
+/*
+ * stx_build_orderbynum_bounds () - CBRD-27583 (S3-18): the operand coercion of bound - 1 of each ORDERBY_NUM () < bound
+ *   of the predicate (xts_pack_orderbynum_bounds), set on its term
+ */
+static char *
+stx_build_orderbynum_bounds (THREAD_ENTRY * thread_p, char *ptr, PRED_EXPR * pred)
+{
+  int count, walked = 0;
+  ptr = or_unpack_int (ptr, &count);
+  /* *INDENT-OFF* */
+  xasl_for_each_orderbynum_less_than (pred, [&walked] (COMP_EVAL_TERM *, const REGU_VARIABLE *) { walked++; });
+  /* *INDENT-ON* */
+  if (walked != count)
+    {
+      /* the compiler picked other terms: a stream this unpack does not read */
+      assert (false);
+      stx_set_xasl_errcode (thread_p, ER_QPROC_INVALID_XASLNODE);
+      return NULL;
+    }
+  bool failed = false;
+  /* *INDENT-OFF* */
+  xasl_for_each_orderbynum_less_than (pred, [&] (COMP_EVAL_TERM * term, const REGU_VARIABLE * bound)
+    {
+      DOMAIN_COERCION_PLAN plan;
+      ptr = stx_unpack_coercion_plan (ptr, &plan);
+      DOMAIN_OPERAND_COERCION *coercion =
+	(DOMAIN_OPERAND_COERCION *) stx_alloc_struct (thread_p, sizeof (DOMAIN_OPERAND_COERCION));
+      if (coercion == NULL)
+	{
+	  failed = true;
+	  return;
+	}
+      domain_coercion_of_plan (&plan, coercion);
+#if !defined (NDEBUG)
+      /* the subtraction's operand coercion qexec_get_orderbynum_upper_bound resolved at each execution before
+       * (removed at S3-14) */
+      const DOMAIN_OPERAND operands[2] = {
+	{NULL, TP_DOMAIN_TYPE (bound->domain), -1, false}, {NULL, DB_TYPE_INTEGER, -1, false}
+      };
+      DOMAIN_OPERAND_COERCION before;
+      domain_resolve_operand_coercion (T_SUB, operands, &before);
+      assert (stx_operand_coercion_equal (coercion, &before));
+#endif
+      term->bound_coercion = coercion;
+    });
+  /* *INDENT-ON* */
+  if (failed)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      return NULL;
+    }
+  return ptr;
+}
+
+/*
  * stx_mark_aggregate_operands () - flag the expressions that only feed a SUM / AVG (REGU_VARIABLE_AGG_OPERAND), once
  *   per unpack (each XASL clone and each PX worker's copy unpacks its own)
  *
@@ -2135,6 +2340,12 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
+    }
+  /* CBRD-27583 (S3-18): its upper bounds' subtractions */
+  ptr = stx_build_orderbynum_bounds (thread_p, ptr, xasl->ordbynum_pred);
+  if (ptr == NULL)
+    {
+      return NULL;
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -3345,8 +3556,8 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	  goto error;
 	}
     }
-  /* CBRD-27583: a LEAD / LAG / NTH_VALUE's offset and default are read through a_regu_list */
-  qdata_plan_analytic_offset (stx_build_list_proc->a_eval_list, stx_build_list_proc->a_regu_list);
+  /* CBRD-27583 (D-83): a LEAD / LAG / NTH_VALUE's offset and default, read through a_regu_list */
+  ptr = stx_build_analytic_offsets (ptr, stx_build_list_proc);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -5193,6 +5404,9 @@ stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * c
 
   ptr = or_unpack_int (ptr, &tmp);
   comp_eval_term->type = (DB_TYPE) tmp;
+
+  /* an ORDERBY_NUM upper bound's: set after its predicate (stx_build_orderbynum_bounds) */
+  comp_eval_term->bound_coercion = NULL;
 
   return stx_build_term_compare (thread_p, ptr, comp_eval_term);
 }
@@ -7130,11 +7344,30 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	{arith_type->leftptr->domain, TP_DOMAIN_TYPE (arith_type->leftptr->domain), -1, false},
 	{arith_type->rightptr->domain, TP_DOMAIN_TYPE (arith_type->rightptr->domain), -1, false}
       };
+      if (xasl_unpack_info->index_stream)
+	{
+	  /* D-82: a filter or function index stream carries no decision */
+	  DOMAIN_OPERAND_COERCION coercion = DOMAIN_OPERAND_COERCION ();
+	  domain_resolve_operand_coercion (arith_type->opcode, operands, &coercion);
+	  arith_type->decided.arith = coercion.arith;
+	}
+      else
+	{
+	  /* D-83: the compiler's decision (xts_arith_decided) */
+	  int decided;
+	  ptr = or_unpack_int (ptr, &decided);
+	  arith_type->decided.arith.kind = (DOMAIN_ARITH_KIND) (decided & 0xFF);
+	  arith_type->decided.arith.type = (DB_TYPE) ((decided >> 8) & 0xFF);
+	}
+#if !defined (NDEBUG)
       DOMAIN_OPERAND_COERCION coercion = DOMAIN_OPERAND_COERCION ();
       domain_resolve_operand_coercion (arith_type->opcode, operands, &coercion);
       /* generation retyped every operand the rule converts (pt_decide_operand_coercion): conversion is the regu's */
       assert (coercion.conv[0] == NULL && coercion.conv[1] == NULL);
-      arith_type->decided.arith = coercion.arith;
+      /* the rule's for the domains the server reads (removed at S3-14) */
+      assert (coercion.arith.kind == arith_type->decided.arith.kind
+	      && coercion.arith.type == arith_type->decided.arith.type);
+#endif
     }
 
   /* CBRD-27583: the comparisons FIELD, NULLIF, LEAST and GREATEST make - the compiler's (D-81, xts_process_arith_type),
@@ -7367,8 +7600,31 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
   ptr = or_unpack_int (ptr, &offset);
   aggregate->is_ended = false;
 
-  /* CBRD-27583 (4.3): from the decided domains, once per unpacked node */
-  qdata_plan_aggregate_accumulator (aggregate);
+  /* CBRD-27583 (D-83): the accumulator's plan, which the compiler decided */
+  ptr = stx_unpack_accumulator_domain (ptr, &aggregate->accumulator_domain);
+  /* the accumulator starts in its domain's type (qdata_initialize_aggregate_list keeps the value's) */
+  if (aggregate->accumulator.value != NULL && aggregate->accumulator_domain.value_dom != NULL
+      && DB_VALUE_TYPE (aggregate->accumulator.value) == DB_TYPE_NULL)
+    {
+      (void) db_value_domain_init (aggregate->accumulator.value,
+				   TP_DOMAIN_TYPE (aggregate->accumulator_domain.value_dom), DB_DEFAULT_PRECISION,
+				   DB_DEFAULT_SCALE);
+    }
+  if (aggregate->accumulator.value2 != NULL && aggregate->accumulator_domain.value2_dom != NULL
+      && DB_VALUE_TYPE (aggregate->accumulator.value2) == DB_TYPE_NULL)
+    {
+      (void) db_value_domain_init (aggregate->accumulator.value2,
+				   TP_DOMAIN_TYPE (aggregate->accumulator_domain.value2_dom), DB_DEFAULT_PRECISION,
+				   DB_DEFAULT_SCALE);
+    }
+#if !defined (NDEBUG)
+  {
+    const cubxasl::aggregate_accumulator_domain planned = aggregate->accumulator_domain;
+    qdata_plan_aggregate_accumulator (aggregate);
+    stx_check_accumulator_domain (&planned, &aggregate->accumulator_domain);
+    aggregate->accumulator_domain = planned;
+  }
+#endif
 
   return ptr;
 
@@ -7638,8 +7894,16 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
       ;
     }
 
-  /* CBRD-27583 (4.3): from the decided domains, once per unpacked node */
-  qdata_plan_analytic_accumulator (analytic);
+  /* CBRD-27583 (D-83): the accumulator's plan, which the compiler decided */
+  ptr = stx_unpack_accumulator_domain (ptr, &analytic->accumulator_domain);
+#if !defined (NDEBUG)
+  {
+    const cubxasl::aggregate_accumulator_domain planned = analytic->accumulator_domain;
+    qdata_plan_analytic_accumulator (analytic);
+    stx_check_accumulator_domain (&planned, &analytic->accumulator_domain);
+    analytic->accumulator_domain = planned;
+  }
+#endif
 
   return ptr;
 

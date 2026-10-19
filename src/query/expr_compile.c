@@ -2831,22 +2831,28 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	if (t1 != t2 && t1 != DB_TYPE_UNKNOWN && t2 != DB_TYPE_UNKNOWN && et->rhs->type == TYPE_DBVAL
 	    && !DB_IS_NULL (&et->rhs->value.dbval))
 	  {
-	    /* a literal right operand is coerced to the left side's type when that type is the
-	     * more general numeric one ("n * m > 1") or a date/time type compared with a string
-	     * ("dt >= '2024-01-01'"), into the leaf's own value; the leaf then compares
-	     * same-typed sides. */
-	    TP_DOMAIN *dom = NULL;
-
-	    if (TP_IS_NUMERIC_TYPE (t1) && TP_IS_NUMERIC_TYPE (t2) && tp_more_general_type (t1, t2) > 0)
+	    /* a literal right operand the term's comparison converts into the left side's type (CBRD-27583, the
+	     * compiler's decision, S3-39) - a number into the more general number ("n * m > 1"), a string into the
+	     * date/time it is compared with ("dt >= '2024-01-01'") - is converted once, by that comparison's converter,
+	     * into the leaf's own value; the leaf then compares same-typed sides. */
+	    const DOMAIN_COMPARE *compare = et->compare;
+	    const bool pins = compare != NULL && compare->conv[0] == NULL && compare->conv[1] != NULL
+	      && TP_DOMAIN_TYPE (compare->target[1]) == t1
+	      && ((TP_IS_NUMERIC_TYPE (t1) && TP_IS_NUMERIC_TYPE (t2))
+		  || (TP_IS_DATE_OR_TIME_TYPE (t1) && TP_IS_CHAR_TYPE (t2)));
+#if !defined (NDEBUG)
+	    /* the shapes the step compiler pinned before (removed at S3-14) */
+	    const bool pinned_before = (TP_IS_NUMERIC_TYPE (t1) && TP_IS_NUMERIC_TYPE (t2)
+					&& tp_more_general_type (t1, t2) > 0)
+	      || (TP_IS_DATE_OR_TIME_TYPE (t1) && TP_IS_CHAR_TYPE (t2));
+	    if (pins != pinned_before)
 	      {
-		dom = tp_domain_resolve_default (t1);
+		er_log_debug (ARG_FILE_LINE, "CBRD-27583 step literal pin %d/%d %d/%d\n", (int) t1, (int) t2,
+			      (int) pins, (int) pinned_before);
 	      }
-	    else if (TP_IS_DATE_OR_TIME_TYPE (t1) && TP_IS_CHAR_TYPE (t2))
-	      {
-		dom = tp_domain_resolve_default (t1);
-	      }
-	    if (dom != NULL && tp_value_coerce (&et->rhs->value.dbval, &pinned, dom) == DOMAIN_COMPATIBLE
-		&& DB_VALUE_DOMAIN_TYPE (&pinned) == t1)
+#endif
+	    if (pins && tp_value_convert (compare->conv[1], compare->target[1], &et->rhs->value.dbval, &pinned)
+		== DOMAIN_COMPATIBLE && DB_VALUE_DOMAIN_TYPE (&pinned) == t1)
 	      {
 		pin_rhs = true;
 		t2 = t1;

@@ -5529,7 +5529,7 @@ qexec_finish_group_by_domains (BUILDLIST_PROC_NODE * buildlist)
  *
  * The lists' tuples are laid out by their column domains (qfile_set_layout), and the hash aggregation writes partial
  * results during the scan, so every column takes its domain before a tuple holds a value there: a key its compiled
- * domain, an accumulator the domain its unpack planned (qdata_plan_aggregate_accumulator). A column without one yet -
+ * domain, an accumulator the domain its plan names (domain_plan_aggregate_accumulator). A column without one yet -
  * an accumulator that sees only NULL values - takes only NULLs until qexec_finish_group_by_domains gives it the NULL
  * domain. A column that has a domain keeps it: tuples may hold values there already.
  */
@@ -23367,7 +23367,7 @@ qexec_analytic_evaluate_offset_function (THREAD_ENTRY * thread_p, ANALYTIC_FUNCT
       group_tuple_count = func_state->curr_group_tuple_count;
     }
 
-  /* find offset reguvar and get int value, with the converters planned at unpack (qdata_plan_analytic_offset) */
+  /* find offset reguvar and get int value, with the converters the compiler planned (domain_plan_analytic_offset) */
   offset_conv = func_p->accumulator_domain.operand_coercion.conv[0];
   regulist = analytic_state->a_regu_list;
   regu_idx = func_p->offset_idx;
@@ -27678,7 +27678,7 @@ static int
 qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL_DESCR * vd, DB_VALUE * ubound)
 {
   int error = NO_ERROR;
-  REGU_VARIABLE *lhs, *rhs;
+  REGU_VARIABLE *rhs;
   REL_OP op;
   DB_VALUE *val;
   int cmp;
@@ -27731,56 +27731,10 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
       goto cleanup;
     }
 
-  if (pred->type == T_EVAL_TERM)
+  /* ORDERBY_NUM () < or <= a value, on either side (xasl_orderbynum_upper_bound); any other term bounds nothing */
+  rhs = xasl_orderbynum_upper_bound (pred, &op);
+  if (rhs != NULL)
     {
-      /* This should be TYPE_CONSTANT comp TYPE_VALUE. If not, we bail out */
-      lhs = pred->pe.m_eval_term.et.et_comp.lhs;
-      rhs = pred->pe.m_eval_term.et.et_comp.rhs;
-      op = pred->pe.m_eval_term.et.et_comp.rel_op;
-      if (lhs->type != TYPE_CONSTANT)
-	{
-	  if (lhs->type != TYPE_POS_VALUE && lhs->type != TYPE_DBVAL && lhs->type != TYPE_INARITH)
-	    {
-	      goto cleanup;
-	    }
-
-	  if (rhs->type != TYPE_CONSTANT)
-	    {
-	      goto cleanup;
-	    }
-
-	  /* reverse comparison */
-	  rhs = lhs;
-	  lhs = pred->pe.m_eval_term.et.et_comp.rhs;
-	  switch (op)
-	    {
-	    case R_GT:
-	      op = R_LT;
-	      break;
-	    case R_GE:
-	      op = R_LE;
-	      break;
-	    case R_LT:
-	      op = R_GT;
-	      break;
-	    case R_LE:
-	      op = R_GE;
-	      break;
-	    default:
-	      goto cleanup;
-	    }
-	}
-      if (rhs->type != TYPE_POS_VALUE && rhs->type != TYPE_DBVAL && rhs->type != TYPE_INARITH)
-	{
-	  goto cleanup;
-	}
-
-      if (op != R_LT && op != R_LE)
-	{
-	  /* we're only interested in orderby_num less than value */
-	  goto cleanup;
-	}
-
       error = fetch_peek_dbval (thread_p, rhs, vd, NULL, NULL, NULL, &val);
       if (error != NO_ERROR)
 	{
@@ -27789,19 +27743,16 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 
       if (op == R_LT)
 	{
-	  /* add 1 so we can use R_LE, after the subtraction's operand coercion for the bound's compiled type - a string
-	   * as DOUBLE */
+	  /* add 1 so we can use R_LE, after the subtraction's operand coercion the compiler decided for the bound's
+	   * type (S3-18) - a string as DOUBLE */
 	  DB_VALUE one_val;
 	  db_make_int (&one_val, 1);
 	  assert (DB_IS_NULL (val) || DB_VALUE_DOMAIN_TYPE (val) == TP_DOMAIN_TYPE (rhs->domain));
-	  const DOMAIN_OPERAND operands[2] = {
-	    {NULL, TP_DOMAIN_TYPE (rhs->domain), -1, false}, {NULL, DB_TYPE_INTEGER, -1, false}
-	  };
-	  DOMAIN_OPERAND_COERCION operand_coercion;
-	  domain_resolve_operand_coercion (T_SUB, operands, &operand_coercion);
+	  const DOMAIN_OPERAND_COERCION *operand_coercion = pred->pe.m_eval_term.et.et_comp.bound_coercion;
+	  assert (operand_coercion != NULL);
 	  error =
-	    qdata_coerce_arith_operands (T_SUB, operand_coercion.conv, operand_coercion.operand_domain,
-					 &operand_coercion.arith, val, &one_val, ubound, rhs->domain);
+	    qdata_coerce_arith_operands (T_SUB, operand_coercion->conv, operand_coercion->operand_domain,
+					 &operand_coercion->arith, val, &one_val, ubound, rhs->domain);
 	}
       else
 	{

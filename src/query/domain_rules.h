@@ -132,6 +132,68 @@ struct DOMAIN_OPERAND_COERCION
 void domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_OPERAND_COERCION * result);
 
 /*
+ * CBRD-27583 (D-83): the plans the compiler decides for the server's arithmetic outside a node - an aggregate's or
+ * analytic function's accumulator, a LEAD / LAG / NTH_VALUE's offset and default, an ORDERBY_NUM upper bound - as the
+ * stream carries them; unpack looks their converters up (domain_find_conversion) and decides nothing.
+ * A conversion names the converter tp_value_find_converter finds for its source type, target and mode; source
+ * DB_TYPE_NULL converts nothing.
+ */
+struct DOMAIN_CONVERSION
+{
+  DB_TYPE source;
+  const TP_DOMAIN *target;
+  DOMAIN_CONVERT_MODE mode;
+};
+
+/* DOMAIN_OPERAND_COERCION with its converters as conversions (conv[i]'s target is operand_domain[i]) */
+struct DOMAIN_COERCION_PLAN
+{
+  DOMAIN_CONVERSION conv[2];
+  const TP_DOMAIN *operand_domain[2];
+  DOMAIN_ARITH arith;
+};
+
+/* The decisions of an accumulator (cubxasl::aggregate_accumulator_domain, whose fields say what each one is) */
+struct DOMAIN_ACCUMULATOR_PLAN
+{
+  const TP_DOMAIN *value_dom;
+  const TP_DOMAIN *value2_dom;
+  DOMAIN_COERCION_PLAN operand_coercion;
+  DOMAIN_COERCION_PLAN distinct_coercion;
+  DOMAIN_COERCION_PLAN divide_coercion;
+  DOMAIN_CONVERSION first_conv;
+  DOMAIN_CONVERSION final_conv;
+  bool accumulator_takes;
+};
+
+/* domain_resolve_operand_coercion's operand coercion as a plan */
+void domain_plan_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_COERCION_PLAN * plan);
+
+/* The accumulator of an aggregate function (FUNC_CODE function, its domain, the operand's type and its argument's
+ * domain) or of an analytic function (QUERY_OPTIONS option): from the domains XASL generation decided, as the server
+ * reads them (an OBJECT as OID). */
+void domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DOMAIN * domain,
+					const TP_DOMAIN * argument, DOMAIN_ACCUMULATOR_PLAN * plan);
+void domain_plan_analytic_accumulator (int function, int option, const TP_DOMAIN * domain,
+				       const TP_DOMAIN * argument, DOMAIN_ACCUMULATOR_PLAN * plan);
+
+/* A LEAD / LAG / NTH_VALUE's conversions of its offset into INTEGER (NTH_VALUE: DOUBLE), conv[0], and of its default
+ * into the function's domain, conv[1], from the domains of their regus in the read list; none for a regu of a domain
+ * decided at the row. */
+void domain_plan_analytic_offset (int function, const TP_DOMAIN * domain, const TP_DOMAIN * offset,
+				  const TP_DOMAIN * default_value, DOMAIN_COERCION_PLAN * plan);
+
+/* The converter a conversion names, looked up; NULL for none */
+TP_VALUE_CONVERTER domain_find_conversion (const DOMAIN_CONVERSION * conversion);
+
+/* A coercion plan's operand coercion, its converters looked up */
+void domain_coercion_of_plan (const DOMAIN_COERCION_PLAN * plan, DOMAIN_OPERAND_COERCION * coercion);
+
+/* Two plans are the same plan: every field */
+bool domain_coercion_plan_equal (const DOMAIN_COERCION_PLAN * a, const DOMAIN_COERCION_PLAN * b);
+bool domain_accumulator_plan_equal (const DOMAIN_ACCUMULATOR_PLAN * a, const DOMAIN_ACCUMULATOR_PLAN * b);
+
+/*
  * domain_arith_rule () - the ARITH rule over two operand types alone: the targets of the operand coercion and what the
  *   typed operator makes of the coerced operands. The resolver reads it over the operands' domains, before any row,
  *   for the result domain, the operand coercion and the value (arith) the plan carries to the operator; the operator's

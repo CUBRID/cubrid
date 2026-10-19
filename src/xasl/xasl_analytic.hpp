@@ -101,9 +101,10 @@ namespace cubxasl
     SUM_ACC sum_acc;	                /* word accumulator for NUMERIC SUM/AVG */
     INT64 curr_cnt;			/* current number of items */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-    aggregate_accumulator_domain accumulator_domain;	/* CBRD-27583 (4.3): a SUM / AVG's or STDDEV / VARIANCE's,
-							 * chosen at unpack (qdata_plan_analytic_accumulator); not
-							 * serialized */
+    aggregate_accumulator_domain accumulator_domain;	/* CBRD-27583 (4.3, D-83): a SUM / AVG's or STDDEV /
+							 * VARIANCE's, the compiler's plan
+							 * (domain_plan_analytic_accumulator), its converters looked
+							 * up at unpack */
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
     void init ();

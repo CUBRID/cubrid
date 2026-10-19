@@ -79,8 +79,9 @@ namespace cubxasl
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
 
-  /* An aggregate's or an analytic function's accumulator domains, planned at unpack (qdata_plan_aggregate_accumulator,
-   * qdata_plan_analytic_accumulator); the partitions and the rows read them. */
+  /* An aggregate's or an analytic function's accumulator domains, which the compiler plans (D-83:
+   * domain_plan_aggregate_accumulator, domain_plan_analytic_accumulator) and unpack looks the converters of up; the
+   * partitions and the rows read them. */
   struct aggregate_accumulator_domain
   {
     tp_domain *value_dom;		/* domain of value; an analytic SUM / AVG: the sum's domain, which the first
@@ -126,9 +127,10 @@ namespace cubxasl
     aggregate_specific_function_info info;	/* variables for specific functions */
     aggregate_accumulator accumulator;	/* holds runtime values, only for evaluation */
 #if defined (SERVER_MODE) || defined (SA_MODE)
-    aggregate_accumulator_domain accumulator_domain;	/* CBRD-27583 (4.3): chosen at unpack from the node's domain and
-							 * its operand's (qdata_plan_aggregate_accumulator); not
-							 * serialized */
+    aggregate_accumulator_domain accumulator_domain;	/* CBRD-27583 (4.3, D-83): the compiler's plan from the
+							 * node's domain and its operand's
+							 * (domain_plan_aggregate_accumulator), its converters looked
+							 * up at unpack */
     /* compiled operand-evaluation program covering the WHOLE aggregate list; kept on the
      * list HEAD node only.  Server-side runtime state -- never serialized.  See
      * expr_compile.h; built lazily on the first evaluated row when the bound host

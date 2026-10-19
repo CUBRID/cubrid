@@ -92,6 +92,7 @@ typedef enum
 } QL_FLAG;
 
 struct DOMAIN_COMPARE;
+struct DOMAIN_OPERAND_COERCION;
 
 namespace cubxasl
 {
@@ -111,10 +112,13 @@ namespace cubxasl
     regu_variable_node *rhs;
     REL_OP rel_op;
     DB_TYPE type;
-    /* CBRD-27583: the comparison of the two sides' domains, which the unpack picks with the type rule module (unpack
-     * arena, not serialized); NULL where a side's domain leaves its values' type or collation to the data: the values
-     * decide (comparison method VALUES) */
+    /* CBRD-27583: the comparison of the two sides' domains, which the compiler decided and the stream carries (a
+     * filter or function index stream's: the unpack's, D-82), in the unpack arena; NULL where a side's domain leaves
+     * its values' type or collation to the data: the values decide (comparison method VALUES) */
     const DOMAIN_COMPARE *compare;
+    /* CBRD-27583 (S3-18): an ORDERBY_NUM upper bound `ORDERBY_NUM () < bound` (xasl_orderbynum_upper_bound): the
+     * operand coercion of bound - 1, which the compiler decided (unpack arena); NULL for any other term */
+    const DOMAIN_OPERAND_COERCION *bound_coercion;
   };
 
   struct alsm_eval_term

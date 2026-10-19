@@ -175,6 +175,13 @@ static bool xts_term_compares_values (const COMP_EVAL_TERM * term);
 static int xts_decide_element_compare (const ALSM_EVAL_TERM * term, DOMAIN_COMPARE * decided,
 				       DOMAIN_COMPARE_KEY * item);
 static char *xts_pack_hash_join_keys (char *ptr, const HASHJOIN_PROC_NODE * node);
+static char *xts_pack_coercion_plan (char *ptr, const DOMAIN_COERCION_PLAN * plan);
+static char *xts_pack_accumulator_plan (char *ptr, const DOMAIN_ACCUMULATOR_PLAN * plan);
+static void xts_plan_aggregate (const AGGREGATE_TYPE * aggregate, DOMAIN_ACCUMULATOR_PLAN * plan);
+static void xts_plan_analytic (const ANALYTIC_TYPE * analytic, DOMAIN_ACCUMULATOR_PLAN * plan);
+static int xts_arith_decided (const ARITH_TYPE * arith);
+static char *xts_pack_analytic_offsets (char *ptr, const BUILDLIST_PROC_NODE * node);
+static char *xts_pack_orderbynum_bounds (char *ptr, const PRED_EXPR * pred);
 static char *xts_pack_key_compares (char *ptr, const INDX_INFO * indx_info);
 static char *xts_process_key_info (char *ptr, const KEY_INFO * key_info);
 static char *xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spec);
@@ -240,6 +247,10 @@ static int xts_sizeof_indx_info (const INDX_INFO * ptr);
 static int xts_sizeof_decided_compare (const DOMAIN_COMPARE * compare);
 static int xts_sizeof_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs);
 static int xts_sizeof_hash_join_keys (const HASHJOIN_PROC_NODE * node);
+static int xts_sizeof_coercion_plan (const DOMAIN_COERCION_PLAN * plan);
+static int xts_sizeof_accumulator_plan (const DOMAIN_ACCUMULATOR_PLAN * plan);
+static int xts_sizeof_analytic_offsets (const BUILDLIST_PROC_NODE * node);
+static int xts_sizeof_orderbynum_bounds (const PRED_EXPR * pred);
 static int xts_sizeof_key_compares (const INDX_INFO * indx_info);
 static int xts_sizeof_key_info (const KEY_INFO * ptr);
 static int xts_sizeof_cls_spec_type (const CLS_SPEC_TYPE * ptr);
@@ -2884,6 +2895,9 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
     }
   ptr = or_pack_int (ptr, offset);
 
+  /* CBRD-27583 (S3-18): its upper bounds' subtractions */
+  ptr = xts_pack_orderbynum_bounds (ptr, xasl->ordbynum_pred);
+
   offset = xts_save_db_value (xasl->ordbynum_val);
   if (offset == ER_FAILED)
     {
@@ -3511,6 +3525,9 @@ xts_process_buildlist_proc (char *ptr, const BUILDLIST_PROC_NODE * build_list_pr
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
+
+  /* CBRD-27583 (D-83): the offset functions' conversions */
+  ptr = xts_pack_analytic_offsets (ptr, build_list_proc);
 
   offset = xts_save_regu_variable_list (build_list_proc->a_scan_regu_list);
   if (offset == ER_FAILED)
@@ -5747,6 +5764,12 @@ xts_process_arith_type (char *ptr, const ARITH_TYPE * arith)
 	}
     }
 
+  if (!xts_Index_stream && arith_decides_arith (arith))
+    {
+      /* CBRD-27583 (D-83): what the operator makes of its operands */
+      ptr = or_pack_int (ptr, xts_arith_decided (arith));
+    }
+
   return ptr;
 }
 
@@ -5840,7 +5863,10 @@ xts_process_aggregate_type (char *ptr, const AGGREGATE_TYPE * aggregate)
   ptr = or_pack_int (ptr, flagint);
   ptr = or_pack_int (ptr, offset);
 
-  return ptr;
+  /* CBRD-27583 (D-83): the accumulator's plan */
+  DOMAIN_ACCUMULATOR_PLAN plan;
+  xts_plan_aggregate (aggregate, &plan);
+  return xts_pack_accumulator_plan (ptr, &plan);
 }
 
 static char *
@@ -5955,7 +5981,10 @@ xts_process_analytic_type (char *ptr, const ANALYTIC_TYPE * analytic)
       ptr = or_pack_int (ptr, offset);
     }
 
-  return ptr;
+  /* CBRD-27583 (D-83): the accumulator's plan */
+  DOMAIN_ACCUMULATOR_PLAN plan;
+  xts_plan_analytic (analytic, &plan);
+  return xts_pack_accumulator_plan (ptr, &plan);
 }
 
 static char *
@@ -6244,6 +6273,8 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + OR_INT_SIZE	/* upd_del_class_cnt */
 	   + OR_INT_SIZE);	/* mvcc_reev_extra_cls_cnt */
 
+  size += xts_sizeof_orderbynum_bounds (xasl->ordbynum_pred);
+
   size += PTR_SIZE;		/* precomp_owner_regu offset */
 
   size += OR_INT_SIZE;		/* number of access specs in spec_list */
@@ -6521,6 +6552,8 @@ xts_sizeof_buildlist_proc (const BUILDLIST_PROC_NODE * build_list)
 	   + PTR_SIZE		/* a_outptr_list_ex */
 	   + PTR_SIZE		/* a_outptr_list_interm */
 	   + PTR_SIZE);		/* a_val_list */
+
+  size += xts_sizeof_analytic_offsets (build_list);
   return size;
 }
 
@@ -7475,6 +7508,251 @@ xts_sizeof_hash_join_keys (const HASHJOIN_PROC_NODE * node)
 }
 
 /*
+ * CBRD-27583 (D-83): the plans of the server's arithmetic outside a node, decided where the compiler serializes them
+ * (domain_plan_*) from the domains the server reads (an OBJECT as OID), for an unpack that only looks their converters
+ * up. A conversion is an int (0 none; else 1 | mode << 4 | source type << 8) and its target domain; a coercion plan an
+ * int (arith kind | type << 8) and per side an int (1: an operand domain, 2: a conversion into it, | mode << 4 |
+ * source type << 8) and that domain; an accumulator plan an int (1: value_dom, 2: value2_dom, 4: accumulator_takes),
+ * those domains, the operand, distinct and divide coercion plans and the first and final conversions.
+ */
+static char *
+xts_pack_conversion (char *ptr, const DOMAIN_CONVERSION * conversion)
+{
+  if (conversion->target == NULL)
+    {
+      return or_pack_int (ptr, 0);
+    }
+  ptr = or_pack_int (ptr, 1 | (conversion->mode << 4) | (conversion->source << 8));
+  return or_pack_domain (ptr, (TP_DOMAIN *) conversion->target, 0, 0);
+}
+
+static int
+xts_sizeof_conversion (const DOMAIN_CONVERSION * conversion)
+{
+  return OR_INT_SIZE + (conversion->target != NULL ? or_packed_domain_size ((TP_DOMAIN *) conversion->target, 0) : 0);
+}
+
+static char *
+xts_pack_coercion_plan (char *ptr, const DOMAIN_COERCION_PLAN * plan)
+{
+  ptr = or_pack_int (ptr, plan->arith.kind | (plan->arith.type << 8));
+  for (int i = 0; i < 2; i++)
+    {
+      const DOMAIN_CONVERSION *conversion = &plan->conv[i];
+      /* a side converts into its operand domain */
+      assert (conversion->target == NULL || conversion->target == plan->operand_domain[i]);
+      ptr = or_pack_int (ptr, (plan->operand_domain[i] != NULL ? 1 : 0)
+			 | (conversion->target != NULL ? 2 | (conversion->mode << 4) | (conversion->source << 8) : 0));
+      if (plan->operand_domain[i] != NULL)
+	{
+	  ptr = or_pack_domain (ptr, (TP_DOMAIN *) plan->operand_domain[i], 0, 0);
+	}
+    }
+  return ptr;
+}
+
+static int
+xts_sizeof_coercion_plan (const DOMAIN_COERCION_PLAN * plan)
+{
+  int size = 3 * OR_INT_SIZE;
+  for (int i = 0; i < 2; i++)
+    {
+      size += plan->operand_domain[i] != NULL ? or_packed_domain_size ((TP_DOMAIN *) plan->operand_domain[i], 0) : 0;
+    }
+  return size;
+}
+
+static char *
+xts_pack_accumulator_plan (char *ptr, const DOMAIN_ACCUMULATOR_PLAN * plan)
+{
+  ptr = or_pack_int (ptr, (plan->value_dom != NULL ? 1 : 0) | (plan->value2_dom != NULL ? 2 : 0)
+		     | (plan->accumulator_takes ? 4 : 0));
+  if (plan->value_dom != NULL)
+    {
+      ptr = or_pack_domain (ptr, (TP_DOMAIN *) plan->value_dom, 0, 0);
+    }
+  if (plan->value2_dom != NULL)
+    {
+      ptr = or_pack_domain (ptr, (TP_DOMAIN *) plan->value2_dom, 0, 0);
+    }
+  ptr = xts_pack_coercion_plan (ptr, &plan->operand_coercion);
+  ptr = xts_pack_coercion_plan (ptr, &plan->distinct_coercion);
+  ptr = xts_pack_coercion_plan (ptr, &plan->divide_coercion);
+  ptr = xts_pack_conversion (ptr, &plan->first_conv);
+  return xts_pack_conversion (ptr, &plan->final_conv);
+}
+
+static int
+xts_sizeof_accumulator_plan (const DOMAIN_ACCUMULATOR_PLAN * plan)
+{
+  return OR_INT_SIZE + (plan->value_dom != NULL ? or_packed_domain_size ((TP_DOMAIN *) plan->value_dom, 0) : 0)
+    + (plan->value2_dom != NULL ? or_packed_domain_size ((TP_DOMAIN *) plan->value2_dom, 0) : 0)
+    + xts_sizeof_coercion_plan (&plan->operand_coercion) + xts_sizeof_coercion_plan (&plan->distinct_coercion)
+    + xts_sizeof_coercion_plan (&plan->divide_coercion) + xts_sizeof_conversion (&plan->first_conv)
+    + xts_sizeof_conversion (&plan->final_conv);
+}
+
+/* the domain of the value a function's operand gives: an arithmetic node's, else the regu's */
+static const TP_DOMAIN *
+xts_argument_domain (const REGU_VARIABLE * operand)
+{
+  return operand == NULL ? NULL : operand->type == TYPE_INARITH || operand->type == TYPE_OUTARITH
+    ? operand->value.arithptr->domain : operand->domain;
+}
+
+static void
+xts_plan_aggregate (const AGGREGATE_TYPE * aggregate, DOMAIN_ACCUMULATOR_PLAN * plan)
+{
+  const TP_DOMAIN *argument = xts_argument_domain (aggregate->operands != NULL ? &aggregate->operands->value : NULL);
+  domain_plan_aggregate_accumulator (aggregate->function, aggregate->opr_dbtype,
+				     domain_key_value_domain (aggregate->domain), domain_key_value_domain (argument),
+				     plan);
+}
+
+static void
+xts_plan_analytic (const ANALYTIC_TYPE * analytic, DOMAIN_ACCUMULATOR_PLAN * plan)
+{
+  domain_plan_analytic_accumulator (analytic->function, analytic->option, domain_key_value_domain (analytic->domain),
+				    domain_key_value_domain (xts_argument_domain (&analytic->operand)), plan);
+}
+
+/*
+ * xts_arith_decided () - CBRD-27583 (D-83): what an addition, subtraction, multiplication or division makes of its
+ *   operands' domains (domain_resolve_operand_coercion): an int, kind | type << 8; DOMAIN_ARITH_UNRESOLVED for an
+ *   operand of no fixed domain, which unpack refuses
+ */
+static int
+xts_arith_decided (const ARITH_TYPE * arith)
+{
+  if (arith->leftptr == NULL || arith->rightptr == NULL || arith->leftptr->domain == NULL
+      || TP_DOMAIN_TYPE (arith->leftptr->domain) == DB_TYPE_VARIABLE || arith->rightptr->domain == NULL
+      || TP_DOMAIN_TYPE (arith->rightptr->domain) == DB_TYPE_VARIABLE)
+    {
+      return DOMAIN_ARITH_UNRESOLVED;
+    }
+  /* the server reads an OBJECT regu's domain as OID (OR_PACK_DOMAIN_OBJECT_TO_OID) */
+  const TP_DOMAIN *left = domain_key_value_domain (arith->leftptr->domain);
+  const TP_DOMAIN *right = domain_key_value_domain (arith->rightptr->domain);
+  const DOMAIN_OPERAND operands[2] = {
+    {left, TP_DOMAIN_TYPE (left), -1, false}, {right, TP_DOMAIN_TYPE (right), -1, false}
+  };
+  DOMAIN_OPERAND_COERCION coercion;
+  domain_resolve_operand_coercion (arith->opcode, operands, &coercion);
+  return coercion.arith.kind | (coercion.arith.type << 8);
+}
+
+/* a LEAD / LAG / NTH_VALUE's offset and default conversions (domain_plan_analytic_offset), from the domains of their
+ * regus in the read list */
+static void
+xts_plan_analytic_offset (const ANALYTIC_TYPE * analytic, const REGU_VARIABLE_LIST read_list,
+			  DOMAIN_COERCION_PLAN * plan)
+{
+  const int read_idx[2] = { analytic->offset_idx, analytic->default_idx };
+  const TP_DOMAIN *source[2];
+  for (int i = 0; i < 2; i++)
+    {
+      REGU_VARIABLE_LIST regu = read_list;
+      for (int k = read_idx[i]; k > 0 && regu != NULL; k--)
+	{
+	  regu = regu->next;
+	}
+      source[i] = regu != NULL ? domain_key_value_domain (regu->value.domain) : NULL;
+    }
+  domain_plan_analytic_offset (analytic->function, domain_key_value_domain (analytic->domain), source[0], source[1],
+			       plan);
+}
+
+static bool
+xts_analytic_is_offset (const ANALYTIC_TYPE * analytic)
+{
+  return analytic->function == PT_LEAD || analytic->function == PT_LAG || analytic->function == PT_NTH_VALUE;
+}
+
+/* CBRD-27583 (D-83): each LEAD / LAG / NTH_VALUE's offset and default conversions, a coercion plan, in the order of
+ * the analytic evaluations and their functions */
+static char *
+xts_pack_analytic_offsets (char *ptr, const BUILDLIST_PROC_NODE * node)
+{
+  for (const ANALYTIC_EVAL_TYPE * eval = node->a_eval_list; eval != NULL; eval = eval->next)
+    {
+      for (const ANALYTIC_TYPE * analytic = eval->head; analytic != NULL; analytic = analytic->next)
+	{
+	  if (xts_analytic_is_offset (analytic))
+	    {
+	      DOMAIN_COERCION_PLAN plan;
+	      xts_plan_analytic_offset (analytic, node->a_regu_list, &plan);
+	      ptr = xts_pack_coercion_plan (ptr, &plan);
+	    }
+	}
+    }
+  return ptr;
+}
+
+static int
+xts_sizeof_analytic_offsets (const BUILDLIST_PROC_NODE * node)
+{
+  int size = 0;
+  for (const ANALYTIC_EVAL_TYPE * eval = node->a_eval_list; eval != NULL; eval = eval->next)
+    {
+      for (const ANALYTIC_TYPE * analytic = eval->head; analytic != NULL; analytic = analytic->next)
+	{
+	  if (xts_analytic_is_offset (analytic))
+	    {
+	      DOMAIN_COERCION_PLAN plan;
+	      xts_plan_analytic_offset (analytic, node->a_regu_list, &plan);
+	      size += xts_sizeof_coercion_plan (&plan);
+	    }
+	}
+    }
+  return size;
+}
+
+/* CBRD-27583 (S3-18): the number of ORDERBY_NUM () < bound of the predicate (xasl_for_each_orderbynum_less_than) and
+ * the operand coercion of bound - 1 of each, a coercion plan */
+static void
+xts_plan_orderbynum_bound (const REGU_VARIABLE * bound, DOMAIN_COERCION_PLAN * plan)
+{
+  const DOMAIN_OPERAND operands[2] = {
+    {NULL, TP_DOMAIN_TYPE (domain_key_value_domain (bound->domain)), -1, false}, {NULL, DB_TYPE_INTEGER, -1, false}
+  };
+  domain_plan_operand_coercion (T_SUB, operands, plan);
+}
+
+static char *
+xts_pack_orderbynum_bounds (char *ptr, const PRED_EXPR * pred)
+{
+  int count = 0;
+  /* *INDENT-OFF* */
+  xasl_for_each_orderbynum_less_than (pred, [&count] (const COMP_EVAL_TERM *, const REGU_VARIABLE *) { count++; });
+  /* *INDENT-ON* */
+  ptr = or_pack_int (ptr, count);
+  /* *INDENT-OFF* */
+  xasl_for_each_orderbynum_less_than (pred, [&ptr] (const COMP_EVAL_TERM *, const REGU_VARIABLE * bound)
+    {
+      DOMAIN_COERCION_PLAN plan;
+      xts_plan_orderbynum_bound (bound, &plan);
+      ptr = xts_pack_coercion_plan (ptr, &plan);
+    });
+  /* *INDENT-ON* */
+  return ptr;
+}
+
+static int
+xts_sizeof_orderbynum_bounds (const PRED_EXPR * pred)
+{
+  int size = OR_INT_SIZE;	/* count */
+  /* *INDENT-OFF* */
+  xasl_for_each_orderbynum_less_than (pred, [&size] (const COMP_EVAL_TERM *, const REGU_VARIABLE * bound)
+    {
+      DOMAIN_COERCION_PLAN plan;
+      xts_plan_orderbynum_bound (bound, &plan);
+      size += xts_sizeof_coercion_plan (&plan);
+    });
+  /* *INDENT-ON* */
+  return size;
+}
+
+/*
  * xts_pack_key_compares () - CBRD-27583 (D-80): an index scan's search key bound comparisons (pt_decide_key_compares):
  *   the number of distinct bounds; with any, the key columns, each column's classes and the comparisons of each
  *   ordered pair of them, each bound's flags (D-42 merges, a non-leaf comparison), comparisons with the index keys
@@ -8048,6 +8326,11 @@ xts_sizeof_arith_type (const ARITH_TYPE * arith)
 	}
     }
 
+
+  if (!xts_Index_stream && arith_decides_arith (arith))
+    {
+      size += OR_INT_SIZE;	/* decided arith */
+    }
   return size;
 }
 
@@ -8102,6 +8385,10 @@ xts_sizeof_aggregate_type (const AGGREGATE_TYPE * aggregate)
     }
 
   size += OR_INT_SIZE;		/* flag */
+
+  DOMAIN_ACCUMULATOR_PLAN plan;
+  xts_plan_aggregate (aggregate, &plan);
+  size += xts_sizeof_accumulator_plan (&plan);
   return size;
 }
 
@@ -8190,6 +8477,10 @@ xts_sizeof_analytic_type (const ANALYTIC_TYPE * analytic)
 	}
     }
 
+
+  DOMAIN_ACCUMULATOR_PLAN plan;
+  xts_plan_analytic (analytic, &plan);
+  size += xts_sizeof_accumulator_plan (&plan);
   return size;
 }
 

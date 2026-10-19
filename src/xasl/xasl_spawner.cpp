@@ -180,6 +180,7 @@ namespace cubxasl
     dest->rel_op = src->rel_op;
     dest->type = src->type;
     dest->compare = src->compare;
+    dest->bound_coercion = src->bound_coercion;
 
     return er_errid ();
   }
