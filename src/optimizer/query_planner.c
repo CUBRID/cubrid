@@ -3337,9 +3337,9 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   plan->plan_type = QO_PLANTYPE_JOIN;
   plan->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
   plan->has_sort_limit = (outer->has_sort_limit || inner->has_sort_limit);
-  /* SEMI/ANTI run by nested loops only */
+  /* there is no semi/anti merge join */
   assert (join_type != JOIN_INNER || qo_plan_semi_anti_join_type (inner) == PT_JOIN_NONE
-	  || join_method == QO_JOINMETHOD_NL_JOIN || join_method == QO_JOINMETHOD_IDX_JOIN);
+	  || join_method != QO_JOINMETHOD_MERGE_JOIN);
 
   /* An nl/idx join (or cartesian product) emits rows in its outer's order,
    * so it inherits only the outer's final-sort requirement:
