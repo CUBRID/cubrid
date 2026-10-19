@@ -96,10 +96,27 @@
 #include "px_scan.hpp"
 #endif /* SERVER_MODE && !WINDOWS */
 #include "px_query_executor.hpp"
+#include <atomic>
 #include <vector>
 #include "dblink_scan.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
+
+#if !defined (NDEBUG)
+/* CBRD-27583 census (S3-32, removed at S3-14): the first time the process reaches a site */
+#define QEXEC_CENSUS_ONCE(text) \
+  do \
+    { \
+      static std::atomic<bool> logged_ (false); \
+      if (!logged_.exchange (true)) \
+	{ \
+	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 %s\n", (text)); \
+	} \
+    } \
+  while (0)
+#else
+#define QEXEC_CENSUS_ONCE(text)
+#endif
 
 #define GOTO_EXIT_ON_ERROR \
   do \
@@ -3690,25 +3707,22 @@ qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state_p)
   new_xasl_state->vd.lrand = xasl_state_p->vd.lrand;
   new_xasl_state->vd.sys_datetime = xasl_state_p->vd.sys_datetime;
   new_xasl_state->vd.sys_epochtime = xasl_state_p->vd.sys_epochtime;
+  DB_VALUE *values = NULL;
   if (new_xasl_state->vd.dbval_cnt > 0)
     {
-      new_xasl_state->vd.dbval_ptr =
-	(DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * xasl_state_p->vd.dbval_cnt);
-      if (new_xasl_state->vd.dbval_ptr == NULL)
+      values = (DB_VALUE *) db_private_alloc (thread_p, sizeof (DB_VALUE) * xasl_state_p->vd.dbval_cnt);
+      if (values == NULL)
 	{
 	  db_private_free (thread_p, new_xasl_state);
 	  return NULL;
 	}
     }
-  else
-    {
-      new_xasl_state->vd.dbval_ptr = NULL;
-    }
 
   for (int i = 0; i < xasl_state_p->vd.dbval_cnt; i++)
     {
-      pr_clone_value (&xasl_state_p->vd.dbval_ptr[i], &new_xasl_state->vd.dbval_ptr[i]);
+      pr_clone_value (&xasl_state_p->vd.dbval_ptr[i], &values[i]);
     }
+  new_xasl_state->vd.dbval_ptr = values;
   return new_xasl_state;
 }
 
@@ -3720,13 +3734,15 @@ qexec_free_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state)
     {
       return;
     }
+  /* the copy's bound values are its own */
+  DB_VALUE *values = (DB_VALUE *) xasl_state->vd.dbval_ptr;
   for (int i = 0; i < xasl_state->vd.dbval_cnt; i++)
     {
-      pr_clear_value (&xasl_state->vd.dbval_ptr[i]);
+      pr_clear_value (&values[i]);
     }
-  if (xasl_state->vd.dbval_ptr)
+  if (values)
     {
-      db_private_free (thread_p, xasl_state->vd.dbval_ptr);
+      db_private_free (thread_p, values);
     }
   db_private_free (thread_p, xasl_state);
 }
@@ -17640,6 +17656,21 @@ qexec_clear_a_eval_values (THREAD_ENTRY * thread_p, ANALYTIC_EVAL_TYPE * a_eval_
   return;
 }
 
+#if !defined (NDEBUG)
+/* CBRD-27583 (design 5): a fold of the bound values' types, NULL marks and contents - the execution changes none */
+static unsigned int
+qexec_bind_checksum (int count, const DB_VALUE * values)
+{
+  unsigned int sum = (unsigned int) count;
+  for (int i = 0; i < count; i++)
+    {
+      sum = sum * 31 + (unsigned int) DB_VALUE_DOMAIN_TYPE (&values[i]);
+      sum = sum * 31 + (DB_IS_NULL (&values[i]) ? 1 : mht_get_hash_number (UINT_MAX, &values[i]));
+    }
+  return sum;
+}
+#endif
+
 /*
  * qexec_execute_query () -
  *   return: Query result list file identifier, or NULL
@@ -17664,6 +17695,11 @@ qfile_list_id *
 qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, const DB_VALUE * dbval_ptr,
 		     QUERY_ID query_id)
 {
+  /* CBRD-27583 (S3-13): the type decisions made from here on are counted (optdebug) */
+  TP_DECISION_EXECUTION ();
+#if !defined (NDEBUG)
+  const unsigned int bind_checksum = qexec_bind_checksum (dbval_cnt, dbval_ptr);
+#endif
   int stat = NO_ERROR;
   QFILE_LIST_ID *list_id = NULL;
   XASL_STATE xasl_state;
@@ -17784,7 +17820,7 @@ qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, c
 
   /* form the value descriptor to represent positional values */
   xasl_state.vd.dbval_cnt = dbval_cnt;
-  xasl_state.vd.dbval_ptr = (DB_VALUE *) dbval_ptr;
+  xasl_state.vd.dbval_ptr = dbval_ptr;
 
   /* save the query_id into the XASL state struct */
   xasl_state.query_id = query_id;
@@ -17961,6 +17997,13 @@ end:
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, (er_errid () != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
+#if !defined (NDEBUG)
+  if (qexec_bind_checksum (dbval_cnt, dbval_ptr) != bind_checksum)
+    {
+      /* CBRD-27583 census (an assert at 7a-2 if never seen): the execution changed a bound value */
+      er_log_debug (ARG_FILE_LINE, "CBRD-27583 bind values changed count=%d\n", dbval_cnt);
+    }
+#endif
   return list_id;
 }
 
@@ -21536,8 +21579,16 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 	      /* compare old value with current total_order is 1. Then NULLs are equal. Both are the column's values;
 	       * exception to deciding before the rows: a column whose domain leaves its values' type to the data
 	       * compares by the values' types */
-	      int c = column == NULL || domain_is_variable (column) ? tp_value_compare (&list_dbvals[i], &val, 1, 1)
-		: domain_compare_in_domain (column, &list_dbvals[i], &val, 1, 1);
+	      int c;
+	      if (column == NULL || domain_is_variable (column))
+		{
+		  QEXEC_CENSUS_ONCE ("group by key by value");
+		  c = tp_value_compare (&list_dbvals[i], &val, 1, 1);
+		}
+	      else
+		{
+		  c = domain_compare_in_domain (column, &list_dbvals[i], &val, 1, 1);
+		}
 
 	      if (c != DB_EQ)
 		{
@@ -24402,8 +24453,12 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	      /* a key whose domain the execution fixes compares by the values' types until step 3 */
 	      const DB_VALUE *current = &a_eval_list->current_values[sort_list_idx];
 	      const DB_VALUE *value = &a_eval_list->temp_values[sort_list_idx];
-	      if ((key->pos_descr.dom == NULL || domain_is_variable (key->pos_descr.dom)
-		   ? tp_value_compare (current, value, 1, 0)
+	      const bool by_value = key->pos_descr.dom == NULL || domain_is_variable (key->pos_descr.dom);
+	      if (by_value)
+		{
+		  QEXEC_CENSUS_ONCE ("analytic key by value");
+		}
+	      if ((by_value ? tp_value_compare (current, value, 1, 0)
 		   : domain_compare_in_domain (key->pos_descr.dom, current, value, 1, 0)) != DB_EQ)
 		{
 		  is_same_group = (sort_list_idx >= a_func_list->sort_prefix_size);
@@ -27038,6 +27093,10 @@ qexec_topn_sort_domains (SORT_LIST * sort_items, const TP_DOMAIN ** domains)
   for (SORT_LIST * key = sort_items; key != NULL; key = key->next, i++)
     {
       domains[i] = domain_is_variable (key->pos_descr.dom) ? NULL : key->pos_descr.dom;
+      if (domains[i] == NULL)
+	{
+	  QEXEC_CENSUS_ONCE ("topn key by value");
+	}
     }
 }
 

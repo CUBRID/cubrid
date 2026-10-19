@@ -952,62 +952,43 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
 /*
  * hjoin_init_domain_info() - the join columns' domains, common domains, converters and comparisons of this execution:
- *   decided at unpack from the inputs' compiled column domains, or here from the lists' domains where unpack could not
- *   (a column whose domain the execution fixes; step 3 removes this)
- *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   decided at unpack from the inputs' compiled column domains (unpack refuses a join it cannot decide)
+ *   return: NO_ERROR
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
- *   domain_info(in/out): Domain information for join columns.
+ *   domain_info(in): Domain information for join columns.
  */
 static int
 hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_DOMAIN_INFO * domain_info)
 {
-  QFILE_LIST_MERGE_INFO *merge_info;
-  QFILE_LIST_ID *outer_list_id, *inner_list_id;
-  int domain_cnt, domain_index;
-
   assert (thread_p != NULL);
   assert (manager != NULL);
-  assert (domain_info != NULL);
-
-  merge_info = manager->merge_info;
-  assert (merge_info != NULL);
-
-  assert (manager->outer != NULL);
-  assert (manager->outer->xasl != NULL);
-  assert (manager->outer->xasl->list_id != NULL);
-  outer_list_id = manager->outer->xasl->list_id;
-
-  assert (manager->inner != NULL);
-  assert (manager->inner->xasl != NULL);
-  assert (manager->inner->xasl->list_id != NULL);
-  inner_list_id = manager->inner->xasl->list_id;
-
-  domain_cnt = merge_info->ls_column_cnt;
+  assert (domain_info != NULL && domain_info->decided);
+  assert (manager->merge_info != NULL);
   assert (domain_info->outer.domains != NULL && domain_info->outer.value_indexes != NULL);
   assert (domain_info->inner.domains != NULL && domain_info->inner.value_indexes != NULL);
 
-  for (domain_index = 0; domain_index < domain_cnt; domain_index++)
+#if !defined (NDEBUG)
+  assert (manager->outer != NULL && manager->outer->xasl != NULL && manager->outer->xasl->list_id != NULL);
+  assert (manager->inner != NULL && manager->inner->xasl != NULL && manager->inner->xasl->list_id != NULL);
+  const QFILE_LIST_ID *outer_list_id = manager->outer->xasl->list_id;
+  const QFILE_LIST_ID *inner_list_id = manager->inner->xasl->list_id;
+  for (int domain_index = 0; domain_index < manager->merge_info->ls_column_cnt; domain_index++)
     {
-      TP_DOMAIN *outer = outer_list_id->type_list.domp[domain_info->outer.value_indexes[domain_index]];
-      TP_DOMAIN *inner = inner_list_id->type_list.domp[domain_info->inner.value_indexes[domain_index]];
+      const TP_DOMAIN *outer = outer_list_id->type_list.domp[domain_info->outer.value_indexes[domain_index]];
+      const TP_DOMAIN *inner = inner_list_id->type_list.domp[domain_info->inner.value_indexes[domain_index]];
+      /* the lists were opened with the domains unpack read */
       assert (outer != NULL && inner != NULL);
-      if (domain_info->decided)
-	{
-	  /* the lists were opened with the domains unpack read */
-	  assert (TP_DOMAIN_TYPE (outer) == TP_DOMAIN_TYPE (domain_info->outer.domains[domain_index])
-		  && outer->precision == domain_info->outer.domains[domain_index]->precision
-		  && outer->scale == domain_info->outer.domains[domain_index]->scale);
-	  assert (TP_DOMAIN_TYPE (inner) == TP_DOMAIN_TYPE (domain_info->inner.domains[domain_index])
-		  && inner->precision == domain_info->inner.domains[domain_index]->precision
-		  && inner->scale == domain_info->inner.domains[domain_index]->scale);
-	  continue;
-	}
-      domain_info->outer.domains[domain_index] = outer;
-      domain_info->inner.domains[domain_index] = inner;
+      assert (TP_DOMAIN_TYPE (outer) == TP_DOMAIN_TYPE (domain_info->outer.domains[domain_index])
+	      && outer->precision == domain_info->outer.domains[domain_index]->precision
+	      && outer->scale == domain_info->outer.domains[domain_index]->scale);
+      assert (TP_DOMAIN_TYPE (inner) == TP_DOMAIN_TYPE (domain_info->inner.domains[domain_index])
+	      && inner->precision == domain_info->inner.domains[domain_index]->precision
+	      && inner->scale == domain_info->inner.domains[domain_index]->scale);
     }
+#endif
 
-  return domain_info->decided ? NO_ERROR : hjoin_decide_domains (domain_info, domain_cnt);
+  return NO_ERROR;
 }
 
 /* A join column value coerced as tp_value_coerce does, where no converter does it (domain_decide_hash_join_key).
@@ -1031,8 +1012,8 @@ hjoin_key_converter (int conv_kind, DB_TYPE source, const TP_DOMAIN * common)
 
 /*
  * hjoin_decide_domains() - each join column pair's common domain, its inputs' converters into it and the comparison
- *   of the converted values, from the two inputs' column domains (domain_info->outer.domains, inner.domains), for the
- *   lists whose columns each execution fixes (the compiler decides every other join: XASL stream)
+ *   of the converted values, from the two inputs' column domains (domain_info->outer.domains, inner.domains): the
+ *   optdebug cross-check of the decisions the compiler streamed (stx_build_hashjoin_proc)
  *   return: NO_ERROR, or the error of a domain that could not be made
  *   domain_info(in/out): coerce_domains, the inputs' converters and comparisons
  *   domain_cnt(in): the join column count

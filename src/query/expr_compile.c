@@ -1468,7 +1468,8 @@ expr_hostvar_domain (const REGU_VARIABLE * regu)
 static int
 expr_k_hostvar (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
-  *step->out_cell = ctx->vd->dbval_ptr + step->aux;
+  /* the consumers read the bound value (val_descr.dbval_ptr is const) */
+  *step->out_cell = (DB_VALUE *) ctx->vd->dbval_ptr + step->aux;
 #if !defined (NDEBUG)
   /* the kernels were chosen for that domain */
   const TP_DOMAIN *domain = expr_hostvar_domain (step->regu);
@@ -2863,11 +2864,8 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	    const bool pinned_before = (TP_IS_NUMERIC_TYPE (t1) && TP_IS_NUMERIC_TYPE (t2)
 					&& tp_more_general_type (t1, t2) > 0)
 	      || (TP_IS_DATE_OR_TIME_TYPE (t1) && TP_IS_CHAR_TYPE (t2));
-	    if (pins != pinned_before)
-	      {
-		er_log_debug (ARG_FILE_LINE, "CBRD-27583 step literal pin %d/%d %d/%d\n", (int) t1, (int) t2,
-			      (int) pins, (int) pinned_before);
-	      }
+	    /* CBRD-27583 (S3-32): never seen in the gates (census "step literal pin") */
+	    assert (pins == pinned_before);
 #endif
 	    if (pins && tp_value_convert (compare->conv[1], compare->target[1], &et->rhs->value.dbval, &pinned)
 		== DOMAIN_COMPATIBLE && DB_VALUE_DOMAIN_TYPE (&pinned) == t1)
@@ -4970,17 +4968,9 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	  step->result_conv = NULL;
 	  if (result_domain != NULL)
 	    {
-	      if (TP_DOMAIN_TYPE (result_domain) == TP_DOMAIN_TYPE (arith->domain))
-		{
-		  step->result_conv = arith->result_conv;
-		}
-	      else
-		{
-#if !defined (NDEBUG)
-		  er_log_debug (ARG_FILE_LINE, "CBRD-27583 step result domain %d/%d\n",
-				(int) TP_DOMAIN_TYPE (result_domain), (int) TP_DOMAIN_TYPE (arith->domain));
-#endif
-		}
+	      /* CBRD-27583 (S3-32): a step coerces into its node's domain type (census "step result domain" 0) */
+	      assert (TP_DOMAIN_TYPE (result_domain) == TP_DOMAIN_TYPE (arith->domain));
+	      step->result_conv = arith->result_conv;
 	    }
 	  step->out = (DB_VALUE *) 1;	/* owned slot */
 	  bctx->n_slots++;

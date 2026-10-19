@@ -22,6 +22,7 @@
 
 #include "px_callable_task.hpp"
 #include "px_worker_manager.hpp"
+#include "object_domain.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -30,6 +31,8 @@ namespace parallel_query
 {
   void callable_task::execute (cubthread::entry &context)
   {
+    /* CBRD-27583 (S3-13): a worker's type decisions are counted as its query's (optdebug) */
+    TP_DECISION_EXECUTION ();
     assert (m_worker_manager_p != nullptr);
     m_exec_f (context);
   }

@@ -533,4 +533,39 @@ extern "C"
 #ifdef __cplusplus
 }
 #endif
+
+#if defined (__cplusplus) && !defined (NDEBUG)
+/* *INDENT-OFF* */
+/*
+ * CBRD-27583 (S3-13, design 5): the type decisions made while a query executes, counted in optdebug. A decision
+ * function counts its outermost call (TP_DECISION_ENTRY) inside an execution (TP_DECISION_EXECUTION: a query's
+ * execution, a parallel worker's task) and outside an exception (TP_DECISION_EXCEPTION); a function given a converter
+ * found before the rows counts only when a decision runs under it (TP_DECISION_ENTRY_LAZY). Each decision function and
+ * caller is logged once per process ("CBRD-27583 decision <function> <module>+<offset>").
+ */
+struct tp_decision_entry
+{
+  tp_decision_entry (const char *function, const void *caller, bool lazy);
+  ~tp_decision_entry ();
+};
+
+struct tp_decision_scope
+{
+  explicit tp_decision_scope (bool execution);
+  ~tp_decision_scope ();
+  const bool m_execution;
+};
+/* *INDENT-ON* */
+
+#define TP_DECISION_ENTRY(function) tp_decision_entry tp_decision_entry_ (function, __builtin_return_address (0), false)
+#define TP_DECISION_ENTRY_LAZY(function) \
+  tp_decision_entry tp_decision_entry_ (function, __builtin_return_address (0), true)
+#define TP_DECISION_EXECUTION() tp_decision_scope tp_decision_execution_ (true)
+#define TP_DECISION_EXCEPTION() tp_decision_scope tp_decision_exception_ (false)
+#else
+#define TP_DECISION_ENTRY(function)
+#define TP_DECISION_ENTRY_LAZY(function)
+#define TP_DECISION_EXECUTION()
+#define TP_DECISION_EXCEPTION()
+#endif
 #endif				/* _OBJECT_DOMAIN_H_ */

@@ -1785,6 +1785,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
 	}
 #endif
 
+      /* a peek reads the bound value (val_descr.dbval_ptr is const) */
       *peek_dbval = (DB_VALUE *) vd->dbval_ptr + regu_var->value.val_pos;
       REGU_VARIABLE_SET_FLAG (regu_var, REGU_VARIABLE_FETCH_ALL_CONST);
       break;

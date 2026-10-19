@@ -5275,16 +5275,9 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
     {
       cast_dom1 = tp_domain_resolve_value (dbval2_p, NULL);
     }
-#if !defined (NDEBUG)
-  if (cast_dom1 != NULL || cast_dom2 != NULL)
-    {
-      /* CBRD-27583 census (S3-40b, removed at S3-14): XASL generation casts a concatenation's date or number operand
-       * to a string, so a row should not reach the cast of a value by its type here (0 at the gate: an assert, S3-32) */
-      char line[64];
-      snprintf (line, sizeof (line), "CBRD-27583 strcat cast by value %d/%d", (int) type1, (int) type2);
-      qdata_census_once (line);
-    }
-#endif
+  /* CBRD-27583 (S3-32): XASL generation casts a concatenation's date or number operand to a string, so no row reaches
+   * the cast of a value by its type here (census "strcat cast by value" 0) */
+  assert (cast_dom1 == NULL && cast_dom2 == NULL);
 
   db_make_null (&cast_value1);
   db_make_null (&cast_value2);

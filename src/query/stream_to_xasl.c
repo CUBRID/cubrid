@@ -1784,6 +1784,8 @@ stx_log_compare_by_value (const char *kind, const REGU_VARIABLE * lhs, const REG
   er_log_debug (ARG_FILE_LINE, "CBRD-27583 by value %s lhs=%d/%d rhs=%d/%d\n", kind, lhs != NULL ? (int) lhs->type : -1,
 		domain[0] != NULL ? (int) TP_DOMAIN_TYPE (domain[0]) : -1, rhs != NULL ? (int) rhs->type : -1,
 		domain[1] != NULL ? (int) TP_DOMAIN_TYPE (domain[1]) : -1);
+  /* CBRD-27583 (S3-32): never seen in the gates (census "by value" 0) */
+  assert (false);
 }
 #endif
 
@@ -3987,18 +3989,11 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	  converters[domain_cnt + i] =
 	    hjoin_key_converter ((kinds >> 8) & 0xFF, TP_DOMAIN_TYPE (all_domains[domain_cnt + i]), common);
 	  ptr = stx_unpack_decided_compare (ptr, &compares[i]);
-	  for (int side = 0; side < 2; side++)
-	    {
-	      if (((kinds >> (side * 8)) & 0xFF) == DOMAIN_HASH_KEY_COERCED)
-		{
-		  /* CBRD-27583 census (removed at S3-14): a key coerced at the row - a JSON side (2-7 exception), or a
-		   * common domain whose collation is the values' (LEAVE, ENFORCE; an assert at commit 7 if never seen) */
-		  const TP_DOMAIN *domain = all_domains[side * domain_cnt + i];
-		  er_log_debug (ARG_FILE_LINE, "CBRD-27583 hash key %s side=%d type=%d flag=%d\n",
-				TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON ? "json" : "coerced", side,
-				(int) TP_DOMAIN_TYPE (domain), (int) TP_DOMAIN_COLLATION_FLAG (common));
-		}
-	    }
+	  /* CBRD-27583 (S3-32): a key coerced at the row is a JSON side (exception, the data carries the type: 2-7); no
+	   * common domain leaves its collation to the values (census "hash key coerced" 0) */
+	  assert (((kinds & 0xFF) != DOMAIN_HASH_KEY_COERCED || TP_DOMAIN_TYPE (all_domains[i]) == DB_TYPE_JSON)
+		  && (((kinds >> 8) & 0xFF) != DOMAIN_HASH_KEY_COERCED
+		      || TP_DOMAIN_TYPE (all_domains[domain_cnt + i]) == DB_TYPE_JSON));
 	}
       node_p->domain_info.decided = decided != 0;
 #if !defined (NDEBUG)
@@ -4045,8 +4040,10 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 #endif
       if (!decided)
 	{
-	  /* CBRD-27583 census (removed at S3-14): a join each execution decides */
-	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 left hash join\n");
+	  /* CBRD-27583 (S3-32): XASL generation decides every hash join's keys (census "left hash join" 0) */
+	  error = domain_unresolved_error (-1, DB_TYPE_VARIABLE);
+	  stx_set_xasl_errcode (thread_p, error);
+	  goto exit_on_error;
 	}
     }
 

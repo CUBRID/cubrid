@@ -905,15 +905,16 @@ namespace cubxasl
 
     /* ref: xqmgr_execute_query */
     assert_release_error (find (src->dbval_ptr, src->dbval_cnt) == nullptr);
-    dest->dbval_ptr = alloc (src->dbval_ptr, src->dbval_cnt);
-    if (dest->dbval_ptr != nullptr)
+    DB_VALUE *values = alloc (src->dbval_ptr, src->dbval_cnt);
+    if (values != nullptr)
       {
 	for (int i = 0; i < src->dbval_cnt; i++)
 	  {
 	    /* always returns NO_ERROR */
-	    pr_clone_value (&src->dbval_ptr[i], &dest->dbval_ptr[i]);
+	    pr_clone_value (&src->dbval_ptr[i], &values[i]);
 	  }
       }
+    dest->dbval_ptr = values;
 
     dest->dbval_cnt = src->dbval_cnt;
     dest->sys_datetime = src->sys_datetime;

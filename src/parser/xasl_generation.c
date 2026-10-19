@@ -14345,12 +14345,9 @@ pt_decide_key_compares (INDX_INFO * indx_infop)
 		  assert (pt_decide_key_compare (column, classes[c * n_bounds + own[c]], &reversed) == NO_ERROR
 			  && pt_key_compares_equal (&reversed, &mirrored));
 		}
-	      if (error == NO_ERROR && compares[c].conv[0] != NULL)
-		{
-		  /* CBRD-27583 census (removed at S3-14): a bound's values converted at each comparison */
-		  er_log_debug (ARG_FILE_LINE, "CBRD-27583 key bound converts %d %d %d\n", c,
-				(int) compares[c].source[0], (int) compares[c].source[1]);
-		}
+	      /* CBRD-27583 (S3-32): a kept bound converts once, here, not at each comparison (census "key bound
+	       * converts" 0) */
+	      assert (error != NO_ERROR || compares[c].conv[0] == NULL);
 #endif
 	      bound->merges = bound->merges || domain_key_compare_merges (&compares[c], column);
 	    }

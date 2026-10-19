@@ -77,7 +77,7 @@ struct upddel_class_instances_lock_info
 typedef struct val_descr VAL_DESCR;
 struct val_descr
 {
-  DB_VALUE *dbval_ptr;		/* Array of values */
+  const DB_VALUE *dbval_ptr;	/* Array of values; the server neither copies nor changes a bound value (CBRD-27583, design 5) */
   int dbval_cnt;		/* Value Count */
   DB_DATETIME sys_datetime;
   DB_TIMESTAMP sys_epochtime;

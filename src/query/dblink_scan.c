@@ -650,7 +650,8 @@ dblink_bind_param (int conn_handle, int stmt_handle, VAL_DESCR * vd, DBLINK_HOST
   for (n = 0; n < host_vars->count; n++)
     {
       i = host_vars->index[n];
-      ret = dblink_bind_dbval_to_param (conn_handle, stmt_handle, n + 1, &vd->dbval_ptr[i]);
+      /* the binding reads the bound value (val_descr.dbval_ptr is const) */
+      ret = dblink_bind_dbval_to_param (conn_handle, stmt_handle, n + 1, (DB_VALUE *) & vd->dbval_ptr[i]);
       if (ret != NO_ERROR)
 	{
 	  return ret;

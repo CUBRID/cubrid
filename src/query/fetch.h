@@ -70,6 +70,7 @@ fetch_peek_dbval (THREAD_ENTRY * thread_p, regu_variable_node * regu_var, val_de
 	  *peek_dbval = regu_var->value.dbvalptr;
 	  return NO_ERROR;
 	case TYPE_POS_VALUE:
+	  /* a peek reads the bound value (val_descr.dbval_ptr is const) */
 	  *peek_dbval = (DB_VALUE *) vd->dbval_ptr + regu_var->value.val_pos;
 	  return NO_ERROR;
 	case TYPE_ATTR_ID:

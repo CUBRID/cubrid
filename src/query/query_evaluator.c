@@ -342,23 +342,15 @@ eval_assert_resolved_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbv
       /* the key pair table reads the values' own keys */
       if (compare->method == DOMAIN_COMPARE_KEYS && et_comp != NULL)
 	{
-	  /* CBRD-27583 census (D-82, removed at S3-14): a filter or function index stream's side whose regu domain is
-	   * not its values' type */
+	  /* CBRD-27583 (S3-32, D-82): a filter or function index stream's side has values of its regu domain's type
+	   * (census "stream compare mismatch" 0) */
 	  const REGU_VARIABLE *regu[2] = { et_comp->lhs, et_comp->rhs };
 	  const DB_VALUE *value[2] = { dbval1, dbval2 };
 	  for (int side = 0; side < 2; side++)
 	    {
-	      if (regu[side] != NULL && regu[side]->domain != NULL && !domain_is_variable (regu[side]->domain)
-		  && !DB_IS_NULL (value[side])
-		  && !eval_value_is_source (value[side], TP_DOMAIN_TYPE (regu[side]->domain)))
-		{
-		  char line[128];
-		  snprintf (line, sizeof (line),
-			    "CBRD-27583 stream compare mismatch side=%d regu=%d domain=%d value=%d", side,
-			    (int) regu[side]->type, (int) TP_DOMAIN_TYPE (regu[side]->domain),
-			    (int) DB_VALUE_DOMAIN_TYPE (value[side]));
-		  eval_census_once (line);
-		}
+	      assert (regu[side] == NULL || regu[side]->domain == NULL || domain_is_variable (regu[side]->domain)
+		      || DB_IS_NULL (value[side])
+		      || eval_value_is_source (value[side], TP_DOMAIN_TYPE (regu[side]->domain)));
 	    }
 	}
       return;
