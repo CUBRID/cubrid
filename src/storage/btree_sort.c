@@ -401,6 +401,10 @@ static int btsort_merge_cmp_inputs (const BTSORT_MERGE_CTX * ctx, int a, int b);
 static void btsort_merge_order_inputs (BTSORT_MERGE_CTX * ctx);
 static int btsort_merge_check_page_tail (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx);
 static void btsort_merge_sink_min (BTSORT_MERGE_CTX * ctx);
+static int btsort_merge_put_to_caller (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int idx);
+static int btsort_merge_flush_out_section (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int num_pages);
+static int btsort_merge_append_to_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int idx);
+static int btsort_merge_close_run (BTSORT_MERGE_CTX * ctx, int out_half);
 static int btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param);
 static int btsort_find_inbuf_size (int tot_buffers, int in_sections);
 
@@ -2565,6 +2569,133 @@ btsort_merge_sink_min (BTSORT_MERGE_CTX * ctx)
 }
 
 /*
+ * btsort_merge_put_to_caller () - Hand an input's smallest record to put_fn
+ *   return: NO_ERROR, or the error put_fn returned
+ *   ctx(in): merge state
+ *   idx(in): the input
+ *
+ * Note: The very last run of a serial merge goes to the caller this way instead of to a temp file.
+ */
+static int
+btsort_merge_put_to_caller (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int idx)
+{
+  BTSORT_PARAM *sort_param = ctx->sort_param;
+  BTSORT_MERGE_INPUT *in = &ctx->in[idx];
+  const RECDES *rec = btsort_merge_resolve_rec (&in->rec, &in->long_rec);
+
+  return (*sort_param->put_fn) (thread_p, rec, sort_param->put_arg);
+}
+
+/*
+ * btsort_merge_flush_out_section () - Write the first num_pages pages of the output section to the output file
+ *   return: NO_ERROR, or error code
+ *   ctx(in/out): merge state; the output file's cur_page and out_runsize grow by num_pages
+ *   num_pages(in): pages to write
+ */
+static int
+btsort_merge_flush_out_section (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int num_pages)
+{
+  BTSORT_PARAM *sort_param = ctx->sort_param;
+  int out = ctx->cur_outfile;
+  int error;
+
+  error = btsort_write_area (thread_p, &sort_param->temp[out], &sort_param->temp_cursor[out], ctx->cur_page[out],
+			     num_pages, ctx->out_sectaddr, sort_param->tde_encrypted);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  ctx->cur_page[out] += num_pages;
+  ctx->out_runsize += num_pages;
+
+  return NO_ERROR;
+}
+
+/*
+ * btsort_merge_append_to_run () - Insert an input's smallest record into the output section
+ *   return: NO_ERROR, or error code
+ *   ctx(in/out): merge state
+ *   idx(in): the input
+ *
+ * Note: A full page moves the cursor to the next page of the section; a full section is flushed first. A BIGONE
+ *       placeholder is written as is; the long record stays in the overflow file.
+ */
+static int
+btsort_merge_append_to_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int idx)
+{
+  RECDES *rec = &ctx->in[idx].rec;
+  int error;
+
+  if (btsort_spage_insert (ctx->out_cur_bufaddr, rec) != NULL_SLOTID)
+    {
+      return NO_ERROR;
+    }
+
+  /* Current output buffer is full */
+  if (++ctx->out_act_bufno < ctx->out_sectsize)
+    {
+      /* There is another buffer in the output section; so insert the new record there */
+      ctx->out_cur_bufaddr += DB_PAGESIZE;
+    }
+  else
+    {
+      /* Output section is full; flush it and start over at its first buffer */
+      error = btsort_merge_flush_out_section (thread_p, ctx, ctx->out_sectsize);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      btsort_merge_reset_out_section (ctx);
+    }
+
+  if (btsort_spage_insert (ctx->out_cur_bufaddr, rec) == NULL_SLOTID)
+    {
+      /* Slotted page module refuses to insert a short size record (a temporary record that was already in a
+       * slotted page) to an empty page. This should never happen. */
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * btsort_merge_close_run () - Record the run just produced and move on to the next output file
+ *   return: NO_ERROR, or error code
+ *   ctx(in/out): merge state
+ *   out_half(in): index of the first output file
+ *
+ * Note: Takes the consumed run off every input file of the half, the inactive ones included.
+ */
+static int
+btsort_merge_close_run (BTSORT_MERGE_CTX * ctx, int out_half)
+{
+  BTSORT_PARAM *sort_param = ctx->sort_param;
+  int error;
+  int i;
+
+  for (i = sort_param->in_half; i < sort_param->in_half + sort_param->half_files; i++)
+    {
+      btsort_run_remove_first (&sort_param->file_contents[i]);
+    }
+
+  error = btsort_run_add_new (&sort_param->file_contents[ctx->cur_outfile], ctx->out_runsize);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (++ctx->cur_outfile >= sort_param->half_files + out_half)
+    {
+      ctx->cur_outfile = out_half;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * btsort_exphase_merge () - Merge phase
  *   return:
  *   sort_param(in): sort parameters
@@ -2785,84 +2916,17 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 
 	      if (very_last_run && !BTSORT_IS_PARALLEL (sort_param))
 		{
-		  /* OUTPUT THE RECORD */
-		  /* Obtain the output record for this temporary record */
-		  if (ctx.in[min].rec.type == REC_BIGONE)
-		    {
-		      error = (*sort_param->put_fn) (thread_p, &ctx.in[min].long_rec, sort_param->put_arg);
-		      if (error != NO_ERROR)
-			{
-			  goto bailout;
-			}
-		    }
-		  else
-		    {
-		      error = (*sort_param->put_fn) (thread_p, &ctx.in[min].rec, sort_param->put_arg);
-		      if (error != NO_ERROR)
-			{
-			  goto bailout;
-			}
-		    }
+		  /* OUTPUT THE RECORD to the caller */
+		  error = btsort_merge_put_to_caller (thread_p, &ctx, min);
 		}
 	      else
 		{
 		  /* OUTPUT THE MINIMUM RECORD TO THE OUTPUT AREA */
-
-		  /* Insert this record to the output area */
-		  if (btsort_spage_insert (ctx.out_cur_bufaddr, &ctx.in[min].rec) == NULL_SLOTID)
-		    {
-		      /* Current output buffer is full */
-
-		      if (++ctx.out_act_bufno < ctx.out_sectsize)
-			{
-			  /* There is another buffer in the output section; so insert the new record there */
-			  ctx.out_cur_bufaddr += DB_PAGESIZE;
-
-			  if (btsort_spage_insert (ctx.out_cur_bufaddr, &ctx.in[min].rec) == NULL_SLOTID)
-			    {
-			      /*
-			       * Slotted page module refuses to insert a short
-			       * size record (a temporary record that was
-			       * already in a slotted page) to an empty page.
-			       * This should never happen.
-			       */
-			      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-			      error = ER_GENERIC_ERROR;
-			      goto bailout;
-			    }
-			}
-		      else
-			{
-			  /* Output section is full */
-			  /* Flush output section */
-			  error =
-			    btsort_write_area (thread_p, &sort_param->temp[ctx.cur_outfile],
-					       &sort_param->temp_cursor[ctx.cur_outfile], ctx.cur_page[ctx.cur_outfile],
-					       ctx.out_sectsize, ctx.out_sectaddr, sort_param->tde_encrypted);
-			  if (error != NO_ERROR)
-			    {
-			      goto bailout;
-			    }
-			  ctx.cur_page[ctx.cur_outfile] += ctx.out_sectsize;
-			  ctx.out_runsize += ctx.out_sectsize;
-
-			  /* Initialize output section and output variables */
-			  btsort_merge_reset_out_section (&ctx);
-
-			  if (btsort_spage_insert (ctx.out_cur_bufaddr, &ctx.in[min].rec) == NULL_SLOTID)
-			    {
-			      /*
-			       * Slotted page module refuses to insert a short
-			       * size record (a temporary record that was
-			       * already in a slotted page) to an empty page.
-			       * This should never happen.
-			       */
-			      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
-			      error = ER_GENERIC_ERROR;
-			      goto bailout;
-			    }
-			}
-		    }
+		  error = btsort_merge_append_to_run (thread_p, &ctx, min);
+		}
+	      if (error != NO_ERROR)
+		{
+		  goto bailout;
 		}
 
 	      /* ADVANCE INPUT min TO ITS NEXT RECORD */
@@ -2912,42 +2976,19 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 
 	  if (!(very_last_run && !BTSORT_IS_PARALLEL (sort_param)))
 	    {
-	      /* Flush whatever is left on the output section */
-
-	      ctx.out_act_bufno++;	/* Since 0 refers to the first active buffer */
-	      error =
-		btsort_write_area (thread_p, &sort_param->temp[ctx.cur_outfile],
-				   &sort_param->temp_cursor[ctx.cur_outfile], ctx.cur_page[ctx.cur_outfile],
-				   ctx.out_act_bufno, ctx.out_sectaddr, sort_param->tde_encrypted);
+	      /* Flush whatever is left on the output section; out_act_bufno counts from 0 */
+	      error = btsort_merge_flush_out_section (thread_p, &ctx, ctx.out_act_bufno + 1);
 	      if (error != NO_ERROR)
 		{
 		  goto bailout;
 		}
-	      ctx.cur_page[ctx.cur_outfile] += ctx.out_act_bufno;
-	      ctx.out_runsize += ctx.out_act_bufno;
 	    }
 
 	  /* END UP THIS RUN */
-
-	  /* Remove previous first_run nodes of the file_contents lists of the input files */
-	  for (i = sort_param->in_half; i < sort_param->in_half + sort_param->half_files; i++)
-	    {
-	      btsort_run_remove_first (&sort_param->file_contents[i]);
-	    }
-
-	  /* Add a new node to the file_contents list of the current output file */
-	  error = btsort_run_add_new (&sort_param->file_contents[ctx.cur_outfile], ctx.out_runsize);
+	  error = btsort_merge_close_run (&ctx, out_half);
 	  if (error != NO_ERROR)
 	    {
 	      goto bailout;
-	    }
-
-	  /* PRODUCE A NEW RUN */
-
-	  /* Switch to the next out file */
-	  if (++ctx.cur_outfile >= sort_param->half_files + out_half)
-	    {
-	      ctx.cur_outfile = out_half;
 	    }
 	}
 
