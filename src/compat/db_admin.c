@@ -1098,12 +1098,14 @@ db_restart (const char *program, int print_version, const char *volume)
  * sub_index(in) : the index of the sub-client
  *
  * Note: The sub-client is bound to the calling thread. db_shutdown_sub () must be called
- *       by the same thread before the thread exits. Otherwise, the transaction and the locks
- *       of the sub-client remain in the server until the process exits.
+ *       by the same thread before the thread exits, whether this function succeeded or not.
+ *       Otherwise, the transaction and the locks of the sub-client remain in the server until
+ *       the process exits, and the error context of the thread is leaked.
  *       db_shutdown () and db_restart () of the main client fail while a sub-client is alive,
  *       because they finalize the client modules shared with the sub-clients.
- *       If it fails, the resources of the sub-client are released by itself, so db_shutdown_sub ()
- *       does not need to be called (calling it is harmless).
+ *       If it fails, the resources of the sub-client are released by itself, except the error
+ *       context, which is kept so that the caller can get the error. db_shutdown_sub () then
+ *       releases only the error context.
  */
 int
 db_restart_sub (int sub_index)
@@ -1137,7 +1139,7 @@ db_restart_sub (int sub_index)
 
   /*
    * The error context of this thread. It is created after the shutdown above, which destroys the previous one.
-   * It is kept after a failure, so that the caller can get the error.
+   * It is kept after a failure, so that the caller can get the error, and released by db_shutdown_sub ().
    */
   er_init_sub_client_context ();
 
