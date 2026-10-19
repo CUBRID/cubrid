@@ -1285,6 +1285,16 @@ histogram_get_equal_selectivity (PT_NODE *lhs, DB_VALUE *rhs_db_value, double *s
 	  return;
 	}
 
+      if ((LANG_IS_COERCIBLE_COLL (common_coll_id) || common_coll_id == LANG_COLL_BINARY)
+	  && !prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE))
+	{
+	  /* a binary collation that keeps trailing spaces significant equates exactly the equal
+	   * byte strings: at most one MCV can match, and the byte-sorted list finds it by binary
+	   * search -- the sweep below would reach the same answer comparing every MCV */
+	  mcv_index = histogram_reader.find_mcv<std::string_view> (std::string_view (key.str));
+	  break;
+	}
+
       er_stack_push ();
       for (int i = 0; i < static_cast<int> (histogram_reader.mcv_count ()); i++)
 	{
