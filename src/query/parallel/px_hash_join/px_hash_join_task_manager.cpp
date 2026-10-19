@@ -218,9 +218,9 @@ namespace parallel_query
 	  return;
 	}
 
-      assert (m_index < m_manager->split_info.worker_tfile_cnt);
+      assert (m_index < m_manager->worker_tfile_cnt);
       hjoin_init_split_writer (&split_writer, &landing_buffer, m_staging_buffer,
-			       m_shared_info->part_mutexes, m_manager->split_info.worker_tfiles[m_index], part_list_id);
+			       m_shared_info->part_mutexes, m_manager->worker_tfiles[m_index], part_list_id);
 
       temp_key = qdata_alloc_hscan_key (&thread_ref, m_manager->key_cnt, true);
       if (temp_key == nullptr)
@@ -502,8 +502,8 @@ namespace parallel_query
 
 	  context->list_id = m_shared_info->list_ids[m_index];
 
-	  assert (m_index < m_manager->split_info.worker_tfile_cnt);
-	  context->worker_tfile = m_manager->split_info.worker_tfiles[m_index];
+	  assert (m_index < m_manager->worker_tfile_cnt);
+	  context->worker_tfile = m_manager->worker_tfiles[m_index];
 	  error = hjoin_execute_context (&thread_ref, m_manager, context);
 	  context->list_id = nullptr;	/* lent for the join; the result stays in m_shared_info->list_ids */
 

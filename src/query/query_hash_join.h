@@ -308,12 +308,6 @@ typedef struct hashjoin_split_info
 {
   HASHJOIN_INPUT_SPLIT_INFO outer;
   HASHJOIN_INPUT_SPLIT_INFO inner;
-  UINT32 part_cnt;		/* number of entries of outer.part_list_id and inner.part_list_id */
-
-  /* Temporary files the partition lists are written to, one per split worker;
-   * kept, with the partition lists, until the partitions are executed (hjoin_clear_split_info). */
-  QMGR_TEMP_FILE **worker_tfiles;
-  int worker_tfile_cnt;
 } HASHJOIN_SPLIT_INFO;
 
 /* HASHJOIN_SHARED_SPLIT_INFO */
@@ -436,7 +430,10 @@ typedef struct hashjoin_manager
   HASHJOIN_MERGE_METHOD qlist_merge_method;
   int qlist_flag;
 
-  HASHJOIN_SPLIT_INFO split_info;	/* the partition lists and their worker tfiles */
+  /* Temporary files the partition lists are written to, one per split worker. The partition lists borrow them,
+   * so they are freed after the contexts that own the lists (hjoin_clear_worker_tfiles). */
+  QMGR_TEMP_FILE **worker_tfiles;
+  int worker_tfile_cnt;
 
   // *INDENT-OFF*
   parallel_query::worker_manager *px_worker_manager;

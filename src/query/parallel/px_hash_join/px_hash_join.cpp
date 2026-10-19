@@ -41,7 +41,7 @@ namespace parallel_query
      */
 
     int
-    build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager)
+    build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info)
     {
       HASHJOIN_SHARED_SPLIT_INFO shared_info;
       HASHJOIN_SPLIT_STAGING_BUFFER staging_buffer = { nullptr, 0 };
@@ -49,6 +49,7 @@ namespace parallel_query
       int error = NO_ERROR;
 
       assert (manager != nullptr);
+      assert (split_info != nullptr);
 
       HASHJOIN_STATS *stats = manager->single_context.stats;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
@@ -74,7 +75,7 @@ namespace parallel_query
 
       for (int side = 0; side < 2; side++)
 	{
-	  HASHJOIN_INPUT_SPLIT_INFO *input = (side == 0) ? &manager->split_info.outer : &manager->split_info.inner;
+	  HASHJOIN_INPUT_SPLIT_INFO *input = (side == 0) ? &split_info->outer : &split_info->inner;
 
 	  if (thread_is_on_trace (&thread_ref))
 	    {
@@ -99,7 +100,7 @@ namespace parallel_query
 	  if (!task_manager.has_error ())
 	    {
 	      error = hjoin_flush_split_staging_buffer (&thread_ref, &staging_buffer, input->part_list_id,
-		      manager->split_info.worker_tfiles[0]);
+		      manager->worker_tfiles[0]);
 	    }
 
 	  if (manager->px_worker_stats != nullptr)
