@@ -159,8 +159,12 @@ struct arith_list_node
   OPERATOR_TYPE opcode;		/* operator value */
   MISC_OPERAND misc_operand;	/* currently used for trim qualifier and datetime extract field specifier */
   cubxasl::pred_expr *pred;		/* predicate expression */
-  /* CBRD-27583: a cast's converter of its operand's domain into the node's, found at unpack; not serialized */
-  TP_VALUE_CONVERTER conv = nullptr;
+  /* CBRD-27583 (D-77): the casts the operator's kernel makes of a value of operand i (left, right, third; a
+   * PREDICATE's truth value and a SYS_CONNECT_BY_PATH's path at 0): conv_type[i] the value's type, conv[i] its
+   * converter into the domain the kernel casts it into, found at unpack (stx_arith_cast_target); NULL where the kernel
+   * casts no value of operand i or the operand's domain is not fixed. Not serialized. */
+  TP_VALUE_CONVERTER conv[3] = {};
+  DB_TYPE conv_type[3] = {};
   /* CBRD-27583 (spec 5): the error the operator raises where a row computes it over operands that are not NULL -
    * XASL generation found it rejects their types (the node's domain is the NULL type) - or NO_ERROR */
   int fails = NO_ERROR;

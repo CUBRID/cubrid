@@ -663,8 +663,9 @@ expr_k_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
    * interpreted path coerces both with tp_value_cast_force () -- it allows conversions the
    * plain (non-forced) cast rejects, such as a character string to BIT -- except a
    * STRICT_TYPE_CAST-flagged T_CAST_WRAP, which takes tp_value_cast () (expr_k_cast_strict,
-   * the same choice fetch_cast_operand () makes). */
-  dom_status = tp_value_cast_force (src, step->out, step->domain, false);
+   * the same choice fetch_cast_operand () makes), each with the converter the node found at unpack. */
+  dom_status = arith_cast_value (step->regu->value.arithptr, 1, src, step->out, step->domain,
+				 step->regu->value.arithptr->domain, ARITH_CAST_FORCE);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, step->domain);
@@ -680,7 +681,8 @@ expr_k_cast_strict (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   TP_DOMAIN_STATUS dom_status;
 
   pr_clear_value (step->out);
-  dom_status = tp_value_cast (src, step->out, step->domain, false);
+  dom_status = arith_cast_value (step->regu->value.arithptr, 1, src, step->out, step->domain,
+				 step->regu->value.arithptr->domain, ARITH_CAST_PLAIN);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, step->domain);
@@ -820,7 +822,8 @@ expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
     {
       return ER_FAILED;		/* er_set done by the comparison */
     }
-  dom_status = tp_value_cast (v1, step->out, step->domain, false);
+  dom_status = arith_cast_value (step->regu->value.arithptr, 0, v1, step->out, step->domain,
+				 step->regu->value.arithptr->domain, ARITH_CAST_PLAIN);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, v1, step->domain);
@@ -1353,7 +1356,9 @@ expr_k_case_pub_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 
   /* the result domain can be a string type, so the slot may own heap memory */
   pr_clear_value (step->out);
-  dom_status = tp_value_auto_cast (sel, step->out, step->domain);
+  /* aux: the branch's operand (0 the THEN, 1 the ELSE) */
+  dom_status = arith_cast_value (step->regu->value.arithptr, step->aux, sel, step->out, step->domain,
+				 step->regu->value.arithptr->domain, ARITH_CAST_AUTO);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, sel, step->domain);
@@ -1394,7 +1399,8 @@ expr_k_predicate_cast (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
   pr_clear_value (step->out);
   EXPR_PREDICATE_VALUE ();
 
-  dom_status = tp_value_auto_cast (step->out, step->out, step->domain);
+  dom_status = arith_cast_value (step->regu->value.arithptr, 0, step->out, step->out, step->domain,
+				 step->regu->value.arithptr->domain, ARITH_CAST_AUTO);
   if (unlikely (dom_status != DOMAIN_COMPATIBLE))
     {
       return tp_domain_status_er_set (dom_status, ARG_FILE_LINE, step->out, step->domain);
@@ -4507,6 +4513,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	      pub_f->arg1p = EXPR_ARG_ENCODE (c2b);
 	      pub_f->domain = pub_domain;
 	      pub_f->regu = regu;
+	      pub_f->aux = 1;	/* the ELSE operand's converter (expr_k_case_pub_cast) */
 	      if (pub_owns_slot)
 		{
 		  pub_f->alias_of = pub_t_idx;	/* writes the THEN publisher's slot */

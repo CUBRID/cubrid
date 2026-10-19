@@ -12489,8 +12489,9 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
     }
   else
     {
-      const TP_DOMAIN_STATUS dom_status = tp_value_auto_cast_with_converter (attr_val, &value->dbvalue, catalog,
-									     value_type, conv);
+      const TP_DOMAIN_STATUS dom_status =
+	tp_value_auto_cast_with_precision_check_converter (attr_val, &value->dbvalue, catalog,
+							   value_type, conv);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  ret = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, attr_val, catalog);

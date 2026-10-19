@@ -27,6 +27,7 @@
 #ident "$Id$"
 
 #include "storage_common.h"	/* OPERATOR_TYPE */
+#include "error_manager.h"
 #include "oid.h"
 #include "object_domain.h"
 #include "dbtype_def.h"
@@ -60,6 +61,39 @@ struct fetch_arith_args
 typedef int (*FETCH_ARITH_OP) (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a);
 
 extern FETCH_ARITH_OP fetch_arith_op (OPERATOR_TYPE opcode);
+
+/* CBRD-27583 (D-77): the cast an operator's kernel makes of a value: tp_value_cast, tp_value_cast_force or
+ * tp_value_auto_cast */
+enum arith_cast_kind
+{
+  ARITH_CAST_PLAIN,
+  ARITH_CAST_FORCE,
+  ARITH_CAST_AUTO
+};
+
+/*
+ * arith_cast_value () - CBRD-27583 (D-77): an operator kernel's cast of a value of operand i into domain, the cast it
+ *   makes (kind), with the converter unpack found (ARITH_TYPE.conv[i]) when domain is the one it was found for
+ *   (planned); another domain or a value of another type looks its converter up, as the cast did at every row
+ */
+static inline TP_DOMAIN_STATUS
+arith_cast_value (const ARITH_TYPE * arith, int i, const DB_VALUE * value, DB_VALUE * result,
+		  const TP_DOMAIN * domain, const TP_DOMAIN * planned, arith_cast_kind kind)
+{
+  const TP_VALUE_CONVERTER conv = domain == planned ? arith->conv[i] : NULL;
+#if !defined (NDEBUG)
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+  /* the cast clones a value of the domain's type when the domain is not parameterized */
+  if (domain != NULL && !DB_IS_NULL (value) && !(conv != NULL && type == arith->conv_type[i])
+      && !(type == TP_DOMAIN_TYPE (domain) && !domain->is_parameterized))
+    {
+      /* CBRD-27583 census (removed at S3-14): a kernel cast that looks its converter up at the row */
+      er_log_debug (ARG_FILE_LINE, "CBRD-27583 row converter lookup %d %d\n", (int) arith->opcode, i);
+    }
+#endif
+  return kind == ARITH_CAST_AUTO ? tp_value_auto_cast_with_converter (value, result, domain, arith->conv_type[i], conv)
+    : tp_value_cast_with_converter (value, result, domain, kind == ARITH_CAST_FORCE, arith->conv_type[i], conv);
+}
 
 /* The node protocol around an operator (fetch.c), shared by the interpreter and a program's generic step: the node's
  * domains, then its result slot cleared and a variable domain left to the values. */

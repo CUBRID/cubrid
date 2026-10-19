@@ -410,7 +410,8 @@ namespace cubxasl
     dest->thirdptr = spawn (src->thirdptr);
     dest->opcode = src->opcode;
     dest->misc_operand = src->misc_operand;
-    dest->conv = src->conv;
+    memcpy (dest->conv, src->conv, sizeof (dest->conv));
+    memcpy (dest->conv_type, src->conv_type, sizeof (dest->conv_type));
     dest->fails = src->fails;
     /* the unpack's decisions are immutable and live in the leader's unpack arena, after every worker */
     dest->decided = src->decided;

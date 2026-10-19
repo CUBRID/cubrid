@@ -6582,6 +6582,62 @@ stx_build_pos_descr (char *ptr, QFILE_TUPLE_VALUE_POSITION * position_descr)
   return ptr;
 }
 
+/*
+ * stx_arith_cast_target () - CBRD-27583 (D-77): the domain an operator's kernel casts a value of operand i into
+ *   (fetch_arith_ops.c, expr_compile.c)
+ *   return: the domain; NULL where the kernel casts no value of operand i
+ *   src_type(in): the value's type: the operand's, or the value the kernel makes (a PREDICATE's truth value, a
+ *		   SYS_CONNECT_BY_PATH's path)
+ */
+static const TP_DOMAIN *
+stx_arith_cast_target (const ARITH_TYPE * arith, int i, DB_TYPE src_type)
+{
+  switch (arith->opcode)
+    {
+    case T_CAST:
+    case T_CAST_WRAP:
+    case T_CAST_NOFAIL:
+      return i == 1 ? arith->domain : NULL;
+    case T_NVL:
+    case T_IFNULL:
+    case T_COALESCE:
+    case T_CASE:
+    case T_DECODE:
+    case T_IF:
+    case T_CONCAT_WS:
+    case T_LEAST:
+    case T_GREATEST:
+      return i < 2 ? arith->domain : NULL;
+    case T_NVL2:
+      return i > 0 ? arith->domain : NULL;
+    case T_NULLIF:
+    case T_PREDICATE:
+    case T_SYS_CONNECT_BY_PATH:
+      return i == 0 ? arith->domain : NULL;
+    case T_CONCAT:
+      /* two operands concatenate as strings */
+      return i == 0 && arith->rightptr == NULL ? arith->domain : NULL;
+    case T_OCTET_LENGTH:
+      return i != 1 || TP_IS_STRING_TYPE (src_type) ? NULL
+	: src_type == DB_TYPE_BLOB ? &tp_VarBit_domain : &tp_Char_domain;
+    case T_BIT_LENGTH:
+      return i != 1 || TP_IS_CHAR_TYPE (src_type) || src_type == DB_TYPE_BIT || src_type == DB_TYPE_VARBIT ? NULL
+	: src_type == DB_TYPE_BLOB ? &tp_VarBit_domain : &tp_Char_domain;
+    case T_TO_DATE:
+    case T_TO_TIME:
+    case T_TO_TIMESTAMP:
+    case T_TO_TIMESTAMP_TZ:
+    case T_TO_DATETIME:
+    case T_TO_DATETIME_TZ:
+      return i == 0 && !TP_IS_CHAR_TYPE (src_type) ? &tp_Char_domain : NULL;
+    case T_LEFT:
+    case T_RIGHT:
+      return i == 1 ? &tp_Integer_domain : NULL;
+    default:
+      return NULL;
+    }
+}
+
 static char *
 stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_type)
 {
@@ -6691,15 +6747,60 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
     arith_type->domain != NULL && TP_DOMAIN_TYPE (arith_type->domain) == DB_TYPE_VARIABLE;
 #endif
 
-  /* CBRD-27583: a cast converts its operand from the operand's domain into the node's, as an assignment */
-  arith_type->conv = NULL;
-  if ((arith_type->opcode == T_CAST || arith_type->opcode == T_CAST_WRAP || arith_type->opcode == T_CAST_NOFAIL)
-      && arith_type->rightptr != NULL && stx_domain_is_fixed (arith_type->rightptr->domain)
-      && stx_domain_is_fixed (arith_type->domain))
+  /* CBRD-27583 (D-77): NVL, IFNULL, COALESCE, NVL2, NULLIF, LEAST and GREATEST cast the operand a row picks into
+   * the node's domain, which XASL generation fixed; a node of no fixed domain is the generation's defect, refused here
+   * rather than given the common domain of each row's values */
+  switch (arith_type->opcode)
     {
-      arith_type->conv =
-	tp_value_find_converter (TP_DOMAIN_TYPE (arith_type->rightptr->domain), arith_type->domain,
-				 DOMAIN_CONVERT_ASSIGN);
+    case T_NVL:
+    case T_IFNULL:
+    case T_COALESCE:
+    case T_NVL2:
+    case T_NULLIF:
+    case T_LEAST:
+    case T_GREATEST:
+      if (arith_type->domain == NULL || TP_DOMAIN_TYPE (arith_type->domain) == DB_TYPE_VARIABLE)
+	{
+	  assert (false);
+	  stx_set_xasl_errcode (thread_p, domain_unresolved_error (-1, DB_TYPE_VARIABLE));
+	  return NULL;
+	}
+      break;
+    default:
+      break;
+    }
+
+  /* CBRD-27583 (D-77): the converters of the casts the operator's kernel makes, from its operands' domains, as an
+   * assignment; a value of another type or a domain not fixed looks its converter up at the row (arith_cast_value) */
+  for (int i = 0; i < 3; i++)
+    {
+      const REGU_VARIABLE *operand =
+	i == 0 ? arith_type->leftptr : i == 1 ? arith_type->rightptr : arith_type->thirdptr;
+      const TP_DOMAIN *source = operand != NULL ? operand->domain : NULL;
+      if (arith_type->opcode == T_PREDICATE)
+	{
+	  source = &tp_Integer_domain;	/* its truth value */
+	}
+      else if (arith_type->opcode == T_SYS_CONNECT_BY_PATH)
+	{
+	  source = &tp_String_domain;	/* its path */
+	}
+      const DB_TYPE src_type = source != NULL ? TP_DOMAIN_TYPE (source) : DB_TYPE_NULL;
+      const TP_DOMAIN *target = stx_arith_cast_target (arith_type, i, src_type);
+
+      arith_type->conv[i] = NULL;
+      arith_type->conv_type[i] = DB_TYPE_NULL;
+      if (target == NULL || src_type == DB_TYPE_NULL)
+	{
+	  continue;
+	}
+      /* XASL generation fixed the type of every operand a kernel casts */
+      assert (src_type != DB_TYPE_VARIABLE);
+      if (stx_domain_is_fixed (source) && stx_domain_is_fixed (target))
+	{
+	  arith_type->conv[i] = tp_value_find_converter (src_type, target, DOMAIN_CONVERT_ASSIGN);
+	  arith_type->conv_type[i] = src_type;
+	}
     }
 
   /* CBRD-27583 (d2): an addition, subtraction, multiplication or division computes over its operands' domains, which

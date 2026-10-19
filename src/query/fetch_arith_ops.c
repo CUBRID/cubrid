@@ -104,15 +104,6 @@ fetch_session_read_value (ARITH_TYPE * arithptr, const DB_VALUE * name)
 					     TP_IS_CHAR_TYPE (value_type) ? db_get_string_codeset (value) : 0);
 }
 
-/* the common domain of two values, for a node whose compiled domain leaves its type to the data: an exception to
- * deciding before the rows, the type the operator inferred from its values before CBRD-27583 */
-static TP_DOMAIN *
-fetch_common_value_domain (DB_VALUE * value1, DB_VALUE * value2)
-{
-  TP_DOMAIN tmp1, tmp2;
-  return tp_infer_common_domain (tp_domain_resolve_value (value1, &tmp1), tp_domain_resolve_value (value2, &tmp2));
-}
-
 /* The comparison k an arithmetic node makes of two values, which the unpack decided for every such node */
 static inline DB_VALUE_COMPARE_RESULT
 fetch_arith_compare (THREAD_ENTRY * thread_p, const ARITH_TYPE * arithptr, int k, val_descr * vd,
@@ -154,23 +145,17 @@ fetch_arith_binary (ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right, TP
 }
 
 /*
- * fetch_cast_operand () - the cast of operand i's value into the node's domain (a CAST; the operand a NVL,
- *   IFNULL, COALESCE or NVL2 row picks): a cast with the converter its node found at unpack from its operand's domain,
- *   any other with the cast's per-value lookup
+ * fetch_cast_operand () - the cast of operand i's value into domain (a CAST; the operand a NVL, IFNULL, COALESCE,
+ *   NVL2, LEAST, GREATEST or NULLIF row picks) with the converter its node found at unpack when domain is the node's
+ *   (arith_cast_value)
  *   force(in): tp_value_cast_force's coercion, else tp_value_cast's
  */
 static inline TP_DOMAIN_STATUS
 fetch_cast_operand (const ARITH_TYPE * arithptr, int i, const DB_VALUE * value, DB_VALUE * result,
 		    const TP_DOMAIN * domain, bool force)
 {
-  const REGU_VARIABLE *operand = i == 0 ? arithptr->leftptr : i == 1 ? arithptr->rightptr : arithptr->thirdptr;
-  if (arithptr->conv != NULL && domain == arithptr->domain)
-    {
-      /* CBRD-27583: a cast's converter, found at unpack from its operand's domain */
-      return tp_value_cast_with_converter (value, result, domain, force, TP_DOMAIN_TYPE (operand->domain),
-					   arithptr->conv);
-    }
-  return force ? tp_value_cast_force (value, result, domain, false) : tp_value_cast (value, result, domain, false);
+  return arith_cast_value (arithptr, i, value, result, domain, arithptr->domain,
+			   force ? ARITH_CAST_FORCE : ARITH_CAST_PLAIN);
 }
 
 /*
@@ -1318,7 +1303,8 @@ fetch_op_octet_length (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       DB_VALUE tval;
 
       db_make_null (&tval);
-      dom_status = tp_value_cast (peek_right, &tval, &tp_VarBit_domain, false);
+      dom_status =
+	arith_cast_value (arithptr, 1, peek_right, &tval, &tp_VarBit_domain, &tp_VarBit_domain, ARITH_CAST_PLAIN);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_VarBit_domain);
@@ -1334,7 +1320,8 @@ fetch_op_octet_length (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       DB_VALUE tval;
 
       db_make_null (&tval);
-      dom_status = tp_value_cast (peek_right, &tval, &tp_Char_domain, false);
+      dom_status =
+	arith_cast_value (arithptr, 1, peek_right, &tval, &tp_Char_domain, &tp_Char_domain, ARITH_CAST_PLAIN);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_Char_domain);
@@ -1377,7 +1364,8 @@ fetch_op_bit_length (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       int len = 0;
 
       db_make_null (&tval);
-      dom_status = tp_value_cast (peek_right, &tval, &tp_VarBit_domain, false);
+      dom_status =
+	arith_cast_value (arithptr, 1, peek_right, &tval, &tp_VarBit_domain, &tp_VarBit_domain, ARITH_CAST_PLAIN);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_VarBit_domain);
@@ -1394,7 +1382,8 @@ fetch_op_bit_length (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       DB_VALUE tval;
 
       db_make_null (&tval);
-      dom_status = tp_value_cast (peek_right, &tval, &tp_Char_domain, false);
+      dom_status =
+	arith_cast_value (arithptr, 1, peek_right, &tval, &tp_Char_domain, &tp_Char_domain, ARITH_CAST_PLAIN);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_Char_domain);
@@ -2934,7 +2923,7 @@ fetch_op_to_date (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       DB_VALUE tval;
 
       db_make_null (&tval);
-      dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
+      dom_status = arith_cast_value (arithptr, 0, peek_left, &tval, &tp_Char_domain, &tp_Char_domain, ARITH_CAST_PLAIN);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arith_domain);
@@ -2975,7 +2964,7 @@ fetch_op_to_time (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       DB_VALUE tval;
 
       db_make_null (&tval);
-      dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
+      dom_status = arith_cast_value (arithptr, 0, peek_left, &tval, &tp_Char_domain, &tp_Char_domain, ARITH_CAST_PLAIN);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arith_domain);
@@ -3019,7 +3008,8 @@ fetch_op_to_timestamp (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	  DB_VALUE tval;
 
 	  db_make_null (&tval);
-	  dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
+	  dom_status =
+	    arith_cast_value (arithptr, 0, peek_left, &tval, &tp_Char_domain, &tp_Char_domain, ARITH_CAST_PLAIN);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
 	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arith_domain);
@@ -3064,7 +3054,8 @@ fetch_op_to_datetime (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	  DB_VALUE tval;
 
 	  db_make_null (&tval);
-	  dom_status = tp_value_cast (peek_left, &tval, &tp_Char_domain, false);
+	  dom_status =
+	    arith_cast_value (arithptr, 0, peek_left, &tval, &tp_Char_domain, &tp_Char_domain, ARITH_CAST_PLAIN);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
 	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, arith_domain);
@@ -3289,6 +3280,7 @@ fetch_op_case (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_left = a->peek_left;
   TP_DOMAIN *domain = a->domain;
   TP_DOMAIN_STATUS dom_status;
+  int branch;
 
   /* fetch values */
   switch (eval_pred (thread_p, arithptr->pred, vd, obj_oid))
@@ -3299,6 +3291,7 @@ fetch_op_case (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	{
 	  return ER_FAILED;
 	}
+      branch = 1;
       break;
 
     case V_TRUE:
@@ -3306,13 +3299,15 @@ fetch_op_case (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	{
 	  return ER_FAILED;
 	}
+      branch = 0;
       break;
 
     default:
       return ER_FAILED;
     }
 
-  dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
+  dom_status = arith_cast_value (arithptr, branch, peek_left, arithptr->value, domain, arithptr->domain,
+				 ARITH_CAST_AUTO);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
@@ -3352,7 +3347,7 @@ fetch_op_predicate (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       return ER_FAILED;
     }
 
-  dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
+  dom_status = arith_cast_value (arithptr, 0, peek_left, arithptr->value, domain, arithptr->domain, ARITH_CAST_AUTO);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
@@ -3377,16 +3372,13 @@ fetch_op_nvl (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN_STATUS dom_status;
 
   DB_VALUE *src;
-  TP_DOMAIN *target_domain;
-
-  target_domain = domain;
 
   if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
     {
       return ER_FAILED;
     }
 
-  if (DB_IS_NULL (peek_left) || target_domain == NULL)
+  if (DB_IS_NULL (peek_left))
     {
       if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
 	{
@@ -3394,17 +3386,11 @@ fetch_op_nvl (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	}
     }
 
-  if (target_domain == NULL)
-    {
-      target_domain = fetch_common_value_domain (peek_left, peek_right);
-    }
-
   src = DB_IS_NULL (peek_left) ? peek_right : peek_left;
-  dom_status = fetch_cast_operand (arithptr, DB_IS_NULL (peek_left) ? 1 : 0, src, arithptr->value,
-				   target_domain, false);
+  dom_status = fetch_cast_operand (arithptr, DB_IS_NULL (peek_left) ? 1 : 0, src, arithptr->value, domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
-      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, target_domain);
+      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, domain);
       return ER_FAILED;
     }
 
@@ -3428,31 +3414,10 @@ fetch_op_nvl2 (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN_STATUS dom_status;
 
   DB_VALUE *src;
-  TP_DOMAIN *target_domain;
-
-  target_domain = domain;
 
   if (fetch_peek_dbval (thread_p, arithptr->leftptr, vd, NULL, obj_oid, tplrec, &peek_left) != NO_ERROR)
     {
       return ER_FAILED;
-    }
-
-  if (target_domain == NULL)
-    {
-      if (fetch_peek_dbval (thread_p, arithptr->rightptr, vd, NULL, obj_oid, tplrec, &peek_right) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-
-      if (fetch_peek_dbval (thread_p, arithptr->thirdptr, vd, NULL, obj_oid, tplrec, &peek_third) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-
-      TP_DOMAIN tmp_third;
-      target_domain =
-	tp_infer_common_domain (fetch_common_value_domain (peek_left, peek_right),
-				tp_domain_resolve_value (peek_third, &tmp_third));
     }
 
   if (DB_IS_NULL (peek_left))
@@ -3479,11 +3444,10 @@ fetch_op_nvl2 (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       src = peek_right;
     }
 
-  dom_status = fetch_cast_operand (arithptr, DB_IS_NULL (peek_left) ? 2 : 1, src, arithptr->value,
-				   target_domain, false);
+  dom_status = fetch_cast_operand (arithptr, DB_IS_NULL (peek_left) ? 2 : 1, src, arithptr->value, domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
-      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, target_domain);
+      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, src, domain);
 
       return ER_FAILED;
     }
@@ -3530,7 +3494,8 @@ fetch_op_concat (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     }
   else
     {
-      dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
+      dom_status = arith_cast_value (arithptr, 0, peek_left, arithptr->value, domain, arithptr->domain,
+				     ARITH_CAST_AUTO);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
@@ -3565,7 +3530,8 @@ fetch_op_concat_ws (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	}
       else if (DB_IS_NULL (peek_left))
 	{
-	  dom_status = tp_value_auto_cast (peek_right, arithptr->value, domain);
+	  dom_status = arith_cast_value (arithptr, 1, peek_right, arithptr->value, domain, arithptr->domain,
+					 ARITH_CAST_AUTO);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
 	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, domain);
@@ -3574,7 +3540,8 @@ fetch_op_concat_ws (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	}
       else if (DB_IS_NULL (peek_right))
 	{
-	  dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
+	  dom_status = arith_cast_value (arithptr, 0, peek_left, arithptr->value, domain, arithptr->domain,
+					 ARITH_CAST_AUTO);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
 	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
@@ -3606,7 +3573,8 @@ fetch_op_concat_ws (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	}
       else
 	{
-	  dom_status = tp_value_auto_cast (peek_left, arithptr->value, domain);
+	  dom_status = arith_cast_value (arithptr, 0, peek_left, arithptr->value, domain, arithptr->domain,
+					 ARITH_CAST_AUTO);
 	  if (dom_status != DOMAIN_COMPATIBLE)
 	    {
 	      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
@@ -3755,7 +3723,8 @@ fetch_op_left (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     {
       DB_VALUE tmp_val, tmp_val2;
 
-      dom_status = tp_value_auto_cast (peek_right, &tmp_val2, &tp_Integer_domain);
+      dom_status = arith_cast_value (arithptr, 1, peek_right, &tmp_val2, &tp_Integer_domain, &tp_Integer_domain,
+				     ARITH_CAST_AUTO);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_Integer_domain);
@@ -3810,7 +3779,8 @@ fetch_op_right (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	  return NO_ERROR;
 	}
 
-      dom_status = tp_value_auto_cast (peek_right, &tmp_val2, &tp_Integer_domain);
+      dom_status = arith_cast_value (arithptr, 1, peek_right, &tmp_val2, &tp_Integer_domain, &tp_Integer_domain,
+				     ARITH_CAST_AUTO);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_right, &tp_Integer_domain);
@@ -4092,19 +4062,13 @@ fetch_op_nullif (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN *domain = a->domain;
   TP_DOMAIN_STATUS dom_status;
 
-  TP_DOMAIN *target_domain;
   bool can_compare = false;
   int cmp_res = DB_UNK;
 
-  target_domain = domain;
   if (DB_IS_NULL (peek_left))
     {
       PRIM_SET_NULL (arithptr->value);
       return NO_ERROR;
-    }
-  else if (target_domain == NULL)
-    {
-      target_domain = fetch_common_value_domain (peek_left, peek_right);
     }
 
   /* the node's comparison (fetch_arith_compare) */
@@ -4119,10 +4083,10 @@ fetch_op_nullif (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     }
   else
     {
-      dom_status = tp_value_cast (peek_left, arithptr->value, target_domain, false);
+      dom_status = fetch_cast_operand (arithptr, 0, peek_left, arithptr->value, domain, false);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
-	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, target_domain);
+	  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_left, domain);
 	  return ER_FAILED;
 	}
     }
@@ -4160,7 +4124,6 @@ fetch_op_least (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN_STATUS dom_status;
 
   int error;
-  TP_DOMAIN *target_domain;
 
   error = fetch_least_or_greatest (thread_p, arithptr, vd, peek_left, peek_right, true);
   if (error != NO_ERROR)
@@ -4168,16 +4131,12 @@ fetch_op_least (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       return ER_FAILED;
     }
 
-  target_domain = domain;
-  if (target_domain == NULL)
-    {
-      target_domain = fetch_common_value_domain (peek_left, peek_right);
-    }
-
-  dom_status = tp_value_cast (arithptr->value, arithptr->value, target_domain, false);
+  /* the operand picked: the left's converter for a value of the left's type */
+  dom_status = fetch_cast_operand (arithptr, DB_VALUE_DOMAIN_TYPE (arithptr->value) == arithptr->conv_type[0] ? 0 : 1,
+				   arithptr->value, arithptr->value, domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
-      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, target_domain);
+      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, domain);
       return ER_FAILED;
     }
   return NO_ERROR;
@@ -4197,7 +4156,6 @@ fetch_op_greatest (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN_STATUS dom_status;
 
   int error;
-  TP_DOMAIN *target_domain;
 
   error = fetch_least_or_greatest (thread_p, arithptr, vd, peek_left, peek_right, false);
   if (error != NO_ERROR)
@@ -4205,16 +4163,12 @@ fetch_op_greatest (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       return ER_FAILED;
     }
 
-  target_domain = domain;
-  if (target_domain == NULL)
-    {
-      target_domain = fetch_common_value_domain (peek_left, peek_right);
-    }
-
-  dom_status = tp_value_cast (arithptr->value, arithptr->value, target_domain, false);
+  /* the operand picked: the left's converter for a value of the left's type */
+  dom_status = fetch_cast_operand (arithptr, DB_VALUE_DOMAIN_TYPE (arithptr->value) == arithptr->conv_type[0] ? 0 : 1,
+				   arithptr->value, arithptr->value, domain, false);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
-      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, target_domain);
+      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, domain);
       return ER_FAILED;
     }
   return NO_ERROR;
@@ -4237,7 +4191,8 @@ fetch_op_sys_connect_by_path (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
       return ER_FAILED;
     }
 
-  dom_status = tp_value_auto_cast (arithptr->value, arithptr->value, domain);
+  dom_status = arith_cast_value (arithptr, 0, arithptr->value, arithptr->value, domain, arithptr->domain,
+				 ARITH_CAST_AUTO);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, arithptr->value, domain);

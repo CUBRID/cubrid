@@ -289,7 +289,8 @@ regu_init (arith_list_node &arith)
   arith.thirdptr = NULL;
   arith.misc_operand = LEADING;
   arith.rand_seed = NULL;
-  arith.conv = NULL;
+  memset (arith.conv, 0, sizeof (arith.conv));
+  memset (arith.conv_type, 0, sizeof (arith.conv_type));
   arith.fails = NO_ERROR;
   arith.decided = {};
 
