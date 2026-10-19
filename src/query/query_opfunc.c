@@ -65,6 +65,11 @@
 
 #include <chrono>
 #include <regex>
+#if !defined (NDEBUG)
+#include <mutex>
+#include <string>
+#include <unordered_set>
+#endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -124,7 +129,8 @@ static int qdata_add_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p, D
 				    TP_DOMAIN * domain_p);
 static int qdata_add_datetime_value (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p,
 				     TP_DOMAIN * domain_p);
-static int qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p);
+static int qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned,
+					  TP_VALUE_CONVERTER conv);
 static int qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p);
 
 static int qdata_subtract_short (short s1, short s2, DB_VALUE * result_p);
@@ -2185,23 +2191,73 @@ qdata_add_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p, DB_VALUE * r
   return NO_ERROR;
 }
 
-static int
-qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p)
+#if !defined (NDEBUG)
+/* CBRD-27583 census (removed at S3-14): a census line once per server process, not once per row */
+static void
+qdata_census_once (const char *line)
 {
-  int error = NO_ERROR;
-  TP_DOMAIN_STATUS dom_status;
-
-  if (domain_p != NULL)
+  static std::mutex mutex;
+  static std::unordered_set < std::string > seen;
+  std::lock_guard < std::mutex > lock (mutex);
+  if (seen.insert (line).second)
     {
-      dom_status = tp_value_coerce (result_p, result_p, domain_p);
-      if (dom_status != DOMAIN_COMPATIBLE)
-	{
-	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
-	  assert_release (error != NO_ERROR);
-	}
+      er_log_debug (ARG_FILE_LINE, "%s\n", line);
     }
+}
+#endif
 
-  return error;
+/*
+ * qdata_coerce_result_to_domain () - CBRD-27583 (S3-40b): an operator's value into the domain its node or its plan names
+ *   (tp_value_coerce's coercion), by the converter the plan found before the rows for a value of the planned type
+ *   return: NO_ERROR or ER_code
+ *   domain_p(in): the domain; NULL none
+ *   planned(in): the type the operator's value has - the arith kind's, a concatenation's domain's
+ *   conv(in): tp_value_find_converter (planned, domain_p, IMPLICIT); NULL converts nothing
+ */
+static int
+qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned, TP_VALUE_CONVERTER conv)
+{
+  if (domain_p == NULL)
+    {
+      return NO_ERROR;
+    }
+  if (DB_IS_NULL (result_p))
+    {
+      /* tp_value_coerce's: a NULL comes out bare */
+      db_make_null (result_p);
+      return NO_ERROR;
+    }
+  TP_DOMAIN_STATUS dom_status;
+  if (DB_VALUE_DOMAIN_TYPE (result_p) == planned && !domain_is_variable (domain_p))
+    {
+      /* the plan's converter, which the cast takes in place of its lookup (the check: removed at S3-14) */
+      assert (conv == tp_value_find_converter (planned, domain_p, DOMAIN_CONVERT_IMPLICIT));
+      if (conv == NULL)
+	{
+	  return NO_ERROR;
+	}
+      dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
+    }
+  else
+    {
+      /* exception: mysql 모드·계열 차이 - a value of another type than planned (compat_mode=mysql's integer operators,
+       * a string or bit string of the planned type's sibling CHAR / VARCHAR, BIT / VARBIT), or a domain that leaves the
+       * value's type or collation to it, coerces as develop did */
+#if !defined (NDEBUG)
+      char line[80];
+      snprintf (line, sizeof (line), "CBRD-27583 result coerce by value %d/%d/%d", (int) planned,
+		(int) DB_VALUE_DOMAIN_TYPE (result_p), (int) TP_DOMAIN_TYPE (domain_p));
+      qdata_census_once (line);
+#endif
+      dom_status = tp_value_coerce (result_p, result_p, domain_p);
+    }
+  if (dom_status != DOMAIN_COMPATIBLE)
+    {
+      const int error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
+      assert_release (error != NO_ERROR);
+      return error;
+    }
+  return NO_ERROR;
 }
 
 static int
@@ -2304,6 +2360,8 @@ qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CON
  *   conv(in), operand_domain(in), arith(in): conv[0..1], operand_domain[0..1] and arith of the operand coercion - a
  *	       node's RESOLVED_DOMAIN, a SUM's or AVG's DOMAIN_OPERAND_COERCION (domain_resolve_operand_coercion); conv
  *	       NULL converts nothing
+ *   domain_p(in), result_conv(in): the result's domain and the plan's converter of the operator's value into it
+ *	       (qdata_arith_dbval)
  *
  * Over two values that are not NULL, each operand the plan converts gets a value of its own, in this order - the
  * second operand first but for a subtraction - and a conversion that fails has tp_value_auto_cast's outcome: NULL
@@ -2313,12 +2371,13 @@ qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CON
 int
 qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
 			     const TP_DOMAIN * const *operand_domain, const DOMAIN_ARITH * arith, DB_VALUE * dbval1_p,
-			     DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+			     DB_VALUE * dbval2_p, DB_VALUE * result_p, TP_DOMAIN * domain_p,
+			     TP_VALUE_CONVERTER result_conv)
 {
   assert (opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV);
   if (conv == NULL || dbval1_p == NULL || dbval2_p == NULL || DB_IS_NULL (dbval1_p) || DB_IS_NULL (dbval2_p))
     {
-      return qdata_arith_dbval (opcode, arith, dbval1_p, dbval2_p, result_p, domain_p);
+      return qdata_arith_dbval (opcode, arith, dbval1_p, dbval2_p, result_p, domain_p, result_conv);
     }
 #if !defined (NDEBUG)
   qdata_assert_operand_coercion_resolved (opcode, conv, operand_domain, dbval1_p, dbval2_p);
@@ -2351,7 +2410,7 @@ qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * co
     }
   if (error == NO_ERROR)
     {
-      error = qdata_arith_dbval (opcode, arith, operand[0], operand[1], result_p, domain_p);
+      error = qdata_arith_dbval (opcode, arith, operand[0], operand[1], result_p, domain_p, result_conv);
     }
   for (int i = 0; i < 2; i++)
     {
@@ -4926,10 +4985,12 @@ qdata_assert_arith_value (const DOMAIN_ARITH * arith, const DB_VALUE * result_p)
  *   arith(in): the plan - a node's ARITH_TYPE.decided.arith (the unpack refuses a node it cannot decide), a SUM's or
  *	       AVG's DOMAIN_OPERAND_COERCION, domain_arith_double for an accumulation in DOUBLE
  *   domain_p(in): the domain the result is coerced to; NULL none
+ *   result_conv(in): the converter of a value of arith's type into domain_p the plan found (S3-40b,
+ *		     qdata_coerce_result_to_domain); NULL converts nothing
  */
 int
 qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p,
-		   DB_VALUE * result_p, TP_DOMAIN * domain_p)
+		   DB_VALUE * result_p, TP_DOMAIN * domain_p, TP_VALUE_CONVERTER result_conv)
 {
   int error = NO_ERROR;
 
@@ -4949,7 +5010,7 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * 
 	  && TP_IS_CHAR_BIT_TYPE (DB_VALUE_DOMAIN_TYPE (dbval1_p))
 	  && TP_IS_CHAR_BIT_TYPE (DB_VALUE_DOMAIN_TYPE (dbval2_p)))
 	{
-	  return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p);
+	  return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p, arith->type, result_conv);
 	}
       return NO_ERROR;
     }
@@ -4968,7 +5029,7 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * 
   if (arith->kind == DOMAIN_ARITH_CONCAT)
     {
       /* plus as concatenation */
-      return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p);
+      return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p, arith->type, result_conv);
     }
 
   if (opcode == T_DIV && qdata_is_divided_zero (dbval2_p))
@@ -5034,7 +5095,11 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * 
   qdata_assert_arith_value (arith, result_p);
 #endif
 
-  return qdata_coerce_result_to_domain (result_p, domain_p);
+  /* a collection operator makes its value in the domain it is given (qdata_collection_operator): arith's type is the
+   * one a missing domain defaults to */
+  const DB_TYPE planned = arith->kind == DOMAIN_ARITH_COLLECTION && domain_p != NULL ? TP_DOMAIN_TYPE (domain_p)
+    : arith->type;
+  return qdata_coerce_result_to_domain (result_p, domain_p, planned, result_conv);
 }
 
 /*
@@ -5181,7 +5246,8 @@ qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB_VAL
  *   domain(in) :
  */
 int
-qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p)
+qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p,
+		    DB_TYPE planned, TP_VALUE_CONVERTER result_conv)
 {
   DB_TYPE type1, type2;
   int error = NO_ERROR;
@@ -5209,6 +5275,16 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
     {
       cast_dom1 = tp_domain_resolve_value (dbval2_p, NULL);
     }
+#if !defined (NDEBUG)
+  if (cast_dom1 != NULL || cast_dom2 != NULL)
+    {
+      /* CBRD-27583 census (S3-40b, removed at S3-14): XASL generation casts a concatenation's date or number operand
+       * to a string, so a row should not reach the cast of a value by its type here (0 at the gate: an assert, S3-32) */
+      char line[64];
+      snprintf (line, sizeof (line), "CBRD-27583 strcat cast by value %d/%d", (int) type1, (int) type2);
+      qdata_census_once (line);
+    }
+#endif
 
   db_make_null (&cast_value1);
   db_make_null (&cast_value2);
@@ -5368,7 +5444,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       pr_clear_value (&cast_value2);
     }
 
-  return qdata_coerce_result_to_domain (result_p, domain_p);
+  return qdata_coerce_result_to_domain (result_p, domain_p, planned, result_conv);
 }
 
 /*

@@ -547,7 +547,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  const AGGREGATE_ACCUMULATOR_DOMAIN *acc_dom = &func_p->accumulator_domain;
 	  const DOMAIN_OPERAND_COERCION *coercion = &acc_dom->operand_coercion;
 	  if (qdata_coerce_arith_operands (T_ADD, coercion->conv, coercion->operand_domain, &coercion->arith,
-					   func_p->value, &dbval, func_p->value, acc_dom->value_dom) != NO_ERROR)
+					   func_p->value, &dbval, func_p->value, acc_dom->value_dom, coercion->result) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto exit;
@@ -669,7 +669,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	    }
 
 	  /* calculate X^2: two DOUBLEs by construction (domain_arith_double) */
-	  if (qdata_arith_dbval (T_MUL, &domain_arith_double, &dbval, &dbval, &sqr_val, tmp_domain_p) != NO_ERROR)
+	  if (qdata_arith_dbval (T_MUL, &domain_arith_double, &dbval, &dbval, &sqr_val, tmp_domain_p, NULL) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto exit;
@@ -690,13 +690,13 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	}
       else
 	{
-	  if (qdata_arith_dbval (T_MUL, &domain_arith_double, &dbval, &dbval, &sqr_val, tmp_domain_p) != NO_ERROR)
+	  if (qdata_arith_dbval (T_MUL, &domain_arith_double, &dbval, &dbval, &sqr_val, tmp_domain_p, NULL) != NO_ERROR)
 	    {
 	      error = ER_FAILED;
 	      goto exit;
 	    }
 
-	  if (qdata_arith_dbval (T_ADD, &domain_arith_double, func_p->value, &dbval, func_p->value, tmp_domain_p)
+	  if (qdata_arith_dbval (T_ADD, &domain_arith_double, func_p->value, &dbval, func_p->value, tmp_domain_p, NULL)
 	      != NO_ERROR)
 	    {
 	      pr_clear_value (&sqr_val);
@@ -704,7 +704,7 @@ qdata_evaluate_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	      goto exit;
 	    }
 
-	  if (qdata_arith_dbval (T_ADD, &domain_arith_double, func_p->value2, &sqr_val, func_p->value2, tmp_domain_p)
+	  if (qdata_arith_dbval (T_ADD, &domain_arith_double, func_p->value2, &sqr_val, func_p->value2, tmp_domain_p, NULL)
 	      != NO_ERROR)
 	    {
 	      pr_clear_value (&sqr_val);
@@ -1024,7 +1024,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 			  || func_p->function == PT_STDDEV_SAMP || func_p->function == PT_VARIANCE
 			  || func_p->function == PT_VAR_POP || func_p->function == PT_VAR_SAMP)
 			{
-			  if (qdata_arith_dbval (T_MUL, &domain_arith_double, &dbval, &dbval, &sqr_val, tmp_domain_ptr)
+			  if (qdata_arith_dbval (T_MUL, &domain_arith_double, &dbval, &dbval, &sqr_val, tmp_domain_ptr, NULL)
 			      != NO_ERROR)
 			    {
 			      (void) pr_clear_value (&dbval);
@@ -1047,7 +1047,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 			  || func_p->function == PT_STDDEV_SAMP || func_p->function == PT_VARIANCE
 			  || func_p->function == PT_VAR_POP || func_p->function == PT_VAR_SAMP)
 			{
-			  if (qdata_arith_dbval (T_MUL, &domain_arith_double, &dbval, &dbval, &sqr_val, tmp_domain_ptr)
+			  if (qdata_arith_dbval (T_MUL, &domain_arith_double, &dbval, &dbval, &sqr_val, tmp_domain_ptr, NULL)
 			      != NO_ERROR)
 			    {
 			      (void) pr_clear_value (&dbval);
@@ -1058,7 +1058,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 			    }
 
 			  if (qdata_arith_dbval (T_ADD, &domain_arith_double, func_p->value2, &sqr_val, func_p->value2,
-						 tmp_domain_ptr) != NO_ERROR)
+						 tmp_domain_ptr, NULL) != NO_ERROR)
 			    {
 			      (void) pr_clear_value (&dbval);
 			      pr_clear_value (&sqr_val);
@@ -1077,7 +1077,8 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 		      if (qdata_coerce_arith_operands (T_ADD, coercion != NULL ? coercion->conv : NULL,
 						       coercion != NULL ? coercion->operand_domain : NULL,
 						       coercion != NULL ? &coercion->arith : &domain_arith_double,
-						       func_p->value, &dbval, func_p->value, domain_ptr) != NO_ERROR)
+						       func_p->value, &dbval, func_p->value, domain_ptr,
+						       coercion != NULL ? coercion->result : NULL) != NO_ERROR)
 			{
 			  (void) pr_clear_value (&dbval);
 			  qfile_close_scan (thread_p, &scan_id);
@@ -1129,7 +1130,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
       if (qdata_coerce_arith_operands (T_DIV, divide != NULL ? divide->conv : NULL,
 				       divide != NULL ? divide->operand_domain : NULL,
 				       divide != NULL ? &divide->arith : &domain_arith_double, func_p->value, &dbval,
-				       &xavgval, double_domain_ptr) != NO_ERROR)
+				       &xavgval, double_domain_ptr, divide != NULL ? divide->result : NULL) != NO_ERROR)
 	{
 	  goto error;
 	}
@@ -1166,21 +1167,21 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 	  db_make_double (&dbval, func_p->curr_cnt);
 	}
 
-      if (qdata_arith_dbval (T_DIV, &domain_arith_double, func_p->value2, &dbval, &x2avgval, double_domain_ptr)
+      if (qdata_arith_dbval (T_DIV, &domain_arith_double, func_p->value2, &dbval, &x2avgval, double_domain_ptr, NULL)
 	  != NO_ERROR)
 	{
 	  goto error;
 	}
 
       /* compute {SUM(X) / (n)} OR {SUM(X) / (n-1)} for xxx_SAMP agg */
-      if (qdata_arith_dbval (T_DIV, &domain_arith_double, func_p->value, &dbval, &xavg_1val, double_domain_ptr)
+      if (qdata_arith_dbval (T_DIV, &domain_arith_double, func_p->value, &dbval, &xavg_1val, double_domain_ptr, NULL)
 	  != NO_ERROR)
 	{
 	  goto error;
 	}
 
       /* compute AVG(X) * {SUM(X) / (n)} , AVG(X) * {SUM(X) / (n-1)} for xxx_SAMP agg */
-      if (qdata_arith_dbval (T_MUL, &domain_arith_double, &xavgval, &xavg_1val, &xavg2val, double_domain_ptr)
+      if (qdata_arith_dbval (T_MUL, &domain_arith_double, &xavgval, &xavg_1val, &xavg2val, double_domain_ptr, NULL)
 	  != NO_ERROR)
 	{
 	  goto error;
@@ -1188,7 +1189,7 @@ qdata_finalize_analytic_func (cubthread::entry *thread_p, ANALYTIC_TYPE *func_p,
 
       /* compute VAR(X) = SUM(X^2)/(n) - AVG(X) * {SUM(X) / (n)} OR VAR(X) = SUM(X^2)/(n-1) - AVG(X) * {SUM(X) / (n-1)}
        * for xxx_SAMP aggregates */
-      if (qdata_arith_dbval (T_SUB, &domain_arith_double, &x2avgval, &xavg2val, &varval, double_domain_ptr)
+      if (qdata_arith_dbval (T_SUB, &domain_arith_double, &x2avgval, &xavg2val, &varval, double_domain_ptr, NULL)
 	  != NO_ERROR)
 	{
 	  goto error;

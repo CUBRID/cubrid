@@ -141,7 +141,8 @@ static inline int
 fetch_arith_binary (ARITH_TYPE * arithptr, DB_VALUE * left, DB_VALUE * right, TP_DOMAIN * domain)
 {
   /* its optdebug check still holds the decision to the rule over the values (qdata_assert_arith_planned) */
-  return qdata_arith_dbval (arithptr->opcode, arith_decided_arith (arithptr), left, right, arithptr->value, domain);
+  return qdata_arith_dbval (arithptr->opcode, arith_decided_arith (arithptr), left, right, arithptr->value, domain,
+			    arithptr->result_conv);
 }
 
 /*
@@ -383,7 +384,8 @@ fetch_op_add (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   if (check_empty_string && domain != NULL && QSTR_IS_ANY_CHAR_OR_BIT (TP_DOMAIN_TYPE (domain)))
     {
       /* at here, T_ADD is really T_STRCAT */
-      if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
+      if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain, arith_result_type (arithptr),
+			      arithptr->result_conv) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -3487,7 +3489,8 @@ fetch_op_concat (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 
   if (arithptr->rightptr != NULL)
     {
-      if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
+      if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain, arith_result_type (arithptr),
+			      arithptr->result_conv) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -3553,11 +3556,13 @@ fetch_op_concat_ws (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	  DB_VALUE tmp_val;
 
 	  db_make_null (&tmp_val);
-	  if (qdata_strcat_dbval (peek_left, peek_third, &tmp_val, domain) != NO_ERROR)
+	  if (qdata_strcat_dbval (peek_left, peek_third, &tmp_val, domain, arith_result_type (arithptr),
+				  arithptr->result_conv) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
-	  if (qdata_strcat_dbval (&tmp_val, peek_right, arithptr->value, domain) != NO_ERROR)
+	  if (qdata_strcat_dbval (&tmp_val, peek_right, arithptr->value, domain, arith_result_type (arithptr),
+				  arithptr->result_conv) != NO_ERROR)
 	    {
 	      (void) pr_clear_value (&tmp_val);
 	      return ER_FAILED;
@@ -4211,7 +4216,8 @@ fetch_op_strcat (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *domain = a->domain;
 
-  if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain) != NO_ERROR)
+  if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain, arith_result_type (arithptr),
+			  arithptr->result_conv) != NO_ERROR)
     {
       return ER_FAILED;
     }

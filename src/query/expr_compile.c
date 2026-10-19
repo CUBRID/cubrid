@@ -272,21 +272,37 @@ struct expr_build_ctx
  * result slot was made NULL when the step cleared it).
  ******************************************************************************/
 
-/* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c) */
+/* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c): the node's converter (CBRD-27583 S3-40b) for a
+ * value of the planned type, which the step compiler copied; a step without one coerces as develop did */
 int
-expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p)
+expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned, TP_VALUE_CONVERTER conv)
 {
   TP_DOMAIN_STATUS dom_status;
 
-  if (domain_p != NULL)
+  if (domain_p == NULL)
     {
+      return NO_ERROR;
+    }
+  if (DB_IS_NULL (result_p))
+    {
+      /* tp_value_coerce's: a NULL comes out bare */
+      db_make_null (result_p);
+      return NO_ERROR;
+    }
+  if (conv != NULL && DB_VALUE_DOMAIN_TYPE (result_p) == planned)
+    {
+      dom_status = tp_value_coerce_with_converter (result_p, result_p, domain_p, planned, conv);
+    }
+  else
+    {
+      /* exception: a step whose domain is not its node's (expr_compile_arith census "step result domain") */
       dom_status = tp_value_coerce (result_p, result_p, domain_p);
-      if (unlikely (dom_status != DOMAIN_COMPATIBLE))
-	{
-	  int error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
-	  assert_release (error != NO_ERROR);
-	  return error;
-	}
+    }
+  if (unlikely (dom_status != DOMAIN_COMPATIBLE))
+    {
+      int error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, result_p, domain_p);
+      assert_release (error != NO_ERROR);
+      return error;
     }
   return NO_ERROR;
 }
@@ -357,7 +373,9 @@ expr_arith_row_interp (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 /* A result domain the kernel's own type already satisfies is dropped at compile time
  * (step->domain == NULL), so only the parameterized NUMERIC case reaches the coercion. */
 #define EXPR_ARITH_EPILOGUE() \
-  return (step->domain == NULL) ? NO_ERROR : expr_coerce_result_to_domain (step->out, step->domain)
+  return (step->domain == NULL) ? NO_ERROR \
+    : expr_coerce_result_to_domain (step->out, step->domain, arith_result_type (step->regu->value.arithptr), \
+				    step->result_conv)
 
 /* ---- INTEGER ---- */
 
@@ -4948,6 +4966,22 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	   * skip the call; a wider domain and the parameterized NUMERIC (precision/scale) keep it */
 	  step->domain = result_domain;
 	  step->regu = regu;
+	  /* CBRD-27583 (S3-40b): the node's converter of its value into its domain, for the domain the step coerces into */
+	  step->result_conv = NULL;
+	  if (result_domain != NULL)
+	    {
+	      if (TP_DOMAIN_TYPE (result_domain) == TP_DOMAIN_TYPE (arith->domain))
+		{
+		  step->result_conv = arith->result_conv;
+		}
+	      else
+		{
+#if !defined (NDEBUG)
+		  er_log_debug (ARG_FILE_LINE, "CBRD-27583 step result domain %d/%d\n",
+				(int) TP_DOMAIN_TYPE (result_domain), (int) TP_DOMAIN_TYPE (arith->domain));
+#endif
+		}
+	    }
 	  step->out = (DB_VALUE *) 1;	/* owned slot */
 	  bctx->n_slots++;
 	  if (!lazy)

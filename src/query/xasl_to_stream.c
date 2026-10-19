@@ -7511,8 +7511,9 @@ xts_sizeof_hash_join_keys (const HASHJOIN_PROC_NODE * node)
  * CBRD-27583 (D-83): the plans of the server's arithmetic outside a node, decided where the compiler serializes them
  * (domain_plan_*) from the domains the server reads (an OBJECT as OID), for an unpack that only looks their converters
  * up. A conversion is an int (0 none; else 1 | mode << 4 | source type << 8) and its target domain; a coercion plan an
- * int (arith kind | type << 8) and per side an int (1: an operand domain, 2: a conversion into it, | mode << 4 |
- * source type << 8) and that domain; an accumulator plan an int (1: value_dom, 2: value2_dom, 4: accumulator_takes),
+ * int (arith kind | type << 8), per side an int (1: an operand domain, 2: a conversion into it, | mode << 4 |
+ * source type << 8) and that domain, and the conversion of its value into its holder's domain (S3-40b); an accumulator
+ * plan an int (1: value_dom, 2: value2_dom, 4: accumulator_takes),
  * those domains, the operand, distinct and divide coercion plans and the first and final conversions.
  */
 static char *
@@ -7548,7 +7549,7 @@ xts_pack_coercion_plan (char *ptr, const DOMAIN_COERCION_PLAN * plan)
 	  ptr = or_pack_domain (ptr, (TP_DOMAIN *) plan->operand_domain[i], 0, 0);
 	}
     }
-  return ptr;
+  return xts_pack_conversion (ptr, &plan->result);
 }
 
 static int
@@ -7559,7 +7560,7 @@ xts_sizeof_coercion_plan (const DOMAIN_COERCION_PLAN * plan)
     {
       size += plan->operand_domain[i] != NULL ? or_packed_domain_size ((TP_DOMAIN *) plan->operand_domain[i], 0) : 0;
     }
-  return size;
+  return size + xts_sizeof_conversion (&plan->result);
 }
 
 static char *
@@ -7716,6 +7717,8 @@ xts_plan_orderbynum_bound (const REGU_VARIABLE * bound, DOMAIN_COERCION_PLAN * p
     {NULL, TP_DOMAIN_TYPE (domain_key_value_domain (bound->domain)), -1, false}, {NULL, DB_TYPE_INTEGER, -1, false}
   };
   domain_plan_operand_coercion (T_SUB, operands, plan);
+  /* the difference into the bound's domain (qexec_get_orderbynum_upper_bound) */
+  domain_plan_coercion_result (plan, domain_key_value_domain (bound->domain));
 }
 
 static char *

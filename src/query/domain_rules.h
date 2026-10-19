@@ -125,6 +125,9 @@ struct DOMAIN_OPERAND_COERCION
   TP_VALUE_CONVERTER conv[2];
   const TP_DOMAIN *operand_domain[2];
   DOMAIN_ARITH arith;		/* what the operator makes of the coerced operands */
+  TP_VALUE_CONVERTER result;	/* CBRD-27583 (S3-40b): the converter of the operator's value (arith.type) into the
+				 * domain its holder coerces it to (an accumulator's value_dom, DOUBLE for a division,
+				 * an ORDERBY_NUM bound's domain), found before the rows; NULL: none */
 };
 
 /* The operands' operand coercion of T_ADD, T_SUB, T_MUL or T_DIV alone: operand_domain[0..1] and conv[0..1] of the
@@ -151,7 +154,11 @@ struct DOMAIN_COERCION_PLAN
   DOMAIN_CONVERSION conv[2];
   const TP_DOMAIN *operand_domain[2];
   DOMAIN_ARITH arith;
+  DOMAIN_CONVERSION result;
 };
+
+/* A coercion plan's result conversion: the operator's value into target (none for a target not fixed) */
+void domain_plan_coercion_result (DOMAIN_COERCION_PLAN * plan, const TP_DOMAIN * target);
 
 /* The decisions of an accumulator (cubxasl::aggregate_accumulator_domain, whose fields say what each one is) */
 struct DOMAIN_ACCUMULATOR_PLAN
@@ -211,6 +218,8 @@ int domain_arith_rule (int opcode, DB_TYPE left, DB_TYPE right, DB_TYPE * left_t
  * finalizations that compute in DOUBLE by construction (STDDEV / VARIANCE, the AVG of a sum, a COUNT merge) read it
  * in place of a resolution; the operator's debug cross-check holds it to the rule at every use. */
 extern const DOMAIN_ARITH domain_arith_double;
+/* The same for two BIGINTs: a BIGINT (a COUNT merge across a class hierarchy, CBRD-27583 S3-40b) */
+extern const DOMAIN_ARITH domain_arith_bigint;
 
 /* Whether an operand of this type at this argument is a value-dependent argument: its val_type is its value's class
  * (domain_classify_value). */

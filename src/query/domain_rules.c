@@ -666,9 +666,11 @@ domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DO
       result->conv[i] = resolved.conv[i];
       result->operand_domain[i] = resolved.operand_domain[i];
     }
+  result->result = NULL;
 }
 
 const DOMAIN_ARITH domain_arith_double = { DOMAIN_ARITH_NUMBER, DB_TYPE_DOUBLE };
+const DOMAIN_ARITH domain_arith_bigint = { DOMAIN_ARITH_NUMBER, DB_TYPE_BIGINT };
 
 /* CBRD-27583 (D-83): the conversion of a value of type source into target in a mode */
 static DOMAIN_CONVERSION
@@ -676,6 +678,17 @@ domain_conversion (DB_TYPE source, const TP_DOMAIN * target, DOMAIN_CONVERT_MODE
 {
   const DOMAIN_CONVERSION conversion = { source, target, mode };
   return conversion;
+}
+
+void
+domain_plan_coercion_result (DOMAIN_COERCION_PLAN * plan, const TP_DOMAIN * target)
+{
+  /* tp_value_coerce's (qdata_coerce_result_to_domain); a collection operator makes its value in the target's type */
+  if (target != NULL && !domain_is_variable (target) && plan->arith.type != DB_TYPE_NULL)
+    {
+      plan->result = domain_conversion (plan->arith.kind == DOMAIN_ARITH_COLLECTION ? TP_DOMAIN_TYPE (target)
+					: plan->arith.type, target, DOMAIN_CONVERT_IMPLICIT);
+    }
 }
 
 void
@@ -779,6 +792,7 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
 	  {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false}, {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false}
 	};
 	domain_plan_operand_coercion (T_DIV, divide, &plan->divide_coercion);
+	domain_plan_coercion_result (&plan->divide_coercion, &tp_Double_domain);
       }
       break;
 
@@ -836,6 +850,7 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
 	  {plan->value_dom, TP_DOMAIN_TYPE (plan->value_dom), -1, false}, operands[1]
 	};
 	domain_plan_operand_coercion (T_ADD, add, &plan->operand_coercion);
+	domain_plan_coercion_result (&plan->operand_coercion, plan->value_dom);
 	/* the first value of another type than the sum's domain is converted into it (tp_value_cast_force), and a type
 	 * the typed accumulator takes sums there */
 	if (TP_DOMAIN_TYPE (argument) != TP_DOMAIN_TYPE (plan->value_dom))
@@ -851,12 +866,14 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
 	  }
 	const DOMAIN_OPERAND pair[2] = { operands[1], operands[1] };
 	domain_plan_operand_coercion (T_ADD, pair, &plan->distinct_coercion);
+	domain_plan_coercion_result (&plan->distinct_coercion, plan->value_dom);
 	if (function == PT_AVG)
 	  {
 	    /* a number divided by DOUBLE converts nothing: a single distinct value held in the argument's type divides
 	     * as the sum in value_dom does */
 	    const DOMAIN_OPERAND divide[2] = { add[0], {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false} };
 	    domain_plan_operand_coercion (T_DIV, divide, &plan->divide_coercion);
+	    domain_plan_coercion_result (&plan->divide_coercion, &tp_Double_domain);
 	  }
 	else if (domain != plan->value_dom && !domain_is_variable (domain))
 	  {
@@ -949,6 +966,7 @@ domain_plan_analytic_accumulator (int function, int option, const TP_DOMAIN * do
     {sum, TP_DOMAIN_TYPE (sum), -1, false}, {argument, argument_type, -1, false}
   };
   domain_plan_operand_coercion (T_ADD, operands, &plan->operand_coercion);
+  domain_plan_coercion_result (&plan->operand_coercion, plan->value_dom);
   if (plan->value_dom != NULL && argument_type != function_type)
     {
       /* the first value into the sum's domain: the operand coercion's conversion where the rule converts the
@@ -967,6 +985,7 @@ domain_plan_analytic_accumulator (int function, int option, const TP_DOMAIN * do
 	{NULL, sum_type, -1, false}, {&tp_Double_domain, DB_TYPE_DOUBLE, -1, false}
       };
       domain_plan_operand_coercion (T_DIV, divide, &plan->divide_coercion);
+      domain_plan_coercion_result (&plan->divide_coercion, &tp_Double_domain);
     }
 }
 
@@ -1005,6 +1024,7 @@ domain_coercion_of_plan (const DOMAIN_COERCION_PLAN * plan, DOMAIN_OPERAND_COERC
       coercion->operand_domain[i] = plan->operand_domain[i];
     }
   coercion->arith = plan->arith;
+  coercion->result = domain_find_conversion (&plan->result);
 }
 
 static bool
@@ -1018,7 +1038,8 @@ domain_coercion_plan_equal (const DOMAIN_COERCION_PLAN * a, const DOMAIN_COERCIO
 {
   return domain_conversion_equal (&a->conv[0], &b->conv[0]) && domain_conversion_equal (&a->conv[1], &b->conv[1])
     && a->operand_domain[0] == b->operand_domain[0] && a->operand_domain[1] == b->operand_domain[1]
-    && a->arith.kind == b->arith.kind && a->arith.type == b->arith.type;
+    && a->arith.kind == b->arith.kind && a->arith.type == b->arith.type
+    && domain_conversion_equal (&a->result, &b->result);
 }
 
 bool

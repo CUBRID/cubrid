@@ -27752,7 +27752,8 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	  assert (operand_coercion != NULL);
 	  error =
 	    qdata_coerce_arith_operands (T_SUB, operand_coercion->conv, operand_coercion->operand_domain,
-					 &operand_coercion->arith, val, &one_val, ubound, rhs->domain);
+					 &operand_coercion->arith, val, &one_val, ubound, rhs->domain,
+					 operand_coercion->result);
 	}
       else
 	{

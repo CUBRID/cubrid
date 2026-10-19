@@ -2022,7 +2022,7 @@ stx_unpack_coercion_plan (char *ptr, DOMAIN_COERCION_PLAN * plan)
 	  plan->conv[i].target = plan->operand_domain[i];
 	}
     }
-  return ptr;
+  return stx_unpack_conversion (ptr, &plan->result);
 }
 
 /* an accumulator's plan (xts_pack_accumulator_plan) into its domains, the converters looked up */
@@ -2057,6 +2057,8 @@ stx_unpack_accumulator_domain (char *ptr, cubxasl::aggregate_accumulator_domain 
 }
 
 #if !defined (NDEBUG)
+/* the operand coercions are the same but for result, which the plans before S3-40b lacked (qdata_coerce_result_to_domain
+ * checks it at each value) */
 static bool
 stx_operand_coercion_equal (const DOMAIN_OPERAND_COERCION * a, const DOMAIN_OPERAND_COERCION * b)
 {
@@ -7421,6 +7423,15 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	}
       arith_type->decided.compares = compares;
     }
+
+  /* CBRD-27583 (S3-40b): the converter of the operator's value into the node's domain (qdata_coerce_result_to_domain),
+   * looked up for the type the value has (arith_result_type) */
+  {
+    const DB_TYPE planned = arith_result_type (arith_type);
+    arith_type->result_conv = planned == DB_TYPE_NULL || arith_type->domain == NULL
+      || domain_is_variable (arith_type->domain) ? NULL
+      : tp_value_find_converter (planned, arith_type->domain, DOMAIN_CONVERT_IMPLICIT);
+  }
 
   return ptr;
 

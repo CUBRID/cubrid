@@ -109,7 +109,12 @@ struct expr_step
   int aux;			/* kernel-specific small parameter (host variable index, side flags) */
 
   void *pred;			/* EXPR_PRED *, owned by the program (CASE branch test, T_PREDICATE) */
-  void *fn;			/* the generic step's operator body (FETCH_ARITH_OP, fetch_arith_ops.h) */
+  union
+  {
+    void *fn;			/* the generic step's operator body (FETCH_ARITH_OP, fetch_arith_ops.h) */
+    TP_VALUE_CONVERTER result_conv;	/* an arithmetic kernel's: the node's converter of its value into domain
+					 * (CBRD-27583 S3-40b, ARITH_TYPE.result_conv); NULL: coerced as develop did */
+  };
   int level;			/* the interpreter's frame depth of this step's node (1: a root node): the recursion-depth
 				 * check of a deep row (expr_run_range_checked) and the frames a body's interpreted calls see */
   int skip;			/* a generic step's operands the row did not fetch (bit 2 right, 4 third), set by the lazy
@@ -259,7 +264,8 @@ extern void expr_prog_dump (FILE * fp, const EXPR_PROG * prog, int indent);
 
 /* mirror of qdata_coerce_result_to_domain () (static in query_opfunc.c); exported for
  * consumers that replicate an interpreted tail coercion (e.g. aggregate accumulation) */
-extern int expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p);
+extern int expr_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned,
+					 TP_VALUE_CONVERTER conv);
 
 /* scan-filter predicates: eval_pred () re-discovers the tree shape, the term kinds and
  * the operand types on every row.  These compile a data filter's PRED_EXPR once per

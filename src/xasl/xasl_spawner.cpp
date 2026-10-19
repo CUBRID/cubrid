@@ -416,6 +416,7 @@ namespace cubxasl
     dest->fails = src->fails;
     /* the unpack's decisions are immutable and live in the leader's unpack arena, after every worker */
     dest->decided = src->decided;
+    dest->result_conv = src->result_conv;
 
     /* ref: stx_build_arith_type */
     switch (src->opcode)

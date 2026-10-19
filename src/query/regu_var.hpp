@@ -168,8 +168,9 @@ struct arith_list_node
   /* CBRD-27583 (spec 5): the error the operator raises where a row computes it over operands that are not NULL -
    * XASL generation found it rejects their types (the node's domain is the NULL type) - or NO_ERROR */
   int fails = NO_ERROR;
-  /* CBRD-27583: the decision the operator reads, found at unpack; not serialized. The opcode picks the member
-   * (arith_decided_arith, arith_decided_compares):
+  /* CBRD-27583: the decision the operator reads, which the compiler decided and the stream carries (D-81, D-83; a
+   * filter or function index stream's: the unpack's, D-82). The opcode picks the member (arith_decided_arith,
+   * arith_decided_compares):
    * - T_ADD, T_SUB, T_MUL, T_DIV: arith, what the operator makes of its operands' values, over the domains XASL
    *   generation gave them (d2, domain_resolve_operand_coercion);
    * - FIELD, NULLIF, LEAST, GREATEST: compares, the comparisons the node makes - [0] the left operand (FIELD: the third
@@ -179,6 +180,10 @@ struct arith_list_node
     DOMAIN_ARITH arith;
     const DOMAIN_COMPARE *compares;
   } decided = {};
+  /* CBRD-27583 (S3-40b): the converter of the operator's value into domain (qdata_coerce_result_to_domain) - an
+   * addition's, subtraction's, multiplication's or division's of decided.arith's type, a concatenation's of the
+   * domain's type - found at unpack; NULL converts nothing. Not serialized. */
+  TP_VALUE_CONVERTER result_conv = NULL;
 
   /* NOTE: The following member is only used on server internally. */
   struct drand48_data *rand_seed;	/* seed to be used to generate pseudo-random sequence */
@@ -318,6 +323,7 @@ inline TP_DOMAIN *regu_produced_domain (const regu_variable_node *regu);
 inline bool arith_decides_arith (const arith_list_node *arith);
 inline const DOMAIN_ARITH *arith_decided_arith (const arith_list_node *arith);
 inline const DOMAIN_COMPARE *arith_decided_compares (const arith_list_node *arith);
+inline DB_TYPE arith_result_type (const arith_list_node *arith);
 
 //////////////////////////////////////////////////////////////////////////
 // inline/template implementation
@@ -388,5 +394,25 @@ arith_decided_compares (const arith_list_node *arith)
   assert (arith->opcode == T_FIELD || arith->opcode == T_NULLIF || arith->opcode == T_LEAST
 	  || arith->opcode == T_GREATEST);
   return arith->decided.compares;
+}
+
+/* CBRD-27583 (S3-40b): the type of the value an operator coerces into its domain, which its result converter is found
+ * for (result_conv): an addition's, subtraction's, multiplication's or division's decided.arith type (a collection
+ * operator's: its domain's), a concatenation's (T_CONCAT, T_CONCAT_WS, T_STRCAT) its domain's; DB_TYPE_NULL for an
+ * operator that coerces no such value */
+DB_TYPE
+arith_result_type (const arith_list_node *arith)
+{
+  if (arith_decides_arith (arith))
+    {
+      /* a collection operator's value is of its domain's type, the arith type the default without one */
+      return arith->decided.arith.kind == DOMAIN_ARITH_COLLECTION && arith->domain != NULL
+	     ? TP_DOMAIN_TYPE (arith->domain) : arith->decided.arith.type;
+    }
+  if (arith->opcode == T_CONCAT || arith->opcode == T_CONCAT_WS || arith->opcode == T_STRCAT)
+    {
+      return TP_DOMAIN_TYPE (arith->domain);
+    }
+  return DB_TYPE_NULL;
 }
 #endif /* _REGU_VAR_HPP_ */

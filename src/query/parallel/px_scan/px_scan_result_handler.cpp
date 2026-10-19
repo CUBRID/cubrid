@@ -1693,7 +1693,7 @@ namespace parallel_scan
 	    const DOMAIN_OPERAND_COERCION *operand_coercion = &acc_dom->operand_coercion;
 	    if (qdata_coerce_arith_operands (T_ADD, operand_coercion->conv, operand_coercion->operand_domain,
 					     &operand_coercion->arith, acc->value, db_value_p, acc->value,
-					     acc_dom->value_dom) != NO_ERROR)
+					     acc_dom->value_dom, operand_coercion->result) != NO_ERROR)
 	      {
 		return false;
 	      }
@@ -1723,7 +1723,7 @@ namespace parallel_scan
 	  }
 
 	/* two DOUBLEs by construction (domain_arith_double) */
-	if (qdata_arith_dbval (T_MUL, &domain_arith_double, &coerced, &coerced, &squared, acc_dom->value2_dom)
+	if (qdata_arith_dbval (T_MUL, &domain_arith_double, &coerced, &coerced, &squared, acc_dom->value2_dom, NULL)
 	    != NO_ERROR)
 	  {
 	    pr_clear_value (&coerced);
@@ -1739,7 +1739,7 @@ namespace parallel_scan
 	  }
 	else
 	  {
-	    if (qdata_arith_dbval (T_ADD, &domain_arith_double, acc->value, &coerced, acc->value, acc_dom->value_dom)
+	    if (qdata_arith_dbval (T_ADD, &domain_arith_double, acc->value, &coerced, acc->value, acc_dom->value_dom, NULL)
 		!= NO_ERROR)
 	      {
 		pr_clear_value (&coerced);
@@ -1747,7 +1747,7 @@ namespace parallel_scan
 		return false;
 	      }
 	    if (qdata_arith_dbval (T_ADD, &domain_arith_double, acc->value2, &squared, acc->value2,
-				   acc_dom->value2_dom) != NO_ERROR)
+				   acc_dom->value2_dom, NULL) != NO_ERROR)
 	      {
 		pr_clear_value (&coerced);
 		pr_clear_value (&squared);
