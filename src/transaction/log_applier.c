@@ -9865,9 +9865,14 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	   * Fixed pages are left intact until their owners release them. */
 	  la_decache_page_buffers (la_Info.final_lsa.pageid, LOGPAGEID_MAX);
 
+	  /* Workers fetch log pages under the cache mutex, and a fetch re-reads the copied log header in place and
+	   * looks up archives through a shared archive header buffer. Refresh the header and look up the archives to
+	   * remove under the same mutex, or a worker can see another archive's range and miss its page. */
+	  pthread_mutex_lock (&la_Info.cache_pb->mutex);
 	  error = check_reinit_copylog ();
 	  if (error != NO_ERROR)
 	    {
+	      pthread_mutex_unlock (&la_Info.cache_pb->mutex);
 	      la_applier_need_shutdown = true;
 	      break;
 	    }
@@ -9905,6 +9910,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	    }
 
 	  memcpy (&final_log_hdr, la_Info.act_log.log_hdr, sizeof (LOG_HEADER));
+	  pthread_mutex_unlock (&la_Info.cache_pb->mutex);
 
 	  if (prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS) >= 0)
 	    {
