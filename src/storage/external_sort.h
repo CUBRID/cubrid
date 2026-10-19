@@ -97,6 +97,15 @@ struct SORT_REC
   } s;
 };
 
+/*
+ * A P_sort_key may carry its original tuple behind the key body instead of pointing back to it, so the tuple is
+ * read from the record after the sort with no page fix of the input list. Such a record has
+ * s.original.pageid == NULL_PAGEID (no list page has it; membuf pages use pageid >= 0 with NULL_VOLID) and
+ * s.original.offset == the tuple start, relative to the start of the SORT_REC.
+ */
+#define SORT_REC_HAS_TUPLE(rec)         ((rec)->s.original.pageid == NULL_PAGEID)
+#define SORT_REC_TUPLE(rec)             ((char *) (rec) + (rec)->s.original.offset)
+
 struct SUBKEY_INFO
 {
   /* The actual column number in the list file tuple. */
