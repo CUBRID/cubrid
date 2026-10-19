@@ -205,7 +205,7 @@ exit_server (const THREAD_ENTRY & thread_ref)
 
 #if defined (SERVER_MODE)
 //
-// qmgr_attach_first_page_copy () - hand the folded caller a client-owned copy
+// qmgr_prepare_client_list_id () - hand the folded caller a client-owned copy
 //   of the result's first page, the way sqmgr_execute_query ships it to CS
 //   clients: the caller's cursor must be able to read that page after the
 //   query is ended (the autocommit generated-keys read-back), and the temp
@@ -216,10 +216,14 @@ exit_server (const THREAD_ENTRY & thread_ref)
 //   qfile_get_list_file_page while the query is still alive.
 //
 static void
-qmgr_attach_first_page_copy (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
+qmgr_prepare_client_list_id (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id)
 {
   PAGE_PTR page_ptr;
   char *page_copy;
+
+  /* The client cursor frees this clone without qfile_clear_list_id, just as
+   * it frees a wire-unpacked list. Retire only the server-side accounting. */
+  qfile_update_qlist_count (thread_p, list_id, -1);
 
   if (list_id == NULL || VPID_ISNULL (&list_id->first_vpid) || list_id->tfile_vfid == NULL
       || list_id->last_pgptr != NULL)
@@ -7923,7 +7927,7 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
 #endif
 
 #if defined (SERVER_MODE)
-  qmgr_attach_first_page_copy (thread_p, list_id);
+  qmgr_prepare_client_list_id (thread_p, list_id);
 #endif
 
 cleanup:
@@ -8102,7 +8106,7 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
 				     &flag, query_timeout);
 
 #if defined (SERVER_MODE)
-  qmgr_attach_first_page_copy (thread_p, regu_result);
+  qmgr_prepare_client_list_id (thread_p, regu_result);
 #endif
 
 cleanup:
