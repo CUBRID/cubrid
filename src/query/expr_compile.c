@@ -67,11 +67,15 @@
  * emits at most three steps (two operand coercions and the operator) and one guard (a lazy right-hand side), so 32
  * levels take at most 96 steps and 32 guards, plus the leaves and literals the chain reads.  The nested program
  * counts its depth from zero, so the next 32 levels nest again inside it.
- * Only a node inside a lazy right-hand region (bctx->cur_guard != 0) nests here: that is the chain that overflows
- * the guard table on the way down and recompiles its subtree at every level.  A chain deep on the left ("((a + 1)
- * + 2) + 3 ...") opens no guard; its steps fill the step table on the way up, where the overflow fallback nests the
- * subtree once per 64 levels, so nesting it at 32 would only double the per-row nested-program dispatch (measured
- * +17% on a 128-level left chain) for nothing. */
+ * Only a node compiled under a guard (bctx->cur_guard != 0) nests here.  A guard is open for an arithmetic
+ * node's right-hand operand -- expr_rhs_begin () runs before the operand compiles, lazy or not -- and for both
+ * operands of a scan-filter leaf (EXPR_GUARD_SCAN_SIDE).  The right-deep chain is the one that overflows the guard
+ * table on the way down and recompiles its subtree at every level.  A chain deep on the left ("((a + 1) + 2) + 3
+ * ...") in an output list opens no guard; its steps fill the step table on the way up, where the overflow fallback
+ * nests the subtree once per 64 levels, so nesting it at 32 would only double the per-row nested-program dispatch
+ * (measured +17% on a 128-level left chain) for nothing.  The same left chain inside a WHERE filter is compiled
+ * under the scan-side guard and does nest at 32; there the overflow fallback was nesting it already, and the fixed
+ * depth needs one nested program fewer. */
 #define EXPR_NEST_DEPTH 32
 
 /* how often the value in a cell can change (EXPR_BUILD_CTX.cell_fixed) */
@@ -3769,7 +3773,8 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
       || (bctx->depth == EXPR_NEST_DEPTH && bctx->cur_guard != 0))
     {
       /* this subtree goes behind one step as a program of its own: an operand of an overflowing nested root on its
-       * retry (force_nest_depth), or any node at EXPR_NEST_DEPTH */
+       * retry (force_nest_depth), or a node at EXPR_NEST_DEPTH compiled under a guard (a right-hand operand or a
+       * scan-filter operand -- see EXPR_NEST_DEPTH) */
       cell = expr_compile_nested (bctx, regu, compiled_something);
     }
   else
