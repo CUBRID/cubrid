@@ -584,6 +584,26 @@ qo_optimize_helper (QO_ENV * env)
 	}
     }
 
+  /* a semi/anti join after a right outer join that fills a node its ON reads with NULL comes after that join */
+  for (n = 1; n < env->nnodes; n++)
+    {
+      node = QO_ENV_NODE (env, n);
+      if (!QO_NODE_IS_SEMI_ANTI_JOIN (node))
+	{
+	  continue;
+	}
+
+      for (k = 1; k < n; k++)
+	{
+	  p_node = QO_ENV_NODE (env, k);
+	  if (QO_NODE_PT_JOIN_TYPE (p_node) == PT_JOIN_RIGHT_OUTER
+	      && bitset_intersects (&(QO_NODE_SEMI_ANTI_DEP_SET (node)), &(QO_NODE_OUTER_DEP_SET (p_node))))
+	    {
+	      QO_ADD_SEMI_ANTI_DEP_SET (node, p_node);
+	    }
+	}
+    }
+
   /* classify terms for outer join */
   qo_classify_outerjoin_terms (env);
 

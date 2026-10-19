@@ -48,6 +48,7 @@ static bool qo_groupby_has_key (PT_NODE * group_by, UINTPTR spec_id, SM_CLASS_CO
 static void qo_remove_useless_groupby_columns (PARSER_CONTEXT * parser, PT_NODE * query);
 static int qo_reduce_order_by (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *qo_rewrite_oid_equality (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * pred, int *seqno);
+static bool qo_is_semi_join_on_after (PT_NODE * spec, int location);
 static PT_NODE *qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *qo_get_next_oid_pred (PT_NODE * pred);
 
@@ -3654,6 +3655,29 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 }
 
 /*
+ * qo_is_semi_join_on_after () - is the location that of the ON of a SEMI JOIN after the spec? That ON drops
+ *      the outer rows it rejects as a WHERE term does, while an ANTI JOIN keeps them
+ *   return: bool
+ *   spec(in): the outer joined spec
+ *   location(in): location of a WHERE term
+ */
+static bool
+qo_is_semi_join_on_after (PT_NODE * spec, int location)
+{
+  PT_NODE *ns;
+
+  for (ns = spec->next; ns; ns = ns->next)
+    {
+      if (ns->info.spec.location == location)
+	{
+	  return ns->info.spec.join_type == PT_JOIN_SEMI;
+	}
+    }
+
+  return false;
+}
+
+/*
  * qo_rewrite_outerjoin () - Rewrite outer join to inner join
  *   return: PT_NODE *
  *   parser(in):
@@ -3701,8 +3725,10 @@ qo_rewrite_outerjoin (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *c
 	      /* search where list */
 	      for (expr = node->info.query.q.select.where; expr; expr = expr->next)
 		{
-		  if (expr->node_type == PT_EXPR && expr->info.expr.location == 0 && expr->info.expr.op != PT_IS_NULL
-		      && expr->or_next == NULL && expr->info.expr.op != PT_AND && expr->info.expr.op != PT_OR)
+		  if (expr->node_type == PT_EXPR
+		      && (expr->info.expr.location == 0 || qo_is_semi_join_on_after (spec, expr->info.expr.location))
+		      && expr->info.expr.op != PT_IS_NULL && expr->or_next == NULL && expr->info.expr.op != PT_AND
+		      && expr->info.expr.op != PT_OR)
 		    {
 		      info_spec.appears = false;
 		      info.nullable = false;
