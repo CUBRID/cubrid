@@ -526,41 +526,6 @@ qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valp
   valptr_list_p->eval_prog_row_ready = false;
 }
 
-/*
- * qdata_cast_sp_return () - CBRD-27583 (4.6e) exception - until 4.9: the data carries its type; the PL server returns
- *   a value of another type than the function's declared one (a VARCHAR for a CHAR %TYPE), which a column of a stored
- *   function converts into its domain in place, as develop's column cast did; deleted when the PL server sends the
- *   declared type
- *   return: NO_ERROR, or the conversion's error
- */
-static int
-qdata_cast_sp_return (THREAD_ENTRY * thread_p, const REGU_VARIABLE * regu_var_p, DB_VALUE * value)
-{
-  /* CBRD-27583 exception until S3-22 (B): a stored procedure's return value */
-  TP_DECISION_EXCEPTION ();
-  const TP_DOMAIN *domain = regu_var_p->domain;
-  if (DB_IS_NULL (value) || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
-      || (DB_VALUE_TYPE (value) == TP_DOMAIN_TYPE (domain)
-	  && (DB_VALUE_TYPE (value) != DB_TYPE_NUMERIC
-	      || (value->domain.numeric_info.precision == domain->precision
-		  && value->domain.numeric_info.scale == domain->scale))))
-    {
-      return NO_ERROR;
-    }
-
-  HL_HEAPID save_heapid = 0;
-  if (REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_CLEAR_AT_CLONE_DECACHE))
-    {
-      save_heapid = db_change_private_heap (thread_p, 0);
-    }
-  const TP_DOMAIN_STATUS status = tp_value_auto_cast (value, value, domain);
-  if (save_heapid != 0)
-    {
-      (void) db_change_private_heap (thread_p, save_heapid);
-    }
-  return status == DOMAIN_COMPATIBLE ? NO_ERROR : tp_domain_status_er_set (status, ARG_FILE_LINE, value, domain);
-}
-
 #if !defined (NDEBUG)
 /*
  * qdata_check_output_column () - CBRD-27583 (4.6e): an output column's value comes in the column's domain - its
@@ -616,11 +581,6 @@ qdata_get_dbval_from_prog (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p, 
   /* flag-dependent fetch semantics were excluded at compile time */
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_UPD_INS_LIST));
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_ANALYTIC_WINDOW));
-
-  if (regu_var_p->type == TYPE_SP && qdata_cast_sp_return (thread_p, regu_var_p, peek_value_p) != NO_ERROR)
-    {
-      return NULL;
-    }
 
 #if !defined (NDEBUG)
   qdata_check_output_column ("prog", regu_var_p, regu_var_p->domain, peek_value_p);
@@ -5629,8 +5589,7 @@ qdata_get_val_list_type_list (THREAD_ENTRY * thread_p, VAL_LIST * val_list, qfil
  *       return a pointer to it.
  *
  * Note: Regulator variable should point to only constant values.
- *   CBRD-27583 (4.6e): the value comes in the column's domain - its producer's; no column cast converts it but a stored
- *   function's (qdata_cast_sp_return)
+ *   CBRD-27583 (4.6e): the value comes in the column's domain - its producer's; no column cast converts it
  */
 static DB_VALUE *
 qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p,
@@ -5647,11 +5606,6 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
     }
 
   if (fetch_peek_dbval (thread_p, regu_var_p, val_desc_p, NULL, NULL, NULL, &peek_value_p) != NO_ERROR)
-    {
-      return NULL;
-    }
-
-  if (regu_var_p->type == TYPE_SP && qdata_cast_sp_return (thread_p, regu_var_p, peek_value_p) != NO_ERROR)
     {
       return NULL;
     }

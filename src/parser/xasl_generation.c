@@ -242,6 +242,7 @@ static REGU_VARIABLE *pt_make_function (PARSER_CONTEXT * parser, int function_co
 					const DB_TYPE result_type, const PT_NODE * node);
 
 static REGU_VARIABLE *pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node);
+static bool pt_convert_sp_string (PARSER_CONTEXT * parser, PT_NODE * node, REGU_VARIABLE * regu);
 static REGU_VARIABLE *pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function);
 static REGU_VARIABLE *pt_make_regu_subquery (PARSER_CONTEXT * parser, XASL_NODE * xasl, const UNBOX unbox,
 					     const PT_NODE * node);
@@ -4065,6 +4066,21 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      if (!regu_constant_list || !scan_regu_constant_list)
 		{
 		  return NULL;
+		}
+
+	      /* CBRD-27583 (S3-22): a stored function's string argument comes in the declared type, which develop's list
+	       * column cast gave a grouped aggregate's */
+	      REGU_VARIABLE_LIST r = regu_constant_list, s = scan_regu_constant_list;
+	      for (PT_NODE * sp_arg = tree->info.function.arg_list; sp_arg != NULL && r != NULL && s != NULL;
+		   sp_arg = sp_arg->next, r = r->next, s = s->next)
+		{
+		  if (!pt_convert_sp_string (parser, sp_arg, &r->value)
+		      || !pt_convert_sp_string (parser, sp_arg, &s->value))
+		    {
+		      PT_ERROR (parser, tree, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+							      MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		      return NULL;
+		    }
 		}
 	    }
 	  else
@@ -8631,7 +8647,42 @@ pt_stored_procedure_to_regu (PARSER_CONTEXT * parser, PT_NODE * node)
       regu->domain->scale = DB_DEFAULT_NUMERIC_SCALE;
     }
 
+  /* CBRD-27583 (S3-22, D-84): the PL server's reply unpacks a string of either declared type as a VARCHAR of its
+   * codeset's binary collation (dbvalue_java::unpack); an operand reads that, as develop's did, and the readers that
+   * develop's column cast gave the declared type convert into it (pt_convert_sp_string) */
+  if (regu->domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain)))
+    {
+      regu->domain = tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL,
+					LANG_GET_BINARY_COLLATION (TP_DOMAIN_CODESET (regu->domain)));
+    }
+
   return regu;
+}
+
+/*
+ * pt_convert_sp_string () - CBRD-27583 (S3-22, D-84): a stored function's string converted into the function's
+ *   declared type, for a reader develop's column cast gave that type: an output column, an aggregate's argument
+ *   return: false out of memory
+ *   node(in): the stored function's call
+ *   regu(in/out): the reader's regu of the call
+ */
+static bool
+pt_convert_sp_string (PARSER_CONTEXT * parser, PT_NODE * node, REGU_VARIABLE * regu)
+{
+  if (regu->type != TYPE_SP || regu->original_domain != NULL || !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain)))
+    {
+      return true;
+    }
+  TP_DOMAIN *declared = pt_xasl_node_to_domain (parser, node);
+  if (declared == NULL)
+    {
+      return false;
+    }
+  if (declared != regu->domain)
+    {
+      pt_set_operand_conversion (regu, declared, DOMAIN_CONVERT_ASSIGN);
+    }
+  return regu->domain == declared;
 }
 
 /*
@@ -16844,6 +16895,13 @@ pt_to_outlist (PARSER_CONTEXT * parser, PT_NODE * node_list, SELUPD_LIST ** selu
 	      /* append to outlist */
 	      (*regulist)->value = *regu;
 
+	      /* CBRD-27583 (S3-22): a stored function's string column comes in the declared type, as develop's column
+	       * cast gave it */
+	      if (!pt_convert_sp_string (parser, col, &(*regulist)->value))
+		{
+		  goto exit_on_error;
+		}
+
 	      /* CBRD-27583 (4.6e): a constant column's value in its domain, converted here as the column's cast did at
 	       * the row - a folded ADDTIME of a zoned string is a DATETIMETZ its VARCHAR node takes */
 	      if (regu->type == TYPE_DBVAL && regu->domain != NULL && !DB_IS_NULL (&regu->value.dbval)
@@ -19163,6 +19221,21 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  /* regulist for hash key during initial scan */
 	  buildlist->g_hk_scan_regu_list =
 	    pt_to_regu_variable_list (parser, group_out_list, UNBOX_AS_VALUE, buildlist->g_val_list, attr_offsets);
+
+	  /* CBRD-27583 (S3-22): a stored function's string key hashes in its list column's type, converted into its
+	   * slot as the column's value is (pt_convert_sp_string) */
+	  REGU_VARIABLE_LIST key = buildlist->g_hk_scan_regu_list, column = xasl->outptr_list->valptrp;
+	  for (; key != NULL && column != NULL; key = key->next, column = column->next)
+	    {
+	      if (key->value.type == TYPE_SP && column->value.type == TYPE_SP && column->value.original_domain != NULL)
+		{
+		  assert (key->value.original_domain == NULL && key->value.vfetch_to == column->value.vfetch_to
+			  && key->value.domain == column->value.original_domain);
+		  key->value.original_domain = key->value.domain;
+		  key->value.domain = column->value.domain;
+		  key->value.conv_mode = column->value.conv_mode;
+		}
+	    }
 
 	  /* regulist for hash key during sort operation */
 	  buildlist->g_hk_sort_regu_list =
