@@ -1010,7 +1010,8 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
   return domain_info->decided ? NO_ERROR : hjoin_decide_domains (domain_info, domain_cnt);
 }
 
-/* A join column value coerced as tp_value_coerce does, where no converter does it (hjoin_decide_domains). */
+/* A join column value coerced as tp_value_coerce does, where no converter does it (domain_decide_hash_join_key).
+ * CBRD-27583 exception, the data carries the type (2-7): a JSON value converts by its scalar's own type. */
 static TP_DOMAIN_STATUS
 hjoin_coerce_key (const DB_VALUE * value, DB_VALUE * result, const TP_DOMAIN * domain, date_conversion_error *)
 {
@@ -2801,15 +2802,13 @@ hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context
   return status;
 }
 
-/* Two join column values once converted, compared as hjoin_decide_domains decided (tp_value_compare without
- * coercion); an OBJECT's OIDs compare as the values have them. */
+/* Two join column values once converted, compared as the compiler decided (tp_value_compare without coercion). No
+ * key compares by its values: the compiler reads an OBJECT column as OID and decides no NULL or variable column
+ * (xts_pack_hash_join_keys), and the server's lists hold OIDs and no NULL column (hjoin_decide_domains). */
 static inline DB_VALUE_COMPARE_RESULT
 hjoin_compare_key (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2)
 {
-  if (compare->method == DOMAIN_COMPARE_OBJECT || compare->method == DOMAIN_COMPARE_VALUES)
-    {
-      return tp_value_compare (value1, value2, 0, 0);
-    }
+  assert (compare->method != DOMAIN_COMPARE_OBJECT && compare->method != DOMAIN_COMPARE_VALUES);
   return domain_compare_values (compare, value1, value2, 0, NULL);
 }
 

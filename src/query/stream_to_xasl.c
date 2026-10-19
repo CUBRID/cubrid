@@ -3975,6 +3975,18 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 	  converters[domain_cnt + i] =
 	    hjoin_key_converter ((kinds >> 8) & 0xFF, TP_DOMAIN_TYPE (all_domains[domain_cnt + i]), common);
 	  ptr = stx_unpack_decided_compare (ptr, &compares[i]);
+	  for (int side = 0; side < 2; side++)
+	    {
+	      if (((kinds >> (side * 8)) & 0xFF) == DOMAIN_HASH_KEY_COERCED)
+		{
+		  /* CBRD-27583 census (removed at S3-14): a key coerced at the row - a JSON side (2-7 exception), or a
+		   * common domain whose collation is the values' (LEAVE, ENFORCE; an assert at commit 7 if never seen) */
+		  const TP_DOMAIN *domain = all_domains[side * domain_cnt + i];
+		  er_log_debug (ARG_FILE_LINE, "CBRD-27583 hash key %s side=%d type=%d flag=%d\n",
+				TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON ? "json" : "coerced", side,
+				(int) TP_DOMAIN_TYPE (domain), (int) TP_DOMAIN_COLLATION_FLAG (common));
+		}
+	    }
 	}
       node_p->domain_info.decided = decided != 0;
 #if !defined (NDEBUG)
