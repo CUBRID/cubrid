@@ -553,7 +553,7 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_li
 	default:
 	  /* impossible case */
 	  assert_release_error (false);
-	  return er_errid ();
+	  goto exit_on_error;
 	}
     }
   else
