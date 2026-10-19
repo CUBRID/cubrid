@@ -7252,6 +7252,7 @@ qo_find_best_nljoin_inner_plan_on_info (QO_PLAN * outer, QO_INFO * info, JOIN_TY
   temp->analytic_eval_list = NULL;
   temp->plan_type = QO_PLANTYPE_JOIN;
   temp->plan_un.join.join_type = join_type;	/* set nl-join type */
+  temp->plan_un.join.join_method = QO_JOINMETHOD_NL_JOIN;
   temp->plan_un.join.outer = outer;	/* set outer */
 
   temp->multi_range_opt_use = PLAN_MULTI_RANGE_OPT_NO;
