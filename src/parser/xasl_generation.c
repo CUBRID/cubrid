@@ -4821,8 +4821,10 @@ pt_to_aggregate (PARSER_CONTEXT * parser, PT_NODE * select_node, OUTPTR_LIST * o
 
   if (pt_is_single_tuple (parser, select_node))
     {
-      if (where == NULL && pt_length_of_list (from) == 1 && pt_length_of_list (from->info.spec.flat_entity_list) == 1
-	  && from->info.spec.only_all != PT_ALL)
+      /* a hierarchical query aggregates the CONNECT BY expansion, not the class rows: the statistics/index based
+       * COUNT(*)/MIN/MAX evaluation would return the class count instead (CBRD-27461) */
+      if (where == NULL && select_node->info.query.q.select.connect_by == NULL && pt_length_of_list (from) == 1
+	  && pt_length_of_list (from->info.spec.flat_entity_list) == 1 && from->info.spec.only_all != PT_ALL)
 	{
 	  if (from->info.spec.entity_name)
 	    {
@@ -17223,9 +17225,15 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	      xasl->proc.buildlist.a_eval_list = pt_generate_simple_analytic_eval_type (parser, &analytic_info_clone);
 	    }
 
-	  if (xasl->proc.buildlist.a_eval_list == NULL && analytic_info.head_list != NULL)
+	  if (xasl->proc.buildlist.a_eval_list == NULL)
 	    {
-	      /* input functions were provided but optimizer messed up */
+	      /* either the optimizer lost the input functions, or the select was flagged as having
+	       * analytics but none reached here (a rewrite moved them out); both are dereferenced
+	       * below, so fail the compile instead of crashing the client (CBRD-27503) */
+	      if (!pt_has_error (parser))
+		{
+		  PT_INTERNAL_ERROR (parser, "analytic evaluation list is empty");
+		}
 	      goto analytic_exit_on_error;
 	    }
 	  else
@@ -30071,6 +30079,10 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
     {
     case QO_PLANTYPE_SCAN:
       if (!qo_is_iscan (qo_plan) || (env = (qo_plan->info)->env) == NULL)
+	{
+	  return 0;
+	}
+      if (QO_ENV_PT_TREE (env)->info.query.q.select.connect_by != NULL)
 	{
 	  return 0;
 	}

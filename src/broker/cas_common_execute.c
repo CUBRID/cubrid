@@ -322,6 +322,9 @@ ux_end_tran_cleanup (int tran_type)
 	  hm_srv_handle_qresult_end_all (true);
 	}
     }
+
+  /* whatever survived the cleanup now belongs to the previous transaction */
+  hm_srv_handle_end_transaction_all ();
 }
 
 void
@@ -382,7 +385,17 @@ check_auto_commit_after_getting_result (T_SRV_HANDLE * srv_handle)
 {
   // To close an updatable cursor is dangerous since it lose locks and updating cursor is allowed before closing it.
 
-  if (srv_handle->auto_commit_mode == TRUE && srv_handle->cur_result_index == srv_handle->num_q_result
+  /*
+   * auto_commit_mode is frozen when the statement is executed. Without protection, a fetch 
+   * arriving after the transaction has ended would commit whatever transaction is currently open 
+   * — which the client may be managing manually.
+   *
+   * The is_from_current_transaction flag indicates that the deferred commit belongs to this statement. 
+   * Clearing this flag via hm_srv_handle_end_transaction_all () upon transaction completion prevents 
+   * the commit from being re-triggered on subsequent fetches using the same handle.
+   */
+  if (srv_handle->auto_commit_mode == TRUE && srv_handle->is_from_current_transaction
+      && srv_handle->cur_result_index == srv_handle->num_q_result
       && srv_handle->forward_only_cursor == TRUE && srv_handle->is_updatable == FALSE)
     {
       return true;
