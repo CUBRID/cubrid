@@ -5308,14 +5308,18 @@ qo_plan_parallel_variable_cost_raw (QO_PLAN * plan, double divisor)
  *	 between two plans of similar serial cost the one the executor can parallelize wins
  *	 (CBRD-27474: TPC-H Q21 lost its parallel hash chain to a nested loop driven by a
  *	 one-page table). With parallelism 2 the realized speed-up is at most 2, hence the cap
- *	 parallelism / 2; parallelism 0/1 turns the discount off.
+ *	 parallelism / 2; parallelism 0/1 turns the discount off. Plans over a single node
+ *	 (the access paths of one table) are compared undiscounted: a heap scan would otherwise
+ *	 outbid covering, group-by-skipping and order-by-skipping index scans on every table
+ *	 past the scan threshold. The discount is about how a join is executed.
  */
 static double
 qo_plan_cmp_variable_cost (QO_PLAN * plan)
 {
   double divisor = MIN (QO_PARALLEL_COST_DIVISOR, (double) prm_get_integer_value (PRM_ID_PARALLELISM) / 2.0);
 
-  if (divisor <= 1.0 || plan->variable_cpu_cost >= QO_INFINITY || plan->variable_io_cost >= QO_INFINITY)
+  if (divisor <= 1.0 || plan->variable_cpu_cost >= QO_INFINITY || plan->variable_io_cost >= QO_INFINITY
+      || plan->info == NULL || bitset_cardinality (&(plan->info->nodes)) <= 1)
     {
       return plan->variable_cpu_cost + plan->variable_io_cost;
     }
