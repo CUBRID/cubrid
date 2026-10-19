@@ -7079,6 +7079,35 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
 #endif /* SERVER_MODE */
 
 /*
+ * qexec_gby_aggs_follow_row_order () - does a group's result depend on the order its rows are aggregated in?
+ *   return: true for GROUP_CONCAT, the JSON aggregates and a SUM over a collection (a sequence keeps the order it
+ *	     is summed in)
+ *
+ * The sort of the lists gives a group its rows in their input order; a merge table aggregates a group's first
+ * tuple after the rows that followed it (qexec_gby_merge_write ()), so such a group keeps the sort.
+ */
+static bool
+qexec_gby_aggs_follow_row_order (const VAL_DESCR * vd, AGGREGATE_TYPE * agg_list)
+{
+  AGGREGATE_TYPE *agg_p;
+
+  for (agg_p = agg_list; agg_p != NULL; agg_p = agg_p->next)
+    {
+      if (agg_p->function == PT_GROUP_CONCAT || agg_p->function == PT_JSON_ARRAYAGG
+	  || agg_p->function == PT_JSON_OBJECTAGG)
+	{
+	  return true;
+	}
+      if (agg_p->function == PT_SUM && TP_IS_SET_TYPE (qexec_node_operand_type (vd, agg_p->opr_dbtype,
+										agg_p->plan_item)))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
  * qexec_gby_hash_merge () - finish a hash GROUP BY's leftovers by hashing them (see above)
  *   return: NO_ERROR, or an error
  *   gbstate(in): the GROUP BY, its table empty (dumped into the lists)
@@ -7105,7 +7134,8 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
   *result = QEXEC_GBY_MERGE_NONE;
   if (gbstate->with_rollup || ctx == NULL || ctx->hash_table == NULL || partials == NULL || list_id->tuple_cnt == 0
       || mht_count (ctx->hash_table) != 0 || xasl->proc.buildlist.g_output_first_tuple
-      || XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG))
+      || XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG)
+      || qexec_gby_aggs_follow_row_order (&gbstate->xasl_state->vd, xasl->proc.buildlist.g_agg_list))
     {
       return NO_ERROR;
     }
