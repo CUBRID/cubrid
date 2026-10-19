@@ -216,6 +216,7 @@ static DISK_ISVALID locator_repair_btree_by_delete (THREAD_ENTRY * thread_p, OID
 static void locator_generate_class_pseudo_oid (THREAD_ENTRY * thread_p, OID * class_oid);
 
 static int redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oids, OID * oid_list);
+static bool locator_is_inserter_committing (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header);
 static SCAN_CODE locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context,
 						       LOCK lock_mode);
 static DB_LOGICAL locator_mvcc_reev_cond_assigns (THREAD_ENTRY * thread_p, OID * class_oid, const OID * oid,
@@ -13178,6 +13179,35 @@ xlocator_redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, 
 }
 
 /*
+ * locator_is_inserter_committing () - Is the row inserted by another transaction that may still be in its commit?
+ *
+ * return	   : true if the caller has to check the inserter's MVCCID self-lock before modifying the row.
+ * thread_p (in)   : Thread entry.
+ * rec_header (in) : MVCC header of the row.
+ *
+ * NOTE: An inserter completes its MVCCID (the row turns visible as committed) before it writes its commit record,
+ *	 and it no longer holds an X-lock on the rows it appended, only an X self-lock on its MVCCID until it releases
+ *	 its locks. A transaction that modifies such a row in that interval writes its own commit record first, so
+ *	 the log, and the slave replaying it, would see the modification before the insert. Only a replicated
+ *	 server cares about that order.
+ */
+static bool
+locator_is_inserter_committing (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header)
+{
+  MVCCID insert_mvccid;
+
+  if (log_does_allow_replication () == false || !MVCC_IS_FLAG_SET (rec_header, OR_MVCC_FLAG_VALID_INSID))
+    {
+      return false;
+    }
+
+  insert_mvccid = MVCC_GET_INSID (rec_header);
+
+  return MVCCID_IS_NORMAL (insert_mvccid) && !logtb_is_current_mvccid (thread_p, insert_mvccid)
+    && !log_Gl.mvcc_table.is_active (insert_mvccid);
+}
+
+/*
  * locator_lock_and_get_object_internal () - Internal function: aquire lock and return object
  *
  * return : scan code
@@ -13192,6 +13222,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 {
   SCAN_CODE scan = S_SUCCESS;
   bool lock_acquired = false;
+  bool is_inserter_waited = false;
 
   assert (context != NULL);
   assert (context->oid_p != NULL && !OID_ISNULL (context->oid_p));
@@ -13230,6 +13261,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 
   assert (OID_IS_ROOTOID (context->class_oid_p) || lock_mode == S_LOCK || lock_mode == X_LOCK);
 
+retry_get:
   /* Lock should be aquired now -> get recdes */
   if (context->recdes_p != NULL)
     {
@@ -13264,6 +13296,46 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
       else if (or_mvcc_get_header (context->recdes_p, &recdes_header) != NO_ERROR)
 	{
 	  goto error;
+	}
+
+      /* Before modifying a row whose inserter may still be in its commit, wait until the inserter releases its
+       * MVCCID self-lock, so that this transaction commits after the insert in the log. */
+      if (lock_mode == X_LOCK && !is_inserter_waited && locator_is_inserter_committing (thread_p, &recdes_header))
+	{
+	  MVCCID insert_mvccid = MVCC_GET_INSID (&recdes_header);
+
+	  if (lock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK, LK_COND_LOCK) == LK_GRANTED)
+	    {
+	      /* the inserter has already released its locks */
+	      lock_unlock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK);
+	    }
+	  else
+	    {
+	      /* unfix the page before waiting, the committing inserter may need page latches for its postpone
+	       * operations */
+	      if (context->scan_cache && context->scan_cache->cache_last_fix_page
+		  && context->home_page_watcher.pgptr != NULL)
+		{
+		  /* prevent caching home page watcher in scan_cache */
+		  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
+		}
+	      heap_clean_get_context (thread_p, context);
+	      if (lock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+		{
+		  goto error;
+		}
+	      lock_unlock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK);
+
+	      /* pages have been unlatched, get the record again; the row lock is still held, so wait only once */
+	      is_inserter_waited = true;
+	      scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
+	      if (scan != S_SUCCESS)
+		{
+		  goto error;
+		}
+
+	      goto retry_get;
+	    }
 	}
 
       /* Check REPEATABLE READ/SERIALIZABLE isolation restrictions. */
