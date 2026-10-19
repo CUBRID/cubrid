@@ -3498,6 +3498,20 @@ static bool expr_scan_pred_node_raw_info (const EXPR_PRED * root, const EXPR_PRE
 					  EXPR_RAW_LEAF_INFO * out);
 
 bool
+expr_scan_pred_has_share (const void *compiled)
+{
+  return compiled != NULL && ((const EXPR_PRED *) compiled)->n_share > 0;
+}
+
+int
+expr_scan_pred_max_level (const void *compiled)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+
+  return (root != NULL && root->prog != NULL) ? root->prog->max_level : 0;
+}
+
+bool
 expr_scan_pred_kid_raw_info (const void *compiled, int kid, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
 {
   const EXPR_PRED *root = (const EXPR_PRED *) compiled;

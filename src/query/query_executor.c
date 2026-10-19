@@ -12428,7 +12428,26 @@ qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
     }
   expr_chunk_node_init (&eval_node, "evaluate", expr_chunk_eval_consume, &xasl_state->vd, &tail_node);
 
-  code = qexec_batch_scan_chain (thread_p, xasl, xasl_state, tplrec, &eval_node);
+  if (thread_is_on_trace (thread_p))
+    {
+      /* the trace's fetch / ioread / time of the scan, as scan_next_scan_local () counts them per row */
+      UINT64 old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      UINT64 old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      TSC_TICKS start_tick, end_tick;
+      TSCTIMEVAL tv_diff;
+
+      tsc_getticks (&start_tick);
+      code = qexec_batch_scan_chain (thread_p, xasl, xasl_state, tplrec, &eval_node);
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (s_id->scan_stats.elapsed_scan, tv_diff);
+      s_id->scan_stats.num_fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+      s_id->scan_stats.num_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+    }
+  else
+    {
+      code = qexec_batch_scan_chain (thread_p, xasl, xasl_state, tplrec, &eval_node);
+    }
   qexec_batch_gby_destroy (thread_p, gby);
   return code;
 }

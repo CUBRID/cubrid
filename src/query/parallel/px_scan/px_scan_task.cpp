@@ -473,6 +473,10 @@ namespace parallel_scan
 	    if (er_errid () == NO_ERROR && qexec_batch_eligible (m_xasl))
 	      {
 		(void) qdata_agg_operand_prog_ensure (&thread_ref, m_xasl->proc.buildvalue.agg_list, m_vd);
+		/* ensure () also linked SUM/AVG over one program cell; write_finalize () merges into the leader's
+		 * list, which has no program and finds only the operand-equal links: keep just those, as the
+		 * row path's write () does (qdata_link_shared_accumulators_by_cell ()) */
+		qdata_link_shared_accumulators (m_xasl->proc.buildvalue.agg_list, m_vd);
 		(void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl->proc.buildvalue.agg_list, m_vd,
 					NULL);
 	      }

@@ -5986,6 +5986,18 @@ db_string_fix_string_size (DB_VALUE * src_string)
 	implementation it will incorrectly process strings containing
 	character 1.
 */
+/*
+ * qstr_like_match () - LIKE without an ESCAPE over raw bytes: what db_string_like () decides for two strings of this
+ *			codeset and collation (the page batch's LIKE leaf runs it on record bytes)
+ *   return: V_TRUE, V_FALSE or V_ERROR
+ */
+int
+qstr_like_match (const char *tar, int tar_length, const char *pattern, int pattern_length, INTL_CODESET codeset,
+		 int coll_id)
+{
+  return qstr_eval_like (tar, tar_length, pattern, pattern_length, NULL, codeset, coll_id);
+}
+
 static int
 qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_length, const char *escape,
 		INTL_CODESET codeset, int coll_id)

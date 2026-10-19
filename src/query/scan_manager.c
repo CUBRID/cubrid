@@ -6254,7 +6254,13 @@ scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		       * the page held for the whole of it as the batch held it */
 		      int cache_last_fix_page_save = hsidp->scan_cache.cache_last_fix_page;
 
-		      hsidp->scan_cache.cache_last_fix_page = true;
+		      /* held across its rows as the batch held it -- not when rows go out to joins under it (the
+		       * filter iterator lets the page go between rows) nor for a scan that reads through its local
+		       * copy and must not keep the page after a row (heap_next_1page ()) */
+		      if (!hsidp->batch_iter && hsidp->scan_cache.read_mode != HEAP_SCAN_READ_LOCAL_CACHE)
+			{
+			  hsidp->scan_cache.cache_last_fix_page = true;
+			}
 		      sp_scan =
 			heap_next_1page (thread_p, &hsidp->hfid, &hsidp->batch_vpid, &hsidp->cls_oid, &hsidp->curr_oid,
 					 &recdes, &hsidp->scan_cache, is_peeking);

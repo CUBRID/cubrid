@@ -241,6 +241,8 @@ extern int db_string_trim (const MISC_OPERAND tr_operand, const DB_VALUE * trim_
 			   DB_VALUE * trimmed_string);
 extern int db_string_pad (const MISC_OPERAND pad_operand, const DB_VALUE * src_string, const DB_VALUE * pad_length,
 			  const DB_VALUE * pad_charset, DB_VALUE * padded_string);
+extern int qstr_like_match (const char *tar, int tar_length, const char *pattern, int pattern_length,
+			    INTL_CODESET codeset, int coll_id);
 extern int db_string_like (const DB_VALUE * src_string, const DB_VALUE * pattern, const DB_VALUE * esc_char,
 			   int *result);
 

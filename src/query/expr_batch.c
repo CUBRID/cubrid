@@ -991,83 +991,6 @@ eb_like_pattern_ok (const char *p, int len)
   return true;
 }
 
-static const char *
-eb_find (const char *s, int slen, const char *t, int tlen)
-{
-  int i;
-
-  if (tlen == 0)
-    {
-      return s;
-    }
-  for (i = 0; i + tlen <= slen; i++)
-    {
-      const char *q = (const char *) memchr (s + i, t[0], slen - tlen - i + 1);
-
-      if (q == NULL)
-	{
-	  return NULL;
-	}
-      i = (int) (q - s);
-      if (memcmp (q, t, tlen) == 0)
-	{
-	  return q;
-	}
-    }
-  return NULL;
-}
-
-/* LIKE over a binary collation with a pattern of literals and '%': the literals in order, the first at the start
- * unless the pattern opens with '%', the last at the end unless it closes with '%' (byte runs: a UTF-8 literal
- * matches only at character boundaries) */
-static bool
-eb_like_match (const char *s, int slen, const char *p, int plen)
-{
-  const char *seg;
-  int seglen, pos = 0, i = 0, start;
-  bool first = true;
-
-  while (true)
-    {
-      start = i;
-      while (i < plen && p[i] != '%')
-	{
-	  i++;
-	}
-      seg = p + start;
-      seglen = i - start;
-      if (i == plen)
-	{
-	  /* the last literal: at the end, after pos (the whole string when the pattern has no '%') */
-	  if (first)
-	    {
-	      return slen == seglen && memcmp (s, seg, seglen) == 0;
-	    }
-	  return slen - pos >= seglen && memcmp (s + slen - seglen, seg, seglen) == 0;
-	}
-      if (first)
-	{
-	  if (seglen > slen || memcmp (s, seg, seglen) != 0)
-	    {
-	      return false;
-	    }
-	  pos = seglen;
-	  first = false;
-	}
-      else if (seglen > 0)
-	{
-	  const char *q = eb_find (s + pos, slen - pos, seg, seglen);
-
-	  if (q == NULL)
-	    {
-	      return false;
-	    }
-	  pos = (int) (q - s) + seglen;
-	}
-      i++;			/* past the '%' */
-    }
-}
-
 /* a string leaf (expr_pred_term_string_info ()): -1 when the term stays with the row path */
 static int
 eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
@@ -1093,10 +1016,8 @@ eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
   col = &plan->cols[eb_col_of_vec (plan, vec)];
   /* the constant must read as the column does: its codeset, and its collation (a LIKE: a binary one on both
    * sides, where '%' matches bytes) */
-  if (DB_IS_NULL (k) || db_get_string_codeset (k) != col->codeset
-      || (info->like ? !(LANG_IS_COERCIBLE_COLL (col->collation)
-			 && LANG_IS_COERCIBLE_COLL (db_get_string_collation (k))) : db_get_string_collation (k) !=
-	  col->collation) || (info->like && !eb_like_pattern_ok (db_get_string (k), db_get_string_size (k))))
+  if (DB_IS_NULL (k) || db_get_string_codeset (k) != col->codeset || db_get_string_collation (k) != col->collation
+      || (info->like && !eb_like_pattern_ok (db_get_string (k), db_get_string_size (k))))
     {
       return NO_ERROR;
     }
@@ -1436,8 +1357,15 @@ eb_raw_kid_str (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf
 	}
       if (leaf->like)
 	{
-	  keep = eb_like_match (str, len, leaf->k_str, leaf->k_len);
-	  keep = leaf->negate ? !keep : keep;
+	  /* the engine's LIKE: a pattern that ends lets trailing spaces of the string match, and the space class of
+	   * the collation holds (qstr_eval_like ()) */
+	  int m = qstr_like_match (str, len, leaf->k_str, leaf->k_len, (INTL_CODESET) col->codeset, col->collation);
+
+	  if (m == V_ERROR)
+	    {
+	      return eb_fallback (plan, "a LIKE the batch does not decide");
+	    }
+	  keep = leaf->negate ? (m != V_TRUE) : (m == V_TRUE);
 	}
       else
 	{
@@ -1577,6 +1505,11 @@ eb_build_filter (EB_BUILD * b)
   if (b->in->scan_pred_compiled == NULL)
     {
       return eb_build_filter_interpreted (b);
+    }
+  if (expr_scan_pred_has_share (b->in->scan_pred_compiled))
+    {
+      /* other programs (outputs, keys, operands) read the values this filter computes, row by row */
+      return eb_decline (b, "the filter shares computed values with other programs");
     }
   shape = expr_scan_pred_root_shape (b->in->scan_pred_compiled, &n_kids);
   if (shape < 0)
@@ -2682,6 +2615,19 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
     {
       rc = eb_build_aggs (thread_p, &b);
     }
+  if (rc == NO_ERROR)
+    {
+      /* the row path's programs fail with ER_MAX_RECURSION_SQL_DEPTH when the thread's frames and their deepest
+       * node pass max_recursion_sql_depth (expr_ctx_arm_depth ()); the batch does not count frames, so it leaves
+       * such a scan to them */
+      int depth = MAX (expr_scan_pred_max_level (in->scan_pred_compiled), plan->prog ? plan->prog->max_level : 0);
+
+      if (depth > 0
+	  && thread_get_recursion_depth (thread_p) + depth - 1 > prm_get_integer_value (PRM_ID_MAX_RECURSION_SQL_DEPTH))
+	{
+	  rc = eb_decline (&b, "the recursion limit reaches the expressions");
+	}
+    }
   if (rc == NO_ERROR && in->agg_list == NULL && plan->n_raw_kids == 0)
     {
       /* a projection gains only from a filter the batch runs as arrays */
@@ -3030,9 +2976,7 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 
 	  if (k == NULL || DB_IS_NULL (k)
 	      || (DB_VALUE_DOMAIN_TYPE (k) != DB_TYPE_VARCHAR && DB_VALUE_DOMAIN_TYPE (k) != DB_TYPE_CHAR)
-	      || db_get_string_codeset (k) != col->codeset
-	      || (leaf->like ? !LANG_IS_COERCIBLE_COLL (db_get_string_collation (k))
-		  : db_get_string_collation (k) != col->collation)
+	      || db_get_string_codeset (k) != col->codeset || db_get_string_collation (k) != col->collation
 	      || (leaf->like && !eb_like_pattern_ok (db_get_string (k), db_get_string_size (k))))
 	    {
 	      /* a host variable bound to something the leaf was not built for this execution */

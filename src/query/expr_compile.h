@@ -377,6 +377,11 @@ extern const DB_VALUE *expr_raw_const_value (const REGU_VARIABLE * k, const val_
 /* the shape of the root: 1 = a single comparison leaf or OR (n_kids = 1), 2 = a flattened AND chain
  * (n_kids = its term count), -1 = anything else (NOT, a term the compiler left alone) */
 extern int expr_scan_pred_root_shape (const void *compiled, int *n_kids);
+/* the filter computes values other programs of the scan read (its share registry): those programs read them per
+ * row, so a page batch -- which evaluates the filter over arrays, not row by row -- must not take it */
+extern bool expr_scan_pred_has_share (const void *compiled);
+/* the deepest node of the filter's program (the recursion limit, expr_ctx_arm_depth ()) */
+extern int expr_scan_pred_max_level (const void *compiled);
 /* kid i of the root as a raw leaf; false when it is not "column op constant" with a direct-compare
  * type.  fast_type DB_TYPE_NUMERIC: a NUMERIC column against an exact-numeric constant, compared
  * exactly whatever the two scales (the generic leaf, or a term with an integer constant) */
