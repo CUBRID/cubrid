@@ -8130,6 +8130,9 @@ qdata_apply_interpolation_function_coercion (DB_VALUE * f_value, tp_domain ** re
       type = TP_DOMAIN_TYPE (*result_dom);
       if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
 	{
+	  /* CBRD-27583 (S3-13): the compiler gives a value of no number or date type the function's DOUBLE, whose
+	   * conversion before the function raises the error */
+	  assert (false);
 	  error = qdata_update_interpolation_func_value_and_domain (f_value, result, result_dom);
 	  if (error != NO_ERROR)
 	    {
@@ -8193,6 +8196,9 @@ qdata_interpolation_function_values (DB_VALUE * f_value, DB_VALUE * c_value, dou
       type = TP_DOMAIN_TYPE (*result_dom);
       if (!TP_IS_NUMERIC_TYPE (type) && !TP_IS_DATE_OR_TIME_TYPE (type))
 	{
+	  /* CBRD-27583 (S3-13): the compiler gives a value of no number or date type the function's DOUBLE, whose
+	   * conversion before the function raises the error */
+	  assert (false);
 	  /* try to coerce f_value to double, datetime then time and save domain for next coerce */
 	  error = qdata_update_interpolation_func_value_and_domain (f_value, f_value, result_dom);
 	  if (error != NO_ERROR)

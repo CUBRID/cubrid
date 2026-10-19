@@ -940,12 +940,16 @@ expr_pred_map_cmp (int result, REL_OP rel_op)
     }
 }
 
-/* the comparison of a leaf's two values: the term's decided one, as eval_value_rel_cmp () makes it; exception to
- * deciding before the rows: a term left to its values (no comparison, or the VALUES method) and a pinned literal
- * compare the values */
+/* the comparison of a leaf's two values: the term's decided one, as eval_value_rel_cmp () makes it, and for a pinned
+ * literal the cmpval of its type, which both sides have (the leaf checks the left's per row); exception to deciding
+ * before the rows: a term left to its values (no comparison, or the VALUES method) compares the values */
 static DB_VALUE_COMPARE_RESULT
 expr_pred_compare (const EXPR_PRED * pred, const DB_VALUE * v1, const DB_VALUE * v2, int total_order, bool * comparable)
 {
+  if (pred->rhs_pinned)
+    {
+      return domain_compare_in_domain (pred->compare->target[1], v1, v2, 1, total_order);
+    }
   return eval_compare_values_resolved (NULL, pred->compare, NULL, v1, v2, total_order, comparable);
 }
 
@@ -2914,7 +2918,7 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	  }
 	pred->rel_op = et->rel_op;
 	pred->fast_type = fast_type;
-	pred->compare = pin_rhs ? NULL : et->compare;
+	pred->compare = et->compare;
 	pred->eval = expr_pred_cmp_leaf (fast_type, et->rel_op);
 	/* A heap attribute decodes to its domain type and an inline literal (TYPE_DBVAL) is
 	 * the value baked into the plan, so a leaf over those two alone never meets another

@@ -1483,6 +1483,13 @@ domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_
 	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
 	    }
 	  const TP_DOMAIN *final_domain = domain_interpolation_final (function, start_domain, val_type);
+	  if (final_domain == NULL && TP_DOMAIN_TYPE (start_domain) != DB_TYPE_NULL
+	      && !TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (start_domain)))
+	    {
+	      /* a typed value none of DOUBLE, DATETIME, TIME takes (a BIT, a LOB, a collection): as the aggregate's, the
+	       * function is DOUBLE and the conversion of its argument raises the error (spec change 4) */
+	      return ER_ARG_CAN_NOT_BE_CASTED_TO_DESIRED_DOMAIN;
+	    }
 	  argument = final_domain != NULL ? final_domain
 	    : TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (start_domain)) ? tp_domain_resolve_default (DB_TYPE_DOUBLE) :
 	    start_domain;

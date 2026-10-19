@@ -17999,11 +17999,8 @@ end:
   CUBRID_QUERY_EXEC_END (query_str, query_id, client_id, db_user, (er_errid () != NO_ERROR));
 #endif /* ENABLE_SYSTEMTAP */
 #if !defined (NDEBUG)
-  if (qexec_bind_checksum (dbval_cnt, dbval_ptr) != bind_checksum)
-    {
-      /* CBRD-27583 census (an assert at 7a-2 if never seen): the execution changed a bound value */
-      er_log_debug (ARG_FILE_LINE, "CBRD-27583 bind values changed count=%d\n", dbval_cnt);
-    }
+  /* CBRD-27583 (S3-13, design 5): the server does not change a bound value */
+  assert (qexec_bind_checksum (dbval_cnt, dbval_ptr) == bind_checksum);
 #endif
   return list_id;
 }

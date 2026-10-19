@@ -77,6 +77,7 @@ TP_COMPARE_COERCION tp_value_compare_common_domain (DB_TYPE type1, DB_TYPE type2
 
 TP_VALUE_CONVERTER tp_value_find_converter (DB_TYPE src_type, const TP_DOMAIN * desired_domain,
 					    DOMAIN_CONVERT_MODE mode);
+TP_VALUE_CONVERTER tp_value_numeric_fit_converter (void);
 
 /*
  * tp_value_convert () - run a converter the caller found before its rows

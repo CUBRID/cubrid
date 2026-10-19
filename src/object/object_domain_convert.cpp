@@ -8452,3 +8452,17 @@ tp_value_find_converter (DB_TYPE src_type, const TP_DOMAIN *desired_domain, DOMA
       return tp_value_convert_incompatible;
     }
 }
+
+/*
+ * tp_value_numeric_fit_converter () - the converter of a NUMERIC into a NUMERIC domain (its precision and scale)
+ *   return: the converter
+ *
+ * The same for every target, as converters are keyed on the types: a caller that parsed a NUMERIC fits it without a
+ * lookup (tp_value_cast_internal's string to NUMERIC path).
+ */
+TP_VALUE_CONVERTER
+tp_value_numeric_fit_converter (void)
+{
+  static const TP_VALUE_CONVERTER fit = tp_value_find_converter<DOMAIN_CONVERT_ASSIGN> (DB_TYPE_NUMERIC, DB_TYPE_NUMERIC);
+  return fit;
+}

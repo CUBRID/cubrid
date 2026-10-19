@@ -12395,6 +12395,9 @@ exit_on_error:
 int
 heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HEAP_CACHE_ATTRINFO * attr_info)
 {
+  /* CBRD-27583 exception, the catalog: an attribute value the plan does not compute (a serial's row, a foreign key's
+   * SET NULL, the key filter's NULL, loaddb, the XA catalog); DML writes through heap_attrinfo_set_converted */
+  TP_DECISION_EXCEPTION ();
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   const PR_TYPE *pr_type;	/* Primitive type array function structure */
   TP_DOMAIN_STATUS dom_status;

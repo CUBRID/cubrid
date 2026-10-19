@@ -82,7 +82,7 @@ static thread_local int tp_Decision_depth = 0;
 static thread_local const char *tp_Decision_lazy_function = NULL;
 static thread_local const void *tp_Decision_lazy_caller = NULL;
 
-/* a decision made while a query executes: logged once per process for each function and caller */
+/* a decision made while a query executes: logged once per process for each function and caller, and asserted */
 static void
 tp_decision_count (const char *function, const void *caller)
 {
@@ -108,6 +108,8 @@ tp_decision_count (const char *function, const void *caller)
       offset = (uintptr_t) caller - (uintptr_t) info.dli_fbase;
     }
   er_log_debug (ARG_FILE_LINE, "CBRD-27583 decision %s %s+0x%lx\n", function, module, (unsigned long) offset);
+  /* design 5: no type decision while a query executes but the exceptions TP_DECISION_EXCEPTION marks */
+  assert (false);
 }
 
 tp_decision_entry::tp_decision_entry (const char *function, const void *caller, bool lazy)
@@ -144,15 +146,21 @@ tp_decision_entry::~tp_decision_entry ()
     }
 }
 
-tp_decision_scope::tp_decision_scope (bool execution)
-  : m_execution (execution)
+tp_decision_scope::tp_decision_scope (bool execution, bool active)
+  : m_execution (execution), m_active (active)
 {
-  ++(execution ? tp_Decision_execution : tp_Decision_exception);
+  if (active)
+    {
+      ++(execution ? tp_Decision_execution : tp_Decision_exception);
+    }
 }
 
 tp_decision_scope::~tp_decision_scope ()
 {
-  --(m_execution ? tp_Decision_execution : tp_Decision_exception);
+  if (m_active)
+    {
+      --(m_execution ? tp_Decision_execution : tp_Decision_exception);
+    }
 }
 /* *INDENT-ON* */
 #endif
@@ -5733,8 +5741,10 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 		}
 	      return (status);
 	    case DB_TYPE_JSON:
-	      status =
-		tp_value_find_converter (DB_TYPE_JSON, desired_domain, DOMAIN_CONVERT_ASSIGN) (src, dest,
+	      /* into a JSON domain with a schema: the plan's converter, else the one the types give */
+	      status = (found != NULL && found->src_type == DB_TYPE_JSON && found->domain == desired_domain
+			? found->converter : tp_value_find_converter (DB_TYPE_JSON, desired_domain,
+								      DOMAIN_CONVERT_ASSIGN)) (src, dest,
 											       desired_domain,
 											       &conversion_error);
 	      pr_clear_value (&src_replacement);
@@ -5920,9 +5930,7 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	}
       else
 	{
-	  status = tp_value_find_converter (DB_TYPE_NUMERIC, desired_domain, DOMAIN_CONVERT_ASSIGN) (&number, target,
-												     desired_domain,
-												     &conversion_error);
+	  status = tp_value_numeric_fit_converter ()(&number, target, desired_domain, &conversion_error);
 	}
     }
   else
@@ -5941,6 +5949,13 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	    TP_DECISION_EXCEPTION ();
 	    assert (converter == tp_value_find_converter (original_type, desired_domain, mode));
 	  }
+	}
+      else if (found != NULL && found->src_type == DB_TYPE_JSON)
+	{
+	  /* CBRD-27583 exception, the data carries the type (2-7): a planned JSON value, unwrapped to its scalar above,
+	   * converts by the scalar's own type */
+	  TP_DECISION_EXCEPTION ();
+	  converter = tp_value_find_converter (original_type, desired_domain, mode);
 	}
       else
 	{

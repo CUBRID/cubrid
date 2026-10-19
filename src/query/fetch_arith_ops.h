@@ -84,13 +84,17 @@ arith_cast_value (const ARITH_TYPE * arith, int i, const DB_VALUE * value, DB_VA
 #if !defined (NDEBUG)
   const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
   /* the cast clones a value of the domain's type when the domain is not parameterized */
-  if (domain != NULL && !DB_IS_NULL (value) && !(conv != NULL && type == arith->conv_type[i])
-      && !(type == TP_DOMAIN_TYPE (domain) && !domain->is_parameterized))
+  const bool looks_up = domain != NULL && !DB_IS_NULL (value) && !(conv != NULL && type == arith->conv_type[i])
+    && !(type == TP_DOMAIN_TYPE (domain) && !domain->is_parameterized);
+  if (looks_up)
     {
       /* CBRD-27583 census (removed at S3-14): a kernel cast that looks its converter up at the row */
       er_log_debug (ARG_FILE_LINE, "CBRD-27583 row converter lookup %d %d\n", (int) arith->opcode, i);
     }
 #endif
+  /* CBRD-27583 exception until S3-36 (B): a multi-class spec whose classes give a column other types (cbrd_22694)
+   * hands the cast a value of another type than planned, which looks its converter up */
+  TP_DECISION_EXCEPTION_IF (looks_up);
   return kind == ARITH_CAST_AUTO ? tp_value_auto_cast_with_converter (value, result, domain, arith->conv_type[i], conv)
     : tp_value_cast_with_converter (value, result, domain, kind == ARITH_CAST_FORCE, arith->conv_type[i], conv);
 }
