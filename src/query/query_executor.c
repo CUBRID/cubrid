@@ -28577,7 +28577,12 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
       params.size = host_var_count;
       params.vals = dbval_p;
 
-      list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, ent, &params, &cached_result);
+      {
+	/* CBRD-27583 exception, once per execution: the result cache's lookup compares the bound values with a cached
+	 * result's by their values, as a query's own lookup does before its execution (xqmgr_execute_query) */
+	TP_DECISION_EXCEPTION ();
+	list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, ent, &params, &cached_result);
+      }
       if (cached_result && list_cache_entry_p)
 	{
 	  list_id = &list_cache_entry_p->list_id;

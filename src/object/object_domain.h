@@ -557,6 +557,16 @@ struct tp_decision_scope
   const bool m_execution;
   const bool m_active;
 };
+
+/* client code the server's thread runs (SA mode's callbacks: a method, PL's SQL): its compilations are no execution */
+struct tp_decision_client
+{
+  tp_decision_client ();
+  ~tp_decision_client ();
+  const int m_execution, m_exception, m_depth;
+  const char *const m_lazy_function;
+  const void *const m_lazy_caller;
+};
 /* *INDENT-ON* */
 
 #define TP_DECISION_ENTRY(function) tp_decision_entry tp_decision_entry_ (function, __builtin_return_address (0), false)
@@ -565,11 +575,13 @@ struct tp_decision_scope
 #define TP_DECISION_EXECUTION() tp_decision_scope tp_decision_execution_ (true)
 #define TP_DECISION_EXCEPTION() tp_decision_scope tp_decision_exception_ (false)
 #define TP_DECISION_EXCEPTION_IF(condition) tp_decision_scope tp_decision_exception_ (false, (condition))
+#define TP_DECISION_CLIENT() tp_decision_client tp_decision_client_
 #else
 #define TP_DECISION_ENTRY(function)
 #define TP_DECISION_ENTRY_LAZY(function)
 #define TP_DECISION_EXECUTION()
 #define TP_DECISION_EXCEPTION()
 #define TP_DECISION_EXCEPTION_IF(condition)
+#define TP_DECISION_CLIENT()
 #endif
 #endif				/* _OBJECT_DOMAIN_H_ */

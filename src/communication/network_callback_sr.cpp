@@ -26,6 +26,7 @@
 #if !defined (SERVER_MODE)
 #include "query_method.hpp"
 #include "method_callback.hpp"
+#include "object_domain.h"	/* TP_DECISION_CLIENT */
 #endif
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -120,6 +121,8 @@ xs_get_data_queue_from_cl ()
 int xs_callback_send (cubthread::entry *thread_p, const cubmem::extensible_block &ext_blk)
 {
   packing_unpacker unpacker (ext_blk.get_read_ptr (), ext_blk.get_size ());
+  /* CBRD-27583: the client's code runs on the executing thread; its compilations decide the types of their own plans */
+  TP_DECISION_CLIENT ();
   return method_dispatch (unpacker);
 }
 

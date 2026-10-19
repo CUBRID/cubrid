@@ -4910,7 +4910,7 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * 
 	  && TP_IS_CHAR_BIT_TYPE (DB_VALUE_DOMAIN_TYPE (dbval1_p))
 	  && TP_IS_CHAR_BIT_TYPE (DB_VALUE_DOMAIN_TYPE (dbval2_p)))
 	{
-	  return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p, arith->type, result_conv);
+	  return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p, arith->type, result_conv, NULL);
 	}
       return NO_ERROR;
     }
@@ -4929,7 +4929,7 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * 
   if (arith->kind == DOMAIN_ARITH_CONCAT)
     {
       /* plus as concatenation */
-      return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p, arith->type, result_conv);
+      return qdata_strcat_dbval (dbval1_p, dbval2_p, result_p, domain_p, arith->type, result_conv, NULL);
     }
 
   if (opcode == T_DIV && qdata_is_divided_zero (dbval2_p))
@@ -5145,10 +5145,12 @@ qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval_p, DB_VAL
  *   dbval2(in) :
  *   res(in)    :
  *   domain(in) :
+ *   arith(in)  : CBRD-27583: the node, whose converters of its operands into its domain (ARITH_TYPE.conv) give an
+ *		  operand that is the value its type; NULL for none
  */
 int
 qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p, tp_domain * domain_p,
-		    DB_TYPE planned, TP_VALUE_CONVERTER result_conv)
+		    DB_TYPE planned, TP_VALUE_CONVERTER result_conv, const ARITH_TYPE * arith)
 {
   DB_TYPE type1, type2;
   int error = NO_ERROR;
@@ -5227,7 +5229,17 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
       if ((DB_IS_NULL (dbval1_p) && QSTR_IS_ANY_CHAR_OR_BIT (type2))
 	  || (DB_IS_NULL (dbval2_p) && QSTR_IS_ANY_CHAR_OR_BIT (type1)))
 	{
-	  ;			/* go ahead */
+	  /* CBRD-27583: the other operand is the value: one of another type than planned takes the node's domain by the
+	   * converter its operand's type found at unpack, as develop coerced it */
+	  const int i = DB_IS_NULL (dbval1_p) ? 1 : 0;
+	  const DB_TYPE type = i == 0 ? type1 : type2;
+	  if (arith != NULL && domain_p == arith->domain && type != planned && type == arith->conv_type[i])
+	    {
+	      dom_status = tp_value_auto_cast_with_converter (i == 0 ? dbval1_p : dbval2_p, result_p, domain_p, type,
+							      arith->conv[i]);
+	      return dom_status == DOMAIN_COMPATIBLE ? NO_ERROR
+		: tp_domain_status_er_set (dom_status, ARG_FILE_LINE, i == 0 ? dbval1_p : dbval2_p, domain_p);
+	    }
 	}
       else
 	{

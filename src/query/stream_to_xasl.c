@@ -7027,8 +7027,15 @@ stx_arith_cast_target (const ARITH_TYPE * arith, int i, DB_TYPE src_type)
       /* its path into its domain; a value of its argument into a string */
       return i == 0 ? arith->domain : i == 1 ? &tp_String_domain : NULL;
     case T_CONCAT:
-      /* two operands concatenate as strings */
-      return i == 0 && arith->rightptr == NULL ? arith->domain : NULL;
+      /* one operand casts; two concatenate as strings (qdata_strcat_dbval) */
+      return arith->rightptr == NULL ? (i == 0 ? arith->domain : NULL)
+	: i < 2 && src_type != DB_TYPE_VARIABLE ? arith->domain : NULL;
+    case T_STRCAT:
+    case T_ADD:
+      /* a concatenation's operand that is its value, the other being a NULL string (oracle_style_empty_string,
+       * qdata_strcat_dbval) */
+      return i < 2 && src_type != DB_TYPE_VARIABLE && arith->domain != NULL
+	&& TP_IS_CHAR_BIT_TYPE (TP_DOMAIN_TYPE (arith->domain)) ? arith->domain : NULL;
     case T_OCTET_LENGTH:
       return i != 1 || TP_IS_STRING_TYPE (src_type) ? NULL
 	: src_type == DB_TYPE_BLOB ? &tp_VarBit_domain : &tp_Char_domain;

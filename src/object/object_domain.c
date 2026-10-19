@@ -162,6 +162,23 @@ tp_decision_scope::~tp_decision_scope ()
       --(m_execution ? tp_Decision_execution : tp_Decision_exception);
     }
 }
+
+tp_decision_client::tp_decision_client ()
+  : m_execution (tp_Decision_execution), m_exception (tp_Decision_exception), m_depth (tp_Decision_depth),
+    m_lazy_function (tp_Decision_lazy_function), m_lazy_caller (tp_Decision_lazy_caller)
+{
+  tp_Decision_execution = tp_Decision_exception = tp_Decision_depth = 0;
+  tp_Decision_lazy_function = NULL;
+}
+
+tp_decision_client::~tp_decision_client ()
+{
+  tp_Decision_execution = m_execution;
+  tp_Decision_exception = m_exception;
+  tp_Decision_depth = m_depth;
+  tp_Decision_lazy_function = m_lazy_function;
+  tp_Decision_lazy_caller = m_lazy_caller;
+}
 /* *INDENT-ON* */
 #endif
 

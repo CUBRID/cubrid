@@ -389,7 +389,7 @@ fetch_op_add (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     {
       /* at here, T_ADD is really T_STRCAT */
       if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain, arith_result_type (arithptr),
-			      arithptr->result_conv) != NO_ERROR)
+			      arithptr->result_conv, arithptr) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -3497,7 +3497,7 @@ fetch_op_concat (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   if (arithptr->rightptr != NULL)
     {
       if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain, arith_result_type (arithptr),
-			      arithptr->result_conv) != NO_ERROR)
+			      arithptr->result_conv, arithptr) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -3564,12 +3564,12 @@ fetch_op_concat_ws (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 
 	  db_make_null (&tmp_val);
 	  if (qdata_strcat_dbval (peek_left, peek_third, &tmp_val, domain, arith_result_type (arithptr),
-				  arithptr->result_conv) != NO_ERROR)
+				  arithptr->result_conv, NULL) != NO_ERROR)
 	    {
 	      return ER_FAILED;
 	    }
 	  if (qdata_strcat_dbval (&tmp_val, peek_right, arithptr->value, domain, arith_result_type (arithptr),
-				  arithptr->result_conv) != NO_ERROR)
+				  arithptr->result_conv, NULL) != NO_ERROR)
 	    {
 	      (void) pr_clear_value (&tmp_val);
 	      return ER_FAILED;
@@ -4224,7 +4224,7 @@ fetch_op_strcat (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN *domain = a->domain;
 
   if (qdata_strcat_dbval (peek_left, peek_right, arithptr->value, domain, arith_result_type (arithptr),
-			  arithptr->result_conv) != NO_ERROR)
+			  arithptr->result_conv, arithptr) != NO_ERROR)
     {
       return ER_FAILED;
     }

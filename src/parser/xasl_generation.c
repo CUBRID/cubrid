@@ -8048,12 +8048,21 @@ pt_function_reader_domain (TP_DOMAIN * parse_tree, TP_DOMAIN * decided)
   return collated != NULL ? collated : parse_tree;
 }
 
+/* CBRD-27583 (D-34): a MIN / MAX over an operand its regu retyped, whose values the function keeps as they are */
+static bool
+pt_extreme_operand_retyped (FUNC_CODE function, const TP_DOMAIN * compiled, const REGU_VARIABLE * operand)
+{
+  return (function == PT_MIN || function == PT_MAX) && operand->domain != NULL
+    && TP_DOMAIN_TYPE (operand->domain) != DB_TYPE_NULL
+    && TP_DOMAIN_TYPE (operand->domain) != TP_DOMAIN_TYPE (compiled);
+}
+
 /*
  * pt_decide_function_domain () - CBRD-27583 (4.3): the domain of an aggregate or an analytic function that type
  *   checking left to its argument's value - a variable domain or operand type, or a collation the values give - by
  *   the rule develop's first value typed it with, over its operand's domain
  *   return: the decided domain; NULL keeps the compiled one (a fixed function over a retyped operand keeps it too: only
- *	     its accumulator follows the operand, D-36)
+ *	     its accumulator follows the operand, D-36; but a MIN / MAX, whose accumulator is its domain: D-34)
  */
 static TP_DOMAIN *
 pt_decide_function_domain (DOMAIN_CTX context, FUNC_CODE function, TP_DOMAIN * compiled, DB_TYPE opr_dbtype,
@@ -8061,7 +8070,8 @@ pt_decide_function_domain (DOMAIN_CTX context, FUNC_CODE function, TP_DOMAIN * c
 {
   if (compiled == NULL || !pt_regu_domain_is_fixed (operand)
       || (TP_DOMAIN_TYPE (compiled) != DB_TYPE_VARIABLE && opr_dbtype != DB_TYPE_VARIABLE
-	  && TP_DOMAIN_COLLATION_FLAG (compiled) == TP_DOMAIN_COLL_NORMAL))
+	  && TP_DOMAIN_COLLATION_FLAG (compiled) == TP_DOMAIN_COLL_NORMAL
+	  && !pt_extreme_operand_retyped (function, compiled, operand)))
     {
       return NULL;
     }
@@ -8072,7 +8082,9 @@ pt_decide_function_domain (DOMAIN_CTX context, FUNC_CODE function, TP_DOMAIN * c
   };
   RESOLVED_DOMAIN result;
   bool needs_late_bind = false;
-  switch (domain_resolve (context, function, &operand_rule, 1, compiled, &result, &needs_late_bind))
+  /* a retyped MIN / MAX is typed by its operand, as the rule types one its value types */
+  const TP_DOMAIN *consumer = pt_extreme_operand_retyped (function, compiled, operand) ? NULL : compiled;
+  switch (domain_resolve (context, function, &operand_rule, 1, consumer, &result, &needs_late_bind))
     {
     case NO_ERROR:
       return needs_late_bind ? NULL : (TP_DOMAIN *) result.domain;
@@ -8285,6 +8297,7 @@ pt_decide_analytic_domains (PARSER_CONTEXT * parser, PT_NODE * statement, ANALYT
 	{
 	  return ER_FAILED;
 	}
+      const bool retyped = pt_extreme_operand_retyped (func->function, func->domain, operand);
       TP_DOMAIN *domain = pt_decide_function_domain (DOMAIN_CTX_ANALYTIC, func->function, func->domain,
 						     func->opr_dbtype, operand);
       if (domain == NULL)
@@ -8295,9 +8308,10 @@ pt_decide_analytic_domains (PARSER_CONTEXT * parser, PT_NODE * statement, ANALYT
 	{
 	  func->opr_dbtype = TP_DOMAIN_TYPE (domain);
 	}
-      if (TP_DOMAIN_TYPE (func->domain) == DB_TYPE_VARIABLE)
+      if (TP_DOMAIN_TYPE (func->domain) == DB_TYPE_VARIABLE || retyped)
 	{
-	  /* the value starts in the decided type, as develop's first binding did */
+	  /* the value starts in the decided type, as develop's first binding did; a MIN / MAX copies its operand's
+	   * values into it by its type (qdata_evaluate_analytic_func) */
 	  regu_dbval_type_init (func->value, TP_DOMAIN_TYPE (domain));
 	}
       func->domain = domain;
@@ -8307,7 +8321,7 @@ pt_decide_analytic_domains (PARSER_CONTEXT * parser, PT_NODE * statement, ANALYT
 	    {
 	      if (reader->value.type == TYPE_CONSTANT && reader->value.value.dbvalptr == func->value)
 		{
-		  reader->value.domain = pt_function_reader_domain (reader->value.domain, domain);
+		  reader->value.domain = retyped ? domain : pt_function_reader_domain (reader->value.domain, domain);
 		}
 	    }
 	}
@@ -8926,9 +8940,14 @@ pt_function_to_regu (PARSER_CONTEXT * parser, PT_NODE * function)
 	      regu->type = TYPE_CONSTANT;
 	      regu->domain = pt_xasl_node_to_domain (parser, function);
 	      /* CBRD-27583 (4.3): a result type checking left to the argument's value takes the node's decision */
-	      const AGGREGATE_TYPE *agg = is_aggregate && !pt_regu_domain_is_fixed_domain (regu->domain)
-		? pt_block_aggregate (parser, dbval) : NULL;
-	      if (agg != NULL)
+	      const AGGREGATE_TYPE *agg = is_aggregate ? pt_block_aggregate (parser, dbval) : NULL;
+	      if (agg != NULL && (agg->function == PT_MIN || agg->function == PT_MAX)
+		  && TP_DOMAIN_TYPE (agg->domain) != TP_DOMAIN_TYPE (regu->domain))
+		{
+		  /* D-34: a MIN / MAX over a retyped operand yields its operand's values (pt_decide_function_domain) */
+		  regu->domain = agg->domain;
+		}
+	      else if (agg != NULL && !pt_regu_domain_is_fixed_domain (regu->domain))
 		{
 		  regu->domain = pt_function_reader_domain (regu->domain, agg->domain);
 		}

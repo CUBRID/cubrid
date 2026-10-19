@@ -91,7 +91,7 @@ extern int qdata_unary_minus_dbval (DB_VALUE * res, DB_VALUE * dbval1);
 extern int qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval, DB_VALUE * res, tp_domain * domain);
 /* CBRD-27583 (S3-40b): planned = the type the concatenation's value has, result_conv its converter into domain_p */
 extern int qdata_strcat_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain_p,
-			       DB_TYPE planned, TP_VALUE_CONVERTER result_conv);
+			       DB_TYPE planned, TP_VALUE_CONVERTER result_conv, const ARITH_TYPE * arith);
 /* The error of an operand coercion that fails, as tp_value_auto_cast sets it */
 extern int qdata_operand_coercion_error (TP_DOMAIN_STATUS status, const DB_VALUE * value, const TP_DOMAIN * target);
 /* T_ADD, T_SUB, T_MUL or T_DIV over its operands' operand coercion, resolved before any row

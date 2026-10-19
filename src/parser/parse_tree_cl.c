@@ -3117,23 +3117,9 @@ parser_print_tree (PARSER_CONTEXT * parser, const PT_NODE * node)
       if ((parser->custom_print & PT_PRINT_HOST_VAR_COUNT) != 0)
 	{
 	  char host_var_count[12];
-	  if ((node->info.query.is_subquery == PT_IS_SUBQUERY || node->info.query.is_subquery == PT_IS_UNION_QUERY
-	       || node->info.query.is_subquery == PT_IS_UNION_SUBQUERY
-	       || node->info.query.is_subquery == PT_IS_CTE_NON_REC_SUBQUERY) && node->info.query.correlation_level == 0
-	      && (node->info.query.hint & PT_HINT_QUERY_CACHE))
-	    {
-	      /* 
-	       * This condition is identical to the one used in do_prepare_subquery_pre function to call do_prepare_subquery.
-	       * Both functions must maintain the same condition to ensure consistency.
-	       * Be careful not to modify only one of them.
-	       */
-	      snprintf (host_var_count, sizeof (host_var_count), "%d", parser->host_var_count);
-	    }
-	  else
-	    {
-	      snprintf (host_var_count, sizeof (host_var_count), "%d",
-			parser->host_var_count + parser->auto_param_count);
-	    }
+	  /* CBRD-27583: a QUERY_CACHE subquery's context counts its own positions (do_subquery_positions), so its text
+	   * names as many as the same query's at the top */
+	  snprintf (host_var_count, sizeof (host_var_count), "%d", parser->host_var_count + parser->auto_param_count);
 	  string = pt_append_nulstring (parser, string, ";bind_var_cnt=");
 	  string = pt_append_nulstring (parser, string, host_var_count);
 	}
