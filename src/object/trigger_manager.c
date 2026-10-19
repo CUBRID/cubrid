@@ -4771,9 +4771,7 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, boo
 	       * copmiled expression and do it again the next time
 	       */
 #if 0
-	      parser_free_parser (act->parser);
-	      act->parser = NULL;
-	      act->statement = NULL;
+	      free_compiled_statement (act);
 #endif /* 0 */
 
 	    }
@@ -4989,9 +4987,7 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	       * copmiled expression and do it again the next time
 	       */
 #if 0
-	      parser_free_parser (act->parser);
-	      act->parser = NULL;
-	      act->statement = NULL;
+	      free_compiled_statement (act);
 #endif /* 0 */
 	    }
 	  break;
