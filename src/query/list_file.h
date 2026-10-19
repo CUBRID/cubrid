@@ -178,6 +178,7 @@ extern int qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * listid, SORTKE
 extern SORTKEY_INFO *qfile_initialize_sort_key_info (SORTKEY_INFO * info, SORT_LIST * list,
 						     QFILE_TUPLE_VALUE_TYPE_LIST * types);
 extern void qfile_init_empty_sort_key_info (SORTKEY_INFO * info);
+extern void qfile_sort_carry_end (SORTKEY_INFO * key_info_p);
 extern void qfile_clear_sort_key_info (SORTKEY_INFO * info);
 extern QFILE_LIST_ID *qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id,
 						 SORT_LIST * sort_list, QUERY_OPTIONS option, int ls_flag,

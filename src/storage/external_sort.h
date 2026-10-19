@@ -106,6 +106,19 @@ struct SORT_REC
 #define SORT_REC_HAS_TUPLE(rec)         ((rec)->s.original.pageid == NULL_PAGEID)
 #define SORT_REC_TUPLE(rec)             ((char *) (rec) + (rec)->s.original.offset)
 
+#define SORT_CARRY_UNDECIDED            0
+#define SORT_CARRY_YES                  1
+#define SORT_CARRY_NO                   2
+
+/* start a sort undecided on tuple carrying, with no sample (a parallel worker's copy must not share the sample) */
+#define SORTKEY_INFO_INIT_CARRY(key_info_p) \
+  do \
+    { \
+      (key_info_p)->carry_tuple = SORT_CARRY_UNDECIDED; \
+      (key_info_p)->carry_sample = NULL; \
+    } \
+  while (0)
+
 struct SUBKEY_INFO
 {
   /* The actual column number in the list file tuple. */
@@ -150,6 +163,10 @@ struct SORTKEY_INFO
   SUBKEY_INFO default_keys[8];	/* Default storage; this ought to work for most cases. */
   int error;			/* median domain convert errors */
   QFILE_TUPLE_VALUE_TYPE_LIST key_tl;	/* key mini-tuple layout: domp[i] = domain of key[i].col */
+
+  /* P_sort_key tuple carrying (SORT_REC_HAS_TUPLE), decided by qfile_build_sort_rec on a sample of the input */
+  int carry_tuple;		/* SORT_CARRY_UNDECIDED, SORT_CARRY_YES or SORT_CARRY_NO */
+  struct qfile_sort_carry_sample *carry_sample;	/* the sample while undecided */
 };
 
 struct SORT_INFO
