@@ -387,28 +387,6 @@ int domain_unresolved_error (int index, DB_TYPE type);
 /* The key of a value: its type and, for a string or an ENUM, its codeset and collation. */
 void domain_compare_key_of_value (const DB_VALUE * value, DOMAIN_COMPARE_KEY * key);
 
-/* Whether two values differ in type, or in collation as strings: a comparison of them resolves a coercion or a
- * collation merge from them. A NULL compares with any value as it is. */
-inline bool
-domain_value_domains_differ (const DB_VALUE * value1, const DB_VALUE * value2)
-{
-  if (DB_IS_NULL (value1) || DB_IS_NULL (value2))
-    {
-      return false;
-    }
-  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value1);
-  if (type != DB_VALUE_DOMAIN_TYPE (value2))
-    {
-      return true;
-    }
-  /* the collation is part of a value's key as domain_compare_key_of_value makes it: a string's or an ENUM's */
-  if (TP_IS_CHAR_TYPE (type))
-    {
-      return db_get_string_collation (value1) != db_get_string_collation (value2);
-    }
-  return type == DB_TYPE_ENUMERATION && db_get_enum_collation (value1) != db_get_enum_collation (value2);
-}
-
 /* The cached domain tp_domain_resolve_value (value, NULL) gives a value, found without the transient domain that
  * function makes and frees: a type without parameters has its built-in domain, a string, a bit string or a
  * NUMERIC the cached domain of its parameters; a domain not cached yet, and any other type, are
@@ -420,8 +398,9 @@ const TP_DOMAIN *domain_value_domain (const DB_VALUE * value);
  * column's (CBRD-27583 4.4). A value of another type that every value of its type converts into without failure,
  * rounding or change of order is converted into the column's domain (by the element's regu); any other value of
  * another type, and a NUMERIC, CHAR or BIT value of the column's type with other parameters, is kept under its own
- * domain, which its index column compares by the type pair comparison table when its key differs; once a column of a
- * multi-column key is kept, every column is written under its value's domain.
+ * domain, which its index column compares by the comparison XASL generation decides for the two domains
+ * (DOMAIN_KEY_BOUND);
+ * once a column of a multi-column key is kept, every column is written under its value's domain.
  */
 enum DOMAIN_KEY_RULE
 {
@@ -453,36 +432,66 @@ TP_VALUE_CONVERTER domain_compare_converter (DB_TYPE source, const TP_DOMAIN * t
 /* The rule a column of a search key follows for values of an element's domain. */
 DOMAIN_KEY_RULE domain_key_rule (const TP_DOMAIN * element, const TP_DOMAIN * column, bool midxkey);
 
-/* Whether values of this domain have a key other than an index column's own (a NULL domain or key has none): an index
- * scan whose key column takes such values compares them by the type pair comparison table
- * (DOMAIN_SEARCH_KEYS_OTHER). */
-bool domain_key_differs (const TP_DOMAIN * domain, const TP_DOMAIN * column);
-
-/* What an index scan's comparisons of its search key values read (BTID_INT.search_keys). */
-// *INDENT-OFF*
-enum DOMAIN_SEARCH_KEYS : unsigned char
+/*
+ * DOMAIN_KEY_BOUND - CBRD-27583 (D-80): how an index scan's search key bound compares with the index keys, decided
+ *   by XASL generation for each key column from the bound's domain and the index column's (the comparison a predicate
+ *   makes of the two) and streamed: side 0 is the bound's value, side 1 the index key's, whose converter, where the
+ *   comparison has one, brings the index key into the comparison's domain. A column of one domain compares as it is.
+ */
+struct DOMAIN_KEY_BOUND
 {
-  DOMAIN_SEARCH_KEYS_NONE,	/* a B-tree search outside a query plan, whose keys are the index's own: a value that
-				 * does not compare as it is compares by value */
-  DOMAIN_SEARCH_KEYS_OWN,	/* every value has its key column's key and compares with the index as it is */
-  DOMAIN_SEARCH_KEYS_OTHER	/* a key column takes values of a key other than its own (domain_key_differs): their
-				 * comparisons are the type pair comparison table's cells */
+  const DOMAIN_COMPARE *compares;	/* one per key column */
+  const DOMAIN_COMPARE *reversed;	/* the same with the index key first (domain_compare_mirror); unpack only */
+  const DOMAIN_COMPARE *nonleaf_compares;	/* the same against a non-leaf key, whose domain can be the varying
+						 * counterpart of the index's (btree_generate_prefix_domain); compares
+						 * where it is the index's */
+  const unsigned char *classes;	/* per key column, the bound's domain class among its scan's (DOMAIN_KEY_RANGES) */
+  int n_columns;
+  bool merges;			/* a column's index-side conversion can make index keys equal (BIGINT into DOUBLE):
+				 * a search positions at the end of the keys equal to the bound (D-42) */
 };
-// *INDENT-ON*
 
-/* A search key comparison of two values of a key column whose keys differ: the type pair comparison table's cell for
- * the two keys (DOMAIN_SEARCH_KEYS_OTHER); the unresolved-domain check (execution) for a scan whose values all have
- * their columns' keys (DOMAIN_SEARCH_KEYS_OWN), and for a key the table has no row for - every key column's rule is
- * resolved before any row, a constant's included. */
-DB_VALUE_COMPARE_RESULT domain_search_key_compare (DOMAIN_SEARCH_KEYS keys, int column, DB_VALUE * value1,
-						   DB_VALUE * value2, int do_coercion, int total_order,
-						   bool * can_compare);
+/*
+ * DOMAIN_KEY_RANGES - CBRD-27583 (D-80): the comparisons of two search key bounds of one index scan, which the scan
+ *   makes when it opens (ordering, deduplication and merging of its ranges): per key column, one for each ordered
+ *   pair of the classes of its bounds' domains - domains whose comparisons the type rule module decides alike, from
+ *   their type, codeset and collation (n_classes[c] x n_classes[c], row-major), decided by XASL generation.
+ */
+struct DOMAIN_KEY_RANGES
+{
+  const DOMAIN_COMPARE *const *tables;
+  const unsigned char *n_classes;
+  int n_columns;
+};
 
-/* domain_search_key_compare of DOMAIN_SEARCH_KEYS_OWN and of DOMAIN_SEARCH_KEYS_OTHER: pr_midxkey_compare_resolved's
- * element comparisons */
-DB_VALUE_COMPARE_RESULT domain_search_key_compare_own (int column, DB_VALUE * value1, DB_VALUE * value2,
-						       int do_coercion, int total_order, bool * can_compare);
-DB_VALUE_COMPARE_RESULT domain_search_key_compare_other (int column, DB_VALUE * value1, DB_VALUE * value2,
-							 int do_coercion, int total_order, bool * can_compare);
+/* A comparison decided before any row, of any comparison method a key comparison has (domain_compare_values; VALUES,
+ * a side whose domain leaves its values' type to the data, compares the values, as tp_value_compare_with_error does);
+ * NULL values are the caller's. */
+DB_VALUE_COMPARE_RESULT domain_compare_decided (const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
+						const DB_VALUE * value2, bool * can_compare);
+
+/* Whether a key comparison's conversion of the index side (side 1) can make two index keys of the column equal: a
+ * conversion into another type that is not lossless (a NUMERIC of more than DBL_DIG digits into DOUBLE), strings
+ * compared under another collation (XASL generation, D-42). */
+bool domain_key_compare_merges (const DOMAIN_COMPARE * compare, const TP_DOMAIN * index_column);
+
+/* The comparison of the same two domains in the other order (side 0 and side 1 exchanged): a field exchange, which
+ * gives the type rule module's decision for the exchanged pair of a comparison with coercion (domain_compute_comparison
+ * is symmetric in its coercion, conversion order and collation) */
+void domain_compare_mirror (const DOMAIN_COMPARE * compare, DOMAIN_COMPARE * mirrored);
+
+/* pr_midxkey_compare_resolved's element comparisons of a search key bound (context: its DOMAIN_KEY_BOUND compares,
+ * the bound first) and of two bounds (context: a DOMAIN_KEY_RANGES_PAIR) */
+DB_VALUE_COMPARE_RESULT domain_key_bound_element_compare (const void *context, int column, DB_VALUE * value1,
+							  DB_VALUE * value2, int do_coercion, int total_order,
+							  bool * can_compare);
+struct DOMAIN_KEY_RANGES_PAIR
+{
+  const DOMAIN_KEY_RANGES *ranges;
+  const unsigned char *classes[2];
+};
+DB_VALUE_COMPARE_RESULT domain_key_ranges_element_compare (const void *context, int column, DB_VALUE * value1,
+							   DB_VALUE * value2, int do_coercion, int total_order,
+							   bool * can_compare);
 
 #endif /* _DOMAIN_RULES_H_ */

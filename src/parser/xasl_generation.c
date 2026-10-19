@@ -395,10 +395,12 @@ static int pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XAS
 static int pt_ordbynum_to_key_limit_multiple_ranges (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xasl);
 static const TP_DOMAIN *pt_key_element_domain (const REGU_VARIABLE * regu);
 static bool pt_convert_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column);
-static int pt_decide_key_element (INDX_INFO * indx_infop, REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midxkey,
+static int pt_decide_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midxkey,
 				  const TP_DOMAIN ** written, bool * kept);
 static int pt_decide_key_bound (INDX_INFO * indx_infop, REGU_VARIABLE * bound, TP_DOMAIN ** written_domain);
 static int pt_decide_index_keys (INDX_INFO * indx_infop);
+static int pt_decide_key_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs, DOMAIN_COMPARE * decided);
+static int pt_decide_key_compares (INDX_INFO * indx_infop);
 static INDX_INFO *pt_to_index_info (PARSER_CONTEXT * parser, DB_OBJECT * class_, PRED_EXPR * where_pred, QO_PLAN * plan,
 				    QO_XASL_INDEX_INFO * qo_index_infop);
 static ACCESS_SPEC_TYPE *pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_key_part,
@@ -13840,13 +13842,13 @@ error:
 
 /*
  * pt_key_element_domain () - CBRD-27583 (4.4): the domain a search key element's values have on the server: a
- *   literal's value's own, which its regu's may widen, unless a COLLATE modifier gives it the regu's collation at the
- *   fetch; an OBJECT's are OIDs
+ *   literal's value's own, which its regu's may widen, unless the fetch converts it or a COLLATE modifier gives it the
+ *   regu's collation at the fetch; an OBJECT's are OIDs
  */
 static const TP_DOMAIN *
 pt_key_element_domain (const REGU_VARIABLE * regu)
 {
-  if (regu->type == TYPE_DBVAL && !DB_IS_NULL (&regu->value.dbval)
+  if (regu->type == TYPE_DBVAL && !DB_IS_NULL (&regu->value.dbval) && regu->original_domain == NULL
       && !REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_APPLY_COLLATION))
     {
       return domain_key_value_domain (domain_value_domain (&regu->value.dbval));
@@ -13855,8 +13857,9 @@ pt_key_element_domain (const REGU_VARIABLE * regu)
 }
 
 /*
- * pt_convert_key_element () - CBRD-27583 (4.4): a search key element converted into its index column's domain: a
- *   literal here, any other element by its regu at each fetch
+ * pt_convert_key_element () - CBRD-27583 (4.4): a search key element converted into its index column's domain, or
+ *   into the domain its comparison with the index keys converts it into (D-80): a literal here, any other element by
+ *   its regu at each fetch
  *   return: false where the element keeps its value - a list column read into its slot, or a regu that converts already
  */
 static bool
@@ -13866,18 +13869,19 @@ pt_convert_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column)
     {
       DB_VALUE converted;
       db_make_null (&converted);
-      if (tp_value_coerce (&regu->value.dbval, &converted, column) != DOMAIN_COMPATIBLE)
+      if (tp_value_coerce (&regu->value.dbval, &converted, column) == DOMAIN_COMPATIBLE)
 	{
-	  assert (false);
-	  pr_clear_value (&converted);
-	  return false;
+	  pr_clear_value (&regu->value.dbval);
+	  regu->value.dbval = converted;
+	  regu->domain = (TP_DOMAIN *) column;
+	  return true;
 	}
-      pr_clear_value (&regu->value.dbval);
-      regu->value.dbval = converted;
-      regu->domain = (TP_DOMAIN *) column;
-      return true;
+      /* only a string fails: its fetch converts it, and the scan fails at its open */
+      assert (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (&regu->value.dbval)));
+      pr_clear_value (&converted);
+      regu->domain = (TP_DOMAIN *) domain_value_domain (&regu->value.dbval);
     }
-  if (regu->type == TYPE_POSITION)
+  else if (regu->type == TYPE_POSITION)
     {
       return false;
     }
@@ -13898,7 +13902,7 @@ pt_convert_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column)
  *   kept(out): the column keeps its value's own domain
  */
 static int
-pt_decide_key_element (INDX_INFO * indx_infop, REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midxkey,
+pt_decide_key_element (REGU_VARIABLE * regu, const TP_DOMAIN * column, bool midxkey,
 		       const TP_DOMAIN ** written, bool * kept)
 {
   *written = column;
@@ -13916,6 +13920,33 @@ pt_decide_key_element (INDX_INFO * indx_infop, REGU_VARIABLE * regu, const TP_DO
       return NO_ERROR;
     }
   DOMAIN_KEY_RULE rule = domain_key_rule (element, column, midxkey);
+  if (rule == DOMAIN_KEY_KEEP)
+    {
+      /* D-80: a kept value that each comparison with the index keys would convert converts once, into the domain the
+       * comparison converts it into, and is a value of that domain from here: by the comparison's converter (no
+       * conversion implicit coercion refuses), into a value that compares as the comparison compares (its collation,
+       * no ENUM codeset), unless the index key converts first (its failure names the value's own type) */
+      DOMAIN_COMPARE compare, converted;
+      int error = pt_decide_key_compare (element, column, &compare);
+      if (error == NO_ERROR && compare.conv[0] != NULL && (compare.first == 0 || compare.conv[1] == NULL)
+	  && compare.conv[0] == tp_value_find_converter (TP_DOMAIN_TYPE (element), compare.target[0],
+							 DOMAIN_CONVERT_ASSIGN))
+	{
+	  error = pt_decide_key_compare (compare.target[0], column, &converted);
+	  if (error == NO_ERROR && converted.conv[0] == NULL && converted.collation == compare.collation
+	      && compare.codeset_side < 0 && converted.codeset_side < 0
+	      && pt_convert_key_element (regu, compare.target[0]))
+	    {
+	      element = compare.target[0];
+	      rule =
+		domain_key_rule (element, column, midxkey) == DOMAIN_KEY_INDEX ? DOMAIN_KEY_INDEX : DOMAIN_KEY_KEEP;
+	    }
+	}
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
   if (rule == DOMAIN_KEY_CONVERT)
     {
       /* into the column's domain alone: a multi-column key's column links the next column's, which a coercion would
@@ -13939,7 +13970,6 @@ pt_decide_key_element (INDX_INFO * indx_infop, REGU_VARIABLE * regu, const TP_DO
     }
   *written = domain_in_key_direction (element, column);
   *kept = rule == DOMAIN_KEY_KEEP;
-  indx_infop->other_keys = indx_infop->other_keys || domain_key_differs (element, column);
   return *written != NULL ? NO_ERROR : ER_FAILED;
 }
 
@@ -13964,7 +13994,7 @@ pt_decide_key_bound (INDX_INFO * indx_infop, REGU_VARIABLE * bound, TP_DOMAIN **
   if (TP_DOMAIN_TYPE (key_type) != DB_TYPE_MIDXKEY)
     {
       /* a single-column key takes its value as it is or converted, under no key domain of its own */
-      return pt_decide_key_element (indx_infop, bound, key_type, false, &written, &kept);
+      return pt_decide_key_element (bound, key_type, false, &written, &kept);
     }
 
   assert (bound->type == TYPE_FUNC && bound->value.funcp->ftype == F_MIDXKEY);
@@ -13980,7 +14010,7 @@ pt_decide_key_bound (INDX_INFO * indx_infop, REGU_VARIABLE * bound, TP_DOMAIN **
 	  /* an index skip scan's first column is the skip value, read from the index */
 	  if (!(indx_infop->use_iss && operand == first))
 	    {
-	      error = pt_decide_key_element (indx_infop, &operand->value, column, true, &written, &kept);
+	      error = pt_decide_key_element (&operand->value, column, true, &written, &kept);
 	      mixed = mixed || kept;
 	    }
 	  operand = operand->next;
@@ -14024,15 +14054,13 @@ pt_decide_key_bound (INDX_INFO * indx_infop, REGU_VARIABLE * bound, TP_DOMAIN **
 }
 
 /*
- * pt_decide_index_keys () - CBRD-27583 (4.4): how every search key bound of an index scan takes its values, and
- *   whether a key column takes values of a key other than its own (INDX_INFO.other_keys); the index skip scan's fetch
- *   range is the skip value alone, written with the index's domain
+ * pt_decide_index_keys () - CBRD-27583 (4.4): how every search key bound of an index scan takes its values; the index
+ *   skip scan's fetch range is the skip value alone, written with the index's domain
  */
 static int
 pt_decide_index_keys (INDX_INFO * indx_infop)
 {
   KEY_INFO *key_infop = &indx_infop->key_info;
-  indx_infop->other_keys = false;
   for (int i = 0; i < key_infop->key_cnt; i++)
     {
       KEY_RANGE *range = &key_infop->key_ranges[i];
@@ -14049,7 +14077,335 @@ pt_decide_index_keys (INDX_INFO * indx_infop)
 	  return ER_FAILED;
 	}
     }
+  return pt_decide_key_compares (indx_infop);
+}
+
+/* CBRD-27583 (D-80): whether a domain fixes the type of its values and their collation */
+static bool
+pt_key_domain_is_fixed (const TP_DOMAIN * domain)
+{
+  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE
+    /* LEAVE takes the value's collation, ENFORCE leaves a non-string value as it is */
+    && domain->collation_flag == TP_DOMAIN_COLL_NORMAL;
+}
+
+/*
+ * pt_decide_key_compare () - CBRD-27583 (D-80): the comparison of a value of each of two domains, as the type rule
+ *   module decides it: comparison method VALUES for a side whose domain leaves its values' type or collation to the
+ *   data; OBJECT keys (OIDs) by their own cmpval, as the B-tree compares them
+ *   return: NO_ERROR, or the error of the type rule module
+ */
+static int
+pt_decide_key_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs, DOMAIN_COMPARE * decided)
+{
+  DOMAIN_COMPARE_KEY key[2];
+  if (!pt_key_domain_is_fixed (lhs) || !pt_key_domain_is_fixed (rhs))
+    {
+      memset (decided, 0, sizeof (*decided));
+      decided->method = DOMAIN_COMPARE_VALUES;
+      decided->codeset_side = -1;
+      return NO_ERROR;
+    }
+  domain_compare_key_of (lhs, &key[0]);
+  domain_compare_key_of (rhs, &key[1]);
+  const int error = domain_resolve_comparison (&key[0], &key[1], decided);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (decided->method == DOMAIN_COMPARE_OBJECT)
+    {
+      decided->method = DOMAIN_COMPARE_DIRECT;
+      decided->cmp = pr_type_from_id ((DB_TYPE) decided->source[0]);
+    }
+  if (decided->conv[0] == NULL && decided->conv[1] == NULL)
+    {
+      /* nothing converted: the first value's type, as a comparison of keys that differ has it */
+      decided->first = 0;
+      decided->converted_first = decided->source[0];
+    }
   return NO_ERROR;
+}
+
+#if !defined (NDEBUG)
+/* CBRD-27583 (D-80): two decided comparisons are the same comparison */
+static bool
+pt_key_compares_equal (const DOMAIN_COMPARE * lhs, const DOMAIN_COMPARE * rhs)
+{
+  return lhs->method == rhs->method && lhs->coercion == rhs->coercion && lhs->first == rhs->first
+    && lhs->source[0] == rhs->source[0] && lhs->source[1] == rhs->source[1]
+    && lhs->converted_first == rhs->converted_first && lhs->rank == rhs->rank
+    && lhs->codeset_side == rhs->codeset_side && lhs->collation == rhs->collation && lhs->cmp == rhs->cmp
+    && lhs->conv[0] == rhs->conv[0] && lhs->conv[1] == rhs->conv[1] && lhs->target[0] == rhs->target[0]
+    && lhs->target[1] == rhs->target[1];
+}
+#endif
+
+/* CBRD-27583 (D-80): whether values of two fixed domains compare alike with any other: the type rule module decides a
+ * comparison from the domains' type, codeset and collation alone */
+static bool
+pt_key_domains_alike (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs)
+{
+  if (lhs == rhs)
+    {
+      return true;
+    }
+  const bool fixed = pt_key_domain_is_fixed (lhs);
+  if (fixed != pt_key_domain_is_fixed (rhs) || !fixed)
+    {
+      return fixed == pt_key_domain_is_fixed (rhs);
+    }
+  DOMAIN_COMPARE_KEY key[2];
+  domain_compare_key_of (lhs, &key[0]);
+  domain_compare_key_of (rhs, &key[1]);
+  return key[0].type == key[1].type && key[0].codeset == key[1].codeset && key[0].collation == key[1].collation;
+}
+
+/*
+ * pt_decide_key_compares () - CBRD-27583 (D-80): how an index scan's search key bounds compare, decided from the
+ *   domains their columns' values have (a multi-column bound's, those of the domain its key is written with; a
+ *   single-column bound's, its element's) and the index's key domain: the comparison a predicate makes of the two
+ *   return: NO_ERROR or an error code
+ *
+ * A key column's bound domains fall into classes of domains the type rule module compares alike. A bound's
+ * comparisons with the index keys (INDX_INFO.key_bounds, which KEY_RANGE.key1_bound / key2_bound point to) are shared
+ * by the bounds of the same classes; the scan's comparisons of two bounds (INDX_INFO.key_ranges_compares) are, per key
+ * column, one for each ordered pair of its classes. The stream carries them; unpack decides nothing.
+ */
+static int
+pt_decide_key_compares (INDX_INFO * indx_infop)
+{
+  const TP_DOMAIN *key_type = indx_infop->key_type;
+  const int n_columns = TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY ? key_type->precision : 1;
+  const int n_ranges = indx_infop->key_info.key_ranges != NULL ? indx_infop->key_info.key_cnt : 0;
+  /* bound b is key1 (b even) or key2 of range b / 2, the index skip scan's fetch range after the key ranges */
+  const int n_bounds = 2 * n_ranges + (indx_infop->use_iss ? 2 : 0);
+  /* per column, the classes' first domains (n_bounds each); per bound, its columns' classes */
+  const TP_DOMAIN **classes = NULL;
+  unsigned char *bound_classes = NULL;
+  int *n_classes = NULL;
+  DOMAIN_KEY_BOUND *decided = NULL;
+  int n_decided = 0;
+  DOMAIN_KEY_RANGES *ranges = NULL;
+  int error = NO_ERROR;
+
+  indx_infop->key_bounds = NULL;
+  indx_infop->n_key_bounds = 0;
+  indx_infop->key_ranges_compares = NULL;
+  if (n_bounds == 0)
+    {
+      return NO_ERROR;
+    }
+
+  /* *INDENT-OFF* */
+  auto range_of = [&] (int b) -> KEY_RANGE *
+  {
+    return b / 2 < n_ranges ? &indx_infop->key_info.key_ranges[b / 2] : &indx_infop->iss_range;
+  };
+  auto regu_of = [&] (int b) -> const REGU_VARIABLE *
+  {
+    return b % 2 == 0 ? range_of (b)->key1 : range_of (b)->key2;
+  };
+  auto column_domain = [&] (int b, int c) -> const TP_DOMAIN *
+  {
+    if (TP_DOMAIN_TYPE (key_type) != DB_TYPE_MIDXKEY)
+      {
+	return pt_key_element_domain (regu_of (b));
+      }
+    const TP_DOMAIN *written = b % 2 == 0 ? range_of (b)->key1_domain : range_of (b)->key2_domain;
+    return domain_key_column (written != NULL ? written : key_type, c);
+  };
+  /* *INDENT-ON* */
+
+  classes = (const TP_DOMAIN **) db_private_alloc (NULL, n_columns * n_bounds * sizeof (*classes));
+  bound_classes = (unsigned char *) db_private_alloc (NULL, n_bounds * n_columns);
+  n_classes = (int *) db_private_alloc (NULL, n_columns * sizeof (*n_classes));
+  decided = (DOMAIN_KEY_BOUND *) pt_alloc_packing_buf (n_bounds * (int) sizeof (DOMAIN_KEY_BOUND));
+  if (classes == NULL || bound_classes == NULL || n_classes == NULL || decided == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto end;
+    }
+  for (int c = 0; c < n_columns; c++)
+    {
+      n_classes[c] = 0;
+    }
+
+  /* each column's classes, and each bound's */
+  for (int b = 0; b < n_bounds; b++)
+    {
+      if (regu_of (b) == NULL)
+	{
+	  continue;
+	}
+      for (int c = 0; c < n_columns; c++)
+	{
+	  const TP_DOMAIN *domain = column_domain (b, c);
+	  const TP_DOMAIN **column_classes = &classes[c * n_bounds];
+	  int k = 0;
+	  while (k < n_classes[c] && !pt_key_domains_alike (column_classes[k], domain))
+	    {
+	      k++;
+	    }
+	  if (k == n_classes[c])
+	    {
+	      if (k > UCHAR_MAX)
+		{
+		  assert (false);
+		  error = ER_FAILED;
+		  goto end;
+		}
+	      column_classes[n_classes[c]++] = domain;
+	    }
+	  bound_classes[b * n_columns + c] = (unsigned char) k;
+	}
+    }
+
+  /* the comparisons of two bounds */
+  if (n_classes[0] > 0)
+    {
+      ranges = (DOMAIN_KEY_RANGES *) pt_alloc_packing_buf ((int) sizeof (DOMAIN_KEY_RANGES));
+      const DOMAIN_COMPARE **tables =
+	(const DOMAIN_COMPARE **) pt_alloc_packing_buf (n_columns * (int) sizeof (DOMAIN_COMPARE *));
+      unsigned char *ranges_n_classes = (unsigned char *) pt_alloc_packing_buf (n_columns);
+      if (ranges == NULL || tables == NULL || ranges_n_classes == NULL)
+	{
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto end;
+	}
+      for (int c = 0; c < n_columns; c++)
+	{
+	  const int n = n_classes[c];
+	  DOMAIN_COMPARE *table = (DOMAIN_COMPARE *) pt_alloc_packing_buf (n * n * (int) sizeof (DOMAIN_COMPARE));
+	  if (table == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto end;
+	    }
+	  for (int i = 0; i < n * n && error == NO_ERROR; i++)
+	    {
+	      error = pt_decide_key_compare (classes[c * n_bounds + i / n], classes[c * n_bounds + i % n], &table[i]);
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  tables[c] = table;
+	  ranges_n_classes[c] = (unsigned char) n;
+	}
+      ranges->tables = tables;
+      ranges->n_classes = ranges_n_classes;
+      ranges->n_columns = n_columns;
+    }
+
+  /* each bound's comparisons with the index keys, shared by the bounds of the same classes */
+  for (int b = 0; b < n_bounds; b++)
+    {
+      if (regu_of (b) == NULL)
+	{
+	  continue;
+	}
+      const unsigned char *own = &bound_classes[b * n_columns];
+      DOMAIN_KEY_BOUND *bound = NULL;
+      for (int m = 0; m < n_decided && bound == NULL; m++)
+	{
+	  bound = memcmp (decided[m].classes, own, n_columns) == 0 ? &decided[m] : NULL;
+	}
+      if (bound == NULL)
+	{
+	  bound = &decided[n_decided];
+	  DOMAIN_COMPARE *compares =
+	    (DOMAIN_COMPARE *) pt_alloc_packing_buf (n_columns * (int) sizeof (DOMAIN_COMPARE));
+	  unsigned char *bound_own = (unsigned char *) pt_alloc_packing_buf (n_columns);
+	  if (compares == NULL || bound_own == NULL)
+	    {
+	      error = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto end;
+	    }
+	  memcpy (bound_own, own, n_columns);
+	  bound->compares = compares;
+	  bound->reversed = NULL;
+	  bound->nonleaf_compares = compares;
+	  bound->classes = bound_own;
+	  bound->n_columns = n_columns;
+	  bound->merges = false;
+	  for (int c = 0; c < n_columns && error == NO_ERROR; c++)
+	    {
+	      const TP_DOMAIN *column = domain_key_column (key_type, c);
+	      error = pt_decide_key_compare (classes[c * n_bounds + own[c]], column, &compares[c]);
+#if !defined (NDEBUG)
+	      if (error == NO_ERROR)
+		{
+		  /* the class's decision is the bound's own, and the mirror the B-tree takes for an index key first
+		   * (domain_compare_mirror) is the decision for the exchanged pair */
+		  DOMAIN_COMPARE own_decision, reversed, mirrored;
+		  assert (pt_decide_key_compare (column_domain (b, c), column, &own_decision) == NO_ERROR
+			  && pt_key_compares_equal (&own_decision, &compares[c]));
+		  domain_compare_mirror (&compares[c], &mirrored);
+		  assert (pt_decide_key_compare (column, classes[c * n_bounds + own[c]], &reversed) == NO_ERROR
+			  && pt_key_compares_equal (&reversed, &mirrored));
+		}
+	      if (error == NO_ERROR && compares[c].conv[0] != NULL)
+		{
+		  /* CBRD-27583 census (removed at S3-14): a bound's values converted at each comparison */
+		  er_log_debug (ARG_FILE_LINE, "CBRD-27583 key bound converts %d %d %d\n", c,
+				(int) compares[c].source[0], (int) compares[c].source[1]);
+		}
+#endif
+	      bound->merges = bound->merges || domain_key_compare_merges (&compares[c], column);
+	    }
+	  if (error == NO_ERROR && TP_DOMAIN_TYPE (key_type) == DB_TYPE_BIT)
+	    {
+	      /* a non-leaf key of a BIT index is its VARBIT counterpart (btree_generate_prefix_domain) */
+	      DOMAIN_COMPARE *nonleaf = (DOMAIN_COMPARE *) pt_alloc_packing_buf ((int) sizeof (DOMAIN_COMPARE));
+	      const TP_DOMAIN *varbit = tp_domain_resolve (DB_TYPE_VARBIT, key_type->class_mop, key_type->precision,
+							   key_type->scale, key_type->setdomain,
+							   key_type->collation_id);
+	      error = nonleaf == NULL || varbit == NULL ? ER_OUT_OF_VIRTUAL_MEMORY
+		: pt_decide_key_compare (classes[own[0]], varbit, nonleaf);
+	      bound->nonleaf_compares = nonleaf;
+	    }
+	  if (error != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  n_decided++;
+	}
+      if (b % 2 == 0)
+	{
+	  range_of (b)->key1_bound = bound;
+	}
+      else
+	{
+	  range_of (b)->key2_bound = bound;
+	}
+    }
+
+  /* a bound without a key (an infinite one, an equality's key2) is the range's other */
+  for (int b = 0; b < n_bounds; b += 2)
+    {
+      KEY_RANGE *range = range_of (b);
+      range->key1_bound = range->key1_bound != NULL ? range->key1_bound : range->key2_bound;
+      range->key2_bound = range->key2_bound != NULL ? range->key2_bound : range->key1_bound;
+    }
+  indx_infop->key_bounds = decided;
+  indx_infop->n_key_bounds = n_decided;
+  indx_infop->key_ranges_compares = ranges;
+
+end:
+  if (classes != NULL)
+    {
+      db_private_free (NULL, classes);
+    }
+  if (bound_classes != NULL)
+    {
+      db_private_free (NULL, bound_classes);
+    }
+  if (n_classes != NULL)
+    {
+      db_private_free (NULL, n_classes);
+    }
+  return error;
 }
 
 /*

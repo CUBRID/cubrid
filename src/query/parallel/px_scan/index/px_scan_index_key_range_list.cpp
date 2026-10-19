@@ -114,9 +114,6 @@ namespace parallel_index_scan
       }
     INDX_SCAN_ID *isidp = &worker_scan_id->s.isid;
     TP_DOMAIN *btree_domainp = m_btid_int.key_type;
-    /* the workers' comparisons of these ranges' values read the search keys XASL generation decided */
-    m_btid_int.search_keys = scan_index_search_keys (isidp);
-    m_btid_int.search_compare = scan_index_search_compare (isidp);
 
     m_part_key_desc = false;
     m_key_val_ranges.resize (key_cnt);
@@ -204,6 +201,7 @@ namespace parallel_index_scan
 	    DB_VALUE tmp_key = m_key_val_ranges[i].key1;
 	    m_key_val_ranges[i].key1 = m_key_val_ranges[i].key2;
 	    m_key_val_ranges[i].key2 = tmp_key;
+	    std::swap (m_key_val_ranges[i].key1_bound, m_key_val_ranges[i].key2_bound);
 	  }
       }
 
@@ -211,7 +209,7 @@ namespace parallel_index_scan
     if (m_key_val_ranges.size () > 1 && m_indx_info != nullptr)
       {
 	int new_cnt = scan_dedup_or_merge_key_ranges (m_indx_info->range_type, m_key_val_ranges.data (),
-		      static_cast<int> (m_key_val_ranges.size ()), m_btid_int.search_keys);
+		      static_cast<int> (m_key_val_ranges.size ()), m_indx_info->key_ranges_compares);
 	if (new_cnt < 0)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);

@@ -236,8 +236,12 @@ regu_init (indx_info &ii)
   ii.iss_range.key2 = NULL;
   ii.iss_range.key1_domain = NULL;
   ii.iss_range.key2_domain = NULL;
+  ii.iss_range.key1_bound = NULL;
+  ii.iss_range.key2_bound = NULL;
   ii.key_type = NULL;
-  ii.other_keys = false;
+  ii.key_bounds = NULL;
+  ii.n_key_bounds = 0;
+  ii.key_ranges_compares = NULL;
 }
 
 void
@@ -248,6 +252,8 @@ regu_init (key_range &kr)
   kr.key2 = NULL;
   kr.key1_domain = NULL;
   kr.key2_domain = NULL;
+  kr.key1_bound = NULL;
+  kr.key2_bound = NULL;
 }
 
 void

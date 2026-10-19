@@ -32,6 +32,7 @@
 
 #include "xasl_to_stream.h"
 
+#include "domain_rules.h"
 #include "error_manager.h"
 #include "server_interface.h"
 #include "class_object.h"
@@ -164,6 +165,8 @@ static char *xts_process_like_eval_term (char *ptr, const LIKE_EVAL_TERM * like_
 static char *xts_process_rlike_eval_term (char *ptr, const RLIKE_EVAL_TERM * rlike_eval_term);
 static char *xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec);
 static char *xts_process_indx_info (char *ptr, const INDX_INFO * indx_info);
+static char *xts_pack_decided_compare (char *ptr, const DOMAIN_COMPARE * compare);
+static char *xts_pack_key_compares (char *ptr, const INDX_INFO * indx_info);
 static char *xts_process_key_info (char *ptr, const KEY_INFO * key_info);
 static char *xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spec);
 static char *xts_process_list_spec_type (char *ptr, const LIST_SPEC_TYPE * list_spec);
@@ -225,6 +228,8 @@ static int xts_sizeof_like_eval_term (const LIKE_EVAL_TERM * ptr);
 static int xts_sizeof_rlike_eval_term (const RLIKE_EVAL_TERM * ptr);
 static int xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * ptr);
 static int xts_sizeof_indx_info (const INDX_INFO * ptr);
+static int xts_sizeof_decided_compare (const DOMAIN_COMPARE * compare);
+static int xts_sizeof_key_compares (const INDX_INFO * indx_info);
 static int xts_sizeof_key_info (const KEY_INFO * ptr);
 static int xts_sizeof_cls_spec_type (const CLS_SPEC_TYPE * ptr);
 static int xts_sizeof_list_spec_type (const LIST_SPEC_TYPE * ptr);
@@ -4803,9 +4808,7 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
    * key values are OIDs) - so no OBJECT-to-OID packing here */
   ptr = or_pack_domain (ptr, indx_info->key_type, 0, 0);
 
-  /* CBRD-27583 (4.4): whether a key column takes other keys, then each key range's written key domains, after a mask
-   * of the ones it has */
-  ptr = or_pack_int (ptr, indx_info->other_keys ? 1 : 0);
+  /* CBRD-27583 (4.4): each key range's written key domains, after a mask of the ones it has */
   for (int i = 0; i < indx_info->key_info.key_cnt; i++)
     {
       const KEY_RANGE *range = &indx_info->key_info.key_ranges[i];
@@ -4819,6 +4822,8 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
 	  ptr = or_pack_domain (ptr, range->key2_domain, 0, 0);
 	}
     }
+
+  ptr = xts_pack_key_compares (ptr, indx_info);
 
   if (indx_info->cov_list_id == NULL)
     {
@@ -7107,7 +7112,6 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
 
   size += or_packed_domain_size (indx_info->key_type, 0);	/* key_type */
 
-  size += OR_INT_SIZE;		/* other_keys */
   for (int i = 0; i < indx_info->key_info.key_cnt; i++)
     {
       const KEY_RANGE *range = &indx_info->key_info.key_ranges[i];
@@ -7116,6 +7120,136 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
       size += range->key2_domain != NULL ? or_packed_domain_size (range->key2_domain, 0) : 0;
     }
 
+  size += xts_sizeof_key_compares (indx_info);
+
+  return size;
+}
+
+/*
+ * xts_pack_decided_compare () - CBRD-27583 (D-80): a comparison XASL generation decided: its method and the fields
+ *   of its outcome (DOMAIN_COMPARE), and the domain a converted side is converted into; stx_unpack_decided_compare
+ *   looks its cmpval and converters up
+ */
+static char *
+xts_pack_decided_compare (char *ptr, const DOMAIN_COMPARE * compare)
+{
+  const int converts = (compare->conv[0] != NULL ? 1 : 0) | (compare->conv[1] != NULL ? 2 : 0);
+  ptr = or_pack_int (ptr, compare->method | (compare->coercion << 8) | (compare->first << 16) | (converts << 24));
+  ptr = or_pack_int (ptr, compare->source[0] | (compare->source[1] << 8) | (compare->converted_first << 16)
+		     | ((compare->rank + 2) << 24));
+  ptr = or_pack_int (ptr, (compare->collation & 0xFFFF) | ((compare->codeset_side + 1) << 16));
+  if (converts != 0)
+    {
+      /* both sides converted are converted into one domain (domain_resolve_comparison) */
+      assert (converts != 3 || compare->target[0] == compare->target[1]);
+      ptr = or_pack_domain (ptr, (TP_DOMAIN *) compare->target[(converts & 1) ? 0 : 1], 0, 0);
+    }
+  return ptr;
+}
+
+static int
+xts_sizeof_decided_compare (const DOMAIN_COMPARE * compare)
+{
+  int size = 3 * OR_INT_SIZE;
+  if (compare->conv[0] != NULL || compare->conv[1] != NULL)
+    {
+      size += or_packed_domain_size ((TP_DOMAIN *) compare->target[compare->conv[0] != NULL ? 0 : 1], 0);
+    }
+  return size;
+}
+
+/*
+ * xts_pack_key_compares () - CBRD-27583 (D-80): an index scan's search key bound comparisons (pt_decide_key_compares):
+ *   the number of distinct bounds; with any, the key columns, each column's classes and the comparisons of each
+ *   ordered pair of them, each bound's flags (D-42 merges, a non-leaf comparison), comparisons with the index keys
+ *   and classes, then each key range's and the index skip scan's fetch range's bounds (key1 | key2 << 16, 0xFFFF none)
+ */
+static char *
+xts_pack_key_compares (char *ptr, const INDX_INFO * indx_info)
+{
+  ptr = or_pack_int (ptr, indx_info->n_key_bounds);
+  if (indx_info->n_key_bounds == 0)
+    {
+      return ptr;
+    }
+  const DOMAIN_KEY_RANGES *ranges = indx_info->key_ranges_compares;
+  ptr = or_pack_int (ptr, ranges->n_columns);
+  for (int c = 0; c < ranges->n_columns; c++)
+    {
+      const int n = ranges->n_classes[c];
+      ptr = or_pack_int (ptr, n);
+      for (int i = 0; i < n * n; i++)
+	{
+	  ptr = xts_pack_decided_compare (ptr, &ranges->tables[c][i]);
+	}
+    }
+  for (int b = 0; b < indx_info->n_key_bounds; b++)
+    {
+      const DOMAIN_KEY_BOUND *bound = &indx_info->key_bounds[b];
+      const bool nonleaf = bound->nonleaf_compares != bound->compares;
+      ptr = or_pack_int (ptr, (bound->merges ? 1 : 0) | (nonleaf ? 2 : 0));
+      for (int c = 0; c < bound->n_columns; c++)
+	{
+	  ptr = xts_pack_decided_compare (ptr, &bound->compares[c]);
+	  ptr = or_pack_int (ptr, bound->classes[c]);
+	}
+      if (nonleaf)
+	{
+	  ptr = xts_pack_decided_compare (ptr, bound->nonleaf_compares);
+	}
+    }
+  /* *INDENT-OFF* */
+  auto bound_pair = [indx_info] (const KEY_RANGE * range)
+  {
+    const int key1 = range->key1_bound != NULL ? (int) (range->key1_bound - indx_info->key_bounds) : 0xFFFF;
+    const int key2 = range->key2_bound != NULL ? (int) (range->key2_bound - indx_info->key_bounds) : 0xFFFF;
+    return key1 | (key2 << 16);
+  };
+  /* *INDENT-ON* */
+  for (int i = 0; i < indx_info->key_info.key_cnt; i++)
+    {
+      ptr = or_pack_int (ptr, bound_pair (&indx_info->key_info.key_ranges[i]));
+    }
+  if (indx_info->use_iss)
+    {
+      ptr = or_pack_int (ptr, bound_pair (&indx_info->iss_range));
+    }
+  return ptr;
+}
+
+static int
+xts_sizeof_key_compares (const INDX_INFO * indx_info)
+{
+  int size = OR_INT_SIZE;	/* n_key_bounds */
+  if (indx_info->n_key_bounds == 0)
+    {
+      return size;
+    }
+  const DOMAIN_KEY_RANGES *ranges = indx_info->key_ranges_compares;
+  size += OR_INT_SIZE;		/* n_columns */
+  for (int c = 0; c < ranges->n_columns; c++)
+    {
+      const int n = ranges->n_classes[c];
+      size += OR_INT_SIZE;
+      for (int i = 0; i < n * n; i++)
+	{
+	  size += xts_sizeof_decided_compare (&ranges->tables[c][i]);
+	}
+    }
+  for (int b = 0; b < indx_info->n_key_bounds; b++)
+    {
+      const DOMAIN_KEY_BOUND *bound = &indx_info->key_bounds[b];
+      size += OR_INT_SIZE;	/* flags */
+      for (int c = 0; c < bound->n_columns; c++)
+	{
+	  size += xts_sizeof_decided_compare (&bound->compares[c]) + OR_INT_SIZE;
+	}
+      if (bound->nonleaf_compares != bound->compares)
+	{
+	  size += xts_sizeof_decided_compare (bound->nonleaf_compares);
+	}
+    }
+  size += indx_info->key_info.key_cnt * OR_INT_SIZE + (indx_info->use_iss ? OR_INT_SIZE : 0);
   return size;
 }
 

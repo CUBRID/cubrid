@@ -5446,6 +5446,167 @@ error:
   return NULL;
 }
 
+/*
+ * stx_unpack_decided_compare () - CBRD-27583 (D-80): a comparison XASL generation decided (xts_pack_decided_compare):
+ *   its fields, the cmpval of the first value's type once converted and the converter of each converted side, looked
+ *   up; nothing is decided here
+ */
+static char *
+stx_unpack_decided_compare (char *ptr, DOMAIN_COMPARE * compare)
+{
+  int fields[3];
+  for (int i = 0; i < 3; i++)
+    {
+      ptr = or_unpack_int (ptr, &fields[i]);
+    }
+  memset (compare, 0, sizeof (*compare));
+  compare->method = (unsigned char) (fields[0] & 0xFF);
+  compare->coercion = (unsigned char) ((fields[0] >> 8) & 0xFF);
+  compare->first = (unsigned char) ((fields[0] >> 16) & 0xFF);
+  const int converts = (fields[0] >> 24) & 0xFF;
+  compare->source[0] = (unsigned char) (fields[1] & 0xFF);
+  compare->source[1] = (unsigned char) ((fields[1] >> 8) & 0xFF);
+  compare->converted_first = (unsigned char) ((fields[1] >> 16) & 0xFF);
+  compare->rank = (signed char) (((fields[1] >> 24) & 0xFF) - 2);
+  compare->collation = (short) (fields[2] & 0xFFFF);
+  compare->codeset_side = (signed char) (((fields[2] >> 16) & 0xFF) - 1);
+  TP_DOMAIN *target = NULL;
+  if (converts != 0)
+    {
+      ptr = or_unpack_domain (ptr, &target, NULL);
+    }
+  for (int side = 0; side < 2; side++)
+    {
+      if (converts & (1 << side))
+	{
+	  compare->target[side] = target;
+	  compare->conv[side] = domain_compare_converter ((DB_TYPE) compare->source[side], target);
+	}
+    }
+  if (compare->method != DOMAIN_COMPARE_VALUES)
+    {
+      compare->cmp = pr_type_from_id ((converts & 1) ? TP_DOMAIN_TYPE (target) : (DB_TYPE) compare->source[0]);
+    }
+  return ptr;
+}
+
+/*
+ * stx_build_key_compares () - CBRD-27583 (D-80): an index scan's search key bound comparisons, as XASL generation
+ *   decided them (xts_pack_key_compares); each bound's with an index key first is its comparisons' mirror
+ *   (domain_compare_mirror)
+ *   return: the stream after them; NULL with the unpack error set
+ */
+static char *
+stx_build_key_compares (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
+{
+  int n_bounds, n_columns, value;
+
+  indx_info->key_bounds = NULL;
+  indx_info->key_ranges_compares = NULL;
+  indx_info->iss_range.key1_bound = NULL;
+  indx_info->iss_range.key2_bound = NULL;
+  for (int i = 0; i < indx_info->key_info.key_cnt; i++)
+    {
+      indx_info->key_info.key_ranges[i].key1_bound = NULL;
+      indx_info->key_info.key_ranges[i].key2_bound = NULL;
+    }
+  ptr = or_unpack_int (ptr, &n_bounds);
+  indx_info->n_key_bounds = n_bounds;
+  if (n_bounds == 0)
+    {
+      return ptr;
+    }
+
+  ptr = or_unpack_int (ptr, &n_columns);
+  DOMAIN_KEY_RANGES *ranges = (DOMAIN_KEY_RANGES *) stx_alloc_struct (thread_p, (int) sizeof (DOMAIN_KEY_RANGES));
+  const DOMAIN_COMPARE **tables =
+    (const DOMAIN_COMPARE **) stx_alloc_struct (thread_p, n_columns * (int) sizeof (DOMAIN_COMPARE *));
+  unsigned char *n_classes = (unsigned char *) stx_alloc_struct (thread_p, n_columns);
+  DOMAIN_KEY_BOUND *bounds =
+    (DOMAIN_KEY_BOUND *) stx_alloc_struct (thread_p, n_bounds * (int) sizeof (DOMAIN_KEY_BOUND));
+  if (ranges == NULL || tables == NULL || n_classes == NULL || bounds == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      return NULL;
+    }
+  for (int c = 0; c < n_columns; c++)
+    {
+      ptr = or_unpack_int (ptr, &value);
+      DOMAIN_COMPARE *table = stx_alloc_compares (thread_p, value * value);
+      if (table == NULL)
+	{
+	  return NULL;
+	}
+      for (int i = 0; i < value * value; i++)
+	{
+	  ptr = stx_unpack_decided_compare (ptr, &table[i]);
+	}
+      tables[c] = table;
+      n_classes[c] = (unsigned char) value;
+    }
+  ranges->tables = tables;
+  ranges->n_classes = n_classes;
+  ranges->n_columns = n_columns;
+
+  for (int b = 0; b < n_bounds; b++)
+    {
+      DOMAIN_KEY_BOUND *bound = &bounds[b];
+      DOMAIN_COMPARE *compares = stx_alloc_compares (thread_p, 2 * n_columns);
+      unsigned char *classes = (unsigned char *) stx_alloc_struct (thread_p, n_columns);
+      if (compares == NULL || classes == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      ptr = or_unpack_int (ptr, &value);
+      bound->merges = (value & 1) != 0;
+      for (int c = 0; c < n_columns; c++)
+	{
+	  int column_class;
+	  ptr = stx_unpack_decided_compare (ptr, &compares[c]);
+	  domain_compare_mirror (&compares[c], &compares[n_columns + c]);
+	  ptr = or_unpack_int (ptr, &column_class);
+	  classes[c] = (unsigned char) column_class;
+	}
+      bound->compares = compares;
+      bound->reversed = compares + n_columns;
+      bound->nonleaf_compares = compares;
+      bound->classes = classes;
+      bound->n_columns = n_columns;
+      if (value & 2)
+	{
+	  DOMAIN_COMPARE *nonleaf = stx_alloc_compares (thread_p, 1);
+	  if (nonleaf == NULL)
+	    {
+	      return NULL;
+	    }
+	  ptr = stx_unpack_decided_compare (ptr, nonleaf);
+	  bound->nonleaf_compares = nonleaf;
+	}
+    }
+
+  /* *INDENT-OFF* */
+  auto set_bounds = [bounds] (KEY_RANGE * range, int pair)
+  {
+    range->key1_bound = (pair & 0xFFFF) != 0xFFFF ? &bounds[pair & 0xFFFF] : NULL;
+    range->key2_bound = ((pair >> 16) & 0xFFFF) != 0xFFFF ? &bounds[(pair >> 16) & 0xFFFF] : NULL;
+  };
+  /* *INDENT-ON* */
+  for (int i = 0; i < indx_info->key_info.key_cnt; i++)
+    {
+      ptr = or_unpack_int (ptr, &value);
+      set_bounds (&indx_info->key_info.key_ranges[i], value);
+    }
+  if (indx_info->use_iss)
+    {
+      ptr = or_unpack_int (ptr, &value);
+      set_bounds (&indx_info->iss_range, value);
+    }
+  indx_info->key_bounds = bounds;
+  indx_info->key_ranges_compares = ranges;
+  return ptr;
+}
+
 static char *
 stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
 {
@@ -5484,9 +5645,7 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
   /* the B-tree's key domain */
   ptr = or_unpack_domain (ptr, &indx_info->key_type, NULL);
 
-  /* CBRD-27583 (4.4): whether a key column takes other keys, then each key range's written key domains */
-  ptr = or_unpack_int (ptr, &tmp);
-  indx_info->other_keys = tmp != 0;
+  /* CBRD-27583 (4.4): each key range's written key domains */
   for (int i = 0; i < indx_info->key_info.key_cnt; i++)
     {
       KEY_RANGE *range = &indx_info->key_info.key_ranges[i];
@@ -5505,6 +5664,12 @@ stx_build_indx_info (THREAD_ENTRY * thread_p, char *ptr, INDX_INFO * indx_info)
     }
   indx_info->iss_range.key1_domain = NULL;
   indx_info->iss_range.key2_domain = NULL;
+
+  ptr = stx_build_key_compares (thread_p, ptr, indx_info);
+  if (ptr == NULL)
+    {
+      return NULL;
+    }
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)

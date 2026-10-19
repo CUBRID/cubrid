@@ -30,6 +30,8 @@
 // forward definitions
 class regu_variable_node;
 struct tp_domain;
+struct DOMAIN_KEY_BOUND;
+struct DOMAIN_KEY_RANGES;
 
 typedef enum			/* range search option */
 {
@@ -61,6 +63,10 @@ struct key_val_range
   DB_VALUE key2;
   bool is_truncated;
   int num_index_term;		/* #terms associated with index key range */
+  /* CBRD-27583 (D-80): how key1 and key2 compare with the index keys and with other bounds (their KEY_RANGE's); NULL
+   * for a key of the index's own domain */
+  const DOMAIN_KEY_BOUND *key1_bound = nullptr;
+  const DOMAIN_KEY_BOUND *key2_bound = nullptr;
 };
 
 typedef struct key_range KEY_RANGE;
@@ -72,6 +78,11 @@ struct key_range
   tp_domain *key1_domain;	/* CBRD-27583 (4.4): the domain a multi-column key1 is written with when a column keeps
 				 * its value's own domain (DOMAIN_KEY_KEEP); NULL: the index's */
   tp_domain *key2_domain;	/* the same for key2 */
+  /* CBRD-27583 (D-80): how key1's and key2's values compare with the index keys and with the scan's other bounds
+   * (INDX_INFO.key_bounds, decided by XASL generation); a bound without a key (infinite, an equality's key2) has its
+   * range's other bound's */
+  const DOMAIN_KEY_BOUND *key1_bound;
+  const DOMAIN_KEY_BOUND *key2_bound;
 };				/* key range structure */
 
 typedef struct key_info KEY_INFO;
@@ -106,8 +117,12 @@ struct indx_info
   KEY_RANGE iss_range;		/* placeholder range used for ISS; must be created on the broker */
   int ils_prefix_len;		/* index loose scan prefix length */
   tp_domain *key_type;		/* the B-tree's key domain, its root header's */
-  bool other_keys;		/* CBRD-27583 (4.4): a key column takes values of a key other than its own
-				 * (domain_key_differs), which compare by the type pair comparison table */
+  /* CBRD-27583 (D-80): the comparisons of the scan's search key bounds, decided by XASL generation
+   * (pt_decide_key_compares): each distinct bound's with the index keys, which the key ranges point to, and those of
+   * two bounds */
+  DOMAIN_KEY_BOUND *key_bounds;
+  int n_key_bounds;
+  const DOMAIN_KEY_RANGES *key_ranges_compares;
 };				/* index information structure */
 
 // TODO - move access specification code here; note - this is supposed to be common to both client and server.

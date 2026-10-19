@@ -6984,7 +6984,7 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
       if (pk_bt_scan.C_page == NULL)
 	{
 	  /* No search has been initiated yet, we start from root. */
-	  ret = btree_locate_key (thread_p, &pk_bt_scan.btid_int, &fk_key, DB_EQ, &pk_bt_scan.C_vpid,
+	  ret = btree_locate_key (thread_p, &pk_bt_scan.btid_int, &fk_key, NULL, DB_EQ, &pk_bt_scan.C_vpid,
 				  &pk_bt_scan.slot_id, &pk_bt_scan.C_page, &found);
 	  if (ret != NO_ERROR)
 	    {
