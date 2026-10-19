@@ -3990,7 +3990,7 @@ struct parser_context
   int external_into_label_cnt;
 
   /* PL/CSQL static SQL: edits to the original SQL text that replace PL/CSQL variables with host variables,
-   * qualify object names with their owners and remove the INTO clause (see pt_collect_static_sql_edits ()) */
+   * remove the INTO clause and write the implied column lists (see pt_collect_static_sql_edits ()) */
   PT_STATIC_SQL_EDIT *static_sql_edits;
   int static_sql_edit_count;
   int static_sql_edit_status;	/* 0: not collected, 1: collected, -1: can not be expressed as text edits */

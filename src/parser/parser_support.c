@@ -13176,7 +13176,6 @@ pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
  * printing the compiled tree, which can be transformed into a shape that can not be re-parsed, the original text is
  * kept and only the following edits are applied to it:
  *   - a PL/CSQL variable (an unresolved name or path expression) is replaced with a host variable '?'
- *   - an object name (class, view, synonym, serial, stored function) written without its owner is qualified
  *   - the INTO clause is removed
  *   - a column list implied by "*" or by INSERT without a column list is written, so that the columns are fixed at
  *     compile time as they are in the compiled statement
@@ -13201,8 +13200,6 @@ struct pt_static_sql_edit_list
   PT_STATIC_SQL_EDIT *edits;
   int count;
   int alloc;
-  PT_NODE *methods;		/* stored function calls whose names must be qualified */
-  PT_NODE *path_specs;		/* specs implied by path expressions, which are not in the text */
   bool backslash_escapes;	/* a backslash escapes the next character in a string literal */
   bool ansi_quotes;		/* "..." is a delimited identifier, otherwise a string literal */
   bool failed;
@@ -13457,46 +13454,6 @@ pt_static_sql_add_edit (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list,
 }
 
 /*
- * pt_static_sql_owner_prefix () - "owner." to insert before an object name; the owner is delimited if needed
- */
-static const char *
-pt_static_sql_owner_prefix (PARSER_CONTEXT * parser, const char *qualified_name)
-{
-  const char *dot = strchr (qualified_name, '.');
-  int owner_len = (int) (dot - qualified_name);
-  bool plain = true;
-  char *prefix;
-  int i;
-
-  for (i = 0; i < owner_len; i++)
-    {
-      unsigned char c = (unsigned char) qualified_name[i];
-
-      if (!(isalnum (c) || c == '_' || c >= 0x80) || (i == 0 && isdigit (c)))
-	{
-	  plain = false;
-	  break;
-	}
-    }
-
-  prefix = (char *) parser_alloc (parser, owner_len + 4);
-  if (prefix == NULL)
-    {
-      return NULL;
-    }
-  if (plain)
-    {
-      sprintf (prefix, "%.*s.", owner_len, qualified_name);
-    }
-  else
-    {
-      sprintf (prefix, "[%.*s].", owner_len, qualified_name);
-    }
-
-  return prefix;
-}
-
-/*
  * pt_static_sql_tokenize () - scan the tokens of the text once
  *   return: false if out of memory
  */
@@ -13538,85 +13495,6 @@ pt_static_sql_token_is (const PT_STATIC_SQL_EDIT_LIST * list, int i, char punct)
 	  && list->text[list->tokens[i].start] == punct);
 }
 
-/*
- * pt_static_sql_follows_dot () - check if the token at the position follows '.' (comments and white spaces between)
- */
-static bool
-pt_static_sql_follows_dot (const PT_STATIC_SQL_EDIT_LIST * list, int position)
-{
-  int low = 0, high = list->token_count;
-
-  /* the first token that starts at or after the position */
-  while (low < high)
-    {
-      int mid = (low + high) / 2;
-
-      if (list->tokens[mid].start < position)
-	{
-	  low = mid + 1;
-	}
-      else
-	{
-	  high = mid;
-	}
-    }
-
-  return pt_static_sql_token_is (list, low - 1, '.');
-}
-
-/*
- * pt_static_sql_qualify_name () - add the edit to insert the owner before a name written without it
- */
-static void
-pt_static_sql_qualify_name (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list, PT_NODE * name)
-{
-  const char *qualified, *dot, *prefix;
-  int start, end;
-
-  if (name == NULL || name->node_type != PT_NAME || name->info.name.original == NULL)
-    {
-      return;
-    }
-
-  qualified = name->info.name.original;
-  dot = strchr (qualified, '.');
-  if (dot == NULL)
-    {
-      /* system class or not qualified by pt_set_user_specified_name () */
-      return;
-    }
-
-  /* the end of the name is kept in buffer_pos; the name is the token that ends there */
-  end = name->buffer_pos;
-  if (end <= 0 || end > list->text_len)
-    {
-      list->failed = true;
-      return;
-    }
-
-  start = pt_static_sql_token_start (list->text, end);
-  if (start < 0 || !pt_static_sql_token_equals (list->text, start, end, dot + 1))
-    {
-      list->failed = true;
-      return;
-    }
-
-  /* written with its owner (owner.name, owner . name, or with a comment between them) */
-  if (pt_static_sql_follows_dot (list, start))
-    {
-      return;
-    }
-
-  prefix = pt_static_sql_owner_prefix (parser, qualified);
-  if (prefix == NULL)
-    {
-      list->failed = true;
-      return;
-    }
-
-  pt_static_sql_add_edit (parser, list, start, start, prefix, -1);
-}
-
 static PT_NODE *
 pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -13630,63 +13508,6 @@ pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
 
   switch (node->node_type)
     {
-    case PT_SPEC:
-      {
-	PT_NODE *p;
-
-	/* specs implied by path expressions are not in the text */
-	for (p = list->path_specs; p != NULL; p = p->next)
-	  {
-	    if (p->info.pointer.node == node)
-	      {
-		return node;
-	      }
-	  }
-	for (p = node->info.spec.path_entities; p != NULL; p = p->next)
-	  {
-	    PT_NODE *ptr = pt_point (parser, p);
-
-	    if (ptr == NULL)
-	      {
-		list->failed = true;
-		return node;
-	      }
-	    list->path_specs = parser_append_node (ptr, list->path_specs);
-	  }
-      }
-      if (node->info.spec.entity_name != NULL && node->info.spec.cte_pointer == NULL
-	  && node->info.spec.derived_table == NULL && node->info.spec.remote_server_name == NULL
-	  && node->info.spec.entity_name->node_type == PT_NAME)
-	{
-	  pt_static_sql_qualify_name (parser, list, node->info.spec.entity_name);
-	}
-      break;
-
-    case PT_EXPR:
-      if (PT_IS_SERIAL (node->info.expr.op) && PT_IS_NAME_NODE (node->info.expr.arg1))
-	{
-	  pt_static_sql_qualify_name (parser, list, node->info.expr.arg1);
-	}
-      break;
-
-    case PT_METHOD_CALL:
-      if (!node->info.method_call.on_call_target && node->info.method_call.method_name != NULL
-	  && PT_IS_NAME_NODE (node->info.method_call.method_name)
-	  && node->info.method_call.method_name->info.name.original != NULL
-	  && strchr (node->info.method_call.method_name->info.name.original, '.') != NULL)
-	{
-	  /* the source position of the name is not kept; it is found in the text later */
-	  PT_NODE *p = pt_point (parser, node);
-
-	  if (p == NULL)
-	    {
-	      list->failed = true;
-	      break;
-	    }
-	  list->methods = parser_append_node (p, list->methods);
-	}
-      break;
-
     case PT_HOST_VAR:
       if (node->info.host_var.label != NULL && node->info.host_var.index >= 0
 	  && node->info.host_var.index < parser->host_var_count)
@@ -13746,74 +13567,6 @@ pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
     }
 
   return node;
-}
-
-/*
- * pt_static_sql_qualify_methods () - qualify the names of stored functions called in the text
- *
- * Note: the source positions of the function names are not kept in the tree, so the calls are found in the text:
- *	 an identifier followed by '(' and not preceded by '.'. The number of the calls in the text must match the tree.
- */
-static void
-pt_static_sql_qualify_methods (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list)
-{
-  PT_NODE *p, *q;
-
-  for (p = list->methods; p != NULL && !list->failed; p = p->next)
-    {
-      PT_NODE *call = p->info.pointer.node;
-      const char *qualified = call->info.method_call.method_name->info.name.original;
-      const char *name = strchr (qualified, '.') + 1;
-      int count_in_tree = 0, count_in_text = 0, i;
-      const char *prefix;
-      bool seen = false;
-
-      for (q = list->methods; q != NULL; q = q->next)
-	{
-	  if (intl_identifier_casecmp (q->info.pointer.node->info.method_call.method_name->info.name.original,
-				       qualified) == 0)
-	    {
-	      if (q == p)
-		{
-		  /* processed with the first call of the same function */
-		  seen = (count_in_tree > 0);
-		}
-	      count_in_tree++;
-	    }
-	}
-      if (seen)
-	{
-	  continue;
-	}
-
-      prefix = pt_static_sql_owner_prefix (parser, qualified);
-      if (prefix == NULL)
-	{
-	  list->failed = true;
-	  break;
-	}
-
-      for (i = 0; i < list->token_count; i++)
-	{
-	  const PT_STATIC_SQL_TOKEN *token = &list->tokens[i];
-
-	  if ((token->kind == PT_SS_TOKEN_IDENT || token->kind == PT_SS_TOKEN_QUOTED)
-	      && pt_static_sql_token_is (list, i + 1, '(')
-	      && pt_static_sql_token_equals (list->text, token->start, token->end, name))
-	    {
-	      count_in_text++;
-	      if (!pt_static_sql_token_is (list, i - 1, '.'))
-		{
-		  pt_static_sql_add_edit (parser, list, token->start, token->start, prefix, -1);
-		}
-	    }
-	}
-
-      if (count_in_text != count_in_tree)
-	{
-	  list->failed = true;
-	}
-    }
 }
 
 /*
@@ -14200,11 +13953,6 @@ pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   (void) parser_walk_tree (parser, statement, pt_collect_static_sql_edits_pre, &list, NULL, NULL);
 
-  if (!list.failed && list.methods != NULL)
-    {
-      pt_static_sql_qualify_methods (parser, &list);
-    }
-
   if (!list.failed && PT_IS_QUERY (statement))
     {
       for (query = statement; query != NULL && query->node_type != PT_SELECT; query = query->info.query.q.union_.arg1)
@@ -14234,7 +13982,7 @@ pt_collect_static_sql_edits (PARSER_CONTEXT * parser, PT_NODE * statement)
     {
       qsort (list.edits, list.count, sizeof (PT_STATIC_SQL_EDIT), pt_static_sql_compare_edits);
 
-      /* the same insertion can be collected more than once from copies of a name */
+      /* the same insertion can be collected more than once */
       for (i = 1, j = 0; i < list.count; i++)
 	{
 	  if (list.edits[i].start == list.edits[j].start && list.edits[i].end == list.edits[j].end
