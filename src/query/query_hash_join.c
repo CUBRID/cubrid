@@ -1505,6 +1505,10 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
 #if defined (SERVER_MODE)
   status = hjoin_try_parallel (thread_p, manager, single_context);
   single_context->status = status;
+  if (status == HASHJOIN_STATUS_ERROR)
+    {
+      goto error_exit;
+    }
 #endif /* defined (SERVER_MODE) */
 
   /* after hjoin_try_parallel: one worker tfile is created for each split worker it reserved */
@@ -1571,6 +1575,12 @@ error_exit:
       manager->px_worker_manager->release_workers ();
       manager->px_worker_manager = NULL;
     }
+
+  /* reserved with the workers by hjoin_try_parallel; a parallel probe of the single join reserves its own */
+  if (manager->px_worker_stats != NULL)
+    {
+      db_private_free_and_init (thread_p, manager->px_worker_stats);
+    }
 #else
   assert (manager->px_worker_manager == NULL);
 #endif /* defined (SERVER_MODE) */
@@ -1580,8 +1590,10 @@ error_exit:
       assert (manager->context_cnt > 1);
 
       db_private_free_and_init (thread_p, manager->contexts);
-      manager->context_cnt = 0;
     }
+
+  /* also when the partitions failed before the contexts were made: a parallel probe expects no partition count */
+  manager->context_cnt = 0;
 
   /* the single join that follows needs the temporary space the partition lists and the worker tfiles hold */
   hjoin_clear_split_info (thread_p, manager);
@@ -1706,7 +1718,6 @@ hjoin_estimate_part_cnt (INT64 min_tuple_cnt, double fill_factor)
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
- *   split_info(in): Split information.
  */
 static int
 hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
@@ -1848,19 +1859,21 @@ error_exit:
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
- *   split_info(in): Split information.
  */
 static int
 hjoin_build_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 {
   HASHJOIN_INPUT_SPLIT_INFO *input;
   HASH_SCAN_KEY *temp_key = NULL;
-  HASHJOIN_SPLIT_STAGING_BUFFER staging_buffer = { NULL, 0 };
+  HASHJOIN_SPLIT_STAGING_BUFFER staging_buffer;
   int side;
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
+
+  /* Prevent faults when hjoin_clear_split_staging_buffer is called */
+  memset (&staging_buffer, 0, sizeof (HASHJOIN_SPLIT_STAGING_BUFFER));
 
   HASHJOIN_STATS *stats = manager->single_context.stats;
   HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
@@ -2406,7 +2419,7 @@ error_exit:
 
 /*
  * hjoin_init_split_info() - allocate the partition list arrays and create the worker tfiles
- *   return: NO_ERROR, or ER_FAILED
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   manager(in): Hash join manager; px_worker_manager is set if the split is parallel.
  */
 static int
@@ -2486,7 +2499,8 @@ hjoin_clear_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   HASHJOIN_SPLIT_INFO *split_info;
   HASHJOIN_INPUT_SPLIT_INFO *input;
   UINT32 part_index;
-  int side, worker_index;
+  int worker_index;
+  int side;
 
   assert (thread_p != NULL);
   assert (manager != NULL);

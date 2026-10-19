@@ -1123,7 +1123,8 @@ qfile_finalize (void)
  *   sort_list(in): sort info for the list file to be created
  *   query_id(in): query id associated with this list file
  *   flag(in): {QFILE_FLAG_RESULT_FILE, QFILE_FLAG_DISTINCT, QFILE_FLAG_ALL}
- *             whether to do 'all' or 'distinct' operation
+ *             whether to do 'all' or 'distinct' operation;
+ *             QFILE_FLAG_BORROWED_TFILE: no temporary file is created, the caller writes the pages to its own
  *
  * Note: A list file is created by using the specified type list and
  *       the list file identifier is set. The first page of the list
@@ -1163,12 +1164,8 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
   list_id_p->type_list.type_cnt = type_list_p->type_cnt;
   list_id_p->query_id = query_id;
 
-  if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_BORROWED_TFILE))
-    {
-      list_id_p->tfile_vfid = NULL;
-      VFID_SET_NULL (&list_id_p->temp_vfid);
-    }
-  else
+  /* a borrowed list keeps tfile_vfid and temp_vfid cleared by QFILE_CLEAR_LIST_ID */
+  if (!QFILE_IS_FLAG_SET (flag, QFILE_FLAG_BORROWED_TFILE))
     {
       if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_RESULT_FILE) && !QFILE_IS_LIST_CACHE_DISABLED)
 	{

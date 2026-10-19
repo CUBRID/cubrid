@@ -218,6 +218,7 @@ namespace parallel_query
 	  return;
 	}
 
+      assert (m_index < m_manager->split_info.worker_tfile_cnt);
       hjoin_init_split_writer (&split_writer, &landing_buffer, m_staging_buffer,
 			       m_shared_info->part_mutexes, m_manager->split_info.worker_tfiles[m_index], part_list_id);
 
