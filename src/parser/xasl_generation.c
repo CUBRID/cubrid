@@ -633,6 +633,7 @@ static int pt_mvcc_set_spec_assign_reev_extra_indexes (PARSER_CONTEXT * parser, 
 						       PT_NODE * spec_list, PT_NODE * assign_list, int *indexes,
 						       int indexes_alloc_size);
 static PT_NODE *pt_mvcc_prepare_upd_del_select (PARSER_CONTEXT * parser, PT_NODE * select_stmt);
+static PT_NODE *pt_translate_dml_query_unbound (PARSER_CONTEXT * parser, PT_NODE * query);
 static int pt_get_mvcc_reev_range_data (PARSER_CONTEXT * parser, TABLE_INFO * table_info, PT_NODE * where_key_part,
 					QO_XASL_INDEX_INFO * index_pred, PRED_EXPR ** where_range,
 					REGU_VARIABLE_LIST * regu_attributes_range, HEAP_CACHE_ATTRINFO ** cache_range);
@@ -21099,6 +21100,33 @@ pt_to_pred_with_context (PARSER_CONTEXT * parser, PT_NODE * predicate, PT_NODE *
 }
 
 /*
+ * pt_translate_dml_query_unbound () - translate the SELECT built for an UPDATE, DELETE or MERGE XASL
+ *				       with the user host variables left unbound
+ *   return: translated query, NULL on error
+ *   parser(in):
+ *   query(in): select statement built for the DML statement
+ *
+ * Note :
+ * The XASL is cached under the statement text, in which the user host variables are '?', so it must
+ * not depend on the values bound at compile time. mq_translate () type-checks the query again, and
+ * with set_host_var on the constant folding replaces a host variable by its bound value
+ * (DATE'2024-01-31' + ? becomes DATE'2024-02-01'). Every later execution of the cached XASL would then
+ * use the first values. Translate the query with the host variables unbound, as PREPARE does.
+ */
+static PT_NODE *
+pt_translate_dml_query_unbound (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  PT_NODE *result;
+  int save_set_host_var = parser->flag.set_host_var;
+
+  parser->flag.set_host_var = 0;
+  result = mq_translate (parser, query);
+  parser->flag.set_host_var = save_set_host_var;
+
+  return result;
+}
+
+/*
  * pt_copy_upddel_hints_to_select () - copy hints from delete/update statement
  *				       to select statement.
  *   return: NO_ERROR or error code.
@@ -22134,7 +22162,7 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	    pt_to_upd_del_query (parser, NULL, select_list, from, with, class_specs, where, using_index, NULL, NULL, 1,
 				 S_DELETE)) == NULL)
 	  || pt_copy_upddel_hints_to_select (parser, statement, aptr_statement) != NO_ERROR
-	  || ((aptr_statement = mq_translate (parser, aptr_statement)) == NULL))
+	  || ((aptr_statement = pt_translate_dml_query_unbound (parser, aptr_statement)) == NULL))
 	{
 	  goto error_return;
 	}
@@ -22848,7 +22876,7 @@ pt_to_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE ** non_
       goto cleanup;
     }
 
-  aptr_statement = mq_translate (parser, aptr_statement);
+  aptr_statement = pt_translate_dml_query_unbound (parser, aptr_statement);
   if (aptr_statement == NULL)
     {
       if (pt_has_error (parser))
@@ -27783,7 +27811,7 @@ pt_to_merge_update_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
       goto cleanup;
     }
 
-  aptr_statement = mq_translate (parser, aptr_statement);
+  aptr_statement = pt_translate_dml_query_unbound (parser, aptr_statement);
   if (aptr_statement == NULL)
     {
       if (pt_has_error (parser))
@@ -28244,7 +28272,7 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
 	}
       return NULL;
     }
-  aptr_statement = mq_translate (parser, aptr_statement);
+  aptr_statement = pt_translate_dml_query_unbound (parser, aptr_statement);
   if (aptr_statement == NULL)
     {
       if (pt_has_error (parser))
