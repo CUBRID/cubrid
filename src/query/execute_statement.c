@@ -21313,8 +21313,14 @@ do_set_trace_to_query_flag (QUERY_FLAG * query_flag)
    * expression programs in its trace as well: the server cannot see the client's optimization level otherwise.
    * Only csql: a CAS raises the level itself to log a query plan (cas_optimization.c, CCI_EXEC_QUERY_INFO), which
    * must not switch the section on under a JDBC/CCI client (CTP's traced test answers, 2026-10-13). */
-  if (BOOT_CSQL_CLIENT_TYPE (db_get_client_type ())
-      && DETAILED_DUMP (prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL)))
+  int level;
+  bool is_csql = BOOT_CSQL_CLIENT_TYPE (db_get_client_type ());
+#if defined (SERVER_MODE)
+  /* Broker-routed thin csql keeps its broker client type during rendering. */
+  is_csql = is_csql || (csc_bracket_is_active () && *csc_render_stdout_slot () != NULL);
+#endif
+  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+  if (is_csql && DETAILED_DUMP (level))
     {
       *query_flag |= XASL_TRACE_PLAN_DETAIL;
     }
