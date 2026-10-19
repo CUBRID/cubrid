@@ -3345,7 +3345,10 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
       return;
     }
 
-  if (driving->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN)
+  /* an index read for its GROUP BY order alone (no range) is a group by skip that may run in parallel (CBRD-27664):
+   * the checker decides that (scan_check_parallel_scan_possible ()) */
+  if (driving->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN
+      && driving->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
     {
       return;
     }

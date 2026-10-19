@@ -96,6 +96,11 @@ namespace parallel_scan
       int active_results;
       std::vector<QFILE_LIST_ID *> hgby_results;
       bool g_hash_eligible;
+      /* GROUP BY skip (CBRD-27664): workers aggregate by key record and hand their runs of partial aggregates to the
+       * leader, which merges them in key order; no row reaches the worker lists */
+      bool gby_skip = false;
+      std::vector<QFILE_LIST_ID *> gby_runs;
+      INT64 gby_rows = 0;
       trace_handler *trace_handler_p;
       parallel_scan::instnum_mode instnum_mode = parallel_scan::instnum_mode::NONE;
       std::vector<int> rownum_col_indices;	/* RENUMBER: ROWNUM positions in the valptr list */

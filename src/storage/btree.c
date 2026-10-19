@@ -1314,6 +1314,10 @@ static int btree_apply_key_range_and_filter (THREAD_ENTRY * thread_p, BTREE_SCAN
 					     bool * key_range_satisfied, bool * key_filter_satisfied);
 static int btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * filter, OID * oid,
 				INDX_SCAN_ID * iscan_id);
+static int btree_read_curr_key_values (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * filter, OID * oid,
+				       INDX_SCAN_ID * iscan_id);
+static int btree_gby_skip_mark_key_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts);
+static int btree_gby_skip_visit (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, OID * oid, bool * stop);
 static DISK_ISVALID btree_find_key_from_leaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, int key_cnt,
 					      OID * oid, DB_VALUE * key, bool * clear_key);
 static DISK_ISVALID btree_find_key_from_nleaf (THREAD_ENTRY * thread_p, BTID_INT * btid, PAGE_PTR pg_ptr, int key_cnt,
@@ -20271,8 +20275,6 @@ static int
 btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * filter, OID * oid,
 		     INDX_SCAN_ID * iscan_id)
 {
-  HEAP_CACHE_ATTRINFO *attr_info;
-  REGU_VARIABLE_LIST regu_list;
   int error;
 
   if (bts == NULL || iscan_id == NULL || iscan_id->indx_cov.list_id == NULL || iscan_id->indx_cov.val_descr == NULL
@@ -20280,6 +20282,39 @@ btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * fi
     {
       return ER_FAILED;
     }
+
+  error = btree_read_curr_key_values (thread_p, bts, filter, oid, iscan_id);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error =
+    qexec_insert_tuple_into_list (thread_p, iscan_id->indx_cov.list_id, iscan_id->indx_cov.output_val_list,
+				  iscan_id->indx_cov.val_descr, iscan_id->indx_cov.tplrec);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * btree_read_curr_key_values () - Decode the current key of a covered scan into the scan's values
+ *
+ *   bts(in): pointer to B+-tree scan structure
+ *   filter(in): key filter
+ *   oid(in): the current oid
+ *   iscan_id(in): index scan id
+ */
+static int
+btree_read_curr_key_values (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * filter, OID * oid,
+			    INDX_SCAN_ID * iscan_id)
+{
+  HEAP_CACHE_ATTRINFO *attr_info;
+  REGU_VARIABLE_LIST regu_list;
+  int error;
 
   if (iscan_id->rest_attrs.num_attrs > 0)
     {
@@ -20310,20 +20345,95 @@ btree_dump_curr_key (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, FILTER_INFO * fi
       return error;
     }
 
-  error = fetch_val_list (thread_p, regu_list, iscan_id->indx_cov.val_descr, NULL, oid, NULL, PEEK);
+  return fetch_val_list (thread_p, regu_list, iscan_id->indx_cov.val_descr, NULL, oid, NULL, PEEK);
+}
+
+/*
+ * btree_gby_skip_mark_key_start () - GROUP BY skip during the scan (CBRD-27664): a key record starts. S1 decodes the
+ *				      key at its first selected object; K remembers the record's position in the batch.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * bts (in)	 : B-tree scan.
+ */
+static int
+btree_gby_skip_mark_key_start (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
+{
+  INDX_GBY_SKIP *gby = bts->index_scan_idp->gby_skip;
+  int pos = bts->n_oids_read_last_iteration;
+
+  if (gby->visit != NULL)
+    {
+      gby->key_start = true;
+      return NO_ERROR;
+    }
+
+  /* a key without selected objects leaves the next key's position: one mark covers both */
+  if (gby->key_start_cnt > 0 && gby->key_starts[gby->key_start_cnt - 1] == pos)
+    {
+      return NO_ERROR;
+    }
+  if (gby->key_start_cnt == gby->key_start_cap)
+    {
+      int cap = gby->key_start_cap > 0 ? gby->key_start_cap * 2 : 64;
+      int *starts = (int *) db_private_realloc (thread_p, gby->key_starts, cap * sizeof (int));
+
+      if (starts == NULL)
+	{
+	  int error_code;
+
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+      gby->key_starts = starts;
+      gby->key_start_cap = cap;
+    }
+  gby->key_starts[gby->key_start_cnt++] = pos;
+  return NO_ERROR;
+}
+
+/*
+ * btree_gby_skip_visit () - S1 (CBRD-27664): hand a selected object of a covered GROUP BY skip scan to the executor
+ *			     instead of the covering list. The key is decoded into the scan's values once per key
+ *			     record. Nothing is buffered, so the iteration never fills and the range is read in one call.
+ *
+ * return	 : Error code.
+ * thread_p (in) : Thread entry.
+ * bts (in)	 : B-tree scan.
+ * oid (in)	 : Selected object.
+ * stop (out)	 : Set when the executor needs no more rows.
+ */
+static int
+btree_gby_skip_visit (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, OID * oid, bool * stop)
+{
+  INDX_GBY_SKIP *gby = bts->index_scan_idp->gby_skip;
+  bool key_start = gby->key_start;
+  bool scan_stop = false;
+  int error;
+
+  if (key_start)
+    {
+      error = btree_read_curr_key_values (thread_p, bts, bts->key_filter, oid, bts->index_scan_idp);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      gby->key_start = false;
+    }
+
+  /* read, but not left in the batch: n_oids_read_last_iteration stays 0 */
+  bts->n_oids_read++;
+
+  error = gby->visit (thread_p, gby->visit_arg, key_start, &scan_stop);
   if (error != NO_ERROR)
     {
       return error;
     }
-
-  error =
-    qexec_insert_tuple_into_list (thread_p, iscan_id->indx_cov.list_id, iscan_id->indx_cov.output_val_list,
-				  iscan_id->indx_cov.val_descr, iscan_id->indx_cov.tplrec);
-  if (error != NO_ERROR)
+  if (scan_stop)
     {
-      return error;
+      bts->end_scan = true;
+      *stop = true;
     }
-
   return NO_ERROR;
 }
 
@@ -29475,6 +29585,12 @@ btree_range_scan (THREAD_ENTRY * thread_p, BTREE_SCAN * bts, BTREE_RANGE_SCAN_PR
 
   /* Reset read counters for iteration. */
   bts->n_oids_read_last_iteration = 0;
+  if (bts->index_scan_idp != NULL && bts->index_scan_idp->gby_skip != NULL)
+    {
+      /* the key record marks belong to the batch this iteration fills */
+      bts->index_scan_idp->gby_skip->key_start_cnt = 0;
+      bts->index_scan_idp->gby_skip->key_start_next = 0;
+    }
 
   if (bts->index_scan_idp != NULL && bts->index_scan_idp->oid_list != NULL)
     {
@@ -29851,6 +29967,15 @@ btree_range_scan_select_visible_oids (THREAD_ENTRY * thread_p, BTREE_SCAN * bts)
 
   if (!bts->is_key_partially_processed)
     {
+      if (bts->index_scan_idp != NULL && bts->index_scan_idp->gby_skip != NULL)
+	{
+	  error_code = btree_gby_skip_mark_key_start (thread_p, bts);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	}
       /* Start processing key with leaf record objects. */
       error_code =
 	btree_record_process_objects (thread_p, &bts->btid_int, BTREE_LEAF_NODE, &bts->key_record, bts->offset, &stop,
@@ -30198,6 +30323,12 @@ btree_select_visible_object_for_range_scan (THREAD_ENTRY * thread_p, BTID_INT * 
 
   if (BTS_IS_INDEX_COVERED (bts))
     {
+      if (bts->index_scan_idp->gby_skip != NULL && bts->index_scan_idp->gby_skip->visit != NULL)
+	{
+	  /* GROUP BY skip aggregated here (S1): no covering list */
+	  assert (!BTS_IS_INDEX_ILS (bts));
+	  return btree_gby_skip_visit (thread_p, bts, oid, stop);
+	}
       if (BTS_IS_INDEX_ILS (bts))
 	{
 	  /* Index loose scan. */
