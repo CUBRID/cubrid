@@ -970,22 +970,14 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 
 	  if (is_expired)
 	    {
-	      /* Now we can destroy this session */
+	      /* Now we can destroy this session. A kept session goes too, when its client did not come back within
+	       * session_state_timeout. */
 	      assert (state->ref_count == 0);
 
-	      if (state->is_keep_session == true)
-		{
-		  /* keep session */
-		  pthread_mutex_unlock (&state->mutex);
-		  continue;
-		}
-	      else
-		{
-		  expired_sid_buffer[n_expired_sids++] = state->id;
+	      expired_sid_buffer[n_expired_sids++] = state->id;
 
-		  /* Destroy the session related resources like session parameters */
-		  (void) session_state_uninit (state);
-		}
+	      /* Destroy the session related resources like session parameters */
+	      (void) session_state_uninit (state);
 
 	      if (n_expired_sids == EXPIRED_SESSION_BUFFER_SIZE)
 		{
