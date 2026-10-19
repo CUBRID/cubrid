@@ -2160,6 +2160,9 @@ fetch_op_like_lower_bound (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
 	{
 	  return ER_FAILED;
 	}
+      /* CBRD-27583 (D-52, S3-21): the bound is the VARCHAR XASL generation typed the node with, which the function
+       * makes itself (db_get_like_optimization_bounds) and casts nothing into */
+      assert (DB_IS_NULL (arithptr->value) || DB_VALUE_DOMAIN_TYPE (arithptr->value) == DB_TYPE_VARCHAR);
     }
   return NO_ERROR;
 }
@@ -4195,7 +4198,7 @@ fetch_op_sys_connect_by_path (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   TP_DOMAIN_STATUS dom_status;
 
   if (!qdata_evaluate_sys_connect_by_path (thread_p, (void *) arithptr->thirdptr->xasl, arithptr->leftptr,
-					   peek_right, arithptr->value, vd))
+					   peek_right, arithptr->value, vd, arithptr->conv_type[1], arithptr->conv[1]))
     {
       return ER_FAILED;
     }

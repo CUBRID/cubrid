@@ -723,7 +723,8 @@ domain_plan_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAI
  *   its domain (4.6c); one whose argument is typed NULL sees only NULLs and gets none, and one over a date adds as
  *   develop did, raising the addition's error at its second value. A STDDEV / VARIANCE gets [1] the conversion of a
  *   value into DOUBLE and its division's operand coercion, a MEDIAN / PERCENTILE [1] the conversion of its argument's
- *   type into its domain, which every value takes.
+ *   type into its domain, which every value takes, a GROUP_CONCAT [1] the cast of a number, date, time or ENUM
+ *   argument into its domain.
  */
 void
 domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DOMAIN * domain,
@@ -771,6 +772,17 @@ domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DO
     case PT_GROUP_CONCAT:
       plan->value_dom = domain;
       plan->value2_dom = &tp_Null_domain;
+      /* [1] the cast of a number, date, time or ENUM argument into the function's domain (a VARCHAR, the
+       * accumulator's type), which every value takes (qdata_concatenate_dbval, tp_value_cast). A string or bit string
+       * argument concatenates as it is and an argument typed NULL has only NULLs, which add nothing: neither casts;
+       * type checking rejects any other argument type (a host variable is typed by XASL generation) */
+      if (argument_typed && !domain_is_variable (domain)
+	  && (TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (argument)) || TP_IS_DATE_OR_TIME_TYPE (TP_DOMAIN_TYPE (argument))
+	      || TP_DOMAIN_TYPE (argument) == DB_TYPE_ENUMERATION))
+	{
+	  plan->operand_coercion.operand_domain[1] = domain;
+	  plan->operand_coercion.conv[1] = domain_conversion (TP_DOMAIN_TYPE (argument), domain, DOMAIN_CONVERT_ASSIGN);
+	}
       break;
 
     case PT_STDDEV:

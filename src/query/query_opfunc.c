@@ -112,7 +112,7 @@ static int qdata_add_bigint_to_date (DB_VALUE * date_val_p, DB_BIGINT i, DB_VALU
 
 static int qdata_add_chars_to_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p);
 static int qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
-					TP_DOMAIN * domain_p);
+					TP_DOMAIN * domain_p, DB_TYPE planned, TP_VALUE_CONVERTER result_conv);
 static int qdata_add_time_to_dbval (DB_VALUE * time_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p);
 static int qdata_add_utime_to_dbval (DB_VALUE * utime_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p,
 				     TP_DOMAIN * domain_p);
@@ -126,7 +126,8 @@ static int qdata_add_datetime_value (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, D
 				     TP_DOMAIN * domain_p);
 static int qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned,
 					  TP_VALUE_CONVERTER conv);
-static int qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p);
+static int qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned,
+				 TP_VALUE_CONVERTER conv);
 
 static int qdata_subtract_short (short s1, short s2, DB_VALUE * result_p);
 static int qdata_subtract_int (int i1, int i2, DB_VALUE * result_p);
@@ -191,7 +192,8 @@ static int qdata_number_monetary (OPERATOR_TYPE opcode, DB_VALUE * value1, DB_VA
 static int qdata_number_operator (OPERATOR_TYPE opcode, DB_TYPE result_type, DB_VALUE * value1, DB_VALUE * value2,
 				  DB_VALUE * result_p);
 static int qdata_collection_operator (OPERATOR_TYPE opcode, DB_TYPE result_type, DB_VALUE * value1,
-				      DB_VALUE * value2, DB_VALUE * result_p, TP_DOMAIN * domain_p);
+				      DB_VALUE * value2, DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned,
+				      TP_VALUE_CONVERTER result_conv);
 
 static DB_VALUE *qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var,
 							      VAL_DESCR * val_desc_p);
@@ -1923,11 +1925,15 @@ qdata_add_chars_to_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * r
   return NO_ERROR;
 }
 
+/*
+ * qdata_add_sequence_to_dbval () - two collections added in domain_p: a sequence appended to a sequence, the union of
+ *   sets or multisets. CBRD-27583 (S3-21): the first sequence converts into domain_p with the converter the plan found
+ *   for a value of type planned (result_conv, S3-40b's - qdata_coerce_result_to_domain's)
+ */
 static int
-qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p,
+			     DB_TYPE planned, TP_VALUE_CONVERTER result_conv)
 {
-  /* CBRD-27583 exception until S3-21 (B): a collection's addition coerces by its values */
-  TP_DECISION_EXCEPTION ();
   DB_SET *set_tmp;
   DB_SEQ *seq_tmp, *seq_tmp1;
   DB_VALUE dbval_tmp;
@@ -1953,7 +1959,7 @@ qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE 
 
   if (TP_DOMAIN_TYPE (domain_p) == DB_TYPE_SEQUENCE)
     {
-      if (tp_value_coerce (seq_val_p, result_p, domain_p) != DOMAIN_COMPATIBLE)
+      if (tp_value_coerce_with_converter (seq_val_p, result_p, domain_p, planned, result_conv) != DOMAIN_COMPATIBLE)
 	{
 	  return ER_FAILED;
 	}
@@ -1982,7 +1988,18 @@ qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE 
   else
     {
       /* set or multiset */
-      if (set_union (db_get_set (seq_val_p), db_get_set (dbval_p), &set_tmp, domain_p) < 0)
+      int error;
+      {
+	/* CBRD-27583 exception, the data carries the type (2-7): the union converts a sequence and an element of
+	 * another domain by their values (set_op, setobj_ismember) */
+	TP_DECISION_EXCEPTION ();
+#if !defined (NDEBUG)
+	/* CBRD-27583 census (removed at S3-14) */
+	er_log_debug (ARG_FILE_LINE, "CBRD-27583 collection union by value %d\n", (int) TP_DOMAIN_TYPE (domain_p));
+#endif
+	error = set_union (db_get_set (seq_val_p), db_get_set (dbval_p), &set_tmp, domain_p);
+      }
+      if (error < 0)
 	{
 	  return ER_FAILED;
 	}
@@ -2202,17 +2219,31 @@ qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYP
   return NO_ERROR;
 }
 
+/*
+ * qdata_cast_to_domain () - a value cast into domain_p, with the converter unpack found for a value of type planned
+ *   (conv; NULL none): CBRD-27583 (S3-21)
+ */
 static int
-qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
+qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned,
+		      TP_VALUE_CONVERTER conv)
 {
-  /* CBRD-27583 exception until S3-21 (B): a cast by the value's type */
-  TP_DECISION_EXCEPTION ();
   int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
 
   if (domain_p != NULL)
     {
-      dom_status = tp_value_cast (dbval_p, result_p, domain_p, false);
+#if !defined (NDEBUG)
+      const bool looks_up = conv == NULL || DB_VALUE_DOMAIN_TYPE (dbval_p) != planned;
+      if (looks_up)
+	{
+	  /* CBRD-27583 census (removed at S3-14): a cast that looks its converter up at the row */
+	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 connect by path argument lookup %d %d\n",
+			(int) DB_VALUE_DOMAIN_TYPE (dbval_p), (int) planned);
+	}
+#endif
+      /* CBRD-27583 exception: a SYS_CONNECT_BY_PATH argument of no fixed domain (no converter planned) */
+      TP_DECISION_EXCEPTION_IF (looks_up);
+      dom_status = tp_value_cast_with_converter (dbval_p, result_p, domain_p, false, planned, conv);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  error = tp_domain_status_er_set (dom_status, ARG_FILE_LINE, dbval_p, domain_p);
@@ -2763,6 +2794,8 @@ qdata_sum_acc_flatten_for_spill (SUM_ACC * acc, DB_VALUE * result)
  *   domain_p(in)	  : DB domain of result
  *   max_allowed_size(in) : max allowed size for result
  *   warning_context(in)  : used only to display truncation warning context
+ *   planned(in), conv(in): the converter of a dbval2 of type planned into domain_p the plan found (CBRD-27583 S3-21,
+ *			    a GROUP_CONCAT's argument); NULL none
  *
  * Note: Concatenates a db_values to string db value.
  *	 Value to be added is truncated in case the allowed size would be
@@ -2774,10 +2807,9 @@ qdata_sum_acc_flatten_for_spill (SUM_ACC * acc, DB_VALUE * result)
  */
 int
 qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p,
-			 tp_domain * domain_p, const int max_allowed_size, const char *warning_context)
+			 tp_domain * domain_p, const int max_allowed_size, const char *warning_context,
+			 DB_TYPE planned, TP_VALUE_CONVERTER conv)
 {
-  /* CBRD-27583 exception until S3-21 (B): the concatenation's operands cast by their values */
-  TP_DECISION_EXCEPTION ();
   DB_TYPE type2, type1;
   int error = NO_ERROR;
   DB_VALUE arg_val, db_temp;
@@ -2811,6 +2843,15 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
+#if !defined (NDEBUG)
+      if (TP_IS_CHAR_TYPE (type1) && TP_IS_CHAR_TYPE (type2)
+	  && db_get_string_collation (dbval1_p) != db_get_string_collation (dbval2_p))
+	{
+	  /* CBRD-27583 census (removed at S3-14): the concatenation merges two collations (db_string_concatenate) */
+	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 concatenation collation merge %d %d\n",
+			db_get_string_collation (dbval1_p), db_get_string_collation (dbval2_p));
+	}
+#endif
       val_size = db_get_string_size (dbval2_p);
       if (res_size >= max_allowed_size)
 	{
@@ -2864,7 +2905,10 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
     case DB_TYPE_ENUMERATION:
       {
 	TP_DOMAIN_STATUS err_dom;
-	err_dom = tp_value_cast (dbval2_p, &arg_val, domain_p, false);
+	/* CBRD-27583 (S3-21): a number, date, time or ENUM argument casts into the function's domain with the
+	 * converter the plan found (domain_plan_aggregate_accumulator); that VARCHAR is the accumulator's type */
+	assert (conv != NULL && DB_VALUE_DOMAIN_TYPE (dbval1_p) == TP_DOMAIN_TYPE (domain_p));
+	err_dom = tp_value_cast_with_converter (dbval2_p, &arg_val, domain_p, false, planned, conv);
 
 	if (err_dom == DOMAIN_COMPATIBLE)
 	  {
@@ -4848,7 +4892,7 @@ qdata_number_operator (OPERATOR_TYPE opcode, DB_TYPE result_type, DB_VALUE * val
  */
 static int
 qdata_collection_operator (OPERATOR_TYPE opcode, DB_TYPE result_type, DB_VALUE * value1, DB_VALUE * value2,
-			   DB_VALUE * result_p, TP_DOMAIN * domain_p)
+			   DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYPE planned, TP_VALUE_CONVERTER result_conv)
 {
   if (domain_p == NULL)
     {
@@ -4857,7 +4901,7 @@ qdata_collection_operator (OPERATOR_TYPE opcode, DB_TYPE result_type, DB_VALUE *
   switch (opcode)
     {
     case T_ADD:
-      return qdata_add_sequence_to_dbval (value1, value2, result_p, domain_p);
+      return qdata_add_sequence_to_dbval (value1, value2, result_p, domain_p, planned, result_conv);
     case T_SUB:
       return qdata_subtract_sequence_to_dbval (value1, value2, result_p, domain_p);
     default:
@@ -4999,6 +5043,10 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * 
       return NO_ERROR;
     }
 
+  /* a collection operator makes its value in the domain it is given (qdata_collection_operator): arith's type is the
+   * one a missing domain defaults to */
+  const DB_TYPE planned = arith->kind == DOMAIN_ARITH_COLLECTION && domain_p != NULL ? TP_DOMAIN_TYPE (domain_p)
+    : arith->type;
   switch (arith->kind)
     {
     case DOMAIN_ARITH_NUMBER:
@@ -5015,7 +5063,8 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * 
       break;
 
     case DOMAIN_ARITH_COLLECTION:
-      error = qdata_collection_operator (opcode, arith->type, dbval1_p, dbval2_p, result_p, domain_p);
+      error = qdata_collection_operator (opcode, arith->type, dbval1_p, dbval2_p, result_p, domain_p, planned,
+					 result_conv);
       break;
 
     case DOMAIN_ARITH_REJECT_OR_NULL:
@@ -5043,10 +5092,6 @@ qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * 
   qdata_assert_arith_value (arith, result_p);
 #endif
 
-  /* a collection operator makes its value in the domain it is given (qdata_collection_operator): arith's type is the
-   * one a missing domain defaults to */
-  const DB_TYPE planned = arith->kind == DOMAIN_ARITH_COLLECTION && domain_p != NULL ? TP_DOMAIN_TYPE (domain_p)
-    : arith->type;
   return qdata_coerce_result_to_domain (result_p, domain_p, planned, result_conv);
 }
 
@@ -5328,7 +5373,7 @@ qdata_strcat_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
 	  return ER_QPROC_INVALID_DATATYPE;
 	}
-      error = qdata_add_sequence_to_dbval (dbval1_p, dbval2_p, result_p, domain_p);
+      error = qdata_add_sequence_to_dbval (dbval1_p, dbval2_p, result_p, domain_p, planned, result_conv);
       break;
 
     case DB_TYPE_TIME:
@@ -6399,10 +6444,12 @@ qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node
  *  regu_p1(in): column
  *  regu_p2(in): character
  *  result_val_p(in/out):
+ *  arg_type(in), arg_conv(in): the converter of a value of the argument's type into a string unpack found
  */
 bool
 qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node * regu_p,
-				    DB_VALUE * value_char, DB_VALUE * result_p, val_descr * vd)
+				    DB_VALUE * value_char, DB_VALUE * result_p, val_descr * vd, DB_TYPE arg_type,
+				    TP_VALUE_CONVERTER arg_conv)
 {
   QFILE_TUPLE tpl;
   QFILE_LIST_ID *list_id_p;
@@ -6598,10 +6645,10 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	}
       else
 	{
-	  /* cast result to string; this call also allocates the container. CBRD-27583 exception (D-51): the simple path
-	   * reads the ancestor tuple's column, not the argument regu, so the body converts */
-	  TP_DECISION_EXCEPTION ();
-	  if (qdata_cast_to_domain (arg_dbval_p, &cast_value, &tp_String_domain) != NO_ERROR)
+	  /* cast result to string; this call also allocates the container. CBRD-27583 (D-51, S3-21): the body converts
+	   * the argument - the simple path reads the ancestor tuple's column, not the argument regu - with the converter
+	   * unpack found for the argument's type */
+	  if (qdata_cast_to_domain (arg_dbval_p, &cast_value, &tp_String_domain, arg_type, arg_conv) != NO_ERROR)
 	    {
 	      goto error;
 	    }

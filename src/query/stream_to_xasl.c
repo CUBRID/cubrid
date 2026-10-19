@@ -7216,7 +7216,7 @@ stx_build_pos_descr (char *ptr, QFILE_TUPLE_VALUE_POSITION * position_descr)
  *   (fetch_arith_ops.c, expr_compile.c)
  *   return: the domain; NULL where the kernel casts no value of operand i
  *   src_type(in): the value's type: the operand's, or the value the kernel makes (a PREDICATE's truth value, a
- *		   SYS_CONNECT_BY_PATH's path)
+ *		   SYS_CONNECT_BY_PATH's path) or reads (a SYS_CONNECT_BY_PATH's argument, [1])
  */
 static const TP_DOMAIN *
 stx_arith_cast_target (const ARITH_TYPE * arith, int i, DB_TYPE src_type)
@@ -7241,8 +7241,10 @@ stx_arith_cast_target (const ARITH_TYPE * arith, int i, DB_TYPE src_type)
       return i > 0 ? arith->domain : NULL;
     case T_NULLIF:
     case T_PREDICATE:
-    case T_SYS_CONNECT_BY_PATH:
       return i == 0 ? arith->domain : NULL;
+    case T_SYS_CONNECT_BY_PATH:
+      /* its path into its domain; a value of its argument into a string */
+      return i == 0 ? arith->domain : i == 1 ? &tp_String_domain : NULL;
     case T_CONCAT:
       /* two operands concatenate as strings */
       return i == 0 && arith->rightptr == NULL ? arith->domain : NULL;
@@ -7412,7 +7414,17 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	}
       else if (arith_type->opcode == T_SYS_CONNECT_BY_PATH)
 	{
-	  source = &tp_String_domain;	/* its path */
+	  /* [0] its path; [1] its argument's value, which the kernel reads past the cast to a string generation put
+	   * over a column and casts itself (qdata_evaluate_sys_connect_by_path): an argument of no fixed domain looks
+	   * its converter up there */
+	  const REGU_VARIABLE *argument = arith_type->leftptr;
+	  if (argument != NULL && argument->type == TYPE_INARITH && argument->value.arithptr != NULL
+	      && argument->value.arithptr->opcode == T_CAST)
+	    {
+	      argument = argument->value.arithptr->rightptr;
+	    }
+	  source = i == 0 ? &tp_String_domain
+	    : i == 1 && argument != NULL && stx_domain_is_fixed (argument->domain) ? argument->domain : NULL;
 	}
       const DB_TYPE src_type = source != NULL ? TP_DOMAIN_TYPE (source) : DB_TYPE_NULL;
       const TP_DOMAIN *target = stx_arith_cast_target (arith_type, i, src_type);

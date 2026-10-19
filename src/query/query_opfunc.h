@@ -82,8 +82,10 @@ extern void qdata_agg_operand_prog_compile (THREAD_ENTRY * thread_p, cubxasl::ag
  * S3-40b), NULL converts nothing */
 extern int qdata_arith_dbval (OPERATOR_TYPE opcode, const DOMAIN_ARITH * arith, DB_VALUE * dbval1, DB_VALUE * dbval2,
 			      DB_VALUE * res, tp_domain * domain_p, TP_VALUE_CONVERTER result_conv);
+/* CBRD-27583 (S3-21): conv casts a dbval2 of type planned into domain (NULL: none planned) */
 extern int qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res,
-				    tp_domain * domain, const int max_allowed_size, const char *warning_context);
+				    tp_domain * domain, const int max_allowed_size, const char *warning_context,
+				    DB_TYPE planned, TP_VALUE_CONVERTER conv);
 extern int qdata_increment_dbval (DB_VALUE * dbval1, DB_VALUE * res, int incval);
 extern int qdata_unary_minus_dbval (DB_VALUE * res, DB_VALUE * dbval1);
 extern int qdata_extract_dbval (const MISC_OPERAND extr_operand, DB_VALUE * dbval, DB_VALUE * res, tp_domain * domain);
@@ -122,8 +124,10 @@ extern bool qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_
 					    DB_VALUE * result_val_p, val_descr * vd);
 extern bool qdata_evaluate_qprior (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node * regu_p,
 				   DB_VALUE * result_val_p, val_descr * vd);
+/* CBRD-27583 (S3-21): arg_conv converts a value of the argument's type arg_type into a string (ARITH_TYPE.conv[1]) */
 extern bool qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_variable_node * regu_p,
-						DB_VALUE * value_char, DB_VALUE * result_p, val_descr * vd);
+						DB_VALUE * value_char, DB_VALUE * result_p, val_descr * vd,
+						DB_TYPE arg_type, TP_VALUE_CONVERTER arg_conv);
 extern int qdata_bit_not_dbval (DB_VALUE * dbval, DB_VALUE * res, tp_domain * domain);
 extern int qdata_bit_and_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain);
 extern int qdata_bit_or_dbval (DB_VALUE * dbval1, DB_VALUE * dbval2, DB_VALUE * res, tp_domain * domain);

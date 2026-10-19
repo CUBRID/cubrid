@@ -301,7 +301,7 @@ qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_
  *   none, and one over a date adds as develop did, raising the addition's error at its second value. A MIN / MAX gets
  *   the converter of a new extreme into its domain, a STDDEV / VARIANCE [1] the converter of a value into DOUBLE and
  *   its division's operand coercion, a MEDIAN / PERCENTILE [1] the converter of its argument's type into its domain,
- *   which every value takes.
+ *   which every value takes, a GROUP_CONCAT [1] the cast of a number, date, time or ENUM argument into its domain.
  */
 void
 qdata_plan_aggregate_accumulator (cubxasl::aggregate_list_node *agg_p)
@@ -353,6 +353,15 @@ qdata_plan_aggregate_accumulator (cubxasl::aggregate_list_node *agg_p)
     case PT_GROUP_CONCAT:
       acc_dom->value_dom = agg_p->domain;
       acc_dom->value2_dom = &tp_Null_domain;
+      /* [1] the cast of a number, date, time or ENUM argument into the function's string domain */
+      if (argument_typed && !domain_is_variable (agg_p->domain)
+	  && (TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (argument)) || TP_IS_DATE_OR_TIME_TYPE (TP_DOMAIN_TYPE (argument))
+	      || TP_DOMAIN_TYPE (argument) == DB_TYPE_ENUMERATION))
+	{
+	  acc_dom->operand_coercion.operand_domain[1] = agg_p->domain;
+	  acc_dom->operand_coercion.conv[1] =
+		  tp_value_find_converter (TP_DOMAIN_TYPE (argument), agg_p->domain, DOMAIN_CONVERT_ASSIGN);
+	}
       break;
 
     case PT_STDDEV:
@@ -3925,6 +3934,20 @@ qdata_update_agg_interpolation_func_value_and_domain (const VAL_DESCR *vd, cubxa
 }
 
 /*
+ * qdata_group_concat_argument_type () - CBRD-27583 (S3-21): the type of a GROUP_CONCAT's argument, which the compiler
+ *   planned the cast of a value into the function's domain for (accumulator_domain.operand_coercion.conv[1],
+ *   domain_plan_aggregate_accumulator)
+ */
+static DB_TYPE
+qdata_group_concat_argument_type (const AGGREGATE_TYPE *agg_p)
+{
+  const REGU_VARIABLE *operand = &agg_p->operands->value;
+  const TP_DOMAIN *argument = operand->type == TYPE_INARITH || operand->type == TYPE_OUTARITH
+			      ? operand->value.arithptr->domain : operand->domain;
+  return argument != NULL ? TP_DOMAIN_TYPE (argument) : DB_TYPE_NULL;
+}
+
+/*
  * qdata_group_concat_first_value() - concatenates the first value
  *   return: NO_ERROR, or ER_code
  *   thread_p(in) :
@@ -3967,13 +3990,15 @@ qdata_group_concat_first_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGG
       agg_p->accumulator.value->domain.general_info.is_null = 0;
     }
 
-  /* concat the first value */
-  result_domain = ((TP_DOMAIN_TYPE (domain) == agg_type) ? domain : NULL);
+  /* concat the first value: CBRD-27583 (S3-21) a value that is not a string casts into the function's domain, which
+   * its accumulator keeps (qdata_concatenate_dbval) */
+  result_domain = domain;
 
   max_allowed_size = (int) prm_get_bigint_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
 
   error_code = qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue, &tmp_val, result_domain,
-					max_allowed_size, "GROUP_CONCAT()");
+					max_allowed_size, "GROUP_CONCAT()", qdata_group_concat_argument_type (agg_p),
+					agg_p->accumulator_domain.operand_coercion.conv[1]);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
@@ -4013,7 +4038,8 @@ qdata_group_concat_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE
 
   agg_type = DB_VALUE_DOMAIN_TYPE (agg_p->accumulator.value);
 
-  result_domain = ((TP_DOMAIN_TYPE (domain) == agg_type) ? domain : NULL);
+  /* CBRD-27583 (S3-21): a value that is not a string casts into the function's domain (qdata_concatenate_dbval) */
+  result_domain = domain;
 
   max_allowed_size = (int) prm_get_bigint_value (PRM_ID_GROUP_CONCAT_MAX_LEN);
 
@@ -4031,8 +4057,9 @@ qdata_group_concat_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE
   /* add separator if specified (it may be the case for bit string) */
   if (!DB_IS_NULL (agg_p->accumulator.value2))
     {
+      /* the separator is a string, which casts nothing */
       if (qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, agg_p->accumulator.value2, &tmp_val,
-				   result_domain, max_allowed_size, "GROUP_CONCAT()") != NO_ERROR)
+				   result_domain, max_allowed_size, "GROUP_CONCAT()", DB_TYPE_NULL, NULL) != NO_ERROR)
 	{
 	  return ER_FAILED;
 	}
@@ -4052,7 +4079,8 @@ qdata_group_concat_value (THREAD_ENTRY *thread_p, const VAL_DESCR *vd, AGGREGATE
   pr_clear_value (&tmp_val);
 
   if (qdata_concatenate_dbval (thread_p, agg_p->accumulator.value, dbvalue, &tmp_val, result_domain, max_allowed_size,
-			       "GROUP_CONCAT()") != NO_ERROR)
+			       "GROUP_CONCAT()", qdata_group_concat_argument_type (agg_p),
+			       agg_p->accumulator_domain.operand_coercion.conv[1]) != NO_ERROR)
     {
       /* dbvalue is caller-owned; the caller clears it. */
       return ER_FAILED;

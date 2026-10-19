@@ -91,6 +91,7 @@ namespace cubxasl
     DOMAIN_OPERAND_COERCION operand_coercion;	/* SUM / AVG: the operand coercion of value + a value, set with
 						 * value_dom; STDDEV / VARIANCE, NTILE: [1] the converter of a value
 						 * into DOUBLE; MEDIAN / PERCENTILE: [1] into the function's domain;
+						 * GROUP_CONCAT: [1] a value's cast into the function's domain;
 						 * LEAD / LAG / NTH_VALUE: [0] the offset's into INTEGER (NTH_VALUE:
 						 * DOUBLE), [1] the default's into the function's domain */
     bool accumulator_takes;	/* SUM / AVG: the resident accumulator takes the argument's type
