@@ -165,6 +165,7 @@ static int boot_client (int tran_index, int lock_wait, TRAN_ISOLATION tran_isola
 static int install_system_metadata (void);
 static void boot_shutdown_client_at_exit (void);
 static int boot_shutdown_client_internal (bool is_er_final, bool finalize_modules);
+static bool boot_finish_client_transaction (void);
 #if defined(CS_MODE) && defined(MULTI_CONN_TO_A_SERVER)
 static void boot_finalize_client_sub (void);
 #endif
@@ -1530,30 +1531,7 @@ boot_shutdown_client_sub (void)
 {
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      /* wait for other server request of this sub-client to finish. */
-      tran_wait_server_active_trans ();
-
-      /*
-       * Either Abort or commit the current transaction depending upon the value
-       * of the commit_on_shutdown system parameter.
-       */
-      if (tran_is_active_and_has_updated ())
-	{
-	  if (prm_get_bool_value (PRM_ID_COMMIT_ON_SHUTDOWN) != false)
-	    {
-	      (void) tran_commit (false);
-	    }
-	  else
-	    {
-	      (void) tran_abort ();
-	    }
-	}
-
-      /* Make sure that we are still up. For example, the server may die during commit or abort. */
-      if (BOOT_IS_CLIENT_RESTARTED ())
-	{
-	  (void) boot_unregister_client (tm_Tran_index);
-	}
+      (void) boot_finish_client_transaction ();
     }
 
   /*
@@ -1655,6 +1633,55 @@ boot_shutdown_client (bool is_er_final)
 }
 
 /*
+ * boot_finish_client_transaction () - finish the transaction of the client of the current thread and unregister it
+ *
+ * returns : true if the client is unregistered, false if the server died in the meantime
+ *
+ * Note: Shared by boot_shutdown_client_internal () (main client) and boot_shutdown_client_sub () (sub-client).
+ *       The caller must check BOOT_IS_CLIENT_RESTARTED (). The connection is closed by the caller.
+ */
+static bool
+boot_finish_client_transaction (void)
+{
+  assert (BOOT_IS_CLIENT_RESTARTED ());
+
+  /*
+   * wait for other server request to finish.
+   * if db_shutdown() is called by signal handler or atexit handler,
+   * the server request may be running.
+   */
+  tran_wait_server_active_trans ();
+
+  /*
+   * Either Abort or commit the current transaction depending upon the value
+   * of the commit_on_shutdown system parameter.
+   */
+  if (tran_is_active_and_has_updated ())
+    {
+      if (prm_get_bool_value (PRM_ID_COMMIT_ON_SHUTDOWN) != false)
+	{
+	  (void) tran_commit (false);
+	}
+      else
+	{
+	  (void) tran_abort ();
+	}
+    }
+
+  /*
+   * Make sure that we are still up. For example, if the server died (also during the commit or abort above),
+   * we do not need to call the following stuff any longer.
+   */
+  if (!BOOT_IS_CLIENT_RESTARTED ())
+    {
+      return false;
+    }
+
+  (void) boot_unregister_client (tm_Tran_index);
+  return true;
+}
+
+/*
  * boot_shutdown_client_internal () - shutdown client
  *
  * returns : NO_ERROR
@@ -1667,37 +1694,8 @@ boot_shutdown_client_internal (bool is_er_final, bool finalize_modules)
 {
   if (BOOT_IS_CLIENT_RESTARTED ())
     {
-      /*
-       * wait for other server request to finish.
-       * if db_shutdown() is called by signal handler or atexit handler,
-       * the server request may be running.
-       */
-      tran_wait_server_active_trans ();
-
-      /*
-       * Either Abort or commit the current transaction depending upon the value
-       * of the commit_on_shutdown system parameter.
-       */
-      if (tran_is_active_and_has_updated ())
+      if (boot_finish_client_transaction ())
 	{
-	  if (prm_get_bool_value (PRM_ID_COMMIT_ON_SHUTDOWN) != false)
-	    {
-	      (void) tran_commit (false);
-	    }
-	  else
-	    {
-	      (void) tran_abort ();
-	    }
-	}
-
-      /*
-       * Make sure that we are still up. For example, if the server died, we do
-       * not need to call the following stuff any longer.
-       */
-
-      if (BOOT_IS_CLIENT_RESTARTED ())
-	{
-	  (void) boot_unregister_client (tm_Tran_index);
 #if defined(CS_MODE)
 	  (void) net_client_final (false);
 #else /* CS_MODE */
