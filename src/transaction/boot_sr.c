@@ -3422,6 +3422,8 @@ xboot_unregister_client (REFPTR (THREAD_ENTRY, thread_p), int tran_index)
 #endif
 
       perfmon_stop_watch (thread_p);
+      /* a trace counts in these without a watch; the next client of this index must not read them */
+      memset (pstat_Global.tran_stats[tran_index], 0, pstat_Global.n_stat_values * sizeof (UINT64));
 
 #if defined(ENABLE_SYSTEMTAP) && defined(SERVER_MODE)
       CUBRID_CONN_END (client_id, tdes->client.get_db_user ());
