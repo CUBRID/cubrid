@@ -323,8 +323,6 @@ extern int pr_midxkey_get_element_nocopy (const DB_MIDXKEY * midxkey, int index,
 					  char **prev_ptrp);
 extern int pr_midxkey_add_elements (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
 				    struct tp_domain *dbvals_domain_list);
-extern int pr_midxkey_add_elements_with_null (DB_VALUE * keyval, DB_VALUE * dbvals, int num_dbvals,
-					      struct tp_domain *dbvals_domain_list, int tail_null_cnt);
 
 extern int pr_index_writeval_disk_size (DB_VALUE * value);
 extern int pr_data_writeval_disk_size (DB_VALUE * value);
@@ -364,6 +362,26 @@ extern int pr_Enable_string_compression;
 
 /* 1 size byte, 4 bytes the compressed size, 4 bytes the decompressed size, length and the max alignment */
 #define PRIM_STRING_MAXIMUM_DISK_SIZE(length) (OR_BYTE_SIZE + OR_INT_SIZE + OR_INT_SIZE + (length) + MAX_ALIGNMENT)
+
+/*
+ * NUMERIC_HEADER_SIZE
+ * The numeric header is 3 bytes in size.  Shared by the generic handler (mr_data_readval_numeric () in
+ * object_primitive.c) and the heap's fixed-column decode kernel (heap_attr_readval_numeric () in
+ * heap_file.c), which parse the same bytes and must agree on where the digits start.
+ * - header[0]: Total byte size of the numeric data (header + data).
+ *              Bit 7 (0x80): Data sign bit (1 = negative, 0 = positive).
+ *              Bits 0-6: Total byte size value (4 ~ 20 bytes).
+ *                        Minimum: precision 1 -> data 1 byte + header 3 = 4 bytes (aligned to 4).
+ *                        Maximum: precision 40 -> data 17 bytes + header 3 = 20 bytes (aligned to 20).
+ * - header[1]: Precision and scale sign bit.
+ *              Bit 7 (0x80): Scale sign bit (1 = negative scale, 0 = positive scale).
+ *              Bits 0-6: Precision value (1 ~ 40).
+ * - header[2]: Scale value.
+ *              Bits 0-7: Scale absolute value (0 ~ 214).
+ *                        Positive scale: 0 ~ 252.
+ *                        Negative scale: -214 to -1 (stored as absolute value, sign in header[1] bit 7).
+ */
+#define NUMERIC_HEADER_SIZE (3)
 
 /*
  * pr_is_set_type - Test to see if a type identifier is one of the set types.

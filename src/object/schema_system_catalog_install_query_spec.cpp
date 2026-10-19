@@ -25,7 +25,6 @@
 #include "schema_system_catalog_install.hpp"
 
 #include "authenticate.h"
-#include "deduplicate_key.h"
 #include "schema_system_catalog_constants.h"
 #include "sp_catalog.hpp"
 #include "trigger_manager.h"
@@ -800,20 +799,7 @@ sm_define_view_index_spec (void)
 	  "CASE [i].[is_reverse] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_reverse], "
 	  "[i].[class_of].[class_name] AS [class_name], "
 	  "[i].[class_of].[owner].[name] AS [owner_name], "
-	  "NVL2 ("
-	      "("
-		"SELECT 1 "
-		"FROM "
-		  /* CT_INDEXKEY_NAME */
-		  "[%s] [k] "
-		"WHERE "
-		  "[k].index_of.class_of = [i].class_of "
-		  "AND [k].index_of.index_name = [i].[index_name] "
-		  "AND [k].key_attr_name LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
-	      "), "
-	      "([i].[key_count] - 1), "
-	      "[i].[key_count]"
-	    ") AS [key_count], "        
+	  "[i].[key_count] AS [key_count], "
 	  "CASE [i].[is_primary_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_primary_key], "
 	  "CASE [i].[is_foreign_key] WHEN 0 THEN 'NO' ELSE 'YES' END AS [is_foreign_key], "
 	  "[i].[filter_expression] AS [filter_expression], "
@@ -852,7 +838,6 @@ sm_define_view_index_spec (void)
             "WHEN 0 THEN 'BTREE' "
             "ELSE NULL "
             "END AS [index_type], "
-          "[i].[options] & %d AS [deduplicate_key_level], "
 	  "[i].[comment] AS [comment], "
           "[i].[created_time] AS [created_time], "
           "[i].[updated_time] AS [updated_time] "
@@ -900,9 +885,7 @@ sm_define_view_index_spec (void)
 		      "[u].[name] = CURRENT_USER"
 		  ") "
 		"AND [au].[auth_type] = 'SELECT'"
-	    ")",            
-	CT_INDEXKEY_NAME,
-        OPTION_DEDUPLICATE_MASK,
+	    ")",
 	CT_INDEX_NAME,
 	CT_CLASS_NAME,
 	CT_INDEX_NAME,
@@ -936,47 +919,41 @@ sm_define_view_index_key_spec (void)
 	  /* CT_INDEXKEY_NAME */
 	  "[%s] AS [k] "
 	"WHERE "
-          "("
-              "[k].[key_attr_name] IS NULL " 
-              "OR [k].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN
-          ")"
-          " AND ("       
-	      "{'DBA'} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[k].[index_of].[class_of].[owner].[name]} SUBSETEQ ("
-		  "SELECT "
-		    "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-		  "FROM "
-		    /* AU_USER_CLASS_NAME */
-		    "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-		  "WHERE "
-		    "[u].[name] = CURRENT_USER"
-		") "
-	      "OR {[k].[index_of].[class_of].[class_of]} SUBSETEQ ("
-		  "SELECT "
-		    "SUM (SET {[au].[object_of]}) "
-		  "FROM "
-		    /* CT_CLASSAUTH_NAME */
-		    "[%s] AS [au] "
-		  "WHERE "
-		    "{[au].[grantee].[name]} SUBSETEQ ("
-			"SELECT "
-			  "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
-			"FROM "
-			  /* AU_USER_CLASS_NAME */
-			  "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
-			"WHERE "
-			  "[u].[name] = CURRENT_USER"
-		      ") "
-		    "AND [au].[auth_type] = 'SELECT'"
-		")"
+	  "{'DBA'} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
+	  "OR {[k].[index_of].[class_of].[owner].[name]} SUBSETEQ ("
+	      "SELECT "
+		"SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+	      "FROM "
+		/* AU_USER_CLASS_NAME */
+		"[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+	      "WHERE "
+		"[u].[name] = CURRENT_USER"
+	    ") "
+	  "OR {[k].[index_of].[class_of].[class_of]} SUBSETEQ ("
+	      "SELECT "
+		"SUM (SET {[au].[object_of]}) "
+	      "FROM "
+		/* CT_CLASSAUTH_NAME */
+		"[%s] AS [au] "
+	      "WHERE "
+		"{[au].[grantee].[name]} SUBSETEQ ("
+		    "SELECT "
+		      "SET {CURRENT_USER} + COALESCE (SUM (SET {[t].[g].[name]}), SET {}) "
+		    "FROM "
+		      /* AU_USER_CLASS_NAME */
+		      "[%s] AS [u], TABLE ([u].[groups]) AS [t] ([g]) "
+		    "WHERE "
+		      "[u].[name] = CURRENT_USER"
+		  ") "
+	    "AND [au].[auth_type] = 'SELECT'"
 	    ")",
 	CT_INDEXKEY_NAME,
 	AU_USER_CLASS_NAME,

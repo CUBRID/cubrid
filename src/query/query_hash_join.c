@@ -399,9 +399,11 @@ hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CON
 
   status = hjoin_check_empty_inputs (manager, context);
 
-  /* In outer joins, tuples with NULL in any join column are placed in the last partition.
-   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
-  if (IS_OUTER_JOIN_TYPE (manager->join_type) && context == &manager->contexts[manager->context_cnt - 1])
+  /* In joins that NULL-fill one side,
+   * tuples with NULL in any join column are placed in the last partition.
+   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition.
+   */
+  if (IS_NULL_FILL_JOIN_TYPE (manager->join_type) && context == &manager->contexts[manager->context_cnt - 1])
     {
       status = (status == HASHJOIN_STATUS_TRY) ? HASHJOIN_STATUS_FILL_NULL_VALUES : status;
     }
@@ -469,6 +471,7 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
   switch (manager->join_type)
     {
     case JOIN_LEFT:
+    case JOIN_ANTI:
       context->build = inner;
       context->probe = outer;
       break;
@@ -936,18 +939,6 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
     {
       db_private_free_and_init (thread_p, manager->px_worker_stats);
     }
-
-  THREAD_ENTRY *main_thread_p = thread_get_main_thread (thread_p);
-
-  /* only top-level parent */
-  if (main_thread_p == thread_p)
-    {
-      if (thread_p->m_px_stats != NULL && !thread_p->m_uses_px_stats)
-	{
-	  perfmon_merge_parallel_stats_to_tran_stats (thread_p);
-	  free_and_init (thread_p->m_px_stats);
-	}
-    }
 #else
   assert (manager->px_worker_manager == NULL);
   assert (manager->px_worker_stats == NULL);
@@ -1361,10 +1352,12 @@ hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASH
   part_cnt = CEIL_PTVDIV (per_entry_size * min_tuple_cnt, mem_limit * PARTITION_FILL_FACTOR);
   if (part_cnt > 1)
     {
-      if (IS_OUTER_JOIN_TYPE (manager->join_type))
+      if (IS_NULL_FILL_JOIN_TYPE (manager->join_type))
 	{
-	  /* In outer joins, tuples with NULL in any join column are placed in the last partition.
-	   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in this partition. */
+	  /* In joins that NULL-fill one side,
+	   * tuples with NULL in any join column are placed in the last partition.
+	   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition.
+	   */
 	  part_cnt += 1;
 	}
 
@@ -1655,7 +1648,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   unsigned int hash_key;
   UINT32 part_cnt, part_index, part_id;
 
-  bool is_outer_join = false;
+  bool has_null_fill_side = false;
   bool need_skip_next = false;
 
   int error = NO_ERROR;
@@ -1677,7 +1670,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   /* Prevent faults when qfile_close_scan is called */
   list_scan_id.status = S_CLOSED;
 
-  is_outer_join = IS_OUTER_JOIN_TYPE (manager->join_type);
+  has_null_fill_side = IS_NULL_FILL_JOIN_TYPE (manager->join_type);
 
   error = qfile_open_list_scan (list_id, &list_scan_id);
   if (error != NO_ERROR)
@@ -1697,10 +1690,12 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	{
 	  need_skip_next = false;	/* init */
 
-	  if (is_outer_join)
+	  if (has_null_fill_side)
 	    {
-	      /* In outer joins, tuples with NULL in any join column are placed in the last partition.
-	       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition. */
+	      /* In joins that NULL-fill one side,
+	       * tuples with NULL in any join column are placed in the last partition.
+	       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition.
+	       */
 	      part_id = part_cnt - 1;
 	    }
 	  else
@@ -1712,7 +1707,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
       else
 	{
 	  hash_key = qdata_hash_scan_key (temp_key, UINT_MAX, HASH_METH_IN_MEM);
-	  part_id = (is_outer_join) ? hash_key % (part_cnt - 1) : hash_key % (part_cnt);
+	  part_id = (has_null_fill_side) ? hash_key % (part_cnt - 1) : hash_key % (part_cnt);
 
 	  hjoin_update_tuple_hash_key (thread_p, &tuple_record, hash_key);
 	}
@@ -2056,7 +2051,8 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
   degree = px_worker_manager->get_reserved_workers ();
   manager->num_parallel_threads = degree;
 
-  if (thread_is_on_trace (thread_p))
+  /* one statistics slice per worker whenever anyone reads them, trace or not; drained after each phase */
+  if (perfmon_parallel_stats_needed (thread_p))
     {
       px_worker_stats = (UINT64 *) db_private_alloc (thread_p, degree * stats_size);
       if (px_worker_stats == NULL)
@@ -2065,18 +2061,6 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
 	  goto error_exit;
 	}
       memset (px_worker_stats, 0, degree * stats_size);
-
-      /* only top-level parent */
-      if (thread_p->m_px_stats == NULL)
-	{
-	  thread_p->m_px_stats = perfmon_allocate_values ();
-	  if (thread_p->m_px_stats == NULL)
-	    {
-	      assert_release_error (er_errid () != NO_ERROR);
-	      goto error_exit;
-	    }
-	  memset (thread_p->m_px_stats, 0, stats_size);
-	}
 
       manager->px_worker_stats = px_worker_stats;
     }
@@ -2164,7 +2148,8 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
   degree = px_worker_manager->get_reserved_workers ();
   manager->num_parallel_threads = degree;
 
-  if (thread_is_on_trace (thread_p))
+  /* one statistics slice per worker whenever anyone reads them, trace or not; drained after each phase */
+  if (perfmon_parallel_stats_needed (thread_p))
     {
       px_worker_stats = (UINT64 *) db_private_alloc (thread_p, degree * stats_size);
       if (px_worker_stats == NULL)
@@ -2173,18 +2158,6 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
 	  goto error_exit;
 	}
       memset (px_worker_stats, 0, degree * stats_size);
-
-      /* only top-level parent */
-      if (thread_p->m_px_stats == NULL)
-	{
-	  thread_p->m_px_stats = perfmon_allocate_values ();
-	  if (thread_p->m_px_stats == NULL)
-	    {
-	      assert_release_error (er_errid () != NO_ERROR);
-	      goto error_exit;
-	    }
-	  memset (thread_p->m_px_stats, 0, stats_size);
-	}
 
       manager->px_worker_stats = px_worker_stats;
     }
@@ -2500,7 +2473,13 @@ hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
 	}
       break;
 
+    case JOIN_SEMI:
+      context->build = inner;
+      context->probe = outer;
+      break;
+
     case JOIN_LEFT:
+    case JOIN_ANTI:
       outer->fill_record = &outer->tuple_record;
       inner->fill_record = NULL;
 
@@ -2888,10 +2867,12 @@ hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context
   switch (manager->join_type)
     {
     case JOIN_INNER:
+    case JOIN_SEMI:
       status = (outer_tuple_cnt == 0 || inner_tuple_cnt == 0) ? HASHJOIN_STATUS_END : HASHJOIN_STATUS_TRY;
       break;
 
     case JOIN_LEFT:
+    case JOIN_ANTI:
       status =
 	(outer_tuple_cnt == 0) ? HASHJOIN_STATUS_END : (inner_tuple_cnt ==
 							0) ? HASHJOIN_STATUS_FILL_NULL_VALUES : HASHJOIN_STATUS_TRY;
@@ -3382,7 +3363,7 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 	  goto error_exit;
 	}
 
-      if (IS_OUTER_JOIN_TYPE (manager->join_type))
+      if (IS_NULL_FILL_JOIN_TYPE (manager->join_type))
 	{
 	  error = hjoin_outer_probe (thread_p, manager, context, list_id);
 	}
@@ -3632,6 +3613,13 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	  if (error != NO_ERROR)
 	    {
 	      break;		/* error_exit */
+	    }
+
+	  if (manager->join_type == JOIN_SEMI)
+	    {
+	      /* semi join: one match is enough to emit this row, so stop scanning. */
+	      qfile_slot_reset (&build->tuple_record);
+	      break;
 	    }
 	}
       while (true);
@@ -3932,6 +3920,16 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    }			/* if (context->during_join_pred != NULL) */
 
 	  any_key_matched = true;
+
+	  if (manager->join_type == JOIN_ANTI)
+	    {
+	      /* anti join: one match is enough to suppress this row, so stop scanning.
+	       * The unnested subquery condition becomes the ON clause,
+	       * so after_join_pred does not decide the match.
+	       */
+	      qfile_slot_reset (&build->tuple_record);
+	      break;
+	    }
 
 	  if (context->after_join_pred != NULL)
 	    {
@@ -4552,32 +4550,24 @@ hjoin_trace_drain_worker_stats (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * mana
 {
   UINT64 *worker_stats;
   int task_cnt, task_index;
-  int stats_cnt, stats_index;
 
-  assert (thread_p->m_px_stats != NULL);
   assert (manager != NULL);
   assert (manager->num_parallel_threads > 1);
   assert (manager->px_worker_stats != NULL);
 
   /* immutable */
-  const int *offsets = NULL;
+  static const size_t stats_size = perfmon_get_number_of_statistic_values () * sizeof (UINT64);
 
   task_cnt = manager->num_parallel_threads;
-  offsets = perfmon_get_parallel_merged_offsets (&stats_cnt);
 
   for (task_index = 0; task_index < task_cnt; task_index++)
     {
       worker_stats = hjoin_trace_get_worker_stats (manager, task_index);
 
-      for (stats_index = 0; stats_index < stats_cnt; stats_index++)
-	{
-	  const int offset = offsets[stats_index];
-	  thread_p->m_px_stats[offset] += worker_stats[offset];
-	  worker_stats[offset] = 0;
-	}
+      /* everything the worker counted in this phase */
+      perfmon_add_values_to_local (thread_p, worker_stats);
+      memset (worker_stats, 0, stats_size);
     }
-
-  perfmon_merge_parallel_stats_to_tran_stats (thread_p);
 }
 
 #if HASHJOIN_DUMP_HASH_TABLE

@@ -389,7 +389,7 @@ qo_check_condition_null (PARSER_CONTEXT * parser, PT_NODE * path_spec, PT_NODE *
 {
   PT_NODE *where;
   bool result = false;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
 
   if (query_where == NULL)
     {

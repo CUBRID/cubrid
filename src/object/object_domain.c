@@ -35,7 +35,6 @@
 #include <assert.h>
 
 #include "area_alloc.h"
-#include "deduplicate_key.h"
 #include "object_domain.h"
 #include "object_domain_convert.h"
 #include "db_date_status.h"
@@ -696,8 +695,6 @@ tp_init (void)
     }
 
   tp_Initialized = true;
-
-  dk_deduplicate_key_attribute_initialized ();
 
   return NO_ERROR;
 }
