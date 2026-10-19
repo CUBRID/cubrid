@@ -222,6 +222,8 @@ int
 stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool use_xasl_clone, char *xasl_stream,
 			int xasl_stream_size, XASL_UNPACK_INFO ** xasl_unpack_info_ptr)
 {
+  /* CBRD-27583: the unpack plans before any row (a parallel worker unpacks its clone inside its task) */
+  TP_DECISION_EXCEPTION ();
   XASL_NODE *xasl;
   char *p;
   int header_size;
@@ -301,6 +303,8 @@ int
 stx_map_stream_to_filter_pred (THREAD_ENTRY * thread_p, pred_expr_with_context ** pred, char *pred_stream,
 			       int pred_stream_size)
 {
+  /* CBRD-27583: the unpack plans before any row (a parallel worker unpacks its clone inside its task) */
+  TP_DECISION_EXCEPTION ();
   PRED_EXPR_WITH_CONTEXT *pwc = NULL;
   char *p = NULL;
   int header_size;
@@ -360,6 +364,8 @@ int
 stx_map_stream_to_func_pred (THREAD_ENTRY * thread_p, func_pred ** xasl, char *xasl_stream, int xasl_stream_size,
 			     XASL_UNPACK_INFO ** xasl_unpack_info_ptr)
 {
+  /* CBRD-27583: the unpack plans before any row (a parallel worker unpacks its clone inside its task) */
+  TP_DECISION_EXCEPTION ();
   FUNC_PRED *p_xasl = NULL;
   char *p = NULL;
   int header_size;

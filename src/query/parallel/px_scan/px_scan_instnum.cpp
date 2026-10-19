@@ -268,7 +268,11 @@ namespace parallel_scan
 	TP_DOMAIN_STATUS dom_status;
 
 	db_make_null (&coerced);
-	dom_status = tp_value_coerce (limit_val, &coerced, &tp_Bigint_domain);
+	{
+	  /* CBRD-27583 exception, once per execution: the instnum limit's value into BIGINT */
+	  TP_DECISION_EXCEPTION ();
+	  dom_status = tp_value_coerce (limit_val, &coerced, &tp_Bigint_domain);
+	}
 	if (dom_status == DOMAIN_COMPATIBLE)
 	  {
 	    raw_limit = db_get_bigint (&coerced);

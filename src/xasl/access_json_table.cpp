@@ -156,6 +156,7 @@ namespace cubxasl
       db_make_json_from_doc_store_and_release (*m_output_value_pointer, docp);
 
       // exception: the data carries the type - the JSON value's own type picks the conversion inside the converter
+      TP_DECISION_EXCEPTION ();
       status_cast = tp_value_cast_with_converter (m_output_value_pointer, m_output_value_pointer, m_domain, false,
 		    DB_TYPE_JSON, m_converter);
       if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)

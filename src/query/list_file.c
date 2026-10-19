@@ -7162,6 +7162,8 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUP
 static void
 qfile_check_interpolation_type (DB_VALUE * value, const TP_DOMAIN * resolved)
 {
+  /* the optdebug cross-check (removed at S3-14) */
+  TP_DECISION_EXCEPTION ();
   DB_VALUE converted;
   TP_DOMAIN *expected = NULL;
 

@@ -2349,6 +2349,8 @@ end:
 int
 db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 {
+  /* CBRD-27583 exception, the data carries the type (function spec): ROUND's string argument and format convert */
+  TP_DECISION_EXCEPTION ();
   DB_TYPE type1, type2;
   short s1;
   int i1;
@@ -3361,6 +3363,8 @@ end:
 int
 db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 {
+  /* CBRD-27583 exception, the data carries the type (function spec): TRUNC's string argument and format convert */
+  TP_DECISION_EXCEPTION ();
   DB_TYPE type1, type2;
   DB_BIGINT bi2;
   double dtmp;
@@ -4748,6 +4752,7 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
   d4 = (int) floor (d4);
 
   /* CBRD-27583 exception, the data carries the type (function spec): a string's content picks the family */
+  TP_DECISION_EXCEPTION ();
   /* find the common type of value1, value2 and value3 and cast them to the common type */
   type = DB_VALUE_DOMAIN_TYPE (value1);
   switch (type)

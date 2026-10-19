@@ -96,27 +96,10 @@
 #include "px_scan.hpp"
 #endif /* SERVER_MODE && !WINDOWS */
 #include "px_query_executor.hpp"
-#include <atomic>
 #include <vector>
 #include "dblink_scan.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-#if !defined (NDEBUG)
-/* CBRD-27583 census (S3-32, removed at S3-14): the first time the process reaches a site */
-#define QEXEC_CENSUS_ONCE(text) \
-  do \
-    { \
-      static std::atomic<bool> logged_ (false); \
-      if (!logged_.exchange (true)) \
-	{ \
-	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 %s\n", (text)); \
-	} \
-    } \
-  while (0)
-#else
-#define QEXEC_CENSUS_ONCE(text)
-#endif
 
 #define GOTO_EXIT_ON_ERROR \
   do \
@@ -4054,7 +4037,11 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 
       /* into a value of its own: the limit is a bind value other readers share */
       db_make_null (&limit_value);
-      dom_status = tp_value_coerce (dbvalp, &limit_value, domainp);
+      {
+	/* CBRD-27583 exception, once per execution: the sort limit's value into INTEGER */
+	TP_DECISION_EXCEPTION ();
+	dom_status = tp_value_coerce (dbvalp, &limit_value, domainp);
+      }
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  if (dom_status == DOMAIN_OVERFLOW)
@@ -13245,6 +13232,8 @@ exit_on_error:
 static TP_DOMAIN *
 qexec_default_format_domain (const DB_VALUE * format_val)
 {
+  /* CBRD-27583 exception until S3-23 (B): a default expression's format */
+  TP_DECISION_EXCEPTION ();
   TP_DOMAIN *domain = tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL, LANG_SYS_COLLATION);
 #if !defined (NDEBUG)
   const TP_DOMAIN *from_value = tp_domain_resolve_value (format_val, NULL);
@@ -13378,7 +13367,11 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
       return error;
     }
 
-  status = tp_value_cast (out_val, out_val, attr->domain, false);
+  {
+    /* CBRD-27583 exception until S3-23 (B): a row default into its attribute's domain */
+    TP_DECISION_EXCEPTION ();
+    status = tp_value_cast (out_val, out_val, attr->domain, false);
+  }
   if (status != DOMAIN_COMPATIBLE)
     {
       (void) tp_domain_status_er_set (status, ARG_FILE_LINE, out_val, attr->domain);
@@ -13917,7 +13910,11 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  continue;
 	}
 
-      status = tp_value_cast (insert->vals[k], insert->vals[k], attr->domain, false);
+      {
+	/* CBRD-27583 exception until S3-23 (B): an inserted value into its attribute's domain */
+	TP_DECISION_EXCEPTION ();
+	status = tp_value_cast (insert->vals[k], insert->vals[k], attr->domain, false);
+      }
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (status, ARG_FILE_LINE, insert->vals[k], attr->domain);
@@ -16343,8 +16340,12 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
 
       /* the comparison unpack decided, as tp_value_compare asks it */
-      cmp_with_zero =
-	eval_compare_values_resolved (thread_p, xasl->limit_compare, &xasl_state->vd, limit_valp, &zero_val, 0, NULL);
+      {
+	/* CBRD-27583 exception, once per execution: the limit's value against 0 */
+	TP_DECISION_EXCEPTION ();
+	cmp_with_zero =
+	  eval_compare_values_resolved (thread_p, xasl->limit_compare, &xasl_state->vd, limit_valp, &zero_val, 0, NULL);
+      }
       if (cmp_with_zero == DB_GT)
 	{
 	  /* validated */
@@ -21149,7 +21150,11 @@ qexec_execute_do_stmt (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 	}
       else
 	{
-	  if (dbval_p)
+	  /* CBRD-27583 (S3-13): a value the statement computed; a peeked bound value, literal or slot of another node is
+	   * not the statement's to clear (the server does not change a bound value) */
+	  const REGU_DATATYPE type = valptr_p->value.type;
+	  if (dbval_p != NULL
+	      && (type == TYPE_INARITH || type == TYPE_OUTARITH || type == TYPE_FUNC || type == TYPE_SP))
 	    {
 	      pr_clear_value (dbval_p);
 	    }
@@ -21576,13 +21581,13 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
 
 	  if (gbstate.input_recs > 0)
 	    {
-	      /* compare old value with current total_order is 1. Then NULLs are equal. Both are the column's values;
-	       * exception to deciding before the rows: a column whose domain leaves its values' type to the data
-	       * compares by the values' types */
+	      /* compare old value with current total_order is 1. Then NULLs are equal. Both are the column's values,
+	       * which compare in its domain: a session variable column has its read's type (D-40) */
 	      int c;
 	      if (column == NULL || domain_is_variable (column))
 		{
-		  QEXEC_CENSUS_ONCE ("group by key by value");
+		  /* CBRD-27583 (S3-13): never seen in the gates (census "group by key by value") */
+		  assert (false);
 		  c = tp_value_compare (&list_dbvals[i], &val, 1, 1);
 		}
 	      else
@@ -22535,6 +22540,8 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
 static void
 qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYPE * a_func_list)
 {
+  /* CBRD-27583 exception, once per execution: the sort key's converter into the functions' type */
+  TP_DECISION_EXCEPTION ();
   for (ANALYTIC_TYPE * func_p = a_func_list; func_p != NULL; func_p = func_p->next)
     {
       if (!QPROC_IS_INTERPOLATION_FUNC (func_p) || func_p->sort_list_size <= func_p->sort_prefix_size)
@@ -24450,14 +24457,12 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	  SORT_LIST *key = a_eval_list->sort_list;
 	  for (sort_list_idx = 0; sort_list_idx < a_func_list->sort_list_size; sort_list_idx++, key = key->next)
 	    {
-	      /* a key whose domain the execution fixes compares by the values' types until step 3 */
 	      const DB_VALUE *current = &a_eval_list->current_values[sort_list_idx];
 	      const DB_VALUE *value = &a_eval_list->temp_values[sort_list_idx];
 	      const bool by_value = key->pos_descr.dom == NULL || domain_is_variable (key->pos_descr.dom);
-	      if (by_value)
-		{
-		  QEXEC_CENSUS_ONCE ("analytic key by value");
-		}
+	      /* CBRD-27583 (S3-13): a key compares in its domain; by the values never seen in the gates (census
+	       * "analytic key by value") */
+	      assert (!by_value);
 	      if ((by_value ? tp_value_compare (current, value, 1, 0)
 		   : domain_compare_in_domain (key->pos_descr.dom, current, value, 1, 0)) != DB_EQ)
 		{
@@ -25346,6 +25351,8 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
 static int
 qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 {
+  /* CBRD-27583 exception, schema information: a type's description text */
+  TP_DECISION_EXCEPTION ();
   const char *name = NULL;
   int precision = -1;
   int scale = -1;
@@ -27083,8 +27090,8 @@ qexec_evaluate_aggregates_optimize (THREAD_ENTRY * thread_p, AGGREGATE_TYPE * ag
  *   sort_items(in): the ORDER BY list
  *   domains(out): one per sort item
  *
- * A key compares with its domain's cmpval. Exception to deciding before the rows: a key whose domain leaves its values'
- * type or collation to the data (a session variable column) gets none, and its values' types decide.
+ * A key compares with its domain's cmpval; a session variable column has its read's type (D-40). A key whose domain
+ * leaves its values' type to them, never seen in the gates (census "topn key by value", S3-13), gets none.
  */
 static void
 qexec_topn_sort_domains (SORT_LIST * sort_items, const TP_DOMAIN ** domains)
@@ -27092,11 +27099,8 @@ qexec_topn_sort_domains (SORT_LIST * sort_items, const TP_DOMAIN ** domains)
   int i = 0;
   for (SORT_LIST * key = sort_items; key != NULL; key = key->next, i++)
     {
+      assert (!domain_is_variable (key->pos_descr.dom));
       domains[i] = domain_is_variable (key->pos_descr.dom) ? NULL : key->pos_descr.dom;
-      if (domains[i] == NULL)
-	{
-	  QEXEC_CENSUS_ONCE ("topn key by value");
-	}
     }
 }
 
@@ -27165,7 +27169,11 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
   if (DB_VALUE_TYPE (&ubound_val) != DB_TYPE_INTEGER)
     {
       TP_DOMAIN_STATUS status;
-      status = tp_value_cast (&ubound_val, &ubound_val, &tp_Integer_domain, 1);
+      {
+	/* CBRD-27583 exception, once per execution: the top-N bound into INTEGER */
+	TP_DECISION_EXCEPTION ();
+	status = tp_value_cast (&ubound_val, &ubound_val, &tp_Integer_domain, 1);
+      }
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  pr_clear_value (&ubound_val);

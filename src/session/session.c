@@ -1487,6 +1487,8 @@ session_get_last_insert_id (THREAD_ENTRY * thread_p, DB_VALUE * value, bool upda
 int
 session_set_cur_insert_id (THREAD_ENTRY * thread_p, const DB_VALUE * value, bool force)
 {
+  /* CBRD-27583 exception, the session's state: LAST_INSERT_ID keeps a NUMERIC */
+  TP_DECISION_EXCEPTION ();
   SESSION_STATE *state_p = NULL;
   bool need_coercion = false;
 

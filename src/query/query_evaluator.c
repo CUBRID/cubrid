@@ -375,6 +375,8 @@ eval_assert_resolved_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * d
 			      int total_order, DB_VALUE_COMPARE_RESULT result, bool comparable,
 			      const COMP_EVAL_TERM * et_comp, const val_descr * vd, bool asks_comparable)
 {
+  /* the optdebug cross-check (removed at S3-14) */
+  TP_DECISION_EXCEPTION ();
   const int error = comparable ? NO_ERROR : er_errid ();
   bool expected_comparable = true;
   er_stack_push ();
@@ -393,6 +395,40 @@ eval_assert_resolved_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * d
   assert (same);
 }
 #endif
+
+/*
+ * eval_compare_by_values () - comparison method VALUES, the exception to deciding before the rows: a NULL answers by
+ *			      tp_value_compare_with_error's NULL rule, which decides nothing, and two values by their
+ *			      types
+ */
+static DB_VALUE_COMPARE_RESULT
+eval_compare_by_values (const DB_VALUE * value1, const DB_VALUE * value2, int total_order, bool * can_compare)
+{
+  if (DB_IS_NULL (value1))
+    {
+      return DB_IS_NULL (value2) ? (total_order ? DB_EQ : DB_UNK) : (total_order ? DB_LT : DB_UNK);
+    }
+  if (DB_IS_NULL (value2))
+    {
+      return total_order ? DB_GT : DB_UNK;
+    }
+#if !defined (NDEBUG)
+  {
+    /* census (S3-13): the value types the method meets, each pair once per process */
+    static thread_local unsigned long long seen[DB_TYPE_LAST + 1];
+    const int type1 = DB_VALUE_DOMAIN_TYPE (value1), type2 = DB_VALUE_DOMAIN_TYPE (value2);
+    if (type1 <= DB_TYPE_LAST && type2 <= DB_TYPE_LAST && (seen[type1] & (1ULL << type2)) == 0)
+      {
+	char line[128];
+	seen[type1] |= 1ULL << type2;
+	snprintf (line, sizeof (line), "CBRD-27583 values compare %s %s", pr_type_name ((DB_TYPE) type1),
+		  pr_type_name ((DB_TYPE) type2));
+	eval_census_once (line);
+      }
+  }
+#endif
+  return tp_value_compare_with_error (value1, value2, 1, total_order, can_compare);
+}
 
 /*
  * eval_compare_values_with () - a comparison of two values decided before any row outside a predicate term:
@@ -423,8 +459,7 @@ eval_compare_values_with (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compar
 #endif
       return result;
     }
-  /* exception to deciding before the rows: the values decide; NULL answers first */
-  return tp_value_compare_with_error (value1, value2, 1, total_order, can_compare);
+  return eval_compare_by_values (value1, value2, total_order, can_compare);
 }
 
 /*
@@ -502,8 +537,7 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
 	  }
 	else
 	  {
-	    /* exception to deciding before the rows: the values decide; NULL answers first */
-	    result = tp_value_compare_with_error (dbval1, dbval2, 1, total_order, &comparable);
+	    result = eval_compare_by_values (dbval1, dbval2, total_order, &comparable);
 	  }
       }
       break;

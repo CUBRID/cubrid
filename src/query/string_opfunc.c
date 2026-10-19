@@ -7552,6 +7552,7 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
   {
     /* debug cross-check: domain_resolve (DOMAIN_CTX_FUNC_ARG) answers the result type - from the value's type,
      * but for a string the compiler typed VARCHAR whose zone goes into the result string */
+    TP_DECISION_EXCEPTION ();
     DB_TYPE left_class = !zone_to_string ? domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, 0, left)
       : DB_VALUE_DOMAIN_TYPE (left);
     DOMAIN_OPERAND operands[2] = {
@@ -10782,6 +10783,7 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
 
 	dt_tz_p = &dt;
 	/* CBRD-27583 exception, the data carries the type (function spec): a string with a zone is DATETIMETZ */
+	TP_DECISION_EXCEPTION ();
 	if (type != DB_TYPE_DATETIME && type != DB_TYPE_DATE)
 	  {
 	    tp_datetimetz = db_type_to_db_domain (DB_TYPE_DATETIMETZ);
@@ -11965,6 +11967,7 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format, const DB_V
 
       db_make_null (&new_time_value);
       /* CBRD-27583 exception (D-51): the body converts; a failure is ER_QSTR_INVALID_DATA_TYPE */
+      TP_DECISION_EXCEPTION ();
       TP_DOMAIN_STATUS status = tp_value_auto_cast (value_ptr, &new_time_value, new_domain);
       if (status != DOMAIN_COMPATIBLE)
 	{
@@ -12643,7 +12646,11 @@ db_to_char (const DB_VALUE * src_value, const DB_VALUE * format_or_length, const
 	}
       else
 	{
-	  error_status = db_value_coerce (src_value, result_str, domain);
+	  {
+	    /* CBRD-27583 exception (function spec): a string's TO_CHAR is the string in the result's codeset and collation */
+	    TP_DECISION_EXCEPTION ();
+	    error_status = db_value_coerce (src_value, result_str, domain);
+	  }
 	}
 
       return error_status;
@@ -21841,6 +21848,7 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
 	  }
 
 	/* CBRD-27583 exception, the data carries the type (function spec): the string parses as a datetime(tz) */
+	TP_DECISION_EXCEPTION ();
 	if (dateformat || check_has_date)
 	  {
 	    DB_VALUE dt;
@@ -22682,6 +22690,7 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 #if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
   {
     /* debug cross-check: the format's value type and domain_resolve (DOMAIN_CTX_FUNC_ARG) answer res_type */
+    TP_DECISION_EXCEPTION ();
     DB_TYPE format_class = domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_STR_TO_DATE, 1, format);
     DOMAIN_OPERAND operands[2] = {
       {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (str)), DB_VALUE_DOMAIN_TYPE (str), -1, false}
@@ -26401,6 +26410,7 @@ coerce_pos:
       param_domain = tp_domain_resolve_default (param_type);
       domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
       /* CBRD-27583 exception (D-51): the body converts; a number out of BIGINT's range counts as the maximum */
+      TP_DECISION_EXCEPTION ();
       /* don't mind error code here, we need to know if param is out of range */
       (void) tp_value_auto_cast (param, &param_db_bigint, domain);
       if (DB_IS_NULL (&param_db_bigint))
@@ -26445,6 +26455,7 @@ coerce_pos:
       db_make_null (&tval);
       ptval = &tval;
       /* CBRD-27583 exception (D-51): the body converts; a failure is ER_QSTR_INVALID_DATA_TYPE */
+      TP_DECISION_EXCEPTION ();
       if (tp_value_cast (param, &tval, &tp_Char_domain, false) != DOMAIN_COMPATIBLE)
 	{
 	  error_code = ER_QSTR_INVALID_DATA_TYPE;
@@ -26803,6 +26814,7 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
       const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_CHAR);
       db_make_null (&new_value);
       /* CBRD-27583 exception (D-51): the body converts; a failure is ER_QSTR_INVALID_DATA_TYPE, or 0 */
+      TP_DECISION_EXCEPTION ();
       TP_DOMAIN_STATUS status = tp_value_auto_cast (param, &new_value, new_domain);
       if (status != DOMAIN_COMPATIBLE)
 	{
@@ -27347,6 +27359,7 @@ db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result, const TP
   db_make_null (result);
 
   /* CBRD-27583 exception (D-51): the body converts; a value out of the enumeration is its overflow value, no error */
+  TP_DECISION_EXCEPTION ();
   status = tp_value_cast (src, result, enum_domain, false);
   if (status != DOMAIN_COMPATIBLE)
     {

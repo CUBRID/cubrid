@@ -1823,6 +1823,8 @@ domain_compare_key_collate (DOMAIN_COMPARE_KEY * key, const TP_DOMAIN * collate)
 static DB_VALUE_COMPARE_RESULT
 domain_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_converted, bool * can_compare)
 {
+  /* CBRD-27583 exception, an error report: the rank of the types a conversion failed between */
+  TP_DECISION_EXCEPTION ();
   DB_TYPE type[2] = { (DB_TYPE) compare->source[0], (DB_TYPE) compare->source[1] };
   if (first_converted)
     {
@@ -1922,6 +1924,7 @@ domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * value1, cons
    * leaves its values' type or collation to them (S3-32, census "cache key by value": collections only) */
   assert (TP_IS_SET_TYPE (type) && domain->collation_flag == TP_DOMAIN_COLL_NORMAL
 	  && DB_VALUE_DOMAIN_TYPE (value1) == type && DB_VALUE_DOMAIN_TYPE (value2) == type);
+  TP_DECISION_EXCEPTION ();
   return tp_value_compare (value1, value2, 1, 1) == DB_EQ;
 }
 
@@ -2962,6 +2965,8 @@ DB_VALUE_COMPARE_RESULT
 domain_compare_by_type_pair (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order,
 			     bool * can_compare)
 {
+  /* CBRD-27583 exception, the data carries the type (2-7): a collection's elements compare by their own types */
+  TP_DECISION_EXCEPTION ();
   const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value1);
   if (type == DB_VALUE_DOMAIN_TYPE (value2) && !TP_TYPE_HAS_COLLATION (type))
     {

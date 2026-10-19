@@ -128,7 +128,7 @@ tp_decision_entry::tp_decision_entry (const char *function, const void *caller, 
 	    }
 	}
     }
-  else if (tp_Decision_lazy_function != NULL && !lazy)
+  else if (tp_Decision_lazy_function != NULL && !lazy && tp_Decision_exception == 0)
     {
       /* a decision under a function given a converter: its caller decided at the row */
       tp_decision_count (tp_Decision_lazy_function, tp_Decision_lazy_caller);
@@ -4571,6 +4571,7 @@ tp_domain_select_type (const TP_DOMAIN * domain_list, DB_TYPE type, DB_OBJECT * 
 TP_DOMAIN_STATUS
 tp_domain_check (const TP_DOMAIN * domain, const DB_VALUE * value, TP_MATCH exact_match)
 {
+  TP_DECISION_ENTRY ("tp_domain_check");
   TP_DOMAIN_STATUS status;
   TP_DOMAIN *d;
 
@@ -5935,7 +5936,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       if (found != NULL && found->src_type == original_type && found->domain == desired_domain)
 	{
 	  converter = found->converter;
-	  assert (converter == tp_value_find_converter (original_type, desired_domain, mode));
+	  {
+	    /* the optdebug cross-check of the plan's converter (removed at S3-14) */
+	    TP_DECISION_EXCEPTION ();
+	    assert (converter == tp_value_find_converter (original_type, desired_domain, mode));
+	  }
 	}
       else
 	{
@@ -6301,6 +6306,8 @@ tp_value_compare_common_domain (const DB_TYPE type1, const DB_TYPE type2)
 DB_VALUE_COMPARE_RESULT
 tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order)
 {
+  /* CBRD-27583 exception, the data carries the type (2-7): two collections of different kinds coerce by their types */
+  TP_DECISION_EXCEPTION ();
   DB_VALUE temp;
   int coercion;
   DB_VALUE *v1, *v2;

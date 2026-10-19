@@ -996,6 +996,7 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 static TP_DOMAIN_STATUS
 hjoin_coerce_key (const DB_VALUE * value, DB_VALUE * result, const TP_DOMAIN * domain, date_conversion_error *)
 {
+  TP_DECISION_EXCEPTION ();
   return tp_value_coerce (value, result, domain);
 }
 
@@ -2800,6 +2801,8 @@ static void
 hjoin_check_key_convert (const DB_VALUE * value, const TP_DOMAIN * target, TP_DOMAIN_STATUS status,
 			 const DB_VALUE * converted)
 {
+  /* the optdebug cross-check (removed at S3-14) */
+  TP_DECISION_EXCEPTION ();
   DB_VALUE expected;
   db_make_null (&expected);
   const TP_DOMAIN_STATUS expected_status = tp_value_coerce (value, &expected, target);

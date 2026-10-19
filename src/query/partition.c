@@ -1222,6 +1222,8 @@ partition_prune_list (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUNI
 static MATCH_STATUS
 partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRUNING_OP op, PRUNING_BITSET * pruned)
 {
+  /* CBRD-27583 exception until S3-6 (B): a hash pruning key into the partition expression's domain */
+  TP_DECISION_EXCEPTION ();
   int idx = 0;
   int hash_size = PARTITIONS_COUNT (pinfo);
   TP_DOMAIN *col_domain = NULL;
@@ -2228,7 +2230,11 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 	{
 	  if (TP_DOMAIN_TYPE (left->domain) != DB_VALUE_TYPE (&val))
 	    {
-	      dom_status = tp_value_cast (&val, &casted_val, left->domain, false);
+	      {
+		/* CBRD-27583 exception until S3-6 (B): a function pruning key into the partition expression's domain */
+		TP_DECISION_EXCEPTION ();
+		dom_status = tp_value_cast (&val, &casted_val, left->domain, false);
+	      }
 
 	      if (dom_status != DOMAIN_COMPATIBLE)
 		{

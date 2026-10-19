@@ -12461,6 +12461,8 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
 			     HEAP_CACHE_ATTRINFO * attr_info, const TP_DOMAIN * domain, DB_TYPE value_type,
 			     TP_VALUE_CONVERTER conv)
 {
+  /* CBRD-27583 exception until S3-23 (B): an attribute value into its catalog domain */
+  TP_DECISION_EXCEPTION ();
   HEAP_ATTRVALUE *value;
   const PR_TYPE *pr_type;
   int ret = heap_attrinfo_start_set (inst_oid, attrid, attr_info, &value, &pr_type);

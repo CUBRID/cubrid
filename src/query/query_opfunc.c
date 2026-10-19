@@ -65,11 +65,6 @@
 
 #include <chrono>
 #include <regex>
-#if !defined (NDEBUG)
-#include <mutex>
-#include <string>
-#include <unordered_set>
-#endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -541,6 +536,8 @@ qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valp
 static int
 qdata_cast_sp_return (THREAD_ENTRY * thread_p, const REGU_VARIABLE * regu_var_p, DB_VALUE * value)
 {
+  /* CBRD-27583 exception until S3-22 (B): a stored procedure's return value */
+  TP_DECISION_EXCEPTION ();
   const TP_DOMAIN *domain = regu_var_p->domain;
   if (DB_IS_NULL (value) || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL || TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE
       || (DB_VALUE_TYPE (value) == TP_DOMAIN_TYPE (domain)
@@ -1969,6 +1966,8 @@ qdata_add_chars_to_dbval (DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * r
 static int
 qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
+  /* CBRD-27583 exception until S3-21 (B): a collection's addition coerces by its values */
+  TP_DECISION_EXCEPTION ();
   DB_SET *set_tmp;
   DB_SEQ *seq_tmp, *seq_tmp1;
   DB_VALUE dbval_tmp;
@@ -2191,21 +2190,6 @@ qdata_add_date_to_dbval (DB_VALUE * date_val_p, DB_VALUE * dbval_p, DB_VALUE * r
   return NO_ERROR;
 }
 
-#if !defined (NDEBUG)
-/* CBRD-27583 census (removed at S3-14): a census line once per server process, not once per row */
-static void
-qdata_census_once (const char *line)
-{
-  static std::mutex mutex;
-  static std::unordered_set < std::string > seen;
-  std::lock_guard < std::mutex > lock (mutex);
-  if (seen.insert (line).second)
-    {
-      er_log_debug (ARG_FILE_LINE, "%s\n", line);
-    }
-}
-#endif
-
 /*
  * qdata_coerce_result_to_domain () - CBRD-27583 (S3-40b): an operator's value into the domain its node or its plan names
  *   (tp_value_coerce's coercion), by the converter the plan found before the rows for a value of the planned type
@@ -2230,8 +2214,11 @@ qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYP
   TP_DOMAIN_STATUS dom_status;
   if (DB_VALUE_DOMAIN_TYPE (result_p) == planned && !domain_is_variable (domain_p))
     {
-      /* the plan's converter, which the cast takes in place of its lookup (the check: removed at S3-14) */
-      assert (conv == tp_value_find_converter (planned, domain_p, DOMAIN_CONVERT_IMPLICIT));
+      {
+	/* the plan's converter, which the cast takes in place of its lookup (the check: removed at S3-14) */
+	TP_DECISION_EXCEPTION ();
+	assert (conv == tp_value_find_converter (planned, domain_p, DOMAIN_CONVERT_IMPLICIT));
+      }
       if (conv == NULL)
 	{
 	  return NO_ERROR;
@@ -2240,15 +2227,10 @@ qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYP
     }
   else
     {
-      /* exception: mysql 모드·계열 차이 - a value of another type than planned (compat_mode=mysql's integer operators,
-       * a string or bit string of the planned type's sibling CHAR / VARCHAR, BIT / VARBIT), or a domain that leaves the
-       * value's type or collation to it, coerces as develop did */
-#if !defined (NDEBUG)
-      char line[80];
-      snprintf (line, sizeof (line), "CBRD-27583 result coerce by value %d/%d/%d", (int) planned,
-		(int) DB_VALUE_DOMAIN_TYPE (result_p), (int) TP_DOMAIN_TYPE (domain_p));
-      qdata_census_once (line);
-#endif
+      /* a value of another type than planned, or a domain that leaves the value's type or collation to it, coerces as
+       * develop did: never seen in the gates nor in compat_mode=mysql's integer operators, CHAR / VARCHAR and BIT /
+       * VARBIT results (CBRD-27583 S3-13, census "result coerce by value") */
+      assert (false);
       dom_status = tp_value_coerce (result_p, result_p, domain_p);
     }
   if (dom_status != DOMAIN_COMPATIBLE)
@@ -2263,6 +2245,8 @@ qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYP
 static int
 qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domain_p)
 {
+  /* CBRD-27583 exception until S3-21 (B): a cast by the value's type */
+  TP_DECISION_EXCEPTION ();
   int error = NO_ERROR;
   TP_DOMAIN_STATUS dom_status;
 
@@ -2315,6 +2299,8 @@ qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CON
 					const TP_DOMAIN * const *operand_domain, const DB_VALUE * dbval1_p,
 					const DB_VALUE * dbval2_p)
 {
+  /* the optdebug cross-check (removed at S3-14) */
+  TP_DECISION_EXCEPTION ();
   const DB_VALUE *values[2] = { dbval1_p, dbval2_p };
   const DOMAIN_OPERAND operands[2] = {
     {NULL, DB_VALUE_DOMAIN_TYPE (dbval1_p), -1, false}, {NULL, DB_VALUE_DOMAIN_TYPE (dbval2_p), -1, false}
@@ -2830,6 +2816,8 @@ int
 qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE * dbval2_p, DB_VALUE * result_p,
 			 tp_domain * domain_p, const int max_allowed_size, const char *warning_context)
 {
+  /* CBRD-27583 exception until S3-21 (B): the concatenation's operands cast by their values */
+  TP_DECISION_EXCEPTION ();
   DB_TYPE type2, type1;
   int error = NO_ERROR;
   DB_VALUE arg_val, db_temp;
@@ -6658,6 +6646,7 @@ qdata_evaluate_sys_connect_by_path (THREAD_ENTRY * thread_p, void *xasl_p, regu_
 	{
 	  /* cast result to string; this call also allocates the container. CBRD-27583 exception (D-51): the simple path
 	   * reads the ancestor tuple's column, not the argument regu, so the body converts */
+	  TP_DECISION_EXCEPTION ();
 	  if (qdata_cast_to_domain (arg_dbval_p, &cast_value, &tp_String_domain) != NO_ERROR)
 	    {
 	      goto error;
