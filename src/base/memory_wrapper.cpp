@@ -20,6 +20,8 @@
  * memory_wrapper.cpp - Replacing global operator new, delete with wrapping allocation functions
  */
 
+#include "config.h"
+
 #if !defined(WINDOWS) && defined(SERVER_MODE)
 
 #include <new>

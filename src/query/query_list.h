@@ -24,6 +24,8 @@
 #ifndef _QUERY_LIST_H_
 #define _QUERY_LIST_H_
 
+struct domain_plan_item;
+
 #ident "$Id$"
 
 #ifdef __cplusplus
@@ -42,10 +44,16 @@ typedef enum
   JOIN_LEFT,
   JOIN_RIGHT,
   JOIN_OUTER,
-  JOIN_CSELECT
+  JOIN_CSELECT,
+  JOIN_SEMI,
+  JOIN_ANTI
 } JOIN_TYPE;
 
-#define IS_OUTER_JOIN_TYPE(t) ((t) == JOIN_LEFT || (t) == JOIN_RIGHT || (t) == JOIN_OUTER)
+#define IS_OUTER_JOIN_TYPE(t) \
+  ((t) == JOIN_LEFT || (t) == JOIN_RIGHT || (t) == JOIN_OUTER)
+
+#define IS_NULL_FILL_JOIN_TYPE(t) \
+  (IS_OUTER_JOIN_TYPE (t) || (t) == JOIN_ANTI)
 
 /* PAGE CONSTANTS */
 
@@ -372,7 +380,7 @@ typedef struct qfile_tuple_value_position QFILE_TUPLE_VALUE_POSITION;
 struct qfile_tuple_value_position
 {
   TP_DOMAIN *dom;		/* value domain */
-  TP_DOMAIN *original_domain;	/* original domain */
+  struct domain_plan_item *plan_item;	/* load-derived, not serialized */
   int pos_no;			/* value position number */
 };
 
@@ -443,6 +451,11 @@ struct qfile_tuple_descriptor
   int *f_len;			/* body length of f_valp[i] from the size pass, consumed by the fill pass. Lives in the
 				 * f_valp allocation right after the pointers (qfile_tpl_descr_alloc_values), so freeing
 				 * f_valp frees it. */
+  DB_VALUE *f_cast;		/* f_cast_cnt values: the collection casts a column's value into f_cast[i] when the value is
+				 * not of the column's domain (qdata_get_dbval_from_constant_regu_variable), so a peeked
+				 * value - a scan's value another column reads too - keeps the type its producer gave it.
+				 * Allocated with f_valp, cleared and freed with it (qfile_clear_list_id). */
+  int f_cast_cnt;
 
   /* T_COL_SRC */
   QFILE_TUPLE_COL_SRC *col_src;	/* owned by the list; grown on demand by qfile_tpl_descr_col_src () */
@@ -507,7 +520,6 @@ struct qfile_list_id
   VFID temp_vfid;		/* temp file id; duplicated from tfile_vfid */
   struct qmgr_temp_file *tfile_vfid;	/* Create a tmp file per list */
   QFILE_TUPLE_DESCRIPTOR tpl_descr;	/* tuple descriptor */
-  bool is_domain_resolved;	/* domains for host var is resolved or not */
   bool is_result_cached;	/* for subquery result cache */
   QFILE_LIST_ID *dependent_list_id;	/* Linked as dependent by qfile_connect_list; cleared together. */
 };
@@ -543,10 +555,11 @@ struct qfile_list_id
       (list_id)->tpl_descr.f_cnt = 0; \
       (list_id)->tpl_descr.f_valp = NULL; \
       (list_id)->tpl_descr.f_len = NULL; \
+      (list_id)->tpl_descr.f_cast = NULL; \
+      (list_id)->tpl_descr.f_cast_cnt = 0; \
       (list_id)->tpl_descr.col_src = NULL; \
       (list_id)->tpl_descr.col_src_cap = 0; \
       (list_id)->tpl_descr.col_src_cnt = 0; \
-      (list_id)->is_domain_resolved = false; \
       (list_id)->is_result_cached = false; \
       (list_id)->dependent_list_id = NULL; \
     } \
@@ -735,14 +748,17 @@ enum
   EXECUTE_QUERY_WITH_COMMIT = 0x1 << 15,
   TRAN_AUTO_COMMIT = 0x1 << 16,
   LIKE_RECOMPILE_CANDIDATE = 0x1 << 17,
-  HV_PRED_PLAN_UNPEEKED = 0x1 << 18	/* plan built with unbound host-var predicate markers; the
+  HV_PRED_PLAN_UNPEEKED = 0x1 << 18,	/* plan built with unbound host-var predicate markers; the
 					 * first execution replans under the actual bind values */
+  XASL_TRACE_PLAN_DETAIL = 0x1 << 19	/* the session shows its plans in detail (csql ;plan detail): the trace
+					 * carries the compiled expression programs' section too */
 };
 
 #define DO_NOT_COLLECT_EXEC_STATS(flag)    ((flag) & DONT_COLLECT_EXEC_STATS)
 
 #define IS_XASL_TRACE_TEXT(flag)    (((flag) & XASL_TRACE_TEXT) != 0)
 #define IS_XASL_TRACE_JSON(flag)    (((flag) & XASL_TRACE_JSON) != 0)
+#define IS_XASL_TRACE_PLAN_DETAIL(flag)    (((flag) & XASL_TRACE_PLAN_DETAIL) != 0)
 
 #define IS_TRIGGER_INVOLVED(flag)   (((flag) & TRIGGER_IS_INVOLVED) != 0)
 
