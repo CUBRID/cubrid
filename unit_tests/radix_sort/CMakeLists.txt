@@ -31,6 +31,10 @@ add_executable(test_radix_sort
   ${TEST_RADIX_SORT_SRC}
   )
 
+add_dependencies(test_radix_sort
+  ${CATCH2_TARGET}
+  )
+
 target_compile_definitions(test_radix_sort PRIVATE
   SERVER_MODE
   ${COMMON_DEFS}
