@@ -67,6 +67,10 @@ struct setobj;
    : (((b) == -1) ? ((a) != 0 && (c) == (a)) : ((c) / (b) != (a))))
 #if defined (__GNUC__) || defined (__clang__)
 #define OR_MULT_OVERFLOW(a, b, r) __builtin_mul_overflow ((a), (b), (r))
+/* Unlike the OR_CHECK_* macros above, these compute the result and report overflow without
+ * relying on signed wraparound (undefined behavior) or volatile pinning of the operands. */
+#define OR_ADD_OVERFLOW(a, b, r) __builtin_add_overflow ((a), (b), (r))
+#define OR_SUB_OVERFLOW(a, b, r) __builtin_sub_overflow ((a), (b), (r))
 #else
 /* Same reasoning as the OR_ADD_OVERFLOW fallback below: the product must not be
  * formed with a signed *, because that is itself the undefined behaviour the check
