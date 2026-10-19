@@ -1890,6 +1890,39 @@ end:
   return result;
 }
 
+bool
+domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * value1, const DB_VALUE * value2)
+{
+  if (DB_IS_NULL (value1) || DB_IS_NULL (value2))
+    {
+      return DB_IS_NULL (value1) && DB_IS_NULL (value2);
+    }
+  domain = domain_key_value_domain (domain);
+  const DB_TYPE type = TP_DOMAIN_TYPE (domain);
+  const bool is_char = TP_IS_CHAR_TYPE (type);
+  if (domain->collation_flag == TP_DOMAIN_COLL_NORMAL && !TP_IS_SET_TYPE (type) && type != DB_TYPE_VARIABLE
+      && DB_VALUE_DOMAIN_TYPE (value1) == type && DB_VALUE_DOMAIN_TYPE (value2) == type
+      && (!is_char || (db_get_string_collation (value1) == domain->collation_id
+		       && db_get_string_collation (value2) == domain->collation_id)))
+    {
+      return domain->type->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, 1, 1, NULL,
+				   is_char ? domain->collation_id : 0) == DB_EQ;
+    }
+#if !defined (NDEBUG)
+  /* CBRD-27583 census (removed at S3-14; an assert at 7a if never seen): a key whose domain leaves its values' type
+   * or collation to them (a collection's elements: 2-7, VARIABLE, LEAVE, ENFORCE), or a value of another type than
+   * its regu's domain - the first of the process */
+  static std::atomic < bool > logged (false);
+  if (!logged.exchange (true))
+    {
+      er_log_debug (ARG_FILE_LINE, "CBRD-27583 cache key by value domain=%d flag=%d values=%d/%d\n", (int) type,
+		    (int) domain->collation_flag, (int) DB_VALUE_DOMAIN_TYPE (value1),
+		    (int) DB_VALUE_DOMAIN_TYPE (value2));
+    }
+#endif
+  return tp_value_compare (value1, value2, 1, 1) == DB_EQ;
+}
+
 DB_VALUE_COMPARE_RESULT
 domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2,
 		       int total_order, bool * can_compare)

@@ -2810,6 +2810,11 @@ xts_process_sq_cache (char *ptr, const SQ_CACHE * sq_cache)
 	  return NULL;
 	}
       ptr = or_pack_int (ptr, offset);
+      /* CBRD-27583 (S3-25): the key positions' regu domains, which compare the keys (domain_key_values_equal) */
+      for (int i = 0; i < n_elements; i++)
+	{
+	  ptr = OR_PACK_DOMAIN_OBJECT_TO_OID (ptr, sq_cache->sq_key_struct->domains[i], 0, 0);
+	}
     }
   else
     {
@@ -6431,6 +6436,10 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
 	   + OR_INT_SIZE	/* sq_cache_n_elements */
 	   + PTR_SIZE		/* sq_cache */
 	   + OR_INT_SIZE);	/* parallelism */
+  for (int i = 0; xasl->sq_cache != NULL && i < xasl->sq_cache->sq_key_struct->n_elements; i++)
+    {
+      size += or_packed_domain_size (xasl->sq_cache->sq_key_struct->domains[i], 0);	/* sq_cache key domains */
+    }
 
   return size;
 }

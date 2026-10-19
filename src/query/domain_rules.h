@@ -451,6 +451,14 @@ const DOMAIN_COMPARE *domain_compare_row_entry (int row, const DB_VALUE * elemen
 DB_VALUE_COMPARE_RESULT domain_compare_values (const DOMAIN_COMPARE * compare, const DB_VALUE * value1,
 					       const DB_VALUE * value2, int total_order, bool * can_compare);
 
+/*
+ * domain_key_values_equal () - CBRD-27583 (S3-25): whether two key values of one position of a cache (memoize, the
+ *   subquery cache) are equal, as tp_value_compare's total order answers. Both are values of one regu, so of its
+ *   compiled domain, and compare by that domain type's cmpval in its collation: no comparison is decided.
+ *   domain(in): the key position regu's compiled domain (an OBJECT's values are OIDs on the server)
+ */
+bool domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * value1, const DB_VALUE * value2);
+
 /* Kernel CONVERT alone (domain_compare_values' case), for a caller that has switched on the comparison method
  * already. */
 DB_VALUE_COMPARE_RESULT domain_compare_converted (const DOMAIN_COMPARE * compare, const DB_VALUE * value1,

@@ -3118,6 +3118,18 @@ stx_build_sq_cache (THREAD_ENTRY * thread_p, char *ptr, SQ_CACHE ** sq_cache_p)
 	}
 
       new_sq_cache->sq_key_struct->n_elements = n_elements;
+      /* CBRD-27583 (S3-25): the key positions' regu domains (xts_process_sq_cache) */
+      new_sq_cache->sq_key_struct->domains =
+	(TP_DOMAIN **) stx_alloc_struct (thread_p, sizeof (TP_DOMAIN *) * n_elements);
+      if (new_sq_cache->sq_key_struct->domains == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      for (int i = 0; i < n_elements; i++)
+	{
+	  ptr = or_unpack_domain (ptr, &new_sq_cache->sq_key_struct->domains[i], NULL);
+	}
       *sq_cache_p = new_sq_cache;
     }
 

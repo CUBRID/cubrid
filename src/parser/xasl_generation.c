@@ -32029,9 +32029,11 @@ pt_prepare_corr_subquery_hash_result_cache (PARSER_CONTEXT * parser, PT_NODE * n
 
   sq_key_struct = (SQ_KEY *) pt_alloc_packing_buf (sizeof (SQ_KEY));
   sq_key_struct->dbv_array = (DB_VALUE **) pt_alloc_packing_buf (n_elements * sizeof (DB_VALUE *));
+  sq_key_struct->domains = (TP_DOMAIN **) pt_alloc_packing_buf (n_elements * sizeof (TP_DOMAIN *));
   for (i = 0; i < n_elements; i++)
     {
       sq_key_struct->dbv_array[i] = dbv_list->val;
+      sq_key_struct->domains[i] = dbv_list->dom;
       dbv_list = dbv_list->next;
     }
   sq_key_struct->n_elements = n_elements;
@@ -32294,7 +32296,7 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	    {
 	      break;
 	    }
-	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src->value.dbvalptr, SQ_TYPE_DBVAL);
+	  ret = pt_make_sq_cache_key_struct (key_struct, (void *) regu_src, SQ_TYPE_DBVAL);
 	  if (ret == ER_FAILED)
 	    {
 	      return ER_FAILED;
@@ -32416,6 +32418,7 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	}
       break;
     case SQ_TYPE_DBVAL:
+      /* a correlated constant regu: its value and its domain key the cache */
       if (key_struct)
 	{
 	  QPROC_DB_VALUE_LIST new_dbv, list_p;
@@ -32428,12 +32431,14 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 		}
 	      regu_alloc (new_dbv);
 	      new_dbv->next = NULL;
-	      new_dbv->val = (DB_VALUE *) p;
+	      new_dbv->val = ((REGU_VARIABLE *) p)->value.dbvalptr;
+	      new_dbv->dom = ((REGU_VARIABLE *) p)->domain;
 	      list_p->next = new_dbv;
 	    }
 	  else
 	    {
-	      key_struct->val = (DB_VALUE *) p;
+	      key_struct->val = ((REGU_VARIABLE *) p)->value.dbvalptr;
+	      key_struct->dom = ((REGU_VARIABLE *) p)->domain;
 	    }
 	}
       cnt++;

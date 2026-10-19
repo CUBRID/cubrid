@@ -37,6 +37,7 @@
 #include "list_file.h"
 
 #include "subquery_cache.h"
+#include "domain_rules.h"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -76,6 +77,7 @@ sq_make_key (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
       return NULL;
     }
   keyp->n_elements = SQ_CACHE_KEY_STRUCT (xasl)->n_elements;
+  keyp->domains = SQ_CACHE_KEY_STRUCT (xasl)->domains;
   keyp->dbv_array = (DB_VALUE **) db_private_alloc (thread_p, keyp->n_elements * sizeof (DB_VALUE *));
   if (keyp->dbv_array == NULL)
     {
@@ -260,7 +262,7 @@ sq_cmp_func (const void *key1, const void *key2)
 
   for (i = 0; i < sz1; i++)
     {
-      if (!mht_compare_dbvalues_are_equal (k1->dbv_array[i], k2->dbv_array[i]))
+      if (!domain_key_values_equal (k1->domains[i], k1->dbv_array[i], k2->dbv_array[i]))
 	{
 	  return 0;
 	}
