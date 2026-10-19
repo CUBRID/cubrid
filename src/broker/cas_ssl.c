@@ -63,6 +63,7 @@
 
 #include "cas_common.h"
 #include "cas_log.h"
+#include "cas_network.h"
 #include "cas_ssl.h"
 
 #define CERT_FILENAME_LEN	512
@@ -86,6 +87,7 @@ static int cas_ssl_load_cert_and_key (SSL_CTX * ctx, const char *cert, const cha
 static int cas_ssl_passwd_cb (char *buf, int size, int rwflag, void *userdata);
 static int cas_ssl_validity_check (SSL_CTX * ctx, const char *cert);
 static void cas_ssl_time_to_str (const ASN1_TIME * t, char *buf, size_t size);
+static void cas_ssl_set_io_timeout (int sd, int timeout_sec);
 
 int
 cas_init_ssl (int sd)
@@ -196,16 +198,34 @@ cas_init_ssl (int sd)
       return ER_SSL_GENERAL;
     }
 
+  /* The socket is blocking, so a client that sends the preamble and then nothing would hold this CAS in SSL_accept ()
+   * forever. Each step of the handshake gets the limit the plaintext login gets for each read. */
+  cas_ssl_set_io_timeout (sd, NET_DEFAULT_TIMEOUT);
+
   err_code = SSL_accept (ssl);
   if (err_code <= 0)		/* 0 is a failed handshake too */
     {
       int saved_errno = errno;
       int ssl_error = SSL_get_error (ssl, err_code);
+      bool timed_out;
+
+#if defined(WINDOWS)
+      /* WSAETIMEDOUT is not among the errors the socket BIO retries on, so it is reported as a syscall failure */
+      timed_out = (ssl_error == SSL_ERROR_SYSCALL && WSAGetLastError () == WSAETIMEDOUT);
+#else
+      /* the read or write fails with EAGAIN, which the socket BIO reports as "retry" */
+      timed_out = (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE);
+#endif
 
       err = ERR_get_error ();
       if (err != 0)
 	{
 	  cas_log_write_and_end (0, true, "SSL: Accept failed - '%s'", ERR_error_string (err, NULL));
+	}
+      else if (timed_out)
+	{
+	  cas_log_write_and_end (0, true, "SSL: Accept failed - the client did not go on with the TLS handshake for %d "
+				 "seconds", NET_DEFAULT_TIMEOUT);
 	}
       else if (ssl_error == SSL_ERROR_SYSCALL && saved_errno != 0)
 	{
@@ -223,6 +243,9 @@ cas_init_ssl (int sd)
       ssl = NULL;
       return ER_SSL_GENERAL;
     }
+
+  /* the session reads only after a poll finds data, as before */
+  cas_ssl_set_io_timeout (sd, 0);
 
 #if defined (WINDOWS)
   argp = SOCKET_NONBLOCK;
@@ -441,6 +464,27 @@ cas_ssl_validity_check (SSL_CTX * ctx, const char *cert)
 		 not_after_str, now_str);
 
   return err_code;
+}
+
+/*
+ * cas_ssl_set_io_timeout () - limit each blocking read and write on the socket
+ *   sd(in):
+ *   timeout_sec(in): the limit, or 0 for none
+ */
+static void
+cas_ssl_set_io_timeout (int sd, int timeout_sec)
+{
+#if defined(WINDOWS)
+  DWORD tv = (DWORD) timeout_sec * 1000;
+#else
+  struct timeval tv;
+
+  tv.tv_sec = timeout_sec;
+  tv.tv_usec = 0;
+#endif
+
+  setsockopt (sd, SOL_SOCKET, SO_RCVTIMEO, (const char *) &tv, sizeof (tv));
+  setsockopt (sd, SOL_SOCKET, SO_SNDTIMEO, (const char *) &tv, sizeof (tv));
 }
 
 /*
