@@ -38,7 +38,7 @@
 #include "system_parameter.h"	/* prm_get_bigint_value, PRM_ID_... */
 #include "thread_entry.hpp"	/* THREAD_ENTRY */
 #include "xasl.h"		/* XASL_NODE, HASHJOIN_PROC_NODE */
-#include "domain_rules.h"	/* domain_resolve_hash_key, domain_compare_values */
+#include "domain_rules.h"	/* domain_decide_hash_join_key, domain_compare_values */
 #include "object_domain_convert.h"	/* tp_value_find_converter, tp_value_convert */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -1018,8 +1018,20 @@ hjoin_coerce_key (const DB_VALUE * value, DB_VALUE * result, const TP_DOMAIN * d
 }
 
 /*
+ * hjoin_key_converter () - the converter of one input's join column value into its key's common domain, by the kind
+ *   the compiler decided (domain_decide_hash_join_key); NULL for a value hashed as it is
+ */
+TP_VALUE_CONVERTER
+hjoin_key_converter (int conv_kind, DB_TYPE source, const TP_DOMAIN * common)
+{
+  return conv_kind == DOMAIN_HASH_KEY_COERCED ? hjoin_coerce_key
+    : conv_kind == DOMAIN_HASH_KEY_CONVERTED ? tp_value_find_converter (source, common, DOMAIN_CONVERT_IMPLICIT) : NULL;
+}
+
+/*
  * hjoin_decide_domains() - each join column pair's common domain, its inputs' converters into it and the comparison
- *   of the converted values, from the two inputs' column domains (domain_info->outer.domains, inner.domains)
+ *   of the converted values, from the two inputs' column domains (domain_info->outer.domains, inner.domains), for the
+ *   lists whose columns each execution fixes (the compiler decides every other join: XASL stream)
  *   return: NO_ERROR, or the error of a domain that could not be made
  *   domain_info(in/out): coerce_domains, the inputs' converters and comparisons
  *   domain_cnt(in): the join column count
@@ -1041,34 +1053,16 @@ hjoin_decide_domains (HASHJOIN_DOMAIN_INFO * domain_info, int domain_cnt)
       assert (TP_DOMAIN_TYPE (outer) != DB_TYPE_NULL && TP_DOMAIN_TYPE (inner) != DB_TYPE_NULL);
 
       const TP_DOMAIN *common;
-      const int error = domain_resolve_hash_key (outer, inner, &common);
+      int conv_kind[2];
+      const int error = domain_decide_hash_join_key (outer, inner, &coerce, &common, conv_kind,
+						     &domain_info->outer.compares[domain_index]);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
-      coerce = coerce || TP_DOMAIN_TYPE (outer) != TP_DOMAIN_TYPE (inner) || outer->precision != inner->precision
-	|| outer->scale != inner->scale;
-      domain_info->coerce_domains[domain_index] = coerce ? (TP_DOMAIN *) common : NULL;
-
-      HASHJOIN_INPUT_DOMAIN_INFO *input[2] = { &domain_info->outer, &domain_info->inner };
-      DOMAIN_COMPARE_KEY key[2];
-      for (int side = 0; side < 2; side++)
-	{
-	  const TP_DOMAIN *domain = input[side]->domains[domain_index];
-	  TP_VALUE_CONVERTER conv = NULL;
-	  if (coerce && common != domain)
-	    {
-	      /* tp_value_coerce's: a JSON value converts by its scalar, a string domain whose collation is the values'
-	       * (LEAVE, ENFORCE) takes them as they are - coerced at the row */
-	      const bool coerced = TP_DOMAIN_TYPE (domain) == DB_TYPE_JSON
-		|| TP_DOMAIN_COLLATION_FLAG (common) != TP_DOMAIN_COLL_NORMAL;
-	      conv = coerced ? hjoin_coerce_key
-		: tp_value_find_converter (TP_DOMAIN_TYPE (domain), common, DOMAIN_CONVERT_IMPLICIT);
-	    }
-	  input[side]->converters[domain_index] = conv;
-	  domain_compare_key_of (coerce ? common : domain, &key[side]);
-	}
-      domain_resolve_comparison_uncoerced (&key[0], &key[1], &domain_info->outer.compares[domain_index]);
+      domain_info->coerce_domains[domain_index] = (TP_DOMAIN *) common;
+      domain_info->outer.converters[domain_index] = hjoin_key_converter (conv_kind[0], TP_DOMAIN_TYPE (outer), common);
+      domain_info->inner.converters[domain_index] = hjoin_key_converter (conv_kind[1], TP_DOMAIN_TYPE (inner), common);
     }
 
   return NO_ERROR;

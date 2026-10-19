@@ -2122,7 +2122,7 @@ static std::atomic<DOMAIN_TYPE_PAIR_TABLE *> domain_Key_pairs (NULL);
 static std::mutex domain_Key_pairs_mutex;
 /* *INDENT-ON* */
 
-static bool
+bool
 domain_compare_equal (const DOMAIN_COMPARE * a, const DOMAIN_COMPARE * b)
 {
   return a->method == b->method && a->first == b->first && a->source[0] == b->source[0]
@@ -2320,6 +2320,67 @@ domain_key_pair_index_exact (const DOMAIN_TYPE_PAIR_TABLE * pairs, const DOMAIN_
       return -1;
     }
   return index;
+}
+
+int
+domain_decide_comparison (const TP_DOMAIN * const domain[2], DOMAIN_COMPARE * decided, bool * by_type)
+{
+  DOMAIN_COMPARE_KEY key[2];
+  *by_type = true;
+  for (int side = 0; side < 2 && *by_type; side++)
+    {
+      /* LEAVE takes the value's collation, ENFORCE leaves a non-string value as it is */
+      *by_type = domain[side] != NULL && TP_DOMAIN_TYPE (domain[side]) != DB_TYPE_VARIABLE
+	&& domain[side]->collation_flag == TP_DOMAIN_COLL_NORMAL;
+      if (*by_type)
+	{
+	  /* an OBJECT's values are OIDs on the server */
+	  domain_compare_key_of (domain_key_value_domain (domain[side]), &key[side]);
+	}
+    }
+  if (!*by_type)
+    {
+      *decided = DOMAIN_COMPARE
+      {
+      };
+      decided->method = DOMAIN_COMPARE_VALUES;
+      decided->codeset_side = -1;
+      return NO_ERROR;
+    }
+  return domain_resolve_comparison (&key[0], &key[1], decided);
+}
+
+int
+domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, bool * coerce,
+			     const TP_DOMAIN ** common, int conv_kind[2], DOMAIN_COMPARE * compare)
+{
+  const TP_DOMAIN *resolved;
+  const int error = domain_resolve_hash_key (outer, inner, &resolved);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  *coerce = *coerce || TP_DOMAIN_TYPE (outer) != TP_DOMAIN_TYPE (inner) || outer->precision != inner->precision
+    || outer->scale != inner->scale;
+  *common = *coerce ? resolved : NULL;
+
+  const TP_DOMAIN *domain[2] = { outer, inner };
+  DOMAIN_COMPARE_KEY key[2];
+  for (int side = 0; side < 2; side++)
+    {
+      conv_kind[side] = DOMAIN_HASH_KEY_AS_IS;
+      if (*coerce && resolved != domain[side])
+	{
+	  /* tp_value_coerce's: a JSON value converts by its scalar, a string domain whose collation is the values'
+	   * (LEAVE, ENFORCE) takes them as they are - coerced at the row */
+	  conv_kind[side] = TP_DOMAIN_TYPE (domain[side]) == DB_TYPE_JSON
+	    || TP_DOMAIN_COLLATION_FLAG (resolved) != TP_DOMAIN_COLL_NORMAL ? DOMAIN_HASH_KEY_COERCED
+	    : DOMAIN_HASH_KEY_CONVERTED;
+	}
+      domain_compare_key_of (*coerce ? resolved : domain[side], &key[side]);
+    }
+  domain_resolve_comparison_uncoerced (&key[0], &key[1], compare);
+  return NO_ERROR;
 }
 
 int
@@ -2758,6 +2819,13 @@ domain_list_column_of (const XASL_NODE * xasl, int pos)
       return NULL;
     }
   return unified != NULL ? (TP_DOMAIN *) unified : &tp_Variable_domain;
+}
+
+TP_DOMAIN *
+domain_list_column_compared (const XASL_NODE * xasl, int pos)
+{
+  TP_DOMAIN *domain = domain_list_column_of (xasl, pos);
+  return domain == NULL || domain_is_variable (domain) || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL ? NULL : domain;
 }
 
 /* MEDIAN/PERCENTILE: DOUBLE, then DATETIME, then TIME, as tp_value_cast (…, false) would. */

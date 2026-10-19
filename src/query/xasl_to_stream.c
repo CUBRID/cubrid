@@ -76,6 +76,10 @@ static int xts_Ptr_max[MAX_PTR_BLOCKS] = { 0 };
 /* error code specific to this file */
 static int xts_Xasl_errcode = NO_ERROR;
 
+/* CBRD-27583 (D-82): a filter index predicate, a function index or a partition expression stream is being packed - it
+ * carries no comparison decision (its unpack decides, stx_decide_stream_compare) */
+static bool xts_Index_stream = false;
+
 static int xts_save_aggregate_type (const AGGREGATE_TYPE * aggregate);
 static int xts_save_function_type (const FUNCTION_TYPE * function);
 static int xts_save_analytic_type (const ANALYTIC_TYPE * analytic);
@@ -166,6 +170,11 @@ static char *xts_process_rlike_eval_term (char *ptr, const RLIKE_EVAL_TERM * rli
 static char *xts_process_access_spec_type (char *ptr, const ACCESS_SPEC_TYPE * access_spec);
 static char *xts_process_indx_info (char *ptr, const INDX_INFO * indx_info);
 static char *xts_pack_decided_compare (char *ptr, const DOMAIN_COMPARE * compare);
+static char *xts_pack_compare (char *ptr, const TP_DOMAIN * lhs, const TP_DOMAIN * rhs);
+static bool xts_term_compares_values (const COMP_EVAL_TERM * term);
+static int xts_decide_element_compare (const ALSM_EVAL_TERM * term, DOMAIN_COMPARE * decided,
+				       DOMAIN_COMPARE_KEY * item);
+static char *xts_pack_hash_join_keys (char *ptr, const HASHJOIN_PROC_NODE * node);
 static char *xts_pack_key_compares (char *ptr, const INDX_INFO * indx_info);
 static char *xts_process_key_info (char *ptr, const KEY_INFO * key_info);
 static char *xts_process_cls_spec_type (char *ptr, const CLS_SPEC_TYPE * cls_spec);
@@ -229,6 +238,8 @@ static int xts_sizeof_rlike_eval_term (const RLIKE_EVAL_TERM * ptr);
 static int xts_sizeof_access_spec_type (const ACCESS_SPEC_TYPE * ptr);
 static int xts_sizeof_indx_info (const INDX_INFO * ptr);
 static int xts_sizeof_decided_compare (const DOMAIN_COMPARE * compare);
+static int xts_sizeof_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs);
+static int xts_sizeof_hash_join_keys (const HASHJOIN_PROC_NODE * node);
 static int xts_sizeof_key_compares (const INDX_INFO * indx_info);
 static int xts_sizeof_key_info (const KEY_INFO * ptr);
 static int xts_sizeof_cls_spec_type (const CLS_SPEC_TYPE * ptr);
@@ -394,6 +405,7 @@ xts_map_filter_pred_to_stream (const PRED_EXPR_WITH_CONTEXT * pred, char **pred_
     }
 
   xts_Xasl_errcode = NO_ERROR;
+  xts_Index_stream = true;
   header_size = 0;		/* could be changed */
 
   offset = sizeof (int)		/* [size of header data] */
@@ -424,6 +436,7 @@ xts_map_filter_pred_to_stream (const PRED_EXPR_WITH_CONTEXT * pred, char **pred_
   *pred_stream_size = xts_Free_offset_in_stream;
 
 end:
+  xts_Index_stream = false;
   /* free all memories */
   xts_free_visited_ptrs ();
 
@@ -458,6 +471,7 @@ xts_map_func_pred_to_stream (const FUNC_PRED * xasl_tree, char **xasl_stream, in
     }
 
   xts_Xasl_errcode = NO_ERROR;
+  xts_Index_stream = true;
 
   /* reserve space for new XASL format */
   header_size = 0;
@@ -491,6 +505,7 @@ xts_map_func_pred_to_stream (const FUNC_PRED * xasl_tree, char **xasl_stream, in
   *xasl_stream_size = xts_Free_offset_in_stream;
 
 end:
+  xts_Index_stream = false;
   /* free all memories */
   xts_free_visited_ptrs ();
 
@@ -2898,6 +2913,15 @@ xts_process_xasl_node (char *ptr, const XASL_NODE * xasl)
       return NULL;
     }
   ptr = or_pack_int (ptr, offset);
+  if (xasl->limit_row_count != NULL)
+    {
+      /* CBRD-27583 (D-81): qexec_check_limit_clause runs the query only for a row count greater than an INT 0 */
+      ptr = xts_pack_compare (ptr, xasl->limit_row_count->domain, &tp_Integer_domain);
+      if (ptr == NULL)
+	{
+	  return NULL;
+	}
+    }
 
   offset = xts_save_val_list (xasl->single_tuple);
   if (offset == ER_FAILED)
@@ -3617,7 +3641,19 @@ xts_process_mergelist_proc (char *ptr, const MERGELIST_PROC_NODE * merge_list_in
     }
   ptr = or_pack_int (ptr, offset);
 
-  return xts_process_ls_merge_info (ptr, &merge_list_info->ls_merge);
+  ptr = xts_process_ls_merge_info (ptr, &merge_list_info->ls_merge);
+  if (ptr != NULL && merge_list_info->outer_xasl != NULL && merge_list_info->inner_xasl != NULL)
+    {
+      /* CBRD-27583 (D-81): each merge column pair's comparison from the two lists' column domains */
+      for (int k = 0; k < merge_list_info->ls_merge.ls_column_cnt && ptr != NULL; k++)
+	{
+	  ptr = xts_pack_compare (ptr, domain_list_column_compared (merge_list_info->outer_xasl,
+								    merge_list_info->ls_merge.ls_outer_column[k]),
+				  domain_list_column_compared (merge_list_info->inner_xasl,
+							       merge_list_info->ls_merge.ls_inner_column[k]));
+	}
+    }
+  return ptr;
 }
 
 /*
@@ -3668,7 +3704,7 @@ xts_process_hashjoin_proc (char *ptr, const HASHJOIN_PROC_NODE * node_p)
       return NULL;
     }
 
-  return ptr;
+  return xts_pack_hash_join_keys (ptr, node_p);
 }
 
 static char *
@@ -4570,6 +4606,13 @@ xts_process_comp_eval_term (char *ptr, const COMP_EVAL_TERM * comp_eval_term)
 
   ptr = or_pack_int (ptr, comp_eval_term->type);
 
+  if (!xts_Index_stream)
+    {
+      /* CBRD-27583 (D-81): the comparison of the term's two values */
+      ptr = xts_term_compares_values (comp_eval_term)
+	? xts_pack_compare (ptr, comp_eval_term->lhs->domain, comp_eval_term->rhs->domain) : or_pack_int (ptr, 0);
+    }
+
   return ptr;
 }
 
@@ -4597,6 +4640,30 @@ xts_process_alsm_eval_term (char *ptr, const ALSM_EVAL_TERM * alsm_eval_term)
   ptr = or_pack_int (ptr, alsm_eval_term->rel_op);
 
   ptr = or_pack_int (ptr, alsm_eval_term->item_type);
+
+  if (!xts_Index_stream)
+    {
+      /* CBRD-27583 (D-81): what the item compares with - 0 none (the values), 1 one comparison, 2 a collection's
+       * elements by the item key's row of the type pair comparison table */
+      DOMAIN_COMPARE decided;
+      DOMAIN_COMPARE_KEY item;
+      const int kind = xts_decide_element_compare (alsm_eval_term, &decided, &item);
+      if (kind == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, kind);
+      if (kind == 1)
+	{
+	  ptr = xts_pack_decided_compare (ptr, &decided);
+	}
+      else if (kind == 2)
+	{
+	  ptr = or_pack_int (ptr, item.type);
+	  ptr = or_pack_int (ptr, item.codeset);
+	  ptr = or_pack_int (ptr, item.collation);
+	}
+    }
 
   return ptr;
 }
@@ -5663,6 +5730,23 @@ xts_process_arith_type (char *ptr, const ARITH_TYPE * arith)
       ptr = or_pack_int (ptr, offset);
     }
 
+  if (!xts_Index_stream && (arith->opcode == T_FIELD || arith->opcode == T_NULLIF || arith->opcode == T_LEAST
+			    || arith->opcode == T_GREATEST))
+    {
+      /* CBRD-27583 (D-81): the comparisons FIELD, NULLIF, LEAST and GREATEST make - FIELD its third operand (the
+       * innermost node's, REGU_VARIABLE_FIELD_COMPARE) with the left and the right, the others their two operands */
+      const bool field = arith->opcode == T_FIELD;
+      const REGU_VARIABLE *const sides[2][2] = {
+	{field ? arith->thirdptr : arith->leftptr, field ? arith->leftptr : arith->rightptr},
+	{arith->thirdptr, arith->rightptr}
+      };
+      for (int k = 0; k < (field ? 2 : 1) && ptr != NULL; k++)
+	{
+	  ptr = xts_pack_compare (ptr, sides[k][0] != NULL ? sides[k][0]->domain : NULL,
+				  sides[k][1] != NULL ? sides[k][1]->domain : NULL);
+	}
+    }
+
   return ptr;
 }
 
@@ -6184,6 +6268,16 @@ xts_sizeof_xasl_node (const XASL_NODE * xasl)
   size += OR_INT_SIZE;		/* for subquery's host variable count */
   size += (OR_INT_SIZE * xasl->sub_host_var_count);
 
+  if (xasl->limit_row_count != NULL)
+    {
+      tmp_size = xts_sizeof_compare (xasl->limit_row_count->domain, &tp_Integer_domain);
+      if (tmp_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += tmp_size;		/* the row count's comparison */
+    }
+
   switch (xasl->type)
     {
     case BUILDLIST_PROC:
@@ -6502,6 +6596,22 @@ xts_sizeof_mergelist_proc (const MERGELIST_PROC_NODE * merge_list_info)
       size += xts_sizeof_access_spec_type (access_spec);
     }
 
+  if (merge_list_info->outer_xasl != NULL && merge_list_info->inner_xasl != NULL)
+    {
+      const QFILE_LIST_MERGE_INFO *merge = &merge_list_info->ls_merge;
+      for (int k = 0; k < merge->ls_column_cnt; k++)
+	{
+	  const TP_DOMAIN *outer = domain_list_column_compared (merge_list_info->outer_xasl, merge->ls_outer_column[k]);
+	  const TP_DOMAIN *inner = domain_list_column_compared (merge_list_info->inner_xasl, merge->ls_inner_column[k]);
+	  const int compare_size = xts_sizeof_compare (outer, inner);
+	  if (compare_size == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  size += compare_size;
+	}
+    }
+
   return size;
 }
 
@@ -6527,6 +6637,13 @@ xts_sizeof_hashjoin_proc (const HASHJOIN_PROC_NODE * node_p)
 
   /* merge_info */
   tmp_size = xts_sizeof_ls_merge_info (&node_p->merge_info);
+  if (tmp_size == ER_FAILED)
+    {
+      return ER_FAILED;
+    }
+  size += tmp_size;
+
+  tmp_size = xts_sizeof_hash_join_keys (node_p);
   if (tmp_size == ER_FAILED)
     {
       return ER_FAILED;
@@ -6913,6 +7030,17 @@ xts_sizeof_comp_eval_term (const COMP_EVAL_TERM * comp_eval_term)
 	   + OR_INT_SIZE	/* rel_op */
 	   + OR_INT_SIZE);	/* type */
 
+  if (!xts_Index_stream)
+    {
+      const int compare_size = xts_term_compares_values (comp_eval_term)
+	? xts_sizeof_compare (comp_eval_term->lhs->domain, comp_eval_term->rhs->domain) : OR_INT_SIZE;
+      if (compare_size == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += compare_size;
+    }
+
   return size;
 }
 
@@ -6931,6 +7059,18 @@ xts_sizeof_alsm_eval_term (const ALSM_EVAL_TERM * alsm_eval_term)
 	   + OR_INT_SIZE	/* eq_flag */
 	   + OR_INT_SIZE	/* rel_op */
 	   + OR_INT_SIZE);	/* item_type */
+
+  if (!xts_Index_stream)
+    {
+      DOMAIN_COMPARE decided;
+      DOMAIN_COMPARE_KEY item;
+      const int kind = xts_decide_element_compare (alsm_eval_term, &decided, &item);
+      if (kind == ER_FAILED)
+	{
+	  return ER_FAILED;
+	}
+      size += OR_INT_SIZE + (kind == 1 ? xts_sizeof_decided_compare (&decided) : kind == 2 ? 3 * OR_INT_SIZE : 0);
+    }
 
   return size;
 }
@@ -7154,6 +7294,182 @@ xts_sizeof_decided_compare (const DOMAIN_COMPARE * compare)
   if (compare->conv[0] != NULL || compare->conv[1] != NULL)
     {
       size += or_packed_domain_size ((TP_DOMAIN *) compare->target[compare->conv[0] != NULL ? 0 : 1], 0);
+    }
+  return size;
+}
+
+/*
+ * xts_pack_compare () - CBRD-27583 (D-81): the comparison of a value of each of two domains, decided where the compiler
+ *   serializes it, for an unpack that only looks its pointers up: an int (0: none, comparison method VALUES; 1:
+ *   decided) and the decided comparison (xts_pack_decided_compare). The inputs are the final domains the server
+ *   reads - a regu's after pt_set_operand_conversion, a list column's (domain_list_column_compared) - and packing
+ *   changes none of them.
+ */
+static char *
+xts_pack_compare (char *ptr, const TP_DOMAIN * lhs, const TP_DOMAIN * rhs)
+{
+  const TP_DOMAIN *const domain[2] = { lhs, rhs };
+  DOMAIN_COMPARE decided;
+  bool by_type;
+  if (domain_decide_comparison (domain, &decided, &by_type) != NO_ERROR)
+    {
+      xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, by_type ? 1 : 0);
+  return by_type ? xts_pack_decided_compare (ptr, &decided) : ptr;
+}
+
+static int
+xts_sizeof_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs)
+{
+  const TP_DOMAIN *const domain[2] = { lhs, rhs };
+  DOMAIN_COMPARE decided;
+  bool by_type;
+  if (domain_decide_comparison (domain, &decided, &by_type) != NO_ERROR)
+    {
+      xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+      return ER_FAILED;
+    }
+  return OR_INT_SIZE + (by_type ? xts_sizeof_decided_compare (&decided) : 0);
+}
+
+/* CBRD-27583 (D-81): a term that compares two values - not a set comparison, not a list side */
+static bool
+xts_term_compares_values (const COMP_EVAL_TERM * term)
+{
+  switch (term->rel_op)
+    {
+    case R_EQ:
+    case R_NE:
+    case R_GT:
+    case R_GE:
+    case R_LT:
+    case R_LE:
+    case R_EQ_TORDER:
+    case R_NULLSAFE_EQ:
+      return term->lhs != NULL && term->rhs != NULL && term->lhs->type != TYPE_LIST_ID
+	&& term->rhs->type != TYPE_LIST_ID;
+    default:
+      return false;
+    }
+}
+
+/*
+ * xts_decide_element_compare () - CBRD-27583 (D-81): what an ALL/SOME term compares its item with, from the domains: a
+ *   list's column (its subquery's column 0, eval_some_list_eval) or a right side that is no collection by one
+ *   comparison, a collection's elements - its data - by the item key's row of the type pair comparison table
+ *   return: 0 none (the values decide), 1 decided, 2 item; ER_FAILED
+ */
+static int
+xts_decide_element_compare (const ALSM_EVAL_TERM * term, DOMAIN_COMPARE * decided, DOMAIN_COMPARE_KEY * item)
+{
+  if (term->elem == NULL || term->elemset == NULL)
+    {
+      return 0;
+    }
+  const bool list = term->elemset->type == TYPE_LIST_ID;
+  const TP_DOMAIN *const domain[2] = { term->elem->domain,
+    list ? domain_list_column_compared (term->elemset->xasl, 0) : term->elemset->domain
+  };
+  bool by_type;
+  if (domain_decide_comparison (domain, decided, &by_type) != NO_ERROR)
+    {
+      xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+      return ER_FAILED;
+    }
+  if (!by_type)
+    {
+      return 0;
+    }
+  if (!list && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (domain[1])))
+    {
+      /* the server reads an OBJECT regu's domain as OID (OR_PACK_DOMAIN_OBJECT_TO_OID) */
+      domain_compare_key_of (domain_key_value_domain (domain[0]), item);
+      return 2;
+    }
+  return 1;
+}
+
+/*
+ * xts_pack_hash_join_keys () - CBRD-27583 (D-81): a hash join's key column pairs, decided from the two inputs' column
+ *   domains (domain_decide_hash_join_key): an int (0 none - a list whose column the execution fixes, decided by each
+ *   execution; 1 decided), then per pair the two column domains, the sides' conversion kinds and whether a common
+ *   domain holds the pair, that domain, and the comparison of the two values
+ */
+static char *
+xts_pack_hash_join_keys (char *ptr, const HASHJOIN_PROC_NODE * node)
+{
+  const QFILE_LIST_MERGE_INFO *info = &node->merge_info;
+  bool fixed = info->ls_column_cnt > 0;
+  for (int i = 0; i < info->ls_column_cnt && fixed; i++)
+    {
+      fixed = domain_list_column_compared (node->outer.xasl, info->ls_outer_column[i]) != NULL
+	&& domain_list_column_compared (node->inner.xasl, info->ls_inner_column[i]) != NULL;
+    }
+  ptr = or_pack_int (ptr, fixed ? 1 : 0);
+  bool coerce = false;
+  for (int i = 0; i < info->ls_column_cnt && fixed; i++)
+    {
+      /* the server reads an OBJECT column's domain as OID (OR_PACK_DOMAIN_OBJECT_TO_OID) */
+      TP_DOMAIN *outer =
+	(TP_DOMAIN *)
+	domain_key_value_domain (domain_list_column_compared (node->outer.xasl, info->ls_outer_column[i]));
+      TP_DOMAIN *inner =
+	(TP_DOMAIN *)
+	domain_key_value_domain (domain_list_column_compared (node->inner.xasl, info->ls_inner_column[i]));
+      const TP_DOMAIN *common;
+      int conv_kind[2];
+      DOMAIN_COMPARE compare;
+      if (domain_decide_hash_join_key (outer, inner, &coerce, &common, conv_kind, &compare) != NO_ERROR)
+	{
+	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return NULL;
+	}
+      ptr = or_pack_domain (ptr, outer, 0, 0);
+      ptr = or_pack_domain (ptr, inner, 0, 0);
+      ptr = or_pack_int (ptr, conv_kind[0] | (conv_kind[1] << 8) | ((common != NULL ? 1 : 0) << 16));
+      if (common != NULL)
+	{
+	  ptr = or_pack_domain (ptr, (TP_DOMAIN *) common, 0, 0);
+	}
+      ptr = xts_pack_decided_compare (ptr, &compare);
+    }
+  return ptr;
+}
+
+static int
+xts_sizeof_hash_join_keys (const HASHJOIN_PROC_NODE * node)
+{
+  const QFILE_LIST_MERGE_INFO *info = &node->merge_info;
+  bool fixed = info->ls_column_cnt > 0;
+  for (int i = 0; i < info->ls_column_cnt && fixed; i++)
+    {
+      fixed = domain_list_column_compared (node->outer.xasl, info->ls_outer_column[i]) != NULL
+	&& domain_list_column_compared (node->inner.xasl, info->ls_inner_column[i]) != NULL;
+    }
+  int size = OR_INT_SIZE;
+  bool coerce = false;
+  for (int i = 0; i < info->ls_column_cnt && fixed; i++)
+    {
+      /* the server reads an OBJECT column's domain as OID (OR_PACK_DOMAIN_OBJECT_TO_OID) */
+      TP_DOMAIN *outer =
+	(TP_DOMAIN *)
+	domain_key_value_domain (domain_list_column_compared (node->outer.xasl, info->ls_outer_column[i]));
+      TP_DOMAIN *inner =
+	(TP_DOMAIN *)
+	domain_key_value_domain (domain_list_column_compared (node->inner.xasl, info->ls_inner_column[i]));
+      const TP_DOMAIN *common;
+      int conv_kind[2];
+      DOMAIN_COMPARE compare;
+      if (domain_decide_hash_join_key (outer, inner, &coerce, &common, conv_kind, &compare) != NO_ERROR)
+	{
+	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
+	  return ER_FAILED;
+	}
+      size += or_packed_domain_size (outer, 0) + or_packed_domain_size (inner, 0) + OR_INT_SIZE
+	+ (common !=
+	   NULL ? or_packed_domain_size ((TP_DOMAIN *) common, 0) : 0) + xts_sizeof_decided_compare (&compare);
     }
   return size;
 }
@@ -7711,6 +8027,26 @@ xts_sizeof_arith_type (const ARITH_TYPE * arith)
 	   + OR_INT_SIZE	/* fails */
 	   + case_pred_size	/* case pred */
 	   + or_packed_domain_size (arith->domain, 0));
+
+  if (!xts_Index_stream && (arith->opcode == T_FIELD || arith->opcode == T_NULLIF || arith->opcode == T_LEAST
+			    || arith->opcode == T_GREATEST))
+    {
+      const bool field = arith->opcode == T_FIELD;
+      const REGU_VARIABLE *const sides[2][2] = {
+	{field ? arith->thirdptr : arith->leftptr, field ? arith->leftptr : arith->rightptr},
+	{arith->thirdptr, arith->rightptr}
+      };
+      for (int k = 0; k < (field ? 2 : 1); k++)
+	{
+	  const int compare_size = xts_sizeof_compare (sides[k][0] != NULL ? sides[k][0]->domain : NULL,
+						       sides[k][1] != NULL ? sides[k][1]->domain : NULL);
+	  if (compare_size == ER_FAILED)
+	    {
+	      return ER_FAILED;
+	    }
+	  size += compare_size;
+	}
+    }
 
   return size;
 }

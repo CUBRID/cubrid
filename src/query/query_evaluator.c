@@ -47,6 +47,12 @@
 #include "string_opfunc.h"
 #include "thread_entry.hpp"
 #include "xasl_predicate.hpp"
+#if !defined (NDEBUG)
+#include <mutex>
+#include <string>
+#include <unordered_set>
+#endif
+
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -61,6 +67,21 @@ struct EVAL_ELEMENTS
   const DOMAIN_COMPARE *each;
   int row;			/* -1: none */
 };
+
+#if !defined (NDEBUG)
+/* CBRD-27583 census (removed at S3-14): a census line once per server process, not once per row */
+static void
+eval_census_once (const char *line)
+{
+  static std::mutex mutex;
+  static std::unordered_set < std::string > seen;
+  std::lock_guard < std::mutex > lock (mutex);
+  if (seen.insert (line).second)
+    {
+      er_log_debug (ARG_FILE_LINE, "%s\n", line);
+    }
+}
+#endif
 
 static DB_LOGICAL eval_negative (DB_LOGICAL res);
 static DB_LOGICAL eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2);
@@ -319,6 +340,27 @@ eval_assert_resolved_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbv
   if (compare->method == DOMAIN_COMPARE_OBJECT || compare->method == DOMAIN_COMPARE_KEYS)
     {
       /* the key pair table reads the values' own keys */
+      if (compare->method == DOMAIN_COMPARE_KEYS && et_comp != NULL)
+	{
+	  /* CBRD-27583 census (D-82, removed at S3-14): a filter or function index stream's side whose regu domain is
+	   * not its values' type */
+	  const REGU_VARIABLE *regu[2] = { et_comp->lhs, et_comp->rhs };
+	  const DB_VALUE *value[2] = { dbval1, dbval2 };
+	  for (int side = 0; side < 2; side++)
+	    {
+	      if (regu[side] != NULL && regu[side]->domain != NULL && !domain_is_variable (regu[side]->domain)
+		  && !DB_IS_NULL (value[side])
+		  && !eval_value_is_source (value[side], TP_DOMAIN_TYPE (regu[side]->domain)))
+		{
+		  char line[128];
+		  snprintf (line, sizeof (line),
+			    "CBRD-27583 stream compare mismatch side=%d regu=%d domain=%d value=%d", side,
+			    (int) regu[side]->type, (int) TP_DOMAIN_TYPE (regu[side]->domain),
+			    (int) DB_VALUE_DOMAIN_TYPE (value[side]));
+		  eval_census_once (line);
+		}
+	    }
+	}
       return;
     }
   const bool lhs = DB_IS_NULL (dbval1) || eval_value_is_source (dbval1, compare->source[0]);
@@ -706,8 +748,20 @@ eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP r
 	{
 	  return V_ERROR;
 	}
+      /* 2-7: elements carry their type - an element's comparison is looked up by its value (the item's row, or the
+       * two values' keys) */
       const DOMAIN_COMPARE *compare = DB_IS_NULL (&elem_val) ? &eval_Compare_values
 	: elements->row >= 0 ? eval_element_compare (elements->row, &elem_val) : elements->each;
+#if !defined (NDEBUG)
+      if (!DB_IS_NULL (&elem_val))
+	{
+	  /* CBRD-27583 census (removed at S3-14): the comparisons looked up per value - only a collection's elements */
+	  char line[96];
+	  snprintf (line, sizeof (line), "CBRD-27583 element by value row=%d element=%d", elements->row,
+		    (int) DB_VALUE_DOMAIN_TYPE (&elem_val));
+	  eval_census_once (line);
+	}
+#endif
 
       t_res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL, vd, compare);
       pr_clear_value (&elem_val);

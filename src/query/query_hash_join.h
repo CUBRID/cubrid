@@ -138,8 +138,8 @@ typedef struct hashjoin_domain_info
   /* Common domains of build and probe inputs. */
   TP_DOMAIN **coerce_domains;
 
-  /* the decisions were made at unpack from the inputs' compiled column domains (hjoin_decide_domains); otherwise
-   * each execution makes them from its lists' domains */
+  /* the compiler decided the join from the inputs' column domains (XASL stream); otherwise each execution decides
+   * it from its lists' domains (hjoin_decide_domains) */
   bool decided;
 } HASHJOIN_DOMAIN_INFO;
 
@@ -487,6 +487,7 @@ void hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan);
 
 /* Hash Join Processing */
 int hjoin_decide_domains (HASHJOIN_DOMAIN_INFO * domain_info, int domain_cnt);
+TP_VALUE_CONVERTER hjoin_key_converter (int conv_kind, DB_TYPE source, const TP_DOMAIN * common);
 int hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFILE_TUPLE_RECORD * tuple_record,
 		     HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, bool * need_skip_next);
 void hjoin_update_tuple_hash_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_record, UINT32 hash_key);

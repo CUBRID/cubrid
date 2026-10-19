@@ -1724,17 +1724,6 @@ stx_domain_is_fixed (const TP_DOMAIN * domain)
 }
 
 /*
- * stx_list_column_domain () - the compiled domain of column pos of the list an XASL node makes (domain_list_column_of,
- *   XASL generation's rule); NULL for a domain the execution fixes (variable, NULL) or no column
- */
-static TP_DOMAIN *
-stx_list_column_domain (const XASL_NODE * xasl, int pos)
-{
-  TP_DOMAIN *domain = domain_list_column_of (xasl, pos);
-  return domain == NULL || domain_is_variable (domain) || TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL ? NULL : domain;
-}
-
-/*
  * stx_decide_compare () - CBRD-27583: the comparison of a value of each of two domains, as the type rule module
  *   picks it before any row - a pair implicit coercion refuses keeps its failing converter, which the row raises as
  *   tp_value_compare_with_error does (spec 9: a constant fails where a row compares it)
@@ -1840,11 +1829,21 @@ stx_literal_key (const REGU_VARIABLE * regu, const TP_DOMAIN ** domain, DOMAIN_C
  *   return: NO_ERROR, or the error of the type rule module
  */
 static int
-stx_decide_stream_compare (const REGU_VARIABLE * lhs, const REGU_VARIABLE * rhs, DOMAIN_COMPARE * decided)
+stx_decide_stream_compare (const char *site, const REGU_VARIABLE * lhs, const REGU_VARIABLE * rhs,
+			   DOMAIN_COMPARE * decided)
 {
   const TP_DOMAIN *domain[2];
   DOMAIN_COMPARE_KEY key[2];
-  if (!stx_literal_key (lhs, &domain[0], &key[0]) || !stx_literal_key (rhs, &domain[1], &key[1]))
+  const bool literals = stx_literal_key (lhs, &domain[0], &key[0]) && stx_literal_key (rhs, &domain[1], &key[1]);
+#if !defined (NDEBUG)
+  /* CBRD-27583 census (D-82, removed at S3-14): the comparisons the server decides for a filter or function index or
+   * a partition expression stream - the sides' regu types and domain types */
+  er_log_debug (ARG_FILE_LINE, "CBRD-27583 stream compare %s %s %d/%d %d/%d\n", site, literals ? "literal" : "KEYS",
+		lhs != NULL ? (int) lhs->type : -1, lhs != NULL
+		&& lhs->domain != NULL ? (int) TP_DOMAIN_TYPE (lhs->domain) : -1, rhs != NULL ? (int) rhs->type : -1,
+		rhs != NULL && rhs->domain != NULL ? (int) TP_DOMAIN_TYPE (rhs->domain) : -1);
+#endif
+  if (!literals)
     {
       *decided = DOMAIN_COMPARE
       {
@@ -1869,6 +1868,110 @@ stx_decide_stream_compare (const REGU_VARIABLE * lhs, const REGU_VARIABLE * rhs,
   domain_compare_set_operator_functions (decided);
   return NO_ERROR;
 }
+
+/*
+ * stx_unpack_decided_compare () - CBRD-27583 (D-80): a comparison XASL generation decided (xts_pack_decided_compare):
+ *   its fields, the cmpval of the first value's type once converted and the converter of each converted side, looked
+ *   up; nothing is decided here
+ */
+static char *
+stx_unpack_decided_compare (char *ptr, DOMAIN_COMPARE * compare)
+{
+  int fields[3];
+  for (int i = 0; i < 3; i++)
+    {
+      ptr = or_unpack_int (ptr, &fields[i]);
+    }
+  memset (compare, 0, sizeof (*compare));
+  compare->method = (unsigned char) (fields[0] & 0xFF);
+  compare->coercion = (unsigned char) ((fields[0] >> 8) & 0xFF);
+  compare->first = (unsigned char) ((fields[0] >> 16) & 0xFF);
+  const int converts = (fields[0] >> 24) & 0xFF;
+  compare->source[0] = (unsigned char) (fields[1] & 0xFF);
+  compare->source[1] = (unsigned char) ((fields[1] >> 8) & 0xFF);
+  compare->converted_first = (unsigned char) ((fields[1] >> 16) & 0xFF);
+  compare->rank = (signed char) (((fields[1] >> 24) & 0xFF) - 2);
+  compare->collation = (short) (fields[2] & 0xFFFF);
+  compare->codeset_side = (signed char) (((fields[2] >> 16) & 0xFF) - 1);
+  TP_DOMAIN *target = NULL;
+  if (converts != 0)
+    {
+      ptr = or_unpack_domain (ptr, &target, NULL);
+    }
+  for (int side = 0; side < 2; side++)
+    {
+      if (converts & (1 << side))
+	{
+	  compare->target[side] = target;
+	  compare->conv[side] = domain_compare_converter ((DB_TYPE) compare->source[side], target);
+	}
+    }
+  if (compare->method == DOMAIN_COMPARE_DIRECT || compare->method == DOMAIN_COMPARE_CONVERT
+      || compare->method == DOMAIN_COMPARE_COLLATIONS)
+    {
+      compare->cmp = pr_type_from_id ((converts & 1) ? TP_DOMAIN_TYPE (target) : (DB_TYPE) compare->source[0]);
+    }
+  return ptr;
+}
+
+/*
+ * stx_unpack_compare () - CBRD-27583 (D-81): a comparison the compiler decided (xts_pack_compare): none - comparison
+ *   method VALUES - or the decided comparison, whose cmpval, converters and operator functions are looked up
+ *   by_type(out): decided
+ */
+static char *
+stx_unpack_compare (char *ptr, DOMAIN_COMPARE * compare, bool * by_type)
+{
+  int decided;
+  ptr = or_unpack_int (ptr, &decided);
+  *by_type = decided != 0;
+  if (!*by_type)
+    {
+      *compare = DOMAIN_COMPARE
+      {
+      };
+      compare->method = DOMAIN_COMPARE_VALUES;
+      compare->codeset_side = -1;
+      return ptr;
+    }
+  ptr = stx_unpack_decided_compare (ptr, compare);
+  domain_compare_set_operator_functions (compare);
+  return ptr;
+}
+
+#if !defined (NDEBUG)
+/*
+ * stx_check_compare () - CBRD-27583 (D-81) debug cross-check (removed at S3-14): the comparison the compiler decided
+ *   is the rule's for the domains the server reads, and - no side an OBJECT, whose values the compiler now compares as
+ *   OIDs - the one unpack decided before (stx_decide_compare, its sides' own targets aside)
+ */
+static void
+stx_check_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs, const DOMAIN_COMPARE * compare, bool by_type)
+{
+  const TP_DOMAIN *const domain[2] = { lhs, rhs };
+  DOMAIN_COMPARE expected;
+  bool expected_by_type;
+  const int error = domain_decide_comparison (domain, &expected, &expected_by_type);
+  if (expected_by_type)
+    {
+      domain_compare_set_operator_functions (&expected);
+    }
+  assert (error == NO_ERROR && expected_by_type == by_type && domain_compare_equal (&expected, compare));
+  if ((lhs != NULL && TP_DOMAIN_TYPE (lhs) == DB_TYPE_OBJECT)
+      || (rhs != NULL && TP_DOMAIN_TYPE (rhs) == DB_TYPE_OBJECT))
+    {
+      return;
+    }
+  DOMAIN_COMPARE before;
+  bool before_by_type;
+  assert (stx_decide_compare (domain, &before, &before_by_type) == NO_ERROR);
+  for (int side = 0; side < 2 && before_by_type; side++)
+    {
+      before.target[side] = before.conv[side] != NULL ? before.target[side] : NULL;
+    }
+  assert (before_by_type == by_type && domain_compare_equal (&before, compare));
+}
+#endif
 
 /*
  * stx_mark_aggregate_operands () - flag the expressions that only feed a SUM / AVG (REGU_VARIABLE_AGG_OPERAND), once
@@ -2093,23 +2196,20 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	{
 	  goto error;
 	}
-      /* CBRD-27583: qexec_check_limit_clause runs the query only for a row count greater than an INT 0 */
-      const TP_DOMAIN *domain[2] = { xasl->limit_row_count->domain, &tp_Integer_domain };
+      /* CBRD-27583 (D-81): qexec_check_limit_clause runs the query only for a row count greater than an INT 0, by the
+       * comparison the compiler decided */
       DOMAIN_COMPARE *compare = stx_alloc_compares (thread_p, 1);
       bool by_type;
       if (compare == NULL)
 	{
 	  return NULL;
 	}
-      const int error = stx_decide_compare (domain, compare, &by_type);
-      if (error != NO_ERROR)
-	{
-	  stx_set_xasl_errcode (thread_p, error);
-	  return NULL;
-	}
+      ptr = stx_unpack_compare (ptr, compare, &by_type);
 #if !defined (NDEBUG)
+      stx_check_compare (xasl->limit_row_count->domain, &tp_Integer_domain, compare, by_type);
       if (!by_type)
 	{
+	  const TP_DOMAIN *domain[2] = { xasl->limit_row_count->domain, &tp_Integer_domain };
 	  stx_log_compare_by_value ("limit", xasl->limit_row_count, NULL, domain);
 	}
 #endif
@@ -3478,7 +3578,7 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr, MERGELIST_PROC_NOD
       return NULL;
     }
 
-  /* CBRD-27583: each merge column pair's comparison from the two lists' compiled column domains */
+  /* CBRD-27583 (D-81): each merge column pair's comparison the compiler decided from the two lists' column domains */
   if (merge_list_info->ls_merge.ls_column_cnt > 0 && merge_list_info->outer_xasl != NULL
       && merge_list_info->inner_xasl != NULL)
     {
@@ -3490,18 +3590,14 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr, MERGELIST_PROC_NOD
 	}
       for (int k = 0; k < n_pairs; k++)
 	{
-	  const TP_DOMAIN *domain[2] = {
-	    stx_list_column_domain (merge_list_info->outer_xasl, merge_list_info->ls_merge.ls_outer_column[k]),
-	    stx_list_column_domain (merge_list_info->inner_xasl, merge_list_info->ls_merge.ls_inner_column[k])
-	  };
 	  bool by_type;
-	  const int error = stx_decide_compare (domain, &compares[k], &by_type);
-	  if (error != NO_ERROR)
-	    {
-	      stx_set_xasl_errcode (thread_p, error);
-	      return NULL;
-	    }
+	  ptr = stx_unpack_compare (ptr, &compares[k], &by_type);
 #if !defined (NDEBUG)
+	  const TP_DOMAIN *domain[2] = {
+	    domain_list_column_compared (merge_list_info->outer_xasl, merge_list_info->ls_merge.ls_outer_column[k]),
+	    domain_list_column_compared (merge_list_info->inner_xasl, merge_list_info->ls_merge.ls_inner_column[k])
+	  };
+	  stx_check_compare (domain[0], domain[1], &compares[k], by_type);
 	  if (!by_type)
 	    {
 	      stx_log_compare_by_value ("merge", NULL, NULL, domain);
@@ -3645,27 +3741,72 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
       node_p->domain_info.outer.compares = compares;
       node_p->domain_info.inner.compares = compares;
 
-      /* the join columns' decisions from the inputs' compiled column domains; a column whose domain the execution
-       * fixes leaves them to each execution (hjoin_init_domain_info) */
-      bool fixed = true;
-      for (int i = 0; i < domain_cnt && fixed; i++)
+      /* CBRD-27583 (D-81): the join columns' decisions the compiler made from the inputs' column domains
+       * (xts_pack_hash_join_keys), looked up; a column whose domain the execution fixes leaves them to each execution
+       * (hjoin_init_domain_info) */
+      int decided;
+      ptr = or_unpack_int (ptr, &decided);
+      for (int i = 0; i < domain_cnt && decided; i++)
 	{
-	  all_domains[i] = stx_list_column_domain (node_p->outer.xasl, node_p->merge_info.ls_outer_column[i]);
-	  all_domains[domain_cnt + i] =
-	    stx_list_column_domain (node_p->inner.xasl, node_p->merge_info.ls_inner_column[i]);
-	  fixed = all_domains[i] != NULL && all_domains[domain_cnt + i] != NULL;
-	}
-      if (fixed)
-	{
-	  error = hjoin_decide_domains (&node_p->domain_info, domain_cnt);
-	  if (error != NO_ERROR)
+	  int kinds;
+	  TP_DOMAIN *common = NULL;
+	  ptr = or_unpack_domain (ptr, &all_domains[i], NULL);
+	  ptr = or_unpack_domain (ptr, &all_domains[domain_cnt + i], NULL);
+	  ptr = or_unpack_int (ptr, &kinds);
+	  if ((kinds >> 16) & 1)
 	    {
-	      stx_set_xasl_errcode (thread_p, error);
-	      goto exit_on_error;
+	      ptr = or_unpack_domain (ptr, &common, NULL);
 	    }
-	  node_p->domain_info.decided = true;
+	  all_domains[domain_cnt * 2 + i] = common;
+	  converters[i] = hjoin_key_converter (kinds & 0xFF, TP_DOMAIN_TYPE (all_domains[i]), common);
+	  converters[domain_cnt + i] =
+	    hjoin_key_converter ((kinds >> 8) & 0xFF, TP_DOMAIN_TYPE (all_domains[domain_cnt + i]), common);
+	  ptr = stx_unpack_decided_compare (ptr, &compares[i]);
 	}
-      else
+      node_p->domain_info.decided = decided != 0;
+#if !defined (NDEBUG)
+      if (decided)
+	{
+	  /* the server's inputs give the same decisions (hjoin_decide_domains) */
+	  HASHJOIN_DOMAIN_INFO check = node_p->domain_info;
+	  TP_DOMAIN **check_domains = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * domain_cnt * 3);
+	  TP_VALUE_CONVERTER *check_converters =
+	    (TP_VALUE_CONVERTER *) db_private_alloc (thread_p, sizeof (TP_VALUE_CONVERTER) * domain_cnt * 2);
+	  DOMAIN_COMPARE *check_compares =
+	    (DOMAIN_COMPARE *) db_private_alloc (thread_p, sizeof (DOMAIN_COMPARE) * domain_cnt);
+	  assert (check_domains != NULL && check_converters != NULL && check_compares != NULL);
+	  check.outer.domains = check_domains;
+	  check.inner.domains = check_domains + domain_cnt;
+	  check.coerce_domains = check_domains + domain_cnt * 2;
+	  check.outer.converters = check_converters;
+	  check.inner.converters = check_converters + domain_cnt;
+	  check.outer.compares = check.inner.compares = check_compares;
+	  for (int i = 0; i < domain_cnt; i++)
+	    {
+	      check_domains[i] =
+		domain_list_column_compared (node_p->outer.xasl, node_p->merge_info.ls_outer_column[i]);
+	      check_domains[domain_cnt + i] =
+		domain_list_column_compared (node_p->inner.xasl, node_p->merge_info.ls_inner_column[i]);
+	      assert (check_domains[i] != NULL && check_domains[domain_cnt + i] != NULL
+		      && tp_domain_match (check_domains[i], all_domains[i], TP_EXACT_MATCH)
+		      && tp_domain_match (check_domains[domain_cnt + i], all_domains[domain_cnt + i], TP_EXACT_MATCH));
+	    }
+	  assert (hjoin_decide_domains (&check, domain_cnt) == NO_ERROR);
+	  for (int i = 0; i < domain_cnt; i++)
+	    {
+	      assert ((check.coerce_domains[i] == NULL) == (all_domains[domain_cnt * 2 + i] == NULL)
+		      && (check.coerce_domains[i] == NULL
+			  || tp_domain_match (check.coerce_domains[i], all_domains[domain_cnt * 2 + i], TP_EXACT_MATCH))
+		      && check_converters[i] == converters[i]
+		      && check_converters[domain_cnt + i] == converters[domain_cnt + i]
+		      && domain_compare_equal (&check_compares[i], &compares[i]));
+	    }
+	  db_private_free (thread_p, check_domains);
+	  db_private_free (thread_p, check_converters);
+	  db_private_free (thread_p, check_compares);
+	}
+#endif
+      if (!decided)
 	{
 	  /* CBRD-27583 census (removed at S3-14): a join each execution decides */
 	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 left hash join\n");
@@ -4922,17 +5063,10 @@ stx_compare_refused (const DOMAIN_COMPARE * decided)
   return false;
 }
 
-/*
- * stx_build_term_compare () - CBRD-27583: the comparison of a term's two values, which the type rule module picks from
- *   the two sides' domains (a bind arrives in its regu's domain: the client cast it before it sent it; a value pointer
- *   or a list position reads what its producer wrote in the domain XASL generation took from it). No comparison for a
- *   term that compares no two values.
- *   return: NO_ERROR, or the unpack error
- */
-static int
-stx_build_term_compare (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * term)
+/* CBRD-27583: a term that compares two values - not a set comparison, not a list side (xts_term_compares_values) */
+static bool
+stx_term_compares_values (const COMP_EVAL_TERM * term)
 {
-  term->compare = NULL;
   switch (term->rel_op)
     {
     case R_EQ:
@@ -4943,48 +5077,79 @@ stx_build_term_compare (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * term)
     case R_LE:
     case R_EQ_TORDER:
     case R_NULLSAFE_EQ:
-      break;
+      return term->lhs != NULL && term->rhs != NULL && term->lhs->type != TYPE_LIST_ID
+	&& term->rhs->type != TYPE_LIST_ID;
     default:
-      return NO_ERROR;
+      return false;
     }
-  if (term->lhs == NULL || term->rhs == NULL || term->lhs->type == TYPE_LIST_ID || term->rhs->type == TYPE_LIST_ID)
-    {
-      return NO_ERROR;
-    }
-  const TP_DOMAIN *domain[2] = { term->lhs->domain, term->rhs->domain };
+}
+
+/*
+ * stx_build_term_compare () - CBRD-27583: the comparison of a term's two values - the one the compiler decided (D-81,
+ *   xts_pack_compare), looked up; a filter or function index stream's, which carries none (D-82), from the two sides'
+ *   domains and literals here (a bind arrives in its regu's domain: the client cast it before it sent it; a value
+ *   pointer or a list position reads what its producer wrote in the domain XASL generation took from it). No
+ *   comparison for a term that compares no two values.
+ *   return: the stream after it; NULL with the unpack error set
+ */
+static char *
+stx_build_term_compare (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * term)
+{
+  term->compare = NULL;
+  const bool compares_values = stx_term_compares_values (term);
   DOMAIN_COMPARE decided;
-  bool by_type;
-  int error = stx_decide_compare (domain, &decided, &by_type);
-  if (error == NO_ERROR && get_xasl_unpack_info_ptr (thread_p)->index_stream
-      && (!by_type || (decided.method != DOMAIN_COMPARE_DIRECT && decided.method != DOMAIN_COMPARE_CONVERT)
-	  || stx_compare_refused (&decided)))
+  bool by_type = false;
+  if (!get_xasl_unpack_info_ptr (thread_p)->index_stream)
     {
-      /* a filter or function index stream's domains decide only what compares as it is or converts */
-      error = stx_decide_stream_compare (term->lhs, term->rhs, &decided);
-      by_type = true;
+      ptr = stx_unpack_compare (ptr, &decided, &by_type);
+#if !defined (NDEBUG)
+      if (compares_values)
+	{
+	  stx_check_compare (term->lhs->domain, term->rhs->domain, &decided, by_type);
+	}
+      assert (compares_values || !by_type);
+#endif
     }
-  if (error != NO_ERROR)
+  else if (compares_values)
     {
-      stx_set_xasl_errcode (thread_p, error);
-      return error;
+      /* D-82: a filter or function index stream's domains decide only what compares as it is or converts */
+      const TP_DOMAIN *domain[2] = { term->lhs->domain, term->rhs->domain };
+      int error = stx_decide_compare (domain, &decided, &by_type);
+      if (error == NO_ERROR
+	  && (!by_type || (decided.method != DOMAIN_COMPARE_DIRECT && decided.method != DOMAIN_COMPARE_CONVERT)
+	      || stx_compare_refused (&decided)))
+	{
+	  error = stx_decide_stream_compare ("term", term->lhs, term->rhs, &decided);
+	  by_type = true;
+	}
+      if (error != NO_ERROR)
+	{
+	  stx_set_xasl_errcode (thread_p, error);
+	  return NULL;
+	}
     }
   if (!by_type)
     {
       /* exception to deciding before the rows: a side whose domain leaves its values' type or collation to the data
        * compares by the values (no comparison: method VALUES) */
 #if !defined (NDEBUG)
-      stx_log_compare_by_value ("term", term->lhs, term->rhs, domain);
+      if (compares_values)
+	{
+	  const TP_DOMAIN *domain[2] = { term->lhs->domain, term->rhs->domain };
+	  stx_log_compare_by_value ("term", term->lhs, term->rhs, domain);
+	}
 #endif
-      return NO_ERROR;
+      return ptr;
     }
   DOMAIN_COMPARE *compare = stx_alloc_compares (thread_p, 1);
   if (compare == NULL)
     {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      return NULL;
     }
   *compare = decided;
   term->compare = compare;
-  return NO_ERROR;
+  return ptr;
 }
 
 static char *
@@ -5028,76 +5193,104 @@ stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * c
 
   ptr = or_unpack_int (ptr, &tmp);
   comp_eval_term->type = (DB_TYPE) tmp;
-  if (stx_build_term_compare (thread_p, comp_eval_term) != NO_ERROR)
-    {
-      return NULL;
-    }
 
-  return ptr;
+  return stx_build_term_compare (thread_p, ptr, comp_eval_term);
 }
 
 /*
- * stx_build_element_compares () - CBRD-27583: what an ALL/SOME term compares its item with, from the domains: a list's
- *   column or a right side that is no collection by one comparison (ALSM_EVAL_TERM.compare), a collection's elements -
- *   its data, a constant's too (spec 9: an element fails where a row compares it) - by the item's row of the type pair
- *   comparison table (compare_row)
- *   return: NO_ERROR, or the unpack error
+ * stx_build_element_compares () - CBRD-27583: what an ALL/SOME term compares its item with - the compiler's decision
+ *   (D-81, xts_decide_element_compare), looked up: a list's column or a right side that is no collection by one
+ *   comparison (ALSM_EVAL_TERM.compare), a collection's elements - its data, a constant's too (spec 9: an element
+ *   fails where a row compares it) - by the item's row of the type pair comparison table (compare_row); a filter or
+ *   function index stream's, which carries none (D-82), here: a literal item by its value's row, any other by the two
+ *   values' keys
+ *   return: the stream after it; NULL with the unpack error set
  */
-static int
-stx_build_element_compares (THREAD_ENTRY * thread_p, ALSM_EVAL_TERM * term)
+static char *
+stx_build_element_compares (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM * term)
 {
-  const bool list = term->elemset->type == TYPE_LIST_ID;
-  /* the item compares with column 0 of the list its subquery produces (eval_some_list_eval) */
-  const TP_DOMAIN *domain[2] = { term->elem->domain, list ? stx_list_column_domain (term->elemset->xasl, 0)
-      : term->elemset->domain
-  };
-  DOMAIN_COMPARE decided;
-  DOMAIN_COMPARE_KEY item;
-  bool by_type;
   if (get_xasl_unpack_info_ptr (thread_p)->index_stream)
     {
-      /* a filter or function index stream's domains need not describe its values (stx_decide_stream_compare): a
-       * literal item by its value's row, any other by the two values' keys */
+      if (term->elem == NULL || term->elemset == NULL)
+	{
+	  return ptr;
+	}
       const TP_DOMAIN *literal;
+      DOMAIN_COMPARE_KEY item;
       if (stx_literal_key (term->elem, &literal, &item))
 	{
 	  term->compare_row = domain_compare_key_row (&item);
-	  return NO_ERROR;
+	  return ptr;
 	}
-      (void) stx_decide_stream_compare (NULL, NULL, &decided);
-    }
-  else
-    {
-      int error = stx_decide_compare (domain, &decided, &by_type);
-      if (error != NO_ERROR)
+      DOMAIN_COMPARE decided;
+      (void) stx_decide_stream_compare ("element", term->elem, term->elemset, &decided);
+      DOMAIN_COMPARE *compare = stx_alloc_compares (thread_p, 1);
+      if (compare == NULL)
 	{
-	  stx_set_xasl_errcode (thread_p, error);
-	  return error;
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
 	}
-      if (!by_type)
+      *compare = decided;
+      term->compare = compare;
+      return ptr;
+    }
+
+  int kind;
+  ptr = or_unpack_int (ptr, &kind);
+  if (kind == 1)
+    {
+      DOMAIN_COMPARE *compare = stx_alloc_compares (thread_p, 1);
+      if (compare == NULL)
+	{
+	  stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+	  return NULL;
+	}
+      ptr = stx_unpack_decided_compare (ptr, compare);
+      domain_compare_set_operator_functions (compare);
+      term->compare = compare;
+    }
+  else if (kind == 2)
+    {
+      DOMAIN_COMPARE_KEY item;
+      int field;
+      ptr = or_unpack_int (ptr, &field);
+      item.type = (DB_TYPE) field;
+      ptr = or_unpack_int (ptr, &item.codeset);
+      ptr = or_unpack_int (ptr, &item.collation);
+      term->compare_row = domain_compare_key_row (&item);
+    }
+#if !defined (NDEBUG)
+  if (term->elem != NULL && term->elemset != NULL)
+    {
+      /* the server's domains give the same decision */
+      const bool list = term->elemset->type == TYPE_LIST_ID;
+      const TP_DOMAIN *domain[2] = { term->elem->domain, list ? domain_list_column_compared (term->elemset->xasl, 0)
+	  : term->elemset->domain
+      };
+      DOMAIN_COMPARE expected;
+      bool by_type;
+      assert (domain_decide_comparison (domain, &expected, &by_type) == NO_ERROR);
+      const bool row = by_type && !list && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (domain[1]));
+      assert (kind == (!by_type ? 0 : row ? 2 : 1));
+      if (kind == 1)
+	{
+	  stx_check_compare (domain[0], domain[1], term->compare, true);
+	}
+      else if (kind == 2)
+	{
+	  DOMAIN_COMPARE_KEY item;
+	  domain_compare_key_of (domain[0], &item);
+	  assert (term->compare_row == domain_compare_key_row (&item));
+	}
+      else
 	{
 	  /* exception to deciding before the rows: a side whose domain leaves its values' type or collation to the
 	   * data compares by the values */
-#if !defined (NDEBUG)
 	  stx_log_compare_by_value ("element", term->elem, list ? NULL : term->elemset, domain);
+	}
+    }
 #endif
-	  return NO_ERROR;
-	}
-      if (!list && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (domain[1])))
-	{
-	  domain_compare_key_of (domain[0], &item);
-	  term->compare_row = domain_compare_key_row (&item);
-	  return NO_ERROR;
-	}
-    }
-  DOMAIN_COMPARE *compare = stx_alloc_compares (thread_p, 1);
-  if (compare == NULL)
-    {
-      return ER_OUT_OF_VIRTUAL_MEMORY;
-    }
-  *compare = decided;
-  term->compare = compare;
-  return NO_ERROR;
+  return ptr;
 }
 
 static char *
@@ -5146,13 +5339,8 @@ stx_build_alsm_eval_term (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM * a
   alsm_eval_term->item_type = (DB_TYPE) tmp;
   alsm_eval_term->compare = NULL;
   alsm_eval_term->compare_row = -1;
-  if (alsm_eval_term->elem != NULL && alsm_eval_term->elemset != NULL
-      && stx_build_element_compares (thread_p, alsm_eval_term) != NO_ERROR)
-    {
-      return NULL;
-    }
 
-  return ptr;
+  return stx_build_element_compares (thread_p, ptr, alsm_eval_term);
 }
 
 static char *
@@ -5444,50 +5632,6 @@ stx_build_access_spec_type (THREAD_ENTRY * thread_p, char *ptr, ACCESS_SPEC_TYPE
 error:
   stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
   return NULL;
-}
-
-/*
- * stx_unpack_decided_compare () - CBRD-27583 (D-80): a comparison XASL generation decided (xts_pack_decided_compare):
- *   its fields, the cmpval of the first value's type once converted and the converter of each converted side, looked
- *   up; nothing is decided here
- */
-static char *
-stx_unpack_decided_compare (char *ptr, DOMAIN_COMPARE * compare)
-{
-  int fields[3];
-  for (int i = 0; i < 3; i++)
-    {
-      ptr = or_unpack_int (ptr, &fields[i]);
-    }
-  memset (compare, 0, sizeof (*compare));
-  compare->method = (unsigned char) (fields[0] & 0xFF);
-  compare->coercion = (unsigned char) ((fields[0] >> 8) & 0xFF);
-  compare->first = (unsigned char) ((fields[0] >> 16) & 0xFF);
-  const int converts = (fields[0] >> 24) & 0xFF;
-  compare->source[0] = (unsigned char) (fields[1] & 0xFF);
-  compare->source[1] = (unsigned char) ((fields[1] >> 8) & 0xFF);
-  compare->converted_first = (unsigned char) ((fields[1] >> 16) & 0xFF);
-  compare->rank = (signed char) (((fields[1] >> 24) & 0xFF) - 2);
-  compare->collation = (short) (fields[2] & 0xFFFF);
-  compare->codeset_side = (signed char) (((fields[2] >> 16) & 0xFF) - 1);
-  TP_DOMAIN *target = NULL;
-  if (converts != 0)
-    {
-      ptr = or_unpack_domain (ptr, &target, NULL);
-    }
-  for (int side = 0; side < 2; side++)
-    {
-      if (converts & (1 << side))
-	{
-	  compare->target[side] = target;
-	  compare->conv[side] = domain_compare_converter ((DB_TYPE) compare->source[side], target);
-	}
-    }
-  if (compare->method != DOMAIN_COMPARE_VALUES)
-    {
-      compare->cmp = pr_type_from_id ((converts & 1) ? TP_DOMAIN_TYPE (target) : (DB_TYPE) compare->source[0]);
-    }
-  return ptr;
 }
 
 /*
@@ -6993,8 +7137,8 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
       arith_type->decided.arith = coercion.arith;
     }
 
-  /* CBRD-27583: the comparisons FIELD, NULLIF, LEAST and GREATEST make, from their operands' domains (a filter or
-   * function index stream's by stx_decide_stream_compare) */
+  /* CBRD-27583: the comparisons FIELD, NULLIF, LEAST and GREATEST make - the compiler's (D-81, xts_process_arith_type),
+   * a filter or function index stream's by stx_decide_stream_compare (D-82) */
   if (arith_type->opcode == T_FIELD || arith_type->opcode == T_NULLIF || arith_type->opcode == T_LEAST
       || arith_type->opcode == T_GREATEST)
     {
@@ -7016,13 +7160,23 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	    sides[k][1] != NULL ? sides[k][1]->domain : NULL
 	  };
 	  bool by_type = true;
-	  const int error = xasl_unpack_info->index_stream
-	    ? stx_decide_stream_compare (sides[k][0], sides[k][1], &compares[k])
-	    : stx_decide_compare (domain, &compares[k], &by_type);
-	  if (error != NO_ERROR)
+	  if (xasl_unpack_info->index_stream)
 	    {
-	      stx_set_xasl_errcode (thread_p, error);
-	      return NULL;
+	      /* D-82: a filter or function index stream carries no decision */
+	      const int error = stx_decide_stream_compare ("arith", sides[k][0], sides[k][1], &compares[k]);
+	      if (error != NO_ERROR)
+		{
+		  stx_set_xasl_errcode (thread_p, error);
+		  return NULL;
+		}
+	    }
+	  else
+	    {
+	      /* D-81: the compiler's decision, looked up */
+	      ptr = stx_unpack_compare (ptr, &compares[k], &by_type);
+#if !defined (NDEBUG)
+	      stx_check_compare (domain[0], domain[1], &compares[k], by_type);
+#endif
 	    }
 #if !defined (NDEBUG)
 	  if (!by_type)

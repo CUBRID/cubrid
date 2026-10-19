@@ -114,6 +114,8 @@ struct valptr_list_node;
 int domain_unify_list_column (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** unified);
 TP_DOMAIN *domain_output_column (const struct valptr_list_node *output, int pos);
 TP_DOMAIN *domain_list_column_of (const struct xasl_node *xasl, int pos);
+/* CBRD-27583: a list column's domain as a comparison reads it - NULL where its values decide (VARIABLE) or are NULL */
+TP_DOMAIN *domain_list_column_compared (const struct xasl_node *xasl, int pos);
 
 /* The operand coercion of T_ADD, T_SUB, T_MUL or T_DIV: conv[i] converts operand i into operand_domain[i], NULL
  * converts nothing. SUM and AVG keep one for the values they add; an arithmetic node's RESOLVED_DOMAIN holds the same
@@ -303,6 +305,13 @@ void domain_compare_key_collate (DOMAIN_COMPARE_KEY * key, const TP_DOMAIN * col
  * codeset is not its collation's - gets the comparison computed for it. */
 int domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs, DOMAIN_COMPARE * result);
 
+/* CBRD-27583 (D-81): the comparison of a value of each of two domains, decided by the compiler before any row -
+ * by_type false (comparison method VALUES) where a side's domain leaves its values' type or collation to the data. */
+int domain_decide_comparison (const TP_DOMAIN * const domain[2], DOMAIN_COMPARE * decided, bool * by_type);
+
+/* Two comparisons are the same comparison: every field, pointers included. */
+bool domain_compare_equal (const DOMAIN_COMPARE * a, const DOMAIN_COMPARE * b);
+
 /* The same comparison without coercion (do_coercion 0): types that compare as they are by the first one's cmpval,
  * any other pair by the types' rank. */
 void domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs,
@@ -319,6 +328,26 @@ void domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const 
  *		  domain
  */
 int domain_resolve_hash_key (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common);
+
+/*
+ * domain_decide_hash_join_key () - CBRD-27583 (D-81): a hash join's key column pair, decided by the compiler from the
+ *   two inputs' column domains (unpack's fallback for a list whose column the execution fixes): the domain both
+ *   values are hashed and compared in, each side's conversion into it, and the comparison of the two values then
+ *   (tp_value_compare without coercion)
+ *   return: NO_ERROR or ER_OUT_OF_VIRTUAL_MEMORY
+ *   coerce(in/out): a key before this one is coerced, and so is every key after it (one hashed record)
+ *   common(out): the domain; NULL for a key compared in its own domains
+ *   conv_kind(out): per side, DOMAIN_HASH_KEY_AS_IS, _CONVERTED (the IMPLICIT converter into common) or _COERCED
+ *		     (tp_value_coerce at the row: a JSON value, a common string domain whose collation is the values')
+ */
+enum
+{
+  DOMAIN_HASH_KEY_AS_IS = 0,
+  DOMAIN_HASH_KEY_CONVERTED = 1,
+  DOMAIN_HASH_KEY_COERCED = 2
+};
+int domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, bool * coerce,
+				 const TP_DOMAIN ** common, int conv_kind[2], DOMAIN_COMPARE * compare);
 
 /*
  * domain_compare_in_domain () - two values of one domain fixed before any row (a GROUP BY or an analytic sort key's),
