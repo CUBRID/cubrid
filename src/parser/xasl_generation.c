@@ -4360,6 +4360,18 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      regu_position_list->value.value.pos_descr.pos_no = info->out_list->valptr_cnt;
 
 	      pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list, to_add);
+
+	      /* a scan-time aggregation reads the percentile from the scan, as the PT_NAME case below does */
+	      REGU_VARIABLE_LIST scan_percentile = NULL;
+	      regu_alloc (scan_percentile);
+	      if (scan_percentile == NULL)
+		{
+		  PT_ERROR (parser, percentile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		  return NULL;
+		}
+	      scan_percentile->value = *regu;
+	      pt_aggregate_info_update_scan_regu_list (info, scan_percentile);
 	    }
 	  else
 	    {
