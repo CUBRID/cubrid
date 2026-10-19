@@ -35,6 +35,7 @@
 #include "csql_wire.h"
 
 #include "cas_protocol.h"
+#include "cas_error.h"
 #include "db_client_type.hpp"
 #include "environment_variable.h"
 #include "error_code.h"
@@ -68,6 +69,7 @@ static int wire_Client_type = 0;
 
 static int wire_Err_code = 0;
 static char wire_Err_msg[WIRE_ERR_MSG_MAX];
+static bool wire_Prompt_password = false;
 static bool wire_Tran_dirty = false;
 
 static bool wire_Time_on = true;
@@ -235,13 +237,17 @@ wire_close_fd (void)
 /* ------------------------------------------------------------------ */
 
 static void
-wire_build_driver_header (char *header)
+wire_build_driver_header (char *header, const char *passwd)
 {
   memset (header, 0, cubconn::adoption::DRIVER_HEADER_SIZE);
   memcpy (header, "CUBRK", 5);
   header[5] = (char) CAS_CLIENT_CCI;
   header[6] = (char) (CAS_PROTO_INDICATOR | CURRENT_PROTOCOL);
   header[7] = (char) (BROKER_RENEWED_ERROR_CODE | BROKER_SUPPORT_HOLDABLE_RESULT);
+  if (wire_Interactive && passwd == NULL)
+    {
+      header[SRV_CON_MSG_IDX_RESERVED2] = CSQL_CONNECT_PROMPT_PASSWORD;
+    }
 }
 
 static void
@@ -284,28 +290,31 @@ wire_read_connect_reply (int fd, int length)
        * connect reply is decoded as an error, not dropped (wf143 HA gate:
        * a standby's rejection used to surface as "unexpected reply size") */
       char head[8];
-      int body_len = length < 0 ? -length : length;
-      if (body_len < 8 || wire_read_exact (fd, head, 8) != NO_ERROR)
+      long long body_len = length < 0 ? -(long long) length : length;
+      if (body_len < 8 || body_len > WIRE_REPLY_LIMIT || wire_read_exact (fd, head, 8) != NO_ERROR)
 	{
 	  wire_set_error (ER_FAILED, "malformed connect error frame");
 	  return ER_FAILED;
 	}
       int code = (int) wire_get_be32 (head + 4);
-      int msg_len = body_len - 8;
+      int msg_len = (int) body_len - 8;
       char *msg = NULL;
       if (msg_len > 0)
 	{
 	  msg = (char *) malloc ((size_t) msg_len + 1);
-	  if (msg != NULL && wire_read_exact (fd, msg, (size_t) msg_len) == NO_ERROR)
+	  if (msg == NULL || wire_read_exact (fd, msg, (size_t) msg_len) != NO_ERROR)
 	    {
-	      msg[msg_len] = '\0';
+	      free (msg);
+	      wire_set_error (ER_FAILED, "incomplete connect error frame");
+	      return ER_FAILED;
 	    }
-	  else if (msg != NULL)
-	    {
-	      msg[0] = '\0';
-	    }
+	  msg[msg_len] = '\0';
 	}
       wire_set_error (code, msg != NULL ? msg : "connect refused");
+      wire_Prompt_password = ((int) wire_get_be32 (head) == DBMS_ERROR_INDICATOR
+			      && (code == ER_AU_INVALID_PASSWORD
+				  || (code == ER_AU_REJECT_LOGIN
+				      && cas_info[CAS_INFO_RESERVED_1] == CSQL_CONNECT_PROMPT_PASSWORD)));
       free (msg);
       return code != 0 ? code : ER_FAILED;
     }
@@ -414,7 +423,7 @@ wire_connect_local (const char *db, const char *user, const char *passwd, int cl
   header.op = (unsigned int) cubconn::adoption::msg_op::DIRECT_CONNECT;
   header.length = (unsigned int) sizeof (body);
   body.client_type = (unsigned char) client_type;
-  wire_build_driver_header (body.driver_header);
+  wire_build_driver_header (body.driver_header, passwd);
   wire_build_db_info (body.db_info, db, user, passwd);
 
   if (wire_write_exact (fd, &header, sizeof (header)) != NO_ERROR
@@ -465,7 +474,7 @@ wire_connect_broker (const char *host, int port, const char *db, const char *use
   freeaddrinfo (res);
 
   char header[cubconn::adoption::DRIVER_HEADER_SIZE];
-  wire_build_driver_header (header);
+  wire_build_driver_header (header, passwd);
   if (wire_write_exact (fd, header, sizeof (header)) != NO_ERROR)
     {
       close (fd);
@@ -525,6 +534,7 @@ csql_wire_connect (const char *db_name, const char *user_name, const char *passw
 
   wire_close_fd ();
   wire_set_error (0, NULL);
+  wire_Prompt_password = false;
   wire_Tran_dirty = false;
 
   if (db_name == NULL || db_name[0] == '\0')
@@ -645,6 +655,12 @@ bool
 csql_wire_tran_dirty (void)
 {
   return wire_Tran_dirty;
+}
+
+bool
+csql_wire_prompt_password (void)
+{
+  return wire_Prompt_password;
 }
 
 void

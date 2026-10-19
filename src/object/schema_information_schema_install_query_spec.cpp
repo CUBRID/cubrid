@@ -47,7 +47,6 @@
 #include "dbtype_def.h"
 #include "schema_system_catalog_constants.h"
 #include "authenticate.h"
-#include "deduplicate_key.h"
 #include "sp_catalog.hpp"
 #include "sp_constants.hpp"
 #include "tde.h"
@@ -437,7 +436,6 @@ sm_define_view_key_column_usage_spec (void)
         "ON [ref_key].[index_of] = [ref_idx] AND [ref_key].[key_order] = [idx_key].[key_order] "
     "WHERE "
       AUTH_CHECK_OBJECT_ANY("[idx].[class_of].[owner].[name]", "[idx].[class_of].[class_of]") " "
-      "AND ([idx_key].[key_attr_name] IS NULL OR [idx_key].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN ") "
       "AND ([idx].[is_primary_key] = 1 OR [idx].[is_unique] = 1 OR [idx].[is_foreign_key] = 1)",
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME,
@@ -862,7 +860,6 @@ sm_define_view_statistics_spec (void)
       "IF ([idx].[status] = 1, 'YES', 'NO') AS [is_visible], "
       "[idx_key].[func] AS [expression], "
       "[idx].[filter_expression] AS [filter_condition], "
-      "[idx].[options] & %d AS [deduplicate_level], "
       "[idx].[created_time] AS [create_time], "
       "[idx].[updated_time] AS [update_time], "
       "NULL AS [access_time] "
@@ -876,9 +873,7 @@ sm_define_view_statistics_spec (void)
       /* CT_ATTRIBUTE_NAME */
       "LEFT OUTER JOIN [%s] AS [attr] ON [attr].[class_of] = [cls] AND [attr].[attr_name] = [idx_key].[key_attr_name] "
     "WHERE "
-      AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]") " "
-      "AND ([idx_key].[key_attr_name] IS NULL OR [idx_key].[key_attr_name] NOT LIKE " DEDUPLICATE_KEY_ATTR_NAME_LIKE_PATTERN ")",
-    OPTION_DEDUPLICATE_MASK,
+      AUTH_CHECK_OBJECT_ANY("[cls].[owner].[name]", "[cls].[class_of]"),
     CT_INDEXKEY_NAME,
     CT_INDEX_NAME,
     CT_CLASS_NAME,

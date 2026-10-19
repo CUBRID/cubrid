@@ -3681,7 +3681,7 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
   csql_wire_set_interactive (csql_Is_interactive);
   if (csql_wire_connect (csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, client_type) != NO_ERROR)
     {
-      if (!csql_Is_interactive || csql_arg->passwd != NULL || csql_wire_last_error (NULL) != ER_AU_INVALID_PASSWORD)
+      if (!csql_Is_interactive || csql_arg->passwd != NULL || !csql_wire_prompt_password ())
 	{
 	  csql_thin_display_wire_error ();
 	  csql_exit (EXIT_FAILURE);
@@ -3707,7 +3707,8 @@ csql (const char *argv0, CSQL_ARGUMENT * csql_arg)
 #else /* !CSQL_THIN */
   if (db_restart_ex (argv0, csql_arg->db_name, csql_arg->user_name, csql_arg->passwd, NULL, client_type) != NO_ERROR)
     {
-      if (!csql_Is_interactive || csql_arg->passwd != NULL || db_error_code () != ER_AU_INVALID_PASSWORD)
+      if (!csql_Is_interactive || csql_arg->passwd != NULL
+	  || !(db_error_code () == ER_AU_REJECT_LOGIN && au_ctx ()->prompt_password))
 	{
 	  /* not INTERACTIVE mode, or password is given already, or the error code is not password related */
 	  csql_Error_code = CSQL_ERR_SQL_ERROR;
@@ -4350,7 +4351,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 #if defined(CSQL_THIN)
   if (csql_wire_connect (db_name_ptr, user_name_ptr, NULL, csql_thin_client_type (csql_arg)) != NO_ERROR)
     {
-      if (csql_Is_interactive && csql_wire_last_error (NULL) == ER_AU_INVALID_PASSWORD)
+      if (csql_Is_interactive && csql_wire_prompt_password ())
 	{
 	  p = getpass ((char *) csql_get_message (CSQL_PASSWD_PROMPT_TEXT));
 
@@ -4383,7 +4384,7 @@ csql_connect (char *argument, CSQL_ARGUMENT * csql_arg)
 #else /* !CSQL_THIN */
   if (db_restart_ex (UTIL_CSQL_NAME, db_name_ptr, user_name_ptr, NULL, NULL, db_get_client_type ()) != NO_ERROR)
     {
-      if (csql_Is_interactive && db_error_code () == ER_AU_INVALID_PASSWORD)
+      if (csql_Is_interactive && (db_error_code () == ER_AU_REJECT_LOGIN && au_ctx ()->prompt_password))
 	{
 	  p = getpass ((char *) csql_get_message (CSQL_PASSWD_PROMPT_TEXT));
 

@@ -2531,12 +2531,6 @@ ws_final (void)
   MOP mop, next;
   unsigned int slot;
 
-#if !defined (SERVER_MODE)
-  /* process-global state (st_sm_atts); in the server ws_final retires one
-   * session's workspace while other sessions keep using it */
-  dk_deduplicate_key_attribute_finalized ();
-#endif
-
   tr_final ();
 
   if (prm_get_bool_value (PRM_ID_WS_MEMORY_REPORT))

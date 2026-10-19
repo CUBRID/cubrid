@@ -6137,10 +6137,7 @@ vacuum_log_add_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid, const O
   LOG_DATA_ADDR addr;
   VACUUM_DROPPED_FILES_RCV_DATA rcv_data;
 
-  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
-    {
-      return;
-    }
+  /* logged even when vacuum is disabled: vacuum_rv_notify_dropped_file () also ends the bestspace lifetime */
 
   vacuum_er_log (VACUUM_ER_LOG_DROPPED_FILES, "Append %s log from dropped file %d|%d.",
 		 pospone_or_undo ? "postpone" : "undo", vfid->volid, vfid->fileid);
@@ -6408,27 +6405,43 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
   OID *class_oid;
   MVCCID mvccid;
   VACUUM_DROPPED_FILES_RCV_DATA *rcv_data;
+  LOG_DATA_ADDR addr = LOG_DATA_ADDR_INITIALIZER;
 
-  /* Copy VFID from current log recovery data but set MVCCID at this point. We will use the log_Gl.hdr.mvcc_next_id as
-   * borderline to distinguish this file from newer files. 1. All changes on this file must be done by transaction that
-   * have already committed which means their MVCCID will be less than current log_Gl.hdr.mvcc_next_id. 2. All changes
-   * on a new file that reused VFID must be done by transaction that start after this call, which means their MVCCID's
-   * will be at least equal to current log_Gl.hdr.mvcc_next_id. */
-
-  mvccid = ATOMIC_LOAD_64 (&log_Gl.hdr.mvcc_next_id);
-
-  /* Add dropped file to current list */
   rcv_data = (VACUUM_DROPPED_FILES_RCV_DATA *) rcv->data;
-  error = vacuum_add_dropped_file (thread_p, &rcv_data->vfid, mvccid);
-  if (error != NO_ERROR)
+
+  /* With vacuum disabled there is no dropped-files list and no worker to synchronize with; only the cache cleanup
+   * below applies. */
+  if (!prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
     {
-      return error;
+      /* Copy VFID from current log recovery data but set MVCCID at this point. We will use the log_Gl.hdr.mvcc_next_id
+       * as borderline to distinguish this file from newer files. 1. All changes on this file must be done by
+       * transaction that have already committed which means their MVCCID will be less than current
+       * log_Gl.hdr.mvcc_next_id. 2. All changes on a new file that reused VFID must be done by transaction that start
+       * after this call, which means their MVCCID's will be at least equal to current log_Gl.hdr.mvcc_next_id. */
+
+      mvccid = ATOMIC_LOAD_64 (&log_Gl.hdr.mvcc_next_id);
+
+      /* Add dropped file to current list */
+      error = vacuum_add_dropped_file (thread_p, &rcv_data->vfid, mvccid);
+      if (error != NO_ERROR)
+	{
+	  /* workers were not notified, so destroying the bestspace here would reintroduce the use-after-free */
+	  vacuum_er_log_error (VACUUM_ER_LOG_DROPPED_FILES,
+			       "failed to add dropped file %d|%d; its bestspace entry is left behind",
+			       VFID_AS_ARGS (&rcv_data->vfid));
+	  return error;
+	}
+
+      // make sure vacuum workers will not access dropped file
+      vacuum_notify_all_workers_dropped_file (rcv_data->vfid, mvccid);
+    }
+  else
+    {
+      /* nothing else is logged here; add a log or else the end of logical system operation will complain */
+      log_append_empty_record (thread_p, LOG_DUMMY_GENERIC, &addr);
     }
 
-  // make sure vacuum workers will not access dropped file
-  vacuum_notify_all_workers_dropped_file (rcv_data->vfid, mvccid);
-
-  /* vacuum is notified of the file drop, it is safe to remove from cache */
+  /* vacuum is notified of the file drop (or disabled), it is safe to remove from cache */
   class_oid = &rcv_data->class_oid;
   if (!OID_ISNULL (class_oid))
     {

@@ -52,6 +52,10 @@ extern "C"
 #define SRV_CON_MSG_IDX_PROTO_VERSION   6
 #define SRV_CON_MSG_IDX_FUNCTION_FLAG   7
 #define SRV_CON_MSG_IDX_RESERVED2       8
+/* Thin csql opts in on an interactive, password-omitted connect. Only an
+ * eligible -1385 reply echoes this value in CAS_INFO_RESERVED_1; framing
+ * and the unified error code/message stay unchanged. Old peers ignore it. */
+#define CSQL_CONNECT_PROMPT_PASSWORD    1
 /* For backward compatibility */
 #define SRV_CON_MSG_IDX_MAJOR_VER	(SRV_CON_MSG_IDX_PROTO_VERSION)
 #define SRV_CON_MSG_IDX_MINOR_VER	(SRV_CON_MSG_IDX_FUNCTION_FLAG)

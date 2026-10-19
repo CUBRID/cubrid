@@ -97,6 +97,7 @@ authenticate_context::final_ctx (void)
 int
 authenticate_context::start (void)
 {
+  prompt_password = false;
   int error = NO_ERROR;
 
   MOPLIST mops;
@@ -221,6 +222,7 @@ authenticate_context::start (void)
 int
 authenticate_context::login (const char *name, const char *password, bool ignore_dba_privilege)
 {
+  prompt_password = false;
   int error = NO_ERROR;
   int save;
 
@@ -569,6 +571,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 
   dbuser = (char *) name;
   dbpassword = (char *) password;
+  prompt_password = false;
 
   if (dbuser == NULL || strlen (dbuser) == 0)
     {
@@ -595,8 +598,8 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 	  error = er_errid ();
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
 	    {
-	      error = ER_AU_INVALID_USER;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, dbuser);
+	      error = ER_AU_REJECT_LOGIN;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 	}
       else
@@ -652,7 +655,8 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 		      if ((dbpassword == NULL) || (strlen (dbpassword) == 0)
 			  || !match_password (dbpassword, db_get_string (&value)))
 			{
-			  error = ER_AU_INVALID_PASSWORD;
+			  prompt_password = (dbpassword == NULL || *dbpassword == '\0');
+			  error = ER_AU_REJECT_LOGIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			}
 		    }
@@ -668,7 +672,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 		       */
 		      if (dbpassword != NULL && strlen (dbpassword))
 			{
-			  error = ER_AU_INVALID_PASSWORD;
+			  error = ER_AU_REJECT_LOGIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			}
 		    }

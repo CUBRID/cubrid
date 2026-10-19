@@ -48,6 +48,7 @@ extern "C"
 /* last wire/server error: returns the error code (0 if none) and copies the
  * server message when msg_buf is given */
   extern int csql_wire_last_error (char **msg);
+  extern bool csql_wire_prompt_password (void);
 
 /* run a statement buffer server-side; replays rendered output onto
  * csql_Output_fp / csql_Error_fp.  Returns the statement failure count

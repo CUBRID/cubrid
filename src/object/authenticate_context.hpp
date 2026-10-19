@@ -100,6 +100,9 @@ class EXPORT_IMPORT authenticate_context
     */
     bool ignore_passwords;
 
+    // Keep the last login result through final_ctx (), until the caller handles it.
+    bool prompt_password = false;
+
     /*
     * Au_dba_user, Au_public_user
     *

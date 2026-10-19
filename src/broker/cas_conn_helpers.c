@@ -124,6 +124,13 @@ net_read_header_keep_con_on (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header)
 
   do
     {
+#if !defined (SERVER_MODE)
+      if (cas_shutdown_signo)
+	{
+	  ret_value = -1;
+	  break;
+	}
+#endif
       if (as_info->con_status == CON_STATUS_OUT_TRAN)
 	{
 	  remained_timeout -= DEFAULT_CHECK_INTERVAL;
@@ -188,6 +195,13 @@ net_read_int_keep_con_auto (SOCKET clt_sock_fd, MSG_HEADER * client_msg_header, 
 
   do
     {
+#if !defined (SERVER_MODE)
+      if (cas_shutdown_signo)
+	{
+	  ret_value = -1;
+	  break;
+	}
+#endif
       if (as_info->cas_log_reset)
 	{
 	  cas_log_reset (broker_name);

@@ -418,7 +418,7 @@ namespace cubconn
      * cas_info | indicator | code | message.  No pre-V2 code conversion —
      * every V12 driver understands renewed error codes. */
     static void
-    send_error_reply (int fd, char status, int indicator, int code, const char *msg)
+    send_error_reply (int fd, char status, int indicator, int code, const char *msg, bool prompt_password = false)
     {
       assert (code != NO_ERROR);
 
@@ -426,6 +426,11 @@ namespace cubconn
       int len = htonl ((int) (2 * sizeof (int) + msg_len));
       char cas_info[CAS_INFO_SIZE] =
       { status, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT, CAS_INFO_RESERVED_DEFAULT };
+
+      if (prompt_password)
+	{
+	  cas_info[CAS_INFO_RESERVED_1] = CSQL_CONNECT_PROMPT_PASSWORD;
+	}
 
       if (write_full (fd, &len, sizeof (int)) != NO_ERROR || write_full (fd, cas_info, CAS_INFO_SIZE) != NO_ERROR)
 	{
@@ -880,7 +885,10 @@ namespace cubconn
 	{
 	  /* cas_db_connect failure path: DBMS error straight to the driver */
 	  send_error_reply (params.client_fd, CAS_INFO_STATUS_INACTIVE, DBMS_ERROR_INDICATOR, err,
-			    er_msg () != NULL ? er_msg () : "");
+			    er_msg () != NULL ? er_msg () : "",
+			    err == ER_AU_REJECT_LOGIN && ctx->au_context.prompt_password
+			    && info.db_passwd[0] == '\0' && std::strcmp (info.url, "thin_csql") == 0
+			    && params.driver_header[SRV_CON_MSG_IDX_RESERVED2] == CSQL_CONNECT_PROMPT_PASSWORD);
 	  if (resumed)
 	    {
 	      session_auto_detach (entry_p, false);
