@@ -311,10 +311,11 @@ struct btsort_merge_ctx
 
   BTSORT_REC_LIST sr_list[BTSORT_MAX_HALF_FILES];	/* inputs ordered by their smallest record */
   BTSORT_REC_LIST *min_p;	/* head of sr_list: the input holding the minimum record */
-  RECDES last_elem;		/* last record of the current page of the min input */
-  RECDES last_long_rec;		/* its long record when last_elem is a BIGONE placeholder */
-  bool last_elem_is_min;	/* false: must find the min record; true: last_elem is not above any other input's
-				 * smallest record, so the rest of its page is output without comparing */
+  RECDES tail_long_rec;		/* long record behind the last record of the min input's page when that record is
+				 * a BIGONE placeholder; grown and reused like the inputs' long_rec */
+  bool page_tail_is_min;	/* false: must find the min record; true: the last record of the min input's page is
+				 * not above any other input's smallest record, so the rest of the page is output
+				 * without comparing */
 };
 
 typedef struct btsort_spage_header BTSORT_SPAGE_HEADER;
@@ -396,6 +397,10 @@ static void btsort_merge_reset_out_section (BTSORT_MERGE_CTX * ctx);
 static int btsort_merge_load_in_section (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int idx)
   __attribute__ ((noinline));
 static int btsort_merge_advance_input (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int idx, bool * run_done);
+static int btsort_merge_cmp_inputs (const BTSORT_MERGE_CTX * ctx, int a, int b);
+static void btsort_merge_order_inputs (BTSORT_MERGE_CTX * ctx);
+static int btsort_merge_check_page_tail (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx);
+static void btsort_merge_sink_min (BTSORT_MERGE_CTX * ctx);
 static int btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param);
 static int btsort_find_inbuf_size (int tot_buffers, int in_sections);
 
@@ -2398,7 +2403,7 @@ btsort_merge_load_in_section (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, i
  *   run_done(out): true when the input's current run is exhausted, so it has no record left to fetch
  *
  * Note: Moves to the next slot, else to the next page of the section, else reads the next pages of the run.
- *       Leaving the page clears last_elem_is_min. The caller fetches the record the cursor now points at.
+ *       Leaving the page clears page_tail_is_min. The caller fetches the record the cursor now points at.
  */
 static int
 btsort_merge_advance_input (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int idx, bool * run_done)
@@ -2414,7 +2419,7 @@ btsort_merge_advance_input (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int
     }
 
   /* The current input page is finished */
-  ctx->last_elem_is_min = false;
+  ctx->page_tail_is_min = false;
 
   if (++in->act_bufno < in->last_buf)
     {
@@ -2436,6 +2441,127 @@ btsort_merge_advance_input (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int
 
   /* There are still some pages in the current input run */
   return btsort_merge_load_in_section (thread_p, ctx, idx);
+}
+
+/*
+ * btsort_merge_cmp_inputs () - Compare the smallest records of two inputs
+ *   return: the comparison result of cmp_fn
+ *   ctx(in): merge state
+ *   a(in), b(in): input section indexes
+ */
+static int
+btsort_merge_cmp_inputs (const BTSORT_MERGE_CTX * ctx, int a, int b)
+{
+  return (*ctx->sort_param->cmp_fn) (btsort_merge_resolve_rec (&ctx->in[a].rec, &ctx->in[a].long_rec)->data,
+				     btsort_merge_resolve_rec (&ctx->in[b].rec, &ctx->in[b].long_rec)->data,
+				     ctx->sort_param->cmp_arg);
+}
+
+/*
+ * btsort_merge_order_inputs () - Link sr_list over the active inputs and order it by their smallest records
+ *   return: void
+ *   ctx(in/out): merge state; min_p is set to the head of the list
+ *
+ * Note: Exchange sort over every pair that swaps only when the earlier record compares greater.
+ */
+static void
+btsort_merge_order_inputs (BTSORT_MERGE_CTX * ctx)
+{
+  BTSORT_REC_LIST *s, *p;
+  int tmp_pos;
+  int i;
+
+  for (i = 0; i < ctx->act_infiles; i++)
+    {
+      ctx->sr_list[i].next = (i + 1 < ctx->act_infiles) ? &ctx->sr_list[i + 1] : NULL;
+      ctx->sr_list[i].rec_pos = i;
+    }
+
+  for (s = ctx->sr_list; s; s = s->next)
+    {
+      for (p = s->next; p; p = p->next)
+	{
+	  if (btsort_merge_cmp_inputs (ctx, s->rec_pos, p->rec_pos) > 0)
+	    {
+	      tmp_pos = s->rec_pos;
+	      s->rec_pos = p->rec_pos;
+	      p->rec_pos = tmp_pos;
+	    }
+	}
+    }
+
+  ctx->min_p = ctx->sr_list;
+}
+
+/*
+ * btsort_merge_check_page_tail () - Test whether the rest of the min input's page can be output without
+ *                                     comparing
+ *   return: NO_ERROR, or error code
+ *   ctx(in/out): merge state; page_tail_is_min is set when the last record of the min input's current page
+ *                does not compare greater than the second smallest input's record
+ *
+ * Note: Only raises page_tail_is_min. The callers clear it when the min input leaves its page.
+ */
+static int
+btsort_merge_check_page_tail (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx)
+{
+  BTSORT_PARAM *sort_param = ctx->sort_param;
+  BTSORT_MERGE_INPUT *min_in = &ctx->in[ctx->min_p->rec_pos];
+  BTSORT_REC_LIST *second = ctx->min_p->next;	/* the input holding the second smallest record */
+  RECDES tail_rec = RECDES_INITIALIZER;
+  char *tail_key, *second_key;
+  int error;
+
+  if (second == NULL)
+    {
+      /* the min input is the only one left */
+      return NO_ERROR;
+    }
+
+  error =
+    btsort_merge_fetch_slot (thread_p, min_in->cur_bufaddr, min_in->last_slot - 1, &tail_rec, &ctx->tail_long_rec);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  tail_key = btsort_merge_resolve_rec (&tail_rec, &ctx->tail_long_rec)->data;
+  second_key = btsort_merge_resolve_rec (&ctx->in[second->rec_pos].rec, &ctx->in[second->rec_pos].long_rec)->data;
+  if ((*sort_param->cmp_fn) (tail_key, second_key, sort_param->cmp_arg) <= 0)
+    {
+      ctx->page_tail_is_min = true;
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * btsort_merge_sink_min () - Sink the min input to its place after its smallest record changed
+ *   return: void
+ *   ctx(in/out): merge state
+ *
+ * Note: The rest of sr_list is still ordered, so one pass of adjacent swaps that stops at the first pair in
+ *       order restores it.
+ */
+static void
+btsort_merge_sink_min (BTSORT_MERGE_CTX * ctx)
+{
+  BTSORT_REC_LIST *s, *p;
+  int tmp_pos;
+
+  for (s = ctx->min_p; s->next != NULL; s = s->next)
+    {
+      p = s->next;
+      if (btsort_merge_cmp_inputs (ctx, s->rec_pos, p->rec_pos) <= 0)
+	{
+	  /* sr_list is completely sorted */
+	  break;
+	}
+
+      tmp_pos = s->rec_pos;
+      s->rec_pos = p->rec_pos;
+      p->rec_pos = tmp_pos;
+    }
 }
 
 /*
@@ -2461,21 +2587,9 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
   int act;
   int cp_pages;
 
-  BTSORT_CMP_FUNC *compare;
-  void *compare_arg;
-
-  BTSORT_REC_LIST *s, *p;
-  int tmp_pos;			/* temporary value for rec_pos swapping */
-  bool do_swap;			/* rec_pos swapping indicator */
-
-  char *data1, *data2;
   int first_run;
-  int cmp;
 
   error = NO_ERROR;
-
-  compare = sort_param->cmp_fn;
-  compare_arg = sort_param->cmp_arg;
 
   memset (&ctx, 0, sizeof (ctx));
   ctx.sort_param = sort_param;
@@ -2640,65 +2754,14 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		}
 	    }
 
-	  for (i = 0, p = ctx.sr_list; i < (ctx.act_infiles - 1); p = p->next)
+	  btsort_merge_order_inputs (&ctx);
+
+	  /* page tail check */
+	  ctx.page_tail_is_min = false;
+	  error = btsort_merge_check_page_tail (thread_p, &ctx);
+	  if (error != NO_ERROR)
 	    {
-	      p->next = (BTSORT_REC_LIST *) ((char *) p + sizeof (BTSORT_REC_LIST));
-	      p->rec_pos = i++;
-	    }
-	  p->next = NULL;
-	  p->rec_pos = i;
-
-	  for (s = ctx.sr_list; s; s = s->next)
-	    {
-	      for (p = s->next; p; p = p->next)
-		{
-		  do_swap = false;
-
-		  data1 = btsort_merge_resolve_rec (&ctx.in[s->rec_pos].rec, &ctx.in[s->rec_pos].long_rec)->data;
-		  data2 = btsort_merge_resolve_rec (&ctx.in[p->rec_pos].rec, &ctx.in[p->rec_pos].long_rec)->data;
-
-		  cmp = (*compare) (data1, data2, compare_arg);
-		  if (cmp > 0)
-		    {
-		      do_swap = true;
-		    }
-
-		  if (do_swap)
-		    {
-		      tmp_pos = s->rec_pos;
-		      s->rec_pos = p->rec_pos;
-		      p->rec_pos = tmp_pos;
-		    }
-		}
-	    }
-
-	  /* the head of sr_list holds the minimum record */
-	  ctx.min_p = ctx.sr_list;	/* ctx.min_p->rec_pos is min record */
-
-	  /* last element comparison */
-	  ctx.last_elem_is_min = false;
-	  p = ctx.min_p->next;	/* second smallest element */
-
-	  if (p)
-	    {
-	      /* STEP 1: get last_elem */
-	      error =
-		btsort_merge_fetch_slot (thread_p, ctx.in[ctx.min_p->rec_pos].cur_bufaddr,
-					 ctx.in[ctx.min_p->rec_pos].last_slot - 1, &ctx.last_elem, &ctx.last_long_rec);
-	      if (error != NO_ERROR)
-		{
-		  goto bailout;
-		}
-
-	      /* STEP 2: compare last, p */
-	      data1 = btsort_merge_resolve_rec (&ctx.last_elem, &ctx.last_long_rec)->data;
-	      data2 = btsort_merge_resolve_rec (&ctx.in[p->rec_pos].rec, &ctx.in[p->rec_pos].long_rec)->data;
-
-	      cmp = (*compare) (data1, data2, compare_arg);
-	      if (cmp <= 0)
-		{
-		  ctx.last_elem_is_min = true;
-		}
+	      goto bailout;
 	    }
 
 	  /* INITIALIZE OUTPUT SECTION AND OUTPUT VARIABLES */
@@ -2832,74 +2895,16 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		}
 
 	      /* find minimum */
-	      if (ctx.last_elem_is_min == true)
+	      if (!ctx.page_tail_is_min)
 		{
-		  /* already find min */
-		  ;
-		}
-	      else
-		{
-		  for (s = ctx.min_p; s; s = s->next)
-		    {
-		      p = s->next;
-		      if (p == NULL)
-			{
-			  /* there is only one record */
-			  break;
-			}
-
-		      do_swap = false;
-
-		      data1 = btsort_merge_resolve_rec (&ctx.in[s->rec_pos].rec, &ctx.in[s->rec_pos].long_rec)->data;
-		      data2 = btsort_merge_resolve_rec (&ctx.in[p->rec_pos].rec, &ctx.in[p->rec_pos].long_rec)->data;
-
-		      cmp = (*compare) (data1, data2, compare_arg);
-		      if (cmp > 0)
-			{
-			  do_swap = true;
-			}
-
-		      if (do_swap)
-			{
-			  /* swap s, p */
-			  tmp_pos = s->rec_pos;
-			  s->rec_pos = p->rec_pos;
-			  p->rec_pos = tmp_pos;
-			}
-		      else
-			{
-			  /* ctx.sr_list is completely sorted */
-			  break;
-			}
-		    }
-
-		  /* new input page is entered */
+		  btsort_merge_sink_min (&ctx);
 		  if (ctx.in[ctx.min_p->rec_pos].act_slot == 0)
 		    {
-		      /* last element comparison */
-		      p = ctx.min_p->next;	/* second smallest element */
-		      if (p)
+		      /* new input page is entered */
+		      error = btsort_merge_check_page_tail (thread_p, &ctx);
+		      if (error != NO_ERROR)
 			{
-			  /* STEP 1: get last_elem */
-			  error =
-			    btsort_merge_fetch_slot (thread_p, ctx.in[ctx.min_p->rec_pos].cur_bufaddr,
-						     ctx.in[ctx.min_p->rec_pos].last_slot - 1, &ctx.last_elem,
-						     &ctx.last_long_rec);
-			  if (error != NO_ERROR)
-			    {
-			      goto bailout;
-			    }
-
-			  /* STEP 2: compare last, p */
-			  data1 = btsort_merge_resolve_rec (&ctx.last_elem, &ctx.last_long_rec)->data;
-			  data2 =
-			    btsort_merge_resolve_rec (&ctx.in[p->rec_pos].rec, &ctx.in[p->rec_pos].long_rec)->data;
-
-			  cmp = (*compare) (data1, data2, compare_arg);
-			  if (cmp <= 0)
-			    {
-			      ctx.last_elem_is_min = true;
-			    }
+			  goto bailout;
 			}
 		    }
 		}
@@ -2962,9 +2967,9 @@ bailout:
 	}
     }
 
-  if (ctx.last_long_rec.data)
+  if (ctx.tail_long_rec.data != NULL)
     {
-      free_and_init (ctx.last_long_rec.data);
+      free_and_init (ctx.tail_long_rec.data);
     }
 
   return error;
