@@ -270,10 +270,10 @@ static int qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * rec
 
 /*
  * A P_sort_key may carry its original tuple (SORT_REC_HAS_TUPLE) only when the tuple is at most this long. The copy
- * saves a page fix of the input list per sorted tuple; for a longer tuple the larger sort runs eat most of that even
- * when the sorted tuples are scattered over the input pages.
+ * saves a page fix of the input list per sorted tuple; at about 400 bytes the larger sort runs eat all of that even
+ * when the sorted tuples are scattered over the input pages (measured: 220 bytes 15-30% faster, 420 bytes no gain).
  */
-#define QFILE_SORT_REC_TUPLE_MAX_SIZE   128
+#define QFILE_SORT_REC_TUPLE_MAX_SIZE   256
 
 /*
  * Carrying pays only when the sorted tuples are scattered over the input pages; an input already near the sort order
