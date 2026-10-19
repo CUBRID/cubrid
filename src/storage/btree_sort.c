@@ -347,6 +347,9 @@ static void btsort_retire_px_temp_files (THREAD_ENTRY * thread_p, BTSORT_PARAM *
 /* External merge section                                               */
 /************************************************************************/
 
+static const RECDES *btsort_merge_resolve_rec (const RECDES * rec, const RECDES * long_rec);
+static int btsort_merge_fetch_slot (THREAD_ENTRY * thread_p, char *pgbuf, int slot, RECDES * rec, RECDES * long_rec);
+static int btsort_merge_count_pass_runs (BTSORT_PARAM * sort_param, int act_infiles);
 static int btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param);
 static int btsort_find_inbuf_size (int tot_buffers, int in_sections);
 
@@ -2185,6 +2188,75 @@ btsort_retire_px_temp_files (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_par
 /************************************************************************/
 
 /*
+ * btsort_merge_resolve_rec () - The record the merge compares and outputs for one input slot
+ *   return: rec, or long_rec when rec is a BIGONE placeholder
+ *   rec(in): record peeked from an input section page
+ *   long_rec(in): long record retrieved for rec when rec is a BIGONE placeholder
+ */
+static const RECDES *
+btsort_merge_resolve_rec (const RECDES * rec, const RECDES * long_rec)
+{
+  return (rec->type == REC_BIGONE) ? long_rec : rec;
+}
+
+/*
+ * btsort_merge_fetch_slot () - Peek a record of an input section page; retrieve it when it is a long record
+ *   return: NO_ERROR, or error code
+ *   pgbuf(in): page of the input section
+ *   slot(in): slot of the record in pgbuf
+ *   rec(out): the peeked record
+ *   long_rec(in/out): receives the long record when rec is a BIGONE placeholder; grown and reused across
+ *                     records by btsort_retrieve_longrec, freed once by the caller
+ */
+static int
+btsort_merge_fetch_slot (THREAD_ENTRY * thread_p, char *pgbuf, int slot, RECDES * rec, RECDES * long_rec)
+{
+  int error;
+
+  if (btsort_spage_get_record (pgbuf, slot, rec, PEEK) != S_SUCCESS)
+    {
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_SORT_TEMP_PAGE_CORRUPTED, 0);
+      return ER_SORT_TEMP_PAGE_CORRUPTED;
+    }
+
+  if (rec->type == REC_BIGONE)
+    {
+      if (btsort_retrieve_longrec (thread_p, rec, long_rec) == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * btsort_merge_count_pass_runs () - Number of runs the longest active input file holds
+ *   return: the run count; each run of a merge pass takes one run from every active input file
+ *   sort_param(in): sort parameters
+ *   act_infiles(in): number of active input files
+ */
+static int
+btsort_merge_count_pass_runs (BTSORT_PARAM * sort_param, int act_infiles)
+{
+  int num_runs = 0;
+  int len;
+  int i;
+
+  for (i = sort_param->in_half; i < sort_param->in_half + act_infiles; i++)
+    {
+      len = btsort_get_num_file_contents (&sort_param->file_contents[i]);
+      if (len > num_runs)
+	{
+	  num_runs = len;
+	}
+    }
+
+  return num_runs;
+}
+
+/*
  * btsort_exphase_merge () - Merge phase
  *   return:
  *   sort_param(in): sort parameters
@@ -2228,7 +2300,6 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
   int i, j;
   int temp;
   int min;
-  int len;
   bool very_last_run = false;
   int act;
   int cp_pages;
@@ -2324,15 +2395,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
       cur_outfile = out_half;
 
       /* Find how many runs will be produced in this iteration */
-      num_runs = 0;
-      for (i = sort_param->in_half; i < sort_param->in_half + act_infiles; i++)
-	{
-	  len = btsort_get_num_file_contents (&sort_param->file_contents[i]);
-	  if (len > num_runs)
-	    {
-	      num_runs = len;
-	    }
-	}
+      num_runs = btsort_merge_count_pass_runs (sort_param, act_infiles);
 
       if (num_runs == 1)
 	{
@@ -2483,22 +2546,12 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	      act_slot[i] = 0;
 	      last_slot[i] = btsort_spage_get_numrecs (in_cur_bufaddr[i]);
 
-	      if (btsort_spage_get_record (in_cur_bufaddr[i], act_slot[i], &smallest_elem_ptr[i], PEEK) != S_SUCCESS)
+	      error =
+		btsort_merge_fetch_slot (thread_p, in_cur_bufaddr[i], act_slot[i], &smallest_elem_ptr[i],
+					 &long_recdes[i]);
+	      if (error != NO_ERROR)
 		{
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_SORT_TEMP_PAGE_CORRUPTED, 0);
-		  error = ER_SORT_TEMP_PAGE_CORRUPTED;
 		  goto bailout;
-		}
-
-	      /* If this is a long record retrieve it */
-	      if (smallest_elem_ptr[i].type == REC_BIGONE)
-		{
-		  if (btsort_retrieve_longrec (thread_p, &smallest_elem_ptr[i], &long_recdes[i]) == NULL)
-		    {
-		      ASSERT_ERROR ();
-		      error = er_errid ();
-		      goto bailout;
-		    }
 		}
 	    }
 
@@ -2516,11 +2569,8 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		{
 		  do_swap = false;
 
-		  data1 = ((smallest_elem_ptr[s->rec_pos].type == REC_BIGONE)
-			   ? long_recdes[s->rec_pos].data : smallest_elem_ptr[s->rec_pos].data);
-
-		  data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-			   ? long_recdes[p->rec_pos].data : smallest_elem_ptr[p->rec_pos].data);
+		  data1 = btsort_merge_resolve_rec (&smallest_elem_ptr[s->rec_pos], &long_recdes[s->rec_pos])->data;
+		  data2 = btsort_merge_resolve_rec (&smallest_elem_ptr[p->rec_pos], &long_recdes[p->rec_pos])->data;
 
 		  cmp = (*compare) (data1, data2, compare_arg);
 		  if (cmp > 0)
@@ -2547,30 +2597,17 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	  if (p)
 	    {
 	      /* STEP 1: get last_elem */
-	      if (btsort_spage_get_record (in_cur_bufaddr[min_p->rec_pos], (last_slot[min_p->rec_pos] - 1),
-					   &last_elem_ptr, PEEK) != S_SUCCESS)
+	      error =
+		btsort_merge_fetch_slot (thread_p, in_cur_bufaddr[min_p->rec_pos], last_slot[min_p->rec_pos] - 1,
+					 &last_elem_ptr, &last_long_recdes);
+	      if (error != NO_ERROR)
 		{
-		  error = ER_SORT_TEMP_PAGE_CORRUPTED;
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 		  goto bailout;
 		}
 
-	      /* if this is a long record then retrieve it */
-	      if (last_elem_ptr.type == REC_BIGONE)
-		{
-		  if (btsort_retrieve_longrec (thread_p, &last_elem_ptr, &last_long_recdes) == NULL)
-		    {
-		      ASSERT_ERROR ();
-		      error = er_errid ();
-		      goto bailout;
-		    }
-		}
-
 	      /* STEP 2: compare last, p */
-	      data1 = ((last_elem_ptr.type == REC_BIGONE) ? last_long_recdes.data : last_elem_ptr.data);
-
-	      data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-		       ? long_recdes[p->rec_pos].data : smallest_elem_ptr[p->rec_pos].data);
+	      data1 = btsort_merge_resolve_rec (&last_elem_ptr, &last_long_recdes)->data;
+	      data2 = btsort_merge_resolve_rec (&smallest_elem_ptr[p->rec_pos], &long_recdes[p->rec_pos])->data;
 
 	      cmp = (*compare) (data1, data2, compare_arg);
 	      if (cmp <= 0)
@@ -2763,23 +2800,12 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		  last_slot[min] = btsort_spage_get_numrecs (in_cur_bufaddr[min]);
 		}
 
-	      if (btsort_spage_get_record (in_cur_bufaddr[min], act_slot[min], &smallest_elem_ptr[min], PEEK) !=
-		  S_SUCCESS)
+	      error =
+		btsort_merge_fetch_slot (thread_p, in_cur_bufaddr[min], act_slot[min], &smallest_elem_ptr[min],
+					 &long_recdes[min]);
+	      if (error != NO_ERROR)
 		{
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_SORT_TEMP_PAGE_CORRUPTED, 0);
-		  error = ER_SORT_TEMP_PAGE_CORRUPTED;
 		  goto bailout;
-		}
-
-	      /* If this is a long record retrieve it */
-	      if (smallest_elem_ptr[min].type == REC_BIGONE)
-		{
-		  if (btsort_retrieve_longrec (thread_p, &smallest_elem_ptr[min], &long_recdes[min]) == NULL)
-		    {
-		      ASSERT_ERROR ();
-		      error = er_errid ();
-		      goto bailout;
-		    }
 		}
 
 	      /* find minimum */
@@ -2801,11 +2827,8 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 
 		      do_swap = false;
 
-		      data1 = ((smallest_elem_ptr[s->rec_pos].type == REC_BIGONE)
-			       ? long_recdes[s->rec_pos].data : smallest_elem_ptr[s->rec_pos].data);
-
-		      data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-			       ? long_recdes[p->rec_pos].data : smallest_elem_ptr[p->rec_pos].data);
+		      data1 = btsort_merge_resolve_rec (&smallest_elem_ptr[s->rec_pos], &long_recdes[s->rec_pos])->data;
+		      data2 = btsort_merge_resolve_rec (&smallest_elem_ptr[p->rec_pos], &long_recdes[p->rec_pos])->data;
 
 		      cmp = (*compare) (data1, data2, compare_arg);
 		      if (cmp > 0)
@@ -2835,30 +2858,18 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		      if (p)
 			{
 			  /* STEP 1: get last_elem */
-			  if (btsort_spage_get_record (in_cur_bufaddr[min_p->rec_pos], (last_slot[min_p->rec_pos] - 1),
-						       &last_elem_ptr, PEEK) != S_SUCCESS)
+			  error =
+			    btsort_merge_fetch_slot (thread_p, in_cur_bufaddr[min_p->rec_pos],
+						     last_slot[min_p->rec_pos] - 1, &last_elem_ptr, &last_long_recdes);
+			  if (error != NO_ERROR)
 			    {
-			      error = ER_SORT_TEMP_PAGE_CORRUPTED;
-			      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			      goto bailout;
 			    }
 
-			  /* if this is a long record retrieve it */
-			  if (last_elem_ptr.type == REC_BIGONE)
-			    {
-			      if (btsort_retrieve_longrec (thread_p, &last_elem_ptr, &last_long_recdes) == NULL)
-				{
-				  ASSERT_ERROR ();
-				  error = er_errid ();
-				  goto bailout;
-				}
-			    }
-
 			  /* STEP 2: compare last, p */
-			  data1 = ((last_elem_ptr.type == REC_BIGONE) ? last_long_recdes.data : last_elem_ptr.data);
-
-			  data2 = ((smallest_elem_ptr[p->rec_pos].type == REC_BIGONE)
-				   ? long_recdes[p->rec_pos].data : smallest_elem_ptr[p->rec_pos].data);
+			  data1 = btsort_merge_resolve_rec (&last_elem_ptr, &last_long_recdes)->data;
+			  data2 =
+			    btsort_merge_resolve_rec (&smallest_elem_ptr[p->rec_pos], &long_recdes[p->rec_pos])->data;
 
 			  cmp = (*compare) (data1, data2, compare_arg);
 			  if (cmp <= 0)
