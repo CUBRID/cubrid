@@ -31014,6 +31014,13 @@ pt_to_cume_dist_percent_rank_regu_variable (PARSER_CONTEXT * parser, PT_NODE * t
        item = item->next, value = value->next)
     {
       TP_DOMAIN *domain = item->value.domain;
+      if (value->value.type == TYPE_DBVAL && !DB_IS_NULL (&value->value.value.dbval))
+	{
+	  /* CBRD-27583 (S3-35): the literal holds the value semantic check coerced into the ORDER BY attribute's domain
+	   * (pt_check_cume_dist_percent_rank_order_by); its node keeps the literal's type as in develop (an INTEGER node
+	   * holding a CHAR value), and this is the one place that makes that node a regu */
+	  value->value.domain = tp_domain_resolve_value (&value->value.value.dbval, NULL);
+	}
       if (domain == value->value.domain || !pt_regu_domain_is_fixed_domain (domain))
 	{
 	  continue;
