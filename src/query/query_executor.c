@@ -10396,6 +10396,14 @@ qexec_execute_sa_anti_survive (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 {
   SCAN_CODE xs_scan;
 
+  /* the surviving outer goes on without this scan reading a row, so clear the correlated subqueries here as the scan
+   * does for each row it reads (CBRD-27567). A select-list subquery, which the plan attaches to the innermost scan, is
+   * otherwise read for this outer with the result computed for an earlier outer row of the same root row. */
+  if (xasl->dptr_list != NULL && qexec_execute_dptr_list (thread_p, xasl->dptr_list, xasl_state, true) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+
   if (xasl->curr_spec != NULL)
     {
       xasl->curr_spec->s_id.single_fetched = true;
@@ -10507,6 +10515,17 @@ qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_su
 	}
       else
 	{
+	  /* a replayed row skips the scan, so clear the correlated subqueries here as the scan does for each row it
+	   * reads (CBRD-27567). A subquery only this node's predicates read is not run again: the replayed row already
+	   * passed them. A subquery a consumer of the row reads, such as a select-list subquery attached to the innermost
+	   * scan, runs again for the replayed row instead of handing out the previous row's result. A cached "no match"
+	   * of an ANTI inner is cleared in qexec_execute_sa_anti_survive (). */
+	  if (xasl->dptr_list != NULL
+	      && qexec_execute_dptr_list (thread_p, xasl->dptr_list, xasl_state, true) != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+
 	  if (!xasl->scan_ptr)
 	    {
 	      /* no scan procedure block */
@@ -10560,6 +10579,12 @@ qexec_execute_nljoin_with_memoize (THREAD_ENTRY * thread_p, bool * is_memoize_su
 			    }
 			  else
 			    {
+			      /* the next replayed row: clear the correlated subqueries as above */
+			      if (xasl->dptr_list != NULL
+				  && qexec_execute_dptr_list (thread_p, xasl->dptr_list, xasl_state, true) != NO_ERROR)
+				{
+				  return S_ERROR;
+				}
 			      continue;
 			    }
 			}
@@ -15891,6 +15916,8 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   char **attr_names = NULL;
   int num_attrs = 0;
   const char *key_col = NULL, *op = NULL;
+  TP_DOMAIN *src_dom = NULL;
+  DBLINK_ODKU_ASSIGNS odku = { NULL, NULL, 0 };
   DBLINK_DML_STATE dblink_state = { -1, -1, false, false };
 
   assert (specp != NULL);
@@ -15908,6 +15935,9 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	attr_names = insert->remote_attr_names;
 	num_attrs = insert->remote_num_attrs;
 	val_no = insert->num_vals;
+	odku.cols = insert->remote_odku_cols;
+	odku.exprs = insert->remote_odku_exprs;
+	odku.num_assigns = insert->remote_num_odku;
 
 	/* stx_build_insert_proc() (server-side XASL unpack) always allocates insert->vals when
 	 * num_vals > 0, so it is non-NULL on this path. */
@@ -15921,6 +15951,11 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	sink = &del->sink;
 	key_col = del->remote_key_col;
 	op = del->remote_op;
+	/* Domain of the value the executor will bind. dblink_dml_open() runs before qexec_open_scan(), so
+	 * s_id does not exist yet -- xasl->val_list is the same list qexec_collect_remote_delete_key() reads
+	 * from. The domain is filled before either mode reaches here: pt_make_val_list() sets it in SA, and
+	 * stx_build_val_list() rejects a NULL dom when unpacking in CS. */
+	src_dom = (xasl->val_list != NULL && xasl->val_list->valp != NULL) ? xasl->val_list->valp->dom : NULL;
 	break;
       }
     default:
@@ -15932,8 +15967,8 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   assert (sink->is_remote);
 
   /* open remote connection and prepare the INSERT, REPLACE or DELETE statement */
-  if (dblink_dml_open (thread_p, kind, sink->url, sink->user, sink->pwd, sink->table_name, attr_names, num_attrs,
-		       val_no, key_col, op, &dblink_state) != NO_ERROR)
+  if (dblink_dml_open (thread_p, kind, sink, attr_names, num_attrs, val_no, key_col, op, &odku, src_dom,
+		       &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       goto exit_on_error;
