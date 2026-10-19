@@ -92,8 +92,10 @@ arith_cast_value (const ARITH_TYPE * arith, int i, const DB_VALUE * value, DB_VA
       er_log_debug (ARG_FILE_LINE, "CBRD-27583 row converter lookup %d %d\n", (int) arith->opcode, i);
     }
 #endif
-  /* CBRD-27583 exception until S3-36 (B): a multi-class spec whose classes give a column other types (cbrd_22694)
-   * hands the cast a value of another type than planned, which looks its converter up */
+  /* CBRD-27583 exception: a recursive CTE's recursive part that reads a column its non-recursive part left NULL-typed
+   * (with recursive c (n, s) as (select 1, null ... union all select n + 1, coalesce (s, 'x') from c ...)) hands the
+   * cast a value of another type than its operand's planned NULL, which looks its converter up; a multi-class spec's
+   * column of other types (cbrd_22694) no longer reaches it (S3-36) */
   TP_DECISION_EXCEPTION_IF (looks_up);
   return kind == ARITH_CAST_AUTO ? tp_value_auto_cast_with_converter (value, result, domain, arith->conv_type[i], conv)
     : tp_value_cast_with_converter (value, result, domain, kind == ARITH_CAST_FORCE, arith->conv_type[i], conv);

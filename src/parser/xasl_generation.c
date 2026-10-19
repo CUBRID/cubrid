@@ -14914,6 +14914,45 @@ pt_get_mvcc_reev_range_data (PARSER_CONTEXT * parser, TABLE_INFO * table_info, P
   return NO_ERROR;
 }
 
+#if !defined (NDEBUG)
+/*
+ * pt_census_class_attributes () - CBRD-27583 census (removed at S3-14): a class of a spec of several classes whose
+ *   attribute's domain differs from the value list slot the spec's readers take (pt_find_attr_in_class_list makes any
+ *   difference but an object's class an error, so none is expected)
+ */
+static void
+pt_census_class_attributes (PARSER_CONTEXT * parser, const PT_NODE * class_, const ACCESS_SPEC_TYPE * access,
+			    const VAL_LIST * values)
+{
+  if (access->type != TARGET_CLASS && access->type != TARGET_CLASS_ATTR)
+    {
+      return;
+    }
+  const REGU_VARIABLE_LIST lists[4] = { access->s.cls_node.cls_regu_list_key, access->s.cls_node.cls_regu_list_pred,
+    access->s.cls_node.cls_regu_list_rest, access->s.cls_node.cls_regu_list_range
+  };
+  for (int k = 0; k < 4; k++)
+    {
+      for (REGU_VARIABLE_LIST r = lists[k]; r != NULL; r = r->next)
+	{
+	  const QPROC_DB_VALUE_LIST slot = r->value.vfetch_to != NULL ? pt_value_list_slot (values, r->value.vfetch_to)
+	    : NULL;
+	  const TP_DOMAIN *own = r->value.domain;
+	  if (slot == NULL || slot->dom == NULL || own == NULL || tp_domain_match (own, slot->dom, TP_EXACT_MATCH)
+	      || (TP_DOMAIN_TYPE (own) == DB_TYPE_OBJECT && TP_DOMAIN_TYPE (slot->dom) == DB_TYPE_OBJECT))
+	    {
+	      continue;
+	    }
+	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 class attribute differs %d %d.%d.%d.%d -> %d.%d.%d.%d %s: %.200s\n",
+			k, (int) TP_DOMAIN_TYPE (own), own->precision, own->scale, own->collation_id,
+			(int) TP_DOMAIN_TYPE (slot->dom), slot->dom->precision, slot->dom->scale,
+			slot->dom->collation_id, class_->info.name.original,
+			parser->original_buffer ? parser->original_buffer : "");
+	}
+    }
+}
+#endif /* !NDEBUG */
+
 /*
  * pt_to_class_spec_list () - Convert a PT_NODE flat class list to
  *     an ACCESS_SPEC_LIST list of representing the classes to be selected from
@@ -15314,6 +15353,12 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 
 	  if (access)
 	    {
+#if !defined (NDEBUG)
+	      if (flat->next != NULL)
+		{
+		  pt_census_class_attributes (parser, class_, access, table_info->value_list);
+		}
+#endif
 	      if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE)
 		{
 		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FOR_UPDATE);

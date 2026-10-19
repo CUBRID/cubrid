@@ -3954,6 +3954,7 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
   DB_ATTRIBUTE *att = 0;
   DB_OBJECT *db = 0;
   PT_NODE *cname = flat;
+  const TP_DOMAIN *first_domain = NULL;
 
   if (!flat || !attr)
     {
@@ -4005,6 +4006,21 @@ pt_find_attr_in_class_list (PARSER_CONTEXT * parser, PT_NODE * flat, PT_NODE * a
 
       /* set its type */
       pt_get_attr_data_type (parser, att, attr);
+
+      /* the classes' values reach one reader in one domain: an attribute whose domain differs from the first class's
+       * in anything (type, precision, scale, collation, ...) is an error; object domains of different classes (a
+       * subclass narrowing an inherited attribute) are not: the value is the same OID and nothing converts it */
+      if (cname == flat)
+	{
+	  first_domain = att->domain;
+	}
+      else if (!tp_domain_match (att->domain, first_domain, TP_EXACT_MATCH)
+	       && (TP_DOMAIN_TYPE (att->domain) != DB_TYPE_OBJECT || TP_DOMAIN_TYPE (first_domain) != DB_TYPE_OBJECT))
+	{
+	  PT_ERRORmf3 (parser, attr, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_ATTR_TYPE_DIFFERS_IN_CLASSES,
+		       attr->info.name.original, flat->info.name.original, cname->info.name.original);
+	  return 0;
+	}
 
       if (PT_NAME_INFO_IS_FLAGED (attr, PT_NAME_INFO_FILL_DEFAULT))
 	{

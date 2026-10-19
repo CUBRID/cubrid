@@ -2012,6 +2012,7 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 341 Column '%1$s' of the SEMI/ANTI JOIN inner table cannot be referenced.
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
+344 Attribute '%1$s' has different types in classes %2$s and %3$s.
 
 
 
