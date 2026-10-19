@@ -803,11 +803,15 @@ public class TypeChecker extends AstVisitor<Type> {
     @Override
     public Type visitExprLocalFuncCall(ExprLocalFuncCall node) {
         checkRoutineCall(node.decl, node.args.nodes);
+
+        // collecting sql uses in recursive calls is not related to type checking
+        // it would be better if it was done in another step between ParseTreeConverter and TypeChecking.
         if (routineDefNestLevel == 1) {
             Stack<DeclRoutine> calls = new Stack<>();
             node.decl.visitToFindRecursiveCalls(sqlUsesInRecursiveCalls, calls);
             assert calls.size() == 0;
         }
+
         return node.decl.retTypeSpec.type;
     }
 

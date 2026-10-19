@@ -40,9 +40,8 @@ import org.antlr.v4.runtime.ParserRuleContext;
 
 public abstract class StmtLoop extends Stmt {
 
-    public Set<SqlUse>
-            reachableSqlUses; // sql uses that are rechable from this loop, but not contained in
-    // this loop
+    // sql uses that are rechable from this loop, but not contained in this loop
+    public Set<SqlUse> reachableSqlUses;
     public final LoopOptimizables loopOptimizables;
 
     public StmtLoop(ParserRuleContext ctx, LoopOptimizables loopOptimizables) {

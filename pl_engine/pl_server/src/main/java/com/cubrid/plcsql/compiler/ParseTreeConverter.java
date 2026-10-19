@@ -3381,7 +3381,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 }
                 if (ctx.authid_spec() != null) {
                     throw new SemanticError(
-                            Misc.getLineColumnOf(ctx.LANGUAGE()), // s084
+                            Misc.getLineColumnOf(ctx.authid_spec()), // s084
                             "illegal keyword AUTHID for a local procedure/function");
                 }
                 if (ctx.uniq_name().owner != null) {
