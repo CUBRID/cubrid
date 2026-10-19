@@ -352,6 +352,8 @@ static QO_PLAN *qo_plan_order_by (QO_PLAN *, QO_EQCLASS *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp_prefer_covering_index (QO_PLAN *, QO_PLAN *);
 static void qo_plan_fprint (QO_PLAN *, FILE *, int, const char *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp (QO_PLAN *, QO_PLAN *);
+static double qo_plan_parallel_variable_cost (QO_PLAN * plan, double divisor);
+static double qo_plan_parallel_variable_cost_raw (QO_PLAN * plan, double divisor);
 static QO_PLAN_COMPARE_RESULT qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b);
 static QO_PLAN_COMPARE_RESULT qo_index_covering_plans_cmp (QO_PLAN *, QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_order_by_skip_plans_cmp (QO_PLAN *, QO_PLAN *);
@@ -616,6 +618,8 @@ qo_plan_malloc (QO_ENV * env)
   plan->iscan_index_rows = 0.0;
   plan->iscan_heap_io = 0.0;
   plan->iscan_descent_cpu = 0.0;
+  plan->cmp_variable_cost = 0.0;
+  plan->cmp_variable_key = -1.0;
 
   return plan;
 }
@@ -5210,6 +5214,22 @@ qo_plan_is_parallel_driven (QO_PLAN * plan)
  */
 static double
 qo_plan_parallel_variable_cost (QO_PLAN * plan, double divisor)
+{
+  double variable = plan->variable_cpu_cost + plan->variable_io_cost;
+
+  /* plan comparison asks for the same plans over and over during the join enumeration, and
+   * the answer walks the plan tree: compute it once per costing of the plan */
+  if (plan->cmp_variable_key != variable)
+    {
+      plan->cmp_variable_cost = qo_plan_parallel_variable_cost_raw (plan, divisor);
+      plan->cmp_variable_key = variable;
+    }
+
+  return plan->cmp_variable_cost;
+}
+
+static double
+qo_plan_parallel_variable_cost_raw (QO_PLAN * plan, double divisor)
 {
   double variable = plan->variable_cpu_cost + plan->variable_io_cost;
   QO_PLAN *outer, *inner;

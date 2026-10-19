@@ -257,6 +257,10 @@ struct qo_plan
 				   scan descend once per execution, and charging them per row taxed index
 				   scans with no qo_sscan_cost counterpart (broke exact plan ties on tiny
 				   and statistics-less tables) */
+  double cmp_variable_cost;	/* memo of qo_plan_cmp_variable_cost (): the variable cost with the
+				   parallel part divided, valid while the raw variable cost still equals
+				   cmp_variable_key (a re-costed plan recomputes it) */
+  double cmp_variable_key;
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))
