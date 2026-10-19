@@ -405,6 +405,7 @@ static int btsort_merge_put_to_caller (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX
 static int btsort_merge_flush_out_section (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int num_pages);
 static int btsort_merge_append_to_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int idx);
 static int btsort_merge_close_run (BTSORT_MERGE_CTX * ctx, int out_half);
+static int btsort_merge_copy_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int act);
 static int btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param);
 static int btsort_find_inbuf_size (int tot_buffers, int in_sections);
 
@@ -2696,6 +2697,58 @@ btsort_merge_close_run (BTSORT_MERGE_CTX * ctx, int out_half)
 }
 
 /*
+ * btsort_merge_copy_run () - Copy the first run of an input file to the current output file as it is
+ *   return: NO_ERROR, or error code
+ *   ctx(in/out): merge state
+ *   act(in): the input file
+ *
+ * Note: Used when one input file is the only active one on the last run of a pass: there is nothing to merge.
+ *       The whole internal_memory is the copy buffer. The run moves from act's list to the output file's list.
+ */
+static int
+btsort_merge_copy_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int act)
+{
+  BTSORT_PARAM *sort_param = ctx->sort_param;
+  BTSORT_FILE_CONTENTS *contents = &sort_param->file_contents[act];
+  int out = ctx->cur_outfile;
+  int cp_pages = contents->num_pages[contents->first_run];
+  int read_pages;
+  int error;
+
+  error = btsort_run_add_new (&sort_param->file_contents[out], cp_pages);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  btsort_run_remove_first (contents);
+
+  while (cp_pages > 0)
+    {
+      read_pages = MIN (cp_pages, sort_param->tot_buffers);
+
+      error = btsort_read_area (thread_p, &sort_param->temp[act], &sort_param->temp_cursor[act], ctx->cur_page[act],
+				read_pages, sort_param->internal_memory);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      ctx->cur_page[act] += read_pages;
+
+      error = btsort_write_area (thread_p, &sort_param->temp[out], &sort_param->temp_cursor[out], ctx->cur_page[out],
+				 read_pages, sort_param->internal_memory, sort_param->tde_encrypted);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      ctx->cur_page[out] += read_pages;
+
+      cp_pages -= read_pages;
+    }
+
+  return NO_ERROR;
+}
+
+/*
  * btsort_exphase_merge () - Merge phase
  *   return:
  *   sort_param(in): sort parameters
@@ -2706,19 +2759,14 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 {
   BTSORT_MERGE_CTX ctx;		/* input/output sections and the ordered list of the inputs' smallest records */
   int pre_act_infiles;		/* Number of active input files in the previous iteration */
-  int read_pages;		/* Number of pages read in to fill the input buffer */
   int out_half;			/* Which half of temp files is for output */
   int num_runs;			/* Number of output runs to be produced in this stage of the merging phase; */
   bool run_done;		/* the min input's current run is exhausted */
+  bool very_last_run = false;
+  int min;
   int error;
   int i, j;
   int temp;
-  int min;
-  bool very_last_run = false;
-  int act;
-  int cp_pages;
-
-  int first_run;
 
   error = NO_ERROR;
 
@@ -2772,96 +2820,27 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	{
 	  if (!very_last_run && (j == 1))
 	    {
-	      /* LAST RUN OF THIS ITERATION */
-
-	      /* Last iteration of the outer loop ; some of the input files might have become empty. */
-
+	      /* LAST RUN OF THIS ITERATION: some of the input files might have become empty. */
 	      pre_act_infiles = ctx.act_infiles;
 	      ctx.act_infiles = btsort_get_numpages_of_active_infiles (sort_param);
 	      if (ctx.act_infiles != pre_act_infiles)
 		{
-		  /* Some of the active input files became inactive */
-
 		  if (ctx.act_infiles == 1)
 		    {
-		      /* ONE ACTIVE INFILE */
-
-		      /*
-		       * There is only one active input file (i.e. there is
-		       * only one input run to produce the output run). So,
-		       * there is no need to perform the merging actions. All
-		       * needed is to copy this input run to the current output
-		       * file.
-		       */
-		      act = -1;
-
-		      /* Find which input file contains this last input run */
-		      for (i = sort_param->in_half; i < (sort_param->in_half + pre_act_infiles); i++)
-			{
-			  if (sort_param->file_contents[i].first_run != -1)
-			    {
-			      act = i;
-			      break;
-			    }
-			}
-
-		      if (act == -1)
-			{
-			  goto bailout;
-			}
-
-		      first_run = sort_param->file_contents[act].first_run;
-		      cp_pages = sort_param->file_contents[act].num_pages[first_run];
-
-		      error = btsort_run_add_new (&sort_param->file_contents[ctx.cur_outfile], cp_pages);
+		      /* ONE ACTIVE INFILE: there is nothing to merge, copy its run to the current output file. The active
+		       * files are the first ones of the input half, so the one left is the first. */
+		      error = btsort_merge_copy_run (thread_p, &ctx, sort_param->in_half);
 		      if (error != NO_ERROR)
 			{
 			  goto bailout;
-			}
-		      btsort_run_remove_first (&sort_param->file_contents[act]);
-
-		      /* Use the whole internal_memory area as both the input and output buffer areas. */
-		      while (cp_pages > 0)
-			{
-			  if (cp_pages > sort_param->tot_buffers)
-			    {
-			      read_pages = sort_param->tot_buffers;
-			    }
-			  else
-			    {
-			      read_pages = cp_pages;
-			    }
-
-			  error =
-			    btsort_read_area (thread_p, &sort_param->temp[act], &sort_param->temp_cursor[act],
-					      ctx.cur_page[act], read_pages, sort_param->internal_memory);
-			  if (error != NO_ERROR)
-			    {
-			      goto bailout;
-			    }
-
-			  ctx.cur_page[act] += read_pages;
-			  error =
-			    btsort_write_area (thread_p, &sort_param->temp[ctx.cur_outfile],
-					       &sort_param->temp_cursor[ctx.cur_outfile], ctx.cur_page[ctx.cur_outfile],
-					       read_pages, sort_param->internal_memory, sort_param->tde_encrypted);
-			  if (error != NO_ERROR)
-			    {
-			      goto bailout;
-			    }
-
-			  ctx.cur_page[ctx.cur_outfile] += read_pages;
-			  cp_pages -= read_pages;
 			}
 
 		      /* Skip the remaining operations of the PRODUCE RUNS loop */
 		      continue;
 		    }
-		  else
-		    {
-		      /* There are more than one active input files; redistribute buffers */
-		      btsort_merge_assign_sections (&ctx);
-		    }
+
+		  /* There are more than one active input files; redistribute buffers */
+		  btsort_merge_assign_sections (&ctx);
 		}
 	    }
 
