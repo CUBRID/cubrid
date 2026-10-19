@@ -1011,17 +1011,20 @@ la_coordinator_complete_without_task (const LOG_LSA * lsa)
 
 /*
  * la_is_in_recovery_range() - whether a commit lies in the restart recovery range
- *   return: true if commit_lsa is at or below recovery_boundary_lsa
+ *   return: true if commit_lsa is above last_committed_lsa and at or below recovery_boundary_lsa
  *   commit_lsa(in): LSA of the commit
  *
  * Note:
- *   The range ends at the last commit the previous run may have applied, so applied and unapplied
- *   transactions are mixed in it. It is empty when no bound was stored.
+ *   The range starts after the committed LSA this process started from and ends at the last commit the
+ *   previous run may have applied, so applied and unapplied transactions are mixed in it. A commit at or
+ *   below the start is skipped whole by the worker and touches no row, so it is not in the range. The
+ *   range is empty when no bound was stored.
  */
 static bool
 la_is_in_recovery_range (const LOG_LSA * commit_lsa)
 {
-  return !LSA_ISNULL (&la_Info.recovery_boundary_lsa) && LSA_LE (commit_lsa, &la_Info.recovery_boundary_lsa);
+  return (!LSA_ISNULL (&la_Info.recovery_boundary_lsa) && LSA_GT (commit_lsa, &la_Info.last_committed_lsa)
+	  && LSA_LE (commit_lsa, &la_Info.recovery_boundary_lsa));
 }
 
 /*
@@ -7349,6 +7352,10 @@ static LOG_LSA la_wset_label_dependency_seq = LSA_INITIALIZER;
  *   state, two of them can lock rows the master never had them share and the workers deadlock. The victim
  *   fails its task, the applier exits, and the next run replays the same range into the same deadlock, so the
  *   slave stops advancing. The first commit past the range starts after every one in it has retired.
+ *
+ *   The log is read again from the required LSA, so the commits between it and the committed LSA this
+ *   process started from come first. The workers skip them whole, so they take the parallel path and the
+ *   range starts only after all of them have retired.
  */
 static int
 la_coordinator_submit_task (LA_TASK * task)
@@ -7370,6 +7377,29 @@ la_coordinator_submit_task (LA_TASK * task)
 
   if (la_Info.worker_count == 1 || la_is_in_recovery_range (&task->commit_lsa))
     {
+      /* the skipped commits before the range went out in parallel; the first commit in the range waits until
+       * all of them are dispatched and retired, then each one in the range runs alone. Entries retire in
+       * dispatch order once finished, so the wait ends; then every commit before the earliest parked one is
+       * applied, which makes that one ready for the next pass. */
+      if (la_Info.worker_count > 1)
+	{
+	  do
+	    {
+	      error = la_coordinator_drain_ready ();
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+
+	      error = la_coordinator_wait_until_retired ();
+	      if (error != NO_ERROR)
+		{
+		  return error;
+		}
+	    }
+	  while (!la_pending_is_empty ());
+	}
+
       /* nothing is ever parked on this path, so the FIFO queue alone carries the commit order */
       assert (la_pending_is_empty ());
       error = la_coordinator_dispatch_task (task, LA_SCHED_DISPATCHED);
