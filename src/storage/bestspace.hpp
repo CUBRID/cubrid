@@ -395,6 +395,8 @@ namespace cubstorage
       // thread since the last scan began turns it back on, at most once per REDISCOVER_REARM_INTERVAL.
       // Returns an error only for a real failure such as an interruption or an I/O error.
       // TODO: run the scan outside the user transaction; consumers re-validate, so a late result is fine.
+      // TODO: free pages beyond the budget from the cursor are missed (e.g. after a range DELETE); a re-armed scan
+      // could start at the first page the queue dropped.
       int rediscover (HFID *hfid, std::uint16_t needed_size, std::size_t &num_usable);
 
       void to_entries (bestspace_entry *entries, bestspace_entry *candidates, std::size_t &num_candidates);
