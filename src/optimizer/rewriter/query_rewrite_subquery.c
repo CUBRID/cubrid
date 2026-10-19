@@ -649,6 +649,12 @@ qo_check_eq_term_on_column (PARSER_CONTEXT * parser, PT_NODE * where, PT_NODE * 
 	  continue;
 	}
 
+      /* the key is unique in its own type; compared in a wider type (INT as FLOAT) two key values can be equal */
+      if (!pt_check_same_datatype (parser, mine, other))
+	{
+	  continue;
+	}
+
       /* the other side must not read the spec, or the equality fixes nothing */
       ref = spec->info.spec.id;
       (void) parser_walk_tree (parser, other, pt_is_spec_referenced, &ref, pt_continue_walk, NULL);
@@ -808,7 +814,10 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  if (tp_valid_indextype (pt_type_enum_to_db (arg1_next->type_enum))
 	      && (pt_is_attr (arg1_next) || pt_is_function_index_expression (arg1_next)))
 	    {
-	      if (tp_valid_indextype (pt_type_enum_to_db (arg2_next->type_enum)) && !pt_has_analytic (parser, arg2))
+	      /* the derived table removes duplicates in the subquery column's type, the join compares in the wider
+	       * type of the two (INT as FLOAT): unless they are one type, two inner values can match one outer row */
+	      if (tp_valid_indextype (pt_type_enum_to_db (arg2_next->type_enum)) && !pt_has_analytic (parser, arg2)
+		  && pt_check_same_datatype (parser, arg1_next, arg2_next))
 		{
 		  select_list = pt_get_select_list (parser, arg2);
 		  if (select_list != NULL && arg2->info.query.correlation_level == 0)

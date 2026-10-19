@@ -7492,8 +7492,12 @@ qo_prepare_distinct_info (QO_PLANNER * planner)
 	  /* qo_is_equi_join_term () wants a plain column on both sides.  QO_TERM_MERGEABLE_EDGE is not enough: it
 	   * is set for any '=' (expr_is_mergable ()), so UPPER (t2.name) = UPPER (t1.name) carries it too, while
 	   * the file removes duplicates by the column t2.name itself -- 'abc' and 'ABC' would both stay and an
-	   * outer row would match twice.  Only a column equated as it is pins the file to one row per outer row. */
-	  if (QO_TERM_CLASS (term) != QO_TC_JOIN || !qo_is_equi_join_term (term))
+	   * outer row would match twice.  Only a column equated as it is pins the file to one row per outer row, and
+	   * only when both sides are of one type: compared in a wider type (INT as FLOAT) two of its values can be
+	   * equal. */
+	  if (QO_TERM_CLASS (term) != QO_TC_JOIN || !qo_is_equi_join_term (term)
+	      || !pt_check_same_datatype (QO_ENV_PARSER (env), QO_TERM_PT_EXPR (term)->info.expr.arg1,
+					  QO_TERM_PT_EXPR (term)->info.expr.arg2))
 	    {
 	      eligible = false;
 	      break;
