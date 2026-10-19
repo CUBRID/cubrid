@@ -6634,6 +6634,52 @@ pt_spec_list_producer (const PT_NODE * spec)
     ? (const XASL_NODE *) cte->info.cte.non_recursive_part->info.query.xasl : NULL;
 }
 
+/*
+ * CBRD-27583 (S3-46): a regu a recursive CTE's recursive part reads its own column with, where the non-recursive part
+ *   writes the column NULL-typed: generated with the column's NULL type, or with the self-reference's type from type
+ *   checking, it takes the column's unified domain once pt_plan_cte decided it (D-90) - the type of the values it
+ *   reads, which unpack plans its conversions and comparisons from; the nodes over it keep what generation decided
+ */
+typedef struct pt_cte_null_reader PT_CTE_NULL_READER;
+struct pt_cte_null_reader
+{
+  const PT_NODE *cte;
+  int pos;
+  REGU_VARIABLE *regu;
+  QPROC_DB_VALUE_LIST slot;	/* a position's value list slot, NULL for none */
+  PT_CTE_NULL_READER *next;
+};
+
+/* the readers noted while parser_generate_xasl generates a statement */
+static PT_CTE_NULL_READER *pt_Cte_null_readers = NULL;
+
+static void
+pt_note_cte_null_reader (PARSER_CONTEXT * parser, const PT_NODE * spec, int pos, REGU_VARIABLE * regu,
+			 QPROC_DB_VALUE_LIST slot)
+{
+  if (regu == NULL || !PT_SPEC_IS_CTE (spec) || spec->info.spec.cte_pointer->info.pointer.node->info.cte.xasl != NULL)
+    {
+      return;
+    }
+  const TP_DOMAIN *column = domain_list_column_of (pt_spec_list_producer (spec), pos);
+  if (column == NULL || TP_DOMAIN_TYPE (column) != DB_TYPE_NULL)
+    {
+      return;
+    }
+  PT_CTE_NULL_READER *reader = (PT_CTE_NULL_READER *) parser_alloc (parser, sizeof (PT_CTE_NULL_READER));
+  if (reader == NULL)
+    {
+      /* the reader stays NULL-typed: its values look their conversions up at the row */
+      return;
+    }
+  reader->cte = spec->info.spec.cte_pointer->info.pointer.node;
+  reader->pos = pos;
+  reader->regu = regu;
+  reader->slot = slot;
+  reader->next = pt_Cte_null_readers;
+  pt_Cte_null_readers = reader;
+}
+
 /* CBRD-27583: a string domain whose collation type checking left to the values (LEAVE), in the collation decided
  * (collation); NULL for a domain that has its collation, or a decided one without */
 static TP_DOMAIN *
@@ -12163,6 +12209,7 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 		  const int index = pt_find_attribute (parser, attr, table_info->attribute_list);
 		  regu->type = TYPE_CONSTANT;
 		  regu->domain = pt_list_reader_domain (parser, table_info->class_spec, index, attr);
+		  pt_note_cte_null_reader (parser, table_info->class_spec, index, regu, NULL);
 		  dbval = pt_index_value (table_info->value_list, index);
 		  if (dbval)
 		    {
@@ -12218,6 +12265,7 @@ pt_attribute_to_regu (PARSER_CONTEXT * parser, PT_NODE * attr)
 		      regu->type = TYPE_CONSTANT;
 		      /* CBRD-27583 (D-35): the enclosing block made its derived tables before this subquery */
 		      regu->domain = pt_list_reader_domain (parser, table_info->class_spec, index, attr);
+		      pt_note_cte_null_reader (parser, table_info->class_spec, index, regu, NULL);
 		      dbval = pt_index_value (table_info->value_list, index);
 		      if (dbval)
 			{
@@ -16115,6 +16163,15 @@ pt_to_cte_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * ct
   regu_attributes_rest = pt_to_position_regu_variable_list (parser, rest_attrs, tbl_info->value_list, rest_offsets);
   pt_set_list_position_domains (regu_attributes_pred, tbl_info->value_list, pt_spec_list_producer (spec), NULL);
   pt_set_list_position_domains (regu_attributes_rest, tbl_info->value_list, pt_spec_list_producer (spec), NULL);
+  REGU_VARIABLE_LIST position_lists[2] = { regu_attributes_pred, regu_attributes_rest };
+  for (int i = 0; i < 2; i++)
+    {
+      for (REGU_VARIABLE_LIST list = position_lists[i]; list != NULL; list = list->next)
+	{
+	  pt_note_cte_null_reader (parser, spec, list->value.value.pos_descr.pos_no, &list->value,
+				   pt_value_list_slot (tbl_info->value_list, list->value.vfetch_to));
+	}
+    }
 
   parser_free_tree (parser, pred_attrs);
   parser_free_tree (parser, rest_attrs);
@@ -20789,6 +20846,34 @@ pt_plan_set_query (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
 }
 
 /*
+ * pt_type_cte_null_readers () - CBRD-27583 (S3-46): the recursive part's readers of a column the non-recursive part
+ *   writes NULL-typed (pt_note_cte_null_reader) take the column's unified domain. An operator or a scan reads the regu
+ *   it was given; an output list holds a copy of its regus (pt_to_outlist), so the recursive part's columns, and the
+ *   unification pt_check_list_branches made of them, do not change
+ */
+static void
+pt_type_cte_null_readers (const PT_NODE * cte, const XASL_NODE * non_recursive_xasl)
+{
+  for (PT_CTE_NULL_READER * reader = pt_Cte_null_readers; reader != NULL; reader = reader->next)
+    {
+      TP_DOMAIN *column = reader->cte == cte ? domain_list_column_of (non_recursive_xasl, reader->pos) : NULL;
+      if (column == NULL || TP_DOMAIN_TYPE (column) == DB_TYPE_NULL)
+	{
+	  continue;
+	}
+      reader->regu->domain = column;
+      if (reader->regu->type == TYPE_POSITION)
+	{
+	  reader->regu->value.pos_descr.dom = column;
+	}
+      if (reader->slot != NULL)
+	{
+	  reader->slot->dom = column;
+	}
+    }
+}
+
+/*
  * pt_plan_cte () - converts a PT_NODE tree of a CTE to an XASL tree
  * return: XASL_NODE, NULL indicates error
  * parser(in): context
@@ -20835,6 +20920,10 @@ pt_plan_cte (PARSER_CONTEXT * parser, PT_NODE * node, PROC_TYPE proc_type)
 				     recursive_part_xasl) != NO_ERROR)
 	{
 	  return NULL;
+	}
+      if (recursive_part_xasl != NULL && non_recursive_part_xasl != NULL)
+	{
+	  pt_type_cte_null_readers (node, non_recursive_part_xasl);
 	}
     }
 
@@ -26676,8 +26765,12 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
 
 	  db_query_plan_dump_fp_open ();
 
+	  /* a nested call keeps the readers of the statement it is called from */
+	  PT_CTE_NULL_READER *save_cte_null_readers = pt_Cte_null_readers;
+	  pt_Cte_null_readers = NULL;
 	  node =
 	    parser_walk_tree (parser, node, parser_generate_xasl_pre, NULL, parser_generate_xasl_post, &xasl_Supp_info);
+	  pt_Cte_null_readers = save_cte_null_readers;
 
 	  /* close file handle for query plan if this function open it */
 	  db_query_plan_dump_fp_close ();
