@@ -197,6 +197,7 @@ static int scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				     cubxasl::aggregate_list_node * agg_list, val_descr * vd,
 				     const EXPR_BATCH_GBY_MAP * gby, bool cached_ok);
 static SCAN_CODE scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static void scan_batch_rewind (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static int scan_batch_copy_kept (SCAN_ID * scan_id);
 static int scan_batch_row_values (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, EXPR_BATCH_ROW * row);
 static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -5145,6 +5146,10 @@ scan_reset_scan_block (THREAD_ENTRY * thread_p, SCAN_ID * s_id)
 	{
 	  s_id->position = (s_id->direction == S_FORWARD) ? S_BEFORE : S_AFTER;
 	  OID_SET_NULL (&s_id->s.hsid.curr_oid);
+	  if (s_id->s.hsid.batch_started)
+	    {
+	      scan_batch_rewind (thread_p, s_id);
+	    }
 	}
       break;
 
@@ -8711,6 +8716,37 @@ scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
 	    }
 	}
+    }
+}
+
+/*
+ * scan_batch_rewind () - the batch walk starts over from the heap's first page
+ *   scan_id(in/out): the heap scan, reset for a new scan block (scan_reset_scan_block ())
+ *
+ * A join's outer scan is read again for each block combination of the scans after it, and the row path reads it
+ * again from a null OID; the walk (scan_batch_next_page ()) keeps its own place -- the page, the slot, the chunk
+ * still going out -- and, left there, would answer the new pass with its old end.
+ */
+static void
+scan_batch_rewind (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+
+  if (hsidp->scan_cache.page_watcher.pgptr != NULL && !hsidp->scan_cache.cache_last_fix_page)
+    {
+      /* the batch held its page past what the scan cache releases on its own (as scan_end_scan () lets it go) */
+      pgbuf_ordered_unfix (thread_p, &hsidp->scan_cache.page_watcher);
+    }
+  hsidp->batch_started = false;
+  VPID_SET_NULL (&hsidp->batch_vpid);
+  hsidp->batch_rowmode = false;
+  hsidp->batch_page_more = false;
+  hsidp->batch_pos = 0;
+  hsidp->batch_slot = 0;
+  hsidp->batch_last_slot = 0;
+  if (hsidp->batch != NULL)
+    {
+      hsidp->batch->n_sel = 0;
     }
 }
 
