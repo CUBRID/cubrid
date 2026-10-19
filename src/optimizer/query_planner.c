@@ -5132,18 +5132,18 @@ qo_plan_cmp_prefer_covering_index (QO_PLAN * scan_plan_p, QO_PLAN * sort_plan_p)
 /*
  * qo_plan_parallel_hint () - the select's hint bits, 0 when unavailable
  */
-static int
+static PT_HINT_ENUM
 qo_plan_parallel_hint (QO_PLAN * plan)
 {
   PT_NODE *tree;
 
   if (plan == NULL || plan->info == NULL || plan->info->env == NULL)
     {
-      return 0;
+      return PT_HINT_NONE;
     }
 
   tree = QO_ENV_PT_TREE (plan->info->env);
-  return (tree != NULL && PT_IS_SELECT (tree)) ? (int) tree->info.query.q.select.hint : 0;
+  return (tree != NULL && PT_IS_SELECT (tree)) ? tree->info.query.q.select.hint : PT_HINT_NONE;
 }
 
 /*
@@ -5165,7 +5165,7 @@ static bool
 qo_plan_is_parallel_driven (QO_PLAN * plan)
 {
   double threshold = (double) prm_get_integer_value (PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD);
-  int hint = qo_plan_parallel_hint (plan);
+  PT_HINT_ENUM hint = qo_plan_parallel_hint (plan);
 
   while (plan != NULL && plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
     {
