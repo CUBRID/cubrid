@@ -12464,8 +12464,6 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
 			     HEAP_CACHE_ATTRINFO * attr_info, const TP_DOMAIN * domain, DB_TYPE value_type,
 			     TP_VALUE_CONVERTER conv)
 {
-  /* CBRD-27583 exception until S3-23 (B): an attribute value into its catalog domain */
-  TP_DECISION_EXCEPTION ();
   HEAP_ATTRVALUE *value;
   const PR_TYPE *pr_type;
   int ret = heap_attrinfo_start_set (inst_oid, attrid, attr_info, &value, &pr_type);
@@ -12475,19 +12473,13 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
     }
   const TP_DOMAIN *catalog = value->last_attrepr->domain;
   assert (TP_DOMAIN_TYPE (catalog) == TP_DOMAIN_TYPE (domain));
-  /* exception - until 4.9: a PL static SQL bind comes in another type than its declared one (a VARCHAR for a CHAR),
-   * whose converter the cast looks up; deleted when the PL server sends the declared type */
-#if !defined (NDEBUG)
-  if (!DB_IS_NULL (attr_val) && DB_VALUE_DOMAIN_TYPE (attr_val) != value_type)
-    {
-      er_log_debug (ARG_FILE_LINE, "CBRD-27583 assign value type %d planned %d attr type %d\n",
-		    (int) DB_VALUE_DOMAIN_TYPE (attr_val), (int) value_type, (int) TP_DOMAIN_TYPE (domain));
-    }
-#endif
-  /* exception (D-47): the data carries the types - a collection's elements (set_check_domain); a compatible
-   * collection is stored as it is, as develop's heap_attrinfo_set does */
+  const bool collection = TP_IS_SET_TYPE (pr_type->id) && !DB_IS_NULL (attr_val);
+  /* CBRD-27583 exception, the data carries the type (2-7, D-47): a collection's elements, which its check
+   * (set_check_domain) and its conversion read by their values; a compatible collection is stored as it is, as
+   * develop's heap_attrinfo_set does */
+  TP_DECISION_EXCEPTION_IF (collection);
   if (DB_IS_NULL (attr_val) || TP_DOMAIN_TYPE (catalog) == DB_TYPE_OBJECT
-      || (TP_IS_SET_TYPE (pr_type->id) && tp_domain_check (catalog, attr_val, TP_EXACT_MATCH) == DOMAIN_COMPATIBLE))
+      || (collection && tp_domain_check (catalog, attr_val, TP_EXACT_MATCH) == DOMAIN_COMPATIBLE))
     {
       /* NULL, and an object reference, which the server takes as it is (tp_domain_check) */
       ret = pr_type->setval (&value->dbvalue, attr_val, TP_IS_SET_TYPE (pr_type->id));

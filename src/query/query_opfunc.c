@@ -1990,8 +1990,8 @@ qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE 
       /* set or multiset */
       int error;
       {
-	/* CBRD-27583 exception, the data carries the type (2-7): the union converts a sequence and an element of
-	 * another domain by their values (set_op, setobj_ismember) */
+	/* CBRD-27583 exception, the data carries the type (2-7): a collection's elements, which the union converts and
+	 * compares by their values (set_op, setobj_ismember) */
 	TP_DECISION_EXCEPTION ();
 #if !defined (NDEBUG)
 	/* CBRD-27583 census (removed at S3-14) */
@@ -2232,17 +2232,6 @@ qdata_cast_to_domain (DB_VALUE * dbval_p, DB_VALUE * result_p, TP_DOMAIN * domai
 
   if (domain_p != NULL)
     {
-#if !defined (NDEBUG)
-      const bool looks_up = conv == NULL || DB_VALUE_DOMAIN_TYPE (dbval_p) != planned;
-      if (looks_up)
-	{
-	  /* CBRD-27583 census (removed at S3-14): a cast that looks its converter up at the row */
-	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 connect by path argument lookup %d %d\n",
-			(int) DB_VALUE_DOMAIN_TYPE (dbval_p), (int) planned);
-	}
-#endif
-      /* CBRD-27583 exception: a SYS_CONNECT_BY_PATH argument of no fixed domain (no converter planned) */
-      TP_DECISION_EXCEPTION_IF (looks_up);
       dom_status = tp_value_cast_with_converter (dbval_p, result_p, domain_p, false, planned, conv);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
@@ -2843,15 +2832,10 @@ qdata_concatenate_dbval (THREAD_ENTRY * thread_p, DB_VALUE * dbval1_p, DB_VALUE 
     case DB_TYPE_VARCHAR:
     case DB_TYPE_BIT:
     case DB_TYPE_VARBIT:
-#if !defined (NDEBUG)
-      if (TP_IS_CHAR_TYPE (type1) && TP_IS_CHAR_TYPE (type2)
-	  && db_get_string_collation (dbval1_p) != db_get_string_collation (dbval2_p))
-	{
-	  /* CBRD-27583 census (removed at S3-14): the concatenation merges two collations (db_string_concatenate) */
-	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 concatenation collation merge %d %d\n",
-			db_get_string_collation (dbval1_p), db_get_string_collation (dbval2_p));
-	}
-#endif
+      /* CBRD-27583 (S3-23): type checking coerced the separator and the function into the argument's collation, so a
+       * GROUP_CONCAT's accumulator and its values share it (db_string_concatenate merges nothing) */
+      assert (!(TP_IS_CHAR_TYPE (type1) && TP_IS_CHAR_TYPE (type2))
+	      || db_get_string_collation (dbval1_p) == db_get_string_collation (dbval2_p));
       val_size = db_get_string_size (dbval2_p);
       if (res_size >= max_allowed_size)
 	{
