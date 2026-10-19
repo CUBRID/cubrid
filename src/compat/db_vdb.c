@@ -550,12 +550,6 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
-  value_hash = histogram_bind_value_hash (parser);
-  if (ws->cur_variant >= 0 && value_hash != 0 && value_hash == ws->value_hash)
-    {
-      return NO_ERROR;
-    }
-  ws->value_hash = value_hash;
   if (ws->state == BIND_VARIANT_STATE_WATCH && ws->plans == 1 && ws->checks >= BIND_VARIANT_SETTLE_CHECKS)
     {
       /* still one plan after that many sets of new values: take the query as stable */
@@ -565,9 +559,16 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
   if (ws->state == BIND_VARIANT_STATE_DONE)
     {
-      /* one plan, or nothing to choose by: the values are not looked at again */
+      /* one plan, or nothing to choose by: the values are not looked at again, not even hashed */
       return NO_ERROR;
     }
+
+  value_hash = histogram_bind_value_hash (parser);
+  if (ws->cur_variant >= 0 && value_hash != 0 && value_hash == ws->value_hash)
+    {
+      return NO_ERROR;
+    }
+  ws->value_hash = value_hash;
   if (ws->state == BIND_VARIANT_STATE_WATCH)
     {
       ws->checks++;
