@@ -5541,6 +5541,9 @@ log_cleanup_modified_class_list (THREAD_ENTRY * thread_p, LOG_TDES * tdes, LOG_L
 TRAN_STATE
 log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bool is_local_tran)
 {
+  /* logtb_complete_mvcc resets the MVCC info, keep the MVCCID for releasing its self-lock */
+  MVCCID mvccid = tdes->mvccinfo.id;
+
   qmgr_clear_trans_wakeup (thread_p, tdes->tran_index, false, false);
 
   /* tx_lob_locator_clear and logtb_complete_mvcc operations must be done before entering unactive state because
@@ -5610,6 +5613,13 @@ log_commit_local (THREAD_ENTRY * thread_p, LOG_TDES * tdes, bool retain_lock, bo
 	  if (retain_lock != true)
 	    {
 	      lock_unlock_all (thread_p);
+	    }
+	  else
+	    {
+	      /* The retained locks outlive this commit, but the self-lock on the MVCCID must not. A transaction that
+	       * modifies a row inserted by this one waits on that self-lock only until the commit record is written;
+	       * kept with the retained locks, it would wait until this session ends its next transaction. */
+	      lock_unlock_transaction_mvccid (thread_p, mvccid, X_LOCK);
 	    }
 
 	  /* Flush commit log and change the transaction state. */
