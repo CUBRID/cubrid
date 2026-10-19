@@ -35,6 +35,11 @@
 #include "thread_compat.hpp"
 
 // forward definitions
+namespace cubxasl
+{
+  struct aggregate_accumulator;
+  struct aggregate_list_node;
+}
 struct function_node;
 class regu_variable_node;
 struct DOMAIN_ARITH;
@@ -65,6 +70,11 @@ extern QPROC_TPLDESCR_STATUS qdata_generate_tuple_desc_for_valptr_list (THREAD_E
 									valptr_list_node * valptr_list, val_descr * vd,
 									qfile_list_id * list_id);
 extern int qdata_set_valptr_list_unbound (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list, val_descr * vd);
+extern void qdata_free_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list);
+extern void qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valptr_list_p, bool is_final,
+					    bool free_it);
+extern void qdata_agg_operand_prog_compile (THREAD_ENTRY * thread_p, cubxasl::aggregate_list_node * agg_list_p,
+					    val_descr * val_desc_p);
 
 /* T_ADD, T_SUB, T_MUL or T_DIV over two values, as the plan resolved it before any row (DOMAIN_ARITH: a node's
  * RESOLVED_DOMAIN, a SUM's or AVG's DOMAIN_OPERAND_COERCION, domain_arith_double for an accumulation in DOUBLE); no
