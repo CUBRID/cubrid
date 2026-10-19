@@ -41,22 +41,18 @@ namespace parallel_query
      */
 
     int
-    build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info)
+    build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager)
     {
-      HASHJOIN_INPUT_SPLIT_INFO *outer, *inner;
       HASHJOIN_SHARED_SPLIT_INFO shared_info;
+      HASHJOIN_SPLIT_STAGING_BUFFER staging_buffer = { nullptr, 0 };
       UINT32 task_cnt, task_index;
       int error = NO_ERROR;
 
       assert (manager != nullptr);
-      assert (split_info != nullptr);
 
       HASHJOIN_STATS *stats = manager->single_context.stats;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
       assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
-
-      outer = &split_info->outer;
-      inner = &split_info->inner;
 
       task_cnt = manager->num_parallel_threads;
 
@@ -70,121 +66,61 @@ namespace parallel_query
 	  goto error_exit;
 	}
 
-      error = hjoin_init_worker_tfiles (&thread_ref, manager, split_info, task_cnt);
+      error = hjoin_init_split_staging_buffer (&thread_ref, &staging_buffer, manager->context_cnt);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
 	}
 
-      if (thread_is_on_trace (&thread_ref))
+      for (int side = 0; side < 2; side++)
 	{
-	  hjoin_trace_start (&thread_ref, &start_stats);
-	}
+	  HASHJOIN_INPUT_SPLIT_INFO *input = (side == 0) ? &manager->split_info.outer : &manager->split_info.inner;
 
-      error = hjoin_init_part_staging (&thread_ref, &shared_info.staging, manager->context_cnt);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
+	  if (thread_is_on_trace (&thread_ref))
+	    {
+	      hjoin_trace_start (&thread_ref, &start_stats);
+	    }
 
-      /* collect data page sectors for outer relation */
-      error = qfile_open_list_sector_scan (&thread_ref, outer->fetch_info->list_id, &shared_info.sector_scan);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
+	  /* collect the data page sectors of the input (the sectors of the previous input are freed inside) */
+	  error = qfile_open_list_sector_scan (&thread_ref, input->fetch_info->list_id, &shared_info.sector_scan);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
 
-      for (task_index = 0; task_index < task_cnt; task_index++)
-	{
-	  task = new split_task (task_manager, manager, outer, &shared_info, task_index);
-	  task_manager.push_task (task);
-	}
+	  for (task_index = 0; task_index < task_cnt; task_index++)
+	    {
+	      task = new split_task (task_manager, manager, input, &shared_info, &staging_buffer, task_index);
+	      task_manager.push_task (task);
+	    }
 
-      task_manager.join ();
+	  task_manager.join ();
 
-      if (!task_manager.has_error ())
-	{
-	  error = hjoin_flush_part_staging (&thread_ref, &shared_info.staging, outer->part_list_id,
-					    manager->worker_tfiles[0]);
-	}
-      hjoin_clear_part_staging (&shared_info.staging);
+	  if (!task_manager.has_error ())
+	    {
+	      error = hjoin_flush_split_staging_buffer (&thread_ref, &staging_buffer, input->part_list_id,
+		      manager->split_info.worker_tfiles[0]);
+	    }
 
-      if (manager->px_worker_stats != nullptr)
-	{
-	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
-	}
-      if (thread_is_on_trace (&thread_ref))
-	{
-	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
-	}
+	  if (manager->px_worker_stats != nullptr)
+	    {
+	      hjoin_trace_drain_worker_stats (&thread_ref, manager);
+	    }
+	  if (thread_is_on_trace (&thread_ref))
+	    {
+	      hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
+	    }
 
-      if (task_manager.has_error ())
-	{
-	  goto error_exit;
-	}
-
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-
-      if (thread_is_on_trace (&thread_ref))
-	{
-	  hjoin_trace_start (&thread_ref, &start_stats);
-	}
-
-      error = hjoin_init_part_staging (&thread_ref, &shared_info.staging, manager->context_cnt);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-
-      /* collect data page sectors for inner relation
-       * (outer's sector_info is freed internally by qfile_collect_list_sector_info) */
-      error = qfile_open_list_sector_scan (&thread_ref, inner->fetch_info->list_id, &shared_info.sector_scan);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-
-      for (task_index = 0; task_index < task_cnt; task_index++)
-	{
-	  task = new split_task (task_manager, manager, inner, &shared_info, task_index);
-	  task_manager.push_task (task);
-	}
-
-      task_manager.join ();
-
-      if (!task_manager.has_error ())
-	{
-	  error = hjoin_flush_part_staging (&thread_ref, &shared_info.staging, inner->part_list_id,
-					    manager->worker_tfiles[0]);
-	}
-      hjoin_clear_part_staging (&shared_info.staging);
-
-      if (manager->px_worker_stats != nullptr)
-	{
-	  hjoin_trace_drain_worker_stats (&thread_ref, manager);
-	}
-      if (thread_is_on_trace (&thread_ref))
-	{
-	  hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
-	}
-
-      if (task_manager.has_error ())
-	{
-	  goto error_exit;
-	}
-
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
+	  if (task_manager.has_error () || error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
 	}
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
-      hjoin_clear_part_staging (&shared_info.staging);
+      hjoin_clear_split_staging_buffer (&thread_ref, &staging_buffer);
       hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
 
       return error;
@@ -249,12 +185,6 @@ error_exit:
 	}
 
       task_manager.join ();
-
-      /* every context is done, so no list reads the pages of the worker tfiles; do not hold them while the results are merged */
-      if (!task_manager.has_error ())
-	{
-	  hjoin_clear_worker_tfiles (&thread_ref, manager);
-	}
 
       /* merge the result list of each task, or destroy them if a task failed */
       for (task_index = 0; task_index < task_cnt; task_index++)

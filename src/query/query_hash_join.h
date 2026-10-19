@@ -26,6 +26,7 @@
 #include "regu_var.hpp"		/* REGU_VARIABLE_LIST */
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
+#include "query_hash_join_split.h"	/* HASHJOIN_SPLIT_STAGING_BUFFER, HASHJOIN_SPLIT_WRITER */
 #include "query_hash_scan.h"	/* HASH_METHOD */
 #include "system.h"		/* UINT32, UINT64 */
 #include "thread_entry.hpp"	/* THREAD_ENTRY */
@@ -45,6 +46,14 @@
 #define HASHJOIN_DUMP_PROBE 0
 
 /*
+ * Constants
+ */
+
+/* most partitions of a split, the partition of NULL join keys included; a larger partition is split again when it
+ * is executed (hjoin_execute_context) */
+#define HASHJOIN_PART_MAX_CNT 1024
+
+/*
  * Forward Declarations
  */
 
@@ -55,9 +64,11 @@ namespace parallel_query
 
 struct xasl_node;
 struct tp_domain;
+struct qmgr_temp_file;
 
 typedef struct xasl_node XASL_NODE;
 typedef struct tp_domain TP_DOMAIN;
+typedef struct qmgr_temp_file QMGR_TEMP_FILE;
 
 /*
  * Enum & Typedef Definitions
@@ -285,14 +296,6 @@ typedef struct hashjoin_fetch_info
   REGU_VARIABLE_LIST regu_list_pred;
 } HASHJOIN_FETCH_INFO;
 
-/* Hash key mixed for partitioning. The string hashes (ADD_TO_HASH, mht_2str_pseudo_key) clear the top 4 bits, so the
- * high bits of a raw key would put every string key into the first partitions. */
-#define HJOIN_HASH_MIX(hash_key) ((UINT32) ((UINT32) (hash_key) * 0x9E3779B1U))
-
-/* Partition of a mixed hash key, taken from its high bits. A hash table takes its slot from the low bits of the raw
- * key (mht_put_hls_internal), so partitioning by the low bits would leave each partition few distinct slots. */
-#define HJOIN_HASH_TO_PARTITION(mixed_key, part_cnt) ((UINT32) (((UINT64) (mixed_key) * (part_cnt)) >> 32))
-
 /* HASHJOIN_INPUT_SPLIT_INFO */
 typedef struct hashjoin_input_split_info
 {
@@ -305,16 +308,13 @@ typedef struct hashjoin_split_info
 {
   HASHJOIN_INPUT_SPLIT_INFO outer;
   HASHJOIN_INPUT_SPLIT_INFO inner;
-} HASHJOIN_SPLIT_INFO;
+  UINT32 part_cnt;		/* number of entries of outer.part_list_id and inner.part_list_id */
 
-/* HASHJOIN_PART_STAGING */
-typedef struct hashjoin_part_staging
-{
-  /* Last page of each partition list, kept in memory until it is full (qfile_add_tuple_to_staged_page).
-   * NULL until the partition gets a tuple. */
-  PAGE_PTR *pages;
-  UINT32 page_cnt;		/* number of partitions */
-} HASHJOIN_PART_STAGING;
+  /* Temporary files the partition lists are written to, one per split worker;
+   * kept, with the partition lists, until the partitions are executed (hjoin_clear_split_info). */
+  QMGR_TEMP_FILE **worker_tfiles;
+  int worker_tfile_cnt;
+} HASHJOIN_SPLIT_INFO;
 
 /* HASHJOIN_SHARED_SPLIT_INFO */
 typedef struct hashjoin_shared_split_info
@@ -323,38 +323,15 @@ typedef struct hashjoin_shared_split_info
   QFILE_LIST_SECTOR_SCAN_INFO sector_scan;
 
   std::mutex *part_mutexes;
-  HASHJOIN_PART_STAGING staging;	/* partition lists of the input being split */
 
   hashjoin_shared_split_info ()
     : sector_scan ()
     , part_mutexes (nullptr)
-    , staging { nullptr, 0 }
   {
     //
   }
   // *INDENT-ON*
 } HASHJOIN_SHARED_SPLIT_INFO;
-
-/* HASHJOIN_SPLIT_WRITER */
-typedef struct hashjoin_split_writer
-{
-  QFILE_LIST_ID **part_list_id;
-  HASHJOIN_PART_STAGING *staging;
-  struct qmgr_temp_file *worker_tfile;	/* pages of this writer are allocated from it */
-  // *INDENT-OFF*
-  std::mutex *part_mutexes;	/* nullptr in serial split */
-  // *INDENT-ON*
-  UINT32 part_cnt;
-
-  /* Tuples of all partitions, appended to the partition lists when the buffer is full.
-   * Each entry is the offset of the next entry of the same partition followed by the tuple. */
-  char *buffer;
-  int buffer_used;
-  int *part_first;		/* offset of the first entry of each partition, -1 if none */
-  int *part_last;
-  UINT32 *filled_parts;		/* partitions that have entries, in the order of their first entry */
-  UINT32 filled_cnt;
-} HASHJOIN_SPLIT_WRITER;
 
 /* HASHJOIN_SHARED_PROBE_INFO */
 typedef struct hashjoin_shared_probe_info
@@ -422,8 +399,9 @@ typedef struct hashjoin_context
 
   HASHJOIN_STATUS status;
 
-  /* The pages of outer.list_id and inner.list_id belong to HASHJOIN_MANAGER.worker_tfiles, not to the lists. */
-  bool is_input_in_worker_tfile;
+  /* Temporary file the sub-partition lists of this context are written to, when its lists are split again.
+   * Set by the executor of a partition context (hjoin_execute_partitions, join_task): one per thread. */
+  QMGR_TEMP_FILE *worker_tfile;
 
   /* Pointer to a member of HASHJOIN_MANAGER. */
   HASHJOIN_STATS *stats;
@@ -458,9 +436,7 @@ typedef struct hashjoin_manager
   HASHJOIN_MERGE_METHOD qlist_merge_method;
   int qlist_flag;
 
-  /* Temporary files the partition lists are written to, one per split worker. */
-  struct qmgr_temp_file **worker_tfiles;
-  int worker_tfile_cnt;
+  HASHJOIN_SPLIT_INFO split_info;	/* the partition lists and their worker tfiles */
 
   // *INDENT-OFF*
   parallel_query::worker_manager *px_worker_manager;
@@ -478,6 +454,14 @@ typedef struct hashjoin_manager
 /*
  * Macro Function Declarations
  */
+
+/* Hash key mixed for partitioning. The string hashes (ADD_TO_HASH, mht_2str_pseudo_key) clear the top 4 bits, so the
+ * high bits of a raw key would put every string key into the first partitions. */
+#define HJOIN_HASH_MIX(hash_key) ((UINT32) ((UINT32) (hash_key) * 0x9E3779B1U))
+
+/* Partition of a mixed hash key, taken from its high bits. A hash table takes its slot from the low bits of the raw
+ * key (mht_put_hls_internal), so partitioning by the low bits would leave each partition few distinct slots. */
+#define HJOIN_HASH_TO_PARTITION(mixed_key, part_cnt) ((UINT32) (((UINT64) (mixed_key) * (part_cnt)) >> 32))
 
 #if HASHJOIN_PROFILE_TIME
 #define HJOIN_PROFILE_START(thread_p, start_stats_p, step) \
@@ -518,8 +502,7 @@ int qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_i
 
 /* Hash Join Execution */
 int hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
-int hjoin_execute_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
-			   struct qmgr_temp_file *worker_tfile);
+int hjoin_execute_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 int hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 int hjoin_merge_qlist_into (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, QFILE_LIST_ID ** dest_list_id,
 			    QFILE_LIST_ID ** list_id);
@@ -529,28 +512,6 @@ int hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * ma
 				  HASHJOIN_SHARED_SPLIT_INFO * shared_info);
 void hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 				    HASHJOIN_SHARED_SPLIT_INFO * shared_info);
-
-/* Hash Join Worker Temporary File */
-int hjoin_init_worker_tfiles (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info,
-			      int worker_cnt);
-void hjoin_clear_worker_tfiles (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
-
-/* Hash Join Partition Staging */
-int hjoin_init_part_staging (THREAD_ENTRY * thread_p, HASHJOIN_PART_STAGING * staging, UINT32 part_cnt);
-int hjoin_flush_part_staging (THREAD_ENTRY * thread_p, HASHJOIN_PART_STAGING * staging, QFILE_LIST_ID ** part_list_id,
-			      struct qmgr_temp_file *worker_tfile);
-void hjoin_clear_part_staging (HASHJOIN_PART_STAGING * staging);
-
-/* Hash Join Partition Writer */
-// *INDENT-OFF*
-int hjoin_init_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer, QFILE_LIST_ID ** part_list_id,
-			    HASHJOIN_PART_STAGING * staging, struct qmgr_temp_file *worker_tfile, UINT32 part_cnt,
-			    std::mutex * part_mutexes);
-// *INDENT-ON*
-void hjoin_clear_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer);
-int hjoin_add_to_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer, UINT32 part_id,
-			       QFILE_TUPLE tuple);
-int hjoin_flush_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer);
 
 /* Hash List Scan */
 int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id);

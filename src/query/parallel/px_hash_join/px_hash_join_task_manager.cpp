@@ -164,10 +164,11 @@ namespace parallel_query
      */
 
     split_task::split_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
-			    HASHJOIN_SHARED_SPLIT_INFO *shared_info, int index)
+			    HASHJOIN_SHARED_SPLIT_INFO *shared_info, HASHJOIN_SPLIT_STAGING_BUFFER *staging_buffer, int index)
       : base_task (task_manager, manager, index)
       , m_split_info (split_info)
       , m_shared_info (shared_info)
+      , m_staging_buffer (staging_buffer)
     {
       assert (m_split_info != nullptr);
       assert (m_split_info->fetch_info != nullptr);
@@ -175,6 +176,7 @@ namespace parallel_query
 
       assert (m_shared_info != nullptr);
       assert (m_shared_info->part_mutexes != nullptr);
+      assert (m_staging_buffer != nullptr);
     }
 
     void
@@ -183,6 +185,7 @@ namespace parallel_query
       task_execution_guard guard (thread_ref, m_task_manager);
 
       QFILE_LIST_ID **part_list_id;
+      HASHJOIN_SPLIT_LANDING_BUFFER landing_buffer;
       HASHJOIN_SPLIT_WRITER split_writer;
 
       PAGE_PTR page = nullptr;
@@ -207,14 +210,16 @@ namespace parallel_query
       has_null_fill_side = IS_NULL_FILL_JOIN_TYPE (m_manager->join_type);
 
       part_list_id = m_split_info->part_list_id;
-      error = hjoin_init_split_writer (&thread_ref, &split_writer, part_list_id, &m_shared_info->staging,
-				       m_manager->worker_tfiles[m_index], part_cnt, m_shared_info->part_mutexes);
+      error = hjoin_init_split_landing_buffer (&thread_ref, &landing_buffer, part_cnt);
       if (error != NO_ERROR)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
 	  m_task_manager.handle_error (thread_ref);
 	  return;
 	}
+
+      hjoin_init_split_writer (&split_writer, &landing_buffer, m_staging_buffer,
+			       m_shared_info->part_mutexes, m_manager->split_info.worker_tfiles[m_index], part_list_id);
 
       temp_key = qdata_alloc_hscan_key (&thread_ref, m_manager->key_cnt, true);
       if (temp_key == nullptr)
@@ -223,7 +228,7 @@ namespace parallel_query
 	  m_task_manager.handle_error (thread_ref);
 
 	  /* cleanup */
-	  hjoin_clear_split_writer (&thread_ref, &split_writer);
+	  hjoin_clear_split_landing_buffer (&thread_ref, &landing_buffer);
 
 	  return;
 	}
@@ -391,7 +396,7 @@ namespace parallel_query
 	    }
 	}
 
-      hjoin_clear_split_writer (&thread_ref, &split_writer);
+      hjoin_clear_split_landing_buffer (&thread_ref, &landing_buffer);
 
       /* cleanup */
       qdata_free_hscan_key (&thread_ref, temp_key, m_manager->key_cnt);
@@ -496,9 +501,10 @@ namespace parallel_query
 
 	  context->list_id = m_shared_info->list_ids[m_index];
 
-	  assert (m_index < m_manager->worker_tfile_cnt);
-	  error = hjoin_execute_context (&thread_ref, m_manager, context, m_manager->worker_tfiles[m_index]);
-	  context->list_id = nullptr;
+	  assert (m_index < m_manager->split_info.worker_tfile_cnt);
+	  context->worker_tfile = m_manager->split_info.worker_tfiles[m_index];
+	  error = hjoin_execute_context (&thread_ref, m_manager, context);
+	  context->list_id = nullptr;	/* lent for the join; the result stays in m_shared_info->list_ids */
 
 	  if (thread_is_on_trace (&thread_ref))
 	    {

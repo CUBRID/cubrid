@@ -1163,33 +1163,41 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
   list_id_p->type_list.type_cnt = type_list_p->type_cnt;
   list_id_p->query_id = query_id;
 
-  if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_RESULT_FILE) && !QFILE_IS_LIST_CACHE_DISABLED)
+  if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_BORROWED_TFILE))
     {
-      list_id_p->tfile_vfid = qmgr_create_result_file (thread_p, query_id);
-    }
-  else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_NO_MEMBUF))
-    {
-      list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_NONE);
-    }
-  else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_USE_KEY_BUFFER))
-    {
-      list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_KEY_BUFFER);
+      list_id_p->tfile_vfid = NULL;
+      VFID_SET_NULL (&list_id_p->temp_vfid);
     }
   else
     {
-      list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_NORMAL);
-    }
-
-  if (list_id_p->tfile_vfid == NULL)
-    {
-      if (existing_list_id == NULL)
+      if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_RESULT_FILE) && !QFILE_IS_LIST_CACHE_DISABLED)
 	{
-	  free_and_init (list_id_p);
+	  list_id_p->tfile_vfid = qmgr_create_result_file (thread_p, query_id);
 	}
-      return NULL;
-    }
+      else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_NO_MEMBUF))
+	{
+	  list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_NONE);
+	}
+      else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_USE_KEY_BUFFER))
+	{
+	  list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_KEY_BUFFER);
+	}
+      else
+	{
+	  list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_NORMAL);
+	}
 
-  VFID_COPY (&(list_id_p->temp_vfid), &(list_id_p->tfile_vfid->temp_vfid));
+      if (list_id_p->tfile_vfid == NULL)
+	{
+	  if (existing_list_id == NULL)
+	    {
+	      free_and_init (list_id_p);
+	    }
+	  return NULL;
+	}
+
+      VFID_COPY (&(list_id_p->temp_vfid), &(list_id_p->tfile_vfid->temp_vfid));
+    }
 
   /* allocate the type list's own domain/column block; hdr_size records the backward-capability header size */
   if (qfile_type_list_alloc (&list_id_p->type_list, type_list_p->type_cnt,
