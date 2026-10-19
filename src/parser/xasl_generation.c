@@ -1268,8 +1268,11 @@ pt_plan_single_table_hq_iterations (PARSER_CONTEXT * parser, PT_NODE * select_no
       qo_get_optimization_param (&level, QO_PARAM_LEVEL);
       if (level >= 0x100 && plan)
 	{
+	  const unsigned save_source = parser->flag.print_host_var_source;
+	  parser->flag.print_host_var_source = 1;
 	  fputs ("\nPlan for single table hierarchical iterations:\n", db_query_get_plan_dump_fp ());
 	  qo_plan_dump (plan, db_query_get_plan_dump_fp ());
+	  parser->flag.print_host_var_source = save_source;
 	}
     }
 
@@ -20607,11 +20610,14 @@ pt_plan_schema (PARSER_CONTEXT * parser, PT_NODE * select_node)
 	{
 	  unsigned int save_custom;
 	  save_custom = parser->custom_print;
+	  const unsigned save_source = parser->flag.print_host_var_source;
 	  parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_SUPPRESS_DBLINK_PUSHED;
+	  parser->flag.print_host_var_source = 1;
 	  fprintf (db_query_get_plan_dump_fp (), "\nQuery stmt:%s\n\n%s\n\n", "",
 		   parser_print_tree (parser, select_node));
 
 	  parser->custom_print = save_custom;
+	  parser->flag.print_host_var_source = save_source;
 	}
     }
 
@@ -20996,8 +21002,11 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
   if (plan != NULL && dump_plan == true)
     {
       FILE *dump_fp = db_query_get_plan_dump_fp ();
+      const unsigned save_source = parser->flag.print_host_var_source;
+      parser->flag.print_host_var_source = 1;
       fputs ("\nQuery plan:\n", dump_fp);
       qo_plan_dump (plan, dump_fp);
+      parser->flag.print_host_var_source = save_source;
     }
   else if (dump_plan == true)
     {
@@ -21017,12 +21026,15 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       if (DETAILED_DUMP (level))
 	{
 	  save_custom = parser->custom_print;
+	  const unsigned save_source = parser->flag.print_host_var_source;
 	  parser->custom_print |= PT_CONVERT_RANGE;
 	  parser->custom_print |= PT_PRINT_NO_CURRENT_USER_NAME;
 	  parser->custom_print |= PT_PRINT_SUPPRESS_DBLINK_PUSHED;
+	  parser->flag.print_host_var_source = 1;
 	  fprintf (dump_fp, "\nQuery stmt:%s\n\n%s\n\n", ((hint_ignored) ? " [Warning: HINT ignored]" : ""),
 		   parser_print_tree (parser, select_node));
 	  parser->custom_print = save_custom;
+	  parser->flag.print_host_var_source = save_source;
 	}
 
       if (select_node->info.query.order_by && xasl && xasl->spec_list && xasl->spec_list->indexptr

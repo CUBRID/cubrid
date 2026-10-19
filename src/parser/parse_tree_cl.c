@@ -13661,7 +13661,13 @@ pt_print_host_var (PARSER_CONTEXT * parser, PT_NODE * p)
 	}
       else
 	{
-	  sprintf (s, ":%d", p->info.host_var.index);
+	  /* CBRD-27583 (S3-45): the plan dump and the trace show a derived position as the user position it is derived
+	   * from, which develop printed (D-31); any other text keeps its own number: the cache key's (spec 1), the
+	   * internal texts parsed again (?:N reads the index back) and the texts compared by their print */
+	  const int index = parser->flag.print_host_var_source
+	    && pt_is_derived_host_var (parser, p->info.host_var.index)
+	    ? parser->host_var_derived_from[p->info.host_var.index] : p->info.host_var.index;
+	  sprintf (s, ":%d", index);
 	  if ((parser->custom_print & PT_PRINT_HOST_VAR_COUNT) != 0)
 	    {
 	      pt_print_host_var_type (parser, p->info.host_var.index, s + strlen (s));

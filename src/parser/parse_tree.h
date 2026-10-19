@@ -4082,6 +4082,8 @@ struct parser_context
 					 * made no plan, the text compiles again (pt_take_host_var_bind_domains) */
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
     unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
+    unsigned print_host_var_source:1;	/* CBRD-27583 (S3-45): a plan dump or trace print: a derived host variable
+					 * position prints as the user position it is derived from */
   } flag;
 };
 
