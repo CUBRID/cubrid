@@ -37,6 +37,7 @@
 #include "log_append.hpp"
 #include "log_manager.h"
 #include "log_recovery.h"
+#include "writeset.hpp"
 #include "overflow_file.h"
 #include "xserver_interface.h"
 #include "scan_manager.h"
@@ -27223,6 +27224,37 @@ btree_is_deleter_committing (THREAD_ENTRY * thread_p, MVCCID delete_mvccid)
 }
 
 /*
+ * btree_trace_deleter_wait () - Trace a unique check that waits for a deleter in its commit
+ *
+ * return	      : void
+ * thread_p (in)      : Thread entry.
+ * btid_int (in)      : B-tree info.
+ * key (in)	      : Key being checked.
+ * delete_mvccid (in) : MVCCID of the deleter waited for.
+ *
+ * Note: printed at writeset trace level 1, only when the wait happens, so the normal path is not slowed.
+ */
+static void
+btree_trace_deleter_wait (THREAD_ENTRY * thread_p, BTID_INT * btid_int, DB_VALUE * key, MVCCID delete_mvccid)
+{
+  char *keyval;
+
+  if (!wset_trace_enabled (1))
+    {
+      return;
+    }
+
+  keyval = pr_valstring (key);
+  _er_log_debug (ARG_FILE_LINE, "[WSET] UNIQUE WAIT trid=%d deleter_mvccid=%llu index_vfid=%d|%d key=%s\n",
+		 logtb_find_current_tranid (thread_p), (unsigned long long) delete_mvccid,
+		 btid_int->sys_btid->vfid.volid, btid_int->sys_btid->vfid.fileid, keyval != NULL ? keyval : "(null)");
+  if (keyval != NULL)
+    {
+      db_private_free (thread_p, keyval);
+    }
+}
+
+/*
  * btree_wait_for_inserter_end () - Block until the transaction inserting under insert_mvccid ends:
  *				    S_LOCK on its MVCCID self-lock, then release.
  *
@@ -27522,6 +27554,7 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	  if (btree_is_deleter_committing (thread_p, BTREE_MVCC_INFO_DELID (&mvcc_info)))
 	    {
 	      /* wait until the deleter has written its commit record, so this transaction commits after it */
+	      btree_trace_deleter_wait (thread_p, btid_int, key, BTREE_MVCC_INFO_DELID (&mvcc_info));
 	      return btree_key_wait_for_insert_mvccid (thread_p, BTREE_MVCC_INFO_DELID (&mvcc_info), find_unique_helper,
 						       leaf_page, NULL, restart);
 	    }
@@ -27878,6 +27911,7 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	  if (btree_is_deleter_committing (thread_p, BTREE_MVCC_INFO_DELID (&mvcc_info)))
 	    {
 	      /* wait until the deleter has written its commit record, so this transaction commits after it */
+	      btree_trace_deleter_wait (thread_p, btid_int, key, BTREE_MVCC_INFO_DELID (&mvcc_info));
 	      return btree_key_wait_for_insert_mvccid (thread_p, BTREE_MVCC_INFO_DELID (&mvcc_info), find_unique_helper,
 						       leaf_page, &overflow_page, restart);
 	    }

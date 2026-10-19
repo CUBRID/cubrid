@@ -13320,6 +13320,13 @@ retry_get:
 		  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
 		}
 	      heap_clean_get_context (thread_p, context);
+	      if (wset_trace_enabled (1))
+		{
+		  /* printed only when the wait happens, so the normal path is not slowed */
+		  _er_log_debug (ARG_FILE_LINE, "[WSET] ROW WAIT trid=%d inserter_mvccid=%llu oid=%d|%d|%d\n",
+				 logtb_find_current_tranid (thread_p), (unsigned long long) insert_mvccid,
+				 context->oid_p->volid, context->oid_p->pageid, context->oid_p->slotid);
+		}
 	      if (lock_transaction_mvccid (thread_p, insert_mvccid, S_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
 		{
 		  goto error;
