@@ -12664,10 +12664,13 @@ pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only INSERT ... SELECT");
 	  return;
 	}
-      if (node->info.insert.odku_assignments != NULL)
+      /* Blamed only when the clause is what kept the statement out of the sink. A sendable clause on a
+       * statement refused for its SELECT source would otherwise be named as the cause. */
+      if (node->info.insert.odku_assignments != NULL
+	  && !pt_dblink_odku_assigns_are_sendable (node->info.insert.odku_assignments))
 	{
-	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only INSERT ... SELECT "
-		    "without ON DUPLICATE KEY UPDATE");
+	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only literal values in "
+		    "ON DUPLICATE KEY UPDATE");
 	  return;
 	}
       break;
