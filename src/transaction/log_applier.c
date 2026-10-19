@@ -313,14 +313,6 @@ struct la_info
   /* upper bound of the restart recovery range: max_committed_lsa as stored in _db_ha_apply_info at boot,
    * or NULL (empty range) when none was stored. Set once at boot; workers only read it. */
   LOG_LSA recovery_boundary_lsa;
-  /* true until the coordinator reads the first commit past recovery_boundary_lsa, false from boot when
-   * the range is empty; see la_coordinator_serialize_recovery_range
-   *
-   * TODO: This flag can be removed. The same decision follows from whether the previous commit on the ring
-   *       (la_gate_get_order_tail) is at or below recovery_boundary_lsa. Removing it changes the restart
-   *       path, so it needs a restart test that checks the range is still applied one at a time and the
-   *       first commit past it still waits once. */
-  bool recovery_range_open;
   /* bound the coordinator has stored in _db_ha_apply_info: no commit above it is handed to a worker until a
    * larger bound is stored (see la_coordinator_cover_commit). Loaded at boot. */
   LOG_LSA max_committed_lsa;
@@ -646,7 +638,8 @@ static void la_coordinator_add_result_stats (const LA_RESULT * result);
 static int la_coordinator_store_apply_info_at_interval (void);
 static int la_coordinator_record_result (const LA_RESULT * result);
 static int la_coordinator_complete_without_task (const LOG_LSA * lsa);
-static void la_coordinator_serialize_recovery_range (LA_TASK * task);
+static bool la_is_in_recovery_range (const LOG_LSA * commit_lsa);
+static int la_coordinator_wait_until_retired (void);
 static int la_coordinator_wait_for_inflight_slot (void);
 static int la_coordinator_wait_for_commit_order_slot (void);
 static int la_coordinator_dispatch_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_status);
@@ -1017,56 +1010,58 @@ la_coordinator_complete_without_task (const LOG_LSA * lsa)
 }
 
 /*
- * la_coordinator_serialize_recovery_range() - apply the restart recovery range one transaction at a time
- *   task(in/out): task about to take its place in commit order; its dependency may be raised
+ * la_is_in_recovery_range() - whether a commit lies in the restart recovery range
+ *   return: true if commit_lsa is at or below recovery_boundary_lsa
+ *   commit_lsa(in): LSA of the commit
  *
  * Note:
- *   Transactions in the recovery range may already be on the slave. Re-applied in parallel over that
- *   state, two of them can lock rows the master never had them share, and the workers deadlock. Each
- *   one therefore waits for the commit read just before it, so the range replays in commit order.
- *   The first transaction past the range waits the same way once, so it never runs beside the last
- *   one in the range. Call it before the task is pushed on the commit-order ring.
- *
- *   TODO: Its call in la_coordinator_submit_task is disabled, so the recovery range is applied in parallel like any
- *         other range. Before enabling it again, reproduce the restart deadlock with the deadlock victim fix in place
- *         (the victim must release its locks so the applier retries it), find from the lock dump which locks the two
- *         transactions took in opposite order, and check whether serializing the range is still needed or the retry
- *         alone is enough. The deadlock may also not occur at all if the commits the previous run applied are known at
- *         restart (for example, recorded with each applied transaction) and skipped instead of being replayed.
+ *   The range ends at the last commit the previous run may have applied, so applied and unapplied
+ *   transactions are mixed in it. It is empty when no bound was stored.
  */
-static void
-la_coordinator_serialize_recovery_range (LA_TASK * task)
+static bool
+la_is_in_recovery_range (const LOG_LSA * commit_lsa)
 {
-  LOG_LSA previous_lsa;
+  return !LSA_ISNULL (&la_Info.recovery_boundary_lsa) && LSA_LE (commit_lsa, &la_Info.recovery_boundary_lsa);
+}
 
-  if (!la_Info.recovery_range_open)
+/*
+ * la_coordinator_wait_until_retired() - wait until every task handed to the workers is retired
+ *   return: NO_ERROR, or an error from collecting or retiring results
+ *
+ * Note:
+ *   Collects and retires results the same way la_coordinator_wait_for_inflight_slot does, until the
+ *   in-flight list is empty instead of until it has room.
+ */
+static int
+la_coordinator_wait_until_retired (void)
+{
+  LA_RESULT result;
+  int error;
+
+  while (la_inflight_get_count () > 0)
     {
-      return;
+      error = la_result_queue_pop (&result);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      error = la_coordinator_record_result (&result);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      la_gate_advance_frontier ();
+
+      error = la_coordinator_retire_results ();
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
     }
 
-  if (LSA_GT (&task->commit_lsa, &la_Info.recovery_boundary_lsa))
-    {
-      la_Info.recovery_range_open = false;
-    }
-
-  if (!la_gate_get_order_tail (&previous_lsa))
-    {
-      /* every commit read before this one is already applied */
-      return;
-    }
-
-  if (LSA_ISNULL (&task->dependency_seq) || LSA_GT (&previous_lsa, &task->dependency_seq))
-    {
-      LSA_COPY (&task->dependency_seq, &previous_lsa);
-    }
-
-  if (prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
-    {
-      _er_log_debug (ARG_FILE_LINE, "[WSET] reader recovery_range serial trid=%d commit_lsa=%lld|%d "
-		     "dependency=%lld|%d range_open=%d\n", task->tranid, (long long) task->commit_lsa.pageid,
-		     (int) task->commit_lsa.offset, (long long) task->dependency_seq.pageid,
-		     (int) task->dependency_seq.offset, (int) la_Info.recovery_range_open);
-    }
+  return NO_ERROR;
 }
 
 /*
@@ -3353,8 +3348,6 @@ la_get_last_ha_applied_info (void)
     {
       return res;
     }
-
-  la_Info.recovery_range_open = !LSA_ISNULL (&la_Info.recovery_boundary_lsa);
 
   (void) db_commit_transaction ();
 
@@ -7000,8 +6993,7 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
 
   /* the restart recovery range ends at the last commit the previous run may have applied; applied and
    * unapplied transactions are mixed there, so the flush error path skips re-apply errors in it */
-  stats->in_recovery_range = (!LSA_ISNULL (&la_Info.recovery_boundary_lsa)
-			      && LSA_LE (commit_lsa, &la_Info.recovery_boundary_lsa));
+  stats->in_recovery_range = la_is_in_recovery_range (commit_lsa);
 
   string_buffer sb;
 
@@ -7351,6 +7343,12 @@ static LOG_LSA la_wset_label_dependency_seq = LSA_INITIALIZER;
  *   in commit order and nothing is parked: a parked task would let a later independent one pass it, and
  *   one worker is meant to apply the log in commit order. The queue cannot be full here, because the
  *   in-flight list has the same capacity as the queue and la_coordinator_dispatch_task waits for room in it.
+ *
+ *   In the restart recovery range the coordinator with more workers also hands over one task at a time and
+ *   waits for it to retire. Transactions there may already be on the slave; re-applied side by side over that
+ *   state, two of them can lock rows the master never had them share and the workers deadlock. The victim
+ *   fails its task, the applier exits, and the next run replays the same range into the same deadlock, so the
+ *   slave stops advancing. The first commit past the range starts after every one in it has retired.
  */
 static int
 la_coordinator_submit_task (LA_TASK * task)
@@ -7364,19 +7362,23 @@ la_coordinator_submit_task (LA_TASK * task)
     }
 
   la_gate_set_initial_frontier (&la_Info.committed_lsa);
-  /* TODO: re-enable after the restart deadlock is analyzed; see la_coordinator_serialize_recovery_range */
-  /* la_coordinator_serialize_recovery_range (task); */
   error = la_gate_order_push (&task->commit_lsa);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  if (la_Info.worker_count == 1)
+  if (la_Info.worker_count == 1 || la_is_in_recovery_range (&task->commit_lsa))
     {
       /* nothing is ever parked on this path, so the FIFO queue alone carries the commit order */
       assert (la_pending_is_empty ());
-      return la_coordinator_dispatch_task (task, LA_SCHED_DISPATCHED);
+      error = la_coordinator_dispatch_task (task, LA_SCHED_DISPATCHED);
+      if (error != NO_ERROR || la_Info.worker_count == 1)
+	{
+	  return error;
+	}
+
+      return la_coordinator_wait_until_retired ();
     }
 
   error = la_coordinator_drain_ready ();
@@ -8437,7 +8439,6 @@ la_init (const char *log_path, const int max_mem_size)
   LSA_SET_NULL (&la_Info.last_committed_lsa);
   LSA_SET_NULL (&la_Info.last_committed_rep_lsa);
   LSA_SET_NULL (&la_Info.recovery_boundary_lsa);
-  la_Info.recovery_range_open = false;
   LSA_SET_NULL (&la_Info.max_committed_lsa);
 
   la_Info.last_deleted_archive_num = -1;
