@@ -1452,15 +1452,6 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
       return ER_FAILED;
     }
 
-  //lang_init();
-  //tz_load();
-  //msgcat_init();
-  //sysprm_load_and_init_client(NULL, NULL);
-  //er_init()
-  //area_init ();
-  //locator_initialize_areas ();
-  //perfmon_initialize (1);
-
   er_clear ();
 
   /* read only mode? */
@@ -1469,19 +1460,12 @@ boot_restart_client_sub (BOOT_CLIENT_CREDENTIAL * client_credential)
       db_disable_modification ();
     }
 
-  //db_clear_host_status ();
-
   error_code = net_client_sub_init ();
   if (error_code != NO_ERROR)
     {
       return error_code;
     }
   boot_Is_sub_client = true;
-
-  //if (BOOT_IS_PREFERRED_HOSTS_SET (client_credential))
-  //  {
-  //    db_set_host_status (boot_Host_connected, DB_HS_NON_PREFFERED_HOSTS);
-  //  }  
 
   error_code = boot_register_and_init_client (client_credential, true);
   if (error_code != NO_ERROR)
@@ -1571,18 +1555,7 @@ boot_finalize_client_sub (void)
   ws_final (true);
   /* after ws_final (); the domains of this thread refer to the MOPs of its workspace */
   tp_free_sub_client_domains ();
-  //es_final ();
-  //tp_final ();
 
-  //locator_free_areas ();
-  //sysprm_final ();
-  //perfmon_finalize ();
-  //area_final ();
-  //msgcat_final ();
-  //er_final (ER_ALL_FINAL);
-
-  //lang_final ();
-  //tz_unload ();
   boot_client (NULL_TRAN_INDEX, TRAN_LOCK_INFINITE_WAIT, TRAN_DEFAULT_ISOLATION_LEVEL ());
   /* boot_Is_client_all_final is for the process-wide modules, so it is not touched by a sub-client */
   boot_Is_sub_client = false;
