@@ -3416,6 +3416,8 @@ struct pt_execute_info
   int bind_before_compile;	/* not 0 when the recompile exists to adapt the plan to the bound
 				 * values (LIKE / MRO / SORT-LIMIT checks): compile after binding,
 				 * the way every recompile worked before the unpeeked-plan path */
+  int plan_at_execute;		/* CBRD-27583: the PREPARE made no plan (a value-typed position): each bind type
+				 * signature is compiled at its first EXECUTE and kept (no replan verdict) */
   int do_cache;			/* query uses result cache */
   int column_count;		/* select list column count */
   int oids_included;		/* OIDs included in select list */

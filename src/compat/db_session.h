@@ -42,10 +42,10 @@ struct db_session
   DB_SESSION *next;		/* subsessions for prepared statements */
 
   char *kept_stmt_name;		/* set on a subsession that holds the compiled (post-transform) tree kept for the
-				 * SQL-level prepared statement of this name; such a subsession hangs on its owner's
-				 * kept_trees list instead of the transient `next` chain. NULL otherwise. */
-  DB_SESSION *kept_trees;	/* owner sessions only: the kept subsessions, linked through their `next`. Scoped
-				 * to this session, so closing it releases them; see db_close_session_local (). */
+				 * SQL-level prepared statement of this name; such a subsession hangs on the client's
+				 * list of kept trees (db_vdb.c) instead of the transient `next` chain. NULL otherwise. */
+  SESSION_ID kept_session_id;	/* CBRD-27583 (D-91): of a kept subsession, the server session its name was
+				 * prepared in */
   DB_SESSION *signature_plans;	/* CBRD-27583: a driver session's compilations of its statement for the other bind
 				 * type signatures it executed, linked through their `next`; a push makes the one
 				 * of its values' signature current (db_push_values) */

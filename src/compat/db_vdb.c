@@ -82,6 +82,7 @@ static struct timeb base_client_timeb = { 0, 0, 0, 0 };
 static int get_dimension_of (PT_NODE ** array);
 static DB_SESSION *db_open_local (void);
 static DB_SESSION *initialize_session (DB_SESSION * session);
+static DB_SESSION *db_open_buffer_copy_local (const char *text, size_t len);
 static int db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUERY_RESULT ** result);
 static DB_OBJLIST *db_get_all_chosen_classes (int (*p) (MOBJ o));
 static int is_vclass_object (MOBJ class_);
@@ -99,6 +100,7 @@ static void db_bind_value_types (PARSER_CONTEXT * parser, int count, const DB_VA
 static void db_untype_null_host_variables (PARSER_CONTEXT * parser);
 static bool db_needs_bind_signature_plan (const DB_SESSION * session);
 static int db_use_bind_signature_plan (DB_SESSION * session, int count, DB_VALUE * values);
+static bool db_take_signature_plan (DB_SESSION * session, int count, const DB_VALUE * values);
 static bool db_compiles_at_execution (DB_SESSION * session, int stmt_ndx);
 static void db_swap_compilation (DB_SESSION * a, DB_SESSION * b);
 static int db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
@@ -110,11 +112,10 @@ static int do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT
 static int do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement);
 static int do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION * kept,
 							   PT_NODE * statement, DB_QUERY_RESULT ** result,
-							   bool force_replan);
-static DB_SESSION *db_prepared_tree_lookup (const DB_SESSION * owner, const char *name);
+							   bool force_replan, bool * signature_miss);
+static DB_SESSION *db_prepared_tree_lookup (const char *name, const char *text);
 static bool db_prepared_tree_register (DB_SESSION * owner, const char *name, DB_SESSION * subsession);
-static void db_prepared_tree_remove (DB_SESSION * owner, const char *name);
-static void db_prepared_tree_free_all (DB_SESSION * owner);
+static void db_prepared_tree_remove (const char *name);
 static int do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement);
 static bool is_allowed_as_prepared_statement (PT_NODE * node);
 static bool is_allowed_as_prepared_statement_with_hv (PT_NODE * node);
@@ -197,43 +198,37 @@ db_stmt_bind_fp_ptr (PT_NODE * statement)
 
 int g_open_buffer_control_flags = 0;
 
-/* Per-session registry of the compiled subsessions of SQL-level prepared statements
+/* Registry of the compiled subsessions of SQL-level prepared statements
  * (PREPARE name FROM '...'). Keeping the post-transform tree between EXECUTE requests
  * lets the bind-sensitivity check regenerate only the plan and the XASL when the USING
  * values land in a different histogram bucket; parsing, semantic checks and rewrites
  * are not repeated.
  *
- * A kept subsession hangs on its owner session's `kept_trees` list (linked through the
- * subsession's own `next`) and carries the prepared name in `kept_stmt_name`. Prepared
- * names are per-connection and a kept tree never outlives the session that prepared it,
- * so the owner session IS the registry scope: closing it releases the kept trees, with no
- * process-global list, no lock and no owner back-pointer to invalidate. The list is
- * separate from the transient `next` chain (which grows with every non-candidate EXECUTE)
- * so a lookup walks only the kept names. Entries are released on DROP PREPARE, on
- * re-PREPARE of the same name, when a kept tree turns out to be stale, and when the owner
- * session is closed.
+ * A kept subsession carries the prepared name in `kept_stmt_name` and hangs on the client's
+ * list db_Kept_trees (linked through the subsession's own `next`). CBRD-27583 (D-91): a
+ * prepared name belongs to the server session, which outlives the client sessions (csql
+ * opens one per statement, the CAS one per request), so the list is the client's, not a
+ * session's: an entry carries the server session it was prepared in (`kept_session_id`) and
+ * matches only in that session and for the statement text the server holds for the name
+ * (another CAS sharing the server session may have prepared it again). A change of server
+ * session (db_set_session_id) and db_shutdown release every entry; DROP PREPARE, re-PREPARE
+ * of the same name and a stale kept tree release its own. The client library runs one
+ * thread per connection, so the list takes no lock.
  */
+static DB_SESSION *db_Kept_trees = NULL;
 
 /*
- * db_prepared_tree_unlink() - detach the subsession kept under a prepared name from its
- *   owner's kept list
+ * db_prepared_tree_unlink() - detach the subsession kept under a prepared name from the
+ *   kept list
  * return     : the detached subsession or NULL
- * owner (in) : session that owns the prepared name
  * name (in)  : prepared statement name
  */
 static DB_SESSION *
-db_prepared_tree_unlink (DB_SESSION * owner, const char *name)
+db_prepared_tree_unlink (const char *name)
 {
-  DB_SESSION **prev;
-  DB_SESSION *s;
+  DB_SESSION **prev = &db_Kept_trees;
 
-  if (owner == NULL)
-    {
-      return NULL;
-    }
-
-  prev = &owner->kept_trees;
-  for (s = owner->kept_trees; s != NULL; s = s->next)
+  for (DB_SESSION * s = db_Kept_trees; s != NULL; s = s->next)
     {
       if (s->kept_stmt_name != NULL && strcmp (s->kept_stmt_name, name) == 0)
 	{
@@ -248,7 +243,7 @@ db_prepared_tree_unlink (DB_SESSION * owner, const char *name)
 
 /*
  * db_prepared_tree_close() - release a detached kept subsession
- * kept (in) : subsession already unlinked from the owner's kept list (may be NULL)
+ * kept (in) : subsession already unlinked from the kept list (may be NULL)
  */
 static void
 db_prepared_tree_close (DB_SESSION * kept)
@@ -263,42 +258,38 @@ db_prepared_tree_close (DB_SESSION * kept)
 /*
  * db_prepared_tree_lookup() - find the kept subsession of a prepared statement
  * return     : the kept session or NULL
- * owner (in) : session that owns the prepared name
  * name (in)  : prepared statement name
+ * text (in)  : the statement text the server holds for the name
  *
- * Note: the returned session is owned by `owner`; the caller uses it on the same
- *       connection thread that PREPAREs/EXECUTEs/DROPs this name, which is what scopes
- *       its lifetime.
+ * Note: CBRD-27583 (D-91): a tree kept in another server session or for another text is closed
  */
 static DB_SESSION *
-db_prepared_tree_lookup (const DB_SESSION * owner, const char *name)
+db_prepared_tree_lookup (const char *name, const char *text)
 {
-  DB_SESSION *s;
+  DB_SESSION *s = db_prepared_tree_unlink (name);
 
-  if (owner == NULL)
+  if (s != NULL && (s->kept_session_id != db_get_session_id () || s->parser->original_buffer == NULL
+		    || strcmp (s->parser->original_buffer, text) != 0))
     {
+      db_prepared_tree_close (s);
       return NULL;
     }
-
-  for (s = owner->kept_trees; s != NULL; s = s->next)
+  if (s != NULL)
     {
-      if (s->kept_stmt_name != NULL && strcmp (s->kept_stmt_name, name) == 0)
-	{
-	  return s;
-	}
+      s->next = db_Kept_trees;
+      db_Kept_trees = s;
     }
-  return NULL;
+  return s;
 }
 
 /*
  * db_prepared_tree_remove() - drop the kept subsession of a prepared statement
- * owner (in) : session that owns the prepared name
  * name (in)  : prepared statement name
  */
 static void
-db_prepared_tree_remove (DB_SESSION * owner, const char *name)
+db_prepared_tree_remove (const char *name)
 {
-  db_prepared_tree_close (db_prepared_tree_unlink (owner, name));
+  db_prepared_tree_close (db_prepared_tree_unlink (name));
 }
 
 /*
@@ -306,8 +297,8 @@ db_prepared_tree_remove (DB_SESSION * owner, const char *name)
  *   replacing any previous tree kept under the same name. On failure the caller keeps
  *   the subsession where it is (the owner's transient chain), so it is still released
  *   with the owner.
- * return          : true when the subsession was moved to the owner's kept list
- * owner (in)      : session that owns the prepared name
+ * return          : true when the subsession was moved to the kept list
+ * owner (in)      : session whose transient chain holds the subsession
  * name (in)       : prepared statement name
  * subsession (in) : compiled subsession holding the post-transform tree
  */
@@ -326,7 +317,7 @@ db_prepared_tree_register (DB_SESSION * owner, const char *name, DB_SESSION * su
     }
 
   /* move it off the transient chain: both lists link through `next`, and the owner's close
-   * walks each of them, so the subsession must be on exactly one */
+   * walks its chain, so the subsession must be on exactly one */
   for (sp = &owner->next; *sp != NULL; sp = &((*sp)->next))
     {
       if (*sp == subsession)
@@ -337,25 +328,54 @@ db_prepared_tree_register (DB_SESSION * owner, const char *name, DB_SESSION * su
     }
   subsession->next = NULL;
 
-  /* a tree kept under this name from an earlier execution is now superseded */
-  db_prepared_tree_remove (owner, name);
+  /* CBRD-27583: a tree kept under this name for another bind type signature, and the ones it keeps, stay beside it
+   * (the least recently used beyond DB_MAX_SIGNATURE_PLANS closed); else a tree kept from an earlier execution is
+   * now superseded */
+  DB_SESSION *other = db_prepared_tree_unlink (name);
+  if (other != NULL && other->parser->host_var_compiled_domains != NULL
+      && subsession->parser->host_var_compiled_domains != NULL
+      && !pt_host_vars_match_signature (other->parser, subsession->parser->host_var_count,
+					subsession->parser->host_variables))
+    {
+      free_and_init (other->kept_stmt_name);
+      other->next = other->signature_plans;
+      other->signature_plans = NULL;
+      subsession->signature_plans = other;
+      int kept = 1;
+      DB_SESSION **link = &other->next;
+      for (; *link != NULL && kept < DB_MAX_SIGNATURE_PLANS; kept++)
+	{
+	  link = &(*link)->next;
+	}
+      while (*link != NULL)
+	{
+	  DB_SESSION *plan = *link;
+	  *link = plan->next;
+	  plan->next = NULL;
+	  db_close_session_local (plan);
+	}
+    }
+  else
+    {
+      db_prepared_tree_close (other);
+    }
 
   subsession->kept_stmt_name = kept_name;
-  subsession->next = owner->kept_trees;
-  owner->kept_trees = subsession;
+  subsession->kept_session_id = db_get_session_id ();
+  subsession->next = db_Kept_trees;
+  db_Kept_trees = subsession;
   return true;
 }
 
 /*
- * db_prepared_tree_free_all() - release every tree kept for a session being closed
- * owner (in) : session being closed
+ * db_prepared_tree_free_all() - release every kept tree: the server session changed or the client shuts down
  */
-static void
-db_prepared_tree_free_all (DB_SESSION * owner)
+void
+db_prepared_tree_free_all (void)
 {
-  DB_SESSION *kept = owner->kept_trees;
+  DB_SESSION *kept = db_Kept_trees;
 
-  owner->kept_trees = NULL;
+  db_Kept_trees = NULL;
   while (kept != NULL)
     {
       DB_SESSION *next = kept->next;
@@ -446,7 +466,7 @@ db_open_local (void)
   session->is_subsession_for_prepared = false;
   session->next = NULL;
   session->kept_stmt_name = NULL;
-  session->kept_trees = NULL;
+  session->kept_session_id = DB_EMPTY_SESSION;
   session->signature_plans = NULL;
   session->bind_domains_from = NULL;
 
@@ -497,6 +517,38 @@ db_open_buffer_local (const char *buffer)
     }
 
   return session;
+}
+
+/*
+ * db_open_buffer_copy_local () - CBRD-27583: db_open_buffer_local of a copy of the text its parser owns: the session's
+ *   statements point into their text, and a kept or signature compilation outlives the buffer it is opened from (D-91)
+ * return: the session (its statements NULL when the text did not parse), NULL when it cannot be opened (er_errid ())
+ */
+static DB_SESSION *
+db_open_buffer_copy_local (const char *text, size_t len)
+{
+  DB_SESSION *session = db_open_local ();
+  char *copy;
+
+  if (session == NULL)
+    {
+      return NULL;
+    }
+  copy = (char *) parser_alloc (session->parser, len + 1);
+  if (copy == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, len + 1);
+      db_close_session_local (session);
+      return NULL;
+    }
+  memcpy (copy, text, len);
+  copy[len] = '\0';
+  if (g_open_buffer_control_flags & PARSER_FOR_PLCSQL_STATIC_SQL)
+    {
+      session->parser->flag.is_parsing_static_sql = 1;
+    }
+  session->statements = parser_parse_string_with_escapes (session->parser, copy, false);
+  return session->statements != NULL ? initialize_session (session) : session;
 }
 
 /*
@@ -2164,29 +2216,42 @@ db_needs_bind_signature_plan (const DB_SESSION * session)
 static int
 db_use_bind_signature_plan (DB_SESSION * session, int count, DB_VALUE * values)
 {
+  if (!db_take_signature_plan (session, count, values))
+    {
+      return db_recompile_for_bind_signature (session, count, values);
+    }
+  pt_set_host_variables (session->parser, count, values);
+  if (session->parser->flag.set_host_var == 0 && pt_has_error (session->parser))
+    {
+      pt_report_to_ersys (session->parser, PT_SEMANTIC);
+      pt_reset_error (session->parser);
+      return ER_PT_SEMANTIC;
+    }
+  assert (!session->parser->flag.bind_signature_changed);
+  return NO_ERROR;
+}
+
+/*
+ * db_take_signature_plan () - CBRD-27583: make the kept compilation of these values' bind type signature the session's
+ *   current one (the current one takes its place, the most recently used first in signature_plans)
+ *   return: whether the session keeps one; the caller binds the values into it
+ */
+static bool
+db_take_signature_plan (DB_SESSION * session, int count, const DB_VALUE * values)
+{
   for (DB_SESSION ** link = &session->signature_plans; *link != NULL; link = &(*link)->next)
     {
       DB_SESSION *plan = *link;
-      if (!pt_host_vars_match_signature (plan->parser, count, values))
+      if (pt_host_vars_match_signature (plan->parser, count, values))
 	{
-	  continue;
+	  db_swap_compilation (session, plan);
+	  *link = plan->next;
+	  plan->next = session->signature_plans;
+	  session->signature_plans = plan;
+	  return true;
 	}
-      /* the current compilation takes the matching one's place, the most recently used first in the list */
-      db_swap_compilation (session, plan);
-      *link = plan->next;
-      plan->next = session->signature_plans;
-      session->signature_plans = plan;
-      pt_set_host_variables (session->parser, count, values);
-      if (session->parser->flag.set_host_var == 0 && pt_has_error (session->parser))
-	{
-	  pt_report_to_ersys (session->parser, PT_SEMANTIC);
-	  pt_reset_error (session->parser);
-	  return ER_PT_SEMANTIC;
-	}
-      assert (!session->parser->flag.bind_signature_changed);
-      return NO_ERROR;
     }
-  return db_recompile_for_bind_signature (session, count, values);
+  return false;
 }
 
 /*
@@ -2232,32 +2297,19 @@ db_compile_signature_text (DB_SESSION * session, int count, DB_VALUE * values,
   const PT_NODE *statement = session->statements[0];
   PARSER_CONTEXT *old_parser = session->parser;
   DB_SESSION *typed = NULL;
-  char *text;
   int err = NO_ERROR;
 
-  typed = *typed_p = db_open_local ();
+  typed = *typed_p = db_open_buffer_copy_local (statement->sql_user_text, statement->sql_user_text_len);
   if (typed == NULL)
     {
       assert (er_errid () != NO_ERROR);
       return er_errid ();
     }
-  /* the new parser owns the text its statement points into */
-  text = (char *) parser_alloc (typed->parser, statement->sql_user_text_len + 1);
-  if (text == NULL)
-    {
-      err = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, (size_t) statement->sql_user_text_len + 1);
-      return err;
-    }
-  memcpy (text, statement->sql_user_text, statement->sql_user_text_len);
-  text[statement->sql_user_text_len] = '\0';
-  typed->statements = parser_parse_string_with_escapes (typed->parser, text, false);
   if (typed->statements == NULL || pt_has_error (typed->parser))
     {
       pt_report_to_ersys (typed->parser, PT_SYNTAX);
       return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
     }
-  (void) initialize_session (typed);
   if (typed->dimension != 1 || typed->parser->host_var_count != old_parser->host_var_count)
     {
       err = ER_IT_INCORRECT_HOSTVAR_COUNT;
@@ -2611,8 +2663,9 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	  do_recompile = true;
 	}
 
+      /* CBRD-27583: a plan-only request (the CAS's plan of an executed statement text) compiles: its plan is printed */
       if (statement->info.execute.stmt_type == CUBRID_STMT_SELECT && !statement->info.execute.recompile
-	  && statement->info.execute.name != NULL)
+	  && statement->info.execute.name != NULL && !qo_need_skip_execution ())
 	{
 	  /* A kept tree exists only for statements whose plan was fixed under the first
 	   * execution's bind values (they have a histogram-usable predicate; see the
@@ -2621,10 +2674,14 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	   * plan_cache_bind_sensitivity on, the check inside
 	   * db_execute_and_keep_statement_local () replans (plan + XASL only) when the new
 	   * values fall in a different histogram bucket; with it off the plan stays fixed. */
-	  DB_SESSION *kept = db_prepared_tree_lookup (session, statement->info.execute.name->info.name.original);
+	  const PT_NODE *text = statement->info.execute.query;
+	  DB_SESSION *kept = db_prepared_tree_lookup (statement->info.execute.name->info.name.original,
+						      (const char *) text->info.value.data_value.str->bytes);
 
 	  if (kept != NULL)
 	    {
+	      bool signature_miss = false;
+
 	      /* do_recompile carries the compile-stage verdicts that made the cached XASL
 	       * unusable as-is: the LIKE / MRO / SORT-LIMIT checks and the UNPEEKED flag
 	       * null the XASL id when this execution's values require a fresh plan. The
@@ -2632,8 +2689,11 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 	       * verdict must ride along -- otherwise a LIMIT value crossing the MRO
 	       * threshold would silently keep the previous plan (review report: with the
 	       * kept tree alive, limit 50 -> 500 stayed on the MRO plan instead of
-	       * recompiling to SORT). */
-	      err = do_reexecute_prepared_statement_from_kept_tree (session, kept, statement, result, do_recompile);
+	       * recompiling to SORT). CBRD-27583: a PREPARE that made no plan leaves no XASL id, which is no verdict. */
+	      err = do_reexecute_prepared_statement_from_kept_tree (session, kept, statement, result,
+								    do_recompile
+								    && !statement->info.execute.plan_at_execute,
+								    &signature_miss);
 	      if (err >= 0)
 		{
 		  return err;
@@ -2650,8 +2710,12 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
 		  return err;
 		}
 	      /* the kept tree is stale (schema change / cache invalidation); discard it
-	       * and fall back to a fresh compilation of the stored statement text */
-	      db_prepared_tree_remove (session, statement->info.execute.name->info.name.original);
+	       * and fall back to a fresh compilation of the stored statement text. CBRD-27583: a signature it has no
+	       * compilation of is compiled from the text too, and the kept tree stays for its own ones. */
+	      if (!signature_miss)
+		{
+		  db_prepared_tree_remove (statement->info.execute.name->info.name.original);
+		}
 	      er_clear ();
 	      pt_reset_error (parser);
 	      do_recompile = true;
@@ -3364,7 +3428,7 @@ do_process_prepare_statement (DB_SESSION * session, PT_NODE * statement)
   db_init_prepare_info (&prepare_info);
 
   /* re-PREPARE of the same name invalidates the tree kept for bind-sensitive replans */
-  db_prepared_tree_remove (session, name);
+  db_prepared_tree_remove (name);
 
   prepared_session = db_open_buffer_local (statement_literal);
   if (prepared_session == NULL)
@@ -3576,6 +3640,7 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
   statement->info.execute.oids_included = prepare_info.oids_included;
 
   XASL_ID_COPY (&statement->info.execute.xasl_id, &xasl_id);
+  statement->info.execute.plan_at_execute = prepare_info.stmt_type == CUBRID_STMT_SELECT && XASL_ID_IS_NULL (&xasl_id);
 
   /* restore host variables used by this statement */
   for (i = 0, hv = parser->host_variables; i < parser->host_var_count + parser->auto_param_count; i++, hv++)
@@ -3902,6 +3967,14 @@ do_set_user_host_variables (DB_SESSION * session, PT_NODE * using_list)
   else
     {
       err = db_push_values (session, values_array.size, values_array.vals);
+      if (err == NO_ERROR && session->kept_stmt_name != NULL && session->parser->flag.bind_signature_changed
+	  && db_take_signature_plan (session, values_array.size, values_array.vals))
+	{
+	  /* CBRD-27583: a kept tree runs its compilation of these values' bind type signature, matched by the values
+	   * themselves (the ones bound into the other signature's plan were cast into its domains) */
+	  err = db_push_values (session, values_array.size, values_array.vals);
+	  assert (err != NO_ERROR || !session->parser->flag.bind_signature_changed);
+	}
     }
 
   db_value_clear_array (&values_array);
@@ -4209,10 +4282,11 @@ do_replan_statement_with_bind_peek (PARSER_CONTEXT * parser, PT_NODE * statement
  * result (out)      : execution result
  * force_replan (in) : an existing signal (invalidated XASL, LIKE/limit optimization
  *                     check) already requires replanning under the current values
+ * signature_miss (out) : CBRD-27583: the values have a bind type signature the kept tree has no compilation of
  */
 static int
 do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION * kept, PT_NODE * statement,
-						DB_QUERY_RESULT ** result, bool force_replan)
+						DB_QUERY_RESULT ** result, bool force_replan, bool * signature_miss)
 {
   int err = NO_ERROR;
 
@@ -4227,9 +4301,11 @@ do_reexecute_prepared_statement_from_kept_tree (DB_SESSION * session, DB_SESSION
     }
   if (kept->parser->flag.bind_signature_changed)
     {
-      /* CBRD-27583: a value-typed position received another type: the kept tree is the plan of another
-       * signature. The caller discards it and recompiles the statement text for this execution's signature. */
+      /* CBRD-27583: the kept tree has no compilation of these values' bind type signature (do_set_user_host_variables
+       * takes the one it has): the caller compiles the statement text for it and keeps it beside this one
+       * (db_prepared_tree_register) */
       kept->parser->flag.bind_signature_changed = 0;
+      *signature_miss = true;
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
       return ER_QPROC_INVALID_XASLNODE;
     }
@@ -4310,7 +4386,10 @@ do_recompile_and_execute_prepared_statement (DB_SESSION * session, PT_NODE * sta
   assert (statement->info.execute.query->type_enum == PT_TYPE_CHAR);
 
 compile_text:
-  new_session = db_open_buffer_local ((char *) statement->info.execute.query->info.value.data_value.str->bytes);
+  /* CBRD-27583 (D-91): a kept compilation outlives this statement's text */
+  new_session =
+    db_open_buffer_copy_local ((const char *) statement->info.execute.query->info.value.data_value.str->bytes,
+			       strlen ((const char *) statement->info.execute.query->info.value.data_value.str->bytes));
   if (new_session == NULL)
     {
       assert (er_errid () != NO_ERROR);
@@ -4461,11 +4540,20 @@ compile_text:
 	}
     }
 
+  /* the first compilation it took the bind domains from closes with this statement's session; a kept one outlives it */
+  new_session->bind_domains_from = NULL;
   new_session->parser->flag.is_holdable = session->parser->flag.is_holdable;
   new_session->parser->flag.is_auto_commit = session->parser->flag.is_auto_commit;
   err = db_execute_and_keep_statement_local (new_session, 1, result);
 
-  if (err >= 0 && is_bind_candidate && statement->info.execute.name != NULL)
+  /* CBRD-27583: a PREPARE that made no plan has the compilation of each bind type signature kept as a driver
+   * session keeps it (db_recompile_for_bind_signature), so a later EXECUTE of the signature compiles nothing */
+  const bool signature_plan = statement->info.execute.plan_at_execute
+    && new_session->parser->host_var_compiled_domains != NULL && !db_has_untyped_host_var (new_session->parser)
+    && !new_session->statements[0]->flag.cannot_prepare;
+  /* a plan-only compilation made no XASL */
+  if (err >= 0 && (is_bind_candidate || signature_plan) && statement->info.execute.name != NULL
+      && !qo_need_skip_execution ())
     {
       /* the plan was fixed under this first execution's bind values. Keep the compiled
        * (post-transform) tree so the next EXECUTE of this name reuses that fixed plan
@@ -4489,7 +4577,7 @@ do_process_deallocate_prepare (DB_SESSION * session, PT_NODE * statement)
 {
   const char *const name = statement->info.prepare.name->info.name.original;
 
-  db_prepared_tree_remove (session, name);
+  db_prepared_tree_remove (name);
   return csession_delete_prepared_statement (name);
 }
 
@@ -4943,9 +5031,6 @@ db_close_session_local (DB_SESSION * session)
     {
       return;
     }
-  /* the trees kept for this session's prepared statements (a kept subsession is itself
-   * never an owner, so its list is empty) */
-  db_prepared_tree_free_all (session);
   while (session->signature_plans != NULL)
     {
       DB_SESSION *plan = session->signature_plans;
