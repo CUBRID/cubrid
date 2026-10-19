@@ -266,6 +266,13 @@ static int qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * rec
 #define QFILE_SORT_REC_A_LEN(rec, off)  OR_GET_INT ((char *) (rec) + (off) - QFILE_SORT_REC_A_HDR)
 #define QFILE_SORT_REC_A_SLOT(len)      (QFILE_SORT_REC_A_HDR + DB_ALIGN ((len), MAX_ALIGNMENT))
 
+/*
+ * A P_sort_key carries its original tuple (SORT_REC_HAS_TUPLE) when the tuple is at most this long. The copy saves
+ * a page fix of the input list per sorted tuple, a random one when the sort order is not the input order; beyond
+ * this size the larger sort runs cost more than that saves when the sort order follows the input order.
+ */
+#define QFILE_SORT_REC_TUPLE_MAX_SIZE   128
+
 /* column source staging for the sort paths: stack for the usual key counts, heap only beyond (cold) */
 #define QFILE_COL_SRC_STACK 64
 #define QFILE_COL_SRC_ACQUIRE(stack_buf, n) \
@@ -3360,7 +3367,9 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p, RECDES 
  *   return: required record length (the record is complete only when it is <= key_record_p->area_size, the
  *           SORT_REC_DOESNT_FIT protocol of the sort module), or ER_FAILED
  *   P_sort_key: header = original tuple position (vpid, tuple_offset), body = key mini tuple assembled with
- *               key_info_p->key_tl (one 8-byte aligned tuple of the key columns only)
+ *               key_info_p->key_tl (one 8-byte aligned tuple of the key columns only); a tuple of at most
+ *               QFILE_SORT_REC_TUPLE_MAX_SIZE bytes is copied 8-byte aligned after the body instead, and the header
+ *               says so (SORT_REC_HAS_TUPLE)
  *   A_sort_key: header = offset[] (0 = NULL), body = QFILE_SORT_REC_A_* slots in key order
  */
 static int
@@ -3373,8 +3382,8 @@ qfile_build_sort_rec (SORTKEY_INFO * key_info_p, QFILE_TUPLE_RECORD * tuple_slot
   int i, length, size, slot;
   char *data;
   const char *body;
-  int len;
-  bool is_null, has_null;
+  int len, tuple_length, tuple_start;
+  bool is_null, has_null, carry_tuple;
 
   src = QFILE_COL_SRC_ACQUIRE (src_buf, nkeys);
   if (src == NULL)
@@ -3405,11 +3414,30 @@ qfile_build_sort_rec (SORTKEY_INFO * key_info_p, QFILE_TUPLE_RECORD * tuple_slot
 	}
       length += size;
 
+      /* a short tuple rides behind the key body, so the sorted output need not fix its input page again */
+      tuple_length = QFILE_GET_TUPLE_LENGTH (tuple_slot->tpl);
+      tuple_start = DB_ALIGN (length, MAX_ALIGNMENT);
+      carry_tuple = (tuple_length <= QFILE_SORT_REC_TUPLE_MAX_SIZE && tuple_start <= INT16_MAX);
+      if (carry_tuple)
+	{
+	  length = tuple_start + tuple_length;
+	}
+
       if (length <= key_record_p->area_size)
 	{
-	  sort_record_p->s.original.pageid = vpid->pageid;
-	  sort_record_p->s.original.volid = vpid->volid;
-	  sort_record_p->s.original.offset = tuple_offset;
+	  if (carry_tuple)
+	    {
+	      sort_record_p->s.original.pageid = NULL_PAGEID;
+	      sort_record_p->s.original.volid = NULL_VOLID;
+	      sort_record_p->s.original.offset = tuple_start;
+	      memcpy (key_record_p->data + tuple_start, tuple_slot->tpl, tuple_length);
+	    }
+	  else
+	    {
+	      sort_record_p->s.original.pageid = vpid->pageid;
+	      sort_record_p->s.original.volid = vpid->volid;
+	      sort_record_p->s.original.offset = tuple_offset;
+	    }
 	  if (qfile_tuple_fill (&key_info_p->key_tl, src, nkeys, data, size, has_null) != NO_ERROR)
 	    {
 	      QFILE_COL_SRC_RELEASE (src, src_buf);
@@ -3868,6 +3896,14 @@ qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * recdes_p, void
 
 	  list_id_p = &(sort_info_p->s_id->s_id->list_id);
 
+	  if (SORT_REC_HAS_TUPLE (key_p))
+	    {
+	      /* the record carries the tuple; no page fix */
+	      error = qfile_add_tuple_to_list_from (thread_p, sort_info_p->output_file, SORT_REC_TUPLE (key_p),
+						    list_id_p->type_list.hdr_size);
+	      continue;
+	    }
+
 	  vpid.pageid = key_p->s.original.pageid;
 	  vpid.volid = key_p->s.original.volid;
 
@@ -4298,6 +4334,13 @@ qfile_get_estimated_pages_for_sorting (QFILE_LIST_ID * list_id_p, SORTKEY_INFO *
        */
       sort_key_size = (int) offsetof (SORT_REC, s.original.body[0]);
       sort_key_overhead = (int) ceil (((double) (list_id_p->tuple_cnt * sort_key_size)) / DB_PAGESIZE);
+
+      /* short tuples ride in the sort records (qfile_build_sort_rec), on top of their keys */
+      if (list_id_p->tuple_cnt > 0
+	  && (double) list_id_p->page_cnt * DB_PAGESIZE / list_id_p->tuple_cnt <= QFILE_SORT_REC_TUPLE_MAX_SIZE)
+	{
+	  sort_key_overhead += prorated_pages;
+	}
     }
   else
     {

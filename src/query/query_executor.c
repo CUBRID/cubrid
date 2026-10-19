@@ -3952,6 +3952,25 @@ qexec_ordby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	       * needed so that we wouldn't have to drag them around while we were sorting. */
 
 	      list_idp = &(info->s_id->s_id->list_id);
+
+	      if (SORT_REC_HAS_TUPLE (key))
+		{
+		  /* the record carries the tuple; no page fix */
+		  data = SORT_REC_TUPLE (key);
+
+		  /* update orderby_num() in the tuple */
+		  qfile_slot_set_tuple_ptr (&tplslot, data, 0);
+		  for (i = 0; i < ordby_info->ordbynum_pos_cnt; i++)
+		    {
+		      (void) qfile_slot_overwrite_value (&tplslot, ordby_info->ordbynum_pos[i], &tp_Bigint_domain,
+							 ordby_info->ordbynum_val);
+		    }
+
+		  error =
+		    qfile_add_tuple_to_list_from (thread_p, info->output_file, data, list_idp->type_list.hdr_size);
+		  continue;
+		}
+
 	      vpid.pageid = key->s.original.pageid;
 	      vpid.volid = key->s.original.volid;
 
@@ -5131,7 +5150,17 @@ qexec_hash_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
   for (key = (SORT_REC *) recdes->data; key; key = key->next)
     {
       /* read tuple */
-      if (context->sort_key.use_original)
+      if (context->sort_key.use_original && SORT_REC_HAS_TUPLE (key))
+	{
+	  /* the record carries the tuple; no page fix */
+	  if (qdata_load_agg_hentry_from_tuple
+	      (thread_p, SORT_REC_TUPLE (key), context->part_list_id->type_list.hdr_size, context->temp_part_key,
+	       context->temp_part_value, context->key_domains, context->accumulator_domains) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else if (context->sort_key.use_original)
 	{
 	  QFILE_LIST_ID *list_idp = context->part_list_id;
 	  QFILE_TUPLE_RECORD dummy;
@@ -5331,7 +5360,13 @@ qexec_gby_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *arg)
 	}
 
       peek = COPY;		/* default */
-      if (info->key_info.use_original)
+      if (info->key_info.use_original && SORT_REC_HAS_TUPLE (key))
+	{
+	  /* the record carries the tuple; no page fix. The values outlive the record (until the group is finalized),
+	   * so they are copied. */
+	  data = SORT_REC_TUPLE (key);
+	}
+      else if (info->key_info.use_original)
 	{			/* P_sort_key */
 	  /*
 	   * Retrieve the original tuple.  This will be the case if the
@@ -24496,64 +24531,74 @@ qexec_analytic_put_next (THREAD_ENTRY * thread_p, const RECDES * recdes, void *a
 	  goto exit_on_error;
 	}
 
-      /*
-       * Retrieve the original tuple.  This will be the case if the
-       * original tuple had more fields than we were sorting on.
-       */
-      vpid.pageid = key->s.original.pageid;
-      vpid.volid = key->s.original.volid;
-
-      if (analytic_state->curr_sort_page.vpid.pageid != vpid.pageid
-	  || analytic_state->curr_sort_page.vpid.volid != vpid.volid)
+      if (SORT_REC_HAS_TUPLE (key))
 	{
-	  if (analytic_state->curr_sort_page.page_p != NULL)
-	    {
-	      qmgr_free_old_page_and_init (thread_p, analytic_state->curr_sort_page.page_p, list_idp->tfile_vfid);
-	    }
-
-	  analytic_state->curr_sort_page.page_p = qmgr_get_old_page (thread_p, &vpid, list_idp->tfile_vfid);
-	  if (analytic_state->curr_sort_page.page_p == NULL)
-	    {
-	      goto exit_on_error;
-	    }
-	  else
-	    {
-	      analytic_state->curr_sort_page.vpid = vpid;
-	    }
-	}
-
-      QFILE_GET_OVERFLOW_VPID (&vpid, analytic_state->curr_sort_page.page_p);
-      data = analytic_state->curr_sort_page.page_p + key->s.original.offset;
-      if (vpid.pageid != NULL_PAGEID)
-	{
-	  /*
-	   * This sucks; why do we need two different structures to
-	   * accomplish exactly the same goal?
-	   */
-	  dummy.size = analytic_state->analytic_rec.area_size;
-	  dummy.tpl = analytic_state->analytic_rec.data;
-	  status = qfile_get_tuple (thread_p, analytic_state->curr_sort_page.page_p, data, &dummy, list_idp);
-
-	  if (dummy.tpl != analytic_state->analytic_rec.data)
-	    {
-	      /*
-	       * DON'T FREE THE BUFFER!  qfile_get_tuple() already did
-	       * that, and what you have here in gby_rec is a dangling
-	       * pointer.
-	       */
-	      analytic_state->analytic_rec.area_size = dummy.size;
-	      analytic_state->analytic_rec.data = dummy.tpl;
-	    }
-	  if (status != NO_ERROR)
-	    {
-	      goto exit_on_error;
-	    }
-
-	  data = analytic_state->analytic_rec.data;
+	  /* the record carries the tuple; no page fix. Its values are consumed within this record, as with a page
+	   * that is released once the next record lies on another page, so they are peeked. */
+	  data = SORT_REC_TUPLE (key);
+	  peek = PEEK;
 	}
       else
 	{
-	  peek = PEEK;		/* avoid unnecessary COPY */
+	  /*
+	   * Retrieve the original tuple.  This will be the case if the
+	   * original tuple had more fields than we were sorting on.
+	   */
+	  vpid.pageid = key->s.original.pageid;
+	  vpid.volid = key->s.original.volid;
+
+	  if (analytic_state->curr_sort_page.vpid.pageid != vpid.pageid
+	      || analytic_state->curr_sort_page.vpid.volid != vpid.volid)
+	    {
+	      if (analytic_state->curr_sort_page.page_p != NULL)
+		{
+		  qmgr_free_old_page_and_init (thread_p, analytic_state->curr_sort_page.page_p, list_idp->tfile_vfid);
+		}
+
+	      analytic_state->curr_sort_page.page_p = qmgr_get_old_page (thread_p, &vpid, list_idp->tfile_vfid);
+	      if (analytic_state->curr_sort_page.page_p == NULL)
+		{
+		  goto exit_on_error;
+		}
+	      else
+		{
+		  analytic_state->curr_sort_page.vpid = vpid;
+		}
+	    }
+
+	  QFILE_GET_OVERFLOW_VPID (&vpid, analytic_state->curr_sort_page.page_p);
+	  data = analytic_state->curr_sort_page.page_p + key->s.original.offset;
+	  if (vpid.pageid != NULL_PAGEID)
+	    {
+	      /*
+	       * This sucks; why do we need two different structures to
+	       * accomplish exactly the same goal?
+	       */
+	      dummy.size = analytic_state->analytic_rec.area_size;
+	      dummy.tpl = analytic_state->analytic_rec.data;
+	      status = qfile_get_tuple (thread_p, analytic_state->curr_sort_page.page_p, data, &dummy, list_idp);
+
+	      if (dummy.tpl != analytic_state->analytic_rec.data)
+		{
+		  /*
+		   * DON'T FREE THE BUFFER!  qfile_get_tuple() already did
+		   * that, and what you have here in gby_rec is a dangling
+		   * pointer.
+		   */
+		  analytic_state->analytic_rec.area_size = dummy.size;
+		  analytic_state->analytic_rec.data = dummy.tpl;
+		}
+	      if (status != NO_ERROR)
+		{
+		  goto exit_on_error;
+		}
+
+	      data = analytic_state->analytic_rec.data;
+	    }
+	  else
+	    {
+	      peek = PEEK;	/* avoid unnecessary COPY */
+	    }
 	}
 
       qfile_slot_set_tuple_ptr (&data_slot, data, 0);
