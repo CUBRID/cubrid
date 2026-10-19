@@ -33,15 +33,27 @@
  * reserves a new one to compile. A compile that produces a plan some variant already has does
  * not add a variant; its fingerprint becomes another way to reach that variant.
  *
- * The query learns until it has plan_cache_bind_variants distinct plans or BIND_VARIANT_MAX_COMPILES
- * compiles, whichever comes first. Then the directory is final: with one plan the values are not
- * looked at again, with more an execution runs the variant nearest to its values and never
- * compiles. No variant is ever replaced, so a plan another client is running never changes under
- * it.
+ * The query learns until it has plan_cache_bind_variants distinct plans (the value of the client
+ * that first asked, for every client) or BIND_VARIANT_MAX_COMPILES compiles, whichever comes
+ * first. Then the directory is final: with one plan the values are not looked at again, with
+ * more an execution runs the variant nearest to its values and never compiles. A compile that
+ * fails is given back by its client; one whose client never comes back is given up after
+ * BIND_VARIANT_RESERVE_TIMEOUT.
+ *
+ * The directory never replaces a variant, so a plan another client is running never changes
+ * under it. A variant's cache entry can still be evicted on its own: the next client that needs
+ * it compiles it again under its own values, and the directory keeps the fingerprint and plan
+ * signature the variant was first registered with. A compile that turned out to be the same
+ * plan as another variant leaves its entry unreferenced under its own key; nothing reaches it
+ * again and it goes with ordinary eviction.
  *
  * Everything is dropped with the base entry (DDL, eviction, cache drop, restart), and the next
  * execution starts over. Variant entries carry the base entry's creation time in their key, so
- * a new generation never reuses an old generation's plans.
+ * a new generation never reuses an old generation's plans. Updating statistics does not start a
+ * new generation: a client keeps pricing with the histogram it fetched when it prepared the
+ * statement, so for a while clients prepared before and after the update can fingerprint the
+ * same values differently -- the cost is extra compiles while learning (bounded as above) and,
+ * once learning is done, possibly another of the query's plans for the same values.
  */
 
 #ifndef _BIND_VARIANT_H_
@@ -87,8 +99,13 @@ struct bind_variant_record
 typedef enum
 {
   BIND_VARIANT_OP_CHECK = 1,	/* nothing in the client's directory suits this fingerprint */
-  BIND_VARIANT_OP_REGISTER = 2	/* the reserved variant was compiled to this plan */
+  BIND_VARIANT_OP_REGISTER = 2,	/* the reserved variant was compiled to this plan */
+  BIND_VARIANT_OP_ABANDON = 3	/* the reserved variant failed to compile: give it back */
 } BIND_VARIANT_OP;
+
+/* seconds after which a reserved variant whose client never registered nor abandoned it is
+ * given up (the client died or lost its connection mid-compile) */
+#define BIND_VARIANT_RESERVE_TIMEOUT 60
 
 typedef enum
 {
@@ -148,7 +165,8 @@ struct bind_variant_reply
 /*
  * bind_fingerprint_distance () - how far apart two fingerprints are: the largest factor by
  *   which one predicate's expected scan differs, either way
- * return    : 1.0 when nothing comparable moved; DBL_MAX when the predicate sets differ
+ * return    : 1.0 when nothing comparable moved; DBL_MAX when the predicate sets differ, or when
+ *             no predicate is known on both sides (no evidence the two are alike)
  * floor (in): a predicate below this many rows on both sides moves no plan and is skipped
  *
  * A predicate unknown on either side is skipped too: there is nothing to compare it by.
@@ -157,6 +175,7 @@ static inline double
 bind_fingerprint_distance (const BIND_FINGERPRINT * a, const BIND_FINGERPRINT * b, double floor)
 {
   double worst = 1.0;
+  bool compared = false;
   int i;
 
   if (a->terms != b->terms || a->terms <= 0)
@@ -171,6 +190,7 @@ bind_fingerprint_distance (const BIND_FINGERPRINT * a, const BIND_FINGERPRINT * 
 	{
 	  continue;
 	}
+      compared = true;
       if (x < floor && y < floor)
 	{
 	  continue;
@@ -185,7 +205,7 @@ bind_fingerprint_distance (const BIND_FINGERPRINT * a, const BIND_FINGERPRINT * 
 	  worst = fold;
 	}
     }
-  return worst;
+  return compared ? worst : DBL_MAX;
 }
 
 /* true when at least one predicate of the fingerprint was priced */

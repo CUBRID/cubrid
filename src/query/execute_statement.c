@@ -9958,6 +9958,8 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 	   *  build UPDATE_PROC XASL
 	   */
 
+	  /* the plan about to be looked up or compiled says again whether the statement is a target */
+	  statement->flag.bind_watch_candidate = 0;
 	  /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
 	  contextp->recompile_xasl = statement->flag.recompile;
 	  if (statement->flag.recompile == 0)
@@ -11346,6 +11348,8 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 	      break;
 	    }
 
+	  /* the plan about to be looked up or compiled says again whether the statement is a target */
+	  statement->flag.bind_watch_candidate = 0;
 	  /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
 	  contextp->recompile_xasl = statement->flag.recompile;
 	  if (statement->flag.recompile == 0)
@@ -15368,6 +15372,8 @@ do_prepare_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
+  /* the plan about to be looked up or compiled says again whether the statement is a target */
+  statement->flag.bind_watch_candidate = 0;
   /* look up server's XASL cache for this query string and get XASL file id (XASL_ID) returned if found */
   contextp->recompile_xasl = statement->flag.recompile;
   if (statement->flag.recompile == 0)

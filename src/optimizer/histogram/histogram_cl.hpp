@@ -127,12 +127,26 @@ bool histogram_stmt_has_hv_predicate (PARSER_CONTEXT *parser, PT_NODE *statement
 /* "alias.column op" for the log; longer labels are truncated */
 #define BIND_WATCH_NAME_LEN 32
 
+/* the last pricing of each predicate slot of a statement: an execution re-prices only the
+ * predicates whose values changed since (bind_term_key), and reads each column's row count once.
+ * Probing a histogram is not free -- a string column's equality compares against every
+ * most-common value under the collation -- and most executions change only some of the values. */
+struct bind_term_memo
+{
+  UINT64 key[BIND_WATCH_MAX_TERMS];	/* what the slot was priced under; 0 = nothing */
+  double rows[BIND_WATCH_MAX_TERMS];
+  PT_NODE *name[BIND_WATCH_MAX_TERMS];	/* the column node total_rows was read for */
+  DB_VALUE *histogram[BIND_WATCH_MAX_TERMS];	/* ... and the histogram it carried */
+  double total_rows[BIND_WATCH_MAX_TERMS];
+};
+typedef struct bind_term_memo BIND_TERM_MEMO;
+
 struct bind_watch_state
 {
   /* the fingerprint of the plan the statement holds (the hint compares against it) */
   int terms;			/* recorded predicates; -1 = nothing recorded yet */
   int replans;			/* replans the hint has caused (observability) */
-  UINT64 value_hash;		/* hash of the values the last check ran on; 0 = none yet */
+  UINT64 value_hash;		/* hash of the packed values the last check ran on; 0 = none yet */
   double rows[BIND_WATCH_MAX_TERMS];	/* rows each predicate was expected to scan */
   char name[BIND_WATCH_MAX_TERMS][BIND_WATCH_NAME_LEN];
 
@@ -150,6 +164,10 @@ struct bind_watch_state
    * prepares the variant again and refreshes the slot */
   bool id_known[BIND_VARIANT_MAX_COMPILES];
   XASL_ID variant_id[BIND_VARIANT_MAX_COMPILES];
+  /* the hash-text key of each variant of the generation, built once: a statement that moves
+   * between variants on every execution would otherwise add a key to the parser arena each time */
+  const char *variant_key[BIND_VARIANT_MAX_COMPILES];
+  BIND_TERM_MEMO memo;
 };
 typedef struct bind_watch_state BIND_WATCH_STATE;
 
@@ -168,18 +186,21 @@ typedef struct bind_watch_state BIND_WATCH_STATE;
  * today can be 200,000 on the next value, and that move must be seen. */
 #define BIND_WATCH_ROW_FLOOR 1000.0
 
-/* target selection for plan variants, a property of the statement alone: two or more joined
- * nodes, and a histogram-priceable host-variable predicate on a column that has most-common
- * values without that predicate pinning its node through a unique key. Every condition is
- * structural, so every compile of the statement -- whatever the values -- gives the same
- * answer. Returns false without touching the tree when the feature is off. */
+/* target selection for plan variants: two or more specs over real classes anywhere in the
+ * statement (subqueries included), and a histogram-priceable host-variable predicate on a
+ * column that has most-common values without that predicate pinning its node through a unique
+ * key. No condition looks at the values, so every compile of the statement under the same
+ * statistics gives the same answer; a compile after the statistics changed may not, and the
+ * statement takes the answer of the plan it was prepared to last. Judged even when the
+ * session has the feature off: the answer travels with the shared cached plan. */
 bool histogram_bind_watch_candidate (PARSER_CONTEXT *parser, PT_NODE *statement);
 
 /* the fingerprint of the statement under the values currently bound in parser.
  * return     : false when nothing in the statement can be priced by a histogram
- * names (out): "alias.column op" label of each predicate, for the log (may be NULL) */
+ * names (out): "alias.column op" label of each predicate, for the log (may be NULL)
+ * memo (in/out): the statement's last pricing per predicate, updated (may be NULL) */
 bool histogram_bind_fingerprint (PARSER_CONTEXT *parser, PT_NODE *statement, BIND_FINGERPRINT *fp,
-				 char (*names)[BIND_WATCH_NAME_LEN]);
+				 char (*names)[BIND_WATCH_NAME_LEN], BIND_TERM_MEMO *memo);
 
 /* "label then->now, ..." for the log: every predicate of now against ref */
 void histogram_bind_describe (char *buf, size_t size, const BIND_FINGERPRINT *now,

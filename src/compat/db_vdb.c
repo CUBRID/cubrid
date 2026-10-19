@@ -351,15 +351,24 @@ db_stmt_bind_variant_key_ptr (PT_NODE * statement)
 }
 
 /*
- * db_bind_variant_key () - the hash-text key of one variant of the base entry's generation
+ * db_bind_variant_key () - the hash-text key of one variant of the base entry's generation,
+ *   built once per generation and kept in the state
  */
 static const char *
-db_bind_variant_key (PARSER_CONTEXT * parser, const BIND_WATCH_STATE * ws, int variant)
+db_bind_variant_key (PARSER_CONTEXT * parser, BIND_WATCH_STATE * ws, int variant)
 {
   char buf[96];
 
-  snprintf (buf, sizeof (buf), " /* bind variant %d.%06d #%d */", ws->base_time.sec, ws->base_time.usec, variant);
-  return pt_append_string (parser, NULL, buf);
+  if (variant < 0 || variant >= BIND_VARIANT_MAX_COMPILES)
+    {
+      return NULL;
+    }
+  if (ws->variant_key[variant] == NULL)
+    {
+      snprintf (buf, sizeof (buf), " /* bind variant %d.%06d #%d */", ws->base_time.sec, ws->base_time.usec, variant);
+      ws->variant_key[variant] = pt_append_string (parser, NULL, buf);
+    }
+  return ws->variant_key[variant];
 }
 
 /*
@@ -393,13 +402,16 @@ db_bind_variant_remember (PT_NODE * statement)
 static int
 db_bind_variant_switch (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH_STATE * ws, int variant, bool compile)
 {
+  const char **key_p = db_stmt_bind_variant_key_ptr (statement);
+  const char *old_key;
   int err;
 
   if (!compile && variant == ws->cur_variant && statement->xasl_id != NULL)
     {
       return NO_ERROR;
     }
-  *db_stmt_bind_variant_key_ptr (statement) = (variant >= 0) ? db_bind_variant_key (parser, ws, variant) : NULL;
+  old_key = *key_p;
+  *key_p = (variant >= 0) ? db_bind_variant_key (parser, ws, variant) : NULL;
 
   if (!compile && variant >= 0 && variant < BIND_VARIANT_MAX_COMPILES && ws->id_known[variant])
     {
@@ -416,12 +428,16 @@ db_bind_variant_switch (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH
     }
 
   err = do_replan_statement_internal (parser, statement, compile);
-  if (err == NO_ERROR)
+  if (err != NO_ERROR)
     {
-      ws->cur_variant = variant;
-      db_bind_variant_remember (statement);
+      /* keep the key on the variant cur_variant names, so a later prepare of the statement
+       * does not file its plan under the variant that failed */
+      *key_p = old_key;
+      return err;
     }
-  return err;
+  ws->cur_variant = variant;
+  db_bind_variant_remember (statement);
+  return NO_ERROR;
 }
 
 /*
@@ -480,7 +496,10 @@ db_bind_variant_rebase (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH
   for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
     {
       ws->id_known[i] = false;
+      ws->variant_key[i] = NULL;	/* the keys name the old generation */
     }
+  /* the generation ended with a DDL or the statistics may be new: price everything again */
+  memset (&ws->memo, 0, sizeof (ws->memo));
   *db_stmt_bind_variant_key_ptr (statement) = NULL;
 
   err = do_replan_statement_internal (parser, statement, false);
@@ -540,7 +559,7 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
 
-  if (!histogram_bind_fingerprint (parser, statement, &fp, NULL))
+  if (!histogram_bind_fingerprint (parser, statement, &fp, NULL, &ws->memo))
     {
       /* no predicate of the statement is backed by a histogram: the plan cannot depend on the
        * values, and that cannot change while the plan lives */
@@ -651,6 +670,16 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
       err = db_bind_variant_switch (parser, statement, ws, k, true);
       if (err != NO_ERROR)
 	{
+	  /* give the reserved variant back, or the query would count it as a compile in flight
+	   * until its base entry goes (the server also expires it, for a client that dies here) */
+	  memset (&req, 0, sizeof (req));
+	  req.op = BIND_VARIANT_OP_ABANDON;
+	  req.sha1 = ws->base_sha1;
+	  req.time_stored = ws->base_time;
+	  req.variant = k;
+	  er_stack_push ();
+	  (void) qmgr_bind_variant (&req, &reply);
+	  er_stack_pop ();
 	  return err;
 	}
 
@@ -677,7 +706,7 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
 	BIND_FINGERPRINT named;
 
 	buf[0] = '\0';
-	if (histogram_bind_fingerprint (parser, statement, &named, names))
+	if (histogram_bind_fingerprint (parser, statement, &named, names, &ws->memo))
 	  {
 	    histogram_bind_describe (buf, sizeof (buf), &named, names, (i >= 0) ? &ws->records[i].fp : NULL);
 	  }
@@ -3700,6 +3729,15 @@ do_get_prepared_statement_info (DB_SESSION * session, int stmt_idx, int *subquer
 	   * whether a later bucket change replans again). Unconditional like the
 	   * driver-neutral first peek in do_prepare_select () -- same SQL, same first
 	   * execution behavior on every driver. */
+	  XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
+	}
+      else if ((xasl_header.xasl_flag & BIND_WATCH_CANDIDATE)
+	       && prm_get_integer_value (PRM_ID_PLAN_CACHE_BIND_VARIANTS) > 0)
+	{
+	  /* a target of the plan variants whose base plan was compiled under bound values (by a
+	   * session with plan_cache_bind_variants=0, whose first execution fixed it): the cached
+	   * XASL_ID alone would run that plan for every value. Take the same path as above, whose
+	   * first execution chooses the variant and keeps the tree for the next ones. */
 	  XASL_ID_SET_NULL (&statement->info.execute.xasl_id);
 	}
     }

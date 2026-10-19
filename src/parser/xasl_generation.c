@@ -18563,12 +18563,13 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
     }
 
-  if (xasl != NULL && histogram_bind_watch_candidate (parser, select_node))
+  if (xasl != NULL && !pt_is_subquery (select_node) && histogram_bind_watch_candidate (parser, select_node))
     {
-      /* target selection for the bind-value plan variants. Every condition is structural (joined
-       * nodes, most-common values on the column, no unique key pinning the node), so whatever
-       * values the plan was chosen under, every compile of the statement gives the same answer
-       * and the flag travels with every variant of it. */
+      /* target selection for the bind-value plan variants. No condition looks at the values
+       * (real-class specs, most-common values on the column, no unique key pinning the node), so
+       * whatever values the plan was chosen under, every compile of the statement gives the same
+       * answer and the flag travels with every variant of it. Only the statement's own header
+       * is read, and its walk covers the subqueries, so a subquery is not judged on its own. */
       xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
     }
   if (xasl != NULL && plan != NULL)

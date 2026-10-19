@@ -45,6 +45,7 @@
 
 #include <algorithm>
 #include <assert.h>
+#include <time.h>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -72,6 +73,7 @@
 struct xcache_bind_dir
 {
   int checks;			/* times a client found nothing suitable in its directory (statistics) */
+  int limit;			/* distinct plans the query may have: the first request's, for every client */
   int plans;			/* registered variants: distinct plans */
   int next_variant;		/* variants reserved so far: the compiles the query has made */
   int n_records;
@@ -79,6 +81,7 @@ struct xcache_bind_dir
   bool registered[BIND_VARIANT_MAX_COMPILES];	/* the variant is a plan of the query */
   bool resolved[BIND_VARIANT_MAX_COMPILES];	/* its compile came back, as a new plan or a known one */
   UINT64 plan_sig[BIND_VARIANT_MAX_COMPILES];
+  time_t reserved_at[BIND_VARIANT_MAX_COMPILES];	/* when the compile was handed out */
 };
 
 /* xcache statistics. */
@@ -2291,9 +2294,16 @@ xcache_dump (THREAD_ENTRY * thread_p, FILE * fp)
 	  pthread_mutex_lock (&xcache_entry->cache_clones_mutex);
 	  if (xcache_entry->bind_dir != NULL)
 	    {
-	      fprintf (fp, "  bind variants: plans = %d, compiles = %d, fingerprints = %d, server checks = %d \n",
-		       xcache_entry->bind_dir->plans, xcache_entry->bind_dir->next_variant,
-		       xcache_entry->bind_dir->n_records, xcache_entry->bind_dir->checks);
+	      struct xcache_bind_dir *dir = xcache_entry->bind_dir;
+	      int v, pending = 0;
+
+	      for (v = 0; v < dir->next_variant; v++)
+		{
+		  pending += dir->resolved[v] ? 0 : 1;
+		}
+	      fprintf (fp, "  bind variants: plans = %d, compiles = %d, pending = %d, limit = %d, fingerprints = %d, "
+		       "server checks = %d \n", dir->plans, dir->next_variant, pending, dir->limit, dir->n_records,
+		       dir->checks);
 	    }
 	  pthread_mutex_unlock (&xcache_entry->cache_clones_mutex);
 	}
@@ -2858,6 +2868,7 @@ xcache_bind_variant (THREAD_ENTRY * thread_p, const BIND_VARIANT_REQUEST * req, 
   struct xcache_bind_dir *dir;
   int error_code = NO_ERROR;
   int limit, pending, i;
+  time_t now;
 
   assert (req != NULL && reply != NULL);
 
@@ -2913,12 +2924,25 @@ xcache_bind_variant (THREAD_ENTRY * thread_p, const BIND_VARIANT_REQUEST * req, 
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       memset (dir, 0, sizeof (struct xcache_bind_dir));
+      /* the limit is the query's, not the session's: a session with another value of the
+       * parameter would otherwise end the learning early for itself, or carry it past the
+       * point where the others stopped */
+      dir->limit = limit;
       xcache_entry->bind_dir = dir;
     }
+  limit = dir->limit;
 
+  now = time (NULL);
   pending = 0;
   for (i = 0; i < dir->next_variant; i++)
     {
+      if (!dir->resolved[i] && now - dir->reserved_at[i] >= BIND_VARIANT_RESERVE_TIMEOUT)
+	{
+	  /* the client the compile was handed to never came back (it died, or lost the
+	   * connection): the variant is given up, or the query would wait for it while its base
+	   * entry lives. A REGISTER that still arrives is taken as usual. */
+	  dir->resolved[i] = true;
+	}
       if (!dir->resolved[i])
 	{
 	  pending++;
@@ -2944,12 +2968,19 @@ xcache_bind_variant (THREAD_ENTRY * thread_p, const BIND_VARIANT_REQUEST * req, 
 	   * clients cannot overshoot the limit together. */
 	  reply->result = BIND_VARIANT_COMPILE;
 	  reply->variant = dir->next_variant++;
+	  dir->reserved_at[reply->variant] = now;
 	  pending++;
 	}
       else
 	{
 	  reply->result = BIND_VARIANT_FROZEN;
 	}
+    }
+  else if (req->op == BIND_VARIANT_OP_ABANDON && req->variant >= 0 && req->variant < dir->next_variant)
+    {
+      /* the compile failed on the client: the variant never becomes a plan */
+      dir->resolved[req->variant] = true;
+      reply->result = BIND_VARIANT_NOT_FOUND;
     }
   else if (req->op == BIND_VARIANT_OP_REGISTER && req->variant >= 0 && req->variant < dir->next_variant)
     {
