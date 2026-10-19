@@ -1814,6 +1814,7 @@ hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
     {
     case HASHJOIN_MERGE_COMBINE:
       {
+	/* not chosen (qlist_merge_method is HASHJOIN_MERGE_CONNECT); both lists are this join's, of one type list */
 	new_list_id =
 	  qfile_combine_two_list (thread_p, single_context->list_id, context->list_id,
 				  QFILE_FLAG_ALL | QFILE_FLAG_UNION);

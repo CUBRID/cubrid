@@ -235,7 +235,7 @@ extern int qfile_truncate_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id
 extern int qfile_copy_tuple_descr_to_tuple (THREAD_ENTRY * thread_p, const QFILE_TUPLE_VALUE_TYPE_LIST * type_list,
 					    QFILE_TUPLE_DESCRIPTOR * tpl_descr, QFILE_TUPLE_RECORD * tplrec);
 extern int qfile_reallocate_tuple (QFILE_TUPLE_RECORD * tplrec, int tpl_size);
-extern int qfile_unify_types (QFILE_LIST_ID * list_id1, const QFILE_LIST_ID * list_id2, bool list1_empty);
+extern int qfile_unify_types (const QFILE_LIST_ID * list_id1, const QFILE_LIST_ID * list_id2);
 #if !defined(NDEBUG)
 extern void qfile_print_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id);
 extern void qfile_print_tuple (QFILE_TUPLE_VALUE_TYPE_LIST * type_list, QFILE_TUPLE tpl);

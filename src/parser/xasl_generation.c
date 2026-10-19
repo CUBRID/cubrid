@@ -6757,14 +6757,49 @@ pt_set_sort_list_domains (SORT_LIST * keys, const XASL_NODE * producer, const OU
 }
 
 /*
+ * pt_type_null_list_column () - CBRD-27583 (D-90): column pos of the list xasl makes takes the unified domain of a set
+ *   operation or a recursive CTE where a branch writes it as DB_TYPE_NULL (only NULLs), with the sort keys on it, so
+ *   every list of the operation opens with that domain (qfile_unify_types checks it)
+ */
+static void
+pt_type_null_list_column (XASL_NODE * xasl, int pos, TP_DOMAIN * unified)
+{
+  if (xasl == NULL)
+    {
+      return;
+    }
+  XASL_NODE *branch[2];
+  REGU_VARIABLE *column = domain_list_column_source (xasl, &pos, branch);
+  /* a regu converting its value keeps the domain its conversion makes */
+  if (column != NULL && TP_DOMAIN_TYPE (column->domain) == DB_TYPE_NULL && column->original_domain == NULL)
+    {
+      column->domain = unified;
+      /* a cast whose target the compile left open (a union cast over a bind) casts into it, its converter found at
+       * unpack (stx_arith_cast_target) */
+      if ((column->type == TYPE_INARITH || column->type == TYPE_OUTARITH)
+	  && (column->value.arithptr->opcode == T_CAST || column->value.arithptr->opcode == T_CAST_WRAP
+	      || column->value.arithptr->opcode == T_CAST_NOFAIL) && column->value.arithptr->domain != NULL
+	  && TP_DOMAIN_TYPE (column->value.arithptr->domain) == DB_TYPE_NULL)
+	{
+	  column->value.arithptr->domain = unified;
+	}
+    }
+  for (int i = 0; i < 2; i++)
+    {
+      pt_type_null_list_column (branch[i], pos, unified);
+    }
+  pt_set_sort_list_domains (xasl->orderby_list, xasl, NULL);
+}
+
+/*
  * pt_check_list_branches () - CBRD-27583: the columns of a set operation's or a recursive CTE's two branches unify
  *   (domain_unify_list_column); a mismatch is the statement's semantic error at XASL generation, in pt_union_compatible's
- *   words
+ *   words; a branch column of NULLs takes the unified domain (pt_type_null_list_column)
  *   return: NO_ERROR or ER_QPROC_INCOMPATIBLE_TYPES (the parser holds the error)
  */
 static int
-pt_check_list_branches (PARSER_CONTEXT * parser, PT_NODE * first_query, PT_NODE * second_query,
-			const XASL_NODE * first, const XASL_NODE * second)
+pt_check_list_branches (PARSER_CONTEXT * parser, PT_NODE * first_query, PT_NODE * second_query, XASL_NODE * first,
+			XASL_NODE * second)
 {
   const int n_columns = pt_length_of_select_list (pt_get_select_list (parser, first_query), EXCLUDE_HIDDEN_COLUMNS);
   PT_NODE *item[2] = { pt_get_select_list (parser, first_query), pt_get_select_list (parser, second_query) };
@@ -6780,6 +6815,11 @@ pt_check_list_branches (PARSER_CONTEXT * parser, PT_NODE * first_query, PT_NODE 
 	  PT_ERRORmf2 (parser, item[0], MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
 		       pt_short_print (parser, item[0]), pt_short_print (parser, item[1]));
 	  return error;
+	}
+      if (unified != NULL && TP_DOMAIN_TYPE (unified) != DB_TYPE_NULL)
+	{
+	  pt_type_null_list_column (first, pos, (TP_DOMAIN *) unified);
+	  pt_type_null_list_column (second, pos, (TP_DOMAIN *) unified);
 	}
     }
   return NO_ERROR;

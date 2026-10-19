@@ -99,11 +99,16 @@ int domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * opera
 /*
  * The domains of the columns of the list files XASL nodes make (principle 1-6), one rule for XASL generation and
  * for unpack.
- * domain_unify_list_column () - one column of two set-operation or CTE branches, or of two VALUES rows, unified as
- *   qfile_unify_types does (domain_resolve_list_column)
+ * domain_unify_list_column () - one column of two set-operation or CTE branches, or of two VALUES rows, unified
+ *   (domain_resolve_list_column): a branch whose column holds only NULLs (DB_TYPE_NULL) takes it at XASL generation,
+ *   and qfile_unify_types checks the lists agree
  *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES
  *   unified(out): the column's domain; NULL when a side's domain is not fixed
  * domain_output_column () - column pos of the list an output list writes (hidden columns are not stored)
+ * domain_list_column_source () - where column pos of the list an XASL node makes comes from: the regu writing it (a
+ *   block's output, its analytic or GROUP BY output when it has one), or the lists it is made of in branch[] (a set
+ *   operation's branches, a recursive CTE's parts, the input a merge or hash join takes it from, at *pos there)
+ *   return: the regu; NULL for a list made of lists or where no column is found (branch[0] NULL)
  * domain_list_column_of () - column pos of the list an XASL node makes: a block's output column (its analytic or
  *   GROUP BY output when it has one), the unified column of a set operation's branches or of a recursive CTE's two
  *   parts, a merge or hash join's column of the input it takes that column from; the variable domain where a side's
@@ -111,8 +116,10 @@ int domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * opera
  */
 struct xasl_node;
 struct valptr_list_node;
+class regu_variable_node;
 int domain_unify_list_column (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** unified);
 TP_DOMAIN *domain_output_column (const struct valptr_list_node *output, int pos);
+regu_variable_node *domain_list_column_source (const struct xasl_node *xasl, int *pos, struct xasl_node *branch[2]);
 TP_DOMAIN *domain_list_column_of (const struct xasl_node *xasl, int pos);
 /* CBRD-27583: a list column's domain as a comparison reads it - NULL where its values decide (VARIABLE) or are NULL */
 TP_DOMAIN *domain_list_column_compared (const struct xasl_node *xasl, int pos);

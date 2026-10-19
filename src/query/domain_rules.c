@@ -1731,13 +1731,12 @@ copy_operands:
 
 /*
  * domain_resolve_list_column - a list column: its producer's domain (ALIAS); a set-operation or CTE column
- *   unifies its branches as qfile_unify_types does
+ *   unifies its branches
  *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES when the branches differ
  *
- * A branch without a value (a NULL bind) takes the other's domain; one domain, or one variable string type, keeps
- * the first branch's. Two different domains are rejected before execution: qfile_unify_types alone raises the error
- * only when both branch lists hold rows and takes the other branch's domain when one is empty, which no resolution
- * before the rows can follow.
+ * A branch without a value (a NULL, a NULL bind) takes the other's domain; one domain, or one variable string type,
+ * keeps the first branch's. Two different domains are rejected before execution, and XASL generation gives a branch
+ * column of NULLs the unified domain, so qfile_unify_types finds the branch lists agree (D-90).
  */
 static int
 domain_resolve_list_column (const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
@@ -3161,7 +3160,7 @@ domain_unify_list_column (const TP_DOMAIN * first, const TP_DOMAIN * second, con
     }
   if (TP_DOMAIN_TYPE (first) == DB_TYPE_OBJECT && TP_DOMAIN_TYPE (second) == DB_TYPE_OBJECT)
     {
-      /* objects of two classes are union compatible to type checking: their rows unify (qfile_unify_types) */
+      /* objects of two classes are union compatible to type checking (qfile_unify_types checks their lists agree) */
       return NO_ERROR;
     }
   const DOMAIN_OPERAND operands[2] = {
@@ -3177,43 +3176,47 @@ domain_unify_list_column (const TP_DOMAIN * first, const TP_DOMAIN * second, con
   return error;
 }
 
-TP_DOMAIN *
-domain_output_column (const OUTPTR_LIST * output, int pos)
+/* the regu writing column pos of the list output writes (hidden columns are not stored) */
+static REGU_VARIABLE *
+domain_output_regu (const OUTPTR_LIST * output, int pos)
 {
   for (REGU_VARIABLE_LIST col = output != NULL ? output->valptrp : NULL; col != NULL; col = col->next)
     {
       if (!REGU_VARIABLE_IS_FLAGED (&col->value, REGU_VARIABLE_HIDDEN_COLUMN) && pos-- == 0)
 	{
-	  return col->value.domain;
+	  return &col->value;
 	}
     }
   return NULL;
 }
 
 TP_DOMAIN *
-domain_list_column_of (const XASL_NODE * xasl, int pos)
+domain_output_column (const OUTPTR_LIST * output, int pos)
 {
+  const REGU_VARIABLE *column = domain_output_regu (output, pos);
+  return column != NULL ? column->domain : NULL;
+}
+
+REGU_VARIABLE *
+domain_list_column_source (const XASL_NODE * xasl, int *pos, XASL_NODE * branch[2])
+{
+  branch[0] = branch[1] = NULL;
   if (xasl == NULL)
     {
       return NULL;
     }
-  const XASL_NODE *first, *second;
   switch (xasl->type)
     {
     case UNION_PROC:
     case DIFFERENCE_PROC:
     case INTERSECTION_PROC:
-      first = xasl->proc.union_.left;
-      second = xasl->proc.union_.right;
-      break;
+      branch[0] = xasl->proc.union_.left;
+      branch[1] = xasl->proc.union_.right;
+      return NULL;
     case CTE_PROC:
-      first = xasl->proc.cte.non_recursive_part;
-      second = xasl->proc.cte.recursive_part;
-      if (second == NULL)
-	{
-	  return domain_list_column_of (first, pos);
-	}
-      break;
+      branch[0] = xasl->proc.cte.non_recursive_part;
+      branch[1] = xasl->proc.cte.recursive_part;
+      return NULL;
     case MERGELIST_PROC:
     case HASHJOIN_PROC:
       {
@@ -3221,31 +3224,47 @@ domain_list_column_of (const XASL_NODE * xasl, int pos)
 	 * (qexec_merge_list) */
 	const bool merge = xasl->type == MERGELIST_PROC;
 	const QFILE_LIST_MERGE_INFO *info = merge ? &xasl->proc.mergelist.ls_merge : &xasl->proc.hashjoin.merge_info;
-	if (pos < 0 || pos >= info->ls_pos_cnt)
+	if (*pos >= 0 && *pos < info->ls_pos_cnt)
 	  {
-	    return NULL;
+	    branch[0] = info->ls_outer_inner_list[*pos] == QFILE_OUTER_LIST
+	      ? (merge ? xasl->proc.mergelist.outer_xasl : xasl->proc.hashjoin.outer.xasl)
+	      : (merge ? xasl->proc.mergelist.inner_xasl : xasl->proc.hashjoin.inner.xasl);
+	    *pos = info->ls_pos_list[*pos];
 	  }
-	const XASL_NODE *input = info->ls_outer_inner_list[pos] == QFILE_OUTER_LIST
-	  ? (merge ? xasl->proc.mergelist.outer_xasl : xasl->proc.hashjoin.outer.xasl)
-	  : (merge ? xasl->proc.mergelist.inner_xasl : xasl->proc.hashjoin.inner.xasl);
-	return domain_list_column_of (input, info->ls_pos_list[pos]);
+	return NULL;
       }
     case BUILDLIST_PROC:
       /* the list holds the analytic or the GROUP BY output when the block has one */
       if (xasl->proc.buildlist.a_eval_list != NULL && xasl->proc.buildlist.a_outptr_list != NULL)
 	{
-	  return domain_output_column (xasl->proc.buildlist.a_outptr_list, pos);
+	  return domain_output_regu (xasl->proc.buildlist.a_outptr_list, *pos);
 	}
       if (xasl->proc.buildlist.groupby_list != NULL && xasl->proc.buildlist.g_outptr_list != NULL)
 	{
-	  return domain_output_column (xasl->proc.buildlist.g_outptr_list, pos);
+	  return domain_output_regu (xasl->proc.buildlist.g_outptr_list, *pos);
 	}
-      return domain_output_column (xasl->outptr_list, pos);
+      return domain_output_regu (xasl->outptr_list, *pos);
     default:
-      return domain_output_column (xasl->outptr_list, pos);
+      return domain_output_regu (xasl->outptr_list, *pos);
     }
-  const TP_DOMAIN *left = domain_list_column_of (first, pos);
-  const TP_DOMAIN *right = domain_list_column_of (second, pos);
+}
+
+TP_DOMAIN *
+domain_list_column_of (const XASL_NODE * xasl, int pos)
+{
+  XASL_NODE *branch[2];
+  const REGU_VARIABLE *column = domain_list_column_source (xasl, &pos, branch);
+  if (column != NULL || branch[0] == NULL)
+    {
+      return column != NULL ? column->domain : NULL;
+    }
+  if (branch[1] == NULL)
+    {
+      /* a join's input, or a CTE without a recursive part */
+      return domain_list_column_of (branch[0], pos);
+    }
+  const TP_DOMAIN *left = domain_list_column_of (branch[0], pos);
+  const TP_DOMAIN *right = domain_list_column_of (branch[1], pos);
   const TP_DOMAIN *unified;
   if (left == NULL || right == NULL || domain_unify_list_column (left, right, &unified) != NO_ERROR
       || (TP_DOMAIN_TYPE (left) == DB_TYPE_OBJECT && TP_DOMAIN_TYPE (right) == DB_TYPE_OBJECT))

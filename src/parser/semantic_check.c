@@ -501,6 +501,45 @@ out_of_mem:
 }
 
 /*
+ * pt_type_union_bind () - CBRD-27583 (D-90, spec change 25): in the compilation of a bind type signature, a user host
+ *   variable a set operation's or a VALUES column leaves untyped (MAYBE) against a typed operand that is not a bind
+ *   takes its value's type, so the column's common type and casts are a literal's of that type (a NULL's a NULL
+ *   literal's); the position compiles as value-typed (pt_assign_host_var_positions records the value's domain).
+ *   A bind its context types (expected domain, a PL static SQL bind's declared type: 4.9), a column of binds alone
+ *   (D-63: binds of different types are -494), and a bind against a number or a string keep their compilation: a
+ *   typed bind is fully coercible and would pass the collation check (spec 8), and a number's column is develop's
+ *   (D-76) whether or not another column makes the statement compile a signature.
+ */
+static void
+pt_type_union_bind (PARSER_CONTEXT * parser, PT_NODE * att, const PT_NODE * mate)
+{
+  if (att->node_type != PT_HOST_VAR || att->type_enum != PT_TYPE_MAYBE || parser->flag.set_host_var != 0
+      || att->info.host_var.var_type != PT_HOST_IN || att->info.host_var.index >= parser->host_var_count
+      || parser->host_variables == NULL || parser->host_var_compiled_domains == NULL
+      || parser->host_var_expected_domains == NULL || att->expected_domain != NULL
+      || TP_DOMAIN_TYPE (parser->host_var_expected_domains[att->info.host_var.index]) != DB_TYPE_UNKNOWN)
+    {
+      return;
+    }
+  if (mate->node_type == PT_HOST_VAR || mate->type_enum == PT_TYPE_MAYBE || mate->type_enum == PT_TYPE_NONE
+      || mate->type_enum == PT_TYPE_NULL || PT_IS_NUMERIC_TYPE (mate->type_enum)
+      || PT_IS_STRING_TYPE (mate->type_enum) || PT_HAS_COLLATION (mate->type_enum))
+    {
+      return;
+    }
+  TP_DOMAIN *domain = pt_host_var_value_domain (parser, att->info.host_var.index);
+  if (TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL)
+    {
+      /* pt_db_to_type_enum gives no type for it */
+      att->type_enum = PT_TYPE_NULL;
+      return;
+    }
+  att->type_enum = pt_db_to_type_enum (TP_DOMAIN_TYPE (domain));
+  parser_free_tree (parser, att->data_type);
+  att->data_type = pt_domain_to_data_type (parser, domain);
+}
+
+/*
  * pt_get_compatible_info () -
  *   return:  return a pointer of SEMAN_COMPATIBLE_INFO array or null on error
  *   parser(in): parser context
@@ -558,6 +597,12 @@ pt_get_compatible_info (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * selec
   /* compare the columns */
   for (i = 0, att1 = select_list1, att2 = select_list2; i < cnt1; ++i, att1 = att1->next, att2 = att2->next)
     {
+      if (node->node_type != PT_CTE)
+	{
+	  /* a recursive CTE's recursive part was typed with its non-recursive part's binds untyped */
+	  pt_type_union_bind (parser, att1, att2);
+	  pt_type_union_bind (parser, att2, att1);
+	}
       compatible = pt_union_compatible (parser, att1, att2, false, &is_object_type);
       if (compatible == PT_UNION_INCOMP)
 	{

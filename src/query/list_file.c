@@ -864,89 +864,34 @@ qfile_compare_tuple_values (QFILE_TUPLE_RECORD * lhs, QFILE_TUPLE_RECORD * rhs, 
 }
 
 /*
- * qfile_unify_types () -
- *   return:
- *   list_id1(in/out): Destination list identifier
+ * qfile_unify_types () - CBRD-27583 (D-90): the two lists of a set operation or of a recursive CTE have one domain per
+ *   column - XASL generation gives a branch column of NULLs the unified domain (pt_type_null_list_column) - so their
+ *   tuples are copied as they are
+ *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES / ER_QSTR_INCOMPATIBLE_COLLATIONS
+ *   list_id1(in): Destination list identifier
  *   list_id2(in): Source list identifier
- *   list1_empty(in): the rows list_id1 stands for are none (a destination opened with a branch's types: that branch's)
- *
- * Note: For every destination type which is DB_TYPE_NULL,
- *       set it to the source type.
- *       This should probably set an error for non-null mismatches.
- *
- * A list opens with its columns' compiled domains: an empty side contributes no values, so its domain does not
- * constrain the other side's, as a column no tuple typed (DB_TYPE_VARIABLE) did not.
  */
 int
-qfile_unify_types (QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p, bool list1_empty)
+qfile_unify_types (const QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_id2_p)
 {
-  int i;
-  int max_count = list_id1_p->type_list.type_cnt;
-  DB_TYPE type1, type2;
-  const bool list2_empty = list_id2_p->tuple_cnt == 0;
+  /* a column count mismatch is ignored, as it always was */
+  const int max_count = MIN (list_id1_p->type_list.type_cnt, list_id2_p->type_list.type_cnt);
 
-  if (max_count != list_id2_p->type_list.type_cnt)
+  for (int i = 0; i < max_count; i++)
     {
-      /* error, but is ignored for now. */
-      if (max_count > list_id2_p->type_list.type_cnt)
+      if (list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i])
 	{
-	  max_count = list_id2_p->type_list.type_cnt;
-	}
-    }
-
-  for (i = 0; i < max_count; i++)
-    {
-      type1 = TP_DOMAIN_TYPE (list_id1_p->type_list.domp[i]);
-      type2 = TP_DOMAIN_TYPE (list_id2_p->type_list.domp[i]);
-
-      /* An empty side skips the collation flag check below as well: it holds no value whose collation could
-       * disagree */
-      if (type1 == DB_TYPE_VARIABLE || (list1_empty && list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
-	{
-	  /* list1 holds no value of this column: its tuples store only NULL (0 bytes) there, so list2's domain reads them */
-	  list_id1_p->type_list.domp[i] = list_id2_p->type_list.domp[i];
-	  continue;
-	}
-      else if (type2 == DB_TYPE_VARIABLE
-	       || (list2_empty && list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
-	{
-	  /* list2 holds no value of this column (NULL only); list1's domain stands */
-	  continue;
+	  assert (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INCOMPATIBLE_TYPES, 0);
+	  return ER_QPROC_INCOMPATIBLE_TYPES;
 	}
 
-      if (type1 == DB_TYPE_NULL)
-	{
-	  list_id1_p->type_list.domp[i] = list_id2_p->type_list.domp[i];
-	}
-      else
-	{
-	  if (type2 != DB_TYPE_NULL && (list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]))
-	    {
-	      if (type1 == type2
-		  && ((pr_is_string_type (type1) && pr_is_variable_type (type1)) || (type1 == DB_TYPE_JSON)))
-		{
-		  /* OK for variable string types with different precision or json types */
-		}
-	      else
-		{
-		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INCOMPATIBLE_TYPES, 0);
-		  qfile_set_layout (&list_id1_p->type_list);
-		  return ER_QPROC_INCOMPATIBLE_TYPES;
-		}
-	    }
-	}
-
-      if (TP_DOMAIN_COLLATION_FLAG (list_id1_p->type_list.domp[i]) != TP_DOMAIN_COLL_NORMAL
-	  || TP_DOMAIN_COLLATION_FLAG (list_id2_p->type_list.domp[i]) != TP_DOMAIN_COLL_NORMAL)
+      if (TP_DOMAIN_COLLATION_FLAG (list_id1_p->type_list.domp[i]) != TP_DOMAIN_COLL_NORMAL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QSTR_INCOMPATIBLE_COLLATIONS, 0);
-	  qfile_set_layout (&list_id1_p->type_list);
 	  return ER_QSTR_INCOMPATIBLE_COLLATIONS;
 	}
     }
-
-  /* domp of list1 may have changed above */
-  qfile_set_layout (&list_id1_p->type_list);
 
   return NO_ERROR;
 }
@@ -2513,7 +2458,7 @@ qfile_combine_two_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * lhs_file_p, QFI
       goto error;
     }
 
-  if (rhs_file_p && qfile_unify_types (dest_list_id_p, rhs_file_p, lhs_file_p->tuple_cnt == 0) != NO_ERROR)
+  if (rhs_file_p && qfile_unify_types (dest_list_id_p, rhs_file_p) != NO_ERROR)
     {
       goto error;
     }
@@ -3148,7 +3093,7 @@ qfile_union_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id1_p, QFILE_LIS
 	  goto error;
 	}
 
-      if (qfile_unify_types (result_list_id_p, tail, false) != NO_ERROR)
+      if (qfile_unify_types (result_list_id_p, tail) != NO_ERROR)
 	{
 	  goto error;
 	}

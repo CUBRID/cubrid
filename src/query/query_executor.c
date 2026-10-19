@@ -19002,9 +19002,8 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 
 	  if (first_iteration)
 	    {
-	      /* unify list_id types after the first execution of the recursive part */
-	      if (qfile_unify_types (non_recursive_part->list_id, recursive_part->list_id,
-				     non_recursive_part->list_id->tuple_cnt == 0) != NO_ERROR)
+	      /* the two parts' lists have one domain per column (XASL generation typed them) */
+	      if (qfile_unify_types (non_recursive_part->list_id, recursive_part->list_id) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
