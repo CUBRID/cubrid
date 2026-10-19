@@ -4090,6 +4090,10 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		      /* set the next argument pointer (the separator argument) to NULL in order to avoid impacting the
 		       * regu vars generation. */
 		      tree->info.function.arg_list->next = NULL;
+		      /* the regu lists above were made before: the separator is no column of the scan (a scan regu
+		       * left for it shifts every scan value of the aggregate one slot down the value list) */
+		      regu_constant_list->next = NULL;
+		      scan_regu_constant_list->next = NULL;
 		      pt_register_orphan_db_value (parser, aggregate_list->accumulator.value2);
 		    }
 		  else
