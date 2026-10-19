@@ -6096,6 +6096,9 @@ static const int *sysprm_find_shared_system_parameter (SYSPRM_PARAM * prm);
 static SYSPRM_ERR sysprm_set_session_parameter_value (SESSION_PARAM * session_parameter, SYSPRM_VALUE value);
 static SYSPRM_ERR sysprm_set_session_parameter_default (SESSION_PARAM * session_parameter, PARAM_ID prm_id);
 #endif /* SERVER_MODE */
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+static bool sysprm_set_sub_client_session_value (PARAM_ID prm_id, SYSPRM_VALUE value);
+#endif
 
 #if defined (CS_MODE)
 static void sysprm_update_cached_session_param_val (const PARAM_ID prm_id);
@@ -10929,6 +10932,31 @@ prm_get_value (PARAM_ID prm_id)
   return NULL;
 }
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+/*
+ * sysprm_set_sub_client_session_value () - set a session parameter of the sub-client of this thread
+ *
+ * return      : true if prm_id is a session parameter of the sub-client of this thread and the value is set to it,
+ *		 false otherwise (the caller sets prm_Def)
+ * prm_id (in) : parameter id
+ * value (in)  : new value; a string or an integer list is owned by the parameter, as prm_set_*_value () does
+ *
+ * Note: prm_get_* () reads the session parameters of a sub-client from sysprm_Sub_client_session_params, so
+ *	 prm_set_*_value () must write them there too, not to prm_Def shared with the other connections.
+ */
+static bool
+sysprm_set_sub_client_session_value (PARAM_ID prm_id, SYSPRM_VALUE value)
+{
+  if (!PRM_SUB_CLIENT_SESSION (prm_id))
+    {
+      return false;
+    }
+
+  (void) sysprm_set_session_parameter_value (PRM_SUB_CLIENT_SESSION_PARAM (prm_id), value);
+  return true;
+}
+#endif
+
 /*
  * prm_set_integer_value () - set a new value to a parameter of type integer
  *
@@ -10943,6 +10971,18 @@ prm_set_integer_value (PARAM_ID prm_id, int value)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER (GET_PRM (prm_id)) || PRM_IS_KEYWORD (GET_PRM (prm_id)));
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.i = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
 
   PRM_GET_INT (GET_PRM (prm_id)->value) = value;
 
@@ -10962,6 +11002,18 @@ prm_set_bool_value (PARAM_ID prm_id, bool value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_BOOLEAN (GET_PRM (prm_id)));
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.b = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
+
   PRM_GET_BOOL (GET_PRM (prm_id)->value) = value;
 
   sysprm_update_flag_different (GET_PRM (prm_id));
@@ -10980,6 +11032,18 @@ prm_set_float_value (PARAM_ID prm_id, float value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_FLOAT (GET_PRM (prm_id)));
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.f = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
+
   PRM_GET_FLOAT (GET_PRM (prm_id)->value) = value;
 
   sysprm_update_flag_different (GET_PRM (prm_id));
@@ -10997,6 +11061,18 @@ prm_set_string_value (PARAM_ID prm_id, char *value)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_STRING (GET_PRM (prm_id)));
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.str = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
 
   if (PRM_IS_ALLOCATED (GET_PRM (prm_id)))
     {
@@ -11026,6 +11102,18 @@ prm_set_integer_list_value (PARAM_ID prm_id, int *value)
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_INTEGER_LIST (GET_PRM (prm_id)));
 
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.integer_list = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
+
   if (PRM_IS_ALLOCATED (GET_PRM (prm_id)))
     {
       free_and_init (PRM_GET_INTEGER_LIST (GET_PRM (prm_id)->value));
@@ -11052,6 +11140,18 @@ prm_set_bigint_value (PARAM_ID prm_id, UINT64 value)
 {
   assert (prm_id <= PRM_LAST_ID);
   assert (PRM_IS_BIGINT (GET_PRM (prm_id)));
+
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+  {
+    SYSPRM_VALUE sub_client_value;
+
+    sub_client_value.bi = value;
+    if (sysprm_set_sub_client_session_value (prm_id, sub_client_value))
+      {
+	return;
+      }
+  }
+#endif
 
   PRM_GET_BIGINT (GET_PRM (prm_id)->value) = value;
 
