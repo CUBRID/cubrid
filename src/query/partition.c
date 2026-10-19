@@ -998,27 +998,6 @@ cleanup:
   return error;
 }
 
-#if !defined (NDEBUG)
-/*
- * partition_census () - CBRD-27583 census (removed at S3-14): a pruning step that does not prune where develop's could,
- *   or that compares by the values, with the two types it meets and the partitioned class's name
- */
-static void
-partition_census (PRUNING_CONTEXT * pinfo, const char *what, int a, int b)
-{
-  char *name = NULL;
-  if (er_errid () == NO_ERROR && heap_get_class_name (pinfo->thread_p, &pinfo->root_oid, &name) != NO_ERROR)
-    {
-      er_clear ();
-    }
-  er_log_debug (ARG_FILE_LINE, "CBRD-27583 partition %s %d %d %s\n", what, a, b, name != NULL ? name : "?");
-  if (name != NULL)
-    {
-      free_and_init (name);
-    }
-}
-#endif /* !NDEBUG */
-
 /*
  * partition_values_match () - CBRD-27583 (D-87): whether a constant of a predicate's expression is the partition
  *   expression's: of its type (and collation) and equal by that type's cmpval; a constant of another type makes another
@@ -1333,9 +1312,6 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRU
       else if (key == NULL)
 	{
 	  /* no conversion decided for the value's type */
-#if !defined (NDEBUG)
-	  partition_census (pinfo, "hash undecided", DB_VALUE_DOMAIN_TYPE (val_p), TP_DOMAIN_TYPE (col_domain));
-#endif
 	  status = MATCH_NOT_FOUND;
 	  break;
 	}
@@ -1388,10 +1364,6 @@ partition_prune_hash (PRUNING_CONTEXT * pinfo, const DB_VALUE * val_p, const PRU
 	      }
 	    if (DB_VALUE_DOMAIN_TYPE (&col) != TP_DOMAIN_TYPE (col_domain))
 	      {
-#if !defined (NDEBUG)
-		partition_census (pinfo, "hash element differs", DB_VALUE_DOMAIN_TYPE (&col),
-				  TP_DOMAIN_TYPE (col_domain));
-#endif
 		pr_clear_value (&col);
 		status = MATCH_NOT_FOUND;
 		goto cleanup;
@@ -1477,10 +1449,6 @@ partition_prune_range (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const PRUN
 	      && !partition_types_agree (DB_VALUE_DOMAIN_TYPE (&col),
 					 TP_DOMAIN_TYPE (pinfo->partition_pred->func_regu->domain)))
 	    {
-#if !defined (NDEBUG)
-	      partition_census (pinfo, "range element differs", DB_VALUE_DOMAIN_TYPE (&col),
-				TP_DOMAIN_TYPE (pinfo->partition_pred->func_regu->domain));
-#endif
 	      pr_clear_value (&col);
 	      status = MATCH_NOT_FOUND;
 	      goto cleanup;
@@ -1762,9 +1730,6 @@ partition_compare_key (PRUNING_CONTEXT * pinfo, const PRUNING_TERM * term, const
   if (!partition_types_agree (DB_VALUE_DOMAIN_TYPE (key), TP_DOMAIN_TYPE (domain))
       || !partition_types_agree (DB_VALUE_DOMAIN_TYPE (value), TP_DOMAIN_TYPE (domain)))
     {
-#if !defined (NDEBUG)
-      partition_census (pinfo, "key differs", DB_VALUE_DOMAIN_TYPE (key), DB_VALUE_DOMAIN_TYPE (value));
-#endif
       return DB_UNK;
     }
   return domain->type->cmpval (key, value, 1, 1, NULL, domain->collation_id);
@@ -1799,9 +1764,6 @@ partition_term_value (PRUNING_CONTEXT * pinfo, const PRUNING_TERM * term, const 
     }
   if (db_value_type_is_collection (raw) || key->conv != NULL)
     {
-#if !defined (NDEBUG)
-      partition_census (pinfo, "term no compare", DB_VALUE_DOMAIN_TYPE (raw), key->conv != NULL);
-#endif
       return false;
     }
   if (arg->conv != NULL && (arg->type == TYPE_DBVAL || arg->type == TYPE_POS_VALUE))
@@ -1817,19 +1779,12 @@ partition_term_value (PRUNING_CONTEXT * pinfo, const PRUNING_TERM * term, const 
   if (compare == NULL)
     {
       /* the term's row compares by the values */
-#if !defined (NDEBUG)
-      partition_census (pinfo, "compare by value", DB_VALUE_DOMAIN_TYPE (*value), TP_DOMAIN_TYPE (key_domain));
-#endif
       return true;
     }
   if (!partition_types_agree ((DB_TYPE) compare->source[term->key_side], TP_DOMAIN_TYPE (key_domain))
       || !partition_types_agree (DB_VALUE_DOMAIN_TYPE (*value), (DB_TYPE) compare->source[1 - term->key_side])
       || (TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (key_domain)) && compare->collation != TP_DOMAIN_COLLATION (key_domain)))
     {
-#if !defined (NDEBUG)
-      partition_census (pinfo, "term differs", compare->source[term->key_side] * 1000 + compare->collation,
-			TP_DOMAIN_TYPE (key_domain) * 1000 + TP_DOMAIN_COLLATION (key_domain));
-#endif
       return false;
     }
   return true;
@@ -1861,10 +1816,6 @@ partition_prune_elements (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const P
   if (term->prune == NULL || TP_DOMAIN_TYPE (term->prune_domain) != TP_DOMAIN_TYPE (key_domain)
       || !db_value_type_is_collection (val) || (term->prune->conv != NULL && op != PO_IN && op != PO_EQ))
     {
-#if !defined (NDEBUG)
-      partition_census (pinfo, "list undecided", term->prune != NULL ? term->prune->source : DB_TYPE_NULL,
-			TP_DOMAIN_TYPE (key_domain));
-#endif
       return MATCH_NOT_FOUND;
     }
   if (term->prune->conv == NULL)
@@ -1902,10 +1853,6 @@ partition_prune_elements (PRUNING_CONTEXT * pinfo, const DB_VALUE * val, const P
 	{
 	  /* an element that does not convert, or not of the list's type: the term does not prune */
 	  er_clear ();
-#if !defined (NDEBUG)
-	  partition_census (pinfo, "list element no conversion", DB_VALUE_DOMAIN_TYPE (&element),
-			    TP_DOMAIN_TYPE (key_domain));
-#endif
 	  pr_clear_value (&element);
 	  pr_clear_value (&holder);
 	  goto end;
@@ -2604,10 +2551,6 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 	      if (attribute_value == NULL)
 		{
 		  /* no conversion decided for the element's type: the term does not prune */
-#if !defined (NDEBUG)
-		  partition_census (pinfo, "function undecided", DB_VALUE_DOMAIN_TYPE (&old_collection_val),
-				    TP_DOMAIN_TYPE (left->domain));
-#endif
 		  goto cleanup;
 		}
 	      partition_set_cache_dbvalp_for_attribute (part_expr, (DB_VALUE *) attribute_value);
@@ -2652,10 +2595,6 @@ partition_prune_for_function (PRUNING_CONTEXT * pinfo, const REGU_VARIABLE * lef
 	  if (attribute_value == NULL)
 	    {
 	      /* no conversion decided for the value's type: the term does not prune */
-#if !defined (NDEBUG)
-	      partition_census (pinfo, "function undecided", DB_VALUE_DOMAIN_TYPE (&val),
-				TP_DOMAIN_TYPE (left->domain));
-#endif
 	      goto cleanup;
 	    }
 	  partition_set_cache_dbvalp_for_attribute (part_expr, (DB_VALUE *) attribute_value);

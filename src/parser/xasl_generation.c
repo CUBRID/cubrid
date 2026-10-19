@@ -6765,12 +6765,6 @@ pt_set_list_position_domains (REGU_VARIABLE_LIST positions, VAL_LIST * values, c
 	}
       position->domain = domain;
       position->value.pos_descr.dom = domain;
-      if (producer != NULL && (producer->type == MERGELIST_PROC || producer->type == HASHJOIN_PROC)
-	  && TP_DOMAIN_TYPE (domain) == DB_TYPE_VARIABLE)
-	{
-	  /* CBRD-27583 census (D-60): a join output column its input list leaves untyped */
-	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 hash join output position %d proc %d\n", pos, (int) producer->type);
-	}
     }
 }
 
@@ -7174,10 +7168,6 @@ pt_decide_hash_list_keys (ACCESS_SPEC_TYPE * spec)
 	  || (common != NULL && (build->value.original_domain != NULL || build->value.vfetch_to != NULL
 				 || probe->value.original_domain != NULL || probe->value.vfetch_to != NULL)))
 	{
-	  /* CBRD-27583 census (removed at S3-14): a hash list scan the key domains turn off */
-	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 left hash list scan %d %d\n",
-			build->value.domain != NULL ? (int) TP_DOMAIN_TYPE (build->value.domain) : -1,
-			probe->value.domain != NULL ? (int) TP_DOMAIN_TYPE (probe->value.domain) : -1);
 	  spec->s.list_node.hash_list_scan_yn = 0;
 	  return;
 	}
@@ -8036,14 +8026,6 @@ pt_check_cast_wrap_domain (PARSER_CONTEXT * parser, const REGU_VARIABLE * regu, 
     }
   const DB_TYPE source = arith->rightptr != NULL && arith->rightptr->domain != NULL
     ? TP_DOMAIN_TYPE (arith->rightptr->domain) : DB_TYPE_NULL;
-  const TP_DOMAIN *cast = pt_xasl_data_type_to_domain (parser, node->info.expr.cast_type);
-  if (cast != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (cast))
-      && TP_DOMAIN_COLLATION_FLAG (cast) == TP_DOMAIN_COLL_ENFORCE)
-    {
-      /* CBRD-27583 census (D-75, removed at S3-14): the source and decided types of a collation-enforcing cast */
-      er_log_debug (ARG_FILE_LINE, "CBRD-27583 enforce cast source=%d.%d: %.300s\n", (int) source, (int) decided,
-		    parser->original_buffer != NULL ? parser->original_buffer : "");
-    }
   assert ((TP_IS_CHAR_TYPE (declared) ? TP_IS_CHAR_TYPE (decided) : decided == declared)
 	  || (decided == source && decided != DB_TYPE_ENUMERATION));
 #endif
@@ -15008,45 +14990,6 @@ pt_get_mvcc_reev_range_data (PARSER_CONTEXT * parser, TABLE_INFO * table_info, P
   return NO_ERROR;
 }
 
-#if !defined (NDEBUG)
-/*
- * pt_census_class_attributes () - CBRD-27583 census (removed at S3-14): a class of a spec of several classes whose
- *   attribute's domain differs from the value list slot the spec's readers take (pt_find_attr_in_class_list makes any
- *   difference but an object's class an error, so none is expected)
- */
-static void
-pt_census_class_attributes (PARSER_CONTEXT * parser, const PT_NODE * class_, const ACCESS_SPEC_TYPE * access,
-			    const VAL_LIST * values)
-{
-  if (access->type != TARGET_CLASS && access->type != TARGET_CLASS_ATTR)
-    {
-      return;
-    }
-  const REGU_VARIABLE_LIST lists[4] = { access->s.cls_node.cls_regu_list_key, access->s.cls_node.cls_regu_list_pred,
-    access->s.cls_node.cls_regu_list_rest, access->s.cls_node.cls_regu_list_range
-  };
-  for (int k = 0; k < 4; k++)
-    {
-      for (REGU_VARIABLE_LIST r = lists[k]; r != NULL; r = r->next)
-	{
-	  const QPROC_DB_VALUE_LIST slot = r->value.vfetch_to != NULL ? pt_value_list_slot (values, r->value.vfetch_to)
-	    : NULL;
-	  const TP_DOMAIN *own = r->value.domain;
-	  if (slot == NULL || slot->dom == NULL || own == NULL || tp_domain_match (own, slot->dom, TP_EXACT_MATCH)
-	      || (TP_DOMAIN_TYPE (own) == DB_TYPE_OBJECT && TP_DOMAIN_TYPE (slot->dom) == DB_TYPE_OBJECT))
-	    {
-	      continue;
-	    }
-	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 class attribute differs %d %d.%d.%d.%d -> %d.%d.%d.%d %s: %.200s\n",
-			k, (int) TP_DOMAIN_TYPE (own), own->precision, own->scale, own->collation_id,
-			(int) TP_DOMAIN_TYPE (slot->dom), slot->dom->precision, slot->dom->scale,
-			slot->dom->collation_id, class_->info.name.original,
-			parser->original_buffer ? parser->original_buffer : "");
-	}
-    }
-}
-#endif /* !NDEBUG */
-
 /*
  * pt_regu_is_pruning_value () - CBRD-27583 (D-87): a regu partition pruning reads as a value before the scan, as
  *   partition_is_reguvar_const takes it: a constant, a bind, or an expression or a function of those
@@ -15576,12 +15519,6 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 
 	  if (access)
 	    {
-#if !defined (NDEBUG)
-	      if (flat->next != NULL)
-		{
-		  pt_census_class_attributes (parser, class_, access, table_info->value_list);
-		}
-#endif
 	      if (access->pruning_type == DB_PARTITIONED_CLASS)
 		{
 		  pt_set_prune_domains (access->where_pred);
@@ -26712,10 +26649,6 @@ parser_generate_xasl (PARSER_CONTEXT * parser, PT_NODE * node)
   next = node->next;
   node->next = NULL;
   parser->dbval_cnt = 0;
-#if !defined (NDEBUG)
-  /* CBRD-27583 census (removed at S3-14): the statement whose census lines follow */
-  er_log_debug (ARG_FILE_LINE, "CBRD-27583 generate: %.300s\n", parser->original_buffer ? parser->original_buffer : "");
-#endif
 
   is_system_generated_stmt = node->flag.is_system_generated_stmt;
 

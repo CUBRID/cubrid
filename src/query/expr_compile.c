@@ -2863,17 +2863,6 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	      && TP_DOMAIN_TYPE (compare->target[1]) == t1
 	      && ((TP_IS_NUMERIC_TYPE (t1) && TP_IS_NUMERIC_TYPE (t2))
 		  || (TP_IS_DATE_OR_TIME_TYPE (t1) && TP_IS_CHAR_TYPE (t2)));
-#if !defined (NDEBUG)
-	    {
-	      /* the shapes the step compiler pinned before (removed at S3-14) */
-	      TP_DECISION_EXCEPTION ();
-	      const bool pinned_before = (TP_IS_NUMERIC_TYPE (t1) && TP_IS_NUMERIC_TYPE (t2)
-					  && tp_more_general_type (t1, t2) > 0)
-		|| (TP_IS_DATE_OR_TIME_TYPE (t1) && TP_IS_CHAR_TYPE (t2));
-	      /* CBRD-27583 (S3-32): never seen in the gates (census "step literal pin") */
-	      assert (pins == pinned_before);
-	    }
-#endif
 	    if (pins && tp_value_convert (compare->conv[1], compare->target[1], &et->rhs->value.dbval, &pinned)
 		== DOMAIN_COMPATIBLE && DB_VALUE_DOMAIN_TYPE (&pinned) == t1)
 	      {

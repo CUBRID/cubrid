@@ -7548,28 +7548,6 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
       assert (TP_DOMAIN_TYPE (domain) == result_type);
     }
 
-#if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
-  {
-    /* debug cross-check: domain_resolve (DOMAIN_CTX_FUNC_ARG) answers the result type - from the value's type,
-     * but for a string the compiler typed VARCHAR whose zone goes into the result string */
-    TP_DECISION_EXCEPTION ();
-    DB_TYPE left_class = !zone_to_string ? domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, 0, left)
-      : DB_VALUE_DOMAIN_TYPE (left);
-    DOMAIN_OPERAND operands[2] = {
-      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (left)), left_class, -1, false}
-      ,
-      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (right)), DB_VALUE_DOMAIN_TYPE (right), -1, false}
-    };
-    RESOLVED_DOMAIN resolved;
-    bool needs_late_bind;
-    int cross_check_error =
-      domain_resolve (DOMAIN_CTX_FUNC_ARG, T_ADDTIME, operands, 2, NULL, &resolved, &needs_late_bind);
-    assert (cross_check_error == NO_ERROR && !needs_late_bind);
-    assert (cross_check_error != NO_ERROR
-	    || TP_DOMAIN_TYPE (resolved.domain) == (zone_to_string ? DB_TYPE_VARCHAR : result_type));
-  }
-#endif
-
   switch (result_type)
     {
     case DB_TYPE_DATETIME:
@@ -22686,26 +22664,6 @@ db_str_to_date (const DB_VALUE * str, const DB_VALUE * format, const DB_VALUE * 
 	  goto error;
 	}
     }
-
-#if !defined (NDEBUG) && (defined (SERVER_MODE) || defined (SA_MODE))
-  {
-    /* debug cross-check: the format's value type and domain_resolve (DOMAIN_CTX_FUNC_ARG) answer res_type */
-    TP_DECISION_EXCEPTION ();
-    DB_TYPE format_class = domain_classify_value (DOMAIN_CTX_FUNC_ARG, T_STR_TO_DATE, 1, format);
-    DOMAIN_OPERAND operands[2] = {
-      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (str)), DB_VALUE_DOMAIN_TYPE (str), -1, false}
-      ,
-      {tp_domain_resolve_default (DB_VALUE_DOMAIN_TYPE (format)), format_class, -1, false}
-    };
-    RESOLVED_DOMAIN resolved;
-    bool needs_late_bind;
-    int cross_check_error = domain_resolve (DOMAIN_CTX_FUNC_ARG, T_STR_TO_DATE, operands, 2, domain, &resolved,
-					    &needs_late_bind);
-    assert (domain != NULL || format_class == res_type);
-    assert (cross_check_error == NO_ERROR && !needs_late_bind);
-    assert (cross_check_error != NO_ERROR || TP_DOMAIN_TYPE (resolved.domain) == res_type);
-  }
-#endif
 
   /*
    * 1. Get information according to format specifiers

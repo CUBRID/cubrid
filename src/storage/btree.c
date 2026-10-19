@@ -22943,10 +22943,6 @@ btree_compare_own_values (DB_VALUE * value1, DB_VALUE * value2, const TP_DOMAIN 
     {
       return domain->type->cmpval (value1, value2, do_coercion, total_order, NULL, domain->collation_id);
     }
-#if !defined (NDEBUG)
-  /* CBRD-27583 census (removed at S3-14) */
-  er_log_debug (ARG_FILE_LINE, "CBRD-27583 btree own key differs %d %d %d\n", (int) type1, (int) type2, (int) type);
-#endif
   assert (false);
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (type1), pr_type_name (type2));
   *can_compare = false;

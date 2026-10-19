@@ -3362,7 +3362,8 @@ db_value_to_json_value (const DB_VALUE &db_val, JSON_DOC_STORE &json_doc)
 
     default:
       DB_VALUE dest;
-      /* CBRD-27583 exception, the data carries the type (2-7): a value into JSON by its own type */
+      /* CBRD-27583 exception, the data carries the type (2-7): a JSON value's scalar, made from a value by its own
+       * type */
       TP_DECISION_EXCEPTION ();
       TP_DOMAIN_STATUS status = tp_value_cast (&db_val, &dest, &tp_Json_domain, false);
       if (status != DOMAIN_COMPATIBLE)

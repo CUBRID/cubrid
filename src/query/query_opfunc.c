@@ -536,11 +536,9 @@ qdata_release_valptr_list_prog (THREAD_ENTRY * thread_p, valptr_list_node * valp
  *   precision and the column reads as NULL (mr_data_readval_numeric, develop's defect workspace #444); a bound value
  *   comes as the client sent it, as before CBRD-27510 (D-65, D-66): of the column's type with its own precision, scale
  *   and collation (num_idx's UPDATE), or a string as CHAR or VARCHAR (cbrd_27615's MERGE)
- *   site(in): the census line's name of the reading
  */
 static void
-qdata_check_output_column (const char *site, const REGU_VARIABLE * regu_var_p, const TP_DOMAIN * domain,
-			   const DB_VALUE * value)
+qdata_check_output_column (const REGU_VARIABLE * regu_var_p, const TP_DOMAIN * domain, const DB_VALUE * value)
 {
   if (domain == NULL || DB_IS_NULL (value) || REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_ANALYTIC_WINDOW))
     {
@@ -559,11 +557,6 @@ qdata_check_output_column (const char *site, const REGU_VARIABLE * regu_var_p, c
     {
       return;
     }
-  er_log_debug (ARG_FILE_LINE, "CBRD-27583 output column %s value type %d domain type %d p=%d/%d s=%d/%d regu=%d\n",
-		site, (int) val_type, (int) dom_type,
-		val_type == DB_TYPE_NUMERIC ? value->domain.numeric_info.precision : -1, domain->precision,
-		val_type == DB_TYPE_NUMERIC ? value->domain.numeric_info.scale : -1, domain->scale,
-		(int) regu_var_p->type);
   assert (false);
 }
 #endif /* !NDEBUG */
@@ -585,7 +578,7 @@ qdata_get_dbval_from_prog (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var_p, 
   assert (!REGU_VARIABLE_IS_FLAGED (regu_var_p, REGU_VARIABLE_ANALYTIC_WINDOW));
 
 #if !defined (NDEBUG)
-  qdata_check_output_column ("prog", regu_var_p, regu_var_p->domain, peek_value_p);
+  qdata_check_output_column (regu_var_p, regu_var_p->domain, peek_value_p);
 #endif
 
   return peek_value_p;
@@ -1993,10 +1986,6 @@ qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE 
 	/* CBRD-27583 exception, the data carries the type (2-7): a collection's elements, which the union converts and
 	 * compares by their values (set_op, setobj_ismember) */
 	TP_DECISION_EXCEPTION ();
-#if !defined (NDEBUG)
-	/* CBRD-27583 census (removed at S3-14) */
-	er_log_debug (ARG_FILE_LINE, "CBRD-27583 collection union by value %d\n", (int) TP_DOMAIN_TYPE (domain_p));
-#endif
 	error = set_union (db_get_set (seq_val_p), db_get_set (dbval_p), &set_tmp, domain_p);
       }
       if (error < 0)
@@ -2191,11 +2180,7 @@ qdata_coerce_result_to_domain (DB_VALUE * result_p, TP_DOMAIN * domain_p, DB_TYP
   TP_DOMAIN_STATUS dom_status;
   if (DB_VALUE_DOMAIN_TYPE (result_p) == planned && !domain_is_variable (domain_p))
     {
-      {
-	/* the plan's converter, which the cast takes in place of its lookup (the check: removed at S3-14) */
-	TP_DECISION_EXCEPTION ();
-	assert (conv == tp_value_find_converter (planned, domain_p, DOMAIN_CONVERT_IMPLICIT));
-      }
+      /* the plan's converter, which the cast takes in place of its lookup */
       if (conv == NULL)
 	{
 	  return NO_ERROR;
@@ -2260,64 +2245,6 @@ qdata_operand_coercion_error (TP_DOMAIN_STATUS status, const DB_VALUE * value, c
   return error;
 }
 
-#if !defined (NDEBUG)
-/* Whether two types are one for an operand coercion: a character, bit or collection type stands for its type family */
-static bool
-qdata_operand_coercion_type_holds (DB_TYPE value, DB_TYPE resolved)
-{
-  return value == resolved || (TP_IS_CHAR_TYPE (value) && TP_IS_CHAR_TYPE (resolved))
-    || (TP_IS_BIT_TYPE (value) && TP_IS_BIT_TYPE (resolved)) || (TP_IS_SET_TYPE (value) && TP_IS_SET_TYPE (resolved));
-}
-
-/*
- * qdata_assert_operand_coercion_resolved () - debug cross-check: the operand coercion a caller resolved for two values
- *   that are not NULL is the resolver's type rules over the values' own types: the same target types, and the
- *   converter of the value's own type, CHAR and VARCHAR standing for each other (their converters read any string)
- */
-static void
-qdata_assert_operand_coercion_resolved (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * conv,
-					const TP_DOMAIN * const *operand_domain, const DB_VALUE * dbval1_p,
-					const DB_VALUE * dbval2_p)
-{
-  /* the optdebug cross-check (removed at S3-14) */
-  TP_DECISION_EXCEPTION ();
-  const DB_VALUE *values[2] = { dbval1_p, dbval2_p };
-  const DOMAIN_OPERAND operands[2] = {
-    {NULL, DB_VALUE_DOMAIN_TYPE (dbval1_p), -1, false}, {NULL, DB_VALUE_DOMAIN_TYPE (dbval2_p), -1, false}
-  };
-  DOMAIN_OPERAND_COERCION expected;
-  domain_resolve_operand_coercion (opcode, operands, &expected);
-  for (int i = 0; i < 2; i++)
-    {
-      if (conv[i] == NULL && expected.conv[i] == NULL)
-	{
-	  /* neither converts the value: its type is the operator's to take */
-	  continue;
-	}
-      const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (values[i]);
-      const TP_DOMAIN *resolved = operand_domain[i];
-      bool same = resolved != NULL
-	&& qdata_operand_coercion_type_holds (TP_DOMAIN_TYPE (expected.operand_domain[i]), TP_DOMAIN_TYPE (resolved));
-      if (same && conv[i] != expected.conv[i])
-	{
-	  const DB_TYPE sibling =
-	    type == DB_TYPE_CHAR ? DB_TYPE_VARCHAR : type == DB_TYPE_VARCHAR ? DB_TYPE_CHAR : type;
-	  same = sibling != type && conv[i] != NULL && expected.conv[i] != NULL
-	    && conv[i] == tp_value_find_converter (sibling, resolved, DOMAIN_CONVERT_ASSIGN);
-	}
-      if (!same)
-	{
-	  fprintf (stderr, "planned pre-cast: opcode=%d operand=%d value=%d/%d planned=%d expected=%d\n",
-		   (int) opcode, i, (int) DB_VALUE_DOMAIN_TYPE (values[0]), (int) DB_VALUE_DOMAIN_TYPE (values[1]),
-		   resolved != NULL ? (int) TP_DOMAIN_TYPE (resolved) : -1,
-		   expected.operand_domain[i] != NULL ? (int) TP_DOMAIN_TYPE (expected.operand_domain[i]) : -1);
-	}
-      assert (same);
-    }
-}
-
-#endif
-
 /*
  * qdata_coerce_arith_operands () - an addition, subtraction, multiplication or division over its operands' operand
  *   coercion, resolved before any row, then the typed operator, which casts nothing
@@ -2345,9 +2272,6 @@ qdata_coerce_arith_operands (OPERATOR_TYPE opcode, const TP_VALUE_CONVERTER * co
     {
       return qdata_arith_dbval (opcode, arith, dbval1_p, dbval2_p, result_p, domain_p, result_conv);
     }
-#if !defined (NDEBUG)
-  qdata_assert_operand_coercion_resolved (opcode, conv, operand_domain, dbval1_p, dbval2_p);
-#endif
   DB_VALUE *operand[2] = { dbval1_p, dbval2_p };
   DB_VALUE converted[2];
   int used = 0;
@@ -5640,7 +5564,7 @@ qdata_get_dbval_from_constant_regu_variable (THREAD_ENTRY * thread_p, REGU_VARIA
     }
 
 #if !defined (NDEBUG)
-  qdata_check_output_column ("regu", regu_var_p, regu_var_p->domain, peek_value_p);
+  qdata_check_output_column (regu_var_p, regu_var_p->domain, peek_value_p);
 #endif
 
   return peek_value_p;

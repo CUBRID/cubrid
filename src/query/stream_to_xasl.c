@@ -1780,21 +1780,6 @@ stx_decide_compare (const TP_DOMAIN * const domain[2], DOMAIN_COMPARE * decided,
   return NO_ERROR;
 }
 
-#if !defined (NDEBUG)
-/* CBRD-27583 census: a comparison no load derives that unpack decided by the values (stx_decide_compare's by_type
- * false) - a side's regu type (-1 a list column or a constant) and domain type (-1 none) */
-static void
-stx_log_compare_by_value (const char *kind, const REGU_VARIABLE * lhs, const REGU_VARIABLE * rhs,
-			  const TP_DOMAIN * const domain[2])
-{
-  er_log_debug (ARG_FILE_LINE, "CBRD-27583 by value %s lhs=%d/%d rhs=%d/%d\n", kind, lhs != NULL ? (int) lhs->type : -1,
-		domain[0] != NULL ? (int) TP_DOMAIN_TYPE (domain[0]) : -1, rhs != NULL ? (int) rhs->type : -1,
-		domain[1] != NULL ? (int) TP_DOMAIN_TYPE (domain[1]) : -1);
-  /* CBRD-27583 (S3-32): never seen in the gates (census "by value" 0) */
-  assert (false);
-}
-#endif
-
 /*
  * stx_alloc_compares () - CBRD-27583: n decided comparisons in the unpack arena
  *   return: the comparisons; NULL with the unpack error set
@@ -1846,14 +1831,6 @@ stx_decide_stream_compare (const char *site, const REGU_VARIABLE * lhs, const RE
   const TP_DOMAIN *domain[2];
   DOMAIN_COMPARE_KEY key[2];
   const bool literals = stx_literal_key (lhs, &domain[0], &key[0]) && stx_literal_key (rhs, &domain[1], &key[1]);
-#if !defined (NDEBUG)
-  /* CBRD-27583 census (D-82, removed at S3-14): the comparisons the server decides for a filter or function index or
-   * a partition expression stream - the sides' regu types and domain types */
-  er_log_debug (ARG_FILE_LINE, "CBRD-27583 stream compare %s %s %d/%d %d/%d\n", site, literals ? "literal" : "KEYS",
-		lhs != NULL ? (int) lhs->type : -1, lhs != NULL
-		&& lhs->domain != NULL ? (int) TP_DOMAIN_TYPE (lhs->domain) : -1, rhs != NULL ? (int) rhs->type : -1,
-		rhs != NULL && rhs->domain != NULL ? (int) TP_DOMAIN_TYPE (rhs->domain) : -1);
-#endif
   if (!literals)
     {
       *decided = DOMAIN_COMPARE
@@ -1950,40 +1927,6 @@ stx_unpack_compare (char *ptr, DOMAIN_COMPARE * compare, bool * by_type)
   return ptr;
 }
 
-#if !defined (NDEBUG)
-/*
- * stx_check_compare () - CBRD-27583 (D-81) debug cross-check (removed at S3-14): the comparison the compiler decided
- *   is the rule's for the domains the server reads, and - no side an OBJECT, whose values the compiler now compares as
- *   OIDs - the one unpack decided before (stx_decide_compare, its sides' own targets aside)
- */
-static void
-stx_check_compare (const TP_DOMAIN * lhs, const TP_DOMAIN * rhs, const DOMAIN_COMPARE * compare, bool by_type)
-{
-  const TP_DOMAIN *const domain[2] = { lhs, rhs };
-  DOMAIN_COMPARE expected;
-  bool expected_by_type;
-  const int error = domain_decide_comparison (domain, &expected, &expected_by_type);
-  if (expected_by_type)
-    {
-      domain_compare_set_operator_functions (&expected);
-    }
-  assert (error == NO_ERROR && expected_by_type == by_type && domain_compare_equal (&expected, compare));
-  if ((lhs != NULL && TP_DOMAIN_TYPE (lhs) == DB_TYPE_OBJECT)
-      || (rhs != NULL && TP_DOMAIN_TYPE (rhs) == DB_TYPE_OBJECT))
-    {
-      return;
-    }
-  DOMAIN_COMPARE before;
-  bool before_by_type;
-  assert (stx_decide_compare (domain, &before, &before_by_type) == NO_ERROR);
-  for (int side = 0; side < 2 && before_by_type; side++)
-    {
-      before.target[side] = before.conv[side] != NULL ? before.target[side] : NULL;
-    }
-  assert (before_by_type == by_type && domain_compare_equal (&before, compare));
-}
-#endif
-
 /*
  * CBRD-27583 (D-83): a plan of the server's arithmetic outside a node, as the compiler decided it
  *   (xts_pack_conversion, xts_pack_coercion_plan, xts_pack_accumulator_plan): its fields and domains; the converters
@@ -2064,33 +2007,6 @@ stx_unpack_accumulator_domain (char *ptr, cubxasl::aggregate_accumulator_domain 
   return ptr;
 }
 
-#if !defined (NDEBUG)
-/* the operand coercions are the same but for result, which the plans before S3-40b lacked (qdata_coerce_result_to_domain
- * checks it at each value) */
-static bool
-stx_operand_coercion_equal (const DOMAIN_OPERAND_COERCION * a, const DOMAIN_OPERAND_COERCION * b)
-{
-  return a->conv[0] == b->conv[0] && a->conv[1] == b->conv[1] && a->operand_domain[0] == b->operand_domain[0]
-    && a->operand_domain[1] == b->operand_domain[1] && a->arith.kind == b->arith.kind && a->arith.type == b->arith.type;
-}
-
-/*
- * stx_check_accumulator_domain () - CBRD-27583 (D-83) debug cross-check (removed at S3-14, with qdata_plan_*): the
- *   accumulator domain the compiler's plan gave is the one unpack planned before
- */
-static void
-stx_check_accumulator_domain (const cubxasl::aggregate_accumulator_domain * planned,
-			      const cubxasl::aggregate_accumulator_domain * before)
-{
-  assert (planned->value_dom == before->value_dom && planned->value2_dom == before->value2_dom
-	  && stx_operand_coercion_equal (&planned->operand_coercion, &before->operand_coercion)
-	  && stx_operand_coercion_equal (&planned->distinct_coercion, &before->distinct_coercion)
-	  && stx_operand_coercion_equal (&planned->divide_coercion, &before->divide_coercion)
-	  && planned->first_conv == before->first_conv && planned->final_conv == before->final_conv
-	  && planned->accumulator_takes == before->accumulator_takes);
-}
-#endif
-
 /*
  * stx_build_analytic_offsets () - CBRD-27583 (D-83): each LEAD / LAG / NTH_VALUE's offset and default conversions
  *   (xts_pack_analytic_offsets), in the order of the analytic evaluations and their functions
@@ -2110,27 +2026,6 @@ stx_build_analytic_offsets (char *ptr, BUILDLIST_PROC_NODE * node)
 	    }
 	}
     }
-#if !defined (NDEBUG)
-  /* the conversions unpack planned before (removed at S3-14) */
-  std::vector < DOMAIN_OPERAND_COERCION > planned;
-  for (ANALYTIC_EVAL_TYPE * eval = node->a_eval_list; eval != NULL; eval = eval->next)
-    {
-      for (ANALYTIC_TYPE * func_p = eval->head; func_p != NULL; func_p = func_p->next)
-	{
-	  planned.push_back (func_p->accumulator_domain.operand_coercion);
-	}
-    }
-  qdata_plan_analytic_offset (node->a_eval_list, node->a_regu_list);
-  size_t k = 0;
-  for (ANALYTIC_EVAL_TYPE * eval = node->a_eval_list; eval != NULL; eval = eval->next)
-    {
-      for (ANALYTIC_TYPE * func_p = eval->head; func_p != NULL; func_p = func_p->next, k++)
-	{
-	  assert (stx_operand_coercion_equal (&planned[k], &func_p->accumulator_domain.operand_coercion));
-	  func_p->accumulator_domain.operand_coercion = planned[k];
-	}
-    }
-#endif
   return ptr;
 }
 
@@ -2167,16 +2062,6 @@ stx_build_orderbynum_bounds (THREAD_ENTRY * thread_p, char *ptr, PRED_EXPR * pre
 	  return;
 	}
       domain_coercion_of_plan (&plan, coercion);
-#if !defined (NDEBUG)
-      /* the subtraction's operand coercion qexec_get_orderbynum_upper_bound resolved at each execution before
-       * (removed at S3-14) */
-      const DOMAIN_OPERAND operands[2] = {
-	{NULL, TP_DOMAIN_TYPE (bound->domain), -1, false}, {NULL, DB_TYPE_INTEGER, -1, false}
-      };
-      DOMAIN_OPERAND_COERCION before;
-      domain_resolve_operand_coercion (T_SUB, operands, &before);
-      assert (stx_operand_coercion_equal (coercion, &before));
-#endif
       term->bound_coercion = coercion;
     });
   /* *INDENT-ON* */
@@ -2426,14 +2311,8 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	  return NULL;
 	}
       ptr = stx_unpack_compare (ptr, compare, &by_type);
-#if !defined (NDEBUG)
-      stx_check_compare (xasl->limit_row_count->domain, &tp_Integer_domain, compare, by_type);
-      if (!by_type)
-	{
-	  const TP_DOMAIN *domain[2] = { xasl->limit_row_count->domain, &tp_Integer_domain };
-	  stx_log_compare_by_value ("limit", xasl->limit_row_count, NULL, domain);
-	}
-#endif
+      /* CBRD-27583 (S3-32): never by the values in the gates (census "by value" 0) */
+      assert (by_type);
       xasl->limit_compare = compare;
     }
 
@@ -3494,11 +3373,6 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	{
 	  stx_build_list_proc->g_hk_compares = compares;
 	}
-      else
-	{
-	  /* CBRD-27583 census (removed at S3-14): a hash GROUP BY whose keys compare by their values */
-	  er_log_debug (ARG_FILE_LINE, "CBRD-27583 left hash group by\n");
-	}
     }
 
   ptr = or_unpack_int (ptr, &offset);
@@ -3825,17 +3699,8 @@ stx_build_mergelist_proc (THREAD_ENTRY * thread_p, char *ptr, MERGELIST_PROC_NOD
 	{
 	  bool by_type;
 	  ptr = stx_unpack_compare (ptr, &compares[k], &by_type);
-#if !defined (NDEBUG)
-	  const TP_DOMAIN *domain[2] = {
-	    domain_list_column_compared (merge_list_info->outer_xasl, merge_list_info->ls_merge.ls_outer_column[k]),
-	    domain_list_column_compared (merge_list_info->inner_xasl, merge_list_info->ls_merge.ls_inner_column[k])
-	  };
-	  stx_check_compare (domain[0], domain[1], &compares[k], by_type);
-	  if (!by_type)
-	    {
-	      stx_log_compare_by_value ("merge", NULL, NULL, domain);
-	    }
-#endif
+	  /* CBRD-27583 (S3-32): never by the values in the gates (census "by value" 0) */
+	  assert (by_type);
 	}
       merge_list_info->merge_compares = compares;
     }
@@ -4002,48 +3867,6 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
 		      || TP_DOMAIN_TYPE (all_domains[domain_cnt + i]) == DB_TYPE_JSON));
 	}
       node_p->domain_info.decided = decided != 0;
-#if !defined (NDEBUG)
-      if (decided)
-	{
-	  /* the server's inputs give the same decisions (hjoin_decide_domains) */
-	  HASHJOIN_DOMAIN_INFO check = node_p->domain_info;
-	  TP_DOMAIN **check_domains = (TP_DOMAIN **) db_private_alloc (thread_p, sizeof (TP_DOMAIN *) * domain_cnt * 3);
-	  TP_VALUE_CONVERTER *check_converters =
-	    (TP_VALUE_CONVERTER *) db_private_alloc (thread_p, sizeof (TP_VALUE_CONVERTER) * domain_cnt * 2);
-	  DOMAIN_COMPARE *check_compares =
-	    (DOMAIN_COMPARE *) db_private_alloc (thread_p, sizeof (DOMAIN_COMPARE) * domain_cnt);
-	  assert (check_domains != NULL && check_converters != NULL && check_compares != NULL);
-	  check.outer.domains = check_domains;
-	  check.inner.domains = check_domains + domain_cnt;
-	  check.coerce_domains = check_domains + domain_cnt * 2;
-	  check.outer.converters = check_converters;
-	  check.inner.converters = check_converters + domain_cnt;
-	  check.outer.compares = check.inner.compares = check_compares;
-	  for (int i = 0; i < domain_cnt; i++)
-	    {
-	      check_domains[i] =
-		domain_list_column_compared (node_p->outer.xasl, node_p->merge_info.ls_outer_column[i]);
-	      check_domains[domain_cnt + i] =
-		domain_list_column_compared (node_p->inner.xasl, node_p->merge_info.ls_inner_column[i]);
-	      assert (check_domains[i] != NULL && check_domains[domain_cnt + i] != NULL
-		      && tp_domain_match (check_domains[i], all_domains[i], TP_EXACT_MATCH)
-		      && tp_domain_match (check_domains[domain_cnt + i], all_domains[domain_cnt + i], TP_EXACT_MATCH));
-	    }
-	  assert (hjoin_decide_domains (&check, domain_cnt) == NO_ERROR);
-	  for (int i = 0; i < domain_cnt; i++)
-	    {
-	      assert ((check.coerce_domains[i] == NULL) == (all_domains[domain_cnt * 2 + i] == NULL)
-		      && (check.coerce_domains[i] == NULL
-			  || tp_domain_match (check.coerce_domains[i], all_domains[domain_cnt * 2 + i], TP_EXACT_MATCH))
-		      && check_converters[i] == converters[i]
-		      && check_converters[domain_cnt + i] == converters[domain_cnt + i]
-		      && domain_compare_equal (&check_compares[i], &compares[i]));
-	    }
-	  db_private_free (thread_p, check_domains);
-	  db_private_free (thread_p, check_converters);
-	  db_private_free (thread_p, check_compares);
-	}
-#endif
       if (!decided)
 	{
 	  /* CBRD-27583 (S3-32): XASL generation decides every hash join's keys (census "left hash join" 0) */
@@ -5342,13 +5165,7 @@ stx_build_term_compare (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * ter
   if (!get_xasl_unpack_info_ptr (thread_p)->index_stream)
     {
       ptr = stx_unpack_compare (ptr, &decided, &by_type);
-#if !defined (NDEBUG)
-      if (compares_values)
-	{
-	  stx_check_compare (term->lhs->domain, term->rhs->domain, &decided, by_type);
-	}
       assert (compares_values || !by_type);
-#endif
     }
   else if (compares_values)
     {
@@ -5370,15 +5187,8 @@ stx_build_term_compare (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * ter
     }
   if (!by_type)
     {
-      /* exception to deciding before the rows: a side whose domain leaves its values' type or collation to the data
-       * compares by the values (no comparison: method VALUES) */
-#if !defined (NDEBUG)
-      if (compares_values)
-	{
-	  const TP_DOMAIN *domain[2] = { term->lhs->domain, term->rhs->domain };
-	  stx_log_compare_by_value ("term", term->lhs, term->rhs, domain);
-	}
-#endif
+      /* a term that compares no values; never one by the values in the gates (CBRD-27583 S3-32, census "by value" 0) */
+      assert (!compares_values);
       return ptr;
     }
   DOMAIN_COMPARE *compare = stx_alloc_compares (thread_p, 1);
@@ -5548,37 +5358,8 @@ stx_build_element_compares (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM *
       ptr = or_unpack_int (ptr, &item.collation);
       term->compare_row = domain_compare_key_row (&item);
     }
-#if !defined (NDEBUG)
-  if (term->elem != NULL && term->elemset != NULL)
-    {
-      /* the server's domains give the same decision */
-      const bool list = term->elemset->type == TYPE_LIST_ID;
-      const TP_DOMAIN *domain[2] = { term->elem->domain, list ? domain_list_column_compared (term->elemset->xasl, 0)
-	  : term->elemset->domain
-      };
-      DOMAIN_COMPARE expected;
-      bool by_type;
-      assert (domain_decide_comparison (domain, &expected, &by_type) == NO_ERROR);
-      const bool row = by_type && !list && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (domain[1]));
-      assert (kind == (!by_type ? 0 : row ? 2 : 1));
-      if (kind == 1)
-	{
-	  stx_check_compare (domain[0], domain[1], term->compare, true);
-	}
-      else if (kind == 2)
-	{
-	  DOMAIN_COMPARE_KEY item;
-	  domain_compare_key_of (domain[0], &item);
-	  assert (term->compare_row == domain_compare_key_row (&item));
-	}
-      else
-	{
-	  /* exception to deciding before the rows: a side whose domain leaves its values' type or collation to the
-	   * data compares by the values */
-	  stx_log_compare_by_value ("element", term->elem, list ? NULL : term->elemset, domain);
-	}
-    }
-#endif
+  /* CBRD-27583 (S3-32): never by the values in the gates (census "by value" 0) */
+  assert (term->elem == NULL || term->elemset == NULL || kind != 0);
   return ptr;
 }
 
@@ -7340,13 +7121,6 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
   ptr = or_unpack_int (ptr, &tmp);
   arith_type->misc_operand = (MISC_OPERAND) tmp;
   ptr = or_unpack_int (ptr, &arith_type->fails);
-#if !defined (NDEBUG)
-  if (arith_type->fails != NO_ERROR)
-    {
-      /* CBRD-27583 census (removed at S3-14): a node decided to raise its rule's error */
-      er_log_debug (ARG_FILE_LINE, "CBRD-27583 decided: fails %d op=%d\n", arith_type->fails, arith_type->opcode);
-    }
-#endif
 
   if (arith_type->opcode == T_CASE || arith_type->opcode == T_DECODE || arith_type->opcode == T_PREDICATE
       || arith_type->opcode == T_IF)
@@ -7477,15 +7251,6 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	  arith_type->decided.arith.kind = (DOMAIN_ARITH_KIND) (decided & 0xFF);
 	  arith_type->decided.arith.type = (DB_TYPE) ((decided >> 8) & 0xFF);
 	}
-#if !defined (NDEBUG)
-      DOMAIN_OPERAND_COERCION coercion = DOMAIN_OPERAND_COERCION ();
-      domain_resolve_operand_coercion (arith_type->opcode, operands, &coercion);
-      /* generation retyped every operand the rule converts (pt_decide_operand_coercion): conversion is the regu's */
-      assert (coercion.conv[0] == NULL && coercion.conv[1] == NULL);
-      /* the rule's for the domains the server reads (removed at S3-14) */
-      assert (coercion.arith.kind == arith_type->decided.arith.kind
-	      && coercion.arith.type == arith_type->decided.arith.type);
-#endif
     }
 
   /* CBRD-27583: the comparisons FIELD, NULLIF, LEAST and GREATEST make - the compiler's (D-81, xts_process_arith_type),
@@ -7507,9 +7272,6 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	}
       for (int k = 0; k < (field ? 2 : 1); k++)
 	{
-	  const TP_DOMAIN *domain[2] = { sides[k][0] != NULL ? sides[k][0]->domain : NULL,
-	    sides[k][1] != NULL ? sides[k][1]->domain : NULL
-	  };
 	  bool by_type = true;
 	  if (xasl_unpack_info->index_stream)
 	    {
@@ -7525,17 +7287,9 @@ stx_build_arith_type (THREAD_ENTRY * thread_p, char *ptr, ARITH_TYPE * arith_typ
 	    {
 	      /* D-81: the compiler's decision, looked up */
 	      ptr = stx_unpack_compare (ptr, &compares[k], &by_type);
-#if !defined (NDEBUG)
-	      stx_check_compare (domain[0], domain[1], &compares[k], by_type);
-#endif
 	    }
-#if !defined (NDEBUG)
-	  if (!by_type)
-	    {
-	      /* exception to deciding before the rows: the values decide (method VALUES) */
-	      stx_log_compare_by_value ("arith", sides[k][0], sides[k][1], domain);
-	    }
-#endif
+	  /* CBRD-27583 (S3-32): never by the values in the gates (census "by value" 0) */
+	  assert (by_type);
 	}
       arith_type->decided.compares = compares;
     }
@@ -7744,14 +7498,6 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
 				   TP_DOMAIN_TYPE (aggregate->accumulator_domain.value2_dom), DB_DEFAULT_PRECISION,
 				   DB_DEFAULT_SCALE);
     }
-#if !defined (NDEBUG)
-  {
-    const cubxasl::aggregate_accumulator_domain planned = aggregate->accumulator_domain;
-    qdata_plan_aggregate_accumulator (aggregate);
-    stx_check_accumulator_domain (&planned, &aggregate->accumulator_domain);
-    aggregate->accumulator_domain = planned;
-  }
-#endif
 
   return ptr;
 
@@ -8023,14 +7769,6 @@ stx_build_analytic_type (THREAD_ENTRY * thread_p, char *ptr, ANALYTIC_TYPE * ana
 
   /* CBRD-27583 (D-83): the accumulator's plan, which the compiler decided */
   ptr = stx_unpack_accumulator_domain (ptr, &analytic->accumulator_domain);
-#if !defined (NDEBUG)
-  {
-    const cubxasl::aggregate_accumulator_domain planned = analytic->accumulator_domain;
-    qdata_plan_analytic_accumulator (analytic);
-    stx_check_accumulator_domain (&planned, &analytic->accumulator_domain);
-    analytic->accumulator_domain = planned;
-  }
-#endif
 
   return ptr;
 

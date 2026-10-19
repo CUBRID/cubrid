@@ -38,7 +38,7 @@
 #include "system_parameter.h"	/* prm_get_bigint_value, PRM_ID_... */
 #include "thread_entry.hpp"	/* THREAD_ENTRY */
 #include "xasl.h"		/* XASL_NODE, HASHJOIN_PROC_NODE */
-#include "domain_rules.h"	/* domain_decide_hash_join_key, domain_compare_values */
+#include "domain_rules.h"	/* domain_compare_values */
 #include "object_domain_convert.h"	/* tp_value_find_converter, tp_value_convert */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -992,7 +992,8 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
 }
 
 /* A join column value coerced as tp_value_coerce does, where no converter does it (domain_decide_hash_join_key).
- * CBRD-27583 exception, the data carries the type (2-7): a JSON value converts by its scalar's own type. */
+ * CBRD-27583 exception, the data carries the type (2-7): a JSON value's scalar, which a join key converts by its own
+ * type. */
 static TP_DOMAIN_STATUS
 hjoin_coerce_key (const DB_VALUE * value, DB_VALUE * result, const TP_DOMAIN * domain, date_conversion_error *)
 {
@@ -1009,46 +1010,6 @@ hjoin_key_converter (int conv_kind, DB_TYPE source, const TP_DOMAIN * common)
 {
   return conv_kind == DOMAIN_HASH_KEY_COERCED ? hjoin_coerce_key
     : conv_kind == DOMAIN_HASH_KEY_CONVERTED ? tp_value_find_converter (source, common, DOMAIN_CONVERT_IMPLICIT) : NULL;
-}
-
-/*
- * hjoin_decide_domains() - each join column pair's common domain, its inputs' converters into it and the comparison
- *   of the converted values, from the two inputs' column domains (domain_info->outer.domains, inner.domains): the
- *   optdebug cross-check of the decisions the compiler streamed (stx_build_hashjoin_proc)
- *   return: NO_ERROR, or the error of a domain that could not be made
- *   domain_info(in/out): coerce_domains, the inputs' converters and comparisons
- *   domain_cnt(in): the join column count
- *
- * A pair whose domains differ in type, precision or scale is held in domain_resolve_hash_key's common domain; from
- * the first such pair on, a pair of one type, precision and scale is held in its outer domain too, so an inner value
- * of another collation is converted into the outer's (develop's rule). The comparison is tp_value_compare's without
- * coercion between the converted values' domains.
- */
-int
-hjoin_decide_domains (HASHJOIN_DOMAIN_INFO * domain_info, int domain_cnt)
-{
-  bool coerce = false;
-
-  for (int domain_index = 0; domain_index < domain_cnt; domain_index++)
-    {
-      TP_DOMAIN *outer = domain_info->outer.domains[domain_index];
-      TP_DOMAIN *inner = domain_info->inner.domains[domain_index];
-      assert (TP_DOMAIN_TYPE (outer) != DB_TYPE_NULL && TP_DOMAIN_TYPE (inner) != DB_TYPE_NULL);
-
-      const TP_DOMAIN *common;
-      int conv_kind[2];
-      const int error = domain_decide_hash_join_key (outer, inner, &coerce, &common, conv_kind,
-						     &domain_info->outer.compares[domain_index]);
-      if (error != NO_ERROR)
-	{
-	  return error;
-	}
-      domain_info->coerce_domains[domain_index] = (TP_DOMAIN *) common;
-      domain_info->outer.converters[domain_index] = hjoin_key_converter (conv_kind[0], TP_DOMAIN_TYPE (outer), common);
-      domain_info->inner.converters[domain_index] = hjoin_key_converter (conv_kind[1], TP_DOMAIN_TYPE (inner), common);
-    }
-
-  return NO_ERROR;
 }
 
 /*
@@ -2787,35 +2748,13 @@ hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context
 
 /* Two join column values once converted, compared as the compiler decided (tp_value_compare without coercion). No
  * key compares by its values: the compiler reads an OBJECT column as OID and decides no NULL or variable column
- * (xts_pack_hash_join_keys), and the server's lists hold OIDs and no NULL column (hjoin_decide_domains). */
+ * (xts_pack_hash_join_keys). */
 static inline DB_VALUE_COMPARE_RESULT
 hjoin_compare_key (const DOMAIN_COMPARE * compare, const DB_VALUE * value1, const DB_VALUE * value2)
 {
   assert (compare->method != DOMAIN_COMPARE_OBJECT && compare->method != DOMAIN_COMPARE_VALUES);
   return domain_compare_values (compare, value1, value2, 0, NULL);
 }
-
-#if !defined (NDEBUG)
-/* The debug cross-check of a decided join column conversion: tp_value_coerce gives the same outcome and, where it
- * converts, a value of the same type that hashes alike. */
-static void
-hjoin_check_key_convert (const DB_VALUE * value, const TP_DOMAIN * target, TP_DOMAIN_STATUS status,
-			 const DB_VALUE * converted)
-{
-  /* the optdebug cross-check (removed at S3-14) */
-  TP_DECISION_EXCEPTION ();
-  DB_VALUE expected;
-  db_make_null (&expected);
-  const TP_DOMAIN_STATUS expected_status = tp_value_coerce (value, &expected, target);
-  assert ((expected_status == DOMAIN_COMPATIBLE) == (status == DOMAIN_COMPATIBLE));
-  if (expected_status == DOMAIN_COMPATIBLE && status == DOMAIN_COMPATIBLE)
-    {
-      assert (DB_VALUE_DOMAIN_TYPE (&expected) == DB_VALUE_DOMAIN_TYPE (converted));
-      assert (mht_get_hash_number (UINT_MAX, &expected) == mht_get_hash_number (UINT_MAX, converted));
-    }
-  pr_clear_value (&expected);
-}
-#endif
 
 /*
  * hjoin_fetch_key() -
@@ -2901,9 +2840,6 @@ hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFIL
 	  domain_status =
 	    tp_value_convert (converters[key_index], coerce_domains[key_index], &pre_coerce_value,
 			      key->values[key_index]);
-#if !defined (NDEBUG)
-	  hjoin_check_key_convert (&pre_coerce_value, coerce_domains[key_index], domain_status, key->values[key_index]);
-#endif
 	  if (domain_status != DOMAIN_COMPATIBLE)
 	    {
 	      tp_domain_status_er_set (domain_status, ARG_FILE_LINE, &pre_coerce_value, coerce_domains[key_index]);

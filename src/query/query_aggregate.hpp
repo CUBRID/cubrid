@@ -120,10 +120,6 @@ using AGGREGATE_HASH_KEY = cubquery::aggregate_hash_key;
 using AGGREGATE_HASH_CONTEXT = cubquery::aggregate_hash_context;
 using HIERARCHY_AGGREGATE_HELPER = cubquery::hierarchy_aggregate_helper;
 
-#if !defined (NDEBUG)
-/* CBRD-27583: the plan unpack made before D-83, the debug cross-check of the compiler's (removed at S3-14) */
-void qdata_plan_aggregate_accumulator (cubxasl::aggregate_list_node *agg_p);
-#endif
 int qdata_initialize_aggregate_list (cubthread::entry *thread_p, cubxasl::aggregate_list_node *agg_list,
 				     QUERY_ID query_id, const struct val_descr *vd);
 int qdata_aggregate_accumulator_to_accumulator (cubthread::entry *thread_p, cubxasl::aggregate_accumulator *acc,

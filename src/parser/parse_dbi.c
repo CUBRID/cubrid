@@ -3450,16 +3450,6 @@ pt_host_var_bind_domains_differ (const PARSER_CONTEXT * parser)
 	  continue;
 	}
       differs = true;
-#if !defined (NDEBUG)
-      {
-	/* CBRD-27583 census (removed at S3-14): a position develop's bind converts into another type */
-	const TP_DOMAIN *planned = pt_host_var_position_domain ((PARSER_CONTEXT *) parser, i);
-	er_log_debug (ARG_FILE_LINE, "CBRD-27583 develop domain differs: %d %d %d: %.300s\n", i,
-		      (int) TP_DOMAIN_TYPE (parser->host_var_bind_domains[i]),
-		      planned != NULL ? (int) TP_DOMAIN_TYPE (planned) : (int) DB_TYPE_NULL,
-		      parser->original_buffer != NULL ? parser->original_buffer : "");
-      }
-#endif
     }
   assert (!took || !differs);
   return differs && !took;

@@ -47,11 +47,6 @@
 #include "string_opfunc.h"
 #include "thread_entry.hpp"
 #include "xasl_predicate.hpp"
-#if !defined (NDEBUG)
-#include <mutex>
-#include <string>
-#include <unordered_set>
-#endif
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -67,21 +62,6 @@ struct EVAL_ELEMENTS
   const DOMAIN_COMPARE *each;
   int row;			/* -1: none */
 };
-
-#if !defined (NDEBUG)
-/* CBRD-27583 census (removed at S3-14): a census line once per server process, not once per row */
-static void
-eval_census_once (const char *line)
-{
-  static std::mutex mutex;
-  static std::unordered_set < std::string > seen;
-  std::lock_guard < std::mutex > lock (mutex);
-  if (seen.insert (line).second)
-    {
-      er_log_debug (ARG_FILE_LINE, "%s\n", line);
-    }
-}
-#endif
 
 static DB_LOGICAL eval_negative (DB_LOGICAL res);
 static DB_LOGICAL eval_logical_result (DB_LOGICAL res1, DB_LOGICAL res2);
@@ -363,37 +343,6 @@ eval_assert_resolved_sides (const DOMAIN_COMPARE * compare, const DB_VALUE * dbv
     }
   assert (lhs && rhs);
 }
-
-/*
- * eval_assert_resolved_compare () - debug cross-check after the comparison method: tp_value_compare_with_error on the
- *				    same values gives the resolved comparison's result, comparability and error
- *   asks_comparable(in): the caller asks whether the values compare (tp_value_compare_with_error's contract); false
- *			  for tp_value_compare's, which asks nothing
- */
-static void
-eval_assert_resolved_compare (const DOMAIN_COMPARE * compare, const DB_VALUE * dbval1, const DB_VALUE * dbval2,
-			      int total_order, DB_VALUE_COMPARE_RESULT result, bool comparable,
-			      const COMP_EVAL_TERM * et_comp, const val_descr * vd, bool asks_comparable)
-{
-  /* the optdebug cross-check (removed at S3-14) */
-  TP_DECISION_EXCEPTION ();
-  const int error = comparable ? NO_ERROR : er_errid ();
-  bool expected_comparable = true;
-  er_stack_push ();
-  const DB_VALUE_COMPARE_RESULT expected =
-    tp_value_compare_with_error (dbval1, dbval2, 1, total_order, asks_comparable ? &expected_comparable : NULL);
-  const int expected_error = expected_comparable ? NO_ERROR : er_errid ();
-  er_stack_pop ();
-  const bool same = expected == result && expected_comparable == comparable && expected_error == error;
-  if (!same)
-    {
-      eval_report_resolved_compare ("result", compare, dbval1, dbval2, et_comp, vd);
-      fprintf (stderr, "planned comparison result: planned=%d comparable=%d error=%d expected=%d comparable=%d "
-	       "error=%d\n",
-	       (int) result, (int) comparable, error, (int) expected, (int) expected_comparable, expected_error);
-    }
-  assert (same);
-}
 #endif
 
 /*
@@ -412,21 +361,6 @@ eval_compare_by_values (const DB_VALUE * value1, const DB_VALUE * value2, int to
     {
       return total_order ? DB_GT : DB_UNK;
     }
-#if !defined (NDEBUG)
-  {
-    /* census (S3-13): the value types the method meets, each pair once per process */
-    static thread_local unsigned long long seen[DB_TYPE_LAST + 1];
-    const int type1 = DB_VALUE_DOMAIN_TYPE (value1), type2 = DB_VALUE_DOMAIN_TYPE (value2);
-    if (type1 <= DB_TYPE_LAST && type2 <= DB_TYPE_LAST && (seen[type1] & (1ULL << type2)) == 0)
-      {
-	char line[128];
-	seen[type1] |= 1ULL << type2;
-	snprintf (line, sizeof (line), "CBRD-27583 values compare %s %s", pr_type_name ((DB_TYPE) type1),
-		  pr_type_name ((DB_TYPE) type2));
-	eval_census_once (line);
-      }
-  }
-#endif
   return tp_value_compare_with_error (value1, value2, 1, total_order, can_compare);
 }
 
@@ -451,13 +385,7 @@ eval_compare_values_with (THREAD_ENTRY * thread_p, const DOMAIN_COMPARE * compar
 #if !defined (NDEBUG)
       eval_assert_resolved_sides (compare, value1, value2, NULL, vd);
 #endif
-      const DB_VALUE_COMPARE_RESULT result =
-	eval_compare_resolved (thread_p, compare, vd, value1, value2, total_order, can_compare);
-#if !defined (NDEBUG)
-      eval_assert_resolved_compare (compare, value1, value2, total_order, result,
-				    can_compare != NULL ? *can_compare : true, NULL, vd, can_compare != NULL);
-#endif
-      return result;
+      return eval_compare_resolved (thread_p, compare, vd, value1, value2, total_order, can_compare);
     }
   return eval_compare_by_values (value1, value2, total_order, can_compare);
 }
@@ -530,10 +458,6 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
 	    eval_assert_resolved_sides (compare, dbval1, dbval2, et_comp, vd);
 #endif
 	    result = eval_compare_resolved (thread_p, compare, vd, dbval1, dbval2, total_order, &comparable);
-#if !defined (NDEBUG)
-	    eval_assert_resolved_compare (compare, dbval1, dbval2, total_order, (DB_VALUE_COMPARE_RESULT) result,
-					  comparable, et_comp, vd, true);
-#endif
 	  }
 	else
 	  {
@@ -778,16 +702,6 @@ eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP r
        * two values' keys) */
       const DOMAIN_COMPARE *compare = DB_IS_NULL (&elem_val) ? &eval_Compare_values
 	: elements->row >= 0 ? eval_element_compare (elements->row, &elem_val) : elements->each;
-#if !defined (NDEBUG)
-      if (!DB_IS_NULL (&elem_val))
-	{
-	  /* CBRD-27583 census (removed at S3-14): the comparisons looked up per value - only a collection's elements */
-	  char line[96];
-	  snprintf (line, sizeof (line), "CBRD-27583 element by value row=%d element=%d", elements->row,
-		    (int) DB_VALUE_DOMAIN_TYPE (&elem_val));
-	  eval_census_once (line);
-	}
-#endif
 
       t_res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL, vd, compare);
       pr_clear_value (&elem_val);

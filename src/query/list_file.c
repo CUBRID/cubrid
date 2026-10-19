@@ -4301,13 +4301,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
 #if !defined (NDEBUG)
 	  if (p->pos_descr.pos_no < types->type_cnt && p->pos_descr.dom != types->domp[p->pos_descr.pos_no])
 	    {
-	      const TP_DOMAIN *column = types->domp[p->pos_descr.pos_no];
-	      /* CBRD-27583 census (D-64, removed at S3-14): a key domain other than its list column's */
-	      er_log_debug (ARG_FILE_LINE, "CBRD-27583 sort key domain type %d/%d p=%d/%d s=%d/%d coll %d/%d pos %d\n",
-			    (int) TP_DOMAIN_TYPE (p->pos_descr.dom), (int) TP_DOMAIN_TYPE (column),
-			    p->pos_descr.dom->precision, column->precision, p->pos_descr.dom->scale, column->scale,
-			    p->pos_descr.dom->collation_id, column->collation_id, p->pos_descr.pos_no);
-	      assert (qfile_sort_key_reads_column (p->pos_descr.dom, column));
+	      assert (qfile_sort_key_reads_column (p->pos_descr.dom, types->domp[p->pos_descr.pos_no]));
 	    }
 #endif
 	  subkey->sort_f = p->pos_descr.dom->type->get_data_cmpdisk_function ();
@@ -7097,40 +7091,6 @@ qfile_overwrite_tuple (THREAD_ENTRY * thread_p, PAGE_PTR first_page_p, QFILE_TUP
   return NO_ERROR;
 }
 
-#if !defined (NDEBUG)
-/*
- * qfile_check_interpolation_type () - debug cross-check (optdebug): the type the analytic setup gave the key before
- *   the sort is the one the first value gives it (qdata_update_interpolation_func_value_and_domain), unless that
- *   type rejects the value (a string column or expression is DOUBLE, the function's evaluation rejects the value
- *   too)
- */
-static void
-qfile_check_interpolation_type (DB_VALUE * value, const TP_DOMAIN * resolved)
-{
-  /* the optdebug cross-check (removed at S3-14) */
-  TP_DECISION_EXCEPTION ();
-  DB_VALUE converted;
-  TP_DOMAIN *expected = NULL;
-
-  db_make_null (&converted);
-  er_stack_push ();
-  const int error = qdata_update_interpolation_func_value_and_domain (value, &converted, &expected);
-  pr_clear_value (&converted);
-  const bool resolved_rejects = tp_value_cast (value, &converted, resolved, false) != DOMAIN_COMPATIBLE;
-  pr_clear_value (&converted);
-  er_stack_pop ();
-
-  const bool same = resolved_rejects || (error == NO_ERROR && TP_DOMAIN_TYPE (expected) == TP_DOMAIN_TYPE (resolved));
-  if (!same)
-    {
-      fprintf (stderr, "interpolation sort key class: value type %d planned %d expected %d error %d\n",
-	       (int) DB_VALUE_DOMAIN_TYPE (value), (int) TP_DOMAIN_TYPE (resolved),
-	       expected != NULL ? (int) TP_DOMAIN_TYPE (expected) : -1, error);
-    }
-  assert (same);
-}
-#endif
-
 /*
  * qfile_compare_with_interpolation_domain () -
  *  return: compare result
@@ -7174,11 +7134,6 @@ qfile_compare_with_interpolation_domain (const QFILE_COL_LAYOUT * c, const char 
     {
       goto end;
     }
-
-#if !defined (NDEBUG)
-  qfile_check_interpolation_type (&val0, subkey->cmp_dom);
-  qfile_check_interpolation_type (&val1, subkey->cmp_dom);
-#endif
 
   status = tp_value_cast_with_converter (&val0, &val0, cast_domain, false, TP_DOMAIN_TYPE (subkey->col_dom),
 					 subkey->cmp_conv);

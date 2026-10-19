@@ -5944,16 +5944,11 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
       if (found != NULL && found->src_type == original_type && found->domain == desired_domain)
 	{
 	  converter = found->converter;
-	  {
-	    /* the optdebug cross-check of the plan's converter (removed at S3-14) */
-	    TP_DECISION_EXCEPTION ();
-	    assert (converter == tp_value_find_converter (original_type, desired_domain, mode));
-	  }
 	}
       else if (found != NULL && found->src_type == DB_TYPE_JSON)
 	{
-	  /* CBRD-27583 exception, the data carries the type (2-7): a planned JSON value, unwrapped to its scalar above,
-	   * converts by the scalar's own type */
+	  /* CBRD-27583 exception, the data carries the type (2-7): a JSON value's scalar (a planned JSON value, unwrapped
+	   * above), which converts by its own type */
 	  TP_DECISION_EXCEPTION ();
 	  converter = tp_value_find_converter (original_type, desired_domain, mode);
 	}
@@ -6321,7 +6316,8 @@ tp_value_compare_common_domain (const DB_TYPE type1, const DB_TYPE type2)
 DB_VALUE_COMPARE_RESULT
 tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order)
 {
-  /* CBRD-27583 exception, the data carries the type (2-7): two collections of different kinds coerce by their types */
+  /* CBRD-27583 exception, the data carries the type (2-7): a collection's elements, which two collections of different
+   * kinds coerce and compare by their values */
   TP_DECISION_EXCEPTION ();
   DB_VALUE temp;
   int coercion;

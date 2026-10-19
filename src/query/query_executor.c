@@ -13246,20 +13246,9 @@ exit_on_error:
  * Its type gives the domain whatever its content, as any literal's type does; no row value resolves it.
  */
 static TP_DOMAIN *
-qexec_default_format_domain (const DB_VALUE * format_val)
+qexec_default_format_domain (void)
 {
-  TP_DOMAIN *domain = tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL, LANG_SYS_COLLATION);
-#if !defined (NDEBUG)
-  /* the optdebug cross-check of the format's domain (removed at S3-14) */
-  TP_DECISION_EXCEPTION ();
-  const TP_DOMAIN *from_value = tp_domain_resolve_value (format_val, NULL);
-  assert (domain != NULL && from_value != NULL && TP_DOMAIN_TYPE (from_value) == TP_DOMAIN_TYPE (domain)
-	  && from_value->precision == domain->precision && from_value->codeset == domain->codeset
-	  && from_value->collation_id == domain->collation_id);
-#else
-  (void) format_val;
-#endif
-  return domain;
+  return tp_domain_resolve (DB_TYPE_VARCHAR, NULL, DB_MAX_VARCHAR_PRECISION, 0, NULL, LANG_SYS_COLLATION);
 }
 
 /*
@@ -13357,7 +13346,7 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
 	    }
 	  else
 	    {
-	      result_domain = qexec_default_format_domain (&format_val);
+	      result_domain = qexec_default_format_domain ();
 	    }
 	}
       else
@@ -13934,7 +13923,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		}
 	      else
 		{
-		  result_domain = qexec_default_format_domain (&format_val);
+		  result_domain = qexec_default_format_domain ();
 		}
 	    }
 	  else
@@ -14235,7 +14224,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 
 	  /* Regenerate row-level default expressions (UUID, SYS_GUID) after explicit expressions are evaluated. */
 	  if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state, row_default_plans.data ())
-		  != NO_ERROR)
+	      != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }

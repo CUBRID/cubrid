@@ -4745,7 +4745,7 @@ swizzle_value (DB_VALUE * val, int input)
 static int
 assign_set_value (COL * set, DB_VALUE * src, DB_VALUE * dest, bool implicit_coercion)
 {
-  /* CBRD-27583 exception, the data carries the type (2-7): a collection element's domain is its value's */
+  /* CBRD-27583 exception, the data carries the type (2-7): a collection's elements, whose domain is each value's own */
   TP_DECISION_EXCEPTION ();
 #if !defined (SERVER_MODE)
   int is_ref = 0;

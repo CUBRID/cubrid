@@ -1245,9 +1245,8 @@ domain_interpolation_final (int function, const TP_DOMAIN * domain, DB_TYPE argu
 }
 
 /* Whether an aggregate's or an analytic function's domain is late-bound, typed by its argument's value: the operand
- * was VARIABLE when compiled (opr_dbtype, not the function's domain), the function domain leaves collation, or
- * (CBRD-27583, interim until 4.3 decides the function at generation; an assert in (d)) the function domain is
- * VARIABLE over an argument XASL generation decided. */
+ * was VARIABLE when compiled (opr_dbtype, not the function's domain), the function domain is missing or VARIABLE, or
+ * it leaves collation. */
 static bool
 domain_function_is_late_bound (const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand)
 {
@@ -1938,8 +1937,8 @@ domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * value1, cons
       return domain->type->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, 1, 1, NULL,
 				   is_char ? domain->collation_id : 0) == DB_EQ;
     }
-  /* exception, the data carries the type (2-7): a collection key's elements compare by their own types. No other key
-   * leaves its values' type or collation to them (S3-32, census "cache key by value": collections only) */
+  /* CBRD-27583 exception, the data carries the type (2-7): a collection's elements, which a collection key compares by
+   * their values; no other key leaves its values' type or collation to them (S3-32) */
   assert (TP_IS_SET_TYPE (type) && domain->collation_flag == TP_DOMAIN_COLL_NORMAL
 	  && DB_VALUE_DOMAIN_TYPE (value1) == type && DB_VALUE_DOMAIN_TYPE (value2) == type);
   TP_DECISION_EXCEPTION ();
@@ -2983,7 +2982,7 @@ DB_VALUE_COMPARE_RESULT
 domain_compare_by_type_pair (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order,
 			     bool * can_compare)
 {
-  /* CBRD-27583 exception, the data carries the type (2-7): a collection's elements compare by their own types */
+  /* CBRD-27583 exception, the data carries the type (2-7): a collection's elements, which compare by their values */
   TP_DECISION_EXCEPTION ();
   const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value1);
   if (type == DB_VALUE_DOMAIN_TYPE (value2) && !TP_TYPE_HAS_COLLATION (type))

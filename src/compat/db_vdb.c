@@ -2426,9 +2426,6 @@ db_recompile_for_bind_signature (DB_SESSION * session, int count, DB_VALUE * val
 	  plan->next = NULL;
 	  db_close_session_local (plan);
 	}
-#if !defined (NDEBUG)
-      er_log_debug (ARG_FILE_LINE, "CBRD-27583 signature plans kept=%d\n", kept);
-#endif
       return NO_ERROR;
     }
 
