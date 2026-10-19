@@ -99,9 +99,14 @@ namespace parallel_scan
     thread_ref.tran_index = m_parent_thread_p->tran_index;
     thread_ref.on_trace = m_parent_thread_p->on_trace;
 
-    if (thread_ref.on_trace)
+    /* the worker keeps its own statistics whenever anyone reads them, trace or not; finalize () hands them over */
+    if (perfmon_parallel_stats_needed (&thread_ref))
       {
 	perfmon_initialize_parallel_stats (&thread_ref);
+      }
+    m_scan_fixes = {};
+    if (thread_ref.on_trace)
+      {
 	tsc_getticks (&m_start_tick);
       }
 
@@ -498,22 +503,10 @@ namespace parallel_scan
 	  {
 	    m_trace_handler->m_trace_storage_for_sibling_xasl.merge_xasl_tree (m_xasl);
 	  }
-	m_trace_handler->add_trace (perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
-				    perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
-				    perfmon_get_from_statistic (&thread_ref,PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC),
-				    m_scan_id,
+	/* this clone's compiled programs are still alive here (qexec_clear_xasl () below frees them) */
+	m_trace_handler->add_expr_compile_dump (m_xasl);
+	m_trace_handler->add_trace (m_scan_fixes.fetches, m_scan_fixes.ioreads, m_scan_fixes.fetch_time, m_scan_id,
 				    elapsed_time);
-	/* a worker evaluates the SPs of if_pred, and of outptr_list in list-merge mode; carry that
-	 * back or the FUNC line would report the leader's share alone */
-	m_trace_handler->add_sp_stats (perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_NUM_CALL_EVALS),
-				       perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_EVAL_TIME_10USEC),
-				       perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_NUM_FETCHES),
-				       perfmon_get_from_statistic (&thread_ref, PSTAT_REGU_NUM_IOREADS));
-	perfmon_destroy_parallel_stats (&thread_ref);
-      }
-    else if (thread_ref.on_trace)
-      {
-	perfmon_destroy_parallel_stats (&thread_ref);
       }
     if (m_handlers_initialized)
       {
@@ -567,6 +560,20 @@ namespace parallel_scan
       }
 
     qexec_free_xasl_state (&thread_ref, m_xasl_state);
+    if (!m_uses_xasl_clone)
+      {
+	/* A worker XASL that is not a cached clone is freed right below, so its compiled expression
+	 * programs (which a clone would keep across executions) have to go with it -- that is what
+	 * the XASL_DECACHE_CLONE pass does.  It takes two passes, not one.  This tree was unpacked
+	 * with use_xasl_clone off, so nothing in it carries CLEAR_AT_CLONE_DECACHE, and the clear
+	 * routines read that mark in opposite directions: the flagged pass releases only the values
+	 * that carry it, the unflagged pass only the values that do not.  A flagged pass alone would
+	 * therefore release no value at all and leak them into this worker's private heap, which
+	 * lives as long as the thread.  Clear unflagged first for the values, then flagged for the
+	 * programs -- the same two-pass shape qmgr_process_query () uses for a one-shot XASL. */
+	qexec_clear_xasl (&thread_ref, m_xasl, true, false);
+	XASL_SET_FLAG (m_xasl, XASL_DECACHE_CLONE);
+      }
     qexec_clear_xasl (&thread_ref, m_xasl, true, false);
 
     pthread_mutex_lock (&main_thread_p->m_px_lock_mutex);
@@ -592,7 +599,32 @@ namespace parallel_scan
       }
     pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
 
+    /* last, so the cleanup above is counted too: hand everything this worker counted (page fixes, the SPs of
+     * if_pred and of outptr_list, ...) to the leader, which merges it once in trace_handler::merge_stats () */
+    if (thread_ref.m_px_stats != nullptr)
+      {
+	m_trace_handler->add_px_stats (thread_ref.m_px_stats);
+      }
+    perfmon_destroy_parallel_stats (&thread_ref);
+
     return NO_ERROR;
+  }
+
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  typename task<result_type, ST>::scan_fixes task<result_type, ST>::read_fixes (cubthread::entry &thread_ref)
+  {
+    return { perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_FETCHES),
+	     perfmon_get_from_statistic (&thread_ref, PSTAT_PB_NUM_IOREADS),
+	     perfmon_get_from_statistic (&thread_ref, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC) };
+  }
+
+  template <RESULT_TYPE result_type, SCAN_TYPE ST>
+  void task<result_type, ST>::add_scan_fixes (cubthread::entry &thread_ref, const scan_fixes &since)
+  {
+    scan_fixes now = read_fixes (thread_ref);
+    m_scan_fixes.fetches += now.fetches - since.fetches;
+    m_scan_fixes.ioreads += now.ioreads - since.ioreads;
+    m_scan_fixes.fetch_time += now.fetch_time - since.fetch_time;
   }
 
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
@@ -641,6 +673,8 @@ namespace parallel_scan
 
     /* the agg-expr marking is the clone's load's (domain_mark_aggregate_operands) */
     m_scan_id = &m_xasl->spec_list->s_id;
+    /* this worker's clone scans its own spec and projects/aggregates its own rows */
+    qexec_set_expr_share_spec (m_xasl, m_xasl->spec_list);
 
     for (xasl_node *dptr = m_xasl->dptr_list; dptr != nullptr; dptr = dptr->next)
       {
@@ -679,10 +713,20 @@ namespace parallel_scan
     SCAN_CODE scan_code, xs_scan;
     DB_LOGICAL ev_res;
     result_handler<result_type> *result_handler_p = m_result_handler;
+    const bool on_trace = thread_ref.on_trace;	/* per row below; the calls in the loop could reload the member */
 
     while (!stop)
       {
+	scan_fixes since = {};
+	if (on_trace)
+	  {
+	    since = read_fixes (thread_ref);
+	  }
 	scan_code = m_slot_iterator.next_qualified_slot_with_peek (&thread_ref);
+	if (on_trace)
+	  {
+	    add_scan_fixes (thread_ref, since);
+	  }
 	if (scan_code == S_END)
 	  {
 	    return S_END;
@@ -901,6 +945,11 @@ namespace parallel_scan
 	  }
 	/* LIST/INDEX: handler hands fixed page to iterator. HEAP: vpid; page lives in scan_cache->page_watcher. */
 
+	scan_fixes since = {};
+	if (thread_ref.on_trace)
+	  {
+	    since = read_fixes (thread_ref);
+	  }
 	if constexpr (ST == SCAN_TYPE::LIST)
 	  {
 	    list_page = nullptr;
@@ -918,6 +967,10 @@ namespace parallel_scan
 	else
 	  {
 	    scan_code = m_input_handler->get_next_vpid_with_fix (&thread_ref, &vpid);
+	  }
+	if (thread_ref.on_trace)
+	  {
+	    add_scan_fixes (thread_ref, since);
 	  }
 	if (scan_code == S_END)
 	  {
@@ -1002,8 +1055,17 @@ namespace parallel_scan
 	    int ovf_range = -1;
 	    int ovf_slot_idx = -1;
 	    db_make_null (&ovf_local_key);
+	    scan_fixes since = {};
+	    if (thread_ref.on_trace)
+	      {
+		since = read_fixes (thread_ref);
+	      }
 	    SCAN_CODE help = m_input_handler->wait_or_help_overflow (&thread_ref, ovf_page,
 			     &ovf_local_key, &ovf_local_clear_key, ovf_range, ovf_slot_idx);
+	    if (thread_ref.on_trace)
+	      {
+		add_scan_fixes (thread_ref, since);
+	      }
 	    if (help == S_END)
 	      {
 		break;
