@@ -21698,6 +21698,8 @@ qexec_gby_skip_open (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
   if (st->group_vals == NULL || st->row_keys == NULL || st->part_value.accumulators == NULL
       || st->part_cnt_vals == NULL)
     {
+      /* qexec_gby_skip_free clears every group value: these are not initialized yet */
+      db_private_free_and_init (thread_p, st->group_vals);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   st->part_key.val_count = st->val_cnt;
@@ -21783,7 +21785,7 @@ qexec_gby_skip_attach (XASL_NODE * xasl)
  * qexec_gby_skip_can_visit () - S1 runs the aggregation, HAVING and output under the B-tree leaf latch, from the
  *				 B-tree's visit of a covered key: it takes only queries where every selected object
  *				 reaches the aggregation and nothing evaluated waits for anything (a subquery, a stored
- *				 procedure, a serial) or sorts (DISTINCT and ordered aggregates)
+ *				 procedure, a serial, a sleep, a lock) or sorts (DISTINCT and ordered aggregates)
  */
 static bool
 qexec_gby_skip_can_visit (XASL_NODE * xasl)
@@ -21831,7 +21833,8 @@ qexec_gby_skip_can_visit (XASL_NODE * xasl)
 	  && qexec_gby_skip_regu_list_is_local (buildlist->g_outptr_list->valptrp));
 }
 
-/* true when regu evaluates from its operands alone: no subquery, stored procedure or serial */
+/* true when regu evaluates from its operands alone: no subquery, stored procedure, serial, sleep or lock
+ * (index_cardinality () locks its class) */
 static bool
 qexec_gby_skip_regu_is_local (REGU_VARIABLE * regu)
 {
@@ -21850,8 +21853,9 @@ qexec_gby_skip_regu_is_local (REGU_VARIABLE * regu)
       {
 	ARITH_TYPE *arith = regu->value.arithptr;
 
-	return (arith->opcode != T_NEXT_VALUE && arith->opcode != T_CURRENT_VALUE
-		&& qexec_gby_skip_regu_is_local (arith->leftptr) && qexec_gby_skip_regu_is_local (arith->rightptr)
+	return (arith->opcode != T_NEXT_VALUE && arith->opcode != T_CURRENT_VALUE && arith->opcode != T_SLEEP
+		&& arith->opcode != T_INDEX_CARDINALITY && qexec_gby_skip_regu_is_local (arith->leftptr)
+		&& qexec_gby_skip_regu_is_local (arith->rightptr)
 		&& qexec_gby_skip_regu_is_local (arith->thirdptr) && qexec_gby_skip_pred_is_local (arith->pred));
       }
     case TYPE_FUNC:
