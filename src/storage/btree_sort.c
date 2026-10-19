@@ -276,6 +276,47 @@ struct btsort_rec_list
   int rec_pos;			/* record position */
 };				/* Sort record list */
 
+/* One input section of the external merge phase: a window of in_sectsize pages over the run being consumed from
+ * one input file, and the smallest record that window currently exposes */
+typedef struct btsort_merge_input BTSORT_MERGE_INPUT;
+struct btsort_merge_input
+{
+  char *sectaddr;		/* Beginning address of the input section */
+  char *cur_bufaddr;		/* Address of the current buffer in the input section */
+  int act_bufno;		/* Active buffer in the input section */
+  int last_buf;			/* Last full buffer of the input section */
+  int act_slot;			/* Active slot of the active buffer */
+  int last_slot;		/* Last slot of the active buffer */
+  RECDES rec;			/* Smallest record of this input: the record at act_slot of the active buffer */
+  RECDES long_rec;		/* The long record rec stands for when rec is a BIGONE placeholder */
+};
+
+/* State of the external merge phase (btsort_exphase_merge) */
+typedef struct btsort_merge_ctx BTSORT_MERGE_CTX;
+struct btsort_merge_ctx
+{
+  BTSORT_PARAM *sort_param;
+  int act_infiles;		/* How many of input files are active */
+  int in_sectsize;		/* Size of section allocated to each active input file (in pages) */
+  BTSORT_MERGE_INPUT in[BTSORT_MAX_HALF_FILES];
+
+  int cur_outfile;		/* Index for output file receiving new run */
+  int out_sectsize;		/* Size of the output section (in pages) */
+  int out_act_bufno;		/* Active buffer in the output section */
+  int out_runsize;		/* Total pages output for the run being produced */
+  char *out_sectaddr;		/* Beginning address of the output section */
+  char *out_cur_bufaddr;	/* Address of the current buffer in the output section */
+
+  int cur_page[BTSORT_MAX_TOT_FILES];	/* Current page of each temp file */
+
+  BTSORT_REC_LIST sr_list[BTSORT_MAX_HALF_FILES];	/* inputs ordered by their smallest record */
+  BTSORT_REC_LIST *min_p;	/* head of sr_list: the input holding the minimum record */
+  RECDES last_elem;		/* last record of the current page of the min input */
+  RECDES last_long_rec;		/* its long record when last_elem is a BIGONE placeholder */
+  bool last_elem_is_min;	/* false: must find the min record; true: last_elem is not above any other input's
+				 * smallest record, so the rest of its page is output without comparing */
+};
+
 typedef struct btsort_spage_header BTSORT_SPAGE_HEADER;
 struct btsort_spage_header
 {
@@ -2265,35 +2306,10 @@ btsort_merge_count_pass_runs (BTSORT_PARAM * sort_param, int act_infiles)
 static int
 btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 {
-  /* Variables for input files */
-  int act_infiles;		/* How many of input files are active */
+  BTSORT_MERGE_CTX ctx;		/* input/output sections and the ordered list of the inputs' smallest records */
   int pre_act_infiles;		/* Number of active input files in the previous iteration */
-  int in_sectsize;		/* Size of section allocated to each active input file (in terms of number of buffers
-				 * it contains) */
   int read_pages;		/* Number of pages read in to fill the input buffer */
-  int in_act_bufno[BTSORT_MAX_HALF_FILES];	/* Active buffer in the input section */
-  int in_last_buf[BTSORT_MAX_HALF_FILES];	/* Last full buffer of the input section */
-  int act_slot[BTSORT_MAX_HALF_FILES];	/* Active slot of the active buffer of input section */
-  int last_slot[BTSORT_MAX_HALF_FILES];	/* Last slot of the active buffer of the input section */
-
-  char *in_sectaddr[BTSORT_MAX_HALF_FILES];	/* Beginning address of each input section */
-  char *in_cur_bufaddr[BTSORT_MAX_HALF_FILES];	/* Address of the current buffer in each input section */
-
-  /* Variables for output file */
   int out_half;			/* Which half of temp files is for output */
-  int cur_outfile;		/* Index for output file recieving new run */
-  int out_sectsize;		/* Size of the output section (in terms of number of buffer it contains) */
-  int out_act_bufno;		/* Active buffer in the output section */
-  int out_runsize;		/* Total pages output for the run being produced */
-  char *out_sectaddr;		/* Beginning address of the output section */
-  char *out_cur_bufaddr;	/* Address of the current buffer in the output section */
-
-  /* Smallest element pointers (one for each active input file) pointing to the active temp records. If the input file
-   * becomes inactive (all input is exhausted), its smallest element pointer is set to NULL */
-  RECDES smallest_elem_ptr[BTSORT_MAX_HALF_FILES];
-  RECDES long_recdes[BTSORT_MAX_HALF_FILES];
-
-  int cur_page[2 * BTSORT_MAX_HALF_FILES];	/* Current page of each temp file */
   int num_runs;			/* Number of output runs to be produced in this stage of the merging phase; */
   int big_index;
   int error;
@@ -2307,14 +2323,10 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
   BTSORT_CMP_FUNC *compare;
   void *compare_arg;
 
-  BTSORT_REC_LIST sr_list[BTSORT_MAX_HALF_FILES], *min_p, *s, *p;
+  BTSORT_REC_LIST *s, *p;
   int tmp_pos;			/* temporary value for rec_pos swapping */
   bool do_swap;			/* rec_pos swapping indicator */
 
-  RECDES last_elem_ptr;		/* last element pointers in one page of input section */
-  RECDES last_long_recdes;
-  bool last_elem_is_min;	/* false: must find min record true: last element in the current input section is min
-				 * record. no need to find min */
   char *data1, *data2;
   int first_run;
   int cmp;
@@ -2324,32 +2336,8 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
   compare = sort_param->cmp_fn;
   compare_arg = sort_param->cmp_arg;
 
-  for (i = 0; i < BTSORT_MAX_HALF_FILES; i++)
-    {
-      in_act_bufno[i] = 0;
-      in_last_buf[i] = 0;
-      act_slot[i] = 0;
-      last_slot[i] = 0;
-      in_sectaddr[i] = NULL;
-      in_cur_bufaddr[i] = NULL;
-
-      smallest_elem_ptr[i].data = NULL;
-      smallest_elem_ptr[i].area_size = 0;
-
-      long_recdes[i].data = NULL;
-      long_recdes[i].area_size = 0;
-    }
-
-  last_elem_ptr.data = NULL;
-  last_elem_ptr.area_size = 0;
-
-  last_long_recdes.data = NULL;
-  last_long_recdes.area_size = 0;
-
-  for (i = 0; i < (int) DIM (cur_page); i++)
-    {
-      cur_page[i] = 0;
-    }
+  memset (&ctx, 0, sizeof (ctx));
+  ctx.sort_param = sort_param;
 
   if (sort_param->in_half == 0)
     {
@@ -2363,7 +2351,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
   /* OUTER LOOP */
 
   /* While there are more than one input files with different runs to merge */
-  while ((act_infiles = btsort_get_numpages_of_active_infiles (sort_param)) > 1)
+  while ((ctx.act_infiles = btsort_get_numpages_of_active_infiles (sort_param)) > 1)
     {
       /* Check if output files has enough pages; if not allocate new pages */
       error = btsort_checkalloc_numpages_of_outfiles (thread_p, sort_param);
@@ -2376,26 +2364,26 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
       /* Initialize the current pages of all temp files to 0 */
       for (i = 0; i < sort_param->tot_tempfiles; i++)
 	{
-	  cur_page[i] = 0;
+	  ctx.cur_page[i] = 0;
 	}
 
       /* Distribute the internal memory to the input and output sections */
-      in_sectsize = btsort_find_inbuf_size (sort_param->tot_buffers, act_infiles);
-      out_sectsize = sort_param->tot_buffers - in_sectsize * act_infiles;
+      ctx.in_sectsize = btsort_find_inbuf_size (sort_param->tot_buffers, ctx.act_infiles);
+      ctx.out_sectsize = sort_param->tot_buffers - ctx.in_sectsize * ctx.act_infiles;
 
       /* Set the address of each input section */
-      for (i = 0; i < act_infiles; i++)
+      for (i = 0; i < ctx.act_infiles; i++)
 	{
-	  in_sectaddr[i] = sort_param->internal_memory + (i * in_sectsize * DB_PAGESIZE);
+	  ctx.in[i].sectaddr = sort_param->internal_memory + (i * ctx.in_sectsize * DB_PAGESIZE);
 	}
 
       /* Set the address of output section */
-      out_sectaddr = sort_param->internal_memory + (act_infiles * in_sectsize * DB_PAGESIZE);
+      ctx.out_sectaddr = sort_param->internal_memory + (ctx.act_infiles * ctx.in_sectsize * DB_PAGESIZE);
 
-      cur_outfile = out_half;
+      ctx.cur_outfile = out_half;
 
       /* Find how many runs will be produced in this iteration */
-      num_runs = btsort_merge_count_pass_runs (sort_param, act_infiles);
+      num_runs = btsort_merge_count_pass_runs (sort_param, ctx.act_infiles);
 
       if (num_runs == 1)
 	{
@@ -2412,13 +2400,13 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 
 	      /* Last iteration of the outer loop ; some of the input files might have become empty. */
 
-	      pre_act_infiles = act_infiles;
-	      act_infiles = btsort_get_numpages_of_active_infiles (sort_param);
-	      if (act_infiles != pre_act_infiles)
+	      pre_act_infiles = ctx.act_infiles;
+	      ctx.act_infiles = btsort_get_numpages_of_active_infiles (sort_param);
+	      if (ctx.act_infiles != pre_act_infiles)
 		{
 		  /* Some of the active input files became inactive */
 
-		  if (act_infiles == 1)
+		  if (ctx.act_infiles == 1)
 		    {
 		      /* ONE ACTIVE INFILE */
 
@@ -2449,7 +2437,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		      first_run = sort_param->file_contents[act].first_run;
 		      cp_pages = sort_param->file_contents[act].num_pages[first_run];
 
-		      error = btsort_run_add_new (&sort_param->file_contents[cur_outfile], cp_pages);
+		      error = btsort_run_add_new (&sort_param->file_contents[ctx.cur_outfile], cp_pages);
 		      if (error != NO_ERROR)
 			{
 			  goto bailout;
@@ -2470,23 +2458,23 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 
 			  error =
 			    btsort_read_area (thread_p, &sort_param->temp[act], &sort_param->temp_cursor[act],
-					      cur_page[act], read_pages, sort_param->internal_memory);
+					      ctx.cur_page[act], read_pages, sort_param->internal_memory);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
 			    }
 
-			  cur_page[act] += read_pages;
+			  ctx.cur_page[act] += read_pages;
 			  error =
-			    btsort_write_area (thread_p, &sort_param->temp[cur_outfile],
-					       &sort_param->temp_cursor[cur_outfile], cur_page[cur_outfile], read_pages,
-					       sort_param->internal_memory, sort_param->tde_encrypted);
+			    btsort_write_area (thread_p, &sort_param->temp[ctx.cur_outfile],
+					       &sort_param->temp_cursor[ctx.cur_outfile], ctx.cur_page[ctx.cur_outfile],
+					       read_pages, sort_param->internal_memory, sort_param->tde_encrypted);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
 			    }
 
-			  cur_page[cur_outfile] += read_pages;
+			  ctx.cur_page[ctx.cur_outfile] += read_pages;
 			  cp_pages -= read_pages;
 			}
 
@@ -2496,17 +2484,18 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		  else
 		    {
 		      /* There are more than one active input files; redistribute buffers */
-		      in_sectsize = btsort_find_inbuf_size (sort_param->tot_buffers, act_infiles);
-		      out_sectsize = sort_param->tot_buffers - in_sectsize * act_infiles;
+		      ctx.in_sectsize = btsort_find_inbuf_size (sort_param->tot_buffers, ctx.act_infiles);
+		      ctx.out_sectsize = sort_param->tot_buffers - ctx.in_sectsize * ctx.act_infiles;
 
 		      /* Set the address of each input section */
-		      for (i = 0; i < act_infiles; i++)
+		      for (i = 0; i < ctx.act_infiles; i++)
 			{
-			  in_sectaddr[i] = sort_param->internal_memory + (i * in_sectsize * DB_PAGESIZE);
+			  ctx.in[i].sectaddr = sort_param->internal_memory + (i * ctx.in_sectsize * DB_PAGESIZE);
 			}
 
 		      /* Set the address of output section */
-		      out_sectaddr = sort_param->internal_memory + (act_infiles * in_sectsize * DB_PAGESIZE);
+		      ctx.out_sectaddr =
+			sort_param->internal_memory + (ctx.act_infiles * ctx.in_sectsize * DB_PAGESIZE);
 		    }
 		}
 	    }
@@ -2514,48 +2503,48 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	  /* PRODUCE A NEW RUN */
 
 	  /* INITIALIZE INPUT SECTIONS AND INPUT VARIABLES */
-	  for (i = 0; i < act_infiles; i++)
+	  for (i = 0; i < ctx.act_infiles; i++)
 	    {
 	      big_index = sort_param->in_half + i;
 	      first_run = sort_param->file_contents[big_index].first_run;
 	      read_pages = sort_param->file_contents[big_index].num_pages[first_run];
 
-	      if (in_sectsize < read_pages)
+	      if (ctx.in_sectsize < read_pages)
 		{
-		  read_pages = in_sectsize;
+		  read_pages = ctx.in_sectsize;
 		}
 
 	      error =
 		btsort_read_area (thread_p, &sort_param->temp[big_index], &sort_param->temp_cursor[big_index],
-				  cur_page[big_index], read_pages, in_sectaddr[i]);
+				  ctx.cur_page[big_index], read_pages, ctx.in[i].sectaddr);
 	      if (error != NO_ERROR)
 		{
 		  goto bailout;
 		}
 
 	      /* Increment the current page of this input_file */
-	      cur_page[big_index] += read_pages;
+	      ctx.cur_page[big_index] += read_pages;
 
 	      first_run = sort_param->file_contents[big_index].first_run;
 	      sort_param->file_contents[big_index].num_pages[first_run] -= read_pages;
 
 	      /* Initialize input variables */
-	      in_cur_bufaddr[i] = in_sectaddr[i];
-	      in_act_bufno[i] = 0;
-	      in_last_buf[i] = read_pages;
-	      act_slot[i] = 0;
-	      last_slot[i] = btsort_spage_get_numrecs (in_cur_bufaddr[i]);
+	      ctx.in[i].cur_bufaddr = ctx.in[i].sectaddr;
+	      ctx.in[i].act_bufno = 0;
+	      ctx.in[i].last_buf = read_pages;
+	      ctx.in[i].act_slot = 0;
+	      ctx.in[i].last_slot = btsort_spage_get_numrecs (ctx.in[i].cur_bufaddr);
 
 	      error =
-		btsort_merge_fetch_slot (thread_p, in_cur_bufaddr[i], act_slot[i], &smallest_elem_ptr[i],
-					 &long_recdes[i]);
+		btsort_merge_fetch_slot (thread_p, ctx.in[i].cur_bufaddr, ctx.in[i].act_slot, &ctx.in[i].rec,
+					 &ctx.in[i].long_rec);
 	      if (error != NO_ERROR)
 		{
 		  goto bailout;
 		}
 	    }
 
-	  for (i = 0, p = sr_list; i < (act_infiles - 1); p = p->next)
+	  for (i = 0, p = ctx.sr_list; i < (ctx.act_infiles - 1); p = p->next)
 	    {
 	      p->next = (BTSORT_REC_LIST *) ((char *) p + sizeof (BTSORT_REC_LIST));
 	      p->rec_pos = i++;
@@ -2563,14 +2552,14 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	  p->next = NULL;
 	  p->rec_pos = i;
 
-	  for (s = sr_list; s; s = s->next)
+	  for (s = ctx.sr_list; s; s = s->next)
 	    {
 	      for (p = s->next; p; p = p->next)
 		{
 		  do_swap = false;
 
-		  data1 = btsort_merge_resolve_rec (&smallest_elem_ptr[s->rec_pos], &long_recdes[s->rec_pos])->data;
-		  data2 = btsort_merge_resolve_rec (&smallest_elem_ptr[p->rec_pos], &long_recdes[p->rec_pos])->data;
+		  data1 = btsort_merge_resolve_rec (&ctx.in[s->rec_pos].rec, &ctx.in[s->rec_pos].long_rec)->data;
+		  data2 = btsort_merge_resolve_rec (&ctx.in[p->rec_pos].rec, &ctx.in[p->rec_pos].long_rec)->data;
 
 		  cmp = (*compare) (data1, data2, compare_arg);
 		  if (cmp > 0)
@@ -2587,51 +2576,51 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		}
 	    }
 
-	  /* set min_p to point minimum record */
-	  min_p = sr_list;	/* min_p->rec_pos is min record */
+	  /* the head of sr_list holds the minimum record */
+	  ctx.min_p = ctx.sr_list;	/* ctx.min_p->rec_pos is min record */
 
 	  /* last element comparison */
-	  last_elem_is_min = false;
-	  p = min_p->next;	/* second smallest element */
+	  ctx.last_elem_is_min = false;
+	  p = ctx.min_p->next;	/* second smallest element */
 
 	  if (p)
 	    {
 	      /* STEP 1: get last_elem */
 	      error =
-		btsort_merge_fetch_slot (thread_p, in_cur_bufaddr[min_p->rec_pos], last_slot[min_p->rec_pos] - 1,
-					 &last_elem_ptr, &last_long_recdes);
+		btsort_merge_fetch_slot (thread_p, ctx.in[ctx.min_p->rec_pos].cur_bufaddr,
+					 ctx.in[ctx.min_p->rec_pos].last_slot - 1, &ctx.last_elem, &ctx.last_long_rec);
 	      if (error != NO_ERROR)
 		{
 		  goto bailout;
 		}
 
 	      /* STEP 2: compare last, p */
-	      data1 = btsort_merge_resolve_rec (&last_elem_ptr, &last_long_recdes)->data;
-	      data2 = btsort_merge_resolve_rec (&smallest_elem_ptr[p->rec_pos], &long_recdes[p->rec_pos])->data;
+	      data1 = btsort_merge_resolve_rec (&ctx.last_elem, &ctx.last_long_rec)->data;
+	      data2 = btsort_merge_resolve_rec (&ctx.in[p->rec_pos].rec, &ctx.in[p->rec_pos].long_rec)->data;
 
 	      cmp = (*compare) (data1, data2, compare_arg);
 	      if (cmp <= 0)
 		{
-		  last_elem_is_min = true;
+		  ctx.last_elem_is_min = true;
 		}
 	    }
 
 	  /* INITIALIZE OUTPUT SECTION AND OUTPUT VARIABLES */
-	  out_act_bufno = 0;
-	  out_cur_bufaddr = out_sectaddr;
-	  for (i = 0; i < out_sectsize; i++)
+	  ctx.out_act_bufno = 0;
+	  ctx.out_cur_bufaddr = ctx.out_sectaddr;
+	  for (i = 0; i < ctx.out_sectsize; i++)
 	    {
 	      /* Initialize each buffer to contain a slotted page */
-	      btsort_spage_initialize (out_sectaddr + (i * DB_PAGESIZE));
+	      btsort_spage_initialize (ctx.out_sectaddr + (i * DB_PAGESIZE));
 	    }
 
 	  /* Initialize the size of next run to zero */
-	  out_runsize = 0;
+	  ctx.out_runsize = 0;
 
 	  /* In parallel sort, put_fn will be performed by the parent thread. save last file index. */
 	  if (very_last_run && BTSORT_IS_PARALLEL (sort_param))
 	    {
-	      sort_param->px_result_file_idx = cur_outfile;
+	      sort_param->px_result_file_idx = ctx.cur_outfile;
 	    }
 
 	  for (;;)
@@ -2639,15 +2628,15 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	      /* OUTPUT A RECORD */
 
 	      /* FIND MINIMUM RECORD IN THE INPUT AREA */
-	      min = min_p->rec_pos;
+	      min = ctx.min_p->rec_pos;
 
 	      if (very_last_run && !BTSORT_IS_PARALLEL (sort_param))
 		{
 		  /* OUTPUT THE RECORD */
 		  /* Obtain the output record for this temporary record */
-		  if (smallest_elem_ptr[min].type == REC_BIGONE)
+		  if (ctx.in[min].rec.type == REC_BIGONE)
 		    {
-		      error = (*sort_param->put_fn) (thread_p, &long_recdes[min], sort_param->put_arg);
+		      error = (*sort_param->put_fn) (thread_p, &ctx.in[min].long_rec, sort_param->put_arg);
 		      if (error != NO_ERROR)
 			{
 			  goto bailout;
@@ -2655,7 +2644,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		    }
 		  else
 		    {
-		      error = (*sort_param->put_fn) (thread_p, &smallest_elem_ptr[min], sort_param->put_arg);
+		      error = (*sort_param->put_fn) (thread_p, &ctx.in[min].rec, sort_param->put_arg);
 		      if (error != NO_ERROR)
 			{
 			  goto bailout;
@@ -2667,16 +2656,16 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		  /* OUTPUT THE MINIMUM RECORD TO THE OUTPUT AREA */
 
 		  /* Insert this record to the output area */
-		  if (btsort_spage_insert (out_cur_bufaddr, &smallest_elem_ptr[min]) == NULL_SLOTID)
+		  if (btsort_spage_insert (ctx.out_cur_bufaddr, &ctx.in[min].rec) == NULL_SLOTID)
 		    {
 		      /* Current output buffer is full */
 
-		      if (++out_act_bufno < out_sectsize)
+		      if (++ctx.out_act_bufno < ctx.out_sectsize)
 			{
 			  /* There is another buffer in the output section; so insert the new record there */
-			  out_cur_bufaddr += DB_PAGESIZE;
+			  ctx.out_cur_bufaddr += DB_PAGESIZE;
 
-			  if (btsort_spage_insert (out_cur_bufaddr, &smallest_elem_ptr[min]) == NULL_SLOTID)
+			  if (btsort_spage_insert (ctx.out_cur_bufaddr, &ctx.in[min].rec) == NULL_SLOTID)
 			    {
 			      /*
 			       * Slotted page module refuses to insert a short
@@ -2694,26 +2683,26 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 			  /* Output section is full */
 			  /* Flush output section */
 			  error =
-			    btsort_write_area (thread_p, &sort_param->temp[cur_outfile],
-					       &sort_param->temp_cursor[cur_outfile], cur_page[cur_outfile],
-					       out_sectsize, out_sectaddr, sort_param->tde_encrypted);
+			    btsort_write_area (thread_p, &sort_param->temp[ctx.cur_outfile],
+					       &sort_param->temp_cursor[ctx.cur_outfile], ctx.cur_page[ctx.cur_outfile],
+					       ctx.out_sectsize, ctx.out_sectaddr, sort_param->tde_encrypted);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
 			    }
-			  cur_page[cur_outfile] += out_sectsize;
-			  out_runsize += out_sectsize;
+			  ctx.cur_page[ctx.cur_outfile] += ctx.out_sectsize;
+			  ctx.out_runsize += ctx.out_sectsize;
 
 			  /* Initialize output section and output variables */
-			  out_act_bufno = 0;
-			  out_cur_bufaddr = out_sectaddr;
-			  for (i = 0; i < out_sectsize; i++)
+			  ctx.out_act_bufno = 0;
+			  ctx.out_cur_bufaddr = ctx.out_sectaddr;
+			  for (i = 0; i < ctx.out_sectsize; i++)
 			    {
 			      /* Initialize each buffer to contain a slotted page */
-			      btsort_spage_initialize (out_sectaddr + (i * DB_PAGESIZE));
+			      btsort_spage_initialize (ctx.out_sectaddr + (i * DB_PAGESIZE));
 			    }
 
-			  if (btsort_spage_insert (out_cur_bufaddr, &smallest_elem_ptr[min]) == NULL_SLOTID)
+			  if (btsort_spage_insert (ctx.out_cur_bufaddr, &ctx.in[min].rec) == NULL_SLOTID)
 			    {
 			      /*
 			       * Slotted page module refuses to insert a short
@@ -2729,17 +2718,17 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 		    }
 		}
 
-	      /* PROCEED THE smallest_elem_ptr[min] TO NEXT RECORD */
-	      if (++act_slot[min] >= last_slot[min])
+	      /* ADVANCE INPUT min TO ITS NEXT RECORD */
+	      if (++ctx.in[min].act_slot >= ctx.in[min].last_slot)
 		{
 		  /* The current input page is finished */
 
-		  last_elem_is_min = false;
+		  ctx.last_elem_is_min = false;
 
-		  if (++in_act_bufno[min] < in_last_buf[min])
+		  if (++ctx.in[min].act_bufno < ctx.in[min].last_buf)
 		    {
 		      /* Switch to the next page in the input buffer */
-		      in_cur_bufaddr[min] = in_sectaddr[min] + in_act_bufno[min] * DB_PAGESIZE;
+		      ctx.in[min].cur_bufaddr = ctx.in[min].sectaddr + ctx.in[min].act_bufno * DB_PAGESIZE;
 		    }
 		  else
 		    {
@@ -2750,29 +2739,29 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 			{
 			  /* There are still some pages in the current input run */
 
-			  in_cur_bufaddr[min] = in_sectaddr[min];
+			  ctx.in[min].cur_bufaddr = ctx.in[min].sectaddr;
 
 			  read_pages = sort_param->file_contents[big_index].num_pages[first_run];
-			  if (in_sectsize < read_pages)
+			  if (ctx.in_sectsize < read_pages)
 			    {
-			      read_pages = in_sectsize;
+			      read_pages = ctx.in_sectsize;
 			    }
 
-			  in_last_buf[min] = read_pages;
+			  ctx.in[min].last_buf = read_pages;
 
 			  error =
 			    btsort_read_area (thread_p, &sort_param->temp[big_index],
 					      &sort_param->temp_cursor[big_index],
-					      cur_page[big_index], read_pages, in_cur_bufaddr[min]);
+					      ctx.cur_page[big_index], read_pages, ctx.in[min].cur_bufaddr);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
 			    }
 
 			  /* Increment the current page of this input_file */
-			  cur_page[big_index] += read_pages;
+			  ctx.cur_page[big_index] += read_pages;
 
-			  in_act_bufno[min] = 0;
+			  ctx.in[min].act_bufno = 0;
 			  first_run = sort_param->file_contents[big_index].first_run;
 			  sort_param->file_contents[big_index].num_pages[first_run] -= read_pages;
 			}
@@ -2781,11 +2770,11 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 			  /* Current input run on this input file has finished */
 
 			  /* remove current input run in input section. proceed to next minimum record. */
-			  min_p = min_p->next;
+			  ctx.min_p = ctx.min_p->next;
 
-			  if (min_p == NULL)
+			  if (ctx.min_p == NULL)
 			    {
-			      /* all "smallest_elem_ptr" are NULL; so break */
+			      /* no input run is left; so break */
 			      break;
 			    }
 			  else
@@ -2796,27 +2785,27 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 			}
 		    }
 
-		  act_slot[min] = 0;
-		  last_slot[min] = btsort_spage_get_numrecs (in_cur_bufaddr[min]);
+		  ctx.in[min].act_slot = 0;
+		  ctx.in[min].last_slot = btsort_spage_get_numrecs (ctx.in[min].cur_bufaddr);
 		}
 
 	      error =
-		btsort_merge_fetch_slot (thread_p, in_cur_bufaddr[min], act_slot[min], &smallest_elem_ptr[min],
-					 &long_recdes[min]);
+		btsort_merge_fetch_slot (thread_p, ctx.in[min].cur_bufaddr, ctx.in[min].act_slot, &ctx.in[min].rec,
+					 &ctx.in[min].long_rec);
 	      if (error != NO_ERROR)
 		{
 		  goto bailout;
 		}
 
 	      /* find minimum */
-	      if (last_elem_is_min == true)
+	      if (ctx.last_elem_is_min == true)
 		{
 		  /* already find min */
 		  ;
 		}
 	      else
 		{
-		  for (s = min_p; s; s = s->next)
+		  for (s = ctx.min_p; s; s = s->next)
 		    {
 		      p = s->next;
 		      if (p == NULL)
@@ -2827,8 +2816,8 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 
 		      do_swap = false;
 
-		      data1 = btsort_merge_resolve_rec (&smallest_elem_ptr[s->rec_pos], &long_recdes[s->rec_pos])->data;
-		      data2 = btsort_merge_resolve_rec (&smallest_elem_ptr[p->rec_pos], &long_recdes[p->rec_pos])->data;
+		      data1 = btsort_merge_resolve_rec (&ctx.in[s->rec_pos].rec, &ctx.in[s->rec_pos].long_rec)->data;
+		      data2 = btsort_merge_resolve_rec (&ctx.in[p->rec_pos].rec, &ctx.in[p->rec_pos].long_rec)->data;
 
 		      cmp = (*compare) (data1, data2, compare_arg);
 		      if (cmp > 0)
@@ -2845,36 +2834,37 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 			}
 		      else
 			{
-			  /* sr_list is completely sorted */
+			  /* ctx.sr_list is completely sorted */
 			  break;
 			}
 		    }
 
 		  /* new input page is entered */
-		  if (act_slot[min_p->rec_pos] == 0)
+		  if (ctx.in[ctx.min_p->rec_pos].act_slot == 0)
 		    {
 		      /* last element comparison */
-		      p = min_p->next;	/* second smallest element */
+		      p = ctx.min_p->next;	/* second smallest element */
 		      if (p)
 			{
 			  /* STEP 1: get last_elem */
 			  error =
-			    btsort_merge_fetch_slot (thread_p, in_cur_bufaddr[min_p->rec_pos],
-						     last_slot[min_p->rec_pos] - 1, &last_elem_ptr, &last_long_recdes);
+			    btsort_merge_fetch_slot (thread_p, ctx.in[ctx.min_p->rec_pos].cur_bufaddr,
+						     ctx.in[ctx.min_p->rec_pos].last_slot - 1, &ctx.last_elem,
+						     &ctx.last_long_rec);
 			  if (error != NO_ERROR)
 			    {
 			      goto bailout;
 			    }
 
 			  /* STEP 2: compare last, p */
-			  data1 = btsort_merge_resolve_rec (&last_elem_ptr, &last_long_recdes)->data;
+			  data1 = btsort_merge_resolve_rec (&ctx.last_elem, &ctx.last_long_rec)->data;
 			  data2 =
-			    btsort_merge_resolve_rec (&smallest_elem_ptr[p->rec_pos], &long_recdes[p->rec_pos])->data;
+			    btsort_merge_resolve_rec (&ctx.in[p->rec_pos].rec, &ctx.in[p->rec_pos].long_rec)->data;
 
 			  cmp = (*compare) (data1, data2, compare_arg);
 			  if (cmp <= 0)
 			    {
-			      last_elem_is_min = true;
+			      ctx.last_elem_is_min = true;
 			    }
 			}
 		    }
@@ -2885,16 +2875,17 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	    {
 	      /* Flush whatever is left on the output section */
 
-	      out_act_bufno++;	/* Since 0 refers to the first active buffer */
+	      ctx.out_act_bufno++;	/* Since 0 refers to the first active buffer */
 	      error =
-		btsort_write_area (thread_p, &sort_param->temp[cur_outfile], &sort_param->temp_cursor[cur_outfile],
-				   cur_page[cur_outfile], out_act_bufno, out_sectaddr, sort_param->tde_encrypted);
+		btsort_write_area (thread_p, &sort_param->temp[ctx.cur_outfile],
+				   &sort_param->temp_cursor[ctx.cur_outfile], ctx.cur_page[ctx.cur_outfile],
+				   ctx.out_act_bufno, ctx.out_sectaddr, sort_param->tde_encrypted);
 	      if (error != NO_ERROR)
 		{
 		  goto bailout;
 		}
-	      cur_page[cur_outfile] += out_act_bufno;
-	      out_runsize += out_act_bufno;
+	      ctx.cur_page[ctx.cur_outfile] += ctx.out_act_bufno;
+	      ctx.out_runsize += ctx.out_act_bufno;
 	    }
 
 	  /* END UP THIS RUN */
@@ -2906,7 +2897,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	    }
 
 	  /* Add a new node to the file_contents list of the current output file */
-	  error = btsort_run_add_new (&sort_param->file_contents[cur_outfile], out_runsize);
+	  error = btsort_run_add_new (&sort_param->file_contents[ctx.cur_outfile], ctx.out_runsize);
 	  if (error != NO_ERROR)
 	    {
 	      goto bailout;
@@ -2915,9 +2906,9 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	  /* PRODUCE A NEW RUN */
 
 	  /* Switch to the next out file */
-	  if (++cur_outfile >= sort_param->half_files + out_half)
+	  if (++ctx.cur_outfile >= sort_param->half_files + out_half)
 	    {
-	      cur_outfile = out_half;
+	      ctx.cur_outfile = out_half;
 	    }
 	}
 
@@ -2931,15 +2922,15 @@ bailout:
 
   for (i = 0; i < sort_param->half_files; i++)
     {
-      if (long_recdes[i].data != NULL)
+      if (ctx.in[i].long_rec.data != NULL)
 	{
-	  free_and_init (long_recdes[i].data);
+	  free_and_init (ctx.in[i].long_rec.data);
 	}
     }
 
-  if (last_long_recdes.data)
+  if (ctx.last_long_rec.data)
     {
-      free_and_init (last_long_recdes.data);
+      free_and_init (ctx.last_long_rec.data);
     }
 
   return error;
