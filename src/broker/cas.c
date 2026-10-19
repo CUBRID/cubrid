@@ -313,6 +313,10 @@ cas_set_session_id (T_CAS_PROTOCOL protocol, char *session)
 {
   SESSION_ID id = DB_EMPTY_SESSION;
 
+  /* keeping a session is decided for the session of the client that left (CHANGE CLIENT, RESET, ...).
+   * Do not carry it over to this client, or its session will also be kept and never expire. */
+  db_set_keep_session (false);
+
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
     {
       id = *(SESSION_ID *) (session + 8);
@@ -655,6 +659,8 @@ conn_retry:
 	cas_log_error_handler_begin ();
 	fn_ret = FN_KEEP_CONN;
 	as_info->con_status = CON_STATUS_OUT_TRAN;
+	/* keeping a session was decided for the previous connection's session, do not carry it over */
+	db_set_keep_session (false);
 
 	while (fn_ret == FN_KEEP_CONN)
 	  {
