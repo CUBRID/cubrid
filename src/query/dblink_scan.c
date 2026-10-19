@@ -1400,6 +1400,9 @@ dblink_scan_next (DBLINK_SCAN_INFO * scan_info, val_list_node * val_list)
 	  dom.codeset = db_get_string_codeset (valptrp->val);
 	  dom.scale = db_value_scale (valptrp->val);
 
+	  /* CBRD-27583 exception, the data carries the type (2-7, D-56): a remote value converts by the type the driver
+	   * gives each row */
+	  TP_DECISION_EXCEPTION ();
 	  if ((status =
 	       tp_value_cast_preserve_domain (&cci_value, valptrp->val, &dom, false, true)) != DOMAIN_COMPATIBLE)
 	    {
