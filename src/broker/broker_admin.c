@@ -166,15 +166,10 @@ main (int argc, char **argv)
 
       if (shm_br == NULL && uw_get_error_code () != UW_ER_SHM_OPEN_MAGIC)
 	{
-	  err = admin_start_cmd (br_info, num_broker, master_shm_id, acl_flag, acl_file, acl_default_policy,
-				 admin_log_file);
-	  if (err < 0)
+	  if (admin_start_cmd
+	      (br_info, num_broker, master_shm_id, acl_flag, acl_file, acl_default_policy, admin_log_file) < 0)
 	    {
 	      PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
-	      if (err == ADMIN_ERR_SSL_KEY_PERMISSION)
-		{
-		  admin_log_write (admin_log_file, admin_err_msg);
-		}
 	      return -1;
 	    }
 	  else
@@ -263,14 +258,9 @@ main (int argc, char **argv)
 	  PRINT_AND_LOG_ERR_MSG ("%s on <broker-name>\n", argv[0]);
 	  return -1;
 	}
-      err = admin_on_cmd (master_shm_id, argv[2]);
-      if (err < 0)
+      if (admin_on_cmd (master_shm_id, argv[2]) < 0)
 	{
 	  PRINT_AND_LOG_ERR_MSG ("%s\n", admin_err_msg);
-	  if (err == ADMIN_ERR_SSL_KEY_PERMISSION)
-	    {
-	      admin_log_write (admin_log_file, admin_err_msg);
-	    }
 	  return -1;
 	}
       else

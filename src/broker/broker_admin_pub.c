@@ -284,7 +284,7 @@ admin_start_cmd (T_BROKER_INFO * br_info, int br_num, int master_shm_id, bool ac
 	  /* all brokers share one key and certificate file, so check them once, before any broker starts */
 	  if (admin_check_ssl_files () < 0)
 	    {
-	      return ADMIN_ERR_SSL_KEY_PERMISSION;
+	      return -1;
 	    }
 	  break;
 	}
@@ -1018,7 +1018,7 @@ admin_on_cmd (int master_shm_id, const char *broker_name)
 	      if (shm_br->br_info[i].use_SSL == ON && admin_check_ssl_files () < 0)
 		{
 		  uw_shm_detach (shm_br);
-		  return ADMIN_ERR_SSL_KEY_PERMISSION;
+		  return -1;
 		}
 #endif /* !WINDOWS */
 
@@ -4342,7 +4342,7 @@ static const unsigned char bundled_ssl_key_spki_sha256[][32] = {
 
 /*
  * admin_check_ssl_files () - check the SSL private key and certificate before a broker with SSL=ON starts
- *   return: 0, or ADMIN_ERR_SSL_KEY_PERMISSION with admin_err_msg set if others may have read the key
+ *   return: 0, or -1 with admin_err_msg set if others may have read the key
  *
  * Called when a broker with SSL=ON is activated, not in cas_init_ssl () which runs on every SSL connection.
  * Sets admin_warn_msg if the certificate is for a private key shipped with CUBRID.
@@ -4368,7 +4368,7 @@ admin_check_ssl_files (void)
 		    "The key may already have been copied by another user. "
 		    "Generate a new private key and certificate,\n"
 		    "set the key file permission to 600 or 400, and start the broker again.", mode, key);
-	  return ADMIN_ERR_SSL_KEY_PERMISSION;
+	  return -1;
 	}
     }
 
