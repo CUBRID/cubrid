@@ -27190,6 +27190,39 @@ btree_is_active_other_inserter (THREAD_ENTRY * thread_p, MVCCID insert_mvccid)
 }
 
 /*
+ * btree_is_deleter_committing () - Is the key object deleted by another transaction that is still in its commit?
+ *
+ * return	      : true if the caller has to wait for delete_mvccid before treating the object as deleted.
+ * thread_p (in)      : Thread entry.
+ * delete_mvccid (in) : MVCCID that deleted the object (BTREE_MVCC_INFO_DELID of the record).
+ *
+ * Note: A committing transaction completes its MVCCID, then writes its commit record and publishes its writeset
+ *	 keys, and only then releases its self-lock. In between, a key it deleted reads as deleted, so an insert of
+ *	 the same unique key passes without waiting, misses the deleter in the history and can commit first; the
+ *	 slave then replays the insert before the delete and fails on the key. Waiting for the self-lock puts the
+ *	 insert after the delete. A finished deleter costs one conditional lock request.
+ *	 Call with the page latches held: the self-lock is only probed here, never waited on.
+ */
+static bool
+btree_is_deleter_committing (THREAD_ENTRY * thread_p, MVCCID delete_mvccid)
+{
+  if (log_does_allow_replication () == false || !MVCCID_IS_NORMAL (delete_mvccid)
+      || logtb_is_current_mvccid (thread_p, delete_mvccid) || log_Gl.mvcc_table.is_active (delete_mvccid))
+    {
+      return false;
+    }
+
+  if (lock_transaction_mvccid (thread_p, delete_mvccid, S_LOCK, LK_COND_LOCK) == LK_GRANTED)
+    {
+      /* the deleter has already released its locks */
+      lock_unlock_transaction_mvccid (thread_p, delete_mvccid, S_LOCK);
+      return false;
+    }
+
+  return true;
+}
+
+/*
  * btree_wait_for_inserter_end () - Block until the transaction inserting under insert_mvccid ends:
  *				    S_LOCK on its MVCCID self-lock, then release.
  *
@@ -27231,7 +27264,8 @@ btree_wait_for_inserter_end (THREAD_ENTRY * thread_p, MVCCID insert_mvccid)
 
 /*
  * btree_key_wait_for_insert_mvccid () - Wait for the transaction inserting a conflicting object to
- *					 end, then signal a restart from root.
+ *					 end, then signal a restart from root. Also waits for a deleter
+ *					 that is still in its commit (btree_is_deleter_committing).
  *
  * return	       : Error code (NO_ERROR on success, with *restart set to true).
  * thread_p (in)       : Thread entry.
@@ -27484,6 +27518,15 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	  return NO_ERROR;
 
 	case DELETE_RECORD_DELETED:
+#if defined (SERVER_MODE)
+	  if (btree_is_deleter_committing (thread_p, BTREE_MVCC_INFO_DELID (&mvcc_info)))
+	    {
+	      /* wait until the deleter has written its commit record, so this transaction commits after it */
+	      return btree_key_wait_for_insert_mvccid (thread_p, BTREE_MVCC_INFO_DELID (&mvcc_info), find_unique_helper,
+						       leaf_page, NULL, restart);
+	    }
+#endif /* SERVER_MODE */
+	  [[fallthrough]];
 	case DELETE_RECORD_SELF_DELETED:
 	  /* Key object is deleted. */
 	  goto error_or_not_found;
@@ -27831,6 +27874,15 @@ btree_key_find_and_lock_unique_of_non_unique (THREAD_ENTRY * thread_p, BTID_INT 
 	  return NO_ERROR;
 
 	case DELETE_RECORD_DELETED:
+#if defined (SERVER_MODE)
+	  if (btree_is_deleter_committing (thread_p, BTREE_MVCC_INFO_DELID (&mvcc_info)))
+	    {
+	      /* wait until the deleter has written its commit record, so this transaction commits after it */
+	      return btree_key_wait_for_insert_mvccid (thread_p, BTREE_MVCC_INFO_DELID (&mvcc_info), find_unique_helper,
+						       leaf_page, &overflow_page, restart);
+	    }
+#endif /* SERVER_MODE */
+	  [[fallthrough]];
 	case DELETE_RECORD_SELF_DELETED:
 	  /* This object is deleted. */
 	  /* Continue to next object. */
