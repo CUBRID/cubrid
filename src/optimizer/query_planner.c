@@ -352,6 +352,7 @@ static QO_PLAN *qo_plan_order_by (QO_PLAN *, QO_EQCLASS *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp_prefer_covering_index (QO_PLAN *, QO_PLAN *);
 static void qo_plan_fprint (QO_PLAN *, FILE *, int, const char *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp (QO_PLAN *, QO_PLAN *);
+static double qo_plan_list_pages (QO_PLAN * plan);
 static double qo_plan_parallel_variable_cost (QO_PLAN * plan, double divisor);
 static double qo_plan_parallel_variable_cost_raw (QO_PLAN * plan, double divisor);
 static QO_PLAN_COMPARE_RESULT qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b);
@@ -5192,7 +5193,23 @@ qo_plan_is_parallel_driven (QO_PLAN * plan)
     }
 
   /* hash join, merge join or sort: the chain above scans its materialized result */
-  return (plan->info->cardinality * (double) plan->info->projected_size / (double) IO_PAGESIZE >= threshold);
+  return qo_plan_list_pages (plan) >= threshold;
+}
+
+/*
+ * qo_plan_list_pages () - estimated pages of the list file a plan's result is materialized into
+ *   return: cardinality * projected size / page size (as qo_hjoin_cost () sizes its inputs)
+ *   plan(in):
+ */
+static double
+qo_plan_list_pages (QO_PLAN * plan)
+{
+  if (plan == NULL || plan->info == NULL)
+    {
+      return 0.0;
+    }
+
+  return plan->info->cardinality * (double) plan->info->projected_size / (double) IO_PAGESIZE;
 }
 
 /*
@@ -5205,8 +5222,9 @@ qo_plan_is_parallel_driven (QO_PLAN * plan)
  *	 - a scan or nested-loop chain: all of it when its driving scan is parallel
  *	   (qo_plan_is_parallel_driven ()); otherwise the outer keeps its own discount and the
  *	   per-probe inner work stays serial;
- *	 - a hash join: its own build/probe work always (parallel hash join), its two inputs
- *	   each by their own rule;
+ *	 - a hash join: its own build/probe work when the larger input reaches
+ *	   parallel_hash_join_page_threshold (the executor's gate, hjoin_try_parallel ()), its two
+ *	   inputs each by their own rule;
  *	 - anything else (sort, merge join, follow): its own work stays serial, its inputs keep
  *	   their discounts.
  *	 Dividing the whole plan instead made a small parallel part under a serial chain (a tiny
@@ -5266,7 +5284,9 @@ qo_plan_parallel_variable_cost_raw (QO_PLAN * plan, double divisor)
 	}
       sub = outer->variable_cpu_cost + outer->variable_io_cost + inner->variable_cpu_cost + inner->variable_io_cost;
       if (plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN
-	  && !(qo_plan_parallel_hint (plan) & PT_HINT_NO_PARALLEL_HASH_JOIN))
+	  && !(qo_plan_parallel_hint (plan) & PT_HINT_NO_PARALLEL_HASH_JOIN)
+	  && (MAX (qo_plan_list_pages (outer), qo_plan_list_pages (inner))
+	      >= (double) prm_get_integer_value (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD)))
 	{
 	  return (qo_plan_parallel_variable_cost (outer, divisor) + qo_plan_parallel_variable_cost (inner, divisor)
 		  + (variable - sub) / divisor);
