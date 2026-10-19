@@ -455,6 +455,7 @@ db_bind_variant_learn (BIND_WATCH_STATE * ws, const BIND_VARIANT_REPLY * reply)
 		     ? "the plan is final, values are no longer checked" : "each execution runs the nearest plan");
     }
   ws->state = reply->state;
+  ws->plans = reply->plans;
   ws->n_records = reply->n_records;
   for (i = 0; i < reply->n_records && i < BIND_VARIANT_MAX_COMPILES; i++)
     {
@@ -493,6 +494,8 @@ db_bind_variant_rebase (PARSER_CONTEXT * parser, PT_NODE * statement, BIND_WATCH
   ws->n_records = 0;
   ws->cur_variant = -1;
   ws->polls = 0;
+  ws->checks = 0;
+  ws->plans = 0;
   for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
     {
       ws->id_known[i] = false;
@@ -553,10 +556,21 @@ db_bind_variant_step (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NO_ERROR;
     }
   ws->value_hash = value_hash;
+  if (ws->state == BIND_VARIANT_STATE_WATCH && ws->plans == 1 && ws->checks >= BIND_VARIANT_SETTLE_CHECKS)
+    {
+      /* still one plan after that many sets of new values: take the query as stable */
+      ws->state = BIND_VARIANT_STATE_DONE;
+      _er_log_debug (ARG_FILE_LINE, "bind variant learning done: 1 plan after %d checks -- the plan is final, "
+		     "values are no longer checked\n", ws->checks);
+    }
   if (ws->state == BIND_VARIANT_STATE_DONE)
     {
       /* one plan, or nothing to choose by: the values are not looked at again */
       return NO_ERROR;
+    }
+  if (ws->state == BIND_VARIANT_STATE_WATCH)
+    {
+      ws->checks++;
     }
 
   if (!histogram_bind_fingerprint (parser, statement, &fp, NULL, &ws->memo))

@@ -157,6 +157,8 @@ struct bind_watch_state
   int state;			/* BIND_VARIANT_STATE */
   int cur_variant;		/* the variant the statement's XASL_ID belongs to; -1 = the base entry */
   int polls;			/* times the query was found done learning with a compile still in flight */
+  int checks;			/* sets of new values fingerprinted while learning (BIND_VARIANT_SETTLE_CHECKS) */
+  int plans;			/* distinct plans of the query, as last heard from the server */
   int n_records;
   BIND_VARIANT_RECORD records[BIND_VARIANT_MAX_COMPILES];
   /* the XASL_ID each variant was last prepared to, so moving between variants needs no prepare

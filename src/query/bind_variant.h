@@ -36,7 +36,9 @@
  * The query learns until it has plan_cache_bind_variants distinct plans (the value of the client
  * that first asked, for every client) or BIND_VARIANT_MAX_COMPILES compiles, whichever comes
  * first. Then the directory is final: with one plan the values are not looked at again, with
- * more an execution runs the variant nearest to its values and never compiles. A compile that
+ * more an execution runs the variant nearest to its values and never compiles. A client that
+ * has checked BIND_VARIANT_SETTLE_CHECKS sets of new values while the query still has one plan
+ * stops checking too: values arriving after that run that plan. A compile that
  * fails is given back by its client; one whose client never comes back is given up after
  * BIND_VARIANT_RESERVE_TIMEOUT.
  *
@@ -74,6 +76,12 @@
  * producing a plan the query already has (a range bound drifting outside every band) would
  * otherwise never stop. Every compile adds one fingerprint, so this also bounds the directory. */
 #define BIND_VARIANT_MAX_COMPILES 32
+
+/* a query still learning with a single plan after this many sets of new values (checks) on a
+ * client is taken as stable: that client stops looking at the values. One plan has nothing to
+ * choose between, and a query whose values keep falling within the band would otherwise be
+ * checked on every execution for good -- the compile limit is never reached without compiles. */
+#define BIND_VARIANT_SETTLE_CHECKS 32
 
 /* the rows of a predicate whose value the histogram cannot price (a type its keys do not hold):
  * the slot is kept so the predicates after it stay in place, and comparisons skip it */
