@@ -53,6 +53,8 @@
 #if defined (SERVER_MODE)
 #include "bit.h"
 #endif /* SERVER_MODE */
+
+#include <algorithm>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -267,11 +269,41 @@ static int qfile_put_next_sort_item (THREAD_ENTRY * thread_p, const RECDES * rec
 #define QFILE_SORT_REC_A_SLOT(len)      (QFILE_SORT_REC_A_HDR + DB_ALIGN ((len), MAX_ALIGNMENT))
 
 /*
- * A P_sort_key carries its original tuple (SORT_REC_HAS_TUPLE) when the tuple is at most this long. The copy saves
- * a page fix of the input list per sorted tuple, a random one when the sort order is not the input order; beyond
- * this size the larger sort runs cost more than that saves when the sort order follows the input order.
+ * A P_sort_key may carry its original tuple (SORT_REC_HAS_TUPLE) only when the tuple is at most this long. The copy
+ * saves a page fix of the input list per sorted tuple; for a longer tuple the larger sort runs eat most of that even
+ * when the sorted tuples are scattered over the input pages.
  */
 #define QFILE_SORT_REC_TUPLE_MAX_SIZE   128
+
+/*
+ * Carrying pays only when the sorted tuples are scattered over the input pages; an input already near the sort order
+ * is read back page by page after the sort, and carrying would only grow the sort runs. The first input tuples are
+ * sorted as usual (by position) while every QFILE_SORT_CARRY_STRIDE-th of their records is copied to a sample. The
+ * sample sorted by the sort comparator gives, from the input distance of neighbours, the share of sorted tuples
+ * that move to another input page. A move costs a page fix, as much as about QFILE_SORT_CARRY_BYTES_PER_MOVE more
+ * bytes of sort records (measured on analytic sorts, whose runs cost the most per byte), so the remaining tuples are
+ * carried when that share times QFILE_SORT_CARRY_BYTES_PER_MOVE reaches the average length of the sampled tuples.
+ */
+#define QFILE_SORT_CARRY_STRIDE         8
+#define QFILE_SORT_CARRY_SAMPLES        1024
+#define QFILE_SORT_CARRY_MIN_SAMPLES    64
+#define QFILE_SORT_CARRY_MAX_TUPLES     (4 * QFILE_SORT_CARRY_STRIDE * QFILE_SORT_CARRY_SAMPLES)
+#define QFILE_SORT_CARRY_AREA_SIZE      (64 * 1024)
+#define QFILE_SORT_CARRY_BYTES_PER_MOVE 768
+
+struct qfile_sort_carry_sample
+{
+  int n_samples;
+  int n_tuples;			/* input tuples seen */
+  int n_pages;			/* input pages seen */
+  INT64 tuple_bytes;		/* total length of the sampled tuples */
+  VPID last_vpid;
+  int area_used;
+  SORT_REC *rec[QFILE_SORT_CARRY_SAMPLES];	/* copies of the sampled P_sort_key records, in area */
+  int pos[QFILE_SORT_CARRY_SAMPLES];	/* input position of each */
+  double area[QFILE_SORT_CARRY_AREA_SIZE / sizeof (double)];
+};
+typedef struct qfile_sort_carry_sample QFILE_SORT_CARRY_SAMPLE;
 
 /* column source staging for the sort paths: stack for the usual key counts, heap only beyond (cold) */
 #define QFILE_COL_SRC_STACK 64
@@ -326,6 +358,9 @@ static int qfile_build_sort_rec (SORTKEY_INFO * key_info_p, QFILE_TUPLE_RECORD *
 				 const VPID * vpid, int tuple_offset);
 static QFILE_TUPLE_COL_SRC *qfile_sort_rec_a_sources (SORTKEY_INFO * key_info_p, SORT_REC * sort_record_p,
 						      QFILE_TUPLE_COL_SRC * src);
+static void qfile_sort_carry_add_sample (SORTKEY_INFO * key_info_p, const char *sort_rec, int length,
+					 const VPID * vpid, int tuple_length, bool can_carry);
+static void qfile_sort_carry_decide (SORTKEY_INFO * key_info_p);
 
 #if defined(SERVER_MODE)
 static BH_CMP_RESULT
@@ -3337,6 +3372,7 @@ qfile_make_sort_key (THREAD_ENTRY * thread_p, SORTKEY_INFO * key_info_p, RECDES 
   scan_status = qfile_scan_list_next (thread_p, input_scan_p, tuple_record_p, PEEK);
   if (scan_status != S_SUCCESS)
     {
+      qfile_sort_carry_end (key_info_p);
       return ((scan_status == S_END) ? SORT_NOMORE_RECS : SORT_ERROR_OCCURRED);
     }
 
@@ -3383,7 +3419,7 @@ qfile_build_sort_rec (SORTKEY_INFO * key_info_p, QFILE_TUPLE_RECORD * tuple_slot
   char *data;
   const char *body;
   int len, tuple_length, tuple_start;
-  bool is_null, has_null, carry_tuple;
+  bool is_null, has_null, can_carry, carry_tuple;
 
   src = QFILE_COL_SRC_ACQUIRE (src_buf, nkeys);
   if (src == NULL)
@@ -3417,7 +3453,8 @@ qfile_build_sort_rec (SORTKEY_INFO * key_info_p, QFILE_TUPLE_RECORD * tuple_slot
       /* a short tuple rides behind the key body, so the sorted output need not fix its input page again */
       tuple_length = QFILE_GET_TUPLE_LENGTH (tuple_slot->tpl);
       tuple_start = DB_ALIGN (length, MAX_ALIGNMENT);
-      carry_tuple = (tuple_length <= QFILE_SORT_REC_TUPLE_MAX_SIZE && tuple_start <= INT16_MAX);
+      can_carry = (tuple_length <= QFILE_SORT_REC_TUPLE_MAX_SIZE && tuple_start <= INT16_MAX);
+      carry_tuple = (can_carry && key_info_p->carry_tuple == SORT_CARRY_YES);
       if (carry_tuple)
 	{
 	  length = tuple_start + tuple_length;
@@ -3442,6 +3479,11 @@ qfile_build_sort_rec (SORTKEY_INFO * key_info_p, QFILE_TUPLE_RECORD * tuple_slot
 	    {
 	      QFILE_COL_SRC_RELEASE (src, src_buf);
 	      return ER_FAILED;
+	    }
+
+	  if (key_info_p->carry_tuple == SORT_CARRY_UNDECIDED)
+	    {
+	      qfile_sort_carry_add_sample (key_info_p, key_record_p->data, length, vpid, tuple_length, can_carry);
 	    }
 	}
     }
@@ -3571,6 +3613,129 @@ qfile_sort_rec_a_sources (SORTKEY_INFO * key_info_p, SORT_REC * sort_record_p, Q
     }
 
   return src;
+}
+
+/*
+ * qfile_sort_carry_add_sample () - account for an input tuple while tuple carrying is undecided, and decide when the
+ *   sample is complete. See QFILE_SORT_CARRY_STRIDE.
+ *   sort_rec(in): the P_sort_key record just built for the tuple at vpid, length bytes, not carrying the tuple
+ *   tuple_length(in): the length of the tuple
+ *   can_carry(in): whether the tuple is short enough to be carried; only such tuples are sampled
+ */
+static void
+qfile_sort_carry_add_sample (SORTKEY_INFO * key_info_p, const char *sort_rec, int length, const VPID * vpid,
+			     int tuple_length, bool can_carry)
+{
+  QFILE_SORT_CARRY_SAMPLE *sample = key_info_p->carry_sample;
+  int slot;
+
+  if (sample == NULL)
+    {
+      sample = (QFILE_SORT_CARRY_SAMPLE *) malloc (sizeof (QFILE_SORT_CARRY_SAMPLE));
+      if (sample == NULL)
+	{
+	  /* not worth an error: keep sorting by position */
+	  key_info_p->carry_tuple = SORT_CARRY_NO;
+	  return;
+	}
+      sample->n_samples = 0;
+      sample->n_tuples = 0;
+      sample->n_pages = 0;
+      sample->tuple_bytes = 0;
+      VPID_SET_NULL (&sample->last_vpid);
+      sample->area_used = 0;
+      key_info_p->carry_sample = sample;
+    }
+
+  if (!VPID_EQ (vpid, &sample->last_vpid))
+    {
+      sample->n_pages++;
+      sample->last_vpid = *vpid;
+    }
+
+  slot = DB_ALIGN (length, MAX_ALIGNMENT);
+  if (can_carry && sample->n_tuples % QFILE_SORT_CARRY_STRIDE == 0
+      && sample->area_used + slot <= QFILE_SORT_CARRY_AREA_SIZE)
+    {
+      sample->rec[sample->n_samples] = (SORT_REC *) ((char *) sample->area + sample->area_used);
+      memcpy (sample->rec[sample->n_samples], sort_rec, length);
+      sample->pos[sample->n_samples] = sample->n_tuples;
+      sample->n_samples++;
+      sample->tuple_bytes += tuple_length;
+      sample->area_used += slot;
+    }
+  sample->n_tuples++;
+
+  if (sample->n_samples == QFILE_SORT_CARRY_SAMPLES || sample->n_tuples >= QFILE_SORT_CARRY_MAX_TUPLES
+      || sample->area_used + slot > QFILE_SORT_CARRY_AREA_SIZE)
+    {
+      qfile_sort_carry_decide (key_info_p);
+    }
+}
+
+/*
+ * qfile_sort_carry_decide () - decide on tuple carrying from the sample, and release it.
+ *   Neighbours in the sorted sample that are d input positions apart stand for sorted tuples about
+ *   d / QFILE_SORT_CARRY_STRIDE positions apart, which move to another page with probability (positions / tuples per
+ *   page), at most 1.
+ */
+static void
+qfile_sort_carry_decide (SORTKEY_INFO * key_info_p)
+{
+  QFILE_SORT_CARRY_SAMPLE *sample = key_info_p->carry_sample;
+  int order[QFILE_SORT_CARRY_SAMPLES];
+  double tuples_per_page, distance, page_moves;
+  int i, n;
+
+  if (sample == NULL)
+    {
+      return;
+    }
+
+  n = sample->n_samples;
+  if (n < QFILE_SORT_CARRY_MIN_SAMPLES)
+    {
+      key_info_p->carry_tuple = SORT_CARRY_NO;
+    }
+  else
+    {
+      for (i = 0; i < n; i++)
+	{
+	  order[i] = i;
+	}
+      // *INDENT-OFF*
+      std::sort (order, order + n, [sample, key_info_p] (int a, int b)
+        {
+          return qfile_compare_partial_sort_record (&sample->rec[a], &sample->rec[b], key_info_p) < 0;
+        });
+      // *INDENT-ON*
+
+      tuples_per_page = (double) sample->n_tuples / MAX (sample->n_pages, 1);
+      page_moves = 0;
+      for (i = 1; i < n; i++)
+	{
+	  distance = (double) abs (sample->pos[order[i]] - sample->pos[order[i - 1]]) / QFILE_SORT_CARRY_STRIDE;
+	  page_moves += MIN (1.0, distance / tuples_per_page);
+	}
+
+      key_info_p->carry_tuple =
+	((page_moves / (n - 1)) * QFILE_SORT_CARRY_BYTES_PER_MOVE >=
+	 (double) sample->tuple_bytes / n ? SORT_CARRY_YES : SORT_CARRY_NO);
+    }
+
+  free_and_init (key_info_p->carry_sample);
+}
+
+/*
+ * qfile_sort_carry_end () - the input of the sort is exhausted: drop the sample of an undecided sort.
+ */
+void
+qfile_sort_carry_end (SORTKEY_INFO * key_info_p)
+{
+  if (key_info_p->carry_sample != NULL)
+    {
+      free_and_init (key_info_p->carry_sample);
+    }
 }
 
 #if defined (SERVER_MODE)
@@ -3808,6 +3973,7 @@ qfile_sort_get_next_parallel (THREAD_ENTRY * thread_p, RECDES * recdes_p, void *
       PAGE_PTR page_p = state->page_iter.get_next_page (thread_p, *state->sector_scan);
       if (page_p == NULL)
 	{
+	  qfile_sort_carry_end (key_info_p);
 	  return (er_errid () != NO_ERROR) ? SORT_ERROR_OCCURRED : SORT_NOMORE_RECS;
 	}
 
@@ -4388,6 +4554,7 @@ qfile_initialize_sort_key_info (SORTKEY_INFO * key_info_p, SORT_LIST * list_p, Q
   key_info_p->nkeys = n;
   key_info_p->use_original = (n != types->type_cnt);
   key_info_p->error = NO_ERROR;
+  SORTKEY_INFO_INIT_CARRY (key_info_p);
   memset (&key_info_p->key_tl, 0, sizeof (key_info_p->key_tl));
 
   if (n <= (int) DIM (key_info_p->default_keys))
@@ -4493,6 +4660,7 @@ qfile_init_empty_sort_key_info (SORTKEY_INFO * key_info_p)
   key_info_p->use_original = 1;
   key_info_p->key = NULL;
   key_info_p->error = NO_ERROR;
+  SORTKEY_INFO_INIT_CARRY (key_info_p);
   (void) qfile_type_list_alloc (&key_info_p->key_tl, 0, QFILE_TUPLE_HDR_SIZE_FORWARD);	/* no allocation for 0 columns */
   qfile_set_layout (&key_info_p->key_tl);
 }
@@ -4508,6 +4676,8 @@ qfile_clear_sort_key_info (SORTKEY_INFO * key_info_p)
     {
       return;
     }
+
+  qfile_sort_carry_end (key_info_p);
 
   if (key_info_p->key && key_info_p->key != key_info_p->default_keys)
     {
