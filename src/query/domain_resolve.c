@@ -610,7 +610,10 @@ qexec_resolve_operand (THREAD_ENTRY * thread_p, const DOMAIN_PLAN * plan, const 
 {
   const DOMAIN_PLAN_ITEM *item = link->operands[arg_index];
   const int val_pos = plan->items_cold[item - plan->items].val_pos;
-  const DB_VALUE *value = val_pos >= 0 ? &resolved.in[val_pos] : link->literal[arg_index];
+  /* a bind gives the value its reference holds, which the row reads: the list-bind step converted an output list's
+   * bind into its column's domain (qexec_convert_list_bind), and the row casts that value, not the client's */
+  assert (val_pos < 0 || (item->ref >= 0 && item->ref < resolved.n_vals));
+  const DB_VALUE *value = val_pos >= 0 ? &resolved.vals[item->ref] : link->literal[arg_index];
   const DB_VALUE *session_name = NULL;
   DB_VALUE no_value;
   if (value == NULL && context == DOMAIN_CTX_COMMON_VALUE && item->ref >= 0)

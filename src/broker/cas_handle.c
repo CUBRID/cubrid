@@ -239,6 +239,36 @@ hm_srv_handle_unset_prepare_flag_all (void)
   hm_srv_handle_qresult_end_all (true);
 }
 
+/*
+ * hm_srv_handle_end_transaction_all () - mark every handle as no longer belonging to the running
+ *                                        transaction.
+ *
+ * Note: a handle records is_from_current_transaction when its statement is executed.  Once the
+ *       transaction ends, a result that outlives it (a holdable one, or the out values a CALL keeps in
+ *       prepare_call_info) belongs to the previous transaction, and an auto-commit deferred by that
+ *       statement must not be applied to whatever transaction is open now.  Call this after the
+ *       per-handle cleanup, which still needs the flag to tell the two apart.
+ *
+ *       Walk the whole table rather than max_handle_id: hm_srv_handle_free_all () lowers that bound to
+ *       the index of the last surviving handle, which would leave the handle itself unvisited.
+ *       hm_find_srv_handle () bounds ids by max_srv_handle, so the table is what keeps them reachable.
+ */
+void
+hm_srv_handle_end_transaction_all (void)
+{
+  T_SRV_HANDLE *srv_handle;
+  int i;
+
+  for (i = 0; i < max_srv_handle; i++)
+    {
+      srv_handle = srv_handle_table[i];
+      if (srv_handle != NULL)
+	{
+	  srv_handle->is_from_current_transaction = false;
+	}
+    }
+}
+
 void
 hm_srv_handle_qresult_end_all (bool end_holdable)
 {
