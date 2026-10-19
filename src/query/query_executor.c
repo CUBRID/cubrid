@@ -12438,7 +12438,9 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 
       OID_SET_NULL (&unique_oid);
 
-      r = xbtree_find_unique (thread_p, &btid, S_DELETE, key_dbvalue, &pruned_oid, &unique_oid, is_global_index);
+      /* a NULL btid: no partition can hold the key */
+      r = BTID_IS_NULL (&btid) ? BTREE_KEY_NOTFOUND
+	: xbtree_find_unique (thread_p, &btid, S_DELETE, key_dbvalue, &pruned_oid, &unique_oid, is_global_index);
 
       if (r == BTREE_KEY_FOUND)
 	{
@@ -12666,7 +12668,9 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 	    }
 	}
 
-      r = xbtree_find_unique (thread_p, &btid, S_UPDATE, key_dbvalue, &class_oid, &unique_oid, is_global_index);
+      /* a NULL btid: no partition can hold the key */
+      r = BTID_IS_NULL (&btid) ? BTREE_KEY_NOTFOUND
+	: xbtree_find_unique (thread_p, &btid, S_UPDATE, key_dbvalue, &class_oid, &unique_oid, is_global_index);
 
       if (r == BTREE_KEY_FOUND)
 	{

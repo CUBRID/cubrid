@@ -181,6 +181,9 @@ namespace cubxasl
     dest->type = src->type;
     dest->compare = src->compare;
     dest->bound_coercion = src->bound_coercion;
+    dest->prune_side = src->prune_side;
+    dest->prune_domain = src->prune_domain;
+    dest->prune = src->prune;
 
     return er_errid ();
   }
@@ -200,6 +203,9 @@ namespace cubxasl
     dest->item_type = src->item_type;
     dest->compare_row = src->compare_row;
     dest->compare = src->compare;
+    dest->prune_domain = src->prune_domain;
+    dest->prune_element = src->prune_element;
+    dest->prune = src->prune;
 
     return er_errid ();
   }

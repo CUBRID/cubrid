@@ -6954,6 +6954,16 @@ btree_load_check_fk (THREAD_ENTRY * thread_p, const LOAD_ARGS * load_args, const
 	    {
 	      break;
 	    }
+	  if (pos < 0)
+	    {
+	      /* No partition can hold the value: the foreign key is invalid. */
+	      val_print = pr_valstring (&fk_key);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FK_INVALID, 2, sort_args->fk_name,
+		      (val_print ? val_print : "unknown value"));
+	      ret = ER_FK_INVALID;
+	      db_private_free (thread_p, val_print);
+	      break;
+	    }
 
 	  if (BTID_IS_NULL (&partitions[pos].btid))
 	    {

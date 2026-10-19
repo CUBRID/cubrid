@@ -4633,6 +4633,16 @@ xts_process_comp_eval_term (char *ptr, const COMP_EVAL_TERM * comp_eval_term)
       /* CBRD-27583 (D-81): the comparison of the term's two values */
       ptr = xts_term_compares_values (comp_eval_term)
 	? xts_pack_compare (ptr, comp_eval_term->lhs->domain, comp_eval_term->rhs->domain) : or_pack_int (ptr, 0);
+      /* CBRD-27583 (D-87): a partitioned class's pruning conversion of the value - 0 none, or 1 + the value's side and
+       * the other side's domain */
+      if (ptr != NULL)
+	{
+	  ptr = or_pack_int (ptr, comp_eval_term->prune_domain != NULL ? 1 + comp_eval_term->prune_side : 0);
+	  if (comp_eval_term->prune_domain != NULL)
+	    {
+	      ptr = or_pack_domain (ptr, comp_eval_term->prune_domain, 0, 0);
+	    }
+	}
     }
 
   return ptr;
@@ -4684,6 +4694,14 @@ xts_process_alsm_eval_term (char *ptr, const ALSM_EVAL_TERM * alsm_eval_term)
 	  ptr = or_pack_int (ptr, item.type);
 	  ptr = or_pack_int (ptr, item.codeset);
 	  ptr = or_pack_int (ptr, item.collation);
+	}
+      /* CBRD-27583 (D-87): a partitioned class's pruning conversion of the elements - 0 none, or 1 and the item's
+       * domain and the elements' */
+      ptr = or_pack_int (ptr, alsm_eval_term->prune_domain != NULL ? 1 : 0);
+      if (alsm_eval_term->prune_domain != NULL)
+	{
+	  ptr = or_pack_domain (ptr, alsm_eval_term->prune_domain, 0, 0);
+	  ptr = or_pack_domain (ptr, alsm_eval_term->prune_element, 0, 0);
 	}
     }
 
@@ -7080,7 +7098,11 @@ xts_sizeof_comp_eval_term (const COMP_EVAL_TERM * comp_eval_term)
 	{
 	  return ER_FAILED;
 	}
-      size += compare_size;
+      size += compare_size + OR_INT_SIZE;
+      if (comp_eval_term->prune_domain != NULL)
+	{
+	  size += or_packed_domain_size (comp_eval_term->prune_domain, 0);
+	}
     }
 
   return size;
@@ -7112,6 +7134,12 @@ xts_sizeof_alsm_eval_term (const ALSM_EVAL_TERM * alsm_eval_term)
 	  return ER_FAILED;
 	}
       size += OR_INT_SIZE + (kind == 1 ? xts_sizeof_decided_compare (&decided) : kind == 2 ? 3 * OR_INT_SIZE : 0);
+      size += OR_INT_SIZE;
+      if (alsm_eval_term->prune_domain != NULL)
+	{
+	  size += or_packed_domain_size (alsm_eval_term->prune_domain, 0)
+	    + or_packed_domain_size (alsm_eval_term->prune_element, 0);
+	}
     }
 
   return size;

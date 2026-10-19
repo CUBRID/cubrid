@@ -5392,6 +5392,31 @@ stx_build_term_compare (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * ter
   return ptr;
 }
 
+/*
+ * stx_unpack_prune_conversion () - CBRD-27583 (D-87): the conversion a partitioned class's pruning puts a term's value
+ *   (an IN list's elements) through: the domain XASL generation decided, and the converter from the value's domain
+ *   into it, looked up here (none for the same type, as develop's pruning cast none)
+ *   return: ptr past it, NULL on error
+ *   from(in): the domain the value is read in
+ */
+static char *
+stx_unpack_prune_conversion (THREAD_ENTRY * thread_p, char *ptr, const TP_DOMAIN * from,
+			     const DOMAIN_PRUNE_CONVERSION ** prune, TP_DOMAIN * prune_domain)
+{
+  DOMAIN_PRUNE_CONVERSION *conversion =
+    (DOMAIN_PRUNE_CONVERSION *) stx_alloc_struct (thread_p, (int) sizeof (DOMAIN_PRUNE_CONVERSION));
+  if (conversion == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      return NULL;
+    }
+  conversion->conv = TP_DOMAIN_TYPE (from) == TP_DOMAIN_TYPE (prune_domain) ? NULL
+    : tp_value_find_converter (TP_DOMAIN_TYPE (from), prune_domain, DOMAIN_CONVERT_ASSIGN);
+  conversion->source = TP_DOMAIN_TYPE (from);
+  *prune = conversion;
+  return ptr;
+}
+
 static char *
 stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * comp_eval_term)
 {
@@ -5437,7 +5462,28 @@ stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * c
   /* an ORDERBY_NUM upper bound's: set after its predicate (stx_build_orderbynum_bounds) */
   comp_eval_term->bound_coercion = NULL;
 
-  return stx_build_term_compare (thread_p, ptr, comp_eval_term);
+  ptr = stx_build_term_compare (thread_p, ptr, comp_eval_term);
+  comp_eval_term->prune_side = -1;
+  comp_eval_term->prune_domain = NULL;
+  comp_eval_term->prune = NULL;
+  if (ptr == NULL || get_xasl_unpack_info_ptr (thread_p)->index_stream)
+    {
+      return ptr;
+    }
+  /* CBRD-27583 (D-87): 0 none, or 1 + the value's side and the other side's domain */
+  ptr = or_unpack_int (ptr, &tmp);
+  if (tmp == 0)
+    {
+      return ptr;
+    }
+  TP_DOMAIN *prune_domain = NULL;
+  ptr = or_unpack_domain (ptr, &prune_domain, NULL);
+  const REGU_VARIABLE *value = tmp == 1 ? comp_eval_term->lhs : comp_eval_term->rhs;
+  comp_eval_term->prune_side = (signed char) (tmp - 1);
+  comp_eval_term->prune_domain = prune_domain;
+  return stx_unpack_prune_conversion (thread_p, ptr,
+				      value->original_domain != NULL ? value->original_domain : value->domain,
+				      &comp_eval_term->prune, prune_domain);
 }
 
 /*
@@ -5583,7 +5629,38 @@ stx_build_alsm_eval_term (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM * a
   alsm_eval_term->compare = NULL;
   alsm_eval_term->compare_row = -1;
 
-  return stx_build_element_compares (thread_p, ptr, alsm_eval_term);
+  ptr = stx_build_element_compares (thread_p, ptr, alsm_eval_term);
+  alsm_eval_term->prune_domain = NULL;
+  alsm_eval_term->prune_element = NULL;
+  alsm_eval_term->prune = NULL;
+  if (ptr == NULL || get_xasl_unpack_info_ptr (thread_p)->index_stream)
+    {
+      return ptr;
+    }
+  /* CBRD-27583 (D-87): 0 none, or 1 and the item's domain and the elements' */
+  ptr = or_unpack_int (ptr, &tmp);
+  if (tmp == 0)
+    {
+      return ptr;
+    }
+  TP_DOMAIN *prune_domain = NULL, *prune_element = NULL;
+  ptr = or_unpack_domain (ptr, &prune_domain, NULL);
+  ptr = or_unpack_domain (ptr, &prune_element, NULL);
+#if !defined (NDEBUG)
+  {
+    /* generation decides one only for a list of one element domain, its NULLs aside */
+    int element_domains = 0;
+    for (const TP_DOMAIN * element = alsm_eval_term->elemset->domain->setdomain; element != NULL;
+	 element = element->next)
+      {
+	element_domains += TP_DOMAIN_TYPE (element) != DB_TYPE_NULL;
+      }
+    assert (element_domains == 1);
+  }
+#endif
+  alsm_eval_term->prune_domain = prune_domain;
+  alsm_eval_term->prune_element = prune_element;
+  return stx_unpack_prune_conversion (thread_p, ptr, prune_element, &alsm_eval_term->prune, prune_domain);
 }
 
 static char *

@@ -130,6 +130,17 @@ struct DOMAIN_OPERAND_COERCION
 				 * an ORDERBY_NUM bound's domain), found before the rows; NULL: none */
 };
 
+/* CBRD-27583 (D-87): the conversion a partitioned class's pruning puts a predicate's value (an IN list's element)
+ * through before it hashes it or evaluates a partition expression on it: from the value's domain into the domain of
+ * the term's other side (prune_domain), found by the unpack. */
+struct DOMAIN_PRUNE_CONVERSION
+{
+  TP_VALUE_CONVERTER conv;	/* NULL: the value has the type of prune_domain already (no pruning cast in develop); a
+				 * pair that does not convert has the converter that refuses every value: the term does
+				 * not prune */
+  DB_TYPE source;		/* the type of the values conv takes: the value regu's, the list's elements' */
+};
+
 /* The operands' operand coercion of T_ADD, T_SUB, T_MUL or T_DIV alone: operand_domain[0..1] and conv[0..1] of the
  * ARITH rule over operands of these types, and what the operator makes of them (arith), whatever the result domain. */
 void domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_OPERAND_COERCION * result);

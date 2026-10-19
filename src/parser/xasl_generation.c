@@ -1367,6 +1367,9 @@ pt_make_pred_term_comp (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, 
 	  et_comp->rhs = (REGU_VARIABLE *) arg2;
 	  et_comp->rel_op = rop;
 	  et_comp->type = data_type;
+	  et_comp->prune_side = -1;
+	  et_comp->prune_domain = NULL;
+	  et_comp->prune = NULL;
 	}
     }
 
@@ -1404,6 +1407,9 @@ pt_make_pred_term_some_all (const REGU_VARIABLE * arg1, const REGU_VARIABLE * ar
 	  et_alsm->rel_op = rop;
 	  et_alsm->item_type = data_type;
 	  et_alsm->eq_flag = some_all;
+	  et_alsm->prune_domain = NULL;
+	  et_alsm->prune_element = NULL;
+	  et_alsm->prune = NULL;
 	}
     }
 
@@ -14954,6 +14960,135 @@ pt_census_class_attributes (PARSER_CONTEXT * parser, const PT_NODE * class_, con
 #endif /* !NDEBUG */
 
 /*
+ * pt_regu_is_pruning_value () - CBRD-27583 (D-87): a regu partition pruning reads as a value before the scan, as
+ *   partition_is_reguvar_const takes it: a constant, a bind, or an expression or a function of those
+ */
+static bool
+pt_regu_is_pruning_value (const REGU_VARIABLE * regu)
+{
+  if (regu == NULL)
+    {
+      return false;
+    }
+  switch (regu->type)
+    {
+    case TYPE_DBVAL:
+    case TYPE_POS_VALUE:
+    case TYPE_REGUVAL_LIST:
+      return true;
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      {
+	const ARITH_TYPE *arith = regu->value.arithptr;
+	return (arith->leftptr == NULL || pt_regu_is_pruning_value (arith->leftptr))
+	  && (arith->rightptr == NULL || pt_regu_is_pruning_value (arith->rightptr))
+	  && (arith->thirdptr == NULL || pt_regu_is_pruning_value (arith->thirdptr));
+      }
+    case TYPE_FUNC:
+      for (REGU_VARIABLE_LIST operand = regu->value.funcp->operand; operand != NULL; operand = operand->next)
+	{
+	  if (!pt_regu_is_pruning_value (&operand->value))
+	    {
+	      return false;
+	    }
+	}
+      return true;
+    default:
+      return false;
+    }
+}
+
+/* CBRD-27583 (D-87): a domain a pruning conversion goes from or into: one of a type */
+static bool
+pt_domain_takes_pruning_conversion (const TP_DOMAIN * domain)
+{
+  return domain != NULL && TP_DOMAIN_TYPE (domain) != DB_TYPE_VARIABLE && TP_DOMAIN_TYPE (domain) != DB_TYPE_NULL;
+}
+
+/*
+ * pt_list_element_domain () - CBRD-27583 (D-87): the one domain of a list's elements, its NULLs aside (a NULL is equal
+ *   to no key), alone (a set domain's element domains link each other)
+ *   return: the domain; NULL: none, or several
+ */
+static TP_DOMAIN *
+pt_list_element_domain (const TP_DOMAIN * set)
+{
+  TP_DOMAIN *element = NULL;
+  for (TP_DOMAIN * domain = set->setdomain; domain != NULL; domain = domain->next)
+    {
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL)
+	{
+	  continue;
+	}
+      if (element != NULL)
+	{
+	  return NULL;
+	}
+      element = domain;
+    }
+  if (element == NULL || element->next == NULL)
+    {
+      return element;
+    }
+  TP_DOMAIN *one = domain_copy_one (element);
+  return one != NULL ? tp_domain_cache (one) : NULL;
+}
+
+/*
+ * pt_set_prune_domains () - CBRD-27583 (D-87): the domain into which a partitioned class's pruning converts a term's
+ *   value to hash it or to evaluate a partition expression on it - the other side's - decided here, where develop's
+ *   pruning cast it at the scan (partition_prune_hash, partition_prune_for_function); an IN list prunes only when its
+ *   elements have one domain, its NULLs aside
+ */
+static void
+pt_set_prune_domains (PRED_EXPR * pred)
+{
+  while (pred != NULL)
+    {
+      if (pred->type == T_PRED)
+	{
+	  pt_set_prune_domains (pred->pe.m_pred.lhs);
+	  pred = pred->pe.m_pred.rhs;
+	  continue;
+	}
+      if (pred->type == T_EVAL_TERM && pred->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
+	{
+	  COMP_EVAL_TERM *term = &pred->pe.m_eval_term.et.et_comp;
+	  const bool values[2] = { pt_regu_is_pruning_value (term->lhs), pt_regu_is_pruning_value (term->rhs) };
+	  if (term->lhs != NULL && term->rhs != NULL && values[0] != values[1])
+	    {
+	      const REGU_VARIABLE *value = values[0] ? term->lhs : term->rhs;
+	      TP_DOMAIN *other = values[0] ? term->rhs->domain : term->lhs->domain;
+	      /* the domain the value is read in: the unpack finds the converter from it */
+	      const TP_DOMAIN *from = value->original_domain != NULL ? value->original_domain : value->domain;
+	      if (pt_domain_takes_pruning_conversion (from) && pt_domain_takes_pruning_conversion (other))
+		{
+		  term->prune_side = values[0] ? 0 : 1;
+		  term->prune_domain = other;
+		}
+	    }
+	}
+      else if (pred->type == T_EVAL_TERM && pred->pe.m_eval_term.et_type == T_ALSM_EVAL_TERM)
+	{
+	  ALSM_EVAL_TERM *term = &pred->pe.m_eval_term.et.et_alsm;
+	  const TP_DOMAIN *set = term->elemset != NULL ? term->elemset->domain : NULL;
+	  if (term->elem != NULL && !pt_regu_is_pruning_value (term->elem) && pt_regu_is_pruning_value (term->elemset)
+	      && set != NULL && TP_IS_SET_TYPE (TP_DOMAIN_TYPE (set))
+	      && pt_domain_takes_pruning_conversion (term->elem->domain))
+	    {
+	      TP_DOMAIN *element = pt_list_element_domain (set);
+	      if (pt_domain_takes_pruning_conversion (element))
+		{
+		  term->prune_domain = term->elem->domain;
+		  term->prune_element = element;
+		}
+	    }
+	}
+      return;
+    }
+}
+
+/*
  * pt_to_class_spec_list () - Convert a PT_NODE flat class list to
  *     an ACCESS_SPEC_LIST list of representing the classes to be selected from
  *   return:
@@ -15359,6 +15494,12 @@ pt_to_class_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * where_
 		  pt_census_class_attributes (parser, class_, access, table_info->value_list);
 		}
 #endif
+	      if (access->pruning_type == DB_PARTITIONED_CLASS)
+		{
+		  pt_set_prune_domains (access->where_pred);
+		  pt_set_prune_domains (access->where_key);
+		  pt_set_prune_domains (access->where_range);
+		}
 	      if (spec->info.spec.flag & PT_SPEC_FLAG_FOR_UPDATE_CLAUSE)
 		{
 		  ACCESS_SPEC_SET_FLAG (access, ACCESS_SPEC_FLAG_FOR_UPDATE);

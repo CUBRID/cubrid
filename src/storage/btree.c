@@ -6284,9 +6284,10 @@ xbtree_find_multi_uniques (THREAD_ENTRY * thread_p, OID * class_oid, int pruning
 	    }
 	}
 
-      result =
-	xbtree_find_unique (thread_p, &pruned_btid, op_type, &values[i], &pruned_class_oid, &found_oids[idx],
-			    is_global_index);
+      /* a NULL btid: no partition can hold the key */
+      result = BTID_IS_NULL (&pruned_btid) ? BTREE_KEY_NOTFOUND
+	: xbtree_find_unique (thread_p, &pruned_btid, op_type, &values[i], &pruned_class_oid, &found_oids[idx],
+			      is_global_index);
 
       if (result == BTREE_KEY_FOUND)
 	{
@@ -26260,7 +26261,9 @@ btree_check_foreign_key (THREAD_ENTRY * thread_p, OID * cls_oid, HFID * hfid, OI
 	}
     }
 
-  ret_search = xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_LOCK, keyval, &part_oid, &unique_oid, true);
+  /* a NULL btid: no partition can hold the key */
+  ret_search = BTID_IS_NULL (&local_btid) ? BTREE_KEY_NOTFOUND
+    : xbtree_find_unique (thread_p, &local_btid, S_SELECT_WITH_LOCK, keyval, &part_oid, &unique_oid, true);
   if (ret_search == BTREE_KEY_NOTFOUND)
     {
       char *val_print = NULL;
