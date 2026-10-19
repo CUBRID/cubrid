@@ -263,10 +263,6 @@ unloaddb (UTIL_FUNCTION_ARG * arg)
   snprintf (er_msg_file, sizeof (er_msg_file) - 1, "%s_%s.err", database_name, exec_name);
   er_init (er_msg_file, ER_NEVER_EXIT);
 
-  /* support for SUPPORT_DEDUPLICATE_KEY_MODE */
-  sysprm_set_force (PRM_ID_PRINT_INDEX_DETAIL,
-		    utility_get_option_bool_value (arg_map, UNLOAD_SKIP_INDEX_DETAIL_S) ? "no" : "yes");
-
 #if defined(MULTI_PROCESSING_UNLOADDB_WITH_FORK)
   if (g_parallel_process_cnt > 1)
     {

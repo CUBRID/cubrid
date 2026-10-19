@@ -346,7 +346,8 @@ static LANG_COLLATION coll_Utf8_en_cs = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_byte,
-  lang_init_coll_en_cs
+  lang_init_coll_en_cs,
+  LANG_LOCKSTEP_NONE
 };
 
 static void lang_initloc_en_utf8 (LANG_LOCALE_DATA * ld);
@@ -377,7 +378,8 @@ static LANG_COLLATION coll_Iso88591_en_cs = {
   lang_next_alpha_char_iso88591,
   lang_split_key_iso,
   lang_mht2str_default,
-  NULL
+  NULL,
+  LANG_LOCKSTEP_NONE
 };
 
 /* locale data */
@@ -550,7 +552,8 @@ static LANG_COLLATION coll_Utf8_ko_cs = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_utf8,
-  lang_init_coll_en_cs
+  lang_init_coll_en_cs,
+  LANG_LOCKSTEP_NONE
 };
 
 /* built-in support of Korean in UTF-8 : date-time conversions as in English
@@ -610,7 +613,8 @@ static LANG_COLLATION coll_Euckr_bin = {
   lang_next_alpha_char_ko,
   lang_split_key_euckr,
   lang_mht2str_ko,
-  lang_init_coll_en_cs
+  lang_init_coll_en_cs,
+  LANG_LOCKSTEP_NONE
 };
 
 /* built-in support of Korean in EUC-KR : date-time conversions as in English
@@ -668,7 +672,8 @@ static LANG_COLLATION coll_Binary = {
   lang_next_alpha_char_iso88591,
   lang_split_key_binary,
   lang_mht2str_default,
-  NULL
+  NULL,
+  LANG_LOCKSTEP_NONE
 };
 
 static LANG_LOCALE_DATA lc_English_binary = {
@@ -710,7 +715,8 @@ static LANG_COLLATION coll_Iso_binary = {
   lang_next_alpha_char_iso88591,
   lang_split_key_iso,
   lang_mht2str_default,
-  NULL
+  NULL,
+  LANG_LOCKSTEP_NONE
 };
 
 static LANG_COLLATION coll_Utf8_binary = {
@@ -731,7 +737,8 @@ static LANG_COLLATION coll_Utf8_binary = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_byte,
-  NULL
+  NULL,
+  LANG_LOCKSTEP_NONE
 };
 
 static LANG_COLLATION coll_Iso88591_en_ci = {
@@ -750,7 +757,8 @@ static LANG_COLLATION coll_Iso88591_en_ci = {
   lang_next_coll_byte,
   lang_split_key_byte,
   lang_mht2str_byte,
-  lang_init_coll_en_ci
+  lang_init_coll_en_ci,
+  LANG_LOCKSTEP_NONE
 };
 
 static LANG_COLLATION coll_Utf8_en_ci = {
@@ -769,7 +777,8 @@ static LANG_COLLATION coll_Utf8_en_ci = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_byte,
-  lang_init_coll_en_ci
+  lang_init_coll_en_ci,
+  LANG_LOCKSTEP_NONE
 };
 
 static LANG_COLLATION coll_Utf8_tr_cs = {
@@ -788,7 +797,8 @@ static LANG_COLLATION coll_Utf8_tr_cs = {
   lang_next_coll_char_utf8,
   lang_split_key_utf8,
   lang_mht2str_utf8,
-  lang_init_coll_Utf8_tr_cs
+  lang_init_coll_Utf8_tr_cs,
+  LANG_LOCKSTEP_NONE
 };
 
 static LANG_LOCALE_DATA lc_Turkish_utf8 = {

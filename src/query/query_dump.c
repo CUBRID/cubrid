@@ -43,6 +43,10 @@
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
 #include "xasl_predicate.hpp"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "expr_compile.h"
+#include "query_opfunc.h"
+#endif
 #include "subquery_cache.h"
 #include "query_hash_join.h"
 #include "memoize.hpp"
@@ -115,7 +119,6 @@ static bool qdump_print_value_type_addr (REGU_VARIABLE * value);
 static bool qdump_print_oid (OID * oidptr);
 static bool qdump_print_predicate (PRED_EXPR * predptr);
 static const char *qdump_relation_operator_string (int op);
-static const char *qdump_arith_operator_string (OPERATOR_TYPE opcode);
 static bool qdump_print_arith_expression (ARITH_TYPE * arith_p);
 static bool qdump_print_aggregate_expression (AGGREGATE_TYPE * aggptr);
 static bool qdump_print_arith (int type, void *ptr);
@@ -1778,7 +1781,434 @@ qdump_relation_operator_string (int op)
     }
 }
 
-static const char *
+/*
+ * qdump_arith_opcode_name () - the OPERATOR_TYPE's own name (T_xxx), for a listing that names an operator the symbol
+ *   table above does not (a function opcode); generated from the enum in storage_common.h
+ */
+const char *
+qdump_arith_opcode_name (OPERATOR_TYPE opcode)
+{
+  switch (opcode)
+    {
+    case T_ADD:
+      return "T_ADD";
+    case T_SUB:
+      return "T_SUB";
+    case T_MUL:
+      return "T_MUL";
+    case T_DIV:
+      return "T_DIV";
+    case T_UNPLUS:
+      return "T_UNPLUS";
+    case T_UNMINUS:
+      return "T_UNMINUS";
+    case T_PRIOR:
+      return "T_PRIOR";
+    case T_CONNECT_BY_ROOT:
+      return "T_CONNECT_BY_ROOT";
+    case T_QPRIOR:
+      return "T_QPRIOR";
+    case T_BIT_NOT:
+      return "T_BIT_NOT";
+    case T_BIT_AND:
+      return "T_BIT_AND";
+    case T_BIT_OR:
+      return "T_BIT_OR";
+    case T_BIT_XOR:
+      return "T_BIT_XOR";
+    case T_BIT_COUNT:
+      return "T_BIT_COUNT";
+    case T_BITSHIFT_LEFT:
+      return "T_BITSHIFT_LEFT";
+    case T_BITSHIFT_RIGHT:
+      return "T_BITSHIFT_RIGHT";
+    case T_INTDIV:
+      return "T_INTDIV";
+    case T_INTMOD:
+      return "T_INTMOD";
+    case T_IF:
+      return "T_IF";
+    case T_IFNULL:
+      return "T_IFNULL";
+    case T_ISNULL:
+      return "T_ISNULL";
+    case T_ACOS:
+      return "T_ACOS";
+    case T_ASIN:
+      return "T_ASIN";
+    case T_ATAN:
+      return "T_ATAN";
+    case T_ATAN2:
+      return "T_ATAN2";
+    case T_COS:
+      return "T_COS";
+    case T_SIN:
+      return "T_SIN";
+    case T_TAN:
+      return "T_TAN";
+    case T_COT:
+      return "T_COT";
+    case T_PI:
+      return "T_PI";
+    case T_DEGREES:
+      return "T_DEGREES";
+    case T_RADIANS:
+      return "T_RADIANS";
+    case T_FORMAT:
+      return "T_FORMAT";
+    case T_CONCAT:
+      return "T_CONCAT";
+    case T_CONCAT_WS:
+      return "T_CONCAT_WS";
+    case T_FIELD:
+      return "T_FIELD";
+    case T_LEFT:
+      return "T_LEFT";
+    case T_RIGHT:
+      return "T_RIGHT";
+    case T_REPEAT:
+      return "T_REPEAT";
+    case T_SPACE:
+      return "T_SPACE";
+    case T_LOCATE:
+      return "T_LOCATE";
+    case T_MID:
+      return "T_MID";
+    case T_STRCMP:
+      return "T_STRCMP";
+    case T_REVERSE:
+      return "T_REVERSE";
+    case T_DISK_SIZE:
+      return "T_DISK_SIZE";
+    case T_LN:
+      return "T_LN";
+    case T_LOG2:
+      return "T_LOG2";
+    case T_LOG10:
+      return "T_LOG10";
+    case T_ADDDATE:
+      return "T_ADDDATE";
+    case T_DATE_ADD:
+      return "T_DATE_ADD";
+    case T_SUBDATE:
+      return "T_SUBDATE";
+    case T_DATE_SUB:
+      return "T_DATE_SUB";
+    case T_DATE_FORMAT:
+      return "T_DATE_FORMAT";
+    case T_STR_TO_DATE:
+      return "T_STR_TO_DATE";
+    case T_MOD:
+      return "T_MOD";
+    case T_POSITION:
+      return "T_POSITION";
+    case T_SUBSTRING:
+      return "T_SUBSTRING";
+    case T_SUBSTRING_INDEX:
+      return "T_SUBSTRING_INDEX";
+    case T_OCTET_LENGTH:
+      return "T_OCTET_LENGTH";
+    case T_BIT_LENGTH:
+      return "T_BIT_LENGTH";
+    case T_CHAR_LENGTH:
+      return "T_CHAR_LENGTH";
+    case T_MD5:
+      return "T_MD5";
+    case T_LOWER:
+      return "T_LOWER";
+    case T_UPPER:
+      return "T_UPPER";
+    case T_LIKE_LOWER_BOUND:
+      return "T_LIKE_LOWER_BOUND";
+    case T_LIKE_UPPER_BOUND:
+      return "T_LIKE_UPPER_BOUND";
+    case T_TRIM:
+      return "T_TRIM";
+    case T_LTRIM:
+      return "T_LTRIM";
+    case T_RTRIM:
+      return "T_RTRIM";
+    case T_LPAD:
+      return "T_LPAD";
+    case T_RPAD:
+      return "T_RPAD";
+    case T_REPLACE:
+      return "T_REPLACE";
+    case T_TRANSLATE:
+      return "T_TRANSLATE";
+    case T_ADD_MONTHS:
+      return "T_ADD_MONTHS";
+    case T_LAST_DAY:
+      return "T_LAST_DAY";
+    case T_MONTHS_BETWEEN:
+      return "T_MONTHS_BETWEEN";
+    case T_SYS_DATE:
+      return "T_SYS_DATE";
+    case T_SYS_TIME:
+      return "T_SYS_TIME";
+    case T_SYS_TIMESTAMP:
+      return "T_SYS_TIMESTAMP";
+    case T_UTC_TIME:
+      return "T_UTC_TIME";
+    case T_UTC_DATE:
+      return "T_UTC_DATE";
+    case T_TIME_FORMAT:
+      return "T_TIME_FORMAT";
+    case T_TIMESTAMP:
+      return "T_TIMESTAMP";
+    case T_UNIX_TIMESTAMP:
+      return "T_UNIX_TIMESTAMP";
+    case T_FROM_UNIXTIME:
+      return "T_FROM_UNIXTIME";
+    case T_SYS_DATETIME:
+      return "T_SYS_DATETIME";
+    case T_YEAR:
+      return "T_YEAR";
+    case T_MONTH:
+      return "T_MONTH";
+    case T_DAY:
+      return "T_DAY";
+    case T_HOUR:
+      return "T_HOUR";
+    case T_MINUTE:
+      return "T_MINUTE";
+    case T_SECOND:
+      return "T_SECOND";
+    case T_QUARTER:
+      return "T_QUARTER";
+    case T_WEEKDAY:
+      return "T_WEEKDAY";
+    case T_DAYOFWEEK:
+      return "T_DAYOFWEEK";
+    case T_DAYOFYEAR:
+      return "T_DAYOFYEAR";
+    case T_TODAYS:
+      return "T_TODAYS";
+    case T_FROMDAYS:
+      return "T_FROMDAYS";
+    case T_TIMETOSEC:
+      return "T_TIMETOSEC";
+    case T_SECTOTIME:
+      return "T_SECTOTIME";
+    case T_MAKEDATE:
+      return "T_MAKEDATE";
+    case T_MAKETIME:
+      return "T_MAKETIME";
+    case T_WEEK:
+      return "T_WEEK";
+    case T_TO_CHAR:
+      return "T_TO_CHAR";
+    case T_TO_DATE:
+      return "T_TO_DATE";
+    case T_TO_TIME:
+      return "T_TO_TIME";
+    case T_TO_TIMESTAMP:
+      return "T_TO_TIMESTAMP";
+    case T_TO_DATETIME:
+      return "T_TO_DATETIME";
+    case T_TO_NUMBER:
+      return "T_TO_NUMBER";
+    case T_CURRENT_VALUE:
+      return "T_CURRENT_VALUE";
+    case T_NEXT_VALUE:
+      return "T_NEXT_VALUE";
+    case T_CAST:
+      return "T_CAST";
+    case T_CAST_NOFAIL:
+      return "T_CAST_NOFAIL";
+    case T_CAST_WRAP:
+      return "T_CAST_WRAP";
+    case T_CASE:
+      return "T_CASE";
+    case T_EXTRACT:
+      return "T_EXTRACT";
+    case T_LOCAL_TRANSACTION_ID:
+      return "T_LOCAL_TRANSACTION_ID";
+    case T_FLOOR:
+      return "T_FLOOR";
+    case T_CEIL:
+      return "T_CEIL";
+    case T_SIGN:
+      return "T_SIGN";
+    case T_POWER:
+      return "T_POWER";
+    case T_ROUND:
+      return "T_ROUND";
+    case T_LOG:
+      return "T_LOG";
+    case T_EXP:
+      return "T_EXP";
+    case T_SQRT:
+      return "T_SQRT";
+    case T_TRUNC:
+      return "T_TRUNC";
+    case T_ABS:
+      return "T_ABS";
+    case T_CHR:
+      return "T_CHR";
+    case T_INSTR:
+      return "T_INSTR";
+    case T_LEAST:
+      return "T_LEAST";
+    case T_GREATEST:
+      return "T_GREATEST";
+    case T_STRCAT:
+      return "T_STRCAT";
+    case T_NULLIF:
+      return "T_NULLIF";
+    case T_COALESCE:
+      return "T_COALESCE";
+    case T_NVL:
+      return "T_NVL";
+    case T_NVL2:
+      return "T_NVL2";
+    case T_DECODE:
+      return "T_DECODE";
+    case T_RAND:
+      return "T_RAND";
+    case T_DRAND:
+      return "T_DRAND";
+    case T_RANDOM:
+      return "T_RANDOM";
+    case T_DRANDOM:
+      return "T_DRANDOM";
+    case T_INCR:
+      return "T_INCR";
+    case T_DECR:
+      return "T_DECR";
+    case T_SYS_CONNECT_BY_PATH:
+      return "T_SYS_CONNECT_BY_PATH";
+    case T_DATE:
+      return "T_DATE";
+    case T_TIME:
+      return "T_TIME";
+    case T_DATEDIFF:
+      return "T_DATEDIFF";
+    case T_TIMEDIFF:
+      return "T_TIMEDIFF";
+    case T_ROW_COUNT:
+      return "T_ROW_COUNT";
+    case T_LAST_INSERT_ID:
+      return "T_LAST_INSERT_ID";
+    case T_DEFAULT:
+      return "T_DEFAULT";
+    case T_LIST_DBS:
+      return "T_LIST_DBS";
+    case T_BIT_TO_BLOB:
+      return "T_BIT_TO_BLOB";
+    case T_BLOB_TO_BIT:
+      return "T_BLOB_TO_BIT";
+    case T_CHAR_TO_CLOB:
+      return "T_CHAR_TO_CLOB";
+    case T_CLOB_TO_CHAR:
+      return "T_CLOB_TO_CHAR";
+    case T_LOB_LENGTH:
+      return "T_LOB_LENGTH";
+    case T_TYPEOF:
+      return "T_TYPEOF";
+    case T_INDEX_CARDINALITY:
+      return "T_INDEX_CARDINALITY";
+    case T_ESTIMATED_TABLE_ROWS:
+      return "T_ESTIMATED_TABLE_ROWS";
+    case T_ESTIMATED_AVG_ROW_LENGTH:
+      return "T_ESTIMATED_AVG_ROW_LENGTH";
+    case T_ESTIMATED_DATA_LENGTH:
+      return "T_ESTIMATED_DATA_LENGTH";
+    case T_ESTIMATED_DATA_FREE:
+      return "T_ESTIMATED_DATA_FREE";
+    case T_EVALUATE_VARIABLE:
+      return "T_EVALUATE_VARIABLE";
+    case T_DEFINE_VARIABLE:
+      return "T_DEFINE_VARIABLE";
+    case T_PREDICATE:
+      return "T_PREDICATE";
+    case T_EXEC_STATS:
+      return "T_EXEC_STATS";
+    case T_ADDTIME:
+      return "T_ADDTIME";
+    case T_BIN:
+      return "T_BIN";
+    case T_FINDINSET:
+      return "T_FINDINSET";
+    case T_HEX:
+      return "T_HEX";
+    case T_ASCII:
+      return "T_ASCII";
+    case T_CONV:
+      return "T_CONV";
+    case T_INET_ATON:
+      return "T_INET_ATON";
+    case T_INET_NTOA:
+      return "T_INET_NTOA";
+    case T_TO_ENUMERATION_VALUE:
+      return "T_TO_ENUMERATION_VALUE";
+    case T_CHARSET:
+      return "T_CHARSET";
+    case T_COLLATION:
+      return "T_COLLATION";
+    case T_WIDTH_BUCKET:
+      return "T_WIDTH_BUCKET";
+    case T_TRACE_STATS:
+      return "T_TRACE_STATS";
+    case T_AES_ENCRYPT:
+      return "T_AES_ENCRYPT";
+    case T_AES_DECRYPT:
+      return "T_AES_DECRYPT";
+    case T_SHA_ONE:
+      return "T_SHA_ONE";
+    case T_SHA_TWO:
+      return "T_SHA_TWO";
+    case T_INDEX_PREFIX:
+      return "T_INDEX_PREFIX";
+    case T_TO_BASE64:
+      return "T_TO_BASE64";
+    case T_FROM_BASE64:
+      return "T_FROM_BASE64";
+    case T_SYS_GUID:
+      return "T_SYS_GUID";
+    case T_UUID:
+      return "T_UUID";
+    case T_UUID_FORMAT:
+      return "T_UUID_FORMAT";
+    case T_SLEEP:
+      return "T_SLEEP";
+    case T_DBTIMEZONE:
+      return "T_DBTIMEZONE";
+    case T_SESSIONTIMEZONE:
+      return "T_SESSIONTIMEZONE";
+    case T_TZ_OFFSET:
+      return "T_TZ_OFFSET";
+    case T_NEW_TIME:
+      return "T_NEW_TIME";
+    case T_FROM_TZ:
+      return "T_FROM_TZ";
+    case T_TO_DATETIME_TZ:
+      return "T_TO_DATETIME_TZ";
+    case T_TO_TIMESTAMP_TZ:
+      return "T_TO_TIMESTAMP_TZ";
+    case T_UTC_TIMESTAMP:
+      return "T_UTC_TIMESTAMP";
+    case T_CRC32:
+      return "T_CRC32";
+    case T_CURRENT_DATETIME:
+      return "T_CURRENT_DATETIME";
+    case T_CURRENT_TIMESTAMP:
+      return "T_CURRENT_TIMESTAMP";
+    case T_CURRENT_DATE:
+      return "T_CURRENT_DATE";
+    case T_CURRENT_TIME:
+      return "T_CURRENT_TIME";
+    case T_CONV_TZ:
+      return "T_CONV_TZ";
+    case T_COLLECTION_TO_STRING:
+      return "T_COLLECTION_TO_STRING";
+    default:
+      return "T_?";
+    }
+}
+
+/* the operator's display symbol (+, -, ...) or "undefined" */
+const char *
 qdump_arith_operator_string (OPERATOR_TYPE opcode)
 {
   switch (opcode)
@@ -3168,7 +3598,8 @@ qdump_print_access_spec_stats_json (ACCESS_SPEC_TYPE * spec_list_p)
 	}
 
 #if !WINDOWS
-      if (spec->s_id.type == S_PARALLEL_HEAP_SCAN)
+      /* a partitioned class goes back to S_HEAP_SCAN after its last partition, as the text dump expects */
+      if (spec->s_id.type == S_PARALLEL_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN)
 	{
 	  if (spec->s_id.s.phsid.trace_storage != NULL)
 	    {
@@ -3824,6 +4255,156 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 }
 
 /*
+ * qdump_print_expr_compile_text () - compiled expression-program section of the SQL
+ *				      trace (see expr_compile.h): one summary line per
+ *				      program (is it active, what does it cover) and its
+ *				      per-step listing (kernels, cells, domains, prologue
+ *				      marks, jump targets), only for a session that shows its
+ *				      plans in detail (csql ;plan detail, XASL_TRACE_PLAN_DETAIL)
+ *				      -- it is the plan's execution shape, not something a user
+ *				      reading a plain trace needs, and the default trace stays
+ *				      what a build without this feature prints
+ */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+void
+qdump_print_expr_compile_text (FILE * fp, xasl_node * xasl_p, int indent, const char *tag)
+{
+  cubxasl::aggregate_list_node * agg_list = NULL, *agg;
+  OUTPTR_LIST *outs[2] = { NULL, NULL };
+  const char *out_names[2] = { "output list", "group output list" };
+  const char *sfx = (tag != NULL) ? tag : "";
+  int i, k;
+
+  /* Nothing of this section is in the default trace: it is the compiler's coverage state
+   * (which lists compiled, how many columns a program covers, who owns an accumulator), and
+   * a user has no knob to act on it -- there is no hint and no parameter that turns the
+   * compiler on or off for a statement.  Printing it by default made every trace-carrying
+   * test answer depend on the coverage of the day and re-blessed again with each coverage
+   * commit.  A session that asks for its plans in detail (csql ;plan detail: the client sends
+   * XASL_TRACE_PLAN_DETAIL with the trace) gets the summary lines and the step listings
+   * together; the default trace stays byte-identical to a build without this feature. */
+  if (!thread_get_thread_entry_info ()->trace_plan_detail)
+    {
+      return;
+    }
+
+  outs[0] = xasl_p->outptr_list;
+  if (xasl_p->type == BUILDLIST_PROC)
+    {
+      agg_list = xasl_p->proc.buildlist.g_agg_list;
+      outs[1] = xasl_p->proc.buildlist.g_outptr_list;
+    }
+  else if (xasl_p->type == BUILDVALUE_PROC)
+    {
+      agg_list = xasl_p->proc.buildvalue.agg_list;
+    }
+
+  if (agg_list != NULL && agg_list->operand_prog_state == 3)
+    {
+      /* every candidate operand is a plain column or a wired constant: no program is
+       * needed, the accumulator's fast path reads such an operand in place */
+      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): plain operands (peeked in place, no program)%s\n", indent,
+	       ' ', sfx);
+    }
+  else if (agg_list != NULL && agg_list->operand_prog_state != 0)
+    {
+      if (agg_list->operand_prog_state != 1)
+	{
+	  /* "not covered" is a diagnostic: this list had compilable candidates and the
+	   * compiler left them interpreted.  A list that never offered a candidate --
+	   * COUNT(*)/GROUPBY_NUM-only, or nothing participates -- is not a missed
+	   * coverage, so it prints nothing (the same policy the output list uses).
+	   * The compiler marks candidates by assigning operand_prog_base >= 0. */
+	  bool had_candidates = false;
+
+	  for (agg = agg_list; agg != NULL; agg = agg->next)
+	    {
+	      if (agg->operand_prog_base >= 0)
+		{
+		  had_candidates = true;
+		  break;
+		}
+	    }
+	  if (had_candidates)
+	    {
+	      fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): interpreted (not covered)%s\n", indent, ' ', sfx);
+	    }
+	}
+      else
+	{
+	  fprintf (fp, "%*cEXPR_COMPILE (aggregate operands): active%s\n", indent, ' ', sfx);
+	  for (agg = agg_list, i = 0; agg != NULL; agg = agg->next, i++)
+	    {
+	      if (agg->operand_prog_base >= 0)
+		{
+		  int root = agg_list->operand_prog_idx[agg->operand_prog_base];
+
+		  fprintf (fp, "%*cagg[%d]: %s", indent + 2, ' ', i,
+			   (root >= 0) ? "operand from program" : "operand interpreted");
+		  if (agg->accumulator.shared_from > 0)
+		    {
+		      /* a sharer adds nothing per row: it reads the owner's accumulator at finalize
+		       * -- an AVG divides that sum by the shared count, a SUM takes it as is */
+		      fprintf (fp, ", shares agg[%d]'s accumulator (%s)", agg->accumulator.shared_from - 1,
+			       (agg->function == PT_AVG) ? "avg = its sum / count at finalize"
+			       : (agg->function == PT_SUM) ? "sum read from it at finalize" : "read at finalize");
+		    }
+		  fprintf (fp, "\n");
+		}
+	    }
+	  expr_prog_dump (fp, (EXPR_PROG *) agg_list->operand_prog, indent + 2);
+	}
+    }
+
+  /* data filters of this node's access specs (compiled scan predicates) */
+  {
+    ACCESS_SPEC_TYPE *spec;
+
+    for (spec = xasl_p->spec_list; spec != NULL; spec = spec->next)
+      {
+	if (spec->where_pred == NULL || spec->where_pred->scan_prog_state == 0)
+	  {
+	    continue;
+	  }
+	fprintf (fp, "%*cEXPR_COMPILE (data filter): %s%s\n", indent, ' ',
+		 (spec->where_pred->scan_prog_state == 1) ? "active" : "interpreted (not covered)", sfx);
+	if (spec->where_pred->scan_prog_state == 1)
+	  {
+	    /* the operand program, when the filter's comparisons carry compiled arithmetic */
+	    expr_scan_pred_dump (fp, spec->where_pred->scan_prog, indent + 2);
+	  }
+      }
+  }
+
+  for (k = 0; k < 2; k++)
+    {
+      OUTPTR_LIST *out = outs[k];
+
+      /* Only an active program is reported. A list that was never tried (0) or that the
+       * compiler declined (2) runs entirely on the interpreted path, so its trace must stay
+       * byte-identical to a build without this feature -- printing a line for it would make
+       * every such statement's trace differ. */
+      if (out == NULL || out->eval_prog_state != 1)
+	{
+	  continue;
+	}
+      else
+	{
+	  int covered = 0;
+
+	  for (i = 0; i < out->valptr_cnt; i++)
+	    {
+	      covered += (out->eval_prog_idx[i] >= 0) ? 1 : 0;
+	    }
+	  fprintf (fp, "%*cEXPR_COMPILE (%s): active, columns covered %d/%d%s\n", indent, ' ', out_names[k], covered,
+		   out->valptr_cnt, sfx);
+	  expr_prog_dump (fp, (EXPR_PROG *) out->eval_prog, indent + 2);
+	}
+    }
+}
+#endif /* SERVER_MODE || SA_MODE */
+
+/*
  * qdump_print_stats_text () -
  *   return:
  *   fp(in):
@@ -3874,6 +4455,9 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 		   (long long int) xasl_p->func_stats.time, (long long int) xasl_p->func_stats.fetches,
 		   (long long int) xasl_p->func_stats.ioreads, (long long int) xasl_p->func_stats.calls);
 	}
+#if defined (SERVER_MODE) || defined (SA_MODE)
+      qdump_print_expr_compile_text (fp, xasl_p, indent, NULL);
+#endif
       break;
 
     case UNION_PROC:
