@@ -5160,7 +5160,9 @@ qo_plan_parallel_hint (QO_PLAN * plan)
  *	 chain by splitting its driving (outermost) scan among workers, each running the whole
  *	 chain below it, so the answer is decided by the driving scan alone:
  *	 - a heap scan of at least parallel_scan_page_threshold pages (the executor's own gate);
- *	   index scans are treated as serial;
+ *	   index scans are treated as serial. The client reads the parameter's default, not the
+ *	   server's value: test_mode lowers the server's thresholds to exercise the parallel
+ *	   executor on tiny tables, and plan choices must not follow that;
  *	 - a hash join or sort result, which is materialized into a list file: its estimated
  *	   size must clear the same threshold, otherwise a tiny hash join slipped under a
  *	   serial chain would earn the whole chain the discount;
@@ -5223,8 +5225,8 @@ qo_plan_list_pages (QO_PLAN * plan)
  *	   (qo_plan_is_parallel_driven ()); otherwise the outer keeps its own discount and the
  *	   per-probe inner work stays serial;
  *	 - a hash join: its own build/probe work when the larger input reaches
- *	   parallel_hash_join_page_threshold (the executor's gate, hjoin_try_parallel ()), its two
- *	   inputs each by their own rule;
+ *	   parallel_hash_join_page_threshold (the executor's gate, hjoin_try_parallel (); the
+ *	   default, as above), its two inputs each by their own rule;
  *	 - anything else (sort, merge join, follow): its own work stays serial, its inputs keep
  *	   their discounts.
  *	 Dividing the whole plan instead made a small parallel part under a serial chain (a tiny
@@ -5308,7 +5310,10 @@ qo_plan_parallel_variable_cost_raw (QO_PLAN * plan, double divisor)
  *	 between two plans of similar serial cost the one the executor can parallelize wins
  *	 (CBRD-27474: TPC-H Q21 lost its parallel hash chain to a nested loop driven by a
  *	 one-page table). With parallelism 2 the realized speed-up is at most 2, hence the cap
- *	 parallelism / 2; parallelism 0/1 turns the discount off. Plans over a single node
+ *	 parallelism / 2; parallelism 0/1 turns the discount off, and so does a LIMIT that the
+ *	 joins can stop at (can_apply_limit_card): the query ends before workers pay off, and the
+ *	 LIMIT-aware nested-loop costing already decides those plans. A LIMIT above a GROUP BY or
+ *	 ORDER BY does not stop the joins and keeps the discount. Plans over a single node
  *	 (the access paths of one table) are compared undiscounted: a heap scan would otherwise
  *	 outbid covering, group-by-skipping and order-by-skipping index scans on every table
  *	 past the scan threshold. The discount is about how a join is executed.
@@ -5319,7 +5324,8 @@ qo_plan_cmp_variable_cost (QO_PLAN * plan)
   double divisor = MIN (QO_PARALLEL_COST_DIVISOR, (double) prm_get_integer_value (PRM_ID_PARALLELISM) / 2.0);
 
   if (divisor <= 1.0 || plan->variable_cpu_cost >= QO_INFINITY || plan->variable_io_cost >= QO_INFINITY
-      || plan->info == NULL || bitset_cardinality (&(plan->info->nodes)) <= 1)
+      || plan->info == NULL || bitset_cardinality (&(plan->info->nodes)) <= 1
+      || (QO_PLAN_HAS_LIMIT (plan) && plan->info->planner->can_apply_limit_card))
     {
       return plan->variable_cpu_cost + plan->variable_io_cost;
     }
