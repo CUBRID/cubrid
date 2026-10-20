@@ -46,14 +46,6 @@
 #define HASHJOIN_DUMP_PROBE 0
 
 /*
- * Constants
- */
-
-/* most partitions of a split, the partition of NULL join keys included; a larger partition is split again when it
- * is executed (hjoin_execute_context) */
-#define HASHJOIN_PART_MAX_CNT 1024
-
-/*
  * Forward Declarations
  */
 
@@ -422,6 +414,9 @@ typedef struct hashjoin_manager
   QUERY_ID query_id;
   VAL_DESCR *val_descr;
 
+  /* max_hash_list_scan_size, read once so that every decision of this join sees the same limit */
+  UINT64 mem_limit;
+
   HASHJOIN_CONTEXT single_context;
   HASHJOIN_CONTEXT *contexts;
   UINT32 context_cnt;
@@ -498,8 +493,8 @@ typedef struct hashjoin_manager
 int qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, VAL_DESCR * val_descr);
 
 /* Hash Join Execution */
+int hjoin_execute_with_resplit (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 int hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
-int hjoin_execute_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 int hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 int hjoin_merge_qlist_into (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, QFILE_LIST_ID ** dest_list_id,
 			    QFILE_LIST_ID ** list_id);
@@ -511,7 +506,8 @@ void hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * 
 				    HASHJOIN_SHARED_SPLIT_INFO * shared_info);
 
 /* Hash List Scan */
-int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id);
+int hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, UINT64 mem_limit,
+		     QFILE_LIST_ID * list_id);
 void hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan);
 
 /* Hash Join Processing */

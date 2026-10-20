@@ -501,10 +501,9 @@ namespace parallel_query
 	    }
 
 	  context->list_id = m_shared_info->list_ids[m_index];
-
 	  assert (m_index < m_manager->worker_tfile_cnt);
 	  context->worker_tfile = m_manager->worker_tfiles[m_index];
-	  error = hjoin_execute_context (&thread_ref, m_manager, context);
+	  error = hjoin_execute_with_resplit (&thread_ref, m_manager, context);
 	  context->list_id = nullptr;	/* lent for the join; the result stays in m_shared_info->list_ids */
 
 	  if (thread_is_on_trace (&thread_ref))
@@ -679,7 +678,8 @@ namespace parallel_query
 
       /* probe input is consumed via sector_page_iterator — no list_scan_id needed */
 
-      error = hjoin_scan_init (&thread_ref, &m_context->hash_scan, m_manager->key_cnt, nullptr /* skip hash table */ );
+      error = hjoin_scan_init (&thread_ref, &m_context->hash_scan, m_manager->key_cnt, m_manager->mem_limit,
+			       nullptr /* skip hash table */ );
       if (error != NO_ERROR)
 	{
 	  m_task_manager.handle_error (thread_ref);
