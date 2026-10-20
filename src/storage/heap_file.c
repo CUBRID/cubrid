@@ -13939,6 +13939,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       status = S_SUCCESS;
       if (pending != nullptr)
         {
+          /* TODO: Evaluate a separate redesign that keeps rows inline until the heap write.
+           * Consider OOS externalization at heap_insert_logical entry for INSERT.
+           * For UPDATE, consider externalization immediately before locator_update_index. */
           for (int i = 0; i < attr_info->num_values && status == S_SUCCESS; ++i)
             {
               if (!oos_plan[i].selected)

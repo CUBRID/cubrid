@@ -5548,10 +5548,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		      UPDATE_INPLACE_STYLE force_in_place, bool need_locking, bool from_copyarea,
 		      heap_pending_record * pending)
 {
-  /* *INDENT-OFF* */
   heap_pending_record received;
   RECDES converted;
-  /* *INDENT-ON* */
   OID rep_dir = { NULL_PAGEID, NULL_SLOTID, NULL_VOLID };
   char *rep_dir_offset;
   char *classname = NULL;	/* Classname to update */
@@ -7724,9 +7722,7 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
 			      FUNC_PRED_UNPACK_INFO * func_preds, MVCC_REEV_DATA * mvcc_reev_data,
 			      UPDATE_INPLACE_STYLE force_update_inplace, RECDES * rec_descriptor, bool need_locking)
 {
-  /* *INDENT-OFF* */
   heap_pending_record pending;
-  /* *INDENT-ON* */
   RECDES new_recdes;
   SCAN_CODE scan = S_SUCCESS;	/* Scan return value for next operation */
   RECDES copy_recdes;
