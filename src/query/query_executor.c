@@ -1194,6 +1194,12 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 	    }
 	}
 
+      if (xasl->hj_bloom != NULL && hjoin_bloom_skip_row (thread_p, xasl, &xasl_state->vd))
+	{
+	  /* CBRD-27659: no row of the other hash join input has this key - neither projected nor written */
+	  return ret;
+	}
+
       tpldescr_status = qexec_generate_tuple_descriptor (thread_p, xasl->list_id, xasl->outptr_list, &xasl_state->vd);
       if (tpldescr_status == QPROC_TPLDESCR_FAILURE)
 	{
@@ -1243,6 +1249,12 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 		}
 	    }
 
+	  if (output_tuple && xasl->hj_bloom != NULL && hjoin_bloom_skip_descr (thread_p, xasl))
+	    {
+	      /* CBRD-27659: no row of the other hash join input has this key */
+	      output_tuple = false;
+	    }
+
 	  if (output_tuple)
 	    {
 	      /* generate tuple into list file page */
@@ -1271,6 +1283,12 @@ qexec_end_one_iteration (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE *
 						tplrec) != NO_ERROR))
 	    {
 	      GOTO_EXIT_ON_ERROR;
+	    }
+
+	  if (xasl->hj_bloom != NULL && hjoin_bloom_skip_tuple (thread_p, xasl, tplrec->tpl))
+	    {
+	      /* CBRD-27659: no row of the other hash join input has this key */
+	      break;
 	    }
 
 	  if ((qfile_add_tuple_to_list (thread_p, xasl->list_id, tplrec->tpl) != NO_ERROR))
@@ -2320,6 +2338,11 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
       xasl->px_executor = NULL;
     }
 #endif // SERVER_MODE
+  if (xasl->hj_bloom != NULL)
+    {
+      /* CBRD-27659: a filter an error path did not detach */
+      hjoin_bloom_release (thread_p, xasl);
+    }
   if (xasl->memoize_storage)
     {
       clear_memoize_storage (thread_p, xasl);
@@ -16706,8 +16729,17 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	      /* nothing to do */
 	    }
 
+	  if (xptr->type == HASHJOIN_PROC)
+	    {
+	      /* CBRD-27659 (prototype): a Bloom filter of the first input's keys on the second's rows, decided as the
+	       * two run (inline here, or as concurrent parallel jobs) */
+	      hjoin_bloom_attach (thread_p, xptr);
+	    }
+
 	  for (xptr2 = xptr->aptr_list; xptr2; xptr2 = xptr2->next)
 	    {
+	      bool run_as_job = false;
+
 	      if (merge_infop && !xasl->px_executor)
 		{
 		  /*
@@ -16807,7 +16839,8 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		       * while unflagged siblings still go to px workers */
 		      if (xasl->px_executor && !XASL_IS_FLAGED (xptr2, XASL_NO_PARALLEL_SUBQUERY))
 			{
-			  if (!xasl->px_executor->add_job (thread_p, xptr2, xasl_state))
+			  run_as_job = xasl->px_executor->add_job (thread_p, xptr2, xasl_state);
+			  if (!run_as_job)
 			    {
 			      if (qexec_execute_mainblock (thread_p, xptr2, xasl_state, NULL) != NO_ERROR)
 				{
@@ -16857,6 +16890,12 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 		      GOTO_EXIT_ON_ERROR;
 		    }
 		}
+
+	      if (xptr2->hj_bloom != NULL && !run_as_job)
+		{
+		  /* CBRD-27659: ran inline - its list is final (a parallel job says so when it ends) */
+		  hjoin_bloom_input_done (thread_p, xptr2, true);
+		}
 	    }
 	}
 
@@ -16877,6 +16916,15 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	    }
 	}
 #endif
+
+      for (xptr = xasl; xptr; xptr = xptr->scan_ptr)
+	{
+	  if (xptr->type == HASHJOIN_PROC)
+	    {
+	      /* CBRD-27659: both inputs are done - trace counters, filter freed */
+	      hjoin_bloom_finish (thread_p, xptr);
+	    }
+	}
 
       /* precompute uncorrelated scalar subqueries (precomp_owner_regu set) once on the main thread before the consuming scan opens; workers inject instead of re-executing (px_scan_task.cpp). fetch_peek_dbval reuses the lazy TYPE_CONSTANT path (SQ-/result-cache + owning regu dbvalptr preserved); errors propagate as in lazy eval. aptr_list only -- dptr_list (correlated) must never be precomputed. */
       for (xptr = xasl; xptr != NULL; xptr = xptr->scan_ptr)

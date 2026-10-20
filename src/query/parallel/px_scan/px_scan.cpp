@@ -40,6 +40,7 @@
 #include "file_manager.h"			/* file_get_num_user_pages */
 #include "system_parameter.h"			/* prm_get_integer_value */
 #include "thread_manager.hpp"			/* cubthread::system_core_count */
+#include "query_hash_join.h"			/* hjoin_bloom_prepare (CBRD-27659) */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -1744,6 +1745,8 @@ namespace parallel_scan
 	m_result_handler = placement_new ((result_handler<RESULT_TYPE::MERGEABLE_LIST> *) m_result_handler, m_query_id,
 					  &m_interrupt, &m_err_messages, m_parallelism, m_xasl);
 	m_result_handler->set_trace_handler (&m_trace_handler);
+	/* CBRD-27659: a hash join filter on this node is set up here, on the owner thread, before any worker runs */
+	m_result_handler->set_hjoin_bloom (hjoin_bloom_prepare (m_thread_p, m_xasl));
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
       {

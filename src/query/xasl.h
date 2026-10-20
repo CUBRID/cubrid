@@ -384,6 +384,7 @@ typedef struct hashjoin_proc_node
 #if defined (SERVER_MODE) || defined (SA_MODE)
   HASHJOIN_DOMAIN_INFO domain_info;
   HASHJOIN_STATS_GROUP stats_group;
+  HASHJOIN_BLOOM_STATS bloom_stats;	/* CBRD-27659 (prototype), runtime only */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 } HASHJOIN_PROC_NODE;
 
@@ -1139,6 +1140,8 @@ namespace memoize
 // *INDENT-ON*
 struct domain_plan;
 
+struct hjoin_bloom;		/* query_hash_join.c (CBRD-27659 prototype) */
+
 struct xasl_node
 {
   struct domain_plan *domain_plan;	/* tree-wide unpack-arena plan, not serialized */
@@ -1268,6 +1271,9 @@ struct xasl_node
   int executed_parallelism;	/* parallelism of the query */
   memoize::storage *memoize_storage;
   // *INDENT-ON*
+  /* CBRD-27659 (prototype): Bloom filter this xasl checks before it writes a row to its list, when it is the
+   * second-materialized input of a hash join (query_hash_join.c, hjoin_bloom_*). Runtime only, never packed. */
+  struct hjoin_bloom *hj_bloom;
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

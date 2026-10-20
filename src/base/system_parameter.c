@@ -827,6 +827,8 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_COST_EFFECTIVE_CACHE_PAGES "cost_effective_cache_pages"
 #define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
 
+#define PRM_NAME_HASH_JOIN_BLOOM_FILTER "hash_join_bloom_filter"
+
 // #endregion
 
 /*
@@ -5665,6 +5667,19 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 5}},
    {false, {.i = 100000}},
    {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* CBRD-27659 (prototype): filter the second-materialized hash join input with a Bloom filter built
+   * from the first input's join keys */
+  {PRM_ID_HASH_JOIN_BLOOM_FILTER,
+   PRM_NAME_HASH_JOIN_BLOOM_FILTER,
+   (PRM_FOR_SERVER | PRM_USER_CHANGE),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE, NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},

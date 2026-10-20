@@ -40,6 +40,7 @@
 #include "xasl_aggregate.hpp"
 #include "numeric_opfunc.h"	// SUM_ACC word accumulator
 #include "object_domain.h"
+#include "query_hash_join.h"	// CBRD-27659: hjoin_bloom_worker_*
 #include "query_executor.h"
 #include "px_scan_trace_handler.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -134,6 +135,15 @@ namespace parallel_scan
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
 	m_.trace_handler_p = trace_handler_p;
+      }
+  }
+
+  template <RESULT_TYPE result_type>
+  void result_handler<result_type>::set_hjoin_bloom (hjoin_bloom *bloom)
+  {
+    if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
+      {
+	m_.bloom = bloom;
       }
   }
 
@@ -334,6 +344,8 @@ namespace parallel_scan
 		  }
 	      }
 	  }
+	/* CBRD-27659: nullptr when there is no filter or the worker could not set up (its rows then go through) */
+	tl.bloom_worker = hjoin_bloom_worker_begin (thread_p, m_.bloom, outptr_list);
 	tl.write_initialized = true;
       }
     else if constexpr (result_type == RESULT_TYPE::XASL_SNAPSHOT)
@@ -361,6 +373,9 @@ namespace parallel_scan
   {
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST)
       {
+	/* CBRD-27659: before this worker reports done - the owner frees the filter once the scan is over */
+	hjoin_bloom_worker_end (thread_p, tl.bloom_worker);
+	tl.bloom_worker = nullptr;
 	if (!tl.write_initialized)
 	  {
 	    /* write_initialize () stopped at an error and set the interrupt, so the reader no longer waits
@@ -653,6 +668,14 @@ namespace parallel_scan
 	      while (m_.active_results != 0)
 		{
 		  m_result_cv.wait_for (lock, std::chrono::microseconds (50));
+		  if (m_.bloom != nullptr && m_.active_results != 0)
+		    {
+		      /* CBRD-27659: the owner fills the hash join filter once the workers have seen enough rows - not
+		       * under the lock a worker takes to report done */
+		      lock.unlock ();
+		      hjoin_bloom_poll (thread_p, m_.bloom);
+		      lock.lock ();
+		    }
 		  parallel_query::interrupt::interrupt_code code = m_interrupt_p->get_code();
 		  /* INST_NUM_SATISFIED is a benign early-stop: keep waiting for workers to finalize. */
 		  if (code != parallel_query::interrupt::interrupt_code::NO_INTERRUPT
@@ -902,6 +925,12 @@ namespace parallel_scan
 
 	prefetch (tl.writer_result_p, PREFETCH_WRITE, PREFETCH_CACHE_L1);
 
+	if (tl.bloom_worker != nullptr && hjoin_bloom_worker_skip_row (thread_p, tl.bloom_worker, tl.vd))
+	  {
+	    /* CBRD-27659: no row of the other hash join input has this key - neither projected nor written */
+	    return true;
+	  }
+
 	/* Each worker sizes against its own destination list, which opened with the plan's domains. */
 	status = qdata_generate_tuple_desc_for_valptr_list (thread_p, input, tl.vd, tl.writer_result_p);
 	if (unlikely (status == QPROC_TPLDESCR_FAILURE))
@@ -923,6 +952,12 @@ namespace parallel_scan
 		    return false;
 		  }
 		tl.agg_hash_state = tl.xasl->proc.buildlist.agg_hash_context->state;
+	      }
+	    if (output_tuple && tl.bloom_worker != nullptr
+		&& hjoin_bloom_worker_skip_descr (thread_p, tl.bloom_worker, tl.writer_result_p))
+	      {
+		/* CBRD-27659: no row of the other hash join input has this key */
+		output_tuple = false;
 	      }
 	    if (output_tuple)
 	      {
@@ -993,6 +1028,12 @@ namespace parallel_scan
 		m_err_messages_p->move_top_error_message_to_this();
 		m_interrupt_p->set_code (parallel_query::interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD);
 		return false;
+	      }
+	    if (tl.bloom_worker != nullptr
+		&& hjoin_bloom_worker_skip_tuple (thread_p, tl.bloom_worker, tl.writer_result_p, tl.tpl_buf.tpl))
+	      {
+		/* CBRD-27659: no row of the other hash join input has this key */
+		return true;
 	      }
 	    err_code = qfile_add_tuple_to_list (thread_p, tl.writer_result_p, tl.tpl_buf.tpl);
 	    if (err_code != NO_ERROR)

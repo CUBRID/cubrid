@@ -260,6 +260,7 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl->class_locks = NULL;
   xasl->tcard_list = NULL;
   xasl->px_executor = NULL;
+  xasl->hj_bloom = NULL;
   xasl->memoize_storage = NULL;
   xasl->executed_parallelism = 0;
 
@@ -2459,6 +2460,7 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   xasl->analytic_stats = NULL;
   xasl->max_iterations = -1;
   xasl->px_executor = NULL;
+  xasl->hj_bloom = NULL;
   xasl->memoize_storage = NULL;
   xasl->executed_parallelism = 0;
   return ptr;
@@ -3384,6 +3386,8 @@ stx_build_hashjoin_proc (THREAD_ENTRY * thread_p, char *ptr, HASHJOIN_PROC_NODE 
       node_p->domain_info.outer.value_indexes = node_p->merge_info.ls_outer_column;
       node_p->domain_info.inner.value_indexes = node_p->merge_info.ls_inner_column;
     }
+
+  memset (&node_p->bloom_stats, 0, sizeof (node_p->bloom_stats));
 
   return ptr;
 
