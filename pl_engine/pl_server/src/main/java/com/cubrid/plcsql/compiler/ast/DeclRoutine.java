@@ -49,36 +49,55 @@ public abstract class DeclRoutine extends Decl {
     // calls
     public boolean calledFromLoop;
 
-    public void markAsCalledFromLoop(Set<SqlUse> accum) {
+    public void markAsCalledFromLoop() {
 
-        assert loopOptimizables != null;
+        // Calls to DBMS_OUTPUT package members are deemed local routine calls (TODO: fix)
+        // and the bogus declarations of DBMS_OUTPUT package members in SymbolStack do not have
+        // loopOptimizables
+        if (loopOptimizables == null) {
+            return;
+        }
 
-        if (!calledFromLoop) { // must be marked only once
+        // must be marked only once
+        if (calledFromLoop) {
+            return;
+        }
 
-            calledFromLoop = true; // mark as reachable from at least one loop
+        if (sqlUsesOfTopLevel != null) {
+            // a top level routine runs in a new Java method frame per call, so marking its sql uses
+            // for being called from a loop or a cycle has no performance benefit
+            return;
+        }
 
-            // collect sql uses in this routine decl into the accum
-            for (SqlUse n : loopOptimizables.sqlUses) {
-                boolean added = accum.add(n);
-                assert added; // because this routine declaration is first visited
-                assert !n.reachableFromLoop();
-                n.markAsReachableFromLoop();
-            }
+        calledFromLoop = true; // mark as reachable from at least one loop
 
-            // recursively mark the reachable local routine calls
-            for (LocalRoutineCall lrc : loopOptimizables.localRoutineCalls) {
-                lrc.getDecl().markAsCalledFromLoop(accum);
-            }
+        for (SqlUse n : loopOptimizables.sqlUses) {
+            n.markAsReachableFromLoop();
+        }
+
+        // recursively mark the reachable local routine calls
+        for (LocalRoutineCall lrc : loopOptimizables.localRoutineCalls) {
+            lrc.getDecl().markAsCalledFromLoop();
         }
     }
 
-    public DeclRoutine visitToFindRecursiveCalls(Set<SqlUse> accum, Stack<DeclRoutine> calls) {
+    public DeclRoutine visitToFindRecursiveCalls(Stack<DeclRoutine> calls) {
 
+        // Calls to DBMS_OUTPUT package members are deemed local routine calls (TODO: fix)
+        // and the bogus declarations of DBMS_OUTPUT package members in SymbolStack do not have
+        // loopOptimizables
         if (loopOptimizables == null) {
-            return null; // TODO: self recursive routine. optimize this case too
+            return null;
         }
 
         if (calledFromLoop) {
+            // already marked
+            return null;
+        }
+
+        if (sqlUsesOfTopLevel != null) {
+            // optimizing sql uses in a cycle containing a top level routine
+            // does not have a performance benefit
             return null;
         }
 
@@ -94,35 +113,24 @@ public abstract class DeclRoutine extends Decl {
 
         for (LocalRoutineCall lrc : loopOptimizables.localRoutineCalls) {
 
-            DeclRoutine r = lrc.getDecl().visitToFindRecursiveCalls(accum, calls);
+            DeclRoutine r = lrc.getDecl().visitToFindRecursiveCalls(calls);
             if (r != null) {
                 // this routine is on a loop of recursive calls
 
-                if (!calledFromLoop) { // must be marked only once
+                markAsCalledFromLoop();
 
-                    calledFromLoop = true;
-
-                    // collect sql uses in this routine decl into the accum
-                    for (SqlUse n : loopOptimizables.sqlUses) {
-                        boolean added = accum.add(n);
-                        assert added; // because this routine declaration is first visited
-                        assert !n.reachableFromLoop();
-                        n.markAsReachableFromLoop();
-                    }
-                }
-
-                int indexInCalls = calls.indexOf(r);
-                if (indexInCalls < callsSize - 1) {
+                int indexOfRinCalls = calls.indexOf(r);
+                if (indexOfRinCalls < callsSize - 1) {
                     // only when the head is lower than this routine.
 
                     if (lowestRecCallHead == null) {
                         // never set
                         lowestRecCallHead = r;
-                        lowestIndex = indexInCalls;
-                    } else if (indexInCalls < lowestIndex) {
+                        lowestIndex = indexOfRinCalls;
+                    } else if (indexOfRinCalls < lowestIndex) {
                         // lower one found
                         lowestRecCallHead = r;
-                        lowestIndex = indexInCalls;
+                        lowestIndex = indexOfRinCalls;
                     }
                 }
             }
@@ -133,10 +141,7 @@ public abstract class DeclRoutine extends Decl {
         return lowestRecCallHead;
     }
 
-    public boolean isNotContainedInLoop() {
-        return (loopOptimizables != null);
-    }
-
+    public Set<SqlUse> sqlUsesOfTopLevel;
     public StmtLoop.LoopOptimizables loopOptimizables;
     public final boolean isPublic;
     public final NodeList<DeclParam> paramList;
@@ -150,6 +155,7 @@ public abstract class DeclRoutine extends Decl {
             ParserRuleContext ctx,
             String name,
             String comment,
+            Set<SqlUse> sqlUsesOfTopLevel,
             StmtLoop.LoopOptimizables loopOptimizables,
             boolean isPublic,
             NodeList<DeclParam> paramList,
@@ -159,6 +165,7 @@ public abstract class DeclRoutine extends Decl {
             Body body) {
         super(ctx, name, comment);
 
+        this.sqlUsesOfTopLevel = sqlUsesOfTopLevel;
         this.loopOptimizables = loopOptimizables;
         this.isPublic = isPublic;
         this.paramList = paramList;

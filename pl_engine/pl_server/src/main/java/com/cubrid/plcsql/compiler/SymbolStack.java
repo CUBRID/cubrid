@@ -129,6 +129,7 @@ public class SymbolStack {
                                         name,
                                         null,
                                         null,
+                                        null,
                                         true,
                                         params,
                                         0,
@@ -151,6 +152,7 @@ public class SymbolStack {
                         "DBMS_OUTPUT$DISABLE",
                         null,
                         null,
+                        null,
                         true,
                         new NodeList<DeclParam>(),
                         0);
@@ -161,6 +163,7 @@ public class SymbolStack {
                 new DeclProc(
                         null,
                         "DBMS_OUTPUT$ENABLE",
+                        null,
                         null,
                         null,
                         true,
@@ -180,6 +183,7 @@ public class SymbolStack {
                 new DeclProc(
                         null,
                         "DBMS_OUTPUT$GET_LINE",
+                        null,
                         null,
                         null,
                         true,
@@ -208,6 +212,7 @@ public class SymbolStack {
                         "DBMS_OUTPUT$NEW_LINE",
                         null,
                         null,
+                        null,
                         true,
                         new NodeList<DeclParam>(),
                         0);
@@ -218,6 +223,7 @@ public class SymbolStack {
                 new DeclProc(
                         null,
                         "DBMS_OUTPUT$PUT_LINE",
+                        null,
                         null,
                         null,
                         true,
@@ -237,6 +243,7 @@ public class SymbolStack {
                 new DeclProc(
                         null,
                         "DBMS_OUTPUT$PUT",
+                        null,
                         null,
                         null,
                         true,
@@ -553,7 +560,7 @@ public class SymbolStack {
         for (String s : funcNames) {
             DeclFunc df =
                     new DeclFunc(
-                            null, s, null, null, true, null, 0,
+                            null, s, null, null, null, true, null, 0,
                             null); // only name is used for builtin functions
             putDeclTo(predefinedSymbols, df.name, df);
         }

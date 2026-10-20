@@ -39,7 +39,6 @@ import com.cubrid.plcsql.compiler.ast.Decl;
 import com.cubrid.plcsql.compiler.ast.Unit;
 import com.cubrid.plcsql.compiler.ast.UnitPkg;
 import com.cubrid.plcsql.compiler.ast.UnitSp;
-import com.cubrid.plcsql.compiler.ast.loopOpt.SqlUse;
 import com.cubrid.plcsql.compiler.error.SemanticError;
 import com.cubrid.plcsql.compiler.error.SyntaxError;
 import com.cubrid.plcsql.compiler.visitor.JavaCodeWriter;
@@ -328,14 +327,8 @@ public class PlcsqlCompilerMain {
         // ------------------------------------------
         // typechecking
 
-        Set<SqlUse> sqlUsesInRecursiveCalls = new HashSet<>(); // collected in TypeChecker
         TypeChecker typeChecker =
-                new TypeChecker(
-                        iStore,
-                        converter.symbolStack,
-                        converter.dependencies,
-                        owner,
-                        sqlUsesInRecursiveCalls);
+                new TypeChecker(iStore, converter.symbolStack, converter.dependencies, owner);
         typeChecker.visit(unit);
 
         if (verbose) {
@@ -368,12 +361,7 @@ public class PlcsqlCompilerMain {
         }
 
         String javaCode =
-                new JavaCodeWriter(
-                                iStore,
-                                sqlUsesInRecursiveCalls,
-                                authCheckedIndex,
-                                methodIndex,
-                                converter.unitOwner)
+                new JavaCodeWriter(iStore, authCheckedIndex, methodIndex, converter.unitOwner)
                         .buildCodeLines(unit);
 
         if (verbose) {
