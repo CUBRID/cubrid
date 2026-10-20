@@ -96,6 +96,10 @@ struct key_info
   bool is_user_given_keylimit;	/* true if user specifies key limit */
   regu_variable_node *key_limit_l;	/* lower key limit */
   regu_variable_node *key_limit_u;	/* upper key limit */
+  /* CBRD-27583 (D-94): the key limits' converters into BIGINT, found at unpack from their regus' domains (NULL for a
+   * BIGINT limit); not serialized */
+  TP_VALUE_CONVERTER key_limit_l_conv;
+  TP_VALUE_CONVERTER key_limit_u_conv;
 };				/* key information structure */
 
 typedef struct indx_info INDX_INFO;

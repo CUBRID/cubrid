@@ -132,6 +132,10 @@ namespace cubxasl
 							 * node's domain and its operand's
 							 * (domain_plan_aggregate_accumulator), its converters looked
 							 * up at unpack */
+    /* CBRD-27583 (D-94): a MIN / MAX's comparison of two accumulator values (value_dom with itself), by which a
+     * partitioned class's extremes merge (qdata_evaluate_aggregate_hierarchy), decided at unpack; NULL for another
+     * function and where value_dom leaves the comparison to the values */
+    const DOMAIN_COMPARE *merge_compare;
     /* compiled operand-evaluation program covering the WHOLE aggregate list; kept on the
      * list HEAD node only.  Server-side runtime state -- never serialized.  See
      * expr_compile.h; built lazily on the first evaluated row when the bound host

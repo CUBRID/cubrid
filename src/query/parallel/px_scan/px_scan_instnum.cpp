@@ -268,7 +268,12 @@ namespace parallel_scan
 	TP_DOMAIN_STATUS dom_status;
 
 	db_make_null (&coerced);
-	dom_status = tp_value_coerce (limit_val, &coerced, &tp_Bigint_domain);
+	/* CBRD-27583 (D-94): by the conversion the unpack found for the limit's term */
+	const DOMAIN_BOUND_CONVERSION *conversion = draw.limit_term->bound_conversion;
+	assert (conversion != NULL && conversion->source == DB_VALUE_DOMAIN_TYPE (limit_val));
+	dom_status = tp_value_coerce_with_converter (limit_val, &coerced, &tp_Bigint_domain,
+		     conversion != NULL ? conversion->source : DB_TYPE_NULL,
+		     conversion != NULL ? conversion->conv : NULL);
 	if (dom_status == DOMAIN_COMPATIBLE)
 	  {
 	    raw_limit = db_get_bigint (&coerced);

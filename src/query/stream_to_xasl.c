@@ -117,6 +117,9 @@ static char *stx_build_delete_proc (THREAD_ENTRY * thread_p, char *tmp, DELETE_P
 static char *stx_build_insert_proc (THREAD_ENTRY * thread_p, char *tmp, INSERT_PROC_NODE * ptr);
 static DB_TYPE stx_value_type_of (const TP_DOMAIN * domain);
 static void stx_plan_assignment (UPDATE_ASSIGNMENT * assign, DB_TYPE value_type);
+static TP_VALUE_CONVERTER stx_plan_limit_converter (DB_TYPE type, const TP_DOMAIN * target);
+static bool stx_plan_bound_conversion (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * term, DB_TYPE source,
+				       const TP_DOMAIN * target);
 static void stx_plan_update_assignments (XASL_NODE * xasl, bool has_delete);
 static int stx_plan_insert_assignments (THREAD_ENTRY * thread_p, XASL_NODE * xasl);
 static char *stx_build_merge_proc (THREAD_ENTRY * thread_p, char *tmp, MERGE_PROC_NODE * ptr);
@@ -2024,6 +2027,41 @@ stx_build_analytic_offsets (char *ptr, BUILDLIST_PROC_NODE * node)
 }
 
 /*
+ * stx_plan_interpolation_sort_keys () - CBRD-27583 (D-94): a MEDIAN / PERCENTILE whose sorted operand is a string
+ *   compares it in the function's type: that domain and the converter into it, from the domain of the operand's key
+ *   in its group's sort list (qexec_initialize_analytic_state sets them on the key)
+ */
+static void
+stx_plan_interpolation_sort_keys (BUILDLIST_PROC_NODE * node)
+{
+  for (ANALYTIC_EVAL_TYPE * eval = node->a_eval_list; eval != NULL; eval = eval->next)
+    {
+      for (ANALYTIC_TYPE * func_p = eval->head; func_p != NULL; func_p = func_p->next)
+	{
+	  func_p->sort_key_cmp_dom = NULL;
+	  func_p->sort_key_conv = NULL;
+	  if (!QPROC_IS_INTERPOLATION_FUNC (func_p) || func_p->sort_list_size <= func_p->sort_prefix_size)
+	    {
+	      continue;
+	    }
+	  const SORT_LIST *key = eval->sort_list;
+	  for (int i = 0; key != NULL && i < func_p->sort_prefix_size; i++)
+	    {
+	      key = key->next;
+	    }
+	  if (key == NULL || key->pos_descr.dom == NULL || !TP_IS_STRING_TYPE (TP_DOMAIN_TYPE (key->pos_descr.dom)))
+	    {
+	      continue;
+	    }
+	  func_p->sort_key_cmp_dom = tp_domain_resolve_default (TP_DOMAIN_TYPE (func_p->domain));
+	  func_p->sort_key_conv =
+	    tp_value_find_converter (TP_DOMAIN_TYPE (key->pos_descr.dom), func_p->sort_key_cmp_dom,
+				     DOMAIN_CONVERT_ASSIGN);
+	}
+    }
+}
+
+/*
  * stx_build_orderbynum_bounds () - CBRD-27583 (S3-18): the operand coercion of bound - 1 of each ORDERBY_NUM () < bound
  *   of the predicate (xts_pack_orderbynum_bounds), set on its term
  */
@@ -2236,6 +2274,26 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
     {
       return NULL;
     }
+  {
+    /* CBRD-27583 (D-94): each upper bound's conversion into INTEGER, which a top-N takes (qexec_setup_topn_proc): of
+     * the bound's type, or for a < of the type bound - 1 comes out in (qdata_coerce_result_to_domain: the bound's
+     * domain when the plan converts the difference, else the difference's) */
+    bool planned = true;
+    /* *INDENT-OFF* */
+    xasl_for_each_orderbynum_upper_bound (xasl->ordbynum_pred, [&] (COMP_EVAL_TERM * term, const REGU_VARIABLE * bound,
+								      REL_OP op)
+      {
+	const DOMAIN_OPERAND_COERCION *minus_one = op == R_LT ? term->bound_coercion : NULL;
+	const DB_TYPE source = minus_one != NULL && minus_one->result == NULL ? minus_one->arith.type
+	  : stx_value_type_of (bound->domain);
+	planned = planned && stx_plan_bound_conversion (thread_p, term, source, &tp_Integer_domain);
+      });
+    /* *INDENT-ON* */
+    if (!planned)
+      {
+	return NULL;
+      }
+  }
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -2265,6 +2323,8 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
 	  goto error;
 	}
     }
+  xasl->orderby_limit_conv = xasl->orderby_limit == NULL ? NULL
+    : stx_plan_limit_converter (stx_value_type_of (xasl->orderby_limit->domain), &tp_Integer_domain);
 
   ptr = or_unpack_int (ptr, (int *) &xasl->ordbynum_flag);
 
@@ -2505,6 +2565,19 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
       if (xasl->instnum_pred == NULL)
 	{
 	  goto error;
+	}
+      /* CBRD-27583 (D-94): an INST_NUM () < or <= limit's conversion into BIGINT, which a parallel scan's limit takes
+       * (resolve_instnum_limit; get_instnum_upper_limit_rhs picks this term) */
+      if (xasl->instnum_pred->type == T_EVAL_TERM && xasl->instnum_pred->pe.m_eval_term.et_type == T_COMP_EVAL_TERM)
+	{
+	  COMP_EVAL_TERM *term = &xasl->instnum_pred->pe.m_eval_term.et.et_comp;
+	  if (term->lhs != NULL && term->rhs != NULL && term->lhs->type == TYPE_CONSTANT
+	      && (term->rhs->type == TYPE_POS_VALUE || term->rhs->type == TYPE_DBVAL)
+	      && (term->rel_op == R_LT || term->rel_op == R_LE)
+	      && !stx_plan_bound_conversion (thread_p, term, stx_value_type_of (term->rhs->domain), &tp_Bigint_domain))
+	    {
+	      return NULL;
+	    }
 	}
     }
 
@@ -3448,6 +3521,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
     }
   /* CBRD-27583 (D-83): a LEAD / LAG / NTH_VALUE's offset and default, read through a_regu_list */
   ptr = stx_build_analytic_offsets (ptr, stx_build_list_proc);
+  stx_plan_interpolation_sort_keys (stx_build_list_proc);
 
   ptr = or_unpack_int (ptr, &offset);
   if (offset == 0)
@@ -4715,6 +4789,39 @@ stx_plan_assignment (UPDATE_ASSIGNMENT * assign, DB_TYPE value_type)
 }
 
 /*
+ * stx_plan_limit_converter () - CBRD-27583 (D-94): the converter of a limit's values of type - a key limit, a sort
+ *   limit, an ORDERBY_NUM or INST_NUM bound, of its regu's type - into the integer domain its reader coerces it into
+ *   (IMPLICIT, as tp_value_coerce); none for a limit of that type and for a type the compiler does not know
+ */
+static TP_VALUE_CONVERTER
+stx_plan_limit_converter (DB_TYPE type, const TP_DOMAIN * target)
+{
+  return type == DB_TYPE_VARIABLE || type == DB_TYPE_NULL || type == TP_DOMAIN_TYPE (target) ? NULL
+    : tp_value_find_converter (type, target, DOMAIN_CONVERT_IMPLICIT);
+}
+
+/*
+ * stx_plan_bound_conversion () - CBRD-27583 (D-94): an upper bound term's conversion of its bound, of type source,
+ *   into target (an ORDERBY_NUM bound into INTEGER, an INST_NUM limit into BIGINT), set on the term
+ *   return: false with the unpack error set
+ */
+static bool
+stx_plan_bound_conversion (THREAD_ENTRY * thread_p, COMP_EVAL_TERM * term, DB_TYPE source, const TP_DOMAIN * target)
+{
+  DOMAIN_BOUND_CONVERSION *conversion =
+    (DOMAIN_BOUND_CONVERSION *) stx_alloc_struct (thread_p, (int) sizeof (DOMAIN_BOUND_CONVERSION));
+  if (conversion == NULL)
+    {
+      stx_set_xasl_errcode (thread_p, ER_OUT_OF_VIRTUAL_MEMORY);
+      return false;
+    }
+  conversion->source = source;
+  conversion->conv = stx_plan_limit_converter (source, target);
+  term->bound_conversion = conversion;
+  return true;
+}
+
+/*
  * stx_plan_update_assignments () - CBRD-27583 (D-45): an UPDATE's converters, from the domains of the slots of the
  *   node's value list its scan of the SELECT's list fills - after the OID - class OID pairs of its classes and of
  *   the other classes its MVCC reevaluation reads, and a MERGE's should_delete, as qexec_execute_update walks them -
@@ -5289,6 +5396,7 @@ stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * c
 
   /* an ORDERBY_NUM upper bound's: set after its predicate (stx_build_orderbynum_bounds) */
   comp_eval_term->bound_coercion = NULL;
+  comp_eval_term->bound_conversion = NULL;
 
   ptr = stx_build_term_compare (thread_p, ptr, comp_eval_term);
   comp_eval_term->prune_side = -1;
@@ -6054,6 +6162,10 @@ stx_build_key_info (THREAD_ENTRY * thread_p, char *ptr, KEY_INFO * key_info)
 	  return NULL;
 	}
     }
+  key_info->key_limit_l_conv = key_info->key_limit_l == NULL ? NULL
+    : stx_plan_limit_converter (stx_value_type_of (key_info->key_limit_l->domain), &tp_Bigint_domain);
+  key_info->key_limit_u_conv = key_info->key_limit_u == NULL ? NULL
+    : stx_plan_limit_converter (stx_value_type_of (key_info->key_limit_u->domain), &tp_Bigint_domain);
 
   return ptr;
 }
@@ -7522,6 +7634,26 @@ stx_build_aggregate_type (THREAD_ENTRY * thread_p, char *ptr, AGGREGATE_TYPE * a
       (void) db_value_domain_init (aggregate->accumulator.value2,
 				   TP_DOMAIN_TYPE (aggregate->accumulator_domain.value2_dom), DB_DEFAULT_PRECISION,
 				   DB_DEFAULT_SCALE);
+    }
+  /* CBRD-27583 (D-94): the comparison a MIN / MAX merges a partitioned class's extremes by */
+  aggregate->merge_compare = NULL;
+  if ((aggregate->function == PT_MIN || aggregate->function == PT_MAX)
+      && aggregate->accumulator_domain.value_dom != NULL
+      && !domain_is_variable (aggregate->accumulator_domain.value_dom))
+    {
+      const TP_DOMAIN *const domain[2] = { aggregate->accumulator_domain.value_dom,
+	aggregate->accumulator_domain.value_dom
+      };
+      DOMAIN_COMPARE *compare = stx_alloc_compares (thread_p, 1);
+      bool by_type;
+      if (compare == NULL)
+	{
+	  goto error;
+	}
+      if (domain_decide_comparison (domain, compare, &by_type) == NO_ERROR && by_type)
+	{
+	  aggregate->merge_compare = compare;
+	}
     }
 
   return ptr;

@@ -742,7 +742,7 @@ static BH_CMP_RESULT qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_
 					const TP_DOMAIN * domain);
 static void qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, TOPN_TUPLE * tuple, int count);
 static int qexec_get_orderbynum_upper_bound (THREAD_ENTRY * tread_p, PRED_EXPR * pred, VAL_DESCR * vd,
-					     DB_VALUE * ubound);
+					     DB_VALUE * ubound, const DOMAIN_BOUND_CONVERSION ** conversion);
 static int qexec_analytic_evaluate_cume_dist_percent_rank_function (THREAD_ENTRY * thread_p,
 								    ANALYTIC_FUNCTION_STATE * func_state);
 
@@ -4047,9 +4047,14 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
     {
       TP_DOMAIN_STATUS dom_status;
 
-      /* into a value of its own: the limit is a bind value other readers share */
+      /* into a value of its own: the limit is a bind value other readers share; by the converter the unpack found for
+       * the limit's domain */
+      const DB_TYPE planned =
+	xasl->orderby_limit->domain != NULL ? TP_DOMAIN_TYPE (xasl->orderby_limit->domain) : DB_TYPE_NULL;
+      /* a bind type signature's plan: the value has its regu's type (D-77's lookup below it is unreachable) */
+      assert (DB_IS_NULL (dbvalp) || orig_type == planned);
       db_make_null (&limit_value);
-      dom_status = tp_value_coerce (dbvalp, &limit_value, domainp);
+      dom_status = tp_value_coerce_with_converter (dbvalp, &limit_value, domainp, planned, xasl->orderby_limit_conv);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  if (dom_status == DOMAIN_OVERFLOW)
@@ -15588,7 +15593,9 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
     {
       key_limit_l = xasl->spec_list->indexptr->key_info.key_limit_l;
 
-      error = fetch_and_coerce_key_limit_lower (thread_p, key_limit_l, &xasl_state->vd, &dbval);
+      error =
+	fetch_and_coerce_key_limit_lower (thread_p, key_limit_l, xasl->spec_list->indexptr->key_info.key_limit_l_conv,
+					  &xasl_state->vd, &dbval);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -22596,16 +22603,17 @@ qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYP
 	  return;
 	}
       SUBKEY_INFO *subkey = &analytic_state->key_info.key[func_p->sort_prefix_size];
-      if (!TP_IS_STRING_TYPE (TP_DOMAIN_TYPE (subkey->col_dom)))
+      /* CBRD-27583 (D-94): the unpack's plan for the key (stx_plan_interpolation_sort_keys), of the same sort list */
+      assert ((func_p->sort_key_cmp_dom != NULL) == TP_IS_STRING_TYPE (TP_DOMAIN_TYPE (subkey->col_dom)));
+      if (func_p->sort_key_cmp_dom == NULL)
 	{
 	  return;
 	}
       assert (TP_IS_NUMERIC_TYPE (TP_DOMAIN_TYPE (func_p->domain))
 	      || TP_IS_DATE_OR_TIME_TYPE (TP_DOMAIN_TYPE (func_p->domain)));
       subkey->use_cmp_dom = true;
-      subkey->cmp_dom = tp_domain_resolve_default (TP_DOMAIN_TYPE (func_p->domain));
-      subkey->cmp_conv = tp_value_find_converter (TP_DOMAIN_TYPE (subkey->col_dom), subkey->cmp_dom,
-						  DOMAIN_CONVERT_ASSIGN);
+      subkey->cmp_dom = func_p->sort_key_cmp_dom;
+      subkey->cmp_conv = func_p->sort_key_conv;
       return;
     }
 }
@@ -27196,7 +27204,8 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
     }
 
   db_make_null (&ubound_val);
-  error = qexec_get_orderbynum_upper_bound (thread_p, xasl->ordbynum_pred, vd, &ubound_val);
+  const DOMAIN_BOUND_CONVERSION *conversion;
+  error = qexec_get_orderbynum_upper_bound (thread_p, xasl->ordbynum_pred, vd, &ubound_val, &conversion);
   if (error != NO_ERROR)
     {
       return error;
@@ -27207,8 +27216,11 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
     }
   if (DB_VALUE_TYPE (&ubound_val) != DB_TYPE_INTEGER)
     {
-      TP_DOMAIN_STATUS status;
-      status = tp_value_cast (&ubound_val, &ubound_val, &tp_Integer_domain, 1);
+      /* by the conversion the unpack found for the bound's term */
+      assert (conversion != NULL && conversion->source == DB_VALUE_DOMAIN_TYPE (&ubound_val));
+      TP_DOMAIN_STATUS status = tp_value_coerce_with_converter (&ubound_val, &ubound_val, &tp_Integer_domain,
+								conversion != NULL ? conversion->source : DB_TYPE_NULL,
+								conversion != NULL ? conversion->conv : NULL);
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  pr_clear_value (&ubound_val);
@@ -27775,9 +27787,11 @@ qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, TOPN_TUPLE * tuple, int count)
  * pred (in)	   : orderby_num predicate
  * vd (in)	   : value descriptor
  * ubound (in/out) : upper bound
+ * conversion (out): CBRD-27583 (D-94): the conversion of the bound's term into INTEGER (unpack), NULL without a bound
  */
 static int
-qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL_DESCR * vd, DB_VALUE * ubound)
+qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL_DESCR * vd, DB_VALUE * ubound,
+				  const DOMAIN_BOUND_CONVERSION ** conversion)
 {
   int error = NO_ERROR;
   REGU_VARIABLE *rhs;
@@ -27789,19 +27803,21 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
   assert_release (pred != NULL);
   assert_release (ubound != NULL);
 
+  const DOMAIN_BOUND_CONVERSION *left_conversion = NULL, *right_conversion = NULL;
   db_make_null (ubound);
   db_make_null (&left_bound);
   db_make_null (&right_bound);
+  *conversion = NULL;
 
   if (pred->type == T_PRED && pred->pe.m_pred.bool_op == B_AND)
     {
-      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.m_pred.lhs, vd, &left_bound);
+      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.m_pred.lhs, vd, &left_bound, &left_conversion);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
 	}
 
-      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.m_pred.rhs, vd, &right_bound);
+      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.m_pred.rhs, vd, &right_bound, &right_conversion);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
@@ -27819,10 +27835,12 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
       if (cmp == DB_GT)
 	{
 	  error = pr_clone_value (&left_bound, ubound);
+	  *conversion = left_conversion;
 	}
       else
 	{
 	  error = pr_clone_value (&right_bound, ubound);
+	  *conversion = right_conversion;
 	}
 
       if (error != NO_ERROR)
@@ -27866,6 +27884,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	{
 	  goto error_return;
 	}
+      *conversion = pred->pe.m_eval_term.et.et_comp.bound_conversion;
       goto cleanup;
     }
 
@@ -27873,6 +27892,7 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 
 error_return:
   db_make_null (ubound);
+  *conversion = NULL;
 
 cleanup:
   pr_clear_value (&left_bound);

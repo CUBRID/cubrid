@@ -105,6 +105,11 @@ namespace cubxasl
 							 * VARIANCE's, the compiler's plan
 							 * (domain_plan_analytic_accumulator), its converters looked
 							 * up at unpack */
+    /* CBRD-27583 (D-94): a MEDIAN / PERCENTILE whose sorted operand is a string: the domain its sort compares the
+     * operand in (the function's type) and the converter into it, found at unpack from the sort list's domain of the
+     * operand's key; NULL otherwise */
+    tp_domain *sort_key_cmp_dom;
+    TP_VALUE_CONVERTER sort_key_conv;
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
     void init ();

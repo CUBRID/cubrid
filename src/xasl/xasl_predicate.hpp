@@ -94,6 +94,7 @@ typedef enum
 struct DOMAIN_COMPARE;
 struct DOMAIN_OPERAND_COERCION;
 struct DOMAIN_PRUNE_CONVERSION;
+struct DOMAIN_BOUND_CONVERSION;
 struct tp_domain;
 
 namespace cubxasl
@@ -121,6 +122,9 @@ namespace cubxasl
     /* CBRD-27583 (S3-18): an ORDERBY_NUM upper bound `ORDERBY_NUM () < bound` (xasl_orderbynum_upper_bound): the
      * operand coercion of bound - 1, which the compiler decided (unpack arena); NULL for any other term */
     const DOMAIN_OPERAND_COERCION *bound_coercion;
+    /* CBRD-27583 (D-94): an ORDERBY_NUM upper bound's conversion into INTEGER (top-N) or an INST_NUM upper limit's into
+     * BIGINT, found by the unpack (unpack arena); NULL for any other term */
+    const DOMAIN_BOUND_CONVERSION *bound_conversion;
     /* CBRD-27583 (D-87): a partitioned class's term between a value (a constant, a bind) and what is not one: the
      * value's side (0 lhs, 1 rhs; -1 none) and the other side's domain, into which partition pruning converts the value
      * to hash it or to evaluate a partition expression on it (XASL generation, streamed), and the converter the unpack

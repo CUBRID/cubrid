@@ -148,6 +148,14 @@ struct DOMAIN_PRUNE_CONVERSION
   DB_TYPE source;		/* the type of the values conv takes: the value regu's, the list's elements' */
 };
 
+/* CBRD-27583 (D-94): the conversion of an ORDERBY_NUM upper bound into INTEGER (top-N) or of an INST_NUM upper limit
+ * into BIGINT (a parallel scan's limit), from the bound regu's domain, found by the unpack */
+struct DOMAIN_BOUND_CONVERSION
+{
+  TP_VALUE_CONVERTER conv;	/* NULL: the bound has that type already */
+  DB_TYPE source;		/* the bound regu's type */
+};
+
 /* The operands' operand coercion of T_ADD, T_SUB, T_MUL or T_DIV alone: operand_domain[0..1] and conv[0..1] of the
  * ARITH rule over operands of these types, and what the operator makes of them (arith), whatever the result domain. */
 void domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_OPERAND_COERCION * result);

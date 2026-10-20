@@ -2399,12 +2399,14 @@ fetch_peek_leftmost_numeric_regu (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_
  *   return          : NO_ERROR or error code
  *   thread_p (in)   : thread entry
  *   key_limit_l(in) : regu variable for lower key limit
+ *   conv (in)       : CBRD-27583 (D-94): the converter of key_limit_l's domain into BIGINT, found at unpack
+ *                     (KEY_INFO key_limit_l_conv)
  *   vd (in)         : value descriptor
  *   out_val (out)   : always set to a valid BIGINT on success;
  *                     DB_BIGINT_MAX on positive overflow (no rows), 0 on negative overflow (all rows)
  */
 int
-fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_limit_l,
+fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_limit_l, TP_VALUE_CONVERTER conv,
 				  VAL_DESCR * vd, DB_VALUE * out_val)
 {
   TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
@@ -2447,8 +2449,11 @@ fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_l
 	}
     }
 
-  /* coerce fetched value to BIGINT */
-  dom_status = tp_value_coerce (tmp_dbvalp, out_val, domainp);
+  /* coerce fetched value to BIGINT, by the converter the unpack found for the limit's domain */
+  const DB_TYPE planned = key_limit_l->domain != NULL ? TP_DOMAIN_TYPE (key_limit_l->domain) : DB_TYPE_NULL;
+  /* a bind type signature's plan: the value has its regu's type (D-77's lookup below it is unreachable) */
+  assert (DB_IS_NULL (tmp_dbvalp) || DB_VALUE_DOMAIN_TYPE (tmp_dbvalp) == planned);
+  dom_status = tp_value_coerce_with_converter (tmp_dbvalp, out_val, domainp, planned, conv);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (tmp_dbvalp) == DB_TYPE_NUMERIC)

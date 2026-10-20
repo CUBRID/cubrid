@@ -681,7 +681,7 @@ xasl_orderbynum_upper_bound (const PRED_EXPR * pred, REL_OP * op)
 /* *INDENT-OFF* */
 template <typename PRED, typename VISIT>
 inline void
-xasl_for_each_orderbynum_less_than (PRED * pred, VISIT && visit)
+xasl_for_each_orderbynum_upper_bound (PRED * pred, VISIT && visit)
 {
   if (pred == NULL)
     {
@@ -689,17 +689,33 @@ xasl_for_each_orderbynum_less_than (PRED * pred, VISIT && visit)
     }
   if (pred->type == T_PRED && pred->pe.m_pred.bool_op == B_AND)
     {
-      xasl_for_each_orderbynum_less_than (pred->pe.m_pred.lhs, visit);
-      xasl_for_each_orderbynum_less_than (pred->pe.m_pred.rhs, visit);
+      xasl_for_each_orderbynum_upper_bound (pred->pe.m_pred.lhs, visit);
+      xasl_for_each_orderbynum_upper_bound (pred->pe.m_pred.rhs, visit);
       return;
     }
   REL_OP op;
   const REGU_VARIABLE *bound = xasl_orderbynum_upper_bound (pred, &op);
-  if (bound != NULL && op == R_LT)
+  if (bound != NULL)
     {
-      visit (&pred->pe.m_eval_term.et.et_comp, bound);
+      visit (&pred->pe.m_eval_term.et.et_comp, bound, op);
     }
 }
+
+template <typename PRED, typename VISIT>
+inline void
+xasl_for_each_orderbynum_less_than (PRED * pred, VISIT && visit)
+{
+  /* *INDENT-OFF* */
+  xasl_for_each_orderbynum_upper_bound (pred, [&visit] (auto * term, const REGU_VARIABLE * bound, REL_OP op)
+    {
+      if (op == R_LT)
+	{
+	  visit (term, bound);
+	}
+    });
+  /* *INDENT-ON* */
+}
+
 /* *INDENT-ON* */
 
  /* pseudocolumns offsets in tuple (from end) */
@@ -1221,6 +1237,10 @@ struct xasl_node
   PRED_EXPR *ordbynum_pred;	/* orderby_num() predicate */
   DB_VALUE *ordbynum_val;	/* orderby_num() value result */
   REGU_VARIABLE *orderby_limit;	/* the limit to use in top K sorting. Computed from [ordby_num < X] clauses */
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  TP_VALUE_CONVERTER orderby_limit_conv;	/* CBRD-27583 (D-94): orderby_limit's converter into INTEGER, found at
+						 * unpack from its domain; not serialized */
+#endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
   int ordbynum_flag;		/* stop or continue ordering? */
 
   VAL_LIST *single_tuple;	/* single tuple result */
