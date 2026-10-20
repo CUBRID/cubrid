@@ -7551,6 +7551,11 @@ pt_eval_type_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 		break;
 	      }
 	    common_type = pt_common_type (common_type, PT_TYPE_ENUMERATION);
+	    if (common_type == PT_TYPE_MAYBE)
+	      {
+		/* an ENUM with an undetermined argument is resolved as a string, as with a string literal */
+		common_type = PT_TYPE_VARCHAR;
+	      }
 	    recurs_expr = node;
 	    while (PT_IS_RECURSIVE_EXPRESSION (recurs_expr) && op == recurs_expr->info.expr.op)
 	      {
