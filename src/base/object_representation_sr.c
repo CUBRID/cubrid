@@ -4793,8 +4793,7 @@ or_is_replication_candidate_key (const OR_INDEX * index)
       return true;
     }
 
-  if ((index->type != BTREE_UNIQUE && index->type != BTREE_REVERSE_UNIQUE) || index->n_atts <= 0
-      || index->atts == NULL)
+  if ((index->type != BTREE_UNIQUE && index->type != BTREE_REVERSE_UNIQUE) || index->n_atts <= 0 || index->atts == NULL)
     {
       return false;
     }
