@@ -871,7 +871,9 @@ qfile_compare_tuple_values (QFILE_TUPLE_RECORD * lhs, QFILE_TUPLE_RECORD * rhs, 
 /*
  * qfile_unify_types () - CBRD-27583 (D-90): the two lists of a set operation or of a recursive CTE have one domain per
  *   column - XASL generation gives a branch column of NULLs the unified domain (pt_type_null_list_column) - so their
- *   tuples are copied as they are
+ *   tuples are copied as they are. Two JSON domains of different schemas, or two variable strings of different
+ *   precisions, are one column type whose values are written alike: type checking casts neither (as develop), so
+ *   their domains stay apart and the first list's stands
  *   return: NO_ERROR, or ER_QPROC_INCOMPATIBLE_TYPES / ER_QSTR_INCOMPATIBLE_COLLATIONS
  *   list_id1(in): Destination list identifier
  *   list_id2(in): Source list identifier
@@ -884,7 +886,10 @@ qfile_unify_types (const QFILE_LIST_ID * list_id1_p, const QFILE_LIST_ID * list_
 
   for (int i = 0; i < max_count; i++)
     {
-      if (list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i])
+      const DB_TYPE type1 = TP_DOMAIN_TYPE (list_id1_p->type_list.domp[i]);
+      if (list_id1_p->type_list.domp[i] != list_id2_p->type_list.domp[i]
+	  && !(type1 == TP_DOMAIN_TYPE (list_id2_p->type_list.domp[i])
+	       && (type1 == DB_TYPE_JSON || (pr_is_string_type (type1) && pr_is_variable_type (type1)))))
 	{
 	  assert (false);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INCOMPATIBLE_TYPES, 0);
