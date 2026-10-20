@@ -17181,40 +17181,17 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 
 	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
 	    {
-	      PT_NODE *final_node = NULL;
-	      REGU_VARIABLE_LIST regu_list_new, prev = NULL;
-	      REGU_VARIABLE *regu_var_temp;
+	      PT_NODE *final_node;
 
 	      for (final_node = select_list_final; final_node != NULL; final_node = final_node->next)
 		{
 		  if (pt_is_instnum (final_node))
 		    {
-		      buildlist->a_outptr_list_ex->valptr_cnt++;
-
-		      regu_alloc (regu_list_new);
-		      if (regu_list_new == NULL)
-			{
-			  goto analytic_exit_on_error;
-			}
-
-		      regu_var_temp = pt_make_regu_numbering (parser, final_node);
-		      regu_list_new->value = *regu_var_temp;
-
-		      if (prev == NULL)
-			{
-			  regu_list_new->next = buildlist->a_outptr_list_ex->valptrp;
-			  buildlist->a_outptr_list_ex->valptrp = regu_list_new;
-			}
-		      else
-			{
-			  regu_list_new->next = prev->next;
-			  prev->next = regu_list_new;
-			}
-		      prev = regu_list_new;
-		    }
-		  else
-		    {
-		      prev = (prev != NULL) ? prev->next : buildlist->a_outptr_list_ex->valptrp;
+		      /* inst_num () in the select list needs its value for every row. The scan writes the
+		       * intermediate list and the final output list is built from it afterwards, which cannot
+		       * recover that value, so give up the optimization for this query. */
+		      XASL_CLEAR_FLAG (xasl, XASL_ANALYTIC_USES_LIMIT_OPT);
+		      break;
 		    }
 		}
 	    }
