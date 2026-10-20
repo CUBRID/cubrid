@@ -9609,12 +9609,14 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 			       * and the other equi-join terms go to on_sel as independent of the key;
 			       * the match is underestimated when a term depends on the key,
 			       * since telling it apart needs multi-column statistics or an FK;
-			       * the columns of a composite FK (fk_excluded_terms) match together and are the key as a whole
+			       * the columns of a composite FK (fk_excluded_terms) match together and are the key as a whole:
+			       * a pair matches on it with the FK floor (1 / NCARD (pk)), and the outer key is among the inner
+			       * keys at most as often as its least common column
 			       */
 			      if (BITSET_MEMBER (fk_excluded_terms, i))
 				{
-				  key_factor *= head_factor;
-				  key_sel *= term_sel;
+				  key_factor = MIN (key_factor, head_factor);
+				  key_sel = fk_floor_product;
 				}
 			      else if (bitset_is_empty (&fk_excluded_terms) && head_factor <= key_factor)
 				{
