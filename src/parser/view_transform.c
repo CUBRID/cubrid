@@ -14908,6 +14908,16 @@ mq_is_order_dependent_node (PT_NODE * node)
       return false;
     }
 
+  /* An analytic function's arguments are evaluated during the initial scan, before both the
+   * analytic sort and the query's ORDER BY. Lifting the function above a sorted derived table
+   * (mq_rewrite_order_dependent_query) cannot make an assignment inside it follow ORDER BY,
+   * and it leaves the derived table flagged as having analytics with none left in it, which
+   * pt_to_buildlist_proc () then dereferences (CBRD-27503). Treat it as order independent. */
+  if (PT_IS_ANALYTIC_NODE (node))
+    {
+      return false;
+    }
+
   /* check expression node */
   if (PT_IS_EXPR_NODE (node))
     {
@@ -14967,6 +14977,14 @@ mq_mark_order_dependent_nodes (PT_NODE * node)
 
   if (node == NULL)
     {
+      return false;
+    }
+
+  /* same rule as mq_is_order_dependent_node (): an analytic function stays in the derived table
+   * as an order independent subexpression, even when an assignment sits next to it */
+  if (PT_IS_ANALYTIC_NODE (node))
+    {
+      PT_SET_ORDER_DEPENDENT_FLAG (node, false);
       return false;
     }
 
