@@ -27,6 +27,7 @@
 #include "binaryheap.h"
 #include "compile_context.h"
 #include "config.h"
+#include "domain_rules.h"
 #include "system_parameter.h"
 #include "list_file.h"
 #include "perf_monitor.h"
@@ -296,6 +297,13 @@ static INT32 xcache_entry_get_one_clonesize (XASL_CACHE_ENTRY * xcache_entry);
 static bool xcache_entry_is_related_to_oid (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
 static bool xcache_entry_is_related_to_sha1 (XASL_CACHE_ENTRY * xcache_entry, const void *arg);
 static XCACHE_CLEANUP_REASON xcache_need_cleanup (void);
+static const char *xcache_skip_quoted (const char *p);
+static int xcache_param_count (const char *text);
+static int xcache_decide_param_compare (DB_TYPE type, int collation, DOMAIN_COMPARE * compare);
+static int xcache_decide_param_compares (const char *text, int count, DOMAIN_COMPARE * compares);
+
+/* CBRD-27583 (D-94): the suffix after which the cache key text counts its parameter positions (PT_PRINT_HOST_VAR_COUNT) */
+#define XCACHE_PARAM_COUNT_MARK ";bind_var_cnt="
 
 /*
  * xcache_initialize () - Initialize XASL cache.
@@ -498,6 +506,8 @@ xcache_entry_init (void *entry)
   xcache_entry->sql_info.sql_hash_text = NULL;
   xcache_entry->sql_info.sql_user_text = NULL;
   xcache_entry->sql_info.sql_plan_text = NULL;
+  xcache_entry->param_compares = NULL;
+  xcache_entry->n_param_compares = 0;
 
   XASL_ID_SET_NULL (&xcache_entry->xasl_id);
   xcache_entry->stream.xasl_id = NULL;
@@ -600,8 +610,10 @@ xcache_entry_uninit (void *entry)
 
       if (xcache_entry->sql_info.sql_hash_text != NULL)
 	{
+	  /* with the other texts and param_compares */
 	  free_and_init (xcache_entry->sql_info.sql_hash_text);
 	}
+      xcache_entry->param_compares = NULL;
 
       XASL_ID_SET_NULL (&xcache_entry->xasl_id);
 
@@ -637,6 +649,7 @@ xcache_entry_uninit (void *entry)
       xcache_entry->sql_info.sql_hash_text = NULL;
       xcache_entry->sql_info.sql_plan_text = NULL;
       xcache_entry->sql_info.sql_user_text = NULL;
+      xcache_entry->param_compares = NULL;
       XASL_ID_SET_NULL (&xcache_entry->xasl_id);
 
       assert (xcache_entry->n_cache_clones == 0);
@@ -1470,6 +1483,164 @@ xcache_need_cleanup (void)
 }
 
 /*
+ * xcache_skip_quoted () - CBRD-27583 (D-94): the last character of the quoted part of a cache key text that starts at
+ *   p - a string literal in single quotes, which doubles its quotes, or an identifier in brackets or double quotes -
+ *   or p itself when none starts there
+ */
+static const char *
+xcache_skip_quoted (const char *p)
+{
+  const char close = *p == '\'' ? '\'' : *p == '[' ? ']' : *p == '"' ? '"' : '\0';
+  if (close == '\0')
+    {
+      return p;
+    }
+  for (p++; *p != '\0'; p++)
+    {
+      if (*p != close)
+	{
+	  continue;
+	}
+      if (close != '\'' || p[1] != '\'')
+	{
+	  return p;
+	}
+      /* a doubled quote */
+      p++;
+    }
+  return p - 1;
+}
+
+/*
+ * xcache_param_count () - CBRD-27583 (D-94): the count of parameter positions a cache key text names after its
+ *   statement, 0 without the count
+ */
+static int
+xcache_param_count (const char *text)
+{
+  const size_t mark_length = sizeof (XCACHE_PARAM_COUNT_MARK) - 1;
+  for (const char *p = text; *p != '\0'; p++)
+    {
+      p = xcache_skip_quoted (p);
+      if (strncmp (p, XCACHE_PARAM_COUNT_MARK, mark_length) == 0)
+	{
+	  const int count = atoi (p + mark_length);
+	  return count > 0 ? count : 0;
+	}
+    }
+  return 0;
+}
+
+/*
+ * xcache_decide_param_compare () - CBRD-27583 (D-94): the comparison of two values of a parameter position's type
+ *   return: NO_ERROR, or ER_FAILED for a type no domain has
+ */
+static int
+xcache_decide_param_compare (DB_TYPE type, int collation, DOMAIN_COMPARE * compare)
+{
+  const TP_DOMAIN *domain = tp_domain_resolve_default (type);
+  if (domain != NULL && TP_TYPE_HAS_COLLATION (type))
+    {
+      domain = tp_domain_resolve (type, NULL, domain->precision, domain->scale, NULL, collation);
+    }
+  if (domain == NULL)
+    {
+      return ER_FAILED;
+    }
+  const TP_DOMAIN *const domains[2] = { domain, domain };
+  bool by_type;
+  return domain_decide_comparison (domains, compare, &by_type);
+}
+
+/*
+ * xcache_decide_param_compares () - CBRD-27583 (D-94): how the result cache compares the values bound to each
+ *   parameter position of a statement: as values of the position's type, which the bind type signature of the cache
+ *   key text names in each of the position's tokens (pt_print_host_var: " ?:N:type", a string's
+ *   " ?:N:type.codeset.collation", then the signature's suffixes)
+ *   return: count, or -1 when two tokens of a position name different types or one names none
+ *   compares(out): count comparisons
+ */
+static int
+xcache_decide_param_compares (const char *text, int count, DOMAIN_COMPARE * compares)
+{
+  if (count <= 0)
+    {
+      return count;
+    }
+  /* each position's type and collation as its first token names them, -1 before */
+  int *named = (int *) malloc (count * sizeof (int));
+  if (named == NULL)
+    {
+      return -1;
+    }
+  for (int i = 0; i < count; i++)
+    {
+      named[i] = -1;
+    }
+
+  int result = count;
+  const size_t mark_length = sizeof (XCACHE_PARAM_COUNT_MARK) - 1;
+  for (const char *p = text; *p != '\0' && result >= 0; p++)
+    {
+      p = xcache_skip_quoted (p);
+      if (strncmp (p, XCACHE_PARAM_COUNT_MARK, mark_length) == 0)
+	{
+	  break;
+	}
+      if (p[0] != '?' || p[1] != ':')
+	{
+	  continue;
+	}
+      char *end;
+      const long index = strtol (p + 2, &end, 10);
+      long type = -1, collation = 0;
+      if (end > p + 2 && *end == ':' && isdigit ((unsigned char) end[1]))
+	{
+	  type = strtol (end + 1, &end, 10);
+	}
+      if (type >= 0 && *end == '.')
+	{
+	  /* the codeset, which the collation implies */
+	  (void) strtol (end + 1, &end, 10);
+	  collation = *end == '.' && isdigit ((unsigned char) end[1]) ? strtol (end + 1, &end, 10) : -1;
+	}
+      if (index < 0 || index >= count || type < DB_TYPE_NULL || type > DB_TYPE_LAST || collation < 0
+	  || collation >= LANG_MAX_COLLATIONS)
+	{
+	  result = -1;
+	  break;
+	}
+      const int key = (int) type * LANG_MAX_COLLATIONS + (int) collation;
+      if (named[index] == -1)
+	{
+	  named[index] = key;
+	  if (xcache_decide_param_compare ((DB_TYPE) type, (int) collation, &compares[index]) != NO_ERROR)
+	    {
+	      result = -1;
+	    }
+	}
+      else if (named[index] != key)
+	{
+	  result = -1;
+	}
+      p = end - 1;
+    }
+  for (int i = 0; i < count && result >= 0; i++)
+    {
+      if (named[i] == -1)
+	{
+	  /* a user position a QUERY_CACHE subquery reads only by its derived positions (do_subquery_derives_from) has
+	   * no token in the subquery's text: its values compare by their types, as develop compares them */
+	  const TP_DOMAIN *const none[2] = { NULL, NULL };
+	  bool by_type;
+	  (void) domain_decide_comparison (none, &compares[i], &by_type);
+	}
+    }
+  free (named);
+  return result;
+}
+
+/*
  * xcache_insert () - Insert or recompile XASL cache entry.
  *
  * return	      : Error code.
@@ -1500,6 +1671,9 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
   struct timeval time_stored;
   size_t sql_hash_text_len = 0, sql_user_text_len = 0, sql_plan_text_len = 0;
   char *strbuf = NULL;
+  size_t param_compares_offset = 0;
+  int n_param_compares = 0;
+  DOMAIN_COMPARE *param_compares = NULL;
   assert (xcache_entry != NULL && *xcache_entry == NULL);
   assert (stream != NULL);
   assert (stream->buffer != NULL || !context->recompile_xasl);
@@ -1545,11 +1719,16 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
     {
       sql_plan_text_len = strlen (context->sql_plan_text) + 1;
     }
-  strbuf = (char *) malloc (sql_hash_text_len + sql_user_text_len + sql_plan_text_len);
+  /* CBRD-27583 (D-94): the result cache's comparisons of the parameter positions follow the texts */
+  n_param_compares = xcache_param_count (context->sql_hash_text);
+  param_compares_offset = sql_hash_text_len + sql_user_text_len + sql_plan_text_len;
+  param_compares_offset = (param_compares_offset + alignof (DOMAIN_COMPARE) - 1) / alignof (DOMAIN_COMPARE)
+    * alignof (DOMAIN_COMPARE);
+  strbuf = (char *) malloc (param_compares_offset + n_param_compares * sizeof (DOMAIN_COMPARE));
   if (strbuf == NULL)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      sql_hash_text_len + sql_user_text_len + sql_plan_text_len);
+	      param_compares_offset + n_param_compares * sizeof (DOMAIN_COMPARE));
       error_code = ER_OUT_OF_VIRTUAL_MEMORY;
       goto error;
     }
@@ -1570,6 +1749,9 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
       memcpy (strbuf, context->sql_plan_text, sql_plan_text_len);
       sql_plan_text = strbuf;
     }
+
+  param_compares = n_param_compares > 0 ? (DOMAIN_COMPARE *) (sql_hash_text + param_compares_offset) : NULL;
+  n_param_compares = xcache_decide_param_compares (sql_hash_text, n_param_compares, param_compares);
 
   /* save stored time */
   (void) gettimeofday (&time_stored, NULL);
@@ -1608,6 +1790,8 @@ xcache_insert (THREAD_ENTRY * thread_p, const compile_context * context, XASL_ST
       (*xcache_entry)->sql_info.sql_hash_text = sql_hash_text;
       (*xcache_entry)->sql_info.sql_user_text = sql_user_text;
       (*xcache_entry)->sql_info.sql_plan_text = sql_plan_text;
+      (*xcache_entry)->param_compares = param_compares;
+      (*xcache_entry)->n_param_compares = n_param_compares;
       (*xcache_entry)->stream = *stream;
       (*xcache_entry)->time_last_rt_check = (INT64) time_stored.tv_sec;
       (*xcache_entry)->time_last_used = time_stored;
@@ -2017,6 +2201,10 @@ xcache_entry_get_entrysize (XASL_CACHE_ENTRY * xcache_entry)
   if (xcache_entry->sql_info.sql_plan_text)
     {
       entry_size += strlen (xcache_entry->sql_info.sql_plan_text) + 1;
+    }
+  if (xcache_entry->n_param_compares > 0)
+    {
+      entry_size += sizeof (DOMAIN_COMPARE) * xcache_entry->n_param_compares;
     }
   return entry_size;
 }

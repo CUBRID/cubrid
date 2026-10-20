@@ -48,6 +48,7 @@
 // forward definitions
 struct or_buf;
 typedef struct or_buf OR_BUF;
+struct DOMAIN_COMPARE;
 struct valptr_list_node;
 struct xasl_node_header;
 
@@ -79,12 +80,22 @@ struct qfile_page_header
 #define QFILE_PAGE_HEADER_INITIALIZER \
   { 0, NULL_PAGEID, NULL_PAGEID, 0, NULL_PAGEID, NULL_VOLID, NULL_VOLID, NULL_VOLID }
 
+/* CBRD-27583 (D-94): the key a query result is cached under: the parameter values bound to it and how each compares,
+ * the XASL cache entry's param_compares (NULL: by the values' types) */
+typedef struct qfile_list_cache_key QFILE_LIST_CACHE_KEY;
+struct qfile_list_cache_key
+{
+  int size;
+  DB_VALUE *vals;
+  const DOMAIN_COMPARE *compares;
+};
+
 /* query result(list file) cache entry type definition */
 typedef struct qfile_list_cache_entry QFILE_LIST_CACHE_ENTRY;
 struct qfile_list_cache_entry
 {
   int list_ht_no;		/* list_ht no to which this entry belongs */
-  DB_VALUE_ARRAY param_values;	/* parameter values bound to this result */
+  QFILE_LIST_CACHE_KEY param_values;	/* parameter values bound to this result */
   QFILE_LIST_ID list_id;	/* list file(query result) identifier */
 #if defined(SERVER_MODE)
   QFILE_LIST_CACHE_ENTRY *tran_next;	/* next entry in the transaction list */
