@@ -67,11 +67,6 @@ on:
         required: false
         default: ""
         type: string
-      tc:
-        description: "Trial: a PR number in the suite's testcase repo. Runs only the cases it changes, from its head, and posts to that PR. Needs pr and one suite"
-        required: false
-        default: ""
-        type: string
       nightly:
         description: "Batch. With sha empty: rehearse the batch. With sha set: test that develop commit and post its statuses"
         required: false
@@ -84,20 +79,12 @@ permissions: {}
 # push and dispatch key on the SHA: per ref, a third merge drops the second, and two force_build
 # dispatches would race the republish. Every /run of a PR shares one group: they post the same
 # statuses. A comment that asks for nothing lands alone, or it would cancel a running suite.
-# A tc trial posts to another repo's PR, so it is matched first and never cancels a suite run; a
-# comment keys on its whole text, since an expression cannot cut the PR number out of it.
 concurrency:
   group: >-
     gha-ci-${{ github.event_name == 'push'
     && format('push-{0}', github.sha)
-    || github.event_name == 'workflow_dispatch' && inputs.tc != ''
-    && format('pr-{0}-tc-{1}-{2}', inputs.pr, inputs.tc, inputs.suite)
     || github.event_name == 'workflow_dispatch'
     && format('dispatch-{0}', inputs.sha)
-    || github.event.issue.pull_request != null
-    && startsWith(github.event.comment.body, '/run')
-    && contains(github.event.comment.body, 'tc=')
-    && format('pr-{0}-tc-{1}', github.event.issue.number, github.event.comment.body)
     || github.event.issue.pull_request != null
     && startsWith(github.event.comment.body, '/run')
     && contains(github.event.comment.body, 'rerun')
@@ -199,26 +186,10 @@ jobs:
       sabotage: ${{ steps.g.outputs.sabotage }}
       testtools: ${{ steps.g.outputs.testtools }}
       tc_until: ${{ steps.g.outputs.tc_until }}
-      tc: ${{ steps.g.outputs.tc }}
-      tc_repo: ${{ steps.g.outputs.tc_repo }}
-      tc_sha: ${{ steps.g.outputs.tc_sha }}
-      tc_dirs: ${{ steps.g.outputs.tc_dirs }}
     defaults:
       run:
         shell: bash --noprofile --norc -euo pipefail {0}
     steps:
-      # A tc trial's PR may be in the private repo, which GITHUB_TOKEN cannot read.
-      - name: Testcase repos token
-        id: tc-token
-        if: inputs.tc != '' || contains(github.event.comment.body, 'tc=')
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.TC_APP_ID }}
-          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
-          repositories: cubrid-testcases,cubrid-testcases-private-ex
-          owner: CUBRID
-          permission-pull-requests: read
-
       - name: Resolve the trigger
         id: g
         env:
@@ -236,26 +207,12 @@ jobs:
           IN_RERUN: ${{ inputs.rerun_from }}
           IN_SAB: ${{ inputs.sabotage }}
           IN_TT: ${{ inputs.testtools }}
-          IN_TC: ${{ inputs.tc }}
           IN_NIGHTLY: ${{ inputs.nightly }}
           GH_TOKEN: ${{ github.token }}
-          TC_TOKEN: ${{ steps.tc-token.outputs.token }}
           REPO: ${{ github.repository }}
         run: |
           emit() { printf '%s=%s\n' "$1" "$2" >> "$GITHUB_OUTPUT"; }
-          # A trial ran another PR's cases: re-running its failures must not grade the engine PR.
-          source_jobs() {
-            [[ "$1" =~ ^[0-9]{1,20}$ ]] || { echo "::error::rerun_from must be a run id (integer)"; exit 1; }
-            runjobs=$(gh api --paginate "repos/${REPO}/actions/runs/$1/jobs?per_page=100" \
-              --jq '.jobs[] | select(.name | test("^(shard|trial) ")) | [.conclusion, .name] | @tsv') || {
-              echo "::error::could not read the jobs of run $1"; exit 1; }
-            if grep -q $'\ttrial ' <<<"$runjobs"; then
-              echo "::error::run $1 is a tc trial, which has no re-run. Comment /run <suite> tc=<PR> again"
-              emit run false
-              exit 0
-            fi
-          }
-          par=''; limit=0; force=false; rerun=''; sab=none; tt=''; tc=''; dup=''
+          par=''; limit=0; force=false; rerun=''; sab=none; tt=''
           test_run=false; pr=''; ns='pr'; cache_write=false; sel=''
 
           case "$EV" in
@@ -279,7 +236,7 @@ jobs:
               fi
               sha="$IN_SHA"; pr="$IN_PR"
               par="$IN_PAR"; limit="$IN_LIMIT"; force="$IN_FORCE"
-              rerun="$IN_RERUN"; sab="$IN_SAB"; tt="$IN_TT"; tc="$IN_TC"
+              rerun="$IN_RERUN"; sab="$IN_SAB"; tt="$IN_TT"
               sel="${IN_SUITE:-shell}"
               case "$sel" in
                 shell|sql|medium) ;;
@@ -292,25 +249,22 @@ jobs:
               esac
               test_run=true
               if [ "$IN_NIGHTLY" = true ]; then ns=develop; fi
-              [ -z "$rerun" ] || source_jobs "$rerun"
               ;;
 
             issue_comment)
               pr="$ISSUE"
               # The body ends in CRLF: a CR left on the last suite word fails its case match.
               req=$(printf '%s' "$BODY" | tr -d '\r')
-              while [[ "$req" =~ ^(/run[[:space:]].*)[[:space:]]+(testtools|tc)=([^[:space:]]+)[[:space:]]*$ ]]; do
+              if [[ "$req" =~ ^(/run[[:space:]].*)[[:space:]]+testtools=([^[:space:]]+)[[:space:]]*$ ]]; then
                 req="${BASH_REMATCH[1]}"
-                case "${BASH_REMATCH[2]}" in
-                  tc) [ -z "$tc" ] || dup=tc; tc="${BASH_REMATCH[3]}" ;;
-                  *)  [ -z "$tt" ] || dup=testtools; tt="${BASH_REMATCH[3]}" ;;
-                esac
-              done
-              [ -z "$dup" ] || { echo "::error::$dup= appears twice"; exit 1; }
+                tt="${BASH_REMATCH[2]}"
+              fi
               if [[ "$req" =~ ^/run[[:space:]]+rerun[[:space:]]+([0-9]{1,20})[[:space:]]*$ ]]; then
                 rerun="${BASH_REMATCH[1]}"
                 # No run directory here: the source run's job names carry the suites.
-                source_jobs "$rerun"
+                runjobs=$(gh api --paginate "repos/${REPO}/actions/runs/${rerun}/jobs?per_page=100" \
+                  --jq '.jobs[] | select(.name | startswith("shard ")) | [.conclusion, .name] | @tsv') || {
+                  echo "::error::could not read the jobs of run ${rerun}"; exit 1; }
                 known=$(jq -r 'keys | join("|")' <<<"$SUITES")
                 sel=$(printf '%s\n' "$runjobs" \
                   | awk -F'\t' -v k="^(${known})$" \
@@ -370,43 +324,6 @@ jobs:
             exit 1
           fi
 
-          tc_repo=''; tc_sha=''; tc_dirs=''
-          if [ -n "$tc" ]; then
-            tc="${tc#\#}"
-            [[ "$tc" =~ ^[0-9]{1,7}$ ]] || { echo "::error::tc must be a PR number, got: ${tc}"; exit 1; }
-            [ -z "$rerun" ] || { echo "::error::a tc trial has no re-run. Comment /run <suite> tc=${tc} again"; exit 1; }
-            [ "$(wc -w <<<"$sel")" -eq 1 ] || { echo "::error::tc takes exactly one suite: shell, sql or medium"; exit 1; }
-            if [ "$EV" = workflow_dispatch ]; then
-              [ -n "$pr" ] || { echo "::error::tc needs pr: the trial's status names the engine PR"; exit 1; }
-              { [ -z "$par" ] && [ "${limit:-0}" = 0 ]; } || { echo "::error::tc takes neither parallelism nor limit"; exit 1; }
-              [ "$force" != true ] || {
-                echo "::error::tc takes no force_build: a trial reuses the engine PR's build, and two forced publishes of one SHA race"; exit 1; }
-              [ "$IN_NIGHTLY" != true ] || { echo "::error::tc takes no nightly"; exit 1; }
-            fi
-            post_status=false
-            tc_repo=$(jq -r --arg s "$sel" '.[$s].tc_repo' <<<"$SUITES")
-            pull=$(GH_TOKEN="$TC_TOKEN" gh api "repos/CUBRID/${tc_repo}/pulls/${tc}" \
-              --jq '[.head.sha, .user.login] | @tsv') || {
-              echo "::error::could not read ${tc_repo} PR ${tc}"; exit 1; }
-            read -r tc_sha author <<<"$pull"
-            # Shards are privileged pods on the internal network. Not author_association: to an app, a
-            # member who hides the membership is a CONTRIBUTOR.
-            perm=$(GH_TOKEN="$TC_TOKEN" gh api "repos/CUBRID/${tc_repo}/collaborators/${author}/permission" --jq .permission) || {
-              echo "::error::could not read the permission of ${author} on ${tc_repo}"; exit 1; }
-            case "$perm" in
-              admin|write) ;;
-              *) echo "::error::${tc_repo}#${tc} is by ${author}, who has ${perm} access there; only the cases of someone who can push to ${tc_repo} run here"; exit 1 ;;
-            esac
-            tc_dirs=$(GH_TOKEN="$TC_TOKEN" gh api --paginate "repos/CUBRID/${tc_repo}/pulls/${tc}/files?per_page=100" \
-                --jq '.[] | select(.status != "removed") | .filename' \
-              | sed -nE "s#^(${sel}/.*)/(cases|answers)/[^/]+\$#\1/cases#p" | sort -u \
-              | jq -Rsc 'split("\n") | map(select(length > 0))') || {
-              echo "::error::could not list the files of ${tc_repo} PR ${tc}"; exit 1; }
-            [ "$tc_dirs" != '[]' ] || {
-              echo "::error::${tc_repo}#${tc} changes no ${sel} case: no file directly in a cases/ or answers/ directory under ${sel}/"
-              exit 1; }
-          fi
-
           # A batch child tests a commit merged hours ago: later answer fixes must not grade it.
           tc_until=''
           if [ "$EV" = workflow_dispatch ] && [ "$IN_NIGHTLY" = true ]; then
@@ -434,11 +351,7 @@ jobs:
           emit sabotage "$sab"
           emit testtools "$tt"
           emit tc_until "$tc_until"
-          emit tc "$tc"
-          emit tc_repo "$tc_repo"
-          emit tc_sha "$tc_sha"
-          emit tc_dirs "$tc_dirs"
-          echo "resolved: event=$EV sha=$sha pr=${pr:-none} suites=$suites test=$test_run namespace=$ns ccache_write=$cache_write status=$post_status${rerun:+ rerun_from=$rerun}${tt:+ testtools=$tt}${tc_until:+ tc_until=$tc_until}${tc:+ tc=$tc_repo#$tc@$tc_sha}"
+          echo "resolved: event=$EV sha=$sha pr=${pr:-none} suites=$suites test=$test_run namespace=$ns ccache_write=$cache_write status=$post_status${rerun:+ rerun_from=$rerun}${tt:+ testtools=$tt}${tc_until:+ tc_until=$tc_until}"
 
   # No cursor: the commit status is the record, so a missed night heals on the next.
   nightly:
@@ -727,7 +640,7 @@ jobs:
     name: build status
     needs: [gate, build]
     # !cancelled(), not always(): a superseded run's failure could land after the new verdict.
-    if: ${{ !cancelled() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.post_status == 'true' && needs.gate.outputs.pr != '' }}
+    if: ${{ !cancelled() && needs.gate.outputs.run == 'true' && needs.gate.outputs.test == 'true' && needs.gate.outputs.pr != '' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
@@ -778,9 +691,6 @@ jobs:
       WORKDIR: /home
       BUILD_NS: ${{ needs.gate.outputs.build_ns }}
       SUITES_RUN: ${{ join(fromJson(needs.gate.outputs.suites), ' ') }}
-      TC_PR: ${{ needs.gate.outputs.tc }}
-      TC_SHA: ${{ needs.gate.outputs.tc_sha }}
-      TC_DIRS: ${{ needs.gate.outputs.tc_dirs }}
     outputs:
       matrix: ${{ steps.split.outputs.matrix }}
       rundir: ${{ steps.split.outputs.rundir }}
@@ -789,7 +699,6 @@ jobs:
       build_run_id: ${{ steps.build.outputs.build_run_id }}
       ctp_sha: ${{ steps.tc.outputs.ctp_sha }}
       ctp_branch: ${{ steps.tc.outputs.ctp_branch }}
-      tc_pr: ${{ needs.gate.outputs.tc }}
 
     steps:
       - name: Validate inputs
@@ -923,17 +832,16 @@ jobs:
             use_token
             # No fallback to develop: the verdict would be against the wrong cases.
             TC_REPO_URL="https://github.com/CUBRID/${repo}.git"
-            if [ -n "$TC_SHA" ]; then TC_BRANCH="pull/${TC_PR}/head"
-            elif [ -n "$INPUT_PR" ]; then TC_BRANCH="tc/pr-${INPUT_PR}"; else TC_BRANCH=develop; fi
+            if [ -n "$INPUT_PR" ]; then TC_BRANCH="tc/pr-${INPUT_PR}"; else TC_BRANCH=develop; fi
             probe_rc=0
-            [ -n "$TC_SHA" ] || probe_branch "$TC_REPO_URL" "$TC_BRANCH" || probe_rc=$?
+            probe_branch "$TC_REPO_URL" "$TC_BRANCH" || probe_rc=$?
             case "$probe_rc" in
               0) ;;
               2) echo "::error::$repo has no $TC_BRANCH. TC Branch Sync creates tc/pr-<N> when the pull request opens"; exit 1 ;;
               *) echo "::error::could not reach $TC_REPO_URL after 5 attempts"; exit 1 ;;
             esac
 
-            export BRANCH_TESTCASES="${TC_SHA:-$TC_BRANCH}"
+            export BRANCH_TESTCASES="$TC_BRANCH"
             # Only the node mirror answers as of a past instant: the entrypoint fetches --depth 1.
             if [ -n "$TC_UNTIL" ]; then
               mirror="${seed}.git"
@@ -979,8 +887,6 @@ jobs:
             par="${PAR:-$(attr "$suite" par_default)}"
             # One light-lane shard for a re-run: spread out, it would delay other PRs' first runs.
             if [ -n "$RERUN_FROM" ]; then par=1; runner=cubrid-arc-light; fi
-            # Its cases sit inside top-level directories of thousands; the trial runs them alone.
-            if [ -n "$TC_DIRS" ]; then unit=case; par=1; runner=cubrid-arc-light; fi
             dir="$WORKDIR/$repo"
             root="$dir/$suite"
             out="$rundir/$suite"
@@ -995,10 +901,6 @@ jobs:
                 find "$root" -mindepth 1 -maxdepth 1 -type d -name '_*' | sed "s#^$WORKDIR/##" | sort > /tmp/all.list ;;
               *) echo "::error::unknown unit '$unit' for suite $suite"; exit 1 ;;
             esac
-            if [ -n "$TC_DIRS" ]; then
-              jq -r --arg r "$repo" '.[] | "\($r)/\(.)"' <<<"$TC_DIRS" > /tmp/tc_dirs.list
-              awk 'NR == FNR {d[$0]; next} {p = $0; sub(/\/[^\/]*$/, "", p)} p in d' /tmp/tc_dirs.list /tmp/cases.list > /tmp/all.list
-            fi
 
             if [ -n "$RERUN_FROM" ]; then
               src="$CI_ROOT/runs/$RERUN_FROM/$suite/collect/failed.list"
@@ -1068,8 +970,6 @@ jobs:
             if [ "$nunit" -eq 0 ]; then
               if [ -n "$RERUN_FROM" ]; then
                 echo "::error::nothing to run: none of the $want ${unit}s run $RERUN_FROM left unhandled can run now. Use /run $suite"
-              elif [ -n "$TC_DIRS" ]; then
-                echo "::error::no $suite case in the cases/ directories tc PR #$TC_PR changes${excl:+, or they are in $excl, which no run takes}"
               else
                 echo "::error::no cases at all: the glob matched nothing. Check the testcase tree"
               fi
@@ -1150,7 +1050,6 @@ jobs:
             # Quoted: shard and collect source it.
             {
               echo "total=$total"
-              echo "unit=$unit"
               echo "units=$nunit"
               echo "par=$par"
               echo "timed=$timed"
@@ -1204,7 +1103,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   shard:
-    name: "${{ needs.plan.outputs.tc_pr != '' && 'trial' || 'shard' }} ${{ matrix.suite }} ${{ matrix.i }}"
+    name: "shard ${{ matrix.suite }} ${{ matrix.i }}"
     needs: plan
     # success() is false for a failed job anywhere behind this one, such as the release leg.
     if: ${{ !cancelled() && needs.plan.result == 'success' }}
@@ -1238,6 +1137,7 @@ jobs:
           {
             echo "TC_DIR=$WORKDIR/$(attr tc_repo)"
             echo "TC_SEED=$(attr tc_seed)"
+            echo "UNIT=$(attr unit)"
             echo "STAMP=$STAMPS/shard-$SUITE-$IDX.tsv"
           } >> "$GITHUB_ENV"
           echo "tc_private=$(attr tc_private)" >> "$GITHUB_OUTPUT"
@@ -1330,9 +1230,7 @@ jobs:
           printf 'tc_sha=%s\ntc_branch=%s\n' "$(git -C "$TC_DIR" rev-parse HEAD)" "$tc_branch" > "$SHARD_DIR/tc.read"
 
       - name: Keep only my share
-        run: |
-          . "$PLAN_DIR/split.meta"
-          /entrypoint.sh keep "$unit" "$TC_DIR/$SUITE" "$PLAN_DIR/shards/$IDX.list"
+        run: /entrypoint.sh keep "$UNIT" "$TC_DIR/$SUITE" "$PLAN_DIR/shards/$IDX.list"
 
       - name: Run CTP
         id: ctp
@@ -1398,7 +1296,6 @@ jobs:
       RUNDIR: ${{ needs.plan.outputs.rundir }}
       BUILD_NS: ${{ needs.plan.outputs.build_ns }}
       PR: ${{ needs.gate.outputs.pr }}
-      TC: ${{ needs.gate.outputs.tc }}
       SUITES_RUN: ${{ join(fromJson(needs.gate.outputs.suites), ' ') }}
     outputs:
       verdict_shell: ${{ steps.verdict.outputs.verdict_shell }}
@@ -1641,10 +1538,6 @@ jobs:
             {
               echo "## gha-ci: $suite suite"
               echo
-              if [ -n "$TC" ]; then
-                echo "> **tc trial: only the cases [$repo#$TC](https://github.com/CUBRID/$repo/pull/$TC) changes, from its head. Its verdict goes to that PR, not to this engine PR.**"
-                echo
-              fi
               if [ -n "$RERUN_FROM" ]; then
                 echo "> **Only what run \`$RERUN_FROM\` left unhandled was re-run. This is not a full run.**"
                 echo ">"
@@ -1740,13 +1633,9 @@ jobs:
               fi
               if [ -n "$PR" ] && { [ "$failed_n" -gt 0 ] || [ "$unrun_n" -gt 0 ]; }; then
                 # The CTP branch has to ride along, or the re-run silently takes develop.
-                if [ -n "$TC" ]; then
-                  rerun_cmd="/run $suite tc=$TC"; lead="A tc trial has no re-run. Run it again"
-                else
-                  rerun_cmd="/run rerun $GITHUB_RUN_ID"; lead="Re-run the failures and everything that never ran"
-                fi
+                rerun_cmd="/run rerun $GITHUB_RUN_ID"
                 [ "$CTP_BRANCH" = develop ] || rerun_cmd="$rerun_cmd testtools=$CTP_BRANCH"
-                echo "$lead: \`$rerun_cmd\`"
+                echo "Re-run the failures and everything that never ran: \`$rerun_cmd\`"
                 echo
               fi
               echo "[Artifacts]($ARTIFACT_URL_BASE/${d#$CI_ROOT/}/)"
@@ -1782,7 +1671,7 @@ jobs:
             if [ "$srb" -eq 0 ]; then v=pass; else v=fail; rc=1; fi
             echo "verdict_$suite=$v" >> "$GITHUB_OUTPUT"
             echo "$v" > "$d/collect/verdict"
-            unset total unit units par timed tc_sha tc_branch rerun_unrun rerun_short rerun_gone \
+            unset total units par timed tc_sha tc_branch rerun_unrun rerun_short rerun_gone \
                   shard_max shard_med shard_span shard_n
           done
 
@@ -1905,51 +1794,4 @@ jobs:
           esac
           gh api -X POST "repos/${GITHUB_REPOSITORY}/statuses/${SHA}" --silent -f state="$state" \
             -f context="$(jq -r --arg s "$SUITE" '.[$s].status_ctx' <<<"$SUITES")" \
-            -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" -f description="$desc"
-
-  # Until the testcase repos run CI of their own: then this job and the app's statuses: write go.
-  tc_status:
-    name: tc trial status
-    needs: [gate, collect]
-    if: ${{ always() && needs.gate.result == 'success' && needs.gate.outputs.run == 'true' && needs.gate.outputs.tc != '' }}
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    permissions: {}
-    defaults:
-      run:
-        shell: bash --noprofile --norc -euo pipefail {0}
-    steps:
-      - name: GitHub App token
-        id: app-token
-        uses: actions/create-github-app-token@v3
-        with:
-          app-id: ${{ secrets.TC_APP_ID }}
-          private-key: ${{ secrets.TC_APP_PRIVATE_KEY }}
-          repositories: ${{ needs.gate.outputs.tc_repo }}
-          owner: CUBRID
-          permission-statuses: write
-
-      - name: Post the verdict to the tc PR head
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          TC_REPO: ${{ needs.gate.outputs.tc_repo }}
-          TC_SHA: ${{ needs.gate.outputs.tc_sha }}
-          PR: ${{ needs.gate.outputs.pr }}
-          SUITE: ${{ fromJson(needs.gate.outputs.suites)[0] }}
-          COLLECT: ${{ needs.collect.result }}
-          VERDICT: ${{ needs.collect.outputs[format('verdict_{0}', fromJson(needs.gate.outputs.suites)[0])] }}
-        run: |
-          case "$VERDICT" in
-            pass) state=success; desc="$SUITE trial passed" ;;
-            fail) state=failure; desc="$SUITE trial failed -- see the run" ;;
-            *)
-              state=error
-              if [ "$COLLECT" = cancelled ]; then
-                desc="trial was superseded or cancelled"
-              else
-                desc="$SUITE trial reached no verdict (collect $COLLECT)"
-              fi ;;
-          esac
-          gh api -X POST "repos/CUBRID/${TC_REPO}/statuses/${TC_SHA}" --silent -f state="$state" \
-            -f context="gha-ci: tc trial ${SUITE} (cubrid#${PR})" \
             -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" -f description="$desc"
