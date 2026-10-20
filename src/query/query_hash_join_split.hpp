@@ -17,13 +17,15 @@
  */
 
 /*
- * query_hash_join_split.h - writing the partition lists of a hash join: tuples land in the landing buffer of
- *   each split writer, are staged in the last page of their partition, and go to the worker tfile when it is full
+ * query_hash_join_split.hpp - writing the partition lists of a hash join: tuples land in the landing buffer of
+ *   each split writer, are staged in the last page of their partition, and go to the worker tfile when it is full;
+ *   a partition whose hash table would not fit is split again by the hash keys stored in its tuples
  */
 
-#ifndef _QUERY_HASH_JOIN_SPLIT_H_
-#define _QUERY_HASH_JOIN_SPLIT_H_
+#ifndef _QUERY_HASH_JOIN_SPLIT_HPP_
+#define _QUERY_HASH_JOIN_SPLIT_HPP_
 
+#include "query_hash_join.h"	/* HASHJOIN_MANAGER, HASHJOIN_CONTEXT, HASHJOIN_SPLIT_INFO, HASHJOIN_STATUS */
 #include "query_list.h"		/* QFILE_LIST_ID, QFILE_TUPLE */
 #include "storage_common.h"	/* PAGE_PTR */
 #include "system.h"		/* UINT32 */
@@ -70,17 +72,25 @@ typedef struct hashjoin_split_writer
   QFILE_LIST_ID **part_list_id;
 } HASHJOIN_SPLIT_WRITER;
 
+/* Hash Join Partitioning */
+int hjoin_resplit_context (THREAD_ENTRY *thread_p, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
+			   HASHJOIN_SPLIT_INFO *split_info, HASHJOIN_STATUS status);
+int hjoin_get_split_part_id (THREAD_ENTRY *thread_p, HASHJOIN_MANAGER *manager, HASHJOIN_FETCH_INFO *fetch_info,
+			     QFILE_TUPLE_RECORD *tuple_record, HASH_SCAN_KEY *temp_key, UINT32 part_cnt,
+			     UINT32 *part_id, bool *is_skipped);
+UINT32 hjoin_get_resplit_part_id (QFILE_TUPLE_RECORD *tuple_record, UINT32 divisor, UINT32 part_cnt);
+
 /* Hash Join Split Staging Buffer */
-int hjoin_init_split_staging_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_STAGING_BUFFER * staging_buffer,
+int hjoin_init_split_staging_buffer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_STAGING_BUFFER *staging_buffer,
 				     UINT32 part_cnt);
-int hjoin_flush_split_staging_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_STAGING_BUFFER * staging_buffer,
-				      QFILE_LIST_ID ** part_list_id, QMGR_TEMP_FILE * worker_tfile);
-void hjoin_clear_split_staging_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_STAGING_BUFFER * staging_buffer);
+int hjoin_flush_split_staging_buffer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_STAGING_BUFFER *staging_buffer,
+				      QFILE_LIST_ID **part_list_id, QMGR_TEMP_FILE *worker_tfile);
+void hjoin_clear_split_staging_buffer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_STAGING_BUFFER *staging_buffer);
 
 /* Hash Join Split Landing Buffer */
-int hjoin_init_split_landing_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_LANDING_BUFFER * landing_buffer,
+int hjoin_init_split_landing_buffer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_LANDING_BUFFER *landing_buffer,
 				     UINT32 part_cnt);
-void hjoin_clear_split_landing_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_LANDING_BUFFER * landing_buffer);
+void hjoin_clear_split_landing_buffer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_LANDING_BUFFER *landing_buffer);
 
 /* Hash Join Split Writer */
 // *INDENT-OFF*
@@ -88,8 +98,8 @@ void hjoin_init_split_writer (HASHJOIN_SPLIT_WRITER * writer, HASHJOIN_SPLIT_LAN
 			      HASHJOIN_SPLIT_STAGING_BUFFER * staging_buffer, std::mutex * part_mutexes,
 			      QMGR_TEMP_FILE * worker_tfile, QFILE_LIST_ID ** part_list_id);
 // *INDENT-ON*
-int hjoin_add_to_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer, UINT32 part_id,
+int hjoin_add_to_split_writer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer, UINT32 part_id,
 			       QFILE_TUPLE tuple);
-int hjoin_flush_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer);
+int hjoin_flush_split_writer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer);
 
-#endif /* _QUERY_HASH_JOIN_SPLIT_H_ */
+#endif /* _QUERY_HASH_JOIN_SPLIT_HPP_ */

@@ -25,9 +25,13 @@
 
 #include "error_manager.h"		/* assert_release_error, er_errid, NO_ERROR, ... */
 #include "list_file.h"			/* qfile_open_list, qfile_open_list_scan, qfile_close_scan, ... */
-#include "query_manager.h"		/* QMGR_TEMP_FILE (qmgr_temp_file) */
 #include "memory_alloc.h"		/* db_private_alloc, db_private_free_and_init */
+#include "object_representation.h"	/* QFILE_GET_NEXT_VPID */
+#include "px_thread_safe_queue.hpp"	/* parallel_query::thread_safe_queue */
+#include "query_manager.h"		/* QMGR_TEMP_FILE (qmgr_temp_file) */
 #include "storage_common.h"		/* OID_INITIALIZER, S_CLOSED, VPID_SET_NULL, ... */
+
+#include <thread>			/* std::this_thread::yield */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -61,7 +65,7 @@ namespace parallel_query
       task_manager task_manager (manager->px_worker_manager, *main_thread_p);
       split_task *task = nullptr;
 
-      error = hjoin_init_shared_split_info (&thread_ref, manager, &shared_info);
+      error = hjoin_init_shared_split_info (&thread_ref, manager, manager->context_cnt, &shared_info);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -139,6 +143,138 @@ error_exit:
     }
 
     /*
+     * resplit_partitions
+     */
+
+    /* produce_vpids - push the pages of a partition list to the queue the resplit tasks take them from, in their order;
+     * the main thread reads the next link of each page only, the tasks read the tuples */
+    static int
+    produce_vpids (cubthread::entry &thread_ref, QFILE_LIST_ID *list_id, thread_safe_queue<VPID> &vpid_queue,
+		   task_manager &task_manager)
+    {
+      VPID vpid, next_vpid;
+      PAGE_PTR page = nullptr;
+      int error = NO_ERROR;
+
+      assert (list_id != nullptr);
+      assert (list_id->tfile_vfid == nullptr);	/* a partition list borrows a worker tfile: no membuf, pages by VPID */
+
+      vpid = list_id->first_vpid;
+      while (!VPID_ISNULL (&vpid) && !task_manager.has_error ())
+	{
+	  page = qmgr_get_old_page_read_only (&thread_ref, &vpid, nullptr);
+	  if (page == nullptr)
+	    {
+	      assert_release_error (er_errid () != NO_ERROR);
+	      error = er_errid ();
+	      break;
+	    }
+	  QFILE_GET_NEXT_VPID (&next_vpid, page);
+	  qmgr_free_old_page_and_init (&thread_ref, page, nullptr);
+
+	  /* try_push, not push: a task that failed stops popping, and push would wait for it */
+	  while (!vpid_queue.try_push (vpid) && !task_manager.has_error ())
+	    {
+	      std::this_thread::yield ();
+	    }
+
+	  vpid = next_vpid;
+	}
+
+      vpid_queue.push_last ();
+
+      return error;
+    }
+
+    int
+    resplit_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
+			HASHJOIN_SPLIT_INFO *split_info)
+    {
+      HASHJOIN_SHARED_SPLIT_INFO shared_info;
+      HASHJOIN_SPLIT_STAGING_BUFFER staging_buffer = { nullptr, 0 };
+      UINT32 task_cnt, task_index;
+      int error = NO_ERROR;
+
+      assert (manager != nullptr);
+      assert (context != nullptr);
+      assert (context->part_cnt > 1);
+      assert (split_info != nullptr);
+
+      task_cnt = manager->num_parallel_threads;
+
+      THREAD_ENTRY *main_thread_p = thread_get_main_thread (&thread_ref);
+      task_manager task_manager (manager->px_worker_manager, *main_thread_p);
+      resplit_task *task = nullptr;
+
+      error = hjoin_init_shared_split_info (&thread_ref, manager, context->part_cnt, &shared_info);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      error = hjoin_init_split_staging_buffer (&thread_ref, &staging_buffer, context->part_cnt);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      for (int side = 0; side < 2; side++)
+	{
+	  HASHJOIN_INPUT_SPLIT_INFO *input = (side == 0) ? &split_info->outer : &split_info->inner;
+
+	  /* the pages of the input, pushed by this thread as the tasks take them; one queue per input, as push_last
+	   * closes it */
+	  thread_safe_queue<VPID> vpid_queue (task_cnt * 2);
+
+	  for (task_index = 0; task_index < task_cnt; task_index++)
+	    {
+	      task = new resplit_task (task_manager, manager, context, input, &shared_info, &staging_buffer, &vpid_queue,
+				       task_index);
+	      task_manager.push_task (task);
+	    }
+
+	  error = produce_vpids (thread_ref, input->fetch_info->list_id, vpid_queue, task_manager);
+
+	  task_manager.join ();
+
+	  if (!task_manager.has_error () && error == NO_ERROR)
+	    {
+	      error = hjoin_flush_split_staging_buffer (&thread_ref, &staging_buffer, input->part_list_id,
+		      manager->worker_tfiles[0]);
+	    }
+
+	  if (manager->px_worker_stats != nullptr)
+	    {
+	      hjoin_trace_drain_worker_stats (&thread_ref, manager);
+	    }
+
+	  if (task_manager.has_error () || error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+
+      ASSERT_NO_ERROR_OR_INTERRUPTED ();
+
+cleanup:
+      hjoin_clear_split_staging_buffer (&thread_ref, &staging_buffer);
+      hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
+
+      return error;
+
+error_exit:
+      task_manager.clear_interrupt (thread_ref);
+
+      if (error == NO_ERROR || er_errid () == NO_ERROR)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  error = er_errid ();
+	}
+
+      goto cleanup;
+    }
+
+    /*
      * execute_partitions
      */
 
@@ -147,7 +283,7 @@ error_exit:
     {
       HASHJOIN_CONTEXT *current_context;
       HASHJOIN_SHARED_JOIN_INFO shared_info;
-      UINT32 context_index;
+      UINT32 exec_index;
       UINT32 task_cnt, task_index;
 
       int error = NO_ERROR;
@@ -156,9 +292,6 @@ error_exit:
 
       HASHJOIN_STATS *stats = manager->single_context.stats;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#if HASHJOIN_PROFILE_TIME
-      HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#endif /* HASHJOIN_PROFILE_TIME */
       assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
       task_cnt = manager->num_parallel_threads;
@@ -181,7 +314,7 @@ error_exit:
 
       for (task_index = 0; task_index < task_cnt; task_index++)
 	{
-	  task = new join_task (task_manager, manager, manager->contexts, &shared_info, task_index);
+	  task = new join_task (task_manager, manager, manager->exec_contexts, &shared_info, task_index);
 	  task_manager.push_task (task);
 	}
 
@@ -197,12 +330,8 @@ error_exit:
 
 	  if (!task_manager.has_error () && error == NO_ERROR)
 	    {
-	      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_MERGE);
 	      error = hjoin_merge_qlist_into (&thread_ref, manager, &manager->single_context.list_id,
 					      &shared_info.list_ids[task_index]);
-	      HJOIN_PROFILE_MERGE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_MERGE,
-				       (manager->single_context.list_id != nullptr)
-				       ? manager->single_context.list_id->tuple_cnt : 0);
 	    }
 
 	  if (shared_info.list_ids[task_index] != nullptr)
@@ -240,9 +369,9 @@ error_exit:
 	  return error;
 	}
 
-      for (context_index = 0; context_index < manager->context_cnt; context_index++)
+      for (exec_index = 0; exec_index < manager->exec_cnt; exec_index++)
 	{
-	  current_context = &manager->contexts[context_index];
+	  current_context = manager->exec_contexts[exec_index];
 
 	  if (thread_is_on_trace (&thread_ref))
 	    {
@@ -387,12 +516,14 @@ error_exit:
       context_cnt = manager->num_parallel_threads;
       assert (context_cnt > 1);
 
-      contexts = (HASHJOIN_CONTEXT *) db_private_alloc (&thread_ref, context_cnt * sizeof (HASHJOIN_CONTEXT));
+      /* calloc, as the contexts of a partitioned join are (hjoin_clear_manager frees both) */
+      contexts = (HASHJOIN_CONTEXT *) calloc (context_cnt, sizeof (HASHJOIN_CONTEXT));
       if (contexts == nullptr)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, context_cnt * sizeof (HASHJOIN_CONTEXT));
+	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto error_exit;
 	}
-      memset (contexts, 0, context_cnt * sizeof (HASHJOIN_CONTEXT));
 
       for (context_index = 0; context_index < context_cnt; context_index++)
 	{
@@ -443,7 +574,7 @@ error_exit:
 	      clear_context (thread_ref, &contexts[context_index]);
 	    }
 
-	  db_private_free_and_init (&thread_ref, contexts);
+	  free_and_init (contexts);
 	}
 
       if (thread_is_on_trace (&thread_ref))
@@ -490,9 +621,6 @@ error_exit:
 
       HASHJOIN_STATS *stats = manager->single_context.stats;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#if HASHJOIN_PROFILE_TIME
-      HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#endif /* HASHJOIN_PROFILE_TIME */
       assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
       contexts = manager->contexts;
@@ -579,10 +707,7 @@ error_exit:
 	      continue;
 	    }
 
-	  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_MERGE);
 	  error = hjoin_merge_qlist (&thread_ref, manager, current_context);
-	  HJOIN_PROFILE_MERGE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_MERGE,
-				   (manager->single_context.list_id != nullptr) ? manager->single_context.list_id->tuple_cnt : 0);
 
 	  if (error != NO_ERROR)
 	    {

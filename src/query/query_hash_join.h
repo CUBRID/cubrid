@@ -26,24 +26,12 @@
 #include "regu_var.hpp"		/* REGU_VARIABLE_LIST */
 
 #if defined (SERVER_MODE) || defined (SA_MODE)
-#include "query_hash_join_split.h"	/* HASHJOIN_SPLIT_STAGING_BUFFER, HASHJOIN_SPLIT_WRITER */
 #include "query_hash_scan.h"	/* HASH_METHOD */
 #include "system.h"		/* UINT32, UINT64 */
 #include "thread_entry.hpp"	/* THREAD_ENTRY */
 #include "tsc_timer.h"		/* TSC_TICKS, TSCTIMEVAL, TSC_ADD_TIMEVAL */
 #include "xasl_predicate.hpp"	/* PRED_EXPR */
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
-
-/*
- * Debug Macros
- */
-
-#define HASHJOIN_PROFILE_TIME 0
-#define HASHJOIN_COLLISION_RATE 0
-#define HASHJOIN_DUMP_PARTITION 0
-#define HASHJOIN_DUMP_HASH_TABLE 0
-#define HASHJOIN_DUMP_BUILD 0
-#define HASHJOIN_DUMP_PROBE 0
 
 /*
  * Forward Declarations
@@ -85,30 +73,6 @@ typedef enum hashjoin_merge_method
   HASHJOIN_MERGE_APPEND,
   HASHJOIN_MERGE_CONNECT
 } HASHJOIN_MERGE_METHOD;
-
-typedef enum hashjoin_profile_step
-{
-  HASHJOIN_PROFILE_NONE = 0,
-  HASHJOIN_PROFILE_BUILD_FETCH,	/* hjoin_fetch_key */
-  HASHJOIN_PROFILE_BUILD_HASH,	/* qdata_hash_scan_key */
-  HASHJOIN_PROFILE_BUILD_INSERT,	/* hjoin_build_key */
-  HASHJOIN_PROFILE_PROBE_FETCH,	/* hjoin_fetch_key */
-  HASHJOIN_PROFILE_PROBE_HASH,	/* qdata_hash_scan_key */
-  HASHJOIN_PROFILE_PROBE_SEARCH,	/* hjoin_probe_key */
-  HASHJOIN_PROFILE_PROBE_MATCH,	/* hjoin_fetch_key */
-  HASHJOIN_PROFILE_PROBE_ADD,	/* hjoin_merge_tuple_to_list_id */
-  HASHJOIN_PROFILE_MERGE	/* hjoin_merge_qlist */
-} HASHJOIN_PROFILE_STEP;
-
-typedef enum hashjoin_print_step
-{
-  HASHJOIN_PRINT_NONE = 0,
-  HASHJOIN_PRINT_READ_KEY,
-  HASHJOIN_PRINT_NOT_MATCHED_KEY,
-  HASHJOIN_PRINT_NOT_QUALIFIED_KEY,
-  HASHJOIN_PRINT_QUALIFIED_KEY,
-  HASHJOIN_PRINT_FILL_EMPTY_KEY
-} HASHJOIN_PRINT_STEP;
 
 /*
  * Struct & Typedef Definitions
@@ -193,43 +157,13 @@ typedef struct hashjoin_probe_stats : hashjoin_input_stats
 } HASHJOIN_PROBE_STATS;
 // *INDENT-ON*
 
-#if HASHJOIN_PROFILE_TIME
-typedef struct hashjoin_profile_stats
-{
-  struct
-  {
-    TSCTIMEVAL fetch;		/* hjoin_fetch_key */
-    TSCTIMEVAL hash;		/* qdata_hash_scan_key */
-    TSCTIMEVAL insert;		/* hjoin_build_key */
-  } build;
-
-  struct
-  {
-    TSCTIMEVAL fetch;		/* hjoin_fetch_key */
-    TSCTIMEVAL hash;		/* qdata_hash_scan_key */
-    TSCTIMEVAL search;		/* hjoin_probe_key */
-    TSCTIMEVAL match;		/* hjoin_fetch_key */
-    TSCTIMEVAL add;		/* hjoin_merge_tuple_to_list_id */
-  } probe;
-
-  struct
-  {
-    TSCTIMEVAL elapsed_time;	/* hjoin_fetch_key */
-    UINT64 fetches;
-    UINT64 ioreads;
-    UINT64 qualified_rows;
-  } merge;
-} HASHJOIN_PROFILE_STATS;
-#endif /* HASHJOIN_PROFILE_TIME */
-
 typedef struct hashjoin_start_stats
 {
   TSC_TICKS tick;
   UINT64 fetches;
   UINT64 ioreads;
-  HASHJOIN_PROFILE_STEP step;
 } HASHJOIN_START_STATS;
-#define HASHJOIN_START_STATS_INITIALIZER { { 0 }, 0, 0, HASHJOIN_PROFILE_NONE }
+#define HASHJOIN_START_STATS_INITIALIZER { { 0 }, 0, 0 }
 
 typedef struct hashjoin_stats
 {
@@ -243,17 +177,11 @@ typedef struct hashjoin_stats
 
   bool swap_join_inputs;
 
-  double collision_rate;
-
   HASHJOIN_INPUT_STATS split;
   HASHJOIN_INPUT_STATS parallel;
   HASHJOIN_BUILD_STATS build;
   HASHJOIN_PROBE_STATS probe;
 
-#if HASHJOIN_PROFILE_TIME
-  HASHJOIN_INPUT_STATS merge;
-  HASHJOIN_PROFILE_STATS profile;
-#endif				/* HASHJOIN_PROFILE_TIME */
 } HASHJOIN_STATS;
 
 typedef struct hashjoin_stats_group
@@ -308,16 +236,19 @@ typedef struct hashjoin_shared_split_info
   // *INDENT-OFF*
   QFILE_LIST_SECTOR_SCAN_INFO sector_scan;
 
-  std::mutex *part_mutexes;
+  std::mutex *part_mutexes;	/* one per partition list */
+  UINT32 part_cnt;
 
   hashjoin_shared_split_info ()
     : sector_scan ()
     , part_mutexes (nullptr)
+    , part_cnt (0)
   {
     //
   }
   // *INDENT-ON*
 } HASHJOIN_SHARED_SPLIT_INFO;
+
 
 /* HASHJOIN_SHARED_PROBE_INFO */
 typedef struct hashjoin_shared_probe_info
@@ -385,9 +316,17 @@ typedef struct hashjoin_context
 
   HASHJOIN_STATUS status;
 
-  /* Temporary file the sub-partition lists of this context are written to, when its lists are split again.
-   * Set by the executor of a partition context (hjoin_execute_partitions, join_task): one per thread. */
-  QMGR_TEMP_FILE *worker_tfile;
+  /* Splits this context comes from: 0 for the single context. */
+  UINT32 level;
+  /* Multiplier of the mixed hash key giving the position of a tuple within this context (HJOIN_HASH_TO_PARTITION):
+   * 1 for the single context, the counts of hashed partitions of the splits it comes from multiplied. */
+  UINT32 divisor;
+
+  /* Partitions this context is split into (hjoin_check_partition): those of the single context are the contexts of
+   * the manager; those of a partition are owned by it, and executed in its place (exec_contexts of the manager). */
+  struct hashjoin_context *part_contexts;
+  HASHJOIN_STATS *part_stats;
+  UINT32 part_cnt;
 
   /* Pointer to a member of HASHJOIN_MANAGER. */
   HASHJOIN_STATS *stats;
@@ -421,6 +360,11 @@ typedef struct hashjoin_manager
   HASHJOIN_CONTEXT *contexts;
   UINT32 context_cnt;
 
+  /* The contexts the join executes, fixed once all the splits are done (hjoin_init_exec_contexts): the contexts
+   * that are not split again, and the partitions of those that are. References only. */
+  HASHJOIN_CONTEXT **exec_contexts;
+  UINT32 exec_cnt;
+
   QFILE_TUPLE_VALUE_TYPE_LIST type_list;
   HASHJOIN_MERGE_METHOD qlist_merge_method;
   int qlist_flag;
@@ -438,9 +382,6 @@ typedef struct hashjoin_manager
   /* From HASHJOIN_PROC_NODE */
   HASHJOIN_STATS_GROUP *stats_group;
 
-#if HASHJOIN_DUMP_HASH_TABLE
-  pthread_mutex_t dump_hash_table_mutex;
-#endif				/* HASHJOIN_DUMP_HASH_TABLE */
 } HASHJOIN_MANAGER;
 
 /*
@@ -455,37 +396,6 @@ typedef struct hashjoin_manager
  * key (mht_put_hls_internal), so partitioning by the low bits would leave each partition few distinct slots. */
 #define HJOIN_HASH_TO_PARTITION(mixed_key, part_cnt) ((UINT32) (((UINT64) (mixed_key) * (part_cnt)) >> 32))
 
-#if HASHJOIN_PROFILE_TIME
-#define HJOIN_PROFILE_START(thread_p, start_stats_p, step) \
-   if (thread_is_on_trace ((thread_p))) \
-     { \
-       hjoin_profile_start ((thread_p), (start_stats_p), (step)); \
-     }
-#define HJOIN_PROFILE_END(thread_p, stats_p, start_stats_p, step) \
-   if (thread_is_on_trace ((thread_p))) \
-     { \
-       hjoin_profile_end ((thread_p), (stats_p), (start_stats_p), (step)); \
-     }
-#define HJOIN_PROFILE_MERGE_END(thread_p, stats_p, start_stats_p, step, rows) \
-   if (thread_is_on_trace ((thread_p))) \
-     { \
-       assert ((step) == HASHJOIN_PROFILE_MERGE); \
-       hjoin_profile_end ((thread_p), (stats_p), (start_stats_p), (step)); \
-       (stats_p)->merge.qualified_rows = (rows); \
-     }
-#else
-#define HJOIN_PROFILE_START(thread_p, start_stats, step) ((void) 0)
-#define HJOIN_PROFILE_END(thread_p, stats_p, start_stats_p, step) ((void) 0)
-#define HJOIN_PROFILE_MERGE_END(thread_p, stats_p, start_stats_p, step, rows) ((void) 0)
-#endif /* HASHJOIN_PROFILE_TIME */
-
-#if !defined(NDEBUG) && HASHJOIN_DUMP_PROBE
-#define HJOIN_PRINT_TUPLE(list_id, tuple, step) \
-  hjoin_print_tuple ((list_id), (tuple), (step))
-#else
-#define HJOIN_PRINT_TUPLE(list_id, tuple, step) ((void) 0)
-#endif /* !NDEBUG && HASHJOIN_DUMP_PROBE */
-
 /*
  * Function Declarations
  */
@@ -493,14 +403,13 @@ typedef struct hashjoin_manager
 int qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, VAL_DESCR * val_descr);
 
 /* Hash Join Execution */
-int hjoin_execute_with_resplit (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 int hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 int hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 int hjoin_merge_qlist_into (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, QFILE_LIST_ID ** dest_list_id,
 			    QFILE_LIST_ID ** list_id);
 
 /* Hash Join Shared Split Info */
-int hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
+int hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, UINT32 part_cnt,
 				  HASHJOIN_SHARED_SPLIT_INFO * shared_info);
 void hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 				    HASHJOIN_SHARED_SPLIT_INFO * shared_info);
@@ -513,6 +422,7 @@ void hjoin_scan_clear (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan);
 /* Hash Join Processing */
 int hjoin_fetch_key (THREAD_ENTRY * thread_p, HASHJOIN_FETCH_INFO * fetch_info, QFILE_TUPLE_RECORD * tuple_record,
 		     HASH_SCAN_KEY * key, HASH_SCAN_KEY * compare_key, bool * need_skip_next);
+QFILE_TUPLE hjoin_locate_tuple_hash_key (QFILE_TUPLE_RECORD * tuple_record);
 void hjoin_update_tuple_hash_key (THREAD_ENTRY * thread_p, QFILE_TUPLE_RECORD * tuple_record, UINT32 hash_key);
 int hjoin_probe_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_SCAN_ID * list_scan_id,
 		     QFILE_TUPLE_RECORD * tuple_record);
@@ -530,12 +440,6 @@ void hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_s
 
 UINT64 *hjoin_trace_get_worker_stats (HASHJOIN_MANAGER * manager, int index);
 void hjoin_trace_drain_worker_stats (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
-
-#if HASHJOIN_PROFILE_TIME
-void hjoin_profile_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats, HASHJOIN_PROFILE_STEP step);
-void hjoin_profile_end (THREAD_ENTRY * thread_p, HASHJOIN_PROFILE_STATS * stats, HASHJOIN_START_STATS * start_stats,
-			HASHJOIN_PROFILE_STEP step);
-#endif /* HASHJOIN_PROFILE_TIME */
 
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 

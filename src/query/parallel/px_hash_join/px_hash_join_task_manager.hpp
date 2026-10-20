@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "query_hash_join.h"
+#include "query_hash_join_split.hpp"	/* HASHJOIN_INPUT_SPLIT_INFO, HASHJOIN_SHARED_SPLIT_INFO, ... */
 
 #include <atomic>
 #include <condition_variable>
@@ -30,6 +30,7 @@
 
 #include "error_context.hpp"		/* cuberr::context */
 #include "px_hash_join_spawn_manager.hpp"	/* parallel_query::hash_join::spawn_manager */
+#include "px_thread_safe_queue.hpp"	/* parallel_query::thread_safe_queue */
 #include "px_worker_manager.hpp"	/* parallel_query::worker_manager */
 #include "storage_common.h"		/* NULL_TRAN_INDEX */
 #include "thread_entry.hpp"		/* cubthread::entry */
@@ -173,10 +174,41 @@ namespace parallel_query
 		    HASHJOIN_SHARED_SPLIT_INFO *shared_info, HASHJOIN_SPLIT_STAGING_BUFFER *staging_buffer, int index);
 	void execute (cubthread::entry &thread_ref) override;
 
-      private:
+      protected:
 	HASHJOIN_INPUT_SPLIT_INFO *m_split_info;
 	HASHJOIN_SHARED_SPLIT_INFO *m_shared_info;
 	HASHJOIN_SPLIT_STAGING_BUFFER *m_staging_buffer;
+	HASH_SCAN_KEY *m_temp_key;	/* space for reading join column values, while execute runs */
+
+	/* the pages of the input: the sectors of its temporary file, shared by the tasks */
+	virtual PAGE_PTR get_next_page (cubthread::entry &thread_ref, QMGR_TEMP_FILE **tfile);
+	/* the partition of a tuple: by its join column values, whose hash key is stored in the tuple; a tuple with a
+	 * NULL join column is skipped unless the join NULL-fills one side */
+	virtual int get_part_id (cubthread::entry &thread_ref, QFILE_TUPLE_RECORD *tuple_record, UINT32 *part_id,
+				 bool *is_skipped);
+    };
+
+    /*
+     * resplit_task - split a partition list again, in the way of split_task
+     */
+
+    class resplit_task: public split_task
+    {
+      public:
+	resplit_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
+		      HASHJOIN_INPUT_SPLIT_INFO *split_info, HASHJOIN_SHARED_SPLIT_INFO *shared_info,
+		      HASHJOIN_SPLIT_STAGING_BUFFER *staging_buffer, thread_safe_queue<VPID> *vpid_queue, int index);
+
+      private:
+	HASHJOIN_CONTEXT *m_context;	/* the partition whose lists are split again */
+	thread_safe_queue<VPID> *m_vpid_queue;
+
+	/* the pages of the input: pushed by the main thread (produce_vpids), as a partition list borrows a worker tfile
+	 * and has no sectors of its own */
+	PAGE_PTR get_next_page (cubthread::entry &thread_ref, QMGR_TEMP_FILE **tfile) override;
+	/* the partition of a tuple: by the hash key stored in it at the first split */
+	int get_part_id (cubthread::entry &thread_ref, QFILE_TUPLE_RECORD *tuple_record, UINT32 *part_id,
+			 bool *is_skipped) override;
     };
 
     /*
@@ -186,12 +218,12 @@ namespace parallel_query
     class join_task: public base_task
     {
       public:
-	join_task (task_manager &task_manager, HASHJOIN_MANAGER *manager,HASHJOIN_CONTEXT *contexts,
+	join_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT **contexts,
 		   HASHJOIN_SHARED_JOIN_INFO *shared_info, int index);
 	void execute (cubthread::entry &thread_ref) override;
 
       private:
-	HASHJOIN_CONTEXT *m_contexts;
+	HASHJOIN_CONTEXT **m_contexts;
 	HASHJOIN_SHARED_JOIN_INFO *m_shared_info;
 
 	HASHJOIN_CONTEXT *get_next_context ();

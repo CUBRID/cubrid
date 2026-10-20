@@ -17,27 +17,278 @@
  */
 
 /*
- * query_hash_join_split.c - writing the partition lists of a hash join: tuples land in the landing buffer of
- *   each split writer, are staged in the last page of their partition, and go to the worker tfile when it is full
+ * query_hash_join_split.cpp - splitting the inputs of a hash join into partition lists
  */
 
-#include "query_hash_join_split.h"
+#include "query_hash_join_split.hpp"
 
 #include "error_manager.h"	/* er_set, er_errid, assert_release_error */
 #include "list_file.h"		/* qfile_add_tuple_to_staged_page, qfile_copy_to_external_file_page */
 #include "memory_alloc.h"	/* db_private_alloc, DB_ALIGN */
 #include "object_representation.h"	/* OR_GET_INT for QFILE_GET_TUPLE_LENGTH */
+#include "px_hash_join.hpp"	/* parallel_query::hash_join::... */
+#include "query_hash_join_constants.hpp"	/* HASHJOIN_SPLIT_LANDING_BUFFER_SIZE, ... */
 #include "query_manager.h"	/* QMGR_TEMP_FILE */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* landing buffer of a split writer, shared by all partitions, so its size does not grow with the partition count */
-#define HASHJOIN_SPLIT_LANDING_BUFFER_SIZE (64 * DB_PAGESIZE)
-#define HASHJOIN_SPLIT_LANDING_ENTRY_HEADER_SIZE DB_ALIGN (sizeof (int), MAX_ALIGNMENT)
+/* Hash Join Partitioning */
+static int hjoin_resplit_qlist (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, QFILE_LIST_ID **part_list_id,
+				UINT32 part_cnt, UINT32 divisor, QMGR_TEMP_FILE *worker_tfile);
 
-static int hjoin_append_to_part_list (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer, UINT32 part_id,
+/* Hash Join Split Writer */
+static int hjoin_append_to_part_list (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer, UINT32 part_id,
 				      QFILE_TUPLE tuple);
+
+/*
+ * hjoin_get_split_part_id() - the partition of a tuple at the first split, by its join column values
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   fetch_info(in): Input the tuple comes from.
+ *   tuple_record(in/out): Tuple; the hash key of its join column values is stored in it (hjoin_update_tuple_hash_key).
+ *   temp_key(in/out): Space for reading join column values.
+ *   part_cnt(in): Number of partitions, the partition of NULL join keys included.
+ *   part_id(out): Partition of the tuple.
+ *   is_skipped(out): true if the tuple has a NULL join column and the join does not NULL-fill: it joins nothing.
+ */
+int
+hjoin_get_split_part_id (THREAD_ENTRY *thread_p, HASHJOIN_MANAGER *manager, HASHJOIN_FETCH_INFO *fetch_info,
+			 QFILE_TUPLE_RECORD *tuple_record, HASH_SCAN_KEY *temp_key, UINT32 part_cnt,
+			 UINT32 *part_id, bool *is_skipped)
+{
+  unsigned int hash_key;
+  bool has_null_fill_side;
+  bool need_skip_next = false;
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+  assert (fetch_info != NULL);
+  assert (tuple_record != NULL);
+  assert (temp_key != NULL);
+  assert (part_cnt > 1);
+  assert (part_id != NULL);
+  assert (is_skipped != NULL);
+
+  *is_skipped = false;
+
+  has_null_fill_side = IS_NULL_FILL_JOIN_TYPE (manager->join_type);
+
+  error = hjoin_fetch_key (thread_p, fetch_info, tuple_record, temp_key, NULL /* compare_key */, &need_skip_next);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  if (need_skip_next)
+    {
+      if (has_null_fill_side)
+	{
+	  /* In joins that NULL-fill one side,
+	   * tuples with NULL in any join column are placed in the last partition.
+	   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition.
+	   */
+	  *part_id = part_cnt - 1;
+	}
+      else
+	{
+	  *is_skipped = true;
+	}
+
+      return NO_ERROR;
+    }
+
+  hash_key = qdata_hash_scan_key (temp_key, UINT_MAX, HASH_METH_IN_MEM);
+  *part_id = HJOIN_HASH_TO_PARTITION (HJOIN_HASH_MIX (hash_key), (has_null_fill_side) ? part_cnt - 1 : part_cnt);
+
+  hjoin_update_tuple_hash_key (thread_p, tuple_record, hash_key);
+
+  return NO_ERROR;
+}
+
+/*
+ * hjoin_get_resplit_part_id() - the partition of a tuple when its partition is split again, by the hash key stored in
+ *                               it at the first split; the partition of NULL join keys is not split again
+ *   return: Partition of the tuple.
+ *   tuple_record(in): Tuple.
+ *   divisor(in): Multiplier of the mixed hash key giving the position of the tuple in its partition (HASHJOIN_CONTEXT).
+ *   part_cnt(in): Number of partitions.
+ */
+UINT32
+hjoin_get_resplit_part_id (QFILE_TUPLE_RECORD *tuple_record, UINT32 divisor, UINT32 part_cnt)
+{
+  UINT32 hash_key, sub_hash_key;
+
+  assert (tuple_record != NULL);
+  assert (part_cnt > 1);
+
+  hash_key = (UINT32) OR_GET_INT (hjoin_locate_tuple_hash_key (tuple_record));
+
+  /* the position of the mixed key within its partition of the first split */
+  sub_hash_key = (UINT32) ((UINT64) HJOIN_HASH_MIX (hash_key) * divisor);
+
+  return HJOIN_HASH_TO_PARTITION (sub_hash_key, part_cnt);
+}
+
+/*
+ * hjoin_resplit_context() - split the lists of a context into its partitions (hjoin_init_part_contexts)
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   context(in): Hash join context to split; part_cnt is set (hjoin_check_partition).
+ *   split_info(in): The partition lists of each input.
+ *   status(in): HASHJOIN_STATUS_PARTITION to split in this thread, HASHJOIN_STATUS_PARALLEL by the split workers.
+ */
+int
+hjoin_resplit_context (THREAD_ENTRY *thread_p, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
+		       HASHJOIN_SPLIT_INFO *split_info, HASHJOIN_STATUS status)
+{
+  HASHJOIN_INPUT_SPLIT_INFO *input;
+  int side;
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+  assert (context != NULL);
+  assert (context->part_cnt > 1);
+  assert (split_info != NULL);
+
+  switch (status)
+    {
+    case HASHJOIN_STATUS_PARTITION:
+      for (side = 0; side < 2; side++)
+	{
+	  input = (side == 0) ? &split_info->outer : &split_info->inner;
+
+	  error = hjoin_resplit_qlist (thread_p, input->fetch_info->list_id, input->part_list_id, context->part_cnt,
+				       context->divisor, manager->worker_tfiles[0]);
+	  if (error != NO_ERROR)
+	    {
+	      break;
+	    }
+	}
+      break;
+
+#if defined (SERVER_MODE)
+    case HASHJOIN_STATUS_PARALLEL:
+      // *INDENT-OFF*
+      error = parallel_query::hash_join::resplit_partitions (*thread_p, manager, context, split_info);
+      // *INDENT-ON*
+      break;
+#endif /* defined (SERVER_MODE) */
+
+    default:
+      /* impossible case */
+      assert_release_error (false);
+      error = er_errid ();
+      break;
+    }
+
+  return error;
+}
+
+/*
+ * hjoin_resplit_qlist() - split a partition list into sub-partition lists by the hash keys stored in its tuples
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   list_id(in): Partition list to split.
+ *   part_list_id(in): Sub-partition lists.
+ *   part_cnt(in): Number of sub-partitions.
+ *   divisor(in): Multiplier of the mixed hash key giving the position of a tuple in the list (HASHJOIN_CONTEXT).
+ *   worker_tfile(in): Temporary file the pages of the sub-partitions are allocated from.
+ */
+static int
+hjoin_resplit_qlist (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, QFILE_LIST_ID **part_list_id, UINT32 part_cnt,
+		     UINT32 divisor, QMGR_TEMP_FILE *worker_tfile)
+{
+  QFILE_LIST_SCAN_ID list_scan_id;
+  QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
+  SCAN_CODE scan_code = S_END;
+  HASHJOIN_SPLIT_STAGING_BUFFER staging_buffer;
+  HASHJOIN_SPLIT_LANDING_BUFFER landing_buffer;
+  HASHJOIN_SPLIT_WRITER split_writer;
+  UINT32 part_id;
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (list_id != NULL);
+  assert (part_list_id != NULL);
+  assert (part_cnt > 1);
+  assert (worker_tfile != NULL);
+
+  /* Prevent faults when qfile_close_scan, hjoin_clear_split_landing_buffer and hjoin_clear_split_staging_buffer are
+   * called */
+  list_scan_id.status = S_CLOSED;
+  memset (&landing_buffer, 0, sizeof (HASHJOIN_SPLIT_LANDING_BUFFER));
+  memset (&staging_buffer, 0, sizeof (HASHJOIN_SPLIT_STAGING_BUFFER));
+
+  error = hjoin_init_split_staging_buffer (thread_p, &staging_buffer, part_cnt);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = hjoin_init_split_landing_buffer (thread_p, &landing_buffer, part_cnt);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  hjoin_init_split_writer (&split_writer, &landing_buffer, &staging_buffer, NULL, worker_tfile, part_list_id);
+
+  error = qfile_open_list_scan (list_id, &list_scan_id);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  while ((scan_code = qfile_scan_list_next (thread_p, &list_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
+    {
+      part_id = hjoin_get_resplit_part_id (&tuple_record, divisor, part_cnt);
+
+      error = hjoin_add_to_split_writer (thread_p, &split_writer, part_id, tuple_record.tpl);
+      if (error != NO_ERROR)
+	{
+	  break;		/* error_exit */
+	}
+    }				/* while (qfile_scan_list_next (list_scan_id)) */
+
+  qfile_close_scan (thread_p, &list_scan_id);
+
+  if (scan_code != S_ERROR && error == NO_ERROR)
+    {
+      error = hjoin_flush_split_writer (thread_p, &split_writer);
+    }
+  hjoin_clear_split_landing_buffer (thread_p, &landing_buffer);
+
+  if (scan_code != S_ERROR && error == NO_ERROR)
+    {
+      error = hjoin_flush_split_staging_buffer (thread_p, &staging_buffer, part_list_id, worker_tfile);
+    }
+  hjoin_clear_split_staging_buffer (thread_p, &staging_buffer);
+
+  if (scan_code == S_ERROR || error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
+  return NO_ERROR;
+
+error_exit:
+  hjoin_clear_split_landing_buffer (thread_p, &landing_buffer);
+  hjoin_clear_split_staging_buffer (thread_p, &staging_buffer);
+
+  if (error == NO_ERROR || er_errid () == NO_ERROR)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+
+  return error;
+}
 
 /*
  * hjoin_init_split_landing_buffer() -
@@ -47,7 +298,7 @@ static int hjoin_append_to_part_list (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WR
  *   part_cnt(in): Number of partitions.
  */
 int
-hjoin_init_split_landing_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_LANDING_BUFFER * landing_buffer,
+hjoin_init_split_landing_buffer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_LANDING_BUFFER *landing_buffer,
 				 UINT32 part_cnt)
 {
   UINT32 part_index;
@@ -58,7 +309,7 @@ hjoin_init_split_landing_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_LANDING
 
   /* one block: the tuple area, then part_first, part_last and filled_parts of part_cnt entries each */
   landing_buffer->buffer =
-    (char *) db_private_alloc (thread_p, HASHJOIN_SPLIT_LANDING_BUFFER_SIZE + 3 * part_cnt * sizeof (int));
+	  (char *) db_private_alloc (thread_p, HASHJOIN_SPLIT_LANDING_BUFFER_SIZE + 3 * part_cnt * sizeof (int));
   if (landing_buffer->buffer == NULL)
     {
       assert_release_error (er_errid () != NO_ERROR);
@@ -86,7 +337,7 @@ hjoin_init_split_landing_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_LANDING
  *   landing_buffer(in): Landing buffer to clear. Tuples not yet flushed are discarded.
  */
 void
-hjoin_clear_split_landing_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_LANDING_BUFFER * landing_buffer)
+hjoin_clear_split_landing_buffer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_LANDING_BUFFER *landing_buffer)
 {
   assert (thread_p != NULL);
   assert (landing_buffer != NULL);
@@ -141,7 +392,7 @@ hjoin_init_split_writer (HASHJOIN_SPLIT_WRITER * writer, HASHJOIN_SPLIT_LANDING_
  *   tuple(in): Tuple to add. A tuple larger than the landing buffer is appended to the partition list at once.
  */
 int
-hjoin_add_to_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer, UINT32 part_id, QFILE_TUPLE tuple)
+hjoin_add_to_split_writer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer, UINT32 part_id, QFILE_TUPLE tuple)
 {
   HASHJOIN_SPLIT_LANDING_BUFFER *landing_buffer;
   int tuple_length, entry_offset, entry_size;
@@ -171,7 +422,7 @@ hjoin_add_to_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writ
     }
 
   entry_offset = landing_buffer->buffer_used;
-  *(int *) (landing_buffer->buffer + entry_offset) = -1;
+  * (int *) (landing_buffer->buffer + entry_offset) = -1;
   memcpy (landing_buffer->buffer + entry_offset + HASHJOIN_SPLIT_LANDING_ENTRY_HEADER_SIZE, tuple, tuple_length);
 
   if (landing_buffer->part_last[part_id] == -1)
@@ -181,7 +432,7 @@ hjoin_add_to_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writ
     }
   else
     {
-      *(int *) (landing_buffer->buffer + landing_buffer->part_last[part_id]) = entry_offset;
+      * (int *) (landing_buffer->buffer + landing_buffer->part_last[part_id]) = entry_offset;
     }
   landing_buffer->part_last[part_id] = entry_offset;
 
@@ -197,7 +448,7 @@ hjoin_add_to_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writ
  *   writer(in/out): Split writer.
  */
 int
-hjoin_flush_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer)
+hjoin_flush_split_writer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer)
 {
   HASHJOIN_SPLIT_LANDING_BUFFER *landing_buffer;
   UINT32 filled_index, part_id;
@@ -238,7 +489,7 @@ hjoin_flush_split_writer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * write
  *   tuple(in): Tuple to append, or NULL to append the tuples of the partition in the landing buffer.
  */
 static int
-hjoin_append_to_part_list (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writer, UINT32 part_id, QFILE_TUPLE tuple)
+hjoin_append_to_part_list (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer, UINT32 part_id, QFILE_TUPLE tuple)
 {
   HASHJOIN_SPLIT_LANDING_BUFFER *landing_buffer;
   HASHJOIN_SPLIT_STAGING_BUFFER *staging_buffer;
@@ -303,7 +554,7 @@ hjoin_append_to_part_list (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writ
 	}
       else
 	{
-	  entry_offset = *(int *) (landing_buffer->buffer + entry_offset);
+	  entry_offset = * (int *) (landing_buffer->buffer + entry_offset);
 	  if (entry_offset == -1)
 	    {
 	      next_tuple = NULL;
@@ -326,7 +577,7 @@ hjoin_append_to_part_list (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_WRITER * writ
  *   part_cnt(in): Number of partitions.
  */
 int
-hjoin_init_split_staging_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_STAGING_BUFFER * staging_buffer,
+hjoin_init_split_staging_buffer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_STAGING_BUFFER *staging_buffer,
 				 UINT32 part_cnt)
 {
   assert (thread_p != NULL);
@@ -355,8 +606,8 @@ hjoin_init_split_staging_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_STAGING
  *   worker_tfile(in): One of the worker tfiles; its TDE setting is used for the pages.
  */
 int
-hjoin_flush_split_staging_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_STAGING_BUFFER * staging_buffer,
-				  QFILE_LIST_ID ** part_list_id, struct qmgr_temp_file *worker_tfile)
+hjoin_flush_split_staging_buffer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_STAGING_BUFFER *staging_buffer,
+				  QFILE_LIST_ID **part_list_id, struct qmgr_temp_file *worker_tfile)
 {
   UINT32 part_index;
   int error;
@@ -375,8 +626,8 @@ hjoin_flush_split_staging_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_STAGIN
       assert (staging_buffer->pages[part_index] != NULL);
 
       error =
-	qfile_copy_to_external_file_page (thread_p, part_list_id[part_index], staging_buffer->pages[part_index],
-					  worker_tfile);
+	      qfile_copy_to_external_file_page (thread_p, part_list_id[part_index], staging_buffer->pages[part_index],
+		  worker_tfile);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -393,7 +644,7 @@ hjoin_flush_split_staging_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_STAGIN
  *   staging_buffer(in/out): Staged last pages to free. Pages not yet written are discarded.
  */
 void
-hjoin_clear_split_staging_buffer (THREAD_ENTRY * thread_p, HASHJOIN_SPLIT_STAGING_BUFFER * staging_buffer)
+hjoin_clear_split_staging_buffer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_STAGING_BUFFER *staging_buffer)
 {
   UINT32 part_index;
 
