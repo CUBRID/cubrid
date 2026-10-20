@@ -4272,6 +4272,7 @@ scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 {
   DBLINK_SCAN_ID *dblid = &scan_id->s.dblid;
   DB_TYPE single_node_type = DB_TYPE_NULL;
+  int error;
 
   /* scan type is DBLINK SCAN */
   scan_id->type = S_DBLINK_SCAN;
@@ -4283,7 +4284,12 @@ scan_open_dblink_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   scan_init_scan_pred (&dblid->scan_pred, NULL, spec->where_pred,
 		       ((spec->where_pred) ? eval_fnc (thread_p, spec->where_pred, &single_node_type) : NULL));
 
-  return dblink_open_scan (thread_p, &scan_id->s.dblid.scan_info, spec, vd, host_vars);
+  error = dblink_open_scan (thread_p, &scan_id->s.dblid.scan_info, spec, vd, host_vars);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  return dblink_plan_columns (&scan_id->s.dblid.scan_info, val_list);
 }
 
 /*
