@@ -1473,7 +1473,7 @@ fetch_op_hex (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     {
       PRIM_SET_NULL (arithptr->value);
     }
-  else if (db_hex (peek_right, arithptr->value) != NO_ERROR)
+  else if (db_hex (peek_right, arithptr->value, arithptr->conv_type[1], arithptr->conv[1]) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1492,7 +1492,7 @@ fetch_op_ascii (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     {
       PRIM_SET_NULL (arithptr->value);
     }
-  else if (db_ascii (peek_right, arithptr->value) != NO_ERROR)
+  else if (db_ascii (peek_right, arithptr->value, arithptr->conv_type[1], arithptr->conv[1]) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -2777,7 +2777,8 @@ fetch_op_to_char (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
     {
       PRIM_SET_NULL (arithptr->value);
     }
-  else if (db_to_char (peek_left, peek_right, peek_third, arithptr->value, arith_domain) != NO_ERROR)
+  else if (db_to_char_with_converter (peek_left, peek_right, peek_third, arithptr->value, arith_domain,
+				      arithptr->conv_type[0], arithptr->conv[0]) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -4578,7 +4579,8 @@ fetch_op_to_enumeration_value (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   DB_VALUE *peek_right = a->peek_right;
   TP_DOMAIN *arith_domain = a->arith_domain;
 
-  if (db_value_to_enumeration_value (peek_right, arithptr->value, arith_domain) != NO_ERROR)
+  if (db_value_to_enumeration_value
+      (peek_right, arithptr->value, arith_domain, arithptr->conv_type[1], arithptr->conv[1]) != NO_ERROR)
     {
       return ER_FAILED;
     }

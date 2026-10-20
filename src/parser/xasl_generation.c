@@ -7225,7 +7225,7 @@ pt_decide_operand_coercion (ARITH_TYPE * arith)
 }
 
 /*
- * pt_decide_function_operands () - CBRD-27583 (4.7, D-51): an operand whose type an operator's body converted to compute
+ * pt_decide_function_operands () - CBRD-27583 (4.7): an operand whose type an operator's body converted to compute
  *   in converts on its fetch instead, so that the server body never takes that branch (the client fold calls the body
  *   as it was). A string type checking could not type reaches here (a session variable's read; it casts a column):
  *   FLOOR, CEIL, ABS, a unary minus and MOD read it as DOUBLE (tp_value_str_auto_cast_to_number: tp_value_auto_cast's
@@ -7283,8 +7283,8 @@ pt_decide_function_operands (ARITH_TYPE * arith)
 	}
       [[fallthrough]];
     case T_TRUNC:
-      /* exception (D-51): TRUNC's format into BIGINT fails as ER_QSTR_INVALID_FORMAT, a string format is checked for
-       * 'default' first: the body converts them */
+      /* CBRD-27583 exception, the data carries the type (2-7): TRUNC's format, a string's content the function parses
+       * ('default' first, else into BIGINT failing as ER_QSTR_INVALID_FORMAT); the body converts it */
       if (TP_IS_CHAR_TYPE (left_type))
 	{
 	  pt_set_operand_conversion (left, double_domain, coerce);

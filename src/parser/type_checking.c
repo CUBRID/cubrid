@@ -16292,7 +16292,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_HEX:
-      error = db_hex (arg1, result);
+      error = db_hex (arg1, result, DB_TYPE_NULL, NULL);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -16304,7 +16304,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_ASCII:
-      error = db_ascii (arg1, result);
+      error = db_ascii (arg1, result, DB_TYPE_NULL, NULL);
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17931,7 +17931,7 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 
 	enum_domain = tp_domain_cache (enum_domain);
 
-	error = db_value_to_enumeration_value (arg1, result, enum_domain);
+	error = db_value_to_enumeration_value (arg1, result, enum_domain, DB_TYPE_NULL, NULL);
 	if (error < 0)
 	  {
 	    PT_ERRORc (parser, o1, er_msg ());

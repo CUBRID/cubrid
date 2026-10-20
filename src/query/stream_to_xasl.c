@@ -7210,6 +7210,19 @@ stx_arith_cast_target (const ARITH_TYPE * arith, int i, DB_TYPE src_type)
     case T_LEFT:
     case T_RIGHT:
       return i == 1 ? &tp_Integer_domain : NULL;
+    case T_HEX:
+      /* D-96: a number's digits are its BIGINT's, a value neither a number nor a string its CHAR's (db_hex) */
+      return i != 1 || TP_IS_CHAR_TYPE (src_type) || TP_IS_BIT_TYPE (src_type) ? NULL
+	: TP_IS_NUMERIC_TYPE (src_type) ? &tp_Bigint_domain : &tp_Char_domain;
+    case T_ASCII:
+      /* D-96: a number's or a date's first character is its CHAR's (db_ascii) */
+      return i == 1 && (TP_IS_NUMERIC_TYPE (src_type) || TP_IS_DATE_OR_TIME_TYPE (src_type)) ? &tp_Char_domain : NULL;
+    case T_TO_CHAR:
+      /* D-96: a string is coerced into the result's domain (db_to_char_with_converter) */
+      return i == 0 && TP_IS_CHAR_TYPE (src_type) ? arith->domain : NULL;
+    case T_TO_ENUMERATION_VALUE:
+      /* D-96: the value assigned to an ENUM is cast into its domain (db_value_to_enumeration_value) */
+      return i == 1 ? arith->domain : NULL;
     default:
       return NULL;
     }
