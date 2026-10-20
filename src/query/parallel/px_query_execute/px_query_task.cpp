@@ -111,6 +111,7 @@ namespace parallel_query_execute
     css_conn_entry *conn_entry = cur_thread_p->conn_entry;
     int tran_index = cur_thread_p->tran_index;
     bool on_trace = cur_thread_p->on_trace;
+    bool trace_plan_detail = cur_thread_p->trace_plan_detail;
     bool collect_stats = false;
     THREAD_ENTRY *px_orig_thread_entry = cur_thread_p->m_px_orig_thread_entry;
     UINT64 *px_stats = nullptr;
@@ -119,6 +120,7 @@ namespace parallel_query_execute
     cur_thread_p->conn_entry = parent_thread_p->conn_entry;
     cur_thread_p->tran_index = parent_thread_p->tran_index;
     cur_thread_p->on_trace = parent_thread_p->on_trace;
+    cur_thread_p->trace_plan_detail = parent_thread_p->trace_plan_detail;
     cur_thread_p->m_px_orig_thread_entry = parent_thread_p;
     is_on_root_thread = cur_thread_p == parent_thread_p;
     new_xasl_state = qexec_deep_copy_xasl_state (cur_thread_p, xasl_state, false);
@@ -235,6 +237,7 @@ namespace parallel_query_execute
     cur_thread_p->conn_entry = conn_entry;
     cur_thread_p->tran_index = tran_index;
     cur_thread_p->on_trace = on_trace;
+    cur_thread_p->trace_plan_detail = trace_plan_detail;
     cur_thread_p->m_px_orig_thread_entry = px_orig_thread_entry;
     cur_thread_p->m_uses_px_stats = uses_px_stats;
     qexec_free_xasl_state (cur_thread_p, new_xasl_state);

@@ -415,7 +415,10 @@ optimizedb: 데이터베이스 최적화.\n\
 사용법: %1$s optimizedb [옵션] <데이터베이스 이름>\n\
 \n\
 옵션:\n\
-  -n, --class-name=NAME        해당 클래스의 통계 정보를 갱신함; 기본값: 전체 클래스\n
+  -n, --class-name=NAME        해당 클래스의 통계 정보를 갱신함; 기본값: 전체 클래스\n\
+      --no-histogram           클래스 통계만 갱신함; 히스토그램은 만들지도 지우지도 않음\n\
+      --no-histogram-classes=NAME[,NAME...]\n\
+                               해당 클래스들의 히스토그램 생성을 제외함; 나머지 클래스는 그대로 갱신\n
 
 
 $set 11 MSGCAT_UTIL_SET_RESTOREDB
