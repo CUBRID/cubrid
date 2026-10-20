@@ -13565,6 +13565,25 @@ qexec_execute_remote_update_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl,
 	      qexec_failure_line (__LINE__, xasl_state);
 	      return ER_FAILED;
 	    }
+
+	  /* A cache hit copies the list file only. The value a SET placeholder takes is read from
+	   * single_tuple, which qexec_execute_mainblock () fills at its end. Fill it the same way here, and
+	   * keep its check that the subquery returned at most one row. */
+	  if (aptr->is_single_tuple)
+	    {
+	      if (aptr->list_id->tuple_cnt > 1)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_QRY_SINGLE_TUPLE, 0);
+		  qexec_failure_line (__LINE__, xasl_state);
+		  return ER_FAILED;
+		}
+	      if (aptr->single_tuple != NULL
+		  && qdata_get_single_tuple_from_list_id (thread_p, aptr->list_id, aptr->single_tuple) != NO_ERROR)
+		{
+		  qexec_failure_line (__LINE__, xasl_state);
+		  return ER_FAILED;
+		}
+	    }
 	}
       else if (qexec_execute_mainblock (thread_p, aptr, xasl_state, NULL) != NO_ERROR)
 	{
