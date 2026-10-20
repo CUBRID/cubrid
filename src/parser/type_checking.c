@@ -5462,9 +5462,9 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 	  if (PT_IS_NAME_NODE (arg1) && PT_IS_VALUE_NODE (arg2)
 	      && (arg3_type == PT_TYPE_NONE || PT_IS_VALUE_NODE (arg3)) && arg1_type != PT_TYPE_ENUMERATION)
 	    {
-	      if (arg1_type == PT_TYPE_NA && common_type != PT_TYPE_NULL)
+	      if ((arg1_type == PT_TYPE_NA || arg1_type == PT_TYPE_NULL) && common_type != PT_TYPE_NULL)
 		{
-		  /* NA column vs constant: use inferred type (e.g. string literal) */
+		  /* NA or all-NULL column vs constant: use inferred type (e.g. string literal) */
 		  arg1_eq_type = arg2_eq_type = common_type;
 		}
 	      else
@@ -5473,7 +5473,7 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 		}
 	      if (arg3_type != PT_TYPE_NONE)
 		{
-		  arg3_eq_type = arg1_type;
+		  arg3_eq_type = (arg1_type == PT_TYPE_NULL) ? arg1_eq_type : arg1_type;
 		}
 
 	      /* if column type is number (except NUMERIC) and operator is not EQ cast const node to DOUBLE to enhance
@@ -5494,7 +5494,7 @@ pt_coerce_expr_arguments (PARSER_CONTEXT * parser, PT_NODE * expr, PT_NODE * arg
 	  else if (PT_IS_NAME_NODE (arg2) && PT_IS_VALUE_NODE (arg1) && arg3_type == PT_TYPE_NONE
 		   && arg2_type != PT_TYPE_ENUMERATION)
 	    {
-	      if (arg2_type == PT_TYPE_NA && common_type != PT_TYPE_NULL)
+	      if ((arg2_type == PT_TYPE_NA || arg2_type == PT_TYPE_NULL) && common_type != PT_TYPE_NULL)
 		{
 		  arg1_eq_type = arg2_eq_type = common_type;
 		}
