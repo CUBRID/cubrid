@@ -13877,7 +13877,18 @@ pt_static_sql_expand_stars (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * l
 	  {
 	    const char *columns = pt_static_sql_column_list (parser, star->columns, NULL, 0, false);
 
-	    if (columns != NULL && list->tokens[i].kind != PT_SS_TOKEN_PUNCT)
+	    /* insert into class partition (name) values ...: the name of the partition replaced the class name
+	     * (see pt_resolve_partition_spec ()), and the column list is added after the partition clause */
+	    if (star->kind == PT_SS_INSERT_COLUMNS && pt_static_sql_token_is (list, i - 1, '(')
+		&& pt_static_sql_token_is (list, i + 1, ')') && i - 2 >= 0
+		&& list->tokens[i - 2].kind == PT_SS_TOKEN_IDENT
+		&& pt_static_sql_token_equals (list->text, list->tokens[i - 2].start, list->tokens[i - 2].end,
+					       "partition"))
+	      {
+		i++;
+	      }
+
+	    if (columns != NULL && (list->tokens[i].kind != PT_SS_TOKEN_PUNCT || pt_static_sql_token_is (list, i, ')')))
 	      {
 		char *buf = (char *) parser_alloc (parser, (int) strlen (columns) + 4);
 
