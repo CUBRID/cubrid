@@ -17179,21 +17179,14 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	    }
 
 
-	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+	  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT)
+	      && (xasl->instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER))
 	    {
-	      PT_NODE *final_node;
-
-	      for (final_node = select_list_final; final_node != NULL; final_node = final_node->next)
-		{
-		  if (pt_is_instnum (final_node))
-		    {
-		      /* inst_num () in the select list needs its value for every row. The scan writes the
-		       * intermediate list and the final output list is built from it afterwards, which cannot
-		       * recover that value, so give up the optimization for this query. */
-		      XASL_CLEAR_FLAG (xasl, XASL_ANALYTIC_USES_LIMIT_OPT);
-		      break;
-		    }
-		}
+	      /* pt_to_analytic_final_node () sets the flag when it leaves an inst_num () in the final select
+	       * list, at any depth of an expression. Its value is needed for every row, and the scan writes
+	       * the intermediate list from which the final output list is built afterwards, which cannot
+	       * recover that value, so give up the optimization for this query. */
+	      XASL_CLEAR_FLAG (xasl, XASL_ANALYTIC_USES_LIMIT_OPT);
 	    }
 
 	  /* FIXME - Fix it with pt_build_analytic_eval_list (). */

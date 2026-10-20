@@ -22921,6 +22921,13 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
   /* by default, it's an output record */
   analytic_state->is_output_rec = true;
 
+  if (XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    {
+      /* the scan evaluated inst_num () for every row it wrote to the intermediate file; evaluating it
+       * again here would apply the predicate a second time and drop rows */
+      return NO_ERROR;
+    }
+
   if (!analytic_state->is_last_run
       || (analytic_state->xasl->instnum_pred == NULL && !(instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)))
     {
