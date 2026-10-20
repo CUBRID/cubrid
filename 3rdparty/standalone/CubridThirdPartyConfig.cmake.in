@@ -2,7 +2,8 @@
 set(CubridThirdParty_IDENTITY "@THIRDPARTY_IDENTITY@")
 get_filename_component(prefix "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
 foreach(header expat.h histedit.h editline/readline.h lz4.h openssl/ssl.h sql.h
-    sqlext.h rapidjson/document.h re2/re2.h oneapi/tbb.h catch2/catch.hpp)
+    sqltypes.h sqlext.h sqlucode.h unixodbc.h rapidjson/document.h re2/re2.h
+    oneapi/tbb.h catch2/catch.hpp)
   if(NOT EXISTS "${prefix}/include/${header}")
     message(FATAL_ERROR "Incomplete third-party prefix: include/${header}")
   endif()

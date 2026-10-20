@@ -32,6 +32,7 @@ with tempfile.TemporaryDirectory(dir=state) as temporary:
         ("false-prefix", "Could not find a package configuration file"),
         ("missing-library", "Incomplete third-party prefix"),
         ("missing-header", "Incomplete third-party prefix"),
+        ("missing-odbc-header", "Incomplete third-party prefix"),
         ("missing-soname", "Incomplete third-party prefix"),
         ("missing-license", "Incomplete third-party prefix"),
         ("missing-source", "Incomplete third-party prefix"),
@@ -44,6 +45,8 @@ with tempfile.TemporaryDirectory(dir=state) as temporary:
             (candidate / "lib/libre2.a").unlink()
         elif name == "missing-header":
             (candidate / "include/rapidjson/document.h").unlink()
+        elif name == "missing-odbc-header":
+            (candidate / "include/sqltypes.h").unlink()
         elif name == "missing-soname":
             (candidate / "lib/libodbc.so.2").unlink()
         elif name == "missing-license":
