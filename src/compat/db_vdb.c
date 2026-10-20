@@ -1078,8 +1078,7 @@ db_compile_statement_local (DB_SESSION * session)
    * than using XASL cache. Also, it can be executed in the server without touching the XASL cache by calling
    * prepare_and_execute_query(). */
   if (!parser->flag.is_parsing_static_sql && !parser->flag.is_verifying_static_sql_text
-      && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0
-      && statement->flag.cannot_prepare == 0)
+      && prm_get_integer_value (PRM_ID_XASL_CACHE_MAX_ENTRIES) > 0 && statement->flag.cannot_prepare == 0)
     {
       if (session->is_subsession_for_prepared)
 	{
