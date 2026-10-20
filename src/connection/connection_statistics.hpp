@@ -76,6 +76,7 @@ namespace cubconn::statistics
     MQ_TAKEOVER_CLIENT, /* count */
     MQ_SHUTDOWN_CLIENT, /* count */
     MQ_RELEASE_PACKET, /* count */
+    MQ_RECV_RECHECK, /* count */
 
     /* --------------------------------------------------------------------------- */
     /* blocked									   */
@@ -102,6 +103,7 @@ namespace cubconn::statistics
     { "MQ_TAKEOVER_CLIENT", "" },
     { "MQ_SHUTDOWN_CLIENT", "" },
     { "MQ_RELEASE_PACKET", "" },
+    { "MQ_RECV_RECHECK", "" },
 
     { "BLOCKED_RMUTEX", "us" },
   };
