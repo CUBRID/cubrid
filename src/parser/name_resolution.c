@@ -121,6 +121,14 @@ struct pt_bind_names_data_type
   PT_NODE *data_type;
 };
 
+typedef struct pt_cte_null_reference_arg PT_CTE_NULL_REFERENCE_ARG;
+struct pt_cte_null_reference_arg
+{
+  PT_NODE *cte_def;		/* the recursive CTE */
+  PT_NODE *spec;		/* its self reference whose NULL-typed names are typed */
+  bool typed;			/* a name was typed */
+};
+
 static PT_NODE *pt_bind_parameter (PARSER_CONTEXT * parser, PT_NODE * parameter);
 static PT_NODE *pt_bind_parameter_path (PARSER_CONTEXT * parser, PT_NODE * path);
 static PT_NODE *pt_bind_name_or_path_in_scope (PARSER_CONTEXT * parser, PT_BIND_NAMES_ARG * bind_arg,
@@ -255,6 +263,12 @@ static void pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * nod
 static void pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
 static PT_NODE *pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						   int *continue_walk);
+static bool pt_type_cte_null_self_references (PARSER_CONTEXT * parser, PT_NODE * cte_def);
+static PT_NODE *pt_type_cte_null_self_reference_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						       int *continue_walk);
+static PT_NODE *pt_type_cte_null_self_reference_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						       int *continue_walk);
+static bool pt_type_cte_null_columns (PARSER_CONTEXT * parser, PT_NODE * cte_def);
 static PT_NODE *pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived_table_type,
 						   PT_NODE * derived_table, PT_NODE * derived_name);
 static void pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC_TYPE derived_table_type,
@@ -11358,6 +11372,7 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
   PT_NODE *non_recursive_cte = cte_def->info.cte.non_recursive_part;
   PT_NODE *recursive_cte = cte_def->info.cte.recursive_part;
   bool save_donot_fold;
+  int passes;
 
   assert (cte_def->node_type == PT_CTE);
 
@@ -11411,25 +11426,38 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
 
       cte_def->info.cte.recursive_part = recursive_cte;
 
-      /* must bind any expr types in cte; required for types binding */
-      save_donot_fold = bind_arg->sc_info->donot_fold;
-      bind_arg->sc_info->donot_fold = true;
-      save_next_cte_def = cte_def->next;
-      cte_def->next = NULL;
-      cte_def = pt_semantic_type (parser, cte_def, bind_arg->sc_info);
-      if (!cte_def)
+      /* a column the recursive part writes from a self reference the non-recursive part types NULL takes the
+       * unified domain (spec 27): the self reference names are typed by their columns and the parts unified again;
+       * a pass needs a newly typed name and a chain of columns typing each other is not longer than the columns */
+      passes = pt_length_of_list (cte_def->info.cte.as_attr_list);
+      do
 	{
-	  return;		/* error in pt_semantic_type */
+	  /* must bind any expr types in cte; required for types binding */
+	  save_donot_fold = bind_arg->sc_info->donot_fold;
+	  bind_arg->sc_info->donot_fold = true;
+	  save_next_cte_def = cte_def->next;
+	  cte_def->next = NULL;
+	  cte_def = pt_semantic_type (parser, cte_def, bind_arg->sc_info);
+	  if (!cte_def)
+	    {
+	      return;		/* error in pt_semantic_type */
+	    }
+
+	  bind_arg->sc_info->donot_fold = save_donot_fold;	/* restore */
+	  cte_def->next = save_next_cte_def;
+
+	  /* set final CTE attributes types */
+	  pt_set_attr_list_types (parser, cte_def->info.cte.as_attr_list, PT_IS_SUBQUERY, recursive_cte, cte_def);
+
+	  /* the attributes of cte self references specs can now be computed correctly */
+	  recursive_cte = parser_walk_tree (parser, recursive_cte, pt_bind_cte_self_references_types, NULL, NULL, NULL);
 	}
+      while (--passes > 0 && pt_type_cte_null_self_references (parser, cte_def));
 
-      bind_arg->sc_info->donot_fold = save_donot_fold;	/* restore */
-      cte_def->next = save_next_cte_def;
-
-      /* set final CTE attributes types */
-      pt_set_attr_list_types (parser, cte_def->info.cte.as_attr_list, PT_IS_SUBQUERY, recursive_cte, cte_def);
-
-      /* the attributes of cte self references specs can now be computed correctly */
-      recursive_cte = parser_walk_tree (parser, recursive_cte, pt_bind_cte_self_references_types, NULL, NULL, NULL);
+      if (pt_type_cte_null_columns (parser, cte_def))
+	{
+	  recursive_cte = parser_walk_tree (parser, recursive_cte, pt_bind_cte_self_references_types, NULL, NULL, NULL);
+	}
     }
 
 end:
@@ -11461,6 +11489,132 @@ pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void
   *continue_walk = PT_LIST_WALK;
 
   return node;
+}
+
+/*
+ * pt_type_cte_null_self_references () - type the names of a recursive CTE's self references that were bound NULL-typed
+ *					 from the non-recursive part with the types their columns have now
+ *   return: true if a name was typed while a column of the CTE is NULL-typed, i.e. unifying the parts again can type
+ *	     that column
+ *   parser(in):
+ *   cte_def(in): the CTE after its parts were unified and its self references bound
+ */
+static bool
+pt_type_cte_null_self_references (PARSER_CONTEXT * parser, PT_NODE * cte_def)
+{
+  PT_CTE_NULL_REFERENCE_ARG ref_arg = { cte_def, NULL, false };
+  PT_NODE *col;
+
+  for (col = cte_def->info.cte.as_attr_list; col != NULL && col->type_enum != PT_TYPE_NULL; col = col->next)
+    {
+      ;
+    }
+  if (col == NULL)
+    {
+      return false;
+    }
+
+  (void) parser_walk_tree (parser, cte_def->info.cte.recursive_part, pt_type_cte_null_self_reference_specs, &ref_arg,
+			   NULL, NULL);
+
+  return ref_arg.typed;
+}
+
+/*
+ * pt_type_cte_null_self_reference_specs () - type the NULL-typed names of the CTE's self references a query reads
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): PT_CTE_NULL_REFERENCE_ARG
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_type_cte_null_self_reference_specs (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_CTE_NULL_REFERENCE_ARG *ref_arg = (PT_CTE_NULL_REFERENCE_ARG *) arg;
+  PT_NODE *spec;
+
+  if (node->node_type != PT_SELECT)
+    {
+      return node;
+    }
+
+  for (spec = node->info.query.q.select.from; spec != NULL; spec = spec->next)
+    {
+      if (PT_SPEC_IS_CTE (spec) && spec->info.spec.cte_pointer->info.pointer.node == ref_arg->cte_def)
+	{
+	  ref_arg->spec = spec;
+	  (void) parser_walk_tree (parser, node, pt_type_cte_null_self_reference_names, ref_arg, NULL, NULL);
+	}
+    }
+
+  return node;
+}
+
+/*
+ * pt_type_cte_null_self_reference_names () - type a NULL-typed name of the self reference with its column's type
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): PT_CTE_NULL_REFERENCE_ARG
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_type_cte_null_self_reference_names (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_CTE_NULL_REFERENCE_ARG *ref_arg = (PT_CTE_NULL_REFERENCE_ARG *) arg;
+  PT_NODE *col;
+
+  if (node->node_type != PT_NAME || node->type_enum != PT_TYPE_NULL
+      || node->info.name.spec_id != ref_arg->spec->info.spec.id)
+    {
+      return node;
+    }
+
+  col = pt_is_on_list (parser, node, ref_arg->spec->info.spec.as_attr_list);
+  if (col == NULL || col->type_enum == PT_TYPE_NULL)
+    {
+      return node;
+    }
+
+  node->type_enum = col->type_enum;
+  parser_free_tree (parser, node->data_type);
+  node->data_type = parser_copy_tree_list (parser, col->data_type);
+  ref_arg->typed = true;
+
+  return node;
+}
+
+/*
+ * pt_type_cte_null_columns () - give a recursive CTE column the recursive part types NULL the type of the
+ *				 non-recursive part
+ *   return: true if a column was typed
+ *   parser(in):
+ *   cte_def(in): the CTE after its self references were typed
+ *
+ * Note: once its self references are typed, a NULL-typed item of the recursive part writes only NULL values, so the
+ *	 non-recursive part's type is the unified domain of the column (spec 27)
+ */
+static bool
+pt_type_cte_null_columns (PARSER_CONTEXT * parser, PT_NODE * cte_def)
+{
+  PT_NODE *col, *att;
+  bool typed = false;
+
+  att = pt_get_select_list (parser, cte_def->info.cte.non_recursive_part);
+  for (col = cte_def->info.cte.as_attr_list; col != NULL && att != NULL; col = col->next, att = att->next)
+    {
+      /* a host variable's column stays as it was: its type is the bind's */
+      if (col->type_enum == PT_TYPE_NULL && att->type_enum != PT_TYPE_NULL && att->type_enum != PT_TYPE_MAYBE)
+	{
+	  col->type_enum = att->type_enum;
+	  parser_free_tree (parser, col->data_type);
+	  col->data_type = parser_copy_tree_list (parser, att->data_type);
+	  typed = true;
+	}
+    }
+
+  return typed;
 }
 
 
