@@ -303,10 +303,6 @@ cas_set_session_id (T_BROKER_VERSION protocol, char *session)
 {
   SESSION_ID id = DB_EMPTY_SESSION;
 
-  /* keeping a session is decided for the session of the client that left (CHANGE CLIENT, RESET, ...).
-   * Do not carry it over to this client, or its session will also be kept and never expire. */
-  db_set_keep_session (false);
-
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (protocol, PROTOCOL_V3))
     {
       id = *(SESSION_ID *) (session + 8);
