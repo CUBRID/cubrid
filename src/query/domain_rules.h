@@ -461,11 +461,9 @@ DB_VALUE_COMPARE_RESULT domain_compare_in_domain (const TP_DOMAIN * domain, cons
  *   string or ENUM key whose codeset is not its collation's) or when the table cannot be made
  * domain_compare_row_entry () - the comparison of an item of row `row` with an element value; NULL for an element of
  *   a type the table has no column for
- * domain_compare_row_key_entry () - the same for an element key: the cell every element of that key reads
  */
 int domain_compare_key_row (const DOMAIN_COMPARE_KEY * key);
 const DOMAIN_COMPARE *domain_compare_row_entry (int row, const DB_VALUE * element);
-const DOMAIN_COMPARE *domain_compare_row_key_entry (int row, const DOMAIN_COMPARE_KEY * element);
 
 /*
  * domain_compare_values () - a comparison resolved before any row, on the two values it compares (the

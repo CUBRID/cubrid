@@ -2947,18 +2947,12 @@ domain_compare_key_row (const DOMAIN_COMPARE_KEY * key)
 const DOMAIN_COMPARE *
 domain_compare_row_entry (int row, const DB_VALUE * element)
 {
-  DOMAIN_COMPARE_KEY key;
-  domain_compare_key_of_value (element, &key);
-  return domain_compare_row_key_entry (row, &key);
-}
-
-const DOMAIN_COMPARE *
-domain_compare_row_key_entry (int row, const DOMAIN_COMPARE_KEY * element)
-{
   /* a row was given out, so the table was made; it lives until the server stops */
   const DOMAIN_TYPE_PAIR_TABLE *pairs = domain_key_pairs ();
   assert (pairs != NULL && row >= 0 && row < pairs->n_keys);
-  const int column = pairs != NULL ? domain_key_pair_index (pairs, element) : -1;
+  DOMAIN_COMPARE_KEY key;
+  domain_compare_key_of_value (element, &key);
+  const int column = pairs != NULL ? domain_key_pair_index (pairs, &key) : -1;
   return column >= 0 ? &pairs->pool[pairs->entry[1][row * pairs->n_keys + column]] : NULL;
 }
 

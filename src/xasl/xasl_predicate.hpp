@@ -144,7 +144,7 @@ namespace cubxasl
     /* CBRD-27583: what the unpack decided the item compares with (unpack arena, not serialized): a list's column or a
      * right side that is no collection by compare; NULL: a collection's elements by the item's row of the type pair
      * comparison table (compare_row), or by the two values' keys where the row is -1; compare_each: the row's cell of
-     * the elements' one key, which every non-NULL element reads (NULL: each element's own) */
+     * a constant collection's elements of one key, which every non-NULL element reads (NULL: each element's own) */
     int compare_row;
     const DOMAIN_COMPARE *compare;
     const DOMAIN_COMPARE *compare_each;

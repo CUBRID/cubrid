@@ -173,7 +173,7 @@ static char *xts_pack_decided_compare (char *ptr, const DOMAIN_COMPARE * compare
 static char *xts_pack_compare (char *ptr, const TP_DOMAIN * lhs, const TP_DOMAIN * rhs);
 static bool xts_term_compares_values (const COMP_EVAL_TERM * term);
 static int xts_decide_element_compare (const ALSM_EVAL_TERM * term, DOMAIN_COMPARE * decided,
-				       DOMAIN_COMPARE_KEY * item, DOMAIN_COMPARE_KEY * element);
+				       DOMAIN_COMPARE_KEY * item);
 static char *xts_pack_hash_join_keys (char *ptr, const HASHJOIN_PROC_NODE * node);
 static char *xts_pack_coercion_plan (char *ptr, const DOMAIN_COERCION_PLAN * plan);
 static char *xts_pack_accumulator_plan (char *ptr, const DOMAIN_ACCUMULATOR_PLAN * plan);
@@ -4703,10 +4703,10 @@ xts_process_alsm_eval_term (char *ptr, const ALSM_EVAL_TERM * alsm_eval_term)
   if (!xts_Index_stream)
     {
       /* CBRD-27583 (D-81): what the item compares with - 0 none (the values), 1 one comparison, 2 a collection's
-       * elements by the item key's row of the type pair comparison table, 3 the same and the elements' one key */
+       * elements by the item key's row of the type pair comparison table */
       DOMAIN_COMPARE decided;
-      DOMAIN_COMPARE_KEY key[2];
-      const int kind = xts_decide_element_compare (alsm_eval_term, &decided, &key[0], &key[1]);
+      DOMAIN_COMPARE_KEY item;
+      const int kind = xts_decide_element_compare (alsm_eval_term, &decided, &item);
       if (kind == ER_FAILED)
 	{
 	  return NULL;
@@ -4716,11 +4716,11 @@ xts_process_alsm_eval_term (char *ptr, const ALSM_EVAL_TERM * alsm_eval_term)
 	{
 	  ptr = xts_pack_decided_compare (ptr, &decided);
 	}
-      for (int k = 0; k < kind - 1; k++)
+      else if (kind == 2)
 	{
-	  ptr = or_pack_int (ptr, key[k].type);
-	  ptr = or_pack_int (ptr, key[k].codeset);
-	  ptr = or_pack_int (ptr, key[k].collation);
+	  ptr = or_pack_int (ptr, item.type);
+	  ptr = or_pack_int (ptr, item.codeset);
+	  ptr = or_pack_int (ptr, item.collation);
 	}
       /* CBRD-27583 (D-87): a partitioned class's pruning conversion of the elements - 0 none, or 1 and the item's
        * domain and the elements' */
@@ -7157,15 +7157,13 @@ xts_sizeof_alsm_eval_term (const ALSM_EVAL_TERM * alsm_eval_term)
   if (!xts_Index_stream)
     {
       DOMAIN_COMPARE decided;
-      DOMAIN_COMPARE_KEY key[2];
-      const int kind = xts_decide_element_compare (alsm_eval_term, &decided, &key[0], &key[1]);
+      DOMAIN_COMPARE_KEY item;
+      const int kind = xts_decide_element_compare (alsm_eval_term, &decided, &item);
       if (kind == ER_FAILED)
 	{
 	  return ER_FAILED;
 	}
-      size +=
-	OR_INT_SIZE + (kind == 1 ? xts_sizeof_decided_compare (&decided) : kind >=
-		       2 ? (kind - 1) * 3 * OR_INT_SIZE : 0);
+      size += OR_INT_SIZE + (kind == 1 ? xts_sizeof_decided_compare (&decided) : kind == 2 ? 3 * OR_INT_SIZE : 0);
       size += OR_INT_SIZE;
       if (alsm_eval_term->prune_domain != NULL)
 	{
@@ -7460,13 +7458,11 @@ xts_term_compares_values (const COMP_EVAL_TERM * term)
 /*
  * xts_decide_element_compare () - CBRD-27583 (D-81): what an ALL/SOME term compares its item with, from the domains: a
  *   list's column (its subquery's column 0, eval_some_list_eval) or a right side that is no collection by one
- *   comparison, a collection's elements - its data - by the item key's row of the type pair comparison table, and
- *   where the collection's domain gives its non-NULL elements one key, by that key's cell of the row
- *   return: 0 none (the values decide), 1 decided, 2 item, 3 item and element; ER_FAILED
+ *   comparison, a collection's elements - its data - by the item key's row of the type pair comparison table
+ *   return: 0 none (the values decide), 1 decided, 2 item; ER_FAILED
  */
 static int
-xts_decide_element_compare (const ALSM_EVAL_TERM * term, DOMAIN_COMPARE * decided, DOMAIN_COMPARE_KEY * item,
-			    DOMAIN_COMPARE_KEY * element)
+xts_decide_element_compare (const ALSM_EVAL_TERM * term, DOMAIN_COMPARE * decided, DOMAIN_COMPARE_KEY * item)
 {
   if (term->elem == NULL || term->elemset == NULL)
     {
@@ -7490,26 +7486,7 @@ xts_decide_element_compare (const ALSM_EVAL_TERM * term, DOMAIN_COMPARE * decide
     {
       /* the server reads an OBJECT regu's domain as OID (OR_PACK_DOMAIN_OBJECT_TO_OID) */
       domain_compare_key_of (domain_key_value_domain (domain[0]), item);
-      int n_keys = 0;
-      for (const TP_DOMAIN * d = domain[1]->setdomain; d != NULL && n_keys >= 0; d = d->next)
-	{
-	  if (TP_DOMAIN_TYPE (d) == DB_TYPE_NULL)
-	    {
-	      /* a NULL element compares by the values (eval_some_eval) */
-	      continue;
-	    }
-	  DOMAIN_COMPARE_KEY key;
-	  domain_compare_key_of (domain_key_value_domain (d), &key);
-	  if (TP_DOMAIN_TYPE (d) == DB_TYPE_VARIABLE || d->collation_flag != TP_DOMAIN_COLL_NORMAL
-	      || (n_keys > 0 && (key.type != element->type || key.collation != element->collation)))
-	    {
-	      n_keys = -1;
-	      break;
-	    }
-	  *element = key;
-	  n_keys = 1;
-	}
-      return n_keys == 1 ? 3 : 2;
+      return 2;
     }
   return 1;
 }
