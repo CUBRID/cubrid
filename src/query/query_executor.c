@@ -730,7 +730,7 @@ static BH_CMP_RESULT qexec_topn_cmpval (DB_VALUE * left, DB_VALUE * right, SORT_
 					const TP_DOMAIN * domain);
 static void qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, TOPN_TUPLE * tuple, int count);
 static int qexec_get_orderbynum_upper_bound (THREAD_ENTRY * tread_p, PRED_EXPR * pred, VAL_DESCR * vd,
-					     DB_VALUE * ubound, const DOMAIN_BOUND_CONVERSION ** conversion);
+					     DB_VALUE * ubound, bool * unbounded);
 static int qexec_analytic_evaluate_cume_dist_percent_rank_function (THREAD_ENTRY * thread_p,
 								    ANALYTIC_FUNCTION_STATE * func_state);
 
@@ -27153,32 +27153,19 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
     }
 
   db_make_null (&ubound_val);
-  const DOMAIN_BOUND_CONVERSION *conversion;
-  error = qexec_get_orderbynum_upper_bound (thread_p, xasl->ordbynum_pred, vd, &ubound_val, &conversion);
+  bool unbounded = false;
+  error = qexec_get_orderbynum_upper_bound (thread_p, xasl->ordbynum_pred, vd, &ubound_val, &unbounded);
   if (error != NO_ERROR)
     {
       return error;
     }
-  if (DB_IS_NULL (&ubound_val))
+  if (unbounded || DB_IS_NULL (&ubound_val))
     {
       return NO_ERROR;
     }
-  if (DB_VALUE_TYPE (&ubound_val) != DB_TYPE_INTEGER)
-    {
-      /* by the conversion the unpack found for the bound's term */
-      assert (conversion != NULL && conversion->source == DB_VALUE_DOMAIN_TYPE (&ubound_val));
-      TP_DOMAIN_STATUS status = tp_value_coerce_with_converter (&ubound_val, &ubound_val, &tp_Integer_domain,
-								conversion != NULL ? conversion->source : DB_TYPE_NULL,
-								conversion != NULL ? conversion->conv : NULL);
-      if (status != DOMAIN_COMPATIBLE)
-	{
-	  pr_clear_value (&ubound_val);
-	  return NO_ERROR;
-	}
-    }
 
+  assert (DB_VALUE_TYPE (&ubound_val) == DB_TYPE_INTEGER);
   ubound = db_get_int (&ubound_val);
-  pr_clear_value (&ubound_val);
 
   if (ubound == 0)
     {
@@ -27735,61 +27722,56 @@ qexec_clear_topn_tuple (THREAD_ENTRY * thread_p, TOPN_TUPLE * tuple, int count)
  * thread_p	   : thread entry
  * pred (in)	   : orderby_num predicate
  * vd (in)	   : value descriptor
- * ubound (in/out) : upper bound
- * conversion (out): CBRD-27583 (D-94): the conversion of the bound's term into INTEGER (unpack), NULL without a bound
+ * ubound (in/out) : upper bound, an INTEGER (CBRD-27583 (D-94))
+ * unbounded (out) : CBRD-27583 (D-94): set by a bound INTEGER cannot hold, which leaves no top-N bound
  */
 static int
 qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL_DESCR * vd, DB_VALUE * ubound,
-				  const DOMAIN_BOUND_CONVERSION ** conversion)
+				  bool * unbounded)
 {
   int error = NO_ERROR;
   REGU_VARIABLE *rhs;
   REL_OP op;
   DB_VALUE *val;
-  int cmp;
   DB_VALUE left_bound, right_bound;
 
   assert_release (pred != NULL);
   assert_release (ubound != NULL);
 
-  const DOMAIN_BOUND_CONVERSION *left_conversion = NULL, *right_conversion = NULL;
   db_make_null (ubound);
   db_make_null (&left_bound);
   db_make_null (&right_bound);
-  *conversion = NULL;
 
   if (pred->type == T_PRED && pred->pe.m_pred.bool_op == B_AND)
     {
-      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.m_pred.lhs, vd, &left_bound, &left_conversion);
+      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.m_pred.lhs, vd, &left_bound, unbounded);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
 	}
 
-      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.m_pred.rhs, vd, &right_bound, &right_conversion);
+      error = qexec_get_orderbynum_upper_bound (thread_p, pred->pe.m_pred.rhs, vd, &right_bound, unbounded);
       if (error != NO_ERROR)
 	{
 	  goto error_return;
 	}
 
-      if (DB_IS_NULL (&left_bound) && DB_IS_NULL (&right_bound))
+      if (*unbounded || (DB_IS_NULL (&left_bound) && DB_IS_NULL (&right_bound)))
 	{
 	  /* no valid bounds */
 	  goto cleanup;
 	}
 
-      /* a bound has its term's type and an AND keeps the smaller one, so only the values know the keys: the key pair
-       * table's comparison of the two bounds, once per execution (no row) */
-      cmp = domain_compare_by_type_pair (&left_bound, &right_bound, 1, 1, NULL);
-      if (cmp == DB_GT)
+      /* an AND keeps the larger bound and a NULL one is the lowest, as the total order compare of the two bounds had
+       * it; each term's conversion into INTEGER is monotonic, so the larger INTEGER is the larger bound's */
+      if (DB_IS_NULL (&right_bound)
+	  || (!DB_IS_NULL (&left_bound) && db_get_int (&left_bound) > db_get_int (&right_bound)))
 	{
 	  error = pr_clone_value (&left_bound, ubound);
-	  *conversion = left_conversion;
 	}
       else
 	{
 	  error = pr_clone_value (&right_bound, ubound);
-	  *conversion = right_conversion;
 	}
 
       if (error != NO_ERROR)
@@ -27833,7 +27815,20 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 	{
 	  goto error_return;
 	}
-      *conversion = pred->pe.m_eval_term.et.et_comp.bound_conversion;
+
+      if (!DB_IS_NULL (ubound) && DB_VALUE_TYPE (ubound) != DB_TYPE_INTEGER)
+	{
+	  /* by the conversion the unpack found for the term's bound */
+	  const DOMAIN_BOUND_CONVERSION *conversion = pred->pe.m_eval_term.et.et_comp.bound_conversion;
+	  assert (conversion != NULL && conversion->source == DB_VALUE_DOMAIN_TYPE (ubound));
+	  const DB_TYPE source = conversion != NULL ? conversion->source : DB_TYPE_NULL;
+	  if (tp_value_coerce_with_converter (ubound, ubound, &tp_Integer_domain, source,
+					      conversion != NULL ? conversion->conv : NULL) != DOMAIN_COMPATIBLE)
+	    {
+	      pr_clear_value (ubound);
+	      *unbounded = true;
+	    }
+	}
       goto cleanup;
     }
 
@@ -27841,7 +27836,6 @@ qexec_get_orderbynum_upper_bound (THREAD_ENTRY * thread_p, PRED_EXPR * pred, VAL
 
 error_return:
   db_make_null (ubound);
-  *conversion = NULL;
 
 cleanup:
   pr_clear_value (&left_bound);
