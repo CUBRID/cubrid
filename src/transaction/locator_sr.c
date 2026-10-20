@@ -13185,9 +13185,9 @@ locator_has_isolation_conflict (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * cont
  *   context(in/out): heap get context; given back unfixed, as it was on entry
  *
  * Note: any other writer settles on our MVCCID self-lock before touching a row we stamped, so while it stands we
- *	are the row's only writer and need no row lock while the holders' total mode is X, which also counts a holder
- *	upgrading S to X; asking for it would queue us behind a writer that waits on us, or will once granted.  S
- *	holders alone have decided on the row and are waited for.
+ *	are the row's only writer and need no row lock while only an X holder has it; asking for it would queue us
+ *	behind a writer that waits on us.  An S holder has decided on the row and is waited for, even while it waits
+ *	to upgrade to X.
  */
 static bool
 locator_last_version_is_ours (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
@@ -13259,7 +13259,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
       lock_acquired = true;
     }
   else if (owner_bypass_ok && is_mvcc_class && locator_last_version_is_ours (thread_p, context)
-	   && lock_get_total_holders_mode (thread_p, context->oid_p, context->class_oid_p) == X_LOCK)
+	   && lock_get_granted_holders_mode (thread_p, context->oid_p, context->class_oid_p) == X_LOCK)
     {
       /* lock_acquired stays false: there is nothing to give back */
     }

@@ -7977,21 +7977,24 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
 }
 
 /*
- * lock_get_total_holders_mode () - The holders' modes combined, including one a holder waits to convert to
+ * lock_get_granted_holders_mode () - The holders' granted modes combined
  *
- * return: the holders' total mode; NULL_LOCK when nobody holds the object
+ * return: the combined mode; NULL_LOCK when nobody holds the object
  *   oid(in): the object
  *   class_oid(in): its class
+ *
+ * Note: unlike total_holders_mode, a mode a holder still waits to convert to is left out.
  */
 LOCK
-lock_get_total_holders_mode (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid)
+lock_get_granted_holders_mode (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid)
 {
 #if !defined (SERVER_MODE)
   return NULL_LOCK;
 #else /* !SERVER_MODE */
   LK_RES_KEY search_key = lock_create_search_key (oid, class_oid);
   LK_RES *res_ptr;
-  LOCK mode;
+  LK_ENTRY *holder;
+  LOCK mode = NULL_LOCK;
 
   res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
   if (res_ptr == NULL)
@@ -7999,7 +8002,10 @@ lock_get_total_holders_mode (THREAD_ENTRY * thread_p, const OID * oid, const OID
       return NULL_LOCK;
     }
   /* find() leaves the resource mutex locked. */
-  mode = res_ptr->total_holders_mode;
+  for (holder = res_ptr->holder; holder != NULL; holder = holder->next)
+    {
+      mode = lock_conv (holder->granted_mode, mode);
+    }
   pthread_mutex_unlock (&res_ptr->res_mutex);
   return mode;
 #endif /* !SERVER_MODE */
