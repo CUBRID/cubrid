@@ -185,6 +185,7 @@ static int locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID 
 				      RECDES * recdes, RECDES * new_recdes, bool * is_cached, LC_COPYAREA ** copyarea);
 static int locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static int locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
+static int locator_wait_for_child_writers (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key);
 static MVCC_SATISFIES_SNAPSHOT_RESULT locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p,
 										MVCC_REC_HEADER * rec_header,
 										MVCC_SNAPSHOT * snapshot);
@@ -4194,6 +4195,29 @@ error:
       heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
     }
   heap_attrinfo_end (thread_p, &index_attrinfo);
+  return error_code;
+}
+
+/*
+ * locator_wait_for_child_writers () - wait out the transactions still writing a child of key, before key is
+ *				       delete-marked
+ *
+ * return: NO_ERROR or error code
+ *
+ * The foreign key check takes no parent row lock, so once the key carries our mark a child transaction that checks
+ * this parent again waits for us; were we waiting for it then, the two would deadlock.
+ */
+static int
+locator_wait_for_child_writers (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_VALUE * key)
+{
+  OR_FOREIGN_KEY *fkref;
+  int error_code = NO_ERROR;
+
+  for (fkref = index->fk; fkref != NULL && error_code == NO_ERROR; fkref = fkref->next)
+    {
+      error_code = btree_wait_for_foreign_key_writers (thread_p, &fkref->self_btid, key, &fkref->self_oid);
+    }
+
   return error_code;
 }
 
@@ -8248,6 +8272,14 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
 		    }
 		  else
 		    {
+		      if (!locator_Dont_check_foreign_key && index->type == BTREE_PRIMARY_KEY && index->fk)
+			{
+			  error_code = locator_wait_for_child_writers (thread_p, index, key_dbvalue);
+			  if (error_code != NO_ERROR)
+			    {
+			      goto error;
+			    }
+			}
 		      /* in MVCC logical deletion means MVCC DEL_ID insertion */
 		      error_code =
 			btree_mvcc_delete (thread_p, &btid, key_dbvalue, class_oid, inst_oid, op_type, unique_stat_info,
@@ -8853,6 +8885,16 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 		{
 		  same_key = false;
 		}
+	    }
+	}
+
+      if (!locator_Dont_check_foreign_key && !same_key && index->type == BTREE_PRIMARY_KEY && index->fk && found_btid
+	  && mvccid != MVCCID_NULL)
+	{
+	  error_code = locator_wait_for_child_writers (thread_p, index, old_key);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error;
 	    }
 	}
 
