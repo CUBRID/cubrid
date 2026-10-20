@@ -2836,7 +2836,9 @@ bind_value_image_mix (std::uint64_t *h, DB_VALUE *v)
       *h = bind_fp_mix (*h, 0x4e554c4cULL);
       return true;
     }
-  size = or_packed_value_size (v, 1, 1, 0);
+  /* the same options or_pack_value () packs with (no null collapsing, the domain and its class
+   * OIDs): a size taken with fewer would fall short for a set of objects and overrun the buffer */
+  size = or_packed_value_size (v, 0, 1, 1);
   if (size <= 0)
     {
       return false;
