@@ -11890,12 +11890,15 @@ static int
 do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alter)
 {
   int error = NO_ERROR;
+  int is_partition = DB_NOT_PARTITIONED_CLASS;
   const char *entity_name = NULL;
   DB_OBJECT *class_obj = NULL;
   DB_CTMPL *ctemplate = NULL;
   MOP class_mop = NULL;
+  MOP *sub_partitions = NULL;
   bool tran_saved = false;
   PT_NODE *replication_node = alter->info.alter.alter_clause.replication.tbl_replication;
+  bool replication_off = !IS_ALTER_STMT_SET_REPL_OPTION (replication_node);
 
   if (!HA_DISABLED ())
     {
@@ -11952,12 +11955,29 @@ do_alter_change_replication (PARSER_CONTEXT * const parser, PT_NODE * const alte
     }
 
   class_mop = ctemplate->op;
-  error =
-    sm_set_class_flag (class_mop, SM_CLASSFLAG_DATA_REPLICATION_OFF, !IS_ALTER_STMT_SET_REPL_OPTION (replication_node));
+  error = sm_set_class_flag (class_mop, SM_CLASSFLAG_DATA_REPLICATION_OFF, replication_off);
   if (error != NO_ERROR)
     {
       error = er_errid ();
       goto exit;
+    }
+
+  error = sm_partitioned_class_type (class_mop, &is_partition, NULL, &sub_partitions);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  if (is_partition == DB_PARTITIONED_CLASS)
+    {
+      for (int i = 0; sub_partitions[i] != NULL; i++)
+	{
+	  error = sm_set_class_flag (sub_partitions[i], SM_CLASSFLAG_DATA_REPLICATION_OFF, replication_off);
+	  if (error != NO_ERROR)
+	    {
+	      goto exit;
+	    }
+	}
     }
 
   /* force schema update to server */
@@ -11976,6 +11996,11 @@ exit:
     {
       dbt_abort_class (ctemplate);
       ctemplate = NULL;
+    }
+
+  if (sub_partitions != NULL)
+    {
+      free_and_init (sub_partitions);
     }
 
   if (error != NO_ERROR && tran_saved && error != ER_LK_UNILATERALLY_ABORTED)
