@@ -450,10 +450,13 @@ struct insert_proc_node
   char **remote_odku_exprs;	/* their new values, printed as remote SQL (array, parallel to cols) */
   int remote_num_odku;		/* length of remote_odku_cols and remote_odku_exprs */
   TP_DOMAIN **att_domains;	/* CBRD-27583 (D-45): the domain of each attribute, in att_id order */
+  int *default_types;		/* CBRD-27583 (D-94): the DB_TYPE each of the first num_default_expr attributes' default
+				 * is made in before its cast into the attribute's domain (pt_default_value_type) */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   DB_TYPE *value_types;		/* CBRD-27583 (D-45): the type each value comes in - per row of values and
 				 * attribute, a single row for a SELECT - chosen at unpack */
   TP_VALUE_CONVERTER *convs;	/* CBRD-27583 (D-45): each value_types entry into its attribute's domain */
+  TP_VALUE_CONVERTER *default_convs;	/* CBRD-27583 (D-94): each default_types entry into its attribute's domain */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

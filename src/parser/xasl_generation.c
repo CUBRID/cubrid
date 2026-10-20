@@ -22678,15 +22678,6 @@ pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSER
 }
 
 /*
- * pt_to_insert_xasl_remote_select () - Builds INSERT_PROC XASL for remote INSERT SELECT.
- *   Wires a local SELECT aptr and fills INSERT_PROC_NODE remote sink fields so
- *   the executor can stream rows via CCI into the remote table.
- *
- * return      : XASL node, or NULL on error.
- * parser (in) : Parser context.
- * statement (in): PT_INSERT node (remote target + SELECT value_clauses).
- */
-/*
  * pt_assigned_attribute_domain () - CBRD-27583 (D-45): the domain of an attribute an INSERT, UPDATE or MERGE assigns,
  *   found as sm_att_id finds the attribute; the XASL streams it with the assignment
  *   return: the domain, NULL with the error set
@@ -22707,6 +22698,81 @@ pt_assigned_attribute_domain (DB_OBJECT * class_obj, const char *name)
   return domain;
 }
 
+/*
+ * pt_default_value_type () - CBRD-27583 (D-94): the type an omitted attribute's default is made in before the INSERT
+ *   casts it into the attribute's domain (qexec_execute_insert, qexec_generate_row_default_expr): a date or time
+ *   function's, UNIX_TIMESTAMP's INTEGER, USER's and SYS_GUID's VARCHAR, UUID's BIT; under TO_CHAR a VARCHAR, or a
+ *   string attribute's type for the string it coerces; a default value's, the attribute's
+ *   return: the type, DB_TYPE_NULL with the error set
+ */
+static DB_TYPE
+pt_default_value_type (DB_OBJECT * class_obj, const char *name, const TP_DOMAIN * domain)
+{
+  SM_CLASS *cls;
+  if (au_fetch_class_force (class_obj, &cls, AU_FETCH_READ) != NO_ERROR)
+    {
+      return DB_TYPE_NULL;
+    }
+  const SM_ATTRIBUTE *att = classobj_find_attribute (cls, name, 0);
+  if (att == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_SM_ATTRIBUTE_NOT_FOUND, 1, name);
+      return DB_TYPE_NULL;
+    }
+  const DB_DEFAULT_EXPR *expr = &att->default_value.default_expr;
+  const DB_TYPE attr_type = TP_DOMAIN_TYPE (domain);
+  DB_TYPE type;
+  switch (expr->default_expr_type)
+    {
+    case DB_DEFAULT_SYSTIME:
+    case DB_DEFAULT_CURRENTTIME:
+      type = DB_TYPE_TIME;
+      break;
+    case DB_DEFAULT_SYSDATE:
+    case DB_DEFAULT_CURRENTDATE:
+      type = DB_TYPE_DATE;
+      break;
+    case DB_DEFAULT_SYSDATETIME:
+    case DB_DEFAULT_CURRENTDATETIME:
+      type = DB_TYPE_DATETIME;
+      break;
+    case DB_DEFAULT_SYSTIMESTAMP:
+    case DB_DEFAULT_CURRENTTIMESTAMP:
+      type = DB_TYPE_TIMESTAMP;
+      break;
+    case DB_DEFAULT_UNIX_TIMESTAMP:
+      type = DB_TYPE_INTEGER;
+      break;
+    case DB_DEFAULT_USER:
+    case DB_DEFAULT_CURR_USER:
+    case DB_DEFAULT_SYSGUID:
+      type = DB_TYPE_VARCHAR;
+      break;
+    case DB_DEFAULT_UUIDV4:
+    case DB_DEFAULT_UUIDV7:
+      type = DB_TYPE_BIT;
+      break;
+    default:
+      /* a default value is kept in the attribute's domain */
+      return attr_type;
+    }
+  if (expr->default_expr_op == T_TO_CHAR)
+    {
+      /* db_to_char writes a date or a number as a VARCHAR and coerces a string into a string attribute's domain */
+      return TP_IS_CHAR_TYPE (type) && TP_IS_CHAR_TYPE (attr_type) ? attr_type : DB_TYPE_VARCHAR;
+    }
+  return type;
+}
+
+/*
+ * pt_to_insert_xasl_remote_select () - Builds INSERT_PROC XASL for remote INSERT SELECT.
+ *   Wires a local SELECT aptr and fills INSERT_PROC_NODE remote sink fields so
+ *   the executor can stream rows via CCI into the remote table.
+ *
+ * return      : XASL node, or NULL on error.
+ * parser (in) : Parser context.
+ * statement (in): PT_INSERT node (remote target + SELECT value_clauses).
+ */
 static XASL_NODE *
 pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
@@ -23309,7 +23375,8 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  insert->att_id = regu_int_array_alloc (num_vals + num_default_expr);
 	  regu_array_alloc (&insert->att_domains, num_vals + num_default_expr);
-	  if (insert->att_id && insert->att_domains)
+	  insert->default_types = num_default_expr > 0 ? regu_int_array_alloc (num_default_expr) : NULL;
+	  if (insert->att_id && insert->att_domains && (num_default_expr == 0 || insert->default_types != NULL))
 	    {
 	      /* the identifiers of the attributes that have a default expression are placed first */
 	      int save_au;
@@ -23320,7 +23387,10 @@ pt_to_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original);
 		  insert->att_domains[a] = pt_assigned_attribute_domain (class_obj, attr->info.name.original);
-		  if (insert->att_id[a] < 0 || insert->att_domains[a] == NULL)
+		  if (insert->att_id[a] < 0 || insert->att_domains[a] == NULL
+		      || (insert->default_types[a] =
+			  pt_default_value_type (class_obj, attr->info.name.original,
+						 insert->att_domains[a])) == DB_TYPE_NULL)
 		    {
 		      ASSERT_ERROR_AND_SET (error);
 		    }
@@ -31361,14 +31431,18 @@ pt_to_merge_insert_xasl (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE *
     {
       insert->att_id = regu_int_array_alloc (num_vals + num_default_expr);
       regu_array_alloc (&insert->att_domains, num_vals + num_default_expr);
-      if (insert->att_id && insert->att_domains)
+      insert->default_types = num_default_expr > 0 ? regu_int_array_alloc (num_default_expr) : NULL;
+      if (insert->att_id && insert->att_domains && (num_default_expr == 0 || insert->default_types != NULL))
 	{
 	  /* the identifiers of the attributes that have a default expression are placed first */
 	  for (attr = default_expr_attrs, a = 0; error >= 0 && a < num_default_expr; attr = attr->next, ++a)
 	    {
 	      if ((insert->att_id[a] = sm_att_id (class_obj, attr->info.name.original)) < 0
 		  || (insert->att_domains[a] =
-		      pt_assigned_attribute_domain (class_obj, attr->info.name.original)) == NULL)
+		      pt_assigned_attribute_domain (class_obj, attr->info.name.original)) == NULL
+		  || (insert->default_types[a] =
+		      pt_default_value_type (class_obj, attr->info.name.original,
+					     insert->att_domains[a])) == DB_TYPE_NULL)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  error = er_errid ();

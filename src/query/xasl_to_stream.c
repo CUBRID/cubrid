@@ -4441,6 +4441,13 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
     }
   ptr = or_pack_int (ptr, offset);
 
+  offset = xts_save_int_array (insert_info->default_types, insert_info->num_default_expr);
+  if (offset == ER_FAILED)
+    {
+      return NULL;
+    }
+  ptr = or_pack_int (ptr, offset);
+
   return ptr;
 }
 
@@ -6886,7 +6893,8 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + (insert_info->remote_num_attrs * PTR_SIZE)	/* remote_attr_names */
 	   + OR_INT_SIZE	/* remote_num_odku */
 	   + (insert_info->remote_num_odku * 2 * PTR_SIZE)	/* remote_odku_cols + remote_odku_exprs */
-	   + PTR_SIZE);		/* att_domains */
+	   + PTR_SIZE		/* att_domains */
+	   + PTR_SIZE);		/* default_types */
 
   return size;
 }

@@ -375,15 +375,6 @@ struct del_lob_info
   DEL_LOB_INFO *next;		/* next DEL_LOB_INFO in a list */
 };
 
-/* CBRD-27583 (S3-23): a row default's conversion into its attribute's domain, found once per execution
- * (qexec_plan_row_defaults) */
-typedef struct qexec_row_default_plan QEXEC_ROW_DEFAULT_PLAN;
-struct qexec_row_default_plan
-{
-  DB_TYPE type;			/* the type its generator makes */
-  TP_VALUE_CONVERTER conv;	/* a value of that type into the attribute's domain */
-};
-
 /* used for internal update/delete execution */
 typedef struct upddel_class_info_internal UPDDEL_CLASS_INFO_INTERNAL;
 struct upddel_class_info_internal
@@ -596,11 +587,8 @@ static int qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * x
 					  DBLINK_DML_KIND kind);
 static int qexec_execute_remote_delete_subquery (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state, bool skip_aptr);
-static int qexec_plan_row_defaults (const INSERT_PROC_NODE * insert, HEAP_CACHE_ATTRINFO * attr_info,
-				    QEXEC_ROW_DEFAULT_PLAN * plans);
 static int qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
-					     HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state,
-					     const QEXEC_ROW_DEFAULT_PLAN * plans);
+					     HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state);
 static int qexec_execute_merge (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_build_indexes (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state);
 static int qexec_execute_obj_fetch (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
@@ -13269,11 +13257,12 @@ qexec_default_format_domain (void)
  *   xasl_state(in): XASL state containing value descriptor
  *   uuid_state(in): UUID generation state
  *   out_val(out): generated value
- *   plan(in): its conversion into the attribute's domain, found once per execution (qexec_plan_row_defaults)
+ *   value_type(in): the type XASL generation decided the generator makes (INSERT_PROC_NODE default_types)
+ *   conv(in): a value of that type into the attribute's domain, found at unpack
  */
 static int
 qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, UUID_STATE * uuid_state,
-				 DB_VALUE * out_val, const QEXEC_ROW_DEFAULT_PLAN * plan)
+				 DB_VALUE * out_val, DB_TYPE value_type, TP_VALUE_CONVERTER conv)
 {
   DB_VALUE new_val;
   DB_DEFAULT_EXPR_TYPE expr_type;
@@ -13384,9 +13373,9 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
       return error;
     }
 
-  /* CBRD-27583 (S3-23): the converter the execution's plan found for the type the generator makes */
-  assert (DB_IS_NULL (out_val) || DB_VALUE_DOMAIN_TYPE (out_val) == plan->type);
-  status = tp_value_cast_with_converter (out_val, out_val, attr->domain, false, plan->type, plan->conv);
+  /* CBRD-27583 (D-94): the converter the unpack found for the type XASL generation decided the generator makes */
+  assert (DB_IS_NULL (out_val) || DB_VALUE_DOMAIN_TYPE (out_val) == value_type);
+  status = tp_value_cast_with_converter (out_val, out_val, attr->domain, false, value_type, conv);
   if (status != DOMAIN_COMPATIBLE)
     {
       (void) tp_domain_status_er_set (status, ARG_FILE_LINE, out_val, attr->domain);
@@ -13397,47 +13386,12 @@ qexec_generate_row_default_expr (OR_ATTRIBUTE * attr, XASL_STATE * xasl_state, U
 }
 
 /*
- * qexec_plan_row_defaults () - CBRD-27583 (S3-23): once per execution, the conversion of each row default (a default
- *   expression determined by the row, qexec_generate_row_default_expr) into its attribute's domain, from the type its
- *   generator makes: SYS_GUID's VARCHAR, UUID's BIT, TO_CHAR's string - the attribute's type when that is a string,
- *   else VARCHAR
- *   return: NO_ERROR or ER_FAILED
- *   plans(out): one per default expression of insert, the others left empty
- */
-static int
-qexec_plan_row_defaults (const INSERT_PROC_NODE * insert, HEAP_CACHE_ATTRINFO * attr_info,
-			 QEXEC_ROW_DEFAULT_PLAN * plans)
-{
-  for (int k = 0; k < insert->num_default_expr; k++)
-    {
-      OR_ATTRIBUTE *attr = heap_locate_last_attrepr (insert->att_id[k], attr_info);
-      if (attr == NULL)
-	{
-	  return ER_FAILED;
-	}
-      const DB_DEFAULT_EXPR *expr = &attr->current_default_value.default_expr;
-      plans[k].type = DB_TYPE_NULL;
-      plans[k].conv = NULL;
-      if (!DB_IS_DEFAULT_DETERMINE_BY_ROW (expr->default_expr_type))
-	{
-	  continue;
-	}
-      const DB_TYPE attr_type = TP_DOMAIN_TYPE (attr->domain);
-      plans[k].type = expr->default_expr_op == T_TO_CHAR ? (TP_IS_CHAR_TYPE (attr_type) ? attr_type : DB_TYPE_VARCHAR)
-	: expr->default_expr_type == DB_DEFAULT_SYSGUID ? DB_TYPE_VARCHAR : DB_TYPE_BIT;
-      plans[k].conv = tp_value_find_converter (plans[k].type, attr->domain, DOMAIN_CONVERT_ASSIGN);
-    }
-  return NO_ERROR;
-}
-
-/*
  * qexec_evaluate_row_default_exprs () - Regenerate row-level default expressions (e.g., UUID)
  *   return: NO_ERROR or ER_code
  *   thread_p(in): thread context
  *   insert(in): INSERT_PROC_NODE
  *   attr_info(in): attribute info
  *   xasl_state(in): XASL state containing value descriptor
- *   plans(in): each default expression's conversion (qexec_plan_row_defaults)
  *
  * Note: This function regenerates DEFAULT values that must be unique per row,
  *       such as UUID(4), UUID(7), and SYS_GUID. These are identified by
@@ -13445,8 +13399,7 @@ qexec_plan_row_defaults (const INSERT_PROC_NODE * insert, HEAP_CACHE_ATTRINFO * 
  */
 static int
 qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * insert,
-				  HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state,
-				  const QEXEC_ROW_DEFAULT_PLAN * plans)
+				  HEAP_CACHE_ATTRINFO * attr_info, XASL_STATE * xasl_state)
 {
   int k;
   int num_default_expr = insert->num_default_expr;
@@ -13480,7 +13433,8 @@ qexec_evaluate_row_default_exprs (THREAD_ENTRY * thread_p, INSERT_PROC_NODE * in
 	  continue;
 	}
 
-      error = qexec_generate_row_default_expr (attr, xasl_state, &uuid_state, insert->vals[k], &plans[k]);
+      error = qexec_generate_row_default_expr (attr, xasl_state, &uuid_state, insert->vals[k],
+					       (DB_TYPE) insert->default_types[k], insert->default_convs[k]);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -13593,7 +13547,6 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
   char auto_incr_serial_name[DB_MAX_IDENTIFIER_LENGTH] = { '\0', };
   int auto_incr_pos = -1;
   // *INDENT-OFF*
-  std::vector<QEXEC_ROW_DEFAULT_PLAN> row_default_plans;
   // *INDENT-ON*
 
   thread_p->no_logging = (bool) insert->no_logging;
@@ -13964,18 +13917,16 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  continue;
 	}
 
-      status = tp_value_cast (insert->vals[k], insert->vals[k], attr->domain, false);
+      /* CBRD-27583 (D-94): the converter the unpack found for the type XASL generation decided the default is made
+       * in; a row default is still NULL here */
+      assert (DB_IS_NULL (insert->vals[k]) || DB_VALUE_DOMAIN_TYPE (insert->vals[k]) == insert->default_types[k]);
+      status = tp_value_cast_with_converter (insert->vals[k], insert->vals[k], attr->domain, false,
+					     (DB_TYPE) insert->default_types[k], insert->default_convs[k]);
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (status, ARG_FILE_LINE, insert->vals[k], attr->domain);
 	  GOTO_EXIT_ON_ERROR;
 	}
-    }
-
-  row_default_plans.resize (num_default_expr);
-  if (qexec_plan_row_defaults (insert, &attr_info, row_default_plans.data ()) != NO_ERROR)
-    {
-      GOTO_EXIT_ON_ERROR;
     }
 
   specp = xasl->spec_list;
@@ -14038,8 +13989,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 		}
 
 	      /* Regenerate row-level default expressions (UUID, SYS_GUID) after explicit expressions are evaluated. */
-	      if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state, row_default_plans.data ())
-		  != NO_ERROR)
+	      if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state) != NO_ERROR)
 		{
 		  GOTO_EXIT_ON_ERROR;
 		}
@@ -14226,8 +14176,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	    }
 
 	  /* Regenerate row-level default expressions (UUID, SYS_GUID) after explicit expressions are evaluated. */
-	  if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state, row_default_plans.data ())
-	      != NO_ERROR)
+	  if (qexec_evaluate_row_default_exprs (thread_p, insert, &attr_info, xasl_state) != NO_ERROR)
 	    {
 	      GOTO_EXIT_ON_ERROR;
 	    }
