@@ -584,6 +584,10 @@ exit_on_error:
     }
   free_and_init (dest_list_id_p->type_list.domp);
   QFILE_CLEAR_LIST_ID (dest_list_id_p);
+  if (er_errid () == NO_ERROR)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+    }
   return ER_FAILED;
 }
 
@@ -4682,7 +4686,13 @@ qfile_sort_list_with_func (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, S
     {
       qfile_destroy_list (thread_p, list_id_p);
     }
-  qfile_copy_list_id (list_id_p, srlist_id, true, QFILE_MOVE_DEPENDENT);
+  if (qfile_copy_list_id (list_id_p, srlist_id, true, QFILE_MOVE_DEPENDENT) != NO_ERROR)
+    {
+      qfile_close_list (thread_p, srlist_id);
+      qfile_destroy_list (thread_p, srlist_id);
+      QFILE_FREE_AND_INIT_LIST_ID (srlist_id);
+      return NULL;
+    }
   QFILE_FREE_AND_INIT_LIST_ID (srlist_id);
 
   return list_id_p;

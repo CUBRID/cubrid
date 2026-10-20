@@ -416,7 +416,12 @@ namespace parallel_query
 		    else
 		      {
 			qfile_destroy_list (&thread_ref, part_list_id[part_id]);
-			qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false, QFILE_PROHIBIT_DEPENDENT);
+			if (qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+			  {
+			    m_task_manager.handle_error (thread_ref);
+			    has_error = true;
+			    break;
+			  }
 			QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
 		      }
 		  }
@@ -517,7 +522,13 @@ namespace parallel_query
 		  else
 		    {
 		      qfile_destroy_list (&thread_ref, part_list_id[part_index]);
-		      qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false, QFILE_PROHIBIT_DEPENDENT);
+		      if (qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false,
+					      QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+			{
+			  m_task_manager.handle_error (thread_ref);
+			  has_error = true;
+			  break;
+			}
 		    }
 		}
 	      else
