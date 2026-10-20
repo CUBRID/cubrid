@@ -13185,8 +13185,9 @@ locator_has_isolation_conflict (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * cont
  *   context(in/out): heap get context; given back unfixed, as it was on entry
  *
  * Note: any other writer settles on our MVCCID self-lock before touching a row we stamped, so while it stands we
- *	are the row's only writer and need no row lock while only an X holder has it; asking for it would queue us
- *	behind a waiter that waits on us.  An S holder has already decided on the row and must be waited for.
+ *	are the row's only writer and need no row lock while the holders' total mode is X, which also counts a holder
+ *	upgrading S to X; asking for it would queue us behind a writer that waits on us, or will once granted.  S
+ *	holders alone have decided on the row and are waited for.
  */
 static bool
 locator_last_version_is_ours (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)

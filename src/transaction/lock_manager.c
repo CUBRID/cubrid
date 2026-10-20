@@ -7977,7 +7977,7 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
 }
 
 /*
- * lock_get_total_holders_mode () - The mode in which the object is held, combined over its holders
+ * lock_get_total_holders_mode () - The holders' modes combined, including one a holder waits to convert to
  *
  * return: the holders' total mode; NULL_LOCK when nobody holds the object
  *   oid(in): the object
