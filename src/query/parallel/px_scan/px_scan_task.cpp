@@ -45,8 +45,6 @@ namespace parallel_scan
   template <RESULT_TYPE result_type, SCAN_TYPE ST>
   void task<result_type, ST>::execute (cubthread::entry &thread_ref)
   {
-    /* CBRD-27583 (S3-13): a worker's type decisions are counted as its query's (optdebug) */
-    TP_DECISION_EXECUTION ();
     int err_code;
     auto done_guard = make_scope_exit ([this] ()
     {

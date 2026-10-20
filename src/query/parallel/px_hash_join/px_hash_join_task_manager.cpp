@@ -180,8 +180,6 @@ namespace parallel_query
     void
     split_task::execute (cubthread::entry &thread_ref)
     {
-      /* CBRD-27583 (S3-13): a worker's type decisions are counted as its query's (optdebug) */
-      TP_DECISION_EXECUTION ();
       task_execution_guard guard (thread_ref, m_task_manager);
 
       QFILE_LIST_ID *list_id;
@@ -577,8 +575,6 @@ namespace parallel_query
     void
     join_task::execute (cubthread::entry &thread_ref)
     {
-      /* CBRD-27583 (S3-13): a worker's type decisions are counted as its query's (optdebug) */
-      TP_DECISION_EXECUTION ();
       task_execution_guard guard (thread_ref, m_task_manager);
 
       spawn_manager *spawn_manager = nullptr;
@@ -759,8 +755,6 @@ namespace parallel_query
     void
     probe_task::execute (cubthread::entry &thread_ref)
     {
-      /* CBRD-27583 (S3-13): a worker's type decisions are counted as its query's (optdebug) */
-      TP_DECISION_EXECUTION ();
       task_execution_guard guard (thread_ref, m_task_manager);
 
       spawn_manager *spawn_manager = nullptr;

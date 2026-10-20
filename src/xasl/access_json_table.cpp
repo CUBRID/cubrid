@@ -155,9 +155,6 @@ namespace cubxasl
       pr_clear_value (m_output_value_pointer);
       db_make_json_from_doc_store_and_release (*m_output_value_pointer, docp);
 
-      // CBRD-27583 exception, the data carries the type (2-7): a JSON value's scalar, which a JSON_TABLE column
-      // converts by its own type inside the converter
-      TP_DECISION_EXCEPTION ();
       status_cast = tp_value_cast_with_converter (m_output_value_pointer, m_output_value_pointer, m_domain, false,
 		    DB_TYPE_JSON, m_converter);
       if (status_cast != TP_DOMAIN_STATUS::DOMAIN_COMPATIBLE)

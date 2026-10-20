@@ -12393,9 +12393,7 @@ exit_on_error:
 int
 heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HEAP_CACHE_ATTRINFO * attr_info)
 {
-  /* CBRD-27583 exception, the catalog: an attribute value the plan does not compute (a serial's row, a foreign key's
-   * SET NULL, the key filter's NULL, loaddb, the XA catalog); DML writes through heap_attrinfo_set_converted */
-  TP_DECISION_EXCEPTION ();
+  /* the catalog's writers (a serial, FK SET NULL, loaddb, XA); DML writes through heap_attrinfo_set_converted */
   HEAP_ATTRVALUE *value;	/* Disk value Attr info for a particular attr */
   const PR_TYPE *pr_type;	/* Primitive type array function structure */
   TP_DOMAIN_STATUS dom_status;
@@ -12472,10 +12470,7 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
   const TP_DOMAIN *catalog = value->last_attrepr->domain;
   assert (TP_DOMAIN_TYPE (catalog) == TP_DOMAIN_TYPE (domain));
   const bool collection = TP_IS_SET_TYPE (pr_type->id) && !DB_IS_NULL (attr_val);
-  /* CBRD-27583 exception, the data carries the type (2-7, D-47): a collection's elements, which its check
-   * (set_check_domain) and its conversion read by their values; a compatible collection is stored as it is, as
-   * develop's heap_attrinfo_set does */
-  TP_DECISION_EXCEPTION_IF (collection);
+  /* D-47: a compatible collection is stored as it is, as develop's heap_attrinfo_set does */
   if (DB_IS_NULL (attr_val) || TP_DOMAIN_TYPE (catalog) == DB_TYPE_OBJECT
       || (collection && tp_domain_check (catalog, attr_val, TP_EXACT_MATCH) == DOMAIN_COMPATIBLE))
     {

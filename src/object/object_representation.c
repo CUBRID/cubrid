@@ -4738,8 +4738,6 @@ or_disk_set_size (OR_BUF * buf, TP_DOMAIN * set_domain, DB_TYPE * set_type)
 int
 or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
 {
-  /* CBRD-27583 exception, a value's serialization: it packs with its own domain */
-  TP_DECISION_EXCEPTION ();
   const PR_TYPE *type;
   TP_DOMAIN *domain;
   int size = 0, bits;
@@ -4820,8 +4818,6 @@ or_packed_value_size (const DB_VALUE * value, int collapse_null, int include_dom
 int
 or_put_value (OR_BUF * buf, DB_VALUE * value, int collapse_null, int include_domain, int include_domain_classoids)
 {
-  /* CBRD-27583 exception, a value's serialization: it packs with its own domain */
-  TP_DECISION_EXCEPTION ();
   const PR_TYPE *type;
   TP_DOMAIN *domain;
   char *start, length, bits;
@@ -5070,8 +5066,6 @@ or_pack_value (char *buf, DB_VALUE * value)
 char *
 or_pack_mem_value (char *ptr, DB_VALUE * value, int *packed_len_except_alignment)
 {
-  /* CBRD-27583 exception, a value's serialization: it packs with its own domain */
-  TP_DECISION_EXCEPTION ();
   OR_BUF orbuf, *buf;
   const PR_TYPE *type;
   TP_DOMAIN *domain;

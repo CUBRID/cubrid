@@ -553,7 +553,6 @@ domain_set_arith_operands (int opcode, const DOMAIN_OPERAND * operands, DB_TYPE 
 static int
 domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
 {
-  TP_DECISION_ENTRY ("domain_resolve_arith");
   DB_TYPE result_type;
 
   switch (opcode)
@@ -655,7 +654,6 @@ domain_resolve_arith (int opcode, const DOMAIN_OPERAND * operands, int n_operand
 void
 domain_resolve_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_OPERAND_COERCION * result)
 {
-  TP_DECISION_ENTRY ("domain_resolve_operand_coercion");
   assert (opcode == T_ADD || opcode == T_SUB || opcode == T_MUL || opcode == T_DIV);
   DB_TYPE left_target, right_target;
   RESOLVED_DOMAIN resolved = RESOLVED_DOMAIN ();
@@ -685,7 +683,6 @@ domain_conversion (DB_TYPE source, const TP_DOMAIN * target, DOMAIN_CONVERT_MODE
 void
 domain_plan_coercion_result (DOMAIN_COERCION_PLAN * plan, const TP_DOMAIN * target)
 {
-  TP_DECISION_ENTRY ("domain_plan_coercion_result");
   /* tp_value_coerce's (qdata_coerce_result_to_domain); a collection operator makes its value in the target's type */
   if (target != NULL && !domain_is_variable (target) && plan->arith.type != DB_TYPE_NULL)
     {
@@ -697,7 +694,6 @@ domain_plan_coercion_result (DOMAIN_COERCION_PLAN * plan, const TP_DOMAIN * targ
 void
 domain_plan_operand_coercion (int opcode, const DOMAIN_OPERAND * operands, DOMAIN_COERCION_PLAN * plan)
 {
-  TP_DECISION_ENTRY ("domain_plan_operand_coercion");
   DOMAIN_OPERAND_COERCION coercion;
   domain_resolve_operand_coercion (opcode, operands, &coercion);
   *plan = DOMAIN_COERCION_PLAN ();
@@ -730,7 +726,6 @@ void
 domain_plan_aggregate_accumulator (int function, DB_TYPE opr_dbtype, const TP_DOMAIN * domain,
 				   const TP_DOMAIN * argument, DOMAIN_ACCUMULATOR_PLAN * plan)
 {
-  TP_DECISION_ENTRY ("domain_plan_aggregate_accumulator");
   *plan = DOMAIN_ACCUMULATOR_PLAN ();
   const bool argument_typed = argument != NULL && !domain_is_variable (argument)
     && TP_DOMAIN_TYPE (argument) != DB_TYPE_NULL;
@@ -924,7 +919,6 @@ void
 domain_plan_analytic_accumulator (int function, int option, const TP_DOMAIN * domain, const TP_DOMAIN * argument,
 				  DOMAIN_ACCUMULATOR_PLAN * plan)
 {
-  TP_DECISION_ENTRY ("domain_plan_analytic_accumulator");
   *plan = DOMAIN_ACCUMULATOR_PLAN ();
   const bool sum_or_avg = function == PT_SUM || function == PT_AVG;
   const bool stddev = function == PT_STDDEV || function == PT_STDDEV_POP || function == PT_STDDEV_SAMP
@@ -1008,7 +1002,6 @@ void
 domain_plan_analytic_offset (int function, const TP_DOMAIN * domain, const TP_DOMAIN * offset,
 			     const TP_DOMAIN * default_value, DOMAIN_COERCION_PLAN * plan)
 {
-  TP_DECISION_ENTRY ("domain_plan_analytic_offset");
   *plan = DOMAIN_COERCION_PLAN ();
   plan->operand_domain[0] = function == PT_NTH_VALUE ? &tp_Double_domain : &tp_Integer_domain;
   plan->operand_domain[1] = domain;
@@ -1138,7 +1131,6 @@ domain_compare_target (const DOMAIN_OPERAND * coerced, DB_TYPE target_type)
 static int
 domain_resolve_compare (const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * result)
 {
-  TP_DECISION_ENTRY ("domain_resolve_compare");
   DB_TYPE type1 = domain_operand_type (&operands[0]);
   DB_TYPE type2 = domain_operand_type (&operands[1]);
   const TP_DOMAIN *target1 = domain_operand_domain (&operands[0]);
@@ -1188,7 +1180,6 @@ domain_resolve_compare (const DOMAIN_OPERAND * operands, RESOLVED_DOMAIN * resul
 static int
 domain_resolve_common_value (const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
 {
-  TP_DECISION_ENTRY ("domain_resolve_common_value");
   TP_DOMAIN *common = (TP_DOMAIN *) domain_operand_domain (&operands[0]);
   for (int i = 1; i < n_operands && common != NULL; i++)
     {
@@ -1267,7 +1258,6 @@ static int
 domain_resolve_aggregate (int function, const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand,
 			  RESOLVED_DOMAIN * result)
 {
-  TP_DECISION_ENTRY ("domain_resolve_aggregate");
   DB_TYPE val_type = domain_operand_type (operand);
   const TP_DOMAIN *function_domain = compiled;
   DB_TYPE operand_type = operand->domain != NULL ? TP_DOMAIN_TYPE (operand->domain) : val_type;
@@ -1431,7 +1421,6 @@ static int
 domain_resolve_analytic (int function, const TP_DOMAIN * compiled, const DOMAIN_OPERAND * operand,
 			 RESOLVED_DOMAIN * result)
 {
-  TP_DECISION_ENTRY ("domain_resolve_analytic");
   DB_TYPE val_type = domain_operand_type (operand);
   const TP_DOMAIN *argument = compiled;
 
@@ -1528,7 +1517,6 @@ static int
 domain_resolve_function (int opcode, const DOMAIN_OPERAND * operands, int n_operands,
 			 const TP_DOMAIN * consumer_domain, RESOLVED_DOMAIN * result)
 {
-  TP_DECISION_ENTRY ("domain_resolve_function");
   DB_TYPE result_type = DB_TYPE_NULL;
   bool null_any = false;
   for (int i = 0; i < n_operands; i++)
@@ -1752,7 +1740,6 @@ copy_operands:
 static int
 domain_resolve_list_column (const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
 {
-  TP_DECISION_ENTRY ("domain_resolve_list_column");
   const TP_DOMAIN *domain = NULL;
   for (int i = 0; i < n_operands; i++)
     {
@@ -1840,8 +1827,6 @@ domain_compare_key_collate (DOMAIN_COMPARE_KEY * key, const TP_DOMAIN * collate)
 static DB_VALUE_COMPARE_RESULT
 domain_compare_conversion_failed (const DOMAIN_COMPARE * compare, bool first_converted, bool * can_compare)
 {
-  /* CBRD-27583 exception, an error report: the rank of the types a conversion failed between */
-  TP_DECISION_EXCEPTION ();
   DB_TYPE type[2] = { (DB_TYPE) compare->source[0], (DB_TYPE) compare->source[1] };
   if (first_converted)
     {
@@ -1937,11 +1922,9 @@ domain_key_values_equal (const TP_DOMAIN * domain, const DB_VALUE * value1, cons
       return domain->type->cmpval ((DB_VALUE *) value1, (DB_VALUE *) value2, 1, 1, NULL,
 				   is_char ? domain->collation_id : 0) == DB_EQ;
     }
-  /* CBRD-27583 exception, the data carries the type (2-7): a collection's elements, which a collection key compares by
-   * their values; no other key leaves its values' type or collation to them (S3-32) */
+  /* only a collection key compares by its elements' values (S3-32) */
   assert (TP_IS_SET_TYPE (type) && domain->collation_flag == TP_DOMAIN_COLL_NORMAL
 	  && DB_VALUE_DOMAIN_TYPE (value1) == type && DB_VALUE_DOMAIN_TYPE (value2) == type);
-  TP_DECISION_EXCEPTION ();
   return tp_value_compare (value1, value2, 1, 1) == DB_EQ;
 }
 
@@ -2500,7 +2483,6 @@ void
 domain_resolve_comparison_uncoerced (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs,
 				     DOMAIN_COMPARE * result)
 {
-  TP_DECISION_ENTRY ("domain_resolve_comparison_uncoerced");
   *result = DOMAIN_COMPARE
   {
   };
@@ -2765,7 +2747,6 @@ domain_key_pair_index_exact (const DOMAIN_TYPE_PAIR_TABLE * pairs, const DOMAIN_
 int
 domain_decide_comparison (const TP_DOMAIN * const domain[2], DOMAIN_COMPARE * decided, bool * by_type)
 {
-  TP_DECISION_ENTRY ("domain_decide_comparison");
   DOMAIN_COMPARE_KEY key[2];
   *by_type = true;
   for (int side = 0; side < 2 && *by_type; side++)
@@ -2795,7 +2776,6 @@ int
 domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, bool * coerce,
 			     const TP_DOMAIN ** common, int conv_kind[2], DOMAIN_COMPARE * compare)
 {
-  TP_DECISION_ENTRY ("domain_decide_hash_join_key");
   const TP_DOMAIN *resolved;
   const int error = domain_resolve_hash_key (outer, inner, &resolved);
   if (error != NO_ERROR)
@@ -2828,7 +2808,6 @@ domain_decide_hash_join_key (const TP_DOMAIN * outer, const TP_DOMAIN * inner, b
 int
 domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_KEY * rhs, DOMAIN_COMPARE * result)
 {
-  TP_DECISION_ENTRY ("domain_resolve_comparison");
   const DOMAIN_TYPE_PAIR_TABLE *pairs = domain_key_pairs ();
   const int row = pairs != NULL ? domain_key_pair_index_exact (pairs, lhs) : -1;
   const int column = pairs != NULL ? domain_key_pair_index_exact (pairs, rhs) : -1;
@@ -2844,7 +2823,6 @@ domain_resolve_comparison (const DOMAIN_COMPARE_KEY * lhs, const DOMAIN_COMPARE_
 int
 domain_resolve_hash_key (const TP_DOMAIN * first, const TP_DOMAIN * second, const TP_DOMAIN ** common)
 {
-  TP_DECISION_ENTRY ("domain_resolve_hash_key");
   const DB_TYPE first_type = TP_DOMAIN_TYPE (first);
   const DB_TYPE second_type = TP_DOMAIN_TYPE (second);
   DB_TYPE type = first_type;
@@ -2982,8 +2960,6 @@ DB_VALUE_COMPARE_RESULT
 domain_compare_by_type_pair (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order,
 			     bool * can_compare)
 {
-  /* CBRD-27583 exception, the data carries the type (2-7): a collection's elements, which compare by their values */
-  TP_DECISION_EXCEPTION ();
   const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value1);
   if (type == DB_VALUE_DOMAIN_TYPE (value2) && !TP_TYPE_HAS_COLLATION (type))
     {
@@ -3104,7 +3080,6 @@ int
 domain_resolve (DOMAIN_CTX context, int opcode, const DOMAIN_OPERAND * operands, int n_operands,
 		const TP_DOMAIN * consumer_domain, RESOLVED_DOMAIN * result, bool * needs_late_bind)
 {
-  TP_DECISION_ENTRY ("domain_resolve");
   assert (operands != NULL && n_operands > 0 && result != NULL && needs_late_bind != NULL);
 
   *needs_late_bind = false;
@@ -3881,7 +3856,6 @@ int
 domain_resolve_character (int opcode, const DOMAIN_OPERAND * operands, int n_operands, const TP_DOMAIN * compiled,
 			  RESOLVED_DOMAIN * result)
 {
-  TP_DECISION_ENTRY ("domain_resolve_character");
   assert (compiled != NULL && TP_TYPE_HAS_COLLATION (TP_DOMAIN_TYPE (compiled)));
   assert (TP_DOMAIN_COLLATION_FLAG (compiled) != TP_DOMAIN_COLL_NORMAL);
 
@@ -3898,7 +3872,6 @@ domain_resolve_character (int opcode, const DOMAIN_OPERAND * operands, int n_ope
 int
 domain_resolve_branch_pick (const DOMAIN_OPERAND * operands, int n_operands, int branch, RESOLVED_DOMAIN * result)
 {
-  TP_DECISION_ENTRY ("domain_resolve_branch_pick");
   *result = RESOLVED_DOMAIN
   {
   };
@@ -3912,7 +3885,6 @@ domain_resolve_branch_pick (const DOMAIN_OPERAND * operands, int n_operands, int
 int
 domain_resolve_branch_merge (const DOMAIN_OPERAND * operands, int n_operands, RESOLVED_DOMAIN * result)
 {
-  TP_DECISION_ENTRY ("domain_resolve_branch_merge");
   *result = RESOLVED_DOMAIN
   {
   };

@@ -5574,8 +5574,6 @@ qfile_compare_equal_db_value_array (const void *key1, const void *key2)
       return false;
     }
 
-  /* CBRD-27583 exception, once per execution: a cached result's bound values against an execution's, compared by the
-   * values (qfile_lookup_list_cache_entry) */
   for (i = 0, val1 = array1->vals, val2 = array2->vals; i < array1->size; i += 3, val1 += 3, val2 += 3)
     {
       if (mht_compare_dbvalues_are_equal (val1, val2) == false)

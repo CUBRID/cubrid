@@ -7332,7 +7332,6 @@ db_add_time (const DB_VALUE * left, const DB_VALUE * right, DB_VALUE * result, c
       return NO_ERROR;
     }
 
-  /* CBRD-27583 exception, the data carries the type (function spec): a string with a zone gives DATETIMETZ */
   switch (DB_VALUE_TYPE (left))
     {
     case DB_TYPE_CHAR:
@@ -10760,8 +10759,6 @@ db_unix_timestamp (const DB_VALUE * src_date, DB_VALUE * result_timestamp)
 	DB_DATE date;
 
 	dt_tz_p = &dt;
-	/* CBRD-27583 exception, the data carries the type (function spec): a string with a zone is DATETIMETZ */
-	TP_DECISION_EXCEPTION ();
 	if (type != DB_TYPE_DATETIME && type != DB_TYPE_DATE)
 	  {
 	    tp_datetimetz = db_type_to_db_domain (DB_TYPE_DATETIMETZ);
@@ -11944,8 +11941,6 @@ db_time_format (const DB_VALUE * time_value, const DB_VALUE * format, const DB_V
       const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_VARCHAR);
 
       db_make_null (&new_time_value);
-      /* CBRD-27583 exception (D-51): the body converts; a failure is ER_QSTR_INVALID_DATA_TYPE */
-      TP_DECISION_EXCEPTION ();
       TP_DOMAIN_STATUS status = tp_value_auto_cast (value_ptr, &new_time_value, new_domain);
       if (status != DOMAIN_COMPATIBLE)
 	{
@@ -12054,7 +12049,6 @@ db_timestamp (const DB_VALUE * src_datetime1, const DB_VALUE * src_time2, DB_VAL
     {
     case DB_TYPE_CHAR:
     case DB_TYPE_VARCHAR:
-      /* CBRD-27583 exception, the data carries the type (function spec): the string parses as a time */
       parse_time_string (db_get_string (src_time2), db_get_string_size (src_time2), &sign, &h, &mi, &s, &ms);
       break;
 
@@ -12624,11 +12618,7 @@ db_to_char (const DB_VALUE * src_value, const DB_VALUE * format_or_length, const
 	}
       else
 	{
-	  {
-	    /* CBRD-27583 exception (function spec): a string's TO_CHAR is the string in the result's codeset and collation */
-	    TP_DECISION_EXCEPTION ();
-	    error_status = db_value_coerce (src_value, result_str, domain);
-	  }
+	  error_status = db_value_coerce (src_value, result_str, domain);
 	}
 
       return error_status;
@@ -20352,7 +20342,6 @@ db_date_add_sub_interval_days (DB_VALUE * result, const DB_VALUE * date, const D
 	int str_len = db_get_string_size (date);
 	date_s = db_get_string (date);
 
-	/* CBRD-27583 exception, the data carries the type (function spec): a string date gives DATE or DATETIME */
 	/* try to figure out the string format */
 	if (db_date_parse_datetime_parts (date_s, str_len, &db_datetime, &has_explicit_time, NULL, NULL, NULL))
 	  {
@@ -21124,7 +21113,6 @@ db_date_add_sub_interval_expr (DB_VALUE * result, const DB_VALUE * date, const D
       goto error;
     }
 
-  /* CBRD-27583 exception, the data carries the type (function spec): a string gives DATETIME(TZ), DATE or TIME */
   /* Convert string with date to DateTime or Time */
 
   switch (res_type)
@@ -21825,8 +21813,6 @@ get_date_time_info (DATE_TIME_INFO * dtzi, DB_TYPE res_type, const DB_VALUE * va
 	      }
 	  }
 
-	/* CBRD-27583 exception, the data carries the type (function spec): the string parses as a datetime(tz) */
-	TP_DECISION_EXCEPTION ();
 	if (dateformat || check_has_date)
 	  {
 	    DB_VALUE dt;
@@ -23703,7 +23689,6 @@ db_time_dbval (DB_VALUE * result, const DB_VALUE * datetime_value, const TP_DOMA
 
   type = DB_VALUE_TYPE (datetime_value);
 
-  /* CBRD-27583 exception, the data carries the type (function spec): a string parses as a time */
   if (db_get_time_from_dbvalue (datetime_value, &hour, &min, &sec, &milisec) != NO_ERROR)
     {
       db_make_null (result);
@@ -24808,7 +24793,6 @@ db_get_datetime_from_dbvalue (const DB_VALUE * src_date, int *year, int *month, 
       return ER_FAILED;
     }
 
-  /* CBRD-27583 exception, the data carries the type (function spec): a string parses as a datetime */
   arg_type = DB_VALUE_DOMAIN_TYPE (src_date);
   switch (arg_type)
     {
@@ -24953,7 +24937,6 @@ db_get_time_from_dbvalue (const DB_VALUE * src_date, int *hour, int *minute, int
 	return NO_ERROR;
       }
 
-      /* CBRD-27583 exception, the data carries the type (function spec): a string parses as a time */
     case DB_TYPE_STRING:
     case DB_TYPE_CHAR:
       {
@@ -26367,8 +26350,6 @@ coerce_pos:
       /* try to convert to bigint */
       param_domain = tp_domain_resolve_default (param_type);
       domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
-      /* CBRD-27583 exception (D-51): the body converts; a number out of BIGINT's range counts as the maximum */
-      TP_DECISION_EXCEPTION ();
       /* don't mind error code here, we need to know if param is out of range */
       (void) tp_value_auto_cast (param, &param_db_bigint, domain);
       if (DB_IS_NULL (&param_db_bigint))
@@ -26412,8 +26393,6 @@ coerce_pos:
     {
       db_make_null (&tval);
       ptval = &tval;
-      /* CBRD-27583 exception (D-51): the body converts; a failure is ER_QSTR_INVALID_DATA_TYPE */
-      TP_DECISION_EXCEPTION ();
       if (tp_value_cast (param, &tval, &tp_Char_domain, false) != DOMAIN_COMPATIBLE)
 	{
 	  error_code = ER_QSTR_INVALID_DATA_TYPE;
@@ -26771,8 +26750,6 @@ db_ascii (const DB_VALUE * param, DB_VALUE * result)
       DB_VALUE new_value;
       const TP_DOMAIN *new_domain = tp_domain_resolve_default (DB_TYPE_CHAR);
       db_make_null (&new_value);
-      /* CBRD-27583 exception (D-51): the body converts; a failure is ER_QSTR_INVALID_DATA_TYPE, or 0 */
-      TP_DECISION_EXCEPTION ();
       TP_DOMAIN_STATUS status = tp_value_auto_cast (param, &new_value, new_domain);
       if (status != DOMAIN_COMPATIBLE)
 	{
@@ -27316,8 +27293,7 @@ db_value_to_enumeration_value (const DB_VALUE * src, DB_VALUE * result, const TP
 
   db_make_null (result);
 
-  /* CBRD-27583 exception (D-51): the body converts; a value out of the enumeration is its overflow value, no error */
-  TP_DECISION_EXCEPTION ();
+  /* a value out of the enumeration is its overflow value, no error */
   status = tp_value_cast (src, result, enum_domain, false);
   if (status != DOMAIN_COMPATIBLE)
     {

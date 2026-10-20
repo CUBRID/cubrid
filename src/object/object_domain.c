@@ -65,122 +65,8 @@
 
 #include "dbtype.h"
 #include "error_manager.h"
-#if !defined (NDEBUG)
-#include <dlfcn.h>
-#include <mutex>
-#include <set>
-#endif
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-#if !defined (NDEBUG)
-/* *INDENT-OFF* */
-/* CBRD-27583 (S3-13): the counting state of TP_DECISION_ENTRY, per thread */
-static thread_local int tp_Decision_execution = 0;
-static thread_local int tp_Decision_exception = 0;
-static thread_local int tp_Decision_depth = 0;
-static thread_local const char *tp_Decision_lazy_function = NULL;
-static thread_local const void *tp_Decision_lazy_caller = NULL;
-
-/* a decision made while a query executes: logged once per process for each function and caller, and asserted */
-static void
-tp_decision_count (const char *function, const void *caller)
-{
-  static thread_local std::set<std::pair<const char *, const void *>> seen_here;
-  if (!seen_here.insert ({function, caller}).second)
-    {
-      return;
-    }
-  static std::mutex mutex;
-  static std::set<std::pair<const char *, const void *>> seen;
-  std::lock_guard<std::mutex> lock (mutex);
-  if (!seen.insert ({function, caller}).second)
-    {
-      return;
-    }
-  Dl_info info;
-  const char *module = "?";
-  uintptr_t offset = (uintptr_t) caller;
-  if (dladdr (caller, &info) != 0 && info.dli_fname != NULL)
-    {
-      const char *slash = strrchr (info.dli_fname, '/');
-      module = slash != NULL ? slash + 1 : info.dli_fname;
-      offset = (uintptr_t) caller - (uintptr_t) info.dli_fbase;
-    }
-  er_log_debug (ARG_FILE_LINE, "CBRD-27583 decision %s %s+0x%lx\n", function, module, (unsigned long) offset);
-  /* design 5: no type decision while a query executes but the exceptions TP_DECISION_EXCEPTION marks */
-  assert (false);
-}
-
-tp_decision_entry::tp_decision_entry (const char *function, const void *caller, bool lazy)
-{
-  if (tp_Decision_depth++ == 0)
-    {
-      tp_Decision_lazy_function = NULL;
-      if (tp_Decision_execution > 0 && tp_Decision_exception == 0)
-	{
-	  if (lazy)
-	    {
-	      tp_Decision_lazy_function = function;
-	      tp_Decision_lazy_caller = caller;
-	    }
-	  else
-	    {
-	      tp_decision_count (function, caller);
-	    }
-	}
-    }
-  else if (tp_Decision_lazy_function != NULL && !lazy && tp_Decision_exception == 0)
-    {
-      /* a decision under a function given a converter: its caller decided at the row */
-      tp_decision_count (tp_Decision_lazy_function, tp_Decision_lazy_caller);
-      tp_Decision_lazy_function = NULL;
-    }
-}
-
-tp_decision_entry::~tp_decision_entry ()
-{
-  if (--tp_Decision_depth == 0)
-    {
-      tp_Decision_lazy_function = NULL;
-    }
-}
-
-tp_decision_scope::tp_decision_scope (bool execution, bool active)
-  : m_execution (execution), m_active (active)
-{
-  if (active)
-    {
-      ++(execution ? tp_Decision_execution : tp_Decision_exception);
-    }
-}
-
-tp_decision_scope::~tp_decision_scope ()
-{
-  if (m_active)
-    {
-      --(m_execution ? tp_Decision_execution : tp_Decision_exception);
-    }
-}
-
-tp_decision_client::tp_decision_client ()
-  : m_execution (tp_Decision_execution), m_exception (tp_Decision_exception), m_depth (tp_Decision_depth),
-    m_lazy_function (tp_Decision_lazy_function), m_lazy_caller (tp_Decision_lazy_caller)
-{
-  tp_Decision_execution = tp_Decision_exception = tp_Decision_depth = 0;
-  tp_Decision_lazy_function = NULL;
-}
-
-tp_decision_client::~tp_decision_client ()
-{
-  tp_Decision_execution = m_execution;
-  tp_Decision_exception = m_exception;
-  tp_Decision_depth = m_depth;
-  tp_Decision_lazy_function = m_lazy_function;
-  tp_Decision_lazy_caller = m_lazy_caller;
-}
-/* *INDENT-ON* */
-#endif
 
 /*
  * used by versant_driver to avoid doing foolish things
@@ -3252,7 +3138,6 @@ tp_domain_resolve_default_w_coll (DB_TYPE type, int coll_id, TP_DOMAIN_COLL_ACTI
 TP_DOMAIN *
 tp_domain_resolve_value (const DB_VALUE * val, TP_DOMAIN * dbuf)
 {
-  TP_DECISION_ENTRY ("tp_domain_resolve_value");
   TP_DOMAIN *domain;
   DB_TYPE value_type;
 
@@ -4179,7 +4064,6 @@ tp_domain_compatible (const TP_DOMAIN * src, const TP_DOMAIN * dest)
 TP_DOMAIN *
 tp_domain_select (const TP_DOMAIN * domain_list, const DB_VALUE * value, int allow_coercion, TP_MATCH exact_match)
 {
-  TP_DECISION_ENTRY ("tp_domain_select");
   TP_DOMAIN *best = NULL, *d = NULL;
   TP_DOMAIN **others = NULL;
   DB_TYPE vtype;
@@ -4596,7 +4480,6 @@ tp_domain_select_type (const TP_DOMAIN * domain_list, DB_TYPE type, DB_OBJECT * 
 TP_DOMAIN_STATUS
 tp_domain_check (const TP_DOMAIN * domain, const DB_VALUE * value, TP_MATCH exact_match)
 {
-  TP_DECISION_ENTRY ("tp_domain_check");
   TP_DOMAIN_STATUS status;
   TP_DOMAIN *d;
 
@@ -5517,7 +5400,6 @@ tp_value_string_to_double (const DB_VALUE * value, DB_VALUE * result)
 TP_DOMAIN_STATUS
 tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
-  TP_DECISION_ENTRY ("tp_value_coerce");
   return tp_value_cast (src, dest, desired_domain, true);
 }
 
@@ -5532,7 +5414,6 @@ tp_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desire
 int
 tp_value_coerce_strict (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
-  TP_DECISION_ENTRY ("tp_value_coerce_strict");
   date_conversion_error conversion_error;
   DB_TYPE desired_type, original_type;
   int err = NO_ERROR;
@@ -5962,13 +5843,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 	{
 	  converter = found->converter;
 	}
-      else if (found != NULL && found->src_type == DB_TYPE_JSON)
-	{
-	  /* CBRD-27583 exception, the data carries the type (2-7): a JSON value's scalar (a planned JSON value, unwrapped
-	   * above), which converts by its own type */
-	  TP_DECISION_EXCEPTION ();
-	  converter = tp_value_find_converter (original_type, desired_domain, mode);
-	}
       else
 	{
 	  converter = tp_value_find_converter (original_type, desired_domain, mode);
@@ -6082,7 +5956,6 @@ tp_value_cast_internal (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN *
 TP_DOMAIN_STATUS
 tp_value_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain, bool implicit_coercion)
 {
-  TP_DECISION_ENTRY ("tp_value_cast");
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
@@ -6092,7 +5965,6 @@ tp_value_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_
 TP_DOMAIN_STATUS
 tp_value_cast_force (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain, bool implicit_coercion)
 {
-  TP_DECISION_ENTRY ("tp_value_cast_force");
   TP_COERCION_MODE mode;
 
   mode = TP_FORCE_COERCION;
@@ -6109,7 +5981,6 @@ TP_DOMAIN_STATUS
 tp_value_cast_with_converter (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain, bool force,
 			      DB_TYPE src_type, TP_VALUE_CONVERTER converter)
 {
-  TP_DECISION_ENTRY_LAZY ("tp_value_cast_with_converter");
   const tp_cast_converter found = { src_type, desired_domain, converter };
   return tp_value_cast_internal (src, dest, desired_domain, force ? TP_FORCE_COERCION : TP_EXPLICIT_COERCION, true,
 				 false, converter != NULL ? &found : NULL);
@@ -6125,7 +5996,6 @@ TP_DOMAIN_STATUS
 tp_value_coerce_with_converter (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 				DB_TYPE src_type, TP_VALUE_CONVERTER converter)
 {
-  TP_DECISION_ENTRY_LAZY ("tp_value_coerce_with_converter");
   const tp_cast_converter found = { src_type, desired_domain, converter };
   return tp_value_cast_internal (src, dest, desired_domain, TP_IMPLICIT_COERCION, true, false,
 				 converter != NULL ? &found : NULL);
@@ -6146,7 +6016,6 @@ TP_DOMAIN_STATUS
 tp_value_cast_preserve_domain (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 			       bool implicit_coercion, bool preserve_domain)
 {
-  TP_DECISION_ENTRY ("tp_value_cast_preserve_domain");
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
@@ -6167,7 +6036,6 @@ TP_DOMAIN_STATUS
 tp_value_cast_no_domain_select (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 				bool implicit_coercion)
 {
-  TP_DECISION_ENTRY ("tp_value_cast_no_domain_select");
   TP_COERCION_MODE mode;
 
   mode = (implicit_coercion ? TP_IMPLICIT_COERCION : TP_EXPLICIT_COERCION);
@@ -6186,7 +6054,6 @@ tp_value_cast_no_domain_select (const DB_VALUE * src, DB_VALUE * dest, const TP_
 TP_DOMAIN_STATUS
 tp_value_change_coll_and_codeset (DB_VALUE * src, DB_VALUE * dest, int coll_id, int codeset)
 {
-  TP_DECISION_ENTRY ("tp_value_change_coll_and_codeset");
   TP_DOMAIN *temp_domain;
 
   assert (src != NULL && dest != NULL);
@@ -6261,7 +6128,6 @@ oidcmp (OID * oid1, OID * oid2)
 int
 tp_more_general_type (const DB_TYPE type1, const DB_TYPE type2)
 {
-  TP_DECISION_ENTRY ("tp_more_general_type");
   if (type1 == type2)
     {
       return 0;
@@ -6333,9 +6199,6 @@ tp_value_compare_common_domain (const DB_TYPE type1, const DB_TYPE type2)
 DB_VALUE_COMPARE_RESULT
 tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order)
 {
-  /* CBRD-27583 exception, the data carries the type (2-7): a collection's elements, which two collections of different
-   * kinds coerce and compare by their values */
-  TP_DECISION_EXCEPTION ();
   DB_VALUE temp;
   int coercion;
   DB_VALUE *v1, *v2;
@@ -6468,7 +6331,6 @@ tp_set_compare (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercio
 DB_VALUE_COMPARE_RESULT
 tp_value_compare (const DB_VALUE * value1, const DB_VALUE * value2, int allow_coercion, int total_order)
 {
-  TP_DECISION_ENTRY ("tp_value_compare");
   return tp_value_compare_with_error (value1, value2, allow_coercion, total_order, NULL);
 }
 
@@ -6498,7 +6360,6 @@ DB_VALUE_COMPARE_RESULT
 tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion, int total_order,
 			     bool * can_compare)
 {
-  TP_DECISION_ENTRY ("tp_value_compare_with_error");
   DB_VALUE temp1, temp2, tmp_char_conv;
   int coercion, char_conv;
   DB_VALUE *v1, *v2;
@@ -6954,7 +6815,6 @@ tp_value_compare_with_error (const DB_VALUE * value1, const DB_VALUE * value2, i
 int
 tp_value_equal (const DB_VALUE * value1, const DB_VALUE * value2, int do_coercion)
 {
-  TP_DECISION_ENTRY ("tp_value_equal");
   return tp_value_compare (value1, value2, do_coercion, 0) == DB_EQ;
 }
 
@@ -7391,7 +7251,6 @@ tp_domain_references_objects (const TP_DOMAIN * dom)
 TP_DOMAIN_STATUS
 tp_value_auto_cast_with_precision_check (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
-  TP_DECISION_ENTRY ("tp_value_auto_cast_with_precision_check");
   return tp_value_auto_cast_with_precision_check_converter (src, dest, desired_domain, DB_VALUE_TYPE (src), NULL);
 }
 
@@ -7406,7 +7265,6 @@ tp_value_auto_cast_with_precision_check_converter (const DB_VALUE * src, DB_VALU
 						   const TP_DOMAIN * desired_domain, DB_TYPE src_type,
 						   TP_VALUE_CONVERTER converter)
 {
-  TP_DECISION_ENTRY_LAZY ("tp_value_auto_cast_with_precision_check_converter");
   TP_DOMAIN_STATUS dom_status = DOMAIN_COMPATIBLE;
   static const INT64 max_value[DB_BIGINT_PRECISION] = {
     1LL,
@@ -7510,7 +7368,6 @@ tp_value_auto_cast_with_precision_check_converter (const DB_VALUE * src, DB_VALU
 TP_DOMAIN_STATUS
 tp_value_auto_cast (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain)
 {
-  TP_DECISION_ENTRY ("tp_value_auto_cast");
   return tp_value_auto_cast_with_converter (src, dest, desired_domain, DB_TYPE_NULL, NULL);
 }
 
@@ -7524,7 +7381,6 @@ TP_DOMAIN_STATUS
 tp_value_auto_cast_with_converter (const DB_VALUE * src, DB_VALUE * dest, const TP_DOMAIN * desired_domain,
 				   DB_TYPE src_type, TP_VALUE_CONVERTER converter)
 {
-  TP_DECISION_ENTRY_LAZY ("tp_value_auto_cast_with_converter");
   TP_DOMAIN_STATUS status;
 
   status = tp_value_cast_with_converter (src, dest, desired_domain, false, src_type, converter);
@@ -7556,7 +7412,6 @@ tp_value_auto_cast_with_converter (const DB_VALUE * src, DB_VALUE * dest, const 
 int
 tp_value_str_auto_cast_to_number (DB_VALUE * src, DB_VALUE * dest, DB_TYPE * val_type)
 {
-  TP_DECISION_ENTRY ("tp_value_str_auto_cast_to_number");
   TP_DOMAIN *cast_dom = NULL;
   TP_DOMAIN_STATUS dom_status;
   int er_status = NO_ERROR;
@@ -7602,7 +7457,6 @@ tp_value_str_auto_cast_to_number (DB_VALUE * src, DB_VALUE * dest, DB_TYPE * val
 TP_DOMAIN *
 tp_infer_common_domain (TP_DOMAIN * arg1, TP_DOMAIN * arg2)
 {
-  TP_DECISION_ENTRY ("tp_infer_common_domain");
   TP_DOMAIN *target_domain;
   DB_TYPE arg1_type, arg2_type, common_type;
   bool need_to_domain_update = false;

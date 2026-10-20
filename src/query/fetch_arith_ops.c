@@ -90,15 +90,12 @@ fetch_session_read_value (ARITH_TYPE * arithptr, const DB_VALUE * name)
   if (TP_IS_CHAR_TYPE (value_type) && TP_IS_CHAR_TYPE (read_type)
       && db_get_string_codeset (value) == TP_DOMAIN_CODESET (type))
     {
-      {
-	/* CBRD-27583 exception (D-40): a string of another collation or kind converts into the read's domain */
-	TP_DECISION_EXCEPTION ();
-	if ((value_type == read_type && db_get_string_collation (value) == TP_DOMAIN_COLLATION (type))
-	    || tp_value_cast (value, value, type, false) == DOMAIN_COMPATIBLE)
-	  {
-	    return NO_ERROR;
-	  }
-      }
+      /* D-40: a string of another collation or kind converts into the read's domain */
+      if ((value_type == read_type && db_get_string_collation (value) == TP_DOMAIN_COLLATION (type))
+	  || tp_value_cast (value, value, type, false) == DOMAIN_COMPATIBLE)
+	{
+	  return NO_ERROR;
+	}
     }
   else if (value_type == read_type)
     {

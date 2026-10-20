@@ -4049,11 +4049,7 @@ qexec_fill_sort_limit (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
 
       /* into a value of its own: the limit is a bind value other readers share */
       db_make_null (&limit_value);
-      {
-	/* CBRD-27583 exception, once per execution: the sort limit's value into INTEGER */
-	TP_DECISION_EXCEPTION ();
-	dom_status = tp_value_coerce (dbvalp, &limit_value, domainp);
-      }
+      dom_status = tp_value_coerce (dbvalp, &limit_value, domainp);
       if (dom_status != DOMAIN_COMPATIBLE)
 	{
 	  if (dom_status == DOMAIN_OVERFLOW)
@@ -13407,9 +13403,6 @@ static int
 qexec_plan_row_defaults (const INSERT_PROC_NODE * insert, HEAP_CACHE_ATTRINFO * attr_info,
 			 QEXEC_ROW_DEFAULT_PLAN * plans)
 {
-  /* CBRD-27583 exception, once per execution: a row default's converter into its attribute's domain (its type is the
-   * catalog's default expression's) */
-  TP_DECISION_EXCEPTION ();
   for (int k = 0; k < insert->num_default_expr; k++)
     {
       OR_ATTRIBUTE *attr = heap_locate_last_attrepr (insert->att_id[k], attr_info);
@@ -13966,12 +13959,7 @@ qexec_execute_insert (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xa
 	  continue;
 	}
 
-      {
-	/* CBRD-27583 exception, once per execution: a default value into its attribute's domain (its type is the
-	 * catalog's default expression's) */
-	TP_DECISION_EXCEPTION ();
-	status = tp_value_cast (insert->vals[k], insert->vals[k], attr->domain, false);
-      }
+      status = tp_value_cast (insert->vals[k], insert->vals[k], attr->domain, false);
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  (void) tp_domain_status_er_set (status, ARG_FILE_LINE, insert->vals[k], attr->domain);
@@ -16405,12 +16393,8 @@ qexec_check_limit_clause (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
 	}
 
       /* the comparison unpack decided, as tp_value_compare asks it */
-      {
-	/* CBRD-27583 exception, once per execution: the limit's value against 0 */
-	TP_DECISION_EXCEPTION ();
-	cmp_with_zero =
-	  eval_compare_values_resolved (thread_p, xasl->limit_compare, &xasl_state->vd, limit_valp, &zero_val, 0, NULL);
-      }
+      cmp_with_zero =
+	eval_compare_values_resolved (thread_p, xasl->limit_compare, &xasl_state->vd, limit_valp, &zero_val, 0, NULL);
       if (cmp_with_zero == DB_GT)
 	{
 	  /* validated */
@@ -17761,8 +17745,6 @@ qfile_list_id *
 qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt, const DB_VALUE * dbval_ptr,
 		     QUERY_ID query_id)
 {
-  /* CBRD-27583 (S3-13): the type decisions made from here on are counted (optdebug) */
-  TP_DECISION_EXECUTION ();
 #if !defined (NDEBUG)
   const unsigned int bind_checksum = qexec_bind_checksum (dbval_cnt, dbval_ptr);
 #endif
@@ -22601,8 +22583,6 @@ qexec_initialize_analytic_function_state (THREAD_ENTRY * thread_p, ANALYTIC_FUNC
 static void
 qexec_plan_interpolation_sort_key (ANALYTIC_STATE * analytic_state, ANALYTIC_TYPE * a_func_list)
 {
-  /* CBRD-27583 exception, once per execution: the sort key's converter into the functions' type */
-  TP_DECISION_EXCEPTION ();
   for (ANALYTIC_TYPE * func_p = a_func_list; func_p != NULL; func_p = func_p->next)
     {
       if (!QPROC_IS_INTERPOLATION_FUNC (func_p) || func_p->sort_list_size <= func_p->sort_prefix_size)
@@ -25412,8 +25392,6 @@ qexec_schema_get_type_name_from_id (DB_TYPE id)
 static int
 qexec_schema_get_type_desc (DB_TYPE id, TP_DOMAIN * domain, DB_VALUE * result)
 {
-  /* CBRD-27583 exception, schema information: a type's description text */
-  TP_DECISION_EXCEPTION ();
   const char *name = NULL;
   int precision = -1;
   int scale = -1;
@@ -27230,11 +27208,7 @@ qexec_setup_topn_proc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, VAL_DESCR * vd
   if (DB_VALUE_TYPE (&ubound_val) != DB_TYPE_INTEGER)
     {
       TP_DOMAIN_STATUS status;
-      {
-	/* CBRD-27583 exception, once per execution: the top-N bound into INTEGER */
-	TP_DECISION_EXCEPTION ();
-	status = tp_value_cast (&ubound_val, &ubound_val, &tp_Integer_domain, 1);
-      }
+      status = tp_value_cast (&ubound_val, &ubound_val, &tp_Integer_domain, 1);
       if (status != DOMAIN_COMPATIBLE)
 	{
 	  pr_clear_value (&ubound_val);
@@ -28587,12 +28561,7 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
       params.size = host_var_count;
       params.vals = dbval_p;
 
-      {
-	/* CBRD-27583 exception, once per execution: the result cache's lookup compares the bound values with a cached
-	 * result's by their values, as a query's own lookup does before its execution (xqmgr_execute_query) */
-	TP_DECISION_EXCEPTION ();
-	list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, ent, &params, &cached_result);
-      }
+      list_cache_entry_p = qfile_lookup_list_cache_entry (thread_p, ent, &params, &cached_result);
       if (cached_result && list_cache_entry_p)
 	{
 	  list_id = &list_cache_entry_p->list_id;

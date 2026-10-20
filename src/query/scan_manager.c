@@ -1192,11 +1192,7 @@ scan_fetch_and_coerce_key_limit_upper (THREAD_ENTRY * thread_p, INDX_SCAN_ID * i
     }
 
   /* coerce fetched value to BIGINT, into the caller's value: the fetched one can be a bind value other readers share */
-  {
-    /* CBRD-27583 exception, once per scan: the key limit's value into BIGINT */
-    TP_DECISION_EXCEPTION ();
-    dom_status = tp_value_coerce (*out_dbvalp, coerced, domainp);
-  }
+  dom_status = tp_value_coerce (*out_dbvalp, coerced, domainp);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (*out_dbvalp) == DB_TYPE_NUMERIC)

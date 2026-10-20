@@ -1982,12 +1982,7 @@ qdata_add_sequence_to_dbval (DB_VALUE * seq_val_p, DB_VALUE * dbval_p, DB_VALUE 
     {
       /* set or multiset */
       int error;
-      {
-	/* CBRD-27583 exception, the data carries the type (2-7): a collection's elements, which the union converts and
-	 * compares by their values (set_op, setobj_ismember) */
-	TP_DECISION_EXCEPTION ();
-	error = set_union (db_get_set (seq_val_p), db_get_set (dbval_p), &set_tmp, domain_p);
-      }
+      error = set_union (db_get_set (seq_val_p), db_get_set (dbval_p), &set_tmp, domain_p);
       if (error < 0)
 	{
 	  return ER_FAILED;

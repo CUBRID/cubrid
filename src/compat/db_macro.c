@@ -1672,7 +1672,6 @@ db_type_to_db_domain (const DB_TYPE type)
 int
 db_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const DB_DOMAIN * desired_domain)
 {
-  TP_DECISION_ENTRY ("db_value_coerce");
   TP_DOMAIN_STATUS status;
   int err = NO_ERROR;
 
@@ -1697,7 +1696,6 @@ db_value_coerce (const DB_VALUE * src, DB_VALUE * dest, const DB_DOMAIN * desire
 int
 db_value_equal (const DB_VALUE * value1, const DB_VALUE * value2)
 {
-  TP_DECISION_ENTRY ("db_value_equal");
   int retval;
 
   CHECK_CONNECT_ZERO ();
@@ -1750,7 +1748,6 @@ db_set_compare (const DB_VALUE * value1, const DB_VALUE * value2)
 int
 db_value_compare (const DB_VALUE * value1, const DB_VALUE * value2)
 {
-  TP_DECISION_ENTRY ("db_value_compare");
   /* this handles NULL arguments */
   return tp_value_compare (value1, value2, 1, 0);
 }

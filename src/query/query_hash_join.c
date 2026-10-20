@@ -991,13 +991,11 @@ hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
   return NO_ERROR;
 }
 
-/* A join column value coerced as tp_value_coerce does, where no converter does it (domain_decide_hash_join_key).
- * CBRD-27583 exception, the data carries the type (2-7): a JSON value's scalar, which a join key converts by its own
- * type. */
+/* A join column value coerced as tp_value_coerce does, where no converter does it (domain_decide_hash_join_key):
+ * a JSON value's scalar, which converts by its own type. */
 static TP_DOMAIN_STATUS
 hjoin_coerce_key (const DB_VALUE * value, DB_VALUE * result, const TP_DOMAIN * domain, date_conversion_error *)
 {
-  TP_DECISION_EXCEPTION ();
   return tp_value_coerce (value, result, domain);
 }
 

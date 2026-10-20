@@ -47,8 +47,6 @@ namespace parallel_query_execute
   }
   void task::execute (cubthread::entry &thread_ref)
   {
-    /* CBRD-27583 (S3-13): a worker's type decisions are counted as its query's (optdebug) */
-    TP_DECISION_EXECUTION ();
     int err_code;
     init (thread_ref);
     while (true)

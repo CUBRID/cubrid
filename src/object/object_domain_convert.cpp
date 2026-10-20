@@ -8428,7 +8428,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 TP_VALUE_CONVERTER
 tp_value_find_converter (DB_TYPE src_type, const TP_DOMAIN *desired_domain, DOMAIN_CONVERT_MODE mode)
 {
-  TP_DECISION_ENTRY ("tp_value_find_converter");
   if (desired_domain == nullptr || src_type < DB_TYPE_NULL || src_type > DB_TYPE_LAST)
     {
       return tp_value_convert_incompatible;

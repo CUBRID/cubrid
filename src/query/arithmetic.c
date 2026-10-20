@@ -2349,8 +2349,6 @@ end:
 int
 db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 {
-  /* CBRD-27583 exception, the data carries the type (function spec): ROUND's string argument and format convert */
-  TP_DECISION_EXCEPTION ();
   DB_TYPE type1, type2;
   short s1;
   int i1;
@@ -2384,7 +2382,6 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
       || type1 == DB_TYPE_TIMESTAMP || type1 == DB_TYPE_TIMESTAMPLTZ || type1 == DB_TYPE_TIMESTAMPTZ
       || type1 == DB_TYPE_DATE)
     {				/* round date */
-      /* CBRD-27583 exception, the data carries the type (function spec): 'default' is the format 'dd' */
       if (QSTR_IS_ANY_CHAR (type2) && strcasecmp (DB_GET_STRING_SAFE (value2), "default") == 0)
 	{
 	  db_make_string (&cast_format, "dd");
@@ -2435,7 +2432,6 @@ db_round_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
     }
   else				/* cast to INTEGER */
     {
-      /* CBRD-27583 exception, the data carries the type (function spec): 'default' is the format 0 */
       if (QSTR_IS_ANY_CHAR (type2) && strcasecmp (DB_GET_STRING_SAFE (value2), "default") == 0)
 	{
 	  db_make_int (&cast_format, 0);
@@ -3363,8 +3359,6 @@ end:
 int
 db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 {
-  /* CBRD-27583 exception, the data carries the type (function spec): TRUNC's string argument and format convert */
-  TP_DECISION_EXCEPTION ();
   DB_TYPE type1, type2;
   DB_BIGINT bi2;
   double dtmp;
@@ -3443,7 +3437,6 @@ db_trunc_dbval (DB_VALUE * result, DB_VALUE * value1, DB_VALUE * value2)
 	}
     }
 
-  /* CBRD-27583 exception, the data carries the type (function spec): 'default' is the format 'dd' or 0 */
   /* translate default fmt */
   if (type2 == DB_TYPE_CHAR && strcasecmp (db_get_string (value2), "default") == 0)
     {
@@ -4389,7 +4382,6 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
       return NO_ERROR;
     }
 
-  /* CBRD-27583 exception, the data carries the type (function spec): TYPEOF names the value's own type */
   switch (type)
     {
     case DB_TYPE_CHAR:
@@ -4751,8 +4743,6 @@ db_width_bucket (DB_VALUE * result, const DB_VALUE * value1, const DB_VALUE * va
 
   d4 = (int) floor (d4);
 
-  /* CBRD-27583 exception, the data carries the type (function spec): a string's content picks the family */
-  TP_DECISION_EXCEPTION ();
   /* find the common type of value1, value2 and value3 and cast them to the common type */
   type = DB_VALUE_DOMAIN_TYPE (value1);
   switch (type)

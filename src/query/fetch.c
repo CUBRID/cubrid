@@ -2448,11 +2448,7 @@ fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_l
     }
 
   /* coerce fetched value to BIGINT */
-  {
-    /* CBRD-27583 exception, once per scan: the key limit's value into BIGINT */
-    TP_DECISION_EXCEPTION ();
-    dom_status = tp_value_coerce (tmp_dbvalp, out_val, domainp);
-  }
+  dom_status = tp_value_coerce (tmp_dbvalp, out_val, domainp);
   if (dom_status != DOMAIN_COMPATIBLE)
     {
       if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (tmp_dbvalp) == DB_TYPE_NUMERIC)
