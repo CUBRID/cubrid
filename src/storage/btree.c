@@ -9757,8 +9757,10 @@ exit_on_error:
  * Workers claim root-child subtrees and fold per-worker partials. sum_rec_len / sum_key_len are
  * INT64 the whole way down -- btree_get_subtree_capacity accumulates them exactly, the fold adds
  * them exactly -- so avg_rec_len / avg_key_len match what serial computes, byte for byte, however
- * the children happened to be split across workers. The space fields are still float, but they
- * are only ever reported as a float average, never truncated to an int. */
+ * the children happened to be split across workers. The space fields stay float in BTREE_CAPACITY;
+ * the fold adds each subtree's float total into an INT64, while serial keeps one float running sum.
+ * Once a space total exceeds 2^24 bytes (free space reaches that first) the two can differ in the
+ * low bits, so the size-string columns may rarely differ in their last printed digit. */
 
 /* btree_capacity_accum - per-worker INT64 partial sums, merged after join. Zero-initialize.
  *   tot_used_space is not accumulated; the reduce derives it. The fields are named after their
