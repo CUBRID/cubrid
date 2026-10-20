@@ -27341,9 +27341,8 @@ btree_key_find_and_lock_unique_of_unique (THREAD_ENTRY * thread_p, BTID_INT * bt
 	    {
 	      /* No lock on a committed parent.  The child publishes its foreign-key entries before this probe, and a
 	       * parent DELETE or key change delete-marks the key before it scans for children, so one meets the other:
-	       * this probe meets the mark and waits the deleter out, or the parent's scan meets the child's entry.
-	       * Only the RESTRICT / NO ACTION scan (btree_find_foreign_key ()) waits that child out; the CASCADE /
-	       * SET NULL scan reads the statement snapshot and can miss it. */
+	       * this probe meets the mark and waits the deleter out, or the parent's scan meets the child's entry and
+	       * waits that child out, under every referential action. */
 	      assert (OID_ISNULL (&find_unique_helper->locked_oid));
 	      COPY_OID (&find_unique_helper->oid, &unique_oid);
 	      find_unique_helper->found_object = true;

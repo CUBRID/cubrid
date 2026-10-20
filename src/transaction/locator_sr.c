@@ -4203,10 +4203,9 @@ error:
  *
  * return: SNAPSHOT_SATISFIED for a child to act on
  *
- * Children are taken as they are now, not by the statement snapshot. An entry whose inserter is still active has not
- * passed its foreign key check, which holds an S lock on the parent row: that check waits for this transaction and
- * fails once the parent is gone, and waiting for the entry here would deadlock. Rows loaded without the check
- * (loaddb) are not covered.
+ * Children are taken as they are now, not by the statement snapshot. An entry whose inserter is still active counts:
+ * the foreign key check takes no parent row lock and may have passed, so the child's lock waits that inserter out.
+ * Rows loaded without the check (loaddb) are not covered.
  */
 static MVCC_SATISFIES_SNAPSHOT_RESULT
 locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p, MVCC_REC_HEADER * rec_header,
@@ -4216,9 +4215,8 @@ locator_satisfies_child_of_locked_parent (THREAD_ENTRY * thread_p, MVCC_REC_HEAD
     {
     case DELETE_RECORD_CAN_DELETE:
     case DELETE_RECORD_DELETE_IN_PROGRESS:
-      return SNAPSHOT_SATISFIED;
     case DELETE_RECORD_INSERT_IN_PROGRESS:
-      return TOO_NEW_FOR_SNAPSHOT;
+      return SNAPSHOT_SATISFIED;
     default:
       return TOO_OLD_FOR_SNAPSHOT;
     }
