@@ -5659,6 +5659,12 @@ bool
 pt_has_session_variable (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
   bool found = false;
+
+  if (!parser->flag.has_session_variable)
+    {
+      /* no session variable node was made in this parser (only the grammar makes one) */
+      return false;
+    }
   (void) parser_walk_tree (parser, statement, pt_find_session_variable, &found, NULL, NULL);
   return found;
 }

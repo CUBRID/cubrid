@@ -13446,6 +13446,36 @@ pt_apply_host_var (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 }
 
 /*
+ * pt_put_decimal () - the decimal text of a number at out, as sprintf's "%lld" writes it: the key text is made at every
+ *   compilation, and its tokens are a few small integers each
+ *   return: the end of the text (its terminating NUL)
+ */
+static char *
+pt_put_decimal (char *out, DB_BIGINT number)
+{
+  char digits[24];
+  int count = 0;
+  unsigned long long rest = number < 0 ? -(unsigned long long) number : (unsigned long long) number;
+
+  if (number < 0)
+    {
+      *out++ = '-';
+    }
+  do
+    {
+      digits[count++] = (char) ('0' + rest % 10);
+      rest /= 10;
+    }
+  while (rest != 0);
+  while (count > 0)
+    {
+      *out++ = digits[--count];
+    }
+  *out = '\0';
+  return out;
+}
+
+/*
  * pt_print_host_var_type () - CBRD-27583: the type token of a host variable in the XASL cache key text, so that a
  *   statement has one plan per bind type signature. A user host variable prints the domain the plan reads: the
  *   expected domain its context gave it, else the value domain a typed compilation took (host_var_compiled_domains),
@@ -13535,11 +13565,19 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
     }
   else if (TP_IS_CHAR_TYPE (type))
     {
-      sprintf (out, ":%d.%d.%d", (int) type, codeset, collation);
+      char *end;
+
+      *out = ':';
+      end = pt_put_decimal (out + 1, (int) type);
+      *end = '.';
+      end = pt_put_decimal (end + 1, codeset);
+      *end = '.';
+      (void) pt_put_decimal (end + 1, collation);
     }
   else
     {
-      sprintf (out, ":%d", (int) type);
+      *out = ':';
+      (void) pt_put_decimal (out + 1, (int) type);
     }
   if (index < parser->host_var_count && parser->host_var_format_classes != NULL
       && (parser->host_var_format_classes[index] & PT_HOST_VAR_FORMAT_POSITION))
@@ -13548,11 +13586,16 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
       const int format_class = PT_HOST_VAR_FORMAT_CLASS (parser->host_var_format_classes[index]);
       if (format_class == PT_HOST_VAR_FORMAT_NULL)
 	{
-	  sprintf (out, ":%d", (int) DB_TYPE_NULL);
+	  *out = ':';
+	  (void) pt_put_decimal (out + 1, (int) DB_TYPE_NULL);
 	}
       else
 	{
-	  sprintf (out + strlen (out), ":f%d", format_class);
+	  char *end = out + strlen (out);
+
+	  *end++ = ':';
+	  *end++ = 'f';
+	  (void) pt_put_decimal (end, format_class);
 	}
     }
   if (index < parser->host_var_count && parser->host_var_format_classes != NULL
@@ -13571,7 +13614,11 @@ pt_print_host_var_type (PARSER_CONTEXT * parser, int index, char *out)
 	}
       else
 	{
-	  sprintf (out + strlen (out), ":e%lld", (long long) elt_index);
+	  char *end = out + strlen (out);
+
+	  *end++ = ':';
+	  *end++ = 'e';
+	  (void) pt_put_decimal (end, elt_index);
 	}
     }
 }

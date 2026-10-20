@@ -3594,8 +3594,14 @@ pt_set_host_var_format_classes (PARSER_CONTEXT * parser, int count, const DB_VAL
   for (int i = 0; i < parser->host_var_count && i < count; i++)
     {
       /* D-70: the class of the position's occurrences is the statement's, not the value's */
-      classes[i] = pt_value_format_class (&values[i])
-	| (classes[i] & (PT_HOST_VAR_CLASS_NVL_ARG | PT_HOST_VAR_NULL_MATCHES));
+      const int occurrences = classes[i] & (PT_HOST_VAR_CLASS_NVL_ARG | PT_HOST_VAR_NULL_MATCHES);
+      if (!parser->flag.has_str_to_date_or_elt)
+	{
+	  /* no STR_TO_DATE format or ELT index position can be marked: nothing reads a value's class or index */
+	  classes[i] = (DB_IS_NULL (&values[i]) ? PT_HOST_VAR_FORMAT_NULL : 0) | occurrences;
+	  continue;
+	}
+      classes[i] = pt_value_format_class (&values[i]) | occurrences;
       /* D-38: and its index value, which an ELT index position's plan takes */
       parser->host_var_elt_indexes[i] = pt_value_elt_index (&values[i]);
     }

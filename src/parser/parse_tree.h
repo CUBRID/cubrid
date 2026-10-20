@@ -4087,6 +4087,12 @@ struct parser_context
     unsigned host_var_derive_later:1;	/* CBRD-27583: this later translation runs at every execution, cache hit or
 					 * not (the INSERT of CREATE ... AS SELECT): it makes the derived positions
 					 * its nodes need */
+    unsigned has_session_variable:1;	/* CBRD-27583: the grammar made a session variable node in this parser, the
+					 * only place one is made: pt_has_session_variable walks a tree only then */
+    unsigned has_str_to_date_or_elt:1;	/* CBRD-27583: the grammar made a STR_TO_DATE or ELT node in this parser, the
+					 * only place one is made: only then can type checking mark a STR_TO_DATE
+					 * format or ELT index position, and pt_set_host_var_format_classes computes
+					 * the values' format classes and ELT indexes */
   } flag;
 };
 
