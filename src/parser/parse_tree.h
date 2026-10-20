@@ -4032,6 +4032,8 @@ struct parser_context
     unsigned is_unloading_plcsql_def:1;
     unsigned is_parsing_trigger:1;
     unsigned is_skip_auto_parameterize:1;	/* set to 1 when skip auto parameterize, now only used for merge xasl generation */
+    unsigned is_verifying_static_sql_text:1;	/* compile the edited text of a PL/CSQL static SQL without preparing it, so that
+						 * the verification leaves no XASL cache entry (see make_static_sql_text ()) */
     unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
   } flag;
 };

@@ -106,6 +106,10 @@ make_static_sql_text (PARSER_CONTEXT *parser, const std::string &sql, std::strin
 	  query = (query->node_type == PT_SELECT) ? NULL : query->info.query.q.union_.arg1;
 	}
 
+      /* compile without preparing: the runtime prepares the text, and an XASL cache entry made here would let it skip
+       * the planning (e.g. the query plan of SHOW TRACE would not be the one of this statement) */
+      session->parser->flag.is_verifying_static_sql_text = 1;
+
       if (statement != NULL && !has_into && db_compile_statement (session) >= 0
 	  && db_number_of_input_markers (session, 1) == (int) host_var_order.size ())
 	{
