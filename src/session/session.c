@@ -970,14 +970,11 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
 
 	  if (is_expired)
 	    {
-	      /* Now we can destroy this session. A kept session goes too, when its client did not come back within
-	       * session_state_timeout. */
+	      /* Destroy this session after the iteration. A kept session goes too, when its client did not come back
+	       * within session_state_timeout. */
 	      assert (state->ref_count == 0);
 
 	      expired_sid_buffer[n_expired_sids++] = state->id;
-
-	      /* Destroy the session related resources like session parameters */
-	      (void) session_state_uninit (state);
 
 	      if (n_expired_sids == EXPIRED_SESSION_BUFFER_SIZE)
 		{
@@ -996,9 +993,37 @@ session_remove_expired_sessions (THREAD_ENTRY * thread_p)
       /* Remove expired sessions. */
       for (sid_index = 0; sid_index < n_expired_sids; sid_index++)
 	{
-	  if (!sessions.states_hashmap.erase (thread_p, expired_sid_buffer[sid_index]))
+	  state = sessions.states_hashmap.find (thread_p, expired_sid_buffer[sid_index]);
+	  if (state == NULL)
+	    {
+	      /* ended in the meantime */
+	      continue;
+	    }
+
+	  /* Its client may have come back since the iteration. Check again under the lock kept until the session is
+	   * erased, or the client would get a session that is being destroyed. */
+	  if (session_check_timeout (state, &active_sessions, &is_expired) != NO_ERROR)
+	    {
+	      pthread_mutex_unlock (&state->mutex);
+	      err = ER_FAILED;
+	      goto exit_on_end;
+	    }
+
+	  if (!is_expired)
+	    {
+	      pthread_mutex_unlock (&state->mutex);
+	      continue;
+	    }
+
+	  assert (state->ref_count == 0);
+
+	  /* Destroy the session related resources like session parameters */
+	  (void) session_state_uninit (state);
+
+	  if (!sessions.states_hashmap.erase_locked (thread_p, expired_sid_buffer[sid_index], state))
 	    {
 	      /* we don't have clear operations on this hash table, this shouldn't happen */
+	      pthread_mutex_unlock (&state->mutex);
 	      assert_release (false);
 	      err = ER_FAILED;
 	      goto exit_on_end;
