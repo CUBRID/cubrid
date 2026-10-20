@@ -54,6 +54,8 @@
 #include "parse_tree.h"
 #include "parser.h"
 #include "language_support.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 /* free and nullify: this TU does not pull in memory_alloc.h's free_and_init, so
  * provide the same guarded macro locally (matching broker_log_replay.c). */
@@ -2619,50 +2621,65 @@ qr_admin_enable (const T_BROKER_INFO * br_info_p, const char *rulepath, char *ms
  *  CAS SIDE : attach and lookup                                      *
  * ================================================================== */
 
-static T_QR_SHM_HEADER *qr_shm = NULL;
-static int *qr_bucket = NULL;
-static T_QR_RULE *qr_rule = NULL;
-static const char *qr_pool = NULL;
-static int *qr_dbuser_bucket = NULL;
-static T_QR_DBUSER *qr_dbuser = NULL;
+/* The folded speaker keeps one dedicated thread for a connection. The
+ * standalone CAS keeps the same process-local state as before. Shared rule
+ * slots remain broker-owned; no session writes another session's caches. */
+#if defined (SERVER_MODE)
+#define QR_TLS thread_local
+#else
+#define QR_TLS
+#endif
 
-/* process-local failure-disable, sized to the segment's max_rules (slots are
+static QR_TLS T_QR_SHM_HEADER *qr_shm = NULL;
+static QR_TLS int *qr_bucket = NULL;
+static QR_TLS T_QR_RULE *qr_rule = NULL;
+static QR_TLS const char *qr_pool = NULL;
+static QR_TLS int *qr_dbuser_bucket = NULL;
+static QR_TLS T_QR_DBUSER *qr_dbuser = NULL;
+
+/* session-local failure-disable, sized to the segment's max_rules (slots are
  * never reclaimed at runtime so rule_idx may exceed the startup rule_count).
  * a local disable is effective only while it matches the rule's admin_seq, so
  * an admin `qr enable` (which bumps admin_seq) clears it without writing the CAS. */
-static unsigned char *qr_local_disabled = NULL;
-static int *qr_local_seq = NULL;
-static int qr_local_cap = 0;
+static QR_TLS unsigned char *qr_local_disabled = NULL;
+static QR_TLS int *qr_local_seq = NULL;
+static QR_TLS int qr_local_cap = 0;
 
-/* per-process normalization buffer for qr_lookup, allocated once in qr_init()
+/* per-session normalization buffer for qr_lookup, allocated once in qr_init()
  * sized to the segment's cfg_max_query_len (QUERY_REPLACE_MAX_QUERY_LEN) instead
- * of the QR_MAX_QUERY_LEN hard ceiling.  CAS is single-threaded: one buffer. */
-static char *qr_norm_buf = NULL;
-static int qr_norm_buf_size = 0;
+ * of the QR_MAX_QUERY_LEN hard ceiling.  Each CAS speaker uses its own buffer. */
+static QR_TLS char *qr_norm_buf = NULL;
+static QR_TLS int qr_norm_buf_size = 0;
 
-/* lazily-filled per-process cache of each rule's validated marker counts.
+/* lazily-filled per-session cache of each rule's validated marker counts.
  * a rule's original/replacement texts and BIND_MAP are immutable once the slot
  * is published (slots are append-only), so a (k_orig, k_replace) pair that
  * passed qr_validate_markers once stays valid for the CAS lifetime; -1 = not
  * yet validated.  the authoritative k_orig count comes from get_num_markers here,
  * not from the broker's load-time parse. */
-static int *qr_local_k_orig = NULL;
-static int *qr_local_k_replace = NULL;
+static QR_TLS int *qr_local_k_orig = NULL;
+static QR_TLS int *qr_local_k_replace = NULL;
 
-/* per-rule consecutive AMBIGUOUS-failure counter (process-local, sized qr_local_cap).
+/* per-rule consecutive AMBIGUOUS-failure counter (session-local, sized qr_local_cap).
  * a rule is demoted after QR_FAIL_STRIKE_MAX consecutive ambiguous execute failures. */
-static int *qr_local_fail_streak = NULL;
+static QR_TLS int *qr_local_fail_streak = NULL;
 
 /* connection-level early-exit gate: cache whether the current connection's
  * (db, user) has any rule at all */
-static char qr_conn_db[QR_NAME_LEN] = { 0 };
-static char qr_conn_user[QR_NAME_LEN] = { 0 };
+static QR_TLS char qr_conn_db[QR_NAME_LEN] = { 0 };
+static QR_TLS char qr_conn_user[QR_NAME_LEN] = { 0 };
 
-static unsigned int qr_hash_db_user;	/* hash value of conn_db and conn_user */
-static int qr_conn_has_rules = -1;	/* -1 unknown, 0 none, 1 some */
+static QR_TLS unsigned int qr_hash_db_user;	/* hash value of conn_db and conn_user */
+static QR_TLS int qr_conn_has_rules = -1;	/* -1 unknown, 0 none, 1 some */
 
 int
 qr_init (T_SHM_APPL_SERVER * shm_as_p)
+{
+  return qr_init_for_broker (shm_as_p->query_replace_shm_key, 0, shm_as_p->broker_name);
+}
+
+int
+qr_init_for_broker (int shm_key, int owner_shm_id, const char *broker_name)
 {
 #if defined(WINDOWS)
   return 0;
@@ -2671,35 +2688,21 @@ qr_init (T_SHM_APPL_SERVER * shm_as_p)
   char *base;
   char qr_msg[QR_RELPATH_LEN + 128];
 
-  qr_shm = NULL;
-  qr_bucket = NULL;
-  qr_rule = NULL;
-  qr_pool = NULL;
-  qr_dbuser_bucket = NULL;
-  qr_dbuser = NULL;
-  free_and_init (qr_local_disabled);
-  free_and_init (qr_local_seq);
-  qr_local_cap = 0;
-  free_and_init (qr_norm_buf);
-  qr_norm_buf_size = 0;
-  free_and_init (qr_local_k_orig);
-  free_and_init (qr_local_k_replace);
-  free_and_init (qr_local_fail_streak);
+  qr_final ();
   qr_conn_db[0] = '\0';
   qr_conn_user[0] = '\0';
   qr_conn_has_rules = -1;
 
-  if (shm_as_p->query_replace_shm_key == 0)
+  if (shm_key == 0)
     {
       return 0;			/* feature disabled */
     }
 
-  mid = shmget (shm_as_p->query_replace_shm_key, 0, 0);
+  mid = shmget (shm_key, 0, 0);
   if (mid == -1)
     {
 #if !defined(NDEBUG)
-      _er_log_debug (ARG_FILE_LINE, "qr_init: shmget failed for key 0x%x (%s)\n",
-		     shm_as_p->query_replace_shm_key, strerror (errno));
+      _er_log_debug (ARG_FILE_LINE, "qr_init: shmget failed for key 0x%x (%s)\n", shm_key, strerror (errno));
 #endif
       goto error;
     }
@@ -2708,8 +2711,7 @@ qr_init (T_SHM_APPL_SERVER * shm_as_p)
   if (base == (char *) -1)
     {
 #if !defined(NDEBUG)
-      _er_log_debug (ARG_FILE_LINE, "qr_init: shmat failed for key 0x%x (%s)\n",
-		     shm_as_p->query_replace_shm_key, strerror (errno));
+      _er_log_debug (ARG_FILE_LINE, "qr_init: shmat failed for key 0x%x (%s)\n", shm_key, strerror (errno));
 #endif
       goto error;
     }
@@ -2718,8 +2720,7 @@ qr_init (T_SHM_APPL_SERVER * shm_as_p)
   if (qr_shm->magic != QR_SHM_MAGIC)
     {
 #if !defined(NDEBUG)
-      _er_log_debug (ARG_FILE_LINE, "qr_init: bad magic 0x%x for key 0x%x\n", qr_shm->magic,
-		     shm_as_p->query_replace_shm_key);
+      _er_log_debug (ARG_FILE_LINE, "qr_init: bad magic 0x%x for key 0x%x\n", qr_shm->magic, shm_key);
 #endif
       shmdt (base);
       qr_shm = NULL;
@@ -2727,13 +2728,15 @@ qr_init (T_SHM_APPL_SERVER * shm_as_p)
       goto error;
     }
 
-  /* T_SHM_APPL_SERVER does not carry the owning appl_server_shm_id, so verify the recorded
-   * owner still maps to the key we opened (a full owner match is only possible in the admin
-   * paths, which know that id).  the structural half is shared with them. */
-  if (qr_make_shm_key (qr_shm->owner_shm_id) != shm_as_p->query_replace_shm_key || !qr_shm_header_sane (qr_shm, mid))
+  /* Handoff carries the owner as well as the key: a key collision must not
+   * attach another broker's rules. The standalone CAS has no owner id in its
+   * appl-server segment, but can still check the key and broker name. */
+  if (qr_make_shm_key (qr_shm->owner_shm_id) != shm_key || !qr_shm_header_sane (qr_shm, mid)
+      || (owner_shm_id != 0 && qr_shm->owner_shm_id != owner_shm_id)
+      || broker_name == NULL || strncmp (qr_shm->broker_name, broker_name, BROKER_NAME_LEN) != 0)
     {
 #if !defined(NDEBUG)
-      _er_log_debug (ARG_FILE_LINE, "qr_init: inconsistent header for key 0x%x\n", shm_as_p->query_replace_shm_key);
+      _er_log_debug (ARG_FILE_LINE, "qr_init: inconsistent header for key 0x%x\n", shm_key);
 #endif
       shmdt (base);
       qr_shm = NULL;
@@ -2796,8 +2799,7 @@ qr_init (T_SHM_APPL_SERVER * shm_as_p)
   return 0;
 
 error:
-  snprintf (qr_msg, sizeof (qr_msg), "query replace disabled: cannot attach rule segment (shm key 0x%x)",
-	    shm_as_p->query_replace_shm_key);
+  snprintf (qr_msg, sizeof (qr_msg), "query replace disabled: cannot attach rule segment (shm key 0x%x)", shm_key);
   er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 1, qr_msg);
 
   return -1;

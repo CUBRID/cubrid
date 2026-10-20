@@ -77,6 +77,8 @@
 #endif /* WINDOWS */
 
 #include "dbtype.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 extern void qo_plan_lite_print (QO_PLAN * plan, FILE * f, int howfar);
 
@@ -370,11 +372,13 @@ typedef struct corr_info
   UINTPTR id;
 } CORR_INFO;
 
+#if !defined (SERVER_MODE)
 FILE *query_Plan_dump_fp = NULL;
 char *query_Plan_dump_filename = NULL;
 bool query_Plan_dump_fp_open = false;
+#endif
 
-static XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, NULL, 0, 0, 0 };
+static CSQL_PARSER_TLS XASL_SUPP_INFO xasl_Supp_info = { NULL, NULL, NULL, NULL, 0, 0, 0 };
 
 static const int OID_LIST_GROWTH = 10;
 
@@ -10535,7 +10539,9 @@ pt_create_iss_range (INDX_INFO * indx_infop, TP_DOMAIN * domain)
   if (indx_infop == NULL)
     {
       assert (false);
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      /* a compile-time invariant of one statement, not a process-wide one:
+       * in the merged server FATAL severity would exit cub_server */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
 
       return ER_FAILED;
     }
@@ -13258,7 +13264,7 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
     {
       return NULL;
     }
-  new (sig_array) cubpl::pl_signature_array ();
+  placement_new (sig_array);	/* raw placement-new is malformed by the memory_wrapper new-macro */
 
   sig_array->num_sigs = pt_length_of_list (cselect);
 
@@ -13267,7 +13273,7 @@ pt_to_cselect_table_spec_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE 
 
   for (int i = 0; i < sig_array->num_sigs; i++)
     {
-      new (&sig_array->sigs[i]) cubpl::pl_signature ();
+      placement_new (&sig_array->sigs[i]);
     }
 
   for (PT_NODE * node = cselect; node != NULL; node = node->next)
@@ -29938,7 +29944,11 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	   * 2: PT_AUTHID_OWNER + PT_DETERMINISTIC
 	   * 3: PT_AUTHID_CALLER + PT_DETERMINISTIC
 	   */
-#if defined (CS_MODE)
+	  /* the folded compile is the legacy CS client (workspace#176 결함 16:
+	   * a non-deterministic SP must keep its subquery out of the result
+	   * cache — caching it returns stale SP results and leaks a
+	   * SUBQUERY_CACHE trace line the legacy client never produced) */
+#if defined (CS_MODE) || defined (SERVER_MODE)
 	  if (regu_src->value.sp_ptr->sig->is_deterministic == false)
 	    {
 	      return ER_FAILED;

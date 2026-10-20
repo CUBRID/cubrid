@@ -41,6 +41,7 @@
 #include "numeric_opfunc.h"
 #include "perf_monitor.h"
 #include "dbi.h"
+#include "db_client_type.hpp"
 #include "utility.h"
 #include "environment_variable.h"
 #include "cm_stat.h"
@@ -256,6 +257,11 @@ _op_db_login (nvplist * out, nvplist * in, int ha_mode, char *_dbmt_error)
   pwd = nv_get_val (in, "_DBPASSWD");
   db_name = nv_get_val (in, "_DBNAME");
 
+  /* CUBRID Manager is an admin tool on the utility channel: since wf122/B5 D5
+   * the server refuses the default client type there (-743 handshake), and a
+   * refused first boot left the error module initialized for a thread that
+   * later asserted in er_clear (workspace#227 cbrd_26247). */
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   db_login (id, pwd);
 
   if (ha_mode != 0)
@@ -436,6 +442,7 @@ cm_tsDBMTUserLogin (nvplist * in, nvplist * out, char *_dbmt_error)
       return (user_login_sa (out, _dbmt_error, dbname, dbuser, dbpasswd));
     }
 
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);	/* see _op_db_login */
   db_login (dbuser, dbpasswd);
 
   if (ha_mode != 0)

@@ -23,9 +23,6 @@
 #ifndef _XASL_REGU_ALLOC_HPP_
 #define _XASL_REGU_ALLOC_HPP_
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* defined (SERVER_MODE) */
 
 #include "dbtype_def.h"       // OID, DB_TYPE
 #include "storage_common.h"   // HFID

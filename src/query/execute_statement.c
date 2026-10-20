@@ -49,6 +49,9 @@
 #include "boot.h"		/* BOOT_CSQL_CLIENT_TYPE */
 #include "dbi.h"
 #include "dbtype.h"
+/* client_session_context.hpp self-guards its SERVER_MODE-only contents; it is
+ * included in all modes for CSC_CLIENT_STDOUT (stdout outside a folded server). */
+#include "client_session_context.hpp"
 #include "parser.h"
 #include "porting.h"
 #include "schema_manager.h"
@@ -96,6 +99,8 @@
 #include "crypt_opfunc.h"
 #include "method_callback.hpp"
 #include "network.h"
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -3416,12 +3421,16 @@ end:
 #define ER_PT_UNKNOWN_STATEMENT ER_GENERIC_ERROR
 #define UNIQUE_SAVEPOINT_EXTERNAL_STATEMENT "eXTERNALsTATEMENT"
 
+#if !defined (SERVER_MODE)
 bool do_Trigger_involved;
+#endif
 
 /* do_Trigger_involved does not accurately distinguish
  * whether the corresponding query is a trigger syntax.
  * Therefore, a separate global variable is set to distinguish whether the query is related to a trigger */
+#if !defined (SERVER_MODE)
 bool cdc_Trigger_involved = false;
+#endif
 
 /*
  * do_statement() -
@@ -5016,10 +5025,10 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	  if (trace_on)
 	    {
 	      gettimeofday (&trace_end, NULL);
-	      fprintf (stdout, "TRACE update statistics: %s done in %.1f ms\n", sm_get_ch_name (class_mop),
+	      fprintf (CSC_CLIENT_STDOUT, "TRACE update statistics: %s done in %.1f ms\n", sm_get_ch_name (class_mop),
 		       (trace_end.tv_sec - trace_start.tv_sec) * 1000.0
 		       + (trace_end.tv_usec - trace_start.tv_usec) / 1000.0);
-	      fflush (stdout);
+	      fflush (CSC_CLIENT_STDOUT);
 	    }
 	}
 
@@ -5027,16 +5036,16 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  if (n_hist_skipped > 0)
 	    {
-	      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s"
+	      fprintf (CSC_CLIENT_STDOUT, "Statistics updated successfully: %d table%s, %d column%s"
 		       " (%d skipped: histogram type not supported).\n", n_tables,
 		       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s", n_hist_skipped);
 	    }
 	  else
 	    {
-	      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
+	      fprintf (CSC_CLIENT_STDOUT, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
 		       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
 	    }
-	  fflush (stdout);
+	  fflush (CSC_CLIENT_STDOUT);
 	}
 
       return error;
@@ -6011,26 +6020,26 @@ set_iso_level (PARSER_CONTEXT * parser, DB_TRAN_ISOLATION * tran_isolation, bool
     {
     case TRAN_READ_COMMITTED:
       *tran_isolation = TRAN_READ_COMMITTED;
-      fprintf (stdout,
+      fprintf (CSC_CLIENT_STDOUT,
 	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
 				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout, "%s",
+      fprintf (CSC_CLIENT_STDOUT, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_REPREAD_S_READCOM_I));
       break;
     case TRAN_REPEATABLE_READ:
       *tran_isolation = TRAN_REPEATABLE_READ;
-      fprintf (stdout,
+      fprintf (CSC_CLIENT_STDOUT,
 	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
 				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout, "%s",
+      fprintf (CSC_CLIENT_STDOUT, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_REPREAD_S_REPREAD_I));
       break;
     case TRAN_SERIALIZABLE:
       *tran_isolation = TRAN_SERIALIZABLE;
-      fprintf (stdout,
+      fprintf (CSC_CLIENT_STDOUT,
 	       "%s", msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME,
 				     MSGCAT_RUNTIME_ISO_LVL_SET_TO_MSG));
-      fprintf (stdout, "%s",
+      fprintf (CSC_CLIENT_STDOUT, "%s",
 	       msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_RUNTIME, MSGCAT_RUNTIME_SERIAL_S_SERIAL_I));
       break;
     case 0:
@@ -6182,7 +6191,12 @@ get_savepoint_name_from_db_value (DB_VALUE * val)
 #define PT_TR_REF_REFERENCE(ref) \
   (&(ref)->info.event_object)
 
+#if defined (SERVER_MODE)
+/* savepoint-name minting is session state (a4 audit) */
+#define tr_savepoint_number (csc_current ()->tr_savepoint_number)
+#else
 static int tr_savepoint_number = 0;
+#endif
 
 static int merge_mop_list_extension (DB_OBJLIST * new_objlist, DB_OBJLIST ** list);
 static DB_TRIGGER_EVENT convert_event_to_tr_event (const PT_EVENT_TYPE ev);
@@ -7823,7 +7837,12 @@ typedef enum
 #define DB_VALUE_STACK_MAX 40
 
 /* It is used to generate unique savepoint names */
+#if defined (SERVER_MODE)
+/* savepoint-name minting is session state (a4 audit) */
+#define update_savepoint_number (csc_current ()->update_savepoint_number)
+#else
 static int update_savepoint_number = 0;
+#endif
 
 static void unlink_list (PT_NODE * list);
 
@@ -10452,7 +10471,12 @@ do_execute_update (PARSER_CONTEXT * parser, PT_NODE * statement)
  */
 
 /* used to generate unique savepoint names */
+#if defined (SERVER_MODE)
+/* savepoint-name minting is session state (a4 audit) */
+#define delete_savepoint_number (csc_current ()->delete_savepoint_number)
+#else
 static int delete_savepoint_number = 0;
+#endif
 
 static int select_delete_list (PARSER_CONTEXT * parser, QFILE_LIST_ID ** result_p, PT_NODE * delete_stmt);
 #if defined(ENABLE_UNUSED_FUNCTION)
@@ -11833,7 +11857,12 @@ struct odku_tuple_value_arg
 };
 
 /* used to generate unique savepoint names */
+#if defined (SERVER_MODE)
+/* savepoint-name minting is session state (a4 audit) */
+#define insert_savepoint_number (csc_current ()->insert_savepoint_number)
+#else
 static int insert_savepoint_number = 0;
+#endif
 
 static int insert_object_attr (const PARSER_CONTEXT * parser, DB_OTMPL * otemplate, DB_VALUE * value, PT_NODE * name,
 			       DB_ATTDESC * attr_desc);
@@ -17530,7 +17559,12 @@ cleanup:
  */
 
 /* used to generate unique savepoint names */
+#if defined (SERVER_MODE)
+/* savepoint-name minting is session state (a4 audit) */
+#define merge_savepoint_number (csc_current ()->merge_savepoint_number)
+#else
 static int merge_savepoint_number = 0;
+#endif
 
 /*
  * do_check_merge_trigger() -
@@ -21279,8 +21313,14 @@ do_set_trace_to_query_flag (QUERY_FLAG * query_flag)
    * expression programs in its trace as well: the server cannot see the client's optimization level otherwise.
    * Only csql: a CAS raises the level itself to log a query plan (cas_optimization.c, CCI_EXEC_QUERY_INFO), which
    * must not switch the section on under a JDBC/CCI client (CTP's traced test answers, 2026-10-13). */
-  if (BOOT_CSQL_CLIENT_TYPE (db_get_client_type ())
-      && DETAILED_DUMP (prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL)))
+  int level;
+  bool is_csql = BOOT_CSQL_CLIENT_TYPE (db_get_client_type ());
+#if defined (SERVER_MODE)
+  /* Broker-routed thin csql keeps its broker client type during rendering. */
+  is_csql = is_csql || (csc_bracket_is_active () && *csc_render_stdout_slot () != NULL);
+#endif
+  qo_get_optimization_param (&level, QO_PARAM_LEVEL);
+  if (is_csql && DETAILED_DUMP (level))
     {
       *query_flag |= XASL_TRACE_PLAN_DETAIL;
     }
@@ -22593,12 +22633,13 @@ server_find (PT_NODE * node_server, PT_NODE * node_owner)
    * backup the optimization level for executing internal query to find server-name,
    * because it could not be executed depending on the optimization level.
    */
-  saved_opt_level = prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL);
-  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, 1);
+  /* through the optimizer's setter: under a fold session bracket the level
+   * lives on the session override slot, not the shared sysprm */
+  qo_set_optimization_param (&saved_opt_level, QO_PARAM_LEVEL, 1);
 
   error = db_compile_and_execute_local (query, &query_result, &query_error);
 
-  prm_set_integer_value (PRM_ID_OPTIMIZATION_LEVEL, saved_opt_level);
+  qo_set_optimization_param (NULL, QO_PARAM_LEVEL, saved_opt_level);
 
   if (error < 0)
     {

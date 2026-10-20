@@ -32,7 +32,6 @@ namespace cubmethod
   std::string convert_db_value_to_string (DB_VALUE *value, DB_VALUE *value_string);
   char *get_backslash_escape_string (void);
 
-#if !defined(SERVER_MODE)
   typedef enum
   {
     NONE_TOKENS,
@@ -50,7 +49,6 @@ namespace cubmethod
   std::string get_column_default_as_string (DB_ATTRIBUTE *attr);
   void serialize_collection_as_string (DB_VALUE *col, std::string &out);
   char get_set_domain (DB_DOMAIN *set_domain, int &precision, short &scale, char &charset);
-#endif
 }
 
 #endif

@@ -25,9 +25,6 @@
 
 #include "parse_tree.h"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* defined (SERVER_MODE) */
 
 // forward definition
 struct compile_context;

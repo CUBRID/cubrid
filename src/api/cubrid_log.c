@@ -50,6 +50,7 @@
 #include "network.h"
 #include "object_representation.h"
 #include "dbi.h"
+#include "db_client_type.hpp"
 #include "dbtype_def.h"
 #include "porting.h"
 
@@ -873,6 +874,7 @@ cubrid_log_db_login (char *hostname, char *dbname, char *username, char *passwor
   MOP user;
   char dbname_at_hostname[CUB_MAXHOSTNAMELEN + CUBRID_LOG_MAX_DBNAME_LEN + 2] = { '\0', };
   int restart_error, err_code;
+  int saved_client_type = db_get_client_type ();
 
   snprintf (dbname_at_hostname, sizeof (dbname_at_hostname), "%s@%s", dbname, hostname);
 
@@ -882,12 +884,15 @@ cubrid_log_db_login (char *hostname, char *dbname, char *username, char *passwor
       goto error;
     }
 
+  /* CDC authenticates over the utility channel before opening its log stream. */
+  db_set_client_type (DB_CLIENT_TYPE_ADMIN_UTILITY);
   restart_error = db_restart ("cubrid_log_api", 0, dbname_at_hostname);
   if (restart_error != NO_ERROR)
     {
       err_code = cubrid_log_map_connect_error (restart_error);
       cubrid_log_tracelog (__FILE__, __LINE__, __func__, true, err_code,
 			   "db_restart failed to connect to %s (error = %d)\n", dbname_at_hostname, restart_error);
+      db_set_client_type (saved_client_type);
       return err_code;
     }
 
@@ -907,12 +912,14 @@ cubrid_log_db_login (char *hostname, char *dbname, char *username, char *passwor
     }
 
   db_shutdown ();
+  db_set_client_type (saved_client_type);
 
   return CUBRID_LOG_SUCCESS;
 
 error:
 
   db_shutdown ();
+  db_set_client_type (saved_client_type);
 
   return CUBRID_LOG_FAILED_LOGIN;
 }

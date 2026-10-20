@@ -24,7 +24,9 @@
 #ifndef _CAS_SSL_H_
 #define _CAS_SSL_H_
 
-extern bool ssl_client;
+#include "cas_common_vars.h"	/* CAS_TLS */
+
+extern CAS_TLS bool ssl_client;
 
 extern int cas_init_ssl (int sd);
 extern int cas_ssl_read (int sd, char *buf, int size);

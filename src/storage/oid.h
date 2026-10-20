@@ -41,7 +41,6 @@
 
 #define OID_AS_ARGS(oidp) (oidp)->volid, (oidp)->pageid, (oidp)->slotid
 
-#if !defined(SERVER_MODE)
 #define OID_TEMPID_MIN          INT_MIN
 #define OID_INIT_TEMPID()       (oid_Next_tempid = NULL_PAGEID)
 
@@ -52,7 +51,6 @@
 #define OID_ASSIGN_TEMPOID(oidp) ((oidp)->volid  = NULL_VOLID,          \
 				  (oidp)->pageid = OID_NEXT_TEMPID(),   \
 				  (oidp)->slotid = - tm_Tran_index)
-#endif /* !SERVER_MODE */
 
 #define SET_OID(dest_oid_ptr, vol_id, page_id, slot_id)  \
   do \
@@ -212,7 +210,12 @@ extern OID *oid_Serial_class_oid;
 extern OID *oid_User_class_oid;
 extern OID *oid_Sp_code_class_oid;
 
+#if defined (SERVER_MODE)
+extern PAGEID & oid_next_tempid (void);
+#define oid_Next_tempid (oid_next_tempid ())
+#else
 extern PAGEID oid_Next_tempid;
+#endif
 
 extern void oid_set_root (const OID * oid);
 extern bool oid_is_root (const OID * oid);

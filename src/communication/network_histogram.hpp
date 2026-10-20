@@ -23,9 +23,6 @@
 #ifndef _NETWORK_HISTOGRAM_HPP_
 #define _NETWORK_HISTOGRAM_HPP_
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* SERVER_MODE */
 
 #include <atomic>
 #include <array>

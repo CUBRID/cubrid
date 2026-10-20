@@ -14,7 +14,8 @@
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_INSTALL_PREFIX": "$env{CUBRID}",
-        "WITH_CCI": "true"
+        "WITH_CCI": "true",
+        "SUPPORT_XA": "true"
       }
     },
     {

@@ -75,9 +75,6 @@
 #include "network_callback_cl.hpp"
 #include "master_util.h"
 
-#if defined (SERVER_MODE)
-#error Does not belong to server module
-#endif /* defined (SERVER_MODE) */
 
 #if defined(HPUX)
 /*
