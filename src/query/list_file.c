@@ -586,7 +586,7 @@ exit_on_error:
   QFILE_CLEAR_LIST_ID (dest_list_id_p);
   if (er_errid () == NO_ERROR)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_FAILED, 0);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
     }
   return ER_FAILED;
 }
