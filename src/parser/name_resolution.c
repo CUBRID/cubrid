@@ -255,6 +255,7 @@ static void pt_bind_names_in_with_clause (PARSER_CONTEXT * parser, PT_NODE * nod
 static void pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * node, PT_BIND_NAMES_ARG * bind_arg);
 static PT_NODE *pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
 						   int *continue_walk);
+static PT_NODE *pt_bind_cte_null_name_types (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_get_attr_list_of_derived_table (PARSER_CONTEXT * parser, PT_MISC_TYPE derived_table_type,
 						   PT_NODE * derived_table, PT_NODE * derived_name);
 static void pt_set_attr_list_types (PARSER_CONTEXT * parser, PT_NODE * as_attr_list, PT_MISC_TYPE derived_table_type,
@@ -11413,7 +11414,8 @@ pt_bind_names_in_cte (PARSER_CONTEXT * parser, PT_NODE * cte_def, PT_BIND_NAMES_
       pt_set_attr_list_types (parser, cte_def->info.cte.as_attr_list, PT_IS_SUBQUERY, recursive_cte, cte_def);
 
       /* the attributes of cte self references specs can now be computed correctly */
-      recursive_cte = parser_walk_tree (parser, recursive_cte, pt_bind_cte_self_references_types, NULL, NULL, NULL);
+      recursive_cte =
+	parser_walk_tree (parser, recursive_cte, pt_bind_cte_self_references_types, recursive_cte, NULL, NULL);
     }
 
 end:
@@ -11428,7 +11430,7 @@ end:
  *   return:
  *   parser(in):
  *   node(in):
- *   arg(in/out):
+ *   arg(in): the recursive part
  *   continue_walk(in/out):
  */
 static PT_NODE *
@@ -11442,7 +11444,40 @@ pt_bind_cte_self_references_types (PARSER_CONTEXT * parser, PT_NODE * node, void
 
   pt_bind_spec_attrs (parser, node);
 
+  /* names bound while the column was an untyped NULL take the final type of the column */
+  (void) parser_walk_tree (parser, (PT_NODE *) arg, pt_bind_cte_null_name_types, node, NULL, NULL);
+
   *continue_walk = PT_LIST_WALK;
+
+  return node;
+}
+
+/*
+ * pt_bind_cte_null_name_types () - give a name of a CTE self reference spec, bound while the CTE column was an
+ *				    untyped NULL, the final type of the column
+ *   return: node
+ *   parser(in):
+ *   node(in):
+ *   arg(in): the CTE self reference spec
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_bind_cte_null_name_types (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  PT_NODE *spec = (PT_NODE *) arg;
+  PT_NODE *col;
+
+  if (node->node_type != PT_NAME || node->type_enum != PT_TYPE_NULL || node->info.name.spec_id != spec->info.spec.id)
+    {
+      return node;
+    }
+
+  col = pt_is_on_list (parser, node, spec->info.spec.as_attr_list);
+  if (col != NULL && col->type_enum != PT_TYPE_NULL)
+    {
+      node->type_enum = col->type_enum;
+      node->data_type = parser_copy_tree_list (parser, col->data_type);
+    }
 
   return node;
 }
