@@ -7427,8 +7427,9 @@ exit:
  *       ready, once, before the search starts.  It wins when reading the inner out once is cheaper than
  *       searching it for every outer row, a small or empty inner most plainly.  ANTI JOIN has no such form.
  *
- *       merge/hash join a SEMI JOIN inner in that form only and never an ANTI JOIN inner, so USE_MERGE/USE_HASH on a
- *       SEMI/ANTI JOIN inner left without it are dropped here: they would leave the node no plan.
+ *       merge join a SEMI JOIN inner in that form only and never an ANTI JOIN inner, so USE_MERGE on a SEMI/ANTI JOIN
+ *       inner left without it is dropped here: it would leave the node no plan.  USE_HASH stays: a hash join takes a
+ *       SEMI/ANTI JOIN inner as it is.
  */
 static void
 qo_prepare_distinct_info (QO_PLANNER * planner)
@@ -7579,7 +7580,7 @@ exit:
       node = &planner->node[i];
       if (QO_NODE_IS_SEMI_ANTI_JOIN (node) && planner->distinct_info[i] == NULL)
 	{
-	  QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) & ~(PT_HINT_USE_MERGE | PT_HINT_USE_HASH));
+	  QO_NODE_HINT (node) = (PT_HINT_ENUM) (QO_NODE_HINT (node) & ~PT_HINT_USE_MERGE);
 	}
     }
 }
