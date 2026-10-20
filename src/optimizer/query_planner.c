@@ -239,7 +239,17 @@ static void qo_follow_fprint (QO_PLAN *, FILE *, int);
 static void qo_worst_fprint (QO_PLAN *, FILE *, int);
 
 static void qo_scan_info (QO_PLAN *, FILE *, int);
+/* how a parent join wants a child printed (CBRD-27474): a parallel nested-loop block is shown once,
+ * at its top nested loop, so the joins and the driving scan inside it are not marked again */
+typedef enum
+{
+  QO_PARALLEL_MARK_NONE,	/* the child decides for itself */
+  QO_PARALLEL_MARK_SCAN,	/* a hash or merge join input scan read in parallel */
+  QO_PARALLEL_MARK_IN_BLOCK	/* inside a parallel nested-loop block: not marked */
+} QO_PARALLEL_MARK;
+
 static void qo_scan_info_internal (QO_PLAN *, FILE *, int, bool);
+static void qo_join_info_internal (QO_PLAN *, FILE *, int, bool);
 static void qo_plan_lite_print_child (QO_PLAN *, QO_PLAN *, FILE *, int);
 static void qo_sort_info (QO_PLAN *, FILE *, int);
 static void qo_join_info (QO_PLAN *, FILE *, int);
@@ -355,9 +365,9 @@ static QO_PLAN *qo_plan_finalize (QO_PLAN *);
 static QO_PLAN *qo_plan_order_by (QO_PLAN *, QO_EQCLASS *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp_prefer_covering_index (QO_PLAN *, QO_PLAN *);
 static void qo_plan_fprint (QO_PLAN *, FILE *, int, const char *);
-static void qo_plan_fprint_internal (QO_PLAN *, FILE *, int, const char *, bool);
+static void qo_plan_fprint_internal (QO_PLAN *, FILE *, int, const char *, QO_PARALLEL_MARK);
 static bool qo_plan_runs_parallel (QO_PLAN * plan);
-static bool qo_plan_child_scan_runs_parallel (QO_PLAN * parent, QO_PLAN * child);
+static QO_PARALLEL_MARK qo_plan_child_parallel_mark (QO_PLAN * parent, QO_PLAN * child);
 static bool qo_hjoin_runs_parallel (QO_PLAN * plan, double divisor);
 static double qo_parallel_cost_divisor (QO_PLAN * join);
 static double qo_join_input_factor (QO_PLAN * input, double divisor);
@@ -4116,9 +4126,9 @@ qo_join_fprint (QO_PLAN * plan, FILE * f, int howfar)
       qo_termset_fprint ((plan->info)->env, &(plan->plan_un.join.join_terms), f);
     }
   qo_plan_fprint_internal (plan->plan_un.join.outer, f, howfar, "outer: ",
-			   qo_plan_child_scan_runs_parallel (plan, plan->plan_un.join.outer));
+			   qo_plan_child_parallel_mark (plan, plan->plan_un.join.outer));
   qo_plan_fprint_internal (plan->plan_un.join.inner, f, howfar, "inner: ",
-			   qo_plan_child_scan_runs_parallel (plan, plan->plan_un.join.inner));
+			   qo_plan_child_parallel_mark (plan, plan->plan_un.join.inner));
   qo_plan_print_outer_join_terms (plan, f, howfar);
 }
 
@@ -4132,6 +4142,22 @@ qo_join_fprint (QO_PLAN * plan, FILE * f, int howfar)
 static void
 qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
 {
+  qo_join_info_internal (plan, f, howfar, false);
+}
+
+/*
+ * qo_join_info_internal () - qo_join_info () for a join the parent may have put in a parallel block
+ *   return:
+ *   plan(in):
+ *   f(in):
+ *   howfar(in):
+ *   in_block(in): inside a parallel nested-loop block, already marked at its top
+ */
+static void
+qo_join_info_internal (QO_PLAN * plan, FILE * f, int howfar, bool in_block)
+{
+  bool parallel = !in_block && qo_plan_runs_parallel (plan);
+
   if (!bitset_is_empty (&(plan->plan_un.join.join_terms)))
     {
       QO_ENV *env;
@@ -4143,7 +4169,7 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
       env = (plan->info)->env;
       separator = "";
 
-      if (qo_plan_runs_parallel (plan))
+      if (parallel)
 	{
 	  fprintf (f, "\n%*cParallel %c%s(", (int) howfar, ' ', tolower ((plan->vtbl)->info_string[0]),
 		   (plan->vtbl)->info_string + 1);
@@ -4161,8 +4187,7 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
     }
   else
     {
-      fprintf (f, "\n%*c%s", (int) howfar, ' ',
-	       qo_plan_runs_parallel (plan) ? "Parallel nested loops" : "Nested loops");
+      fprintf (f, "\n%*c%s", (int) howfar, ' ', parallel ? "Parallel nested loops" : "Nested loops");
     }
 
   if (plan->plan_un.join.join_type == JOIN_LEFT)
@@ -4179,7 +4204,7 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
 }
 
 /*
- * qo_plan_lite_print_child () - qo_plan_lite_print () of a join input, marking a parallel scan
+ * qo_plan_lite_print_child () - qo_plan_lite_print () of a join input, marking parallel units
  *   return:
  *   parent(in): the join
  *   child(in): its outer or inner
@@ -4189,9 +4214,15 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
 static void
 qo_plan_lite_print_child (QO_PLAN * parent, QO_PLAN * child, FILE * f, int howfar)
 {
-  if (qo_plan_child_scan_runs_parallel (parent, child))
+  QO_PARALLEL_MARK mark = qo_plan_child_parallel_mark (parent, child);
+
+  if (mark == QO_PARALLEL_MARK_SCAN)
     {
       qo_scan_info_internal (child, f, howfar, true);
+    }
+  else if (mark == QO_PARALLEL_MARK_IN_BLOCK && child->plan_type == QO_PLANTYPE_JOIN)
+    {
+      qo_join_info_internal (child, f, howfar, true);
     }
   else
     {
@@ -5009,9 +5040,9 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
     }
 
   qo_plan_fprint_internal (plan->plan_un.join.outer, f, howfar, "outer: ",
-			   qo_plan_child_scan_runs_parallel (plan, plan->plan_un.join.outer));
+			   qo_plan_child_parallel_mark (plan, plan->plan_un.join.outer));
   qo_plan_fprint_internal (plan->plan_un.join.inner, f, howfar, "inner: ",
-			   qo_plan_child_scan_runs_parallel (plan, plan->plan_un.join.inner));
+			   qo_plan_child_parallel_mark (plan, plan->plan_un.join.inner));
   qo_plan_print_outer_join_terms (plan, f, howfar);
 }
 
@@ -6313,29 +6344,41 @@ qo_plan_runs_parallel (QO_PLAN * plan)
 }
 
 /*
- * qo_plan_child_scan_runs_parallel () - did the join costing this child scan count it as parallel
- *   return: true for the driving scan of a parallel nested loop or a parallel input scan of a
- *	     hash or merge join
+ * qo_plan_child_parallel_mark () - how the join consuming a child wants it printed
+ *   return: QO_PARALLEL_MARK
  *   parent(in): a join plan
  *   child(in): its outer or inner
  *
- * Note: a scan plan keeps its serial cost and may serve several joins, so whether it runs in
- *	 parallel is a property of its place in the plan, decided by the join that consumes it.
+ * Note: a parallel nested loop runs its whole chain -- the driving scan and every nested loop
+ *	 above it -- in each worker, so the block is marked once, at its top. A hash join is
+ *	 decided on its own (also when it drives a block), and a scan feeding a hash or merge
+ *	 join is a parallel unit of its own; a scan plan keeps its serial cost and may serve
+ *	 several joins, so that marking is decided here, by the consumer.
  */
-static bool
-qo_plan_child_scan_runs_parallel (QO_PLAN * parent, QO_PLAN * child)
+static QO_PARALLEL_MARK
+qo_plan_child_parallel_mark (QO_PLAN * parent, QO_PLAN * child)
 {
-  if (child == NULL || child->plan_type != QO_PLANTYPE_SCAN)
+  if (child == NULL)
     {
-      return false;
+      return QO_PARALLEL_MARK_NONE;
     }
 
   if (QO_IS_NL_JOIN (parent))
     {
-      return parent->parallel_driven && child == parent->plan_un.join.outer;
+      if (parent->parallel_driven && child == parent->plan_un.join.outer
+	  && (child->plan_type == QO_PLANTYPE_SCAN || (child->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (child))))
+	{
+	  return QO_PARALLEL_MARK_IN_BLOCK;
+	}
+      return QO_PARALLEL_MARK_NONE;
     }
 
-  return qo_join_input_factor (child, qo_parallel_cost_divisor (parent)) < 1.0;
+  if (child->plan_type == QO_PLANTYPE_SCAN && qo_join_input_factor (child, qo_parallel_cost_divisor (parent)) < 1.0)
+    {
+      return QO_PARALLEL_MARK_SCAN;
+    }
+
+  return QO_PARALLEL_MARK_NONE;
 }
 
 /*
@@ -6349,7 +6392,7 @@ qo_plan_child_scan_runs_parallel (QO_PLAN * parent, QO_PLAN * child)
 static void
 qo_plan_fprint (QO_PLAN * plan, FILE * f, int howfar, const char *title)
 {
-  qo_plan_fprint_internal (plan, f, howfar, title, false);
+  qo_plan_fprint_internal (plan, f, howfar, title, QO_PARALLEL_MARK_NONE);
 }
 
 /*
@@ -6359,13 +6402,14 @@ qo_plan_fprint (QO_PLAN * plan, FILE * f, int howfar, const char *title)
  *   f(in):
  *   howfar(in):
  *   title(in):
- *   parallel_scan(in): the parent join counted this scan as run in parallel
+ *   mark(in): how the parent join wants this node printed (qo_plan_child_parallel_mark ())
  *
- * Note: a node costed as run in parallel is printed as "parallel <name>", and a parallel scan
- *	 with the cost the parent charged for it, so that the costs in the tree add up.
+ * Note: a parallel unit -- the top nested loop of a parallel block, a parallel hash join, a
+ *	 parallel input scan of a hash or merge join -- is printed as "parallel <name>"; an input
+ *	 scan with the cost the consuming join charged for it.
  */
 static void
-qo_plan_fprint_internal (QO_PLAN * plan, FILE * f, int howfar, const char *title, bool parallel_scan)
+qo_plan_fprint_internal (QO_PLAN * plan, FILE * f, int howfar, const char *title, QO_PARALLEL_MARK mark)
 {
   if (howfar < 0)
     {
@@ -6385,7 +6429,7 @@ qo_plan_fprint_internal (QO_PLAN * plan, FILE * f, int howfar, const char *title
       fprintf (f, TITLE_FMT, title);
     }
 
-  if (parallel_scan || qo_plan_runs_parallel (plan))
+  if (mark == QO_PARALLEL_MARK_SCAN || (mark == QO_PARALLEL_MARK_NONE && qo_plan_runs_parallel (plan)))
     {
       fputs ("parallel ", f);
     }
@@ -6404,7 +6448,7 @@ qo_plan_fprint_internal (QO_PLAN * plan, FILE * f, int howfar, const char *title
   qo_plan_print_sarged_terms (plan, f, howfar);
   qo_plan_print_subqueries (plan, f, howfar);
   qo_plan_print_sort_spec (plan, f, howfar);
-  qo_plan_print_costs (plan, f, howfar, parallel_scan);
+  qo_plan_print_costs (plan, f, howfar, mark == QO_PARALLEL_MARK_SCAN);
   qo_plan_print_analytic_eval (plan, f, howfar);
 }
 
