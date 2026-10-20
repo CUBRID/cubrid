@@ -5454,7 +5454,8 @@ stx_build_comp_eval_term (THREAD_ENTRY * thread_p, char *ptr, COMP_EVAL_TERM * c
  * stx_build_element_compares () - CBRD-27583: what an ALL/SOME term compares its item with - the compiler's decision
  *   (D-81, xts_decide_element_compare), looked up: a list's column or a right side that is no collection by one
  *   comparison (ALSM_EVAL_TERM.compare), a collection's elements - its data, a constant's too (spec 9: an element
- *   fails where a row compares it) - by the item's row of the type pair comparison table (compare_row); a filter or
+ *   fails where a row compares it) - by the item's row of the type pair comparison table (compare_row), and by its
+ *   cell of the elements' one key where the compiler found one (compare_each); a filter or
  *   function index stream's, which carries none (D-82), here: a literal item by its value's row, any other by the two
  *   values' keys
  *   return: the stream after it; NULL with the unpack error set
@@ -5502,15 +5503,23 @@ stx_build_element_compares (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM *
       domain_compare_set_operator_functions (compare);
       term->compare = compare;
     }
-  else if (kind == 2)
+  else if (kind >= 2)
     {
-      DOMAIN_COMPARE_KEY item;
-      int field;
-      ptr = or_unpack_int (ptr, &field);
-      item.type = (DB_TYPE) field;
-      ptr = or_unpack_int (ptr, &item.codeset);
-      ptr = or_unpack_int (ptr, &item.collation);
-      term->compare_row = domain_compare_key_row (&item);
+      /* the item's key, and for 3 the elements' one key, whose cell of the row every element reads */
+      DOMAIN_COMPARE_KEY key[2];
+      for (int k = 0; k < kind - 1; k++)
+	{
+	  int field;
+	  ptr = or_unpack_int (ptr, &field);
+	  key[k].type = (DB_TYPE) field;
+	  ptr = or_unpack_int (ptr, &key[k].codeset);
+	  ptr = or_unpack_int (ptr, &key[k].collation);
+	}
+      term->compare_row = domain_compare_key_row (&key[0]);
+      if (kind == 3 && term->compare_row >= 0)
+	{
+	  term->compare_each = domain_compare_row_key_entry (term->compare_row, &key[1]);
+	}
     }
   /* CBRD-27583 (S3-32): never by the values in the gates (census "by value" 0) */
   assert (term->elem == NULL || term->elemset == NULL || kind != 0);
@@ -5563,6 +5572,7 @@ stx_build_alsm_eval_term (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM * a
   alsm_eval_term->item_type = (DB_TYPE) tmp;
   alsm_eval_term->compare = NULL;
   alsm_eval_term->compare_row = -1;
+  alsm_eval_term->compare_each = NULL;
 
   ptr = stx_build_element_compares (thread_p, ptr, alsm_eval_term);
   alsm_eval_term->prune_domain = NULL;

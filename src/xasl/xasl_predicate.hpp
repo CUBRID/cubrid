@@ -143,9 +143,11 @@ namespace cubxasl
     DB_TYPE item_type;
     /* CBRD-27583: what the unpack decided the item compares with (unpack arena, not serialized): a list's column or a
      * right side that is no collection by compare; NULL: a collection's elements by the item's row of the type pair
-     * comparison table (compare_row), or by the two values' keys where the row is -1 */
+     * comparison table (compare_row), or by the two values' keys where the row is -1; compare_each: the row's cell of
+     * the elements' one key, which every non-NULL element reads (NULL: each element's own) */
     int compare_row;
     const DOMAIN_COMPARE *compare;
+    const DOMAIN_COMPARE *compare_each;
     /* CBRD-27583 (D-87): a partitioned class's item against a list of values of one domain (prune_element): the item's
      * domain, into which partition pruning converts each element (XASL generation, streamed; NULL none), and the
      * converter the unpack found (unpack arena) */

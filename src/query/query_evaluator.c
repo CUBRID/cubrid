@@ -53,14 +53,15 @@
 
 #define UNKNOWN_CARD   -2	/* Unknown cardinality of a set member */
 
-/* What an ALL/SOME term compares its item with: a collection's elements by their keys in the item's row of the type
- * pair comparison table (`row`), else `each` for every element; `all` for every value of a list or a right side that
- * is no collection. */
+/* What an ALL/SOME term compares its item with: a collection's elements by `element`, the row's cell of their one key,
+ * else by their keys in the item's row of the type pair comparison table (`row`), else `each` for every element;
+ * `all` for every value of a list or a right side that is no collection. */
 struct EVAL_ELEMENTS
 {
   const DOMAIN_COMPARE *all;
   const DOMAIN_COMPARE *each;
   int row;			/* -1: none */
+  const DOMAIN_COMPARE *element;	/* NULL: none */
 };
 
 static DB_LOGICAL eval_negative (DB_LOGICAL res);
@@ -216,6 +217,7 @@ eval_resolved_elements (const ALSM_EVAL_TERM * et_alsm, EVAL_ELEMENTS * elements
 {
   elements->all = elements->each = &eval_Compare_values;
   elements->row = -1;
+  elements->element = et_alsm->compare_each;
   if (et_alsm->compare != NULL)
     {
       elements->all = et_alsm->compare;
@@ -227,6 +229,29 @@ eval_resolved_elements (const ALSM_EVAL_TERM * et_alsm, EVAL_ELEMENTS * elements
       return;
     }
   eval_element_row (et_alsm->compare_row, elements);
+}
+
+/* Whether an element compares as the set holds it: set_get_element's copy changes an OID and a value without its data
+ * (setobj_get_element), and nothing else. */
+static bool
+eval_element_as_held (const DB_VALUE * element)
+{
+  const DB_TYPE type = DB_VALUE_TYPE (element);
+  switch (type)
+    {
+    case DB_TYPE_OID:
+      return false;
+    case DB_TYPE_STRING:
+      return db_get_string (element) != NULL;
+    case DB_TYPE_OBJECT:
+      return db_get_object (element) != NULL;
+    case DB_TYPE_BLOB:
+    case DB_TYPE_CLOB:
+    case DB_TYPE_ELO:
+      return db_get_elo (element) != NULL;
+    default:
+      return !TP_IS_SET_TYPE (type) || db_get_set (element) != NULL;
+    }
 }
 
 /* The resolution an item's row holds for an element: by its type and, for a string or an ENUM, its collation. */
@@ -686,24 +711,43 @@ eval_some_eval (THREAD_ENTRY * thread_p, DB_VALUE * item, DB_SET * set, REL_OP r
   int i;
   DB_LOGICAL res, t_res;
   DB_VALUE elem_val;
+  COL *col;
 
   PRIM_SET_NULL (&elem_val);
 
   res = V_FALSE;
 
+  if (set_get_setobj (set, &col, 0) != NO_ERROR)
+    {
+      return V_ERROR;
+    }
   const int size = set_size (set);
   for (i = 0; i < size; i++)
     {
-      if (set_get_element (set, i, &elem_val) != NO_ERROR)
+      DB_VALUE *element = NULL;
+      if (col != NULL && setobj_get_element_ptr (col, i, &element) != NO_ERROR)
 	{
 	  return V_ERROR;
 	}
-      /* 2-7: elements carry their type - an element's comparison is looked up by its value (the item's row, or the
-       * two values' keys) */
-      const DOMAIN_COMPARE *compare = DB_IS_NULL (&elem_val) ? &eval_Compare_values
-	: elements->row >= 0 ? eval_element_compare (elements->row, &elem_val) : elements->each;
+      if (element == NULL || !eval_element_as_held (element))
+	{
+	  /* set_get_element's copy, which swizzles an OID and makes a value without its data NULL */
+	  if (set_get_element (set, i, &elem_val) != NO_ERROR)
+	    {
+	      return V_ERROR;
+	    }
+	  element = &elem_val;
+	}
+      /* 2-7: elements carry their type - an element's comparison is the cell of the elements' one key, or is looked up
+       * by its value (the item's row, or the two values' keys) */
+      const DOMAIN_COMPARE *compare = DB_IS_NULL (element) ? &eval_Compare_values
+	: elements->element != NULL ? elements->element
+	: elements->row >= 0 ? eval_element_compare (elements->row, element) : elements->each;
+      /* the compiler's claim: the elements' values are of their one key */
+      assert (elements->element == NULL || DB_IS_NULL (element)
+	      || compare == eval_element_compare (elements->row, element));
 
-      t_res = eval_value_rel_cmp (thread_p, item, &elem_val, rel_operator, NULL, vd, compare);
+      t_res = eval_value_rel_cmp (thread_p, item, element, rel_operator, NULL, vd, compare);
       pr_clear_value (&elem_val);
       if (t_res == V_TRUE)
 	{
