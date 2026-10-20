@@ -473,37 +473,13 @@ hjoin_execute_sub_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 
   for (side = 0; side < 2; side++)
     {
-      fetch_info = (side == 0) ? &context->outer : &context->inner;
-
       sub_list_id[side] = (QFILE_LIST_ID **) db_private_alloc (thread_p, sub_cnt * sizeof (QFILE_LIST_ID *));
       if (sub_list_id[side] == NULL)
 	{
 	  goto error_exit;
 	}
       memset (sub_list_id[side], 0, sub_cnt * sizeof (QFILE_LIST_ID *));
-
-      for (sub_index = 0; sub_index < sub_cnt; sub_index++)
-	{
-	  sub_list_id[side][sub_index] =
-	    qfile_open_list (thread_p, &fetch_info->list_id->type_list, NULL, manager->query_id,
-			     QFILE_FLAG_ALL | QFILE_FLAG_BORROWED_TFILE
-			     | QFILE_LIST_BACKWARD_FLAG (fetch_info->list_id), NULL);
-	  if (sub_list_id[side][sub_index] == NULL)
-	    {
-	      goto error_exit;
-	    }
-	  assert (sub_list_id[side][sub_index]->tfile_vfid == NULL);
-	}
-
-      error = hjoin_resplit_qlist (thread_p, fetch_info->list_id, sub_list_id[side], sub_cnt, divisor,
-				   context->worker_tfile);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
     }
-
-  hjoin_destroy_qlist (thread_p, context);
 
   for (sub_index = 0; sub_index < sub_cnt; sub_index++)
     {
@@ -513,6 +489,16 @@ hjoin_execute_sub_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 	{
 	  fetch_info = (side == 0) ? &context->outer : &context->inner;
 	  sub_fetch_info = (side == 0) ? &sub_context->outer : &sub_context->inner;
+
+	  sub_list_id[side][sub_index] =
+	    qfile_open_list (thread_p, &fetch_info->list_id->type_list, NULL, manager->query_id,
+			     QFILE_FLAG_ALL | QFILE_FLAG_BORROWED_TFILE
+			     | QFILE_LIST_BACKWARD_FLAG (fetch_info->list_id), NULL);
+	  if (sub_list_id[side][sub_index] == NULL)
+	    {
+	      goto error_exit;
+	    }
+	  assert (sub_list_id[side][sub_index]->tfile_vfid == NULL);
 
 	  sub_fetch_info->list_id = sub_list_id[side][sub_index];
 	  sub_fetch_info->input = fetch_info->input;
@@ -524,8 +510,27 @@ hjoin_execute_sub_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
       sub_context->during_join_pred = context->during_join_pred;
       sub_context->after_join_pred = context->after_join_pred;
       sub_context->val_descr = context->val_descr;
-      assert (context->list_id != NULL);
-      sub_context->list_id = context->list_id;
+    }
+
+  for (side = 0; side < 2; side++)
+    {
+      fetch_info = (side == 0) ? &context->outer : &context->inner;
+
+      error = hjoin_resplit_qlist (thread_p, fetch_info->list_id, sub_list_id[side], sub_cnt, divisor,
+				   context->worker_tfile);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
+  hjoin_destroy_qlist (thread_p, context);
+
+  assert (context->list_id != NULL);
+
+  for (sub_index = 0; sub_index < sub_cnt; sub_index++)
+    {
+      sub_context = &sub_contexts[sub_index];
 
       /* each sub-context counts by itself, then adds to the context, since a context sets its stats only once */
       if (context->stats != NULL)
@@ -534,8 +539,9 @@ hjoin_execute_sub_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 	  sub_context->stats = &sub_stats;
 	}
 
+      sub_context->list_id = context->list_id;	/* lend the result list */
       error = hjoin_execute (thread_p, manager, sub_context);
-      sub_context->list_id = NULL;
+      sub_context->list_id = NULL;	/* take it back */
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
