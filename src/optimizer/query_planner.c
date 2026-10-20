@@ -13744,8 +13744,8 @@ struct qo_analytic_cover_arg
   QO_INDEX_ENTRY *index_entryp;
   PT_NODE *select_list;
   bool is_desc_scan;		/* USE_DESC_IDX: the index is scanned backward */
-  int max_full_len;		/* longest sort list the index order covers entirely */
-  int max_partial_len;		/* longest covered prefix of a sort list the index order does not cover entirely */
+  bool has_covered;		/* some sort list is a prefix of the index key order */
+  bool has_uncovered;		/* some non-empty sort list is not a prefix of the index key order */
 };
 
 /*
@@ -13863,13 +13863,17 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
 	}
     }
 
-  if (sort_len > 0 && covered_len == sort_len)
+  if (sort_len > 0)
     {
-      cover->max_full_len = MAX (cover->max_full_len, sort_len);
-    }
-  else
-    {
-      cover->max_partial_len = MAX (cover->max_partial_len, covered_len);
+      if (covered_len == sort_len)
+	{
+	  cover->has_covered = true;
+	}
+      else
+	{
+	  cover->has_uncovered = true;
+	  *continue_walk = PT_STOP_WALK;
+	}
     }
 
   return tree;
@@ -13879,15 +13883,17 @@ qo_index_covers_analytic_sort_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void
  * qo_index_covers_analytic_sort () - checks whether a full scan of the index returns the rows in the sort order of
  *				      an analytic sort group of the query, so that the analytic evaluation can skip
  *				      its sort (CBRD-26473)
- *   return: true if the index order covers the PARTITION BY + ORDER BY list of an analytic function that does not
- *	     share its sort with a function the index order does not cover
+ *   return: true if the PARTITION BY + ORDER BY list of every analytic function with a sort list is a prefix of
+ *	     the index key order
  *   env(in): pointer to the optimizer environment
  *   node(in): the node scanned by the index
  *   ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
  *
- * Note: Analytic functions whose sort lists extend one another are evaluated in one group sorted by the longest
- *   list. A covered list of length n therefore keeps its own sort-skipping group only if no partially covered list
- *   starts with the same n index columns, i.e. covers n or more of them.
+ * Note: XASL generation evaluates analytic functions in sort groups and may merge the sort lists of compatible
+ *   functions into one (pt_metadomains_compatible () compares PARTITION BY keys as sets), so a function that the
+ *   index order covers can end up in a group sorted by a key the index does not supply. Only when every sort list
+ *   is a prefix of the index key order is the merged key a prefix of it as well (the sort columns are numbered in
+ *   the order they first appear, which is then the index order), so that the first group surely skips its sort.
  */
 static bool
 qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY * ni_entryp)
@@ -13920,12 +13926,12 @@ qo_index_covers_analytic_sort (QO_ENV * env, QO_NODE * node, QO_NODE_INDEX_ENTRY
   cover.index_entryp = index_entryp;
   cover.select_list = tree->info.query.q.select.list;
   cover.is_desc_scan = (tree->info.query.q.select.hint & PT_HINT_USE_IDX_DESC) != 0;
-  cover.max_full_len = 0;
-  cover.max_partial_len = 0;
+  cover.has_covered = false;
+  cover.has_uncovered = false;
   (void) parser_walk_tree (parser, tree->info.query.q.select.list, qo_index_covers_analytic_sort_pre, &cover, NULL,
 			   NULL);
 
-  return cover.max_full_len > cover.max_partial_len;
+  return cover.has_covered && !cover.has_uncovered;
 }
 
 /*
