@@ -246,6 +246,7 @@ static int qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs
 					  QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
 static void qo_classify_outerjoin_terms (QO_ENV *);
+static void qo_add_null_supplier_dep_set (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
 static void qo_seg_clear (QO_ENV *, int);
 static void qo_node_clear (QO_ENV *, int);
@@ -581,6 +582,9 @@ qo_optimize_helper (QO_ENV * env)
 	    }
 	}
     }
+
+  /* order each on_node after the outer joins that null-supply what its ON clause reads */
+  qo_add_null_supplier_dep_set (env);
 
   /* classify terms for outer join */
   qo_classify_outerjoin_terms (env);
@@ -6450,6 +6454,71 @@ qo_discover_edges (QO_ENV * env)
 }
 
 /*
+ * qo_add_null_supplier_dep_set () -
+ *   An on_node whose ON clause reads node M must be joined after every preceding
+ *   outer join on_node that can null-pad M: a LEFT OUTER on_node that is M itself,
+ *   or a RIGHT/FULL OUTER on_node whose outer_dep_set holds M.
+ */
+static void
+qo_add_null_supplier_dep_set (QO_ENV * env)
+{
+  int n, k, i;
+  QO_NODE *node, *k_node;
+  QO_TERM *term;
+  BITSET refs;
+  bool null_supplies;
+
+  bitset_init (&refs, env);
+
+  for (n = 1; n < env->nnodes; n++)
+    {
+      node = QO_ENV_NODE (env, n);
+      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_NONE || QO_NODE_IS_SEMI_ANTI_JOIN (node))
+	{
+	  continue;
+	}
+
+      BITSET_CLEAR (refs);
+      for (i = 0; i < env->nterms; i++)
+	{
+	  term = QO_ENV_TERM (env, i);
+	  if (QO_ON_COND_TERM (term) && QO_TERM_LOCATION (term) == QO_NODE_LOCATION (node))
+	    {
+	      bitset_union (&refs, &(QO_TERM_NODES (term)));
+	    }
+	}
+      bitset_remove (&refs, QO_NODE_IDX (node));
+
+      for (k = 1; k < env->nnodes; k++)
+	{
+	  k_node = QO_ENV_NODE (env, k);
+	  if (k == n || QO_NODE_LOCATION (k_node) >= QO_NODE_LOCATION (node))
+	    {
+	      continue;
+	    }
+
+	  null_supplies = false;
+	  if (QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_LEFT_OUTER)
+	    {
+	      null_supplies = BITSET_MEMBER (refs, k);
+	    }
+	  else if (QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_RIGHT_OUTER
+		   || QO_NODE_PT_JOIN_TYPE (k_node) == PT_JOIN_FULL_OUTER)
+	    {
+	      null_supplies = bitset_intersects (&refs, &(QO_NODE_OUTER_DEP_SET (k_node)));
+	    }
+
+	  if (null_supplies && !BITSET_MEMBER (QO_NODE_OUTER_DEP_SET (node), k))
+	    {
+	      QO_ADD_OUTER_DEP_SET (node, k_node);
+	    }
+	}
+    }
+
+  bitset_delset (&refs);
+}
+
+/*
  * qo_classify_outerjoin_terms () -
  *   return:
  *   env(in):
@@ -6518,7 +6587,10 @@ qo_classify_outerjoin_terms (QO_ENV * env)
 
 	  if (QO_NODE_PT_JOIN_TYPE (on_node) == PT_JOIN_INNER || QO_NODE_IS_SEMI_ANTI_JOIN (on_node))
 	    {
-	      continue;		/* inner / semi / anti: structurally inner, no outer-join classification */
+	      /* inner / semi / anti: structurally inner, no outer-join classification. Join-order
+	       * dependency on a preceding null-supplying outer join is now handled at the node level
+	       * by qo_add_null_supplier_dep_set(), not here. */
+	      continue;
 	    }
 
 	  /* is explicit outer-joined ON cond */
@@ -8463,6 +8535,14 @@ qo_build_implied_seg_roots (QO_ENV * env, int *root_arr)
       if (!QO_INNER_JOIN_TERM (jterm) || !qo_is_equi_join_term (jterm))
 	{
 	  continue;
+	}
+      if (QO_ON_COND_TERM (jterm))
+	{
+	  QO_NODE *jon = QO_ENV_NODE (env, QO_TERM_LOCATION (jterm));
+	  if (QO_NODE_PT_JOIN_TYPE (jon) == PT_JOIN_INNER && !bitset_is_empty (&(QO_NODE_OUTER_DEP_SET (jon))))
+	    {
+	      continue;		/* reads a null-supplied node; conditional, not an unconditional edge */
+	    }
 	}
       /* Always-true transitive copies from qo_reduce_equality_terms would only yield terms
        * demoted to QO_TC_DUMMY_JOIN, so they do not seed the union-find either. */
