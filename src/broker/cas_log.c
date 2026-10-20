@@ -413,13 +413,11 @@ cas_log_flush_on_exit (void)
 	}
       else if (log_fp == &sql_log_fd || log_fp == &scratch_log_fd)
 	{
-	  /* flush only the lines before the statement being compiled, since it may still hold a password */
 	  INT64 end = saved_temp_stmt_fpos - log_fp->file_buf_base;
 
-	  (void) cas_fflush_partial (log_fp, (int) MIN (end, (INT64) log_fp->buf_used));
-
-	  /* drop the plaintext from the buffer and write the statement again with its passwords masked */
-	  if (end >= 0 && end == log_fp->buf_flushed && saved_temp_stmt_query != NULL)
+	  /* drop the plaintext from the buffer and write the statement again with its passwords masked,
+	   * before any flush, so that a failed flush leaves no plaintext in the buffer */
+	  if (end >= log_fp->buf_flushed && end <= log_fp->buf_used && saved_temp_stmt_query != NULL)
 	    {
 	      log_fp->buf_used = (int) end;
 	      CAS_LOG_SET_UNMASKED (SQL_LOG_UNMASKED_NONE);
@@ -429,6 +427,11 @@ cas_log_flush_on_exit (void)
 		  cas_fwrite ("\n", 1, 1, log_fp);
 		}
 	      (void) cas_fflush (log_fp);
+	    }
+	  else
+	    {
+	      /* the statement cannot be masked here, so flush only the lines before it to keep its password out */
+	      (void) cas_fflush_partial (log_fp, (int) MIN (end, (INT64) log_fp->buf_used));
 	    }
 	}
     }
@@ -607,7 +610,7 @@ copy_scratch_to_sql_log (void)
     {
       if (pwrite_all (file->fd, unit->buf, (size_t) unit->buf_used, file->file_buf_base) == 0)
 	{
-	  file->file_buf_base += unit_len;
+	  file->file_buf_base += unit->buf_used;
 	}
     }
   else if (cas_fflush (unit) == 0 && lseek (file->fd, (off_t) file->file_buf_base, SEEK_SET) >= 0)
@@ -1583,9 +1586,9 @@ pwrite_all (int fd, const char *p, size_t len, INT64 off)
     {
       ssize_t w = pwrite (fd, p, len, (off_t) off);
 
-      if (w < 0)
+      if (w <= 0)
 	{
-	  if (errno == EINTR)
+	  if (w < 0 && errno == EINTR)
 	    {
 	      continue;
 	    }

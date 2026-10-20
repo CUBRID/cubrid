@@ -147,6 +147,10 @@ hide_password::find_end_of_quot (char *ps)
       if (*ps == '\\' && m_use_backslash_escape)
 	{
 	  ps++;
+	  if (*ps == '\0')
+	    {
+	      break;
+	    }
 	}
       else if (*ps == quot_char)
 	{
@@ -206,13 +210,10 @@ hide_password::get_token (char *&in, int &len)
 
 	case '-':
 	case '/':
-	  if (in[0] == in[1])
+	  if (in[0] == in[1] || (in[0] == '/' && in[1] == '*'))
 	    {
 	      in = skip_comment_string (in);
-	    }
-	  else if (in[0] == '/' && in[1] == '*')
-	    {
-	      in = skip_comment_string (in);
+	      continue;
 	    }
 	  break;
 
@@ -445,35 +446,24 @@ hide_password::skip_one_query (char *query)
 {
   char *ps;
 
-  for (ps = query; *ps; ps++)
+  for (ps = query; *ps;)
     {
       if (*ps == '\'' || *ps == '"')
 	{
 	  ps = find_end_of_quot (ps);
-	  if (*ps == '\0')
-	    {
-	      break;
-	    }
+	  continue;
 	}
-      else if (*ps == '-')
+      else if ((ps[0] == '-' && ps[1] == '-') || (ps[0] == '/' && (ps[1] == '/' || ps[1] == '*')))
 	{
-	  if (ps[1] == '-')
-	    {
-	      ps = skip_comment_string (ps);
-	    }
-	}
-      else if (*ps == '/')
-	{
-	  if (ps[1] == '/' || ps[1] == '*')
-	    {
-	      ps = skip_comment_string (ps);
-	    }
+	  ps = skip_comment_string (ps);
+	  continue;
 	}
       else if (*ps == ';')
 	{
 	  ps++;
 	  break;
 	}
+      ps++;
     }
 
   return ps;
