@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <ctype.h>
 #include <assert.h>
 #if !defined(WINDOWS)
 #include <values.h>
@@ -238,6 +239,8 @@ static void qo_follow_fprint (QO_PLAN *, FILE *, int);
 static void qo_worst_fprint (QO_PLAN *, FILE *, int);
 
 static void qo_scan_info (QO_PLAN *, FILE *, int);
+static void qo_scan_info_internal (QO_PLAN *, FILE *, int, bool);
+static void qo_plan_lite_print_child (QO_PLAN *, QO_PLAN *, FILE *, int);
 static void qo_sort_info (QO_PLAN *, FILE *, int);
 static void qo_join_info (QO_PLAN *, FILE *, int);
 static void qo_follow_info (QO_PLAN *, FILE *, int);
@@ -249,7 +252,7 @@ static void qo_plan_del_ref_func (QO_PLAN * plan, void *ignore);
 static void qo_generic_walk (QO_PLAN *, void (*)(QO_PLAN *, void *), void *, void (*)(QO_PLAN *, void *), void *);
 static void qo_plan_print_sort_spec_helper (PT_NODE *, bool, FILE *, int);
 static void qo_plan_print_sort_spec (QO_PLAN *, FILE *, int);
-static void qo_plan_print_costs (QO_PLAN *, FILE *, int);
+static void qo_plan_print_costs (QO_PLAN *, FILE *, int, bool);
 static void qo_plan_print_projected_segs (QO_PLAN *, FILE *, int);
 static void qo_plan_print_sarged_terms (QO_PLAN *, FILE *, int);
 static void qo_plan_print_outer_join_terms (QO_PLAN *, FILE *, int);
@@ -352,6 +355,12 @@ static QO_PLAN *qo_plan_finalize (QO_PLAN *);
 static QO_PLAN *qo_plan_order_by (QO_PLAN *, QO_EQCLASS *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp_prefer_covering_index (QO_PLAN *, QO_PLAN *);
 static void qo_plan_fprint (QO_PLAN *, FILE *, int, const char *);
+static void qo_plan_fprint_internal (QO_PLAN *, FILE *, int, const char *, bool);
+static bool qo_plan_runs_parallel (QO_PLAN * plan);
+static bool qo_plan_child_scan_runs_parallel (QO_PLAN * parent, QO_PLAN * child);
+static bool qo_hjoin_runs_parallel (QO_PLAN * plan, double divisor);
+static double qo_parallel_cost_divisor (QO_PLAN * join);
+static double qo_join_input_factor (QO_PLAN * input, double divisor);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp (QO_PLAN *, QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b);
 static QO_PLAN_COMPARE_RESULT qo_index_covering_plans_cmp (QO_PLAN *, QO_PLAN *);
@@ -1677,10 +1686,16 @@ qo_plan_print_sort_spec (QO_PLAN * plan, FILE * f, int howfar)
  *   howfar(in):
  */
 static void
-qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar)
+qo_plan_print_costs (QO_PLAN * plan, FILE * f, int howfar, bool parallel_scan)
 {
   double fixed = plan->fixed_cpu_cost + plan->fixed_io_cost;
   double variable = plan->variable_cpu_cost + plan->variable_io_cost;
+
+  if (parallel_scan)
+    {
+      /* the cost the parent join charged for this scan (qo_join_input_factor ()) */
+      variable /= qo_parallel_cost_divisor (plan);
+    }
   double card = (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan) && plan->limit_nljoin_guessed_card > 0)
     ? plan->limit_nljoin_guessed_card : (plan->info)->cardinality;
 
@@ -2788,12 +2803,34 @@ qo_scan_fprint (QO_PLAN * plan, FILE * f, int howfar)
 static void
 qo_scan_info (QO_PLAN * plan, FILE * f, int howfar)
 {
+  qo_scan_info_internal (plan, f, howfar, false);
+}
+
+/*
+ * qo_scan_info_internal () - qo_scan_info () for a scan whose parallelism the parent decided
+ *   return:
+ *   plan(in):
+ *   f(in):
+ *   howfar(in):
+ *   parallel_scan(in): the parent join counted this scan as run in parallel
+ */
+static void
+qo_scan_info_internal (QO_PLAN * plan, FILE * f, int howfar, bool parallel_scan)
+{
   QO_NODE *node = plan->plan_un.scan.node;
   int i, n = 1;
   const char *name;
   char buf[257] = { '\0', };
 
-  fprintf (f, "\n%*c%s(", (int) howfar, ' ', (plan->vtbl)->info_string);
+  if (parallel_scan)
+    {
+      fprintf (f, "\n%*cParallel %c%s(", (int) howfar, ' ', tolower ((plan->vtbl)->info_string[0]),
+	       (plan->vtbl)->info_string + 1);
+    }
+  else
+    {
+      fprintf (f, "\n%*c%s(", (int) howfar, ' ', (plan->vtbl)->info_string);
+    }
   if (QO_NODE_INFO (node))
     {
       for (i = 0, n = QO_NODE_INFO_N (node); i < n; i++)
@@ -4078,8 +4115,10 @@ qo_join_fprint (QO_PLAN * plan, FILE * f, int howfar)
       fprintf (f, "\n" INDENTED_TITLE_FMT, (int) howfar, ' ', "edge:");
       qo_termset_fprint ((plan->info)->env, &(plan->plan_un.join.join_terms), f);
     }
-  qo_plan_fprint (plan->plan_un.join.outer, f, howfar, "outer: ");
-  qo_plan_fprint (plan->plan_un.join.inner, f, howfar, "inner: ");
+  qo_plan_fprint_internal (plan->plan_un.join.outer, f, howfar, "outer: ",
+			   qo_plan_child_scan_runs_parallel (plan, plan->plan_un.join.outer));
+  qo_plan_fprint_internal (plan->plan_un.join.inner, f, howfar, "inner: ",
+			   qo_plan_child_scan_runs_parallel (plan, plan->plan_un.join.inner));
   qo_plan_print_outer_join_terms (plan, f, howfar);
 }
 
@@ -4104,7 +4143,15 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
       env = (plan->info)->env;
       separator = "";
 
-      fprintf (f, "\n%*c%s(", (int) howfar, ' ', (plan->vtbl)->info_string);
+      if (qo_plan_runs_parallel (plan))
+	{
+	  fprintf (f, "\n%*cParallel %c%s(", (int) howfar, ' ', tolower ((plan->vtbl)->info_string[0]),
+		   (plan->vtbl)->info_string + 1);
+	}
+      else
+	{
+	  fprintf (f, "\n%*c%s(", (int) howfar, ' ', (plan->vtbl)->info_string);
+	}
       for (i = bitset_iterate (&(plan->plan_un.join.join_terms), &bi); i != -1; i = bitset_next_member (&bi))
 	{
 	  fprintf (f, "%s%s", separator, qo_term_string (QO_ENV_TERM (env, i), buf));
@@ -4114,7 +4161,8 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
     }
   else
     {
-      fprintf (f, "\n%*cNested loops", (int) howfar, ' ');
+      fprintf (f, "\n%*c%s", (int) howfar, ' ',
+	       qo_plan_runs_parallel (plan) ? "Parallel nested loops" : "Nested loops");
     }
 
   if (plan->plan_un.join.join_type == JOIN_LEFT)
@@ -4126,8 +4174,29 @@ qo_join_info (QO_PLAN * plan, FILE * f, int howfar)
       fprintf (f, ": right outer");
     }
 
-  qo_plan_lite_print (plan->plan_un.join.outer, f, howfar + INDENT_INCR);
-  qo_plan_lite_print (plan->plan_un.join.inner, f, howfar + INDENT_INCR);
+  qo_plan_lite_print_child (plan, plan->plan_un.join.outer, f, howfar + INDENT_INCR);
+  qo_plan_lite_print_child (plan, plan->plan_un.join.inner, f, howfar + INDENT_INCR);
+}
+
+/*
+ * qo_plan_lite_print_child () - qo_plan_lite_print () of a join input, marking a parallel scan
+ *   return:
+ *   parent(in): the join
+ *   child(in): its outer or inner
+ *   f(in):
+ *   howfar(in):
+ */
+static void
+qo_plan_lite_print_child (QO_PLAN * parent, QO_PLAN * child, FILE * f, int howfar)
+{
+  if (qo_plan_child_scan_runs_parallel (parent, child))
+    {
+      qo_scan_info_internal (child, f, howfar, true);
+    }
+  else
+    {
+      qo_plan_lite_print (child, f, howfar);
+    }
 }
 
 
@@ -4364,6 +4433,25 @@ qo_plan_drives_parallel (QO_PLAN * plan)
 
   return (!(qo_plan_select_hint (plan) & PT_HINT_NO_PARALLEL_SCAN)
 	  && qo_plan_list_pages (plan) >= (double) prm_get_integer_value (PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD));
+}
+
+/*
+ * qo_hjoin_runs_parallel () - does the executor run this hash join's build/probe in parallel
+ *   return: true when the larger input list reaches parallel_hash_join_page_threshold
+ *   plan(in): a hash join plan
+ *   divisor(in): qo_parallel_cost_divisor () of the plan
+ *
+ * Note: decided afresh for every hash join, whatever its inputs did, by the same test as
+ *	 hjoin_try_parallel (); the threshold is the parameter's default (see
+ *	 qo_scan_runs_parallel ()).
+ */
+static bool
+qo_hjoin_runs_parallel (QO_PLAN * plan, double divisor)
+{
+  return (divisor > 1.0 && plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN
+	  && !(qo_plan_select_hint (plan) & PT_HINT_NO_PARALLEL_HASH_JOIN)
+	  && (MAX (qo_plan_list_pages (plan->plan_un.join.outer), qo_plan_list_pages (plan->plan_un.join.inner))
+	      >= (double) prm_get_integer_value (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD)));
 }
 
 /*
@@ -4747,13 +4835,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   divisor = qo_parallel_cost_divisor (plan_p);
   outer_factor = qo_join_input_factor (outer_plan_p, divisor);
   inner_factor = qo_join_input_factor (inner_plan_p, divisor);
-  own_factor = 1.0;
-  if (divisor > 1.0 && !(qo_plan_select_hint (plan_p) & PT_HINT_NO_PARALLEL_HASH_JOIN)
-      && (MAX (qo_plan_list_pages (outer_plan_p), qo_plan_list_pages (inner_plan_p))
-	  >= (double) prm_get_integer_value (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD)))
-    {
-      own_factor = 1.0 / divisor;
-    }
+  own_factor = qo_hjoin_runs_parallel (plan_p, divisor) ? 1.0 / divisor : 1.0;
 
   plan_p->variable_cpu_cost =
     outer_plan_p->variable_cpu_cost * outer_factor + inner_plan_p->variable_cpu_cost * inner_factor;
@@ -4926,8 +5008,10 @@ qo_hjoin_fprint (QO_PLAN * plan, FILE * f, int howfar)
       qo_termset_fprint ((plan->info)->env, &(plan->plan_un.join.join_terms), f);
     }
 
-  qo_plan_fprint (plan->plan_un.join.outer, f, howfar, "outer: ");
-  qo_plan_fprint (plan->plan_un.join.inner, f, howfar, "inner: ");
+  qo_plan_fprint_internal (plan->plan_un.join.outer, f, howfar, "outer: ",
+			   qo_plan_child_scan_runs_parallel (plan, plan->plan_un.join.outer));
+  qo_plan_fprint_internal (plan->plan_un.join.inner, f, howfar, "inner: ",
+			   qo_plan_child_scan_runs_parallel (plan, plan->plan_un.join.inner));
   qo_plan_print_outer_join_terms (plan, f, howfar);
 }
 
@@ -6208,6 +6292,53 @@ qo_index_covering_plans_cmp (QO_PLAN * a, QO_PLAN * b)
 }
 
 /*
+ * qo_plan_runs_parallel () - was this join costed as run in parallel (CBRD-27474)
+ *   return: true for a parallel-driven nested loop or a parallel hash join
+ *   plan(in):
+ */
+static bool
+qo_plan_runs_parallel (QO_PLAN * plan)
+{
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_JOIN)
+    {
+      return false;
+    }
+
+  if (QO_IS_NL_JOIN (plan))
+    {
+      return plan->parallel_driven;
+    }
+
+  return qo_hjoin_runs_parallel (plan, qo_parallel_cost_divisor (plan));
+}
+
+/*
+ * qo_plan_child_scan_runs_parallel () - did the join costing this child scan count it as parallel
+ *   return: true for the driving scan of a parallel nested loop or a parallel input scan of a
+ *	     hash or merge join
+ *   parent(in): a join plan
+ *   child(in): its outer or inner
+ *
+ * Note: a scan plan keeps its serial cost and may serve several joins, so whether it runs in
+ *	 parallel is a property of its place in the plan, decided by the join that consumes it.
+ */
+static bool
+qo_plan_child_scan_runs_parallel (QO_PLAN * parent, QO_PLAN * child)
+{
+  if (child == NULL || child->plan_type != QO_PLANTYPE_SCAN)
+    {
+      return false;
+    }
+
+  if (QO_IS_NL_JOIN (parent))
+    {
+      return parent->parallel_driven && child == parent->plan_un.join.outer;
+    }
+
+  return qo_join_input_factor (child, qo_parallel_cost_divisor (parent)) < 1.0;
+}
+
+/*
  * qo_plan_fprint () -
  *   return:
  *   plan(in):
@@ -6217,6 +6348,24 @@ qo_index_covering_plans_cmp (QO_PLAN * a, QO_PLAN * b)
  */
 static void
 qo_plan_fprint (QO_PLAN * plan, FILE * f, int howfar, const char *title)
+{
+  qo_plan_fprint_internal (plan, f, howfar, title, false);
+}
+
+/*
+ * qo_plan_fprint_internal () - qo_plan_fprint () for a node whose parallel scan the parent decided
+ *   return:
+ *   plan(in):
+ *   f(in):
+ *   howfar(in):
+ *   title(in):
+ *   parallel_scan(in): the parent join counted this scan as run in parallel
+ *
+ * Note: a node costed as run in parallel is printed as "parallel <name>", and a parallel scan
+ *	 with the cost the parent charged for it, so that the costs in the tree add up.
+ */
+static void
+qo_plan_fprint_internal (QO_PLAN * plan, FILE * f, int howfar, const char *title, bool parallel_scan)
 {
   if (howfar < 0)
     {
@@ -6236,6 +6385,10 @@ qo_plan_fprint (QO_PLAN * plan, FILE * f, int howfar, const char *title)
       fprintf (f, TITLE_FMT, title);
     }
 
+  if (parallel_scan || qo_plan_runs_parallel (plan))
+    {
+      fputs ("parallel ", f);
+    }
   fputs ((plan->vtbl)->plan_string, f);
 
   {
@@ -6251,7 +6404,7 @@ qo_plan_fprint (QO_PLAN * plan, FILE * f, int howfar, const char *title)
   qo_plan_print_sarged_terms (plan, f, howfar);
   qo_plan_print_subqueries (plan, f, howfar);
   qo_plan_print_sort_spec (plan, f, howfar);
-  qo_plan_print_costs (plan, f, howfar);
+  qo_plan_print_costs (plan, f, howfar, parallel_scan);
   qo_plan_print_analytic_eval (plan, f, howfar);
 }
 
