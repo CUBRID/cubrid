@@ -15,6 +15,27 @@
 #   limitations under the License.
 # 
 
+set(CUBRID_3RDPARTY_ROOT "" CACHE PATH "Prebuilt CubridThirdParty package prefix")
+if(NOT "${CUBRID_3RDPARTY_ROOT}" STREQUAL "")
+  if(NOT CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    message(FATAL_ERROR "Third-party prefix reuse supports Linux only")
+  endif()
+  set(CubridThirdParty_DIR "${CUBRID_3RDPARTY_ROOT}/lib/cmake/CubridThirdParty")
+  find_package(FLEX 2.5.34 REQUIRED)
+  find_package(BISON 3.0.0 REQUIRED)
+  find_package(CubridThirdParty CONFIG REQUIRED
+    PATHS "${CubridThirdParty_DIR}" NO_DEFAULT_PATH)
+  include("${CMAKE_CURRENT_LIST_DIR}/standalone/Fingerprint.cmake")
+  cubrid_thirdparty_identity(expected_identity)
+  if(NOT CubridThirdParty_IDENTITY STREQUAL expected_identity)
+    message(FATAL_ERROR "Third-party recipe/toolchain mismatch; prepare a new prefix")
+  endif()
+  foreach(variable IN LISTS CUBRID_3RDPARTY_EXPORTS)
+    set(${variable} "${${variable}}" PARENT_SCOPE)
+  endforeach()
+  return()
+endif()
+
 # Unused: on Linux flex and bison come from the system, and only WIN_FLEX_BISON_URL
 # below is downloaded. Kept commented out in case bundling is ever revived - the
 # versions named here are NOT built or shipped, so they are not a CVE surface.
@@ -135,6 +156,33 @@ else()
     set(3RDPARTY_NPROC 16)
   endif()
 endif()
+
+
+# The producer owns one dependency at a time (outer build --parallel 1).
+# Its child compilers use wrappers, including Autoconf and hand-written makefiles.
+set(3RDPARTY_MAKE make)
+set(3RDPARTY_PARALLEL_MAKE make -j${3RDPARTY_NPROC})
+set(3RDPARTY_ENV "")
+set(3RDPARTY_DOWNLOAD_ARGS "")
+set(3RDPARTY_CMAKE_ARGS "")
+if(CUBRID_3RDPARTY_PRODUCER)
+  set(3RDPARTY_NPROC "${CUBRID_3RDPARTY_JOBS}")
+  set(3RDPARTY_MAKE "${THIRDPARTY_MAKE}" -j${3RDPARTY_NPROC})
+  set(3RDPARTY_PARALLEL_MAKE ${3RDPARTY_MAKE})
+  set(3RDPARTY_ENV "${CMAKE_COMMAND}" -E env "CC=${THIRDPARTY_CC}" "CXX=${THIRDPARTY_CXX}")
+  list(APPEND DEFAULT_CONFIGURE_OPTS "CC=${THIRDPARTY_CC}")
+  set(3RDPARTY_MAKE_COMPILERS "CC=${THIRDPARTY_CC}" "CXX=${THIRDPARTY_CXX}")
+  set(3RDPARTY_DOWNLOAD_ARGS DOWNLOAD_DIR "${CMAKE_BINARY_DIR}/downloads")
+  set(3RDPARTY_CMAKE_ARGS
+    "-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
+    "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+    "-DCMAKE_C_COMPILER_LAUNCHER=${THIRDPARTY_CCACHE}"
+    "-DCMAKE_CXX_COMPILER_LAUNCHER=${THIRDPARTY_CCACHE}")
+  get_filename_component(THIRDPARTY_UNIXODBC_ARCHIVE "${WITH_LIBUNIXODBC_URL}" NAME)
+  set(THIRDPARTY_UNIXODBC_ARCHIVE "${THIRDPARTY_UNIXODBC_ARCHIVE}" PARENT_SCOPE)
+endif()
+
+
 message(STATUS "Build 3rdparty libraries with make -j${3RDPARTY_NPROC}")
 
 # For Windows
@@ -227,6 +275,7 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
     externalproject_add(${LIBEXPAT_TARGET}
       URL                  ${WITH_LIBEXPAT_URL}
       URL_HASH             ${WITH_LIBEXPAT_URL_HASH}
+      ${3RDPARTY_DOWNLOAD_ARGS}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -239,8 +288,8 @@ if(WITH_LIBEXPAT STREQUAL "EXTERNAL")
       # configure option over defining XML_DEV_URANDOM through CPPFLAGS, so that the
       # configure summary and expat_config.h record what was actually built.
       CONFIGURE_COMMAND    ${DEFAULT_CONFIGURE_OPTS} --without-xmlwf  --without-docbook --with-dev-urandom
-      BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      BUILD_COMMAND        ${3RDPARTY_MAKE} AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      ${3RDPARTY_MAKE} install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBEXPAT_BYPRODUCTS}"
       )
   elseif(WIN32)
@@ -282,13 +331,14 @@ if(UNIX)
     externalproject_add(${LIBEDIT_TARGET}
       URL                  ${WITH_LIBEDIT_URL}
       URL_HASH             ${WITH_LIBEDIT_URL_HASH}
+      ${3RDPARTY_DOWNLOAD_ARGS}
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
       CONFIGURE_COMMAND    "LDFLAGS=-L${3RDPARTY_LIBS_DIR}" ${DEFAULT_CONFIGURE_OPTS} LIBS=-ldl
-      BUILD_COMMAND        make all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      BUILD_COMMAND        ${3RDPARTY_MAKE} all AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      ${3RDPARTY_MAKE} install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBEDIT_BYPRODUCTS}"
       )
     if(TARGET ${LIBNCURSES_TARGET})
@@ -325,6 +375,7 @@ else()
   externalproject_add(${LZ4_TARGET}
     URL                  ${WITH_LZ4_URL}
     URL_HASH             ${WITH_LZ4_URL_HASH}
+    ${3RDPARTY_DOWNLOAD_ARGS}
     TIMEOUT              600
     LOG_BUILD            TRUE
     DOWNLOAD_NO_PROGRESS 1
@@ -340,7 +391,7 @@ else()
     # drop -O3, so the level is restated here. Without this the archive is built
     # without -fPIC and cannot be linked into libcubridcs.so.
     # The liblz4.a target skips the shared library, which CUBRID does not use.
-    BUILD_COMMAND         make -C lib "USERCFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}" liblz4.a
+    BUILD_COMMAND         ${3RDPARTY_MAKE} -C lib "USERCFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}" liblz4.a ${3RDPARTY_MAKE_COMPILERS}
     INSTALL_COMMAND       ""                  # suppress install
     "${LZ4_BYPRODUCTS}"
   )
@@ -371,6 +422,7 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
     externalproject_add(${LIBOPENSSL_TARGET}
       URL                  ${WITH_LIBOPENSSL_URL}
       URL_HASH             ${WITH_LIBOPENSSL_URL_HASH}
+      ${3RDPARTY_DOWNLOAD_ARGS}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
@@ -386,9 +438,9 @@ if(WITH_LIBOPENSSL STREQUAL "EXTERNAL")
       # no-tests/no-docs + the build_sw target: OpenSSL 3.x puts every fuzz and test
       # binary in PROGRAMS, and "all" is "build_sw build_docs". install_sw needs
       # neither, and building them costs ~20 minutes and ~1.5 GB of objects.
-      CONFIGURE_COMMAND    <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} --libdir=lib no-shared no-module no-tests no-docs # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make -j${3RDPARTY_NPROC} build_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      CONFIGURE_COMMAND    ${3RDPARTY_ENV} <SOURCE_DIR>/config --prefix=${3RDPARTY_LIBS_DIR} --libdir=lib no-shared no-module no-tests no-docs # ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        ${3RDPARTY_PARALLEL_MAKE} build_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      ${3RDPARTY_MAKE} install_sw AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBOPENSSL_BYPRODUCTS}"
       )
     # unix-Makefile.tmpl does an unconditional "use Time::Piece", which minimal Perl
@@ -442,14 +494,15 @@ if(WITH_LIBUNIXODBC STREQUAL "EXTERNAL")
     externalproject_add(${LIBUNIXODBC_TARGET}
       URL                  ${WITH_LIBUNIXODBC_URL}
       URL_HASH             ${WITH_LIBUNIXODBC_URL_HASH}
+      ${3RDPARTY_DOWNLOAD_ARGS}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    <SOURCE_DIR>/configure --prefix=${3RDPARTY_LIBS_DIR} # ${DEFAULT_CONFIGURE_OPTS}
-      BUILD_COMMAND        make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
-      INSTALL_COMMAND      make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      CONFIGURE_COMMAND    ${3RDPARTY_ENV} <SOURCE_DIR>/configure --prefix=${3RDPARTY_LIBS_DIR} # ${DEFAULT_CONFIGURE_OPTS}
+      BUILD_COMMAND        ${3RDPARTY_MAKE} AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+      INSTALL_COMMAND      ${3RDPARTY_MAKE} install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
       "${LIBUNIXODBC_BYPRODUCTS}"
       )
     list(APPEND EP_TARGETS ${LIBUNIXODBC_TARGET})
@@ -469,6 +522,7 @@ externalproject_add(${RAPIDJSON_TARGET}
   # tried URL but archive gets downloaded every time. URL_MD5 may help
   URL                  ${WITH_RAPIDJSON_URL}
   URL_HASH             ${WITH_RAPIDJSON_URL_HASH}
+  ${3RDPARTY_DOWNLOAD_ARGS}
   LOG_CONFIGURE        TRUE
   LOG_BUILD            TRUE
   LOG_INSTALL          TRUE
@@ -477,6 +531,7 @@ externalproject_add(${RAPIDJSON_TARGET}
   # don't install
   INSTALL_COMMAND      ""
   # don't build test, doc and examples
+  CMAKE_ARGS           ${3RDPARTY_CMAKE_ARGS}
   CMAKE_CACHE_ARGS     -DRAPIDJSON_BUILD_TESTS:STRING=off
                        -DRAPIDJSON_BUILD_DOC:STRING=off
                        -DRAPIDJSON_BUILD_EXAMPLES:STRING=off
@@ -497,6 +552,7 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
     externalproject_add(${RE2_TARGET}
       URL                  ${WITH_RE2_URL}
       URL_HASH             ${WITH_RE2_URL_HASH}
+      ${3RDPARTY_DOWNLOAD_ARGS}
       TIMEOUT              600
       LOG_BUILD            TRUE
       DOWNLOAD_NO_PROGRESS 1
@@ -504,7 +560,7 @@ if(WITH_RE2 STREQUAL "EXTERNAL")
       BUILD_IN_SOURCE true        # re2 Makefile is designed to run locally
       # no append hook, so restate the level from the Makefile's "CXXFLAGS ?= -O3 -g".
       # No CFLAGS: re2 has no C sources and its Makefile never reads CFLAGS.
-      BUILD_COMMAND make "CXXFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}"
+      BUILD_COMMAND ${3RDPARTY_MAKE} "CXXFLAGS=-O3 ${3RDPARTY_COMMON_FLAGS}" ${3RDPARTY_MAKE_COMPILERS}
       INSTALL_COMMAND ""
       "${RE2_BYPRODUCTS}"
     )
@@ -538,15 +594,16 @@ if(WITH_LIBTBB STREQUAL "EXTERNAL")
     externalproject_add(${LIBTBB_TARGET}
       URL                  ${WITH_LIBTBB_URL}
       URL_HASH             ${WITH_LIBTBB_URL_HASH}
+      ${3RDPARTY_DOWNLOAD_ARGS}
       LOG_CONFIGURE        TRUE
       LOG_BUILD            TRUE
       LOG_INSTALL          TRUE
       TIMEOUT              600
       DOWNLOAD_NO_PROGRESS 1
-      CONFIGURE_COMMAND    ${CMAKE_COMMAND} ${LIBTBB_CONFIGURE}
+      CONFIGURE_COMMAND    ${CMAKE_COMMAND} ${LIBTBB_CONFIGURE} ${3RDPARTY_CMAKE_ARGS}
       BUILD_IN_SOURCE      TRUE
-      BUILD_COMMAND        make -j${3RDPARTY_NPROC}
-      INSTALL_COMMAND      make -j${3RDPARTY_NPROC} install
+      BUILD_COMMAND        ${3RDPARTY_PARALLEL_MAKE}
+      INSTALL_COMMAND      ${3RDPARTY_PARALLEL_MAKE} install
       "${LIBTBB_BYPRODUCTS}"
     )
 

@@ -1,0 +1,23 @@
+CUBRID Gateway uses the bundled unixODBC driver manager library.
+The libraries are licensed under LGPL 2.1. See ../libodbc_license.txt and the
+copyright notices and license files in @THIRDPARTY_UNIXODBC_ARCHIVE@.
+The archive contains the complete unmodified upstream source, including libltdl.
+CUBRID does not install the unixODBC command-line programs from this archive.
+
+The producer used these compilers:
+  C: @CMAKE_C_COMPILER_ID@ @CMAKE_C_COMPILER_VERSION@
+  C++: @CMAKE_CXX_COMPILER_ID@ @CMAKE_CXX_COMPILER_VERSION@
+
+To rebuild the library, extract the archive and configure in a separate directory
+with matching compilers. Replace the placeholder paths below with local paths:
+
+  CC=<C-compiler> CXX=<C++-compiler> <source>/configure --prefix=<staging-prefix>
+  make AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+  make install AUTOCONF=: AUTOHEADER=: AUTOMAKE=: ACLOCAL=:
+
+The resulting lib/libodbc.so.2 and its versioned payload can replace the installed
+copy when they provide a compatible interface. Gateway loads the copy in its
+installation's lib directory.
+
+Provide the database-specific ODBC driver separately and register it in
+odbcinst.ini. Set ODBCSYSINI to that file's directory before starting Gateway.
