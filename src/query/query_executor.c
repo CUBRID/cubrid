@@ -17670,8 +17670,15 @@ qexec_bind_checksum (int count, const DB_VALUE * values)
   unsigned int sum = (unsigned int) count;
   for (int i = 0; i < count; i++)
     {
-      sum = sum * 31 + (unsigned int) DB_VALUE_DOMAIN_TYPE (&values[i]);
-      sum = sum * 31 + (DB_IS_NULL (&values[i]) ? 1 : mht_get_hash_number (UINT_MAX, &values[i]));
+      const DB_VALUE *value = &values[i];
+      const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+      sum = sum * 31 + (unsigned int) type;
+      /* the types mht_get_hash_number hashes; it aborts on another (an SA client binds an object as its MOP), which
+       * counts by its type */
+      const bool hashed = (TP_IS_NUMERIC_TYPE (type) || TP_IS_CHAR_BIT_TYPE (type) || TP_IS_DATE_OR_TIME_TYPE (type)
+			   || TP_IS_SET_TYPE (type) || TP_IS_LOB_TYPE (type) || type == DB_TYPE_OID
+			   || type == DB_TYPE_VOBJ || type == DB_TYPE_ENUMERATION || type == DB_TYPE_JSON);
+      sum = sum * 31 + (DB_IS_NULL (value) || !hashed ? 1 : mht_get_hash_number (UINT_MAX, value));
     }
   return sum;
 }
