@@ -1039,7 +1039,8 @@ namespace parallel_scan
       case CTE_PROC:
 	if (arg->proc.cte.recursive_part)
 	  {
-	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part);
+	    /* nested sort/hash join serial too: qexec_execute_cte copies each iteration's result without dependents */
+	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part, true);
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
 	if (arg->proc.cte.non_recursive_part)
