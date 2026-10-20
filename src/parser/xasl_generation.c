@@ -15086,10 +15086,32 @@ pt_list_element_domain (const TP_DOMAIN * set)
 }
 
 /*
+ * pt_comparison_keeps_key () - CBRD-27583 (D-87): whether a list's elements compare with a partition key as values of
+ *   the key's type - the comparison the type rule module decides for the two domains converts the element alone, into
+ *   the key's type. Pruning converts the elements into the key's domain; where the comparison converts the key (a
+ *   BIGINT key against a DOUBLE element compares in DOUBLE, and two keys can equal one element), the converted element
+ *   would leave out a partition whose key the comparison finds equal
+ */
+static bool
+pt_comparison_keeps_key (const TP_DOMAIN * key, const TP_DOMAIN * element)
+{
+  const TP_DOMAIN *const domain[2] = { key, element };
+  DOMAIN_COMPARE decided;
+  bool by_type;
+
+  if (domain_decide_comparison (domain, &decided, &by_type) != NO_ERROR || !by_type)
+    {
+      return false;
+    }
+  return decided.conv[0] == NULL && (decided.conv[1] == NULL
+				     || TP_DOMAIN_TYPE (decided.target[1]) == TP_DOMAIN_TYPE (key));
+}
+
+/*
  * pt_set_prune_domains () - CBRD-27583 (D-87): the domain into which a partitioned class's pruning converts a term's
  *   value to hash it or to evaluate a partition expression on it - the other side's - decided here, where develop's
  *   pruning cast it at the scan (partition_prune_hash, partition_prune_for_function); an IN list prunes only when its
- *   elements have one domain, its NULLs aside
+ *   elements have one domain, its NULLs aside, that compares with the key in the key's type (pt_comparison_keeps_key)
  */
 static void
 pt_set_prune_domains (PRED_EXPR * pred)
@@ -15128,7 +15150,7 @@ pt_set_prune_domains (PRED_EXPR * pred)
 	      && pt_domain_takes_pruning_conversion (term->elem->domain))
 	    {
 	      TP_DOMAIN *element = pt_list_element_domain (set);
-	      if (pt_domain_takes_pruning_conversion (element))
+	      if (pt_domain_takes_pruning_conversion (element) && pt_comparison_keeps_key (term->elem->domain, element))
 		{
 		  term->prune_domain = term->elem->domain;
 		  term->prune_element = element;
