@@ -446,6 +446,9 @@ struct insert_proc_node
   REMOTE_DML_SINK sink;
   char **remote_attr_names;	/* remote target column names (array) */
   int remote_num_attrs;		/* length of remote_attr_names */
+  char **remote_odku_cols;	/* remote columns the ON DUPLICATE KEY UPDATE clause assigns (array) */
+  char **remote_odku_exprs;	/* their new values, printed as remote SQL (array, parallel to cols) */
+  int remote_num_odku;		/* length of remote_odku_cols and remote_odku_exprs */
   TP_DOMAIN **att_domains;	/* CBRD-27583 (D-45): the domain of each attribute, in att_id order */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   DB_TYPE *value_types;		/* CBRD-27583 (D-45): the type each value comes in - per row of values and

@@ -13086,6 +13086,8 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   char **attr_names = NULL;
   int num_attrs = 0;
   const char *key_col = NULL, *op = NULL;
+  TP_DOMAIN *src_dom = NULL;
+  DBLINK_ODKU_ASSIGNS odku = { NULL, NULL, 0 };
   DBLINK_DML_STATE dblink_state = { -1, -1, false, false };
 
   assert (specp != NULL);
@@ -13103,6 +13105,9 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	attr_names = insert->remote_attr_names;
 	num_attrs = insert->remote_num_attrs;
 	val_no = insert->num_vals;
+	odku.cols = insert->remote_odku_cols;
+	odku.exprs = insert->remote_odku_exprs;
+	odku.num_assigns = insert->remote_num_odku;
 
 	/* stx_build_insert_proc() (server-side XASL unpack) always allocates insert->vals when
 	 * num_vals > 0, so it is non-NULL on this path. */
@@ -13116,6 +13121,11 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	sink = &del->sink;
 	key_col = del->remote_key_col;
 	op = del->remote_op;
+	/* Domain of the value the executor will bind. dblink_dml_open() runs before qexec_open_scan(), so
+	 * s_id does not exist yet -- xasl->val_list is the same list qexec_collect_remote_delete_key() reads
+	 * from. The domain is filled before either mode reaches here: pt_make_val_list() sets it in SA, and
+	 * stx_build_val_list() rejects a NULL dom when unpacking in CS. */
+	src_dom = (xasl->val_list != NULL && xasl->val_list->valp != NULL) ? xasl->val_list->valp->dom : NULL;
 	break;
       }
     default:
@@ -13127,8 +13137,8 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
   assert (sink->is_remote);
 
   /* open remote connection and prepare the INSERT, REPLACE or DELETE statement */
-  if (dblink_dml_open (thread_p, kind, sink->url, sink->user, sink->pwd, sink->table_name, attr_names, num_attrs,
-		       val_no, key_col, op, &dblink_state) != NO_ERROR)
+  if (dblink_dml_open (thread_p, kind, sink, attr_names, num_attrs, val_no, key_col, op, &odku, src_dom,
+		       &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
       goto exit_on_error;
