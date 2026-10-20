@@ -796,6 +796,9 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id, bool is_kee
   if (is_keep_session == true)
     {
       session_p->is_keep_session = true;
+      /* the client leaves the session for now (CAS restart, RESET, ...). session_state_timeout runs from here, not
+       * from when the client connected. */
+      session_p->active_time = time (NULL);
       pthread_mutex_unlock (&session_p->mutex);
       return NO_ERROR;
     }
