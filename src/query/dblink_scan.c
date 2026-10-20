@@ -497,7 +497,7 @@ dblink_make_date_time_tz (T_CCI_U_TYPE utype, DB_VALUE * value_p, T_CCI_DATE_TZ 
  *
  * Note: The handshake already stored the type, so this costs no round trip.  It gates both the codeset
  *   we declare and the values we refuse for not being in it, so the two always cover the same
- *   connections.  The remote DELETE sink also restores the pushed value's type only where this holds,
+ *   connections.  The remote DELETE and UPDATE sinks also restore the WHERE key's type only where this holds,
  *   since the CAST it adds is CUBRID syntax.
  */
 static bool
@@ -1781,10 +1781,10 @@ sql_build_error:
 /*
  * Restoring the pushed value's declared type -- the whole policy in one place.
  *
- * The sink sends the local subquery value as "?". The remote types that placeholder (the marker) from the
- * target column, so the comparison no longer matches the all-local form: a CHAR target pads a VARCHAR
- * value, and a numeric target accepts a date the all-local form refuses. CAST(? AS <source>) puts the
- * declared type back.
+ * The DELETE and UPDATE sinks send the local subquery value as the WHERE key's "?". The remote types that
+ * placeholder (the marker) from the target column, so the comparison no longer matches the all-local form:
+ * a CHAR target pads a VARCHAR value, and a numeric target accepts a date the all-local form refuses.
+ * CAST(? AS <source>) puts the declared type back. The rule below is the same for both statements.
  *
  * One rule, after the first prepare, from the marker:
  *
@@ -1799,9 +1799,9 @@ sql_build_error:
  * column, and an ENUM column compared with = or <> (the remote wraps "?" in an enumeration conversion) --
  * and cannot tell them apart, so the source type alone decides:
  *
- *   date/time | cast: on a numeric target a bare "?" deletes rows the all-local form keeps; on an ENUM
- *             | target the cast fails with the same error as the all-local "="
- *   JSON      | refuse: the cast deletes an extra row on an ENUM target under IN (sent as "="), and a bare
+ *   date/time | cast: on a numeric target a bare "?" matches rows the all-local form leaves alone; on an
+ *             | ENUM target the cast fails with the same error as the all-local "="
+ *   JSON      | refuse: the cast matches an extra row on an ENUM target under IN (sent as "="), and a bare
  *             | "?" misses a row on an ENUM target under =. The cast is right on a numeric target, and the
  *             | refusal gives that up too
  *   the rest  | bare "?": the result does not change, and a cast would rewrite every numeric-key statement
@@ -1820,7 +1820,8 @@ sql_build_error:
  *   return: true for the date/time types, zone-qualified ones included
  *   src_type(in): DB_TYPE of the local subquery's source column
  *
- * On a numeric target the remote deletes a row that the all-local form keeps when the source is date/time.
+ * On a numeric target the remote matches a row that the all-local form leaves alone when the source is
+ * date/time.
  * The zone-qualified types are listed although cci_bind_param still rejects them before a comparison happens:
  * once that binding works they need the same cast, and nothing here should have to change then. JSON is
  * refused instead of cast; see the policy comment above.
@@ -2291,11 +2292,13 @@ dblink_dml_reprepare_with_key_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * 
  *   num_attrs(in)   : INSERT and REPLACE only -- length of attr_names (0 when positional)
  *   num_bind(in)    : INSERT and REPLACE only -- number of ? placeholders (= SELECT column count)
  *   set_text(in)    : UPDATE only -- the SET clause, with a placeholder per bound value
+ *   num_set(in)     : UPDATE only -- number of placeholders in set_text. The WHERE key's placeholder comes
+ *                     after them
  *   odku(in)        : INSERT only -- ON DUPLICATE KEY UPDATE assignments; NULL or a zero count means
  *                     no clause. REPLACE is refused when it carries any
- *   src_dom(in)     : DELETE only -- domain of the local subquery's source column (NULL for INSERT,
- *                     REPLACE and UPDATE). Used to restore the pushed value's declared type; see the policy
- *                     comment above dblink_dml_unresolved_fallback_casts()
+ *   src_dom(in)     : DELETE, and UPDATE with a WHERE -- domain of the local subquery's source column (NULL
+ *                     otherwise). Used to restore the WHERE key's declared type; see the policy comment above
+ *                     dblink_dml_unresolved_fallback_casts()
  *   state(out)      : filled with conn_handle and stmt_handle on success
  *
  * Note: To prevent partial writes, every kind ALWAYS:
@@ -2322,7 +2325,7 @@ dblink_dml_reprepare_with_key_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * 
  */
 int
 dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML_SINK * sink, char **attr_names,
-		 int num_attrs, int num_bind, const char *set_text, const DBLINK_ODKU_ASSIGNS * odku,
+		 int num_attrs, int num_bind, const char *set_text, int num_set, const DBLINK_ODKU_ASSIGNS * odku,
 		 TP_DOMAIN * src_dom, DBLINK_DML_STATE * state)
 {
   int ret;
@@ -2331,7 +2334,8 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
   const char *errctx;
   const char *cast_type = NULL;
   bool restore_type = false;
-  char cast_buf[64];		/* DELETE only; longest is "character varying", or "bit(1073741823)" with a precision */
+  int key_pos = 1;		/* the WHERE key's placeholder, the statement's last */
+  char cast_buf[64];		/* DELETE and UPDATE; longest is "character varying", or "bit(1073741823)" with a precision */
 
   state->conn_handle = -1;
   state->stmt_handle = -1;
@@ -2396,6 +2400,10 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
 					 sink->remote_using_index, &sql);
       break;
     case DBLINK_DML_UPDATE:
+      /* As for DELETE, when the statement sends a WHERE. Its key placeholder follows the SET ones, so the
+       * marker to ask about is the last, not the first. */
+      restore_type = (sink->remote_key_col != NULL && dblink_remote_is_cubrid (state->conn_handle));
+      key_pos = num_set + 1;
       ret = dblink_dml_build_update_sql (thread_p, sink->table_name, set_text, sink->remote_key_col, sink->remote_op,
 					 NULL, sink->remote_using_index, &sql);
       break;
@@ -2427,8 +2435,8 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
   /* One decision, one place: ask the marker and re-prepare only when it disagrees with what we bind. */
   if (restore_type)
     {
-      ret = dblink_dml_key_cast_type_needed (state->stmt_handle, errctx, 1, src_dom, cast_buf, sizeof (cast_buf),
-					     &cast_type);
+      ret = dblink_dml_key_cast_type_needed (state->stmt_handle, errctx, key_pos, src_dom, cast_buf,
+					     sizeof (cast_buf), &cast_type);
       if (ret == NO_ERROR && cast_type != NULL)
 	{
 	  ret = dblink_dml_reprepare_with_key_cast (thread_p, state, kind, errctx, sink, set_text, cast_type);

@@ -156,11 +156,11 @@ typedef enum dblink_dml_kind
   DBLINK_DML_INSERT,		/* uses attr_names/num_attrs/num_bind/odku */
   DBLINK_DML_REPLACE,		/* same params as INSERT but never odku: the grammar makes the two exclusive */
   DBLINK_DML_DELETE,		/* uses key_col/op and src_dom */
-  DBLINK_DML_UPDATE		/* uses set_text, and key_col/op when the statement has a WHERE */
+  DBLINK_DML_UPDATE		/* uses set_text/num_set, and key_col/op and src_dom when the statement has a WHERE */
 } DBLINK_DML_KIND;
 
 extern int dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML_SINK * sink,
-			    char **attr_names, int num_attrs, int num_bind, const char *set_text,
+			    char **attr_names, int num_attrs, int num_bind, const char *set_text, int num_set,
 			    const DBLINK_ODKU_ASSIGNS * odku, TP_DOMAIN * src_dom, DBLINK_DML_STATE * state);
 extern int dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VALUE ** vals,
 				   int num_vals, int *affected_rows);

@@ -13074,6 +13074,12 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 	sink = &upd->sink;
 	set_text = upd->remote_set_text;
 	num_set = upd->remote_num_set_binds;
+	/* The WHERE key's domain, read from the list DELETE reads it from. Both build their skeleton with
+	 * pt_make_aptr_parent_node (). An UPDATE without a WHERE has no key to restore. */
+	if (sink->remote_key_col != NULL)
+	  {
+	    src_dom = (xasl->val_list != NULL && xasl->val_list->valp != NULL) ? xasl->val_list->valp->dom : NULL;
+	  }
 
 	/* one slot per SET placeholder, plus the WHERE value when the statement sends one */
 	upd_bindv = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * (num_set + 1));
@@ -13110,7 +13116,7 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
     }
 
   /* open remote connection and prepare the statement this kind sends */
-  if (dblink_dml_open (thread_p, kind, sink, attr_names, num_attrs, val_no, set_text, &odku, src_dom,
+  if (dblink_dml_open (thread_p, kind, sink, attr_names, num_attrs, val_no, set_text, num_set, &odku, src_dom,
 		       &dblink_state) != NO_ERROR)
     {
       qexec_failure_line (__LINE__, xasl_state);
