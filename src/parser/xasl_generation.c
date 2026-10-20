@@ -1378,6 +1378,54 @@ pt_make_pred_term_comp (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, 
 }
 
 /*
+ * pt_bind_list_domain () - CBRD-27583: the domain of an ALL/SOME right side that a collection function builds from
+ *   binds: its elements are the operands' values as the client bound them (a bind is never cast, D-65), so the element
+ *   domains are the operands' compiled domains - the bind type signature's - not the common type that type checking
+ *   gave the list node (pt_coerce_range_expr_arguments), which converts only constant elements. Partition pruning
+ *   (pt_list_element_domain) reads it.
+ */
+static void
+pt_bind_list_domain (REGU_VARIABLE * set)
+{
+  if (set == NULL || set->type != TYPE_FUNC || set->domain == NULL || !TP_IS_SET_TYPE (TP_DOMAIN_TYPE (set->domain)))
+    {
+      return;
+    }
+  bool bind = false;
+  for (REGU_VARIABLE_LIST operand = set->value.funcp->operand; operand != NULL; operand = operand->next)
+    {
+      if (operand->value.domain == NULL)
+	{
+	  return;
+	}
+      bind = bind || operand->value.type == TYPE_POS_VALUE;
+    }
+  if (!bind)
+    {
+      return;
+    }
+  TP_DOMAIN *elements = NULL;
+  for (REGU_VARIABLE_LIST operand = set->value.funcp->operand; operand != NULL; operand = operand->next)
+    {
+      bool seen = false;
+      for (TP_DOMAIN * element = elements; element != NULL && !seen; element = element->next)
+	{
+	  seen = tp_domain_match (element, operand->value.domain, TP_EXACT_MATCH) != 0;
+	}
+      TP_DOMAIN *copy = seen ? NULL : domain_copy_one (operand->value.domain);
+      if (copy != NULL)
+	{
+	  (void) tp_domain_add (&elements, copy);
+	}
+    }
+  TP_DOMAIN *domain = tp_domain_construct (TP_DOMAIN_TYPE (set->domain), NULL, 0, 0, elements);
+  if (domain != NULL)
+    {
+      set->domain = tp_domain_cache (domain);
+    }
+}
+
+/*
  * pt_make_pred_term_some_all () - makes a pred expr term some/all
  * 				   comparison node
  *   return:
@@ -1405,6 +1453,7 @@ pt_make_pred_term_some_all (const REGU_VARIABLE * arg1, const REGU_VARIABLE * ar
 	  pred->pe.m_eval_term.et_type = T_ALSM_EVAL_TERM;
 	  et_alsm->elem = (REGU_VARIABLE *) arg1;
 	  et_alsm->elemset = (REGU_VARIABLE *) arg2;
+	  pt_bind_list_domain (et_alsm->elemset);
 	  et_alsm->rel_op = rop;
 	  et_alsm->item_type = data_type;
 	  et_alsm->eq_flag = some_all;
