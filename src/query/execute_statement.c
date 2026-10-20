@@ -46,6 +46,7 @@
 
 #include "error_manager.h"
 #include "db.h"
+#include "boot.h"		/* BOOT_CSQL_CLIENT_TYPE */
 #include "dbi.h"
 #include "dbtype.h"
 #include "parser.h"
@@ -4815,7 +4816,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = sm_update_all_statistics (statement->info.update_stats.with_fullscan
 					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING,
 					statement->info.update_stats.random_seed,
-					statement->info.update_stats.no_histogram);
+					statement->info.update_stats.no_histogram, NULL, 0);
       return error;
     }
   else if (statement->info.update_stats.all_classes < 0)
@@ -21388,6 +21389,15 @@ do_set_trace_to_query_flag (QUERY_FLAG * query_flag)
   else if (trace_format == QUERY_TRACE_JSON)
     {
       *query_flag |= XASL_TRACE_JSON;
+    }
+  /* a csql session that dumps its plans in detail (;plan detail sets the level's 0x200 bit) gets the compiled
+   * expression programs in its trace as well: the server cannot see the client's optimization level otherwise.
+   * Only csql: a CAS raises the level itself to log a query plan (cas_optimization.c, CCI_EXEC_QUERY_INFO), which
+   * must not switch the section on under a JDBC/CCI client (CTP's traced test answers, 2026-10-13). */
+  if (BOOT_CSQL_CLIENT_TYPE (db_get_client_type ())
+      && DETAILED_DUMP (prm_get_integer_value (PRM_ID_OPTIMIZATION_LEVEL)))
+    {
+      *query_flag |= XASL_TRACE_PLAN_DETAIL;
     }
 }
 
