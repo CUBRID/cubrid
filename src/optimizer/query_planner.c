@@ -6330,8 +6330,8 @@ qo_plan_dump_cost_params (FILE * output)
     {
       const SYSPRM_PARAM *prm = GET_PRM (cost_prm[i]);
 
-      if (PRM_IS_FLOAT (prm) ? (PRM_GET_FLOAT (prm->value) != PRM_GET_FLOAT (prm->default_value))
-	  : (PRM_GET_INT (prm->value) != PRM_GET_INT (prm->default_value)))
+      if (PRM_IS_FLOAT (prm) ? (prm_get_float_value (cost_prm[i]) != PRM_GET_FLOAT (prm->default_value))
+	  : (prm_get_integer_value (cost_prm[i]) != PRM_GET_INT (prm->default_value)))
 	{
 	  tuned = true;
 	  break;
