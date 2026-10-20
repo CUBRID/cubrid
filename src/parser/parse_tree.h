@@ -4084,6 +4084,9 @@ struct parser_context
     unsigned dblink_skip_implicit_serial_qualifier:1;	/* DBLink: do not merge current schema into unqualified SERIAL names */
     unsigned print_host_var_source:1;	/* CBRD-27583 (S3-45): a plan dump or trace print: a derived host variable
 					 * position prints as the user position it is derived from */
+    unsigned host_var_derive_later:1;	/* CBRD-27583: this later translation runs at every execution, cache hit or
+					 * not (the INSERT of CREATE ... AS SELECT): it makes the derived positions
+					 * its nodes need */
   } flag;
 };
 

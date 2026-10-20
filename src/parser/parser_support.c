@@ -5247,7 +5247,8 @@ pt_derive_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, int user_ind
   if (k == count && !create)
     {
       /* a later translation (a SELECT built from the translated statement) copies terms the first one already gave
-       * their positions: a new derived position here would be unknown to the sessions that hit the cache */
+       * their positions: a new derived position here would be unknown to the sessions that hit the cache (but in a
+       * translation every execution makes, host_var_derive_later) */
       assert (false);
       return NO_ERROR;
     }
@@ -5345,7 +5346,7 @@ pt_assign_host_var_position (PARSER_CONTEXT * parser, PT_NODE * hv, PT_NODE * pa
     {
       return NO_ERROR;
     }
-  return pt_derive_host_var_position (parser, hv, i, need, walk->assign);
+  return pt_derive_host_var_position (parser, hv, i, need, walk->assign || parser->flag.host_var_derive_later);
 }
 
 /*
@@ -5522,7 +5523,7 @@ pt_assign_host_var_positions_post (PARSER_CONTEXT * parser, PT_NODE * node, void
  *   same positions, cache hits included: the hash text is printed after the translation. Without typed values (a
  *   PREPARE) only context-typed nodes derive; a value-typed position stays untyped and no plan is made. A later
  *   translation in the same compilation (a SELECT built from the translated statement) reuses the positions and makes
- *   none.
+ *   none, but for one every execution translates (host_var_derive_later).
  */
 void
 pt_assign_host_var_positions (PARSER_CONTEXT * parser, PT_NODE * statement)
