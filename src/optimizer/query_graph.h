@@ -655,8 +655,6 @@ struct qo_term
    */
   BITSET subqueries;
 
-  BITSET outer_dep_set;		/* RIGHT OUTER JOIN on_nodes this term must wait for */
-
   /*
    * -1 == NO_JOIN iff this term is not suitable as a join predicate
    * Currently only applicable to path terms.
@@ -739,7 +737,6 @@ struct qo_term
 #define QO_TERM_PT_EXPR(t)	(t)->pt_expr
 #define QO_TERM_LOCATION(t)     (t)->location
 #define QO_TERM_SUBQUERIES(t)	(t)->subqueries
-#define QO_TERM_OUTER_DEP_SET(t)	(t)->outer_dep_set
 #define QO_TERM_SEG(t)		(t)->seg
 #define QO_TERM_OID_SEG(t)	(t)->oid_seg
 #define QO_TERM_EQCLASS(t)	(t)->eqclass
