@@ -2178,6 +2178,14 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	{
 	  ret = fetch_copy_dbval (thread_p, key_ranges->key1, vd, NULL, NULL, NULL, &key_val_range->key1);
 	  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key1);
+	  /* develop's query start check (qexec_resolve_key_constant), at scan start: an unindexable value fails whatever
+	   * the rows, named value first as the B-tree compare does (a multi-column key's: scan_dbvals_to_midxkey) */
+	  if (ret == NO_ERROR && !DB_IS_NULL (&key_val_range->key1) && !tp_valid_indextype (db_type))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (db_type),
+		      pr_type_name (TP_DOMAIN_TYPE (btree_domainp)));
+	      ret = ER_TP_CANT_COERCE;
+	    }
 
 	  if (ret == NO_ERROR && curr_key_prefix_length > 0)
 	    {
@@ -2227,6 +2235,13 @@ scan_regu_key_to_index_key (THREAD_ENTRY * thread_p, KEY_RANGE * key_ranges, KEY
 	  ret = fetch_copy_dbval (thread_p, key_ranges->key2, vd, NULL, NULL, NULL, &key_val_range->key2);
 
 	  db_type = DB_VALUE_DOMAIN_TYPE (&key_val_range->key2);
+	  /* as key1's */
+	  if (ret == NO_ERROR && !DB_IS_NULL (&key_val_range->key2) && !tp_valid_indextype (db_type))
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (db_type),
+		      pr_type_name (TP_DOMAIN_TYPE (btree_domainp)));
+	      ret = ER_TP_CANT_COERCE;
+	    }
 
 	  if (ret == NO_ERROR && curr_key_prefix_length > 0)
 	    {
