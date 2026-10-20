@@ -19041,6 +19041,8 @@ exit_on_error:
 
   if (t_list_id)
     {
+      qfile_close_list (thread_p, t_list_id);
+      qfile_destroy_list (thread_p, t_list_id);
       QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
     }
 

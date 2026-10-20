@@ -540,13 +540,23 @@ qfile_copy_list_id (QFILE_LIST_ID * dest_list_id_p, const QFILE_LIST_ID * src_li
 	  break;
 
 	case QFILE_COPY_DEPENDENT:
-	  /* both list ids read the same files; each owns its dependent list ids, so either one can be cleared */
-	  dest_list_id_p->dependent_list_id =
-	    qfile_clone_list_id (src_list_id_p->dependent_list_id, false, QFILE_COPY_DEPENDENT);
-	  if (dest_list_id_p->dependent_list_id == NULL)
-	    {
-	      goto exit_on_error;
-	    }
+	  {
+	    /* Clone closed list descriptors, not ownership of the shared temporary files. */
+	    QFILE_LIST_ID **next = &dest_list_id_p->dependent_list_id;
+	    *next = NULL;
+	    for (const QFILE_LIST_ID * src = src_list_id_p->dependent_list_id; src != NULL;
+		 src = src->dependent_list_id)
+	      {
+		assert (src->last_pgptr == NULL);
+		*next = qfile_clone_list_id (src, false, QFILE_SKIP_DEPENDENT);
+		if (*next == NULL)
+		  {
+		    QFILE_FREE_AND_INIT_LIST_ID (dest_list_id_p->dependent_list_id);
+		    goto exit_on_error;
+		  }
+		next = &(*next)->dependent_list_id;
+	      }
+	  }
 	  break;
 
 	case QFILE_PROHIBIT_DEPENDENT:
