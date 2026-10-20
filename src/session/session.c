@@ -121,7 +121,6 @@ struct session_state
   pthread_mutex_t mutex;	/* state mutex */
   UINT64 del_id;		/* delete transaction ID (for lock free) */
 
-  bool is_keep_session;
   bool is_trigger_involved;
   bool is_last_insert_id_generated;
   bool auto_commit;
@@ -308,7 +307,6 @@ session_state_init (void *st)
   /* initialize fields */
   db_make_null (&session_p->cur_insert_id);
   db_make_null (&session_p->last_insert_id);
-  session_p->is_keep_session = false;
   session_p->is_trigger_involved = false;
   session_p->is_last_insert_id_generated = false;
   session_p->row_count = -1;
@@ -795,7 +793,6 @@ session_state_destroy (THREAD_ENTRY * thread_p, const SESSION_ID id, bool is_kee
 
   if (is_keep_session == true)
     {
-      session_p->is_keep_session = true;
       /* the client leaves the session for now (CAS restart, RESET, ...). session_state_timeout runs from here, not
        * from when the client connected. */
       session_p->active_time = time (NULL);
@@ -1674,27 +1671,6 @@ session_set_row_count (THREAD_ENTRY * thread_p, const int row_count)
 #endif
 
   state_p->row_count = row_count;
-
-  return NO_ERROR;
-}
-
-/*
- * session_set_is_keep_session () - set the is_keep_session flag for a session
- * return : NO_ERROR or error code
- * thread_p (in) : thread that identifies the session
- * is_keep_session (in) : whether to keep the session
- */
-int
-session_set_is_keep_session (THREAD_ENTRY * thread_p, bool is_keep_session)
-{
-  SESSION_STATE *state_p = NULL;
-  state_p = session_get_session_state (thread_p);
-  if (state_p == NULL)
-    {
-      return ER_FAILED;
-    }
-
-  state_p->is_keep_session = is_keep_session;
 
   return NO_ERROR;
 }
