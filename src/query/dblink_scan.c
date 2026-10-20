@@ -1937,8 +1937,7 @@ dblink_dml_key_cast_type_needed (int stmt_handle, const char *errctx, int key_po
   int num_param;
   char errmsg[sizeof (err_buf.err_msg) + 160];
 
-  /* The caller fills it in both modes (see qexec_execute_remote_dml_sink); a NULL would read as
-   * DB_TYPE_NULL and fall back to the bare "?" without a word. */
+  /* dblink_dml_open () refuses a NULL before connecting. */
   assert (src_dom != NULL);
 
   src_type = TP_DOMAIN_TYPE (src_dom);
@@ -2371,6 +2370,14 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
       break;
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: unknown kind");
+      return ER_DBLINK;
+    }
+
+  /* The WHERE key's type is restored from src_dom. */
+  if ((kind == DBLINK_DML_DELETE || kind == DBLINK_DML_UPDATE) && sink->remote_key_col != NULL && src_dom == NULL)
+    {
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, "remote DML sink: WHERE key domain is NULL");
       return ER_DBLINK;
     }
 
