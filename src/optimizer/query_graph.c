@@ -6473,7 +6473,7 @@ qo_add_null_supplier_dep_set (QO_ENV * env)
   for (n = 1; n < env->nnodes; n++)
     {
       node = QO_ENV_NODE (env, n);
-      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_NONE || QO_NODE_IS_SEMI_ANTI_JOIN (node))
+      if (QO_NODE_PT_JOIN_TYPE (node) == PT_JOIN_NONE)
 	{
 	  continue;
 	}
