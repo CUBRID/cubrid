@@ -2052,7 +2052,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 	  goto error_exit;
 	}
 
-      if (!need_check_repl_constraint && IS_REPL_CONSTRAINT_RELATED_ALTER (alter->info.alter.code))
+      if (!need_check_repl_constraint && IS_REPL_CONSTRAINT_RELATED_ALTER (alter_code))
 	{
 	  need_check_repl_constraint = true;
 	}
