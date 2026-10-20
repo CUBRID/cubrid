@@ -245,8 +245,8 @@ static void qo_build_implied_seg_roots (QO_ENV * env, int *root_arr);
 static int qo_collect_implied_join_pairs (QO_ENV * env, int *root_arr, int *segs_arr,
 					  QO_IMPLIED_JOIN_PAIR ** pairs_p, int *count_p, int *cap_p);
 static void qo_discover_edges (QO_ENV *);
-static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_add_null_supplier_dep_set (QO_ENV *);
+static void qo_classify_outerjoin_terms (QO_ENV *);
 static void qo_term_clear (QO_ENV *, int);
 static void qo_seg_clear (QO_ENV *, int);
 static void qo_node_clear (QO_ENV *, int);
