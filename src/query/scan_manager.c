@@ -1905,6 +1905,7 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   int buf_size;
   regu_variable_list_node *operand;
   const TP_DOMAIN *column;
+  const TP_DOMAIN *index_column;	/* the index's column at column's position */
   char *nullmap_ptr;		/* ponter to boundbits */
   OR_BUF buf;
   /* the columns' values, peeked once: most keys have few columns */
@@ -1941,8 +1942,9 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
   /* each column's value, checked in this order: a NULL ends the key (an index skip scan's first column may be NULL),
    * then the index key type, then a maximum string */
   written = 0;
-  for (operand = func->value.funcp->operand, column = key_domain->setdomain; operand != NULL && column != NULL;
-       operand = operand->next, column = column->next)
+  for (operand = func->value.funcp->operand, column = key_domain->setdomain, index_column = btree_domainp->setdomain;
+       operand != NULL && column != NULL;
+       operand = operand->next, column = column->next, index_column = index_column != NULL ? index_column->next : NULL)
     {
       DB_VALUE *val = NULL;
       ret = fetch_peek_dbval (thread_p, &(operand->value), vd, NULL, NULL, NULL, &val);
@@ -1969,8 +1971,10 @@ scan_dbvals_to_midxkey (THREAD_ENTRY * thread_p, DB_VALUE * retval, bool * index
       const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (val);
       if (!tp_valid_indextype (type))
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2, pr_type_name (TP_DOMAIN_TYPE (column)),
-		  pr_type_name (type));
+	  /* named with the index column's type, as develop does: a kept value's column has the value's own type */
+	  assert (index_column != NULL);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TP_CANT_COERCE, 2,
+		  pr_type_name (TP_DOMAIN_TYPE (index_column != NULL ? index_column : column)), pr_type_name (type));
 	  goto err_exit;
 	}
 
