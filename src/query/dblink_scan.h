@@ -37,6 +37,10 @@
 /* Forward declarations */
 struct val_descr;
 typedef struct val_descr VAL_DESCR;
+struct remote_dml_sink;
+typedef struct remote_dml_sink REMOTE_DML_SINK;
+struct tp_domain;
+typedef struct tp_domain TP_DOMAIN;
 
 typedef enum
 {
@@ -155,10 +159,9 @@ typedef enum dblink_dml_kind
     /* DBLINK_DML_UPDATE to follow */
 } DBLINK_DML_KIND;
 
-extern int dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const char *url, const char *user,
-			    const char *pwd, const char *table_name, char **attr_names, int num_attrs, int num_bind,
-			    const char *key_col, const char *op, const DBLINK_ODKU_ASSIGNS * odku,
-			    DBLINK_DML_STATE * state);
+extern int dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML_SINK * sink,
+			    char **attr_names, int num_attrs, int num_bind, const char *key_col, const char *op,
+			    const DBLINK_ODKU_ASSIGNS * odku, TP_DOMAIN * src_dom, DBLINK_DML_STATE * state);
 extern int dblink_dml_execute_row (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state, DB_VALUE ** vals,
 				   int num_vals, int *affected_rows);
 extern void dblink_dml_stmt_done (THREAD_ENTRY * thread_p, DBLINK_DML_STATE * state);

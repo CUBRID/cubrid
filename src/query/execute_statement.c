@@ -4816,7 +4816,7 @@ do_update_stats (PARSER_CONTEXT * parser, PT_NODE * statement)
       error = sm_update_all_statistics (statement->info.update_stats.with_fullscan
 					? STATS_WITH_FULLSCAN : STATS_WITH_SAMPLING,
 					statement->info.update_stats.random_seed,
-					statement->info.update_stats.no_histogram);
+					statement->info.update_stats.no_histogram, NULL, 0);
       return error;
     }
   else if (statement->info.update_stats.all_classes < 0)

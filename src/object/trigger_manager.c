@@ -180,6 +180,7 @@ static const char *time_as_string (DB_TRIGGER_TIME tr_time);
 static char *tr_process_name (const char *name_string);
 static TR_ACTIVITY *make_activity (void);
 static void free_activity (TR_ACTIVITY * act);
+static void free_compiled_statement (TR_ACTIVITY * activity);
 static TR_TRIGGER *tr_make_trigger (void);
 static void tr_clear_trigger (TR_TRIGGER * trigger);
 static void free_trigger (TR_TRIGGER * trigger);
@@ -359,16 +360,28 @@ free_activity (TR_ACTIVITY * activity)
       free_and_init (activity->source);
     }
 
-  if (activity->parser != NULL)
-    {
-      /*
-       * We need to free the statement explicitly here since it may
-       *  contain pointers to db_values in the workspace.
-       */
-      parser_free_tree ((PARSER_CONTEXT *) activity->parser, (PT_NODE *) activity->statement);
-      parser_free_parser ((PARSER_CONTEXT *) activity->parser);
-    }
+  free_compiled_statement (activity);
   free_and_init (activity);
+}
+
+/*
+ * free_compiled_statement() - This frees the compiled statement of an activity.
+ *    return: none
+ *    activity(in/out): activity
+ */
+static void
+free_compiled_statement (TR_ACTIVITY * activity)
+{
+  if (activity->parser == NULL)
+    {
+      return;
+    }
+
+  /* parser_free_parser() does not free the db_values the nodes own, such as folded constants */
+  parser_free_tree ((PARSER_CONTEXT *) activity->parser, (PT_NODE *) activity->statement);
+  parser_free_parser ((PARSER_CONTEXT *) activity->parser);
+  activity->parser = NULL;
+  activity->statement = NULL;
 }
 
 
@@ -1613,12 +1626,7 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 
   if (activity != NULL && activity->type == TR_ACT_EXPRESSION && activity->source != NULL)
     {
-      if (activity->parser != NULL)
-	{
-	  parser_free_parser ((PARSER_CONTEXT *) activity->parser);
-	  activity->parser = NULL;
-	  activity->statement = NULL;
-	}
+      free_compiled_statement (activity);
 
       /* build a string suitable for compilation */
       if (!with_evaluate)
@@ -1702,13 +1710,7 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 	   * since we had a problem with the compilation, don't leave
 	   * the parser hanging around in the trigger cache
 	   */
-	  if (activity->statement)
-	    {
-	      parser_free_tree ((PARSER_CONTEXT *) activity->parser, (PT_NODE *) activity->statement);
-	    }
-	  activity->statement = NULL;
-	  parser_free_parser ((PARSER_CONTEXT *) activity->parser);
-	  activity->parser = NULL;
+	  free_compiled_statement (activity);
 	}
 
       if (activity->statement)
@@ -1727,10 +1729,7 @@ compile_trigger_activity (TR_TRIGGER * trigger, TR_ACTIVITY * activity, int with
 		{
 		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TR_CORRELATION_ERROR, 0);
 		  error = er_errid ();
-		  parser_free_tree ((PARSER_CONTEXT *) activity->parser, (PT_NODE *) activity->statement);
-		  activity->statement = NULL;
-		  parser_free_parser ((PARSER_CONTEXT *) activity->parser);
-		  activity->parser = NULL;
+		  free_compiled_statement (activity);
 		}
 	    }
 	}
@@ -4740,11 +4739,7 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, boo
       if (tr_Current_depth <= 1 && ++act->exec_cnt > prm_get_integer_value (PRM_ID_RESET_TR_PARSER)
 	  && prm_get_integer_value (PRM_ID_RESET_TR_PARSER) > 0)
 	{
-	  if (act->parser != NULL)
-	    {
-	      parser_free_parser ((PARSER_CONTEXT *) act->parser);
-	      act->parser = NULL;
-	    }
+	  free_compiled_statement (act);
 	  act->exec_cnt = 0;
 	}
 
@@ -4793,9 +4788,7 @@ eval_condition (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, boo
 	       * copmiled expression and do it again the next time
 	       */
 #if 0
-	      parser_free_parser (act->parser);
-	      act->parser = NULL;
-	      act->statement = NULL;
+	      free_compiled_statement (act);
 #endif /* 0 */
 
 	    }
@@ -4946,11 +4939,7 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	  if (tr_Current_depth <= 1 && ++act->exec_cnt > prm_get_integer_value (PRM_ID_RESET_TR_PARSER)
 	      && prm_get_integer_value (PRM_ID_RESET_TR_PARSER) > 0)
 	    {
-	      if (act->parser != NULL)
-		{
-		  parser_free_parser ((PARSER_CONTEXT *) act->parser);
-		  act->parser = NULL;
-		}
+	      free_compiled_statement (act);
 	      act->exec_cnt = 0;
 	    }
 	  error = free_stale_statement (act);
@@ -4990,9 +4979,7 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	       */
 	      if (pt_status == ER_QPROC_INVALID_XASLNODE && used_cached_statement)
 		{
-		  parser_free_parser ((PARSER_CONTEXT *) act->parser);
-		  act->parser = NULL;
-		  act->statement = NULL;
+		  free_compiled_statement (act);
 
 		  er_clear ();
 		  goto compile_stmt_again;
@@ -5020,9 +5007,7 @@ eval_action (TR_TRIGGER * trigger, DB_OBJECT * current, DB_OBJECT * temp, bool *
 	       * copmiled expression and do it again the next time
 	       */
 #if 0
-	      parser_free_parser (act->parser);
-	      act->parser = NULL;
-	      act->statement = NULL;
+	      free_compiled_statement (act);
 #endif /* 0 */
 	    }
 	  break;
