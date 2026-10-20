@@ -10019,8 +10019,6 @@ do_prepare_update (PARSER_CONTEXT * parser, PT_NODE * statement)
 		{
 		  assert (er_errid () != NO_ERROR);
 		  err = er_errid ();
-		  pt_record_error (parser, parser->statement_number, statement->line_number, statement->column_number,
-				   er_msg (), NULL);
 		}
 
 	      /* request the server to prepare the query; give XASL stream generated from the parse tree and get XASL
@@ -11381,8 +11379,6 @@ do_prepare_delete (PARSER_CONTEXT * parser, PT_NODE * statement, PT_NODE * paren
 		{
 		  assert (er_errid () != NO_ERROR);
 		  err = er_errid ();
-		  pt_record_error (parser, parser->statement_number, statement->line_number, statement->column_number,
-				   er_msg (), NULL);
 		}
 
 	      /* request the server to prepare the query; give XASL stream generated from the parse tree and get XASL
@@ -18567,11 +18563,6 @@ do_prepare_merge (PARSER_CONTEXT * parser, PT_NODE * statement)
 	      assert (er_errid () != NO_ERROR);
 #endif
 	      err = er_errid ();
-	      if (err != NO_ERROR)
-		{
-		  pt_record_error (parser, parser->statement_number, statement->line_number, statement->column_number,
-				   er_msg (), NULL);
-		}
 	    }
 
 	  /* cache the XASL */
