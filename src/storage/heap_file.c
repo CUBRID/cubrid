@@ -12445,6 +12445,32 @@ heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * attr_val, HE
 }
 
 /*
+ * heap_attrinfo_is_fixed_copy_type () - whether a value of this type converts into an attribute of the same type by a
+ *   plain copy: a fixed-size type whose domain has no precision, codeset or time zone (tp_value_cast_internal clones
+ *   a value of a non-parameterized domain's own type)
+ */
+static bool
+heap_attrinfo_is_fixed_copy_type (DB_TYPE type)
+{
+  switch (type)
+    {
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_SHORT:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_FLOAT:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_DATE:
+    case DB_TYPE_TIME:
+    case DB_TYPE_TIMESTAMP:
+    case DB_TYPE_DATETIME:
+    case DB_TYPE_MONETARY:
+      return true;
+    default:
+      return false;
+    }
+}
+
+/*
  * heap_attrinfo_set_converted () - CBRD-27583 (D-45): set the value an INSERT, UPDATE or MERGE assigns to an
  *   attribute with the converter its plan chose at unpack for the value's type into the attribute's type, as
  *   heap_attrinfo_set's coercion does it (tp_value_auto_cast_with_precision_check) into the catalog's domain, without
@@ -12477,8 +12503,18 @@ heap_attrinfo_set_converted (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * at
       /* NULL, and an object reference, which the server takes as it is (tp_domain_check) */
       ret = pr_type->setval (&value->dbvalue, attr_val, TP_IS_SET_TYPE (pr_type->id));
     }
+  else if (value_type == TP_DOMAIN_TYPE (catalog) && heap_attrinfo_is_fixed_copy_type (value_type)
+	   /* guard: the plan's premise; a mismatch takes the converter path */
+	   && DB_VALUE_DOMAIN_TYPE (attr_val) == value_type)
+    {
+      /* the plan's value of the attribute's own fixed-size type: the cast would only clone it (no precision, codeset
+       * or zone) */
+      ret = pr_type->setval (&value->dbvalue, attr_val, false);
+    }
   else
     {
+      /* the plan's same fixed-size type reaches here only when the guard above failed */
+      assert (value_type != TP_DOMAIN_TYPE (catalog) || !heap_attrinfo_is_fixed_copy_type (value_type));
       const TP_DOMAIN_STATUS dom_status =
 	tp_value_auto_cast_with_precision_check_converter (attr_val, &value->dbvalue, catalog,
 							   value_type, conv);
