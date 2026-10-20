@@ -7384,6 +7384,77 @@ qmgr_prepare_query (COMPILE_CONTEXT * context, xasl_stream * stream)
 #endif /* !CS_MODE */
 }
 
+#if !defined (CS_MODE)
+static void
+qmgr_free_server_db_values (THREAD_ENTRY * thread_p, int dbval_cnt, DB_VALUE * server_db_values)
+{
+  if (server_db_values != NULL)
+    {
+      for (int i = 0; i < dbval_cnt; i++)
+	{
+	  db_value_clear (&server_db_values[i]);
+	}
+      db_private_free (thread_p, server_db_values);
+    }
+}
+
+/*
+ * qmgr_server_db_values () - the bound values as the server takes them, in the server's allocation: an object as its
+ *   OID, as the client's packing sends it in CS mode (CBRD-27583: the plans the server makes before the rows take an
+ *   object's values as OIDs)
+ *   return: the values, NULL without values or on error (when *error is set)
+ */
+static DB_VALUE *
+qmgr_server_db_values (THREAD_ENTRY * thread_p, int dbval_cnt, const DB_VALUE * dbvals, bool * error)
+{
+  DB_VALUE *server_db_values;
+  OID *oid;
+  int i;
+
+  *error = false;
+  if (dbval_cnt <= 0)
+    {
+      return NULL;
+    }
+
+  server_db_values = (DB_VALUE *) db_private_alloc (thread_p, dbval_cnt * sizeof (DB_VALUE));
+  if (server_db_values == NULL)
+    {
+      *error = true;
+      return NULL;
+    }
+  for (i = 0; i < dbval_cnt; i++)
+    {
+      db_make_null (&server_db_values[i]);
+    }
+  for (i = 0; i < dbval_cnt; i++)
+    {
+      switch (DB_VALUE_TYPE (&dbvals[i]))
+	{
+	case DB_TYPE_OBJECT:
+	  /* server cannot handle objects, convert to OID instead */
+	  oid = ws_identifier (db_get_object (&dbvals[i]));
+	  if (oid != NULL)
+	    {
+	      db_make_oid (&server_db_values[i], oid);
+	    }
+	  break;
+
+	default:
+	  /* Clone value */
+	  if (db_value_clone ((DB_VALUE *) (&dbvals[i]), &server_db_values[i]) != NO_ERROR)
+	    {
+	      qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
+	      *error = true;
+	      return NULL;
+	    }
+	  break;
+	}
+    }
+  return server_db_values;
+}
+#endif /* !CS_MODE */
+
 /*
  * qmgr_execute_query - Send a SERVER_QM_EXECUTE request to the server
  *
@@ -7591,69 +7662,20 @@ qmgr_execute_query (const XASL_ID * xasl_id, QUERY_ID * query_idp, int dbval_cnt
   return list_id;
 #else /* CS_MODE */
   QFILE_LIST_ID *list_id = NULL;
-  DB_VALUE *server_db_values = NULL;
-  OID *oid;
-  int i;
+  bool error;
 
   THREAD_ENTRY *thread_p = enter_server ();
 
   /* reallocate dbvals to use server allocation */
-  if (dbval_cnt > 0)
+  DB_VALUE *server_db_values = qmgr_server_db_values (thread_p, dbval_cnt, dbvals, &error);
+  if (!error)
     {
-      size_t s = dbval_cnt * sizeof (DB_VALUE);
-
-      server_db_values = (DB_VALUE *) db_private_alloc (thread_p, s);
-      if (server_db_values == NULL)
-	{
-	  goto cleanup;
-	}
-      for (i = 0; i < dbval_cnt; i++)
-	{
-	  db_make_null (&server_db_values[i]);
-	}
-      for (i = 0; i < dbval_cnt; i++)
-	{
-	  switch (DB_VALUE_TYPE (&dbvals[i]))
-	    {
-	    case DB_TYPE_OBJECT:
-	      /* server cannot handle objects, convert to OID instead */
-	      oid = ws_identifier (db_get_object (&dbvals[i]));
-	      if (oid != NULL)
-		{
-		  db_make_oid (&server_db_values[i], oid);
-		}
-	      break;
-
-	    default:
-	      /* Clone value */
-	      if (db_value_clone ((DB_VALUE *) (&dbvals[i]), &server_db_values[i]) != NO_ERROR)
-		{
-		  goto cleanup;
-		}
-	      break;
-	    }
-	}
+      /* call the server routine of query execute */
+      list_id =
+	xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
+			     srv_cache_time, query_timeout, NULL);
     }
-  else
-    {
-      /* No dbvals */
-      server_db_values = NULL;
-    }
-
-  /* call the server routine of query execute */
-  list_id =
-    xqmgr_execute_query (thread_p, xasl_id, query_idp, dbval_cnt, server_db_values, &flag, clt_cache_time,
-			 srv_cache_time, query_timeout, NULL);
-
-cleanup:
-  if (server_db_values != NULL)
-    {
-      for (i = 0; i < dbval_cnt; i++)
-	{
-	  db_value_clear (&server_db_values[i]);
-	}
-      db_private_free (thread_p, server_db_values);
-    }
+  qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
 
   exit_server (*thread_p);
 
@@ -7761,13 +7783,20 @@ qmgr_prepare_and_execute_query (char *xasl_stream, int xasl_stream_size, QUERY_I
 
   return regu_result;
 #else /* CS_MODE */
-  QFILE_LIST_ID *regu_result;
+  QFILE_LIST_ID *regu_result = NULL;
+  bool error;
 
   THREAD_ENTRY *thread_p = enter_server ();
 
-  regu_result =
-    xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt, dbval_ptr, &flag,
-				     query_timeout);
+  /* CBRD-27583: an object as its OID, as qmgr_execute_query sends it */
+  DB_VALUE *server_db_values = qmgr_server_db_values (thread_p, dbval_cnt, dbval_ptr, &error);
+  if (!error)
+    {
+      regu_result =
+	xqmgr_prepare_and_execute_query (thread_p, xasl_stream, xasl_stream_size, query_idp, dbval_cnt,
+					 server_db_values, &flag, query_timeout);
+    }
+  qmgr_free_server_db_values (thread_p, dbval_cnt, server_db_values);
 
   exit_server (*thread_p);
 
