@@ -80,6 +80,7 @@
 #define UNIQUE_SAVEPOINT_CHANGE_DEF_COLL "cHANGEdEFAULTcOLL"
 #define UNIQUE_SAVEPOINT_CHANGE_TBL_COMMENT "cHANGEtBLcOMMENT"
 #define UNIQUE_SAVEPOINT_CHANGE_COLUMN_COMMENT "cHANGEcOLUMNcOMMENT"
+#define UNIQUE_SAVEPOINT_DROP_INDEX "dROPiNDEX"
 #define UNIQUE_SAVEPOINT_CREATE_USER_ENTITY "cREATEuSEReNTITY"
 #define UNIQUE_SAVEPOINT_DROP_USER_ENTITY "dROPuSEReNTITY"
 #define UNIQUE_SAVEPOINT_ALTER_USER_ENTITY "aLTERuSEReNTITY"
@@ -110,8 +111,10 @@
 #define IS_REPL_CONSTRAINT_RELATED_ALTER(code)              \
   ( ((code) == PT_ADD_ATTR_MTHD)         ||                 \
     ((code) == PT_DROP_ATTR_MTHD)        ||                 \
+    ((code) == PT_CHANGE_ATTR)           ||                 \
     ((code) == PT_DROP_CONSTRAINT)       ||                 \
-    ((code) == PT_DROP_PRIMARY_CLAUSE)                     \
+    ((code) == PT_DROP_PRIMARY_CLAUSE)   ||                 \
+    ((code) == PT_DROP_INDEX_CLAUSE)                        \
   )
 
 typedef enum
@@ -3575,6 +3578,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   DB_CONSTRAINT_TYPE index_type;
   bool is_reverse;
   bool is_unique;
+  bool check_repl_constraint = false;
 
   CHECK_MODIFICATION_ERROR ();
 
@@ -3619,7 +3623,26 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
       is_unique = statement->info.index.unique;
     }
 
+  check_repl_constraint = is_unique && sm_is_replication_class (obj);
+  if (check_repl_constraint)
+    {
+      error_code = tran_system_savepoint (UNIQUE_SAVEPOINT_DROP_INDEX);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+
   error_code = create_or_drop_index_helper (parser, index_name, is_reverse, is_unique, NULL, obj, DO_INDEX_DROP);
+  if (error_code == NO_ERROR && check_repl_constraint)
+    {
+      error_code = check_ha_repl_constraint (obj);
+    }
+
+  if (error_code != NO_ERROR && check_repl_constraint && error_code != ER_LK_UNILATERALLY_ABORTED)
+    {
+      (void) tran_abort_upto_system_savepoint (UNIQUE_SAVEPOINT_DROP_INDEX);
+    }
 
   return error_code;
 }
