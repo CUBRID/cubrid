@@ -30,9 +30,39 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
+#if defined (LINUX)
+/*
+ * clock_paired_read() - read the tick counter and CLOCK_MONOTONIC at the same moment
+ *   return: CLOCK_MONOTONIC in nanoseconds, the midpoint of two reads around the tick read
+ *   tc(out): tick counter
+ *
+ * Note: a pair the thread was preempted in the middle of is read again.
+ */
+static INT64
+clock_paired_read (ticks * tc)
+{
+  struct timespec before, after;
+  INT64 before_ns, after_ns;
+  int retry;
+
+  for (retry = 0;; retry++)
+    {
+      clock_gettime (CLOCK_MONOTONIC, &before);
+      *tc = getticks ();
+      clock_gettime (CLOCK_MONOTONIC, &after);
+      before_ns = before.tv_sec * 1000000000LL + before.tv_nsec;
+      after_ns = after.tv_sec * 1000000000LL + after.tv_nsec;
+      if (after_ns - before_ns < 10000 || retry >= 10)
+	{
+	  return before_ns + (after_ns - before_ns) / 2;
+	}
+    }
+}
+#endif /* LINUX */
+
 /*
  * get_clock_freq() - get the CPU clock rate
- *   return: the CPU or Mainboard clock rate (KHz)
+ *   return: the rate of the counter getticks () reads (Hz), or 0 when unknown
  */
 TSC_UINT64
 get_clock_freq (void)
@@ -46,84 +76,25 @@ get_clock_freq (void)
   return (TSC_UINT64) fr.QuadPart;
 
 #elif defined (LINUX)
-  /* We read the information from the /proc filesystem. It contains at least one line like cpu MHz : 497.840237 or
-   * also cpu MHz : 497.841 We search for this line and convert the number in an integer.  */
-  TSC_UINT64 clock_freq = 0;
-  int fd;
-  char buf[4096], hz[32];
-  char *src, *dest, *ovf, *dp = NULL;
-  ssize_t n;
+  /* Measure the tick counter against CLOCK_MONOTONIC over about 2 msec. "cpu MHz" of /proc/cpuinfo is the current
+   * core clock of one CPU, which is not the TSC rate on a CPU that changes its frequency. */
+  ticks start_tc, end_tc;
+  INT64 start_ns, end_ns;
+  struct timespec ts;
 
-  fd = open ("/proc/cpuinfo", O_RDONLY);
-  if (fd == -1)
+  start_ns = clock_paired_read (&start_tc);
+  do
     {
-      goto exit;
+      clock_gettime (CLOCK_MONOTONIC, &ts);
     }
+  while (ts.tv_sec * 1000000000LL + ts.tv_nsec - start_ns < 2000000);
+  end_ns = clock_paired_read (&end_tc);
 
-  n = read (fd, buf, sizeof (buf));
-  if (n <= 0)
+  if (end_tc <= start_tc || end_ns <= start_ns)
     {
-      goto exit;
+      return 0;
     }
-
-  ovf = buf + n;
-
-  src = strstr (buf, "cpu MHz");
-  if (src == NULL)
-    {
-      goto exit;
-    }
-
-  dest = hz;
-
-  while (*src != '\n')
-    {
-      if (*src < '0' || *src > '9')
-	{
-	  if (*src == '.')
-	    {
-	      dp = dest;
-	    }
-
-	  src++;
-	}
-      else
-	{
-	  *dest++ = *src++;
-	}
-
-      if (src >= ovf)
-	{
-	  goto exit;
-	}
-    }
-
-  if (dp == NULL)
-    {
-      dp = dest;
-    }
-
-  while ((dest - dp) < 6)
-    {
-      *dest++ = '0';
-    }
-
-  *dest = '\0';
-
-  clock_freq = strtoull (hz, NULL, 10);
-  if (clock_freq == 0)
-    {
-      goto exit;
-    }
-
-exit:
-
-  if (fd != -1)
-    {
-      close (fd);
-    }
-
-  return clock_freq;
+  return (TSC_UINT64) ((double) (end_tc - start_tc) * 1000000000.0 / (double) (end_ns - start_ns));
 
 #else
   /*

@@ -1485,7 +1485,7 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1379 CDC: the extraction position (%1$lld|%2$d) handed to the client keeps archive log volume %3$d.
 
-1380 A stored procedure/function declared PARALLEL_ENABLE cannot execute SQL on the server-side connection or use DBMS_OUTPUT.
+1380 A stored procedure/function declared PARALLEL_ENABLE or running in a parallel query worker cannot execute SQL on the server-side connection or use DBMS_OUTPUT.
 
 1381 System metadata is incompatible with this CUBRID version. Run 'cubrid upgradedb'.
 1382 System metadata version is newer than the current CUBRID version supports; downgrade is not supported.
@@ -1494,7 +1494,10 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1384 Session variable @%1$s would hold %2$s and %3$s within a statement that reads it; cast the value to one type.
 
-1385 Last Error
+1385 Invalid username or password.
+
+1386 Last Error
+
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
@@ -1660,7 +1663,6 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 135 No options specified for ALTER SYNONYM.
 136 Maximum length of a server dbname is %1$d bytes.
 137 Maximum length of a server user is %1$d bytes.
-138 Invalid deduplicate level. Valid level between %1$d and %2$d.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
 140 FILL_FACTOR argument must be between %1$d and %2$d.
 

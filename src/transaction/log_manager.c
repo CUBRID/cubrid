@@ -307,8 +307,8 @@ static int log_run_postpone_op (THREAD_ENTRY * thread_p, LOG_LSA * log_lsa, LOG_
 static void log_find_end_log (THREAD_ENTRY * thread_p, LOG_LSA * end_lsa);
 
 static bool log_get_prev_version_header_layout (LOG_RECTYPE type, int *size, int *ulength_offset);
-static void log_lsa_add_align (LOG_LSA * lsa, int add);
-static void log_lsa_advance_when_doesnt_fit (LOG_LSA * lsa, int length);
+static void log_lsa_add_align (LOG_LSA_UNPACKED * lsa, int add);
+static void log_lsa_advance_when_doesnt_fit (LOG_LSA_UNPACKED * lsa, int length);
 static bool log_get_undo_image_from_buffer (THREAD_ENTRY * thread_p, LOG_LSA * lsa, int udata_length,
 					    RECDES * recdes, SCAN_CODE * scan_out) __attribute__ ((noinline));
 
@@ -10025,7 +10025,7 @@ static_assert (DB_ALIGN (sizeof (LOG_RECORD_HEADER), DOUBLE_ALIGNMENT)
 
 /* LOG_READ_ADD_ALIGN without the page fetch */
 static void
-log_lsa_add_align (LOG_LSA * lsa, int add)
+log_lsa_add_align (LOG_LSA_UNPACKED * lsa, int add)
 {
   lsa->offset = DB_ALIGN (lsa->offset + add, DOUBLE_ALIGNMENT);
   while (lsa->offset >= (int) LOGAREA_SIZE)
@@ -10037,7 +10037,7 @@ log_lsa_add_align (LOG_LSA * lsa, int add)
 
 /* LOG_READ_ADVANCE_WHEN_DOESNT_FIT without the page fetch */
 static void
-log_lsa_advance_when_doesnt_fit (LOG_LSA * lsa, int length)
+log_lsa_advance_when_doesnt_fit (LOG_LSA_UNPACKED * lsa, int length)
 {
   if (lsa->offset + length >= (int) LOGAREA_SIZE)
     {
@@ -10065,7 +10065,8 @@ log_get_undo_record_from_buffer (THREAD_ENTRY * thread_p, const LOG_LSA * lsa, c
 {
   alignas (MAX_ALIGNMENT) char head[LOG_PREV_VERSION_HEAD_SIZE];
   int head_length;
-  LOG_LSA process_lsa, field_lsa;
+  LOG_LSA_UNPACKED process_lsa;
+  LOG_LSA field_lsa, image_lsa;
   LOG_RECORD_HEADER log_rec_header;
   int data_header_size, ulength_offset;
   int udata_length, udata_size;
@@ -10106,7 +10107,7 @@ log_get_undo_record_from_buffer (THREAD_ENTRY * thread_p, const LOG_LSA * lsa, c
     }
   else
     {
-      field_lsa = process_lsa;
+      field_lsa = (LOG_LSA) process_lsa;
       field_lsa.offset += ulength_offset;
       if (!logpb_copy_from_log_if_buffered ((char *) &udata_length, sizeof (udata_length), &field_lsa))
 	{
@@ -10124,7 +10125,8 @@ log_get_undo_record_from_buffer (THREAD_ENTRY * thread_p, const LOG_LSA * lsa, c
       return true;
     }
 
-  return log_get_undo_image_from_buffer (thread_p, &process_lsa, udata_length, recdes, scan_out);
+  image_lsa = (LOG_LSA) process_lsa;
+  return log_get_undo_image_from_buffer (thread_p, &image_lsa, udata_length, recdes, scan_out);
 }
 
 /*

@@ -37,6 +37,8 @@
 #include "schema_system_catalog_constants.h"
 #include "locator_cl.h" /* locator_create_heap_if_needed () */
 
+bool use_console_password = false; // If true, allows password input from the console
+
 // static functions
 static int au_add_method_check_authorization (void);
 
@@ -569,6 +571,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 
   dbuser = (char *) name;
   dbpassword = (char *) password;
+  use_console_password = false;
 
   if (dbuser == NULL || strlen (dbuser) == 0)
     {
@@ -595,8 +598,8 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 	  error = er_errid ();
 	  if (error != ER_LK_UNILATERALLY_ABORTED)
 	    {
-	      error = ER_AU_INVALID_USER;
-	      er_set (ER_WARNING_SEVERITY, ARG_FILE_LINE, error, 1, dbuser);
+	      error = ER_AU_REJECT_LOGIN;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	    }
 	}
       else
@@ -652,7 +655,8 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 		      if ((dbpassword == NULL) || (strlen (dbpassword) == 0)
 			  || !match_password (dbpassword, db_get_string (&value)))
 			{
-			  error = ER_AU_INVALID_PASSWORD;
+			  use_console_password = (dbpassword == NULL || *dbpassword == '\0');
+			  error = ER_AU_REJECT_LOGIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			}
 		    }
@@ -668,7 +672,7 @@ authenticate_context::perform_login (const char *name, const char *password, boo
 		       */
 		      if (dbpassword != NULL && strlen (dbpassword))
 			{
-			  error = ER_AU_INVALID_PASSWORD;
+			  error = ER_AU_REJECT_LOGIN;
 			  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 			}
 		    }
