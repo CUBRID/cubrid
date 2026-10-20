@@ -110,7 +110,8 @@ namespace
     RADIX_KEY_ENCODING key_encoding;	/* the key encoding the engine sorts by, a MIDXKEY's for its work memory */
     const RADIX_MIDXKEY *midxkey;	/* the columns of a MIDXKEY, below the context; NULL for a key of one column */
     int rec_overhead;		/* bytes a record claims above the records: a slot in each array and two radix words */
-    char *stack_area;		/* MSD stack, sized for the most records a run can hold */
+    int max_records;		/* the most records a run can hold, counted with the shortest key */
+    char *stack_area;		/* MSD stack, sized for max_records */
     size_t stack_bytes;
   };
 }
@@ -180,8 +181,9 @@ btsort_radix_sorter_init (BTSORT_RUN *run, const TP_DOMAIN *key_domain)
 
   /* a slot is a 32-bit offset into a buffer under 2GB */
   assert (max_records <= (size_t) INT_MAX);
+  ctx->max_records = (int) max_records;
 
-  ctx->stack_bytes = radix_sort_stack_bytes (&ctx->key_encoding, (int) max_records);
+  ctx->stack_bytes = radix_sort_stack_bytes (&ctx->key_encoding, ctx->max_records);
   ctx->stack_area = ctx_low - DB_ALIGN (ctx->stack_bytes, DOUBLE_ALIGNMENT);
 
   run->sorter_ctx = ctx;
@@ -224,7 +226,8 @@ btsort_radix_sorter_reserve (BTSORT_RUN *run, int maxlen, int *room)
   radix_sorter_ctx *ctx = (radix_sorter_ctx *) run->sorter_ctx;
   ptrdiff_t free_bytes = (run->slot_low - run->item_ptr) - 2 * (ptrdiff_t) ctx->rec_overhead;
 
-  if (free_bytes <= 0)
+  /* the MSD stack is sized for max_records */
+  if (free_bytes <= 0 || run->numrecs >= ctx->max_records)
     {
       *room = 0;
       return NULL;
