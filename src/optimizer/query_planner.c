@@ -161,8 +161,9 @@
 #define QO_EFFECTIVE_CACHE_PAGES \
   MAX ((double) prm_get_integer_value (PRM_ID_COST_EFFECTIVE_CACHE_PAGES), \
        (double) prm_get_integer_value (PRM_ID_PB_NBUFFERS))
-/* Divisor applied, in plan comparison only, to the variable cost of a plan that the executor can
- * run in parallel (qo_plan_cmp_variable_cost ()). Deliberately a constant, not the degree: the
+/* Divisor applied to the variable cost of the work the executor runs in parallel: a nested-loop
+ * chain whose driving scan is split among workers, a parallel hash join's build/probe, a parallel
+ * input scan of a hash or merge join (qo_parallel_cost_divisor ()). Deliberately a constant, not the degree: the
  * degree the optimizer could predict is not what runs -- a scan may still be run serially
  * (system operation, worker shortage) -- so the realized speed-up lies anywhere between 1x and
  * the degree; 2 is the geometric middle of 1x..4x, wrong by at most 2x either way. */
@@ -352,9 +353,6 @@ static QO_PLAN *qo_plan_order_by (QO_PLAN *, QO_EQCLASS *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp_prefer_covering_index (QO_PLAN *, QO_PLAN *);
 static void qo_plan_fprint (QO_PLAN *, FILE *, int, const char *);
 static QO_PLAN_COMPARE_RESULT qo_plan_cmp (QO_PLAN *, QO_PLAN *);
-static double qo_plan_list_pages (QO_PLAN * plan);
-static double qo_plan_parallel_variable_cost (QO_PLAN * plan, double divisor);
-static double qo_plan_parallel_variable_cost_raw (QO_PLAN * plan, double divisor);
 static QO_PLAN_COMPARE_RESULT qo_plan_iscan_terms_cmp (QO_PLAN * a, QO_PLAN * b);
 static QO_PLAN_COMPARE_RESULT qo_index_covering_plans_cmp (QO_PLAN *, QO_PLAN *);
 static QO_PLAN_COMPARE_RESULT qo_order_by_skip_plans_cmp (QO_PLAN *, QO_PLAN *);
@@ -613,14 +611,13 @@ qo_plan_malloc (QO_ENV * env)
   plan->skip_orderby_opt = QO_PLAN_SKIP_ORDERBY_NO;
 
   plan->has_sort_limit = false;
+  plan->parallel_driven = false;
   plan->use_iscan_descending = false;
   plan->need_final_sort = false;
   plan->limit_nljoin_guessed_card = 0.0;
   plan->iscan_index_rows = 0.0;
   plan->iscan_heap_io = 0.0;
   plan->iscan_descent_cpu = 0.0;
-  plan->cmp_variable_cost = 0.0;
-  plan->cmp_variable_key = -1.0;
 
   return plan;
 }
@@ -4260,6 +4257,133 @@ qo_mackert_lohman_pages (double T, double N)
 }
 
 /*
+ * qo_plan_select_hint () - the hint bits of the select a plan belongs to
+ *   return: the hints, PT_HINT_NONE when unavailable
+ *   plan(in):
+ */
+static PT_HINT_ENUM
+qo_plan_select_hint (QO_PLAN * plan)
+{
+  PT_NODE *tree;
+
+  if (plan == NULL || plan->info == NULL || plan->info->env == NULL)
+    {
+      return PT_HINT_NONE;
+    }
+
+  tree = QO_ENV_PT_TREE (plan->info->env);
+  return (tree != NULL && PT_IS_SELECT (tree)) ? tree->info.query.q.select.hint : PT_HINT_NONE;
+}
+
+/*
+ * qo_plan_list_pages () - estimated pages of the list file a plan's result is materialized into
+ *   return: cardinality * projected size / page size (as qo_hjoin_cost () sizes its inputs)
+ *   plan(in):
+ */
+static double
+qo_plan_list_pages (QO_PLAN * plan)
+{
+  if (plan == NULL || plan->info == NULL)
+    {
+      return 0.0;
+    }
+
+  return plan->info->cardinality * (double) plan->info->projected_size / (double) IO_PAGESIZE;
+}
+
+/*
+ * qo_parallel_cost_divisor () - divisor for the work of a join the executor runs in parallel
+ *   return: QO_PARALLEL_COST_DIVISOR capped by parallelism / 2, or 1 when no discount applies
+ *   join(in): the join plan being costed
+ *
+ * Note: parallelism 0..2 turns the discount off (at most 2x with parallelism 2, hence the cap),
+ *	 and so does a LIMIT that the joins can stop at (can_apply_limit_card): such a query ends
+ *	 before workers pay off, and the LIMIT-aware nested-loop costing decides those plans.
+ *	 A LIMIT above a GROUP BY or ORDER BY does not stop the joins and keeps the discount.
+ */
+static double
+qo_parallel_cost_divisor (QO_PLAN * join)
+{
+  double divisor = MIN (QO_PARALLEL_COST_DIVISOR, (double) prm_get_integer_value (PRM_ID_PARALLELISM) / 2.0);
+
+  if (divisor <= 1.0 || join->info == NULL || join->info->planner == NULL
+      || (QO_PLAN_HAS_LIMIT (join) && join->info->planner->can_apply_limit_card))
+    {
+      return 1.0;
+    }
+
+  return divisor;
+}
+
+/*
+ * qo_scan_runs_parallel () - does the executor split this scan among parallel workers
+ *   return: true for a heap scan of at least parallel_scan_page_threshold pages
+ *   scan(in):
+ *
+ * Note: index scans are treated as serial. The threshold is the parameter's default, not the
+ *	 server's value: test_mode lowers the server's thresholds to exercise the parallel
+ *	 executor on tiny tables, and plan choices must not follow that.
+ */
+static bool
+qo_scan_runs_parallel (QO_PLAN * scan)
+{
+  return (scan->plan_type == QO_PLANTYPE_SCAN && qo_is_seq_scan (scan)
+	  && !(qo_plan_select_hint (scan) & PT_HINT_NO_PARALLEL_SCAN)
+	  && ((double) QO_NODE_TCARD (scan->plan_un.scan.node)
+	      >= (double) prm_get_integer_value (PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD)));
+}
+
+/*
+ * qo_plan_drives_parallel () - would a nested-loop chain driven by this plan run in parallel
+ *   return: true if the executor splits the driving scan of the chain among workers
+ *   plan(in): the outer of a nested loop
+ *
+ * Note: the executor parallelizes a nested-loop chain by splitting its driving (outermost)
+ *	 scan among workers, each running the whole chain, so the answer is inherited: a heap scan
+ *	 by its own size, a nested loop by its own parallel_driven, and a hash join, merge join
+ *	 or sort -- whose result is materialized into a list file that the chain then scans -- by
+ *	 the estimated size of that list.
+ */
+static bool
+qo_plan_drives_parallel (QO_PLAN * plan)
+{
+  if (plan == NULL || plan->info == NULL)
+    {
+      return false;
+    }
+
+  if (plan->plan_type == QO_PLANTYPE_SCAN)
+    {
+      return qo_scan_runs_parallel (plan);
+    }
+
+  if (plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
+    {
+      return plan->parallel_driven;
+    }
+
+  return (!(qo_plan_select_hint (plan) & PT_HINT_NO_PARALLEL_SCAN)
+	  && qo_plan_list_pages (plan) >= (double) prm_get_integer_value (PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD));
+}
+
+/*
+ * qo_join_input_factor () - multiplier for the variable cost of a hash or merge join input
+ *   return: 1 / divisor when the input is a heap scan the executor parallelizes, else 1
+ *   input(in): the outer or inner of a hash or merge join (whose inputs are read once)
+ *   divisor(in):
+ *
+ * Note: scan plans keep their serial cost (the access paths of one table are compared at
+ *	 serial cost, and the same scan plan may serve as a per-row nested-loop inner), so the
+ *	 discount of a parallel input scan is applied by the join that consumes it. Join inputs
+ *	 already carry their own discounts.
+ */
+static double
+qo_join_input_factor (QO_PLAN * input, double divisor)
+{
+  return (divisor > 1.0 && qo_scan_runs_parallel (input)) ? 1.0 / divisor : 1.0;
+}
+
+/*
  * qo_nljoin_cost () -
  *   return:
  *   planp(in):
@@ -4270,6 +4394,7 @@ qo_nljoin_cost (QO_PLAN * planp)
   QO_PLAN *inner, *outer;
   double inner_io_cost, inner_cpu_cost, outer_io_cost, outer_cpu_cost;
   double guessed_result_cardinality, limit_val, outer_card, required_card;
+  double divisor;
 
   inner = planp->plan_un.join.inner;
 
@@ -4400,6 +4525,22 @@ qo_nljoin_cost (QO_PLAN * planp)
   /* outer side IO cost of nested-loop block join */
   outer_io_cost = outer->variable_io_cost;
 
+  /* parallel execution (CBRD-27474): the chain runs in parallel when its driving scan does;
+   * then the per-row inner work is divided, and so is the driving scan when the outer is that
+   * scan itself (a nested-loop or materialized outer already carries its own discount) */
+  divisor = qo_parallel_cost_divisor (planp);
+  planp->parallel_driven = (divisor > 1.0 && qo_plan_drives_parallel (outer));
+  if (planp->parallel_driven)
+    {
+      inner_cpu_cost /= divisor;
+      inner_io_cost /= divisor;
+      if (outer->plan_type == QO_PLANTYPE_SCAN)
+	{
+	  outer_cpu_cost /= divisor;
+	  outer_io_cost /= divisor;
+	}
+    }
+
   /* CPU and IO costs which are variable according to the join plan */
   planp->variable_cpu_cost = inner_cpu_cost + outer_cpu_cost;
   planp->variable_io_cost = inner_io_cost + outer_io_cost;
@@ -4478,6 +4619,7 @@ qo_mjoin_cost (QO_PLAN * planp)
   QO_PLAN *outer;
   QO_ENV *env;
   double outer_cardinality = 0.0, inner_cardinality = 0.0;
+  double divisor, outer_factor, inner_factor;
 
   inner = planp->plan_un.join.inner;
 
@@ -4521,11 +4663,15 @@ qo_mjoin_cost (QO_PLAN * planp)
   /* CPU and IO costs which are fixed against join */
   planp->fixed_cpu_cost = outer->fixed_cpu_cost + inner->fixed_cpu_cost;
   planp->fixed_io_cost = outer->fixed_io_cost + inner->fixed_io_cost;
-  /* CPU and IO costs which are variable according to the join plan */
-  planp->variable_cpu_cost = outer->variable_cpu_cost + inner->variable_cpu_cost;
+  /* CPU and IO costs which are variable according to the join plan; a parallel input scan is
+   * charged at its parallel cost (qo_join_input_variable_cost ()), the merge itself is serial */
+  divisor = qo_parallel_cost_divisor (planp);
+  outer_factor = qo_join_input_factor (outer, divisor);
+  inner_factor = qo_join_input_factor (inner, divisor);
+  planp->variable_cpu_cost = outer->variable_cpu_cost * outer_factor + inner->variable_cpu_cost * inner_factor;
   planp->variable_cpu_cost += (outer_cardinality + inner_cardinality) * QO_CPU_WEIGHT * MJ_CPU_OVERHEAD_FACTOR;
   /* merge cost */
-  planp->variable_io_cost = outer->variable_io_cost + inner->variable_io_cost;
+  planp->variable_io_cost = outer->variable_io_cost * outer_factor + inner->variable_io_cost * inner_factor;
 
 #if TEST_DUMP_PLAN_JOIN_COST
   fprintf (stdout, "\nSort Merge Cost: \n");
@@ -4558,6 +4704,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   double inner_pages, outer_pages;
   double inner_build_cpu_cost, outer_build_cpu_cost;
   double inner_build_io_cost, outer_build_io_cost;
+  double divisor, outer_factor, inner_factor, own_factor;
 
   inner_plan_p = plan_p->plan_un.join.inner;
 
@@ -4593,8 +4740,25 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   plan_p->fixed_cpu_cost = outer_plan_p->fixed_cpu_cost + inner_plan_p->fixed_cpu_cost;
   plan_p->fixed_io_cost = outer_plan_p->fixed_io_cost + inner_plan_p->fixed_io_cost;
 
-  plan_p->variable_cpu_cost = outer_plan_p->variable_cpu_cost + inner_plan_p->variable_cpu_cost;
-  plan_p->variable_io_cost = outer_plan_p->variable_io_cost + inner_plan_p->variable_io_cost;
+  /* parallel execution (CBRD-27474): each input is charged at its parallel cost
+   * (qo_join_input_factor ()), and the build/probe work below is divided when the executor runs
+   * this hash join in parallel -- decided afresh for every hash join, whatever its inputs did,
+   * by the size of the larger input list (hjoin_try_parallel ()) */
+  divisor = qo_parallel_cost_divisor (plan_p);
+  outer_factor = qo_join_input_factor (outer_plan_p, divisor);
+  inner_factor = qo_join_input_factor (inner_plan_p, divisor);
+  own_factor = 1.0;
+  if (divisor > 1.0 && !(qo_plan_select_hint (plan_p) & PT_HINT_NO_PARALLEL_HASH_JOIN)
+      && (MAX (qo_plan_list_pages (outer_plan_p), qo_plan_list_pages (inner_plan_p))
+	  >= (double) prm_get_integer_value (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD)))
+    {
+      own_factor = 1.0 / divisor;
+    }
+
+  plan_p->variable_cpu_cost =
+    outer_plan_p->variable_cpu_cost * outer_factor + inner_plan_p->variable_cpu_cost * inner_factor;
+  plan_p->variable_io_cost =
+    outer_plan_p->variable_io_cost * outer_factor + inner_plan_p->variable_io_cost * inner_factor;
 
   /**
    * STEP 2: Calculate the cost when inner is used as build input.
@@ -4636,6 +4800,11 @@ qo_hjoin_cost (QO_PLAN * plan_p)
 	outer_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT * QO_COST_SEQ_PAGE;
       }
   }
+
+  inner_build_cpu_cost *= own_factor;
+  inner_build_io_cost *= own_factor;
+  outer_build_cpu_cost *= own_factor;
+  outer_build_io_cost *= own_factor;
 
   /**
    * STEP 4: Choose the lowest cost.
@@ -5135,205 +5304,6 @@ qo_plan_cmp_prefer_covering_index (QO_PLAN * scan_plan_p, QO_PLAN * sort_plan_p)
 }
 
 /*
- * qo_plan_parallel_hint () - the select's hint bits, 0 when unavailable
- */
-static PT_HINT_ENUM
-qo_plan_parallel_hint (QO_PLAN * plan)
-{
-  PT_NODE *tree;
-
-  if (plan == NULL || plan->info == NULL || plan->info->env == NULL)
-    {
-      return PT_HINT_NONE;
-    }
-
-  tree = QO_ENV_PT_TREE (plan->info->env);
-  return (tree != NULL && PT_IS_SELECT (tree)) ? tree->info.query.q.select.hint : PT_HINT_NONE;
-}
-
-/*
- * qo_plan_is_parallel_driven () - is this nested-loop chain (or scan) run by parallel workers
- *   return: true if the executor splits the driving scan of the plan among workers
- *   plan(in):
- *
- * Note: a deliberately coarse yes/no, not a degree. The executor parallelizes a nested-loop
- *	 chain by splitting its driving (outermost) scan among workers, each running the whole
- *	 chain below it, so the answer is decided by the driving scan alone:
- *	 - a heap scan of at least parallel_scan_page_threshold pages (the executor's own gate);
- *	   index scans are treated as serial. The client reads the parameter's default, not the
- *	   server's value: test_mode lowers the server's thresholds to exercise the parallel
- *	   executor on tiny tables, and plan choices must not follow that;
- *	 - a hash join or sort result, which is materialized into a list file: its estimated
- *	   size must clear the same threshold, otherwise a tiny hash join slipped under a
- *	   serial chain would earn the whole chain the discount;
- *	 - a nested loop cut short by a LIMIT is not parallel: it stops before workers pay off.
- */
-static bool
-qo_plan_is_parallel_driven (QO_PLAN * plan)
-{
-  double threshold = (double) prm_get_integer_value (PRM_ID_PARALLEL_SCAN_PAGE_THRESHOLD);
-  PT_HINT_ENUM hint = qo_plan_parallel_hint (plan);
-
-  while (plan != NULL && plan->plan_type == QO_PLANTYPE_JOIN && QO_IS_NL_JOIN (plan))
-    {
-      if (QO_PLAN_HAS_LIMIT (plan)
-	  && (plan->info->planner->can_apply_limit_card || qo_plan_is_orderby_skip_candidate (plan)))
-	{
-	  return false;
-	}
-      plan = plan->plan_un.join.outer;
-    }
-
-  if (plan == NULL || plan->info == NULL || (hint & PT_HINT_NO_PARALLEL_SCAN))
-    {
-      return false;
-    }
-
-  if (plan->plan_type == QO_PLANTYPE_SCAN)
-    {
-      return qo_is_seq_scan (plan) && (double) QO_NODE_TCARD (plan->plan_un.scan.node) >= threshold;
-    }
-
-  /* hash join, merge join or sort: the chain above scans its materialized result */
-  return qo_plan_list_pages (plan) >= threshold;
-}
-
-/*
- * qo_plan_list_pages () - estimated pages of the list file a plan's result is materialized into
- *   return: cardinality * projected size / page size (as qo_hjoin_cost () sizes its inputs)
- *   plan(in):
- */
-static double
-qo_plan_list_pages (QO_PLAN * plan)
-{
-  if (plan == NULL || plan->info == NULL)
-    {
-      return 0.0;
-    }
-
-  return plan->info->cardinality * (double) plan->info->projected_size / (double) IO_PAGESIZE;
-}
-
-/*
- * qo_plan_parallel_variable_cost () - variable cost of a plan as plan comparison sees it
- *   return: the variable cost with the parallel part divided by divisor
- *   plan(in):
- *   divisor(in): > 1
- *
- * Note: only the work the executor actually runs in parallel is divided (CBRD-27474):
- *	 - a scan or nested-loop chain: all of it when its driving scan is parallel
- *	   (qo_plan_is_parallel_driven ()); otherwise the outer keeps its own discount and the
- *	   per-probe inner work stays serial;
- *	 - a hash join: its own build/probe work when the larger input reaches
- *	   parallel_hash_join_page_threshold (the executor's gate, hjoin_try_parallel (); the
- *	   default, as above), its two inputs each by their own rule;
- *	 - anything else (sort, merge join, follow): its own work stays serial, its inputs keep
- *	   their discounts.
- *	 Dividing the whole plan instead made a small parallel part under a serial chain (a tiny
- *	 hash join below a nested loop, a hash join over a serial nested loop) win on paper.
- */
-static double
-qo_plan_parallel_variable_cost (QO_PLAN * plan, double divisor)
-{
-  double variable = plan->variable_cpu_cost + plan->variable_io_cost;
-
-  /* plan comparison asks for the same plans over and over during the join enumeration, and
-   * the answer walks the plan tree: compute it once per costing of the plan */
-  if (plan->cmp_variable_key != variable)
-    {
-      plan->cmp_variable_cost = qo_plan_parallel_variable_cost_raw (plan, divisor);
-      plan->cmp_variable_key = variable;
-    }
-
-  return plan->cmp_variable_cost;
-}
-
-static double
-qo_plan_parallel_variable_cost_raw (QO_PLAN * plan, double divisor)
-{
-  double variable = plan->variable_cpu_cost + plan->variable_io_cost;
-  QO_PLAN *outer, *inner;
-  double sub;
-
-  switch (plan->plan_type)
-    {
-    case QO_PLANTYPE_SCAN:
-      return qo_plan_is_parallel_driven (plan) ? variable / divisor : variable;
-
-    case QO_PLANTYPE_SORT:
-      if (plan->plan_un.sort.subplan == NULL)
-	{
-	  return variable;
-	}
-      sub = plan->plan_un.sort.subplan->variable_cpu_cost + plan->plan_un.sort.subplan->variable_io_cost;
-      return qo_plan_parallel_variable_cost (plan->plan_un.sort.subplan, divisor) + (variable - sub);
-
-    case QO_PLANTYPE_JOIN:
-      outer = plan->plan_un.join.outer;
-      inner = plan->plan_un.join.inner;
-      if (outer == NULL || inner == NULL)
-	{
-	  return variable;
-	}
-      if (QO_IS_NL_JOIN (plan))
-	{
-	  if (qo_plan_is_parallel_driven (plan))
-	    {
-	      return variable / divisor;
-	    }
-	  sub = outer->variable_cpu_cost + outer->variable_io_cost;
-	  return qo_plan_parallel_variable_cost (outer, divisor) + (variable - sub);
-	}
-      sub = outer->variable_cpu_cost + outer->variable_io_cost + inner->variable_cpu_cost + inner->variable_io_cost;
-      if (plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN
-	  && !(qo_plan_parallel_hint (plan) & PT_HINT_NO_PARALLEL_HASH_JOIN)
-	  && (MAX (qo_plan_list_pages (outer), qo_plan_list_pages (inner))
-	      >= (double) prm_get_integer_value (PRM_ID_PARALLEL_HASH_JOIN_PAGE_THRESHOLD)))
-	{
-	  return (qo_plan_parallel_variable_cost (outer, divisor) + qo_plan_parallel_variable_cost (inner, divisor)
-		  + (variable - sub) / divisor);
-	}
-      return (qo_plan_parallel_variable_cost (outer, divisor) + qo_plan_parallel_variable_cost (inner, divisor)
-	      + (variable - sub));
-
-    default:
-      return variable;
-    }
-}
-
-/*
- * qo_plan_cmp_variable_cost () - variable cost used by plan comparison
- *   return: variable cost, with the parallel part divided when parallel execution is on
- *   plan(in):
- *
- * Note: the cost model itself stays serial; only plan comparison sees the discount, so that
- *	 between two plans of similar serial cost the one the executor can parallelize wins
- *	 (CBRD-27474: TPC-H Q21 lost its parallel hash chain to a nested loop driven by a
- *	 one-page table). With parallelism 2 the realized speed-up is at most 2, hence the cap
- *	 parallelism / 2; parallelism 0/1 turns the discount off, and so does a LIMIT that the
- *	 joins can stop at (can_apply_limit_card): the query ends before workers pay off, and the
- *	 LIMIT-aware nested-loop costing already decides those plans. A LIMIT above a GROUP BY or
- *	 ORDER BY does not stop the joins and keeps the discount. Plans over a single node
- *	 (the access paths of one table) are compared undiscounted: a heap scan would otherwise
- *	 outbid covering, group-by-skipping and order-by-skipping index scans on every table
- *	 past the scan threshold. The discount is about how a join is executed.
- */
-static double
-qo_plan_cmp_variable_cost (QO_PLAN * plan)
-{
-  double divisor = MIN (QO_PARALLEL_COST_DIVISOR, (double) prm_get_integer_value (PRM_ID_PARALLELISM) / 2.0);
-
-  if (divisor <= 1.0 || plan->variable_cpu_cost >= QO_INFINITY || plan->variable_io_cost >= QO_INFINITY
-      || plan->info == NULL || bitset_cardinality (&(plan->info->nodes)) <= 1
-      || (QO_PLAN_HAS_LIMIT (plan) && plan->info->planner->can_apply_limit_card))
-    {
-      return plan->variable_cpu_cost + plan->variable_io_cost;
-    }
-
-  return qo_plan_parallel_variable_cost (plan, divisor);
-}
-
-/*
  * qo_plan_cmp () -
  *   return: one of {PLAN_COMP_UNK, PLAN_COMP_LT, PLAN_COMP_EQ, PLAN_COMP_GT}
  *   a(in):
@@ -5363,9 +5333,9 @@ qo_plan_cmp (QO_PLAN * a, QO_PLAN * b)
   QO_PLAN_COMPARE_RESULT temp_res;
 
   af = a->fixed_cpu_cost + a->fixed_io_cost;
-  aa = qo_plan_cmp_variable_cost (a);
+  aa = a->variable_cpu_cost + a->variable_io_cost;
   bf = b->fixed_cpu_cost + b->fixed_io_cost;
-  ba = qo_plan_cmp_variable_cost (b);
+  ba = b->variable_cpu_cost + b->variable_io_cost;
 
   /* Check if RBO is needed */
   ta = af + aa;
@@ -6833,13 +6803,13 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
 	  /* STEP 1: found best plan */
 	  best_vc_pid = best_tc_pid = -1;	/* init */
 
-	  vc = qo_plan_cmp_variable_cost (plan);
+	  vc = plan->variable_cpu_cost + plan->variable_io_cost;
 	  tc = plan->fixed_cpu_cost + plan->fixed_io_cost + vc;
 
 	  for (i = 0; i < planvec->nplans; i++)
 	    {
 	      p = planvec->plan[i];
-	      p_vc = qo_plan_cmp_variable_cost (p);
+	      p_vc = p->variable_cpu_cost + p->variable_io_cost;
 	      p_tc = p->fixed_cpu_cost + p->fixed_io_cost + p_vc;
 
 	      if (p_vc < vc)
@@ -6858,13 +6828,13 @@ qo_check_planvec (QO_PLANVEC * planvec, QO_PLAN * plan)
 	  /* STEP 2: found worst plan */
 	  worst_vc_pid = worst_tc_pid = -1;	/* init */
 
-	  vc = qo_plan_cmp_variable_cost (plan);
+	  vc = plan->variable_cpu_cost + plan->variable_io_cost;
 	  tc = plan->fixed_cpu_cost + plan->fixed_io_cost + vc;
 
 	  for (i = 0; i < planvec->nplans; i++)
 	    {
 	      p = planvec->plan[i];
-	      p_vc = qo_plan_cmp_variable_cost (p);
+	      p_vc = p->variable_cpu_cost + p->variable_io_cost;
 	      p_tc = p->fixed_cpu_cost + p->fixed_io_cost + p_vc;
 
 	      if (i != best_vc_pid && i != best_tc_pid)
@@ -6970,13 +6940,13 @@ qo_find_best_plan_on_planvec (QO_PLANVEC * planvec, double n)
 
   best_plan = planvec->plan[0];
   fixed = best_plan->fixed_cpu_cost + best_plan->fixed_io_cost;
-  variable = qo_plan_cmp_variable_cost (best_plan);
+  variable = best_plan->variable_cpu_cost + best_plan->variable_io_cost;
   best_cost = fixed + (n * variable);
   for (i = 1; i < planvec->nplans; i++)
     {
       plan = planvec->plan[i];
       fixed = plan->fixed_cpu_cost + plan->fixed_io_cost;
-      variable = qo_plan_cmp_variable_cost (plan);
+      variable = plan->variable_cpu_cost + plan->variable_io_cost;
       cost = fixed + (n * variable);
 
       if (cost < best_cost)
