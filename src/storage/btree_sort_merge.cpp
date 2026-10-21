@@ -101,6 +101,9 @@ static BTSORT_RUN_SLOT *btsort_run_sort (const char *rec_base, BTSORT_RUN_SLOT *
 
 typedef UINT16 BTSORT_BUCKET_ID;
 
+/* next () fetches the record this many slots ahead */
+#define BTSORT_NEXT_PREFETCH_AHEAD  16
+
 namespace
 {
   struct merge_sorter_ctx
@@ -996,6 +999,11 @@ btsort_merge_sorter_next (BTSORT_RUN *run)
   if (run->cursor >= run->readrecs)
     {
       return NULL;
+    }
+
+  if (run->cursor + BTSORT_NEXT_PREFETCH_AHEAD < run->readrecs)
+    {
+      prefetch (run->base + slots[run->cursor + BTSORT_NEXT_PREFETCH_AHEAD], PREFETCH_READ, PREFETCH_CACHE_L1);
     }
 
   return run->base + slots[run->cursor++];
