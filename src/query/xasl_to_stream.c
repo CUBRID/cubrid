@@ -4344,6 +4344,26 @@ xts_process_insert_proc (char *ptr, const INSERT_PROC_NODE * insert_info)
       ptr = or_pack_int (ptr, offset);
     }
 
+  ptr = or_pack_int (ptr, insert_info->remote_num_odku);
+
+  /* Column and value go out as a pair, so the two arrays cannot drift apart across the stream. */
+  for (i = 0; i < insert_info->remote_num_odku; i++)
+    {
+      offset = xts_save_string (insert_info->remote_odku_cols[i]);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+
+      offset = xts_save_string (insert_info->remote_odku_exprs[i]);
+      if (offset == ER_FAILED)
+	{
+	  return NULL;
+	}
+      ptr = or_pack_int (ptr, offset);
+    }
+
   return ptr;
 }
 
@@ -4784,6 +4804,10 @@ xts_process_indx_info (char *ptr, const INDX_INFO * indx_info)
   ptr = or_pack_int (ptr, indx_info->ils_prefix_len);
 
   ptr = or_pack_int (ptr, indx_info->func_idx_col_id);
+
+  /* the B-tree's key domain: the server derives the key plan from it at load and matches it with the root
+   * header's, which keeps an OBJECT key as OBJECT (its key values are OIDs) - so no OBJECT-to-OID packing here */
+  ptr = or_pack_domain (ptr, indx_info->key_type, 0, 0);
 
   if (indx_info->cov_list_id == NULL)
     {
@@ -5383,8 +5407,6 @@ xts_process_regu_variable (char *ptr, const REGU_VARIABLE * regu_var)
 
   ptr = or_pack_int (ptr, regu_var->type);
 
-  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_ALL_CONST));
-  assert (!REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_FETCH_NOT_CONST));
   ptr = or_pack_int (ptr, regu_var->flags);
 
   offset = xts_save_db_value (regu_var->vfetch_to);
@@ -6627,7 +6649,9 @@ xts_sizeof_insert_proc (const INSERT_PROC_NODE * insert_info)
 	   + (insert_info->num_val_lists * PTR_SIZE)	/* valptr_lists */
 	   + xts_sizeof_remote_dml_sink ()	/* remote INSERT SELECT fields */
 	   + OR_INT_SIZE	/* remote_num_attrs */
-	   + (insert_info->remote_num_attrs * PTR_SIZE));	/* remote_attr_names */
+	   + (insert_info->remote_num_attrs * PTR_SIZE)	/* remote_attr_names */
+	   + OR_INT_SIZE	/* remote_num_odku */
+	   + (insert_info->remote_num_odku * 2 * PTR_SIZE));	/* remote_odku_cols + remote_odku_exprs */
 
   return size;
 }
@@ -7049,6 +7073,8 @@ xts_sizeof_indx_info (const INDX_INFO * indx_info)
 	   + OR_INT_SIZE	/* func_idx_col_id (int) */
 	   + OR_INT_SIZE	/* iss_range's range */
 	   + PTR_SIZE);		/* iss_range's key1 */
+
+  size += or_packed_domain_size (indx_info->key_type, 0);	/* key_type */
 
   return size;
 }

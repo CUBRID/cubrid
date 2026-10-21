@@ -343,7 +343,9 @@ struct qo_info
   double scan_rows;		/* Number of rows required for scanning */
   double total_rows;		/* Number of rows excluding search conditions */
   double group_rows;		/* Number of rows expected after grouping */
-  double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost */
+  double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost;
+				 * for semi/anti, the share of outer rows the join emits,
+				 * so the LIMIT estimate can tell how many outer rows to read for LIMIT rows */
 
   /*
    * One plan for each equivalence class, in each case the best we have
@@ -477,5 +479,6 @@ extern PRED_CLASS qo_classify (PT_NODE * node);
 extern QO_PLAN_PARALLEL_OPT_USE qo_check_hjoin_for_parallel_opt (QO_PLAN * plan);
 
 extern PT_JOIN_TYPE qo_plan_semi_anti_join_type (QO_PLAN * plan);
+extern bool qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_terms);
 
 #endif /* _QUERY_PLANNER_H_ */

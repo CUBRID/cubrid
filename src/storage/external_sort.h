@@ -125,6 +125,10 @@ struct SUBKEY_INFO
   int is_nulls_first;
 
   bool use_cmp_dom;		/* when true, use cmp_dom to make comparing */
+
+  bool cmp_dom_session_read;	/* cmp_dom rests on a session variable read: the type holds for the statement, a value
+				 * of another type converts to it or fails; the optdebug cross-check, which compares
+				 * with the type each value gives, skips it */
 };
 
 struct SORTKEY_INFO
