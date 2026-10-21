@@ -34,9 +34,8 @@ namespace parallel_query
      * build_partitions
      */
 
-    int build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info);
-    int resplit_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
-			    HASHJOIN_SPLIT_INFO *split_info);
+    int build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
+			  HASHJOIN_SPLIT_INFO *split_info);
 
     /*
      * execute_partitions

@@ -25,10 +25,10 @@
 
 #include "error_manager.h"		/* assert_release_error, er_errid, NO_ERROR, ... */
 #include "list_file.h"			/* qfile_open_list, qfile_open_list_scan, qfile_close_scan, ... */
+#include "query_manager.h"		/* QMGR_TEMP_FILE (qmgr_temp_file) */
 #include "memory_alloc.h"		/* db_private_alloc, db_private_free_and_init */
 #include "object_representation.h"	/* QFILE_GET_NEXT_VPID */
 #include "px_thread_safe_queue.hpp"	/* parallel_query::thread_safe_queue */
-#include "query_manager.h"		/* QMGR_TEMP_FILE (qmgr_temp_file) */
 #include "storage_common.h"		/* OID_INITIALIZER, S_CLOSED, VPID_SET_NULL, ... */
 
 #include <thread>			/* std::this_thread::yield */
@@ -42,108 +42,6 @@ namespace parallel_query
   {
     /*
      * build_partitions
-     */
-
-    int
-    build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info)
-    {
-      HASHJOIN_SHARED_SPLIT_INFO shared_info;
-      HASHJOIN_SPLIT_STAGING_BUFFER staging_buffer = { nullptr, 0 };
-      UINT32 task_cnt, task_index;
-      int error = NO_ERROR;
-
-      assert (manager != nullptr);
-      assert (split_info != nullptr);
-
-      HASHJOIN_STATS *stats = manager->single_context.stats;
-      HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
-      assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
-
-      task_cnt = manager->num_parallel_threads;
-
-      THREAD_ENTRY *main_thread_p = thread_get_main_thread (&thread_ref);
-      task_manager task_manager (manager->px_worker_manager, *main_thread_p);
-      split_task *task = nullptr;
-
-      error = hjoin_init_shared_split_info (&thread_ref, manager, manager->context_cnt, &shared_info);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-
-      error = hjoin_init_split_staging_buffer (&thread_ref, &staging_buffer, manager->context_cnt);
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
-	}
-
-      for (int side = 0; side < 2; side++)
-	{
-	  HASHJOIN_INPUT_SPLIT_INFO *input = (side == 0) ? &split_info->outer : &split_info->inner;
-
-	  if (thread_is_on_trace (&thread_ref))
-	    {
-	      hjoin_trace_start (&thread_ref, &start_stats);
-	    }
-
-	  /* collect the data page sectors of the input (the sectors of the previous input are freed inside) */
-	  error = qfile_open_list_sector_scan (&thread_ref, input->fetch_info->list_id, &shared_info.sector_scan);
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-
-	  for (task_index = 0; task_index < task_cnt; task_index++)
-	    {
-	      task = new split_task (task_manager, manager, input, &shared_info, &staging_buffer, task_index);
-	      task_manager.push_task (task);
-	    }
-
-	  task_manager.join ();
-
-	  if (!task_manager.has_error ())
-	    {
-	      error = hjoin_flush_split_staging_buffer (&thread_ref, &staging_buffer, input->part_list_id,
-		      manager->worker_tfiles[0]);
-	    }
-
-	  if (manager->px_worker_stats != nullptr)
-	    {
-	      hjoin_trace_drain_worker_stats (&thread_ref, manager);
-	    }
-	  if (thread_is_on_trace (&thread_ref))
-	    {
-	      hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
-	    }
-
-	  if (task_manager.has_error () || error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	}
-
-      ASSERT_NO_ERROR_OR_INTERRUPTED ();
-
-cleanup:
-      hjoin_clear_split_staging_buffer (&thread_ref, &staging_buffer);
-      hjoin_clear_shared_split_info (&thread_ref, manager, &shared_info);
-
-      return error;
-
-error_exit:
-      task_manager.clear_interrupt (thread_ref);
-
-      if (error == NO_ERROR || er_errid () == NO_ERROR)
-	{
-	  assert_release_error (er_errid () != NO_ERROR);
-	  error = er_errid ();
-	}
-
-      goto cleanup;
-    }
-
-    /*
-     * resplit_partitions
      */
 
     /* produce_vpids - push the pages of a partition list to the queue the resplit tasks take them from, in their order;
@@ -187,8 +85,8 @@ error_exit:
     }
 
     int
-    resplit_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
-			HASHJOIN_SPLIT_INFO *split_info)
+    build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
+		      HASHJOIN_SPLIT_INFO *split_info)
     {
       HASHJOIN_SHARED_SPLIT_INFO shared_info;
       HASHJOIN_SPLIT_STAGING_BUFFER staging_buffer = { nullptr, 0 };
@@ -197,22 +95,25 @@ error_exit:
 
       assert (manager != nullptr);
       assert (context != nullptr);
-      assert (context->part_cnt > 1);
       assert (split_info != nullptr);
+
+      HASHJOIN_STATS *stats = manager->single_context.stats;
+      HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
+      assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
       task_cnt = manager->num_parallel_threads;
 
       THREAD_ENTRY *main_thread_p = thread_get_main_thread (&thread_ref);
       task_manager task_manager (manager->px_worker_manager, *main_thread_p);
-      resplit_task *task = nullptr;
+      split_task *task = nullptr;
 
-      error = hjoin_init_shared_split_info (&thread_ref, manager, context->part_cnt, &shared_info);
+      error = hjoin_init_shared_split_info (&thread_ref, manager, context->child_cnt, &shared_info);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
 	}
 
-      error = hjoin_init_split_staging_buffer (&thread_ref, &staging_buffer, context->part_cnt);
+      error = hjoin_init_split_staging_buffer (&thread_ref, &staging_buffer, context->child_cnt);
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -222,20 +123,45 @@ error_exit:
 	{
 	  HASHJOIN_INPUT_SPLIT_INFO *input = (side == 0) ? &split_info->outer : &split_info->inner;
 
-	  /* the pages of the input, pushed by this thread as the tasks take them; one queue per input, as push_last
-	   * closes it */
-	  thread_safe_queue<VPID> vpid_queue (task_cnt * 2);
-
-	  for (task_index = 0; task_index < task_cnt; task_index++)
+	  if (thread_is_on_trace (&thread_ref))
 	    {
-	      task = new resplit_task (task_manager, manager, context, input, &shared_info, &staging_buffer, &vpid_queue,
-				       task_index);
-	      task_manager.push_task (task);
+	      hjoin_trace_start (&thread_ref, &start_stats);
 	    }
 
-	  error = produce_vpids (thread_ref, input->fetch_info->list_id, vpid_queue, task_manager);
+	  if (context->level == 0)
+	    {
+	      /* collect the data page sectors of the input (the sectors of the previous input are freed inside) */
+	      error = qfile_open_list_sector_scan (&thread_ref, input->fetch_info->list_id, &shared_info.sector_scan);
+	      if (error != NO_ERROR)
+		{
+		  goto error_exit;
+		}
 
-	  task_manager.join ();
+	      for (task_index = 0; task_index < task_cnt; task_index++)
+		{
+		  task = new split_task (task_manager, manager, input, &shared_info, &staging_buffer, task_index);
+		  task_manager.push_task (task);
+		}
+
+	      task_manager.join ();
+	    }
+	  else
+	    {
+	      /* a partition list borrows the worker tfiles and has no sectors of its own: this thread pushes its pages
+	       * as the tasks take them; one queue per input, as push_last closes it */
+	      thread_safe_queue<VPID> vpid_queue (task_cnt * 2);
+
+	      for (task_index = 0; task_index < task_cnt; task_index++)
+		{
+		  task = new resplit_task (task_manager, manager, context, input, &shared_info, &staging_buffer,
+					   &vpid_queue, task_index);
+		  task_manager.push_task (task);
+		}
+
+	      error = produce_vpids (thread_ref, input->fetch_info->list_id, vpid_queue, task_manager);
+
+	      task_manager.join ();
+	    }
 
 	  if (!task_manager.has_error () && error == NO_ERROR)
 	    {
@@ -246,6 +172,10 @@ error_exit:
 	  if (manager->px_worker_stats != nullptr)
 	    {
 	      hjoin_trace_drain_worker_stats (&thread_ref, manager);
+	    }
+	  if (thread_is_on_trace (&thread_ref))
+	    {
+	      hjoin_trace_end (&thread_ref, &stats->split, &start_stats);
 	    }
 
 	  if (task_manager.has_error () || error != NO_ERROR)
@@ -510,8 +440,8 @@ error_exit:
       int error = NO_ERROR;
 
       assert (manager != nullptr);
-      assert (manager->contexts == nullptr);
-      assert (manager->context_cnt == 0);
+      assert (manager->single_context.child_contexts == nullptr);
+      assert (manager->single_context.child_cnt == 0);
 
       context_cnt = manager->num_parallel_threads;
       assert (context_cnt > 1);
@@ -533,10 +463,10 @@ error_exit:
 	      goto error_exit;
 	    }
 
-	  manager->context_cnt++;
+	  manager->single_context.child_cnt++;
 	}
 
-      manager->contexts = contexts;
+      manager->single_context.child_contexts = contexts;
 
       if (thread_is_on_trace (&thread_ref))
 	{
@@ -569,7 +499,7 @@ error_exit:
 error_exit:
       if (contexts != nullptr)
 	{
-	  for (context_index = 0; context_index < manager->context_cnt; context_index++)
+	  for (context_index = 0; context_index < manager->single_context.child_cnt; context_index++)
 	    {
 	      clear_context (thread_ref, &contexts[context_index]);
 	    }
@@ -594,8 +524,8 @@ error_exit:
 	  assert (manager->stats_group == nullptr);
 	}
 
-      manager->contexts = nullptr;
-      manager->context_cnt = 0;
+      manager->single_context.child_contexts = nullptr;
+      manager->single_context.child_cnt = 0;
 
       if (error == NO_ERROR || er_errid () == NO_ERROR)
 	{
@@ -623,7 +553,7 @@ error_exit:
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
       assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
-      contexts = manager->contexts;
+      contexts = manager->single_context.child_contexts;
 
       task_cnt = manager->num_parallel_threads;
 
@@ -674,7 +604,7 @@ error_exit:
 	  goto error_exit;
 	}
 
-      for (context_index = 0; context_index < manager->context_cnt; context_index++)
+      for (context_index = 0; context_index < manager->single_context.child_cnt; context_index++)
 	{
 	  current_context = &contexts[context_index];
 

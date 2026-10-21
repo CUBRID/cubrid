@@ -26,16 +26,11 @@
 #include "list_file.h"		/* qfile_add_tuple_to_staged_page, qfile_copy_to_external_file_page */
 #include "memory_alloc.h"	/* db_private_alloc, DB_ALIGN */
 #include "object_representation.h"	/* OR_GET_INT for QFILE_GET_TUPLE_LENGTH */
-#include "px_hash_join.hpp"	/* parallel_query::hash_join::... */
 #include "query_hash_join_constants.hpp"	/* HASHJOIN_SPLIT_LANDING_BUFFER_SIZE, ... */
 #include "query_manager.h"	/* QMGR_TEMP_FILE */
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-/* Hash Join Partitioning */
-static int hjoin_resplit_qlist (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, QFILE_LIST_ID **part_list_id,
-				UINT32 part_cnt, UINT32 divisor, QMGR_TEMP_FILE *worker_tfile);
 
 /* Hash Join Split Writer */
 static int hjoin_append_to_part_list (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer, UINT32 part_id,
@@ -130,164 +125,6 @@ hjoin_get_resplit_part_id (QFILE_TUPLE_RECORD *tuple_record, UINT32 divisor, UIN
   sub_hash_key = (UINT32) ((UINT64) HJOIN_HASH_MIX (hash_key) * divisor);
 
   return HJOIN_HASH_TO_PARTITION (sub_hash_key, part_cnt);
-}
-
-/*
- * hjoin_resplit_context() - split the lists of a context into its partitions (hjoin_init_part_contexts)
- *   return: Error code (NO_ERROR if successful, error code otherwise).
- *   thread_p(in): Thread entry.
- *   manager(in): Hash join manager containing shared state.
- *   context(in): Hash join context to split; part_cnt is set (hjoin_check_partition).
- *   split_info(in): The partition lists of each input.
- *   status(in): HASHJOIN_STATUS_PARTITION to split in this thread, HASHJOIN_STATUS_PARALLEL by the split workers.
- */
-int
-hjoin_resplit_context (THREAD_ENTRY *thread_p, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
-		       HASHJOIN_SPLIT_INFO *split_info, HASHJOIN_STATUS status)
-{
-  HASHJOIN_INPUT_SPLIT_INFO *input;
-  int side;
-  int error = NO_ERROR;
-
-  assert (thread_p != NULL);
-  assert (manager != NULL);
-  assert (context != NULL);
-  assert (context->part_cnt > 1);
-  assert (split_info != NULL);
-
-  switch (status)
-    {
-    case HASHJOIN_STATUS_PARTITION:
-      for (side = 0; side < 2; side++)
-	{
-	  input = (side == 0) ? &split_info->outer : &split_info->inner;
-
-	  error = hjoin_resplit_qlist (thread_p, input->fetch_info->list_id, input->part_list_id, context->part_cnt,
-				       context->divisor, manager->worker_tfiles[0]);
-	  if (error != NO_ERROR)
-	    {
-	      break;
-	    }
-	}
-      break;
-
-#if defined (SERVER_MODE)
-    case HASHJOIN_STATUS_PARALLEL:
-      // *INDENT-OFF*
-      error = parallel_query::hash_join::resplit_partitions (*thread_p, manager, context, split_info);
-      // *INDENT-ON*
-      break;
-#endif /* defined (SERVER_MODE) */
-
-    default:
-      /* impossible case */
-      assert_release_error (false);
-      error = er_errid ();
-      break;
-    }
-
-  return error;
-}
-
-/*
- * hjoin_resplit_qlist() - split a partition list into sub-partition lists by the hash keys stored in its tuples
- *   return: Error code (NO_ERROR if successful, error code otherwise).
- *   thread_p(in): Thread entry.
- *   list_id(in): Partition list to split.
- *   part_list_id(in): Sub-partition lists.
- *   part_cnt(in): Number of sub-partitions.
- *   divisor(in): Multiplier of the mixed hash key giving the position of a tuple in the list (HASHJOIN_CONTEXT).
- *   worker_tfile(in): Temporary file the pages of the sub-partitions are allocated from.
- */
-static int
-hjoin_resplit_qlist (THREAD_ENTRY *thread_p, QFILE_LIST_ID *list_id, QFILE_LIST_ID **part_list_id, UINT32 part_cnt,
-		     UINT32 divisor, QMGR_TEMP_FILE *worker_tfile)
-{
-  QFILE_LIST_SCAN_ID list_scan_id;
-  QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
-  SCAN_CODE scan_code = S_END;
-  HASHJOIN_SPLIT_STAGING_BUFFER staging_buffer;
-  HASHJOIN_SPLIT_LANDING_BUFFER landing_buffer;
-  HASHJOIN_SPLIT_WRITER split_writer;
-  UINT32 part_id;
-  int error = NO_ERROR;
-
-  assert (thread_p != NULL);
-  assert (list_id != NULL);
-  assert (part_list_id != NULL);
-  assert (part_cnt > 1);
-  assert (worker_tfile != NULL);
-
-  /* Prevent faults when qfile_close_scan, hjoin_clear_split_landing_buffer and hjoin_clear_split_staging_buffer are
-   * called */
-  list_scan_id.status = S_CLOSED;
-  memset (&landing_buffer, 0, sizeof (HASHJOIN_SPLIT_LANDING_BUFFER));
-  memset (&staging_buffer, 0, sizeof (HASHJOIN_SPLIT_STAGING_BUFFER));
-
-  error = hjoin_init_split_staging_buffer (thread_p, &staging_buffer, part_cnt);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  error = hjoin_init_split_landing_buffer (thread_p, &landing_buffer, part_cnt);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  hjoin_init_split_writer (&split_writer, &landing_buffer, &staging_buffer, NULL, worker_tfile, part_list_id);
-
-  error = qfile_open_list_scan (list_id, &list_scan_id);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  while ((scan_code = qfile_scan_list_next (thread_p, &list_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
-    {
-      part_id = hjoin_get_resplit_part_id (&tuple_record, divisor, part_cnt);
-
-      error = hjoin_add_to_split_writer (thread_p, &split_writer, part_id, tuple_record.tpl);
-      if (error != NO_ERROR)
-	{
-	  break;		/* error_exit */
-	}
-    }				/* while (qfile_scan_list_next (list_scan_id)) */
-
-  qfile_close_scan (thread_p, &list_scan_id);
-
-  if (scan_code != S_ERROR && error == NO_ERROR)
-    {
-      error = hjoin_flush_split_writer (thread_p, &split_writer);
-    }
-  hjoin_clear_split_landing_buffer (thread_p, &landing_buffer);
-
-  if (scan_code != S_ERROR && error == NO_ERROR)
-    {
-      error = hjoin_flush_split_staging_buffer (thread_p, &staging_buffer, part_list_id, worker_tfile);
-    }
-  hjoin_clear_split_staging_buffer (thread_p, &staging_buffer);
-
-  if (scan_code == S_ERROR || error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  ASSERT_NO_ERROR_OR_INTERRUPTED ();
-  return NO_ERROR;
-
-error_exit:
-  hjoin_clear_split_landing_buffer (thread_p, &landing_buffer);
-  hjoin_clear_split_staging_buffer (thread_p, &staging_buffer);
-
-  if (error == NO_ERROR || er_errid () == NO_ERROR)
-    {
-      assert_release_error (er_errid () != NO_ERROR);
-      error = er_errid ();
-    }
-
-  return error;
 }
 
 /*

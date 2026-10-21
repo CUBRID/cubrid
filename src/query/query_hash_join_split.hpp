@@ -73,8 +73,6 @@ typedef struct hashjoin_split_writer
 } HASHJOIN_SPLIT_WRITER;
 
 /* Hash Join Partitioning */
-int hjoin_resplit_context (THREAD_ENTRY *thread_p, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
-			   HASHJOIN_SPLIT_INFO *split_info, HASHJOIN_STATUS status);
 int hjoin_get_split_part_id (THREAD_ENTRY *thread_p, HASHJOIN_MANAGER *manager, HASHJOIN_FETCH_INFO *fetch_info,
 			     QFILE_TUPLE_RECORD *tuple_record, HASH_SCAN_KEY *temp_key, UINT32 part_cnt,
 			     UINT32 *part_id, bool *is_skipped);

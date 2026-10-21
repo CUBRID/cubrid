@@ -322,11 +322,13 @@ typedef struct hashjoin_context
    * 1 for the single context, the counts of hashed partitions of the splits it comes from multiplied. */
   UINT32 divisor;
 
-  /* Partitions this context is split into (hjoin_check_partition): those of the single context are the contexts of
-   * the manager; those of a partition are owned by it, and executed in its place (exec_contexts of the manager). */
-  struct hashjoin_context *part_contexts;
-  HASHJOIN_STATS *part_stats;
-  UINT32 part_cnt;
+  /* Contexts this context hands its work to, owned by it: the partitions it is split into (hjoin_check_partition)
+   * under HASHJOIN_STATUS_PARTITION and HASHJOIN_STATUS_PARALLEL, or the contexts of a parallel probe of the single
+   * context under HASHJOIN_STATUS_PARALLEL_PROBE. The partitions of a partition are executed in its place
+   * (exec_contexts of the manager). */
+  struct hashjoin_context *child_contexts;
+  HASHJOIN_STATS *child_stats;	/* of the partitions of a partition; those of the single context are in stats_group */
+  UINT32 child_cnt;
 
   /* Pointer to a member of HASHJOIN_MANAGER. */
   HASHJOIN_STATS *stats;
@@ -357,8 +359,6 @@ typedef struct hashjoin_manager
   UINT64 mem_limit;
 
   HASHJOIN_CONTEXT single_context;
-  HASHJOIN_CONTEXT *contexts;
-  UINT32 context_cnt;
 
   /* The contexts the join executes, fixed once all the splits are done (hjoin_init_exec_contexts): the contexts
    * that are not split again, and the partitions of those that are. References only. */

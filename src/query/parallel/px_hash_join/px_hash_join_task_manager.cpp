@@ -150,7 +150,7 @@ namespace parallel_query
       , m_page_iter ()
     {
       assert (m_manager != nullptr);
-      assert (m_manager->context_cnt > 1);
+      assert (m_manager->single_context.child_cnt > 1);
     }
 
     void base_task::retire ()
@@ -418,7 +418,7 @@ namespace parallel_query
       , m_vpid_queue (vpid_queue)
     {
       assert (m_context != nullptr);
-      assert (m_context->part_cnt > 1);
+      assert (m_context->child_cnt > 1);
       assert (m_vpid_queue != nullptr);
     }
 
@@ -445,7 +445,7 @@ namespace parallel_query
 			       bool *is_skipped)
     {
       *is_skipped = false;
-      *part_id = hjoin_get_resplit_part_id (tuple_record, m_context->divisor, m_context->part_cnt);
+      *part_id = hjoin_get_resplit_part_id (tuple_record, m_context->divisor, m_context->child_cnt);
 
       return NO_ERROR;
     }
