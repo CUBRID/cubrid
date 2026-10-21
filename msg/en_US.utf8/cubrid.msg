@@ -1525,7 +1525,12 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1401 Vacuum could not find the OOS file of heap file %1$d|%2$d (error %3$d). Object %4$d|%5$d|%6$d and the rest of that heap file in the current log block are left for a later run of the block.
 
-1402 Last Error
+1402 Stream session error: %1$s.
+1403 The unload file's internal LOB charset (%1$s) differs from this database (%2$s); load aborted.
+1404 Internal LOB locator is not authorized for the current user or session.
+1405 The internal LOB sidecar file is missing, or a reference in the load file is not in it.
+1406 The internal LOB value this locator refers to no longer exists; fetch the row again.
+1407 Last Error
 
 $set 6 MSGCAT_SET_INTERNAL
 1 Error in error subsystem (line %1$d):
