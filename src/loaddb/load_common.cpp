@@ -1300,10 +1300,99 @@ cleanup:
 #endif
   }
 
+  int
+  expand_internal_lob_refs (std::string &row, const internal_lob_sidecar_map &sidecar, bool sidecar_available,
+			    class_id clsid, batch_id id)
+  {
+    std::string expanded;
+    bool in_quote = false;
+    bool in_dquote = false;
+    bool changed = false;
+
+    for (size_t pos = 0; pos < row.size (); pos++)
+      {
+	char ch = row[pos];
+
+	if (in_dquote)
+	  {
+	    /* the lexer ends a double-quoted string at the next quote; no doubled or escaped quote */
+	    expanded.push_back (ch);
+	    in_dquote = (ch != '"');
+	    continue;
+	  }
+	if (ch == '"' && !in_quote)
+	  {
+	    in_dquote = true;
+	    expanded.push_back (ch);
+	    continue;
+	  }
+
+	if (ch == '\'')
+	  {
+	    if (in_quote && pos + 1 < row.size () && row[pos + 1] == '\'')
+	      {
+		expanded.append ("''");
+		pos++;
+		continue;
+	      }
+	    in_quote = !in_quote;
+	    expanded.push_back (ch);
+	    continue;
+	  }
+
+	if (!in_quote && ch == '^' && pos + 2 < row.size () && (row[pos + 1] == 'L' || row[pos + 1] == 'l')
+	    && row[pos + 2] == '\'')
+	  {
+	    size_t token_start = pos + 3;
+	    size_t token_end = row.find ('\'', token_start);
+	    if (token_end == std::string::npos)
+	      {
+		return internal_lob_sidecar_set_error ();
+	      }
+
+	    std::string token = row.substr (token_start, token_end - token_start);
+	    if (token.size () < 3 || token[1] != '|' || !sidecar_available)
+	      {
+		return internal_lob_sidecar_set_error ();
+	      }
+
+	    char type = token[0];
+	    std::string key = token.substr (2);
+	    auto found = sidecar.find (key);
+	    if (found == sidecar.end () || found->second.type != type)
+	      {
+		return internal_lob_sidecar_set_error ();
+	      }
+
+	    std::string replacement;
+	    int error = internal_lob_make_ref_from_sidecar_entry (clsid, id, found->second, replacement);
+	    if (error != NO_ERROR)
+	      {
+		return error;
+	      }
+	    expanded.append (replacement);
+
+	    pos = token_end;
+	    changed = true;
+	    continue;
+	  }
+
+	expanded.push_back (ch);
+      }
+
+    if (changed)
+      {
+	row.swap (expanded);
+      }
+
+    return NO_ERROR;
+  }
+
   static int
   append_incomplete_row (std::string &batch_buffer, std::string &one_row_buffer, batch_handler &b_handler,
 			 class_id &clsid, batch_id &batch_id, int lineno,
-			 int &one_row_lineno, int &batch_start_offset, int64_t &batch_rows)
+			 int &one_row_lineno, int &batch_start_offset, int64_t &batch_rows,
+			 const internal_lob_sidecar_map &internal_lob_sidecar, bool internal_lob_sidecar_available)
   {
     int error_code = NO_ERROR;
 
@@ -1322,6 +1411,14 @@ cleanup:
 	batch_start_offset = lineno - one_row_lineno + 1;
       }
 
+    // the row joins the batch handle_batch will number next; its Internal LOB values are sent to that batch
+    error_code = expand_internal_lob_refs (one_row_buffer, internal_lob_sidecar, internal_lob_sidecar_available, clsid,
+					   batch_id + 1);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
     batch_buffer.append (one_row_buffer);
     one_row_buffer.clear();
     one_row_lineno = 0;
@@ -1330,7 +1427,8 @@ cleanup:
   }
 
   int
-  split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler)
+  split (int batch_size, const std::string &object_file_name, class_handler &c_handler,
+	 batch_handler &b_handler)
   {
     int error_code;
     int64_t batch_rows = 0;
@@ -1341,6 +1439,8 @@ cleanup:
     batch_id batch_id = NULL_BATCH_ID;
     std::string batch_buffer;
     std::string one_row_buffer;
+    internal_lob_sidecar_map internal_lob_sidecar;
+    bool internal_lob_sidecar_available = false;
     bool class_is_ignored = false;
     short single_quote_checker = 0;
     bool  size_over = false;
@@ -1368,6 +1468,14 @@ cleanup:
     one_row_buffer.reserve (DEFAULT_ONEROW_BUF_SZ);
     batch_buffer.reserve (DEFAULT_STRING_SZ);
 
+    error_code = load_internal_lob_sidecar (object_file_name, internal_lob_sidecar,
+					    internal_lob_sidecar_available);
+    if (error_code != NO_ERROR)
+      {
+	object_file.close ();
+	return error_code;
+      }
+
     for (std::string line; std::getline (object_file, line); ++lineno, ++one_row_lineno)
       {
 	if (single_quote_checker == 0)
@@ -1380,7 +1488,8 @@ cleanup:
 		if (one_row_buffer.empty() == false)
 		  {
 		    error_code = append_incomplete_row (batch_buffer, one_row_buffer, b_handler, clsid, batch_id,
-							lineno, one_row_lineno, batch_start_offset, batch_rows);
+							lineno, one_row_lineno, batch_start_offset, batch_rows,
+							internal_lob_sidecar, internal_lob_sidecar_available);
 		    if (error_code != NO_ERROR)
 		      {
 			object_file.close ();
@@ -1469,22 +1578,43 @@ cleanup:
 	    continue;
 	  }
 
-	if ((one_row_buffer.size() + batch_buffer.size()) >= LOADDB_BUFFER_SIZE_LIMIT)
+	// a row that does not fit closes the current batch first: its Internal LOB values below must reach the
+	// worker of the batch the row actually joins
+	size_over = (one_row_buffer.size() + batch_buffer.size()) >= LOADDB_BUFFER_SIZE_LIMIT;
+	if (size_over)
 	  {
-	    size_over = true;
-	  }
-	else
-	  {
-	    batch_buffer.append (one_row_buffer);
-	    one_row_buffer.clear();
-	    one_row_lineno = 0;
+	    if (size_bk < batch_buffer.size())
+	      {
+		size_bk = batch_buffer.size();
+	      }
 
-	    ++batch_rows;
-	    size_over = false;
+	    error_code = handle_batch (b_handler, clsid, batch_buffer, batch_id, batch_start_offset, batch_rows);
+	    if (error_code != NO_ERROR)
+	      {
+		object_file.close ();
+		return error_code;
+	      }
+	    batch_buffer.reserve (size_bk);
+	    // Next batch should start from the first line of this row.
+	    batch_start_offset = lineno - one_row_lineno + 1;
 	  }
+
+	// the row joins the batch handle_batch will number next
+	error_code = expand_internal_lob_refs (one_row_buffer, internal_lob_sidecar, internal_lob_sidecar_available, clsid,
+					       batch_id + 1);
+	if (error_code != NO_ERROR)
+	  {
+	    object_file.close ();
+	    return error_code;
+	  }
+
+	batch_buffer.append (one_row_buffer);
+	one_row_buffer.clear();
+	one_row_lineno = 0;
+	++batch_rows;
 
 	// check if we have a full batch
-	if (batch_rows == batch_size || size_over)
+	if (batch_rows == batch_size)
 	  {
 	    if (size_bk < batch_buffer.size())
 	      {
@@ -1499,25 +1629,15 @@ cleanup:
 	      }
 	    batch_buffer.reserve (size_bk);
 	    // Next batch should start from the following line.
-	    batch_start_offset =  size_over ?  (lineno - one_row_lineno + 1) : (lineno + 1);
-	  }
-
-	if (size_over)
-	  {
-	    if (one_row_buffer.empty() == false)
-	      {
-		batch_buffer.append (one_row_buffer);
-		one_row_buffer.clear();
-	      }
-	    one_row_lineno = 0;
-	    ++batch_rows;
+	    batch_start_offset = lineno + 1;
 	  }
       }
 
     if (one_row_buffer.empty() == false)
       {
 	error_code = append_incomplete_row (batch_buffer, one_row_buffer, b_handler, clsid, batch_id,
-					    lineno, one_row_lineno, batch_start_offset, batch_rows);
+					    lineno, one_row_lineno, batch_start_offset, batch_rows, internal_lob_sidecar,
+					    internal_lob_sidecar_available);
 	if (error_code != NO_ERROR)
 	  {
 	    object_file.close ();

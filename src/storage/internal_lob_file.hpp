@@ -96,6 +96,13 @@ struct internal_lob_dml_slot
 };
 using INTERNAL_LOB_DML_SLOT = struct internal_lob_dml_slot;
 
+/* Batch-local slot of an Internal LOB payload that a loaddb worker already wrote (see load_session.cpp). */
+struct internal_lob_load_slot
+{
+  INT64 slot;
+};
+using INTERNAL_LOB_LOAD_SLOT = struct internal_lob_load_slot;
+
 extern int internal_lob_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const OID &class_oid,
 				     VFID &lob_vfid);
 #if defined (CUBRID_UNIT_TEST_ENABLED)
@@ -130,6 +137,8 @@ extern bool internal_lob_db_value_is_locator (const DB_VALUE *value, INTERNAL_LO
 extern bool internal_lob_db_value_is_pending (const DB_VALUE *value, INTERNAL_LOB_PENDING *pending);
 extern bool internal_lob_db_value_is_upload (const DB_VALUE *value, INTERNAL_LOB_UPLOAD_TOKEN *upload);
 extern bool internal_lob_db_value_is_dml_slot (const DB_VALUE *value, INTERNAL_LOB_DML_SLOT *dml_slot);
+extern bool internal_lob_db_value_is_load_slot (const DB_VALUE *value, INTERNAL_LOB_LOAD_SLOT *load_slot);
+extern int internal_lob_make_load_slot_db_value (DB_VALUE *value, DB_TYPE lob_type, INT64 slot);
 extern int internal_lob_format_locator (const INTERNAL_LOB_LOCATOR &locator, char *buf, size_t buf_size);
 extern int internal_lob_lock_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator);
 inline bool

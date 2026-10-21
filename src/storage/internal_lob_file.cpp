@@ -1276,6 +1276,69 @@ internal_lob_db_value_is_dml_slot (const DB_VALUE *value, INTERNAL_LOB_DML_SLOT 
   return true;
 }
 
+/*
+ * internal_lob_db_value_is_load_slot () - Is this value the load-slot envelope a loaddb worker builds for a row
+ *                                         whose Internal LOB payload it already wrote?
+ *   The envelope text is INTERNAL_LOB_LOAD_SLOT_PREFIX followed by the 1-based slot number.
+ */
+bool
+internal_lob_db_value_is_load_slot (const DB_VALUE *value, INTERNAL_LOB_LOAD_SLOT *load_slot)
+{
+  const char *data = NULL;
+  int size = 0;
+  int prefix_len = (int) strlen (INTERNAL_LOB_LOAD_SLOT_PREFIX);
+  char marker_buf[80];
+  long long slot;
+  int consumed = 0;
+
+  if (!db_get_internal_lob_marker_text (value, DB_VALUE_INTERNAL_LOB_MARKER_LOAD_SLOT, NULL, &data, &size)
+      || !internal_lob_marker_copy_text (data, size, INTERNAL_LOB_LOAD_SLOT_PREFIX, marker_buf,
+					 (int) sizeof (marker_buf)))
+    {
+      return false;
+    }
+
+  if (sscanf (marker_buf + prefix_len, "%lld%n", &slot, &consumed) != 1
+      || marker_buf[prefix_len + consumed] != '\0' || slot <= 0)
+    {
+      return false;
+    }
+
+  if (load_slot != NULL)
+    {
+      load_slot->slot = (INT64) slot;
+    }
+  return true;
+}
+
+/*
+ * internal_lob_make_load_slot_db_value () - Build the load-slot envelope for a loaddb row value.
+ *   The heap sink resolves it through session_internal_lob_load_consume () while the row is inserted, so the
+ *   chunk chain's replication bookkeeping lands on the row that owns it.
+ */
+int
+internal_lob_make_load_slot_db_value (DB_VALUE *value, DB_TYPE lob_type, INT64 slot)
+{
+  char marker_text[64];
+  int marker_len;
+
+  if (value == NULL || (lob_type != DB_TYPE_BLOB && lob_type != DB_TYPE_CLOB) || slot <= 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  marker_len = snprintf (marker_text, sizeof (marker_text), INTERNAL_LOB_LOAD_SLOT_PREFIX "%lld", (long long) slot);
+  if (marker_len <= 0 || marker_len >= (int) sizeof (marker_text))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  return db_make_internal_lob_marker_value (value, lob_type, marker_text, marker_len,
+	 DB_VALUE_INTERNAL_LOB_MARKER_LOAD_SLOT);
+}
+
 int
 internal_lob_encode_disk_length (const INTERNAL_LOB_LOCATOR &locator, DB_BIGINT &disk_length)
 {

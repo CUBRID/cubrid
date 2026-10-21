@@ -3554,6 +3554,28 @@ session_internal_lob_upload_consume (THREAD_ENTRY * thread_p, INT64 token, const
   return state_p->internal_lob_upload_store_p->consume (thread_p, token, class_oid, expected_type, *locator);
 }
 
+/*
+ * session_internal_lob_load_consume () - Resolve a loaddb load-slot envelope while the row is inserted.
+ *   The batch's load worker wrote the chunk chain ahead of the row; the load session hands back its locator and
+ *   replication bookkeeping (see cubload::session::internal_lob_consume_slot).
+ */
+int
+session_internal_lob_load_consume (THREAD_ENTRY * thread_p, INT64 slot, const OID * class_oid, DB_TYPE expected_type,
+				   INTERNAL_LOB_LOCATOR * locator)
+{
+#if defined (SERVER_MODE)
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->load_session_p == NULL || locator == NULL)
+    {
+      return stream_session_set_error ("internal LOB load slot is unavailable");
+    }
+  return state_p->load_session_p->internal_lob_consume_slot (*thread_p, slot, class_oid, expected_type, *locator);
+#else /* SERVER_MODE */
+  return stream_session_set_error ("internal LOB load slot is unavailable");
+#endif /* not SERVER_MODE */
+}
+
 bool
 session_is_pl_session_running (THREAD_ENTRY * thread_p)
 {
