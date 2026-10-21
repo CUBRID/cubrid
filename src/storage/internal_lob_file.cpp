@@ -1207,6 +1207,36 @@ internal_lob_db_value_is_pending (const DB_VALUE *value, INTERNAL_LOB_PENDING *p
   return true;
 }
 
+bool
+internal_lob_db_value_is_dml_slot (const DB_VALUE *value, INTERNAL_LOB_DML_SLOT *dml_slot)
+{
+  const char *data = NULL;
+  int size = 0;
+  int prefix_len = (int) strlen (INTERNAL_LOB_DML_SLOT_PREFIX);
+  char marker_buf[80];
+  int slot;
+  int consumed = 0;
+
+  if (!db_get_internal_lob_marker_text (value, DB_VALUE_INTERNAL_LOB_MARKER_DML_SLOT, NULL, &data, &size)
+      || !internal_lob_marker_copy_text (data, size, INTERNAL_LOB_DML_SLOT_PREFIX, marker_buf,
+					 (int) sizeof (marker_buf)))
+    {
+      return false;
+    }
+
+  if (sscanf (marker_buf + prefix_len, "%d%n", &slot, &consumed) != 1
+      || marker_buf[prefix_len + consumed] != '\0' || slot < 0)
+    {
+      return false;
+    }
+
+  if (dml_slot != NULL)
+    {
+      dml_slot->slot = slot;
+    }
+  return true;
+}
+
 int
 internal_lob_encode_disk_length (const INTERNAL_LOB_LOCATOR &locator, DB_BIGINT &disk_length)
 {

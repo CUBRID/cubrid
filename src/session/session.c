@@ -34,6 +34,7 @@
 #include "session.h"
 #include "stream_session.hpp"
 #include "internal_lob_stream_kind.h"
+#include "internal_lob_dml_session.hpp"
 
 #include "boot_sr.h"
 #include "jansson.h"
@@ -3424,6 +3425,35 @@ session_abort_stream_session (THREAD_ENTRY * thread_p)
 #else /* SERVER_MODE */
   (void) thread_p;
 #endif /* not SERVER_MODE */
+}
+
+bool
+session_has_internal_lob_dml_stream (THREAD_ENTRY * thread_p)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  return state_p != NULL && dynamic_cast < internal_lob_dml_session * >(state_p->stream_session_p) != NULL;
+}
+
+int
+session_internal_lob_dml_consume (THREAD_ENTRY * thread_p, int slot, const OID * class_oid, DB_TYPE expected_type,
+				  INTERNAL_LOB_LOCATOR * locator)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+  internal_lob_dml_session *dml_session_p;
+
+  if (state_p == NULL || locator == NULL)
+    {
+      return stream_session_set_error ("internal LOB DML stream is unavailable");
+    }
+
+  dml_session_p = dynamic_cast < internal_lob_dml_session * >(state_p->stream_session_p);
+  if (dml_session_p == NULL)
+    {
+      return stream_session_set_error ("active stream does not own internal LOB DML");
+    }
+
+  return dml_session_p->consume_lob_slot (thread_p, slot, class_oid, expected_type, *locator);
 }
 
 bool

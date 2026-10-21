@@ -81,6 +81,12 @@ struct internal_lob_pending
 };
 using INTERNAL_LOB_PENDING = struct internal_lob_pending;
 
+struct internal_lob_dml_slot
+{
+  int slot;
+};
+using INTERNAL_LOB_DML_SLOT = struct internal_lob_dml_slot;
+
 extern int internal_lob_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const OID &class_oid,
 				     VFID &lob_vfid);
 #if defined (CUBRID_UNIT_TEST_ENABLED)
@@ -113,6 +119,7 @@ extern int internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, co
 extern bool internal_lob_parse_locator_string (const char *data, int size, INTERNAL_LOB_LOCATOR *locator);
 extern bool internal_lob_db_value_is_locator (const DB_VALUE *value, INTERNAL_LOB_LOCATOR *locator);
 extern bool internal_lob_db_value_is_pending (const DB_VALUE *value, INTERNAL_LOB_PENDING *pending);
+extern bool internal_lob_db_value_is_dml_slot (const DB_VALUE *value, INTERNAL_LOB_DML_SLOT *dml_slot);
 extern int internal_lob_format_locator (const INTERNAL_LOB_LOCATOR &locator, char *buf, size_t buf_size);
 extern int internal_lob_lock_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator);
 inline bool
