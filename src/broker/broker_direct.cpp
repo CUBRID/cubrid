@@ -1115,7 +1115,8 @@ namespace brd
   {
     broker_session_change_reply result = { -1, 0 };
     const broker_session_config &config = change.config;
-    if (config.mask == 0 || (config.mask & ~BROKER_SESSION_CONFIG_MASK) != 0
+    if (config.mask == 0 || (config.mask & ~ (BROKER_SESSION_CONFIG_MASK | BROKER_SESSION_RESET)) != 0
+	|| ((config.mask & BROKER_SESSION_RESET) && (change.session_id != 0 || config.mask != BROKER_SESSION_RESET))
 	|| ((config.mask & BROKER_SESSION_SQL_LOG) && (config.sql_log < 0 || config.sql_log > SQL_LOG_MODE_ALL))
 	|| ((config.mask & BROKER_SESSION_SLOW_LOG) && (config.slow_log < 0 || config.slow_log > 1))
 	|| ((config.mask & BROKER_SESSION_RUNTIME) && (change.session_id != 0

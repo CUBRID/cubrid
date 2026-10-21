@@ -26,6 +26,8 @@
 #define BROKER_SESSION_LOG_MASK (BROKER_SESSION_SQL_LOG | BROKER_SESSION_SLOW_LOG)
 #define BROKER_SESSION_RUNTIME 4u
 #define BROKER_SESSION_CONFIG_MASK (BROKER_SESSION_LOG_MASK | BROKER_SESSION_RUNTIME)
+/* cubrid broker reset: a request alone, for all sessions of the broker, never part of a session's config */
+#define BROKER_SESSION_RESET 8u
 #define BROKER_SESSION_PATH_MAX 1024
 
 /* These settings were broker-wide, unlike SQL_LOG/SLOW_LOG's per-CAS

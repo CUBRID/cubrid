@@ -157,6 +157,10 @@ static int proxy_activate_internal (int proxy_shm_id, T_SHM_APPL_SERVER * shm_as
 				    int proxy_id, char **env, int env_num);
 static void proxy_inactivate (T_BROKER_INFO * br_info_p, T_PROXY_INFO * proxy_info_p);
 
+#if !defined (WINDOWS)
+static int admin_session_send (int shm_key, struct broker_session_change *change);
+#endif /* !WINDOWS */
+
 #if !defined(WINDOWS)
 #if defined (ENABLE_UNUSED_FUNCTION)
 static int get_cubrid_version (void);
@@ -1242,6 +1246,21 @@ admin_reset_cmd (int master_shm_id, const char *broker_name)
       return -1;
     }
 
+#if !defined (WINDOWS)
+  if (shm_br->br_info[br_index].direct_handoff == ON)
+    {
+      /* no CAS pool: the sessions of the broker run in the database servers, the broker asks them to reset */
+      struct broker_session_change change;
+      int result;
+
+      memset (&change, 0, sizeof (change));
+      change.config.mask = BROKER_SESSION_RESET;
+      result = admin_session_send (shm_br->br_info[br_index].appl_server_shm_id, &change);
+      uw_shm_detach (shm_br);
+      return result;
+    }
+#endif /* !WINDOWS */
+
   shm_as_p =
     (T_SHM_APPL_SERVER *) uw_shm_open (shm_br->br_info[br_index].appl_server_shm_id, SHM_APPL_SERVER, SHM_MODE_ADMIN);
   if (shm_as_p == NULL)
@@ -2156,6 +2175,13 @@ admin_session_change (int shm_key, const T_BROKER_INFO * broker, const char *sel
       change.session_id = (uint32_t) session;
     }
 
+  return admin_session_send (shm_key, &change);
+}
+
+/* send a change to the session control socket of the direct-handoff broker of shm_key */
+static int
+admin_session_send (int shm_key, struct broker_session_change *change)
+{
   char directory[BROKER_PATH_MAX];
   char path[BROKER_PATH_MAX];
   get_cubrid_file (FID_SOCK_DIR, directory, sizeof (directory));
@@ -2186,7 +2212,7 @@ admin_session_change (int shm_key, const T_BROKER_INFO * broker, const char *sel
   struct broker_session_change_reply reply;
   int result = -1;
   if (connect (fd, (struct sockaddr *) &address, sizeof (address)) != 0
-      || admin_session_transfer (fd, &change, sizeof (change), true) != 0
+      || admin_session_transfer (fd, change, sizeof (*change), true) != 0
       || admin_session_transfer (fd, &reply, sizeof (reply), false) != 0)
     {
       snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,

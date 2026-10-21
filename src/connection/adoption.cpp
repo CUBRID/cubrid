@@ -147,6 +147,7 @@ namespace cubconn
       int wake_fd = -1;
       std::atomic<execution_state> state { execution_state::busy };
       std::atomic<std::uint64_t> idle_since { 0 };
+      std::atomic<bool> reset_requested { false };	/* cubrid broker reset, until the session yields */
       std::shared_ptr<auto_group> pressure;
     };
 
@@ -466,6 +467,17 @@ namespace cubconn
 	   * neither side may miss the other's transition and lose a wakeup.
 	   * With no pressure the shared group flag is read-only. */
 	  current_binding->state.store (ready ? execution_state::idle : execution_state::busy);
+	  if (ready && current_binding->reset_requested.load ())
+	    {
+	      /* a broker reset found this session busy: yield it now that it is idle (pairs with reset_sessions) */
+	      execution_state expected = execution_state::idle;
+	      if (current_binding->state.compare_exchange_strong (expected, execution_state::yielded))
+		{
+		  const std::uint64_t one = 1;
+		  (void) write (current_binding->wake_fd, &one, sizeof (one));
+		}
+	      return;
+	    }
 	  if (ready && current_binding->pressure != nullptr && current_binding->pressure->yield_requested.load ()
 	      && current_binding->pressure->yield_requested.exchange (false))
 	    {
@@ -511,6 +523,12 @@ namespace cubconn
       /* IN_TRAN requests never entered the idle candidate set. A request
        * that loses to yield must not execute even if its header was read. */
       return expected == execution_state::busy;
+    }
+
+    bool
+    registry_auto_take_reset (void)
+    {
+      return current_binding != nullptr && current_binding->reset_requested.exchange (false);
     }
 
     static void
@@ -1800,11 +1818,57 @@ namespace cubconn
     /* channel and accept threads                                         */
     /* ------------------------------------------------------------------ */
 
+    /* cubrid broker reset. The legacy CAS dropped its idle client but kept the client's session, which the client
+     * went on with when it connected again. A folded AUTO session does it through its yield: every established
+     * session of the broker is marked, an idle one is woken now and a busy one yields once idle
+     * (registry_auto_ready); the detach that follows counts session_state_timeout from then. A session out of
+     * AUTO cannot resume (connection == session), so it is left alone. */
+    static int
+    reset_sessions (manager &m, const channel &ch)
+    {
+      int affected = 0;
+      std::lock_guard<std::mutex> guard (m.registry_mutex);
+      for (auto &pair : m.registry)
+	{
+	  const session_entry &entry = pair.second;
+	  const std::shared_ptr<session_binding> &binding = entry.binding;
+	  if (entry.direct || entry.session_id == 0 || binding->pressure == nullptr
+	      || std::strncmp (entry.broker_name, ch.broker_name, BROKER_NAME_MAX) != 0)
+	    {
+	      continue;
+	    }
+	  affected++;
+	  binding->reset_requested.store (true);
+	  execution_state expected = execution_state::idle;
+	  if (binding->state.compare_exchange_strong (expected, execution_state::yielded))
+	    {
+	      /* registry -> binding is the lock order of registry_auto_enable; an eventfd write does not block */
+	      binding_pin pin (binding);
+	      if (pin.wake_fd >= 0)
+		{
+		  const std::uint64_t one = 1;
+		  (void) write (pin.wake_fd, &one, sizeof (one));
+		}
+	    }
+	}
+      return affected;
+    }
+
     static void
     handle_session_config (manager &m, channel &ch, const broker_session_change &change)
     {
       broker_session_change_reply reply = { -1, 0 };
       const broker_session_config &config = change.config;
+      if (config.mask == BROKER_SESSION_RESET)
+	{
+	  if (change.session_id == 0)
+	    {
+	      reply.affected = reset_sessions (m, ch);
+	      reply.result = 0;
+	    }
+	  (void) send_message (ch, msg_op::SESSION_CONFIG_REPLY, &reply, sizeof (reply));
+	  return;
+	}
       if (config.mask != 0 && (config.mask & ~BROKER_SESSION_CONFIG_MASK) == 0
 	  && (! (config.mask & BROKER_SESSION_SQL_LOG) || (config.sql_log >= 0 && config.sql_log <= 4))
 	  && (! (config.mask & BROKER_SESSION_SLOW_LOG) || (config.slow_log >= 0 && config.slow_log <= 1))

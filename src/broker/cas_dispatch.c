@@ -495,7 +495,12 @@ cas_process_request (SOCKET sock_fd, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 	    }
 	  if (as_info->con_status == CON_STATUS_CLOSE_AND_CONNECT)
 	    {
+#if defined (SERVER_MODE)
+	      /* a folded session leaves its client by the same yield for CHANGE CLIENT and cubrid broker reset */
+	      cas_log_msg = cubconn::adoption::registry_auto_take_reset ()? "RESET" : "CHANGE CLIENT";
+#else
 	      cas_log_msg = "CHANGE CLIENT";
+#endif
 	      fn_ret = FN_KEEP_SESS;
 	      db_set_keep_session (true);
 	    }
