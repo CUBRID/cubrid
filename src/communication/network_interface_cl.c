@@ -6209,8 +6209,17 @@ stats_update_all_statistics (int with_fullscan, int print_summary)
   return error;
 }
 
+/*
+ * update_histogram_for_all_classes () - build histograms for every top-level class after the class statistics
+ *                                       were refreshed (UPDATE STATISTICS ON ALL CLASSES / optimizedb)
+ *   return: NO_ERROR or error code
+ *   random_seed(in): sampling seed
+ *   skip_mops(in): classes to leave out of the histogram build (optimizedb --no-histogram-classes). Their
+ *                  existing histograms are kept as they are. NULL if none
+ *   n_skip(in): number of entries in skip_mops
+ */
 int
-update_histogram_for_all_classes (int random_seed)
+update_histogram_for_all_classes (int random_seed, MOP * skip_mops, int n_skip)
 {
   int error = NO_ERROR;
   MOP class_mop = NULL;
@@ -6227,17 +6236,36 @@ update_histogram_for_all_classes (int random_seed)
       return ER_FAILED;
     }
 
-  int n_tables = 0, n_cols = 0, n_hist_skipped = 0;
+  int n_tables = 0, n_cols = 0, n_hist_skipped = 0, n_excluded = 0;
 
   for (int i = 0; i < lmops->num; i++)
     {
+      bool excluded = false;
+
       class_mop = lmops->mops[i];
+
+      /* compare by OID rather than MOP pointer: the caller resolved its list through db_find_class (),
+       * which yields the same MOP for a cached class but the OID is what identifies it */
+      for (int k = 0; k < n_skip && skip_mops != NULL; k++)
+	{
+	  if (skip_mops[k] != NULL && OID_EQ (WS_OID (class_mop), WS_OID (skip_mops[k])))
+	    {
+	      excluded = true;
+	      break;
+	    }
+	}
+      if (excluded)
+	{
+	  n_excluded++;
+	  continue;
+	}
 
       obj = db_find_class (sm_get_ch_name (class_mop));
       if (obj == NULL)
 	{
 	  assert (er_errid () != NO_ERROR);
 	  AU_RESTORE (save);
+	  locator_free_list_mops (lmops);
 	  return er_errid ();
 	}
 
@@ -6253,6 +6281,7 @@ update_histogram_for_all_classes (int random_seed)
       if (!(error == NO_ERROR || error == ER_OBJ_INVALID_ARGUMENTS))
 	{
 	  AU_RESTORE (save);
+	  locator_free_list_mops (lmops);
 	  return error;
 	}
 
@@ -6263,20 +6292,34 @@ update_histogram_for_all_classes (int random_seed)
 	}
     }
   AU_RESTORE (save);
+  locator_free_list_mops (lmops);
 
-  if (error == NO_ERROR && n_tables > 0)
+  if (n_excluded < n_skip)
     {
+      /* an entry that is a class but not a top-level one (a partition of a partitioned class) never
+       * matches the list above; say so instead of dropping it silently */
+      int n_missed = n_skip - n_excluded;
+
+      fprintf (stderr, "Warning: %d of the %d classes to exclude %s and %s ignored.\n", n_missed, n_skip,
+	       (n_missed == 1) ? "is not a top-level class" : "are not top-level classes",
+	       (n_missed == 1) ? "was" : "were");
+      fflush (stderr);
+    }
+
+  if (error == NO_ERROR && (n_tables > 0 || n_excluded > 0))
+    {
+      fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s", n_tables,
+	       (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
       if (n_hist_skipped > 0)
 	{
-	  fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s"
-		   " (%d skipped: histogram type not supported).\n", n_tables,
-		   (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s", n_hist_skipped);
+	  fprintf (stdout, " (%d skipped: histogram type not supported)", n_hist_skipped);
 	}
-      else
+      if (n_excluded > 0)
 	{
-	  fprintf (stdout, "Statistics updated successfully: %d table%s, %d column%s.\n", n_tables,
-		   (n_tables == 1) ? "" : "s", n_cols, (n_cols == 1) ? "" : "s");
+	  /* classes named by --no-histogram-classes: counted neither in the tables above nor as skipped */
+	  fprintf (stdout, " (%d excluded)", n_excluded);
 	}
+      fprintf (stdout, ".\n");
       fflush (stdout);
     }
 
