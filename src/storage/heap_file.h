@@ -628,6 +628,8 @@ extern int heap_get_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, 
 /* Reads exactly size bytes of the source at offset. The source's total size is known up front, so the internal LOB
  * chain is written tail-first through the reverse writer without staging the payload. */
 typedef int (*HEAP_INTERNAL_LOB_RANGE_READER) (void *ctx, DB_BIGINT offset, char *buf, int size);
+extern int heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, const DB_VALUE * value,
+					   INTERNAL_LOB_LOCATOR * locator);
 extern int heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid,
 				  FILE_TYPE ftype, const char *classname_in);
 extern int heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
@@ -780,6 +782,8 @@ using HEAP_OOS_REFERENCE_VECTOR = std::vector<HEAP_OOS_REFERENCE>;
 using OID_VECTOR = std::vector<OID>;
 // *INDENT-ON*
 
+extern int heap_recdes_get_oos_references (THREAD_ENTRY * thread_p, const RECDES * record,
+					   HEAP_OOS_REFERENCE_VECTOR & oos_references);
 
 /* lob */
 extern int heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

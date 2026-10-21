@@ -724,11 +724,17 @@ struct heap_oos_column_plan
   bool selected = false;
   OID oid = OID_INITIALIZER;
   DB_BIGINT length = 0;
+  /* Kind of the chain behind `oid`, i.e. how `length` is read: OR_OOS_KIND_OOS/_CLOB (bytes) or _BLOB (BITS).
+   * Every producer of a selected plan must set it; or_put_oos_stub () stamps it into the record. */
+  /* [리뷰] 스텁에 찍히는 체인 종류. 길이 단위를 정하는 유일한 근거다(CLOB·OOS 바이트, BLOB 비트).
+   * 읽는 쪽은 클래스 표현 없이 스텁만으로 해석하므로 선택된 계획은 반드시 채운다. */
+  int kind = OR_OOS_KIND_OOS;
 };
 static int heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class,
 						size_t * offset_size_ptr,
 						std::vector<heap_oos_column_plan> * oos_plan,
-						bool * has_oos, size_t * inline_size_after_oos_ptr);
+						bool * has_oos, size_t * inline_size_after_oos_ptr,
+						int lobfile_create_flag);
 // *INDENT-ON*
 
 static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
@@ -736,10 +742,11 @@ static void heap_attrvalue_point_fixed (RECDES * recdes, HEAP_CACHE_ATTRINFO * a
 static int heap_attrvalue_read_oos_inline (RECDES * recdes, RECDES * raw, char *oos_scratch, int oos_scratch_size,
 					   bool * oos_owned_buffer);
 static int heap_attrvalue_point_variable (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr,
-					  RECDES * raw, bool * oos_owned_buffer, char *oos_scratch,
-					  int oos_scratch_size);
+					  RECDES * raw, bool * oos_owned_buffer, bool * internal_lob_locator,
+					  char *oos_scratch, int oos_scratch_size);
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
-						bool oos_owned_buffer);
+						bool oos_owned_buffer, bool internal_lob_locator,
+						const OID * class_oid);
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info);
 static int heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
@@ -12392,7 +12399,7 @@ heap_attrinfo_get_record_header_size (HEAP_CACHE_ATTRINFO * attr_info, int paylo
 static int
 heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mvcc_class, size_t * offset_size_ptr,
 					     std::vector<heap_oos_column_plan> * oos_plan, bool * has_oos,
-					     size_t * inline_size_after_oos_ptr)
+					     size_t * inline_size_after_oos_ptr, int lobfile_create_flag)
 // *INDENT-ON*
 {
 // *INDENT-OFF*
@@ -12406,6 +12413,22 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 
   /* calcuate the entire size of columns */
   payload_size = heap_attrinfo_get_record_payload_size (attr_info, &column_size);
+  for (i = 0; i < attr_info->num_values; i++)
+    {
+      if (!attr_info->values[i].last_attrepr->is_fixed
+	  && TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (attr_info->values[i].last_attrepr->domain)) && column_size[i] > 0)
+	{
+	    {
+	      /* a key probe (REPLACE, ON DUPLICATE KEY UPDATE) never reads the LOB: it is written as NULL, not as a chain */
+	      payload_size -= column_size[i];
+	      continue;
+	    }
+	  (*oos_plan)[i].selected = true;
+	  payload_size -= column_size[i];
+	  payload_size += OR_OOS_INLINE_SIZE;
+	  *has_oos = true;
+	}
+    }
   header_size = heap_attrinfo_get_record_header_size (attr_info, payload_size, is_mvcc_class, offset_size_ptr);
   mvcc_extra = is_mvcc_class ? OR_MVCC_MAX_HEADER_SIZE - OR_MVCC_INSERT_HEADER_SIZE : 0;
 
@@ -12413,7 +12436,8 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
    * moving them out of row shrinks the inline record. */
   for (i = 0; i < attr_info->num_values; i++)
     {
-      if (!attr_info->values[i].last_attrepr->is_fixed
+      /* skip a column the internal LOB loop above already moved out, or its size would be subtracted twice */
+      if (!(*oos_plan)[i].selected && !attr_info->values[i].last_attrepr->is_fixed
 	  && attr_info->values[i].last_attrepr->oos_storage == OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE
 	  && !db_value_is_null (&attr_info->values[i].dbvalue) && column_size[i] > OR_OOS_INLINE_SIZE)
 	{
@@ -12438,14 +12462,11 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 
       for (i = 0; i < attr_info->num_values; i++)
 	{
-	  /* a variable column is OOS-eligible only if externalizing it shrinks the inline record:
-	   * its value must be larger than the OOS stub (OID + length) it is replaced with.
-	   * TODO (CBRD-26783): internal BLOB/CLOB stays inline for now; online backup
-	   * (file_tracker_get_and_protect) and the utility round-trip do not support
-	   * OOS-stored LOB values yet. The generic trigger will be re-enabled for LOB
-	   * types together with that verification. */
+	  /* a variable column is OOS-eligible only if it was not already assigned the dedicated internal-LOB
+	   * locator path and externalizing it shrinks the inline record: its value must be larger than the
+	   * OOS stub (OID + length) it is replaced with */
 	  if (!(*oos_plan)[i].selected && !attr_info->values[i].last_attrepr->is_fixed
-	      && column_size[i] > OR_OOS_INLINE_SIZE && !TP_IS_LOB_TYPE (attr_info->values[i].last_attrepr->type))
+	      && column_size[i] > OR_OOS_INLINE_SIZE)
 	    {
 	      // *INDENT-OFF*
 	      heap_oos_demote_priority priority =
@@ -12732,6 +12753,114 @@ heap_internal_lob_get_class_vfid (THREAD_ENTRY * thread_p, const OID * class_oid
 }
 
 typedef struct heap_internal_lob_file_source HEAP_INTERNAL_LOB_FILE_SOURCE;
+/*
+ * heap_internal_lob_insert_value () - Insert a BLOB/CLOB DB_VALUE into a class internal LOB file.
+ *   return: NO_ERROR, or error code
+ *   thread_p(in): thread entry
+ *   class_oid(in): class OID owning the target heap
+ *   value(in): materialized BLOB/CLOB value
+ *   locator(out): newly inserted internal LOB locator
+ *
+ * Note:
+ *   This helper is used by utility code that already has materialized LOB bytes
+ *   but needs to store the main object as an internal LOB locator.
+ */
+int
+heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, const DB_VALUE * value,
+				INTERNAL_LOB_LOCATOR * locator)
+{
+  /* [리뷰] LOB 값 하나를 클래스 LOB 파일에 체인으로 쓰고 로케이터를 돌려주는 공용 입구.
+   * 뒤 커밋들이 값 출처(로케이터·파일·슬롯·업로드)별 분기를 이 함수 앞쪽에 더한다.
+   * 실패하면 writer를 abort해 반쯤 쓴 체인을 남기지 않는다. */
+  VFID lob_vfid;
+  INTERNAL_LOB_REVERSE_WRITER writer;
+  const DB_VALUE *source_value = value;
+  const char *raw_data = NULL;
+  DB_TYPE type;
+  int raw_length = 0;
+  int raw_bit_length = -1;
+  int error = NO_ERROR;
+  bool writer_started = false;
+
+  if (class_oid == NULL || value == NULL || locator == NULL || DB_IS_NULL (value))
+    {
+      error = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  type = DB_VALUE_DOMAIN_TYPE (value);
+
+  if (type == DB_TYPE_CLOB)
+    {
+      raw_data = db_get_string (source_value);
+      raw_length = db_get_string_size (source_value);
+    }
+  else if (type == DB_TYPE_BLOB)
+    {
+      int bit_length = 0;
+
+      raw_data = (const char *) db_get_bit (source_value, &bit_length);
+      raw_length = db_get_string_size (source_value);
+      raw_bit_length = bit_length;
+      if (bit_length < 0)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  goto exit;
+	}
+    }
+  else
+    {
+      error = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
+    }
+
+  if (raw_length < 0 || (raw_length > 0 && raw_data == NULL))
+    {
+      error = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      goto exit;
+    }
+
+  error = heap_internal_lob_get_class_vfid (thread_p, class_oid, &lob_vfid);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+
+  error = internal_lob_reverse_insert_begin (thread_p, lob_vfid, type, (DB_BIGINT) raw_length,
+					     type == DB_TYPE_BLOB ? (DB_BIGINT) raw_bit_length : (DB_BIGINT) raw_length,
+					     writer);
+  if (error != NO_ERROR)
+    {
+      goto exit;
+    }
+  writer_started = true;
+
+  if (raw_length > 0)
+    {
+      /* The value is already in memory: one append at offset 0 lets the writer cut it into tail-first nodes. */
+      error = internal_lob_reverse_insert_append (thread_p, writer, 0,
+						  oos_buffer ((char *) raw_data, (size_t) raw_length));
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
+  error = internal_lob_reverse_insert_end (thread_p, writer, *locator);
+
+exit:
+  if (error != NO_ERROR && writer_started)
+    {
+      internal_lob_reverse_insert_abort (writer);
+    }
+
+  return error;
+}
+
 static SCAN_CODE
 heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value, OID class_oid,
 				 int lobfile_create_flag, RECDES * recdes)
@@ -12775,11 +12904,11 @@ heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value
       elo_p->meta_data = new_meta_data;
       {
 	HFID hfid;
-	char lob_path_prefix[PATH_MAX];
+	char lobfile_path_prefix[PATH_MAX];
 
 	heap_hfid_cache_get (thread_p, &class_oid, &hfid, NULL, NULL);
-	snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), value->attrid);
-	rv = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
+	snprintf (lobfile_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), value->attrid);
+	rv = db_elo_copy_with_prefix (db_get_elo (dbvalue), lobfile_path_prefix, &dest_elo);
       }
 
       free_and_init (elo_p->meta_data);
@@ -12827,8 +12956,8 @@ heap_attrinfo_serialize_oos_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO 
   assert (attr_info->values != NULL && !db_value_is_null (&attr_info->values[index].dbvalue));
   assert (!attr_info->values[index].last_attrepr->is_fixed);
 
-  if (heap_attrinfo_dbvalue_to_recdes (thread_p, &attr_info->values[index], attr_info->class_oid, lobfile_create_flag,
-				       payload) != S_SUCCESS)
+  if (heap_attrinfo_dbvalue_to_recdes (thread_p, &attr_info->values[index], attr_info->class_oid,
+				       lobfile_create_flag, payload) != S_SUCCESS)
     {
       return S_ERROR;
     }
@@ -12843,12 +12972,100 @@ heap_attrinfo_serialize_oos_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO 
   return S_SUCCESS;
 }
 
+/*
+ * heap_attrinfo_insert_internal_lob_value () - Store one Internal LOB attribute and keep its locator
+ *   in the column plan.
+ *
+ * It owns a chunk chain in the class' FILE_INTERNAL_LOB file, so it bypasses the batched OOS request list;
+ * its replication bookkeeping is completed here because the chunk writer publishes its own OIDs.
+ */
+static SCAN_CODE
+heap_attrinfo_insert_internal_lob_value (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info, int index,
+					 heap_oos_column_plan * plan)
+{
+  /* [리뷰] LOB 컬럼은 배치 OOS 요청에 끼지 않고 여기서 체인을 바로 쓴다(writer가 OID를 직접 발행).
+   * kind는 값이 아니라 컬럼 도메인 타입에서 정한다. 틀리면 BLOB 비트를 바이트로 읽는다.
+   * writer가 OID를 안 냈으면 plan OID를 넣어 복제용 oos_oids·attrid 짝을 맞춘다. */
+  INTERNAL_LOB_LOCATOR lob_locator;
+  DB_BIGINT disk_length;
+  size_t oos_oid_count_before = thread_p->oos_oids.size ();
+
+  assert (thread_p->oos_tracking_is_paired ());
+  assert (attr_info->values != NULL && !db_value_is_null (&attr_info->values[index].dbvalue));
+  assert (!attr_info->values[index].last_attrepr->is_fixed);
+
+  if (heap_internal_lob_insert_value (thread_p, &attr_info->class_oid, &attr_info->values[index].dbvalue,
+				      &lob_locator) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+  if (internal_lob_encode_disk_length (lob_locator, disk_length) != NO_ERROR)
+    {
+      return S_ERROR;
+    }
+
+  plan->selected = true;
+  plan->oid = lob_locator.oid;
+  plan->length = disk_length;
+  /* disk_length is a byte count for CLOB and a BIT count for BLOB; the kind is what tells the
+   * reader which, so it has to come from the column's own type. */
+  plan->kind = (TP_DOMAIN_TYPE (attr_info->values[index].last_attrepr->domain) == DB_TYPE_BLOB
+		? OR_OOS_KIND_BLOB : OR_OOS_KIND_CLOB);
+
+  if (thread_p->oos_oids.size () == oos_oid_count_before)
+    {
+      thread_p->oos_oids.push_back (plan->oid);	/* for replication log */
+    }
+
+  thread_p->pair_oos_oids (thread_p->oos_oids.size (), attr_info->values[index].attrid, true);
+
+  return S_SUCCESS;
+}
+
+/*
+ * heap_attrinfo_track_oos_attrids () - Pair each OID published by the batched OOS insert with its attribute id
+ *   so the replication log can address the right column.
+ *
+ * A record publishes its head OID, preceded by one null boundary marker when it spans multiple chunks,
+ * so a group ends at the first non-null OID.
+ */
+static void
+heap_attrinfo_track_oos_attrids (THREAD_ENTRY * thread_p, size_t oos_oid_start,
+				 const std::vector < int >*request_attrids)
+{
+  /* [리뷰] 배치 OOS가 낸 OID를 요청 순서대로 컬럼 번호와 짝짓는다. HA 복제가 이 짝으로 컬럼을 찾는다.
+   * 그룹 경계(NULL 마커 뒤 첫 OID) 규칙은 oos_publish_oos_oid의 발행 순서에 의존한다.
+   * 끝나면 oos_oids·oos_attrids·oos_is_internal_lob 길이가 같아야 한다(assert). */
+  size_t index = oos_oid_start;
+
+  // *INDENT-OFF*
+  for (int attrid : *request_attrids)
+    {
+      while (index < thread_p->oos_oids.size ())
+	{
+	  bool is_group_end = !OID_ISNULL (&thread_p->oos_oids[index]);
+
+	  index++;
+	  if (is_group_end)
+	    {
+	      break;
+	    }
+	}
+
+      thread_p->pair_oos_oids (index, attrid, false);
+    }
+  // *INDENT-ON*
+
+  assert (thread_p->oos_tracking_is_paired ());
+}
+
 static SCAN_CODE
 heap_attrinfo_prepare_oos_insert_requests (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 					   int lobfile_create_flag,
 					   std::vector < heap_oos_column_plan > *oos_plan,
 					   std::vector < RECDES > *payloads,
-					   std::vector < oos_insert_request > *requests)
+					   std::vector < oos_insert_request > *requests,
+					   std::vector < int >*request_attrids)
 {
   int i;
 
@@ -12862,6 +13079,17 @@ heap_attrinfo_prepare_oos_insert_requests (THREAD_ENTRY * thread_p, HEAP_CACHE_A
 	  continue;
 	}
 
+      if (TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (attr_info->values[i].last_attrepr->domain)))
+	{
+	  /* An Internal LOB writes its own chunk chain and yields a locator, so it never joins the batched
+	   * OOS request list below. */
+	  if (heap_attrinfo_insert_internal_lob_value (thread_p, attr_info, i, &plan) != S_SUCCESS)
+	    {
+	      return S_ERROR;
+	    }
+	  continue;
+	}
+
       if (heap_attrinfo_serialize_oos_value (thread_p, attr_info, i, lobfile_create_flag, &payload) != S_SUCCESS)
 	{
 	  free_and_init (payload.data);
@@ -12869,9 +13097,11 @@ heap_attrinfo_prepare_oos_insert_requests (THREAD_ENTRY * thread_p, HEAP_CACHE_A
 	}
 
       plan.length = (DB_BIGINT) payload.length;
+      plan.kind = OR_OOS_KIND_OOS;	/* a serialized value, not an Internal LOB chain */
       oos_insert_request request = { oos_buffer (payload.data, (size_t) payload.length), &plan.oid };
       payloads->push_back (payload);
       requests->push_back (request);
+      request_attrids->push_back (attr_info->values[i].attrid);
     }
 
   return S_SUCCESS;
@@ -12913,6 +13143,9 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
   // *INDENT-OFF*
   std::vector < RECDES > payloads;
   std::vector < oos_insert_request > requests;
+  std::vector < int > request_attrids;
+  size_t oos_oid_start;
+  bool lob_only_row = false;
   SCAN_CODE scan_code = S_ERROR;
 
   if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
@@ -12941,17 +13174,34 @@ heap_attrinfo_insert_to_oos (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr
   }
 
   if (heap_attrinfo_prepare_oos_insert_requests (thread_p, attr_info, lobfile_create_flag, oos_plan, &payloads,
-						 &requests) != S_SUCCESS)
+						 &requests, &request_attrids) != S_SUCCESS)
     {
       goto cleanup;
     }
 
-  if (heap_oos_insert_serialized_values (thread_p, &attr_info->class_oid,
-					 cubbase::span < oos_insert_request > (requests.data (), requests.size ()))
+  /* Internal LOB columns have already published their locators; the OIDs appended from here on belong to
+   * the batched OOS requests, in request order. */
+  oos_oid_start = thread_p->oos_oids.size ();
+
+  /* A row whose out-of-row columns are all internal LOBs selects columns yet has no request: skip the OOS file
+   * lookup for it, or the class would get an empty OOS file. */
+  if (requests.empty ())
+    {
+      for (const heap_oos_column_plan &column : *oos_plan)
+	{
+	  lob_only_row = lob_only_row || column.selected;
+	}
+    }
+
+  if (!lob_only_row
+      && heap_oos_insert_serialized_values (thread_p, &attr_info->class_oid,
+					    cubbase::span < oos_insert_request > (requests.data (), requests.size ()))
       != S_SUCCESS)
     {
       goto cleanup;
     }
+
+  heap_attrinfo_track_oos_attrids (thread_p, oos_oid_start, &request_attrids);
 
   scan_code = S_SUCCESS;
 
@@ -13273,8 +13523,10 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	}
 
       buf->ptr = *ptr_varvals;
-      or_put_oid (buf, &oos_plan->oid);
-      or_put_bigint (buf, oos_plan->length);
+      if (or_put_oos_stub (buf, &oos_plan->oid, oos_plan->kind, oos_plan->length) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
       *ptr_varvals = buf->ptr;
     }
   else if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
@@ -13305,11 +13557,11 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	  elo_p->meta_data = new_meta_data;
 	  {
 	    HFID hfid;
-	    char lob_path_prefix[PATH_MAX];
+	    char lobfile_path_prefix[PATH_MAX];
 
 	    heap_hfid_cache_get (thread_p, &attr_info->class_oid, &hfid, NULL, NULL);
-	    snprintf (lob_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), value->attrid);
-	    rv = db_elo_copy_with_prefix (db_get_elo (dbvalue), lob_path_prefix, &dest_elo);
+	    snprintf (lobfile_path_prefix, PATH_MAX, "%d%d%d%d", HFID_AS_ARGS (&hfid), value->attrid);
+	    rv = db_elo_copy_with_prefix (db_get_elo (dbvalue), lobfile_path_prefix, &dest_elo);
 	  }
 
 	  free_and_init (elo_p->meta_data);
@@ -13496,7 +13748,7 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 
   /* determine the layout and the size */
   if (heap_attrinfo_determine_disk_layout (attr_info, is_mvcc_class, &offset_size, &oos_plan, &has_oos,
-					   &inline_size_after_oos) != NO_ERROR)
+					   &inline_size_after_oos, lobfile_create_flag) != NO_ERROR)
     {
       return S_ERROR;
     }
@@ -28526,12 +28778,14 @@ heap_recdes_contains_oos (const RECDES * record)
   return OR_RECORD_HAS_OOS (record->data);
 }
 
-int
-heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
+static int
+heap_recdes_get_oos_slots (const RECDES * recdes, HEAP_OOS_REFERENCE_VECTOR & oos_references)
 {
   using namespace oos_log;
 
-  oos_oids.clear ();
+  int error = NO_ERROR;
+
+  oos_references.clear ();
 
   if (!heap_recdes_contains_oos (recdes))
     {
@@ -28549,7 +28803,8 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
       if (index == max_var_count)
 	{
 	  assert_release (false && "LAST_ELEMENT flag not found within record bounds");
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto end;
 	}
 
       int offset;
@@ -28566,64 +28821,95 @@ heap_recdes_get_oos_oids (const RECDES * recdes, OID_VECTOR & oos_oids)
 	  break;
 	default:
 	  assert_release (false);
-	  return ER_FAILED;
+	  error = ER_FAILED;
+	  goto end;
 	}
 
       if (OR_IS_OOS (offset))
 	{
-	  OID oid = OID_INITIALIZER;
+	  HEAP_OOS_REFERENCE reference = { OID_INITIALIZER, 0, DB_TYPE_NULL, index };
 	  const char *oid_ptr = (char *) recdes->data + OR_VAR_OFFSET (recdes->data, index);
-	  if (oid_ptr + OR_OID_SIZE > (char *) recdes->data + recdes->length)
+	  if (oid_ptr + OR_OOS_INLINE_SIZE > (char *) recdes->data + recdes->length)
 	    {
-	      assert (false && "OID read would exceed record bounds");
-	      return ER_FAILED;
+	      assert (false && "OOS inline slot read would exceed record bounds");
+	      error = ER_FAILED;
+	      goto end;
 	    }
 	  OR_BUF buf;
-	  or_init (&buf, (char *) oid_ptr, OR_OID_SIZE);
-	  int err = or_get_oid (&buf, &oid);
-	  if (err != NO_ERROR)
+	  int stub_kind = OR_OOS_KIND_OOS;
+	  or_init (&buf, (char *) oid_ptr, OR_OOS_INLINE_SIZE);
+	  if (or_get_oos_stub (&buf, &reference.oid, &stub_kind, &reference.disk_length, OR_OOS_KIND_ANY) != NO_ERROR)
 	    {
-	      assert (false && "or_get_oid failed unexpectedly");
-	      return ER_FAILED;
+	      assert (false && "invalid OOS inline stub");
+	      error = ER_FAILED;
+	      goto end;
 	    }
-	  if (OID_ISNULL (&oid))
+	  /* The stub carries what the chain holds, so the reference is typed without consulting the
+	   * class representation at all. */
+	  reference.type = (stub_kind == OR_OOS_KIND_BLOB ? DB_TYPE_BLOB
+			    : stub_kind == OR_OOS_KIND_CLOB ? DB_TYPE_CLOB : DB_TYPE_NULL);
+	  if (OID_ISNULL (&reference.oid))
 	    {
 	      assert (false && "OID read from OOS slot is null — corrupted record?");
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto end;
 	    }
-	  oos_debug ("there exists an OOS with OID %hd|%d|%hd at offset %d index %d", OID_AS_ARGS (&oid), offset,
-		     index);
-	  oos_oids.emplace_back (oid);
+	  oos_debug ("there exists an OOS with OID %hd|%d|%hd at offset %d index %d", OID_AS_ARGS (&reference.oid),
+		     offset, index);
+	  oos_references.emplace_back (reference);
 	}
 
       if (OR_IS_LAST_ELEMENT (offset))
 	{
-	  if (oos_oids.empty ())
+	  if (oos_references.empty ())
 	    {
 	      /* heap_recdes_contains_oos() already confirmed OOS flag is set, so finding no OOS OIDs is inconsistent */
 	      assert (false && "heap_recdes_contains_oos() passed but no OOS OIDs found");
-	      return ER_FAILED;
+	      error = ER_FAILED;
+	      goto end;
 	    }
 #if !defined (NDEBUG)
 	  {
 	    std::string line = "{";
-	    for (size_t i = 0; i < oos_oids.size (); ++i)
+	    for (size_t i = 0; i < oos_references.size (); ++i)
 	      {
 		char oid_buf[32];
 		if (i > 0)
 		  line.append (", ");
-		line.append (oid_to_string (oid_buf, sizeof oid_buf, &oos_oids[i]));
+		line.append (oid_to_string (oid_buf, sizeof oid_buf, &oos_references[i].oid));
 	      }
 	    line += '}';
-	    oos_debug ("Total %zu found. OOS OIDs: %s", oos_oids.size (), line.c_str ());
+	    oos_debug ("Total %zu found. OOS OIDs: %s", oos_references.size (), line.c_str ());
 	  }
 #endif
-	  return NO_ERROR;
+	  goto end;
 	}
     }
 
   assert (false && "unreachable: there must be last element");
-  return ER_FAILED;
+  error = ER_FAILED;
+
+end:
+  return error;
+}
+
+/*
+ * heap_recdes_get_oos_references () - collect the OOS references of a heap record together with the kind each
+ *   one holds (CLOB, BLOB or ordinary OOS), so callers can tell ordinary OOS records apart from internal LOB chains.
+ *
+ * return             : error code
+ * thread_p (in)      : unused; kept for the callers' signature
+ * recdes (in)        : heap record
+ * oos_references (out) : references in variable-attribute order
+ */
+int
+heap_recdes_get_oos_references (THREAD_ENTRY * thread_p, const RECDES * recdes,
+				HEAP_OOS_REFERENCE_VECTOR & oos_references)
+{
+  /* The inline stub carries its own kind (OR_OOS_KIND_*), so heap_recdes_get_oos_slots () types every reference
+   * as CLOB, BLOB or ordinary OOS without the owner class: callers need not resolve it. */
+  (void) thread_p;
+  return heap_recdes_get_oos_slots (recdes, oos_references);
 }
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)

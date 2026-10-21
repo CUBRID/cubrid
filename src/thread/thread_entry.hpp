@@ -320,6 +320,27 @@ namespace cubthread
       bool m_skip_end_resource_tracks_in_recycle;
 
       std::vector<OID> oos_oids;
+      /* paired 1:1 with oos_oids for replication: each OID's attribute id and whether it is an internal LOB node */
+      std::vector<int> oos_attrids;
+      std::vector<bool> oos_is_internal_lob;
+
+      void clear_oos_tracking ()
+      {
+	oos_oids.clear ();
+	oos_attrids.clear ();
+	oos_is_internal_lob.clear ();
+      }
+      /* pair the not yet paired oos_oids entries below end with attrid and kind */
+      void pair_oos_oids (size_t end, int attrid, bool is_internal_lob)
+      {
+	oos_attrids.resize (end, attrid);
+	oos_is_internal_lob.resize (end, is_internal_lob);
+      }
+      bool oos_tracking_is_paired () const
+      {
+	return oos_attrids.size () == oos_oids.size () && oos_is_internal_lob.size () == oos_oids.size ();
+      }
+
 
 
       bool m_is_private_lru_enabled;
