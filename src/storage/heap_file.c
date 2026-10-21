@@ -12500,6 +12500,7 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
       if (!attr_info->values[i].last_attrepr->is_fixed
 	  && TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (attr_info->values[i].last_attrepr->domain)) && column_size[i] > 0)
 	{
+	  if (lobfile_create_flag == LOB_FLAG_KEY_PROBE)
 	    {
 	      /* a key probe (REPLACE, ON DUPLICATE KEY UPDATE) never reads the LOB: it is written as NULL, not as a chain */
 	      payload_size -= column_size[i];
@@ -13674,6 +13675,17 @@ heap_attrinfo_transform_to_disk_except_lobfile (THREAD_ENTRY * thread_p, HEAP_CA
 }
 
 /*
+ * heap_attrinfo_transform_to_disk_key_probe () - Transform a record that is read back only for its index keys
+ *   (REPLACE, ON DUPLICATE KEY UPDATE): no LOB file is created and no Internal LOB chain is written.
+ */
+SCAN_CODE
+heap_attrinfo_transform_to_disk_key_probe (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+					   RECDES * old_recdes, record_descriptor * new_recdes)
+{
+  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_KEY_PROBE);
+}
+
+/*
  * heap_attrinfo_transform_header_to_disk ()
  *   return: SCAN_CODE
  *           (Either of S_SUCCESS, S_DOESNT_FIT,
@@ -13950,7 +13962,8 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	}
       *ptr_varvals = buf->ptr;
     }
-  else if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
+  else if (dbvalue != NULL && db_value_is_null (dbvalue) != true
+	   && !(lobfile_create_flag == LOB_FLAG_KEY_PROBE && TP_IS_LOB_TYPE (pr_type->id)))
     {
       /* now write the value and remember the current pointer */
       /* to variable value array for the next element.        */

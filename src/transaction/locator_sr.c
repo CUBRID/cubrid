@@ -7508,6 +7508,10 @@ locator_allocate_copy_area_by_attr_info (THREAD_ENTRY * thread_p, HEAP_CACHE_ATT
     {
       scan = heap_attrinfo_transform_to_disk_except_lobfile (thread_p, attr_info, old_recdes, &build_record);
     }
+  else if (lob_create_flag == LOB_FLAG_KEY_PROBE)
+    {
+      scan = heap_attrinfo_transform_to_disk_key_probe (thread_p, attr_info, old_recdes, &build_record);
+    }
   else
     {
       scan = heap_attrinfo_transform_to_disk (thread_p, attr_info, old_recdes, &build_record);
