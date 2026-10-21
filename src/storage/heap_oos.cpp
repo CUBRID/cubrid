@@ -33,7 +33,9 @@
 #include "heap_oos_value_ref.hpp"
 #include "heap_pending_record.hpp"
 #include "heap_show_scan_context.hpp"
+#include "internal_lob_file.hpp"
 #include "log_impl.h"
+#include "object_primitive.h"
 #include "object_representation.h"
 #include "oos_file.hpp"
 #include "oos_log.hpp"
@@ -363,6 +365,47 @@ heap_oos_parse_vot (HEAP_OOS_EXPAND_STATE *state)
 }
 
 /*
+ * heap_oos_read_stub () - Read the inline stub of an OOS-tagged variable attribute.
+ *   return: NO_ERROR, or ER_HEAP_OOS_BAD_INLINE_HEADER when the stub is corrupted
+ *   state(in): expansion state (only src/src_length are read)
+ *   value_offset(in): offset of the stub inside the source record
+ *   oos_ref(out): head-chunk OID (NULL OID for an empty LOB) and the identity stamp the stub carries
+ *   kind(out): OR_OOS_KIND_OOS / _CLOB / _BLOB, decided by the record alone (see object_representation.h)
+ *   oos_len(out): stub length field (bit length for BLOB, byte length otherwise)
+ *
+ * An Internal LOB stub is fully checked here, an ordinary OOS stub by heap_oos_parse_inline_ref (): an empty LOB
+ * is legitimately a NULL OID with length 0, and that parser's DB_MAX_STRING_LENGTH ceiling would cap a BLOB
+ * (length in BITS) at 128MiB.
+ */
+static int
+heap_oos_read_stub (const HEAP_OOS_EXPAND_STATE *state, int value_offset, oos_chain_ref *oos_ref, int *kind,
+		    DB_BIGINT *oos_len)
+{
+  OR_BUF buf;
+  DB_BIGINT packed_identity_stamp = 0;
+
+  /* keep the reference well-defined for an error raised before it is read */
+  OID_SET_NULL (&oos_ref->head_oid);
+  LSA_SET_NULL (&oos_ref->identity_stamp);
+  *kind = OR_OOS_KIND_OOS;
+  *oos_len = 0;
+
+  buf.ptr = (char *) state->src + value_offset;
+  buf.endptr = (char *) state->src + state->src_length;
+  if (buf.endptr - buf.ptr < OR_OOS_INLINE_SIZE
+      || or_get_oos_stub (&buf, &oos_ref->head_oid, kind, oos_len, &packed_identity_stamp,
+			  OR_OOS_KIND_ANY) != NO_ERROR
+      || (OR_OOS_IS_LOB_KIND (*kind) && (*oos_len < 0 || (OID_ISNULL (&oos_ref->head_oid) && *oos_len != 0))))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_ref->head_oid));
+      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+    }
+
+  oos_ref->identity_stamp = oos_unpack_identity_stamp (packed_identity_stamp);
+  return NO_ERROR;
+}
+
+/*
  * heap_oos_read_values () - Read the OOS value for every OOS-tagged variable index.
  *   return: NO_ERROR or error code
  *   thread_p(in): thread entry
@@ -618,6 +661,7 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
       state.src_length = (int) src_buf.size ();
       state.src_offset_size = OR_GET_OFFSET_SIZE (state.src);
       state.src_header_size = OR_HEADER_SIZE ((char *) state.src);
+      state.class_oid = context->class_oid_p;
 
       if (heap_oos_parse_vot (&state) != NO_ERROR)
 	{
@@ -665,6 +709,9 @@ int
 heap_oos_parse_inline_ref (const RECDES *recdes, int location, oos_chain_ref *oos_ref, DB_BIGINT *oos_len)
 {
   char *stub = NULL;
+  OR_BUF buf;
+  int rc = NO_ERROR;
+  int stub_kind = OR_OOS_KIND_OOS;
   DB_BIGINT packed_identity_stamp = 0;
 
   /* Keep the reference well-defined for corruption errors raised before it is read. */
@@ -678,14 +725,17 @@ heap_oos_parse_inline_ref (const RECDES *recdes, int location, oos_chain_ref *oo
       return ER_HEAP_OOS_BAD_INLINE_HEADER;
     }
 
-  /* The field is exactly one stub, so the three fixed-width reads below cannot run past it. */
-  OR_GET_OID (stub, &oos_ref->head_oid);
-  OR_GET_BIGINT (stub + OR_OID_SIZE, oos_len);
-  OR_GET_BIGINT (stub + OR_OID_SIZE + OR_BIGINT_SIZE, &packed_identity_stamp);
+  /* The field is exactly one stub, so the fixed-width reads below cannot run past it.
+   * Demand OR_OOS_KIND_OOS: this parser inlines the chain's bytes into the record, which is only ever
+   * right for a serialized value. An Internal LOB reaching here would be expanded as raw content and
+   * silently corrupt the value, so a kind mismatch has to fail loudly instead. */
+  or_init (&buf, stub, OR_OOS_INLINE_SIZE);
+  rc = or_get_oos_stub (&buf, &oos_ref->head_oid, &stub_kind, oos_len, &packed_identity_stamp, OR_OOS_KIND_OOS);
 
-  /* Reject a NULL OOS OID or a length outside the stored-value range.
+  /* Reject an unreadable or non-OOS stub, a NULL OOS OID, or a length outside the stored-value range.
    * A NULL identity stamp is an ordinary value and is not rejected. */
-  if (OID_ISNULL (&oos_ref->head_oid) || *oos_len <= 0 || *oos_len > (DB_BIGINT) DB_MAX_STRING_LENGTH)
+  if (rc != NO_ERROR || OID_ISNULL (&oos_ref->head_oid) || *oos_len <= 0
+      || *oos_len > (DB_BIGINT) DB_MAX_STRING_LENGTH)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_ref->head_oid));
       return ER_HEAP_OOS_BAD_INLINE_HEADER;
@@ -720,6 +770,20 @@ heap_oos_attr_has_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
 }
 
 /*
+ * heap_oos_attr_is_internal_lob () - Is this attribute's OOS inline stub an Internal LOB locator?
+ *
+ * A BLOB/CLOB must be handed out as a locator, not as payload bytes, so the grouped reader leaves it to the
+ * per-attribute reader, which builds the locator value.
+ */
+static bool
+heap_oos_attr_is_internal_lob (const HEAP_ATTRVALUE *value)
+{
+  const OR_ATTRIBUTE *attrepr = value->read_attrepr;
+
+  return attrepr != NULL && TP_IS_LOB_TYPE (attrepr->type);
+}
+
+/*
  * heap_oos_read_grouped_payloads () - Prefetch requested OOS-marked attributes of one record
  *   through a single grouped oos_read_many() call when at least two requested attributes are OOS-backed.
  *
@@ -747,6 +811,10 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
 
   for (i = 0; i < attr_info->num_values; i++)
     {
+      if (heap_oos_attr_is_internal_lob (&attr_info->values[i]))
+	{
+	  continue;
+	}
       if (heap_oos_attr_has_inline_ref (recdes, &attr_info->values[i]))
 	{
 	  requested_oos_count++;
@@ -777,9 +845,10 @@ heap_oos_read_grouped_payloads (THREAD_ENTRY *thread_p, RECDES *recdes, HEAP_CAC
       heap_oos_value_ref ref;
       std::size_t oos_len = 0;
 
-      if (!heap_oos_attr_has_inline_ref (recdes, &attr_info->values[i]))
+      if (!heap_oos_attr_has_inline_ref (recdes, &attr_info->values[i])
+	  || heap_oos_attr_is_internal_lob (&attr_info->values[i]))
 	{
-	  continue;		/* not OOS here: the per-attribute reader handles it */
+	  continue;		/* not grouped-readable here: the per-attribute reader handles it */
 	}
 
       error = heap_oos_value_ref::decode (*recdes, attr_info->values[i].read_attrepr->location, ref, pending);

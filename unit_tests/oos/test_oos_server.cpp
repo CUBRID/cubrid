@@ -1498,7 +1498,7 @@ TEST (OosServerTest, OosGetLengthWithinPage)
   err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  int length = oos_get_length (thread_p, oid);
+  INT64 length = oos_get_length (thread_p, oid);
   ASSERT_EQ (length, rec_in.length);
 
   recdes_free_data_area (&rec_in);
@@ -1523,7 +1523,7 @@ TEST (OosServerTest, OosGetLengthAcrossPages)
   err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
   ASSERT_EQ (err, NO_ERROR);
 
-  int length = oos_get_length (thread_p, oid);
+  INT64 length = oos_get_length (thread_p, oid);
   ASSERT_EQ (length, rec_in.length);
 
   recdes_free_data_area (&rec_in);
@@ -1551,7 +1551,7 @@ TEST (OosServerTest, OosGetLengthAroundMaxChunkSize)
       err = test_oos_utils::oos_insert_from_recdes (thread_p, oos_vfid, rec_in, oid);
       ASSERT_EQ (err, NO_ERROR);
 
-      int length = oos_get_length (thread_p, oid);
+      INT64 length = oos_get_length (thread_p, oid);
       ASSERT_EQ (length, rec_in.length);
 
       recdes_free_data_area (&rec_in);
@@ -1649,7 +1649,7 @@ TEST (OosServerTest, OosInlineFormatWithRealOosInsert)
   ASSERT_EQ (rc, NO_ERROR);
   ASSERT_EQ (read_length, (DB_BIGINT) rec_in.length);
 
-  int oos_length = oos_get_length (thread_p, oos_oid);
+  INT64 oos_length = oos_get_length (thread_p, oos_oid);
   ASSERT_EQ (read_length, (DB_BIGINT) oos_length);
 
   RECDES rec_out {};
@@ -1705,7 +1705,7 @@ TEST (OosServerTest, OosInlineLengthMatchesAcrossPages)
       ASSERT_EQ (rc, NO_ERROR);
       ASSERT_EQ (inline_length, (DB_BIGINT) rec_in.length) << "Failed for data_size=" << data_size;
 
-      int io_length = oos_get_length (thread_p, oos_oid);
+      INT64 io_length = oos_get_length (thread_p, oos_oid);
       ASSERT_EQ (inline_length, (DB_BIGINT) io_length) << "Failed for data_size=" << data_size;
 
       RECDES rec_out {};
