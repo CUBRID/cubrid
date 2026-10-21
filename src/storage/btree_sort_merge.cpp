@@ -37,13 +37,11 @@
 
 #include "btree_sort.h"
 
-#include "error_manager.h"
 #include "memory_alloc.h"
 #include "porting.h"
 
 #include <assert.h>
 #include <stddef.h>
-#include <math.h>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -58,11 +56,14 @@ struct btsort_srun
   long stop;
 };
 
+/* the merge stack holds a run a depth and the two runs found last, and a run of depth d holds 2^d records at least */
+#define BTSORT_MAX_SRUNS  32
+
 typedef struct btsort_stack BTSORT_STACK;
 struct btsort_stack
 {
   int top;
-  BTSORT_SRUN *srun;
+  BTSORT_SRUN srun[BTSORT_MAX_SRUNS];
 };
 
 static void btsort_run_flip (BTSORT_RUN_SLOT *start, BTSORT_RUN_SLOT *stop);
@@ -144,6 +145,7 @@ btsort_run_find (const char *base, BTSORT_RUN_SLOT *source, long *top, BTSORT_ST
 
   /* init new BTSORT_SRUN */
   st_p->top++;
+  assert (st_p->top < BTSORT_MAX_SRUNS);
   srun_p = &st_p->srun[st_p->top];
   srun_p->tree_depth = 1;
   srun_p->low_high = 'H';
@@ -345,7 +347,7 @@ btsort_run_merge (const char *base, BTSORT_RUN_SLOT *low, BTSORT_RUN_SLOT *high,
 
 /*
  * btsort_run_sort () - An implementation of a run-sort algorithm
- *   return: slots or other_slots, whichever holds the result, or NULL when the run stack could not be allocated
+ *   return: slots or other_slots, whichever holds the result
  *   rec_base(in): sort buffer start
  *   slots(in): pointer to the element at the base of the table
  *   limit(in): number of slots
@@ -369,10 +371,9 @@ static BTSORT_RUN_SLOT *
 btsort_run_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, long limit, BTSORT_RUN_SLOT *other_slots,
 		 BTSORT_CMP_FUNC *compare, void *comp_arg)
 {
-  BTSORT_RUN_SLOT *src, *dest, *result;
+  BTSORT_RUN_SLOT *src, *dest;
   BTSORT_STACK sr_stack, *st_p;
   long src_top = 0;
-  int cnt;
 
   if (limit <= 1)
     {
@@ -382,19 +383,9 @@ btsort_run_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, long limit, BTSOR
   /* init */
   src = slots;
   dest = other_slots;
-  result = NULL;
 
   st_p = &sr_stack;
   st_p->top = -1;
-
-  cnt = (int) (log10 (ceil ((double) limit / 2.0)) / log10 (2.0)) + 2;
-
-  st_p->srun = (BTSORT_SRUN *) db_private_alloc (NULL, cnt * sizeof (BTSORT_SRUN));
-  if (st_p->srun == NULL)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cnt * sizeof (BTSORT_SRUN));
-      return NULL;
-    }
 
   do
     {
@@ -417,11 +408,7 @@ btsort_run_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, long limit, BTSOR
   /* nothing is dropped, so the last stretch spans every slot */
   assert (st_p->srun[0].start == 0 && st_p->srun[0].stop == limit - 1);
 
-  result = (st_p->srun[0].low_high == 'L') ? other_slots : slots;
-
-  db_private_free_and_init (NULL, st_p->srun);
-
-  return result;
+  return (st_p->srun[0].low_high == 'L') ? other_slots : slots;
 }
 
 /*
@@ -501,7 +488,7 @@ btsort_merge_sorter_accept (BTSORT_RUN *run, int length)
 
 /*
  * btsort_merge_sorter_sort () - Orders the run
- *   return: NO_ERROR or ER_FAILED
+ *   return: NO_ERROR
  *   thread_p(in):
  *   run(in/out):
  */
@@ -510,16 +497,9 @@ btsort_merge_sorter_sort (THREAD_ENTRY *thread_p, BTSORT_RUN *run)
 {
   BTSORT_RUN_SLOT *slots = (BTSORT_RUN_SLOT *) (run->slot_ptr + sizeof (BTSORT_RUN_SLOT));	/* the newest slot */
   BTSORT_RUN_SLOT *other_slots = (BTSORT_RUN_SLOT *) run->slot_low;
-  BTSORT_RUN_SLOT *result;
-
-  result = btsort_run_sort (run->base, slots, run->numrecs, other_slots, run->cmp_fn, run->cmp_arg);
-  if (result == NULL)
-    {
-      return ER_FAILED;
-    }
 
   /* for next (), kept across reset () */
-  run->sorted = (const char *) result;
+  run->sorted = (const char *) btsort_run_sort (run->base, slots, run->numrecs, other_slots, run->cmp_fn, run->cmp_arg);
   run->readrecs = run->numrecs;
   run->cursor = 0;
 

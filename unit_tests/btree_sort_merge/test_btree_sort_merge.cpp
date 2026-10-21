@@ -29,8 +29,6 @@
 
 #include "btree_sort.h"
 #include "error_code.h"
-#include "thread_entry.hpp"
-#include "thread_manager.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -118,20 +116,6 @@ namespace
     memcpy (rec + KEY_OFFSET, record.key.data (), record.key.size ());
   }
 
-  /* btsort_run_sort () takes its run stack from the private heap of the thread entry */
-  void
-  set_thread_entry (void)
-  {
-    static cubthread::entry entry;
-    static bool is_set = false;
-
-    if (!is_set)
-      {
-	cubthread::set_thread_local_entry (entry);
-	is_set = true;
-      }
-  }
-
   std::vector<uint64_t>
   read_run (const BTSORT_RUN_SORTER &sorter, BTSORT_RUN &run)
   {
@@ -159,8 +143,6 @@ namespace
     std::vector<std::vector<uint64_t>> runs;
     BTSORT_RUN run;
     size_t at = 0;
-
-    set_thread_entry ();
 
     BTSORT_RUN_INIT (&run, base, base + buffer_bytes, compare_records, NULL);
     sorter.init (&run, NULL);
