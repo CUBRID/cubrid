@@ -12507,6 +12507,10 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
       if (!attr_info->values[i].last_attrepr->is_fixed
 	  && TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (attr_info->values[i].last_attrepr->domain)) && column_size[i] > 0)
 	{
+	  /* [리뷰] 레이아웃과 기록(transform_variable_to_disk)이 같은 플래그를 봐야 한다.
+	   * 어긋나면 payload 크기와 실제 기록 바이트가 달라진다.
+	   * selected를 켜지 않으므로 아래 데모트 루프의 LOB 제외 조건이 짝이다. */
+	  if (lobfile_create_flag == LOB_FLAG_KEY_PROBE)
 	    {
 	      /* a key probe (REPLACE, ON DUPLICATE KEY UPDATE) never reads the LOB: it is written as NULL, not as a chain */
 	      payload_size -= column_size[i];
@@ -12551,10 +12555,14 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
 
       for (i = 0; i < attr_info->num_values; i++)
 	{
-	  /* a variable column is OOS-eligible only if it was not already assigned the dedicated internal-LOB
-	   * locator path and externalizing it shrinks the inline record: its value must be larger than the
-	   * OOS stub (OID + length) it is replaced with */
+	  /* [리뷰] LOB 제외가 없으면 KEY_PROBE로 건너뛴 LOB이 데모트 후보로 뽑힌다.
+	   * payload가 두 번 빠져 음수가 되고 resize_buffer assert로 서버가 죽었다.
+	   * 조건: LOB 뺀 행이 DB_PAGESIZE/4 초과 + LOB 값 인라인(CS 64KiB 이하). */
+	  /* a variable column is OOS-eligible only if externalizing it shrinks the inline record: its value must be
+	   * larger than the OOS stub (OID + length) it is replaced with.  An internal LOB column never joins: the
+	   * loop above already chose its chain path, or a key probe left it NULL without selecting it */
 	  if (!(*oos_plan)[i].selected && !attr_info->values[i].last_attrepr->is_fixed
+	      && !TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (attr_info->values[i].last_attrepr->domain))
 	      && column_size[i] > OR_OOS_INLINE_SIZE)
 	    {
 	      // *INDENT-OFF*
@@ -13698,6 +13706,17 @@ heap_attrinfo_transform_to_disk_except_lobfile (THREAD_ENTRY * thread_p, HEAP_CA
 }
 
 /*
+ * heap_attrinfo_transform_to_disk_key_probe () - Transform a record that is read back only for its index keys
+ *   (REPLACE, ON DUPLICATE KEY UPDATE): no LOB file is created and no Internal LOB chain is written.
+ */
+SCAN_CODE
+heap_attrinfo_transform_to_disk_key_probe (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+					   RECDES * old_recdes, record_descriptor * new_recdes)
+{
+  return heap_attrinfo_transform_to_disk_internal (thread_p, attr_info, old_recdes, new_recdes, LOB_FLAG_KEY_PROBE);
+}
+
+/*
  * heap_attrinfo_transform_header_to_disk ()
  *   return: SCAN_CODE
  *           (Either of S_SUCCESS, S_DOESNT_FIT,
@@ -13974,7 +13993,10 @@ heap_attrinfo_transform_variable_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
 	}
       *ptr_varvals = buf->ptr;
     }
-  else if (dbvalue != NULL && db_value_is_null (dbvalue) != true)
+  /* [리뷰] 프로브면 non-NULL LOB 값도 쓰지 않아 bound bit 없는 NULL이 된다.
+   * 레이아웃 단계가 payload에서 뺀 column_size와 짝을 이룬다. */
+  else if (dbvalue != NULL && db_value_is_null (dbvalue) != true
+	   && !(lobfile_create_flag == LOB_FLAG_KEY_PROBE && TP_IS_LOB_TYPE (pr_type->id)))
     {
       /* now write the value and remember the current pointer */
       /* to variable value array for the next element.        */

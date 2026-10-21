@@ -506,6 +506,8 @@ extern int heap_attrinfo_set (const OID * inst_oid, ATTR_ID attrid, DB_VALUE * a
 			      HEAP_CACHE_ATTRINFO * attr_info);
 extern SCAN_CODE heap_attrinfo_transform_to_disk (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
 						  RECDES * old_recdes, record_descriptor * new_recdes);
+extern SCAN_CODE heap_attrinfo_transform_to_disk_key_probe (THREAD_ENTRY * thread_p, HEAP_CACHE_ATTRINFO * attr_info,
+							    RECDES * old_recdes, record_descriptor * new_recdes);
 extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lobfile (THREAD_ENTRY * thread_p,
 								 HEAP_CACHE_ATTRINFO * attr_info, RECDES * old_recdes,
 								 record_descriptor * new_recdes);
