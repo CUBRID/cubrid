@@ -1108,6 +1108,7 @@ static int
 log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const char *logpath,
 			 const char *prefix_logname, bool ismedia_crash, BO_RESTART_ARG * r_args, bool init_emergency)
 {
+  bool fc_recovered = false;	/* POC-2 */
   LOG_RECORD_HEADER *eof;	/* End of log record */
   REL_FIXUP_FUNCTION *disk_compatibility_functions = NULL;
   REL_COMPATIBILITY compat;
@@ -1417,6 +1418,7 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
        * System was involved in a crash.
        * Execute the recovery process
        */
+      fc_recovered = true;	/* POC-2 */
 
 #if defined(SERVER_MODE)
       /* The actions of flushing the page buffer and double write buffer are currently designed to operate in a single thread.
@@ -1471,6 +1473,33 @@ log_initialize_internal (THREAD_ENTRY * thread_p, const char *db_fullname, const
       logpb_flush_header (thread_p);
     }
   log_Gl.rcv_phase = LOG_RESTARTED;
+
+  {
+    /* POC-2 (full-coverage bestspace): map generation, kept in the obsolete perm_status field as (generation << 1) |
+     * (map was on in the last run). A crash recovery, a run with the map off, or a restore may lose free-space
+     * feedback the persisted maps never saw, so it starts a new generation and every map stamped by an older clean
+     * shutdown is distrusted at its next load. */
+    int prev = log_Gl.hdr.perm_status_obsolete;
+    bool fc_on = prm_get_bool_value (PRM_ID_BESTSPACE_FULL_COVERAGE);
+    int generation = (prev >> 1) & 0x3FFFFFFF;
+
+    if (fc_recovered || init_emergency || (prev & 1) == 0 || !fc_on)
+      {
+	/* seeded from the clock so a re-created log header (copydb, log recreate, restore without the active log)
+	 * can never come back to a generation an old map was stamped with */
+	int now = (int) (time (NULL) & 0x3FFFFFFF);
+	generation = (generation + 1) & 0x3FFFFFFF;
+	if (now > generation)
+	  {
+	    generation = now;
+	  }
+      }
+    log_Gl.hdr.perm_status_obsolete = (generation << 1) | (fc_on ? 1 : 0);
+    if (log_Gl.hdr.perm_status_obsolete != prev)
+      {
+	logpb_flush_header (thread_p);
+      }
+  }
 
   LSA_COPY (&log_Gl.rcv_phase_lsa, &log_Gl.hdr.chkpt_lsa);
   log_Gl.chkpt_every_npages = prm_get_integer_value (PRM_ID_LOG_CHECKPOINT_NPAGES);

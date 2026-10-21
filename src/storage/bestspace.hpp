@@ -27,6 +27,7 @@
 #include "page_buffer.h"
 #include "storage_common.h"
 #include "dbtype_def.h"
+#include "bestspace_fcmap.hpp"
 
 #include <optional>
 #include <array>
@@ -37,6 +38,7 @@
 #include <mutex>
 #include <type_traits>
 #include <deque>
+#include <vector>
 
 namespace cubstorage
 {
@@ -79,6 +81,7 @@ namespace cubstorage
       static constexpr std::size_t L2_FANOUT = 8;
       static constexpr std::size_t ENTRIES_PER_SHARD = L3_FANOUT * L2_FANOUT;
       static constexpr std::size_t DEFAULT_SHARD_COUNT = 8;
+      static constexpr std::size_t FC_NUM_COUNTERS = 8;	// POC: number of full coverage counters
 
       enum class tier : std::int8_t
       {
@@ -327,6 +330,12 @@ namespace cubstorage
 
 	  status allocate (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
 			   PGBUF_WATCHER &page_watcher);
+
+	  // POC full coverage: refill from the sector map instead of the candidate queue
+	  status allocate_fc (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
+			      PGBUF_WATCHER &page_watcher);
+	  void allocate_install_fc (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
+				    std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::size_t num_candidates);
       };
 
       class candidate_queue
@@ -359,7 +368,7 @@ namespace cubstorage
     public:
       explicit bestspace (std::size_t shard_count, int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen,
 			  std::uint16_t unfill_space);
-      ~bestspace () = default;
+      ~bestspace ();
 
       void reset (const bestspace_entry *entries, std::size_t num_entries);
 
@@ -373,6 +382,8 @@ namespace cubstorage
 		PGBUF_WATCHER &page_watcher);
 
       static tier size_to_tier (std::uint16_t size);
+      static std::uint8_t fc_code_of (std::uint16_t freespace);
+      static std::uint16_t fc_optimistic_freespace (std::uint8_t code);
 
       void set_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen);
       void get_estimates (int &num_pages, std::uint64_t &recs_num, std::uint64_t &recs_sumlen);
@@ -381,11 +392,95 @@ namespace cubstorage
 
       std::size_t get_num_shards ();
 
+      bool full_coverage () const
+      {
+	return m_fcmap != nullptr;
+      }
+      void get_fc_usage (std::size_t &num_sectors, std::size_t &bytes, std::uint64_t *counters);
+      // POC verification: refill (allocate) and map claim latency histograms, see fctest::bucket_of
+      void record_alloc_usec (std::uint64_t usec)
+      {
+	m_alloc_hist[fctest::bucket_of (usec)].fetch_add (1, std::memory_order_relaxed);
+      }
+      void record_claim_usec (std::uint64_t usec)
+      {
+	m_claim_hist[fctest::bucket_of (usec)].fetch_add (1, std::memory_order_relaxed);
+      }
+      void get_hist (std::uint64_t *alloc_hist, std::uint64_t *claim_hist)
+      {
+	for (int i = 0; i < fctest::HIST_BUCKETS; i++)
+	  {
+	    alloc_hist[i] = m_alloc_hist[i].load (std::memory_order_relaxed);
+	    claim_hist[i] = m_claim_hist[i].load (std::memory_order_relaxed);
+	  }
+      }
+      void forget_page (VPID vpid);
+
+      // POC-2 persistence: the map, its pages on disk, and the scrub that runs after an unclean restart
+      fcmap *get_fcmap ()
+      {
+	return m_fcmap;
+      }
+      std::vector<VPID> &fc_pages ()
+      {
+	return m_fc_pages;
+      }
+      std::mutex &fc_flush_mutex ()
+      {
+	return m_fc_flush_mutex;
+      }
+      void fc_set_suspect (bool suspect)
+      {
+	if (suspect)
+	  {
+	    // a new suspicion needs a new full pass; the epoch keeps a pass that started earlier from clearing it
+	    m_fc_suspect_epoch.fetch_add (1);
+	    m_fc_scrub_restart.store (true);
+	  }
+	m_fc_suspect.store (suspect);
+      }
+      bool fc_is_suspect () const
+      {
+	return m_fc_suspect.load ();
+      }
+      // a flush waits until the persisted map is loaded (the bestspace is visible before that)
+      void fc_set_loaded ()
+      {
+	m_fc_loaded.store (true, std::memory_order_release);
+      }
+      bool fc_is_loaded () const
+      {
+	return m_fc_loaded.load (std::memory_order_acquire);
+      }
+      // the persisted layout disagrees with the in-memory numbering: rewrite every map page once
+      void fc_set_rewrite (bool rewrite)
+      {
+	m_fc_rewrite.store (rewrite);
+      }
+      bool fc_take_rewrite ()
+      {
+	return m_fc_rewrite.exchange (false);
+      }
+      std::size_t fc_scrub (OID *class_oid, std::size_t budget);
+
       void to_entries (bestspace_entry *entries, bestspace_entry *candidates, std::size_t &num_candidates);
 
     private:
       std::deque<shard> m_shards;
       candidate_queue m_candidates;
+      fcmap *m_fcmap;
+      std::vector<VPID> m_fc_pages;
+      std::mutex m_fc_flush_mutex;
+      std::atomic<bool> m_fc_suspect;
+      std::atomic<bool> m_fc_loaded;
+      std::atomic<bool> m_fc_rewrite;
+      std::atomic<bool> m_fc_scrub_restart = { false };
+      std::atomic<std::uint64_t> m_fc_suspect_epoch = { 0 };
+      std::uint64_t m_fc_scrub_epoch = 0;	// under m_fc_scrub_mutex: the epoch the current pass started in
+      std::atomic<std::uint64_t> m_alloc_hist[fctest::HIST_BUCKETS] = {};
+      std::atomic<std::uint64_t> m_claim_hist[fctest::HIST_BUCKETS] = {};
+      std::mutex m_fc_scrub_mutex;
+      std::size_t m_fc_scrub_cursor;
 
       // parameter
       const bool m_distributed_insert;
@@ -450,9 +545,12 @@ namespace cubstorage
       bestspace_registry ();
       ~bestspace_registry ();
 
+      // POC-2: init runs before the new bestspace becomes visible to other threads
+      using init_callback = void (*) (bestspace *entry, void *args);
       void create (HFID *hfid, std::size_t shard_count, bestspace_entry *entries, std::size_t num_entries,
 		   bestspace_entry *candidates, std::size_t num_candidates, int num_pages, std::uint64_t recs_num,
-		   std::uint64_t recs_sumlen, std::uint16_t unfill_space);
+		   std::uint64_t recs_sumlen, std::uint16_t unfill_space, init_callback init = nullptr,
+		   void *init_args = nullptr);
       void destroy (const VFID *vfid);
       void destroy (const HFID *hfid);
 
@@ -486,6 +584,9 @@ namespace cubstorage
   };
 
   extern bestspace_registry bestspaces;
+
+  // POC diagnostics: how the last page handed out by this thread was chosen
+  void bestspace_debug_last_found (VPID *vpid, int *source, int *measured, int *needed);
 }
 
 #endif // _BESTSPACE_HPP_

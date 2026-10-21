@@ -83,6 +83,30 @@ wait_for_shard_allocation (THREAD_ENTRY *thread_p, void *args)
 
 namespace cubstorage
 {
+  // POC diagnostics
+  static thread_local VPID fc_dbg_vpid;
+  static thread_local int fc_dbg_source;
+  static thread_local int fc_dbg_measured;
+  static thread_local int fc_dbg_needed;
+
+  static void
+  fc_dbg_set (VPID vpid, int source, int measured, int needed)
+  {
+    fc_dbg_vpid = vpid;
+    fc_dbg_source = source;
+    fc_dbg_measured = measured;
+    fc_dbg_needed = needed;
+  }
+
+  void
+  bestspace_debug_last_found (VPID *vpid, int *source, int *measured, int *needed)
+  {
+    *vpid = fc_dbg_vpid;
+    *source = fc_dbg_source;
+    *measured = fc_dbg_measured;
+    *needed = fc_dbg_needed;
+  }
+
   //////////////////////////////////////////////////////////////////////////
   // base class
   //////////////////////////////////////////////////////////////////////////
@@ -374,6 +398,7 @@ namespace cubstorage
     result = allocate_verify_actual_space (class_oid, needed_size, candidate, valid, page_watcher);
     if (result == status::FOUND)
       {
+	fc_dbg_set ({ candidate.pageid, candidate.volid }, 2, candidate.freespace, needed_size);
 	candidate.freespace -= consume_size;
 	STATS_INC (found, 1);
       }
@@ -619,6 +644,7 @@ namespace cubstorage
     // is this page still belongs to the class (class_oid) ?
     if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
 	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr)
+	|| heap_page_is_bestspace (thread_p, page_watcher.pgptr)
 	|| heap_get_class_oid_from_page (thread_p, page_watcher.pgptr, &page_class_oid) != NO_ERROR
 	|| !OID_EQ (&page_class_oid, class_oid))
       {
@@ -665,6 +691,7 @@ namespace cubstorage
       }
 
     STATS_INC (found, 1);
+    fc_dbg_set (old_vpid, 1, (int) freespace, needed_size);
 
     return status::FOUND;
   }
@@ -712,6 +739,14 @@ namespace cubstorage
     if (m_L1[l2_index * L2_FANOUT + l1_index].compare_exchange_strong (expected, desired))
       {
 	L2_update (l2_index, l1_index);
+	if (m_parent.m_fcmap != nullptr)
+	  {
+	    // the page left the heap (or this class): it is no longer a data page of this heap
+	    {
+	    VPID removed_vpid = expected.get_vpid ();
+	    m_parent.m_fcmap->remove (removed_vpid.volid, removed_vpid.pageid);
+	  }
+	  }
       }
   }
 
@@ -903,8 +938,10 @@ namespace cubstorage
 	return status::FAILURE;
       }
 
+    // a bestspace page (develop's entries or a POC-2 map page) is never an insert target
     if (pgbuf_get_page_ptype (thread_p, page_watcher.pgptr) != PAGE_HEAP
-	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr))
+	|| heap_page_is_not_in_heap (thread_p, page_watcher.pgptr)
+	|| heap_page_is_bestspace (thread_p, page_watcher.pgptr))
       {
 	valid = false;
 	pgbuf_ordered_unfix (thread_p, &page_watcher);
@@ -1048,6 +1085,23 @@ namespace cubstorage
     std::array<bestspace_entry, ALLOC_BATCH_SIZE> candidates;
     std::size_t num_candidates;
     status result;
+    // POC verification: refill latency, both paths
+    struct alloc_timer
+    {
+      bestspace &bs;
+      std::chrono::steady_clock::time_point t0;
+      alloc_timer (bestspace &b) : bs (b), t0 (std::chrono::steady_clock::now ()) {}
+      ~alloc_timer ()
+      {
+	bs.record_alloc_usec ((std::uint64_t) std::chrono::duration_cast<std::chrono::microseconds> (
+				std::chrono::steady_clock::now () - t0).count ());
+      }
+    } timer (m_parent);
+
+    if (m_parent.m_fcmap != nullptr)
+      {
+	return allocate_fc (class_oid, hfid, needed_size, consume_size, page_watcher);
+      }
 
     // set allcating bit
     if (allocate_mark () != status::SUCCESS)
@@ -1085,6 +1139,238 @@ namespace cubstorage
 
     allocate_unmark ();
     return status::FOUND;
+  }
+
+  bestspace::status
+  bestspace::shard::allocate_fc (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
+				 PGBUF_WATCHER &page_watcher)
+  {
+    std::array<VPID, (L3_FANOUT * L2_FANOUT) + ALLOC_BATCH_SIZE> residents;
+    std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> victims; // index, freespace
+    std::array<bestspace_entry, ALLOC_BATCH_SIZE> claimed;
+    std::array<bestspace_entry, ALLOC_BATCH_SIZE> candidates;
+    fcmap *map = m_parent.m_fcmap;
+    static constexpr std::size_t FC_SCRUB_BUDGET = 256;
+    std::size_t num_claimed, num_candidates, fit_index, i, j;
+    std::uint8_t min_code;
+    bool found, valid, scrubbed = false;
+    status result;
+    int error;
+
+    if (allocate_mark () != status::SUCCESS)
+      {
+	STATS_INC (advance_shard, 1);
+
+	return status::ALLOCATING;
+      }
+
+    // pick four pages with the smallest free space as replacement victims.
+    allocate_pick_victims (residents, victims);
+
+claim_again:
+    // claim pages whose tier is above the request's: their lower bound fits it when the map is accurate.
+    // a page of the same tier may or may not fit (tiers are 8~15% wide), so it is left for smaller requests;
+    // only a request in the top tier has nothing above it and tries its own tier.
+    min_code = fc_code_of (needed_size);
+    {
+      fcmap::claimed picked[ALLOC_BATCH_SIZE];
+
+      std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now ();
+      num_claimed = map->claim (min_code < fcmap::CODE_MAX_TIER ? min_code + 1 : fcmap::CODE_MAX_TIER, picked,
+				ALLOC_BATCH_SIZE);
+      m_parent.record_claim_usec ((std::uint64_t) std::chrono::duration_cast<std::chrono::microseconds> (
+				    std::chrono::steady_clock::now () - t0).count ());
+      if (num_claimed > 0)
+	{
+	  fctest::delay (fctest::P_CLAIM_VERIFY);
+	}
+      for (i = 0; i < num_claimed; i++)
+	{
+	  claimed[i].volid = picked[i].volid;
+	  claimed[i].pageid = picked[i].pageid;
+	  claimed[i].freespace = fc_optimistic_freespace (picked[i].code);
+	}
+    }
+
+    // verify the claimed pages in order until one really fits; the rest become unverified replacements.
+    found = false;
+    fit_index = 0;
+    num_candidates = 0;
+    for (i = 0; i < num_claimed; i++)
+      {
+	if (found)
+	  {
+	    candidates[num_candidates++] = claimed[i];
+	    continue;
+	  }
+
+	result = allocate_verify_actual_space (class_oid, needed_size, claimed[i], valid, page_watcher);
+	if (result == status::FOUND)
+	  {
+	    fc_dbg_set ({ claimed[i].pageid, claimed[i].volid }, 3, claimed[i].freespace, needed_size);
+	    found = true;
+	    fit_index = num_candidates;
+	    candidates[num_candidates++] = claimed[i];
+	    map->count (fcmap::CNT_REUSED);
+	    continue;
+	  }
+	if (result == status::FAILURE)
+	  {
+	    for (j = i; j < num_claimed; j++)
+	      {
+		map->release (claimed[j].volid, claimed[j].pageid, fc_code_of (claimed[j].freespace), false);
+	      }
+	    allocate_unmark ();
+	    return status::FAILURE;
+	  }
+
+	assert (result == status::NOT_FOUND);
+	map->count (fcmap::CNT_VERIFY_FAIL);
+	if (valid)
+	  {
+	    // the page was measured: record its exact tier
+	    map->release (claimed[i].volid, claimed[i].pageid, fc_code_of (claimed[i].freespace), true);
+	  }
+	else
+	  {
+	    map->remove (claimed[i].volid, claimed[i].pageid);
+	  }
+      }
+
+    if (!found && !scrubbed && m_parent.fc_is_suspect () && m_parent.fc_scrub (class_oid, FC_SCRUB_BUDGET) > 0)
+      {
+	// the map may have missed space freed before an unclean restart: pages were measured, look again once
+	scrubbed = true;
+	goto claim_again;
+      }
+
+    if (found)
+      {
+	// the page returned to the caller is always stored at the last position.
+	std::swap (candidates[fit_index], candidates[num_candidates - 1]);
+      }
+    else
+      {
+	assert (num_candidates == 0);
+
+	// nothing in the map fits: extend the heap by one batch
+	error = allocate_new_pages (hfid, 0, candidates, page_watcher);
+	if (error != NO_ERROR)
+	  {
+	    allocate_unmark ();
+	    return status::FAILURE;
+	  }
+	num_candidates = ALLOC_BATCH_SIZE;
+	fc_dbg_set ({ candidates[ALLOC_BATCH_SIZE - 1].pageid, candidates[ALLOC_BATCH_SIZE - 1].volid }, 4,
+		    candidates[ALLOC_BATCH_SIZE - 1].freespace, needed_size);
+	map->count (fcmap::CNT_ALLOC_BATCH);
+	// only the latched page was measured; the others are new and empty
+	for (i = 0; i < ALLOC_BATCH_SIZE - 1; i++)
+	  {
+	    candidates[i].freespace = fc_optimistic_freespace (fcmap::CODE_MAX_TIER);
+	  }
+	for (i = 0; i < ALLOC_BATCH_SIZE; i++)
+	  {
+	    map->set_resident (candidates[i].volid, candidates[i].pageid, fc_code_of (candidates[i].freespace));
+	  }
+
+	if (candidates[ALLOC_BATCH_SIZE - 1].freespace < needed_size)
+	  {
+	    // heap_alloc_new_pages links the pages into the heap before it latches the first one again, so another
+	    // inserter that reached it through an old hint may have used it meanwhile. keep the batch in the hot
+	    // cache and serve the request from it instead.
+	    cubthread::entry *thread_p = thread_get_thread_entry_info ();
+	    tier minimum;
+
+	    map->count (fcmap::CNT_VERIFY_FAIL);
+	    pgbuf_ordered_unfix (thread_p, &page_watcher);
+	    allocate_install_fc (victims, candidates, ALLOC_BATCH_SIZE);
+	    allocate_unmark ();
+
+	    minimum = size_to_tier (needed_size);
+	    if (minimum == tier::FS0)
+	      {
+		minimum = tier::FS1;
+	      }
+	    result = L3_find (class_oid, minimum, needed_size, consume_size, 0, page_watcher);
+	    if (result == status::FOUND || result == status::FAILURE)
+	      {
+		return result;
+	      }
+	    // nothing usable right now: let the caller retry
+	    return status::ALLOCATING;
+	  }
+      }
+
+    // reserve the page
+    candidates[num_candidates - 1].freespace -= consume_size;
+
+    allocate_install_fc (victims, candidates, num_candidates);
+
+    allocate_unmark ();
+    return status::FOUND;
+  }
+
+  void
+  bestspace::shard::allocate_install_fc (std::array<std::pair<std::uint16_t, std::uint16_t>, ALLOC_BATCH_SIZE> &victims,
+					 std::array<bestspace_entry, ALLOC_BATCH_SIZE> &candidates, std::size_t num_candidates)
+  {
+    fcmap *map = m_parent.m_fcmap;
+    std::size_t i, slot;
+    VPID old_vpid;
+    L1 old, l1;
+
+    for (i = 0; i < num_candidates; i++)
+      {
+	slot = victims[i].first;
+	if (i == num_candidates - 1 && candidates[i].freespace <= victims[i].second)
+	  {
+	    // the returned page has less room than the victim: keep the victim, the page stays in the map
+	    map->release (candidates[i].volid, candidates[i].pageid, fc_code_of (candidates[i].freespace), true);
+	    continue;
+	  }
+
+	old = m_L1[slot].load ();
+	l1.set_freespace (candidates[i].freespace);
+	l1.set_vpid ({ candidates[i].pageid, candidates[i].volid });
+	m_L1[slot].store (l1);
+
+	L2_update (slot / L2_FANOUT, slot % L2_FANOUT);
+
+	// write the evicted page back to the map so it is never forgotten
+	old_vpid = old.get_vpid ();
+	if (!VPID_ISNULL (&old_vpid))
+	  {
+	    map->release (old_vpid.volid, old_vpid.pageid, fc_code_of (old.get_freespace ()), false);
+	  }
+      }
+  }
+
+  //////////////////////////////////////////////////////////////////////////
+  // POC full coverage: tier codes
+  //////////////////////////////////////////////////////////////////////////
+
+  std::uint8_t
+  bestspace::fc_code_of (std::uint16_t freespace)
+  {
+    tier fs = size_to_tier (MIN (freespace, static_cast<std::uint16_t> (DB_PAGESIZE)));
+    return fs == tier::FS0 ? fcmap::CODE_NONE : static_cast<std::uint8_t> (static_cast<std::int8_t> (fs) + 1);
+  }
+
+  std::uint16_t
+  bestspace::fc_optimistic_freespace (std::uint8_t code)
+  {
+    // the upper bound of each tier; a too-high value is corrected the first time the page is fixed
+    static constexpr std::int16_t upper[] = { 0, 15, 24, 34, 45, 57, 70, 84, 100 };
+    int bytes, capacity;
+
+    if (code == fcmap::CODE_NONE || code > fcmap::CODE_MAX_TIER)
+      {
+	return 0;
+      }
+    bytes = upper[code] * DB_PAGESIZE / 100;
+    capacity = heap_nonheader_page_capacity ();
+    return static_cast<std::uint16_t> (MIN (bytes, capacity));
   }
 
   bestspace::candidate_queue::candidate_queue ()
@@ -1280,6 +1566,14 @@ namespace cubstorage
   bestspace::bestspace (std::size_t shard_count, int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen,
 			std::uint16_t unfill_space)
     : m_shards ()
+    , m_fcmap (prm_get_bool_value (PRM_ID_BESTSPACE_FULL_COVERAGE) ? new fcmap () : nullptr)
+    , m_fc_pages ()
+    , m_fc_flush_mutex ()
+    , m_fc_suspect (false)
+    , m_fc_loaded (false)
+    , m_fc_rewrite (false)
+    , m_fc_scrub_mutex ()
+    , m_fc_scrub_cursor (0)
     , m_distributed_insert (prm_get_bool_value (PRM_ID_BESTSPACE_DISTRIBUTED_INSERT))
     , m_unfill_space (unfill_space)
     , m_num_pages (num_pages)
@@ -1295,6 +1589,127 @@ namespace cubstorage
     for (std::size_t i = 0; i < shard_count; i++)
       {
 	m_shards.emplace_back (*this);
+      }
+  }
+
+  bestspace::~bestspace ()
+  {
+    delete m_fcmap;
+  }
+
+  void
+  bestspace::get_fc_usage (std::size_t &num_sectors, std::size_t &bytes, std::uint64_t *counters)
+  {
+    std::size_t i;
+
+    static_assert (FC_NUM_COUNTERS == static_cast<std::size_t> (fcmap::CNT_LAST), "FC_NUM_COUNTERS must match");
+
+    num_sectors = 0;
+    bytes = 0;
+    for (i = 0; i < fcmap::CNT_LAST; i++)
+      {
+	counters[i] = 0;
+      }
+    if (m_fcmap != nullptr)
+      {
+	m_fcmap->get_usage (num_sectors, bytes, counters);
+      }
+  }
+
+  std::size_t
+  bestspace::fc_scrub (OID *class_oid, std::size_t budget)
+  {
+    cubthread::entry *thread_p = thread_get_thread_entry_info ();
+    std::vector<fcmap::claimed> cand (budget);
+    PGBUF_WATCHER watcher;
+    OID page_class_oid;
+    std::size_t n, i, found = 0;
+    std::uint8_t code;
+    VPID vpid;
+    int wait_msecs, error;
+
+    if (m_fcmap == nullptr || !m_fc_suspect.load ())
+      {
+	return 0;
+      }
+    std::unique_lock<std::mutex> lock (m_fc_scrub_mutex, std::try_to_lock);
+    if (!lock.owns_lock ())
+      {
+	return 0;
+      }
+    if (m_fc_scrub_restart.exchange (false) || m_fc_scrub_cursor == 0)
+      {
+	m_fc_scrub_cursor = 0;
+	m_fc_scrub_epoch = m_fc_suspect_epoch.load ();
+      }
+
+    n = m_fcmap->scrub_candidates (m_fc_scrub_cursor, cand.data (), budget);
+    fctest::delay (fctest::P_SCRUB_MID);
+    if (n == 0)
+      {
+	// one full pass over the map: every page has been measured since the suspicion that started this pass;
+	// a newer suspicion needs its own pass
+	if (m_fc_suspect_epoch.load () == m_fc_scrub_epoch)
+	  {
+	    m_fc_suspect.store (false);
+	  }
+	m_fc_scrub_cursor = 0;
+	return 0;
+      }
+
+    // page fixes below must not consume the statement's interrupt (the error would be swallowed)
+    bool check_interrupt = logtb_set_check_interrupt (thread_p, false);
+    for (i = 0; i < n; i++)
+      {
+	vpid.volid = cand[i].volid;
+	vpid.pageid = cand[i].pageid;
+	PGBUF_INIT_WATCHER (&watcher, PGBUF_ORDERED_HEAP_NORMAL, PGBUF_ORDERED_NULL_HFID);
+	wait_msecs = logtb_set_thread_wait_msecs (thread_p, LK_FORCE_ZERO_WAIT);
+	error = pgbuf_ordered_fix (thread_p, &vpid, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, &watcher);
+	(void) logtb_set_thread_wait_msecs (thread_p, wait_msecs);
+	if (error != NO_ERROR)
+	  {
+	    er_clear ();
+	    continue;
+	  }
+	if (pgbuf_get_page_ptype (thread_p, watcher.pgptr) != PAGE_HEAP || heap_page_is_bestspace (thread_p, watcher.pgptr)
+	    || heap_get_class_oid_from_page (thread_p, watcher.pgptr, &page_class_oid) != NO_ERROR
+	    || !OID_EQ (&page_class_oid, class_oid))
+	  {
+	    // not a data page of this heap (a map or develop bestspace page, an orphaned map page, a page of another
+	    // file): never measure it again
+	    m_fcmap->remove (vpid.volid, vpid.pageid);
+	  }
+	else if (!heap_page_is_not_in_heap (thread_p, watcher.pgptr))
+	  {
+	    // the same measure feedback uses: space other transactions saved for rollback still counts
+	    code = fc_code_of ((std::uint16_t) MIN (spage_get_free_space_without_saving (thread_p, watcher.pgptr), 0xFFFF));
+	    m_fcmap->count (fcmap::CNT_SCRUB_READ);
+	    if (code > cand[i].code)
+	      {
+		m_fcmap->count (fcmap::CNT_SCRUB_FOUND);
+		found++;
+	      }
+	    if (code != cand[i].code)
+	      {
+		m_fcmap->feedback (vpid.volid, vpid.pageid, code);
+	      }
+	  }
+	pgbuf_ordered_unfix (thread_p, &watcher);
+      }
+    if (check_interrupt)
+      {
+	(void) logtb_set_check_interrupt (thread_p, true);
+      }
+    return found;
+  }
+
+  void
+  bestspace::forget_page (VPID vpid)
+  {
+    if (m_fcmap != nullptr)
+      {
+	m_fcmap->remove (vpid.volid, vpid.pageid);
       }
   }
 
@@ -1329,12 +1744,30 @@ namespace cubstorage
 	m_shards[i].reset (shard_entries.data ());
 	entry_index += entries_to_copy;
       }
+
+    if (m_fcmap != nullptr)
+      {
+	m_fcmap->clear_all_resident ();
+	for (i = 0; i < num_entries; i++)
+	  {
+	    if (entries[i].pageid != NULL_PAGEID && entries[i].volid != NULL_VOLID)
+	      {
+		m_fcmap->set_resident (entries[i].volid, entries[i].pageid, fc_code_of (entries[i].freespace));
+	      }
+	  }
+      }
   }
 
   void
   bestspace::try_push_candidates (bestspace_entry *candidates, std::size_t num_candidates)
   {
     std::size_t i;
+
+    if (m_fcmap != nullptr)
+      {
+	push_candidates (candidates, num_candidates);
+	return;
+      }
 
     for (i = 0; i < num_candidates; i++)
       {
@@ -1346,6 +1779,15 @@ namespace cubstorage
   bestspace::push_candidates (bestspace_entry *candidates, std::size_t num_candidates)
   {
     std::size_t i;
+
+    if (m_fcmap != nullptr)
+      {
+	for (i = 0; i < num_candidates; i++)
+	  {
+	    m_fcmap->feedback (candidates[i].volid, candidates[i].pageid, fc_code_of (candidates[i].freespace));
+	  }
+	return;
+      }
 
     for (i = 0; i < num_candidates; i++)
       {
@@ -1362,7 +1804,7 @@ namespace cubstorage
   bool
   bestspace::updatable ()
   {
-    constexpr std::uint64_t UPDATE_TIME_THRESHOLD = 30;
+    const std::uint64_t UPDATE_TIME_THRESHOLD = (std::uint64_t) fctest::cfg ().flush_sec;	// POC verification knob
     std::uint64_t last_updated, now;
 
     last_updated = m_last_updated.load ();
@@ -1426,7 +1868,8 @@ namespace cubstorage
       }
 
     num_checked_candidates = 0;
-    while (num_checked_candidates < MAX_CANDIDATES_QUEUE_SIZE && m_candidates.pop (candidate, needed_size))
+    while (m_fcmap == nullptr && num_checked_candidates < MAX_CANDIDATES_QUEUE_SIZE
+	   && m_candidates.pop (candidate, needed_size))
       {
 	result =
 		m_shards[shard].find_candidate (class_oid, needed_size, consume_size, candidate, candidate_valid, page_watcher);
@@ -1557,6 +2000,12 @@ namespace cubstorage
 	m_shards[i].to_entries (entries + i * ENTRIES_PER_SHARD);
       }
 
+    if (m_fcmap != nullptr)
+      {
+	// the persisted map has every page; collecting header candidates would scan it under the header latch
+	num_candidates = 0;
+	return;
+      }
     num_candidates = m_candidates.to_entries (candidates);
   }
 
@@ -1661,13 +2110,19 @@ namespace cubstorage
   void
   bestspace_registry::create (HFID *hfid, std::size_t shard_count, bestspace_entry *entries, std::size_t num_entries,
 			      bestspace_entry *candidates, std::size_t num_candidates, int num_pages, std::uint64_t recs_num,
-			      std::uint64_t recs_sumlen, std::uint16_t unfill_space)
+			      std::uint64_t recs_sumlen, std::uint16_t unfill_space, init_callback init, void *init_args)
   {
     registry_entry *node;
 
     node = new registry_entry;
     node->hfid = *hfid;
     node->entry = new bestspace (shard_count, num_pages, recs_num, recs_sumlen, unfill_space);
+    if (init != nullptr)
+      {
+	// load the persisted map before the hot cache touches it: the map numbers sectors in load order, and the
+	// persisted entries are laid out in that order
+	init (node->entry, init_args);
+      }
     node->entry->reset (entries, num_entries);
     node->entry->push_candidates (candidates, num_candidates);
 
@@ -1831,6 +2286,19 @@ namespace cubstorage
   void
   bestspace_registry::destroy_entry (registry_entry *entry)
   {
+    if (entry->entry->full_coverage ())
+      {
+	// POC diagnostics: the counters of a map that is dropped without a flush
+	std::size_t sectors, bytes;
+	std::uint64_t c[bestspace::FC_NUM_COUNTERS];
+
+	entry->entry->get_fc_usage (sectors, bytes, c);
+	er_log_debug (ARG_FILE_LINE, "bestspace_fc destroy: hfid=%d|%d|%d sectors=%zu feedback=%llu claimed=%llu"
+		      " verify_fail=%llu released=%llu alloc_batch=%llu reused=%llu scrub_read=%llu\n",
+		      HFID_AS_ARGS (&entry->hfid), sectors, (unsigned long long) c[0], (unsigned long long) c[1],
+		      (unsigned long long) c[2], (unsigned long long) c[3], (unsigned long long) c[4],
+		      (unsigned long long) c[5], (unsigned long long) c[6]);
+      }
     delete entry->entry;
     delete entry;
   }

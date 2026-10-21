@@ -812,6 +812,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_BESTSPACE_SHARD_COUNT "bestspace_shard_count"
 #define PRM_NAME_BESTSPACE_DISTRIBUTED_INSERT "bestspace_distributed_insert"
 #define PRM_NAME_BESTSPACE_CACHE_COUNT "bestspace_cache_count"
+#define PRM_NAME_BESTSPACE_FULL_COVERAGE "bestspace_full_coverage"
 
 #define PRM_NAME_ENABLE_LAZY_PREDICATE_READ "enable_lazy_predicate_read"
 
@@ -5529,6 +5530,18 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 40}},
    {false, {.i = 128}},
    {false, {.i = 10}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  {PRM_ID_BESTSPACE_FULL_COVERAGE,
+   PRM_NAME_BESTSPACE_FULL_COVERAGE,
+   (PRM_FOR_SERVER | PRM_HIDDEN),
+   PRM_BOOLEAN,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.b = false}},
+   {false, {.b = false}},
+   NULL_SYSPRM_PARAM_VALUE,
+   NULL_SYSPRM_PARAM_VALUE,
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
    (DUP_PRM_FUNC) NULL},
