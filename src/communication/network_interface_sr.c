@@ -8898,10 +8898,6 @@ ssession_find_or_create_session (THREAD_ENTRY * thread_p, unsigned int rid, char
 	  (void) return_error_to_client (thread_p, rid);
 	}
     }
-  else if (error == NO_ERROR)
-    {
-      xsession_set_is_keep_session (thread_p, false);
-    }
 
   /* get row count */
   xsession_get_row_count (thread_p, &row_count);
