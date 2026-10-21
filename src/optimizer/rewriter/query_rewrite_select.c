@@ -72,6 +72,9 @@ qo_rewrite_select_queries (PARSER_CONTEXT * parser, PT_NODE ** nodep, PT_NODE **
       /* rewrite outer join to inner join */
       qo_rewrite_outerjoin (parser, *nodep, NULL, &continue_walk);
 
+      /* rewrite semi join on a unique key to inner join, after the outer join rewrite read its ON */
+      qo_rewrite_unique_semi_inner (parser, *nodep);
+
       /* rewrite explicit inner join to implicit inner join */
       qo_rewrite_innerjoin (parser, *nodep, NULL, &continue_walk);
 
@@ -3656,7 +3659,8 @@ qo_reduce_predicate_for_parent_spec (PARSER_CONTEXT * parser, PT_NODE * query,
 
 /*
  * qo_is_semi_join_on_after () - is the location that of the ON of a SEMI JOIN after the spec? That ON drops
- *      the outer rows it rejects as a WHERE term does, while an ANTI JOIN keeps them
+ *      the outer rows it rejects as a WHERE term does, while an ANTI JOIN keeps them.  A SEMI JOIN on a unique
+ *      key is still one here: qo_rewrite_unique_semi_inner () turns it INNER only after qo_rewrite_outerjoin ()
  *   return: bool
  *   spec(in): the outer joined spec
  *   location(in): location of a WHERE term

@@ -469,7 +469,7 @@ exit:
 void
 qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 {
-  PT_NODE *prev, *cnf_node, *next, *subq, *inner_spec, *spec, *after, *on_conds, *hint;
+  PT_NODE *prev, *cnf_node, *next, *subq, *inner_spec, *spec, *after, *on_conds;
   QO_UNNEST_INFO info;
   short loc;
 
@@ -599,6 +599,23 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
+}
+
+/*
+ * qo_rewrite_unique_semi_inner () - turn a SEMI JOIN whose ON pins down one inner row per outer row into an
+ *   INNER JOIN: same rows, and the planner is free to reorder it (a SEMI inner is frozen behind its outer,
+ *   see QO_ADD_SEMI_ANTI_DEP_SET).  Called after qo_rewrite_outerjoin (), which reads the ON of a SEMI JOIN as
+ *   a term that rejects the NULL-padded rows of an outer join before it, so that the conversion does not hide
+ *   that term from it
+ *   return: none
+ *   parser(in):
+ *   node(in/out): a PT_SELECT node
+ */
+void
+qo_rewrite_unique_semi_inner (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *spec, *hint;
+
   for (hint = node->info.query.q.select.using_index; hint != NULL; hint = hint->next)
     {
       if (hint->info.name.indx_key_limit != NULL)
@@ -607,9 +624,6 @@ qo_rewrite_exists_semi_anti (PARSER_CONTEXT * parser, PT_NODE * node)
 	}
     }
 
-  /* a SEMI JOIN, unnested above or written by the user, whose ON pins down one inner row per outer row is an
-   * INNER JOIN: same rows, and the planner is free to reorder it (a SEMI inner is frozen behind its outer,
-   * see QO_ADD_SEMI_ANTI_DEP_SET) */
   for (spec = node->info.query.q.select.from; spec != NULL; spec = spec->next)
     {
       if (spec->info.spec.join_type == PT_JOIN_SEMI && spec->info.spec.derived_table == NULL
