@@ -1539,16 +1539,17 @@ dblink_scan_reset (DBLINK_SCAN_INFO * scan_info)
 
 /*
  * dblink_dml_build_insert_sql () - Build "INSERT INTO <table> [(c1, c2, ...)] VALUES (?, ?, ...)",
- *   optionally followed by "ON DUPLICATE KEY UPDATE c = <value>, ...". A REPLACE is the same statement
- *   under a different prefix -- the column list, the placeholders and the values the caller binds are
- *   what an INSERT sends -- and never carries the clause: the grammar makes the two exclusive.
+ *   optionally followed by "ON DUPLICATE KEY UPDATE c = <value>, ...". A value is printed text, or "?" when
+ *   the caller binds it after the INSERT values. A REPLACE is the same statement under a different prefix --
+ *   the column list, the placeholders and the values the caller binds are what an INSERT sends -- and never
+ *   carries the clause: the grammar makes the two exclusive.
  *   return: NO_ERROR on success (sql_out set to a db_private_alloc'd string, caller frees with
  *           db_private_free), error code on failure.
  *   thread_p(in)   : thread entry
  *   table_name(in) : remote table name
  *   attr_names(in) : explicit column names (NULL for positional INSERT)
  *   num_attrs(in)  : length of attr_names (0 when positional)
- *   num_bind(in)   : number of ? placeholders (= SELECT column count)
+ *   num_bind(in)   : number of ? placeholders in VALUES (= INSERT column count)
  *   do_replace(in) : true to head the statement with REPLACE INTO instead of INSERT INTO
  *   odku(in)       : ON DUPLICATE KEY UPDATE assignments; NULL or a zero count means no clause
  *   sql_out(out)   : set to the built SQL text on success
@@ -1603,8 +1604,8 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
 	  return ER_DBLINK;
 	}
 
-      /* guard: this path can only carry text, so a slot with nothing to print would go out as " = 'x'"
-       * or "c = " -- a different statement, not an error */
+      /* guard: a column with no name would go out as " = 'x'", and an empty value as "c = ". Either is a
+       * different statement, not an error. A NULL exprs[i] is a bound value and goes out as "?". */
       if (odku->cols == NULL || odku->exprs == NULL)
 	{
 	  snprintf (errmsg, sizeof (errmsg), "%s: odku assignment array is NULL", errctx);
@@ -1613,9 +1614,15 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
 	}
       for (i = 0; i < num_odku; i++)
 	{
-	  if (odku->cols[i] == NULL || odku->cols[i][0] == '\0' || odku->exprs[i] == NULL || odku->exprs[i][0] == '\0')
+	  if (odku->cols[i] == NULL || odku->cols[i][0] == '\0')
 	    {
-	      snprintf (errmsg, sizeof (errmsg), "%s: odku assignment %d is NULL or empty", errctx, i);
+	      snprintf (errmsg, sizeof (errmsg), "%s: odku assignment %d has no column name", errctx, i);
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
+	      return ER_DBLINK;
+	    }
+	  if (odku->exprs[i] != NULL && odku->exprs[i][0] == '\0')
+	    {
+	      snprintf (errmsg, sizeof (errmsg), "%s: odku assignment %d has an empty value", errctx, i);
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_DBLINK, 1, errmsg);
 	      return ER_DBLINK;
 	    }
@@ -1644,7 +1651,8 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
       sql_len += DBLINK_INSERT_SQL_ODKU_OVERHEAD;
       for (i = 0; i < num_odku; i++)
 	{
-	  sql_len += strlen (odku->cols[i]) + strlen (odku->exprs[i]) + DBLINK_INSERT_SQL_PER_ASSIGN;
+	  sql_len += strlen (odku->cols[i]) + (odku->exprs[i] != NULL ? strlen (odku->exprs[i]) : 1)
+	    + DBLINK_INSERT_SQL_PER_ASSIGN;
 	}
     }
 
@@ -1738,7 +1746,7 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
     }
   DBLINK_INSERT_SQL_APPEND_CHAR (')');
 
-  /* Text, not binds: the values are constants, so no per-row value exists for a placeholder to carry */
+  /* A constant goes out as text. A value from the source row is a placeholder, bound after the INSERT values. */
   if (num_odku > 0)
     {
       DBLINK_INSERT_SQL_APPEND_LIT (" ON DUPLICATE KEY UPDATE ");
@@ -1746,7 +1754,14 @@ dblink_dml_build_insert_sql (THREAD_ENTRY * thread_p, const char *table_name, ch
 	{
 	  DBLINK_INSERT_SQL_APPEND_N (odku->cols[i], strlen (odku->cols[i]));
 	  DBLINK_INSERT_SQL_APPEND_LIT (" = ");
-	  DBLINK_INSERT_SQL_APPEND_N (odku->exprs[i], strlen (odku->exprs[i]));
+	  if (odku->exprs[i] != NULL)
+	    {
+	      DBLINK_INSERT_SQL_APPEND_N (odku->exprs[i], strlen (odku->exprs[i]));
+	    }
+	  else
+	    {
+	      DBLINK_INSERT_SQL_APPEND_CHAR ('?');
+	    }
 	  if (i < num_odku - 1)
 	    {
 	      DBLINK_INSERT_SQL_APPEND_LIT (", ");
@@ -2133,7 +2148,7 @@ dblink_dml_delete_reprepare_with_cast (THREAD_ENTRY * thread_p, DBLINK_DML_STATE
  *   sink(in)        : the proc's sink fields -- connection URL, user, password and remote table name
  *   attr_names(in)  : INSERT and REPLACE only -- explicit column names (NULL for positional INSERT)
  *   num_attrs(in)   : INSERT and REPLACE only -- length of attr_names (0 when positional)
- *   num_bind(in)    : INSERT and REPLACE only -- number of ? placeholders (= SELECT column count)
+ *   num_bind(in)    : INSERT and REPLACE only -- number of ? placeholders in VALUES (= INSERT column count)
  *   key_col(in)     : DELETE only -- remote WHERE column (left-hand side, e.g. rc1)
  *   op(in)          : DELETE only -- comparison operator SQL text ("=", "<>", "<", ">", "<=", ">=")
  *   odku(in)        : INSERT only -- ON DUPLICATE KEY UPDATE assignments; NULL or a zero count means
@@ -2294,7 +2309,8 @@ dblink_dml_open (THREAD_ENTRY * thread_p, DBLINK_DML_KIND kind, const REMOTE_DML
  *   return: NO_ERROR on success, error code on failure.
  *   thread_p(in)      : thread entry
  *   state(in)         : open DML sink state (conn_handle, stmt_handle)
- *   vals(in)          : array of DB_VALUE* (one per SELECT output column)
+ *   vals(in)          : array of DB_VALUE*, one per "?" -- for an INSERT, the INSERT values and then the bound
+ *                       ON DUPLICATE KEY UPDATE values
  *   num_vals(in)      : length of vals
  *   affected_rows(out): remote-reported affected row count for this execute (cci_execute's return
  *                        value); NULL when the caller does not use the count.

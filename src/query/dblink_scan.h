@@ -139,9 +139,9 @@ struct dblink_dml_state
   bool rows_sent;		/* this statement has executed at least one row on the remote */
 };
 
-/* Assignments a remote ON DUPLICATE KEY UPDATE clause carries: cols[i] is the remote column name and
- * exprs[i] is its new value, already printed as remote SQL. Both arrays are num_assigns long and every
- * element is a non-empty string -- the clause goes out as statement text, not as binds. */
+/* Assignments a remote ON DUPLICATE KEY UPDATE clause carries. cols[i] is the remote column name. exprs[i] is
+ * its new value, printed as remote SQL, or NULL for a value bound per row. A NULL exprs[i] goes out as "?" and
+ * is bound after the INSERT values, in clause order. Both arrays are num_assigns long. */
 typedef struct dblink_odku_assigns DBLINK_ODKU_ASSIGNS;
 struct dblink_odku_assigns
 {

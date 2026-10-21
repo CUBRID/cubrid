@@ -20042,11 +20042,14 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   /* num_vals drives the val_list read loop in the executor. Count only the visible projection
    * (EXCLUDE_HIDDEN_COLUMNS), matching the canonical local INSERT SELECT path: an ORDER BY / GROUP BY
    * key that is not in the select list adds a hidden sort column to val_list, which must not be sent
-   * to the remote. The executor reads the leading num_vals (visible) columns and ignores the hidden
-   * trailing ones. */
+   * to the remote. The executor reads the leading num_vals (visible) columns, then the bound ODKU values
+   * from remote_odku_val_start, and ignores the other hidden columns. */
   insert->num_vals = pt_length_of_select_list (pt_get_select_list (parser, aptr_statement), EXCLUDE_HIDDEN_COLUMNS);
   insert->num_default_expr = 0;
   insert->att_id = NULL;
+
+  /* the row position of the first bound ODKU value: right after the INSERT values */
+  insert->remote_odku_val_start = insert->num_vals;
 
   /* remote column names:
    *   attr_list present  → explicit columns (INSERT INTO remote (c1,c2) SELECT ...)
