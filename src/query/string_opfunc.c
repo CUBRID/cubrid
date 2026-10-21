@@ -25161,6 +25161,61 @@ error:
   return error_status;
 }
 
+#if defined (SERVER_MODE) || defined (SA_MODE)
+/* csql and CAS read a stream marker's content themselves; a stored procedure's query feeds the procedure instead */
+static bool
+internal_lob_scalar_stream_client_reads (void)
+{
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  int client_type;
+
+  if (session_is_pl_session_running (thread_p))
+    {
+      return false;
+    }
+#if defined (SERVER_MODE)
+  if (thread_p == NULL || thread_p->conn_entry == NULL)
+    {
+      return false;
+    }
+  client_type = thread_p->conn_entry->client_type;
+#else /* defined (SERVER_MODE) */
+  client_type = db_get_client_type ();
+#endif /* defined (SERVER_MODE) */
+
+  return BOOT_CSQL_CLIENT_TYPE (client_type) || BOOT_BROKER_CLIENT_TYPE (client_type);
+}
+
+static int
+internal_lob_make_scalar_stream_marker (const INTERNAL_LOB_LOCATOR & locator, char lob_type, DB_VALUE * result_value)
+{
+  char locator_buf[128];
+  char stack_buf[160];
+  int locator_len;
+  int marker_len;
+
+  assert (result_value != NULL);
+  assert (lob_type == 'B' || lob_type == 'C');
+
+  locator_len = internal_lob_format_locator (locator, locator_buf, sizeof (locator_buf));
+  if (locator_len <= 0 || locator_len >= (int) sizeof (locator_buf))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  marker_len = snprintf (stack_buf, sizeof (stack_buf), INTERNAL_LOB_SCALAR_STREAM_PREFIX "%c:%s", lob_type,
+			 locator_buf);
+  if (marker_len <= 0 || marker_len >= (int) sizeof (stack_buf))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  return db_make_internal_lob_marker_value (result_value, lob_type == 'C' ? DB_TYPE_VARCHAR : DB_TYPE_VARBIT,
+					    stack_buf, marker_len, DB_VALUE_INTERNAL_LOB_MARKER_STREAM);
+}
+
 /* an uploaded, streamed or file-sourced value has no content here: only a LOB column can take it */
 static int
 internal_lob_reject_transport_value (const DB_VALUE * value)
@@ -25287,6 +25342,43 @@ internal_lob_copy_to_external (const DB_VALUE * src_value, DB_TYPE lob_type, DB_
     }
   return error;
 }
+
+/*
+ * db_internal_lob_to_scalar_stream - CLOB_TO_CHAR ()/BLOB_TO_BIT () whose result goes straight to a client that
+ *   reads the content itself: a stream marker instead of the materialized value
+ *   return: NO_ERROR or error code
+ *   codeset_value(in): CLOB_TO_CHAR's codeset; NULL for a BLOB
+ *   is_streamed(out): false when nothing was made; the caller converts the value itself
+ */
+int
+db_internal_lob_to_scalar_stream (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_VALUE * result_value,
+				  bool * is_streamed)
+{
+  INTERNAL_LOB_LOCATOR locator;
+  DB_TYPE src_type = DB_VALUE_DOMAIN_TYPE (src_value);
+  int error;
+
+  *is_streamed = false;
+  if ((src_type != DB_TYPE_CLOB && src_type != DB_TYPE_BLOB) || !internal_lob_db_value_is_locator (src_value, &locator)
+      || !internal_lob_scalar_stream_client_reads ())
+    {
+      return NO_ERROR;
+    }
+
+  error = internal_lob_make_scalar_stream_marker (locator, src_type == DB_TYPE_CLOB ? 'C' : 'B', result_value);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (src_type == DB_TYPE_CLOB && codeset_value != NULL)
+    {
+      db_string_put_cs_and_collation (result_value, db_get_int (codeset_value), db_get_string_collation (src_value));
+    }
+
+  *is_streamed = true;
+  return NO_ERROR;
+}
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
 /*
  * db_blob_to_bit - convert blob value to bit string value

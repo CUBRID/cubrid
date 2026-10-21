@@ -315,6 +315,47 @@ internal_lob_marker_parse_locator (const char *data, int size, DB_BIGINT * lengt
 }
 
 /*
+ * internal_lob_marker_parse_scalar_stream () - Pull the LOB type, payload length and locator out of a scalar stream
+ *                                              marker.
+ *
+ * Format "@internal_lob_stream:<C|B>:<locator>": what a top-level CLOB_TO_CHAR ()/BLOB_TO_BIT () hands csql or CAS
+ * instead of the value.  It is a transport envelope, not a value: anything consuming it as one must refuse it.
+ */
+static inline bool
+internal_lob_marker_parse_scalar_stream (const char *data, int size, char *lob_type, DB_BIGINT * length,
+					 const char **locator, int *locator_len)
+{
+  const int prefix_len = (int) strlen (INTERNAL_LOB_SCALAR_STREAM_PREFIX);
+
+  if (data == NULL || size <= prefix_len + 2
+      || memcmp (data, INTERNAL_LOB_SCALAR_STREAM_PREFIX, (size_t) prefix_len) != 0)
+    {
+      return false;
+    }
+  if ((data[prefix_len] != 'C' && data[prefix_len] != 'B') || data[prefix_len + 1] != ':')
+    {
+      return false;
+    }
+  if (lob_type != NULL)
+    {
+      *lob_type = data[prefix_len];
+    }
+  if (!internal_lob_marker_parse_locator (data + prefix_len + 2, size - prefix_len - 2, length))
+    {
+      return false;
+    }
+  if (locator != NULL)
+    {
+      *locator = data + prefix_len + 2;
+    }
+  if (locator_len != NULL)
+    {
+      *locator_len = size - prefix_len - 2;
+    }
+  return true;
+}
+
+/*
  * internal_lob_marker_parse_file_source () - Split a FILE_SOURCE text (INTERNAL_LOB_FILE_SOURCE_FORMAT) into fields.
  *
  * Grammar only: the caller checks the values.  buf receives the NUL-terminated text and *path points into it.

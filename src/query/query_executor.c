@@ -17163,6 +17163,62 @@ qexec_clear_a_eval_values (THREAD_ENTRY * thread_p, ANALYTIC_EVAL_TYPE * a_eval_
 }
 
 /*
+ * qexec_set_internal_lob_stream_output () - Mark the CLOB_TO_CHAR/BLOB_TO_BIT columns of a top-level output list
+ *   that may reach the client as a stream marker
+ *   xasl(in): root of the query
+ *   return: true if a column is marked
+ *   to_client(in): the rows go straight to the client and are not cached
+ *
+ * A column the query itself still compares (ORDER BY, DISTINCT, GROUP BY, analytic) keeps its value. The clone is
+ * reused by later executions, so the mark is cleared as well as set.
+ */
+bool
+qexec_set_internal_lob_stream_output (xasl_node * xasl, bool to_client)
+{
+  REGU_VARIABLE_LIST valp;
+  SORT_LIST *sort;
+  bool allowed;
+  bool marked_any = false;
+  int pos;
+
+  if (xasl == NULL || xasl->outptr_list == NULL)
+    {
+      return false;
+    }
+
+  allowed = (to_client && xasl->type == BUILDLIST_PROC && xasl->option != Q_DISTINCT
+	     && xasl->proc.buildlist.groupby_list == NULL && xasl->proc.buildlist.a_eval_list == NULL);
+
+  for (valp = xasl->outptr_list->valptrp, pos = 0; valp != NULL; valp = valp->next, pos++)
+    {
+      REGU_VARIABLE *regu = &valp->value;
+      bool mark = (allowed && (regu->type == TYPE_INARITH || regu->type == TYPE_OUTARITH)
+		   && (regu->value.arithptr->opcode == T_CLOB_TO_CHAR || regu->value.arithptr->opcode == T_BLOB_TO_BIT)
+		   && !REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_HIDDEN_COLUMN));
+
+      for (sort = xasl->orderby_list; mark && sort != NULL; sort = sort->next)
+	{
+	  if (sort->pos_descr.pos_no == pos)
+	    {
+	      mark = false;
+	    }
+	}
+
+      if (mark)
+	{
+	  REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_INTERNAL_LOB_STREAM);
+	  marked_any = true;
+	}
+      else
+	{
+	  REGU_VARIABLE_CLEAR_FLAG (regu, REGU_VARIABLE_INTERNAL_LOB_STREAM);
+	}
+    }
+
+  return marked_any;
+}
+
+/*
  * qexec_execute_query () -
  *   return: Query result list file identifier, or NULL
  *   xasl(in)   : XASL Tree pointer

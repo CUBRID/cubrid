@@ -5565,6 +5565,12 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 
   *can_end_transaction = false;
 
+  if (query_flag & INTERNAL_LOB_STREAM_TO_CLIENT)
+    {
+      /* The client reads a streamed output column after this reply, in this transaction. */
+      return NO_ERROR;
+    }
+
   if (list_id->page_cnt != 1)
     {
       /* Needs fetch request. Do not allow ending transaction. */

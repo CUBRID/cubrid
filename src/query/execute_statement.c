@@ -212,7 +212,7 @@ static int do_insert_template (PARSER_CONTEXT * parser, DB_OTMPL ** otemplate, P
 			       const char **savepoint_name, int *row_count_ptr);
 static void init_compile_context (PARSER_CONTEXT * parser);
 
-static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd);
+static int do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd, bool to_client);
 
 static int get_dblink_password_encrypt (const char *passwd, DB_VALUE * encrypt_val);
 static int get_dblink_password_decrypt (const char *passwd_cipher, DB_VALUE * decrypt_val);
@@ -3683,7 +3683,7 @@ do_statement (PARSER_CONTEXT * parser, PT_NODE * statement)
 	case PT_DIFFERENCE:
 	case PT_INTERSECTION:
 	case PT_SELECT:
-	  error = do_select (parser, statement);
+	  error = do_select_internal (parser, statement, false, true);
 	  break;
 
 	case PT_TRUNCATE:
@@ -14961,6 +14961,15 @@ do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
  *
  */
 
+/* a top-level query (mq_translate marks it -1), not one whose values the caller keeps (INTO): its rows go to the
+ * client as they are */
+static bool
+do_select_rows_go_to_client (const PT_NODE * statement)
+{
+  return (statement->info.query.is_subquery == PT_MISC_NONE
+	  || statement->info.query.is_subquery == (PT_MISC_TYPE) (-1)) && statement->info.query.into_list == NULL;
+}
+
 /*
  * do_select() -
  *   return: Error code
@@ -14973,7 +14982,7 @@ do_call_method (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  return do_select_internal (parser, statement, false);
+  return do_select_internal (parser, statement, false, false);
 }
 
 /*
@@ -14987,7 +14996,7 @@ do_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 int
 do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement)
 {
-  return do_select_internal (parser, statement, true);
+  return do_select_internal (parser, statement, true, false);
 }
 
 /*
@@ -14996,11 +15005,12 @@ do_select_for_ins_upd (PARSER_CONTEXT * parser, PT_NODE * statement)
  *   parser(in/out): Parser context
  *   statement(in/out): A statement to do
  *   for_inst_upd: check insert/update statement
+ *   to_client: the statement's own rows go to the caller
  *
  * Note: Side effects can exist at returned result through application extern
  */
 static int
-do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd)
+do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_upd, bool to_client)
 {
   int error;
   XASL_NODE *xasl = NULL;
@@ -15046,6 +15056,11 @@ do_select_internal (PARSER_CONTEXT * parser, PT_NODE * statement, bool for_ins_u
   if (parser->flag.is_auto_commit)
     {
       query_flag |= TRAN_AUTO_COMMIT;
+    }
+
+  if (to_client && do_select_rows_go_to_client (statement))
+    {
+      query_flag |= INTERNAL_LOB_STREAM_TO_CLIENT;
     }
 
 #if defined(CUBRID_DEBUG)
@@ -15954,6 +15969,11 @@ do_execute_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   if (parser->flag.is_auto_commit)
     {
       query_flag |= TRAN_AUTO_COMMIT;
+    }
+
+  if (do_select_rows_go_to_client (statement))
+    {
+      query_flag |= INTERNAL_LOB_STREAM_TO_CLIENT;
     }
 
   if (query_trace == true)

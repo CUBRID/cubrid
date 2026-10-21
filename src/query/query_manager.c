@@ -1229,6 +1229,13 @@ qmgr_process_query (THREAD_ENTRY * thread_p, XASL_NODE * xasl_tree, char *xasl_s
       XASL_SET_FLAG (xasl_p, XASL_RETURN_GENERATED_KEYS);
     }
 
+  /* a cached result is shared with other sessions, so it never holds a session's stream marker */
+  if (!qexec_set_internal_lob_stream_output (xasl_p, (query_p->query_flag & INTERNAL_LOB_STREAM_TO_CLIENT)
+					     && !qmgr_is_allowed_result_cache (flag)))
+    {
+      query_p->query_flag &= ~INTERNAL_LOB_STREAM_TO_CLIENT;
+    }
+
   /* execute the query with the value list, if any */
   query_p->list_id = qexec_execute_query (thread_p, xasl_p, dbval_count, dbvals_p, query_p->query_id);
   thread_p->no_logging = false;
@@ -1576,6 +1583,8 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     }
   query_p->query_status = QUERY_IN_PROGRESS;
   query_p->query_flag = *flag_p;
+  /* told back only when an output column does stream (qmgr_process_query) */
+  *flag_p &= ~INTERNAL_LOB_STREAM_TO_CLIENT;
   if (*flag_p & RESULT_HOLDABLE)
     {
       query_p->is_holdable = true;
@@ -1629,6 +1638,7 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
     {
       goto exit_on_error;
     }
+  *flag_p |= (query_p->query_flag & INTERNAL_LOB_STREAM_TO_CLIENT);
 
   /* everything is ok, mark that the query is completed */
   qmgr_mark_query_as_completed (query_p);
