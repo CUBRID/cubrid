@@ -4069,6 +4069,34 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	  }
       }
       break;
+    case CCI_U_TYPE_INTERNAL_BLOB_UPLOAD:
+    case CCI_U_TYPE_INTERNAL_CLOB_UPLOAD:
+      {
+	char *value;
+	int val_size;
+	DB_TYPE lob_type = (type == CCI_U_TYPE_INTERNAL_BLOB_UPLOAD) ? DB_TYPE_BLOB : DB_TYPE_CLOB;
+
+	net_arg_get_str (&value, &val_size, net_value);
+	if (value == NULL || val_size <= (int) strlen (INTERNAL_LOB_UPLOAD_PREFIX)
+	    || memcmp (value, INTERNAL_LOB_UPLOAD_PREFIX, strlen (INTERNAL_LOB_UPLOAD_PREFIX)) != 0)
+	  {
+	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION, CAS_ERROR_INDICATOR);
+	  }
+	if (lob_type == DB_TYPE_BLOB)
+	  {
+	    err_code = db_make_blob (&db_val, DB_MAX_LOB_PRECISION, (DB_CONST_C_BIT) value, val_size * 8);
+	  }
+	else
+	  {
+	    err_code = db_make_clob (&db_val, DB_MAX_LOB_PRECISION, value, val_size);
+	  }
+	if (err_code == NO_ERROR)
+	  {
+	    db_value_mark_internal_lob (&db_val, DB_VALUE_INTERNAL_LOB_MARKER_UPLOAD);
+	    coercion_flag = FALSE;
+	  }
+      }
+      break;
     case CCI_U_TYPE_BIT:
     case CCI_U_TYPE_VARBIT:
       {

@@ -75,6 +75,8 @@ static const char *type_str_tbl[] = {
   "DATETIMELTZ",		/* CCI_U_TYPE_DATETIMELTZ */
   "TIMETZ",			/* CCI_U_TYPE_TIMETZ */
   "JSON",			/* CCI_U_TYPE_JSON */
+  "INTERNAL_BLOB_UPLOAD",	/* CCI_U_TYPE_INTERNAL_BLOB_UPLOAD */
+  "INTERNAL_CLOB_UPLOAD",	/* CCI_U_TYPE_INTERNAL_CLOB_UPLOAD */
 };
 
 void
@@ -285,6 +287,10 @@ cas_common_bind_value_print (char type, void *net_value, bool slow_log, INTL_COD
 	net_arg_get_cci_object (&pageid, &slotid, &volid, net_value);
 	write2_func ("%d|%d|%d", pageid, slotid, volid);
       }
+      break;
+    case CCI_U_TYPE_INTERNAL_BLOB_UPLOAD:
+    case CCI_U_TYPE_INTERNAL_CLOB_UPLOAD:
+      write2_func ("<streamed internal LOB>");
       break;
     case CCI_U_TYPE_BLOB:
     case CCI_U_TYPE_CLOB:

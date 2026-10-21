@@ -1294,6 +1294,7 @@ exit_on_error:
 static int
 qmgr_check_client_internal_lob_values (THREAD_ENTRY * thread_p, int dbval_count, const DB_VALUE * dbvals)
 {
+  INTERNAL_LOB_UPLOAD_TOKEN upload;
   INTERNAL_LOB_LOCATOR locator;
   int marker;
   int error;
@@ -1320,6 +1321,11 @@ qmgr_check_client_internal_lob_values (THREAD_ENTRY * thread_p, int dbval_count,
 	      return error;
 	    }
 	  continue;
+	}
+
+      if (internal_lob_db_value_is_upload (&dbvals[i], &upload))
+	{
+	  session_internal_lob_upload_note_executed (thread_p, upload.token);
 	}
     }
   return NO_ERROR;
