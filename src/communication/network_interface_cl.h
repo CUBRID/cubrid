@@ -98,7 +98,8 @@ extern int locator_get_class (OID * class_oid, int class_chn, const OID * oid, L
 			      LC_COPYAREA ** fetch_copyarea);
 extern int locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type,
 			      OID * class_oidp, int *nobjects, int *nfetched, OID * last_oidp,
-			      LC_COPYAREA ** fetch_copyarea, int request_pages, int nsplit_process, int nselection_key);
+			      LC_COPYAREA ** fetch_copyarea, int request_pages, int nsplit_process, int nselection_key,
+			      bool keep_oos_locators);
 extern int locator_does_exist (OID * oidp, int chn, LOCK lock, OID * class_oid, int class_chn, int need_fetching,
 			       int prefetch, LC_COPYAREA ** fetch_copyarea, LC_FETCH_VERSION_TYPE fetch_version_type);
 extern int locator_notify_isolation_incons (LC_COPYAREA ** synch_copyarea);
