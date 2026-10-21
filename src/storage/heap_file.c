@@ -13247,6 +13247,15 @@ heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, 
 
   if (internal_lob_db_value_is_locator (value, &source_locator))
     {
+      /* [리뷰] adopted는 SA loaddb가 막 쓴 체인이라 복사 없이 그대로 스텁이 된다.
+       * 클라이언트에서 온 adopted는 커밋 26의 resolve가 먼저 거부한다. */
+      if (source_locator.adopted)
+	{
+	  *locator = source_locator;
+	  locator->adopted = false;
+	  return NO_ERROR;
+	}
+
       return heap_internal_lob_clone_locator (thread_p, class_oid, type, &source_locator, locator);
     }
 

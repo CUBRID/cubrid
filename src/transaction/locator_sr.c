@@ -5667,6 +5667,49 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 }
 
 /*
+ * locator_delete_orphan_internal_lobs () - Delete the Internal LOB chains of a client record whose insert failed:
+ *   adopted before the force, they survive its abort and have no other owner. Called after that abort, or the
+ *   deletes would be undone with it.
+ */
+static int
+locator_delete_orphan_internal_lobs (THREAD_ENTRY * thread_p, const OID * class_oid,
+				     const HEAP_OOS_REFERENCE_VECTOR & refs)
+{
+  /* [리뷰] 호출 지점은 need_to_abort_oneobj(계속 진행)와 error:(전체 실패) 두 곳.
+   * 실패는 (void)로 버려지고 로더 pending도 비워져 체인이 남을 수 있다.
+   * 참조 없는 체인은 vacuum이 찾지 못하는 누수다. */
+  VFID lob_vfid = VFID_INITIALIZER;
+  int error_code;
+
+  for (size_t i = 0; i < refs.size (); i++)
+    {
+      const heap_oos_reference & ref = refs[i];
+      INTERNAL_LOB_LOCATOR locator;
+
+      if (!TP_IS_LOB_TYPE (ref.type))
+	{
+	  continue;
+	}
+      if (VFID_ISNULL (&lob_vfid))
+	{
+	  error_code = heap_internal_lob_get_class_vfid (thread_p, class_oid, &lob_vfid);
+	  if (error_code != NO_ERROR)
+	    {
+	      return error_code;
+	    }
+	}
+      locator.oid = ref.oid;
+      locator.length = ref.disk_length;
+      error_code = internal_lob_delete (thread_p, lob_vfid, locator);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
  * locator_delete_moved_internal_lob_intermediates () - Drop the Internal LOB chains a partition-moving UPDATE
  *                                                      made in the source class, once copied to the destination.
  *   return: error code
@@ -7965,6 +8008,8 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
   int force_count;
   LOG_LSA lsa, oneobj_lsa;
   int error_code = NO_ERROR;
+  HEAP_OOS_REFERENCE_VECTOR orphan_refs;	/* chains of a refused client record, deleted after the abort */
+  OID orphan_class_oid = OID_INITIALIZER;
   int pruning_type = 0;
   int has_index;
 
@@ -8086,6 +8131,13 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 		/* monitor */
 		perfmon_inc_stat (thread_p, PSTAT_QM_NUM_INSERTS);
 	      }
+	    else if (resolved_area != NULL && thread_p->internal_lob_adopts_locators
+		     && heap_recdes_contains_oos (&resolved_recdes))
+	      {
+		/* standalone loaddb drops a row whose insert it ignores; the chains it adopted go with it */
+		(void) heap_recdes_get_oos_references (thread_p, &resolved_recdes, orphan_refs);
+		COPY_OID (&orphan_class_oid, &lob_class_oid);
+	      }
 	  }
 	  break;
 
@@ -8171,6 +8223,12 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 		need_to_abort_oneobj ? LOG_RESULT_TOPOP_ABORT : LOG_RESULT_TOPOP_ATTACH_TO_OUTER;
 	      (void) xtran_server_end_topop (thread_p, result_topop, &oneobj_lsa);
 	    }
+	  if (need_to_abort_oneobj && !orphan_refs.empty ())
+	    {
+	      /* the row's own operation is undone, its adopted chains are not: delete them now */
+	      (void) locator_delete_orphan_internal_lobs (thread_p, &orphan_class_oid, orphan_refs);
+	      orphan_refs.clear ();
+	    }
 	}
 
       if (error_code != NO_ERROR)
@@ -8216,6 +8274,10 @@ error:
 
   (void) xtran_server_end_topop (thread_p, LOG_RESULT_TOPOP_ABORT, &lsa);
 
+  if (!orphan_refs.empty ())
+    {
+      (void) locator_delete_orphan_internal_lobs (thread_p, &orphan_class_oid, orphan_refs);
+    }
   return error_code;
 }
 
