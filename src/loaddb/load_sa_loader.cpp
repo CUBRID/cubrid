@@ -2982,9 +2982,21 @@ error_exit:
 static int
 ldr_str_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 {
-  /* todo: switch this to db_make_string_copy and avoid any possible leaks */
-  db_make_string (val, str);
-  return NO_ERROR;
+  int err = NO_ERROR;
+
+  // same with to_db_string (), which reads no attribute - a %constructor
+  // argument slot has none (att and conv_att are both NULL on it)
+  //
+  // This copy called db_make_string (), which measures the token with strlen ().
+  // A NUL inside the token cut the value short without a word, so '2.25\0junk'
+  // reached the engine as "2.25" where INSERT refuses the string whole. The loader
+  // knows the real length, so say it. Ownership is unchanged - both build the
+  // value with db_make_db_char (), which points at the token and leaves
+  // need_clear false.
+  CHECK_PARSE_ERR (err, cubload::get_elem_conv_func (LDR_STR) (str, len, NULL, val), context, DB_TYPE_VARCHAR, str);
+
+error_exit:
+  return err;
 }
 
 /*
@@ -3129,24 +3141,20 @@ error_exit:
 static int
 ldr_numeric_elem (LDR_CONTEXT *context, const char *str, size_t len, DB_VALUE *val)
 {
-  int precision, scale;
   int err = NO_ERROR;
 
-  precision = (int) len - 1 - (str[0] == '+' || str[0] == '-');
-  scale = (int) len - (int) strcspn (str, ".") - 1;
-
-  if (precision > DB_MAX_NUMERIC_PRECISION)
-    {
-      scale = (scale == 0) ? (DB_MAX_NUMERIC_PRECISION - precision) : scale;
-      precision = DB_MAX_NUMERIC_PRECISION;
-    }
-
-  CHECK_PARSE_ERR (err, db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale), context, DB_TYPE_NUMERIC, str);
-  if (precision > DB_MAX_FIXED_NUMERIC_PRECISION)
-    {
-      FIXED_TO_FLOAT_NUMERIC (val);
-    }
-  CHECK_PARSE_ERR (err, db_value_put (val, DB_TYPE_C_CHAR, (char *) str, (int) len), context, DB_TYPE_NUMERIC, str);
+  // same with to_db_numeric (), which reads no attribute - a %constructor
+  // argument slot has none (att and conv_att are both NULL on it)
+  //
+  // This copy measured the token as if it always had a decimal point: it took one
+  // off the precision for the point and read the scale as len - strcspn (str, ".")
+  // - 1, which is -1 when strcspn () reports no point and returns len. A plain
+  // integer then became NUMERIC(digits - 1, -1) and the last digit was rounded
+  // away - 12345678901234567891 came back 12345678901234567890. INSERT keeps it.
+  // Only a %constructor argument reaches here, and only since integer literals
+  // past BIGINT started arriving as LDR_NUMERIC.
+  CHECK_PARSE_ERR (err, cubload::get_elem_conv_func (LDR_NUMERIC) (str, len, NULL, val), context,
+		   DB_TYPE_NUMERIC, str);
 
 error_exit:
   return err;
