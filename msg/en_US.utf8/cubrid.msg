@@ -1698,6 +1698,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Maximum length of a server user is %1$d bytes.
 139 Precision cannot be specified for argument types and return types ​​of stored procedures and functions.
 140 FILL_FACTOR argument must be between %1$d and %2$d.
+141 invalid use of clob_to_char\n  CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 Out of memory.
@@ -2048,6 +2049,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 342 SEMI/ANTI JOIN requires a join predicate that references the outer (left) side.
 343 SEMI/ANTI JOIN is not allowed in a hierarchical query (CONNECT BY).
 344 Attribute '%1$s' has different types in classes %2$s and %3$s.
+345 CLOB literal exceeds 1 GiB. Values over 1 GiB can be loaded with CLOB_FROM_FILE or CFILE_TO_CLOB (up to 4 GiB).
+346 BLOB literal exceeds 128 MiB. Values over 128 MiB can be loaded with BLOB_FROM_FILE or BFILE_TO_BLOB (up to 4 GiB).
 
 
 
