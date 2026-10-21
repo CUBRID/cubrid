@@ -33,6 +33,7 @@
 #include "config.h"
 #include "file_manager.h"
 #include "heap_attrinfo.h"
+#include "internal_lob_file.hpp"
 #include "mem_block.hpp"
 #include "mvcc.h"
 #include "page_buffer.h"
@@ -666,6 +667,9 @@ extern int heap_rv_mark_deleted_on_postpone (THREAD_ENTRY * thread_p, LOG_RCV * 
 extern int heap_get_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
 				FILE_TYPE * ftype_out, bool * found);
 extern int heap_get_class_hfid (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out, FILE_TYPE * ftype_out);
+/* Reads exactly size bytes of the source at offset. The source's total size is known up front, so the internal LOB
+ * chain is written tail-first through the reverse writer without staging the payload. */
+typedef int (*HEAP_INTERNAL_LOB_RANGE_READER) (void *ctx, DB_BIGINT offset, char *buf, int size);
 extern int heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE ftype);
 extern int heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
 				    FILE_TYPE * ftype_out, bool * success);
@@ -784,6 +788,12 @@ extern void heap_rv_dump_append_pages_to_heap (FILE * fp, int length, void *data
 
 extern bool heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate);
 extern bool heap_oos_find_vfid_nowait (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid);
+extern bool heap_oos_find_vfid_by_type (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_TYPE file_type, VFID * vfid,
+					bool docreate);
+extern bool heap_oos_find_both_vfids (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
+				      VFID * internal_lob_vfid);
+extern bool heap_internal_lob_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * lob_vfid, bool docreate);
+extern int heap_internal_lob_get_class_vfid (THREAD_ENTRY * thread_p, const OID * class_oid, VFID * lob_vfid);
 extern bool heap_recdes_contains_oos (const RECDES * record);
 extern bool heap_recdes_has_valid_header (const RECDES * record);
 
@@ -808,6 +818,15 @@ extern void heap_log_postpone_heap_append_pages (THREAD_ENTRY * thread_p, const 
 // *INDENT-OFF*
 struct oos_chain_ref;		// oos_file.hpp: head OOS OID + identity stamp
 using OOS_REF_VECTOR = std::vector<oos_chain_ref>;
+struct heap_oos_reference
+{
+  oos_chain_ref ref;		/* head OOS OID + identity stamp */
+  DB_BIGINT disk_length;
+  DB_TYPE type;
+  int variable_index;
+};
+using HEAP_OOS_REFERENCE = struct heap_oos_reference;
+using HEAP_OOS_REFERENCE_VECTOR = std::vector<HEAP_OOS_REFERENCE>;
 // *INDENT-ON*
 
 /* Parses every OOS inline stub of record into a chain reference (head OOS OID + identity stamp),
