@@ -65,6 +65,7 @@
 #include "chartype.h"
 #include "heap_file.h"
 #include "oos_file.hpp"
+#include "internal_lob_file.hpp"
 #include "pl_sr.h"
 #include "replication.h"
 #include "server_support.h"
@@ -10225,13 +10226,25 @@ soos_stats (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
   OOS_STATS_INFO info;
   int err = NO_ERROR;
 
-  (void) or_unpack_oid (request, &class_oid);
-
   memset (&info, 0, sizeof (info));
-  err = xoos_get_stats_by_class_oid (thread_p, &class_oid, &info);
-  if (err != NO_ERROR)
+
+  /* A request with no payload leaves the buffer NULL: css_internal_request_handler only receives data when the
+   * size is non-zero.  Unpacking it unchecked dereferences NULL and takes the server down. */
+  if (request == NULL || reqlen < OR_OID_SIZE)
     {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
       (void) return_error_to_client (thread_p, rid);
+    }
+  else
+    {
+      (void) or_unpack_oid (request, &class_oid);
+
+      err = xoos_get_stats_by_class_oid (thread_p, &class_oid, &info);
+      if (err != NO_ERROR)
+	{
+	  (void) return_error_to_client (thread_p, rid);
+	}
     }
 
   char *ptr = or_pack_int (reply, err);
@@ -10244,6 +10257,215 @@ soos_stats (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
   ptr = or_pack_int64 (ptr, info.recs_sumlen);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * stream_reply_error_code () - Send the reply of a stream request whose reply is only its error code.
+ *   On error the error (code + message) is staged first so it travels with the reply.
+ */
+static void
+stream_reply_error_code (THREAD_ENTRY *thread_p, unsigned int rid, int error_code)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+
+  if (error_code != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+  (void) or_pack_int (reply, error_code);
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * unpack_client_locator () - Read a locator string out of an untrusted request buffer.
+ *
+ * The buffer may be NULL and the packed length is whatever the client claims, so both are checked and the string
+ * must end with a NUL inside the bytes that actually arrived.  Its length comes back in locator_len.
+ *
+ *   fixed_len: bytes of fixed arguments ahead of the string.
+ */
+static int
+unpack_client_locator (char *request, int reqlen, int fixed_len, const char **locator, int *locator_len)
+{
+  char *ptr;
+  int packed_len;
+  int string_len;
+
+  *locator = NULL;
+  *locator_len = 0;
+
+  if (request == NULL || reqlen < fixed_len + OR_INT_SIZE)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  ptr = request + fixed_len;
+  packed_len = OR_GET_INT (ptr);
+  ptr += OR_INT_SIZE;
+
+  if (packed_len < 1 || packed_len > reqlen - fixed_len - OR_INT_SIZE)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  /* or_pack_string_with_length stores the NUL and the padding to a 4-byte boundary in the length, so the
+   * string ends at the first NUL within it.  strnlen keeps the scan inside the bytes that arrived; reaching
+   * the end without one means the payload is not a packed string. */
+  string_len = (int) strnlen (ptr, (size_t) packed_len);
+  if (string_len == packed_len)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  *locator = ptr;
+  *locator_len = string_len;
+  return NO_ERROR;
+}
+
+/*
+ * sinternal_lob_stream_open - Open a forward-only server-side reader cursor.
+ *   Request : start_offset (int64) + locator string
+ *   Reply   : token (int64) + err (int)
+ */
+void
+sinternal_lob_stream_open (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  const char *locator_string = NULL;
+  char *ptr = NULL;
+  INT64 token = 0;
+  INT64 start_offset = 0;
+  int locator_len = 0;
+  int err = NO_ERROR;
+  INTERNAL_LOB_LOCATOR locator;
+
+  if (unpack_client_locator (request, reqlen, OR_INT64_SIZE, &locator_string, &locator_len) != NO_ERROR
+      || !internal_lob_parse_locator_string (locator_string, locator_len, &locator))
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  err = internal_lob_lock_locator_class (thread_p, locator);
+  if (err != NO_ERROR)
+    {
+      goto reply;
+    }
+
+  (void) or_unpack_int64 (request, &start_offset);
+  err = xinternal_lob_stream_open (thread_p, locator, start_offset, &token);
+  if (err != NO_ERROR)
+    {
+      internal_lob_unlock_locator_class (thread_p, locator);
+    }
+
+reply:
+  ptr = or_pack_int64 (reply, token);
+  (void) or_pack_int (ptr, err);
+
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sinternal_lob_stream_read - Read the next bytes from a server-side reader cursor.
+ *   Request : token (int64) + count (int)
+ *   Reply   : data_size (int) + err (int)
+ *   Data    : raw bytes when err is NO_ERROR and data_size > 0
+ */
+void
+sinternal_lob_stream_read (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr = request;
+  char *buffer = NULL;
+  INT64 token = 0;
+  int count = 0;
+  int nread = 0;
+  int err = NO_ERROR;
+
+  if (reqlen != OR_INT64_SIZE + OR_INT_SIZE)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  ptr = or_unpack_int64 (ptr, &token);
+  (void) or_unpack_int (ptr, &count);
+
+  if (token <= 0 || count < 0 || count > INTERNAL_LOB_READ_MAX_CHUNK)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto reply;
+    }
+
+  if (count > 0)
+    {
+      buffer = (char *) malloc ((size_t) count);
+      if (buffer == NULL)
+	{
+	  err = ER_OUT_OF_VIRTUAL_MEMORY;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 1, (size_t) count);
+	  goto reply;
+	}
+    }
+
+  err = xinternal_lob_stream_read (thread_p, token, buffer, count, &nread);
+
+reply:
+  ptr = or_pack_int (reply, nread);
+  (void) or_pack_int (ptr, err);
+
+  if (err != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  auto deleter = [buffer]() noexcept
+  {
+    if (buffer != NULL)
+      {
+	free (buffer);
+      }
+  };
+  /* css_send_reply_and_data_to_client () asserts !!buffer == !!buffer_size, so pass NULL when nothing was read;
+   * the deleter still frees buffer. */
+  css_send_reply_and_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply),
+				     nread > 0 ? buffer : NULL, nread, std::move (deleter));
+}
+
+/*
+ * sinternal_lob_stream_close - Close a server-side reader cursor.
+ *   Request : token (int64)
+ *   Reply   : err (int)
+ */
+void
+sinternal_lob_stream_close (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  INT64 token = 0;
+  int err = NO_ERROR;
+
+  if (reqlen != OR_INT64_SIZE)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+    }
+  else
+    {
+      (void) or_unpack_int64 (request, &token);
+      err = xinternal_lob_stream_close (thread_p, token);
+    }
+
+  stream_reply_error_code (thread_p, rid, err);
 }
 
 /*
@@ -12589,3 +12811,4 @@ sfile_tracker_delete_target_file (THREAD_ENTRY *thread_p, unsigned int rid, char
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 #endif
+
