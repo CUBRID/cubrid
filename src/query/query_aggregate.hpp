@@ -188,7 +188,9 @@ void qdata_load_agg_hvalue_in_agg_list (cubquery::aggregate_hash_value *value, c
  * path makes about ten, and given back to a free list when the table lets the group go (the LRU dump), the chunks
  * freed with the table's context (database-reference 참고: a memory context per operator, reset as a whole, and a
  * slab of fixed-size chunks for its fixed-size objects).  The generic free functions see the block and give it back
- * (qdata_free_agg_hentry ()). */
+ * (qdata_free_agg_hentry ()).  The chunks are on the process heap (malloc), not the thread's private heap: they are
+ * 256 KB each and live as long as the context that made them -- a group the LRU dump lets go returns its block to the
+ * free list, so the slab holds the table's peak group count until qexec_free_agg_hash_context (). */
 struct agg_group_slab;
 struct agg_group_slab *qdata_slab_create (int n_keys, int n_funcs, int inline_cap);
 void qdata_slab_destroy (struct agg_group_slab *slab);

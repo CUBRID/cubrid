@@ -3496,7 +3496,7 @@ qdata_slab_block (agg_group_slab *slab)
       slab->free_list = * (void **) p;
       return p;
     }
-  if (slab->bump == NULL || slab->bump + slab->block_size > slab->bump_end)
+  if (slab->bump == NULL || (size_t) (slab->bump_end - slab->bump) < slab->block_size)
     {
       size_t size = MAX ((size_t) QDATA_SLAB_CHUNK, slab->block_size);
 
@@ -3557,15 +3557,19 @@ qdata_slab_new_group (cubthread::entry *thread_p, agg_group_slab *slab, aggregat
   for (i = 0; i < key->val_count; i++)
     {
       k->values[i] = &kv[i];
-      if (pr_clone_value (key->values[i], &kv[i]) != NO_ERROR)
+      /* pr_clone_value () reports nothing: a copy that could not allocate (mr_setval_string () and the like) is left
+       * a NULL of the key's domain with ER_OUT_OF_VIRTUAL_MEMORY set, so that pair is the failure here -- the error
+       * alone is not (an earlier one may still be in the slot) */
+      pr_clone_value (key->values[i], &kv[i]);
+      if (DB_IS_NULL (&kv[i]) && !DB_IS_NULL (key->values[i]) && er_errid () == ER_OUT_OF_VIRTUAL_MEMORY)
 	{
-	  while (--i >= 0)
+	  while (i >= 0)
 	    {
-	      pr_clear_value (&kv[i]);
+	      pr_clear_value (&kv[i--]);
 	    }
 	  * (void **) b = slab->free_list;
 	  slab->free_list = b;
-	  return ER_FAILED;
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
 

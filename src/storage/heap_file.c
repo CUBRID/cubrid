@@ -8186,11 +8186,14 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
  *
  * The walk heap_next_1page () makes, record after record, made in runs: the same slots skipped
  * (the header, REC_NEWHOME, REC_ASSIGN_ADDRESS, REC_UNKNOWN), and for a REC_HOME record the
- * visibility heap_scan_get_visible_version () decides -- an all-visible header, a class
- * without MVCC or no snapshot is visible, otherwise the snapshot function says.  A record
- * whose answer is not in this page -- relocated, in overflow pages, or too new for the
- * snapshot (its visible version is in the log) -- hands the whole page back, so the page
- * stays fixed and every row points into it.
+ * visibility as heap_scan_get_visible_version () decides it -- an all-visible header, or
+ * scan_cache->mvcc_snapshot->snapshot_fnc () == SNAPSHOT_SATISFIED; TOO_OLD is a deleted row
+ * (skipped), anything else (TOO_NEW: the visible version is in the log) sends the page to the
+ * row path (S_DOESNT_FIT).  A scan cache without a snapshot (an MVCC-disabled class) never gets
+ * here -- the batch refuses those scans (scan_batch_open_internal ()) -- so the snapshot == NULL
+ * branch below is defensive.  A record whose answer is not in this page -- relocated, in
+ * overflow pages, or too new for the snapshot -- hands the whole page back, so the page stays
+ * fixed and every row points into it.
  */
 SCAN_CODE
 heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
@@ -8205,8 +8208,9 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 
   *n_rows = 0;
   /* A cached scan (HEAP_SCAN_IS_LOCAL_CACHE_READ) reads a copy of the page so that it holds no latch while its rows
-   * are out; the one caller with such a scan, the filter iterator (scan_batch_open_filter ()), keeps that promise
-   * itself: it copies the records of the rows it keeps and lets the page go before they go out. */
+   * are out; the callers that pass such a scan -- the filter iterator (scan_batch_open_filter ()) and the rows node
+   * (scan_batch_open_rows (), scan_batch_rows_consume ()) -- keep that promise themselves: they copy the records of
+   * the rows they keep and let the page go before they go out. */
   if (scan_cache->page_watcher.pgptr != NULL && !VPID_EQ (vpid, pgbuf_get_vpid_ptr (scan_cache->page_watcher.pgptr)))
     {
       pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);

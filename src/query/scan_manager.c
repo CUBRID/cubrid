@@ -8204,14 +8204,15 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCE
       hsidp->batch_why_not = "a scan the batch does not take (grouped, cached, backward or record info)";
       return hsidp->batch_state;
     }
-  if (scan_id->mvcc_select_lock_needed || scan_id->scan_op_type != S_SELECT || hsidp->scan_cache.mvcc_disabled_class)
-    {
-      hsidp->batch_why_not = "a scan the batch does not take (it locks, or not a SELECT)";
-      return hsidp->batch_state;
-    }
   if (!hsidp->scancache_inited)
     {
       hsidp->batch_why_not = "a scan the batch does not take (not started)";
+      return hsidp->batch_state;
+    }
+  /* a class without MVCC has no snapshot to judge its rows by: heap_page_collect_visible () relies on this refusal */
+  if (scan_id->mvcc_select_lock_needed || scan_id->scan_op_type != S_SELECT || hsidp->scan_cache.mvcc_disabled_class)
+    {
+      hsidp->batch_why_not = "a scan the batch does not take (it locks, or not a SELECT)";
       return hsidp->batch_state;
     }
   if (scan_id->single_fetch != QPROC_NO_SINGLE_INNER)
@@ -8230,7 +8231,7 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCE
   {
   &hsidp->scan_pred, &hsidp->pred_attrs, NULL, NULL, scan_id->val_list, scan_id->vd, &hsidp->cls_oid, NULL, NULL,
       NULL, 0, -1};
-  (void) eval_data_filter_ensure_prog (thread_p, &data_filter);
+  eval_data_filter_ensure_prog (thread_p, &data_filter);
 
   memset (&in, 0, sizeof (in));
   in.pred_attr_cache = hsidp->pred_attrs.attr_cache;
@@ -8360,9 +8361,11 @@ scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 
       if (scan_cache->page_watcher.pgptr == NULL)
 	{
-	  /* A previous-version walk released the page (heap_get_visible_version_from_log ()); the
-	   * version it read keeps the page from being deallocated, so it is fixed again only to
-	   * find its successor, as the row path finds it from its last OID. */
+	  /* The page was let go: a previous-version walk released it (heap_get_visible_version_from_log ()), or
+	   * its last rows were copied out and it was unfixed (scan_batch_iter_next (), scan_batch_rows_consume ()
+	   * for a cached scan, or a cached scan's row path).  A row this snapshot sees was on it, so vacuum cannot
+	   * have deallocated it: it is fixed again only to find its successor, as the row path finds it from its
+	   * last OID. */
 	  rc = pgbuf_ordered_fix (thread_p, &hsidp->batch_vpid, OLD_PAGE_PREVENT_DEALLOC, PGBUF_LATCH_READ,
 				  &scan_cache->page_watcher);
 	  if (rc != NO_ERROR)
@@ -9570,7 +9573,9 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	  && (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0
 	      || scan_id->s.hsid.batch_why_not != NULL))
 	{
-	  /* the page batch (expr_batch.h): shown with the plan details only, like the compiler's sections */
+	  /* the page batch (expr_batch.h): shown with the plan details only, like the compiler's sections.  A parallel
+	   * scan's workers show theirs in their own dump (px_scan_trace_handler: expr_batch_dump ()); the parent's
+	   * counters stay 0 */
 	  if (scan_id->scan_stats.batch_pages > 0 || scan_id->scan_stats.batch_pages_rowpath > 0)
 	    {
 	      /* the last chunk's cause for the row path, kept on the scan (the plan is gone by now) */

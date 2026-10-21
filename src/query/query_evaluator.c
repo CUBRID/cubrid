@@ -3458,16 +3458,16 @@ eval_disable_lazy_read (HEAP_CACHE_ATTRINFO * attr_cache)
  */
 /*
  * eval_data_filter_ensure_prog () - the data filter's compiled form for this execution
- *   return: NO_ERROR
  *   filterp(in): the filter; its predicate root carries the compiled form (scan_prog)
  *
- * Compile on first use, recompile when the bound types changed; leave the state alone when
- * the compiler declined (scan_prog_state 2: the interpreted pr_eval_fnc stays).  The row
- * path calls it before the row it evaluates; a page batch (scan_batch_open ()) calls it
- * before its first page, for the same reason the operand program is settled there: the
- * batch reads the compiled form, so it must be the one this execution would use.
+ * Never fails: a compile the compiler declines (or cannot allocate) leaves the interpreted
+ * pr_eval_fnc in place (scan_prog_state 2).  Compile on first use, recompile when the bound
+ * types changed; leave the state alone when the compiler declined.  The row path calls it
+ * before the row it evaluates; a page batch (scan_batch_open ()) calls it before its first
+ * page, for the same reason the operand program is settled there: the batch reads the
+ * compiled form, so it must be the one this execution would use.
  */
-int
+void
 eval_data_filter_ensure_prog (THREAD_ENTRY * thread_p, FILTER_INFO * filterp)
 {
   SCAN_PRED *scan_predp = (filterp != NULL) ? filterp->scan_pred : NULL;
@@ -3475,7 +3475,7 @@ eval_data_filter_ensure_prog (THREAD_ENTRY * thread_p, FILTER_INFO * filterp)
 
   if (scan_predp == NULL || scan_predp->pr_eval_fnc == NULL || scan_predp->pred_expr == NULL)
     {
-      return NO_ERROR;
+      return;
     }
   pred_root = scan_predp->pred_expr;
   if (pred_root->scan_prog_state == 1
@@ -3494,7 +3494,6 @@ eval_data_filter_ensure_prog (THREAD_ENTRY * thread_p, FILTER_INFO * filterp)
       pred_root->scan_prog_state = (pred_root->scan_prog != NULL) ? 1 : 2;
       pred_root->scan_prog_gen++;
     }
-  return NO_ERROR;
 }
 
 DB_LOGICAL
@@ -3558,11 +3557,12 @@ eval_data_filter (THREAD_ENTRY * thread_p, OID * oid, RECDES * recdesp, HEAP_SCA
        * and operand steps were resolved for the bound types of the compiling execution:
        * an execution that binds other types recompiles.  Anything not covered keeps
        * pr_eval_fnc. */
-      if (unlikely (pred_root->scan_prog_state != 1 || !expr_scan_pred_signature_ok (pred_root->scan_prog,
-										     filterp->val_descr,
-										     EXPR_PROG_EXEC_STAMP
-										     (filterp->val_descr))))
+      if (unlikely (pred_root->scan_prog_state == 0
+		    || (pred_root->scan_prog_state == 1
+			&& !expr_scan_pred_signature_ok (pred_root->scan_prog, filterp->val_descr,
+							 EXPR_PROG_EXEC_STAMP (filterp->val_descr)))))
 	{
+	  /* state 2 (the compiler declined) is fixed for the clone: it stays on pr_eval_fnc without this call */
 	  eval_data_filter_ensure_prog (thread_p, filterp);
 	}
       if (pred_root->scan_prog_state == 1)
