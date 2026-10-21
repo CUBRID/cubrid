@@ -317,6 +317,7 @@ extern void tr_abort (TR_STATE * state);
 extern int tr_has_user_trigger (bool * has_user_trigger);
 extern int tr_check_commit_triggers (DB_TRIGGER_TIME time);
 extern void tr_check_rollback_triggers (DB_TRIGGER_TIME time);
+extern void tr_check_partial_rollback_triggers (void);
 #if defined(ENABLE_UNUSED_FUNCTION)
 extern void tr_check_timeout_triggers (void);
 #endif
