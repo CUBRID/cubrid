@@ -362,7 +362,14 @@ typedef struct uncorr_info
 {
   XASL_NODE *xasl;
   int level;
+  PT_NODE *cte_list;		/* CTEs of the query whose aptr list is built; its aptr list runs them */
 } UNCORR_INFO;
+
+typedef struct cte_ref_info
+{
+  PT_NODE *cte_list;		/* in: CTEs to look for */
+  bool found;			/* out: a spec reads one of them */
+} CTE_REF_INFO;
 
 typedef struct corr_info
 {
@@ -424,6 +431,7 @@ static int pt_set_sub_xasl_id (XASL_NODE * xasl, const PT_NODE * node);
 static XASL_NODE *pt_append_scan (const XASL_NODE * to, const XASL_NODE * from);
 static PT_NODE *pt_uncorr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_find_cte_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static XASL_NODE *pt_to_uncorr_subquery_list (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static XASL_NODE *pt_to_corr_subquery_list (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR id);
@@ -14072,6 +14080,18 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 	      node->info.query.correlation_level = info->level;
 	      node->info.query.flag.uncorr_hoisted = 1;
 	    }
+	  else if (node->info.query.correlation_level > info->level && info->cte_list != NULL)
+	    {
+	      /* hoisting a reader of this query's CTE to an enclosing query would run it before
+	       * the aptr list of this query runs the CTE, so it would read an empty CTE result */
+	      CTE_REF_INFO cte_ref = { info->cte_list, false };
+
+	      (void) parser_walk_leaves (parser, node, pt_find_cte_ref_pre, &cte_ref, NULL, NULL);
+	      if (cte_ref.found)
+		{
+		  node->info.query.correlation_level = info->level;
+		}
+	    }
 
 	  if (node->info.query.correlation_level == info->level)
 	    {
@@ -14147,6 +14167,38 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 }
 
 /*
+ * pt_find_cte_ref_pre () - find a spec that reads one of the CTEs in arg
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): CTE_REF_INFO
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_find_cte_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  CTE_REF_INFO *info = (CTE_REF_INFO *) arg;
+  PT_NODE *cte;
+
+  if (node->node_type != PT_SPEC || !PT_SPEC_IS_CTE (node))
+    {
+      return node;
+    }
+
+  for (cte = info->cte_list; cte != NULL; cte = cte->next)
+    {
+      if (cte == node->info.spec.cte_pointer->info.pointer.node)
+	{
+	  info->found = true;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
+    }
+
+  return node;
+}
+
+/*
  * pt_to_uncorr_subquery_list () - Gather the correlated level > 1 subqueries
  * 	include nested queries, such that nest level + 2 = correlation level
  *	exclude the node being passed in
@@ -14161,6 +14213,7 @@ pt_to_uncorr_subquery_list (PARSER_CONTEXT * parser, PT_NODE * node)
 
   info.xasl = NULL;
   info.level = 2;
+  info.cte_list = node->info.query.with ? node->info.query.with->info.with_clause.cte_definition_list : NULL;
 
   node = parser_walk_leaves (parser, node, pt_uncorr_pre, &info, pt_uncorr_post, &info);
 
@@ -18582,6 +18635,21 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
     }
 
+  if (xasl != NULL && !pt_is_subquery (select_node) && histogram_bind_watch_candidate (parser, select_node))
+    {
+      /* target selection for the bind-value plan variants. No condition looks at the values
+       * (real-class specs, most-common values on the column, no unique key pinning the node), so
+       * whatever values the plan was chosen under, every compile of the statement gives the same
+       * answer and the flag travels with every variant of it. Only the statement's own header
+       * is read, and its walk covers the subqueries, so a subquery is not judged on its own. */
+      xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
+    }
+  if (xasl != NULL && plan != NULL)
+    {
+      /* the plan-variant directory tells two compiles of one query apart by their plans */
+      parser->bind_plan_sig = qo_plan_signature (plan, parser->bind_plan_sig);
+    }
+
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_COLS_SCHEMA)
       && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_FULL_INFO_COLS_SCHEMA)
@@ -20229,6 +20297,7 @@ pt_to_delete_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   del->remote_key_col = pt_append_string (parser, NULL, key_col);
   del->remote_op = pt_append_string (parser, NULL, op_sql);
+
   if (del->sink.table_name == NULL || del->remote_key_col == NULL || del->remote_op == NULL || pt_has_error (parser))
     {
       return NULL;
@@ -22644,6 +22713,11 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
        * the actual bind values */
       xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
     }
+  if (xasl != NULL && histogram_bind_watch_candidate (parser, statement))
+    {
+      /* target selection for bind-value plan variants, as for SELECT in pt_plan_query () */
+      xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
+    }
 
   return xasl;
 
@@ -23582,6 +23656,11 @@ cleanup:
        * unbound host-variable predicate markers, so the first execution replans once under
        * the actual bind values */
       xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
+    }
+  if (xasl != NULL && histogram_bind_watch_candidate (parser, statement))
+    {
+      /* target selection for bind-value plan variants, as for SELECT in pt_plan_query () */
+      xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
     }
   return xasl;
 }

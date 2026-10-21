@@ -458,6 +458,13 @@ namespace parallel_scan
       {
 	return 0;
       }
+    /* FOR UPDATE: the serial scan locks every row it reads, but workers open their scans without locks
+     * (px_scan_task.cpp), so a FOR UPDATE spec keeps its scan serial (CBRD-27593). */
+    if (ACCESS_SPEC_IS_FLAGED (arg, ACCESS_SPEC_FLAG_FOR_UPDATE))
+      {
+	set_flag (result, CANNOT_PARALLEL_SCAN);
+	return result;
+      }
     if (arg->type == TARGET_CLASS)
       {
 	if (arg->access == ACCESS_METHOD_SEQUENTIAL)
@@ -485,11 +492,12 @@ namespace parallel_scan
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* orderby skip and desc scans need globally ordered traversal; a groupby skip merges its workers'
-		 * partial aggregates in key order, which its XASL check decides (is_groupby_skip_parallel ()). Its
-		 * ORDER BY sorts the groups (orderby_desc acts only with orderby_skip, scan_get_index_oidset ()). */
-		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_desc
-		    || (arg->indexptr->orderby_desc && !arg->indexptr->groupby_skip))
+		/* orderby skip and a descending groupby skip need globally ordered traversal; an ascending
+		 * groupby skip merges its workers' partial aggregates in key order, which its XASL check decides
+		 * (is_groupby_skip_parallel ()). orderby_desc/groupby_desc only tell the first sort column is DESC
+		 * and are used only with skip (see scan_get_index_oidset ()), so they alone do not prevent a
+		 * parallel scan. */
+		if (arg->indexptr->orderby_skip || (arg->indexptr->groupby_skip && arg->indexptr->groupby_desc))
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
@@ -543,6 +551,11 @@ namespace parallel_scan
     if (!arg)
       {
 	return 0;
+      }
+    /* FOR UPDATE inner spec: the workers of the driving scan would read it without row locks (CBRD-27593). */
+    if (ACCESS_SPEC_IS_FLAGED (arg, ACCESS_SPEC_FLAG_FOR_UPDATE))
+      {
+	set_flag (result, CANNOT_PARALLEL_SCAN);
       }
     if (arg->type == TARGET_METHOD)
       {
@@ -1103,7 +1116,8 @@ namespace parallel_scan
       case CTE_PROC:
 	if (arg->proc.cte.recursive_part)
 	  {
-	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part);
+	    /* nested sort/hash join serial too: qexec_execute_cte copies each iteration's result without dependents */
+	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part, true);
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
 	if (arg->proc.cte.non_recursive_part)
