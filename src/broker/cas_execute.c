@@ -358,6 +358,38 @@ static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
 static char cas_db_sys_param[128] = "";
 
+/* internal LOB read cursors open in this transaction; the server drops them all when it ends */
+/* [리뷰] CAS 프로세스 전역 카운트다(한 CAS가 한 연결만 서비스한다는 전제).
+ * 서버가 트랜잭션 끝에 커서를 모두 버리므로 ux_end_tran에서 0으로 맞춘다. */
+static int lob_Read_cursor_count = 0;
+
+/* An open LOB read cursor lives in the transaction, so auto commit waits until ux_lob_stream_close () of the last
+ * one; until then a statement may not let the server commit it either. */
+static bool
+lob_statement_auto_commit (char auto_commit_mode)
+{
+  return auto_commit_mode == TRUE && lob_Read_cursor_count == 0;
+}
+
+/* Does an open LOB read cursor put off this auto commit (or auto rollback)?  A failed statement is already undone
+ * by itself, as in manual commit mode; a transaction the server ended takes its cursors with it. */
+/* [리뷰] 열린 LOB 읽기 커서가 있으면 자동커밋·자동롤백을 마지막 커서 close까지 미룬다.
+ * 서버가 이미 커밋·중단한 트랜잭션(교착·서버 다운)은 미루지 않고 그대로 끝낸다. */
+static bool
+lob_read_cursor_defers_tran_end (bool is_commit, int err_code)
+{
+  if (lob_Read_cursor_count <= 0)
+    {
+      return false;
+    }
+  if (is_commit)
+    {
+      return !tran_was_latest_query_committed ();
+    }
+  return !tran_was_latest_query_aborted () && !ER_IS_ABORTED_DUE_TO_DEADLOCK (err_code)
+    && !ER_IS_SERVER_DOWN_ERROR (err_code);
+}
+
 int
 ux_check_connection (void)
 {
@@ -988,6 +1020,7 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
     {
       err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
     }
+  lob_Read_cursor_count = 0;
 
   if (err_code >= 0)
     {
@@ -1201,7 +1234,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
       db_set_client_cache_time (session, stmt_id, clt_cache_time);
     }
 
-  err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
+  err_code = db_set_statement_auto_commit (session, lob_statement_auto_commit (srv_handle->auto_commit_mode));
   if (err_code != NO_ERROR)
     {
       err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -1540,7 +1573,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	  db_set_client_cache_time (session, stmt_id, clt_cache_time);
 	}
 
-      err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
+      err_code = db_set_statement_auto_commit (session, lob_statement_auto_commit (srv_handle->auto_commit_mode));
       if (err_code != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -2080,7 +2113,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       db_get_cacheinfo (session, stmt_id, &use_plan_cache, &use_query_cache);
       cas_log_write2 (" %s", use_plan_cache ? "(PC)" : "");
 
-      if (db_set_statement_auto_commit (session, auto_commit_mode) != NO_ERROR)
+      if (db_set_statement_auto_commit (session, lob_statement_auto_commit (auto_commit_mode)) != NO_ERROR)
 	{
 	  cas_log_write2 ("");
 	  goto batch_error;
@@ -2120,7 +2153,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
       db_query_end (result);
       db_close_session (session);
 
-      if (auto_commit_mode == TRUE)
+      if (auto_commit_mode == TRUE && !lob_read_cursor_defers_tran_end (true, NO_ERROR))
 	{
 	  db_commit_transaction ();
 	}
@@ -2173,7 +2206,7 @@ ux_execute_batch (int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_i
 	  db_close_session (session);
 	}
 
-      if (auto_commit_mode == TRUE)
+      if (auto_commit_mode == TRUE && !lob_read_cursor_defers_tran_end (false, err_code))
 	{
 	  db_abort_transaction ();
 	}
@@ -2409,7 +2442,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
 	    }
 	}
 
-      err_code = db_set_statement_auto_commit (session, srv_handle->auto_commit_mode);
+      err_code = db_set_statement_auto_commit (session, lob_statement_auto_commit (srv_handle->auto_commit_mode));
       if (err_code != NO_ERROR)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -2481,7 +2514,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
       num_bind -= input_stride;
       first_value += input_stride;
 
-      if (srv_handle->auto_commit_mode == TRUE)
+      if (srv_handle->auto_commit_mode == TRUE && !lob_read_cursor_defers_tran_end (true, NO_ERROR))
 	{
 	  db_commit_transaction ();
 	}
@@ -2544,7 +2577,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
       num_bind -= input_stride;
       first_value += input_stride;
 
-      if (srv_handle->auto_commit_mode == TRUE)
+      if (srv_handle->auto_commit_mode == TRUE && !lob_read_cursor_defers_tran_end (false, err_code))
 	{
 	  db_abort_transaction ();
 	}
@@ -10211,6 +10244,14 @@ ux_auto_commit (T_NET_BUF * net_buf, T_REQ_INFO * req_info)
   int err_code;
   int elapsed_sec = 0, elapsed_msec = 0;
 
+  if (req_info->need_auto_commit != TRAN_NOT_AUTOCOMMIT
+      && lob_read_cursor_defers_tran_end (req_info->need_auto_commit == TRAN_AUTOCOMMIT, err_info.err_number))
+    {
+      /* ux_lob_stream_close () of the last open LOB read cursor ends the transaction */
+      cas_log_write (0, false, "auto_commit deferred: %d LOB read cursor(s) open", lob_Read_cursor_count);
+      return 0;
+    }
+
   if (req_info->need_auto_commit == TRAN_AUTOCOMMIT)
     {
       cas_log_write (0, false, "auto_commit %s", tran_was_latest_query_committed ()? "(server)" : "(local)");
@@ -11016,6 +11057,8 @@ ux_lob_stream_open (char *locator, int locator_len, DB_BIGINT start_offset, T_NE
       NET_BUF_ERR_SET (net_buf);
       return err_code;
     }
+  lob_Read_cursor_count++;
+
   net_buf_cp_int (net_buf, 0, NULL);
   net_buf_cp_bigint (net_buf, (DB_BIGINT) token, NULL);
   return 0;
@@ -11081,6 +11124,22 @@ ux_lob_stream_close (DB_BIGINT token, char auto_commit_mode, T_NET_BUF * net_buf
 
   err_code = internal_lob_stream_close_from_server ((INT64) token);
   /* a failed close leaves no server cursor either, so the count follows it */
+  if (lob_Read_cursor_count > 0)
+    {
+      lob_Read_cursor_count--;
+    }
+
+  /* in auto-commit the last cursor closed ends the transaction its open began, unless that would also end
+   * a stream session or a result set the client still fetches or updates */
+  /* [리뷰] 자동커밋은 마지막 읽기 커서를 닫을 때만 한다(M1).
+   * 스트림이나 커밋에 묶인 결과 집합이 남아 있으면 그것이 끝날 때까지 미룬다.
+   * 드라이버가 auto_commit_mode를 안 보내면 이 경로는 커밋하지 않는다. */
+  if (auto_commit_mode == TRUE && lob_Read_cursor_count == 0 && !stream_from_is_open ()
+      && !hm_has_result_tied_to_tran ())
+    {
+      req_info->need_auto_commit = (err_code != NO_ERROR) ? TRAN_AUTOROLLBACK : TRAN_AUTOCOMMIT;
+    }
+
   if (err_code != NO_ERROR)
     {
       errors_in_transaction++;
