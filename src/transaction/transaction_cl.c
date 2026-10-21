@@ -583,9 +583,16 @@ tran_abort_only_client (bool is_server_down)
       return NO_ERROR;
     }
 
-  /* Remove any dirty objects and close all open query cursors */
+  /* Remove any dirty objects and close all open query cursors.
+   * The callers still hold the classes of the failed request while the server-down error unwinds,
+   * so keep the decached objects until ws_final (). */
+  if (is_server_down)
+    {
+      ws_set_defer_free (true);
+    }
   ws_abort_mops (true);
   ws_filter_dirty ();
+  ws_set_defer_free (false);
   db_clear_client_query_result (false, true);
 
   tm_Tran_rep_read_lock = NULL_LOCK;
