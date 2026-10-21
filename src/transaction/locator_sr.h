@@ -195,6 +195,8 @@ extern int locator_copyarea_add_fetch (const OID * class_oid, const OID * oid, c
 				       LC_COPYAREA_MANYOBJS * mobjs, LC_COPYAREA_ONEOBJ * obj);
 
  // *INDENT-OFF*
+
+// *INDENT-OFF*
 extern int locator_multi_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid,
 				       std::vector<heap_pending_record> &recdes, int has_index, int op_type,
 				       HEAP_SCANCACHE * scan_cache, int *force_count, int pruning_type,

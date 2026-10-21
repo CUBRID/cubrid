@@ -104,8 +104,10 @@ heap_oos_validate_disk_record (THREAD_ENTRY *thread_p, const OID *class_oid, con
 	{
 	  oos_chain_ref ref;
 	  DB_BIGINT length;
+	  int kind;
 	  found_oos = true;
-	  error = heap_oos_parse_inline_ref (record, attr.location, &ref, &length);
+	  /* Internal LOB stubs share the OOS bit; any kind is a valid disk stub here */
+	  error = heap_oos_parse_inline_stub (record, attr.location, OR_OOS_KIND_ANY, &ref, &kind, &length);
 	}
     }
   heap_classrepr_free_and_init (repr, &cache_index);
