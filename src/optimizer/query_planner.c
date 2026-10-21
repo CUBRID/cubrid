@@ -7610,7 +7610,8 @@ qo_get_distinct_info_ahead (QO_PLANNER * planner, QO_NODE * node, BITSET * visit
     }
 
   /* a join method hint on the node says how to join it as the inner, which it is not when placed first */
-  if (QO_NODE_HINT (node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_USE_HASH))
+  if (QO_NODE_HINT (node)
+      & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE | PT_HINT_USE_HASH | PT_HINT_NO_USE_HASH))
     {
       return NULL;
     }
