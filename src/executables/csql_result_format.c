@@ -25,6 +25,8 @@
 #include "config.h"
 
 #include <float.h>
+#include <stdio.h>
+#include <string.h>
 #include <time.h>
 
 #include "csql.h"
@@ -37,6 +39,7 @@
 #include "db_value_printer.hpp"
 
 #include "dbtype.h"
+#include "internal_lob_marker.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -1143,6 +1146,66 @@ duplicate_string (const char *string)
 
 }
 
+bool
+csql_db_value_is_internal_lob_stream_marker (DB_VALUE * value, char *lob_type, const char **locator, int *locator_len,
+					     DB_BIGINT * data_len, DB_BIGINT * bit_length)
+{
+  DB_TYPE type;
+  const char *data = NULL;
+  const char *locator_data = NULL;
+  int size = 0;
+  int locator_size = 0;
+  DB_BIGINT parsed_length = 0;
+  char marker_type = '\0';
+
+  if (locator != NULL)
+    {
+      *locator = NULL;
+    }
+  if (locator_len != NULL)
+    {
+      *locator_len = 0;
+    }
+  if (data_len != NULL)
+    {
+      *data_len = 0;
+    }
+  if (bit_length != NULL)
+    {
+      *bit_length = -1;
+    }
+
+  if (!db_get_internal_lob_marker_text (value, DB_VALUE_INTERNAL_LOB_MARKER_STREAM, &type, &data, &size)
+      || !internal_lob_marker_parse_scalar_stream (data, size, &marker_type, &parsed_length, &locator_data,
+						   &locator_size))
+    {
+      return false;
+    }
+  if ((marker_type == 'C' && !TP_IS_CHAR_TYPE (type)) || (marker_type == 'B' && !TP_IS_BIT_TYPE (type)))
+    {
+      return false;
+    }
+  if ((data_len != NULL || bit_length != NULL)
+      && !internal_lob_marker_split_length (marker_type, parsed_length, data_len, bit_length))
+    {
+      return false;
+    }
+
+  if (lob_type != NULL)
+    {
+      *lob_type = marker_type;
+    }
+  if (locator != NULL)
+    {
+      *locator = locator_data;
+    }
+  if (locator_len != NULL)
+    {
+      *locator_len = locator_size;
+    }
+  return true;
+}
+
 /*
  * csql_string_to_plain_string() - Refine the string and return it
  *   return: refined plain string
@@ -1874,7 +1937,28 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 
     case DB_TYPE_BLOB:
       // TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
-      result = bit_to_string (value, string_delimiter, plain_string);
+      if (db_value_has_internal_lob_marker (value, DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR))
+	{
+	  /* A plain SELECT shows the locator text.  A BLOB buffer is not NUL-terminated (it may point straight at
+	   * instance memory), so the locator is bounded by its bit length, not strlen (). */
+	  int locator_bit_length = 0;
+	  const char *locator_bytes = (const char *) db_get_bit (value, &locator_bit_length);
+	  int locator_len = (locator_bit_length > 0) ? ((locator_bit_length + 7) / 8) : 0;
+
+	  if (locator_bytes != NULL && locator_len > 0)
+	    {
+	      result = (char *) malloc ((size_t) locator_len + 1);
+	      if (result != NULL)
+		{
+		  memcpy (result, locator_bytes, (size_t) locator_len);
+		  result[locator_len] = '\0';
+		}
+	    }
+	}
+      if (result == NULL)
+	{
+	  result = bit_to_string (value, string_delimiter, plain_string);
+	}
       if (result)
 	{
 	  len = strlen (result);
@@ -1891,6 +1975,17 @@ csql_db_value_as_string (DB_VALUE * value, int *length, const CSQL_ARGUMENT * cs
 
 	str = db_get_char (value);
 	bytes_size = db_get_string_size (value);
+	if (db_value_has_internal_lob_marker (value, DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR))
+	  {
+	    /* A plain SELECT shows the internal LOB locator text; the content is
+	     * produced only through CLOB_TO_CHAR. */
+	    result = duplicate_string (str);
+	  }
+	if (result != NULL)
+	  {
+	    len = strlen (result);
+	    break;
+	  }
 	if (bytes_size > 0 && db_get_string_codeset (value) == INTL_CODESET_UTF8)
 	  {
 	    need_decomp =
