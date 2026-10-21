@@ -43,6 +43,8 @@
 #include "memory_wrapper.hpp"
 
 
+static int internal_lob_make_locator_db_value_internal (DB_VALUE *value, DB_TYPE lob_type,
+    const INTERNAL_LOB_LOCATOR &locator, bool adopted);
 
 static int
 internal_lob_set_generic_error (void)
@@ -124,6 +126,34 @@ internal_lob_reverse_writer_clear (INTERNAL_LOB_REVERSE_WRITER &writer)
   writer.locator.adopted = false;
   writer.initialized = false;
   writer.finished = false;
+}
+
+/* One implementation of the locator token, shared with CAS and the client primitives so every reader
+ * classifies a locator text the same way. See internal_lob_marker_locator_token (). */
+static unsigned long long
+internal_lob_locator_token (const INTERNAL_LOB_LOCATOR &locator, bool adopted)
+{
+  /* [리뷰] 토큰은 OID·길이·adopted로 결정적으로 계산하는 해시다. 서명 키는 없다(BFILE/CFILE 수준).
+   * 로케이터처럼 생긴 사용자 문자열을 거르는 용도. CAS·클라이언트도 같은 구현을 쓴다. */
+  return internal_lob_marker_locator_token (locator.oid.volid, locator.oid.pageid, locator.oid.slotid,
+	 locator.length, adopted);
+}
+
+static int
+internal_lob_format_locator_string (const INTERNAL_LOB_LOCATOR &locator, char *buf, size_t buf_size, bool adopted)
+{
+  return internal_lob_marker_format_locator (buf, buf_size, locator.oid.volid, locator.oid.pageid, locator.oid.slotid,
+	 locator.length, adopted, locator.class_oid.volid, locator.class_oid.pageid,
+	 locator.class_oid.slotid);
+}
+
+/*
+ * internal_lob_format_locator () - Format a client-facing locator text; it names the class when one is known.
+ */
+int
+internal_lob_format_locator (const INTERNAL_LOB_LOCATOR &locator, char *buf, size_t buf_size)
+{
+  return internal_lob_format_locator_string (locator, buf, buf_size, false);
 }
 
 int
@@ -755,6 +785,50 @@ internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, const INTERNA
   return oos_delete (thread_p, lob_vfid, locator.oid);
 }
 
+bool
+internal_lob_parse_locator_string (const char *data, int size, INTERNAL_LOB_LOCATOR *locator)
+{
+  /* [리뷰] 문자열 전체가 로케이터여야 한다(consumed == size). 뒤에 붙은 바이트·내장 NUL은 거부한다. */
+  INTERNAL_LOB_MARKER_LOCATOR_FIELDS fields;
+  INTERNAL_LOB_LOCATOR parsed_locator;
+  int consumed = 0;
+
+  /* The whole text must be the locator: unlike internal_lob_marker_parse_locator (), no embedded NUL. */
+  if (!internal_lob_marker_parse_locator_fields (data, size, &fields, &consumed) || consumed != size)
+    {
+      return false;
+    }
+
+  parsed_locator.oid.volid = (VOLID) fields.volid;
+  parsed_locator.oid.pageid = (PAGEID) fields.pageid;
+  parsed_locator.oid.slotid = (PGSLOTID) fields.slotid;
+  parsed_locator.length = fields.length;
+  parsed_locator.adopted = fields.adopted;
+  parsed_locator.class_oid.volid = (VOLID) fields.class_volid;
+  parsed_locator.class_oid.pageid = (PAGEID) fields.class_pageid;
+  parsed_locator.class_oid.slotid = (PGSLOTID) fields.class_slotid;
+
+  if (locator != NULL)
+    {
+      *locator = parsed_locator;
+    }
+  return true;
+}
+
+bool
+internal_lob_db_value_is_locator (const DB_VALUE *value, INTERNAL_LOB_LOCATOR *locator)
+{
+  const char *data = NULL;
+  int size = 0;
+
+  if (!db_get_internal_lob_marker_text (value, DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR, NULL, &data, &size))
+    {
+      return false;
+    }
+
+  return internal_lob_parse_locator_string (data, size, locator);
+}
+
 int
 internal_lob_encode_disk_length (const INTERNAL_LOB_LOCATOR &locator, DB_BIGINT &disk_length)
 {
@@ -778,5 +852,31 @@ internal_lob_decode_disk_length (INTERNAL_LOB_LOCATOR &locator, DB_BIGINT disk_l
   locator.length = disk_length;
   locator.adopted = false;
   return NO_ERROR;
+}
+
+int
+internal_lob_make_locator_db_value (DB_VALUE *value, DB_TYPE lob_type, const INTERNAL_LOB_LOCATOR &locator)
+{
+  /* [리뷰] 행에서 나온 LOB DB_VALUE는 항상 이 로케이터 마커다. 내용은 변환 함수·읽기 커서가 읽는다.
+   * 클래스 OID는 12번 읽기 커서가 IS 락을 잡는 데 쓴다. 서버 내부 복사는 클래스를 보지 않는다. */
+  return internal_lob_make_locator_db_value_internal (value, lob_type, locator, false);
+}
+
+static int
+internal_lob_make_locator_db_value_internal (DB_VALUE *value, DB_TYPE lob_type, const INTERNAL_LOB_LOCATOR &locator,
+    bool adopted)
+{
+  char stack_buf[128];
+  int locator_len;
+
+  locator_len = internal_lob_format_locator_string (locator, stack_buf, sizeof (stack_buf), adopted);
+  if (locator_len <= 0 || locator_len >= (int) sizeof (stack_buf))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  return db_make_internal_lob_marker_value (value, lob_type, stack_buf, locator_len,
+	 DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR);
 }
 

@@ -628,6 +628,9 @@ extern int heap_get_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, 
 /* Reads exactly size bytes of the source at offset. The source's total size is known up front, so the internal LOB
  * chain is written tail-first through the reverse writer without staging the payload. */
 typedef int (*HEAP_INTERNAL_LOB_RANGE_READER) (void *ctx, DB_BIGINT offset, char *buf, int size);
+extern int heap_internal_lob_clone_locator (THREAD_ENTRY * thread_p, const OID * class_oid, DB_TYPE lob_type,
+					    const INTERNAL_LOB_LOCATOR * source_locator,
+					    INTERNAL_LOB_LOCATOR * locator);
 extern int heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, const DB_VALUE * value,
 					   INTERNAL_LOB_LOCATOR * locator);
 extern int heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid,

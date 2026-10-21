@@ -69,6 +69,7 @@ struct HEAP_OOS_EXPAND_STATE
   int fixed_bitmap_bytes;
   std::vector<int> vot_entries;
   std::vector<std::vector<char>> oos_payloads;
+  const OID *class_oid;		/* the record's class, named by the internal LOB locators the image carries */
 };
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
@@ -172,6 +173,81 @@ heap_oos_read_stub (const HEAP_OOS_EXPAND_STATE *state, int value_offset, OID *o
 }
 
 /*
+ * heap_oos_make_lob_image () - Build the on-record image of an Internal LOB attribute from its OOS stub.
+ *   return: NO_ERROR or error code
+ *   lob_type(in): DB_TYPE_BLOB or DB_TYPE_CLOB
+ *   oos_oid(in): head-chunk OID parsed out of the inline stub
+ *   oos_len(in): stub length field (bit length for BLOB, byte length for CLOB)
+ *   class_oid(in): the record's class, carried by the locator; NULL when unknown
+ *   image(out): the replacement bytes for this variable index
+ *
+ * A heap record holds a BLOB/CLOB as a locator, never as payload: inlining the chain would materialize up to
+ * 4GB in the server, and readers would take the first content byte for the value's length.  Emit the plain
+ * locator disk image, without the query path's transport marker: expanded records are parsed by primitive readers.
+ */
+static int
+heap_oos_make_lob_image (DB_TYPE lob_type, const OID &oos_oid, DB_BIGINT oos_len,
+			 const OID *class_oid, std::vector<char> &image)
+{
+  /* [리뷰] 레코드 확장 때 LOB 슬롯은 체인 내용이 아니라 로케이터 디스크 이미지로 바꾼다.
+   * 체인을 인라인하면 4GB가 서버 메모리에 올라오고 첫 바이트를 길이로 오인한다.
+   * DONT_CONSUME 읽기 전용. HA 복제·로그 코드는 이 경로를 쓰지 않는다. */
+  INTERNAL_LOB_LOCATOR locator = { oos_oid, 0 };
+  char locator_str[128];
+  int locator_len;
+  DB_VALUE value;
+  OR_BUF buf;
+  int size;
+  int error;
+
+  error = internal_lob_decode_disk_length (locator, oos_len);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (class_oid != NULL)
+    {
+      locator.class_oid = *class_oid;
+    }
+
+  locator_len = internal_lob_format_locator (locator, locator_str, sizeof (locator_str));
+  if (locator_len <= 0 || locator_len >= (int) sizeof (locator_str))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  db_make_null (&value);
+  if (lob_type == DB_TYPE_CLOB)
+    {
+      error = db_make_clob (&value, DB_MAX_LOB_PRECISION, locator_str, locator_len);
+    }
+  else
+    {
+      error = db_make_blob (&value, DB_MAX_LOB_PRECISION, (DB_CONST_C_BIT) locator_str, locator_len * 8);
+    }
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  size = pr_data_writeval_disk_size (&value);
+  if (size <= 0)
+    {
+      pr_clear_value (&value);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  image.resize ((std::size_t) size);
+  or_init (&buf, image.data (), size);
+  pr_data_writeval (&buf, &value);
+  pr_clear_value (&value);
+
+  return NO_ERROR;
+}
+
+/*
  * heap_oos_read_values () - Read the OOS value for every OOS-tagged variable index.
  *   return: NO_ERROR or error code
  *   thread_p(in): thread entry
@@ -192,6 +268,28 @@ heap_oos_read_values (THREAD_ENTRY *thread_p, HEAP_OOS_EXPAND_STATE *state)
       const int value_offset = state->src_header_size + OR_GET_VAR_OFFSET (state->vot_entries[i]);
       OID oos_oid;
       DB_BIGINT oos_len;
+      int stub_kind;
+
+      /* The slot's kind is stamped in the stub itself, so expansion needs no class representation: no
+       * schema-change hazard and no page fix while the heap page is latched. */
+      if (heap_oos_read_stub (state, value_offset, &oos_oid, &stub_kind, &oos_len) != NO_ERROR)
+	{
+	  return ER_HEAP_OOS_BAD_INLINE_HEADER;
+	}
+
+      if (OR_OOS_IS_LOB_KIND (stub_kind))
+	{
+	  /* Internal LOB: store the locator, never the chunk chain. */
+	  const DB_TYPE lob_type = (stub_kind == OR_OOS_KIND_BLOB ? DB_TYPE_BLOB : DB_TYPE_CLOB);
+	  int lob_err = heap_oos_make_lob_image (lob_type, oos_oid, oos_len, state->class_oid, state->oos_payloads[i]);
+
+	  if (lob_err != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return lob_err;
+	    }
+	  continue;
+	}
 
       /* Reuse the single inline-reference parser (same [OID (8B) | full_length (8B)] layout and
        * the same corruption checks the lazy Resolve path uses). It has already er_set on error. */
