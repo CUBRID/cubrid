@@ -689,6 +689,10 @@ net_server_init (void)
   req_p->action_attribute = IN_TRANSACTION;
   req_p->processing_function = sinternal_lob_stream_close;
 
+  req_p = &net_Requests[NET_SERVER_INTERNAL_LOB_UPLOAD_RELEASE];
+  req_p->action_attribute = IN_TRANSACTION;
+  req_p->processing_function = sinternal_lob_upload_release;
+
   req_p = &net_Requests[NET_SERVER_GET_MVCC_SNAPSHOT];
   req_p->processing_function = slogtb_get_mvcc_snapshot;
 

@@ -13181,6 +13181,7 @@ heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, 
   const DB_VALUE *source_value = value;
   const char *raw_data = NULL;
   INTERNAL_LOB_PENDING pending_source;
+  INTERNAL_LOB_UPLOAD_TOKEN upload_source;
   INTERNAL_LOB_DML_SLOT dml_slot;
   HEAP_INTERNAL_LOB_FILE_SOURCE file_source;
   DB_TYPE type;
@@ -13201,6 +13202,11 @@ heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, 
   if (internal_lob_db_value_is_dml_slot (value, &dml_slot))
     {
       return session_internal_lob_dml_consume (thread_p, dml_slot.slot, class_oid, type, locator);
+    }
+
+  if (internal_lob_db_value_is_upload (value, &upload_source))
+    {
+      return session_internal_lob_upload_consume (thread_p, upload_source.token, class_oid, type, locator);
     }
 
   if (internal_lob_db_value_is_pending (value, &pending_source))

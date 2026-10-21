@@ -10516,6 +10516,31 @@ sinternal_lob_stream_close (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 }
 
 /*
+ * sinternal_lob_upload_release - Drop the staged payload of an upload whose statement was closed.
+ *   Request : token (int64)
+ *   Reply   : err (int)
+ */
+void
+sinternal_lob_upload_release (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  INT64 token = 0;
+  int err = NO_ERROR;
+
+  if (reqlen != OR_INT64_SIZE)
+    {
+      err = ER_OBJ_INVALID_ARGUMENTS;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+    }
+  else
+    {
+      (void) or_unpack_int64 (request, &token);
+      err = xinternal_lob_upload_release (thread_p, token);
+    }
+
+  stream_reply_error_code (thread_p, rid, err);
+}
+
+/*
  * svacuum_dump -
  *
  * return:

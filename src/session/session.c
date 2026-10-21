@@ -24,6 +24,7 @@
 
 
 #include <assert.h>
+#include <new>
 
 #if !defined(WINDOWS)
 #include <sys/time.h>
@@ -35,6 +36,7 @@
 #include "stream_session.hpp"
 #include "internal_lob_stream_kind.h"
 #include "internal_lob_dml_session.hpp"
+#include "internal_lob_upload.hpp"
 
 #include "boot_sr.h"
 #include "jansson.h"
@@ -145,6 +147,7 @@ struct session_state
 
   load_session *load_session_p;
   stream_session *stream_session_p;
+  internal_lob_upload_store *internal_lob_upload_store_p;
   PL_SESSION *pl_session_p;
 
   // *INDENT-OFF*
@@ -328,6 +331,22 @@ session_state_init (void *st)
   session_p->auto_commit = false;
   session_p->load_session_p = NULL;
   session_p->stream_session_p = NULL;
+  /* In SERVER_MODE this `new` is memory_wrapper.hpp's noexcept overload and yields NULL on failure, but
+   * this file is also compiled into cubridsa, where it is the throwing operator new.  Catch here so the
+   * engine's C error model holds in both builds. */
+  try
+  {
+    session_p->internal_lob_upload_store_p = new internal_lob_upload_store ();
+  }
+  catch (const std::bad_alloc &)
+  {
+    session_p->internal_lob_upload_store_p = NULL;
+  }
+  if (session_p->internal_lob_upload_store_p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (internal_lob_upload_store));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
   session_p->pl_session_p = NULL;
 
   return NO_ERROR;
@@ -358,6 +377,12 @@ session_state_uninit (void *st)
 #endif /* SESSION_DEBUG */
 
   session_stop_attached_threads (thread_p, session);
+
+  if (session->internal_lob_upload_store_p != NULL)
+    {
+      delete session->internal_lob_upload_store_p;
+      session->internal_lob_upload_store_p = NULL;
+    }
 
   if (session->pl_session_p)
     {
@@ -3454,6 +3479,81 @@ session_internal_lob_dml_consume (THREAD_ENTRY * thread_p, int slot, const OID *
     }
 
   return dml_session_p->consume_lob_slot (thread_p, slot, class_oid, expected_type, *locator);
+}
+
+int
+session_internal_lob_upload_begin (THREAD_ENTRY * thread_p, DB_TYPE type, DB_BIGINT data_length,
+				   DB_BIGINT logical_length, INT64 * token)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL || token == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->begin (type, data_length, logical_length, *token);
+}
+
+int
+session_internal_lob_upload_append (THREAD_ENTRY * thread_p, INT64 token, const char *data, int data_size)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->append (token, data, data_size);
+}
+
+int
+session_internal_lob_upload_end (THREAD_ENTRY * thread_p, INT64 token)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->end (token);
+}
+
+int
+session_internal_lob_upload_abort (THREAD_ENTRY * thread_p, INT64 token)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->abort (token);
+}
+
+/* the statement that bound the upload is closed; nothing staged in this session is not an error */
+int
+session_internal_lob_upload_release (THREAD_ENTRY * thread_p, INT64 token)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL)
+    {
+      return NO_ERROR;
+    }
+  return state_p->internal_lob_upload_store_p->release (token);
+}
+
+int
+session_internal_lob_upload_consume (THREAD_ENTRY * thread_p, INT64 token, const OID * class_oid,
+				     DB_TYPE expected_type, INTERNAL_LOB_LOCATOR * locator)
+{
+  SESSION_STATE *state_p = session_get_session_state (thread_p);
+
+  if (state_p == NULL || state_p->internal_lob_upload_store_p == NULL || locator == NULL)
+    {
+      return stream_session_set_error ("internal LOB upload store is unavailable");
+    }
+  return state_p->internal_lob_upload_store_p->consume (thread_p, token, class_oid, expected_type, *locator);
 }
 
 bool

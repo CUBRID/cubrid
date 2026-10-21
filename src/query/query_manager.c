@@ -1288,8 +1288,7 @@ exit_on_error:
  *   return: error code
  *
  * A locator gets the same class-lock check as a read and may not be an adopted one; a value naming a file is made
- * only in SA mode, so a client may not bind one.  Uploads are noted so they are released with the next upload even
- * when the statement stores them in no row.
+ * only in SA mode, so a client may not bind one.
  */
 static int
 qmgr_check_client_internal_lob_values (THREAD_ENTRY * thread_p, int dbval_count, const DB_VALUE * dbvals)

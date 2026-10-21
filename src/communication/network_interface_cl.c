@@ -5171,6 +5171,51 @@ internal_lob_stream_close_from_server (INT64 token)
 #endif
 }
 
+/* the statement that bound the upload is closed: the server drops its staged payload now */
+int
+internal_lob_upload_release_from_server (INT64 token)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int err = NO_ERROR;
+
+  if (token <= 0)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  (void) or_pack_int64 (request, token);
+
+  err = net_client_request (NET_SERVER_INTERNAL_LOB_UPLOAD_RELEASE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  (void) or_unpack_int (reply, &err);
+  return err;
+#else
+  int err = NO_ERROR;
+
+  if (token <= 0)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  err = xinternal_lob_upload_release (thread_p, token);
+
+  exit_server (*thread_p);
+
+  return err;
+#endif
+}
+
 /*
  * csession_create_prepared_statement () - create a prepared session statement
  * return	  : error code or NO_ERROR

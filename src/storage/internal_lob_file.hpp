@@ -116,6 +116,15 @@ struct internal_lob_pending
 };
 using INTERNAL_LOB_PENDING = struct internal_lob_pending;
 
+struct internal_lob_upload_token
+{
+  DB_TYPE lob_type;
+  INT64 token;
+  DB_BIGINT data_length;
+  DB_BIGINT logical_length;
+};
+using INTERNAL_LOB_UPLOAD_TOKEN = struct internal_lob_upload_token;
+
 struct internal_lob_dml_slot
 {
   int slot;
@@ -148,12 +157,14 @@ extern int xinternal_lob_stream_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB
 				      INT64 *token);
 extern int xinternal_lob_stream_read (THREAD_ENTRY *thread_p, INT64 token, char *buf, int count, int *nread);
 extern int xinternal_lob_stream_close (THREAD_ENTRY *thread_p, INT64 token);
+extern int xinternal_lob_upload_release (THREAD_ENTRY *thread_p, INT64 token);
 extern void internal_lob_stream_purge_tran (int tran_index);
 extern int internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, const INTERNAL_LOB_LOCATOR &locator);
 
 extern bool internal_lob_parse_locator_string (const char *data, int size, INTERNAL_LOB_LOCATOR *locator);
 extern bool internal_lob_db_value_is_locator (const DB_VALUE *value, INTERNAL_LOB_LOCATOR *locator);
 extern bool internal_lob_db_value_is_pending (const DB_VALUE *value, INTERNAL_LOB_PENDING *pending);
+extern bool internal_lob_db_value_is_upload (const DB_VALUE *value, INTERNAL_LOB_UPLOAD_TOKEN *upload);
 extern bool internal_lob_db_value_is_dml_slot (const DB_VALUE *value, INTERNAL_LOB_DML_SLOT *dml_slot);
 extern int internal_lob_format_locator (const INTERNAL_LOB_LOCATOR &locator, char *buf, size_t buf_size);
 extern int internal_lob_lock_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator);

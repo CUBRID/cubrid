@@ -176,6 +176,7 @@ struct t_attr_table
 extern void set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout);
 
 static int netval_to_dbval (void *type, void *value, DB_VALUE * db_val, T_NET_BUF * net_buf, char desired_type);
+static void note_internal_lob_upload_tokens (T_SRV_HANDLE * srv_handle, DB_VALUE * values, int count);
 static int cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_OBJECT * obj,
 		      T_NET_BUF * net_buf);
 static int dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_col_size,
@@ -1167,6 +1168,7 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 	{
 	  goto execute_error;
 	}
+      note_internal_lob_upload_tokens (srv_handle, value_list, num_bind);
 
       err_code = set_host_variables (session, num_bind, value_list);
       if (err_code != NO_ERROR)
@@ -1499,6 +1501,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	{
 	  goto execute_all_error;
 	}
+      note_internal_lob_upload_tokens (srv_handle, value_list, num_bind);
 
       err_code = set_host_variables (session, num_bind, value_list);
       if (err_code != NO_ERROR)
@@ -1831,6 +1834,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
 	{
 	  goto execute_error;
 	}
+      note_internal_lob_upload_tokens (srv_handle, value_list, num_bind);
 
       if (call_info->is_first_out)
 	{
@@ -2392,6 +2396,7 @@ ux_execute_array (T_SRV_HANDLE * srv_handle, int argc, void **argv, T_NET_BUF * 
     {
       goto execute_array_error;
     }
+  note_internal_lob_upload_tokens (srv_handle, value_list, num_bind);
 
   first_value = 0;
 
@@ -3379,6 +3384,48 @@ get_set_domain (DB_DOMAIN * set_domain, int *precision, short *scale, char *db_t
   return (ux_db_type_to_cas_type (set_type));
 }
 
+/* Remember the uploads a statement binds, so closing the statement releases their staged payloads. */
+static void
+note_internal_lob_upload_tokens (T_SRV_HANDLE * srv_handle, DB_VALUE * values, int count)
+{
+  int prefix_len = (int) strlen (INTERNAL_LOB_UPLOAD_PREFIX);
+  char text[160];
+  char type_char;
+  long long token;
+  INT64 *tokens = NULL;
+  int i, size, n_tokens = 0;
+
+  if (count > 0)
+    {
+      tokens = (INT64 *) MALLOC (sizeof (INT64) * count);
+      if (tokens == NULL)
+	{
+	  return;
+	}
+    }
+  for (i = 0; i < count; i++)
+    {
+      if (db_value_get_internal_lob_marker (&values[i]) != DB_VALUE_INTERNAL_LOB_MARKER_UPLOAD)
+	{
+	  continue;
+	}
+      size = db_get_string_size (&values[i]);
+      if (size <= prefix_len || size >= (int) sizeof (text))
+	{
+	  continue;
+	}
+      memcpy (text, db_get_string (&values[i]), size);
+      text[size] = '\0';
+      if (sscanf (text + prefix_len, "%c:%lld", &type_char, &token) == 2 && token > 0)
+	{
+	  tokens[n_tokens++] = (INT64) token;
+	}
+    }
+  /* a re-bind releases what this statement bound before; the uploads it still binds stay for re-execution */
+  (void) hm_srv_handle_set_internal_lob_uploads (srv_handle, tokens, n_tokens);
+  FREE_MEM (tokens);
+}
+
 int
 make_bind_value (int num_bind, int argc, void **argv, DB_VALUE ** ret_val, T_NET_BUF * net_buf, char desired_type)
 {
@@ -4097,6 +4144,34 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	      db_make_char (&db_val, -1, value, val_size, lang_get_client_charset (), lang_get_client_collation ());
 	    db_string_put_cs_and_collation (&db_val, lang_get_client_charset (), lang_get_client_collation ());
 	    db_val.need_clear = is_composed;
+	  }
+      }
+      break;
+    case CCI_U_TYPE_INTERNAL_BLOB_UPLOAD:
+    case CCI_U_TYPE_INTERNAL_CLOB_UPLOAD:
+      {
+	char *value;
+	int val_size;
+	DB_TYPE lob_type = (type == CCI_U_TYPE_INTERNAL_BLOB_UPLOAD) ? DB_TYPE_BLOB : DB_TYPE_CLOB;
+
+	net_arg_get_str (&value, &val_size, net_value);
+	if (value == NULL || val_size <= (int) strlen (INTERNAL_LOB_UPLOAD_PREFIX)
+	    || memcmp (value, INTERNAL_LOB_UPLOAD_PREFIX, strlen (INTERNAL_LOB_UPLOAD_PREFIX)) != 0)
+	  {
+	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION, CAS_ERROR_INDICATOR);
+	  }
+	if (lob_type == DB_TYPE_BLOB)
+	  {
+	    err_code = db_make_blob (&db_val, DB_MAX_LOB_PRECISION, (DB_CONST_C_BIT) value, val_size * 8);
+	  }
+	else
+	  {
+	    err_code = db_make_clob (&db_val, DB_MAX_LOB_PRECISION, value, val_size);
+	  }
+	if (err_code == NO_ERROR)
+	  {
+	    db_value_mark_internal_lob (&db_val, DB_VALUE_INTERNAL_LOB_MARKER_UPLOAD);
+	    coercion_flag = FALSE;
 	  }
       }
       break;
