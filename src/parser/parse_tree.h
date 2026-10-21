@@ -2845,6 +2845,9 @@ struct pt_query_info
     unsigned rewrite_limit:1;	/* need to rewrite the limit clause */
     unsigned has_system_class:1;	/* do not cache the query result */
     unsigned subquery_cached:1;	/* subquery is cached */
+    unsigned group_having_alias_resolved:1;	/* aliases in group by/having/order by of the query and its subqueries
+						 * are resolved, and for a static SQL, the deferred names are converted
+						 * to host variables (see pt_resolve_group_having_alias_and_deferred_name ()) */
   } flag;
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR (list) */
