@@ -155,6 +155,58 @@ heap_oos_needs_record_preparation (THREAD_ENTRY *thread_p, const OID *class_oid,
   return NO_ERROR;
 }
 
+/*
+ * heap_oos_begin_finalize_publication () - heap_oos_begin_insert_publication () that keeps the Internal LOB
+ *   entries (and their insert LSAs) the record's preparation published: its chains are already written.
+ */
+static SCAN_CODE
+heap_oos_begin_finalize_publication (THREAD_ENTRY *thread_p)
+{
+  LOG_TDES *tdes = LOG_FIND_TDES (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
+  std::vector<cubthread::entry::oos_published_ref> lob_oids;
+  std::vector<int> lob_attrids;
+  std::vector<LOG_LSA> lob_lsas;
+  /* the queue holds one LSA per published entry only while replication tracks the inserts */
+  const bool has_lsas = (tdes != NULL && tdes->oos_insert_lsa_queue.m_head == 0
+			 && tdes->oos_insert_lsa_queue.m_queue.size () == thread_p->oos_oids.size ());
+
+  try
+    {
+      for (std::size_t i = 0; thread_p->oos_tracking_is_paired () && i < thread_p->oos_oids.size (); i++)
+	{
+	  if (thread_p->oos_is_internal_lob[i])
+	    {
+	      lob_oids.push_back (thread_p->oos_oids[i]);
+	      lob_attrids.push_back (thread_p->oos_attrids[i]);
+	      if (has_lsas)
+		{
+		  lob_lsas.push_back (tdes->oos_insert_lsa_queue.m_queue[i]);
+		}
+	    }
+	}
+      if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+	{
+	  return S_ERROR;
+	}
+      for (std::size_t i = 0; i < lob_oids.size (); i++)
+	{
+	  thread_p->oos_oids.push_back (lob_oids[i]);
+	  thread_p->pair_oos_oids (thread_p->oos_oids.size (), lob_attrids[i], true);
+	  if (has_lsas)
+	    {
+	      tdes->oos_insert_lsa_queue.push (lob_lsas[i]);
+	    }
+	}
+    }
+  catch (const std::bad_alloc &)
+    {
+      (void) heap_oos_begin_insert_publication (thread_p);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (LOG_LSA));
+      return S_ERROR;
+    }
+  return S_SUCCESS;
+}
+
 int
 heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record,
 			  heap_pending_record *pending)
@@ -173,7 +225,7 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
     {
       return heap_oos_validate_disk_record (thread_p, destination, record);
     }
-  if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+  if (heap_oos_begin_finalize_publication (thread_p) != S_SUCCESS)
     {
       pending->finish (false);
       return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
@@ -197,6 +249,7 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
     char *stub;
     oos_buffer payload;
     oos_chain_ref result;
+    int attrid;
   };
   std::vector<pending_value> values;
   std::vector<oos_insert_request> requests;
@@ -241,7 +294,7 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	      error = ER_GENERIC_ERROR;
 	      break;
 	    }
-	  values.push_back ({ stub, oos_buffer (const_cast<char *> (ref.m_value.memory), ref.length ()), {} });
+	  values.push_back ({ stub, oos_buffer (const_cast<char *> (ref.m_value.memory), ref.length ()), {}, attr.id });
 	}
       /* A record whose out-of-row columns are all Internal LOBs retains nothing: skip the OOS file lookup,
        * or the class would get an empty OOS file. */
@@ -253,9 +306,26 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	      requests.push_back ({ value.payload, &value.result.head_oid, &value.result.identity_stamp });
 	    }
 	  cubbase::span<oos_insert_request> batch { requests.data (), requests.size () };
+	  std::size_t published = thread_p->oos_oids.size ();
 	  if (heap_oos_insert_serialized_values (thread_p, destination, batch) != S_SUCCESS)
 	    {
 	      error = er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+	    }
+	  else
+	    {
+	      /* pair each value's published OIDs with its attribute for the replication log; a multi-chunk
+	       * value publishes a null boundary marker before its head OID */
+	      for (const auto &value : values)
+		{
+		  while (published < thread_p->oos_oids.size ())
+		    {
+		      if (!OID_ISNULL (&thread_p->oos_oids[published++].oid))
+			{
+			  break;
+			}
+		    }
+		  thread_p->pair_oos_oids (published, value.attrid, false);
+		}
 	    }
 	}
       if (error == NO_ERROR)
