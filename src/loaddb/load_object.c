@@ -73,11 +73,127 @@ static void get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ *
 static void init_load_err_filter (void);
 static void default_clear_err_filter (void);
 
+static int desc_get_var_table_raw_offset (char *var_table, int index, int offset_size);
+static void desc_read_var_table (OR_BUF * buf, int count, int offset_size, int *vars, int *raw_vars);
+static int desc_keep_oos_stub (OR_BUF * buf, DESC_OBJ * obj, int value_index);
+static bool desc_obj_has_oos_stub (const DESC_OBJ * obj);
 
 #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 extern int data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 				int copy_buf_len, DB_TYPE type);
 #endif
+
+static int
+desc_get_var_table_raw_offset (char *var_table, int index, int offset_size)
+{
+  char *offset_ptr = OR_VAR_TABLE_ELEMENT_PTR (var_table, index, offset_size);
+
+  if (offset_size == OR_BYTE_SIZE)
+    {
+      return OR_GET_BYTE (offset_ptr);
+    }
+  else if (offset_size == OR_SHORT_SIZE)
+    {
+      return OR_GET_SHORT (offset_ptr);
+    }
+  else
+    {
+      assert (offset_size == OR_INT_SIZE);
+      return OR_GET_INT (offset_ptr);
+    }
+}
+
+/*
+ * desc_read_var_table () - Read the variable offset table at buf into vars (lengths) and raw_vars (entries as stored,
+ *			    OR_VAR_BIT_* flags included), then step buf past it.
+ */
+static void
+desc_read_var_table (OR_BUF * buf, int count, int offset_size, int *vars, int *raw_vars)
+{
+  char *var_table = buf->ptr;
+  int i;
+
+  for (i = 0; i < count; i++)
+    {
+      /* [리뷰] 커밋 29가 지운 가변 오프셋 읽기를 대체한다(current·old 공용).
+       * raw_vars는 OOS 비트 포함 원시 항목(KEEP_STUB 판정), vars는 비트 뗀 길이. */
+      raw_vars[i] = desc_get_var_table_raw_offset (var_table, i, offset_size);
+      vars[i] = (OR_GET_VAR_OFFSET (desc_get_var_table_raw_offset (var_table, i + 1, offset_size))
+		 - OR_GET_VAR_OFFSET (raw_vars[i]));
+    }
+  or_advance (buf, OR_VAR_TABLE_SIZE_INTERNAL (count, offset_size));
+  buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
+}
+
+/*
+ * desc_keep_oos_stub () - Take the stored OOS inline stub of one attribute as it is, so that
+ *   desc_obj_to_disk () can write it back unchanged.
+ *
+ * return	    : NO_ERROR, ER_TF_BUFFER_UNDERFLOW when the record ends inside the stub
+ * buf (in/out)	    : record being read; advanced past the stub
+ * obj (in/out)	    : object descriptor collecting the stubs
+ * value_index (in) : position of the attribute in obj->values
+ *
+ * Note: the payload is neither read nor re-encoded; a BLOB/CLOB record holds a locator, not content,
+ *       so its payload bytes would not survive a decode/encode round trip.
+ */
+static int
+desc_keep_oos_stub (OR_BUF * buf, DESC_OBJ * obj, int value_index)
+{
+  /* [리뷰] oos_stubs가 없는 객체(make_desc_obj(NULL,..))에선 KEEP_STUB을 못 쓴다.
+   * get_desc_old의 value_index(storage_order)가 현재 표현 순서와 맞는지 확인.
+   * 스텁 값은 DB_VALUE로 NULL이므로 그 값을 읽는 코드가 있으면 안 된다. */
+  if (obj->oos_stubs == NULL || obj->oos_stub_valid == NULL || value_index < 0 || value_index >= obj->count)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  if (buf->ptr + OR_OOS_INLINE_SIZE > buf->endptr)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_TF_BUFFER_UNDERFLOW, 0);
+      return ER_TF_BUFFER_UNDERFLOW;
+    }
+
+  /* Kept verbatim -- the 16 bytes carry the stub's kind along with them, and they are handed back
+   * unchanged by or_put_data () below. Do not parse a length out of this copy; use
+   * or_get_oos_stub () if a caller ever needs to look inside. */
+  memcpy (obj->oos_stubs + (size_t) value_index * OR_OOS_INLINE_SIZE, buf->ptr, OR_OOS_INLINE_SIZE);
+  obj->oos_stub_valid[value_index] = true;
+  or_advance (buf, OR_OOS_INLINE_SIZE);
+
+  /* The value stays NULL: nothing reads it, and put_attributes () writes the stub in its place. */
+  db_make_null (&obj->values[value_index]);
+
+  return NO_ERROR;
+}
+
+/*
+ * desc_obj_has_oos_stub () - Does this object carry at least one stored OOS inline stub?
+ *
+ * return   : true when the record to be written needs the record-level OOS flag
+ * obj (in) : object descriptor
+ */
+static bool
+desc_obj_has_oos_stub (const DESC_OBJ * obj)
+{
+  int i;
+
+  if (obj->oos_stub_valid == NULL)
+    {
+      return false;
+    }
+
+  for (i = 0; i < obj->count; i++)
+    {
+      if (obj->oos_stub_valid[i])
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
 
 /*
  * make_desc_obj - Makes an object descriptor for a particular class.
@@ -96,6 +212,8 @@ make_desc_obj (SM_CLASS * class_, int pre_alloc_varchar_size)
     {
       return NULL;
     }
+  obj->oos_stub_valid = NULL;
+  obj->oos_stubs = NULL;
   if (class_ == NULL)
     {
       return obj;
@@ -120,6 +238,19 @@ make_desc_obj (SM_CLASS * class_, int pre_alloc_varchar_size)
       obj->atts = (SM_ATTRIBUTE **) malloc (sizeof (SM_ATTRIBUTE *) * class_->att_count);
       if (obj->atts == NULL)
 	{
+	  free_and_init (obj->values);
+	  free_and_init (obj);
+	  return NULL;
+	}
+
+      /* DESC_OOS_KEEP_STUB readers fill these; the other policies leave them all false. */
+      obj->oos_stub_valid = (bool *) calloc ((size_t) class_->att_count, sizeof (bool));
+      obj->oos_stubs = (char *) calloc ((size_t) class_->att_count, OR_OOS_INLINE_SIZE);
+      if (obj->oos_stub_valid == NULL || obj->oos_stubs == NULL)
+	{
+	  free_and_init (obj->oos_stub_valid);
+	  free_and_init (obj->oos_stubs);
+	  free_and_init (obj->atts);
 	  free_and_init (obj->values);
 	  free_and_init (obj);
 	  return NULL;
@@ -211,6 +342,14 @@ desc_free (DESC_OBJ * obj)
     {
       free (obj->atts);
     }
+  if (obj->oos_stub_valid != NULL)
+    {
+      free_and_init (obj->oos_stub_valid);
+    }
+  if (obj->oos_stubs != NULL)
+    {
+      free_and_init (obj->oos_stubs);
+    }
 
   free_and_init (obj);
 }
@@ -247,7 +386,12 @@ re_check:
 	    }
 	  if (i < obj->count)
 	    {
-	      if (att->type->variable_p)
+	      if (obj->oos_stub_valid != NULL && obj->oos_stub_valid[i])
+		{
+		  /* written back as the stored stub, not as a value */
+		  size += OR_OOS_INLINE_SIZE;
+		}
+	      else if (att->type->variable_p)
 		{
 		  size += pr_data_writeval_disk_size (&obj->values[i]);
 		}
@@ -317,9 +461,14 @@ put_varinfo (OR_BUF * buf, DESC_OBJ * obj, int offset_size)
 		}
 	    }
 	  len = 0;
+	  bool is_oos_stub = (i < obj->count && obj->oos_stub_valid != NULL && obj->oos_stub_valid[i]);
 	  if (i < obj->count)
 	    {
-	      if (att->type->variable_p)
+	      if (is_oos_stub)
+		{
+		  len = OR_OOS_INLINE_SIZE;
+		}
+	      else if (att->type->variable_p)
 		{
 		  len = pr_data_writeval_disk_size (&obj->values[i]);
 		}
@@ -342,7 +491,11 @@ put_varinfo (OR_BUF * buf, DESC_OBJ * obj, int offset_size)
 		  len = tp_domain_disk_size (att->domain);
 		}
 	    }
-	  or_put_offset_internal (buf, offset, offset_size);
+	  /* The stub is identified by OR_VAR_BIT_OOS on its own offset entry, exactly as the server
+	   * stores it; readers mask the flag off with OR_GET_VAR_OFFSET. */
+	  /* [리뷰] 서버 저장 형식 재현: 오프셋 OOS 비트 + 헤더 HAS_OOS + 값 자리 스텁.
+	   * 하나라도 빠지면 뒤 읽기(OR_IS_OOS)가 스텁을 못 알아본다. */
+	  or_put_offset_internal (buf, is_oos_stub ? OR_SET_VAR_OOS (offset) : offset, offset_size);
 	  offset += len;
 	}
       or_put_offset_internal (buf, OR_SET_VAR_LAST_ELEMENT (offset), offset_size);
@@ -453,7 +606,11 @@ put_attributes (OR_BUF * buf, DESC_OBJ * obj)
       for (i = 0; i < obj->count && obj->atts[i] != att; i++);
       if (i < obj->count)
 	{
-	  if (!DB_IS_NULL (&obj->values[i]))
+	  if (obj->oos_stub_valid != NULL && obj->oos_stub_valid[i])
+	    {
+	      or_put_data (buf, obj->oos_stubs + (size_t) i * OR_OOS_INLINE_SIZE, OR_OOS_INLINE_SIZE);
+	    }
+	  else if (!DB_IS_NULL (&obj->values[i]))
 	    {
 	      pr_data_writeval (buf, &obj->values[i]);
 	    }
@@ -527,6 +684,11 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
   /* offset size */
   OR_SET_VAR_OFFSET_SIZE (repid_bits, offset_size);
   repid_bits |= (OR_MVCC_FLAG_VALID_INSID << OR_RECORD_FLAG_SHIFT_BITS);
+  if (desc_obj_has_oos_stub (obj))
+    {
+      /* the record-level summary flag the OOS readers test with OR_RECORD_HAS_OOS */
+      repid_bits |= (OR_RECORD_FLAG_HAS_OOS << OR_RECORD_FLAG_SHIFT_BITS);
+    }
   or_put_int (buf, repid_bits);
   or_put_int (buf, 0);		/* CHN, fixed size */
   or_put_bigint (buf, MVCCID_NULL);	/* MVCC insert id */
@@ -607,6 +769,7 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
 	    }
 	}
       /* get the offsets relative to the end of the header (beginning of variable table) */
+      desc_read_var_table (buf, class_->variable_count, offset_size, vars, raw_vars);
     }
 
   bits = NULL;
@@ -765,6 +928,7 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	    }
 	}
       /* compute the variable offsets relative to the end of the header (beginning of variable table) */
+      desc_read_var_table (buf, oldrep->variable_count, offset_size, vars, raw_vars);
     }
 
   /* calculate an attribute map */

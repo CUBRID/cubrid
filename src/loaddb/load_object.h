@@ -68,6 +68,10 @@ typedef struct desc_obj
   SM_ATTRIBUTE **atts;
   DB_VALUE *values;
   DBVALUE_BUF *dbvalue_buf_ptr;	// Area for copying data of VARCHAR column
+  /* DESC_OOS_KEEP_STUB only: the stored inline stub of values[i], to be written back verbatim.
+   * oos_stubs holds count * OR_OOS_INLINE_SIZE bytes; entry i is meaningful when oos_stub_valid[i]. */
+  bool *oos_stub_valid;
+  char *oos_stubs;
 } DESC_OBJ;
 
 
