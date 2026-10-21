@@ -758,6 +758,12 @@ namespace cubload
 		return;
 	      }
 	    m_retained_bytes += record_bytes;
+	    /* Under HA the row's Internal LOB chains were published when it was prepared, and the next row's
+	     * preparation resets that state: insert the row now so its chunks replicate with it. */
+	    if (!HA_DISABLED () && !m_thread_ref->oos_oids.empty ())
+	      {
+		flush_records ();
+	      }
 	    // Bound the queue by both compact records and out-of-row payloads.
 	    // A single large input may exceed the limit and is flushed immediately.
 	    constexpr std::size_t retained_limit = 8 * 1024 * 1024;
@@ -850,6 +856,11 @@ namespace cubload
 
 		// Error was filtered so we can continue.
 		m_error_handler.set_error_on_current_line (false);
+		if (m_session.internal_lob_release_record_slots (*m_thread_ref, &local_record) != NO_ERROR)
+		  {
+		    m_error_handler.on_failure ();
+		    return;
+		  }
 		continue;
 	      }
 
@@ -973,6 +984,10 @@ namespace cubload
 	error_code = process_generic_constant (cons, attr, false);
 	break;
 
+      case LDR_INTERNAL_LOB_REF:
+	error_code = process_internal_lob_constant (cons, attr);
+	break;
+
       case LDR_COLLECTION:
 	error_code = process_collection_constant (reinterpret_cast<constant_type *> (cons->val), attr);
 	break;
@@ -1086,6 +1101,37 @@ namespace cubload
       }
 
     return error_code;
+  }
+
+  int
+  server_object_loader::process_internal_lob_constant (constant_type *cons, const attribute &attr)
+  {
+    string_type *str = reinterpret_cast<string_type *> (cons->val);
+    const tp_domain &domain = attr.get_domain ();
+    DB_TYPE expected_type = domain.type->get_id ();
+    char token_type;
+    char expected_token_type;
+    DB_BIGINT max_length = domain.precision;
+    db_value &db_val = get_attribute_db_value (attr.get_index ());
+
+    if (str == NULL || str->val == NULL || str->size < 3 || str->val[1] != '|'
+	|| (expected_type != DB_TYPE_BLOB && expected_type != DB_TYPE_CLOB))
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_DOMAIN_MISMATCH, 4, attr.get_name (),
+		m_class_entry->get_class_name (), "BLOB/CLOB", domain.type->get_name ());
+	return ER_LDR_DOMAIN_MISMATCH;
+      }
+
+    token_type = str->val[0];
+    expected_token_type = (expected_type == DB_TYPE_BLOB) ? 'B' : 'C';
+    if (token_type != expected_token_type)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_DOMAIN_CONFLICT, 1, attr.get_name ());
+	return ER_OBJ_DOMAIN_CONFLICT;
+      }
+
+    return m_session.internal_lob_payload_make_value (*m_thread_ref, m_clsid, str->val + 2, str->size - 2,
+	   expected_type, max_length, &db_val);
   }
 
   int
