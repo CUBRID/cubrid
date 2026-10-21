@@ -259,12 +259,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 gpc.usesDefaultArg = (gpc.args.nodes.size() < paramList.nodes.size());
                 gpc.targetClass = ps.targetClass;
                 gpc.uniqueName = ps.uniqueName;
-                if (!Misc.isEmptyStr(ps.targetClass) && !gpc.usesDefaultArg) {
+                if (Misc.isEmptyStr(ps.targetClass) || gpc.usesDefaultArg) {
+                    connectionRequired = true;
+                } else {
                     // PL/CSQL SP call without using default arguments
                     referencedClasses.add(ps.targetClass);
                     referencedMethods.add(Misc.methodKey(ps.targetClass, ps.uniqueName));
-                } else {
-                    connectionRequired = true;
                 }
 
             } else if (q instanceof ServerAPI.FunctionSignature) {
@@ -331,12 +331,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 gfc.usesDefaultArg = (gfc.args.nodes.size() < paramList.nodes.size());
                 gfc.targetClass = fs.targetClass;
                 gfc.uniqueName = fs.uniqueName;
-                if (!Misc.isEmptyStr(fs.targetClass) && !gfc.usesDefaultArg) {
+                if (Misc.isEmptyStr(fs.targetClass) || gfc.usesDefaultArg) {
+                    connectionRequired = true;
+                } else {
                     // PL/CSQL SP call without using default arguments
                     referencedClasses.add(fs.targetClass);
                     referencedMethods.add(Misc.methodKey(fs.targetClass, fs.uniqueName));
-                } else {
-                    connectionRequired = true;
                 }
 
             } else if (q instanceof ServerAPI.SerialOrNot) {
@@ -2034,8 +2034,6 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             // this must be a global function call, otherwise an error
 
-            connectionRequired = true;
-
             Expr ret = null;
 
             List<ServerAPI.Question> answered =
@@ -2086,9 +2084,15 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                     TypeSpec.getBogus(iStore, retType));
                     ret = egfc;
 
-                    if (fs.targetClass == null) {
+                    if (Misc.isEmptyStr(fs.targetClass)) {
                         // it is a JSP.
                         connectionRequired = true;
+                    } else {
+                        // PL/CSQL SF call: call it directly as calls with parentheses do
+                        egfc.targetClass = fs.targetClass;
+                        egfc.uniqueName = fs.uniqueName;
+                        referencedClasses.add(fs.targetClass);
+                        referencedMethods.add(Misc.methodKey(fs.targetClass, fs.uniqueName));
                     }
                 }
             }
