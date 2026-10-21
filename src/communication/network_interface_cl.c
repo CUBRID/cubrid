@@ -421,14 +421,14 @@ locator_get_class (OID * class_oid, int class_chn, const OID * oid, LOCK lock, i
 int
 locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_version_type, OID * class_oidp,
 		   int *nobjects, int *nfetched, OID * last_oidp, LC_COPYAREA ** fetch_copyarea,
-		   int request_pages, int nparallel_process, int nparallel_process_idx)
+		   int request_pages, int nparallel_process, int nparallel_process_idx, bool keep_oos_locators)
 {
 #if defined(CS_MODE)
   int req_error;
   char *ptr;
   int return_value = ER_FAILED;
   int client_endian = (int) get_endian_type ();
-  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 8) + (OR_OID_SIZE * 2)) a_request;
+  OR_ALIGNED_BUF (OR_HFID_SIZE + (OR_INT_SIZE * 9) + (OR_OID_SIZE * 2)) a_request;
   char *request;
   OR_ALIGNED_BUF (NET_COPY_AREA_SENDRECV_SIZE + (OR_INT_SIZE * 5) + OR_OID_SIZE) a_reply;
   char *reply;
@@ -446,6 +446,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
   ptr = or_pack_int (ptr, request_pages);
   ptr = or_pack_int (ptr, nparallel_process);
   ptr = or_pack_int (ptr, nparallel_process_idx);
+  ptr = or_pack_int (ptr, keep_oos_locators ? 1 : 0);
   ptr = or_pack_int (ptr, client_endian);
   *fetch_copyarea = NULL;
 
@@ -488,7 +489,7 @@ locator_fetch_all (const HFID * hfid, LOCK * lock, LC_FETCH_VERSION_TYPE fetch_v
 
   success =
     xlocator_fetch_all (thread_p, hfid, lock, fetch_version_type, class_oidp, nobjects, nfetched, last_oidp,
-			fetch_copyarea, request_pages);
+			fetch_copyarea, request_pages, keep_oos_locators);
 
   if (nparallel_process > 1)
     {
