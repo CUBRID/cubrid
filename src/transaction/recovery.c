@@ -929,7 +929,13 @@ struct rvfun RV_fun[] = {
    NULL,
    oos_rv_redo_vacuum_cut,
    NULL,
-   NULL}
+   NULL},
+  {RVREPL_INTERNAL_LOB_INSERT,
+   "RVREPL_INTERNAL_LOB_INSERT",
+   NULL,
+   NULL,
+   NULL,
+   repl_data_insert_log_dump}
 };
 
 /*

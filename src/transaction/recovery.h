@@ -215,7 +215,10 @@ typedef enum
   /* Vacuum's redo-only chain delete (oos_vacuum_delete_chain): delete a chunk, clear a chunk's next link. */
   RVOOS_VACUUM_DELETE = 142,
   RVOOS_VACUUM_CUT = 143,
-  RV_LAST_LOGID = RVOOS_VACUUM_CUT,
+  /* Replication-only record. The target WAL record is still RVOOS_INSERT; this tag preserves
+   * FILE_INTERNAL_LOB as the replica-side destination. Append-only on-disk value. */
+  RVREPL_INTERNAL_LOB_INSERT = 144,
+  RV_LAST_LOGID = RVREPL_INTERNAL_LOB_INSERT,
 
   RV_NOT_DEFINED = 999
 } LOG_RCVINDEX;
