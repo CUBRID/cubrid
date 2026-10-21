@@ -362,6 +362,8 @@ extern int db_blob_length (const DB_VALUE * src_value, DB_VALUE * result_value);
 extern int db_char_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value);
 extern int db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_VALUE * result_value);
 #if defined (SERVER_MODE) || defined (SA_MODE)
+extern int db_internal_lob_to_scalar_stream (const DB_VALUE * src_value, const DB_VALUE * codeset_value,
+					     DB_VALUE * result_value, bool * is_streamed);
 #endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 extern int db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value);
 extern int db_clob_from_file_pending (const DB_VALUE * src_value, DB_VALUE * result_value);

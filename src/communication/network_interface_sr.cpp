@@ -5565,6 +5565,14 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 
   *can_end_transaction = false;
 
+  /* [리뷰] 클라이언트가 응답 뒤 같은 트랜잭션에서 커서를 읽어야 하므로 끝내지 않는다.
+   * 커밋 시점은 커서를 다 읽은 클라이언트 쪽이 정한다(커밋 21의 M1 규칙). */
+  if (query_flag & INTERNAL_LOB_STREAM_TO_CLIENT)
+    {
+      /* The client reads a streamed output column after this reply, in this transaction. */
+      return NO_ERROR;
+    }
+
   if (list_id->page_cnt != 1)
     {
       /* Needs fetch request. Do not allow ending transaction. */

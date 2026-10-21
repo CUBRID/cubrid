@@ -57,6 +57,7 @@
 #include "pl_executor.hpp"
 
 #include "dbtype.h"
+#include "internal_lob_marker.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -81,12 +82,35 @@ static int get_date_weekday (const DB_VALUE * src_date, OPERATOR_TYPE op, DB_VAL
  *   tpl(in): Tuple
  *   peek_dbval(out): Set to the value resulting from the fetch operation
  */
+/*
+ * fetch_reject_scalar_stream_operand () - Error out if an operand carries a scalar stream marker.
+ *   return: NO_ERROR, or ER_QPROC_STRING_SIZE_TOO_BIG
+ *   value(in): operand value, may be NULL
+ */
+static int
+fetch_reject_scalar_stream_operand (const DB_VALUE * value)
+{
+  /* [리뷰] 마커는 값이 아니라 봉투다. 연산 피연산자로 오면 길이 초과 오류로 거부한다.
+   * heap_attrinfo_set도 막아 봉투 텍스트가 저장되지 않게 한다. */
+  DB_BIGINT length = 0;
+
+  if (value == NULL || !db_value_has_internal_lob_marker (value, DB_VALUE_INTERNAL_LOB_MARKER_STREAM))
+    {
+      return NO_ERROR;
+    }
+  (void) internal_lob_marker_parse_scalar_stream (db_get_string (value), db_get_string_size (value), NULL, &length,
+						  NULL, NULL);
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2,
+	  (int) ((length > INT_MAX) ? INT_MAX : length), (int) DB_MAX_LOB_PRECISION);
+  return ER_QPROC_STRING_SIZE_TOO_BIG;
+}
+
 static int
 fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr * vd, OID * obj_oid, QFILE_TUPLE tpl,
 		  DB_VALUE ** peek_dbval)
 {
   ARITH_TYPE *arithptr;
-  DB_VALUE *peek_left, *peek_right, *peek_third, *peek_fourth;
+  DB_VALUE *peek_left = NULL, *peek_right = NULL, *peek_third = NULL, *peek_fourth = NULL;
   DB_VALUE tmp_value;
   TP_DOMAIN *original_domain = NULL;
   TP_DOMAIN_STATUS dom_status;
@@ -675,6 +699,15 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
 
     default:
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_XASLNODE, 0);
+      goto error;
+    }
+
+  /* A scalar stream marker (csql-only CLOB_TO_CHAR () of a value too large for VARCHAR) is a transport envelope,
+   * not a value, so as an operand it is refused with the same error every other client gets for that size. */
+  if (fetch_reject_scalar_stream_operand (peek_left) != NO_ERROR
+      || fetch_reject_scalar_stream_operand (peek_right) != NO_ERROR
+      || fetch_reject_scalar_stream_operand (peek_third) != NO_ERROR)
+    {
       goto error;
     }
 
@@ -2305,21 +2338,36 @@ fetch_peek_arith (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_descr *
       break;
 
     case T_BLOB_TO_BIT:
-      if (DB_IS_NULL (peek_left))
-	{
-	  PRIM_SET_NULL (arithptr->value);
-	}
-      else if (db_blob_to_bit (peek_left, peek_right, arithptr->value) != NO_ERROR)
-	{
-	  goto error;
-	}
-
-      break;
-
     case T_CLOB_TO_CHAR:
       if (DB_IS_NULL (peek_left))
 	{
 	  PRIM_SET_NULL (arithptr->value);
+	  break;
+	}
+
+      /* the client reads a top-level output itself; a BLOB_TO_BIT length still needs the value cut here */
+      if (REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_INTERNAL_LOB_STREAM)
+	  && (arithptr->opcode == T_CLOB_TO_CHAR || peek_right == NULL))
+	{
+	  bool is_streamed = false;
+
+	  if (db_internal_lob_to_scalar_stream (peek_left, arithptr->opcode == T_CLOB_TO_CHAR ? peek_right : NULL,
+						arithptr->value, &is_streamed) != NO_ERROR)
+	    {
+	      goto error;
+	    }
+	  if (is_streamed)
+	    {
+	      break;
+	    }
+	}
+
+      if (arithptr->opcode == T_BLOB_TO_BIT)
+	{
+	  if (db_blob_to_bit (peek_left, peek_right, arithptr->value) != NO_ERROR)
+	    {
+	      goto error;
+	    }
 	}
       else if (db_clob_to_char (peek_left, peek_right, arithptr->value) != NO_ERROR)
 	{

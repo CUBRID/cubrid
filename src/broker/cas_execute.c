@@ -4468,6 +4468,15 @@ dbval_is_internal_lob_locator (DB_VALUE * val, const char **locator, int *locato
     {
       return false;
     }
+
+  if (marker == DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+    {
+      /* "@internal_lob_stream:<B|C>:<locator>" - step over the wrapper to reach the locator itself */
+      if (!internal_lob_marker_parse_scalar_stream (data, size, NULL, &parsed_length, &data, &size))
+	{
+	  return false;
+	}
+    }
   else if (!internal_lob_marker_parse_locator (data, size, &parsed_length))
     {
       return false;
@@ -4536,6 +4545,85 @@ add_res_data_internal_lob (T_NET_BUF * net_buf, char wire_kind, const char *data
     }
 }
 
+/*
+ * dbval_read_lob_stream () - Read the content a CLOB_TO_CHAR ()/BLOB_TO_BIT () stream marker stands for
+ *
+ * The server hands its top-level output over unread; the driver gets it as the plain VARCHAR/VARBIT value it asked
+ * for, at most max_col_size bytes of it.  content points into *buf, which the caller frees.
+ */
+static int
+dbval_read_lob_stream (DB_VALUE * marker, const char *locator, int locator_len, DB_BIGINT byte_length,
+		       int max_col_size, DB_VALUE * content, char **buf)
+{
+  /* [리뷰] CAS가 마커로 서버 커서를 열어 드라이버용 VARCHAR/VARBIT 값으로 바꾼다.
+   * 1MiB씩 읽어도 버퍼는 값 전체 크기다(상한 1GiB/128MiB).
+   * open 실패면 close를 건너뛰고, read 실패면 close 뒤 버퍼를 푼다. */
+  DB_BIGINT size = byte_length;
+  DB_BIGINT max_bytes = (db_value_type (marker) == DB_TYPE_VARCHAR) ? DB_MAX_VARCHAR_PRECISION
+    : DB_MAX_VARBIT_PRECISION / 8;
+  DB_BIGINT done = 0;
+  INT64 token = 0;
+  int nread = 0;
+  int err_code;
+
+  *buf = NULL;
+  /* the same limit the value path applies to the whole value, before any max_col_size cut */
+  if (size > max_bytes)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (int) MIN (size, (DB_BIGINT) INT_MAX),
+	      (int) max_bytes);
+      return ERROR_INFO_SET (ER_QPROC_STRING_SIZE_TOO_BIG, DBMS_ERROR_INDICATOR);
+    }
+  if (max_col_size > 0 && size > max_col_size)
+    {
+      size = max_col_size;
+    }
+
+  *buf = (char *) MALLOC (size > 0 ? size : 1);
+  if (*buf == NULL)
+    {
+      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+    }
+
+  err_code = internal_lob_stream_open_from_server (locator, locator_len, 0, &token);
+  while (err_code == NO_ERROR && done < size)
+    {
+      nread = 0;
+      err_code = internal_lob_stream_read_from_server (token, *buf + done,
+						       (int) MIN (size - done, INTERNAL_LOB_STREAM_MAX_CHUNK), &nread);
+      if (err_code == NO_ERROR && nread <= 0)
+	{
+	  /* shorter than its marker says */
+	  err_code = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_code, 0);
+	}
+      if (err_code == NO_ERROR)
+	{
+	  done += nread;
+	}
+    }
+  if (token != 0)
+    {
+      (void) internal_lob_stream_close_from_server (token);
+    }
+  if (err_code != NO_ERROR)
+    {
+      FREE_MEM (*buf);
+      return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+    }
+
+  if (db_value_type (marker) == DB_TYPE_VARCHAR)
+    {
+      db_make_varchar (content, DB_MAX_VARCHAR_PRECISION, *buf, (int) size, db_get_string_codeset (marker),
+		       db_get_string_collation (marker));
+    }
+  else
+    {
+      db_make_varbit (content, DB_MAX_VARBIT_PRECISION, *buf, (int) size * 8);
+    }
+  return 0;
+}
+
 static int
 dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_col_size, char column_type_flag)
 {
@@ -4574,6 +4662,24 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
      * ext_col_type 계산 뒤에 있어 타입 바이트가 column_type_flag와 어긋나지 않는다. */
     bool is_reference = dbval_is_internal_lob_locator (val, &lob_locator, &lob_locator_len, &lob_byte_length);
 
+    if (is_reference && (lob_value_type == DB_TYPE_VARCHAR || lob_value_type == DB_TYPE_VARBIT))
+      {
+	DB_VALUE content;
+	char *content_buf = NULL;
+	int read_error;
+
+	read_error = dbval_read_lob_stream (val, lob_locator, lob_locator_len, lob_byte_length, max_col_size, &content,
+					    &content_buf);
+	if (read_error < 0)
+	  {
+	    /* the buffer now holds the error reply; a negative return tells cur_tuple () to stop the batch */
+	    NET_BUF_ERR_SET (net_buf);
+	    return read_error;
+	  }
+	data_size = dbval_to_net_buf (&content, net_buf, fetch_flag, max_col_size, column_type_flag);
+	FREE_MEM (content_buf);
+	return data_size;
+      }
 
     /* Only the BLOB/CLOB framing to a V14 driver can carry a reference. Anywhere else (older driver) the
      * locator text is not the value, so fail rather than return it as content. */
