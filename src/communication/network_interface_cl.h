@@ -354,6 +354,10 @@ extern int csession_set_row_count (int rows);
 extern int csession_get_row_count (int *rows);
 extern int csession_get_last_insert_id (DB_VALUE * value, bool update_last_insert_id);
 extern int csession_reset_cur_insert_id (void);
+extern int internal_lob_stream_open_from_server (const char *locator_data, int locator_len, INT64 start_offset,
+						 INT64 * token);
+extern int internal_lob_stream_read_from_server (INT64 token, char *buf, int count, int *nread);
+extern int internal_lob_stream_close_from_server (INT64 token);
 extern int csession_create_prepared_statement (const char *name, const char *alias_print, char *stmt_info,
 					       int info_length);
 extern int csession_get_prepared_statement (const char *name, XASL_ID * xasl_id, char **stmt_info,

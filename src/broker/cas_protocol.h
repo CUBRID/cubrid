@@ -217,6 +217,10 @@ extern "C"
     CAS_FC_CURSOR_CLOSE = 42,
     CAS_FC_GET_SHARD_INFO = 43,
     CAS_FC_CAS_CHANGE_MODE = 44,
+    /* PROTOCOL_V14: read cursor over an internal LOB locator sent in a BLOB/CLOB column */
+    CAS_FC_LOB_STREAM_OPEN = 49,
+    CAS_FC_LOB_STREAM_READ = 50,
+    CAS_FC_LOB_STREAM_CLOSE = 51,
 
     /* Whenever you want to introduce a new function code, you must add a corresponding function entry to
      * server_fn_table of both CUBRID and (MySQL, Oracle). */
@@ -227,6 +231,16 @@ extern "C"
     CAS_FC_PREPARE_AND_EXECUTE_FOR_PROTO_V2 = 42
   };
   typedef enum t_cas_func_code T_CAS_FUNC_CODE;
+
+/* Largest payload one CAS_FC_LOB_STREAM_READ may ask for.  Both sides bound the request by it so a driver cannot
+ * make CAS allocate an arbitrary buffer. */
+#define INTERNAL_LOB_STREAM_MAX_CHUNK (1024 * 1024)
+
+/* Leading byte of every BLOB/CLOB column sent to a PROTOCOL_V14 driver.  It says whether the payload is a
+ * reference to stored content or the content itself; the column type alone cannot distinguish them, because a
+ * scalar function result (CHAR_TO_CLOB('x')) is a LOB value with no storage behind it. */
+#define INTERNAL_LOB_WIRE_INLINE ((char) 0)
+#define INTERNAL_LOB_WIRE_REF    ((char) 1)
 
   enum t_cas_protocol
   {
@@ -243,7 +257,9 @@ extern "C"
     PROTOCOL_V10 = 10,		/* Secure Broker/CAS using SSL */
     PROTOCOL_V11 = 11,		/* make out resultset */
     PROTOCOL_V12 = 12,		/* Remove trailing zeros from double and float types */
-    CURRENT_PROTOCOL = PROTOCOL_V12
+    PROTOCOL_V14 = 14,		/* internal LOB read streaming: the column carries a locator, not the content
+				 * (CAS_FC_LOB_STREAM_*) */
+    CURRENT_PROTOCOL = PROTOCOL_V14
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;
 
