@@ -1473,7 +1473,6 @@ const PR_TYPE tp_Clob = {
 
 const PR_TYPE *tp_Type_clob = &tp_Clob;
 
-// TODO: Uses VARCHAR/VARBIT code, update when storage structure is improved.
 const PR_TYPE tp_Blob = {
   "blob", DB_TYPE_BLOB, 1, sizeof (const char *), 0, 1,
   mr_initmem_blob,
@@ -16164,52 +16163,256 @@ mr_cmpval_json (DB_VALUE * value1, DB_VALUE * value2, int do_coercion, int total
  * TYPE CLOB
  */
 
+/*
+ * CLOB primitive: a self-contained module. Disk and instance-memory layouts are the VARCHAR ones (length prefix,
+ * optional compression), so stored data is unchanged, but no CHAR/VARCHAR primitive function is called from here.
+ * A CLOB value has no per-value codeset/collation (db_make_clob () uses the server codeset), its precision is
+ * DB_MAX_LOB_PRECISION, and a marked value travels as an Internal LOB envelope (mr_internal_lob_* helpers).
+ */
 static void
 mr_initmem_clob (void *mem, TP_DOMAIN * domain)
 {
-  mr_initmem_string (mem, domain);
+  *(char **) mem = NULL;
 }
 
 static int
 mr_setmem_clob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 {
-  return mr_setmem_string (memptr, domain, value);
+  int error = NO_ERROR;
+  const char *src;
+  char *cur, *new_, **mem;
+  int src_length, new_length;
+
+  mem = (char **) memptr;
+  cur = *mem;
+
+  if (value == NULL || (src = db_get_string (value)) == NULL)
+    {
+      /* remove the current value */
+      if (cur != NULL)
+	{
+	  db_private_free_and_init (NULL, cur);
+	  mr_initmem_clob (memptr, domain);
+	}
+      return NO_ERROR;
+    }
+
+  src_length = db_get_string_size (value);
+  if (src_length < 0)
+    {
+      src_length = strlen (src);
+    }
+
+  /* a full-word length prefix, the bytes and a NUL terminator */
+  new_length = src_length + sizeof (int) + 1;
+  new_ = (char *) db_private_alloc (NULL, new_length);
+  if (new_ == NULL)
+    {
+      assert (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  if (cur != NULL)
+    {
+      db_private_free_and_init (NULL, cur);
+    }
+
+  *(int *) new_ = src_length;
+  cur = new_ + sizeof (int);
+  memcpy (cur, src, src_length);
+  cur[src_length] = '\0';
+  *mem = new_;
+
+  return error;
 }
 
 static int
 mr_getmem_clob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
-  return mr_getmem_string_internal (memptr, domain, value, copy, DB_TYPE_CLOB);
+  int mem_length;
+  char **mem, *cur, *new_;
+
+  mem = (char **) memptr;
+  cur = *mem;
+
+  if (cur == NULL)
+    {
+      db_value_domain_init (value, DB_TYPE_CLOB, domain->precision, 0);
+      value->need_clear = false;
+      return NO_ERROR;
+    }
+
+  mem_length = *(int *) cur;
+  cur += sizeof (int);
+
+  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (!copy)
+    {
+      db_make_clob (value, domain->precision, cur, mem_length);
+      value->need_clear = false;
+    }
+  else
+    {
+      new_ = (char *) db_private_alloc (NULL, mem_length + 1);
+      if (new_ == NULL)
+	{
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      memcpy (new_, cur, mem_length);
+      new_[mem_length] = '\0';
+      db_make_clob (value, domain->precision, new_, mem_length);
+      value->need_clear = true;
+    }
+
+  /* Instance memory cannot carry the Internal LOB marker, so restore it from the locator text; safe because
+   * the locator carries a token over its own fields. */
+  if (internal_lob_marker_parse_locator (db_get_string (value), db_get_string_size (value), NULL))
+    {
+      db_value_mark_internal_lob (value, DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR);
+    }
+
+  return NO_ERROR;
 }
 
 static int
 mr_data_lengthmem_clob (void *memptr, TP_DOMAIN * domain, int disk)
 {
-  return mr_data_lengthmem_string (memptr, domain, disk);
+  char **mem, *cur;
+  int len = 0;
+
+  if (!disk)
+    {
+      return tp_Clob.size;
+    }
+
+  if (memptr != NULL)
+    {
+      mem = (char **) memptr;
+      cur = *mem;
+      if (cur != NULL)
+	{
+	  len = *(int *) cur;
+	  if (len >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+	    {
+	      len = pr_get_compression_length ((cur + sizeof (int)), len) + PRIM_TEMPORARY_DISK_SIZE;
+	      len = or_packed_varchar_length (len) - PRIM_TEMPORARY_DISK_SIZE;
+	    }
+	  else
+	    {
+	      len = or_packed_varchar_length (len);
+	    }
+	}
+    }
+
+  return len;
 }
 
 static void
 mr_data_writemem_clob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
 {
-  mr_data_writemem_string (buf, memptr, domain);
+  char **mem, *cur;
+  int len;
+
+  mem = (char **) memptr;
+  cur = *mem;
+  if (cur != NULL)
+    {
+      len = *(int *) cur;
+      cur += sizeof (int);
+      or_packed_put_varchar (buf, cur, len);
+    }
 }
 
 static void
 mr_data_readmem_clob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 {
-  mr_data_readmem_string (buf, memptr, domain, size);
+  char **mem, *cur, *new_;
+  int len, mem_length, pad, compressed_size;
+  char *start;
+
+  /* the size must be explicit: it cannot be derived from the domain */
+  if (size < 0)
+    {
+      return;
+    }
+
+  if (memptr == NULL)
+    {
+      if (size)
+	{
+	  or_advance (buf, size);
+	}
+      return;
+    }
+
+  mem = (char **) memptr;
+  new_ = NULL;
+  if (size)
+    {
+      start = buf->ptr;
+
+      /* the packed length prefix becomes a full-word memory prefix */
+      if (or_get_varchar_compression_lengths (buf, &compressed_size, &len) != NO_ERROR)
+	{
+	  *mem = NULL;
+	  return;
+	}
+
+      mem_length = len + sizeof (int) + 1;
+      new_ = (char *) db_private_alloc (NULL, mem_length);
+      if (new_ == NULL)
+	{
+	  *mem = NULL;
+	  return;
+	}
+
+      *(int *) new_ = len;
+      cur = new_ + sizeof (int);
+
+      /* decompresses, or copies, and writes the NUL terminator */
+      if (pr_get_compressed_data_from_buffer (buf, cur, compressed_size, len) != NO_ERROR)
+	{
+	  db_private_free (NULL, new_);
+	  *mem = NULL;
+	  ASSERT_ERROR ();
+	  return;
+	}
+      or_get_align32 (buf);
+
+      /* obey a size larger than what was consumed */
+      pad = size - (int) (buf->ptr - start);
+      if (pad > 0)
+	{
+	  or_advance (buf, pad);
+	}
+    }
+  *mem = new_;
 }
 
 static void
 mr_freemem_clob (void *memptr)
 {
-  mr_freemem_string (memptr);
+  char *cur;
+
+  if (memptr != NULL)
+    {
+      cur = *(char **) memptr;
+      if (cur != NULL)
+	{
+	  db_private_free_and_init (NULL, cur);
+	}
+    }
 }
 
 static void
 mr_initval_clob (DB_VALUE * value, int precision, int scale)
 {
-  /* CLOB has no per-value codeset/collation - server uses LANG_SYS_CODESET. */
   db_make_clob (value, precision, NULL, 0);
   value->need_clear = false;
 }
@@ -16217,46 +16420,594 @@ mr_initval_clob (DB_VALUE * value, int precision, int scale)
 static int
 mr_setval_clob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
-  return mr_setval_string_internal (dest, src, copy, DB_TYPE_CLOB);
+  int error = NO_ERROR;
+  int src_precision, src_length;
+  const char *src_str;
+  char *new_, *new_compressed_buf;
+
+  assert (!db_value_is_corrupted (src));
+
+  if (src == NULL || DB_IS_NULL (src))
+    {
+      return db_value_domain_init (dest, DB_TYPE_CLOB, DB_DEFAULT_PRECISION, 0);
+    }
+
+  if ((src_str = db_get_string (src)) == NULL)
+    {
+      error = db_value_domain_init (dest, DB_TYPE_CLOB, db_value_precision (src), 0);
+      if (src->data.ch.info.is_max_string)
+	{
+	  dest->data.ch.info.style = MEDIUM_STRING;
+	  dest->data.ch.info.is_max_string = true;
+	  dest->domain.general_info.is_null = 0;
+	  dest->domain.char_info.collation_id = db_get_string_collation (src);
+	  dest->data.ch.medium.compressed_buf = NULL;
+	  dest->data.ch.medium.codeset = db_get_string_codeset (src);
+	  dest->data.ch.medium.compressed_size = DB_UNCOMPRESSABLE;
+	  dest->data.ch.info.compressed_need_clear = false;
+	  dest->data.ch.medium.size = 0;
+	  dest->data.ch.medium.length = -1;
+	  dest->data.ch.medium.buf = NULL;
+	}
+      return error;
+    }
+
+  src_precision = db_value_precision (src);
+  src_length = db_get_string_size (src);
+  if (src_length < 0)
+    {
+      src_length = strlen (src_str);
+    }
+
+  assert (src->data.ch.info.is_max_string == false);
+
+  if (!copy)
+    {
+      error = db_make_clob (dest, src_precision, src_str, src_length);
+      dest->data.ch.medium.compressed_buf = src->data.ch.medium.compressed_buf;
+      dest->data.ch.info.compressed_need_clear = false;
+    }
+  else
+    {
+      new_ = (char *) db_private_alloc (NULL, src_length + 1);
+      if (new_ == NULL)
+	{
+	  db_value_domain_init (dest, DB_TYPE_CLOB, src_precision, 0);
+	  assert (er_errid () != NO_ERROR);
+	  return er_errid ();
+	}
+      memcpy (new_, src_str, src_length);
+      new_[src_length] = '\0';
+      db_make_clob (dest, src_precision, new_, src_length);
+      dest->need_clear = true;
+
+      if (src->data.ch.medium.compressed_buf == NULL)
+	{
+	  dest->data.ch.medium.compressed_buf = NULL;
+	  dest->data.ch.info.compressed_need_clear = false;
+	}
+      else
+	{
+	  new_compressed_buf = (char *) db_private_alloc (NULL, src->data.ch.medium.compressed_size + 1);
+	  if (new_compressed_buf == NULL)
+	    {
+	      pr_clear_value (dest);
+	      db_value_domain_init (dest, DB_TYPE_CLOB, src_precision, 0);
+	      assert (er_errid () != NO_ERROR);
+	      return er_errid ();
+	    }
+	  memcpy (new_compressed_buf, src->data.ch.medium.compressed_buf, src->data.ch.medium.compressed_size);
+	  new_compressed_buf[src->data.ch.medium.compressed_size] = '\0';
+	  dest->data.ch.medium.compressed_buf = new_compressed_buf;
+	  dest->data.ch.info.compressed_need_clear = true;
+	}
+    }
+
+  /* the Internal LOB marker lives in compressed_size, so this copy carries it over */
+  dest->data.ch.medium.length = src->data.ch.medium.length;
+  dest->data.ch.medium.compressed_size = src->data.ch.medium.compressed_size;
+
+  return error;
+}
+
+static int
+mr_lengthval_clob_internal (DB_VALUE * value, int disk, int align)
+{
+  int len, marker, compressed_size;
+  bool is_temporary_data = false;
+  const char *str;
+
+  if (DB_IS_NULL (value))
+    {
+      return 0;
+    }
+  str = value->data.ch.medium.buf;
+  len = value->data.ch.medium.size;
+  if (str == NULL)
+    {
+      return 0;
+    }
+  if (len < 0)
+    {
+      len = strlen (str);
+    }
+
+  if (disk == 0)
+    {
+      return len;
+    }
+
+  marker = mr_internal_lob_marker_from_value (value);
+  if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+    {
+      return mr_internal_lob_marked_char_length (value, align);
+    }
+
+  if (!DB_TRIED_COMPRESSION (value))
+    {
+      (void) pr_do_db_value_string_compression (value);
+    }
+  compressed_size = db_get_compressed_size (value);
+
+  if (compressed_size > 0)
+    {
+      len = compressed_size + PRIM_TEMPORARY_DISK_SIZE;
+      is_temporary_data = true;
+    }
+  else
+    {
+      len = value->data.ch.medium.size;
+    }
+
+  if (len >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && is_temporary_data == false)
+    {
+      /* compression failed but the size calls for the long encoding */
+      len += PRIM_TEMPORARY_DISK_SIZE;
+      is_temporary_data = true;
+    }
+
+  len = (align == INT_ALIGNMENT) ? or_packed_varchar_length (len) : or_varchar_length (len);
+
+  return is_temporary_data ? len - PRIM_TEMPORARY_DISK_SIZE : len;
+}
+
+static int
+mr_writeval_clob_internal (OR_BUF * buf, DB_VALUE * value, int align)
+{
+  int src_length, compressed_size, marker, size;
+  const char *str, *compressed_string, *string;
+  int rc = NO_ERROR;
+
+  if (value == NULL || db_value_is_null (value))
+    {
+      return NO_ERROR;
+    }
+
+  marker = mr_internal_lob_marker_from_value (value);
+  if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+    {
+      return mr_internal_lob_write_marked_char (buf, value, marker, align);
+    }
+
+  str = db_get_string (value);
+  src_length = db_get_string_size (value);
+  if (src_length <= 0)
+    {
+      if (src_length == 0)
+	{
+	  return pr_write_uncompressed_string_to_buffer (buf, "", 0, align);
+	}
+      src_length = strlen (str);
+    }
+
+  if (!DB_TRIED_COMPRESSION (value))
+    {
+      rc = pr_do_db_value_string_compression (value);
+      if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
+
+  compressed_size = db_get_compressed_size (value);
+  compressed_string = DB_GET_COMPRESSED_STRING (value);
+
+  if (compressed_size == DB_UNCOMPRESSABLE && src_length < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+    {
+      return pr_write_uncompressed_string_to_buffer (buf, str, src_length, align);
+    }
+
+  assert (compressed_size != DB_NOT_YET_COMPRESSED);
+  if (compressed_string == NULL)
+    {
+      /* compression ran but the text did not shrink */
+      assert (compressed_size == DB_UNCOMPRESSABLE);
+      string = value->data.ch.medium.buf;
+    }
+  else
+    {
+      assert (compressed_size > 0);
+      string = compressed_string;
+    }
+  size = (compressed_size == DB_UNCOMPRESSABLE) ? 0 : compressed_size;
+
+  return pr_write_compressed_string_to_buffer (buf, string, size, src_length, align);
+}
+
+static int
+mr_readval_clob_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
+			  int copy_buf_len, int align)
+{
+  int precision;
+  int rc = NO_ERROR;
+  int compressed_size = 0, expected_decompressed_size = 0;
+  char *decompressed_string = NULL, *compressed_string = NULL;
+
+  if (value == NULL)
+    {
+      if (size == -1)
+	{
+	  if (mr_internal_lob_peek_marked_char (buf))
+	    {
+	      return mr_internal_lob_read_marked_char (buf, NULL, domain, size, copy_buf, copy_buf_len, align,
+						       DB_TYPE_CLOB);
+	    }
+	  rc = or_skip_varchar (buf, align);
+	}
+      else if (size)
+	{
+	  rc = or_advance (buf, size);
+	}
+
+      return rc;
+    }
+
+  precision = (domain != NULL) ? domain->precision : DB_MAX_LOB_PRECISION;
+  if (size == 0)
+    {
+      /* NULL */
+      db_value_domain_init (value, DB_TYPE_CLOB, precision, 0);
+      return NO_ERROR;
+    }
+
+  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (mr_internal_lob_peek_marked_char (buf))
+    {
+      return mr_internal_lob_read_marked_char (buf, value, domain, size, copy_buf, copy_buf_len, align, DB_TYPE_CLOB);
+    }
+
+  /* the compressed and uncompressed sizes; buf->ptr then points at the data */
+  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &expected_decompressed_size);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  if (copy || compressed_size > 0)
+    {
+      if (copy_buf && copy_buf_len >= expected_decompressed_size + 1)
+	{
+	  decompressed_string = copy_buf;
+	}
+      else
+	{
+	  decompressed_string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
+	  if (decompressed_string == NULL)
+	    {
+	      rc = ER_OUT_OF_VIRTUAL_MEMORY;
+	      goto cleanup;
+	    }
+	}
+    }
+
+  if (compressed_size > 0)
+    {
+      rc = pr_get_compressed_data_from_buffer (buf, decompressed_string, compressed_size, expected_decompressed_size);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+
+      db_make_clob (value, precision, decompressed_string, expected_decompressed_size);
+      value->need_clear = (decompressed_string != copy_buf) ? true : false;
+
+#if defined(CS_MODE)
+      db_set_compressed_string (value, NULL, DB_NOT_YET_COMPRESSED, false);
+#else
+      compressed_string = (char *) db_private_alloc (NULL, compressed_size + 1);
+      if (compressed_string == NULL)
+	{
+	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
+	  goto cleanup;
+	}
+
+      memcpy (compressed_string, buf->ptr, compressed_size);
+      compressed_string[compressed_size] = '\0';
+      db_set_compressed_string (value, compressed_string, compressed_size, true);
+#endif
+    }
+  else
+    {
+      assert (compressed_size == 0);
+      if (!copy)
+	{
+	  assert (decompressed_string == NULL);
+	  db_make_clob (value, precision, buf->ptr, expected_decompressed_size);
+	  value->need_clear = false;
+	}
+      else
+	{
+	  assert (decompressed_string != NULL);
+	  memcpy (decompressed_string, buf->ptr, expected_decompressed_size);
+	  decompressed_string[expected_decompressed_size] = '\0';
+
+	  db_make_clob (value, precision, decompressed_string, expected_decompressed_size);
+	  value->need_clear = (decompressed_string != copy_buf) ? true : false;
+	}
+      db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
+    }
+
+  or_skip_varchar_remainder (buf, (compressed_size > 0) ? compressed_size : expected_decompressed_size, align);
+
+cleanup:
+  if (rc != NO_ERROR)
+    {
+      if (decompressed_string != NULL && decompressed_string != copy_buf)
+	{
+	  db_private_free_and_init (NULL, decompressed_string);
+	}
+      if (compressed_string != NULL)
+	{
+	  db_private_free_and_init (NULL, compressed_string);
+	}
+    }
+
+  return rc;
 }
 
 static int
 mr_data_lengthval_clob (DB_VALUE * value, int disk)
 {
-  return mr_lengthval_string_internal (value, disk, INT_ALIGNMENT);
+  return mr_lengthval_clob_internal (value, disk, INT_ALIGNMENT);
 }
 
 static int
 mr_data_writeval_clob (OR_BUF * buf, DB_VALUE * value)
 {
-  return mr_writeval_string_internal (buf, value, INT_ALIGNMENT);
+  return mr_writeval_clob_internal (buf, value, INT_ALIGNMENT);
 }
 
 static int
 mr_data_readval_clob (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 		      int copy_buf_len)
 {
-  return mr_readval_string_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, INT_ALIGNMENT,
-				     DB_TYPE_CLOB);
+  return mr_readval_clob_internal (buf, value, domain, size, copy, copy_buf, copy_buf_len, INT_ALIGNMENT);
 }
 
-
 #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
-/* data_readval_clob() mirrors data_readval_string() for internal CLOB columns
- * read from HEAP records to support unloaddb.
+/*
+ * data_readval_clob () - read a CLOB column straight from a heap record (unloaddb). Unlike mr_data_readval_clob ()
+ * it never keeps the compressed image: the value is marked DB_NOT_YET_COMPRESSED instead.
  */
 int
 data_readval_clob (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
 		   int copy_buf_len)
 {
-  return data_readval_string (buf, value, domain, size, copy, copy_buf, copy_buf_len, DB_TYPE_CLOB);
+  int precision;
+  int align = INT_ALIGNMENT;
+  int rc = NO_ERROR;
+  int compressed_size = 0, expected_decompressed_size = 0;
+  char *decompressed_string = NULL;
+
+  if (value == NULL)
+    {
+      if (size == -1)
+	{
+	  if (mr_internal_lob_peek_marked_char (buf))
+	    {
+	      return mr_internal_lob_read_marked_char (buf, NULL, domain, size, copy_buf, copy_buf_len, align,
+						       DB_TYPE_CLOB);
+	    }
+	  rc = or_skip_varchar (buf, align);
+	}
+      else if (size)
+	{
+	  rc = or_advance (buf, size);
+	}
+
+      return rc;
+    }
+
+  precision = (domain != NULL) ? domain->precision : DB_MAX_LOB_PRECISION;
+  if (size == 0)
+    {
+      /* NULL */
+      db_value_domain_init (value, DB_TYPE_CLOB, precision, 0);
+      return NO_ERROR;
+    }
+
+  if (TP_DOMAIN_COLLATION_FLAG (domain) != TP_DOMAIN_COLL_NORMAL)
+    {
+      assert (false);
+      return ER_FAILED;
+    }
+
+  if (mr_internal_lob_peek_marked_char (buf))
+    {
+      return mr_internal_lob_read_marked_char (buf, value, domain, size, copy_buf, copy_buf_len, align, DB_TYPE_CLOB);
+    }
+
+  rc = or_get_varchar_compression_lengths (buf, &compressed_size, &expected_decompressed_size);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  if (!copy && compressed_size == 0)
+    {
+      /* point into the record */
+      db_make_clob (value, precision, buf->ptr, expected_decompressed_size);
+      value->need_clear = false;
+      db_set_compressed_string (value, NULL, DB_UNCOMPRESSABLE, false);
+    }
+  else
+    {
+      if (copy_buf && copy_buf_len >= expected_decompressed_size + 1)
+	{
+	  decompressed_string = copy_buf;
+	}
+      else
+	{
+	  decompressed_string = (char *) db_private_alloc (NULL, expected_decompressed_size + 1);
+	  if (decompressed_string == NULL)
+	    {
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	}
+
+      if (compressed_size > 0)
+	{
+	  rc = pr_get_compressed_data_from_buffer (buf, decompressed_string, compressed_size,
+						   expected_decompressed_size);
+	  if (rc != NO_ERROR)
+	    {
+	      if (decompressed_string != copy_buf)
+		{
+		  db_private_free_and_init (NULL, decompressed_string);
+		}
+	      return rc;
+	    }
+	}
+      else
+	{
+	  memcpy (decompressed_string, buf->ptr, expected_decompressed_size);
+	  decompressed_string[expected_decompressed_size] = '\0';
+	}
+
+      db_make_clob (value, precision, decompressed_string, expected_decompressed_size);
+      value->need_clear = (decompressed_string != copy_buf) ? true : false;
+      db_set_compressed_string (value, NULL, (compressed_size > 0) ? DB_NOT_YET_COMPRESSED : DB_UNCOMPRESSABLE, false);
+    }
+
+  or_skip_varchar_remainder (buf, (compressed_size > 0) ? compressed_size : expected_decompressed_size, align);
+
+  return rc;
 }
 #endif // #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 
 static DB_VALUE_COMPARE_RESULT
 mr_data_cmpdisk_clob (void *mem1, void *mem2, TP_DOMAIN * domain, int do_coercion, int total_order, int *start_colp)
 {
-  return mr_data_cmpdisk_string (mem1, mem2, domain, do_coercion, total_order, start_colp);
+  DB_VALUE_COMPARE_RESULT c = DB_UNK;
+  char *str1, *str2;
+  int str_length1, str1_compressed_length = 0, str1_decompressed_length = 0;
+  int str_length2, str2_compressed_length = 0, str2_decompressed_length = 0;
+  OR_BUF buf1, buf2;
+  int rc = NO_ERROR;
+  char *string1 = NULL, *string2 = NULL;
+  bool alloced_string1 = false, alloced_string2 = false;
+  int strc;
+  bool ti = true;
+  static bool ignore_trailing_space = prm_get_bool_value (PRM_ID_IGNORE_TRAILING_SPACE);
+
+  assert (domain != NULL);
+
+  str1 = (char *) mem1;
+  str2 = (char *) mem2;
+
+  str_length1 = OR_GET_BYTE (str1);
+  str_length2 = OR_GET_BYTE (str2);
+  if (!ignore_trailing_space)
+    {
+      ti = false;
+    }
+
+  if (str_length1 < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION && str_length2 < OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+    {
+      str1 += OR_BYTE_SIZE;
+      str2 += OR_BYTE_SIZE;
+      strc = QSTR_COMPARE (domain->collation_id, (unsigned char *) str1, str_length1, (unsigned char *) str2,
+			   str_length2, ti);
+      return MR_CMP_RETURN_CODE (strc);
+    }
+
+  assert (str_length1 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION
+	  || str_length2 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION);
+
+  or_init (&buf1, str1, 0);
+  if (str_length1 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+    {
+      rc = or_get_varchar_compression_lengths (&buf1, &str1_compressed_length, &str1_decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      string1 = (char *) db_private_alloc (NULL, str1_decompressed_length + 1);
+      if (string1 == NULL)
+	{
+	  goto cleanup;
+	}
+      alloced_string1 = true;
+      rc = pr_get_compressed_data_from_buffer (&buf1, string1, str1_compressed_length, str1_decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      str_length1 = str1_decompressed_length;
+      string1[str_length1] = '\0';
+    }
+  else
+    {
+      string1 = buf1.ptr + OR_BYTE_SIZE;
+    }
+
+  or_init (&buf2, str2, 0);
+  if (str_length2 == OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+    {
+      rc = or_get_varchar_compression_lengths (&buf2, &str2_compressed_length, &str2_decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      string2 = (char *) db_private_alloc (NULL, str2_decompressed_length + 1);
+      if (string2 == NULL)
+	{
+	  goto cleanup;
+	}
+      alloced_string2 = true;
+      rc = pr_get_compressed_data_from_buffer (&buf2, string2, str2_compressed_length, str2_decompressed_length);
+      if (rc != NO_ERROR)
+	{
+	  goto cleanup;
+	}
+      str_length2 = str2_decompressed_length;
+      string2[str_length2] = '\0';
+    }
+  else
+    {
+      string2 = buf2.ptr + OR_BYTE_SIZE;
+    }
+
+  strc = QSTR_COMPARE (domain->collation_id, (unsigned char *) string1, str_length1, (unsigned char *) string2,
+		       str_length2, ti);
+  c = MR_CMP_RETURN_CODE (strc);
+
+cleanup:
+  if (string1 != NULL && alloced_string1)
+    {
+      db_private_free_and_init (NULL, string1);
+    }
+  if (string2 != NULL && alloced_string2)
+    {
+      db_private_free_and_init (NULL, string2);
+    }
+
+  return c;
 }
 
 static DB_VALUE_COMPARE_RESULT
