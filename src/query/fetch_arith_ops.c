@@ -2796,12 +2796,19 @@ fetch_op_blob_to_bit (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
+  bool is_streamed = false;
 
   if (DB_IS_NULL (peek_left))
     {
       PRIM_SET_NULL (arithptr->value);
     }
-  else if (db_blob_to_bit (peek_left, peek_right, arithptr->value) != NO_ERROR)
+  /* the client reads a top-level output itself; a BLOB_TO_BIT length still needs the value cut here */
+  else if (REGU_VARIABLE_IS_FLAGED (a->regu_var, REGU_VARIABLE_INTERNAL_LOB_STREAM) && peek_right == NULL
+	   && db_internal_lob_to_scalar_stream (peek_left, NULL, arithptr->value, &is_streamed) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  else if (!is_streamed && db_blob_to_bit (peek_left, peek_right, arithptr->value) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -2817,12 +2824,19 @@ fetch_op_clob_to_char (THREAD_ENTRY * thread_p, FETCH_ARITH_ARGS * a)
   ARITH_TYPE *arithptr = a->arithptr;
   DB_VALUE *peek_left = a->peek_left;
   DB_VALUE *peek_right = a->peek_right;
+  bool is_streamed = false;
 
   if (DB_IS_NULL (peek_left))
     {
       PRIM_SET_NULL (arithptr->value);
     }
-  else if (db_clob_to_char (peek_left, peek_right, arithptr->value) != NO_ERROR)
+  /* the client reads a top-level output itself */
+  else if (REGU_VARIABLE_IS_FLAGED (a->regu_var, REGU_VARIABLE_INTERNAL_LOB_STREAM)
+	   && db_internal_lob_to_scalar_stream (peek_left, peek_right, arithptr->value, &is_streamed) != NO_ERROR)
+    {
+      return ER_FAILED;
+    }
+  else if (!is_streamed && db_clob_to_char (peek_left, peek_right, arithptr->value) != NO_ERROR)
     {
       return ER_FAILED;
     }
