@@ -1669,6 +1669,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   QFILE_LIST_SCAN_ID list_scan_id;
   QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE scan_code;
+  VPID read_vpid;
   HASHJOIN_SPLIT_LANDING_BUFFER landing_buffer;
   HASHJOIN_SPLIT_WRITER split_writer;
 
@@ -1695,6 +1696,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
   /* Prevent faults when qfile_close_scan and hjoin_clear_split_landing_buffer are called */
   list_scan_id.status = S_CLOSED;
   memset (&landing_buffer, 0, sizeof (HASHJOIN_SPLIT_LANDING_BUFFER));
+  VPID_SET_NULL (&read_vpid);
 
   error = hjoin_init_split_landing_buffer (thread_p, &landing_buffer, part_cnt);
   if (error != NO_ERROR)
@@ -1702,7 +1704,7 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
       goto error_exit;
     }
 
-  hjoin_init_split_writer (&split_writer, &landing_buffer, staging_buffer, NULL, manager->worker_tfiles[0],
+  hjoin_init_split_writer (&split_writer, &landing_buffer, staging_buffer, NULL, &manager->worker_tfiles[0],
 			   part_list_id);
 
   error = qfile_open_list_scan (list_id, &list_scan_id);
@@ -1729,8 +1731,30 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	}
       else
 	{
+	  /* the scan has left the page before and released it: its tuples are taken */
+	  if (!VPID_EQ (&read_vpid, &list_scan_id.curr_vpid))
+	    {
+	      if (!VPID_ISNULL (&read_vpid))
+		{
+		  hjoin_add_free_page_to_split_writer (&split_writer, &read_vpid);
+		}
+	      read_vpid = list_scan_id.curr_vpid;
+	    }
+
 	  /* a partition split again: by the hash key stored in the tuple at the first split */
 	  part_id = hjoin_get_resplit_part_id (&tuple_record, context->divisor, part_cnt);
+
+	  if (QFILE_GET_OVERFLOW_PAGE_ID (list_scan_id.curr_pgptr) != NULL_PAGEID)
+	    {
+	      error = hjoin_add_overflow_to_split_writer (thread_p, &split_writer, part_id, list_scan_id.curr_pgptr);
+	      if (error != NO_ERROR)
+		{
+		  break;	/* error_exit */
+		}
+
+	      /* next tuple */
+	      continue;
+	    }
 	}
 
       error = hjoin_add_to_split_writer (thread_p, &split_writer, part_id, tuple_record.tpl);
@@ -1739,6 +1763,12 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	  break;		/* error_exit */
 	}
     }				/* while (qfile_scan_list_next (list_scan_id)) */
+
+  /* the last page, released at the end of the scan */
+  if (scan_code == S_END && !VPID_ISNULL (&read_vpid))
+    {
+      hjoin_add_free_page_to_split_writer (&split_writer, &read_vpid);
+    }
 
   /* After qfile_open_list_scan, if an error occurs,
    * ensure qfile_close_scan runs here
@@ -1753,7 +1783,8 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
   if (scan_code != S_ERROR && error == NO_ERROR)
     {
-      error = hjoin_flush_split_staging_buffer (thread_p, staging_buffer, part_list_id, manager->worker_tfiles[0]);
+      error =
+	hjoin_flush_split_staging_buffer (thread_p, staging_buffer, part_list_id, manager->worker_tfiles[0].tfile);
     }
 
   if (scan_code == S_ERROR || error != NO_ERROR)
@@ -1846,6 +1877,9 @@ hjoin_resplit_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
 	{
 	  goto error_exit;
 	}
+
+      /* its pages are the places of the pages of its partitions now */
+      hjoin_destroy_qlist (thread_p, current_context);
     }
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -2211,6 +2245,7 @@ error_exit:
 static int
 hjoin_init_worker_tfiles (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 {
+  HASHJOIN_WORKER_TFILE *worker_tfile;
   int worker_cnt, worker_index;
 
   assert (thread_p != NULL);
@@ -2221,7 +2256,11 @@ hjoin_init_worker_tfiles (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   worker_cnt = (manager->px_worker_manager != NULL) ? manager->num_parallel_threads : 1;
   assert (worker_cnt > 0);
 
-  manager->worker_tfiles = (QMGR_TEMP_FILE **) db_private_alloc (thread_p, worker_cnt * sizeof (QMGR_TEMP_FILE *));
+  /* one block: the worker tfiles, then their free_vpids */
+  manager->worker_tfiles =
+    (HASHJOIN_WORKER_TFILE *) db_private_alloc (thread_p,
+						worker_cnt * (sizeof (HASHJOIN_WORKER_TFILE)
+							      + HASHJOIN_SPLIT_FREE_PAGE_MAX_CNT * sizeof (VPID)));
   if (manager->worker_tfiles == NULL)
     {
       goto error_exit;
@@ -2229,12 +2268,16 @@ hjoin_init_worker_tfiles (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
   for (worker_index = 0; worker_index < worker_cnt; worker_index++)
     {
-      manager->worker_tfiles[worker_index] =
-	qmgr_create_new_temp_file (thread_p, manager->query_id, TEMP_FILE_MEMBUF_NONE);
-      if (manager->worker_tfiles[worker_index] == NULL)
+      worker_tfile = &manager->worker_tfiles[worker_index];
+
+      worker_tfile->tfile = qmgr_create_new_temp_file (thread_p, manager->query_id, TEMP_FILE_MEMBUF_NONE);
+      if (worker_tfile->tfile == NULL)
 	{
 	  goto error_exit;
 	}
+      worker_tfile->free_vpids =
+	(VPID *) (manager->worker_tfiles + worker_cnt) + worker_index * HASHJOIN_SPLIT_FREE_PAGE_MAX_CNT;
+      worker_tfile->free_vpid_cnt = 0;
       manager->worker_tfile_cnt = worker_index + 1;
     }
 
@@ -2273,7 +2316,7 @@ hjoin_clear_worker_tfiles (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
   for (worker_index = 0; worker_index < manager->worker_tfile_cnt; worker_index++)
     {
-      (void) qmgr_free_list_temp_file (thread_p, manager->query_id, manager->worker_tfiles[worker_index]);
+      (void) qmgr_free_list_temp_file (thread_p, manager->query_id, manager->worker_tfiles[worker_index].tfile);
     }
 
   db_private_free_and_init (thread_p, manager->worker_tfiles);

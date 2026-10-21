@@ -29,6 +29,7 @@
 #include "memory_alloc.h"		/* db_private_alloc, db_private_free_and_init */
 #include "object_primitive.h"		/* pr_clear_value */
 #include "object_representation.h"	/* QFILE_GET_NEXT_VPID, QFILE_GET_TUPLE_COUNT */
+#include "page_buffer.h"		/* pgbuf_get_vpid */
 #include "perf_monitor.h"		/* perfmon_update_max_timeval, perfmon_update_min_timeval */
 #include "qfile_tuple_layout.h"		/* qfile_slot_set_tuple_ptr_and_layout, qfile_slot_set_tuple_ptr, qfile_slot_reset */
 #include "query_evaluator.h"		/* eval_pred, V_ERROR, V_TRUE */
@@ -216,7 +217,7 @@ namespace parallel_query
 
       assert (m_index < m_manager->worker_tfile_cnt);
       hjoin_init_split_writer (&split_writer, &landing_buffer, m_staging_buffer,
-			       m_shared_info->part_mutexes, m_manager->worker_tfiles[m_index], part_list_id);
+			       m_shared_info->part_mutexes, &m_manager->worker_tfiles[m_index], part_list_id);
 
       m_temp_key = qdata_alloc_hscan_key (&thread_ref, m_manager->key_cnt, true);
       if (m_temp_key == nullptr)
@@ -266,7 +267,7 @@ namespace parallel_query
 	  if (tuple_cnt == 0)
 	    {
 	      /* empty page */
-	      qmgr_free_old_page_and_init (&thread_ref, page, tfile);
+	      release_page (thread_ref, &split_writer, page, tfile);
 	      continue;
 	    }
 
@@ -281,16 +282,13 @@ namespace parallel_query
 	    {
 	      assert (tuple_cnt == 1);
 
-	      error = qfile_assemble_overflow_tuple (&thread_ref, page, &overflow_record, tfile);
+	      error = get_overflow_tuple (thread_ref, page, tfile, &tuple_record, &overflow_record);
 	      if (error != NO_ERROR)
 		{
 		  m_task_manager.handle_error (thread_ref);
 		  has_error = true;
 		  break;	/* error_exit */
 		}
-
-	      qfile_slot_set_tuple_ptr_and_layout (&tuple_record, overflow_record.tpl, 0,
-						   &m_split_info->fetch_info->list_id->type_list);
 	    }
 
 	  assert (has_error == false);
@@ -331,7 +329,7 @@ namespace parallel_query
 		  continue;
 		}
 
-	      error = hjoin_add_to_split_writer (&thread_ref, &split_writer, part_id, tuple_record.tpl);
+	      error = add_tuple (thread_ref, &split_writer, part_id, &tuple_record, page);
 	      if (error != NO_ERROR)
 		{
 		  assert_release_error (er_errid () != NO_ERROR);
@@ -344,7 +342,7 @@ namespace parallel_query
 
 	  if (page != nullptr)
 	    {
-	      qmgr_free_old_page_and_init (&thread_ref, page, tfile);
+	      release_page (thread_ref, &split_writer, page, tfile);
 	    }
 
 	  if (has_error)
@@ -356,7 +354,7 @@ namespace parallel_query
 
       if (page != nullptr)
 	{
-	  qmgr_free_old_page_and_init (&thread_ref, page, tfile);
+	  release_page (thread_ref, &split_writer, page, tfile);
 	}
 
       assert (m_temp_key != nullptr);
@@ -405,6 +403,38 @@ namespace parallel_query
 				      m_staging_buffer->page_cnt, part_id, is_skipped);
     }
 
+    int
+    split_task::get_overflow_tuple (cubthread::entry &thread_ref, PAGE_PTR page, QMGR_TEMP_FILE *tfile,
+				    QFILE_TUPLE_RECORD *tuple_record, QFILE_TUPLE_RECORD *overflow_record)
+    {
+      int error;
+
+      error = qfile_assemble_overflow_tuple (&thread_ref, page, overflow_record, tfile);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      qfile_slot_set_tuple_ptr_and_layout (tuple_record, overflow_record->tpl, 0,
+					   &m_split_info->fetch_info->list_id->type_list);
+
+      return NO_ERROR;
+    }
+
+    int
+    split_task::add_tuple (cubthread::entry &thread_ref, HASHJOIN_SPLIT_WRITER *split_writer, UINT32 part_id,
+			   QFILE_TUPLE_RECORD *tuple_record, PAGE_PTR page)
+    {
+      return hjoin_add_to_split_writer (&thread_ref, split_writer, part_id, tuple_record->tpl);
+    }
+
+    void
+    split_task::release_page (cubthread::entry &thread_ref, HASHJOIN_SPLIT_WRITER *split_writer, PAGE_PTR &page,
+			      QMGR_TEMP_FILE *tfile)
+    {
+      qmgr_free_old_page_and_init (&thread_ref, page, tfile);
+    }
+
     /*
      * resplit_task
      */
@@ -448,6 +478,41 @@ namespace parallel_query
       *part_id = hjoin_get_resplit_part_id (tuple_record, m_context->divisor, m_context->child_cnt);
 
       return NO_ERROR;
+    }
+
+    int
+    resplit_task::get_overflow_tuple (cubthread::entry &thread_ref, PAGE_PTR page, QMGR_TEMP_FILE *tfile,
+				      QFILE_TUPLE_RECORD *tuple_record, QFILE_TUPLE_RECORD *overflow_record)
+    {
+      /* tuple_record is on the first part already */
+      assert (tuple_record->tpl == (char *) page + QFILE_PAGE_HEADER_SIZE);
+
+      return NO_ERROR;
+    }
+
+    int
+    resplit_task::add_tuple (cubthread::entry &thread_ref, HASHJOIN_SPLIT_WRITER *split_writer, UINT32 part_id,
+			     QFILE_TUPLE_RECORD *tuple_record, PAGE_PTR page)
+    {
+      if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID)
+	{
+	  return hjoin_add_overflow_to_split_writer (&thread_ref, split_writer, part_id, page);
+	}
+
+      return hjoin_add_to_split_writer (&thread_ref, split_writer, part_id, tuple_record->tpl);
+    }
+
+    void
+    resplit_task::release_page (cubthread::entry &thread_ref, HASHJOIN_SPLIT_WRITER *split_writer, PAGE_PTR &page,
+				QMGR_TEMP_FILE *tfile)
+    {
+      VPID vpid;
+
+      pgbuf_get_vpid (page, &vpid);
+      qmgr_free_old_page_and_init (&thread_ref, page, tfile);
+
+      /* its tuples are taken, and the main thread has read its next link before pushing it (produce_vpids) */
+      hjoin_add_free_page_to_split_writer (split_writer, &vpid);
     }
 
     /*

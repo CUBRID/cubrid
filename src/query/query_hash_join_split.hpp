@@ -68,7 +68,7 @@ typedef struct hashjoin_split_writer
   // *INDENT-OFF*
   std::mutex *part_mutexes;	/* one per staged page, of the shared split info; nullptr in a serial split */
   // *INDENT-ON*
-  QMGR_TEMP_FILE *worker_tfile;	/* of this writer only: the places of new pages are allocated from it */
+  HASHJOIN_WORKER_TFILE *worker_tfile;	/* of this writer only: the places of new pages are taken from it */
   QFILE_LIST_ID **part_list_id;
 } HASHJOIN_SPLIT_WRITER;
 
@@ -94,10 +94,13 @@ void hjoin_clear_split_landing_buffer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_LA
 // *INDENT-OFF*
 void hjoin_init_split_writer (HASHJOIN_SPLIT_WRITER * writer, HASHJOIN_SPLIT_LANDING_BUFFER * landing_buffer,
 			      HASHJOIN_SPLIT_STAGING_BUFFER * staging_buffer, std::mutex * part_mutexes,
-			      QMGR_TEMP_FILE * worker_tfile, QFILE_LIST_ID ** part_list_id);
+			      HASHJOIN_WORKER_TFILE * worker_tfile, QFILE_LIST_ID ** part_list_id);
 // *INDENT-ON*
 int hjoin_add_to_split_writer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer, UINT32 part_id,
 			       QFILE_TUPLE tuple);
+int hjoin_add_overflow_to_split_writer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer, UINT32 part_id,
+					PAGE_PTR ovf_tuple_page);
+void hjoin_add_free_page_to_split_writer (HASHJOIN_SPLIT_WRITER *writer, const VPID *vpid);
 int hjoin_flush_split_writer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer);
 
 #endif /* _QUERY_HASH_JOIN_SPLIT_HPP_ */

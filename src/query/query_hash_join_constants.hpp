@@ -40,4 +40,10 @@
 #define HASHJOIN_SPLIT_LANDING_BUFFER_SIZE (64 * DB_PAGESIZE)
 #define HASHJOIN_SPLIT_LANDING_ENTRY_HEADER_SIZE DB_ALIGN (sizeof (int), MAX_ALIGNMENT)
 
+/* free pages a worker tfile keeps as the places of new pages, when a partition is split again: the pages read while
+ * the staged pages of all partitions fill, and while the landing buffer of its writer fills, twice for pages that are
+ * not full; a page beyond them is not reused */
+#define HASHJOIN_SPLIT_FREE_PAGE_MAX_CNT \
+  (HASHJOIN_PART_MAX_CNT + 2 * HASHJOIN_SPLIT_LANDING_BUFFER_SIZE / DB_PAGESIZE)
+
 #endif /* _QUERY_HASH_JOIN_CONSTANTS_HPP_ */

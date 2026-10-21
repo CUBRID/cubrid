@@ -166,7 +166,7 @@ namespace parallel_query
 	  if (!task_manager.has_error () && error == NO_ERROR)
 	    {
 	      error = hjoin_flush_split_staging_buffer (&thread_ref, &staging_buffer, input->part_list_id,
-		      manager->worker_tfiles[0]);
+		      manager->worker_tfiles[0].tfile);
 	    }
 
 	  if (manager->px_worker_stats != nullptr)

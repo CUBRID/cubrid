@@ -334,6 +334,18 @@ typedef struct hashjoin_context
   HASHJOIN_STATS *stats;
 } HASHJOIN_CONTEXT;
 
+/* HASHJOIN_WORKER_TFILE */
+typedef struct hashjoin_worker_tfile
+{
+  /* Temporary file the pages written by one split worker are placed in. */
+  QMGR_TEMP_FILE *tfile;
+
+  /* Pages of a partition list split again whose tuples are taken, of any worker tfile: the places of new pages are
+   * taken from them before tfile allocates one. HASHJOIN_SPLIT_FREE_PAGE_MAX_CNT entries. */
+  VPID *free_vpids;
+  int free_vpid_cnt;
+} HASHJOIN_WORKER_TFILE;
+
 /* HASHJOIN_MANAGER*/
 typedef struct hashjoin_manager
 {
@@ -371,7 +383,7 @@ typedef struct hashjoin_manager
 
   /* Temporary files the partition lists are written to, one per split worker. The partition lists borrow them,
    * so they are freed after the contexts that own the lists (hjoin_clear_worker_tfiles). */
-  QMGR_TEMP_FILE **worker_tfiles;
+  HASHJOIN_WORKER_TFILE *worker_tfiles;
   int worker_tfile_cnt;
 
   // *INDENT-OFF*

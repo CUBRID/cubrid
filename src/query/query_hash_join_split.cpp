@@ -34,7 +34,7 @@
 
 /* Hash Join Split Writer */
 static int hjoin_append_to_part_list (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer, UINT32 part_id,
-				      QFILE_TUPLE tuple);
+				      QFILE_TUPLE tuple, const VPID *ovf_vpid);
 
 /*
  * hjoin_get_split_part_id() - the partition of a tuple at the first split, by its join column values
@@ -197,14 +197,14 @@ hjoin_clear_split_landing_buffer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_LANDING
  *   landing_buffer(in): Landing buffer of this writer.
  *   staging_buffer(in): Staged last pages of the partition lists, shared by the writers of a split.
  *   part_mutexes(in): Mutex of each staged page, or nullptr in a serial split.
- *   worker_tfile(in): Temporary file the places of the pages written by this writer are allocated from.
+ *   worker_tfile(in): Worker tfile the places of the pages written by this writer are taken from.
  *   part_list_id(in): Partition lists to write to.
  */
 // *INDENT-OFF*
 void
 hjoin_init_split_writer (HASHJOIN_SPLIT_WRITER * writer, HASHJOIN_SPLIT_LANDING_BUFFER * landing_buffer,
 			 HASHJOIN_SPLIT_STAGING_BUFFER * staging_buffer, std::mutex * part_mutexes,
-			 QMGR_TEMP_FILE * worker_tfile, QFILE_LIST_ID ** part_list_id)
+			 HASHJOIN_WORKER_TFILE * worker_tfile, QFILE_LIST_ID ** part_list_id)
 // *INDENT-ON*
 {
   assert (writer != NULL);
@@ -246,7 +246,7 @@ hjoin_add_to_split_writer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer
   entry_size = HASHJOIN_SPLIT_LANDING_ENTRY_HEADER_SIZE + DB_ALIGN (tuple_length, MAX_ALIGNMENT);
   if (entry_size > HASHJOIN_SPLIT_LANDING_BUFFER_SIZE)
     {
-      return hjoin_append_to_part_list (thread_p, writer, part_id, tuple);
+      return hjoin_append_to_part_list (thread_p, writer, part_id, tuple, NULL);
     }
 
   if (landing_buffer->buffer_used + entry_size > HASHJOIN_SPLIT_LANDING_BUFFER_SIZE)
@@ -279,6 +279,59 @@ hjoin_add_to_split_writer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer
 }
 
 /*
+ * hjoin_add_overflow_to_split_writer() - append a tuple longer than a page to its partition list at once, referring to
+ *                                        its overflow pages as they are
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   writer(in/out): Split writer.
+ *   part_id(in): Partition of the tuple.
+ *   ovf_tuple_page(in): Page of the input holding the first part of the tuple. Its overflow pages must live as long as
+ *                       the partition list: those of a partition list, which borrows a worker tfile.
+ */
+int
+hjoin_add_overflow_to_split_writer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer, UINT32 part_id,
+				    PAGE_PTR ovf_tuple_page)
+{
+  VPID ovf_vpid;
+
+  assert (thread_p != NULL);
+  assert (writer != NULL);
+  assert (ovf_tuple_page != NULL);
+  assert (QFILE_GET_TUPLE_COUNT (ovf_tuple_page) == 1);
+
+  QFILE_GET_OVERFLOW_VPID (&ovf_vpid, ovf_tuple_page);
+  assert (!VPID_ISNULL (&ovf_vpid));
+
+  return hjoin_append_to_part_list (thread_p, writer, part_id, (char *) ovf_tuple_page + QFILE_PAGE_HEADER_SIZE,
+				    &ovf_vpid);
+}
+
+/*
+ * hjoin_add_free_page_to_split_writer() - keep a page of the input whose tuples are taken, as the place of a new page
+ *                                         of the worker tfile of the writer
+ *   return: None.
+ *   writer(in/out): Split writer.
+ *   vpid(in): Page of a partition list split again, not fixed any more; not an overflow page, which a tuple added by
+ *             hjoin_add_overflow_to_split_writer still refers to. It may be of another worker tfile: they are freed
+ *             together (hjoin_clear_worker_tfiles).
+ */
+void
+hjoin_add_free_page_to_split_writer (HASHJOIN_SPLIT_WRITER *writer, const VPID *vpid)
+{
+  HASHJOIN_WORKER_TFILE *worker_tfile;
+
+  assert (writer != NULL);
+  assert (vpid != NULL && !VPID_ISNULL (vpid));
+
+  worker_tfile = writer->worker_tfile;
+
+  if (worker_tfile->free_vpid_cnt < HASHJOIN_SPLIT_FREE_PAGE_MAX_CNT)
+    {
+      worker_tfile->free_vpids[worker_tfile->free_vpid_cnt++] = *vpid;
+    }
+}
+
+/*
  * hjoin_flush_split_writer() - append the tuples of the landing buffer to the partition lists, one partition at a time
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
@@ -300,7 +353,7 @@ hjoin_flush_split_writer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer)
     {
       part_id = landing_buffer->filled_parts[filled_index];
 
-      error = hjoin_append_to_part_list (thread_p, writer, part_id, NULL);
+      error = hjoin_append_to_part_list (thread_p, writer, part_id, NULL, NULL);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -324,9 +377,11 @@ hjoin_flush_split_writer (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer)
  *   writer(in): Split writer.
  *   part_id(in): Partition to append to.
  *   tuple(in): Tuple to append, or NULL to append the tuples of the partition in the landing buffer.
+ *   ovf_vpid(in): First overflow page of the rest of tuple, referred to as it is; NULL if tuple is whole.
  */
 static int
-hjoin_append_to_part_list (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer, UINT32 part_id, QFILE_TUPLE tuple)
+hjoin_append_to_part_list (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer, UINT32 part_id, QFILE_TUPLE tuple,
+			   const VPID *ovf_vpid)
 {
   HASHJOIN_SPLIT_LANDING_BUFFER *landing_buffer;
   HASHJOIN_SPLIT_STAGING_BUFFER *staging_buffer;
@@ -338,6 +393,7 @@ hjoin_append_to_part_list (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer
 
   assert (thread_p != NULL);
   assert (writer != NULL);
+  assert (ovf_vpid == NULL || tuple != NULL);
 
   landing_buffer = writer->landing_buffer;
   staging_buffer = writer->staging_buffer;
@@ -379,7 +435,9 @@ hjoin_append_to_part_list (THREAD_ENTRY *thread_p, HASHJOIN_SPLIT_WRITER *writer
 
   while (next_tuple != NULL)
     {
-      error = qfile_add_tuple_to_staged_page (thread_p, list_id, *staged_page, writer->worker_tfile, next_tuple);
+      error = qfile_add_tuple_to_staged_page (thread_p, list_id, *staged_page, writer->worker_tfile->tfile, next_tuple,
+					      ovf_vpid, writer->worker_tfile->free_vpids,
+					      &writer->worker_tfile->free_vpid_cnt);
       if (error != NO_ERROR)
 	{
 	  break;

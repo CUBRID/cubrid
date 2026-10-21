@@ -186,6 +186,16 @@ namespace parallel_query
 	 * NULL join column is skipped unless the join NULL-fills one side */
 	virtual int get_part_id (cubthread::entry &thread_ref, QFILE_TUPLE_RECORD *tuple_record, UINT32 *part_id,
 				 bool *is_skipped);
+	/* the tuple of a page with overflow pages: assembled from them, as the overflow pages of the input are freed with
+	 * it after the split */
+	virtual int get_overflow_tuple (cubthread::entry &thread_ref, PAGE_PTR page, QMGR_TEMP_FILE *tfile,
+					QFILE_TUPLE_RECORD *tuple_record, QFILE_TUPLE_RECORD *overflow_record);
+	/* a tuple goes to its partition list whole */
+	virtual int add_tuple (cubthread::entry &thread_ref, HASHJOIN_SPLIT_WRITER *split_writer, UINT32 part_id,
+			       QFILE_TUPLE_RECORD *tuple_record, PAGE_PTR page);
+	/* a page of the input is released only: it is of the temporary file of the input */
+	virtual void release_page (cubthread::entry &thread_ref, HASHJOIN_SPLIT_WRITER *split_writer, PAGE_PTR &page,
+				   QMGR_TEMP_FILE *tfile);
     };
 
     /*
@@ -209,6 +219,16 @@ namespace parallel_query
 	/* the partition of a tuple: by the hash key stored in it at the first split */
 	int get_part_id (cubthread::entry &thread_ref, QFILE_TUPLE_RECORD *tuple_record, UINT32 *part_id,
 			 bool *is_skipped) override;
+	/* the first part of the tuple in the page, where its hash key is: its overflow pages are of a worker tfile, which
+	 * lives until the end of the join, so they are not read */
+	int get_overflow_tuple (cubthread::entry &thread_ref, PAGE_PTR page, QMGR_TEMP_FILE *tfile,
+				QFILE_TUPLE_RECORD *tuple_record, QFILE_TUPLE_RECORD *overflow_record) override;
+	/* a tuple of a page with overflow pages refers to them as they are */
+	int add_tuple (cubthread::entry &thread_ref, HASHJOIN_SPLIT_WRITER *split_writer, UINT32 part_id,
+		       QFILE_TUPLE_RECORD *tuple_record, PAGE_PTR page) override;
+	/* a page of the input becomes the place of a new page of the split writer, as the input is not read again */
+	void release_page (cubthread::entry &thread_ref, HASHJOIN_SPLIT_WRITER *split_writer, PAGE_PTR &page,
+			   QMGR_TEMP_FILE *tfile) override;
     };
 
     /*
