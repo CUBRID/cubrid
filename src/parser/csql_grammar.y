@@ -22933,13 +22933,19 @@ static void
 parser_save_and_set_cannot_prepare (bool value)
 {
   parser_cannot_prepare_saved = parser_cannot_prepare;
+  parser_has_internal_lob_file_prepare_blocker_saved = parser_has_internal_lob_file_prepare_blocker;
+  parser_has_other_prepare_blocker_saved = parser_has_other_prepare_blocker;
   parser_cannot_prepare = value;
+  parser_has_internal_lob_file_prepare_blocker = false;
+  parser_has_other_prepare_blocker = value;
 }
 
 static void
 parser_restore_cannot_prepare ()
 {
   parser_cannot_prepare = parser_cannot_prepare_saved;
+  parser_has_internal_lob_file_prepare_blocker = parser_has_internal_lob_file_prepare_blocker_saved;
+  parser_has_other_prepare_blocker = parser_has_other_prepare_blocker_saved;
 }
 
 static int parser_wjc_stack_default[STACK_SIZE];

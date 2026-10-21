@@ -12816,6 +12816,272 @@ heap_internal_lob_get_class_vfid (THREAD_ENTRY * thread_p, const OID * class_oid
 }
 
 typedef struct heap_internal_lob_file_source HEAP_INTERNAL_LOB_FILE_SOURCE;
+struct heap_internal_lob_file_source
+{
+  DB_TYPE lob_type;
+  DB_BIGINT data_length;
+  DB_BIGINT bit_length;
+  char path[PATH_MAX + 1];
+};
+
+typedef struct heap_internal_lob_file_reader_context HEAP_INTERNAL_LOB_FILE_READER_CONTEXT;
+struct heap_internal_lob_file_reader_context
+{
+  DB_ELO elo;
+  DB_BIGINT length;
+};
+
+static bool
+heap_internal_lob_parse_file_source (const DB_VALUE * value, HEAP_INTERNAL_LOB_FILE_SOURCE * source)
+{
+  DB_TYPE value_type;
+  const char *data = NULL;
+  int size = 0;
+  char marker_buf[PATH_MAX + 128];
+  char type_char;
+  long long data_length;
+  long long bit_length;
+  const char *path;
+  size_t path_len;
+
+  if (source == NULL
+      || !db_get_internal_lob_marker_text (value, DB_VALUE_INTERNAL_LOB_MARKER_FILE_SOURCE, &value_type, &data, &size)
+      || !internal_lob_marker_parse_file_source (data, size, marker_buf, (int) sizeof (marker_buf), &type_char,
+						 &data_length, &bit_length, &path))
+    {
+      return false;
+    }
+
+  /* The size limit and the BLOB bit count are checked on insert, with their own errors. */
+  source->lob_type = (type_char == 'C') ? DB_TYPE_CLOB : DB_TYPE_BLOB;
+  if (source->lob_type != value_type || data_length < 0)
+    {
+      return false;
+    }
+  if (source->lob_type == DB_TYPE_CLOB && bit_length != -1)
+    {
+      return false;
+    }
+  if (source->lob_type == DB_TYPE_BLOB && bit_length < 0)
+    {
+      return false;
+    }
+
+  path_len = strlen (path);
+  if (path_len == 0 || path_len > PATH_MAX)
+    {
+      return false;
+    }
+
+  source->data_length = (DB_BIGINT) data_length;
+  source->bit_length = (DB_BIGINT) bit_length;
+  memcpy (source->path, path, path_len + 1);
+  return true;
+}
+
+static int
+heap_internal_lob_file_reader (void *ctx, DB_BIGINT offset, char *buf, int size)
+{
+  HEAP_INTERNAL_LOB_FILE_READER_CONTEXT *reader_ctx = (HEAP_INTERNAL_LOB_FILE_READER_CONTEXT *) ctx;
+  DB_BIGINT read_bytes = 0;
+  int error;
+
+  if (reader_ctx == NULL || buf == NULL || size <= 0 || offset < 0 || offset > reader_ctx->length - size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  error = db_elo_read (&reader_ctx->elo, (off_t) offset, buf, (size_t) size, &read_bytes);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  if (read_bytes != (DB_BIGINT) size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "LOB",
+	      "unexpected end of file while reading external storage");
+      return ER_ES_GENERAL;
+    }
+
+  return NO_ERROR;
+}
+
+static int
+heap_internal_lob_insert_file_source (THREAD_ENTRY * thread_p, const OID * class_oid,
+				      const HEAP_INTERNAL_LOB_FILE_SOURCE * source, INTERNAL_LOB_LOCATOR * locator)
+{
+  HEAP_INTERNAL_LOB_FILE_READER_CONTEXT reader_ctx;
+  INT64 current_size;
+  DB_BIGINT bit_length;
+
+  if (source == NULL || locator == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  elo_init_structure (&reader_ctx.elo);
+  reader_ctx.elo.type = ELO_FBO;
+  reader_ctx.elo.locator = (char *) source->path;
+  current_size = db_elo_size (&reader_ctx.elo);
+  if (current_size < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_INVALID_PATH, 1, source->path);
+      return ER_ES_INVALID_PATH;
+    }
+  if ((DB_BIGINT) current_size != source->data_length)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "LOB", "external file size changed");
+      return ER_ES_GENERAL;
+    }
+  if (source->data_length > DB_MAX_INTERNAL_LOB_LENGTH)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "LOB input",
+	      "source exceeds the 4 GiB internal LOB limit");
+      return ER_ES_GENERAL;
+    }
+  if (source->lob_type == DB_TYPE_BLOB
+      && (source->data_length > DB_BIGINT_MAX / 8 || source->bit_length != source->data_length * 8))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  reader_ctx.length = source->data_length;
+  bit_length = (source->lob_type == DB_TYPE_BLOB) ? source->bit_length : -1;
+  return heap_internal_lob_insert_stream (thread_p, class_oid, heap_internal_lob_file_reader, &reader_ctx,
+					  source->data_length, bit_length, locator);
+}
+
+static int
+heap_internal_lob_insert_pending_source (THREAD_ENTRY * thread_p, const OID * class_oid,
+					 const INTERNAL_LOB_PENDING * pending, INTERNAL_LOB_LOCATOR * locator)
+{
+  HEAP_INTERNAL_LOB_FILE_READER_CONTEXT reader_ctx;
+  INT64 current_size;
+  DB_BIGINT bit_length = -1;
+  int error;
+
+  if (pending == NULL || locator == NULL || (pending->lob_type != DB_TYPE_CLOB && pending->lob_type != DB_TYPE_BLOB)
+      || pending->size < 0 || pending->size > DB_MAX_INTERNAL_LOB_LENGTH)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  elo_init_structure (&reader_ctx.elo);
+  reader_ctx.elo.type = ELO_FBO;
+  reader_ctx.elo.locator = (char *) pending->locator;
+  reader_ctx.elo.es_type = es_get_type (pending->locator);
+  reader_ctx.elo.size = -1;
+
+  current_size = db_elo_size (&reader_ctx.elo);
+  if (current_size < 0)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+  if ((DB_BIGINT) current_size != pending->size)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_ES_GENERAL, 2, "LOB", "pending LOB size changed");
+      return ER_ES_GENERAL;
+    }
+  if (pending->lob_type == DB_TYPE_BLOB)
+    {
+      if (pending->size > DB_BIGINT_MAX / 8)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	  return ER_GENERIC_ERROR;
+	}
+      bit_length = pending->size * 8;
+    }
+
+  reader_ctx.length = pending->size;
+  return heap_internal_lob_insert_stream (thread_p, class_oid, heap_internal_lob_file_reader, &reader_ctx,
+					  pending->size, bit_length, locator);
+}
+
+/*
+ * heap_internal_lob_insert_stream () - Insert a seekable byte source into a class internal LOB file.
+ *   return: NO_ERROR, or error code
+ *   thread_p(in): thread entry
+ *   class_oid(in): class OID owning the target heap
+ *   reader(in): callback that reads exactly size bytes of the source at offset
+ *   reader_ctx(in): callback context
+ *   total_bytes(in): size of the source in bytes
+ *   bit_length(in): BLOB bit length, or -1 for CLOB byte-length data
+ *   locator(out): newly inserted internal LOB locator
+ *
+ * Note:
+ *   The chain is written tail-first by the reverse writer, so the source is consumed from its end toward
+ *   offset 0 in bounded pieces; nothing is staged and only one segment is held in memory.
+ */
+int
+heap_internal_lob_insert_stream (THREAD_ENTRY * thread_p, const OID * class_oid,
+				 HEAP_INTERNAL_LOB_RANGE_READER reader, void *reader_ctx, DB_BIGINT total_bytes,
+				 DB_BIGINT bit_length, INTERNAL_LOB_LOCATOR * locator)
+{
+  VFID lob_vfid;
+  INTERNAL_LOB_REVERSE_WRITER writer;
+  DB_TYPE lob_type = (bit_length >= 0) ? DB_TYPE_BLOB : DB_TYPE_CLOB;
+  DB_BIGINT offset;
+  /* The reverse writer emits one chunk per page, so a page-sized slice is the unit; bigger only costs
+   * server worker stack. */
+  char buffer[IO_MAX_PAGE_SIZE];
+  int error = NO_ERROR;
+
+  if (class_oid == NULL || reader == NULL || locator == NULL || bit_length < -1 || total_bytes < 0
+      || (bit_length >= 0 && !internal_lob_is_valid_blob_bit_length (total_bytes, bit_length)))
+    {
+      error = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  error = heap_internal_lob_get_class_vfid (thread_p, class_oid, &lob_vfid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  error = internal_lob_reverse_insert_begin (thread_p, lob_vfid, lob_type, total_bytes,
+					     bit_length >= 0 ? bit_length : total_bytes, writer);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  for (offset = total_bytes; offset > 0;)
+    {
+      int size = (offset > (DB_BIGINT) sizeof (buffer)) ? (int) sizeof (buffer) : (int) offset;
+
+      offset -= size;
+      error = reader (reader_ctx, offset, buffer, size);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+      error = internal_lob_reverse_insert_append (thread_p, writer, offset, oos_buffer (buffer, (std::size_t) size));
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+    }
+
+  error = internal_lob_reverse_insert_end (thread_p, writer, *locator);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  return NO_ERROR;
+
+error_exit:
+  internal_lob_reverse_insert_abort (writer);
+  return error;
+}
+
 /*
  * heap_internal_lob_clone_locator () - Copy an existing internal LOB locator to the target class LOB file by
  *				      streaming, without materializing the payload into a DB_VALUE.
@@ -12882,6 +13148,8 @@ heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, 
   INTERNAL_LOB_LOCATOR source_locator;
   const DB_VALUE *source_value = value;
   const char *raw_data = NULL;
+  INTERNAL_LOB_PENDING pending_source;
+  HEAP_INTERNAL_LOB_FILE_SOURCE file_source;
   DB_TYPE type;
   int raw_length = 0;
   int raw_bit_length = -1;
@@ -12896,6 +13164,28 @@ heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, 
     }
 
   type = DB_VALUE_DOMAIN_TYPE (value);
+
+  if (internal_lob_db_value_is_pending (value, &pending_source))
+    {
+      if (pending_source.lob_type != type)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  return error;
+	}
+      return heap_internal_lob_insert_pending_source (thread_p, class_oid, &pending_source, locator);
+    }
+
+  if (heap_internal_lob_parse_file_source (value, &file_source))
+    {
+      if (file_source.lob_type != type)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	  return error;
+	}
+      return heap_internal_lob_insert_file_source (thread_p, class_oid, &file_source, locator);
+    }
 
   if (internal_lob_db_value_is_locator (value, &source_locator))
     {

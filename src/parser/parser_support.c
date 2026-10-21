@@ -61,6 +61,7 @@
 #include "dbtype.h"
 #include "parser_allocator.hpp"
 #include "execute_schema.h"
+#include "internal_lob_marker.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4783,6 +4784,143 @@ pt_to_null_ordering (PT_NODE * sort_spec)
   return S_NULLS_LAST;
 }
 
+bool
+pt_is_internal_lob_direct_source_expr (const PT_NODE * node)
+{
+  if (node == NULL || node->node_type != PT_EXPR || !(node->info.expr.flag & PT_EXPR_INFO_LOB_DIRECT_INSERT))
+    {
+      return false;
+    }
+
+  return node->info.expr.op == PT_BLOB_FROM_FILE || node->info.expr.op == PT_CLOB_FROM_FILE
+    || node->info.expr.op == PT_BFILE_TO_BLOB || node->info.expr.op == PT_CFILE_TO_CLOB
+    || node->info.expr.op == PT_BIT_TO_BLOB || node->info.expr.op == PT_CHAR_TO_BLOB
+    || node->info.expr.op == PT_CHAR_TO_CLOB;
+}
+
+/*
+ * pt_is_internal_lob_file_source_expr () - Is node a BLOB/CLOB/BFILE/CFILE_FROM_FILE expression?
+ */
+bool
+pt_is_internal_lob_file_source_expr (const PT_NODE * node)
+{
+  if (node == NULL || node->node_type != PT_EXPR)
+    {
+      return false;
+    }
+
+  return node->info.expr.op == PT_BFILE_FROM_FILE || node->info.expr.op == PT_CFILE_FROM_FILE
+    || node->info.expr.op == PT_BLOB_FROM_FILE || node->info.expr.op == PT_CLOB_FROM_FILE;
+}
+
+/*
+ * pt_fold_internal_lob_direct_source () - Evaluate the direct Internal LOB source at *link into an auto parameter.
+ */
+static int
+pt_fold_internal_lob_direct_source (PARSER_CONTEXT * parser, PT_NODE ** link)
+{
+  PT_NODE *source = *link;
+  PT_NODE *value_node;
+  PT_NODE *host_var;
+  PT_NODE *save_next;
+  DB_VALUE value;
+  int marker;
+  int error = NO_ERROR;
+
+  db_make_null (&value);
+  pt_evaluate_tree (parser, source, &value, 1);
+  if (pt_has_error (parser))
+    {
+      ASSERT_ERROR_AND_SET (error);
+      pr_clear_value (&value);
+      return error;
+    }
+
+  marker = db_value_get_internal_lob_marker (&value);
+
+  value_node = pt_dbval_to_value (parser, &value);
+  pr_clear_value (&value);
+  if (value_node == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  /* Rewrite first, free the old source only on success: on failure *link must keep pointing at a live node so the
+   * caller's statement teardown frees it exactly once, not at a dangling one. */
+  save_next = source->next;
+  value_node->next = NULL;
+  host_var = pt_rewrite_to_auto_param (parser, value_node);
+  if (host_var == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+  source->next = NULL;
+  parser_free_tree (parser, source);
+  if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+    {
+      db_value_mark_internal_lob (&parser->host_variables[host_var->info.host_var.index], marker);
+    }
+  host_var->next = save_next;
+  *link = host_var;
+
+  return NO_ERROR;
+}
+
+int
+pt_fold_internal_lob_direct_source_values (PARSER_CONTEXT * parser, PT_NODE ** values)
+{
+  PT_NODE **link;
+  int error;
+
+  if (values == NULL)
+    {
+      return NO_ERROR;
+    }
+
+  for (link = values; *link != NULL; link = &(*link)->next)
+    {
+      if (pt_is_internal_lob_direct_source_expr (*link))
+	{
+	  error = pt_fold_internal_lob_direct_source (parser, link);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * pt_fold_internal_lob_direct_source_assignments () - Evaluate direct Internal LOB source assignment RHS values.
+ *
+ * The value is auto-parameterized here because the generic auto-parameterizer skips qualified MERGE assignment LHS
+ * nodes; execution can then swap the host value for a DML slot streamed with the statement.
+ */
+int
+pt_fold_internal_lob_direct_source_assignments (PARSER_CONTEXT * parser, PT_NODE * assignments)
+{
+  PT_NODE *assign;
+  int error;
+
+  for (assign = assignments; assign != NULL; assign = assign->next)
+    {
+      if (PT_IS_ASSIGN_NODE (assign) && pt_is_internal_lob_direct_source_expr (assign->info.expr.arg2))
+	{
+	  error = pt_fold_internal_lob_direct_source (parser, &assign->info.expr.arg2);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+    }
+
+  return NO_ERROR;
+}
+
 /*
  * pt_create_param_for_value () - Creates a PT_NODE to be used as a host
  *                                variable that replaces an existing value
@@ -4918,6 +5056,7 @@ pt_copy_statement_flags (PT_NODE * source, PT_NODE * destination)
 {
   destination->flag.recompile = source->flag.recompile;
   destination->flag.cannot_prepare = source->flag.cannot_prepare;
+  destination->flag.cannot_prepare_only_internal_lob_file = source->flag.cannot_prepare_only_internal_lob_file;
   destination->flag.si_datetime = source->flag.si_datetime;
   destination->flag.si_tran_id = source->flag.si_tran_id;
 }

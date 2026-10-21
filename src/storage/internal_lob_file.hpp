@@ -73,6 +73,14 @@ struct internal_lob_reader
 };
 using INTERNAL_LOB_READER = struct internal_lob_reader;
 
+struct internal_lob_pending
+{
+  DB_TYPE lob_type;
+  DB_BIGINT size;
+  char locator[PATH_MAX + 16];
+};
+using INTERNAL_LOB_PENDING = struct internal_lob_pending;
+
 extern int internal_lob_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const OID &class_oid,
 				     VFID &lob_vfid);
 #if defined (CUBRID_UNIT_TEST_ENABLED)
@@ -104,6 +112,7 @@ extern int internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, co
 
 extern bool internal_lob_parse_locator_string (const char *data, int size, INTERNAL_LOB_LOCATOR *locator);
 extern bool internal_lob_db_value_is_locator (const DB_VALUE *value, INTERNAL_LOB_LOCATOR *locator);
+extern bool internal_lob_db_value_is_pending (const DB_VALUE *value, INTERNAL_LOB_PENDING *pending);
 extern int internal_lob_format_locator (const INTERNAL_LOB_LOCATOR &locator, char *buf, size_t buf_size);
 extern int internal_lob_lock_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator);
 inline bool
