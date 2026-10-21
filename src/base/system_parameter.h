@@ -561,6 +561,8 @@ enum param_id
   PRM_ID_COST_EFFECTIVE_CACHE_PAGES,
   PRM_ID_COST_HEAP_FETCH_PER_OID,
 
+  PRM_ID_PLAN_CACHE_BIND_VARIANTS,
+
   /* stage B2 (#116 D9): CAS-owned broker parameters whose owner moved into
    * the server with the folded CAS speaker — sql/slow/access log production
    * and the long-query/long-transaction thresholds */

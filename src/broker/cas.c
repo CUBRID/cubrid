@@ -573,6 +573,8 @@ conn_retry:
 	cas_log_error_handler_begin ();
 	fn_ret = FN_KEEP_CONN;
 	as_info->con_status = CON_STATUS_OUT_TRAN;
+	/* keeping a session was decided for the previous connection's session, do not carry it over */
+	db_set_keep_session (false);
 
 	while (fn_ret == FN_KEEP_CONN && !cas_shutdown_signo)
 	  {

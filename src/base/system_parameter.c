@@ -830,6 +830,7 @@ static const char sysprm_ha_conf_file_name[] = "cubrid_ha.conf";
 #define PRM_NAME_COST_CPU_TUPLES_PER_PAGE "cost_cpu_tuples_per_page"
 #define PRM_NAME_COST_EFFECTIVE_CACHE_PAGES "cost_effective_cache_pages"
 #define PRM_NAME_COST_HEAP_FETCH_PER_OID "cost_heap_fetch_per_oid"
+#define PRM_NAME_PLAN_CACHE_BIND_VARIANTS "plan_cache_bind_variants"
 
 #define PRM_NAME_CAS_SQL_LOG "cas_sql_log"
 #define PRM_NAME_CAS_SLOW_LOG "cas_slow_log"
@@ -5693,6 +5694,22 @@ SYSPRM_PARAM prm_Def[] = {
    {false, {.i = 5}},
    {false, {.i = 5}},
    {false, {.i = 100000}},
+   {false, {.i = 0}},
+   (char *) NULL,
+   (DUP_PRM_FUNC) NULL,
+   (DUP_PRM_FUNC) NULL},
+  /* bind-value plan variants (CBRD-27490): how many distinct plans a query may learn for its
+   * bind values; 0 turns the feature off. The client-side compile chooses among them.
+   * Folded: a session-owned compiler setting like plan_cache_bind_sensitivity, so one
+   * session's SET or thin-client conf does not change the limit other sessions use. */
+  {PRM_ID_PLAN_CACHE_BIND_VARIANTS,
+   PRM_NAME_PLAN_CACHE_BIND_VARIANTS,
+   (PRM_FOR_CLIENT | PRM_USER_CHANGE | PRM_FOR_SESSION | PRM_CLIENT_COMPILE),
+   PRM_INTEGER,
+   PRM_CLEAR_DYNAMIC_FLAG,
+   {false, {.i = 5}},
+   {false, {.i = 5}},
+   {false, {.i = 32}},		/* BIND_VARIANT_MAX_COMPILES */
    {false, {.i = 0}},
    (char *) NULL,
    (DUP_PRM_FUNC) NULL,
