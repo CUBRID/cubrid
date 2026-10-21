@@ -1752,8 +1752,9 @@ jobs:
               from="$CI_ROOT/runs/$RERUN_FROM/$suite/collect"
               if [ -f "$from/held" ]; then
                 [ ! -s "$from/held" ] || hold "run $RERUN_FROM was red for what no re-run clears: $(cat "$from/held"). Use /run $suite" "$(cat "$from/held")"
-              # A run from before held was recorded: red with no case to blame has a cause no case clears.
-              elif [ "$total" -eq 0 ] && [ "$((rerun_failed + rerun_unrun))" -eq 0 ]; then
+              # A run from before held was recorded: the cause of its red is unknown, so with nothing
+              # re-run it stands.
+              elif [ "$total" -eq 0 ]; then
                 prev=$(cat "$from/verdict" 2>/dev/null || echo none)
                 [ "$prev" = pass ] || hold "nothing to re-run, so the verdict of run $RERUN_FROM stands: $prev. Use /run $suite"
               fi
