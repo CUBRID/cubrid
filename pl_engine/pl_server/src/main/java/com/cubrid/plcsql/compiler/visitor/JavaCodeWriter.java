@@ -123,6 +123,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
             assert methodIndex.isEmpty();
             return "";
         }
+
+        javaTypesUsed.add("java.lang.reflect.Method");
         return new String[] {
             "private static final boolean[] authChecked = new boolean[" + n + "];",
             "private static final String[] ownerName = new String[" + n + "];",
@@ -314,6 +316,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String[] recordDefs = getRecordDefs();
         String[] recordAssignFuncs = getRecordAssignFuncs();
 
+        Object authCheckedDecl = getAuthCheckedDecl();
+
         // imports
         // CAUTION: importsArray must be made after visiting all the subnodes of this UnitPkg
         // because javaTypesUsed,
@@ -334,7 +338,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+GET-CONNECTION'%",
                 node.connectionRequired ? strGetConn : "",
                 "%'+AUTH-CHECKED-DECL'%",
-                getAuthCheckedDecl(),
+                authCheckedDecl,
                 "%'+DECLARATIONS'%",
                 pkgItemsCode,
                 "%'+OPT-INITIALIZER'%",
@@ -464,6 +468,8 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
         String[] recordDefs = getRecordDefs();
         String[] recordAssignFuncs = getRecordAssignFuncs();
 
+        Object authCheckedDecl = getAuthCheckedDecl();
+
         // imports
         // CAUTION: importsArray must be made after visiting all the subnodes of this UnitSp
         // because javaTypesUsed,
@@ -500,7 +506,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                 "%'+GET-CONNECTION'%",
                 node.connectionRequired ? strGetConn : "",
                 "%'+AUTH-CHECKED-DECL'%",
-                getAuthCheckedDecl(),
+                authCheckedDecl,
                 "%'+AUTH-CLEAR'%",
                 getAuthCheckedClear(),
                 "%'+RECORD-DEFS'%",
@@ -1164,10 +1170,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         if (!Misc.isEmptyStr(node.targetClass) && !node.usesDefaultArg) {
             // PL/CSQL target call without using default arguments: call the method of its generated
-            // Java class directly (same package,
-            // so the simple class name is enough)
-
-            javaTypesUsed.add("java.lang.reflect.Method");
+            // Java class directly (same package, so the simple class name is enough)
 
             int paramSize = node.decl.paramList.nodes.size();
             String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
@@ -2801,10 +2804,7 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
 
         if (!Misc.isEmptyStr(node.targetClass) && !node.usesDefaultArg) {
             // PL/CSQL target call without using default arguments: call the method of its generated
-            // Java class directly (same package,
-            // so the simple class name is enough)
-
-            javaTypesUsed.add("java.lang.reflect.Method");
+            // Java class directly (same package, so the simple class name is enough)
 
             int paramSize = node.decl.paramList.nodes.size();
             String wrapperParam = getCallWrapperParam(paramSize, node.args, node.decl.paramList);
