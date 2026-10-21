@@ -201,6 +201,7 @@ static bool ws_defer_free (MOBJ obj, SM_CLASS * class_);
 static void ws_free_deferred_instances (SM_CLASS * class_);
 static void ws_free_instance_memory (SM_CLASS * class_, MOBJ obj);
 static void ws_free_class_memory (SM_CLASS * class_);
+static void ws_free_deferred_objects (void);
 static void ws_print_oid (OID * oid);
 #if defined (CUBRID_DEBUG)
 static int ws_describe_mop (MOP mop, void *args);
@@ -2470,7 +2471,9 @@ ws_final (void)
 
   tr_final ();
 
-  /* no call chain holds the objects detached by the last client-only abort any more */
+  /* No call chain holds the objects detached by a server-down abort any more. After the server goes down,
+   * db_shutdown () does nothing, so this runs at the next restart (boot_client_common ()); a client that
+   * exits without restarting leaves them to the process exit. */
   ws_free_deferred_objects ();
 
   if (prm_get_bool_value (PRM_ID_WS_MEMORY_REPORT))
@@ -2857,7 +2860,7 @@ ws_free_deferred_instances (SM_CLASS * class_)
 	{
 	  *link = node->next;
 	  obj_free_memory (node->class_, node->obj);
-	  free (node);
+	  free_and_init (node);
 	}
       else
 	{
@@ -2916,7 +2919,7 @@ ws_set_defer_free (bool defer)
  *
  * Note: Must be called where no call chain holds a pointer into the workspace objects.
  */
-void
+static void
 ws_free_deferred_objects (void)
 {
   WS_DEFERRED_FREE *node;
@@ -2928,7 +2931,7 @@ ws_free_deferred_objects (void)
     {
       ws_Deferred_classes = node->next;
       classobj_free_class ((SM_CLASS *) node->obj);
-      free (node);
+      free_and_init (node);
     }
 }
 

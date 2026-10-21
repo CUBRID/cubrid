@@ -585,11 +585,8 @@ tran_abort_only_client (bool is_server_down)
 
   /* Remove any dirty objects and close all open query cursors.
    * The callers still hold the classes of the failed request while the server-down error unwinds,
-   * so keep the decached objects until ws_final (). */
-  if (is_server_down)
-    {
-      ws_set_defer_free (true);
-    }
+   * so keep the decached objects until ws_final () at the next restart. */
+  ws_set_defer_free (is_server_down);
   ws_abort_mops (true);
   ws_filter_dirty ();
   ws_set_defer_free (false);
