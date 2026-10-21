@@ -118,14 +118,12 @@ struct expr_pred
   /* scan-filter leaves (EXPR_PRED_COMP_FETCH): the operands are fetched per row through
    * the regular fetch path into the two holders below, which arg1p/arg2p were wired to
    * at build time so the resolved leaf above compares them unchanged.  fetch_src is the
-   * original term, evaluated verbatim for a row whose runtime types the leaf was not
-   * resolved for (a host variable bound to a different type). */
+   * original term, which the interpreted kinds evaluate verbatim. */
   REGU_VARIABLE *fetch_lhs;
   REGU_VARIABLE *fetch_rhs;
   const void *fetch_src;
   DB_VALUE *fetched1;
   DB_VALUE *fetched2;
-  bool need_type_guard;		/* a side can drift from its plan type: verify runtime types per row */
 
   /* scan-filter leaves with COMPILED operands (EXPR_PRED_COMP_FETCH): an arithmetic side is
    * compiled into a step range of the tree's program instead of being fetched through
@@ -334,41 +332,11 @@ expr_coerce_dbval_to_numeric (const DB_VALUE * dbval_p, DB_VALUE * result_p)
       return NO_ERROR; \
     }
 
-/* A typed kernel is bound because both operands were of its type at compile time, and for
- * almost every source that holds for the whole execution.  A recursive CTE breaks it: the
- * column domain carries the anchor branch's type (INTEGER for "SELECT 1"), while the
- * recursive branch refills the same slot with whatever it produces (BIGINT for count ()),
- * so the operand type changes between iterations of one query.  The interpreted path never
- * notices because qdata_add_dbval () re-reads the actual types per row.
- *
- * Trusting the domain here is not merely a debug-build assert in db_get_int (): in a
- * release build db_get_int () on a BIGINT returns the low half of the value, which is a
- * silently wrong answer -- worse than the crash.  So verify, and hand the row to the
- * interpreter when the types are not what the kernel was specialized for. */
+/* A typed kernel is bound because both operands were of its type at compile time, and that holds for the whole
+ * execution: a list column has the unified domain of every branch that fills it (a recursive CTE's anchor and recursive
+ * parts included) and a bind has the type of its signature, so no row brings a value of another type. */
 #define EXPR_ARITH_REQUIRE_TYPE(a, b, t) \
-  if (unlikely (DB_VALUE_DOMAIN_TYPE (a) != (t) || DB_VALUE_DOMAIN_TYPE (b) != (t))) \
-    { \
-      return expr_arith_row_interp (step, ctx); \
-    }
-
-/* Evaluate this node's whole subtree the interpreted way and take the result into the
- * kernel's own slot, so the rest of the program sees the cell it expects. */
-static int
-expr_arith_row_interp (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
-{
-  DB_VALUE *peek = NULL;
-
-  if (step->regu == NULL)
-    {
-      return ER_FAILED;
-    }
-  if (fetch_peek_dbval (ctx->thread_p, step->regu, ctx->vd, NULL, ctx->obj_oid, ctx->tpl, &peek) != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-  pr_clear_value (step->out);
-  return pr_clone_value (peek, step->out);
-}
+  assert (DB_VALUE_DOMAIN_TYPE (a) == (t) && DB_VALUE_DOMAIN_TYPE (b) == (t))
 
 /* A result domain the kernel's own type already satisfies is dropped at compile time
  * (step->domain == NULL), so only the parameterized NUMERIC case reaches the coercion. */
@@ -720,12 +688,8 @@ expr_k_cast_strict (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
       PRIM_SET_NULL (step->out); \
       return NO_ERROR; \
     } \
-  /* the operand type was fixed at compile time; a value of another type (see \
-   * EXPR_ARITH_REQUIRE_TYPE) goes to the interpreter instead of a raw db_get_* read */ \
-  if (unlikely (DB_VALUE_DOMAIN_TYPE (src) != (t))) \
-    { \
-      return expr_arith_row_interp (step, ctx); \
-    }
+  /* the operand type was fixed at compile time (see EXPR_ARITH_REQUIRE_TYPE) */ \
+  assert (DB_VALUE_DOMAIN_TYPE (src) == (t))
 
 /* mirror of the T_EXTRACT path (db_string_extract_dbval () DB_TYPE_DATE case) */
 static int
@@ -872,10 +836,8 @@ expr_k_nullif (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
       return V_UNKNOWN; \
     }
 
-/* A leaf reads both values with the db_get_* of the type it was resolved for.  Whether the
- * values can drift from that type (the recursive-CTE case EXPR_ARITH_REQUIRE_TYPE guards
- * against) is known when the predicate is compiled, so the type check is not paid here but
- * by the caller, and only for operands that can drift -- see pred->need_type_guard. */
+/* A leaf reads both values with the db_get_* of the type it was resolved for: no row brings a value of another type
+ * (see EXPR_ARITH_REQUIRE_TYPE). */
 #define EXPR_PRED_CMP_LEAF(name, get, op) \
 static DB_LOGICAL \
 name (const EXPR_PRED * pred) \
@@ -970,23 +932,10 @@ expr_pred_generic_cmp (const EXPR_PRED * pred)
   return expr_pred_map_cmp (result, pred->rel_op);
 }
 
-/* exception to deciding before the rows: a row whose operand drifted from the leaf's compiled type compares the values,
- * as the interpreter's VALUES method does (the leaf's direct kernel and its decided comparison both read that type) */
-static DB_LOGICAL
-expr_pred_drifted_cmp (const EXPR_PRED * pred)
-{
-  bool comparable = true;
-  int result;
-
-  EXPR_PRED_CMP_PROLOGUE (v1, v2);
-
-  result = tp_value_compare_with_error (v1, v2, 1, 0, &comparable);
-  if (!comparable)
-    {
-      return V_ERROR;
-    }
-  return expr_pred_map_cmp (result, pred->rel_op);
-}
+/* the values of a direct-compare leaf are of the type it was resolved for (see EXPR_ARITH_REQUIRE_TYPE) */
+#define EXPR_PRED_ASSERT_TYPES(pred, v1, v2) \
+  assert ((pred)->fast_type == DB_TYPE_UNKNOWN || DB_IS_NULL (v1) || DB_IS_NULL (v2) \
+	  || (DB_VALUE_DOMAIN_TYPE (v1) == (pred)->fast_type && DB_VALUE_DOMAIN_TYPE (v2) == (pred)->fast_type))
 
 /* resolve the (type, operator) pair to its leaf once, at compile time */
 static EXPR_PRED_EVAL_FN
@@ -1067,20 +1016,7 @@ expr_pred_eval (const EXPR_PRED * pred)
   switch (pred->kind)
     {
     case EXPR_PRED_COMP:
-      if (unlikely (pred->need_type_guard) && pred->fast_type != DB_TYPE_UNKNOWN)
-	{
-	  /* an operand that can drift from its compile-time type (a recursive CTE refills an
-	   * INTEGER-domain slot with a BIGINT): db_get_int () on a BIGINT would compare the low
-	   * half -- a silently wrong answer -- so such a row takes the generic comparison, which
-	   * coerces the sides the way eval_value_rel_cmp () does */
-	  DB_VALUE *v1 = *pred->arg1p, *v2 = *pred->arg2p;
-
-	  if (!DB_IS_NULL (v1) && !DB_IS_NULL (v2)
-	      && (DB_VALUE_DOMAIN_TYPE (v1) != pred->fast_type || DB_VALUE_DOMAIN_TYPE (v2) != pred->fast_type))
-	    {
-	      return expr_pred_drifted_cmp (pred);
-	    }
-	}
+      EXPR_PRED_ASSERT_TYPES (pred, *pred->arg1p, *pred->arg2p);
       return pred->eval (pred);
 
     case EXPR_PRED_COMP_TORDER:
@@ -1098,39 +1034,25 @@ expr_pred_eval (const EXPR_PRED * pred)
 	    return (DB_IS_NULL (v1) && DB_IS_NULL (v2)) ? V_TRUE : V_FALSE;
 	  }
 
-	/* the direct reads are only valid while both values are of the resolved type (see the
-	 * EXPR_PRED_COMP case above); exception to deciding before the rows: a drifted row compares
-	 * the values in total order */
-	if (unlikely (pred->need_type_guard) && pred->fast_type != DB_TYPE_UNKNOWN
-	    && (DB_VALUE_DOMAIN_TYPE (v1) != pred->fast_type || DB_VALUE_DOMAIN_TYPE (v2) != pred->fast_type))
+	EXPR_PRED_ASSERT_TYPES (pred, v1, v2);
+	switch (pred->fast_type)
 	  {
-	    result = tp_value_compare_with_error (v1, v2, 1, 1, &comparable);
+	  case DB_TYPE_INTEGER:
+	    result = (db_get_int (v1) == db_get_int (v2)) ? DB_EQ : DB_NE;
+	    break;
+	  case DB_TYPE_BIGINT:
+	    result = (db_get_bigint (v1) == db_get_bigint (v2)) ? DB_EQ : DB_NE;
+	    break;
+	  case DB_TYPE_DOUBLE:
+	    result = (db_get_double (v1) == db_get_double (v2)) ? DB_EQ : DB_NE;
+	    break;
+	  default:
+	    result = expr_pred_compare (pred, v1, v2, 1, &comparable);
 	    if (!comparable)
 	      {
 		return V_ERROR;
 	      }
-	  }
-	else
-	  {
-	    switch (pred->fast_type)
-	      {
-	      case DB_TYPE_INTEGER:
-		result = (db_get_int (v1) == db_get_int (v2)) ? DB_EQ : DB_NE;
-		break;
-	      case DB_TYPE_BIGINT:
-		result = (db_get_bigint (v1) == db_get_bigint (v2)) ? DB_EQ : DB_NE;
-		break;
-	      case DB_TYPE_DOUBLE:
-		result = (db_get_double (v1) == db_get_double (v2)) ? DB_EQ : DB_NE;
-		break;
-	      default:
-		result = expr_pred_compare (pred, v1, v2, 1, &comparable);
-		if (!comparable)
-		  {
-		    return V_ERROR;
-		  }
-		break;
-	      }
+	    break;
 	  }
 	if (result == DB_UNK)
 	  {
@@ -2526,16 +2448,6 @@ expr_node_type (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu)
   return expr_leaf_type (bctx, regu);
 }
 
-/* can the value published for this node have a DB_TYPE other than the node's compile-time
- * type?  Only the leaves that read a slot filled by someone else per row (a list-file slot of
- * a recursive CTE, a host variable) can; heap attributes, inline literals and the compiled
- * kernels' own results cannot. */
-static bool
-expr_regu_may_drift (const REGU_VARIABLE * regu)
-{
-  return regu != NULL && (regu->type == TYPE_CONSTANT || regu->type == TYPE_POSITION || regu->type == TYPE_POS_VALUE);
-}
-
 /* generic tp_value_compare () is only used for same-type pairs the interpreted path
  * compares without any pre-coercion */
 static bool
@@ -2909,41 +2821,12 @@ expr_scan_pred_build (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, int depth, in
 	pred->fast_type = fast_type;
 	pred->compare = et->compare;
 	pred->eval = expr_pred_cmp_leaf (fast_type, et->rel_op);
-	/* A heap attribute decodes to its domain type and an inline literal (TYPE_DBVAL) is
-	 * the value baked into the plan, so a leaf over those two alone never meets another
-	 * type at run time.  Every other operand is read from a slot somebody else fills per
-	 * row -- a host variable (TYPE_POS_VALUE), a list-file column (TYPE_POSITION), a
-	 * value-list entry (TYPE_CONSTANT: a correlated outer column or a subquery result,
-	 * which a recursive CTE refills with the BIGINT of count () in an INTEGER-domain slot)
-	 * or a computed operand -- and can drift from the type the leaf was resolved for, so
-	 * the leaf verifies the runtime types per row and hands a drifted row to
-	 * eval_pred_comp0 (), which compares it exactly as the interpreter does.
-	 * This is the same rule expr_compile_pred () applies through expr_regu_may_drift ().
-	 * The pinned literal is the leaf's own value: nothing else writes it.
-	 *
-	 * The attribute half of that claim holds across old-representation records too:
-	 * ALTER changes that keep the schema-only path (SM_ATTR_CHG_ONLY_SCHEMA,
-	 * execute_schema.c) are asserted to leave the DB_TYPE unchanged (precision
-	 * increases and set-compat only), and every change of the DB_TYPE itself goes
-	 * through SM_ATTR_CHG_WITH_ROW_UPDATE / BEST_EFFORT, which rewrite the rows. */
-	pred->need_type_guard = !((et->lhs->type == TYPE_ATTR_ID || et->lhs->type == TYPE_DBVAL)
-				  && (et->rhs->type == TYPE_ATTR_ID || et->rhs->type == TYPE_DBVAL));
-	/* an arithmetic side is compiled into a region of the tree's program (see
-	 * expr_scan_side_compile ()); a compiled kernel always produces the type it was
-	 * compiled for, so such a side needs no drift guard */
 	/* the operands compile under this leaf's own eval_pred () frame: the predicate depth so
 	 * far plus one, the way the interpreter's counter stands when it fetches them */
 	bctx->depth = depth + 1;
 	expr_scan_side_compile (bctx, pred, et->lhs, false, shareable);
 	expr_scan_side_compile (bctx, pred, et->rhs, true, shareable);
 	bctx->depth = 0;
-	if (pred->lhs_compiled || pred->rhs_compiled)
-	  {
-	    bool lhs_drift = !pred->lhs_compiled && et->lhs->type != TYPE_ATTR_ID && et->lhs->type != TYPE_DBVAL;
-	    bool rhs_drift = !pred->rhs_compiled && et->rhs->type != TYPE_ATTR_ID && et->rhs->type != TYPE_DBVAL;
-
-	    pred->need_type_guard = lhs_drift || rhs_drift;
-	  }
 	return pred;
       }
 
@@ -3143,8 +3026,6 @@ expr_scan_pred_eval_node (EXPR_PRED * pred, EXPR_EVAL_CTX * ctx)
     {
     case EXPR_PRED_COMP_FETCH:
       {
-	DB_TYPE rt1, rt2;
-
 	if (expr_scan_side_value (pred, false, ctx) != NO_ERROR)
 	  {
 	    return V_ERROR;
@@ -3157,19 +3038,8 @@ expr_scan_pred_eval_node (EXPR_PRED * pred, EXPR_EVAL_CTX * ctx)
 	  {
 	    return V_ERROR;
 	  }
-	if (likely (!pred->need_type_guard))
-	  {
-	    return pred->eval (pred);
-	  }
-	rt1 = DB_VALUE_DOMAIN_TYPE (*pred->arg1p);
-	rt2 = DB_VALUE_DOMAIN_TYPE (*pred->arg2p);
-	if (rt1 == rt2 && (pred->fast_type == DB_TYPE_UNKNOWN || rt1 == pred->fast_type))
-	  {
-	    return pred->eval (pred);
-	  }
-	/* runtime types the leaf was not resolved for (a host variable bound to another
-	 * type): the interpreted term evaluator applies its coercion exactly as before */
-	return eval_pred_comp0 (ctx->thread_p, (const PRED_EXPR *) pred->fetch_src, ctx->vd, ctx->obj_oid);
+	EXPR_PRED_ASSERT_TYPES (pred, *pred->arg1p, *pred->arg2p);
+	return pred->eval (pred);
       }
 
     case EXPR_PRED_INTERP_COMP0:
@@ -3553,10 +3423,6 @@ expr_compile_pred_impl (EXPR_BUILD_CTX * bctx, const PRED_EXPR * pr, bool * comp
 	pred->rel_op = et->rel_op;
 	pred->fast_type = fast_type;
 	pred->compare = et->compare;
-	/* a heap attribute, an inline literal and a compiled arithmetic node always carry the
-	 * type they were compiled for; a list slot (TYPE_CONSTANT/TYPE_POSITION -- a recursive
-	 * CTE refills it with another type) or a host variable can drift and is verified per row */
-	pred->need_type_guard = expr_regu_may_drift (et->lhs) || expr_regu_may_drift (et->rhs);
 	/* bind the (type, operator) leaf now so the row loop makes one indirect call
 	 * instead of testing the type and then the operator */
 	pred->eval = expr_pred_cmp_leaf (fast_type, et->rel_op);
