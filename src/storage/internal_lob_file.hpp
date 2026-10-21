@@ -164,6 +164,8 @@ internal_lob_is_valid_blob_bit_length (DB_BIGINT data_length, DB_BIGINT bit_leng
 extern int internal_lob_encode_disk_length (const INTERNAL_LOB_LOCATOR &locator, DB_BIGINT &disk_length);
 extern int internal_lob_decode_disk_length (INTERNAL_LOB_LOCATOR &locator, DB_BIGINT disk_length);
 extern int internal_lob_make_locator_db_value (DB_VALUE *value, DB_TYPE lob_type, const INTERNAL_LOB_LOCATOR &locator);
+extern int internal_lob_make_adopt_locator_db_value (DB_VALUE *value, DB_TYPE lob_type,
+    const INTERNAL_LOB_LOCATOR &locator);
 extern bool internal_lob_fits_db_value (DB_BIGINT logical_length);
 extern int internal_lob_read_db_value (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, DB_TYPE lob_type,
 				       DB_VALUE *value, TP_DOMAIN *domain);

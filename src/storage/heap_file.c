@@ -13222,6 +13222,13 @@ heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, 
 
   if (internal_lob_db_value_is_locator (value, &source_locator))
     {
+      if (source_locator.adopted)
+	{
+	  *locator = source_locator;
+	  locator->adopted = false;
+	  return NO_ERROR;
+	}
+
       return heap_internal_lob_clone_locator (thread_p, class_oid, type, &source_locator, locator);
     }
 

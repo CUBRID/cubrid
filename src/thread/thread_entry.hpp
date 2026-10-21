@@ -341,6 +341,10 @@ namespace cubthread
 	return oos_attrids.size () == oos_oids.size () && oos_is_internal_lob.size () == oos_oids.size ();
       }
 
+      /* Standalone loaddb assigns already-stored Internal LOB locators through the workspace, which drops their
+       * transport marker; while set, locator force re-reads such records so the heap sink turns the locator
+       * back into a stub. */
+      bool internal_lob_adopts_locators;
 
 
       bool m_is_private_lru_enabled;

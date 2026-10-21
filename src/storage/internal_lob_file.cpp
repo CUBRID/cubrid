@@ -1370,6 +1370,12 @@ internal_lob_make_locator_db_value (DB_VALUE *value, DB_TYPE lob_type, const INT
   return internal_lob_make_locator_db_value_internal (value, lob_type, locator, false);
 }
 
+int
+internal_lob_make_adopt_locator_db_value (DB_VALUE *value, DB_TYPE lob_type, const INTERNAL_LOB_LOCATOR &locator)
+{
+  return internal_lob_make_locator_db_value_internal (value, lob_type, locator, true);
+}
+
 static int
 internal_lob_make_locator_db_value_internal (DB_VALUE *value, DB_TYPE lob_type, const INTERNAL_LOB_LOCATOR &locator,
     bool adopted)
