@@ -92,7 +92,8 @@ typedef enum
   MSGCAT_UTIL_SET_FLASHBACK = 58,
   MSGCAT_UTIL_SET_MEMMON = 59,
   MSGCAT_UTIL_SET_CLEANFILEDB = 60,
-  MSGCAT_UTIL_SET_UPGRADEDB = 61
+  MSGCAT_UTIL_SET_UPGRADEDB = 61,
+  MSGCAT_UTIL_SET_RKCHECK = 62
 } MSGCAT_UTIL_SET;
 
 /* Message id in the set MSGCAT_UTIL_SET_GENERIC */
@@ -790,6 +791,12 @@ typedef enum
   UPGRADEDB_MSG_USAGE = 60
 } MSGCAT_UPGRADEDB_MSG;
 
+/* Message id in the set MSGCAT_UTIL_SET_RKCHECK */
+typedef enum
+{
+  RKCHECK_MSG_USAGE = 60
+} MSGCAT_RKCHECK_MSG;
+
 typedef void *DSO_HANDLE;
 
 typedef enum
@@ -840,6 +847,7 @@ typedef enum
   FLASHBACK,
   MEMMON,
   UPGRADEDB,
+  RKCHECK,
   LOGFILEDUMP,
 } UTIL_INDEX;
 
@@ -931,6 +939,7 @@ typedef struct _ha_config
 #define UTIL_COPYLOGDB          "copylogdb" UTIL_EXE_EXT
 #define UTIL_APPLYLOGDB         "applylogdb" UTIL_EXE_EXT
 #define UTIL_PL_NAME            "cub_pl" UTIL_EXE_EXT
+#define UTIL_RKCHECK            "rkcheck" UTIL_EXE_EXT
 
 #define PROPERTY_ON             "on"
 #define PROPERTY_OFF            "off"
@@ -966,6 +975,7 @@ typedef struct _ha_config
 #define PRINT_CMD_GETID         "getid"
 #define PRINT_CMD_TEST          "test"
 #define PRINT_CMD_REPLICATION	"replication"
+#define PRINT_CMD_RKCHECK       "rkcheck"
 
 #define PRINT_RESULT_SUCCESS    "success"
 #define PRINT_RESULT_FAIL       "fail"
@@ -1057,6 +1067,7 @@ typedef struct _ha_config
 #define UTIL_OPTION_TDE			        "tde"
 #define UTIL_OPTION_FLASHBACK                   "flashback"
 #define UTIL_OPTION_MEMMON                      "memmon"
+#define UTIL_OPTION_RKCHECK                     "rkcheck"
 
 #define HIDDEN_CS_MODE_S                        15000
 
@@ -1827,6 +1838,12 @@ typedef struct _ha_config
 #define UPGRADE_APPLY_SCRIPT_LIST_L             "apply-script-list"
 #endif
 
+/* rkcheck option list */
+#define RKCHECK_CHECK_RK_CONSTRAINT_S 'r'
+#define RKCHECK_CHECK_RK_CONSTRAINT_L "rk-check"
+#define RKCHECK_CHECK_FK_CONSTRAINT_S 'f'
+#define RKCHECK_CHECK_FK_CONSTRAINT_L "fk-check"
+
 #if defined(WINDOWS)
 #define LIB_UTIL_CS_NAME                "cubridcs.dll"
 #define LIB_UTIL_SA_NAME                "cubridsa.dll"
@@ -1965,6 +1982,7 @@ extern "C"
   extern int tde (UTIL_FUNCTION_ARG * arg_map);
   extern int flashback (UTIL_FUNCTION_ARG * arg_map);
   extern int memmon (UTIL_FUNCTION_ARG * arg_map);
+  extern int rkcheck (UTIL_FUNCTION_ARG * arg_map);
 
   extern void util_admin_usage (const char *argv0);
   extern void util_admin_version (const char *argv0);

@@ -1385,3 +1385,12 @@ valid options:\n\
                                upgraded, 2 if an upgrade is required\n\
   -f, --force                  apply the upgrade without prompting for confirmation\n\
   -v, --verbose                print upgrade scripts before applying them\n
+
+$set 62 MSGCAT_UTIL_SET_RKCHECK
+60 \
+rkcheck: Checks HA replication key constraint violations.\n\
+usage: %1$s rkcheck [OPTION] database-name\n\
+\n\
+valid option:\n\
+    -r, --rk-check           Check RK(Replication Key) constraint violations\n\
+    -f, --fk-check           Check FK(Foreign Key) constraint violations\n

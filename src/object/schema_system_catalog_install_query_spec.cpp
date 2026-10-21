@@ -71,6 +71,7 @@ sm_define_view_class_spec (void)
 	  "[c].[owner].[name] AS [owner_name], "
 	  "CASE [c].[class_type] WHEN 0 THEN 'CLASS' WHEN 1 THEN 'VCLASS' ELSE 'UNKNOWN' END AS [class_type], "
 	  "CASE WHEN [c].[is_system_class] = 1 THEN 'YES' ELSE 'NO' END AS [is_system_class], "
+	  "CASE WHEN ([c].[flags] & %d) <> 0 THEN 'NO' ELSE 'YES' END AS [is_replication_class], "
 	  "CASE [c].[tde_algorithm] WHEN 0 THEN 'NONE' WHEN 1 THEN 'AES' WHEN 2 THEN 'ARIA' END AS [tde_algorithm], "
 	  "CASE [c].[statistics_strategy] "
             "WHEN 0 THEN 'SAMPLING' "
@@ -134,6 +135,7 @@ sm_define_view_class_spec (void)
 		    "AND [au].[auth_type] = 'SELECT'"
 		")"
 	    ")",
+        SM_CLASSFLAG_DATA_REPLICATION_OFF,
 	CT_PARTITION_NAME,
         SM_CLASSFLAG_REUSE_OID,
 	CT_CLASS_NAME,

@@ -1371,3 +1371,12 @@ usage: %1$s upgradedb [옵션] database-name\n\
                                2 업그레이드 필요\n\
   -f, --force                  확인 프롬프트 없이 업그레이드를 적용합니다\n\
   -v, --verbose                업그레이드 스크립트를 적용 전에 출력합니다\n
+
+$set 62 MSGCAT_UTIL_SET_RKCHECK
+60 \
+rkcheck: HA 복제 키 제약 조건 준수 여부를 검사합니다.\n\
+사용법: %1$s rkcheck [OPTION] database-name\n\
+\n\
+valid option:\n\
+    -r, --rk-check           RK(Replication Key) 제약사항을 확인합니다.\n\
+    -f, --fk-check           FK(Foreign Key) 제약사항을 확인합니다.\n

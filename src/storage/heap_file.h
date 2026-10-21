@@ -467,6 +467,7 @@ extern int heap_get_num_data_pages (THREAD_ENTRY * thread_p, const HFID * hfid, 
  * heap_estimate () below still returns *npages (or -1 on error) -- do not test the two the same way. */
 extern int heap_get_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, INT64 * nobjs,
 				 int *avg_length);
+extern int heap_get_class_repl_on (THREAD_ENTRY * thread_p, const OID * class_oid, bool * repl_on);
 
 extern int heap_estimate (THREAD_ENTRY * thread_p, const HFID * hfid, int *npages, INT64 * nobjs, int *avg_length);
 extern int heap_estimate_num_objects (THREAD_ENTRY * thread_p, const HFID * hfid);
