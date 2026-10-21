@@ -116,6 +116,14 @@ extern "C"
 #define CAS_INFO_FLAG_MASK_AUTOCOMMIT		0x01
 #define CAS_INFO_FLAG_MASK_FORCE_OUT_TRAN       0x02
 #define CAS_INFO_FLAG_MASK_NEW_SESSION_ID       0x04
+/* A stream session is open on this connection, so the statement that opened it
+ * is not finished and its auto-commit is owed to END. A driver that commits
+ * from its own side reads this and holds that commit back; the CAS pays it.
+ *
+ * Only a PROTOCOL_V13 client may read it. init_msg_header () fills this byte
+ * with CAS_INFO_RESERVED_DEFAULT, so every bit above the three older masks
+ * reads as 1 from any earlier server. */
+#define CAS_INFO_FLAG_MASK_STREAM_OPEN          0x08
 
 #define CAS_INFO_SIZE			(4)
 #define CAS_INFO_RESERVED_DEFAULT	(-1)
@@ -217,6 +225,14 @@ extern "C"
     CAS_FC_CURSOR_CLOSE = 42,
     CAS_FC_GET_SHARD_INFO = 43,
     CAS_FC_CAS_CHANGE_MODE = 44,
+    /* PROTOCOL_V13; a driver checks for it before opening a stream */
+    CAS_FC_STREAM_SEND_DATA = 45,
+    CAS_FC_STREAM_END = 46,
+    /* Open and give up, for a consumer whose client half is the driver itself.
+     * A stream opened by a statement needs neither: the statement opens it, and
+     * the failure the server can see closes it. */
+    CAS_FC_STREAM_INIT = 47,
+    CAS_FC_STREAM_ABORT = 48,
     /* PROTOCOL_V14: read cursor over an internal LOB locator sent in a BLOB/CLOB column */
     CAS_FC_LOB_STREAM_OPEN = 49,
     CAS_FC_LOB_STREAM_READ = 50,
@@ -257,6 +273,9 @@ extern "C"
     PROTOCOL_V10 = 10,		/* Secure Broker/CAS using SSL */
     PROTOCOL_V11 = 11,		/* make out resultset */
     PROTOCOL_V12 = 12,		/* Remove trailing zeros from double and float types */
+    PROTOCOL_V13 = 13,		/* client->server byte-stream transport (CAS_FC_STREAM_*); on develop
+				 * V13 also makes the CAS-issued session id required for QC/X1
+				 * query cancel, which this branch gets when it takes develop */
     PROTOCOL_V14 = 14,		/* internal LOB read streaming: the column carries a locator, not the content
 				 * (CAS_FC_LOB_STREAM_*) */
     CURRENT_PROTOCOL = PROTOCOL_V14

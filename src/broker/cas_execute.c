@@ -301,6 +301,7 @@ static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
+static void ux_stream_give_up_after_error (void);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
 
 #if defined (CAS_FOR_CGW)
@@ -645,6 +646,8 @@ ux_database_shutdown (bool request_server)
   memset (database_passwd, 0, sizeof (database_passwd));
   cas_default_isolation_level = 0;
   cas_default_lock_timeout = -1;
+
+  ux_stream_reset ();
 }
 
 int
@@ -836,6 +839,11 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       srv_handle->is_prepared = TRUE;
     }
 
+  /* A shard CAS serves one shard, and a COPY stream carries no shard key --
+   * the rows have nowhere to be routed. The proxy refuses only the chunks
+   * (fn_stream_send_data), by which time the statement has opened a session
+   * and a transaction on one backend and the client has begun sending.
+   * Refuse it here, where the statement type is already known. */
 prepare_result_set:
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;
@@ -937,6 +945,20 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
 {
   int err_code = 0;
 
+  /* A COMMIT cannot finish a stream still running. It rolls back and fails instead -- what every driver already
+   * takes a failed END_TRAN to have done. */
+  if (tran_type == CCI_TRAN_COMMIT && stream_from_is_open ())
+    {
+      err_code = ux_end_tran (CCI_TRAN_ROLLBACK, reset_con_status, ddl_audit_log);
+      if (err_code < 0)
+	{
+	  return err_code;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a COMMIT inside an open stream session rolls the transaction back");
+      return ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+    }
+
   ux_end_tran_cleanup (tran_type);
 
   if (tran_type == CCI_TRAN_COMMIT)
@@ -950,6 +972,9 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
     }
   else if (tran_type == CCI_TRAN_ROLLBACK)
     {
+      /* the server ends any open stream session with the rollback, so this
+       * connection is no longer holding one either */
+      ux_stream_reset ();
       err_code = db_abort_transaction ();
       cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_abort_transaction() = %d", err_code);
       if (err_code < 0)
@@ -1359,6 +1384,8 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 execute_error:
   NET_BUF_ERR_SET (net_buf);
 
+  ux_stream_give_up_after_error ();
+
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
       db_session_set_xasl_cache_pinned (session, false, false);
@@ -1609,6 +1636,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	      as_info->num_holdable_results++;
 	    }
 	}
+
     }
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
@@ -1703,6 +1731,8 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
 execute_all_error:
   NET_BUF_ERR_SET (net_buf);
+
+  ux_stream_give_up_after_error ();
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
@@ -10778,6 +10808,184 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
 
   return err_code;
 }
+
+/*
+ * ux_stream_reset () - Drop the stream state this connection was carrying
+ *
+ * Called where the server-side session is known to be gone, so the next client the CAS process serves does not
+ * inherit a stream a vanished client left open.
+ */
+void
+ux_stream_reset (void)
+{
+  stream_from_reset ();
+}
+
+/*
+ * ux_stream_is_open () - Does this connection hold an open stream session?
+ *
+ * The reply header carries this so a driver that runs auto-commit from its own
+ * side can hold its commit back the way the CAS holds its own.
+ */
+bool
+ux_stream_is_open (void)
+{
+  return stream_from_is_open ();
+}
+
+/*
+ * ux_stream_admits_request () - May this request run on the connection now?
+ *
+ * An open stream is one statement still running: only its own requests and the
+ * ones that end the whole transaction are admitted (a COMMIT rolls back, see
+ * ux_end_tran).
+ *
+ * The internal LOB read cursor (CAS_FC_LOB_STREAM_*) is admitted as well. It is
+ * not a statement: it runs nothing, writes nothing and ends nothing, and it
+ * touches neither the open stream nor its transaction boundary. A driver may
+ * also need it in the middle of a stream -- copying a stored LOB into an INSERT
+ * reads the source through its locator while sending the bytes up the stream.
+ */
+bool
+ux_stream_admits_request (int func_code)
+{
+  if (!stream_from_is_open ())
+    {
+      return true;
+    }
+
+  switch (func_code)
+    {
+    case CAS_FC_STREAM_SEND_DATA:
+    case CAS_FC_STREAM_END:
+    case CAS_FC_STREAM_ABORT:
+    case CAS_FC_END_TRAN:
+    case CAS_FC_CHECK_CAS:
+    case CAS_FC_END_SESSION:
+    case CAS_FC_CON_CLOSE:
+    case CAS_FC_LOB_STREAM_OPEN:
+    case CAS_FC_LOB_STREAM_READ:
+    case CAS_FC_LOB_STREAM_CLOSE:
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * ux_stream_give_up_after_error () - Drop the stream a failing statement opened
+ *
+ * It was opened for the transfer that follows, and an error reply means that transfer never comes. No statement
+ * runs while a stream is open (ux_stream_admits_request), so one open here is this statement's.
+ */
+static void
+ux_stream_give_up_after_error (void)
+{
+  if (stream_from_is_open ())
+    {
+      (void) stream_from_abort ();
+      ux_stream_reset ();
+    }
+}
+
+/*
+ * ux_stream_init () - Open a stream session the driver asked for directly
+ *
+ * The statement path does not come through here: the DML stream is opened and ended inside its statement.
+ */
+int
+ux_stream_init (int stream_kind, char *config, int config_len, T_NET_BUF * net_buf)
+{
+  int err_code;
+
+  /* Only a consumer whose client half is the driver may be opened here: the internal-LOB upload, which has no
+   * statement of its own. COPY, the internal-LOB DML stream and the loaddb stream are opened by the statement or
+   * utility that owns them, and that is where their target is checked (privilege, view, partition, trigger) --
+   * opening one directly would hand the server a target nothing has checked. */
+  if (stream_kind != STREAM_KIND_INTERNAL_LOB)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a driver may open only an internal LOB upload stream directly");
+      err_code = ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  err_code = stream_from_init (stream_kind, config, config_len);
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  return 0;
+}
+
+int
+ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf)
+{
+  int err_code;
+
+  err_code = stream_from_send_data (data, data_len);
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  return 0;
+}
+
+int
+ux_stream_end (T_NET_BUF * net_buf)
+{
+  int err_code;
+  INT64 count = 0;
+
+  err_code = stream_from_end (&count);
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  /* first field is the result code, as every other CAS reply has it; the
+   * kind's 64-bit count follows: the token for an upload */
+  net_buf_cp_int (net_buf, NO_ERROR, NULL);
+  net_buf_cp_bigint (net_buf, count, NULL);
+  return 0;
+}
+
+/*
+ * ux_stream_abort () - Give up on the stream without ending it
+ */
+int
+ux_stream_abort (T_NET_BUF * net_buf)
+{
+  int err_code;
+
+  err_code = stream_from_abort ();
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, NO_ERROR, NULL);
+  return 0;
+}
+
 /* Internal LOB read streaming: the driver pulls a locator's bytes (see dbval_to_net_buf) through these calls,
  * a thin pass-through to the server read cursor; CAS holds no LOB bytes of its own. */
 int
