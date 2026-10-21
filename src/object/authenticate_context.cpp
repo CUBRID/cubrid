@@ -36,6 +36,8 @@
 #include "schema_manager.h" /* sm_find_class() */
 #include "schema_system_catalog_constants.h"
 #include "locator_cl.h" /* locator_create_heap_if_needed () */
+// XXX: SHOULD BE THE LAST INCLUDE HEADER
+#include "memory_wrapper.hpp"
 
 // static functions
 static int au_add_method_check_authorization (void);
