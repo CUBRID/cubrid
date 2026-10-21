@@ -7750,6 +7750,52 @@ locator_wset_trace_key_source (THREAD_ENTRY * thread_p, LOG_TDES * tdes, const c
 }
 
 /*
+ * locator_wset_resolve_ref_partition () - point a writeset reference key at the partition that holds the key
+ *
+ *   key(in): the foreign-key value, without NULL elements
+ *   ref_oid(in/out): the referenced class on input, the partition that holds the key on output
+ *   ref_btid(in/out): the referenced primary key on input, that partition's primary key on output
+ *
+ * return: NO_ERROR, or an error code on failure
+ *
+ * Note: A foreign key names the partitioned class, but the rows of a partitioned parent are stored in its
+ *       partitions, each with its own primary key B-tree, and the parent's writer collects its write key with
+ *       the partition and that B-tree. The reference key is moved to the partition the key belongs to, the
+ *       same way the foreign key check finds the parent row, so that it meets the parent's write key.
+ *       A class that is not partitioned is left as it is.
+ */
+static int
+locator_wset_resolve_ref_partition (THREAD_ENTRY * thread_p, DB_VALUE * key, OID * ref_oid, BTID * ref_btid)
+{
+  OR_CLASSREP *classrepr;
+  int classrepr_cacheindex = -1;
+  PRUNING_CONTEXT pcontext;
+  HFID part_hfid;
+  int error_code = NO_ERROR;
+
+  classrepr = heap_classrepr_get (thread_p, ref_oid, NULL, NULL_REPRID, &classrepr_cacheindex);
+  if (classrepr == NULL)
+    {
+      return locator_wset_error ("failed to read referenced parent class");
+    }
+
+  if (classrepr->has_partition_info > 0)
+    {
+      partition_init_pruning_context (&pcontext);
+      error_code = partition_load_pruning_context (thread_p, ref_oid, DB_PARTITIONED_CLASS, &pcontext);
+      if (error_code == NO_ERROR && pcontext.partitions != NULL)
+	{
+	  error_code = partition_prune_unique_btid (&pcontext, key, ref_oid, &part_hfid, ref_btid);
+	}
+      partition_clear_pruning_context (&pcontext);
+    }
+
+  heap_classrepr_free_and_init (classrepr, &classrepr_cacheindex);
+
+  return error_code;
+}
+
+/*
  * locator_wset_collect_fk_ref () - collect a writeset reference key for a foreign-key index
  *
  *   tdes(in/out): current transaction descriptor
@@ -7777,6 +7823,9 @@ locator_wset_collect_fk_ref (THREAD_ENTRY * thread_p, LOG_TDES * tdes, OR_INDEX 
   DB_VALUE *fk_key;
   DB_VALUE dbvalue;
   BTID fk_btid;
+  OID ref_oid;
+  BTID ref_btid;
+  bool has_null;
   char buf[DBVAL_BUFSIZE + MAX_ALIGNMENT];
   char *aligned_buf;
   int error_code;
@@ -7814,10 +7863,35 @@ locator_wset_collect_fk_ref (THREAD_ENTRY * thread_p, LOG_TDES * tdes, OR_INDEX 
       fk_key->data.midxkey.domain = fk_key_domain;
     }
 
+  COPY_OID (&ref_oid, &index->fk->ref_class_oid);
+  BTID_COPY (&ref_btid, &index->fk->ref_class_pk_btid);
+
+  /* a key with a NULL element references no parent row, and wset_add_ref_key skips it */
+  if (index->n_atts > 1)
+    {
+      has_null = btree_multicol_key_has_null (fk_key);
+    }
+  else
+    {
+      has_null = DB_IS_NULL (fk_key);
+    }
+
+  if (!has_null)
+    {
+      error_code = locator_wset_resolve_ref_partition (thread_p, fk_key, &ref_oid, &ref_btid);
+      if (error_code != NO_ERROR)
+	{
+	  if (fk_key == &dbvalue)
+	    {
+	      pr_clear_value (&dbvalue);
+	    }
+	  return error_code;
+	}
+    }
+
   locator_wset_trace_key_source (thread_p, tdes, operation, image, LOG_WSET_KIND_REF, table_oid, inst_oid,
-				 index->fk->fkname, &index->fk->ref_class_oid, &index->fk->ref_class_pk_btid.vfid);
-  error_code = wset_add_ref_key (tdes, &index->fk->ref_class_oid, &index->fk->ref_class_pk_btid.vfid,
-				 fk_key, parent_pk_domain);
+				 index->fk->fkname, &ref_oid, &ref_btid.vfid);
+  error_code = wset_add_ref_key (tdes, &ref_oid, &ref_btid.vfid, fk_key, parent_pk_domain);
 
   if (fk_key == &dbvalue)
     {
