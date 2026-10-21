@@ -358,6 +358,9 @@ static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
 static char cas_db_sys_param[128] = "";
 
+/* internal LOB read cursors open in this transaction; the server drops them all when it ends */
+static int lob_Read_cursor_count = 0;
+
 int
 ux_check_connection (void)
 {
@@ -986,6 +989,7 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
     {
       err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
     }
+  lob_Read_cursor_count = 0;
 
   if (err_code >= 0)
     {
@@ -11002,6 +11006,8 @@ ux_lob_stream_open (char *locator, int locator_len, DB_BIGINT start_offset, T_NE
       NET_BUF_ERR_SET (net_buf);
       return err_code;
     }
+  lob_Read_cursor_count++;
+
   net_buf_cp_int (net_buf, 0, NULL);
   net_buf_cp_bigint (net_buf, (DB_BIGINT) token, NULL);
   return 0;
@@ -11065,6 +11071,19 @@ ux_lob_stream_close (DB_BIGINT token, char auto_commit_mode, T_NET_BUF * net_buf
 
   err_code = internal_lob_stream_close_from_server ((INT64) token);
   /* a failed close leaves no server cursor either, so the count follows it */
+  if (lob_Read_cursor_count > 0)
+    {
+      lob_Read_cursor_count--;
+    }
+
+  /* in auto-commit the last cursor closed ends the transaction its open began, unless that would also end
+   * a stream session or a result set the client still fetches or updates */
+  if (auto_commit_mode == TRUE && lob_Read_cursor_count == 0 && !stream_from_is_open ()
+      && !hm_has_result_tied_to_tran ())
+    {
+      req_info->need_auto_commit = (err_code != NO_ERROR) ? TRAN_AUTOROLLBACK : TRAN_AUTOCOMMIT;
+    }
+
   if (err_code != NO_ERROR)
     {
       errors_in_transaction++;

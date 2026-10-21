@@ -277,6 +277,34 @@ hm_srv_handle_qresult_end_all (bool end_holdable)
     }
 }
 
+/* true if a commit would end a result set still open (not holdable) or drop the locks it updates under */
+bool
+hm_has_result_tied_to_tran (void)
+{
+  T_SRV_HANDLE *srv_handle;
+  int i, j;
+
+  for (i = 0; i < max_handle_id; i++)
+    {
+      srv_handle = srv_handle_table[i];
+      if (srv_handle == NULL || srv_handle->q_result == NULL
+	  || (srv_handle->is_holdable && srv_handle->is_updatable != TRUE))
+	{
+	  continue;
+	}
+
+      for (j = 0; j < srv_handle->num_q_result; j++)
+	{
+	  if (srv_handle->q_result[j].result != NULL)
+	    {
+	      return true;
+	    }
+	}
+    }
+
+  return false;
+}
+
 #if defined(ENABLE_UNUSED_FUNCTION)
 void
 hm_srv_handle_set_pooled ()
