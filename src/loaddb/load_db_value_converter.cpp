@@ -649,7 +649,15 @@ namespace cubload
     /* The ascii representation should be ok, check for overflow */
     if (str_ptr == str || OR_CHECK_FLOAT_OVERFLOW (d))
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, attr->get_domain ().type->get_name ());
+	/*
+	 * The attribute is for the message only, and an element slot may not have one:
+	 * ldr_convert_elem_value () hands over attdesc->conv_att, which ldr_refresh_conv_att ()
+	 * leaves NULL wherever att is NULL - a %constructor argument, and any slot the loader
+	 * walked past after an earlier error on the line. Name the literal's own type there,
+	 * which is what this function built.
+	 */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		(attr != NULL) ? attr->get_domain ().type->get_name () : pr_type_name (DB_TYPE_FLOAT));
 	return ER_IT_DATA_OVERFLOW;
       }
     else
@@ -672,7 +680,15 @@ namespace cubload
     /* The ascii representation should be ok, check for overflow */
     if (str_ptr == str || OR_CHECK_DOUBLE_OVERFLOW (d))
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, attr->get_domain ().type->get_name ());
+	/*
+	 * The attribute is for the message only, and an element slot may not have one:
+	 * ldr_convert_elem_value () hands over attdesc->conv_att, which ldr_refresh_conv_att ()
+	 * leaves NULL wherever att is NULL - a %constructor argument, and any slot the loader
+	 * walked past after an earlier error on the line. Name the literal's own type there,
+	 * which is what this function built.
+	 */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		(attr != NULL) ? attr->get_domain ().type->get_name () : pr_type_name (DB_TYPE_DOUBLE));
 	return ER_IT_DATA_OVERFLOW;
       }
     else
@@ -908,7 +924,8 @@ namespace cubload
 	db_private_free_and_init (NULL, bstring);
 
 	error_code = ER_OBJ_DOMAIN_CONFLICT;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+	/* An element slot may have no attribute; to_db_float () explains. */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, (attr != NULL) ? attr->get_name () : "");
 
 	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
 	return error_code;
