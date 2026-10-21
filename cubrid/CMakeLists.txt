@@ -243,6 +243,7 @@ set(COMMUNICATION_SOURCES
   ${COMMUNICATION_DIR}/network_callback_sr.cpp
   ${COMMUNICATION_DIR}/network_interface_sr.cpp
   ${COMMUNICATION_DIR}/network_sr.c
+  ${COMMUNICATION_DIR}/stream_session.cpp
   )
 
 set(DEBUGGING_HEADERS
@@ -559,6 +560,7 @@ set(STORAGE_SOURCES
   ${STORAGE_DIR}/heap_oos_value_ref.cpp
   ${STORAGE_DIR}/heap_pending_record.cpp
   ${STORAGE_DIR}/internal_lob_file.cpp
+  ${STORAGE_DIR}/internal_lob_stream_session.cpp
   ${STORAGE_DIR}/oid.c
   ${STORAGE_DIR}/oos_file.cpp
   ${STORAGE_DIR}/oos_util.cpp
@@ -634,6 +636,7 @@ set(LOADDB_HEADERS
   ${LOADDB_DIR}/load_server_loader.hpp
   ${LOADDB_DIR}/load_session.hpp
   ${LOADDB_DIR}/load_worker_manager.hpp
+  ${LOADDB_DIR}/internal_lob_stream_kind.h
   )
 
 list(APPEND CONNECTION_SOURCES ${CONNECTION_DIR}/heartbeat.c)
