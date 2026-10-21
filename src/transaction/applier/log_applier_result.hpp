@@ -51,6 +51,8 @@ struct la_stats
 				 * (the previous run may already have committed it on the slave); set once at
 				 * la_apply_repl_log entry and lets the flush error path suppress re-applicability
 				 * errors */
+  bool has_statement;		/* a statement item was applied; the worker then records the commit LSA in the
+				 * applied-statement marker in the same slave transaction */
 };
 
 typedef struct la_result LA_RESULT;

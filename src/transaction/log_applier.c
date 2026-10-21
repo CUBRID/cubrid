@@ -515,6 +515,9 @@ static int la_update_ha_apply_info_start_time (void);
 static int la_get_last_ha_applied_info (void);
 static int la_update_ha_last_applied_info (void);
 static int la_delete_ha_apply_info (void);
+static int la_create_applied_stmt_marker (void);
+static int la_read_applied_stmt_marker (LOG_LSA * marker_lsa);
+static int la_update_applied_stmt_marker (const LOG_LSA * commit_lsa);
 
 static bool la_ignore_on_error (int errid);
 static bool la_retry_on_error (int errid);
@@ -1341,6 +1344,17 @@ la_apply_worker_run_task (LA_APPLY_WORKER_CONTEXT * context, LA_TASK * task, int
   if (result->error != NO_ERROR)
     {
       return;
+    }
+
+  /* a statement must not run again after a restart: mark it in the same slave transaction (see
+   * la_create_applied_stmt_marker) */
+  if (result->stats.has_statement)
+    {
+      result->error = la_update_applied_stmt_marker (&task->commit_lsa);
+      if (result->error != NO_ERROR)
+	{
+	  return;
+	}
     }
 
   result->error = la_apply_worker_commit_task (context, task, trace_level, &result->stats, worker_applied_item_count);
@@ -3544,11 +3558,151 @@ la_delete_ha_apply_info (void)
       db_value_clear (&in_value[i]);
     }
 
+  /* the replication starts over from the beginning, so a marker from the old stream must not skip its commits */
+  if (res >= 0)
+    {
+      LOG_LSA null_lsa;
+
+      LSA_SET_NULL (&null_lsa);
+      (void) la_update_applied_stmt_marker (&null_lsa);
+    }
+
   (void) db_commit_transaction ();
 
   return res;
 
 #undef LA_IN_VALUE_COUNT
+}
+
+/*
+ * The applied-statement marker: a one-row slave table that holds the commit LSA of the last transaction with a
+ * statement item (a DDL, or a DML replicated as a statement with the USE_SBR hint) that the slave committed.
+ *
+ * A restart applies the transactions of its recovery range again, which is safe for row items: they carry the
+ * resulting row, so a second apply gives the same row or fails on a key and is skipped. A statement carries the
+ * statement and runs again: a DDL fails, and a DML such as "SET n = n + 1" succeeds a second time and leaves the
+ * slave different from the master. So a statement transaction must never be applied twice.
+ *
+ * The worker writes the marker in the same slave transaction as the statement, so the two commit or roll back
+ * together. One row is enough because a statement transaction is a barrier on the slave: its label is the
+ * previous commit, so it runs after every earlier commit, and the master raises its history floor to it, so
+ * every later commit waits for it. When it is committed, every commit at or below its commit LSA is committed.
+ * At startup the marker raises last_committed_lsa, and the commits at or below it are skipped whole.
+ */
+#define LA_APPLIED_STMT_MARKER_NAME "ha_applied_stmt_marker"
+
+/*
+ * la_create_applied_stmt_marker() - create the marker table with its one row if it does not exist yet
+ *   return: NO_ERROR or error code
+ *
+ * Note: runs on the coordinator connection at startup, before the workers start, and commits.
+ */
+static int
+la_create_applied_stmt_marker (void)
+{
+  char query_buf[LA_QUERY_BUF_SIZE];
+  int res;
+
+  snprintf (query_buf, sizeof (query_buf),
+	    "CREATE TABLE IF NOT EXISTS [%s] (commit_pageid BIGINT, commit_offset INTEGER);",
+	    LA_APPLIED_STMT_MARKER_NAME);
+  res = la_update_query_execute_with_values (query_buf, 0, NULL, true);
+  if (res < 0)
+    {
+      (void) db_abort_transaction ();
+      return res;
+    }
+
+  snprintf (query_buf, sizeof (query_buf),
+	    "INSERT INTO [%s] (commit_pageid, commit_offset) SELECT -1, -1 FROM db_root "
+	    "WHERE NOT EXISTS (SELECT 1 FROM [%s]);", LA_APPLIED_STMT_MARKER_NAME, LA_APPLIED_STMT_MARKER_NAME);
+  res = la_update_query_execute_with_values (query_buf, 0, NULL, true);
+  if (res < 0)
+    {
+      (void) db_abort_transaction ();
+      return res;
+    }
+
+  return db_commit_transaction ();
+}
+
+/*
+ * la_read_applied_stmt_marker() - read the commit LSA of the last statement transaction committed on the slave
+ *   return: NO_ERROR or error code
+ *   marker_lsa(out): the marker, or NULL LSA when none was recorded
+ */
+static int
+la_read_applied_stmt_marker (LOG_LSA * marker_lsa)
+{
+  char query_buf[LA_QUERY_BUF_SIZE];
+  DB_QUERY_RESULT *result = NULL;
+  DB_QUERY_ERROR query_error;
+  DB_VALUE out_value[2];
+  int au_save;
+  int res;
+  int error = NO_ERROR;
+
+  LSA_SET_NULL (marker_lsa);
+
+  snprintf (query_buf, sizeof (query_buf), "SELECT commit_pageid, commit_offset FROM [%s];",
+	    LA_APPLIED_STMT_MARKER_NAME);
+
+  AU_SAVE_AND_DISABLE (au_save);
+  res = db_execute (query_buf, &result, &query_error);
+  if (res < 0)
+    {
+      AU_RESTORE (au_save);
+      return res;
+    }
+
+  if (res > 0 && db_query_first_tuple (result) == DB_CURSOR_SUCCESS)
+    {
+      error = db_query_get_tuple_valuelist (result, 2, out_value);
+      if (error == NO_ERROR)
+	{
+	  if (!DB_IS_NULL (&out_value[0]) && !DB_IS_NULL (&out_value[1]) && db_get_bigint (&out_value[0]) >= 0)
+	    {
+	      marker_lsa->pageid = db_get_bigint (&out_value[0]);
+	      marker_lsa->offset = db_get_int (&out_value[1]);
+	    }
+	  db_value_clear (&out_value[0]);
+	  db_value_clear (&out_value[1]);
+	}
+    }
+
+  (void) db_query_end (result);
+  AU_RESTORE (au_save);
+
+  return error;
+}
+
+/*
+ * la_update_applied_stmt_marker() - record the commit LSA of a statement transaction in its own slave transaction
+ *   return: NO_ERROR or error code
+ *   commit_lsa(in): the commit LSA, or NULL LSA to clear the marker
+ *
+ * Note: does not commit. The worker calls it right before committing the statement transaction, so the marker
+ *       and the statement commit together; la_delete_ha_apply_info clears it within its own transaction.
+ */
+static int
+la_update_applied_stmt_marker (const LOG_LSA * commit_lsa)
+{
+  char query_buf[LA_QUERY_BUF_SIZE];
+  DB_VALUE in_value[2];
+  int res;
+
+  snprintf (query_buf, sizeof (query_buf), "UPDATE [%s] SET commit_pageid = ?, commit_offset = ?;",
+	    LA_APPLIED_STMT_MARKER_NAME);
+
+  db_make_bigint (&in_value[0], LSA_ISNULL (commit_lsa) ? -1 : commit_lsa->pageid);
+  db_make_int (&in_value[1], LSA_ISNULL (commit_lsa) ? -1 : commit_lsa->offset);
+
+  res = la_update_query_execute_with_values (query_buf, 2, &in_value[0], true);
+
+  db_value_clear (&in_value[0]);
+  db_value_clear (&in_value[1]);
+
+  return (res < 0) ? res : NO_ERROR;
 }
 
 static bool
@@ -7040,6 +7194,7 @@ la_apply_repl_log (LA_APPLY_WORKER_CONTEXT * context, LA_APPLY * apply, LOG_LSA 
 	  else if (item->log_type == LOG_REPLICATION_STATEMENT)
 	    {
 	      error = la_apply_statement_log (item, stats);
+	      stats->has_statement = true;
 	    }
 	  else
 	    {
@@ -9776,6 +9931,29 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
     {
       er_stack_push ();
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "Failed to initialize _db_ha_apply_info");
+      er_stack_pop ();
+      la_shutdown ();
+      return error;
+    }
+
+  /* the commits at or below the last statement transaction committed on the slave are all applied (see
+   * la_create_applied_stmt_marker); skip them whole, so that no statement among them runs again */
+  error = la_create_applied_stmt_marker ();
+  if (error == NO_ERROR)
+    {
+      LOG_LSA marker_lsa;
+
+      error = la_read_applied_stmt_marker (&marker_lsa);
+      if (error == NO_ERROR && !LSA_ISNULL (&marker_lsa) && LSA_GT (&marker_lsa, &la_Info.last_committed_lsa))
+	{
+	  LSA_COPY (&la_Info.last_committed_lsa, &marker_lsa);
+	}
+    }
+  if (error != NO_ERROR)
+    {
+      er_stack_push ();
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
+	      "Failed to initialize " LA_APPLIED_STMT_MARKER_NAME);
       er_stack_pop ();
       la_shutdown ();
       return error;
