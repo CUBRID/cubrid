@@ -1605,10 +1605,12 @@ jobs:
                 echo ">"
                 if [ "$total" -gt 0 ]; then
                   echo "> $total cases, from its $rerun_failed failures, $rerun_unrun cases that never ran because a shard died whole, and $rerun_changed cases in the \`cases/\` directories changed since tc commit \`${rerun_since:0:10}\`. A \`sql\` or \`medium\` failure brings its top-level directory."
-                elif [ "$((rerun_failed + rerun_unrun))" -gt 0 ]; then
+                elif [ "$((rerun_failed + rerun_unrun))" -eq 0 ]; then
+                  echo "> **Nothing to re-run: no failure, nothing unrun, and no case changed since tc commit \`${rerun_since:0:10}\`. The verdict of run \`$RERUN_FROM\` stands.**"
+                elif [ "${rerun_gone:-0}" -eq 0 ]; then
                   echo "> **Nothing to re-run: \`$tc_branch\` deleted or moved away every case run \`$RERUN_FROM\` failed or never ran, and changed no case since tc commit \`${rerun_since:0:10}\`.**"
                 else
-                  echo "> **Nothing to re-run: no failure, nothing unrun, and no case changed since tc commit \`${rerun_since:0:10}\`. The verdict of run \`$RERUN_FROM\` stands.**"
+                  echo "> **Nothing to re-run: none of the cases run \`$RERUN_FROM\` failed or never ran is in the tree now.**"
                 fi
                 [ "${rerun_short:-0}" -eq 0 ] || echo "> **$rerun_short more were assigned there and never handled. Nothing names them, so this run cannot pass.**"
                 [ "${rerun_gone:-0}" -eq 0 ] || echo "> **$rerun_gone of them are no longer in the tree, and \`$tc_branch\` did not delete or rename them since, so this run cannot pass.**"
@@ -1722,39 +1724,45 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
 
             # A shard dying whole is invisible to guard 2.
-            srb=0
+            srb=0; held=''
             fault() { echo "::error::$suite: $1"; srb=1; }
+            # Red that a re-run cannot clear: it re-runs some cases, and these speak for the whole run.
+            hold() { fault "$1"; held="${held:+$held; }${2:-${1%". Use /run $suite"}}"; }
             [ "$done_n" -eq "$planned" ] || fault "only $done_n of $planned shards published a result; the rest died whole"
             [ "$covered" -ge "$total" ]  || fault "only $covered of $total cases were handled; cases went missing"
             [ "$read_n" -eq "$planned" ] || fault "only $read_n of $planned shards recorded a build provenance; the rest died before mounting"
             case "$reason" in
               ok|no-shard) ;;
-              mixed)    fault "shards read different builds ($uniq_n distinct run_ids). The artifact changed mid-pipeline" ;;
-              mismatch) fault "every shard read the same build, but not the one from the run plan verified ($BRID)" ;;
+              mixed)    hold "shards read different builds ($uniq_n distinct run_ids). The artifact changed mid-pipeline" ;;
+              mismatch) hold "every shard read the same build, but not the one from the run plan verified ($BRID)" ;;
               *)        fault "no shard recorded a build provenance" ;;
             esac
             [ "$tcread_n" -eq "$planned" ] || fault "only $tcread_n of $planned shards recorded a tc provenance"
             case "$tc_reason" in
               ok|no-shard) ;;
-              mixed)    fault "shards saw different testcases ($tc_uniq distinct). That disagrees with the split list" ;;
-              mismatch) fault "every shard is the same, but not the commit plan chose ($tc_sha)" ;;
+              mixed)    hold "shards saw different testcases ($tc_uniq distinct). That disagrees with the split list" ;;
+              mismatch) hold "every shard is the same, but not the commit plan chose ($tc_sha)" ;;
               *)        fault "no shard recorded a tc provenance" ;;
             esac
             [ "$fail_sum" -eq 0 ] || fault "$fail_sum failed"
             # A re-run replaces the source's status, so it must not pass over cases it did not run.
             if [ -n "$RERUN_FROM" ]; then
-              [ "${rerun_short:-0}" -eq 0 ] || fault "run $RERUN_FROM left $rerun_short cases assigned but never handled, and nothing names them. Use /run $suite"
-              [ "${rerun_gone:-0}" -eq 0 ] || fault "$rerun_gone of the units run $RERUN_FROM left unhandled are no longer in the tree, and $tc_branch did not delete or rename them since. Use /run $suite"
-              # Red with no failed or unrun case: a cause no case clears, so nothing run here can clear it.
-              if [ "$total" -eq 0 ] && [ "$((rerun_failed + rerun_unrun))" -eq 0 ]; then
-                prev=$(cat "$CI_ROOT/runs/$RERUN_FROM/$suite/collect/verdict" 2>/dev/null || echo none)
-                [ "$prev" = pass ] || fault "nothing to re-run, so the verdict of run $RERUN_FROM stands: $prev. Use /run $suite"
+              [ "${rerun_short:-0}" -eq 0 ] || hold "run $RERUN_FROM left $rerun_short cases assigned but never handled, and nothing names them. Use /run $suite"
+              [ "${rerun_gone:-0}" -eq 0 ] || hold "$rerun_gone of the units run $RERUN_FROM left unhandled are no longer in the tree, and $tc_branch did not delete or rename them since. Use /run $suite"
+              from="$CI_ROOT/runs/$RERUN_FROM/$suite/collect"
+              if [ -f "$from/held" ]; then
+                [ ! -s "$from/held" ] || hold "run $RERUN_FROM was red for what no re-run clears: $(cat "$from/held"). Use /run $suite" "$(cat "$from/held")"
+              # A run from before held was recorded: red with no case to blame has a cause no case clears.
+              elif [ "$total" -eq 0 ] && [ "$((rerun_failed + rerun_unrun))" -eq 0 ]; then
+                prev=$(cat "$from/verdict" 2>/dev/null || echo none)
+                [ "$prev" = pass ] || hold "nothing to re-run, so the verdict of run $RERUN_FROM stands: $prev. Use /run $suite"
               fi
             fi
 
             if [ "$srb" -eq 0 ]; then v=pass; else v=fail; rc=1; fi
             echo "verdict_$suite=$v" >> "$GITHUB_OUTPUT"
             echo "$v" > "$d/collect/verdict"
+            printf '%s' "$held" > "$d/collect/held"
             unset total unit sha units par timed tc_sha tc_branch rerun_unrun rerun_short rerun_gone \
                   rerun_failed rerun_changed rerun_since shard_max shard_med shard_span shard_n
           done
