@@ -74,6 +74,7 @@
 #include "environment_variable.h"
 #include "heap_oos.hpp"
 #include "object_representation.h"
+#include "object_representation_sr.h"
 #include "test_oos_error_log.hpp"
 #include "test_oos_persisted_identity.hpp"
 #include "test_oos_sql_common.hpp"
@@ -122,6 +123,60 @@ namespace
     DB_OBJECT *object = db_find_class (table);
     ASSERT_NE (object, nullptr);
     OID class_oid = *reinterpret_cast<OID *> (db_identifier (object));
+    const char *names[] = {"id", "vc1", "vc2"};
+    std::array<int, 3> attribute_ids, definition_orders;
+    for (int logical = 0; logical < 3; ++logical)
+      {
+	DB_ATTRIBUTE *attribute = db_get_attribute (object, names[logical]);
+	ASSERT_NE (attribute, nullptr);
+	ASSERT_STREQ (db_attribute_name (attribute), names[logical]);
+	attribute_ids[logical] = db_attribute_id (attribute);
+	definition_orders[logical] = db_attribute_order (attribute);
+	ASSERT_GE (attribute_ids[logical], 0);
+      }
+    int representation_cache = -1;
+    OR_CLASSREP *representation = heap_classrepr_get (thread, &class_oid, nullptr, NULL_REPRID,
+						     &representation_cache);
+    ASSERT_NE (representation, nullptr);
+    struct representation_end
+    {
+      OR_CLASSREP *representation;
+      int *cache;
+      ~representation_end ()
+      {
+	heap_classrepr_free (representation, cache);
+      }
+    } free_representation {representation, &representation_cache};
+    ASSERT_EQ (representation->n_attributes, 3);
+    ASSERT_EQ (representation->n_variable, 2);
+    std::array<const OR_ATTRIBUTE *, 3> stored_attributes {};
+    for (int logical = 0; logical < 3; ++logical)
+      {
+	for (int stored = 0; stored < representation->n_attributes; ++stored)
+	  {
+	    const OR_ATTRIBUTE *attribute = &representation->attributes[stored];
+	    if (attribute->id == attribute_ids[logical])
+	      {
+		ASSERT_EQ (stored_attributes[logical], nullptr);
+		stored_attributes[logical] = attribute;
+	      }
+	  }
+	ASSERT_NE (stored_attributes[logical], nullptr);
+	ASSERT_EQ (stored_attributes[logical]->def_order, definition_orders[logical]);
+	ASSERT_EQ (stored_attributes[logical]->type, logical == 0 ? DB_TYPE_INTEGER : DB_TYPE_VARBIT);
+	ASSERT_EQ (static_cast<unsigned int> (stored_attributes[logical]->is_fixed), logical == 0 ? 1U : 0U);
+	if (logical != 0)
+	  {
+	    ASSERT_GE (stored_attributes[logical]->location, 0);
+	    ASSERT_LT (stored_attributes[logical]->location, representation->n_variable);
+	    ASSERT_EQ (stored_attributes[logical]->position, 1 + stored_attributes[logical]->location);
+	  }
+      }
+    ASSERT_EQ (stored_attributes[0]->location, 0);
+    ASSERT_NE (stored_attributes[0]->id, stored_attributes[1]->id);
+    ASSERT_NE (stored_attributes[0]->id, stored_attributes[2]->id);
+    ASSERT_NE (stored_attributes[1]->id, stored_attributes[2]->id);
+    ASSERT_NE (stored_attributes[1]->location, stored_attributes[2]->location);
     HFID hfid;
     FILE_TYPE file_type;
     ASSERT_EQ (heap_get_class_hfid (thread, &class_oid, &hfid, &file_type), NO_ERROR);
@@ -155,7 +210,9 @@ namespace
 	ASSERT_GE (record.length, OR_INT_SIZE);
 	const int offset_size = OR_GET_OFFSET_SIZE (record.data);
 	ASSERT_TRUE (offset_size == OR_BYTE_SIZE || offset_size == OR_SHORT_SIZE || offset_size == OR_INT_SIZE);
-	const int fixed = OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL (record.data, 2, offset_size);
+	ASSERT_EQ (OR_GET_MVCC_REPID (record.data), representation->id);
+	const int fixed = OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL (record.data, representation->n_variable, offset_size)
+			  + stored_attributes[0]->location;
 	ASSERT_GE (fixed, 0);
 	ASSERT_LE (fixed + OR_INT_SIZE, record.length);
 	const int id = OR_GET_INT (record.data + fixed);
@@ -175,18 +232,30 @@ namespace
 	row.header_size = OR_HEADER_SIZE (record.data);
 	row.offset_size = offset_size;
 	row.record_length = record.length;
+	row.class_oid = {{class_oid.volid, class_oid.pageid, class_oid.slotid}};
+	row.representation_id = representation->id;
+	row.n_attributes = representation->n_attributes;
+	row.n_variable = representation->n_variable;
+	row.id_attribute_id = attribute_ids[0];
+	row.id_fixed_location = stored_attributes[0]->location;
 	for (int attr = 0; attr < 2; ++attr)
 	  {
 	    auto &ref = row.refs[attr];
+	    const OR_ATTRIBUTE *attribute = stored_attributes[attr + 1];
+	    ref.attribute_id = attribute->id;
+	    ref.var_index = attribute->location;
+	    ref.schema_position = attribute->position;
+	    ref.schema_def_order = attribute->def_order;
+	    ref.schema_type = attribute->type;
 	    int entry = 0, next = 0;
-	    ASSERT_LE (OR_HEADER_SIZE (record.data) + (attr + 2) * offset_size, record.length);
-	    ASSERT_EQ (heap_recdes_get_var_offset_entry (&record, attr, &entry), NO_ERROR);
-	    ASSERT_EQ (heap_recdes_get_var_offset_entry (&record, attr + 1, &next), NO_ERROR);
+	    ASSERT_LE (OR_HEADER_SIZE (record.data) + (ref.var_index + 2) * offset_size, record.length);
+	    ASSERT_EQ (heap_recdes_get_var_offset_entry (&record, ref.var_index, &entry), NO_ERROR);
+	    ASSERT_EQ (heap_recdes_get_var_offset_entry (&record, ref.var_index + 1, &next), NO_ERROR);
 	    ref.is_oos = OR_IS_OOS (entry) ? 1 : 0;
 	    ref.width = OR_GET_VAR_OFFSET (next) - OR_GET_VAR_OFFSET (entry);
-	    std::memcpy (ref.vot.data (), record.data + row.header_size + attr * offset_size, 2 * offset_size);
+	    std::memcpy (ref.vot.data (), record.data + row.header_size + ref.var_index * offset_size, 2 * offset_size);
 	    const int start = OR_GET_VAR_OFFSET (entry);
-	    if (ref.is_oos && ref.width == OR_OOS_INLINE_SIZE && start >= (attr + 2) * offset_size
+	    if (ref.is_oos && ref.width == OR_OOS_INLINE_SIZE && start >= (ref.var_index + 2) * offset_size
 		&& row.header_size + OR_GET_VAR_OFFSET (next) <= record.length)
 	      {
 		std::memcpy (ref.stub.data (), record.data + row.header_size + start, ref.stub.size ());
@@ -198,7 +267,7 @@ namespace
 	      {
 		oos_chain_ref chain;
 		DB_BIGINT length = 0;
-		ASSERT_EQ (heap_oos_parse_inline_ref (&record, attr, &chain, &length), NO_ERROR);
+		ASSERT_EQ (heap_oos_parse_inline_ref (&record, ref.var_index, &chain, &length), NO_ERROR);
 		ref.parsed = true;
 		ref.volume = chain.head_oid.volid;
 		ref.page = chain.head_oid.pageid;
@@ -242,15 +311,24 @@ namespace
 	    EXPECT_EQ (row.volume, (*before)[i].volume);
 	    EXPECT_EQ (row.page, (*before)[i].page);
 	    EXPECT_EQ (row.slot, (*before)[i].slot);
+	    EXPECT_EQ (row.class_oid, (*before)[i].class_oid);
+	    EXPECT_EQ (row.representation_id, (*before)[i].representation_id);
+	    EXPECT_EQ (row.id_attribute_id, (*before)[i].id_attribute_id);
 	  }
 	for (int attr = 0; attr < 2; ++attr)
 	  {
 	    const auto &ref = row.refs[attr];
 	    observed_refs += ref.parsed ? 1 : 0;
 	    printf ("SA_STORED {\"phase\":\"%s\",\"id\":%d,\"row_oid\":[%d,%d,%d],"
-		    "\"has_oos\":%s,\"attribute\":%d,\"is_oos\":%d,\"width\":%d,\"header_hex\":",
+		    "\"has_oos\":%s,\"attribute\":%d,\"attribute_name\":\"%s\",\"attribute_id\":%d,"
+		    "\"var_index\":%d,\"schema_position\":%d,\"schema_def_order\":%d,\"schema_type\":%d,"
+		    "\"class_oid\":[%d,%d,%d],\"representation_id\":%d,\"n_attributes\":%d,\"n_variable\":%d,"
+		    "\"id_attribute_id\":%d,\"id_fixed_location\":%d,\"is_oos\":%d,\"width\":%d,\"header_hex\":",
 		    phase, row.id, row.volume, row.page, row.slot, row.has_oos ? "true" : "false",
-		    attr, ref.is_oos, ref.width);
+		    attr, attr == 0 ? "vc1" : "vc2", ref.attribute_id, ref.var_index, ref.schema_position,
+		    ref.schema_def_order, ref.schema_type, row.class_oid[0], row.class_oid[1], row.class_oid[2],
+		    row.representation_id, row.n_attributes, row.n_variable, row.id_attribute_id, row.id_fixed_location,
+		    ref.is_oos, ref.width);
 	    print_hex (row.header.data (), row.header.size ());
 	    printf (",\"id_hex\":");
 	    print_hex (row.fixed_id.data (), row.fixed_id.size ());
