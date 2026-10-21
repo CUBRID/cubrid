@@ -519,14 +519,6 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
     // Routine (Procedure, Function)
     //
 
-    private static final String[] tmplRoutineUserCode =
-            new String[] {
-                "Long[] sql_rowcount = new Long[] { null };",
-                "%'+NULLIFY-OUT-PARAMETERS'%",
-                "%'+DECL-CLASS'%",
-                "%'+BODY'%"
-            };
-
     private static final String[] tmplDeclRoutine =
             new String[] {
                 "%'MODIFIER'%%'RETURN-TYPE'% %'METHOD-NAME'%(",
@@ -597,9 +589,11 @@ public class JavaCodeWriter extends AstVisitor<JavaCodeWriter.CodeToResolve> {
                     new CodeTemplate(
                             "routine user code",
                             Misc.UNKNOWN_LINE_COLUMN,
-                            tmplRoutineUserCode,
+                            tmplMainUserCode,
                             "%'+NULLIFY-OUT-PARAMETERS'%",
                             strNullifyOutParam,
+                            "%'+CHECK-INOUT-PARAMETERS'%",
+                            node.isPkgPublic ? getCheckInoutParamCode(node.paramList) : "",
                             "%'+DECL-CLASS'%",
                             codeDeclClass,
                             "%'+BODY'%",
