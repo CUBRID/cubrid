@@ -17177,7 +17177,7 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
       goto error_exit;
     }
 
-  if (heap_attrinfo_prepare_record (thread_p, attr_info, NULL, &pending, false) != S_SUCCESS)
+  if (heap_attrinfo_prepare_key_probe_record (thread_p, attr_info, &pending) != S_SUCCESS)
     {
       goto error_exit;
     }
@@ -17414,7 +17414,7 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
       goto error_exit;
     }
 
-  if (heap_attrinfo_prepare_record (thread_p, attr_info, NULL, &pending, true) != S_SUCCESS)
+  if (heap_attrinfo_prepare_key_probe_record (thread_p, attr_info, &pending) != S_SUCCESS)
     {
       goto error_exit;
     }

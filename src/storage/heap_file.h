@@ -547,6 +547,8 @@ extern SCAN_CODE heap_attrinfo_transform_to_disk_except_lobfile (THREAD_ENTRY * 
 /* *INDENT-OFF* */
 extern SCAN_CODE heap_attrinfo_prepare_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info,
     RECDES *old_recdes, heap_pending_record *pending, bool copy_lobs = true);
+extern SCAN_CODE heap_attrinfo_prepare_key_probe_record (THREAD_ENTRY *thread_p, HEAP_CACHE_ATTRINFO *attr_info,
+    heap_pending_record *pending);
 /* *INDENT-ON* */
 
 extern DB_VALUE *heap_attrinfo_generate_key (THREAD_ENTRY * thread_p, int n_atts, int *att_ids, int *atts_prefix_length,
