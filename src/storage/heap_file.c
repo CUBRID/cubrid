@@ -28948,6 +28948,31 @@ heap_recdes_get_oos_refs (const RECDES * recdes, OOS_REF_VECTOR & oos_refs)
 }
 
 #if defined(CUBRID_UNIT_TEST_ENABLED)
+/* Exercise the existing selected-column writer with caller-controlled buffer bounds. No chains are
+ * inserted here: the reference is a test input, just as it is an already-inserted plan in production. */
+/* *INDENT-OFF* */
+SCAN_CODE
+bridge_heap_oos_write_inline (OR_BUF *buf, char **ptr_varvals, int offset_size, int header_size,
+                             const oos_chain_ref &ref, DB_BIGINT length)
+{
+  OR_ATTRIBUTE attribute = {};
+  attribute.domain = tp_domain_resolve_default (DB_TYPE_VARCHAR);
+  attribute.location = 0;
+  HEAP_ATTRVALUE value = {};
+  value.last_attrepr = &attribute;
+  db_make_string (&value.dbvalue, "selected");
+  HEAP_CACHE_ATTRINFO attr_info = {};
+  attr_info.values = &value;
+  heap_oos_column_plan plan;
+  plan.selected = true;
+  plan.oid = ref.head_oid;
+  plan.length = length;
+  plan.identity_stamp = ref.identity_stamp;
+  return heap_attrinfo_transform_variable_to_disk (NULL, &attr_info, buf, ptr_varvals, &plan, 0,
+                                                  offset_size, header_size, 0);
+}
+/* *INDENT-ON* */
+
 /*
  * bridge_heap_attrvalue_read_oos_inline () - Unit-test seam exposing the static
  *   inline-OOS reader so unit_tests/oos can drive corrupt-header paths and
