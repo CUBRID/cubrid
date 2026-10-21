@@ -17319,7 +17319,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_BLOB_FROM_FILE:
-      error = db_blob_from_file (arg1, result);
+      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_LOB_DIRECT_INSERT))
+	{
+	  error = db_blob_from_file_pending (arg1, result);
+	}
+      else
+	{
+	  error = db_blob_from_file (arg1, result);
+	}
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17367,7 +17374,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_CLOB_FROM_FILE:
-      error = db_clob_from_file (arg1, result);
+      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_LOB_DIRECT_INSERT))
+	{
+	  error = db_clob_from_file_pending (arg1, result);
+	}
+      else
+	{
+	  error = db_clob_from_file (arg1, result);
+	}
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17391,7 +17405,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_BFILE_TO_BLOB:
-      error = db_bfile_to_blob (arg1, result);
+      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_LOB_DIRECT_INSERT))
+	{
+	  error = db_bfile_to_blob_pending (arg1, result);
+	}
+      else
+	{
+	  error = db_bfile_to_blob (arg1, result);
+	}
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());
@@ -17415,7 +17436,14 @@ pt_evaluate_db_value_expr (PARSER_CONTEXT * parser, PT_NODE * expr, PT_OP_TYPE o
 	}
 
     case PT_CFILE_TO_CLOB:
-      error = db_cfile_to_clob (arg1, result);
+      if (PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_LOB_DIRECT_INSERT))
+	{
+	  error = db_cfile_to_clob_pending (arg1, result);
+	}
+      else
+	{
+	  error = db_cfile_to_clob (arg1, result);
+	}
       if (error < 0)
 	{
 	  PT_ERRORc (parser, o1, er_msg ());

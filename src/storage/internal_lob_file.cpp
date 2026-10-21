@@ -1222,6 +1222,47 @@ internal_lob_db_value_is_locator (const DB_VALUE *value, INTERNAL_LOB_LOCATOR *l
   return internal_lob_parse_locator_string (data, size, locator);
 }
 
+bool
+internal_lob_db_value_is_pending (const DB_VALUE *value, INTERNAL_LOB_PENDING *pending)
+{
+  DB_TYPE type;
+  const char *data = NULL;
+  int size = 0;
+  char marker_buf[PATH_MAX + 64];
+  char type_char;
+  long long pending_size;
+  const char *locator;
+  size_t locator_len;
+
+  if (!db_get_internal_lob_marker_text (value, DB_VALUE_INTERNAL_LOB_MARKER_PENDING, &type, &data, &size)
+      || !internal_lob_marker_parse_pending (data, size, marker_buf, (int) sizeof (marker_buf), &type_char,
+	  &pending_size, &locator))
+    {
+      return false;
+    }
+
+  if (pending_size < 0 || pending_size > DB_MAX_INTERNAL_LOB_LENGTH || (type_char == 'C' && type != DB_TYPE_CLOB)
+      || (type_char == 'B' && type != DB_TYPE_BLOB))
+    {
+      return false;
+    }
+
+  locator_len = strlen (locator);
+  if (locator_len == 0 || locator_len >= PATH_MAX + 16)
+    {
+      return false;
+    }
+
+  if (pending != NULL)
+    {
+      pending->lob_type = (type_char == 'C') ? DB_TYPE_CLOB : DB_TYPE_BLOB;
+      pending->size = (DB_BIGINT) pending_size;
+      memcpy (pending->locator, locator, locator_len + 1);
+    }
+
+  return true;
+}
+
 int
 internal_lob_encode_disk_length (const INTERNAL_LOB_LOCATOR &locator, DB_BIGINT &disk_length)
 {
