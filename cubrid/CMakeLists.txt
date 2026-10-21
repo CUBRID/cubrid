@@ -588,6 +588,7 @@ set(LOADDB_SOURCES
   ${LOADDB_DIR}/load_db_value_converter.cpp
   ${LOADDB_DIR}/load_driver.cpp
   ${LOADDB_DIR}/load_error_handler.cpp
+  ${LOADDB_DIR}/load_internal_lob.cpp
   ${LOADDB_DIR}/load_semantic_helper.cpp
   ${LOADDB_DIR}/load_server_loader.cpp
   ${LOADDB_DIR}/load_session.cpp
@@ -601,6 +602,7 @@ set(LOADDB_HEADERS
   ${LOADDB_DIR}/load_db_value_converter.hpp
   ${LOADDB_DIR}/load_driver.hpp
   ${LOADDB_DIR}/load_error_handler.hpp
+  ${LOADDB_DIR}/load_internal_lob.hpp
   ${LOADDB_DIR}/load_semantic_helper.hpp
   ${LOADDB_DIR}/load_server_loader.hpp
   ${LOADDB_DIR}/load_session.hpp

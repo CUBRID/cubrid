@@ -109,6 +109,8 @@ extern int session_internal_lob_upload_abort (THREAD_ENTRY * thread_p, INT64 tok
 extern int session_internal_lob_upload_release (THREAD_ENTRY * thread_p, INT64 token);
 extern int session_internal_lob_upload_consume (THREAD_ENTRY * thread_p, INT64 token, const OID * class_oid,
 						DB_TYPE expected_type, INTERNAL_LOB_LOCATOR * locator);
+extern int session_internal_lob_load_consume (THREAD_ENTRY * thread_p, INT64 slot, const OID * class_oid,
+					      DB_TYPE expected_type, INTERNAL_LOB_LOCATOR * locator);
 
 extern int session_get_pl_session (THREAD_ENTRY * thread_p, REFPTR (PL_SESSION, pl_session_ref_ptr));
 extern bool session_is_pl_session_running (THREAD_ENTRY * thread_p);
