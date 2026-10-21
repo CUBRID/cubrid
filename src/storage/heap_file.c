@@ -11711,7 +11711,7 @@ heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, cha
  */
 static int
 heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout, HEAP_CACHE_ATTRINFO * attr_info,
-			       OR_ATTRIBUTE * attrepr, RECDES * raw, bool * oos_owned_buffer,
+			       OR_ATTRIBUTE * attrepr, RECDES * raw, bool * oos_owned_buffer, bool * internal_lob_locator,
 			       char *oos_scratch, int oos_scratch_size, const heap_pending_record * pending)
 {
   int offset;
@@ -11719,6 +11719,7 @@ heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout, 
   int this_off, next_off;
 
   *oos_owned_buffer = false;
+  *internal_lob_locator = false;
   error = heap_recdes_get_var_offset_entry (recdes, attrepr->location, &offset);
   if (error != NO_ERROR)
     {
@@ -11735,6 +11736,20 @@ heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout, 
 
   if (OR_IS_OOS (offset))
     {
+      if (TP_IS_LOB_TYPE (TP_DOMAIN_TYPE (attrepr->domain)))
+	{
+	  /* Internal LOB keeps the OOS inline slot as a locator DB_VALUE; the field must still be exactly one stub. */
+	  if (heap_recdes_get_oos_inline_stub (recdes, attrepr->location, &raw->data) != NO_ERROR)
+	    {
+	      raw->data = NULL;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oid_Null_oid));
+	      return ER_HEAP_OOS_BAD_INLINE_HEADER;
+	    }
+	  raw->length = OR_OOS_INLINE_SIZE;
+	  *internal_lob_locator = true;
+	  return NO_ERROR;
+	}
+
       /* Resolve validates the stub and marks transient data for copying and cleanup. */
       return heap_attrvalue_read_oos_inline (recdes, attrepr->location, raw, oos_scratch, oos_scratch_size,
 					     oos_owned_buffer, pending);
@@ -11779,10 +11794,11 @@ heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout, 
  *   attrepr(in): The attribute structure
  *   data(in): Disk value pointer
  *   length(in): Disk value length
+ *   class_oid(in): class of the record, named by an internal LOB locator so its reader can lock it
  */
 static int
 heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
-				     bool oos_owned_buffer)
+				     bool oos_owned_buffer, bool internal_lob_locator, const OID * class_oid)
 {
   const PR_TYPE *pr_type;
   OR_BUF buf;
@@ -11828,6 +11844,37 @@ heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attr
   else
     {
       or_init (&buf, raw->data, raw->length);
+
+      if (internal_lob_locator)
+	{
+	  INTERNAL_LOB_LOCATOR locator;
+	  DB_BIGINT disk_length;
+	  DB_BIGINT packed_identity_stamp;
+	  int stub_kind;
+	  /* The column is a BLOB/CLOB, so demand that the stub says the same: a stub that claims to be
+	   * an ordinary OOS value here means the record and the schema disagree, and expanding it as
+	   * one would hand the reader raw content in place of a locator. */
+	  const int expect_kind = (TP_DOMAIN_TYPE (attrepr->domain) == DB_TYPE_BLOB
+				   ? OR_OOS_KIND_BLOB : OR_OOS_KIND_CLOB);
+
+	  if (or_get_oos_stub (&buf, &locator.oid, &stub_kind, &disk_length, &packed_identity_stamp,
+			       expect_kind) != NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      return ER_GENERIC_ERROR;
+	    }
+	  locator.identity_stamp = oos_unpack_identity_stamp (packed_identity_stamp);
+	  rv = internal_lob_decode_disk_length (locator, disk_length);
+	  if (rv != NO_ERROR)
+	    {
+	      return rv;
+	    }
+
+	  COPY_OID (&locator.class_oid, class_oid);
+	  rv = internal_lob_make_locator_db_value (&value->dbvalue, TP_DOMAIN_TYPE (attrepr->domain), locator);
+	  value->state = HEAP_READ_ATTRVALUE;
+	  return rv;
+	}
 
       /* read the value according to disk information that was found; the handler was
        * resolved with the decoding plan (heap_attrvalue_resolve_plan ()) */
@@ -12051,6 +12098,7 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
   OR_ATTRIBUTE *attrepr;
 
   bool oos_owned_buffer = false;
+  bool internal_lob_locator = false;
   /* OOS Resolve uses scratch up to one I/O page and allocates larger values. */
   char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
   char *oos_scratch = PTR_ALIGN (oos_scratch_buf, MAX_ALIGNMENT);
@@ -12104,8 +12152,8 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
       else
 	{
 	  error =
-	    heap_attrvalue_point_variable (recdes, layout, attr_info, attrepr, &raw, &oos_owned_buffer, oos_scratch,
-					   IO_MAX_PAGE_SIZE, pending);
+	    heap_attrvalue_point_variable (recdes, layout, attr_info, attrepr, &raw, &oos_owned_buffer,
+					   &internal_lob_locator, oos_scratch, IO_MAX_PAGE_SIZE, pending);
 	  if (error != NO_ERROR)
 	    {
 	      return error;
@@ -12114,7 +12162,8 @@ heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINF
     }
 
   /* the data pointer will point to either a current value in recdes or a default one in attrepr */
-  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, oos_owned_buffer);
+  error = heap_attrvalue_transform_to_dbvalue (value, attrepr, &raw, oos_owned_buffer, internal_lob_locator,
+					       &attr_info->class_oid);
   /* TODO: revisit when dbvalue supports zero-copy to OOS and a PEEK mode lands. */
   if (oos_owned_buffer && raw.data != oos_scratch)
     {
@@ -12161,7 +12210,7 @@ heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATT
       if ((*oos_payloads)[i].data != NULL)
 	{
 	  ret = heap_attrvalue_transform_to_dbvalue (&attr_info->values[i], attr_info->values[i].read_attrepr,
-						     &(*oos_payloads)[i], true);
+						     &(*oos_payloads)[i], true, false, &attr_info->class_oid);
 	}
       else
 	{
@@ -12236,6 +12285,7 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
   HEAP_REC_LAYOUT layout;
   RECDES raw = { -1, -1, REC_UNKNOWN, NULL };
   bool oos_owned_buffer = false;
+  bool internal_lob_locator = false;
   bool found = true;		/* Does attribute(att) exist in this disk representation? */
   /* Stack scratch for OOS inline-reference reads up to one I/O page on the hot index-key path. */
   char oos_scratch_buf[IO_MAX_PAGE_SIZE + MAX_ALIGNMENT];
@@ -12283,8 +12333,8 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
 	  else
 	    {			/* A variable attribute */
 	      error =
-		heap_attrvalue_point_variable (recdes, &layout, attr_info, att, &raw, &oos_owned_buffer, oos_scratch,
-					       IO_MAX_PAGE_SIZE, pending);
+		heap_attrvalue_point_variable (recdes, &layout, attr_info, att, &raw, &oos_owned_buffer,
+					       &internal_lob_locator, oos_scratch, IO_MAX_PAGE_SIZE, pending);
 	      if (error != NO_ERROR)
 		{
 		  return error;
@@ -12303,8 +12353,37 @@ heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value, H
       OR_BUF buf;
 
       or_init (&buf, raw.data, raw.length);
-      /* Transient OOS data requires COPY because PEEK would dangle after cleanup. */
-      error = att->domain->type->data_readval (&buf, value, att->domain, raw.length, oos_owned_buffer, NULL, 0);
+      if (internal_lob_locator)
+	{
+	  INTERNAL_LOB_LOCATOR locator;
+	  DB_BIGINT disk_length;
+	  DB_BIGINT packed_identity_stamp;
+	  int stub_kind;
+	  const int expect_kind = (TP_DOMAIN_TYPE (att->domain) == DB_TYPE_BLOB ? OR_OOS_KIND_BLOB : OR_OOS_KIND_CLOB);
+
+	  if (or_get_oos_stub (&buf, &locator.oid, &stub_kind, &disk_length, &packed_identity_stamp,
+			       expect_kind) != NO_ERROR)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+	      return ER_GENERIC_ERROR;
+	    }
+	  locator.identity_stamp = oos_unpack_identity_stamp (packed_identity_stamp);
+	  error = internal_lob_decode_disk_length (locator, disk_length);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  if (attr_info != NULL)
+	    {
+	      COPY_OID (&locator.class_oid, &attr_info->class_oid);
+	    }
+	  return internal_lob_make_locator_db_value (value, TP_DOMAIN_TYPE (att->domain), locator);
+	}
+      else
+	{
+	  /* Transient OOS data requires COPY because PEEK would dangle after cleanup. */
+	  error = att->domain->type->data_readval (&buf, value, att->domain, raw.length, oos_owned_buffer, NULL, 0);
+	}
     }
 
   if (oos_owned_buffer && raw.data != oos_scratch)
@@ -14236,6 +14315,54 @@ heap_internal_lob_get_class_vfid (THREAD_ENTRY * thread_p, const OID * class_oid
 
 typedef struct heap_internal_lob_file_source HEAP_INTERNAL_LOB_FILE_SOURCE;
 /*
+ * heap_internal_lob_clone_locator () - Copy an existing internal LOB locator to the target class LOB file by
+ *				      streaming, without materializing the payload into a DB_VALUE.
+ *   return: NO_ERROR, or error code
+ *   thread_p(in): thread entry
+ *   class_oid(in): class OID owning the target heap
+ *   lob_type(in): DB_TYPE_BLOB or DB_TYPE_CLOB
+ *   source_locator(in): source internal LOB locator
+ *   locator(out): newly inserted locator for the target class
+ *
+ * Note:
+ *   This is the copy path for INSERT ... SELECT and UPDATE c2 = c1.  A 2GiB+ locator cannot be copied through
+ *   internal_lob_read_db_value(), because DB_VALUE string/bit containers still use int-sized lengths.
+ */
+int
+heap_internal_lob_clone_locator (THREAD_ENTRY * thread_p, const OID * class_oid, DB_TYPE lob_type,
+				 const INTERNAL_LOB_LOCATOR * source_locator, INTERNAL_LOB_LOCATOR * locator)
+{
+  /* [리뷰] INSERT…SELECT·UPDATE c2=c1의 복사 경로. DB_VALUE 길이가 int라 2GiB 넘는 값은 스트리밍만 된다.
+   * 원본 클래스 락은 여기서 잡지 않는다. 파라미터로 온 로케이터는 12번 검사가 먼저 잡는다.
+   * 길이 0·NULL OID 로케이터는 복사할 체인이 없어 그대로 쓴다. */
+  VFID lob_vfid;
+  int error = NO_ERROR;
+
+  if (class_oid == NULL || source_locator == NULL || locator == NULL
+      || (lob_type != DB_TYPE_BLOB && lob_type != DB_TYPE_CLOB) || source_locator->length < 0)
+    {
+      error = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      return error;
+    }
+
+  if (source_locator->length == 0 && OID_ISNULL (&source_locator->oid))
+    {
+      *locator = *source_locator;
+      locator->adopted = false;
+      return NO_ERROR;
+    }
+
+  error = heap_internal_lob_get_class_vfid (thread_p, class_oid, &lob_vfid);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  return internal_lob_clone (thread_p, lob_vfid, lob_type, *source_locator, *locator);
+}
+
+/*
  * heap_internal_lob_insert_value () - Insert a BLOB/CLOB DB_VALUE into a class internal LOB file.
  *   return: NO_ERROR, or error code
  *   thread_p(in): thread entry
@@ -14256,6 +14383,7 @@ heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, 
    * 실패하면 writer를 abort해 반쯤 쓴 체인을 남기지 않는다. */
   VFID lob_vfid;
   INTERNAL_LOB_REVERSE_WRITER writer;
+  INTERNAL_LOB_LOCATOR source_locator;
   const DB_VALUE *source_value = value;
   const char *raw_data = NULL;
   DB_TYPE type;
@@ -14272,6 +14400,11 @@ heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, 
     }
 
   type = DB_VALUE_DOMAIN_TYPE (value);
+
+  if (internal_lob_db_value_is_locator (value, &source_locator))
+    {
+      return heap_internal_lob_clone_locator (thread_p, class_oid, type, &source_locator, locator);
+    }
 
   if (type == DB_TYPE_CLOB)
     {
