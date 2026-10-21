@@ -76,6 +76,38 @@ struct internal_lob_reader
 };
 using INTERNAL_LOB_READER = struct internal_lob_reader;
 
+/* Bytes of LOB values waiting to be stored, kept in a temporary file of the database (temp_volume_path) rather than in
+ * an OS temporary file: temp_file_max_size_in_pages bounds it and no descriptor is held.  Appends are sequential. */
+class internal_lob_temp_spool
+{
+  public:
+    internal_lob_temp_spool ();
+    ~internal_lob_temp_spool ();
+
+    int append (THREAD_ENTRY *thread_p, const char *data, int size);
+    int read (THREAD_ENTRY *thread_p, DB_BIGINT offset, char *buf, int size) const;
+    int truncate (THREAD_ENTRY *thread_p, DB_BIGINT size);
+    void destroy (THREAD_ENTRY *thread_p);
+    DB_BIGINT size () const
+    {
+      return m_size;
+    }
+
+  private:
+    VFID m_vfid;
+    DB_BIGINT m_size;
+    char *m_tail;		/* the last page while it fills; it is written whole each time */
+};
+
+/* heap_internal_lob_insert_stream () reader over [base, base + length) of a spool */
+struct internal_lob_spool_range
+{
+  internal_lob_temp_spool *spool;
+  DB_BIGINT base;
+  DB_BIGINT length;
+};
+extern int internal_lob_spool_range_reader (void *ctx, DB_BIGINT offset, char *buf, int size);
+
 struct internal_lob_pending
 {
   DB_TYPE lob_type;
@@ -83,6 +115,12 @@ struct internal_lob_pending
   char locator[PATH_MAX + 16];
 };
 using INTERNAL_LOB_PENDING = struct internal_lob_pending;
+
+struct internal_lob_dml_slot
+{
+  int slot;
+};
+using INTERNAL_LOB_DML_SLOT = struct internal_lob_dml_slot;
 
 extern int internal_lob_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const OID &class_oid,
 				     VFID &lob_vfid);
@@ -116,9 +154,12 @@ extern int internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, co
 extern bool internal_lob_parse_locator_string (const char *data, int size, INTERNAL_LOB_LOCATOR *locator);
 extern bool internal_lob_db_value_is_locator (const DB_VALUE *value, INTERNAL_LOB_LOCATOR *locator);
 extern bool internal_lob_db_value_is_pending (const DB_VALUE *value, INTERNAL_LOB_PENDING *pending);
+extern bool internal_lob_db_value_is_dml_slot (const DB_VALUE *value, INTERNAL_LOB_DML_SLOT *dml_slot);
 extern int internal_lob_format_locator (const INTERNAL_LOB_LOCATOR &locator, char *buf, size_t buf_size);
 extern int internal_lob_lock_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator);
 extern void internal_lob_unlock_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator);
+extern int internal_lob_lock_class_for_write (THREAD_ENTRY *thread_p, const OID &class_oid);
+extern void internal_lob_unlock_class_for_write (THREAD_ENTRY *thread_p, const OID &class_oid);
 inline bool
 internal_lob_is_valid_blob_bit_length (DB_BIGINT data_length, DB_BIGINT bit_length)
 {

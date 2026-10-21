@@ -32,12 +32,14 @@
 #include "file_manager.h"
 #include "heap_file.h"
 #include "internal_lob_marker.h"
+#include "internal_lob_stream_kind.h"
 #include "lock_manager.h"
 #include "log_impl.h"
 #include "memory_alloc.h"
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "system_parameter.h"
+#include "thread_manager.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
@@ -253,6 +255,44 @@ internal_lob_unlock_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LO
       return;
     }
   lock_unlock_object_donot_move_to_non2pl (thread_p, &locator.class_oid, oid_Root_class_oid, IS_LOCK);
+}
+
+/*
+ * internal_lob_lock_class_for_write () - IX-lock the class a direct DML slot writes into, until the transaction ends.
+ *   The slot writes its chain before the statement runs; the lock the statement would take is taken here instead, so
+ *   no DDL can drop the class's LOB file under the writer.  The OID comes from the client and must name a class.
+ */
+int
+internal_lob_lock_class_for_write (THREAD_ENTRY *thread_p, const OID &class_oid)
+{
+  int err;
+
+  if (OID_ISNULL (&class_oid))
+    {
+      return internal_lob_set_generic_error ();
+    }
+  if (lock_object (thread_p, &class_oid, oid_Root_class_oid, IX_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+  if (!heap_does_exist (thread_p, oid_Root_class_oid, &class_oid))
+    {
+      internal_lob_unlock_class_for_write (thread_p, class_oid);
+      return internal_lob_set_generic_error ();
+    }
+  return NO_ERROR;
+}
+
+/* Drop the IX lock one internal_lob_lock_class_for_write () call took; a lock the transaction held before stays. */
+void
+internal_lob_unlock_class_for_write (THREAD_ENTRY *thread_p, const OID &class_oid)
+{
+  if (OID_ISNULL (&class_oid))
+    {
+      return;
+    }
+  lock_unlock_object_donot_move_to_non2pl (thread_p, &class_oid, oid_Root_class_oid, IX_LOCK);
 }
 
 int
@@ -1161,6 +1201,161 @@ internal_lob_stream_purge_tran (int tran_index)
     }
 }
 
+internal_lob_temp_spool::internal_lob_temp_spool ()
+  : m_size (0)
+  , m_tail (NULL)
+{
+  VFID_SET_NULL (&m_vfid);
+}
+
+internal_lob_temp_spool::~internal_lob_temp_spool ()
+{
+  destroy (thread_get_thread_entry_info ());
+  if (m_tail != NULL)
+    {
+      free_and_init (m_tail);
+    }
+}
+
+int
+internal_lob_temp_spool::append (THREAD_ENTRY *thread_p, const char *data, int size)
+{
+  FILE_FIND_NTH_CURSOR cursor = FILE_FIND_NTH_CURSOR_INITIALIZER;
+  VPID vpid;
+  int error;
+
+  assert (size >= 0 && (data != NULL || size == 0));
+
+  if (VFID_ISNULL (&m_vfid))
+    {
+      if (m_tail == NULL)
+	{
+	  m_tail = (char *) malloc (DB_PAGESIZE);
+	  if (m_tail == NULL)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) DB_PAGESIZE);
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	}
+      error = file_create_temp_numerable (thread_p, 1, &m_vfid);
+      if (error != NO_ERROR)
+	{
+	  VFID_SET_NULL (&m_vfid);
+	  return error;
+	}
+      /* retired by destroy (), not with the transaction: an upload is kept for a later statement */
+      file_temp_preserve (thread_p, &m_vfid);
+      m_size = 0;
+    }
+
+  while (size > 0)
+    {
+      int in_page = (int) (m_size % DB_PAGESIZE);
+      int count = MIN (size, DB_PAGESIZE - in_page);
+
+      memcpy (m_tail + in_page, data, count);
+      error = file_numerable_find_nth_cursor (thread_p, &m_vfid, (int) (m_size / DB_PAGESIZE), true, NULL, NULL,
+					      &cursor, &vpid);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+      if (pgbuf_copy_from_area (thread_p, &vpid, 0, in_page + count, m_tail, true, TDE_ALGORITHM_NONE) == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      m_size += count;
+      data += count;
+      size -= count;
+    }
+  return NO_ERROR;
+}
+
+int
+internal_lob_temp_spool::read (THREAD_ENTRY *thread_p, DB_BIGINT offset, char *buf, int size) const
+{
+  FILE_FIND_NTH_CURSOR cursor = FILE_FIND_NTH_CURSOR_INITIALIZER;
+  VPID vpid;
+  int error;
+
+  assert (!VFID_ISNULL (&m_vfid) && offset >= 0 && size >= 0);
+
+  while (size > 0)
+    {
+      int in_page = (int) (offset % DB_PAGESIZE);
+      int count = MIN (size, DB_PAGESIZE - in_page);
+
+      error = file_numerable_find_nth_cursor (thread_p, &m_vfid, (int) (offset / DB_PAGESIZE), false, NULL, NULL,
+					      &cursor, &vpid);
+      if (error != NO_ERROR)
+	{
+	  ASSERT_ERROR ();
+	  return error;
+	}
+      if (pgbuf_copy_to_area (thread_p, &vpid, in_page, count, buf, true) == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+      offset += count;
+      buf += count;
+      size -= count;
+    }
+  return NO_ERROR;
+}
+
+/* Moves the end back to size; the next append writes over what was there.  Emptied, the file goes back. */
+int
+internal_lob_temp_spool::truncate (THREAD_ENTRY *thread_p, DB_BIGINT size)
+{
+  int error;
+
+  assert (size >= 0 && size <= m_size);
+
+  if (size == 0)
+    {
+      destroy (thread_p);
+      return NO_ERROR;
+    }
+  if (size < m_size && size % DB_PAGESIZE != 0)
+    {
+      /* the next append continues inside this page */
+      error = read (thread_p, size - size % DB_PAGESIZE, m_tail, (int) (size % DB_PAGESIZE));
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  m_size = MIN (m_size, size);
+  return NO_ERROR;
+}
+
+void
+internal_lob_temp_spool::destroy (THREAD_ENTRY *thread_p)
+{
+  if (!VFID_ISNULL (&m_vfid))
+    {
+      (void) file_temp_retire_preserved (thread_p, &m_vfid);
+      VFID_SET_NULL (&m_vfid);
+    }
+  m_size = 0;
+}
+
+int
+internal_lob_spool_range_reader (void *ctx, DB_BIGINT offset, char *buf, int size)
+{
+  internal_lob_spool_range *range = (internal_lob_spool_range *) ctx;
+
+  if (range == NULL || range->spool == NULL || buf == NULL || size <= 0 || offset < 0
+      || offset > range->length - size)
+    {
+      return stream_session_set_error ("invalid internal LOB staged range read");
+    }
+  return range->spool->read (thread_get_thread_entry_info (), range->base + offset, buf, size);
+}
+
 int
 internal_lob_delete (THREAD_ENTRY *thread_p, const VFID &lob_vfid, const INTERNAL_LOB_LOCATOR &locator)
 {
@@ -1260,6 +1455,36 @@ internal_lob_db_value_is_pending (const DB_VALUE *value, INTERNAL_LOB_PENDING *p
       memcpy (pending->locator, locator, locator_len + 1);
     }
 
+  return true;
+}
+
+bool
+internal_lob_db_value_is_dml_slot (const DB_VALUE *value, INTERNAL_LOB_DML_SLOT *dml_slot)
+{
+  const char *data = NULL;
+  int size = 0;
+  int prefix_len = (int) strlen (INTERNAL_LOB_DML_SLOT_PREFIX);
+  char marker_buf[80];
+  int slot;
+  int consumed = 0;
+
+  if (!db_get_internal_lob_marker_text (value, DB_VALUE_INTERNAL_LOB_MARKER_DML_SLOT, NULL, &data, &size)
+      || !internal_lob_marker_copy_text (data, size, INTERNAL_LOB_DML_SLOT_PREFIX, marker_buf,
+					 (int) sizeof (marker_buf)))
+    {
+      return false;
+    }
+
+  if (sscanf (marker_buf + prefix_len, "%d%n", &slot, &consumed) != 1
+      || marker_buf[prefix_len + consumed] != '\0' || slot < 0)
+    {
+      return false;
+    }
+
+  if (dml_slot != NULL)
+    {
+      dml_slot->slot = slot;
+    }
   return true;
 }
 
