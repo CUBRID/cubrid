@@ -977,8 +977,9 @@ jobs:
               cat /tmp/unrun.list >> /tmp/want.list
               sort -u -o /tmp/want.list /tmp/want.list
               [ "$short" -eq 0 ] || echo "::warning::run $RERUN_FROM left $short more cases assigned but never handled. Nothing names them, so this re-run cannot pass"
-              grep -xF -f /tmp/want.list /tmp/all.list > /tmp/sel.list || : > /tmp/sel.list
-              # Deleted or renamed in the tc branch since, with the top-level directory it may have emptied.
+              # A re-run's shards list cases even where the suite's unit is a directory.
+              sort -u /tmp/all.list /tmp/cases.list | grep -xF -f /tmp/want.list > /tmp/sel.list || : > /tmp/sel.list
+              # Deleted or renamed by the tc branch since, or a top-level directory it emptied: gone on purpose.
               awk -F'\t' -v r="$repo/" -v s="$suite" '$1 ~ /^[DR]/ {
                   print r $2; if (match($2, "^" s "/[^/]+/")) print r substr($2, 1, RLENGTH - 1) }' \
                 "/tmp/tc.$suite.diff" > /tmp/left.list
