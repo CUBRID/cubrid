@@ -1477,7 +1477,7 @@ cas_slow_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_p
 /*
  * cas_log_timer_init () - create the one-shot timer that delivers SIGUSR2 for log flushing.
  *   Called from cas_fopen () on the first SQL / slow log open.  The SIGUSR2 handler is registered
- *   separately in cas_sig_init () before any log is opened.
+ *   separately in cas_register_signal_handlers () before any log is opened.
  */
 static void
 cas_log_timer_init (void)
@@ -1504,8 +1504,6 @@ cas_log_timer_init (void)
 void
 cas_log_sigusr2_handler (int signo, siginfo_t * info, void *ctx)
 {
-  int saved_errno = errno;
-
   (void) signo;
   (void) ctx;
 
@@ -1514,6 +1512,20 @@ cas_log_sigusr2_handler (int signo, siginfo_t * info, void *ctx)
       return;
     }
   sql_log_timer_armed = 0;
+  cas_log_flush_from_signal ();
+}
+
+/*
+ * cas_log_flush_from_signal () - flush the SQL log from a signal handler that returns.
+ *   Called from the flush timer and from the SIGTERM / SIGINT handler.  While a statement is not yet
+ *   masked or a write is in progress, it defers the flush to compile_end or cas_fwrite ().
+ *   Async-signal-safe.
+ */
+void
+cas_log_flush_from_signal (void)
+{
+  int saved_errno = errno;
+
   if (as_info == NULL || as_info->cur_sql_log_mode != SQL_LOG_MODE_ALL)
     {
       /* the log mode changed before the timer fired, so ignore it.

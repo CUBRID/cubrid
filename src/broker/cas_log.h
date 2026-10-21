@@ -49,6 +49,7 @@ extern void cas_log_reset (char *br_name);
 extern void cas_log_close (bool flag);
 extern void cas_log_flush_on_exit (void);
 extern void cas_log_sigusr2_handler (int signo, siginfo_t * info, void *ctx);
+extern void cas_log_flush_from_signal (void);
 
 extern int cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, char *dbname, char *dbuser,
 			   ACCESS_LOG_TYPE log_type);

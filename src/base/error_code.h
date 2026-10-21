@@ -1784,7 +1784,9 @@
 
 #define ER_QPROC_SESSION_VARIABLE_TYPE              -1384
 
-#define ER_LAST_ERROR                               -1385
+#define ER_AU_REJECT_LOGIN                          -1385
+
+#define ER_LAST_ERROR                               -1386
 
 
 /*
