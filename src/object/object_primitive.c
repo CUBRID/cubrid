@@ -10618,6 +10618,15 @@ mr_internal_lob_peek_marked_char (OR_BUF * buf)
 					      remaining);
 }
 
+/* A VARCHAR carries only the csql scalar-stream envelope, the one mr_writeval_string_internal () writes, and never in
+ * an index key: a key (CHAR_ALIGNMENT) has no NUL after a string, so adjacent key bytes could take its shape. */
+static bool
+mr_internal_lob_peek_varchar_stream (OR_BUF * buf, int align)
+{
+  return align == INT_ALIGNMENT && mr_internal_lob_peek_marked_char (buf)
+    && OR_GET_INT (buf->ptr + OR_BYTE_SIZE) == DB_VALUE_INTERNAL_LOB_MARKER_STREAM;
+}
+
 /*
  * mr_internal_lob_read_marked_payload () - copy payload_size bytes into copy_buf when they fit, else into a new
  *					    private buffer; the copy is NUL-terminated.
@@ -11513,6 +11522,12 @@ mr_lengthval_string_internal (DB_VALUE * value, int disk, int align)
     }
   else
     {
+      /* only the csql scalar-stream marker rides in a VARCHAR; CLOB envelopes belong to mr_data_lengthval_clob () */
+      if (mr_internal_lob_marker_from_value (value) == DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+	{
+	  return mr_internal_lob_marked_char_length (value, align);
+	}
+
       /* Test and try compression. */
       if (!DB_TRIED_COMPRESSION (value))
 	{
@@ -11573,6 +11588,17 @@ mr_writeval_string_internal (OR_BUF * buf, DB_VALUE * value, int align)
 
   if (value != NULL && !db_value_is_null (value))
     {
+      int marker = mr_internal_lob_marker_from_value (value);
+
+      /* [리뷰] 쓰기는 STREAM만 봉투로 내지만 읽기는 알려진 마커를 모두 받는다.
+       * LOCATOR 봉투가 VARCHAR 자리로 오면 다음 쓰기에서 마커가 사라진다.
+       * 그런 경로가 있는지 확인할 것. */
+      /* only the csql scalar-stream marker rides in a VARCHAR; CLOB envelopes belong to mr_data_writeval_clob () */
+      if (marker == DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+	{
+	  return mr_internal_lob_write_marked_char (buf, value, marker, align);
+	}
+
       str = db_get_string (value);
       src_length = db_get_string_size (value);	/* size in bytes */
       if (src_length <= 0)
@@ -11646,6 +11672,10 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
     {
       if (size == -1)
 	{
+	  if (type == DB_TYPE_VARCHAR && mr_internal_lob_peek_varchar_stream (buf, align))
+	    {
+	      return mr_internal_lob_read_marked_char (buf, NULL, domain, size, copy_buf, copy_buf_len, align, type);
+	    }
 	  rc = or_skip_varchar (buf, align);
 	}
       else if (size)
@@ -11669,6 +11699,12 @@ mr_readval_string_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
     {
       assert (false);
       return ER_FAILED;
+    }
+
+  /* only the csql scalar-stream marker rides in a VARCHAR; CLOB envelopes belong to mr_data_readval_clob () */
+  if (type == DB_TYPE_VARCHAR && mr_internal_lob_peek_varchar_stream (buf, align))
+    {
+      return mr_internal_lob_read_marked_char (buf, value, domain, size, copy_buf, copy_buf_len, align, type);
     }
 
   /* Get the compressed size and uncompressed size from the buffer, and point the buf->ptr
@@ -11787,6 +11823,10 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
     {
       if (size == -1)
 	{
+	  if (type == DB_TYPE_VARCHAR && mr_internal_lob_peek_varchar_stream (buf, align))
+	    {
+	      return mr_internal_lob_read_marked_char (buf, NULL, domain, size, copy_buf, copy_buf_len, align, type);
+	    }
 	  rc = or_skip_varchar (buf, align);
 	}
       else if (size)
@@ -11820,6 +11860,12 @@ data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int siz
     {
       assert (false);
       return ER_FAILED;
+    }
+
+  /* only the csql scalar-stream marker rides in a VARCHAR; CLOB envelopes belong to mr_data_readval_clob () */
+  if (type == DB_TYPE_VARCHAR && mr_internal_lob_peek_varchar_stream (buf, align))
+    {
+      return mr_internal_lob_read_marked_char (buf, value, domain, size, copy_buf, copy_buf_len, align, type);
     }
 
 /* Get the compressed size and uncompressed size from the buffer, and point the buf->ptr
@@ -14460,6 +14506,7 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length, src_bit_length;
+  int marker = DB_VALUE_INTERNAL_LOB_MARKER_NONE;
   char *new_;
   const char *src_str;
 
@@ -14474,6 +14521,7 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
+      marker = mr_internal_lob_marker_from_value (src);
       /* Get information from the value. */
       src_precision = db_value_precision (src);
       src_length = db_get_string_size (src);
@@ -14499,6 +14547,13 @@ mr_setval_varbit (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	      db_make_varbit (dest, src_precision, new_, src_bit_length);
 	      dest->need_clear = true;
 	    }
+	}
+      /* only the csql scalar-stream marker rides in a VARBIT; BLOB envelopes belong to mr_setval_blob () */
+      /* [리뷰] VARBIT setval은 compressed_size를 안 옮겨 마커를 직접 옮긴다.
+       * VARBIT에는 STREAM 마커만 실린다는 전제다. */
+      if (marker == DB_VALUE_INTERNAL_LOB_MARKER_STREAM && error == NO_ERROR)
+	{
+	  db_value_mark_internal_lob (dest, marker);
 	}
     }
 
@@ -14551,6 +14606,12 @@ mr_lengthval_varbit_internal (DB_VALUE * value, int disk, int align)
   len = 0;
   if (value != NULL && db_get_string (value) != NULL)
     {
+      /* only the csql scalar-stream marker rides in a VARBIT; BLOB envelopes belong to mr_lengthval_blob_internal () */
+      if (mr_internal_lob_marker_from_value (value) == DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+	{
+	  return mr_internal_lob_marked_varbit_length (value, align);
+	}
+
       bit_length = db_get_string_length (value);	/* size in bits */
 
       if (align == INT_ALIGNMENT)
@@ -14575,6 +14636,14 @@ mr_writeval_varbit_internal (OR_BUF * buf, DB_VALUE * value, int align)
 
   if (value != NULL && (str = db_get_string (value)) != NULL)
     {
+      int marker = mr_internal_lob_marker_from_value (value);
+
+      /* only the csql scalar-stream marker rides in a VARBIT; BLOB envelopes belong to mr_writeval_blob_internal () */
+      if (marker == DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+	{
+	  return mr_internal_lob_write_marked_varbit (buf, value, marker, align);
+	}
+
       src_bit_length = db_get_string_length (value);	/* size in bits */
 
       if (align == INT_ALIGNMENT)
@@ -14614,6 +14683,11 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
     {
       if (size == -1)
 	{
+	  if (mr_internal_lob_peek_marked_varbit (buf))
+	    {
+	      return mr_internal_lob_read_marked_varbit (buf, NULL, domain, size, copy_buf, copy_buf_len, align,
+							 DB_TYPE_VARBIT);
+	    }
 	  rc = or_skip_varbit (buf, align);
 	}
       else
@@ -14637,6 +14711,11 @@ mr_readval_varbit_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, 
 	{
 	  /* its NULL */
 	  db_value_domain_init (value, DB_TYPE_VARBIT, precision, 0);
+	}
+      else if (mr_internal_lob_peek_marked_varbit (buf))
+	{
+	  rc = mr_internal_lob_read_marked_varbit (buf, value, domain, size, copy_buf, copy_buf_len, align,
+						   DB_TYPE_VARBIT);
 	}
       else if (!copy)
 	{
@@ -17203,7 +17282,7 @@ mr_setmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
       src_length = db_get_string_size (value);	/* size in bytes */
       src_length_bits = db_get_string_length (value);	/* size in bits */
 
-      new_length = src_length + sizeof (int);
+      new_length = src_length + MR_LOB_MEM_PREFIX_SIZE;
       new_ = (char *) db_private_alloc (NULL, new_length);
       if (new_ == NULL)
 	{
@@ -17217,9 +17296,10 @@ mr_setmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value)
 	      db_private_free_and_init (NULL, cur);
 	    }
 
-	  /* pack in the length prefix */
-	  *(int *) new_ = src_length_bits;
-	  cur = new_ + sizeof (int);
+	  /* pack in the length and marker words */
+	  MR_LOB_MEM_LENGTH (new_) = src_length_bits;
+	  MR_LOB_MEM_MARKER (new_) = mr_lob_mem_marker (value);
+	  cur = new_ + MR_LOB_MEM_PREFIX_SIZE;
 	  /* store the string */
 	  memcpy (cur, src, src_length);
 	  *mem = new_;
@@ -17234,7 +17314,7 @@ static int
 mr_getmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 {
   int error = NO_ERROR;
-  int mem_bit_length;
+  int mem_bit_length, marker;
   char **mem, *cur, *new_;
 
   /* get to the current value */
@@ -17248,9 +17328,10 @@ mr_getmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
     }
   else
     {
-      /* extract the length prefix and the pointer to the actual string data */
-      mem_bit_length = *(int *) cur;
-      cur += sizeof (int);
+      /* extract the length and marker words and the pointer to the actual string data */
+      mem_bit_length = MR_LOB_MEM_LENGTH (cur);
+      marker = MR_LOB_MEM_MARKER (cur);
+      cur += MR_LOB_MEM_PREFIX_SIZE;
 
       if (!copy)
 	{
@@ -17269,9 +17350,20 @@ mr_getmem_blob (void *memptr, TP_DOMAIN * domain, DB_VALUE * value, bool copy)
 	  else
 	    {
 	      memcpy (new_, cur, BITS_TO_BYTES (mem_bit_length));
+	      /* The extra byte allocated above is the terminator: an internal LOB locator is read back as
+	       * text by CAS and csql, and a BLOB buffer carries no NUL of its own. */
+	      /* [리뷰] copy=false 경로는 인스턴스 메모리를 가리켜 NUL이 없다.
+	       * setmem이 NUL을 안 붙이므로 텍스트로 읽는 쪽은 크기를 써야 한다. */
+	      new_[BITS_TO_BYTES (mem_bit_length)] = '\0';
 	      db_make_blob (value, domain->precision, new_, mem_bit_length);
 	      value->need_clear = true;
 	    }
+	}
+
+      /* same as mr_getmem_clob (): only the kept marker */
+      if (error == NO_ERROR && marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  db_value_mark_internal_lob (value, marker);
 	}
     }
 
@@ -17296,7 +17388,14 @@ mr_data_lengthmem_blob (void *memptr, TP_DOMAIN * domain, int disk)
       cur = *mem;
       if (cur != NULL)
 	{
-	  len = *(int *) cur;
+	  len = MR_LOB_MEM_LENGTH (cur);
+	  if (MR_LOB_MEM_MARKER (cur) != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	    {
+	      DB_VALUE value;
+
+	      db_make_blob (&value, DB_MAX_LOB_PRECISION, cur + MR_LOB_MEM_PREFIX_SIZE, len);
+	      return mr_internal_lob_marked_varbit_length (&value, INT_ALIGNMENT);
+	    }
 	  len = or_packed_varbit_length (len);
 	}
     }
@@ -17315,8 +17414,17 @@ mr_data_writemem_blob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain)
   cur = *mem;
   if (cur != NULL)
     {
-      bitlen = *(int *) cur;
-      cur += sizeof (int);
+      bitlen = MR_LOB_MEM_LENGTH (cur);
+      if (MR_LOB_MEM_MARKER (cur) != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  DB_VALUE value;
+
+	  /* same as mr_data_writemem_clob () */
+	  db_make_blob (&value, DB_MAX_LOB_PRECISION, cur + MR_LOB_MEM_PREFIX_SIZE, bitlen);
+	  (void) mr_internal_lob_write_marked_varbit (buf, &value, MR_LOB_MEM_MARKER (cur), INT_ALIGNMENT);
+	  return;
+	}
+      cur += MR_LOB_MEM_PREFIX_SIZE;
       or_packed_put_varbit (buf, cur, bitlen);
     }
 }
@@ -17378,7 +17486,7 @@ mr_data_readmem_blob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 	   * Allocate storage for this string, including our own full word size
 	   * prefix.
 	   */
-	  mem_length = BITS_TO_BYTES (bit_len) + sizeof (int);
+	  mem_length = BITS_TO_BYTES (bit_len) + MR_LOB_MEM_PREFIX_SIZE;
 
 	  new_ = (char *) db_private_alloc (NULL, mem_length);
 	  if (new_ == NULL)
@@ -17388,13 +17496,16 @@ mr_data_readmem_blob (OR_BUF * buf, void *memptr, TP_DOMAIN * domain, int size)
 	  else
 	    {
 	      /* store the length in our memory prefix */
-	      *(int *) new_ = bit_len;
-	      cur = new_ + sizeof (int);
+	      MR_LOB_MEM_LENGTH (new_) = bit_len;
+	      cur = new_ + MR_LOB_MEM_PREFIX_SIZE;
 
 	      /* read the string */
 	      or_get_data (buf, cur, BITS_TO_BYTES (bit_len));
 	      /* align like or_get_varchar */
 	      or_get_align32 (buf);
+	      /* same as mr_data_readmem_clob (): the server sends a BLOB as its locator */
+	      MR_LOB_MEM_MARKER (new_) = internal_lob_marker_parse_locator (cur, BITS_TO_BYTES (bit_len), NULL)
+		? DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR : DB_VALUE_INTERNAL_LOB_MARKER_NONE;
 	    }
 
 	  /*
@@ -17440,6 +17551,7 @@ mr_setval_blob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 {
   int error = NO_ERROR;
   int src_precision, src_length, src_bit_length;
+  int marker = DB_VALUE_INTERNAL_LOB_MARKER_NONE;
   char *new_;
   const char *src_str;
 
@@ -17454,6 +17566,7 @@ mr_setval_blob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
     }
   else
     {
+      marker = mr_internal_lob_marker_from_value (src);
       /* Get information from the value. */
       src_precision = db_value_precision (src);
       src_length = db_get_string_size (src);
@@ -17479,6 +17592,12 @@ mr_setval_blob (DB_VALUE * dest, const DB_VALUE * src, bool copy)
 	      db_make_blob (dest, src_precision, new_, src_bit_length);
 	      dest->need_clear = true;
 	    }
+	}
+      /* [리뷰] BLOB은 종류를 가리지 않고 마커를 옮긴다.
+       * 빠지면 복제한 로케이터가 봉투가 아닌 일반 비트 값으로 나간다. */
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE && error == NO_ERROR)
+	{
+	  db_value_mark_internal_lob (dest, marker);
 	}
     }
 
@@ -17513,6 +17632,13 @@ mr_lengthval_blob_internal (DB_VALUE * value, int disk, int align)
   len = 0;
   if (value != NULL && db_get_string (value) != NULL)
     {
+      int marker = mr_internal_lob_marker_from_value (value);
+
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  return mr_internal_lob_marked_varbit_length (value, align);
+	}
+
       bit_length = db_get_string_length (value);	/* size in bits */
 
       if (align == INT_ALIGNMENT)
@@ -17537,6 +17663,13 @@ mr_writeval_blob_internal (OR_BUF * buf, DB_VALUE * value, int align)
 
   if (value != NULL && (str = db_get_string (value)) != NULL)
     {
+      int marker = mr_internal_lob_marker_from_value (value);
+
+      if (marker != DB_VALUE_INTERNAL_LOB_MARKER_NONE)
+	{
+	  return mr_internal_lob_write_marked_varbit (buf, value, marker, align);
+	}
+
       src_bit_length = db_get_string_length (value);	/* size in bits */
 
       if (align == INT_ALIGNMENT)
@@ -17567,6 +17700,11 @@ mr_readval_blob_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
     {
       if (size == -1)
 	{
+	  if (mr_internal_lob_peek_marked_varbit (buf))
+	    {
+	      return mr_internal_lob_read_marked_varbit (buf, NULL, domain, size, copy_buf, copy_buf_len, align,
+							 DB_TYPE_BLOB);
+	    }
 	  rc = or_skip_varbit (buf, align);
 	}
       else
@@ -17590,6 +17728,11 @@ mr_readval_blob_internal (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, in
 	{
 	  /* its NULL */
 	  db_value_domain_init (value, DB_TYPE_BLOB, precision, 0);
+	}
+      else if (mr_internal_lob_peek_marked_varbit (buf))
+	{
+	  rc = mr_internal_lob_read_marked_varbit (buf, value, domain, size, copy_buf, copy_buf_len, align,
+						   DB_TYPE_BLOB);
 	}
       else if (!copy)
 	{
