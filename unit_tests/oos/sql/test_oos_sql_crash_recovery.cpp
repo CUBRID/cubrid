@@ -55,6 +55,10 @@
 #include "gtest/gtest.h"
 
 #include <algorithm>
+#include <array>
+#include <cerrno>
+#include <chrono>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -63,11 +67,15 @@
 #include <string>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <type_traits>
 #include <unistd.h>
 #include <vector>
 
 #include "environment_variable.h"
+#include "heap_oos.hpp"
+#include "object_representation.h"
 #include "test_oos_error_log.hpp"
+#include "test_oos_persisted_identity.hpp"
 #include "test_oos_sql_common.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -102,6 +110,186 @@ namespace
    * the heap's largest slotted record, so the row can only be stored with both values demoted. */
   const int VC1_BYTES = 30000;
   const int VC2_BYTES = 4500;
+
+  using test_oos_persisted_identity::snapshot;
+
+  /* The same raw heap seam as the ownership tests: COPY without Expand/Resolve.
+   * Reading these cached pages does not flush the crashed load's dirty pages. */
+  void
+  capture_stored_rows (const char *table, snapshot &out)
+  {
+    THREAD_ENTRY *thread = thread_get_thread_entry_info ();
+    DB_OBJECT *object = db_find_class (table);
+    ASSERT_NE (object, nullptr);
+    OID class_oid = *reinterpret_cast<OID *> (db_identifier (object));
+    HFID hfid;
+    FILE_TYPE file_type;
+    ASSERT_EQ (heap_get_class_hfid (thread, &class_oid, &hfid, &file_type), NO_ERROR);
+    HEAP_SCANCACHE cache;
+    ASSERT_EQ (heap_scancache_start (thread, &cache, &hfid, &class_oid, true, nullptr), NO_ERROR);
+    struct scan_end
+    {
+      THREAD_ENTRY *thread;
+      HEAP_SCANCACHE *cache;
+      ~scan_end ()
+      {
+	heap_scancache_end (thread, cache);
+      }
+    } end {thread, &cache};
+    std::array<bool, 6> seen {};
+    // Also capture a valid REC_HOME that unexpectedly keeps a value inline.
+    std::array<char, IO_MAX_PAGE_SIZE> bytes;
+    OID oid = OID_INITIALIZER;
+    int count = 0;
+    for (;;)
+      {
+	RECDES record = {static_cast<int> (bytes.size ()), 0, REC_HOME, bytes.data ()};
+	const SCAN_CODE code = heap_next (thread, &hfid, &class_oid, &oid, &record, &cache, COPY,
+					 HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+	if (code == S_END)
+	  {
+	    break;
+	  }
+	ASSERT_EQ (code, S_SUCCESS);
+	ASSERT_EQ (record.type, REC_HOME);
+	ASSERT_GE (record.length, OR_INT_SIZE);
+	const int offset_size = OR_GET_OFFSET_SIZE (record.data);
+	ASSERT_TRUE (offset_size == OR_BYTE_SIZE || offset_size == OR_SHORT_SIZE || offset_size == OR_INT_SIZE);
+	const int fixed = OR_FIXED_ATTRIBUTES_OFFSET_INTERNAL (record.data, 2, offset_size);
+	ASSERT_GE (fixed, 0);
+	ASSERT_LE (fixed + OR_INT_SIZE, record.length);
+	const int id = OR_GET_INT (record.data + fixed);
+	ASSERT_GE (id, 1);
+	ASSERT_LE (id, NUM_ROWS);
+	ASSERT_FALSE (seen[id - 1]);
+	seen[id - 1] = true;
+	++count;
+	auto &row = out[id - 1];
+	row.id = id;
+	row.volume = oid.volid;
+	row.page = oid.pageid;
+	row.slot = oid.slotid;
+	row.has_oos = OR_RECORD_HAS_OOS (record.data);
+	std::memcpy (row.header.data (), record.data, row.header.size ());
+	std::memcpy (row.fixed_id.data (), record.data + fixed, row.fixed_id.size ());
+	row.header_size = OR_HEADER_SIZE (record.data);
+	row.offset_size = offset_size;
+	row.record_length = record.length;
+	for (int attr = 0; attr < 2; ++attr)
+	  {
+	    auto &ref = row.refs[attr];
+	    int entry = 0, next = 0;
+	    ASSERT_LE (OR_HEADER_SIZE (record.data) + (attr + 2) * offset_size, record.length);
+	    ASSERT_EQ (heap_recdes_get_var_offset_entry (&record, attr, &entry), NO_ERROR);
+	    ASSERT_EQ (heap_recdes_get_var_offset_entry (&record, attr + 1, &next), NO_ERROR);
+	    ref.is_oos = OR_IS_OOS (entry) ? 1 : 0;
+	    ref.width = OR_GET_VAR_OFFSET (next) - OR_GET_VAR_OFFSET (entry);
+	    std::memcpy (ref.vot.data (), record.data + row.header_size + attr * offset_size, 2 * offset_size);
+	    const int start = OR_GET_VAR_OFFSET (entry);
+	    if (ref.is_oos && ref.width == OR_OOS_INLINE_SIZE && start >= (attr + 2) * offset_size
+		&& row.header_size + OR_GET_VAR_OFFSET (next) <= record.length)
+	      {
+		std::memcpy (ref.stub.data (), record.data + row.header_size + start, ref.stub.size ());
+		ref.has_stub_bytes = true;
+	      }
+	    /* A clear flag is an observed conformance failure, not permission to parse inline bytes
+	     * as a reference. Keep collecting the remaining safe rows/attributes for the parent. */
+	    if (row.has_oos && ref.is_oos && ref.width == OR_OOS_INLINE_SIZE)
+	      {
+		oos_chain_ref chain;
+		DB_BIGINT length = 0;
+		ASSERT_EQ (heap_oos_parse_inline_ref (&record, attr, &chain, &length), NO_ERROR);
+		ref.parsed = true;
+		ref.volume = chain.head_oid.volid;
+		ref.page = chain.head_oid.pageid;
+		ref.slot = chain.head_oid.slotid;
+		ref.length = length;
+		ref.stamp_page = chain.identity_stamp.pageid;
+		ref.stamp_offset = chain.identity_stamp.offset;
+	      }
+	  }
+      }
+    ASSERT_EQ (count, NUM_ROWS);
+  }
+
+  void
+  print_hex (const unsigned char *bytes, int length)
+  {
+    printf ("\"");
+    for (int i = 0; i < length; ++i)
+      {
+	printf ("%02x", bytes[i]);
+      }
+    printf ("\"");
+  }
+
+  void
+  expect_stored_rows (const char *phase, const snapshot &rows, const snapshot *before = nullptr)
+  {
+    EXPECT_TRUE (test_oos_persisted_identity::valid_rows (rows)) << phase;
+    int observed_rows = 0, observed_refs = 0;
+    for (int i = 0; i < NUM_ROWS; ++i)
+      {
+	const auto &row = rows[i];
+	observed_rows += row.id >= 1 && row.id <= NUM_ROWS ? 1 : 0;
+	EXPECT_EQ (row.id, ROWS[i].id) << phase;
+	EXPECT_GE (row.volume, 0) << phase;
+	EXPECT_GE (row.page, 0) << phase;
+	EXPECT_GT (row.slot, 0) << phase;
+	EXPECT_TRUE (row.has_oos) << phase << " row " << row.id;
+	if (before != nullptr)
+	  {
+	    EXPECT_EQ (row.volume, (*before)[i].volume);
+	    EXPECT_EQ (row.page, (*before)[i].page);
+	    EXPECT_EQ (row.slot, (*before)[i].slot);
+	  }
+	for (int attr = 0; attr < 2; ++attr)
+	  {
+	    const auto &ref = row.refs[attr];
+	    observed_refs += ref.parsed ? 1 : 0;
+	    printf ("SA_STORED {\"phase\":\"%s\",\"id\":%d,\"row_oid\":[%d,%d,%d],"
+		    "\"has_oos\":%s,\"attribute\":%d,\"is_oos\":%d,\"width\":%d,\"header_hex\":",
+		    phase, row.id, row.volume, row.page, row.slot, row.has_oos ? "true" : "false",
+		    attr, ref.is_oos, ref.width);
+	    print_hex (row.header.data (), row.header.size ());
+	    printf (",\"id_hex\":");
+	    print_hex (row.fixed_id.data (), row.fixed_id.size ());
+	    printf (",\"record_length\":%d,\"header_size\":%d,\"offset_size\":%d,\"vot_hex\":",
+		    row.record_length, row.header_size, row.offset_size);
+	    print_hex (ref.vot.data (), 2 * row.offset_size);
+	    printf (",\"stub_hex\":");
+	    if (ref.has_stub_bytes)
+	      {
+		print_hex (ref.stub.data (), ref.stub.size ());
+	      }
+	    else
+	      {
+		printf ("null");
+	      }
+	    printf (",\"reference\":");
+	    if (ref.parsed)
+	      {
+		printf ("{\"head_oid\":[%d,%d,%d],\"length\":%lld,\"stamp\":[%lld,%d]}",
+			ref.volume, ref.page, ref.slot, ref.length, ref.stamp_page, ref.stamp_offset);
+	      }
+	    else
+	      {
+		printf ("null");
+	      }
+	    printf ("}\n");
+	    // Five-byte VARBIT length prefix plus word alignment: 30008 and 4508 serialized bytes.
+	    EXPECT_TRUE (test_oos_persisted_identity::valid_reference (ref, attr == 0 ? 30008 : 4508))
+		<< phase << " row " << row.id << " attribute " << attr;
+	    if (before != nullptr)
+	      {
+		EXPECT_TRUE (test_oos_persisted_identity::same_reference ((*before)[i].refs[attr], ref))
+		    << phase << " row " << row.id << " attribute " << attr;
+	      }
+	  }
+      }
+    printf ("SA_SNAPSHOT phase=%s rows=%d references=%d qualified=%d\n", phase, observed_rows, observed_refs,
+	    test_oos_persisted_identity::valid_rows (rows) ? 1 : 0);
+  }
 
   int
   boot (const char *program)
@@ -249,14 +437,22 @@ namespace
   /* Loads the rows in a child process that then dies without shutting the database down: no log_final,
    * so the on-disk log header still says the database is up, and no page flush, so the pages the load
    * dirtied are lost with the process. The commit already flushed the log, which is what recovery
-   * replays. Returns the child's exit status. */
+   * replays. Returns zero only after a successful child exit and a complete snapshot transfer. */
   int
-  crash_after_loading (const char *table)
+  crash_after_loading (const char *table, snapshot &before)
   {
+    static_assert (sizeof (snapshot) <= PIPE_BUF, "the child snapshot must fit in an empty pipe");
+    static_assert (std::is_trivially_copyable<snapshot>::value, "the snapshot must cross the pipe as plain data");
+    int channel[2];
+    if (pipe (channel) != 0)
+      {
+	return -1;
+      }
     fflush (NULL);
     const pid_t pid = fork ();
     if (pid == 0)
       {
+	close (channel[0]);
 	/* The child writes into the same server error log as the parent - the name is derived from the
 	 * database, not the process - but it boots a cleanly shut down database, so nothing it logs
 	 * there can be mistaken for the parent's recovery. */
@@ -268,23 +464,78 @@ namespace
 	  {
 	    _exit (12);
 	  }
+	snapshot captured {};
+	capture_stored_rows (table, captured);
+	if (::testing::Test::HasFatalFailure ())
+	  {
+	    _exit (13);
+	  }
+	/* Only a small memory snapshot crosses this pipe. No database page flush, shutdown,
+	 * checkpoint or extra transaction commit is introduced before the original crash. */
+	ssize_t written;
+	do
+	  {
+	    written = write (channel[1], &captured, sizeof (captured));
+	  }
+	while (written < 0 && errno == EINTR);
+	if (written != static_cast<ssize_t> (sizeof (captured)))
+	  {
+	    _exit (14);
+	  }
 	/* The crash. No db_shutdown, and _exit so nothing registered for exit runs either. */
 	_exit (0);
       }
+    close (channel[1]);
     if (pid < 0)
       {
+	close (channel[0]);
 	return -1;
       }
     int status = -1;
-    if (waitpid (pid, &status, 0) != pid)
+    const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (60);
+    pid_t waited;
+    for (;;)
+      {
+	waited = waitpid (pid, &status, WNOHANG);
+	if (waited == pid || (waited < 0 && errno != EINTR))
+	  {
+	    break;
+	  }
+	if (std::chrono::steady_clock::now () >= deadline)
+	  {
+	    kill (pid, SIGKILL);
+	    while (waitpid (pid, &status, 0) < 0 && errno == EINTR)
+	      {
+	      }
+	    close (channel[0]);
+	    return -1;
+	  }
+	usleep (10000);
+      }
+    if (waited != pid)
+      {
+	close (channel[0]);
+	return -1;
+      }
+    /* The writer has exited: EOF/short read can no longer block the parent. */
+    ssize_t received;
+    do
+      {
+	received = read (channel[0], &before, sizeof (before));
+      }
+    while (received < 0 && errno == EINTR);
+    char extra;
+    const ssize_t trailing = read (channel[0], &extra, 1);
+    close (channel[0]);
+    printf ("SA_CRASH_CHILD exited=%d exit_status=%d received_bytes=%lld expected_bytes=%zu trailing_bytes=%lld\n",
+	    WIFEXITED (status) ? 1 : 0, WIFEXITED (status) ? WEXITSTATUS (status) : -1,
+	    static_cast<long long> (received), sizeof (before), static_cast<long long> (trailing));
+    if (!WIFEXITED (status) || WEXITSTATUS (status) != 0
+	|| received != static_cast<ssize_t> (sizeof (before)) || trailing != 0)
       {
 	return -1;
       }
-    if (!WIFEXITED (status))
-      {
-	return -1;
-      }
-    return WEXITSTATUS (status);
+    return 0;
   }
 
   void
@@ -345,6 +596,9 @@ TEST_F (OosCrashRecoveryTest, CleanRestartReadsEveryValueAndRunsNoRecovery)
   exec_sql (("DROP TABLE IF EXISTS " + std::string (table)).c_str ());
   db_commit_transaction ();
   ASSERT_EQ (load_rows (table), NO_ERROR);
+  snapshot before {};
+  capture_stored_rows (table, before);
+  expect_stored_rows ("clean_before", before);
   shutdown ();
   forget_database_error_logs ();
 
@@ -354,11 +608,18 @@ TEST_F (OosCrashRecoveryTest, CleanRestartReadsEveryValueAndRunsNoRecovery)
    * for the wrong reason. */
   ASSERT_FALSE (database_error_logs ().empty ()) << "no error log found in " << server_log_dir ();
   const std::string logged = database_error_log_text ();
+  printf ("SA_RECOVERY phase=clean_after started=%d redo_started=%d redo_records=%lld\n",
+	  test_oos_error_log::text_mentions_error (logged, ER_LOG_RECOVERY_STARTED) ? 1 : 0,
+	  test_oos_error_log::text_mentions_error (logged, ER_LOG_RECOVERY_REDO_STARTED) ? 1 : 0,
+	  log_records_redone (logged));
   EXPECT_FALSE (test_oos_error_log::text_mentions_error (logged, ER_LOG_RECOVERY_STARTED))
       << "a clean restart must not run recovery";
   EXPECT_FALSE (test_oos_error_log::text_mentions_error (logged, ER_LOG_RECOVERY_REDO_STARTED));
 
   expect_every_row_readable (table);
+  snapshot after {};
+  capture_stored_rows (table, after);
+  expect_stored_rows ("clean_after", after, &before);
 }
 
 /* The crash: the loader dies with its pages unflushed, so every byte of these rows reaches the disk
@@ -375,11 +636,17 @@ TEST_F (OosCrashRecoveryTest, CommittedValuesSurviveCrashRedoThroughTheirPersist
   shutdown ();
   forget_database_error_logs ();
 
-  ASSERT_EQ (crash_after_loading (table), 0) << "the loading child did not reach its own crash";
+  snapshot before {};
+  ASSERT_EQ (crash_after_loading (table, before), 0) << "the loading child did not export its rows and reach its own crash";
+  expect_stored_rows ("crash_before", before);
 
   boot_and_record ("crash_recovery_reader");
 
   const std::string logged = database_error_log_text ();
+  printf ("SA_RECOVERY phase=crash_after started=%d redo_started=%d redo_records=%lld\n",
+	  test_oos_error_log::text_mentions_error (logged, ER_LOG_RECOVERY_STARTED) ? 1 : 0,
+	  test_oos_error_log::text_mentions_error (logged, ER_LOG_RECOVERY_REDO_STARTED) ? 1 : 0,
+	  log_records_redone (logged));
   ASSERT_TRUE (test_oos_error_log::text_mentions_error (logged, ER_LOG_RECOVERY_STARTED))
       << "the restart found the database clean, so this run proves nothing about redo";
   ASSERT_TRUE (test_oos_error_log::text_mentions_error (logged, ER_LOG_RECOVERY_REDO_STARTED));
@@ -391,6 +658,9 @@ TEST_F (OosCrashRecoveryTest, CommittedValuesSurviveCrashRedoThroughTheirPersist
       << "the redo phase had less to replay than this load must have logged";
 
   expect_every_row_readable (table);
+  snapshot after {};
+  capture_stored_rows (table, after);
+  expect_stored_rows ("crash_after", after, &before);
 }
 
 int
