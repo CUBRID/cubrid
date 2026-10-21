@@ -360,6 +360,8 @@ extern int db_blob_from_file (const DB_VALUE * src_value, DB_VALUE * result_valu
 extern int db_blob_length (const DB_VALUE * src_value, DB_VALUE * result_value);
 extern int db_char_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value);
 extern int db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_VALUE * result_value);
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 extern int db_clob_from_file (const DB_VALUE * src_value, DB_VALUE * result_value);
 extern int db_clob_length (const DB_VALUE * src_value, DB_VALUE * result_value);
 extern int db_bfile_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value);

@@ -31,7 +31,6 @@
 #include <ctype.h>
 #include <string.h>
 #include <errno.h>
-#include <limits.h>
 #include <math.h>
 #include <sys/timeb.h>
 #include <assert.h>
@@ -51,12 +50,25 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "dbtype.h"
+#include "internal_lob_marker.h"
 #include "elo.h"
 #include "es_common.h"
 #include "db_elo.h"
 #include "string_regex.hpp"
 #include "tz_support.h"
 #include "util_func.h"
+#if defined (SERVER_MODE) || defined (SA_MODE)
+#include "boot.h"
+#include "internal_lob_file.hpp"
+#include "session.h"
+#include "thread_manager.hpp"
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+#if defined (SERVER_MODE)
+#include "connection_defs.h"
+#endif /* defined (SERVER_MODE) */
+#if defined (SA_MODE)
+#include "dbi.h"
+#endif /* defined (SA_MODE) */
 
 #include <algorithm>
 #include <string>
@@ -7060,7 +7072,7 @@ db_string_make_empty_typed_string (DB_VALUE * db_val, const DB_TYPE db_type, int
   assert (db_val != NULL);
   assert (precision >= DB_DEFAULT_PRECISION);
 
-  if (!TP_IS_STRING_TYPE (db_type) && !TP_IS_LOB_TYPE (db_type))
+  if (db_type != DB_TYPE_BIT && db_type != DB_TYPE_VARBIT && db_type != DB_TYPE_CHAR && db_type != DB_TYPE_VARCHAR)
     {
       return ER_QSTR_INVALID_DATA_TYPE;
     }
@@ -24854,7 +24866,15 @@ db_char_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
 	  memcpy (buf, char_data, length);
 	}
 
-      error_status = db_make_blob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_CHAR) buf, length);
+      /* db_make_blob's last argument is a BIT length (int); guard the * 8 against int overflow. */
+      /* [리뷰] db_make_blob의 길이 인자는 비트다. 바이트를 넘겨 7/8이 사라지던 CHAR_TO_BLOB 결함 수정. */
+      if (length > INT_MAX / 8)
+	{
+	  error_status = ER_QSTR_BAD_LENGTH;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 1, length);
+	  goto error;
+	}
+      error_status = db_make_blob (result_value, DB_MAX_LOB_PRECISION, (DB_CONST_C_CHAR) buf, length * 8);
       if (error_status != NO_ERROR)
 	{
 	  goto error;
@@ -24880,6 +24900,139 @@ error:
   er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_status, 0);
 
   return error_status;
+}
+
+/* an uploaded, streamed or file-sourced value has no content here: only a LOB column can take it */
+static int
+internal_lob_reject_transport_value (const DB_VALUE * value)
+{
+  /* [리뷰] 업로드·DML 슬롯·스트림 마커는 아직 저장 전 값이라 어떤 식에도 쓰일 수 없다.
+   * 변환·길이 함수 입구가 모두 이 검사를 먼저 한다. */
+  if (!internal_lob_marker_is_unresolved_transport (db_value_get_internal_lob_marker (value)))
+    {
+      return NO_ERROR;
+    }
+  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	  "a LOB value streamed for a column cannot be used in an expression");
+  return ER_STREAM_SESSION_ERROR;
+}
+
+static int
+internal_lob_materialize_if_locator (const DB_VALUE * src_value, DB_TYPE lob_type, DB_VALUE * materialized_value,
+				     bool * is_locator)
+{
+  /* [리뷰] 로케이터면 내용을 DB_VALUE 하나로 읽는다. 호출자는 그 값으로 자신을 한 번 재귀 호출한다.
+   * 로케이터·메모리 값 분기를 한 구현으로 두려는 구조. 크기 상한은 호출자가 먼저 막는다. */
+  INTERNAL_LOB_LOCATOR locator;
+
+  assert (src_value != NULL && materialized_value != NULL && is_locator != NULL);
+  assert (lob_type == DB_TYPE_BLOB || lob_type == DB_TYPE_CLOB);
+
+  *is_locator = false;
+  db_make_null (materialized_value);
+
+  if (DB_VALUE_DOMAIN_TYPE (src_value) != lob_type)
+    {
+      return NO_ERROR;
+    }
+
+  if (internal_lob_reject_transport_value (src_value) != NO_ERROR)
+    {
+      return ER_STREAM_SESSION_ERROR;
+    }
+  if (!internal_lob_db_value_is_locator (src_value, &locator))
+    {
+      return NO_ERROR;
+    }
+
+  *is_locator = true;
+  return internal_lob_read_db_value (thread_get_thread_entry_info (), locator, lob_type, materialized_value, NULL);
+}
+
+/* Bytes copied per step into an external file: the copy never holds more of the value than this. */
+#define INTERNAL_LOB_EXTERNAL_COPY_CHUNK (1024 * 1024)
+
+/*
+ * internal_lob_copy_to_external () - BLOB_TO_BFILE / CLOB_TO_CFILE of a stored Internal LOB: copy its chain into a
+ *   new external file a chunk at a time, so the copy is bounded neither by a DB_VALUE length nor by server memory.
+ *   is_locator(out): false when src_value is not a stored Internal LOB; the caller converts it itself
+ */
+static int
+internal_lob_copy_to_external (const DB_VALUE * src_value, DB_TYPE lob_type, DB_TYPE file_type,
+			       DB_VALUE * result_value, bool * is_locator)
+{
+  /* [리뷰] BLOB_TO_BFILE·CLOB_TO_CFILE: 체인을 1MiB 버퍼 하나로 외부 파일에 복사한다(4GiB도 메모리 고정).
+   * 실패하면 만든 외부 파일을 지운다. 로케이터가 아니면 손대지 않고 기존 경로로 넘긴다. */
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  INTERNAL_LOB_LOCATOR locator;
+  INTERNAL_LOB_READER reader;
+  char *chunk = NULL;
+  DB_BIGINT offset = 0;
+  int error;
+
+  *is_locator = false;
+  if (DB_VALUE_DOMAIN_TYPE (src_value) != lob_type)
+    {
+      return NO_ERROR;
+    }
+  if (internal_lob_reject_transport_value (src_value) != NO_ERROR)
+    {
+      return ER_STREAM_SESSION_ERROR;
+    }
+  if (!internal_lob_db_value_is_locator (src_value, &locator))
+    {
+      return NO_ERROR;
+    }
+  *is_locator = true;
+
+  error = internal_lob_read_open (thread_p, locator, reader);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  error = db_create_fbo (result_value, file_type);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+  chunk = (char *) db_private_alloc (thread_p, INTERNAL_LOB_EXTERNAL_COPY_CHUNK);
+  if (chunk == NULL)
+    {
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, (size_t) INTERNAL_LOB_EXTERNAL_COPY_CHUNK);
+    }
+  while (error == NO_ERROR && offset < reader.total_bytes)
+    {
+      DB_BIGINT written = 0;
+      int nread = 0;
+
+      error = internal_lob_read_pull (thread_p, reader, oos_buffer (chunk, INTERNAL_LOB_EXTERNAL_COPY_CHUNK), nread);
+      if (error == NO_ERROR && nread <= 0)
+	{
+	  error = ER_GENERIC_ERROR;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+	}
+      if (error == NO_ERROR)
+	{
+	  error = db_elo_write (db_get_elo (result_value), (off_t) offset, chunk, (size_t) nread, &written);
+	  if (error == NO_ERROR && written != nread)
+	    {
+	      error = ER_ES_GENERAL;
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 2, "LOB", "short write to the external file");
+	    }
+	  offset += nread;
+	}
+    }
+  if (chunk != NULL)
+    {
+      db_private_free_and_init (thread_p, chunk);
+    }
+  if (error != NO_ERROR)
+    {
+      (void) db_elo_delete (db_get_elo (result_value));
+      pr_clear_value (result_value);
+    }
+  return error;
 }
 
 /*
@@ -24925,6 +25078,38 @@ db_blob_to_bit (const DB_VALUE * src_value, const DB_VALUE * length_value, DB_VA
       error_status = ER_QSTR_INVALID_DATA_TYPE;
       goto error;
     }
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  {
+    DB_VALUE materialized;
+    INTERNAL_LOB_LOCATOR locator;
+    bool is_locator = false;
+
+    /* The optional length argument only sets the result precision; the whole payload is still materialized, so the
+     * size gate applies with or without it. */
+    if (internal_lob_db_value_is_locator (src_value, &locator))
+      {
+	INT64 bit_length = locator.length;
+
+	/* blob_to_bit () returns VARBIT; only a top-level output streams (db_internal_lob_to_scalar_stream) */
+	if (bit_length > DB_MAX_VARBIT_PRECISION)
+	  {
+	  }
+      }
+
+    error_status = internal_lob_materialize_if_locator (src_value, DB_TYPE_BLOB, &materialized, &is_locator);
+    if (error_status != NO_ERROR)
+      {
+	return error_status;
+      }
+    if (is_locator)
+      {
+	error_status = db_blob_to_bit (&materialized, length_value, result_value);
+	pr_clear_value (&materialized);
+	return error_status;
+      }
+  }
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
   // TODO: This part should be revised when the TOAST structure is introduced in the future.
   blob_data = db_get_bit (src_value, &length);
@@ -25030,8 +25215,25 @@ db_blob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
 
   if (src_type == DB_TYPE_BLOB)
     {
+#if defined (SERVER_MODE) || defined (SA_MODE)
+      INTERNAL_LOB_LOCATOR locator;
+
+      if (internal_lob_reject_transport_value (src_value) != NO_ERROR)
+	{
+	  return ER_STREAM_SESSION_ERROR;
+	}
+      if (internal_lob_db_value_is_locator (src_value, &locator))
+	{
+	  /* The locator carries the BLOB's bit length; BLOB_LENGTH is documented in bytes. */
+	  db_make_bigint (result_value, (locator.length + 7) / 8);
+	  return NO_ERROR;
+	}
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+
       // TODO: This part should be revised when the TOAST structure is introduced in the future.
-      db_make_bigint (result_value, db_get_string_length (src_value));
+      /* db_get_string_length () reports BLOB content in bits (INTL_CODESET_RAW_BITS);
+       * BLOB_LENGTH is documented in bytes. */
+      db_make_bigint (result_value, ((DB_BIGINT) db_get_string_length (src_value) + 7) / 8);
     }
   else
     {
@@ -25125,7 +25327,6 @@ db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_
   void *buf = NULL;
   int codeset = LANG_SYS_CODESET;
   int length = 0;
-  int collation = LANG_COLL_DEFAULT;
   int error_status = NO_ERROR;
 
   assert (src_value != NULL && result_value != NULL);
@@ -25151,9 +25352,33 @@ db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_
 
   if (src_type == DB_TYPE_CLOB)
     {
+#if defined (SERVER_MODE) || defined (SA_MODE)
+      {
+	DB_VALUE materialized;
+	INTERNAL_LOB_LOCATOR locator;
+	bool is_locator = false;
+
+	/* clob_to_char () returns VARCHAR; only a top-level output streams (db_internal_lob_to_scalar_stream) */
+	if (internal_lob_db_value_is_locator (src_value, &locator) && locator.length > DB_MAX_VARCHAR_PRECISION)
+	  {
+	  }
+
+	error_status = internal_lob_materialize_if_locator (src_value, DB_TYPE_CLOB, &materialized, &is_locator);
+	if (error_status != NO_ERROR)
+	  {
+	    return error_status;
+	  }
+	if (is_locator)
+	  {
+	    error_status = db_clob_to_char (&materialized, codeset_value, result_value);
+	    pr_clear_value (&materialized);
+	    return error_status;
+	  }
+      }
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+
       clob_data = db_get_string (src_value);
       length = db_get_string_size (src_value);
-      collation = db_get_string_collation (src_value);
 
 
       if ((length >= 0) && (clob_data != NULL))
@@ -25170,7 +25395,8 @@ db_clob_to_char (const DB_VALUE * src_value, const DB_VALUE * codeset_value, DB_
 	}
 
       error_status =
-	db_make_varchar (result_value, DB_MAX_VARCHAR_PRECISION, (DB_CONST_C_CHAR) buf, length, codeset, collation);
+	db_make_varchar (result_value, DB_MAX_VARCHAR_PRECISION, (DB_CONST_C_CHAR) buf, length, codeset,
+			 LANG_GET_BINARY_COLLATION (codeset));
       if (error_status != NO_ERROR)
 	{
 	  goto error;
@@ -25263,7 +25489,23 @@ db_clob_length (const DB_VALUE * src_value, DB_VALUE * result_value)
 
   if (src_type == DB_TYPE_CLOB)
     {
-      db_make_bigint (result_value, db_get_string_length (src_value));
+#if defined (SERVER_MODE) || defined (SA_MODE)
+      INTERNAL_LOB_LOCATOR locator;
+
+      if (internal_lob_reject_transport_value (src_value) != NO_ERROR)
+	{
+	  return ER_STREAM_SESSION_ERROR;
+	}
+      if (internal_lob_db_value_is_locator (src_value, &locator))
+	{
+	  db_make_bigint (result_value, locator.length);
+	  return NO_ERROR;
+	}
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
+
+      /* Report bytes, matching the locator branch above and the external LOB behaviour (db_elo_size ()).
+       * db_get_string_length () counts characters, which disagrees under a multi-byte codeset. */
+      db_make_bigint (result_value, db_get_string_size (src_value));
     }
   else
     {
@@ -25428,15 +25670,26 @@ db_bfile_to_blob (const DB_VALUE * src_value, DB_VALUE * result_value)
  *   src_value(in): blob value
  *   result_value(out): bfile value
  *
- *   Writes the inline BLOB bytes to a freshly allocated external storage
- *   file and returns a BFILE handle. db_bit_to_bfile () already accepts a
- *   DB_TYPE_BLOB source directly (it reads the inline bytes via db_get_bit ()),
- *   so the BLOB is forwarded as-is without an intermediate VARBIT copy.
+ *   A stored BLOB is copied chunk by chunk into a new external file; an in-memory one goes to db_bit_to_bfile ().
  */
 int
 db_blob_to_bfile (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
+  int error_status = NO_ERROR;
+
   assert (src_value != NULL && result_value != NULL);
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  {
+    bool is_locator = false;
+
+    error_status = internal_lob_copy_to_external (src_value, DB_TYPE_BLOB, DB_TYPE_BFILE, result_value, &is_locator);
+    if (error_status != NO_ERROR || is_locator)
+      {
+	return error_status;
+      }
+  }
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
   return db_bit_to_bfile (src_value, result_value);
 }
@@ -25472,16 +25725,26 @@ db_cfile_to_clob (const DB_VALUE * src_value, DB_VALUE * result_value)
  *   src_value(in): clob value
  *   result_value(out): cfile value
  *
- *   Writes the inline CLOB characters to a freshly allocated external
- *   storage file and returns a CFILE handle. db_char_to_cfile () already
- *   accepts a DB_TYPE_CLOB source directly (it reads the inline characters via
- *   db_get_string ()), so the CLOB is forwarded as-is without an intermediate
- *   VARCHAR copy.
+ *   A stored CLOB is copied chunk by chunk into a new external file; an in-memory one goes to db_char_to_cfile ().
  */
 int
 db_clob_to_cfile (const DB_VALUE * src_value, DB_VALUE * result_value)
 {
+  int error_status = NO_ERROR;
+
   assert (src_value != NULL && result_value != NULL);
+
+#if defined (SERVER_MODE) || defined (SA_MODE)
+  {
+    bool is_locator = false;
+
+    error_status = internal_lob_copy_to_external (src_value, DB_TYPE_CLOB, DB_TYPE_CFILE, result_value, &is_locator);
+    if (error_status != NO_ERROR || is_locator)
+      {
+	return error_status;
+      }
+  }
+#endif /* defined (SERVER_MODE) || defined (SA_MODE) */
 
   return db_char_to_cfile (src_value, result_value);
 }

@@ -1273,3 +1273,80 @@ internal_lob_make_locator_db_value_internal (DB_VALUE *value, DB_TYPE lob_type, 
 	 DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR);
 }
 
+/*
+ * internal_lob_fits_db_value () - Can the whole value become one DB_VALUE?  A DB_VALUE keeps its length (bits for
+ *   BLOB, bytes for CLOB) in an int.
+ */
+bool
+internal_lob_fits_db_value (DB_BIGINT logical_length)
+{
+  return logical_length >= 0 && logical_length <= (DB_BIGINT) INT_MAX;
+}
+
+int
+internal_lob_read_db_value (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, DB_TYPE lob_type,
+			    DB_VALUE *value, TP_DOMAIN *domain)
+{
+  /* [리뷰] 로케이터 내용을 DB_VALUE 하나로 읽는다. DB_VALUE 길이가 int라 fits 검사를 넘으면 거부한다.
+   * 버퍼는 db_private_alloc(NULL)이고 need_clear라 pr_clear_value가 같은 heap으로 해제한다. */
+  char *raw_value = NULL;
+  DB_BIGINT raw_length_bigint = 0;
+  int raw_length;
+  int precision;
+  int err;
+
+  if (locator.length < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  err = internal_lob_physical_bytes (lob_type, locator.length, raw_length_bigint);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  if (!internal_lob_fits_db_value (locator.length))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return ER_GENERIC_ERROR;
+    }
+
+  raw_length = (int) raw_length_bigint;
+  raw_value = (char *) db_private_alloc (NULL, (size_t) (raw_length > 0 ? raw_length : 1));
+  if (raw_value == NULL)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+
+  if (raw_length > 0)
+    {
+      err = internal_lob_read (thread_p, locator, oos_buffer (raw_value, (std::size_t) raw_length));
+      if (err != NO_ERROR)
+	{
+	  db_private_free_and_init (NULL, raw_value);
+	  return err;
+	}
+    }
+
+  precision = (domain != NULL) ? domain->precision : DB_MAX_LOB_PRECISION;
+  if (lob_type == DB_TYPE_CLOB)
+    {
+      err = db_make_clob (value, precision, raw_value, raw_length);
+    }
+  else
+    {
+      err = db_make_blob (value, precision, (DB_CONST_C_BIT) raw_value, (int) locator.length);
+    }
+
+  if (err != NO_ERROR)
+    {
+      db_private_free_and_init (NULL, raw_value);
+      return err;
+    }
+
+  value->need_clear = true;
+  return NO_ERROR;
+}
