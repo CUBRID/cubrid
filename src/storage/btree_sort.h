@@ -106,6 +106,8 @@ struct btsort_run
   const char *sorted;		/* sorted slots */
   long readrecs;		/* number of sorted slots */
   long cursor;			/* read position */
+
+  long split_runs;		/* runs sort () split before it sorted them, for the unit test */
 };
 
 /* parameters end in '_' so that they do not replace the field names */

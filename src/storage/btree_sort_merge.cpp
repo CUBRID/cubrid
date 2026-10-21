@@ -22,10 +22,17 @@
  * One 4-byte slot per record. The ascending/descending stretches of the input are merged between two
  * slot arrays. Not to be confused with btsort_exphase_merge (), which merges the temp file runs.
  *
+ * A run wider than a few L2 caches is split first (sample sort): splitters picked from a sample put each record in a
+ * bucket in one pass over the run, and the buckets are merged one by one, each in L2.
+ *
  *   top  ┌───────────────────┐
+ *        │ context           │  with the splitters and the buckets of the sample sort
+ *        ├───────────────────┤
  *        │ slots             │  the newest record's slot at the lowest address
  *        ├───────────────────┤
  *        │ second slot array │  merge target
+ *        ├───────────────────┤
+ *        │ bucket ids        │  2 bytes a record, when the buffer is wide enough to split a run
  *        ├───────────────────┤
  *        │ free              │  handed out by reserve ()
  *        ├───────────────────┤
@@ -42,6 +49,7 @@
 
 #include <assert.h>
 #include <stddef.h>
+#include <string.h>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -73,8 +81,42 @@ static void btsort_run_merge (const char *base, BTSORT_RUN_SLOT *low, BTSORT_RUN
 			      BTSORT_CMP_FUNC *compare, void *comp_arg);
 static BTSORT_RUN_SLOT *btsort_run_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, long limit,
     BTSORT_RUN_SLOT *other_slots, BTSORT_CMP_FUNC *compare, void *comp_arg);
-/* per-record cost above the records: one slot in each array */
-#define BTSORT_MERGE_REC_COST  (2 * (int) sizeof (BTSORT_RUN_SLOT))
+
+/* a bucket of the sample sort spans about this many bytes of records and slots */
+#define BTSORT_SAMPLE_BUCKET_BYTES  (256 * 1024)
+/* a run splits only into this many buckets or more */
+#define BTSORT_SAMPLE_MIN_BUCKETS   16
+/* the sample holds this many records a bucket */
+#define BTSORT_SAMPLE_OVERSAMPLING  8
+/* the fewest records a bucket holds on average */
+#define BTSORT_SAMPLE_MIN_BUCKET_RECORDS  256
+
+typedef UINT16 BTSORT_BUCKET_ID;
+
+namespace
+{
+  struct merge_sorter_ctx
+  {
+    int rec_overhead;		/* bytes a record claims above the records: a slot in each array, and a bucket id */
+    int max_buckets;		/* 0 when the buffer is too small to split a run */
+    BTSORT_RUN_SLOT *splitters;	/* max_buckets - 1: the records that bound the buckets */
+    int *bucket_offsets;	/* max_buckets + 1: where each bucket starts, and the scatter leaves where it ends */
+    char *slots_top;		/* the first byte above the slots */
+  };
+}
+
+static int btsort_sample_bucket_count (const merge_sorter_ctx *ctx, const BTSORT_RUN *run);
+static void btsort_sample_pick_splitters (merge_sorter_ctx *ctx, const BTSORT_RUN *run, const BTSORT_RUN_SLOT *slots,
+    BTSORT_RUN_SLOT *other_slots, int bucket_count);
+STATIC_INLINE int btsort_sample_bucket_of (const char *base, const BTSORT_RUN_SLOT *splitters, int splitter_count,
+    BTSORT_RUN_SLOT slot, BTSORT_CMP_FUNC *compare, void *comp_arg) __attribute__ ((ALWAYS_INLINE));
+static void btsort_sample_fill_buckets (merge_sorter_ctx *ctx, const BTSORT_RUN *run, const BTSORT_RUN_SLOT *slots,
+					BTSORT_RUN_SLOT *other_slots, int bucket_count);
+static void btsort_sample_sort (merge_sorter_ctx *ctx, const BTSORT_RUN *run, BTSORT_RUN_SLOT *slots,
+				BTSORT_RUN_SLOT *other_slots, int bucket_count);
+#if !defined (NDEBUG)
+static void btsort_merge_validate (const BTSORT_RUN *run, const BTSORT_RUN_SLOT *slots);
+#endif /* !NDEBUG */
 
 static void btsort_merge_sorter_init (BTSORT_RUN *run, const struct tp_domain *key_domain);
 static void btsort_merge_sorter_reset (BTSORT_RUN *run);
@@ -412,7 +454,208 @@ btsort_run_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, long limit, BTSOR
 }
 
 /*
- * btsort_merge_sorter_init () - Starts the first run
+ * btsort_sample_bucket_count () - How many buckets the sample sort splits the run into
+ *   return: the bucket count, 0 to merge the run whole
+ *   ctx(in): merge sorter context, for max_buckets
+ *   run(in): the full run
+ */
+static int
+btsort_sample_bucket_count (const merge_sorter_ctx *ctx, const BTSORT_RUN *run)
+{
+  /* the bytes the merge walks: the records and a slot in each array */
+  size_t run_bytes = (size_t) (run->item_ptr - run->base) + 2 * sizeof (BTSORT_RUN_SLOT) * run->numrecs;
+  size_t bucket_count = run_bytes / BTSORT_SAMPLE_BUCKET_BYTES;
+
+  bucket_count = MIN (bucket_count, (size_t) ctx->max_buckets);
+  /* with long records a bucket of that many bytes holds few of them, and splitting so finely only adds compares */
+  bucket_count = MIN (bucket_count, (size_t) run->numrecs / BTSORT_SAMPLE_MIN_BUCKET_RECORDS);
+
+  return (bucket_count >= BTSORT_SAMPLE_MIN_BUCKETS) ? (int) bucket_count : 0;
+}
+
+/*
+ * btsort_sample_pick_splitters () - Picks the splitters of the buckets from a sample of the run
+ *   return: void
+ *   ctx(in/out): the splitters
+ *   run(in): the full run
+ *   slots(in): the slots of the run
+ *   other_slots(in): as many slots, for scratch
+ *   bucket_count(in): the bucket count from btsort_sample_bucket_count ()
+ *
+ * Note: Every BTSORT_SAMPLE_OVERSAMPLING-th record of the sorted sample is a splitter.
+ */
+static void
+btsort_sample_pick_splitters (merge_sorter_ctx *ctx, const BTSORT_RUN *run, const BTSORT_RUN_SLOT *slots,
+			      BTSORT_RUN_SLOT *other_slots, int bucket_count)
+{
+  const char *base = run->base;
+  BTSORT_CMP_FUNC *compare = run->cmp_fn;
+  void *comp_arg = run->cmp_arg;
+  int record_count = (int) run->numrecs;
+  int splitter_count = bucket_count - 1;
+  int sample_count = BTSORT_SAMPLE_OVERSAMPLING * bucket_count;
+  int stride = record_count / sample_count;
+  BTSORT_RUN_SLOT *sample;
+  int at, bucket_id;
+
+  /* the sample and its spare fit the second slot array */
+  assert (bucket_count <= ctx->max_buckets && 2 * sample_count <= record_count);
+
+  /* the sample sorts in the second slot array, which the slots fill later */
+  for (at = 0; at < sample_count; at++)
+    {
+      other_slots[at] = slots[at * stride];
+    }
+  sample = btsort_run_sort (base, other_slots, sample_count, other_slots + sample_count, compare, comp_arg);
+
+  /* take the splitters evenly apart in the sorted sample, so that the buckets get about as many records each */
+  for (bucket_id = 0; bucket_id < splitter_count; bucket_id++)
+    {
+      ctx->splitters[bucket_id] = sample[BTSORT_SAMPLE_OVERSAMPLING * (bucket_id + 1) - 1];
+    }
+}
+
+/*
+ * btsort_sample_bucket_of () - Finds the bucket of a record
+ *   return: the number of splitters below the record
+ *   base(in):
+ *   splitters(in): in order
+ *   splitter_count(in):
+ *   slot(in): the slot of the record
+ *   compare(in):
+ *   comp_arg(in):
+ */
+STATIC_INLINE int
+btsort_sample_bucket_of (const char *base, const BTSORT_RUN_SLOT *splitters, int splitter_count, BTSORT_RUN_SLOT slot,
+			 BTSORT_CMP_FUNC *compare, void *comp_arg)
+{
+  int low = 0, high = splitter_count;
+
+  while (low < high)
+    {
+      int middle = (low + high) >> 1;
+
+      /* a splitter is a record of the run, and the comparator stops on a record compared with itself */
+      if (slot == splitters[middle] || (*compare) (base + slot, base + splitters[middle], comp_arg) < 0)
+	{
+	  high = middle;
+	}
+      else
+	{
+	  low = middle + 1;
+	}
+    }
+
+  return low;
+}
+
+/*
+ * btsort_sample_fill_buckets () - Moves the slots of the run into their buckets
+ *   return: void
+ *   ctx(in/out): the splitters, and where each bucket ends on return
+ *   run(in): the full run
+ *   slots(in): the slots of the run
+ *   other_slots(out): the slots bucket by bucket, above the bucket ids
+ *   bucket_count(in): the bucket count from btsort_sample_bucket_count ()
+ *
+ * Note: The splitters put a record in a bucket in one pass that reads the records in the order they lie, and then the
+ *       slots move to their buckets in that order.
+ */
+static void
+btsort_sample_fill_buckets (merge_sorter_ctx *ctx, const BTSORT_RUN *run, const BTSORT_RUN_SLOT *slots,
+			    BTSORT_RUN_SLOT *other_slots, int bucket_count)
+{
+  const char *base = run->base;
+  BTSORT_CMP_FUNC *compare = run->cmp_fn;
+  void *comp_arg = run->cmp_arg;
+  int record_count = (int) run->numrecs;
+  BTSORT_BUCKET_ID *bucket_ids = (BTSORT_BUCKET_ID *) other_slots - record_count;
+  const BTSORT_RUN_SLOT *splitters = ctx->splitters;
+  int splitter_count = bucket_count - 1;
+  int at, bucket_id;
+
+  /* the bucket id of each record, and the records of each bucket counted */
+  memset (ctx->bucket_offsets, 0, (bucket_count + 1) * sizeof (int));
+  for (at = 0; at < record_count; at++)
+    {
+      bucket_id = btsort_sample_bucket_of (base, splitters, splitter_count, slots[at], compare, comp_arg);
+
+      bucket_ids[at] = (BTSORT_BUCKET_ID) bucket_id;
+      ctx->bucket_offsets[bucket_id + 1]++;
+    }
+
+  /* the counts into starts */
+  for (bucket_id = 0; bucket_id < bucket_count; bucket_id++)
+    {
+      ctx->bucket_offsets[bucket_id + 1] += ctx->bucket_offsets[bucket_id];
+    }
+
+  /* each slot to the next free place of its bucket, in the order they come */
+  for (at = 0; at < record_count; at++)
+    {
+      bucket_id = bucket_ids[at];
+
+      other_slots[ctx->bucket_offsets[bucket_id]] = slots[at];
+      ctx->bucket_offsets[bucket_id]++;
+    }
+}
+
+/*
+ * btsort_sample_sort () - Sorts the run in buckets that each sort in L2
+ *   return: void
+ *   ctx(in): the splitters and the bucket bounds
+ *   run(in): the full run
+ *   slots(in/out): the slots of the run, in order on return
+ *   other_slots(in): as many slots, for scratch, above the bucket ids
+ *   bucket_count(in): the bucket count from btsort_sample_bucket_count ()
+ *
+ * Note: Each bucket is merged on its own while it stays in L2.
+ */
+static void
+btsort_sample_sort (merge_sorter_ctx *ctx, const BTSORT_RUN *run, BTSORT_RUN_SLOT *slots,
+		    BTSORT_RUN_SLOT *other_slots, int bucket_count)
+{
+  const char *base = run->base;
+  BTSORT_CMP_FUNC *compare = run->cmp_fn;
+  void *comp_arg = run->cmp_arg;
+  BTSORT_RUN_SLOT *sorted;
+  int bucket_id, start, count;
+
+  /* pick the splitters that bound the buckets from a sample of the run */
+  btsort_sample_pick_splitters (ctx, run, slots, other_slots, bucket_count);
+
+  /* move the slots into their buckets in the second slot array */
+  btsort_sample_fill_buckets (ctx, run, slots, other_slots, bucket_count);
+
+  /* the buckets in order, each from the end of the one before, back in the slot array */
+  for (bucket_id = 0, start = 0; bucket_id < bucket_count; bucket_id++, start += count)
+    {
+      count = ctx->bucket_offsets[bucket_id] - start;
+
+      sorted = btsort_run_sort (base, other_slots + start, count, slots + start, compare, comp_arg);
+      if (sorted != slots + start)
+	{
+	  memcpy (slots + start, sorted, count * sizeof (BTSORT_RUN_SLOT));
+	}
+    }
+}
+
+#if !defined (NDEBUG)
+/* the comparator never returns 0, as it breaks key ties by OID */
+static void
+btsort_merge_validate (const BTSORT_RUN *run, const BTSORT_RUN_SLOT *slots)
+{
+  long at;
+
+  for (at = 0; at + 1 < run->numrecs; at++)
+    {
+      assert ((*run->cmp_fn) (run->base + slots[at], run->base + slots[at + 1], run->cmp_arg) < 0);
+    }
+}
+#endif /* !NDEBUG */
+
+/*
+ * btsort_merge_sorter_init () - Sets the context up at the top of the buffer and starts the first run
  *   return: void
  *   run(in/out):
  *   key_domain(in): unused, as records are compared by cmp_fn
@@ -420,6 +663,34 @@ btsort_run_sort (const char *rec_base, BTSORT_RUN_SLOT *slots, long limit, BTSOR
 static void
 btsort_merge_sorter_init (BTSORT_RUN *run, const struct tp_domain *key_domain)
 {
+  merge_sorter_ctx *ctx = (merge_sorter_ctx *) (run->top - DB_ALIGN (sizeof (merge_sorter_ctx), DOUBLE_ALIGNMENT));
+  char *ctx_low = (char *) ctx;	/* the lowest byte the context takes */
+  int max_buckets;
+
+  assert (PTR_ALIGN (run->top, DOUBLE_ALIGNMENT) == run->top);
+
+  max_buckets = (int) ((size_t) (run->top - run->base) / BTSORT_SAMPLE_BUCKET_BYTES);
+  if (max_buckets < BTSORT_SAMPLE_MIN_BUCKETS)
+    {
+      max_buckets = 0;
+    }
+
+  ctx->max_buckets = max_buckets;
+  ctx->rec_overhead = 2 * (int) sizeof (BTSORT_RUN_SLOT) + ((max_buckets > 0) ? (int) sizeof (BTSORT_BUCKET_ID) : 0);
+  ctx->splitters = NULL;
+  ctx->bucket_offsets = NULL;
+
+  if (max_buckets > 0)
+    {
+      ctx_low -= DB_ALIGN ((max_buckets + 1) * sizeof (int), DOUBLE_ALIGNMENT);
+      ctx->bucket_offsets = (int *) ctx_low;
+      ctx_low -= DB_ALIGN ((max_buckets - 1) * sizeof (BTSORT_RUN_SLOT), DOUBLE_ALIGNMENT);
+      ctx->splitters = (BTSORT_RUN_SLOT *) ctx_low;
+    }
+  ctx->slots_top = ctx_low;
+
+  run->sorter_ctx = ctx;
+
   btsort_merge_sorter_reset (run);
 }
 
@@ -433,11 +704,13 @@ btsort_merge_sorter_init (BTSORT_RUN *run, const struct tp_domain *key_domain)
 static void
 btsort_merge_sorter_reset (BTSORT_RUN *run)
 {
+  merge_sorter_ctx *ctx = (merge_sorter_ctx *) run->sorter_ctx;
+
   run->numrecs = 0;
   run->cursor = 0;
   run->item_ptr = run->base;
-  run->slot_ptr = run->top - sizeof (BTSORT_RUN_SLOT);
-  run->slot_low = run->slot_ptr - sizeof (BTSORT_RUN_SLOT);
+  run->slot_ptr = ctx->slots_top - sizeof (BTSORT_RUN_SLOT);
+  run->slot_low = ctx->slots_top;	/* nothing claimed yet */
 }
 
 /*
@@ -447,12 +720,13 @@ btsort_merge_sorter_reset (BTSORT_RUN *run)
  *   maxlen(in):
  *   room(out): writable bytes, at most maxlen
  *
- * Note: Keeps the slots of two records in reserve.
+ * Note: Keeps the share of two records in reserve.
  */
 static char *
 btsort_merge_sorter_reserve (BTSORT_RUN *run, int maxlen, int *room)
 {
-  ptrdiff_t free_bytes = (run->slot_low - run->item_ptr) - 2 * (ptrdiff_t) BTSORT_MERGE_REC_COST;
+  merge_sorter_ctx *ctx = (merge_sorter_ctx *) run->sorter_ctx;
+  ptrdiff_t free_bytes = (run->slot_low - run->item_ptr) - 2 * (ptrdiff_t) ctx->rec_overhead;
 
   if (free_bytes <= 0)
     {
@@ -474,6 +748,7 @@ btsort_merge_sorter_reserve (BTSORT_RUN *run, int maxlen, int *room)
 static void
 btsort_merge_sorter_accept (BTSORT_RUN *run, int length)
 {
+  merge_sorter_ctx *ctx = (merge_sorter_ctx *) run->sorter_ctx;
   BTSORT_RUN_SLOT *slot = (BTSORT_RUN_SLOT *) run->slot_ptr;
 
   assert (run->item_ptr + length <= run->slot_low);
@@ -482,7 +757,7 @@ btsort_merge_sorter_accept (BTSORT_RUN *run, int length)
   run->numrecs++;
 
   run->slot_ptr -= sizeof (BTSORT_RUN_SLOT);
-  run->slot_low -= BTSORT_MERGE_REC_COST;
+  run->slot_low -= ctx->rec_overhead;
   run->item_ptr += DB_ALIGN (length, INT_ALIGNMENT);
 }
 
@@ -495,11 +770,36 @@ btsort_merge_sorter_accept (BTSORT_RUN *run, int length)
 static int
 btsort_merge_sorter_sort (THREAD_ENTRY *thread_p, BTSORT_RUN *run)
 {
+  merge_sorter_ctx *ctx = (merge_sorter_ctx *) run->sorter_ctx;
   BTSORT_RUN_SLOT *slots = (BTSORT_RUN_SLOT *) (run->slot_ptr + sizeof (BTSORT_RUN_SLOT));	/* the newest slot */
-  BTSORT_RUN_SLOT *other_slots = (BTSORT_RUN_SLOT *) run->slot_low;
+  /* right below the slots, and above the bucket ids that accept () claimed */
+  BTSORT_RUN_SLOT *other_slots = slots - run->numrecs;
+  BTSORT_RUN_SLOT *sorted;
+  int bucket_count;
+
+  assert ((char *) other_slots - run->slot_low
+	  == (ptrdiff_t) (ctx->rec_overhead - 2 * (int) sizeof (BTSORT_RUN_SLOT)) * run->numrecs);
+  /* a slot is a 32-bit offset into a buffer under 2GB */
+  assert (run->numrecs <= INT_MAX);
+
+  bucket_count = btsort_sample_bucket_count (ctx, run);
+  if (bucket_count > 0)
+    {
+      btsort_sample_sort (ctx, run, slots, other_slots, bucket_count);
+      sorted = slots;
+      run->split_runs++;
+    }
+  else
+    {
+      sorted = btsort_run_sort (run->base, slots, run->numrecs, other_slots, run->cmp_fn, run->cmp_arg);
+    }
+
+#if !defined (NDEBUG)
+  btsort_merge_validate (run, sorted);
+#endif /* !NDEBUG */
 
   /* for next (), kept across reset () */
-  run->sorted = (const char *) btsort_run_sort (run->base, slots, run->numrecs, other_slots, run->cmp_fn, run->cmp_arg);
+  run->sorted = (const char *) sorted;
   run->readrecs = run->numrecs;
   run->cursor = 0;
 

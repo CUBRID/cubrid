@@ -133,9 +133,9 @@ namespace
     return ids;
   }
 
-  /* the ids of the records, run by run, in the order next () reads them */
+  /* the ids of the records, run by run, in the order next () reads them, and the runs the sorter split */
   std::vector<std::vector<uint64_t>>
-  sort_in_runs (const std::vector<test_record> &input, size_t buffer_bytes)
+  sort_in_runs (const std::vector<test_record> &input, size_t buffer_bytes, long *split_runs)
   {
     const BTSORT_RUN_SORTER &sorter = btsort_merge_sorter;
     std::vector<uint64_t> memory (buffer_bytes / sizeof (uint64_t));
@@ -172,18 +172,21 @@ namespace
 	runs.push_back (read_run (sorter, run));
       }
 
+    *split_runs = run.split_runs;
     return runs;
   }
 
-  /* each run is the next slice of the input, in record_less () order */
-  void
+  /* each run is the next slice of the input, in record_less () order
+   *   return: the runs the sorter split */
+  long
   check_sort (const std::vector<test_record> &input, size_t buffer_bytes)
   {
     std::vector<std::vector<uint64_t>> runs;
+    long split_runs = 0;
     size_t at = 0;
 
     Self_compares = 0;
-    runs = sort_in_runs (input, buffer_bytes);
+    runs = sort_in_runs (input, buffer_bytes, &split_runs);
 
     for (const std::vector<uint64_t> &run : runs)
       {
@@ -207,15 +210,21 @@ namespace
 
     REQUIRE (at == input.size ());
     REQUIRE (Self_compares == 0);
+
+    return split_runs;
   }
 
-  void
+  /* the runs the sorter split in each of BUFFER_SIZES */
+  std::vector<long>
   check_sort_in_each_buffer (const std::vector<test_record> &input)
   {
+    std::vector<long> split_runs;
+
     for (size_t buffer_bytes : BUFFER_SIZES)
       {
-	check_sort (input, buffer_bytes);
+	split_runs.push_back (check_sort (input, buffer_bytes));
       }
+    return split_runs;
   }
 
   /* big endian, so the bytes order as the number */
@@ -252,11 +261,15 @@ namespace
 TEST_CASE ("merge sorter: random keys", "[btree_sort_merge]")
 {
   std::mt19937_64 rng (1);
-
-  check_sort_in_each_buffer (make_records (FIXED_KEY_COUNT, [&rng] (size_t)
+  std::vector<long> split_runs = check_sort_in_each_buffer (make_records (FIXED_KEY_COUNT, [&rng] (size_t)
   {
     return key_of_number (rng ());
   }));
+
+  /* 64KB holds no bucket, and a full run of 6MB or 16MB spans 16 buckets or more */
+  REQUIRE (split_runs[0] == 0);
+  REQUIRE (split_runs[1] > 0);
+  REQUIRE (split_runs[2] > 0);
 }
 
 TEST_CASE ("merge sorter: keys arriving in order", "[btree_sort_merge]")
@@ -354,6 +367,21 @@ TEST_CASE ("merge sorter: keys of different lengths", "[btree_sort_merge]")
       }
     return key;
   }));
+}
+
+TEST_CASE ("merge sorter: buffers at the edge of splitting a run", "[btree_sort_merge]")
+{
+  /* 16 buckets of 256KB: a bucket id a record from 4MB up, and a split when the run itself spans them */
+  const size_t edge = 4 * 1024 * 1024;
+  std::mt19937_64 rng (6);
+  std::vector<test_record> records = make_records (FIXED_KEY_COUNT, [&rng] (size_t)
+  {
+    return key_of_number (rng ());
+  });
+
+  REQUIRE (check_sort (records, edge - 8) == 0);
+  REQUIRE (check_sort (records, edge) == 0);
+  REQUIRE (check_sort (records, edge + edge / 4) > 0);
 }
 
 TEST_CASE ("merge sorter: runs of one and two records", "[btree_sort_merge]")
