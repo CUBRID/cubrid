@@ -35,6 +35,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <errno.h>
+#include <limits.h>
+#include <stdlib.h>
 
 #include "bestspace.hpp"
 #include "heap_file.h"
@@ -77,8 +79,11 @@
 #include "probes.h"
 #endif /* ENABLE_SYSTEMTAP */
 #include "dbtype.h"
+#include "internal_lob_marker.h"
 #include "thread_manager.hpp"	// for thread_get_thread_entry_info
 #include "db_value_printer.hpp"
+#include "internal_lob_file.hpp"
+#include "session.h"
 #include "log_append.hpp"
 #include "string_buffer.hpp"
 #include "tde.h"
@@ -225,10 +230,34 @@ struct heap_hdr_stats
     VPID pages[cubstorage::bestspace::MAX_SHARD_PAGE_COUNT];
   } bestspace;
 
-  int reserve0;			/* Nothing reserved for future */
-  int reserve1;			/* Nothing reserved for future */
+  VFID internal_lob_vfid;	/* Internal LOB file identifier (if any) */
   int reserve2;			/* Nothing reserved for future */
 };
+
+STATIC_INLINE void
+heap_get_internal_lob_vfid (const HEAP_HDR_STATS * heap_hdr, VFID * lob_vfid)
+{
+  VFID_COPY (lob_vfid, &heap_hdr->internal_lob_vfid);
+  if (lob_vfid->fileid == 0 && lob_vfid->volid == 0)
+    {
+      VFID_SET_NULL (lob_vfid);
+    }
+}
+
+STATIC_INLINE void
+heap_set_internal_lob_vfid (HEAP_HDR_STATS * heap_hdr, const VFID * lob_vfid)
+{
+  VFID_COPY (&heap_hdr->internal_lob_vfid, lob_vfid);
+}
+
+STATIC_INLINE void
+heap_null_internal_lob_vfid (HEAP_HDR_STATS * heap_hdr)
+{
+  VFID lob_vfid;
+
+  VFID_SET_NULL (&lob_vfid);
+  heap_set_internal_lob_vfid (heap_hdr, &lob_vfid);
+}
 
 /* Define heap page flags. */
 #define HEAP_PAGE_FLAG_BESTSPACE		  0x00000001
@@ -4897,6 +4926,7 @@ heap_create_internal (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oi
   heap_hdr.last_vpid.volid = hfid->vfid.volid;
   heap_hdr.last_vpid.pageid = hfid->hpgid;
   VFID_SET_NULL (&heap_hdr.oos_vfid);
+  heap_null_internal_lob_vfid (&heap_hdr);
 
   heap_hdr.unfill_space = (int) ((float) DB_PAGESIZE * prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR));
 
@@ -5295,6 +5325,7 @@ heap_reuse (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid, c
   VFID_SET_NULL (&heap_hdr->ovf_vfid);
   heap_hdr->last_vpid = last_vpid;
   VFID_SET_NULL (&heap_hdr->oos_vfid);
+  heap_null_internal_lob_vfid (heap_hdr);
   heap_hdr->unfill_space = (int) ((float) DB_PAGESIZE * prm_get_float_value (PRM_ID_HF_UNFILL_FACTOR));
   heap_hdr->num_pages = npages;
   heap_hdr->num_recs = 0;
@@ -5430,6 +5461,36 @@ xheap_create (THREAD_ENTRY * thread_p, HFID * hfid, const OID * class_oid, bool 
 }
 
 /*
+ * heap_remove_internal_lob_file () - Remove the internal LOB file of a heap being destroyed, if it has one
+ *   return: error code
+ *   hfid(in): heap file identifier
+ */
+static int
+heap_remove_internal_lob_file (THREAD_ENTRY * thread_p, const HFID * hfid)
+{
+  VFID lob_vfid;
+  int error;
+
+  /* a failed lookup is an error (the file would leak), a NULL vfid means the heap has none */
+  if (!heap_oos_find_vfid_by_type (thread_p, hfid, FILE_INTERNAL_LOB, &lob_vfid, false))
+    {
+      ASSERT_ERROR ();
+      return er_errid ();
+    }
+  if (VFID_ISNULL (&lob_vfid))
+    {
+      return NO_ERROR;
+    }
+
+  error = internal_lob_remove_file (thread_p, lob_vfid);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+    }
+  return error;
+}
+
+/*
  * xheap_destroy () - Destroy a heap file
  *   return: int
  *   hfid(in): Object heap file identifier.
@@ -5470,6 +5531,15 @@ xheap_destroy (THREAD_ENTRY * thread_p, const HFID * hfid, const OID * class_oid
 	    ASSERT_ERROR ();
 	    return error;
 	  }
+      }
+  }
+
+  /* Internal LOB file cleanup */
+  {
+    int error = heap_remove_internal_lob_file (thread_p, hfid);
+    if (error != NO_ERROR)
+      {
+	return error;
       }
   }
 
@@ -5536,6 +5606,13 @@ xheap_destroy_newly_created (THREAD_ENTRY * thread_p, const HFID * hfid, const O
 	  }
       }
   }
+
+  /* Internal LOB file cleanup */
+  ret = heap_remove_internal_lob_file (thread_p, hfid);
+  if (ret != NO_ERROR)
+    {
+      return ret;
+    }
 
   log_append_postpone (thread_p, RVHF_MARK_DELETED, &addr, sizeof (hfid->vfid), &hfid->vfid);
 
@@ -12403,8 +12480,23 @@ heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info, bool is_mv
   return NO_ERROR;
 }
 
+/*
+ * heap_oos_find_vfid_by_type () - find (or optionally create) one of the OOS-layout files of a heap
+ *   return           : true on success, false on a genuine error (er is set)
+ *   hfid (in)        : heap file identifier
+ *   file_type (in)   : FILE_OOS (ordinary OOS attributes) or FILE_INTERNAL_LOB (internal LOB chains).
+ *                      Both files share the OOS layout; they differ only in the header slot that records them
+ *                      and in the file type stamped on the new file.
+ *   vfid (out)       : file identifier; set to NULL when the heap has no such file (only possible when
+ *                      docreate == false)
+ *   docreate (in)    : if true and the file does not exist, it is created and TDE is applied to it
+ *                      (mirroring heap_ovf_find_vfid)
+ *
+ * Note: A false return ALWAYS means a real error (and er_errid () is set); it never means "no file".
+ *   Callers using docreate == false must inspect vfid (VFID_ISNULL) to tell whether the file exists.
+ */
 bool
-heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate)
+heap_oos_find_vfid_by_type (THREAD_ENTRY * thread_p, const HFID * hfid, FILE_TYPE file_type, VFID * vfid, bool docreate)
 {
   HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure */
   LOG_DATA_ADDR addr_hdr;	/* Address of logging data */
@@ -12414,7 +12506,7 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
   bool success;
 
   success = true;
-  VFID_SET_NULL (oos_vfid);
+  VFID_SET_NULL (vfid);
 
   addr_hdr.vfid = &hfid->vfid;
   addr_hdr.offset = HEAP_HEADER_AND_CHAIN_SLOTID;
@@ -12441,7 +12533,21 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
     }
 
   heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
-  if (VFID_ISNULL (&heap_hdr->oos_vfid))
+  switch (file_type)
+    {
+    case FILE_OOS:
+      VFID_COPY (vfid, &heap_hdr->oos_vfid);
+      break;
+    case FILE_INTERNAL_LOB:
+      heap_get_internal_lob_vfid (heap_hdr, vfid);
+      break;
+    default:
+      assert (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      goto exit_on_error;
+    }
+
+  if (VFID_ISNULL (vfid))
     {
       if (docreate == true)
 	{
@@ -12449,21 +12555,20 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 
 	  /* START A TOP SYSTEM OPERATION */
 	  log_sysop_start (thread_p);
-	  if (oos_create_file (thread_p, *hfid, heap_hdr->class_oid, *oos_vfid) != NO_ERROR)
+	  if (oos_create_file_with_type (thread_p, file_type, *hfid, heap_hdr->class_oid, *vfid) != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      goto exit_on_error;
 	    }
 
-	  /* Apply TDE to the new OOS file atomically with its creation.
-	   * Pattern mirrors heap_ovf_find_vfid */
+	  /* Apply TDE to the new file atomically with its creation. Pattern mirrors heap_ovf_find_vfid */
 	  if (heap_get_class_tde_algorithm (thread_p, &heap_hdr->class_oid, &tde_algo) != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      goto exit_on_error;
 	    }
 
-	  if (file_apply_tde_algorithm (thread_p, oos_vfid, tde_algo) != NO_ERROR)
+	  if (file_apply_tde_algorithm (thread_p, vfid, tde_algo) != NO_ERROR)
 	    {
 	      log_sysop_abort (thread_p);
 	      goto exit_on_error;
@@ -12471,7 +12576,17 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 
 	  /* Log undo, then redo */
 	  log_append_undo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
-	  VFID_COPY (&heap_hdr->oos_vfid, oos_vfid);
+	  switch (file_type)
+	    {
+	    case FILE_OOS:
+	      VFID_COPY (&heap_hdr->oos_vfid, vfid);
+	      break;
+	    case FILE_INTERNAL_LOB:
+	      heap_set_internal_lob_vfid (heap_hdr, vfid);
+	      break;
+	    default:
+	      break;
+	    }
 	  log_append_redo_data (thread_p, RVHF_STATS, &addr_hdr, sizeof (*heap_hdr), heap_hdr);
 	  pgbuf_set_dirty (thread_p, addr_hdr.pgptr, DONT_FREE);
 
@@ -12479,13 +12594,9 @@ heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 	}
       else
 	{
-	  /* No OOS file exists yet; oos_vfid stays NULL. This is not an error. */
+	  /* No such file exists yet; vfid stays NULL. This is not an error. */
 	  goto end;
 	}
-    }
-  else
-    {
-      VFID_COPY (oos_vfid, &heap_hdr->oos_vfid);
     }
 
   goto end;
@@ -12502,6 +12613,115 @@ end:
   return success;
 }
 
+/*
+ * heap_oos_find_vfid () - find (or optionally create) the OOS file of a heap
+ *   return         : true on success, false on a genuine error (er is set)
+ *   hfid (in)      : heap file identifier
+ *   oos_vfid (out) : OOS file identifier; NULL when the heap has none (only when docreate == false)
+ *   docreate (in)  : if true, a missing OOS file is created and TDE is applied to it
+ *
+ * Note: false never means "no OOS file"; with docreate == false, check VFID_ISNULL (oos_vfid).
+ */
+bool
+heap_oos_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, bool docreate)
+{
+  return heap_oos_find_vfid_by_type (thread_p, hfid, FILE_OOS, oos_vfid, docreate);
+}
+
+/*
+ * heap_oos_find_both_vfids () - Read the heap's OOS and Internal LOB file ids under a single header latch.
+ *   return: true on success; either vfid may come back NULL, which simply means the heap has no such file
+ *   hfid(in): heap file
+ *   oos_vfid(out): the heap's FILE_OOS file, or NULL VFID
+ *   internal_lob_vfid(out): the heap's FILE_INTERNAL_LOB file, or NULL VFID
+ *
+ * Vacuum needs both ids for every heap it touches; this fixes the header page once instead of twice.
+ * Read-only: creating a missing file needs the write latch and stays in heap_oos_find_vfid_by_type ().
+ */
+bool
+heap_oos_find_both_vfids (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, VFID * internal_lob_vfid)
+{
+  HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure */
+  PAGE_PTR hdr_pgptr = NULL;	/* Header page */
+  VPID vpid;			/* Page-volume identifier */
+  RECDES hdr_recdes;		/* Header record descriptor */
+  bool success = true;
+
+  VFID_SET_NULL (oos_vfid);
+  VFID_SET_NULL (internal_lob_vfid);
+
+  vpid.volid = hfid->vfid.volid;
+  vpid.pageid = hfid->hpgid;
+
+  hdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  if (hdr_pgptr == NULL)
+    {
+      return false;
+    }
+
+#if !defined (NDEBUG)
+  (void) pgbuf_check_page_ptype (thread_p, hdr_pgptr, PAGE_HEAP);
+#endif /* !NDEBUG */
+
+  if (spage_get_record (thread_p, hdr_pgptr, HEAP_HEADER_AND_CHAIN_SLOTID, &hdr_recdes, PEEK) != S_SUCCESS)
+    {
+      success = false;
+    }
+  else
+    {
+      heap_hdr = (HEAP_HDR_STATS *) hdr_recdes.data;
+      VFID_COPY (oos_vfid, &heap_hdr->oos_vfid);
+      heap_get_internal_lob_vfid (heap_hdr, internal_lob_vfid);
+    }
+
+  pgbuf_unfix_and_init (thread_p, hdr_pgptr);
+  return success;
+}
+
+/*
+ * heap_internal_lob_find_vfid () - find (or optionally create) the internal LOB file of a heap
+ *   return         : true when the file exists (or was created); false otherwise
+ *   hfid (in)      : heap file identifier
+ *   lob_vfid (out) : internal LOB file identifier
+ *   docreate (in)  : if true and the file does not exist, it is created and TDE is applied to it
+ *
+ * Note: Unlike heap_oos_find_vfid, a false return also covers "the heap has no internal LOB file"
+ *   (er is not set in that case). Callers using docreate == false check er_errid () to tell the two apart.
+ */
+bool
+heap_internal_lob_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * lob_vfid, bool docreate)
+{
+  if (!heap_oos_find_vfid_by_type (thread_p, hfid, FILE_INTERNAL_LOB, lob_vfid, docreate))
+    {
+      return false;
+    }
+
+  return !VFID_ISNULL (lob_vfid);
+}
+
+/*
+ * heap_internal_lob_get_class_vfid () - find the internal LOB file of a class, creating it if missing
+ *   return          : error code
+ *   class_oid (in)  : class OID
+ *   lob_vfid (out)  : internal LOB file identifier
+ */
+int
+heap_internal_lob_get_class_vfid (THREAD_ENTRY * thread_p, const OID * class_oid, VFID * lob_vfid)
+{
+  HFID hfid;
+  int error;
+
+  if (heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL) != NO_ERROR
+      || !heap_internal_lob_find_vfid (thread_p, &hfid, lob_vfid, true))
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  return NO_ERROR;
+}
+
+typedef struct heap_internal_lob_file_source HEAP_INTERNAL_LOB_FILE_SOURCE;
 static SCAN_CODE
 heap_attrinfo_dbvalue_to_recdes (THREAD_ENTRY * thread_p, HEAP_ATTRVALUE * value, OID class_oid,
 				 int lobfile_create_flag, RECDES * recdes)
@@ -15710,6 +15930,11 @@ heap_dump_hdr (FILE * fp, HEAP_HDR_STATS * heap_hdr)
   fprintf (fp, "OVF_VFID = %4d|%4d, NEXT_VPID = %4d|%4d, Last vpid = %4d|%4d\n", heap_hdr->ovf_vfid.volid,
 	   heap_hdr->ovf_vfid.fileid, heap_hdr->next_vpid.volid, heap_hdr->next_vpid.pageid, heap_hdr->last_vpid.volid,
 	   heap_hdr->last_vpid.pageid);
+  VFID internal_lob_vfid;
+
+  heap_get_internal_lob_vfid (heap_hdr, &internal_lob_vfid);
+  fprintf (fp, "OOS_VFID = %4d|%4d, INTERNAL_LOB_VFID = %4d|%4d\n", heap_hdr->oos_vfid.volid,
+	   heap_hdr->oos_vfid.fileid, internal_lob_vfid.volid, internal_lob_vfid.fileid);
   fprintf (fp, "unfill_space = %4d\n", heap_hdr->unfill_space);
   fprintf (fp, "Estimated: num_pages = %d, num_recs = %ld,  avg reclength = %d\n", heap_hdr->num_pages,
 	   heap_hdr->num_recs, avg_length);

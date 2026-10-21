@@ -1405,6 +1405,7 @@ file_header_dump_descriptor (THREAD_ENTRY * thread_p, const FILE_HEADER * fhead,
   switch (fhead->type)
     {
     case FILE_OOS:
+    case FILE_INTERNAL_LOB:
       file_print_name_of_class (thread_p, fp, &fhead->descriptor.heap_oos.class_oid);
       fprintf (fp, ", OOS for HFID: %10d|%5d|%10d\n", HFID_AS_ARGS (&fhead->descriptor.heap_oos.hfid));
       break;
@@ -3037,6 +3038,8 @@ file_type_to_string (FILE_TYPE fstruct_type)
       return "TEMPORARILY";
     case FILE_OOS:
       return "OUT_OF_LINE_OVERFLOW_STORAGE";
+    case FILE_INTERNAL_LOB:
+      return "INTERNAL_LOB";
     case FILE_UNKNOWN_TYPE:
       return "UNKNOWN";
     case FILE_HEAP_REUSE_SLOTS:
@@ -3421,7 +3424,8 @@ file_create (THREAD_ENTRY * thread_p, FILE_TYPE file_type,
 
   /* decide on what page to use as file header page (which is going to decide the VFID also). */
 #if defined (SERVER_MODE)
-  if (file_type == FILE_BTREE || file_type == FILE_HEAP || file_type == FILE_HEAP_REUSE_SLOTS || file_type == FILE_OOS)
+  if (file_type == FILE_BTREE || file_type == FILE_HEAP || file_type == FILE_HEAP_REUSE_SLOTS || file_type == FILE_OOS
+      || file_type == FILE_INTERNAL_LOB)
     {
       /* we need to consider dropped files in vacuum's list. If we create a file with a duplicate VFID, we can run
        * into problems. */
@@ -10969,8 +10973,9 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
 	}
       break;
     case FILE_OOS:
+    case FILE_INTERNAL_LOB:
       /* iterating OOS files is supported now that FILE_OOS descriptors store their owner class. accept only an exact
-       * type match, same as the default case below. */
+       * type match, same as the default case below. FILE_INTERNAL_LOB stores the same owner descriptor. */
       /* FALLTHRU */
     default:
       /* accept the exact file type */
@@ -11001,6 +11006,7 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
     case FILE_MULTIPAGE_OBJECT_HEAP:
     case FILE_BTREE_OVERFLOW_KEY:
     case FILE_OOS:
+    case FILE_INTERNAL_LOB:
       /* we need to protect with lock. fall through */
       break;
     default:
@@ -11028,6 +11034,7 @@ file_tracker_get_and_protect (THREAD_ENTRY * thread_p, FILE_TYPE desired_type, F
       *class_oid = fhead->descriptor.btree.class_oid;
       break;
     case FILE_OOS:
+    case FILE_INTERNAL_LOB:
       *class_oid = fhead->descriptor.heap_oos.class_oid;
       break;
     case FILE_HEAP:
@@ -11413,6 +11420,7 @@ file_tracker_item_dump_file (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FIL
 	  class_oid_p = &fhead->descriptor.heap_overflow.class_oid;
 	  break;
 	case FILE_OOS:
+	case FILE_INTERNAL_LOB:
 	  class_oid_p = &fhead->descriptor.heap_oos.class_oid;
 	  break;
 	case FILE_BTREE:
@@ -11589,6 +11597,7 @@ file_tracker_item_collect_invalid_file (THREAD_ENTRY * thread_p, PAGE_PTR page_o
       class_oid_p = &fhead->descriptor.heap_overflow.class_oid;
       break;
     case FILE_OOS:
+    case FILE_INTERNAL_LOB:
       class_oid_p = &fhead->descriptor.heap_oos.class_oid;
       break;
     case FILE_BTREE:
@@ -11689,8 +11698,9 @@ file_delete_invalid_file (THREAD_ENTRY * thread_p,
 	++(*heap_ovf);
 	break;
       case FILE_OOS:
+      case FILE_INTERNAL_LOB:
 	/* OOS is per-heap overflow storage; count it as a heap overflow file to keep the four-counter output of
-	 * cleanfiledb stable. */
+	 * cleanfiledb stable. FILE_INTERNAL_LOB shares the heap_oos owner descriptor and is accounted the same way. */
 	++(*heap_ovf);
 	break;
       case FILE_BTREE:
@@ -12297,8 +12307,10 @@ file_tracker_item_spacedb (THREAD_ENTRY * thread_p, PAGE_PTR page_of_item, FILE_
       spacedb_ftype = SPACEDB_INDEX_FILE;
       break;
     case FILE_OOS:
+    case FILE_INTERNAL_LOB:
       /* OOS is table-owned storage, but FILE_OOS has no separate SPACEDB category. Fold it into heap totals to keep
-       * the spacedb wire/output format stable; a dedicated OOS line requires a separate output/protocol change. */
+       * the spacedb wire/output format stable; a dedicated OOS line requires a separate output/protocol change.
+       * FILE_INTERNAL_LOB is accounted the same way. */
       spacedb_ftype = SPACEDB_HEAP_FILE;
       break;
     case FILE_HEAP:
@@ -12521,6 +12533,29 @@ xfile_apply_tde_to_class_files (THREAD_ENTRY * thread_p, const OID * class_oid)
 	  goto exit;
 	}
     }
+
+  /* apply to the OOS and internal LOB files, if already created (a later lazy creation applies TDE itself) */
+  {
+    VFID oos_vfids[2];		/* the OOS file, then the internal LOB file */
+
+    if (!heap_oos_find_both_vfids (thread_p, &hfid, &oos_vfids[0], &oos_vfids[1]))
+      {
+	/* genuine failure reading the heap header, not "no such file" */
+	ASSERT_ERROR_AND_SET (error_code);
+	goto exit;
+      }
+    for (i = 0; i < 2; i++)
+      {
+	if (!VFID_ISNULL (&oos_vfids[i]))
+	  {
+	    error_code = file_apply_tde_algorithm (thread_p, &oos_vfids[i], tde_algo);
+	    if (error_code != NO_ERROR)
+	      {
+		goto exit;
+	      }
+	  }
+      }
+  }
 
   or_repr = heap_classrepr_get (thread_p, class_oid, NULL, NULL_REPRID, &idx_in_cache);
   if (or_repr == NULL)
