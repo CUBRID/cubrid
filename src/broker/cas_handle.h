@@ -179,6 +179,7 @@ extern void hm_srv_handle_free (int h_id);
 extern void hm_srv_handle_free_all (bool free_holdable);
 extern void hm_srv_handle_qresult_end_all (bool end_holdable);
 extern void hm_srv_handle_end_transaction_all (void);
+extern bool hm_has_result_tied_to_tran (void);
 extern T_SRV_HANDLE *hm_find_srv_handle (int h_id);
 extern void hm_qresult_clear (T_QUERY_RESULT * q_result);
 extern void hm_qresult_end (T_SRV_HANDLE * srv_handle, char free_flag);
