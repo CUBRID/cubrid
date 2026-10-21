@@ -824,11 +824,10 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 	  if (tp_valid_indextype (pt_type_enum_to_db (arg1_next->type_enum))
 	      && (pt_is_attr (arg1_next) || pt_is_function_index_expression (arg1_next)))
 	    {
-	      /* the derived table removes duplicates in the subquery column's type, the join compares in the wider
-	       * type of the two (INT as FLOAT): unless they are one type, two inner values can match one outer row.
-	       * an OID is compared as it is, so its class does not matter */
+	      /* the derived table removes duplicates in the subquery column's type, so the join has to compare in that
+	       * type too: compared in a wider one (INT as FLOAT) two of its values can be equal and match one outer row */
 	      if (tp_valid_indextype (pt_type_enum_to_db (arg2_next->type_enum)) && !pt_has_analytic (parser, arg2)
-		  && (arg1_next->type_enum == PT_TYPE_OBJECT || pt_check_same_datatype (parser, arg1_next, arg2_next)))
+		  && pt_common_type (arg1_next->type_enum, arg2_next->type_enum) == arg2_next->type_enum)
 		{
 		  select_list = pt_get_select_list (parser, arg2);
 		  if (select_list != NULL && arg2->info.query.correlation_level == 0)
