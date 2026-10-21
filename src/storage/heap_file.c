@@ -25911,6 +25911,8 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
   int max_num_slots, i;
   OID temp_oid;
   bool reusable;
+  /* Every page below belongs to the same heap, so its OOS / Internal LOB file ids are resolved once. */
+  VACUUM_HEAP_OOS_FILES oos_files = VACUUM_HEAP_OOS_FILES_INITIALIZER;
   int error_code = NO_ERROR;
 
   assert (upd_scancache != NULL);
@@ -25935,6 +25937,16 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
     {
       VFID_COPY (&worker.heap_objects[i].vfid, &upd_scancache->node.hfid.vfid);
     }
+
+  /* vacuum_heap_page () reads the header for these ids; resolve them now, before any data page is held, or the
+   * header waits under a data page latch (the order vacuum workers take is header, then data page) */
+  if (!heap_oos_find_both_vfids (thread_p, &upd_scancache->node.hfid, &oos_files.oos_vfid,
+				 &oos_files.internal_lob_vfid))
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto exit;
+    }
+  oos_files.resolved = true;
 
   reusable = heap_is_reusable_oid (upd_scancache->file_type);
   while (!VPID_ISNULL (&next_vpid))
@@ -25982,7 +25994,7 @@ heap_vacuum_all_objects (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * upd_scancache
 
 	  error_code =
 	    vacuum_heap_page (thread_p, worker.heap_objects, worker.n_heap_objects, threshold_mvccid,
-			      &upd_scancache->node.hfid, &reusable, false);
+			      &upd_scancache->node.hfid, &oos_files, &reusable, false);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto exit;

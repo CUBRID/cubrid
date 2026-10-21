@@ -1118,6 +1118,23 @@ oos_stats_update (THREAD_ENTRY *thread_p, PAGE_PTR pgptr, const VFID *vfid, int 
 // OOS File operations
 // ****************************************************************************
 
+/* An internal LOB locator outlives the reading transaction, so a freed chunk address must never name another value:
+ * like FILE_HEAP, its slots are not reused and its emptied pages are not returned.
+ * TODO: a page emptied of a full chunk then takes only smaller pieces; reclaim that space (e.g. chunk version check). */
+static bool
+oos_file_reuses_addresses (FILE_TYPE file_type)
+{
+  /* [리뷰] 로케이터가 읽는 트랜잭션보다 오래 살아서 LOB 파일은 슬롯 재사용·빈 페이지 반납을 막는다.
+   * LOB 공간 회수는 TODO로 남긴다. 판정에 file_get_type이 페이지 할당마다 한 번 돈다. */
+  return file_type != FILE_INTERNAL_LOB;
+}
+
+struct oos_new_page_args
+{
+  PAGE_TYPE ptype;
+  INT16 anchor_type;
+};
+
 static int
 oos_create_file_internal (THREAD_ENTRY *thread_p, int file_type, FILE_DESCRIPTORS des, VFID &oos_vfid)
 {
@@ -1145,12 +1162,14 @@ oos_create_file_internal (THREAD_ENTRY *thread_p, int file_type, FILE_DESCRIPTOR
   /* Allocate sticky first page for header */
   VPID hdr_vpid;
   PAGE_PTR hdr_page = NULL;
-  PAGE_TYPE page_type = PAGE_OOS;
+  oos_new_page_args page_args = { PAGE_OOS, oos_file_reuses_addresses ((FILE_TYPE) file_type)
+				  ? ANCHORED : ANCHORED_DONT_REUSE_SLOTS
+				};
 
   log_sysop_start (thread_p);
 
   err = file_alloc_sticky_first_page (thread_p, &oos_vfid, oos_vpid_init_new,
-				      &page_type, &hdr_vpid, &hdr_page);
+				      &page_args, &hdr_vpid, &hdr_page);
   if (err != NO_ERROR || hdr_page == NULL)
     {
       oos_error ("file_alloc_sticky_first_page failed");
@@ -1762,6 +1781,10 @@ oos_reclaim_empty_pages (THREAD_ENTRY *thread_p, const VFID &oos_vfid, std::vect
       ASSERT_ERROR ();
       return err;
     }
+  if (!oos_file_reuses_addresses (file_type))
+    {
+      return NO_ERROR;
+    }
 
   /* Dedupe: a value chain usually deletes several chunks from the same page. */
   std::sort (candidates.begin (), candidates.end (), oos_vpid_lt);
@@ -1934,6 +1957,11 @@ oos_reclaim_sweep_step (THREAD_ENTRY *thread_p, const VFID &oos_vfid)
     {
       ASSERT_ERROR ();
       return err;
+    }
+  if (!oos_file_reuses_addresses (file_type))
+    {
+      oos_reclaim_settle_lap (oos_vfid, pending_at_start, 0);
+      return NO_ERROR;
     }
 
   FILE_FTAB_COLLECTOR collector = FILE_FTAB_COLLECTOR_INITIALIZER;
@@ -3144,11 +3172,21 @@ oos_file_alloc_new (THREAD_ENTRY *thread_p, const VFID &oos_vfid,
 		    VPID &vpid_out)
 {
   int err = NO_ERROR;
-  PAGE_TYPE page_type = PAGE_OOS;
   PAGE_PTR page = NULL;
 
+  FILE_TYPE file_type;
+  err = file_get_type (thread_p, &oos_vfid, &file_type);
+  if (err != NO_ERROR)
+    {
+      ASSERT_ERROR ();
+      return nullptr;
+    }
+  oos_new_page_args page_args = { PAGE_OOS, oos_file_reuses_addresses (file_type)
+				  ? ANCHORED : ANCHORED_DONT_REUSE_SLOTS
+				};
+
   log_sysop_start (thread_p);
-  err = file_alloc (thread_p, &oos_vfid, oos_vpid_init_new, &page_type, &vpid_out, &page);
+  err = file_alloc (thread_p, &oos_vfid, oos_vpid_init_new, &page_args, &vpid_out, &page);
   if (err != NO_ERROR || page == NULL)
     {
       oos_error ("file_alloc failed");
@@ -3321,12 +3359,13 @@ oos_find_best_page (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const int rec_
 static int
 oos_vpid_init_new (THREAD_ENTRY *thread_p, PAGE_PTR page, void *args)
 {
-  PAGE_TYPE ptype = * (PAGE_TYPE *) args;
+  const oos_new_page_args *page_args = (const oos_new_page_args *) args;
+  PAGE_TYPE ptype = page_args->ptype;
   int err = NO_ERROR;
 
   pgbuf_set_page_ptype (thread_p, page, ptype);
 
-  spage_initialize (thread_p, page, ANCHORED, OOS_ALIGNMENT, false);
+  spage_initialize (thread_p, page, page_args->anchor_type, OOS_ALIGNMENT, false);
 
   // (PGLENGTH)ptype is used in pgbuf_rv_new_page_redo to set page type during redo
   log_append_undoredo_data2 (thread_p, RVPGBUF_NEW_PAGE, NULL, page, (PGLENGTH) ptype, 0, SPAGE_HEADER_SIZE, NULL,
@@ -3478,6 +3517,180 @@ oos_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
       current_oid = next_chunk_oid;
     }
 
+  return NO_ERROR;
+}
+
+static void
+oos_vacuum_clear_next (RECDES *recdes)
+{
+  OID null_oid;
+
+  OID_SET_NULL (&null_oid);
+  std::memcpy (recdes->data + offsetof (OOS_RECORD_HEADER, next_chunk_oid), &null_oid, sizeof (OID));
+}
+
+/* Make oid the tail of its chain: its next link is cleared with a redo-only log. */
+static int
+oos_vacuum_cut_chunk (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid)
+{
+  int error = NO_ERROR;
+  VPID vpid = {oid.pageid, oid.volid};
+  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == nullptr)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  OOS_RECDES recdes = RECDES_INITIALIZER;
+  if (spage_get_record (thread_p, page_ptr, oid.slotid, &recdes, PEEK) != S_SUCCESS
+      || recdes.length < (int) sizeof (OOS_RECORD_HEADER))
+    {
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      assert_release (false);
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+      return ER_HEAP_OOS_CORRUPTED_RECORD;
+    }
+
+  LOG_DATA_ADDR log_addr;
+  log_addr.vfid = const_cast<VFID *> (&oos_vfid);
+  log_addr.pgptr = page_ptr;
+  log_addr.offset = oid.slotid;
+  log_append_redo_data (thread_p, RVOOS_VACUUM_CUT, &log_addr, 0, NULL);
+
+  oos_vacuum_clear_next (&recdes);
+  pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
+  pgbuf_unfix_and_init (thread_p, page_ptr);
+  return NO_ERROR;
+}
+
+/* Delete one chunk with a redo-only log. */
+static int
+oos_vacuum_delete_chunk (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
+			 std::vector<VPID> *touched_vpids)
+{
+  int error = NO_ERROR;
+  VPID vpid = {oid.pageid, oid.volid};
+  PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_WRITE, PGBUF_UNCONDITIONAL_LATCH);
+  if (page_ptr == nullptr)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  LOG_DATA_ADDR log_addr;
+  log_addr.vfid = const_cast<VFID *> (&oos_vfid);
+  log_addr.pgptr = page_ptr;
+  log_addr.offset = oid.slotid;
+  log_append_redo_data (thread_p, RVOOS_VACUUM_DELETE, &log_addr, 0, NULL);
+
+  if (spage_delete (thread_p, page_ptr, oid.slotid) == NULL_SLOTID)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      return error;
+    }
+  pgbuf_set_dirty (thread_p, page_ptr, DONT_FREE);
+  oos_stats_update (thread_p, page_ptr, &oos_vfid, 0);
+  pgbuf_unfix_and_init (thread_p, page_ptr);
+
+  if (touched_vpids != NULL)
+    {
+      try
+	{
+	  touched_vpids->push_back (vpid);
+	}
+      catch (std::bad_alloc &)
+	{
+	  /* only a reclaim hint; the growth-gate sweep rediscovers the page */
+	  touched_vpids->clear ();
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
+ * oos_vacuum_delete_chain () - Vacuum only: trim a dead chain to its head, tail first, with redo-only logs.
+ *   Each chunk is cut off from the one before it, then deleted, so after a crash the chain still runs from the head
+ *   to NULL (at most the cut-off chunk leaks).  The caller deletes the head with the record, since a freed head could
+ *   be reused first.  An old locator reads the original leading bytes, then a short chain, never skipped bytes.
+ */
+int
+oos_vacuum_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &head_oid,
+			 std::vector<VPID> *touched_vpids)
+{
+  int error = NO_ERROR;
+  std::vector<OID> chunks;
+  OID current_oid = head_oid;
+
+  while (!OID_ISNULL (&current_oid))
+    {
+      VPID vpid = {current_oid.pageid, current_oid.volid};
+      PAGE_PTR page_ptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+      if (page_ptr == nullptr)
+	{
+	  ASSERT_ERROR_AND_SET (error);
+	  return error;
+	}
+
+      OOS_RECDES recdes = RECDES_INITIALIZER;
+      OOS_RECORD_HEADER header;
+      bool valid = spage_get_record (thread_p, page_ptr, current_oid.slotid, &recdes, PEEK) == S_SUCCESS
+		   && recdes.length >= (int) sizeof (OOS_RECORD_HEADER);
+      if (valid)
+	{
+	  std::memcpy (&header, recdes.data, sizeof (OOS_RECORD_HEADER));
+	}
+      pgbuf_unfix_and_init (thread_p, page_ptr);
+      if (!valid)
+	{
+	  assert_release (false);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+	  return ER_HEAP_OOS_CORRUPTED_RECORD;
+	}
+
+      try
+	{
+	  chunks.push_back (current_oid);
+	}
+      catch (std::bad_alloc &)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (OID));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      current_oid = header.next_chunk_oid;
+    }
+
+  for (size_t i = chunks.size (); i-- > 1;)
+    {
+      error = oos_vacuum_cut_chunk (thread_p, oos_vfid, chunks[i - 1]);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+      error = oos_vacuum_delete_chunk (thread_p, oos_vfid, chunks[i], touched_vpids);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+  return NO_ERROR;
+}
+
+int
+oos_rv_redo_vacuum_cut (THREAD_ENTRY *thread_p, LOG_RCV *rcv)
+{
+  RECDES recdes = RECDES_INITIALIZER;
+
+  if (spage_get_record (thread_p, rcv->pgptr, rcv->offset, &recdes, PEEK) != S_SUCCESS
+      || recdes.length < (int) sizeof (OOS_RECORD_HEADER))
+    {
+      assert (false);
+      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+      return er_errid ();
+    }
+  oos_vacuum_clear_next (&recdes);
+  pgbuf_set_dirty (thread_p, rcv->pgptr, DONT_FREE);
   return NO_ERROR;
 }
 

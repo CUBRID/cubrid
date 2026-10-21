@@ -163,6 +163,9 @@ extern int oos_read_many (THREAD_ENTRY *thread_p, cubbase::span<oos_read_request
  * batch-boundary callers can feed oos_reclaim_empty_pages after committing. */
 extern int oos_delete (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &oid,
 		       std::vector<VPID> *touched_vpids = NULL);
+/* Vacuum only: trims a dead chain to its head, tail first with redo-only logs (no undo, no sysop). */
+extern int oos_vacuum_delete_chain (THREAD_ENTRY *thread_p, const VFID &oos_vfid, const OID &head_oid,
+				    std::vector<VPID> *touched_vpids);
 /* Idempotency probe: *out_exists is true iff the chunk's slot is still present. A deallocated page
  * or a removed slot both report "gone" with NO_ERROR; any other failure is propagated. */
 extern int oos_chunk_exists (THREAD_ENTRY *thread_p, const OID &oid, bool *out_exists);
@@ -182,6 +185,7 @@ extern int oos_read_open (THREAD_ENTRY *thread_p, const OID &head_oid, OOS_READE
 extern int oos_read_pull (THREAD_ENTRY *thread_p, OOS_READER &reader, oos_buffer dest, int &nread);
 
 extern int oos_rv_redo_delete (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
+extern int oos_rv_redo_vacuum_cut (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 extern int oos_rv_redo_insert (THREAD_ENTRY *thread_p, LOG_RCV *rcv);
 
 typedef enum

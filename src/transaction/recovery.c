@@ -917,7 +917,19 @@ struct rvfun RV_fun[] = {
    heap_rv_undo_delete,
    heap_rv_redo_delete,
    log_rv_dump_hexa,
-   log_rv_dump_hexa}
+   log_rv_dump_hexa},
+  {RVOOS_VACUUM_DELETE,
+   "RVOOS_VACUUM_DELETE",
+   NULL,
+   oos_rv_redo_delete,
+   NULL,
+   NULL},
+  {RVOOS_VACUUM_CUT,
+   "RVOOS_VACUUM_CUT",
+   NULL,
+   oos_rv_redo_vacuum_cut,
+   NULL,
+   NULL}
 };
 
 /*
