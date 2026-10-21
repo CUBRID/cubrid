@@ -7209,7 +7209,7 @@ xs_receive_data_from_client (THREAD_ENTRY *thread_p, char **area, int *datasize,
  */
 int
 xs_receive_data_from_client_with_timeout (THREAD_ENTRY *thread_p, char **area, int *datasize, int timeout,
-					  bool check_interrupt)
+    bool check_interrupt)
 {
   unsigned int rid;
   int rc = 0;
