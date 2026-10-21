@@ -428,9 +428,10 @@ namespace parallel_scan
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* orderby/groupby skip+desc need globally ordered traversal. */
-		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_skip
-		    || arg->indexptr->orderby_desc || arg->indexptr->groupby_desc)
+		/* orderby/groupby skip (ascending or descending) needs globally ordered traversal.
+		 * orderby_desc/groupby_desc only tell the first sort column is DESC and are used only with skip
+		 * (see scan_get_index_oidset ()), so they alone do not prevent a parallel scan. */
+		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_skip)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
