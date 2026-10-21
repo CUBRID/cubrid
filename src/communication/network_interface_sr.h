@@ -230,6 +230,9 @@ extern void ssession_drop_session_variables (THREAD_ENTRY * thread_p, unsigned i
 extern void sboot_get_locales_info (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void svacuum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void svacuum_dump (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sinternal_lob_stream_open (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sinternal_lob_stream_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
+extern void sinternal_lob_stream_close (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void slogtb_get_mvcc_snapshot (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void stran_lock_rep_read (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
 extern void sboot_get_timezone_checksum (THREAD_ENTRY * thread_p, unsigned int rid, char *request, int reqlen);
