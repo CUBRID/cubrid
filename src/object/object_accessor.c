@@ -57,6 +57,8 @@
 #include "network_interface_cl.h"
 #include "execute_statement.h"
 #include "dbtype.h"
+#include "internal_lob_marker.h"
+#include "internal_lob_stream_kind.h"
 
 /*
  * OBJ_MAX_ARGS

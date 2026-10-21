@@ -2297,7 +2297,6 @@ db_get_compressed_size (DB_VALUE * value)
 
   /* Preliminary check */
   assert (TP_IS_CHAR_TYPE (type) || type == DB_TYPE_CLOB);
-
   return value->data.ch.medium.compressed_size;
 }
 
