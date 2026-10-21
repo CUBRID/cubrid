@@ -177,6 +177,49 @@ la_gate_get_order_tail (LOG_LSA *commit_lsa)
 }
 
 /*
+ * la_gate_bound_dependency() - lower a label that lies above the latest commit read to that commit
+ *   return: true if the label was lowered
+ *   dep(in/out): the transaction's dependency_seq, the master's label
+ *
+ * Note:
+ *   Called for a transaction before its own commit is pushed on the commit-order ring.
+ *   A label means that every commit at or below it is applied, and it is normally a commit LSA. When the
+ *   master restarts, it raises the floor of its labels to the end of its recovered log, which is no commit.
+ *   The frontier only stops at commits, so it could pass such a label only after the next commit, the
+ *   labelled transaction itself, is applied, and that transaction would wait for itself.
+ *   The log is read in order and a label lies below its own commit, so no commit lies between the latest
+ *   commit read and a label above it. Lowering the label to that commit keeps its meaning. The latest
+ *   commit read is the tail of the ring, or the frontier when the ring is empty. A label that is a commit
+ *   is never above it and is left as is.
+ */
+bool
+la_gate_bound_dependency (LOG_LSA *dep)
+{
+  LOG_LSA previous;
+
+  assert (dep != NULL);
+
+  if (LSA_ISNULL (dep))
+    {
+      return false;
+    }
+
+  if (!la_gate_get_order_tail (&previous) && !la_gate_get_frontier (&previous))
+    {
+      return false;
+    }
+
+  if (!LSA_GT (dep, &previous))
+    {
+      return false;
+    }
+
+  LSA_COPY (dep, &previous);
+
+  return true;
+}
+
+/*
  * la_gate_order_push() - record a commit read from the log on the commit-order ring
  *   return: NO_ERROR, or ER_FAILED when the ring is full
  *   commit_lsa(in): commit LSA of the transaction; above every commit pushed before it

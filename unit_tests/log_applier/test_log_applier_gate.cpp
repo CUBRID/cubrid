@@ -125,6 +125,91 @@ TEST_CASE ("gate ignores completion of a commit not on the ring", "[log_applier_
   REQUIRE (la_gate_order_get_count () == 1);
 }
 
+TEST_CASE ("gate passes the first commit after a master restart whose label is the restart floor",
+	   "[log_applier_gate]")
+{
+  /* The master raises the floor of its labels to the end of its recovered log when it restarts. That position
+   * is no commit, so it never reaches the ring. p is the last commit applied before the restart, r the floor,
+   * c1 the first commit after the restart, labelled r because nothing it wrote conflicts. Every commit at or
+   * below r is applied, so c1 must be dispatched; if it is parked, the frontier can only pass r once c1 itself
+   * is applied, and replication stops without an error. The coordinator lowers the label before it pushes c1,
+   * as la_coordinator_submit_task does. */
+  LOG_LSA p = test_lsa (100), r = test_lsa (105), c1 = test_lsa (106, 200);
+  LOG_LSA dep = r;
+  LOG_LSA frontier;
+
+  REQUIRE (la_gate_init (8) == NO_ERROR);
+  la_gate_set_initial_frontier (&p);
+  REQUIRE (la_gate_bound_dependency (&dep));
+  REQUIRE (LSA_EQ (&dep, &p));
+  REQUIRE (la_gate_order_push (&c1) == NO_ERROR);
+
+  REQUIRE (la_gate_is_satisfied (&dep));
+
+  /* the frontier itself is left where it was */
+  REQUIRE (la_gate_get_frontier (&frontier));
+  REQUIRE (LSA_EQ (&frontier, &p));
+}
+
+TEST_CASE ("gate lowers a restart-floor label to the latest commit on the ring and waits for it",
+	   "[log_applier_gate]")
+{
+  /* the commits before the restart are still being applied when c1 is read: c1 must wait for them, and only
+   * for them */
+  LOG_LSA start = test_lsa (80), x = test_lsa (90), p = test_lsa (100), r = test_lsa (105);
+  LOG_LSA c1 = test_lsa (106, 200);
+  LOG_LSA dep = r;
+
+  REQUIRE (la_gate_init (8) == NO_ERROR);
+  la_gate_set_initial_frontier (&start);
+  REQUIRE (la_gate_order_push (&x) == NO_ERROR);
+  REQUIRE (la_gate_order_push (&p) == NO_ERROR);
+
+  REQUIRE (la_gate_bound_dependency (&dep));
+  REQUIRE (LSA_EQ (&dep, &p));
+  REQUIRE (la_gate_order_push (&c1) == NO_ERROR);
+  REQUIRE_FALSE (la_gate_is_satisfied (&dep));
+
+  la_gate_mark_completed (&p);
+  la_gate_advance_frontier ();
+  REQUIRE_FALSE (la_gate_is_satisfied (&dep));
+
+  la_gate_mark_completed (&x);
+  la_gate_advance_frontier ();
+  REQUIRE (la_gate_is_satisfied (&dep));
+}
+
+TEST_CASE ("gate keeps a label that is a commit already read", "[log_applier_gate]")
+{
+  LOG_LSA start = test_lsa (80), x = test_lsa (90), p = test_lsa (100);
+  LOG_LSA dep_tail = p, dep_older = x, dep_frontier = start, dep_null = test_null_lsa ();
+
+  REQUIRE (la_gate_init (8) == NO_ERROR);
+  la_gate_set_initial_frontier (&start);
+  REQUIRE (la_gate_order_push (&x) == NO_ERROR);
+  REQUIRE (la_gate_order_push (&p) == NO_ERROR);
+
+  REQUIRE_FALSE (la_gate_bound_dependency (&dep_tail));
+  REQUIRE (LSA_EQ (&dep_tail, &p));
+  REQUIRE_FALSE (la_gate_bound_dependency (&dep_older));
+  REQUIRE (LSA_EQ (&dep_older, &x));
+  REQUIRE_FALSE (la_gate_bound_dependency (&dep_frontier));
+  REQUIRE (LSA_EQ (&dep_frontier, &start));
+  REQUIRE_FALSE (la_gate_bound_dependency (&dep_null));
+  REQUIRE (LSA_ISNULL (&dep_null));
+}
+
+TEST_CASE ("gate leaves a label as is before anything is read", "[log_applier_gate]")
+{
+  /* no frontier and an empty ring: there is no commit to lower the label to */
+  LOG_LSA r = test_lsa (105);
+  LOG_LSA dep = r;
+
+  REQUIRE (la_gate_init (8) == NO_ERROR);
+  REQUIRE_FALSE (la_gate_bound_dependency (&dep));
+  REQUIRE (LSA_EQ (&dep, &r));
+}
+
 TEST_CASE ("gate refuses a commit beyond the ring capacity", "[log_applier_gate]")
 {
   LOG_LSA l1 = test_lsa (1), l2 = test_lsa (2), l3 = test_lsa (3);
