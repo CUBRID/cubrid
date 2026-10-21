@@ -388,6 +388,12 @@ extern "C"
 
     scan_id->type = S_HEAP_SCAN;
 
+    /* Workers do not acquire row locks, including when reopening a partition. */
+    if (mvcc_select_lock_needed)
+      {
+	return NO_ERROR;
+      }
+
     if (spec->curent == nullptr)
       {
 	/* DB_PARTITION_CLASS will be parallel-heap-scanned, not DB_PARTITIONED_CLASS */
@@ -398,8 +404,7 @@ extern "C"
 	  }
 
 	assert (thread_p->private_heap_id != 0);
-	if (oid_is_system_class (class_oid)
-	    || mvcc_is_mvcc_disabled_class (class_oid) || mvcc_select_lock_needed)
+	if (oid_is_system_class (class_oid) || mvcc_is_mvcc_disabled_class (class_oid))
 	  {
 	    /* parallel-thread heap scan not supported */
 	    ACCESS_SPEC_SET_FLAG (spec, ACCESS_SPEC_FLAG_NO_PARALLEL_SCAN);
@@ -1327,6 +1332,12 @@ extern "C"
     /* DML reads val_list directly; parallel scan does not populate it the same way */
     if (xasl->type == INSERT_PROC || xasl->type == UPDATE_PROC
 	|| xasl->type == DELETE_PROC || xasl->type == MERGE_PROC)
+      {
+	return NO_ERROR;
+      }
+
+    /* Workers do not acquire the row locks required by FOR UPDATE. */
+    if (scan_id->mvcc_select_lock_needed)
       {
 	return NO_ERROR;
       }
