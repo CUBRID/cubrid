@@ -31108,10 +31108,12 @@ heap_recdes_has_valid_header (const RECDES * record)
 
 /* *INDENT-OFF* */
 static int
-heap_recdes_get_oos_slots (const RECDES * recdes, HEAP_OOS_REFERENCE_VECTOR & oos_references)
+heap_recdes_get_oos_slots (const RECDES * recdes, HEAP_OOS_REFERENCE_VECTOR & oos_references,
+			   bool skip_pending_stubs = false)
 try
 {
   using namespace oos_log;
+  bool has_pending_stub = false;
 
   oos_references.clear ();
 
@@ -31139,7 +31141,21 @@ try
 	  return ER_FAILED;
 	}
 
-      if (OR_IS_OOS (offset))
+      bool is_pending_stub = false;
+      char *pending_stub = NULL;
+
+      if (OR_IS_OOS (offset) && skip_pending_stubs
+	  && heap_recdes_get_oos_inline_stub (recdes, index, &pending_stub) == NO_ERROR)
+	{
+	  OID pending_head;
+
+	  /* a deferred value of a prepared record (heap_oos_value_ref::encode_pending): no chain exists yet */
+	  OR_GET_OID (pending_stub, &pending_head);
+	  is_pending_stub = OID_ISNULL (&pending_head);
+	  has_pending_stub = has_pending_stub || is_pending_stub;
+	}
+
+      if (OR_IS_OOS (offset) && !is_pending_stub)
 	{
 	  /* The single stub parser checks the field boundaries before reading, so a short or truncated
 	   * field is a controlled error and never borrows the next attribute's bytes (CBRD-26950). The
@@ -31165,7 +31181,7 @@ try
 
       if (OR_IS_LAST_ELEMENT (offset))
 	{
-	  if (oos_references.empty ())
+	  if (oos_references.empty () && !has_pending_stub)
 	    {
 	      /* heap_recdes_contains_oos() already confirmed OOS flag is set, so finding no OOS OIDs is inconsistent */
 	      assert (false && "heap_recdes_contains_oos() passed but no OOS OIDs found");
@@ -31211,12 +31227,12 @@ catch (const std::bad_alloc &)
  */
 int
 heap_recdes_get_oos_references (THREAD_ENTRY * thread_p, const RECDES * recdes,
-				HEAP_OOS_REFERENCE_VECTOR & oos_references)
+				HEAP_OOS_REFERENCE_VECTOR & oos_references, bool skip_pending_stubs)
 {
   /* The inline stub carries its own kind (OR_OOS_KIND_*), so heap_recdes_get_oos_slots () types every reference
    * as CLOB, BLOB or ordinary OOS without the owner class: callers need not resolve it. */
   (void) thread_p;
-  return heap_recdes_get_oos_slots (recdes, oos_references);
+  return heap_recdes_get_oos_slots (recdes, oos_references, skip_pending_stubs);
 }
 
 /* The chain references alone, of every kind, for callers that do not need the kind. */

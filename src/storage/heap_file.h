@@ -848,8 +848,10 @@ using HEAP_OOS_REFERENCE_VECTOR = std::vector<HEAP_OOS_REFERENCE>;
  * without a terminator or without any OOS entry still fails with ER_FAILED. */
 extern int heap_recdes_get_oos_refs (const RECDES * record, OOS_REF_VECTOR & oos_refs);
 /* The same references with the kind each stub holds (CLOB, BLOB or ordinary OOS) and its length. */
+/* skip_pending_stubs: the record is prepared, not finalized; its deferred values are left out. */
 extern int heap_recdes_get_oos_references (THREAD_ENTRY * thread_p, const RECDES * record,
-					   HEAP_OOS_REFERENCE_VECTOR & oos_references);
+					   HEAP_OOS_REFERENCE_VECTOR & oos_references,
+					   bool skip_pending_stubs = false);
 
 /* lob */
 extern int heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv);

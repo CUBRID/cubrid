@@ -200,7 +200,8 @@ static int locator_force_for_multi_update (THREAD_ENTRY * thread_p, LC_COPYAREA 
 static int locator_resolve_internal_lob_dml_slots (THREAD_ENTRY * thread_p, const OID * class_oid,
 						   const OID * inst_oid, RECDES * source_recdes, bool is_update,
 						   bool from_client, RECDES * resolved_recdes,
-						   LC_COPYAREA ** resolved_area);
+						   LC_COPYAREA ** resolved_area,
+						   const heap_pending_record * pending = NULL);
 
 #if defined(ENABLE_UNUSED_FUNCTION)
 static void locator_increase_catalog_count (THREAD_ENTRY * thread_p, OID * cls_oid);
@@ -5588,6 +5589,56 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	}
     }
 
+  if (force_in_place == UPDATE_INPLACE_OLD_MVCCID)
+    {
+      REPR_ID rep;
+
+      /* insert due to redistribute partition data - set the correct representation id of the new class */
+
+      rep = heap_get_class_repr_id (thread_p, &real_class_oid);
+      (void) or_replace_rep_id (recdes, rep);
+
+      /* Redistribution moves a row to another class, and an Internal LOB attribute of that row still names a
+       * chunk chain of the class it came from -- a chain that goes away with the old partition. Re-create it
+       * in the class the row is actually being inserted into, so the new record owns its own chain. */
+      OID_SET_NULL (&lob_inst_oid);
+      error_code =
+	locator_resolve_internal_lob_dml_slots (thread_p, &real_class_oid, &lob_inst_oid, recdes, false, false,
+						&lob_recdes, &lob_area, pending);
+      if (error_code != NO_ERROR)
+	{
+	  goto error2;
+	}
+      if (lob_area != NULL)
+	{
+	  MVCC_REC_HEADER mvcc_header, rebuilt_header;
+
+	  /* The rebuilt record only has a fresh insert header. The moved row keeps its own: its insert id, and the
+	   * delete id of a row vacuum could not remove yet, which must not come back to life in the new partition. */
+	  if (or_mvcc_get_header (recdes, &mvcc_header) != NO_ERROR
+	      || or_mvcc_get_header (&lob_recdes, &rebuilt_header) != NO_ERROR)
+	    {
+	      error_code = ER_FAILED;
+	      goto error2;
+	    }
+	  /* [리뷰] MVCC 비트(insert/delete id 등)는 원 레코드, 나머지 플래그는 재구성 쪽.
+	   * vacuum 전의 삭제된 행이 새 파티션에서 되살아나면 안 된다.
+	   * 마스크가 MVCC 비트를 다 덮는지, HAS_OOS가 재구성 쪽에서 오는지 확인. */
+	  mvcc_header.mvcc_flag = ((mvcc_header.mvcc_flag & OR_RECORD_MVCC_FLAG_MASK)
+				   | (rebuilt_header.mvcc_flag & ~OR_RECORD_MVCC_FLAG_MASK));
+	  error_code = or_mvcc_set_header (&lob_recdes, &mvcc_header);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto error2;
+	    }
+	  recdes = &lob_recdes;
+	  /* the rebuilt record already holds all its chains: finalize only validates it */
+	  pending = NULL;
+	  from_copyarea = false;
+	  from_workspace = false;
+	}
+    }
+
   error_code = locator_finalize_oos_record (thread_p, &real_class_oid, &recdes, from_copyarea, from_workspace,
 					    pending, &received, &converted);
   if (error_code != NO_ERROR)
@@ -5617,16 +5668,6 @@ locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   context.update_in_place = force_in_place;
   context.is_bulk_op = has_BU_lock;
   context.use_bulk_logging = use_bulk_logging;
-
-  if (force_in_place == UPDATE_INPLACE_OLD_MVCCID)
-    {
-      REPR_ID rep;
-
-      /* insert due to redistribute partition data - set the correct representation id of the new class */
-
-      rep = heap_get_class_repr_id (thread_p, &real_class_oid);
-      (void) or_replace_rep_id (context.recdes_p, rep);
-    }
 
   /* execute insert */
   if (heap_insert_logical (thread_p, &context, home_hint_p) != NO_ERROR)
@@ -5986,6 +6027,159 @@ locator_move_record (THREAD_ENTRY * thread_p, HFID * old_hfid, OID * old_class_o
 }
 
 /*
+ * locator_delete_moved_internal_lob_intermediates () - Drop the Internal LOB chains a partition-moving UPDATE
+ *                                                      made in the source class, once copied to the destination.
+ *   return: error code
+ *   class_oid(in): class the new record image was built for (its LOB file holds the intermediates)
+ *   hfid(in): that class's heap
+ *   oid(in): the row being moved; its current image tells which chains pre-date this statement
+ *   new_recdes(in): the image this statement produced, already cloned into the destination
+ *   scan_cache(in): scan cache for reading the row's current image
+ *   is_prepared(in): new_recdes still holds deferred (not yet written) OOS values
+ *
+ * A chain in new_recdes but not in the row's current image was made by this statement, and is unreachable once
+ * the destination has its own copy.
+ */
+static int
+locator_delete_moved_internal_lob_intermediates (THREAD_ENTRY * thread_p, const OID * class_oid, const HFID * hfid,
+						 const OID * oid, const RECDES * new_recdes,
+						 HEAP_SCANCACHE * scan_cache, bool is_prepared)
+{
+  /* [리뷰] 새 이미지에만 있는 참조(OID 비교)가 이 문장이 만든 중간본이다.
+   * LOB·일반 OOS 둘 다 지운다. 같은 tran 앞 갱신분은 가시 버전에 있어 남는다.
+   * 옛 이미지를 못 읽으면 안 지운다. 누수가 살아 있는 체인 삭제보다 안전. */
+  HEAP_OOS_REFERENCE_VECTOR new_refs, old_refs;
+  RECDES old_recdes = RECDES_INITIALIZER;
+  HEAP_SCANCACHE local_cache;
+  bool local_cache_started = false;
+  VFID lob_vfid = VFID_INITIALIZER;
+  VFID oos_vfid = VFID_INITIALIZER;
+  OID class_oid_copy;
+  int error_code;
+  SCAN_CODE scan_code;
+
+  /* a prepared record's deferred OOS values were never written, so only its stored chains can be intermediates */
+  error_code = heap_recdes_get_oos_references (thread_p, new_recdes, new_refs, is_prepared);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  /* COPY with a NULL buffer lands the image in the scan cache's area, which the cache owns; so a cache is
+   * required, and nothing here frees old_recdes.data. */
+  if (scan_cache == NULL)
+    {
+      if (heap_scancache_quick_start (&local_cache) != NO_ERROR)
+	{
+	  return ER_FAILED;
+	}
+      scan_cache = &local_cache;
+      local_cache_started = true;
+    }
+
+  COPY_OID (&class_oid_copy, class_oid);
+  old_recdes.data = NULL;
+  scan_code = heap_get_visible_version (thread_p, oid, &class_oid_copy, &old_recdes, scan_cache, COPY, NULL_CHN,
+					HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+  if (scan_code == S_SUCCESS)
+    {
+      error_code = heap_recdes_get_oos_references (thread_p, &old_recdes, old_refs);
+      if (error_code != NO_ERROR)
+	{
+	  goto end;
+	}
+    }
+  else if (scan_code == S_ERROR)
+    {
+      /* A real read failure: propagate it rather than silently proceeding with an empty old_refs. */
+      ASSERT_ERROR_AND_SET (error_code);
+      goto end;
+    }
+  else
+    {
+      /* Without the old image, new chains cannot be told from inherited ones, so skip the reclaim: a bounded
+       * space leak is safer than deleting a chain the live old version still points at. */
+      error_code = NO_ERROR;
+      goto end;
+    }
+
+  for (size_t i = 0; i < new_refs.size (); i++)
+    {
+      const HEAP_OOS_REFERENCE *ref = &new_refs[i];
+      bool inherited = false;
+      bool is_lob = TP_IS_LOB_TYPE (ref->type);
+
+      if (OID_ISNULL (&ref->ref.head_oid))
+	{
+	  continue;
+	}
+      for (size_t j = 0; j < old_refs.size (); j++)
+	{
+	  if (OID_EQ (&ref->ref.head_oid, &old_refs[j].ref.head_oid))
+	    {
+	      inherited = true;
+	      break;
+	    }
+	}
+      if (inherited)
+	{
+	  continue;
+	}
+
+      /* An Internal LOB chain lives in FILE_INTERNAL_LOB; an ordinary OOS (long VARCHAR etc.) chain in FILE_OOS.
+       * Both are re-created in the source class when the moved record is built, and both are orphaned once the
+       * destination has its own copy, so both intermediates must be dropped. */
+      if (is_lob)
+	{
+	  INTERNAL_LOB_LOCATOR locator = { ref->ref.head_oid, ref->ref.identity_stamp };
+
+	  if (VFID_ISNULL (&lob_vfid))
+	    {
+	      if (!heap_oos_find_vfid_by_type (thread_p, hfid, FILE_INTERNAL_LOB, &lob_vfid, false)
+		  || VFID_ISNULL (&lob_vfid))
+		{
+		  /* The class has no LOB file, so it cannot hold a chain this statement made. */
+		  continue;
+		}
+	    }
+	  error_code = internal_lob_decode_disk_length (locator, ref->disk_length);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	  error_code = internal_lob_delete (thread_p, lob_vfid, locator);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	}
+      else
+	{
+	  if (VFID_ISNULL (&oos_vfid))
+	    {
+	      if (!heap_oos_find_vfid_by_type (thread_p, hfid, FILE_OOS, &oos_vfid, false) || VFID_ISNULL (&oos_vfid))
+		{
+		  /* The class has no OOS file, so it cannot hold a chain this statement made. */
+		  continue;
+		}
+	    }
+	  error_code = oos_delete (thread_p, oos_vfid, ref->ref, NULL);
+	  if (error_code != NO_ERROR)
+	    {
+	      goto end;
+	    }
+	}
+    }
+
+end:
+  if (local_cache_started)
+    {
+      (void) heap_scancache_end (thread_p, &local_cache);
+    }
+  return error_code;
+}
+
+/*
  * locator_update_force () - Update the given object
  *
  * return: NO_ERROR if all OK, ER_ status otherwise
@@ -6047,6 +6241,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
   bool no_data_new_address = false;
   REPL_INFO repl_info;
   TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
+  RECDES moved_recdes;
+  LC_COPYAREA *moved_area = NULL;
 
   OID superclass_oid;
 
@@ -6589,12 +6785,42 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		  goto error;
 		}
 
+	      /* An Internal LOB chain must live in the LOB file of the row's own heap (reclaim resolves it from
+	       * there), so re-create the chains in the partition the row is moving into. */
 	      error_code =
-		locator_move_record (thread_p, hfid, class_oid, oid, &real_class_oid, &real_hfid, recdes, scan_cache,
-				     op_type, has_index, force_count, pcontext, mvcc_reev_data, lock_policy,
-				     from_copyarea, pending, from_workspace);
 		locator_resolve_internal_lob_dml_slots (thread_p, &real_class_oid, oid, recdes, false, false,
-							&moved_recdes, &moved_area);
+							&moved_recdes, &moved_area, pending);
+	      if (error_code != NO_ERROR)
+		{
+		  goto error;
+		}
+
+	      if (moved_area != NULL)
+		{
+		  /* The chains this statement built in class_oid's LOB file (the partitioned root for a server-side
+		   * UPDATE) now have copies in the destination; drop them, as no row can lead vacuum to them. */
+		  error_code = locator_delete_moved_internal_lob_intermediates (thread_p, class_oid, hfid, oid, recdes,
+										local_scan_cache, pending != NULL);
+		  if (error_code != NO_ERROR)
+		    {
+		      locator_free_copy_area (moved_area);
+		      moved_area = NULL;
+		      goto error;
+		    }
+		}
+
+	      /* a rebuilt record already holds all its chains in the destination: its insert only validates it */
+	      error_code =
+		locator_move_record (thread_p, hfid, class_oid, oid, &real_class_oid, &real_hfid,
+				     moved_area != NULL ? &moved_recdes : recdes, scan_cache, op_type, has_index,
+				     force_count, pcontext, mvcc_reev_data, lock_policy,
+				     moved_area != NULL ? false : from_copyarea, moved_area != NULL ? NULL : pending,
+				     moved_area != NULL ? false : from_workspace);
+	      if (moved_area != NULL)
+		{
+		  locator_free_copy_area (moved_area);
+		  moved_area = NULL;
+		}
 	      if (error_code == NO_ERROR)
 		{
 		  COPY_OID (class_oid, &real_class_oid);
@@ -7357,11 +7583,13 @@ locator_class_has_lob_attribute (THREAD_ENTRY * thread_p, const OID * class_oid,
  *
  * from_client: the record came from the client workspace, so a locator it carries was issued to the client and its
  *              class is locked before the chain is cloned; a server-built record's source is locked already.
+ * pending: owner of a prepared record's deferred OOS values, so they can be read; NULL for a disk record.
  */
 static int
 locator_resolve_internal_lob_dml_slots (THREAD_ENTRY * thread_p, const OID * class_oid, const OID * inst_oid,
 					RECDES * source_recdes, bool is_update, bool from_client,
-					RECDES * resolved_recdes, LC_COPYAREA ** resolved_area)
+					RECDES * resolved_recdes, LC_COPYAREA ** resolved_area,
+					const heap_pending_record * pending)
 {
   /* [리뷰] 레코드를 다시 읽고 마커를 씌워 보며 DML 슬롯·로케이터·adopted를 판정한다.
    * 슬롯·로케이터가 있을 때만 INCLUDE_LOBFILE로 재구성(슬롯 소비·체인 복사).
@@ -7414,7 +7642,7 @@ locator_resolve_internal_lob_dml_slots (THREAD_ENTRY * thread_p, const OID * cla
     }
   attr_info_inited = true;
 
-  error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, source_recdes, &attr_info);
+  error_code = heap_attrinfo_read_dbvalues (thread_p, inst_oid, source_recdes, &attr_info, pending);
   if (error_code != NO_ERROR)
     {
       goto exit;
@@ -8360,6 +8588,32 @@ xlocator_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, int num_ignor
 
 	    pruning_type = locator_area_op_to_pruning_type (obj->operation);
 	    COPY_OID (&lob_class_oid, &obj->class_oid);
+	    if (pruning_type != DB_NOT_PARTITIONED_CLASS)
+	      {
+		bool class_has_lob = false;
+
+		error_code = locator_class_has_lob_attribute (thread_p, &obj->class_oid, &class_has_lob);
+		if (error_code != NO_ERROR)
+		  {
+		    break;
+		  }
+		if (class_has_lob)
+		  {
+		    HFID pruned_hfid;
+		    OID superclass_oid;
+
+		    /* [리뷰] partition_prune_insert는 recdes의 rep id를 파티션 것으로 바꾼다.
+		     * 같은 recdes가 resolve와 locator_insert_force로 넘어가 그대로 저장된다. */
+		    /* a chain belongs to the partition the row lands in, so prune before the LOB values are resolved */
+		    error_code =
+		      partition_prune_insert (thread_p, &obj->class_oid, &recdes, force_scancache, NULL, pruning_type,
+					      &lob_class_oid, &pruned_hfid, &superclass_oid);
+		    if (error_code != NO_ERROR)
+		      {
+			break;
+		      }
+		  }
+	      }
 	    error_code =
 	      locator_resolve_internal_lob_dml_slots (thread_p, &lob_class_oid, &obj->oid, &recdes, false, true,
 						      &resolved_recdes, &resolved_area);
@@ -8764,7 +9018,40 @@ locator_attribute_info_force (THREAD_ENTRY * thread_p, const HFID * hfid, OID * 
     case LC_FLUSH_INSERT:
     case LC_FLUSH_INSERT_PRUNE:
     case LC_FLUSH_INSERT_PRUNE_VERIFY:
-      if (heap_attrinfo_prepare_record (thread_p, attr_info, old_recdes, &pending) != S_SUCCESS)
+      /* LC_FLUSH_UPDATE falls through into this case, and an update's attr_info holds only the assigned columns,
+       * so the partition key need not be there.  An update already runs with the row's own partition as its class. */
+      /* [리뷰] 변환 동안만 class_oid를 파티션으로 바꾸고 변환 직후 원래 값으로 돌린다.
+       * 뒤의 insert가 루트 기준으로 다시 프루닝해 같은 파티션을 골라야 한다. */
+      if (LC_IS_FLUSH_INSERT (operation) && pruning_type != DB_NOT_PARTITIONED_CLASS)
+	{
+	  /* The preparation below stores Internal LOB values in the files of attr_info's class (OOS values wait for the
+	   * routed partition), so prune now, or the chains land in the root class' files. locator_insert_force ()
+	   * re-prunes the finished record to the same partition. */
+	  OID part_class_oid;
+	  HFID part_hfid;
+
+	  COPY_OID (&part_class_oid, &class_oid);
+	  HFID_COPY (&part_hfid, &class_hfid);
+
+	  /* The partition key is already materialized here (explicit value, default, or auto-increment assigned by the
+	   * executor before this call), so the key can be read without disturbing the record's attribute values. */
+	  error_code =
+	    partition_prune_insert_attr_info (thread_p, &class_oid, attr_info, pcontext, pruning_type,
+					      &part_class_oid, &part_hfid);
+	  if (error_code != NO_ERROR)
+	    {
+	      break;
+	    }
+
+	  COPY_OID (&attr_info->class_oid, &part_class_oid);
+	}
+
+      scan = heap_attrinfo_prepare_record (thread_p, attr_info, old_recdes, &pending);
+
+      /* the insert below starts from the class the statement named and prunes the record itself */
+      COPY_OID (&attr_info->class_oid, &class_oid);
+
+      if (scan != S_SUCCESS)
 	{
 	  error_code = ER_FAILED;
 	  break;
