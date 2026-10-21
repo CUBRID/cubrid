@@ -24,14 +24,29 @@
 #define _LOAD_COMMON_HPP_
 
 #include "packable_object.hpp"
+#include "dbtype_def.h"
+#include "intl_support.h"
 
 #include <atomic>
 #include <cassert>
 #include <functional>
+#include <ios>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 #define NUM_LDR_TYPES (LDR_TYPE_MAX + 1)
 #define NUM_DB_TYPES (DB_TYPE_LAST + 1)
+
+/* unloaddb's Internal LOB sidecar file: format 1 has a hex body; format 2 (the one written) adds a charset/collation
+ * line and stores each body as LZ4 blocks, each [plain size][compressed size][compressed bytes]. */
+#define INTERNAL_LOB_SIDECAR_SUFFIX "_internal_lob"
+#define INTERNAL_LOB_SIDECAR_MAGIC_V1 "CUBRID_INTERNAL_LOB_UNLOAD 1"
+#define INTERNAL_LOB_SIDECAR_MAGIC_V2 "CUBRID_INTERNAL_LOB_UNLOAD 2"
+#define INTERNAL_LOB_SIDECAR_BLOCK_SIZE (1024 * 1024)	/* max plain bytes per block */
+#define INTERNAL_LOB_SIDECAR_BLOCK_HEADER_SIZE (OR_INT_SIZE * 2)
+#define INTERNAL_LOB_SIDECAR_COMPRESS_NONE 'N'
+#define INTERNAL_LOB_SIDECAR_COMPRESS_LZ4 'L'
 
 namespace cubload
 {
@@ -76,6 +91,24 @@ namespace cubload
 
   using batch_handler = std::function<int64_t (const batch &)>;
   using class_handler = std::function<int64_t (const batch &, bool &)>;
+
+  struct internal_lob_sidecar_entry
+  {
+    char type = '\0';
+    DB_BIGINT data_length = 0;      /* payload bytes after decompression */
+    DB_BIGINT bit_length = -1;
+    std::streamoff body_offset = 0; /* first body byte: hex digits in format 1, blocks in format 2 */
+    DB_BIGINT stored_length = 0;    /* bytes the body occupies in the file (format 2 only) */
+    char compression = INTERNAL_LOB_SIDECAR_COMPRESS_NONE; /* format 1 hex; format 2 LZ4 */
+    std::string path;
+  };
+
+  using internal_lob_sidecar_map = std::unordered_map<std::string, internal_lob_sidecar_entry>;
+
+  int load_internal_lob_sidecar (const std::string &object_file_name, internal_lob_sidecar_map &sidecar,
+				 bool &sidecar_available);
+  int internal_lob_sidecar_read_raw_chunk (const internal_lob_sidecar_entry &entry, DB_BIGINT byte_offset, char *buf,
+      int buf_size, int *nread);
 
   /*
    * loaddb executables command line arguments
@@ -157,8 +190,9 @@ namespace cubload
     LDR_DATETIMELTZ,
     LDR_DATETIMETZ,
     LDR_JSON,
+    LDR_INTERNAL_LOB_REF,
 
-    LDR_TYPE_MAX = LDR_JSON
+    LDR_TYPE_MAX = LDR_INTERNAL_LOB_REF
   };
 
   /*
@@ -425,7 +459,8 @@ namespace cubload
    *    c_handler(in)       : a function for handling/process a %class or %id line from object file
    *    b_handler(in)       : a function for handling/process a batch of objects
    */
-  int split (int batch_size, const std::string &object_file_name, class_handler &c_handler, batch_handler &b_handler);
+  int split (int batch_size, const std::string &object_file_name, class_handler &c_handler,
+	     batch_handler &b_handler);
 
 } // namespace cubload
 
