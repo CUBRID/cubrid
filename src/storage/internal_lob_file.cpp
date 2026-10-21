@@ -154,6 +154,73 @@ internal_lob_format_locator (const INTERNAL_LOB_LOCATOR &locator, char *buf, siz
   return internal_lob_format_locator_string (locator, buf, buf_size, false);
 }
 
+/*
+ * internal_lob_lock_locator_class () - IS-lock a client-supplied locator's class until the transaction ends.
+ *   The SELECT that issued the locator may have committed and released its own lock (autocommit), so without this
+ *   a DROP/TRUNCATE could free the chain under the reader.  A chain no longer in that class's file is refused.
+ */
+int
+internal_lob_lock_locator_class (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator)
+{
+  HFID hfid;
+  VFID lob_vfid;
+  VPID head_vpid;
+  DISK_ISVALID owned;
+  int err;
+
+  if (OID_ISNULL (&locator.oid))
+    {
+      /* an empty LOB has no chain */
+      return NO_ERROR;
+    }
+  if (OID_ISNULL (&locator.class_oid))
+    {
+      return internal_lob_set_generic_error ();
+    }
+
+  if (lock_object (thread_p, &locator.class_oid, oid_Root_class_oid, IS_LOCK, LK_UNCOND_LOCK) != LK_GRANTED)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+
+  /* class_oid comes from a client locator and is not covered by the token; confirm it is a real class before
+   * reading its heap, so a corrupted or forged OID is refused instead of faulting heap_get_class_info (). */
+  if (!heap_does_exist (thread_p, oid_Root_class_oid, &locator.class_oid))
+    {
+      return internal_lob_set_generic_error ();
+    }
+
+  err = heap_get_class_info (thread_p, &locator.class_oid, &hfid, NULL, NULL);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+  if (!heap_oos_find_vfid_by_type (thread_p, &hfid, FILE_INTERNAL_LOB, &lob_vfid, false))
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+  if (VFID_ISNULL (&lob_vfid))
+    {
+      return internal_lob_set_generic_error ();
+    }
+
+  /* the class was dropped and its OID reused, or truncated, since the locator was issued */
+  VPID_GET_FROM_OID (&head_vpid, &locator.oid);
+  owned = file_is_vpid_in_file (thread_p, &lob_vfid, &head_vpid);
+  if (owned == DISK_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (err);
+      return err;
+    }
+  if (owned != DISK_VALID)
+    {
+      return internal_lob_set_generic_error ();
+    }
+  return NO_ERROR;
+}
+
 int
 internal_lob_create_file (THREAD_ENTRY *thread_p, const HFID &heap_hfid, const OID &class_oid, VFID &lob_vfid)
 {
@@ -752,6 +819,291 @@ internal_lob_read_pull (THREAD_ENTRY *thread_p, INTERNAL_LOB_READER &reader, oos
     }
 
   return NO_ERROR;
+}
+
+struct internal_lob_stream_cursor
+{
+  int tran_index = NULL_TRAN_INDEX;
+  INTERNAL_LOB_READER reader;
+  /* Set while a pull is in flight for this cursor, so the mutex below only ever has to guard the map
+   * itself - never the page-buffer fetch a pull does. */
+  bool in_use = false;
+  /* Set by a close/purge that arrives while in_use is true; the in-flight pull erases the node when it re-locks. */
+  bool pending_erase = false;
+  /* Still counted in internal_lob_stream_tran_cursor_count; cleared when the cursor is dropped, which may be
+   * before the node is erased (pending_erase), so a reused tran_index is never charged for it. */
+  bool counted = true;
+};
+using internal_lob_stream_cursor_iterator = std::map<INT64, internal_lob_stream_cursor>::iterator;
+
+/* Caps open reader cursors so a client that never closes them gets a refused open, not unbounded server memory.
+ * Counted per transaction so one such client cannot use up the slots of every other session. */
+#define INTERNAL_LOB_STREAM_MAX_CURSORS_PER_TRAN 1024
+
+static std::mutex internal_lob_stream_mutex;
+static std::map<INT64, internal_lob_stream_cursor> internal_lob_stream_cursor_table;
+/* Cursors each transaction holds in the table above, for INTERNAL_LOB_STREAM_MAX_CURSORS_PER_TRAN.  Kept in step
+ * with the table under internal_lob_stream_mutex: raised where a cursor is added, lowered where one is erased. */
+static std::map<int, int> internal_lob_stream_tran_cursor_count;
+/* Size of the table above, readable without internal_lob_stream_mutex: a transaction end that finds no cursor
+ * anywhere -- the usual case -- is spared the mutex that every commit and abort would otherwise take. */
+static std::atomic<int> internal_lob_stream_cursor_total (0);
+static INT64 internal_lob_stream_next_token = 1;
+
+/* release a cursor's share of its transaction's cap; the caller holds internal_lob_stream_mutex */
+static void
+internal_lob_stream_uncount_cursor (internal_lob_stream_cursor &cursor)
+{
+  if (!cursor.counted)
+    {
+      return;
+    }
+  cursor.counted = false;
+
+  auto count = internal_lob_stream_tran_cursor_count.find (cursor.tran_index);
+  if (count != internal_lob_stream_tran_cursor_count.end () && --count->second <= 0)
+    {
+      internal_lob_stream_tran_cursor_count.erase (count);
+    }
+}
+
+/*
+ * internal_lob_stream_erase_cursor - Erase one reader cursor and release its transaction's share of the cap.
+ *   return: iterator following the erased cursor
+ *   iter(in): cursor to erase; the caller holds internal_lob_stream_mutex
+ */
+static internal_lob_stream_cursor_iterator
+internal_lob_stream_erase_cursor (internal_lob_stream_cursor_iterator iter)
+{
+  internal_lob_stream_uncount_cursor (iter->second);
+  internal_lob_stream_cursor_total--;
+  return internal_lob_stream_cursor_table.erase (iter);
+}
+
+/*
+ * internal_lob_stream_find_cursor - Look up a cursor the current transaction owns.
+ *   return: the cursor, or the table's end when token is unknown or owned by another transaction
+ *   token(in): cursor token; the caller holds internal_lob_stream_mutex
+ */
+static internal_lob_stream_cursor_iterator
+internal_lob_stream_find_cursor (THREAD_ENTRY *thread_p, INT64 token)
+{
+  auto iter = internal_lob_stream_cursor_table.find (token);
+
+  if (iter != internal_lob_stream_cursor_table.end ()
+      && iter->second.tran_index != LOG_FIND_THREAD_TRAN_INDEX (thread_p))
+    {
+      return internal_lob_stream_cursor_table.end ();
+    }
+  return iter;
+}
+
+/*
+ * internal_lob_stream_release_cursor - Drop a cursor for a close or purge.
+ *   return: iterator following iter
+ *   iter(in): cursor to drop; the caller holds internal_lob_stream_mutex
+ *
+ * A cursor another thread is still mid-pull on is only marked: erasing the node now would free it under that
+ * pull's reader_p, so the pull erases it when it re-locks.
+ */
+static internal_lob_stream_cursor_iterator
+internal_lob_stream_release_cursor (internal_lob_stream_cursor_iterator iter)
+{
+  if (iter->second.in_use)
+    {
+      iter->second.pending_erase = true;
+      internal_lob_stream_uncount_cursor (iter->second);
+      return ++iter;
+    }
+  return internal_lob_stream_erase_cursor (iter);
+}
+
+static INT64
+internal_lob_stream_allocate_token (void)
+{
+  INT64 token = internal_lob_stream_next_token++;
+
+  if (internal_lob_stream_next_token <= 0)
+    {
+      internal_lob_stream_next_token = 1;
+    }
+
+  while (token <= 0 || internal_lob_stream_cursor_table.find (token) != internal_lob_stream_cursor_table.end ())
+    {
+      token = internal_lob_stream_next_token++;
+      if (internal_lob_stream_next_token <= 0)
+	{
+	  internal_lob_stream_next_token = 1;
+	}
+    }
+
+  return token;
+}
+
+/*
+ * xinternal_lob_stream_open - Open a forward-only reader cursor owned by the current transaction.
+ *   return: error code
+ *   locator(in): value to read; a client-facing caller has already locked its class
+ *   start_offset(in): bytes to skip before the first read
+ *   token(out): cursor for xinternal_lob_stream_read/close; 0 on error
+ */
+int
+xinternal_lob_stream_open (THREAD_ENTRY *thread_p, const INTERNAL_LOB_LOCATOR &locator, INT64 start_offset,
+			   INT64 *token)
+{
+  internal_lob_stream_cursor cursor;
+  int err;
+
+  *token = 0;
+  if (start_offset < 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  err = internal_lob_read_open (thread_p, locator, cursor.reader);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  /* Positioning happens here rather than by the client reading and discarding: the bytes ahead of the offset
+   * would otherwise cross the network only to be thrown away, which is what made a read near the end of a
+   * large value cost as much as reading the whole of it. */
+  if (start_offset > 0)
+    {
+      err = internal_lob_read_skip (thread_p, cursor.reader, start_offset);
+      if (err != NO_ERROR)
+	{
+	  return err;
+	}
+    }
+
+  cursor.tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+
+  std::lock_guard<std::mutex> lock (internal_lob_stream_mutex);
+  int &held = internal_lob_stream_tran_cursor_count[cursor.tran_index];
+
+  if (held >= INTERNAL_LOB_STREAM_MAX_CURSORS_PER_TRAN)
+    {
+      /* the reader holds no page latch between pulls, so dropping it needs nothing but letting it go */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  *token = internal_lob_stream_allocate_token ();
+  internal_lob_stream_cursor_table[*token] = cursor;
+  held++;
+  internal_lob_stream_cursor_total++;
+  return NO_ERROR;
+}
+
+/*
+ * xinternal_lob_stream_read - Read the next bytes from a reader cursor of the current transaction.
+ *   return: error code; the cursor is dropped on a read error
+ *   buf(out): count bytes of space
+ *   nread(out): bytes read; 0 at the end of the value and on error
+ */
+int
+xinternal_lob_stream_read (THREAD_ENTRY *thread_p, INT64 token, char *buf, int count, int *nread)
+{
+  INTERNAL_LOB_READER *reader_p = NULL;
+  int err;
+
+  *nread = 0;
+
+  /* Only the map lookup and the in-flight flag are under the lock; the pull runs outside it so one large read
+   * does not stall every other cursor.  A concurrent read on the same token is refused, not serialized: a
+   * client always waits for one read's reply before asking for the next. */
+  {
+    std::lock_guard<std::mutex> lock (internal_lob_stream_mutex);
+    auto iter = internal_lob_stream_find_cursor (thread_p, token);
+
+    if (iter == internal_lob_stream_cursor_table.end () || iter->second.in_use)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+	return ER_OBJ_INVALID_ARGUMENTS;
+      }
+    iter->second.in_use = true;
+    reader_p = &iter->second.reader;
+  }
+
+  err = internal_lob_read_pull (thread_p, *reader_p, oos_buffer (buf, (std::size_t) count), *nread);
+
+  {
+    std::lock_guard<std::mutex> lock (internal_lob_stream_mutex);
+    auto iter = internal_lob_stream_cursor_table.find (token);
+
+    /* The cursor may already be gone.  A pending_erase set by a close/purge during the pull is carried out
+     * here: reader_p pointed at this node until now, so nothing may erase it earlier. */
+    if (iter != internal_lob_stream_cursor_table.end ())
+      {
+	if (err != NO_ERROR || iter->second.pending_erase)
+	  {
+	    (void) internal_lob_stream_erase_cursor (iter);
+	  }
+	else
+	  {
+	    iter->second.in_use = false;
+	  }
+      }
+  }
+
+  if (err != NO_ERROR)
+    {
+      *nread = 0;
+    }
+  return err;
+}
+
+/*
+ * xinternal_lob_stream_close - Close a reader cursor of the current transaction.
+ *   return: error code
+ */
+int
+xinternal_lob_stream_close (THREAD_ENTRY *thread_p, INT64 token)
+{
+  std::lock_guard<std::mutex> lock (internal_lob_stream_mutex);
+  auto iter = internal_lob_stream_find_cursor (thread_p, token);
+
+  if (iter == internal_lob_stream_cursor_table.end ())
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  (void) internal_lob_stream_release_cursor (iter);
+  return NO_ERROR;
+}
+
+/*
+ * internal_lob_stream_purge_tran - Drop every reader cursor a transaction owns, when it ends or its connection
+ *   goes down, so a client that never sends a close does not leave its cursors in the table.
+ */
+void
+internal_lob_stream_purge_tran (int tran_index)
+{
+  /* A transaction's cursors are opened only by its own requests, which are done before its commit or abort runs,
+   * so a zero total cannot miss one of them. */
+  if (tran_index == NULL_TRAN_INDEX || internal_lob_stream_cursor_total.load () == 0)
+    {
+      return;
+    }
+
+  std::lock_guard<std::mutex> lock (internal_lob_stream_mutex);
+  if (internal_lob_stream_tran_cursor_count.find (tran_index) == internal_lob_stream_tran_cursor_count.end ())
+    {
+      /* only other transactions hold cursors: nothing of this one to walk the table for */
+      return;
+    }
+  for (auto iter = internal_lob_stream_cursor_table.begin (); iter != internal_lob_stream_cursor_table.end ();)
+    {
+      if (iter->second.tran_index != tran_index)
+	{
+	  ++iter;
+	  continue;
+	}
+      iter = internal_lob_stream_release_cursor (iter);
+    }
 }
 
 int

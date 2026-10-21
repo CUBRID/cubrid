@@ -48,6 +48,7 @@
 #include "xasl_cache.h"
 #include "xasl_unpack_info.hpp"
 #include "dblink_scan.h"
+#include "internal_lob_file.hpp"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -1274,6 +1275,50 @@ exit_on_error:
   goto end;
 }
 
+#if defined (SERVER_MODE)
+/*
+ * qmgr_check_client_internal_lob_values () - Check the internal LOB values a client bound to this statement.
+ *   return: error code
+ *
+ * A locator gets the same class-lock check as a read and may not be an adopted one; a value naming a file is made
+ * only in SA mode, so a client may not bind one.  Uploads are noted so they are released with the next upload even
+ * when the statement stores them in no row.
+ */
+static int
+qmgr_check_client_internal_lob_values (THREAD_ENTRY * thread_p, int dbval_count, const DB_VALUE * dbvals)
+{
+  INTERNAL_LOB_LOCATOR locator;
+  int marker;
+  int error;
+
+  for (int i = 0; i < dbval_count; i++)
+    {
+      marker = db_value_get_internal_lob_marker (&dbvals[i]);
+      if (marker == DB_VALUE_INTERNAL_LOB_MARKER_FILE_SOURCE || marker == DB_VALUE_INTERNAL_LOB_MARKER_PENDING)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED, 0);
+	  return ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED;
+	}
+
+      if (internal_lob_db_value_is_locator (&dbvals[i], &locator))
+	{
+	  if (locator.adopted)
+	    {
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED, 0);
+	      return ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED;
+	    }
+	  error = internal_lob_lock_locator_class (thread_p, locator);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  continue;
+	}
+    }
+  return NO_ERROR;
+}
+#endif /* SERVER_MODE */
+
 /*
  * xqmgr_execute_query () - Execute a prepared query
  *   return: query result file id
@@ -1430,6 +1475,10 @@ xqmgr_execute_query (THREAD_ENTRY * thread_p, const XASL_ID * xasl_id_p, QUERY_I
       for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
 	{
 	  ptr = or_unpack_db_value (ptr, dbval);
+	}
+      if (qmgr_check_client_internal_lob_values (thread_p, dbval_count, dbvals_p) != NO_ERROR)
+	{
+	  goto exit_on_error;
 	}
     }
 #else
@@ -1942,6 +1991,10 @@ xqmgr_prepare_and_execute_query (THREAD_ENTRY * thread_p, char *xasl_stream, int
       for (i = 0, dbval = dbvals_p; i < dbval_count; i++, dbval++)
 	{
 	  ptr = or_unpack_db_value (ptr, dbval);
+	}
+      if (qmgr_check_client_internal_lob_values (thread_p, dbval_count, dbvals_p) != NO_ERROR)
+	{
+	  goto exit_on_error;
 	}
     }
 #else
