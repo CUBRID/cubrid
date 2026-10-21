@@ -637,6 +637,9 @@ namespace parallel_scan
       }
 
     qexec_free_xasl_state (&thread_ref, m_xasl_state);
+    /* the leader's runtime filter bound in initialize () is the leader's to free: drop the alias before the clone
+     * is cleared and retired to the pool (hjoin_rtf_bind_clone ()) */
+    hjoin_rtf_unbind_clone (m_xasl);
     if (!m_uses_xasl_clone)
       {
 	/* A worker XASL that is not a cached clone is freed right below, so its compiled expression
@@ -841,7 +844,7 @@ namespace parallel_scan
 	    SCAN_BATCH_PROJECT rows_state = { m_scan_id, emit_row_body, this };
 	    EXPR_CHUNK_NODE tail_node, eval_node;
 
-	    m_drain_stop = &stop;
+	    m_drain_stop = &stop;	/* this block's frame: emit_row_body () runs only in the expr_chunk_push () below */
 
 	    /* the chain: evaluation -> the worker's aggregate, its hash GROUP BY, or the projection into its
 	     * result handler */

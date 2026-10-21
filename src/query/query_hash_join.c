@@ -4871,6 +4871,10 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
   UINT64 cap;
   INT64 k;
 
+  /* a cached clone may still carry the filter a worker bound on it in an earlier execution (freed since by that
+   * execution's hjoin_rtf_release ()): no decline below may leave it on the target */
+  target->rtf = NULL;
+  target->rtf_val = NULL;
   fcol = (first == hj->outer.xasl) ? hj->merge_info.ls_outer_column[0] : hj->merge_info.ls_inner_column[0];
   tcol = (target == hj->outer.xasl) ? hj->merge_info.ls_outer_column[0] : hj->merge_info.ls_inner_column[0];
   if (list == NULL || list->tuple_cnt <= 0 || list->tuple_cnt > HJOIN_RTF_MAX_KEYS || fcol >= list->type_list.type_cnt
@@ -5028,10 +5032,22 @@ hjoin_rtf_bind_clone (XASL_NODE * clone, const XASL_NODE * orig)
     }
 }
 
+/* the worker's clone goes back to the xcache clone pool: the leader's filter must not go with it */
+void
+hjoin_rtf_unbind_clone (XASL_NODE * clone)
+{
+  clone->rtf = NULL;
+  clone->rtf_val = NULL;
+}
+
 void
 hjoin_rtf_release (XASL_NODE * hashjoin_xasl)
 {
   HASHJOIN_PROC_NODE *hj = &hashjoin_xasl->proc.hashjoin;
+  /* called once the target's scans are closed -- qexec_end_mainblock_iterations () after the aptr loop, or
+   * qexec_clear_xasl () after the target's own error exit closed them -- so every worker that shared this
+   * filter (hjoin_rtf_bind_clone ()) has been drained (wait_for_workers ()) and has dropped its alias
+   * (hjoin_rtf_unbind_clone () in finalize ()): the counters are read plain and nothing points at the freed filter */
   HJOIN_RUNTIME_FILTER *rtf = hj->rtf;
 
   if (rtf == NULL)

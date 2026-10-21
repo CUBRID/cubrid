@@ -3892,10 +3892,25 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 	{
 	  trace_json_object_set_new (groupby, "sort", trace_json_false ());
 	}
+      /* the same items as the text trace (qdump_print_stats_text ()) */
       if (gstats->groupby_hash_merge_parts > 0)
 	{
 	  trace_json_object_set_new (groupby, "hash_merge_partitions",
 				     trace_json_integer (gstats->groupby_hash_merge_parts));
+	  if (gstats->groupby_hash_merge_workers > 0)
+	    {
+	      trace_json_object_set_new (groupby, "hash_merge_workers",
+					 trace_json_integer (gstats->groupby_hash_merge_workers));
+	    }
+	  else if (gstats->groupby_hash_merge_why != NULL)
+	    {
+	      trace_json_object_set_new (groupby, "hash_merge_workers_why",
+					 trace_json_string (gstats->groupby_hash_merge_why));
+	    }
+	}
+      if (gstats->groupby_hash_groups > 0)
+	{
+	  trace_json_object_set_new (groupby, "groups_est", trace_json_integer (gstats->groupby_hash_groups));
 	}
 
       trace_json_object_set_new (groupby, "rows", trace_json_integer (gstats->rows));
@@ -4791,7 +4806,9 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 
   if (proc->rtf_keys > 0)
     {
-      /* the runtime filter one input's keys made for the other input's outermost scan (hjoin_rtf_build ()) */
+      /* the runtime filter one input's keys made for the other input's outermost scan (hjoin_rtf_build ()); rows and
+       * dropped are what hjoin_rtf_release () copied out of it when the target's scans closed -- a probe that ended in
+       * an error is dumped before that release (qexec_clear_xasl ()), so they read 0 there */
       fprintf (fp, "%*cRUNTIME FILTER (keys: %lld, rows: %lld, dropped: %lld)\n", indent + 2, ' ',
 	       (long long) proc->rtf_keys, (long long) proc->rtf_rows, (long long) proc->rtf_dropped);
     }
@@ -5081,7 +5098,7 @@ static void
 qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 {
   trace_json_t *split, *part_array, *parallel, *build, *probe, *merge, *subquery;
-  trace_json_t *input, *profile;
+  trace_json_t *input, *profile, *rtf;
 
   XASL_NODE *outer_xasl, *inner_xasl;
 
@@ -5113,6 +5130,16 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
   stats = &stats_group->stats;
   part_stats = stats_group->context_stats;
   part_cnt = stats_group->context_cnt;
+
+  if (proc->rtf_keys > 0)
+    {
+      /* the runtime filter, the same item as the text trace's RUNTIME FILTER line */
+      rtf = trace_json_object ();
+      trace_json_object_set_new (rtf, "keys", trace_json_integer (proc->rtf_keys));
+      trace_json_object_set_new (rtf, "rows", trace_json_integer (proc->rtf_rows));
+      trace_json_object_set_new (rtf, "dropped", trace_json_integer (proc->rtf_dropped));
+      trace_json_object_set_new (parent, "RUNTIME FILTER", rtf);
+    }
 
   const bool is_partition_parallel = (status == HASHJOIN_STATUS_PARTITION || status == HASHJOIN_STATUS_PARALLEL);
   assert (part_stats == NULL || is_partition_parallel || status == HASHJOIN_STATUS_PARALLEL_PROBE);

@@ -522,6 +522,7 @@ extern int hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, 
 extern bool hjoin_rtf_pass (HJOIN_RUNTIME_FILTER * rtf, const DB_VALUE * key);
 /* a parallel worker's own XASL: the same filter, on the worker's value list cell */
 extern void hjoin_rtf_bind_clone (XASL_NODE * clone, const XASL_NODE * orig);
+extern void hjoin_rtf_unbind_clone (XASL_NODE * clone);
 extern void hjoin_rtf_release (XASL_NODE * hashjoin_xasl);
 #endif
 

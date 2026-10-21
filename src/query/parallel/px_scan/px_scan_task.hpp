@@ -113,7 +113,9 @@ namespace parallel_scan
       UINTPTR *m_scan_func_ptr;
       QEXEC_BATCH_GBY *m_batch_gby;	/* the page batch's hash GROUP BY node, kept across the worker's pages */
       bool m_batch_rows;		/* the batch runs the filter only: the kept rows go through row_body () */
-      bool *m_drain_stop;		/* drain_slot_oids ()'s stop, for a row the rows node hands to row_body () */
+      bool *m_drain_stop;		/* drain_slot_oids ()'s stop, for a row the rows node hands to row_body (): a reference into
+				 * that call's frame, valid only inside its page batch block -- emit_row_body () is reached from
+				 * the expr_chunk_push () of that block alone, never from a rows node consumed elsewhere */
       pre_execution_info *m_pre_execution_info;
       bool m_is_fixed;
       bool m_is_grouped;
