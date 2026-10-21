@@ -731,7 +731,8 @@ la_coordinator_drain_ready (void)
  * Note:
  *   While the commit-order ring is full the coordinator stops reading the log and only collects results.
  *   A slot frees when the oldest commit on the ring finishes. That commit always passes the gate, since
- *   every commit before it is applied, so the wait ends while the workers run.
+ *   every commit before it is applied and its label lies at or below the commit read before it
+ *   (la_gate_bound_dependency), so the wait ends while the workers run.
  */
 static int
 la_coordinator_wait_for_commit_order_slot (void)
@@ -7360,6 +7361,7 @@ static LOG_LSA la_wset_label_dependency_seq = LSA_INITIALIZER;
 static int
 la_coordinator_submit_task (LA_TASK * task)
 {
+  LOG_LSA label;
   int error;
 
   error = la_coordinator_wait_for_commit_order_slot ();
@@ -7369,6 +7371,17 @@ la_coordinator_submit_task (LA_TASK * task)
     }
 
   la_gate_set_initial_frontier (&la_Info.committed_lsa);
+
+  /* the master's restart floor is no commit; it becomes the latest commit read before this one */
+  LSA_COPY (&label, &task->dependency_seq);
+  if (la_gate_bound_dependency (&task->dependency_seq) && prm_get_integer_value (PRM_ID_HA_WRITESET_TRACE_LEVEL) >= 1)
+    {
+      _er_log_debug (ARG_FILE_LINE, "[WSET] reader label lowered trid=%d commit_lsa=%lld|%d label=%lld|%d "
+		     "dependency=%lld|%d\n", task->tranid, (long long) task->commit_lsa.pageid,
+		     (int) task->commit_lsa.offset, (long long) label.pageid, (int) label.offset,
+		     (long long) task->dependency_seq.pageid, (int) task->dependency_seq.offset);
+    }
+
   error = la_gate_order_push (&task->commit_lsa);
   if (error != NO_ERROR)
     {
