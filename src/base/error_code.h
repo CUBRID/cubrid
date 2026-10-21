@@ -1783,7 +1783,12 @@
 
 #define ER_HEAP_OOS_INVALID_ARGUMENT                -1383
 
-#define ER_LAST_ERROR                               -1384
+#define ER_STREAM_SESSION_ERROR                     -1386
+#define ER_LDR_INTERNAL_LOB_CHARSET_MISMATCH         -1388
+#define ER_INTERNAL_LOB_LOCATOR_NOT_AUTHORIZED       -1389
+#define ER_LDR_INTERNAL_LOB_SIDECAR                  -1390
+
+#define ER_LAST_ERROR                               -1391
 
 
 
