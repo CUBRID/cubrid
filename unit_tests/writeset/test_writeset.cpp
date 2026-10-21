@@ -1012,3 +1012,46 @@ TEST_CASE ("raising history_start makes later transactions wait for the sysop", 
   delete t2;
   delete t3;
 }
+
+TEST_CASE ("an overflowed transaction after a restart waits for the restart floor", "[writeset]")
+{
+  /* After a restart prev_commit_lsa is NULL and the floor is the end of the recovered log. A statement replicated
+   * then, a DDL for instance, takes the commit-order fallback; without the floor its label is NULL, and the slave
+   * runs it beside the transactions written before the restart. */
+  ws_history_guard history;
+  LOG_LSA restart = lsa_of (105, 0);
+  log_tdes *ovf = make_tdes (1);
+  LOG_LSA dep;
+
+  wset_raise_history_start (&restart, "RESTART");
+
+  ovf->wset_overflow = true;
+  dep = probe (ovf);
+  REQUIRE (LSA_EQ (&dep, &restart));
+
+  delete ovf;
+}
+
+TEST_CASE ("an overflowed transaction after a sysop waits for the sysop", "[writeset]")
+{
+  /* a system operation applied in commit order raises the floor above the last commit; the commit-order fallback
+   * has to wait for it like every other transaction after it */
+  ws_history_guard history;
+  OID cls = oid_of (1, 100, 1);
+  LOG_LSA l1 = lsa_of (10, 0);
+  LOG_LSA sysop = lsa_of (12, 0);
+  log_tdes *t1 = make_tdes (1);
+  log_tdes *ovf = make_tdes (2);
+  LOG_LSA dep;
+
+  add_write_int (t1, &cls, 1);
+  wset_publish_commit_to_history (t1, &l1);
+  wset_raise_history_start (&sysop, "SYSOP_COMMIT_ORDER");
+
+  ovf->wset_overflow = true;
+  dep = probe (ovf);
+  REQUIRE (LSA_EQ (&dep, &sysop));
+
+  delete t1;
+  delete ovf;
+}
