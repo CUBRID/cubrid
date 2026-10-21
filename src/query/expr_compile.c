@@ -3585,6 +3585,169 @@ expr_scan_pred_kid_or_leaves (const void *compiled, int kid, const val_descr * v
   return pred->n_kids;
 }
 
+static bool expr_regu_runs_side_effect (const REGU_VARIABLE * regu);
+
+static bool
+expr_regu_list_runs_side_effect (const REGU_VARIABLE_LIST list)
+{
+  REGU_VARIABLE_LIST op;
+
+  for (op = list; op != NULL; op = op->next)
+    {
+      if (expr_regu_runs_side_effect (&op->value))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/* Does a row's evaluation of regu run a node with a side effect -- a stored procedure call (TYPE_SP), or an operator
+ * expr_arith_side_effect () names (a serial, INCR/DECR, a random number, a session variable) -- anywhere under its
+ * arithmetic, function and procedure-argument nodes?  expr_regu_has_side_effect () looks at the arithmetic subtree
+ * only, as its caller reorders arithmetic; a page batch may evaluate a filter term on a row and then hand the row
+ * back to the row path, which evaluates it again, so it must not take a term that runs such a node at all. */
+static bool
+expr_regu_runs_side_effect (const REGU_VARIABLE * regu)
+{
+  if (regu == NULL)
+    {
+      return false;
+    }
+  switch (regu->type)
+    {
+    case TYPE_SP:
+      return true;
+    case TYPE_INARITH:
+    case TYPE_OUTARITH:
+      {
+	const ARITH_TYPE *arith = regu->value.arithptr;
+
+	if (arith == NULL)
+	  {
+	    return false;
+	  }
+	return expr_arith_side_effect (arith->opcode) || expr_regu_runs_side_effect (arith->leftptr)
+	  || expr_regu_runs_side_effect (arith->rightptr) || expr_regu_runs_side_effect (arith->thirdptr);
+      }
+    case TYPE_FUNC:
+      return regu->value.funcp != NULL && expr_regu_list_runs_side_effect (regu->value.funcp->operand);
+    case TYPE_REGUVAL_LIST:
+      {
+	const REGU_VALUE_ITEM *item;
+
+	if (regu->value.reguval_list == NULL)
+	  {
+	    return false;
+	  }
+	for (item = regu->value.reguval_list->regu_list; item != NULL; item = item->next)
+	  {
+	    if (expr_regu_runs_side_effect (item->value))
+	      {
+		return true;
+	      }
+	  }
+	return false;
+      }
+    case TYPE_REGU_VAR_LIST:
+      return expr_regu_list_runs_side_effect (regu->value.regu_var_list);
+    default:
+      /* a column, a literal, a host variable, a list slot: read, not computed */
+      return false;
+    }
+}
+
+/* the same question of a term eval_pred () evaluates verbatim: every operand of every term under it */
+static bool
+expr_pred_runs_side_effect (const PRED_EXPR * pr)
+{
+  if (pr == NULL)
+    {
+      return false;
+    }
+  switch (pr->type)
+    {
+    case T_PRED:
+      return expr_pred_runs_side_effect (pr->pe.m_pred.lhs) || expr_pred_runs_side_effect (pr->pe.m_pred.rhs);
+    case T_NOT_TERM:
+      return expr_pred_runs_side_effect (pr->pe.m_not_term);
+    case T_EVAL_TERM:
+      switch (pr->pe.m_eval_term.et_type)
+	{
+	case T_COMP_EVAL_TERM:
+	  return expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_comp.lhs)
+	    || expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_comp.rhs);
+	case T_ALSM_EVAL_TERM:
+	  return expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_alsm.elem)
+	    || expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_alsm.elemset);
+	case T_LIKE_EVAL_TERM:
+	  return expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_like.src)
+	    || expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_like.pattern)
+	    || expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_like.esc_char);
+	case T_RLIKE_EVAL_TERM:
+	  return expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_rlike.src)
+	    || expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_rlike.pattern)
+	    || expr_regu_runs_side_effect (pr->pe.m_eval_term.et.et_rlike.case_sensitive);
+	default:
+	  break;
+	}
+      /* FALLTHRU */
+    default:
+      /* a term this file does not know: not one to evaluate twice */
+      return true;
+    }
+}
+
+/* the same question of a node of the compiled filter: a fetched leaf's two operands (fetch_lhs/fetch_rhs are the
+ * term's operands whether a side is compiled or fetched), an interpreted term's source, a connective's operands */
+static bool
+expr_scan_pred_node_runs_side_effect (const EXPR_PRED * pred)
+{
+  int i;
+
+  if (pred == NULL)
+    {
+      return false;
+    }
+  switch (pred->kind)
+    {
+    case EXPR_PRED_COMP_FETCH:
+      return expr_regu_runs_side_effect (pred->fetch_lhs) || expr_regu_runs_side_effect (pred->fetch_rhs);
+    case EXPR_PRED_INTERP:
+    case EXPR_PRED_INTERP_COMP0:
+      return expr_pred_runs_side_effect ((const PRED_EXPR *) pred->fetch_src);
+    case EXPR_PRED_AND:
+    case EXPR_PRED_OR:
+    case EXPR_PRED_NOT:
+    case EXPR_PRED_AND_N:
+    case EXPR_PRED_OR_N:
+      if (expr_scan_pred_node_runs_side_effect (pred->lhs) || expr_scan_pred_node_runs_side_effect (pred->rhs))
+	{
+	  return true;
+	}
+      for (i = 0; i < pred->n_kids; i++)
+	{
+	  if (expr_scan_pred_node_runs_side_effect (pred->kids[i]))
+	    {
+	      return true;
+	    }
+	}
+      return false;
+    default:
+      /* a leaf over compiled cells only (not a scan filter's shape): its operands are not reachable from here */
+      return true;
+    }
+}
+
+bool
+expr_scan_pred_kid_has_side_effect (const void *compiled, int kid)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+  const EXPR_PRED *pred = (root != NULL) ? expr_scan_pred_kid ((EXPR_PRED *) root, kid) : NULL;
+
+  return pred != NULL && expr_scan_pred_node_runs_side_effect (pred);
+}
+
 /* a node of the compiled filter as a raw leaf */
 static bool
 expr_scan_pred_node_raw_info (const EXPR_PRED * root, const EXPR_PRED * pred, const val_descr * vd,
@@ -3909,7 +4072,8 @@ expr_pred_term_in_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEA
 
 /* A term on a VARCHAR column of the scan against a string constant: "col = 'x'", "col <> 'x'", "col [NOT] LIKE
  * 'pattern'" without an ESCAPE (a page batch compares the record's bytes with the collation's own function, and
- * matches a pattern of literals and '%' over a binary collation, expr_batch.c) */
+ * matches a pattern with qstr_like_match () under the column's collation -- a pattern with '_' or a backslash it
+ * leaves to the row path, expr_batch.c eb_like_pattern_ok ()) */
 static bool
 expr_pred_term_string_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
 {
@@ -4111,7 +4275,9 @@ expr_numeric_cmp_const_ok (const DB_VALUE * k)
     case DB_TYPE_NUMERIC:
       return true;
     case DB_TYPE_BIGINT:
-      /* eval_value_rel_cmp () coerces to tp_domain_resolve_default (DB_TYPE_NUMERIC), NUMERIC(15,0) */
+      /* the interpreter coerces the constant to tp_domain_resolve_default (DB_TYPE_NUMERIC) -- the precision-40
+       * float numeric, which takes any BIGINT exactly; the batch keeps a narrower window so the coefficient at the
+       * column's scale stays well inside the 10^38 bound eb_num_leaf_constant () reasons with */
       return db_get_bigint (k) < 1000000000000000LL && db_get_bigint (k) > -1000000000000000LL;
     default:
       return false;

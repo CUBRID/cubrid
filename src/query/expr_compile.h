@@ -397,6 +397,10 @@ extern int expr_scan_pred_kid_or_leaves (const void *compiled, int kid, const va
 					 int cap, int *n_disj, int disj_cap);
 /* the constants such a NUMERIC comparison takes: SHORT, INTEGER, NUMERIC, a BIGINT of 15 digits */
 extern bool expr_numeric_cmp_const_ok (const DB_VALUE * k);
+/* does kid i of the root run a node with a side effect on the row it evaluates (a stored procedure call, a serial,
+ * INCR/DECR, a random number, a session variable)?  A page batch leaves such a term to the row path: a chunk it
+ * falls back on is evaluated there again, and the node would run twice on those rows */
+extern bool expr_scan_pred_kid_has_side_effect (const void *compiled, int kid);
 /* the filter's prologues for this execution (the per-row entry does the same before its first row) */
 extern int expr_scan_pred_prepare (void *compiled, cubthread::entry * thread_p, val_descr * vd);
 /* evaluate kid i of the root alone for the current row (the batch's residual terms) */

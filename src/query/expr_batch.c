@@ -677,6 +677,15 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
     }
   if ((loc.type == DB_TYPE_VARCHAR || loc.type == DB_TYPE_CHAR) && b->allow_str)
     {
+      if (loc.type == DB_TYPE_CHAR
+	  && loc.precision * INTL_CODESET_MULT ((INTL_CODESET) loc.codeset) >= OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION)
+	{
+	  /* a CHAR is padded to its precision before it is written (mr_writeval_char_internal ()), and a string of
+	   * OR_MINIMUM_STRING_LENGTH_FOR_COMPRESSION bytes or more carries the compression header eb_cell_str ()
+	   * does not read: every row of such a column would send its chunk to the row path */
+	  eb_decline (b, "a CHAR column the batch does not read");
+	  return -1;
+	}
       etype = EB_STR;
     }
   else if (!eb_etype_of (loc.type, &etype))
@@ -872,6 +881,19 @@ eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
     {
       return eb_add_str_leaf (b, info, out);
     }
+  switch (info->fast_type)
+    {
+    case DB_TYPE_INTEGER:
+    case DB_TYPE_BIGINT:
+    case DB_TYPE_DATE:
+    case DB_TYPE_DOUBLE:
+    case DB_TYPE_NUMERIC:
+      break;
+    default:
+      /* the constants eb_load_leaf_constants () loads; eb_etype_of () admits more (SHORT, FLOAT) for the aggregate
+       * columns, and a leaf of such a type would fall back on every chunk */
+      return NO_ERROR;
+    }
   if (!eb_etype_of (info->fast_type, &etype) || info->col_regu->value.attr_descr.cache_attrinfo == NULL
       || (etype == EB_NUM && info->k_value != NULL && !DB_IS_NULL (info->k_value)
 	  && !expr_numeric_cmp_const_ok (info->k_value)))
@@ -1014,8 +1036,10 @@ eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
       return NO_ERROR;
     }
   col = &plan->cols[eb_col_of_vec (plan, vec)];
-  /* the constant must read as the column does: its codeset, and its collation (a LIKE: a binary one on both
-   * sides, where '%' matches bytes) */
+  /* the constant must read as the column does: its codeset and its collation.  A LIKE pattern is matched by the
+   * engine's own qstr_like_match () under that collation (eb_raw_kid_str (); no ESCAPE clause reaches here,
+   * expr_pred_term_string_info ()); a pattern with '_' or a backslash stays with the row path
+   * (eb_like_pattern_ok ()) */
   if (DB_IS_NULL (k) || db_get_string_codeset (k) != col->codeset || db_get_string_collation (k) != col->collation
       || (info->like && !eb_like_pattern_ok (db_get_string (k), db_get_string_size (k))))
     {
@@ -1551,6 +1575,13 @@ eb_build_filter (EB_BUILD * b)
       plan->kid_leaf[i] = (leaf >= 0) ? leaf : -1;
       if (leaf < 0)
 	{
+	  if (expr_scan_pred_kid_has_side_effect (b->in->scan_pred_compiled, i))
+	    {
+	      /* a chunk the batch hands back to the row path (eb_fallback ()) is evaluated there again from its
+	       * first row, so a term that calls a procedure, draws a serial, assigns a session variable or draws
+	       * a random number would run twice on the rows the batch had already evaluated it on */
+	      return eb_decline (b, "a filter term with a side effect runs per row only");
+	    }
 	  /* evaluated per surviving row by the compiled filter itself */
 	  plan->n_row_kids++;
 	}
@@ -3010,6 +3041,7 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 	  /* the leaf compares against something else than it was resolved for: its own guard case */
 	  return eb_fallback (plan, "a filter constant bound to another type");
 	}
+      /* the types eb_add_raw_leaf () admits a scalar leaf for; eb_etype_of () is wider (the aggregates) */
       switch (leaf->k_type)
 	{
 	case DB_TYPE_INTEGER:
@@ -3468,7 +3500,11 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	      NUMERIC_AGG_EXPR_VAL nv;
 
 	      got = eb_cell_num (col, &batch->layout[r], &nv);
-	      an = nv.is_negative ? -(__int128) nv.coefficient : (__int128) nv.coefficient;
+	      if (got > 0)
+		{
+		  /* a NULL cell (got == 0) leaves nv untouched: read it only once the cell was decoded */
+		  an = nv.is_negative ? -(__int128) nv.coefficient : (__int128) nv.coefficient;
+		}
 	    }
 	  else
 	    {
