@@ -364,6 +364,9 @@ namespace cubthread
 
       unique_slot acquire_slot (task_admission admission, std::unique_lock<std::mutex> &ulock);
       bool reserve_available_worker (task_admission admission, worker_reservation_mode reservation_mode);
+      // keep the base class overload visible; the admission-aware one below only adds an overload and never
+      // replaces core_impl::get_available_worker (), which stays reachable through core_impl::execute_task ().
+      using worker_pool_impl<Stats>::core_impl::get_available_worker;
       worker_elastic *get_available_worker (task_admission admission);
       worker_elastic *get_or_make_available_worker (task_admission admission,
 	  worker_reservation_mode reservation_mode, bool *reserved_new_worker = nullptr);

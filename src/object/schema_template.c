@@ -2187,9 +2187,6 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
   SM_ATTRIBUTE_FLAG constraint;
   bool has_nulls = false;
   bool is_secondary_index = false;
-  int deduplicate_key_col_pos = -1;
-  int options = 0;
-  int deduplicate_key_level = 0;
 
   assert (template_ != NULL);
 
@@ -2208,17 +2205,11 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
     {
       while (att_names[n_atts] != NULL)
 	{
-	  if (IS_DEDUPLICATE_KEY_ATTR_NAME (att_names[n_atts]))
-	    {
-	      deduplicate_key_col_pos = n_atts;
-	      GET_DEDUPLICATE_KEY_ATTR_LEVEL_FROM_NAME (att_names[n_atts], deduplicate_key_level);
-	      SET_OPTION_DEDUPLICATE (options, deduplicate_key_level);
-	    }
 	  n_atts++;
 	}
     }
 
-  if ((n_atts == 0) || ((n_atts == 1) && (deduplicate_key_col_pos != -1)))
+  if (n_atts == 0)
     {
       ERROR0 (error, ER_OBJ_INVALID_ARGUMENTS);
       goto error_return;
@@ -2261,12 +2252,6 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
   for (i = 0; i < n_atts && error == NO_ERROR; i++)
     {
-      if (deduplicate_key_col_pos == i)
-	{
-	  atts[i] = dk_find_sm_deduplicate_key_attribute (-1, att_names[i]);
-	  continue;
-	}
-
       error = smt_find_attribute (template_, att_names[i], class_attribute, &atts[i]);
       if (error == ER_SM_INHERITED_ATTRIBUTE)
 	{
@@ -2403,9 +2388,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
 
       if (constraint == SM_ATTFLAG_FOREIGN_KEY)
 	{
-	  error =
-	    smt_check_foreign_key (template_, constraint_name, atts,
-				   ((deduplicate_key_col_pos == -1) ? n_atts : (n_atts - 1)), fk_info);
+	  error = smt_check_foreign_key (template_, constraint_name, atts, n_atts, fk_info);
 	  if (error != NO_ERROR)
 	    {
 	      goto error_return;
@@ -2419,8 +2402,7 @@ smt_add_constraint (SM_TEMPLATE * template_, DB_CONSTRAINT_TYPE constraint_type,
       /* Add the constraint. */
       error = smt_add_constraint_to_property (template_, SM_MAP_INDEX_ATTFLAG_TO_CONSTRAINT (constraint),
 					      constraint_name, atts, asc_desc, attrs_prefix_length, fk_info,
-					      shared_cons_name, filter_index, function_index, options, comment,
-					      index_status);
+					      shared_cons_name, filter_index, function_index, 0, comment, index_status);
       if (error != NO_ERROR)
 	{
 	  goto error_return;

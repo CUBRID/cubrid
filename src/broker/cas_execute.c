@@ -58,7 +58,6 @@
 #include "cas_str_like.h"
 #include "broker_filename.h"
 #include "cas_sql_log2.h"
-#include "deduplicate_key.h"
 #include "tz_support.h"
 #include "intl_support.h"
 #include "language_support.h"
@@ -298,6 +297,9 @@ static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
+static bool call_value_survives_commit (const T_SRV_HANDLE * srv_handle, char stmt_type);
+static bool call_returns_cursor (const T_PREPARE_CALL_INFO * call_info);
+static bool call_has_fetchable_output (const T_PREPARE_CALL_INFO * call_info);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
 
 static T_FETCH_FUNC fetch_func[] = {
@@ -336,11 +338,9 @@ ux_check_connection (void)
     {
       if (db_ping_server (0, NULL) < 0)
 	{
-	  cas_log_debug (ARG_FILE_LINE, "ux_check_connection: db_ping_server() error");
 	  cas_log_write_and_end (0, true, "SERVER DOWN");
 	  if (as_info->cur_statement_pooling)
 	    {
-	      cas_log_debug (ARG_FILE_LINE, "ux_check_connection: cur_statement_pooling");
 	      return -1;
 	    }
 	  else
@@ -353,9 +353,6 @@ ux_check_connection (void)
 	      strncpy_bufsize (dbuser, database_user);
 	      strncpy_bufsize (dbpasswd, database_passwd);
 
-	      cas_log_debug (ARG_FILE_LINE,
-			     "ux_check_connection: ux_database_shutdown()" " ux_database_connect(%s, %s)", dbname,
-			     dbuser);
 	      ux_database_shutdown (true);
 	      ux_database_connect (dbname, dbuser, dbpasswd, NULL);
 	    }
@@ -416,12 +413,10 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  if (shm_appl->replica_only_flag)
 	    {
 	      client_type = DB_CLIENT_TYPE_RO_BROKER_REPLICA_ONLY;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_replica_only_broker");
 	    }
 	  else
 	    {
 	      client_type = DB_CLIENT_TYPE_READ_ONLY_BROKER;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_only_broker");
 	    }
 	}
       else if (shm_appl->access_mode == SLAVE_ONLY_ACCESS_MODE)
@@ -429,12 +424,10 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  if (shm_appl->replica_only_flag)
 	    {
 	      client_type = DB_CLIENT_TYPE_SO_BROKER_REPLICA_ONLY;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: slave_replica_only_broker");
 	    }
 	  else
 	    {
 	      client_type = DB_CLIENT_TYPE_SLAVE_ONLY_BROKER;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: slave_only_broker");
 	    }
 	}
       else
@@ -442,7 +435,6 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  if (shm_appl->replica_only_flag)
 	    {
 	      client_type = DB_CLIENT_TYPE_RW_BROKER_REPLICA_ONLY;
-	      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: read_write_replica_only_broker");
 	    }
 	  else
 	    {
@@ -472,8 +464,6 @@ ux_database_connect (char *db_name, char *db_user, char *db_passwd, char **db_er
 	  db_enable_trigger ();
 	}
 
-      cas_log_debug (ARG_FILE_LINE, "ux_database_connect: db_login(%s) db_restart(%s) at %s", db_user, db_name,
-		     host_connected);
       p = strchr (db_name, '@');
       if (p)
 	{
@@ -596,7 +586,6 @@ ux_database_shutdown (bool request_server)
 	  db_shutdown_without_request_to_server ();
 	}
     }
-  cas_log_debug (ARG_FILE_LINE, "ux_database_shutdown: db_shutdown()");
 
   as_info->database_name[0] = '\0';
   as_info->database_host[0] = '\0';
@@ -906,7 +895,6 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
   if (tran_type == CCI_TRAN_COMMIT)
     {
       err_code = db_commit_transaction ();
-      cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_commit_transaction() = %d", err_code);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -915,7 +903,6 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
   else if (tran_type == CCI_TRAN_ROLLBACK)
     {
       err_code = db_abort_transaction ();
-      cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_abort_transaction() = %d", err_code);
       if (err_code < 0)
 	{
 	  err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
@@ -1238,7 +1225,10 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 
   if (has_stmt_result_set (srv_handle->q_result->stmt_type) == true)
     {
-      srv_handle->has_result_set = true;
+      /* the client has a result set to read, so the auto-commit waits for it.  CUBRID_STMT_CALL is the
+       * one exception, and only while the handle is holdable: its value then outlives the commit, so the
+       * commit need not wait.  every other type here keeps the previous behaviour of blocking it. */
+      srv_handle->has_result_set = !call_value_survives_commit (srv_handle, srv_handle->q_result->stmt_type);
 
       if (srv_handle->is_holdable == true)
 	{
@@ -1565,7 +1555,13 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
       if (has_stmt_result_set (q_result->stmt_type) == true)
 	{
-	  srv_handle->has_result_set = true;
+	  /* as in ux_execute (), only a holdable CUBRID_STMT_CALL lets the auto-commit go ahead.  the
+	   * flag is raised, never cleared: one statement of the batch still holding the client back is
+	   * enough to make the whole handle wait. */
+	  if (!call_value_survives_commit (srv_handle, q_result->stmt_type))
+	    {
+	      srv_handle->has_result_set = true;
+	    }
 
 	  if (srv_handle->is_holdable == true)
 	    {
@@ -1720,6 +1716,7 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
   call_info = srv_handle->prepare_call_info;
   srv_handle->query_info_flag = FALSE;
   hm_qresult_end (srv_handle, FALSE);
+  srv_handle->is_from_current_transaction = true;
   session = (DB_SESSION *) srv_handle->session;
   num_bind = srv_handle->num_markers;
 
@@ -1791,7 +1788,10 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
 
   srv_handle->max_col_size = max_col_size;
   srv_handle->num_q_result = 1;
-  srv_handle->has_result_set = true;
+  /* only the tuple count went into net_buf above: the return value and the out arguments stay in
+   * prepare_call_info until the client fetches them.  so the transaction has to stay open until
+   * fetch_call () hands them over, and longer still when the call handed back a cursor. */
+  srv_handle->has_result_set = call_returns_cursor (call_info) || call_has_fetchable_output (call_info);
   srv_handle->q_result->result = (void *) result;
   srv_handle->q_result->tuple_count = n;
   srv_handle->cur_result = (void *) srv_handle->q_result;
@@ -1802,6 +1802,11 @@ ux_execute_call (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max
     {
       srv_handle->q_result->is_holdable = true;
       as_info->num_holdable_results++;
+    }
+
+  if (do_commit_after_execute (*srv_handle))
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 
   if (value_list)
@@ -8875,7 +8880,6 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
   T_FK_INFO_RESULT *fk_res = NULL;
   const char *pktable_name, *pk_name;
   int num_fk_info = 0, error = NO_ERROR, i;
-  int fk_i;
 
   assert (result != NULL);
   *result = (void *) NULL;
@@ -8972,9 +8976,8 @@ sch_imported_keys (T_NET_BUF * net_buf, char *fktable_name, void **result)
 
       /* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
        * null, it means that they have different number of attributes. */
-      fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
-      assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
-      if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
+      assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
+      if (pk_attr[i] != NULL || fk_attr[i] != NULL)
 	{
 	  error =
 	    ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,
@@ -9011,7 +9014,6 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
   T_FK_INFO_RESULT *fk_res = NULL;
   const char *pk_name;
   int num_fk_info = 0, error = NO_ERROR, i;
-  int fk_i;
 
   assert (result != NULL);
   *result = (void *) NULL;
@@ -9128,9 +9130,8 @@ sch_exported_keys_or_cross_reference (T_NET_BUF * net_buf, bool find_cross_ref, 
 
       /* pk_attr and fk_attr is null-terminated array. So, they should be null at this time. If one of them is not
        * null, it means that they have different number of attributes. */
-      fk_i = (fk_attr[i] && IS_DEDUPLICATE_KEY_ATTR_ID (fk_attr[i]->id)) ? (i + 1) : i;
-      assert (pk_attr[i] == NULL && fk_attr[fk_i] == NULL);
-      if (pk_attr[i] != NULL || fk_attr[fk_i] != NULL)
+      assert (pk_attr[i] == NULL && fk_attr[i] == NULL);
+      if (pk_attr[i] != NULL || fk_attr[i] != NULL)
 	{
 	  error =
 	    ERROR_INFO_SET_WITH_MSG (ER_FK_NOT_MATCH_KEY_COUNT, DBMS_ERROR_INDICATOR,
@@ -9292,6 +9293,17 @@ fetch_call (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf, T_REQ_INFO * req_inf
   if (DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (client_version, PROTOCOL_V5))
     {
       net_buf_cp_byte (net_buf, 1);	/* fetch_end_flag */
+    }
+
+  /* the return value and the out arguments are in net_buf now and fetch_end_flag says nothing is left,
+   * so the auto-commit ux_execute_call () had to skip can be done here.  a cursor is the exception: it
+   * is a server side query that a commit would close, and the client reads it through its own handle.
+   * is_from_current_transaction keeps a late fetch from committing a transaction this call never ran in
+   * (see check_auto_commit_after_getting_result ()). */
+  if (srv_handle->auto_commit_mode == TRUE && srv_handle->is_from_current_transaction
+      && !call_returns_cursor (call_info))
+    {
+      req_info->need_auto_commit = TRAN_AUTOCOMMIT;
     }
 
   return 0;
@@ -10003,10 +10015,8 @@ ux_lob_new (int lob_type, T_NET_BUF * net_buf)
   int err_code;
   T_LOB_HANDLE cas_lob;
   int lob_handle_size;
-  DB_ELO *elo_debug;
 
   err_code = db_create_fbo (&lob_dbval, (lob_type == CCI_U_TYPE_BLOB) ? DB_TYPE_BLOB : DB_TYPE_CLOB);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_new: result_code=%d", err_code);
   if (err_code < 0)
     {
       errors_in_transaction++;
@@ -10021,11 +10031,6 @@ ux_lob_new (int lob_type, T_NET_BUF * net_buf)
   net_buf_cp_int (net_buf, lob_handle_size, NULL);
   net_buf_cp_lob_handle (net_buf, &cas_lob);
 
-  elo_debug = db_get_elo (&lob_dbval);
-
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_new: locator=%s, size=%lld, type=%u", elo_debug->locator,
-		 elo_debug->size, elo_debug->type);
-
   db_value_clear (&lob_dbval);
   return 0;
 }
@@ -10038,11 +10043,8 @@ ux_lob_write (DB_VALUE * lob_dbval, INT64 offset, int size, char *data, T_NET_BU
   DB_ELO *elo_debug;
 
   elo_debug = db_get_elo (lob_dbval);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_write: locator=%s, size=%lld, type=%u", elo_debug->locator,
-		 elo_debug->size, elo_debug->type);
 
   err_code = db_elo_write (elo_debug, offset, data, size, &size_written);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_write: result_code=%d", size_written);
   if (err_code < 0)
     {
       errors_in_transaction++;
@@ -10066,17 +10068,13 @@ ux_lob_read (DB_VALUE * lob_dbval, INT64 offset, int size, T_NET_BUF * net_buf)
   DB_ELO *elo_debug;
 
   elo_debug = db_get_elo (lob_dbval);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_read: locator=%s, size=%lld, type=%u", elo_debug->locator,
-		 elo_debug->size, elo_debug->type);
 
   if (size + NET_SIZE_INT > NET_BUF_FREE_SIZE (net_buf))
     {
       size = NET_BUF_FREE_SIZE (net_buf) - NET_SIZE_INT;
-      cas_log_debug (ARG_FILE_LINE, "ux_lob_read: length reduced to %d", size);
     }
 
   err_code = db_elo_read (elo_debug, offset, data, size, &size_read);
-  cas_log_debug (ARG_FILE_LINE, "ux_lob_read: result_code=%d size_read=%lld", err_code, size_read);
   if (err_code < 0)
     {
       errors_in_transaction++;
@@ -10493,6 +10491,94 @@ do_commit_after_execute (const t_srv_handle & server_handle)
     {
       return true;
     }
+}
+
+/*
+ * call_value_survives_commit () - check whether a CALL's result would still be readable after an
+ *                                 auto-commit done right at the end of execute.
+ *   return          : true if the value outlives the commit, false otherwise
+ *   srv_handle (in) : server handle
+ *   stmt_type (in)  : statement type of the result
+ *
+ */
+static bool
+call_value_survives_commit (const T_SRV_HANDLE * srv_handle, char stmt_type)
+{
+  return stmt_type == CUBRID_STMT_CALL && srv_handle->is_holdable;
+}
+
+/*
+ * call_returns_cursor () - Check whether a CALL executed through ux_execute_call () returns a cursor.
+ *   return         : true if the return value or an OUT argument contains a RESULTSET; false otherwise
+ *   call_info (in) : Call info holding the return value and OUT arguments
+ *
+ * Note: Only the CCI_PREPARE_CALL path can return a cursor (see jsp_is_prepare_call ()).
+ *       Such a cursor is a server-side query that a commit will close, so the transaction must stay open for it.
+ */
+static bool
+call_returns_cursor (const T_PREPARE_CALL_INFO * call_info)
+{
+  DB_VALUE *val;
+  int i;
+
+  val = (DB_VALUE *) call_info->dbval_ret;
+  if (val != NULL && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_RESULTSET)
+    {
+      return true;
+    }
+
+  if (call_info->dbval_args == NULL)
+    {
+      return false;
+    }
+
+  for (i = 0; i < call_info->num_args; i++)
+    {
+      val = ((DB_VALUE **) call_info->dbval_args)[i];
+      if (val != NULL && DB_VALUE_DOMAIN_TYPE (val) == DB_TYPE_RESULTSET)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * call_has_fetchable_output () - Check whether there are output values that the client has not yet fetched.
+ *   return         : true if there is a return value or an OUT parameter to pass to the client, false otherwise
+ *   call_info (in) : Call info structure holding the return value and OUT parameter information
+ *
+ * Note: This function inspects the information declared by the driver during the execution request.
+ *       (The "?= CALL" syntax sets is_first_out, and every registered OUT parameter is recorded in param_mode.)
+ *       This determines whether a fetch_call () call is still required.
+ *       Until fetched, these values reside temporarily only in prepare_call_info, so an auto-commit 
+ *       that frees the handle may result in data loss.
+ */
+static bool
+call_has_fetchable_output (const T_PREPARE_CALL_INFO * call_info)
+{
+  int i;
+
+  if (call_info->is_first_out)
+    {
+      return true;
+    }
+
+  if (call_info->param_mode == NULL)
+    {
+      return false;
+    }
+
+  for (i = 0; i < call_info->num_args; i++)
+    {
+      if (call_info->param_mode[i] & CCI_PARAM_MODE_OUT)
+	{
+	  return true;
+	}
+    }
+
+  return false;
 }
 
 static int

@@ -29,8 +29,9 @@
 
 namespace memoize
 {
-  constexpr size_t MEMOIZE_FREE_ITERATION_LIMIT = 1000;
   constexpr double MEMOIZE_HIT_RATIO_THRESHOLD = 0.5;
+  /* the hit ratio is judged only once the storage holds this share of its budget (the subquery cache waits for 60%) */
+  constexpr double MEMOIZE_HIT_RATIO_CHECK_SIZE = 0.6;
 
   template <typename T>
   using fixed_allocator = cubmem::fixed_size_alloc::allocator<T, false>;
@@ -125,6 +126,8 @@ namespace memoize
       key *get_key();
       value *get_value();
       result_code set_value (value *value);
+      bool can_insert ();
+      void stop_insert ();
 
       const size_t m_max_storage_size;
       const int m_key_cnt;
@@ -146,6 +149,8 @@ namespace memoize
       std::unordered_multimap<key *, value *, key::hash, key::equal> m_key_value_map;
       std::vector<value *> m_current_value_list;
       bool disabled;
+      /* the budget is used up: lookups go on, nothing more is inserted */
+      bool insert_stopped;
       bool has_range;
       bool key_changed;
       bool current_key_joined;

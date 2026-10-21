@@ -4581,7 +4581,6 @@ sbtree_add_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
   OID class_oid;
   int attr_id, unique_pk;
   char *ptr;
-  int deduplicate_key_pos = -1;
 
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -4591,10 +4590,8 @@ sbtree_add_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &attr_id);
   ptr = or_unpack_int (ptr, &unique_pk);
-  ptr = or_unpack_int (ptr, &deduplicate_key_pos);	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
-  return_btid =
-	  xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos);
+  return_btid = xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0);
   if (return_btid == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -6630,6 +6627,81 @@ sqmgr_drop_all_query_plans (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 
   /* send reply and data to the client */
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sqmgr_bind_variant - Process a NET_SERVER_QM_BIND_VARIANT request: find or reserve the plan
+ *   variant of a cached query that suits a fingerprint, or register the plan a reserved variant
+ *   compiled to.
+ *   This function is a counter part to qmgr_bind_variant().
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in): packed BIND_VARIANT_REQUEST
+ *   reqlen(in):
+ */
+void
+sqmgr_bind_variant (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  BIND_VARIANT_REQUEST req;
+  BIND_VARIANT_REPLY reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BIND_VARIANT_REPLY_SIZE) a_reply;
+  char *reply_buf = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  INT64 sig = 0;
+  int status, i, j;
+
+  memset (&req, 0, sizeof (req));
+  memset (&reply, 0, sizeof (reply));
+
+  ptr = or_unpack_sha1 (request, &req.sha1);
+  OR_UNPACK_CACHE_TIME (ptr, &req.time_stored);
+  ptr = or_unpack_int (ptr, &req.op);
+  ptr = or_unpack_int (ptr, &req.limit);
+  ptr = or_unpack_int (ptr, &req.variant);
+  ptr = or_unpack_int (ptr, &req.fp.terms);
+  ptr = or_unpack_int64 (ptr, &sig);
+  req.plan_sig = (UINT64) sig;
+  ptr = or_unpack_double (ptr, &req.band);
+  ptr = or_unpack_double (ptr, &req.floor);
+  for (i = 0; i < BIND_WATCH_MAX_TERMS; i++)
+    {
+      ptr = or_unpack_double (ptr, &req.fp.rows[i]);
+    }
+  if (req.fp.terms < 0 || req.fp.terms > BIND_WATCH_MAX_TERMS)
+    {
+      req.fp.terms = 0;
+    }
+
+  status = xcache_bind_variant (thread_p, &req, &reply);
+  if (status != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply_buf, status);
+  ptr = or_pack_int (ptr, reply.result);
+  ptr = or_pack_int (ptr, reply.variant);
+  ptr = or_pack_int (ptr, reply.state);
+  ptr = or_pack_int (ptr, reply.compiles);
+  ptr = or_pack_int (ptr, reply.plans);
+  ptr = or_pack_int (ptr, reply.pending);
+  ptr = or_pack_int (ptr, reply.n_records);
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      ptr = or_pack_int (ptr, (i < reply.n_records) ? reply.records[i].variant : -1);
+      ptr = or_pack_int (ptr, (i < reply.n_records) ? reply.records[i].fp.terms : 0);
+    }
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      for (j = 0; j < BIND_WATCH_MAX_TERMS; j++)
+	{
+	  ptr = or_pack_double (ptr, (i < reply.n_records) ? reply.records[i].fp.rows[j] : 0.0);
+	}
+    }
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply_buf, OR_ALIGNED_BUF_SIZE (a_reply));
 }
 
 /*
@@ -11852,7 +11924,7 @@ sflashback_get_summary (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
   LC_FIND_CLASSNAME status;
 
-  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, };
+  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, {}, {}, };
 
   time_t start_time = 0;
   time_t end_time = 0;
@@ -12038,7 +12110,9 @@ sflashback_get_loginfo (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
   int threshold_to_remove_archive = 0;
 
-  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER, };
+  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER,
+					{}, {},
+				      };
 
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 
