@@ -2112,7 +2112,7 @@ oos_publish_oos_oid (THREAD_ENTRY *thread_p, const OID &oid)
 static void
 oos_cleanup_insert_publication_state_on_error (THREAD_ENTRY *thread_p) noexcept
 {
-  thread_p->oos_oids.clear ();
+  thread_p->clear_oos_tracking ();
 
   const int tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   LOG_TDES *tdes = LOG_FIND_TDES (tran_index);
