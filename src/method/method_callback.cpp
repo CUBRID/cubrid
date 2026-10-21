@@ -156,8 +156,7 @@ namespace cubmethod
     int command; // commit : 1, abort : 2
     unpacker.unpack_all (command);
 
-    /* a procedure may end the transaction only when nothing invoked it from a statement or a trigger */
-    if (sp_check_statement_allowed (command == 1 ? CUBRID_STMT_COMMIT_WORK : CUBRID_STMT_ROLLBACK_WORK, false, {}, {})
+    if (sp_check_statement_allowed (SP_STMT_TCL, command == 1 ? CUBRID_STMT_COMMIT_WORK : CUBRID_STMT_ROLLBACK_WORK)
 	!= NO_ERROR)
       {
 	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
@@ -384,12 +383,6 @@ namespace cubmethod
     oid_get_request request;
     request.unpack (unpacker);
 
-    if (sp_check_object_allowed (db_object (&request.oid), CUBRID_STMT_SELECT) != NO_ERROR)
-      {
-	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
-	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
-      }
-
     oid_get_info info = get_oid_handler()->oid_get (request.oid, request.attr_names);
     if (m_error_ctx.has_error())
       {
@@ -407,7 +400,7 @@ namespace cubmethod
     oid_put_request request;
     request.unpack (unpacker);
 
-    if (sp_check_object_allowed (db_object (&request.oid), CUBRID_STMT_UPDATE) != NO_ERROR)
+    if (sp_check_statement_allowed (SP_STMT_DML, CUBRID_STMT_UPDATE) != NO_ERROR)
       {
 	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
@@ -435,8 +428,7 @@ namespace cubmethod
 
     std::string res; // result for OID_CLASS_NAME
 
-    if ((cmd == OID_DROP || cmd == OID_IS_INSTANCE)
-	&& sp_check_object_allowed (db_object (&oid), cmd == OID_DROP ? CUBRID_STMT_DELETE : CUBRID_STMT_SELECT) != NO_ERROR)
+    if (cmd == OID_DROP && sp_check_statement_allowed (SP_STMT_DML, CUBRID_STMT_DELETE) != NO_ERROR)
       {
 	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);
@@ -464,8 +456,8 @@ namespace cubmethod
     collection_cmd_request request;
     request.unpack (unpacker);
 
-    int stmt_type = (request.command == COL_GET || request.command == COL_SIZE) ? CUBRID_STMT_SELECT : CUBRID_STMT_UPDATE;
-    if (sp_check_object_allowed (db_object (&request.oid), stmt_type) != NO_ERROR)
+    if (request.command != COL_GET && request.command != COL_SIZE
+	&& sp_check_statement_allowed (SP_STMT_DML, CUBRID_STMT_UPDATE) != NO_ERROR)
       {
 	m_error_ctx.set_error (db_error_code (), db_error_string (1), __FILE__, __LINE__);
 	return xs_pack_and_queue (METHOD_RESPONSE_ERROR, m_error_ctx);

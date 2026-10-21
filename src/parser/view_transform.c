@@ -40,7 +40,6 @@
 #include "virtual_object.h"
 #include "dbtype.h"
 #include "boot.h"
-#include "sp_context_rules.hpp"
 
 #define MAX_STACK_OBJECTS 500
 
@@ -3502,9 +3501,9 @@ mq_check_authorization_path_entities (PARSER_CONTEXT * parser, PT_NODE * class_s
  *   subquery(in): the view's query, one node per query spec
  *
  * Note: the semantic check set has_sp_call on the view's own tree when the view cache was compiled, before the
- *       view was expanded into this statement. The guard reads the flag from the statement's top node, and the
- *       view may sit in a subquery of it, so the note is kept on the parser until mq_translate () returns the
- *       statement; a view cache being built does the same for the view's own root, so a view over it sees it.
+ *       view was expanded into this statement. The view may sit in a subquery of the statement, so the note is
+ *       kept on the parser until mq_translate () returns the statement and marks it not to be plan-cached; a
+ *       view cache being built does the same for the view's own root, so a view over it sees it.
  */
 static void
 mq_mark_sp_call (PARSER_CONTEXT * parser, PT_NODE * subquery)
@@ -3706,7 +3705,6 @@ mq_translate_tree (PARSER_CONTEXT * parser, PT_NODE * tree, PT_NODE * spec_list,
 
 		      tree->flag.cannot_prepare = mq_check_subqueries_for_prepare (parser, tree, subquery);
 		      mq_mark_sp_call (parser, subquery);
-		      sp_ref_tables_add_tree (parser, subquery);
 #if defined(CUBRID_DEBUG)
 		      fprintf (stdout, "\n<subqueries of %s are>\n  %s\n", entity->info.name.original,
 			       parser_print_tree_list (parser, subquery));
@@ -9598,7 +9596,6 @@ mq_translate (PARSER_CONTEXT * parser, PT_NODE * volatile node)
       return_node->flag.has_sp_call = 1;
       return_node->flag.cannot_prepare = 1;
     }
-  sp_stmt_record_classes (parser, (PT_NODE *) return_node);
   parser->flag.view_has_sp_call |= save_view_has_sp_call;
 
   PT_CLEAR_JMP_ENV (parser);

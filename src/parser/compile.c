@@ -1261,10 +1261,6 @@ pt_compile_trigger_stmt (PARSER_CONTEXT * parser, const char *trigger_stmt, DB_O
 	}
       else
 	{
-	  if (expression != NULL)
-	    {
-	      expression->flag.has_sp_call = statement->flag.has_sp_call;
-	    }
 	  statement->info.scope.stmt->info.trigger_action.expression = mq_translate (parser, expression);
 	}
       /*
