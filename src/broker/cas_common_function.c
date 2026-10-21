@@ -61,6 +61,8 @@ static const char *type_str_tbl[] = {
   "RESULTSET",			/* CCI_U_TYPE_RESULTSET */
   "BIGINT",			/* CCI_U_TYPE_BIGINT */
   "DATETIME",			/* CCI_U_TYPE_DATETIME */
+  "BFILE",			/* CCI_U_TYPE_BFILE */
+  "CFILE",			/* CCI_U_TYPE_CFILE */
   "BLOB",			/* CCI_U_TYPE_BLOB */
   "CLOB",			/* CCI_U_TYPE_CLOB */
   "ENUM",			/* CCI_U_TYPE_ENUM */

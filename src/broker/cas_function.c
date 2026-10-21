@@ -2470,3 +2470,61 @@ set_query_timeout (T_SRV_HANDLE * srv_handle, int query_timeout)
 	}
     }
 }
+
+FN_RETURN
+fn_lob_stream_open (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  char *locator = NULL;
+  int locator_len = 0;
+  DB_BIGINT start_offset = 0;
+
+  if (argc != 2)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_arg_get_str (&locator, &locator_len, argv[0]);
+  net_arg_get_bigint (&start_offset, argv[1]);
+  (void) ux_lob_stream_open (locator, locator_len, start_offset, net_buf);
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_lob_stream_read (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT token = 0;
+  int size = 0;
+
+  if (argc != 2)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_arg_get_bigint (&token, argv[0]);
+  net_arg_get_int (&size, argv[1]);
+  (void) ux_lob_stream_read (token, size, net_buf);
+  return FN_KEEP_CONN;
+}
+
+FN_RETURN
+fn_lob_stream_close (SOCKET sock_fd, int argc, void **argv, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  DB_BIGINT token = 0;
+  char auto_commit_mode = FALSE;
+
+  if (argc < 1 || argc > 2)
+    {
+      ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return FN_KEEP_CONN;
+    }
+  net_arg_get_bigint (&token, argv[0]);
+  if (argc > 1)
+    {
+      net_arg_get_char (auto_commit_mode, argv[1]);
+    }
+  (void) ux_lob_stream_close (token, auto_commit_mode, net_buf, req_info);
+  return FN_KEEP_CONN;
+}

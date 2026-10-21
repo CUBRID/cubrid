@@ -117,7 +117,10 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_PREPARE_AND_EXECUTE */
   fn_not_supported,		/* CAS_FC_CURSOR_CLOSE */
   fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
-  fn_not_supported		/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_not_supported,		/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_not_supported,		/* CAS_FC_LOB_STREAM_OPEN */
+  fn_not_supported,		/* CAS_FC_LOB_STREAM_READ */
+  fn_not_supported		/* CAS_FC_LOB_STREAM_CLOSE */
 };
 #elif defined(CAS_FOR_CGW)
 static T_SERVER_FUNC server_fn_table[] = {
@@ -164,7 +167,10 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_not_supported,		/* CAS_FC_PREPARE_AND_EXECUTE */
   fn_cursor_close,		/* CAS_FC_CURSOR_CLOSE */
   fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
-  fn_not_supported		/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_not_supported,		/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_not_supported,		/* CAS_FC_LOB_STREAM_OPEN */
+  fn_not_supported,		/* CAS_FC_LOB_STREAM_READ */
+  fn_not_supported		/* CAS_FC_LOB_STREAM_CLOSE */
 };
 #else /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
 /* ========================================================================
@@ -214,9 +220,16 @@ static T_SERVER_FUNC server_fn_table[] = {
   fn_prepare_and_execute,	/* CAS_FC_PREPARE_AND_EXECUTE */
   fn_cursor_close,		/* CAS_FC_CURSOR_CLOSE */
   fn_not_supported,		/* CAS_FC_GET_SHARD_INFO */
-  fn_set_cas_change_mode	/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_set_cas_change_mode,	/* CAS_FC_SET_CAS_CHANGE_MODE */
+  fn_lob_stream_open,		/* CAS_FC_LOB_STREAM_OPEN */
+  fn_lob_stream_read,		/* CAS_FC_LOB_STREAM_READ */
+  fn_lob_stream_close		/* CAS_FC_LOB_STREAM_CLOSE */
 };
 #endif /* CAS_FOR_ORACLE || CAS_FOR_MYSQL */
+
+/* dispatch indexes the table by func_code - 1 after checking func_code < CAS_FC_MAX, so every build needs every code */
+static_assert (sizeof (server_fn_table) / sizeof (server_fn_table[0]) == CAS_FC_MAX - 1,
+	       "server_fn_table must have one entry per CAS function code");
 
 static const char *server_func_name[] = {
   "end_tran",
@@ -262,8 +275,15 @@ static const char *server_func_name[] = {
   "fn_prepare_and_execute",
   "fn_cursor_close",
   "fn_get_shard_info",
-  "fn_set_cas_change_mode"
+  "fn_set_cas_change_mode",
+  "fn_lob_stream_open",
+  "fn_lob_stream_read",
+  "fn_lob_stream_close"
 };
+
+/* process_request () indexes the names the same way, before the admission check can swap the function */
+static_assert (sizeof (server_func_name) / sizeof (server_func_name[0]) == CAS_FC_MAX - 1,
+	       "server_func_name must have one entry per CAS function code");
 
 
 static void set_db_connection_info (void);

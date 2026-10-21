@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+#include <limits.h>
 
 #include <algorithm>
 
@@ -50,6 +51,7 @@
 #include "pl_sr.h"
 #include "vacuum.h"
 #include "oos_file.hpp"
+#include "internal_lob_file.hpp"
 #include "serial.h"
 #endif /* defined (SA_MODE) */
 #include "oid.h"
@@ -91,6 +93,7 @@
 #include "locator_cl.h"
 #include "execute_schema.h"
 #include "authenticate.h"
+#include "internal_lob_marker.h"
 
 /*
  * Use db_clear_private_heap instead of db_destroy_private_heap
@@ -260,6 +263,7 @@ length_string_with_null_padding (int len)
 {
   return or_packed_stream_length (len + 1);	/* 1 for NULL padding */
 }
+
 #endif /* CS_MODE */
 
 /*
@@ -4935,6 +4939,234 @@ csession_reset_cur_insert_id (void)
   exit_server (*thread_p);
 
   return result;
+#endif
+}
+
+int
+internal_lob_stream_open_from_server (const char *locator_data, int locator_len, INT64 start_offset, INT64 * token)
+{
+  /* [리뷰] SA 모드는 클래스 락을 잡지 않는다. 트랜잭션이 하나뿐이라 다른 트랜잭션의 DROP 경합이 없다.
+   * CS는 NUL 종료 사본을 보낸다. 내장 NUL이 있으면 서버가 consumed == size 검사로 거부한다. */
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *request = NULL;
+  char *locator_buf = NULL;
+  char *ptr = NULL;
+  int locator_strlen = 0;
+  int request_size = 0;
+  int err = NO_ERROR;
+
+  if (token == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  *token = 0;
+
+  if (locator_data == NULL || locator_len <= 0)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  locator_buf = (char *) malloc ((size_t) locator_len + 1);
+  if (locator_buf == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) locator_len + 1);
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memcpy (locator_buf, locator_data, (size_t) locator_len);
+  locator_buf[locator_len] = '\0';
+
+  request_size = OR_INT64_SIZE + length_const_string (locator_buf, &locator_strlen);
+  request = (char *) malloc (request_size);
+  if (request == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) request_size);
+      err = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto cleanup;
+    }
+  ptr = or_pack_int64 (request, start_offset);
+  (void) pack_const_string_with_length (ptr, locator_buf, locator_strlen);
+
+  err = net_client_request (NET_SERVER_INTERNAL_LOB_STREAM_OPEN, request, request_size, reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  ptr = or_unpack_int64 (reply, token);
+  (void) or_unpack_int (ptr, &err);
+
+cleanup:
+  if (request != NULL)
+    {
+      free_and_init (request);
+    }
+  if (locator_buf != NULL)
+    {
+      free_and_init (locator_buf);
+    }
+
+  return err;
+#else
+  INTERNAL_LOB_LOCATOR locator;
+  int err = NO_ERROR;
+
+  if (token == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  *token = 0;
+
+  if (locator_data == NULL || locator_len <= 0)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  if (!internal_lob_parse_locator_string (locator_data, locator_len, &locator))
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_INVALID_ARGUMENTS, 0);
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  err = xinternal_lob_stream_open (thread_p, locator, start_offset, token);
+
+  exit_server (*thread_p);
+
+  return err;
+#endif
+}
+
+int
+internal_lob_stream_read_from_server (INT64 token, char *buf, int count, int *nread)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT64_SIZE + OR_INT_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE) a_reply;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *data_reply = NULL;
+  char *ptr = NULL;
+  int data_size = 0;
+  int received = 0;
+  int err = NO_ERROR;
+
+  if (nread == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  *nread = 0;
+
+  if (token <= 0 || count < 0 || (buf == NULL && count > 0))
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  ptr = or_pack_int64 (request, token);
+  (void) or_pack_int (ptr, count);
+
+  err =
+    net_client_request2 (NET_SERVER_INTERNAL_LOB_STREAM_READ, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			 OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, &data_reply, &data_size);
+  if (err != NO_ERROR)
+    {
+      goto cleanup;
+    }
+
+  ptr = or_unpack_int (reply, &received);
+  (void) or_unpack_int (ptr, &err);
+  if (err != NO_ERROR)
+    {
+      goto cleanup;
+    }
+  if (received < 0 || received > count || data_size != received || (received > 0 && data_reply == NULL))
+    {
+      err = ER_FAILED;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err, 0);
+      goto cleanup;
+    }
+
+  if (received > 0)
+    {
+      memcpy (buf, data_reply, (size_t) received);
+    }
+  *nread = received;
+
+cleanup:
+  if (data_reply != NULL)
+    {
+      free_and_init (data_reply);
+    }
+
+  return err;
+#else
+  int err = NO_ERROR;
+
+  if (nread == NULL)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+  *nread = 0;
+
+  if (token <= 0 || count < 0 || (buf == NULL && count > 0))
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  err = xinternal_lob_stream_read (thread_p, token, buf, count, nread);
+
+  exit_server (*thread_p);
+
+  return err;
+#endif
+}
+
+int
+internal_lob_stream_close_from_server (INT64 token)
+{
+#if defined (CS_MODE)
+  OR_ALIGNED_BUF (OR_INT64_SIZE) a_request;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+  char *request = OR_ALIGNED_BUF_START (a_request);
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  int err = NO_ERROR;
+
+  if (token <= 0)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  (void) or_pack_int64 (request, token);
+
+  err = net_client_request (NET_SERVER_INTERNAL_LOB_STREAM_CLOSE, request, OR_ALIGNED_BUF_SIZE (a_request), reply,
+			    OR_ALIGNED_BUF_SIZE (a_reply), NULL, 0, NULL, 0);
+  if (err != NO_ERROR)
+    {
+      return err;
+    }
+
+  (void) or_unpack_int (reply, &err);
+  return err;
+#else
+  int err = NO_ERROR;
+
+  if (token <= 0)
+    {
+      return ER_OBJ_INVALID_ARGUMENTS;
+    }
+
+  THREAD_ENTRY *thread_p = enter_server ();
+
+  err = xinternal_lob_stream_close (thread_p, token);
+
+  exit_server (*thread_p);
+
+  return err;
 #endif
 }
 

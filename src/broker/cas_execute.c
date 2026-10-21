@@ -80,6 +80,9 @@
 #include "cas_optimization.h"
 #include "cas_db_inc.h"
 #include "cas_common_vars.h"
+#include "network_interface_cl.h"
+#include "internal_lob_marker.h"
+#include "internal_lob_stream_kind.h"
 #include "query_replace.h"
 
 
@@ -4429,12 +4432,108 @@ cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_
 	  return err_code;
 	}
 
-      data_size += dbval_to_net_buf (&val, net_buf, 1, max_col_size, null_type_column ? null_type_column[i] : 0);
+      err_code = dbval_to_net_buf (&val, net_buf, 1, max_col_size, null_type_column ? null_type_column[i] : 0);
       db_value_clear (&val);
+      if (err_code < 0)
+	{
+	  /* the value was not sent and the buffer holds the error reply: no further column or tuple may follow */
+	  return err_code;
+	}
+      data_size += err_code;
     }
 
   tuple_obj = NULL;
   return data_size;
+}
+
+/*
+ * dbval_is_internal_lob_locator () - Does this result value carry an internal LOB reference instead of content?
+ *
+ * Both the locator marker (column SELECT) and the stream marker (LOB-producing scalar functions) are references.
+ */
+static bool
+dbval_is_internal_lob_locator (DB_VALUE * val, const char **locator, int *locator_len, DB_BIGINT * byte_length)
+{
+  /* [리뷰] LOCATOR·STREAM 마커만 참조로 본다. 저장소 없는 LOB 값(CHAR_TO_CLOB 결과)은 내용으로 간다.
+   * BLOB 계열 로케이터 길이는 비트라 바이트로 바꿔 REF 머리에 싣는다. */
+  DB_TYPE type;
+  const char *data = NULL;
+  int size = 0;
+  DB_BIGINT parsed_length = 0;
+  int marker;
+
+  marker = db_value_get_internal_lob_marker (val);
+  if ((marker != DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR && marker != DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+      || !db_get_internal_lob_marker_text (val, marker, &type, &data, &size))
+    {
+      return false;
+    }
+  else if (!internal_lob_marker_parse_locator (data, size, &parsed_length))
+    {
+      return false;
+    }
+
+  /* a BLOB locator states the payload in bits */
+  if ((type == DB_TYPE_BLOB || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT)
+      && !internal_lob_marker_split_length ('B', parsed_length, &parsed_length, NULL))
+    {
+      return false;
+    }
+
+  if (locator != NULL)
+    {
+      *locator = data;
+    }
+  if (locator_len != NULL)
+    {
+      *locator_len = size;
+    }
+  if (byte_length != NULL)
+    {
+      *byte_length = parsed_length;
+    }
+  return true;
+}
+
+/*
+ * add_res_data_internal_lob () - Put a BLOB/CLOB column on the wire for a driver that speaks PROTOCOL_V14.
+ *
+ * A leading discriminator byte tells, per value, whether it is a reference to stored content (pulled later with
+ * CAS_FC_LOB_STREAM_*) or inline content with no storage behind it, such as a CHAR_TO_CLOB('x') result.
+ *
+ *   [INTERNAL_LOB_WIRE_REF]    INT64 byte length, then the locator
+ *   [INTERNAL_LOB_WIRE_INLINE] the content itself
+ */
+static void
+add_res_data_internal_lob (T_NET_BUF * net_buf, char wire_kind, const char *data, int data_len,
+			   DB_BIGINT byte_length, unsigned char ext_type, int *net_size)
+{
+  int payload_size = 1 + (wire_kind == INTERNAL_LOB_WIRE_REF ? NET_SIZE_BIGINT : 0) + data_len;
+
+  if (ext_type)
+    {
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + payload_size, NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type, CAS_SCHEMA_DEFAULT_CHARSET);
+    }
+  else
+    {
+      net_buf_cp_int (net_buf, payload_size, NULL);
+    }
+
+  net_buf_cp_byte (net_buf, wire_kind);
+  if (wire_kind == INTERNAL_LOB_WIRE_REF)
+    {
+      net_buf_cp_bigint (net_buf, byte_length, NULL);
+    }
+  if (data_len > 0)
+    {
+      net_buf_cp_str (net_buf, data, data_len);
+    }
+
+  if (net_size)
+    {
+      *net_size = NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) + payload_size;
+    }
 }
 
 static int
@@ -4464,6 +4563,64 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     {
       ext_col_type = 0;
     }
+
+  {
+    DB_TYPE lob_value_type = db_value_type (val);
+    const char *lob_locator = NULL;
+    int lob_locator_len = 0;
+    DB_BIGINT lob_byte_length = 0;
+    /* [리뷰] V14 드라이버의 BLOB/CLOB 값은 참조든 내용이든 모두 선행 바이트로 시작한다.
+     * 참조를 V14 미만이나 다른 타입 칸에 내용처럼 내보내면 안 된다. 그런 자리는 실패시킨다.
+     * ext_col_type 계산 뒤에 있어 타입 바이트가 column_type_flag와 어긋나지 않는다. */
+    bool is_reference = dbval_is_internal_lob_locator (val, &lob_locator, &lob_locator_len, &lob_byte_length);
+
+
+    /* Only the BLOB/CLOB framing to a V14 driver can carry a reference. Anywhere else (older driver) the
+     * locator text is not the value, so fail rather than return it as content. */
+    if (is_reference
+	&& !(DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V14)
+	     && (lob_value_type == DB_TYPE_BLOB || lob_value_type == DB_TYPE_CLOB)))
+      {
+	int not_implemented = ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+
+	NET_BUF_ERR_SET (net_buf);
+	return not_implemented;
+      }
+
+    /* Every BLOB/CLOB going to a V14 driver is framed with the discriminator, reference or not - the driver
+     * reads the same shape for both and decides from the byte, not from the connection version. */
+    if ((lob_value_type == DB_TYPE_BLOB || lob_value_type == DB_TYPE_CLOB)
+	&& DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V14))
+      {
+	if (is_reference)
+	  {
+	    add_res_data_internal_lob (net_buf, INTERNAL_LOB_WIRE_REF, lob_locator, lob_locator_len,
+				       lob_byte_length, ext_col_type, &data_size);
+	  }
+	else
+	  {
+	    const char *inline_data;
+	    int inline_len = 0;
+
+	    if (lob_value_type == DB_TYPE_BLOB)
+	      {
+		int bit_length = 0;
+
+		inline_data = (const char *) db_get_bit (val, &bit_length);
+		inline_len = (bit_length + 7) / 8;
+	      }
+	    else
+	      {
+		inline_data = db_get_char (val);
+		inline_len = db_get_string_size (val);
+	      }
+	    /* whole, like a stored LOB sent as a reference: max_col_size (JDBC setMaxFieldSize) is not for LOBs */
+	    add_res_data_internal_lob (net_buf, INTERNAL_LOB_WIRE_INLINE, inline_data, inline_len, 0,
+				       ext_col_type, &data_size);
+	  }
+	return data_size;
+      }
+  }
 
   switch (db_value_type (val))
     {
@@ -10522,4 +10679,96 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
   srv_handle->q_result->stmt_id = stmt_id;
 
   return err_code;
+}
+/* Internal LOB read streaming: the driver pulls a locator's bytes (see dbval_to_net_buf) through these calls,
+ * a thin pass-through to the server read cursor; CAS holds no LOB bytes of its own. */
+int
+ux_lob_stream_open (char *locator, int locator_len, DB_BIGINT start_offset, T_NET_BUF * net_buf)
+{
+  INT64 token = 0;
+  int err_code;
+
+  err_code = internal_lob_stream_open_from_server (locator, locator_len, (INT64) start_offset, &token);
+  if (err_code != NO_ERROR)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+  net_buf_cp_int (net_buf, 0, NULL);
+  net_buf_cp_bigint (net_buf, (DB_BIGINT) token, NULL);
+  return 0;
+}
+
+int
+ux_lob_stream_read (DB_BIGINT token, int size, T_NET_BUF * net_buf)
+{
+  /* [리뷰] CAS는 LOB 바이트를 보관하지 않는 얇은 통과 경로다. 요청 크기는 1MiB 이하(서버 상한과 같음).
+   * 서버가 요청보다 많이 돌려주면(nread > size) 내부 오류로 끊는다. */
+  char *buffer = NULL;
+  int nread = 0;
+  int err_code;
+
+  if (size <= 0 || size > INTERNAL_LOB_STREAM_MAX_CHUNK)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  buffer = (char *) MALLOC (size);
+  if (buffer == NULL)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  err_code = internal_lob_stream_read_from_server ((INT64) token, buffer, size, &nread);
+  if (err_code != NO_ERROR)
+    {
+      FREE_MEM (buffer);
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  if (nread < 0 || nread > size)
+    {
+      FREE_MEM (buffer);
+      err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  net_buf_cp_int (net_buf, nread, NULL);
+  if (nread > 0)
+    {
+      net_buf_cp_str (net_buf, buffer, nread);
+    }
+
+  FREE_MEM (buffer);
+  return 0;
+}
+
+int
+ux_lob_stream_close (DB_BIGINT token, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int err_code;
+
+  err_code = internal_lob_stream_close_from_server ((INT64) token);
+  /* a failed close leaves no server cursor either, so the count follows it */
+  if (err_code != NO_ERROR)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  return 0;
 }
