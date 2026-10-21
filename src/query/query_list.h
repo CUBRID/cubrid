@@ -607,9 +607,11 @@ enum
   QFILE_FLAG_ALL = 0x0100,
   QFILE_FLAG_DISTINCT = 0x0200,
   QFILE_FLAG_USE_KEY_BUFFER = 0x0400,
-  QFILE_NOT_USE_MEMBUF = 0x0800,
-  QFILE_FLAG_BACKWARD = 0x1000	/* list may be scanned backward (qfile_scan_prev / cursor_prev_tuple): its tuples
+  QFILE_FLAG_NO_MEMBUF = 0x0800,
+  QFILE_FLAG_BACKWARD = 0x1000,	/* list may be scanned backward (qfile_scan_prev / cursor_prev_tuple): its tuples
 				 * carry the 8-byte [len][prev_len] header (type_list.hdr_size) */
+  QFILE_FLAG_BORROWED_TFILE = 0x2000	/* no temporary file of its own: its pages are written from a file the caller
+					 * owns (qfile_add_tuple_to_staged_page), so destroying the list frees no file */
 };
 
 /* hdr_size is the only truth about backward capability */

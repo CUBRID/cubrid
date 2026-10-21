@@ -21,7 +21,6 @@
  */
 
 #include "px_hash_join_task_manager.hpp"
-#include "qfile_tuple_layout.h"
 
 #include "error_manager.h"		/* assert_release_error, er_errid, er_set, ... */
 #include "fetch.h"			/* fetch_val_list */
@@ -30,7 +29,9 @@
 #include "memory_alloc.h"		/* db_private_alloc, db_private_free_and_init */
 #include "object_primitive.h"		/* pr_clear_value */
 #include "object_representation.h"	/* QFILE_GET_NEXT_VPID, QFILE_GET_TUPLE_COUNT */
+#include "page_buffer.h"		/* pgbuf_get_vpid */
 #include "perf_monitor.h"		/* perfmon_update_max_timeval, perfmon_update_min_timeval */
+#include "qfile_tuple_layout.h"		/* qfile_slot_set_tuple_ptr_and_layout, qfile_slot_set_tuple_ptr, qfile_slot_reset */
 #include "query_evaluator.h"		/* eval_pred, V_ERROR, V_TRUE */
 #include "query_hash_join.h"
 #include "query_hash_scan.h"
@@ -150,7 +151,7 @@ namespace parallel_query
       , m_page_iter ()
     {
       assert (m_manager != nullptr);
-      assert (m_manager->context_cnt > 1);
+      assert (m_manager->single_context.child_cnt > 1);
     }
 
     void base_task::retire ()
@@ -164,10 +165,12 @@ namespace parallel_query
      */
 
     split_task::split_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_INPUT_SPLIT_INFO *split_info,
-			    HASHJOIN_SHARED_SPLIT_INFO *shared_info, int index)
+			    HASHJOIN_SHARED_SPLIT_INFO *shared_info, HASHJOIN_SPLIT_STAGING_BUFFER *staging_buffer, int index)
       : base_task (task_manager, manager, index)
       , m_split_info (split_info)
       , m_shared_info (shared_info)
+      , m_staging_buffer (staging_buffer)
+      , m_temp_key (nullptr)
     {
       assert (m_split_info != nullptr);
       assert (m_split_info->fetch_info != nullptr);
@@ -175,6 +178,7 @@ namespace parallel_query
 
       assert (m_shared_info != nullptr);
       assert (m_shared_info->part_mutexes != nullptr);
+      assert (m_staging_buffer != nullptr);
     }
 
     void
@@ -182,50 +186,48 @@ namespace parallel_query
     {
       task_execution_guard guard (thread_ref, m_task_manager);
 
-      QFILE_LIST_ID *list_id;
       QFILE_LIST_ID **part_list_id;
-      QFILE_LIST_ID **temp_part_list_id = nullptr;
+      HASHJOIN_SPLIT_LANDING_BUFFER landing_buffer;
+      HASHJOIN_SPLIT_WRITER split_writer;
 
       PAGE_PTR page = nullptr;
+      QMGR_TEMP_FILE *tfile = nullptr;
       QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
       QFILE_TUPLE_RECORD overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
       int tuple_cnt, tuple_index, tuple_length;
 
-      HASH_SCAN_KEY *temp_key = nullptr;
-      unsigned int hash_key;
-      UINT32 part_cnt, part_index, part_id;
-
-      bool has_null_fill_side = false;
-      bool need_skip_next = false;
+      UINT32 part_cnt, part_id;
+      bool is_skipped = false;
 
       int error = NO_ERROR;
       bool has_error = false;
 
       /* Do not perform NULL checks;
       * validation is expected to be handled by the constructor */
-      list_id = m_split_info->fetch_info->list_id;
+      part_cnt = m_staging_buffer->page_cnt;
+
       part_list_id = m_split_info->part_list_id;
-      part_cnt = m_manager->context_cnt;
-
-      has_null_fill_side = IS_NULL_FILL_JOIN_TYPE (m_manager->join_type);
-
-      temp_part_list_id = (QFILE_LIST_ID **) db_private_alloc (&thread_ref, part_cnt * sizeof (QFILE_LIST_ID *));
-      if (temp_part_list_id == nullptr)
+      error = hjoin_init_split_landing_buffer (&thread_ref, &landing_buffer, part_cnt);
+      if (error != NO_ERROR)
 	{
 	  assert_release_error (er_errid () != NO_ERROR);
 	  m_task_manager.handle_error (thread_ref);
 	  return;
 	}
-      memset (temp_part_list_id, 0, part_cnt * sizeof (QFILE_LIST_ID *));
 
-      temp_key = qdata_alloc_hscan_key (&thread_ref, m_manager->key_cnt, true);
-      if (temp_key == nullptr)
+      assert (m_index < m_manager->worker_tfile_cnt);
+      hjoin_init_split_writer (&split_writer, &landing_buffer, m_staging_buffer,
+			       m_shared_info->part_mutexes, &m_manager->worker_tfiles[m_index], part_list_id);
+
+      m_temp_key = qdata_alloc_hscan_key (&thread_ref, m_manager->key_cnt, true);
+      if (m_temp_key == nullptr)
 	{
-	  /* cleanup */
-	  db_private_free_and_init (&thread_ref, temp_part_list_id);
-
 	  assert_release_error (er_errid () != NO_ERROR);
 	  m_task_manager.handle_error (thread_ref);
+
+	  /* cleanup */
+	  hjoin_clear_split_landing_buffer (&thread_ref, &landing_buffer);
+
 	  return;
 	}
 
@@ -248,7 +250,7 @@ namespace parallel_query
 	      break;		/* error_exit */
 	    }
 
-	  page = m_page_iter.get_next_page (&thread_ref, m_shared_info->sector_scan);
+	  page = get_next_page (thread_ref, &tfile);
 	  if (page == nullptr)
 	    {
 	      if (er_errid () != NO_ERROR)
@@ -265,7 +267,7 @@ namespace parallel_query
 	  if (tuple_cnt == 0)
 	    {
 	      /* empty page */
-	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.get_current_tfile ());
+	      release_page (thread_ref, &split_writer, page, tfile);
 	      continue;
 	    }
 
@@ -280,16 +282,13 @@ namespace parallel_query
 	    {
 	      assert (tuple_cnt == 1);
 
-	      error = qfile_assemble_overflow_tuple (&thread_ref, page, &overflow_record, m_page_iter.get_current_tfile ());
+	      error = get_overflow_tuple (thread_ref, page, tfile, &tuple_record, &overflow_record);
 	      if (error != NO_ERROR)
 		{
 		  m_task_manager.handle_error (thread_ref);
 		  has_error = true;
 		  break;	/* error_exit */
 		}
-
-	      qfile_slot_set_tuple_ptr_and_layout (&tuple_record, overflow_record.tpl, 0,
-						   &m_split_info->fetch_info->list_id->type_list);
 	    }
 
 	  assert (has_error == false);
@@ -316,8 +315,7 @@ namespace parallel_query
 
 	      tuple_index++;
 
-	      error = hjoin_fetch_key (&thread_ref, m_split_info->fetch_info, &tuple_record, temp_key, nullptr /* compare_key */,
-				       &need_skip_next);
+	      error = get_part_id (thread_ref, &tuple_record, &part_id, &is_skipped);
 	      if (error != NO_ERROR)
 		{
 		  assert_release_error (er_errid () != NO_ERROR);
@@ -325,131 +323,13 @@ namespace parallel_query
 		  has_error = true;
 		  break;		/* error_exit */
 		}
-	      else if (need_skip_next)
+	      else if (is_skipped)
 		{
-		  need_skip_next = false;	/* init */
-
-		  if (has_null_fill_side)
-		    {
-		      /* In joins that NULL-fill one side,
-		       * tuples with NULL in any join column are placed in the last partition.
-		       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition.
-		       */
-		      part_id = part_cnt - 1;
-		    }
-		  else
-		    {
-		      /* next tuple */
-		      continue;
-		    }
-		}			/* else if (need_skip_next) */
-	      else
-		{
-		  hash_key = qdata_hash_scan_key (temp_key, UINT_MAX, HASH_METH_IN_MEM);
-		  part_id = (has_null_fill_side) ? hash_key % (part_cnt - 1) : hash_key % (part_cnt);
-
-		  hjoin_update_tuple_hash_key (&thread_ref, &tuple_record, hash_key);
+		  /* next tuple */
+		  continue;
 		}
 
-	      /* overflow page */
-	      if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID)
-		{
-		  std::unique_lock lock (m_shared_info->part_mutexes[part_id]);
-
-		  assert (part_list_id[part_id]->last_pgptr == nullptr);
-
-		  if (qfile_reopen_list_as_append_mode (&thread_ref, part_list_id[part_id]) != NO_ERROR)
-		    {
-		      assert_release_error (er_errid () != NO_ERROR);
-		      m_task_manager.handle_error (thread_ref);
-		      has_error = true;
-		      break;		/* error_exit */
-		    }
-
-		  error = qfile_add_tuple_to_list (&thread_ref, part_list_id[part_id], tuple_record.tpl);
-		  if (error != NO_ERROR)
-		    {
-		      assert_release_error (er_errid () != NO_ERROR);
-		      m_task_manager.handle_error (thread_ref);
-		      has_error = true;
-		      qfile_close_list (&thread_ref, part_list_id[part_id]);
-		      break;		/* error_exit */
-		    }
-
-		  qfile_close_list (&thread_ref, part_list_id[part_id]);
-
-		  /* next page */
-		  break;
-		}
-
-	      if (temp_part_list_id[part_id] != nullptr
-		  && (temp_part_list_id[part_id]->tfile_vfid->membuf_last == temp_part_list_id[part_id]->tfile_vfid->membuf_npages - 1)
-		  && (temp_part_list_id[part_id]->last_offset + QFILE_GET_TUPLE_LENGTH (tuple_record.tpl)) > DB_PAGESIZE)
-		{
-		  qfile_close_list (&thread_ref, temp_part_list_id[part_id]);	/* may be meaningless since only memory buffer is used */
-
-		  {
-		    std::unique_lock lock (m_shared_info->part_mutexes[part_id]);
-
-		    assert (part_list_id[part_id]->last_pgptr == nullptr);
-
-		    if (part_list_id[part_id]->tuple_cnt > 0)
-		      {
-			error = qfile_append_list (&thread_ref, part_list_id[part_id], temp_part_list_id[part_id]);
-			if (error != NO_ERROR)
-			  {
-			    assert_release_error (er_errid () != NO_ERROR);
-			    m_task_manager.handle_error (thread_ref);
-			    has_error = true;
-			    break;
-			  }
-
-			error = qfile_truncate_list (&thread_ref, temp_part_list_id[part_id]);
-			if (error != NO_ERROR)
-			  {
-			    assert_release_error (er_errid () != NO_ERROR);
-			    m_task_manager.handle_error (thread_ref);
-			    has_error = true;
-			    break;
-			  }
-		      }
-		    else
-		      {
-			qfile_destroy_list (&thread_ref, part_list_id[part_id]);
-			qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false, QFILE_PROHIBIT_DEPENDENT);
-			QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
-		      }
-		  }
-		}
-
-	      if (temp_part_list_id[part_id] == nullptr)
-		{
-		  temp_part_list_id[part_id] =
-			  qfile_open_list (&thread_ref, &list_id->type_list, nullptr, list_id->query_id,
-					   QFILE_FLAG_ALL | QFILE_LIST_BACKWARD_FLAG (list_id), nullptr);
-		  if (temp_part_list_id[part_id] == nullptr)
-		    {
-		      assert_release_error (er_errid () != NO_ERROR);
-		      m_task_manager.handle_error (thread_ref);
-		      has_error = true;
-		      break;
-		    }
-		}
-
-	      /* without a memory buffer, a fixed last page per partition exhausts the page buffer; no-op with membuf */
-	      if (qfile_reopen_list_as_append_mode (&thread_ref, temp_part_list_id[part_id]) != NO_ERROR)
-		{
-		  assert_release_error (er_errid () != NO_ERROR);
-		  m_task_manager.handle_error (thread_ref);
-		  has_error = true;
-		  break;
-		}
-
-	      error = qfile_add_tuple_to_list (&thread_ref, temp_part_list_id[part_id], tuple_record.tpl);
-
-	      /* close before the error check so that the list is closed on every path */
-	      qfile_close_list (&thread_ref, temp_part_list_id[part_id]);
-
+	      error = add_tuple (thread_ref, &split_writer, part_id, &tuple_record, page);
 	      if (error != NO_ERROR)
 		{
 		  assert_release_error (er_errid () != NO_ERROR);
@@ -457,16 +337,12 @@ namespace parallel_query
 		  has_error = true;
 		  break;
 		}
-
-	      /* without a memory buffer, the page is in the temp file */
-	      assert (temp_part_list_id[part_id]->tfile_vfid->membuf_npages == 0
-		      || VFID_ISNULL (&temp_part_list_id[part_id]->tfile_vfid->temp_vfid));
 	    }
 	  while (true);		/* next tuple */
 
 	  if (page != nullptr)
 	    {
-	      qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.get_current_tfile ());
+	      release_page (thread_ref, &split_writer, page, tfile);
 	    }
 
 	  if (has_error)
@@ -478,76 +354,26 @@ namespace parallel_query
 
       if (page != nullptr)
 	{
-	  qmgr_free_old_page_and_init (&thread_ref, page, m_page_iter.get_current_tfile ());
+	  release_page (thread_ref, &split_writer, page, tfile);
 	}
 
-      assert (temp_part_list_id != nullptr);
-      assert (temp_key != nullptr);
+      assert (m_temp_key != nullptr);
 
       if (!has_error)
 	{
-	  for (part_index = 0; part_index < part_cnt; part_index++)
+	  error = hjoin_flush_split_writer (&thread_ref, &split_writer);
+	  if (error != NO_ERROR)
 	    {
-	      if (temp_part_list_id[part_index] == nullptr)
-		{
-		  continue;
-		}
-
-	      qfile_close_list (&thread_ref, temp_part_list_id[part_index]);	/* may be meaningless since only memory buffer is used */
-
-	      if (temp_part_list_id[part_index]->tuple_cnt > 0)
-		{
-		  std::unique_lock lock (m_shared_info->part_mutexes[part_index]);
-
-		  assert (part_list_id[part_index]->last_pgptr == nullptr);
-
-		  if (part_list_id[part_index]->tuple_cnt > 0)
-		    {
-		      error = qfile_append_list (&thread_ref, part_list_id[part_index], temp_part_list_id[part_index]);
-		      if (error != NO_ERROR)
-			{
-			  assert_release_error (er_errid () != NO_ERROR);
-			  m_task_manager.handle_error (thread_ref);
-			  has_error = true;
-			  break;
-			}
-
-		      qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
-		    }
-		  else
-		    {
-		      qfile_destroy_list (&thread_ref, part_list_id[part_index]);
-		      qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false, QFILE_PROHIBIT_DEPENDENT);
-		    }
-		}
-	      else
-		{
-		  qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
-		}
-
-	      QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
+	      assert_release_error (er_errid () != NO_ERROR);
+	      m_task_manager.handle_error (thread_ref);
 	    }
 	}
 
-      /* must be a separate `if`, not an `else` of the block above:
-       * the merge loop above may set has_error = true via break, and that case still needs this cleanup to run. */
-      if (has_error)
-	{
-	  for (part_index = 0; part_index < part_cnt; part_index++)
-	    {
-	      if (temp_part_list_id[part_index] != nullptr)
-		{
-		  qfile_close_list (&thread_ref, temp_part_list_id[part_index]);
-		  qfile_destroy_list (&thread_ref, temp_part_list_id[part_index]);
-		  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
-		}
-	    }
-	}
+      hjoin_clear_split_landing_buffer (&thread_ref, &landing_buffer);
 
       /* cleanup */
-      db_private_free_and_init (&thread_ref, temp_part_list_id);
-
-      qdata_free_hscan_key (&thread_ref, temp_key, m_manager->key_cnt);
+      qdata_free_hscan_key (&thread_ref, m_temp_key, m_manager->key_cnt);
+      m_temp_key = nullptr;
 
       if (overflow_record.tpl != nullptr)
 	{
@@ -558,11 +384,142 @@ namespace parallel_query
       thread_ref.m_uses_px_stats = false;
     }
 
+    PAGE_PTR
+    split_task::get_next_page (cubthread::entry &thread_ref, QMGR_TEMP_FILE **tfile)
+    {
+      PAGE_PTR page;
+
+      page = m_page_iter.get_next_page (&thread_ref, m_shared_info->sector_scan);
+      *tfile = m_page_iter.get_current_tfile ();
+
+      return page;
+    }
+
+    int
+    split_task::get_part_id (cubthread::entry &thread_ref, QFILE_TUPLE_RECORD *tuple_record, UINT32 *part_id,
+			     bool *is_skipped)
+    {
+      return hjoin_get_split_part_id (&thread_ref, m_manager, m_split_info->fetch_info, tuple_record, m_temp_key,
+				      m_staging_buffer->page_cnt, part_id, is_skipped);
+    }
+
+    int
+    split_task::get_overflow_tuple (cubthread::entry &thread_ref, PAGE_PTR page, QMGR_TEMP_FILE *tfile,
+				    QFILE_TUPLE_RECORD *tuple_record, QFILE_TUPLE_RECORD *overflow_record)
+    {
+      int error;
+
+      error = qfile_assemble_overflow_tuple (&thread_ref, page, overflow_record, tfile);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+
+      qfile_slot_set_tuple_ptr_and_layout (tuple_record, overflow_record->tpl, 0,
+					   &m_split_info->fetch_info->list_id->type_list);
+
+      return NO_ERROR;
+    }
+
+    int
+    split_task::add_tuple (cubthread::entry &thread_ref, HASHJOIN_SPLIT_WRITER *split_writer, UINT32 part_id,
+			   QFILE_TUPLE_RECORD *tuple_record, PAGE_PTR page)
+    {
+      return hjoin_add_to_split_writer (&thread_ref, split_writer, part_id, tuple_record->tpl);
+    }
+
+    void
+    split_task::release_page (cubthread::entry &thread_ref, HASHJOIN_SPLIT_WRITER *split_writer, PAGE_PTR &page,
+			      QMGR_TEMP_FILE *tfile)
+    {
+      qmgr_free_old_page_and_init (&thread_ref, page, tfile);
+    }
+
+    /*
+     * resplit_task
+     */
+
+    resplit_task::resplit_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
+				HASHJOIN_INPUT_SPLIT_INFO *split_info, HASHJOIN_SHARED_SPLIT_INFO *shared_info,
+				HASHJOIN_SPLIT_STAGING_BUFFER *staging_buffer, thread_safe_queue<VPID> *vpid_queue,
+				int index)
+      : split_task (task_manager, manager, split_info, shared_info, staging_buffer, index)
+      , m_context (context)
+      , m_vpid_queue (vpid_queue)
+    {
+      assert (m_context != nullptr);
+      assert (m_context->child_cnt > 1);
+      assert (m_vpid_queue != nullptr);
+    }
+
+    PAGE_PTR
+    resplit_task::get_next_page (cubthread::entry &thread_ref, QMGR_TEMP_FILE **tfile)
+    {
+      VPID vpid;
+
+      /* a partition list borrows a worker tfile: no membuf, its pages are fixed by VPID alone */
+      *tfile = nullptr;
+
+      if (!m_vpid_queue->pop (vpid))
+	{
+	  /* end: push_last, with no page left */
+	  return nullptr;
+	}
+
+      /* read only: the hash key was stored at the first split */
+      return qmgr_get_old_page_read_only (&thread_ref, &vpid, nullptr);
+    }
+
+    int
+    resplit_task::get_part_id (cubthread::entry &thread_ref, QFILE_TUPLE_RECORD *tuple_record, UINT32 *part_id,
+			       bool *is_skipped)
+    {
+      *is_skipped = false;
+      *part_id = hjoin_get_resplit_part_id (tuple_record, m_context->divisor, m_context->child_cnt);
+
+      return NO_ERROR;
+    }
+
+    int
+    resplit_task::get_overflow_tuple (cubthread::entry &thread_ref, PAGE_PTR page, QMGR_TEMP_FILE *tfile,
+				      QFILE_TUPLE_RECORD *tuple_record, QFILE_TUPLE_RECORD *overflow_record)
+    {
+      /* tuple_record is on the first part already */
+      assert (tuple_record->tpl == (char *) page + QFILE_PAGE_HEADER_SIZE);
+
+      return NO_ERROR;
+    }
+
+    int
+    resplit_task::add_tuple (cubthread::entry &thread_ref, HASHJOIN_SPLIT_WRITER *split_writer, UINT32 part_id,
+			     QFILE_TUPLE_RECORD *tuple_record, PAGE_PTR page)
+    {
+      if (QFILE_GET_OVERFLOW_PAGE_ID (page) != NULL_PAGEID)
+	{
+	  return hjoin_add_overflow_to_split_writer (&thread_ref, split_writer, part_id, page);
+	}
+
+      return hjoin_add_to_split_writer (&thread_ref, split_writer, part_id, tuple_record->tpl);
+    }
+
+    void
+    resplit_task::release_page (cubthread::entry &thread_ref, HASHJOIN_SPLIT_WRITER *split_writer, PAGE_PTR &page,
+				QMGR_TEMP_FILE *tfile)
+    {
+      VPID vpid;
+
+      pgbuf_get_vpid (page, &vpid);
+      qmgr_free_old_page_and_init (&thread_ref, page, tfile);
+
+      /* its tuples are taken, and the main thread has read its next link before pushing it (produce_vpids) */
+      hjoin_add_free_page_to_split_writer (split_writer, &vpid);
+    }
+
     /*
      * join_task
      */
 
-    join_task::join_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *contexts,
+    join_task::join_task (task_manager &task_manager, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT **contexts,
 			  HASHJOIN_SHARED_JOIN_INFO *shared_info, int index)
       : base_task (task_manager, manager, index)
       , m_contexts (contexts)
@@ -602,6 +559,18 @@ namespace parallel_query
 	  assert (thread_ref.m_px_stats == nullptr);
 	}
 
+      /* the contexts of this task append their results to one list, merged by the main thread */
+      m_shared_info->list_ids[m_index] =
+	      qfile_open_list (&thread_ref, &m_manager->type_list, nullptr, m_manager->query_id, m_manager->qlist_flag, nullptr);
+      if (m_shared_info->list_ids[m_index] == nullptr)
+	{
+	  assert_release_error (er_errid () != NO_ERROR);
+	  m_task_manager.handle_error (thread_ref);
+	  thread_ref.m_px_stats = nullptr;
+	  thread_ref.m_uses_px_stats = false;
+	  return;
+	}
+
       /* next context */
       do
 	{
@@ -635,7 +604,9 @@ namespace parallel_query
 	      break;		/* error_exit */
 	    }
 
+	  context->list_id = m_shared_info->list_ids[m_index];
 	  error = hjoin_execute (&thread_ref, m_manager, context);
+	  context->list_id = nullptr;	/* lent for the join; the result stays in m_shared_info->list_ids */
 
 	  if (thread_is_on_trace (&thread_ref))
 	    {
@@ -679,7 +650,7 @@ namespace parallel_query
     {
       /* Do not perform NULL checks;
       * validation is expected to be handled by the constructor */
-      HASHJOIN_CONTEXT *contexts = m_manager->contexts;
+      HASHJOIN_CONTEXT **contexts = m_manager->exec_contexts;
       HASHJOIN_CONTEXT *current_context = nullptr;
 
       std::lock_guard<std::mutex> lock (m_shared_info->scan_mutex);
@@ -689,7 +660,7 @@ namespace parallel_query
 	case S_BEFORE:
 	  if (m_shared_info->next_index == 0)
 	    {
-	      current_context = &contexts[m_shared_info->next_index];
+	      current_context = contexts[m_shared_info->next_index];
 	      assert (current_context != nullptr);
 
 	      m_shared_info->scan_position = S_ON;
@@ -704,14 +675,14 @@ namespace parallel_query
 	  break;
 
 	case S_ON:
-	  if (m_shared_info->next_index < m_manager->context_cnt)
+	  if (m_shared_info->next_index < m_manager->exec_cnt)
 	    {
-	      current_context = &contexts[m_shared_info->next_index];
+	      current_context = contexts[m_shared_info->next_index];
 	      assert (current_context != nullptr);
 
 	      ++m_shared_info->next_index;
 
-	      if (m_shared_info->next_index == m_manager->context_cnt)
+	      if (m_shared_info->next_index == m_manager->exec_cnt)
 		{
 		  m_shared_info->scan_position = S_AFTER;
 		  m_shared_info->next_index = 0;
@@ -809,7 +780,8 @@ namespace parallel_query
 
       /* probe input is consumed via sector_page_iterator — no list_scan_id needed */
 
-      error = hjoin_scan_init (&thread_ref, &m_context->hash_scan, m_manager->key_cnt, nullptr /* skip hash table */ );
+      error = hjoin_scan_init (&thread_ref, &m_context->hash_scan, m_manager->key_cnt, m_manager->mem_limit,
+			       nullptr /* skip hash table */ );
       if (error != NO_ERROR)
 	{
 	  m_task_manager.handle_error (thread_ref);
@@ -942,9 +914,6 @@ cleanup:
 
       HASHJOIN_STATS *stats = m_context->stats;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#if HASHJOIN_PROFILE_TIME
-      HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#endif /* HASHJOIN_PROFILE_TIME */
       assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
       list_id = m_context->list_id;
@@ -1063,10 +1032,8 @@ cleanup:
 		  stats->probe.read_rows++;
 		}
 
-	      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 	      error = hjoin_fetch_key (&thread_ref, probe, &probe->tuple_record, key,
 				       nullptr /* compare_key */, &need_skip_next);
-	      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 	      if (error != NO_ERROR)
 		{
 		  assert_release_error (er_errid () != NO_ERROR);
@@ -1084,17 +1051,13 @@ cleanup:
 		  /* fall through */
 		}
 
-	      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 	      hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
-	      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 
 	      do
 		{
 		  build->is_ready = false;
 
-		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
 		  error = hjoin_probe_key (&thread_ref, hash_scan, &build->list_scan_id, &build->tuple_record);
-		  HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
 		  if (error != NO_ERROR)
 		    {
 		      break;		/* error_exit */
@@ -1109,10 +1072,8 @@ cleanup:
 		      stats->probe.read_keys++;	/* found */
 		    }
 
-		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 		  error = hjoin_fetch_key (&thread_ref, build, &build->tuple_record, found_key,
 					   key /* compare_key */, &need_skip_next);
-		  HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 		  if (error != NO_ERROR)
 		    {
@@ -1120,7 +1081,6 @@ cleanup:
 		    }
 		  else if (need_skip_next)
 		    {
-		      HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
 
 		      need_skip_next = false;	/* init */
 		      continue;
@@ -1134,9 +1094,7 @@ cleanup:
 		    {
 		      DB_LOGICAL ev_res;
 
-		      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 		      ev_res = hjoin_eval_pred (&thread_ref, probe, build, m_context->after_join_pred, m_context->val_descr);
-		      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 		      if (ev_res == V_ERROR)
 			{
@@ -1149,18 +1107,14 @@ cleanup:
 		      /* Search the next hash entry if additional conditions are not satisfied */
 		      if (ev_res != V_TRUE)
 			{
-			  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
 			  continue;
 			}
 		    }			/* if (m_context->after_join_pred != nullptr) */
 
-		  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
-		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
 							&outer->tuple_record, &inner->tuple_record,
 							m_manager->merge_info, &overflow_record);
-		  HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
 		  if (error != NO_ERROR)
 		    {
@@ -1252,9 +1206,6 @@ cleanup:
 
       HASHJOIN_STATS *stats = m_context->stats;
       HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#if HASHJOIN_PROFILE_TIME
-      HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#endif /* HASHJOIN_PROFILE_TIME */
       assert (!thread_is_on_trace (&thread_ref) || stats != nullptr);
 
       list_id = m_context->list_id;
@@ -1375,10 +1326,8 @@ cleanup:
 		  stats->probe.read_rows++;
 		}
 
-	      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 	      error = hjoin_fetch_key (&thread_ref, probe, &probe->tuple_record, key,
 				       nullptr /* compare_key */, &need_skip_next);
-	      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 	      if (error != NO_ERROR)
 		{
 		  assert_release_error (er_errid () != NO_ERROR);
@@ -1402,9 +1351,7 @@ cleanup:
 			}
 		      build->is_ready = true;
 
-		      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 		      ev_res = hjoin_eval_pred (&thread_ref, probe, build, m_context->after_join_pred, m_context->val_descr);
-		      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 		      if (ev_res == V_ERROR)
 			{
@@ -1417,19 +1364,15 @@ cleanup:
 		      /* Fetch the next row if additional conditions are not satisfied */
 		      if (ev_res != V_TRUE)
 			{
-			  HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
 			  continue;
 			}
 		    }	/* if (m_context->after_join_pred != nullptr) */
 
-		  HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
 		  /* NULL key on preserved side — emit fill_record (null on null-supplying side) */
-		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
 							outer->fill_record, inner->fill_record,
 							m_manager->merge_info, &overflow_record);
-		  HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
 		  if (error != NO_ERROR)
 		    {
@@ -1446,9 +1389,7 @@ cleanup:
 		  /* fall through */
 		}
 
-	      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 	      hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
-	      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 
 	      any_key_matched = false;
 
@@ -1456,9 +1397,7 @@ cleanup:
 		{
 		  build->is_ready = false;
 
-		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
 		  error = hjoin_probe_key (&thread_ref, hash_scan, &build->list_scan_id, &build->tuple_record);
-		  HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
 
 		  if (error != NO_ERROR)
 		    {
@@ -1474,17 +1413,14 @@ cleanup:
 		      stats->probe.read_keys++;	/* found */
 		    }
 
-		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 		  error = hjoin_fetch_key (&thread_ref, build, &build->tuple_record, found_key,
 					   key /* compare_key */, &need_skip_next);
-		  HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 		  if (error != NO_ERROR)
 		    {
 		      break;		/* error_exit */
 		    }
 		  else if (need_skip_next)
 		    {
-		      HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
 
 		      need_skip_next = false;	/* init */
 		      continue;
@@ -1498,9 +1434,7 @@ cleanup:
 		    {
 		      DB_LOGICAL ev_res;
 
-		      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 		      ev_res = hjoin_eval_pred (&thread_ref, probe, build, m_context->during_join_pred, m_context->val_descr);
-		      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 		      if (ev_res == V_ERROR)
 			{
@@ -1513,7 +1447,6 @@ cleanup:
 		      /* Search the next hash entry if additional conditions are not satisfied */
 		      if (ev_res != V_TRUE)
 			{
-			  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
 			  continue;
 			}
 		    }			/* if (m_context->during_join_pred != nullptr) */
@@ -1534,9 +1467,7 @@ cleanup:
 		    {
 		      DB_LOGICAL ev_res;
 
-		      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 		      ev_res = hjoin_eval_pred (&thread_ref, probe, build, m_context->after_join_pred, m_context->val_descr);
-		      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 		      if (ev_res == V_ERROR)
 			{
@@ -1549,18 +1480,14 @@ cleanup:
 		      /* Search the next hash entry if additional conditions are not satisfied */
 		      if (ev_res != V_TRUE)
 			{
-			  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
 			  continue;
 			}
 		    }			/* if (m_context->after_join_pred != nullptr) */
 
-		  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
-		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
 							&outer->tuple_record, &inner->tuple_record,
 							m_manager->merge_info, &overflow_record);
-		  HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
 		  if (error != NO_ERROR)
 		    {
@@ -1596,9 +1523,7 @@ cleanup:
 			}
 		      build->is_ready = true;
 
-		      HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 		      ev_res = hjoin_eval_pred (&thread_ref, probe, build, m_context->after_join_pred, m_context->val_descr);
-		      HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 		      if (ev_res == V_ERROR)
 			{
@@ -1611,19 +1536,15 @@ cleanup:
 		      /* Fetch the next row if additional conditions are not satisfied */
 		      if (ev_res != V_TRUE)
 			{
-			  HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
 			  continue;
 			}
 		    }	/* if (m_context->after_join_pred != nullptr) */
 
-		  HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
 		  /* no match — emit fill_record (null on null-supplying side) */
-		  HJOIN_PROFILE_START (&thread_ref, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 		  error = hjoin_merge_tuple_to_list_id (&thread_ref, list_id,
 							outer->fill_record, inner->fill_record,
 							m_manager->merge_info, &overflow_record);
-		  HJOIN_PROFILE_END (&thread_ref, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
 		  if (error != NO_ERROR)
 		    {

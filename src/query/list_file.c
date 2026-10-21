@@ -1123,7 +1123,8 @@ qfile_finalize (void)
  *   sort_list(in): sort info for the list file to be created
  *   query_id(in): query id associated with this list file
  *   flag(in): {QFILE_FLAG_RESULT_FILE, QFILE_FLAG_DISTINCT, QFILE_FLAG_ALL}
- *             whether to do 'all' or 'distinct' operation
+ *             whether to do 'all' or 'distinct' operation;
+ *             QFILE_FLAG_BORROWED_TFILE: no temporary file is created, the caller writes the pages to its own
  *
  * Note: A list file is created by using the specified type list and
  *       the list file identifier is set. The first page of the list
@@ -1163,37 +1164,37 @@ qfile_open_list (THREAD_ENTRY * thread_p, QFILE_TUPLE_VALUE_TYPE_LIST * type_lis
   list_id_p->type_list.type_cnt = type_list_p->type_cnt;
   list_id_p->query_id = query_id;
 
-  if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_RESULT_FILE) && !QFILE_IS_LIST_CACHE_DISABLED)
+  /* a borrowed list keeps tfile_vfid and temp_vfid cleared by QFILE_CLEAR_LIST_ID */
+  if (!QFILE_IS_FLAG_SET (flag, QFILE_FLAG_BORROWED_TFILE))
     {
-      list_id_p->tfile_vfid = qmgr_create_result_file (thread_p, query_id);
-    }
-  else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_USE_KEY_BUFFER))
-    {
-      list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_KEY_BUFFER);
-    }
-  else
-    {
-      list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_NORMAL);
-    }
-
-  if (list_id_p->tfile_vfid == NULL)
-    {
-      if (existing_list_id == NULL)
+      if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_RESULT_FILE) && !QFILE_IS_LIST_CACHE_DISABLED)
 	{
-	  free_and_init (list_id_p);
+	  list_id_p->tfile_vfid = qmgr_create_result_file (thread_p, query_id);
 	}
-      return NULL;
-    }
+      else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_NO_MEMBUF))
+	{
+	  list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_NONE);
+	}
+      else if (QFILE_IS_FLAG_SET (flag, QFILE_FLAG_USE_KEY_BUFFER))
+	{
+	  list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_KEY_BUFFER);
+	}
+      else
+	{
+	  list_id_p->tfile_vfid = qmgr_create_new_temp_file (thread_p, query_id, TEMP_FILE_MEMBUF_NORMAL);
+	}
 
-  if (QFILE_IS_FLAG_SET (flag, QFILE_NOT_USE_MEMBUF))
-    {
-      list_id_p->tfile_vfid->membuf_last = prm_get_integer_value (PRM_ID_TEMP_MEM_BUFFER_PAGES) - 1;
-      list_id_p->tfile_vfid->membuf = NULL;
-      list_id_p->tfile_vfid->membuf_npages = 0;
-      list_id_p->tfile_vfid->membuf_type = TEMP_FILE_MEMBUF_NONE;
-    }
+      if (list_id_p->tfile_vfid == NULL)
+	{
+	  if (existing_list_id == NULL)
+	    {
+	      free_and_init (list_id_p);
+	    }
+	  return NULL;
+	}
 
-  VFID_COPY (&(list_id_p->temp_vfid), &(list_id_p->tfile_vfid->temp_vfid));
+      VFID_COPY (&(list_id_p->temp_vfid), &(list_id_p->tfile_vfid->temp_vfid));
+    }
 
   /* allocate the type list's own domain/column block; hdr_size records the backward-capability header size */
   if (qfile_type_list_alloc (&list_id_p->type_list, type_list_p->type_cnt,
@@ -1675,6 +1676,223 @@ qfile_add_tuple_to_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, QFI
       return ER_FAILED;
     }
   return qfile_add_tuple_to_list_from (thread_p, list_id_p, tuple, list_id_p->type_list.hdr_size);
+}
+
+/*
+ * qfile_add_tuple_to_staged_page () - add a tuple to a list whose last page is kept in a page image in memory
+ *   return: NO_ERROR or error code
+ *   list_id_p(in/out): list file; its last page is staged_page, to be copied to list_id_p->last_vpid
+ *   staged_page(in/out): image of the last page
+ *   tfile_vfid_p(in): temporary file the pages are allocated from
+ *   tuple(in): tuple laid out for the list, or its first part if ovf_vpid_p is not NULL
+ *   ovf_vpid_p(in): first overflow page of the rest of the tuple, which the list refers to as it is; NULL to write the
+ *                   rest of a tuple longer than a page to new overflow pages
+ *   free_vpids(in/out): pages not used any more, taken as the places of new data pages before tfile_vfid_p
+ *   free_vpid_cnt(in/out): number of free_vpids
+ *
+ * Note: The last page is copied by qfile_copy_to_external_file_page () after the last tuple.
+ */
+int
+qfile_add_tuple_to_staged_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAGE_PTR staged_page,
+				QMGR_TEMP_FILE * tfile_vfid_p, QFILE_TUPLE tuple, const VPID * ovf_vpid_p,
+				VPID * free_vpids, int *free_vpid_cnt)
+{
+  VPID new_vpid, ovf_vpid;
+  PAGE_PTR ovf_page = NULL, prev_ovf_page = NULL;
+  int tuple_length, tuple_page_size, offset;
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (list_id_p != NULL);
+  assert (staged_page != NULL);
+  assert (tfile_vfid_p != NULL);
+  assert (tuple != NULL);
+  assert (free_vpid_cnt != NULL);
+
+  /* the last page is staged_page, not a fixed page */
+  assert (list_id_p->last_pgptr == NULL);
+
+  tuple_length = QFILE_GET_TUPLE_LENGTH (tuple);
+  assert (ovf_vpid_p == NULL || tuple_length > qfile_Max_tuple_page_size);
+
+  if (qfile_is_first_tuple (list_id_p) || qfile_is_last_page_full (list_id_p, tuple_length, false))
+    {
+#if defined (SERVER_MODE)
+      if (qmgr_is_query_interrupted (thread_p, list_id_p->query_id) == true)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_INTERRUPTED, 0);
+	  goto error_exit;
+	}
+#endif /* SERVER_MODE */
+
+      /* the place of the new page is allocated before the current page is copied, so the current page is copied
+       * once with its next link set, and it is never fixed again to link the next one */
+      if (*free_vpid_cnt > 0)
+	{
+	  new_vpid = free_vpids[--(*free_vpid_cnt)];
+	}
+      else
+	{
+	  error = qmgr_alloc_external_file_page (thread_p, &new_vpid, tfile_vfid_p);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+
+      if (VPID_ISNULL (&list_id_p->last_vpid))
+	{
+	  /* the first page of the list: there is no current page to copy */
+	  QFILE_COPY_VPID (&list_id_p->first_vpid, &new_vpid);
+	}
+      else
+	{
+	  /* the current page is full: link it to the new page and copy it to its own place */
+	  QFILE_PUT_NEXT_VPID (staged_page, &new_vpid);
+	  error = qfile_copy_to_external_file_page (thread_p, list_id_p, staged_page, tfile_vfid_p);
+	  if (error != NO_ERROR)
+	    {
+	      goto error_exit;
+	    }
+	}
+
+      /* page header: staged_page becomes the new empty last page, which the tuple goes to;
+       * its prev is the page just copied, so this comes before last_vpid changes */
+      QFILE_PUT_TUPLE_COUNT (staged_page, 0);
+      QFILE_PUT_PREV_VPID (staged_page, &list_id_p->last_vpid);
+      QFILE_PUT_NEXT_VPID_NULL (staged_page);
+      QFILE_PUT_LAST_TUPLE_OFFSET (staged_page, QFILE_PAGE_HEADER_SIZE);
+      QFILE_PUT_OVERFLOW_VPID_NULL (staged_page);
+
+      /* list descriptor: the new page is the last page of the list */
+      list_id_p->page_cnt++;
+      QFILE_COPY_VPID (&list_id_p->last_vpid, &new_vpid);
+      list_id_p->last_offset = QFILE_PAGE_HEADER_SIZE;
+    }
+
+  /* page header: count the tuple in the page it goes to */
+  QFILE_PUT_TUPLE_COUNT (staged_page, QFILE_GET_TUPLE_COUNT (staged_page) + 1);
+  QFILE_PUT_LAST_TUPLE_OFFSET (staged_page, list_id_p->last_offset);
+
+  /* tuple: the whole tuple, or its first part if it is longer than a page */
+  tuple_page_size = MIN (tuple_length, qfile_Max_tuple_page_size);
+  memcpy ((char *) staged_page + list_id_p->last_offset, tuple, tuple_page_size);
+
+#if !defined(NDEBUG)
+  /* mark the columns this tuple stores a non-NULL value in; a later relayout of the list (qfile_set_layout) asserts
+   * that their layout does not change under the tuples already written */
+  qfile_type_list_note_tuple (&list_id_p->type_list, tuple, list_id_p->type_list.hdr_size);
+#endif
+
+  /* list descriptor: count the tuple; a backward list also gets the previous tuple length in the tuple header */
+  qfile_add_tuple_to_list_id (list_id_p, staged_page + list_id_p->last_offset, tuple_length, tuple_page_size);
+
+  /* overflow: none if the whole tuple fits in the page */
+  if (tuple_page_size == tuple_length)
+    {
+      /* the next link of the last page is NULL between calls: it is set to NULL when the page starts, and it is set to
+       * the next page only at the page transition, right before the page is copied and staged_page starts the next
+       * page; the copy at the end of the split (qfile_copy_to_external_file_page ()) relies on it */
+      assert (QFILE_GET_NEXT_PAGE_ID (staged_page) == NULL_PAGEID);
+
+      ASSERT_NO_ERROR_OR_INTERRUPTED ();
+      return NO_ERROR;
+    }
+
+  if (ovf_vpid_p != NULL)
+    {
+      /* the rest of the tuple stays in its overflow pages: the data page links to them, and they are counted as the
+       * overflow pages written below are */
+      QFILE_PUT_OVERFLOW_VPID (staged_page, ovf_vpid_p);
+      list_id_p->page_cnt += CEIL_PTVDIV (tuple_length - tuple_page_size, qfile_Max_tuple_page_size);
+
+      assert (QFILE_GET_NEXT_PAGE_ID (staged_page) == NULL_PAGEID);
+
+      ASSERT_NO_ERROR_OR_INTERRUPTED ();
+      return NO_ERROR;
+    }
+
+  /* the rest of the tuple goes to overflow pages, written in place since they are never appended to;
+   * each page is released when the page of the next part is linked to it, as qfile_add_tuple_to_list_from () does */
+  for (offset = tuple_page_size; offset < tuple_length; offset += tuple_page_size)
+    {
+      tuple_page_size = MIN (tuple_length - offset, qfile_Max_tuple_page_size);
+
+      ovf_page = qmgr_get_new_page (thread_p, &ovf_vpid, tfile_vfid_p);
+      if (ovf_page == NULL)
+	{
+	  goto error_exit;
+	}
+
+      if (prev_ovf_page == NULL)
+	{
+	  /* the first part: the data page links to it */
+	  QFILE_PUT_OVERFLOW_VPID (staged_page, &ovf_vpid);
+	}
+      else
+	{
+	  /* the previous part links to this one, and is released now that its link is set */
+	  QFILE_PUT_OVERFLOW_VPID (prev_ovf_page, &ovf_vpid);
+	  qfile_set_dirty_page (thread_p, prev_ovf_page, FREE, tfile_vfid_p);
+	}
+
+      /* page header: an overflow page holding this part */
+      QFILE_PUT_TUPLE_COUNT (ovf_page, QFILE_OVERFLOW_TUPLE_COUNT_FLAG);
+      QFILE_PUT_OVERFLOW_TUPLE_PAGE_SIZE (ovf_page, tuple_page_size);
+
+      /* tuple: this part */
+      memcpy ((char *) ovf_page + QFILE_PAGE_HEADER_SIZE, (char *) tuple + offset, tuple_page_size);
+
+      /* list descriptor: an overflow page is counted in page_cnt, as a data page is */
+      list_id_p->page_cnt++;
+
+      prev_ovf_page = ovf_page;
+    }
+
+  /* the last part: no part follows */
+  QFILE_PUT_OVERFLOW_VPID_NULL (prev_ovf_page);
+  qfile_set_dirty_page (thread_p, prev_ovf_page, FREE, tfile_vfid_p);
+
+  assert (QFILE_GET_NEXT_PAGE_ID (staged_page) == NULL_PAGEID);
+
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
+  return NO_ERROR;
+
+error_exit:
+  if (prev_ovf_page != NULL)
+    {
+      qmgr_free_old_page_and_init (thread_p, prev_ovf_page, tfile_vfid_p);
+    }
+
+  assert_release_error (er_errid () != NO_ERROR);
+  return er_errid ();
+}
+
+/*
+ * qfile_copy_to_external_file_page () - copy the last page of a list built by qfile_add_tuple_to_staged_page ()
+ *                                       to its place: qmgr_copy_to_external_file_page () for list_id_p->last_vpid
+ *   return: NO_ERROR or error code
+ *   list_id_p(in): list file
+ *   staged_page(in): image of the last page
+ *   tfile_vfid_p(in): temporary file the last page was allocated from
+ */
+int
+qfile_copy_to_external_file_page (THREAD_ENTRY * thread_p, QFILE_LIST_ID * list_id_p, PAGE_PTR staged_page,
+				  QMGR_TEMP_FILE * tfile_vfid_p)
+{
+  assert (thread_p != NULL);
+  assert (list_id_p != NULL);
+  assert (staged_page != NULL);
+  assert (tfile_vfid_p != NULL);
+
+  /* the last page is staged_page, not a fixed page */
+  assert (list_id_p->last_pgptr == NULL);
+
+  /* called for a list that has a page: when the page is full, or at the end for a list a tuple came to;
+   * the caller sets the next link (the new page, or NULL kept from the start of the page) */
+  assert (!qfile_is_first_tuple (list_id_p));
+
+  return qmgr_copy_to_external_file_page (thread_p, &list_id_p->last_vpid, tfile_vfid_p, staged_page);
 }
 
 /*

@@ -168,6 +168,9 @@ extern PAGE_PTR qmgr_get_old_page_simple_fix (THREAD_ENTRY * thread_p, VPID * vp
 extern void qmgr_free_old_page_simple_fix (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, QMGR_TEMP_FILE * tfile_vfidp);
 extern void qmgr_set_dirty_page (THREAD_ENTRY * thread_p, PAGE_PTR page_ptr, int free_page, LOG_DATA_ADDR * addrp,
 				 QMGR_TEMP_FILE * tfile_vfidp);
+extern int qmgr_alloc_external_file_page (THREAD_ENTRY * thread_p, VPID * vpid_p, QMGR_TEMP_FILE * tfile_vfid_p);
+extern int qmgr_copy_to_external_file_page (THREAD_ENTRY * thread_p, const VPID * vpid_p, QMGR_TEMP_FILE * tfile_vfid_p,
+					    const char *page_image);
 extern PAGE_PTR qmgr_get_new_page (THREAD_ENTRY * thread_p, VPID * vpidp, QMGR_TEMP_FILE * tfile_vfidp);
 extern QMGR_TEMP_FILE *qmgr_create_new_temp_file (THREAD_ENTRY * thread_p, QUERY_ID query_id,
 						  QMGR_TEMP_FILE_MEMBUF_TYPE membuf_type);

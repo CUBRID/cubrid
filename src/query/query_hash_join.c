@@ -21,7 +21,6 @@
  */
 
 #include "query_hash_join.h"
-#include "qfile_tuple_layout.h"
 
 #include "dbtype.h"		/* db_make_null */
 #include "error_manager.h"	/* er_errid, NO_ERROR, assert_release_error */
@@ -33,6 +32,9 @@
 #include "px_hash_join.hpp"	/* parallel_query::hash_join::... */
 #include "px_parallel.hpp"	/* parallel_query::compute_parallel_degree */
 #include "px_worker_manager.hpp"	/* parallel_query::worker_manager */
+#include "qfile_tuple_layout.h"	/* qfile_slot_read_column_value, qfile_slot_get_column_data */
+#include "query_hash_join_constants.hpp"	/* PARTITION_FILL_FACTOR, HASHJOIN_PART_MAX_CNT, HASHJOIN_SPLIT_MAX_LEVEL */
+#include "query_hash_join_split.hpp"	/* hjoin_get_split_part_id, HASHJOIN_SPLIT_WRITER, ... */
 #include "query_list.h"		/* JOIN_TYPE */
 #include "query_manager.h"	/* QMGR_TEMP_FILE */
 #include "system_parameter.h"	/* prm_get_bigint_value, PRM_ID_... */
@@ -41,27 +43,6 @@
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
-
-/*
- * Debug Macros
- */
-
-#define PARTITION_FILL_FACTOR 0.8
-
-#define DUMP_HASH_TABLE_LIMIT 100
-#define DUMP_PROBE_LIMIT 20
-
-
-/*
- * Macro Function Declarations
- */
-
-#if HASHJOIN_DUMP_HASH_TABLE
-#define HJOIN_DUMP_HASH_TABLE(thread_p, hash_scan_p, list_id_p) \
-  hjoin_dump_hash_table ((thread_p), (hash_scan_p), (list_id_p))
-#else
-#define HJOIN_DUMP_HASH_TABLE(thread_p, hash_scan_p, list_id_p) ((void) 0)
-#endif /* HASHJOIN_DUMP_HASH_TABLE */
 
 /*
  * Function Declarations
@@ -85,15 +66,16 @@ static int hjoin_init_domain_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * m
 /* Hash Join Partitioning */
 static HASHJOIN_STATUS hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 					    HASHJOIN_CONTEXT * single_context);
-static HASHJOIN_STATUS hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
-					      HASHJOIN_CONTEXT * single_context);
-static int hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
+static int hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
+static UINT64 hjoin_calc_part_cnt (QFILE_LIST_ID * build_list_id, UINT64 mem_limit, double fill_factor);
+static int hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
 				    HASHJOIN_SPLIT_INFO * split_info);
-static int hjoin_build_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
+static int hjoin_build_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
 				   HASHJOIN_SPLIT_INFO * split_info);
-static int hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
-			      HASHJOIN_INPUT_SPLIT_INFO * split_info, QFILE_LIST_ID ** temp_part_list_id,
+static int hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
+			      HASHJOIN_INPUT_SPLIT_INFO * split_info, HASHJOIN_SPLIT_STAGING_BUFFER * staging_buffer,
 			      HASH_SCAN_KEY * temp_key);
+static int hjoin_resplit_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_STATUS status);
 
 /* Hash Join Parallel */
 static HASHJOIN_STATUS hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
@@ -101,16 +83,30 @@ static HASHJOIN_STATUS hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MAN
 static HASHJOIN_STATUS hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
 						 HASHJOIN_CONTEXT * single_context);
 
+/* Hash Join Worker Temp Files */
+static int hjoin_init_worker_tfiles (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
+static void hjoin_clear_worker_tfiles (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
+
 /* Hash Join Split Info */
-static int hjoin_init_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
-				  HASHJOIN_SPLIT_INFO * split_info);
+static int hjoin_init_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
+				  UINT32 part_cnt, HASHJOIN_SPLIT_INFO * split_info);
 static void hjoin_clear_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
-				    HASHJOIN_SPLIT_INFO * split_info, bool clear_all);
+				    HASHJOIN_SPLIT_INFO * split_info);
 
 /* Hash Join Context */
 static int hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
 static void hjoin_clear_context (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context);
 static void hjoin_destroy_qlist (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context);
+static int hjoin_init_part_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
+				     UINT32 part_cnt, HASHJOIN_SPLIT_INFO * split_info,
+				     HASHJOIN_CONTEXT ** part_contexts);
+static void hjoin_clear_part_contexts (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * part_contexts, UINT32 part_cnt);
+static int hjoin_init_exec_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
+static void hjoin_clear_exec_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager);
+
+/* Hash List Scan */
+static UINT64 hjoin_estimate_hash_table_size (QFILE_LIST_ID * list_id);
+static UINT64 hjoin_calc_hash_table_size (QFILE_LIST_ID * list_id, HASH_METHOD method);
 
 /* Hash Join Processing */
 static HASHJOIN_STATUS hjoin_check_empty_inputs (HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context);
@@ -126,16 +122,6 @@ static int hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 			      QFILE_LIST_ID * list_id);
 static int hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
 			      QFILE_LIST_ID * list_id);
-
-
-/* Dump */
-#if HASHJOIN_DUMP_HASH_TABLE
-static void hjoin_dump_hash_table (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_ID * list_id);
-#endif /* HASHJOIN_DUMP_HASH_TABLE */
-
-#if !defined(NDEBUG) && HASHJOIN_DUMP_PROBE
-static void hjoin_print_tuple (QFILE_LIST_ID * list_id, QFILE_TUPLE tuple, HASHJOIN_PRINT_STEP step);
-#endif /* !NDEBUG && HASHJOIN_DUMP_PROBE */
 
 /*
  * Function Definitions
@@ -172,6 +158,21 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 
   status = hjoin_check_empty_inputs (&manager, single_context);
   single_context->status = status;
+  if (status == HASHJOIN_STATUS_END)
+    {
+      /* nothing to join: xasl->list_id stays as it is */
+      goto cleanup;
+    }
+
+  /* the result list: the single context and the partitions append to it,
+   * and the join tasks merge their lists into it */
+  single_context->list_id =
+    qfile_open_list (thread_p, &manager.type_list, NULL, manager.query_id, manager.qlist_flag, NULL);
+  if (single_context->list_id == NULL)
+    {
+      goto error_exit;
+    }
+
   switch (status)
     {
     case HASHJOIN_STATUS_FILL_NULL_VALUES:
@@ -218,12 +219,6 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 	  break;
 #endif /* defined (SERVER_MODE) */
 
-	case HASHJOIN_STATUS_END:
-	  /* impossible case */
-	  /* hjoin_check_empty_inputs guarantees HASHJOIN_STATUS_END cannot occur here */
-	  assert_release_error (false);
-	  goto error_exit;
-
 	case HASHJOIN_STATUS_ERROR:
 	  /* hjoin_try_partition always retries as HASHJOIN_STATUS_SINGLE;
 	   * except for ER_INTERRUPTED, never returns HASHJOIN_STATUS_ERROR */
@@ -231,6 +226,8 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 	  assert_release_error (error == ER_INTERRUPTED);
 	  goto error_exit;
 
+	case HASHJOIN_STATUS_END:
+	  /* hjoin_check_empty_inputs guarantees HASHJOIN_STATUS_END cannot occur here */
 	default:
 	  /* impossible case */
 	  assert_release_error (false);
@@ -239,12 +236,8 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
       break;
 
     case HASHJOIN_STATUS_END:
-      /* Nothing to do */
-      assert (single_context->list_id == NULL);
-      break;
-
+      /* hjoin_check_empty_inputs returning HASHJOIN_STATUS_END has gone to cleanup already */
     case HASHJOIN_STATUS_ERROR:
-      [[fallthrough]];
     default:
       /* impossible case */
       assert_release_error (false);
@@ -256,29 +249,15 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
       goto error_exit;
     }
 
-  if (single_context->list_id != NULL)
-    {
-      /* Check if qfile_close_list was called */
-      assert (single_context->list_id->last_pgptr == NULL);
+  /* Check if qfile_close_list was called */
+  assert (single_context->list_id->last_pgptr == NULL);
 
-      qfile_destroy_list (thread_p, xasl->list_id);	/* may be unnecessary */
-      assert (!XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) || QFILE_LIST_IS_BACKWARD (single_context->list_id));
-      qfile_copy_list_id (xasl->list_id, single_context->list_id, false, QFILE_MOVE_DEPENDENT);
-      QFILE_FREE_AND_INIT_LIST_ID (single_context->list_id);
+  qfile_destroy_list (thread_p, xasl->list_id);	/* may be unnecessary */
+  assert (!XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) || QFILE_LIST_IS_BACKWARD (single_context->list_id));
+  qfile_copy_list_id (xasl->list_id, single_context->list_id, false, QFILE_MOVE_DEPENDENT);
+  QFILE_FREE_AND_INIT_LIST_ID (single_context->list_id);
 
-      ASSERT_NO_ERROR_OR_INTERRUPTED ();
-    }
-  else if (status == HASHJOIN_STATUS_END)
-    {
-      ASSERT_NO_ERROR_OR_INTERRUPTED ();
-    }
-  else
-    {
-      /* list_id can be NULL when the join result is empty.
-       * In this case, it is NO_ERROR.
-       * Otherwise, an error may be set. */
-      error = er_errid ();
-    }
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
   if (thread_is_on_trace (thread_p) && manager.stats_group != NULL)
@@ -310,7 +289,7 @@ static int
 hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 {
   HASHJOIN_CONTEXT *current_context;
-  UINT32 context_cnt, context_index;
+  UINT32 exec_cnt, exec_index;
 
   int error = NO_ERROR;
 
@@ -318,18 +297,21 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   assert (manager != NULL);
 
   HASHJOIN_STATS *stats = manager->single_context.stats;
-#if HASHJOIN_PROFILE_TIME
-  HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#endif /* HASHJOIN_PROFILE_TIME */
   assert (!thread_is_on_trace (thread_p) || stats != NULL);
 
-  context_cnt = manager->context_cnt;
+  exec_cnt = manager->exec_cnt;
 
-  for (context_index = 0; context_index < context_cnt; context_index++)
+  /* the contexts are executed one by one, so all of them append to the final result list */
+  assert (manager->single_context.list_id != NULL);
+
+  for (exec_index = 0; exec_index < exec_cnt; exec_index++)
     {
-      current_context = &manager->contexts[context_index];
+      current_context = manager->exec_contexts[exec_index];
 
+      current_context->list_id = manager->single_context.list_id;	/* lend the result list */
       error = hjoin_execute (thread_p, manager, current_context);
+      current_context->list_id = NULL;	/* take it back */
+
       if (error != NO_ERROR)
 	{
 	  goto error_exit;
@@ -338,32 +320,6 @@ hjoin_execute_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
       if (thread_is_on_trace (thread_p))
 	{
 	  hjoin_trace_merge_stats (stats, current_context->stats, manager->single_context.status);
-	}
-
-      if (current_context->list_id == NULL)
-	{
-	  error = er_errid ();
-	  if (error != NO_ERROR)
-	    {
-	      goto error_exit;
-	    }
-	  else
-	    {
-	      /* list_id can be NULL when the join result is empty.
-	       * In this case, it is NO_ERROR. */
-	      continue;
-	    }
-	}
-
-      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_MERGE);
-      error = hjoin_merge_qlist (thread_p, manager, current_context);
-      HJOIN_PROFILE_MERGE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_MERGE,
-			       (manager->single_context.list_id !=
-				nullptr) ? manager->single_context.list_id->tuple_cnt : 0);
-
-      if (error != NO_ERROR)
-	{
-	  goto error_exit;
 	}
     }
 
@@ -396,6 +352,7 @@ hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CON
   assert (thread_p != NULL);
   assert (manager != NULL);
   assert (context != NULL);
+  assert (context->list_id != NULL);
 
   status = hjoin_check_empty_inputs (manager, context);
 
@@ -403,7 +360,8 @@ hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CON
    * tuples with NULL in any join column are placed in the last partition.
    * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition.
    */
-  if (IS_NULL_FILL_JOIN_TYPE (manager->join_type) && context == &manager->contexts[manager->context_cnt - 1])
+  if (IS_NULL_FILL_JOIN_TYPE (manager->join_type)
+      && context == &manager->single_context.child_contexts[manager->single_context.child_cnt - 1])
     {
       status = (status == HASHJOIN_STATUS_TRY) ? HASHJOIN_STATUS_FILL_NULL_VALUES : status;
     }
@@ -433,7 +391,7 @@ hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CON
     }
 
   /* Check if qfile_close_list was called */
-  assert (context->list_id == NULL || context->list_id->last_pgptr == NULL);
+  assert (context->list_id->last_pgptr == NULL);
 
   return error;
 }
@@ -448,7 +406,8 @@ hjoin_execute (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CON
 static int
 hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
 {
-  QFILE_LIST_ID *list_id = NULL;
+  QFILE_LIST_ID *list_id;
+  INT64 start_tuple_cnt = 0;
   QFILE_TUPLE_RECORD overflow_record = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE scan_code;
 
@@ -460,10 +419,19 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
   assert (thread_p != NULL);
   assert (manager != NULL);
   assert (context != NULL);
+  assert (context->list_id != NULL);
 
   HASHJOIN_STATS *stats = context->stats;
   HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
   assert (!thread_is_on_trace (thread_p) || stats != NULL);
+
+  list_id = context->list_id;
+  error = qfile_reopen_list_as_append_mode (thread_p, list_id);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+  start_tuple_cnt = list_id->tuple_cnt;
 
   outer = &context->outer;
   inner = &context->inner;
@@ -499,12 +467,6 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
 
   build->fill_record = NULL;
   probe->fill_record = &probe->tuple_record;
-
-  list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, manager->qlist_flag, NULL);
-  if (list_id == NULL)
-    {
-      goto error_exit;
-    }
 
   error = qfile_open_list_scan (probe->list_id, &probe->list_scan_id);
   if (error != NO_ERROR)
@@ -566,7 +528,7 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
       hjoin_trace_end (thread_p, &stats->probe, &start_stats);
       stats->probe.read_rows = probe->list_id->tuple_cnt;
       assert (stats->probe.read_keys == 0);
-      stats->probe.qualified_rows = list_id->tuple_cnt;
+      stats->probe.qualified_rows = list_id->tuple_cnt - start_tuple_cnt;
     }
 
   /* After qfile_open_list_scan, if an error occurs,
@@ -580,7 +542,6 @@ hjoin_outer_fill_null_values (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manage
     }
 
   qfile_close_list (thread_p, list_id);
-  context->list_id = list_id;
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
@@ -593,17 +554,12 @@ cleanup:
   hjoin_destroy_qlist (thread_p, context);
 
   /* Check if qfile_close_list was called */
-  assert (list_id == NULL || list_id->last_pgptr == NULL);
+  assert (list_id->last_pgptr == NULL);
 
   return error;
 
 error_exit:
-  if (list_id != NULL)
-    {
-      qfile_close_list (thread_p, list_id);
-      qfile_destroy_list (thread_p, list_id);
-      QFILE_FREE_AND_INIT_LIST_ID (list_id);
-    }
+  qfile_close_list (thread_p, list_id);
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
@@ -632,7 +588,7 @@ hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
   assert (thread_p != NULL);
   assert (manager != NULL);
   assert (context != NULL);
-  assert (context->list_id == NULL);
+  assert (context->list_id != NULL);
 
   outer = &context->outer;
   inner = &context->inner;
@@ -651,6 +607,52 @@ hjoin_execute_internal (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
   probe = context->probe;
   assert (build != NULL);
   assert (probe != NULL);
+
+  /* the hash scan lives in this function only: hjoin_scan_clear () at cleanup frees it on every path */
+  error = hjoin_scan_init (thread_p, &context->hash_scan, manager->key_cnt, manager->mem_limit, build->list_id);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  if (thread_is_on_trace (thread_p))
+    {
+      context->stats->hash_method = context->hash_scan.hash_list_scan_type;
+      context->stats->swap_join_inputs = (context->build == outer) ? true : false;
+    }
+
+#if defined (SERVER_MODE)
+  if (context == &manager->single_context)
+    {
+      context->status = hjoin_try_parallel_probe (thread_p, manager, context);
+      switch (context->status)
+	{
+	case HASHJOIN_STATUS_SINGLE:
+	  if (thread_is_on_trace (thread_p))
+	    {
+	      assert (context->stats != NULL);
+	      assert (context->stats->num_parallel_threads == 0);
+	    }
+	  break;
+
+	case HASHJOIN_STATUS_PARALLEL_PROBE:
+	  if (thread_is_on_trace (thread_p))
+	    {
+	      assert (context->stats != NULL);
+	      context->stats->num_parallel_threads = manager->num_parallel_threads;
+	    }
+	  break;
+
+	case HASHJOIN_STATUS_ERROR:
+	  goto error_exit;
+
+	default:
+	  /* impossible case */
+	  assert_release_error (false);
+	  goto error_exit;
+	}
+    }
+#endif /* defined (SERVER_MODE) */
 
   error = qfile_open_list_scan (build->list_id, &build->list_scan_id);
   if (error != NO_ERROR)
@@ -768,6 +770,8 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   manager->query_id = query_id;
   manager->val_descr = val_descr;
 
+  manager->mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
+
   domain_info = &proc->domain_info;
   error = hjoin_init_domain_info (thread_p, manager, domain_info);
   if (error != NO_ERROR)
@@ -801,11 +805,13 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
   context->after_join_pred = manager->after_join_pred;
   context->val_descr = manager->val_descr;
 
+  context->divisor = 1;		/* the mixed hash key itself */
+
   assert (context->status == HASHJOIN_STATUS_NONE);
 
   /* contexts */
-  assert (manager->contexts == NULL);
-  assert (manager->context_cnt == 0);
+  assert (context->child_contexts == NULL);
+  assert (context->child_cnt == 0);
 
   /* type_list */
   type_list = &manager->type_list;
@@ -837,7 +843,7 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
 
   manager->qlist_merge_method = HASHJOIN_MERGE_CONNECT;
   manager->qlist_flag =
-    (manager->qlist_merge_method == HASHJOIN_MERGE_CONNECT) ? QFILE_FLAG_ALL | QFILE_NOT_USE_MEMBUF : QFILE_FLAG_ALL;
+    (manager->qlist_merge_method == HASHJOIN_MERGE_CONNECT) ? QFILE_FLAG_ALL | QFILE_FLAG_NO_MEMBUF : QFILE_FLAG_ALL;
   manager->qlist_flag |= XASL_LIST_BACKWARD_FLAG (xasl);	/* result lists are promoted to xasl->list_id */
 
   assert (manager->px_worker_manager == NULL);
@@ -855,10 +861,6 @@ hjoin_init_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, XASL_NO
       assert (manager->stats_group == NULL);
       assert (context->stats == NULL);
     }
-
-#if defined (SERVER_MODE) && HASHJOIN_DUMP_HASH_TABLE
-  pthread_mutex_init (&manager->dump_hash_table_mutex, NULL);
-#endif /* defined (SERVER_MODE) && HASHJOIN_DUMP_HASH_TABLE */
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
@@ -891,16 +893,21 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 
   hjoin_destroy_qlist (thread_p, single_context);
 
-  if (manager->contexts != NULL)
+  /* the references before the contexts */
+  hjoin_clear_exec_contexts (thread_p, manager);
+
+  if (single_context->child_contexts != NULL)
     {
-      contexts = manager->contexts;
-      context_cnt = manager->context_cnt;
+      contexts = single_context->child_contexts;
+      context_cnt = single_context->child_cnt;
       assert (context_cnt > 1);
 
       for (context_index = 0; context_index < context_cnt; context_index++)
 	{
 	  current_context = &contexts[context_index];
 
+	  /* A parallel probe context owns its result list, left here if the join failed before it was merged.
+	   * A partition context owns its input lists only: its result list is lent for the join. */
 #if defined (SERVER_MODE)
 	  if (current_context->status == HASHJOIN_STATUS_PARALLEL_PROBE)
 	    {
@@ -913,15 +920,18 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 	    }
 	}
 
-      db_private_free_and_init (thread_p, contexts);
+      free_and_init (contexts);
 
-      manager->contexts = NULL;
-      manager->context_cnt = 0;
+      single_context->child_contexts = NULL;
+      single_context->child_cnt = 0;
     }
   else
     {
-      assert (manager->context_cnt == 0);
+      assert (single_context->child_cnt == 0);
     }
+
+  /* after the contexts: their partition lists borrow the worker tfiles */
+  hjoin_clear_worker_tfiles (thread_p, manager);
 
   if (manager->type_list.domp != NULL)
     {
@@ -945,9 +955,6 @@ hjoin_clear_manager (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
   assert (thread_p->m_px_stats == NULL);
 #endif /* defined (SERVER_MODE) */
 
-#if defined (SERVER_MODE) && HASHJOIN_DUMP_HASH_TABLE
-  pthread_mutex_destroy (&manager->dump_hash_table_mutex);
-#endif /* defined (SERVER_MODE) && HASHJOIN_DUMP_HASH_TABLE */
 }
 
 /*
@@ -1172,7 +1179,6 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
 {
   HASHJOIN_STATUS status;
   HASHJOIN_SPLIT_INFO split_info;
-  UINT32 context_index;
 
   int error = NO_ERROR;
 
@@ -1181,15 +1187,18 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
   assert (single_context != NULL);
   assert (single_context == &manager->single_context);
 
-  status = hjoin_check_partition (thread_p, manager, single_context);
-  if (status == HASHJOIN_STATUS_SINGLE)
+  error = hjoin_check_partition (thread_p, manager, single_context);
+  if (error != NO_ERROR || single_context->child_cnt == 0)
     {
-      return status;
+      /* an error is impossible: hjoin_check_empty_inputs has checked the join type and the inputs */
+      assert (error == NO_ERROR);
+
+      return HASHJOIN_STATUS_SINGLE;
     }
 
-  assert (status == HASHJOIN_STATUS_PARTITION);
+  status = HASHJOIN_STATUS_PARTITION;
 
-  error = hjoin_prepare_partition (thread_p, manager, &split_info);
+  error = hjoin_prepare_partition (thread_p, manager, single_context, &split_info);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -1198,7 +1207,18 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
 #if defined (SERVER_MODE)
   status = hjoin_try_parallel (thread_p, manager, single_context);
   single_context->status = status;
+  if (status == HASHJOIN_STATUS_ERROR)
+    {
+      goto error_exit;
+    }
 #endif /* defined (SERVER_MODE) */
+
+  /* after hjoin_try_parallel: one worker tfile is created for each split worker it reserved */
+  error = hjoin_init_worker_tfiles (thread_p, manager);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
 
   switch (status)
     {
@@ -1209,7 +1229,7 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
 	  assert (single_context->stats->num_parallel_threads == 0);
 	}
 
-      error = hjoin_build_partitions (thread_p, manager, &split_info);
+      error = hjoin_build_partitions (thread_p, manager, single_context, &split_info);
       break;
 
 #if defined (SERVER_MODE)
@@ -1221,14 +1241,13 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
 	}
 
       // *INDENT-OFF*
-      error = parallel_query::hash_join::build_partitions (*thread_p, manager, &split_info);
+      error = parallel_query::hash_join::build_partitions (*thread_p, manager, single_context, &split_info);
       // *INDENT-ON*
       break;
 #endif /* defined (SERVER_MODE) */
 
     case HASHJOIN_STATUS_ERROR:
-      goto error_exit;
-
+      /* hjoin_try_parallel returning HASHJOIN_STATUS_ERROR has gone to error_exit already */
     default:
       /* impossible case */
       assert_release_error (false);
@@ -1240,7 +1259,19 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
       goto error_exit;
     }
 
-  /* call hjoin_destroy_qlist after build_partitions is done,
+  error = hjoin_resplit_partitions (thread_p, manager, status);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  error = hjoin_init_exec_contexts (thread_p, manager);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* call hjoin_destroy_qlist after all the splits are done,
    * since HASHJOIN_STATUS_SINGLE may retry on error*/
   hjoin_destroy_qlist (thread_p, single_context);
 
@@ -1249,7 +1280,7 @@ hjoin_try_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJO
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
 
 cleanup:
-  hjoin_clear_split_info (thread_p, manager, &split_info, false);
+  hjoin_clear_split_info (thread_p, manager, &split_info);
 
   return status;
 
@@ -1260,24 +1291,34 @@ error_exit:
       manager->px_worker_manager->release_workers ();
       manager->px_worker_manager = NULL;
     }
+
+  /* reserved with the workers by hjoin_try_parallel; a parallel probe of the single join reserves its own */
+  if (manager->px_worker_stats != NULL)
+    {
+      db_private_free_and_init (thread_p, manager->px_worker_stats);
+    }
 #else
   assert (manager->px_worker_manager == NULL);
 #endif /* defined (SERVER_MODE) */
 
-  hjoin_clear_split_info (thread_p, manager, &split_info, true);
+  hjoin_clear_split_info (thread_p, manager, &split_info);
 
-  if (manager->contexts != NULL)
+  /* the references before the contexts */
+  hjoin_clear_exec_contexts (thread_p, manager);
+
+  if (single_context->child_contexts != NULL)
     {
-      assert (manager->context_cnt > 1);
+      assert (single_context->child_cnt > 1);
 
-      for (context_index = 0; context_index < manager->context_cnt; context_index++)
-	{
-	  hjoin_clear_context (thread_p, &manager->contexts[context_index]);
-	}
-
-      db_private_free_and_init (thread_p, manager->contexts);
-      manager->context_cnt = 0;
+      hjoin_clear_part_contexts (thread_p, single_context->child_contexts, single_context->child_cnt);
+      single_context->child_contexts = NULL;
     }
+
+  /* also when the partitions failed before the contexts were made: a parallel probe expects no partition count */
+  single_context->child_cnt = 0;
+
+  /* the single join that follows needs the temporary space the worker tfiles hold */
+  hjoin_clear_worker_tfiles (thread_p, manager);
 
   if (thread_is_on_trace (thread_p))
     {
@@ -1310,84 +1351,136 @@ error_exit:
 
 /*
  * hjoin_check_partition() -
- *   return: One of the following HASHJOIN_STATUS values:
- *           - HASHJOIN_STATUS_SINGLE: Partitioning is not needed.
- *           - HASHJOIN_STATUS_PARTITION: Partitioning is applied.
- *   thread_p(in): Thread entry.
- *   manager(in): Hash join manager containing shared state.
- *   single_context(in): Hash join context for single-threaded execution.
- */
-static HASHJOIN_STATUS
-hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * single_context)
-{
-  QFILE_LIST_ID *outer_list_id, *inner_list_id;
-
-  UINT64 mem_limit;
-  INT64 min_tuple_cnt;
-  UINT64 per_entry_size;
-  UINT32 part_cnt;
-
-  assert (thread_p != NULL);
-  assert (manager != NULL);
-  assert (single_context != NULL);
-  assert (single_context == &manager->single_context);
-
-  outer_list_id = single_context->outer.list_id;
-  inner_list_id = single_context->inner.list_id;
-  assert (outer_list_id != NULL);
-  assert (inner_list_id != NULL);
-
-  mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
-  assert (mem_limit > 0);
-
-  min_tuple_cnt =
-    (outer_list_id->tuple_cnt < inner_list_id->tuple_cnt) ? outer_list_id->tuple_cnt : inner_list_id->tuple_cnt;
-  assert (min_tuple_cnt >= 0);
-
-  /* Per-entry HYBRID size: ~2 slots (load factor 1/0.7 * power-of-two rounding) + one entry + a tuple position.
-   * Linear estimate is enough: min_tuple_cnt is INT64, and the partition count is only approximate
-   * (each partition re-selects its method). */
-  per_entry_size = 2 * sizeof (MHT_HLS_SLOT) + sizeof (MHT_HLS_ENTRY) + sizeof (QFILE_TUPLE_SIMPLE_POS);
-
-  part_cnt = CEIL_PTVDIV (per_entry_size * min_tuple_cnt, mem_limit * PARTITION_FILL_FACTOR);
-  if (part_cnt > 1)
-    {
-      if (IS_NULL_FILL_JOIN_TYPE (manager->join_type))
-	{
-	  /* In joins that NULL-fill one side,
-	   * tuples with NULL in any join column are placed in the last partition.
-	   * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition.
-	   */
-	  part_cnt += 1;
-	}
-
-      manager->context_cnt = part_cnt;
-
-      return HASHJOIN_STATUS_PARTITION;
-    }
-  else
-    {
-      assert (manager->context_cnt == 0);
-
-      return HASHJOIN_STATUS_SINGLE;
-    }
-}
-
-/*
- * hjoin_prepare_partition() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
- *   split_info(in): Split information.
+ *   context(in/out): The single context or a partition; part_cnt is set to the number of partitions, or 0.
  */
 static int
-hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info)
+hjoin_check_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
 {
-  QFILE_LIST_ID *outer_list_id, *inner_list_id;
-  QFILE_LIST_ID **outer_part_list_id = NULL, **inner_part_list_id = NULL;
+  QFILE_LIST_ID *build_list_id;
+  UINT64 part_cnt;
+  int error = NO_ERROR;
 
-  HASHJOIN_CONTEXT *single_context;
-  HASHJOIN_CONTEXT *contexts = NULL, *current_context;
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+  assert (context != NULL);
+  assert (context->level < HASHJOIN_SPLIT_MAX_LEVEL);
+  assert (context->child_cnt == 0);
+  assert (context->child_contexts == NULL);
+
+  if (manager->mem_limit == 0)
+    {
+      /* 0 turns hash list scans off and no hash join is planned under it, but a statement prepared under another
+       * value still runs its hash join plan: do not partition, and hjoin_scan_init chooses HASH_FILE */
+      assert (context == &manager->single_context);
+      return NO_ERROR;
+    }
+
+  /* only a context joined by hash has a hash table to size (hjoin_execute takes the same status) */
+  if (hjoin_check_empty_inputs (manager, context) != HASHJOIN_STATUS_TRY)
+    {
+      return NO_ERROR;
+    }
+
+  /* only the first split makes the partition of NULL join keys: the single context (level 0) has no partitions yet,
+   * and a partition split again (level 2) gets only the tuples with hash keys */
+  if (context->level == 1)
+    {
+      HASHJOIN_CONTEXT *last_context = &manager->single_context.child_contexts[manager->single_context.child_cnt - 1];
+
+      /* In joins that NULL-fill one side,
+       * tuples with NULL in any join column are placed in the last partition of the single context.
+       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition, so it is not split again.
+       */
+      if (IS_NULL_FILL_JOIN_TYPE (manager->join_type) && context == last_context)
+	{
+	  return NO_ERROR;
+	}
+    }
+
+  /* count by the build input hjoin_execute will choose: the smaller input of an inner join, or the input the join
+   * type fixes, which may be the larger one */
+  error = hjoin_init_context (thread_p, manager, context);
+  if (error != NO_ERROR)
+    {
+      return error;
+    }
+
+  build_list_id = context->build->list_id;
+
+  part_cnt = hjoin_calc_part_cnt (build_list_id, manager->mem_limit, PARTITION_FILL_FACTOR);
+  if (part_cnt == 0)
+    {
+      return NO_ERROR;
+    }
+
+  /* only the first split makes the partition of NULL join keys: a partition split again (level 1) has only the tuples
+   * with hash keys */
+  if (context->level == 0)
+    {
+      if (IS_NULL_FILL_JOIN_TYPE (manager->join_type))
+	{
+	  /* the partition of NULL join keys */
+	  part_cnt += 1;
+	}
+    }
+
+  context->child_cnt = (UINT32) MIN (part_cnt, HASHJOIN_PART_MAX_CNT);
+
+  return NO_ERROR;
+}
+
+/*
+ * hjoin_calc_part_cnt() - number of partitions a context is split into, by the size hjoin_scan_init gives its hash
+ *                         table
+ *   return: 0 if its hash table fits in max_hash_list_scan_size as it is; otherwise the number of partitions, neither
+ *           limited by HASHJOIN_PART_MAX_CNT nor counting the partition of NULL join keys: the caller adds both.
+ *   build_list_id(in): Build input.
+ *   mem_limit(in): max_hash_list_scan_size.
+ *   fill_factor(in): Part of max_hash_list_scan_size a partition aims at.
+ */
+static UINT64
+hjoin_calc_part_cnt (QFILE_LIST_ID * build_list_id, UINT64 mem_limit, double fill_factor)
+{
+  UINT64 in_mem_size, hybrid_size;
+
+  assert (build_list_id != NULL);
+  assert (mem_limit > 0);
+
+  if (build_list_id->tuple_cnt > INT_MAX)
+    {
+      /* it never fits (hjoin_scan_init chooses HASH_FILE), and its exact size takes an int row count */
+      hybrid_size = hjoin_estimate_hash_table_size (build_list_id);
+    }
+  else
+    {
+      in_mem_size = hjoin_calc_hash_table_size (build_list_id, HASH_METH_IN_MEM);
+      hybrid_size = hjoin_calc_hash_table_size (build_list_id, HASH_METH_HYBRID);
+      if (in_mem_size <= mem_limit || hybrid_size <= mem_limit)
+	{
+	  return 0;
+	}
+    }
+
+  /* as many partitions as its hash table needs, with room */
+  return CEIL_PTVDIV (hybrid_size, mem_limit * fill_factor);
+}
+
+/*
+ * hjoin_prepare_partition() - make the contexts of the partitions of a context and their statistics
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   context(in/out): The single context or a partition; child_cnt is set (hjoin_check_partition).
+ *   split_info(out): The partition lists of each input, referred to by the split.
+ */
+static int
+hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
+			 HASHJOIN_SPLIT_INFO * split_info)
+{
+  HASHJOIN_CONTEXT *contexts = NULL;
   HASHJOIN_STATS *context_stats = NULL;
 
   UINT32 part_cnt, part_index;
@@ -1396,98 +1489,49 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
 
   assert (thread_p != NULL);
   assert (manager != NULL);
+  assert (context != NULL);
+  assert (context->child_contexts == NULL);
   assert (split_info != NULL);
 
-  single_context = &manager->single_context;
-  outer_list_id = single_context->outer.list_id;
-  inner_list_id = single_context->inner.list_id;
-  assert (outer_list_id != NULL);
-  assert (inner_list_id != NULL);
+  part_cnt = context->child_cnt;
+  assert (part_cnt > 1);
 
-  error = hjoin_init_split_info (thread_p, manager, split_info);
+  error = hjoin_init_part_contexts (thread_p, manager, context, part_cnt, split_info, &contexts);
   if (error != NO_ERROR)
     {
       goto error_exit;
     }
 
-  outer_part_list_id = split_info->outer.part_list_id;
-  inner_part_list_id = split_info->inner.part_list_id;
-  assert (outer_part_list_id != NULL);
-  assert (inner_part_list_id != NULL);
-
-  part_cnt = manager->context_cnt;
-  assert (part_cnt > 1);
-
-  contexts = (HASHJOIN_CONTEXT *) db_private_alloc (thread_p, part_cnt * sizeof (HASHJOIN_CONTEXT));
-  if (contexts == NULL)
-    {
-      goto error_exit;
-    }
-  memset (contexts, 0, part_cnt * sizeof (HASHJOIN_CONTEXT));
-
-  for (part_index = 0; part_index < part_cnt; part_index++)
-    {
-      current_context = &contexts[part_index];
-
-      outer_part_list_id[part_index] =
-	qfile_open_list (thread_p, &outer_list_id->type_list, NULL, outer_list_id->query_id,
-			 QFILE_FLAG_ALL | QFILE_LIST_BACKWARD_FLAG (outer_list_id), NULL);
-      if (outer_part_list_id[part_index] == NULL)
-	{
-	  goto error_exit;
-	}
-
-      inner_part_list_id[part_index] =
-	qfile_open_list (thread_p, &inner_list_id->type_list, NULL, inner_list_id->query_id,
-			 QFILE_FLAG_ALL | QFILE_LIST_BACKWARD_FLAG (inner_list_id), NULL);
-      if (inner_part_list_id[part_index] == NULL)
-	{
-	  goto error_exit;
-	}
-
-      assert (current_context->list_id == NULL);
-
-      current_context->outer.list_id = outer_part_list_id[part_index];
-      current_context->outer.input = single_context->outer.input;
-      current_context->outer.coerce_domains = single_context->outer.coerce_domains;
-      current_context->outer.need_coerce_domains = single_context->outer.need_coerce_domains;
-      current_context->outer.regu_list_pred = single_context->outer.regu_list_pred;
-
-      current_context->inner.list_id = inner_part_list_id[part_index];
-      current_context->inner.input = single_context->inner.input;
-      current_context->inner.coerce_domains = single_context->inner.coerce_domains;
-      current_context->inner.need_coerce_domains = single_context->inner.need_coerce_domains;
-      current_context->inner.regu_list_pred = single_context->inner.regu_list_pred;
-
-      assert (current_context->build == NULL);
-      assert (current_context->probe == NULL);
-
-      current_context->during_join_pred = single_context->during_join_pred;
-      current_context->after_join_pred = single_context->after_join_pred;
-      current_context->val_descr = single_context->val_descr;
-    }
-
-  manager->contexts = contexts;
+  context->child_contexts = contexts;
 
   if (thread_is_on_trace (thread_p))
     {
-      context_stats = (HASHJOIN_STATS *) malloc (part_cnt * sizeof (HASHJOIN_STATS));
+      /* calloc, as the contexts are (hjoin_clear_context and hjoin_clear_manager free them) */
+      context_stats = (HASHJOIN_STATS *) calloc (part_cnt, sizeof (HASHJOIN_STATS));
       if (context_stats == NULL)
 	{
 	  error = ER_OUT_OF_VIRTUAL_MEMORY;
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 1, part_cnt * sizeof (HASHJOIN_STATS));
 	  goto error_exit;
 	}
-      memset (context_stats, 0, part_cnt * sizeof (HASHJOIN_STATS));
 
       for (part_index = 0; part_index < part_cnt; part_index++)
 	{
 	  contexts[part_index].stats = &context_stats[part_index];
 	}
 
-      assert (manager->stats_group != NULL);
-      manager->stats_group->context_stats = context_stats;
-      manager->stats_group->context_cnt = part_cnt;
+      if (context->level == 0)
+	{
+	  /* the statistics of the partitions of the single context are dumped after the join (qdump_print_stats) */
+	  assert (manager->stats_group != NULL);
+	  manager->stats_group->context_stats = context_stats;
+	  manager->stats_group->context_cnt = part_cnt;
+	}
+      else
+	{
+	  /* those of a partition split again are merged into it once they are executed */
+	  context->child_stats = context_stats;
+	}
     }
   else
     {
@@ -1498,31 +1542,18 @@ hjoin_prepare_partition (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HA
   return NO_ERROR;
 
 error_exit:
+  /* nothing fails after context_stats is allocated, so it is never freed here */
+  assert (context_stats == NULL);
+
+  context->child_contexts = NULL;
+  context->child_cnt = 0;
+
+  hjoin_clear_split_info (thread_p, manager, split_info);
+
   if (contexts != NULL)
     {
-      db_private_free_and_init (thread_p, contexts);
+      hjoin_clear_part_contexts (thread_p, contexts, part_cnt);
     }
-
-  hjoin_clear_split_info (thread_p, manager, split_info, true);
-
-  if (thread_is_on_trace (thread_p))
-    {
-      if (context_stats != NULL)
-	{
-	  free_and_init (context_stats);
-	}
-
-      assert (manager->stats_group != NULL);
-      manager->stats_group->context_stats = NULL;
-      manager->stats_group->context_cnt = 0;
-    }
-  else
-    {
-      assert (context_stats == NULL);
-      assert (manager->stats_group == NULL);
-    }
-
-  manager->contexts = NULL;
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
@@ -1538,19 +1569,26 @@ error_exit:
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
+ *   context(in): The single context or a partition, split into its child contexts.
  *   split_info(in): Split information.
  */
 static int
-hjoin_build_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info)
+hjoin_build_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
+			HASHJOIN_SPLIT_INFO * split_info)
 {
-  QFILE_LIST_ID **temp_part_list_id = NULL;
+  HASHJOIN_INPUT_SPLIT_INFO *input;
   HASH_SCAN_KEY *temp_key = NULL;
-  UINT32 part_cnt, part_index;
+  HASHJOIN_SPLIT_STAGING_BUFFER staging_buffer;
+  int side;
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
+  assert (context != NULL);
   assert (split_info != NULL);
+
+  /* Prevent faults when hjoin_clear_split_staging_buffer is called */
+  memset (&staging_buffer, 0, sizeof (HASHJOIN_SPLIT_STAGING_BUFFER));
 
   HASHJOIN_STATS *stats = manager->single_context.stats;
   HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
@@ -1561,31 +1599,27 @@ hjoin_build_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
       hjoin_trace_start (thread_p, &start_stats);
     }
 
-  part_cnt = manager->context_cnt;
-
-  temp_part_list_id = (QFILE_LIST_ID **) db_private_alloc (thread_p, part_cnt * sizeof (QFILE_LIST_ID *));
-  if (temp_part_list_id == NULL)
-    {
-      goto error_exit;
-    }
-  memset (temp_part_list_id, 0, part_cnt * sizeof (QFILE_LIST_ID *));
-
   temp_key = qdata_alloc_hscan_key (thread_p, manager->key_cnt, true);
   if (temp_key == NULL)
     {
       goto error_exit;
     }
 
-  error = hjoin_split_qlist (thread_p, manager, &split_info->outer, temp_part_list_id, temp_key);
+  error = hjoin_init_split_staging_buffer (thread_p, &staging_buffer, context->child_cnt);
   if (error != NO_ERROR)
     {
       goto error_exit;
     }
 
-  error = hjoin_split_qlist (thread_p, manager, &split_info->inner, temp_part_list_id, temp_key);
-  if (error != NO_ERROR)
+  for (side = 0; side < 2; side++)
     {
-      goto error_exit;
+      input = (side == 0) ? &split_info->outer : &split_info->inner;
+
+      error = hjoin_split_qlist (thread_p, manager, context, input, &staging_buffer, temp_key);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
     }
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -1596,19 +1630,7 @@ cleanup:
       hjoin_trace_end (thread_p, &stats->split, &start_stats);
     }
 
-  if (temp_part_list_id != NULL)
-    {
-      for (part_index = 0; part_index < part_cnt; part_index++)
-	{
-	  if (temp_part_list_id[part_index] != NULL)
-	    {
-	      qfile_close_list (thread_p, temp_part_list_id[part_index]);
-	      qfile_destroy_list (thread_p, temp_part_list_id[part_index]);
-	      QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
-	    }
-	}
-      db_private_free_and_init (thread_p, temp_part_list_id);
-    }
+  hjoin_clear_split_staging_buffer (thread_p, &staging_buffer);
 
   if (temp_key != NULL)
     {
@@ -1632,45 +1654,58 @@ error_exit:
  *   return: Error code (NO_ERROR if successful, error code otherwise)
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
+ *   context(in): The single context or a partition, split into its child contexts.
  *   split_info(in): Split information.
+ *   staging_buffer(in/out): Staged last pages of the partition lists, kept from one input to the next.
  *   key(in/out): Space for reading join column values.
  */
 static int
-hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_INPUT_SPLIT_INFO * split_info,
-		   QFILE_LIST_ID ** temp_part_list_id, HASH_SCAN_KEY * temp_key)
+hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
+		   HASHJOIN_INPUT_SPLIT_INFO * split_info, HASHJOIN_SPLIT_STAGING_BUFFER * staging_buffer,
+		   HASH_SCAN_KEY * temp_key)
 {
   QFILE_LIST_ID *list_id;
   QFILE_LIST_ID **part_list_id;
   QFILE_LIST_SCAN_ID list_scan_id;
   QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE scan_code;
+  VPID read_vpid;
+  HASHJOIN_SPLIT_LANDING_BUFFER landing_buffer;
+  HASHJOIN_SPLIT_WRITER split_writer;
 
-  unsigned int hash_key;
-  UINT32 part_cnt, part_index, part_id;
-
-  bool has_null_fill_side = false;
-  bool need_skip_next = false;
+  UINT32 part_cnt, part_id;
+  bool is_skipped = false;
 
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
+  assert (context != NULL);
   assert (split_info != NULL);
   assert (split_info->fetch_info != NULL);
-  assert (temp_part_list_id != NULL);
+  assert (staging_buffer != NULL);
   assert (temp_key != NULL);
 
   list_id = split_info->fetch_info->list_id;
   part_list_id = split_info->part_list_id;
-  part_cnt = manager->context_cnt;
+  part_cnt = context->child_cnt;
   assert (list_id != NULL);
   assert (part_list_id != NULL);
   assert (part_cnt > 1);
 
-  /* Prevent faults when qfile_close_scan is called */
+  /* Prevent faults when qfile_close_scan and hjoin_clear_split_landing_buffer are called */
   list_scan_id.status = S_CLOSED;
+  memset (&landing_buffer, 0, sizeof (HASHJOIN_SPLIT_LANDING_BUFFER));
+  VPID_SET_NULL (&read_vpid);
 
-  has_null_fill_side = IS_NULL_FILL_JOIN_TYPE (manager->join_type);
+  error = hjoin_init_split_landing_buffer (thread_p, &landing_buffer, part_cnt);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  hjoin_init_split_writer (&split_writer, &landing_buffer, staging_buffer, NULL, &manager->worker_tfiles[0],
+			   part_list_id);
 
   error = qfile_open_list_scan (list_id, &list_scan_id);
   if (error != NO_ERROR)
@@ -1680,177 +1715,171 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
   while ((scan_code = qfile_scan_list_next (thread_p, &list_scan_id, &tuple_record, PEEK)) == S_SUCCESS)
     {
-      error = hjoin_fetch_key (thread_p, split_info->fetch_info, &tuple_record, temp_key, NULL /* compare_key */ ,
-			       &need_skip_next);
-      if (error != NO_ERROR)
+      if (context->level == 0)
 	{
-	  break;		/* error_exit */
-	}
-      else if (need_skip_next)
-	{
-	  need_skip_next = false;	/* init */
-
-	  if (has_null_fill_side)
+	  error = hjoin_get_split_part_id (thread_p, manager, split_info->fetch_info, &tuple_record, temp_key,
+					   part_cnt, &part_id, &is_skipped);
+	  if (error != NO_ERROR)
 	    {
-	      /* In joins that NULL-fill one side,
-	       * tuples with NULL in any join column are placed in the last partition.
-	       * HASHJOIN_STATUS_FILL_NULL_VALUES is triggered for all tuples in that partition.
-	       */
-	      part_id = part_cnt - 1;
+	      break;		/* error_exit */
 	    }
-	  else
+	  else if (is_skipped)
 	    {
 	      /* next tuple */
 	      continue;
 	    }
-	}			/* else if (need_skip_next) */
+	}
       else
 	{
-	  hash_key = qdata_hash_scan_key (temp_key, UINT_MAX, HASH_METH_IN_MEM);
-	  part_id = (has_null_fill_side) ? hash_key % (part_cnt - 1) : hash_key % (part_cnt);
-
-	  hjoin_update_tuple_hash_key (thread_p, &tuple_record, hash_key);
-	}
-
-      /* overflow page */
-      if (QFILE_GET_OVERFLOW_PAGE_ID (list_scan_id.curr_pgptr) != NULL_PAGEID)
-	{
-	  assert (part_list_id[part_id]->last_pgptr == NULL);
-
-	  error = qfile_reopen_list_as_append_mode (thread_p, part_list_id[part_id]);
-	  if (error != NO_ERROR)
+	  /* the scan has left the page before and released it: its tuples are taken */
+	  if (!VPID_EQ (&read_vpid, &list_scan_id.curr_vpid))
 	    {
-	      break;		/* error_exit */
+	      if (!VPID_ISNULL (&read_vpid))
+		{
+		  hjoin_add_free_page_to_split_writer (&split_writer, &read_vpid);
+		}
+	      read_vpid = list_scan_id.curr_vpid;
 	    }
 
-	  error = qfile_add_tuple_to_list (thread_p, part_list_id[part_id], tuple_record.tpl);
-	  if (error != NO_ERROR)
+	  /* a partition split again: by the hash key stored in the tuple at the first split */
+	  part_id = hjoin_get_resplit_part_id (&tuple_record, context->divisor, part_cnt);
+
+	  if (QFILE_GET_OVERFLOW_PAGE_ID (list_scan_id.curr_pgptr) != NULL_PAGEID)
 	    {
-	      break;		/* error_exit */
-	    }
-
-	  qfile_close_list (thread_p, part_list_id[part_id]);
-
-	  /* next tuple */
-	  continue;
-	}
-
-      if (temp_part_list_id[part_id] != NULL &&
-	  (temp_part_list_id[part_id]->tfile_vfid->membuf_last ==
-	   temp_part_list_id[part_id]->tfile_vfid->membuf_npages - 1) &&
-	  (temp_part_list_id[part_id]->last_offset + QFILE_GET_TUPLE_LENGTH (tuple_record.tpl)) > DB_PAGESIZE)
-	{
-	  qfile_close_list (thread_p, temp_part_list_id[part_id]);	/* may be meaningless since only memory buffer is used */
-
-	  assert (part_list_id[part_id]->last_pgptr == NULL);
-
-	  if (part_list_id[part_id]->tuple_cnt > 0)
-	    {
-	      error = qfile_append_list (thread_p, part_list_id[part_id], temp_part_list_id[part_id]);
+	      error = hjoin_add_overflow_to_split_writer (thread_p, &split_writer, part_id, list_scan_id.curr_pgptr);
 	      if (error != NO_ERROR)
 		{
 		  break;	/* error_exit */
 		}
 
-	      error = qfile_truncate_list (thread_p, temp_part_list_id[part_id]);
-	      if (error != NO_ERROR)
-		{
-		  break;	/* error_exit */
-		}
-	    }
-	  else
-	    {
-	      qfile_destroy_list (thread_p, part_list_id[part_id]);
-	      qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false, QFILE_PROHIBIT_DEPENDENT);
-	      QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
+	      /* next tuple */
+	      continue;
 	    }
 	}
 
-      if (temp_part_list_id[part_id] == NULL)
-	{
-	  temp_part_list_id[part_id] =
-	    qfile_open_list (thread_p, &list_id->type_list, NULL, list_id->query_id,
-			     QFILE_FLAG_ALL | QFILE_LIST_BACKWARD_FLAG (list_id), NULL);
-	  if (temp_part_list_id[part_id] == NULL)
-	    {
-	      assert_release_error (er_errid () != NO_ERROR);
-	      error = er_errid ();
-	      break;		/* error_exit */
-	    }
-	}
-
-      /* without a memory buffer, a fixed last page per partition exhausts the page buffer; no-op with membuf */
-      error = qfile_reopen_list_as_append_mode (thread_p, temp_part_list_id[part_id]);
+      error = hjoin_add_to_split_writer (thread_p, &split_writer, part_id, tuple_record.tpl);
       if (error != NO_ERROR)
 	{
 	  break;		/* error_exit */
 	}
-
-      error = qfile_add_tuple_to_list (thread_p, temp_part_list_id[part_id], tuple_record.tpl);
-
-      /* close before the error check so that the list is closed on every path */
-      qfile_close_list (thread_p, temp_part_list_id[part_id]);
-
-      if (error != NO_ERROR)
-	{
-	  break;		/* error_exit */
-	}
-
-      /* without a memory buffer, the page is in the temp file */
-      assert (temp_part_list_id[part_id]->tfile_vfid->membuf_npages == 0
-	      || VFID_ISNULL (&temp_part_list_id[part_id]->tfile_vfid->temp_vfid));
     }				/* while (qfile_scan_list_next (list_scan_id)) */
+
+  /* the last page, released at the end of the scan */
+  if (scan_code == S_END && !VPID_ISNULL (&read_vpid))
+    {
+      hjoin_add_free_page_to_split_writer (&split_writer, &read_vpid);
+    }
 
   /* After qfile_open_list_scan, if an error occurs,
    * ensure qfile_close_scan runs here
    * before jumping to error_exit. */
   qfile_close_scan (thread_p, &list_scan_id);
 
-  /* skip the merge on error, as the parallel split does; a successful append below would overwrite the error */
+  if (scan_code != S_ERROR && error == NO_ERROR)
+    {
+      error = hjoin_flush_split_writer (thread_p, &split_writer);
+    }
+  hjoin_clear_split_landing_buffer (thread_p, &landing_buffer);
+
+  if (scan_code != S_ERROR && error == NO_ERROR)
+    {
+      error =
+	hjoin_flush_split_staging_buffer (thread_p, staging_buffer, part_list_id, manager->worker_tfiles[0].tfile);
+    }
+
   if (scan_code == S_ERROR || error != NO_ERROR)
     {
       goto error_exit;
     }
 
-  for (part_index = 0; part_index < part_cnt; part_index++)
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
+  return NO_ERROR;
+
+error_exit:
+  hjoin_clear_split_landing_buffer (thread_p, &landing_buffer);
+
+  if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
-      if (temp_part_list_id[part_index] != NULL)
+      assert_release_error (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+
+  return error;
+}
+
+/*
+ * hjoin_resplit_partitions() - split again the partitions whose hash tables do not fit (hjoin_check_partition), before
+ *                              the join; each owns its partitions (HASHJOIN_CONTEXT)
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   status(in): HASHJOIN_STATUS_PARTITION or HASHJOIN_STATUS_PARALLEL: the way the partitions were split.
+ */
+static int
+hjoin_resplit_partitions (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_STATUS status)
+{
+  HASHJOIN_CONTEXT *single_context, *current_context;
+  HASHJOIN_SPLIT_INFO split_info;
+  UINT32 context_index;
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+
+  single_context = &manager->single_context;
+
+  for (context_index = 0; context_index < single_context->child_cnt; context_index++)
+    {
+      current_context = &single_context->child_contexts[context_index];
+
+      error = hjoin_check_partition (thread_p, manager, current_context);
+      if (error != NO_ERROR)
 	{
-	  qfile_close_list (thread_p, temp_part_list_id[part_index]);	/* may be meaningless since only memory buffer is used */
-
-	  if (temp_part_list_id[part_index]->tuple_cnt > 0)
-	    {
-	      assert (part_list_id[part_index]->last_pgptr == NULL);
-
-	      if (part_list_id[part_index]->tuple_cnt > 0)
-		{
-		  error = qfile_append_list (thread_p, part_list_id[part_index], temp_part_list_id[part_index]);
-		  if (error != NO_ERROR)
-		    {
-		      break;	/* error_exit */
-		    }
-
-		  qfile_destroy_list (thread_p, temp_part_list_id[part_index]);
-		}
-	      else
-		{
-		  qfile_destroy_list (thread_p, part_list_id[part_index]);
-		  qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false,
-				      QFILE_PROHIBIT_DEPENDENT);
-		}
-	    }
-	  else
-	    {
-	      qfile_destroy_list (thread_p, temp_part_list_id[part_index]);
-	    }
-
-	  QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_index]);
+	  goto error_exit;
 	}
-    }
 
-  if (scan_code == S_ERROR || error != NO_ERROR)
-    {
-      goto error_exit;
+      if (current_context->child_cnt == 0)
+	{
+	  continue;
+	}
+
+      error = hjoin_prepare_partition (thread_p, manager, current_context, &split_info);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      switch (status)
+	{
+	case HASHJOIN_STATUS_PARTITION:
+	  error = hjoin_build_partitions (thread_p, manager, current_context, &split_info);
+	  break;
+
+#if defined (SERVER_MODE)
+	case HASHJOIN_STATUS_PARALLEL:
+	  // *INDENT-OFF*
+	  error = parallel_query::hash_join::build_partitions (*thread_p, manager, current_context, &split_info);
+	  // *INDENT-ON*
+	  break;
+#endif /* defined (SERVER_MODE) */
+
+	default:
+	  /* impossible case */
+	  assert_release_error (false);
+	  error = er_errid ();
+	  break;
+	}
+
+      /* the references to the partition lists; the partitions that own them stay with the context, even on error */
+      hjoin_clear_split_info (thread_p, manager, &split_info);
+
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
+
+      /* its pages are the places of the pages of its partitions now */
+      hjoin_destroy_qlist (thread_p, current_context);
     }
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -1876,67 +1905,79 @@ error_exit:
 int
 hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
 {
-  QFILE_LIST_ID *new_list_id = NULL;
+  assert (manager != NULL);
 
-  HASHJOIN_CONTEXT *single_context;
+  assert (context != NULL && context != &manager->single_context);
+
+  return hjoin_merge_qlist_into (thread_p, manager, &manager->single_context.list_id, &context->list_id);
+}
+
+/*
+ * hjoin_merge_qlist_into() -
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   dest_list_id(in/out): Result list that receives the result; NULL if there is none yet.
+ *   list_id(in/out): Result list to merge; NULL after the merge.
+ */
+int
+hjoin_merge_qlist_into (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, QFILE_LIST_ID ** dest_list_id,
+			QFILE_LIST_ID ** list_id)
+{
+  QFILE_LIST_ID *new_list_id = NULL;
 
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
-  assert (context != NULL);
+  assert (dest_list_id != NULL && list_id != NULL);
 
   /* Check if qfile_close_list was called */
-  assert (context->list_id != NULL);
-  assert (context->list_id->last_pgptr == NULL);
+  assert (*list_id != NULL);
+  assert ((*list_id)->last_pgptr == NULL);
 
-  single_context = &manager->single_context;
-  assert (single_context != context);
-
-  if (single_context->list_id == NULL)
+  if (*dest_list_id == NULL)
     {
-      single_context->list_id = context->list_id;
-      context->list_id = NULL;
+      *dest_list_id = *list_id;
+      *list_id = NULL;
       return NO_ERROR;
     }
-  else if (single_context->list_id->tuple_cnt == 0)
+  else if ((*dest_list_id)->tuple_cnt == 0)
     {
-      qfile_destroy_list (thread_p, single_context->list_id);
-      QFILE_FREE_AND_INIT_LIST_ID (single_context->list_id);
+      qfile_destroy_list (thread_p, *dest_list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (*dest_list_id);
 
-      single_context->list_id = context->list_id;
-      context->list_id = NULL;
+      *dest_list_id = *list_id;
+      *list_id = NULL;
       return NO_ERROR;
     }
-  else if (context->list_id->tuple_cnt == 0)
+  else if ((*list_id)->tuple_cnt == 0)
     {
-      qfile_destroy_list (thread_p, context->list_id);
-      QFILE_FREE_AND_INIT_LIST_ID (context->list_id);
+      qfile_destroy_list (thread_p, *list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (*list_id);
       return NO_ERROR;
     }
 
   /* Check if qfile_close_list was called */
-  assert (single_context->list_id->last_pgptr == NULL);
+  assert ((*dest_list_id)->last_pgptr == NULL);
 
   switch (manager->qlist_merge_method)
     {
     case HASHJOIN_MERGE_COMBINE:
       {
-	new_list_id =
-	  qfile_combine_two_list (thread_p, single_context->list_id, context->list_id,
-				  QFILE_FLAG_ALL | QFILE_FLAG_UNION);
+	new_list_id = qfile_combine_two_list (thread_p, *dest_list_id, *list_id, QFILE_FLAG_ALL | QFILE_FLAG_UNION);
 	if (new_list_id == NULL)
 	  {
 	    goto error_exit;
 	  }
 
-	qfile_destroy_list (thread_p, single_context->list_id);
-	QFILE_FREE_AND_INIT_LIST_ID (single_context->list_id);
+	qfile_destroy_list (thread_p, *dest_list_id);
+	QFILE_FREE_AND_INIT_LIST_ID (*dest_list_id);
 
-	qfile_destroy_list (thread_p, context->list_id);
-	QFILE_FREE_AND_INIT_LIST_ID (context->list_id);
+	qfile_destroy_list (thread_p, *list_id);
+	QFILE_FREE_AND_INIT_LIST_ID (*list_id);
 
-	single_context->list_id = new_list_id;
+	*dest_list_id = new_list_id;
 	new_list_id = NULL;
 
 	break;
@@ -1944,28 +1985,28 @@ hjoin_merge_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
     case HASHJOIN_MERGE_APPEND:
       {
-	error = qfile_append_list (thread_p, single_context->list_id, context->list_id);
+	error = qfile_append_list (thread_p, *dest_list_id, *list_id);
 	if (error != NO_ERROR)
 	  {
 	    goto error_exit;
 	  }
 
-	qfile_destroy_list (thread_p, context->list_id);
-	QFILE_FREE_AND_INIT_LIST_ID (context->list_id);
+	qfile_destroy_list (thread_p, *list_id);
+	QFILE_FREE_AND_INIT_LIST_ID (*list_id);
 
 	break;
       }
 
     case HASHJOIN_MERGE_CONNECT:
       {
-	error = qfile_connect_list (thread_p, single_context->list_id, context->list_id);
+	error = qfile_connect_list (thread_p, *dest_list_id, *list_id);
 	if (error != NO_ERROR)
 	  {
 	    goto error_exit;
 	  }
 
-	/* Do not call QFILE_FREE_AND_INIT_LIST_ID; it must be called through single_context->list_id. */
-	context->list_id = NULL;
+	/* Do not call QFILE_FREE_AND_INIT_LIST_ID; it must be called through *dest_list_id. */
+	*list_id = NULL;
 	break;
       }
 
@@ -2039,7 +2080,7 @@ hjoin_try_parallel (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
       return HASHJOIN_STATUS_PARTITION;
     }
 
-  degree = MIN (degree, manager->context_cnt /* part_cnt */ );
+  degree = MIN (degree, manager->single_context.child_cnt /* part_cnt */ );
 
   px_worker_manager = parallel_query::worker_manager::try_reserve_workers (degree);
   if (px_worker_manager == NULL)
@@ -2115,7 +2156,7 @@ hjoin_try_parallel_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, H
 
   assert (thread_p != NULL);
   assert (manager != NULL);
-  assert (manager->context_cnt == 0);
+  assert (manager->single_context.child_cnt == 0);
   assert (single_context != NULL);
   assert (single_context == &manager->single_context);
 
@@ -2196,56 +2237,134 @@ error_exit:
 }
 
 /*
- * hjoin_init_split_info() -
+ * hjoin_init_worker_tfiles() - create the temporary files the partition lists are written to
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
- *   manager(in): Hash join manager containing shared state.
- *   split_info(in/out): Split information.
+ *   manager(in): Hash join manager; px_worker_manager is set if the split is parallel.
  */
 static int
-hjoin_init_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info)
+hjoin_init_worker_tfiles (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
 {
-  HASHJOIN_CONTEXT *single_context;
-  HASHJOIN_INPUT_SPLIT_INFO *outer, *inner;
-  UINT32 part_cnt;
+  HASHJOIN_WORKER_TFILE *worker_tfile;
+  int worker_cnt, worker_index;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
-  assert (split_info != NULL);
+  assert (manager->worker_tfiles == NULL);
 
-  single_context = &manager->single_context;
+  /* one per reserved split worker, one for a serial split */
+  worker_cnt = (manager->px_worker_manager != NULL) ? manager->num_parallel_threads : 1;
+  assert (worker_cnt > 0);
 
-  outer = &split_info->outer;
-  inner = &split_info->inner;
-
-  outer->fetch_info = &single_context->outer;
-  outer->part_list_id = NULL;
-
-  inner->fetch_info = &single_context->inner;
-  inner->part_list_id = NULL;
-
-  part_cnt = manager->context_cnt;
-  assert (part_cnt > 1);
-
-  outer->part_list_id = (QFILE_LIST_ID **) db_private_alloc (thread_p, part_cnt * sizeof (QFILE_LIST_ID *));
-  if (outer->part_list_id == NULL)
+  /* one block: the worker tfiles, then their free_vpids */
+  manager->worker_tfiles =
+    (HASHJOIN_WORKER_TFILE *) db_private_alloc (thread_p,
+						worker_cnt * (sizeof (HASHJOIN_WORKER_TFILE)
+							      + HASHJOIN_SPLIT_FREE_PAGE_MAX_CNT * sizeof (VPID)));
+  if (manager->worker_tfiles == NULL)
     {
       goto error_exit;
     }
-  memset (outer->part_list_id, 0, part_cnt * sizeof (QFILE_LIST_ID *));
 
-  inner->part_list_id = (QFILE_LIST_ID **) db_private_alloc (thread_p, part_cnt * sizeof (QFILE_LIST_ID *));
-  if (inner->part_list_id == NULL)
+  for (worker_index = 0; worker_index < worker_cnt; worker_index++)
     {
-      goto error_exit;
+      worker_tfile = &manager->worker_tfiles[worker_index];
+
+      worker_tfile->tfile = qmgr_create_new_temp_file (thread_p, manager->query_id, TEMP_FILE_MEMBUF_NONE);
+      if (worker_tfile->tfile == NULL)
+	{
+	  goto error_exit;
+	}
+      worker_tfile->free_vpids =
+	(VPID *) (manager->worker_tfiles + worker_cnt) + worker_index * HASHJOIN_SPLIT_FREE_PAGE_MAX_CNT;
+      worker_tfile->free_vpid_cnt = 0;
+      manager->worker_tfile_cnt = worker_index + 1;
     }
-  memset (inner->part_list_id, 0, part_cnt * sizeof (QFILE_LIST_ID *));
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 error_exit:
-  hjoin_clear_split_info (thread_p, manager, split_info, true);
+  hjoin_clear_worker_tfiles (thread_p, manager);
+
+  assert_release_error (er_errid () != NO_ERROR);
+  return er_errid ();
+}
+
+/*
+ * hjoin_clear_worker_tfiles() - free the worker tfiles, after the partition lists that borrow them
+ *   return: None.
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager.
+ */
+static void
+hjoin_clear_worker_tfiles (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
+{
+  int worker_index;
+
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+
+  /* the contexts that own the partition lists are gone */
+  assert (manager->single_context.child_contexts == NULL);
+
+  if (manager->worker_tfiles == NULL)
+    {
+      assert (manager->worker_tfile_cnt == 0);
+      return;
+    }
+
+  for (worker_index = 0; worker_index < manager->worker_tfile_cnt; worker_index++)
+    {
+      (void) qmgr_free_list_temp_file (thread_p, manager->query_id, manager->worker_tfiles[worker_index].tfile);
+    }
+
+  db_private_free_and_init (thread_p, manager->worker_tfiles);
+  manager->worker_tfile_cnt = 0;
+}
+
+/*
+ * hjoin_init_split_info() -
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   context(in): Context whose inputs are split.
+ *   part_cnt(in): Number of partitions.
+ *   split_info(in/out): Split information.
+ */
+static int
+hjoin_init_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context, UINT32 part_cnt,
+		       HASHJOIN_SPLIT_INFO * split_info)
+{
+  HASHJOIN_INPUT_SPLIT_INFO *input;
+  int side;
+
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+  assert (context != NULL);
+  assert (part_cnt > 1);
+  assert (split_info != NULL);
+
+  /* Prevent faults when hjoin_clear_split_info is called */
+  memset (split_info, 0, sizeof (HASHJOIN_SPLIT_INFO));
+
+  for (side = 0; side < 2; side++)
+    {
+      input = (side == 0) ? &split_info->outer : &split_info->inner;
+      input->fetch_info = (side == 0) ? &context->outer : &context->inner;
+      input->part_list_id = (QFILE_LIST_ID **) db_private_alloc (thread_p, part_cnt * sizeof (QFILE_LIST_ID *));
+      if (input->part_list_id == NULL)
+	{
+	  goto error_exit;
+	}
+      memset (input->part_list_id, 0, part_cnt * sizeof (QFILE_LIST_ID *));
+    }
+
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
+  return NO_ERROR;
+
+error_exit:
+  hjoin_clear_split_info (thread_p, manager, split_info);
 
   assert_release_error (er_errid () != NO_ERROR);
   return er_errid ();
@@ -2257,69 +2376,24 @@ error_exit:
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
  *   split_info(in): Split information.
- *   clear_all(in): True to destroy list identifiers; false otherwise.
  */
 static void
-hjoin_clear_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info,
-			bool clear_all)
+hjoin_clear_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_SPLIT_INFO * split_info)
 {
-  HASHJOIN_INPUT_SPLIT_INFO *outer, *inner;
-  UINT32 part_cnt, part_index;
+  HASHJOIN_INPUT_SPLIT_INFO *input;
+  int side;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
   assert (split_info != NULL);
 
-  outer = &split_info->outer;
-  inner = &split_info->inner;
-
-  part_cnt = manager->context_cnt;
-  if (part_cnt <= 1)
+  for (side = 0; side < 2; side++)
     {
-      assert (outer->part_list_id == NULL);
-      assert (inner->part_list_id == NULL);
-      return;			/* nothing to do */
-    }
-
-  /* The list identifier is still used through contexts[].outer/inner.list_id,
-   * even though part_list_id is freed. */
-
-  if (outer->part_list_id != NULL)
-    {
-      if (clear_all)
+      input = (side == 0) ? &split_info->outer : &split_info->inner;
+      if (input->part_list_id != NULL)
 	{
-	  for (part_index = 0; part_index < part_cnt; part_index++)
-	    {
-	      qfile_close_list (thread_p, outer->part_list_id[part_index]);
-	      qfile_destroy_list (thread_p, outer->part_list_id[part_index]);
-	      QFILE_FREE_AND_INIT_LIST_ID (outer->part_list_id[part_index]);
-
-	      if (manager->contexts != NULL)
-		{
-		  manager->contexts[part_index].outer.list_id = NULL;
-		}
-	    }
+	  db_private_free_and_init (thread_p, input->part_list_id);
 	}
-      db_private_free_and_init (thread_p, outer->part_list_id);
-    }
-
-  if (inner->part_list_id != NULL)
-    {
-      if (clear_all)
-	{
-	  for (part_index = 0; part_index < part_cnt; part_index++)
-	    {
-	      qfile_close_list (thread_p, inner->part_list_id[part_index]);
-	      qfile_destroy_list (thread_p, inner->part_list_id[part_index]);
-	      QFILE_FREE_AND_INIT_LIST_ID (inner->part_list_id[part_index]);
-
-	      if (manager->contexts != NULL)
-		{
-		  manager->contexts[part_index].inner.list_id = NULL;
-		}
-	    }
-	}
-      db_private_free_and_init (thread_p, inner->part_list_id);
     }
 }
 
@@ -2328,21 +2402,22 @@ hjoin_clear_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HAS
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
  *   manager(in): Hash join manager containing shared state.
+ *   part_cnt(in): Number of partitions the split writes to.
  *   shared_info(in/out): Shared split information.
  */
 int
-hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager,
+hjoin_init_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, UINT32 part_cnt,
 			      HASHJOIN_SHARED_SPLIT_INFO * shared_info)
 {
-  UINT32 part_cnt, part_index;
+  UINT32 part_index;
   UINT32 init_cnt = 0;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
+  assert (part_cnt > 1);
   assert (shared_info != NULL);
 
-  part_cnt = manager->context_cnt;
-  assert (part_cnt > 1);
+  shared_info->part_cnt = part_cnt;
 
   if (manager->px_worker_manager != NULL)
     {
@@ -2409,7 +2484,7 @@ hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manag
    * sectors/tfiles arrays when part_cnt <= 1. */
   qfile_close_list_sector_scan (thread_p, &shared_info->sector_scan);
 
-  part_cnt = manager->context_cnt;
+  part_cnt = shared_info->part_cnt;
   if (part_cnt <= 1)
     {
       assert (shared_info->part_mutexes == NULL);
@@ -2428,6 +2503,7 @@ hjoin_clear_shared_split_info (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manag
     }
 }
 
+
 /*
  * hjoin_init_context() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
@@ -2439,7 +2515,6 @@ static int
 hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
 {
   HASHJOIN_FETCH_INFO *outer, *inner;
-  HASHJOIN_FETCH_INFO *build = NULL;
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
@@ -2501,60 +2576,10 @@ hjoin_init_context (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOI
       goto error_exit;
     }
 
-  build = context->build;
-  assert (build != NULL);
-
-  error = hjoin_scan_init (thread_p, &context->hash_scan, manager->key_cnt, build->list_id);
-  if (error != NO_ERROR)
-    {
-      goto error_exit;
-    }
-
-  if (thread_is_on_trace (thread_p))
-    {
-      context->stats->hash_method = context->hash_scan.hash_list_scan_type;
-      context->stats->swap_join_inputs = (context->build == outer) ? true : false;
-    }
-
-#if defined (SERVER_MODE)
-  if (context == &manager->single_context)
-    {
-      context->status = hjoin_try_parallel_probe (thread_p, manager, context);
-      switch (context->status)
-	{
-	case HASHJOIN_STATUS_SINGLE:
-	  if (thread_is_on_trace (thread_p))
-	    {
-	      assert (context->stats != NULL);
-	      assert (context->stats->num_parallel_threads == 0);
-	    }
-	  break;
-
-	case HASHJOIN_STATUS_PARALLEL_PROBE:
-	  if (thread_is_on_trace (thread_p))
-	    {
-	      assert (context->stats != NULL);
-	      context->stats->num_parallel_threads = manager->num_parallel_threads;
-	    }
-	  break;
-
-	case HASHJOIN_STATUS_ERROR:
-	  goto error_exit;
-
-	default:
-	  /* impossible case */
-	  assert_release_error (false);
-	  goto error_exit;
-	}
-    }
-#endif /* defined (SERVER_MODE) */
-
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
 
 error_exit:
-  hjoin_scan_clear (thread_p, &context->hash_scan);
-
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
       assert_release_error (er_errid () != NO_ERROR);
@@ -2580,6 +2605,17 @@ hjoin_clear_context (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
 
   outer = &context->outer;
   inner = &context->inner;
+
+  if (context->child_contexts != NULL)
+    {
+      hjoin_clear_part_contexts (thread_p, context->child_contexts, context->child_cnt);
+      context->child_contexts = NULL;
+    }
+
+  if (context->child_stats != NULL)
+    {
+      free_and_init (context->child_stats);
+    }
 
   if (context->list_id != NULL)
     {
@@ -2634,27 +2670,289 @@ hjoin_destroy_qlist (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * context)
 }
 
 /*
+ * hjoin_init_part_contexts() - make the contexts of the partitions of a context, each over its own partition lists
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   manager(in): Hash join manager containing shared state.
+ *   context(in): Context whose inputs are split; the single context, or a context that is split again.
+ *   part_cnt(in): Number of partitions.
+ *   split_info(out): The partition lists of each input, referred to by the split.
+ *   part_contexts(out): Contexts of the partitions; each owns its partition lists (hjoin_clear_part_contexts).
+ */
+static int
+hjoin_init_part_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context,
+			  UINT32 part_cnt, HASHJOIN_SPLIT_INFO * split_info, HASHJOIN_CONTEXT ** part_contexts)
+{
+  HASHJOIN_INPUT_SPLIT_INFO *input;
+  HASHJOIN_FETCH_INFO *fetch_info, *part_fetch_info;
+  QFILE_LIST_ID *list_id, *part_list_id;
+
+  HASHJOIN_CONTEXT *contexts = NULL, *current_context;
+
+  UINT32 hash_part_cnt, part_index;
+  int side;
+
+  int error = NO_ERROR;
+
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+  assert (context != NULL);
+  assert (context->outer.list_id != NULL);
+  assert (context->inner.list_id != NULL);
+  assert (part_cnt > 1);
+  assert (split_info != NULL);
+  assert (part_contexts != NULL);
+
+  /* the partition of NULL join keys, last among the partitions of the single context, takes no hash value */
+  hash_part_cnt = part_cnt - ((context->level == 0 && IS_NULL_FILL_JOIN_TYPE (manager->join_type)) ? 1 : 0);
+
+  error = hjoin_init_split_info (thread_p, manager, context, part_cnt, split_info);
+  if (error != NO_ERROR)
+    {
+      goto error_exit;
+    }
+
+  /* calloc, not db_private_alloc: the partitions of a context split again in a worker are freed by the main thread */
+  contexts = (HASHJOIN_CONTEXT *) calloc (part_cnt, sizeof (HASHJOIN_CONTEXT));
+  if (contexts == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, part_cnt * sizeof (HASHJOIN_CONTEXT));
+      error = ER_OUT_OF_VIRTUAL_MEMORY;
+      goto error_exit;
+    }
+
+  for (part_index = 0; part_index < part_cnt; part_index++)
+    {
+      current_context = &contexts[part_index];
+
+      for (side = 0; side < 2; side++)
+	{
+	  input = (side == 0) ? &split_info->outer : &split_info->inner;
+
+	  /* context */
+	  fetch_info = (side == 0) ? &context->outer : &context->inner;
+	  list_id = fetch_info->list_id;
+
+	  /* current_context */
+	  part_fetch_info = (side == 0) ? &current_context->outer : &current_context->inner;
+
+	  part_list_id =
+	    qfile_open_list (thread_p, &list_id->type_list, NULL, list_id->query_id,
+			     QFILE_FLAG_ALL | QFILE_FLAG_BORROWED_TFILE | QFILE_LIST_BACKWARD_FLAG (list_id), NULL);
+	  if (part_list_id == NULL)
+	    {
+	      goto error_exit;
+	    }
+	  assert (part_list_id->tfile_vfid == NULL);
+	  input->part_list_id[part_index] = part_list_id;
+
+	  part_fetch_info->list_id = part_list_id;
+	  part_fetch_info->input = fetch_info->input;
+	  part_fetch_info->coerce_domains = fetch_info->coerce_domains;
+	  part_fetch_info->need_coerce_domains = fetch_info->need_coerce_domains;
+	  part_fetch_info->regu_list_pred = fetch_info->regu_list_pred;
+	}
+
+      current_context->during_join_pred = context->during_join_pred;
+      current_context->after_join_pred = context->after_join_pred;
+      current_context->val_descr = context->val_descr;
+
+      current_context->level = context->level + 1;
+      current_context->divisor = context->divisor * hash_part_cnt;
+    }
+
+  *part_contexts = contexts;
+
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
+  return NO_ERROR;
+
+error_exit:
+  /* the references to the partition lists, before the contexts that own them */
+  hjoin_clear_split_info (thread_p, manager, split_info);
+
+  if (contexts != NULL)
+    {
+      hjoin_clear_part_contexts (thread_p, contexts, part_cnt);
+    }
+
+  if (error == NO_ERROR || er_errid () == NO_ERROR)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      error = er_errid ();
+    }
+
+  return error;
+}
+
+/*
+ * hjoin_clear_part_contexts() - clear the contexts of the partitions with the partition lists they own, and free them
+ *   return: None.
+ *   thread_p(in): Thread entry.
+ *   part_contexts(in): Contexts made by hjoin_init_part_contexts.
+ *   part_cnt(in): Number of partitions.
+ */
+static void
+hjoin_clear_part_contexts (THREAD_ENTRY * thread_p, HASHJOIN_CONTEXT * part_contexts, UINT32 part_cnt)
+{
+  UINT32 part_index;
+
+  assert (thread_p != NULL);
+  assert (part_contexts != NULL);
+
+  for (part_index = 0; part_index < part_cnt; part_index++)
+    {
+      hjoin_clear_context (thread_p, &part_contexts[part_index]);
+    }
+
+  free_and_init (part_contexts);
+}
+
+/*
+ * hjoin_init_exec_contexts() - list the contexts the join executes, once all the splits are done
+ *   return: Error code (NO_ERROR if successful, error code otherwise).
+ *   thread_p(in): Thread entry.
+ *   manager(in/out): Hash join manager; exec_contexts refers to the contexts not split again and to the partitions
+ *                    of those split again, in the order of the contexts.
+ */
+static int
+hjoin_init_exec_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
+{
+  HASHJOIN_CONTEXT *current_context;
+  UINT32 context_index, part_index, exec_cnt, exec_index;
+
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+  assert (manager->single_context.child_contexts != NULL);
+  assert (manager->exec_contexts == NULL);
+
+  exec_cnt = 0;
+  for (context_index = 0; context_index < manager->single_context.child_cnt; context_index++)
+    {
+      current_context = &manager->single_context.child_contexts[context_index];
+      exec_cnt += (current_context->child_cnt == 0) ? 1 : current_context->child_cnt;
+    }
+
+  manager->exec_contexts = (HASHJOIN_CONTEXT **) db_private_alloc (thread_p, exec_cnt * sizeof (HASHJOIN_CONTEXT *));
+  if (manager->exec_contexts == NULL)
+    {
+      assert_release_error (er_errid () != NO_ERROR);
+      return er_errid ();
+    }
+
+  exec_index = 0;
+  for (context_index = 0; context_index < manager->single_context.child_cnt; context_index++)
+    {
+      current_context = &manager->single_context.child_contexts[context_index];
+
+      if (current_context->child_cnt == 0)
+	{
+	  manager->exec_contexts[exec_index++] = current_context;
+	  continue;
+	}
+
+      for (part_index = 0; part_index < current_context->child_cnt; part_index++)
+	{
+	  manager->exec_contexts[exec_index++] = &current_context->child_contexts[part_index];
+	}
+    }
+  assert (exec_index == exec_cnt);
+  manager->exec_cnt = exec_cnt;
+
+  ASSERT_NO_ERROR_OR_INTERRUPTED ();
+  return NO_ERROR;
+}
+
+/*
+ * hjoin_clear_exec_contexts() - free the list of the contexts the join executes; the contexts stay with their owners
+ *   return: None.
+ *   thread_p(in): Thread entry.
+ *   manager(in/out): Hash join manager.
+ */
+static void
+hjoin_clear_exec_contexts (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager)
+{
+  assert (thread_p != NULL);
+  assert (manager != NULL);
+
+  if (manager->exec_contexts != NULL)
+    {
+      db_private_free_and_init (thread_p, manager->exec_contexts);
+    }
+  manager->exec_cnt = 0;
+}
+
+/*
+ * hjoin_estimate_hash_table_size() - memory the HYBRID hash table of a build input would take, estimated linearly
+ *   return: Size in bytes.
+ *   list_id(in): Build input; its tuple_cnt may be over INT_MAX, which hjoin_calc_hash_table_size cannot take.
+ */
+static UINT64
+hjoin_estimate_hash_table_size (QFILE_LIST_ID * list_id)
+{
+  UINT64 per_entry_size;
+
+  assert (list_id != NULL);
+  assert (list_id->tuple_cnt >= 0);
+
+  /* Per-entry HYBRID size: ~2 slots (load factor 1/0.7 * power-of-two rounding) + one entry + a tuple position.
+   * Linear estimate is enough: tuple_cnt is INT64, and the partition count is only approximate. */
+  per_entry_size = 2 * sizeof (MHT_HLS_SLOT) + sizeof (MHT_HLS_ENTRY) + sizeof (QFILE_TUPLE_SIMPLE_POS);
+
+  return per_entry_size * list_id->tuple_cnt;
+}
+
+/*
+ * hjoin_calc_hash_table_size() - memory the hash table of a build input takes, as hjoin_scan_init compares it
+ *   return: Size in bytes.
+ *   list_id(in): Build input; its tuple_cnt fits in int.
+ *   method(in): HASH_METH_IN_MEM or HASH_METH_HYBRID.
+ */
+static UINT64
+hjoin_calc_hash_table_size (QFILE_LIST_ID * list_id, HASH_METHOD method)
+{
+  UINT64 slot_array_size, entries_size, payload_size;
+
+  assert (list_id != NULL);
+  assert (list_id->tuple_cnt <= INT_MAX);
+
+  slot_array_size = (UINT64) mht_hls_slot_count ((int) list_id->tuple_cnt) * sizeof (MHT_HLS_SLOT);
+  entries_size = (UINT64) list_id->tuple_cnt * sizeof (MHT_HLS_ENTRY);
+
+  if (method == HASH_METH_IN_MEM)
+    {
+      /* IN_MEM: slot array + one entry (header) per row + the tuples themselves */
+      payload_size = (UINT64) list_id->page_cnt * DB_PAGESIZE;
+    }
+  else
+    {
+      /* HYBRID: slot array + one entry (header) per row + a tuple position per row; tuples stay on the temp file */
+      assert (method == HASH_METH_HYBRID);
+      payload_size = (UINT64) list_id->tuple_cnt * sizeof (QFILE_TUPLE_SIMPLE_POS);
+    }
+
+  return slot_array_size + entries_size + payload_size;
+}
+
+/*
  * hjoin_scan_init() -
  *   return: Error code (NO_ERROR if successful, error code otherwise).
  *   thread_p(in): Thread entry.
  *   hash_scan(in/out): Hash scan structure to initialize.
  *   key_cnt(in): Number of join columns.
+ *   mem_limit(in): max_hash_list_scan_size; 0 is possible (see hjoin_check_partition), and then every size check
+ *                  fails and HASH_FILE is chosen.
  *   list_id(in): List identifier to be used as build input.
  */
 int
-hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, QFILE_LIST_ID * list_id)
+hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cnt, UINT64 mem_limit,
+		 QFILE_LIST_ID * list_id)
 {
-  UINT64 mem_limit;
-
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
   assert (hash_scan != NULL);
   assert (list_id == NULL || list_id->tuple_cnt > 0);
   assert (key_cnt > 0);
-
-  mem_limit = prm_get_bigint_value (PRM_ID_MAX_HASH_LIST_SCAN_SIZE);
-  assert (mem_limit > 0);
 
   assert (hash_scan->build_regu_list == NULL);	/* Unused */
   assert (hash_scan->probe_regu_list == NULL);	/* Unused */
@@ -2679,25 +2977,12 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
       /* the slot array is int-indexed; the estimates are computable only when tuple_cnt fits in int */
       if (list_id->tuple_cnt <= INT_MAX)
 	{
-	  UINT64 slot_array_size = (UINT64) mht_hls_slot_count ((int) list_id->tuple_cnt) * sizeof (MHT_HLS_SLOT);
-	  UINT64 entries_size = (UINT64) list_id->tuple_cnt * sizeof (MHT_HLS_ENTRY);
-	  UINT64 payload_size;
-
-	  /* IN_MEM: slot array + one entry (header) per row + the tuples themselves */
-	  payload_size = (UINT64) list_id->page_cnt * DB_PAGESIZE;
-	  in_mem_size = slot_array_size + entries_size + payload_size;
-
-	  /* HYBRID: slot array + one entry (header) per row + a tuple position per row; tuples stay on the temp file */
-	  payload_size = (UINT64) list_id->tuple_cnt * sizeof (QFILE_TUPLE_SIMPLE_POS);
-	  hybrid_size = slot_array_size + entries_size + payload_size;
+	  in_mem_size = hjoin_calc_hash_table_size (list_id, HASH_METH_IN_MEM);
+	  hybrid_size = hjoin_calc_hash_table_size (list_id, HASH_METH_HYBRID);
 	}
 
       if (list_id->tuple_cnt <= INT_MAX && in_mem_size <= mem_limit)
 	{
-#if HASHJOIN_DUMP_BUILD
-	  fprintf (stdout, "\nHash Join Method: In Memory\n");
-	  fprintf (stdout, "  - in_mem_size %lu <= mem_limit %lu\n", in_mem_size, mem_limit);
-#endif /* HASHJOIN_DUMP_BUILD */
 
 	  hash_scan->hash_list_scan_type = HASH_METH_IN_MEM;
 
@@ -2711,11 +2996,6 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 	}
       else if (list_id->tuple_cnt <= INT_MAX && hybrid_size <= mem_limit)
 	{
-#if HASHJOIN_DUMP_BUILD
-	  fprintf (stdout, "\nHash Join Method: Hybrid\n");
-	  fprintf (stdout, "  - in_mem_size %lu > mem_limit %lu\n", in_mem_size, mem_limit);
-	  fprintf (stdout, "  - hybrid_size %lu <= mem_limit %lu\n", hybrid_size, mem_limit);
-#endif /* HASHJOIN_DUMP_BUILD */
 
 	  hash_scan->hash_list_scan_type = HASH_METH_HYBRID;
 
@@ -2729,10 +3009,6 @@ hjoin_scan_init (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, int key_cn
 	}
       else
 	{
-#if HASHJOIN_DUMP_BUILD
-	  fprintf (stdout, "\nHash Join Method: File\n");
-	  fprintf (stdout, "  - hybrid_size %lu > mem_limit %lu\n", hybrid_size, mem_limit);
-#endif /* HASHJOIN_DUMP_BUILD */
 
 	  hash_scan->hash_list_scan_type = HASH_METH_HASH_FILE;
 
@@ -3036,7 +3312,7 @@ error_exit:
  *   return: pointer to the 4-byte hash key inside the tuple
  *   tuple_record(in): tuple containing the hash key as its first column
  */
-static QFILE_TUPLE
+QFILE_TUPLE
 hjoin_locate_tuple_hash_key (QFILE_TUPLE_RECORD * tuple_record)
 {
   int len;
@@ -3099,9 +3375,6 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 
   HASHJOIN_STATS *stats = context->stats;
   HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#if HASHJOIN_PROFILE_TIME
-  HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#endif /* HASHJOIN_PROFILE_TIME */
   assert (!thread_is_on_trace (thread_p) || stats != NULL);
 
   build = context->build;
@@ -3125,15 +3398,13 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
       hjoin_trace_start (thread_p, &start_stats);
     }
 
-  if (manager->context_cnt == 0)	/* HASHJOIN_STATUS_SINGLE */
+  if (manager->single_context.child_cnt == 0)	/* HASHJOIN_STATUS_SINGLE */
     {
       while ((scan_code =
 	      qfile_scan_list_next (thread_p, &build->list_scan_id, &build->tuple_record, PEEK)) == S_SUCCESS)
 	{
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_FETCH);
 	  error =
 	    hjoin_fetch_key (thread_p, build, &build->tuple_record, key, NULL /* compare_key */ , &need_skip_next);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_FETCH);
 
 	  if (error != NO_ERROR)
 	    {
@@ -3146,13 +3417,9 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 	    }
 	  else
 	    {
-	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_HASH);
 	      hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
-	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_HASH);
 
-	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_INSERT);
 	      error = hjoin_build_key (thread_p, hash_scan, &build->list_scan_id, &build->tuple_record);
-	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_INSERT);
 
 	      if (error != NO_ERROR)
 		{
@@ -3166,17 +3433,11 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
       while ((scan_code =
 	      qfile_scan_list_next (thread_p, &build->list_scan_id, &build->tuple_record, PEEK)) == S_SUCCESS)
 	{
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_FETCH);
 	  tuple_value = hjoin_locate_tuple_hash_key (&build->tuple_record);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_FETCH);
 
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_HASH);
 	  hash_scan->curr_hash_key = (UINT32) OR_GET_INT (tuple_value);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_HASH);
 
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_BUILD_INSERT);
 	  error = hjoin_build_key (thread_p, hash_scan, &build->list_scan_id, &build->tuple_record);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_BUILD_INSERT);
 
 	  if (error != NO_ERROR)
 	    {
@@ -3191,17 +3452,6 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
       stats->build.read_rows = build->list_id->tuple_cnt;
       assert (stats->build.read_keys == 0);
       stats->build.qualified_rows = build->list_id->tuple_cnt;
-
-#if HASHJOIN_COLLISION_RATE
-      if (hash_scan->hash_list_scan_type == HASH_METH_IN_MEM || hash_scan->hash_list_scan_type == HASH_METH_HYBRID)
-	{
-	  stats->collision_rate = (double) hash_scan->memory.hash_table->ncollisions / build->list_id->tuple_cnt;
-	}
-      else
-	{
-	  stats->collision_rate = 0;
-	}
-#endif /* HASHJOIN_COLLISION_RATE */
     }
 
   /* qfile_close_scan is called by the caller. */
@@ -3211,19 +3461,6 @@ hjoin_build (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
       error = (error == NO_ERROR) ? er_errid () : error;
       goto error_exit;
     }
-
-#if HASHJOIN_DUMP_HASH_TABLE
-  if (build->list_id->tuple_cnt <= DUMP_HASH_TABLE_LIMIT)
-    {
-#if defined (SERVER_MODE)
-      pthread_mutex_lock (&manager->dump_hash_table_mutex);
-#endif /* defined (SERVER_MODE) */
-      HJOIN_DUMP_HASH_TABLE (thread_p, hash_scan, build->list_id);
-#if defined (SERVER_MODE)
-      pthread_mutex_unlock (&manager->dump_hash_table_mutex);
-#endif /* defined (SERVER_MODE) */
-    }
-#endif /* HASHJOIN_DUMP_HASH_TABLE */
 
   ASSERT_NO_ERROR_OR_INTERRUPTED ();
   return NO_ERROR;
@@ -3306,7 +3543,6 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
       break;
 
     case HASH_METH_NOT_USE:
-      [[fallthrough]];
     default:
       /* impossible case */
       assert_release_error (false);
@@ -3327,13 +3563,16 @@ hjoin_build_key (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST
 static int
 hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTEXT * context)
 {
-  QFILE_LIST_ID *list_id = NULL;
+  QFILE_LIST_ID *list_id;
+  INT64 start_tuple_cnt;
   int error = NO_ERROR;
 
   assert (thread_p != NULL);
   assert (manager != NULL);
   assert (context != NULL);
-  assert (context->list_id == NULL);
+  assert (context->list_id != NULL);
+
+  list_id = context->list_id;
 
 #if defined (SERVER_MODE)
   if (context->status == HASHJOIN_STATUS_PARALLEL_PROBE)
@@ -3357,11 +3596,12 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
   else
 #endif /* defined (SERVER_MODE) */
     {
-      list_id = qfile_open_list (thread_p, &manager->type_list, NULL, manager->query_id, manager->qlist_flag, NULL);
-      if (list_id == NULL)
+      error = qfile_reopen_list_as_append_mode (thread_p, list_id);
+      if (error != NO_ERROR)
 	{
 	  goto error_exit;
 	}
+      start_tuple_cnt = list_id->tuple_cnt;
 
       if (IS_NULL_FILL_JOIN_TYPE (manager->join_type))
 	{
@@ -3373,22 +3613,22 @@ hjoin_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN_CONTE
 	}
 
       qfile_close_list (thread_p, list_id);
-      context->list_id = list_id;
+
+      /* the probe counted the tuples of the shared list */
+      if (context->stats != NULL)
+	{
+	  context->stats->probe.qualified_rows -= start_tuple_cnt;
+	}
     }
 
 cleanup:
   /* Check if qfile_close_list was called */
-  assert (list_id == NULL || list_id->last_pgptr == NULL);
+  assert (list_id->last_pgptr == NULL);
 
   return error;
 
 error_exit:
-  if (list_id != NULL)
-    {
-      qfile_close_list (thread_p, list_id);
-      qfile_destroy_list (thread_p, list_id);
-      QFILE_FREE_AND_INIT_LIST_ID (list_id);
-    }
+  qfile_close_list (thread_p, list_id);
 
   if (error == NO_ERROR || er_errid () == NO_ERROR)
     {
@@ -3432,9 +3672,6 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
   HASHJOIN_STATS *stats = context->stats;
   HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#if HASHJOIN_PROFILE_TIME
-  HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#endif /* HASHJOIN_PROFILE_TIME */
   assert (!thread_is_on_trace (thread_p) || stats != NULL);
 
   outer = &context->outer;
@@ -3471,14 +3708,11 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
     {
       probe->is_ready = false;
 
-      HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_READ_KEY);
 
-      if (manager->context_cnt == 0)	/* HASHJOIN_STATUS_SINGLE */
+      if (manager->single_context.child_cnt == 0)	/* HASHJOIN_STATUS_SINGLE */
 	{
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 	  error = hjoin_fetch_key (thread_p, probe, &probe->tuple_record, key, NULL /* compare_key */ ,
 				   &need_skip_next);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 
 	  if (error != NO_ERROR)
 	    {
@@ -3494,28 +3728,20 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      /* fall through */
 	    }
 
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 	  hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 	}
       else
 	{
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 	  tuple_value = hjoin_locate_tuple_hash_key (&probe->tuple_record);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 	  hash_scan->curr_hash_key = (UINT32) OR_GET_INT (tuple_value);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 	}
 
       do
 	{
 	  build->is_ready = false;
 
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
 	  error = hjoin_probe_key (thread_p, hash_scan, &build->list_scan_id, &build->tuple_record);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
 
 	  if (error != NO_ERROR)
 	    {
@@ -3532,12 +3758,10 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      stats->probe.read_keys++;	/* found */
 	    }
 
-	  if (manager->context_cnt != 0)	/* HASHJOIN_STATUS_PARTITION or HASHJOIN_STATUS_PARALLEL */
+	  if (manager->single_context.child_cnt != 0)	/* HASHJOIN_STATUS_PARTITION or HASHJOIN_STATUS_PARALLEL */
 	    {
-	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 	      error = hjoin_fetch_key (thread_p, probe, &probe->tuple_record, key, NULL /* compare_key */ ,
 				       &need_skip_next);
-	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 
 	      if (error != NO_ERROR)
 		{
@@ -3558,10 +3782,8 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		}
 	    }
 
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 	  error = hjoin_fetch_key (thread_p, build, &build->tuple_record, found_key, key /* compare_key */ ,
 				   &need_skip_next);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 	  if (error != NO_ERROR)
 	    {
@@ -3569,7 +3791,6 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    }
 	  else if (need_skip_next)
 	    {
-	      HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
 
 	      need_skip_next = false;	/* init */
 	      continue;
@@ -3583,9 +3804,7 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    {
 	      DB_LOGICAL ev_res;
 
-	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 	      ev_res = hjoin_eval_pred (thread_p, probe, build, context->after_join_pred, context->val_descr);
-	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 	      if (ev_res == V_ERROR)
 		{
@@ -3597,18 +3816,14 @@ hjoin_inner_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      /* Search the next hash entry if additional conditions are not satisfied */
 	      if (ev_res != V_TRUE)
 		{
-		  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
 		  continue;
 		}
 	    }			/* if (context->after_join_pred != NULL) */
 
-	  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 	  error =
 	    hjoin_merge_tuple_to_list_id (thread_p, list_id, &outer->tuple_record, &inner->tuple_record,
 					  manager->merge_info, &overflow_record);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
 	  if (error != NO_ERROR)
 	    {
@@ -3699,9 +3914,6 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 
   HASHJOIN_STATS *stats = context->stats;
   HASHJOIN_START_STATS start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#if HASHJOIN_PROFILE_TIME
-  HASHJOIN_START_STATS profile_start_stats = HASHJOIN_START_STATS_INITIALIZER;
-#endif /* HASHJOIN_PROFILE_TIME */
   assert (!thread_is_on_trace (thread_p) || stats != NULL);
 
   outer = &context->outer;
@@ -3740,14 +3952,11 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
     {
       probe->is_ready = false;
 
-      HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_READ_KEY);
 
-      if (manager->context_cnt == 0)	/* HASHJOIN_STATUS_SINGLE */
+      if (manager->single_context.child_cnt == 0)	/* HASHJOIN_STATUS_SINGLE */
 	{
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 	  error = hjoin_fetch_key (thread_p, probe, &probe->tuple_record, key, NULL /* compare_key */ ,
 				   &need_skip_next);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 
 	  if (error != NO_ERROR)
 	    {
@@ -3769,9 +3978,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		    }
 		  build->is_ready = true;
 
-		  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 		  ev_res = hjoin_eval_pred (thread_p, probe, build, context->after_join_pred, context->val_descr);
-		  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 		  if (ev_res == V_ERROR)
 		    {
@@ -3783,19 +3990,15 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		  /* Fetch the next row if additional conditions are not satisfied */
 		  if (ev_res != V_TRUE)
 		    {
-		      HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
 		      continue;
 		    }
 		}		/* if (context->after_join_pred != NULL) */
 
-	      HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
 	      /* NULL key on preserved side — emit fill_record (null on null-supplying side) */
-	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 	      error =
 		hjoin_merge_tuple_to_list_id (thread_p, list_id, outer->fill_record, inner->fill_record,
 					      manager->merge_info, &overflow_record);
-	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
 	      if (error != NO_ERROR)
 		{
@@ -3809,19 +4012,13 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      /* fall through */
 	    }
 
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 	  hash_scan->curr_hash_key = qdata_hash_scan_key (key, UINT_MAX, hash_method);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 	}
       else
 	{
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 	  tuple_value = hjoin_locate_tuple_hash_key (&probe->tuple_record);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 	  hash_scan->curr_hash_key = (UINT32) OR_GET_INT (tuple_value);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_HASH);
 	}
 
       any_key_matched = false;
@@ -3830,9 +4027,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	{
 	  build->is_ready = false;
 
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
 	  error = hjoin_probe_key (thread_p, hash_scan, &build->list_scan_id, &build->tuple_record);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_SEARCH);
 
 	  if (error != NO_ERROR)
 	    {
@@ -3849,12 +4044,10 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      stats->probe.read_keys++;	/* found */
 	    }
 
-	  if (manager->context_cnt != 0)	/* HASHJOIN_STATUS_PARTITION or HASHJOIN_STATUS_PARALLEL */
+	  if (manager->single_context.child_cnt != 0)	/* HASHJOIN_STATUS_PARTITION or HASHJOIN_STATUS_PARALLEL */
 	    {
-	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 	      error = hjoin_fetch_key (thread_p, probe, &probe->tuple_record, key, NULL /* compare_key */ ,
 				       &need_skip_next);
-	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_FETCH);
 
 	      if (error != NO_ERROR)
 		{
@@ -3875,10 +4068,8 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		}
 	    }
 
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 	  error = hjoin_fetch_key (thread_p, build, &build->tuple_record, found_key, key /* compare_key */ ,
 				   &need_skip_next);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 	  if (error != NO_ERROR)
 	    {
@@ -3886,7 +4077,6 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    }
 	  else if (need_skip_next)
 	    {
-	      HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_MATCHED_KEY);
 
 	      need_skip_next = false;	/* init */
 	      continue;
@@ -3900,9 +4090,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    {
 	      DB_LOGICAL ev_res;
 
-	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 	      ev_res = hjoin_eval_pred (thread_p, probe, build, context->during_join_pred, context->val_descr);
-	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 	      if (ev_res == V_ERROR)
 		{
@@ -3914,7 +4102,6 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      /* Search the next hash entry if additional conditions are not satisfied */
 	      if (ev_res != V_TRUE)
 		{
-		  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
 		  continue;
 		}
 	    }			/* if (context->during_join_pred != NULL) */
@@ -3935,9 +4122,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	    {
 	      DB_LOGICAL ev_res;
 
-	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 	      ev_res = hjoin_eval_pred (thread_p, probe, build, context->after_join_pred, context->val_descr);
-	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 	      if (ev_res == V_ERROR)
 		{
@@ -3949,18 +4134,14 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      /* Search the next hash entry if additional conditions are not satisfied */
 	      if (ev_res != V_TRUE)
 		{
-		  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
 		  continue;
 		}
 	    }			/* if (context->after_join_pred != NULL) */
 
-	  HJOIN_PRINT_TUPLE (build->list_id, build->tuple_record.tpl, HASHJOIN_PRINT_QUALIFIED_KEY);
 
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 	  error =
 	    hjoin_merge_tuple_to_list_id (thread_p, list_id, &outer->tuple_record, &inner->tuple_record,
 					  manager->merge_info, &overflow_record);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
 	  if (error != NO_ERROR)
 	    {
@@ -3988,9 +4169,7 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 		}
 	      build->is_ready = true;
 
-	      HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 	      ev_res = hjoin_eval_pred (thread_p, probe, build, context->after_join_pred, context->val_descr);
-	      HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_MATCH);
 
 	      if (ev_res == V_ERROR)
 		{
@@ -4002,19 +4181,15 @@ hjoin_outer_probe (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      /* Fetch the next row if additional conditions are not satisfied */
 	      if (ev_res != V_TRUE)
 		{
-		  HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_NOT_QUALIFIED_KEY);
 		  continue;
 		}
 	    }			/* if (context->after_join_pred != NULL) */
 
-	  HJOIN_PRINT_TUPLE (probe->list_id, probe->tuple_record.tpl, HASHJOIN_PRINT_FILL_EMPTY_KEY);
 
 	  /* no match — emit fill_record (null on null-supplying side) */
-	  HJOIN_PROFILE_START (thread_p, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 	  error =
 	    hjoin_merge_tuple_to_list_id (thread_p, list_id, outer->fill_record, inner->fill_record,
 					  manager->merge_info, &overflow_record);
-	  HJOIN_PROFILE_END (thread_p, &stats->profile, &profile_start_stats, HASHJOIN_PROFILE_PROBE_ADD);
 
 	  if (error != NO_ERROR)
 	    {
@@ -4317,121 +4492,6 @@ hjoin_trace_end (THREAD_ENTRY * thread_p, HASHJOIN_INPUT_STATS * stats, HASHJOIN
   stats->ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - start_stats->ioreads;
 }
 
-#if HASHJOIN_PROFILE_TIME
-/*
- * hjoin_profile_start() -
- *   return: None.
- *   thread_p(in): Thread entry.
- *   start_stats(in/out): Profiling data captured at the start of the step.
- *   step(in): Hash join profiling step to measure.
- */
-void
-hjoin_profile_start (THREAD_ENTRY * thread_p, HASHJOIN_START_STATS * start_stats, HASHJOIN_PROFILE_STEP step)
-{
-  assert (thread_p != NULL);
-  assert (start_stats != NULL);
-
-  tsc_getticks (&start_stats->tick);
-  start_stats->step = step;
-
-  switch (step)
-    {
-    case HASHJOIN_PROFILE_BUILD_FETCH:
-    case HASHJOIN_PROFILE_BUILD_HASH:
-    case HASHJOIN_PROFILE_BUILD_INSERT:
-    case HASHJOIN_PROFILE_PROBE_FETCH:
-    case HASHJOIN_PROFILE_PROBE_HASH:
-    case HASHJOIN_PROFILE_PROBE_SEARCH:
-    case HASHJOIN_PROFILE_PROBE_MATCH:
-    case HASHJOIN_PROFILE_PROBE_ADD:
-      /* nothing to do */
-      break;
-
-    case HASHJOIN_PROFILE_MERGE:
-      start_stats->fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
-      start_stats->ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
-      break;
-
-    default:
-      /* impossible case */
-      assert (false);
-      break;
-    }				/* switch (step) */
-}
-#endif /* HASHJOIN_PROFILE_TIME */
-
-#if HASHJOIN_PROFILE_TIME
-/*
- * hjoin_profile_end() -
- *   return: None.
- *   thread_p(in): Thread entry.
- *   stats(in/out): Profiling data to accumulate.
- *   start_stats(in): Profiling data captured at the start of the step.
- *   step(in): Hash join profiling step being measured.
- */
-void
-hjoin_profile_end (THREAD_ENTRY * thread_p, HASHJOIN_PROFILE_STATS * stats,
-		   HASHJOIN_START_STATS * start_stats, HASHJOIN_PROFILE_STEP step)
-{
-  TSC_TICKS end_tick;
-  TSCTIMEVAL tv_diff;
-
-  assert (thread_p != NULL);
-  assert (stats != NULL);
-  assert (start_stats != NULL);
-  assert (start_stats->step == step);
-
-  tsc_getticks (&end_tick);
-  tsc_elapsed_time_usec (&tv_diff, end_tick, start_stats->tick);
-
-  switch (step)
-    {
-    case HASHJOIN_PROFILE_BUILD_FETCH:
-      TSC_ADD_TIMEVAL (stats->build.fetch, tv_diff);
-      break;
-
-    case HASHJOIN_PROFILE_BUILD_HASH:
-      TSC_ADD_TIMEVAL (stats->build.hash, tv_diff);
-      break;
-
-    case HASHJOIN_PROFILE_BUILD_INSERT:
-      TSC_ADD_TIMEVAL (stats->build.insert, tv_diff);
-      break;
-
-    case HASHJOIN_PROFILE_PROBE_FETCH:
-      TSC_ADD_TIMEVAL (stats->probe.fetch, tv_diff);
-      break;
-
-    case HASHJOIN_PROFILE_PROBE_HASH:
-      TSC_ADD_TIMEVAL (stats->probe.hash, tv_diff);
-      break;
-
-    case HASHJOIN_PROFILE_PROBE_SEARCH:
-      TSC_ADD_TIMEVAL (stats->probe.search, tv_diff);
-      break;
-
-    case HASHJOIN_PROFILE_PROBE_MATCH:
-      TSC_ADD_TIMEVAL (stats->probe.match, tv_diff);
-      break;
-
-    case HASHJOIN_PROFILE_PROBE_ADD:
-      TSC_ADD_TIMEVAL (stats->probe.add, tv_diff);
-      break;
-
-    case HASHJOIN_PROFILE_MERGE:
-      TSC_ADD_TIMEVAL (stats->merge.elapsed_time, tv_diff);
-      stats->merge.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - start_stats->fetches;
-      stats->merge.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - start_stats->ioreads;
-      break;
-
-    default:
-      /* impossible case */
-      assert (false);
-      break;
-    }				/* switch (step) */
-}
-#endif /* HASHJOIN_PROFILE_TIME */
-
 /*
  * hjoin_trace_merge_stats() -
  *   return: None.
@@ -4461,16 +4521,6 @@ hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats,
   stats->build.read_keys += context_stats->build.read_keys;
   stats->build.qualified_rows += context_stats->build.qualified_rows;
 
-#if HASHJOIN_COLLISION_RATE
-  stats->collision_rate = MAX (stats->collision_rate, context_stats->collision_rate);
-#endif /* HASHJOIN_COLLISION_RATE */
-
-#if HASHJOIN_PROFILE_TIME
-  TSC_ADD_TIMEVAL (stats->profile.build.fetch, context_stats->profile.build.fetch);
-  TSC_ADD_TIMEVAL (stats->profile.build.hash, context_stats->profile.build.hash);
-  TSC_ADD_TIMEVAL (stats->profile.build.insert, context_stats->profile.build.insert);
-#endif /* HASHJOIN_PROFILE_TIME */
-
   switch (context_stats->hash_method)
     {
     case HASH_METH_IN_MEM:
@@ -4495,6 +4545,12 @@ hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats,
       return;
     }
 
+  /* a context split again carries the methods of its sub-contexts, merged into it the same way */
+  stats->use_hash_memory |= context_stats->use_hash_memory;
+  stats->use_hash_hybrid |= context_stats->use_hash_hybrid;
+  stats->use_hash_file |= context_stats->use_hash_file;
+  stats->use_hash_skip |= context_stats->use_hash_skip;
+
   if (status != HASHJOIN_STATUS_PARALLEL && status != HASHJOIN_STATUS_PARALLEL_PROBE)
     {
       TSC_ADD_TIMEVAL (stats->probe.elapsed_time, context_stats->probe.elapsed_time);
@@ -4505,13 +4561,6 @@ hjoin_trace_merge_stats (HASHJOIN_STATS * stats, HASHJOIN_STATS * context_stats,
   stats->probe.read_keys += context_stats->probe.read_keys;
   stats->probe.qualified_rows += context_stats->probe.qualified_rows;
 
-#if HASHJOIN_PROFILE_TIME
-  TSC_ADD_TIMEVAL (stats->profile.probe.fetch, context_stats->profile.probe.fetch);
-  TSC_ADD_TIMEVAL (stats->profile.probe.hash, context_stats->profile.probe.hash);
-  TSC_ADD_TIMEVAL (stats->profile.probe.search, context_stats->profile.probe.search);
-  TSC_ADD_TIMEVAL (stats->profile.probe.match, context_stats->profile.probe.match);
-  TSC_ADD_TIMEVAL (stats->profile.probe.add, context_stats->profile.probe.add);
-#endif /* HASHJOIN_PROFILE_TIME */
 }
 
 /*
@@ -4569,102 +4618,3 @@ hjoin_trace_drain_worker_stats (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * mana
       memset (worker_stats, 0, stats_size);
     }
 }
-
-#if HASHJOIN_DUMP_HASH_TABLE
-/*
- * hjoin_dump_hash_table() -
- *   return: None.
- *   thread_p(in): Thread entry.
- *   hash_scan(in): Hash scan structure containing the hash table.
- *   list_id(in): List identifier used as build input.
- */
-static void
-hjoin_dump_hash_table (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * hash_scan, QFILE_LIST_ID * list_id)
-{
-  assert (thread_p != NULL);
-  assert (hash_scan != NULL);
-  assert (list_id != NULL);
-
-  if (list_id->tuple_cnt > DUMP_HASH_TABLE_LIMIT)
-    {
-      return;
-    }
-
-  switch (hash_scan->hash_list_scan_type)
-    {
-    case HASH_METH_IN_MEM:
-    case HASH_METH_HYBRID:
-      assert (hash_scan->memory.hash_table != NULL);
-      mht_dump_hls (thread_p, stdout, hash_scan->memory.hash_table, 1, qdata_print_hash_scan_entry, &list_id->type_list,
-		    (void *) &hash_scan->hash_list_scan_type);
-      printf ("temp file : tuple count = %ld, file_size = %dK\n", list_id->tuple_cnt, list_id->page_cnt * 16);
-      break;
-
-    case HASH_METH_HASH_FILE:
-      assert (hash_scan->file.hash_table != NULL);
-      fhs_dump (thread_p, hash_scan->file.hash_table);
-      break;
-
-    case HASH_METH_NOT_USE:
-      /* Nothing to do */
-      break;
-
-    default:
-      /* impossible case */
-      assert (false);
-      break;
-    }
-}
-#endif /* HASHJOIN_DUMP_HASH_TABLE */
-
-#if !defined(NDEBUG) && HASHJOIN_DUMP_PROBE
-/*
- * hjoin_print_tuple() -
- *   return: None.
- *   list_id(in): List identifier for the given tuple.
- *   tuple(in): Tuple to be printed.
- *   step(in): Step at which the tuple is printed.
- */
-static void
-hjoin_print_tuple (QFILE_LIST_ID * list_id, QFILE_TUPLE tuple, HASHJOIN_PRINT_STEP step)
-{
-  assert (list_id != NULL);
-  assert (tuple != NULL);
-
-  if (list_id->tuple_cnt > DUMP_PROBE_LIMIT)
-    {
-      return;
-    }
-
-  switch (step)
-    {
-    case HASHJOIN_PRINT_READ_KEY:
-      fprintf (stdout, "\nRead Key (Probe): ");
-      break;
-
-    case HASHJOIN_PRINT_NOT_MATCHED_KEY:
-      fprintf (stdout, "\nNot Matched Key (Build): ");
-      break;
-
-    case HASHJOIN_PRINT_NOT_QUALIFIED_KEY:
-      fprintf (stdout, "\nNot Qualified Key (Build): ");
-      break;
-
-    case HASHJOIN_PRINT_QUALIFIED_KEY:
-      fprintf (stdout, "\nQualified Key (Build): ");
-      break;
-
-    case HASHJOIN_PRINT_FILL_EMPTY_KEY:
-      fprintf (stdout, "\nFill Empty Key (Probe): ");
-      break;
-
-    default:
-      /* impossible case */
-      assert (false);
-      /* Nothing to do */
-      break;
-    }
-
-  qfile_print_tuple (&list_id->type_list, tuple);
-}
-#endif /* !NDEBUG && HASHJOIN_DUMP_PROBE */

@@ -22,7 +22,7 @@
 
 #pragma once
 
-#include "query_hash_join.h"
+#include "query_hash_join_split.hpp"	/* HASHJOIN_SPLIT_INFO, HASHJOIN_SHARED_SPLIT_INFO, ... */
 
 #include "thread_entry.hpp"		/* cubthread::entry */
 
@@ -34,7 +34,8 @@ namespace parallel_query
      * build_partitions
      */
 
-    int build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_SPLIT_INFO *split_info);
+    int build_partitions (cubthread::entry &thread_ref, HASHJOIN_MANAGER *manager, HASHJOIN_CONTEXT *context,
+			  HASHJOIN_SPLIT_INFO *split_info);
 
     /*
      * execute_partitions
