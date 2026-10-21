@@ -220,6 +220,11 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	    {
 	      continue;
 	    }
+	  if (TP_IS_LOB_TYPE (attr.type))
+	    {
+	      /* An Internal LOB is never retained: its chain was written when the record was prepared. */
+	      continue;
+	    }
 	  char *stub = nullptr;
 	  (void) heap_recdes_get_oos_inline_stub (record, attr.location, &stub);
 	  heap_oos_value_ref ref;
@@ -236,7 +241,9 @@ heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES
 	    }
 	  values.push_back ({ stub, oos_buffer (const_cast<char *> (ref.m_value.memory), ref.length ()), {} });
 	}
-      if (error == NO_ERROR)
+      /* A record whose out-of-row columns are all Internal LOBs retains nothing: skip the OOS file lookup,
+       * or the class would get an empty OOS file. */
+      if (error == NO_ERROR && !values.empty ())
 	{
 	  /* Collect every value before borrowing result addresses for the batch. */
 	  for (auto &value : values)
@@ -708,16 +715,39 @@ heap_record_replace_oos_oids (THREAD_ENTRY *thread_p, HEAP_GET_CONTEXT *context)
 int
 heap_oos_parse_inline_ref (const RECDES *recdes, int location, oos_chain_ref *oos_ref, DB_BIGINT *oos_len)
 {
+  int stub_kind = OR_OOS_KIND_OOS;
+
+  /* Demand OR_OOS_KIND_OOS: this parser's callers inline the chain's bytes into the record, which is only ever
+   * right for a serialized value. An Internal LOB reaching here would be expanded as raw content and
+   * silently corrupt the value, so a kind mismatch has to fail loudly instead. */
+  return heap_oos_parse_inline_stub (recdes, location, OR_OOS_KIND_OOS, oos_ref, &stub_kind, oos_len);
+}
+
+/*
+ * heap_oos_parse_inline_stub () - heap_oos_parse_inline_ref () for a stub of any kind the caller accepts.
+ *   expect_kind(in): OR_OOS_KIND_OOS / _CLOB / _BLOB, or OR_OOS_KIND_ANY
+ *   kind(out): the stub's kind
+ *   length(out): bytes for OOS and CLOB, BITS for BLOB
+ *
+ * The length limit follows the kind: DB_MAX_STRING_LENGTH for a serialized value, DB_MAX_INTERNAL_LOB_LENGTH bytes
+ * for an Internal LOB (eight times that in bits for BLOB). An empty LOB is a chain of length 0.
+ */
+int
+heap_oos_parse_inline_stub (const RECDES *recdes, int location, int expect_kind, oos_chain_ref *oos_ref, int *kind,
+			    DB_BIGINT *length)
+{
   char *stub = NULL;
   OR_BUF buf;
   int rc = NO_ERROR;
-  int stub_kind = OR_OOS_KIND_OOS;
   DB_BIGINT packed_identity_stamp = 0;
+  DB_BIGINT min_length = 1;
+  DB_BIGINT max_length = (DB_BIGINT) DB_MAX_STRING_LENGTH;
 
   /* Keep the reference well-defined for corruption errors raised before it is read. */
   OID_SET_NULL (&oos_ref->head_oid);
   LSA_SET_NULL (&oos_ref->identity_stamp);
-  *oos_len = 0;
+  *kind = OR_OOS_KIND_OOS;
+  *length = 0;
 
   if (heap_recdes_get_oos_inline_stub (recdes, location, &stub) != NO_ERROR)
     {
@@ -725,17 +755,18 @@ heap_oos_parse_inline_ref (const RECDES *recdes, int location, oos_chain_ref *oo
       return ER_HEAP_OOS_BAD_INLINE_HEADER;
     }
 
-  /* The field is exactly one stub, so the fixed-width reads below cannot run past it.
-   * Demand OR_OOS_KIND_OOS: this parser inlines the chain's bytes into the record, which is only ever
-   * right for a serialized value. An Internal LOB reaching here would be expanded as raw content and
-   * silently corrupt the value, so a kind mismatch has to fail loudly instead. */
+  /* The field is exactly one stub, so the fixed-width reads below cannot run past it. */
   or_init (&buf, stub, OR_OOS_INLINE_SIZE);
-  rc = or_get_oos_stub (&buf, &oos_ref->head_oid, &stub_kind, oos_len, &packed_identity_stamp, OR_OOS_KIND_OOS);
+  rc = or_get_oos_stub (&buf, &oos_ref->head_oid, kind, length, &packed_identity_stamp, expect_kind);
+  if (rc == NO_ERROR && OR_OOS_IS_LOB_KIND (*kind))
+    {
+      min_length = 0;
+      max_length = DB_MAX_INTERNAL_LOB_LENGTH * (*kind == OR_OOS_KIND_BLOB ? 8 : 1);
+    }
 
-  /* Reject an unreadable or non-OOS stub, a NULL OOS OID, or a length outside the stored-value range.
+  /* Reject an unreadable or unexpected stub, a NULL OOS OID, or a length outside the stored-value range.
    * A NULL identity stamp is an ordinary value and is not rejected. */
-  if (rc != NO_ERROR || OID_ISNULL (&oos_ref->head_oid) || *oos_len <= 0
-      || *oos_len > (DB_BIGINT) DB_MAX_STRING_LENGTH)
+  if (rc != NO_ERROR || OID_ISNULL (&oos_ref->head_oid) || *length < min_length || *length > max_length)
     {
       er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_BAD_INLINE_HEADER, 3, OID_AS_ARGS (&oos_ref->head_oid));
       return ER_HEAP_OOS_BAD_INLINE_HEADER;
@@ -915,7 +946,7 @@ heap_oos_begin_insert_publication (THREAD_ENTRY *thread_p)
       return S_ERROR;
     }
 
-  thread_p->oos_oids.clear ();
+  thread_p->clear_oos_tracking ();
   tdes->oos_insert_lsa_queue.clear ();
   return S_SUCCESS;
 }
@@ -1022,23 +1053,27 @@ int
 heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *context,
 			      const RECDES *old_recdes, const RECDES *new_recdes, const char *op_ctx)
 {
-  OOS_REF_VECTOR old_oos_refs;
+  HEAP_OOS_REFERENCE_VECTOR old_oos_references;
   OOS_REF_VECTOR new_oos_refs;
   VFID oos_vfid;
+  VFID internal_lob_vfid;
   int error_code;
 
-  error_code = heap_recdes_get_oos_refs (old_recdes, old_oos_refs);
+  VFID_SET_NULL (&oos_vfid);
+  VFID_SET_NULL (&internal_lob_vfid);
+
+  error_code = heap_recdes_get_oos_references (thread_p, old_recdes, old_oos_references);
   if (error_code != NO_ERROR)
     {
       ASSERT_ERROR ();
       er_log_debug (ARG_FILE_LINE,
-		    "SA_MODE eager OOS cleanup (%s): heap_recdes_get_oos_refs(old) failed"
+		    "SA_MODE eager OOS cleanup (%s): heap_recdes_get_oos_references(old) failed"
 		    " (hfid=%d|%d, oid=%d|%d|%d, old_rec_len=%d).",
 		    op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
 		    context->oid.volid, context->oid.pageid, context->oid.slotid, old_recdes->length);
       return error_code;
     }
-  if (old_oos_refs.empty ())
+  if (old_oos_references.empty ())
     {
       return NO_ERROR;
     }
@@ -1060,54 +1095,84 @@ heap_oos_delete_unreferenced (THREAD_ENTRY *thread_p, HEAP_OPERATION_CONTEXT *co
 	}
     }
 
-  if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
-    {
-      /* A false return is a failure to read the heap header (I/O, interrupt), never "no OOS file";
-       * it is an operational error with its own code, not a skip and not corruption. */
-      ASSERT_ERROR_AND_SET (error_code);
-      er_log_debug (ARG_FILE_LINE,
-		    "SA_MODE eager OOS cleanup (%s): OOS file lookup failed for hfid %d|%d (oid=%d|%d|%d).",
-		    op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
-		    context->oid.volid, context->oid.pageid, context->oid.slotid);
-      return error_code;
-    }
-  if (VFID_ISNULL (&oos_vfid))
-    {
-      er_log_debug (ARG_FILE_LINE,
-		    "SA_MODE eager OOS cleanup (%s): OOS flag set but no OOS VFID found for hfid %d|%d"
-		    " (oid=%d|%d|%d).",
-		    op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
-		    context->oid.volid, context->oid.pageid, context->oid.slotid);
-      assert_release (false);
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
-      return ER_HEAP_OOS_CORRUPTED_RECORD;
-    }
-
   int skipped_count = 0;
-  oos_chain_ref first_skipped_ref = old_oos_refs[0];
+  oos_chain_ref first_skipped_ref = old_oos_references[0].ref;
   oos_delete_outcome first_skipped_outcome = OOS_DELETE_OUTCOME_UNKNOWN;
 
-  for (const oos_chain_ref &old_ref : old_oos_refs)
+  for (const HEAP_OOS_REFERENCE &old_reference : old_oos_references)
     {
+      const oos_chain_ref &old_ref = old_reference.ref;
       if (oos_refs_contain_head_oid (new_oos_refs, &old_ref.head_oid))
 	{
 	  /* The new image still names this address; keep the chain. */
 	  continue;
 	}
+
+      /* [리뷰] 비MVCC(SA·카탈로그) 경로만 옛 체인을 즉시 지운다. MVCC 경로의 회수는 vacuum 몫이다.
+       * 스텁 kind로 LOB 파일과 OOS 파일을 가리고, 각 VFID는 처음 필요할 때 한 번만 찾는다.
+       * 중간 실패 시 호출자가 abort해 부분 삭제를 undo로 되돌려야 한다. */
       /* A stale reference (page gone, slot empty, stamp mismatch) is skipped rather than failed, so the
        * DML completes; the skips are diagnosed after the loop because, unlike a vacuum retry, they are
        * unexpected here (CBRD-26950). A stamp-matching non-head reference and operational failures are
        * errors. */
       oos_delete_outcome outcome = OOS_DELETE_OUTCOME_UNKNOWN;
-      error_code = oos_delete (thread_p, oos_vfid, old_ref, NULL, &outcome);
+      if (TP_IS_LOB_TYPE (old_reference.type))
+	{
+	  INTERNAL_LOB_LOCATOR locator = { old_ref.head_oid, old_ref.identity_stamp };
+	  if (VFID_ISNULL (&internal_lob_vfid)
+	      && !heap_internal_lob_find_vfid (thread_p, &context->hfid, &internal_lob_vfid, false))
+	    {
+	      error_code = er_errid ();
+	      if (error_code == NO_ERROR)
+		{
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_GENERIC_ERROR, 0);
+		  error_code = ER_GENERIC_ERROR;
+		}
+	      return error_code;
+	    }
+	  if (internal_lob_decode_disk_length (locator, old_reference.disk_length) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	  error_code = internal_lob_delete (thread_p, internal_lob_vfid, locator, &outcome);
+	}
+      else
+	{
+	  if (VFID_ISNULL (&oos_vfid))
+	    {
+	      if (!heap_oos_find_vfid (thread_p, &context->hfid, &oos_vfid, false))
+		{
+		  /* A false return is a failure to read the heap header (I/O, interrupt), never "no OOS file";
+		   * it is an operational error with its own code, not a skip and not corruption. */
+		  ASSERT_ERROR_AND_SET (error_code);
+		  er_log_debug (ARG_FILE_LINE,
+				"SA_MODE eager OOS cleanup (%s): OOS file lookup failed for hfid %d|%d"
+				" (oid=%d|%d|%d).", op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
+				context->oid.volid, context->oid.pageid, context->oid.slotid);
+		  return error_code;
+		}
+	      if (VFID_ISNULL (&oos_vfid))
+		{
+		  er_log_debug (ARG_FILE_LINE,
+				"SA_MODE eager OOS cleanup (%s): OOS flag set but no OOS VFID found for hfid %d|%d"
+				" (oid=%d|%d|%d).",
+				op_ctx, VFID_AS_ARGS (&context->hfid.vfid),
+				context->oid.volid, context->oid.pageid, context->oid.slotid);
+		  assert_release (false);
+		  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HEAP_OOS_CORRUPTED_RECORD, 0);
+		  return ER_HEAP_OOS_CORRUPTED_RECORD;
+		}
+	    }
+	  error_code = oos_delete (thread_p, oos_vfid, old_ref, NULL, &outcome);
+	}
       if (error_code != NO_ERROR)
 	{
 	  ASSERT_ERROR ();
 	  er_log_debug (ARG_FILE_LINE,
-			"SA_MODE eager OOS cleanup (%s): oos_delete(oos_vfid=%d|%d, oid=%d|%d|%d) failed"
+			"SA_MODE eager OOS cleanup (%s): delete(type=%d, oid=%d|%d|%d) failed"
 			" (hfid=%d|%d, heap_oid=%d|%d|%d).",
-			op_ctx, VFID_AS_ARGS (&oos_vfid), old_ref.head_oid.volid, old_ref.head_oid.pageid,
-			old_ref.head_oid.slotid, VFID_AS_ARGS (&context->hfid.vfid),
+			op_ctx, old_reference.type, OID_AS_ARGS (&old_ref.head_oid),
+			VFID_AS_ARGS (&context->hfid.vfid),
 			context->oid.volid, context->oid.pageid, context->oid.slotid);
 	  return error_code;
 	}

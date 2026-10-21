@@ -670,6 +670,8 @@ extern int heap_get_class_hfid (THREAD_ENTRY * thread_p, const OID * class_oid, 
 /* Reads exactly size bytes of the source at offset. The source's total size is known up front, so the internal LOB
  * chain is written tail-first through the reverse writer without staging the payload. */
 typedef int (*HEAP_INTERNAL_LOB_RANGE_READER) (void *ctx, DB_BIGINT offset, char *buf, int size);
+extern int heap_internal_lob_insert_value (THREAD_ENTRY * thread_p, const OID * class_oid, const DB_VALUE * value,
+					   INTERNAL_LOB_LOCATOR * locator);
 extern int heap_cache_class_info (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid, FILE_TYPE ftype);
 extern int heap_get_hfid_if_cached (THREAD_ENTRY * thread_p, const OID * class_oid, HFID * hfid_out,
 				    FILE_TYPE * ftype_out, bool * success);
@@ -829,11 +831,14 @@ using HEAP_OOS_REFERENCE = struct heap_oos_reference;
 using HEAP_OOS_REFERENCE_VECTOR = std::vector<HEAP_OOS_REFERENCE>;
 // *INDENT-ON*
 
-/* Parses every OOS inline stub of record into a chain reference (head OOS OID + identity stamp),
- * the value the delete paths hand to oos_delete (CBRD-26950). A stub whose field is malformed fails
- * with ER_HEAP_OOS_BAD_INLINE_HEADER (error set) and leaves oos_refs empty; an offset table without a
- * terminator or without any OOS entry still fails with ER_FAILED. */
+/* Parses every OOS inline stub of record, of any kind (ordinary OOS or Internal LOB), into a chain reference
+ * (head OOS OID + identity stamp), the value the delete paths hand to oos_delete (CBRD-26950). A stub whose field
+ * is malformed fails with ER_HEAP_OOS_BAD_INLINE_HEADER (error set) and leaves oos_refs empty; an offset table
+ * without a terminator or without any OOS entry still fails with ER_FAILED. */
 extern int heap_recdes_get_oos_refs (const RECDES * record, OOS_REF_VECTOR & oos_refs);
+/* The same references with the kind each stub holds (CLOB, BLOB or ordinary OOS) and its length. */
+extern int heap_recdes_get_oos_references (THREAD_ENTRY * thread_p, const RECDES * record,
+					   HEAP_OOS_REFERENCE_VECTOR & oos_references);
 
 /* lob */
 extern int heap_rv_lob_remove_dir (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
