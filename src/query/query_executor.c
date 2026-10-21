@@ -5988,6 +5988,12 @@ qexec_gby_mtable_add (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_GBY_
 	  /* a value the read made (not one pointing into the copy): the key takes a copy of its own */
 	  if (pr_clone_value (rd->temp_key->values[k], &vals[k]) != NO_ERROR)
 	    {
+	      /* s->key stays NULL, so the rewind would not clear what was cloned: cleared here (a value copied
+	       * flat has no memory of its own and clears to nothing) */
+	      while (--k >= 0)
+		{
+		  pr_clear_value (&vals[k]);
+		}
 	      return ER_FAILED;
 	    }
 	}
@@ -6025,7 +6031,15 @@ qexec_gby_merge_sample_groups (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
   int n = 0, d = 0, f1 = 0, f2 = 0, rc = NO_ERROR;
   unsigned int i;
 
-  if (hashes == NULL || counts == NULL || qfile_open_list_scan (rows, &scan) != NO_ERROR)
+  if (hashes == NULL || counts == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+	      (size_t) size * (sizeof (unsigned int) + sizeof (int)));
+      free (hashes);
+      free (counts);
+      return ER_FAILED;
+    }
+  if (qfile_open_list_scan (rows, &scan) != NO_ERROR)
     {
       free (hashes);
       free (counts);
@@ -6678,7 +6692,7 @@ qexec_gby_px_split_list (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_R
 	    {
 	      rc = qdata_load_agg_hkey_from_tuple (thread_p, tpl, from->type_list.hdr_size, rd->temp_part_key,
 						   rd->ctx->key_domains);
-	      k = qexec_gby_merge_part_of (rd->temp_part_key, px->n_parts);
+	      k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (rd->temp_part_key, px->n_parts) : 0;
 	    }
 	  else
 	    {
@@ -6688,7 +6702,8 @@ qexec_gby_px_split_list (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_R
 		{
 		  rc = qexec_build_agg_hkey (thread_p, rd->xasl_state, rd->hk_regu, &slot, rd->temp_key);
 		}
-	      k = qexec_gby_merge_part_of (rd->temp_key, px->n_parts);
+	      /* a key the fetch did not build has unset values: not hashed (as the serial split does not) */
+	      k = (rc == NO_ERROR) ? qexec_gby_merge_part_of (rd->temp_key, px->n_parts) : 0;
 	    }
 	  if (rc == NO_ERROR)
 	    {
@@ -6970,6 +6985,15 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
   px->out_partials = (QFILE_LIST_ID **) calloc (n, sizeof (QFILE_LIST_ID *));
   rows_sec = (QFILE_LIST_SECTOR_SCAN_INFO *) calloc (1, sizeof (QFILE_LIST_SECTOR_SCAN_INFO));
   partials_sec = (QFILE_LIST_SECTOR_SCAN_INFO *) calloc (1, sizeof (QFILE_LIST_SECTOR_SCAN_INFO));
+  /* constructed as soon as allocated, as px is: end: closes and destroys whichever is not NULL */
+  if (rows_sec != NULL)
+    {
+      placement_new (rows_sec);
+    }
+  if (partials_sec != NULL)
+    {
+      placement_new (partials_sec);
+    }
   if (px->pieces == NULL || px->out_rows == NULL || px->out_partials == NULL || rows_sec == NULL
       || partials_sec == NULL)
     {
@@ -6978,8 +7002,6 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
       mgr->release_workers ();
       goto end;
     }
-  placement_new (rows_sec);
-  placement_new (partials_sec);
   /* the lists are read by the workers: closed (no page kept fixed by this thread), their pages shared out */
   qfile_close_list (thread_p, list_id);
   qfile_close_list (thread_p, partials);
@@ -7031,11 +7053,15 @@ end:
 	}
       free (px->pieces);
     }
-  if (px->out_rows != NULL)
+  for (w = 0; w < n; w++)
     {
-      for (w = 0; w < n; w++)
+      /* each array on its own: the calloc of one may have failed after the other's was done */
+      if (px->out_rows != NULL)
 	{
 	  qexec_gby_merge_free_list (thread_p, &px->out_rows[w]);
+	}
+      if (px->out_partials != NULL)
+	{
 	  qexec_gby_merge_free_list (thread_p, &px->out_partials[w]);
 	}
     }
@@ -7123,6 +7149,7 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
   QUERY_ID query_id = gbstate->xasl_state->query_id;
   QFILE_LIST_ID **row_parts = NULL, **part_parts = NULL;
   QFILE_LIST_ID *rows_out = NULL, *partials_out = NULL;
+  QFILE_LIST_ID collapsed;
   QEXEC_GBY_MTABLE table;
   QEXEC_GBY_READER reader;
   bool order_free, parallel;
@@ -7132,6 +7159,9 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
   const char *px_why = NULL;
 
   *result = QEXEC_GBY_MERGE_NONE;
+  memset (&table, 0, sizeof (table));	/* end: frees it on every path below */
+  /* the table was dumped into the lists and cleared before this (qdata_save_agg_htable_to_list ()); entries left
+   * in it mean the dump did not run, and then there is nothing to merge */
   if (gbstate->with_rollup || ctx == NULL || ctx->hash_table == NULL || partials == NULL || list_id->tuple_cnt == 0
       || mht_count (ctx->hash_table) != 0 || xasl->proc.buildlist.g_output_first_tuple
       || XASL_IS_FLAGED (xasl, XASL_MULTI_UPDATE_AGG)
@@ -7147,7 +7177,8 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
       qfile_close_list (thread_p, list_id);
       if (qexec_gby_merge_sample_groups (thread_p, gbstate, list_id, &groups) != NO_ERROR)
 	{
-	  return ER_FAILED;
+	  rc = ER_FAILED;
+	  goto end;		/* an error is set there, or end: sets one */
 	}
     }
   else
@@ -7188,7 +7219,6 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
       n_parts = MIN (MAX (n_parts, px_degree * 4), QEXEC_GBY_MERGE_MAX_PARTS);
     }
 
-  memset (&table, 0, sizeof (table));
   if (qexec_gby_mtable_init (&table, xasl->proc.buildlist.g_hkey_size, xasl->proc.buildlist.g_func_count) != NO_ERROR)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
@@ -7288,15 +7318,17 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
     }
   else
     {
-      /* the collapsed lists replace the originals for the sort */
+      /* the collapsed lists replace the originals for the sort: copied before the original is destroyed, so that
+       * a failed copy leaves each list with its own file (end: destroys rows_out; list_id never pointed at it) */
       qfile_close_list (thread_p, rows_out);
       qfile_close_list (thread_p, partials_out);
-      qfile_destroy_list (thread_p, list_id);
-      if (qfile_copy_list_id (list_id, rows_out, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+      if (qfile_copy_list_id (&collapsed, rows_out, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
 	{
 	  rc = ER_FAILED;
 	  goto end;
 	}
+      qfile_destroy_list (thread_p, list_id);
+      *list_id = collapsed;
       QFILE_FREE_AND_INIT_LIST_ID (rows_out);
       qexec_gby_merge_free_list (thread_p, &ctx->part_list_id);
       ctx->part_list_id = partials_out;
@@ -11722,7 +11754,8 @@ struct qexec_batch_gby
   void (*sync) (void *arg);	/* the caller's copy of the hash state follows the context's */
   void *arg;
   bool off;			/* the table takes no more rows: all of them to the row path */
-  QEXEC_GBY_ENTRY *cache;
+  QEXEC_GBY_ENTRY *cache;	/* invariant: every entry's value is a live group of the table, and a group has at most
+				 * one entry (qexec_gby_cache_evicted () drops the entries of the groups the table freed) */
   int n_cached;
   int cap;			/* rows the scratch arrays hold */
   int *pend_row;		/* a chunk's rows of cached groups, in row order, and their entries */
@@ -11825,7 +11858,11 @@ qexec_gby_cache_remove (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, unsigned 
 	  continue;
 	}
       st->cache[i] = st->cache[j];
-      st->cache[i].value->batch_slot = (int) i;
+      if (st->cache[i].value != NULL)
+	{
+	  /* NULL: tagged by qexec_gby_cache_evicted () -- its group is freed */
+	  st->cache[i].value->batch_slot = (int) i;
+	}
       st->cache[j].len = -1;
       st->cache[j].bytes = NULL;
       st->cache[j].key = NULL;
@@ -11901,8 +11938,11 @@ static void
 qexec_gby_cache_evicted (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGATE_HASH_VALUE ** note_val,
 			 const int *note_slot, int n)
 {
-  int i;
+  int i, k;
+  bool again;
 
+  /* pass 1: tag the entries while every noted slot still holds what it held before the call (a removal
+   * moves the later entries of its cluster, so a noted slot is only valid before the first removal) */
   for (i = 0; i < n; i++)
     {
       int slot = note_slot[i];
@@ -11910,9 +11950,24 @@ qexec_gby_cache_evicted (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGAT
       /* the value pointer compares as a number: a freed group's slot may hold another group by now */
       if (slot >= 0 && slot < QEXEC_GBY_CACHE_SIZE && st->cache[slot].len >= 0 && st->cache[slot].value == note_val[i])
 	{
-	  qexec_gby_cache_remove (thread_p, st, (unsigned int) slot);
+	  st->cache[slot].value = NULL;
 	}
     }
+  /* pass 2: remove the tagged entries wherever the shifts put them (an eviction happens at the table's
+   * memory budget, after a group was dumped to a list file: the table walk is cheap beside it) */
+  do
+    {
+      again = false;
+      for (k = 0; k < QEXEC_GBY_CACHE_SIZE; k++)
+	{
+	  if (st->cache[k].len >= 0 && st->cache[k].value == NULL)
+	    {
+	      qexec_gby_cache_remove (thread_p, st, (unsigned int) k);
+	      again = true;
+	    }
+	}
+    }
+  while (again);
 }
 
 static int
@@ -12483,28 +12538,48 @@ qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
     }
   expr_chunk_node_init (&eval_node, "evaluate", expr_chunk_eval_consume, &xasl_state->vd, &tail_node);
 
-  if (thread_is_on_trace (thread_p))
-    {
-      /* the trace's fetch / ioread / time of the scan, as scan_next_scan_local () counts them per row */
-      UINT64 old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
-      UINT64 old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
-      TSC_TICKS start_tick, end_tick;
-      TSCTIMEVAL tv_diff;
-
-      tsc_getticks (&start_tick);
-      code = qexec_batch_scan_chain (thread_p, xasl, xasl_state, tplrec, &eval_node);
-      tsc_getticks (&end_tick);
-      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
-      TSC_ADD_TIMEVAL (s_id->scan_stats.elapsed_scan, tv_diff);
-      s_id->scan_stats.num_fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
-      s_id->scan_stats.num_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
-    }
-  else
-    {
-      code = qexec_batch_scan_chain (thread_p, xasl, xasl_state, tplrec, &eval_node);
-    }
+  code = qexec_batch_scan_chain (thread_p, xasl, xasl_state, tplrec, &eval_node);
   qexec_batch_gby_destroy (thread_p, gby);
   return code;
+}
+
+/* The trace's fetch / ioread / time of the batch pages, taken over the stretches of the chain's loop that the batch
+ * runs: a page that goes to the row path is counted there, per row, by scan_next_scan_local () into the same
+ * scan_stats, so the stretch closes before it and opens again after. */
+typedef struct qexec_batch_trace QEXEC_BATCH_TRACE;
+struct qexec_batch_trace
+{
+  bool on;
+  UINT64 fetches;
+  UINT64 ioreads;
+  TSC_TICKS tick;
+};
+
+static void
+qexec_batch_trace_begin (THREAD_ENTRY * thread_p, QEXEC_BATCH_TRACE * t)
+{
+  if (t->on)
+    {
+      t->fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
+      t->ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      tsc_getticks (&t->tick);
+    }
+}
+
+static void
+qexec_batch_trace_end (THREAD_ENTRY * thread_p, QEXEC_BATCH_TRACE * t, SCAN_ID * s_id)
+{
+  if (t->on)
+    {
+      TSC_TICKS end_tick;
+      TSCTIMEVAL tv_diff;
+
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, t->tick);
+      TSC_ADD_TIMEVAL (s_id->scan_stats.elapsed_scan, tv_diff);
+      s_id->scan_stats.num_fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - t->fetches;
+      s_id->scan_stats.num_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - t->ioreads;
+    }
 }
 
 /* qexec_batch_scan ()'s loop, with its chain built */
@@ -12515,8 +12590,11 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   SCAN_ID *s_id = &xasl->curr_spec->s_id;
   HEAP_SCAN_ID *hsidp = &s_id->s.hsid;
   SCAN_CODE code, ls_scan;
+  QEXEC_BATCH_TRACE trace;
   int rc;
 
+  trace.on = thread_is_on_trace (thread_p);
+  qexec_batch_trace_begin (thread_p, &trace);
   while ((code = scan_batch_next_page (thread_p, s_id)) == S_SUCCESS)
     {
       PGSLOTID slot = 0, chunk_start;
@@ -12528,7 +12606,7 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	  chunk = scan_batch_collect_chunk (thread_p, s_id, &hsidp->batch_vpid, &slot);
 	  if (chunk == S_ERROR)
 	    {
-	      return S_ERROR;
+	      break;
 	    }
 	  if (chunk != S_DOESNT_FIT && hsidp->batch->n_rows > 0)
 	    {
@@ -12545,7 +12623,8 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 		}
 	      else
 		{
-		  return S_ERROR;
+		  chunk = S_ERROR;
+		  break;
 		}
 	    }
 	  else if (chunk == S_DOESNT_FIT)
@@ -12555,6 +12634,11 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	}
       while (chunk == S_SUCCESS);
 
+      if (chunk == S_ERROR)
+	{
+	  code = S_ERROR;
+	  break;
+	}
       if (chunk != S_DOESNT_FIT)
 	{
 	  s_id->scan_stats.batch_pages++;
@@ -12564,6 +12648,7 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
       /* the chunk and the rest of its page go to the row path: nothing of the chunk was accumulated */
       s_id->scan_stats.batch_pages_rowpath++;
       expr_batch_plan_note_page (hsidp->batch_plan, true);
+      qexec_batch_trace_end (thread_p, &trace, s_id);
       scan_batch_page_rowmode (s_id, true, chunk_start);
       while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
 	{
@@ -12578,7 +12663,9 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	{
 	  return S_ERROR;
 	}
+      qexec_batch_trace_begin (thread_p, &trace);
     }
+  qexec_batch_trace_end (thread_p, &trace, s_id);
   return code;
 }
 
