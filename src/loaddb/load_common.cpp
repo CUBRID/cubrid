@@ -25,9 +25,25 @@
 #include "db_client_type.hpp"
 #include "dbtype_def.h"
 #include "error_code.h"
+#include "error_manager.h"
+#include "compressor.hpp"
+#include "internal_lob_file.hpp"
 #include "intl_support.h"
+#include "language_support.h"
+#include "object_representation.h"
+#include "utility.h"
+#if defined (CS_MODE)
+#include "network_interface_cl.h"
+#include "internal_lob_stream_kind.h"
+#endif
 
+#include <climits>
+#include <cstdlib>
+#include <cstring>
 #include <fstream>
+#include <limits>
+#include <algorithm>
+#include <vector>
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
@@ -55,6 +71,9 @@ namespace cubload
    * Trim whitespaces on the right of the string. String is passed as reference and it will be modified
    */
   void rtrim (std::string &str);
+
+  int expand_internal_lob_refs (std::string &row, const internal_lob_sidecar_map &sidecar, bool sidecar_available,
+				class_id clsid, batch_id id);
 }
 
 ///////////////////// Function definitions /////////////////////
@@ -646,6 +665,655 @@ namespace cubload
 
 
 #define LOADDB_BUFFER_SIZE_LIMIT ((size_t)(((1024 * 1024 * 2) - 1) * 1024LL)) /* (2GB - 1K) */
+  static std::string
+  internal_lob_sidecar_path (const std::string &object_file)
+  {
+    const std::string object_suffix = "_objects";
+
+    if (object_file.size () >= object_suffix.size ()
+	&& object_file.compare (object_file.size () - object_suffix.size (), object_suffix.size (), object_suffix) == 0)
+      {
+	return object_file.substr (0, object_file.size () - object_suffix.size ()) + INTERNAL_LOB_SIDECAR_SUFFIX;
+      }
+
+    return object_file + INTERNAL_LOB_SIDECAR_SUFFIX;
+  }
+
+  static int
+  internal_lob_sidecar_set_error ()
+  {
+    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_INTERNAL_LOB_SIDECAR, 0);
+    return ER_LDR_INTERNAL_LOB_SIDECAR;
+  }
+
+  /* Format 2 records the unload-time charset and collation.  CLOB / BLOB keep no per-value charset, so a charset
+   * mismatch is refused when the unload holds a LOB value (its bytes would read as other characters). */
+  static int
+  internal_lob_sidecar_read_charset (std::ifstream &sidecar_file, std::string &file_charset, const char *&db_charset)
+  {
+    std::string line;
+    std::size_t tab;
+
+    if (!std::getline (sidecar_file, line))
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    tab = line.find ('\t');
+    file_charset = (tab == std::string::npos) ? line : line.substr (0, tab);
+    db_charset = lang_charset_name (LANG_SYS_CODESET);
+    if (file_charset.empty () || db_charset == NULL)
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+    return NO_ERROR;
+  }
+
+  static int
+  internal_lob_sidecar_hex_value (char ch)
+  {
+    if (ch >= '0' && ch <= '9')
+      {
+	return ch - '0';
+      }
+    if (ch >= 'a' && ch <= 'f')
+      {
+	return ch - 'a' + 10;
+      }
+    if (ch >= 'A' && ch <= 'F')
+      {
+	return ch - 'A' + 10;
+      }
+
+    return -1;
+  }
+
+  static bool
+  internal_lob_sidecar_read_field (std::ifstream &sidecar_file, std::string &field, char delimiter)
+  {
+    char ch;
+
+    field.clear ();
+    while (sidecar_file.get (ch))
+      {
+	if (ch == delimiter)
+	  {
+	    return true;
+	  }
+	field.push_back (ch);
+      }
+
+    return !field.empty ();
+  }
+
+  static int
+  internal_lob_sidecar_parse_entry (std::ifstream &sidecar_file, const std::shared_ptr<const std::string> &path,
+				    int format_version,
+				    internal_lob_sidecar_map &sidecar)
+  {
+    std::string type_field, key_len_field, key, data_len_field, bit_len_field;
+    char *endptr = NULL;
+    unsigned long key_len;
+    long long data_len;
+    long long bit_length;
+    std::streamoff hex_offset;
+    std::streamoff hex_size;
+    internal_lob_sidecar_entry entry;
+
+    if (!internal_lob_sidecar_read_field (sidecar_file, type_field, '\t'))
+      {
+	return sidecar_file.eof () ? NO_ERROR : internal_lob_sidecar_set_error ();
+      }
+    if (!internal_lob_sidecar_read_field (sidecar_file, key_len_field, '\t')
+	|| !internal_lob_sidecar_read_field (sidecar_file, key, '\t')
+	|| !internal_lob_sidecar_read_field (sidecar_file, data_len_field, '\t')
+	|| !internal_lob_sidecar_read_field (sidecar_file, bit_len_field, '\t'))
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    if (type_field.size () != 1 || (type_field[0] != 'B' && type_field[0] != 'C'))
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    key_len = strtoul (key_len_field.c_str (), &endptr, 10);
+    if (endptr == key_len_field.c_str () || *endptr != '\0' || key_len != key.size ())
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    data_len = strtoll (data_len_field.c_str (), &endptr, 10);
+    if (endptr == data_len_field.c_str () || *endptr != '\0' || data_len < 0 || data_len > DB_BIGINT_MAX / 2)
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    bit_length = strtoll (bit_len_field.c_str (), &endptr, 10);
+    if (endptr == bit_len_field.c_str () || *endptr != '\0' || bit_length < 0)
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+    if ((type_field[0] == 'C' && bit_length != 0)
+	|| (type_field[0] == 'B' && !internal_lob_is_valid_blob_bit_length ((DB_BIGINT) data_len,
+	    (DB_BIGINT) bit_length)))
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    if (format_version >= 2)
+      {
+	std::string comp_field, stored_len_field;
+	long long stored_len;
+
+	if (!internal_lob_sidecar_read_field (sidecar_file, comp_field, '\t')
+	    || !internal_lob_sidecar_read_field (sidecar_file, stored_len_field, '\t'))
+	  {
+	    return internal_lob_sidecar_set_error ();
+	  }
+	if (comp_field.size () != 1
+	    || (comp_field[0] != INTERNAL_LOB_SIDECAR_COMPRESS_NONE && comp_field[0] != INTERNAL_LOB_SIDECAR_COMPRESS_LZ4))
+	  {
+	    return internal_lob_sidecar_set_error ();
+	  }
+	stored_len = strtoll (stored_len_field.c_str (), &endptr, 10);
+	if (endptr == stored_len_field.c_str () || *endptr != '\0' || stored_len < 0)
+	  {
+	    return internal_lob_sidecar_set_error ();
+	  }
+	entry.compression = comp_field[0];
+	entry.stored_length = (DB_BIGINT) stored_len;
+      }
+
+    hex_offset = sidecar_file.tellg ();
+    if (hex_offset < 0)
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    hex_size = (format_version >= 2) ? (std::streamoff) entry.stored_length : (std::streamoff) data_len * 2;
+    sidecar_file.seekg (hex_size, std::ios_base::cur);
+    if (!sidecar_file.good ())
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    char newline = '\0';
+    if (sidecar_file.get (newline))
+      {
+	if (newline != '\n')
+	  {
+	    return internal_lob_sidecar_set_error ();
+	  }
+      }
+    else if (!sidecar_file.eof ())
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    entry.type = type_field[0];
+    entry.data_length = (DB_BIGINT) data_len;
+    entry.bit_length = (DB_BIGINT) bit_length;
+    entry.body_offset = hex_offset;
+    entry.path = path;
+
+    sidecar[key] = std::move (entry);
+    return NO_ERROR;
+  }
+
+  int
+  load_internal_lob_sidecar (const std::string &object_file_name, internal_lob_sidecar_map &sidecar,
+			     bool &sidecar_available)
+  {
+    /* [리뷰] 사이드카가 없으면 NO_ERROR·available=false. 참조 유무 검사는 커밋 31·32.
+     * 엔트리 파싱 실패는 ER_FAILED를 돌려준다(er_set은 -1390).
+     * 반환값으로 분기하는 호출자는 -1390을 못 본다. */
+    std::string path;
+    std::ifstream sidecar_file;
+    std::string line;
+    std::string file_charset;
+    const char *db_charset = NULL;
+    int format_version = 1;
+
+    sidecar.clear ();
+    sidecar_available = false;
+
+    if (object_file_name.empty ())
+      {
+	return NO_ERROR;
+      }
+
+    path = internal_lob_sidecar_path (object_file_name);
+    sidecar_file.open (path, std::ios::in | std::ios::binary);
+    if (!sidecar_file.is_open ())
+      {
+	return NO_ERROR;
+      }
+
+    if (!std::getline (sidecar_file, line))
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+    if (line == INTERNAL_LOB_SIDECAR_MAGIC_V1)
+      {
+	format_version = 1;
+      }
+    else if (line == INTERNAL_LOB_SIDECAR_MAGIC_V2)
+      {
+	format_version = 2;
+      }
+    else
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    if (format_version >= 2)
+      {
+	int error = internal_lob_sidecar_read_charset (sidecar_file, file_charset, db_charset);
+
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+      }
+
+    std::shared_ptr<const std::string> shared_path = std::make_shared<const std::string> (path);
+
+    while (!sidecar_file.eof ())
+      {
+	int error = internal_lob_sidecar_parse_entry (sidecar_file, shared_path, format_version, sidecar);
+	if (error != NO_ERROR)
+	  {
+	    return ER_FAILED;
+	  }
+      }
+
+    /* only a stored LOB value is read with the unload-time charset; an unload without one loads anywhere */
+    /* [리뷰] LOB 값이 하나라도 있을 때만 charset 불일치(-1388)로 거부한다.
+     * 콜레이션은 비교하지 않는다. 값 없는 사이드카는 어디든 적재된다. */
+    if (!sidecar.empty () && db_charset != NULL && file_charset != db_charset)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_INTERNAL_LOB_CHARSET_MISMATCH, 2, file_charset.c_str (),
+		db_charset);
+	sidecar.clear ();
+	return ER_LDR_INTERNAL_LOB_CHARSET_MISMATCH;
+      }
+
+    sidecar_available = true;
+    return NO_ERROR;
+  }
+
+  /* Block index of a format-2 body: (first plain byte, block header position) per block, built on an entry's first
+   * read so a read can start at any offset (the writer walks the payload end-first); the last decompressed block is
+   * cached.  Thread-local: one loader thread reads one entry at a time. */
+  struct internal_lob_sidecar_block_index
+  {
+    std::string path;
+    std::streamoff body_offset = -1;
+    std::vector<std::pair<DB_BIGINT, std::streamoff>> blocks;	/* plain start -> header position */
+    DB_BIGINT cached_block_start = -1;
+    std::vector<char> cached_plain;
+  };
+
+  static int
+  internal_lob_sidecar_read_block_header (std::ifstream &sidecar_file, std::streamoff pos, int &plain_size,
+					  int &compressed_size)
+  {
+    char header[INTERNAL_LOB_SIDECAR_BLOCK_HEADER_SIZE];
+
+    sidecar_file.seekg (pos, std::ios_base::beg);
+    if (!sidecar_file.good ())
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+    sidecar_file.read (header, sizeof (header));
+    if (sidecar_file.gcount () != (std::streamsize) sizeof (header))
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+    plain_size = OR_GET_INT (header);
+    compressed_size = OR_GET_INT (header + OR_INT_SIZE);
+    if (plain_size <= 0 || plain_size > INTERNAL_LOB_SIDECAR_BLOCK_SIZE || compressed_size <= 0)
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+    return NO_ERROR;
+  }
+
+  static int
+  internal_lob_sidecar_build_block_index (std::ifstream &sidecar_file, const internal_lob_sidecar_entry &entry,
+					  internal_lob_sidecar_block_index &index)
+  {
+    DB_BIGINT block_start = 0;
+    std::streamoff pos = entry.body_offset;
+
+    index.path.clear ();
+    index.body_offset = -1;
+    index.blocks.clear ();
+    index.cached_block_start = -1;
+    index.cached_plain.clear ();
+
+    while (block_start < entry.data_length)
+      {
+	int plain_size;
+	int compressed_size;
+	int error = internal_lob_sidecar_read_block_header (sidecar_file, pos, plain_size, compressed_size);
+
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+	index.blocks.emplace_back (block_start, pos);
+	pos += (std::streamoff) INTERNAL_LOB_SIDECAR_BLOCK_HEADER_SIZE + compressed_size;
+	block_start += plain_size;
+      }
+
+    index.path = *entry.path;
+    index.body_offset = entry.body_offset;
+    return NO_ERROR;
+  }
+
+  /* One sidecar stream per thread, kept open across calls.  Every LOB value in a batch is read in 64 KB
+   * pieces, and opening the file again for each piece dominated the cost; only a path change reopens. */
+  struct internal_lob_sidecar_open_file
+  {
+    std::string path;
+    std::ifstream file;
+  };
+
+  static std::ifstream &
+  internal_lob_sidecar_open (const std::string &path, bool &opened)
+  {
+    static thread_local internal_lob_sidecar_open_file cache;
+
+    if (cache.path != path || !cache.file.is_open ())
+      {
+	cache.file.close ();
+	cache.file.clear ();
+	cache.file.open (path, std::ios::in | std::ios::binary);
+	cache.path = path;
+      }
+    else
+      {
+	cache.file.clear ();	/* a previous read may have left eof/fail set */
+      }
+    opened = cache.file.is_open ();
+    return cache.file;
+  }
+
+  static int
+  internal_lob_sidecar_read_blocks (const internal_lob_sidecar_entry &entry, DB_BIGINT byte_offset, char *buf,
+				    int read_size)
+  {
+    /* [리뷰] 역순 64KiB 조각 읽기용 임의 접근: 블록 색인 upper_bound + 블록 1개 캐시.
+     * 조각이 블록 경계를 걸치면 두 블록을 번갈아 풀 수 있다(성능 문제뿐).
+     * thread_local 캐시는 워커 스레드가 사는 동안 파일을 열어 둔다. */
+    static thread_local internal_lob_sidecar_block_index index;
+
+    bool opened = false;
+    std::ifstream &sidecar_file = internal_lob_sidecar_open (*entry.path, opened);
+    std::vector<char> compressed;
+    int copied = 0;
+
+    if (!opened)
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    if (index.path != *entry.path || index.body_offset != entry.body_offset)
+      {
+	int error = internal_lob_sidecar_build_block_index (sidecar_file, entry, index);
+
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+      }
+
+    /* the block whose plain range contains byte_offset */
+    auto block = std::upper_bound (index.blocks.begin (), index.blocks.end (), byte_offset,
+				   [] (DB_BIGINT offset, const std::pair<DB_BIGINT, std::streamoff> &candidate)
+    {
+      return offset < candidate.first;
+    });
+    if (block == index.blocks.begin ())
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+    --block;
+
+    while (copied < read_size)
+      {
+	if (block == index.blocks.end ())
+	  {
+	    return internal_lob_sidecar_set_error ();
+	  }
+
+	const DB_BIGINT block_start = block->first;
+
+	if (index.cached_block_start != block_start)
+	  {
+	    int plain_size;
+	    int compressed_size;
+	    int error = internal_lob_sidecar_read_block_header (sidecar_file, block->second, plain_size, compressed_size);
+
+	    if (error != NO_ERROR)
+	      {
+		return error;
+	      }
+	    compressed.resize ((std::size_t) compressed_size);
+	    sidecar_file.read (compressed.data (), (std::streamsize) compressed_size);
+	    if (sidecar_file.gcount () != (std::streamsize) compressed_size)
+	      {
+		return internal_lob_sidecar_set_error ();
+	      }
+	    index.cached_block_start = -1;
+	    index.cached_plain.resize ((std::size_t) plain_size);
+	    if (cubcompress::decompress<cubcompress::LZ4> (compressed.data (), compressed_size, index.cached_plain.data (),
+		plain_size) != plain_size)
+	      {
+		index.cached_plain.clear ();
+		return internal_lob_sidecar_set_error ();
+	      }
+	    index.cached_block_start = block_start;
+	  }
+
+	{
+	  const int plain_size = (int) index.cached_plain.size ();
+	  const int in_block = (int) (byte_offset + copied - block_start);
+	  int take = plain_size - in_block;
+
+	  if (in_block < 0 || in_block >= plain_size)
+	    {
+	      return internal_lob_sidecar_set_error ();
+	    }
+	  if (take > read_size - copied)
+	    {
+	      take = read_size - copied;
+	    }
+	  std::memcpy (buf + copied, index.cached_plain.data () + in_block, (std::size_t) take);
+	  copied += take;
+	}
+	++block;
+      }
+
+    return NO_ERROR;
+  }
+
+  int
+  internal_lob_sidecar_read_raw_chunk (const internal_lob_sidecar_entry &entry, DB_BIGINT byte_offset, char *buf,
+				       int buf_size, int *nread)
+  {
+    std::vector<char> hex_data;
+    DB_BIGINT remaining;
+    int read_size;
+
+    if (buf == NULL || buf_size < 0 || nread == NULL || byte_offset < 0 || byte_offset > entry.data_length)
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+    *nread = 0;
+    if (buf_size == 0 || byte_offset == entry.data_length)
+      {
+	return NO_ERROR;
+      }
+
+    remaining = entry.data_length - byte_offset;
+    read_size = (remaining > (DB_BIGINT) buf_size) ? buf_size : (int) remaining;
+    if (read_size < 0 || read_size > INT_MAX / 2)
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    if (entry.compression == INTERNAL_LOB_SIDECAR_COMPRESS_LZ4)
+      {
+	int error = internal_lob_sidecar_read_blocks (entry, byte_offset, buf, read_size);
+
+	if (error != NO_ERROR)
+	  {
+	    return error;
+	  }
+	*nread = read_size;
+	return NO_ERROR;
+      }
+
+    bool opened = false;
+    std::ifstream &sidecar_file = internal_lob_sidecar_open (*entry.path, opened);
+    if (!opened)
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    sidecar_file.seekg (entry.body_offset + (std::streamoff) byte_offset * 2, std::ios_base::beg);
+    if (!sidecar_file.good ())
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    hex_data.resize ((std::size_t) read_size * 2);
+    sidecar_file.read (hex_data.data (), (std::streamsize) hex_data.size ());
+    if (sidecar_file.gcount () != (std::streamsize) hex_data.size ())
+      {
+	return internal_lob_sidecar_set_error ();
+      }
+
+    for (int i = 0; i < read_size; i++)
+      {
+	int hi = internal_lob_sidecar_hex_value (hex_data[ (std::size_t) i * 2]);
+	int lo = internal_lob_sidecar_hex_value (hex_data[ (std::size_t) i * 2 + 1]);
+	if (hi < 0 || lo < 0)
+	  {
+	    return internal_lob_sidecar_set_error ();
+	  }
+	buf[i] = (char) ((hi << 4) | lo);
+      }
+
+    *nread = read_size;
+    return NO_ERROR;
+  }
+
+  /*
+   * internal_lob_make_ref_from_sidecar_entry () - Send one Internal LOB value of batch id to the server and build
+   *                                               the slot reference its row will carry.
+   *    Frames go end-first, each headed by its byte offset, straight to the batch worker's reverse chunk writer.
+   */
+  static int
+  internal_lob_make_ref_from_sidecar_entry (class_id clsid, batch_id id, const internal_lob_sidecar_entry &entry,
+      std::string &ref)
+  {
+    /* [리뷰] CS 전용. 64KiB 조각을 끝에서부터 [offset][payload]로 보내 역순 writer에 맞춘다.
+     * 결과는 배치 슬롯 참조 ^L'T|slot'. 이 커밋엔 호출자가 없다(커밋 31).
+     * SA는 assert(false): 4GB 값은 리터럴로 못 만드니 새 호출자도 스트리밍. */
+#if defined (CS_MODE)
+    const int frame_payload_size = 64 * 1024;
+    OR_ALIGNED_BUF (INTERNAL_LOB_LOAD_STREAM_FRAME_HEADER_SIZE + 64 * 1024) a_frame;
+    char *frame = OR_ALIGNED_BUF_START (a_frame);
+    char *payload = frame + INTERNAL_LOB_LOAD_STREAM_FRAME_HEADER_SIZE;
+    DB_BIGINT end = entry.data_length;
+    INT64 slot = 0;
+    OR_ALIGNED_BUF (INTERNAL_LOB_LOAD_STREAM_CONFIG_SIZE) a_config;
+    char *config = OR_ALIGNED_BUF_START (a_config);
+    char *ptr = config;
+    DB_BIGINT logical_length = entry.type == 'B' ? entry.bit_length : entry.data_length;
+    INT64 batch_id_value = (INT64) id;
+    int error;
+    bool abort_stream = false;
+
+    ptr = or_pack_int (ptr, entry.type == 'B' ? INTERNAL_LOB_STREAM_TYPE_BLOB : INTERNAL_LOB_STREAM_TYPE_CLOB);
+    OR_PUT_INT64 (ptr, &entry.data_length);
+    ptr += OR_INT64_SIZE;
+    OR_PUT_INT64 (ptr, &logical_length);
+    ptr += OR_INT64_SIZE;
+    ptr = or_pack_int (ptr, (int) clsid);
+    OR_PUT_INT64 (ptr, &batch_id_value);
+    error = stream_from_init (STREAM_KIND_INTERNAL_LOB_LOAD, config, OR_ALIGNED_BUF_SIZE (a_config));
+    if (error != NO_ERROR)
+      {
+	return error;
+      }
+    abort_stream = true;
+
+    while (end > 0)
+      {
+	int size = end > (DB_BIGINT) frame_payload_size ? frame_payload_size : (int) end;
+	DB_BIGINT start = end - size;
+	INT64 offset_value = (INT64) start;
+	int nread = 0;
+
+	error = internal_lob_sidecar_read_raw_chunk (entry, start, payload, size, &nread);
+	if (error != NO_ERROR)
+	  {
+	    goto cleanup;
+	  }
+	if (nread != size)
+	  {
+	    error = internal_lob_sidecar_set_error ();
+	    goto cleanup;
+	  }
+
+	OR_PUT_INT64 (frame, &offset_value);
+	error = stream_from_send_data (frame, INTERNAL_LOB_LOAD_STREAM_FRAME_HEADER_SIZE + size);
+	if (error != NO_ERROR)
+	  {
+	    goto cleanup;
+	  }
+
+	end = start;
+      }
+
+    error = stream_from_end (&slot);
+    if (error != NO_ERROR)
+      {
+	goto cleanup;
+      }
+    abort_stream = false;
+
+    ref = "^L'";
+    ref.push_back (entry.type);
+    ref.push_back ('|');
+    ref.append (std::to_string ((long long) slot));
+    ref.push_back ('\'');
+    return NO_ERROR;
+
+cleanup:
+    if (abort_stream)
+      {
+	(void) stream_from_abort ();
+      }
+    return error;
+#else
+    /* Unreachable: only the CS-mode loader gets here.  SA mode goes through ldr_sa_load (), which streams
+     * the sidecar payload into heap_internal_lob_insert_stream ().  A new caller needs a streaming path of
+     * its own, never a whole-value literal - a 4 GB value cannot be materialized. */
+    assert (false);
+    (void) clsid;
+    (void) id;
+    (void) entry;
+    (void) ref;
+    return internal_lob_sidecar_set_error ();
+#endif
+  }
+
   static int
   append_incomplete_row (std::string &batch_buffer, std::string &one_row_buffer, batch_handler &b_handler,
 			 class_id &clsid, batch_id &batch_id, int lineno,
