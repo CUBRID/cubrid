@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <assert.h>
+#include <string.h>
 #if defined(WINDOWS)
 #include <io.h>
 #else
@@ -49,6 +50,7 @@
 #include "load_object.h"
 #include "db_value_printer.hpp"
 #include "network_interface_cl.h"
+#include "oid.h"
 #include "printer.hpp"
 
 #include "message_catalog.h"
@@ -64,12 +66,13 @@ static int object_disk_size (DESC_OBJ * obj, int *offset_size_ptr);
 static void put_varinfo (OR_BUF * buf, DESC_OBJ * obj, int offset_size);
 static void put_attributes (OR_BUF * buf, DESC_OBJ * obj);
 static void get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit_flag, int offset_size,
-			      bool is_unloaddb);
+			      DESC_OOS_POLICY oos_policy);
 static SM_ATTRIBUTE *find_current_attribute (SM_CLASS * class_, int id);
 static void get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bound_bit_flag,
-			  int offset_size, bool is_unloaddb);
+			  int offset_size, DESC_OOS_POLICY oos_policy);
 static void init_load_err_filter (void);
 static void default_clear_err_filter (void);
+
 
 #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 extern int data_readval_string (OR_BUF * buf, DB_VALUE * value, TP_DOMAIN * domain, int size, bool copy, char *copy_buf,
@@ -567,15 +570,16 @@ desc_obj_to_disk (DESC_OBJ * obj, RECDES * record, bool * index_flag)
  */
 static void
 get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit_flag, int offset_size,
-		  bool is_unloaddb)
+		  DESC_OOS_POLICY oos_policy)
 {
   SM_ATTRIBUTE *att;
   int *vars = NULL;
-  int i, j, offset, offset2, pad;
+  int *raw_vars = NULL;
+  int i, j, pad;
   char *bits, *start;
-  int rc = NO_ERROR;
-  bool do_copy = is_unloaddb ? false : true;
+  bool do_copy = (oos_policy == DESC_OOS_TEXT_LOCATOR) ? false : true;
   int zvar[32];
+  int zraw[32];
 
   /* need nicer way to store these */
   if (class_->variable_count)
@@ -583,24 +587,26 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
       if (class_->variable_count <= DIM (zvar))
 	{
 	  vars = zvar;
+	  raw_vars = zraw;
 	}
       else
 	{
 	  vars = (int *) malloc (sizeof (int) * class_->variable_count);
-	  if (vars == NULL)
+	  raw_vars = (int *) malloc (sizeof (int) * class_->variable_count);
+	  if (vars == NULL || raw_vars == NULL)
 	    {
+	      if (vars != NULL)
+		{
+		  free_and_init (vars);
+		}
+	      if (raw_vars != NULL)
+		{
+		  free_and_init (raw_vars);
+		}
 	      return;
 	    }
 	}
       /* get the offsets relative to the end of the header (beginning of variable table) */
-      offset = or_get_offset_internal (buf, &rc, offset_size);
-      for (i = 0; i < class_->variable_count; i++)
-	{
-	  offset2 = or_get_offset_internal (buf, &rc, offset_size);
-	  vars[i] = offset2 - offset;
-	  offset = offset2;
-	}
-      buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
 
   bits = NULL;
@@ -648,7 +654,14 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
 	{
 #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 	  DB_TYPE att_type_id = att->type->get_id ();
-	  if (is_unloaddb && obj->dbvalue_buf_ptr && TP_IS_CHAR_TYPE (att_type_id))
+	  if (oos_policy == DESC_OOS_KEEP_STUB && OR_IS_OOS (raw_vars[j]))
+	    {
+	      if (desc_keep_oos_stub (buf, obj, i) != NO_ERROR)
+		{
+		  goto cleanup;
+		}
+	    }
+	  else if (oos_policy == DESC_OOS_TEXT_LOCATOR && obj->dbvalue_buf_ptr && TP_IS_CHAR_TYPE (att_type_id))
 	    {
 	      data_readval_string (buf, &obj->values[i], att->domain, vars[j], false, obj->dbvalue_buf_ptr[i].buf,
 				   obj->dbvalue_buf_ptr[i].buf_size, att_type_id);
@@ -660,9 +673,14 @@ get_desc_current (OR_BUF * buf, SM_CLASS * class_, DESC_OBJ * obj, int bound_bit
 	    }
 	}
 
+    cleanup:
       if (vars != zvar)
 	{
 	  free (vars);
+	}
+      if (raw_vars != zraw)
+	{
+	  free_and_init (raw_vars);
 	}
     }
 }
@@ -704,20 +722,21 @@ find_current_attribute (SM_CLASS * class_, int id)
  */
 static void
 get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bound_bit_flag, int offset_size,
-	      bool is_unloaddb)
+	      DESC_OOS_POLICY oos_policy)
 {
   SM_REPRESENTATION *oldrep;
   SM_REPR_ATTRIBUTE *rat, *found;
   SM_ATTRIBUTE *att;
   const PR_TYPE *type;
   int *vars = NULL;
-  int i, offset, offset2, total, bytes, att_index, padded_size, fixed_size;
+  int *raw_vars = NULL;
+  int i, total, bytes, att_index, padded_size, fixed_size;
   SM_ATTRIBUTE **attmap = NULL;
   char *bits, *start;
-  int rc = NO_ERROR;
   int storage_order;
-  bool do_copy = is_unloaddb ? false : true;
+  bool do_copy = (oos_policy == DESC_OOS_TEXT_LOCATOR) ? false : true;
   int zvar[32];
+  int zraw[32];
 
   oldrep = classobj_find_representation (class_, repid);
   if (oldrep == NULL)
@@ -729,27 +748,21 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
   if (oldrep->variable_count)
     {
       /* need nicer way to store these */
-      if (class_->variable_count <= DIM (zvar))
+      if (oldrep->variable_count <= DIM (zvar))
 	{
 	  vars = zvar;
+	  raw_vars = zraw;
 	}
       else
 	{
 	  vars = (int *) malloc (sizeof (int) * oldrep->variable_count);
-	  if (vars == NULL)
+	  raw_vars = (int *) malloc (sizeof (int) * oldrep->variable_count);
+	  if (vars == NULL || raw_vars == NULL)
 	    {
 	      goto abort_on_error;
 	    }
 	}
       /* compute the variable offsets relative to the end of the header (beginning of variable table) */
-      offset = or_get_offset_internal (buf, &rc, offset_size);
-      for (i = 0; i < oldrep->variable_count; i++)
-	{
-	  offset2 = or_get_offset_internal (buf, &rc, offset_size);
-	  vars[i] = offset2 - offset;
-	  offset = offset2;
-	}
-      buf->ptr = PTR_ALIGN (buf->ptr, INT_ALIGNMENT);
     }
 
   /* calculate an attribute map */
@@ -841,7 +854,14 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
 	  storage_order = attmap[att_index]->storage_order;
 #if (MAJOR_VERSION >= 11) || (MAJOR_VERSION == 10 && MINOR_VERSION >= 1)
 	  DB_TYPE type_id = type->get_id ();
-	  if (is_unloaddb && obj->dbvalue_buf_ptr && TP_IS_CHAR_TYPE (type_id))
+	  if (oos_policy == DESC_OOS_KEEP_STUB && OR_IS_OOS (raw_vars[i]))
+	    {
+	      if (desc_keep_oos_stub (buf, obj, storage_order) != NO_ERROR)
+		{
+		  goto abort_on_error;
+		}
+	    }
+	  else if (oos_policy == DESC_OOS_TEXT_LOCATOR && obj->dbvalue_buf_ptr && TP_IS_CHAR_TYPE (type_id))
 	    {
 	      data_readval_string (buf, &obj->values[storage_order], rat->domain, vars[i], false,
 				   obj->dbvalue_buf_ptr[storage_order].buf,
@@ -887,6 +907,10 @@ get_desc_old (OR_BUF * buf, SM_CLASS * class_, int repid, DESC_OBJ * obj, int bo
     {
       free (vars);
     }
+  if (raw_vars && raw_vars != zraw)
+    {
+      free_and_init (raw_vars);
+    }
 
   obj->updated_flag = 1;
   return;
@@ -900,6 +924,10 @@ abort_on_error:
     {
       free (vars);
     }
+  if (raw_vars && raw_vars != zraw)
+    {
+      free_and_init (raw_vars);
+    }
 }
 
 /*
@@ -912,7 +940,7 @@ abort_on_error:
  *    obj(out): object descriptor
  */
 int
-desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * obj, bool is_unloaddb)
+desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * obj, DESC_OOS_POLICY oos_policy)
 {
   OR_BUF orep, *buf;
   int repid;
@@ -942,6 +970,13 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
   or_init (buf, record->data, record->length);
   obj->classop = classop;
   char mvcc_flags;
+
+  /* The descriptor is reused for every record of the class, so last record's stubs must not leak. */
+  if (obj->oos_stub_valid != NULL)
+    {
+      memset (obj->oos_stub_valid, 0, sizeof (bool) * (size_t) obj->count);
+    }
+
   /* offset size */
   offset_size = OR_GET_OFFSET_SIZE (buf->ptr);
   /* in case of MVCC, repid_bits contains MVCC flags */
@@ -968,11 +1003,11 @@ desc_disk_to_obj (MOP classop, SM_CLASS * class_, RECDES * record, DESC_OBJ * ob
   bound_bit_flag = repid_bits & OR_BOUND_BIT_FLAG;
   if (repid == class_->repid)
     {
-      get_desc_current (buf, class_, obj, bound_bit_flag, offset_size, is_unloaddb);
+      get_desc_current (buf, class_, obj, bound_bit_flag, offset_size, oos_policy);
     }
   else
     {
-      get_desc_old (buf, class_, repid, obj, bound_bit_flag, offset_size, is_unloaddb);
+      get_desc_old (buf, class_, repid, obj, bound_bit_flag, offset_size, oos_policy);
     }
 
   pr_Inhibit_oid_promotion = save;
