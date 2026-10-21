@@ -14134,8 +14134,9 @@ heap_oos_find_vfid_nowait (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oo
  * Vacuum needs both ids for every heap it touches; this fixes the header page once instead of twice.
  * Read-only: creating a missing file needs the write latch and stays in heap_oos_find_vfid_by_type ().
  */
-bool
-heap_oos_find_both_vfids (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, VFID * internal_lob_vfid)
+static bool
+heap_oos_find_both_vfids_internal (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
+				   VFID * internal_lob_vfid, PGBUF_LATCH_CONDITION latch_cond)
 {
   HEAP_HDR_STATS *heap_hdr;	/* Header of heap structure */
   PAGE_PTR hdr_pgptr = NULL;	/* Header page */
@@ -14149,7 +14150,7 @@ heap_oos_find_both_vfids (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos
   vpid.volid = hfid->vfid.volid;
   vpid.pageid = hfid->hpgid;
 
-  hdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH);
+  hdr_pgptr = pgbuf_fix (thread_p, &vpid, OLD_PAGE, PGBUF_LATCH_READ, latch_cond);
   if (hdr_pgptr == NULL)
     {
       return false;
@@ -14172,6 +14173,20 @@ heap_oos_find_both_vfids (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos
 
   pgbuf_unfix_and_init (thread_p, hdr_pgptr);
   return success;
+}
+
+bool
+heap_oos_find_both_vfids (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, VFID * internal_lob_vfid)
+{
+  return heap_oos_find_both_vfids_internal (thread_p, hfid, oos_vfid, internal_lob_vfid, PGBUF_UNCONDITIONAL_LATCH);
+}
+
+/* heap_oos_find_both_vfids () without waiting for the header latch: false also means the latch was busy, and er may
+ * not be set. */
+bool
+heap_oos_find_both_vfids_nowait (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid, VFID * internal_lob_vfid)
+{
+  return heap_oos_find_both_vfids_internal (thread_p, hfid, oos_vfid, internal_lob_vfid, PGBUF_CONDITIONAL_LATCH);
 }
 
 /*

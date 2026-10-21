@@ -794,6 +794,8 @@ extern bool heap_oos_find_vfid_by_type (THREAD_ENTRY * thread_p, const HFID * hf
 					bool docreate);
 extern bool heap_oos_find_both_vfids (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
 				      VFID * internal_lob_vfid);
+extern bool heap_oos_find_both_vfids_nowait (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * oos_vfid,
+					     VFID * internal_lob_vfid);
 extern bool heap_internal_lob_find_vfid (THREAD_ENTRY * thread_p, const HFID * hfid, VFID * lob_vfid, bool docreate);
 extern int heap_internal_lob_get_class_vfid (THREAD_ENTRY * thread_p, const OID * class_oid, VFID * lob_vfid);
 extern bool heap_recdes_contains_oos (const RECDES * record);
