@@ -2795,23 +2795,16 @@ tp_value_convert_blob_to_bit (const DB_VALUE *src, DB_VALUE *target, const TP_DO
     err = db_blob_to_bit (src, NULL, &tmpval);
     if (err == NO_ERROR)
       {
-	TP_DOMAIN_STATUS nested_status =
-		tp_value_convert_varbit_to_bit (&tmpval, target, desired_domain, error);
-	if (nested_status == DOMAIN_COMPATIBLE || nested_status == DOMAIN_TRUNCATED)
-	  {
-	    status = nested_status;
-	  }
-	else
-	  {
-	    /* The old outer LOB cast returned success with a NULL result. */
-	    pr_clear_value (target);
-	    db_make_null (target);
-	  }
+	status = tp_value_convert_varbit_to_bit (&tmpval, target, desired_domain, error);
+      }
+    else
+      {
+	status = DOMAIN_INCOMPATIBLE;
       }
     (void) pr_clear_value (&tmpval);
   }
 
-  return err < 0 ? DOMAIN_ERROR : status;
+  return status;
 }
 
 static TP_DOMAIN_STATUS
@@ -2848,23 +2841,16 @@ tp_value_convert_blob_to_varbit (const DB_VALUE *src, DB_VALUE *target, const TP
     err = db_blob_to_bit (src, NULL, &tmpval);
     if (err == NO_ERROR)
       {
-	TP_DOMAIN_STATUS nested_status =
-		tp_value_convert_bit_to_bit (&tmpval, target, desired_domain, error);
-	if (nested_status == DOMAIN_COMPATIBLE || nested_status == DOMAIN_TRUNCATED)
-	  {
-	    status = nested_status;
-	  }
-	else
-	  {
-	    /* The old outer LOB cast returned success with a NULL result. */
-	    pr_clear_value (target);
-	    db_make_null (target);
-	  }
+	status = tp_value_convert_bit_to_bit (&tmpval, target, desired_domain, error);
+      }
+    else
+      {
+	status = DOMAIN_INCOMPATIBLE;
       }
     (void) pr_clear_value (&tmpval);
   }
 
-  return err < 0 ? DOMAIN_ERROR : status;
+  return status;
 }
 
 static TP_DOMAIN_STATUS
@@ -7487,9 +7473,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_SHORT, CONVERTER_MODE>;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible :
-		 tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_SHORT, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_number<DB_TYPE_SHORT>;
 	case DB_TYPE_JSON:
@@ -7516,9 +7499,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_INTEGER, CONVERTER_MODE>;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible :
-		 tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_INTEGER, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_number<DB_TYPE_INTEGER>;
 	case DB_TYPE_JSON:
@@ -7545,9 +7525,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_BIGINT, CONVERTER_MODE>;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible :
-		 tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_BIGINT, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_number<DB_TYPE_BIGINT>;
 	case DB_TYPE_JSON:
@@ -7574,9 +7551,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_FLOAT, CONVERTER_MODE>;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible :
-		 tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_FLOAT, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_number<DB_TYPE_FLOAT>;
 	case DB_TYPE_JSON:
@@ -7603,9 +7577,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, CONVERTER_MODE>;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible :
-		 tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_DOUBLE, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_number<DB_TYPE_DOUBLE>;
 	case DB_TYPE_JSON:
@@ -7632,9 +7603,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_MONETARY, CONVERTER_MODE>;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible :
-		 tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_MONETARY, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_number<DB_TYPE_MONETARY>;
 	case DB_TYPE_JSON:
@@ -7663,9 +7631,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, CONVERTER_MODE>;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible :
-		 tp_value_convert_number<DB_TYPE_VARCHAR, DB_TYPE_NUMERIC, CONVERTER_MODE>;
 	case DB_TYPE_ENUMERATION:
 	  return tp_value_convert_enumeration_to_numeric;
 	case DB_TYPE_JSON:
@@ -7850,8 +7815,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return strict ? tp_value_convert_char_to_time_strict : tp_value_convert_char_to_time;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_char_to_time;
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPLTZ:
 	  return strict ? tp_value_convert_incompatible : tp_value_convert_timestamp_to_time;
@@ -7877,8 +7840,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return strict ? tp_value_convert_char_to_date_strict : tp_value_convert_char_to_date;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_char_to_date;
 	case DB_TYPE_TIMESTAMP:
 	case DB_TYPE_TIMESTAMPLTZ:
 	  return strict ? tp_value_convert_timestamp_to_date_strict : tp_value_convert_timestamp_to_date;
@@ -7921,8 +7882,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return strict ? tp_value_convert_char_to_timestamp_strict : tp_value_convert_char_to_timestamp;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_char_to_timestamp;
 	case DB_TYPE_DATE:
 	  return strict ? tp_value_convert_date_to_timestamp_strict : tp_value_convert_date_to_timestamp;
 	case DB_TYPE_TIMESTAMPLTZ:
@@ -7970,8 +7929,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return strict ? tp_value_convert_char_to_timestampltz_strict : tp_value_convert_char_to_timestampltz;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_char_to_timestampltz;
 	case DB_TYPE_DATE:
 	  return strict ? tp_value_convert_date_to_timestampltz_strict : tp_value_convert_date_to_timestampltz;
 	case DB_TYPE_TIMESTAMP:
@@ -8019,8 +7976,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return strict ? tp_value_convert_char_to_timestamptz_strict : tp_value_convert_char_to_timestamptz;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_char_to_timestamptz;
 	case DB_TYPE_DATE:
 	  return strict ? tp_value_convert_date_to_timestamptz_strict : tp_value_convert_date_to_timestamptz;
 	case DB_TYPE_TIMESTAMP:
@@ -8046,8 +8001,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return strict ? tp_value_convert_char_to_datetime_strict : tp_value_convert_char_to_datetime;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_char_to_datetime;
 	case DB_TYPE_DATE:
 	  return strict ? tp_value_convert_date_to_datetime_strict : tp_value_convert_date_to_datetime;
 	case DB_TYPE_TIMESTAMP:
@@ -8073,8 +8026,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return strict ? tp_value_convert_char_to_datetimeltz_strict : tp_value_convert_char_to_datetimeltz;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_char_to_datetimeltz;
 	case DB_TYPE_DATE:
 	  return strict ? tp_value_convert_date_to_datetimeltz_strict : tp_value_convert_date_to_datetimeltz;
 	case DB_TYPE_TIMESTAMP:
@@ -8100,8 +8051,6 @@ tp_value_find_converter (DB_TYPE src, DB_TYPE dst)
 	case DB_TYPE_CHAR:
 	case DB_TYPE_VARCHAR:
 	  return strict ? tp_value_convert_char_to_datetimetz_strict : tp_value_convert_char_to_datetimetz;
-	case DB_TYPE_CLOB:
-	  return strict ? tp_value_convert_incompatible : tp_value_convert_char_to_datetimetz;
 	case DB_TYPE_DATE:
 	  return strict ? tp_value_convert_date_to_datetimetz_strict : tp_value_convert_date_to_datetimetz;
 	case DB_TYPE_TIMESTAMP:
