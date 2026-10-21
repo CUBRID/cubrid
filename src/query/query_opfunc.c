@@ -6194,6 +6194,7 @@ qdata_evaluate_connect_by_root (THREAD_ENTRY * thread_p, void *xasl_p, regu_vari
     {
       /* exception to deciding before the rows: an argument whose domain leaves its values' type to the data reads the
        * list's column as the list holds it */
+      assert (!domain_is_variable (regu_p->domain));
       TP_DOMAIN *column_domain = domain_is_variable (regu_p->domain) ? s_id.list_id.type_list.domp[i] : regu_p->domain;
       if (qexec_get_tuple_column_value (&tuple_rec, i, result_val_p, column_domain) != NO_ERROR)
 	{

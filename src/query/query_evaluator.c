@@ -486,6 +486,8 @@ eval_value_rel_cmp (THREAD_ENTRY * thread_p, DB_VALUE * dbval1, DB_VALUE * dbval
 	  }
 	else
 	  {
+	    /* a term compares as the unpack decided; VALUES here only answers a NULL */
+	    assert (DB_IS_NULL (dbval1) || DB_IS_NULL (dbval2));
 	    result = eval_compare_by_values (dbval1, dbval2, total_order, &comparable);
 	  }
       }

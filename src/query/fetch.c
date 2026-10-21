@@ -658,6 +658,7 @@ fetch_arith_node_resolve (val_descr * vd, FETCH_ARITH_ARGS * a)
 
   /* clear any previous result */
   pr_clear_value (arithptr->value);
+  assert (a->domain == NULL || TP_DOMAIN_TYPE (a->domain) != DB_TYPE_VARIABLE);
   if (a->domain != NULL && TP_DOMAIN_TYPE (a->domain) == DB_TYPE_VARIABLE)
     {
       /* exception to deciding before the rows: the operands leave their types to the data, so the operator computes
@@ -1759,6 +1760,7 @@ fetch_peek_dbval_slow (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, val_de
        * is */
       {
 	TP_DOMAIN *column_domain = regu_var->value.pos_descr.dom;
+	assert (TP_DOMAIN_TYPE (column_domain) != DB_TYPE_VARIABLE);
 	if (TP_DOMAIN_TYPE (column_domain) == DB_TYPE_VARIABLE)
 	  {
 	    /* exception to deciding before the rows: a position its producer leaves untyped reads the list's column */
@@ -2276,6 +2278,7 @@ fetch_peek_dbval_pos (regu_variable_list_node * regu_list, QFILE_TUPLE_RECORD * 
 #endif
       /* the position's domain; one its producer leaves untyped reads the list's column (an exception to deciding
        * before the rows) */
+      assert (TP_DOMAIN_TYPE (pos_descr->dom) != DB_TYPE_VARIABLE);
       const TP_DOMAIN *column_domain = TP_DOMAIN_TYPE (pos_descr->dom) != DB_TYPE_VARIABLE ? pos_descr->dom
 	: tplrec->type_list->domp[pos_descr->pos_no];
       if (column_domain->type == NULL)

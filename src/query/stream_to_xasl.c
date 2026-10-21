@@ -3437,6 +3437,7 @@ stx_build_buildlist_proc (THREAD_ENTRY * thread_p, char *ptr, BUILDLIST_PROC_NOD
 	{
 	  compares[k++] = key->value.domain;
 	}
+      assert (k == n_keys);
       if (k == n_keys)
 	{
 	  stx_build_list_proc->g_hk_compares = compares;
