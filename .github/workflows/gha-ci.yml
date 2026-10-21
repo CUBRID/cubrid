@@ -861,7 +861,6 @@ jobs:
             done_repos="$done_repos $repo"
           done
 
-          # A re-run also takes the cases the tc branch changed after the source run read it.
           if [ -n "$RERUN_FROM" ]; then
             for suite in $SUITES_RUN; do
               repo=$(attr "$suite" tc_repo)
@@ -1042,10 +1041,9 @@ jobs:
                 END { print timed + 0 > "/tmp/timed.count" }
               ' /tmp/units.tsv | sort -rn -k1,1 -k2,2 > /tmp/sorted.tsv
               timed=$(cat /tmp/timed.count)
-              # A develop merge into the tc branch can bring in hundreds of cases: one shard would hit
-              # its timeout, so a re-run that big spreads on the suite's own lane, 30 minutes a shard.
-              # Not where a cases/ directory holds many cases: keep would run all of them on every
-              # shard that got one.
+              # A develop merge into the tc branch can bring in hundreds of cases. Past 90 minutes one
+              # shard nears the shard job's timeout-minutes (120). Not where a cases/ directory holds
+              # many cases: keep would run all of them on every shard that got one.
               if [ -n "$RERUN_FROM" ] && [ "$(attr "$suite" unit)" = case ]; then
                 load=$(awk -F'\t' '{s += $1} END {printf "%d", s}' /tmp/sorted.tsv)
                 if [ "$load" -gt 5400 ]; then
@@ -1606,7 +1604,9 @@ jobs:
                 echo "> **Only what run \`$RERUN_FROM\` left unhandled, and the cases \`$tc_branch\` changed since, were re-run. This is not a full run.**"
                 echo ">"
                 if [ "$total" -gt 0 ]; then
-                  echo "> $total cases, from its $rerun_failed failures, $rerun_unrun cases that never ran because a shard died whole, and $rerun_changed cases changed since tc commit \`${rerun_since:0:10}\`. A changed case brings its \`cases/\` directory; a \`sql\` or \`medium\` failure brings its top-level directory."
+                  echo "> $total cases, from its $rerun_failed failures, $rerun_unrun cases that never ran because a shard died whole, and $rerun_changed cases in the \`cases/\` directories changed since tc commit \`${rerun_since:0:10}\`. A \`sql\` or \`medium\` failure brings its top-level directory."
+                elif [ "$((rerun_failed + rerun_unrun))" -gt 0 ]; then
+                  echo "> **Nothing to re-run: \`$tc_branch\` deleted or moved away every case run \`$RERUN_FROM\` failed or never ran, and changed no case since tc commit \`${rerun_since:0:10}\`.**"
                 else
                   echo "> **Nothing to re-run: no failure, nothing unrun, and no case changed since tc commit \`${rerun_since:0:10}\`. The verdict of run \`$RERUN_FROM\` stands.**"
                 fi
@@ -1616,7 +1616,7 @@ jobs:
                 echo "> source run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$RERUN_FROM"
                 echo
                 if [ "${rerun_changed:-0}" -gt 0 ]; then
-                  echo "### Changed since run \`$RERUN_FROM\` ($rerun_changed)"
+                  echo "### Cases in the \`cases/\` directories changed since run \`$RERUN_FROM\` ($rerun_changed)"
                   echo
                   head -50 "$d/plan/changed.list" | sed "s#^$repo/##" | awk '{print "- `" $0 "`"}'
                   [ "$rerun_changed" -le 50 ] || echo "_... and $((rerun_changed - 50)) more. The full list is [\`changed.list\`]($ARTIFACT_URL_BASE/${d#"$CI_ROOT"/}/plan/changed.list)._"
@@ -1745,8 +1745,8 @@ jobs:
             if [ -n "$RERUN_FROM" ]; then
               [ "${rerun_short:-0}" -eq 0 ] || fault "run $RERUN_FROM left $rerun_short cases assigned but never handled, and nothing names them. Use /run $suite"
               [ "${rerun_gone:-0}" -eq 0 ] || fault "$rerun_gone of the units run $RERUN_FROM left unhandled are no longer in the tree, and $tc_branch did not delete or rename them since. Use /run $suite"
-              # Nothing ran, so nothing can change the source's verdict: a red one has a cause no case clears.
-              if [ "$total" -eq 0 ]; then
+              # Red with no failed or unrun case: a cause no case clears, so nothing run here can clear it.
+              if [ "$total" -eq 0 ] && [ "$((rerun_failed + rerun_unrun))" -eq 0 ]; then
                 prev=$(cat "$CI_ROOT/runs/$RERUN_FROM/$suite/collect/verdict" 2>/dev/null || echo none)
                 [ "$prev" = pass ] || fault "nothing to re-run, so the verdict of run $RERUN_FROM stands: $prev. Use /run $suite"
               fi
