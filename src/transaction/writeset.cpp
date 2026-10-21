@@ -1009,7 +1009,8 @@ wset_select_candidate (const LOG_WSET_ENTRY &entry, const LOG_WSET_SLOTS &slots,
  *       Candidate selection starts at history_start, and the latest candidate across all entries
  *       becomes the writeset dependency.
  *
- *       An overflowed writeset uses prev_commit_lsa. If the selected candidate came from ref_seq,
+ *       An overflowed writeset uses prev_commit_lsa, raised to history_start like the writeset
+ *       dependency. If the selected candidate came from ref_seq,
  *       it is returned unchanged. Otherwise, the earlier of the writeset dependency and prev_commit_lsa
  *       is returned.
  */
@@ -1112,6 +1113,17 @@ wset_find_dependency_from_history (LOG_TDES *tdes, LOG_LSA *wset_parent_out)
     {
       pthread_mutex_lock (&wset_History.seq_lock);
       LSA_COPY (wset_parent_out, &wset_History.prev_commit_lsa);
+      /* The floor makes every later transaction wait on the slave for what was written before it: everything
+       * before a restart, or a serial operation applied in commit order. prev_commit_lsa does not cover it
+       * after a restart, where it is NULL, or after a serial operation, which can lie above it. Without the
+       * floor a statement replicated after a restart, a DDL for instance, carries no dependency and can run
+       * on the slave beside the transactions written before the restart. Every writer of history_start
+       * holds seq_lock, so it is read consistently with prev_commit_lsa here. */
+      if (!LSA_ISNULL (&wset_History.history_start)
+	  && (LSA_ISNULL (wset_parent_out) || LSA_LT (wset_parent_out, &wset_History.history_start)))
+	{
+	  LSA_COPY (wset_parent_out, &wset_History.history_start);
+	}
       pthread_mutex_unlock (&wset_History.seq_lock);
       WSET_TRACE (1, "DEPENDENCY trid=%d mode=COMMIT_ORDER dependency=%lld|%d\n",
 		  tdes->trid, (long long) wset_parent_out->pageid, (int) wset_parent_out->offset);
