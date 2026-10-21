@@ -26,7 +26,6 @@
 #include "heap_oos.hpp"
 
 #include "dbtype.h"
-#include "deduplicate_key.h"
 #include "error_code.h"
 #include "error_manager.h"
 #include "file_manager.h"
@@ -483,11 +482,6 @@ heap_oos_attr_has_inline_ref (RECDES *recdes, HEAP_ATTRVALUE *value)
 {
   OR_ATTRIBUTE *attrepr = value->read_attrepr;
   int vot_entry;
-
-  if (unlikely (IS_DEDUPLICATE_KEY_ATTR_ID (value->attrid)))
-    {
-      return false;
-    }
 
   if (recdes == NULL || recdes->data == NULL || attrepr == NULL || value->attr_type == HEAP_SHARED_ATTR
       || value->attr_type == HEAP_CLASS_ATTR || attrepr->is_fixed != 0

@@ -963,6 +963,25 @@ copy_node_in_tree_pre (PARSER_CONTEXT * parser, PT_NODE * old_node, void *arg, i
 
   *new_node = *old_node;
 
+  /* the bind-value watch state belongs to the statement whose plan it records, and the copy is
+   * a different statement with its own plan: sharing the pointer would let one of them record
+   * cardinalities the other is compared against. The copy simply starts unwatched. */
+  if (PT_IS_QUERY (new_node))
+    {
+      new_node->info.query.bind_watch = NULL;
+      new_node->info.query.bind_variant_key = NULL;
+    }
+  else if (new_node->node_type == PT_UPDATE)
+    {
+      new_node->info.update.bind_watch = NULL;
+      new_node->info.update.bind_variant_key = NULL;
+    }
+  else if (new_node->node_type == PT_DELETE)
+    {
+      new_node->info.delete_.bind_watch = NULL;
+      new_node->info.delete_.bind_variant_key = NULL;
+    }
+
   /* clone XASL_ID; aliasing old_node's would double-free in parser_free_node_resources () */
   new_node->xasl_id = NULL;
   if (old_node->xasl_id != NULL)
@@ -3066,7 +3085,7 @@ pt_conv_values_2_hash_text (PARSER_CONTEXT * parser, const PT_NODE * node)
   parser->print_db_value = saved_print_db_value;
   parser->flag.dont_prt_long_string = saved_dont_prt_long_string;
 
-  if (values_str == NULL || values_str->bytes == NULL || values_str->length <= 0)
+  if (values_str == NULL || values_str->length <= 0)
     {
       return NULL;
     }
@@ -7875,37 +7894,9 @@ pt_print_create_index (PARSER_CONTEXT * parser, PT_NODE * p)
       b = pt_append_varchar (parser, b, r4);
     }
 
-  if (p->info.index.unique == false)
+  if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
     {
-      char buf[64] = { 0x00, };
-      if (p->info.index.deduplicate_level == DEDUPLICATE_OPTION_AUTO)
-	{
-	  /* Do not print level */ ;
-	}
-      else if (p->info.index.deduplicate_level != DEDUPLICATE_KEY_LEVEL_OFF)
-	{
-	  dk_print_deduplicate_key_info (buf, sizeof (buf), p->info.index.deduplicate_level);
-	}
-      if (buf[0])
-	{
-	  b = pt_append_nulstring (parser, b, " WITH ");
-	  b = pt_append_nulstring (parser, b, buf);
-	  if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	    {
-	      b = pt_append_nulstring (parser, b, ", ONLINE ");
-	    }
-	}
-      else if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	{
-	  b = pt_append_nulstring (parser, b, " WITH ONLINE ");
-	}
-    }
-  else
-    {
-      if (p->info.index.index_status == SM_ONLINE_INDEX_BUILDING_IN_PROGRESS)
-	{
-	  b = pt_append_nulstring (parser, b, " WITH ONLINE ");
-	}
+      b = pt_append_nulstring (parser, b, " WITH ONLINE ");
     }
 
   if (p->info.index.index_status == SM_INVISIBLE_INDEX)
@@ -9969,7 +9960,9 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
   PARSER_VARCHAR *q = 0, *r1;
   unsigned int save_custom;
 
-  if (p->info.spec.natural)
+  /* a natural join is resolved into on_cond, and an inner join may be rewritten into PT_JOIN_NONE.
+   * In both cases, printing "natural" makes an invalid statement. */
+  if (p->info.spec.natural && p->info.spec.on_cond == NULL && p->info.spec.join_type != PT_JOIN_NONE)
     {
       q = pt_append_nulstring (parser, q, " natural ");
     }
@@ -10142,7 +10135,9 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
 	      q = pt_append_varchar (parser, q, r1);
 	      q = pt_append_nulstring (parser, q, ")");
 
-	      return q;
+	      /* the range variable and the columns are printed above. "natural" is not printed for a resolved
+	       * natural join, so its on_cond must be printed */
+	      goto print_join_cond;
 	    }
 	  else
 	    {
@@ -10208,6 +10203,7 @@ pt_print_spec (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print = save_custom;
     }
 
+print_join_cond:
   if (p->info.spec.on_cond)
     {
       r1 = pt_print_and_list (parser, p->info.spec.on_cond);
@@ -15008,7 +15004,7 @@ pt_print_select (PARSER_CONTEXT * parser, PT_NODE * p)
       parser->custom_print |= PT_PRINT_ALIAS;
 
       is_first_list = true;
-      for (temp = temp; temp; temp = temp->next)
+      for (; temp; temp = temp->next)
 	{
 	  if (!is_first_list)
 	    {

@@ -574,6 +574,8 @@ static int la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int
 static int la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid);
 static void la_free_repl_items_by_tranid (int tranid);
 static int la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
+static bool la_is_done_state (int ha_server_state);
+static bool la_record_end_is_stale (void);
 static int la_change_state (void);
 static int la_log_commit (bool update_commit_time);
 static unsigned long la_get_mem_size (void);
@@ -7323,6 +7325,34 @@ la_get_hostname_from_log_path (char *log_path)
   return hostname + 1;
 }
 
+/*
+ * la_is_done_state() - check whether the applier reports done at the record end of a source in this state
+ *   return: true if done is reported
+ *   ha_server_state(in): source state in the copied log header
+ */
+static bool
+la_is_done_state (int ha_server_state)
+{
+  return (ha_server_state == HA_SERVER_STATE_DEAD || ha_server_state == HA_SERVER_STATE_STANDBY
+	  || ha_server_state == HA_SERVER_STATE_MAINTENANCE);
+}
+
+/*
+ * la_record_end_is_stale() - check whether the record end an iteration reached is short of the copied log
+ *   return: true if the source has stopped and the copied log header's eof is past final_lsa
+ *
+ * Note: an iteration reads its page once. If the copied log grows meanwhile, the END_OF_LOG it reaches
+ *       in that page is not the end of the copied log, although the header may have been re-read since.
+ *       Only a stopped source matters: it is the one that lets the applier report done.
+ */
+static bool
+la_record_end_is_stale (void)
+{
+  const LOG_HEADER *log_hdr = la_Info.act_log.log_hdr;
+
+  return la_is_done_state (log_hdr->ha_server_state) && LSA_GT (&log_hdr->eof_lsa, &la_Info.final_lsa);
+}
+
 static int
 la_change_state (void)
 {
@@ -7354,21 +7384,18 @@ la_change_state (void)
   if (la_Info.is_end_of_record == true && (la_Info.act_log.log_hdr->ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED))
     {
       /* check server's state with log header */
-      switch (la_Info.act_log.log_hdr->ha_server_state)
+      if (la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_ACTIVE
+	  || la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_TO_BE_STANDBY
+	  || la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_TO_BE_ACTIVE)
 	{
-	case HA_SERVER_STATE_ACTIVE:
-	case HA_SERVER_STATE_TO_BE_STANDBY:
-	case HA_SERVER_STATE_TO_BE_ACTIVE:
 	  if (la_Info.apply_state != HA_LOG_APPLIER_STATE_WORKING)
 	    {
 	      /* notify to slave db */
 	      new_state = HA_LOG_APPLIER_STATE_WORKING;
 	    }
-	  break;
-
-	case HA_SERVER_STATE_DEAD:
-	case HA_SERVER_STATE_STANDBY:
-	case HA_SERVER_STATE_MAINTENANCE:
+	}
+      else if (la_is_done_state (la_Info.act_log.log_hdr->ha_server_state))
+	{
 	  if (la_Info.apply_state != HA_LOG_APPLIER_STATE_DONE)
 	    {
 	      /* notify to slave db */
@@ -7380,11 +7407,11 @@ la_change_state (void)
 		  la_clear_all_repl_and_commit_list ();
 		}
 	    }
-	  break;
-	default:
+	}
+      else
+	{
 	  er_log_debug (ARG_FILE_LINE, "BUG. Unknown LOG_HA_SRVSTAT (%x)", la_Info.act_log.log_hdr->ha_server_state);
 	  return ER_FAILED;
-	  break;
 	}
 
     }
@@ -8380,9 +8407,12 @@ check_copied_log_volume_info_end:
 	    {
 	      lrec = LOG_GET_LOG_RECORD_HEADER (logpage, &lsa);
 
-	      printf ("offset:%04ld (tid:%d bck p:%lld,o:%ld frw p:%lld,o:%ld type:%d)\n", lsa.offset, lrec->trid,
-		      (long long int) lrec->back_lsa.pageid, lrec->back_lsa.offset,
-		      (long long int) lrec->forw_lsa.pageid, lrec->forw_lsa.offset, lrec->type);
+	      /* LOG_LSA::offset is a 16 bit bitfield of int64_t. Clang promotes it to int when
+	       * it is passed through "...", GCC passes it as a long, so neither %d nor %ld is
+	       * right for both. Cast explicitly to settle the argument type. */
+	      printf ("offset:%04d (tid:%d bck p:%lld,o:%d frw p:%lld,o:%d type:%d)\n", (int) lsa.offset,
+		      lrec->trid, (long long int) lrec->back_lsa.pageid, (int) lrec->back_lsa.offset,
+		      (long long int) lrec->forw_lsa.pageid, (int) lrec->forw_lsa.offset, lrec->type);
 	      LSA_COPY (&lsa, &lrec->forw_lsa);
 	    }
 	}
@@ -9547,6 +9577,13 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	    {
 	      la_applier_need_shutdown = true;
 	      break;
+	    }
+
+	  if (la_Info.is_end_of_record == true && la_record_end_is_stale ())
+	    {
+	      er_log_debug (ARG_FILE_LINE, "record end %lld|%d is short of the copied log eof %lld|%d",
+			    LSA_AS_ARGS (&la_Info.final_lsa), LSA_AS_ARGS (&la_Info.act_log.log_hdr->eof_lsa));
+	      la_Info.is_end_of_record = false;
 	    }
 
 	  /* check and change state */
