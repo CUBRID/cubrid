@@ -1041,6 +1041,21 @@ jobs:
                 END { print timed + 0 > "/tmp/timed.count" }
               ' /tmp/units.tsv | sort -rn -k1,1 -k2,2 > /tmp/sorted.tsv
               timed=$(cat /tmp/timed.count)
+              # A develop merge into the tc branch can bring in hundreds of cases: one shard would hit
+              # its timeout, so a re-run that big spreads on the suite's own lane, 30 minutes a shard.
+              # Not where a cases/ directory holds many cases: keep would run all of them on every
+              # shard that got one.
+              if [ -n "$RERUN_FROM" ] && [ "$(attr "$suite" unit)" = case ]; then
+                load=$(awk -F'\t' '{s += $1} END {printf "%d", s}' /tmp/sorted.tsv)
+                if [ "$load" -gt 5400 ]; then
+                  par=$(( (load + 1799) / 1800 ))
+                  max=$(attr "$suite" par_default)
+                  [ "$par" -le "$max" ] || par="$max"
+                  [ "$par" -le "$nunit" ] || par="$nunit"
+                  runner=$(attr "$suite" runner)
+                  echo "::notice::$suite: the re-run would take about $((load / 60)) minutes on one shard, so it runs on $par shards on $runner"
+                fi
+              fi
               awk -v par="$par" '
                 BEGIN { FS = "\t"; for (i = 0; i < par; i++) load[i] = 0 }
                 {
