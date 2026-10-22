@@ -514,6 +514,7 @@ jobs:
         run: |
           echo "node boot_id: $(cat /proc/sys/kernel/random/boot_id)"
           cmake --version | sed -n 1p
+          ls /home/ci/cache/gradle 2>/dev/null || true
           for d in "$CUBRID_DOWNLOAD_CACHE" /home/ci/cache/gradle/wrapper; do du -sh "$d" 2>/dev/null || echo "absent: $d"; done
           find "$CUBRID_DOWNLOAD_CACHE" -type f -printf '%TY-%Tm-%Td %TH:%TM %10s %P\n' 2>/dev/null | sort -k4 || true
 
@@ -564,18 +565,28 @@ jobs:
           export CCACHE_TEMPDIR="$RUNNER_TEMP/ccache-tmp"
           mkdir -p "$CCACHE_TEMPDIR"
           [ -d "$CCACHE_DIR" ] || echo "::warning::no ccache at $CCACHE_DIR yet, so this is a cold build"
-          # Gradle's cache locks do not work across pods, so only the wrapper's distribution is shared.
-          export GRADLE_USER_HOME="$RUNNER_TEMP/gradle"
+          # Gradle's cache locks do not work across pods, so a job shares only the wrapper's distribution and
+          # a read-only copy of the dependencies, one per version of the build scripts.
+          key=$(cat cubrid/pl_engine/gradle/wrapper/*.properties cubrid/pl_engine/{,*/}*.gradle.kts | sha256sum)
+          export GRADLE_USER_HOME="$RUNNER_TEMP/gradle" GRADLE_RO_DEP_CACHE="/home/ci/cache/gradle/ro-${key:0:12}"
           mkdir -p "$GRADLE_USER_HOME" /home/ci/cache/gradle/wrapper
           ln -s /home/ci/cache/gradle/wrapper "$GRADLE_USER_HOME/wrapper"
           # No -j: ninja reads the cgroup quota.
           # shellcheck disable=SC2086
           /entrypoint.sh build $BUILD_ARGS
           ccache -s
+          # The first build publishes its dependencies with one rename, without the lock files Gradle forbids there.
+          if [ ! -d "$GRADLE_RO_DEP_CACHE" ]; then
+            tmp=$(mktemp -d "$GRADLE_RO_DEP_CACHE.XXXXXX")
+            cp -r "$GRADLE_USER_HOME/caches/modules-2" "$tmp/"
+            find "$tmp" \( -name '*.lock' -o -name gc.properties \) -delete
+            mv -T "$tmp" "$GRADLE_RO_DEP_CACHE" 2>/dev/null || rm -rf "$tmp"
+          fi
 
       - name: "TEST ONLY: download cache after the build"
         if: always()
         run: |
+          ls /home/ci/cache/gradle 2>/dev/null || true
           for d in "$CUBRID_DOWNLOAD_CACHE" /home/ci/cache/gradle/wrapper; do du -sh "$d" 2>/dev/null || echo "absent: $d"; done
           find "$CUBRID_DOWNLOAD_CACHE" -type f -printf '%TY-%Tm-%Td %TH:%TM %10s %P\n' 2>/dev/null | sort -k4 || true
 
