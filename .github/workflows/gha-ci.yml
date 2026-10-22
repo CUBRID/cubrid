@@ -512,6 +512,13 @@ jobs:
       CACHE_WRITE: ${{ needs.gate.outputs.cache_write }}
 
     steps:
+      - name: "TEST ONLY: node and download cache before the build"
+        run: |
+          echo "node boot_id: $(cat /proc/sys/kernel/random/boot_id)"
+          cmake --version | sed -n 1p
+          for d in "$CUBRID_DOWNLOAD_CACHE" "$GRADLE_USER_HOME"; do du -sh "$d" 2>/dev/null || echo "absent: $d"; done
+          find "$CUBRID_DOWNLOAD_CACHE" -type f -printf '%TY-%Tm-%Td %TH:%TM %10s %P\n' 2>/dev/null | sort -k4 || true
+
       - name: 0. Environment check
         env:
           INPUT_SHA: ${{ needs.gate.outputs.sha }}
@@ -563,6 +570,12 @@ jobs:
           # shellcheck disable=SC2086
           /entrypoint.sh build $BUILD_ARGS
           ccache -s
+
+      - name: "TEST ONLY: download cache after the build"
+        if: always()
+        run: |
+          for d in "$CUBRID_DOWNLOAD_CACHE" "$GRADLE_USER_HOME"; do du -sh "$d" 2>/dev/null || echo "absent: $d"; done
+          find "$CUBRID_DOWNLOAD_CACHE" -type f -printf '%TY-%Tm-%Td %TH:%TM %10s %P\n' 2>/dev/null | sort -k4 || true
 
       - name: 4. Publish, staged then moved in with one rename
         env:
