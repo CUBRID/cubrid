@@ -60,6 +60,24 @@
 
 #define EXPR_MAX_STEPS 128	/* a list needing more is left to the interpreted path */
 
+/* A node this deep in one program is compiled as a program of its own behind one step, before any table can run
+ * out: a deep chain then costs one compile per EXPR_NEST_DEPTH levels instead of a rewind and recompile of its whole
+ * subtree at every level where a table runs out (CBRD-27661: "1 + (2 + (3 + ...))" 399 levels deep took 312 s and was
+ * declined; now each level compiles once).  32 keeps a chain inside the 128-entry tables with room to spare: a level
+ * emits at most three steps (two operand coercions and the operator) and one guard (a lazy right-hand side), so 32
+ * levels take at most 96 steps and 32 guards, plus the leaves and literals the chain reads.  The nested program
+ * counts its depth from zero, so the next 32 levels nest again inside it.
+ * Only a node compiled under a guard (bctx->cur_guard != 0) nests here.  A guard is open for an arithmetic
+ * node's right-hand operand -- expr_rhs_begin () runs before the operand compiles, lazy or not -- and for both
+ * operands of a scan-filter leaf (EXPR_GUARD_SCAN_SIDE).  The right-deep chain is the one that overflows the guard
+ * table on the way down and recompiles its subtree at every level.  A chain deep on the left ("((a + 1) + 2) + 3
+ * ...") in an output list opens no guard; its steps fill the step table on the way up, where the overflow fallback
+ * nests the subtree once per 64 levels, so nesting it at 32 would only double the per-row nested-program dispatch
+ * (measured +17% on a 128-level left chain) for nothing.  The same left chain inside a WHERE filter is compiled
+ * under the scan-side guard and does nest at 32; there the overflow fallback was nesting it already, and the fixed
+ * depth needs one nested program fewer. */
+#define EXPR_NEST_DEPTH 32
+
 /* how often the value in a cell can change (EXPR_BUILD_CTX.cell_fixed) */
 #define EXPR_CELL_ROW 0		/* per row */
 #define EXPR_CELL_LITERAL 1	/* never: a literal or computed from literals only */
@@ -201,7 +219,8 @@ struct expr_build_ctx
   bool full;			/* a table (steps, cells, guards) ran out: the node being compiled becomes a nested
 				 * program behind one step (expr_compile_node) */
   int force_nest_depth;		/* > 0: every arithmetic node at this depth is compiled as a nested program outright --
-				 * the retry of a nested program whose root overflowed its own table (expr_node_compile) */
+				 * the retry of a nested program whose root overflowed its own table (expr_node_compile).
+				 * Independent of EXPR_NEST_DEPTH, which nests every program's nodes at a fixed depth. */
 
   int n_slots;			/* slots are materialized after counting */
 
@@ -3750,9 +3769,12 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
       bctx->depth_max = bctx->depth;
     }
   expr_build_mark (bctx, &mark);
-  if (bctx->force_nest_depth > 0 && bctx->depth == bctx->force_nest_depth)
+  if ((bctx->force_nest_depth > 0 && bctx->depth == bctx->force_nest_depth)
+      || (bctx->depth == EXPR_NEST_DEPTH && bctx->cur_guard != 0))
     {
-      /* the retry of an overflowing nested root: its operands go behind one step each */
+      /* this subtree goes behind one step as a program of its own: an operand of an overflowing nested root on its
+       * retry (force_nest_depth), or a node at EXPR_NEST_DEPTH compiled under a guard (a right-hand operand or a
+       * scan-filter operand -- see EXPR_NEST_DEPTH) */
       cell = expr_compile_nested (bctx, regu, compiled_something);
     }
   else
