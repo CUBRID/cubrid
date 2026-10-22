@@ -92,6 +92,7 @@ struct expr_share
 {
   const REGU_VARIABLE *regu;
   DB_VALUE *slot;
+  int cell;			/* the root program's cell the node publishes into (its address is slot) */
 };
 /* comparison leaf resolved at compile time from (operand type, relational operator) */
 typedef DB_LOGICAL (*EXPR_PRED_EVAL_FN) (const EXPR_PRED * pred);
@@ -3212,6 +3213,7 @@ expr_scan_pred_share_build (EXPR_BUILD_CTX * bctx, EXPR_PRED * root)
 	{
 	  root->share[root->n_share].regu = bctx->node_cells[i].regu;
 	  root->share[root->n_share].slot = root->prog->cells[cell];
+	  root->share[root->n_share].cell = cell;
 	  root->n_share++;
 	}
     }
@@ -3496,10 +3498,61 @@ static bool expr_pred_term_raw_info (const PRED_EXPR * pr, const val_descr * vd,
 static bool expr_scan_pred_node_raw_info (const EXPR_PRED * root, const EXPR_PRED * pred, const val_descr * vd,
 					  EXPR_RAW_LEAF_INFO * out);
 
-bool
-expr_scan_pred_has_share (const void *compiled)
+int
+expr_scan_pred_share_count (const void *compiled)
 {
-  return compiled != NULL && ((const EXPR_PRED *) compiled)->n_share > 0;
+  return (compiled != NULL) ? ((const EXPR_PRED *) compiled)->n_share : 0;
+}
+
+bool
+expr_scan_pred_share_info (const void *compiled, int i, EXPR_SHARE_INFO * out)
+{
+  const EXPR_PRED *root = (const EXPR_PRED *) compiled;
+  const struct expr_share *e;
+  int step, k, n_kids;
+
+  memset (out, 0, sizeof (*out));
+  out->kid = -1;
+  if (root == NULL || root->prog == NULL || i < 0 || i >= root->n_share)
+    {
+      return false;
+    }
+  e = &root->share[i];
+  step = expr_prog_cell_publisher (root->prog, e->cell);
+  if (step < 0)
+    {
+      return false;
+    }
+  out->regu = e->regu;
+  out->slot = e->slot;
+  out->cell = &root->prog->cells[e->cell];
+  out->in_prologue = (step < root->prog->n_prologue + root->prog->n_exec_prologue);
+  if (out->in_prologue)
+    {
+      return true;
+    }
+  /* the term whose compiled operand side holds the publishing step: that side runs on every row the term
+   * evaluates, so the slot holds the row's value right after the term */
+  if (expr_scan_pred_root_shape (compiled, &n_kids) < 0)
+    {
+      return true;
+    }
+  for (k = 0; k < n_kids; k++)
+    {
+      const EXPR_PRED *pred = expr_scan_pred_kid ((EXPR_PRED *) root, k);
+
+      if (pred == NULL || pred->kind != EXPR_PRED_COMP_FETCH)
+	{
+	  continue;
+	}
+      if ((pred->lhs_compiled && step >= pred->lhs_start && step < pred->lhs_start + pred->lhs_n)
+	  || (pred->rhs_compiled && step >= pred->rhs_start && step < pred->rhs_start + pred->rhs_n))
+	{
+	  out->kid = k;
+	  break;
+	}
+    }
+  return true;
 }
 
 int

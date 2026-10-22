@@ -103,7 +103,9 @@ enum eb_vec_kind
   EB_VK_COL = 0,		/* a decoded column */
   EB_VK_SLOT,			/* a step's result */
   EB_VK_SCALAR,			/* one value for every row: read from a DB_VALUE when the page starts */
-  EB_VK_PTR			/* a column its consumers read from the record (no data, no NULL bytes) */
+  EB_VK_PTR,			/* a column its consumers read from the record (no data, no NULL bytes) */
+  EB_VK_SHARED			/* a value the filter computes per row for other programs (EB_SHARE): read from its slot
+				 * after the filter term that writes it, written back for a row the row path takes */
 };
 
 /* how a scalar's DB_VALUE is converted into its element type */
@@ -139,6 +141,7 @@ struct eb_vec
   void *data;			/* the plan's cap elements, or 1 for a scalar */
   unsigned char *isnull;	/* the plan's cap bytes, or 1 for a scalar */
   unsigned char *scales;	/* NUMERIC step result: the scale of each element; else NULL */
+  unsigned char *precs;		/* NUMERIC shared value: the precision of each element's DB_VALUE; else NULL */
   short scale;			/* NUMERIC column or scalar: the scale of every element */
   short col;			/* EB_VK_COL / EB_VK_PTR: the column (plan->cols) */
   unsigned char kind;		/* eb_vec_kind */
@@ -258,6 +261,21 @@ struct eb_agg
   unsigned char covered;
 };
 
+/* A value the filter computes that other programs of the scan read from its slot (the filter's share registry,
+ * expr_scan_pred_share_info ()).  A node a filter term computes per row has a vector: eb_filter () reads the slot
+ * into it right after that term accepted the row, a program of the chunk reads the vector where its cell is wired
+ * to the slot, and expr_batch_row_restore_shared () writes the row's element back into the slot for a row the row
+ * path takes.  A node the prologues compute holds one value for the execution: its scalar is made when a program
+ * asks for it. */
+typedef struct eb_share EB_SHARE;
+struct eb_share
+{
+  DB_VALUE *slot;		/* the filter's result slot */
+  int vec;			/* its vector (EB_VK_SHARED), or its scalar, or -1 until a program asks */
+  int kid;			/* the filter term whose per-row evaluation writes the slot, or -1 for a prologue node */
+  unsigned char in_prologue;
+};
+
 /* a value-list slot the scan fetches a column into (the TYPE_CONSTANT operands of the aggregates) */
 typedef struct eb_slot_map EB_SLOT_MAP;
 struct eb_slot_map
@@ -310,6 +328,9 @@ struct expr_batch_plan
   int n_aggs;
   EB_KEY *keys;			/* a hash GROUP BY's key columns */
   int n_keys;
+  EB_SHARE *shared;		/* the filter's shared values (the share registry, in its order) */
+  int n_shared;
+  int n_shared_rows;		/* of them, the ones a term computes per row (they have a vector) */
 
   void *filter;			/* the compiled scan filter (EXPR_PRED) */
   EXPR_PROG *prog;		/* the aggregate operand program, when one is active */
@@ -381,6 +402,9 @@ static bool eb_slot_lookup (const EB_BUILD * b, const DB_VALUE * slot, ATTR_ID *
 			    HEAP_CACHE_ATTRINFO ** attr_cache);
 static int eb_build_filter (EB_BUILD * b);
 static int eb_build_rtf_leaf (EB_BUILD * b);
+static int eb_build_shared (EB_BUILD * b);
+static EB_SHARE *eb_share_find (EB_BUILD * b, const DB_VALUE * slot);
+static int eb_share_snapshot (EXPR_BATCH_PLAN * plan, int kid, int r, DB_LOGICAL ev);
 static int eb_build_aggs (THREAD_ENTRY * thread_p, EB_BUILD * b);
 static int eb_build_program (EB_BUILD * b);
 static bool *eb_program_needed (const EXPR_PROG * prog, const int *roots, int n_roots);
@@ -1531,11 +1555,6 @@ eb_build_filter (EB_BUILD * b)
     {
       return eb_build_filter_interpreted (b);
     }
-  if (expr_scan_pred_has_share (b->in->scan_pred_compiled))
-    {
-      /* other programs (outputs, keys, operands) read the values this filter computes, row by row */
-      return eb_decline (b, "the filter shares computed values with other programs");
-    }
   shape = expr_scan_pred_root_shape (b->in->scan_pred_compiled, &n_kids);
   if (shape < 0)
     {
@@ -1645,6 +1664,83 @@ eb_build_rtf_leaf (EB_BUILD * b)
   return NO_ERROR;
 }
 
+/* The filter's shared values (EB_SHARE).  A node a term computes per row needs that term to be one the compiled
+ * filter runs per row here (a row kid): its slot is read into the vector after each row the term accepts.  A node
+ * of a type the batch has no vector for would leave a program wired to its slot reading a stale row, so such a
+ * filter declines. */
+static int
+eb_build_shared (EB_BUILD * b)
+{
+  EXPR_BATCH_PLAN *plan = b->plan;
+  int n, i;
+
+  n = expr_scan_pred_share_count (b->in->scan_pred_compiled);
+  if (n <= 0 || plan->filter == NULL)
+    {
+      return NO_ERROR;
+    }
+  plan->shared = (EB_SHARE *) db_private_alloc (b->thread_p, sizeof (EB_SHARE) * n);
+  if (plan->shared == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (plan->shared, 0, sizeof (EB_SHARE) * n);
+  for (i = 0; i < n; i++)
+    {
+      EXPR_SHARE_INFO info;
+      EB_SHARE *sh = &plan->shared[plan->n_shared];
+      int etype, vec;
+      DB_TYPE type;
+
+      if (!expr_scan_pred_share_info (b->in->scan_pred_compiled, i, &info))
+	{
+	  return eb_decline (b, "a shared value the batch cannot place");
+	}
+      sh->slot = info.slot;
+      sh->vec = -1;
+      sh->kid = info.kid;
+      sh->in_prologue = info.in_prologue;
+      plan->n_shared++;
+      if (info.in_prologue)
+	{
+	  continue;		/* one value for the execution: a program that reads it takes it as a scalar */
+	}
+      if (info.kid < 0 || info.kid >= plan->n_kids || plan->kid_leaf[info.kid] != -1)
+	{
+	  return eb_decline (b, "a shared value no per-row filter term computes");
+	}
+      type = (info.regu != NULL && info.regu->domain != NULL) ? TP_DOMAIN_TYPE (info.regu->domain) : DB_TYPE_UNKNOWN;
+      if (!eb_etype_of (type, &etype))
+	{
+	  return eb_decline (b, "a shared value of a type the batch does not carry");
+	}
+      vec = eb_new_vec (b, EB_VK_SHARED, etype, type);
+      if (vec < 0)
+	{
+	  return ER_FAILED;
+	}
+      sh->vec = vec;
+      plan->n_shared_rows++;
+    }
+  return NO_ERROR;
+}
+
+static EB_SHARE *
+eb_share_find (EB_BUILD * b, const DB_VALUE * slot)
+{
+  EXPR_BATCH_PLAN *plan = b->plan;
+  int i;
+
+  for (i = 0; i < plan->n_shared; i++)
+    {
+      if (plan->shared[i].slot == slot)
+	{
+	  return &plan->shared[i];
+	}
+    }
+  return NULL;
+}
+
 /* Which columns are pointed (EB_VK_PTR) rather than decoded: a fixed-area column only raw
  * leaves read -- a comparison reads its cell with a byte swap, cheaper than writing and
  * reading it back -- and a NUMERIC with a single consumer, a raw leaf or an arithmetic step
@@ -1737,15 +1833,29 @@ eb_program_cell_vec (EB_BUILD * b, int cell)
       b->cell_vec[cell] = eb_new_scalar_vec (b, EB_I64, DB_TYPE_UNKNOWN, NULL, &prog->cells[cell], EB_SC_EXACT);
       return b->cell_vec[cell];
     }
-  /* wired at compile time: a literal (TYPE_DBVAL) or a value-list slot (TYPE_CONSTANT) */
+  /* wired at compile time: a result slot of the scan's filter, a literal (TYPE_DBVAL) or a value-list slot
+   * (TYPE_CONSTANT) */
   {
     const DB_VALUE *addr = prog->cells[cell];
+    EB_SHARE *sh;
     ATTR_ID attrid;
     HEAP_CACHE_ATTRINFO *attr_cache;
 
     if (addr == NULL)
       {
 	return -1;
+      }
+    sh = eb_share_find (b, addr);
+    if (sh != NULL)
+      {
+	/* the filter computes it: its vector, or for a prologue node the slot read once the filter's prologues
+	 * ran, typed by the consuming kernel (eb_bind_operand ()) */
+	if (sh->vec < 0)
+	  {
+	    sh->vec = eb_new_scalar_vec (b, EB_I64, DB_TYPE_UNKNOWN, addr, NULL, EB_SC_EXACT);
+	  }
+	b->cell_vec[cell] = sh->vec;
+	return b->cell_vec[cell];
       }
     if (eb_slot_lookup (b, addr, &attrid, &attr_cache))
       {
@@ -1803,11 +1913,6 @@ eb_build_program (EB_BUILD * b)
   if (prog == NULL)
     {
       return NO_ERROR;
-    }
-  if (prog->n_shared > 0)
-    {
-      /* cells wired to the filter program's slots: the filter does not run its arithmetic here */
-      return eb_decline (b, "the operand program shares the filter's values");
     }
   b->n_cell_vec = prog->n_cells;
   b->cell_vec = (int *) db_private_alloc (b->thread_p, sizeof (int) * MAX (1, prog->n_cells));
@@ -2693,6 +2798,10 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
     {
       rc = eb_build_rtf_leaf (&b);
     }
+  if (rc == NO_ERROR)
+    {
+      rc = eb_build_shared (&b);
+    }
   if (rc == NO_ERROR && in->agg_list != NULL)
     {
       rc = eb_build_aggs (thread_p, &b);
@@ -2791,6 +2900,7 @@ expr_batch_plan_free (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan)
   db_private_free_and_init (thread_p, plan->kid_leaf);
   db_private_free_and_init (thread_p, plan->aggs);
   db_private_free_and_init (thread_p, plan->keys);
+  db_private_free_and_init (thread_p, plan->shared);
   db_private_free_and_init (thread_p, plan);
 }
 
@@ -2814,7 +2924,8 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 
       if (v->kind != EB_VK_SCALAR && v->kind != EB_VK_PTR)
 	{
-	  per_row += (size_t) eb_elem_size (v->etype) + 1 + ((v->kind == EB_VK_SLOT && EB_IS_NUM (v->etype)) ? 1 : 0);
+	  per_row += (size_t) eb_elem_size (v->etype) + 1 + ((v->kind == EB_VK_SLOT && EB_IS_NUM (v->etype)) ? 1 : 0)
+	    + ((v->kind == EB_VK_SHARED && EB_IS_NUM (v->etype)) ? 2 : 0);
 	}
     }
   cap = (int) (EXPR_BATCH_CHUNK_BYTES / per_row);
@@ -2830,7 +2941,7 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
     {
       EB_VEC *v = &plan->vecs[i];
       void *data;
-      unsigned char *isnull, *scales = NULL;
+      unsigned char *isnull, *scales = NULL, *precs = NULL;
 
       if (v->kind == EB_VK_SCALAR || v->kind == EB_VK_PTR)
 	{
@@ -2838,10 +2949,18 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 	}
       data = eb_arena_alloc (plan, (size_t) eb_elem_size (v->etype) * cap);
       isnull = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
-      if (v->kind == EB_VK_SLOT && EB_IS_NUM (v->etype))
+      if ((v->kind == EB_VK_SLOT || v->kind == EB_VK_SHARED) && EB_IS_NUM (v->etype))
 	{
 	  scales = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
 	  if (scales == NULL)
+	    {
+	      return ER_OUT_OF_VIRTUAL_MEMORY;
+	    }
+	}
+      if (v->kind == EB_VK_SHARED && EB_IS_NUM (v->etype))
+	{
+	  precs = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
+	  if (precs == NULL)
 	    {
 	      return ER_OUT_OF_VIRTUAL_MEMORY;
 	    }
@@ -2853,6 +2972,7 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
       v->data = data;
       v->isnull = isnull;
       v->scales = scales;
+      v->precs = precs;
     }
   {
     unsigned char *unk = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
@@ -3794,6 +3914,15 @@ eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, 
 	    {
 	      plan->unk[r] = 1;
 	    }
+	  if (plan->n_shared_rows > 0)
+	    {
+	      int rc = eb_share_snapshot (plan, i, r, ev);
+
+	      if (rc != NO_ERROR)
+		{
+		  return rc;
+		}
+	    }
 	  batch->sel[n++] = r;
 	}
       batch->n_sel = n;
@@ -3808,6 +3937,74 @@ eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, 
 	}
     }
   batch->n_sel = n;
+  return NO_ERROR;
+}
+
+/* The shared values term kid computes, for row r it just evaluated to ev: each slot's DB_VALUE into the row's
+ * element.  A row the term did not accept is dropped from the selection (now or at the chain's end), so its
+ * element is only marked NULL.  A value of another type than the vector's, or a NUMERIC past the word domain,
+ * sends the chunk to the row path. */
+static int
+eb_share_snapshot (EXPR_BATCH_PLAN * plan, int kid, int r, DB_LOGICAL ev)
+{
+  int i;
+
+  for (i = 0; i < plan->n_shared; i++)
+    {
+      const EB_SHARE *sh = &plan->shared[i];
+      const DB_VALUE *src = sh->slot;
+      EB_VEC *v;
+
+      if (sh->kid != kid || sh->vec < 0 || sh->in_prologue)
+	{
+	  continue;
+	}
+      v = &plan->vecs[sh->vec];
+      if (ev != V_TRUE || DB_IS_NULL (src))
+	{
+	  v->isnull[r] = 1;
+	  continue;
+	}
+      if (DB_VALUE_DOMAIN_TYPE (src) != v->dbtype)
+	{
+	  return eb_fallback (plan, "a shared value of another type than its node's");
+	}
+      switch (v->dbtype)
+	{
+	case DB_TYPE_SHORT:
+	  ((int64_t *) v->data)[r] = db_get_short (src);
+	  break;
+	case DB_TYPE_INTEGER:
+	  ((int64_t *) v->data)[r] = db_get_int (src);
+	  break;
+	case DB_TYPE_BIGINT:
+	  ((int64_t *) v->data)[r] = db_get_bigint (src);
+	  break;
+	case DB_TYPE_DATE:
+	  ((int64_t *) v->data)[r] = (int64_t) * db_get_date (src);
+	  break;
+	case DB_TYPE_FLOAT:
+	  ((double *) v->data)[r] = (double) db_get_float (src);
+	  break;
+	case DB_TYPE_DOUBLE:
+	  ((double *) v->data)[r] = db_get_double (src);
+	  break;
+	case DB_TYPE_NUMERIC:
+	  {
+	    NUMERIC_AGG_EXPR_VAL nv;
+
+	    if (!numeric_agg_expr_from_dbv (src, &nv) || !eb_num_put (v, r, &nv))
+	      {
+		return eb_fallback (plan, "a shared NUMERIC beyond the word domain");
+	      }
+	    v->precs[r] = (unsigned char) DB_VALUE_PRECISION (src);
+	    break;
+	  }
+	default:
+	  return eb_fallback (plan, "a shared value of a type the batch does not carry");
+	}
+      v->isnull[r] = 0;
+    }
   return NO_ERROR;
 }
 
@@ -4197,11 +4394,14 @@ eb_pack_dbv (const EXPR_BATCH_PLAN * plan, const EB_VEC * vec, int r, DB_VALUE *
 	const NUMERIC_AGG_EXPR_VAL *num = &nv;
 
 	eb_num_get (vec, r, &nv);
-	if (vec->kind == EB_VK_COL || vs->packed_domain)
+	if (vec->kind == EB_VK_COL || vs->packed_domain || vec->precs != NULL)
 	  {
-	    /* a stored column: the domain's precision and scale, as the record decode gives it */
+	    /* a stored column: the domain's precision and scale, as the record decode gives it; a shared value:
+	     * the precision and scale its DB_VALUE had when it was read */
 	    unsigned char buf[DB_NUMERIC_BUF_SIZE];
 	    uint128_t c = num->coefficient;
+	    int precision = (vec->precs != NULL) ? vec->precs[EB_IDX (vec, r)] : vs->precision;
+	    int scale = (vec->precs != NULL) ? num->scale : vs->scale;
 	    int i;
 
 	    for (i = DB_NUMERIC_BUF_SIZE - 1; i >= 0; i--)
@@ -4209,7 +4409,7 @@ eb_pack_dbv (const EXPR_BATCH_PLAN * plan, const EB_VEC * vec, int r, DB_VALUE *
 		buf[i] = (unsigned char) (c & 0xFF);
 		c >>= 8;
 	      }
-	    db_make_numeric (out, buf, vs->precision, vs->scale, DB_NUMERIC_BUF_SIZE, num->is_negative, false);
+	    db_make_numeric (out, buf, precision, scale, DB_NUMERIC_BUF_SIZE, num->is_negative, false);
 	  }
 	else
 	  {
@@ -4218,6 +4418,34 @@ eb_pack_dbv (const EXPR_BATCH_PLAN * plan, const EB_VEC * vec, int r, DB_VALUE *
 	  }
 	break;
       }
+    }
+}
+
+void
+expr_batch_row_restore_shared (const EXPR_BATCH_PLAN * plan, int r)
+{
+  int i;
+
+  if (plan == NULL || plan->n_shared_rows == 0)
+    {
+      return;
+    }
+  for (i = 0; i < plan->n_shared; i++)
+    {
+      const EB_SHARE *sh = &plan->shared[i];
+
+      if (sh->vec < 0 || sh->in_prologue)
+	{
+	  continue;
+	}
+      if (plan->vecs[sh->vec].isnull[r])
+	{
+	  db_make_null (sh->slot);
+	}
+      else
+	{
+	  eb_pack_dbv (plan, &plan->vecs[sh->vec], r, sh->slot);
+	}
     }
 }
 
@@ -4461,8 +4689,9 @@ expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, i
       n_pointed += (plan->vecs[plan->cols[i].vec].kind == EB_VK_PTR);
     }
   fprintf (fp, "%*cEXPR_BATCH: active, usecols %d (pointed %d), chunk %d rows, filter terms raw %d / row %d%s, "
-	   "vector steps %d, aggregates %d, pages %lld (row path %lld%s%s)\n", indent, ' ', plan->n_cols, n_pointed,
-	   plan->cap, plan->n_raw_kids, plan->n_row_kids, (plan->rtf != NULL) ? " + runtime filter" : "",
-	   plan->n_steps, plan->n_aggs, (long long) plan->pages, (long long) plan->pages_fallback,
+	   "shared values %d, vector steps %d, aggregates %d, pages %lld (row path %lld%s%s)\n", indent, ' ',
+	   plan->n_cols, n_pointed, plan->cap, plan->n_raw_kids, plan->n_row_kids,
+	   (plan->rtf != NULL) ? " + runtime filter" : "", plan->n_shared, plan->n_steps, plan->n_aggs,
+	   (long long) plan->pages, (long long) plan->pages_fallback,
 	   (plan->fallback_why != NULL) ? ", last: " : "", (plan->fallback_why != NULL) ? plan->fallback_why : "");
 }

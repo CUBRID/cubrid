@@ -8509,6 +8509,11 @@ scan_batch_row_values (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, EXPR_BATCH_RO
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
 
   hsidp->curr_oid = row->oid;
+  if (hsidp->batch_plan != NULL)
+    {
+      /* the values the filter computed for the row and shares with the row path's programs, back into its slots */
+      expr_batch_row_restore_shared (hsidp->batch_plan, (int) (row - hsidp->batch->rows));
+    }
   if (hsidp->scan_pred.regu_list != NULL && scan_id->val_list != NULL)
     {
       if (hsidp->pred_attrs.attr_cache != NULL

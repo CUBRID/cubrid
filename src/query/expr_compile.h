@@ -377,9 +377,22 @@ extern const DB_VALUE *expr_raw_const_value (const REGU_VARIABLE * k, const val_
 /* the shape of the root: 1 = a single comparison leaf or OR (n_kids = 1), 2 = a flattened AND chain
  * (n_kids = its term count), -1 = anything else (NOT, a term the compiler left alone) */
 extern int expr_scan_pred_root_shape (const void *compiled, int *n_kids);
-/* the filter computes values other programs of the scan read (its share registry): those programs read them per
- * row, so a page batch -- which evaluates the filter over arrays, not row by row -- must not take it */
-extern bool expr_scan_pred_has_share (const void *compiled);
+/* The filter's share registry: the arithmetic nodes whose result slot a program of the same scan (the node's
+ * projection, its aggregate operands) may be wired to instead of recomputing the expression.  A page batch,
+ * which evaluates the filter over arrays and not per row, keeps each shared slot's value per row for those
+ * programs: a node a filter term computes per row is read into a vector right after that term; a node the
+ * prologues compute holds one value for the execution. */
+typedef struct expr_share_info EXPR_SHARE_INFO;
+struct expr_share_info
+{
+  const REGU_VARIABLE *regu;	/* the node; its domain is the type of the value */
+  DB_VALUE *slot;		/* the slot the filter writes and a consumer's cell is wired to */
+  DB_VALUE *const *cell;	/* the filter program's cell holding the slot's address */
+  bool in_prologue;		/* computed once per execution by the prologues, before any row */
+  int kid;			/* else the root's term whose compiled side computes it per row, or -1 */
+};
+extern int expr_scan_pred_share_count (const void *compiled);
+extern bool expr_scan_pred_share_info (const void *compiled, int i, EXPR_SHARE_INFO * out);
 /* the deepest node of the filter's program (the recursion limit, expr_ctx_arm_depth ()) */
 extern int expr_scan_pred_max_level (const void *compiled);
 /* kid i of the root as a raw leaf; false when it is not "column op constant" with a direct-compare

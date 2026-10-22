@@ -183,6 +183,10 @@ extern int expr_batch_key_bytes (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH 
 
 /* the DB type of the node's operand vector (what its values would carry) */
 extern DB_TYPE expr_batch_agg_type (const EXPR_BATCH_PLAN * plan, int node_ord);
+/* Row r of the chunk goes to the row path's consumers (its values read into the value list, its tuple built by
+ * the row path's programs): the values the filter computed for it and shares with those programs, back into the
+ * filter's slots, where the row path's programs read them.  Nothing to do for a plan without shared values. */
+extern void expr_batch_row_restore_shared (const EXPR_BATCH_PLAN * plan, int r);
 
 /* ---------------------------------------------------------------------------------------- */
 /* Chunks between nodes.  The heap scan produces a page's rows a chunk at a time and pushes
