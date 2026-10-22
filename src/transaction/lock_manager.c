@@ -569,6 +569,7 @@ static int lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int 
 static int lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_RES_KEY search_key,
 					      LOCK lock, int wait_msecs, LK_ENTRY ** entry_addr_ptr,
 					      LK_ENTRY * class_entry, bool ahead_of_waiters = false);
+static bool lock_res_held_only_by_writers (LK_RES * res_ptr);
 static void lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag,
 						 bool move_to_non2pl);
 static void lock_unlock_object_by_isolation (THREAD_ENTRY * thread_p, int tran_index, TRAN_ISOLATION isolation,
@@ -3515,7 +3516,8 @@ lock_join_existing_wait_train (THREAD_ENTRY * thrd_entry, int tran_index, LK_ENT
  *   wait_msecs(in):
  *   entry_addr_ptr(in):
  *   class_entry(in):
- *   ahead_of_waiters(in): a new request that must wait goes to the head of the waiters, not the end
+ *   ahead_of_waiters(in): a new request that must wait goes to the head of the waiters, not the end, unless only
+ *			   writers hold the object: then it is not made (LK_NOTGRANTED_HELD_BY_WRITERS)
  *
  * Note:lock the resource identified by search_key with given lock mode 'lock'.
  *
@@ -3852,6 +3854,15 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 		}
 
 	      ret_val = LK_NOTGRANTED_DUE_TIMEOUT;
+	      state = LK_S_DONE;
+	      break;
+	    }
+
+	  if (ahead_of_waiters && lock_res_held_only_by_writers (res_ptr))
+	    {
+	      /* see lock_object_ahead_of_waiters (): judged again where no holder can come or go */
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      ret_val = LK_NOTGRANTED_HELD_BY_WRITERS;
 	      state = LK_S_DONE;
 	      break;
 	    }
@@ -6547,7 +6558,9 @@ lock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
  *   transient(in): give the request up when the statement ends, as lock_object_transient () does
  *
  * Note: for a writer whose stamp is the object's last version.  A writer waiting for the object waits on that stamp
- *	once granted, so it gains nothing by going first and only closes a cycle with the caller.
+ *	once granted, so it gains nothing by going first and only closes a cycle with the caller.  When only writers
+ *	hold the object as the request would queue -- a reader the caller saw may have gone and a waiter been granted
+ *	since -- it is not made and LK_NOTGRANTED_HELD_BY_WRITERS is returned: the caller passes them as it would have.
  */
 int
 lock_object_ahead_of_waiters (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
@@ -8016,6 +8029,26 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
 #endif /* !SERVER_MODE */
 }
 
+#if defined (SERVER_MODE)
+/*
+ * lock_res_held_only_by_writers () - see lock_is_held_only_by_writers ()
+ *   return: true when the resource has holders, each has X granted, and none has asked for S on it
+ *   res_ptr(in): the resource, its mutex held
+ */
+static bool
+lock_res_held_only_by_writers (LK_RES * res_ptr)
+{
+  LK_ENTRY *holder;
+  bool writers_only = (res_ptr->holder != NULL);
+
+  for (holder = res_ptr->holder; holder != NULL && writers_only; holder = holder->next)
+    {
+      writers_only = (holder->granted_mode == X_LOCK && !holder->shared_requested);
+    }
+  return writers_only;
+}
+#endif /* SERVER_MODE */
+
 /*
  * lock_is_held_only_by_writers () - Whether every holder of the object holds X without having read it with S
  *
@@ -8034,7 +8067,6 @@ lock_is_held_only_by_writers (THREAD_ENTRY * thread_p, const OID * oid, const OI
 #else /* !SERVER_MODE */
   LK_RES_KEY search_key = lock_create_search_key (oid, class_oid);
   LK_RES *res_ptr;
-  LK_ENTRY *holder;
   bool writers_only;
 
   res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
@@ -8043,11 +8075,7 @@ lock_is_held_only_by_writers (THREAD_ENTRY * thread_p, const OID * oid, const OI
       return false;
     }
   /* find() leaves the resource mutex locked. */
-  writers_only = (res_ptr->holder != NULL);
-  for (holder = res_ptr->holder; holder != NULL && writers_only; holder = holder->next)
-    {
-      writers_only = (holder->granted_mode == X_LOCK && !holder->shared_requested);
-    }
+  writers_only = lock_res_held_only_by_writers (res_ptr);
   pthread_mutex_unlock (&res_ptr->res_mutex);
   return writers_only;
 #endif /* !SERVER_MODE */

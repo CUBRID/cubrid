@@ -13256,6 +13256,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
   SCAN_CODE scan = S_SUCCESS;
   bool lock_acquired = false;
   bool ours = false;
+  int granted;
   MVCC_REC_HEADER recdes_header;
   bool is_mvcc_class;
   int (*lock_fn) (THREAD_ENTRY *, const OID *, const OID *, LOCK, int) =
@@ -13295,13 +13296,16 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 	}
       heap_clean_get_context (thread_p, context);
       /* a writer queued before us would wait on our stamp once granted: go ahead of it */
-      if ((ours ? lock_object_ahead_of_waiters (thread_p, context->oid_p, context->class_oid_p, lock_mode, transient)
-	   : lock_fn (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK)) != LK_GRANTED)
+      granted = (ours ? lock_object_ahead_of_waiters (thread_p, context->oid_p, context->class_oid_p, lock_mode,
+						      transient)
+		 : lock_fn (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK));
+      if (granted != LK_GRANTED && granted != LK_NOTGRANTED_HELD_BY_WRITERS)
 	{
 	  goto error;
 	}
 
-      lock_acquired = true;
+      /* not granted because only writers hold it by now: as above, there is nothing to give back */
+      lock_acquired = (granted == LK_GRANTED);
 
       /* Prepare for getting record again. Since pages have been unlatched, others may have changed them */
       scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
