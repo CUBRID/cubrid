@@ -70,7 +70,8 @@ struct row_snapshot_filter
 {
   int column;			/* slot in ROW_SNAPSHOT.attr_ids */
   int n_values;
-  DB_VALUE **values;		/* parser memory */
+  DB_VALUE **values;		/* malloc'd; the values themselves stay owned by the statement */
+  DB_VALUE *elements;		/* malloc'd peeks of the elements of a folded IN set, or NULL */
 };
 typedef struct row_snapshot_filter ROW_SNAPSHOT_FILTER;
 
@@ -103,6 +104,9 @@ extern DB_VALUE *row_snapshot_const_value (PARSER_CONTEXT *parser, PT_NODE *node
  * the shape is checked, so a host variable that is not bound yet passes. */
 extern bool row_snapshot_filter_prepare (PARSER_CONTEXT *parser, const ROW_SNAPSHOT *snapshot, MOP classop,
     UINTPTR spec_id, PT_NODE *pred, ROW_SNAPSHOT_FILTER *filter);
+
+/* release what row_snapshot_filter_prepare () allocated; a zeroed filter is fine */
+extern void row_snapshot_filter_clear (ROW_SNAPSHOT_FILTER *filter);
 
 /* the rows that satisfy every filter: their indexes go to rows (sized n_rows), the count is
  * returned */

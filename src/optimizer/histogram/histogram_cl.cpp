@@ -3609,9 +3609,11 @@ bind_snapshot_spec_terms (PARSER_CONTEXT *parser, PT_NODE *select, PT_NODE *spec
   UINTPTR spec_id = spec->info.spec.id;
   PT_NODE *pred, *mine, *other;
   bind_snapshot_pred_ctx pc;
-  ROW_SNAPSHOT_FILTER *filters = NULL;
-  int *rows = NULL;
-  int n_filters = 0, n_joins = 0, k = 0, added = 0;
+  /* function-local, not parser memory: a kept statement runs this on every check for as long as
+   * it lives */
+  std::vector<ROW_SNAPSHOT_FILTER> filters;
+  std::vector<int> rows;
+  int n_filters = 0, n_joins = 0, k = 0, added = 0, f;
   bool user_hv = false;
 
   snapshot = bind_snapshot_of_spec (spec, &classop);
@@ -3649,19 +3651,15 @@ bind_snapshot_spec_terms (PARSER_CONTEXT *parser, PT_NODE *select, PT_NODE *spec
       return n_joins;
     }
 
-  filters = (ROW_SNAPSHOT_FILTER *) parser_alloc (parser, n_filters * sizeof (ROW_SNAPSHOT_FILTER));
-  rows = (int *) parser_alloc (parser, snapshot->n_rows * sizeof (int));
-  if (filters == NULL || rows == NULL)
-    {
-      return 0;
-    }
-  n_filters = 0;
+  filters.assign (n_filters, ROW_SNAPSHOT_FILTER {});
+  rows.assign (snapshot->n_rows, 0);
+  f = 0;
   for (pred = select->info.query.q.select.where; pred != NULL; pred = pred->next)
     {
       bind_snapshot_pred_scan (parser, pred, spec_id, &pc);
       if (pc.own_names > 0 && pc.other_names == 0)
 	{
-	  if (!row_snapshot_filter_prepare (parser, snapshot, classop, spec_id, pred, &filters[n_filters++]))
+	  if (f >= n_filters || !row_snapshot_filter_prepare (parser, snapshot, classop, spec_id, pred, &filters[f++]))
 	    {
 	      /* a value not bound: nothing to say about the rows */
 	      k = -1;
@@ -3671,7 +3669,11 @@ bind_snapshot_spec_terms (PARSER_CONTEXT *parser, PT_NODE *select, PT_NODE *spec
     }
   if (k == 0)
     {
-      k = row_snapshot_survivors (snapshot, filters, n_filters, rows);
+      k = row_snapshot_survivors (snapshot, filters.data (), f, rows.data ());
+    }
+  for (ROW_SNAPSHOT_FILTER &one : filters)
+    {
+      row_snapshot_filter_clear (&one);
     }
 
   for (pred = select->info.query.q.select.where; pred != NULL; pred = pred->next)
@@ -3698,7 +3700,7 @@ bind_snapshot_spec_terms (PARSER_CONTEXT *parser, PT_NODE *select, PT_NODE *spec
 	    {
 	      nf = 0.0;
 	    }
-	  if (row_snapshot_join_selectivity (snapshot, rows, k,
+	  if (row_snapshot_join_selectivity (snapshot, rows.data (), k,
 					     row_snapshot_column (snapshot, classop, mine->info.name.original), other, nf,
 					     &sel))
 	    {
