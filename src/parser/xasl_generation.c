@@ -7270,6 +7270,11 @@ pt_decide_operand_coercion (ARITH_TYPE * arith)
 	  return;
 	}
       const TP_DOMAIN *domain = operand[i]->domain;
+      if (TP_DOMAIN_TYPE (domain) == DB_TYPE_NULL)
+	{
+	  /* a NULL operand makes the result NULL before the kernel reads the other one, which never converts */
+	  return;
+	}
       operands[i] = DOMAIN_OPERAND
       {
       domain, DB_TYPE_NULL, TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (domain)) ? domain->collation_id : -1, false};
@@ -7312,6 +7317,13 @@ pt_decide_function_operands (ARITH_TYPE * arith)
   const TP_DOMAIN *double_domain = tp_domain_resolve_default (DB_TYPE_DOUBLE);
   const unsigned char read_number = DOMAIN_CONVERT_ASSIGN | REGU_CONV_NULL_ON_FUNCTION_ERRORS;
   const unsigned char coerce = DOMAIN_CONVERT_IMPLICIT | REGU_CONV_INVALID_DATATYPE;
+
+  if ((left_fixed && TP_DOMAIN_TYPE (left->domain) == DB_TYPE_NULL)
+      || (right_fixed && TP_DOMAIN_TYPE (right->domain) == DB_TYPE_NULL))
+    {
+      /* a NULL operand makes the result NULL before the body reads the other one, which never converts */
+      return;
+    }
 
   switch (arith->opcode)
     {
@@ -33142,13 +33154,13 @@ pt_make_sq_cache_key_struct (QPROC_DB_VALUE_LIST key_struct, void *p, int type)
 	      regu_alloc (new_dbv);
 	      new_dbv->next = NULL;
 	      new_dbv->val = ((REGU_VARIABLE *) p)->value.dbvalptr;
-	      new_dbv->dom = ((REGU_VARIABLE *) p)->domain;
+	      new_dbv->dom = regu_produced_domain ((REGU_VARIABLE *) p);
 	      list_p->next = new_dbv;
 	    }
 	  else
 	    {
 	      key_struct->val = ((REGU_VARIABLE *) p)->value.dbvalptr;
-	      key_struct->dom = ((REGU_VARIABLE *) p)->domain;
+	      key_struct->dom = regu_produced_domain ((REGU_VARIABLE *) p);
 	    }
 	}
       cnt++;

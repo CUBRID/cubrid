@@ -297,7 +297,8 @@ namespace memoize
       for (auto &regu_var : const_regu_var_vector)
 	{
 	  key_ptr_src.push_back (regu_var->value.dbvalptr);
-	  key_domains.push_back (regu_var->domain);
+	  /* the slot holds the value as its producer wrote it, before this reader's conversion */
+	  key_domains.push_back (regu_produced_domain (regu_var));
 	}
 
       return key_ptr_src.size();

@@ -946,6 +946,18 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		  *wherep = save_where_next;
 		  continue;	/* give up */
 		}
+	      if (arg2->node_type == PT_HOST_VAR && arg1->data_type != NULL)
+		{
+		  /* CBRD-27583 (D-53): the client no longer casts the bind to arg1's domain, so the copy takes it as the
+		   * literal above does: c4 = vc and c4 = ? must not become vc = ? over the uncast value */
+		  temp = pt_wrap_with_cast_op (parser, temp, arg1->type_enum, 0, 0, arg1->data_type);
+		  if (temp == NULL)
+		    {
+		      PT_ERRORm (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+		      *wherep = save_where_next;
+		      continue;	/* give up */
+		    }
+		}
 	    }
 
 	  arg2 = temp;
