@@ -20,14 +20,6 @@
 
 namespace cubschema
 {
-  attribute::attribute (const std::string &n, const std::string &t)
-    : kind {attribute_kind::COLUMN}
-    , name {n}
-    , type {t}
-    , dvalue_func {nullptr}
-  {
-  }
-
   attribute::attribute (const std::string &n, const std::string &t, default_value_init_type dval_f)
     : kind {attribute_kind::COLUMN}
     , name {n}
@@ -36,35 +28,11 @@ namespace cubschema
   {
   }
 
-  attribute::attribute (const attribute_kind k, const std::string &n)
-    : kind {k}
-    , name {n}
-    , type {""}
-    , dvalue_func {nullptr}
-  {
-  }
-
   attribute::attribute (const attribute_kind k, const std::string &n, const std::string &t)
     : kind {k}
     , name {n}
     , type {t}
     , dvalue_func {nullptr}
-  {
-  }
-
-  constraint::constraint (const DB_CONSTRAINT_TYPE &t, const std::string_view n,
-			  const std::vector<const char *> &attrs, bool is_class_attr)
-    : type {t}, name {n.begin(), n.end ()}, attribute_names {attrs}, is_class_attributes {is_class_attr}
-  {
-  }
-
-  grant::grant (struct db_object *&tu, const DB_AUTH &au, bool grant_opt)
-    : target_user {tu}, auth {au}, with_grant_option {grant_opt}
-  {
-  }
-
-  authorization::authorization (struct db_object *&o, const std::vector<grant> &gs)
-    : owner {o}, grants {gs}
   {
   }
 

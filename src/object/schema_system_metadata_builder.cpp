@@ -143,8 +143,6 @@ namespace cubschema
 	    name = c.name.data();
 	  }
 
-	int is_class_attribute = c.is_class_attributes ? 1 : 0;
-
 	switch (type)
 	  {
 	  case DB_CONSTRAINT_INDEX:
@@ -152,8 +150,7 @@ namespace cubschema
 	  case DB_CONSTRAINT_UNIQUE:
 	  case DB_CONSTRAINT_NOT_NULL:
 	  {
-	    error_code = db_add_constraint (class_mop, type, name, (const char **) c.attribute_names.data(),
-					    is_class_attribute);
+	    error_code = db_add_constraint (class_mop, type, name, (const char **) c.attribute_names.data(), 0);
 	  }
 	  break;
 

@@ -212,7 +212,7 @@ catcls_add_dual (DB_OBJECT *class_mop)
 }
 
 static int
-catcls_add_charsets (struct db_object *class_mop)
+catcls_add_charsets (DB_OBJECT *class_mop)
 {
   int i;
 
@@ -466,9 +466,9 @@ namespace cubschema
       *
       *  Currently, it is solved by creating only general indexes, not primary keys or unique indexes.
       */
-      {DB_CONSTRAINT_INDEX, "i__db_class_unique_name", {"unique_name", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"class_name", "owner", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}, false}
+      {DB_CONSTRAINT_INDEX, "i__db_class_unique_name", {"unique_name", nullptr}},
+      {DB_CONSTRAINT_INDEX, "", {"class_name", "owner", nullptr}},
+      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}}
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -500,7 +500,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"class_of", "attr_name", "attr_type", nullptr}, false}
+      {DB_CONSTRAINT_INDEX, "", {"class_of", "attr_name", "attr_type", nullptr}}
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -530,8 +530,8 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"object_of", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"data_type", nullptr}, false}
+      {DB_CONSTRAINT_INDEX, "", {"object_of", nullptr}},
+      {DB_CONSTRAINT_INDEX, "", {"data_type", nullptr}}
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -557,7 +557,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"class_of", "meth_name", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"class_of", "meth_name", nullptr}},
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -582,7 +582,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"meth_of", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"meth_of", nullptr}},
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -606,7 +606,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"meth_sig_of", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"meth_sig_of", nullptr}},
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -629,7 +629,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}},
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -652,7 +652,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}},
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -692,8 +692,8 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"index_name", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"class_of", nullptr}},
+      {DB_CONSTRAINT_INDEX, "", {"index_name", nullptr}},
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -719,7 +719,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"index_of", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"index_of", nullptr}},
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -747,8 +747,8 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"grantee", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"object_of", nullptr}, false}
+      {DB_CONSTRAINT_INDEX, "", {"grantee", nullptr}},
+      {DB_CONSTRAINT_INDEX, "", {"object_of", nullptr}}
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -811,7 +811,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"class_of", "pname", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"class_of", "pname", nullptr}},
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -833,7 +833,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"type_id", "type_name", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"type_id", "type_name", nullptr}}
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -870,7 +870,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_stored_procedure_unique_name", {"unique_name", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_stored_procedure_unique_name", {"unique_name", nullptr}}
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -899,7 +899,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_INDEX, "", {"sp_of", nullptr}, false},
+      {DB_CONSTRAINT_INDEX, "", {"sp_of", nullptr}},
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -928,7 +928,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"name", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"name", nullptr}}
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -965,12 +965,12 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_serial_unique_name", {"unique_name", nullptr}, false},
-      {DB_CONSTRAINT_UNIQUE, "", {"name", "owner", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"current_val", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"increment_val", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"max_val", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"min_val", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "pk_db_serial_unique_name", {"unique_name", nullptr}},
+      {DB_CONSTRAINT_UNIQUE, "", {"name", "owner", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"current_val", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"increment_val", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"max_val", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"min_val", nullptr}}
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -1016,13 +1016,13 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"committed_lsa_pageid", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"committed_lsa_offset", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"required_lsa_pageid", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"required_lsa_offset", nullptr}, false},
+      {DB_CONSTRAINT_UNIQUE, "", {"db_name", "copied_log_path", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"db_name", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"copied_log_path", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"committed_lsa_pageid", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"committed_lsa_offset", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"required_lsa_pageid", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"required_lsa_offset", nullptr}},
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -1050,7 +1050,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {CT_DBCOLL_COLL_ID_COLUMN, nullptr}, false},
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {CT_DBCOLL_COLL_ID_COLUMN, nullptr}},
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -1121,14 +1121,14 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"unique_name", nullptr}, false},
-      {DB_CONSTRAINT_INDEX, "", {"name", "owner", "is_public", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"name", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"owner", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"is_public", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"target_unique_name", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"target_name", nullptr}, false},
-      {DB_CONSTRAINT_NOT_NULL, "", {"target_owner", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"unique_name", nullptr}},
+      {DB_CONSTRAINT_INDEX, "", {"name", "owner", "is_public", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"name", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"owner", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"is_public", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"target_unique_name", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"target_name", nullptr}},
+      {DB_CONSTRAINT_NOT_NULL, "", {"target_owner", nullptr}}
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -1161,7 +1161,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_PRIMARY_KEY, "", {"link_name", "owner", nullptr}, false}
+      {DB_CONSTRAINT_PRIMARY_KEY, "", {"link_name", "owner", nullptr}}
     },
 // authorization
     make_authorization (Au_dba_user, {Au_information_schema_user}, AU_SELECT),
@@ -1188,7 +1188,7 @@ namespace cubschema
     },
 // constraints
     {
-      {DB_CONSTRAINT_UNIQUE, "", {"class_of", "key_attr", nullptr}, false}
+      {DB_CONSTRAINT_UNIQUE, "", {"class_of", "key_attr", nullptr}}
     },
 // authorization
     make_authorization (Au_dba_user, {}, AU_SELECT),

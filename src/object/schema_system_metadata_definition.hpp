@@ -53,10 +53,9 @@ namespace cubschema
     std::string type;
     default_value_init_type dvalue_func;
 
-    attribute (const std::string &name, const std::string &type); // attribute_kind::COLUMN
-    attribute (const std::string &name, const std::string &type, default_value_init_type dval_f); // attribute_kind::COLUMN
-    attribute (const attribute_kind kind, const std::string &name);
-    attribute (const attribute_kind kind, const std::string &name, const std::string &type);
+    // attribute_kind::COLUMN
+    attribute (const std::string &name, const std::string &type, default_value_init_type dval_f = nullptr);
+    attribute (const attribute_kind kind, const std::string &name, const std::string &type = "");
   };
 
   // TODO: implement formatting utility function for std::string (like fmt library)
@@ -113,27 +112,19 @@ namespace cubschema
     DB_CONSTRAINT_TYPE type;
     std::string name;
     std::vector<const char *> attribute_names;
-    bool is_class_attributes;
-
-    constraint (const DB_CONSTRAINT_TYPE &t, std::string_view n, const std::vector<const char *> &attrs,
-		bool is_class_attr);
   };
 
   struct grant
   {
-    struct db_object *target_user;
+    MOP target_user;
     DB_AUTH auth;
     bool with_grant_option;
-
-    grant (struct db_object *&tu, const DB_AUTH &au, bool grant_opt);
   };
 
   struct authorization
   {
-    struct db_object *owner;
+    MOP owner;
     std::vector<grant> grants;
-
-    authorization (struct db_object *&o, const std::vector<grant> &gs);
   };
 
   authorization make_authorization (MOP owner, const std::vector<MOP> &grantees, DB_AUTH auth);
@@ -142,7 +133,7 @@ namespace cubschema
   {
     using attr_vec_type = std::vector <attribute>;
     using cstr_vec_type = std::vector <constraint>;
-    using row_init_type = std::function<int (struct db_object *)>;
+    using row_init_type = std::function<int (MOP)>;
 
     const std::string name;
     const attr_vec_type attributes;
