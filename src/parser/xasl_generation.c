@@ -20406,6 +20406,8 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  set_text = pt_append_string (parser, set_text, ", ");
 	}
+      /* Appended unquoted, as the key column is in dblink_dml_build_delete_sql () (see the TODO there). Unlike
+       * that key, this text is built here, where the remote vendor is not known yet. */
       set_text = pt_append_string (parser, set_text, ea.lhs->info.name.original);
       set_text = pt_append_string (parser, set_text, " = ");
 
