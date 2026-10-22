@@ -5560,8 +5560,15 @@ stx_build_element_compares (THREAD_ENTRY * thread_p, char *ptr, ALSM_EVAL_TERM *
 	  term->compare_each = stx_constant_elements_compare (term->compare_row, term->elemset);
 	}
     }
-  /* CBRD-27583 (S3-32): never by the values in the gates (census "by value" 0) */
-  assert (term->elem == NULL || term->elemset == NULL || kind != 0);
+  /* CBRD-27583 (S3-32): never by the values in the gates (census "by value" 0), but for a NULL item or a NULL column,
+   * which compares nothing: the term is UNKNOWN, or an empty subquery decides it (CBRD-27574) */
+#if !defined (NDEBUG)
+  const TP_DOMAIN *column = term->elemset == NULL ? NULL : term->elemset->type == TYPE_LIST_ID
+    ? domain_list_column_compared (term->elemset->xasl, 0) : term->elemset->domain;
+#endif
+  assert (term->elem == NULL || term->elemset == NULL || kind != 0
+	  || (term->elem->domain != NULL && TP_DOMAIN_TYPE (term->elem->domain) == DB_TYPE_NULL)
+	  || (column != NULL && TP_DOMAIN_TYPE (column) == DB_TYPE_NULL));
   return ptr;
 }
 
