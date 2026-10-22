@@ -946,10 +946,15 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		  *wherep = save_where_next;
 		  continue;	/* give up */
 		}
-	      if (arg2->node_type == PT_HOST_VAR && arg1->data_type != NULL)
+	      if (arg2->node_type == PT_HOST_VAR && arg1->data_type != NULL && parser->host_variables != NULL
+		  && arg2->info.host_var.var_type == PT_HOST_IN && arg2->info.host_var.index < parser->host_var_count
+		  && (arg1->type_enum == PT_TYPE_CHAR
+		      || (TP_DOMAIN_TYPE (pt_host_var_value_domain (parser, arg2->info.host_var.index))
+			  != pt_type_enum_to_db (arg1->type_enum))))
 		{
-		  /* CBRD-27583 (D-53): the client no longer casts the bind to arg1's domain, so the copy takes it as the
-		   * literal above does: c4 = vc and c4 = ? must not become vc = ? over the uncast value */
+		  /* CBRD-27583 (D-53): the client no longer casts the bind to arg1's domain, so a copy of another type or
+		   * a CHAR column's (its length pads) takes it as the literal above does: c4 = vc and c4 = ? must not
+		   * become vc = ? over the uncast value */
 		  temp = pt_wrap_with_cast_op (parser, temp, arg1->type_enum, 0, 0, arg1->data_type);
 		  if (temp == NULL)
 		    {
