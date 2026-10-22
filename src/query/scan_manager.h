@@ -698,6 +698,7 @@ extern void scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
  * hands a chunk and the rest of its page back to the row path with scan_batch_page_rowmode ()
  * (serial) when the batch declines it */
 struct access_spec_node;
+struct xasl_node;
 namespace cubxasl
 {
   struct aggregate_list_node;
@@ -709,8 +710,9 @@ extern bool scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, 
 /* the same for a parallel worker's scan, whose rows go through the rows node (scan_batch_rows_consume ()) */
 extern bool scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const struct access_spec_node *spec,
 				  val_descr * vd);
+/* the consumer's block: a hash join's runtime filter on it (xasl->rtf) becomes the plan's last filter term */
 extern int scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const struct access_spec_node *spec,
-			    cubxasl::aggregate_list_node * agg_list, val_descr * vd,
+			    const struct xasl_node *xasl, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
 			    const struct expr_batch_gby_map *gby);
 extern SCAN_CODE scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 extern SCAN_CODE scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid,

@@ -4692,8 +4692,6 @@ struct hjoin_runtime_filter
   INT64 n_keys;
   bool is_date;			/* DATE keys (else SHORT/INTEGER/BIGINT, compared as integers) */
   int val_index;		/* the key's cell in the target's value list (a worker's clone finds it by position) */
-  INT64 rows;			/* rows seen / dropped, added to by parallel workers */
-  INT64 dropped;
 };
 
 static UINT64
@@ -4872,9 +4870,11 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
   INT64 k;
 
   /* a cached clone may still carry the filter a worker bound on it in an earlier execution (freed since by that
-   * execution's hjoin_rtf_release ()): no decline below may leave it on the target */
+   * execution's hjoin_rtf_release ()), and the rows it counted: no decline below may leave them on the target */
   target->rtf = NULL;
   target->rtf_val = NULL;
+  target->rtf_rows = 0;
+  target->rtf_dropped = 0;
   fcol = (first == hj->outer.xasl) ? hj->merge_info.ls_outer_column[0] : hj->merge_info.ls_inner_column[0];
   tcol = (target == hj->outer.xasl) ? hj->merge_info.ls_outer_column[0] : hj->merge_info.ls_inner_column[0];
   if (list == NULL || list->tuple_cnt <= 0 || list->tuple_cnt > HJOIN_RTF_MAX_KEYS || fcol >= list->type_list.type_cnt
@@ -4982,31 +4982,42 @@ fail:
 }
 
 bool
-hjoin_rtf_pass (HJOIN_RUNTIME_FILTER * rtf, const DB_VALUE * key)
+hjoin_rtf_contains (const HJOIN_RUNTIME_FILTER * rtf, INT64 key)
+{
+  UINT64 h;
+
+  for (h = hjoin_rtf_hash (key) & rtf->mask; rtf->used[h]; h = (h + 1) & rtf->mask)
+    {
+      if (rtf->slots[h] == key)
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+bool
+hjoin_rtf_is_date (const HJOIN_RUNTIME_FILTER * rtf)
+{
+  return rtf->is_date;
+}
+
+/* A lookup only: the filter is read by every worker at once and written by none of them.  The caller counts the
+ * row on its own XASL node (rtf_rows, and rtf_dropped on false) -- the leader's node on the row path, a worker's
+ * clone, merged once by hjoin_rtf_unbind_clone () -- so no two threads write one word per row. */
+bool
+hjoin_rtf_pass (const HJOIN_RUNTIME_FILTER * rtf, const DB_VALUE * key)
 {
   INT64 k = 0;
-  UINT64 h;
   int got = hjoin_rtf_key (key, rtf->is_date, &k);
 
-  __atomic_add_fetch (&rtf->rows, 1, __ATOMIC_RELAXED);
   if (got < 0)
     {
       /* a value the filter does not compare: the join decides */
       return true;
     }
-  if (got == 1)
-    {
-      for (h = hjoin_rtf_hash (k) & rtf->mask; rtf->used[h]; h = (h + 1) & rtf->mask)
-	{
-	  if (rtf->slots[h] == k)
-	    {
-	      return true;
-	    }
-	}
-    }
   /* no build row has the key (a NULL key matches none either) */
-  __atomic_add_fetch (&rtf->dropped, 1, __ATOMIC_RELAXED);
-  return false;
+  return got == 1 && hjoin_rtf_contains (rtf, k);
 }
 
 void
@@ -5017,6 +5028,8 @@ hjoin_rtf_bind_clone (XASL_NODE * clone, const XASL_NODE * orig)
 
   clone->rtf = NULL;
   clone->rtf_val = NULL;
+  clone->rtf_rows = 0;
+  clone->rtf_dropped = 0;
   if (orig->rtf == NULL || clone->val_list == NULL)
     {
       return;
@@ -5032,12 +5045,22 @@ hjoin_rtf_bind_clone (XASL_NODE * clone, const XASL_NODE * orig)
     }
 }
 
-/* the worker's clone goes back to the xcache clone pool: the leader's filter must not go with it */
+/* The worker's clone goes back to the xcache clone pool: the leader's filter must not go with it.  The rows the
+ * worker counted on the clone (hjoin_rtf_pass ()'s callers, the batch leaf) join the leader's node here, once per
+ * task -- the one place several threads add to the same words; the leader reads them after wait_for_workers ()
+ * (hjoin_rtf_release ()). */
 void
-hjoin_rtf_unbind_clone (XASL_NODE * clone)
+hjoin_rtf_unbind_clone (XASL_NODE * clone, XASL_NODE * orig)
 {
+  if (clone->rtf != NULL && orig != NULL)
+    {
+      __atomic_add_fetch (&orig->rtf_rows, clone->rtf_rows, __ATOMIC_RELAXED);
+      __atomic_add_fetch (&orig->rtf_dropped, clone->rtf_dropped, __ATOMIC_RELAXED);
+    }
   clone->rtf = NULL;
   clone->rtf_val = NULL;
+  clone->rtf_rows = 0;
+  clone->rtf_dropped = 0;
 }
 
 void
@@ -5047,24 +5070,29 @@ hjoin_rtf_release (XASL_NODE * hashjoin_xasl)
   /* called once the target's scans are closed -- qexec_end_mainblock_iterations () after the aptr loop, or
    * qexec_clear_xasl () after the target's own error exit closed them -- so every worker that shared this
    * filter (hjoin_rtf_bind_clone ()) has been drained (wait_for_workers ()) and has dropped its alias
-   * (hjoin_rtf_unbind_clone () in finalize ()): the counters are read plain and nothing points at the freed filter */
+   * (hjoin_rtf_unbind_clone () in finalize ()): the target node's counters -- its own rows and the workers' merged
+   * in -- are read plain, and nothing points at the freed filter */
   HJOIN_RUNTIME_FILTER *rtf = hj->rtf;
+  XASL_NODE *target = NULL;
 
   if (rtf == NULL)
     {
       return;
     }
-  hj->rtf_rows = rtf->rows;
-  hj->rtf_dropped = rtf->dropped;
   if (hj->outer.xasl != NULL && hj->outer.xasl->rtf == rtf)
     {
-      hj->outer.xasl->rtf = NULL;
-      hj->outer.xasl->rtf_val = NULL;
+      target = hj->outer.xasl;
     }
-  if (hj->inner.xasl != NULL && hj->inner.xasl->rtf == rtf)
+  else if (hj->inner.xasl != NULL && hj->inner.xasl->rtf == rtf)
     {
-      hj->inner.xasl->rtf = NULL;
-      hj->inner.xasl->rtf_val = NULL;
+      target = hj->inner.xasl;
+    }
+  if (target != NULL)
+    {
+      hj->rtf_rows = target->rtf_rows;
+      hj->rtf_dropped = target->rtf_dropped;
+      target->rtf = NULL;
+      target->rtf_val = NULL;
     }
   free_and_init (rtf->slots);
   free_and_init (rtf->used);

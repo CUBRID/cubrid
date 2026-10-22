@@ -68,6 +68,7 @@ struct heap_page_row;
 struct heap_rec_layout;
 struct access_spec_node;
 struct val_descr;
+struct hjoin_runtime_filter;
 namespace cubxasl
 {
   struct aggregate_list_node;
@@ -87,6 +88,9 @@ struct expr_batch
   int *sel;			/* indexes into rows[] that passed the filter, in row order */
   int n_sel;
   struct heap_rec_layout *layout;	/* per row: its record's layout, found once a chunk (expr_batch_run ()) */
+  INT64 rtf_rows;		/* this chunk: the rows the runtime filter leaf looked up and dropped (0 without one); the
+				 * caller adds them to its XASL node once the chunk went through */
+  INT64 rtf_dropped;
 };
 
 /* A hash GROUP BY over the scan (a BUILDLIST with GROUP BY, expr_batch_gby in query_executor.c): its aggregates
@@ -105,6 +109,9 @@ struct expr_batch_gby_map
   DB_VALUE *const *key_slot;	/* per key: the key column's value-list slot */
 };
 
+/* the runtime filter's lookup (hjoin_rtf_contains ()): a key read as an integer (a DATE as its day count) */
+typedef bool (*EXPR_BATCH_RTF_CONTAINS) (const struct hjoin_runtime_filter * rtf, INT64 key);
+
 /* what the plan is built from: the worker's own clone state, settled for this execution */
 typedef struct expr_batch_inputs EXPR_BATCH_INPUTS;
 struct expr_batch_inputs
@@ -121,6 +128,13 @@ struct expr_batch_inputs
   struct val_descr *vd;
   const EXPR_BATCH_GBY_MAP *gby;	/* a hash GROUP BY's mapping (agg_list is its g_agg_list), or NULL */
   bool is_peeking;		/* records are peeked, not copied into one buffer */
+  /* a hash join's runtime filter on the scan (query_hash_join.h, hjoin_rtf_*), or NULL: the filter, the value-list
+   * cell the scan fetches its key into (the spec's regu lists say which attribute), whether its keys are DATEs, and
+   * the lookup -- the plan runs the lookup as the AND chain's last term and never reads the filter itself */
+  const struct hjoin_runtime_filter *rtf;
+  const DB_VALUE *rtf_val;
+  bool rtf_is_date;
+  EXPR_BATCH_RTF_CONTAINS rtf_contains;
 };
 
 typedef struct expr_batch_plan EXPR_BATCH_PLAN;

@@ -263,6 +263,8 @@ stx_map_stream_to_xasl (THREAD_ENTRY * thread_p, xasl_node ** xasl_tree, bool us
   xasl->memoize_storage = NULL;
   xasl->rtf = NULL;
   xasl->rtf_val = NULL;
+  xasl->rtf_rows = 0;
+  xasl->rtf_dropped = 0;
   xasl->executed_parallelism = 0;
 
   /* initialize the query in progress flag to FALSE.  Note that this flag is not packed/unpacked.  It is strictly a
@@ -2464,6 +2466,8 @@ stx_build_xasl_node (THREAD_ENTRY * thread_p, char *ptr, XASL_NODE * xasl)
   xasl->memoize_storage = NULL;
   xasl->rtf = NULL;
   xasl->rtf_val = NULL;
+  xasl->rtf_rows = 0;
+  xasl->rtf_dropped = 0;
   xasl->executed_parallelism = 0;
   return ptr;
 

@@ -54,6 +54,7 @@
 #include "dbtype.h"
 #include "xasl_predicate.hpp"
 #include "xasl.h"
+#include "query_hash_join.h"
 #include "query_hash_scan.h"
 #include "statistics.h"
 #include "px_scan.hpp"
@@ -194,7 +195,7 @@ static int scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * is
 static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static int scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec,
-				     cubxasl::aggregate_list_node * agg_list, val_descr * vd,
+				     const XASL_NODE * xasl, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
 				     const EXPR_BATCH_GBY_MAP * gby, bool cached_ok);
 static SCAN_CODE scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static void scan_batch_rewind (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -8167,6 +8168,8 @@ exit_on_error:
  *   return: the batch state: 1 active, 2 declined (the row path serves the scan)
  *   scan_id(in/out): the started heap scan
  *   spec(in): its access spec (the regu lists that map value-list slots to attributes)
+ *   xasl(in): the consumer's block: a hash join's runtime filter on it (hjoin_rtf_build ()) is looked up by the
+ *	       plan itself, as its last filter term, since the rows the batch keeps never pass the row loop's check
  *   agg_list(in): the aggregate list the consumer accumulates
  *   vd(in): the execution's value descriptor
  *
@@ -8176,18 +8179,19 @@ exit_on_error:
  * row, so the batch reads the forms this execution would use.
  */
 int
-scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec,
+scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec, const XASL_NODE * xasl,
 		 cubxasl::aggregate_list_node * agg_list, val_descr * vd, const EXPR_BATCH_GBY_MAP * gby)
 {
-  return scan_batch_open_internal (thread_p, scan_id, spec, agg_list, vd, gby, false);
+  return scan_batch_open_internal (thread_p, scan_id, spec, xasl, agg_list, vd, gby, false);
 }
 
 /* scan_batch_open (); cached_ok: the scan may read its pages through a local copy (the filter iterator fixes the
- * page itself for each chunk) */
+ * page itself for each chunk).  xasl is NULL for the filter iterators (scan_batch_open_filter (), _rows ()): their
+ * rows go on to the row loop, which checks the runtime filter itself. */
 static int
 scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec,
-			  cubxasl::aggregate_list_node * agg_list, val_descr * vd, const EXPR_BATCH_GBY_MAP * gby,
-			  bool cached_ok)
+			  const XASL_NODE * xasl, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
+			  const EXPR_BATCH_GBY_MAP * gby, bool cached_ok)
 {
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
   EXPR_BATCH_INPUTS in;
@@ -8246,6 +8250,15 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCE
   in.pred_expr = hsidp->scan_pred.pred_expr;
   in.vd = vd;
   in.is_peeking = true;		/* the batch holds the page: its records are peeked whatever the scan's own mode */
+  if (xasl != NULL && xasl->rtf != NULL)
+    {
+      /* the filter outlives the plan: it is released once the block's scans are closed (hjoin_rtf_release ()),
+       * the plan with the scan (scan_end_scan ()) */
+      in.rtf = xasl->rtf;
+      in.rtf_val = xasl->rtf_val;
+      in.rtf_is_date = hjoin_rtf_is_date (xasl->rtf);
+      in.rtf_contains = hjoin_rtf_contains;
+    }
 
   hsidp->batch_plan = expr_batch_plan_build (thread_p, &in, &hsidp->batch_why_not);
   if (hsidp->batch_plan == NULL)
@@ -8543,7 +8556,7 @@ scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS
     {
       return false;
     }
-  if (scan_batch_open_internal (thread_p, scan_id, spec, NULL, vd, NULL, true) != 1)
+  if (scan_batch_open_internal (thread_p, scan_id, spec, NULL, NULL, vd, NULL, true) != 1)
     {
       return false;
     }
@@ -8560,7 +8573,7 @@ bool
 scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec, val_descr * vd)
 {
   return (scan_id->type == S_HEAP_SCAN && scan_id->s.hsid.scan_pred.pred_expr != NULL
-	  && scan_batch_open_internal (thread_p, scan_id, spec, NULL, vd, NULL, true) == 1);
+	  && scan_batch_open_internal (thread_p, scan_id, spec, NULL, NULL, vd, NULL, true) == 1);
 }
 
 /* the kept rows' records copied out of the page, the rows pointed at the copies */

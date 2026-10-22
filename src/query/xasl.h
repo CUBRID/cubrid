@@ -1278,6 +1278,10 @@ struct xasl_node
   // *INDENT-ON*
   struct hjoin_runtime_filter *rtf;	/* a hash join's runtime filter on this input's outermost scan (not owned) */
   DB_VALUE *rtf_val;		/* ... and the value list cell its key is fetched into */
+  INT64 rtf_rows;		/* ... and the rows this node checked against it and dropped (trace): the thread that
+				 * runs the node adds to them; a worker's clone merges them into the leader's node once
+				 * (hjoin_rtf_unbind_clone ()) */
+  INT64 rtf_dropped;
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

@@ -33,7 +33,9 @@
  *   - a STEP is one operation over the selection: a typed add/sub/mul, a widening, or a
  *     NULL-mask push/pop that reproduces a lazy right-hand side;
  *   - a KID is one term of the filter's AND chain: either a RAW leaf, "column op constant"
- *     over a vector, or a ROW term the compiled filter evaluates per surviving row.
+ *     over a vector, a ROW term the compiled filter evaluates per surviving row, or -- last,
+ *     when the scan carries one -- a hash join's RUNTIME FILTER looked up on the key column
+ *     (expr_batch_inputs.rtf: the lookup is the caller's, the plan only reads the column).
  *
  * Each row's layout (where its fixed area, offset table and bound bits are) is found once,
  * when the chunk starts.  A column is then either POINTED or decoded:
@@ -125,6 +127,9 @@ enum eb_op
 };
 
 #define EB_MASK_DEPTH (8)
+
+/* kid_leaf: the runtime filter's lookup (eb_rtf_kid ()) */
+#define EB_KID_RTF (-2)
 
 /* The per-page loops read only these four words per vector; what a vector is made of
  * (its column, its scalar's source, a NUMERIC column's domain) sits in EB_VEC_SRC, read
@@ -304,7 +309,8 @@ struct expr_batch_plan
   EB_LEAF *leaves;
   EB_LEAF_SRC *lsrc;		/* parallel to leaves */
   int n_leaves;
-  int *kid_leaf;		/* per filter term, in order: its leaf, or -1 for a term the compiled filter runs per row */
+  int *kid_leaf;		/* per filter term, in order: its leaf, -1 for a term the compiled filter runs per row, or
+				 * EB_KID_RTF for the runtime filter's lookup */
   int n_kids;
   EB_AGG *aggs;
   int n_aggs;
@@ -313,6 +319,11 @@ struct expr_batch_plan
 
   void *filter;			/* the compiled scan filter (EXPR_PRED) */
   EXPR_PROG *prog;		/* the aggregate operand program, when one is active */
+  /* the runtime filter (EXPR_BATCH_INPUTS), its lookup, and the key column's vector; NULL without one */
+  const struct hjoin_runtime_filter *rtf;
+  EXPR_BATCH_RTF_CONTAINS rtf_contains;
+  int rtf_vec;
+  int rtf_col;
   HEAP_CACHE_ATTRINFO *pred_attr_cache;	/* armed per surviving row for the per-row terms */
   bool arm_pred_cache;
 
@@ -374,6 +385,7 @@ static int eb_build_slot_map (EB_BUILD * b);
 static bool eb_slot_lookup (const EB_BUILD * b, const DB_VALUE * slot, ATTR_ID * attrid,
 			    HEAP_CACHE_ATTRINFO ** attr_cache);
 static int eb_build_filter (EB_BUILD * b);
+static int eb_build_rtf_leaf (EB_BUILD * b);
 static int eb_build_aggs (THREAD_ENTRY * thread_p, EB_BUILD * b);
 static int eb_build_program (EB_BUILD * b);
 static bool *eb_program_needed (const EXPR_PROG * prog, const int *roots, int n_roots);
@@ -1598,6 +1610,54 @@ eb_build_filter (EB_BUILD * b)
   return NO_ERROR;
 }
 
+/* The hash join's runtime filter over the scan's key column (query_hash_join.c, hjoin_rtf_*), the AND chain's
+ * last term: the terms before it shrink the selection it looks up.  The key cell's attribute comes from the slot
+ * map (the same regu lists hjoin_rtf_build () found the cell in), its vector from eb_new_col_vec ().  A key the
+ * batch cannot place or would not compare as the filter does declines the plan: the row path, which applies the
+ * filter itself, runs the scan instead. */
+static int
+eb_build_rtf_leaf (EB_BUILD * b)
+{
+  EXPR_BATCH_PLAN *plan = b->plan;
+  HEAP_CACHE_ATTRINFO *attr_cache = NULL;
+  ATTR_ID attrid = NULL_ATTRID;
+  int *kids;
+  int vec;
+
+  if (b->in->rtf == NULL)
+    {
+      return NO_ERROR;
+    }
+  if (b->in->rtf_contains == NULL || b->in->rtf_val == NULL
+      || !eb_slot_lookup (b, b->in->rtf_val, &attrid, &attr_cache))
+    {
+      return eb_decline (b, "the runtime filter's key is not a column the scan fetches");
+    }
+  vec = eb_new_col_vec (b, attr_cache, attrid);
+  if (vec < 0)
+    {
+      return eb_decline (b, "the runtime filter's key column is not one the batch decodes");
+    }
+  if (plan->vecs[vec].etype != EB_I64 || (plan->vecs[vec].dbtype == DB_TYPE_DATE) != b->in->rtf_is_date)
+    {
+      /* hjoin_rtf_key (): a key of another type is not compared, the join decides */
+      return eb_decline (b, "the runtime filter's key column is not one it compares");
+    }
+  kids = (int *) realloc (plan->kid_leaf, sizeof (int) * (plan->n_kids + 1));
+  if (kids == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * (plan->n_kids + 1));
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  plan->kid_leaf = kids;
+  plan->kid_leaf[plan->n_kids++] = EB_KID_RTF;
+  plan->rtf = b->in->rtf;
+  plan->rtf_contains = b->in->rtf_contains;
+  plan->rtf_vec = vec;
+  plan->rtf_col = eb_col_of_vec (plan, vec);
+  return NO_ERROR;
+}
+
 /* Which columns are pointed (EB_VK_PTR) rather than decoded: a fixed-area column only raw
  * leaves read -- a comparison reads its cell with a byte swap, cheaper than writing and
  * reading it back -- and a NUMERIC with a single consumer, a raw leaf or an arithmetic step
@@ -1622,6 +1682,7 @@ eb_choose_pointed (EXPR_BATCH_PLAN * plan)
 	{
 	  leaf_uses += (plan->leaves[i].vec == col->vec) + (plan->leaves[i].vec2 == col->vec);
 	}
+      leaf_uses += (plan->rtf != NULL && plan->rtf_vec == col->vec);	/* read like a raw leaf's column */
       for (i = 0; i < plan->n_steps; i++)
 	{
 	  const EB_STEP *st = &plan->steps[i];
@@ -2642,6 +2703,10 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
     {
       rc = eb_build_filter (&b);
     }
+  if (rc == NO_ERROR)
+    {
+      rc = eb_build_rtf_leaf (&b);
+    }
   if (rc == NO_ERROR && in->agg_list != NULL)
     {
       rc = eb_build_aggs (thread_p, &b);
@@ -3636,6 +3701,45 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
   return NO_ERROR;
 }
 
+/* The runtime filter's lookup over the selection: a NULL key, or one no build row has, drops the row, as the row
+ * path's hjoin_rtf_pass () does.  A row an earlier term left UNKNOWN is not looked up -- the row path never reaches
+ * the filter with such a row -- and leaves with the chain's end.  The chunk's counts are committed only once the
+ * whole selection went through: a chunk the row path re-runs is counted there. */
+static int
+eb_rtf_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
+{
+  int j, n = 0, seen = 0, kept = 0;
+
+  for (j = 0; j < batch->n_sel; j++)
+    {
+      int r = batch->sel[j];
+      int64_t key = 0;
+      double unused = 0;
+      int got;
+
+      if (plan->unk[r])
+	{
+	  batch->sel[n++] = r;
+	  continue;
+	}
+      got = eb_leaf_side (plan, batch, plan->rtf_vec, plan->rtf_col, r, &key, &unused);
+      if (got < 0)
+	{
+	  return eb_fallback (plan, "a pointed cell the batch does not decode");
+	}
+      seen++;
+      if (got > 0 && plan->rtf_contains (plan->rtf, (INT64) key))
+	{
+	  batch->sel[n++] = r;
+	  kept++;
+	}
+    }
+  batch->n_sel = n;
+  batch->rtf_rows += seen;
+  batch->rtf_dropped += seen - kept;
+  return NO_ERROR;
+}
+
 static int
 eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, struct val_descr *vd)
 {
@@ -3653,6 +3757,29 @@ eb_filter (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * thread_p, 
   memset (plan->unk, 0, (size_t) batch->n_rows);
   for (i = 0; i < plan->n_kids; i++)
     {
+      if (plan->kid_leaf[i] == EB_KID_RTF)
+	{
+	  int rc;
+
+	  if (batch->n_sel == 0)
+	    {
+	      break;
+	    }
+	  if (plan->vecs[plan->rtf_vec].kind != EB_VK_PTR && !plan->cols[plan->rtf_col].decoded)
+	    {
+	      rc = eb_extract (plan, batch, batch->sel, batch->n_sel, plan->rtf_col);
+	      if (rc != NO_ERROR)
+		{
+		  return rc;
+		}
+	    }
+	  rc = eb_rtf_kid (plan, batch);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+	  continue;
+	}
       if (plan->kid_leaf[i] >= 0)
 	{
 	  const EB_LEAF *leaf = &plan->leaves[plan->kid_leaf[i]];
@@ -3995,6 +4122,8 @@ expr_batch_run (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, THREAD_ENTRY * threa
 {
   int rc, i;
 
+  batch->rtf_rows = 0;
+  batch->rtf_dropped = 0;
   if (batch->n_rows == 0)
     {
       batch->n_sel = 0;
@@ -4387,9 +4516,9 @@ expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, i
     {
       n_pointed += (plan->vecs[plan->cols[i].vec].kind == EB_VK_PTR);
     }
-  fprintf (fp, "%*cEXPR_BATCH: active, usecols %d (pointed %d), chunk %d rows, filter terms raw %d / row %d, "
+  fprintf (fp, "%*cEXPR_BATCH: active, usecols %d (pointed %d), chunk %d rows, filter terms raw %d / row %d%s, "
 	   "vector steps %d, aggregates %d, pages %lld (row path %lld%s%s)\n", indent, ' ', plan->n_cols, n_pointed,
-	   plan->cap, plan->n_raw_kids, plan->n_row_kids, plan->n_steps, plan->n_aggs, (long long) plan->pages,
-	   (long long) plan->pages_fallback, (plan->fallback_why != NULL) ? ", last: " : "",
-	   (plan->fallback_why != NULL) ? plan->fallback_why : "");
+	   plan->cap, plan->n_raw_kids, plan->n_row_kids, (plan->rtf != NULL) ? " + runtime filter" : "",
+	   plan->n_steps, plan->n_aggs, (long long) plan->pages, (long long) plan->pages_fallback,
+	   (plan->fallback_why != NULL) ? ", last: " : "", (plan->fallback_why != NULL) ? plan->fallback_why : "");
 }

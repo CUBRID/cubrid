@@ -12638,6 +12638,8 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 		{
 		  s_id->scan_stats.read_rows += hsidp->batch->n_rows;
 		  s_id->scan_stats.qualified_rows += hsidp->batch->n_sel;
+		  xasl->rtf_rows += hsidp->batch->rtf_rows;	/* the runtime filter leaf's, 0 without one */
+		  xasl->rtf_dropped += hsidp->batch->rtf_dropped;
 		}
 	      else if (rc == EXPR_BATCH_FALLBACK)
 		{
@@ -12675,6 +12677,16 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
       scan_batch_page_rowmode (s_id, true, chunk_start);
       while ((ls_scan = scan_next_scan (thread_p, s_id)) == S_SUCCESS)
 	{
+	  if (xasl->rtf != NULL)
+	    {
+	      /* the runtime filter the batch leaf would have looked up: qexec_intprt_fnc ()'s check on this row */
+	      xasl->rtf_rows++;
+	      if (!hjoin_rtf_pass (xasl->rtf, xasl->rtf_val))
+		{
+		  xasl->rtf_dropped++;
+		  continue;
+		}
+	    }
 	  if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
 	    {
 	      scan_batch_page_rowmode (s_id, false, 0);
@@ -12865,7 +12877,8 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		}
 	    }
 	  opened = (agg_list != NULL && gby_map == NULL && xasl->type == BUILDLIST_PROC) ? 0
-	    : scan_batch_open (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec, agg_list, &xasl_state->vd, gby_map);
+	    : scan_batch_open (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec, xasl, agg_list, &xasl_state->vd,
+			       gby_map);
 	  qexec_batch_gby_map_destroy (gby_map);
 	  if (opened == 1)
 	    {
@@ -12928,10 +12941,15 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  qualified = true;
 	  scan_ptr_qualified = false;
 
-	  if (xasl->rtf != NULL && !hjoin_rtf_pass (xasl->rtf, xasl->rtf_val))
+	  if (xasl->rtf != NULL)
 	    {
 	      /* a hash join's runtime filter: no build row has this key, so nothing below it can join */
-	      continue;
+	      xasl->rtf_rows++;
+	      if (!hjoin_rtf_pass (xasl->rtf, xasl->rtf_val))
+		{
+		  xasl->rtf_dropped++;
+		  continue;
+		}
 	    }
 
 	  if (xasl->bptr_list)

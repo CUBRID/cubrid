@@ -518,11 +518,16 @@ void hjoin_profile_end (THREAD_ENTRY * thread_p, HASHJOIN_PROFILE_STATS * stats,
 extern XASL_NODE *hjoin_rtf_first_input (XASL_NODE * hashjoin_xasl, XASL_NODE ** target);
 /* after the first input ran: build the filter from its list and put it on the target, when it is small enough */
 extern int hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE * first, XASL_NODE * target);
-/* a row of the target's outermost scan: false when its key is in no build row */
-extern bool hjoin_rtf_pass (HJOIN_RUNTIME_FILTER * rtf, const DB_VALUE * key);
-/* a parallel worker's own XASL: the same filter, on the worker's value list cell */
+/* a row of the target's outermost scan: false when its key is in no build row.  A lookup only: the caller counts
+ * the row on its XASL node (rtf_rows, rtf_dropped) */
+extern bool hjoin_rtf_pass (const HJOIN_RUNTIME_FILTER * rtf, const DB_VALUE * key);
+/* the same lookup on a key already read as an integer (a DATE as its day count): the page batch's leaf */
+extern bool hjoin_rtf_contains (const HJOIN_RUNTIME_FILTER * rtf, INT64 key);
+extern bool hjoin_rtf_is_date (const HJOIN_RUNTIME_FILTER * rtf);
+/* a parallel worker's own XASL: the same filter, on the worker's value list cell; unbind adds the clone's counters
+ * to orig's (the node the clone was bound from) and drops the alias */
 extern void hjoin_rtf_bind_clone (XASL_NODE * clone, const XASL_NODE * orig);
-extern void hjoin_rtf_unbind_clone (XASL_NODE * clone);
+extern void hjoin_rtf_unbind_clone (XASL_NODE * clone, XASL_NODE * orig);
 extern void hjoin_rtf_release (XASL_NODE * hashjoin_xasl);
 #endif
 

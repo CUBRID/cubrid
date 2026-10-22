@@ -477,8 +477,8 @@ namespace parallel_scan
 		 * list, which has no program and finds only the operand-equal links: keep just those, as the
 		 * row path's write () does (qdata_link_shared_accumulators_by_cell ()) */
 		qdata_link_shared_accumulators (m_xasl->proc.buildvalue.agg_list, m_vd);
-		(void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl->proc.buildvalue.agg_list, m_vd,
-					NULL);
+		(void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl, m_xasl->proc.buildvalue.agg_list,
+					m_vd, NULL);
 	      }
 	    else if (er_errid () == NO_ERROR && qexec_batch_filter_eligible (m_xasl))
 	      {
@@ -499,7 +499,7 @@ namespace parallel_scan
 	      {
 		if (m_xasl->proc.buildlist.groupby_list == NULL)
 		  {
-		    (void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, NULL, m_vd, NULL);
+		    (void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl, NULL, m_vd, NULL);
 		  }
 		else
 		  {
@@ -513,8 +513,8 @@ namespace parallel_scan
 		      }
 
 		    if (gby_map != NULL
-			&& scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl->proc.buildlist.g_agg_list,
-					    m_vd, gby_map) == 1)
+			&& scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl,
+					    m_xasl->proc.buildlist.g_agg_list, m_vd, gby_map) == 1)
 		      {
 			SCAN_BATCH_PROJECT row = { m_scan_id, emit_row, this };
 
@@ -638,8 +638,9 @@ namespace parallel_scan
 
     qexec_free_xasl_state (&thread_ref, m_xasl_state);
     /* the leader's runtime filter bound in initialize () is the leader's to free: drop the alias before the clone
-     * is cleared and retired to the pool (hjoin_rtf_bind_clone ()) */
-    hjoin_rtf_unbind_clone (m_xasl);
+     * is cleared and retired to the pool (hjoin_rtf_bind_clone ()), and hand the rows this worker counted on the
+     * clone to the leader's node -- the one the clone was bound from */
+    hjoin_rtf_unbind_clone (m_xasl, m_orig_xasl);
     if (!m_uses_xasl_clone)
       {
 	/* A worker XASL that is not a cached clone is freed right below, so its compiled expression
@@ -886,10 +887,16 @@ namespace parallel_scan
 		if ((scan_code == S_SUCCESS || scan_code == S_END) && hsidp->batch->n_rows > 0)
 		  {
 		    rc = expr_chunk_push (&thread_ref, &eval_node, hsidp->batch_plan, hsidp->batch);
-		    if (rc == NO_ERROR && on_trace)
+		    if (rc == NO_ERROR)
 		      {
-			m_scan_id->scan_stats.read_rows += hsidp->batch->n_rows;
-			m_scan_id->scan_stats.qualified_rows += hsidp->batch->n_sel;
+			/* the runtime filter leaf's rows (0 without one), on this worker's clone */
+			m_xasl->rtf_rows += hsidp->batch->rtf_rows;
+			m_xasl->rtf_dropped += hsidp->batch->rtf_dropped;
+			if (on_trace)
+			  {
+			    m_scan_id->scan_stats.read_rows += hsidp->batch->n_rows;
+			    m_scan_id->scan_stats.qualified_rows += hsidp->batch->n_sel;
+			  }
 		      }
 		  }
 		if (scan_code == S_ERROR || (rc != NO_ERROR && rc != EXPR_BATCH_FALLBACK))
@@ -967,10 +974,16 @@ namespace parallel_scan
     DB_LOGICAL ev_res;
     result_handler<result_type> *result_handler_p = m_result_handler;
 
-    if (m_xasl->rtf != nullptr && !hjoin_rtf_pass (m_xasl->rtf, m_xasl->rtf_val))
+    if (m_xasl->rtf != nullptr)
       {
-	/* a hash join's runtime filter: no build row has this key (qexec_intprt_fnc () drops it the same way) */
-	return S_SUCCESS;
+	/* a hash join's runtime filter: no build row has this key (qexec_intprt_fnc () drops it the same way);
+	 * counted on the clone, merged into the leader's node by finalize () */
+	m_xasl->rtf_rows++;
+	if (!hjoin_rtf_pass (m_xasl->rtf, m_xasl->rtf_val))
+	  {
+	    m_xasl->rtf_dropped++;
+	    return S_SUCCESS;
+	  }
       }
 
     if constexpr (result_type == RESULT_TYPE::MERGEABLE_LIST || result_type == RESULT_TYPE::BUILDVALUE_OPT)
