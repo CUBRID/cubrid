@@ -24,10 +24,13 @@
 #ifndef _SCHEMA_INFORMATION_SCHEMA_INSTALL_HPP_
 #define _SCHEMA_INFORMATION_SCHEMA_INSTALL_HPP_
 
-#include "schema_system_metadata_definition.hpp"
+#include <string>
 
 namespace cubschema
 {
+  // forward definitions
+  struct system_metadata_definition;
+
   class information_schema_initializer
   {
     public:

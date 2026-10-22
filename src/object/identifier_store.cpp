@@ -20,7 +20,6 @@
 
 #include "identifier_store.hpp"
 
-#include "language_support.h"
 #include "chartype.h"
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"

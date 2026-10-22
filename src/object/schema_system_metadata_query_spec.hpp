@@ -32,7 +32,7 @@
  * Please follow the rules below when writing query specifications for system virtual classes
  * and information_schema views.
  *
- *  1. First indent 1 tab, then 2 spaces.
+ *  1. Indent 2 spaces per nested level, starting from the indentation of the first "SELECT" line.
  *     - The CASE statement indents 2 spaces until the END.
  *  2. All lines do not start with a space.
  *  3. All lines end with a space. However, the following case does not end with a space.

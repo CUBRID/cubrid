@@ -176,14 +176,17 @@ namespace cubschema
       }
 
     const authorization &auth = def.auth;
-    if (auth.owner != nullptr)
+    if (auth.owner == nullptr)
       {
-	error_code = au_change_class_owner_including_partitions (class_mop, auth.owner);
-	if (error_code != NO_ERROR)
-	  {
-	    assert (false);
-	    return error_code;
-	  }
+	assert (false);
+	return ER_FAILED;
+      }
+
+    error_code = au_change_class_owner_including_partitions (class_mop, auth.owner);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	return error_code;
       }
 
     for (const grant &g : auth.grants)
@@ -275,14 +278,16 @@ namespace cubschema
       }
 
     const authorization &auth = def.auth;
-    assert (auth.owner != nullptr);
-    if (auth.owner != nullptr)
+    if (auth.owner == nullptr)
       {
-	error_code = au_change_class_owner_including_partitions (class_mop, auth.owner);
-	if (error_code != NO_ERROR)
-	  {
-	    return error_code;
-	  }
+	assert (false);
+	return ER_FAILED;
+      }
+
+    error_code = au_change_class_owner_including_partitions (class_mop, auth.owner);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
       }
 
     for (const grant &g : auth.grants)

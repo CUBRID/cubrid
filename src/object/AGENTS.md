@@ -38,7 +38,7 @@ Schema management, system catalog, authorization, triggers.
 Query specs in `schema_system_catalog_install_query_spec.cpp` and `schema_information_schema_install_query_spec.cpp`
 follow the rules in `schema_system_metadata_query_spec.hpp`:
 
-1. Indent: 1 tab + 2 spaces for statements, 2 spaces for CASE
+1. Indent: 2 spaces per nested level from the first `SELECT` line, CASE bodies included
 2. Lines end with space EXCEPT before `)` or after `(`
 3. Space before `(` and `{` and after `)` and `}`; no space just inside them
 4. Line breaks after `SELECT`, `FROM`, `WHERE`, `ORDER BY` and before `AND`, `OR`
