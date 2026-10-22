@@ -560,7 +560,7 @@ static void lock_grant_blocked_holder (THREAD_ENTRY * thread_p, LK_RES * res_ptr
 static int lock_grant_blocked_waiter (THREAD_ENTRY * thread_p, LK_RES * res_ptr);
 static void lock_grant_blocked_waiter_partial (THREAD_ENTRY * thread_p, LK_RES * res_ptr, LK_ENTRY * from_whom);
 static int lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
-				  int cond_flag, bool mark_transient);
+				  int cond_flag, bool mark_transient, bool ahead_of_waiters);
 static bool lock_check_escalate (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, LK_TRAN_LOCK * tran_lock);
 static void lock_reset_transient_state (LK_TRAN_LOCK * tran_lock);
 static int lock_escalate_if_needed (THREAD_ENTRY * thread_p, LK_ENTRY * class_entry, int tran_index);
@@ -568,7 +568,8 @@ static int lock_internal_hold_lock_object_instant (THREAD_ENTRY * thread_p, int 
 						   const OID * class_oid, LOCK lock);
 static int lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_RES_KEY search_key,
 					      LOCK lock, int wait_msecs, LK_ENTRY ** entry_addr_ptr,
-					      LK_ENTRY * class_entry);
+					      LK_ENTRY * class_entry, bool ahead_of_waiters = false);
+static bool lock_res_held_only_by_writers (LK_RES * res_ptr);
 static void lock_internal_perform_unlock_object (THREAD_ENTRY * thread_p, LK_ENTRY * entry_ptr, bool release_flag,
 						 bool move_to_non2pl);
 static void lock_unlock_object_by_isolation (THREAD_ENTRY * thread_p, int tran_index, TRAN_ISOLATION isolation,
@@ -991,6 +992,7 @@ lock_initialize_entry (LK_ENTRY * entry_ptr)
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
   entry_ptr->transient_count = 0;
+  entry_ptr->shared_requested = false;
   entry_ptr->bind_index_in_tran = -1;
   XASL_ID_SET_NULL (&entry_ptr->xasl_id);
 }
@@ -1012,6 +1014,7 @@ lock_initialize_entry_as_granted (LK_ENTRY * entry_ptr, int tran_index, LK_RES *
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
   entry_ptr->transient_count = 0;
+  entry_ptr->shared_requested = (lock == S_LOCK);
 
   lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
 }
@@ -1034,6 +1037,7 @@ lock_initialize_entry_as_blocked (LK_ENTRY * entry_ptr, THREAD_ENTRY * thread_p,
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
   entry_ptr->transient_count = 0;
+  entry_ptr->shared_requested = (lock == S_LOCK);
 
   lock_event_set_xasl_id_to_entry (tran_index, entry_ptr);
 }
@@ -1055,6 +1059,7 @@ lock_initialize_entry_as_non2pl (LK_ENTRY * entry_ptr, int tran_index, LK_RES * 
   entry_ptr->ngranules = 0;
   entry_ptr->instant_lock_count = 0;
   entry_ptr->transient_count = 0;
+  entry_ptr->shared_requested = false;
 }
 
 /* initialize lock resource as allocated state */
@@ -3511,6 +3516,8 @@ lock_join_existing_wait_train (THREAD_ENTRY * thrd_entry, int tran_index, LK_ENT
  *   wait_msecs(in):
  *   entry_addr_ptr(in):
  *   class_entry(in):
+ *   ahead_of_waiters(in): a new request that must wait goes to the head of the waiters, not the end, unless only
+ *			   writers hold the object: then it is not made (LK_NOTGRANTED_HELD_BY_WRITERS)
  *
  * Note:lock the resource identified by search_key with given lock mode 'lock'.
  *
@@ -3520,7 +3527,8 @@ lock_join_existing_wait_train (THREAD_ENTRY * thrd_entry, int tran_index, LK_ENT
  */
 static int
 lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_RES_KEY search_key, LOCK lock,
-				   int wait_msecs, LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry)
+				   int wait_msecs, LK_ENTRY ** entry_addr_ptr, LK_ENTRY * class_entry,
+				   bool ahead_of_waiters)
 {
   LF_TRAN_ENTRY *t_entry_ent = thread_get_tran_entry (thread_p, THREAD_TS_OBJ_LOCK_ENT);
   /* The caller passes a pre-built key. oid/class_oid are recovered from it for object-typed resources;
@@ -3850,6 +3858,15 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 	      break;
 	    }
 
+	  if (ahead_of_waiters && lock_res_held_only_by_writers (res_ptr))
+	    {
+	      /* see lock_object_ahead_of_waiters (): judged again where no holder can come or go */
+	      pthread_mutex_unlock (&res_ptr->res_mutex);
+	      ret_val = LK_NOTGRANTED_HELD_BY_WRITERS;
+	      state = LK_S_DONE;
+	      break;
+	    }
+
 	  /* check if another thread is waiting for the same resource */
 	  wait_entry_ptr = lock_find_my_waiter_entry (res_ptr, tran_index);
 
@@ -3885,19 +3902,28 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 	      assert (entry_ptr->instant_lock_count > 0);
 	    }
 
-	  /* append the lock request at the end of the waiter */
-	  prev = NULL;
-	  for (i = res_ptr->waiter; i != NULL; i = i->next)
+	  if (ahead_of_waiters)
 	    {
-	      prev = i;
-	    }
-	  if (prev == NULL)
-	    {
+	      /* see lock_object_ahead_of_waiters () */
+	      entry_ptr->next = res_ptr->waiter;
 	      res_ptr->waiter = entry_ptr;
 	    }
 	  else
 	    {
-	      prev->next = entry_ptr;
+	      /* append the lock request at the end of the waiter */
+	      prev = NULL;
+	      for (i = res_ptr->waiter; i != NULL; i = i->next)
+		{
+		  prev = i;
+		}
+	      if (prev == NULL)
+		{
+		  res_ptr->waiter = entry_ptr;
+		}
+	      else
+		{
+		  prev->next = entry_ptr;
+		}
 	    }
 
 	  /* change total_waiters_mode (total mode of waiting waiter) */
@@ -3911,6 +3937,11 @@ lock_internal_perform_lock_object (THREAD_ENTRY * thread_p, int tran_index, LK_R
 	case LK_S_EXISTING_HOLDER:
 	  /* The object exists in the hash chain & I am a lock holder of the lockable object. */
 	  lock_conversion = true;
+	  if (lock == S_LOCK)
+	    {
+	      /* see lock_is_held_only_by_writers () */
+	      entry_ptr->shared_requested = true;
+	    }
 	  old_mode = entry_ptr->granted_mode;
 	  assert (lock >= NULL_LOCK && entry_ptr->granted_mode >= NULL_LOCK);
 	  new_mode = lock_conv (lock, entry_ptr->granted_mode);
@@ -6273,11 +6304,12 @@ lock_hold_object_instant (THREAD_ENTRY * thread_p, const OID * oid, const OID * 
  *   lock(in): Requested lock mode
  *   cond_flag(in):
  *   mark_transient(in): count this request among the ones the statement gives up when it ends
+ *   ahead_of_waiters(in): wait for an instance lock ahead of the transactions already waiting for it
  *
  */
 static int
 lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int cond_flag,
-		       bool mark_transient)
+		       bool mark_transient, bool ahead_of_waiters)
 {
 #if !defined (SERVER_MODE)
   LK_SET_STANDALONE_XLOCK (lock);
@@ -6453,7 +6485,7 @@ lock_object_with_flag (THREAD_ENTRY * thread_p, const OID * oid, const OID * cla
        * given. */
       granted =
 	lock_internal_perform_lock_object (thread_p, tran_index, lock_create_search_key (oid, class_oid), lock,
-					   wait_msecs, &inst_entry, class_entry);
+					   wait_msecs, &inst_entry, class_entry, ahead_of_waiters);
       if (mark_transient && granted == LK_GRANTED && inst_entry != NULL
 	  && inst_entry->transient_count < inst_entry->count)
 	{
@@ -6495,7 +6527,7 @@ end:
 int
 lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int cond_flag)
 {
-  return lock_object_with_flag (thread_p, oid, class_oid, lock, cond_flag, false);
+  return lock_object_with_flag (thread_p, oid, class_oid, lock, cond_flag, false, false);
 }
 
 /*
@@ -6513,7 +6545,28 @@ lock_object (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LO
 int
 lock_object_transient (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock, int cond_flag)
 {
-  return lock_object_with_flag (thread_p, oid, class_oid, lock, cond_flag, true);
+  return lock_object_with_flag (thread_p, oid, class_oid, lock, cond_flag, true, false);
+}
+
+/*
+ * lock_object_ahead_of_waiters () - Wait for an object lock ahead of the transactions already waiting for it
+ *   return: one of following values
+ *   thread_p(in): thread entry
+ *   oid(in): identifier of the object
+ *   class_oid(in): identifier of the class of the object
+ *   lock(in): requested lock mode
+ *   transient(in): give the request up when the statement ends, as lock_object_transient () does
+ *
+ * Note: for a writer whose stamp is the object's last version.  A writer waiting for the object waits on that stamp
+ *	once granted, so it gains nothing by going first and only closes a cycle with the caller.  When only writers
+ *	hold the object as the request would queue -- a reader the caller saw may have gone and a waiter been granted
+ *	since -- it is not made and LK_NOTGRANTED_HELD_BY_WRITERS is returned: the caller passes them as it would have.
+ */
+int
+lock_object_ahead_of_waiters (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid, LOCK lock,
+			      bool transient)
+{
+  return lock_object_with_flag (thread_p, oid, class_oid, lock, LK_UNCOND_LOCK, transient, true);
 }
 
 /*
@@ -7976,38 +8029,55 @@ lock_has_lock_on_object (const OID * oid, const OID * class_oid, LOCK lock)
 #endif /* !SERVER_MODE */
 }
 
+#if defined (SERVER_MODE)
 /*
- * lock_get_granted_holders_mode () - The holders' granted modes combined
+ * lock_res_held_only_by_writers () - see lock_is_held_only_by_writers ()
+ *   return: true when the resource has holders, each has X granted, and none has asked for S on it
+ *   res_ptr(in): the resource, its mutex held
+ */
+static bool
+lock_res_held_only_by_writers (LK_RES * res_ptr)
+{
+  LK_ENTRY *holder;
+  bool writers_only = (res_ptr->holder != NULL);
+
+  for (holder = res_ptr->holder; holder != NULL && writers_only; holder = holder->next)
+    {
+      writers_only = (holder->granted_mode == X_LOCK && !holder->shared_requested);
+    }
+  return writers_only;
+}
+#endif /* SERVER_MODE */
+
+/*
+ * lock_is_held_only_by_writers () - Whether every holder of the object holds X without having read it with S
  *
- * return: the combined mode; NULL_LOCK when nobody holds the object
+ * return: true when the object has holders, each has X granted, and none has asked for S on it
  *   oid(in): the object
  *   class_oid(in): its class
  *
- * Note: unlike total_holders_mode, a mode a holder still waits to convert to is left out.
+ * Note: a mode a holder still waits to convert to does not count.  A holder that asked for S has decided on the object
+ *	-- the S of a foreign key check, say, which it then raised to X -- and its granted mode shows only X.
  */
-LOCK
-lock_get_granted_holders_mode (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid)
+bool
+lock_is_held_only_by_writers (THREAD_ENTRY * thread_p, const OID * oid, const OID * class_oid)
 {
 #if !defined (SERVER_MODE)
-  return NULL_LOCK;
+  return false;
 #else /* !SERVER_MODE */
   LK_RES_KEY search_key = lock_create_search_key (oid, class_oid);
   LK_RES *res_ptr;
-  LK_ENTRY *holder;
-  LOCK mode = NULL_LOCK;
+  bool writers_only;
 
   res_ptr = lk_Gl.m_obj_hash_table.find (thread_p, search_key);
   if (res_ptr == NULL)
     {
-      return NULL_LOCK;
+      return false;
     }
   /* find() leaves the resource mutex locked. */
-  for (holder = res_ptr->holder; holder != NULL; holder = holder->next)
-    {
-      mode = lock_conv (holder->granted_mode, mode);
-    }
+  writers_only = lock_res_held_only_by_writers (res_ptr);
   pthread_mutex_unlock (&res_ptr->res_mutex);
-  return mode;
+  return writers_only;
 #endif /* !SERVER_MODE */
 }
 

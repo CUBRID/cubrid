@@ -6331,22 +6331,44 @@ locator_class_has_triggers (THREAD_ENTRY * thread_p, const OID * class_oid)
 }
 
 /*
+ * locator_class_keeps_oids () - does the class keep the OIDs of its deleted rows from reuse (DONT_REUSE_OID)?
+ *   return: true when it does, or when its heap cannot be looked up
+ *   thread_p(in): thread entry
+ *   class_oid(in): the class
+ */
+static bool
+locator_class_keeps_oids (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+  HFID hfid;
+  FILE_TYPE ftype;
+  bool found = false;
+
+  if (heap_get_class_info (thread_p, class_oid, &hfid, &ftype, &found) != NO_ERROR || !found)
+    {
+      return true;
+    }
+
+  return ftype != FILE_HEAP_REUSE_SLOTS;
+}
+
+/*
  * locator_class_keeps_row_locks () - must the class keep its DELETE and UPDATE row locks to commit?
  *   return: true when a row lock of the class cannot end with its statement
  *   thread_p(in): thread entry
  *   class_oid(in): the class
  *
- * Note: three kinds of class keep them.  One MVCC does not apply to leaves no stamp for a later writer to wait on.
- *	 One with an index being built online: see locator_class_has_online_index ().  One with a trigger of its own:
- *	 INSERT ... ON DUPLICATE KEY UPDATE and REPLACE on it run on the client, whose unique-key lookup locks the row
- *	 with no owner check, so a row an earlier statement gave back would queue its owner behind a waiter parked on
- *	 the owner's MVCCID self-lock.
+ * Note: four kinds of class keep them.  One MVCC does not apply to leaves no stamp for a later writer to wait on.
+ *	 One with an index being built online: see locator_class_has_online_index ().  The other two have rows the
+ *	 client changes, and the client locks a row with no owner check, so a row an earlier statement gave back would
+ *	 queue its owner behind a writer parked on the owner's MVCCID self-lock.  One with a trigger of its own:
+ *	 INSERT ... ON DUPLICATE KEY UPDATE and REPLACE on it run on the client.  One that keeps its OIDs: only such a
+ *	 class can be updated through a view or an updatable result set, and both run on the client.
  */
 bool
 locator_class_keeps_row_locks (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   return (mvcc_is_mvcc_disabled_class (class_oid) || locator_class_has_online_index (thread_p, class_oid)
-	  || locator_class_has_triggers (thread_p, class_oid));
+	  || locator_class_has_triggers (thread_p, class_oid) || locator_class_keeps_oids (thread_p, class_oid));
 }
 
 /*
@@ -13373,9 +13395,9 @@ locator_has_isolation_conflict (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * cont
  *   context(in/out): heap get context; given back unfixed, as it was on entry
  *
  * Note: any other writer settles on our MVCCID self-lock before touching a row we stamped, so while it stands we
- *	are the row's only writer and need no row lock while only an X holder has it; asking for it would queue us
- *	behind a writer that waits on us.  An S holder has decided on the row and is waited for, even while it waits
- *	to upgrade to X.
+ *	are the row's only writer and need no row lock while only writers hold it; asking for it would queue us
+ *	behind a writer that waits on us.  A holder that read the row with S has decided on it and is waited for,
+ *	even while it waits to upgrade to X and after the upgrade is granted.
  */
 static bool
 locator_last_version_is_ours (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
@@ -13421,6 +13443,8 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 {
   SCAN_CODE scan = S_SUCCESS;
   bool lock_acquired = false;
+  bool ours = false;
+  int granted;
   MVCC_REC_HEADER recdes_header;
   bool is_mvcc_class;
   int (*lock_fn) (THREAD_ENTRY *, const OID *, const OID *, LOCK, int) =
@@ -13446,8 +13470,8 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
     {
       lock_acquired = true;
     }
-  else if (owner_bypass_ok && is_mvcc_class && locator_last_version_is_ours (thread_p, context)
-	   && lock_get_granted_holders_mode (thread_p, context->oid_p, context->class_oid_p) == X_LOCK)
+  else if (owner_bypass_ok && is_mvcc_class && (ours = locator_last_version_is_ours (thread_p, context))
+	   && lock_is_held_only_by_writers (thread_p, context->oid_p, context->class_oid_p))
     {
       /* lock_acquired stays false: there is nothing to give back */
     }
@@ -13459,12 +13483,17 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 	  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
 	}
       heap_clean_get_context (thread_p, context);
-      if (lock_fn (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK) != LK_GRANTED)
+      /* a writer queued before us would wait on our stamp once granted: go ahead of it */
+      granted = (ours ? lock_object_ahead_of_waiters (thread_p, context->oid_p, context->class_oid_p, lock_mode,
+						      transient)
+		 : lock_fn (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK));
+      if (granted != LK_GRANTED && granted != LK_NOTGRANTED_HELD_BY_WRITERS)
 	{
 	  goto error;
 	}
 
-      lock_acquired = true;
+      /* not granted because only writers hold it by now: as above, there is nothing to give back */
+      lock_acquired = (granted == LK_GRANTED);
 
       /* Prepare for getting record again. Since pages have been unlatched, others may have changed them */
       scan = heap_prepare_get_context (thread_p, context, false, LOG_WARNING_IF_DELETED);
