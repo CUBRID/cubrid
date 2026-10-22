@@ -125,6 +125,73 @@ qo_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 
 }
 
+/*
+ * qo_auto_parameterize_constant_select_list () - Replace the literal constant values of the select list
+ *						  with the host variables of the auto-parameterized WHERE clause
+ *   return:
+ *   parser(in):
+ *   select(in): SELECT node
+ *
+ * Note:
+ *      qo_reduce_equality_terms () keeps a copy of the reduced constant in the constant_value of
+ *      the select list column, and qo_auto_parameterize () later turns only the constant of the
+ *      remaining 'attr = const' term into a host variable. When the query is rewritten again, as
+ *      the SELECT built for UPDATE and DELETE in the XASL generation, the copy is pulled up into
+ *      the outer query. If it stays a literal, the literal is baked into an XASL whose cache key
+ *      has the host variable, and every execution that hits the cache uses the first literal.
+ *
+ * 	examples:
+ *      SELECT a ... WHERE a=10  -->  SELECT a ... WHERE a=?:0, constant_value of a: 10 --> ?:0
+ */
+void
+qo_auto_parameterize_constant_select_list (PARSER_CONTEXT * parser, PT_NODE * select)
+{
+  PT_NODE *col, *name, *term, *value;
+
+  if (select == NULL || select->node_type != PT_SELECT)
+    {
+      return;
+    }
+
+  for (col = select->info.query.q.select.list; col; col = col->next)
+    {
+      name = pt_get_end_path_node (col);
+      if (name == NULL || name->node_type != PT_NAME || !PT_NAME_INFO_IS_FLAGED (name, PT_NAME_INFO_CONSTANT)
+	  || name->info.name.constant_value == NULL || PT_IS_HOSTVAR (name->info.name.constant_value))
+	{
+	  continue;
+	}
+
+      /* find the 'attr = ?' or 'attr range (? =)' term that the constant was reduced from */
+      for (term = select->info.query.q.select.where; term; term = term->next)
+	{
+	  if (term->node_type != PT_EXPR || term->or_next != NULL || !pt_is_attr (term->info.expr.arg1)
+	      || !pt_name_equal (parser, pt_get_end_path_node (term->info.expr.arg1), name))
+	    {
+	      continue;
+	    }
+
+	  value = NULL;
+	  if (term->info.expr.op == PT_EQ)
+	    {
+	      value = term->info.expr.arg2;
+	    }
+	  else if (term->info.expr.op == PT_RANGE && term->info.expr.arg2 != NULL
+		   && term->info.expr.arg2->or_next == NULL && term->info.expr.arg2->info.expr.op == PT_BETWEEN_EQ_NA)
+	    {
+	      value = term->info.expr.arg2->info.expr.arg1;
+	    }
+
+	  if (PT_IS_INPUT_HOSTVAR (value))
+	    {
+	      parser_free_tree (parser, name->info.name.constant_value);
+	      name->info.name.constant_value = parser_copy_tree (parser, value);
+	      break;
+	    }
+	}
+    }
+}
+
 void
 qo_auto_parameterize_limit_clause (PARSER_CONTEXT * parser, PT_NODE * node)
 {
