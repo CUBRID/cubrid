@@ -77,19 +77,13 @@
 #define BTSORT_BIGONE_REC_SIZE  (BTSORT_REC_HEADER_SIZE + (int) sizeof (VPID))
 #define BTSORT_BIGONE_VPID(rec) ((VPID *) BTSORT_REC_BODY (rec))
 
-/* Upper limit on the half of the total number of the temporary files.
- * The exact upper limit on total number of temp files is twice this number.
- * (i.e., this number specifies the upper limit on the number of total input
- * or total output files at each stage of the merging process.
- */
+/* Upper limit on the number of input (and of output) files of a merge pass, its fan-in; the temp file count
+ * is twice this. */
 #define BTSORT_MAX_HALF_FILES      4
 #define BTSORT_MAX_TOT_FILES      (BTSORT_MAX_HALF_FILES * 2)
 
-/* Lower limit on the half of the total number of the temporary files.
- * The exact lower limit on total number of temp files is twice this number.
- * (i.e., this number specifies the lower limit on the number of total input
- * or total output files at each stage of the merging process.
- */
+/* Lower limit on the number of input (and of output) files of a merge pass; the temp file count is twice this.
+ * Fewer than two input files cannot merge. */
 #define BTSORT_MIN_HALF_FILES      2
 
 /* Initial size of the dynamic array that keeps the file contents list */
@@ -180,7 +174,7 @@ struct btsort_result_run
 
 typedef struct btsort_file_contents BTSORT_FILE_CONTENTS;
 struct btsort_file_contents
-{				/* node of the file_contents linked list */
+{				/* runs of one temp file, in file order: a queue over a dynamic array */
   int *num_pages;		/* Dynamic array whose elements keep the sizes of the runs contained in the file in
 				 * terms of number of slotted pages it occupies */
   int num_slots;		/* Total number of elements the array has */
@@ -405,7 +399,7 @@ static void btsort_retire_px_temp_files (THREAD_ENTRY * thread_p, BTSORT_PARAM *
 static const RECDES *btsort_merge_resolve_rec (const RECDES * rec, const RECDES * long_rec);
 static int btsort_merge_fetch_slot (THREAD_ENTRY * thread_p, char *pgbuf, int slot, RECDES * rec, RECDES * long_rec);
 static int btsort_merge_count_active_infiles (const BTSORT_PARAM * sort_param);
-static int btsort_merge_count_pass_runs (BTSORT_PARAM * sort_param, int act_infiles);
+static int btsort_merge_count_pass_runs (const BTSORT_PARAM * sort_param, int act_infiles);
 static int btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_half);
 static int btsort_merge_in_section_size (int tot_buffers, int in_sections);
 static void btsort_merge_assign_sections (BTSORT_MERGE_CTX * ctx);
@@ -497,7 +491,7 @@ static int btsort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH
 static int btsort_get_num_half_tmpfiles (int tot_buffers);
 static int btsort_run_add_new (BTSORT_FILE_CONTENTS * file_contents, int num_pages);
 static void btsort_run_remove_first (BTSORT_FILE_CONTENTS * file_contents);
-static int btsort_run_count (BTSORT_FILE_CONTENTS * file_contents);
+static int btsort_run_count (const BTSORT_FILE_CONTENTS * file_contents);
 
 /************************************************************************/
 /* Run page and record section                                          */
@@ -531,7 +525,7 @@ btsort_spage_initialize (PAGE_PTR pgptr)
 
 /*
  * btsort_spage_get_numrecs () - Return the total number of records on the slotted page
- *   return:
+ *   return: number of records on the page
  *   pgptr(in): Pointer to slotted page
  */
 static INT16
@@ -798,10 +792,10 @@ btsort_compare_records (const void *first, const void *second, void *arg)
 }
 
 /*
- * btsort_retrieve_longrec () -
- *   return:
+ * btsort_retrieve_longrec () - Read the long record a BIGONE placeholder stands for
+ *   return: the record data (memory->data), or NULL on error
  *   address(in): the BIGONE placeholder record (header and VPID) of the long record
- *   memory(in):
+ *   memory(in/out): receives the record; its buffer is grown as needed and reused across calls, freed by the caller
  */
 static char *
 btsort_retrieve_longrec (THREAD_ENTRY * thread_p, RECDES * address, RECDES * memory)
@@ -943,7 +937,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
     }
 
   sort_param->half_files = btsort_get_num_half_tmpfiles (sort_param->tot_buffers);
-  sort_param->tot_tempfiles = sort_param->half_files << 1;
+  sort_param->tot_tempfiles = sort_param->half_files * 2;
   sort_param->in_half = 0;
 
   for (i = 0; i < BTSORT_MAX_TOT_FILES; i++)
@@ -1142,8 +1136,12 @@ btsort_log_build_summary (const BTSORT_PARAM * sort_param, const BTSORT_PARAM * 
 }
 
 /*
- * btsort_listfile_internal () - Perform sorting
- *   return:
+ * btsort_listfile_internal () - Sort the records get_fn provides: generate the runs, then merge them
+ *   return: NO_ERROR, or error code
+ *   sort_param(in/out): sort parameters
+ *
+ * Note: A sort whose records fit one run is output from memory by the run generation; only a sort of several runs
+ *       needs the merge.
  */
 static int
 btsort_listfile_internal (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
@@ -1152,13 +1150,6 @@ btsort_listfile_internal (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
   int file_pg_cnt_est;
   int i;
 
-  /*
-   * Don't allocate any temp files yet, since we may not need them.
-   * We'll allocate them on the fly as the need arises.
-   *
-   * However, indicate to file/disk manager of the approximate temporary
-   * space that is going to be needed.
-   */
   error =
     btsort_inphase_sort (thread_p, sort_param, sort_param->get_fn, sort_param->get_arg, &sort_param->total_numrecs);
   if (error != NO_ERROR)
@@ -1218,7 +1209,6 @@ btsort_return_used_resources (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param
 	  if (!VFID_ISNULL (&sort_param->temp[k]))
 	    {
 	      (void) file_temp_retire (thread_p, &sort_param->temp[k]);
-	      file_find_nth_cursor_reset (&sort_param->temp_cursor[k]);
 	    }
 	}
     }
@@ -1292,7 +1282,7 @@ btsort_run_pick_sorter (const SORT_ARGS * sort_args)
 
 /*
  * btsort_inphase_sort () - Internal sorting phase
- *   return:
+ *   return: NO_ERROR, or error code
  *   sort_param(in): sort parameters
  *   get_fn(in): user-supplied function: provides the temporary record for
  *               the given input record
@@ -1420,7 +1410,7 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 	  /* Check if the record would fit into a single slotted page. If not, take special action for this record. */
 	  if (temp_recdes.length > BTSORT_MAXREC_LENGTH)
 	    {
-	      /* TAKE CARE OF LONG RECORD as a separate RUN */
+	      /* A long record makes a run of its own */
 
 	      if (long_recdes.area_size < temp_recdes.length)
 		{
@@ -1657,7 +1647,7 @@ exit_on_error:
 
 /*
  * btsort_run_flush () - Flush run
- *   return:
+ *   return: NO_ERROR, or error code
  *   sort_param(in): sort parameters
  *   out_file(in): index of output file to flush the run
  *   cur_page(in): current page of each temp file (used to determine
@@ -2303,18 +2293,12 @@ btsort_merge_fetch_slot (THREAD_ENTRY * thread_p, char *pgbuf, int slot, RECDES 
 }
 
 /*
- * btsort_merge_count_active_infiles () - Find number of active input files
- *   return:
+ * btsort_merge_count_active_infiles () - Number of input files that still hold a run
+ *   return: the count; the active files are the first ones of the input half
  *   sort_param(in): sort parameters
  *
- * Note: This function determines how many of the input files still
- *       have input runs (active) to participate in while the merging
- *       process which produces larger size runs. For this purpose,
- *       it checks the file_contents list of each input file. Once the
- *       first file with no remaining input runs (unactive) is found,
- *       it is concluded that all the remaining input temporary files
- *       are also inactive (because of balanced distribution of runs to
- *       the files).
+ * Note: Runs are dealt to the files of a half in turn, so once a file holds none, no later file of the half does
+ *       either; the count stops at the first empty file.
  */
 static int
 btsort_merge_count_active_infiles (const BTSORT_PARAM * sort_param)
@@ -2339,7 +2323,7 @@ btsort_merge_count_active_infiles (const BTSORT_PARAM * sort_param)
  *   act_infiles(in): number of active input files
  */
 static int
-btsort_merge_count_pass_runs (BTSORT_PARAM * sort_param, int act_infiles)
+btsort_merge_count_pass_runs (const BTSORT_PARAM * sort_param, int act_infiles)
 {
   int num_runs = 0;
   int len;
@@ -2358,62 +2342,39 @@ btsort_merge_count_pass_runs (BTSORT_PARAM * sort_param, int act_infiles)
 }
 
 /*
- * btsort_merge_prepare_outfiles () - Check sizes of output files
- *   return: error code
+ * btsort_merge_prepare_outfiles () - Give the output files of a pass the pages its runs will take
+ *   return: NO_ERROR, or error code
  *   sort_param(in): sort parameters
  *   out_half(in): index of the first output file
  *
- * Note: This function determines how many pages will be needed by each output
- *       file of the current stage of the merging phase. This is done by going
- *       over the file_contents lists of the input files and determining how
- *       many pages they will eventually contribute to each output file.
- *       (Again, this is an estimate, not an exact number on the size of output
- *       files.) It then checks whether these output files have that many pages
- *       already. If some of them need more pages, it allocates new pages.
+ * Note: Deals the runs of the input files to the output files as the pass will, which gives the pages each output
+ *       file needs; an output file that has fewer gets them, and one that needs none is retired so that its pages can
+ *       be reused.
  */
 static int
 btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_half)
 {
-  int out_file;
-  int needed_pages[2 * BTSORT_MAX_HALF_FILES];
+  int needed_pages[BTSORT_MAX_TOT_FILES] = { 0 };	/* pages each temp file receives in this pass */
+  BTSORT_FILE_CONTENTS *contents;
   int contains;
   int alloc_pages;
-  int i, j;
-
+  int i, k;
   int error_code = NO_ERROR;
 
-  for (i = 0; i < (int) DIM (needed_pages); i++)
-    {
-      needed_pages[i] = 0;
-    }
-
-  /* Estimate the sizes of all new runs to be flushed on output files */
+  /* The k-th output run of the pass merges the k-th runs of the input files and goes to output file
+   * out_half + k % half_files; its size is estimated as the pages of those input runs */
   for (i = sort_param->in_half; i < sort_param->in_half + sort_param->half_files; i++)
     {
-      out_file = out_half;
-
-      /* If the list is not empty */
-      j = sort_param->file_contents[i].first_run;
-      if (j > -1)
+      contents = &sort_param->file_contents[i];
+      for (k = 0; k < btsort_run_count (contents); k++)
 	{
-	  for (; j <= sort_param->file_contents[i].last_run; j++)
-	    {
-	      needed_pages[out_file] += sort_param->file_contents[i].num_pages[j];
-
-	      if (++out_file >= out_half + sort_param->half_files)
-		{
-		  out_file = out_half;
-		}
-	    }
+	  needed_pages[out_half + k % sort_param->half_files] += contents->num_pages[contents->first_run + k];
 	}
     }
 
-  /* Allocate enough pages to each output file We don't initialize pages during allocation since we do not care the
-   * state of the pages after a rollback or system crashes. Nothing need to be log on the page. The pages are
-   * initialized at a later time. */
-
-  /* Files are traversed in reverse order, in order to destroy unnecessary files first. It is expected that returned
-   * pages will be reused by the next allocation. */
+  /* The pages are allocated without being initialized: nothing is logged on them, since their state after a rollback
+   * or a crash does not matter, and the merge writes every page it uses. The files are traversed in reverse order so
+   * that the unneeded ones are retired first and their pages can serve the allocations that follow. */
   for (i = out_half + sort_param->half_files - 1; i >= out_half; i--)
     {
       if (needed_pages[i] > 0)
@@ -2456,43 +2417,19 @@ btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_para
 }
 
 /*
- * btsort_merge_in_section_size () - Distribute buffers
- *   return:
- *   tot_buffers(in): number of total buffers in the buffer pool area
- *   in_sections(in): number of input sections into which this buffer pool area
- *                    should be divided into (in other words, the number of
- *                    active input files)
+ * btsort_merge_in_section_size () - Pages of the sort buffer each active input file gets as its input section
+ *   return: the input section size in pages, at least 1
+ *   tot_buffers(in): pages of the sort buffer
+ *   in_sections(in): active input files, one section each
  *
- * Note: This function distributes the buffers of the buffer pool area
- *       (i.e., the internal memory) among the active input files and
- *       the output file. Recall that each active input file and the
- *       output file will have a section in the buffer pool area.
- *       This function returns the size of each input section in terms
- *       of number of buffers it occupies. Naturally, the output
- *       section will have the remaining buffers.
- *
- *       Note that when the input runs are merged together the
- *       number of read operations is (roughly) equal to the
- *       number of write operations. For that reason this function
- *       reserves roughly half of the buffers for the output section
- *       and distributes the remaining ones evenly among the input
- *       sections, as each input run is approximately the same size.
+ * Note: Half of the buffer is kept for the output section, since a merge pass writes about as much as it reads; the
+ *       other half is divided evenly among the inputs, since the input runs are about the same size.
  */
 static int
 btsort_merge_in_section_size (int tot_buffers, int in_sections)
 {
-  int in_sectsize;
-
-  /* Allocate half of the total buffers to output buffer area */
-  in_sectsize = (tot_buffers / (in_sections << 1));
-  if (in_sectsize != 0)
-    {
-      return in_sectsize;
-    }
-  else
-    {
-      return 1;
-    }
+  /* half of the buffer goes to the output section */
+  return MAX (1, tot_buffers / (2 * in_sections));
 }
 
 /*
@@ -3088,7 +3025,7 @@ btsort_merge_produce_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, bool 
 static int
 btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 {
-  BTSORT_MERGE_CTX ctx;		/* input/output sections and the ordered list of the inputs' smallest records */
+  BTSORT_MERGE_CTX ctx;		/* input/output sections and the order of the inputs' smallest records */
   int pre_act_infiles;		/* active input files before the recount of the last run */
   int num_runs;			/* output runs of this pass */
   bool very_last_run;		/* this pass produces the final run of the sort */
@@ -3116,7 +3053,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
 	  goto bailout;
 	}
 
-      /* Initialize the current pages of all temp files to 0 */
+      /* Each pass reads and writes every temp file from its first page */
       for (i = 0; i < sort_param->tot_tempfiles; i++)
 	{
 	  ctx.file_next_page[i] = 0;
@@ -3702,10 +3639,10 @@ retire_all_on_error:
 }
 
 /*
- * btsort_put_result_from_tmpfile () - put result from last temp file
- *   return:
- *   sort_param(in): sort parameters
- *
+ * btsort_put_result_from_tmpfile () - Hand the records of the result file to put_fn
+ *   return: NO_ERROR, or error code
+ *   sort_param(in): sort parameters; px_result_file_idx names the file
+ *   start_pagenum(in): first page of the file to read
  */
 static int
 btsort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int start_pagenum)
@@ -4944,8 +4881,9 @@ btsort_get_avg_numpages_of_nonempty_tmpfile (BTSORT_PARAM * sort_param)
 
 /*
  * btsort_write_area () - Write memory area to disk
- *   return:
+ *   return: NO_ERROR, or error code
  *   vfid(in): file identifier to write the pages contained in the area
+ *   cursor(in/out): page lookup position in the file, kept across calls
  *   first_page(in): first page to be written on the file
  *   num_pages(in): size of the memory area in terms of number of pages it
  *                  accommodates
@@ -5007,8 +4945,9 @@ btsort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * 
 
 /*
  * btsort_read_area () - Read memory area from disk
- *   return:
+ *   return: NO_ERROR, or error code
  *   vfid(in): file identifier to read the pages from
+ *   cursor(in/out): page lookup position in the file, kept across calls
  *   first_page(in): first page to be read from the file
  *   num_pages(in): size of the memory area in terms of number of pages it
  *                  accommodates
@@ -5083,10 +5022,10 @@ btsort_get_num_half_tmpfiles (int tot_buffers)
 }
 
 /*
- * btsort_run_add_new () - Adds a new node to the end of the given list
+ * btsort_run_add_new () - Append a run to the run list of a temp file
  *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY
- *   file_contents(in): which list to add
- *   num_pages(in): what value to put for the new run
+ *   file_contents(in/out): run list of the file
+ *   num_pages(in): pages of the new run
  */
 static int
 btsort_run_add_new (BTSORT_FILE_CONTENTS * file_contents, int num_pages)
@@ -5126,9 +5065,9 @@ btsort_run_add_new (BTSORT_FILE_CONTENTS * file_contents, int num_pages)
 }
 
 /*
- * btsort_run_remove_first () - Removes the first run of the given file contents list
+ * btsort_run_remove_first () - Take the first run off the run list of a temp file
  *   return: void
- *   file_contents(in): which list to remove from
+ *   file_contents(in/out): run list of the file
  */
 static void
 btsort_run_remove_first (BTSORT_FILE_CONTENTS * file_contents)
@@ -5146,13 +5085,12 @@ btsort_run_remove_first (BTSORT_FILE_CONTENTS * file_contents)
 }
 
 /*
- * btsort_run_count () - Returns the number of elements kept in the
- *                           given linked list
- *   return:
- *   file_contents(in): which list
+ * btsort_run_count () - Number of runs a temp file holds
+ *   return: the count, 0 for an empty list
+ *   file_contents(in): run list of the file
  */
 static int
-btsort_run_count (BTSORT_FILE_CONTENTS * file_contents)
+btsort_run_count (const BTSORT_FILE_CONTENTS * file_contents)
 {
   /* If the list is not empty */
   if (file_contents->first_run != -1)
