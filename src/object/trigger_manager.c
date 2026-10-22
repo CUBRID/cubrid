@@ -1774,7 +1774,14 @@ free_stale_statement (TR_ACTIVITY * activity)
     case DB_CLASS_MODIFIED:
       /* a dropped class leaves ER_HEAP_UNKNOWN_OBJECT behind */
       er_clear ();
-      free_compiled_statement (activity);
+      /* free the compiled statement so the next fire recompiles it */
+      if (activity->statement != NULL)
+	{
+	  parser_free_tree ((PARSER_CONTEXT *) activity->parser, (PT_NODE *) activity->statement);
+	}
+      activity->statement = NULL;
+      parser_free_parser ((PARSER_CONTEXT *) activity->parser);
+      activity->parser = NULL;
       break;
 
     default:
