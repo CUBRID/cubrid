@@ -1542,7 +1542,6 @@ boot_shutdown_client_sub (void)
 static void
 boot_finalize_client_sub (void)
 {
-  //showstmt_metadata_final ();
   tran_free_savepoint_list ();
 
   tr_final ();

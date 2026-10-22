@@ -755,7 +755,6 @@ extern "C"
  * future clients that connect to broker
  */
   extern SESSION_PARAM *cached_session_parameters;
-  extern void sysprm_load_session_parameters ();
 #if defined (MULTI_CONN_TO_A_SERVER)
   /*
    * Session parameter values of the sub-client of the current thread. NULL on the other threads (e.g., the main

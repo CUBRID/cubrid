@@ -96,10 +96,8 @@ extern "C"
   extern int db_get_num_sub_clients (void);
 #endif
   extern int db_ping_server (int client_val, int *server_val);
-#if !defined(SERVER_MODE)
   extern int db_disable_modification (void);
   extern int db_enable_modification (void);
-#endif
   extern int db_commit_transaction (void);
   extern int db_abort_transaction (void);
   extern int db_reset_latest_query_status (void);

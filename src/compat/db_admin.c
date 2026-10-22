@@ -1184,7 +1184,7 @@ db_restart_sub (int sub_index)
   return NO_ERROR;
 
 error:
-  /* release the resources of this thread, so that db_shutdown_sub () is not required after a failure */
+  /* release the resources of this thread */
   db_Connect_status = DB_CONNECTION_STATUS_NOT_CONNECTED;
   db_Disable_modifications = 0;
   au_ctx_destructor ();
@@ -1341,7 +1341,6 @@ db_ping_server (int client_val, int *server_val)
   return error;
 }
 
-#if !defined(SERVER_MODE)
 /*
  * db_disable_modification - Disable database modification operation
  *   return: error code
@@ -1371,7 +1370,6 @@ db_enable_modification (void)
   assert (db_Disable_modifications >= 0);
   return NO_ERROR;
 }
-#endif
 
 /*
  * db_end_session - end current session

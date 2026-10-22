@@ -540,8 +540,6 @@ dl_validate_file_entry (FILE_ENTRY * this_, const char *filename)
 static int
 dl_initiate_dynamic_loader (DYNAMIC_LOADER * this_, const char *original)
 {
-  int i;
-
   assert (this_ != NULL);
 
   if (dl_Debug)

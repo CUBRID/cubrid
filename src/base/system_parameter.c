@@ -6432,10 +6432,6 @@ sysprm_load_and_init_internal (const char *db_name, const char *conf_file, bool 
   struct stat stat_buf;
   int r = NO_ERROR;
   char *s;
-#if defined (CS_MODE)
-  SESSION_PARAM *sprm = NULL;
-  int num_session_prms;
-#endif
 
 #ifndef NDEBUG
   sysprm_check_id_order ();
