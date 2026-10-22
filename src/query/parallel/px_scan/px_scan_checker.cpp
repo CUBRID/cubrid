@@ -31,6 +31,7 @@
 #include "xasl_predicate.hpp"
 #include "xasl.h"
 #include "xasl_aggregate.hpp"
+#include "xasl_analytic.hpp"
 #include <unordered_map>
 #include <unordered_set>
 
@@ -45,6 +46,9 @@ namespace parallel_scan
   const possible_flags CANNOT_PARALLEL_SCAN = 0x1 << 0;
   const possible_flags CANNOT_LIST_MERGE = 0x1 << 1;
   const possible_flags CANNOT_BUILDVALUE_OPT = 0x1 << 2;
+  /* the checked part calls an SP not declared PARALLEL_ENABLE or a method: a px worker cannot
+   * run it, since its callbacks to the client are never answered (CBRD-27596) */
+  const possible_flags CANNOT_RUN_IN_WORKER = 0x1 << 3;
 
   static bool
   is_buildvalue_opt_supported_function (FUNC_CODE function)
@@ -86,6 +90,10 @@ namespace parallel_scan
   /* cycle guard for the process_* recursion. */
   thread_local std::unordered_set<XASL_NODE *> xasl_processing_set;
 
+  /* sibling_check results, one map per is_outptr_list. A nested subquery is reached through its regu
+   * and through its parent's aptr / dptr link, so without the cache deep nesting costs 2^depth. */
+  thread_local std::unordered_map<XASL_NODE *, possible_flags> xasl_sibling_check_cache[2];
+
   static void set_flag (possible_flags &flags, possible_flags flag)
   {
     flags |= flag;
@@ -123,6 +131,8 @@ namespace parallel_scan
   possible_flags check (rv_list_node *arg);
   template <bool is_outptr_list>
   possible_flags check (ARITH_TYPE *arg);
+  template <bool is_outptr_list>
+  possible_flags check (AGGREGATE_TYPE *arg);
   template <bool is_outptr_list>
   possible_flags check (PRED *arg);
   template <bool is_outptr_list>
@@ -165,6 +175,13 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
+	/* the thread that evaluates this regu runs the whole subquery, so an SP or method in it
+	 * counts as one written here (TYPE_SP below) */
+	if (is_flag_set (temp, CANNOT_RUN_IN_WORKER))
+	  {
+	    set_flag (result, CANNOT_RUN_IN_WORKER);
+	    set_flag (result, is_outptr_list ? CANNOT_LIST_MERGE : CANNOT_PARALLEL_SCAN);
+	  }
       }
 
     switch (arg->type)
@@ -199,6 +216,7 @@ namespace parallel_scan
 	if (!px_sp_is_parallel_eligible (arg->value.sp_ptr->sig))
 	  {
 	    /* SP not executable in child threads. */
+	    set_flag (result, CANNOT_RUN_IN_WORKER);
 	    set_flag (result, is_outptr_list ? CANNOT_LIST_MERGE : CANNOT_PARALLEL_SCAN);
 	  }
 	/* declared PARALLEL_ENABLE: executable in px workers, so it blocks nothing. In the
@@ -212,6 +230,7 @@ namespace parallel_scan
 	break;
       case TYPE_REGU_VAR_LIST:
 	temp = check<is_outptr_list> (arg->value.regu_var_list);
+	result |= temp & CANNOT_RUN_IN_WORKER;
 	if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
@@ -262,6 +281,18 @@ namespace parallel_scan
       {
 	result |= check<is_outptr_list> (&curr->value);
 	curr = curr->next;
+      }
+    return result;
+  }
+
+  /* one aggregate: its operands, and the ratio of PERCENTILE_CONT/DISC, which is evaluated with them per row */
+  template <bool is_outptr_list>
+  possible_flags check (AGGREGATE_TYPE *arg)
+  {
+    possible_flags result = check<is_outptr_list> (arg->operands);
+    if (arg->function == PT_PERCENTILE_CONT || arg->function == PT_PERCENTILE_DISC)
+      {
+	result |= check<is_outptr_list> (arg->info.percentile.percentile_reguvar);
       }
     return result;
   }
@@ -370,6 +401,13 @@ namespace parallel_scan
       {
 	return 0;
       }
+    /* FOR UPDATE: the serial scan locks every row it reads, but workers open their scans without locks
+     * (px_scan_task.cpp), so a FOR UPDATE spec keeps its scan serial (CBRD-27593). */
+    if (ACCESS_SPEC_IS_FLAGED (arg, ACCESS_SPEC_FLAG_FOR_UPDATE))
+      {
+	set_flag (result, CANNOT_PARALLEL_SCAN);
+	return result;
+      }
     if (arg->type == TARGET_CLASS)
       {
 	if (arg->access == ACCESS_METHOD_SEQUENTIAL)
@@ -397,9 +435,10 @@ namespace parallel_scan
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
 
-		/* orderby/groupby skip+desc need globally ordered traversal. */
-		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_skip
-		    || arg->indexptr->orderby_desc || arg->indexptr->groupby_desc)
+		/* orderby/groupby skip (ascending or descending) needs globally ordered traversal.
+		 * orderby_desc/groupby_desc only tell the first sort column is DESC and are used only with skip
+		 * (see scan_get_index_oidset ()), so they alone do not prevent a parallel scan. */
+		if (arg->indexptr->orderby_skip || arg->indexptr->groupby_skip)
 		  {
 		    set_flag (result, CANNOT_PARALLEL_SCAN);
 		  }
@@ -454,6 +493,16 @@ namespace parallel_scan
       {
 	return 0;
       }
+    /* FOR UPDATE inner spec: the workers of the driving scan would read it without row locks (CBRD-27593). */
+    if (ACCESS_SPEC_IS_FLAGED (arg, ACCESS_SPEC_FLAG_FOR_UPDATE))
+      {
+	set_flag (result, CANNOT_PARALLEL_SCAN);
+      }
+    if (arg->type == TARGET_METHOD)
+      {
+	/* a method scan calls back to the client as an SP not declared PARALLEL_ENABLE does */
+	set_flag (result, CANNOT_RUN_IN_WORKER);
+      }
     if (arg->next)
       {
 	set_flag (result, CANNOT_PARALLEL_SCAN);
@@ -469,6 +518,36 @@ namespace parallel_scan
 	result |= check<false> (arg->s.cls_node.cls_regu_list_rest);
 	result |= check<false> (arg->where_pred);
       }
+
+    /* the key filter and key ranges are evaluated by the thread that runs this scan too, for an NL
+     * inner at every outer row. Only an SP or method there counts, so a plan without one stays. */
+    possible_flags temp = check<false> (arg->where_key) | check<false> (arg->where_range);
+    if (arg->type == TARGET_CLASS && arg->indexptr != NULL)
+      {
+	KEY_INFO *key_info = &arg->indexptr->key_info;
+	for (int i = 0; i < key_info->key_cnt; i++)
+	  {
+	    temp |= check<false> (key_info->key_ranges[i].key1) | check<false> (key_info->key_ranges[i].key2);
+	  }
+	temp |= check<false> (key_info->key_limit_l) | check<false> (key_info->key_limit_u);
+      }
+    else if (arg->type == TARGET_LIST)
+      {
+	temp |= check<false> (arg->s.list_node.list_regu_list_probe);
+      }
+    else if (arg->type == TARGET_SET)
+      {
+	temp |= check<false> (arg->s.set_node.set_ptr) | check<false> (arg->where_pred);
+      }
+    else if (arg->type == TARGET_JSON_TABLE)
+      {
+	temp |= check<false> (arg->s.json_table_node.m_json_reguvar) | check<false> (arg->where_pred);
+      }
+    if (is_flag_set (temp, CANNOT_RUN_IN_WORKER))
+      {
+	set_flag (result, CANNOT_RUN_IN_WORKER);
+	set_flag (result, CANNOT_PARALLEL_SCAN);
+      }
     return result;
   }
 
@@ -479,6 +558,16 @@ namespace parallel_scan
       {
 	return 0;
       }
+
+    std::unordered_map<XASL_NODE *, possible_flags> &cache = xasl_sibling_check_cache[is_outptr_list ? 1 : 0];
+    auto it = cache.find (sibling);
+    if (it != cache.end ())
+      {
+	return it->second;
+      }
+
+    /* mark visited (sentinel 0) before recursing, as check (XASL_NODE *) does: breaks XASL ref cycles */
+    cache[sibling] = 0;
 
     possible_flags result = 0, temp = 0;
 
@@ -491,6 +580,7 @@ namespace parallel_scan
     for (XASL_NODE *xaslp = sibling->aptr_list; xaslp; xaslp = xaslp->next)
       {
 	result |= check<is_outptr_list> (xaslp);
+	result |= sibling_check<false> (xaslp) & CANNOT_RUN_IN_WORKER;
       }
 
     if (sibling->bptr_list || sibling->fptr_list)
@@ -505,6 +595,7 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
+	result |= temp & CANNOT_RUN_IN_WORKER;
       }
 
     if (sibling->connect_by_ptr)
@@ -519,6 +610,7 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
+	result |= temp & CANNOT_RUN_IN_WORKER;
       }
 
     if (sibling->if_pred)
@@ -528,6 +620,7 @@ namespace parallel_scan
 	  {
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
+	result |= temp & CANNOT_RUN_IN_WORKER;
       }
 
     if ((sibling->instnum_pred || sibling->instnum_val) && !is_renumberable_instnum (sibling)
@@ -541,6 +634,88 @@ namespace parallel_scan
 	result |= sibling_check<is_outptr_list> (specp);
       }
 
+    /* the thread that runs this block evaluates the rest of it as well: its select list, aggregates,
+     * GROUP BY / analytic lists, later join tables, merged method scans, hierarchical query and nested
+     * blocks. Of these only an SP or method counts, so a subquery without one keeps its plan (CBRD-27596). */
+    temp = sibling_check<false> (sibling->scan_ptr);
+    for (ACCESS_SPEC_TYPE *specp = sibling->merge_spec; specp; specp = specp->next)
+      {
+	temp |= sibling_check<false> (specp);
+      }
+    if (sibling->connect_by_ptr)
+      {
+	/* the CONNECT BY node holds the CONNECT BY scan and predicate, START WITH of a join and the WHERE */
+	XASL_NODE *connect_by = sibling->connect_by_ptr;
+	temp |= sibling_check<false> (connect_by);
+	temp |= check<false> (connect_by->proc.connect_by.start_with_pred);
+	temp |= check<false> (connect_by->proc.connect_by.after_connect_by_pred);
+      }
+    if (sibling->outptr_list)
+      {
+	temp |= check<false> (sibling->outptr_list->valptrp);
+      }
+    temp |= check<false> (sibling->during_join_pred);
+    temp |= check<false> (sibling->instnum_pred);
+    temp |= check<false> (sibling->ordbynum_pred);
+    temp |= check<false> (sibling->limit_offset);
+    temp |= check<false> (sibling->limit_row_count);
+    switch (sibling->type)
+      {
+      case BUILDLIST_PROC:
+      {
+	BUILDLIST_PROC_NODE *buildlist = &sibling->proc.buildlist;
+	if (buildlist->g_outptr_list)
+	  {
+	    temp |= check<false> (buildlist->g_outptr_list->valptrp);
+	  }
+	temp |= check<false> (buildlist->g_having_pred);
+	temp |= check<false> (buildlist->g_grbynum_pred);
+	temp |= check<false> (buildlist->g_hk_scan_regu_list);
+	temp |= check<false> (buildlist->g_scan_regu_list);
+	for (AGGREGATE_TYPE *aggp = buildlist->g_agg_list; aggp; aggp = aggp->next)
+	  {
+	    temp |= check<false> (aggp);
+	  }
+	temp |= check<false> (buildlist->a_scan_regu_list);
+	if (buildlist->a_outptr_list)
+	  {
+	    temp |= check<false> (buildlist->a_outptr_list->valptrp);
+	  }
+	if (buildlist->a_outptr_list_ex)
+	  {
+	    temp |= check<false> (buildlist->a_outptr_list_ex->valptrp);
+	  }
+	if (buildlist->a_outptr_list_interm)
+	  {
+	    temp |= check<false> (buildlist->a_outptr_list_interm->valptrp);
+	  }
+	for (ANALYTIC_EVAL_TYPE *eval = buildlist->a_eval_list; eval; eval = eval->next)
+	  {
+	    for (ANALYTIC_TYPE *func = eval->head; func; func = func->next)
+	      {
+		temp |= check<false> (&func->operand);
+	      }
+	  }
+	break;
+      }
+      case BUILDVALUE_PROC:
+	temp |= check<false> (sibling->proc.buildvalue.having_pred);
+	temp |= check<false> (sibling->proc.buildvalue.outarith_list);
+	for (AGGREGATE_TYPE *aggp = sibling->proc.buildvalue.agg_list; aggp; aggp = aggp->next)
+	  {
+	    temp |= check<false> (aggp);
+	  }
+	break;
+      case CTE_PROC:
+	temp |= sibling_check<false> (sibling->proc.cte.non_recursive_part);
+	temp |= sibling_check<false> (sibling->proc.cte.recursive_part);
+	break;
+      default:
+	break;
+      }
+    result |= temp & CANNOT_RUN_IN_WORKER;
+
+    cache[sibling] = result;
     return result;
   }
 
@@ -611,7 +786,7 @@ namespace parallel_scan
 	flags |= check<false> (arg->proc.buildlist.g_grbynum_pred);
 	for (AGGREGATE_TYPE *aggp = arg->proc.buildlist.g_agg_list; aggp; aggp = aggp->next)
 	  {
-	    flags |= check<false> (aggp->operands);
+	    flags |= check<false> (aggp);
 	  }
 	break;
       case BUILDVALUE_PROC:
@@ -619,7 +794,7 @@ namespace parallel_scan
 	flags |= check<false> (arg->proc.buildvalue.outarith_list);
 	for (AGGREGATE_TYPE *aggp = arg->proc.buildvalue.agg_list; aggp; aggp = aggp->next)
 	  {
-	    flags |= check<false> (aggp->operands);
+	    flags |= check<false> (aggp);
 	  }
 	break;
       case HASHJOIN_PROC:
@@ -702,7 +877,7 @@ namespace parallel_scan
 		    buildvalue_opt = false;
 		    break;
 		  }
-		temp |= check<false> (agg_it->operands);
+		temp |= check<false> (agg_it);
 		if (is_flag_set (temp, CANNOT_PARALLEL_SCAN))
 		  {
 		    buildvalue_opt = false;
@@ -877,7 +1052,8 @@ namespace parallel_scan
       case CTE_PROC:
 	if (arg->proc.cte.recursive_part)
 	  {
-	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part);
+	    /* nested sort/hash join serial too: qexec_execute_cte copies each iteration's result without dependents */
+	    process_xasl_node_recursive_force_cannot_parallel (arg->proc.cte.recursive_part, true);
 	    set_flag (result, CANNOT_PARALLEL_SCAN);
 	  }
 	if (arg->proc.cte.non_recursive_part)
@@ -1126,11 +1302,15 @@ scan_check_parallel_scan_possible (XASL_NODE *xasl)
 {
   parallel_scan::xasl_check_cache.clear ();
   parallel_scan::xasl_processing_set.clear ();
+  parallel_scan::xasl_sibling_check_cache[0].clear ();
+  parallel_scan::xasl_sibling_check_cache[1].clear ();
 
   parallel_scan::process_xasl_node_recursive (xasl);
 
   parallel_scan::xasl_check_cache.clear ();
   parallel_scan::xasl_processing_set.clear ();
+  parallel_scan::xasl_sibling_check_cache[0].clear ();
+  parallel_scan::xasl_sibling_check_cache[1].clear ();
 
   return NO_ERROR;
 }
