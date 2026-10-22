@@ -28,6 +28,9 @@
 
 #include <signal.h>
 #include "hide_password.h"
+
+#define CAS_LOG_BUFFER_SIZE (8192)
+
 typedef enum
 {
   NEW_CONNECTION,

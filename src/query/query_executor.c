@@ -5613,7 +5613,12 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 	  /* no tuples hash aggregated and empty unsorted list; no reason to continue */
 	  qfile_destroy_list (thread_p, list_id);
 	  qfile_close_list (thread_p, gbstate.output_file);
-	  qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+	  if (qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	    {
+	      qfile_destroy_list (thread_p, gbstate.output_file);
+	      gbstate.state = ER_FAILED;
+	      GOTO_EXIT_ON_ERROR;
+	    }
 	  qexec_clear_groupby_state (thread_p, &gbstate);
 
 	  return NO_ERROR;
@@ -5659,7 +5664,12 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 	  /* output generated; finalize */
 	  qfile_destroy_list (thread_p, list_id);
 	  qfile_close_list (thread_p, gbstate.output_file);
-	  qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+	  if (qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	    {
+	      qfile_destroy_list (thread_p, gbstate.output_file);
+	      gbstate.state = ER_FAILED;
+	      GOTO_EXIT_ON_ERROR;
+	    }
 
 	  goto wrapup;
 	}
@@ -5851,7 +5861,12 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       VPID_SET_NULL (&(gbstate.fixed_vpid));
     }
   qfile_destroy_list (thread_p, list_id);
-  qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+  if (qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+    {
+      qfile_destroy_list (thread_p, gbstate.output_file);
+      gbstate.state = ER_FAILED;
+      GOTO_EXIT_ON_ERROR;
+    }
   /* qexec_clear_groupby_state() will free gbstate.output_file */
 
 wrapup:
@@ -7392,7 +7407,13 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
     }
 
   /* make this the resultant list file */
-  qfile_copy_list_id (xasl->list_id, list_id, true, QFILE_PROHIBIT_DEPENDENT);
+  if (qfile_copy_list_id (xasl->list_id, list_id, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+    {
+      qfile_close_list (thread_p, list_id);
+      qfile_destroy_list (thread_p, list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (list_id);
+      GOTO_EXIT_ON_ERROR;
+    }
   QFILE_FREE_AND_INIT_LIST_ID (list_id);
 
   return NO_ERROR;
@@ -15444,7 +15465,8 @@ static int
 qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 {
   REGU_VARIABLE *key_limit_l;
-  DB_VALUE dbval;
+  DB_BIGINT lower = 0;
+  bool is_null = false;
   int error = NO_ERROR;
 
   assert (xasl && xasl->instnum_val);
@@ -15462,20 +15484,23 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
     {
       key_limit_l = xasl->spec_list->indexptr->key_info.key_limit_l;
 
-      error = fetch_and_coerce_key_limit_lower (thread_p, key_limit_l, &xasl_state->vd, &dbval);
+      error = fetch_key_limits (thread_p, key_limit_l, NULL, &xasl_state->vd, &lower, NULL, &is_null);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      if (pr_clone_value (&dbval, xasl->instnum_val) != NO_ERROR)
+      /* a negative or NULL lower bound skips no keys, so start the counter at 0 */
+      if (is_null || lower < 0)
 	{
-	  goto exit_on_error;
+	  lower = 0;
 	}
 
-      if (xasl->save_instnum_val && pr_clone_value (&dbval, xasl->save_instnum_val) != NO_ERROR)
+      db_make_bigint (xasl->instnum_val, lower);
+
+      if (xasl->save_instnum_val)
 	{
-	  goto exit_on_error;
+	  db_make_bigint (xasl->save_instnum_val, lower);
 	}
     }
 
@@ -18990,7 +19015,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	      && qfile_copy_list_id (non_recursive_part->list_id, recursive_part->list_id, true,
 				     QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
 	    {
-	      QFILE_FREE_AND_INIT_LIST_ID (non_recursive_part->list_id);
+	      /* the list id is part of the XASL tree, and the failed copy left it empty */
 	      GOTO_EXIT_ON_ERROR;
 	    }
 	  qfile_clear_list_id (recursive_part->list_id);
@@ -19022,10 +19047,12 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 
       /* copy all results back to non_recursive_part list id; other CTEs from the same WITH clause have access only to
        * non_recursive_part; see how pt_to_cte_table_spec_list works for interdependent CTEs.
+       * Both list ids stay readable, and a parallel list scan finds the pages of the dependent lists only through
+       * the list id it reads, so each keeps its own copy of them.
        */
-      if (qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true, QFILE_MOVE_DEPENDENT) != NO_ERROR)
+      if (qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true, QFILE_COPY_DEPENDENT) != NO_ERROR)
 	{
-	  QFILE_FREE_AND_INIT_LIST_ID (non_recursive_part->list_id);
+	  /* the list id is part of the XASL tree, and the failed copy left it empty */
 	  GOTO_EXIT_ON_ERROR;
 	}
 
@@ -19037,12 +19064,13 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
     }
   /* copy list id from non-recursive part to CTE XASL (even if no tuples are in non recursive part) to get domain types
    * into CTE xasl's main list (this also executes if we have a recursive part but no tuples in non recursive part
-   * (no results at all)
+   * (no results at all). Another CTE of the same WITH clause still reads non_recursive_part, so it keeps the
+   * dependent lists too (see above).
    */
   else if (qexec_assert_result_list_backward (xasl, non_recursive_part->list_id),	/* debug check, then copy */
-	   qfile_copy_list_id (xasl->list_id, non_recursive_part->list_id, true, QFILE_MOVE_DEPENDENT) != NO_ERROR)
+	   qfile_copy_list_id (xasl->list_id, non_recursive_part->list_id, true, QFILE_COPY_DEPENDENT) != NO_ERROR)
     {
-      QFILE_FREE_AND_INIT_LIST_ID (xasl->list_id);
+      /* the list id is part of the XASL tree, and the failed copy left it empty */
       GOTO_EXIT_ON_ERROR;
     }
 
@@ -19065,6 +19093,13 @@ exit_on_error:
   if (recursive_part != NULL)
     {
       recursive_part->max_iterations = -1;
+    }
+
+  if (t_list_id)
+    {
+      qfile_close_list (thread_p, t_list_id);
+      qfile_destroy_list (thread_p, t_list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
     }
 
   xasl->status = XASL_FAILURE;
@@ -21461,7 +21496,12 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
       /* empty unsorted list file, no need to proceed */
       qfile_destroy_list (thread_p, list_id);
       qfile_close_list (thread_p, gbstate.output_file);
-      qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+      if (qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	{
+	  qfile_destroy_list (thread_p, gbstate.output_file);
+	  gbstate.state = ER_FAILED;
+	  GOTO_EXIT_ON_ERROR;
+	}
       qexec_clear_groupby_state (thread_p, &gbstate);	/* will free gbstate.output_file */
 
       return NO_ERROR;
@@ -21601,7 +21641,12 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
       gbstate.input_scan = NULL;
     }
   qfile_destroy_list (thread_p, list_id);
-  qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+  if (qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+    {
+      qfile_destroy_list (thread_p, gbstate.output_file);
+      gbstate.state = ER_FAILED;
+      GOTO_EXIT_ON_ERROR;
+    }
 
   if (XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY) && list_id->tuple_cnt != tuple_cnt)
     {
@@ -22195,7 +22240,11 @@ wrapup:
 	  /* replace current input with output */
 	  qfile_close_list (thread_p, analytic_state.output_file);
 	  qfile_destroy_list (thread_p, list_id);
-	  qfile_copy_list_id (list_id, analytic_state.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+	  if (qfile_copy_list_id (list_id, analytic_state.output_file, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	    {
+	      qfile_destroy_list (thread_p, analytic_state.output_file);
+	      GOTO_EXIT_ON_ERROR;
+	    }
 
 	  qfile_free_list_id (analytic_state.output_file);
 	  analytic_state.output_file = NULL;
@@ -28592,9 +28641,12 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
       return ER_FAILED;
     }
 
+  if (qfile_copy_list_id (xasl->list_id, list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+    {
+      xasl->status = XASL_FAILURE;
+      return ER_FAILED;
+    }
   xasl->status = XASL_SUCCESS;
-
-  qfile_copy_list_id (xasl->list_id, list_id, false, QFILE_PROHIBIT_DEPENDENT);
 
   /* for checking the cached list file */
   xasl->list_id->is_result_cached = true;

@@ -247,6 +247,10 @@ cas_main_loop (CAS_MAIN_OPS * ops)
 		goto finish_cas;
 	      }
 
+	    /* keeping a session was decided for the session of the client that left (CHANGE CLIENT, RESET, ...).
+	     * Do not carry it over to this client, or its session will also be kept. */
+	    db_set_keep_session (false);
+
 	    if (ops->set_session_id)
 	      {
 		ops->set_session_id (req_info.client_version, conn_info.db_sessionid);
