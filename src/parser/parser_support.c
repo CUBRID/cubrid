@@ -12634,7 +12634,7 @@ pt_dblink_dml_reject_declined (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE 
  * gate again so that it names what actually turned the statement away; when no gate did, the sink was
  * cleared earlier -- ahead of the caller -- and the bare sentence is all we can say. */
 static void
-pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE * loc)
+pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_NAME_LIST * snl, PT_NODE * loc)
 {
   const char *accepted = NULL;
   char errmsg[256];
@@ -12665,8 +12665,9 @@ pt_dblink_dml_reject_mixed_ref (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE
 	  return;
 	}
       /* Blamed only when the clause is what kept the statement out of the sink. A sendable clause on a
-       * statement refused for its SELECT source would otherwise be named as the cause. */
-      if (node->info.insert.odku_assignments != NULL
+       * statement refused for its SELECT source would otherwise be named as the cause. A source that also
+       * reads another server is refused whatever the clause holds. */
+      if (node->info.insert.odku_assignments != NULL && snl->distinct_cnt == 1
 	  && !pt_dblink_odku_assigns_are_sendable (node->info.insert.odku_assignments))
 	{
 	  PT_ERROR (parser, loc, "dblink: remote INSERT with local data supports only literal values in "
@@ -13171,7 +13172,7 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
    *     design, so this one cannot apply to it. */
   if (remote_upd > 0 && (odku_local_cnt > 0 || (snl->local_cnt > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)))
     {
-      pt_dblink_dml_reject_mixed_ref (parser, node, upd_spec ? upd_spec : into_spec);
+      pt_dblink_dml_reject_mixed_ref (parser, node, snl, upd_spec ? upd_spec : into_spec);
       return;
     }
 
