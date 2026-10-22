@@ -20451,35 +20451,10 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
       return NULL;
     }
 
-  /* One statement goes out per value the driving subquery produces, so a repeated value writes the same
-   * remote row twice. The equality shapes this sink admits match disjoint rows for distinct values, so the
-   * values are de-duplicated. A scalar comparison is left as written. DISTINCT would hide its "more than a
-   * single tuple" error. DELETE does not need this, because a second statement finds the row gone.
-   *
-   * The subquery was bound stand-alone (pt_bind_remote_dml_subq), so the range-predicate typing never ran
-   * on it. When pt_try_set_subquery_distinct () declines, the subquery is wrapped and folded outside. */
-  if (driving_subq != NULL && PT_IS_QUERY (driving_subq)
-      && (cond->info.expr.op == PT_IS_IN || cond->info.expr.op == PT_EQ_SOME))
-    {
-      if (!pt_try_set_subquery_distinct (parser, driving_subq))
-	{
-	  PT_NODE *wrapped = mq_rewrite_query_as_derived (parser, driving_subq);
-
-	  if (wrapped == NULL)
-	    {
-	      return NULL;
-	    }
-	  PT_NODE_MOVE_NUMBER_OUTERLINK (wrapped, driving_subq);
-	  wrapped->info.query.q.select.flavor = PT_USER_SELECT;
-	  wrapped->info.query.is_subquery = PT_IS_SUBQUERY;
-	  wrapped->info.query.correlation_level = 0;
-	  wrapped->info.query.all_distinct = PT_DISTINCT;
-
-	  parser_free_tree (parser, cond->info.expr.arg2);
-	  cond->info.expr.arg2 = wrapped;
-	  driving_subq = wrapped;
-	}
-    }
+  /* The IN / = ANY driving values were made distinct in the semantic check (pt_dblink_update_fold_driving_values),
+   * ahead of the subquery cache prepare. */
+  assert (driving_subq == NULL || !(cond->info.expr.op == PT_IS_IN || cond->info.expr.op == PT_EQ_SOME)
+	  || driving_subq->info.query.all_distinct == PT_DISTINCT);
 
   /* With a WHERE, the driving subquery feeds the list-file the sink scans, and pt_make_aptr_parent_node
    * builds that scan. Without one the sink sends a single statement, so there is nothing to scan. */

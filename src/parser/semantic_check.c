@@ -12624,6 +12624,58 @@ pt_dblink_update_bind_subq (PARSER_CONTEXT * parser, PT_NODE * stmt, PT_NODE * s
 }
 
 /*
+ * pt_dblink_update_fold_driving_values () - Make the values of a remote UPDATE's IN / = ANY driving subquery
+ *   distinct, after its row cut.
+ *   return: the subquery to use, or NULL on error (parser error set)
+ *   parser(in) : parser context
+ *   subq(in)   : the bound driving subquery
+ *
+ * One statement goes out per value the driving subquery produces, so a repeated value writes the same
+ * remote row twice. The equality shapes this sink admits match disjoint rows for distinct values, so the
+ * values are de-duplicated. A scalar comparison is left as written. DISTINCT would hide its "more than a
+ * single tuple" error. DELETE does not need this, because a second statement finds the row gone.
+ *
+ * The subquery was checked and translated on its own by pt_bind_remote_dml_subq (), so the handling a local
+ * IN subquery gets during type checking (drop the ORDER BY, set DISTINCT) never ran on it. This runs right
+ * after that call, ahead of the subquery cache prepare in do_prepare_statement (). When
+ * pt_try_set_subquery_distinct () declines, the subquery is wrapped and folded outside.
+ */
+static PT_NODE *
+pt_dblink_update_fold_driving_values (PARSER_CONTEXT * parser, PT_NODE * subq)
+{
+  PT_NODE *wrapped;
+
+  /* The check can fold a set operation whose arms are empty into a value. XASL generation refuses it. */
+  if (!PT_IS_QUERY (subq))
+    {
+      return subq;
+    }
+
+  if (pt_try_set_subquery_distinct (parser, subq))
+    {
+      return subq;
+    }
+
+  wrapped = mq_rewrite_query_as_derived (parser, subq);
+  if (wrapped == NULL)
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "remote UPDATE: failed to wrap the WHERE subquery");
+	}
+      return NULL;
+    }
+  PT_NODE_MOVE_NUMBER_OUTERLINK (wrapped, subq);
+  wrapped->info.query.q.select.flavor = PT_USER_SELECT;
+  wrapped->info.query.is_subquery = PT_IS_SUBQUERY;
+  wrapped->info.query.correlation_level = 0;
+  wrapped->info.query.all_distinct = PT_DISTINCT;
+
+  parser_free_tree (parser, subq);
+  return wrapped;
+}
+
+/*
  * pt_check_with_info () -  do name resolution & semantic checks on this tree
  *   return:  statement if no errors, NULL otherwise
  *   parser(in): the parser context
@@ -12849,6 +12901,10 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 			{
 			  PT_NODE *subq = pt_dblink_update_bind_subq (parser, node, cond->info.expr.arg2,
 								      sc_info_ptr, alias, entity, "WHERE");
+			  if (subq != NULL && (cond->info.expr.op == PT_IS_IN || cond->info.expr.op == PT_EQ_SOME))
+			    {
+			      subq = pt_dblink_update_fold_driving_values (parser, subq);
+			    }
 			  if (subq != NULL)
 			    {
 			      cond->info.expr.arg2 = subq;
