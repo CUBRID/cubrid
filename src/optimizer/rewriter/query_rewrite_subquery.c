@@ -702,6 +702,27 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 		  pt_select_list_to_one_col (parser, arg2, false);
 		}
 
+	      /* the join emits an outer row once per matching row of the derived table.
+	       * A subquery left without DISTINCT is wrapped, so its duplicates are removed after its row cut.
+	       * Leaving it out of the join instead would scan its list once per outer row. */
+	      if (op_type != PT_EQ && arg2->info.query.all_distinct != PT_DISTINCT)
+		{
+		  PT_NODE *rewritten = mq_rewrite_query_as_derived (parser, arg2);
+		  if (rewritten == NULL)
+		    {
+		      return NULL;
+		    }
+
+		  PT_NODE_MOVE_NUMBER_OUTERLINK (rewritten, arg2);
+		  rewritten->info.query.all_distinct = PT_DISTINCT;
+		  rewritten->info.query.q.select.flavor = PT_USER_SELECT;
+		  rewritten->info.query.is_subquery = PT_IS_SUBQUERY;
+		  rewritten->info.query.correlation_level = 0;
+
+		  parser_free_tree (parser, cnf_node->info.expr.arg2);
+		  cnf_node->info.expr.arg2 = arg2 = rewritten;
+		}
+
 	      /* make new derived spec and append it to FROM */
 	      if (mq_make_derived_spec (parser, node, arg2, idx, &new_spec, &new_attr) == NULL)
 		{
