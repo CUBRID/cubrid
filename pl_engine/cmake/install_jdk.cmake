@@ -19,8 +19,8 @@
 message ("[INFO] Install JDK 8")
 
 if(UNIX)
-  set(JDK_URL "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u442-b06/OpenJDK8U-jdk_x64_linux_hotspot_8u442b06.tar.gz")
-  set(JDK_SHA256 "5b0a0145e7790552a9c8767b4680074c4628ec276e5bb278b61d85cf90facafa")
+  set(JDK_URL "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u452-b09/OpenJDK8U-jdk_x64_linux_hotspot_8u452b09.tar.gz")
+  set(JDK_SHA256 "9448308a21841960a591b47927cf2d44fdc4c0533a5f8111a4b243a6bafb5d27")
 else(UNIX)
   set(JDK_URL "https://github.com/adoptium/temurin8-binaries/releases/download/jdk8u442-b06/OpenJDK8U-jdk_x64_windows_hotspot_8u442b06.zip")
   set(JDK_SHA256 "ffe22d16a1ea6fe709a089f3472fedb783470b879634b26b32424e40bbd00b09")
