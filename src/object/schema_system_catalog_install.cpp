@@ -31,7 +31,6 @@
 #include "trigger_manager.h"
 #include "schema_system_metadata_builder.hpp"
 #include "schema_system_metadata_definition.hpp"
-#include "schema_manager.h"
 #include "authenticate.h"
 
 #define CT_DUAL_DUMMY   "dummy"
@@ -387,30 +386,14 @@ catcls_rebuild_vclasses (void)
 {
   const std::vector<cubschema::system_metadata_definition> vclass_defs = catcls_get_vclass_definitions ();
   int error_code = NO_ERROR;
+  /* the catalog vclasses are in no user schema, so their names carry no owner prefix */
+  const std::string owner_prefix = "";
   int save;
 
   using metadata_builder = cubschema::system_metadata_builder;
 
   AU_SAVE_AND_DISABLE (save);
-
-  for (size_t i = 0; i < vclass_defs.size () && error_code == NO_ERROR; i++)
-    {
-      /* the existing object, so build_vclass () redefines it in place and the OID survives */
-      MOP class_mop = db_find_class (vclass_defs[i].name.c_str ());
-      if (class_mop == nullptr)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  break;
-	}
-
-      error_code = metadata_builder::build_vclass (class_mop, vclass_defs[i]);
-      if (error_code == NO_ERROR)
-	{
-	  /* a vclass holds no instance, so nothing needs the superseded representation */
-	  error_code = sm_destroy_representations (class_mop);
-	}
-    }
-
+  error_code = metadata_builder::rebuild_vclasses (vclass_defs, owner_prefix);
   AU_RESTORE (save);
 
   return error_code;

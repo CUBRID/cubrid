@@ -302,4 +302,37 @@ namespace cubschema
 
     return error_code;
   }
+
+  int
+  system_metadata_builder::rebuild_vclasses (const std::vector<system_metadata_definition> &defs,
+      const std::string &owner_prefix)
+  {
+    int error_code = NO_ERROR;
+
+    for (const system_metadata_definition &def : defs)
+      {
+	/* find the existing vclass so that build_vclass () redefines it in place and its OID stays the same */
+	MOP class_mop = db_find_class ((owner_prefix + def.name).c_str ());
+	if (class_mop == nullptr)
+	  {
+	    ASSERT_ERROR_AND_SET (error_code);
+	    return error_code;
+	  }
+
+	error_code = build_vclass (class_mop, def);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+
+	/* a vclass has no instances, so its old representations are no longer needed */
+	error_code = sm_destroy_representations (class_mop);
+	if (error_code != NO_ERROR)
+	  {
+	    return error_code;
+	  }
+      }
+
+    return NO_ERROR;
+  }
 }

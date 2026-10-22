@@ -39,6 +39,7 @@ namespace cubschema
       static MOP create_and_mark_system_class (const std::string_view name);
       static int build_class (const MOP class_mop, const system_metadata_definition &def);
       static int build_vclass (const MOP class_mop, const system_metadata_definition &def);
+      static int rebuild_vclasses (const std::vector<system_metadata_definition> &defs, const std::string &owner_prefix);
   };
 }
 

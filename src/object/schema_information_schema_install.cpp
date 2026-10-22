@@ -19,9 +19,7 @@
 #include "schema_information_schema_install.hpp"
 
 #include "authenticate.h"
-#include "dbi.h"
 #include "dbtype_def.h"
-#include "schema_manager.h"
 #include "schema_information_schema.hpp"
 #include "schema_information_schema_constants.h"
 #include "schema_system_metadata_builder.hpp"
@@ -101,30 +99,14 @@ info_schema_rebuild_vclasses (void)
 {
   const std::vector<cubschema::system_metadata_definition> view_defs = info_schema_get_view_definitions ();
   int error_code = NO_ERROR;
-  /* build_vclass () hands the vclasses to the INFORMATION_SCHEMA user, so they only answer to the qualified name */
+  /* the views are in the INFORMATION_SCHEMA user schema, so their names carry its prefix */
   const std::string owner_prefix = std::string (AU_INFORMATION_SCHEMA_USER_NAME) + ".";
   int save;
 
   using metadata_builder = cubschema::system_metadata_builder;
 
   AU_SAVE_AND_DISABLE (save);
-
-  for (size_t i = 0; i < view_defs.size () && error_code == NO_ERROR; i++)
-    {
-      MOP class_mop = db_find_class ((owner_prefix + view_defs[i].name).c_str ());
-      if (class_mop == nullptr)
-	{
-	  ASSERT_ERROR_AND_SET (error_code);
-	  break;
-	}
-
-      error_code = metadata_builder::build_vclass (class_mop, view_defs[i]);
-      if (error_code == NO_ERROR)
-	{
-	  error_code = sm_destroy_representations (class_mop);
-	}
-    }
-
+  error_code = metadata_builder::rebuild_vclasses (view_defs, owner_prefix);
   AU_RESTORE (save);
 
   return error_code;
