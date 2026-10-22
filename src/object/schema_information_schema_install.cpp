@@ -33,56 +33,49 @@
  * Reference: https://www.postgresql.org/docs/current/information-schema.html
  */
 
-static std::vector<cubschema::info_schema_function> info_schema_list;
-
-void
-info_schema_init (void)
+static std::vector<cubschema::information_schema_definition>
+info_schema_get_view_definitions (void)
 {
   using namespace cubschema;
 
-  info_schema_list.emplace_back (INFO_SCHEMA_COLUMN_PRIVILEGES_NAME,
-				 information_schema_initializer::get_view_column_privileges ());
-  info_schema_list.emplace_back (INFO_SCHEMA_COLUMNS_NAME, information_schema_initializer::get_view_columns ());
-  info_schema_list.emplace_back (INFO_SCHEMA_DOMAINS_NAME, information_schema_initializer::get_view_domains ());
-  info_schema_list.emplace_back (INFO_SCHEMA_FOREIGN_SERVERS_NAME,
-				 information_schema_initializer::get_view_foreign_servers ());
-  info_schema_list.emplace_back (INFO_SCHEMA_KEY_COLUMN_USAGE_NAME,
-				 information_schema_initializer::get_view_key_column_usage ());
-  info_schema_list.emplace_back (INFO_SCHEMA_PARAMETERS_NAME, information_schema_initializer::get_view_parameters ());
-  info_schema_list.emplace_back (INFO_SCHEMA_PARTITIONS_NAME, information_schema_initializer::get_view_partitions ());
-  info_schema_list.emplace_back (INFO_SCHEMA_REFERENTIAL_CONS_NAME,
-				 information_schema_initializer::get_view_referential_constraints ());
-  info_schema_list.emplace_back (INFO_SCHEMA_ROUTINE_PRIVILEGES_NAME,
-				 information_schema_initializer::get_view_routine_privileges ());
-  info_schema_list.emplace_back (INFO_SCHEMA_ROUTINES_NAME, information_schema_initializer::get_view_routines ());
-  info_schema_list.emplace_back (INFO_SCHEMA_SCHEMATA_NAME, information_schema_initializer::get_view_schemata ());
-  info_schema_list.emplace_back (INFO_SCHEMA_SEQUENCES_NAME, information_schema_initializer::get_view_sequences ());
-  info_schema_list.emplace_back (INFO_SCHEMA_STATISTICS_NAME, information_schema_initializer::get_view_statistics ());
-  info_schema_list.emplace_back (INFO_SCHEMA_SYNONYMS_NAME, information_schema_initializer::get_view_synonyms ());
-  info_schema_list.emplace_back (INFO_SCHEMA_TABLE_CONSTRAINTS_NAME,
-				 information_schema_initializer::get_view_table_constraints ());
-  info_schema_list.emplace_back (INFO_SCHEMA_TABLE_PRIVILEGES_NAME,
-				 information_schema_initializer::get_view_table_privileges ());
-  info_schema_list.emplace_back (INFO_SCHEMA_TABLES_NAME, information_schema_initializer::get_view_tables ());
-  info_schema_list.emplace_back (INFO_SCHEMA_TRIGGERS_NAME, information_schema_initializer::get_view_triggers ());
-  info_schema_list.emplace_back (INFO_SCHEMA_VIEWS_NAME, information_schema_initializer::get_view_views ());
+  return
+  {
+    information_schema_initializer::get_view_column_privileges (),
+    information_schema_initializer::get_view_columns (),
+    information_schema_initializer::get_view_domains (),
+    information_schema_initializer::get_view_foreign_servers (),
+    information_schema_initializer::get_view_key_column_usage (),
+    information_schema_initializer::get_view_parameters (),
+    information_schema_initializer::get_view_partitions (),
+    information_schema_initializer::get_view_referential_constraints (),
+    information_schema_initializer::get_view_routine_privileges (),
+    information_schema_initializer::get_view_routines (),
+    information_schema_initializer::get_view_schemata (),
+    information_schema_initializer::get_view_sequences (),
+    information_schema_initializer::get_view_statistics (),
+    information_schema_initializer::get_view_synonyms (),
+    information_schema_initializer::get_view_table_constraints (),
+    information_schema_initializer::get_view_table_privileges (),
+    information_schema_initializer::get_view_tables (),
+    information_schema_initializer::get_view_triggers (),
+    information_schema_initializer::get_view_views ()
+  };
 }
 
 int
 info_schema_install (void)
 {
+  const std::vector<cubschema::information_schema_definition> view_defs = info_schema_get_view_definitions ();
   int error_code = NO_ERROR;
-  const size_t num_vclasses = info_schema_list.size ();
   int save;
 
   AU_SAVE_AND_DISABLE (save);
-  au_set_user (Au_dba_user);
 
   using info_builder = cubschema::information_schema_builder;
 
-  for (size_t i = 0; i < num_vclasses; i++)
+  for (size_t i = 0; i < view_defs.size (); i++)
     {
-      MOP class_mop = info_builder::create_and_mark_system_class (info_schema_list[i].name);
+      MOP class_mop = info_builder::create_and_mark_system_class (view_defs[i].name);
       if (class_mop == nullptr)
 	{
 	  assert (false);
@@ -90,7 +83,7 @@ info_schema_install (void)
 	  goto end;
 	}
 
-      error_code = info_builder::build_vclass (class_mop, info_schema_list[i].definition);
+      error_code = info_builder::build_vclass (class_mop, view_defs[i]);
       if (error_code != NO_ERROR)
 	{
 	  goto end;
@@ -99,7 +92,6 @@ info_schema_install (void)
 
 end:
   AU_RESTORE (save);
-  info_schema_list.clear ();
 
   return error_code;
 }
@@ -107,6 +99,7 @@ end:
 int
 info_schema_rebuild_vclasses (void)
 {
+  const std::vector<cubschema::information_schema_definition> view_defs = info_schema_get_view_definitions ();
   int error_code = NO_ERROR;
   /* build_vclass () hands the vclasses to the INFORMATION_SCHEMA user, so they only answer to the qualified name */
   const std::string owner_prefix = std::string (AU_INFORMATION_SCHEMA_USER_NAME) + ".";
@@ -114,19 +107,18 @@ info_schema_rebuild_vclasses (void)
 
   using info_builder = cubschema::information_schema_builder;
 
-  info_schema_init ();
   AU_SAVE_AND_DISABLE (save);
 
-  for (size_t i = 0; i < info_schema_list.size () && error_code == NO_ERROR; i++)
+  for (size_t i = 0; i < view_defs.size () && error_code == NO_ERROR; i++)
     {
-      MOP class_mop = db_find_class ((owner_prefix + info_schema_list[i].name).c_str ());
+      MOP class_mop = db_find_class ((owner_prefix + view_defs[i].name).c_str ());
       if (class_mop == nullptr)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  break;
 	}
 
-      error_code = info_builder::build_vclass (class_mop, info_schema_list[i].definition);
+      error_code = info_builder::build_vclass (class_mop, view_defs[i]);
       if (error_code == NO_ERROR)
 	{
 	  error_code = sm_destroy_representations (class_mop);
@@ -134,7 +126,6 @@ info_schema_rebuild_vclasses (void)
     }
 
   AU_RESTORE (save);
-  info_schema_list.clear ();
 
   return error_code;
 }

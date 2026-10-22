@@ -259,91 +259,94 @@ catcls_add_charsets (struct db_object *class_mop)
 /* MAIN APIS */
 /* ========================================================================== */
 
-static std::vector<cubschema::catcls_function> clist;
-static std::vector<cubschema::catcls_function> vclist;
-
-void
-catcls_init (void)
+static std::vector<cubschema::system_catalog_definition>
+catcls_get_class_definitions (void)
 {
   using namespace cubschema;
 
-  // TODO: for late initialization (for au_init () to retrieve MOPs: Au_dba_user and Au_public_user)
-#define ADD_TABLE_DEFINITION(name,def) clist.emplace_back(name, def)
-#define ADD_VIEW_DEFINITION(name,def) vclist.emplace_back(name, def)
+  return
+  {
+    system_catalog_initializer::get_class (),
+    system_catalog_initializer::get_attribute (),
+    system_catalog_initializer::get_domain (),
+    system_catalog_initializer::get_method (),
+    system_catalog_initializer::get_meth_sig (),
+    system_catalog_initializer::get_meth_arg (),
+    system_catalog_initializer::get_meth_file (),
+    system_catalog_initializer::get_query_spec (),
+    system_catalog_initializer::get_index (),
+    system_catalog_initializer::get_index_key (),
+    system_catalog_initializer::get_auth (),
+    system_catalog_initializer::get_trigger (),
+    system_catalog_initializer::get_partition (),
+    system_catalog_initializer::get_data_type (),
+    system_catalog_initializer::get_stored_procedure (),
+    system_catalog_initializer::get_stored_procedure_args (),
+    system_catalog_initializer::get_stored_procedure_code (),
+    system_catalog_initializer::get_serial (),
+    system_catalog_initializer::get_ha_apply_info (),
+    system_catalog_initializer::get_collation (),
+    system_catalog_initializer::get_charset (),
+    system_catalog_initializer::get_dual (),
+    system_catalog_initializer::get_synonym (),
+    system_catalog_initializer::get_server (),
+    system_catalog_initializer::get_histogram (),
+    system_catalog_initializer::get_global_tran ()
+  };
+}
 
-  ADD_TABLE_DEFINITION (CT_CLASS_NAME, system_catalog_initializer::get_class ());
-  ADD_TABLE_DEFINITION (CT_ATTRIBUTE_NAME, system_catalog_initializer::get_attribute ());
-  ADD_TABLE_DEFINITION (CT_DOMAIN_NAME, system_catalog_initializer::get_domain ());
-  ADD_TABLE_DEFINITION (CT_METHOD_NAME, system_catalog_initializer::get_method ());
-  ADD_TABLE_DEFINITION (CT_METHSIG_NAME, system_catalog_initializer::get_meth_sig ());
-  ADD_TABLE_DEFINITION (CT_METHARG_NAME, system_catalog_initializer::get_meth_arg ());
-  ADD_TABLE_DEFINITION (CT_METHFILE_NAME, system_catalog_initializer::get_meth_file ());
-  ADD_TABLE_DEFINITION (CT_QUERYSPEC_NAME, system_catalog_initializer::get_query_spec ());
-  ADD_TABLE_DEFINITION (CT_INDEX_NAME, system_catalog_initializer::get_index ());
-  ADD_TABLE_DEFINITION (CT_INDEXKEY_NAME, system_catalog_initializer::get_index_key ());
-  ADD_TABLE_DEFINITION (CT_CLASSAUTH_NAME, system_catalog_initializer::get_auth ());
-  ADD_TABLE_DEFINITION (CT_TRIGGER_NAME, system_catalog_initializer::get_trigger ());
-  ADD_TABLE_DEFINITION (CT_PARTITION_NAME, system_catalog_initializer::get_partition ());
-  ADD_TABLE_DEFINITION (CT_DATATYPE_NAME, system_catalog_initializer::get_data_type ());
-  ADD_TABLE_DEFINITION (CT_STORED_PROC_NAME, system_catalog_initializer::get_stored_procedure ());
-  ADD_TABLE_DEFINITION (CT_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_stored_procedure_args ());
-  ADD_TABLE_DEFINITION (CT_STORED_PROC_CODE_NAME, system_catalog_initializer::get_stored_procedure_code ());
-  ADD_TABLE_DEFINITION (CT_SERIAL_NAME, system_catalog_initializer::get_serial ());
-  ADD_TABLE_DEFINITION (CT_HA_APPLY_INFO_NAME, system_catalog_initializer::get_ha_apply_info ());
-  ADD_TABLE_DEFINITION (CT_COLLATION_NAME, system_catalog_initializer::get_collation ());
-  ADD_TABLE_DEFINITION (CT_CHARSET_NAME, system_catalog_initializer::get_charset ());
-  ADD_TABLE_DEFINITION (CT_DUAL_NAME, system_catalog_initializer::get_dual ());
-  ADD_TABLE_DEFINITION (CT_SYNONYM_NAME, system_catalog_initializer::get_synonym ());
-  ADD_TABLE_DEFINITION (CT_SERVER_NAME, system_catalog_initializer::get_server ());
-  ADD_TABLE_DEFINITION (CT_HISTOGRAM_NAME, system_catalog_initializer::get_histogram());
-  ADD_TABLE_DEFINITION (CT_GLOBAL_TRAN_NAME, system_catalog_initializer::get_global_tran ());
+static std::vector<cubschema::system_catalog_definition>
+catcls_get_vclass_definitions (void)
+{
+  using namespace cubschema;
 
-  ADD_VIEW_DEFINITION (CTV_CLASS_NAME, system_catalog_initializer::get_view_class ());
-  ADD_VIEW_DEFINITION (CTV_SUPER_CLASS_NAME, system_catalog_initializer::get_view_direct_super_class ());
-  ADD_VIEW_DEFINITION (CTV_VCLASS_NAME, system_catalog_initializer::get_view_vclass ());
-  ADD_VIEW_DEFINITION (CTV_ATTRIBUTE_NAME, system_catalog_initializer::get_view_attribute ());
-  ADD_VIEW_DEFINITION (CTV_ATTR_SD_NAME, system_catalog_initializer::get_view_attr_setdomain_elm ());
-  ADD_VIEW_DEFINITION (CTV_METHOD_NAME, system_catalog_initializer::get_view_method ());
-  ADD_VIEW_DEFINITION (CTV_METHARG_NAME, system_catalog_initializer::get_view_meth_arg ());
-  ADD_VIEW_DEFINITION (CTV_METHARG_SD_NAME, system_catalog_initializer::get_view_meth_arg_setdomain_elm ());
-  ADD_VIEW_DEFINITION (CTV_METHFILE_NAME, system_catalog_initializer::get_view_meth_file ());
-  ADD_VIEW_DEFINITION (CTV_INDEX_NAME, system_catalog_initializer::get_view_index ());
-  ADD_VIEW_DEFINITION (CTV_INDEXKEY_NAME, system_catalog_initializer::get_view_index_key ());
-  ADD_VIEW_DEFINITION (CTV_AUTH_NAME, system_catalog_initializer::get_view_auth ());
-  ADD_VIEW_DEFINITION (CTV_TRIGGER_NAME, system_catalog_initializer::get_view_trigger ());
-  ADD_VIEW_DEFINITION (CTV_PARTITION_NAME, system_catalog_initializer::get_view_partition ());
-  ADD_VIEW_DEFINITION (CTV_STORED_PROC_NAME, system_catalog_initializer::get_view_stored_procedure ());
-  ADD_VIEW_DEFINITION (CTV_STORED_PROC_ARGS_NAME, system_catalog_initializer::get_view_stored_procedure_args ());
-  ADD_VIEW_DEFINITION (CTV_SERIAL_NAME, system_catalog_initializer::get_view_serial ());
-  ADD_VIEW_DEFINITION (CTV_HA_APPLY_INFO_NAME, system_catalog_initializer::get_view_ha_apply_info ());
-  ADD_VIEW_DEFINITION (CTV_COLLATION_NAME, system_catalog_initializer::get_view_collation ());
-  ADD_VIEW_DEFINITION (CTV_USER_NAME, system_catalog_initializer::get_view_user ());
-  ADD_VIEW_DEFINITION (CTV_AUTHORIZATION_NAME, system_catalog_initializer::get_view_authorization ());
-  ADD_VIEW_DEFINITION (CTV_CHARSET_NAME, system_catalog_initializer::get_view_charset ());
-  ADD_VIEW_DEFINITION (CTV_SERVER_NAME, system_catalog_initializer::get_view_server ());
-  ADD_VIEW_DEFINITION (CTV_SYNONYM_NAME, system_catalog_initializer::get_view_synonym ());
-  ADD_VIEW_DEFINITION (CTV_HISTOGRAM_NAME, system_catalog_initializer::get_view_db_histogram ());
+  return
+  {
+    system_catalog_initializer::get_view_class (),
+    system_catalog_initializer::get_view_direct_super_class (),
+    system_catalog_initializer::get_view_vclass (),
+    system_catalog_initializer::get_view_attribute (),
+    system_catalog_initializer::get_view_attr_setdomain_elm (),
+    system_catalog_initializer::get_view_method (),
+    system_catalog_initializer::get_view_meth_arg (),
+    system_catalog_initializer::get_view_meth_arg_setdomain_elm (),
+    system_catalog_initializer::get_view_meth_file (),
+    system_catalog_initializer::get_view_index (),
+    system_catalog_initializer::get_view_index_key (),
+    system_catalog_initializer::get_view_auth (),
+    system_catalog_initializer::get_view_trigger (),
+    system_catalog_initializer::get_view_partition (),
+    system_catalog_initializer::get_view_stored_procedure (),
+    system_catalog_initializer::get_view_stored_procedure_args (),
+    system_catalog_initializer::get_view_serial (),
+    system_catalog_initializer::get_view_ha_apply_info (),
+    system_catalog_initializer::get_view_collation (),
+    system_catalog_initializer::get_view_user (),
+    system_catalog_initializer::get_view_authorization (),
+    system_catalog_initializer::get_view_charset (),
+    system_catalog_initializer::get_view_server (),
+    system_catalog_initializer::get_view_synonym (),
+    system_catalog_initializer::get_view_db_histogram ()
+  };
 }
 
 int
 catcls_install (void)
 {
+  const std::vector<cubschema::system_catalog_definition> class_defs = catcls_get_class_definitions ();
+  const std::vector<cubschema::system_catalog_definition> vclass_defs = catcls_get_vclass_definitions ();
   int error_code = NO_ERROR;
-  const size_t num_classes = clist.size ();
-  const size_t num_vclasses = vclist.size ();
-  std::vector<MOP> class_mop (num_classes, nullptr);
+  std::vector<MOP> class_mop (class_defs.size (), nullptr);
   int save;
   size_t i;
   AU_SAVE_AND_DISABLE (save);
 
   using catalog_builder = cubschema::system_catalog_builder;
 
-  au_set_user (Au_dba_user); // change to dba user
-
-  for (i = 0; i < num_classes; i++)
+  for (i = 0; i < class_defs.size (); i++)
     {
       // new routine
-      class_mop[i] = catalog_builder::create_and_mark_system_class (clist[i].name);
+      class_mop[i] = catalog_builder::create_and_mark_system_class (class_defs[i].name);
       if (class_mop[i] == nullptr)
 	{
 	  assert (false);
@@ -352,10 +355,10 @@ catcls_install (void)
 	}
     }
 
-  for (i = 0; i < num_classes; i++)
+  for (i = 0; i < class_defs.size (); i++)
     {
       // new routine
-      error_code = catalog_builder::build_class (class_mop[i], clist[i].definition);
+      error_code = catalog_builder::build_class (class_mop[i], class_defs[i]);
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
@@ -363,13 +366,13 @@ catcls_install (void)
 	}
     }
 
-  for (i = 0; i < num_vclasses; i++)
+  for (i = 0; i < vclass_defs.size (); i++)
     {
       // new routine
-      MOP class_mop = catalog_builder::create_and_mark_system_class (vclist[i].name);
+      MOP class_mop = catalog_builder::create_and_mark_system_class (vclass_defs[i].name);
       if (class_mop != nullptr)
 	{
-	  error_code = catalog_builder::build_vclass (class_mop, vclist[i].definition);
+	  error_code = catalog_builder::build_vclass (class_mop, vclass_defs[i]);
 	}
 
       error_code = er_errid();
@@ -382,34 +385,31 @@ catcls_install (void)
 end:
   AU_RESTORE (save);
 
-  clist.clear ();
-  vclist.clear ();
-
   return error_code;
 }
 
 int
 catcls_rebuild_vclasses (void)
 {
+  const std::vector<cubschema::system_catalog_definition> vclass_defs = catcls_get_vclass_definitions ();
   int error_code = NO_ERROR;
   int save;
 
   using catalog_builder = cubschema::system_catalog_builder;
 
-  catcls_init ();
   AU_SAVE_AND_DISABLE (save);
 
-  for (size_t i = 0; i < vclist.size () && error_code == NO_ERROR; i++)
+  for (size_t i = 0; i < vclass_defs.size () && error_code == NO_ERROR; i++)
     {
       /* the existing object, so build_vclass () redefines it in place and the OID survives */
-      MOP class_mop = db_find_class (vclist[i].name.c_str ());
+      MOP class_mop = db_find_class (vclass_defs[i].name.c_str ());
       if (class_mop == nullptr)
 	{
 	  ASSERT_ERROR_AND_SET (error_code);
 	  break;
 	}
 
-      error_code = catalog_builder::build_vclass (class_mop, vclist[i].definition);
+      error_code = catalog_builder::build_vclass (class_mop, vclass_defs[i]);
       if (error_code == NO_ERROR)
 	{
 	  /* a vclass holds no instance, so nothing needs the superseded representation */
@@ -418,9 +418,6 @@ catcls_rebuild_vclasses (void)
     }
 
   AU_RESTORE (save);
-
-  clist.clear ();
-  vclist.clear ();
 
   return error_code;
 }
