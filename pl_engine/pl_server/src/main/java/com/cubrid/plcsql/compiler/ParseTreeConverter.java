@@ -115,6 +115,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (specContext.label_name() != null) {
             checkLabel(name, specContext.label_name()); // s105
         }
+        unitName = name;
 
         // visit package spec items
         topLevelStmt = CREATE_PKG_SPEC;
@@ -1176,6 +1177,46 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         return new ExprFalse(ctx);
     }
 
+    private int getTargetScopeLevel(Qualified_idContext qualifiedId, String name) {
+
+        if (topLevelStmt == CREATE_SP) {
+            if (qualifiedId.qualSingle != null) {
+
+                String qual = Misc.getNormalizedText(qualifiedId.qualSingle);
+                if (qual.equals(unitOwner) && name.equals(unitName)) {
+
+                    // OK: this is a recursive call to the stored procedure/function being defined
+                    // Note that the owner name is not used afterwards.
+                    return SymbolStack.LEVEL_MAIN;
+                }
+            }
+        } else {
+            // CREATE_PKG_SPEC or CREATE_PKG_BODY
+
+            if (qualifiedId.qualSingle != null) {
+
+                String qual = Misc.getNormalizedText(qualifiedId.qualSingle);
+                if (qual.equals(unitName)) {
+
+                    // OK: this is a call to a procedure/function in the package being defined
+                    return SymbolStack.LEVEL_MAIN + 1;
+                }
+            } else if (qualifiedId.qualLeft != null) {
+                assert qualifiedId.qualRight != null;
+
+                String qualLeft = Misc.getNormalizedText(qualifiedId.qualLeft);
+                String qualRight = Misc.getNormalizedText(qualifiedId.qualRight);
+                if (qualLeft.equals(unitOwner) && qualRight.equals(unitName)) {
+
+                    // OK: this is a call to a procedure/function in the package being defined
+                    return SymbolStack.LEVEL_MAIN + 1;
+                }
+            }
+        }
+
+        return -1;
+    }
+
     @Override
     public Expr visitFunction_call(Function_callContext ctx) {
 
@@ -1183,32 +1224,23 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
+        int targetScopeLevel;
         Qualified_idContext qualifiedId = ctx.func_call_name().qualified_id();
         if (qualifiedId == null) {
             // in this case, function name is not qualified
+            targetScopeLevel = -1;
             name = Misc.getNormalizedText(ctx.func_call_name().func_name());
         } else {
 
             // in this case, function name is qualified
 
-            boolean isGlobalCall = true;
+            name = Misc.getNormalizedText(qualifiedId.name);
+            targetScopeLevel = getTargetScopeLevel(qualifiedId, name);
 
-            if (qualifiedId.qualSingle != null) {
-
-                String qual = Misc.getNormalizedText(qualifiedId.qualSingle);
-                name = Misc.getNormalizedText(qualifiedId.name);
-                if (qual.equals(unitOwner) && name.equals(spName) && isSpFunc) {
-
-                    // OK: this is a recursive call of the stored function being defined
-                    // Note that the owner name is not used afterwards.
-                    isGlobalCall = false;
-                }
-            }
-
-            if (isGlobalCall) {
+            if (targetScopeLevel < 0) {
 
                 // This has an owner name or package name and the target function is not the SP
-                // being defined.
+                // being defined nor in the package being defined.
                 // Take this as a global function call.
 
                 String uniqName =
@@ -1224,14 +1256,21 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         assert name != null;
-        DeclFunc decl = symbolStack.getDeclFunc(name);
+        DeclFunc decl = symbolStack.getDeclFunc(name, targetScopeLevel);
         if (decl == null) {
 
-            ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, name, args, getSqlSerialNo());
-            addToSqlUses(ret);
-            semanticQuestions.put(ret, new ServerAPI.FunctionSignature(name));
+            if (targetScopeLevel < 0) {
 
-            return ret;
+                ExprGlobalFuncCall ret = new ExprGlobalFuncCall(ctx, name, args, getSqlSerialNo());
+                addToSqlUses(ret);
+                semanticQuestions.put(ret, new ServerAPI.FunctionSignature(name));
+                return ret;
+            } else {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s110
+                        "no such function " + Misc.getNormalizedText(ctx.func_call_name(), false));
+            }
+
         } else {
             if (decl.scope.level == SymbolStack.LEVEL_PREDEFINED) {
                 if (SymbolStack.noParenBuiltInFunc.indexOf(name) >= 0) {
@@ -1502,7 +1541,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         if (topLevelStmt == CREATE_SP
-                || symbolStack.getCurrentScope().level >= symbolStack.LEVEL_MAIN + 2) {
+                || symbolStack.getCurrentScope().level >= SymbolStack.LEVEL_MAIN + 2) {
 
             // NOTE: packge spec and body can have a declaration
             // which does not have a body at the top declaration level (LEVEL_MAIN + 1)
@@ -1519,7 +1558,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         if (topLevelStmt == CREATE_PKG_SPEC) {
             // CREATE PACKAGE statement does not have a nested scopes under the package items by its
             // syntax
-            assert symbolStack.getCurrentScope().level == symbolStack.LEVEL_MAIN + 1;
+            assert symbolStack.getCurrentScope().level == SymbolStack.LEVEL_MAIN + 1;
 
             // do not close the declaration block: declarations in pacakge body can follow
         } else {
@@ -2890,10 +2929,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
         NodeList<Expr> args = visitFunction_argument(ctx.function_argument());
 
+        int targetScopeLevel;
         Qualified_idContext qualifiedId = ctx.proc_call_name().qualified_id();
         if (qualifiedId == null) {
 
             // in this case, procedure name is not qualified
+            targetScopeLevel = -1;
             name = Misc.getNormalizedText(ctx.proc_call_name().identifier());
 
             if (ctx.proc_call_name().DBMS_OUTPUT() != null) {
@@ -2907,24 +2948,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
             // in this case, procedure name is qualified
 
-            boolean isGlobalCall = true;
+            name = Misc.getNormalizedText(qualifiedId.name);
+            targetScopeLevel = getTargetScopeLevel(qualifiedId, name);
 
-            if (qualifiedId.qualSingle != null) {
-
-                String qual = Misc.getNormalizedText(qualifiedId.qualSingle);
-                name = Misc.getNormalizedText(qualifiedId.name);
-                if (qual.equals(unitOwner) && name.equals(spName) && !isSpFunc) {
-
-                    // OK: this is a recursive call of the stored procedure being defined
-                    // Note that the owner name is not used afterwards.
-                    isGlobalCall = false;
-                }
-            }
-
-            if (isGlobalCall) {
+            if (targetScopeLevel < 0) {
 
                 // This has an owner name or package name and the target procedure is not the SP
-                // being defined.
+                // being defined nor in the package being defined.
                 // Take this as a global procedure call.
 
                 String uniqName = Misc.getNormalizedText(qualifiedId, false);
@@ -2938,14 +2968,21 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
         }
 
         assert name != null;
-        DeclProc decl = symbolStack.getDeclProc(name);
+        DeclProc decl = symbolStack.getDeclProc(name, targetScopeLevel);
         if (decl == null) {
 
-            StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, name, args, getSqlSerialNo());
-            addToSqlUses(ret);
-            semanticQuestions.put(ret, new ServerAPI.ProcedureSignature(name));
+            if (targetScopeLevel < 0) {
 
-            return ret;
+                StmtGlobalProcCall ret = new StmtGlobalProcCall(ctx, name, args, getSqlSerialNo());
+                addToSqlUses(ret);
+                semanticQuestions.put(ret, new ServerAPI.ProcedureSignature(name));
+                return ret;
+            } else {
+                throw new SemanticError(
+                        Misc.getLineColumnOf(ctx), // s111
+                        "no such procedure " + Misc.getNormalizedText(ctx.proc_call_name(), false));
+            }
+
         } else {
             int res = checkArguments(args, decl.paramList);
             if (res < 0) {
@@ -3227,8 +3264,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
     private Set<SqlUse> sqlUsesOfTopLevelRoutine = null;
     private Stack<StmtLoop.LoopOptimizables> routineLoopOptimizablesStack = new Stack<>();
 
-    private String spName;
-    private boolean isSpFunc;
+    private String unitName;
 
     private int exHandlerDepth;
 
@@ -3420,8 +3456,10 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                     String owner = Misc.getNormalizedText(ctx.uniq_name().owner);
                     assert owner.equals(unitOwner);
                 }
-                spName = name;
-                isSpFunc = (ctx.PROCEDURE() == null);
+
+                if (topLevelStmt == CREATE_SP) {
+                    unitName = name;
+                }
 
                 isPublic = (topLevelStmt == CREATE_SP || topLevelStmt == CREATE_PKG_SPEC);
             }

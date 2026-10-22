@@ -720,25 +720,12 @@ public class SymbolStack {
         map.put(name, decl);
     }
 
-    /*
-    DeclCursor getDeclCursor(String name) {
-        Decl d = getDecl(name);
-        if (d instanceof DeclCursor) {
-            return (DeclCursor) d;
-        } else {
-            if (d == null) {
-                return null;
-            } else {
-                throw new SemanticError(
-                        Misc.getLineColumnOf(d.ctx), // s097
-                        name + " is not a cursor but a " + d.kind() + " in this scope");
-            }
-        }
-    }
-     */
-
     DeclProc getDeclProc(String name) {
-        Decl d = getDecl(name);
+        return getDeclProc(name, -1);
+    }
+
+    DeclProc getDeclProc(String name, int targetScopeLevel) {
+        Decl d = getDecl(name, targetScopeLevel);
         if (d instanceof DeclProc) {
             return (DeclProc) d;
         } else {
@@ -753,7 +740,11 @@ public class SymbolStack {
     }
 
     DeclFunc getDeclFunc(String name) {
-        Decl d = getDecl(name);
+        return getDeclFunc(name, -1);
+    }
+
+    DeclFunc getDeclFunc(String name, int targetScopeLevel) {
+        Decl d = getDecl(name, targetScopeLevel);
         if (d instanceof DeclFunc) {
             return (DeclFunc) d;
         } else {
@@ -768,7 +759,7 @@ public class SymbolStack {
     }
 
     DeclException getDeclException(String name) {
-        Decl d = getDecl(name);
+        Decl d = getDecl(name, -1);
         if (d instanceof DeclException) {
             return (DeclException) d;
         } else {
@@ -797,7 +788,7 @@ public class SymbolStack {
 
     // return DeclId or DeclFunc for an identifier expression
     Decl getDeclForIdExpr(String name) {
-        Decl d = getDecl(name);
+        Decl d = getDecl(name, -1);
         if (d instanceof DeclId || d instanceof DeclFunc) {
             return d;
         } else {
@@ -866,10 +857,14 @@ public class SymbolStack {
         }
     }
 
-    private Decl getDecl(String name) {
+    private Decl getDecl(String name, int targetScopeLevel) {
         assert name != null;
 
         for (SymbolTable t : symbolTableStack) {
+
+            if (targetScopeLevel >= 0 && t.scope.level != targetScopeLevel) {
+                continue;
+            }
 
             if (t.decls.containsKey(name)) {
                 return t.decls.get(name);
