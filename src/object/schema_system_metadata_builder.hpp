@@ -29,18 +29,13 @@
 namespace cubschema
 {
 
-  class system_metadata_builder
+  namespace system_metadata_builder
   {
-    private:
-      system_metadata_builder () = default;
-      ~system_metadata_builder () = default;
-
-    public:
-      static MOP create_and_mark_system_class (const std::string_view name);
-      static int build_class (const MOP class_mop, const system_metadata_definition &def);
-      static int build_vclass (const MOP class_mop, const system_metadata_definition &def);
-      static int rebuild_vclasses (const std::vector<system_metadata_definition> &defs, const std::string &owner_prefix);
-  };
+    MOP create_and_mark_system_class (const std::string_view name);
+    int build_class (const MOP class_mop, const system_metadata_definition &def);
+    int build_vclass (const MOP class_mop, const system_metadata_definition &def);
+    int rebuild_vclasses (const std::vector<system_metadata_definition> &defs, const std::string &owner_prefix);
+  }
 }
 
 #endif // _SCHEMA_SYSTEM_METADATA_BUILDER_HPP_

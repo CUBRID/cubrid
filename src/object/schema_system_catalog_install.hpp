@@ -31,65 +31,64 @@ namespace cubschema
   // forward definitions
   struct system_metadata_definition;
 
-  class system_catalog_initializer
+  namespace system_catalog_initializer
   {
-    public:
-      // classes
-      static system_metadata_definition get_class ();
-      static system_metadata_definition get_attribute ();
-      static system_metadata_definition get_domain ();
-      static system_metadata_definition get_method ();
-      static system_metadata_definition get_meth_sig ();
-      static system_metadata_definition get_meth_arg ();
-      static system_metadata_definition get_meth_file ();
-      static system_metadata_definition get_query_spec ();
-      static system_metadata_definition get_index ();
-      static system_metadata_definition get_index_key ();
-      static system_metadata_definition get_auth ();
-      static system_metadata_definition get_trigger ();
-      static system_metadata_definition get_partition ();
-      static system_metadata_definition get_data_type ();
-      static system_metadata_definition get_stored_procedure ();
-      static system_metadata_definition get_stored_procedure_code ();
-      static system_metadata_definition get_stored_procedure_args ();
-      static system_metadata_definition get_serial ();
+    // classes
+    system_metadata_definition get_class ();
+    system_metadata_definition get_attribute ();
+    system_metadata_definition get_domain ();
+    system_metadata_definition get_method ();
+    system_metadata_definition get_meth_sig ();
+    system_metadata_definition get_meth_arg ();
+    system_metadata_definition get_meth_file ();
+    system_metadata_definition get_query_spec ();
+    system_metadata_definition get_index ();
+    system_metadata_definition get_index_key ();
+    system_metadata_definition get_auth ();
+    system_metadata_definition get_trigger ();
+    system_metadata_definition get_partition ();
+    system_metadata_definition get_data_type ();
+    system_metadata_definition get_stored_procedure ();
+    system_metadata_definition get_stored_procedure_code ();
+    system_metadata_definition get_stored_procedure_args ();
+    system_metadata_definition get_serial ();
 
-      static system_metadata_definition get_ha_apply_info ();
-      static system_metadata_definition get_collation ();
-      static system_metadata_definition get_charset ();
-      static system_metadata_definition get_dual ();
-      static system_metadata_definition get_server ();
-      static system_metadata_definition get_synonym ();
-      static system_metadata_definition get_histogram ();
-      static system_metadata_definition get_global_tran ();
+    system_metadata_definition get_ha_apply_info ();
+    system_metadata_definition get_collation ();
+    system_metadata_definition get_charset ();
+    system_metadata_definition get_dual ();
+    system_metadata_definition get_server ();
+    system_metadata_definition get_synonym ();
+    system_metadata_definition get_histogram ();
+    system_metadata_definition get_global_tran ();
 
-      // views
-      static system_metadata_definition get_view_class ();
-      static system_metadata_definition get_view_direct_super_class ();
-      static system_metadata_definition get_view_vclass ();
-      static system_metadata_definition get_view_attribute ();
-      static system_metadata_definition get_view_attr_setdomain_elm ();
-      static system_metadata_definition get_view_method ();
-      static system_metadata_definition get_view_meth_arg ();
-      static system_metadata_definition get_view_meth_arg_setdomain_elm ();
-      static system_metadata_definition get_view_meth_file ();
-      static system_metadata_definition get_view_index ();
-      static system_metadata_definition get_view_index_key ();
-      static system_metadata_definition get_view_auth ();
-      static system_metadata_definition get_view_trigger ();
-      static system_metadata_definition get_view_partition ();
-      static system_metadata_definition get_view_stored_procedure ();
-      static system_metadata_definition get_view_stored_procedure_args ();
-      static system_metadata_definition get_view_serial ();
-      static system_metadata_definition get_view_ha_apply_info ();
-      static system_metadata_definition get_view_collation ();
-      static system_metadata_definition get_view_user ();
-      static system_metadata_definition get_view_authorization ();
-      static system_metadata_definition get_view_charset ();
-      static system_metadata_definition get_view_synonym ();
-      static system_metadata_definition get_view_server ();
-      static system_metadata_definition get_view_db_histogram ();
-  };
+    // views
+    system_metadata_definition get_view_class ();
+    system_metadata_definition get_view_direct_super_class ();
+    system_metadata_definition get_view_vclass ();
+    system_metadata_definition get_view_attribute ();
+    system_metadata_definition get_view_attr_setdomain_elm ();
+    system_metadata_definition get_view_method ();
+    system_metadata_definition get_view_meth_arg ();
+    system_metadata_definition get_view_meth_arg_setdomain_elm ();
+    system_metadata_definition get_view_meth_file ();
+    system_metadata_definition get_view_index ();
+    system_metadata_definition get_view_index_key ();
+    system_metadata_definition get_view_auth ();
+    system_metadata_definition get_view_trigger ();
+    system_metadata_definition get_view_partition ();
+    system_metadata_definition get_view_stored_procedure ();
+    system_metadata_definition get_view_stored_procedure_args ();
+    system_metadata_definition get_view_serial ();
+    system_metadata_definition get_view_ha_apply_info ();
+    system_metadata_definition get_view_collation ();
+    system_metadata_definition get_view_user ();
+    system_metadata_definition get_view_authorization ();
+    system_metadata_definition get_view_charset ();
+    system_metadata_definition get_view_synonym ();
+    system_metadata_definition get_view_server ();
+    system_metadata_definition get_view_db_histogram ();
+  }
 } // namespace cubschema
 
 std::string sm_define_view_class_spec (void);

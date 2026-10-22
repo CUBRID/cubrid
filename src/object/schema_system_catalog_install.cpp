@@ -337,7 +337,7 @@ catcls_install (void)
   size_t i;
   AU_SAVE_AND_DISABLE (save);
 
-  using metadata_builder = cubschema::system_metadata_builder;
+  namespace metadata_builder = cubschema::system_metadata_builder;
 
   for (i = 0; i < class_defs.size (); i++)
     {
@@ -390,7 +390,7 @@ catcls_rebuild_vclasses (void)
   const std::string owner_prefix = "";
   int save;
 
-  using metadata_builder = cubschema::system_metadata_builder;
+  namespace metadata_builder = cubschema::system_metadata_builder;
 
   AU_SAVE_AND_DISABLE (save);
   error_code = metadata_builder::rebuild_vclasses (vclass_defs, owner_prefix);

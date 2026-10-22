@@ -69,7 +69,7 @@ info_schema_install (void)
 
   AU_SAVE_AND_DISABLE (save);
 
-  using metadata_builder = cubschema::system_metadata_builder;
+  namespace metadata_builder = cubschema::system_metadata_builder;
 
   for (size_t i = 0; i < view_defs.size (); i++)
     {
@@ -103,7 +103,7 @@ info_schema_rebuild_vclasses (void)
   const std::string owner_prefix = std::string (AU_INFORMATION_SCHEMA_USER_NAME) + ".";
   int save;
 
-  using metadata_builder = cubschema::system_metadata_builder;
+  namespace metadata_builder = cubschema::system_metadata_builder;
 
   AU_SAVE_AND_DISABLE (save);
   error_code = metadata_builder::rebuild_vclasses (view_defs, owner_prefix);

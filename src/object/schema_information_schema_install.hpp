@@ -31,29 +31,28 @@ namespace cubschema
   // forward definitions
   struct system_metadata_definition;
 
-  class information_schema_initializer
+  namespace information_schema_initializer
   {
-    public:
-      static system_metadata_definition get_view_column_privileges ();
-      static system_metadata_definition get_view_columns ();
-      static system_metadata_definition get_view_domains ();
-      static system_metadata_definition get_view_foreign_servers ();
-      static system_metadata_definition get_view_key_column_usage ();
-      static system_metadata_definition get_view_parameters ();
-      static system_metadata_definition get_view_partitions ();
-      static system_metadata_definition get_view_referential_constraints ();
-      static system_metadata_definition get_view_routine_privileges ();
-      static system_metadata_definition get_view_routines ();
-      static system_metadata_definition get_view_schemata ();
-      static system_metadata_definition get_view_sequences ();
-      static system_metadata_definition get_view_statistics ();
-      static system_metadata_definition get_view_synonyms ();
-      static system_metadata_definition get_view_table_constraints ();
-      static system_metadata_definition get_view_table_privileges ();
-      static system_metadata_definition get_view_tables ();
-      static system_metadata_definition get_view_triggers ();
-      static system_metadata_definition get_view_views ();
-  };
+    system_metadata_definition get_view_column_privileges ();
+    system_metadata_definition get_view_columns ();
+    system_metadata_definition get_view_domains ();
+    system_metadata_definition get_view_foreign_servers ();
+    system_metadata_definition get_view_key_column_usage ();
+    system_metadata_definition get_view_parameters ();
+    system_metadata_definition get_view_partitions ();
+    system_metadata_definition get_view_referential_constraints ();
+    system_metadata_definition get_view_routine_privileges ();
+    system_metadata_definition get_view_routines ();
+    system_metadata_definition get_view_schemata ();
+    system_metadata_definition get_view_sequences ();
+    system_metadata_definition get_view_statistics ();
+    system_metadata_definition get_view_synonyms ();
+    system_metadata_definition get_view_table_constraints ();
+    system_metadata_definition get_view_table_privileges ();
+    system_metadata_definition get_view_tables ();
+    system_metadata_definition get_view_triggers ();
+    system_metadata_definition get_view_views ();
+  }
 }
 
 std::string sm_define_view_column_privileges_spec (void);
