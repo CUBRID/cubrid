@@ -166,9 +166,32 @@ extern int numeric_coerce_string_to_num (const char *astring, int astring_len, I
 extern int numeric_coerce_num_to_num (const DB_VALUE * src_value, int src_prec, int src_scale, int dest_prec,
 				      int dest_scale, DB_C_NUMERIC dest_num, bool * dest_num_is_negative);
 
+#if defined (__cplusplus)
+/* Fixed-type operations shared by the legacy dispatchers and the converters. */
+/* *INDENT-OFF* */
+template <DB_TYPE SRC>
+int numeric_coerce_value_to_num (const DB_VALUE *src, DB_VALUE *dest, DB_DATA_STATUS *data_status);
+/* *INDENT-ON* */
+
+extern int numeric_coerce_string_to_num_status (const char *astring, int astring_length, INTL_CODESET codeset,
+						DB_VALUE * result);
+extern int numeric_coerce_num_to_double (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_float (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_monetary (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_int (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_bigint (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_short (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_double_strict (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_float_strict (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_monetary_strict (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_int_strict (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_bigint_strict (const DB_VALUE * src, int scale, DB_VALUE * dest);
+extern int numeric_coerce_num_to_short_strict (const DB_VALUE * src, int scale, DB_VALUE * dest);
+
+#endif /* __cplusplus */
+
 extern int numeric_db_value_coerce_to_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_stat);
 extern int numeric_db_value_coerce_from_num (DB_VALUE * src, DB_VALUE * dest, DB_DATA_STATUS * data_stat);
-extern int numeric_db_value_coerce_from_num_strict (DB_VALUE * src, DB_VALUE * dest);
 extern char *numeric_db_value_print (const DB_VALUE * val, char *buf);
 
 /* Floating-Point NUMERIC */
@@ -176,6 +199,10 @@ extern int numeric_get_precision_digits (uint8_t * calc_buf);
 extern int float_numeric_db_value_add (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_sub (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_mul (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
+/* single-word fast multiply for the compiled expression path: returns 1 when answer
+ * was produced (bit-identical to the reference fast path), 0 when the caller must run
+ * float_numeric_db_value_mul () */
+extern int float_numeric_db_value_mul_fixed64 (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_div (const DB_VALUE * dbv1, const DB_VALUE * dbv2, DB_VALUE * answer);
 extern int float_numeric_db_value_mod (const DB_VALUE * value1, const DB_VALUE * value2, DB_VALUE * result);
 extern void float_numeric_normalize_for_hash (DB_C_NUMERIC num, uint8_t * calc_buf, int precision, int scale);

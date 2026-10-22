@@ -1694,7 +1694,6 @@ namespace cubschema
       {"update_rule", format_varchar (32)},
       {"referential_match_option", format_varchar (7)},
       {"index_type", format_varchar (32)},
-      {"deduplicate_key_level", "integer"},
       {"comment", format_varchar (1024)},
       {"created_time", "datetime"},
       {"updated_time", "datetime"},

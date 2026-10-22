@@ -120,10 +120,6 @@ restart_scan_oid:
 	  }
 	ev_res = eval_data_filter (thread_p, &m_cur_oid, &m_recdes, m_scan_cache,
 				   &m_data_filter);
-	if (m_on_trace)
-	  {
-	    m_scan_stats->qualified_rows++;
-	  }
 	if (ev_res == V_ERROR)
 	  {
 	    return S_ERROR;
@@ -138,6 +134,10 @@ restart_scan_oid:
 	if (ev_res != V_TRUE)
 	  {
 	    continue;
+	  }
+	if (m_on_trace)
+	  {
+	    m_scan_stats->qualified_rows++;
 	  }
 	if (m_rest_regu_list)
 	  {

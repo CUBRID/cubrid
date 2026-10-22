@@ -80,10 +80,32 @@
 				 (plan->plan_type == QO_PLANTYPE_SORT))
 
 #define TEMP_SETUP_COST 5.0
-#define QO_CPU_WEIGHT 0.0025
-/* Per-OID heap-access CPU penalty for NON-covering index scans (covering scans: 0).
- * Lowered 20 -> 5 to favor index scan when low/stale leading-column NDV inflates sel via 1/pkeys[0]. TODO: per-index clustering factor. */
-#define ISCAN_OID_ACCESS_OVERHEAD 5
+/* Unit prices of the cost model, read from the cost_* system parameters (PRM_ID_COST_*,
+ * CBRD-27126). One unit is one sequential page read (cost_seq_page, the anchor, 1.0); the
+ * other prices are ratios to it, as in PostgreSQL's seq_page_cost / random_page_cost /
+ * cpu_tuple_cost. They are PRM_FOR_CLIENT because the optimizer runs client-side, and every
+ * default reproduces the literal this file used to hard-code bit for bit, so an untouched
+ * configuration prices each plan exactly as before.
+ *
+ * Read at every use, not cached: on the client prm_get_*_value () is an inlined array index,
+ * which is how qo_sort_cost (), qo_follow_cost () and qo_hjoin_cost () already read
+ * PRM_ID_SR_NBUFFERS, PRM_ID_PB_NBUFFERS and PRM_ID_MAX_HASH_LIST_SCAN_SIZE; a file-static
+ * cache would add mutable global state for a saving nobody has measured. Conversion to
+ * double happens here, once, so no cost expression mixes float and double. */
+#define QO_COST_SEQ_PAGE ((double) prm_get_float_value (PRM_ID_COST_SEQ_PAGE))
+#define QO_COST_RANDOM_PAGE ((double) prm_get_float_value (PRM_ID_COST_RANDOM_PAGE))
+/* Per-tuple CPU price, from the integer reciprocal cost_cpu_tuples_per_page (default 400):
+ * the historical literal 0.0025 has no exact float, and IEEE division of two exact values
+ * is correctly rounded, so 1.0 / 400 is that double bit for bit -- a float parameter would
+ * have moved every CPU term by 2e-8 and flipped .5 roundings in plan dumps. Costs in this
+ * model are integer multiples of this price, so exact ties are common, not rare. */
+#define QO_CPU_WEIGHT (1.0 / (double) prm_get_integer_value (PRM_ID_COST_CPU_TUPLES_PER_PAGE))
+/* Per-OID heap-access CPU penalty for NON-covering index scans (covering scans: 0), in tuple
+ * units (the use site multiplies by QO_CPU_WEIGHT): cost_heap_fetch_per_oid.
+ * Lowered 20 -> 5 to favor index scan when low/stale leading-column NDV inflates sel via 1/pkeys[0]. TODO: per-index clustering factor.
+ * Until that factor exists this value also stands in for the missing correlation, so a tuned
+ * value absorbs both roles. */
+#define ISCAN_OID_ACCESS_OVERHEAD (prm_get_integer_value (PRM_ID_COST_HEAP_FETCH_PER_OID))
 /* Per-extra-row iscan heap-fetch cost: charges (heap_rows - 1) * ratio, so a single-row
  * (fanout=1 / unique / pk) probe adds ZERO and keeps exactly the original cost (blast-radius
  * safe). Added to object_IO on top of the existing page-based cost, so a high-fanout inner
@@ -129,10 +151,13 @@
 					   SERVER/SA-only (query_hash_scan.h) so it cannot be sizeof'd in the
 					   client-side optimizer; a static_assert there guards against drift. */
 #define ISCAN_IO_HIT_RATIO 0.5
-#define QO_EFFECTIVE_CACHE_PAGES 32768.0	/* pages assumed cachable for the repeated-probe (Mackert-Lohman)
-						   correction in qo_nljoin_cost (); matches the data_buffer_pages
-						   default (512M / 16K). The real parameter is server-only, so the
-						   client-side optimizer cannot read it. */
+/* Pages assumed cachable for the repeated-probe (Mackert-Lohman) correction in
+ * qo_iscan_cost () and qo_nljoin_cost (): cost_effective_cache_pages, default 32768 = the
+ * data_buffer_pages default (512M / 16K). The real buffer size is a server-only parameter the
+ * client-side optimizer cannot read, so the operator states the assumption here instead
+ * (PostgreSQL's effective_cache_size). Denominated in pages, not bytes, so the default stays
+ * bit-identical to the former literal on every page size. */
+#define QO_EFFECTIVE_CACHE_PAGES ((double) prm_get_integer_value (PRM_ID_COST_EFFECTIVE_CACHE_PAGES))
 #define SORT_MERGE_FAN_IN 4.0	/* the executor merges at most SORT_MAX_HALF_FILES (4) runs per pass
 				   (external_sort.c); that file is server-only, so the value cannot be
 				   included here -- keep in sync manually. */
@@ -142,6 +167,10 @@
 #define RBO_CHECK_COST 50
 #define RBO_CHECK_RATIO 1.2
 #define RBO_CHECK_LIMIT_RATIO 10
+
+/* NL inner memoize decision (qo_nl_inner_memoize_is_useless) */
+#define MEMOIZE_UNIQUE_KEY_RATIO 0.95	/* without a unique index, NDV >= 95% of the rows counts as near-unique */
+#define MEMOIZE_MIN_HIT_RATIO 0.1	/* skip memoize when less than 10% of the inner calls are expected to hit */
 
 /* Cost tie detection for the plan comparison steps: exact floating-point equality
  * virtually never fires after any nontrivial cost arithmetic, so ties fell through
@@ -236,6 +265,14 @@ static void qo_follow_cost (QO_PLAN *);
 static void qo_worst_cost (QO_PLAN *);
 static void qo_zero_cost (QO_PLAN *);
 
+static void qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms);
+static bool qo_node_is_multi_class (QO_NODE * node);
+static double qo_seg_ndv (QO_SEGMENT * seg);
+static bool qo_seg_has_unique_index (QO_SEGMENT * seg);
+static double qo_node_filtered_rows (QO_NODE * node);
+static QO_SEGMENT *qo_term_seg_of_node (QO_TERM * term, QO_NODE * node, QO_SEGMENT ** other);
+static bool qo_node_matches_at_most_once (QO_ENV * env, QO_NODE * node, BITSET * from);
+static double qo_node_rows_in_join (QO_ENV * env, QO_NODE * node, BITSET * outer_nodes, double calls);
 static void qo_estimate_ngroups (QO_PLAN *, SORT_TYPE);
 static INT64 qo_get_group_ndv (QO_PLAN *, SORT_TYPE);
 static double qo_estimate_ndv (double N, double p, double n);
@@ -258,7 +295,7 @@ static void qo_dump_planvec (QO_PLANVEC *, FILE *, int);
 static void qo_dump_info (QO_INFO *, FILE *);
 static void qo_dump_planner_info (QO_PLANNER *, QO_PARTITION *, FILE *);
 
-static void qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
+static bool qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
 				  double *out_head_factor, double *out_tail_factor);
 static void planner_visit_node (QO_PLANNER *, QO_PARTITION *, PT_HINT_ENUM, QO_NODE *, QO_NODE *, BITSET *, BITSET *,
 				BITSET *, BITSET *, BITSET *, BITSET *, BITSET *, int);
@@ -324,12 +361,12 @@ static QO_PLAN *qo_seq_scan_new (QO_INFO *, QO_NODE *);
 static QO_PLAN *qo_index_scan_new (QO_INFO *, QO_NODE *, QO_NODE_INDEX_ENTRY *, QO_SCANMETHOD, BITSET *, BITSET *);
 static int qo_has_is_not_null_term (QO_NODE * node);
 
-static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp);
+static bool qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, int seg_idx);
 static bool qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_NODE * col);
-static int qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
-static int qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp);
+static int qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type);
 static PT_NODE *qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_get_col_product_ndv (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
+static PT_NODE *qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk);
 static PT_NODE *qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg,
 							   int *continue_walk);
 static bool qo_check_orderby_skip_descending (QO_PLAN * plan);
@@ -726,13 +763,22 @@ qo_estimate_ngroups (QO_PLAN * plan, SORT_TYPE sort_type)
  * N: total_nrows
  * p: expected_nrows
  * n: NDV of group columns
+ *
+ * It is the expected number of distinct values among p rows drawn from N rows that hold n values
+ * N / n times each, the same estimate PostgreSQL estimate_num_groups () applies per base relation.
  */
 double
 qo_estimate_ndv (double N, double p, double n)
 {
-  if (N <= 0.0 || n <= 0.0)
+  if (N <= 0.0 || n <= 0.0 || p <= 0.0)
     {
       return 0.0;
+    }
+
+  if (p >= N)
+    {
+      /* all rows are drawn; (N - p) / N would go negative and pow () return NaN */
+      return n;
     }
 
   double ratio = (N - p) / N;
@@ -1207,7 +1253,7 @@ qo_unset_hint_use_desc_idx (QO_PLAN * plan, void *arg)
 
 /*
  * qo_validate_indexes_for_orderby () - wrapper function for
- *					qo_validate_index_for_orderby
+ *					qo_validate_index_for_sort
  *                                      used with qo_walk_plan_tree.
  * return: NO_ERROR or ER_FAILED if the wrapped function returns false
  * plan(in):
@@ -1218,7 +1264,7 @@ qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg)
 {
   if (qo_is_iscan_from_orderby (plan))
     {
-      if (!qo_validate_index_for_orderby (plan->info->env, plan->plan_un.scan.index))
+      if (!qo_validate_index_for_sort (plan->info->env, plan->plan_un.scan.index, SORT_ORDERBY))
 	{
 	  return ER_FAILED;
 	}
@@ -1310,7 +1356,7 @@ qo_top_plan_new (QO_PLAN * plan)
 
 	  if (group_sort_list)
 	    {
-	      if (found_instnum /* && found_grpynum */ )
+	      if (tree->info.query.q.select.connect_by || found_instnum /* && found_grpynum */ )
 		{
 		  ;		/* give up */
 		}
@@ -1338,7 +1384,7 @@ qo_top_plan_new (QO_PLAN * plan)
 	      /* if the plan is index_groupby, we validate the plan */
 	      if (qo_is_iscan_from_groupby (plan) || qo_is_iscan_from_orderby (plan))
 		{
-		  if (!qo_validate_index_for_groupby (plan->info->env, plan->plan_un.scan.index))
+		  if (!qo_validate_index_for_sort (plan->info->env, plan->plan_un.scan.index, SORT_GROUPBY))
 		    {
 		      /* drop the plan if it wasn't validated */
 		      qo_worst_cost (plan);
@@ -1917,7 +1963,8 @@ qo_sscan_cost (QO_PLAN * planp)
     {
       planp->variable_cpu_cost = (double) QO_NODE_NCARD (nodep) * (double) QO_CPU_WEIGHT;
     }
-  planp->variable_io_cost = (double) QO_NODE_TCARD (nodep);
+  /* a heap scan reads its pages in order: sequential unit price */
+  planp->variable_io_cost = (double) QO_NODE_TCARD (nodep) * QO_COST_SEQ_PAGE;
   planp->info->scan_rows = MAX (1, QO_NODE_NCARD (nodep));
 
 #if TEST_DUMP_PLAN_SCAN_COST
@@ -2555,8 +2602,10 @@ qo_iscan_cost (QO_PLAN * planp)
        * fanout surcharge. qo_nljoin_cost () applies the repeated-probe (Mackert-Lohman)
        * saturation to this share only; the leaf/ISS terms added below model index pages the
        * correction does not cover and must keep accruing per probe. Covering scans fetch no
-       * heap pages and leave this at 0 (no saturation applies). */
-      planp->iscan_heap_io = MAX (1.0, object_IO);
+       * heap pages and leave this at 0 (no saturation applies). Priced at the random unit
+       * like variable_io_cost below, so qo_nljoin_cost () subtracts and MINs the two in one
+       * unit. */
+      planp->iscan_heap_io = MAX (1.0, object_IO) * QO_COST_RANDOM_PAGE;
     }
   /* Split the leaf-page IO across the fixed/variable sides. The first leaf page (the one the
    * b+tree descent lands on) is read once and stays buffer-resident across probes, so it is
@@ -2592,10 +2641,13 @@ qo_iscan_cost (QO_PLAN * planp)
   planp->fixed_cpu_cost = 0.0;
   /* Fixed: the b+tree descent (n * height, upper levels shared across probes and assumed
    * buffer-resident) plus the single leaf page the descent lands on. */
-  planp->fixed_io_cost = index_IO + first_leaf;
+  /* Index pages and OID-fetched heap pages are random reads: random unit price. object_IO
+   * itself stays a page count up to here because qo_mackert_lohman_pages () reasons in
+   * pages; the price is applied once, at the end. */
+  planp->fixed_io_cost = (index_IO + first_leaf) * QO_COST_RANDOM_PAGE;
   planp->variable_cpu_cost = (leaf_access + heap_access) * (double) QO_CPU_WEIGHT;
   planp->iscan_descent_cpu = descent_cpu;
-  planp->variable_io_cost = object_IO;
+  planp->variable_io_cost = object_IO * QO_COST_RANDOM_PAGE;
   planp->info->scan_rows = MAX (1, (double) QO_NODE_NCARD (nodep) * heap_sel);
 
 #if TEST_DUMP_PLAN_SCAN_COST
@@ -3109,7 +3161,9 @@ qo_sort_cost (QO_PLAN * planp)
       planp->fixed_cpu_cost = subplanp->fixed_cpu_cost + subplanp->variable_cpu_cost + TEMP_SETUP_COST;
       planp->fixed_io_cost = subplanp->fixed_io_cost + subplanp->variable_io_cost;
       planp->variable_cpu_cost = objects * (double) QO_CPU_WEIGHT;
-      planp->variable_io_cost = pages;
+      /* the list file is written and re-read in order: sequential unit price. TEMP_SETUP_COST
+       * above is a CPU-side policy offset, not a page count, and is not priced. */
+      planp->variable_io_cost = pages * QO_COST_SEQ_PAGE;
 
       if (order != QO_UNORDERED && order != subplanp->order)
 	{
@@ -3139,7 +3193,8 @@ qo_sort_cost (QO_PLAN * planp)
 		  double runs = MAX (pages / MAX (2.0, (double) prm_get_integer_value (PRM_ID_SR_NBUFFERS)), 1.0);
 		  double merge_passes = ceil (log (runs) / log (SORT_MERGE_FAN_IN));
 
-		  sort_io = pages * (1.0 + merge_passes);	/* initial run formation + merge passes */
+		  /* initial run formation + merge passes, all sequential temp-file IO */
+		  sort_io = pages * (1.0 + merge_passes) * QO_COST_SEQ_PAGE;
 		}
 	    }
 
@@ -3349,7 +3404,7 @@ qo_join_new (QO_INFO * info, JOIN_TYPE join_type, QO_JOINMETHOD join_method, QO_
   /* add to out terms */
   bitset_union (&sarg_out_terms, &(plan->plan_un.join.join_terms));
 
-  if (IS_OUTER_JOIN_TYPE (join_type))
+  if (IS_OUTER_JOIN_TYPE (join_type) || qo_plan_semi_anti_join_type (inner) == PT_JOIN_ANTI)
     {
       /* set during join terms */
       bitset_assign (&(plan->plan_un.join.during_join_terms), duj_terms);
@@ -3507,6 +3562,445 @@ qo_plan_semi_anti_join_type (QO_PLAN * plan)
 	}
     }
   return PT_JOIN_NONE;
+}
+
+/*
+ * qo_collect_inner_scan_terms () - add the terms an NL inner plan evaluates by itself to terms
+ *   return: void
+ *   plan(in): the inner plan of an NL join
+ *   terms(in/out):
+ *
+ * An index join places the join term in the inner index scan instead of the join's terms. A sort
+ * (temp list) is built once, so only the terms of the list scan over it can see the outer row.
+ */
+static void
+qo_collect_inner_scan_terms (QO_PLAN * plan, BITSET * terms)
+{
+  while (plan != NULL)
+    {
+      bitset_union (terms, &(plan->sarged_terms));
+
+      switch (plan->plan_type)
+	{
+	case QO_PLANTYPE_SCAN:
+	  bitset_union (terms, &(plan->plan_un.scan.terms));
+	  bitset_union (terms, &(plan->plan_un.scan.kf_terms));
+	  return;
+	case QO_PLANTYPE_FOLLOW:
+	  bitset_add (terms, QO_TERM_IDX (plan->plan_un.follow.path));
+	  plan = plan->plan_un.follow.head;
+	  continue;
+	default:
+	  return;
+	}
+    }
+}
+
+/*
+ * qo_node_is_multi_class () - whether a node scans more than one class (a class hierarchy)
+ *   return:
+ *   node(in):
+ */
+static bool
+qo_node_is_multi_class (QO_NODE * node)
+{
+  return QO_NODE_INFO (node) != NULL && QO_NODE_INFO_N (node) > 1;
+}
+
+/*
+ * qo_seg_ndv () - NDV of a column from statistics
+ *   return: the NDV, 0 if unknown
+ *   seg(in):
+ *
+ * The NDV of a class hierarchy is the sum of its classes' NDVs (qo_get_attr_info ()), which counts a
+ * value held by two classes twice, so it is left unknown. A partitioned class is one class whose NDV
+ * merges its partitions' sketches.
+ */
+static double
+qo_seg_ndv (QO_SEGMENT * seg)
+{
+  QO_ATTR_INFO *info = QO_SEG_INFO (seg);
+  double ndv;
+
+  if (info == NULL || info->ndv <= 0 || qo_node_is_multi_class (QO_SEG_HEAD (seg)))
+    {
+      return 0.0;
+    }
+
+  ndv = (double) info->ndv;
+  if (info->cum_stats.is_indexed && info->cum_stats.pkeys != NULL && info->cum_stats.pkeys_size > 0
+      && info->cum_stats.pkeys[0] > 0)
+    {
+      ndv = MIN (ndv, (double) info->cum_stats.pkeys[0]);
+    }
+
+  return ndv;
+}
+
+/*
+ * qo_seg_has_unique_index () - whether a column is the only column of a unique index
+ *   return:
+ *   seg(in):
+ *
+ * A primary key or unique index that is neither filtered nor on a function.
+ */
+static bool
+qo_seg_has_unique_index (QO_SEGMENT * seg)
+{
+  QO_NODE *node = QO_SEG_HEAD (seg);
+  QO_NODE_INDEX *node_indexp = QO_NODE_INDEXES (node);
+  QO_INDEX_ENTRY *index_entryp;
+  int i;
+
+  if (node_indexp == NULL || qo_node_is_multi_class (node))
+    {
+      return false;
+    }
+
+  for (i = 0; i < QO_NI_N (node_indexp); i++)
+    {
+      index_entryp = QO_NI_ENTRY (node_indexp, i)->head;
+      if (index_entryp != NULL && index_entryp->constraints != NULL
+	  && SM_IS_CONSTRAINT_UNIQUE_FAMILY (index_entryp->constraints->type)
+	  && index_entryp->constraints->filter_predicate == NULL && index_entryp->constraints->func_index_info == NULL
+	  && index_entryp->nsegs == 1 && index_entryp->seg_idxs[0] == QO_SEG_IDX (seg))
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_node_filtered_rows () - rows of a table after its own search conditions
+ *   return:
+ *   node(in):
+ */
+static double
+qo_node_filtered_rows (QO_NODE * node)
+{
+  return MAX (1.0, QO_NODE_SELECTIVITY (node) * (double) QO_NODE_NCARD (node));
+}
+
+/*
+ * qo_term_seg_of_node () - the segment of an equi join term that belongs to node
+ *   return: the segment, NULL if the term is not an equi inner join term on node
+ *   term(in):
+ *   node(in):
+ *   other(out): the segment on the other side
+ */
+static QO_SEGMENT *
+qo_term_seg_of_node (QO_TERM * term, QO_NODE * node, QO_SEGMENT ** other)
+{
+  QO_ENV *env = QO_TERM_ENV (term);
+  QO_SEGMENT *mine = NULL, *seg;
+  BITSET_ITERATOR bi;
+  int i;
+
+  *other = NULL;
+  if (!QO_INNER_JOIN_TERM (term) || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP)
+      || bitset_cardinality (&QO_TERM_SEGS (term)) != 2 || bitset_cardinality (&QO_TERM_NODES (term)) != 2)
+    {
+      return NULL;
+    }
+
+  for (i = bitset_iterate (&QO_TERM_SEGS (term), &bi); i != -1; i = bitset_next_member (&bi))
+    {
+      seg = QO_ENV_SEG (env, i);
+      if (QO_SEG_HEAD (seg) == node)
+	{
+	  mine = seg;
+	}
+      else
+	{
+	  *other = seg;
+	}
+    }
+
+  if (mine == NULL || *other == NULL)
+    {
+      *other = NULL;
+      return NULL;
+    }
+
+  return mine;
+}
+
+/*
+ * qo_node_matches_at_most_once () - whether every row of the nodes in from matches at most one row of node
+ *   return:
+ *   env(in):
+ *   node(in):
+ *   from(in): the nodes already joined
+ *
+ * True when every column of a primary key or unique index of node is equated by an inner join term
+ * to a column of from, as a foreign key joins its primary key. Whether the constraint is declared as
+ * a foreign key does not matter: the unique key alone makes node add no duplicate.
+ */
+static bool
+qo_node_matches_at_most_once (QO_ENV * env, QO_NODE * node, BITSET * from)
+{
+  QO_NODE_INDEX *node_indexp = QO_NODE_INDEXES (node);
+  QO_INDEX_ENTRY *index_entryp;
+  QO_SEGMENT *mine, *other;
+  int i, j, t;
+  bool covered;
+
+  if (node_indexp == NULL || qo_node_is_multi_class (node))
+    {
+      /* the unique index of one class of a hierarchy says nothing about the other classes */
+      return false;
+    }
+
+  for (i = 0; i < QO_NI_N (node_indexp); i++)
+    {
+      index_entryp = QO_NI_ENTRY (node_indexp, i)->head;
+      if (index_entryp == NULL || index_entryp->constraints == NULL
+	  || !SM_IS_CONSTRAINT_UNIQUE_FAMILY (index_entryp->constraints->type) || index_entryp->nsegs <= 0
+	  || index_entryp->constraints->filter_predicate != NULL || index_entryp->constraints->func_index_info != NULL)
+	{
+	  /* a filtered or function unique index does not make the columns unique over the table */
+	  continue;
+	}
+
+      covered = true;
+      for (j = 0; j < index_entryp->nsegs && covered; j++)
+	{
+	  covered = false;
+	  if (index_entryp->seg_idxs[j] == -1)
+	    {
+	      break;
+	    }
+
+	  for (t = 0; t < env->nterms && !covered; t++)
+	    {
+	      mine = qo_term_seg_of_node (QO_ENV_TERM (env, t), node, &other);
+	      if (mine != NULL && QO_SEG_IDX (mine) == index_entryp->seg_idxs[j]
+		  && BITSET_MEMBER (*from, QO_NODE_IDX (QO_SEG_HEAD (other))))
+		{
+		  covered = true;
+		}
+	    }
+	}
+
+      if (covered)
+	{
+	  return true;
+	}
+    }
+
+  return false;
+}
+
+/*
+ * qo_node_rows_in_join () - how many distinct rows of node an inner join outer holds
+ *   return: the rows, or -1 if they cannot be estimated
+ *   env(in):
+ *   node(in): a table of the outer
+ *   outer_nodes(in): the tables of the outer
+ *   calls(in): the outer cardinality
+ *
+ * A row of node is repeated in the outer only by the tables it joins. When the other tables are
+ * joined to node through their primary or unique keys (fact to dimension), a row of node appears at
+ * most once and the outer holds calls distinct rows of node.
+ *
+ * Otherwise this follows PostgreSQL estimate_num_groups (), which reduces a column's NDV by its base
+ * relation's own search conditions only, and also counts what the joins on node remove: under the
+ * containment assumption of eqjoinsel_inner (), an equi join node.a = other.b keeps
+ * min (1, ndv (other.b) / ndv (node.a)) of the rows of node, where ndv (other.b) is reduced by
+ * other's search conditions. A table that duplicates rows of node raises calls, not this count. The
+ * search conditions of tables that do not join node itself are not counted.
+ */
+static double
+qo_node_rows_in_join (QO_ENV * env, QO_NODE * node, BITSET * outer_nodes, double calls)
+{
+  BITSET reached;
+  BITSET_ITERATOR bi;
+  QO_TERM *term;
+  QO_SEGMENT *mine, *other;
+  QO_NODE *other_node;
+  double rows, mine_ndv, other_ndv;
+  bool added, all_reached;
+  int i;
+
+  /* all the other tables are joined through their unique keys: no row of node is repeated */
+  bitset_init (&reached, env);
+  bitset_add (&reached, QO_NODE_IDX (node));
+  do
+    {
+      added = false;
+      for (i = bitset_iterate (outer_nodes, &bi); i != -1; i = bitset_next_member (&bi))
+	{
+	  if (!BITSET_MEMBER (reached, i) && qo_node_matches_at_most_once (env, QO_ENV_NODE (env, i), &reached))
+	    {
+	      bitset_add (&reached, i);
+	      added = true;
+	    }
+	}
+    }
+  while (added);
+  all_reached = bitset_subset (&reached, outer_nodes);
+  bitset_delset (&reached);
+
+  if (all_reached)
+    {
+      return MIN (calls, (double) QO_NODE_NCARD (node));
+    }
+
+  rows = qo_node_filtered_rows (node);
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+      if (bitset_cardinality (&QO_TERM_NODES (term)) < 2 || !BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (node))
+	  || !bitset_subset (outer_nodes, &QO_TERM_NODES (term)) || QO_TERM_CLASS (term) == QO_TC_DUMMY_JOIN)
+	{
+	  continue;
+	}
+
+      mine = qo_term_seg_of_node (term, node, &other);
+      if (mine == NULL)
+	{
+	  /* a join term on node that is not a simple equi join: what it removes is unknown */
+	  return -1.0;
+	}
+
+      mine_ndv = qo_seg_ndv (mine);
+      other_ndv = qo_seg_ndv (other);
+      if (mine_ndv <= 0.0 || other_ndv <= 0.0)
+	{
+	  return -1.0;
+	}
+
+      other_node = QO_SEG_HEAD (other);
+      other_ndv = qo_estimate_ndv ((double) QO_NODE_NCARD (other_node), qo_node_filtered_rows (other_node), other_ndv);
+      rows *= MIN (1.0, other_ndv / mine_ndv);
+    }
+
+  return MIN (rows, calls);
+}
+
+/*
+ * qo_nl_inner_memoize_is_useless () - whether statistics show that memoizing the inner of an NL join
+ *      cannot pay off because the outer key hardly repeats.
+ *   return: true if the inner scan should not memoize
+ *   outer(in): the outer plan of the NL join
+ *   inner(in): the inner plan of the NL join
+ *   key_terms(in): the join terms pushed into the inner scan
+ *
+ * The executor memoizes every NL inner and gives up at run time when the hit ratio stays low. At run
+ * time a unique key looks the same as a key that repeats with a long period, so a unique key pays the
+ * storage cost until the run-time check gives up (CBRD-27543). Statistics tell them apart.
+ *
+ * The expected hit ratio is (calls - ndv) / calls, as in PostgreSQL cost_memoize_rescan () without its
+ * cache capacity factor, where calls is the outer cardinality and ndv the number of distinct keys in
+ * the outer rows. The decision is conservative and leaves the rest to the run-time check:
+ * - Only an outer key column that is unique (a NOT NULL unique index) or near-unique
+ *   (MEMOIZE_UNIQUE_KEY_RATIO) in its own table counts. Its NDV is a lower bound of the NDV of the whole
+ *   key, so the other key columns (and their statistics) cannot make it skip. Where the few duplicates of
+ *   a near-unique column sit is unknown: a filter or join that keeps just those rows repeats the key more
+ *   than the estimate assumes, and the run-time check then has to catch it.
+ * - Its NDV in the outer rows is estimated from the rows of its table the outer holds
+ *   (qo_node_rows_in_join ()) with qo_estimate_ndv ().
+ * - An outer with an outer join, or missing statistics the estimate needs, is not decided.
+ * - The caller leaves out an inner that a partitioned table or class hierarchy follows in the scan chain
+ *   (plan_generation.c), since the executor then runs the outer again for every scan block of it.
+ */
+bool
+qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_terms)
+{
+  QO_ENV *env;
+  QO_TERM *term;
+  BITSET scan_terms, key_segs;
+  BITSET_ITERATOR bi;
+  int i;
+  double calls, key_ndv = 0.0;
+
+  if (outer == NULL || inner == NULL || outer->info == NULL || inner->info == NULL || key_terms == NULL)
+    {
+      return false;
+    }
+
+  env = outer->info->env;
+  calls = outer->info->cardinality;
+  if (calls < 1.0)
+    {
+      return false;
+    }
+
+  /* an outer join inside the outer keeps or adds rows that the estimate does not model; the join of
+   * this inner may be an outer join, it does not change the outer rows */
+  for (i = 0; i < env->nterms; i++)
+    {
+      term = QO_ENV_TERM (env, i);
+      if (QO_OUTER_JOIN_TERM (term) && bitset_cardinality (&QO_TERM_NODES (term)) >= 2
+	  && bitset_subset (&(outer->info->nodes), &QO_TERM_NODES (term)))
+	{
+	  return false;
+	}
+    }
+
+  /* the outer columns referenced by the terms the inner scan evaluates are its memoize key */
+  bitset_init (&scan_terms, env);
+  bitset_init (&key_segs, env);
+  bitset_assign (&scan_terms, key_terms);
+  qo_collect_inner_scan_terms (inner, &scan_terms);
+  for (i = bitset_iterate (&scan_terms, &bi); i != -1; i = bitset_next_member (&bi))
+    {
+      bitset_union (&key_segs, &QO_TERM_SEGS (QO_ENV_TERM (env, i)));
+    }
+
+  for (i = bitset_iterate (&key_segs, &bi); i != -1; i = bitset_next_member (&bi))
+    {
+      QO_SEGMENT *seg = QO_ENV_SEG (env, i);
+      QO_NODE *node = QO_SEG_HEAD (seg);
+      double seg_ndv, node_rows;
+
+      if (!BITSET_MEMBER (outer->info->nodes, QO_NODE_IDX (node))
+	  || BITSET_MEMBER (inner->info->nodes, QO_NODE_IDX (node)))
+	{
+	  /* not an outer column of this join */
+	  continue;
+	}
+
+      seg_ndv = qo_seg_ndv (seg);
+      if (seg_ndv <= 0.0 || QO_NODE_NCARD (node) <= 0)
+	{
+	  /* no statistics */
+	  continue;
+	}
+      if (qo_seg_has_unique_index (seg) && QO_SEG_IS_NOT_NULL (seg))
+	{
+	  /* one value per row, whatever the sampled NDV says; a unique index allows many NULLs, and
+	   * memoize keeps and replays the result of a NULL key too, so a nullable column goes by its NDV */
+	  seg_ndv = (double) QO_NODE_NCARD (node);
+	}
+      else if (seg_ndv < MEMOIZE_UNIQUE_KEY_RATIO * (double) QO_NODE_NCARD (node))
+	{
+	  continue;
+	}
+
+      node_rows = qo_node_rows_in_join (env, node, &(outer->info->nodes), calls);
+      if (node_rows <= 0.0)
+	{
+	  continue;
+	}
+
+      /* distinct values left in the rows of its table the outer holds */
+      key_ndv = MAX (key_ndv, qo_estimate_ndv ((double) QO_NODE_NCARD (node), node_rows, seg_ndv));
+    }
+
+  bitset_delset (&scan_terms);
+  bitset_delset (&key_segs);
+
+  if (key_ndv <= 0.0)
+    {
+      return false;
+    }
+
+  key_ndv = MIN (key_ndv, calls);
+
+  return (calls - key_ndv) / calls < MEMOIZE_MIN_HIT_RATIO;
 }
 
 /*
@@ -3708,11 +4202,6 @@ qo_can_apply_limit_card (QO_ENV * env)
 }
 
 /*
- * qo_nljoin_cost () -
- *   return:
- *   planp(in):
- */
-/*
  * qo_mackert_lohman_pages () - distinct pages that N random probes touch in a T-page object
  *   return: estimated page count
  *   T(in): object size in pages
@@ -3726,8 +4215,9 @@ qo_can_apply_limit_card (QO_ENV * env)
 static double
 qo_mackert_lohman_pages (double T, double N)
 {
-  /* effective cache: matches the data_buffer_pages default (server-only parameter, not
-   * visible to the client-side optimizer) */
+  /* effective cache: cost_effective_cache_pages (the server's real buffer size is not
+   * visible to the client-side optimizer). b == 0 lands in the T > b branch with lim == 0
+   * and yields pages_fetched == N: no caching, no division by zero. */
   double b = QO_EFFECTIVE_CACHE_PAGES;
   double lim, pages_fetched;
 
@@ -3755,6 +4245,11 @@ qo_mackert_lohman_pages (double T, double N)
   return pages_fetched;
 }
 
+/*
+ * qo_nljoin_cost () -
+ *   return:
+ *   planp(in):
+ */
 static void
 qo_nljoin_cost (QO_PLAN * planp)
 {
@@ -3867,8 +4362,14 @@ qo_nljoin_cost (QO_PLAN * planp)
       heap_io = MIN (inner->iscan_heap_io, inner->variable_io_cost);
       leaf_io = inner->variable_io_cost - heap_io;
 
-      heap_fetched = qo_mackert_lohman_pages ((double) QO_NODE_TCARD (inner->plan_un.scan.node), N);
-      leaf_fetched = qo_mackert_lohman_pages ((double) inner->plan_un.scan.index->cum_stats.pages, N);
+      /* Saturate in page space, then price: heap_io/leaf_io already carry the random unit
+       * price (qo_iscan_cost ()), so the saturation ceilings get the same factor. Pricing
+       * only one side of a MIN would move the saturation point instead of scaling the
+       * cost. */
+      heap_fetched =
+	qo_mackert_lohman_pages ((double) QO_NODE_TCARD (inner->plan_un.scan.node), N) * QO_COST_RANDOM_PAGE;
+      leaf_fetched =
+	qo_mackert_lohman_pages ((double) inner->plan_un.scan.index->cum_stats.pages, N) * QO_COST_RANDOM_PAGE;
 
       inner_io_cost = MIN (guessed_result_cardinality * heap_io, heap_fetched)
 	+ MIN (guessed_result_cardinality * leaf_io, leaf_fetched);
@@ -4087,7 +4588,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   inner_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
   inner_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
   inner_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
-  inner_build_io_cost = inner_pages;
+  inner_build_io_cost = inner_pages * QO_COST_SEQ_PAGE;	/* build input is read in order */
 
   /**
    * STEP 3: Calculate the cost when outer is used as build input.
@@ -4095,7 +4596,7 @@ qo_hjoin_cost (QO_PLAN * plan_p)
   outer_build_cpu_cost = (inner_cardinality * QO_CPU_WEIGHT * HJ_PROBE_CPU_OVERHEAD_FACTOR);
   outer_build_cpu_cost += (outer_cardinality * QO_CPU_WEIGHT * HJ_BUILD_CPU_OVERHEAD_FACTOR);
   outer_build_cpu_cost += HJ_MEM_ALLOC_CONSTANT;
-  outer_build_io_cost = outer_pages;
+  outer_build_io_cost = outer_pages * QO_COST_SEQ_PAGE;
 
   /* Partitioned hash join spills to disk once the build input exceeds the in-memory
    * hash limit. The executor switches to a partitioned (spilling) hash join at
@@ -4110,14 +4611,15 @@ qo_hjoin_cost (QO_PLAN * plan_p)
      * Keep the two in sync. */
     UINT64 per_entry_size = 2 * sizeof (MHT_HLS_SLOT) + sizeof (MHT_HLS_ENTRY) + HJ_HASH_ENTRY_POS_SIZE;
 
+    /* spilled partitions are written and re-read in order: sequential unit price */
     if ((inner_cardinality * per_entry_size) > mem_limit * HJ_PARTITION_FILL_FACTOR)
       {
-	inner_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT;
+	inner_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT * QO_COST_SEQ_PAGE;
       }
 
     if ((outer_cardinality * per_entry_size) > mem_limit * HJ_PARTITION_FILL_FACTOR)
       {
-	outer_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT;
+	outer_build_io_cost += (inner_cardinality + outer_cardinality) * HJ_FILE_IO_WEIGHT * QO_COST_SEQ_PAGE;
       }
   }
 
@@ -4137,7 +4639,13 @@ qo_hjoin_cost (QO_PLAN * plan_p)
       break;
 
     case JOIN_INNER:
-      if ((inner_build_cpu_cost + inner_build_io_cost) <= (outer_build_cpu_cost + outer_build_io_cost))
+      if (qo_plan_semi_anti_join_type (inner_plan_p) != PT_JOIN_NONE)
+	{
+	  /* semi/anti always builds the inner side (see hjoin_init_context ()) */
+	  plan_p->variable_cpu_cost += inner_build_cpu_cost;
+	  plan_p->variable_io_cost += inner_build_io_cost;
+	}
+      else if ((inner_build_cpu_cost + inner_build_io_cost) <= (outer_build_cpu_cost + outer_build_io_cost))
 	{
 	  plan_p->variable_cpu_cost += inner_build_cpu_cost;
 	  plan_p->variable_io_cost += inner_build_io_cost;
@@ -4396,7 +4904,8 @@ qo_follow_cost (QO_PLAN * planp)
   planp->fixed_cpu_cost = head->fixed_cpu_cost;
   planp->fixed_io_cost = head->fixed_io_cost;
   planp->variable_cpu_cost = head->variable_cpu_cost + (cardinality * (double) QO_CPU_WEIGHT);
-  planp->variable_io_cost = head->variable_io_cost + fetch_ios;
+  /* following an OID to its object is a random page read */
+  planp->variable_io_cost = head->variable_io_cost + fetch_ios * QO_COST_RANDOM_PAGE;
 
 #if TEST_DUMP_PLAN_FOLLOW_COST
   fprintf (stdout, "\nFollow Cost: \n");
@@ -5753,6 +6262,55 @@ qo_plans_stats (FILE * f)
 }
 
 /*
+ * qo_plan_dump_cost_params () - record the unit prices the plan was costed with
+ *   return: nothing
+ *   output(in): The stream the plan is being dumped to
+ *
+ * Note: one line, printed only when some cost_* parameter is off its default, so an untuned
+ *	 configuration dumps exactly as before while a tuned session's dump says what its
+ *	 costs were computed from -- without it a dump saved under one set of prices cannot be
+ *	 compared with one saved under another. "Off its default" compares the current value
+ *	 with the declared default rather than testing PRM_DIFFERENT, which system_parameter.c
+ *	 maintains only for PRM_FOR_QRY_STRING parameters in CS mode. The float compare is
+ *	 exact on purpose: both sides came out of the same parser from the same literal, so
+ *	 this is an identity test, not arithmetic.
+ */
+static void
+qo_plan_dump_cost_params (FILE * output)
+{
+  static const PARAM_ID cost_prm[] = {
+    PRM_ID_COST_SEQ_PAGE, PRM_ID_COST_RANDOM_PAGE, PRM_ID_COST_CPU_TUPLES_PER_PAGE,
+    PRM_ID_COST_EFFECTIVE_CACHE_PAGES, PRM_ID_COST_HEAP_FETCH_PER_OID
+  };
+  bool tuned = false;
+  size_t i;
+
+  for (i = 0; i < sizeof (cost_prm) / sizeof (cost_prm[0]); i++)
+    {
+      const SYSPRM_PARAM *prm = GET_PRM (cost_prm[i]);
+
+      if (PRM_IS_FLOAT (prm) ? (PRM_GET_FLOAT (prm->value) != PRM_GET_FLOAT (prm->default_value))
+	  : (PRM_GET_INT (prm->value) != PRM_GET_INT (prm->default_value)))
+	{
+	  tuned = true;
+	  break;
+	}
+    }
+
+  if (!tuned)
+    {
+      return;
+    }
+
+  fprintf (output,
+	   "\nCost parameters: cost_seq_page %g, cost_random_page %g, cost_cpu_tuples_per_page %d,"
+	   " cost_effective_cache_pages %d, cost_heap_fetch_per_oid %d\n", QO_COST_SEQ_PAGE, QO_COST_RANDOM_PAGE,
+	   prm_get_integer_value (PRM_ID_COST_CPU_TUPLES_PER_PAGE),
+	   prm_get_integer_value (PRM_ID_COST_EFFECTIVE_CACHE_PAGES),
+	   prm_get_integer_value (PRM_ID_COST_HEAP_FETCH_PER_OID));
+}
+
+/*
  * qo_plan_dump () - Print a representation of the plan on the indicated
  *		     stream
  *   return: nothing
@@ -5774,6 +6332,8 @@ qo_plan_dump (QO_PLAN * plan, FILE * output)
       fputs ("\nNo optimized plan!\n", output);
       return;
     }
+
+  qo_plan_dump_cost_params (output);
 
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (DETAILED_DUMP (level))
@@ -6702,8 +7262,7 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
       inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
     }
 
-  /* inner is single class spec; for a semi/anti inner ignore USE_MERGE/USE_HASH (merge/hash unsupported in v1)
-   * so NL/IDX still survives (M3 hint neutralization) */
+  /* inner is single class spec; USE_MERGE does not apply to a semi/anti inner (no semi/anti merge join) */
   if (QO_NODE_HINT (inner_node) & (PT_HINT_USE_IDX | PT_HINT_USE_NL))
     {
       /* join hint: force idx-join */
@@ -6713,8 +7272,7 @@ qo_examine_idx_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_IN
       /* join hint: force merge-join; skip idx-join */
       goto exit;
     }
-  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-	   && !QO_NODE_IS_SEMI_ANTI_JOIN (inner_node))
+  else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
     {
       /* join hint: force hash-join; skip idx-join */
       goto exit;
@@ -6836,8 +7394,9 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
   else
     {
       /* At here, inner is single class spec */
-      /* for a semi/anti inner ignore USE_MERGE/USE_HASH (merge/hash unsupported in v1) so NL survives */
       inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
+
+      /* USE_MERGE does not apply to a semi/anti inner (no semi/anti merge join) */
       if (QO_NODE_HINT (inner_node) & PT_HINT_USE_NL)
 	{
 	  /* join hint: force nl-join */
@@ -6848,8 +7407,7 @@ qo_examine_nl_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_INF
 	  /* join hint: force idx-join, merge-join; skip nl-join */
 	  goto exit;
 	}
-      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH)
-	       && !QO_NODE_IS_SEMI_ANTI_JOIN (inner_node))
+      else if (!(QO_NODE_HINT (inner_node) & PT_HINT_NO_USE_HASH) && (QO_NODE_HINT (inner_node) & PT_HINT_USE_HASH))
 	{
 	  /* join hint: force hash-join; skip nl-join */
 	  goto exit;
@@ -7150,6 +7708,37 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
   /* inner_node is the single-class inner used for the key-limit / index checks below. */
   inner_node = QO_ENV_NODE (inner->env, bitset_first_member (&(inner->nodes)));
 
+  /* The parser rejects a subquery in an ON clause, but view merging can bring one in.
+   * A hash outer/semi/anti join decides each outer row by its probe, which cannot run the subquery,
+   * so leave such a join to nested loops. */
+  if (IS_OUTER_JOIN_TYPE (join_type) || QO_NODE_IS_SEMI_ANTI_JOIN (inner_node))
+    {
+      bool has_subquery;
+
+      /* sarged_terms holds every term of this join, ON clause terms included (a semi join's are nowhere else) */
+      for (bitset_index = bitset_iterate (sarged_terms, &bitset_iter); bitset_index != -1;
+	   bitset_index = bitset_next_member (&bitset_iter))
+	{
+	  term = QO_ENV_TERM (info->env, bitset_index);
+	  if (!QO_ON_COND_TERM (term))
+	    {
+	      continue;
+	    }
+
+	  /* QO_TERM_SUBQUERIES holds only correlated ones; walk the term for uncorrelated ones too. */
+	  has_subquery = !bitset_is_empty (&(QO_TERM_SUBQUERIES (term)));
+	  if (!has_subquery && QO_TERM_PT_EXPR (term) != NULL)
+	    {
+	      (void) parser_walk_tree (QO_ENV_PARSER (info->env), QO_TERM_PT_EXPR (term), pt_check_subquery_pre, NULL,
+				       pt_check_subquery_post, &has_subquery);
+	    }
+	  if (has_subquery)
+	    {
+	      goto exit;	/* give up */
+	    }
+	}
+    }
+
   /* Determine the node that carries the join-method hint.  For a right outer join the
    * hinted (inner-after-conversion) side is the 'outer' operand, so the hint is read
    * from there - consistent with qo_examine_idx_join / qo_examine_nl_join - so that
@@ -7183,7 +7772,8 @@ qo_examine_hash_join (QO_INFO * info, JOIN_TYPE join_type, QO_INFO * outer, QO_I
 	{
 	  /* join hint: force hash-join */
 	}
-      else if (QO_NODE_HINT (hint_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX | PT_HINT_USE_MERGE))
+      else if ((QO_NODE_HINT (hint_node) & (PT_HINT_USE_NL | PT_HINT_USE_IDX))
+	       || ((QO_NODE_HINT (hint_node) & PT_HINT_USE_MERGE) && !QO_NODE_IS_SEMI_ANTI_JOIN (hint_node)))
 	{
 	  /* join hint: force nl-join, idx-join, m-join; skip hash-join */
 	  goto exit;
@@ -7749,24 +8339,8 @@ qo_dump_planner_info (QO_PLANNER * planner, QO_PARTITION * partition, FILE * f)
 }
 
 /*
- * planner_visit_node () -
- *   return:
- *   planner(in):
- *   partition(in):
- *   hint(in):
- *   head_node(in):
- *   tail_node(in):
- *   visited_nodes(in):
- *   visited_rel_nodes(in):
- *   visited_terms(in):
- *   nested_path_nodes(in):
- *   remaining_nodes(in):
- *   remaining_terms(in):
- *   remaining_subqueries(in):
- *   num_path_inner(in):
- */
-/*
  * qo_get_term_hit_prob () -
+ *   return: true if the NDVs of both join keys are known, false otherwise
  *
  * hit_prob = min(1, ndv(tail after its filters) / ndv(head))
  *
@@ -7774,7 +8348,7 @@ qo_dump_planner_info (QO_PLANNER * planner, QO_PARTITION * partition, FILE * f)
  * search conditions with qo_estimate_ndv (), the same estimate
  * GROUP BY uses for the number of groups after filtering.
  */
-static void
+static bool
 qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, QO_ENV * env,
 		      double *out_head_factor, double *out_tail_factor)
 {
@@ -7789,7 +8363,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
   *out_tail_factor = 1.0;
   if (bitset_cardinality (term_segs) != 2)
     {
-      return;
+      return false;
     }
 
   for (seg_idx = bitset_iterate (term_segs, &seg_iter); seg_idx != -1; seg_idx = bitset_next_member (&seg_iter))
@@ -7809,7 +8383,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
     }
   if (head_seg == NULL || tail_seg == NULL)
     {
-      return;
+      return false;
     }
 
   if (QO_SEG_INFO (head_seg) != NULL && QO_SEG_INFO (head_seg)->ndv > 0)
@@ -7818,7 +8392,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
     }
   else
     {
-      return;
+      return false;
     }
 
   if (QO_SEG_INFO (tail_seg) != NULL && QO_SEG_INFO (tail_seg)->ndv > 0)
@@ -7827,7 +8401,7 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
     }
   else
     {
-      return;
+      return false;
     }
 
   /* Distinct join-key values that survive each side's own search conditions: the NDV shrinks the way
@@ -7847,8 +8421,27 @@ qo_get_term_hit_prob (QO_TERM * term, QO_INFO * head_info, QO_INFO * tail_info, 
 
   *out_head_factor = MIN (1.0, tail_ndv_eff / (double) head_ndv);
   *out_tail_factor = MIN (1.0, head_ndv_eff / (double) tail_ndv);
+
+  return true;
 }
 
+/*
+ * planner_visit_node () -
+ *   return:
+ *   planner(in):
+ *   partition(in):
+ *   hint(in):
+ *   head_node(in):
+ *   tail_node(in):
+ *   visited_nodes(in):
+ *   visited_rel_nodes(in):
+ *   visited_terms(in):
+ *   nested_path_nodes(in):
+ *   remaining_nodes(in):
+ *   remaining_terms(in):
+ *   remaining_subqueries(in):
+ *   num_path_inner(in):
+ */
 static void
 planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM hint, QO_NODE * head_node,
 		    QO_NODE * tail_node, BITSET * visited_nodes, BITSET * visited_rel_nodes, BITSET * visited_terms,
@@ -8238,7 +8831,10 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		      }
 		    else
 		      {		/* non-eq edge */
-			if (IS_OUTER_JOIN_TYPE (join_type) && QO_ON_COND_TERM (term))
+			if (QO_ON_COND_TERM (term)
+			    && (IS_OUTER_JOIN_TYPE (join_type)
+				|| QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (planner->env, QO_TERM_LOCATION (term))) ==
+				PT_JOIN_ANTI))
 			  {	/* ON clause */
 			    bitset_add (&duj_terms, i);	/* need for m-join */
 			  }
@@ -8280,7 +8876,9 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	      }
 	    else if (QO_TERM_CLASS (term) == QO_TC_OTHER)
 	      {
-		if (IS_OUTER_JOIN_TYPE (join_type) && QO_ON_COND_TERM (term))
+		if (QO_ON_COND_TERM (term)
+		    && (IS_OUTER_JOIN_TYPE (join_type)
+			|| QO_NODE_PT_JOIN_TYPE (QO_ENV_NODE (planner->env, QO_TERM_LOCATION (term))) == PT_JOIN_ANTI))
 		  {		/* ON clause */
 		    bitset_add (&duj_terms, i);
 		  }
@@ -8382,35 +8980,171 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
   if (new_info == NULL)
     {
-
       double selectivity, cardinality, total_rows, head_hit_prob, tail_hit_prob;
+      double fk_floor_product;
+      double key_factor, key_sel, on_sel, during_sel, filter_sel;	/* semi/anti only */
       BITSET eqclasses;
+      BITSET fk_excluded_terms;
+      BITSET fk_col_terms;
 
       bitset_init (&eqclasses, planner->env);
-
+      bitset_init (&fk_excluded_terms, planner->env);
+      bitset_init (&fk_col_terms, planner->env);
 
       selectivity = 1.0;	/* init */
+      fk_floor_product = 1.0;	/* product of floors for FK-PK relationships this step completes */
 
-      cardinality = head_info->cardinality * tail_info->cardinality;
       total_rows = head_info->total_rows * tail_info->total_rows;
       head_hit_prob = 1.0;
       tail_hit_prob = 1.0;
-      if (IS_OUTER_JOIN_TYPE (join_type))
+
+      key_factor = 1.0;
+      key_sel = 1.0;
+      on_sel = 1.0;
+      during_sel = 1.0;
+      filter_sel = 1.0;
+
+      if (join_type == JOIN_RIGHT)
 	{
 	  /* set lower bound of outer join result */
-	  if (join_type == JOIN_RIGHT)
-	    {
-	      cardinality = MAX (cardinality, tail_info->cardinality);
-	    }
-	  else
-	    {
-	      cardinality = MAX (cardinality, head_info->cardinality);
-	    }
+	  cardinality = MAX (head_info->cardinality * tail_info->cardinality, tail_info->cardinality);
+	}
+      else if (join_type == JOIN_LEFT)
+	{
+	  /* set lower bound of outer join result */
+	  cardinality = MAX (head_info->cardinality * tail_info->cardinality, head_info->cardinality);
+	}
+      else if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+	{
+	  /* keep an empty inner from zeroing semi/anti before the reestimate below */
+	  cardinality = MAX (head_info->cardinality * tail_info->cardinality, head_info->cardinality);
+	}
+      else
+	{
+	  cardinality = head_info->cardinality * tail_info->cardinality;
 	}
 
       if (cardinality != 0)
 	{			/* not empty */
 	  cardinality = MAX (1.0, cardinality);
+
+	  /* Identify composite PK-FK relationships that this step connects for the first time (fk_node
+	   * and pk_node were not already both in head_info or both in tail_info), and find which sarged
+	   * terms currently stand for each of their key columns' equivalence classes. qo_check_skip_term()
+	   * may judge the literal fk_node-pk_node edge for a column redundant and leave an eqclass-
+	   * equivalent term on some other node pair standing in for it (e.g. supplier-lineitem instead of
+	   * partsupp-lineitem); matching by eqclass rather than a fixed term set finds it either way. A
+	   * relationship is applied only when every one of its columns has a standing term in this step's
+	   * sarged_terms - otherwise it is left to the ordinary per-term product below, never worse than
+	   * the pre-fix independent-product estimate. */
+	  if (planner->env->n_fk_join_info > 0)
+	    {
+	      int ei;
+
+	      for (ei = 0; ei < planner->env->n_fk_join_info; ei++)
+		{
+		  QO_FK_JOIN_INFO *fkinfo = &planner->env->fk_join_info[ei];
+		  bool fk_in_head, pk_in_head, fk_in_tail, pk_in_tail, all_cols_found;
+		  int col;
+
+		  fk_in_head = BITSET_MEMBER (head_info->nodes, QO_NODE_IDX (fkinfo->fk_node));
+		  pk_in_head = BITSET_MEMBER (head_info->nodes, QO_NODE_IDX (fkinfo->pk_node));
+		  fk_in_tail = BITSET_MEMBER (tail_info->nodes, QO_NODE_IDX (fkinfo->fk_node));
+		  pk_in_tail = BITSET_MEMBER (tail_info->nodes, QO_NODE_IDX (fkinfo->pk_node));
+
+		  if ((fk_in_head && pk_in_head) || (fk_in_tail && pk_in_tail))
+		    {
+		      continue;	/* already connected before this step */
+		    }
+		  if (!((fk_in_head || fk_in_tail) && (pk_in_head || pk_in_tail)))
+		    {
+		      continue;	/* fk_node, pk_node not both present after this step either */
+		    }
+
+		  BITSET_CLEAR (fk_col_terms);
+		  all_cols_found = true;
+
+		  for (col = 0; col < fkinfo->n_cols; col++)
+		    {
+		      bool found = false;
+
+		      for (i = bitset_iterate (&sarged_terms, &bi); i != -1; i = bitset_next_member (&bi))
+			{
+			  term = &planner->term[i];
+
+			  /*
+			   * Do not reuse terms already claimed by another FK entry in this join step.
+			   */
+			  if (BITSET_MEMBER (fk_excluded_terms, i))
+			    {
+			      continue;
+			    }
+
+			  if (QO_TERM_CLASS (term) != QO_TC_JOIN
+			      || QO_TERM_EQCLASS (term) != fkinfo->col_eqclasses[col])
+			    {
+			      continue;
+			    }
+
+			  if (BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (fkinfo->fk_node)))
+			    {
+			      /* The term touches fk_node itself, so require it to be built on this
+			       * constraint's own column, not just any column that happens to share the
+			       * (possibly merged) equivalence class - two different FK constraints on
+			       * fk_node referencing the same parent PK can have their columns merged into
+			       * one eqclass by qo_assign_eq_classes(), and each constraint's terms must
+			       * stay attributed to its own QO_FK_JOIN_INFO entry.
+			       *
+			       * This relies on qo_discover_indexes() retaining FK-column segments in
+			       * index_seg[], since FK columns have indexes and are not filtered out.
+			       * If that behavior changes, this lookup may silently fail and the FK join
+			       * selectivity floor will not be applied. */
+			      if (QO_TERM_INDEX_SEG (term, 0) != fkinfo->fk_col_segs[col]
+				  && QO_TERM_INDEX_SEG (term, 1) != fkinfo->fk_col_segs[col])
+				{
+				  continue;
+				}
+			    }
+			  else if (!BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (fkinfo->pk_node)))
+			    {
+			      continue;
+			    }
+			  /* else: the term touches only pk_node, not fk_node - e.g. if part+lineitem are
+			   * already head and partsupp is the new tail, the term connecting the partkey
+			   * eqclass into the group is part-partsupp, not lineitem-partsupp, so it never
+			   * touches fk_node at all. Exact-segment identity isn't meaningful here, so eqclass
+			   * membership alone is accepted. */
+
+			  bitset_add (&fk_col_terms, i);
+			  found = true;
+			}
+
+		      /* a column whose eqclass carries a constant (fk.a = 5 AND pk.a = 5) has no join term at all,
+		       * so it is never found here and the floor is skipped for this constraint -- conservative
+		       * (falls back to the per-term product). PostgreSQL counts such columns (nconst_ec) and
+		       * keeps applying the floor; left as a follow-up. */
+		      if (!found)
+			{
+			  all_cols_found = false;
+			  break;
+			}
+		    }
+
+		  if (all_cols_found)
+		    {
+		      /* A later FK entry's terms may already be claimed by an earlier entry at
+		       * this same step (see the fk_excluded_terms check above); which entry claims
+		       * first depends on FK registration order (node index order). Entries
+		       * referencing the same parent all use the same floor_selectivity
+		       * (1 / parent cardinality), so it does not matter which one applies it.
+		       * Relationships among child nodes already joined in the head are represented
+		       * by their implied join terms. */
+		      bitset_union (&fk_excluded_terms, &fk_col_terms);
+		      fk_floor_product *= fkinfo->floor_selectivity;
+		    }
+		}
+	    }
+
 	  for (i = bitset_iterate (&sarged_terms, &bi); i != -1; i = bitset_next_member (&bi))
 	    {
 	      term = &planner->term[i];
@@ -8432,20 +9166,190 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 		  if (!QO_TERM_IS_FLAGED (term, QO_TERM_LIKE_DERIVED_RANGE | QO_TERM_OR_DERIVED))
 		    {
 		      double head_factor, tail_factor;
+		      bool has_ndv;
 
-		      selectivity *= QO_TERM_SELECTIVITY (term);
-		      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+		      has_ndv =
+			qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
 
-		      qo_get_term_hit_prob (term, head_info, tail_info, planner->env, &head_factor, &tail_factor);
+		      if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+			{
+			  if (!QO_ON_COND_TERM (term))
+			    {
+			      /* WHERE-clause term: filters the semi/anti result rows and does not decide the match */
+			      filter_sel *= QO_TERM_SELECTIVITY (term);
+			    }
+			  else if (QO_TERM_CLASS (term) == QO_TC_DURING_JOIN
+				   && !BITSET_MEMBER (QO_TERM_NODES (term), QO_NODE_IDX (tail_node)))
+			    {
+			      /* during-join term that does not read the inner: decided once per outer row */
+			      during_sel *= QO_TERM_SELECTIVITY (term);
+			    }
+			  else if (has_ndv && QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP))
+			    {
+			      /* semi/anti equi-join term with known NDVs;
+			       * an outer row whose key is NULL matches no inner row
+			       */
+			      double outer_null_freq = 0.0;
+			      double term_sel;
+			      int seg_idx;
+
+			      for (seg_idx = bitset_iterate (&(QO_TERM_SEGS (term)), &bj); seg_idx != -1;
+				   seg_idx = bitset_next_member (&bj))
+				{
+				  QO_SEGMENT *seg = QO_ENV_SEG (planner->env, seg_idx);
+				  PT_NODE *name = QO_SEG_PT_NODE (seg);
+
+				  if (BITSET_MEMBER (head_info->nodes, QO_NODE_IDX (QO_SEG_HEAD (seg))))
+				    {
+				      if (PT_IS_NAME_NODE (name) && name->info.name.null_frequency >= 0.0)
+					{
+					  outer_null_freq = name->info.name.null_frequency;
+					}
+				      break;
+				    }
+				}
+
+			      /* a NULL key, like the during-join terms, is decided once per outer row */
+			      during_sel *= 1.0 - outer_null_freq;
+
+			      /* qo_expr_selectivity () already scaled the selectivity by 1 - outer_null_freq,
+			       * the same scaling during_sel got above; divide it out so that it applies once
+			       */
+			      term_sel = QO_TERM_SELECTIVITY (term);
+			      if (outer_null_freq < 1.0)
+				{
+				  term_sel /= 1.0 - outer_null_freq;
+				}
+
+			      /* the equi-join term with the smallest head_factor is the key,
+			       * decided by whether the outer key is among the inner keys,
+			       * and the other equi-join terms go to on_sel as independent of the key;
+			       * the match is underestimated when a term depends on the key,
+			       * since telling it apart needs multi-column statistics or an FK
+			       *
+			       * TODO: take the terms of one composite PK-FK as one key.
+			       * fk_join_info cannot be reused as is, since it matches the FK columns by eqclass
+			       * and semi/anti equi-join columns stay out of the eqclasses.
+			       */
+			      if (head_factor <= key_factor)
+				{
+				  on_sel *= key_sel;	/* the previous key, 1.0 if none */
+				  key_factor = head_factor;
+				  key_sel = term_sel;
+				}
+			      else
+				{
+				  on_sel *= term_sel;
+				}
+			    }
+			  else
+			    {
+			      /* semi/anti ON-clause term that reads the inner: decided per pair of rows */
+			      on_sel *= QO_TERM_SELECTIVITY (term);
+			      on_sel = MAX (1.0 / MAX (cardinality, 1.0), on_sel);
+			    }
+			}
+		      else
+			{
+			  /* not a semi/anti join */
+
+			  if (!BITSET_MEMBER (fk_excluded_terms, i))
+			    {
+			      /* Terms identified above as standing for a composite PK-FK relationship's
+			       * columns are excluded here: their independent product ignores the
+			       * correlation the constraint guarantees and underestimates the join. Their
+			       * combined effect is folded in once below as a floor instead (cf.
+			       * PostgreSQL's get_foreign_key_join_selectivity()). */
+			      selectivity *= QO_TERM_SELECTIVITY (term);
+			      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+			    }
+			}
+
 		      head_hit_prob *= head_factor;
 		      tail_hit_prob *= tail_factor;
 		    }
 		}
 	    }
-	  cardinality *= selectivity;
-	  cardinality = MAX (1.0, cardinality);
-	  total_rows *= selectivity;
-	  total_rows = MAX (1.0, total_rows);
+
+	  if (fk_floor_product < 1.0)
+	    {
+	      selectivity *= fk_floor_product;
+	      selectivity = MAX (1.0 / MAX (cardinality, 1.0), selectivity);
+	    }
+
+	  if (QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+	    {
+	      /* semi/anti returns at most one row per outer row,
+	       * so the estimate uses the probability that an outer row finds a matching inner row, as below
+	       *
+	       *   match_prob = during_sel * key_factor * MIN (1, k) * (1 - (1 - on_sel)^MAX (1, k))
+	       *   antijoin   = outer * (1 - match_prob) * filter_sel
+	       *   semijoin   = outer * match_prob * filter_sel
+	       *
+	       *   ----------+----------------------------------+------+------------------------------------------
+	       *   variable  |formula                           |unit  |meaning
+	       *   ----------+----------------------------------+------+------------------------------------------
+	       *   during_sel|product of selectivities          |outer |it passes the outer-only during-join terms
+	       *             |  * (1 - NULL ratio) per equi-join|      |and no equi-join key of it is NULL
+	       *   key_factor|MIN (1, NDV (inner) / NDV (outer))|outer |its key value is among the inner keys
+	       *   key_sel   |1 / MAX (NDV (inner), NDV (outer))|pair  |the pair matches on the key
+	       *   k         |N * key_sel / key_factor          |outer |inner rows that share its key
+	       *   on_sel    |product of selectivities          |pair  |the pair passes the other ON-clause terms
+	       *   filter_sel|product of selectivities          |result|it passes the WHERE-clause terms
+	       *   N         |tail_info->cardinality            |-     |inner rows
+	       *   ----------+----------------------------------+------+------------------------------------------
+	       *
+	       *   key_factor is head_factor from qo_get_term_hit_prob (),
+	       *   and key_sel is the selectivity from qo_equal_selectivity (),
+	       *   which the formula in the table approximates.
+	       *
+	       *   k counts the inner rows that an outer row with a match tries on the key:
+	       *   N * key_sel averages them over all outer rows, those with no match as 0,
+	       *   and dividing N * key_sel by key_factor leaves the average over the outer rows with a match.
+	       *   A k below 1 means only that share of those outer rows has an inner row; without a key, k is N.
+	       *
+	       *   by the NDVs of the key, k is N / NDV (inner key) either way:
+	       *   --------------+---------------+-------------------------+---------------
+	       *   NDV           |key_sel        |key_factor               |k
+	       *   --------------+---------------+-------------------------+---------------
+	       *   inner <= outer|1 / NDV (outer)|NDV (inner) / NDV (outer)|N / NDV (inner)
+	       *   inner >  outer|1 / NDV (inner)|1                        |N / NDV (inner)
+	       *   --------------+---------------+-------------------------+---------------
+	       */
+
+	      double match_prob, k;
+
+	      k = (key_factor > 0.0) ? tail_info->cardinality * key_sel / key_factor : tail_info->cardinality;
+
+	      /* an outer row matches when any of its k inner rows passes the other ON-clause terms;
+	       * MAX (1, k) keeps a k below 1, already counted by MIN (1, k), from counting again
+	       */
+	      match_prob = during_sel * key_factor * MIN (1.0, k) * (1.0 - pow (1.0 - on_sel, MAX (1.0, k)));
+
+	      if (QO_NODE_PT_JOIN_TYPE (tail_node) == PT_JOIN_ANTI)
+		{
+		  cardinality = head_info->cardinality * (1.0 - match_prob) * filter_sel;
+		}
+	      else
+		{
+		  cardinality = head_info->cardinality * match_prob * filter_sel;
+		}
+
+	      /* the outer rows that produce a row, for the LIMIT estimate */
+	      head_hit_prob = MIN (1.0, cardinality / MAX (1.0, head_info->cardinality));
+
+	      cardinality = MAX (1.0, cardinality);
+
+	      /* the result is a subset of the outer rows */
+	      total_rows = MAX (1.0, head_info->total_rows);
+	    }
+	  else
+	    {
+	      cardinality *= selectivity;
+	      cardinality = MAX (1.0, cardinality);
+	      total_rows *= selectivity;
+	      total_rows = MAX (1.0, total_rows);
+	    }
 
 	  if (IS_OUTER_JOIN_TYPE (join_type) && bitset_is_empty (&afj_terms))
 	    {
@@ -8483,6 +9387,8 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 	qo_alloc_info (planner, visited_nodes, visited_terms, &eqclasses, cardinality, total_rows);
 
       bitset_delset (&eqclasses);
+      bitset_delset (&fk_excluded_terms);
+      bitset_delset (&fk_col_terms);
     }
 
   /* STEP 5: do EXAMINE follow, join */
@@ -8527,7 +9433,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 #if 1				/* MERGE_JOINS */
 	/* STEP 5-4: examine merge-join */
-	/* skip for a semi/anti inner: merge/hash inner gives wrong results, so never cost it (M3 prune) */
+	/* skip for a semi/anti inner (no semi/anti merge join) */
 	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
 	  {
 	    kept +=
@@ -8538,7 +9444,7 @@ planner_visit_node (QO_PLANNER * planner, QO_PARTITION * partition, PT_HINT_ENUM
 
 #if 1				/* HASH_JOINS */
 	/* STEP 5-5: examine hash-join */
-	if (!bitset_is_empty (&sm_join_terms) && !QO_NODE_IS_SEMI_ANTI_JOIN (tail_node))
+	if (!bitset_is_empty (&sm_join_terms))
 	  {
 	    /**
 	     * sm_join_terms is a mergeable term for SM join. In hash join, mergeable term is used as hash join term.
@@ -9747,7 +10653,7 @@ qo_search_planner (QO_PLANNER * planner)
 		   * better. DO NOT generate if there is no group/order by!
 		   */
 		  if (!n && !index_entry->groupby_skip && tree->info.query.q.select.group_by
-		      && qo_validate_index_for_groupby (info->env, ni_entry))
+		      && qo_validate_index_for_sort (info->env, ni_entry, SORT_GROUPBY))
 		    {
 		      n =
 			qo_check_plan_on_info (info,
@@ -9756,7 +10662,7 @@ qo_search_planner (QO_PLANNER * planner)
 		    }
 
 		  if (!n && !index_entry->orderby_skip && !tree->info.query.q.select.group_by
-		      && tree->info.query.order_by && qo_validate_index_for_orderby (info->env, ni_entry))
+		      && tree->info.query.order_by && qo_validate_index_for_sort (info->env, ni_entry, SORT_ORDERBY))
 		    {
 		      n =
 			qo_check_plan_on_info (info,
@@ -10850,14 +11756,6 @@ qo_not_selectivity (QO_ENV * env, double sel)
 }
 
 /*
- * qo_equal_selectivity () - Compute the selectivity of an equality predicate
- *   return: double
- *   env(in):
- *   pt_expr(in):
- *
- * Note: This uses the System R algorithm
- */
-/*
  * qo_expr_ndv_bound () - upper bound on the distinct values an expression can produce
  *   return: the bound, or 0.0 when no column with statistics was found
  *   env(in):
@@ -10963,6 +11861,14 @@ qo_expr_equal_selectivity (QO_ENV * env, PT_NODE * node)
   return MAX (1.0 / bound, DEFAULT_EQUAL_SELECTIVITY);
 }
 
+/*
+ * qo_equal_selectivity () - Compute the selectivity of an equality predicate
+ *   return: double
+ *   env(in):
+ *   pt_expr(in):
+ *
+ * Note: This uses the System R algorithm
+ */
 static double
 qo_equal_selectivity (QO_ENV * env, PT_NODE * pt_expr)
 {
@@ -11454,6 +12360,83 @@ qo_between_range_arg_value (QO_ENV * env, PT_NODE * arg)
     }
 }
 
+static UINT64
+qo_plan_sig_mix (UINT64 sig, UINT64 v)
+{
+  sig ^= v + 0x9e3779b97f4a7c15ULL + (sig << 6) + (sig >> 2);
+  return sig;
+}
+
+/*
+ * qo_plan_signature () - fold the shape of a plan into a running signature
+ *   return   : the new signature
+ *   plan (in): plan to sign (NULL signs as "no plan")
+ *   sig (in) : signature so far (the plans of one compile are folded into one)
+ *
+ * The shape is what the plan does: plan types, the join order, join and scan methods and the
+ * index each scan uses, plus the plan-level optimizations. Costs and row estimates are left out,
+ * so two compiles of one query that chose the same plan under different values sign alike.
+ */
+UINT64
+qo_plan_signature (QO_PLAN * plan, UINT64 sig)
+{
+  if (plan == NULL)
+    {
+      return qo_plan_sig_mix (sig, 0x6e6f706cULL);
+    }
+
+  sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_type + 1);
+  sig = qo_plan_sig_mix (sig, (UINT64) plan->parallel_opt_use);
+  sig = qo_plan_sig_mix (sig, (UINT64) plan->multi_range_opt_use);
+  sig = qo_plan_sig_mix (sig, (UINT64) plan->skip_orderby_opt);
+  sig = qo_plan_sig_mix (sig, (UINT64) ((plan->use_iscan_descending ? 1 : 0) | (plan->has_sort_limit ? 2 : 0)));
+
+  switch (plan->plan_type)
+    {
+    case QO_PLANTYPE_SCAN:
+      sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_un.scan.scan_method);
+      sig = qo_plan_sig_mix (sig, (UINT64) (plan->plan_un.scan.node ? QO_NODE_IDX (plan->plan_un.scan.node) : -1));
+      sig = qo_plan_sig_mix (sig, (UINT64) ((plan->plan_un.scan.index_equi ? 1 : 0)
+					    | (plan->plan_un.scan.index_cover ? 2 : 0)
+					    | (plan->plan_un.scan.index_iss ? 4 : 0)
+					    | (plan->plan_un.scan.index_loose ? 8 : 0)));
+      if (plan->plan_un.scan.index != NULL && plan->plan_un.scan.index->head != NULL
+	  && plan->plan_un.scan.index->head->constraints != NULL
+	  && plan->plan_un.scan.index->head->constraints->name != NULL)
+	{
+	  const char *c;
+
+	  for (c = plan->plan_un.scan.index->head->constraints->name; *c != '\0'; c++)
+	    {
+	      sig = qo_plan_sig_mix (sig, (UINT64) (unsigned char) *c);
+	    }
+	}
+      break;
+
+    case QO_PLANTYPE_SORT:
+      sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_un.sort.sort_type);
+      sig = qo_plan_signature (plan->plan_un.sort.subplan, sig);
+      break;
+
+    case QO_PLANTYPE_JOIN:
+      sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_un.join.join_type);
+      sig = qo_plan_sig_mix (sig, (UINT64) plan->plan_un.join.join_method);
+      sig = qo_plan_signature (plan->plan_un.join.outer, sig);
+      sig = qo_plan_signature (plan->plan_un.join.inner, sig);
+      break;
+
+    case QO_PLANTYPE_FOLLOW:
+      sig = qo_plan_signature (plan->plan_un.follow.head, sig);
+      sig = qo_plan_sig_mix (sig, (UINT64) (plan->plan_un.follow.path ? QO_TERM_IDX (plan->plan_un.follow.path) : -1));
+      break;
+
+    default:
+      break;
+    }
+
+  return sig;
+}
+
 /*
  * qo_between_range_histogram_selectivity () - selectivity of one between-range operator from
  *   the column histogram. Shared by the RANGE path (attr RANGE {...}) and the BETWEEN path
@@ -11474,7 +12457,7 @@ qo_between_range_arg_value (QO_ENV * env, PT_NODE * arg)
  * arg2_val (in)   : upper bound value, NULL for one-sided operators
  * out_sel (out)   : selectivity in [0,1]
  */
-static bool
+bool
 qo_between_range_histogram_selectivity (PT_NODE * lhs, PT_OP_TYPE op_type, DB_VALUE * arg1_val,
 					DB_VALUE * arg2_val, double *out_sel)
 {
@@ -12321,10 +13304,13 @@ qo_is_iscan_from_orderby (QO_PLAN * plan)
 
 /*
  * qo_validate_index_term_notnull ()
+ *  env(in): pointer to the optimizer environment
+ *  index_entryp(in): pointer to QO_INDEX_ENTRY (index entry)
+ *  seg_idx(in): index (into env's segment array) of the index key segment to check
  *   return: true/false
  */
 static bool
-qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
+qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, int seg_idx)
 {
   bool term_notnull = false;	/* init */
   PT_NODE *node;
@@ -12341,9 +13327,9 @@ qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
 
   index_class = index_entryp->class_;
 
-  /* do a check on the first column - it should be present in the where clause check if exists a simple expression
-   * with PT_IS_NOT_NULL on the first key this should not contain OR operator and the PT_IS_NOT_NULL should contain the
-   * column directly as parameter (PT_NAME)
+  /* do a check on the given key segment - it should be present in the where clause check if exists a simple
+   * expression with PT_IS_NOT_NULL on that key this should not contain OR operator and the PT_IS_NOT_NULL should
+   * contain the column directly as parameter (PT_NAME)
    */
   for (t = 0; t < env->nterms && !term_notnull; t++)
     {
@@ -12369,10 +13355,10 @@ qo_validate_index_term_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp)
       if (node->node_type == PT_EXPR && node->info.expr.op == PT_IS_NOT_NULL
 	  && node->info.expr.arg1->node_type == PT_NAME)
 	{
-	  iseg = index_entryp->seg_idxs[0];
+	  iseg = seg_idx;
 	  if (iseg != -1 && BITSET_MEMBER (QO_TERM_SEGS (termp), iseg))
 	    {
-	      /* check it's the same column as the first in the index */
+	      /* check it's the same column as the given key segment */
 	      node_name = pt_get_name (node->info.expr.arg1);
 	      segp = QO_ENV_SEG (env, iseg);
 	      assert (segp != NULL);
@@ -12553,84 +13539,86 @@ qo_validate_index_attr_notnull (QO_ENV * env, QO_INDEX_ENTRY * index_entryp, PT_
 }
 
 /*
- * qo_validate_index_for_orderby () - checks for isnull(key) or not null flag
+ * qo_validate_index_for_sort () - checks whether an index can be used to
+ *                                  skip sorting for ORDER BY or GROUP BY.
  *  env(in): pointer to the optimizer environment
  *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
- *  return: 1 if the index can be used, 0 elseware
+ *  sort_type(in): SORT_GROUPBY for GROUP BY, SORT_ORDERBY for ORDER BY
+ *  return: 1 if the index can be used, 0 otherwise
  */
 static int
-qo_validate_index_for_orderby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
+qo_validate_index_for_sort (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp, SORT_TYPE sort_type)
 {
-  bool key_notnull = false;	/* init */
   QO_INDEX_ENTRY *index_entryp;
-  QO_CLASS_INFO_ENTRY *index_class;
-
-  int pos;
-  PT_NODE *node = NULL;
+  int i, ncols;
+  bool is_func_leading;
+  SM_ATTRIBUTE *attr;
+  QO_SEGMENT *segp;
 
   assert (ni_entryp != NULL);
   assert (ni_entryp->head != NULL);
   assert (ni_entryp->head->class_ != NULL);
+  assert (sort_type == SORT_GROUPBY || sort_type == SORT_ORDERBY);
 
   index_entryp = ni_entryp->head;
-  index_class = index_entryp->class_;
 
-  if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.order_by)
+  if (sort_type == SORT_GROUPBY)
     {
-      goto end;
-    }
-
-  key_notnull = qo_validate_index_term_notnull (env, index_entryp);
-  if (key_notnull)
-    {
-      goto final_;
-    }
-
-  pos = QO_ENV_PT_TREE (env)->info.query.order_by->info.sort_spec.pos_descr.pos_no;
-  node = QO_ENV_PT_TREE (env)->info.query.q.select.list;
-
-  while (pos > 1 && node)
-    {
-      node = node->next;
-      pos--;
-    }
-  if (!node)
-    {
-      goto end;
-    }
-
-  if (node->node_type == PT_EXPR && node->info.expr.op == PT_CAST)
-    {
-      node = node->info.expr.arg1;
-      if (!node)
+      if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.q.select.group_by)
 	{
-	  goto end;
+	  return 0;
+	}
+    }
+  else if (sort_type == SORT_ORDERBY)
+    {
+      if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.order_by)
+	{
+	  return 0;
 	}
     }
 
-  node = pt_get_end_path_node (node);
+  assert (index_entryp->constraints != NULL);
 
-  assert (key_notnull == false);
+  /* Any non-null key column prevents an all-null composite key.
+   * Keep prefix, filter, and function indexes limited to the first key column.
+   *
+   * qo_is_filter_index() requires force > 0, so check the filter predicate directly. */
+  ncols = (qo_is_prefix_index (index_entryp) || index_entryp->constraints->filter_predicate != NULL
+	   || index_entryp->constraints->func_index_info != NULL) ? 1 : index_entryp->col_num;
 
-  key_notnull = qo_validate_index_attr_notnull (env, index_entryp, node);
-  if (key_notnull)
+  is_func_leading = (index_entryp->constraints->func_index_info != NULL
+		     && index_entryp->constraints->func_index_info->col_id == 0);
+
+  for (i = 0; i < ncols; i++)
     {
-      goto final_;
+      /* Schema NOT NULL can prove an unreferenced key column without a QO_SEGMENT.
+       * Skip it for a function-index key, since attributes[] refers to the function argument. */
+      if (!(i == 0 && is_func_leading))
+	{
+	  attr = index_entryp->constraints->attributes[i];
+	  if (attr != NULL && (attr->flags & SM_ATTFLAG_NON_NULL))
+	    {
+	      return 1;
+	    }
+	}
+
+      if (i >= index_entryp->nsegs || index_entryp->seg_idxs[i] == -1)
+	{
+	  continue;
+	}
+
+      if (qo_validate_index_term_notnull (env, index_entryp, index_entryp->seg_idxs[i]))
+	{
+	  return 1;
+	}
+
+      segp = QO_ENV_SEG (env, index_entryp->seg_idxs[i]);
+      if (segp != NULL && qo_validate_index_attr_notnull (env, index_entryp, QO_SEG_PT_NODE (segp)))
+	{
+	  return 1;
+	}
     }
 
-  /* Now we have the information we need: if the key column can be null and if there is a PT_IS_NULL or PT_IS_NOT_NULL
-   * expression with this key column involved and also if we have other terms with the key. We must decide if there can
-   * be NULLs in the results and if so, drop this index. 1. If the key cannot have null values, we have a winner. 2.
-   * Otherwise, if we found a term isnull/isnotnull(key) we drop it (because we cannot evaluate if this yields true or
-   * false so we skip all, for safety) 3. If we have a term with other operator except isnull/isnotnull and does not
-   * have an OR following we have a winner again! (because we cannot have a null value).
-   */
-final_:
-  if (key_notnull)
-    {
-      return 1;
-    }
-end:
   return 0;
 }
 
@@ -12643,7 +13631,7 @@ end:
  *   continue_walk(in):
  *
  * Note: for env->bail_out values, check key_term_status in
- *	  qo_validate_index_for_groupby, qo_validate_index_for_orderby
+ *	  qo_validate_index_attr_notnull
  */
 static PT_NODE *
 qo_search_isnull_key_expr (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
@@ -13181,66 +14169,6 @@ qo_is_iscan_from_groupby (QO_PLAN * plan)
     }
 
   return false;
-}
-
-/*
- * qo_validate_index_for_groupby () - checks for isnull(key) or not null flag
- *  env(in): pointer to the optimizer environment
- *  ni_entryp(in): pointer to QO_NODE_INDEX_ENTRY (node index entry)
- *  return: 1 if the index can be used, 0 elseware
- */
-static int
-qo_validate_index_for_groupby (QO_ENV * env, QO_NODE_INDEX_ENTRY * ni_entryp)
-{
-  bool key_notnull = false;	/* init */
-  QO_INDEX_ENTRY *index_entryp;
-  QO_CLASS_INFO_ENTRY *index_class;
-
-  PT_NODE *groupby_expr = NULL;
-
-  assert (ni_entryp != NULL);
-  assert (ni_entryp->head != NULL);
-  assert (ni_entryp->head->class_ != NULL);
-
-  index_entryp = ni_entryp->head;
-  index_class = index_entryp->class_;
-
-  if (!QO_ENV_PT_TREE (env) || !QO_ENV_PT_TREE (env)->info.query.q.select.group_by)
-    {
-      goto end;
-    }
-
-  key_notnull = qo_validate_index_term_notnull (env, index_entryp);
-  if (key_notnull)
-    {
-      goto final;
-    }
-
-  /* get the name of the first column in the group by list */
-  groupby_expr = QO_ENV_PT_TREE (env)->info.query.q.select.group_by->info.sort_spec.expr;
-
-  assert (key_notnull == false);
-
-  key_notnull = qo_validate_index_attr_notnull (env, index_entryp, groupby_expr);
-  if (key_notnull)
-    {
-      goto final;
-    }
-
-  /* Now we have the information we need: if the key column can be null and if there is a PT_IS_NULL or PT_IS_NOT_NULL
-   * expression with this key column involved and also if we have other terms with the key. We must decide if there can
-   * be NULLs in the results and if so, drop this index. 1. If the key cannot have null values, we have a winner. 2.
-   * Otherwise, if we found a term isnull/isnotnull(key) we drop it (because we cannot evaluate if this yields true or
-   * false so we skip all, for safety) 3. If we have a term with other operator except isnull/isnotnull and does not
-   * have an OR following we have a winner again! (because we cannot have a null value).
-   */
-final:
-  if (key_notnull)
-    {
-      return 1;
-    }
-end:
-  return 0;
 }
 
 /*
@@ -14563,9 +15491,34 @@ qo_top_plan_print_text (PARSER_CONTEXT * parser, xasl_node * xasl, PT_NODE * sel
 }
 
 /*
+ * qo_check_next_value () - parser_walk_tree callback looking for a serial NEXT_VALUE
+ *   return:
+ *   parser(in):
+ *   tree(in):
+ *   arg(in/out): bool *, set when a NEXT_VALUE is found
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+qo_check_next_value (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
+{
+  bool *has_next_value = (bool *) arg;
+
+  *continue_walk = PT_CONTINUE_WALK;
+
+  if (tree != NULL && tree->node_type == PT_EXPR && tree->info.expr.op == PT_NEXT_VALUE)
+    {
+      *has_next_value = true;
+      *continue_walk = PT_STOP_WALK;
+    }
+
+  return tree;
+}
+
+/*
  * qo_check_method_call_parallel_eligibility () - parser_walk_tree callback looking for a
- *   PT_METHOD_CALL node that may not run inside a parallel hash join worker: a method, or
- *   a stored procedure without the PARALLEL_ENABLE declaration
+ *   PT_METHOD_CALL node that may not run inside a parallel hash join worker: a method, a
+ *   stored procedure without the PARALLEL_ENABLE declaration, or one whose arguments hold a
+ *   serial NEXT_VALUE
  *   return:
  *   parser(in):
  *   tree(in):
@@ -14605,6 +15558,22 @@ qo_check_method_call_parallel_eligibility (PARSER_CONTEXT * parser, PT_NODE * tr
 	{
 	  *has_ineligible = true;
 	  *continue_walk = PT_STOP_WALK;
+	}
+      else
+	{
+	  /* CBRD-27561: a worker evaluates the arguments after it registers in the PL session, so
+	   * a NEXT_VALUE there opens the serial update's system operation with a registered owner
+	   * of rmutex_topop, and log_tdes::lock_topop () lets the other workers re-enter that
+	   * mutex instead of waiting. A NEXT_VALUE outside the arguments runs unregistered. */
+	  bool has_next_value = false;
+
+	  (void) parser_walk_tree (parser, tree->info.method_call.arg_list, qo_check_next_value, &has_next_value,
+				   NULL, NULL);
+	  if (has_next_value)
+	    {
+	      *has_ineligible = true;
+	      *continue_walk = PT_STOP_WALK;
+	    }
 	}
       /* eligible: keep walking, an argument may hold another method call */
     }
