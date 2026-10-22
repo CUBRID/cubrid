@@ -600,6 +600,13 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 
 	  if (pt_is_attr (arg1) || pt_is_function_index_expression (arg1))
 	    {
+	      if (arg2->node_type == PT_HOST_VAR && arg1->type_enum == PT_TYPE_CHAR)
+		{
+		  /* CBRD-27583 (D-53): the client sends a VARCHAR bind of a CHAR column unpadded, so a copy would not
+		   * compare as c4 = ? does (c4 = vc and c4 = ? must not become vc = ?), and a cast of the copy would
+		   * preset the position's domain for every use (PT_CAST type checking): the terms stay as they are */
+		  continue;
+		}
 	      if (qo_is_reduceable_const (arg2))
 		{
 		  found_equality_term = true;
@@ -945,23 +952,6 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 		  PT_ERRORm (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
 		  *wherep = save_where_next;
 		  continue;	/* give up */
-		}
-	      if (arg2->node_type == PT_HOST_VAR && arg1->data_type != NULL && parser->host_variables != NULL
-		  && arg2->info.host_var.var_type == PT_HOST_IN && arg2->info.host_var.index < parser->host_var_count
-		  && (arg1->type_enum == PT_TYPE_CHAR
-		      || (TP_DOMAIN_TYPE (pt_host_var_value_domain (parser, arg2->info.host_var.index))
-			  != pt_type_enum_to_db (arg1->type_enum))))
-		{
-		  /* CBRD-27583 (D-53): the client no longer casts the bind to arg1's domain, so a copy of another type or
-		   * a CHAR column's (its length pads) takes it as the literal above does: c4 = vc and c4 = ? must not
-		   * become vc = ? over the uncast value */
-		  temp = pt_wrap_with_cast_op (parser, temp, arg1->type_enum, 0, 0, arg1->data_type);
-		  if (temp == NULL)
-		    {
-		      PT_ERRORm (parser, arg2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		      *wherep = save_where_next;
-		      continue;	/* give up */
-		    }
 		}
 	    }
 
