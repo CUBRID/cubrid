@@ -13185,9 +13185,9 @@ locator_has_isolation_conflict (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * cont
  *   context(in/out): heap get context; given back unfixed, as it was on entry
  *
  * Note: any other writer settles on our MVCCID self-lock before touching a row we stamped, so while it stands we
- *	are the row's only writer and need no row lock while only an X holder has it; asking for it would queue us
- *	behind a writer that waits on us.  An S holder has decided on the row and is waited for, even while it waits
- *	to upgrade to X.
+ *	are the row's only writer and need no row lock while only writers hold it; asking for it would queue us
+ *	behind a writer that waits on us.  A holder that read the row with S has decided on it and is waited for,
+ *	even while it waits to upgrade to X and after the upgrade is granted.
  */
 static bool
 locator_last_version_is_ours (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT * context)
@@ -13233,6 +13233,7 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 {
   SCAN_CODE scan = S_SUCCESS;
   bool lock_acquired = false;
+  bool ours = false;
   MVCC_REC_HEADER recdes_header;
   bool is_mvcc_class;
   int (*lock_fn) (THREAD_ENTRY *, const OID *, const OID *, LOCK, int) =
@@ -13258,8 +13259,8 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
     {
       lock_acquired = true;
     }
-  else if (owner_bypass_ok && is_mvcc_class && locator_last_version_is_ours (thread_p, context)
-	   && lock_get_granted_holders_mode (thread_p, context->oid_p, context->class_oid_p) == X_LOCK)
+  else if (owner_bypass_ok && is_mvcc_class && (ours = locator_last_version_is_ours (thread_p, context))
+	   && lock_is_held_only_by_writers (thread_p, context->oid_p, context->class_oid_p))
     {
       /* lock_acquired stays false: there is nothing to give back */
     }
@@ -13271,7 +13272,9 @@ locator_lock_and_get_object_internal (THREAD_ENTRY * thread_p, HEAP_GET_CONTEXT 
 	  pgbuf_ordered_unfix (thread_p, &context->home_page_watcher);
 	}
       heap_clean_get_context (thread_p, context);
-      if (lock_fn (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK) != LK_GRANTED)
+      /* a writer queued before us would wait on our stamp once granted: go ahead of it */
+      if ((ours ? lock_object_ahead_of_waiters (thread_p, context->oid_p, context->class_oid_p, lock_mode, transient)
+	   : lock_fn (thread_p, context->oid_p, context->class_oid_p, lock_mode, LK_UNCOND_LOCK)) != LK_GRANTED)
 	{
 	  goto error;
 	}
