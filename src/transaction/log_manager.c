@@ -6676,6 +6676,10 @@ log_dump_record_replication (THREAD_ENTRY * thread_p, FILE * out_fp, LOG_LSA * l
       type = "RVREPL_OOS_INSERT";
       dump_function = log_repl_data_dump;
       break;
+    case RVREPL_INTERNAL_LOB_INSERT:
+      type = "RVREPL_INTERNAL_LOB_INSERT";
+      dump_function = log_repl_data_dump;
+      break;
     case RVREPL_DUMMY_OOS_RECORD:
       type = "RVREPL_DUMMY_OOS_RECORD";
       dump_function = log_repl_data_dump;

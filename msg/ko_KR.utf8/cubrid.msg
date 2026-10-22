@@ -1492,7 +1492,11 @@ $ LOADDB
 
 1383 내부 에러: out-of-row storage 인자가 유효하지 않습니다.
 
-1384 마지막 에러
+1386 스트림 세션 오류: %1$s.
+1388 언로드 파일의 internal LOB charset(%1$s) 이 이 데이터베이스(%2$s) 와 다릅니다; 적재를 중단합니다.
+1389 internal LOB 로케이터에 대한 현재 사용자 또는 세션의 접근 권한이 없습니다.
+1390 internal LOB 사이드카 파일이 없거나, 적재 파일의 참조가 사이드카에 없습니다.
+1391 마지막 에러
 
 $set 6 MSGCAT_SET_INTERNAL
 1 에러 서브 시스템에 에러 발생(라인 %1$d):
@@ -1660,6 +1664,7 @@ $set 7 MSGCAT_SET_PARSER_SYNTAX
 137 Server의 USER 최대 길이는 %1$d 바이트입니다.
 138 Invalid level. 유효값은 %1$d부터 %2$d까지 입니다.
 139 저장 프로시저/함수의 인수 타입과 결과 타입에는 정밀도를 지정할 수 없습니다.
+140 잘못된 형식의 clob_to_char 함수입니다.\n  CLOB_TO_CHAR ( expression [using charset] )\n
 
 $set 8 MSGCAT_SET_PARSER_SEMANTIC
 1 메모리가 부족합니다
@@ -2006,6 +2011,8 @@ $set 8 MSGCAT_SET_PARSER_SEMANTIC
 338 잘못된 인자입니다. UUID는 UUIDv4, 또는 UUIDv7만 지원하며, 버전 인자는 NULL일 수 없습니다.
 339 '%1$s'은 CLASS 또는 SHARED 속성 컬럼입니다. 일반적인 컬럼에서만 storage 옵션을 정의할 수 있습니다.
 340 STORAGE 옵션은 클래스의 가변 타입 일반 속성에만 지정할 수 있습니다: '%1$s'.
+341 CLOB 리터럴은 1GiB를 넘을 수 없습니다. 1GiB를 넘는 값은 CLOB_FROM_FILE 또는 CFILE_TO_CLOB으로 넣을 수 있습니다(최대 4GiB).
+342 BLOB 리터럴은 128MiB를 넘을 수 없습니다. 128MiB를 넘는 값은 BLOB_FROM_FILE 또는 BFILE_TO_BLOB으로 넣을 수 있습니다(최대 4GiB).
 
 
 

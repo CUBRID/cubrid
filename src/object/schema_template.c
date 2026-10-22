@@ -1068,6 +1068,12 @@ smt_add_attribute_any (SM_TEMPLATE * template_, const char *name, const char *do
       goto error_exit;
     }
 
+  if (name_space == ID_SHARED_ATTRIBUTE && TP_IS_LOB_FAMILY_TYPE (TP_DOMAIN_TYPE (domain)))
+    {
+      ERROR1 (error_code, ER_SM_DEFAULT_NOT_ALLOWED, domain->type->name);
+      goto error_exit;
+    }
+
   if (TP_DOMAIN_TYPE (domain) == DB_TYPE_OBJECT)
     {
       error_code = check_domain_class_type (template_, domain->class_mop);

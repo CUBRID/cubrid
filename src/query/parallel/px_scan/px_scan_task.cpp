@@ -611,6 +611,25 @@ namespace parallel_scan
 	pthread_mutex_unlock (&main_thread_p->m_px_lock_mutex);
       }
 
+    /* which output columns stream is decided per execution on the main thread's XASL; follow it, set or cleared */
+    if (m_orig_xasl != nullptr && m_orig_xasl->outptr_list != nullptr && m_xasl->outptr_list != nullptr)
+      {
+	REGU_VARIABLE_LIST src = m_orig_xasl->outptr_list->valptrp;
+	REGU_VARIABLE_LIST dst = m_xasl->outptr_list->valptrp;
+
+	for (; src != nullptr && dst != nullptr; src = src->next, dst = dst->next)
+	  {
+	    if (REGU_VARIABLE_IS_FLAGED (&src->value, REGU_VARIABLE_INTERNAL_LOB_STREAM))
+	      {
+		REGU_VARIABLE_SET_FLAG (&dst->value, REGU_VARIABLE_INTERNAL_LOB_STREAM);
+	      }
+	    else
+	      {
+		REGU_VARIABLE_CLEAR_FLAG (&dst->value, REGU_VARIABLE_INTERNAL_LOB_STREAM);
+	      }
+	  }
+      }
+
     m_scan_id = &m_xasl->spec_list->s_id;
 
     m_xasl_state = (xasl_state *) db_private_alloc (&thread_ref, sizeof (xasl_state));

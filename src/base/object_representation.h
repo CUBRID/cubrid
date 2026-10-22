@@ -465,6 +465,29 @@ OR_PUT_DOUBLE (char *ptr, double val)
 /* OOS inline size: OOS OID (8 bytes) + OOS length (8 bytes) */
 #define OR_OOS_INLINE_SIZE (OR_OID_SIZE + OR_BIGINT_SIZE)
 
+/*
+ * OOS inline stub: a variable attribute flagged OR_VAR_BIT_OOS holds these 16 bytes instead of the value --
+ * the head chunk OID (8 bytes) + a packed DB_BIGINT length: bit 63 always 0, bits 62-61 = OR_OOS_KIND_*,
+ * bits 60-0 = length (bytes for OOS and CLOB, BITS for BLOB). The chunk chain is identical for every kind,
+ * so the kind exists only here; an Internal LOB misread as an ordinary OOS value is silent corruption.
+ * Read/write it only via or_get_oos_stub () / or_put_oos_stub (), never or_get_bigint () / or_put_bigint ();
+ * copying the 16 bytes verbatim is fine.
+ */
+
+#define OR_OOS_KIND_OOS      0	/* ordinary out-of-row value; length is bytes */
+#define OR_OOS_KIND_CLOB     1	/* Internal LOB, CLOB; length is bytes */
+#define OR_OOS_KIND_BLOB     2	/* Internal LOB, BLOB; length is BITS */
+#define OR_OOS_KIND_RESERVED 3	/* never written; readers reject it */
+
+/* Pass as expect_kind to or_get_oos_stub () when the caller cannot know it up front. */
+#define OR_OOS_KIND_ANY      (-1)
+
+#define OR_OOS_KIND_SHIFT    61
+#define OR_OOS_LENGTH_MASK   ((DB_BIGINT) (((UINT64) 1 << OR_OOS_KIND_SHIFT) - 1))
+#define OR_OOS_KIND_OF(packed)   ((int) (((UINT64) (packed) >> OR_OOS_KIND_SHIFT) & 0x3))
+#define OR_OOS_LENGTH_OF(packed) ((DB_BIGINT) ((packed) & OR_OOS_LENGTH_MASK))
+#define OR_OOS_IS_LOB_KIND(kind) ((kind) == OR_OOS_KIND_CLOB || (kind) == OR_OOS_KIND_BLOB)
+
 /* variable offset */
 
 #define OR_VAR_TABLE_SIZE(vars) \
@@ -1710,6 +1733,90 @@ or_get_short (OR_BUF * buf, int *error)
   buf->ptr += OR_SHORT_SIZE;
   *error = NO_ERROR;
   return value;
+}
+
+/*
+ * or_put_oos_stub - write the 16-byte OOS inline stub
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer positioned at the stub
+ *    oid(in): head chunk OID (NULL OID only for an empty value, with length 0)
+ *    kind(in): OR_OOS_KIND_OOS / _CLOB / _BLOB
+ *    length(in): bytes for OOS and CLOB, BITS for BLOB
+ *
+ * The only way a stub is written; the kind is packed into the length (see the OOS inline stub block).
+ */
+STATIC_INLINE int
+or_put_oos_stub (OR_BUF * buf, const OID * oid, int kind, DB_BIGINT length)
+{
+  int rc;
+
+  /* A kind the reader would reject must never reach the disk. */
+  assert (kind == OR_OOS_KIND_OOS || kind == OR_OOS_KIND_CLOB || kind == OR_OOS_KIND_BLOB);
+  /* A length that reaches into the kind bits would come back as a different kind. */
+  assert (length >= 0 && length <= OR_OOS_LENGTH_MASK);
+  if (kind < OR_OOS_KIND_OOS || kind > OR_OOS_KIND_BLOB || length < 0 || length > OR_OOS_LENGTH_MASK)
+    {
+      return ER_FAILED;
+    }
+
+  rc = or_put_oid (buf, oid);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  return or_put_bigint (buf, (DB_BIGINT) (((UINT64) kind << OR_OOS_KIND_SHIFT) | (UINT64) length));
+}
+
+/*
+ * or_get_oos_stub - read the 16-byte OOS inline stub
+ *    return: NO_ERROR or error code
+ *    buf(in/out): or buffer positioned at the stub
+ *    oid(out): head chunk OID
+ *    kind(out): OR_OOS_KIND_OOS / _CLOB / _BLOB
+ *    length(out): bytes for OOS and CLOB, BITS for BLOB -- kind decides which
+ *    expect_kind(in): the kind the caller requires, or OR_OOS_KIND_ANY
+ *
+ * The only way a stub is read; a kind other than expect_kind fails instead of being misread.
+ */
+STATIC_INLINE int
+or_get_oos_stub (OR_BUF * buf, OID * oid, int *kind, DB_BIGINT * length, int expect_kind)
+{
+  DB_BIGINT packed;
+  int rc = NO_ERROR;
+
+  rc = or_get_oid (buf, oid);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+
+  packed = or_get_bigint (buf, &rc);
+  if (rc != NO_ERROR)
+    {
+      return rc;
+    }
+  /* Bit 63 is the sign and is never set by or_put_oos_stub (). */
+  if (packed < 0)
+    {
+      return ER_FAILED;
+    }
+
+  *kind = OR_OOS_KIND_OF (packed);
+  *length = OR_OOS_LENGTH_OF (packed);
+
+  /* OR_OOS_KIND_RESERVED is never written; seeing it means corruption or a
+   * newer format this build does not understand. Refuse rather than guess. */
+  if (*kind == OR_OOS_KIND_RESERVED)
+    {
+      return ER_FAILED;
+    }
+  if (expect_kind != OR_OOS_KIND_ANY && *kind != expect_kind)
+    {
+      return ER_FAILED;
+    }
+
+  return NO_ERROR;
 }
 
 /*

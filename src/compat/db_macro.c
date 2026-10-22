@@ -51,6 +51,7 @@
 #include "object_primitive.h"
 #include "object_representation.h"
 #include "db_json.hpp"
+#include "internal_lob_marker.h"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -3230,4 +3231,112 @@ db_value_is_corrupted (const DB_VALUE * value)
     }
 
   return false;
+}
+
+/*
+ * db_get_internal_lob_marker_text () - Point at the text of a value carrying this Internal LOB marker.
+ *   A scalar stream marker rides on a CHAR/BIT value, every other one on a CLOB/BLOB; bits must be whole bytes.
+ */
+bool
+db_get_internal_lob_marker_text (const DB_VALUE * value, int marker, DB_TYPE * type, const char **data, int *size)
+{
+  DB_TYPE value_type;
+  bool is_text;
+  bool is_bits;
+
+  if (value == NULL || DB_IS_NULL (value))
+    {
+      return false;
+    }
+
+  value_type = DB_VALUE_DOMAIN_TYPE (value);
+  if (marker == DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+    {
+      is_text = TP_IS_CHAR_TYPE (value_type);
+      is_bits = TP_IS_BIT_TYPE (value_type);
+    }
+  else
+    {
+      is_text = value_type == DB_TYPE_CLOB;
+      is_bits = value_type == DB_TYPE_BLOB;
+    }
+
+  /* the marker lives in the string member of the value union: check the type before reading it */
+  if ((!is_text && !is_bits) || !db_value_has_internal_lob_marker (value, marker))
+    {
+      return false;
+    }
+
+  if (is_text)
+    {
+      *data = db_get_string (value);
+      *size = db_get_string_size (value);
+    }
+  else
+    {
+      int bit_length = 0;
+
+      *data = (const char *) db_get_bit (value, &bit_length);
+      if (bit_length < 0 || bit_length % 8 != 0)
+	{
+	  return false;
+	}
+      *size = bit_length / 8;
+    }
+
+  if (type != NULL)
+    {
+      *type = value_type;
+    }
+  return true;
+}
+
+/*
+ * db_make_internal_lob_marker_value () - Build a marked Internal LOB envelope holding a private copy of text.
+ *   type: DB_TYPE_CLOB/DB_TYPE_BLOB, or DB_TYPE_VARCHAR/DB_TYPE_VARBIT for a scalar stream marker.
+ */
+int
+db_make_internal_lob_marker_value (DB_VALUE * value, DB_TYPE type, const char *text, int text_len, int marker)
+{
+  char *copy;
+  int error;
+
+  copy = (char *) db_private_alloc (NULL, text_len + 1);
+  if (copy == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+  memcpy (copy, text, (size_t) text_len);
+  copy[text_len] = '\0';
+
+  switch (type)
+    {
+    case DB_TYPE_CLOB:
+      error = db_make_clob (value, DB_MAX_LOB_PRECISION, copy, text_len);
+      break;
+    case DB_TYPE_BLOB:
+      error = db_make_blob (value, DB_MAX_LOB_PRECISION, (DB_CONST_C_BIT) copy, text_len * 8);
+      break;
+    case DB_TYPE_VARCHAR:
+      error = db_make_varchar (value, DB_MAX_VARCHAR_PRECISION, copy, text_len, LANG_SYS_CODESET, LANG_COLL_DEFAULT);
+      break;
+    case DB_TYPE_VARBIT:
+      error = db_make_varbit (value, text_len * 8, (DB_CONST_C_BIT) copy, text_len * 8);
+      break;
+    default:
+      error = ER_GENERIC_ERROR;
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
+      break;
+    }
+
+  if (error != NO_ERROR)
+    {
+      db_private_free_and_init (NULL, copy);
+      return error;
+    }
+
+  value->need_clear = true;
+  db_value_mark_internal_lob (value, marker);
+  return NO_ERROR;
 }

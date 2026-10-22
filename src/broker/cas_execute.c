@@ -80,6 +80,9 @@
 #include "cas_optimization.h"
 #include "cas_db_inc.h"
 #include "cas_common_vars.h"
+#include "network_interface_cl.h"
+#include "internal_lob_marker.h"
+#include "internal_lob_stream_kind.h"
 #include "query_replace.h"
 
 
@@ -298,6 +301,7 @@ static int ux_get_generated_keys_server_insert (T_SRV_HANDLE * srv_handle, T_NET
 static int ux_get_generated_keys_client_insert (T_SRV_HANDLE * srv_handle, T_NET_BUF * net_buf);
 
 static bool do_commit_after_execute (const t_srv_handle & server_handle);
+static void ux_stream_give_up_after_error (void);
 static int recompile_statement (T_SRV_HANDLE * srv_handle);
 
 #if defined (CAS_FOR_CGW)
@@ -353,6 +357,9 @@ static char database_name[MAX_HA_DBINFO_LENGTH] = "";
 static char database_user[SRV_CON_DBUSER_SIZE] = "";
 static char database_passwd[SRV_CON_DBPASSWD_SIZE] = "";
 static char cas_db_sys_param[128] = "";
+
+/* internal LOB read cursors open in this transaction; the server drops them all when it ends */
+static int lob_Read_cursor_count = 0;
 
 int
 ux_check_connection (void)
@@ -642,6 +649,8 @@ ux_database_shutdown (bool request_server)
   memset (database_passwd, 0, sizeof (database_passwd));
   cas_default_isolation_level = 0;
   cas_default_lock_timeout = -1;
+
+  ux_stream_reset ();
 }
 
 int
@@ -833,6 +842,11 @@ ux_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf
       srv_handle->is_prepared = TRUE;
     }
 
+  /* A shard CAS serves one shard, and a COPY stream carries no shard key --
+   * the rows have nowhere to be routed. The proxy refuses only the chunks
+   * (fn_stream_send_data), by which time the statement has opened a session
+   * and a transaction on one backend and the client has begun sending.
+   * Refuse it here, where the statement type is already known. */
 prepare_result_set:
   srv_handle->num_markers = num_markers;
   srv_handle->prepare_flag = flag;
@@ -934,6 +948,20 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
 {
   int err_code = 0;
 
+  /* A COMMIT cannot finish a stream still running. It rolls back and fails instead -- what every driver already
+   * takes a failed END_TRAN to have done. */
+  if (tran_type == CCI_TRAN_COMMIT && stream_from_is_open ())
+    {
+      err_code = ux_end_tran (CCI_TRAN_ROLLBACK, reset_con_status, ddl_audit_log);
+      if (err_code < 0)
+	{
+	  return err_code;
+	}
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a COMMIT inside an open stream session rolls the transaction back");
+      return ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+    }
+
   ux_end_tran_cleanup (tran_type);
 
   if (tran_type == CCI_TRAN_COMMIT)
@@ -947,6 +975,9 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
     }
   else if (tran_type == CCI_TRAN_ROLLBACK)
     {
+      /* the server ends any open stream session with the rollback, so this
+       * connection is no longer holding one either */
+      ux_stream_reset ();
       err_code = db_abort_transaction ();
       cas_log_debug (ARG_FILE_LINE, "ux_end_tran: db_abort_transaction() = %d", err_code);
       if (err_code < 0)
@@ -958,6 +989,7 @@ ux_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log)
     {
       err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
     }
+  lob_Read_cursor_count = 0;
 
   if (err_code >= 0)
     {
@@ -1356,6 +1388,8 @@ ux_execute (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_row,
 execute_error:
   NET_BUF_ERR_SET (net_buf);
 
+  ux_stream_give_up_after_error ();
+
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
       db_session_set_xasl_cache_pinned (session, false, false);
@@ -1606,6 +1640,7 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 	      as_info->num_holdable_results++;
 	    }
 	}
+
     }
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
@@ -1700,6 +1735,8 @@ ux_execute_all (T_SRV_HANDLE * srv_handle, char flag, int max_col_size, int max_
 
 execute_all_error:
   NET_BUF_ERR_SET (net_buf);
+
+  ux_stream_give_up_after_error ();
 
   if (srv_handle->prepare_flag & CCI_PREPARE_XASL_CACHE_PINNED)
     {
@@ -4032,6 +4069,34 @@ netval_to_dbval (void *net_type, void *net_value, DB_VALUE * out_val, T_NET_BUF 
 	  }
       }
       break;
+    case CCI_U_TYPE_INTERNAL_BLOB_UPLOAD:
+    case CCI_U_TYPE_INTERNAL_CLOB_UPLOAD:
+      {
+	char *value;
+	int val_size;
+	DB_TYPE lob_type = (type == CCI_U_TYPE_INTERNAL_BLOB_UPLOAD) ? DB_TYPE_BLOB : DB_TYPE_CLOB;
+
+	net_arg_get_str (&value, &val_size, net_value);
+	if (value == NULL || val_size <= (int) strlen (INTERNAL_LOB_UPLOAD_PREFIX)
+	    || memcmp (value, INTERNAL_LOB_UPLOAD_PREFIX, strlen (INTERNAL_LOB_UPLOAD_PREFIX)) != 0)
+	  {
+	    return ERROR_INFO_SET (CAS_ER_TYPE_CONVERSION, CAS_ERROR_INDICATOR);
+	  }
+	if (lob_type == DB_TYPE_BLOB)
+	  {
+	    err_code = db_make_blob (&db_val, DB_MAX_LOB_PRECISION, (DB_CONST_C_BIT) value, val_size * 8);
+	  }
+	else
+	  {
+	    err_code = db_make_clob (&db_val, DB_MAX_LOB_PRECISION, value, val_size);
+	  }
+	if (err_code == NO_ERROR)
+	  {
+	    db_value_mark_internal_lob (&db_val, DB_VALUE_INTERNAL_LOB_MARKER_UPLOAD);
+	    coercion_flag = FALSE;
+	  }
+      }
+      break;
     case CCI_U_TYPE_BIT:
     case CCI_U_TYPE_VARBIT:
       {
@@ -4429,12 +4494,191 @@ cur_tuple (T_QUERY_RESULT * q_result, int max_col_size, char sensitive_flag, DB_
 	  return err_code;
 	}
 
-      data_size += dbval_to_net_buf (&val, net_buf, 1, max_col_size, null_type_column ? null_type_column[i] : 0);
+      err_code = dbval_to_net_buf (&val, net_buf, 1, max_col_size, null_type_column ? null_type_column[i] : 0);
       db_value_clear (&val);
+      if (err_code < 0)
+	{
+	  /* the value was not sent and the buffer holds the error reply: no further column or tuple may follow */
+	  return err_code;
+	}
+      data_size += err_code;
     }
 
   tuple_obj = NULL;
   return data_size;
+}
+
+/*
+ * dbval_is_internal_lob_locator () - Does this result value carry an internal LOB reference instead of content?
+ *
+ * Both the locator marker (column SELECT) and the stream marker (LOB-producing scalar functions) are references.
+ */
+static bool
+dbval_is_internal_lob_locator (DB_VALUE * val, const char **locator, int *locator_len, DB_BIGINT * byte_length)
+{
+  DB_TYPE type;
+  const char *data = NULL;
+  int size = 0;
+  DB_BIGINT parsed_length = 0;
+  int marker;
+
+  marker = db_value_get_internal_lob_marker (val);
+  if ((marker != DB_VALUE_INTERNAL_LOB_MARKER_LOCATOR && marker != DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+      || !db_get_internal_lob_marker_text (val, marker, &type, &data, &size))
+    {
+      return false;
+    }
+
+  if (marker == DB_VALUE_INTERNAL_LOB_MARKER_STREAM)
+    {
+      /* "@internal_lob_stream:<B|C>:<locator>" - step over the wrapper to reach the locator itself */
+      if (!internal_lob_marker_parse_scalar_stream (data, size, NULL, &parsed_length, &data, &size))
+	{
+	  return false;
+	}
+    }
+  else if (!internal_lob_marker_parse_locator (data, size, &parsed_length))
+    {
+      return false;
+    }
+
+  /* a BLOB locator states the payload in bits */
+  if ((type == DB_TYPE_BLOB || type == DB_TYPE_VARBIT || type == DB_TYPE_BIT)
+      && !internal_lob_marker_split_length ('B', parsed_length, &parsed_length, NULL))
+    {
+      return false;
+    }
+
+  if (locator != NULL)
+    {
+      *locator = data;
+    }
+  if (locator_len != NULL)
+    {
+      *locator_len = size;
+    }
+  if (byte_length != NULL)
+    {
+      *byte_length = parsed_length;
+    }
+  return true;
+}
+
+/*
+ * add_res_data_internal_lob () - Put a BLOB/CLOB column on the wire for a driver that speaks PROTOCOL_V14.
+ *
+ * A leading discriminator byte tells, per value, whether it is a reference to stored content (pulled later with
+ * CAS_FC_LOB_STREAM_*) or inline content with no storage behind it, such as a CHAR_TO_CLOB('x') result.
+ *
+ *   [INTERNAL_LOB_WIRE_REF]    INT64 byte length, then the locator
+ *   [INTERNAL_LOB_WIRE_INLINE] the content itself
+ */
+static void
+add_res_data_internal_lob (T_NET_BUF * net_buf, char wire_kind, const char *data, int data_len,
+			   DB_BIGINT byte_length, unsigned char ext_type, int *net_size)
+{
+  int payload_size = 1 + (wire_kind == INTERNAL_LOB_WIRE_REF ? NET_SIZE_BIGINT : 0) + data_len;
+
+  if (ext_type)
+    {
+      net_buf_cp_int (net_buf, NET_BUF_TYPE_SIZE (net_buf) + payload_size, NULL);
+      net_buf_cp_cas_type_and_charset (net_buf, ext_type, CAS_SCHEMA_DEFAULT_CHARSET);
+    }
+  else
+    {
+      net_buf_cp_int (net_buf, payload_size, NULL);
+    }
+
+  net_buf_cp_byte (net_buf, wire_kind);
+  if (wire_kind == INTERNAL_LOB_WIRE_REF)
+    {
+      net_buf_cp_bigint (net_buf, byte_length, NULL);
+    }
+  if (data_len > 0)
+    {
+      net_buf_cp_str (net_buf, data, data_len);
+    }
+
+  if (net_size)
+    {
+      *net_size = NET_SIZE_INT + (ext_type ? NET_BUF_TYPE_SIZE (net_buf) : 0) + payload_size;
+    }
+}
+
+/*
+ * dbval_read_lob_stream () - Read the content a CLOB_TO_CHAR ()/BLOB_TO_BIT () stream marker stands for
+ *
+ * The server hands its top-level output over unread; the driver gets it as the plain VARCHAR/VARBIT value it asked
+ * for, at most max_col_size bytes of it.  content points into *buf, which the caller frees.
+ */
+static int
+dbval_read_lob_stream (DB_VALUE * marker, const char *locator, int locator_len, DB_BIGINT byte_length,
+		       int max_col_size, DB_VALUE * content, char **buf)
+{
+  DB_BIGINT size = byte_length;
+  DB_BIGINT max_bytes = (db_value_type (marker) == DB_TYPE_VARCHAR) ? DB_MAX_VARCHAR_PRECISION
+    : DB_MAX_VARBIT_PRECISION / 8;
+  DB_BIGINT done = 0;
+  INT64 token = 0;
+  int nread = 0;
+  int err_code;
+
+  *buf = NULL;
+  /* the same limit the value path applies to the whole value, before any max_col_size cut */
+  if (size > max_bytes)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_STRING_SIZE_TOO_BIG, 2, (int) MIN (size, (DB_BIGINT) INT_MAX),
+	      (int) max_bytes);
+      return ERROR_INFO_SET (ER_QPROC_STRING_SIZE_TOO_BIG, DBMS_ERROR_INDICATOR);
+    }
+  if (max_col_size > 0 && size > max_col_size)
+    {
+      size = max_col_size;
+    }
+
+  *buf = (char *) MALLOC (size > 0 ? size : 1);
+  if (*buf == NULL)
+    {
+      return ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+    }
+
+  err_code = internal_lob_stream_open_from_server (locator, locator_len, 0, &token);
+  while (err_code == NO_ERROR && done < size)
+    {
+      nread = 0;
+      err_code = internal_lob_stream_read_from_server (token, *buf + done,
+						       (int) MIN (size - done, INTERNAL_LOB_STREAM_MAX_CHUNK), &nread);
+      if (err_code == NO_ERROR && nread <= 0)
+	{
+	  /* shorter than its marker says */
+	  err_code = ER_OBJ_INVALID_ARGUMENTS;
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, err_code, 0);
+	}
+      if (err_code == NO_ERROR)
+	{
+	  done += nread;
+	}
+    }
+  if (token != 0)
+    {
+      (void) internal_lob_stream_close_from_server (token);
+    }
+  if (err_code != NO_ERROR)
+    {
+      FREE_MEM (*buf);
+      return ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+    }
+
+  if (db_value_type (marker) == DB_TYPE_VARCHAR)
+    {
+      db_make_varchar (content, DB_MAX_VARCHAR_PRECISION, *buf, (int) size, db_get_string_codeset (marker),
+		       db_get_string_collation (marker));
+    }
+  else
+    {
+      db_make_varbit (content, DB_MAX_VARBIT_PRECISION, *buf, (int) size * 8);
+    }
+  return 0;
 }
 
 static int
@@ -4464,6 +4708,79 @@ dbval_to_net_buf (DB_VALUE * val, T_NET_BUF * net_buf, char fetch_flag, int max_
     {
       ext_col_type = 0;
     }
+
+  {
+    DB_TYPE lob_value_type = db_value_type (val);
+    const char *lob_locator = NULL;
+    int lob_locator_len = 0;
+    DB_BIGINT lob_byte_length = 0;
+    bool is_reference = dbval_is_internal_lob_locator (val, &lob_locator, &lob_locator_len, &lob_byte_length);
+
+    if (is_reference && (lob_value_type == DB_TYPE_VARCHAR || lob_value_type == DB_TYPE_VARBIT))
+      {
+	DB_VALUE content;
+	char *content_buf = NULL;
+	int read_error;
+
+	read_error = dbval_read_lob_stream (val, lob_locator, lob_locator_len, lob_byte_length, max_col_size, &content,
+					    &content_buf);
+	if (read_error < 0)
+	  {
+	    /* the buffer now holds the error reply; a negative return tells cur_tuple () to stop the batch */
+	    NET_BUF_ERR_SET (net_buf);
+	    return read_error;
+	  }
+	data_size = dbval_to_net_buf (&content, net_buf, fetch_flag, max_col_size, column_type_flag);
+	FREE_MEM (content_buf);
+	return data_size;
+      }
+
+    /* Only the BLOB/CLOB framing to a V14 driver can carry a reference. Anywhere else (older driver) the
+     * locator text is not the value, so fail rather than return it as content. */
+    if (is_reference
+	&& !(DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V14)
+	     && (lob_value_type == DB_TYPE_BLOB || lob_value_type == DB_TYPE_CLOB)))
+      {
+	int not_implemented = ERROR_INFO_SET (CAS_ER_NOT_IMPLEMENTED, CAS_ERROR_INDICATOR);
+
+	NET_BUF_ERR_SET (net_buf);
+	return not_implemented;
+      }
+
+    /* Every BLOB/CLOB going to a V14 driver is framed with the discriminator, reference or not - the driver
+     * reads the same shape for both and decides from the byte, not from the connection version. */
+    if ((lob_value_type == DB_TYPE_BLOB || lob_value_type == DB_TYPE_CLOB)
+	&& DOES_CLIENT_UNDERSTAND_THE_PROTOCOL (net_buf->client_version, PROTOCOL_V14))
+      {
+	if (is_reference)
+	  {
+	    add_res_data_internal_lob (net_buf, INTERNAL_LOB_WIRE_REF, lob_locator, lob_locator_len,
+				       lob_byte_length, ext_col_type, &data_size);
+	  }
+	else
+	  {
+	    const char *inline_data;
+	    int inline_len = 0;
+
+	    if (lob_value_type == DB_TYPE_BLOB)
+	      {
+		int bit_length = 0;
+
+		inline_data = (const char *) db_get_bit (val, &bit_length);
+		inline_len = (bit_length + 7) / 8;
+	      }
+	    else
+	      {
+		inline_data = db_get_char (val);
+		inline_len = db_get_string_size (val);
+	      }
+	    /* whole, like a stored LOB sent as a reference: max_col_size (JDBC setMaxFieldSize) is not for LOBs */
+	    add_res_data_internal_lob (net_buf, INTERNAL_LOB_WIRE_INLINE, inline_data, inline_len, 0,
+				       ext_col_type, &data_size);
+	  }
+	return data_size;
+      }
+  }
 
   switch (db_value_type (val))
     {
@@ -10522,4 +10839,287 @@ recompile_statement (T_SRV_HANDLE * srv_handle)
   srv_handle->q_result->stmt_id = stmt_id;
 
   return err_code;
+}
+
+/*
+ * ux_stream_reset () - Drop the stream state this connection was carrying
+ *
+ * Called where the server-side session is known to be gone, so the next client the CAS process serves does not
+ * inherit a stream a vanished client left open.
+ */
+void
+ux_stream_reset (void)
+{
+  stream_from_reset ();
+}
+
+/*
+ * ux_stream_is_open () - Does this connection hold an open stream session?
+ *
+ * The reply header carries this so a driver that runs auto-commit from its own
+ * side can hold its commit back the way the CAS holds its own.
+ */
+bool
+ux_stream_is_open (void)
+{
+  return stream_from_is_open ();
+}
+
+/*
+ * ux_stream_admits_request () - May this request run on the connection now?
+ *
+ * An open stream is one statement still running: only its own requests and the
+ * ones that end the whole transaction are admitted (a COMMIT rolls back, see
+ * ux_end_tran).
+ *
+ * The internal LOB read cursor (CAS_FC_LOB_STREAM_*) is admitted as well. It is
+ * not a statement: it runs nothing, writes nothing and ends nothing, and it
+ * touches neither the open stream nor its transaction boundary. A driver may
+ * also need it in the middle of a stream -- copying a stored LOB into an INSERT
+ * reads the source through its locator while sending the bytes up the stream.
+ */
+bool
+ux_stream_admits_request (int func_code)
+{
+  if (!stream_from_is_open ())
+    {
+      return true;
+    }
+
+  switch (func_code)
+    {
+    case CAS_FC_STREAM_SEND_DATA:
+    case CAS_FC_STREAM_END:
+    case CAS_FC_STREAM_ABORT:
+    case CAS_FC_END_TRAN:
+    case CAS_FC_CHECK_CAS:
+    case CAS_FC_END_SESSION:
+    case CAS_FC_CON_CLOSE:
+    case CAS_FC_LOB_STREAM_OPEN:
+    case CAS_FC_LOB_STREAM_READ:
+    case CAS_FC_LOB_STREAM_CLOSE:
+      return true;
+
+    default:
+      return false;
+    }
+}
+
+/*
+ * ux_stream_give_up_after_error () - Drop the stream a failing statement opened
+ *
+ * It was opened for the transfer that follows, and an error reply means that transfer never comes. No statement
+ * runs while a stream is open (ux_stream_admits_request), so one open here is this statement's.
+ */
+static void
+ux_stream_give_up_after_error (void)
+{
+  if (stream_from_is_open ())
+    {
+      (void) stream_from_abort ();
+      ux_stream_reset ();
+    }
+}
+
+/*
+ * ux_stream_init () - Open a stream session the driver asked for directly
+ *
+ * The statement path does not come through here: the DML stream is opened and ended inside its statement.
+ */
+int
+ux_stream_init (int stream_kind, char *config, int config_len, T_NET_BUF * net_buf)
+{
+  int err_code;
+
+  /* Only a consumer whose client half is the driver may be opened here: the internal-LOB upload, which has no
+   * statement of its own. COPY, the internal-LOB DML stream and the loaddb stream are opened by the statement or
+   * utility that owns them, and that is where their target is checked (privilege, view, partition, trigger) --
+   * opening one directly would hand the server a target nothing has checked. */
+  if (stream_kind != STREAM_KIND_INTERNAL_LOB)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_STREAM_SESSION_ERROR, 1,
+	      "a driver may open only an internal LOB upload stream directly");
+      err_code = ERROR_INFO_SET (ER_STREAM_SESSION_ERROR, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  err_code = stream_from_init (stream_kind, config, config_len);
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  return 0;
+}
+
+int
+ux_stream_send_data (char *data, int data_len, T_NET_BUF * net_buf)
+{
+  int err_code;
+
+  err_code = stream_from_send_data (data, data_len);
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  return 0;
+}
+
+int
+ux_stream_end (T_NET_BUF * net_buf)
+{
+  int err_code;
+  INT64 count = 0;
+
+  err_code = stream_from_end (&count);
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  /* first field is the result code, as every other CAS reply has it; the
+   * kind's 64-bit count follows: the token for an upload */
+  net_buf_cp_int (net_buf, NO_ERROR, NULL);
+  net_buf_cp_bigint (net_buf, count, NULL);
+  return 0;
+}
+
+/*
+ * ux_stream_abort () - Give up on the stream without ending it
+ */
+int
+ux_stream_abort (T_NET_BUF * net_buf)
+{
+  int err_code;
+
+  err_code = stream_from_abort ();
+  if (err_code < 0)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, NO_ERROR, NULL);
+  return 0;
+}
+
+/* Internal LOB read streaming: the driver pulls a locator's bytes (see dbval_to_net_buf) through these calls,
+ * a thin pass-through to the server read cursor; CAS holds no LOB bytes of its own. */
+int
+ux_lob_stream_open (char *locator, int locator_len, DB_BIGINT start_offset, T_NET_BUF * net_buf)
+{
+  INT64 token = 0;
+  int err_code;
+
+  err_code = internal_lob_stream_open_from_server (locator, locator_len, (INT64) start_offset, &token);
+  if (err_code != NO_ERROR)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+  lob_Read_cursor_count++;
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  net_buf_cp_bigint (net_buf, (DB_BIGINT) token, NULL);
+  return 0;
+}
+
+int
+ux_lob_stream_read (DB_BIGINT token, int size, T_NET_BUF * net_buf)
+{
+  char *buffer = NULL;
+  int nread = 0;
+  int err_code;
+
+  if (size <= 0 || size > INTERNAL_LOB_STREAM_MAX_CHUNK)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_ARGS, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  buffer = (char *) MALLOC (size);
+  if (buffer == NULL)
+    {
+      err_code = ERROR_INFO_SET (CAS_ER_NO_MORE_MEMORY, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  err_code = internal_lob_stream_read_from_server ((INT64) token, buffer, size, &nread);
+  if (err_code != NO_ERROR)
+    {
+      FREE_MEM (buffer);
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  if (nread < 0 || nread > size)
+    {
+      FREE_MEM (buffer);
+      err_code = ERROR_INFO_SET (CAS_ER_INTERNAL, CAS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  net_buf_cp_int (net_buf, nread, NULL);
+  if (nread > 0)
+    {
+      net_buf_cp_str (net_buf, buffer, nread);
+    }
+
+  FREE_MEM (buffer);
+  return 0;
+}
+
+int
+ux_lob_stream_close (DB_BIGINT token, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info)
+{
+  int err_code;
+
+  err_code = internal_lob_stream_close_from_server ((INT64) token);
+  /* a failed close leaves no server cursor either, so the count follows it */
+  if (lob_Read_cursor_count > 0)
+    {
+      lob_Read_cursor_count--;
+    }
+
+  /* in auto-commit the last cursor closed ends the transaction its open began, unless that would also end
+   * a stream session or a result set the client still fetches or updates */
+  if (auto_commit_mode == TRUE && lob_Read_cursor_count == 0 && !stream_from_is_open ()
+      && !hm_has_result_tied_to_tran ())
+    {
+      req_info->need_auto_commit = (err_code != NO_ERROR) ? TRAN_AUTOROLLBACK : TRAN_AUTOCOMMIT;
+    }
+
+  if (err_code != NO_ERROR)
+    {
+      errors_in_transaction++;
+      err_code = ERROR_INFO_SET (err_code, DBMS_ERROR_INDICATOR);
+      NET_BUF_ERR_SET (net_buf);
+      return err_code;
+    }
+
+  net_buf_cp_int (net_buf, 0, NULL);
+  return 0;
 }

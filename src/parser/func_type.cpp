@@ -801,7 +801,11 @@ namespace func_type
 	    return m_node;
 	  }
 	const func_signature *func_sig = get_signature (*func_sigs);
-	if (func_sig == NULL || !apply_signature (*func_sig))
+	if (func_sig != NULL && !check_lob_args ())
+	  {
+	    m_node->type_enum = PT_TYPE_NA;
+	  }
+	else if (func_sig == NULL || !apply_signature (*func_sig))
 	  {
 	    m_node->type_enum = PT_TYPE_NA;
 	    // reserve previous error
@@ -834,29 +838,65 @@ namespace func_type
       case F_CLASS_OF: //move it to the beginning of pt_eval_function_type() ... not without complicating the code
 	m_node->type_enum = (arg_list) ? arg_list->type_enum : PT_TYPE_NONE;
 	return false; //no need to continue with generic code
-      case PT_GROUP_CONCAT: //ToDo: try without this!
+      case PT_GROUP_CONCAT:
       {
-	auto arg1 = m_node->info.function.arg_list;
-	if (arg1 != NULL)
+	PT_NODE *arg1 = m_node->info.function.arg_list;
+	PT_NODE *arg2 = arg1 != NULL ? arg1->next : NULL;
+	if (arg1 != NULL && arg2 != NULL
+	    && (PT_IS_LOB_FAMILY_TYPE (arg1->type_enum) || PT_IS_LOB_FAMILY_TYPE (arg2->type_enum)))
 	  {
-	    auto arg2 = arg1->next;
-	    if (arg2 != NULL)
-	      {
-		if (PT_IS_LOB_FAMILY_TYPE (arg1->type_enum) || PT_IS_LOB_FAMILY_TYPE (arg2->type_enum))
-		  {
-		    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
-				  fcode_get_lowercase_name (PT_GROUP_CONCAT), pt_show_type_enum (arg1->type_enum),
-				  pt_show_type_enum (arg2->type_enum));
-		    m_node->type_enum = PT_TYPE_VARCHAR;
-		    return false;
-		  }
-	      }
+	    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OP_NOT_DEFINED_ON,
+			  fcode_get_lowercase_name (PT_GROUP_CONCAT), pt_show_type_enum (arg1->type_enum),
+			  pt_show_type_enum (arg2->type_enum));
+	    m_node->type_enum = PT_TYPE_VARCHAR;
+	    return false;
 	  }
 	break;
       }
-
+      case F_SET:
+      case F_MULTISET:
+      case F_SEQUENCE:
+      case F_TABLE_SET:
+      case F_TABLE_MULTISET:
+      case F_TABLE_SEQUENCE:
+	/* a LOB cannot be a collection element */
+	for (PT_NODE *arg = arg_list; arg != NULL; arg = arg->next)
+	  {
+	    if (PT_IS_LOB_FAMILY_TYPE (arg->type_enum))
+	      {
+		pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			      fcode_get_lowercase_name (m_node->info.function.function_type),
+			      pt_show_type_enum (arg->type_enum));
+		m_node->type_enum = PT_TYPE_NONE;
+		return false;
+	      }
+	  }
+	break;
       default:
 	;
+      }
+    return true;
+  }
+
+  /* a LOB converts only explicitly (CLOB_TO_CHAR, BLOB_TO_BIT, CAST): refuse an argument the signature would cast */
+  bool
+  Node::check_lob_args ()
+  {
+    size_t arg_pos = 0;
+    for (parser_node *arg = m_node->info.function.arg_list; arg != NULL; arg = arg->next, ++arg_pos)
+      {
+	if (arg_pos >= m_best_signature.m_args_resolve.size ())
+	  {
+	    break;
+	  }
+	PT_TYPE_ENUM to_type = m_best_signature.m_args_resolve[arg_pos].m_type;
+	if (PT_IS_LOB_FAMILY_TYPE (arg->type_enum) && to_type != arg->type_enum && !PT_IS_LOB_FAMILY_TYPE (to_type))
+	  {
+	    pt_cat_error (m_parser, m_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_FUNC_NOT_DEFINED_ON,
+			  fcode_get_lowercase_name (m_node->info.function.function_type),
+			  pt_show_type_enum (arg->type_enum));
+	    return false;
+	  }
       }
     return true;
   }
@@ -1622,7 +1662,6 @@ pt_eval_function_type_aggregate (PARSER_CONTEXT *parser, PT_NODE *node)
 		       fcode_get_lowercase_name (fcode), pt_show_type_enum (arg_type), pt_show_type_enum (sep_type));
 	  break;
 	}
-
 
       if ((arg_type == PT_TYPE_BIT || arg_type == PT_TYPE_VARBIT) && sep_type != PT_TYPE_BIT
 	  && sep_type != PT_TYPE_VARBIT && sep_type != PT_TYPE_NONE)
