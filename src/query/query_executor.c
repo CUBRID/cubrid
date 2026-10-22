@@ -20308,14 +20308,23 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	      /* nothing to do */
 	    }
 
-	  if (xptr->type == HASHJOIN_PROC && !xasl->px_executor && prm_get_bool_value (PRM_ID_HASH_JOIN_RUNTIME_FILTER))
+	  if (xptr->type == HASHJOIN_PROC && !xasl->px_executor)
 	    {
 	      /* runtime filter: the input expected smaller runs now, and its keys filter the other one's outermost
 	       * scan when it turned out small (hjoin_rtf_first_input ()); the loop below skips the one that ran.
-	       * hash_join_runtime_filter=no (hidden) leaves both inputs to the loop below, as without the filter */
+	       * hash_join_runtime_filter=no (hidden) leaves both inputs to the loop below, as without the filter;
+	       * the node's rtf_keys is cleared either way, since a cached plan keeps the last execution's */
 	      XASL_NODE *rtf_target = NULL;
-	      XASL_NODE *rtf_first = hjoin_rtf_first_input (xptr, &rtf_target);
+	      XASL_NODE *rtf_first = NULL;
 
+	      if (prm_get_bool_value (PRM_ID_HASH_JOIN_RUNTIME_FILTER))
+		{
+		  rtf_first = hjoin_rtf_first_input (xptr, &rtf_target);
+		}
+	      else
+		{
+		  xptr->proc.hashjoin.rtf_keys = -1;
+		}
 	      if (rtf_first != NULL)
 		{
 		  if (qexec_execute_mainblock (thread_p, rtf_first, xasl_state, NULL) != NO_ERROR
