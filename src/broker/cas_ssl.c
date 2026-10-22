@@ -198,8 +198,9 @@ cas_init_ssl (int sd)
       return ER_SSL_GENERAL;
     }
 
-  /* The socket is blocking, so a client that sends the preamble and then nothing would hold this CAS in SSL_accept ()
-   * forever. Each step of the handshake gets the limit the plaintext login gets for each read. */
+  /* The socket is blocking during SSL_accept () and during each blocking SSL_read ()/SSL_write () below, so a client
+   * that stops sending would hold this CAS there forever. Bound each read and write to the limit a plaintext login
+   * read gets; it stays set for the whole SSL session, which the plaintext path bounds per read as well. */
   cas_ssl_set_io_timeout (sd, NET_DEFAULT_TIMEOUT);
 
   err_code = SSL_accept (ssl);
@@ -244,8 +245,9 @@ cas_init_ssl (int sd)
       return ER_SSL_GENERAL;
     }
 
-  /* the session reads only after a poll finds data, as before */
-  cas_ssl_set_io_timeout (sd, 0);
+  /* The handshake timeout stays set: SSL_read ()/SSL_write () below run on a blocking socket, and net_read_stream ()
+   * calls SSL_read () after a poll has found data, so a client that starts a TLS record and stalls cannot hold the
+   * CAS past the timeout. The long idle wait for the next request is bounded by that poll, not by SSL_read (). */
 
 #if defined (WINDOWS)
   argp = SOCKET_NONBLOCK;
