@@ -334,6 +334,7 @@ set(OBJECT_HEADERS
 
 set(SP_SOURCES
   ${SP_DIR}/jsp_cl.cpp
+  ${SP_DIR}/sp_context_rules.cpp
   ${SP_DIR}/pl_signature.cpp
   ${SP_DIR}/pl_comm.c
   ${SP_DIR}/pl_struct_compile.cpp
