@@ -1031,6 +1031,8 @@ struct groupby_stat
   INT64 read_rows;
   AGGREGATE_HASH_STATE groupby_hash;
   int groupby_hash_merge_parts;	/* partitions of the hash merge of the leftovers (qexec_gby_hash_merge ()), or 0 */
+  int groupby_hash_merge_levels;	/* 2 when a partition of the merge was split once more, else 1 */
+  int groupby_hash_merge_sorted;	/* the partitions of the merge left to the sort as they were */
   INT64 groupby_hash_groups;	/* the groups the hash merge estimated (its distinct-key sketch), or 0 */
   int groupby_hash_merge_workers;	/* the workers that merged the partitions (qexec_gby_px_merge ()), or 0: printed
 					 * with the partition count; parallel_num counts the same workers then */

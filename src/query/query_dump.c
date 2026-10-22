@@ -3897,6 +3897,10 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
 	{
 	  trace_json_object_set_new (groupby, "hash_merge_partitions",
 				     trace_json_integer (gstats->groupby_hash_merge_parts));
+	  trace_json_object_set_new (groupby, "hash_merge_levels",
+				     trace_json_integer (gstats->groupby_hash_merge_levels));
+	  trace_json_object_set_new (groupby, "hash_merge_sorted_partitions",
+				     trace_json_integer (gstats->groupby_hash_merge_sorted));
 	  if (gstats->groupby_hash_merge_workers > 0)
 	    {
 	      trace_json_object_set_new (groupby, "hash_merge_workers",
@@ -4681,7 +4685,8 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
 	}
       if (gstats->groupby_hash_merge_parts > 0)
 	{
-	  fprintf (fp, ", hash merge partitions: %d", gstats->groupby_hash_merge_parts);
+	  fprintf (fp, ", hash merge partitions: %d (levels: %d, sorted parts: %d)", gstats->groupby_hash_merge_parts,
+		   gstats->groupby_hash_merge_levels, gstats->groupby_hash_merge_sorted);
 	  if (gstats->groupby_hash_merge_workers > 0)
 	    {
 	      fprintf (fp, " (workers: %d)", gstats->groupby_hash_merge_workers);
