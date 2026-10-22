@@ -52,7 +52,6 @@ namespace cubload
   int to_db_null (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_short (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_int (const char *str, const size_t str_size, const attribute *attr, db_value *val);
-  int to_db_int_set (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_bigint (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_generic_char (DB_TYPE type, const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_char (const char *str, const size_t str_size, const attribute *attr, db_value *val);
@@ -74,16 +73,23 @@ namespace cubload
   int to_db_monetary (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_varbit_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_varbit_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
-  int to_db_varbit_from_bin_str_set (const char *str, const size_t str_size, const attribute *attr, db_value *val);
-  int to_db_varbit_from_hex_str_set (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_elem_varbit_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_elem_varbit_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_elo_ext (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_db_elo_int (const char *str, const size_t str_size, const attribute *attr, db_value *val);
   int to_int_generic (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  int to_elem_null (const char *str, const size_t str_size, const attribute *attr, db_value *val);
+  template <data_type LDR>
+  int to_db_fallback (const char *str, const size_t str_size, const attribute *attr, db_value *val);
 
   using conv_setters = std::array<std::array<conv_func, NUM_LDR_TYPES>, NUM_DB_TYPES>;
+  using elem_conv_setters = std::array<conv_func, NUM_LDR_TYPES>;
 
   static conv_setters init_setters ();
   static conv_setters setters = init_setters ();
+
+  static elem_conv_setters init_elem_setters ();
+  static elem_conv_setters elem_setters = init_elem_setters ();
 
   static conv_setters
   init_setters ()
@@ -103,29 +109,36 @@ namespace cubload
 	setters_[i][LDR_NULL] = &to_db_null;
       }
 
-    // used within collection
-    DB_TYPE set_types[3] = {DB_TYPE_SET, DB_TYPE_MULTISET, DB_TYPE_SEQUENCE};
-    for (DB_TYPE &set_type : set_types)
+    /*
+     * Allow loaddb to support the typecasts implicitly permitted by INSERT. A literal
+     * whose target has no converter of its own falls back to its natural type plus the
+     * engine's cast, instead of being refused by the table. The manual's implicit
+     * conversion table marks these as allowed and INSERT takes them - DATE'2020-01-01'
+     * into a VARCHAR column stores '01/01/2020', B'1010' stores 'a'.
+     *
+     * What stays out and why. Object references, collections, ^u and ^c are not values
+     * the engine casts between domains. The LOB literals are not either, and
+     * to_db_elo_int () is not even implemented. LDR_JSON is never produced: the parser
+     * has no rule for it, and a JSON column takes its value as LDR_STR.
+     */
+    for (int i = 0; i < NUM_DB_TYPES; i++)
       {
-	setters_[set_type][LDR_INT] = &to_db_int_set;
-	setters_[set_type][LDR_STR] = &to_db_string;
-	setters_[set_type][LDR_NUMERIC] = &to_db_numeric;
-	setters_[set_type][LDR_DOUBLE] = &to_db_double;
-	setters_[set_type][LDR_FLOAT] = &to_db_float;
-	setters_[set_type][LDR_DATE] = &to_db_date;
-	setters_[set_type][LDR_TIME] = &to_db_time;
-	setters_[set_type][LDR_TIMESTAMP] = &to_db_timestamp;
-	setters_[set_type][LDR_TIMESTAMPLTZ] = &to_db_timestampltz;
-	setters_[set_type][LDR_TIMESTAMPTZ] = &to_db_timestamptz;
-	setters_[set_type][LDR_DATETIME] = &to_db_datetime;
-	setters_[set_type][LDR_DATETIMELTZ] = &to_db_datetimeltz;
-	setters_[set_type][LDR_DATETIMETZ] = &to_db_datetimetz;
-	setters_[set_type][LDR_BSTR] = &to_db_varbit_from_bin_str_set;
-	setters_[set_type][LDR_XSTR] = &to_db_varbit_from_hex_str_set;
-	setters_[set_type][LDR_MONETARY] = &to_db_monetary;
-	setters_[set_type][LDR_ELO_EXT] = &to_db_elo_ext;
-	setters_[set_type][LDR_ELO_INT] = &to_db_elo_int;
-	setters_[set_type][LDR_JSON] = &to_db_json;
+	setters_[i][LDR_INT] = &to_db_fallback<LDR_INT>;
+	setters_[i][LDR_STR] = &to_db_fallback<LDR_STR>;
+	setters_[i][LDR_NUMERIC] = &to_db_fallback<LDR_NUMERIC>;
+	setters_[i][LDR_DOUBLE] = &to_db_fallback<LDR_DOUBLE>;
+	setters_[i][LDR_FLOAT] = &to_db_fallback<LDR_FLOAT>;
+	setters_[i][LDR_DATE] = &to_db_fallback<LDR_DATE>;
+	setters_[i][LDR_TIME] = &to_db_fallback<LDR_TIME>;
+	setters_[i][LDR_TIMESTAMP] = &to_db_fallback<LDR_TIMESTAMP>;
+	setters_[i][LDR_TIMESTAMPLTZ] = &to_db_fallback<LDR_TIMESTAMPLTZ>;
+	setters_[i][LDR_TIMESTAMPTZ] = &to_db_fallback<LDR_TIMESTAMPTZ>;
+	setters_[i][LDR_DATETIME] = &to_db_fallback<LDR_DATETIME>;
+	setters_[i][LDR_DATETIMELTZ] = &to_db_fallback<LDR_DATETIMELTZ>;
+	setters_[i][LDR_DATETIMETZ] = &to_db_fallback<LDR_DATETIMETZ>;
+	setters_[i][LDR_BSTR] = &to_db_fallback<LDR_BSTR>;
+	setters_[i][LDR_XSTR] = &to_db_fallback<LDR_XSTR>;
+	setters_[i][LDR_MONETARY] = &to_db_fallback<LDR_MONETARY>;
       }
 
     setters_[DB_TYPE_CHAR][LDR_STR] = &to_db_char;
@@ -144,12 +157,10 @@ namespace cubload
     setters_[DB_TYPE_DOUBLE][LDR_INT] = &to_db_double;
     setters_[DB_TYPE_DOUBLE][LDR_NUMERIC] = &to_db_double;
     setters_[DB_TYPE_DOUBLE][LDR_DOUBLE] = &to_db_double;
-    setters_[DB_TYPE_DOUBLE][LDR_FLOAT] = &to_db_double;
 
     setters_[DB_TYPE_NUMERIC][LDR_INT] = &to_int_generic;
     setters_[DB_TYPE_NUMERIC][LDR_NUMERIC] = &to_db_numeric;
     setters_[DB_TYPE_NUMERIC][LDR_DOUBLE] = &to_db_double;
-    setters_[DB_TYPE_NUMERIC][LDR_FLOAT] = &to_db_double;
 
     setters_[DB_TYPE_BIT][LDR_BSTR] = &to_db_varbit_from_bin_str;
     setters_[DB_TYPE_BIT][LDR_XSTR] = &to_db_varbit_from_hex_str;
@@ -163,10 +174,15 @@ namespace cubload
 
     setters_[DB_TYPE_JSON][LDR_STR] = &to_db_json;
 
-    setters_[DB_TYPE_MONETARY][LDR_INT] = &to_db_monetary;
-    setters_[DB_TYPE_MONETARY][LDR_NUMERIC] = &to_db_monetary;
-    setters_[DB_TYPE_MONETARY][LDR_DOUBLE] = &to_db_monetary;
-    setters_[DB_TYPE_MONETARY][LDR_FLOAT] = &to_db_monetary;
+    /*
+     * Only the $ literal comes here. A plain number keeps the fallback above, which
+     * builds the literal's own natural type and lets the engine cast it - the same
+     * path INSERT takes, and the reason a number has to stay off to_db_monetary ():
+     * that one reads every literal with strtod (), and strtod ("-0") is IEEE negative
+     * zero, so -0 and -0.0 were stored as $-0.00 where INSERT stores $0.00. INSERT
+     * keeps the sign for -0e0, because that literal really is a double; deferring to
+     * the engine reproduces both answers instead of picking one.
+     */
     setters_[DB_TYPE_MONETARY][LDR_MONETARY] = &to_db_monetary;
 
     setters_[DB_TYPE_DATE][LDR_STR] = &to_db_string;
@@ -193,6 +209,152 @@ namespace cubload
     return setters_;
   }
 
+  /*
+   * A collection element is converted to the literal's natural type. The collection
+   * checks it against its own set domain when the element is added, which is the only
+   * thing that works for a heterogeneous collection, where there is no single element
+   * domain to look up. This is why the varbit entries below stop at
+   * make_varbit_value () while the attribute table casts into the attribute domain.
+   */
+  static elem_conv_setters
+  init_elem_setters ()
+  {
+    elem_conv_setters setters_;
+
+    for (int i = 0; i < NUM_LDR_TYPES; i++)
+      {
+	setters_[i] = &mismatch;
+      }
+
+    setters_[LDR_NULL] = &to_elem_null;
+    setters_[LDR_INT] = &to_int_generic;
+    setters_[LDR_STR] = &to_db_string;
+    setters_[LDR_NUMERIC] = &to_db_numeric;
+    setters_[LDR_DOUBLE] = &to_db_double;
+    setters_[LDR_FLOAT] = &to_db_float;
+    setters_[LDR_DATE] = &to_db_date;
+    setters_[LDR_TIME] = &to_db_time;
+    setters_[LDR_TIMESTAMP] = &to_db_timestamp;
+    setters_[LDR_TIMESTAMPLTZ] = &to_db_timestampltz;
+    setters_[LDR_TIMESTAMPTZ] = &to_db_timestamptz;
+    setters_[LDR_DATETIME] = &to_db_datetime;
+    setters_[LDR_DATETIMELTZ] = &to_db_datetimeltz;
+    setters_[LDR_DATETIMETZ] = &to_db_datetimetz;
+    setters_[LDR_BSTR] = &to_elem_varbit_from_bin_str;
+    setters_[LDR_XSTR] = &to_elem_varbit_from_hex_str;
+    setters_[LDR_MONETARY] = &to_db_monetary;
+    setters_[LDR_ELO_EXT] = &to_db_elo_ext;
+    setters_[LDR_ELO_INT] = &to_db_elo_int;
+    setters_[LDR_JSON] = &to_db_json;
+
+    return setters_;
+  }
+
+  /*
+   * to_elem_null - null as a collection element
+   * Note:
+   *    Not to_db_null (), which applies the attribute's NOT NULL constraint.
+   *    An element being null does not make the attribute null.
+   */
+  int
+  to_elem_null (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  {
+    return db_make_null (val);
+  }
+
+  /*
+   * fallback_convert - convert through the literal's natural type and let the engine cast
+   *    return: NO_ERROR or an error code
+   *    ldr_type(in): parser type of the token
+   *    str(in), str_size(in): the token
+   *    attr(in): attribute being set
+   *    val(out): value in the attribute's domain
+   * Note:
+   *    The value is built with the literal's natural type and handed to tp_value_cast() against the attribute domain.
+   *    The same cast SQL INSERT performs on the same literal.
+   */
+  static int
+  fallback_convert (const data_type ldr_type, const char *str, const size_t str_size, const attribute *attr,
+		    db_value *val)
+  {
+    db_value natural;
+    const tp_domain &domain = attr->get_domain ();
+
+    db_make_null (&natural);
+    db_make_null (val);
+
+    int error_code = get_elem_conv_func (ldr_type) (str, str_size, attr, &natural);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
+    error_code = db_value_domain_init (val, domain.type->id, domain.precision, domain.scale);
+    if (error_code != NO_ERROR)
+      {
+	db_value_clear (&natural);
+	return error_code;
+      }
+
+    bool implicit_coercion = !TP_IS_CHAR_TYPE (domain.type->id);
+    TP_DOMAIN_STATUS status = tp_value_cast (&natural, val, const_cast<tp_domain *> (&domain), implicit_coercion);
+
+    if (status != DOMAIN_COMPATIBLE)
+      {
+	/*
+	 * Let the engine name its own failure, through the call INSERT makes. A cast
+	 * that overflowed is not a domain conflict: INSERT says
+	 * ER_IT_DATA_OVERFLOW for it, and so did the standalone loader before the
+	 * conversion moved ahead of the object template, which used to make this same
+	 * call. Reporting one code for every kind of failure also broke
+	 * --error-control-file, which filters by code - a file naming -427 no longer
+	 * matched the overflow it was written for.
+	 */
+	error_code = tp_domain_status_er_set (status, ARG_FILE_LINE, &natural, &domain);
+
+	db_value_clear (&natural);
+	db_value_clear (val);
+
+	return error_code;
+      }
+
+    db_value_clear (&natural);
+
+    /*
+     * The cast can hand back a null without failing. Under
+     * oracle_style_empty_string an empty string is a null, so '' into a numeric
+     * column arrives here as one and tp_value_cast () calls that DOMAIN_COMPATIBLE.
+     * A NOT NULL column cannot take it.
+     *
+     * Say so here rather than leaving it to whoever stores the value. The standalone
+     * loader's object template refuses it a second time, but the server loader tests
+     * NOT NULL only on a NULL token, so nothing downstream would catch it and the row
+     * would be written with the constraint broken.
+     */
+    if (attr->is_not_null () && DB_IS_NULL (val))
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, attr->get_name ());
+	return ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
+      }
+
+    return NO_ERROR;
+  }
+
+  /* template for fallback_convert () */
+  template <data_type LDR>
+  int
+  to_db_fallback (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  {
+    return fallback_convert (LDR, str, str_size, attr, val);
+  }
+
+  conv_func &
+  get_elem_conv_func (const data_type ldr_type)
+  {
+    conv_func &c_func = elem_setters[ldr_type];
+    return c_func;
+  }
+
   conv_func &
   get_conv_func (const data_type ldr_type, const DB_TYPE db_type)
   {
@@ -211,8 +373,17 @@ namespace cubload
   int
   to_db_null (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    if (attr->get_repr ().is_notnull)
+    if (attr->is_not_null ())
       {
+	/*
+	 * Say it, do not just return it. A bare code leaves er_errid () empty, and
+	 * every loader failure goes through er_filter_errid (), which reads an empty
+	 * er_errid () as "nothing to report" and hands back NO_ERROR - the failure
+	 * becomes a success. An ordinary attribute survives that because the object
+	 * template refuses the null again further down, but a %constructor line has
+	 * nothing after the conversion, so the row would go missing without a word.
+	 */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OBJ_ATTRIBUTE_CANT_BE_NULL, 1, attr->get_name ());
 	return ER_OBJ_ATTRIBUTE_CANT_BE_NULL;
       }
     else
@@ -299,32 +470,55 @@ namespace cubload
     return NO_ERROR;
   }
 
-  /**
-   * Used in case of collection when if int overflows fallback to bigint
-   */
-  int
-  to_db_int_set (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  /* An integer token with a leading sign taken off it. */
+  struct signed_digits
   {
-    int error_code = to_db_int (str, str_size, attr, val);
-    if (error_code == ER_IT_DATA_OVERFLOW)
-      {
-	// if there is overflow on integer, try as bigint
-	er_clear ();
-	error_code = to_db_bigint (str, str_size, attr, val);
-      }
+    std::size_t num_digits;     /* digits, not counting the sign */
+    const char *digits;         /* the first digit */
+    const char *dec_str;        /* the token as numeric_coerce_dec_str_to_num () wants it */
+  };
 
-    return error_code;
+  /*
+   * split_leading_sign - take a leading sign off an integer token
+   *    return: the token's digit count, its first digit, and the string for the long number path
+   *    str(in), str_size(in): the token
+   * Note:
+   *    str_size counts a leading sign while MAX_DIGITS_FOR_* count digits, so the
+   *    thresholds have to be tested against num_digits rather than the token length.
+   *
+   *    The two paths those thresholds choose between do not want the same string, which
+   *    is why dec_str is separate. parse_bigint () reads either sign.
+   *    numeric_coerce_dec_str_to_num () does not: it is an engine internal whose other
+   *    callers hand it a bare digit string and carry the sign apart from it, so it takes
+   *    a '-' and reads a '+' as a digit. Counting the sign pushed a 19 digit literal onto
+   *    that path, where +1234567890123456789 came back an overflow and the line was lost -
+   *    INSERT reads the sign in the grammar and stores the value.
+   */
+  static signed_digits
+  split_leading_sign (const char *str, const size_t str_size)
+  {
+    const bool has_sign = (str_size > 0 && (str[0] == '+' || str[0] == '-'));
+    const bool drop_sign = (has_sign && str[0] == '+');
+    signed_digits tok;
+
+    tok.num_digits = has_sign ? str_size - 1 : str_size;
+    tok.digits = has_sign ? str + 1 : str;
+    tok.dec_str = drop_sign ? str + 1 : str;
+
+    return tok;
   }
 
   int
   to_db_bigint (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
+    const signed_digits tok = split_leading_sign (str, str_size);
+
     db_make_bigint (val, 0);
 
     /* Let try take the fastest path here, if we know that number we are getting fits into a long, use strtol, else we
      * need to convert it to a double and coerce it, checking for overflow. Note if integers with leading zeros are
      * entered this can take the slower route. */
-    if (str_size < MAX_DIGITS_FOR_BIGINT || (str_size == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
+    if (tok.num_digits < MAX_DIGITS_FOR_BIGINT || (tok.num_digits == MAX_DIGITS_FOR_BIGINT && tok.digits[0] != '9'))
       {
 	int error_code = parse_bigint (&val->data.bigint, str, 10);
 	if (error_code != 0)
@@ -339,7 +533,7 @@ namespace cubload
 	DB_BIGINT tmp_bigint;
 	bool is_value_negative = false;
 
-	numeric_coerce_dec_str_to_num (str, num.d.buf, &is_value_negative);
+	numeric_coerce_dec_str_to_num (tok.dec_str, num.d.buf, &is_value_negative);
 	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint, is_value_negative) != NO_ERROR)
 	  {
 	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (DB_TYPE_BIGINT));
@@ -371,21 +565,25 @@ namespace cubload
 	if (char_count > precision)
 	  {
 	    /*
-	     * May be a violation, but first we have to check for trailing pad
-	     * characters that might allow us to successfully truncate the
-	     * thing.
+	     * May be a violation, but the overflow can be nothing but trailing pad
+	     * characters, and then the value is truncated rather than refused.
+	     *
+	     * Ask the same question INSERT asks, through the same call it makes -
+	     * see varchar_truncated () in string_opfunc.c. A real space always
+	     * pads, and so does the codeset's own pad character, which is the wide
+	     * space 0xa1a1 under EUC-KR. A tab or a carriage return does not pad,
+	     * in either place.
 	     */
-	    const char *p;
+	    unsigned char pad[2];
+	    int pad_size = 0;
+	    int trim_length = 0, trim_size = 0;
 	    int truncate_size;
 
-	    intl_char_size ((unsigned char *) str, precision, codeset, &truncate_size);
+	    intl_pad_char (codeset, pad, &pad_size);
+	    qstr_trim_trailing (pad, pad_size, (const unsigned char *) str, type, char_count, str_len, codeset,
+				&trim_length, &trim_size, true);
 
-	    p = intl_skip_spaces (&str[truncate_size], &str[str_len], codeset);
-	    if (p >= &str[str_len])
-	      {
-		str_len = truncate_size;
-	      }
-	    else
+	    if (trim_length > precision)
 	      {
 		/*
 		 * It's a genuine violation; raise an error.
@@ -393,6 +591,9 @@ namespace cubload
 		er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, pr_type_name (type));
 		return ER_IT_DATA_OVERFLOW;
 	      }
+
+	    intl_char_size ((unsigned char *) str, precision, codeset, &truncate_size);
+	    str_len = truncate_size;
 	  }
       }
 
@@ -420,7 +621,20 @@ namespace cubload
   int
   to_db_string (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    return db_make_string (val, str);
+    /*
+     * Not db_make_string (): it measures the token with strlen (), so a NUL inside
+     * the token cuts the value short without a word. '2.25\0junk' then reached the
+     * engine as "2.25" and cast cleanly into a NUMERIC column, where INSERT refuses
+     * the string whole. The loader already knows the real length, so say it. Apart
+     * from the length this is what db_make_string () does.
+     */
+    int error_code = db_value_domain_init (val, DB_TYPE_VARCHAR, TP_FLOATING_PRECISION_VALUE, 0);
+    if (error_code != NO_ERROR)
+      {
+	return error_code;
+      }
+
+    return db_make_db_char (val, LANG_SYS_CODESET, LANG_SYS_COLLATION, str, (int) str_size);
   }
 
   int
@@ -435,7 +649,15 @@ namespace cubload
     /* The ascii representation should be ok, check for overflow */
     if (str_ptr == str || OR_CHECK_FLOAT_OVERFLOW (d))
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, attr->get_domain ().type->get_name ());
+	/*
+	 * The attribute is for the message only, and an element slot may not have one:
+	 * ldr_convert_elem_value () hands over attdesc->conv_att, which ldr_refresh_conv_att ()
+	 * leaves NULL wherever att is NULL - a %constructor argument, and any slot the loader
+	 * walked past after an earlier error on the line. Name the literal's own type there,
+	 * which is what this function built.
+	 */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		(attr != NULL) ? attr->get_domain ().type->get_name () : pr_type_name (DB_TYPE_FLOAT));
 	return ER_IT_DATA_OVERFLOW;
       }
     else
@@ -458,7 +680,15 @@ namespace cubload
     /* The ascii representation should be ok, check for overflow */
     if (str_ptr == str || OR_CHECK_DOUBLE_OVERFLOW (d))
       {
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1, attr->get_domain ().type->get_name ());
+	/*
+	 * The attribute is for the message only, and an element slot may not have one:
+	 * ldr_convert_elem_value () hands over attdesc->conv_att, which ldr_refresh_conv_att ()
+	 * leaves NULL wherever att is NULL - a %constructor argument, and any slot the loader
+	 * walked past after an earlier error on the line. Name the literal's own type there,
+	 * which is what this function built.
+	 */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_IT_DATA_OVERFLOW, 1,
+		(attr != NULL) ? attr->get_domain ().type->get_name () : pr_type_name (DB_TYPE_DOUBLE));
 	return ER_IT_DATA_OVERFLOW;
       }
     else
@@ -472,13 +702,24 @@ namespace cubload
   int
   to_db_numeric (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
-    int precision = (int) str_size - 1 - (str[0] == '+' || str[0] == '-');
-    int scale = (int) str_size - (int) strcspn (str, ".") - 1;
+    const char *dot = (const char *) memchr (str, '.', str_size);
+    int sign = (str_size > 0 && (str[0] == '+' || str[0] == '-')) ? 1 : 0;
+    int precision = (int) str_size - sign - (dot != NULL ? 1 : 0);
+    int scale = (dot != NULL) ? (int) (str + str_size - dot - 1) : 0;
 
     if (precision > DB_MAX_NUMERIC_PRECISION)
       {
 	scale = (scale == 0) ? (DB_MAX_NUMERIC_PRECISION - precision) : scale;
 	precision = DB_MAX_NUMERIC_PRECISION;
+
+	if (scale > DB_MAX_NUMERIC_SCALE)
+	  {
+	    scale = DB_MAX_NUMERIC_SCALE;
+	  }
+	else if (scale < DB_MIN_NUMERIC_SCALE)
+	  {
+	    scale = DB_MIN_NUMERIC_SCALE;
+	  }
       }
 
     int error_code = db_value_domain_init (val, DB_TYPE_NUMERIC, precision, scale);
@@ -605,6 +846,19 @@ namespace cubload
     const unsigned char *p = (const unsigned char *) str;
     const unsigned char *token = (const unsigned char *) str;
 
+    if (token == NULL || str_size == 0)
+      {
+	if (er_errid() != NO_ERROR)
+	  {
+	    return er_errid();
+	  }
+	else
+	  {
+	    er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_LDR_MEMORY_ERROR, 0);
+	    return ER_LDR_MEMORY_ERROR;
+	  }
+      }
+
     if (str_size >= 2
 	&& intl_is_currency_symbol ((const char *) p, &currency_type, &symbol_size,
 				    (CURRENCY_CHECK_MODE) (CURRENCY_CHECK_MODE_ESC_ISO | CURRENCY_CHECK_MODE_GRAMMAR)))
@@ -670,7 +924,8 @@ namespace cubload
 	db_private_free_and_init (NULL, bstring);
 
 	error_code = ER_OBJ_DOMAIN_CONFLICT;
-	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, attr->get_name ());
+	/* An element slot may have no attribute; to_db_float () explains. */
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, error_code, 1, (attr != NULL) ? attr->get_name () : "");
 
 	// TODO CBRD-22271 log LOADDB_MSG_PARSE_ERROR
 	return error_code;
@@ -748,13 +1003,13 @@ namespace cubload
    * ldr_bstr_elem () / ldr_xstr_elem () of the SA loader do.
    */
   int
-  to_db_varbit_from_bin_str_set (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  to_elem_varbit_from_bin_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     return make_varbit_value (str, str_size, false, attr, val);
   }
 
   int
-  to_db_varbit_from_hex_str_set (const char *str, const size_t str_size, const attribute *attr, db_value *val)
+  to_elem_varbit_from_hex_str (const char *str, const size_t str_size, const attribute *attr, db_value *val)
   {
     return make_varbit_value (str, str_size, true, attr, val);
   }
@@ -898,6 +1153,8 @@ namespace cubload
   {
     int error_code = NO_ERROR;
 
+    const signed_digits tok = split_leading_sign (str, str_size);
+
     /*
      * Watch out for really long digit strings that really are being
      * assigned into a DB_TYPE_NUMERIC attribute; they can hold more than a
@@ -905,7 +1162,8 @@ namespace cubload
      * data.
      * Is there some better way to test for this condition?
      */
-    if (str_size < MAX_DIGITS_FOR_INT || (str_size == MAX_DIGITS_FOR_INT && (str[0] == '0' || str[0] == '1')))
+    if (tok.num_digits < MAX_DIGITS_FOR_INT
+	|| (tok.num_digits == MAX_DIGITS_FOR_INT && (tok.digits[0] == '0' || tok.digits[0] == '1')))
       {
 	db_make_int (val, 0);
 	error_code = parse_int (&val->data.i, str, 10);
@@ -915,7 +1173,8 @@ namespace cubload
 	    return ER_IT_DATA_OVERFLOW;
 	  }
       }
-    else if (str_size < MAX_DIGITS_FOR_BIGINT || (str_size == MAX_DIGITS_FOR_BIGINT && str[0] != '9'))
+    else if (tok.num_digits < MAX_DIGITS_FOR_BIGINT
+	     || (tok.num_digits == MAX_DIGITS_FOR_BIGINT && tok.digits[0] != '9'))
       {
 	db_make_bigint (val, 0);
 	error_code = parse_bigint (&val->data.bigint, str, 10);
@@ -931,10 +1190,10 @@ namespace cubload
 	DB_BIGINT tmp_bigint;
 	bool is_value_negative = false;
 
-	numeric_coerce_dec_str_to_num (str, num.d.buf, &is_value_negative);
+	numeric_coerce_dec_str_to_num (tok.dec_str, num.d.buf, &is_value_negative);
 	if (numeric_coerce_num_to_bigint (num.d.buf, 0, &tmp_bigint, is_value_negative) != NO_ERROR)
 	  {
-	    int precision = (int) str_size - (str[0] == '+' || str[0] == '-');
+	    int precision = (int) tok.num_digits;
 	    if (precision > DB_MAX_NUMERIC_PRECISION)
 	      {
 		precision = DB_MAX_NUMERIC_PRECISION;
