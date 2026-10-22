@@ -23,7 +23,6 @@
 #include "dbtype_def.h"
 #include "schema_manager.h"
 #include "schema_information_schema_constants.h"
-#include "schema_system_catalog_install.hpp"
 #include "schema_system_metadata_builder.hpp"
 #include "schema_system_metadata_definition.hpp"
 

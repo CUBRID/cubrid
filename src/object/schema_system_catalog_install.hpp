@@ -90,62 +90,8 @@ namespace cubschema
       static system_metadata_definition get_view_server ();
       static system_metadata_definition get_view_db_histogram ();
   };
-
-
-
-// TODO: find right place
-// TODO: implement formatting utility function for std::string (like fmt library)
-  const inline std::string format_varchar (const int size)
-  {
-    std::string s ("varchar(");
-    s += std::to_string (size);
-    s += ")";
-    return s;
-  }
-
-  const inline std::string format_varbit (const int size)
-  {
-    std::string s ("bit varying(");
-    s += std::to_string (size);
-    s += ")";
-    return s;
-  }
-
-  const inline std::string format_numeric (const int prec, const int scale)
-  {
-    std::string s ("numeric(");
-    s += std::to_string (prec);
-    s += ",";
-    s += std::to_string (scale);
-    s += ")";
-    return s;
-  }
-
-  const inline std::string format_sequence (const std::string_view type)
-  {
-    std::string s ("sequence of");
-    if (!type.empty ())
-      {
-	s.append (" ");
-	s.append (type);
-      }
-    return s;
-  }
-
-  const inline std::string format_set (const std::string_view type)
-  {
-    std::string s ("set of");
-    if (!type.empty ())
-      {
-	s.append (" ");
-	s.append (type);
-      }
-    return s;
-  }
-
 } // namespace cubschema
 
-// TODO: move them to proper place
 std::string sm_define_view_class_spec (void);
 std::string sm_define_view_direct_super_class_spec (void);
 std::string sm_define_view_vclass_spec (void);
