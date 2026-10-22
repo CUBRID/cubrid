@@ -136,6 +136,8 @@ namespace cubschema
     authorization (struct db_object *&o, const std::vector<grant> &gs);
   };
 
+  authorization make_authorization (MOP owner, const std::vector<MOP> &grantees, DB_AUTH auth);
+
   struct system_metadata_definition
   {
     using attr_vec_type = std::vector <attribute>;

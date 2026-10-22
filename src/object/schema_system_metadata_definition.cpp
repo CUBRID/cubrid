@@ -68,6 +68,19 @@ namespace cubschema
   {
   }
 
+  authorization
+  make_authorization (MOP owner, const std::vector<MOP> &grantees, DB_AUTH auth)
+  {
+    authorization au {owner, {}};
+
+    for (MOP grantee : grantees)
+      {
+	au.grants.push_back ({grantee, auth, false});
+      }
+
+    return au;
+  }
+
   system_metadata_definition::system_metadata_definition (const std::string &n, const attr_vec_type &attrs,
       const cstr_vec_type &cts,
       const authorization &au,

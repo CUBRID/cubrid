@@ -152,14 +152,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -208,14 +201,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -257,14 +243,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -298,14 +277,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -336,14 +308,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -381,14 +346,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -427,14 +385,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -464,14 +415,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -500,14 +444,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -557,14 +494,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -592,14 +522,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -634,14 +557,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -681,14 +597,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -717,14 +626,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -752,14 +654,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -785,14 +680,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -828,14 +716,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -875,14 +756,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
@@ -911,14 +785,7 @@ namespace cubschema
     // constraint
     {},
     // authorization
-    {
-      // owner
-      Au_information_schema_user,
-      // grants
-      {
-	{Au_public_user, AU_SELECT, false}
-      }
-    },
+    make_authorization (Au_information_schema_user, {Au_public_user}, AU_SELECT),
     // initializer
     nullptr
 	   );
