@@ -126,8 +126,48 @@ qo_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 }
 
 /*
+ * qo_find_constant_host_var () - Find the host variable of the 'attr = ?' or 'attr range (? =)' term of name
+ *   return: PT_HOST_VAR node, or NULL if not found
+ *   parser(in):
+ *   terms(in): CNF list
+ *   name(in): select list column
+ */
+static PT_NODE *
+qo_find_constant_host_var (PARSER_CONTEXT * parser, PT_NODE * terms, PT_NODE * name)
+{
+  PT_NODE *term, *value;
+
+  for (term = terms; term; term = term->next)
+    {
+      if (term->node_type != PT_EXPR || term->or_next != NULL || !pt_is_attr (term->info.expr.arg1)
+	  || !pt_name_equal (parser, pt_get_end_path_node (term->info.expr.arg1), name))
+	{
+	  continue;
+	}
+
+      value = NULL;
+      if (term->info.expr.op == PT_EQ)
+	{
+	  value = term->info.expr.arg2;
+	}
+      else if (term->info.expr.op == PT_RANGE && term->info.expr.arg2 != NULL
+	       && term->info.expr.arg2->or_next == NULL && term->info.expr.arg2->info.expr.op == PT_BETWEEN_EQ_NA)
+	{
+	  value = term->info.expr.arg2->info.expr.arg1;
+	}
+
+      if (PT_IS_INPUT_HOSTVAR (value))
+	{
+	  return value;
+	}
+    }
+
+  return NULL;
+}
+
+/*
  * qo_auto_parameterize_constant_select_list () - Replace the literal constant values of the select list
- *						  with the host variables of the auto-parameterized WHERE clause
+ *						  with the host variables of the auto-parameterized terms
  *   return:
  *   parser(in):
  *   select(in): SELECT node
@@ -139,6 +179,7 @@ qo_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
  *      the SELECT built for UPDATE and DELETE in the XASL generation, the copy is pulled up into
  *      the outer query. If it stays a literal, the literal is baked into an XASL whose cache key
  *      has the host variable, and every execution that hits the cache uses the first literal.
+ *      The term is in WHERE, or in HAVING when it is not moved to WHERE (WITH ROLLUP).
  *
  * 	examples:
  *      SELECT a ... WHERE a=10  -->  SELECT a ... WHERE a=?:0, constant_value of a: 10 --> ?:0
@@ -146,7 +187,7 @@ qo_auto_parameterize (PARSER_CONTEXT * parser, PT_NODE * where)
 void
 qo_auto_parameterize_constant_select_list (PARSER_CONTEXT * parser, PT_NODE * select)
 {
-  PT_NODE *col, *name, *term, *value;
+  PT_NODE *col, *name, *host_var;
 
   if (select == NULL || select->node_type != PT_SELECT)
     {
@@ -162,32 +203,16 @@ qo_auto_parameterize_constant_select_list (PARSER_CONTEXT * parser, PT_NODE * se
 	  continue;
 	}
 
-      /* find the 'attr = ?' or 'attr range (? =)' term that the constant was reduced from */
-      for (term = select->info.query.q.select.where; term; term = term->next)
+      host_var = qo_find_constant_host_var (parser, select->info.query.q.select.where, name);
+      if (host_var == NULL)
 	{
-	  if (term->node_type != PT_EXPR || term->or_next != NULL || !pt_is_attr (term->info.expr.arg1)
-	      || !pt_name_equal (parser, pt_get_end_path_node (term->info.expr.arg1), name))
-	    {
-	      continue;
-	    }
+	  host_var = qo_find_constant_host_var (parser, select->info.query.q.select.having, name);
+	}
 
-	  value = NULL;
-	  if (term->info.expr.op == PT_EQ)
-	    {
-	      value = term->info.expr.arg2;
-	    }
-	  else if (term->info.expr.op == PT_RANGE && term->info.expr.arg2 != NULL
-		   && term->info.expr.arg2->or_next == NULL && term->info.expr.arg2->info.expr.op == PT_BETWEEN_EQ_NA)
-	    {
-	      value = term->info.expr.arg2->info.expr.arg1;
-	    }
-
-	  if (PT_IS_INPUT_HOSTVAR (value))
-	    {
-	      parser_free_tree (parser, name->info.name.constant_value);
-	      name->info.name.constant_value = parser_copy_tree (parser, value);
-	      break;
-	    }
+      if (host_var != NULL)
+	{
+	  parser_free_tree (parser, name->info.name.constant_value);
+	  name->info.name.constant_value = parser_copy_tree (parser, host_var);
 	}
     }
 }
