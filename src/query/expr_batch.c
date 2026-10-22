@@ -373,6 +373,7 @@ struct expr_batch_plan
   int n_row_kids;
   INT64 pages;
   INT64 pages_fallback;
+  INT64 rows_by_oid;		/* rows a page skipped (heap_page_collect_visible ()), fetched by OID on the row path */
   const char *fallback_why;	/* the last chunk's cause for the row path */
 };
 
@@ -4880,6 +4881,21 @@ expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback)
 }
 
 void
+expr_batch_plan_note_rows_by_oid (EXPR_BATCH_PLAN * plan, int n)
+{
+  if (plan != NULL)
+    {
+      plan->rows_by_oid += n;
+    }
+}
+
+REPR_ID
+expr_batch_plan_repid (const EXPR_BATCH_PLAN * plan)
+{
+  return (plan != NULL && plan->repid_set) ? plan->repid : NULL_REPRID;
+}
+
+void
 expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, int indent)
 {
   int i, n_pointed = 0;
@@ -4894,10 +4910,10 @@ expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, i
       n_pointed += (plan->vecs[plan->cols[i].vec].kind == EB_VK_PTR);
     }
   fprintf (fp, "%*cEXPR_BATCH: active, usecols %d (pointed %d), chunk %d rows, filter terms raw %d / row %d%s, "
-	   "shared values %d, vector steps %d, aggregates %d, pages %lld (row path %lld%s%s)\n", indent, ' ',
-	   plan->n_cols, n_pointed, plan->cap, plan->n_raw_kids, plan->n_row_kids,
+	   "shared values %d, vector steps %d, aggregates %d, pages %lld (row path %lld, rows by oid %lld%s%s)\n",
+	   indent, ' ', plan->n_cols, n_pointed, plan->cap, plan->n_raw_kids, plan->n_row_kids,
 	   (plan->rtf != NULL) ? " + runtime filter" : "", plan->n_shared, plan->n_steps, plan->n_aggs,
-	   (long long) plan->pages, (long long) plan->pages_fallback,
+	   (long long) plan->pages, (long long) plan->pages_fallback, (long long) plan->rows_by_oid,
 	   (plan->fallback_why != NULL) ? ", last: " : "", (plan->fallback_why != NULL) ? plan->fallback_why : "");
   if (plan->n_proj > 0)
     {

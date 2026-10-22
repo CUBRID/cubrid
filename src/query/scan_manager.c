@@ -3558,6 +3558,10 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->batch_last_slot = 0;
   hsidp->batch_copy = NULL;
   hsidp->batch_copy_cap = 0;
+  hsidp->batch_exc = NULL;
+  hsidp->batch_exc_cap = 0;
+  hsidp->batch_n_exc = 0;
+  hsidp->batch_exc_pos = 0;
 
   /* sampling pick owned by qexec_prepare_table_sampling (gated by prepared); no re-pick here */
 
@@ -5511,6 +5515,13 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  db_private_free_and_init (thread_p, hsidp->batch_copy);
 	  hsidp->batch_copy_cap = 0;
 	}
+      if (hsidp->batch_exc != NULL)
+	{
+	  db_private_free_and_init (thread_p, hsidp->batch_exc);
+	  hsidp->batch_exc_cap = 0;
+	}
+      hsidp->batch_n_exc = 0;
+      hsidp->batch_exc_pos = 0;
       if (hsidp->batch_plan != NULL)
 	{
 	  expr_batch_plan_free (thread_p, hsidp->batch_plan);
@@ -6116,6 +6127,8 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      scan_id->partition_stats->batch_pages += scan_id->scan_stats.batch_pages - old_scan_stats.batch_pages;
 	      scan_id->partition_stats->batch_pages_rowpath +=
 		scan_id->scan_stats.batch_pages_rowpath - old_scan_stats.batch_pages_rowpath;
+	      scan_id->partition_stats->batch_rows_by_oid +=
+		scan_id->scan_stats.batch_rows_by_oid - old_scan_stats.batch_rows_by_oid;
 	      break;
 
 	    case S_INDX_SCAN:
@@ -8290,6 +8303,22 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCE
       hsidp->batch_why_not = "out of memory";
       return hsidp->batch_state;
     }
+  /* a chunk's exceptions: as many as its rows, so that a page of nothing but exceptions (every record relocated,
+   * or of an older representation) still goes chunk by chunk and never to the row path as a whole */
+  hsidp->batch_exc_cap = hsidp->batch->cap;
+  hsidp->batch_exc = (OID *) db_private_alloc (thread_p, sizeof (OID) * hsidp->batch_exc_cap);
+  if (hsidp->batch_exc == NULL)
+    {
+      expr_batch_final (hsidp->batch);
+      db_private_free_and_init (thread_p, hsidp->batch);
+      expr_batch_plan_free (thread_p, hsidp->batch_plan);
+      hsidp->batch_plan = NULL;
+      hsidp->batch_exc_cap = 0;
+      hsidp->batch_why_not = "out of memory";
+      return hsidp->batch_state;
+    }
+  hsidp->batch_n_exc = 0;
+  hsidp->batch_exc_pos = 0;
   VPID_SET_NULL (&hsidp->batch_vpid);
   hsidp->batch_started = false;
   hsidp->batch_rowmode = false;
@@ -8299,10 +8328,9 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCE
 
 /*
  * scan_batch_collect_chunk () - the next rows of the page the scan cache holds, into the batch
- *   return: S_SUCCESS (the batch holds a full chunk; the page may have more), S_END (the
- *           batch holds the page's last rows, maybe none), S_DOESNT_FIT (the page is for the
- *           row path from where this call started: a record not answered by this page
- *           alone), or S_ERROR
+ *   return: S_SUCCESS (the batch holds a full chunk -- its rows or its exception list full; the
+ *           page may have more), S_END (the batch holds the page's last rows, maybe none), or
+ *           S_ERROR
  *   scan_id(in/out): the heap scan
  *   vpid(in): the page, fixed in the scan cache's watcher (or fixed here)
  *   slot(in/out): the walk's position in the page, 0 before its first chunk
@@ -8311,8 +8339,9 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCE
  * the same visibility decision, made a chunk (EXPR_BATCH_CHUNK_BYTES) at a time with the page held
  * throughout; the rows are peeked, so they are valid while the page stays fixed, which the
  * caller guarantees.  A record whose visible version is elsewhere -- relocated, in overflow
- * pages, or in the log for this snapshot -- sends the chunk and the rest of the page to the
- * row path, before any row of the chunk is used.
+ * pages, or in the log for this snapshot -- or whose representation is not the plan's goes to
+ * hsid.batch_exc by its OID (hsid.batch_n_exc of them): the consumer takes the chunk, then fetches
+ * each exception on the row path with scan_batch_row_by_oid (), which lets the page go first.
  */
 SCAN_CODE
 scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid, PGSLOTID * slot)
@@ -8323,13 +8352,17 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
 
   batch->n_rows = 0;
   batch->n_sel = 0;
+  hsidp->batch_n_exc = 0;
+  hsidp->batch_exc_pos = 0;
   code =
     heap_page_collect_visible (thread_p, vpid, &hsidp->cls_oid, &hsidp->scan_cache, slot, batch->rows, batch->cap,
-			       &batch->n_rows);
+			       &batch->n_rows, expr_batch_plan_repid (hsidp->batch_plan), hsidp->batch_exc,
+			       hsidp->batch_exc_cap, &hsidp->batch_n_exc);
   hsidp->batch_vpid = *vpid;
-  if (code == S_DOESNT_FIT || code == S_ERROR)
+  if (code == S_ERROR)
     {
       batch->n_rows = 0;
+      hsidp->batch_n_exc = 0;
     }
   return code;
 }
@@ -8586,6 +8619,93 @@ scan_batch_row_values (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, EXPR_BATCH_RO
 }
 
 /*
+ * scan_batch_row_by_oid () - a record its page did not answer for, fetched by OID on the row path
+ *   return: S_SUCCESS (the row is visible and passed the filter: its OID is the scan's current one and its values
+ *	     are in the value list, as scan_next_heap_scan_rows () leaves a row), S_END (no row: not visible to the
+ *	     snapshot, or the filter dropped it), S_ERROR
+ *   scan_id(in/out): the heap scan, its batch open
+ *   oid(in): one of the exceptions heap_page_collect_visible () listed for the chunk consumed by now
+ *
+ * The page is let go first (the chunk's rows pointed into it and are consumed by now): the fetch then holds no page
+ * of its own, so the fixes heap_get_visible_version () makes -- the home page, then a forward or overflow page (the
+ * heap's ordered fix, home before forward, as the row path makes them from heap_next ()), or none while it walks the
+ * log for a previous version -- start from nothing and end with nothing held (cache_last_fix_page off for the
+ * call).  The next chunk fixes the page again where the walk left it (scan_batch_collect_chunk ()), as the row path
+ * fixes it again from its last OID.  The visibility is the row path's: heap_get_visible_version () judges the record
+ * by the scan cache's snapshot, follows a relocated or overflow record to its forward page, and a too-new one down
+ * its previous versions (heap_get_visible_version_from_log ()).  The record is copied into the scan cache's area,
+ * so the values read from it depend on no page, as a COPY row of the row path.
+ */
+SCAN_CODE
+scan_batch_row_by_oid (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const OID * oid)
+{
+  HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  HEAP_SCANCACHE *scan_cache = &hsidp->scan_cache;
+  FILTER_INFO data_filter;
+  RECDES recdes = RECDES_INITIALIZER;
+  OID row_oid = *oid;
+  SCAN_CODE code;
+  DB_LOGICAL ev_res;
+  bool cache_last_fix_page_save = scan_cache->cache_last_fix_page;
+
+  if (scan_cache->page_watcher.pgptr != NULL)
+    {
+      pgbuf_ordered_unfix (thread_p, &scan_cache->page_watcher);
+    }
+  scan_cache->cache_last_fix_page = false;
+  code = heap_get_visible_version (thread_p, &row_oid, &hsidp->cls_oid, &recdes, scan_cache, COPY, NULL_CHN);
+  scan_cache->cache_last_fix_page = cache_last_fix_page_save;
+  assert (scan_cache->page_watcher.pgptr == NULL);
+  scan_id->scan_stats.batch_rows_by_oid++;
+  if (code == S_SNAPSHOT_NOT_SATISFIED || code == S_DOESNT_EXIST)
+    {
+      /* deleted for the snapshot, or no version old enough for it: the row path's skip */
+      if (er_errid () == ER_HEAP_UNKNOWN_OBJECT)
+	{
+	  er_clear ();
+	}
+      return S_END;
+    }
+  if (code != S_SUCCESS)
+    {
+      return S_ERROR;
+    }
+
+  /* the row path's filter and fetch for the row (scan_next_heap_scan_rows ()) */
+  scan_id->scan_stats.read_rows++;
+  hsidp->curr_oid = row_oid;
+  data_filter =
+  {
+  &hsidp->scan_pred, &hsidp->pred_attrs, NULL, NULL, scan_id->val_list, scan_id->vd, &hsidp->cls_oid, NULL, NULL,
+      NULL, 0, -1};
+  ev_res = eval_data_filter (thread_p, &hsidp->curr_oid, &recdes, scan_cache, &data_filter);
+  if (ev_res == V_ERROR)
+    {
+      return S_ERROR;
+    }
+  if (ev_res != V_TRUE)
+    {
+      /* the batch takes QPROC_QUALIFIED scans only (scan_batch_open_internal ()) */
+      return S_END;
+    }
+  scan_id->scan_stats.qualified_rows++;
+  if (hsidp->rest_regu_list != NULL)
+    {
+      if (heap_attrinfo_read_dbvalues (thread_p, &hsidp->curr_oid, &recdes, hsidp->rest_attrs.attr_cache) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+      if (scan_id->val_list != NULL
+	  && fetch_val_list (thread_p, hsidp->rest_regu_list, scan_id->vd, &hsidp->cls_oid, &hsidp->curr_oid, NULL,
+			     PEEK) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+    }
+  return S_SUCCESS;
+}
+
+/*
  * scan_batch_open_filter () - the filter iterator over a heap scan whose rows go on one by one
  *   return: true when scan_next_scan () runs the filter a chunk at a time from now on
  *
@@ -8616,6 +8736,8 @@ scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS
   hsidp->batch_pos = 0;
   hsidp->batch_slot = 0;
   hsidp->batch_last_slot = 0;
+  hsidp->batch_n_exc = 0;
+  hsidp->batch_exc_pos = 0;
   hsidp->batch->n_sel = 0;
   return true;
 }
@@ -8668,6 +8790,9 @@ scan_batch_copy_kept (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  * scan_batch_iter_next () - the filter iterator's next row (scan_batch_open_filter ())
  *   return: S_SUCCESS (a kept row, its values read), S_END, S_ERROR, or S_DOESNT_FIT: the rest of the held page
  *	     goes to the row path (scan_batch_page_rowmode () is on)
+ *
+ * A chunk's rows go out first, from their copies, then its exceptions, each fetched by OID when its turn comes
+ * (scan_batch_row_by_oid (): the page, if still held, is let go by the first).
  */
 static SCAN_CODE
 scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
@@ -8692,6 +8817,23 @@ scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      return S_ERROR;
 	    }
 	  return S_SUCCESS;
+	}
+      while (hsidp->batch_exc_pos < hsidp->batch_n_exc)
+	{
+	  const OID *oid = &hsidp->batch_exc[hsidp->batch_exc_pos++];
+	  SCAN_CODE row = scan_batch_row_by_oid (thread_p, scan_id, oid);
+
+	  if (row == S_SUCCESS)
+	    {
+	      hsidp->batch_last_slot = oid->slotid;
+	      expr_batch_plan_note_rows_by_oid (hsidp->batch_plan, 1);
+	      return S_SUCCESS;
+	    }
+	  if (row == S_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  expr_batch_plan_note_rows_by_oid (hsidp->batch_plan, 1);
 	}
 
       if (!hsidp->batch_page_more)
@@ -8726,7 +8868,7 @@ scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	  return S_ERROR;
 	}
       hsidp->batch_page_more = (chunk == S_SUCCESS);
-      if (chunk != S_DOESNT_FIT && batch->n_rows > 0)
+      if (batch->n_rows > 0)
 	{
 	  rc = expr_batch_run (hsidp->batch_plan, batch, thread_p, scan_id->vd);
 	  if (rc == NO_ERROR)
@@ -8738,16 +8880,14 @@ scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	    {
 	      hsidp->batch_why_not = expr_batch_fallback_why (hsidp->batch_plan);
 	      batch->n_sel = 0;
+	      /* the row path walks the page from the chunk's first slot: it meets the chunk's exceptions itself */
+	      hsidp->batch_n_exc = 0;
 	      chunk = S_DOESNT_FIT;
 	    }
 	  else
 	    {
 	      return S_ERROR;
 	    }
-	}
-      else if (chunk == S_DOESNT_FIT)
-	{
-	  hsidp->batch_why_not = "a record its page does not answer for (relocated, overflow, or a log version)";
 	}
       if (chunk == S_DOESNT_FIT)
 	{
@@ -8810,6 +8950,8 @@ scan_batch_rewind (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
   hsidp->batch_pos = 0;
   hsidp->batch_slot = 0;
   hsidp->batch_last_slot = 0;
+  hsidp->batch_n_exc = 0;
+  hsidp->batch_exc_pos = 0;
   if (hsidp->batch != NULL)
     {
       hsidp->batch->n_sel = 0;
@@ -8822,9 +8964,10 @@ scan_batch_rewind (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
  *   on(in): true before the first row, false after the page's S_END
  *   after_slot(in): on: the walk resumes after this slot (0: at the page's first slot)
  *
- * A chunk the batch hands back is served by the row path from its first slot to the end of
- * its page -- the chunks before it were accumulated -- every row going through the same
- * filter, fetch and retry the row path always made.
+ * A chunk the batch hands back (expr_batch_run () declined it) is served by the row path from
+ * its first slot to the end of its page -- the chunks before it were accumulated, their
+ * exceptions fetched -- every row going through the same filter, fetch and retry the row path
+ * always made.
  */
 void
 scan_batch_page_rowmode (SCAN_ID * scan_id, bool on, PGSLOTID after_slot)
@@ -9644,9 +9787,10 @@ scan_print_stats_text (FILE * fp, SCAN_ID * scan_id)
 	      /* the last chunk's cause for the row path, kept on the scan (the plan is gone by now) */
 	      const char *why = scan_id->s.hsid.batch_why_not;
 
-	      fprintf (fp, ", batch pages: %llu (row path: %llu%s%s)",
+	      fprintf (fp, ", batch pages: %llu (row path: %llu, rows by oid: %llu%s%s)",
 		       (unsigned long long int) scan_id->scan_stats.batch_pages,
 		       (unsigned long long int) scan_id->scan_stats.batch_pages_rowpath,
+		       (unsigned long long int) scan_id->scan_stats.batch_rows_by_oid,
 		       (why != NULL && scan_id->scan_stats.batch_pages_rowpath > 0) ? ", last: " : "",
 		       (why != NULL && scan_id->scan_stats.batch_pages_rowpath > 0) ? why : "");
 	    }

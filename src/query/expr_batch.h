@@ -237,8 +237,12 @@ extern int expr_chunk_push (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXP
 extern int expr_chunk_eval_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan,
 				    EXPR_BATCH * batch);
 
-/* trace: pages taken and pages handed back */
+/* the representation the plan decodes (NULL_REPRID when it decodes no column): a page's visible records of
+ * another one are fetched by OID on the row path (heap_page_collect_visible ()'s exceptions) */
+extern REPR_ID expr_batch_plan_repid (const EXPR_BATCH_PLAN * plan);
+/* trace: pages taken and pages handed back; rows the page skipped and the row path fetched by OID */
 extern void expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback);
+extern void expr_batch_plan_note_rows_by_oid (EXPR_BATCH_PLAN * plan, int n);
 /* why the last chunk went to the row path, or NULL */
 extern const char *expr_batch_fallback_why (const EXPR_BATCH_PLAN * plan);
 extern void expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, int indent);

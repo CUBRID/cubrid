@@ -12628,8 +12628,51 @@ qexec_batch_trace_end (THREAD_ENTRY * thread_p, QEXEC_BATCH_TRACE * t, SCAN_ID *
 	  part->qualified_rows += now->qualified_rows - t->before.qualified_rows;
 	  part->batch_pages += now->batch_pages - t->before.batch_pages;
 	  part->batch_pages_rowpath += now->batch_pages_rowpath - t->before.batch_pages_rowpath;
+	  part->batch_rows_by_oid += now->batch_rows_by_oid - t->before.batch_rows_by_oid;
 	}
     }
+}
+
+/* the chunk's exceptions (hsid.batch_exc): each fetched by OID on the row path once the chunk's rows are accumulated
+ * -- the page let go first by scan_batch_row_by_oid () -- and consumed as the row path consumes a row, the runtime
+ * filter checked as qexec_intprt_fnc () checks it.  S_SUCCESS, or S_ERROR with the error raised. */
+static SCAN_CODE
+qexec_batch_scan_exceptions (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_state,
+			     QFILE_TUPLE_RECORD * tplrec)
+{
+  SCAN_ID *s_id = &xasl->curr_spec->s_id;
+  HEAP_SCAN_ID *hsidp = &s_id->s.hsid;
+  int k;
+
+  for (k = 0; k < hsidp->batch_n_exc; k++)
+    {
+      SCAN_CODE row = scan_batch_row_by_oid (thread_p, s_id, &hsidp->batch_exc[k]);
+
+      if (row == S_ERROR)
+	{
+	  return S_ERROR;
+	}
+      if (row != S_SUCCESS)
+	{
+	  continue;
+	}
+      if (xasl->rtf != NULL)
+	{
+	  xasl->rtf_rows++;
+	  if (!hjoin_rtf_pass (xasl->rtf, xasl->rtf_val))
+	    {
+	      xasl->rtf_dropped++;
+	      continue;
+	    }
+	}
+      if (qexec_end_one_iteration (thread_p, xasl, xasl_state, tplrec) != NO_ERROR)
+	{
+	  return S_ERROR;
+	}
+    }
+  expr_batch_plan_note_rows_by_oid (hsidp->batch_plan, hsidp->batch_n_exc);
+  hsidp->batch_n_exc = 0;
+  return S_SUCCESS;
 }
 
 /* qexec_batch_scan ()'s loop, with its chain built */
@@ -12658,7 +12701,7 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	    {
 	      break;
 	    }
-	  if (chunk != S_DOESNT_FIT && hsidp->batch->n_rows > 0)
+	  if (hsidp->batch->n_rows > 0)
 	    {
 	      rc = expr_chunk_push (thread_p, chain, hsidp->batch_plan, hsidp->batch);
 	      if (rc == NO_ERROR)
@@ -12671,6 +12714,8 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	      else if (rc == EXPR_BATCH_FALLBACK)
 		{
 		  hsidp->batch_why_not = expr_batch_fallback_why (hsidp->batch_plan);
+		  /* the row path walks the page from the chunk's first slot: it meets the chunk's exceptions itself */
+		  hsidp->batch_n_exc = 0;
 		  chunk = S_DOESNT_FIT;
 		}
 	      else
@@ -12679,9 +12724,10 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 		  break;
 		}
 	    }
-	  else if (chunk == S_DOESNT_FIT)
+	  if (hsidp->batch_n_exc > 0 && qexec_batch_scan_exceptions (thread_p, xasl, xasl_state, tplrec) != S_SUCCESS)
 	    {
-	      hsidp->batch_why_not = "a record its page does not answer for (relocated, overflow, or a log version)";
+	      chunk = S_ERROR;
+	      break;
 	    }
 	}
       while (chunk == S_SUCCESS);
@@ -12697,7 +12743,8 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	  expr_batch_plan_note_page (hsidp->batch_plan, false);
 	  continue;
 	}
-      /* the chunk and the rest of its page go to the row path: nothing of the chunk was accumulated */
+      /* the chunk and the rest of its page go to the row path (expr_batch_run () declined the chunk): nothing of
+       * the chunk was accumulated */
       s_id->scan_stats.batch_pages_rowpath++;
       expr_batch_plan_note_page (hsidp->batch_plan, true);
       qexec_batch_trace_end (thread_p, &trace, s_id);

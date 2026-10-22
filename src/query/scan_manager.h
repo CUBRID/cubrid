@@ -143,6 +143,13 @@ struct heap_scan_id
   int batch_last_slot;		/* the slot of the row handed out last */
   char *batch_copy;		/* the kept rows' records, copied before the page is let go */
   size_t batch_copy_cap;
+  /* the records a page alone does not answer for (heap_page_collect_visible ()'s exceptions: relocated, overflow,
+   * a log version, another representation): their OIDs, fetched one by one on the row path once the chunk is
+   * consumed and the page let go (scan_batch_row_by_oid ()) */
+  OID *batch_exc;
+  int batch_exc_cap;
+  int batch_n_exc;
+  int batch_exc_pos;		/* the filter iterator: the next exception to fetch */
 };				/* Regular Heap File Scan Identifier */
 
 namespace parallel_scan
@@ -184,6 +191,10 @@ struct parallel_heap_scan_id
   int batch_last_slot;
   char *batch_copy;
   size_t batch_copy_cap;
+  OID *batch_exc;
+  int batch_exc_cap;
+  int batch_n_exc;
+  int batch_exc_pos;
   // *INDENT-OFF*
   #if !WINDOWS
   parallel_scan::RESULT_TYPE result_type;
@@ -508,6 +519,7 @@ struct scan_stats
   UINT64 qualified_rows;	/* # of rows qualified by data filter */
   UINT64 batch_pages;		/* heap scan: pages the page batch evaluated ... */
   UINT64 batch_pages_rowpath;	/* ... and pages it handed back to the row path */
+  UINT64 batch_rows_by_oid;	/* ... and rows a page skipped that the row path fetched by OID */
 
   /* for btree scan */
   UINT64 read_keys;		/* # of keys read */
@@ -694,9 +706,11 @@ extern void scan_free_hash_list_scan (THREAD_ENTRY * thread_p, HASH_LIST_SCAN * 
 extern void scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * s_id);
 /* page batch over a sequential heap scan (expr_batch.h): the consumer opens it with what it
  * aggregates, steps to a page with scan_batch_next_page () (serial; a parallel worker's walker
- * fixes its own), takes the page's rows a chunk at a time with scan_batch_collect_chunk (), and
- * hands a chunk and the rest of its page back to the row path with scan_batch_page_rowmode ()
- * (serial) when the batch declines it */
+ * fixes its own), takes the page's rows a chunk at a time with scan_batch_collect_chunk () --
+ * the records the page alone does not answer for come beside the chunk as OIDs, each fetched
+ * on the row path with scan_batch_row_by_oid () once the chunk is consumed -- and hands a chunk
+ * and the rest of its page back to the row path with scan_batch_page_rowmode () (serial) when
+ * the batch declines it */
 struct access_spec_node;
 struct xasl_node;
 namespace cubxasl
@@ -720,6 +734,9 @@ extern SCAN_CODE scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_i
 extern SCAN_CODE scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid,
 					   PGSLOTID * slot);
 extern void scan_batch_page_rowmode (SCAN_ID * scan_id, bool on, PGSLOTID after_slot);
+/* one of the chunk's exceptions (hsid.batch_exc) on the row path: S_SUCCESS with the row's values in the value list
+ * as scan_next_scan () leaves them, S_END (not visible, or the filter dropped it), S_ERROR */
+extern SCAN_CODE scan_batch_row_by_oid (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const OID * oid);
 /* the projection node: each row the chunk kept gets the row path's tail -- its predicate and
  * rest columns fetched into the value list -- and is handed to emit (the serial block's
  * qexec_end_one_iteration (), a parallel worker's result handler) */
