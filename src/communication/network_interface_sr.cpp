@@ -51,6 +51,7 @@
 #include "network.h"
 #include "log_comm.h"
 #include "network_interface_sr.h"
+#include "qfile_tuple_layout.h"
 #include "page_buffer.h"
 #include "file_manager.h"
 #include "boot_sr.h"
@@ -2178,7 +2179,7 @@ sqst_histogram_build_by_reservoir (THREAD_ENTRY *thread_p, unsigned int rid, cha
       null_freqs[i] = 0.0;
     }
 
-  if (heap_get_class_info (thread_p, &class_oid, &hfid, NULL, NULL) != NO_ERROR)
+  if (heap_get_class_hfid (thread_p, &class_oid, &hfid, NULL) != NO_ERROR)
     {
       status = ER_FAILED;
       (void) return_error_to_client (thread_p, rid);
@@ -4580,7 +4581,6 @@ sbtree_add_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
   OID class_oid;
   int attr_id, unique_pk;
   char *ptr;
-  int deduplicate_key_pos = -1;
 
   OR_ALIGNED_BUF (OR_INT_SIZE + OR_BTID_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
@@ -4590,10 +4590,8 @@ sbtree_add_index (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
   ptr = or_unpack_oid (ptr, &class_oid);
   ptr = or_unpack_int (ptr, &attr_id);
   ptr = or_unpack_int (ptr, &unique_pk);
-  ptr = or_unpack_int (ptr, &deduplicate_key_pos);	/* support for SUPPORT_DEDUPLICATE_KEY_MODE */
 
-  return_btid =
-	  xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0, deduplicate_key_pos);
+  return_btid = xbtree_add_index (thread_p, &btid, key_type, &class_oid, attr_id, unique_pk, 0, 0, 0);
   if (return_btid == NULL)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -5112,6 +5110,46 @@ sbtree_class_test_unique (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
 }
 
 /*
+ * sbtree_compact_overflow () - CBRD-27401: ALTER INDEX ... COMPACT. Compacts the overflow OID chains of an index.
+ *
+ * return :
+ * thread_p (in) :
+ * rid (in) :
+ * request (in) : packed BTID and fill factor
+ * reqlen (in) :
+ */
+void
+sbtree_compact_overflow (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  BTID btid;
+  int fill_factor;
+  INT64 keys_compacted = 0;
+  INT64 pages_freed = 0;
+  INT64 pairs_skipped = 0;
+  int error;
+  /* status, alignment padding before the first INT64 (or_pack_int64 () aligns to MAX_ALIGNMENT), three INT64 */
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_INT_SIZE + OR_INT64_SIZE * 3) a_reply;
+  char *reply = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+
+  ptr = or_unpack_btid (request, &btid);
+  ptr = or_unpack_int (ptr, &fill_factor);
+
+  error = xbtree_compact_overflow (thread_p, &btid, fill_factor, &keys_compacted, &pages_freed, &pairs_skipped);
+  if (error != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply, error);
+  ptr = or_pack_int64 (ptr, keys_compacted);
+  ptr = or_pack_int64 (ptr, pages_freed);
+  ptr = or_pack_int64 (ptr, pairs_skipped);
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * sdk_totalpgs -
  *
  * return:
@@ -5550,12 +5588,13 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 				     bool *can_end_transaction)
 {
   QFILE_LIST_SCAN_ID scan_id;
-  QFILE_TUPLE_RECORD tuple_record = { NULL, 0 };
+  QFILE_TUPLE_RECORD tuple_record = QFILE_TUPLE_RECORD_INITIALIZER;
   SCAN_CODE qp_scan;
   OR_BUF buf;
   TP_DOMAIN **domains;
   const PR_TYPE *pr_type;
-  int i, flag, compressed_size = 0, decompressed_size = 0, diff_size, val_length;
+  int i, compressed_size = 0, decompressed_size = 0, diff_size, val_length;
+  bool is_null;
   char *tuple_p;
   bool found_compressible_string_domain, exceed_a_page;
 
@@ -5619,19 +5658,19 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 	  break;
 	}
 
-      tuple_p = tuple_record.tpl;
-      or_init (&buf, tuple_p, QFILE_GET_TUPLE_LENGTH (tuple_p));
-      tuple_p += QFILE_TUPLE_LENGTH_SIZE;
       for (i = 0; i < list_id->type_list.type_cnt; i++)
 	{
-	  flag = QFILE_GET_TUPLE_VALUE_FLAG (tuple_p);
-	  val_length = QFILE_GET_TUPLE_VALUE_LENGTH (tuple_p);
-	  tuple_p += QFILE_TUPLE_VALUE_HEADER_SIZE;
-
 	  pr_type = domains[i]->type;
-	  if (flag != V_UNBOUND && TP_IS_CHAR_TYPE (pr_type->id))
+	  if (!TP_IS_CHAR_TYPE (pr_type->id))
 	    {
-	      buf.ptr = tuple_p;
+	      continue;
+	    }
+
+	  /* the body carries the same compression prefix that or_get_varchar_compression_lengths () expects */
+	  tuple_p = (char *) qfile_slot_get_column_data (&tuple_record, i, &val_length, &is_null);
+	  if (!is_null)
+	    {
+	      or_init (&buf, tuple_p, val_length);
 	      or_get_varchar_compression_lengths (&buf, &compressed_size, &decompressed_size);
 	      if (compressed_size != 0)
 		{
@@ -5645,8 +5684,6 @@ stran_can_end_after_query_execution (THREAD_ENTRY *thread_p, int query_flag, QFI
 		    }
 		}
 	    }
-
-	  tuple_p += val_length;
 	}
     }
 
@@ -6593,16 +6630,91 @@ sqmgr_drop_all_query_plans (THREAD_ENTRY *thread_p, unsigned int rid, char *requ
 }
 
 /*
+ * sqmgr_bind_variant - Process a NET_SERVER_QM_BIND_VARIANT request: find or reserve the plan
+ *   variant of a cached query that suits a fingerprint, or register the plan a reserved variant
+ *   compiled to.
+ *   This function is a counter part to qmgr_bind_variant().
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in): packed BIND_VARIANT_REQUEST
+ *   reqlen(in):
+ */
+void
+sqmgr_bind_variant (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  BIND_VARIANT_REQUEST req;
+  BIND_VARIANT_REPLY reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE + OR_BIND_VARIANT_REPLY_SIZE) a_reply;
+  char *reply_buf = OR_ALIGNED_BUF_START (a_reply);
+  char *ptr;
+  INT64 sig = 0;
+  int status, i, j;
+
+  memset (&req, 0, sizeof (req));
+  memset (&reply, 0, sizeof (reply));
+
+  ptr = or_unpack_sha1 (request, &req.sha1);
+  OR_UNPACK_CACHE_TIME (ptr, &req.time_stored);
+  ptr = or_unpack_int (ptr, &req.op);
+  ptr = or_unpack_int (ptr, &req.limit);
+  ptr = or_unpack_int (ptr, &req.variant);
+  ptr = or_unpack_int (ptr, &req.fp.terms);
+  ptr = or_unpack_int64 (ptr, &sig);
+  req.plan_sig = (UINT64) sig;
+  ptr = or_unpack_double (ptr, &req.band);
+  ptr = or_unpack_double (ptr, &req.floor);
+  for (i = 0; i < BIND_WATCH_MAX_TERMS; i++)
+    {
+      ptr = or_unpack_double (ptr, &req.fp.rows[i]);
+    }
+  if (req.fp.terms < 0 || req.fp.terms > BIND_WATCH_MAX_TERMS)
+    {
+      req.fp.terms = 0;
+    }
+
+  status = xcache_bind_variant (thread_p, &req, &reply);
+  if (status != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  ptr = or_pack_int (reply_buf, status);
+  ptr = or_pack_int (ptr, reply.result);
+  ptr = or_pack_int (ptr, reply.variant);
+  ptr = or_pack_int (ptr, reply.state);
+  ptr = or_pack_int (ptr, reply.compiles);
+  ptr = or_pack_int (ptr, reply.plans);
+  ptr = or_pack_int (ptr, reply.pending);
+  ptr = or_pack_int (ptr, reply.n_records);
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      ptr = or_pack_int (ptr, (i < reply.n_records) ? reply.records[i].variant : -1);
+      ptr = or_pack_int (ptr, (i < reply.n_records) ? reply.records[i].fp.terms : 0);
+    }
+  for (i = 0; i < BIND_VARIANT_MAX_COMPILES; i++)
+    {
+      for (j = 0; j < BIND_WATCH_MAX_TERMS; j++)
+	{
+	  ptr = or_pack_double (ptr, (i < reply.n_records) ? reply.records[i].fp.rows[j] : 0.0);
+	}
+    }
+
+  css_send_data_to_client (thread_p->conn_entry, rid, reply_buf, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
  * sqmgr_drop_query_plans_by_sha1 - Process a NET_SERVER_QM_QUERY_DROP_SHA1_PLANS request
  *
  * return:
  *
  *   rid(in):
- *   request(in)qmgr_drop_query_plans_by_sha1:
+ *   request(in):
  *   reqlen(in):
  *
  * NOTE:
- * Clear all XASL cache entires out upon request of the client.
+ * Clear sha1 XASL cache entries out upon request of the client.
  * This function is a counter part to qmgr_drop_query_plans_by_sha1().
  */
 void
@@ -6617,6 +6729,38 @@ sqmgr_drop_query_plans_by_sha1 (THREAD_ENTRY *thread_p, unsigned int rid, char *
 
   /* call the server routine of query drop plan */
   status = xqmgr_drop_query_plans_by_sha1 (thread_p, sha1);
+  if (status != NO_ERROR)
+    {
+      (void) return_error_to_client (thread_p, rid);
+    }
+
+  /* pack status (DB_IN32) as a reply */
+  (void) or_pack_int (reply, status);
+
+  /* send reply and data to the client */
+  css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
+}
+
+/*
+ * sqmgr_drop_query_clones - Process a NET_SERVER_QM_QUERY_DROP_CLONES request
+ *
+ * return:
+ *
+ *   rid(in):
+ *   request(in): sha1 of the plans whose clones are dropped; NULL for all plans
+ *   reqlen(in):
+ */
+void
+sqmgr_drop_query_clones (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reqlen)
+{
+  int status;
+  char *reply, *sha1;
+  OR_ALIGNED_BUF (OR_INT_SIZE) a_reply;
+
+  reply = OR_ALIGNED_BUF_START (a_reply);
+  or_unpack_string_nocopy (request, &sha1);
+
+  status = xqmgr_drop_query_clones (thread_p, sha1);
   if (status != NO_ERROR)
     {
       (void) return_error_to_client (thread_p, rid);
@@ -8135,7 +8279,7 @@ sbtree_get_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
 {
   BTREE_STATS stat_info;
   int success;
-  OR_ALIGNED_BUF (OR_INT_SIZE * 5) a_reply;
+  OR_ALIGNED_BUF (OR_INT_SIZE * 4 + OR_INT64_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   char *ptr;
 
@@ -8156,7 +8300,7 @@ sbtree_get_statistics (THREAD_ENTRY *thread_p, unsigned int rid, char *request, 
   ptr = or_pack_int (ptr, stat_info.leafs);
   ptr = or_pack_int (ptr, stat_info.pages);
   ptr = or_pack_int (ptr, stat_info.height);
-  ptr = or_pack_int (ptr, stat_info.keys);
+  ptr = or_pack_int64 (ptr, stat_info.keys);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -8695,12 +8839,12 @@ srepl_log_get_append_lsa (THREAD_ENTRY *thread_p, unsigned int rid, char *reques
 {
   OR_ALIGNED_BUF (OR_LOG_LSA_ALIGNED_SIZE) a_reply;
   char *reply = OR_ALIGNED_BUF_START (a_reply);
-  LOG_LSA *lsa;
+  LOG_LSA lsa;
 
   lsa = xrepl_log_get_append_lsa ();
 
   reply = OR_ALIGNED_BUF_START (a_reply);
-  (void) or_pack_log_lsa (reply, lsa);
+  (void) or_pack_log_lsa (reply, &lsa);
 
   css_send_data_to_client (thread_p->conn_entry, rid, reply, OR_ALIGNED_BUF_SIZE (a_reply));
 }
@@ -9494,10 +9638,6 @@ ssession_find_or_create_session (THREAD_ENTRY *thread_p, unsigned int rid, char 
 	{
 	  (void) return_error_to_client (thread_p, rid);
 	}
-    }
-  else if (error == NO_ERROR)
-    {
-      xsession_set_is_keep_session (thread_p, false);
     }
 
   /* get row count */
@@ -11599,6 +11739,12 @@ scdc_find_lsa (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int reql
 
       cdc_set_extraction_lsa (&start_lsa);
 
+      /* The client is about to be told to resume from here, so the volume holding that position has to be
+       * kept from now on. Waiting for the first bundle leaves a window: extraction can come back as
+       * ER_CDC_EXTRACTION_TIMEOUT before the volume is ever recorded, and archive removal is free to run
+       * in between. */
+      cdc_update_arv_num_to_keep (thread_p, &start_lsa);
+
       cdc_reinitialize_queue (&start_lsa);
 
       cdc_wakeup_producer ();
@@ -11662,6 +11808,9 @@ scdc_get_loginfo_metadata (THREAD_ENTRY *thread_p, unsigned int rid, char *reque
 	}
 
       cdc_set_extraction_lsa (&start_lsa);
+
+      /* Same window as in scdc_find_lsa(): record the volume before the first bundle is attempted. */
+      cdc_update_arv_num_to_keep (thread_p, &start_lsa);
 
       cdc_reinitialize_queue (&start_lsa);
 
@@ -11739,7 +11888,7 @@ scdc_end_session (THREAD_ENTRY *thread_p, unsigned int rid, char *request, int r
   char *reply = OR_ALIGNED_BUF_START (a_reply);
   int error_code;
 
-  error_code = cdc_cleanup ();
+  error_code = cdc_cleanup (thread_p);
 
   cdc_log ("%s : clean up for cdc thread has done.", __func__);
 
@@ -11771,7 +11920,7 @@ sflashback_get_summary (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
   LC_FIND_CLASSNAME status;
 
-  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, };
+  FLASHBACK_SUMMARY_CONTEXT context = { LSA_INITIALIZER, LSA_INITIALIZER, NULL, 0, 0, {}, {}, };
 
   time_t start_time = 0;
   time_t end_time = 0;
@@ -11957,7 +12106,9 @@ sflashback_get_loginfo (THREAD_ENTRY *thread_p, unsigned int rid, char *request,
 
   int threshold_to_remove_archive = 0;
 
-  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER, };
+  FLASHBACK_LOGINFO_CONTEXT context = { -1, NULL, LSA_INITIALIZER, LSA_INITIALIZER, 0, 0, false, 0, OID_INITIALIZER,
+					{}, {},
+				      };
 
   /* request : trid | user | num_class | table oid list | start_lsa | end_lsa | num_item | forward/backward */
 

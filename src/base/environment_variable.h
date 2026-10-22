@@ -47,6 +47,7 @@ extern "C"
   extern char *envvar_vardir_file (char *path, size_t size, const char *filename);
   extern char *envvar_tmpdir_file (char *path, size_t size, const char *filename);
   extern char *envvar_logdir_file (char *path, size_t size, const char *filename);
+  extern char *envvar_upgradedir_file (char *path, size_t size, const char *filename);
   extern void envvar_trim_char (char *var, const int c);
   extern char *envvar_ldmldir_file (char *path, size_t size, const char *filename);
   extern char *envvar_codepagedir_file (char *path, size_t size, const char *filename);

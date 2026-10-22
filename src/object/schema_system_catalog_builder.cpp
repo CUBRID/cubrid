@@ -220,6 +220,9 @@ namespace cubschema
 	return error_code;
       }
 
+    /* the builder also redefines an existing vclass in place, so start empty */
+    smt_reset_vclass_definition (tmpl);
+
     const std::vector <attribute> &attributes = def.attributes;
     for (const auto &attr: attributes)
       {

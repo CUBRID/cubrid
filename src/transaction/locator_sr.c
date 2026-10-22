@@ -42,7 +42,6 @@
 #include "dmalloc.h"
 #endif /* DMALLOC */
 #include "error_manager.h"
-#include "deduplicate_key.h"
 #include "fetch.h"
 #include "filter_pred_cache.h"
 #include "heap_file.h"
@@ -2383,6 +2382,7 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
   int error_code = NO_ERROR;
   MVCC_SNAPSHOT *mvcc_snapshot = NULL;
   MVCC_SNAPSHOT mvcc_snapshot_dirty;
+  MVCC_SNAPSHOT mvcc_snapshot_committed;
   SCAN_OPERATION_TYPE operation_type;
   OID *p_oid = oid;
   bool object_locked = false;
@@ -2400,8 +2400,10 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
       skip_fetch_version_type_check = true;
     }
 
-  if (LC_FETCH_IS_MVCC_VERSION_NEEDED (initial_fetch_version_type))
+  if (LC_FETCH_IS_MVCC_VERSION_NEEDED (initial_fetch_version_type)
+      || initial_fetch_version_type == LC_FETCH_COMMITTED_VERSION)
     {
+      /* a version-consistent read needs no lock on the object */
       skip_fetch_version_type_check = true;
     }
 
@@ -2419,6 +2421,12 @@ xlocator_fetch (THREAD_ENTRY * thread_p, OID * oid, int chn, LOCK lock,
     case LC_FETCH_DIRTY_VERSION:
       mvcc_snapshot_dirty.snapshot_fnc = mvcc_satisfies_dirty;
       mvcc_snapshot = &mvcc_snapshot_dirty;
+      break;
+
+    case LC_FETCH_COMMITTED_VERSION:
+      /* latest committed version, without materializing the transaction snapshot (CBRD-27369) */
+      mvcc_snapshot_committed.snapshot_fnc = mvcc_satisfies_committed;
+      mvcc_snapshot = &mvcc_snapshot_committed;
       break;
 
     case LC_FETCH_CURRENT_VERSION:
@@ -4046,7 +4054,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 
   aligned_buf = PTR_ALIGN (buf, MAX_ALIGNMENT);
 
-  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, true);
+  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info);
 
   if (num_found <= 0)
     {
@@ -4072,8 +4080,7 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
 
       /* must be updated when key_prefix_length will be added for FK and PK */
       key_dbvalue =
-	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf, NULL, NULL,
-				inst_oid, true);
+	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf, NULL, NULL);
       if (key_dbvalue == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -4089,20 +4096,8 @@ locator_check_foreign_key (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid
        */
       if (index->n_atts > 1)
 	{
-	  /* If (index->n_atts > 1), it must be multiple keys, 
-	   * but it can be a single key except for deduplicate_key_attr. */
-
-	  // We cannot make a PK with a function. Therefore, only the last member is checked.
-	  if (index->n_atts == 2 && IS_DEDUPLICATE_KEY_ATTR_ID (index->atts[index->n_atts - 1]->id))
-	    {
-	      assert (DB_VALUE_TYPE (key_dbvalue) != DB_TYPE_MIDXKEY);
-	      has_null = DB_IS_NULL (key_dbvalue);
-	    }
-	  else
-	    {
-	      assert (DB_VALUE_TYPE (key_dbvalue) == DB_TYPE_MIDXKEY || DB_VALUE_TYPE (key_dbvalue) == DB_TYPE_NULL);
-	      has_null = btree_multicol_key_has_null (key_dbvalue);
-	    }
+	  assert (DB_VALUE_TYPE (key_dbvalue) == DB_TYPE_MIDXKEY || DB_VALUE_TYPE (key_dbvalue) == DB_TYPE_NULL);
+	  has_null = btree_multicol_key_has_null (key_dbvalue);
 	}
       else
 	{
@@ -4228,7 +4223,6 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
-  bool is_newly = false;
 
   oid_list.oidp = NULL;
 
@@ -4281,28 +4275,12 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      goto error3;
 	    }
 
-	  is_newly = false;
-	  // We cannot make a PK with a function. Therefore, only the last member is checked.
-	  if (num_attrs > 1 && IS_DEDUPLICATE_KEY_ATTR_ID (attr_ids[num_attrs - 1]))
-	    {
-	      assert ((num_attrs - 1) == index->n_atts);
-
-	      error_code =
-		btree_remake_foreign_key_with_PK (thread_p, &fkref->self_btid, key, &fkref->self_oid, &key_val_range,
-						  &is_newly);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  goto error3;
-		}
-	      num_attrs--;	/* ignore deduplicate_key_attr */
-	    }
 	  assert (num_attrs == index->n_atts);
 
 	  /* We might check for foreign key and schema consistency problems here but we rely on the schema manager to
 	   * prevent inconsistency; see do_check_fk_constraints() for details */
 
-	  error_code = heap_get_class_info (thread_p, &fkref->self_oid, &hfid, NULL, NULL);
+	  error_code = heap_get_class_hfid (thread_p, &fkref->self_oid, &hfid, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error3;
@@ -4332,10 +4310,13 @@ locator_check_primary_key_delete (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  scan_init_index_scan (&isid, &oid_list, mvcc_snapshot);
 	  is_upd_scan_init = false;
 
-	  if (!is_newly)
+	  pr_clone_value (key, &key_val_range.key1);
+	  pr_clone_value (key, &key_val_range.key2);
+	  if (DB_VALUE_TYPE (key) == DB_TYPE_MIDXKEY)
 	    {
-	      pr_clone_value (key, &key_val_range.key1);
-	      pr_clone_value (key, &key_val_range.key2);
+	      /* key may carry the PK's domain; btree_prepare_bts () gives the range the FK index's. */
+	      key_val_range.key1.data.midxkey.domain = NULL;
+	      key_val_range.key2.data.midxkey.domain = NULL;
 	    }
 
 	  key_val_range.range = GE_LE;
@@ -4607,7 +4588,6 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
   OID found_oid;
   BTREE_ISCAN_OID_LIST oid_list;
 
-  bool is_newly = false;
 
   oid_list.oidp = NULL;
 
@@ -4659,28 +4639,12 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	      goto error3;
 	    }
 
-	  is_newly = false;
-	  // We cannot make a PK with a function. Therefore, only the last member is checked.
-	  if (num_attrs > 1 && IS_DEDUPLICATE_KEY_ATTR_ID (attr_ids[num_attrs - 1]))
-	    {
-	      assert ((num_attrs - 1) == index->n_atts);
-
-	      error_code =
-		btree_remake_foreign_key_with_PK (thread_p, &fkref->self_btid, key, &fkref->self_oid, &key_val_range,
-						  &is_newly);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  goto error3;
-		}
-	      num_attrs--;	/* ignore deduplicate_key_attr */
-	    }
 	  assert (num_attrs == index->n_atts);
 
 	  /* We might check for foreign key and schema consistency problems here but we rely on the schema manager to
 	   * prevent inconsistency; see do_check_fk_constraints() for details */
 
-	  error_code = heap_get_class_info (thread_p, &fkref->self_oid, &hfid, NULL, NULL);
+	  error_code = heap_get_class_hfid (thread_p, &fkref->self_oid, &hfid, NULL);
 	  if (error_code != NO_ERROR)
 	    {
 	      goto error3;
@@ -4711,10 +4675,13 @@ locator_check_primary_key_update (THREAD_ENTRY * thread_p, OR_INDEX * index, DB_
 	  scan_init_index_scan (&isid, &oid_list, mvcc_snapshot);
 
 	  is_upd_scan_init = false;
-	  if (!is_newly)
+	  pr_clone_value (key, &key_val_range.key1);
+	  pr_clone_value (key, &key_val_range.key2);
+	  if (DB_VALUE_TYPE (key) == DB_TYPE_MIDXKEY)
 	    {
-	      pr_clone_value (key, &key_val_range.key1);
-	      pr_clone_value (key, &key_val_range.key2);
+	      /* key may carry the PK's domain; btree_prepare_bts () gives the range the FK index's. */
+	      key_val_range.key1.data.midxkey.domain = NULL;
+	      key_val_range.key2.data.midxkey.domain = NULL;
 	    }
 
 	  key_val_range.range = GE_LE;
@@ -5574,12 +5541,14 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 		{
 		  HFID cached_hfid = HFID_INITIALIZER;
 		  bool was_cached = false;
-		  error_code = heap_get_hfid_if_cached (thread_p, oid, &cached_hfid, NULL, NULL, &was_cached);
+		  error_code = heap_get_hfid_if_cached (thread_p, oid, &cached_hfid, NULL, &was_cached);
 		  if (error_code != NO_ERROR)
 		    {
 		      goto error;
 		    }
-		  if (was_cached && !HFID_EQ (&cached_hfid, &new_hfid))
+		  /* Invalidate on a cache miss too: a filler may be mid-fill with the pre-update record, and the
+		   * delete's generation bump is what makes it withdraw its publish (see heap_hfid_cache_get). */
+		  if (!was_cached || !HFID_EQ (&cached_hfid, &new_hfid))
 		    {
 		      error_code = heap_delete_hfid_from_cache (thread_p, oid);
 		      if (error_code != NO_ERROR)
@@ -5927,7 +5896,8 @@ locator_update_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * class_oid, OID
 	      goto error;
 	    }
 
-	  if (heap_get_class_info (thread_p, class_oid, hfid, NULL, NULL) != NO_ERROR)
+	  error_code = heap_get_class_hfid (thread_p, class_oid, hfid, NULL);
+	  if (error_code != NO_ERROR)
 	    {
 	      goto error;
 	    }
@@ -6971,7 +6941,7 @@ xlocator_repl_force (THREAD_ENTRY * thread_p, LC_COPYAREA * force_area, LC_COPYA
 
       LC_REPL_RECDES_FOR_ONEOBJ (force_area, obj, packed_key_value_len, &recdes);
 
-      error_code = heap_get_class_info (thread_p, &obj->class_oid, &obj->hfid, NULL, NULL);
+      error_code = heap_get_class_hfid (thread_p, &obj->class_oid, &obj->hfid, NULL);
       if (error_code != NO_ERROR)
 	{
 	  goto exit_on_error;
@@ -7813,7 +7783,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
    *  Populate the index_attrinfo structure.
    *  Return the number of indexed attributes found.
    */
-  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, false);
+  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info);
   num_btids = idx_info.num_btids;
 
   if (num_found == 0)
@@ -7880,7 +7850,7 @@ locator_add_or_remove_index_internal (THREAD_ENTRY * thread_p, RECDES * recdes, 
        */
       key_dbvalue =
 	heap_attrvalue_get_key (thread_p, i, &index_attrinfo, recdes, &btid, &dbvalue, aligned_buf,
-				(func_preds ? &func_preds[i] : NULL), NULL, inst_oid, false);
+				(func_preds ? &func_preds[i] : NULL), NULL);
       if (key_dbvalue == NULL)
 	{
 	  error_code = ER_FAILED;
@@ -8330,7 +8300,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
   aligned_newbuf = PTR_ALIGN (newbuf, MAX_ALIGNMENT);
   aligned_oldbuf = PTR_ALIGN (oldbuf, MAX_ALIGNMENT);
 
-  new_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &space_attrinfo[0], &new_idx_info, false);
+  new_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &space_attrinfo[0], &new_idx_info);
   num_btids = new_idx_info.num_btids;
   if (new_num_found < 0)
     {
@@ -8338,7 +8308,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
     }
   new_attrinfo = &space_attrinfo[0];
 
-  old_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &space_attrinfo[1], &old_idx_info, false);
+  old_num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &space_attrinfo[1], &old_idx_info);
   old_num_btids = old_idx_info.num_btids;
   if (old_num_found < 0)
     {
@@ -8495,10 +8465,10 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 
       new_key =
 	heap_attrvalue_get_key (thread_p, i, new_attrinfo, new_recdes, &new_btid, &new_dbvalue, aligned_newbuf, NULL,
-				NULL, oid, false);
+				NULL);
       old_key =
 	heap_attrvalue_get_key (thread_p, i, old_attrinfo, old_recdes, &old_btid, &old_dbvalue, aligned_oldbuf, NULL,
-				&key_domain, oid, false);
+				&key_domain);
 
       if ((new_key == NULL) || (old_key == NULL))
 	{
@@ -8644,7 +8614,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	      else
 		{
 		  /* in MVCC - update index key means insert index key */
-		  if ((do_insert_only == true))
+		  if (do_insert_only == true)
 		    {
 		      if (index->type == BTREE_FOREIGN_KEY)
 			{
@@ -8776,7 +8746,7 @@ locator_update_index (THREAD_ENTRY * thread_p, RECDES * new_recdes, RECDES * old
 	  key_domain = NULL;
 	  repl_old_key =
 	    heap_attrvalue_get_key (thread_p, pk_btid_index, old_attrinfo, old_recdes, &old_btid, &old_dbvalue,
-				    aligned_oldbuf, NULL, &key_domain, oid, false);
+				    aligned_oldbuf, NULL, &key_domain);
 	  if (repl_old_key == NULL)
 	    {
 	      error_code = ER_FAILED;
@@ -8961,7 +8931,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
    *  Populate the index_attrinfo structure.
    *  Return the number of indexed attributes found.
    */
-  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info, false);
+  num_found = heap_attrinfo_start_with_index (thread_p, class_oid, NULL, &index_attrinfo, &idx_info);
   num_btids = idx_info.num_btids;
   if (num_found < 1)
     {
@@ -9024,7 +8994,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 
 	      dbvalue_ptr =
 		heap_attrvalue_get_key (thread_p, i, &index_attrinfo, &copy_rec, &inst_btid, &dbvalue, aligned_buf,
-					NULL, NULL, &inst_oid, false);
+					NULL, NULL);
 	      if (dbvalue_ptr == NULL)
 		{
 		  continue;
@@ -9047,7 +9017,7 @@ xlocator_remove_class_from_index (THREAD_ENTRY * thread_p, OID * class_oid, BTID
 	{
 	  dbvalue_ptr =
 	    heap_attrvalue_get_key (thread_p, key_index, &index_attrinfo, &copy_rec, &inst_btid, &dbvalue, aligned_buf,
-				    NULL, NULL, &inst_oid, false);
+				    NULL, NULL);
 	}
 
       /* Delete the instance from the B-tree */
@@ -9464,7 +9434,7 @@ locator_check_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, HFID * hfid, 
       /* Make sure that the index entry exist */
       if ((n_attr_ids == 1 && heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &record, &attr_info) != NO_ERROR)
 	  || (key = heap_attrvalue_get_key (thread_p, index_id, &attr_info, &record, &btid_info, &dbvalue, aligned_buf,
-					    NULL, NULL, &inst_oid, false)) == NULL)
+					    NULL, NULL)) == NULL)
 	{
 	  if (isallvalid != DISK_INVALID)
 	    {
@@ -9914,8 +9884,8 @@ locator_check_unique_btree_entries (THREAD_ENTRY * thread_p, BTID * btid, OID * 
 	  if ((heap_attrinfo_read_dbvalues (thread_p, &inst_oid, &peek, &attr_info) != NO_ERROR)
 	      ||
 	      ((key =
-		heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, btid, &dbvalue, aligned_buf, NULL, NULL,
-					&inst_oid, false)) == NULL))
+		heap_attrvalue_get_key (thread_p, index_id, &attr_info, &peek, btid, &dbvalue, aligned_buf, NULL,
+					NULL)) == NULL))
 	    {
 	      if (isallvalid != DISK_INVALID)
 		{
@@ -10374,7 +10344,7 @@ locator_check_class (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * peek, HF
   char *btname = NULL;
   int *attrs_prefix_length = NULL;
 
-  if (heap_attrinfo_start_with_index (thread_p, class_oid, peek, &attr_info, &idx_info, false) < 0)
+  if (heap_attrinfo_start_with_index (thread_p, class_oid, peek, &attr_info, &idx_info) < 0)
     {
       return DISK_ERROR;
     }
@@ -11730,7 +11700,7 @@ xrepl_set_info (THREAD_ENTRY * thread_p, REPL_INFO * repl_info)
  *
  * return:
  */
-LOG_LSA *
+LOG_LSA
 xrepl_log_get_append_lsa (void)
 {
   return log_get_append_lsa ();
@@ -12157,7 +12127,7 @@ xlocator_upgrade_instances_domain (THREAD_ENTRY * thread_p, OID * class_oid, int
   nobjects = 0;
   nfetched = -1;
 
-  error = heap_get_class_info (thread_p, class_oid, &hfid, NULL, NULL);
+  error = heap_get_class_hfid (thread_p, class_oid, &hfid, NULL);
   if (error != NO_ERROR)
     {
       goto error_exit;
@@ -12460,9 +12430,7 @@ locator_prefetch_index_page_internal (THREAD_ENTRY * thread_p, BTID * btid, OID 
       goto free_and_return;
     }
 
-  key =
-    heap_attrvalue_get_key (thread_p, index_id, attr_info_p, recdes, &tmp_btid, &dbvalue, aligned_buf, NULL, NULL,
-			    NULL);
+  key = heap_attrvalue_get_key (thread_p, index_id, attr_info_p, recdes, &tmp_btid, &dbvalue, aligned_buf, NULL, NULL);
   if (key == NULL)
     {
       error = ER_FAILED;
@@ -12716,10 +12684,9 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 
   PGBUF_INIT_WATCHER (&old_page_watcher, PGBUF_ORDERED_RANK_UNDEFINED, PGBUF_ORDERED_NULL_HFID);
 
-  error = heap_get_class_info (thread_p, class_oid, &class_hfid, NULL, NULL);
-  if (error != NO_ERROR || HFID_IS_NULL (&class_hfid))
+  error = heap_get_class_hfid (thread_p, class_oid, &class_hfid, NULL);
+  if (error != NO_ERROR)
     {
-      error = ER_FAILED;
       goto exit;
     }
 
@@ -12752,10 +12719,9 @@ redistribute_partition_data (THREAD_ENTRY * thread_p, OID * class_oid, int no_oi
 	  goto exit;
 	}
 
-      error = heap_get_class_info (thread_p, &oid_list[i], &hfid, NULL, NULL);
-      if (error != NO_ERROR || HFID_IS_NULL (&hfid))
+      error = heap_get_class_hfid (thread_p, &oid_list[i], &hfid, NULL);
+      if (error != NO_ERROR)
 	{
-	  error = ER_FAILED;
 	  goto exit;
 	}
 

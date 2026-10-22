@@ -531,6 +531,8 @@ static int la_apply_repl_log (int tranid, int rectype, LOG_LSA * commit_lsa, int
 static int la_apply_commit_list (LOG_LSA * lsa, LOG_PAGEID final_pageid);
 static void la_free_repl_items_by_tranid (int tranid);
 static int la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_ptr);
+static bool la_is_done_state (int ha_server_state);
+static bool la_record_end_is_stale (void);
 static int la_change_state (void);
 static int la_log_commit (bool update_commit_time);
 static unsigned long la_get_mem_size (void);
@@ -1071,7 +1073,7 @@ la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer)
   /* get the physical page id */
   phy_pageid = la_log_phypageid (pageid);
 
-  if (la_Info.act_log.log_hdr->append_lsa.pageid < pageid)
+  if (la_Info.act_log.log_hdr->append_lsa.load ().pageid < pageid)
     {
       /* check it again */
       error = la_fetch_log_hdr (&la_Info.act_log);
@@ -1081,7 +1083,7 @@ la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer)
 	}
 
       /* check it again */
-      if (la_Info.act_log.log_hdr->append_lsa.pageid < pageid)
+      if (la_Info.act_log.log_hdr->append_lsa.load ().pageid < pageid)
 	{
 	  return ER_LOG_NOTIN_ARCHIVE;
 	}
@@ -1143,7 +1145,7 @@ la_log_fetch (LOG_PAGEID pageid, LA_CACHE_BUFFER * cache_buffer)
     }
   while (error == NO_ERROR && --retry > 0);
 
-  if (retry <= 0 || la_Info.act_log.log_hdr->append_lsa.pageid < pageid)
+  if (retry <= 0 || la_Info.act_log.log_hdr->append_lsa.load ().pageid < pageid)
     {
 #if defined (LA_VERBOSE_DEBUG)
       /* it will nagging you */
@@ -6398,6 +6400,34 @@ la_get_hostname_from_log_path (char *log_path)
   return hostname + 1;
 }
 
+/*
+ * la_is_done_state() - check whether the applier reports done at the record end of a source in this state
+ *   return: true if done is reported
+ *   ha_server_state(in): source state in the copied log header
+ */
+static bool
+la_is_done_state (int ha_server_state)
+{
+  return (ha_server_state == HA_SERVER_STATE_DEAD || ha_server_state == HA_SERVER_STATE_STANDBY
+	  || ha_server_state == HA_SERVER_STATE_MAINTENANCE);
+}
+
+/*
+ * la_record_end_is_stale() - check whether the record end an iteration reached is short of the copied log
+ *   return: true if the source has stopped and the copied log header's eof is past final_lsa
+ *
+ * Note: an iteration reads its page once. If the copied log grows meanwhile, the END_OF_LOG it reaches
+ *       in that page is not the end of the copied log, although the header may have been re-read since.
+ *       Only a stopped source matters: it is the one that lets the applier report done.
+ */
+static bool
+la_record_end_is_stale (void)
+{
+  const LOG_HEADER *log_hdr = la_Info.act_log.log_hdr;
+
+  return la_is_done_state (log_hdr->ha_server_state) && LSA_GT (&log_hdr->eof_lsa, &la_Info.final_lsa);
+}
+
 static int
 la_change_state (void)
 {
@@ -6429,21 +6459,18 @@ la_change_state (void)
   if (la_Info.is_end_of_record == true && (la_Info.act_log.log_hdr->ha_file_status == LOG_HA_FILESTAT_SYNCHRONIZED))
     {
       /* check server's state with log header */
-      switch (la_Info.act_log.log_hdr->ha_server_state)
+      if (la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_ACTIVE
+	  || la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_TO_BE_STANDBY
+	  || la_Info.act_log.log_hdr->ha_server_state == HA_SERVER_STATE_TO_BE_ACTIVE)
 	{
-	case HA_SERVER_STATE_ACTIVE:
-	case HA_SERVER_STATE_TO_BE_STANDBY:
-	case HA_SERVER_STATE_TO_BE_ACTIVE:
 	  if (la_Info.apply_state != HA_LOG_APPLIER_STATE_WORKING)
 	    {
 	      /* notify to slave db */
 	      new_state = HA_LOG_APPLIER_STATE_WORKING;
 	    }
-	  break;
-
-	case HA_SERVER_STATE_DEAD:
-	case HA_SERVER_STATE_STANDBY:
-	case HA_SERVER_STATE_MAINTENANCE:
+	}
+      else if (la_is_done_state (la_Info.act_log.log_hdr->ha_server_state))
+	{
 	  if (la_Info.apply_state != HA_LOG_APPLIER_STATE_DONE)
 	    {
 	      /* notify to slave db */
@@ -6455,11 +6482,11 @@ la_change_state (void)
 		  la_clear_all_repl_and_commit_list ();
 		}
 	    }
-	  break;
-	default:
+	}
+      else
+	{
 	  er_log_debug (ARG_FILE_LINE, "BUG. Unknown LOG_HA_SRVSTAT (%x)", la_Info.act_log.log_hdr->ha_server_state);
 	  return ER_FAILED;
-	  break;
 	}
 
     }
@@ -6540,7 +6567,7 @@ la_log_commit (bool update_commit_time)
 
   (void) la_find_required_lsa (&la_Info.required_lsa);
 
-  LSA_COPY (&la_Info.append_lsa, &la_Info.act_log.log_hdr->append_lsa);
+  la_Info.append_lsa = la_Info.act_log.log_hdr->append_lsa;
   LSA_COPY (&la_Info.eof_lsa, &la_Info.act_log.log_hdr->eof_lsa);
 
   if (update_commit_time)
@@ -7126,7 +7153,10 @@ la_print_log_header (const char *database_name, LOG_HEADER * hdr, bool verbose)
   printf ("%-30s : %s (%ld)\n", "DB creation time", db_creation_time_buf, db_creation_time);
   printf ("%-30s : %s (%ld)\n", "Vol creation time", vol_creation_time_buf, vol_creation_time);
   printf ("%-30s : %lld | %d\n", "EOF LSA", (long long int) hdr->eof_lsa.pageid, (int) hdr->eof_lsa.offset);
-  printf ("%-30s : %lld | %d\n", "Append LSA", (long long int) hdr->append_lsa.pageid, (int) hdr->append_lsa.offset);
+
+  const LOG_LSA append_lsa = hdr->append_lsa;
+
+  printf ("%-30s : %lld | %d\n", "Append LSA", (long long int) append_lsa.pageid, (int) append_lsa.offset);
   printf ("%-30s : %s\n", "HA server state", css_ha_server_state_string ((HA_SERVER_STATE) hdr->ha_server_state));
   if (verbose)
     {
@@ -7439,9 +7469,12 @@ check_copied_log_volume_info_end:
 	    {
 	      lrec = LOG_GET_LOG_RECORD_HEADER (logpage, &lsa);
 
-	      printf ("offset:%04ld (tid:%d bck p:%lld,o:%ld frw p:%lld,o:%ld type:%d)\n", lsa.offset, lrec->trid,
-		      (long long int) lrec->back_lsa.pageid, lrec->back_lsa.offset,
-		      (long long int) lrec->forw_lsa.pageid, lrec->forw_lsa.offset, lrec->type);
+	      /* LOG_LSA::offset is a 16 bit bitfield of int64_t. Clang promotes it to int when
+	       * it is passed through "...", GCC passes it as a long, so neither %d nor %ld is
+	       * right for both. Cast explicitly to settle the argument type. */
+	      printf ("offset:%04d (tid:%d bck p:%lld,o:%d frw p:%lld,o:%d type:%d)\n", (int) lsa.offset,
+		      lrec->trid, (long long int) lrec->back_lsa.pageid, (int) lrec->back_lsa.offset,
+		      (long long int) lrec->forw_lsa.pageid, (int) lrec->forw_lsa.offset, lrec->type);
 	      LSA_COPY (&lsa, &lrec->forw_lsa);
 	    }
 	}
@@ -8387,12 +8420,12 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		  continue;
 		}
 	      /* request page is greater then append_lsa.(in log_header) */
-	      else if (final_log_hdr.append_lsa.pageid < la_Info.final_lsa.pageid)
+	      else if (final_log_hdr.append_lsa.load ().pageid < la_Info.final_lsa.pageid)
 		{
 		  er_log_debug (ARG_FILE_LINE,
 				"requested pageid (%lld) is greater than append_las.pageid (%lld) in log header",
 				(long long int) la_Info.final_lsa.pageid,
-				(long long int) final_log_hdr.append_lsa.pageid);
+				(long long int) final_log_hdr.append_lsa.load ().pageid);
 		  usleep (100 * 1000);
 		  continue;
 		}
@@ -8427,11 +8460,14 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		      && ((la_Info.final_lsa.pageid + 1) <= final_log_hdr.eof_lsa.pageid)
 		      && (la_does_page_exist (la_Info.final_lsa.pageid + 1) != LA_PAGE_DOESNOT_EXIST))
 		    {
+		      const LOG_LSA hdr_append_lsa = final_log_hdr.append_lsa;
+
 		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET, 10,
 			      log_buf->logpage.hdr.logical_pageid, log_buf->logpage.hdr.offset,
-			      la_Info.final_lsa.pageid, la_Info.final_lsa.offset, final_log_hdr.append_lsa.pageid,
-			      final_log_hdr.append_lsa.offset, final_log_hdr.eof_lsa.pageid,
-			      final_log_hdr.eof_lsa.offset, final_log_hdr.ha_file_status, la_Info.is_end_of_record);
+			      la_Info.final_lsa.pageid, la_Info.final_lsa.offset,
+			      hdr_append_lsa.pageid, hdr_append_lsa.offset,
+			      final_log_hdr.eof_lsa.pageid, final_log_hdr.eof_lsa.offset, final_log_hdr.ha_file_status,
+			      la_Info.is_end_of_record);
 
 		      /* make sure to target page does not exist */
 		      if (la_does_page_exist (la_Info.final_lsa.pageid) == LA_PAGE_DOESNOT_EXIST
@@ -8440,7 +8476,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 			  er_log_debug (ARG_FILE_LINE, "skip this page (pageid=%lld/%lld/%lld)",
 					(long long int) la_Info.final_lsa.pageid,
 					(long long int) final_log_hdr.eof_lsa.pageid,
-					(long long int) final_log_hdr.append_lsa.pageid);
+					(long long int) final_log_hdr.append_lsa.load ().pageid);
 			  /* skip it */
 			  la_Info.final_lsa.pageid++;
 			  la_Info.final_lsa.offset = 0;
@@ -8451,7 +8487,7 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 #if defined (LA_VERBOSE_DEBUG)
 		  er_log_debug (ARG_FILE_LINE, "refetch this page... (pageid=%lld/%lld/%lld)",
 				(long long int) la_Info.final_lsa.pageid, (long long int) final_log_hdr.eof_lsa.pageid,
-				(long long int) final_log_hdr.append_lsa.pageid);
+				(long long int) final_log_hdr.append_lsa.load ().pageid);
 #endif
 		  /* wait a moment and retry it */
 		  usleep (100 * 1000);
@@ -8464,9 +8500,11 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	    }
 	  else
 	    {
+	      const LOG_LSA hdr_append_lsa = final_log_hdr.append_lsa;
+
 	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_LA_INVALID_REPL_LOG_PAGEID_OFFSET, 10,
 		      log_buf->logpage.hdr.logical_pageid, log_buf->logpage.hdr.offset, la_Info.final_lsa.pageid,
-		      la_Info.final_lsa.offset, final_log_hdr.append_lsa.pageid, final_log_hdr.append_lsa.offset,
+		      la_Info.final_lsa.offset, hdr_append_lsa.pageid, hdr_append_lsa.offset,
 		      final_log_hdr.eof_lsa.pageid, final_log_hdr.eof_lsa.offset, final_log_hdr.ha_file_status,
 		      la_Info.is_end_of_record);
 
@@ -8495,18 +8533,20 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      if (LSA_GT (&la_Info.final_lsa, &final_log_hdr.eof_lsa))
 		{
 #if defined (LA_VERBOSE_DEBUG)
+		  const LOG_LSA hdr_append_lsa = final_log_hdr.append_lsa;
+
 		  er_log_debug (ARG_FILE_LINE,
 				"this page is grater than eof_lsa. (%lld|%d) > eof (%lld|%d). appended (%lld|%d)",
 				(long long int) la_Info.final_lsa.pageid, la_Info.final_lsa.offset,
 				(long long int) final_log_hdr.eof_lsa.pageid, final_log_hdr.eof_lsa.offset,
-				(long long int) final_log_hdr.append_lsa.pageid, final_log_hdr.append_lsa.offset);
+				(long long int) hdr_append_lsa.pageid, hdr_append_lsa.offset);
 #endif
 		  la_Info.is_end_of_record = true;
 		  /* it should be refetched and release later */
 		  la_invalidate_page_buffer (log_buf);
 		  break;
 		}
-	      else if (LSA_GT (&la_Info.final_lsa, &final_log_hdr.append_lsa))
+	      else if (la_Info.final_lsa > final_log_hdr.append_lsa.load ())
 		{
 		  la_invalidate_page_buffer (log_buf);
 		  break;
@@ -8601,6 +8641,13 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      break;
 	    }
 
+	  if (la_Info.is_end_of_record == true && la_record_end_is_stale ())
+	    {
+	      er_log_debug (ARG_FILE_LINE, "record end %lld|%d is short of the copied log eof %lld|%d",
+			    LSA_AS_ARGS (&la_Info.final_lsa), LSA_AS_ARGS (&la_Info.act_log.log_hdr->eof_lsa));
+	      la_Info.is_end_of_record = false;
+	    }
+
 	  /* check and change state */
 	  error = la_change_state ();
 	  if (ER_IS_SERVER_DOWN_ERROR (error) || LA_IS_FLUSH_ERROR (error))
@@ -8615,7 +8662,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	    }
 
 	  if (la_Info.final_lsa.pageid >= final_log_hdr.eof_lsa.pageid
-	      || la_Info.final_lsa.pageid >= final_log_hdr.append_lsa.pageid || la_Info.is_end_of_record == true)
+	      || la_Info.final_lsa.pageid >= final_log_hdr.append_lsa.load ().pageid
+	      || la_Info.is_end_of_record == true)
 	    {
 	      /* it should be refetched and release */
 	      la_invalidate_page_buffer (log_buf);

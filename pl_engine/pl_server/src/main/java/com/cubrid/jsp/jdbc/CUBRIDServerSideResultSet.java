@@ -446,35 +446,27 @@ public class CUBRIDServerSideResultSet implements ResultSet {
     @Override
     public int findColumn(String columnName) throws SQLException {
 
-        // NOTE: Suppose that a user wrote T.col as a column in a SELECT statement,
-        // In client-side JDBC, columnName argument must be "col" to find its index.
-        // In server-side JDBC, however, both "T.col" and "col" are allowed.
+        // NOTE: Suppose that a user wrote T.col as a column in a SELECT statement.
+        // The server sends down two names for the column:
+        //   - colName: the alias if an AS clause was given, otherwise the column name with the
+        //     table qualifier stripped off ("col"). This is the standard JDBC name.
+        //   - writtenColName: the name exactly as the user wrote it ("T.col"), which is to keep
+        //     the old behavior that deviates from JDBC standard about column names (CBRD-27242).
+        // We first try an exact match against colName ("col") to honor the JDBC convention, then
+        // fall back to an exact match against writtenColName ("T.col") for backward compatibility.
 
         String colName = columnName.toLowerCase();
-        Map<String, Integer> colNameToIdx = statementHandler.getColNameIndex();
 
-        // first, try exact match
-        Integer index = colNameToIdx.get(colName);
+        // first, try exact match against the (unqualified) column name
+        Integer index = statementHandler.getColNameIndex().get(colName);
         if (index == null) {
+            // second, try exact match against the name as written in the SELECT statement
+            index = statementHandler.getWrittenColNameIndex().get(colName);
+        }
 
-            // second, try postfix match with a dot
-            String dotColName = "." + colName;
-            for (String cn : colNameToIdx.keySet()) {
-                if (cn.endsWith(dotColName)) {
-                    if (index == null) {
-                        index = colNameToIdx.get(cn);
-                    } else {
-                        // we already found one. duplicate
-                        index = null;
-                        break;
-                    }
-                }
-            }
-
-            if (index == null) {
-                throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
-                        CUBRIDServerSideJDBCErrorCode.ER_INVALID_COLUMN_NAME, null);
-            }
+        if (index == null) {
+            throw CUBRIDServerSideJDBCErrorManager.createCUBRIDException(
+                    CUBRIDServerSideJDBCErrorCode.ER_INVALID_COLUMN_NAME, null);
         }
 
         return index.intValue() + 1;

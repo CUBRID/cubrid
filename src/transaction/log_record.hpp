@@ -466,4 +466,10 @@ struct log_rec_supplement
    || ((type) == LOG_MVCC_UNDOREDO_DATA) \
    || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
 
+/* Is record type a MVCC operation that carries an undo image */
+#define LOG_IS_MVCC_OP_UNDO_RECORD_TYPE(type) \
+  (((type) == LOG_MVCC_UNDO_DATA) \
+   || ((type) == LOG_MVCC_UNDOREDO_DATA) \
+   || ((type) == LOG_MVCC_DIFF_UNDOREDO_DATA))
+
 #endif // _LOG_RECORD_HPP_

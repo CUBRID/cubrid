@@ -380,6 +380,11 @@ struct t_appl_server_info
   int advance_activate_flag;	/* it is used only in shard */
   int proxy_conn_wait_timeout;	/* it is used only in shard */
   bool force_reconnect;		/* it is used only in shard */
+
+  /* query replace statistics (cubrid broker status -r) */
+  INT64 num_query_replace_prepare;	/* replace applied at prepare */
+  INT64 num_query_replace_execute;	/* execute of a rewritten statement */
+  INT64 num_query_replace_fallback;	/* replace reverted to original (prepare retry or execute demote) */
 };
 
 typedef struct t_client_info T_CLIENT_INFO;
@@ -562,7 +567,6 @@ struct t_shm_appl_server
   char slow_log_mode;
   char stripped_column_name;
   char keep_connection;
-  char cache_user_info;
   char sql_log2;
   char statement_pooling;
   char access_mode;
@@ -593,6 +597,11 @@ struct t_shm_appl_server
   char access_log_file[CONF_LOG_FILE_LEN];
   char db_connection_file[BROKER_INFO_PATH_MAX];
   unsigned char local_ip_addr[4];
+
+  /* query replace feature */
+  char query_replace_rule[SHM_BROKER_PATH_MAX];	/* directory of query replace rule files */
+  int query_replace_shm_key;	/* shm key of replace rule segment, 0 = disabled */
+  int query_replace_generation;	/* incremented on each rebuild */
 
   /* from br_info */
   /* from here, these are used only in shard */

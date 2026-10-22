@@ -123,13 +123,14 @@
  * If the number changes, CNT_CATCLS_OBJECTS MUST be updated accordingly.
  *
  * A QA test case has been added to verify that system classes contain exactly
- * 6 general object domains. This test is intended to catch violations of this
- * assumption early. If CNT_CATCLS_OBJECTS is modified, the corresponding QA
- * test MUST also be updated.
+ * this many general object domains (the shell case catcls_general_object).
+ * This test is intended to catch violations of this assumption early. If
+ * CNT_CATCLS_OBJECTS is modified, the corresponding QA test MUST also be
+ * updated.
  *
  * See CBRD-23983 and CBRD-25697 for details.
  */
 
-#define CNT_CATCLS_OBJECTS              (9)	/* number of general object domains in system classes */
+#define CNT_CATCLS_OBJECTS              (6)	/* number of general object domains in system classes */
 
 #endif /* _SCHEMA_SYSTEM_CATALOG_CONSTANTS_H_ */
