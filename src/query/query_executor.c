@@ -20308,10 +20308,11 @@ qexec_execute_mainblock_internal (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XAS
 	      /* nothing to do */
 	    }
 
-	  if (xptr->type == HASHJOIN_PROC && !xasl->px_executor)
+	  if (xptr->type == HASHJOIN_PROC && !xasl->px_executor && prm_get_bool_value (PRM_ID_HASH_JOIN_RUNTIME_FILTER))
 	    {
 	      /* runtime filter: the input expected smaller runs now, and its keys filter the other one's outermost
-	       * scan when it turned out small (hjoin_rtf_first_input ()); the loop below skips the one that ran */
+	       * scan when it turned out small (hjoin_rtf_first_input ()); the loop below skips the one that ran.
+	       * hash_join_runtime_filter=no (hidden) leaves both inputs to the loop below, as without the filter */
 	      XASL_NODE *rtf_target = NULL;
 	      XASL_NODE *rtf_first = hjoin_rtf_first_input (xptr, &rtf_target);
 
