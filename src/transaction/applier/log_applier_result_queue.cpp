@@ -160,43 +160,6 @@ la_result_queue_try_pop (LA_RESULT *result)
 }
 
 /*
- * la_result_queue_pop() - take the oldest result, waiting until one arrives
- *   return: NO_ERROR when a result was taken, ER_FAILED when the queue is shutting down
- *   result(out): the dequeued result
- *
- * Note:
- *   Used only when the coordinator cannot dispatch anything more until a result comes back;
- *   its regular collection uses la_result_queue_try_pop.
- */
-int
-la_result_queue_pop (LA_RESULT *result)
-{
-  assert (result != NULL);
-
-  pthread_mutex_lock (&la_Shared_result_mutex);
-
-  while (la_Shared_result_queue.count == 0 && la_Shared_result_shutdown == false)
-    {
-      pthread_cond_wait (&la_Shared_result_not_empty, &la_Shared_result_mutex);
-    }
-
-  if (la_Shared_result_queue.count == 0)
-    {
-      pthread_mutex_unlock (&la_Shared_result_mutex);
-      return ER_FAILED;
-    }
-
-  *result = la_Shared_result_queue.results[la_Shared_result_queue.head];
-  la_Shared_result_queue.head = (la_Shared_result_queue.head + 1) % la_Shared_result_queue.capacity;
-  la_Shared_result_queue.count--;
-
-  pthread_cond_signal (&la_Shared_result_not_full);
-  pthread_mutex_unlock (&la_Shared_result_mutex);
-
-  return NO_ERROR;
-}
-
-/*
  * la_result_queue_wait_for_result() - wait at most timeout_msec for a worker to queue a result, without dequeuing it
  *   return: true when a result is queued or the queue is shutting down, false on timeout
  *   timeout_msec(in): longest time to wait

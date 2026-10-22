@@ -374,6 +374,11 @@ la_worker_run (LA_WORKER *worker, LA_APPLY_WORKER_CONTEXT *context, unsigned lon
  * Note:
  *   The remaining workers keep applying; the failure is only logged. When no worker is left nothing
  *   would ever take a task, so the applier is told to stop.
+ *
+ *   TODO: Start a replacement worker so that the configured worker count is kept, instead of running on
+ *         with fewer workers. The replacement needs a retry interval and limit; a cause outside the
+ *         process, such as an unreachable server, makes it fail again, and when it gives up the applier
+ *         must still stop as it does now.
  */
 static void
 la_worker_startup_failed (const LA_WORKER *worker, const char *reason, int error)
