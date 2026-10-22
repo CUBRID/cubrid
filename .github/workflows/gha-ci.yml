@@ -502,9 +502,7 @@ jobs:
       BUILD_ARGS: ${{ matrix.args }}
       BUILD_NS: ${{ needs.gate.outputs.build_ns }}
       CCACHE_DIR: /home/ci/cache/ccache/develop-${{ matrix.mode }}
-      # Tarballs, JDK and Gradle, which every build fetched from GitHub. Keyed by file name and hash.
       CUBRID_DOWNLOAD_CACHE: /home/ci/cache/downloads
-      GRADLE_USER_HOME: /home/ci/cache/gradle
       # The default is mtime, which a fresh checkout always misses.
       CCACHE_COMPILERCHECK: content
       CCACHE_MAXSIZE: 10G
@@ -559,6 +557,10 @@ jobs:
           export CCACHE_TEMPDIR="$RUNNER_TEMP/ccache-tmp"
           mkdir -p "$CCACHE_TEMPDIR"
           [ -d "$CCACHE_DIR" ] || echo "::warning::no ccache at $CCACHE_DIR yet, so this is a cold build"
+          # Gradle's cache locks do not work across pods, so only the wrapper's distribution is shared.
+          export GRADLE_USER_HOME="$RUNNER_TEMP/gradle"
+          mkdir -p "$GRADLE_USER_HOME" /home/ci/cache/gradle/wrapper
+          ln -s /home/ci/cache/gradle/wrapper "$GRADLE_USER_HOME/wrapper"
           # No -j: ninja reads the cgroup quota.
           # shellcheck disable=SC2086
           /entrypoint.sh build $BUILD_ARGS
