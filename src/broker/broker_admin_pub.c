@@ -4342,7 +4342,7 @@ static const unsigned char bundled_ssl_key_spki_sha256[][32] = {
 
 /*
  * admin_check_ssl_files () - check the SSL private key and certificate before a broker with SSL=ON starts
- *   return: 0, or -1 with admin_err_msg set if others may have read the key
+ *   return: 0, or -1 with admin_err_msg set if the key is not a regular file or others may have read it
  *
  * Called when a broker with SSL=ON is activated, not in cas_init_ssl () which runs on every SSL connection.
  * Sets admin_warn_msg if the certificate is for a private key shipped with CUBRID.
@@ -4359,15 +4359,47 @@ admin_check_ssl_files (void)
   snprintf (key, sizeof (key), "%s/conf/%s", getenv ("CUBRID"), CAS_SSL_KEY_FILE);
   if (stat (key, &sbuf) == 0)
     {
-      mode = (unsigned int) (sbuf.st_mode & 0777);
-      if (mode != 0600 && mode != 0400)
+      /* PostgreSQL's rule (check_ssl_key_file_permissions): a regular file, owned by the broker user with 0600/0400,
+       * or by root with up to 0640 so that a group the broker user is in may read a key root manages */
+      if (!S_ISREG (sbuf.st_mode))
 	{
-	  /* the key may have been copied already, so the operator is told to replace it, not only to chmod it */
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		    "SSL private key is not a regular file: %s\n"
+		    "Provide the private key as a regular file, and restart the service.", key);
+	  return -1;
+	}
+
+      /* the owner can read and replace the key whatever its mode */
+      if (sbuf.st_uid != geteuid () && sbuf.st_uid != 0)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		    "SSL private key has an invalid owner, but it must be owned by the authorized service user "
+		    "or root: %s\n"
+		    "The key may already have been copied by its owner. Generate a new private key and certificate "
+		    "as the authorized user or root, and restart the service.", key);
+	  return -1;
+	}
+
+      /* group or other access means the key may have been copied already, so the operator is told to replace it,
+       * not only to chmod it */
+      mode = (unsigned int) (sbuf.st_mode & 0777);
+      if (sbuf.st_uid == geteuid () && (mode & (S_IRWXG | S_IRWXO)) != 0)
+	{
 	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
 		    "SSL private key permission is %04o, but it must be 0600 or 0400: %s\n"
 		    "The key may already have been copied by another user. "
 		    "Generate a new private key and certificate,\n"
-		    "set the key file permission to 600 or 400, and start the broker again.", mode, key);
+		    "set the key file permission to 600 or 400, and restart the service.", mode, key);
+	  return -1;
+	}
+      if (sbuf.st_uid == 0 && (mode & (S_IWGRP | S_IXGRP | S_IRWXO)) != 0)
+	{
+	  snprintf (admin_err_msg, ADMIN_ERR_MSG_SIZE,
+		    "SSL private key permission is %04o, but it must be 0640, 0600, 0440 or 0400 "
+		    "when owned by root: %s\n"
+		    "The key may already have been copied by another user. "
+		    "Generate a new private key and certificate,\n"
+		    "set the key file permission to 640 or less, and restart the service.", mode, key);
 	  return -1;
 	}
     }
