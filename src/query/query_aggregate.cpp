@@ -4147,14 +4147,17 @@ end:
  *   acc_dom(in): accumulator domains
  */
 int
-qdata_load_agg_hkey_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size, aggregate_hash_key *key,
-				tp_domain **key_dom)
+qdata_load_agg_hkey_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size, int type_cnt,
+				aggregate_hash_key *key, tp_domain **key_dom)
 {
   QFILE_TUPLE_WALK walk;
   bool is_null;
   int i, rc = NO_ERROR;
 
-  qfile_tuple_walk_init (&walk, tuple, hdr_size, key->val_count);
+  /* the walk sizes the NULL bitmap by the tuple's column count -- the list's type_cnt (key columns, three per
+   * aggregate, the tuple count), not the key's: past 32 columns the bitmap takes another word and the key
+   * columns sit further in */
+  qfile_tuple_walk_init (&walk, tuple, hdr_size, type_cnt);
   for (i = 0; i < key->val_count; i++)
     {
       (void) pr_clear_value (key->values[i]);

@@ -207,7 +207,7 @@ int qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, cubquery::aggrega
 				   cubquery::aggregate_hash_value *value, DB_VALUE *temp_dbval_array,
 				   qfile_list_id *list_id);
 /* the key columns of a partial-list entry (qdata_load_agg_hentry_from_tuple ()) without its accumulators */
-int qdata_load_agg_hkey_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size,
+int qdata_load_agg_hkey_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size, int type_cnt,
 				    cubquery::aggregate_hash_key *key, tp_domain **key_dom);
 int qdata_load_agg_hentry_from_tuple (cubthread::entry *thread_p, QFILE_TUPLE tuple, int hdr_size,
 				      cubquery::aggregate_hash_key *key,
