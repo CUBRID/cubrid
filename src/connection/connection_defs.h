@@ -452,7 +452,6 @@ struct css_conn_entry
   int invalidate_snapshot;
   int db_error;
   bool in_method;		/* this connection is for method callback */
-  bool in_flashback;		/* this client is in progress of flashback */
 #if defined(SERVER_MODE)
   int client_id;
   bool in_transaction;		/* this client is in-transaction or out-of- */
