@@ -6986,6 +6986,14 @@ pt_make_regu_reguvalues_list (PARSER_CONTEXT * parser, const PT_NODE * node, UNB
 	    }
 	  const TP_DOMAIN *head = regu_list->regu_list->value->domain;
 	  const TP_DOMAIN *row = list_node->value->domain;
+	  if (head != NULL && row != NULL && TP_DOMAIN_TYPE (head) == DB_TYPE_NULL
+	      && TP_DOMAIN_TYPE (row) != DB_TYPE_NULL)
+	    {
+	      /* a NULL first row types the column NULL, which would drop this row's value: the column has no type */
+	      PT_ERRORmf2 (parser, temp, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
+			   pt_short_print (parser, node->info.node_list.list), pt_short_print (parser, temp));
+	      return NULL;
+	    }
 	  if (head != NULL && row != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (head))
 	      && TP_DOMAIN_TYPE (head) == TP_DOMAIN_TYPE (row) && TP_DOMAIN_CODESET (head) != TP_DOMAIN_CODESET (row))
 	    {
