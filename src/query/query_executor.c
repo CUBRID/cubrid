@@ -13078,6 +13078,13 @@ qexec_execute_remote_dml_sink (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_S
 		num_odku_bound++;
 	      }
 	  }
+	/* A NULL that the plan did not leave would bind one more column of the row, without an error. */
+	if (num_odku_bound != insert->remote_num_odku_bound)
+	  {
+	    assert (0);
+	    qexec_failure_line (__LINE__, xasl_state);
+	    goto exit_on_error;
+	  }
 	if (num_odku_bound > 0)
 	  {
 	    odku_vals = (DB_VALUE **) db_private_alloc (thread_p, sizeof (DB_VALUE *) * (val_no + num_odku_bound));

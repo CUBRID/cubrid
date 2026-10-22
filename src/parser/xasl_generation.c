@@ -20172,6 +20172,7 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
    * select list as hidden columns, so hidden sort keys may come before them, and those of a merged view after.
    * Find where they start, and check that they are as many as the values and lie together. */
   insert->remote_odku_val_start = insert->num_vals;
+  insert->remote_num_odku_bound = num_odku_bound;
   if (num_odku_bound > 0)
     {
       PT_NODE *item;

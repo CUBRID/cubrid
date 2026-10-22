@@ -445,6 +445,7 @@ struct insert_proc_node
 				 * from the source row (array, parallel to cols) */
   int remote_num_odku;		/* length of remote_odku_cols and remote_odku_exprs */
   int remote_odku_val_start;	/* position in the source row of the first value bound for a NULL remote_odku_exprs */
+  int remote_num_odku_bound;	/* number of NULL remote_odku_exprs, as the plan counted them */
 };
 
 typedef struct delete_proc_node DELETE_PROC_NODE;
