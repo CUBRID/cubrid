@@ -899,7 +899,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   /* initialize memory allocable fields */
   for (i = 0; i < BTSORT_MAX_TOT_FILES; i++)
     {
-      sort_param->temp[i].volid = NULL_VOLID;
+      VFID_SET_NULL (&sort_param->temp[i]);
       file_find_nth_cursor_reset (&sort_param->temp_cursor[i]);
       sort_param->file_contents[i].num_pages = NULL;
     }
@@ -907,8 +907,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
 
   /* initialize temp. overflow file. Real value will be assigned in btsort_inphase_sort function, if long size sorting
    * records are encountered. */
-  sort_param->multipage_file.volid = NULL_VOLID;
-  sort_param->multipage_file.fileid = NULL_FILEID;
+  VFID_SET_NULL (&sort_param->multipage_file);
 
   /* index_build_buffer_size is entered in bytes and kept in IO pages (PRM_SIZE_UNIT |
    * PRM_DIFFER_UNIT); the loader gives no size estimate of its input. Four pages is the minimum of
@@ -938,7 +937,7 @@ btree_sort (THREAD_ENTRY * thread_p, BTSORT_GET_FUNC * get_fn, SORT_ARGS * sort_
   for (i = 0; i < BTSORT_MAX_TOT_FILES; i++)
     {
       /* Initilize temporary file identifier; real value will be set in "btsort_add_new_file () */
-      sort_param->temp[i].volid = NULL_VOLID;
+      VFID_SET_NULL (&sort_param->temp[i]);
       file_find_nth_cursor_reset (&sort_param->temp_cursor[i]);
 
       /* Initilize file contents list */
@@ -1204,7 +1203,7 @@ btsort_return_used_resources (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param
     {
       for (k = 0; k < sort_param->tot_tempfiles; k++)
 	{
-	  if (sort_param->temp[k].volid != NULL_VOLID)
+	  if (!VFID_ISNULL (&sort_param->temp[k]))
 	    {
 	      (void) file_temp_retire (thread_p, &sort_param->temp[k]);
 	      file_find_nth_cursor_reset (&sort_param->temp_cursor[k]);
@@ -1212,7 +1211,7 @@ btsort_return_used_resources (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param
 	}
     }
 
-  if (sort_param->multipage_file.volid != NULL_VOLID)
+  if (!VFID_ISNULL (&sort_param->multipage_file))
     {
       (void) file_temp_retire (thread_p, &(sort_param->multipage_file));
     }
@@ -1456,7 +1455,7 @@ btsort_inphase_sort (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, BTSORT_
 	      /* Put the record to the multipage area & put the pointer to internal memory area */
 
 	      /* If necessary create the multipage_file */
-	      if (sort_param->multipage_file.volid == NULL_VOLID)
+	      if (VFID_ISNULL (&sort_param->multipage_file))
 		{
 		  TDE_ALGORITHM tde_algo = TDE_ALGORITHM_NONE;
 		  /* Create the multipage file */
@@ -1668,7 +1667,7 @@ btsort_run_flush (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_fi
   const char *rec;
 
   /* Make sure the the temp file indexed by out_file has been created; if not, create it now. */
-  if (sort_param->temp[out_file].volid == NULL_VOLID)
+  if (VFID_ISNULL (&sort_param->temp[out_file]))
     {
       error =
 	btsort_add_new_file (thread_p, &sort_param->temp[out_file], &sort_param->temp_cursor[out_file],
@@ -2151,7 +2150,7 @@ cleanup:
   /* the files beyond the result run are dead here; main never retires worker temps on success */
   for (int k = 0; k < sort_param->tot_tempfiles; k++)
     {
-      if (k != sort_param->px_result_file_idx && sort_param->temp[k].volid != NULL_VOLID)
+      if (k != sort_param->px_result_file_idx && !VFID_ISNULL (&sort_param->temp[k]))
 	{
 	  (void) file_temp_retire (thread_p, &sort_param->temp[k]);
 	  VFID_SET_NULL (&sort_param->temp[k]);
@@ -2232,7 +2231,7 @@ btsort_retire_px_temp_files (THREAD_ENTRY * thread_p, BTSORT_PARAM * px_sort_par
     {
       for (k = 0; k < px_sort_param[i].tot_tempfiles; k++)
 	{
-	  if (px_sort_param[i].temp[k].volid != NULL_VOLID)
+	  if (!VFID_ISNULL (&px_sort_param[i].temp[k]))
 	    {
 	      (void) file_temp_retire (thread_p, &px_sort_param[i].temp[k]);
 	      VFID_SET_NULL (&px_sort_param[i].temp[k]);
@@ -3138,7 +3137,7 @@ btsort_merge_run_for_parallel_index_leaf_build (THREAD_ENTRY * thread_p, BTSORT_
 	for (i = 0; i < parallel_num; i++)
 	  {
 	    int idx = px_sort_param[i].px_result_file_idx;
-	    if (px_sort_param[i].file_contents[idx].num_pages[0] > 0 && px_sort_param[i].temp[idx].volid != NULL_VOLID)
+	    if (px_sort_param[i].file_contents[idx].num_pages[0] > 0 && !VFID_ISNULL (&px_sort_param[i].temp[idx]))
 	      {
 		int retire_error = file_temp_retire (thread_p, &px_sort_param[i].temp[idx]);
 		if (retire_error == NO_ERROR)
@@ -3274,7 +3273,7 @@ btsort_merge_queue_setup_ctx (int pool_idx, BTSORT_MERGE_QUEUE_CTX * qctx, const
     }
   for (j = k; j < k * 2; j++)
     {
-      ctx->temp[j].volid = NULL_VOLID;
+      VFID_SET_NULL (&ctx->temp[j]);
       file_find_nth_cursor_reset (&ctx->temp_cursor[j]);
       ctx->file_contents[j].first_run = -1;
       ctx->file_contents[j].last_run = -1;
@@ -3355,7 +3354,7 @@ btsort_merge_queue_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_QUEUE_CTX * qctx)
       while (qctx->queue_size > 0)
 	{
 	  BTSORT_RESULT_RUN run = btsort_merge_queue_dequeue (qctx);
-	  if (run.temp_file.volid != NULL_VOLID)
+	  if (!VFID_ISNULL (&run.temp_file))
 	    {
 	      (void) file_temp_retire (thread_p, &run.temp_file);
 	    }
@@ -3467,7 +3466,7 @@ btsort_merge_nruns_queue_cb (cubthread::entry & thread_ref, BTSORT_PARAM * ctx, 
 	}
       /* The failed merge's result run is not enqueued; queue drain on error
        * will not see it. Retire it here to avoid leaking the temp file. */
-      if (ctx->px_result_run->temp_file.volid != NULL_VOLID)
+      if (!VFID_ISNULL (&ctx->px_result_run->temp_file))
 	{
 	  (void) file_temp_retire (thread_p, &ctx->px_result_run->temp_file);
 	  VFID_SET_NULL (&ctx->px_result_run->temp_file);
@@ -3529,7 +3528,7 @@ btsort_merge_nruns (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
   /* retire temp file */
   for (i = 0; i < sort_param->tot_tempfiles; i++)
     {
-      if (sort_param->temp[i].volid != NULL_VOLID && i != sort_param->px_result_file_idx)
+      if (!VFID_ISNULL (&sort_param->temp[i]) && i != sort_param->px_result_file_idx)
 	{
 	  (void) file_temp_retire (thread_p, &sort_param->temp[i]);
 	  VFID_SET_NULL (&sort_param->temp[i]);
@@ -3543,11 +3542,11 @@ retire_all_on_error:
    * (temp[0..half_files-1], already removed from the queue and no longer
    * tracked there) and any output files allocated before the failure. The
    * caller (btsort_merge_nruns_queue_cb) leaves px_result_run at its
-   * setup_ctx-initialized NULL_VOLID, so no separate result-file retire is
+   * setup_ctx-initialized null VFID, so no separate result-file retire is
    * needed here. */
   for (i = 0; i < sort_param->tot_tempfiles; i++)
     {
-      if (sort_param->temp[i].volid != NULL_VOLID)
+      if (!VFID_ISNULL (&sort_param->temp[i]))
 	{
 	  (void) file_temp_retire (thread_p, &sort_param->temp[i]);
 	  VFID_SET_NULL (&sort_param->temp[i]);
