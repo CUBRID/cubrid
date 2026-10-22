@@ -502,6 +502,9 @@ jobs:
       BUILD_ARGS: ${{ matrix.args }}
       BUILD_NS: ${{ needs.gate.outputs.build_ns }}
       CCACHE_DIR: /home/ci/cache/ccache/develop-${{ matrix.mode }}
+      # Tarballs, JDK and Gradle, which every build fetched from GitHub. Keyed by file name and hash.
+      CUBRID_DOWNLOAD_CACHE: /home/ci/cache/downloads
+      GRADLE_USER_HOME: /home/ci/cache/gradle
       # The default is mtime, which a fresh checkout always misses.
       CCACHE_COMPILERCHECK: content
       CCACHE_MAXSIZE: 10G

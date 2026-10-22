@@ -54,6 +54,50 @@ set(WITH_LIBTBB_URL_HASH "SHA256=782ce0cab62df9ea125cdea253a50534862b563f1d85d4c
 set(WITH_RE2_URL_HASH "SHA256=7a9a4824958586980926a300b4717202485c4b4115ac031822e29aa4ef207e48")		# RE2
 set(WITH_LZ4_URL_HASH "SHA256=537512904744b35e232912055ccf8ec66d768639ff3abe5788d90d792ec5f48b")		# LZ4
 
+# CI points CUBRID_DOWNLOAD_CACHE at a directory that every build on a node shares. A tarball
+# missing there is fetched once, checked against its hash and moved in by rename, so a build
+# never reads one that another build is still writing; the build then takes it from there
+# instead of GitHub. Without the variable, or when the fetch fails, the URL stays as it was.
+function(use_download_cache url_var hash)
+  if(NOT DEFINED ENV{CUBRID_DOWNLOAD_CACHE})
+    return()
+  endif()
+  string(REGEX REPLACE "^WITH_(.*)_URL$" "\\1" lib "${url_var}")
+  string(TOLOWER "${lib}" lib)
+  get_filename_component(name "${${url_var}}" NAME)
+  set(file "$ENV{CUBRID_DOWNLOAD_CACHE}/3rdparty/${lib}/${name}")
+  string(REPLACE "=" ";" hash "${hash}")
+  list(GET hash 0 algo)
+  list(GET hash 1 want)
+  set(got "")
+  if(EXISTS "${file}")
+    file(${algo} "${file}" got)
+  endif()
+  if(NOT got STREQUAL want)
+    string(RANDOM part)
+    file(DOWNLOAD "${${url_var}}" "${file}.${part}" INACTIVITY_TIMEOUT 60 STATUS status)
+    set(got "")
+    if(EXISTS "${file}.${part}")
+      file(${algo} "${file}.${part}" got)
+    endif()
+    if(NOT got STREQUAL want)
+      file(REMOVE "${file}.${part}")
+      return()
+    endif()
+    file(RENAME "${file}.${part}" "${file}")
+  endif()
+  set(${url_var} "${file}" PARENT_SCOPE)
+endfunction()
+
+use_download_cache(WITH_LIBEXPAT_URL ${WITH_LIBEXPAT_URL_HASH})
+use_download_cache(WITH_LIBEDIT_URL ${WITH_LIBEDIT_URL_HASH})
+use_download_cache(WITH_RAPIDJSON_URL ${WITH_RAPIDJSON_URL_HASH})
+use_download_cache(WITH_LIBOPENSSL_URL ${WITH_LIBOPENSSL_URL_HASH})
+use_download_cache(WITH_LIBUNIXODBC_URL ${WITH_LIBUNIXODBC_URL_HASH})
+use_download_cache(WITH_LIBTBB_URL ${WITH_LIBTBB_URL_HASH})
+use_download_cache(WITH_RE2_URL ${WITH_RE2_URL_HASH})
+use_download_cache(WITH_LZ4_URL ${WITH_LZ4_URL_HASH})
+
 # options for external libraries (BUNDLED, EXTERAL or SYSTEM)
 set(WITH_EXTERNAL_PREFIX "EXTERNAL" CACHE STRING "External library prefix (default: EXTERNAL)")
 set(WITH_BUNDLED_PREFIX "BUNDLED" CACHE STRING "Bundled library prefix (default: BUNDLED)")
