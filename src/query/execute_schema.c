@@ -1839,6 +1839,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   int au_save = 0;
   DB_OBJECT *histogram_obj = NULL;
   DB_OBJECT *vclass;
+  int is_vclass;
   bool need_check_repl_constraint = false;
   const char *entity_name = alter->info.alter.entity_name->info.name.original;
 
@@ -2063,8 +2064,21 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   if (need_check_repl_constraint)
     {
       vclass = db_find_class (entity_name);
+      if (vclass == NULL)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  goto error_exit;
+	}
 
-      if (!sm_is_replication_class (vclass))
+      is_vclass = db_is_vclass (vclass);
+      if (is_vclass < 0)
+	{
+	  error_code = is_vclass;
+	  goto error_exit;
+	}
+
+      /* Vclasses do not store data and therefore do not require a replication key. */
+      if (is_vclass > 0 || !sm_is_replication_class (vclass))
 	{
 	  return NO_ERROR;
 	}
