@@ -86,6 +86,7 @@ struct expr_batch
   int *sel;			/* indexes into rows[] that passed the filter, in row order */
   int n_sel;
   struct heap_rec_layout *layout;	/* per row: its record's layout, found once a chunk (expr_batch_run ()) */
+  unsigned char *repr_ix;	/* per row: the index of its record's representation among the plan's */
   INT64 rtf_rows;		/* this chunk: the rows the runtime filter leaf looked up and dropped (0 without one); the
 				 * caller adds them to its XASL node once the chunk went through */
   INT64 rtf_dropped;
@@ -237,9 +238,15 @@ extern int expr_chunk_push (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXP
 extern int expr_chunk_eval_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan,
 				    EXPR_BATCH * batch);
 
-/* the representation the plan decodes (NULL_REPRID when it decodes no column): a page's visible records of
- * another one are fetched by OID on the row path (heap_page_collect_visible ()'s exceptions) */
-extern REPR_ID expr_batch_plan_repid (const EXPR_BATCH_PLAN * plan);
+/* The representations the plan decodes (their ids, *n of them; NULL and 0 when it decodes no column): a page's
+ * visible records of another one are fetched by OID on the row path (heap_page_collect_visible ()'s exceptions).
+ * The first is the one the plan was built from; the scan adds the ones it meets with
+ * expr_batch_plan_learn_repr (): NO_ERROR when the plan decodes that representation (its columns and keys sit in
+ * it with the same type and domain), ER_FAILED when it does not (no error set); the records of a representation
+ * it cannot learn keep going by OID. */
+extern const REPR_ID *expr_batch_plan_repids (const EXPR_BATCH_PLAN * plan, int *n);
+extern int expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan, REPR_ID repid);
+
 /* trace: pages taken and pages handed back; rows the page skipped and the row path fetched by OID */
 extern void expr_batch_plan_note_page (EXPR_BATCH_PLAN * plan, bool fallback);
 extern void expr_batch_plan_note_rows_by_oid (EXPR_BATCH_PLAN * plan, int n);

@@ -440,7 +440,9 @@ struct heap_page_row
 };
 extern SCAN_CODE heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
 					    HEAP_SCANCACHE * scan_cache, PGSLOTID * slot, HEAP_PAGE_ROW * rows, int cap,
-					    int *n_rows, REPR_ID repid, OID * exc, int exc_cap, int *n_exc);
+					    int *n_rows, const REPR_ID * repids, int n_repids, REPR_ID * unknown_repid,
+					    OID * exc, int exc_cap, int *n_exc);
+
 
 extern bool heap_page_is_bestspace (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);
 extern bool heap_page_is_not_in_heap (THREAD_ENTRY * thread_p, PAGE_PTR page_heap);

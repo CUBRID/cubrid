@@ -8339,24 +8339,30 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCE
  * the same visibility decision, made a chunk (EXPR_BATCH_CHUNK_BYTES) at a time with the page held
  * throughout; the rows are peeked, so they are valid while the page stays fixed, which the
  * caller guarantees.  A record whose visible version is elsewhere -- relocated, in overflow
- * pages, or in the log for this snapshot -- or whose representation is not the plan's goes to
+ * pages, or in the log for this snapshot -- or whose representation the plan does not decode goes to
  * hsid.batch_exc by its OID (hsid.batch_n_exc of them): the consumer takes the chunk, then fetches
  * each exception on the row path with scan_batch_row_by_oid (), which lets the page go first.
+ * A representation the plan does not decode yet is learned after the chunk (expr_batch_plan_learn_repr ()),
+ * so that the chunks after it take such records as rows; the ones already listed stay exceptions.
  */
 SCAN_CODE
 scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid, PGSLOTID * slot)
 {
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
   EXPR_BATCH *batch = hsidp->batch;
+  const REPR_ID *repids;
+  REPR_ID unknown_repid = NULL_REPRID;
+  int n_repids = 0;
   SCAN_CODE code;
 
   batch->n_rows = 0;
   batch->n_sel = 0;
   hsidp->batch_n_exc = 0;
   hsidp->batch_exc_pos = 0;
+  repids = expr_batch_plan_repids (hsidp->batch_plan, &n_repids);
   code =
     heap_page_collect_visible (thread_p, vpid, &hsidp->cls_oid, &hsidp->scan_cache, slot, batch->rows, batch->cap,
-			       &batch->n_rows, expr_batch_plan_repid (hsidp->batch_plan), hsidp->batch_exc,
+			       &batch->n_rows, repids, n_repids, &unknown_repid, hsidp->batch_exc,
 			       hsidp->batch_exc_cap, &hsidp->batch_n_exc);
   hsidp->batch_vpid = *vpid;
   if (code == S_ERROR)
@@ -8364,8 +8370,15 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
       batch->n_rows = 0;
       hsidp->batch_n_exc = 0;
     }
+  else if (unknown_repid != NULL_REPRID)
+    {
+      /* a representation the plan has not met: learned now when its columns and keys read as the plan's do, else
+       * remembered as one the row path keeps (no error either way) */
+      (void) expr_batch_plan_learn_repr (thread_p, hsidp->batch_plan, unknown_repid);
+    }
   return code;
 }
+
 
 /*
  * scan_batch_next_page () - the serial walk: step to the heap's next page

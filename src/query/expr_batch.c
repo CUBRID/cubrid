@@ -160,13 +160,39 @@ struct eb_vec_src
   unsigned char packed_domain;	/* a NUMERIC cast into (precision, scale): packed as that domain, as a column is */
 };
 
-/* one use column: where it sits in a record of the plan's representation (the
- * representation's own constants are on the plan) */
-typedef struct eb_col EB_COL;
-struct eb_col
+/* where one column or key sits in a record of one representation (EB_REPR): the fixed area at
+ * location, or the variable area through the offset table at location */
+typedef struct eb_loc EB_LOC;
+struct eb_loc
 {
   int location;			/* fixed: byte offset in the fixed area; variable: offset-table index */
   int position;			/* fixed: bound-bit index */
+  int size;			/* a key in the fixed area: its bytes */
+};
+
+/* One representation the plan decodes: its constants and where each use column and key sits in
+ * its records.  Entry 0 is the one the plan was built from (the attribute caches' last); the
+ * others were learned from records the scan met (expr_batch_plan_learn_repr ()), each with every
+ * column and key present in the same type, width and domain, so a cell reads the same whichever
+ * representation its record carries. */
+typedef struct eb_repr EB_REPR;
+struct eb_repr
+{
+  REPR_ID repid;
+  int n_variable;		/* representation constants heap_rec_layout_init_repr () takes */
+  int fixed_length;
+  EB_LOC *cols;			/* the plan's columns, in their order */
+  EB_LOC *keys;			/* the plan's keys, in their order */
+};
+
+#define EB_MAX_REPRS (8)
+
+/* one use column: its type and domain, the same in every representation the plan decodes (where
+ * it sits in a record is the representation's, EB_REPR) */
+typedef struct eb_col EB_COL;
+struct eb_col
+{
+  ATTR_ID attrid;
   int vec;
   unsigned char type;		/* DB_TYPE on disk */
   unsigned char is_fixed;
@@ -176,14 +202,18 @@ struct eb_col
   int codeset;
 };
 
-/* a GROUP BY key column: where its bytes sit in a record of the plan's representation */
+/* a GROUP BY key column: its type and domain (where its bytes sit in a record is the representation's, EB_REPR) */
 typedef struct eb_key EB_KEY;
 struct eb_key
 {
-  int location;			/* fixed: byte offset in the fixed area; variable: offset-table index */
-  int position;			/* fixed: bound-bit index */
+  ATTR_ID attrid;
   int size;			/* fixed: bytes */
   unsigned char is_fixed;
+  unsigned char type;		/* DB_TYPE on disk */
+  int precision;		/* the domain's */
+  int scale;
+  int collation;
+  int codeset;
 };
 
 typedef struct eb_step EB_STEP;
@@ -317,10 +347,19 @@ struct expr_batch_plan
   int const_to[EB_MAX_CONST_RANGES];
   HL_HEAPID arena;		/* the lines (eb_arena_alloc ()), 0 until the first */
   int n_masks;			/* the NULL-mask depth the steps reach */
-  REPR_ID repid;		/* the one representation the plan decodes; other records send the page to the row path */
+  REPR_ID repid;		/* build time: the representation the attribute caches describe (reprs[0] once built) */
   int n_variable;
   int fixed_length;
   bool repid_set;
+  OID class_oid;		/* the class scanned (the attribute caches'), whose representations are learned */
+  /* the representations the plan decodes (reprs[0] the one it was built from) and, parallel to
+   * them, their ids for the page collector; a representation the plan cannot decode is remembered
+   * in rejected[] so it is not fetched again */
+  EB_REPR reprs[EB_MAX_REPRS];
+  REPR_ID repids[EB_MAX_REPRS];
+  int n_reprs;
+  REPR_ID rejected[EB_MAX_REPRS];
+  int n_rejected;
 
   EB_COL *cols;
   int n_cols;
@@ -393,7 +432,7 @@ struct eb_build
   int cap_vecs;
   int cap_steps;
   int cap_leaves;
-  ATTR_ID *col_attrid;		/* parallel to the plan's cols, build time only */
+  EB_LOC *col_loc;		/* parallel to the plan's cols, build time only: the locators that become reprs[0].cols */
   int *cell_vec;		/* program cell -> vector, or -1 */
   int n_cell_vec;
   bool *step_needed;		/* the program steps to translate (NULL: all) */
@@ -488,18 +527,26 @@ eb_num_put (EB_VEC * vec, int r, const NUMERIC_AGG_EXPR_VAL * val)
   return true;
 }
 
-/* One cell of a column straight from its record: 1 a value, 0 NULL, -1 the chunk is for the
- * row path (a type or a stored value the batch does not reproduce). */
+/* where column c sits in row r's record: the locator of the row's representation */
+static inline const EB_LOC *
+eb_col_loc (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, int c, int r)
+{
+  return &plan->reprs[batch->repr_ix[r]].cols[c];
+}
+
+/* One cell of a column straight from its record (loc: where it sits in that record's
+ * representation): 1 a value, 0 NULL, -1 the chunk is for the row path (a type or a stored
+ * value the batch does not reproduce). */
 static inline int
-eb_cell_fixed (const EB_COL * col, const HEAP_REC_LAYOUT * lay, int64_t * i, double *d)
+eb_cell_fixed (const EB_COL * col, const EB_LOC * loc, const HEAP_REC_LAYOUT * lay, int64_t * i, double *d)
 {
   const char *p;
 
-  if (lay->bound_bits != NULL && !OR_GET_BOUND_BIT (lay->bound_bits, col->position))
+  if (lay->bound_bits != NULL && !OR_GET_BOUND_BIT (lay->bound_bits, loc->position))
     {
       return 0;
     }
-  p = lay->fixed_base + col->location;
+  p = lay->fixed_base + loc->location;
   switch (col->type)
     {
     case DB_TYPE_SHORT:
@@ -537,10 +584,10 @@ eb_cell_fixed (const EB_COL * col, const HEAP_REC_LAYOUT * lay, int64_t * i, dou
 
 /* a NUMERIC in the variable area: the offset table brackets its bytes (heap_attrvalue_point_variable) */
 static inline int
-eb_cell_num (const EB_COL * col, const HEAP_REC_LAYOUT * lay, NUMERIC_AGG_EXPR_VAL * num)
+eb_cell_num (const EB_COL * col, const EB_LOC * loc, const HEAP_REC_LAYOUT * lay, NUMERIC_AGG_EXPR_VAL * num)
 {
-  int this_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, col->location, lay->offset_size);
-  int next_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, col->location + 1, lay->offset_size);
+  int this_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, loc->location, lay->offset_size);
+  int next_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, loc->location + 1, lay->offset_size);
 
   if (next_off - this_off == 0)
     {
@@ -562,7 +609,7 @@ eb_num_load (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const EB_VE
 {
   if (vec->kind == EB_VK_PTR)
     {
-      return eb_cell_num (&plan->cols[vec->col], &batch->layout[r], out);
+      return eb_cell_num (&plan->cols[vec->col], eb_col_loc (plan, batch, vec->col, r), &batch->layout[r], out);
     }
   if (EB_NULL_AT (vec, r))
     {
@@ -700,7 +747,7 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
 
   for (i = 0; i < plan->n_cols; i++)
     {
-      if (b->col_attrid[i] == attrid)
+      if (plan->cols[i].attrid == attrid)
 	{
 	  if (plan->vecs[plan->cols[i].vec].etype == EB_STR && !b->allow_str)
 	    {
@@ -739,7 +786,7 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
       eb_decline (b, "a column type the batch does not decode");
       return -1;
     }
-  if (plan->repid_set && plan->repid != loc.repid)
+  if (plan->repid_set && (plan->repid != loc.repid || !OID_EQ (&plan->class_oid, &attr_cache->class_oid)))
     {
       eb_decline (b, "attribute caches disagree on the representation");
       return -1;
@@ -748,6 +795,7 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
   plan->n_variable = loc.n_variable;
   plan->fixed_length = loc.fixed_length;
   plan->repid_set = true;
+  COPY_OID (&plan->class_oid, &attr_cache->class_oid);
 
   if (etype == EB_NUM && loc.precision <= EB_N64_MAX_PRECISION)
     {
@@ -764,16 +812,17 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
     int cap = b->cap_cols;
 
     if (eb_grow (b->thread_p, (void **) &plan->cols, &cap, plan->n_cols, sizeof (EB_COL)) != NO_ERROR
-	|| eb_grow (b->thread_p, (void **) &b->col_attrid, &b->cap_cols, plan->n_cols, sizeof (ATTR_ID)) != NO_ERROR)
+	|| eb_grow (b->thread_p, (void **) &b->col_loc, &b->cap_cols, plan->n_cols, sizeof (EB_LOC)) != NO_ERROR)
       {
 	return -1;
       }
   }
   col = &plan->cols[plan->n_cols];
-  b->col_attrid[plan->n_cols] = attrid;
+  b->col_loc[plan->n_cols].location = loc.location;
+  b->col_loc[plan->n_cols].position = loc.position;
+  b->col_loc[plan->n_cols].size = 0;
   plan->n_cols++;
-  col->location = loc.location;
-  col->position = loc.position;
+  col->attrid = attrid;
   col->vec = vec;
   col->type = (unsigned char) loc.type;
   col->is_fixed = loc.is_fixed;
@@ -1023,10 +1072,10 @@ eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
 
 /* a VARCHAR in the variable area: 1 its bytes, 0 NULL, -1 a long or compressed string (the row path's) */
 static inline int
-eb_cell_str (const EB_COL * col, const HEAP_REC_LAYOUT * lay, const char **str, int *len)
+eb_cell_str (const EB_LOC * loc, const HEAP_REC_LAYOUT * lay, const char **str, int *len)
 {
-  int this_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, col->location, lay->offset_size);
-  int next_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, col->location + 1, lay->offset_size);
+  int this_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, loc->location, lay->offset_size);
+  int next_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, loc->location + 1, lay->offset_size);
   const unsigned char *d;
 
   if (next_off - this_off == 0)
@@ -1334,7 +1383,7 @@ eb_raw_kid_in (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	  const char *str = NULL;
 	  int len = 0;
 
-	  got = eb_cell_str (col, &batch->layout[r], &str, &len);
+	  got = eb_cell_str (eb_col_loc (plan, batch, leaf->col, r), &batch->layout[r], &str, &len);
 	  if (got < 0)
 	    {
 	      return eb_fallback (plan, "a string the batch does not read from the record");
@@ -1414,7 +1463,7 @@ eb_raw_kid_str (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf
       int len = 0, got;
       bool keep;
 
-      got = eb_cell_str (col, &batch->layout[r], &str, &len);
+      got = eb_cell_str (eb_col_loc (plan, batch, leaf->col, r), &batch->layout[r], &str, &len);
       if (got < 0)
 	{
 	  return eb_fallback (plan, "a string the batch does not read from the record");
@@ -2700,6 +2749,12 @@ eb_build_gby (EB_BUILD * b)
     }
   memset (plan->keys, 0, sizeof (EB_KEY) * g->n_keys);
   plan->n_keys = g->n_keys;
+  plan->reprs[0].keys = (EB_LOC *) db_private_alloc (b->thread_p, sizeof (EB_LOC) * g->n_keys);
+  if (plan->reprs[0].keys == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (plan->reprs[0].keys, 0, sizeof (EB_LOC) * g->n_keys);
   for (k = 0; k < g->n_keys; k++)
     {
       HEAP_RAW_LOCATOR loc;
@@ -2712,7 +2767,7 @@ eb_build_gby (EB_BUILD * b)
 	{
 	  return eb_decline (b, "a GROUP BY key that is not a column of this scan");
 	}
-      if (plan->repid_set && plan->repid != loc.repid)
+      if (plan->repid_set && (plan->repid != loc.repid || !OID_EQ (&plan->class_oid, &attr_cache->class_oid)))
 	{
 	  return eb_decline (b, "attribute caches disagree on the representation");
 	}
@@ -2720,10 +2775,18 @@ eb_build_gby (EB_BUILD * b)
       plan->n_variable = loc.n_variable;
       plan->fixed_length = loc.fixed_length;
       plan->repid_set = true;
+      COPY_OID (&plan->class_oid, &attr_cache->class_oid);
+      plan->keys[k].attrid = attrid;
       plan->keys[k].is_fixed = loc.is_fixed;
-      plan->keys[k].location = loc.location;
-      plan->keys[k].position = loc.position;
       plan->keys[k].size = size;
+      plan->keys[k].type = (unsigned char) loc.type;
+      plan->keys[k].precision = loc.precision;
+      plan->keys[k].scale = loc.scale;
+      plan->keys[k].collation = loc.collation;
+      plan->keys[k].codeset = loc.codeset;
+      plan->reprs[0].keys[k].location = loc.location;
+      plan->reprs[0].keys[k].position = loc.position;
+      plan->reprs[0].keys[k].size = size;
     }
 
   /* the projection program, as far as the aggregates read it */
@@ -2868,31 +2931,33 @@ int
 expr_batch_key_bytes (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, int r, unsigned char *buf, int cap)
 {
   const HEAP_REC_LAYOUT *lay = &batch->layout[r];
+  const EB_LOC *locs = plan->reprs[batch->repr_ix[r]].keys;
   int k, n = 0;
 
   for (k = 0; k < plan->n_keys; k++)
     {
       const EB_KEY *key = &plan->keys[k];
+      const EB_LOC *loc = &locs[k];
       const char *p;
       int len;
 
       if (key->is_fixed)
 	{
-	  if (lay->bound_bits != NULL && !OR_GET_BOUND_BIT (lay->bound_bits, key->position))
+	  if (lay->bound_bits != NULL && !OR_GET_BOUND_BIT (lay->bound_bits, loc->position))
 	    {
 	      p = NULL;
 	      len = 0;
 	    }
 	  else
 	    {
-	      p = lay->fixed_base + key->location;
-	      len = key->size;
+	      p = lay->fixed_base + loc->location;
+	      len = loc->size;
 	    }
 	}
       else
 	{
-	  int this_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, key->location, lay->offset_size);
-	  int next_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, key->location + 1, lay->offset_size);
+	  int this_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, loc->location, lay->offset_size);
+	  int next_off = OR_VAR_TABLE_ELEMENT_OFFSET_INTERNAL (lay->var_table, loc->location + 1, lay->offset_size);
 
 	  len = next_off - this_off;
 	  p = (len > 0) ? lay->var_table + this_off : NULL;
@@ -3025,9 +3090,20 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
 	    }
 	}
     }
+  if (rc == NO_ERROR && plan->repid_set)
+    {
+      /* the representation the plan was built from: entry 0, its column locators the build's array */
+      plan->reprs[0].repid = plan->repid;
+      plan->reprs[0].n_variable = plan->n_variable;
+      plan->reprs[0].fixed_length = plan->fixed_length;
+      plan->reprs[0].cols = b.col_loc;
+      b.col_loc = NULL;
+      plan->repids[0] = plan->repid;
+      plan->n_reprs = 1;
+    }
   db_private_free_and_init (thread_p, b.slots);
   db_private_free_and_init (thread_p, b.cell_vec);
-  db_private_free_and_init (thread_p, b.col_attrid);
+  db_private_free_and_init (thread_p, b.col_loc);
   db_private_free_and_init (thread_p, b.step_needed);
   if (rc != NO_ERROR)
     {
@@ -3042,6 +3118,8 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
 void
 expr_batch_plan_free (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan)
 {
+  int i;
+
   if (plan == NULL)
     {
       return;
@@ -3050,6 +3128,11 @@ expr_batch_plan_free (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan)
     {
       db_destroy_ostk_heap (plan->arena);
       plan->arena = 0;
+    }
+  for (i = 0; i < EB_MAX_REPRS; i++)
+    {
+      db_private_free_and_init (thread_p, plan->reprs[i].cols);
+      db_private_free_and_init (thread_p, plan->reprs[i].keys);
     }
   db_private_free_and_init (thread_p, plan->vecs);
   db_private_free_and_init (thread_p, plan->vsrc);
@@ -3073,12 +3156,13 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 {
   EXPR_BATCH_ROW *rows;
   HEAP_REC_LAYOUT *layout;
+  unsigned char *repr_ix;
   int *sel;
   size_t per_row;
   int cap, i, d;
 
   memset (batch, 0, sizeof (*batch));
-  per_row = sizeof (EXPR_BATCH_ROW) + sizeof (HEAP_REC_LAYOUT) + sizeof (int) + 1 + (size_t) plan->n_masks;
+  per_row = sizeof (EXPR_BATCH_ROW) + sizeof (HEAP_REC_LAYOUT) + sizeof (int) + 2 + (size_t) plan->n_masks;
   for (i = 0; i < plan->n_vecs; i++)
     {
       const EB_VEC *v = &plan->vecs[i];
@@ -3094,7 +3178,8 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
   rows = (EXPR_BATCH_ROW *) eb_arena_alloc (plan, sizeof (EXPR_BATCH_ROW) * cap);
   sel = (int *) eb_arena_alloc (plan, sizeof (int) * cap);
   layout = (HEAP_REC_LAYOUT *) eb_arena_alloc (plan, sizeof (HEAP_REC_LAYOUT) * cap);
-  if (rows == NULL || sel == NULL || layout == NULL)
+  repr_ix = (unsigned char *) eb_arena_alloc (plan, (size_t) cap);
+  if (rows == NULL || sel == NULL || layout == NULL || repr_ix == NULL)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
@@ -3164,7 +3249,9 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
   batch->rows = rows;
   batch->sel = sel;
   batch->layout = layout;
+  batch->repr_ix = repr_ix;
   batch->cap = cap;
+
   plan->cap = cap;
   return NO_ERROR;
 }
@@ -3460,23 +3547,44 @@ eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale)
   return NO_ERROR;
 }
 
-/* each row's layout, once a chunk: the rows of another representation (an ALTER since the
- * plan) send the chunk to the row path, which decodes them */
+/* Each row's layout and representation, once a chunk: the row's record carries its representation
+ * id, looked up among the ones the plan decodes (reprs[]); a record of one the plan has not learned
+ * sends the chunk to the row path, which decodes it (the page collector lists such records as
+ * exceptions instead, so this is a guard).  A plan that reads no column and no key has no
+ * representation to check: the layouts stay unread. */
 static int
 eb_layout_rows (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 {
   int r;
 
+  if (plan->n_reprs == 0)
+    {
+      memset (batch->repr_ix, 0, (size_t) batch->n_rows);
+      return NO_ERROR;
+    }
   for (r = 0; r < batch->n_rows; r++)
     {
       const RECDES *recdes = &batch->rows[r].recdes;
+      const EB_REPR *rep;
+      REPR_ID repid;
+      int ix = 0;
 
-      if (recdes->data == NULL || recdes->length < OR_HEADER_SIZE (recdes->data)
-	  || OR_GET_MVCC_REPID (recdes->data) != plan->repid)
+      if (recdes->data == NULL || recdes->length < OR_HEADER_SIZE (recdes->data))
 	{
 	  return eb_fallback (plan, "a record of another representation");
 	}
-      heap_rec_layout_init_repr (&batch->layout[r], recdes->data, plan->n_variable, plan->fixed_length);
+      repid = OR_GET_MVCC_REPID (recdes->data);
+      while (ix < plan->n_reprs && plan->repids[ix] != repid)
+	{
+	  ix++;
+	}
+      if (ix == plan->n_reprs)
+	{
+	  return eb_fallback (plan, "a record of another representation");
+	}
+      rep = &plan->reprs[ix];
+      batch->repr_ix[r] = (unsigned char) ix;
+      heap_rec_layout_init_repr (&batch->layout[r], recdes->data, rep->n_variable, rep->fixed_length);
     }
   return NO_ERROR;
 }
@@ -3493,6 +3601,7 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
     {
       int r = (rows != NULL) ? rows[j] : j;
       const HEAP_REC_LAYOUT *lay = &batch->layout[r];
+      const EB_LOC *locs = plan->reprs[batch->repr_ix[r]].cols;
 
       for (c = (only_col >= 0) ? only_col : 0; c < plan->n_cols; c++)
 	{
@@ -3512,7 +3621,7 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
 	      int64_t i = 0;
 	      double d = 0;
 
-	      rc = eb_cell_fixed (col, lay, &i, &d);
+	      rc = eb_cell_fixed (col, &locs[c], lay, &i, &d);
 	      if (rc < 0)
 		{
 		  return eb_fallback (plan, "a column cell the batch does not decode");
@@ -3534,7 +3643,7 @@ eb_extract (EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, const int *rows, i
 	    {
 	      NUMERIC_AGG_EXPR_VAL num;
 
-	      rc = eb_cell_num (col, lay, &num);
+	      rc = eb_cell_num (col, &locs[c], lay, &num);
 	      if (rc < 0)
 		{
 		  return eb_fallback (plan, "a NUMERIC cell beyond the word domain or of another scale");
@@ -3576,7 +3685,7 @@ eb_leaf_side (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, int vec, i
 
   if (v->kind == EB_VK_PTR)
     {
-      return eb_cell_fixed (&plan->cols[col], &batch->layout[r], i, d);
+      return eb_cell_fixed (&plan->cols[col], eb_col_loc (plan, batch, col, r), &batch->layout[r], i, d);
     }
   if (v->isnull[r])
     {
@@ -3789,7 +3898,7 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	    {
 	      NUMERIC_AGG_EXPR_VAL nv;
 
-	      got = eb_cell_num (col, &batch->layout[r], &nv);
+	      got = eb_cell_num (col, eb_col_loc (plan, batch, leaf->col, r), &batch->layout[r], &nv);
 	      if (got > 0)
 		{
 		  /* a NULL cell (got == 0) leaves nv untouched: read it only once the cell was decoded */
@@ -3798,7 +3907,7 @@ eb_raw_kid (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf)
 	    }
 	  else
 	    {
-	      got = eb_cell_fixed (col, &batch->layout[r], &ai, &ad);
+	      got = eb_cell_fixed (col, eb_col_loc (plan, batch, leaf->col, r), &batch->layout[r], &ai, &ad);
 	    }
 	  if (got < 0)
 	    {
@@ -4889,15 +4998,193 @@ expr_batch_plan_note_rows_by_oid (EXPR_BATCH_PLAN * plan, int n)
     }
 }
 
-REPR_ID
-expr_batch_plan_repid (const EXPR_BATCH_PLAN * plan)
+const REPR_ID *
+expr_batch_plan_repids (const EXPR_BATCH_PLAN * plan, int *n)
 {
-  return (plan != NULL && plan->repid_set) ? plan->repid : NULL_REPRID;
+  if (plan == NULL || plan->n_reprs == 0)
+    {
+      *n = 0;
+      return NULL;
+    }
+  *n = plan->n_reprs;
+  return plan->repids;
+}
+
+/* the plan's representations and its rejected list: is repid among them (its index, or -1) */
+static int
+eb_repr_known (const EXPR_BATCH_PLAN * plan, REPR_ID repid, bool * rejected)
+{
+  int i;
+
+  *rejected = false;
+  for (i = 0; i < plan->n_reprs; i++)
+    {
+      if (plan->repids[i] == repid)
+	{
+	  return i;
+	}
+    }
+  for (i = 0; i < plan->n_rejected; i++)
+    {
+      if (plan->rejected[i] == repid)
+	{
+	  *rejected = true;
+	  break;
+	}
+    }
+  return -1;
+}
+
+/* the attribute of a representation with this id, or NULL */
+static const OR_ATTRIBUTE *
+eb_repr_attr (const OR_CLASSREP * rep, ATTR_ID attrid)
+{
+  int i;
+
+  for (i = 0; i < rep->n_attributes; i++)
+    {
+      if (rep->attributes[i].id == attrid)
+	{
+	  return &rep->attributes[i];
+	}
+    }
+  return NULL;
+}
+
+/* A representation the scan met is learned when every column and key of the plan is present in it with the
+ * type, width and domain (precision, scale, codeset, collation) the plan was built for, so that the cell readers
+ * read a record of it as they read one of entry 0: then its locators make a new entry.  Anything else -- a column
+ * the representation lacks (the row path supplies its default value), a column of another type or domain, the
+ * table full, the representation unreadable -- rejects it, and the rejected id is remembered so it is not fetched
+ * again (its records go by OID on the row path).  NO_ERROR when the representation is (now) decoded, ER_FAILED
+ * when it is not; no error is set either way (a capability, not a fault). */
+int
+expr_batch_plan_learn_repr (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan, REPR_ID repid)
+{
+  OR_CLASSREP *rep = NULL;
+  EB_REPR *e;
+  EB_LOC *cols = NULL, *keys = NULL;
+  int idx_incache = -1;
+  bool rejected = false;
+  bool ok = true;
+  int i;
+
+  if (plan == NULL || plan->n_reprs == 0 || repid == NULL_REPRID)
+    {
+      return ER_FAILED;
+    }
+  if (eb_repr_known (plan, repid, &rejected) >= 0)
+    {
+      return NO_ERROR;
+    }
+  if (rejected)
+    {
+      return ER_FAILED;
+    }
+  if (plan->n_reprs == EB_MAX_REPRS)
+    {
+      ok = false;
+      goto done;
+    }
+  rep = heap_classrepr_get (thread_p, &plan->class_oid, NULL, repid, &idx_incache);
+  if (rep == NULL)
+    {
+      ok = false;
+      goto done;
+    }
+  if (plan->n_cols > 0)
+    {
+      cols = (EB_LOC *) db_private_alloc (thread_p, sizeof (EB_LOC) * plan->n_cols);
+      if (cols == NULL)
+	{
+	  ok = false;
+	  goto done;
+	}
+    }
+  if (plan->n_keys > 0)
+    {
+      keys = (EB_LOC *) db_private_alloc (thread_p, sizeof (EB_LOC) * plan->n_keys);
+      if (keys == NULL)
+	{
+	  ok = false;
+	  goto done;
+	}
+    }
+  for (i = 0; i < plan->n_cols && ok; i++)
+    {
+      const EB_COL *col = &plan->cols[i];
+      const EB_VEC_SRC *src = &plan->vsrc[col->vec];
+      const OR_ATTRIBUTE *attr = eb_repr_attr (rep, col->attrid);
+
+      if (attr == NULL || attr->domain == NULL || attr->type != (DB_TYPE) col->type
+	  || (attr->is_fixed != 0) != (col->is_fixed != 0) || attr->domain->precision != src->precision
+	  || attr->domain->scale != src->scale || (int) TP_DOMAIN_CODESET (attr->domain) != col->codeset
+	  || TP_DOMAIN_COLLATION (attr->domain) != col->collation)
+	{
+	  ok = false;
+	  break;
+	}
+      cols[i].location = attr->location;
+      cols[i].position = attr->position;
+      cols[i].size = 0;
+    }
+  for (i = 0; i < plan->n_keys && ok; i++)
+    {
+      const EB_KEY *key = &plan->keys[i];
+      const OR_ATTRIBUTE *attr = eb_repr_attr (rep, key->attrid);
+      int size;
+
+      if (attr == NULL || attr->domain == NULL || attr->type != (DB_TYPE) key->type
+	  || (attr->is_fixed != 0) != (key->is_fixed != 0) || attr->domain->precision != key->precision
+	  || attr->domain->scale != key->scale || (int) TP_DOMAIN_CODESET (attr->domain) != key->codeset
+	  || TP_DOMAIN_COLLATION (attr->domain) != key->collation)
+	{
+	  ok = false;
+	  break;
+	}
+      size = key->is_fixed ? tp_domain_disk_size (attr->domain) : 0;
+      if (size != key->size)
+	{
+	  ok = false;
+	  break;
+	}
+      keys[i].location = attr->location;
+      keys[i].position = attr->position;
+      keys[i].size = size;
+    }
+  if (ok)
+    {
+      e = &plan->reprs[plan->n_reprs];
+      e->repid = repid;
+      e->n_variable = rep->n_variable;
+      e->fixed_length = rep->fixed_length;
+      e->cols = cols;
+      e->keys = keys;
+      cols = NULL;
+      keys = NULL;
+      plan->repids[plan->n_reprs] = repid;
+      plan->n_reprs++;
+    }
+
+done:
+  if (rep != NULL)
+    {
+      /* cached or not (idx_incache -1: the representation was read for this call alone and is freed here) */
+      heap_classrepr_free (rep, &idx_incache);
+    }
+  db_private_free_and_init (thread_p, cols);
+  db_private_free_and_init (thread_p, keys);
+  if (!ok && plan->n_rejected < EB_MAX_REPRS)
+    {
+      plan->rejected[plan->n_rejected++] = repid;
+    }
+  return ok ? NO_ERROR : ER_FAILED;
 }
 
 void
 expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, int indent)
 {
+  char reprs[64] = "";
   int i, n_pointed = 0;
 
   if (plan == NULL)
@@ -4909,11 +5196,18 @@ expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, i
     {
       n_pointed += (plan->vecs[plan->cols[i].vec].kind == EB_VK_PTR);
     }
+  if (plan->n_reprs > 1)
+    {
+      /* more than the representation the plan was built from: the ones it learned from the scan's records */
+      snprintf (reprs, sizeof (reprs), ", representations %d", plan->n_reprs);
+    }
+
   fprintf (fp, "%*cEXPR_BATCH: active, usecols %d (pointed %d), chunk %d rows, filter terms raw %d / row %d%s, "
-	   "shared values %d, vector steps %d, aggregates %d, pages %lld (row path %lld, rows by oid %lld%s%s)\n",
+	   "shared values %d, vector steps %d, aggregates %d, pages %lld (row path %lld, rows by oid %lld%s%s%s)\n",
 	   indent, ' ', plan->n_cols, n_pointed, plan->cap, plan->n_raw_kids, plan->n_row_kids,
 	   (plan->rtf != NULL) ? " + runtime filter" : "", plan->n_shared, plan->n_steps, plan->n_aggs,
 	   (long long) plan->pages, (long long) plan->pages_fallback, (long long) plan->rows_by_oid,
+	   reprs,
 	   (plan->fallback_why != NULL) ? ", last: " : "", (plan->fallback_why != NULL) ? plan->fallback_why : "");
   if (plan->n_proj > 0)
     {

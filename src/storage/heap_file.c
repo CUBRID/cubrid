@@ -8183,8 +8183,12 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
  *   rows(out): cap slots, peeked, in slot order
  *   cap(in): at most so many rows
  *   n_rows(out): the rows collected
- *   repid(in): the representation the caller decodes; a visible record of another one is an
- *              exception.  NULL_REPRID: not checked
+ *   repids(in): the representations the caller decodes (n_repids of them); a visible record of
+ *               another one is an exception.  n_repids 0: not checked
+ *   n_repids(in): their number
+ *   unknown_repid(out): NULL_REPRID on entry; receives the representation of the first visible
+ *                       record listed as an exception for its representation alone (the caller
+ *                       may learn it for the next page).  NULL: not reported
  *   exc(out): exc_cap slots: the OIDs of the records this page alone does not answer for, in slot
  *             order; the caller fetches each on the row path once the chunk is consumed
  *   exc_cap(in): at most so many exceptions
@@ -8197,8 +8201,8 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
  * (skipped), and TOO_NEW without a previous version is a row inserted after the snapshot (the
  * log walk heap_get_visible_version_from_log () would find nothing: skipped).  What is left is a
  * record whose answer is not in this page -- relocated or in overflow pages (the header is
- * elsewhere), too new for the snapshot with a previous version in the log, or visible but of
- * another representation (an ALTER since the plan was built) -- and such a record goes to the
+ * elsewhere), too new for the snapshot with a previous version in the log, or visible but of a
+ * representation the caller does not decode (one it has not learned yet) -- and such a record goes to the
  * exception list by its OID instead of stopping the walk: the rows around it still make the
  * chunk, and the caller fetches it by OID on the row path (heap_get_visible_version ()) once the
  * chunk is consumed and the page let go.  So a page holds the batch whatever a few of its records
@@ -8211,7 +8215,8 @@ heap_next_1page (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, 
 SCAN_CODE
 heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID * class_oid,
 			   HEAP_SCANCACHE * scan_cache, PGSLOTID * slot, HEAP_PAGE_ROW * rows, int cap, int *n_rows,
-			   REPR_ID repid, OID * exc, int exc_cap, int *n_exc)
+			   const REPR_ID * repids, int n_repids, REPR_ID * unknown_repid, OID * exc, int exc_cap,
+			   int *n_exc)
 {
   MVCC_SNAPSHOT *snapshot = NULL;
   PAGE_PTR pgptr;
@@ -8311,10 +8316,25 @@ heap_page_collect_visible (THREAD_ENTRY * thread_p, const VPID * vpid, const OID
 		  is_exception = true;
 		}
 	    }
-	  if (!is_exception && repid != NULL_REPRID && MVCC_GET_REPID (&mvcc_header) != repid)
+	  if (!is_exception && n_repids > 0)
 	    {
-	      /* a record of another representation: the row path decodes it through the class representation cache */
-	      is_exception = true;
+	      REPR_ID rec_repid = MVCC_GET_REPID (&mvcc_header);
+	      int i = 0;
+
+	      while (i < n_repids && repids[i] != rec_repid)
+		{
+		  i++;
+		}
+	      if (i == n_repids)
+		{
+		  /* a record of a representation the caller does not decode: the row path decodes it through the
+		   * class representation cache, and the caller may learn the representation for the next page */
+		  is_exception = true;
+		  if (unknown_repid != NULL && *unknown_repid == NULL_REPRID)
+		    {
+		      *unknown_repid = rec_repid;
+		    }
+		}
 	    }
 	}
       if (class_oid != NULL && !OID_ISNULL (class_oid) && OID_IS_ROOTOID (&oid))
@@ -11095,7 +11115,10 @@ heap_attrinfo_raw_key_locator (HEAP_CACHE_ATTRINFO * attr_info, ATTR_ID attrid, 
   out->type = attrepr->type;
   out->precision = attrepr->domain->precision;
   out->scale = attrepr->domain->scale;
+  out->collation = TP_DOMAIN_COLLATION (attrepr->domain);
+  out->codeset = TP_DOMAIN_CODESET (attrepr->domain);
   *disk_size = out->is_fixed ? tp_domain_disk_size (attrepr->domain) : 0;
+
   return (out->is_fixed && *disk_size <= 0) ? ER_FAILED : NO_ERROR;
 }
 
