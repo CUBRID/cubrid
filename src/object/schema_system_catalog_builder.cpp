@@ -74,6 +74,11 @@ namespace cubschema
 
     // define
     SM_TEMPLATE *def = smt_edit_class_mop (class_mop, AU_ALTER);
+    if (def == nullptr)
+      {
+	ASSERT_ERROR_AND_SET (error_code);
+	return error_code;
+      }
 
     const std::vector <attribute> &attributes = catalog_def.attributes;
     for (const auto &attr: attributes)
@@ -88,6 +93,7 @@ namespace cubschema
 	    error_code = smt_add_attribute (def, name, type, NULL);
 	    if (error_code != NO_ERROR)
 	      {
+		smt_quit (def);
 		return error_code;
 	      }
 
@@ -111,6 +117,7 @@ namespace cubschema
 	if (error_code != NO_ERROR)
 	  {
 	    assert (false);
+	    smt_quit (def);
 	    return error_code;
 	  }
       }
@@ -119,6 +126,7 @@ namespace cubschema
     if (error_code != NO_ERROR)
       {
 	assert (false);
+	smt_quit (def);
 	return error_code;
       }
 
