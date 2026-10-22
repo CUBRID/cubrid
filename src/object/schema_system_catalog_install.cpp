@@ -29,15 +29,12 @@
 #include "schema_system_catalog_constants.h"
 #include "sp_constants.hpp"
 #include "trigger_manager.h"
-#include "work_space.h"
 #include "schema_system_metadata_builder.hpp"
 #include "schema_system_metadata_definition.hpp"
 #include "schema_manager.h"
 #include "authenticate.h"
 
 #define CT_DUAL_DUMMY   "dummy"
-
-using namespace std::literals;
 
 static std::function<int (DB_VALUE *)>
 make_int_value_fn (int num)
@@ -75,9 +72,9 @@ make_numeric_value_fn (const char *str)
 }
 
 /* ========================================================================== */
-/* NEW DEFINITION (initializers for CLASS) */
+/* ROW INITIALIZERS (CLASS) */
 /* ========================================================================== */
-int
+static int
 catcls_add_data_type (DB_OBJECT *class_mop)
 {
   DB_OBJECT *obj;
@@ -93,7 +90,7 @@ catcls_add_data_type (DB_OBJECT *class_mop)
     NULL /* OID */,
     NULL /* VALUE */, "NUMERIC", "BIT", "VARBIT", "CHAR",
 
-    /* TODO:
+    /*
      * DB_TYPE_NCHAR and DB_TYPE_VARNCHAR will no longer be used(NCHAR was deprecated).
      * However, to maintain compatibility with previous versions, the enum list will be preserved.
      */
@@ -215,7 +212,7 @@ catcls_add_dual (DB_OBJECT *class_mop)
   return error_code;
 }
 
-int
+static int
 catcls_add_charsets (struct db_object *class_mop)
 {
   int i;
@@ -345,7 +342,6 @@ catcls_install (void)
 
   for (i = 0; i < class_defs.size (); i++)
     {
-      // new routine
       class_mop[i] = metadata_builder::create_and_mark_system_class (class_defs[i].name);
       if (class_mop[i] == nullptr)
 	{
@@ -357,7 +353,6 @@ catcls_install (void)
 
   for (i = 0; i < class_defs.size (); i++)
     {
-      // new routine
       error_code = metadata_builder::build_class (class_mop[i], class_defs[i]);
       if (error_code != NO_ERROR)
 	{
@@ -368,7 +363,6 @@ catcls_install (void)
 
   for (i = 0; i < vclass_defs.size (); i++)
     {
-      // new routine
       MOP class_mop = metadata_builder::create_and_mark_system_class (vclass_defs[i].name);
       if (class_mop != nullptr)
 	{
@@ -425,7 +419,7 @@ catcls_rebuild_vclasses (void)
 namespace cubschema
 {
   /* ========================================================================== */
-  /* NEW DEFINITION (CLASS) */
+  /* DEFINITION (CLASS) */
   /* ========================================================================== */
 
   system_metadata_definition
@@ -961,7 +955,7 @@ namespace cubschema
       {SP_ARG_ATTR_ARG_NAME, format_varchar (255)},
       {SP_ARG_ATTR_DATA_TYPE, "integer"},
       {SP_ARG_ATTR_MODE, "integer"},
-      {SP_ARG_ATTR_DEFAULT_VALUE, format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)}, // TODO: CBRD-25261
+      {SP_ARG_ATTR_DEFAULT_VALUE, format_varchar (DB_MAX_DEFAULT_EXPR_LENGTH)},
       {SP_ARG_ATTR_IS_OPTIONAL, "integer"}, // default_value is used only when is_optional is 1
       {SP_ARG_ATTR_COMMENT, format_varchar (1024)},
     },
@@ -1274,7 +1268,6 @@ namespace cubschema
   system_metadata_definition
   system_catalog_initializer::get_histogram ()
   {
-// db_class
     return system_metadata_definition (
 		   // name
 		   CT_HISTOGRAM_NAME,
@@ -1330,7 +1323,7 @@ namespace cubschema
   }
 
   /* ========================================================================== */
-  /* NEW DEFINITION (VCLASS) */
+  /* DEFINITION (VCLASS) */
   /* ========================================================================== */
 
   system_metadata_definition
@@ -2227,7 +2220,6 @@ namespace cubschema
       {"db_name", format_varchar (255)},
       /* dblink remote user_name; kept 255 for external DBMS compatibility */
       {"user_name", format_varchar (255)},
-      // {"password", format_varchar(256)}
       {"properties", format_varchar (2048)},
       {"owner", format_varchar (DB_MAX_USER_LENGTH)},
       {"comment", format_varchar (1024)},
@@ -2263,7 +2255,7 @@ namespace cubschema
 		   // columns
     {
       /* the view domain overrides the query spec result type, so class_name must be declared as a string
-       * (it was "object") and null_frequency must match the NUMERIC (18, 12) the spec casts to (CBRD-27043) */
+       * and null_frequency must match the NUMERIC (18, 12) the spec casts to (CBRD-27043) */
       {"owner_name", format_varchar (DB_MAX_USER_LENGTH)},
       {"class_name", format_varchar (255)},
       {"attr_name", format_varchar (255)},

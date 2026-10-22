@@ -26,7 +26,7 @@
 #include "schema_information_schema.hpp"
 #include "schema_manager.h"
 #include "locator_cl.h"
-#include "schema_system_metadata_definition.hpp"
+#include "schema_system_catalog.hpp"
 
 namespace cubschema
 {
@@ -158,9 +158,7 @@ namespace cubschema
 	  break;
 
 	  default:
-	    // TODO: error handling, there is no such a cases in the legacy code
-	    assert (false);
-	    error_code = ER_GENERIC_ERROR;
+	    error_code = ER_FAILED;
 	    break;
 	  }
 

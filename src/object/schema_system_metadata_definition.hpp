@@ -27,9 +27,9 @@
 #include <string>
 #include <string_view>
 #include <vector>
-#include <optional>
+#include <functional>
 
-#include "work_space.h" // struct db_object
+#include "dbtype_def.h"
 
 namespace cubschema
 {
@@ -57,7 +57,6 @@ namespace cubschema
     attribute (const std::string &name, const std::string &type, default_value_init_type dval_f); // attribute_kind::COLUMN
     attribute (const attribute_kind kind, const std::string &name);
     attribute (const attribute_kind kind, const std::string &name, const std::string &type);
-    attribute (const attribute_kind kind, const std::string &name, const std::string &type, default_value_init_type dval_f);
   };
 
   struct constraint

@@ -24,7 +24,6 @@
 #ifndef _SCHEMA_SYSTEM_METADATA_BUILDER_HPP_
 #define _SCHEMA_SYSTEM_METADATA_BUILDER_HPP_
 
-#include "schema_system_catalog.hpp"
 #include "schema_system_metadata_definition.hpp"
 
 namespace cubschema
