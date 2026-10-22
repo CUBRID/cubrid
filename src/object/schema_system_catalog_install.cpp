@@ -1252,12 +1252,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_class_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1276,12 +1272,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_direct_super_class_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1303,12 +1295,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_vclass_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1343,12 +1331,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_attribute_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1373,12 +1357,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_attr_setdomain_elm_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1401,12 +1381,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_method_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1432,12 +1408,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_method_arg_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1463,12 +1435,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_meth_arg_setdomain_elm_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1488,12 +1456,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_meth_file_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1529,12 +1493,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_index_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1557,12 +1517,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_index_key_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1590,12 +1546,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_auth_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1621,12 +1573,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_trigger_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1652,12 +1600,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_partition_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1688,12 +1632,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1718,12 +1658,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_stored_procedure_args_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1754,12 +1690,8 @@ namespace cubschema
       {"updated_time", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_serial_spec ()},
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1799,12 +1731,8 @@ namespace cubschema
       {"start_time", "datetime"},
       {attribute_kind::QUERY_SPEC, sm_define_view_ha_apply_info_spec ()},
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1826,12 +1754,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_collation_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1863,12 +1787,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_user_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, (DB_AUTH) (AU_SELECT | AU_EXECUTE)),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, (DB_AUTH) (AU_SELECT | AU_EXECUTE))
 	   );
   }
 
@@ -1886,12 +1806,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_authorization_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1910,12 +1826,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_charset_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1938,12 +1850,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_synonym_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
   }
 
@@ -1970,12 +1878,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_server_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
 
   }
@@ -1998,12 +1902,8 @@ namespace cubschema
       // query specs
       {attribute_kind::QUERY_SPEC, sm_define_view_histogram_spec ()}
     },
-// constraints
-    {},
 // authorization
-    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT),
-// initializer
-    nullptr
+    make_authorization (Au_dba_user, {Au_public_user}, AU_SELECT)
 	   );
 
   }

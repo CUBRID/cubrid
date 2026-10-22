@@ -92,4 +92,10 @@ namespace cubschema
     , row_initializer {ri}
   {
   }
+
+  system_metadata_definition::system_metadata_definition (const std::string &n, const attr_vec_type &attrs,
+      const authorization &au)
+    : system_metadata_definition (n, attrs, {}, au, nullptr)
+  {
+  }
 }

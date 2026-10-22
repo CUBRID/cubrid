@@ -154,6 +154,7 @@ namespace cubschema
 				const cstr_vec_type &cts,
 				const authorization &au,
 				row_init_type ri);
+    system_metadata_definition (const std::string &n, const attr_vec_type &attrs, const authorization &au);
   };
 }
 
