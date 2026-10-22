@@ -614,6 +614,21 @@ log_get_append_lsa (void)
 }
 
 /*
+ * log_get_prior_lsa - copy the LSA the next appended record will receive (the log end as appenders see it)
+ *
+ * return: nothing
+ *
+ *   lsa_out(out): receives log_Gl.prior_info.prior_lsa
+ */
+void
+log_get_prior_lsa (LOG_LSA * lsa_out)
+{
+  log_Gl.prior_info.prior_lsa_mutex.lock ();
+  LSA_COPY (lsa_out, &log_Gl.prior_info.prior_lsa);
+  log_Gl.prior_info.prior_lsa_mutex.unlock ();
+}
+
+/*
  * log_get_eof_lsa -
  *
  * return:
