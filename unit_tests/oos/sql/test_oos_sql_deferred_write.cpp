@@ -40,6 +40,7 @@
 #include "xserver_interface.h"
 #include "object_representation.h"
 #include "object_representation_sr.h"
+#include "transform_cl.h"
 
 #include "test_oos_sql_heap_fixture.hpp"
 
@@ -54,6 +55,174 @@ oos_debug_counters bridge_oos_debug_counters_get ();
 namespace
 {
 #if defined(CUBRID_UNIT_TEST_ENABLED)
+  // Own the received buffer and all state that must be restored before fixture SQL runs.
+  struct ownerless_copyarea
+  {
+    THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+    const int saved_tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
+    LOG_TDES *tdes = LOG_FIND_TDES (saved_tran_index);
+    OID class_oid;
+    HFID hfid;
+    LC_COPYAREA *area = nullptr;
+    RECDES record = RECDES_INITIALIZER;
+    RECDES original = RECDES_INITIALIZER;
+    std::string original_bytes;
+    OR_CLASSREP *repr = nullptr;
+    int cache_index = -1;
+    bool seeded = false;
+    const OID stale_oid = { 987655, 24, 1 };
+    const LOG_LSA stale_stamp { 876544, 124 };
+    const LOG_LSA stale_lsa { 765433, 125 };
+
+    ~ownerless_copyarea ()
+    {
+      restore_and_clear ();
+      if (repr != nullptr)
+	{
+	  heap_classrepr_free_and_init (repr, &cache_index);
+	}
+      if (area != nullptr)
+	{
+	  locator_free_copy_area (area);
+	}
+    }
+
+    void restore_and_clear ()
+    {
+      LOG_SET_CURRENT_TRAN_INDEX (thread_p, saved_tran_index);
+      if (seeded)
+	{
+	  thread_p->oos_oids.clear ();
+	  tdes->oos_insert_lsa_queue.clear ();
+	  seeded = false;
+	}
+      er_clear ();
+    }
+
+    void set_up ()
+    {
+      ASSERT_NE (tdes, nullptr);
+      ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, payload BIT VARYING)"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      DB_OBJECT *cls = db_find_class ("t_oos_show_yes");
+      ASSERT_NE (cls, nullptr);
+      class_oid = *db_identifier (cls);
+      ASSERT_EQ (heap_get_class_hfid (thread_p, &class_oid, &hfid, nullptr), NO_ERROR);
+      DB_OBJECT *row = db_create (cls);
+      ASSERT_NE (row, nullptr);
+      DB_VALUE value;
+      db_make_int (&value, 7);
+      ASSERT_EQ (db_put (row, "id", &value), NO_ERROR);
+      const std::string payload (64, '\xAB');
+      db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, payload.data (), payload.size () * 8);
+      ASSERT_EQ (db_put (row, "payload", &value), NO_ERROR);
+
+      // Use the real workspace sender, including its INSERT header, in a genuine copy area.
+      const int source_chn = WS_CHN (row->object);
+      MOBJ class_object = static_cast<MOBJ> (cls->object);
+      MOBJ row_object = static_cast<MOBJ> (row->object);
+      const int capacity = tf_object_size (class_object, row_object) + OR_MVCC_MAX_HEADER_SIZE;
+      area = locator_allocate_copy_area_by_length (capacity + sizeof (LC_COPYAREA_MANYOBJS));
+      ASSERT_NE (area, nullptr);
+      record.data = area->mem;
+      record.area_size = capacity;
+      record.type = REC_HOME;
+      bool has_index = true;
+      ASSERT_EQ (tf_mem_to_disk (cls, class_object, row_object, &record, &has_index), TF_SUCCESS);
+      ASSERT_FALSE (has_index);
+      MVCC_REC_HEADER header = MVCC_REC_HEADER_INITIALIZER;
+      ASSERT_EQ (or_mvcc_get_header (&record, &header), NO_ERROR);
+      ASSERT_EQ (header.mvcc_flag, OR_MVCC_FLAG_VALID_INSID);
+      ASSERT_EQ (OR_HEADER_SIZE (record.data), OR_MVCC_INSERT_HEADER_SIZE);
+      ASSERT_EQ (header.mvcc_ins_id, MVCCID_NULL);
+      ASSERT_EQ (header.chn, source_chn + 1);
+      ::testing::Test::RecordProperty ("received_chn", header.chn);
+      ::testing::Test::RecordProperty ("received_length", record.length);
+      ::testing::Test::RecordProperty ("received_mvcc_flag", static_cast<int> (header.mvcc_flag));
+      ::testing::Test::RecordProperty ("received_header_size", OR_HEADER_SIZE (record.data));
+      original = record;
+      original_bytes.assign (record.data, record.length);
+
+      // Abandon the unflushed workspace instance before seeding or later SQL can flush it.
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+      repr = heap_classrepr_get (thread_p, &class_oid, nullptr, NULL_REPRID, &cache_index);
+      ASSERT_NE (repr, nullptr);
+      ASSERT_GE (cache_index, 0);
+      ASSERT_EQ (repr->id, or_rep_id (&record));
+      bool needs_preparation = true;
+      ASSERT_EQ (heap_oos_needs_record_preparation (thread_p, &class_oid, &record, &needs_preparation), NO_ERROR);
+      ASSERT_FALSE (needs_preparation);
+      ASSERT_FALSE (heap_recdes_contains_oos (&record));
+    }
+
+    void seed ()
+    {
+      ASSERT_TRUE (thread_p->oos_oids.empty ());
+      ASSERT_TRUE (tdes->oos_insert_lsa_queue.is_empty ());
+      seeded = true;
+      thread_p->oos_oids.push_back ({ stale_oid, stale_stamp });
+      tdes->oos_insert_lsa_queue.push (stale_lsa);
+      ASSERT_EQ (thread_p->oos_oids.size (), 1u);
+      ASSERT_EQ (tdes->oos_insert_lsa_queue.size (), 1u);
+    }
+
+    void expect_received_unchanged ()
+    {
+      EXPECT_EQ (record.data, original.data);
+      EXPECT_EQ (record.length, original.length);
+      EXPECT_EQ (record.area_size, original.area_size);
+      EXPECT_EQ (record.type, original.type);
+      EXPECT_EQ (std::string (record.data, record.length), original_bytes);
+    }
+
+    void expect_publications_unchanged ()
+    {
+      ASSERT_EQ (thread_p->oos_oids.size (), 1u);
+      EXPECT_TRUE (OID_EQ (&thread_p->oos_oids.front ().oid, &stale_oid));
+      EXPECT_EQ (thread_p->oos_oids.front ().identity_stamp, stale_stamp);
+      ASSERT_EQ (tdes->oos_insert_lsa_queue.size (), 1u);
+      EXPECT_EQ (tdes->oos_insert_lsa_queue.front (), stale_lsa);
+    }
+  };
+
+  // Keep the native call visible in each test while this scope owns the invalid transaction index.
+  class missing_tdes_call
+  {
+    public:
+      explicit missing_tdes_call (THREAD_ENTRY *thread_p)
+	: m_thread_p (thread_p), m_saved_index (LOG_FIND_THREAD_TRAN_INDEX (thread_p))
+      {
+	LOG_SET_CURRENT_TRAN_INDEX (m_thread_p, NULL_TRAN_INDEX);
+	er_clear ();
+      }
+
+      ~missing_tdes_call ()
+      {
+	restore ();
+      }
+
+      int capture_error_and_restore ()
+      {
+	const int error = er_errid ();
+	restore ();
+	return error;
+      }
+
+    private:
+      void restore ()
+      {
+	if (m_active)
+	  {
+	    LOG_SET_CURRENT_TRAN_INDEX (m_thread_p, m_saved_index);
+	    m_active = false;
+	  }
+      }
+
+      THREAD_ENTRY *m_thread_p;
+      const int m_saved_index;
+      bool m_active = true;
+  };
+
   enum class write_failure
   {
     preparation, vfid_lookup, partial_batch, heap_insert
@@ -106,6 +275,266 @@ namespace
 class OosSqlDeferredWrite : public OosSqlHeapFixture
 {
 };
+
+#if defined(CUBRID_UNIT_TEST_ENABLED)
+TEST_F (OosSqlDeferredWrite, OwnerlessCopyAreaBypassClearsBothPublicationsAndKeepsReceivedBytes)
+{
+  ownerless_copyarea input;
+  ASSERT_NO_FATAL_FAILURE (input.set_up ());
+  heap_pending_record received;
+  RECDES converted = RECDES_INITIALIZER;
+  RECDES *active = &input.record;
+  ASSERT_NO_FATAL_FAILURE (input.seed ());
+
+  const int error = locator_test_finalize_oos_record (input.thread_p, &input.class_oid, &active, true, nullptr,
+		    &received, &converted);
+
+  EXPECT_EQ (error, NO_ERROR);
+  EXPECT_TRUE (input.thread_p->oos_oids.empty ());
+  EXPECT_TRUE (input.tdes->oos_insert_lsa_queue.is_empty ());
+  EXPECT_EQ (active, &input.record);
+  input.expect_received_unchanged ();
+  EXPECT_EQ (received.get_recdes ().data, nullptr);
+  EXPECT_FALSE (received.is_prepared ());
+  EXPECT_FALSE (received.is_finalized ());
+  EXPECT_EQ (converted.data, nullptr);
+}
+
+TEST_F (OosSqlDeferredWrite, OwnerlessCopyAreaBypassMissingTdesPreservesPairAndFails)
+{
+  ownerless_copyarea input;
+  ASSERT_NO_FATAL_FAILURE (input.set_up ());
+  heap_pending_record received;
+  RECDES converted = RECDES_INITIALIZER;
+  RECDES *active = &input.record;
+  ASSERT_NO_FATAL_FAILURE (input.seed ());
+  // SA reads log_Tran_index. Keep the genuine current class representation fixed during this call.
+  missing_tdes_call call (input.thread_p);
+  const int error = locator_test_finalize_oos_record (input.thread_p, &input.class_oid, &active, true, nullptr,
+		    &received, &converted);
+  const int reported_error = call.capture_error_and_restore ();
+
+  EXPECT_EQ (error, ER_LOG_UNKNOWN_TRANINDEX);
+  EXPECT_EQ (reported_error, ER_LOG_UNKNOWN_TRANINDEX);
+  input.expect_publications_unchanged ();
+  EXPECT_EQ (active, &input.record);
+  input.expect_received_unchanged ();
+  EXPECT_EQ (received.get_recdes ().data, nullptr);
+  EXPECT_FALSE (received.is_prepared ());
+  EXPECT_FALSE (received.is_finalized ());
+  EXPECT_EQ (converted.data, nullptr);
+}
+
+TEST_F (OosSqlDeferredWrite, OwnerlessWorkspaceBypassClearsBothPublicationsAndKeepsReceivedBytes)
+{
+  ownerless_copyarea input;
+  ASSERT_NO_FATAL_FAILURE (input.set_up ());
+  heap_pending_record received;
+  RECDES converted = RECDES_INITIALIZER;
+  RECDES *active = &input.record;
+  ASSERT_NO_FATAL_FAILURE (input.seed ());
+
+  const int error = locator_test_finalize_oos_record (input.thread_p, &input.class_oid, &active, false, nullptr,
+		    &received, &converted, true);
+
+  EXPECT_EQ (error, NO_ERROR);
+  EXPECT_TRUE (input.thread_p->oos_oids.empty ());
+  EXPECT_TRUE (input.tdes->oos_insert_lsa_queue.is_empty ());
+  EXPECT_EQ (active, &input.record);
+  input.expect_received_unchanged ();
+  EXPECT_EQ (received.get_recdes ().data, nullptr);
+  EXPECT_FALSE (received.is_prepared ());
+  EXPECT_FALSE (received.is_finalized ());
+  EXPECT_EQ (converted.data, nullptr);
+}
+
+TEST_F (OosSqlDeferredWrite, OwnerlessWorkspaceBypassMissingTdesPreservesPairAndFails)
+{
+  ownerless_copyarea input;
+  ASSERT_NO_FATAL_FAILURE (input.set_up ());
+  heap_pending_record received;
+  RECDES converted = RECDES_INITIALIZER;
+  RECDES *active = &input.record;
+  ASSERT_NO_FATAL_FAILURE (input.seed ());
+  missing_tdes_call call (input.thread_p);
+  const int error = locator_test_finalize_oos_record (input.thread_p, &input.class_oid, &active, false, nullptr,
+		    &received, &converted, true);
+  const int reported_error = call.capture_error_and_restore ();
+
+  EXPECT_EQ (error, ER_LOG_UNKNOWN_TRANINDEX);
+  EXPECT_EQ (reported_error, ER_LOG_UNKNOWN_TRANINDEX);
+  input.expect_publications_unchanged ();
+  EXPECT_EQ (active, &input.record);
+  input.expect_received_unchanged ();
+  EXPECT_EQ (received.get_recdes ().data, nullptr);
+  EXPECT_FALSE (received.is_prepared ());
+  EXPECT_FALSE (received.is_finalized ());
+  EXPECT_EQ (converted.data, nullptr);
+}
+
+TEST_F (OosSqlDeferredWrite, CopyAreaInsertMissingTdesDoesNotEnterSuccessContinuation)
+{
+  ownerless_copyarea input;
+  ASSERT_NO_FATAL_FAILURE (input.set_up ());
+  OID inserted_oid = oid_Null_oid;
+  int force_count = 37;
+  ASSERT_EQ (force_count, 37);
+  ASSERT_TRUE (OID_ISNULL (&inserted_oid));
+  ASSERT_NO_FATAL_FAILURE (input.seed ());
+  missing_tdes_call call (input.thread_p);
+  const int error = locator_insert_force (input.thread_p, &input.hfid, &input.class_oid, &inserted_oid, &input.record,
+					  false, SINGLE_ROW_INSERT, nullptr, &force_count, DB_NOT_PARTITIONED_CLASS,
+					  nullptr, nullptr, UPDATE_INPLACE_NONE, nullptr, LC_FORCE_FLAG_NONE, true, nullptr);
+  const int reported_error = call.capture_error_and_restore ();
+
+  EXPECT_EQ (error, ER_LOG_UNKNOWN_TRANINDEX);
+  EXPECT_EQ (reported_error, ER_LOG_UNKNOWN_TRANINDEX);
+  // The first success continuation resets this count, before any heap or index insertion.
+  EXPECT_EQ (force_count, 37);
+  EXPECT_TRUE (OID_ISNULL (&inserted_oid));
+  input.expect_publications_unchanged ();
+  input.expect_received_unchanged ();
+  input.restore_and_clear ();
+  int matches = -1;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 0);
+}
+
+TEST_F (OosSqlDeferredWrite, SmallWorkspaceFlushDoesNotNeedOosPreparation)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_no (id INT, payload BIT VARYING)"), 0);
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, payload BIT VARYING STORAGE FORCE_OUTLINE)"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  DB_OBJECT *row = db_create (db_find_class ("t_oos_show_no"));
+  ASSERT_NE (row, nullptr);
+  const std::string bytes (64, '\xAB');
+  DB_VALUE value;
+  db_make_int (&value, 1);
+  ASSERT_EQ (db_put (row, "id", &value), NO_ERROR);
+  db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, bytes.data (), bytes.size () * 8);
+  ASSERT_EQ (db_put (row, "payload", &value), NO_ERROR);
+  // An OOS preparation allocation failure must leave an ordinary small flush unaffected,
+  // but must still reject the equally small FORCE_OUTLINE row that actually needs preparation.
+  heap_oos_test_fail_preparation_once ();
+  EXPECT_EQ (locator_flush_instance (row), NO_ERROR);
+  db_make_int (&value, 2);
+  EXPECT_EQ (db_put (row, "id", &value), NO_ERROR);
+  EXPECT_EQ (locator_flush_instance (row), NO_ERROR);
+  // Create the forced row after these flushes: a workspace flush can send other dirty rows too.
+  row = db_create (db_find_class ("t_oos_show_yes"));
+  ASSERT_NE (row, nullptr);
+  db_make_int (&value, 1);
+  ASSERT_EQ (db_put (row, "id", &value), NO_ERROR);
+  db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, bytes.data (), bytes.size () * 8);
+  ASSERT_EQ (db_put (row, "payload", &value), NO_ERROR);
+  EXPECT_LT (locator_flush_instance (row), NO_ERROR);
+  ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+}
+#endif
+
+TEST_F (OosSqlDeferredWrite, WorkspaceFlushNearSizeGateReservesMvccHeadroom)
+{
+  const int sizes[] = { DB_PAGESIZE / 4 - 128, DB_PAGESIZE / 4 - 40, DB_PAGESIZE / 4 + 16 };
+  const int expected_oos[] = { 0, 1, 1 };
+  for (int i = 0; i < 3; ++i)
+    {
+      SCOPED_TRACE (sizes[i]);
+      ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, payload BIT VARYING)"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      DB_OBJECT *row = db_create (db_find_class ("t_oos_show_yes"));
+      ASSERT_NE (row, nullptr);
+      DB_VALUE value;
+      db_make_int (&value, 1);
+      ASSERT_EQ (db_put (row, "id", &value), NO_ERROR);
+      const std::string bytes (sizes[i], '\xAB');
+      db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, bytes.data (), bytes.size () * 8);
+      ASSERT_EQ (db_put (row, "payload", &value), NO_ERROR);
+      ASSERT_EQ (locator_flush_instance (row), NO_ERROR);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+      char sql[256];
+      snprintf (sql, sizeof (sql), "SELECT COUNT(*) FROM t_oos_show_yes WHERE id=1 "
+		"AND payload=CAST(REPEAT('AB',%d) AS BIT VARYING)", sizes[i]);
+      int matches = 0;
+      ASSERT_EQ (fetch_single_int (sql, &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
+      DB_QUERY_RESULT *result = nullptr;
+      ASSERT_EQ (show_heap_oos_query ("SHOW HEAP OOS OF t_oos_show_yes", &result), NO_ERROR);
+      int has_oos = -1;
+      EXPECT_EQ (get_int_column (result, COL_HAS_OOS_FILE, &has_oos), NO_ERROR);
+      EXPECT_EQ (has_oos, expected_oos[i]);
+      db_query_end (result);
+      db_make_int (&value, 2);
+      ASSERT_EQ (db_put (row, "id", &value), NO_ERROR);
+      ASSERT_EQ (locator_flush_instance (row), NO_ERROR);
+      ASSERT_EQ (db_abort_transaction (), NO_ERROR);
+      ASSERT_EQ (fetch_single_int (sql, &matches), NO_ERROR);
+      EXPECT_EQ (matches, 1);
+      ASSERT_GE (exec_sql ("DROP TABLE t_oos_show_yes"), 0);
+      ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+    }
+}
+
+TEST_F (OosSqlDeferredWrite, SmallOldCopyAreaMaterializesCurrentRepresentation)
+{
+  ASSERT_GE (exec_sql ("CREATE TABLE t_oos_show_yes (id INT, payload BIT VARYING)"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+  DB_OBJECT *cls = db_find_class ("t_oos_show_yes");
+  OID class_oid = *db_identifier (cls);
+  HFID hfid;
+  ASSERT_EQ (heap_get_class_hfid (thread_p, &class_oid, &hfid, nullptr), NO_ERROR);
+  HEAP_CACHE_ATTRINFO attrs;
+  ASSERT_EQ (heap_attrinfo_start (thread_p, &class_oid, -1, nullptr, &attrs), NO_ERROR);
+  DB_VALUE value;
+  db_make_int (&value, 1);
+  ASSERT_EQ (heap_attrinfo_set (nullptr, db_attribute_id (db_get_attribute (cls, "id")), &value, &attrs), NO_ERROR);
+  const std::string bytes (64, '\xCD');
+  db_make_varbit (&value, DB_MAX_VARBIT_PRECISION, bytes.data (), bytes.size () * 8);
+  ASSERT_EQ (heap_attrinfo_set (nullptr, db_attribute_id (db_get_attribute (cls, "payload")), &value, &attrs), NO_ERROR);
+  heap_pending_record supplied;
+  ASSERT_EQ (heap_attrinfo_prepare_record (thread_p, &attrs, nullptr, &supplied), S_SUCCESS);
+  heap_attrinfo_end (thread_p, &attrs);
+  RECDES record = supplied.get_recdes ();
+  ASSERT_FALSE (heap_recdes_contains_oos (&record));
+  ASSERT_GE (exec_sql ("ALTER TABLE t_oos_show_yes ADD COLUMN extra INT DEFAULT 7"), 0);
+  ASSERT_EQ (db_commit_transaction (), NO_ERROR);
+  const REPR_ID current_rep = heap_get_class_repr_id (thread_p, &class_oid);
+  ASSERT_NE (or_rep_id (&record), current_rep);
+
+  LC_COPYAREA *area = locator_allocate_copy_area_by_length (record.length + OR_MVCC_MAX_HEADER_SIZE
+		      + sizeof (LC_COPYAREA_MANYOBJS));
+  ASSERT_NE (area, nullptr);
+  memcpy (area->mem, record.data, record.length);
+  LC_COPYAREA_MANYOBJS *many = LC_MANYOBJS_PTR_IN_COPYAREA (area);
+  memset (many, 0, sizeof (*many));
+  many->num_objs = 1;
+  LC_COPYAREA_ONEOBJ &obj = many->objs;
+  obj.operation = LC_FLUSH_INSERT;
+  obj.hfid = hfid;
+  obj.class_oid = class_oid;
+  OID_SET_NULL (&obj.oid);
+  obj.length = record.length;
+  obj.offset = 0;
+  const int error = xlocator_force (thread_p, area, 0, nullptr);
+  const OID row_oid = obj.oid;
+  locator_free_copy_area (area);
+  ASSERT_EQ (error, NO_ERROR);
+  HEAP_SCANCACHE scan;
+  ASSERT_EQ (heap_scancache_start (thread_p, &scan, &hfid, &class_oid, false, nullptr), NO_ERROR);
+  RECDES stored = RECDES_INITIALIZER;
+  const SCAN_CODE status = heap_get_visible_version (thread_p, &row_oid, &class_oid, &stored, &scan, COPY, NULL_CHN,
+			   HEAP_RECDES_DONT_CONSUME_RAW_BYTES);
+  if (status == S_SUCCESS)
+    {
+      EXPECT_EQ (or_rep_id (&stored), current_rep);
+    }
+  heap_scancache_end (thread_p, &scan);
+  ASSERT_EQ (status, S_SUCCESS);
+  int matches = 0;
+  ASSERT_EQ (fetch_single_int ("SELECT COUNT(*) FROM t_oos_show_yes WHERE id=1 AND extra=7 "
+			       "AND payload=CAST(REPEAT('CD',64) AS BIT VARYING)", &matches), NO_ERROR);
+  EXPECT_EQ (matches, 1);
+}
 
 TEST_F (OosSqlDeferredWrite, InsertOwnsOosInDestinationHeap)
 {

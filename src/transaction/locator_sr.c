@@ -4924,17 +4924,41 @@ locator_finalize_oos_record (THREAD_ENTRY *thread_p, const OID *class_oid, RECDE
   if ((from_copyarea || from_workspace) && catcls_Enable && !OID_IS_ROOTOID (class_oid)
       && !oid_is_system_class (class_oid) && (*record)->length > 0)
     {
-      int error = heap_prepare_oos_record (thread_p, class_oid, *record, received);
+      bool needs_preparation;
+      int error = heap_oos_needs_record_preparation (thread_p, class_oid, *record, &needs_preparation);
       if (error != NO_ERROR)
 	{
 	  return error;
 	}
-      *converted = received->get_recdes ();
-      *record = converted;
-      pending = received;
+      if (needs_preparation)
+	{
+	  error = heap_prepare_oos_record (thread_p, class_oid, *record, received);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	  *converted = received->get_recdes ();
+	  *record = converted;
+	  pending = received;
+	}
+      else if (heap_oos_begin_insert_publication (thread_p) != S_SUCCESS)
+	{
+	  return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+	}
     }
   return heap_oos_finalize_record (thread_p, class_oid, *record, pending);
 }
+
+#if defined (CUBRID_UNIT_TEST_ENABLED)
+int
+locator_test_finalize_oos_record (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES **record,
+                                bool from_copyarea, heap_pending_record *pending,
+                                heap_pending_record *received, RECDES *converted, bool from_workspace)
+{
+  return locator_finalize_oos_record (thread_p, class_oid, record, from_copyarea, from_workspace,
+                                    pending, received, converted);
+}
+#endif
 /* *INDENT-ON* */
 
 /*

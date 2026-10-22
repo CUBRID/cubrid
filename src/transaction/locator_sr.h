@@ -152,6 +152,13 @@ extern int locator_insert_force (THREAD_ENTRY * thread_p, HFID * hfid, OID * cla
 				 UPDATE_INPLACE_STYLE force_in_place, PGBUF_WATCHER * home_hint_p,
 				 int force_flags = LC_FORCE_FLAG_NONE, bool from_copyarea = false,
                                  heap_pending_record *pending = nullptr);
+#if defined (CUBRID_UNIT_TEST_ENABLED)
+/* Observe adapter return before the caller can alter the record during heap insertion. */
+extern int locator_test_finalize_oos_record (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES **record,
+                                           bool from_copyarea, heap_pending_record *pending,
+                                           heap_pending_record *received, RECDES *converted,
+                                           bool from_workspace = false);
+#endif
 /* *INDENT-ON* */
 
 extern int locator_oos_insert_force (THREAD_ENTRY * thread_p, OID * class_oid, RECDES * recdes);

@@ -116,6 +116,42 @@ heap_oos_validate_disk_record (THREAD_ENTRY *thread_p, const OID *class_oid, con
 }
 
 int
+heap_oos_needs_record_preparation (THREAD_ENTRY *thread_p, const OID *class_oid, RECDES *record,
+				   bool *needs_preparation)
+{
+  *needs_preparation = true;
+  if (!heap_recdes_has_valid_header (record))
+    {
+      return heap_oos_validate_disk_record (thread_p, class_oid, record);
+    }
+  /* Reserve the full MVCC header, even when part of it is already present. Existing stubs must be
+   * rebuilt in the destination heap regardless of the compact record's size. */
+  if (record->length > DB_PAGESIZE / 4 - OR_MVCC_MAX_HEADER_SIZE || heap_recdes_contains_oos (record))
+    {
+      return NO_ERROR;
+    }
+
+  int cache_index = -1;
+  OR_CLASSREP *repr = heap_classrepr_get (thread_p, class_oid, nullptr, NULL_REPRID, &cache_index);
+  if (repr == nullptr)
+    {
+      return er_errid () == NO_ERROR ? ER_FAILED : er_errid ();
+    }
+  /* Older representations may acquire defaults or change layout when decoded into the current one. */
+  *needs_preparation = or_rep_id (record) != repr->id;
+  for (int i = 0; i < repr->n_attributes && !*needs_preparation; ++i)
+    {
+      if (!repr->attributes[i].is_fixed
+	  && repr->attributes[i].oos_storage == OR_ATTRIBUTE_OOS_STORAGE_FORCE_OUTLINE)
+	{
+	  *needs_preparation = true;
+	}
+    }
+  heap_classrepr_free_and_init (repr, &cache_index);
+  return NO_ERROR;
+}
+
+int
 heap_oos_finalize_record (THREAD_ENTRY *thread_p, const OID *destination, RECDES *record,
 			  heap_pending_record *pending)
 {

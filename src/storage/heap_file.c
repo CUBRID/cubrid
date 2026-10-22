@@ -761,12 +761,13 @@ static int heap_attrinfo_determine_disk_layout (HEAP_CACHE_ATTRINFO * attr_info,
 						bool * has_oos, size_t * inline_size_after_oos_ptr);
 /* *INDENT-ON* */
 
-/* *INDENT-OFF* */
 static void heap_attrvalue_point_fixed (const HEAP_REC_LAYOUT * layout, OR_ATTRIBUTE * attrepr,
 					RECDES * raw, int disk_size);
+
+/* *INDENT-OFF* */
 static int heap_attrvalue_read_oos_inline (RECDES * recdes, int location, RECDES * raw, char *oos_scratch,
 					   int oos_scratch_size, bool * oos_owned_buffer,
-                                           const heap_pending_record *pending = nullptr);
+                                         const heap_pending_record *pending = nullptr);
 static int heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT * layout,
 					  HEAP_CACHE_ATTRINFO * attr_info, OR_ATTRIBUTE * attrepr, RECDES * raw,
 					  bool * oos_owned_buffer, char *oos_scratch, int oos_scratch_size,
@@ -774,15 +775,14 @@ static int heap_attrvalue_point_variable (RECDES * recdes, const HEAP_REC_LAYOUT
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw,
 						bool oos_owned_buffer);
 static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
-				const HEAP_REC_LAYOUT * layout,
-                                const heap_pending_record *pending = nullptr);
+                                const HEAP_REC_LAYOUT *layout, const heap_pending_record *pending = nullptr);
 static int heap_attrinfo_read_dbvalues_individually (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
-						     const HEAP_REC_LAYOUT * layout,
-                                const heap_pending_record *pending = nullptr);
+                                                     const HEAP_REC_LAYOUT *layout,
+                                                     const heap_pending_record *pending = nullptr);
 static int heap_attrinfo_read_dbvalues_from_prefetched_oos (RECDES * recdes, HEAP_CACHE_ATTRINFO * attr_info,
 							    std::vector < RECDES > *oos_payloads,
-							    const HEAP_REC_LAYOUT * layout,
-                                const heap_pending_record *pending = nullptr);
+                                                            const HEAP_REC_LAYOUT *layout,
+                                                            const heap_pending_record *pending = nullptr);
 static int heap_attrinfo_read_dbvalues_with_oos_prefetch (THREAD_ENTRY * thread_p, RECDES * recdes,
 							  HEAP_CACHE_ATTRINFO * attr_info,
                                 const heap_pending_record *pending = nullptr);
@@ -795,8 +795,7 @@ static int heap_midxkey_get_oos_extra_size (RECDES * recdes, OR_ATTRIBUTE * att,
 
 static DB_MIDXKEY *heap_midxkey_key_get (RECDES * recdes, DB_MIDXKEY * midxkey, OR_INDEX * index,
 					 HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res, TP_DOMAIN * func_domain,
-					 TP_DOMAIN ** key_domain,
-                                const heap_pending_record *pending = nullptr);
+                                         TP_DOMAIN **key_domain, const heap_pending_record *pending = nullptr);
 static DB_MIDXKEY *heap_midxkey_key_generate (THREAD_ENTRY * thread_p, RECDES * recdes, DB_MIDXKEY * midxkey,
 					      int *att_ids, HEAP_CACHE_ATTRINFO * attrinfo, DB_VALUE * func_res,
 					      int func_col_id, int func_attr_index_start, TP_DOMAIN * midxkey_domain);
@@ -14227,6 +14226,9 @@ heap_attrinfo_transform_to_disk_internal (THREAD_ENTRY * thread_p, HEAP_CACHE_AT
       status = S_SUCCESS;
       if (pending != nullptr)
         {
+          /* TODO: Evaluate a separate redesign that keeps rows inline until the heap write.
+           * Consider OOS externalization at heap_insert_logical entry for INSERT.
+           * For UPDATE, consider externalization immediately before locator_update_index. */
           for (int i = 0; i < attr_info->num_values && status == S_SUCCESS; ++i)
             {
               if (!oos_plan[i].selected)
