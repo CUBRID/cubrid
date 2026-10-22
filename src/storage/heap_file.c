@@ -24535,6 +24535,10 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   int rc = NO_ERROR;
   PERF_UTIME_TRACKER time_track;
   bool is_mvcc_class;
+  SERIAL_ROW_WRITE serial_write;
+  record_descriptor serial_merged;
+  RECDES serial_merged_recdes;
+  RECDES *client_recdes_p = context->recdes_p;
 
   /*
    * Check input
@@ -24624,6 +24628,8 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
   CUBRID_OBJ_UPDATE_START (&context->class_oid);
 #endif /* ENABLE_SYSTEMTAP */
 
+  serial_row_write_begin (thread_p, &context->class_oid, &serial_write);
+
   /*
    * Get location
    */
@@ -24668,6 +24674,23 @@ heap_update_logical (THREAD_ENTRY * thread_p, HEAP_OPERATION_CONTEXT * context)
 	{
 	  ASSERT_ERROR ();
 	  goto exit;
+	}
+    }
+
+  /* a _db_serial row keeps the value NEXT_VALUE wrote in place since the client read it */
+  if (serial_write.active && context->record_type == REC_HOME)
+    {
+      rc = serial_row_write_keep_value (thread_p, &serial_write, &context->oid, &context->home_recdes,
+					context->recdes_p, &serial_merged);
+      if (rc != NO_ERROR)
+	{
+	  goto exit;
+	}
+      if (serial_write.merged)
+	{
+	  serial_merged_recdes = serial_merged.get_recdes ();
+	  serial_merged_recdes.type = context->recdes_p->type;
+	  context->recdes_p = &serial_merged_recdes;
 	}
     }
 
@@ -24766,6 +24789,9 @@ exit:
 
   /* unfix pages */
   heap_unfix_watchers (thread_p, context);
+
+  context->recdes_p = client_recdes_p;
+  serial_row_write_end (thread_p, &serial_write);
 
 #if defined(ENABLE_SYSTEMTAP)
   CUBRID_OBJ_UPDATE_END (&context->class_oid, (rc != NO_ERROR));
