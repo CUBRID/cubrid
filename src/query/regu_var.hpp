@@ -198,6 +198,8 @@ const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery ca
 const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly: set
 						 * at load for a stable regu */
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
+const int REGU_VARIABLE_KEY_LIMIT_ARITH = 0x4000;	/* T_SUB/T_LEAST/T_GREATEST the optimizer builds for a key limit;
+							 * key_limit_eval () computes these nodes on their operands */
 
 const int REGU_VARIABLE_VARIABLE_DOMAIN = 0x8000;	/* load-derived: the regu's compiled domain is variable, so the
 					 * inline fetch_peek_dbval () peeks it only once it took its domain in this
