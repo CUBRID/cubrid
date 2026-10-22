@@ -380,6 +380,12 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                 assert false : "unreachable";
             }
         }
+
+        // in the order of creation, so that an <id>%TYPE referring to another one gets its type
+        for (TypeSpecPercentId ts : typeSpecPercentIdsToResolve) {
+            ts.type = ts.idTypeSpec.type;
+            assert ts.type != null;
+        }
     }
 
     @Override
@@ -584,7 +590,13 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
                                 + "procedure/function, variable, nor constant");
             }
 
-            return ((DeclIdTypeDeclared) id.decl).typeSpec();
+            TypeSpecPercentId ret =
+                    new TypeSpecPercentId(ctx, id.name, ((DeclIdTypeDeclared) id.decl).typeSpec());
+            if (ret.type == null) {
+                // the type of id is <table>.<column>%TYPE (or <pkg>.<var>%TYPE) to be resolved
+                typeSpecPercentIdsToResolve.add(ret);
+            }
+            return ret;
         } else {
 
             // case <X>%TYPE where X is one of
@@ -3209,6 +3221,7 @@ public class ParseTreeConverter extends PlcParserBaseVisitor<AstNode> {
 
     private final LinkedHashMap<AstNode, ServerAPI.Question> semanticQuestions =
             new LinkedHashMap<>();
+    private final List<TypeSpecPercentId> typeSpecPercentIdsToResolve = new ArrayList<>();
 
     private StmtLoop.LoopOptimizables loopOptimizables = null;
     private Set<SqlUse> sqlUsesOfTopLevelRoutine = null;

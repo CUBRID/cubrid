@@ -69,7 +69,7 @@ public class DeclParamIn extends DeclParam {
         }
 
         DeclParamIn other = (DeclParamIn) o;
-        return this.name.equals(other.name) && this.typeSpec.type == other.typeSpec.type;
+        return this.name.equals(other.name) && this.typeSpec.isSameAs(other.typeSpec);
     }
 
     @Override

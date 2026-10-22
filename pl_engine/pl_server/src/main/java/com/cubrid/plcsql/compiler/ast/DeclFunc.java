@@ -109,7 +109,7 @@ public class DeclFunc extends DeclRoutine {
         // name and parameters must be the same
         if (!this.name.equals(other.name)
                 || !this.paramList.equals(other.paramList)
-                || this.retTypeSpec.type != other.retTypeSpec.type) {
+                || !this.retTypeSpec.isSameAs(other.retTypeSpec)) {
             return false;
         }
 
