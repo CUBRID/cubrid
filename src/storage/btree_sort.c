@@ -392,7 +392,10 @@ static void btsort_retire_px_temp_files (THREAD_ENTRY * thread_p, BTSORT_PARAM *
 
 static const RECDES *btsort_merge_resolve_rec (const RECDES * rec, const RECDES * long_rec);
 static int btsort_merge_fetch_slot (THREAD_ENTRY * thread_p, char *pgbuf, int slot, RECDES * rec, RECDES * long_rec);
+static int btsort_get_numpages_of_active_infiles (const BTSORT_PARAM * sort_param);
 static int btsort_merge_count_pass_runs (BTSORT_PARAM * sort_param, int act_infiles);
+static int btsort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_half);
+static int btsort_find_inbuf_size (int tot_buffers, int in_sections);
 static void btsort_merge_assign_sections (BTSORT_MERGE_CTX * ctx);
 static void btsort_merge_reset_out_section (BTSORT_MERGE_CTX * ctx);
 static int btsort_merge_load_in_section (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int idx)
@@ -410,7 +413,6 @@ static int btsort_merge_copy_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ct
 static int btsort_merge_start_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx);
 static int btsort_merge_produce_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, bool put_to_caller);
 static int btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param);
-static int btsort_find_inbuf_size (int tot_buffers, int in_sections);
 
 #if defined(SERVER_MODE)
 /************************************************************************/
@@ -481,8 +483,6 @@ static int btsort_write_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NT
 static int btsort_read_area (THREAD_ENTRY * thread_p, VFID * vfid, FILE_FIND_NTH_CURSOR * cursor, int first_page,
 			     INT32 num_pages, char *area_start);
 static int btsort_get_num_half_tmpfiles (int tot_buffers);
-static int btsort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_half);
-static int btsort_get_numpages_of_active_infiles (const BTSORT_PARAM * sort_param);
 static int btsort_run_add_new (BTSORT_FILE_CONTENTS * file_contents, int num_pages);
 static void btsort_run_remove_first (BTSORT_FILE_CONTENTS * file_contents);
 static int btsort_get_num_file_contents (BTSORT_FILE_CONTENTS * file_contents);
@@ -2291,6 +2291,36 @@ btsort_merge_fetch_slot (THREAD_ENTRY * thread_p, char *pgbuf, int slot, RECDES 
 }
 
 /*
+ * btsort_get_numpages_of_active_infiles () - Find number of active input files
+ *   return:
+ *   sort_param(in): sort parameters
+ *
+ * Note: This function determines how many of the input files still
+ *       have input runs (active) to participate in while the merging
+ *       process which produces larger size runs. For this purpose,
+ *       it checks the file_contents list of each input file. Once the
+ *       first file with no remaining input runs (unactive) is found,
+ *       it is concluded that all the remaining input temporary files
+ *       are also inactive (because of balanced distribution of runs to
+ *       the files).
+ */
+static int
+btsort_get_numpages_of_active_infiles (const BTSORT_PARAM * sort_param)
+{
+  int i;
+
+  for (i = sort_param->in_half; i < sort_param->in_half + sort_param->half_files; i++)
+    {
+      if (sort_param->file_contents[i].first_run == -1)
+	{
+	  break;
+	}
+    }
+
+  return (i - sort_param->in_half);
+}
+
+/*
  * btsort_merge_count_pass_runs () - Number of runs the longest active input file holds
  *   return: the run count; each run of a merge pass takes one run from every active input file
  *   sort_param(in): sort parameters
@@ -2313,6 +2343,144 @@ btsort_merge_count_pass_runs (BTSORT_PARAM * sort_param, int act_infiles)
     }
 
   return num_runs;
+}
+
+/*
+ * btsort_checkalloc_numpages_of_outfiles () - Check sizes of output files
+ *   return: error code
+ *   sort_param(in): sort parameters
+ *   out_half(in): index of the first output file
+ *
+ * Note: This function determines how many pages will be needed by each output
+ *       file of the current stage of the merging phase. This is done by going
+ *       over the file_contents lists of the input files and determining how
+ *       many pages they will eventually contribute to each output file.
+ *       (Again, this is an estimate, not an exact number on the size of output
+ *       files.) It then checks whether these output files have that many pages
+ *       already. If some of them need more pages, it allocates new pages.
+ */
+static int
+btsort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_half)
+{
+  int out_file;
+  int needed_pages[2 * BTSORT_MAX_HALF_FILES];
+  int contains;
+  int alloc_pages;
+  int i, j;
+
+  int error_code = NO_ERROR;
+
+  for (i = 0; i < (int) DIM (needed_pages); i++)
+    {
+      needed_pages[i] = 0;
+    }
+
+  /* Estimate the sizes of all new runs to be flushed on output files */
+  for (i = sort_param->in_half; i < sort_param->in_half + sort_param->half_files; i++)
+    {
+      out_file = out_half;
+
+      /* If the list is not empty */
+      j = sort_param->file_contents[i].first_run;
+      if (j > -1)
+	{
+	  for (; j <= sort_param->file_contents[i].last_run; j++)
+	    {
+	      needed_pages[out_file] += sort_param->file_contents[i].num_pages[j];
+
+	      if (++out_file >= out_half + sort_param->half_files)
+		{
+		  out_file = out_half;
+		}
+	    }
+	}
+    }
+
+  /* Allocate enough pages to each output file We don't initialize pages during allocation since we do not care the
+   * state of the pages after a rollback or system crashes. Nothing need to be log on the page. The pages are
+   * initialized at a later time. */
+
+  /* Files are traversed in reverse order, in order to destroy unnecessary files first. It is expected that returned
+   * pages will be reused by the next allocation. */
+  for (i = out_half + sort_param->half_files - 1; i >= out_half; i--)
+    {
+      if (needed_pages[i] > 0)
+	{
+	  assert (!VFID_ISNULL (&sort_param->temp[i]));
+	  error_code = file_get_num_user_pages (thread_p, &sort_param->temp[i], &contains);
+	  if (error_code != NO_ERROR)
+	    {
+	      ASSERT_ERROR ();
+	      return error_code;
+	    }
+	  alloc_pages = (needed_pages[i] - contains);
+	  if (alloc_pages > 0)
+	    {
+	      error_code = file_alloc_multiple (thread_p, &sort_param->temp[i], NULL, NULL, alloc_pages, NULL);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return error_code;
+		}
+	    }
+	}
+      else
+	{
+	  /* If there is a file not to be used anymore, destroy it in order to reuse spaces. */
+	  if (!VFID_ISNULL (&sort_param->temp[i]))
+	    {
+	      error_code = file_temp_retire (thread_p, &sort_param->temp[i]);
+	      if (error_code != NO_ERROR)
+		{
+		  ASSERT_ERROR ();
+		  return error_code;
+		}
+	      VFID_SET_NULL (&sort_param->temp[i]);
+	      file_find_nth_cursor_reset (&sort_param->temp_cursor[i]);
+	    }
+	}
+    }
+  return NO_ERROR;
+}
+
+/*
+ * btsort_find_inbuf_size () - Distribute buffers
+ *   return:
+ *   tot_buffers(in): number of total buffers in the buffer pool area
+ *   in_sections(in): number of input sections into which this buffer pool area
+ *                    should be divided into (in other words, the number of
+ *                    active input files)
+ *
+ * Note: This function distributes the buffers of the buffer pool area
+ *       (i.e., the internal memory) among the active input files and
+ *       the output file. Recall that each active input file and the
+ *       output file will have a section in the buffer pool area.
+ *       This function returns the size of each input section in terms
+ *       of number of buffers it occupies. Naturally, the output
+ *       section will have the remaining buffers.
+ *
+ *       Note that when the input runs are merged together the
+ *       number of read operations is (roughly) equal to the
+ *       number of write operations. For that reason this function
+ *       reserves roughly half of the buffers for the output section
+ *       and distributes the remaining ones evenly among the input
+ *       sections, as each input run is approximately the same size.
+ */
+static int
+btsort_find_inbuf_size (int tot_buffers, int in_sections)
+{
+  int in_sectsize;
+
+  /* Allocate half of the total buffers to output buffer area */
+  in_sectsize = (tot_buffers / (in_sections << 1));
+  if (in_sectsize != 0)
+    {
+      return in_sectsize;
+    }
+  else
+    {
+      return 1;
+    }
 }
 
 /*
@@ -3017,46 +3185,6 @@ bailout:
     }
 
   return error;
-}
-
-/*
- * btsort_find_inbuf_size () - Distribute buffers
- *   return:
- *   tot_buffers(in): number of total buffers in the buffer pool area
- *   in_sections(in): number of input sections into which this buffer pool area
- *                    should be divided into (in other words, the number of
- *                    active input files)
- *
- * Note: This function distributes the buffers of the buffer pool area
- *       (i.e., the internal memory) among the active input files and
- *       the output file. Recall that each active input file and the
- *       output file will have a section in the buffer pool area.
- *       This function returns the size of each input section in terms
- *       of number of buffers it occupies. Naturally, the output
- *       section will have the remaining buffers.
- *
- *       Note that when the input runs are merged together the
- *       number of read operations is (roughly) equal to the
- *       number of write operations. For that reason this function
- *       reserves roughly half of the buffers for the output section
- *       and distributes the remaining ones evenly among the input
- *       sections, as each input run is approximately the same size.
- */
-static int
-btsort_find_inbuf_size (int tot_buffers, int in_sections)
-{
-  int in_sectsize;
-
-  /* Allocate half of the total buffers to output buffer area */
-  in_sectsize = (tot_buffers / (in_sections << 1));
-  if (in_sectsize != 0)
-    {
-      return in_sectsize;
-    }
-  else
-    {
-      return 1;
-    }
 }
 
 #if defined(SERVER_MODE)
@@ -4935,134 +5063,6 @@ btsort_get_num_half_tmpfiles (int tot_buffers)
     }
 
   return BTSORT_MAX_HALF_FILES;
-}
-
-/*
- * btsort_checkalloc_numpages_of_outfiles () - Check sizes of output files
- *   return: error code
- *   sort_param(in): sort parameters
- *   out_half(in): index of the first output file
- *
- * Note: This function determines how many pages will be needed by each output
- *       file of the current stage of the merging phase. This is done by going
- *       over the file_contents lists of the input files and determining how
- *       many pages they will eventually contribute to each output file.
- *       (Again, this is an estimate, not an exact number on the size of output
- *       files.) It then checks whether these output files have that many pages
- *       already. If some of them need more pages, it allocates new pages.
- */
-static int
-btsort_checkalloc_numpages_of_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_half)
-{
-  int out_file;
-  int needed_pages[2 * BTSORT_MAX_HALF_FILES];
-  int contains;
-  int alloc_pages;
-  int i, j;
-
-  int error_code = NO_ERROR;
-
-  for (i = 0; i < (int) DIM (needed_pages); i++)
-    {
-      needed_pages[i] = 0;
-    }
-
-  /* Estimate the sizes of all new runs to be flushed on output files */
-  for (i = sort_param->in_half; i < sort_param->in_half + sort_param->half_files; i++)
-    {
-      out_file = out_half;
-
-      /* If the list is not empty */
-      j = sort_param->file_contents[i].first_run;
-      if (j > -1)
-	{
-	  for (; j <= sort_param->file_contents[i].last_run; j++)
-	    {
-	      needed_pages[out_file] += sort_param->file_contents[i].num_pages[j];
-
-	      if (++out_file >= out_half + sort_param->half_files)
-		{
-		  out_file = out_half;
-		}
-	    }
-	}
-    }
-
-  /* Allocate enough pages to each output file We don't initialize pages during allocation since we do not care the
-   * state of the pages after a rollback or system crashes. Nothing need to be log on the page. The pages are
-   * initialized at a later time. */
-
-  /* Files are traversed in reverse order, in order to destroy unnecessary files first. It is expected that returned
-   * pages will be reused by the next allocation. */
-  for (i = out_half + sort_param->half_files - 1; i >= out_half; i--)
-    {
-      if (needed_pages[i] > 0)
-	{
-	  assert (!VFID_ISNULL (&sort_param->temp[i]));
-	  error_code = file_get_num_user_pages (thread_p, &sort_param->temp[i], &contains);
-	  if (error_code != NO_ERROR)
-	    {
-	      ASSERT_ERROR ();
-	      return error_code;
-	    }
-	  alloc_pages = (needed_pages[i] - contains);
-	  if (alloc_pages > 0)
-	    {
-	      error_code = file_alloc_multiple (thread_p, &sort_param->temp[i], NULL, NULL, alloc_pages, NULL);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  return error_code;
-		}
-	    }
-	}
-      else
-	{
-	  /* If there is a file not to be used anymore, destroy it in order to reuse spaces. */
-	  if (!VFID_ISNULL (&sort_param->temp[i]))
-	    {
-	      error_code = file_temp_retire (thread_p, &sort_param->temp[i]);
-	      if (error_code != NO_ERROR)
-		{
-		  ASSERT_ERROR ();
-		  return error_code;
-		}
-	      VFID_SET_NULL (&sort_param->temp[i]);
-	      file_find_nth_cursor_reset (&sort_param->temp_cursor[i]);
-	    }
-	}
-    }
-  return NO_ERROR;
-}
-
-/*
- * btsort_get_numpages_of_active_infiles () - Find number of active input files
- *   return:
- *   sort_param(in): sort parameters
- *
- * Note: This function determines how many of the input files still
- *       have input runs (active) to participate in while the merging
- *       process which produces larger size runs. For this purpose,
- *       it checks the file_contents list of each input file. Once the
- *       first file with no remaining input runs (unactive) is found,
- *       it is concluded that all the remaining input temporary files
- *       are also inactive (because of balanced distribution of runs to
- *       the files).
- */
-static int
-btsort_get_numpages_of_active_infiles (const BTSORT_PARAM * sort_param)
-{
-  int i;
-
-  for (i = sort_param->in_half; i < sort_param->in_half + sort_param->half_files; i++)
-    {
-      if (sort_param->file_contents[i].first_run == -1)
-	{
-	  break;
-	}
-    }
-
-  return (i - sort_param->in_half);
 }
 
 /*
