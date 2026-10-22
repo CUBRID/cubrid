@@ -29,66 +29,66 @@
 namespace cubschema
 {
   // forward definitions
-  struct system_catalog_definition;
+  struct system_metadata_definition;
 
   class system_catalog_initializer
   {
     public:
       // classes
-      static system_catalog_definition get_class ();
-      static system_catalog_definition get_attribute ();
-      static system_catalog_definition get_domain ();
-      static system_catalog_definition get_method ();
-      static system_catalog_definition get_meth_sig ();
-      static system_catalog_definition get_meth_arg ();
-      static system_catalog_definition get_meth_file ();
-      static system_catalog_definition get_query_spec ();
-      static system_catalog_definition get_index ();
-      static system_catalog_definition get_index_key ();
-      static system_catalog_definition get_auth ();
-      static system_catalog_definition get_trigger ();
-      static system_catalog_definition get_partition ();
-      static system_catalog_definition get_data_type ();
-      static system_catalog_definition get_stored_procedure ();
-      static system_catalog_definition get_stored_procedure_code ();
-      static system_catalog_definition get_stored_procedure_args ();
-      static system_catalog_definition get_serial ();
+      static system_metadata_definition get_class ();
+      static system_metadata_definition get_attribute ();
+      static system_metadata_definition get_domain ();
+      static system_metadata_definition get_method ();
+      static system_metadata_definition get_meth_sig ();
+      static system_metadata_definition get_meth_arg ();
+      static system_metadata_definition get_meth_file ();
+      static system_metadata_definition get_query_spec ();
+      static system_metadata_definition get_index ();
+      static system_metadata_definition get_index_key ();
+      static system_metadata_definition get_auth ();
+      static system_metadata_definition get_trigger ();
+      static system_metadata_definition get_partition ();
+      static system_metadata_definition get_data_type ();
+      static system_metadata_definition get_stored_procedure ();
+      static system_metadata_definition get_stored_procedure_code ();
+      static system_metadata_definition get_stored_procedure_args ();
+      static system_metadata_definition get_serial ();
 
-      static system_catalog_definition get_ha_apply_info ();
-      static system_catalog_definition get_collation ();
-      static system_catalog_definition get_charset ();
-      static system_catalog_definition get_dual ();
-      static system_catalog_definition get_server ();
-      static system_catalog_definition get_synonym ();
-      static system_catalog_definition get_histogram ();
-      static system_catalog_definition get_global_tran ();
+      static system_metadata_definition get_ha_apply_info ();
+      static system_metadata_definition get_collation ();
+      static system_metadata_definition get_charset ();
+      static system_metadata_definition get_dual ();
+      static system_metadata_definition get_server ();
+      static system_metadata_definition get_synonym ();
+      static system_metadata_definition get_histogram ();
+      static system_metadata_definition get_global_tran ();
 
       // views
-      static system_catalog_definition get_view_class ();
-      static system_catalog_definition get_view_direct_super_class ();
-      static system_catalog_definition get_view_vclass ();
-      static system_catalog_definition get_view_attribute ();
-      static system_catalog_definition get_view_attr_setdomain_elm ();
-      static system_catalog_definition get_view_method ();
-      static system_catalog_definition get_view_meth_arg ();
-      static system_catalog_definition get_view_meth_arg_setdomain_elm ();
-      static system_catalog_definition get_view_meth_file ();
-      static system_catalog_definition get_view_index ();
-      static system_catalog_definition get_view_index_key ();
-      static system_catalog_definition get_view_auth ();
-      static system_catalog_definition get_view_trigger ();
-      static system_catalog_definition get_view_partition ();
-      static system_catalog_definition get_view_stored_procedure ();
-      static system_catalog_definition get_view_stored_procedure_args ();
-      static system_catalog_definition get_view_serial ();
-      static system_catalog_definition get_view_ha_apply_info ();
-      static system_catalog_definition get_view_collation ();
-      static system_catalog_definition get_view_user ();
-      static system_catalog_definition get_view_authorization ();
-      static system_catalog_definition get_view_charset ();
-      static system_catalog_definition get_view_synonym ();
-      static system_catalog_definition get_view_server ();
-      static system_catalog_definition get_view_db_histogram ();
+      static system_metadata_definition get_view_class ();
+      static system_metadata_definition get_view_direct_super_class ();
+      static system_metadata_definition get_view_vclass ();
+      static system_metadata_definition get_view_attribute ();
+      static system_metadata_definition get_view_attr_setdomain_elm ();
+      static system_metadata_definition get_view_method ();
+      static system_metadata_definition get_view_meth_arg ();
+      static system_metadata_definition get_view_meth_arg_setdomain_elm ();
+      static system_metadata_definition get_view_meth_file ();
+      static system_metadata_definition get_view_index ();
+      static system_metadata_definition get_view_index_key ();
+      static system_metadata_definition get_view_auth ();
+      static system_metadata_definition get_view_trigger ();
+      static system_metadata_definition get_view_partition ();
+      static system_metadata_definition get_view_stored_procedure ();
+      static system_metadata_definition get_view_stored_procedure_args ();
+      static system_metadata_definition get_view_serial ();
+      static system_metadata_definition get_view_ha_apply_info ();
+      static system_metadata_definition get_view_collation ();
+      static system_metadata_definition get_view_user ();
+      static system_metadata_definition get_view_authorization ();
+      static system_metadata_definition get_view_charset ();
+      static system_metadata_definition get_view_synonym ();
+      static system_metadata_definition get_view_server ();
+      static system_metadata_definition get_view_db_histogram ();
   };
 
 

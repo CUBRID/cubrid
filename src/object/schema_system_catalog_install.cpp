@@ -30,8 +30,8 @@
 #include "sp_constants.hpp"
 #include "trigger_manager.h"
 #include "work_space.h"
-#include "schema_system_catalog_builder.hpp"
-#include "schema_system_catalog_definition.hpp"
+#include "schema_system_metadata_builder.hpp"
+#include "schema_system_metadata_definition.hpp"
 #include "schema_manager.h"
 #include "authenticate.h"
 
@@ -259,7 +259,7 @@ catcls_add_charsets (struct db_object *class_mop)
 /* MAIN APIS */
 /* ========================================================================== */
 
-static std::vector<cubschema::system_catalog_definition>
+static std::vector<cubschema::system_metadata_definition>
 catcls_get_class_definitions (void)
 {
   using namespace cubschema;
@@ -295,7 +295,7 @@ catcls_get_class_definitions (void)
   };
 }
 
-static std::vector<cubschema::system_catalog_definition>
+static std::vector<cubschema::system_metadata_definition>
 catcls_get_vclass_definitions (void)
 {
   using namespace cubschema;
@@ -333,20 +333,20 @@ catcls_get_vclass_definitions (void)
 int
 catcls_install (void)
 {
-  const std::vector<cubschema::system_catalog_definition> class_defs = catcls_get_class_definitions ();
-  const std::vector<cubschema::system_catalog_definition> vclass_defs = catcls_get_vclass_definitions ();
+  const std::vector<cubschema::system_metadata_definition> class_defs = catcls_get_class_definitions ();
+  const std::vector<cubschema::system_metadata_definition> vclass_defs = catcls_get_vclass_definitions ();
   int error_code = NO_ERROR;
   std::vector<MOP> class_mop (class_defs.size (), nullptr);
   int save;
   size_t i;
   AU_SAVE_AND_DISABLE (save);
 
-  using catalog_builder = cubschema::system_catalog_builder;
+  using metadata_builder = cubschema::system_metadata_builder;
 
   for (i = 0; i < class_defs.size (); i++)
     {
       // new routine
-      class_mop[i] = catalog_builder::create_and_mark_system_class (class_defs[i].name);
+      class_mop[i] = metadata_builder::create_and_mark_system_class (class_defs[i].name);
       if (class_mop[i] == nullptr)
 	{
 	  assert (false);
@@ -358,7 +358,7 @@ catcls_install (void)
   for (i = 0; i < class_defs.size (); i++)
     {
       // new routine
-      error_code = catalog_builder::build_class (class_mop[i], class_defs[i]);
+      error_code = metadata_builder::build_class (class_mop[i], class_defs[i]);
       if (error_code != NO_ERROR)
 	{
 	  assert (false);
@@ -369,10 +369,10 @@ catcls_install (void)
   for (i = 0; i < vclass_defs.size (); i++)
     {
       // new routine
-      MOP class_mop = catalog_builder::create_and_mark_system_class (vclass_defs[i].name);
+      MOP class_mop = metadata_builder::create_and_mark_system_class (vclass_defs[i].name);
       if (class_mop != nullptr)
 	{
-	  error_code = catalog_builder::build_vclass (class_mop, vclass_defs[i]);
+	  error_code = metadata_builder::build_vclass (class_mop, vclass_defs[i]);
 	}
 
       error_code = er_errid();
@@ -391,11 +391,11 @@ end:
 int
 catcls_rebuild_vclasses (void)
 {
-  const std::vector<cubschema::system_catalog_definition> vclass_defs = catcls_get_vclass_definitions ();
+  const std::vector<cubschema::system_metadata_definition> vclass_defs = catcls_get_vclass_definitions ();
   int error_code = NO_ERROR;
   int save;
 
-  using catalog_builder = cubschema::system_catalog_builder;
+  using metadata_builder = cubschema::system_metadata_builder;
 
   AU_SAVE_AND_DISABLE (save);
 
@@ -409,7 +409,7 @@ catcls_rebuild_vclasses (void)
 	  break;
 	}
 
-      error_code = catalog_builder::build_vclass (class_mop, vclass_defs[i]);
+      error_code = metadata_builder::build_vclass (class_mop, vclass_defs[i]);
       if (error_code == NO_ERROR)
 	{
 	  /* a vclass holds no instance, so nothing needs the superseded representation */
@@ -428,10 +428,10 @@ namespace cubschema
   /* NEW DEFINITION (CLASS) */
   /* ========================================================================== */
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_class ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_CLASS_NAME,
 		   // columns
@@ -503,10 +503,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_attribute ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_ATTRIBUTE_NAME,
 		   // columns
@@ -538,10 +538,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_domain ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_DOMAIN_NAME,
 		   // columns
@@ -572,10 +572,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_method ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_METHOD_NAME,
 		   // columns
@@ -601,10 +601,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_meth_sig ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_METHSIG_NAME,
 		   // columns
@@ -629,10 +629,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_meth_arg ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_METHARG_NAME,
 		   // columns
@@ -656,10 +656,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_meth_file ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_METHFILE_NAME,
 		   // columns
@@ -682,10 +682,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_query_spec ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_QUERYSPEC_NAME,
 		   // columns
@@ -708,10 +708,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_index ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_INDEX_NAME,
 		   // columns
@@ -752,10 +752,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_index_key ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_INDEXKEY_NAME,
 		   // columns
@@ -781,10 +781,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_auth ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_CLASSAUTH_NAME,
 		   // columns
@@ -813,10 +813,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_trigger ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_TRIGGER_NAME,
 		   // columns
@@ -852,10 +852,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_partition ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_PARTITION_NAME,
 		   // columns
@@ -882,10 +882,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_data_type ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_DATATYPE_NAME,
 		   // columns
@@ -907,10 +907,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_stored_procedure ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_STORED_PROC_NAME,
 		   // columns
@@ -947,10 +947,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_stored_procedure_args ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_STORED_PROC_ARGS_NAME,
 		   // columns
@@ -979,10 +979,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_stored_procedure_code ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_STORED_PROC_CODE_NAME,
 		   // columns
@@ -1011,10 +1011,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_serial ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_SERIAL_NAME,
 		   // columns
@@ -1056,10 +1056,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_ha_apply_info ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_HA_APPLY_INFO_NAME,
 		   // columns
@@ -1111,10 +1111,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_collation ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_COLLATION_NAME,
 		   // columns
@@ -1142,10 +1142,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_charset ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_CHARSET_NAME,
 		   // columns
@@ -1167,10 +1167,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_dual ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_DUAL_NAME,
 		   // columns
@@ -1193,10 +1193,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_synonym ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_SYNONYM_NAME,
 		   // columns
@@ -1233,10 +1233,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_server ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_SERVER_NAME,
 		   // columns
@@ -1271,11 +1271,11 @@ namespace cubschema
 
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_histogram ()
   {
 // db_class
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_HISTOGRAM_NAME,
 		   // columns
@@ -1301,10 +1301,10 @@ namespace cubschema
 
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_global_tran ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CT_GLOBAL_TRAN_NAME,
 		   // columns
@@ -1333,10 +1333,10 @@ namespace cubschema
   /* NEW DEFINITION (VCLASS) */
   /* ========================================================================== */
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_class ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_CLASS_NAME,
 		   // columns
@@ -1373,10 +1373,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_direct_super_class ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_SUPER_CLASS_NAME,
 		   // columns
@@ -1404,10 +1404,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_vclass ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_VCLASS_NAME,
 		   // columns
@@ -1438,10 +1438,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_attribute ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_ATTRIBUTE_NAME,
 		   // columns
@@ -1485,10 +1485,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_attr_setdomain_elm ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_ATTR_SD_NAME,
 		   // columns
@@ -1522,10 +1522,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_method ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_METHOD_NAME,
 		   // columns
@@ -1557,10 +1557,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_meth_arg ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_METHARG_NAME,
 		   // columns
@@ -1595,10 +1595,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_meth_arg_setdomain_elm ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_METHARG_SD_NAME,
 		   // columns
@@ -1633,10 +1633,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_meth_file ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_METHFILE_NAME,
 		   // columns
@@ -1665,10 +1665,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_index ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_INDEX_NAME,
 		   // columns
@@ -1713,10 +1713,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_index_key ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_INDEXKEY_NAME,
 		   // columns
@@ -1752,10 +1752,10 @@ namespace cubschema
    * that user can also view the list of privileges that other users have been granted.
    * Is this no problem? */
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_auth ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_AUTH_NAME,
 		   // columns
@@ -1788,10 +1788,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_trigger ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_TRIGGER_NAME,
 		   // columns
@@ -1826,10 +1826,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_partition ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_PARTITION_NAME,
 		   // columns
@@ -1864,10 +1864,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_stored_procedure ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_STORED_PROC_NAME,
 		   // columns
@@ -1907,10 +1907,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_stored_procedure_args ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_STORED_PROC_ARGS_NAME,
 		   // columns
@@ -1944,10 +1944,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_serial ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_SERIAL_NAME,
 		   // columns
@@ -1987,10 +1987,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_ha_apply_info ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_HA_APPLY_INFO_NAME,
 		   // columns
@@ -2039,10 +2039,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_collation ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_COLLATION_NAME,
 		   // columns
@@ -2073,10 +2073,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_user ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_USER_NAME,
 		   // columns
@@ -2117,10 +2117,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_authorization ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_AUTHORIZATION_NAME,
 		   // columns
@@ -2147,10 +2147,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_charset ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_CHARSET_NAME,
 		   // columns
@@ -2178,10 +2178,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_synonym ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_SYNONYM_NAME,
 		   // columns
@@ -2213,10 +2213,10 @@ namespace cubschema
 	   );
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_server ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_SERVER_NAME,
 		   // columns
@@ -2254,10 +2254,10 @@ namespace cubschema
 
   }
 
-  system_catalog_definition
+  system_metadata_definition
   system_catalog_initializer::get_view_db_histogram ()
   {
-    return system_catalog_definition (
+    return system_metadata_definition (
 		   // name
 		   CTV_HISTOGRAM_NAME,
 		   // columns

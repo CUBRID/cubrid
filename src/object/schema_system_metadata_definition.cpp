@@ -16,7 +16,7 @@
  *
  */
 
-#include "schema_system_catalog_definition.hpp"
+#include "schema_system_metadata_definition.hpp"
 
 #include "db.h"
 #include "dbtype_function.h"
@@ -83,7 +83,7 @@ namespace cubschema
     //
   }
 
-  system_catalog_definition::system_catalog_definition (const std::string &n, const attr_vec_type &attrs,
+  system_metadata_definition::system_metadata_definition (const std::string &n, const attr_vec_type &attrs,
       const cstr_vec_type &cts,
       const authorization &au,
       row_init_type ri = nullptr)

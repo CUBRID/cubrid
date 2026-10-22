@@ -16,21 +16,22 @@
  *
  */
 
-#include "schema_system_catalog_builder.hpp"
+#include "schema_system_metadata_builder.hpp"
 
 #include "db.h"
 #include "dbtype.h"
 #include "authenticate.h"
 #include "class_object.h"
 #include "schema_template.h"
+#include "schema_information_schema.hpp"
 #include "schema_manager.h"
 #include "locator_cl.h"
-#include "schema_system_catalog_definition.hpp"
+#include "schema_system_metadata_definition.hpp"
 
 namespace cubschema
 {
   MOP
-  system_catalog_builder::create_and_mark_system_class (const std::string_view name)
+  system_metadata_builder::create_and_mark_system_class (const std::string_view name)
   {
     if (name.empty ())
       {
@@ -43,7 +44,8 @@ namespace cubschema
       {
 	class_mop = db_create_class (name.data ());
       }
-    else if (sm_is_system_vclass (name))
+    /* an information_schema view is created under its bare name and owned by INFORMATION_SCHEMA afterwards */
+    else if (sm_is_system_vclass (name) || sm_is_information_schema_views (name))
       {
 	class_mop = db_create_vclass (name.data ());
       }
@@ -61,7 +63,7 @@ namespace cubschema
   }
 
   int
-  system_catalog_builder::build_class (const MOP class_mop, const system_catalog_definition &catalog_def)
+  system_metadata_builder::build_class (const MOP class_mop, const system_metadata_definition &def)
   {
     int error_code = NO_ERROR;
 
@@ -73,14 +75,14 @@ namespace cubschema
       }
 
     // define
-    SM_TEMPLATE *def = smt_edit_class_mop (class_mop, AU_ALTER);
-    if (def == nullptr)
+    SM_TEMPLATE *tmpl = smt_edit_class_mop (class_mop, AU_ALTER);
+    if (tmpl == nullptr)
       {
 	ASSERT_ERROR_AND_SET (error_code);
 	return error_code;
       }
 
-    const std::vector <attribute> &attributes = catalog_def.attributes;
+    const std::vector <attribute> &attributes = def.attributes;
     for (const auto &attr: attributes)
       {
 	const char *name = attr.name.data ();
@@ -90,10 +92,10 @@ namespace cubschema
 	  {
 	  case attribute_kind::COLUMN:
 	  {
-	    error_code = smt_add_attribute (def, name, type, NULL);
+	    error_code = smt_add_attribute (tmpl, name, type, NULL);
 	    if (error_code != NO_ERROR)
 	      {
-		smt_quit (def);
+		smt_quit (tmpl);
 		return error_code;
 	      }
 
@@ -102,12 +104,12 @@ namespace cubschema
 		DB_VALUE default_value;
 		db_make_null (&default_value);
 		attr.dvalue_func (&default_value);
-		error_code = smt_set_attribute_default (def, name, 0, (DB_VALUE *) &default_value, NULL);
+		error_code = smt_set_attribute_default (tmpl, name, 0, (DB_VALUE *) &default_value, NULL);
 	      }
 	  }
 	  break;
 	  case attribute_kind::CLASS_METHOD:
-	    error_code = smt_add_class_method (def, name, type);
+	    error_code = smt_add_class_method (tmpl, name, type);
 	    break;
 	  default:
 	    error_code = ER_FAILED;
@@ -117,20 +119,20 @@ namespace cubschema
 	if (error_code != NO_ERROR)
 	  {
 	    assert (false);
-	    smt_quit (def);
+	    smt_quit (tmpl);
 	    return error_code;
 	  }
       }
 
-    error_code = sm_update_class (def, NULL);
+    error_code = sm_update_class (tmpl, NULL);
     if (error_code != NO_ERROR)
       {
 	assert (false);
-	smt_quit (def);
+	smt_quit (tmpl);
 	return error_code;
       }
 
-    const std::vector <constraint> &constraints = catalog_def.constraints;
+    const std::vector <constraint> &constraints = def.constraints;
     for (const auto &c: constraints)
       {
 	DB_CONSTRAINT_TYPE type = c.type;
@@ -175,7 +177,7 @@ namespace cubschema
 	return er_errid ();
       }
 
-    const authorization &auth = catalog_def.auth;
+    const authorization &auth = def.auth;
     if (auth.owner != nullptr)
       {
 	error_code = au_change_class_owner_including_partitions (class_mop, auth.owner);
@@ -196,9 +198,9 @@ namespace cubschema
 	  }
       }
 
-    if (catalog_def.row_initializer)
+    if (def.row_initializer)
       {
-	error_code = catalog_def.row_initializer (class_mop);
+	error_code = def.row_initializer (class_mop);
 	if (error_code != NO_ERROR)
 	  {
 	    assert (false);
@@ -210,7 +212,7 @@ namespace cubschema
   }
 
   int
-  system_catalog_builder::build_vclass (const MOP class_mop, const system_catalog_definition &def)
+  system_metadata_builder::build_vclass (const MOP class_mop, const system_metadata_definition &def)
   {
     int error_code = NO_ERROR;
 

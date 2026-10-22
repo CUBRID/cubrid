@@ -18,11 +18,11 @@
 
 
 /*
- * schema_system_catalog_definition.hpp
+ * schema_system_metadata_definition.hpp
  */
 
-#ifndef _SCHEMA_SYSTEM_CATALOG_DEFINITION_HPP_
-#define _SCHEMA_SYSTEM_CATALOG_DEFINITION_HPP_
+#ifndef _SCHEMA_SYSTEM_METADATA_DEFINITION_HPP_
+#define _SCHEMA_SYSTEM_METADATA_DEFINITION_HPP_
 
 #include <string>
 #include <string_view>
@@ -88,7 +88,7 @@ namespace cubschema
     authorization (struct db_object *&o, const std::vector<grant> &gs);
   };
 
-  struct system_catalog_definition
+  struct system_metadata_definition
   {
     using attr_vec_type = std::vector <attribute>;
     using cstr_vec_type = std::vector <constraint>;
@@ -100,11 +100,11 @@ namespace cubschema
     const authorization auth;
     const row_init_type row_initializer;
 
-    system_catalog_definition (const std::string &n, const attr_vec_type &attrs,
-			       const cstr_vec_type &cts,
-			       const authorization &au,
-			       row_init_type ri);
+    system_metadata_definition (const std::string &n, const attr_vec_type &attrs,
+				const cstr_vec_type &cts,
+				const authorization &au,
+				row_init_type ri);
   };
 }
 
-#endif // _SCHEMA_SYSTEM_CATALOG_DEFINITION_HPP_
+#endif // _SCHEMA_SYSTEM_METADATA_DEFINITION_HPP_

@@ -24,32 +24,32 @@
 #ifndef _SCHEMA_INFORMATION_SCHEMA_INSTALL_HPP_
 #define _SCHEMA_INFORMATION_SCHEMA_INSTALL_HPP_
 
-#include "schema_information_schema_definition.hpp"
+#include "schema_system_metadata_definition.hpp"
 
 namespace cubschema
 {
   class information_schema_initializer
   {
     public:
-      static information_schema_definition get_view_column_privileges ();
-      static information_schema_definition get_view_columns ();
-      static information_schema_definition get_view_domains ();
-      static information_schema_definition get_view_foreign_servers ();
-      static information_schema_definition get_view_key_column_usage ();
-      static information_schema_definition get_view_parameters ();
-      static information_schema_definition get_view_partitions ();
-      static information_schema_definition get_view_referential_constraints ();
-      static information_schema_definition get_view_routine_privileges ();
-      static information_schema_definition get_view_routines ();
-      static information_schema_definition get_view_schemata ();
-      static information_schema_definition get_view_sequences ();
-      static information_schema_definition get_view_statistics ();
-      static information_schema_definition get_view_synonyms ();
-      static information_schema_definition get_view_table_constraints ();
-      static information_schema_definition get_view_table_privileges ();
-      static information_schema_definition get_view_tables ();
-      static information_schema_definition get_view_triggers ();
-      static information_schema_definition get_view_views ();
+      static system_metadata_definition get_view_column_privileges ();
+      static system_metadata_definition get_view_columns ();
+      static system_metadata_definition get_view_domains ();
+      static system_metadata_definition get_view_foreign_servers ();
+      static system_metadata_definition get_view_key_column_usage ();
+      static system_metadata_definition get_view_parameters ();
+      static system_metadata_definition get_view_partitions ();
+      static system_metadata_definition get_view_referential_constraints ();
+      static system_metadata_definition get_view_routine_privileges ();
+      static system_metadata_definition get_view_routines ();
+      static system_metadata_definition get_view_schemata ();
+      static system_metadata_definition get_view_sequences ();
+      static system_metadata_definition get_view_statistics ();
+      static system_metadata_definition get_view_synonyms ();
+      static system_metadata_definition get_view_table_constraints ();
+      static system_metadata_definition get_view_table_privileges ();
+      static system_metadata_definition get_view_tables ();
+      static system_metadata_definition get_view_triggers ();
+      static system_metadata_definition get_view_views ();
   };
 }
 

@@ -18,29 +18,29 @@
 
 
 /*
- * schema_system_catalog_builder.hpp
+ * schema_system_metadata_builder.hpp
  */
 
-#ifndef _SCHEMA_SYSTEM_CATALOG_BUILDER_HPP_
-#define _SCHEMA_SYSTEM_CATALOG_BUILDER_HPP_
+#ifndef _SCHEMA_SYSTEM_METADATA_BUILDER_HPP_
+#define _SCHEMA_SYSTEM_METADATA_BUILDER_HPP_
 
 #include "schema_system_catalog.hpp"
-#include "schema_system_catalog_definition.hpp"
+#include "schema_system_metadata_definition.hpp"
 
 namespace cubschema
 {
 
-  class system_catalog_builder
+  class system_metadata_builder
   {
     private:
-      system_catalog_builder () = default;
-      ~system_catalog_builder () = default;
+      system_metadata_builder () = default;
+      ~system_metadata_builder () = default;
 
     public:
       static MOP create_and_mark_system_class (const std::string_view name);
-      static int build_class (const MOP class_mop, const system_catalog_definition &def);
-      static int build_vclass (const MOP class_mop, const system_catalog_definition &def);
+      static int build_class (const MOP class_mop, const system_metadata_definition &def);
+      static int build_vclass (const MOP class_mop, const system_metadata_definition &def);
   };
 }
 
-#endif // _SCHEMA_SYSTEM_CATALOG_BUILDER_HPP_
+#endif // _SCHEMA_SYSTEM_METADATA_BUILDER_HPP_
