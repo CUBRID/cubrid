@@ -2082,8 +2082,8 @@ domain_walk_specs (DOMAIN_LOAD_CONTEXT * ctx, ACCESS_SPEC_TYPE * spec)
 	  domain_walk_regu (ctx, key->key_limit_u);
 	  ctx->in_key_limit = false;
 	  /* the scan computes its key limits when it opens, and turns an overflow of their arithmetic into a limit
-	   * (scan_handle_overflow_subtraction_upper, fetch_and_coerce_key_limit_lower): a constant there is the scan's
-	   * to compute, not one whose failure is resolve_domains' error */
+	   * (fetch_key_limits): a constant there is the scan's to compute, not one whose failure is resolve_domains'
+	   * error */
 	  domain_force_row (key->key_limit_l);
 	  domain_force_row (key->key_limit_u);
 	}
