@@ -18477,6 +18477,19 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
 	  pt_move_node (active, union_node->info.query.q.union_.arg2);
 	}
 
+      /* An operand is one scope deeper than its set operation, so its correlation levels are one higher. Lower them
+       * since the operand takes the place of the set operation; otherwise a subquery correlated to the outer query
+       * would be taken as correlated to a farther scope and evaluated only once. */
+      if (PT_IS_QUERY_NODE_TYPE (active->node_type) && active->info.query.correlation_level > 0)
+	{
+	  active = mq_bump_correlation_level (parser, active, -1, active->info.query.correlation_level);
+	  if (!PT_IS_SELECT (active))
+	    {
+	      /* mq_bump_correlation_level () does not change a set operation node itself */
+	      active->info.query.correlation_level--;
+	    }
+	}
+
       /* to save union's orderby or limit clause to arg1 or arg2 */
       pt_move_node (union_orderby, union_node->info.query.order_by);
       pt_move_node (union_orderby_for, union_node->info.query.orderby_for);
