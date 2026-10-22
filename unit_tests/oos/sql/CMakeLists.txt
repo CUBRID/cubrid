@@ -45,6 +45,7 @@ add_test(NAME test_oos_sql_bigone COMMAND test_oos_sql_bigone)
 add_test(NAME test_oos_sql_eager_cleanup COMMAND test_oos_sql_eager_cleanup)
 add_test(NAME test_oos_sql_storage COMMAND test_oos_sql_storage)
 add_test(NAME test_oos_sql_show COMMAND test_oos_sql_show)
+add_test(NAME test_oos_sql_deferred_write COMMAND test_oos_sql_deferred_write)
 add_test(NAME test_oos_sql_visible_version COMMAND test_oos_sql_visible_version)
 
 set_tests_properties(
@@ -54,6 +55,7 @@ set_tests_properties(
   test_oos_sql_eager_cleanup
   test_oos_sql_storage
   test_oos_sql_show
+  test_oos_sql_deferred_write
   test_oos_sql_visible_version
   PROPERTIES FIXTURES_REQUIRED OOS_DB RUN_SERIAL TRUE TIMEOUT 30
 )
@@ -67,3 +69,6 @@ set_tests_properties(
   test_oos_sql_crash_recovery
   PROPERTIES FIXTURES_REQUIRED OOS_RECOVERY_DB RUN_SERIAL TRUE TIMEOUT 180
 )
+
+# Expected-error tests also collect debug stack traces at allocation, storage and export failure boundaries.
+set_tests_properties(test_oos_sql_deferred_write PROPERTIES TIMEOUT 180)
