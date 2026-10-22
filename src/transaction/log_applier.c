@@ -642,6 +642,7 @@ static int la_coordinator_store_apply_info_at_interval (void);
 static int la_coordinator_record_result (const LA_RESULT * result);
 static int la_coordinator_complete_without_task (const LOG_LSA * lsa);
 static bool la_is_in_recovery_range (const LOG_LSA * commit_lsa);
+static int la_coordinator_pop_result (LA_RESULT * result);
 static int la_coordinator_wait_until_retired (void);
 static int la_coordinator_wait_for_inflight_slot (void);
 static int la_coordinator_wait_for_commit_order_slot (void);
@@ -1032,8 +1033,37 @@ la_is_in_recovery_range (const LOG_LSA * commit_lsa)
 }
 
 /*
+ * la_coordinator_pop_result() - take the oldest result, waiting until one arrives or the applier is told to stop
+ *   return: NO_ERROR when a result was taken, ER_FAILED on shutdown
+ *   result(out): the dequeued result
+ *
+ * Note:
+ *   Waits in 100 ms steps and checks la_applier_need_shutdown between them. A worker that stops on an error,
+ *   the last worker that fails to start and SIGTERM only set that flag; when no worker is left, the result
+ *   this wait is for never arrives, so an untimed wait would never end.
+ */
+static int
+la_coordinator_pop_result (LA_RESULT * result)
+{
+  while (true)
+    {
+      if (la_result_queue_try_pop (result) == NO_ERROR)
+	{
+	  return NO_ERROR;
+	}
+
+      if (la_applier_need_shutdown)
+	{
+	  return ER_FAILED;
+	}
+
+      (void) la_result_queue_wait_for_result (100);
+    }
+}
+
+/*
  * la_coordinator_wait_until_retired() - wait until every task handed to the workers is retired
- *   return: NO_ERROR, or an error from collecting or retiring results
+ *   return: NO_ERROR, or an error from collecting or retiring results, or ER_FAILED on shutdown
  *
  * Note:
  *   Collects and retires results the same way la_coordinator_wait_for_inflight_slot does, until the
@@ -1047,7 +1077,7 @@ la_coordinator_wait_until_retired (void)
 
   while (la_inflight_get_count () > 0)
     {
-      error = la_result_queue_pop (&result);
+      error = la_coordinator_pop_result (&result);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -1088,7 +1118,7 @@ la_coordinator_wait_for_inflight_slot (void)
 
   while (la_inflight_get_count () >= la_inflight_get_capacity ())
     {
-      error = la_result_queue_pop (&result);
+      error = la_coordinator_pop_result (&result);
       if (error != NO_ERROR)
 	{
 	  return error;
