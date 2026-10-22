@@ -18439,6 +18439,44 @@ pt_try_remove_order_by (PARSER_CONTEXT * parser, PT_NODE * query)
 
 
 /*
+ * pt_try_set_subquery_distinct - remove an unnecessary order_by and mark the query DISTINCT if that keeps its values
+ *  return: true if the query is DISTINCT afterwards, false if it could not be marked DISTINCT
+ *  parser(in): Parser context
+ *  query(in/out): Processed query
+ *
+ * Note: Only for a caller that needs the set of values, such as a range predicate.
+ *       DISTINCT is not set where rows are counted after it. An ORDER BY that stays is kept for ORDERBY_NUM ()
+ *       or a row cut. An orderby_for predicate and a LIMIT not yet rewritten cut rows after it.
+ *       EXCEPT ALL would become EXCEPT, so DISTINCT is not set either.
+ *       A false return sets no DISTINCT. The caller does not rely on the query being DISTINCT,
+ *       or removes duplicates outside the query.
+ *       Call it after pt_eval_type_pre () has rewritten the LIMIT of a SELECT.
+ */
+bool
+pt_try_set_subquery_distinct (PARSER_CONTEXT * parser, PT_NODE * query)
+{
+  assert (PT_IS_QUERY_NODE_TYPE (query->node_type));
+
+  pt_try_remove_order_by (parser, query);
+
+  if (query->info.query.all_distinct == PT_DISTINCT)
+    {
+      return true;
+    }
+
+  if (query->info.query.order_by != NULL || query->info.query.orderby_for != NULL
+      || (query->info.query.limit != NULL && query->info.query.flag.rewrite_limit)
+      || (query->node_type == PT_DIFFERENCE && query->info.query.all_distinct == PT_ALL))
+    {
+      return false;
+    }
+
+  query->info.query.all_distinct = PT_DISTINCT;
+  return true;
+}
+
+
+/*
  * pt_check_union_is_foldable - decide if union can be folded
  *
  *  return : union foldability
