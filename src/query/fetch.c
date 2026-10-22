@@ -2357,123 +2357,243 @@ is_argument_wrapped_with_cast_op (const REGU_VARIABLE * regu_var)
  */
 
 /*
- * fetch_peek_leftmost_numeric_regu () - Recursively search leftptr of an arith tree for the first NUMERIC-typed node.
+ * key_limit_coerce () - CBRD-27583 (D-94): convert a key limit value by its regu's compiled type
+ *   return: the conversion's status
+ *   regu_var(in): the regu the value was fetched from
+ *   value(in): the fetched value, of the regu's type (a bind type signature's plan)
+ *   dest(out): the converted value
+ *   target(in): BIGINT, or DOUBLE for an overflowed bound's sign
+ *   conv(in): the converter the unpack found (KEY_INFO key_limit_l_conv, key_limit_u_conv), NULL for none
  *
- *   return       : peeked DB_VALUE of the NUMERIC node, or NULL if not found
- *   thread_p(in) : thread entry
- *   regu_var(in) : root of the regu variable arith tree to search
- *   vd(in)       : value descriptor
+ * Note: a bound that does not fit BIGINT or is NULL falls back to key_limit_eval (), whose operands and the DOUBLE
+ *       sign have no unpack converter: those are found by the compiled type at scan open, never by the value.
  */
-DB_VALUE *
-fetch_peek_leftmost_numeric_regu (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd)
+static TP_DOMAIN_STATUS
+key_limit_coerce (const REGU_VARIABLE * regu_var, const DB_VALUE * value, DB_VALUE * dest, const TP_DOMAIN * target,
+		  TP_VALUE_CONVERTER conv)
 {
-  ARITH_TYPE *arithptr;
-  DB_VALUE *dbvalp;
-
-  if (regu_var == NULL)
+  const DB_TYPE planned = TP_DOMAIN_TYPE (regu_var->domain);
+  assert (DB_VALUE_DOMAIN_TYPE (value) == planned
+	  || (TP_IS_CHAR_TYPE (DB_VALUE_DOMAIN_TYPE (value)) && TP_IS_CHAR_TYPE (planned)));
+  if (conv == NULL && planned != TP_DOMAIN_TYPE (target))
     {
-      return NULL;
+      conv = tp_value_find_converter (planned, target, DOMAIN_CONVERT_IMPLICIT);
     }
-
-  if (TP_DOMAIN_TYPE (regu_var->domain) == DB_TYPE_NUMERIC)
-    {
-      dbvalp = NULL;
-      if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, NULL, NULL, &dbvalp) == NO_ERROR
-	  && dbvalp != NULL && DB_VALUE_DOMAIN_TYPE (dbvalp) == DB_TYPE_NUMERIC)
-	{
-	  return dbvalp;
-	}
-      return NULL;
-    }
-
-  if (regu_var->type == TYPE_INARITH || regu_var->type == TYPE_OUTARITH)
-    {
-      arithptr = regu_var->value.arithptr;
-      return fetch_peek_leftmost_numeric_regu (thread_p, arithptr->leftptr, vd);
-    }
-
-  return NULL;
+  return tp_value_coerce_with_converter (value, dest, target, planned, conv);
 }
 
 /*
- * fetch_and_coerce_key_limit_lower () - fetch regu variable and coerce to BIGINT,
- *                                       handling NUMERIC-to-BIGINT overflow for a lower key limit.
+ * key_limit_eval () - evaluate a key limit expression tree in BIGINT arithmetic
  *
- *   return          : NO_ERROR or error code
- *   thread_p (in)   : thread entry
- *   key_limit_l(in) : regu variable for lower key limit
- *   conv (in)       : CBRD-27583 (D-94): the converter of key_limit_l's domain into BIGINT, found at unpack
- *                     (KEY_INFO key_limit_l_conv)
- *   vd (in)         : value descriptor
- *   out_val (out)   : always set to a valid BIGINT on success;
- *                     DB_BIGINT_MAX on positive overflow (no rows), 0 on negative overflow (all rows)
+ *   return        : NO_ERROR or error code
+ *   thread_p(in)  : thread entry
+ *   regu_var(in)  : key limit expression (lower or upper)
+ *   vd(in)        : value descriptor
+ *   result(out)   : evaluated BIGINT, valid when *is_null is false
+ *   is_null(out)  : set to true when a NULL takes part in the expression
+ *
+ * Note: Key limits are built from T_SUB (rownum < N is N - 1, a range is upper - lower), T_LEAST and
+ *       T_GREATEST (merge with a user KEYLIMIT). The optimizer marks those nodes with
+ *       REGU_VARIABLE_KEY_LIMIT_ARITH and they are computed here in BIGINT, so a bound beyond the BIGINT
+ *       range never reaches the generic arithmetic. Any other node, including arithmetic written by the
+ *       user such as rownum <= ? - ?, is fetched as a whole and only its value is looked at.
+ *       A negative bound only means "nothing to skip" or "nothing to read", so it becomes -1 whatever its
+ *       magnitude. The sign is kept for the KEYLIMIT check and the upper += lower adjustment in
+ *       scan_init_index_key_limit (). A positive bound beyond the BIGINT range becomes DB_BIGINT_MAX.
  */
-int
-fetch_and_coerce_key_limit_lower (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_limit_l, TP_VALUE_CONVERTER conv,
-				  VAL_DESCR * vd, DB_VALUE * out_val)
+static int
+key_limit_eval (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, VAL_DESCR * vd, DB_BIGINT * result, bool * is_null)
 {
-  TP_DOMAIN *domainp = tp_domain_resolve_default (DB_TYPE_BIGINT);
+  TP_DOMAIN *bigint_domain = tp_domain_resolve_default (DB_TYPE_BIGINT);
   TP_DOMAIN_STATUS dom_status;
-  DB_VALUE *tmp_dbvalp;
+  DB_VALUE *peek_val;
+  DB_VALUE coerced_val;
+  DB_BIGINT left, right, diff;
   int error_code;
 
-  assert (key_limit_l != NULL);
-  assert (vd != NULL);
-  assert (out_val != NULL);
+  assert (regu_var != NULL);
 
-  if (key_limit_l->type == TYPE_INARITH)
+  if (regu_var->type == TYPE_INARITH && regu_var->value.arithptr != NULL
+      && REGU_VARIABLE_IS_FLAGED (regu_var, REGU_VARIABLE_KEY_LIMIT_ARITH))
     {
-      error_code = fetch_peek_dbval (thread_p, key_limit_l, vd, NULL, NULL, NULL, &tmp_dbvalp);
+      ARITH_TYPE *arithptr = regu_var->value.arithptr;
+
+      switch (arithptr->opcode)
+	{
+	case T_SUB:
+	case T_LEAST:
+	case T_GREATEST:
+	  error_code = key_limit_eval (thread_p, arithptr->leftptr, vd, &left, is_null);
+	  if (error_code != NO_ERROR || *is_null)
+	    {
+	      return error_code;
+	    }
+	  error_code = key_limit_eval (thread_p, arithptr->rightptr, vd, &right, is_null);
+	  if (error_code != NO_ERROR || *is_null)
+	    {
+	      return error_code;
+	    }
+
+	  if (arithptr->opcode == T_SUB)
+	    {
+	      if (__builtin_sub_overflow (left, right, &diff))
+		{
+		  /* keep an overflowed difference in BIGINT: unbounded if positive, nothing to read if negative
+		   * ex) rownum between -H and H: scan count = DB_BIGINT_MAX - (-2) */
+		  diff = (right < 0) ? DB_BIGINT_MAX : -1;
+		}
+	      *result = diff;
+	    }
+	  else if (arithptr->opcode == T_LEAST)
+	    {
+	      *result = (left < right) ? left : right;
+	    }
+	  else
+	    {
+	      *result = (left > right) ? left : right;
+	    }
+	  return NO_ERROR;
+
+	default:
+	  break;
+	}
+    }
+
+  error_code = fetch_peek_dbval (thread_p, regu_var, vd, NULL, NULL, NULL, &peek_val);
+  if (error_code != NO_ERROR)
+    {
+      return error_code;
+    }
+
+  if (DB_IS_NULL (peek_val))
+    {
+      *is_null = true;
+      return NO_ERROR;
+    }
+
+  db_make_null (&coerced_val);
+  dom_status = key_limit_coerce (regu_var, peek_val, &coerced_val, bigint_domain, NULL);
+  if (dom_status == DOMAIN_COMPATIBLE)
+    {
+      *result = db_get_bigint (&coerced_val);
+      if (*result < 0)
+	{
+	  /* a negative bound skips or reads nothing whatever its magnitude, so keep only the sign
+	   * ex) -9223372036854775807 < rownum < 5: lower -1, upper (5 - 1) - (-1) = 5, then 4 rows */
+	  *result = -1;
+	}
+      return NO_ERROR;
+    }
+
+  if (dom_status == DOMAIN_OVERFLOW)
+    {
+      /* beyond the BIGINT range: only the sign matters, whatever the type (NUMERIC, DOUBLE, string)
+       * ex) rownum < 1e46: upper DB_BIGINT_MAX - 1, all rows.  rownum < -1e46: upper -1 - 1, no rows */
+      db_make_null (&coerced_val);
+      if (key_limit_coerce (regu_var, peek_val, &coerced_val, tp_domain_resolve_default (DB_TYPE_DOUBLE), NULL)
+	  == DOMAIN_COMPATIBLE)
+	{
+	  *result = (db_get_double (&coerced_val) < 0) ? -1 : DB_BIGINT_MAX;
+	  return NO_ERROR;
+	}
+    }
+
+  (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, peek_val, bigint_domain);
+  return ER_FAILED;
+}
+
+/*
+ * key_limit_fetch_bigint () - fetch a key limit expression as a whole and coerce it to BIGINT
+ *   return      : true on success; false when the fetch fails, the value does not fit in BIGINT or is NULL.
+ *                 No error is set here for the last two cases
+ *   thread_p(in): thread entry
+ *   regu_var(in): key limit expression
+ *   conv(in)    : its converter into BIGINT, found at unpack
+ *   vd(in)      : value descriptor
+ *   result(out) : BIGINT value on success
+ */
+static bool
+key_limit_fetch_bigint (THREAD_ENTRY * thread_p, REGU_VARIABLE * regu_var, TP_VALUE_CONVERTER conv, VAL_DESCR * vd,
+			DB_BIGINT * result)
+{
+  DB_VALUE *peek_val;
+  DB_VALUE coerced_val;
+
+  if (fetch_peek_dbval (thread_p, regu_var, vd, NULL, NULL, NULL, &peek_val) != NO_ERROR)
+    {
+      return false;
+    }
+
+  db_make_null (&coerced_val);
+  if (DB_IS_NULL (peek_val)
+      || key_limit_coerce (regu_var, peek_val, &coerced_val, &tp_Bigint_domain, conv) != DOMAIN_COMPATIBLE
+      || DB_IS_NULL (&coerced_val) || DB_VALUE_DOMAIN_TYPE (&coerced_val) != DB_TYPE_BIGINT)
+    {
+      return false;
+    }
+
+  *result = db_get_bigint (&coerced_val);
+  return true;
+}
+
+/*
+ * fetch_key_limits () - fetch the lower and upper key limits as BIGINT
+ *
+ *   return          : NO_ERROR or error code
+ *   thread_p(in)    : thread entry
+ *   key_limit_l(in) : lower key limit expression, may be NULL
+ *   l_conv(in)      : its converter into BIGINT, found at unpack (KEY_INFO key_limit_l_conv)
+ *   key_limit_u(in) : upper key limit expression, may be NULL
+ *   u_conv(in)      : its converter into BIGINT, found at unpack (KEY_INFO key_limit_u_conv)
+ *   vd(in)          : value descriptor
+ *   lower(out)      : lower limit, set when key_limit_l is not NULL
+ *   upper(out)      : upper limit, set when key_limit_u is not NULL
+ *   is_null(out)    : set to true when a NULL takes part in either bound (no row can match)
+ *
+ * Note: Each bound is first fetched as a whole and coerced to BIGINT, so every in-range query behaves as
+ *       before. When either bound fails that way (a value beyond the BIGINT range, or NULL), the error
+ *       left by the fetch is cleared and both bounds are evaluated again with key_limit_eval (), which
+ *       reports the error if the value is really bad. Both bounds, because the upper bound of a range is
+ *       built as upper - lower and the two sides have to see the same lower value.
+ */
+int
+fetch_key_limits (THREAD_ENTRY * thread_p, REGU_VARIABLE * key_limit_l, TP_VALUE_CONVERTER l_conv,
+		  REGU_VARIABLE * key_limit_u, TP_VALUE_CONVERTER u_conv, VAL_DESCR * vd, DB_BIGINT * lower,
+		  DB_BIGINT * upper, bool * is_null)
+{
+  int error_code;
+
+  assert (vd != NULL);
+  assert (is_null != NULL);
+  assert (key_limit_l == NULL || lower != NULL);
+  assert (key_limit_u == NULL || upper != NULL);
+
+  *is_null = false;
+
+  if ((key_limit_l == NULL || key_limit_fetch_bigint (thread_p, key_limit_l, l_conv, vd, lower))
+      && (key_limit_u == NULL || key_limit_fetch_bigint (thread_p, key_limit_u, u_conv, vd, upper)))
+    {
+      return NO_ERROR;
+    }
+
+  er_clear ();
+
+  if (key_limit_l != NULL)
+    {
+      error_code = key_limit_eval (thread_p, key_limit_l, vd, lower, is_null);
+      if (error_code != NO_ERROR || *is_null)
+	{
+	  return error_code;
+	}
+    }
+
+  if (key_limit_u != NULL)
+    {
+      error_code = key_limit_eval (thread_p, key_limit_u, vd, upper, is_null);
       if (error_code != NO_ERROR)
 	{
-	  if (er_errid () != ER_IT_DATA_OVERFLOW && er_errid () != ER_QPROC_OVERFLOW_SUBTRACTION)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  /* NUMERIC -> BIGINT overflow during arithmetic: find the NUMERIC operand and check its sign */
-	  tmp_dbvalp = fetch_peek_leftmost_numeric_regu (thread_p, key_limit_l, vd);
-	  if (tmp_dbvalp == NULL)
-	    {
-	      return ER_FAILED;
-	    }
-
-	  /* positive overflow: no rows match (DB_BIGINT_MAX); negative overflow: all rows match (0) */
-	  db_make_bigint (out_val, DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (tmp_dbvalp) ? 0 : DB_BIGINT_MAX);
-	  er_clear ();
-	  return NO_ERROR;
+	  return error_code;
 	}
-    }
-  else
-    {
-      if (fetch_peek_dbval (thread_p, key_limit_l, vd, NULL, NULL, NULL, &tmp_dbvalp) != NO_ERROR)
-	{
-	  return ER_FAILED;
-	}
-    }
-
-  /* coerce fetched value to BIGINT, by the converter the unpack found for the limit's domain */
-  const DB_TYPE planned = key_limit_l->domain != NULL ? TP_DOMAIN_TYPE (key_limit_l->domain) : DB_TYPE_NULL;
-  /* a bind type signature's plan: the value has its regu's type (D-77's lookup below it is unreachable) */
-  assert (DB_IS_NULL (tmp_dbvalp) || DB_VALUE_DOMAIN_TYPE (tmp_dbvalp) == planned);
-  dom_status = tp_value_coerce_with_converter (tmp_dbvalp, out_val, domainp, planned, conv);
-  if (dom_status != DOMAIN_COMPATIBLE)
-    {
-      if (dom_status == DOMAIN_OVERFLOW && DB_VALUE_DOMAIN_TYPE (tmp_dbvalp) == DB_TYPE_NUMERIC)
-	{
-	  /* positive overflow: no rows match (DB_BIGINT_MAX); negative overflow: all rows match (0) */
-	  db_make_bigint (out_val, DB_VALUE_NUMERIC_IS_VALUE_NEGATIVE (tmp_dbvalp) ? 0 : DB_BIGINT_MAX);
-	  er_clear ();
-	  return NO_ERROR;
-	}
-      (void) tp_domain_status_er_set (dom_status, ARG_FILE_LINE, tmp_dbvalp, domainp);
-      return ER_FAILED;
-    }
-
-  if (DB_VALUE_DOMAIN_TYPE (out_val) != DB_TYPE_BIGINT)
-    {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_QPROC_INVALID_DATATYPE, 0);
-      return ER_FAILED;
     }
 
   return NO_ERROR;

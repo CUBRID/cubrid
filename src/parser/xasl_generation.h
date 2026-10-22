@@ -162,8 +162,8 @@ extern PRED_EXPR *pt_to_pred_expr_with_arg (PARSER_CONTEXT * parser, PT_NODE * n
 extern XASL_NODE *parser_generate_xasl (PARSER_CONTEXT * p, PT_NODE * node);
 extern REGU_VARIABLE *pt_make_regu_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2,
 					  const REGU_VARIABLE * arg3, const OPERATOR_TYPE op, const TP_DOMAIN * domain);
-extern REGU_VARIABLE *pt_make_regu_arith_over_copies (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2,
-						      const OPERATOR_TYPE op, const TP_DOMAIN * domain);
+extern REGU_VARIABLE *pt_make_key_limit_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2,
+					       const OPERATOR_TYPE op, const TP_DOMAIN * domain);
 extern TP_DOMAIN *pt_xasl_type_enum_to_domain (const PT_TYPE_ENUM type);
 extern TP_DOMAIN *pt_xasl_node_to_domain (PARSER_CONTEXT * parser, const PT_NODE * node);
 extern const TP_DOMAIN *pt_nvl_node_domain (PARSER_CONTEXT * parser, const PT_NODE * node, int j,

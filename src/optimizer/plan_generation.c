@@ -957,7 +957,7 @@ add_semi_anti_key_limit (PARSER_CONTEXT * parser, KEY_INFO * key_infop)
     {
       /* replace the user limit only once the merged node exists: on failure the caller carries on
          without our limit, and the user's KEYLIMIT must survive that */
-      REGU_VARIABLE *merged = pt_make_regu_arith (key_infop->key_limit_u, regu_one, NULL, T_LEAST, dom_bigint);
+      REGU_VARIABLE *merged = pt_make_key_limit_arith (key_infop->key_limit_u, regu_one, T_LEAST, dom_bigint);
 
       if (merged == NULL)
 	{
@@ -4271,7 +4271,7 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	}
 
       if (!(regu_one = pt_to_regu_variable (parser, node_one, UNBOX_AS_VALUE))
-	  || !(regu_low = pt_make_regu_arith_over_copies (rhs, regu_one, T_SUB, dom_bigint)))
+	  || !(regu_low = pt_make_key_limit_arith (rhs, regu_one, T_SUB, dom_bigint)))
 	{
 	  parser_free_node (parser, node_one);
 	  return false;
@@ -4294,7 +4294,7 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	}
 
       if (!(regu_one = pt_to_regu_variable (parser, node_one, UNBOX_AS_VALUE))
-	  || !(regu_low = pt_make_regu_arith_over_copies (rhs, regu_one, T_SUB, dom_bigint)))
+	  || !(regu_low = pt_make_key_limit_arith (rhs, regu_one, T_SUB, dom_bigint)))
 	{
 	  parser_free_node (parser, node_one);
 	  return false;
@@ -4312,7 +4312,7 @@ qo_get_limit_from_eval_term (PARSER_CONTEXT * parser, PRED_EXPR * pred, REGU_PTR
 	}
 
       if (!(regu_one = pt_to_regu_variable (parser, node_one, UNBOX_AS_VALUE))
-	  || !(regu_low = pt_make_regu_arith_over_copies (rhs, regu_one, T_SUB, dom_bigint)))
+	  || !(regu_low = pt_make_key_limit_arith (rhs, regu_one, T_SUB, dom_bigint)))
 	{
 	  parser_free_node (parser, node_one);
 	  return false;
@@ -4444,7 +4444,7 @@ qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_nod
   ptr = upper->next;
   while (ptr)
     {
-      limit_infop->upper = pt_make_regu_arith (limit_infop->upper, ptr->var_p, NULL, T_LEAST, dom_bigint);
+      limit_infop->upper = pt_make_key_limit_arith (limit_infop->upper, ptr->var_p, T_LEAST, dom_bigint);
       if (!limit_infop->upper)
 	{
 	  regu_ptr_list_free (upper);
@@ -4464,7 +4464,7 @@ qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_nod
       ptr = lower->next;
       while (ptr)
 	{
-	  limit_infop->lower = pt_make_regu_arith (limit_infop->lower, ptr->var_p, NULL, T_GREATEST, dom_bigint);
+	  limit_infop->lower = pt_make_key_limit_arith (limit_infop->lower, ptr->var_p, T_GREATEST, dom_bigint);
 	  if (!limit_infop->lower)
 	    {
 	      regu_ptr_list_free (lower);
@@ -4531,7 +4531,7 @@ qo_get_key_limit_from_ordbynum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_no
   ptr = upper->next;
   while (ptr)
     {
-      limit_infop->upper = pt_make_regu_arith (limit_infop->upper, ptr->var_p, NULL, T_LEAST, dom_bigint);
+      limit_infop->upper = pt_make_key_limit_arith (limit_infop->upper, ptr->var_p, T_LEAST, dom_bigint);
       if (!limit_infop->upper)
 	{
 	  regu_ptr_list_free (upper);

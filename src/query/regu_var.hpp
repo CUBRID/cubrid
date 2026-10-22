@@ -222,6 +222,8 @@ const int REGU_VARIABLE_STRICT_TYPE_CAST = 0x400;/* for update or insert query *
 const int REGU_VARIABLE_CORRELATED = 0x800; /* for correlated scalar subquery cache */
 const int REGU_VARIABLE_FAST_PEEK = 0x1000;	/* inline fetch_peek_dbval () may return its value pointer directly */
 const int REGU_VARIABLE_AGG_OPERAND = 0x2000;	/* output expression whose value is consumed as an aggregate operand */
+const int REGU_VARIABLE_KEY_LIMIT_ARITH = 0x4000;	/* T_SUB/T_LEAST/T_GREATEST the optimizer builds for a key limit;
+							 * key_limit_eval () computes these nodes on their operands */
 
 /* CBRD-27583: REGU_VARIABLE.conv_mode - the converter (a DOMAIN_CONVERT_MODE, the ENUM name converter or the CHAR
  * prefix converter) and what a failed conversion gives */
