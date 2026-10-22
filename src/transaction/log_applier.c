@@ -832,6 +832,19 @@ la_coordinator_dispatch_task (const LA_TASK * task_in, LA_SCHED_STATUS sched_sta
   UINT64 dispatch_seq = 0;
   int error;
 
+  /* Every applier on this node writes to the same database, and the dbname lock decides which one may write.
+   * It is taken here, by the coordinator only, before a task that writes goes to a worker, as the serial
+   * applier took it before each transaction it applied; an applier with nothing to apply never asks for it.
+   * It is released only when nothing dispatched is left running, so it is taken again here after a release. */
+  if (task.has_items && LSA_GT (&task.commit_lsa, &la_Info.last_committed_lsa))
+    {
+      error = la_lock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name, la_Info.log_path);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
   error = la_coordinator_wait_for_inflight_slot ();
   if (error != NO_ERROR)
     {
@@ -8601,6 +8614,12 @@ la_lock_dbname (int *lockf_vdes, char *db_name, char *log_path)
 	  break;
 	}
 
+      /* another applier of this database owns the lock; it can hold it until its peer stops being active */
+      if (la_applier_need_shutdown)
+	{
+	  return ER_FAILED;
+	}
+
       LA_SLEEP (3, 0);
     }
 
@@ -10035,15 +10054,6 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 
   er_log_debug (ARG_FILE_LINE, "la_Info.maxslotted_reclength=%d\n", la_Info.maxslotted_reclength);
 
-  /* Take the dbname lock here, once, so the workers never read or change la_Info.db_lockf_vdes per
-   * transaction. la_lock_dbname does nothing when the lock is already held, so a later call is safe. */
-  error = la_lock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name, la_Info.log_path);
-  if (error != NO_ERROR)
-    {
-      la_shutdown ();
-      return error;
-    }
-
   /* Start the workers only now. They size their record buffers from the page size, known only from the log
    * header read above (started earlier they would get the default 4K, and a larger record would overrun its
    * buffer). And each opens its own client connection, which must not run while this thread is still
@@ -10171,7 +10181,10 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 		  now = time (NULL);
 		  assert_release (now >= last_eof_time);
 
-		  if ((now - last_eof_time) >= prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS))
+		  /* the lock is released only when nothing dispatched is still running; otherwise another applier
+		   * could write while this one still applies */
+		  if ((now - last_eof_time) >= prm_get_integer_value (PRM_ID_HA_APPLYLOGDB_LOG_WAIT_TIME_IN_SECS)
+		      && la_coordinator_drain_complete ())
 		    {
 		      clear_owner = true;
 		      error = la_unlock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name, clear_owner);
@@ -10535,7 +10548,8 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	      log_buf = NULL;	/* invalidate reclaimed this buffer; skip the paired release */
 	    }
 
-	  if (la_Info.is_role_changed == true)
+	  /* as above, the lock waits for the dispatched tasks; the role change is acted on once they finish */
+	  if (la_Info.is_role_changed == true && la_coordinator_drain_complete ())
 	    {
 	      clear_owner = true;
 	      error = la_unlock_dbname (&la_Info.db_lockf_vdes, la_slave_db_name, clear_owner);
