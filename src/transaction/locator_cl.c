@@ -4811,6 +4811,11 @@ locator_mflush (MOP mop, void *mf)
       LC_ONEOBJ_SET_TRIGGER_INVOLVED (mflush->obj);
     }
 
+  if (WS_IS_SERIAL_RESTART (mop))
+    {
+      LC_ONEOBJ_SET_SERIAL_RESTART (mflush->obj);
+    }
+
   HFID_COPY (&mflush->obj->hfid, hfid);
   COPY_OID (&mflush->obj->class_oid, ws_oid (class_mop));
   COPY_OID (&mflush->obj->oid, oid);

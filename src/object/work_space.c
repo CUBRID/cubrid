@@ -264,6 +264,7 @@ ws_make_mop (const OID * oid)
       op->mvcc_snapshot_version = ws_get_mvcc_snapshot_version () - 1;
 
       op->trigger_involved = 0;
+      op->serial_restart = 0;
 
       /* this is NULL only for the Null_object hack */
       if (oid != NULL)

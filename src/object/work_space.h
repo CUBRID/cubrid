@@ -154,6 +154,7 @@ struct db_object
 				 * loader only */
   unsigned decached:1;		/* set if mop is decached by calling ws_decache function */
   unsigned trigger_involved:1;	/* set if mop is involved in trigger, it is used only for cdc */
+  unsigned serial_restart:1;	/* a _db_serial row its DDL restarts: its current_val and started stand */
 };
 
 
@@ -402,6 +403,7 @@ struct ws_statistics
   while (0)
 
 #define WS_IS_TRIGGER_INVOLVED(mop) ((mop)->trigger_involved)
+#define WS_IS_SERIAL_RESTART(mop) ((mop)->serial_restart)
 
 #define WS_SET_TRIGGER_INVOLVED(mop) \
   do \

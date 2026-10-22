@@ -1870,8 +1870,9 @@ serial_row_write_begin (THREAD_ENTRY * thread_p, const OID * class_oidp, SERIAL_
  *
  * NEXT_VALUE advances current_val in place without the serial's lock, and a DDL writes back the whole row it
  * read, at commit. The current_val it read would replace the values issued since, and they would be issued
- * again. A write that leaves started at 1 does not restart the serial, so the row keeps the value on the page;
- * a restart (ALTER SERIAL ... START WITH, TRUNCATE, ALTER TABLE ... AUTO_INCREMENT) writes started 0 and stands.
+ * again, also by the DDL's own transaction. So the row keeps the value on the page, for a serial never issued
+ * (started 0) too; only a restart (ALTER SERIAL ... START WITH, TRUNCATE, ALTER TABLE ... AUTO_INCREMENT), which
+ * its client flags with LC_FLAG_SERIAL_RESTART, stands.
  */
 int
 serial_row_write_keep_value (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, const OID * serial_oidp,
@@ -1895,8 +1896,13 @@ serial_row_write_keep_value (THREAD_ENTRY * thread_p, SERIAL_ROW_WRITE * write, 
       return error;
     }
 
+  if (thread_p->serial_restart)
+    {
+      return NO_ERROR;
+    }
+
   new_started = heap_attrinfo_access (started_id, &write->new_info);
-  if (new_started == NULL || DB_IS_NULL (new_started) || db_get_int (new_started) == 0)
+  if (new_started == NULL || DB_IS_NULL (new_started))
     {
       return NO_ERROR;
     }

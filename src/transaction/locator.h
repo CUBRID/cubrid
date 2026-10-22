@@ -225,6 +225,14 @@ typedef enum
 #define LC_ONEOBJ_IS_TRIGGER_INVOLVED(obj) \
   (((obj)->flag & LC_FLAG_TRIGGER_INVOLVED) != 0)
 
+#define LC_FLAG_SERIAL_RESTART 0x20	/* a _db_serial write that restarts the serial: current_val and started stand */
+
+#define LC_ONEOBJ_SET_SERIAL_RESTART(obj) \
+  (obj)->flag |= LC_FLAG_SERIAL_RESTART
+
+#define LC_ONEOBJ_IS_SERIAL_RESTART(obj) \
+  (((obj)->flag & LC_FLAG_SERIAL_RESTART) != 0)
+
 #define LC_ONEOBJ_SET_HAS_PRIOR_VALUE(obj) \
   (obj)->flag |= LC_FLAG_HAS_PRIOR_VALUE
 
