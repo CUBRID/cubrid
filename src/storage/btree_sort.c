@@ -397,7 +397,8 @@ static void btsort_retire_px_temp_files (THREAD_ENTRY * thread_p, BTSORT_PARAM *
 /************************************************************************/
 
 static const RECDES *btsort_merge_resolve_rec (const RECDES * rec, const RECDES * long_rec);
-static int btsort_merge_fetch_slot (THREAD_ENTRY * thread_p, char *pgbuf, int slot, RECDES * rec, RECDES * long_rec);
+STATIC_INLINE int btsort_merge_fetch_slot (THREAD_ENTRY * thread_p, char *pgbuf, int slot, RECDES * rec,
+					   RECDES * long_rec) __attribute__ ((ALWAYS_INLINE));
 static int btsort_merge_count_active_infiles (const BTSORT_PARAM * sort_param);
 static int btsort_merge_count_pass_runs (const BTSORT_PARAM * sort_param, int act_infiles);
 static int btsort_merge_prepare_outfiles (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param, int out_half);
@@ -466,8 +467,6 @@ static int btsort_px_slice_runs_index_leaf (THREAD_ENTRY * thread_p, BTSORT_PARA
 					    BTSORT_PX_MERGE_INPUT ** shard_inputs, int *n_runs_out, int *n_shards_out,
 					    INT64 * total_pages_out);
 static bool btsort_px_merge_cursor_done (const BTSORT_PX_MERGE_INPUT * input, int page, int slot);
-static int btsort_px_merge_cursor_fetch (THREAD_ENTRY * thread_p, char *pgbuf, int slot, RECDES * rec,
-					 RECDES * longrec);
 static bool btsort_px_merge_cursor_less (BTSORT_CMP_FUNC * compare, void *compare_arg, RECDES * cur_rec,
 					 RECDES * long_rec, int a, int b);
 static void btsort_px_merge_heap_sift_down (int *heap, int heap_n, int pos, BTSORT_CMP_FUNC * compare,
@@ -2268,8 +2267,11 @@ btsort_merge_resolve_rec (const RECDES * rec, const RECDES * long_rec)
  *   rec(out): the peeked record
  *   long_rec(in/out): receives the long record when rec is a BIGONE placeholder; grown and reused across
  *                     records by btsort_retrieve_longrec, freed once by the caller
+ *
+ * Note: Always inlined: the merge loop fetches a record per output record, and with the call sites of the parallel
+ *       leaf build the compiler would otherwise leave it out of line.
  */
-static int
+STATIC_INLINE int
 btsort_merge_fetch_slot (THREAD_ENTRY * thread_p, char *pgbuf, int slot, RECDES * rec, RECDES * long_rec)
 {
   int error;
@@ -3677,39 +3679,17 @@ btsort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_par
 	  slot_num = btsort_spage_get_numrecs (cur_pgptr);
 	  for (int i = 0; i < slot_num; i++)
 	    {
-	      if (btsort_spage_get_record (cur_pgptr, i, &record, PEEK) != S_SUCCESS)
+	      error = btsort_merge_fetch_slot (thread_p, cur_pgptr, i, &record, &long_record);
+	      if (error != NO_ERROR)
 		{
-		  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_SORT_TEMP_PAGE_CORRUPTED, 0);
-		  error = ER_SORT_TEMP_PAGE_CORRUPTED;
 		  goto bailout;
 		}
 
-	      /* If this is a long record retrieve it */
-	      if (record.type == REC_BIGONE)
+	      error =
+		(*sort_param->put_fn) (thread_p, btsort_merge_resolve_rec (&record, &long_record), sort_param->put_arg);
+	      if (error != NO_ERROR)
 		{
-		  if (btsort_retrieve_longrec (thread_p, &record, &long_record) == NULL)
-		    {
-		      ASSERT_ERROR ();
-		      error = er_errid ();
-		      goto bailout;
-		    }
-		}
-	      /* write data by put_fn */
-	      if (record.type == REC_BIGONE)
-		{
-		  error = (*sort_param->put_fn) (thread_p, &long_record, sort_param->put_arg);
-		  if (error != NO_ERROR)
-		    {
-		      goto bailout;
-		    }
-		}
-	      else
-		{
-		  error = (*sort_param->put_fn) (thread_p, &record, sort_param->put_arg);
-		  if (error != NO_ERROR)
-		    {
-		      goto bailout;
-		    }
+		  goto bailout;
 		}
 	    }
 
@@ -4372,32 +4352,19 @@ btsort_px_merge_cursor_done (const BTSORT_PX_MERGE_INPUT * input, int page, int 
   return page > input->range.end_page || (page == input->range.end_page && slot >= input->range.end_slot);
 }
 
-static int
-btsort_px_merge_cursor_fetch (THREAD_ENTRY * thread_p, char *pgbuf, int slot, RECDES * rec, RECDES * longrec)
-{
-  if (btsort_spage_get_record (pgbuf, slot, rec, PEEK) != S_SUCCESS)
-    {
-      er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, ER_SORT_TEMP_PAGE_CORRUPTED, 0);
-      return ER_SORT_TEMP_PAGE_CORRUPTED;
-    }
-  if (rec->type == REC_BIGONE)
-    {
-      /* longrec's buffer is grown/reused across records by btsort_retrieve_longrec; freed once by the caller */
-      if (btsort_retrieve_longrec (thread_p, rec, longrec) == NULL)
-	{
-	  return er_errid () != NO_ERROR ? er_errid () : ER_FAILED;
-	}
-    }
-  return NO_ERROR;
-}
-
+/*
+ * btsort_px_merge_cursor_less () - Whether the current record of input a sorts before that of input b
+ *   return: true when it does
+ *   compare(in), compare_arg(in): the comparison function and its argument
+ *   cur_rec(in), long_rec(in): current records of the inputs, and the long records behind BIGONE placeholders
+ *   a(in), b(in): input indexes
+ */
 static bool
 btsort_px_merge_cursor_less (BTSORT_CMP_FUNC * compare, void *compare_arg, RECDES * cur_rec, RECDES * long_rec,
 			     int a, int b)
 {
-  char *data1 = (cur_rec[a].type == REC_BIGONE) ? long_rec[a].data : cur_rec[a].data;
-  char *data2 = (cur_rec[b].type == REC_BIGONE) ? long_rec[b].data : cur_rec[b].data;
-  return (*compare) (data1, data2, compare_arg) < 0;
+  return (*compare) (btsort_merge_resolve_rec (&cur_rec[a], &long_rec[a])->data,
+		     btsort_merge_resolve_rec (&cur_rec[b], &long_rec[b])->data, compare_arg) < 0;
 }
 
 static void
@@ -4495,7 +4462,7 @@ btsort_put_result_index_leaf (cubthread::entry & thread_ref, BTSORT_PARAM * sort
 	  er_set (ER_FATAL_ERROR_SEVERITY, ARG_FILE_LINE, error, 0);
 	  break;
 	}
-      error = btsort_px_merge_cursor_fetch (thread_p, pgbuf, cur_slot[c], &cur_rec[c], &long_rec[c]);
+      error = btsort_merge_fetch_slot (thread_p, pgbuf, cur_slot[c], &cur_rec[c], &long_rec[c]);
       if (error != NO_ERROR)
 	{
 	  break;
@@ -4555,7 +4522,7 @@ btsort_put_result_index_leaf (cubthread::entry & thread_ref, BTSORT_PARAM * sort
 		  break;
 		}
 	    }
-	  error = btsort_px_merge_cursor_fetch (thread_p, pgbuf, cur_slot[c], &cur_rec[c], &long_rec[c]);
+	  error = btsort_merge_fetch_slot (thread_p, pgbuf, cur_slot[c], &cur_rec[c], &long_rec[c]);
 	  if (error != NO_ERROR)
 	    {
 	      break;
