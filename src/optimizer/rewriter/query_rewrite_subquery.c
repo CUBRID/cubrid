@@ -703,7 +703,7 @@ qo_rewrite_subqueries (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *
 		}
 
 	      /* the join emits an outer row once per matching row of the derived table.
-	       * A subquery left without DISTINCT is wrapped, so its duplicates are removed after its row cut.
+	       * A subquery left without DISTINCT is wrapped, so the duplicates of its rows are removed outside it.
 	       * Leaving it out of the join instead would scan its list once per outer row. */
 	      if (op_type != PT_EQ && arg2->info.query.all_distinct != PT_DISTINCT)
 		{
