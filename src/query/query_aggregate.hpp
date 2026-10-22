@@ -194,8 +194,8 @@ void qdata_load_agg_hvalue_in_agg_list (cubquery::aggregate_hash_value *value, c
  * 256 KB each and live as long as the context that made them -- a group the LRU dump lets go returns its block to the
  * free list, so the slab holds the table's peak group count until qexec_free_agg_hash_context (). */
 struct agg_group_slab;
-struct agg_group_slab *qdata_slab_create (int n_keys, int n_funcs, int inline_cap);
-void qdata_slab_destroy (struct agg_group_slab *slab);
+struct agg_group_slab *qdata_slab_create (cubthread::entry *thread_p, int n_keys, int n_funcs, int inline_cap);
+void qdata_slab_destroy (cubthread::entry *thread_p, struct agg_group_slab *slab);
 int qdata_slab_new_group (cubthread::entry *thread_p, struct agg_group_slab *slab, cubquery::aggregate_hash_key *key,
 			  cubxasl::aggregate_list_node *g_agg_list, int tuple_size, cubquery::aggregate_hash_key **out_key,
 			  cubquery::aggregate_hash_value **out_value);

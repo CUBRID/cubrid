@@ -3421,6 +3421,12 @@ qdata_get_agg_hvalue_size (aggregate_hash_value *value, bool ret_delta)
 /* ---------------------------------------------------------------------------------------- */
 /* the groups' slab (query_aggregate.hpp) */
 
+/* The blocks come from the engine's fixed-size record heap (db_create_fixed_heap (), fixed_alloc.c): a
+ * FreelistHeap over a ZoneHeap -- block_size records bumped out of QDATA_SLAB_CHUNK-byte arenas, a freed
+ * block's first word linking the free list (heaplayers freesllist.h), everything returned at destroy.  That
+ * is what a slab of its own did (CBRD-27361 review); the free-list link still overwrites the key header at the
+ * block's start, so a key is released before its value (qdata_slab_release ()).  The heap takes a SpinLock
+ * per alloc and free: once per group, not per row. */
 #define QDATA_SLAB_CHUNK (256 * 1024)
 
 struct agg_group_slab
@@ -3430,24 +3436,20 @@ struct agg_group_slab
   int n_funcs;
   int inline_cap;
   size_t off_keyptrs, off_keyvals, off_value, off_accs, off_accvals, off_tuple;
-  char **chunks;
-  int n_chunks;
-  int cap_chunks;
-  char *bump;
-  char *bump_end;
-  void *free_list;		/* a freed block's first word links the next */
+  HL_HEAPID heap;		/* the blocks (db_fixed_alloc ()) */
 };
 
 agg_group_slab *
-qdata_slab_create (int n_keys, int n_funcs, int inline_cap)
+qdata_slab_create (cubthread::entry *thread_p, int n_keys, int n_funcs, int inline_cap)
 {
-  agg_group_slab *slab = (agg_group_slab *) calloc (1, sizeof (agg_group_slab));
+  agg_group_slab *slab = (agg_group_slab *) db_private_alloc (thread_p, sizeof (agg_group_slab));
   size_t off;
 
   if (slab == NULL)
     {
       return NULL;
     }
+  memset (slab, 0, sizeof (*slab));
   slab->n_keys = n_keys;
   slab->n_funcs = n_funcs;
   slab->inline_cap = DB_ALIGN (MAX (inline_cap, 0), MAX_ALIGNMENT);
@@ -3465,65 +3467,37 @@ qdata_slab_create (int n_keys, int n_funcs, int inline_cap)
   slab->off_tuple = off;
   off += slab->inline_cap;
   slab->block_size = DB_ALIGN (off, MAX_ALIGNMENT);
+  slab->heap = db_create_fixed_heap ((int) slab->block_size, MAX (1, (int) (QDATA_SLAB_CHUNK / slab->block_size)));
+  if (slab->heap == 0)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) QDATA_SLAB_CHUNK);
+      db_private_free_and_init (thread_p, slab);
+      return NULL;
+    }
   return slab;
 }
 
 void
-qdata_slab_destroy (agg_group_slab *slab)
+qdata_slab_destroy (cubthread::entry *thread_p, agg_group_slab *slab)
 {
-  int i;
-
   if (slab == NULL)
     {
       return;
     }
-  for (i = 0; i < slab->n_chunks; i++)
-    {
-      free (slab->chunks[i]);
-    }
-  free (slab->chunks);
-  free (slab);
+  db_destroy_fixed_heap (slab->heap);
+  db_private_free_and_init (thread_p, slab);
 }
 
 static char *
 qdata_slab_block (agg_group_slab *slab)
 {
-  char *p;
+  char *p = (char *) db_fixed_alloc (slab->heap, slab->block_size);
 
-  if (slab->free_list != NULL)
+  if (p == NULL)
     {
-      p = (char *) slab->free_list;
-      slab->free_list = * (void **) p;
-      return p;
+      /* the heap sets no error of its own */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, slab->block_size);
     }
-  if (slab->bump == NULL || (size_t) (slab->bump_end - slab->bump) < slab->block_size)
-    {
-      size_t size = MAX ((size_t) QDATA_SLAB_CHUNK, slab->block_size);
-
-      if (slab->n_chunks == slab->cap_chunks)
-	{
-	  int cap = MAX (8, slab->cap_chunks * 2);
-	  char **chunks = (char **) realloc (slab->chunks, sizeof (char *) * cap);
-
-	  if (chunks == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char *) * cap);
-	      return NULL;
-	    }
-	  slab->chunks = chunks;
-	  slab->cap_chunks = cap;
-	}
-      slab->chunks[slab->n_chunks] = (char *) malloc (size);
-      if (slab->chunks[slab->n_chunks] == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
-	  return NULL;
-	}
-      slab->bump = slab->chunks[slab->n_chunks++];
-      slab->bump_end = slab->bump + size;
-    }
-  p = slab->bump;
-  slab->bump += slab->block_size;
   return p;
 }
 
@@ -3567,8 +3541,7 @@ qdata_slab_new_group (cubthread::entry *thread_p, agg_group_slab *slab, aggregat
 	    {
 	      pr_clear_value (&kv[i--]);
 	    }
-	  * (void **) b = slab->free_list;
-	  slab->free_list = b;
+	  db_fixed_free (slab->heap, b);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
     }
@@ -3613,8 +3586,7 @@ qdata_slab_new_group (cubthread::entry *thread_p, agg_group_slab *slab, aggregat
       if (tpl == NULL)
 	{
 	  qdata_free_agg_hkey (thread_p, k);
-	  * (void **) b = slab->free_list;
-	  slab->free_list = b;
+	  db_fixed_free (slab->heap, b);
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, tuple_size);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
@@ -3646,8 +3618,7 @@ qdata_slab_release (cubthread::entry *thread_p, aggregate_hash_value *value)
     }
   value->first_tuple.tpl = NULL;
   value->first_tuple.size = 0;
-  * (void **) b = slab->free_list;
-  slab->free_list = b;
+  db_fixed_free (slab->heap, b);
 }
 
 /*

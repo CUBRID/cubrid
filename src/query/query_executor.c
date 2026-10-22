@@ -2333,7 +2333,7 @@ qexec_clear_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final, bool
     }
   if (xasl->type == HASHJOIN_PROC)
     {
-      hjoin_rtf_release (xasl);
+      hjoin_rtf_release (thread_p, xasl);
     }
   xasl->executed_parallelism = 0;
 
@@ -4776,7 +4776,8 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   if (value == NULL && !proc->g_output_first_tuple
       && (context->slab != NULL
 	  || (context->slab =
-	      qdata_slab_create (key->val_count, proc->g_func_count, MIN (2 * tpldesc->tpl_size, 512))) != NULL))
+	      qdata_slab_create (thread_p, key->val_count, proc->g_func_count,
+				 MIN (2 * tpldesc->tpl_size, 512))) != NULL))
     {
       AGGREGATE_HASH_KEY *new_key;
       AGGREGATE_HASH_VALUE *new_value;
@@ -5666,17 +5667,18 @@ qexec_gby_merge_free_list (THREAD_ENTRY * thread_p, QFILE_LIST_ID ** list)
 /* A partition's groups live in one arena and one open-addressing table, both kept across partitions and rewound
  * after each: a group's first tuple, key, value and accumulators are carved from the arena where the row path's
  * table allocates each of them and frees each again (qdata_alloc_agg_hvalue (), qdata_copy_agg_hkey ()).  Only
- * what a value holds outside the arena -- a key or an accumulator that copied a string -- is cleared one by one. */
+ * what a value holds outside the arena -- a key or an accumulator that copied a string -- is cleared one by one.
+ *
+ * The arena is the engine's obstack heap (db_create_ostk_heap (), memory_alloc.c): QEXEC_GBY_ARENA_BLOCK-byte
+ * chunks bumped through, MAX_ALIGNMENT-aligned, all returned at destroy.  Its public API has no rewind
+ * (db_ostk_free () is compiled out), so a rewind destroys the heap and the next allocation makes a new one: one
+ * free and one chunk malloc per partition where an arena of its own kept its first block (CBRD-27361 review). */
 #define QEXEC_GBY_ARENA_BLOCK (1024 * 1024)
 
 typedef struct qexec_gby_arena QEXEC_GBY_ARENA;
 struct qexec_gby_arena
 {
-  char **blocks;
-  int n_blocks;
-  int cap_blocks;
-  size_t used;			/* in the last block */
-  size_t last_size;		/* the last block's size */
+  HL_HEAPID heap;		/* 0 until the first allocation after a rewind */
 };
 
 static void *
@@ -5684,65 +5686,38 @@ qexec_gby_arena_alloc (QEXEC_GBY_ARENA * a, size_t n)
 {
   void *p;
 
-  n = DB_ALIGN (n, MAX_ALIGNMENT);
-  if (a->n_blocks == 0 || a->used + n > a->last_size)
+  if (a->heap == 0)
     {
-      size_t size = MAX (n, (size_t) QEXEC_GBY_ARENA_BLOCK);
-
-      if (a->n_blocks == a->cap_blocks)
+      a->heap = db_create_ostk_heap (QEXEC_GBY_ARENA_BLOCK);
+      if (a->heap == 0)
 	{
-	  int cap = MAX (8, a->cap_blocks * 2);
-	  char **blocks = (char **) realloc (a->blocks, sizeof (char *) * cap);
-
-	  if (blocks == NULL)
-	    {
-	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (char *) * cap);
-	      return NULL;
-	    }
-	  a->blocks = blocks;
-	  a->cap_blocks = cap;
-	}
-      a->blocks[a->n_blocks] = (char *) malloc (size);
-      if (a->blocks[a->n_blocks] == NULL)
-	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) QEXEC_GBY_ARENA_BLOCK);
 	  return NULL;
 	}
-      a->n_blocks++;
-      a->used = 0;
-      a->last_size = size;
     }
-  p = a->blocks[a->n_blocks - 1] + a->used;
-  a->used += n;
+  p = db_ostk_alloc (a->heap, n);
+  if (p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, n);
+    }
   return p;
 }
 
-/* back to empty, the first block kept */
+/* back to empty */
 static void
 qexec_gby_arena_rewind (QEXEC_GBY_ARENA * a)
 {
-  int i;
-
-  for (i = 1; i < a->n_blocks; i++)
+  if (a->heap != 0)
     {
-      free (a->blocks[i]);
+      db_destroy_ostk_heap (a->heap);
+      a->heap = 0;
     }
-  a->n_blocks = MIN (a->n_blocks, 1);
-  a->used = 0;
-  a->last_size = (a->n_blocks == 1) ? (size_t) QEXEC_GBY_ARENA_BLOCK : 0;
 }
 
 static void
 qexec_gby_arena_free (QEXEC_GBY_ARENA * a)
 {
-  int i;
-
-  for (i = 0; i < a->n_blocks; i++)
-    {
-      free (a->blocks[i]);
-    }
-  free (a->blocks);
-  memset (a, 0, sizeof (*a));
+  qexec_gby_arena_rewind (a);
 }
 
 typedef struct qexec_gby_slot QEXEC_GBY_SLOT;
@@ -5779,15 +5754,15 @@ qexec_gby_mtable_hash (AGGREGATE_HASH_KEY * key)
 }
 
 static int
-qexec_gby_mtable_init (QEXEC_GBY_MTABLE * t, int n_keys, int n_funcs)
+qexec_gby_mtable_init (THREAD_ENTRY * thread_p, QEXEC_GBY_MTABLE * t, int n_keys, int n_funcs)
 {
   memset (t, 0, sizeof (*t));
-  t->slots = (QEXEC_GBY_SLOT *) calloc (1024, sizeof (QEXEC_GBY_SLOT));
+  t->slots = (QEXEC_GBY_SLOT *) db_private_alloc (thread_p, 1024 * sizeof (QEXEC_GBY_SLOT));
   if (t->slots == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, 1024 * sizeof (QEXEC_GBY_SLOT));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  memset (t->slots, 0, 1024 * sizeof (QEXEC_GBY_SLOT));
   t->mask = 1023;
   t->n_keys = n_keys;
   t->n_funcs = n_funcs;
@@ -5811,16 +5786,16 @@ qexec_gby_mtable_find (QEXEC_GBY_MTABLE * t, AGGREGATE_HASH_KEY * key, unsigned 
 }
 
 static int
-qexec_gby_mtable_grow (QEXEC_GBY_MTABLE * t)
+qexec_gby_mtable_grow (THREAD_ENTRY * thread_p, QEXEC_GBY_MTABLE * t)
 {
   unsigned int n = (t->mask + 1) * 2, i, j;
-  QEXEC_GBY_SLOT *slots = (QEXEC_GBY_SLOT *) calloc (n, sizeof (QEXEC_GBY_SLOT));
+  QEXEC_GBY_SLOT *slots = (QEXEC_GBY_SLOT *) db_private_alloc (thread_p, n * sizeof (QEXEC_GBY_SLOT));
 
   if (slots == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, n * sizeof (QEXEC_GBY_SLOT));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  memset (slots, 0, n * sizeof (QEXEC_GBY_SLOT));
   for (i = 0; i <= t->mask; i++)
     {
       if (t->slots[i].key != NULL)
@@ -5830,7 +5805,7 @@ qexec_gby_mtable_grow (QEXEC_GBY_MTABLE * t)
 	  slots[j] = t->slots[i];
 	}
     }
-  free (t->slots);
+  db_private_free (thread_p, t->slots);
   t->slots = slots;
   t->mask = n - 1;
   return NO_ERROR;
@@ -5867,12 +5842,12 @@ qexec_gby_mtable_rewind (QEXEC_GBY_MTABLE * t)
 }
 
 static void
-qexec_gby_mtable_free (QEXEC_GBY_MTABLE * t)
+qexec_gby_mtable_free (THREAD_ENTRY * thread_p, QEXEC_GBY_MTABLE * t)
 {
   if (t->slots != NULL)
     {
       qexec_gby_mtable_rewind (t);
-      free (t->slots);
+      db_private_free_and_init (thread_p, t->slots);
     }
   qexec_gby_arena_free (&t->arena);
   memset (t, 0, sizeof (*t));
@@ -6012,7 +5987,7 @@ qexec_gby_mtable_add (THREAD_ENTRY * thread_p, QEXEC_GBY_READER * rd, QEXEC_GBY_
   t->count++;
   if ((unsigned int) t->count * 2 > t->mask)
     {
-      return qexec_gby_mtable_grow (t);
+      return qexec_gby_mtable_grow (thread_p, t);
     }
   return NO_ERROR;
 }
@@ -6027,8 +6002,8 @@ qexec_gby_merge_sample_groups (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
 {
   AGGREGATE_HASH_CONTEXT *ctx = gbstate->agg_hash_context;
   const unsigned int size = QEXEC_GBY_SAMPLE_ROWS * 2, mask = size - 1;
-  unsigned int *hashes = (unsigned int *) calloc (size, sizeof (unsigned int));
-  int *counts = (int *) calloc (size, sizeof (int));
+  unsigned int *hashes = (unsigned int *) db_private_alloc (thread_p, size * sizeof (unsigned int));
+  int *counts = (int *) db_private_alloc (thread_p, size * sizeof (int));
   QFILE_LIST_SCAN_ID scan;
   QFILE_TUPLE_RECORD tpl = QFILE_TUPLE_RECORD_INITIALIZER;
   int n = 0, d = 0, f1 = 0, f2 = 0, rc = NO_ERROR;
@@ -6036,16 +6011,16 @@ qexec_gby_merge_sample_groups (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
 
   if (hashes == NULL || counts == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
-	      (size_t) size * (sizeof (unsigned int) + sizeof (int)));
-      free (hashes);
-      free (counts);
+      db_private_free_and_init (thread_p, hashes);
+      db_private_free_and_init (thread_p, counts);
       return ER_FAILED;
     }
+  memset (hashes, 0, size * sizeof (unsigned int));
+  memset (counts, 0, size * sizeof (int));
   if (qfile_open_list_scan (rows, &scan) != NO_ERROR)
     {
-      free (hashes);
-      free (counts);
+      db_private_free_and_init (thread_p, hashes);
+      db_private_free_and_init (thread_p, counts);
       return ER_FAILED;
     }
   while (n < QEXEC_GBY_SAMPLE_ROWS && qfile_scan_list_next (thread_p, &scan, &tpl, PEEK) == S_SUCCESS)
@@ -6075,8 +6050,8 @@ qexec_gby_merge_sample_groups (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate,
       f1 += (counts[i] == 1);
       f2 += (counts[i] == 2);
     }
-  free (hashes);
-  free (counts);
+  db_private_free_and_init (thread_p, hashes);
+  db_private_free_and_init (thread_p, counts);
   if (n < QEXEC_GBY_SAMPLE_ROWS)
     {
       /* the whole list */
@@ -6398,7 +6373,7 @@ qexec_gby_px_map (DB_VALUE * const *orig, DB_VALUE * vals, int n, const DB_VALUE
  * copy -- a regu that is not a tuple position, an aggregate that is not COUNT, SUM, AVG, MIN or MAX over a plain
  * column, a DISTINCT one */
 static bool
-qexec_gby_px_reader_make (GROUPBY_STATE * gbstate, QEXEC_GBY_PX_READER * wr, const char **why)
+qexec_gby_px_reader_make (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QEXEC_GBY_PX_READER * wr, const char **why)
 {
   BUILDLIST_PROC_NODE *proc = &gbstate->xasl->proc.buildlist;
   REGU_VARIABLE_LIST r;
@@ -6426,17 +6401,22 @@ qexec_gby_px_reader_make (GROUPBY_STATE * gbstate, QEXEC_GBY_PX_READER * wr, con
     }
   *why = "out of memory";
   wr->n_vals = n_regu + n_hk + 2 * n_aggs;
-  wr->vals = (DB_VALUE *) calloc (wr->n_vals, sizeof (DB_VALUE));
-  wr->regu_nodes = (regu_variable_list_node *) calloc (n_regu, sizeof (regu_variable_list_node));
-  wr->hk_nodes = (regu_variable_list_node *) calloc (n_hk, sizeof (regu_variable_list_node));
-  wr->opnd_nodes = (regu_variable_list_node *) calloc (n_aggs, sizeof (regu_variable_list_node));
-  wr->agg_nodes = (AGGREGATE_TYPE *) calloc (n_aggs, sizeof (AGGREGATE_TYPE));
-  orig = (DB_VALUE **) calloc (n_regu, sizeof (DB_VALUE *));
+  wr->vals = (DB_VALUE *) db_private_alloc (thread_p, wr->n_vals * sizeof (DB_VALUE));
+  wr->regu_nodes = (regu_variable_list_node *) db_private_alloc (thread_p, n_regu * sizeof (regu_variable_list_node));
+  wr->hk_nodes = (regu_variable_list_node *) db_private_alloc (thread_p, n_hk * sizeof (regu_variable_list_node));
+  wr->opnd_nodes = (regu_variable_list_node *) db_private_alloc (thread_p, n_aggs * sizeof (regu_variable_list_node));
+  wr->agg_nodes = (AGGREGATE_TYPE *) db_private_alloc (thread_p, n_aggs * sizeof (AGGREGATE_TYPE));
+  orig = (DB_VALUE **) db_private_alloc (thread_p, n_regu * sizeof (DB_VALUE *));
   if (wr->vals == NULL || wr->regu_nodes == NULL || wr->hk_nodes == NULL || wr->opnd_nodes == NULL
       || wr->agg_nodes == NULL || orig == NULL)
     {
       goto fail;
     }
+  memset ((void *) wr->regu_nodes, 0, n_regu * sizeof (regu_variable_list_node));
+  memset ((void *) wr->hk_nodes, 0, n_hk * sizeof (regu_variable_list_node));
+  memset ((void *) wr->opnd_nodes, 0, n_aggs * sizeof (regu_variable_list_node));
+  memset ((void *) wr->agg_nodes, 0, n_aggs * sizeof (AGGREGATE_TYPE));
+  memset (orig, 0, n_regu * sizeof (DB_VALUE *));
   for (v = 0; v < wr->n_vals; v++)
     {
       db_make_null (&wr->vals[v]);
@@ -6521,7 +6501,7 @@ qexec_gby_px_reader_make (GROUPBY_STATE * gbstate, QEXEC_GBY_PX_READER * wr, con
 	  a->operands = &wr->opnd_nodes[i];
 	}
     }
-  free (orig);
+  db_private_free_and_init (thread_p, orig);
   wr->rd.regu = wr->regu_nodes;
   wr->rd.hk_regu = wr->hk_nodes;
   wr->rd.aggs = wr->agg_nodes;
@@ -6533,18 +6513,19 @@ qexec_gby_px_reader_make (GROUPBY_STATE * gbstate, QEXEC_GBY_PX_READER * wr, con
   return true;
 
 fail:
-  free (orig);
-  free (wr->vals);
-  free (wr->regu_nodes);
-  free (wr->hk_nodes);
-  free (wr->opnd_nodes);
-  free (wr->agg_nodes);
+  db_private_free_and_init (thread_p, orig);
+  db_private_free_and_init (thread_p, wr->vals);
+  db_private_free_and_init (thread_p, wr->regu_nodes);
+  db_private_free_and_init (thread_p, wr->hk_nodes);
+  db_private_free_and_init (thread_p, wr->opnd_nodes);
+  db_private_free_and_init (thread_p, wr->agg_nodes);
   memset (wr, 0, sizeof (*wr));
   return false;
 }
 
+/* the leader's: the arrays are its own, the values a worker wrote into them cleared here */
 static void
-qexec_gby_px_reader_free (QEXEC_GBY_PX_READER * wr)
+qexec_gby_px_reader_free (THREAD_ENTRY * thread_p, QEXEC_GBY_PX_READER * wr)
 {
   int v;
 
@@ -6555,11 +6536,11 @@ qexec_gby_px_reader_free (QEXEC_GBY_PX_READER * wr)
 	  pr_clear_value (&wr->vals[v]);
 	}
     }
-  free (wr->vals);
-  free (wr->regu_nodes);
-  free (wr->hk_nodes);
-  free (wr->opnd_nodes);
-  free (wr->agg_nodes);
+  db_private_free_and_init (thread_p, wr->vals);
+  db_private_free_and_init (thread_p, wr->regu_nodes);
+  db_private_free_and_init (thread_p, wr->hk_nodes);
+  db_private_free_and_init (thread_p, wr->opnd_nodes);
+  db_private_free_and_init (thread_p, wr->agg_nodes);
   memset (wr, 0, sizeof (*wr));
 }
 
@@ -6590,14 +6571,14 @@ struct qexec_gby_px
 // *INDENT-ON*
 
 static void
-qexec_gby_px_delete (QEXEC_GBY_PX * px)
+qexec_gby_px_delete (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px)
 {
   if (px != NULL)
     {
       // *INDENT-OFF*
       px->~qexec_gby_px ();
       // *INDENT-ON*
-      free (px);
+      db_private_free (thread_p, px);
     }
 }
 
@@ -6788,8 +6769,13 @@ qexec_gby_px_worker (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_PX_RE
     }
   else
     {
-      temp_dbvals = (DB_VALUE *) calloc (MAX (1, proc->g_func_count), sizeof (DB_VALUE));
-      if (temp_dbvals == NULL || qexec_gby_mtable_init (&table, proc->g_hkey_size, proc->g_func_count) != NO_ERROR)
+      temp_dbvals = (DB_VALUE *) db_private_alloc (thread_p, MAX (1, proc->g_func_count) * sizeof (DB_VALUE));
+      if (temp_dbvals != NULL)
+	{
+	  memset (temp_dbvals, 0, MAX (1, proc->g_func_count) * sizeof (DB_VALUE));
+	}
+      if (temp_dbvals == NULL
+	  || qexec_gby_mtable_init (thread_p, &table, proc->g_hkey_size, proc->g_func_count) != NO_ERROR)
 	{
 	  rc = ER_FAILED;
 	}
@@ -6831,14 +6817,14 @@ qexec_gby_px_worker (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_PX_RE
 	}
       px->out_rows[w] = out_rows;
       px->out_partials[w] = out_partials;
-      qexec_gby_mtable_free (&table);
+      qexec_gby_mtable_free (thread_p, &table);
       if (temp_dbvals != NULL)
 	{
 	  for (v = 0; v < MAX (1, proc->g_func_count); v++)
 	    {
 	      pr_clear_value (&temp_dbvals[v]);
 	    }
-	  free (temp_dbvals);
+	  db_private_free_and_init (thread_p, temp_dbvals);
 	}
     }
 
@@ -6945,30 +6931,37 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
       return NO_ERROR;
     }
   n = mgr->get_reserved_workers ();
-  readers = (QEXEC_GBY_PX_READER *) calloc (n, sizeof (QEXEC_GBY_PX_READER));
-  px = (QEXEC_GBY_PX *) calloc (1, sizeof (QEXEC_GBY_PX));
-  if (px != NULL)
-    {
-      placement_new (px);
-    }
-  if (n < 2 || readers == NULL || px == NULL)
+  if (n < 2)
     {
       mgr->release_workers ();
-      free (readers);
-      qexec_gby_px_delete (px);
       return NO_ERROR;
     }
+  readers = (QEXEC_GBY_PX_READER *) db_private_alloc (thread_p, n * sizeof (QEXEC_GBY_PX_READER));
+  px = (QEXEC_GBY_PX *) db_private_alloc (thread_p, sizeof (QEXEC_GBY_PX));
+  if (px != NULL)
+    {
+      memset ((void *) px, 0, sizeof (*px));
+      placement_new (px);
+    }
+  if (readers == NULL || px == NULL)
+    {
+      mgr->release_workers ();
+      db_private_free_and_init (thread_p, readers);
+      qexec_gby_px_delete (thread_p, px);
+      return NO_ERROR;
+    }
+  memset ((void *) readers, 0, n * sizeof (QEXEC_GBY_PX_READER));
   for (w = 0; w < n; w++)
     {
-      if (!qexec_gby_px_reader_make (gbstate, &readers[w], why))
+      if (!qexec_gby_px_reader_make (thread_p, gbstate, &readers[w], why))
 	{
 	  for (p = 0; p < w; p++)
 	    {
-	      qexec_gby_px_reader_free (&readers[p]);
+	      qexec_gby_px_reader_free (thread_p, &readers[p]);
 	    }
 	  mgr->release_workers ();
-	  free (readers);
-	  qexec_gby_px_delete (px);
+	  db_private_free_and_init (thread_p, readers);
+	  qexec_gby_px_delete (thread_p, px);
 	  return NO_ERROR;
 	}
     }
@@ -6983,25 +6976,38 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
   px->layout = &list_id->type_list;
   px->next_part.store (0);
   px->failed.store (false);
-  px->pieces = (QFILE_LIST_ID **) calloc ((size_t) n * 2 * n_parts, sizeof (QFILE_LIST_ID *));
-  px->out_rows = (QFILE_LIST_ID **) calloc (n, sizeof (QFILE_LIST_ID *));
-  px->out_partials = (QFILE_LIST_ID **) calloc (n, sizeof (QFILE_LIST_ID *));
-  rows_sec = (QFILE_LIST_SECTOR_SCAN_INFO *) calloc (1, sizeof (QFILE_LIST_SECTOR_SCAN_INFO));
-  partials_sec = (QFILE_LIST_SECTOR_SCAN_INFO *) calloc (1, sizeof (QFILE_LIST_SECTOR_SCAN_INFO));
+  px->pieces = (QFILE_LIST_ID **) db_private_alloc (thread_p, (size_t) n * 2 * n_parts * sizeof (QFILE_LIST_ID *));
+  px->out_rows = (QFILE_LIST_ID **) db_private_alloc (thread_p, n * sizeof (QFILE_LIST_ID *));
+  px->out_partials = (QFILE_LIST_ID **) db_private_alloc (thread_p, n * sizeof (QFILE_LIST_ID *));
+  rows_sec = (QFILE_LIST_SECTOR_SCAN_INFO *) db_private_alloc (thread_p, sizeof (QFILE_LIST_SECTOR_SCAN_INFO));
+  partials_sec = (QFILE_LIST_SECTOR_SCAN_INFO *) db_private_alloc (thread_p, sizeof (QFILE_LIST_SECTOR_SCAN_INFO));
+  if (px->pieces != NULL)
+    {
+      memset (px->pieces, 0, (size_t) n * 2 * n_parts * sizeof (QFILE_LIST_ID *));
+    }
+  if (px->out_rows != NULL)
+    {
+      memset (px->out_rows, 0, n * sizeof (QFILE_LIST_ID *));
+    }
+  if (px->out_partials != NULL)
+    {
+      memset (px->out_partials, 0, n * sizeof (QFILE_LIST_ID *));
+    }
   /* constructed as soon as allocated, as px is: end: closes and destroys whichever is not NULL */
   if (rows_sec != NULL)
     {
+      memset ((void *) rows_sec, 0, sizeof (*rows_sec));
       placement_new (rows_sec);
     }
   if (partials_sec != NULL)
     {
+      memset ((void *) partials_sec, 0, sizeof (*partials_sec));
       placement_new (partials_sec);
     }
   if (px->pieces == NULL || px->out_rows == NULL || px->out_partials == NULL || rows_sec == NULL
       || partials_sec == NULL)
     {
       rc = ER_OUT_OF_VIRTUAL_MEMORY;
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, rc, 1, (size_t) n * 2 * n_parts * sizeof (QFILE_LIST_ID *));
       mgr->release_workers ();
       goto end;
     }
@@ -7054,7 +7060,7 @@ end:
 	{
 	  qexec_gby_merge_free_list (thread_p, &px->pieces[p]);
 	}
-      free (px->pieces);
+      db_private_free_and_init (thread_p, px->pieces);
     }
   for (w = 0; w < n; w++)
     {
@@ -7068,15 +7074,15 @@ end:
 	  qexec_gby_merge_free_list (thread_p, &px->out_partials[w]);
 	}
     }
-  free (px->out_rows);
-  free (px->out_partials);
+  db_private_free_and_init (thread_p, px->out_rows);
+  db_private_free_and_init (thread_p, px->out_partials);
   if (rows_sec != NULL)
     {
       qfile_close_list_sector_scan (thread_p, rows_sec);
       // *INDENT-OFF*
       rows_sec->~qfile_list_sector_scan_info ();
       // *INDENT-ON*
-      free (rows_sec);
+      db_private_free_and_init (thread_p, rows_sec);
     }
   if (partials_sec != NULL)
     {
@@ -7084,14 +7090,14 @@ end:
       // *INDENT-OFF*
       partials_sec->~qfile_list_sector_scan_info ();
       // *INDENT-ON*
-      free (partials_sec);
+      db_private_free_and_init (thread_p, partials_sec);
     }
   for (w = 0; w < n; w++)
     {
-      qexec_gby_px_reader_free (&readers[w]);
+      qexec_gby_px_reader_free (thread_p, &readers[w]);
     }
-  free (readers);
-  qexec_gby_px_delete (px);
+  db_private_free_and_init (thread_p, readers);
+  qexec_gby_px_delete (thread_p, px);
   return rc;
 }
 
@@ -7222,7 +7228,8 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
       n_parts = MIN (MAX (n_parts, px_degree * 4), QEXEC_GBY_MERGE_MAX_PARTS);
     }
 
-  if (qexec_gby_mtable_init (&table, xasl->proc.buildlist.g_hkey_size, xasl->proc.buildlist.g_func_count) != NO_ERROR)
+  if (qexec_gby_mtable_init (thread_p, &table, xasl->proc.buildlist.g_hkey_size, xasl->proc.buildlist.g_func_count)
+      != NO_ERROR)
     {
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
@@ -7254,14 +7261,15 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
     }
   if (n_parts > 1 && n_parts_done < n_parts)
     {
-      row_parts = (QFILE_LIST_ID **) calloc (n_parts, sizeof (QFILE_LIST_ID *));
-      part_parts = (QFILE_LIST_ID **) calloc (n_parts, sizeof (QFILE_LIST_ID *));
+      row_parts = (QFILE_LIST_ID **) db_private_alloc (thread_p, n_parts * sizeof (QFILE_LIST_ID *));
+      part_parts = (QFILE_LIST_ID **) db_private_alloc (thread_p, n_parts * sizeof (QFILE_LIST_ID *));
       if (row_parts == NULL || part_parts == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, n_parts * sizeof (QFILE_LIST_ID *));
 	  rc = ER_OUT_OF_VIRTUAL_MEMORY;
 	  goto end;
 	}
+      memset (row_parts, 0, n_parts * sizeof (QFILE_LIST_ID *));
+      memset (part_parts, 0, n_parts * sizeof (QFILE_LIST_ID *));
       for (p = 0; p < n_parts; p++)
 	{
 	  row_parts[p] = qexec_gby_merge_open_list (thread_p, list_id, query_id, false);
@@ -7352,7 +7360,7 @@ end:
 	{
 	  qexec_gby_merge_free_list (thread_p, &row_parts[p]);
 	}
-      free (row_parts);
+      db_private_free_and_init (thread_p, row_parts);
     }
   if (part_parts != NULL)
     {
@@ -7360,11 +7368,11 @@ end:
 	{
 	  qexec_gby_merge_free_list (thread_p, &part_parts[p]);
 	}
-      free (part_parts);
+      db_private_free_and_init (thread_p, part_parts);
     }
   qexec_gby_merge_free_list (thread_p, &rows_out);
   qexec_gby_merge_free_list (thread_p, &partials_out);
-  qexec_gby_mtable_free (&table);
+  qexec_gby_mtable_free (thread_p, &table);
   if (rc != NO_ERROR)
     {
       if (er_errid () == NO_ERROR)
@@ -11820,7 +11828,7 @@ qexec_gby_cache_clear (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st)
 
       if (e->len >= 0)
 	{
-	  free_and_init (e->bytes);
+	  db_private_free_and_init (thread_p, e->bytes);
 	  if (e->key != NULL)
 	    {
 	      qdata_free_agg_hkey (thread_p, e->key);
@@ -11840,7 +11848,7 @@ qexec_gby_cache_remove (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, unsigned 
   unsigned int j = i, home;
   QEXEC_GBY_ENTRY *e = &st->cache[i];
 
-  free_and_init (e->bytes);
+  db_private_free_and_init (thread_p, e->bytes);
   if (e->key != NULL)
     {
       qdata_free_agg_hkey (thread_p, e->key);
@@ -11886,7 +11894,7 @@ qexec_gby_cache_add (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGATE_HA
 
   if (st->cache == NULL)
     {
-      st->cache = (QEXEC_GBY_ENTRY *) malloc (sizeof (QEXEC_GBY_ENTRY) * QEXEC_GBY_CACHE_SIZE);
+      st->cache = (QEXEC_GBY_ENTRY *) db_private_alloc (thread_p, sizeof (QEXEC_GBY_ENTRY) * QEXEC_GBY_CACHE_SIZE);
       if (st->cache == NULL)
 	{
 	  return;		/* only an accelerator: the rows keep the row path */
@@ -11911,13 +11919,13 @@ qexec_gby_cache_add (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGATE_HA
   for (i = h & (QEXEC_GBY_CACHE_SIZE - 1); st->cache[i].len >= 0; i = (i + 1) & (QEXEC_GBY_CACHE_SIZE - 1))
     ;
   e = &st->cache[i];
-  e->bytes = (unsigned char *) malloc (MAX (1, len));
+  e->bytes = (unsigned char *) db_private_alloc (thread_p, MAX (1, len));
   e->key = qdata_copy_agg_hkey (thread_p, ctx->temp_key);
   if (e->bytes == NULL || e->key == NULL)
     {
       if (e->bytes != NULL)
 	{
-	  free_and_init (e->bytes);
+	  db_private_free_and_init (thread_p, e->bytes);
 	}
       if (e->key != NULL)
 	{
@@ -11985,7 +11993,7 @@ qexec_gby_cache_evicted (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGAT
 }
 
 static int
-qexec_batch_gby_reserve (QEXEC_BATCH_GBY * st, int n)
+qexec_batch_gby_reserve (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, int n)
 {
   int *a, *b, *c, *d;
 
@@ -11993,29 +12001,28 @@ qexec_batch_gby_reserve (QEXEC_BATCH_GBY * st, int n)
     {
       return NO_ERROR;
     }
-  a = (int *) realloc (st->pend_row, sizeof (int) * n);
+  a = (int *) db_private_realloc (thread_p, st->pend_row, sizeof (int) * n);
   if (a != NULL)
     {
       st->pend_row = a;
     }
-  b = (int *) realloc (st->pend_ent, sizeof (int) * n);
+  b = (int *) db_private_realloc (thread_p, st->pend_ent, sizeof (int) * n);
   if (b != NULL)
     {
       st->pend_ent = b;
     }
-  c = (int *) realloc (st->grp_rows, sizeof (int) * n);
+  c = (int *) db_private_realloc (thread_p, st->grp_rows, sizeof (int) * n);
   if (c != NULL)
     {
       st->grp_rows = c;
     }
-  d = (int *) realloc (st->order, sizeof (int) * n);
+  d = (int *) db_private_realloc (thread_p, st->order, sizeof (int) * n);
   if (d != NULL)
     {
       st->order = d;
     }
   if (a == NULL || b == NULL || c == NULL || d == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * n);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   st->cap = n;
@@ -12180,7 +12187,7 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
       qexec_gby_cache_clear (thread_p, st);
       st->seen_evictions = ctx->evictions;
     }
-  rc = qexec_batch_gby_reserve (st, batch->n_sel);
+  rc = qexec_batch_gby_reserve (thread_p, st, batch->n_sel);
   if (rc != NO_ERROR)
     {
       return rc;
@@ -12285,16 +12292,16 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
 }
 
 QEXEC_BATCH_GBY *
-qexec_batch_gby_create (XASL_NODE * xasl, val_descr * vd, const SCAN_BATCH_PROJECT * row,
+qexec_batch_gby_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr * vd, const SCAN_BATCH_PROJECT * row,
 			QFILE_LIST_ID * (*list) (void *arg), void (*sync) (void *arg), void *arg)
 {
-  QEXEC_BATCH_GBY *st = (QEXEC_BATCH_GBY *) calloc (1, sizeof (QEXEC_BATCH_GBY));
+  QEXEC_BATCH_GBY *st = (QEXEC_BATCH_GBY *) db_private_alloc (thread_p, sizeof (QEXEC_BATCH_GBY));
 
   if (st == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (QEXEC_BATCH_GBY));
       return NULL;
     }
+  memset (st, 0, sizeof (*st));
   st->row = *row;
   st->xasl = xasl;
   st->vd = vd;
@@ -12312,27 +12319,12 @@ qexec_batch_gby_destroy (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st)
       return;
     }
   qexec_gby_cache_clear (thread_p, st);
-  if (st->cache != NULL)
-    {
-      free_and_init (st->cache);
-    }
-  if (st->pend_row != NULL)
-    {
-      free_and_init (st->pend_row);
-    }
-  if (st->pend_ent != NULL)
-    {
-      free_and_init (st->pend_ent);
-    }
-  if (st->grp_rows != NULL)
-    {
-      free_and_init (st->grp_rows);
-    }
-  if (st->order != NULL)
-    {
-      free_and_init (st->order);
-    }
-  free (st);
+  db_private_free_and_init (thread_p, st->cache);
+  db_private_free_and_init (thread_p, st->pend_row);
+  db_private_free_and_init (thread_p, st->pend_ent);
+  db_private_free_and_init (thread_p, st->grp_rows);
+  db_private_free_and_init (thread_p, st->order);
+  db_private_free (thread_p, st);
 }
 
 /*
@@ -12384,11 +12376,12 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
   size = sizeof (EXPR_BATCH_GBY_MAP) + sizeof (int) * n_aggs + sizeof (DB_VALUE *) * n_aggs
     + sizeof (TP_DOMAIN *) * n_aggs + sizeof (DB_VALUE *) * n_keys + sizeof (REGU_VARIABLE *) * outptr->valptr_cnt
     + sizeof (int) * outptr->valptr_cnt + 64;
-  mem = (char *) calloc (1, size);
+  mem = (char *) db_private_alloc (thread_p, size);
   if (mem == NULL)
     {
       return NULL;
     }
+  memset (mem, 0, size);
   map = (EXPR_BATCH_GBY_MAP *) mem;
   {
     char *p = mem + sizeof (EXPR_BATCH_GBY_MAP);
@@ -12492,14 +12485,14 @@ qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, XASL_NODE * xasl, val_descr
   return map;
 
 no_map:
-  free (mem);
+  db_private_free (thread_p, mem);
   return NULL;
 }
 
 void
-qexec_batch_gby_map_destroy (EXPR_BATCH_GBY_MAP * map)
+qexec_batch_gby_map_destroy (THREAD_ENTRY * thread_p, EXPR_BATCH_GBY_MAP * map)
 {
-  free (map);
+  db_private_free (thread_p, map);
 }
 
 static QFILE_LIST_ID *
@@ -12548,7 +12541,8 @@ qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
     }
   else if (xasl->proc.buildlist.groupby_list != NULL)
     {
-      gby = qexec_batch_gby_create (xasl, &xasl_state->vd, &project_state, qexec_batch_gby_list_serial, NULL, xasl);
+      gby = qexec_batch_gby_create (thread_p, xasl, &xasl_state->vd, &project_state, qexec_batch_gby_list_serial, NULL,
+				    xasl);
       if (gby == NULL)
 	{
 	  return S_ERROR;
@@ -12879,7 +12873,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  opened = (agg_list != NULL && gby_map == NULL && xasl->type == BUILDLIST_PROC) ? 0
 	    : scan_batch_open (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec, xasl, agg_list, &xasl_state->vd,
 			       gby_map);
-	  qexec_batch_gby_map_destroy (gby_map);
+	  qexec_batch_gby_map_destroy (thread_p, gby_map);
 	  if (opened == 1)
 	    {
 	      ls_scan = qexec_batch_scan (thread_p, xasl, xasl_state, tplrec);
@@ -19012,7 +19006,7 @@ qexec_end_mainblock_iterations (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_
       break;
 
     case HASHJOIN_PROC:
-      hjoin_rtf_release (xasl);	/* both inputs are lists now */
+      hjoin_rtf_release (thread_p, xasl);	/* both inputs are lists now */
       if (qexec_hash_join (thread_p, xasl, xasl_state->query_id, &xasl_state->vd) != NO_ERROR)
 	{
 	  GOTO_EXIT_ON_ERROR;
@@ -31409,7 +31403,7 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc
       proc->agg_hash_context->hash_table = NULL;
     }
   /* every group is back in the slab now */
-  qdata_slab_destroy (proc->agg_hash_context->slab);
+  qdata_slab_destroy (thread_p, proc->agg_hash_context->slab);
   proc->agg_hash_context->slab = NULL;
 
   /* close scan */

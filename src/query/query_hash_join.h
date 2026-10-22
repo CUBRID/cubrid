@@ -528,7 +528,7 @@ extern bool hjoin_rtf_is_date (const HJOIN_RUNTIME_FILTER * rtf);
  * to orig's (the node the clone was bound from) and drops the alias */
 extern void hjoin_rtf_bind_clone (XASL_NODE * clone, const XASL_NODE * orig);
 extern void hjoin_rtf_unbind_clone (XASL_NODE * clone, XASL_NODE * orig);
-extern void hjoin_rtf_release (XASL_NODE * hashjoin_xasl);
+extern void hjoin_rtf_release (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl);
 #endif
 
 #endif /* _QUERY_HASH_JOIN_H_ */

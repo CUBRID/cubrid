@@ -4912,20 +4912,27 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
     {
       ;
     }
-  rtf = (HJOIN_RUNTIME_FILTER *) calloc (1, sizeof (HJOIN_RUNTIME_FILTER));
+  /* the leader's: built here, read by the workers through their clones' aliases (hjoin_rtf_bind_clone ()), freed by
+   * the leader once they are drained (hjoin_rtf_release ()).  No memory for it is a decline, not an error: the join
+   * runs without the filter, so the allocator's error is cleared */
+  rtf = (HJOIN_RUNTIME_FILTER *) db_private_alloc (thread_p, sizeof (HJOIN_RUNTIME_FILTER));
   if (rtf == NULL)
     {
+      er_clear ();
       return NO_ERROR;
     }
-  rtf->slots = (INT64 *) malloc (sizeof (INT64) * cap);
-  rtf->used = (unsigned char *) calloc (cap, 1);
+  memset (rtf, 0, sizeof (*rtf));
+  rtf->slots = (INT64 *) db_private_alloc (thread_p, sizeof (INT64) * cap);
+  rtf->used = (unsigned char *) db_private_alloc (thread_p, cap);
   if (rtf->slots == NULL || rtf->used == NULL)
     {
-      free_and_init (rtf->slots);
-      free_and_init (rtf->used);
-      free_and_init (rtf);
+      db_private_free_and_init (thread_p, rtf->slots);
+      db_private_free_and_init (thread_p, rtf->used);
+      db_private_free_and_init (thread_p, rtf);
+      er_clear ();
       return NO_ERROR;
     }
+  memset (rtf->used, 0, cap);
   rtf->mask = cap - 1;
   rtf->is_date = f_date;
   rtf->val_index = val_index;
@@ -4975,9 +4982,9 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
   return NO_ERROR;
 
 fail:
-  free_and_init (rtf->slots);
-  free_and_init (rtf->used);
-  free_and_init (rtf);
+  db_private_free_and_init (thread_p, rtf->slots);
+  db_private_free_and_init (thread_p, rtf->used);
+  db_private_free_and_init (thread_p, rtf);
   return error;
 }
 
@@ -5064,7 +5071,7 @@ hjoin_rtf_unbind_clone (XASL_NODE * clone, XASL_NODE * orig)
 }
 
 void
-hjoin_rtf_release (XASL_NODE * hashjoin_xasl)
+hjoin_rtf_release (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl)
 {
   HASHJOIN_PROC_NODE *hj = &hashjoin_xasl->proc.hashjoin;
   /* called once the target's scans are closed -- qexec_end_mainblock_iterations () after the aptr loop, or
@@ -5094,9 +5101,9 @@ hjoin_rtf_release (XASL_NODE * hashjoin_xasl)
       target->rtf = NULL;
       target->rtf_val = NULL;
     }
-  free_and_init (rtf->slots);
-  free_and_init (rtf->used);
-  free_and_init (rtf);
+  db_private_free_and_init (thread_p, rtf->slots);
+  db_private_free_and_init (thread_p, rtf->used);
+  db_private_free_and_init (thread_p, rtf);
   hj->rtf = NULL;
 }
 

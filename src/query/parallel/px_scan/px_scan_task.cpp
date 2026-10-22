@@ -518,9 +518,9 @@ namespace parallel_scan
 		      {
 			SCAN_BATCH_PROJECT row = { m_scan_id, emit_row, this };
 
-			m_batch_gby = qexec_batch_gby_create (m_xasl, m_vd, &row, gby_list, gby_sync, this);
+			m_batch_gby = qexec_batch_gby_create (&thread_ref, m_xasl, m_vd, &row, gby_list, gby_sync, this);
 		      }
-		    qexec_batch_gby_map_destroy (gby_map);
+		    qexec_batch_gby_map_destroy (&thread_ref, gby_map);
 		    if (m_batch_gby == nullptr && m_scan_id->s.hsid.batch_state == 1)
 		      {
 			/* no node to take the chunks: the worker keeps its row loop */

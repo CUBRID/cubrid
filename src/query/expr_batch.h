@@ -153,7 +153,7 @@ typedef struct expr_batch_plan EXPR_BATCH_PLAN;
 
 extern EXPR_BATCH_PLAN *expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in,
 					       const char **why_not);
-extern void expr_batch_plan_free (EXPR_BATCH_PLAN * plan);
+extern void expr_batch_plan_free (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan);
 
 /* the batch's arrays for one chunk (EXPR_BATCH_CHUNK_BYTES), carved from the plan's blocks (which own them) */
 extern int expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch);

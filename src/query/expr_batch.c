@@ -269,16 +269,13 @@ struct eb_slot_map
 };
 
 /* The per-chunk areas (the chunk's rows: the vectors, their NULL bytes, the UNKNOWN
- * marks, the masks, the rows and the selection) are 64-byte lines bumped out of a few blocks
- * the plan chains, carved once when the scan opens and reused by every chunk. */
+ * marks, the masks, the rows and the selection) are 64-byte lines bumped out of the plan's
+ * arena, carved once when the scan opens and reused by every chunk.  The arena is the engine's
+ * obstack heap (db_create_ostk_heap (), memory_alloc.c): EB_BLOCK_BYTES chunks, a larger request
+ * gets a chunk of its own, everything returned at destroy (expr_batch_plan_free ()).  It aligns
+ * to MAX_ALIGNMENT only, so a line is over-allocated by EB_LINE - 1 and aligned here. */
 #define EB_LINE (64)
 #define EB_BLOCK_BYTES (4096)
-
-typedef struct eb_block EB_BLOCK;
-struct eb_block
-{
-  EB_BLOCK *next;
-};
 
 #define EB_MAX_CONST_RANGES (4)
 
@@ -290,9 +287,7 @@ struct expr_batch_plan
   int n_const_ranges;
   int const_from[EB_MAX_CONST_RANGES];
   int const_to[EB_MAX_CONST_RANGES];
-  EB_BLOCK *blocks;
-  char *bump;			/* the next free line of the newest block, and its end */
-  char *bump_end;
+  HL_HEAPID arena;		/* the lines (eb_arena_alloc ()), 0 until the first */
   int n_masks;			/* the NULL-mask depth the steps reach */
   REPR_ID repid;		/* the one representation the plan decodes; other records send the page to the row path */
   int n_variable;
@@ -348,6 +343,7 @@ struct expr_batch_plan
 typedef struct eb_build EB_BUILD;
 struct eb_build
 {
+  THREAD_ENTRY *thread_p;
   EXPR_BATCH_PLAN *plan;
   const EXPR_BATCH_INPUTS *in;
   const char *why_not;
@@ -373,7 +369,7 @@ static int eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *
 static int eb_add_in_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out);
 static int eb_leaf_side (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, int vec, int col, int r,
 			 int64_t * i, double *d);
-static int eb_grow (void **arr, int *cap, int n, size_t elem);
+static int eb_grow (THREAD_ENTRY * thread_p, void **arr, int *cap, int n, size_t elem);
 static int eb_new_vec (EB_BUILD * b, int kind, int etype, DB_TYPE dbtype);
 static int eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid);
 static int eb_col_of_vec (const EXPR_BATCH_PLAN * plan, int vec);
@@ -550,7 +546,7 @@ eb_elem_size (int etype)
 }
 
 static int
-eb_grow (void **arr, int *cap, int n, size_t elem)
+eb_grow (THREAD_ENTRY * thread_p, void **arr, int *cap, int n, size_t elem)
 {
   void *p;
   int new_cap;
@@ -560,10 +556,9 @@ eb_grow (void **arr, int *cap, int n, size_t elem)
       return NO_ERROR;
     }
   new_cap = (*cap == 0) ? 8 : (*cap * 2);
-  p = realloc (*arr, elem * new_cap);
+  p = db_private_realloc (thread_p, *arr, elem * new_cap);
   if (p == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, elem * new_cap);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   memset ((char *) p + elem * (*cap), 0, elem * (new_cap - *cap));
@@ -572,33 +567,29 @@ eb_grow (void **arr, int *cap, int n, size_t elem)
   return NO_ERROR;
 }
 
-/* a 64-byte aligned area of at least bytes, from the plan's blocks; NULL (error set) on OOM */
+/* a 64-byte aligned area of at least bytes, from the plan's arena; NULL (error set) on OOM */
 static void *
 eb_arena_alloc (EXPR_BATCH_PLAN * plan, size_t bytes)
 {
   char *p;
 
   bytes = (bytes + EB_LINE - 1) & ~((size_t) EB_LINE - 1);
-  if (plan->bump == NULL || (size_t) (plan->bump_end - plan->bump) < bytes)
+  if (plan->arena == 0)
     {
-      size_t size = MAX (bytes, (size_t) EB_BLOCK_BYTES) + sizeof (EB_BLOCK) + EB_LINE;
-      EB_BLOCK *block = (EB_BLOCK *) malloc (size);
-      uintptr_t start;
-
-      if (block == NULL)
+      plan->arena = db_create_ostk_heap (EB_BLOCK_BYTES);
+      if (plan->arena == 0)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, size);
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) EB_BLOCK_BYTES);
 	  return NULL;
 	}
-      block->next = plan->blocks;
-      plan->blocks = block;
-      start = ((uintptr_t) (block + 1) + EB_LINE - 1) & ~((uintptr_t) EB_LINE - 1);
-      plan->bump = (char *) start;
-      plan->bump_end = (char *) block + size;
     }
-  p = plan->bump;
-  plan->bump += bytes;
-  return p;
+  p = (char *) db_ostk_alloc (plan->arena, bytes + EB_LINE - 1);
+  if (p == NULL)
+    {
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, bytes + EB_LINE - 1);
+      return NULL;
+    }
+  return (char *) (((uintptr_t) p + EB_LINE - 1) & ~((uintptr_t) EB_LINE - 1));
 }
 
 static int
@@ -641,8 +632,8 @@ eb_new_vec (EB_BUILD * b, int kind, int etype, DB_TYPE dbtype)
   EB_VEC *v;
   int cap = b->cap_vecs;
 
-  if (eb_grow ((void **) &plan->vecs, &cap, plan->n_vecs, sizeof (EB_VEC)) != NO_ERROR
-      || eb_grow ((void **) &plan->vsrc, &b->cap_vecs, plan->n_vecs, sizeof (EB_VEC_SRC)) != NO_ERROR)
+  if (eb_grow (b->thread_p, (void **) &plan->vecs, &cap, plan->n_vecs, sizeof (EB_VEC)) != NO_ERROR
+      || eb_grow (b->thread_p, (void **) &plan->vsrc, &b->cap_vecs, plan->n_vecs, sizeof (EB_VEC_SRC)) != NO_ERROR)
     {
       return -1;
     }
@@ -729,8 +720,8 @@ eb_new_col_vec (EB_BUILD * b, HEAP_CACHE_ATTRINFO * attr_cache, ATTR_ID attrid)
   {
     int cap = b->cap_cols;
 
-    if (eb_grow ((void **) &plan->cols, &cap, plan->n_cols, sizeof (EB_COL)) != NO_ERROR
-	|| eb_grow ((void **) &b->col_attrid, &b->cap_cols, plan->n_cols, sizeof (ATTR_ID)) != NO_ERROR)
+    if (eb_grow (b->thread_p, (void **) &plan->cols, &cap, plan->n_cols, sizeof (EB_COL)) != NO_ERROR
+	|| eb_grow (b->thread_p, (void **) &b->col_attrid, &b->cap_cols, plan->n_cols, sizeof (ATTR_ID)) != NO_ERROR)
       {
 	return -1;
       }
@@ -796,7 +787,7 @@ eb_emit (EB_BUILD * b, int op, int in1, int in2, int etype, DB_TYPE result_type,
 	  return ER_FAILED;
 	}
     }
-  if (eb_grow ((void **) &plan->steps, &b->cap_steps, plan->n_steps, sizeof (EB_STEP)) != NO_ERROR)
+  if (eb_grow (b->thread_p, (void **) &plan->steps, &b->cap_steps, plan->n_steps, sizeof (EB_STEP)) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -840,7 +831,7 @@ eb_build_slot_map (EB_BUILD * b)
 	{
 	  if (r->value.type == TYPE_ATTR_ID && r->value.vfetch_to != NULL)
 	    {
-	      if (eb_grow ((void **) &b->slots, &b->cap_slots, n, sizeof (EB_SLOT_MAP)) != NO_ERROR)
+	      if (eb_grow (b->thread_p, (void **) &b->slots, &b->cap_slots, n, sizeof (EB_SLOT_MAP)) != NO_ERROR)
 		{
 		  return ER_FAILED;
 		}
@@ -941,8 +932,8 @@ eb_add_raw_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
 	}
     }
   cap = b->cap_leaves;
-  if (eb_grow ((void **) &plan->leaves, &cap, plan->n_leaves, sizeof (EB_LEAF)) != NO_ERROR
-      || eb_grow ((void **) &plan->lsrc, &b->cap_leaves, plan->n_leaves, sizeof (EB_LEAF_SRC)) != NO_ERROR)
+  if (eb_grow (b->thread_p, (void **) &plan->leaves, &cap, plan->n_leaves, sizeof (EB_LEAF)) != NO_ERROR
+      || eb_grow (b->thread_p, (void **) &plan->lsrc, &b->cap_leaves, plan->n_leaves, sizeof (EB_LEAF_SRC)) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1058,8 +1049,8 @@ eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
       return NO_ERROR;
     }
   cap = b->cap_leaves;
-  if (eb_grow ((void **) &plan->leaves, &cap, plan->n_leaves, sizeof (EB_LEAF)) != NO_ERROR
-      || eb_grow ((void **) &plan->lsrc, &b->cap_leaves, plan->n_leaves, sizeof (EB_LEAF_SRC)) != NO_ERROR)
+  if (eb_grow (b->thread_p, (void **) &plan->leaves, &cap, plan->n_leaves, sizeof (EB_LEAF)) != NO_ERROR
+      || eb_grow (b->thread_p, (void **) &plan->lsrc, &b->cap_leaves, plan->n_leaves, sizeof (EB_LEAF_SRC)) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1125,8 +1116,8 @@ eb_add_in_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
       return NO_ERROR;
     }
   cap = b->cap_leaves;
-  if (eb_grow ((void **) &plan->leaves, &cap, plan->n_leaves, sizeof (EB_LEAF)) != NO_ERROR
-      || eb_grow ((void **) &plan->lsrc, &b->cap_leaves, plan->n_leaves, sizeof (EB_LEAF_SRC)) != NO_ERROR)
+  if (eb_grow (b->thread_p, (void **) &plan->leaves, &cap, plan->n_leaves, sizeof (EB_LEAF)) != NO_ERROR
+      || eb_grow (b->thread_p, (void **) &plan->lsrc, &b->cap_leaves, plan->n_leaves, sizeof (EB_LEAF_SRC)) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1457,8 +1448,8 @@ eb_add_or_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, const int *len, i
     }
   memcpy (or_len, len, sizeof (int) * nd);
   cap = b->cap_leaves;
-  if (eb_grow ((void **) &plan->leaves, &cap, plan->n_leaves, sizeof (EB_LEAF)) != NO_ERROR
-      || eb_grow ((void **) &plan->lsrc, &b->cap_leaves, plan->n_leaves, sizeof (EB_LEAF_SRC)) != NO_ERROR)
+  if (eb_grow (b->thread_p, (void **) &plan->leaves, &cap, plan->n_leaves, sizeof (EB_LEAF)) != NO_ERROR
+      || eb_grow (b->thread_p, (void **) &plan->lsrc, &b->cap_leaves, plan->n_leaves, sizeof (EB_LEAF_SRC)) != NO_ERROR)
     {
       return ER_FAILED;
     }
@@ -1490,10 +1481,9 @@ eb_build_filter_interpreted (EB_BUILD * b)
     {
       return eb_decline (b, "the data filter is interpreted");
     }
-  plan->kid_leaf = (int *) malloc (sizeof (int) * n);
+  plan->kid_leaf = (int *) db_private_alloc (b->thread_p, sizeof (int) * n);
   if (plan->kid_leaf == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * n);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   plan->n_kids = n;
@@ -1553,10 +1543,9 @@ eb_build_filter (EB_BUILD * b)
       return eb_decline (b, "the data filter is not an AND chain of comparisons");
     }
   plan->filter = b->in->scan_pred_compiled;
-  plan->kid_leaf = (int *) malloc (sizeof (int) * MAX (1, n_kids));
+  plan->kid_leaf = (int *) db_private_alloc (b->thread_p, sizeof (int) * MAX (1, n_kids));
   if (plan->kid_leaf == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * MAX (1, n_kids));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   plan->n_kids = n_kids;
@@ -1643,10 +1632,9 @@ eb_build_rtf_leaf (EB_BUILD * b)
       /* hjoin_rtf_key (): a key of another type is not compared, the join decides */
       return eb_decline (b, "the runtime filter's key column is not one it compares");
     }
-  kids = (int *) realloc (plan->kid_leaf, sizeof (int) * (plan->n_kids + 1));
+  kids = (int *) db_private_realloc (b->thread_p, plan->kid_leaf, sizeof (int) * (plan->n_kids + 1));
   if (kids == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * (plan->n_kids + 1));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   plan->kid_leaf = kids;
@@ -1823,10 +1811,9 @@ eb_build_program (EB_BUILD * b)
       return eb_decline (b, "the operand program shares the filter's values");
     }
   b->n_cell_vec = prog->n_cells;
-  b->cell_vec = (int *) malloc (sizeof (int) * MAX (1, prog->n_cells));
+  b->cell_vec = (int *) db_private_alloc (b->thread_p, sizeof (int) * MAX (1, prog->n_cells));
   if (b->cell_vec == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * MAX (1, prog->n_cells));
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   for (i = 0; i < prog->n_cells; i++)
@@ -2218,10 +2205,9 @@ eb_build_aggs (THREAD_ENTRY * thread_p, EB_BUILD * b)
     {
       return eb_decline (b, "no aggregate");
     }
-  plan->aggs = (EB_AGG *) malloc (sizeof (EB_AGG) * n);
+  plan->aggs = (EB_AGG *) db_private_alloc (b->thread_p, sizeof (EB_AGG) * n);
   if (plan->aggs == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (EB_AGG) * n);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
   plan->n_aggs = n;
@@ -2373,18 +2359,20 @@ eb_build_aggs (THREAD_ENTRY * thread_p, EB_BUILD * b)
  * needed is needed, and so are the cells it reads; a lazy-right-side jump is needed when a needed step lies
  * in the range it skips.  A projection's program also computes columns the aggregates never read. */
 static bool *
-eb_program_needed (const EXPR_PROG * prog, const int *roots, int n_roots)
+eb_program_needed (THREAD_ENTRY * thread_p, const EXPR_PROG * prog, const int *roots, int n_roots)
 {
-  bool *cell = (bool *) calloc (MAX (1, prog->n_cells), sizeof (bool));
-  bool *step = (bool *) calloc (MAX (1, prog->n_steps), sizeof (bool));
+  bool *cell = (bool *) db_private_alloc (thread_p, MAX (1, prog->n_cells) * sizeof (bool));
+  bool *step = (bool *) db_private_alloc (thread_p, MAX (1, prog->n_steps) * sizeof (bool));
   int i, k;
 
   if (cell == NULL || step == NULL)
     {
-      free (cell);
-      free (step);
+      db_private_free_and_init (thread_p, cell);
+      db_private_free_and_init (thread_p, step);
       return NULL;
     }
+  memset (cell, 0, MAX (1, prog->n_cells) * sizeof (bool));
+  memset (step, 0, MAX (1, prog->n_steps) * sizeof (bool));
   for (i = 0; i < n_roots; i++)
     {
       if (roots[i] >= 0 && roots[i] < prog->n_cells)
@@ -2424,7 +2412,7 @@ eb_program_needed (const EXPR_PROG * prog, const int *roots, int n_roots)
 	    }
 	}
     }
-  free (cell);
+  db_private_free_and_init (thread_p, cell);
   return step;
 }
 
@@ -2445,12 +2433,12 @@ eb_build_gby (EB_BUILD * b)
     }
 
   /* the key columns: their bytes only */
-  plan->keys = (EB_KEY *) calloc (g->n_keys, sizeof (EB_KEY));
+  plan->keys = (EB_KEY *) db_private_alloc (b->thread_p, sizeof (EB_KEY) * g->n_keys);
   if (plan->keys == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (EB_KEY) * g->n_keys);
       return ER_OUT_OF_VIRTUAL_MEMORY;
     }
+  memset (plan->keys, 0, sizeof (EB_KEY) * g->n_keys);
   plan->n_keys = g->n_keys;
   for (k = 0; k < g->n_keys; k++)
     {
@@ -2482,19 +2470,18 @@ eb_build_gby (EB_BUILD * b)
   if (g->proj_prog != NULL)
     {
       const EXPR_PROG *prog = (const EXPR_PROG *) g->proj_prog;
-      int *roots = (int *) malloc (sizeof (int) * MAX (1, g->n_aggs));
+      int *roots = (int *) db_private_alloc (b->thread_p, sizeof (int) * MAX (1, g->n_aggs));
 
       if (roots == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (int) * MAX (1, g->n_aggs));
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       for (k = 0; k < g->n_aggs; k++)
 	{
 	  roots[k] = (g->agg_root[k] >= 0) ? prog->root_cells[g->agg_root[k]] : -1;
 	}
-      b->step_needed = eb_program_needed (prog, roots, g->n_aggs);
-      free (roots);
+      b->step_needed = eb_program_needed (b->thread_p, prog, roots, g->n_aggs);
+      db_private_free_and_init (b->thread_p, roots);
       if (b->step_needed == NULL)
 	{
 	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (bool) * prog->n_steps);
@@ -2677,6 +2664,7 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
 
   *why_not = NULL;
   memset (&b, 0, sizeof (b));
+  b.thread_p = thread_p;
   b.in = in;
   if (!in->is_peeking)
     {
@@ -2688,10 +2676,9 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
       *why_not = "neither a filter nor an aggregate for the batch to run";
       return NULL;
     }
-  plan = (EXPR_BATCH_PLAN *) malloc (sizeof (EXPR_BATCH_PLAN));
+  plan = (EXPR_BATCH_PLAN *) db_private_alloc (thread_p, sizeof (EXPR_BATCH_PLAN));
   if (plan == NULL)
     {
-      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, sizeof (EXPR_BATCH_PLAN));
       *why_not = "out of memory";
       return NULL;
     }
@@ -2770,84 +2757,42 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
 	    }
 	}
     }
-  if (b.slots != NULL)
-    {
-      free_and_init (b.slots);
-    }
-  if (b.cell_vec != NULL)
-    {
-      free_and_init (b.cell_vec);
-    }
-  if (b.col_attrid != NULL)
-    {
-      free_and_init (b.col_attrid);
-    }
-  if (b.step_needed != NULL)
-    {
-      free_and_init (b.step_needed);
-    }
+  db_private_free_and_init (thread_p, b.slots);
+  db_private_free_and_init (thread_p, b.cell_vec);
+  db_private_free_and_init (thread_p, b.col_attrid);
+  db_private_free_and_init (thread_p, b.step_needed);
   if (rc != NO_ERROR)
     {
       *why_not = (b.why_not != NULL) ? b.why_not : ((rc == EXPR_BATCH_FALLBACK) ? "declined" : "error");
-      expr_batch_plan_free (plan);
+      expr_batch_plan_free (thread_p, plan);
       return NULL;
     }
   return plan;
 }
 
+/* the plan and its arrays are the scan's thread's (its private heap): freed by the thread that built them */
 void
-expr_batch_plan_free (EXPR_BATCH_PLAN * plan)
+expr_batch_plan_free (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan)
 {
-  int i;
-
   if (plan == NULL)
     {
       return;
     }
-  while (plan->blocks != NULL)
+  if (plan->arena != 0)
     {
-      EB_BLOCK *next = plan->blocks->next;
-
-      free (plan->blocks);
-      plan->blocks = next;
+      db_destroy_ostk_heap (plan->arena);
+      plan->arena = 0;
     }
-  if (plan->vecs != NULL)
-    {
-      free_and_init (plan->vecs);
-    }
-  if (plan->vsrc != NULL)
-    {
-      free_and_init (plan->vsrc);
-    }
-  if (plan->lsrc != NULL)
-    {
-      free_and_init (plan->lsrc);
-    }
-  if (plan->cols != NULL)
-    {
-      free_and_init (plan->cols);
-    }
-  if (plan->steps != NULL)
-    {
-      free_and_init (plan->steps);
-    }
-  if (plan->leaves != NULL)
-    {
-      free_and_init (plan->leaves);
-    }
-  if (plan->kid_leaf != NULL)
-    {
-      free_and_init (plan->kid_leaf);
-    }
-  if (plan->aggs != NULL)
-    {
-      free_and_init (plan->aggs);
-    }
-  if (plan->keys != NULL)
-    {
-      free_and_init (plan->keys);
-    }
-  free_and_init (plan);
+  db_private_free_and_init (thread_p, plan->vecs);
+  db_private_free_and_init (thread_p, plan->vsrc);
+  db_private_free_and_init (thread_p, plan->lsrc);
+  db_private_free_and_init (thread_p, plan->cols);
+  db_private_free_and_init (thread_p, plan->steps);
+  db_private_free_and_init (thread_p, plan->leaves);
+  db_private_free_and_init (thread_p, plan->kid_leaf);
+  db_private_free_and_init (thread_p, plan->aggs);
+  db_private_free_and_init (thread_p, plan->keys);
+  db_private_free_and_init (thread_p, plan);
 }
 
 /* The chunk's arrays: the rows, the selection, every column and step vector (and a NUMERIC
@@ -2944,7 +2889,7 @@ expr_batch_init (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
   return NO_ERROR;
 }
 
-/* the arrays belong to the plan's blocks: nothing to free here */
+/* the arrays belong to the plan's arena: nothing to free here */
 void
 expr_batch_final (EXPR_BATCH * batch)
 {

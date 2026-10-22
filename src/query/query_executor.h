@@ -161,10 +161,11 @@ struct scan_batch_project;
 typedef struct qexec_batch_gby QEXEC_BATCH_GBY;
 extern struct expr_batch_gby_map *qexec_batch_gby_map_create (THREAD_ENTRY * thread_p, xasl_node * xasl,
 							      val_descr * vd, const char **why_not);
-extern void qexec_batch_gby_map_destroy (struct expr_batch_gby_map *map);
+extern void qexec_batch_gby_map_destroy (THREAD_ENTRY * thread_p, struct expr_batch_gby_map *map);
 /* can the block's heap scan run its filter a chunk at a time while its rows go on one by one? */
 extern bool qexec_batch_filter_eligible (const xasl_node * xasl);
-extern QEXEC_BATCH_GBY *qexec_batch_gby_create (xasl_node * xasl, val_descr * vd, const struct scan_batch_project *row,
+extern QEXEC_BATCH_GBY *qexec_batch_gby_create (THREAD_ENTRY * thread_p, xasl_node * xasl, val_descr * vd,
+						const struct scan_batch_project *row,
 						QFILE_LIST_ID * (*list) (void *arg), void (*sync) (void *arg),
 						void *arg);
 extern void qexec_batch_gby_destroy (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * gby);

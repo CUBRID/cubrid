@@ -199,7 +199,7 @@ static int scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				     const EXPR_BATCH_GBY_MAP * gby, bool cached_ok);
 static SCAN_CODE scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static void scan_batch_rewind (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_batch_copy_kept (SCAN_ID * scan_id);
+static int scan_batch_copy_kept (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static int scan_batch_row_values (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, EXPR_BATCH_ROW * row);
 static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -5504,16 +5504,16 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (hsidp->batch != NULL)
 	{
 	  expr_batch_final (hsidp->batch);
-	  free_and_init (hsidp->batch);
+	  db_private_free_and_init (thread_p, hsidp->batch);
 	}
       if (hsidp->batch_copy != NULL)
 	{
-	  free_and_init (hsidp->batch_copy);
+	  db_private_free_and_init (thread_p, hsidp->batch_copy);
 	  hsidp->batch_copy_cap = 0;
 	}
       if (hsidp->batch_plan != NULL)
 	{
-	  expr_batch_plan_free (hsidp->batch_plan);
+	  expr_batch_plan_free (thread_p, hsidp->batch_plan);
 	  hsidp->batch_plan = NULL;
 	}
       hsidp->batch_state = 0;
@@ -8265,18 +8265,18 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCE
     {
       return hsidp->batch_state;
     }
-  hsidp->batch = (EXPR_BATCH *) malloc (sizeof (EXPR_BATCH));
+  hsidp->batch = (EXPR_BATCH *) db_private_alloc (thread_p, sizeof (EXPR_BATCH));
   if (hsidp->batch == NULL)
     {
-      expr_batch_plan_free (hsidp->batch_plan);
+      expr_batch_plan_free (thread_p, hsidp->batch_plan);
       hsidp->batch_plan = NULL;
       hsidp->batch_why_not = "out of memory";
       return hsidp->batch_state;
     }
   if (expr_batch_init (hsidp->batch_plan, hsidp->batch) != NO_ERROR)
     {
-      free_and_init (hsidp->batch);
-      expr_batch_plan_free (hsidp->batch_plan);
+      db_private_free_and_init (thread_p, hsidp->batch);
+      expr_batch_plan_free (thread_p, hsidp->batch_plan);
       hsidp->batch_plan = NULL;
       hsidp->batch_why_not = "out of memory";
       return hsidp->batch_state;
@@ -8457,7 +8457,7 @@ scan_batch_rows_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
     {
       return NO_ERROR;
     }
-  rc = scan_batch_copy_kept (st->scan_id);
+  rc = scan_batch_copy_kept (thread_p, st->scan_id);
   if (rc != NO_ERROR)
     {
       return rc;
@@ -8578,7 +8578,7 @@ scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_S
 
 /* the kept rows' records copied out of the page, the rows pointed at the copies */
 static int
-scan_batch_copy_kept (SCAN_ID * scan_id)
+scan_batch_copy_kept (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
   EXPR_BATCH *batch = hsidp->batch;
@@ -8592,11 +8592,10 @@ scan_batch_copy_kept (SCAN_ID * scan_id)
   if (need > hsidp->batch_copy_cap)
     {
       size_t cap = MAX (need, hsidp->batch_copy_cap * 2);
-      char *copy = (char *) realloc (hsidp->batch_copy, cap);
+      char *copy = (char *) db_private_realloc (thread_p, hsidp->batch_copy, cap);
 
       if (copy == NULL)
 	{
-	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, cap);
 	  return ER_OUT_OF_VIRTUAL_MEMORY;
 	}
       hsidp->batch_copy = copy;
@@ -8723,7 +8722,7 @@ scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
       if (batch->n_sel > 0)
 	{
 	  /* the rows go out with copies of their records, the page let go meanwhile */
-	  if (scan_batch_copy_kept (scan_id) != NO_ERROR)
+	  if (scan_batch_copy_kept (thread_p, scan_id) != NO_ERROR)
 	    {
 	      return S_ERROR;
 	    }
