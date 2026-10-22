@@ -4163,11 +4163,16 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 	      PARTITION_SPEC_TYPE *curr_part = NULL, *prev_part = NULL;
 	      SCAN_STATS *scan_stats, *curr_stats, *prev_stats;
 	      SCAN_STATS save_stats;
+	      const char *save_why_not = NULL;
 
 	      scan_stats = &spec->s_id.scan_stats;
 
 	      /* save */
 	      memcpy (&save_stats, scan_stats, sizeof (SCAN_STATS));
+	      if (spec->s_id.type == S_HEAP_SCAN)
+		{
+		  save_why_not = spec->s_id.s.hsid.batch_why_not;
+		}
 
 	      for (curr_part = spec->parts; curr_part != NULL; prev_part = curr_part, curr_part = curr_part->next)
 		{
@@ -4231,6 +4236,11 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 		  /* SCAN_STATS for DB_PARTITION_CLASS does not support AGL (Aggregate Lookup Optimization). */
 		  assert (scan_stats->agl == NULL);
 
+		  if (spec->s_id.type == S_HEAP_SCAN)
+		    {
+		      /* the batch's reason on this partition (qexec_init_next_partition ()), shown as the scan's own */
+		      spec->s_id.s.hsid.batch_why_not = curr_part->batch_why_not;
+		    }
 		  scan_print_stats_text (fp, &spec->s_id);
 
 		  if (class_name != NULL)
@@ -4246,6 +4256,10 @@ qdump_print_access_spec_stats_text (FILE * fp, ACCESS_SPEC_TYPE * spec_list_p, i
 
 	      /* restore */
 	      memcpy (&spec->s_id.scan_stats, &save_stats, sizeof (SCAN_STATS));
+	      if (spec->s_id.type == S_HEAP_SCAN)
+		{
+		  spec->s_id.s.hsid.batch_why_not = save_why_not;
+		}
 	    }
 	}
       else

@@ -11281,6 +11281,12 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
 	    }
 	}
 #endif
+      if (thread_is_on_trace (thread_p) && spec->s_id.type == S_HEAP_SCAN)
+	{
+	  /* the page batch's last reason for the row path (or its refusal), kept on the scan past scan_end_scan ()
+	   * and reset by the next partition's scan_open_heap_scan (): the trace shows it with the partition */
+	  spec->curent->batch_why_not = spec->s_id.s.hsid.batch_why_not;
+	}
 
       /* move to next partition */
       if (spec->curent->next == NULL)
@@ -11625,6 +11631,14 @@ qexec_init_next_partition (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec, XAS
  * object fetches, the correlated subqueries, the join and if predicates, inst_num (), the
  * hierarchy, the single-tuple stop -- keeps the block on the row path.  The scan and the
  * aggregates themselves are judged by scan_batch_open () and the plan it builds.
+ *
+ * A partitioned class runs partition by partition, each one a scan block: the block loop asks
+ * again at every block and scan_batch_open () builds that partition's plan.  The scan it sees
+ * is always the partition's -- qexec_open_scan () opens the first partition through
+ * qexec_init_next_partition () (curent = parts), which ends and closes the finished partition's
+ * scan (its batch and plan go with it, scan_end_scan ()) and opens the next partition's class and
+ * heap anew; curent is NULL only on the root class, whose heap holds no row.  The aggregates
+ * live in the node and run on across the blocks.
  */
 bool
 qexec_batch_eligible (const XASL_NODE * xasl)
@@ -11662,9 +11676,8 @@ qexec_batch_eligible (const XASL_NODE * xasl)
       return false;
     }
   if (spec == NULL || spec->next != NULL || xasl->curr_spec != spec || spec->type != TARGET_CLASS
-      || spec->access != ACCESS_METHOD_SEQUENTIAL || spec->s_id.type != S_HEAP_SCAN || spec->parts != NULL
-      || spec->curent != NULL || spec->s_id.mvcc_select_lock_needed
-      || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN))
+      || spec->access != ACCESS_METHOD_SEQUENTIAL || spec->s_id.type != S_HEAP_SCAN
+      || spec->s_id.mvcc_select_lock_needed || ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN))
     {
       return false;
     }
@@ -11682,6 +11695,9 @@ qexec_batch_eligible (const XASL_NODE * xasl)
  * qexec_batch_filter_eligible () - can the block's driving heap scan run its filter a chunk at a time while its rows
  *				     go on one by one (scan_batch_open_filter ())?
  *   return: a sequential heap scan of a SELECT with a data filter; what the block does per row is the row loop's
+ *
+ * A partitioned class is asked block by block too, each partition's scan getting its own filter plan
+ * (qexec_batch_eligible ()).
  */
 bool
 qexec_batch_filter_eligible (const XASL_NODE * xasl)
@@ -11689,8 +11705,8 @@ qexec_batch_filter_eligible (const XASL_NODE * xasl)
   const ACCESS_SPEC_TYPE *spec = xasl->spec_list;
 
   return (spec != NULL && spec->next == NULL && xasl->curr_spec == spec && spec->type == TARGET_CLASS
-	  && spec->access == ACCESS_METHOD_SEQUENTIAL && spec->s_id.type == S_HEAP_SCAN && spec->parts == NULL
-	  && spec->curent == NULL && !spec->s_id.mvcc_select_lock_needed && spec->where_pred != NULL
+	  && spec->access == ACCESS_METHOD_SEQUENTIAL && spec->s_id.type == S_HEAP_SCAN
+	  && !spec->s_id.mvcc_select_lock_needed && spec->where_pred != NULL
 	  && xasl->scan_op_type == S_SELECT && !QEXEC_IS_MULTI_TABLE_UPDATE_DELETE (xasl)
 	  && xasl->selected_upd_list == NULL && !ACCESS_SPEC_IS_FLAGED (spec, ACCESS_SPEC_FLAG_ONLY_MIN_MAX_SCAN));
 }
@@ -12562,7 +12578,8 @@ qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 
 /* The trace's fetch / ioread / time of the batch pages, taken over the stretches of the chain's loop that the batch
  * runs: a page that goes to the row path is counted there, per row, by scan_next_scan_local () into the same
- * scan_stats, so the stretch closes before it and opens again after. */
+ * scan_stats, so the stretch closes before it and opens again after.  A partition's share of the stretch goes to
+ * its own stats the way scan_next_scan () hands a row's: the difference from the stretch's start. */
 typedef struct qexec_batch_trace QEXEC_BATCH_TRACE;
 struct qexec_batch_trace
 {
@@ -12570,16 +12587,21 @@ struct qexec_batch_trace
   UINT64 fetches;
   UINT64 ioreads;
   TSC_TICKS tick;
+  SCAN_STATS before;		/* the scan's stats at the stretch's start, when a partition takes its share */
 };
 
 static void
-qexec_batch_trace_begin (THREAD_ENTRY * thread_p, QEXEC_BATCH_TRACE * t)
+qexec_batch_trace_begin (THREAD_ENTRY * thread_p, QEXEC_BATCH_TRACE * t, const SCAN_ID * s_id)
 {
   if (t->on)
     {
       t->fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
       t->ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
       tsc_getticks (&t->tick);
+      if (s_id->partition_stats != NULL)
+	{
+	  memcpy (&t->before, &s_id->scan_stats, sizeof (SCAN_STATS));
+	}
     }
 }
 
@@ -12596,6 +12618,19 @@ qexec_batch_trace_end (THREAD_ENTRY * thread_p, QEXEC_BATCH_TRACE * t, SCAN_ID *
       TSC_ADD_TIMEVAL (s_id->scan_stats.elapsed_scan, tv_diff);
       s_id->scan_stats.num_fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - t->fetches;
       s_id->scan_stats.num_ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - t->ioreads;
+      if (s_id->partition_stats != NULL)
+	{
+	  SCAN_STATS *part = s_id->partition_stats;
+	  SCAN_STATS *now = &s_id->scan_stats;
+
+	  perfmon_add_timeval (&part->elapsed_scan, &t->before.elapsed_scan, &now->elapsed_scan);
+	  part->num_fetches += now->num_fetches - t->before.num_fetches;
+	  part->num_ioreads += now->num_ioreads - t->before.num_ioreads;
+	  part->read_rows += now->read_rows - t->before.read_rows;
+	  part->qualified_rows += now->qualified_rows - t->before.qualified_rows;
+	  part->batch_pages += now->batch_pages - t->before.batch_pages;
+	  part->batch_pages_rowpath += now->batch_pages_rowpath - t->before.batch_pages_rowpath;
+	}
     }
 }
 
@@ -12611,7 +12646,7 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   int rc;
 
   trace.on = thread_is_on_trace (thread_p);
-  qexec_batch_trace_begin (thread_p, &trace);
+  qexec_batch_trace_begin (thread_p, &trace, s_id);
   while ((code = scan_batch_next_page (thread_p, s_id)) == S_SUCCESS)
     {
       PGSLOTID slot = 0, chunk_start;
@@ -12692,7 +12727,7 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	{
 	  return S_ERROR;
 	}
-      qexec_batch_trace_begin (thread_p, &trace);
+      qexec_batch_trace_begin (thread_p, &trace, s_id);
     }
   qexec_batch_trace_end (thread_p, &trace, s_id);
   return code;

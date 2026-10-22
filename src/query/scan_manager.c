@@ -6111,6 +6111,11 @@ scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 		scan_id->scan_stats.qualified_rows - old_scan_stats.qualified_rows;
 	      perfmon_add_timeval (&scan_id->partition_stats->elapsed_hash_build, &old_scan_stats.elapsed_hash_build,
 				   &scan_id->scan_stats.elapsed_hash_build);
+	      /* the filter iterator's page batch (scan_batch_iter_next ()); the aggregate's pages are the stretch's
+	       * (qexec_batch_trace_end ()) */
+	      scan_id->partition_stats->batch_pages += scan_id->scan_stats.batch_pages - old_scan_stats.batch_pages;
+	      scan_id->partition_stats->batch_pages_rowpath +=
+		scan_id->scan_stats.batch_pages_rowpath - old_scan_stats.batch_pages_rowpath;
 	      break;
 
 	    case S_INDX_SCAN:
