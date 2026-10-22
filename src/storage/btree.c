@@ -59,6 +59,7 @@
 #include "thread_manager.hpp"
 
 #include <assert.h>
+#include <math.h>
 #include <algorithm>
 #include <cinttypes>
 #include <stdlib.h>
@@ -7410,17 +7411,31 @@ btree_get_stats_prefix_value_hash (const DB_VALUE * value)
 	if (is_float_numeric)
 	  {
 	    /* a float NUMERIC keeps its own scale per value: the normalization of mht_valhash ()
-	     * brings 1.0 and 1.00 to one image but drops the scale left over, so 1.5 and 15 would
-	     * share it; the value as a double tells them apart */
-	    double d;
+	     * strips the trailing zeros so that 1.0 and 1.00 share one coefficient, but drops the
+	     * scale left over, so 1.5 and 15 would share it too. The scale left over is mixed in;
+	     * it is the original scale less the number of zeros stripped, which is the decimal
+	     * exponent of the coefficient ratio (an exact power of ten, so the rounding of the
+	     * two doubles cannot change it). */
+	    int left_scale = scale;
 
-	    numeric_coerce_num_to_double (value, scale, &d);
-	    hash = btree_get_stats_hash_bytes (hash, &d, sizeof (d));
 	    if (scale != 0 && !(precision == DB_MAX_NUMERIC_PRECISION && scale < 0))
 	      {
 		float_numeric_normalize_for_hash (num, calc_buf, precision, scale);
 		num = calc_buf;
+		if (scale > 0)
+		  {
+		    DB_VALUE coefficient;
+		    double d_value, d_coefficient;
+
+		    db_make_numeric (&coefficient, calc_buf, DB_MAX_NUMERIC_PRECISION, 0, DB_NUMERIC_BUF_SIZE, false,
+				     false);
+		    numeric_coerce_num_to_double (value, 0, &d_value);
+		    numeric_coerce_num_to_double (&coefficient, 0, &d_coefficient);
+		    left_scale =
+		      (d_coefficient == 0) ? 0 : scale - (int) lround (log10 (fabs (d_value) / d_coefficient));
+		  }
 	      }
+	    hash = btree_get_stats_hash_bytes (hash, &left_scale, sizeof (left_scale));
 	  }
 	hash = btree_get_stats_hash_bytes (hash, &is_negative, sizeof (is_negative));
 	return btree_get_stats_hash_bytes (hash, num, DB_NUMERIC_BUF_SIZE);
