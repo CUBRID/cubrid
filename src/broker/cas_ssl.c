@@ -203,6 +203,7 @@ cas_init_ssl (int sd)
    * read gets; it stays set for the whole SSL session, which the plaintext path bounds per read as well. */
   cas_ssl_set_io_timeout (sd, NET_DEFAULT_TIMEOUT);
 
+  errno = 0;			/* so the SSL_ERROR_SYSCALL branch below reads SSL_accept ()'s errno, not an earlier call's */
   err_code = SSL_accept (ssl);
   if (err_code <= 0)		/* 0 is a failed handshake too */
     {
@@ -234,8 +235,9 @@ cas_init_ssl (int sd)
 	}
       else
 	{
-	  /* Nothing queued and no errno: the client closed the connection before or during the handshake, as a
-	   * driver does when it cannot read its own trust anchors. */
+	  /* Nothing queued and errno untouched by SSL_accept (): the client closed the connection before or during
+	   * the handshake, as a driver does when it cannot read its own trust anchors. OpenSSL 1.1.1 (the Windows
+	   * build) reaches this on a clean close; 3.x reports it as "unexpected eof while reading", handled above. */
 	  cas_log_write_and_end (0, true,
 				 "SSL: Accept failed - the client closed the connection during the TLS handshake");
 	}
