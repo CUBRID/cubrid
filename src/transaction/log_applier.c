@@ -452,18 +452,11 @@ static char la_peer_host[CUB_MAXHOSTNAMELEN + 1];
 static bool la_enable_sql_logging = false;
 static LA_WORKER la_apply_Workers[LA_MAX_WORKER_COUNT];
 
-/* la_clock_ns of the last drain progress (the wait starting or the frontier moving) for the current role
- * change (0 = not currently waiting), and the frontier seen then. Reset to 0 alongside every
- * la_Info.is_role_changed = false (la_lock_dbname, la_unlock_dbname, la_init), so it always starts fresh
- * for the next role change. */
-static UINT64 la_Drain_wait_start_ns = 0;
-static LOG_LSA la_Drain_last_frontier = LSA_INITIALIZER;
-
 /*
  * la_clock_ns() - monotonic wall clock in nanoseconds
  *
  * Note:
- *   local to the client-side applier so the drain/backstop timing
+ *   local to the client-side applier so its interval timing
  *   does not pull the server-only writeset perf clock into this library.
  */
 static UINT64
@@ -6899,9 +6892,6 @@ la_update_query_execute_with_values (const char *sql, int arg_count, DB_VALUE * 
   return res;
 }
 
-/* backstop for the failover drain: if the frontier does not move for this long, give up and restart */
-#define LA_DRAIN_TIMEOUT_MSEC 30000
-
 /*
  * la_apply_schema_log() - apply the schema log to the target slave
  *   return: NO_ERROR or error code
@@ -8626,7 +8616,6 @@ la_lock_dbname (int *lockf_vdes, char *db_name, char *log_path)
   assert_release ((*lockf_vdes) != NULL_VOLDES);
 
   la_Info.is_role_changed = false;
-  la_Drain_wait_start_ns = 0;
 
   return error;
 }
@@ -8650,7 +8639,6 @@ la_unlock_dbname (int *lockf_vdes, char *db_name, bool clear_owner)
     }
 
   la_Info.is_role_changed = false;
-  la_Drain_wait_start_ns = 0;
 
   if (clear_owner)
     {
@@ -8690,7 +8678,6 @@ la_init (const char *log_path, const int max_mem_size)
 
   la_Info.last_deleted_archive_num = -1;
   la_Info.is_role_changed = false;
-  la_Drain_wait_start_ns = 0;
   la_Info.is_apply_info_updated = false;
 
   /* The memory budget below (see la_check_mem_size) is compared against the
@@ -10559,39 +10546,6 @@ la_apply_log_file (const char *database_name, const char *log_path, const int ma
 	  /* there is no something new */
 	  if (LSA_EQ (&old_lsa, &la_Info.final_lsa))
 	    {
-	      /* la_change_state() holds DONE until the gate drains; if the frontier stops moving (a stuck worker),
-	       * restart instead of polling here forever */
-	      if (la_Info.is_role_changed == true && !la_coordinator_drain_complete ())
-		{
-		  LOG_LSA frontier;
-
-		  if (!la_gate_get_frontier (&frontier))
-		    {
-		      LSA_SET_NULL (&frontier);
-		    }
-
-		  if (la_Drain_wait_start_ns == 0 || !LSA_EQ (&frontier, &la_Drain_last_frontier))
-		    {
-		      la_Drain_wait_start_ns = la_clock_ns ();
-		      LSA_COPY (&la_Drain_last_frontier, &frontier);
-		    }
-		  else if ((la_clock_ns () - la_Drain_wait_start_ns) / 1000000ULL > (UINT64) LA_DRAIN_TIMEOUT_MSEC)
-		    {
-		      char buffer[256];
-
-		      snprintf (buffer, sizeof (buffer),
-				"writeset drain: frontier did not move for %d msec (pending=%d inflight=%d "
-				"order_ring=%d); giving up and restarting",
-				LA_DRAIN_TIMEOUT_MSEC,
-				(int) !la_pending_is_empty (), la_inflight_get_count (),
-				la_gate_order_get_count ());
-		      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, buffer);
-
-		      la_applier_need_shutdown = true;
-		      break;
-		    }
-		}
-
 	      /* caught up with the log: wait for a worker result instead of sleeping, so a finished task wakes the
 	       * loop at once and parked tasks behind it are released */
 	      (void) la_result_queue_wait_for_result (100);
