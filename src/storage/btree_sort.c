@@ -444,11 +444,11 @@ static int btsort_put_result_from_tmpfile (THREAD_ENTRY * thread_p, BTSORT_PARAM
 
 static int btsort_index_page_decode_key (THREAD_ENTRY * thread_p, char *pgbuf, int slot, LOAD_ARGS * load_args,
 					 DB_VALUE * key);
-static int btsort_index_run_decode_key_at (THREAD_ENTRY * thread_p, VFID * temp, char *iomem, LOAD_ARGS * load_args,
-					   int page, int slot, DB_VALUE * key);
-static int btsort_px_run_lower_bound (THREAD_ENTRY * thread_p, VFID * temp, int npages, char *iomem,
-				      LOAD_ARGS * load_args, TP_DOMAIN * key_type, DB_VALUE * splitter, int *page_out,
-				      int *slot_out);
+static int btsort_index_run_decode_key_at (THREAD_ENTRY * thread_p, VFID * temp, FILE_FIND_NTH_CURSOR * cursor,
+					   char *iomem, LOAD_ARGS * load_args, int page, int slot, DB_VALUE * key);
+static int btsort_px_run_lower_bound (THREAD_ENTRY * thread_p, VFID * temp, FILE_FIND_NTH_CURSOR * cursor, int npages,
+				      char *iomem, LOAD_ARGS * load_args, TP_DOMAIN * key_type, DB_VALUE * splitter,
+				      int *page_out, int *slot_out);
 static int btsort_px_select_splitters (THREAD_ENTRY * thread_p, VFID * run_temp, const int *run_npages, int n_runs,
 				       char *iomem, LOAD_ARGS * load_args, TP_DOMAIN * key_type, int parallel_num,
 				       DB_VALUE * splitters, int *n_splitters);
@@ -817,6 +817,7 @@ btsort_retrieve_longrec (THREAD_ENTRY * thread_p, RECDES * address, RECDES * mem
       memory->data = (char *) malloc (memory->area_size);
       if (memory->data == NULL)
 	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, (size_t) memory->area_size);
 	  return NULL;
 	}
     }
@@ -5067,7 +5068,7 @@ btsort_get_numpages_of_active_infiles (const BTSORT_PARAM * sort_param)
 
 /*
  * btsort_run_add_new () - Adds a new node to the end of the given list
- *   return: NO_ERROR
+ *   return: NO_ERROR, or ER_OUT_OF_VIRTUAL_MEMORY
  *   file_contents(in): which list to add
  *   num_pages(in): what value to put for the new run
  */
@@ -5075,35 +5076,37 @@ static int
 btsort_run_add_new (BTSORT_FILE_CONTENTS * file_contents, int num_pages)
 {
   int new_total_elements;
-  int ret = NO_ERROR;
+  int *new_num_pages;
+  int new_run;			/* the array slot the run takes: an empty list starts over at 0 */
+
+  new_run = (file_contents->first_run == -1) ? 0 : file_contents->last_run + 1;
+
+  /* If there is no room in the dynamic array to keep the next element of the list; expand the dynamic array. */
+  if (new_run >= file_contents->num_slots)
+    {
+      new_total_elements = ((int) (((float) file_contents->num_slots * BTSORT_EXPAND_DYN_ARRAY_RATIO) + 0.5));
+      new_num_pages = (int *) realloc (file_contents->num_pages, (size_t) new_total_elements * sizeof (int));
+      if (new_num_pages == NULL)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1,
+		  (size_t) new_total_elements * sizeof (int));
+	  return ER_OUT_OF_VIRTUAL_MEMORY;
+	}
+      file_contents->num_pages = new_num_pages;
+      file_contents->num_slots = new_total_elements;
+    }
 
   if (file_contents->first_run == -1)
     {
       /* This is an empty list */
       file_contents->first_run = 0;
-      file_contents->last_run = 0;
     }
-  else
-    {
-      file_contents->last_run++;
-    }
-
-  /* If there is no room in the dynamic array to keep the next element of the list; expand the dynamic array. */
-  if (file_contents->last_run >= file_contents->num_slots)
-    {
-      new_total_elements = ((int) (((float) file_contents->num_slots * BTSORT_EXPAND_DYN_ARRAY_RATIO) + 0.5));
-      file_contents->num_pages = (int *) realloc (file_contents->num_pages, new_total_elements * sizeof (int));
-      if (file_contents->num_pages == NULL)
-	{
-	  return ER_FAILED;
-	}
-      file_contents->num_slots = new_total_elements;
-    }
+  file_contents->last_run = new_run;
 
   /* Put the "num_pages" info to the "last_run" slot of the array */
-  file_contents->num_pages[file_contents->last_run] = num_pages;
+  file_contents->num_pages[new_run] = num_pages;
 
-  return ret;
+  return NO_ERROR;
 }
 
 /*
