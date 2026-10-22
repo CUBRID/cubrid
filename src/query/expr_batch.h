@@ -40,12 +40,9 @@
  * rejects) is handed back as EXPR_BATCH_FALLBACK before anything is accumulated, so the
  * row path re-runs it and raises the error exactly where the interpreter would.
  *
- * database-reference 참고: its block scan pins a block, points column values for the
- * use-column set of the node (PpNodeUseColumnInfo / ColumnBuilder::Build), applies the
- * filter as a selection vector to the block (InvalidateRowsByFilter) and refers to the
- * survivors as (block, row) positions (RowPos).  The page batch keeps that flow -- a page,
- * its use columns, a selection vector, row positions -- and goes one step further by
- * running the evaluation itself over the arrays rather than per pointed row.
+ * The page batch works a page at a time: it pins the page, points the columns the node
+ * uses, keeps the filter's survivors as a selection vector over the page's row positions,
+ * and runs the evaluation itself over the arrays rather than per pointed row.
  *
  * Visibility is not part of this module: the caller's rows come from
  * heap_page_collect_visible (), which decides it for a whole page as heap_next_1page () does
@@ -144,8 +141,8 @@ typedef struct expr_batch_plan EXPR_BATCH_PLAN;
 #define EXPR_BATCH_FALLBACK (1)
 
 /* The bytes one chunk takes: a page is collected and evaluated in chunks, each accumulated
- * before the next is collected (database-reference 참고: a fixed-size chunk is written until
- * it is full and handed to the next node; only a blocking node gathers them).  The chunk's
+ * before the next is collected (a fixed-size chunk is filled and handed to the next node;
+ * only a blocking node gathers chunks).  The chunk's
  * rows are as many as these bytes hold at the plan's bytes per row -- its row references,
  * selection, vectors and their NULL and scale bytes -- so a quarter of a 32 KB L1 data cache
  * is left to them, the rest to the page being decoded and the accumulators. */
@@ -193,8 +190,7 @@ extern DB_TYPE expr_batch_agg_type (const EXPR_BATCH_PLAN * plan, int node_ord);
  * (expr_chunk_push () on its next), or, being a blocking node -- an aggregate, later a hash
  * GROUP BY or a join's build side -- ends the chain and keeps what it needs.  A chunk's rows
  * are peeked, valid only until the producer moves on, so a node that keeps anything of them
- * copies it (database-reference 참고: a blocking node gathers what the chunks bring into
- * blocks of its own).
+ * copies it (a blocking node gathers what the chunks bring into blocks of its own).
  *
  * consume returns NO_ERROR, an error, or EXPR_BATCH_FALLBACK: the chunk goes to the row path.
  * Only the blocking node at the end changes state, and only after every node before it took

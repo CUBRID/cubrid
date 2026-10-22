@@ -41,8 +41,7 @@
  * when the chunk starts.  A column is then either POINTED or decoded:
  *   - pointed: its consumers read it straight from the record when they need a value -- a
  *     fixed-area column that only raw leaves read (a byte swap per comparison), or a NUMERIC
- *     with one consumer (a leaf or an arithmetic step): nothing is written for it
- *     (database-reference 참고: ColumnBuilder points a row's values into the block);
+ *     with one consumer (a leaf or an arithmetic step): nothing is written for it;
  *   - decoded: into its vector, when something first reads it, over the rows still selected
  *     at that point -- a raw leaf's column just before the leaf runs, the operands' columns
  *     after the filter.  The selection only shrinks, so a column decoded for a leaf covers

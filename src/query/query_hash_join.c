@@ -4670,8 +4670,8 @@ hjoin_print_tuple (QFILE_LIST_ID * list_id, QFILE_TUPLE tuple, HASHJOIN_PRINT_ST
 #endif /* !NDEBUG && HASHJOIN_DUMP_PROBE */
 
 /* ---------------------------------------------------------------------------------------------------------------- */
-/* Runtime filter (database-reference 참고: a hash join hands the keys of its build input to the probe input's scan,
- * which drops the rows that cannot match before the joins and lookups above that scan run on them).
+/* Runtime filter: a hash join hands the keys of its build input to the probe input's scan, which drops the rows
+ * that cannot match before the joins and lookups above that scan run on them.
  *
  * A join's two inputs are lists made before the join (the HASHJOIN_PROC's aptr_list, outer then inner).  When one
  * input is small -- at most HJOIN_RTF_MAX_KEYS rows -- and the join drops the other input's unmatched rows (an

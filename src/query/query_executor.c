@@ -5579,8 +5579,8 @@ exit_on_error:
  * the order reaches the result but the unsorted list holds several rows per group, the partitions are collapsed
  * to one first tuple and one partial entry per group, and the sort takes those instead.
  *
- * database-reference 참고: a hash aggregation that outgrows its memory spills the rest into partitions by the
- * key's hash and aggregates each partition by itself, one table at a time, instead of sorting it.
+ * A hash aggregation that outgrows its memory spills the rest into partitions by the key's hash and aggregates
+ * each partition by itself, one table at a time, instead of sorting it.
  */
 
 /* a list being appended to keeps its last page fixed, and a thread pays for each page it holds whenever it dirties
@@ -11748,11 +11748,9 @@ qexec_batch_filter_eligible (const XASL_NODE * xasl)
  * groups may be gone.  Once the table stops taking rows (HS_REJECT_ALL) every row goes to the row path, which sends it
  * to the sort.
  *
- * database-reference 참고: a hash GROUP BY keeps one aggregate row per group -- its count and the states of the
- * basis functions the aggregates decompose into (ExAggr) -- and a NUMBER sum accumulates digit positions
- * without carries (NumberAccum), merged per group at the end (exaggr_apply); here the group is the table's
- * AGGREGATE_HASH_VALUE with its accumulators (SUM_ACC the word sum), and a parallel worker's table is merged by
- * the coordinator through the partial lists as before. */
+ * A hash GROUP BY keeps one aggregate row per group: the table's AGGREGATE_HASH_VALUE with its accumulators
+ * (SUM_ACC the word sum), and a parallel worker's table is merged by the coordinator through the partial lists as
+ * before. */
 
 #define QEXEC_GBY_CACHE_SIZE (1024)	/* power of two; at most half of it is used */
 #define QEXEC_GBY_KEY_MAX (256)

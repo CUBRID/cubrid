@@ -2311,8 +2311,7 @@ expr_rhs_end (EXPR_BUILD_CTX * bctx, int saved, int guard, int cse_start, int no
  * One cell per (operator, result type, operand mix): the kernel a binary arithmetic node
  * runs, or NULL where no kernel exists and the node stays interpreted.  The table is the
  * whole policy -- a reviewer reads a cell, not a switch -- and the slot a program leaves
- * open for a variable node is filled from it once the gate has resolved the node's types
- * (database-reference 참고: the compiler's operator/type tables).
+ * open for a variable node is filled from it once the gate has resolved the node's types.
  *
  *   mix SAME         both operands already have the result type: the typed operator
  *   mix NUMERIC_INT  a NUMERIC result over a SHORT/INTEGER/BIGINT side the kernel coerces
