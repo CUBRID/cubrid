@@ -362,7 +362,14 @@ typedef struct uncorr_info
 {
   XASL_NODE *xasl;
   int level;
+  PT_NODE *cte_list;		/* CTEs of the query whose aptr list is built; its aptr list runs them */
 } UNCORR_INFO;
+
+typedef struct cte_ref_info
+{
+  PT_NODE *cte_list;		/* in: CTEs to look for */
+  bool found;			/* out: a spec reads one of them */
+} CTE_REF_INFO;
 
 typedef struct corr_info
 {
@@ -424,6 +431,7 @@ static int pt_set_sub_xasl_id (XASL_NODE * xasl, const PT_NODE * node);
 static XASL_NODE *pt_append_scan (const XASL_NODE * to, const XASL_NODE * from);
 static PT_NODE *pt_uncorr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *pt_find_cte_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static XASL_NODE *pt_to_uncorr_subquery_list (PARSER_CONTEXT * parser, PT_NODE * node);
 static PT_NODE *pt_corr_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static XASL_NODE *pt_to_corr_subquery_list (PARSER_CONTEXT * parser, PT_NODE * node, UINTPTR id);
@@ -6765,6 +6773,32 @@ pt_make_regu_constant (PARSER_CONTEXT * parser, DB_VALUE * db_value, const DB_TY
 
 
 /*
+ * pt_make_key_limit_arith () - build a key limit node (rownum < N is N - 1, a range is upper - lower,
+ *                              a merge with a user KEYLIMIT is LEAST/GREATEST) and mark it as such,
+ *                              so key_limit_eval () can tell it from arithmetic written by the user
+ *   return: a regu variable or NULL on error
+ *   arg1(in), arg2(in): operands
+ *   op(in): T_SUB, T_LEAST or T_GREATEST
+ *   domain(in): result domain
+ */
+REGU_VARIABLE *
+pt_make_key_limit_arith (const REGU_VARIABLE * arg1, const REGU_VARIABLE * arg2, const OPERATOR_TYPE op,
+			 const TP_DOMAIN * domain)
+{
+  REGU_VARIABLE *regu;
+
+  assert (op == T_SUB || op == T_LEAST || op == T_GREATEST);
+
+  regu = pt_make_regu_arith (arg1, arg2, NULL, op, domain);
+  if (regu != NULL)
+    {
+      REGU_VARIABLE_SET_FLAG (regu, REGU_VARIABLE_KEY_LIMIT_ARITH);
+    }
+
+  return regu;
+}
+
+/*
  * pt_make_regu_arith () - takes a regu_variable pair,
  *                         and makes an regu arith type
  *   return: A NULL return indicates an error occurred
@@ -11716,7 +11750,7 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
     {
       if (regu_var_u != NULL)
 	{
-	  key_infop->key_limit_u = pt_make_regu_arith (key_infop->key_limit_u, regu_var_u, NULL, T_LEAST, dom_bigint);
+	  key_infop->key_limit_u = pt_make_key_limit_arith (key_infop->key_limit_u, regu_var_u, T_LEAST, dom_bigint);
 	  if (key_infop->key_limit_u == NULL)
 	    {
 	      goto error;
@@ -11733,8 +11767,7 @@ pt_to_key_limit (PARSER_CONTEXT * parser, PT_NODE * key_limit, QO_LIMIT_INFO * l
     {
       if (regu_var_l != NULL)
 	{
-	  key_infop->key_limit_l =
-	    pt_make_regu_arith (key_infop->key_limit_l, regu_var_l, NULL, T_GREATEST, dom_bigint);
+	  key_infop->key_limit_l = pt_make_key_limit_arith (key_infop->key_limit_l, regu_var_l, T_GREATEST, dom_bigint);
 	  if (key_infop->key_limit_l == NULL)
 	    {
 	      goto error;
@@ -11842,7 +11875,7 @@ pt_instnum_to_key_limit (PARSER_CONTEXT * parser, QO_PLAN * plan, XASL_NODE * xa
 	{
 	  TP_DOMAIN *dom_bigint = tp_domain_resolve_default (DB_TYPE_BIGINT);
 
-	  limit_infop->upper = pt_make_regu_arith (limit_infop->upper, limit_infop->lower, NULL, T_SUB, dom_bigint);
+	  limit_infop->upper = pt_make_key_limit_arith (limit_infop->upper, limit_infop->lower, T_SUB, dom_bigint);
 	  if (limit_infop->upper == NULL)
 	    {
 	      goto exit_on_error;
@@ -14056,6 +14089,18 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 	      node->info.query.correlation_level = info->level;
 	      node->info.query.flag.uncorr_hoisted = 1;
 	    }
+	  else if (node->info.query.correlation_level > info->level && info->cte_list != NULL)
+	    {
+	      /* hoisting a reader of this query's CTE to an enclosing query would run it before
+	       * the aptr list of this query runs the CTE, so it would read an empty CTE result */
+	      CTE_REF_INFO cte_ref = { info->cte_list, false };
+
+	      (void) parser_walk_leaves (parser, node, pt_find_cte_ref_pre, &cte_ref, NULL, NULL);
+	      if (cte_ref.found)
+		{
+		  node->info.query.correlation_level = info->level;
+		}
+	    }
 
 	  if (node->info.query.correlation_level == info->level)
 	    {
@@ -14131,6 +14176,38 @@ pt_uncorr_post (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continu
 }
 
 /*
+ * pt_find_cte_ref_pre () - find a spec that reads one of the CTEs in arg
+ *   return:
+ *   parser(in):
+ *   node(in):
+ *   arg(in/out): CTE_REF_INFO
+ *   continue_walk(in/out):
+ */
+static PT_NODE *
+pt_find_cte_ref_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+{
+  CTE_REF_INFO *info = (CTE_REF_INFO *) arg;
+  PT_NODE *cte;
+
+  if (node->node_type != PT_SPEC || !PT_SPEC_IS_CTE (node))
+    {
+      return node;
+    }
+
+  for (cte = info->cte_list; cte != NULL; cte = cte->next)
+    {
+      if (cte == node->info.spec.cte_pointer->info.pointer.node)
+	{
+	  info->found = true;
+	  *continue_walk = PT_STOP_WALK;
+	  break;
+	}
+    }
+
+  return node;
+}
+
+/*
  * pt_to_uncorr_subquery_list () - Gather the correlated level > 1 subqueries
  * 	include nested queries, such that nest level + 2 = correlation level
  *	exclude the node being passed in
@@ -14145,6 +14222,7 @@ pt_to_uncorr_subquery_list (PARSER_CONTEXT * parser, PT_NODE * node)
 
   info.xasl = NULL;
   info.level = 2;
+  info.cte_list = node->info.query.with ? node->info.query.with->info.with_clause.cte_definition_list : NULL;
 
   node = parser_walk_leaves (parser, node, pt_uncorr_pre, &info, pt_uncorr_post, &info);
 
@@ -18563,6 +18641,21 @@ pt_plan_query (PARSER_CONTEXT * parser, PT_NODE * select_node)
       xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
     }
 
+  if (xasl != NULL && !pt_is_subquery (select_node) && histogram_bind_watch_candidate (parser, select_node))
+    {
+      /* target selection for the bind-value plan variants. No condition looks at the values
+       * (real-class specs, most-common values on the column, no unique key pinning the node), so
+       * whatever values the plan was chosen under, every compile of the statement gives the same
+       * answer and the flag travels with every variant of it. Only the statement's own header
+       * is read, and its walk covers the subqueries, so a subquery is not judged on its own. */
+      xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
+    }
+  if (xasl != NULL && plan != NULL)
+    {
+      /* the plan-variant directory tells two compiles of one query apart by their plans */
+      parser->bind_plan_sig = qo_plan_signature (plan, parser->bind_plan_sig);
+    }
+
   qo_get_optimization_param (&level, QO_PARAM_LEVEL);
   if (level >= 0x100 && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_INFO_COLS_SCHEMA)
       && !PT_SELECT_INFO_IS_FLAGED (select_node, PT_SELECT_FULL_INFO_COLS_SCHEMA)
@@ -20360,17 +20453,33 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
     }
 
   /* One statement goes out per value the driving subquery produces, so a repeated value writes the same
-   * remote row twice -- the count grows past the rows that changed, a SET expression reading the row's own
-   * value is applied twice, and a remote trigger fires twice. De-duplicate the values instead of counting
-   * the repetition: the quantified shapes this sink admits compare equality, where distinct values match
-   * disjoint rows. A scalar comparison is left as written. Its subquery must yield one row, and DISTINCT
-   * would fold repeated values into one and hide the "more than a single tuple" error. DELETE's count comes
-   * out right without this -- the second statement finds the row gone and reports 0 -- and the flag would
-   * only add a sort, so it is set here and not in the shared WHERE translation. */
+   * remote row twice. The equality shapes this sink admits match disjoint rows for distinct values, so the
+   * values are de-duplicated. A scalar comparison is left as written. DISTINCT would hide its "more than a
+   * single tuple" error. DELETE does not need this, because a second statement finds the row gone.
+   *
+   * The subquery was bound stand-alone (pt_bind_remote_dml_subq), so the range-predicate typing never ran
+   * on it. When pt_try_set_subquery_distinct () declines, the subquery is wrapped and folded outside. */
   if (driving_subq != NULL && PT_IS_QUERY (driving_subq)
       && (cond->info.expr.op == PT_IS_IN || cond->info.expr.op == PT_EQ_SOME))
     {
-      driving_subq->info.query.all_distinct = PT_DISTINCT;
+      if (!pt_try_set_subquery_distinct (parser, driving_subq))
+	{
+	  PT_NODE *wrapped = mq_rewrite_query_as_derived (parser, driving_subq);
+
+	  if (wrapped == NULL)
+	    {
+	      return NULL;
+	    }
+	  PT_NODE_MOVE_NUMBER_OUTERLINK (wrapped, driving_subq);
+	  wrapped->info.query.q.select.flavor = PT_USER_SELECT;
+	  wrapped->info.query.is_subquery = PT_IS_SUBQUERY;
+	  wrapped->info.query.correlation_level = 0;
+	  wrapped->info.query.all_distinct = PT_DISTINCT;
+
+	  parser_free_tree (parser, cond->info.expr.arg2);
+	  cond->info.expr.arg2 = wrapped;
+	  driving_subq = wrapped;
+	}
     }
 
   /* With a WHERE, the driving subquery feeds the list-file the sink scans, and pt_make_aptr_parent_node
@@ -20407,6 +20516,8 @@ pt_to_update_xasl_remote_subquery (PARSER_CONTEXT * parser, PT_NODE * statement)
 	{
 	  set_text = pt_append_string (parser, set_text, ", ");
 	}
+      /* Appended unquoted, as the key column is in dblink_dml_build_delete_sql () (see the TODO there). Unlike
+       * that key, this text is built here, where the remote vendor is not known yet. */
       set_text = pt_append_string (parser, set_text, ea.lhs->info.name.original);
       set_text = pt_append_string (parser, set_text, " = ");
 
@@ -22933,6 +23044,11 @@ pt_to_delete_xasl (PARSER_CONTEXT * parser, PT_NODE * statement)
        * the actual bind values */
       xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
     }
+  if (xasl != NULL && histogram_bind_watch_candidate (parser, statement))
+    {
+      /* target selection for bind-value plan variants, as for SELECT in pt_plan_query () */
+      xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
+    }
 
   return xasl;
 
@@ -23889,6 +24005,11 @@ cleanup:
        * unbound host-variable predicate markers, so the first execution replans once under
        * the actual bind values */
       xasl->header.xasl_flag |= HV_PRED_PLAN_UNPEEKED;
+    }
+  if (xasl != NULL && histogram_bind_watch_candidate (parser, statement))
+    {
+      /* target selection for bind-value plan variants, as for SELECT in pt_plan_query () */
+      xasl->header.xasl_flag |= BIND_WATCH_CANDIDATE;
     }
   return xasl;
 }
