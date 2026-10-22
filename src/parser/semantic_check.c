@@ -18483,11 +18483,6 @@ pt_fold_union (PARSER_CONTEXT * parser, PT_NODE * union_node, STATEMENT_SET_FOLD
       if (PT_IS_QUERY_NODE_TYPE (active->node_type) && active->info.query.correlation_level > 0)
 	{
 	  active = mq_bump_correlation_level (parser, active, -1, active->info.query.correlation_level);
-	  if (!PT_IS_SELECT (active))
-	    {
-	      /* mq_bump_correlation_level () does not change a set operation node itself */
-	      active->info.query.correlation_level--;
-	    }
 	}
 
       /* to save union's orderby or limit clause to arg1 or arg2 */
