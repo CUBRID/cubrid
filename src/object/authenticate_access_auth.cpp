@@ -274,12 +274,6 @@ au_auth_accessor::get_new_auth (DB_OBJECT_TYPE obj_type, MOP grantor, MOP user, 
       goto exit;
     }
 
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
-
   stmt_id = db_compile_statement_local (session);
   if (stmt_id != 1)
     {
@@ -560,12 +554,6 @@ au_delete_auth_of_dropping_user (MOP user)
       goto exit;
     }
 
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
-
   stmt_id = db_compile_statement_local (session);
   if (stmt_id < 0)
     {
@@ -647,12 +635,6 @@ au_delete_auth_of_dropping_database_object (DB_OBJECT_TYPE obj_type, const char 
       goto exit;
     }
 
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto release;
-    }
-
   stmt_id = db_compile_statement_local (session);
   if (stmt_id < 0)
     {
@@ -716,12 +698,6 @@ au_delete_authorizartion_of_dropping_user (MOP user)
     {
       ASSERT_ERROR_AND_SET (error);
       goto exit;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto release;
     }
 
   stmt_id = db_compile_statement_local (session);
@@ -817,12 +793,6 @@ au_object_revoke_all_privileges (DB_OBJECT_TYPE obj_type, MOP grantor_mop, const
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
       goto exit;
     }
 
@@ -1029,12 +999,6 @@ au_user_revoke_all_privileges (MOP user_mop)
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
       goto exit;
     }
 
@@ -1340,12 +1304,6 @@ update_authorization_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, 
       goto exit;
     }
 
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
-      goto exit;
-    }
-
   stmt_id = db_compile_statement_local (session);
   if (stmt_id < 0)
     {
@@ -1600,12 +1558,6 @@ update_auth_for_new_owner (DB_OBJECT_TYPE obj_type, MOP old_owner_mop, MOP new_o
   if (session == NULL)
     {
       ASSERT_ERROR_AND_SET (error);
-      goto exit;
-    }
-
-  error = db_set_system_generated_statement (session);
-  if (error != NO_ERROR)
-    {
       goto exit;
     }
 
