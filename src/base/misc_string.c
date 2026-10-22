@@ -126,3 +126,5 @@ ustr_lower (char *s)
     *t = tolower (*t);
   return s;
 }
+
+/* TEST ONLY (CI download cache measurement): run 2 */
