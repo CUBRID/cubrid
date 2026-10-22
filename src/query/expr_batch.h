@@ -66,6 +66,7 @@ struct heap_rec_layout;
 struct access_spec_node;
 struct val_descr;
 struct hjoin_runtime_filter;
+struct valptr_list_node;
 namespace cubxasl
 {
   struct aggregate_list_node;
@@ -124,6 +125,9 @@ struct expr_batch_inputs
 						 * NULL: a projection, which takes the rows the filter keeps */
   struct val_descr *vd;
   const EXPR_BATCH_GBY_MAP *gby;	/* a hash GROUP BY's mapping (agg_list is its g_agg_list), or NULL */
+  /* a projecting block's output list (agg_list NULL, gby NULL), its program settled for this execution
+   * (qdata_valptr_prog_settle ()): the plan computes its columns as vectors where it can (expr_batch_proj_row ()) */
+  const struct valptr_list_node *proj;
   bool is_peeking;		/* records are peeked, not copied into one buffer */
   /* a hash join's runtime filter on the scan (query_hash_join.h, hjoin_rtf_*), or NULL: the filter, the value-list
    * cell the scan fetches its key into (the spec's regu lists say which attribute), whether its keys are DATEs, and
@@ -183,6 +187,18 @@ extern int expr_batch_key_bytes (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH 
 
 /* the DB type of the node's operand vector (what its values would carry) */
 extern DB_TYPE expr_batch_agg_type (const EXPR_BATCH_PLAN * plan, int node_ord);
+/* The projection as vectors (EXPR_BATCH_INPUTS.proj): the plan computes the output list's program over the chunk
+ * and decodes the plain columns it reads into vectors.  expr_batch_proj_row () packs row r's elements into the
+ * values the list's evaluation reads -- a program root's cell, a plain column's value-list slot -- and marks the
+ * list's program as holding the row, so the row's tuple is built from them without decoding the record or
+ * running the program for the row.  false: the list's program is not the one the plan was built over (the caller
+ * reads the row as the row path does).  expr_batch_proj_needs_values (): a column stays on the row path (a
+ * string, a function, a subquery), so the row's record is decoded into the value list for it first -- the plain
+ * columns' slots are filled by that decode, so the caller packs the program roots only (columns_too false); the
+ * caller clears eval_prog_row_external after the row. */
+extern bool expr_batch_proj_active (const EXPR_BATCH_PLAN * plan);
+extern bool expr_batch_proj_needs_values (const EXPR_BATCH_PLAN * plan);
+extern bool expr_batch_proj_row (const EXPR_BATCH_PLAN * plan, int r, struct valptr_list_node *list, bool columns_too);
 /* Row r of the chunk goes to the row path's consumers (its values read into the value list, its tuple built by
  * the row path's programs): the values the filter computed for it and shares with those programs, back into the
  * filter's slots, where the row path's programs read them.  Nothing to do for a plan without shared values. */

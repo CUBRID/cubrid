@@ -39,6 +39,7 @@
 #include "object_primitive.h"
 #include "query_aggregate.hpp"
 #include "query_hash_join.h"
+#include "query_opfunc.h"
 #include "scope_exit.hpp"
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -478,7 +479,7 @@ namespace parallel_scan
 		 * row path's write () does (qdata_link_shared_accumulators_by_cell ()) */
 		qdata_link_shared_accumulators (m_xasl->proc.buildvalue.agg_list, m_vd);
 		(void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl, m_xasl->proc.buildvalue.agg_list,
-					m_vd, NULL);
+					m_vd, NULL, NULL);
 	      }
 	    else if (er_errid () == NO_ERROR && qexec_batch_filter_eligible (m_xasl))
 	      {
@@ -499,7 +500,11 @@ namespace parallel_scan
 	      {
 		if (m_xasl->proc.buildlist.groupby_list == NULL)
 		  {
-		    (void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl, NULL, m_vd, NULL);
+		    /* the output list's program settled as the first row's write () would settle it: the plan
+		     * computes the list's columns as vectors */
+		    (void) qdata_valptr_prog_settle (&thread_ref, m_xasl->outptr_list, m_vd);
+		    (void) scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl, NULL, m_vd, NULL,
+					    m_xasl->outptr_list);
 		  }
 		else
 		  {
@@ -514,9 +519,9 @@ namespace parallel_scan
 
 		    if (gby_map != NULL
 			&& scan_batch_open (&thread_ref, m_scan_id, m_xasl->spec_list, m_xasl,
-					    m_xasl->proc.buildlist.g_agg_list, m_vd, gby_map) == 1)
+					    m_xasl->proc.buildlist.g_agg_list, m_vd, gby_map, NULL) == 1)
 		      {
-			SCAN_BATCH_PROJECT row = { m_scan_id, emit_row, this };
+			SCAN_BATCH_PROJECT row = { m_scan_id, emit_row, this, NULL };
 
 			m_batch_gby = qexec_batch_gby_create (&thread_ref, m_xasl, m_vd, &row, gby_list, gby_sync, this);
 		      }
@@ -841,8 +846,8 @@ namespace parallel_scan
 	    PGSLOTID slot = 0, chunk_start = 0;
 	    int rc = NO_ERROR;
 	    QDATA_AGG_CHUNK_STATE agg_state = { NULL, m_vd, false };
-	    SCAN_BATCH_PROJECT project_state = { m_scan_id, emit_row, this };
-	    SCAN_BATCH_PROJECT rows_state = { m_scan_id, emit_row_body, this };
+	    SCAN_BATCH_PROJECT project_state = { m_scan_id, emit_row, this, m_xasl->outptr_list };
+	    SCAN_BATCH_PROJECT rows_state = { m_scan_id, emit_row_body, this, NULL };
 	    EXPR_CHUNK_NODE tail_node, eval_node;
 
 	    m_drain_stop = &stop;	/* this block's frame: emit_row_body () runs only in the expr_chunk_push () below */

@@ -445,6 +445,15 @@ qdata_valptr_prog_ensure (THREAD_ENTRY * thread_p, valptr_list_node * valptr_lis
 	  return (EXPR_PROG *) valptr_list_p->eval_prog;
 	}
     }
+  if (valptr_list_p->eval_prog_row_external)
+    {
+      /* a page batch packed this row's values into the program's cells: nothing to evaluate */
+      valptr_list_p->eval_prog_row_external = false;
+      if (valptr_list_p->eval_prog_state == 1)
+	{
+	  return (EXPR_PROG *) valptr_list_p->eval_prog;
+	}
+    }
 
   if (valptr_list_p->eval_prog_state == 0)
     {

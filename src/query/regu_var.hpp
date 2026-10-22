@@ -142,6 +142,10 @@ struct valptr_list_node
    * use of the list so that copy does not evaluate the same row a second time (see
    * qdata_valptr_prog_ensure ()) */
   bool eval_prog_row_ready;
+  /* the program's cells already hold the current row: a page batch computed the list's columns as vectors
+   * and packed the row's values into the cells (expr_batch_proj_row ()), so the next evaluation of the list
+   * reads them without running the program; consumed by that evaluation, cleared by the batch after the row */
+  bool eval_prog_row_external;
   /* the scan this list projects (ACCESS_SPEC_TYPE *) when it is the node's only heap scan,
    * so the program may read values the scan's compiled data filter computes; NULL otherwise.
    * Set by qexec_set_expr_share_spec () before the first row; runtime only. */

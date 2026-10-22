@@ -196,7 +196,7 @@ static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_i
 static SCAN_CODE scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static int scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec,
 				     const XASL_NODE * xasl, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
-				     const EXPR_BATCH_GBY_MAP * gby, bool cached_ok);
+				     const EXPR_BATCH_GBY_MAP * gby, const valptr_list_node * proj, bool cached_ok);
 static SCAN_CODE scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static void scan_batch_rewind (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static int scan_batch_copy_kept (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -8177,6 +8177,8 @@ exit_on_error:
  *	       plan itself, as its last filter term, since the rows the batch keeps never pass the row loop's check
  *   agg_list(in): the aggregate list the consumer accumulates
  *   vd(in): the execution's value descriptor
+ *   gby(in): a hash GROUP BY's mapping, or NULL
+ *   proj(in): a projecting block's output list, its program settled for this execution, or NULL
  *
  * The consumer calls it once the scan is started (its attribute caches are up); the plan it
  * builds lives as long as the scan (scan_end_scan ()).  The compiled filter and the operand
@@ -8185,9 +8187,10 @@ exit_on_error:
  */
 int
 scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec, const XASL_NODE * xasl,
-		 cubxasl::aggregate_list_node * agg_list, val_descr * vd, const EXPR_BATCH_GBY_MAP * gby)
+		 cubxasl::aggregate_list_node * agg_list, val_descr * vd, const EXPR_BATCH_GBY_MAP * gby,
+		 const valptr_list_node * proj)
 {
-  return scan_batch_open_internal (thread_p, scan_id, spec, xasl, agg_list, vd, gby, false);
+  return scan_batch_open_internal (thread_p, scan_id, spec, xasl, agg_list, vd, gby, proj, false);
 }
 
 /* scan_batch_open (); cached_ok: the scan may read its pages through a local copy (the filter iterator fixes the
@@ -8196,7 +8199,7 @@ scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_T
 static int
 scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec,
 			  const XASL_NODE * xasl, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
-			  const EXPR_BATCH_GBY_MAP * gby, bool cached_ok)
+			  const EXPR_BATCH_GBY_MAP * gby, const valptr_list_node * proj, bool cached_ok)
 {
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
   EXPR_BATCH_INPUTS in;
@@ -8252,6 +8255,7 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCE
     ? hsidp->scan_pred.pred_expr->scan_prog : NULL;
   in.agg_list = agg_list;
   in.gby = gby;
+  in.proj = proj;
   in.pred_expr = hsidp->scan_pred.pred_expr;
   in.vd = vd;
   in.is_peeking = true;		/* the batch holds the page: its records are peeked whatever the scan's own mode */
@@ -8435,11 +8439,48 @@ int
 scan_batch_project_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch)
 {
   SCAN_BATCH_PROJECT *st = (SCAN_BATCH_PROJECT *) node->state;
+  HEAP_SCAN_ID *hsidp = &st->scan_id->s.hsid;
+  bool needs_values;
   int j, rc;
 
+  if (!expr_batch_proj_active (plan) || st->outptr == NULL)
+    {
+      for (j = 0; j < batch->n_sel; j++)
+	{
+	  rc = scan_batch_project_row (thread_p, st, &batch->rows[batch->sel[j]]);
+	  if (rc != NO_ERROR)
+	    {
+	      return rc;
+	    }
+	}
+      return NO_ERROR;
+    }
+  /* the output columns the chunk computed as vectors: each row's elements packed into the values the list's
+   * evaluation reads, the record decoded into the value list only for a column the row path evaluates */
+  needs_values = expr_batch_proj_needs_values (plan);
   for (j = 0; j < batch->n_sel; j++)
     {
-      rc = scan_batch_project_row (thread_p, st, &batch->rows[batch->sel[j]]);
+      EXPR_BATCH_ROW *row = &batch->rows[batch->sel[j]];
+
+      if (needs_values)
+	{
+	  rc = scan_batch_row_values (thread_p, st->scan_id, row);
+	}
+      else
+	{
+	  hsidp->curr_oid = row->oid;
+	  rc = NO_ERROR;
+	}
+      if (rc == NO_ERROR && !expr_batch_proj_row (plan, batch->sel[j], st->outptr, !needs_values) && !needs_values)
+	{
+	  /* the list's program is not the one the plan computes: the row as the row path reads it */
+	  rc = scan_batch_row_values (thread_p, st->scan_id, row);
+	}
+      if (rc == NO_ERROR)
+	{
+	  rc = st->emit (thread_p, st->emit_arg);
+	}
+      st->outptr->eval_prog_row_external = false;
       if (rc != NO_ERROR)
 	{
 	  return rc;
@@ -8566,7 +8607,7 @@ scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS
     {
       return false;
     }
-  if (scan_batch_open_internal (thread_p, scan_id, spec, NULL, NULL, vd, NULL, true) != 1)
+  if (scan_batch_open_internal (thread_p, scan_id, spec, NULL, NULL, vd, NULL, NULL, true) != 1)
     {
       return false;
     }
@@ -8583,7 +8624,7 @@ bool
 scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec, val_descr * vd)
 {
   return (scan_id->type == S_HEAP_SCAN && scan_id->s.hsid.scan_pred.pred_expr != NULL
-	  && scan_batch_open_internal (thread_p, scan_id, spec, NULL, NULL, vd, NULL, true) == 1);
+	  && scan_batch_open_internal (thread_p, scan_id, spec, NULL, NULL, vd, NULL, NULL, true) == 1);
 }
 
 /* the kept rows' records copied out of the page, the rows pointed at the copies */

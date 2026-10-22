@@ -703,6 +703,7 @@ namespace cubxasl
 {
   struct aggregate_list_node;
 }
+struct valptr_list_node;
 /* a heap scan whose rows go on row by row (a join, a subquery, ...): its filter run a chunk at a time inside
  * scan_next_scan (); true when it does */
 extern bool scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const struct access_spec_node *spec,
@@ -710,10 +711,11 @@ extern bool scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, 
 /* the same for a parallel worker's scan, whose rows go through the rows node (scan_batch_rows_consume ()) */
 extern bool scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const struct access_spec_node *spec,
 				  val_descr * vd);
-/* the consumer's block: a hash join's runtime filter on it (xasl->rtf) becomes the plan's last filter term */
+/* the consumer's block: a hash join's runtime filter on it (xasl->rtf) becomes the plan's last filter term; proj is
+ * a projecting block's output list (its program settled), whose columns the plan computes as vectors */
 extern int scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const struct access_spec_node *spec,
 			    const struct xasl_node *xasl, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
-			    const struct expr_batch_gby_map *gby);
+			    const struct expr_batch_gby_map *gby, const struct valptr_list_node *proj);
 extern SCAN_CODE scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 extern SCAN_CODE scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid,
 					   PGSLOTID * slot);
@@ -727,6 +729,7 @@ struct scan_batch_project
   SCAN_ID *scan_id;
   int (*emit) (THREAD_ENTRY * thread_p, void *arg);
   void *emit_arg;
+  struct valptr_list_node *outptr;	/* the list emit projects, when the plan computes its columns as vectors */
 };
 struct expr_chunk_node;
 extern int scan_batch_project_consume (THREAD_ENTRY * thread_p, struct expr_chunk_node *node,

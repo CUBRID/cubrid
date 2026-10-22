@@ -276,6 +276,17 @@ struct eb_share
   unsigned char in_prologue;
 };
 
+/* one output column of a projecting block (EXPR_BATCH_INPUTS.proj): the vector that computes it and the DB_VALUE
+ * the list's evaluation reads it from (a program root's cell, a plain column's value-list slot); vec -1 for a
+ * column the row path evaluates, target NULL for a root whose cell already holds the execution's constant */
+typedef struct eb_proj EB_PROJ;
+struct eb_proj
+{
+  DB_VALUE *target;
+  int vec;
+  unsigned char is_root;	/* a program root (else a plain column, whose slot the record decode fills too) */
+};
+
 /* a value-list slot the scan fetches a column into (the TYPE_CONSTANT operands of the aggregates) */
 typedef struct eb_slot_map EB_SLOT_MAP;
 struct eb_slot_map
@@ -331,6 +342,13 @@ struct expr_batch_plan
   EB_SHARE *shared;		/* the filter's shared values (the share registry, in its order) */
   int n_shared;
   int n_shared_rows;		/* of them, the ones a term computes per row (they have a vector) */
+  int n_shared_used;		/* the shared values a program of the chunk reads */
+  EB_PROJ *proj;		/* a projecting block's output columns, hidden ones left out */
+  int n_proj;
+  int n_proj_vec;		/* of them, the ones a vector computes */
+  int n_proj_rows;		/* and the ones the row path evaluates */
+  const void *proj_prog;	/* the output list's program the plan computes (EXPR_PROG), or NULL */
+  const char *proj_why_not;	/* why the output list's program stays on the row path, or NULL */
 
   void *filter;			/* the compiled scan filter (EXPR_PRED) */
   EXPR_PROG *prog;		/* the aggregate operand program, when one is active */
@@ -403,6 +421,7 @@ static bool eb_slot_lookup (const EB_BUILD * b, const DB_VALUE * slot, ATTR_ID *
 static int eb_build_filter (EB_BUILD * b);
 static int eb_build_rtf_leaf (EB_BUILD * b);
 static int eb_build_shared (EB_BUILD * b);
+static int eb_build_proj (EB_BUILD * b);
 static EB_SHARE *eb_share_find (EB_BUILD * b, const DB_VALUE * slot);
 static int eb_share_snapshot (EXPR_BATCH_PLAN * plan, int kid, int r, DB_LOGICAL ev);
 static int eb_build_aggs (THREAD_ENTRY * thread_p, EB_BUILD * b);
@@ -1741,6 +1760,137 @@ eb_share_find (EB_BUILD * b, const DB_VALUE * slot)
   return NULL;
 }
 
+/* The output list of a projecting block as vectors.  Its program, when every root the batch can type is a
+ * vector or a scalar, runs here as the aggregate operand program does; else the program stays on the row path
+ * whole (it is evaluated as one, so a root the batch does not compute would run it for the row anyway) and what
+ * it emitted is taken back.  A column outside the program is a vector when it is a plain column of the scan the
+ * batch decodes; any other column (a string, a function, a subquery) is the row path's, which reads the row's
+ * record into the value list for it. */
+static int
+eb_build_proj (EB_BUILD * b)
+{
+  EXPR_BATCH_PLAN *plan = b->plan;
+  const valptr_list_node *list = b->in->proj;
+  const EXPR_PROG *prog;
+  REGU_VARIABLE_LIST rl;
+  const char *why0 = b->why_not;
+  int n_vecs0 = plan->n_vecs, n_cols0 = plan->n_cols, n_steps0 = plan->n_steps, n_const0 = plan->n_const_ranges;
+  int k, rc;
+
+  if (list == NULL || list->valptr_cnt <= 0)
+    {
+      return NO_ERROR;
+    }
+  plan->proj = (EB_PROJ *) db_private_alloc (b->thread_p, sizeof (EB_PROJ) * list->valptr_cnt);
+  if (plan->proj == NULL)
+    {
+      return ER_OUT_OF_VIRTUAL_MEMORY;
+    }
+  memset (plan->proj, 0, sizeof (EB_PROJ) * list->valptr_cnt);
+  prog = (list->eval_prog_state == 1) ? (const EXPR_PROG *) list->eval_prog : NULL;
+  if (prog != NULL)
+    {
+      plan->prog = (EXPR_PROG *) prog;
+      rc = eb_build_program (b);
+      for (rl = list->valptrp, k = 0; rc == NO_ERROR && rl != NULL && k < list->valptr_cnt; rl = rl->next, k++)
+	{
+	  int vec;
+
+	  if (REGU_VARIABLE_IS_FLAGED (&rl->value, REGU_VARIABLE_HIDDEN_COLUMN) || list->eval_prog_idx[k] < 0)
+	    {
+	      continue;
+	    }
+	  vec = eb_program_cell_vec (b, prog->root_cells[list->eval_prog_idx[k]]);
+	  if (vec < 0 || plan->vecs[vec].dbtype == DB_TYPE_UNKNOWN)
+	    {
+	      rc = eb_decline (b, "an output column the batch does not compute");
+	    }
+	}
+      if (rc == EXPR_BATCH_FALLBACK)
+	{
+	  /* the program stays on the row path: what its translation emitted is taken back */
+	  int i;
+
+	  plan->proj_why_not = b->why_not;
+	  b->why_not = why0;
+	  plan->prog = NULL;
+	  plan->n_vecs = n_vecs0;
+	  plan->n_cols = n_cols0;
+	  plan->n_steps = n_steps0;
+	  plan->n_const_ranges = n_const0;
+	  plan->n_shared_used = 0;
+	  for (i = 0; i < plan->n_shared; i++)
+	    {
+	      if (plan->shared[i].in_prologue && plan->shared[i].vec >= n_vecs0)
+		{
+		  plan->shared[i].vec = -1;	/* a scalar the program asked for, gone with it */
+		}
+	    }
+	  b->n_pending = 0;
+	  db_private_free_and_init (b->thread_p, b->cell_vec);
+	  b->n_cell_vec = 0;
+	  prog = NULL;
+	}
+      else if (rc != NO_ERROR)
+	{
+	  return rc;
+	}
+    }
+  for (rl = list->valptrp, k = 0; rl != NULL && k < list->valptr_cnt; rl = rl->next, k++)
+    {
+      const REGU_VARIABLE *regu = &rl->value;
+      EB_PROJ *pr = &plan->proj[plan->n_proj];
+      int vec = -1;
+
+      if (REGU_VARIABLE_IS_FLAGED (regu, REGU_VARIABLE_HIDDEN_COLUMN))
+	{
+	  continue;
+	}
+      pr->vec = -1;
+      pr->target = NULL;
+      pr->is_root = 0;
+      plan->n_proj++;
+      if (prog != NULL && list->eval_prog_idx[k] >= 0)
+	{
+	  int cell = prog->root_cells[list->eval_prog_idx[k]];
+
+	  vec = b->cell_vec[cell];
+	  pr->is_root = 1;
+	  if (plan->vecs[vec].kind == EB_VK_SCALAR)
+	    {
+	      /* a constant of the execution: its cell holds it once the prologues ran */
+	      pr->vec = vec;
+	      plan->n_proj_vec++;
+	      continue;
+	    }
+	  pr->target = prog->cells[cell];
+	}
+      else if (regu->type == TYPE_CONSTANT && regu->xasl == NULL)
+	{
+	  ATTR_ID attrid;
+	  HEAP_CACHE_ATTRINFO *attr_cache;
+
+	  if (eb_slot_lookup (b, regu->value.dbvalptr, &attrid, &attr_cache))
+	    {
+	      vec = eb_new_col_vec (b, attr_cache, attrid);
+	      b->why_not = why0;	/* a column the batch does not decode is the row path's, not a decline */
+	    }
+	  pr->target = regu->value.dbvalptr;
+	}
+      if (vec < 0 || pr->target == NULL)
+	{
+	  pr->vec = -1;
+	  pr->target = NULL;
+	  plan->n_proj_rows++;
+	  continue;
+	}
+      pr->vec = vec;
+      plan->n_proj_vec++;
+    }
+  plan->proj_prog = prog;
+  return NO_ERROR;
+}
+
 /* Which columns are pointed (EB_VK_PTR) rather than decoded: a fixed-area column only raw
  * leaves read -- a comparison reads its cell with a byte swap, cheaper than writing and
  * reading it back -- and a NUMERIC with a single consumer, a raw leaf or an arithmetic step
@@ -1788,6 +1938,10 @@ eb_choose_pointed (EXPR_BATCH_PLAN * plan)
       for (i = 0; i < plan->n_aggs; i++)
 	{
 	  other_uses += (plan->aggs[i].vec == col->vec);
+	}
+      for (i = 0; i < plan->n_proj; i++)
+	{
+	  other_uses += (plan->proj[i].vec == col->vec);
 	}
       if (other_uses > 0)
 	{
@@ -1855,6 +2009,7 @@ eb_program_cell_vec (EB_BUILD * b, int cell)
 	    sh->vec = eb_new_scalar_vec (b, EB_I64, DB_TYPE_UNKNOWN, addr, NULL, EB_SC_EXACT);
 	  }
 	b->cell_vec[cell] = sh->vec;
+	b->plan->n_shared_used += (sh->vec >= 0);
 	return b->cell_vec[cell];
       }
     if (eb_slot_lookup (b, addr, &attrid, &attr_cache))
@@ -2775,7 +2930,7 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
       *why_not = "records are copied, not peeked";
       return NULL;
     }
-  if (in->agg_list == NULL && !in->has_filter)
+  if (in->agg_list == NULL && !in->has_filter && in->proj == NULL)
     {
       *why_not = "neither a filter nor an aggregate for the batch to run";
       return NULL;
@@ -2806,6 +2961,10 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
     {
       rc = eb_build_aggs (thread_p, &b);
     }
+  else if (rc == NO_ERROR && in->proj != NULL)
+    {
+      rc = eb_build_proj (&b);
+    }
   if (rc == NO_ERROR)
     {
       /* the row path's programs fail with ER_MAX_RECURSION_SQL_DEPTH when the thread's frames and their deepest
@@ -2819,14 +2978,14 @@ expr_batch_plan_build (THREAD_ENTRY * thread_p, const EXPR_BATCH_INPUTS * in, co
 	  rc = eb_decline (&b, "the recursion limit reaches the expressions");
 	}
     }
-  if (rc == NO_ERROR && in->agg_list == NULL && plan->n_raw_kids == 0)
+  if (rc == NO_ERROR && in->agg_list == NULL && plan->n_raw_kids == 0 && plan->proj_prog == NULL)
     {
-      /* a projection gains only from a filter the batch runs as arrays */
+      /* a projection gains from a filter the batch runs as arrays, or from its program run as vectors */
       rc = eb_decline (&b, "no filter term the batch runs as arrays");
     }
-  if (rc == NO_ERROR && plan->n_cols == 0 && plan->n_kids > 0)
+  if (rc == NO_ERROR && plan->n_cols == 0 && plan->n_kids > 0 && plan->n_shared_used == 0 && plan->n_proj_vec == 0)
     {
-      /* a filter of ROW terms only has nothing for the batch to do per page */
+      /* a filter of ROW terms only, no value of it read as a vector: nothing for the batch to do per page */
       rc = eb_decline (&b, "no column the batch decodes");
     }
   if (rc == NO_ERROR)
@@ -2901,6 +3060,7 @@ expr_batch_plan_free (THREAD_ENTRY * thread_p, EXPR_BATCH_PLAN * plan)
   db_private_free_and_init (thread_p, plan->aggs);
   db_private_free_and_init (thread_p, plan->keys);
   db_private_free_and_init (thread_p, plan->shared);
+  db_private_free_and_init (thread_p, plan->proj);
   db_private_free_and_init (thread_p, plan);
 }
 
@@ -4421,6 +4581,51 @@ eb_pack_dbv (const EXPR_BATCH_PLAN * plan, const EB_VEC * vec, int r, DB_VALUE *
     }
 }
 
+bool
+expr_batch_proj_active (const EXPR_BATCH_PLAN * plan)
+{
+  return plan != NULL && plan->n_proj_vec > 0;
+}
+
+bool
+expr_batch_proj_needs_values (const EXPR_BATCH_PLAN * plan)
+{
+  return plan->n_proj_rows > 0;
+}
+
+bool
+expr_batch_proj_row (const EXPR_BATCH_PLAN * plan, int r, valptr_list_node * list, bool columns_too)
+{
+  int i;
+
+  if (plan->proj_prog != NULL && (list->eval_prog_state != 1 || list->eval_prog != plan->proj_prog))
+    {
+      return false;
+    }
+  for (i = 0; i < plan->n_proj; i++)
+    {
+      const EB_PROJ *pr = &plan->proj[i];
+
+      if (pr->vec < 0 || pr->target == NULL || (!pr->is_root && !columns_too))
+	{
+	  continue;
+	}
+      if (plan->vecs[pr->vec].isnull[EB_IDX (&plan->vecs[pr->vec], r)])
+	{
+	  db_make_null (pr->target);
+	}
+      else
+	{
+	  eb_pack_dbv (plan, &plan->vecs[pr->vec], r, pr->target);
+	}
+    }
+  if (plan->proj_prog != NULL)
+    {
+      list->eval_prog_row_external = true;
+    }
+  return true;
+}
+
 void
 expr_batch_row_restore_shared (const EXPR_BATCH_PLAN * plan, int r)
 {
@@ -4694,4 +4899,10 @@ expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, i
 	   (plan->rtf != NULL) ? " + runtime filter" : "", plan->n_shared, plan->n_steps, plan->n_aggs,
 	   (long long) plan->pages, (long long) plan->pages_fallback,
 	   (plan->fallback_why != NULL) ? ", last: " : "", (plan->fallback_why != NULL) ? plan->fallback_why : "");
+  if (plan->n_proj > 0)
+    {
+      fprintf (fp, "%*cEXPR_BATCH: output columns as vectors %d / on the row path %d%s%s\n", indent, ' ',
+	       plan->n_proj_vec, plan->n_proj_rows, (plan->proj_why_not != NULL) ? ", program on the row path: " : "",
+	       (plan->proj_why_not != NULL) ? plan->proj_why_not : "");
+    }
 }

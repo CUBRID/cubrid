@@ -12541,7 +12541,7 @@ qexec_batch_scan (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
   SCAN_ID *s_id = &xasl->curr_spec->s_id;
   QDATA_AGG_CHUNK_STATE agg_state = { NULL, &xasl_state->vd, true };
   QEXEC_BATCH_EMIT emit_state = { xasl, xasl_state, tplrec };
-  SCAN_BATCH_PROJECT project_state = { s_id, qexec_batch_emit_row, &emit_state };
+  SCAN_BATCH_PROJECT project_state = { s_id, qexec_batch_emit_row, &emit_state, xasl->outptr_list };
   QEXEC_BATCH_GBY *gby = NULL;
   EXPR_CHUNK_NODE tail_node, eval_node;
   SCAN_CODE code;
@@ -12885,6 +12885,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	{
 	  cubxasl::aggregate_list_node * agg_list = NULL;
 	  EXPR_BATCH_GBY_MAP *gby_map = NULL;
+	  const valptr_list_node *proj = NULL;
 	  int opened;
 
 	  if (xasl->type == BUILDVALUE_PROC)
@@ -12892,7 +12893,13 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	      agg_list = xasl->proc.buildvalue.agg_list;
 	      (void) qdata_agg_operand_prog_ensure (thread_p, agg_list, &xasl_state->vd);
 	    }
-	  else if (xasl->proc.buildlist.groupby_list != NULL)
+	  else if (xasl->proc.buildlist.groupby_list == NULL)
+	    {
+	      /* a projection: its output list, the program settled as the first row would settle it */
+	      proj = xasl->outptr_list;
+	      (void) qdata_valptr_prog_settle (thread_p, xasl->outptr_list, &xasl_state->vd);
+	    }
+	  else
 	    {
 	      const char *why_not = NULL;
 
@@ -12905,7 +12912,7 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	    }
 	  opened = (agg_list != NULL && gby_map == NULL && xasl->type == BUILDLIST_PROC) ? 0
 	    : scan_batch_open (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec, xasl, agg_list, &xasl_state->vd,
-			       gby_map);
+			       gby_map, proj);
 	  qexec_batch_gby_map_destroy (thread_p, gby_map);
 	  if (opened == 1)
 	    {
