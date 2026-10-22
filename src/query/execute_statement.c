@@ -7702,7 +7702,7 @@ do_rename_trigger (PARSER_CONTEXT * parser, PT_NODE * statement)
       return error;
     }
 
-  return tr_rename_trigger (trigger, new_name, false, false);
+  return tr_rename_trigger (trigger, new_name, false, false, false);
 }
 
 /*
