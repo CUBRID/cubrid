@@ -1574,25 +1574,11 @@ qo_fold_is_and_not_null (PARSER_CONTEXT * parser, PT_NODE * from, PT_NODE ** whe
 	      || pt_check_path_eq (parser, node_prior, sibling->info.expr.arg2) == 0)
 	    {
 	      if (sibling->info.expr.op != PT_IS_NULL && sibling->info.expr.op != PT_IS_NOT_NULL
-		  && sibling->info.expr.op != PT_NULLSAFE_EQ)
+		  && sibling->info.expr.op != PT_NULLSAFE_EQ && qo_check_nullable_op (sibling))
 		{
-		  PT_NODE *save_next;
-		  bool has_subquery = false;
-
-		  if (!pt_is_comp_op (sibling->info.expr.op) || qo_check_nullable_op (sibling))
-		    {
-		      continue;
-		    }
-
-		  save_next = sibling->next;
-		  sibling->next = NULL;
-		  (void) parser_walk_tree (parser, sibling, pt_check_subquery_pre, NULL,
-					   pt_check_subquery_post, &has_subquery);
-		  sibling->next = save_next;
-		  if (has_subquery)
-		    {
-		      continue;
-		    }
+		  /* a NOT IN (subquery), a <> ALL (subquery), a IS NOT TRUE, ... can be TRUE for a NULL 'a', so they
+		   * say nothing about 'a IS NULL' or 'a IS NOT NULL'. */
+		  continue;
 		}
 
 	      found = true;
