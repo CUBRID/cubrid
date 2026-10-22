@@ -515,10 +515,6 @@ jobs:
       - name: "TEST ONLY: node and download cache before the build"
         run: |
           echo "node boot_id: $(cat /proc/sys/kernel/random/boot_id)"
-          # TEST ONLY (corruption run): damage what this node holds; the build must fetch it again.
-          f="$CUBRID_DOWNLOAD_CACHE/3rdparty/lz4/lz4-1.10.0.tar.gz"; [ -f "$f" ] && echo corrupt >> "$f"
-          j="$CUBRID_DOWNLOAD_CACHE/jdk/OpenJDK8U-jdk_x64_linux_hotspot_8u442b06.tar.gz"; [ -f "$j" ] && truncate -s 1000000 "$j"
-          ls -la "$f" "$j" 2>/dev/null || true
           cmake --version | sed -n 1p
           for d in "$CUBRID_DOWNLOAD_CACHE" "$GRADLE_USER_HOME"; do du -sh "$d" 2>/dev/null || echo "absent: $d"; done
           find "$CUBRID_DOWNLOAD_CACHE" -type f -printf '%TY-%Tm-%Td %TH:%TM %10s %P\n' 2>/dev/null | sort -k4 || true
