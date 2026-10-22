@@ -63,6 +63,7 @@
 #include "jsp_cl.h"
 #include "msgcat_glossary.hpp"
 #include "histogram_cl.hpp"
+#include "row_snapshot_cl.hpp"
 
 #if defined (SUPPRESS_STRLEN_WARNING)
 #define strlen(s1)  ((int) strlen(s1))
@@ -4556,6 +4557,16 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	    }
 	}
 
+      if (do_histogram == DO_HISTOGRAM_DROP)
+	{
+	  /* dropping every histogram of the class drops its row snapshot too (CBRD-27478) */
+	  error = row_snapshot_drop (obj);
+	  if (error != NO_ERROR)
+	    {
+	      return error;
+	    }
+	}
+
       if (out_histogram_skipped != NULL)
 	{
 	  *out_histogram_skipped = trace_n_skipped;
@@ -4599,6 +4610,11 @@ update_or_drop_histogram_helper (PARSER_CONTEXT * parser, DB_OBJECT * const obj,
 	  if (error == NO_ERROR)
 	    {
 	      error = store_collected_histograms (obj, &hist_collect, with_fullscan);
+	    }
+	  if (error == NO_ERROR)
+	    {
+	      /* a small table also keeps its rows, from the row count of the same collection (CBRD-27478) */
+	      error = row_snapshot_collect_and_store (obj, hist_total_rows, with_fullscan);
 	    }
 	  histogram_collect_clear (&hist_collect);
 	  if (ndv_info.attr_ndv != NULL)

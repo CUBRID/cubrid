@@ -453,10 +453,12 @@ set (HISTOGRAM_SOURCES
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.cpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.cpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/row_snapshot_cl.cpp
   )
 
 set (HISTOGRAM_HEADERS
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_cl.hpp
+  ${OPTIMIZER_HISTOGRAM_DIR}/row_snapshot_cl.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_builder.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_reader.hpp
   ${OPTIMIZER_HISTOGRAM_DIR}/histogram_bucketizer.hpp

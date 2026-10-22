@@ -75,6 +75,7 @@
 #include "execute_statement.h"
 #include "crypt_opfunc.h"
 #include "histogram_cl.hpp"
+#include "row_snapshot_cl.hpp"
 
 #include "db.h"
 #include "object_accessor.h"
@@ -13771,6 +13772,24 @@ sm_delete_class_mop (MOP op, bool is_cascade_constraints)
 	    }
 
 	}
+    }
+
+  /* the row snapshot of a small class sits beside its histograms under a reserved key (CBRD-27478) */
+  error = db_get_histogram (op, ROW_SNAPSHOT_KEY_ATTR, &histogram_obj);
+  if (error == ER_OBJ_OBJECT_NOT_FOUND)
+    {
+      er_clear ();
+      error = NO_ERROR;
+    }
+  if (error == NO_ERROR && histogram_obj != NULL)
+    {
+      error = db_drop (histogram_obj);
+      histogram_obj = NULL;
+    }
+  if (error != NO_ERROR)
+    {
+      AU_RESTORE (au_save);
+      goto end;
     }
   AU_RESTORE (au_save);
 
