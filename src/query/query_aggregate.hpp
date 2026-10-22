@@ -90,6 +90,8 @@ namespace cubquery
     int hash_size;		/* hash table size */
     int group_count;		/* groups processed in hash table */
     int tuple_count;		/* tuples processed in hash table */
+    unsigned int evictions;	/* groups the table freed so far (an LRU eviction at its budget, or the dump of an
+				 * abandon): a generation the page batch's key cache compares to its own */
 
     /* partial list file stuff */
     SCAN_CODE part_scan_code;	/* scan status of partial list file */

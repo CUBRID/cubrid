@@ -4943,6 +4943,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       && (float) context->group_count / context->tuple_count > qexec_hash_gby_abandon_cutoff (context->tuple_count))
     {
       context->state = HS_REJECT_ALL;
+      context->evictions++;	/* a dump, as in qexec_hash_gby_abandon () */
 
       rc = qdata_save_agg_htable_to_list (thread_p, context->hash_table, groupby_list, context->part_list_id,
 					  context->temp_dbval_array);
@@ -4995,6 +4996,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       context->hash_size -= qdata_get_agg_hkey_size (key);
       context->hash_size -= qdata_get_agg_hvalue_size (value, false);
       mht_rem (context->hash_table, key, qdata_free_agg_hentry, NULL);
+      context->evictions++;	/* the page batch's key cache may hold this group (qexec_batch_gby_consume ()) */
     }
 
   /* Very-high-selectivity check, evaluated every TUPLE_THRESHOLD tuples on the cumulative
@@ -5060,6 +5062,7 @@ static int
 qexec_hash_gby_abandon (THREAD_ENTRY * thread_p, AGGREGATE_HASH_CONTEXT * context, QFILE_LIST_ID * groupby_list)
 {
   context->state = HS_REJECT_ALL;
+  context->evictions++;		/* the dump frees every group: the page batch's key cache holds none of them */
 
   /* dump hash table to list file, no need to keep it in memory */
   return qdata_save_agg_htable_to_list (thread_p, context->hash_table, groupby_list, context->part_list_id,
@@ -11757,6 +11760,7 @@ struct qexec_batch_gby
   QEXEC_GBY_ENTRY *cache;	/* invariant: every entry's value is a live group of the table, and a group has at most
 				 * one entry (qexec_gby_cache_evicted () drops the entries of the groups the table freed) */
   int n_cached;
+  unsigned int seen_evictions;	/* the context's evictions the cache is current with (qexec_batch_gby_consume ()) */
   int cap;			/* rows the scratch arrays hold */
   int *pend_row;		/* a chunk's rows of cached groups, in row order, and their entries */
   int *pend_ent;
@@ -11938,12 +11942,14 @@ static void
 qexec_gby_cache_evicted (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGATE_HASH_VALUE ** note_val,
 			 const int *note_slot, int n)
 {
-  int i, k;
-  bool again;
+  const unsigned int mask = QEXEC_GBY_CACHE_SIZE - 1;
+  unsigned int tagged_hash[QEXEC_GBY_EVICT_NOTE];
+  int i, n_tagged = 0;
 
+  assert (n <= QEXEC_GBY_EVICT_NOTE);
   /* pass 1: tag the entries while every noted slot still holds what it held before the call (a removal
    * moves the later entries of its cluster, so a noted slot is only valid before the first removal) */
-  for (i = 0; i < n; i++)
+  for (i = 0; i < n && i < QEXEC_GBY_EVICT_NOTE; i++)
     {
       int slot = note_slot[i];
 
@@ -11951,23 +11957,31 @@ qexec_gby_cache_evicted (THREAD_ENTRY * thread_p, QEXEC_BATCH_GBY * st, AGGREGAT
       if (slot >= 0 && slot < QEXEC_GBY_CACHE_SIZE && st->cache[slot].len >= 0 && st->cache[slot].value == note_val[i])
 	{
 	  st->cache[slot].value = NULL;
+	  tagged_hash[n_tagged++] = st->cache[slot].hash;
 	}
     }
-  /* pass 2: remove the tagged entries wherever the shifts put them (an eviction happens at the table's
-   * memory budget, after a group was dumped to a list file: the table walk is cheap beside it) */
-  do
+  /* pass 2: remove the tagged entries wherever the shifts put them.  In eviction mode (the table at its budget)
+   * this runs on every miss, so only the clusters are probed, never the table: a tagged entry stays reachable
+   * from its home by the lookup's probe (home, home+1, ... up to an empty slot), and a removal only pulls the
+   * cluster's later entries back, so the cluster is probed again from its home until it holds no tag */
+  for (i = 0; i < n_tagged; i++)
     {
-      again = false;
-      for (k = 0; k < QEXEC_GBY_CACHE_SIZE; k++)
+      const unsigned int home = tagged_hash[i] & mask;
+      unsigned int k = home;
+
+      while (st->cache[k].len >= 0)
 	{
-	  if (st->cache[k].len >= 0 && st->cache[k].value == NULL)
+	  if (st->cache[k].value == NULL)
 	    {
-	      qexec_gby_cache_remove (thread_p, st, (unsigned int) k);
-	      again = true;
+	      qexec_gby_cache_remove (thread_p, st, k);
+	      k = home;		/* the shift pulled the cluster back: from its home again */
+	    }
+	  else
+	    {
+	      k = (k + 1) & mask;
 	    }
 	}
     }
-  while (again);
 }
 
 static int
@@ -12159,6 +12173,13 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
     {
       return qexec_batch_gby_rows (thread_p, st, batch, 0);
     }
+  if (st->seen_evictions != ctx->evictions)
+    {
+      /* an eviction consume did not see (the chain sent a page whole to the row path, a parallel worker's
+       * merge, ...) may have freed a cached group: the next chunk notices it here and starts over */
+      qexec_gby_cache_clear (thread_p, st);
+      st->seen_evictions = ctx->evictions;
+    }
   rc = qexec_batch_gby_reserve (st, batch->n_sel);
   if (rc != NO_ERROR)
     {
@@ -12233,11 +12254,13 @@ qexec_batch_gby_consume (THREAD_ENTRY * thread_p, EXPR_CHUNK_NODE * node, EXPR_B
 	{
 	  /* a new group at the tail and the LRU head evicted for it, entry by entry */
 	  qexec_gby_cache_evicted (thread_p, st, note_val, note_slot, evicted);
+	  st->seen_evictions = ctx->evictions;	/* handled here: the next chunk need not clear for it */
 	}
       else if (evicted != 0)
 	{
 	  /* not a plain new group: an existing one under other bytes, or a dump; a dumped group is freed */
 	  qexec_gby_cache_clear (thread_p, st);
+	  st->seen_evictions = ctx->evictions;
 	}
       if (len >= 0 && ctx->tuple_count == tuples_before + 1)
 	{
@@ -31298,6 +31321,7 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
   proc->agg_hash_context->hash_size = 0;
   proc->agg_hash_context->group_count = 0;
   proc->agg_hash_context->tuple_count = 0;
+  proc->agg_hash_context->evictions = 0;
   proc->agg_hash_context->sorted_count = 0;
   proc->agg_hash_context->state = HS_ACCEPT_ALL;
   memset (proc->agg_hash_context->key_sketch, 0, sizeof (proc->agg_hash_context->key_sketch));
@@ -31433,6 +31457,7 @@ qexec_free_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * proc
   proc->agg_hash_context->hash_size = 0;
   proc->agg_hash_context->group_count = 0;
   proc->agg_hash_context->tuple_count = 0;
+  proc->agg_hash_context->evictions = 0;
 }
 
 /*
