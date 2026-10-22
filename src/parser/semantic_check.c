@@ -11330,8 +11330,10 @@ pt_semantic_check_local (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int
 	  node = pt_semantic_type (parser, node, info);
 	}
 
-      /* try to coerce insert_values into types indicated by insert_attributes */
-      if (node && node->info.insert.spec && node->info.insert.spec->info.spec.remote_server_name == NULL)
+      /* try to coerce insert_values into types indicated by insert_attributes. A remote target with its columns,
+       * in the derived dblink table shape, gets the count check the function does. */
+      if (node && node->info.insert.spec && (node->info.insert.spec->info.spec.remote_server_name == NULL
+					     || PT_SPEC_IS_DERIVED (node->info.insert.spec)))
 	{
 	  pt_coerce_insert_values (parser, node);
 	}
@@ -12581,6 +12583,95 @@ pt_bind_remote_dml_subq (PARSER_CONTEXT * parser, PT_NODE * subq, SEMANTIC_CHK_I
 }
 
 /*
+ * pt_dblink_insert_binds_odku_value () - Tell whether a remote INSERT ... SELECT binds an ON DUPLICATE KEY
+ *   UPDATE value from the source row. Such a value must be resolved with the source row in scope, which needs
+ *   the target's columns. Asked before name resolution, on the clause as written.
+ *   return: true iff a value is a qualified column (pt_dblink_odku_value_is_bound)
+ *   node(in): the INSERT
+ */
+static bool
+pt_dblink_insert_binds_odku_value (PT_NODE * node)
+{
+  PT_NODE *assign;
+
+  for (assign = node->info.insert.odku_assignments; assign != NULL; assign = assign->next)
+    {
+      if (assign->node_type == PT_EXPR && assign->info.expr.op == PT_ASSIGN
+	  && pt_dblink_odku_value_is_bound (assign->info.expr.arg2))
+	{
+	  return true;
+	}
+    }
+  return false;
+}
+
+/*
+ * pt_dblink_dml_target_as_derived () - Give a remote DML target the derived dblink table shape a remote SELECT
+ *   spec has, so that name resolution fetches its columns from the remote and binds names to them.
+ *   return: NO_ERROR, or ER_FAILED with no parser error set
+ *   parser(in): parser context
+ *   spec(in/out): the target spec, its connection info resolved
+ *
+ * Note: The PT_DBLINK_TABLE_DML node stays in remote_server_name. db_vdb.c skips mq_translate for a remote DML
+ *   and the sink dispatch finds the statement by it. All the visible columns are fetched, with
+ *   "SELECT * FROM <table>", so an invisible column is not found.
+ */
+static int
+pt_dblink_dml_target_as_derived (PARSER_CONTEXT * parser, PT_NODE * spec)
+{
+  PT_NODE *dml = spec->info.spec.remote_server_name;
+  PT_NODE *entity = spec->info.spec.entity_name;
+  PT_NODE *tbl, *range_var, *star;
+  PT_DBLINK_INFO *info;
+
+  if (dml == NULL || dml->node_type != PT_DBLINK_TABLE_DML || entity == NULL || dml->info.dblink_table.url == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  tbl = parser_new_node (parser, PT_DBLINK_TABLE);
+  range_var = parser_new_node (parser, PT_NAME);
+  star = parser_new_node (parser, PT_NAME);
+  if (tbl == NULL || range_var == NULL || star == NULL)
+    {
+      return ER_FAILED;
+    }
+
+  info = &tbl->info.dblink_table;
+  info->remote_table_name = NULL;
+  if (entity->info.name.resolved != NULL)
+    {
+      info->remote_table_name = pt_append_string (parser, info->remote_table_name, entity->info.name.resolved);
+      info->remote_table_name = pt_append_string (parser, info->remote_table_name, ".");
+    }
+  info->remote_table_name = pt_append_string (parser, info->remote_table_name, entity->info.name.original);
+
+  info->is_name = true;
+  info->conn = dml->info.dblink_table.conn;
+  info->owner_name = dml->info.dblink_table.owner_name;
+  info->url = dml->info.dblink_table.url;
+  info->user = dml->info.dblink_table.user;
+  info->pwd = dml->info.dblink_table.pwd;
+  info->cols = NULL;
+
+  star->type_enum = PT_TYPE_STAR;
+  info->sel_list = star;
+
+  range_var->info.name.original = (spec->info.spec.range_var != NULL)
+    ? spec->info.spec.range_var->info.name.original : entity->info.name.original;
+
+  /* pt_remake_dblink_select_list () reads the name and the alias from qstr */
+  info->qstr = entity;
+  entity->next = spec->info.spec.range_var;
+  spec->info.spec.entity_name = NULL;
+  spec->info.spec.range_var = range_var;
+  spec->info.spec.derived_table = tbl;
+  spec->info.spec.derived_table_type = PT_DERIVED_DBLINK_TABLE;
+
+  return NO_ERROR;
+}
+
+/*
  * pt_check_with_info () -  do name resolution & semantic checks on this tree
  *   return:  statement if no errors, NULL otherwise
  *   parser(in): the parser context
@@ -12680,6 +12771,8 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 	      || (node->node_type == PT_UPDATE && node->info.update.spec->info.spec.remote_server_name)
 	      || (node->node_type == PT_MERGE && node->info.merge.into->info.spec.remote_server_name))
 	    {
+	      bool resolve_whole = false;
+
 	      /* For a remote INSERT SELECT in the sink form (local SELECT streamed to the remote
 	       * target; see the qstr gate below) the SELECT subquery runs locally, but the remote DML path
 	       * breaks out of the normal query semantic check below, so the subquery is never processed
@@ -12697,6 +12790,23 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		  && node->info.insert.spec->info.spec.remote_server_name->info.dblink_table.qstr == NULL)
 		{
 		  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
+
+		  /* An ON DUPLICATE KEY UPDATE value bound from the source row is resolved with the rest of the
+		   * statement, not here: the target takes its columns and the statement goes on to the steps below.
+		   * A target already in that shape is a statement checked again. */
+		  if (subq != NULL
+		      && (PT_SPEC_IS_DERIVED (node->info.insert.spec) || pt_dblink_insert_binds_odku_value (node)))
+		    {
+		      if (!PT_SPEC_IS_DERIVED (node->info.insert.spec)
+			  && pt_dblink_dml_target_as_derived (parser, node->info.insert.spec) != NO_ERROR)
+			{
+			  PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: failed to take the target's columns");
+			  break;
+			}
+		      resolve_whole = true;
+		      subq = NULL;
+		    }
+
 		  if (subq != NULL)
 		    {
 		      subq = pt_bind_remote_dml_subq (parser, subq, sc_info_ptr,
@@ -12783,7 +12893,10 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 			}
 		    }
 		}
-	      break;
+	      if (!resolve_whole)
+		{
+		  break;
+		}
 	    }
 	}
 
@@ -12837,6 +12950,30 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 		{
 		  /* This must be done before CNF since we are adding disjuncts to the "IS NULL" expression. */
 		  node = parser_walk_tree (parser, node, pt_expand_isnull_preds, node, NULL, NULL);
+		}
+	    }
+	}
+
+      /* db_vdb.c skips the statement-level mq_translate for a remote DML. A remote INSERT resolved with its
+       * target's columns has its source SELECT translated here, as pt_bind_remote_dml_subq () does on the other
+       * path. Without it a UNION source or a dblink derived table in the source sends no rows or some of them,
+       * with no error. */
+      if (!pt_has_error (parser) && node != NULL && node->node_type == PT_INSERT
+	  && node->info.insert.spec->info.spec.remote_server_name != NULL
+	  && PT_SPEC_IS_DERIVED (node->info.insert.spec))
+	{
+	  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
+
+	  if (subq != NULL)
+	    {
+	      subq = mq_translate (parser, subq);
+	      if (subq == NULL && !pt_has_error (parser))
+		{
+		  PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: failed to translate the SELECT subquery");
+		}
+	      if (subq != NULL)
+		{
+		  node->info.insert.value_clauses->info.node_list.list = subq;
 		}
 	    }
 	}
@@ -13902,6 +14039,7 @@ pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 {
   PT_NODE *attr = NULL, *spec = NULL;
   PT_NODE *entity_name;
+  const char *class_name;
 
   if (stmt == NULL || stmt->node_type != PT_INSERT)
     {
@@ -13910,18 +14048,29 @@ pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   spec = stmt->info.insert.spec;
   entity_name = spec->info.spec.entity_name;
-  if (entity_name == NULL)
+  if (entity_name == NULL && spec->info.spec.remote_server_name != NULL && spec->info.spec.derived_table != NULL
+      && spec->info.spec.derived_table->node_type == PT_DBLINK_TABLE)
     {
-      assert (false);
-      PT_ERROR (parser, stmt,
-		"The parse tree of the insert statement is incorrect." " entity_name of spec must be set.");
-      return;
+      /* A remote target in the derived dblink table shape has no entity name. The name node it had is gone too:
+       * pt_remake_dblink_select_list () replaced it with the query text. */
+      class_name = spec->info.spec.derived_table->info.dblink_table.remote_table_name;
+    }
+  else
+    {
+      if (entity_name == NULL)
+	{
+	  assert (false);
+	  PT_ERROR (parser, stmt,
+		    "The parse tree of the insert statement is incorrect." " entity_name of spec must be set.");
+	  return;
+	}
+      class_name = entity_name->info.name.original;
     }
 
-  if (entity_name->info.name.original == NULL)
+  if (class_name == NULL)
     {
       assert (false);
-      PT_ERROR (parser, entity_name, er_msg ());
+      PT_ERROR (parser, stmt, er_msg ());
       return;
     }
 
@@ -13934,7 +14083,7 @@ pt_no_double_insert_assignments (PARSER_CONTEXT * parser, PT_NODE * stmt)
 	  if (pt_name_equal (parser, attr, attr2))
 	    {
 	      PT_ERRORmf2 (parser, attr2, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_GT_1_ASSIGNMENT_TO,
-			   entity_name->info.name.original, attr2->info.name.original);
+			   class_name, attr2->info.name.original);
 	      return;
 	    }
 	}
@@ -15380,7 +15529,8 @@ pt_coerce_insert_values (PARSER_CONTEXT * parser, PT_NODE * stmt)
 
   if (stmt->node_type == PT_INSERT)
     {
-      if (stmt->info.insert.spec && stmt->info.insert.spec->info.spec.remote_server_name)
+      if (stmt->info.insert.spec && stmt->info.insert.spec->info.spec.remote_server_name
+	  && !PT_SPEC_IS_DERIVED (stmt->info.insert.spec))
 	{
 	  assert (stmt->info.insert.spec->info.spec.remote_server_name->node_type == PT_DBLINK_TABLE_DML);
 	  return stmt;

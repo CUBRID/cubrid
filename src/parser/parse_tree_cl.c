@@ -13584,8 +13584,9 @@ pt_apply_insert (PARSER_CONTEXT * parser, PT_NODE * p, void *arg)
 {
   PT_APPLY_WALK (parser, p->info.insert.spec, arg);
 
-  /* do not check attribute list for dblink */
-  if (p->info.insert.spec && p->info.insert.spec->info.spec.remote_server_name == NULL)
+  /* do not check attribute list for dblink, unless the target has its columns in the derived dblink table shape */
+  if (p->info.insert.spec && (p->info.insert.spec->info.spec.remote_server_name == NULL
+			      || PT_SPEC_IS_DERIVED (p->info.insert.spec)))
     {
       PT_APPLY_WALK (parser, p->info.insert.attr_list, arg);
     }

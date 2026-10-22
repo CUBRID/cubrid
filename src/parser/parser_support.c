@@ -11901,6 +11901,18 @@ pt_convert_dblink_merge_query (PARSER_CONTEXT * parser, PT_NODE * node, SERVER_N
   pt_convert_dblink_dml_query (parser, node, (int) (remote_target == false), (int) (remote_target == true), snl);
 }
 
+/* true iff an ON DUPLICATE KEY UPDATE value is a qualified column, <qualifier>.<column>, by shape alone. It is
+ * the only kind of value bound per row rather than printed. Whether the qualifier names a table of the source
+ * SELECT is for the gate to check. The shape is the clause as written, so this answers only before name
+ * resolution, which turns a qualified column into a PT_NAME. */
+bool
+pt_dblink_odku_value_is_bound (PT_NODE * value)
+{
+  return (value != NULL && value->node_type == PT_DOT_ && value->info.dot.arg1 != NULL
+	  && value->info.dot.arg1->node_type == PT_NAME && value->info.dot.arg2 != NULL
+	  && value->info.dot.arg2->node_type == PT_NAME);
+}
+
 /* true iff every ON DUPLICATE KEY UPDATE assignment can go out as remote statement text.
  *
  * Each value is printed into the statement as written, so only a literal the remote reads the same way is

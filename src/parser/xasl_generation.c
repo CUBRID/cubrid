@@ -20033,7 +20033,20 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
 
   /* remote sink: connection info resolved by pt_resolve_server_names */
   entity_name = into_spec->info.spec.entity_name;
-  pt_fill_remote_dml_sink (parser, entity_name, pdblink, &insert->sink);
+  if (entity_name == NULL && PT_SPEC_IS_DERIVED (into_spec)
+      && into_spec->info.spec.derived_table->node_type == PT_DBLINK_TABLE)
+    {
+      /* a target resolved with its columns keeps its name in the derived dblink table, already qualified */
+      insert->sink.is_remote = true;
+      insert->sink.url = (char *) pdblink->url->info.value.data_value.str->bytes;
+      insert->sink.user = (char *) pdblink->user->info.value.data_value.str->bytes;
+      insert->sink.pwd = (char *) pdblink->pwd->info.value.data_value.str->bytes;
+      insert->sink.table_name = into_spec->info.spec.derived_table->info.dblink_table.remote_table_name;
+    }
+  else
+    {
+      pt_fill_remote_dml_sink (parser, entity_name, pdblink, &insert->sink);
+    }
   if (insert->sink.table_name == NULL || pt_has_error (parser))
     {
       return NULL;
