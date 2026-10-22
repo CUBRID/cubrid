@@ -12553,10 +12553,27 @@ sysprm_print_parameters_for_ha_repl (void)
 
   for (i = 0; i < MAX_SYSTEM_PARAMS; i++)
     {
-      if (!PRM_IS_FOR_HA_CONTEXT (GET_PRM (i)))
+      SYSPRM_PARAM *prm = GET_PRM (i);
+      bool is_different;
+
+      if (!PRM_IS_FOR_HA_CONTEXT (prm))
 	{
 	  continue;
 	}
+
+      is_different = PRM_IS_DIFFERENT (prm);
+#if defined (CS_MODE) && defined (MULTI_CONN_TO_A_SERVER)
+      /* copy-initialized, since SYSPRM_PARAM has const members and cannot be assigned */
+      SYSPRM_PARAM sub_client_prm = *prm;
+
+      if (PRM_SUB_CLIENT_SESSION (i))
+	{
+	  /* print the value of the session of the sub-client of this thread, not prm_Def of the main client */
+	  sub_client_prm.value.v = PRM_SUB_CLIENT_SESSION_PARAM (i)->value;
+	  prm = &sub_client_prm;
+	  is_different = (sysprm_compare_values (prm) != 0);
+	}
+#endif
 
       if (i == PRM_ID_INTL_COLLATION || i == PRM_ID_INTL_DATE_LANG || i == PRM_ID_INTL_NUMBER_LANG)
 	{
@@ -12582,12 +12599,12 @@ sysprm_print_parameters_for_ha_repl (void)
 		}
 	    }
 	}
-      else if (!PRM_IS_DIFFERENT (GET_PRM (i)))
+      else if (!is_different)
 	{
 	  continue;
 	}
 
-      n = prm_print (GET_PRM (i), ptr, len, PRM_PRINT_NAME, PRM_PRINT_CURR_VAL);
+      n = prm_print (prm, ptr, len, PRM_PRINT_NAME, PRM_PRINT_CURR_VAL);
       ptr += n;
       len -= n;
 
