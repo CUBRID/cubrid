@@ -8392,22 +8392,22 @@ qo_assign_eq_classes (QO_ENV * env)
  * The node's own selectivity becomes k over the snapshot's rows. Nothing else changes: no derived
  * term is injected, so the value reaches qo_iscan_cost () through the very join-term selectivity
  * the index scan cost already reads. Every failure along the way -- no snapshot, a predicate the
- * pass cannot evaluate, a key the histogram cannot price, zero survivors -- leaves that node or
- * term exactly as the histogram pass estimated it.
+ * pass cannot evaluate, a key the histogram cannot price, zero survivors, a join between two
+ * snapshot nodes -- leaves that node or term exactly as the histogram pass estimated it.
  */
 static void
 qo_row_snapshot_apply (QO_ENV * env)
 {
   PARSER_CONTEXT *parser = QO_ENV_PARSER (env);
-  int n, t, k, n_filters, column;
+  int n, t, k, f, n_filters, column, other;
   QO_NODE *node;
   QO_TERM *term;
   BITSET_ITERATOR iter;
   const ROW_SNAPSHOT *snapshot;
+  const ROW_SNAPSHOT **snapshots;
   ROW_SNAPSHOT_FILTER *filters;
-  int *survivors;
+  int **survivors;
   PT_NODE *pt_expr, *lhs, *rhs, *my_name, *other_name;
-  MOP classop;
   UINTPTR spec_id;
   double sel;
   bool ok;
@@ -8417,9 +8417,19 @@ qo_row_snapshot_apply (QO_ENV * env)
       return;
     }
 
+  snapshots = (const ROW_SNAPSHOT **) parser_alloc (parser, env->nnodes * sizeof (ROW_SNAPSHOT *));
+  survivors = (int **) parser_alloc (parser, env->nnodes * sizeof (int *));
+  if (snapshots == NULL || survivors == NULL)
+    {
+      return;
+    }
+
+  /* (a) every node whose rows are kept: the rows its constant sargs leave, k of them */
   for (n = 0; n < env->nnodes; n++)
     {
       node = QO_ENV_NODE (env, n);
+      snapshots[n] = NULL;
+      survivors[n] = NULL;
 
       /* one real class (no hierarchy or partition set), filtered */
       if (QO_NODE_INFO (node) == NULL || QO_NODE_INFO_N (node) != 1 || QO_NODE_INFO (node)->info[0].mop == NULL
@@ -8431,8 +8441,7 @@ qo_row_snapshot_apply (QO_ENV * env)
 	  continue;
 	}
 
-      classop = QO_NODE_INFO (node)->info[0].mop;
-      snapshot = row_snapshot_get (classop, QO_NODE_INFO (node)->info[0].smclass);
+      snapshot = row_snapshot_get (QO_NODE_INFO (node)->info[0].mop, QO_NODE_INFO (node)->info[0].smclass);
       if (snapshot == NULL)
 	{
 	  continue;
@@ -8456,86 +8465,114 @@ qo_row_snapshot_apply (QO_ENV * env)
 	  continue;
 	}
 
-      filters = (ROW_SNAPSHOT_FILTER *) parser_alloc (parser, bitset_cardinality (&(QO_NODE_SARGS (node)))
-						      * sizeof (ROW_SNAPSHOT_FILTER));
-      survivors = (int *) parser_alloc (parser, snapshot->n_rows * sizeof (int));
-      if (filters == NULL || survivors == NULL)
+      n_filters = bitset_cardinality (&(QO_NODE_SARGS (node)));
+      filters = (ROW_SNAPSHOT_FILTER *) calloc (n_filters, sizeof (ROW_SNAPSHOT_FILTER));
+      survivors[n] = (int *) parser_alloc (parser, snapshot->n_rows * sizeof (int));
+      if (filters == NULL || survivors[n] == NULL)
 	{
+	  if (filters != NULL)
+	    {
+	      free_and_init (filters);
+	    }
 	  return;
 	}
-      n_filters = 0;
+      f = 0;
       for (t = bitset_iterate (&(QO_NODE_SARGS (node)), &iter); t != -1 && ok; t = bitset_next_member (&iter))
 	{
 	  term = QO_ENV_TERM (env, t);
 	  /* the shapes it accepts, OR chains of one column's equalities included, are checked there */
 	  if (QO_TERM_CLASS (term) != QO_TC_SARG
-	      || !row_snapshot_filter_prepare (parser, snapshot, classop, spec_id, QO_TERM_PT_EXPR (term),
-					       &filters[n_filters++]))
+	      || !row_snapshot_filter_prepare (parser, snapshot, QO_NODE_INFO (node)->info[0].mop, spec_id,
+					       QO_TERM_PT_EXPR (term), &filters[f++]))
 	    {
 	      ok = false;
 	    }
 	}
-      if (!ok)
+      k = ok ? row_snapshot_survivors (snapshot, filters, f, survivors[n]) : 0;
+      for (t = 0; t < f; t++)
 	{
-	  continue;
+	  row_snapshot_filter_clear (&filters[t]);
 	}
-
-      k = row_snapshot_survivors (snapshot, filters, n_filters, survivors);
+      free_and_init (filters);
       if (k <= 0)
 	{
-	  /* a constant the snapshot does not hold (a code added since the statistics were taken):
-	   * it says nothing about the rows, so the histograms keep the estimate */
+	  /* not evaluable, or a constant the snapshot does not hold (a code added since the
+	   * statistics were taken): it says nothing about the rows, so the histograms keep the estimate */
 	  continue;
 	}
 
-      /* (a) the node's own output is k of the rows the statistics saw */
+      /* the node's own output is k of the rows the statistics saw */
+      snapshots[n] = snapshot;
       QO_NODE_SELECTIVITY (node) = (double) k / (double) snapshot->n_rows;
       QO_NODE_SNAPSHOT_CARD (node) = k;
+    }
 
-      /* (b) every equi-join term this node takes part in */
-      for (t = 0; t < env->nterms; t++)
+  /* (b) every equi-join term a snapshot node takes part in */
+  for (t = 0; t < env->nterms; t++)
+    {
+      term = QO_ENV_TERM (env, t);
+      if (QO_TERM_CLASS (term) != QO_TC_JOIN || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP)
+	  || !QO_TERM_IS_FLAGED (term, QO_TERM_SINGLE_PRED) || bitset_cardinality (&(QO_TERM_NODES (term))) != 2)
 	{
-	  term = QO_ENV_TERM (env, t);
-	  if (QO_TERM_CLASS (term) != QO_TC_JOIN || !QO_TERM_IS_FLAGED (term, QO_TERM_EQUAL_OP)
-	      || !QO_TERM_IS_FLAGED (term, QO_TERM_SINGLE_PRED) || !BITSET_MEMBER (QO_TERM_NODES (term), n))
-	    {
-	      continue;
-	    }
-	  pt_expr = QO_TERM_PT_EXPR (term);
-	  if (pt_expr == NULL || pt_expr->node_type != PT_EXPR || pt_expr->info.expr.op != PT_EQ)
-	    {
-	      continue;
-	    }
-	  lhs = pt_expr->info.expr.arg1;
-	  rhs = pt_expr->info.expr.arg2;
-	  if (lhs == NULL || rhs == NULL || lhs->node_type != PT_NAME || rhs->node_type != PT_NAME)
-	    {
-	      continue;
-	    }
-	  if (lhs->info.name.spec_id == spec_id && rhs->info.name.spec_id != spec_id)
-	    {
-	      my_name = lhs;
-	      other_name = rhs;
-	    }
-	  else if (rhs->info.name.spec_id == spec_id && lhs->info.name.spec_id != spec_id)
-	    {
-	      my_name = rhs;
-	      other_name = lhs;
-	    }
-	  else
-	    {
-	      continue;
-	    }
-
-	  column = row_snapshot_column (snapshot, classop, my_name->info.name.original);
-	  if (!row_snapshot_join_selectivity (snapshot, survivors, k, column, other_name,
-					      other_name->info.name.null_frequency, &sel))
-	    {
-	      continue;		/* this term keeps its histogram estimate; the next term is independent */
-	    }
-	  QO_TERM_SELECTIVITY (term) = sel;
-	  QO_TERM_SET_FLAG (term, QO_TERM_SEL_FROM_SNAPSHOT);
+	  continue;
 	}
+      pt_expr = QO_TERM_PT_EXPR (term);
+      if (pt_expr == NULL || pt_expr->node_type != PT_EXPR || pt_expr->info.expr.op != PT_EQ)
+	{
+	  continue;
+	}
+      lhs = pt_expr->info.expr.arg1;
+      rhs = pt_expr->info.expr.arg2;
+      if (lhs == NULL || rhs == NULL || lhs->node_type != PT_NAME || rhs->node_type != PT_NAME)
+	{
+	  continue;
+	}
+
+      n = bitset_iterate (&(QO_TERM_NODES (term)), &iter);
+      other = bitset_next_member (&iter);
+      if (snapshots[n] == NULL)
+	{
+	  int swap = n;
+
+	  n = other;
+	  other = swap;
+	}
+      if (n < 0 || other < 0 || snapshots[n] == NULL)
+	{
+	  continue;
+	}
+      if (snapshots[other] != NULL)
+	{
+	  /* both sides were filtered on their rows: each side's estimate reads the other side's
+	   * unfiltered histogram, so neither is the join's selectivity -- keep the histogram one */
+	  continue;
+	}
+
+      spec_id = QO_NODE_ENTITY_SPEC (QO_ENV_NODE (env, n))->info.spec.id;
+      if (lhs->info.name.spec_id == spec_id)
+	{
+	  my_name = lhs;
+	  other_name = rhs;
+	}
+      else if (rhs->info.name.spec_id == spec_id)
+	{
+	  my_name = rhs;
+	  other_name = lhs;
+	}
+      else
+	{
+	  continue;
+	}
+
+      node = QO_ENV_NODE (env, n);
+      column = row_snapshot_column (snapshots[n], QO_NODE_INFO (node)->info[0].mop, my_name->info.name.original);
+      if (!row_snapshot_join_selectivity (snapshots[n], survivors[n], QO_NODE_SNAPSHOT_CARD (node), column,
+					  other_name, other_name->info.name.null_frequency, &sel))
+	{
+	  continue;		/* this term keeps its histogram estimate; the next term is independent */
+	}
+      QO_TERM_SELECTIVITY (term) = sel;
+      QO_TERM_SET_FLAG (term, QO_TERM_SEL_FROM_SNAPSHOT);
     }
 }
 

@@ -44,10 +44,14 @@
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
 #include "memory_wrapper.hpp"
 
-/* blob layout: magic, version, n_attrs, n_rows, n_attrs column ids, then the values row by row,
- * each packed with its domain (or_put_value), so a value reads back with its type and collation */
+/* blob layout: magic, version, total length, n_attrs, n_rows, n_attrs column ids, then the values
+ * row by row, each packed with its domain (or_put_value), so a value reads back with its type and
+ * collation */
 #define ROW_SNAPSHOT_MAGIC 0x52534e31	/* "RSN1" */
 #define ROW_SNAPSHOT_VERSION 1
+#define ROW_SNAPSHOT_HEADER_INTS 5
+/* more columns than a class can have means the blob is not ours */
+#define ROW_SNAPSHOT_MAX_ATTRS 10000
 
 static bool row_snapshot_keeps_type (DB_TYPE type);
 static ROW_SNAPSHOT *row_snapshot_load (MOP classop, SM_CLASS *class_);
@@ -142,7 +146,7 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
   /* Reading the rows is part of the statistics, not of the statement: a failure here leaves the
    * class without a snapshot (the optimizer then prices it as before) instead of failing the
    * UPDATE STATISTICS that already collected everything else. */
-  size = OR_INT_SIZE * (4 + (int) ids.size ());
+  size = OR_INT_SIZE * (ROW_SNAPSHOT_HEADER_INTS + (int) ids.size ());
   if (db_compile_and_execute_local (query.c_str (), &result, &query_error) < 0)
     {
       er_clear ();
@@ -193,7 +197,8 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
     {
       or_init (&buf, blob, size);
       if (or_put_int (&buf, ROW_SNAPSHOT_MAGIC) != NO_ERROR || or_put_int (&buf, ROW_SNAPSHOT_VERSION) != NO_ERROR
-	  || or_put_int (&buf, (int) ids.size ()) != NO_ERROR || or_put_int (&buf, n_rows) != NO_ERROR)
+	  || or_put_int (&buf, size) != NO_ERROR || or_put_int (&buf, (int) ids.size ()) != NO_ERROR
+	  || or_put_int (&buf, n_rows) != NO_ERROR)
 	{
 	  usable = false;
 	}
@@ -232,6 +237,24 @@ row_snapshot_collect_and_store (MOP classop, INT64 total_rows, bool with_fullsca
 }
 
 void
+row_snapshot_filter_clear (ROW_SNAPSHOT_FILTER *filter)
+{
+  if (filter == NULL)
+    {
+      return;
+    }
+  if (filter->values != NULL)
+    {
+      free_and_init (filter->values);
+    }
+  if (filter->elements != NULL)
+    {
+      free_and_init (filter->elements);
+    }
+  filter->n_values = 0;
+}
+
+void
 row_snapshot_free (ROW_SNAPSHOT *snapshot)
 {
   if (snapshot == NULL)
@@ -258,7 +281,7 @@ row_snapshot_decode (const char *blob, int length)
 {
   ROW_SNAPSHOT *snapshot;
   OR_BUF buf;
-  int magic = 0, version = 0, n_attrs = 0, n_rows = 0, i, rc = NO_ERROR;
+  int magic = 0, version = 0, total = 0, n_attrs = 0, n_rows = 0, i, rc = NO_ERROR;
   char *copy;
 
   /* or_get_value () reads the values with the padding they were written with, relative to the
@@ -272,23 +295,25 @@ row_snapshot_decode (const char *blob, int length)
   memcpy (copy, blob, length);
   or_init (&buf, copy, length);
 
+  /* or_get_int () checks the bound only by assert: every count is checked against the length
+   * before it is trusted, so a damaged catalog value is ignored instead of read past */
+  if (length < OR_INT_SIZE * ROW_SNAPSHOT_HEADER_INTS)
+    {
+      free_and_init (copy);
+      return NULL;
+    }
   magic = or_get_int (&buf, &rc);
-  if (rc == NO_ERROR)
+  version = or_get_int (&buf, &rc);
+  total = or_get_int (&buf, &rc);
+  n_attrs = or_get_int (&buf, &rc);
+  n_rows = or_get_int (&buf, &rc);
+  if (magic != ROW_SNAPSHOT_MAGIC || version != ROW_SNAPSHOT_VERSION || total != length || n_attrs <= 0
+      || n_attrs > ROW_SNAPSHOT_MAX_ATTRS || n_rows <= 0 || n_rows > ROW_SNAPSHOT_MAX_ROWS
+      || length - OR_INT_SIZE * ROW_SNAPSHOT_HEADER_INTS < OR_INT_SIZE * n_attrs
+      || (INT64) n_attrs * n_rows > (INT64) length / OR_INT_SIZE)
     {
-      version = or_get_int (&buf, &rc);
-    }
-  if (rc == NO_ERROR)
-    {
-      n_attrs = or_get_int (&buf, &rc);
-    }
-  if (rc == NO_ERROR)
-    {
-      n_rows = or_get_int (&buf, &rc);
-    }
-  if (rc != NO_ERROR || magic != ROW_SNAPSHOT_MAGIC || version != ROW_SNAPSHOT_VERSION || n_attrs <= 0
-      || n_rows <= 0 || n_rows > ROW_SNAPSHOT_MAX_ROWS)
-    {
-      /* an unknown format */
+      /* an unknown or damaged format (every packed value takes at least its 4-byte domain, which
+       * bounds the allocation below by the blob's own length) */
       free_and_init (copy);
       return NULL;
     }
@@ -319,7 +344,16 @@ row_snapshot_decode (const char *blob, int length)
     }
   for (i = 0; i < n_attrs * n_rows && rc == NO_ERROR; i++)
     {
+      if (buf.ptr >= buf.endptr)
+	{
+	  rc = ER_FAILED;
+	  break;
+	}
       rc = or_get_value (&buf, &snapshot->values[i], NULL, -1, true);
+      if (rc == NO_ERROR && buf.ptr > buf.endptr)
+	{
+	  rc = ER_FAILED;
+	}
     }
   /* n_rows only once every value is in: row_snapshot_free () clears the values of n_rows rows */
   snapshot->n_rows = n_rows;
@@ -611,7 +645,8 @@ row_snapshot_or_filter_prepare (PARSER_CONTEXT *parser, const ROW_SNAPSHOT *snap
     }
 
   filter->column = row_snapshot_column (snapshot, classop, first_col->info.name.original);
-  filter->values = (DB_VALUE **) parser_alloc (parser, n * sizeof (DB_VALUE *));
+  filter->elements = NULL;
+  filter->values = (DB_VALUE **) calloc (n, sizeof (DB_VALUE *));
   if (filter->values == NULL)
     {
       return false;
@@ -739,8 +774,11 @@ row_snapshot_filter_prepare (PARSER_CONTEXT *parser, const ROW_SNAPSHOT *snapsho
 	}
     }
 
+  /* malloc'd, not parser memory: the bind fingerprint prepares filters on every check of a kept
+   * statement, whose parser lives as long as the statement */
   filter->column = row_snapshot_column (snapshot, classop, lhs->info.name.original);
-  filter->values = (DB_VALUE **) parser_alloc (parser, n * sizeof (DB_VALUE *));
+  filter->elements = NULL;
+  filter->values = (DB_VALUE **) calloc (n, sizeof (DB_VALUE *));
   if (filter->values == NULL)
     {
       return false;
@@ -763,13 +801,14 @@ row_snapshot_filter_prepare (PARSER_CONTEXT *parser, const ROW_SNAPSHOT *snapsho
     default:
       if (in_set != NULL)
 	{
+	  filter->elements = (DB_VALUE *) calloc (set_size, sizeof (DB_VALUE));
+	  if (filter->elements == NULL)
+	    {
+	      return false;
+	    }
 	  for (i = 0; i < set_size; i++)
 	    {
-	      filter->values[i] = (DB_VALUE *) parser_alloc (parser, sizeof (DB_VALUE));
-	      if (filter->values[i] == NULL)
-		{
-		  return false;
-		}
+	      filter->values[i] = &filter->elements[i];
 	      /* peek: the set element stays owned by the parse tree */
 	      if (set_get_element_nocopy (in_set, i, filter->values[i]) != NO_ERROR || DB_IS_NULL (filter->values[i]))
 		{
