@@ -6143,22 +6143,44 @@ locator_class_has_triggers (THREAD_ENTRY * thread_p, const OID * class_oid)
 }
 
 /*
+ * locator_class_keeps_oids () - does the class keep the OIDs of its deleted rows from reuse (DONT_REUSE_OID)?
+ *   return: true when it does, or when its heap cannot be looked up
+ *   thread_p(in): thread entry
+ *   class_oid(in): the class
+ */
+static bool
+locator_class_keeps_oids (THREAD_ENTRY * thread_p, const OID * class_oid)
+{
+  HFID hfid;
+  FILE_TYPE ftype;
+  bool found = false;
+
+  if (heap_get_class_info (thread_p, class_oid, &hfid, &ftype, &found) != NO_ERROR || !found)
+    {
+      return true;
+    }
+
+  return ftype != FILE_HEAP_REUSE_SLOTS;
+}
+
+/*
  * locator_class_keeps_row_locks () - must the class keep its DELETE and UPDATE row locks to commit?
  *   return: true when a row lock of the class cannot end with its statement
  *   thread_p(in): thread entry
  *   class_oid(in): the class
  *
- * Note: three kinds of class keep them.  One MVCC does not apply to leaves no stamp for a later writer to wait on.
- *	 One with an index being built online: see locator_class_has_online_index ().  One with a trigger of its own:
- *	 INSERT ... ON DUPLICATE KEY UPDATE and REPLACE on it run on the client, whose unique-key lookup locks the row
- *	 with no owner check, so a row an earlier statement gave back would queue its owner behind a waiter parked on
- *	 the owner's MVCCID self-lock.
+ * Note: four kinds of class keep them.  One MVCC does not apply to leaves no stamp for a later writer to wait on.
+ *	 One with an index being built online: see locator_class_has_online_index ().  The other two have rows the
+ *	 client changes, and the client locks a row with no owner check, so a row an earlier statement gave back would
+ *	 queue its owner behind a writer parked on the owner's MVCCID self-lock.  One with a trigger of its own:
+ *	 INSERT ... ON DUPLICATE KEY UPDATE and REPLACE on it run on the client.  One that keeps its OIDs: only such a
+ *	 class can be updated through a view or an updatable result set, and both run on the client.
  */
 bool
 locator_class_keeps_row_locks (THREAD_ENTRY * thread_p, const OID * class_oid)
 {
   return (mvcc_is_mvcc_disabled_class (class_oid) || locator_class_has_online_index (thread_p, class_oid)
-	  || locator_class_has_triggers (thread_p, class_oid));
+	  || locator_class_has_triggers (thread_p, class_oid) || locator_class_keeps_oids (thread_p, class_oid));
 }
 
 /*
