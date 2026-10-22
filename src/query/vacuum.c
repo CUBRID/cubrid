@@ -6456,7 +6456,7 @@ vacuum_rv_notify_dropped_file (THREAD_ENTRY * thread_p, LOG_RCV * rcv)
 /*
  * vacuum_notify_dropped_file () - notify vacuum of a file destroyed without the commit postpone of a DROP, the same way
  *				   that postpone does (see vacuum_log_add_dropped_file). no vacuum worker accesses
- *				   the file after this.
+ *				   the file after this. with vacuum disabled, the handler only cleans the caches.
  *
  * return	 : Error code.
  * thread_p (in) : Thread entry.
@@ -6467,11 +6467,6 @@ vacuum_notify_dropped_file (THREAD_ENTRY * thread_p, const VFID * vfid)
 {
   LOG_RCV rcv;
   VACUUM_DROPPED_FILES_RCV_DATA rcv_data;
-
-  if (prm_get_bool_value (PRM_ID_DISABLE_VACUUM))
-    {
-      return NO_ERROR;
-    }
 
   VFID_COPY (&rcv_data.vfid, vfid);
   OID_SET_NULL (&rcv_data.class_oid);
