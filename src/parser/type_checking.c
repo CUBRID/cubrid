@@ -19050,6 +19050,13 @@ pt_fold_const_expr (PARSER_CONTEXT * parser, PT_NODE * expr, void *arg)
 	  goto end;
 	}
     }
+  else if (opd1 && (opd1->type_enum == PT_TYPE_NA || opd1->type_enum == PT_TYPE_NULL) && pt_is_range_expression (op)
+	   && opd2 && PT_IS_QUERY_NODE_TYPE (opd2->node_type))
+    {
+      /* NULL <quantified comparison> (subquery) depends on the subquery result: when the subquery returns no row it
+       * is TRUE for ALL and NOT IN and FALSE for SOME and IN, otherwise it is UNKNOWN. Leave it to run time. */
+      goto end;
+    }
   else if (opd1
 	   && ((opd1->node_type == PT_VALUE
 		&& (op != PT_CAST || PT_EXPR_INFO_IS_FLAGED (expr, PT_EXPR_INFO_CAST_SHOULD_FOLD))
