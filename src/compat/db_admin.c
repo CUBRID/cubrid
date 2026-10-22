@@ -208,14 +208,20 @@ db_unregister_sub_client (void)
 }
 
 /*
- * db_get_num_sub_clients () - get the number of alive sub-clients
+ * db_close_sub_client_registration () - block the start of new sub-clients
  *   return: number of sub-clients registered by db_restart_sub () and not shut down yet
+ *
+ * Note: It is called when the main client is shut down at exit (see boot_shutdown_client_at_exit ()).
+ *       As in db_shutdown (), the check and the block are done under g_sub_client_mutex, so that no sub-client
+ *       can be registered between them and the finalization of the client modules.
  */
 int
-db_get_num_sub_clients (void)
+db_close_sub_client_registration (void)
 {
   std::lock_guard < std::mutex > lock (g_sub_client_mutex);
 
+  /* no more sub-clients can be started from now on */
+  (void) g_ready_to_sub.store (false, std::memory_order_release);
   return g_num_sub_clients;
 }
 #endif

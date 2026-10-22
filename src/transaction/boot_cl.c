@@ -1721,7 +1721,7 @@ boot_shutdown_client_at_exit (void)
 	  return;
 	}
 
-      if (db_get_num_sub_clients () > 0)
+      if (db_close_sub_client_registration () > 0)
 	{
 	  /*
 	   * The sub-clients are still alive. Finish and unregister the main client, but do not finalize
