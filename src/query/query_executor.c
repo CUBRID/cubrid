@@ -6351,6 +6351,10 @@ struct qexec_gby_px_reader
   AGGREGATE_TYPE *agg_nodes;
   DB_VALUE *vals;		/* the value list's copy, the key positions' own values, the aggregates' unused ones */
   int n_vals;
+  /* what the worker counted for the trace, over its two rounds (qexec_gby_px_worker ()) */
+  struct timeval time;		/* its tasks' elapsed time */
+  UINT64 pages;			/* the temporary list pages it wrote: its pieces, then its groups out */
+  UINT64 ioreads;		/* the pages it read from disk, from its own statistics array */
 };
 
 /* the worker's value standing for a slot of the leader's value list (orig[i] -> vals[i]) */
@@ -6564,6 +6568,7 @@ struct qexec_gby_px
   std::atomic<int> next_part;
   std::atomic<bool> failed;
   bool splitting;				/* the first round: split; the second: merge */
+  bool on_trace;				/* the leader's: the workers then count for the trace */
   std::mutex mutex;
   QFILE_LIST_ID **out_rows;			/* per worker: the first tuples, and their groups' accumulators */
   QFILE_LIST_ID **out_partials;
@@ -6720,6 +6725,10 @@ qexec_gby_px_worker (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_PX_RE
   QEXEC_GBY_MTABLE table;
   QFILE_LIST_ID *out_rows = NULL, *out_partials = NULL;
   DB_VALUE *temp_dbvals = NULL;
+  UINT64 *saved_px_stats = NULL;
+  bool saved_uses_px_stats = false, traced = false;
+  TSC_TICKS start_tick, end_tick;
+  TSCTIMEVAL tv_diff;
   int p, v, rc = NO_ERROR;
 
   thread_p->push_resource_tracks ();
@@ -6727,6 +6736,30 @@ qexec_gby_px_worker (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_PX_RE
   thread_p->m_px_orig_thread_entry = px->leader;
   thread_p->conn_entry = px->leader->conn_entry;
   thread_p->on_trace = false;
+  if (px->on_trace)
+    {
+      /* a traced leader: the worker counts into an array of its own (perfmon_add_at_offset ()), never into the
+       * transaction's, which the workers would share unsynchronized; the array is read at the end for the GROUP
+       * BY's parallel line (qexec_gby_px_merge ()) and dropped -- the leader's totals do not take it, as before.
+       * The pool thread may carry an array of an enclosing parallel job: kept aside and put back. */
+      saved_px_stats = thread_p->m_px_stats;
+      saved_uses_px_stats = thread_p->m_uses_px_stats;
+      thread_p->m_px_stats = NULL;
+      thread_p->on_trace = true;	/* perfmon_initialize_parallel_stats () asserts a traced thread */
+      perfmon_initialize_parallel_stats (thread_p);
+      if (thread_p->m_uses_px_stats)
+	{
+	  tsc_getticks (&start_tick);
+	  traced = true;
+	}
+      else
+	{
+	  /* no array: untraced, as before */
+	  thread_p->on_trace = false;
+	  thread_p->m_px_stats = saved_px_stats;
+	  thread_p->m_uses_px_stats = saved_uses_px_stats;
+	}
+    }
 
   /* allocated and freed within the round: a round's task may run on another thread than the last one's */
   memset (&table, 0, sizeof (table));
@@ -6764,6 +6797,10 @@ qexec_gby_px_worker (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_PX_RE
 	  if (mine[p] != NULL)
 	    {
 	      qfile_close_list (thread_p, mine[p]);
+	      if (traced)
+		{
+		  wr->pages += mine[p]->page_cnt;
+		}
 	    }
 	}
     }
@@ -6810,10 +6847,18 @@ qexec_gby_px_worker (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_PX_RE
       if (out_rows != NULL)
 	{
 	  qfile_close_list (thread_p, out_rows);
+	  if (traced)
+	    {
+	      wr->pages += out_rows->page_cnt;
+	    }
 	}
       if (out_partials != NULL)
 	{
 	  qfile_close_list (thread_p, out_partials);
+	  if (traced)
+	    {
+	      wr->pages += out_partials->page_cnt;
+	    }
 	}
       px->out_rows[w] = out_rows;
       px->out_partials[w] = out_partials;
@@ -6846,6 +6891,17 @@ qexec_gby_px_worker (THREAD_ENTRY * thread_p, QEXEC_GBY_PX * px, QEXEC_GBY_PX_RE
   if (rc != NO_ERROR)
     {
       qexec_gby_px_fail (px);
+    }
+  if (traced)
+    {
+      tsc_getticks (&end_tick);
+      tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
+      TSC_ADD_TIMEVAL (wr->time, tv_diff);
+      wr->ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
+      perfmon_destroy_parallel_stats (thread_p);
+      thread_p->m_px_stats = saved_px_stats;
+      thread_p->m_uses_px_stats = saved_uses_px_stats;
+      thread_p->on_trace = false;
     }
   thread_p->pop_resource_tracks ();
   thread_p->m_px_orig_thread_entry = NULL;
@@ -6973,6 +7029,7 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
   px->partials_in = partials;
   px->n_workers = n;
   px->n_parts = n_parts;
+  px->on_trace = thread_is_on_trace (thread_p);
   px->layout = &list_id->type_list;
   px->next_part.store (0);
   px->failed.store (false);
@@ -7043,6 +7100,29 @@ qexec_gby_px_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, QFILE_LIST
     }
   mgr->release_workers ();
   *workers = n;
+  if (px->on_trace)
+    {
+      /* the GROUP BY's parallel line (query_dump.c): these workers, where the sort of these lists would have put
+       * its own (sort_end_parallelism ()) -- the hash merge runs instead of that sort.  The count is the one
+       * printed as hash_merge_workers; the ranges are each worker's two rounds, split and merge. */
+      GROUPBY_STATS *gstats = &gbstate->xasl->groupby_stats;
+      UINT64 msec;
+
+      gstats->parallel_num = n;
+      gstats->px_min_groupby_time = gstats->px_max_groupby_time = (UINT64) TO_MSEC (readers[0].time);
+      gstats->px_min_groupby_pages = gstats->px_max_groupby_pages = readers[0].pages;
+      gstats->px_min_groupby_ioreads = gstats->px_max_groupby_ioreads = readers[0].ioreads;
+      for (w = 1; w < n; w++)
+	{
+	  msec = (UINT64) TO_MSEC (readers[w].time);
+	  gstats->px_min_groupby_time = MIN (gstats->px_min_groupby_time, msec);
+	  gstats->px_max_groupby_time = MAX (gstats->px_max_groupby_time, msec);
+	  gstats->px_min_groupby_pages = MIN (gstats->px_min_groupby_pages, readers[w].pages);
+	  gstats->px_max_groupby_pages = MAX (gstats->px_max_groupby_pages, readers[w].pages);
+	  gstats->px_min_groupby_ioreads = MIN (gstats->px_min_groupby_ioreads, readers[w].ioreads);
+	  gstats->px_max_groupby_ioreads = MAX (gstats->px_max_groupby_ioreads, readers[w].ioreads);
+	}
+    }
   if (px->failed.load ())
     {
       rc = ER_FAILED;

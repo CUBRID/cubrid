@@ -3916,6 +3916,8 @@ qdump_print_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       trace_json_object_set_new (groupby, "rows", trace_json_integer (gstats->rows));
       trace_json_object_set_new (groupby, "readrows", trace_json_integer (gstats->read_rows));
       trace_json_object_set_new (proc, "GROUPBY", groupby);
+      /* the stage that ran in parallel: the sort of the leftovers, or their hash merge (then the same workers as
+       * hash_merge_workers) */
       if (gstats->parallel_num > 0)
 	{
 	  parallel = trace_json_object ();
@@ -4696,6 +4698,8 @@ qdump_print_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       fprintf (fp, ", readrows: %lld", (long long int) gstats->read_rows);
       fprintf (fp, ", rows: %d)\n", gstats->rows);
 
+      /* the stage that ran in parallel: the sort of the leftovers, or their hash merge (then the same workers as
+       * "hash merge partitions: N (workers: M)") */
       if (gstats->parallel_num > 0)
 	{
 	  fprintf (fp, "%*c", indent + 8, ' ');
