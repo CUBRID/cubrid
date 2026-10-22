@@ -224,6 +224,9 @@ UINT64 histogram_bind_value_hash (PARSER_CONTEXT *parser);
 
 /* store all collected per-column histograms into the catalog; returns the first error, if any. */
 int store_collected_histograms (MOP classop, HISTOGRAM_COLLECT *hc, bool with_fullscan);
+/* write blob into the class's _db_histogram row for key_attr (a row that is not a column's
+ * histogram, see row_snapshot_cl.hpp), creating the row when it is missing */
+int histogram_store_blob (MOP classop, const char *key_attr, char *blob, int blob_length, bool with_fullscan);
 /* free everything owned by a HISTOGRAM_COLLECT and reset it. */
 void histogram_collect_clear (HISTOGRAM_COLLECT *hc);
 
@@ -243,6 +246,9 @@ void histogram_get_column_ndv (PT_NODE *attr, double *ndv, bool *success);
  * need the same one-row floor the single probes apply. Returns false when the column has no
  * usable histogram. */
 bool histogram_get_total_rows (PT_NODE *lhs, double *total_rows);
+/* the NULL fraction the column's histogram recorded; false when the column has no usable
+ * histogram */
+bool histogram_get_null_frequency (PT_NODE *lhs, double *null_frequency);
 /* histogram utility functions */
 int db_get_histogram (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj);
 int db_get_histogram_committed (MOP classop, const char *attr_name, DB_OBJECT **histogram_obj);
