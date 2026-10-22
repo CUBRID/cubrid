@@ -127,4 +127,4 @@ ustr_lower (char *s)
   return s;
 }
 
-/* TEST ONLY (CI download cache measurement): run 1 */
+/* TEST ONLY (CI download cache measurement): run 2 */
