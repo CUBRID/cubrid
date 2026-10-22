@@ -120,6 +120,8 @@ typedef enum
 #define DEFAULT_IN_SELECTIVITY (double) 0.01
 #define DEFAULT_RANGE_SELECTIVITY (double) 0.1
 
+#define QO_MJOIN_MAX_SORT_TERMS	16	/* m-join terms considered for following an index key order */
+
 typedef enum PRED_CLASS
 {
   PC_ATTR,
@@ -222,6 +224,12 @@ struct qo_plan
       BITSET other_outer_join_terms;	/* for merge outer join only */
       BITSET after_join_terms;	/* after join terms */
       BITSET hash_terms;	/* hash_terms for hash list scan */
+      bool outer_sorted;	/* m-join: outer index scan already yields the merge order */
+      bool inner_sorted;
+      bool outer_partial_sort;	/* m-join: outer ordered by the leading join column only; still sorted */
+      bool inner_partial_sort;
+      int mj_term_cnt;		/* m-join: 0 compares join_terms in bitset order, else mj_term_order */
+      int mj_term_order[QO_MJOIN_MAX_SORT_TERMS];	/* join term indexes in the sorted input's key order */
     } join;
 
     struct
