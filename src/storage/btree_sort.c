@@ -188,6 +188,10 @@ struct btsort_file_contents
   int last_run;			/* The index of the array element keeping the size of the last run of the file. */
 };
 
+/* Pages of the first run of a temp file. The merge takes off the pages it reads, so during a pass this is what is
+ * left of the run. */
+#define BTSORT_FIRST_RUN_PAGES_LEFT(contents) ((contents)->num_pages[(contents)->first_run])
+
 typedef struct btsort_index_shard BTSORT_INDEX_SHARD;
 struct btsort_index_shard
 {
@@ -291,6 +295,19 @@ struct btsort_merge_input
   RECDES long_rec;		/* the long record rec stands for when rec is a BIGONE placeholder */
 };
 
+/* The output section of the external merge phase: the pages the output run is assembled in before they are written
+ * to the output file */
+typedef struct btsort_merge_output BTSORT_MERGE_OUTPUT;
+struct btsort_merge_output
+{
+  char *sectaddr;		/* first page of the output section */
+  int sectsize;			/* pages of the output section */
+  char *cur_pgptr;		/* current page: the cur_page_idx-th of the section */
+  int cur_page_idx;		/* index of the current page in the section */
+  int file_idx;			/* output file receiving the run */
+  int run_written_pages;	/* pages of the run written to the file so far */
+};
+
 /* State of the external merge phase (btsort_exphase_merge) */
 typedef struct btsort_merge_ctx BTSORT_MERGE_CTX;
 struct btsort_merge_ctx
@@ -301,12 +318,7 @@ struct btsort_merge_ctx
   BTSORT_MERGE_INPUT in[BTSORT_MAX_HALF_FILES];
 
   int out_half;			/* first output file of the pass: 0 or half_files */
-  int out_file_idx;		/* output file receiving the run */
-  int out_sectsize;		/* pages of the output section */
-  int out_cur_page_idx;		/* index of the current page in the output section */
-  int out_run_written_pages;	/* pages of the run written to the output file so far */
-  char *out_sectaddr;		/* first page of the output section */
-  char *out_cur_pgptr;		/* current page: the out_cur_page_idx-th of the output section */
+  BTSORT_MERGE_OUTPUT out;	/* the output section */
 
   int file_next_page[BTSORT_MAX_TOT_FILES];	/* page of each temp file the pass reads or writes next */
 
@@ -2496,14 +2508,14 @@ btsort_merge_assign_sections (BTSORT_MERGE_CTX * ctx)
   int i;
 
   ctx->in_sectsize = btsort_merge_in_section_size (sort_param->tot_buffers, ctx->act_infiles);
-  ctx->out_sectsize = sort_param->tot_buffers - ctx->in_sectsize * ctx->act_infiles;
+  ctx->out.sectsize = sort_param->tot_buffers - ctx->in_sectsize * ctx->act_infiles;
 
   for (i = 0; i < ctx->act_infiles; i++)
     {
       ctx->in[i].sectaddr = sort_param->internal_memory + (i * ctx->in_sectsize * DB_PAGESIZE);
     }
 
-  ctx->out_sectaddr = sort_param->internal_memory + (ctx->act_infiles * ctx->in_sectsize * DB_PAGESIZE);
+  ctx->out.sectaddr = sort_param->internal_memory + (ctx->act_infiles * ctx->in_sectsize * DB_PAGESIZE);
 }
 
 /*
@@ -2517,11 +2529,11 @@ btsort_merge_reset_out_section (BTSORT_MERGE_CTX * ctx)
 {
   int i;
 
-  ctx->out_cur_page_idx = 0;
-  ctx->out_cur_pgptr = ctx->out_sectaddr;
-  for (i = 0; i < ctx->out_sectsize; i++)
+  ctx->out.cur_page_idx = 0;
+  ctx->out.cur_pgptr = ctx->out.sectaddr;
+  for (i = 0; i < ctx->out.sectsize; i++)
     {
-      btsort_spage_initialize (ctx->out_sectaddr + (i * DB_PAGESIZE));
+      btsort_spage_initialize (ctx->out.sectaddr + (i * DB_PAGESIZE));
     }
 }
 
@@ -2546,7 +2558,7 @@ btsort_merge_load_in_section (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, i
   int read_pages;
   int error;
 
-  read_pages = contents->num_pages[contents->first_run];
+  read_pages = BTSORT_FIRST_RUN_PAGES_LEFT (contents);
   if (ctx->in_sectsize < read_pages)
     {
       read_pages = ctx->in_sectsize;
@@ -2560,7 +2572,7 @@ btsort_merge_load_in_section (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, i
     }
 
   ctx->file_next_page[file_idx] += read_pages;
-  contents->num_pages[contents->first_run] -= read_pages;
+  BTSORT_FIRST_RUN_PAGES_LEFT (contents) -= read_pages;
 
   in->cur_pgptr = in->sectaddr;
   in->cur_page_idx = 0;
@@ -2608,7 +2620,7 @@ btsort_merge_advance_input (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int
 
   /* The input section is finished */
   contents = &ctx->sort_param->file_contents[ctx->sort_param->in_half + in_idx];
-  if (contents->num_pages[contents->first_run] == 0)
+  if (BTSORT_FIRST_RUN_PAGES_LEFT (contents) == 0)
     {
       /* Current input run on this input file has finished */
       *run_done = true;
@@ -2761,26 +2773,26 @@ btsort_merge_put_to_caller (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int
 /*
  * btsort_merge_flush_out_section () - Write the first num_pages pages of the output section to the output file
  *   return: NO_ERROR, or error code
- *   ctx(in/out): merge state; the output file's file_next_page and out_run_written_pages grow by num_pages
+ *   ctx(in/out): merge state; the output file's file_next_page and out.run_written_pages grow by num_pages
  *   num_pages(in): pages to write
  */
 static int
 btsort_merge_flush_out_section (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int num_pages)
 {
   BTSORT_PARAM *sort_param = ctx->sort_param;
-  int out_file_idx = ctx->out_file_idx;
+  int out_file_idx = ctx->out.file_idx;
   int error;
 
   error =
     btsort_write_area (thread_p, &sort_param->temp[out_file_idx], &sort_param->temp_cursor[out_file_idx],
-		       ctx->file_next_page[out_file_idx], num_pages, ctx->out_sectaddr, sort_param->tde_encrypted);
+		       ctx->file_next_page[out_file_idx], num_pages, ctx->out.sectaddr, sort_param->tde_encrypted);
   if (error != NO_ERROR)
     {
       return error;
     }
 
   ctx->file_next_page[out_file_idx] += num_pages;
-  ctx->out_run_written_pages += num_pages;
+  ctx->out.run_written_pages += num_pages;
 
   return NO_ERROR;
 }
@@ -2800,21 +2812,21 @@ btsort_merge_append_to_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int
   RECDES *rec = &ctx->in[in_idx].rec;
   int error;
 
-  if (btsort_spage_insert (ctx->out_cur_pgptr, rec) != NULL_SLOTID)
+  if (btsort_spage_insert (ctx->out.cur_pgptr, rec) != NULL_SLOTID)
     {
       return NO_ERROR;
     }
 
   /* Current output buffer is full */
-  if (++ctx->out_cur_page_idx < ctx->out_sectsize)
+  if (++ctx->out.cur_page_idx < ctx->out.sectsize)
     {
       /* There is another buffer in the output section; so insert the new record there */
-      ctx->out_cur_pgptr += DB_PAGESIZE;
+      ctx->out.cur_pgptr += DB_PAGESIZE;
     }
   else
     {
       /* Output section is full; flush it and start over at its first buffer */
-      error = btsort_merge_flush_out_section (thread_p, ctx, ctx->out_sectsize);
+      error = btsort_merge_flush_out_section (thread_p, ctx, ctx->out.sectsize);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -2823,7 +2835,7 @@ btsort_merge_append_to_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int
       btsort_merge_reset_out_section (ctx);
     }
 
-  if (btsort_spage_insert (ctx->out_cur_pgptr, rec) == NULL_SLOTID)
+  if (btsort_spage_insert (ctx->out.cur_pgptr, rec) == NULL_SLOTID)
     {
       /* Slotted page module refuses to insert a short size record (a temporary record that was already in a
        * slotted page) to an empty page. This should never happen. */
@@ -2853,15 +2865,15 @@ btsort_merge_close_run (BTSORT_MERGE_CTX * ctx)
       btsort_run_remove_first (&sort_param->file_contents[i]);
     }
 
-  error = btsort_run_add_new (&sort_param->file_contents[ctx->out_file_idx], ctx->out_run_written_pages);
+  error = btsort_run_add_new (&sort_param->file_contents[ctx->out.file_idx], ctx->out.run_written_pages);
   if (error != NO_ERROR)
     {
       return error;
     }
 
-  if (++ctx->out_file_idx >= ctx->out_half + sort_param->half_files)
+  if (++ctx->out.file_idx >= ctx->out_half + sort_param->half_files)
     {
-      ctx->out_file_idx = ctx->out_half;
+      ctx->out.file_idx = ctx->out_half;
     }
 
   return NO_ERROR;
@@ -2881,8 +2893,8 @@ btsort_merge_copy_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, int file
 {
   BTSORT_PARAM *sort_param = ctx->sort_param;
   BTSORT_FILE_CONTENTS *contents = &sort_param->file_contents[file_idx];
-  int out_file_idx = ctx->out_file_idx;
-  int cp_pages = contents->num_pages[contents->first_run];
+  int out_file_idx = ctx->out.file_idx;
+  int cp_pages = BTSORT_FIRST_RUN_PAGES_LEFT (contents);
   int read_pages;
   int error;
 
@@ -2963,7 +2975,7 @@ btsort_merge_start_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx)
     }
 
   btsort_merge_reset_out_section (ctx);
-  ctx->out_run_written_pages = 0;
+  ctx->out.run_written_pages = 0;
 
   return NO_ERROR;
 }
@@ -3052,8 +3064,8 @@ btsort_merge_produce_run (THREAD_ENTRY * thread_p, BTSORT_MERGE_CTX * ctx, bool 
 
   if (!put_to_caller)
     {
-      /* Flush whatever is left on the output section; out_cur_page_idx counts from 0 */
-      error = btsort_merge_flush_out_section (thread_p, ctx, ctx->out_cur_page_idx + 1);
+      /* Flush whatever is left on the output section; out.cur_page_idx counts from 0 */
+      error = btsort_merge_flush_out_section (thread_p, ctx, ctx->out.cur_page_idx + 1);
       if (error != NO_ERROR)
 	{
 	  return error;
@@ -3113,7 +3125,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
       /* Distribute the internal memory to the input and output sections */
       btsort_merge_assign_sections (&ctx);
 
-      ctx.out_file_idx = ctx.out_half;
+      ctx.out.file_idx = ctx.out_half;
 
       /* Runs this pass produces; the pass that produces one is the last */
       num_runs = btsort_merge_count_pass_runs (sort_param, ctx.act_infiles);
@@ -3123,7 +3135,7 @@ btsort_exphase_merge (THREAD_ENTRY * thread_p, BTSORT_PARAM * sort_param)
       if (very_last_run && !put_to_caller)
 	{
 	  /* put_fn is performed by the parent thread; it reads the file that receives the result */
-	  sort_param->px_result_file_idx = ctx.out_file_idx;
+	  sort_param->px_result_file_idx = ctx.out.file_idx;
 	}
 
       /* Produce the runs of the pass */
