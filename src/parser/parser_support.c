@@ -12773,14 +12773,28 @@ pt_convert_dblink_dml_query (PARSER_CONTEXT * parser, PT_NODE * node,
       return;
     }
 
-  /* Two rejections share this message:
+  /* Two rejections share the common message below:
    *   - odku_local_cnt > 0: a local table in the ON DUPLICATE KEY UPDATE clause, refused for every remote
    *     target, sink or not -- the clause goes out as text and the remote would resolve that name against
    *     its own tables.
    *   - local_cnt > 0 without a sink: any other local reference -- a sink statement reads a local source by
-   *     design, so this one cannot apply to it. */
+   *     design, so this one cannot apply to it.
+   * One case of the second gets a message of its own: an INSERT ... SELECT whose source reads a local table
+   * but whose ON DUPLICATE KEY UPDATE values the sink cannot send. The common message names that very form
+   * as supported. A local table only in the clause keeps the common message, as the source is not local. So
+   * does a source that also reads another remote server, as fixing the values would not make it a sink. */
   if (remote_upd > 0 && (odku_local_cnt > 0 || (snl->local_cnt > 0 && snl->sink_kind == DBLINK_REMOTE_SINK_NONE)))
     {
+      if (node->node_type == PT_INSERT && node->info.insert.odku_assignments != NULL
+	  && snl->local_cnt > odku_local_cnt && snl->distinct_cnt == 1
+	  && pt_get_subquery_of_insert_select (node) != NULL && !pt_dblink_odku_assigns_are_sendable (node))
+	{
+	  PT_ERROR (parser, into_spec,
+		    "dblink: remote INSERT with local data supports only constants and qualified source columns in "
+		    "ON DUPLICATE KEY UPDATE");
+	  return;
+	}
+
       PT_ERROR (parser, upd_spec ? upd_spec : into_spec,
 		"dblink: this combination of local and remote references is not supported (some forms are, such "
 		"as INSERT ... SELECT into a remote table from local data, or a remote DELETE with a local "
