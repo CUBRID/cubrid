@@ -258,7 +258,8 @@ extern "C"
     PROTOCOL_V11 = 11,		/* make out resultset */
     PROTOCOL_V12 = 12,		/* Remove trailing zeros from double and float types */
     PROTOCOL_V13 = 13,		/* CAS-issued session id required (not just optionally checked) for
-				 * QC/X1 query cancel */
+				 * QC/X1 query cancel; schema info: attribute IS_INVISIBLE, EXT_DOMAIN,
+				 * CODESET columns */
     CURRENT_PROTOCOL = PROTOCOL_V13
   };
   typedef enum t_cas_protocol T_CAS_PROTOCOL;

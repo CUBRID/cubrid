@@ -31,6 +31,10 @@
  * Function Declarations
  * ======================================================================== */
 extern int ux_cgw_check_connection (void);
+extern int ux_cgw_schema_info (int schema_type, char *table_name, char *attr_name, char flag, T_NET_BUF * net_buf,
+			       T_REQ_INFO * req_info, unsigned int query_seq_num);
+extern int ux_cgw_fetch_schema_attribute (T_SRV_HANDLE * srv_handle, int cursor_pos, int fetch_count,
+					  T_NET_BUF * net_buf, T_REQ_INFO * req_info);
 extern int ux_cgw_prepare (char *sql_stmt, int flag, char auto_commit_mode, T_NET_BUF * net_buf, T_REQ_INFO * req_info,
 			   unsigned int query_seq_num);
 extern int ux_cgw_end_tran (int tran_type, bool reset_con_status, bool ddl_audit_log);
