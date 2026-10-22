@@ -215,8 +215,10 @@ cas_init_ssl (int sd)
       /* WSAETIMEDOUT is not among the errors the socket BIO retries on, so it is reported as a syscall failure */
       timed_out = (ssl_error == SSL_ERROR_SYSCALL && WSAGetLastError () == WSAETIMEDOUT);
 #else
-      /* the read or write fails with EAGAIN, which the socket BIO reports as "retry" */
-      timed_out = (ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE);
+      /* a timeout makes the read or write fail with EAGAIN, which the socket BIO reports as "retry"; a signal does
+       * the same with EINTR, so check errno to not report a shutdown signal as a client stalled for 60 seconds */
+      timed_out = ((ssl_error == SSL_ERROR_WANT_READ || ssl_error == SSL_ERROR_WANT_WRITE)
+		   && (saved_errno == EAGAIN || saved_errno == EWOULDBLOCK));
 #endif
 
       err = ERR_get_error ();
