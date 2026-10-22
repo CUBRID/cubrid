@@ -39,7 +39,6 @@ typedef enum
 /* Server function pointer type */
 typedef FN_RETURN (*T_SERVER_FUNC) (SOCKET, int, void **, T_NET_BUF *, T_REQ_INFO *);
 
-void cas_common_bind_value_print (char type, void *net_value, bool slow_log, INTL_CODESET charset);
 void cas_common_bind_value_log (struct timeval *log_time, int start, int argc, void **argv, int param_size,
 				char *param_mode, unsigned int query_seq_num, bool slow_log, INTL_CODESET charset);
 

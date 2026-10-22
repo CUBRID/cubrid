@@ -75,19 +75,8 @@ inline void *operator new[] (size_t size, const char *file, const int line) noex
   return cub_alloc (size, file, line);
 }
 
-/* Mainly delete (void *ptr, size_t sz) / delete [] (void *ptr, size_t sz) is called,
- * but when deleting arrays of destructible class types, including incomplete types,
- * either delete (void *ptr) / delete [] (void *ptr) or delete (void *ptr, size_t sz) /
- * delete [] (void *ptr, size_t sz) can be called.
- *
- * The four operator delete overloads named above used to be defined here, inline.
- * They are *replacement* functions, and [basic.stc.dynamic]/3 forbids declaring one
- * inline: an inline definition is only picked up by the translation units that happen
- * to include this header, so the replacement disappears whenever the compiler decides
- * not to emit a weak definition. That is what a release build did, leaving the
- * replacement out of the server entirely. They now live in memory_wrapper.cpp, which
- * is linked into the server, and they are deliberately not declared here: the compiler
- * declares them implicitly, and GCC rejects a redeclaration under -Wredundant-decls. */
+/* The blocks above are released by the global operator delete, which is replaced in memory_wrapper.cpp
+ * together with the global operator new. */
 
 #define new new(__FILE__, __LINE__)
 #endif // SERVER_MODE && !CUB_ADDRESS_SANITIZER
