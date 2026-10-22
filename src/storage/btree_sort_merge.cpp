@@ -781,7 +781,7 @@ btsort_sample_sort (merge_sorter_ctx *ctx, const BTSORT_RUN *run, BTSORT_RUN_SLO
   BTSORT_CMP_FUNC *compare = run->cmp_fn;
   void *comp_arg = run->cmp_arg;
   BTSORT_RUN_SLOT *sorted;
-  int bucket_id, start, count;
+  int bucket_id, start, count, at;
 
   /* pick the splitters that bound the buckets from a sample of the run */
   if (btsort_sample_pick_splitters (ctx, run, slots, other_slots, bucket_count) == 0)
@@ -797,6 +797,13 @@ btsort_sample_sort (merge_sorter_ctx *ctx, const BTSORT_RUN *run, BTSORT_RUN_SLO
   for (bucket_id = 0, start = 0; bucket_id < bucket_count; bucket_id++, start += count)
     {
       count = ctx->bucket_offsets[bucket_id] - start;
+
+      /* the records of a bucket lie all over the buffer: fetch the head of each before the merge walks them */
+      for (at = start; at < start + count; at++)
+	{
+	  prefetch (base + other_slots[at], PREFETCH_READ, PREFETCH_CACHE_L2);
+	  prefetch (base + other_slots[at] + 32, PREFETCH_READ, PREFETCH_CACHE_L2);
+	}
 
       sorted = btsort_run_sort (base, other_slots + start, count, slots + start, compare, comp_arg);
       if (sorted != slots + start)
