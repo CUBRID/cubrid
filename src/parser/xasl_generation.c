@@ -19883,17 +19883,18 @@ pt_finish_remote_dml_xasl (XASL_NODE * xasl)
 
 /*
  * pt_fill_remote_odku_assigns () - Fill the ON DUPLICATE KEY UPDATE text the remote INSERT carries.
- *   The left-hand side is the remote column name -- a remote target gets no name resolution, so what
- *   the user wrote is the column -- and the right-hand side is printed with the flags the other text
- *   push paths use, so the same value cannot come out two ways. Which right-hand sides may arrive is
- *   the gate's decision, not this loop's: whatever it admitted is printed as it stands.
+ *   The left-hand side is the remote column name, as the user wrote it. A constant on the right-hand side is
+ *   printed with the flags the other text push paths use, so the same value cannot come out two ways. A value
+ *   bound from the source row (is_dblink_odku_value) is not printed: its text is left NULL, which the sink
+ *   sends as "?". Which right-hand sides may arrive is the gate's decision, not this loop's.
  *   return: true on success. false after PT_ERROR; the caller returns NULL.
  *   parser(in): parser context. custom_print is saved across the printing and restored on every return.
  *   statement(in): PT_INSERT node
  *   insert(out): remote_odku_cols, remote_odku_exprs, remote_num_odku. NULL and 0 when there is no clause.
+ *   num_bound(out): the number of values left NULL
  */
 static bool
-pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSERT_PROC_NODE * insert)
+pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSERT_PROC_NODE * insert, int *num_bound)
 {
   PT_NODE *assign;
   int n, i;
@@ -19901,6 +19902,7 @@ pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSER
   unsigned int save_custom_print;
   bool ok;
 
+  *num_bound = 0;
   if (statement->info.insert.odku_assignments == NULL)
     {
       insert->remote_odku_cols = NULL;
@@ -19928,9 +19930,7 @@ pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSER
     {
       PARSER_VARCHAR *printed;
 
-      /* the gate admits only an assignment to a plain name, and a remote target gets no local check on
-       * the clause, so nothing stands between that test and this one -- reaching here otherwise means a
-       * plan built wrong */
+      /* the gate admits only an assignment to a plain name -- reaching here otherwise means a plan built wrong */
       if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN || assign->info.expr.arg1 == NULL
 	  || assign->info.expr.arg2 == NULL || assign->info.expr.arg1->node_type != PT_NAME)
 	{
@@ -19946,6 +19946,21 @@ pt_fill_remote_odku_assigns (PARSER_CONTEXT * parser, PT_NODE * statement, INSER
       if (cols[i] == NULL || cols[i][0] == '\0')
 	{
 	  PT_ERROR (parser, assign, "dblink: remote ON DUPLICATE KEY UPDATE column has no resolvable name");
+	  ok = false;
+	  break;
+	}
+
+      if (assign->info.expr.arg2->flag.is_dblink_odku_value)
+	{
+	  exprs[i] = NULL;
+	  (*num_bound)++;
+	  continue;
+	}
+
+      /* A column not marked would be printed as the user wrote it and read by the remote as its own column. */
+      if (assign->info.expr.arg2->node_type == PT_NAME)
+	{
+	  PT_ERROR (parser, assign, "dblink: remote ON DUPLICATE KEY UPDATE value is a column the plan does not bind");
 	  ok = false;
 	  break;
 	}
@@ -19992,6 +20007,7 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   PT_NODE *server_node = NULL;
   PT_DBLINK_INFO *pdblink = NULL;
   PT_NODE *entity_name = NULL;
+  int num_odku_bound = 0;
 
   assert (parser != NULL && statement != NULL);
 
@@ -20061,9 +20077,6 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
   insert->num_default_expr = 0;
   insert->att_id = NULL;
 
-  /* the row position of the first bound ODKU value: right after the INSERT values */
-  insert->remote_odku_val_start = insert->num_vals;
-
   /* remote column names:
    *   attr_list present  → explicit columns (INSERT INTO remote (c1,c2) SELECT ...)
    *                         → remote_attr_names[i] = attr_list column names
@@ -20125,9 +20138,38 @@ pt_to_insert_xasl_remote_select (PARSER_CONTEXT * parser, PT_NODE * statement)
       insert->remote_num_attrs = 0;
     }
 
-  if (!pt_fill_remote_odku_assigns (parser, statement, insert))
+  if (!pt_fill_remote_odku_assigns (parser, statement, insert, &num_odku_bound))
     {
       return NULL;
+    }
+
+  /* The bound ODKU values are read from their copies in the source row. Semantic check appended them to the
+   * select list as hidden columns, so hidden sort keys may come before them, and those of a merged view after.
+   * Find where they start, and check that they are as many as the values and lie together. */
+  insert->remote_odku_val_start = insert->num_vals;
+  if (num_odku_bound > 0)
+    {
+      PT_NODE *item;
+      int pos, start = -1, last = -1, num_marked = 0;
+
+      for (item = pt_get_select_list (parser, aptr_statement), pos = 0; item != NULL; item = item->next, pos++)
+	{
+	  if (item->flag.is_dblink_odku_value)
+	    {
+	      if (start < 0)
+		{
+		  start = pos;
+		}
+	      last = pos;
+	      num_marked++;
+	    }
+	}
+      if (num_marked != num_odku_bound || last - start + 1 != num_marked || start < insert->num_vals)
+	{
+	  PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: the source row does not carry the bound ODKU values");
+	  return NULL;
+	}
+      insert->remote_odku_val_start = start;
     }
 
   /* the statement kind the sink sends: REPLACE INTO when the statement asked for it, INSERT INTO

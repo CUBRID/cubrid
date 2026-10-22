@@ -12606,6 +12606,131 @@ pt_dblink_insert_binds_odku_value (PT_NODE * node)
 }
 
 /*
+ * pt_dblink_odku_carry_values_and_translate () - Carry the bound ON DUPLICATE KEY UPDATE values of a remote
+ *   INSERT ... SELECT in its source SELECT, then translate the source SELECT.
+ *   return: none. On failure the parser error is set.
+ *   parser(in): parser context
+ *   node(in/out): the INSERT, its target resolved with its columns
+ *
+ * Note: A value bound from the source row has no place in the row unless the source SELECT selects it. Each
+ *   such value is copied to the end of the select list as a hidden column, after name resolution and the
+ *   semantic check, so no position, DISTINCT or single value check sees it. A local INSERT ... ON DUPLICATE KEY
+ *   UPDATE adds the columns its values refer to after these checks too, at XASL generation
+ *   (pt_append_assignment_references). The copies are hidden here because num_vals is counted from the visible
+ *   columns. The copy and the value in the clause are
+ *   marked (is_dblink_odku_value): XASL generation binds the value in the clause and finds the copies in the
+ *   row by the mark.
+ */
+static void
+pt_dblink_odku_carry_values_and_translate (PARSER_CONTEXT * parser, PT_NODE * node)
+{
+  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
+  PT_NODE *assign, *value, *spec, *copy, *item;
+  int num_copies = 0, len_before = 0, len_after, pos, num_visible = 0;
+
+  if (subq == NULL)
+    {
+      return;
+    }
+
+  if (subq->node_type == PT_SELECT)
+    {
+      /* A statement checked again has its copies, and its source SELECT is translated already. */
+      for (item = subq->info.query.q.select.list; item != NULL; item = item->next)
+	{
+	  if (item->flag.is_dblink_odku_value)
+	    {
+	      return;
+	    }
+	}
+
+      for (assign = node->info.insert.odku_assignments; assign != NULL; assign = assign->next)
+	{
+	  if (assign->node_type != PT_EXPR || assign->info.expr.op != PT_ASSIGN)
+	    {
+	      continue;
+	    }
+	  value = assign->info.expr.arg2;
+	  if (value == NULL || value->node_type != PT_NAME)
+	    {
+	      continue;
+	    }
+
+	  /* The gate let a column in only when its qualifier names a table of the source SELECT. Any other
+	   * column would be printed into the remote statement as the user wrote it. */
+	  for (spec = subq->info.query.q.select.from; spec != NULL; spec = spec->next)
+	    {
+	      if (spec->info.spec.id == value->info.name.spec_id)
+		{
+		  break;
+		}
+	    }
+	  if (spec == NULL || value->info.name.spec_id == 0)
+	    {
+	      PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: an ODKU value is not a column of the source SELECT");
+	      return;
+	    }
+
+	  copy = parser_copy_tree (parser, value);
+	  if (copy == NULL)
+	    {
+	      PT_ERRORm (parser, assign, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
+	      return;
+	    }
+	  copy->flag.is_hidden_column = 1;
+	  copy->flag.is_dblink_odku_value = 1;
+	  value->flag.is_dblink_odku_value = 1;
+	  subq->info.query.q.select.list = parser_append_node (copy, subq->info.query.q.select.list);
+	  num_copies++;
+	}
+      len_before = pt_length_of_select_list (subq->info.query.q.select.list, INCLUDE_HIDDEN_COLUMNS);
+      num_visible = pt_length_of_select_list (subq->info.query.q.select.list, EXCLUDE_HIDDEN_COLUMNS);
+    }
+
+  subq = mq_translate (parser, subq);
+  if (subq == NULL)
+    {
+      if (!pt_has_error (parser))
+	{
+	  PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: failed to translate the SELECT subquery");
+	}
+      return;
+    }
+
+  if (num_copies > 0)
+    {
+      /* Translation may put a new node in place of a copy, as when a derived table in FROM is merged into the
+       * query, and that node has no mark. It leaves the items before the copies where they were: the hidden sort
+       * keys a merged view adds, for its ORDER BY (mq_update_order_by) or its analytic functions
+       * (mq_update_analytic_sort_spec_expr), are appended to the end. So the copies are marked again at the
+       * positions they were appended to, the visible columns must be as many as before, and anything after the
+       * copies must be hidden. */
+      item = (subq->node_type == PT_SELECT) ? subq->info.query.q.select.list : NULL;
+      len_after = pt_length_of_select_list (item, INCLUDE_HIDDEN_COLUMNS);
+      for (pos = 0; item != NULL; item = item->next, pos++)
+	{
+	  if (pos >= len_before - num_copies && pos < len_before)
+	    {
+	      item->flag.is_hidden_column = 1;
+	      item->flag.is_dblink_odku_value = 1;
+	    }
+	  else if (pos >= len_before && !item->flag.is_hidden_column)
+	    {
+	      break;
+	    }
+	}
+      if (subq->node_type != PT_SELECT || len_after < len_before || item != NULL
+	  || pt_length_of_select_list (subq->info.query.q.select.list, EXCLUDE_HIDDEN_COLUMNS) != num_visible)
+	{
+	  PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: translation moved the bound ODKU values");
+	  return;
+	}
+    }
+
+  node->info.insert.value_clauses->info.node_list.list = subq;
+}
+
+/*
  * pt_dblink_dml_target_as_derived () - Give a remote DML target the derived dblink table shape a remote SELECT
  *   spec has, so that name resolution fetches its columns from the remote and binds names to them.
  *   return: NO_ERROR, or ER_FAILED with no parser error set
@@ -12957,25 +13082,12 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
       /* db_vdb.c skips the statement-level mq_translate for a remote DML. A remote INSERT resolved with its
        * target's columns has its source SELECT translated here, as pt_bind_remote_dml_subq () does on the other
        * path. Without it a UNION source or a dblink derived table in the source sends no rows or some of them,
-       * with no error. */
+       * with no error. The bound ON DUPLICATE KEY UPDATE values join the source SELECT first. */
       if (!pt_has_error (parser) && node != NULL && node->node_type == PT_INSERT
 	  && node->info.insert.spec->info.spec.remote_server_name != NULL
 	  && PT_SPEC_IS_DERIVED (node->info.insert.spec))
 	{
-	  PT_NODE *subq = pt_get_subquery_of_insert_select (node);
-
-	  if (subq != NULL)
-	    {
-	      subq = mq_translate (parser, subq);
-	      if (subq == NULL && !pt_has_error (parser))
-		{
-		  PT_INTERNAL_ERROR (parser, "remote INSERT SELECT: failed to translate the SELECT subquery");
-		}
-	      if (subq != NULL)
-		{
-		  node->info.insert.value_clauses->info.node_list.list = subq;
-		}
-	    }
+	  pt_dblink_odku_carry_values_and_translate (parser, node);
 	}
 
       break;
