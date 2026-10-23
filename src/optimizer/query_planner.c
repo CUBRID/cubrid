@@ -382,6 +382,7 @@ static int qo_validate_indexes_for_orderby (QO_PLAN * plan, void *arg);
 static int qo_unset_multi_range_optimization (QO_PLAN * plan, void *arg);
 static bool qo_plan_is_orderby_skip_candidate (QO_PLAN * plan);
 static bool qo_plan_is_groupby_skip_candidate (QO_PLAN * plan);
+static bool qo_check_join_for_groupby_skip (QO_PLAN * plan);
 static bool qo_is_sort_limit (QO_PLAN * plan);
 static int qo_check_like_recompile_candidate (QO_PLAN * plan, void *arg);
 
@@ -604,6 +605,7 @@ qo_plan_malloc (QO_ENV * env)
   plan->has_sort_limit = false;
   plan->use_iscan_descending = false;
   plan->need_final_sort = false;
+  plan->skip_groupby = false;
   plan->limit_nljoin_guessed_card = 0.0;
   plan->iscan_index_rows = 0.0;
   plan->iscan_heap_io = 0.0;
@@ -1380,15 +1382,11 @@ qo_top_plan_new (QO_PLAN * plan)
 	      parser_free_node (parser, group_sort_list);
 	    }
 
-	  if (groupby_skip && plan->need_final_sort)
+	  if (groupby_skip && plan->plan_type != QO_PLANTYPE_SCAN && !qo_check_join_for_groupby_skip (plan))
 	    {
 	      /*
-	       * The interesting order comes from the outermost index scan, but a hash/merge join
-	       * above it (for which qo_join_new sets need_final_sort) does not hand that order on:
-	       * a hash join may not preserve the order of its probe input when partitioned or run
-	       * in parallel, and a merge join re-sorts both inputs by the join column in S_ASC
-	       * order regardless of direction. qexec_groupby_index () trusts its input to be
-	       * grouped and has no fallback, so a broken order would silently split groups.
+	       * The interesting order comes from the outermost index scan, but the plan above it
+	       * does not hand that order on (see qo_check_join_for_groupby_skip ()).
 	       * Give up the skip here and let the GROUP BY sort be costed in below.
 	       */
 	      groupby_skip = false;
@@ -1408,16 +1406,23 @@ qo_top_plan_new (QO_PLAN * plan)
 		}
 	      /*
 	       * If all goes well, we have an indexed plan with group by skip!
-	       * Only a single scan top plan raises the flag here.  For a join top plan the
-	       * QO_INDEX_ENTRY is shared by every candidate plan on that node, and this
-	       * function runs for every complete candidate plan, so raising the shared flag
-	       * here could leak a discarded candidate's verdict into the chosen plan.
-	       * For joins the verdict is derived from the plan shape at XASL generation
-	       * instead - see qo_plan_skip_groupby ().
+	       * A single scan top plan raises the flag of its index entry.  A join top plan
+	       * records the verdict on the plan itself instead: the QO_INDEX_ENTRY is shared by
+	       * every candidate plan on that node, and this function runs for every complete
+	       * candidate plan, so raising the shared flag here could leak a discarded
+	       * candidate's verdict into the chosen plan.  The verdict of the chosen plan is
+	       * read back at XASL generation - see qo_plan_skip_groupby ().
 	       */
-	      if (plan->plan_type == QO_PLANTYPE_SCAN && plan->plan_un.scan.index)
+	      if (plan->plan_type == QO_PLANTYPE_SCAN)
 		{
-		  plan->plan_un.scan.index->head->groupby_skip = true;
+		  if (plan->plan_un.scan.index)
+		    {
+		      plan->plan_un.scan.index->head->groupby_skip = true;
+		    }
+		}
+	      else
+		{
+		  plan->skip_groupby = true;
 		}
 	    }
 	  else
@@ -14762,6 +14767,60 @@ qo_plan_is_groupby_skip_candidate (QO_PLAN * plan)
 
 end:
   return is_groupby_skip;
+}
+
+/*
+ * qo_check_join_for_groupby_skip () - check if join plan hands the order of its
+ *				       outermost index scan on to its output
+ * return : true/false
+ * plan (in) : join plan judged by qo_top_plan_new (), before the final sorts
+ *
+ * note: qo_plan_compute_iscan_sort_list () takes the order from the outermost
+ *	 index scan whatever lies above it, but not every plan above it keeps that
+ *	 order. qexec_groupby_index () trusts its input to be grouped and has no
+ *	 fallback, so a broken order would silently split groups:
+ *	 - a hash join may not preserve the order of its probe input when partitioned
+ *	   or run in parallel, and a merge join re-sorts both inputs by the join
+ *	   column in S_ASC order regardless of direction. qo_join_new () sets
+ *	   need_final_sort for both and passes it on from the outer plan.
+ *	 - a join that null-supplies its outer side (right/full outer) does not keep
+ *	   the outer rows in place.
+ *	 - a sort plan on the way down re-orders the rows.
+ */
+static bool
+qo_check_join_for_groupby_skip (QO_PLAN * plan)
+{
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_JOIN || plan->need_final_sort)
+    {
+      return false;
+    }
+
+  /* find the outermost scan plan */
+  while (plan && plan->plan_type != QO_PLANTYPE_SCAN)
+    {
+      switch (plan->plan_type)
+	{
+	case QO_PLANTYPE_FOLLOW:
+	  plan = plan->plan_un.follow.head;
+	  break;
+
+	case QO_PLANTYPE_JOIN:
+	  if (plan->plan_un.join.join_type != NO_JOIN && plan->plan_un.join.join_type != JOIN_INNER
+	      && plan->plan_un.join.join_type != JOIN_LEFT)
+	    {
+	      return false;
+	    }
+	  plan = plan->plan_un.join.outer;
+	  break;
+
+	default:
+	  /* a sort plan re-orders the rows */
+	  plan = NULL;
+	  break;
+	}
+    }
+
+  return qo_is_interesting_order_scan (plan);
 }
 
 /*

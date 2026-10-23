@@ -241,6 +241,7 @@ struct qo_plan
   bool has_sort_limit;		/* true if this plan or one if its subplans is a SORT-LIMIT plan */
   bool use_iscan_descending;
   bool need_final_sort;
+  bool skip_groupby;		/* qo_top_plan_new () judged that this join plan delivers its rows already grouped */
 
   /* Rows this NL join is expected to emit under LIMIT: the LIMIT itself, or fewer when the outer runs out
    * first. Used as the next join level's driving row count and for the plan dump. */

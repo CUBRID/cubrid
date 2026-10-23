@@ -15344,7 +15344,7 @@ pt_gen_optimized_plan (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN *
 		}
 	    }
 
-	  /* CBRD-27187: for a join top plan the groupby-skip verdict lives in the plan shape (see
+	  /* CBRD-27187: for a join top plan the groupby-skip verdict is recorded on the chosen plan (see
 	   * qo_plan_skip_groupby ()), not in the index entry flag.  Put it on the XASL of the first access spec -
 	   * the outermost scan, which supplies the GROUP BY order - so that the executor can skip the group-by
 	   * sort.  For a single scan top plan pt_to_index_info () already copied the index entry flag here. */
@@ -17655,7 +17655,7 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
       if (select_node->info.query.q.select.group_by)
 	{
 	  /* groupby_skip only lifts the HAVING sanity check (groupby_ok) below, and it has done so for single scan
-	   * plans only.  qo_plan_skip_groupby () now also judges join plans (CBRD-27187), but keep the check armed
+	   * plans only.  qo_plan_skip_groupby () now also answers for join plans (CBRD-27187), but keep the check armed
 	   * for them: there is no reason to bypass it, and doing so would be a silent behavior change. */
 	  if (qo_plan && qo_plan->plan_type == QO_PLANTYPE_SCAN && qo_plan_skip_groupby (qo_plan))
 	    {
