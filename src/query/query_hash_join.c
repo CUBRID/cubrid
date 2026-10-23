@@ -4755,7 +4755,12 @@ hjoin_rtf_type_ok (DB_TYPE t, bool * is_date)
 }
 
 /* the cell of target's value list that the outermost scan fetches list column col into, and its position; NULL
- * when the column is anything else (an expression, a nested scan's value, a hidden column) */
+ * when the column is anything else (an expression, a nested scan's value, a hidden column).
+ *
+ * A partitioned class is taken: the cell is the spec's, and every partition fetches into it -- the partition loop
+ * (qexec_init_next_partition ()) ends and opens the same spec again for each partition, its regu lists unchanged.
+ * The filter is built before the target runs (IS_XASL_INITIAL_STATUS), when the spec's partition list is not up
+ * yet: it is filled when the scan opens (qexec_prune_spec ()) and cleared with the block (qexec_clear_xasl ()). */
 static DB_VALUE *
 hjoin_rtf_target_cell (XASL_NODE * target, int col, int *val_index)
 {
@@ -4766,7 +4771,7 @@ hjoin_rtf_target_cell (XASL_NODE * target, int col, int *val_index)
   int i = 0, n;
 
   if (target->outptr_list == NULL || target->val_list == NULL || spec == NULL || spec->next != NULL
-      || spec->type != TARGET_CLASS || spec->parts != NULL)
+      || spec->type != TARGET_CLASS)
     {
       return NULL;
     }
