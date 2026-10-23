@@ -24,6 +24,7 @@
 
 #include <assert.h>
 #include <math.h>
+#include <float.h>
 
 #include "optimizer.h"
 
@@ -120,6 +121,7 @@ static int qo_get_multi_col_range_segs (QO_ENV * env, QO_PLAN * plan, QO_INDEX_E
 					BITSET * multi_col_segs, BITSET * multi_col_range_segs, BITSET * index_segs);
 
 static QO_PLAN *qo_find_driving_scan_plan (QO_PLAN * plan);
+static double qo_groupby_skip_rows_per_group (QO_PLAN * plan, PT_NODE * select);
 static void qo_apply_parallel_index_scan_threshold (QO_PLAN * plan);
 
 static int qo_init_projection_info (QO_ENV * env, QO_PLAN * plan, BITSET * pred_set, PROJECTION_INFO * info);
@@ -3310,6 +3312,48 @@ qo_find_driving_scan_plan (QO_PLAN * plan)
   return NULL;
 }
 
+/* a covered group by skip with fewer rows per group runs serially: measured on 1M rows (CBRD-27664), 4 workers
+ * lose at 1 row per group, tie at 2-3 and win from 5 */
+#define QO_PARALLEL_GROUPBY_SKIP_MIN_ROWS_PER_GROUP 3.0
+
+/*
+ * qo_groupby_skip_rows_per_group () - rows per group of a group by skip scan, from the index statistics
+ *   return: the table's rows over the keys of the index prefix ending at the last GROUP BY column,
+ *	     or DBL_MAX when the statistics do not tell
+ *   plan(in): the group by skip scan
+ *   select(in): its query
+ */
+static double
+qo_groupby_skip_rows_per_group (QO_PLAN * plan, PT_NODE * select)
+{
+  QO_ENV *env = plan->info->env;
+  QO_INDEX_ENTRY *index_entry = plan->plan_un.scan.index->head;
+  QO_ATTR_CUM_STATS *cum_stats = &plan->plan_un.scan.index->cum_stats;
+  PT_NODE *group;
+  int prefix_len = 0;
+  int i;
+
+  for (group = select->info.query.q.select.group_by; group != NULL; group = group->next)
+    {
+      for (i = prefix_len; i < index_entry->nsegs; i++)
+	{
+	  if (index_entry->seg_idxs[i] != -1
+	      && pt_name_equal (QO_ENV_PARSER (env), QO_SEG_PT_NODE (QO_ENV_SEG (env, index_entry->seg_idxs[i])),
+				group->info.sort_spec.expr))
+	    {
+	      prefix_len = i + 1;
+	      break;
+	    }
+	}
+    }
+
+  if (prefix_len == 0 || prefix_len > cum_stats->pkeys_size || cum_stats->pkeys[prefix_len - 1] <= 0)
+    {
+      return DBL_MAX;
+    }
+  return (double) QO_NODE_NCARD (plan->plan_un.scan.node) / (double) cum_stats->pkeys[prefix_len - 1];
+}
+
 /*
  * qo_apply_parallel_index_scan_threshold () - Decide whether parallel index
  *                                             scan is worthwhile for the
@@ -3353,7 +3397,10 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
       return;
     }
 
-  if (driving->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN)
+  /* an index read for its GROUP BY order alone (no range) is a group by skip that may run in parallel (CBRD-27664):
+   * the checker decides that (scan_check_parallel_scan_possible ()) */
+  if (driving->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_SCAN
+      && driving->plan_un.scan.scan_method != QO_SCANMETHOD_INDEX_GROUPBY_SCAN)
     {
       return;
     }
@@ -3396,6 +3443,16 @@ qo_apply_parallel_index_scan_threshold (QO_PLAN * plan)
   cum_stats = &index_entry->cum_stats;
   if (!cum_stats->is_indexed || cum_stats->pages <= 0)
     {
+      spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
+      return;
+    }
+
+  if (qo_plan_skip_groupby (driving) && qo_is_index_covering_scan (driving)
+      && qo_groupby_skip_rows_per_group (driving, select) < QO_PARALLEL_GROUPBY_SKIP_MIN_ROWS_PER_GROUP)
+    {
+      /* each group costs the leader a partial row to merge (CBRD-27664): with few rows per group that outweighs the
+       * workers' covered scan, while a serial scan aggregates in the B-tree. A non-covered scan's heap reads still pay
+       * for the workers. */
       spec->info.spec.flag = (PT_SPEC_FLAG) (spec->info.spec.flag | PT_SPEC_FLAG_NO_PARALLEL_SCAN);
       return;
     }

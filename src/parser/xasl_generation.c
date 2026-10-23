@@ -4100,6 +4100,10 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 		      /* set the next argument pointer (the separator argument) to NULL in order to avoid impacting the
 		       * regu vars generation. */
 		      tree->info.function.arg_list->next = NULL;
+		      /* the regu lists above were made before: the separator is no column of the scan (a scan regu
+		       * left for it shifts every scan value of the aggregate one slot down the value list) */
+		      regu_constant_list->next = NULL;
+		      scan_regu_constant_list->next = NULL;
 		      pt_register_orphan_db_value (parser, aggregate_list->accumulator.value2);
 		    }
 		  else
@@ -4366,6 +4370,18 @@ pt_to_aggregate_node (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *c
 	      regu_position_list->value.value.pos_descr.pos_no = info->out_list->valptr_cnt;
 
 	      pt_aggregate_info_update_value_and_reguvar_lists (info, value_list, regu_position_list, to_add);
+
+	      /* a scan-time aggregation reads the percentile from the scan, as the PT_NAME case below does */
+	      REGU_VARIABLE_LIST scan_percentile = NULL;
+	      regu_alloc (scan_percentile);
+	      if (scan_percentile == NULL)
+		{
+		  PT_ERROR (parser, percentile, msgcat_message (MSGCAT_CATALOG_CUBRID, MSGCAT_SET_PARSER_SEMANTIC,
+								MSGCAT_SEMANTIC_OUT_OF_MEMORY));
+		  return NULL;
+		}
+	      scan_percentile->value = *regu;
+	      pt_aggregate_info_update_scan_regu_list (info, scan_percentile);
 	    }
 	  else
 	    {
@@ -17677,8 +17693,11 @@ pt_to_buildlist_proc (PARSER_CONTEXT * parser, PT_NODE * select_node, QO_PLAN * 
 	  buildlist->g_with_rollup = 0;
 	}
 
-      /* set index scan order */
-      xasl->iscan_oid_order = ((orderby_skip) ? false : prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER));
+      /* set index scan order: a skipped ORDER BY or GROUP BY reads the rows in index order (the index decides a
+       * skipped GROUP BY: groupby_skip above is false when a sort plan tops the scan) */
+      xasl->iscan_oid_order = ((orderby_skip || (xasl->spec_list != NULL && xasl->spec_list->indexptr != NULL
+						 && xasl->spec_list->indexptr->groupby_skip))
+			       ? false : prm_get_bool_value (PRM_ID_BT_INDEX_SCAN_OID_ORDER));
 
       /* save single tuple info */
       if (select_node->info.query.flag.single_tuple == 1)
