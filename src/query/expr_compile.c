@@ -4154,8 +4154,8 @@ expr_pred_term_in_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEA
 
 /* A term on a VARCHAR column of the scan against a string constant: "col = 'x'", "col <> 'x'", "col [NOT] LIKE
  * 'pattern'" without an ESCAPE (a page batch compares the record's bytes with the collation's own function, and
- * matches a pattern with qstr_like_match () under the column's collation -- a pattern with '_' or a backslash it
- * leaves to the row path, expr_batch.c eb_like_pattern_ok ()) */
+ * matches a pattern with qstr_like_match () under the column's collation, '%' and '_' as the row path takes them;
+ * without an ESCAPE a backslash is a literal) */
 static bool
 expr_pred_term_string_info (const PRED_EXPR * pr, const val_descr * vd, EXPR_RAW_LEAF_INFO * out)
 {

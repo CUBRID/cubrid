@@ -1092,22 +1092,6 @@ eb_cell_str (const EB_LOC * loc, const HEAP_REC_LAYOUT * lay, const char **str, 
   return 1;
 }
 
-/* the pattern a LIKE leaf matches itself: literals and '%' only ('_' and the escape stay with the row path) */
-static bool
-eb_like_pattern_ok (const char *p, int len)
-{
-  int i;
-
-  for (i = 0; i < len; i++)
-    {
-      if (p[i] == '_' || p[i] == '\\')
-	{
-	  return false;
-	}
-    }
-  return true;
-}
-
 /* a string leaf (expr_pred_term_string_info ()): -1 when the term stays with the row path */
 static int
 eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
@@ -1132,11 +1116,9 @@ eb_add_str_leaf (EB_BUILD * b, const EXPR_RAW_LEAF_INFO * info, int *out)
     }
   col = &plan->cols[eb_col_of_vec (plan, vec)];
   /* the constant must read as the column does: its codeset and its collation.  A LIKE pattern is matched by the
-   * engine's own qstr_like_match () under that collation (eb_raw_kid_str (); no ESCAPE clause reaches here,
-   * expr_pred_term_string_info ()); a pattern with '_' or a backslash stays with the row path
-   * (eb_like_pattern_ok ()) */
-  if (DB_IS_NULL (k) || db_get_string_codeset (k) != col->codeset || db_get_string_collation (k) != col->collation
-      || (info->like && !eb_like_pattern_ok (db_get_string (k), db_get_string_size (k))))
+   * engine's own qstr_like_match () under that collation (eb_raw_kid_str ()), which takes '%' and '_' as the row
+   * path does; no ESCAPE clause reaches here (expr_pred_term_string_info ()), so a backslash is a literal */
+  if (DB_IS_NULL (k) || db_get_string_codeset (k) != col->codeset || db_get_string_collation (k) != col->collation)
     {
       return NO_ERROR;
     }
@@ -3392,8 +3374,7 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 
 	  if (k == NULL || DB_IS_NULL (k)
 	      || (DB_VALUE_DOMAIN_TYPE (k) != DB_TYPE_VARCHAR && DB_VALUE_DOMAIN_TYPE (k) != DB_TYPE_CHAR)
-	      || db_get_string_codeset (k) != col->codeset || db_get_string_collation (k) != col->collation
-	      || (leaf->like && !eb_like_pattern_ok (db_get_string (k), db_get_string_size (k))))
+	      || db_get_string_codeset (k) != col->codeset || db_get_string_collation (k) != col->collation)
 	    {
 	      /* a host variable bound to something the leaf was not built for this execution */
 	      return eb_fallback (plan, "a string constant the batch does not take");
