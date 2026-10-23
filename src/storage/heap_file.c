@@ -744,8 +744,10 @@ static void heap_attrvalue_point_fixed (const HEAP_REC_LAYOUT * layout, OR_ATTRI
 static void heap_attrvalue_point_variable (const HEAP_REC_LAYOUT * layout, HEAP_CACHE_ATTRINFO * attr_info,
 					   OR_ATTRIBUTE * attrepr, RECDES * raw);
 static int heap_attrvalue_transform_to_dbvalue (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr, RECDES * raw);
-static int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
-				const HEAP_REC_LAYOUT * layout);
+/* always inlined: the row path reads every column through it (heap_attrinfo_read_dbvalues () and its variants),
+ * and left to the inliner's size limit the call stays out of line once the layout wrapper below counts in */
+STATIC_INLINE int heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
+				       const HEAP_REC_LAYOUT * layout) __attribute__ ((ALWAYS_INLINE));
 
 static int heap_midxkey_get_value (RECDES * recdes, OR_ATTRIBUTE * att, DB_VALUE * value,
 				   HEAP_CACHE_ATTRINFO * attr_info);
@@ -10998,15 +11000,26 @@ heap_attrinfo_clear_dbvalues (HEAP_CACHE_ATTRINFO * attr_info)
 
 
 /* HEAP_REC_LAYOUT (heap_attrinfo.h): what the record header says about where attributes
- * live, derived once per record instead of once per attribute. */
+ * live, derived once per record instead of once per attribute.  The body is written out here
+ * rather than through heap_rec_layout_init_repr () (the same four lines, for a caller that holds
+ * the representation constants and not the cache: the page batch): one call less in the
+ * inliner's count for heap_attrvalue_read (), which this feeds. */
 STATIC_INLINE void
 heap_rec_layout_init (HEAP_REC_LAYOUT * layout, const RECDES * recdes, const HEAP_CACHE_ATTRINFO * attr_info)
 {
+  char *obj = (char *) recdes->data;
+  int nvars;
+
   /* the caller has recached the record's representation; NULL_REPRID (a record too short for
    * its header) leaves none and must be handled before laying the record out */
   assert (attr_info->read_classrepr != NULL);
-  heap_rec_layout_init_repr (layout, recdes->data, attr_info->read_classrepr->n_variable,
-			     attr_info->read_classrepr->fixed_length);
+  nvars = attr_info->read_classrepr->n_variable;
+
+  layout->offset_size = OR_GET_OFFSET_SIZE (obj);
+  layout->var_table = obj + OR_HEADER_SIZE (obj);
+  layout->fixed_base = layout->var_table + OR_VAR_TABLE_SIZE_INTERNAL (nvars, layout->offset_size);
+  layout->bound_bits =
+    OR_GET_BOUND_BIT_FLAG (obj) ? layout->fixed_base + attr_info->read_classrepr->fixed_length : NULL;
 }
 
 /*
@@ -11489,7 +11502,7 @@ heap_attrvalue_resolve_plan (HEAP_ATTRVALUE * value, OR_ATTRIBUTE * attrepr)
   value->rd_attrepr = attrepr;
 }
 
-static int
+STATIC_INLINE int
 heap_attrvalue_read (RECDES * recdes, HEAP_ATTRVALUE * value, HEAP_CACHE_ATTRINFO * attr_info,
 		     const HEAP_REC_LAYOUT * layout)
 {
