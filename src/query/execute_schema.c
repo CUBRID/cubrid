@@ -423,6 +423,7 @@ static int do_alter_index_compact_one_class (MOP class_mop, const char *index_na
 
 static int check_ha_repl_constraint (DB_OBJECT * class_obj);
 static bool check_ha_repl_fk_ref_all_replicated (DB_OBJECT * class_obj);
+static int check_ha_repl_constraints_in_hierarchy (DB_OBJECT * class_obj);
 
 int ib_thread_count = 0;
 
@@ -2065,12 +2066,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
   if (need_check_repl_constraint)
     {
-      if (!sm_is_replication_class (class_obj))
-	{
-	  return NO_ERROR;
-	}
-
-      error_code = check_ha_repl_constraint (class_obj);
+      error_code = check_ha_repl_constraints_in_hierarchy (class_obj);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
@@ -3621,7 +3617,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
       is_unique = statement->info.index.unique;
     }
 
-  check_repl_constraint = is_unique && sm_is_replication_class (obj);
+  check_repl_constraint = is_unique && !HA_DISABLED ();
   if (check_repl_constraint)
     {
       error_code = tran_system_savepoint (UNIQUE_SAVEPOINT_DROP_INDEX);
@@ -3634,7 +3630,7 @@ do_drop_index (PARSER_CONTEXT * parser, const PT_NODE * statement)
   error_code = create_or_drop_index_helper (parser, index_name, is_reverse, is_unique, NULL, obj, DO_INDEX_DROP);
   if (error_code == NO_ERROR && check_repl_constraint)
     {
-      error_code = check_ha_repl_constraint (obj);
+      error_code = check_ha_repl_constraints_in_hierarchy (obj);
     }
 
   if (error_code != NO_ERROR && check_repl_constraint && error_code != ER_LK_UNILATERALLY_ABORTED)
@@ -10031,6 +10027,92 @@ check_ha_repl_constraint (DB_OBJECT * class_obj)
     }
 
   return NO_ERROR;
+}
+
+/*
+ * check_ha_repl_constraints_in_subclasses() - Validate replication constraints for all subclasses.
+ *   return          : Error code (NO_ERROR if valid)
+ *   superclass_name(in): Name of the class being altered
+ *   class_obj(in)   : Class whose direct and indirect subclasses are checked
+ */
+static int
+check_ha_repl_constraints_in_subclasses (const char *superclass_name, DB_OBJECT * class_obj)
+{
+  SM_CLASS *class_ = NULL;
+  DB_OBJLIST *subclass = NULL;
+  int error = NO_ERROR;
+
+  error = au_fetch_class_force (class_obj, &class_, AU_FETCH_READ);
+  if (error != NO_ERROR)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  for (subclass = class_->users; subclass != NULL; subclass = subclass->next)
+    {
+      if (sm_is_replication_class (subclass->op))
+	{
+	  error = check_ha_repl_constraint (subclass->op);
+	  if (error != NO_ERROR)
+	    {
+	      const char *subclass_name = sm_get_ch_name (subclass->op);
+
+	      if (subclass_name == NULL)
+		{
+		  ASSERT_ERROR_AND_SET (error);
+		  return error;
+		}
+
+	      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_REPLICATION_CONSTRAINT_VIOLATION_IN_SUBCLASS, 2,
+		      superclass_name, subclass_name);
+	      return ER_HA_REPLICATION_CONSTRAINT_VIOLATION_IN_SUBCLASS;
+	    }
+	}
+
+      error = check_ha_repl_constraints_in_subclasses (superclass_name, subclass->op);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  return NO_ERROR;
+}
+
+/*
+ * check_ha_repl_constraints_in_hierarchy() - Validate replication constraints for a class hierarchy.
+ *   return        : Error code (NO_ERROR if valid)
+ *   class_obj(in) : Root class of the hierarchy being checked
+ */
+static int
+check_ha_repl_constraints_in_hierarchy (DB_OBJECT * class_obj)
+{
+  const char *superclass_name = NULL;
+  int error = NO_ERROR;
+
+  if (HA_DISABLED ())
+    {
+      return NO_ERROR;
+    }
+
+  if (sm_is_replication_class (class_obj))
+    {
+      error = check_ha_repl_constraint (class_obj);
+      if (error != NO_ERROR)
+	{
+	  return error;
+	}
+    }
+
+  superclass_name = sm_get_ch_name (class_obj);
+  if (superclass_name == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error);
+      return error;
+    }
+
+  return check_ha_repl_constraints_in_subclasses (superclass_name, class_obj);
 }
 
 /*
