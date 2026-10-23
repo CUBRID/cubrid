@@ -27,6 +27,7 @@
 #include "config.h"
 #include "load_worker_manager.hpp"
 #include "log_append.hpp"
+#include "serial.h"
 #include "session.h"
 #include "thread_entry_task.hpp"
 #include "thread_entry.hpp"
@@ -36,6 +37,7 @@
 #include "connection_worker.hpp"
 
 #include <array>
+#include <unordered_set>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -209,6 +211,7 @@ static void css_stop_log_writer (THREAD_ENTRY & thread_ref, bool &);
 static void css_find_not_stopped (THREAD_ENTRY & thread_ref, bool & stop, bool is_log_writer, bool & found);
 static bool css_is_log_writer (const THREAD_ENTRY & thread_arg);
 static void css_stop_all_workers (THREAD_ENTRY & thread_ref, css_thread_stop_type stop_phase);
+static void css_shutdown_all_conn_except_log_writer (void);
 
 // WorkerPoolCore template parameter confuses indent
 template <typename WorkerPoolCore>
@@ -435,6 +438,80 @@ css_block_all_active_conn (unsigned short stop_phase)
 }
 
 /*
+ * css_shutdown_all_conn_except_log_writer() - shut down every connection but those a log writer serves
+ *   return:
+ *
+ * Note: waits until each of those closes has run, which invalidates the socket, or exits at the shutdown
+ *       timeout. A closed entry can stay in the active list until its connection worker next returns closed
+ *       contexts to the pool. Log writers' connections are left to connections.finalize ().
+ */
+static void
+css_shutdown_all_conn_except_log_writer (void)
+{
+  // *INDENT-OFF*
+  std::unordered_set<CSS_CONN_ENTRY *> requested;
+  // *INDENT-ON*
+  CSS_CONN_ENTRY *conn;
+  bool is_log_writer, has_context, is_closed, remaining;
+  int r, wait_ms = 1;
+
+  while (true)
+    {
+      remaining = false;
+
+      START_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
+
+      for (conn = css_Active_conn_anchor; conn != NULL; conn = conn->next)
+	{
+	  r = rmutex_lock (NULL, &conn->rmutex);
+	  assert (r == NO_ERROR);
+	  is_log_writer = (conn->stop_phase == THREAD_STOP_LOGWR);
+	  r = rmutex_unlock (NULL, &conn->rmutex);
+	  assert (r == NO_ERROR);
+
+	  if (is_log_writer)
+	    {
+	      continue;
+	    }
+	  r = rmutex_lock (NULL, &conn->cmutex);
+	  assert (r == NO_ERROR);
+	  has_context = (conn->worker != nullptr && conn->context != nullptr);
+	  is_closed = (!has_context && IS_INVALID_SOCKET (conn->fd));
+	  r = rmutex_unlock (NULL, &conn->cmutex);
+	  assert (r == NO_ERROR);
+
+	  if (is_closed)
+	    {
+	      continue;
+	    }
+	  remaining = true;
+
+	  /* a connection still being handed to a worker is asked once it has a context */
+	  if (has_context && requested.count (conn) == 0)
+	    {
+	      css_request_shutdown_conn (conn, (uint8_t) cubconn::connection::ignore_level::IGNORE_ALL, false,
+					 0 /* no wait */ );
+	      requested.insert (conn);
+	    }
+	}
+
+      END_SHARED_ACCESS_ACTIVE_CONN_ANCHOR (r);
+
+      if (!remaining)
+	{
+	  break;
+	}
+      if (css_is_shutdown_timeout_expired ())
+	{
+	  er_log_debug (ARG_FILE_LINE, "could not close all client connections");
+	  _exit (0);
+	}
+      std::this_thread::sleep_for (std::chrono::milliseconds (wait_ms));
+      wait_ms = MIN (wait_ms * 2, 50);
+    }
+}
+
+/*
  * css_internal_request_handler() -
  *   return:
  *   arg(in):
@@ -624,7 +701,7 @@ shutdown:
   css_start_shutdown_server ();
 
   connector.stop ();
-  connections.finalize ();
+  css_shutdown_all_conn_except_log_writer ();
 
   // stop threads; in first phase we need to stop active workers, but keep log writers for a while longer to make sure
   // all log is transfered
@@ -639,6 +716,10 @@ shutdown:
   // stop load sessions
   cubload::worker_manager_stop_all ();
 
+  /* Write the serial cache blocks' unissued tails back while the log writer can still ship them:
+   * nothing issues serial values past this point. */
+  serial_flush_cache_pool_replicated (thread_p);
+
   /* we should flush all append pages before stop log writer */
   logpb_force_flush_pages (thread_p);
 
@@ -647,8 +728,11 @@ shutdown:
   assert (!log_prior_has_worker_log_records (thread_p));
 #endif
 
-  // stop log writers
+  // stop log writers; each first sends the log up to its end
   css_stop_all_workers (*thread_p, THREAD_STOP_LOGWR);
+
+  // not before: closing a log writer's connection interrupts it before it has sent the log
+  connections.finalize ();
 
   if (prm_get_bool_value (PRM_ID_STATS_ON))
     {

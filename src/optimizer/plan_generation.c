@@ -1020,6 +1020,7 @@ mark_access_as_semi_anti_join (PARSER_CONTEXT * parser, XASL_NODE * xasl, PT_JOI
   ACCESS_SPEC_TYPE *access;
   bool key_limit_ok;
 
+  assert (join_type == PT_JOIN_SEMI || join_type == PT_JOIN_ANTI);
   XASL_SET_FLAG (xasl, (join_type == PT_JOIN_SEMI) ? XASL_NL_SEMIJOIN : XASL_NL_ANTIJOIN);
 
   /* A key limit of 1 is only sound when nothing above the btree can reject the first key: the
@@ -2444,6 +2445,12 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	      listfile = make_buildlist_proc (env, namelist);
 	      listfile = gen_outer (env, plan->plan_un.sort.subplan, &EMPTY_SET, NULL, NULL, listfile);
 	      listfile = add_sort_spec (env, listfile, plan, xasl->ordbynum_val, false);
+	      if (listfile != NULL && plan->plan_un.sort.sort_type == SORT_DISTINCT)
+		{
+		  /* the file keeps one row per distinct value of the columns it carries, which are the ones
+		   * the rest of the query reads from this side (make_namelist_from_projected_segs () above) */
+		  listfile->option = Q_DISTINCT;
+		}
 	    }
 
 	  xasl = add_uncorrelated (env, xasl, listfile);
@@ -2460,6 +2467,11 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 	{
 	  xasl = gen_outer (env, plan->plan_un.sort.subplan, &new_subqueries, inner_scans, fetches, xasl);
 	  xasl = add_sort_spec (env, xasl, plan, NULL, true /* add instnum pred */ );
+	  if (xasl != NULL && plan->plan_un.sort.sort_type == SORT_DISTINCT)
+	    {
+	      /* xasl is the list file this plan fills: a hash/merge join input, or the one gen_inner () scans */
+	      xasl->option = Q_DISTINCT;
+	    }
 	}
       break;
 
@@ -2562,15 +2574,11 @@ gen_outer (QO_ENV * env, QO_PLAN * plan, BITSET * subqueries, XASL_NODE * inner_
 		{
 		  mark_access_as_outer_join (parser, scan);
 		}
-	      else
+	      else if (join_type == JOIN_INNER && qo_plan_semi_anti_join_type (inner) != PT_JOIN_NONE)
 		{
 		  /* tag single-fetch NL inner so executor applies first-match (semi) / zero-match (anti) */
-		  PT_JOIN_TYPE sa_type = qo_plan_semi_anti_join_type (inner);
-		  if (sa_type == PT_JOIN_SEMI || sa_type == PT_JOIN_ANTI)
-		    {
-		      mark_access_as_semi_anti_join (parser, scan, sa_type);
-		      mark_following_joins (scan);
-		    }
+		  mark_access_as_semi_anti_join (parser, scan, qo_plan_semi_anti_join_type (inner));
+		  mark_following_joins (scan);
 		}
 
 	      /* the outer columns of the terms the inner scan evaluates are its memoize key */
@@ -3194,8 +3202,8 @@ gen_inner (QO_ENV * env, QO_PLAN * plan, BITSET * predset, BITSET * subqueries, 
        * that file.
        */
     case QO_PLANTYPE_SORT:
-      /* check for sort type */
-      QO_ASSERT (env, plan->plan_un.sort.sort_type == SORT_TEMP);
+      /* check for sort type: SORT_DISTINCT is a SEMI JOIN inner read once with the duplicates removed */
+      QO_ASSERT (env, plan->plan_un.sort.sort_type == SORT_TEMP || plan->plan_un.sort.sort_type == SORT_DISTINCT);
 
       namelist = make_namelist_from_projected_segs (env, plan);
       listfile = make_buildlist_proc (env, namelist);
@@ -3771,11 +3779,11 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
   if (nterms <= 0 && nkfterms <= 0 && bitset_cardinality (&(plan->sarged_terms)) == 0)
     {
       if (qo_is_filter_index (index_entryp) || qo_is_index_loose_scan (plan) || qo_is_iscan_from_groupby (plan)
-	  || qo_is_iscan_from_orderby (plan)
+	  || qo_is_iscan_from_orderby (plan) || qo_is_iscan_from_analytic (plan)
 	  || PT_SPEC_SPECIAL_INDEX_SCAN (QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node)))
 	{
-	  /* Do not return if: 1. filtered index. 2. skip group by or skip order by 3. loose scan. 4. scan for b-tree
-	   * node info or key info. */
+	  /* Do not return if: 1. filtered index. 2. skip group by, skip order by or skip analytic sort 3. loose scan.
+	   * 4. scan for b-tree node info or key info. */
 	  ;
 	}
       else
@@ -4397,7 +4405,7 @@ qo_get_key_limit_from_instnum (PARSER_CONTEXT * parser, QO_PLAN * plan, xasl_nod
       break;
 
     case QO_PLANTYPE_JOIN:
-      /* only allow inner joins */
+      /* Preserve eligibility for ordinary inner joins and first-match SEMI/ANTI joins. */
       if (plan->plan_un.join.join_type != JOIN_INNER)
 	{
 	  return NULL;
@@ -5349,7 +5357,8 @@ qo_check_join_for_multi_range_opt (QO_PLAN * plan)
   bool can_optimize = true;
 
   /* verify that this is a valid join for multi range optimization */
-  if (plan == NULL || plan->plan_type != QO_PLANTYPE_JOIN || plan->plan_un.join.join_type != JOIN_INNER
+  if (plan == NULL || plan->plan_type != QO_PLANTYPE_JOIN
+      || plan->plan_un.join.join_type != JOIN_INNER
       || plan->plan_un.join.join_method == QO_JOINMETHOD_MERGE_JOIN
       || plan->plan_un.join.join_method == QO_JOINMETHOD_HASH_JOIN)
     {
