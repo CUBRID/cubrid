@@ -4005,6 +4005,11 @@ pt_has_non_deterministic_expr (PARSER_CONTEXT * parser, PT_NODE * term)
   save_next = term->next;
   term->next = NULL;
   (void) parser_walk_tree (parser, term, pt_check_pushable, (void *) &cpi, NULL, NULL);
+  /* a variable assignment (@a := ...) changes its result for each evaluation as well */
+  if (!cpi.method_found && pt_has_define_vars (parser, term))
+    {
+      cpi.method_found = true;
+    }
   term->next = save_next;
 
   return cpi.method_found;
@@ -4145,8 +4150,9 @@ mq_get_partition_key_item (PARSER_CONTEXT * parser, PT_NODE * name, PT_NODE * sp
  *
  * Note:
  *  The rows of a partition have the same key value for such a type, so any deterministic expression of the keys
- *  has the same result for them. A string can be equal to a different string (collation, trailing spaces) and
- *  a value with a time zone or a floating point value (-0.0 and 0.0) as well, so they are not such a type.
+ *  has the same result for them. A string can be equal to a different string (collation, trailing spaces), and
+ *  so can a value with a time zone, a floating point value (-0.0 and 0.0) and a NUMERIC value of a different
+ *  scale (1.0 and 1.00), so they are not such a type.
  */
 static PT_NODE *
 mq_check_exact_partition_key_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void *arg, int *continue_walk)
@@ -4169,7 +4175,6 @@ mq_check_exact_partition_key_pre (PARSER_CONTEXT * parser, PT_NODE * tree, void 
 	case PT_TYPE_SMALLINT:
 	case PT_TYPE_INTEGER:
 	case PT_TYPE_BIGINT:
-	case PT_TYPE_NUMERIC:
 	case PT_TYPE_DATE:
 	case PT_TYPE_TIME:
 	case PT_TYPE_DATETIME:
