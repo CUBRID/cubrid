@@ -13295,7 +13295,8 @@ pt_count_name_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *co
  * The SQL text of a PL/CSQL static SQL statement is embedded in the compiled class and re-parsed at runtime. Instead of
  * printing the compiled tree, which can be transformed into a shape that can not be re-parsed, the original text is
  * kept and only the following edits are applied to it:
- *   - a PL/CSQL variable (an unresolved name or path expression) is replaced with a host variable '?'
+ *   - a PL/CSQL variable (an unresolved name or path expression) is replaced with a host variable '?:N', where N is
+ *     its index, so that the values are bound in the order of the indexes as they are for the printed tree
  *   - the INTO clause is removed
  *   - a column list implied by "*" or by INSERT without a column list is written, so that the columns are fixed at
  *     compile time as they are in the compiled statement
@@ -13653,13 +13654,15 @@ pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
 	  int end = (parser->static_sql_host_var_end != NULL)
 	    ? parser->static_sql_host_var_end[node->info.host_var.index] : -1;
 	  int start = (end > 0) ? pt_static_sql_path_start (list, end, node->info.host_var.label) : -1;
+	  char *hv = NULL;
 
-	  if (start < 0)
+	  if (start < 0 || (hv = (char *) parser_alloc (parser, 16)) == NULL)
 	    {
 	      list->failed = true;
 	      break;
 	    }
-	  pt_static_sql_add_edit (parser, list, start, end, "?", node->info.host_var.index);
+	  sprintf (hv, "?:%d", node->info.host_var.index);
+	  pt_static_sql_add_edit (parser, list, start, end, hv, node->info.host_var.index);
 	}
       break;
 

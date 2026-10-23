@@ -51,21 +51,18 @@ using namespace cubpl;
  *   parser(in): parser that compiled the static SQL
  *   sql(in): original text
  *   text(out): edited text
- *   host_var_order(out): host variable indexes in the order of '?' in the text
  *
  * Note: the edits are collected right after name resolution (see pt_collect_static_sql_edits ()).
  *       The edited text is compiled once more as a normal statement to make sure that it can be re-parsed at runtime
  *       with the same host variables. Otherwise the caller falls back to printing the compiled tree.
  */
 static bool
-make_static_sql_text (PARSER_CONTEXT *parser, const std::string &sql, std::string &text,
-		      std::vector<int> &host_var_order)
+make_static_sql_text (PARSER_CONTEXT *parser, const std::string &sql, std::string &text)
 {
   int pos = 0;
   bool ok = false;
 
   text.clear ();
-  host_var_order.clear ();
 
   if (parser->static_sql_edit_status != 1 || parser->original_buffer == NULL
       || sql.compare (parser->original_buffer) != 0)
@@ -80,10 +77,6 @@ make_static_sql_text (PARSER_CONTEXT *parser, const std::string &sql, std::strin
       text.append (sql, pos, edit.start - pos);
       text.append (edit.text);
       pos = edit.end;
-      if (edit.host_var_index >= 0)
-	{
-	  host_var_order.push_back (edit.host_var_index);
-	}
     }
   text.append (sql, pos, std::string::npos);
 
@@ -114,7 +107,7 @@ make_static_sql_text (PARSER_CONTEXT *parser, const std::string &sql, std::strin
       session->parser->flag.is_verifying_static_sql_text = 1;
 
       if (statement != NULL && !has_into && db_compile_statement (session) >= 0
-	  && db_number_of_input_markers (session, 1) == (int) host_var_order.size ())
+	  && db_number_of_input_markers (session, 1) == parser->host_var_count)
 	{
 	  ok = true;
 	}
@@ -648,9 +641,8 @@ namespace cubmethod
 
 	    /* the rewritten query is embedded verbatim in the compiled PL/CSQL class and re-parsed at runtime.
 	     * keep the original text with the text edits if possible; printing the compiled tree is the fallback */
-	    std::vector<int> host_var_order;
 	    std::string edited_text;
-	    bool use_text_edits = make_static_sql_text (parser, s, edited_text, host_var_order);
+	    bool use_text_edits = make_static_sql_text (parser, s, edited_text);
 
 	    if (use_text_edits)
 	      {
@@ -774,25 +766,11 @@ namespace cubmethod
 		while (marker);
 	      }
 
-	    if (error == NO_ERROR && use_text_edits)
+	    if (error == NO_ERROR && use_text_edits && semantics.hvs.size () > (size_t) parser->host_var_count)
 	      {
-		if (semantics.hvs.size () == host_var_order.size ())
-		  {
-		    /* host variables are bound in the order of '?' in the text */
-		    std::vector<pl_parameter_info> hvs_in_text_order;
-
-		    for (int idx : host_var_order)
-		      {
-			hvs_in_text_order.push_back (semantics.hvs[idx]);
-		      }
-		    semantics.hvs.swap (hvs_in_text_order);
-		  }
-		else
-		  {
-		    /* e.g. auto-parameterized values that are not in the text */
-		    parser->custom_print |= PT_CONVERT_RANGE | PT_PRINT_ALIAS;
-		    semantics.rewritten_query = parser_print_tree (parser, stmt);
-		  }
+		/* the host variables in the text are "?:N" with the indexes of the PL/CSQL variables. auto-parameterized
+		 * values (the indexes after them) are not in the text, where the values are still literals */
+		semantics.hvs.resize (parser->host_var_count);
 	      }
 	  }
 	else
