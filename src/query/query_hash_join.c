@@ -4883,6 +4883,7 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
   target->rtf_rows = 0;
   target->rtf_dropped = 0;
   target->rtf_off = 0;
+  target->rtf_applied = false;
   fcol = (first == hj->outer.xasl) ? hj->merge_info.ls_outer_column[0] : hj->merge_info.ls_inner_column[0];
   tcol = (target == hj->outer.xasl) ? hj->merge_info.ls_outer_column[0] : hj->merge_info.ls_inner_column[0];
   if (list == NULL || list->tuple_cnt <= 0 || list->tuple_cnt > HJOIN_RTF_MAX_KEYS || fcol >= list->type_list.type_cnt
@@ -5001,6 +5002,7 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
   hj->rtf_rows = 0;
   hj->rtf_dropped = 0;
   hj->rtf_off = 0;
+  hj->rtf_applied = false;
   target->rtf = rtf;
   target->rtf_val = cell;
   return NO_ERROR;
@@ -5081,6 +5083,7 @@ hjoin_rtf_bind_clone (XASL_NODE * clone, const XASL_NODE * orig)
   clone->rtf_rows = 0;
   clone->rtf_dropped = 0;
   clone->rtf_off = 0;
+  clone->rtf_applied = false;
   if (orig->rtf == NULL || clone->val_list == NULL)
     {
       return;
@@ -5110,12 +5113,17 @@ hjoin_rtf_unbind_clone (XASL_NODE * clone, XASL_NODE * orig)
       __atomic_add_fetch (&orig->rtf_rows, clone->rtf_rows, __ATOMIC_RELAXED);
       __atomic_add_fetch (&orig->rtf_dropped, clone->rtf_dropped, __ATOMIC_RELAXED);
       __atomic_add_fetch (&orig->rtf_off, clone->rtf_off, __ATOMIC_RELAXED);
+      if (clone->rtf_applied)
+	{
+	  __atomic_store_n (&orig->rtf_applied, true, __ATOMIC_RELAXED);
+	}
     }
   clone->rtf = NULL;
   clone->rtf_val = NULL;
   clone->rtf_rows = 0;
   clone->rtf_dropped = 0;
   clone->rtf_off = 0;
+  clone->rtf_applied = false;
 }
 
 void
@@ -5140,6 +5148,7 @@ hjoin_rtf_release (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl)
       hj->rtf_rows = target->rtf_rows;
       hj->rtf_dropped = target->rtf_dropped;
       hj->rtf_off = target->rtf_off;
+      hj->rtf_applied = target->rtf_applied;
       target->rtf = NULL;
       target->rtf_val = NULL;
     }

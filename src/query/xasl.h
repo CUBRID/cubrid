@@ -390,6 +390,7 @@ typedef struct hashjoin_proc_node
   INT64 rtf_rows;
   INT64 rtf_dropped;
   INT64 rtf_off;		/* trace: the rows checked when the filter left the target (hjoin_rtf_sample ()), 0 while on */
+  bool rtf_applied;		/* trace: a scan of the target consulted the filter */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 } HASHJOIN_PROC_NODE;
 
@@ -1293,6 +1294,8 @@ struct xasl_node
   INT64 rtf_dropped;
   INT64 rtf_off;		/* ... and the rows checked when the filter left this node (hjoin_rtf_sample ()): 0 while
 				 * it is on; merged into the leader's node like the counters */
+  bool rtf_applied;		/* ... and whether a scan of this node consulted it at all: set where the scan opens with the
+				 * filter on the node (the row loop, the page batch, a worker's clone), merged like them */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

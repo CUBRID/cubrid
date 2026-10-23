@@ -4832,15 +4832,24 @@ qdump_print_hashjoin_stats_text (FILE * fp, xasl_node * xasl_p, int indent)
       /* the runtime filter one input's keys made for the other input's outermost scan (hjoin_rtf_build ()); rows and
        * dropped are what hjoin_rtf_release () copied out of it when the target's scans closed -- a probe that ended in
        * an error is dumped before that release (qexec_clear_xasl ()), so they read 0 there */
-      fprintf (fp, "%*cRUNTIME FILTER (keys: %lld, rows: %lld, dropped: %lld", indent + 2, ' ',
-	       (long long) proc->rtf_keys, (long long) proc->rtf_rows, (long long) proc->rtf_dropped);
-      if (proc->rtf_off > 0)
+      if (!proc->rtf_applied)
 	{
-	  /* the filter left the target after its sample (hjoin_rtf_sample ()): the rows checked by then, summed over
-	   * the nodes that took it off (a worker's clone, the leader's node) */
-	  fprintf (fp, ", off after %lld rows", (long long) proc->rtf_off);
+	  /* built, but no scan of the target opened with it (the target ran without opening its scans under the
+	   * filter): nothing was checked, and "rows: 0, dropped: 0" would read as a filter that saw no row */
+	  fprintf (fp, "%*cRUNTIME FILTER (keys: %lld, not applied)\n", indent + 2, ' ', (long long) proc->rtf_keys);
 	}
-      fprintf (fp, ")\n");
+      else
+	{
+	  fprintf (fp, "%*cRUNTIME FILTER (keys: %lld, rows: %lld, dropped: %lld", indent + 2, ' ',
+		   (long long) proc->rtf_keys, (long long) proc->rtf_rows, (long long) proc->rtf_dropped);
+	  if (proc->rtf_off > 0)
+	    {
+	      /* the filter left the target after its sample (hjoin_rtf_sample ()): the rows checked by then, summed
+	       * over the nodes that took it off (a worker's clone, the leader's node) */
+	      fprintf (fp, ", off after %lld rows", (long long) proc->rtf_off);
+	    }
+	  fprintf (fp, ")\n");
+	}
     }
   part_cnt = stats_group->context_cnt;
 
@@ -5166,11 +5175,18 @@ qdump_print_hashjoin_stats_json (xasl_node * xasl_p, trace_json_t * parent)
       /* the runtime filter, the same item as the text trace's RUNTIME FILTER line */
       rtf = trace_json_object ();
       trace_json_object_set_new (rtf, "keys", trace_json_integer (proc->rtf_keys));
-      trace_json_object_set_new (rtf, "rows", trace_json_integer (proc->rtf_rows));
-      trace_json_object_set_new (rtf, "dropped", trace_json_integer (proc->rtf_dropped));
-      if (proc->rtf_off > 0)
+      if (!proc->rtf_applied)
 	{
-	  trace_json_object_set_new (rtf, "off after rows", trace_json_integer (proc->rtf_off));
+	  trace_json_object_set_new (rtf, "applied", trace_json_false ());
+	}
+      else
+	{
+	  trace_json_object_set_new (rtf, "rows", trace_json_integer (proc->rtf_rows));
+	  trace_json_object_set_new (rtf, "dropped", trace_json_integer (proc->rtf_dropped));
+	  if (proc->rtf_off > 0)
+	    {
+	      trace_json_object_set_new (rtf, "off after rows", trace_json_integer (proc->rtf_off));
+	    }
 	}
       trace_json_object_set_new (parent, "RUNTIME FILTER", rtf);
     }

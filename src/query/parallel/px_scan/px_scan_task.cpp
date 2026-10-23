@@ -121,6 +121,12 @@ namespace parallel_scan
       }
     /* a hash join's runtime filter on this scan (hjoin_rtf_build ()): the leader's, on the clone's value cell */
     hjoin_rtf_bind_clone (m_xasl, m_orig_xasl);
+    if (m_xasl->rtf != nullptr)
+      {
+	/* trace: this worker's scan consults the filter (row_body (), or the page batch's leaf); merged into the
+	 * leader's node with the counters (hjoin_rtf_unbind_clone ()) */
+	m_xasl->rtf_applied = true;
+      }
 
     /* inject precomputed scalar values into the clone so predicate eval reads them instead of re-executing per worker; precomp_owner_regu aliases the clone's predicate operand (serialization preserves source-pointer aliasing); aptr_list only (correlated dptr_list never injected); one back-pointer serves all operands (same single_tuple->valp->val slot) via slot write + status=XASL_SUCCESS. */
     for (xasl_node *cnode = m_xasl; cnode != nullptr; cnode = cnode->scan_ptr)

@@ -13445,6 +13445,13 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  recursive_iterations = 1;
 	}
 
+      if (xasl->rtf != NULL)
+	{
+	  /* trace: the scan opens with the join's runtime filter on this node -- the row loop below or the page
+	   * batch's leaf consults it for every row (a target whose scans never open with it shows "not applied") */
+	  xasl->rtf_applied = true;
+	}
+
       /* a BUILDVALUE over one heap scan with nothing per row but the aggregates, or a BUILDLIST that
        * only projects, takes the scan a chunk at a time (expr_batch.h); the scan is started now, so
        * its plan can be built */
