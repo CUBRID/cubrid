@@ -599,11 +599,13 @@ qo_reduce_equality_terms (PARSER_CONTEXT * parser, PT_NODE * node, PT_NODE ** wh
 
 	  if (pt_is_attr (arg1) || pt_is_function_index_expression (arg1))
 	    {
-	      if (arg2->node_type == PT_HOST_VAR && arg1->type_enum == PT_TYPE_CHAR)
+	      if (arg2->node_type == PT_HOST_VAR && arg1->type_enum == PT_TYPE_CHAR
+		  && arg2->info.host_var.index < parser->host_var_count)
 		{
 		  /* CBRD-27583 (D-53): the client sends a VARCHAR bind of a CHAR column unpadded, so a copy would not
 		   * compare as c4 = ? does (c4 = vc and c4 = ? must not become vc = ?), and a cast of the copy would
-		   * preset the position's domain for every use (PT_CAST type checking): the terms stay as they are */
+		   * preset the position's domain for every use (PT_CAST type checking): the terms stay as they are.
+		   * An auto-parameterized literal has its value: its copies reduce as develop's did */
 		  continue;
 		}
 	      if (qo_is_reduceable_const (arg2))
