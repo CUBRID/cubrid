@@ -363,12 +363,14 @@ catcls_install (void)
   for (i = 0; i < vclass_defs.size (); i++)
     {
       MOP class_mop = metadata_builder::create_and_mark_system_class (vclass_defs[i].name);
-      if (class_mop != nullptr)
+      if (class_mop == nullptr)
 	{
-	  error_code = metadata_builder::build_vclass (class_mop, vclass_defs[i]);
+	  assert (false);
+	  error_code = er_errid ();
+	  goto end;
 	}
 
-      error_code = er_errid();
+      error_code = metadata_builder::build_vclass (class_mop, vclass_defs[i]);
       if (error_code != NO_ERROR)
 	{
 	  goto end;
