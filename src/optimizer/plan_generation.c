@@ -3785,11 +3785,11 @@ qo_get_xasl_index_info (QO_ENV * env, QO_PLAN * plan)
   if (nterms <= 0 && nkfterms <= 0 && bitset_cardinality (&(plan->sarged_terms)) == 0)
     {
       if (qo_is_filter_index (index_entryp) || qo_is_index_loose_scan (plan) || qo_is_iscan_from_groupby (plan)
-	  || qo_is_iscan_from_orderby (plan)
+	  || qo_is_iscan_from_orderby (plan) || qo_is_iscan_from_analytic (plan)
 	  || PT_SPEC_SPECIAL_INDEX_SCAN (QO_NODE_ENTITY_SPEC (plan->plan_un.scan.node)))
 	{
-	  /* Do not return if: 1. filtered index. 2. skip group by or skip order by 3. loose scan. 4. scan for b-tree
-	   * node info or key info. */
+	  /* Do not return if: 1. filtered index. 2. skip group by, skip order by or skip analytic sort 3. loose scan.
+	   * 4. scan for b-tree node info or key info. */
 	  ;
 	}
       else
