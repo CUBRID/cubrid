@@ -646,6 +646,14 @@ pt_set_class_chn (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 	    }
 
 	  class_->info.name.db_object_chn = locator_get_cache_coherency_number (clsmop);
+
+	  if (class_->info.name.virt_object != NULL)
+	    {
+	      /* mq_translate () expands a view to its base tables but leaves the view on the flat name node;
+	       * record the view's CHN too, so pt_has_modified_class () follows a RENAME or owner change of the
+	       * view, not just of the base table. */
+	      class_->info.name.virt_object_chn = locator_get_cache_coherency_number (class_->info.name.virt_object);
+	    }
 	}
     }
 
@@ -749,6 +757,54 @@ pt_has_modified_class_helper (PARSER_CONTEXT * parser, PT_NODE * node, void *arg
 	      /* don't revisit leaves */
 	      *continue_walk = PT_STOP_WALK;
 	      break;
+	    }
+
+	  /* a class expanded from a view keeps the view on the flat name node (mq_translate ()); the base table's
+	   * CHN above does not move when the view is renamed or its owner changes, so follow the view's CHN too. */
+	  if (class_->info.name.virt_object != NULL)
+	    {
+	      MOP vclsmop = class_->info.name.virt_object;
+
+	      if (vclsmop->decached)
+		{
+		  /* the view might be aborted. */
+		  *status = DB_CLASS_MODIFIED;
+		}
+	      else
+		{
+		  error = au_fetch_class_force (vclsmop, &sm_class, AU_FETCH_READ);
+		  if (error != NO_ERROR)
+		    {
+		      if (error == ER_HEAP_UNKNOWN_OBJECT)
+			{
+			  /* the view might be dropped. */
+			  *status = DB_CLASS_MODIFIED;
+			}
+		      else
+			{
+			  *status = DB_CLASS_ERROR;
+			}
+		    }
+		}
+	      if (*status != DB_CLASS_NOT_MODIFIED)
+		{
+		  /* don't revisit leaves */
+		  *continue_walk = PT_STOP_WALK;
+		  break;
+		}
+
+	      if (class_->info.name.virt_object_chn == NULL_CHN)
+		{
+		  class_->info.name.virt_object_chn = locator_get_cache_coherency_number (vclsmop);
+		}
+	      else if (class_->info.name.virt_object_chn != locator_get_cache_coherency_number (vclsmop))
+		{
+		  *status = DB_CLASS_MODIFIED;
+
+		  /* don't revisit leaves */
+		  *continue_walk = PT_STOP_WALK;
+		  break;
+		}
 	    }
 	}
     }
