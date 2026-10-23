@@ -4864,6 +4864,108 @@ expr_batch_agg_next_value (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batc
   return false;
 }
 
+/* one NUMERIC value into the accumulator, the row path's add (numeric_sum_acc_add_dbv () without the DB_VALUE) */
+static inline int
+eb_agg_sum_numeric_one (const EB_VEC * v, int r, SUM_ACC * sum)
+{
+  NUMERIC_AGG_EXPR_VAL nv;
+
+  eb_num_get (v, r, &nv);
+  return numeric_sum_acc_add_expr_val (sum, &nv);
+}
+
+/* NUMERIC SUM/AVG over the selection from position pos: the values go into a signed 128-bit partial, a run of
+ * one scale at a time, and each run is added to the accumulator once (numeric_sum_acc_add_expr_val ()), which
+ * leaves the accumulator as the per-value adds would.  The accumulator's add aligns the scales, adds the
+ * magnitudes with their signs and keeps the exact sum while it stays below 10^41 digits, rounding through a
+ * DB_VALUE add past that; exact adds commute, so a run's sum adds as its values do as long as every running sum
+ * the per-value adds would have formed is exact.  A run is taken only when that is sure: the accumulator's
+ * magnitude fits 127 bits (words[0] == 0, words[1] below 2^63), its scale is the run's (or it is zero at a lower
+ * scale, which the run's first value raises as the per-value add does), and each value joins the partial under an
+ * overflow check -- so |partial| < 2^127, every running sum is below 2^128 < 10^41, and no per-value add would
+ * have rounded.  An overflow or another scale ends the run (flushed, exact by the same argument) and the next
+ * starts at that value; a value no run can start at is added as the row path adds it.  NULLs are skipped;
+ * n_added counts the values added. */
+static int
+eb_agg_sum_numeric (const EB_VEC * v, const EXPR_BATCH * batch, int pos, SUM_ACC * sum, INT64 * n_added)
+{
+  const __int128 i128_min = (-(((__int128) 1) << 126)) * 2;	/* -2^127: its magnitude is not a signed value */
+  INT64 n = 0;
+  int j = pos;
+
+  while (j < batch->n_sel)
+    {
+      __int128 part = 0;
+      int n_part = 0, scale = 0;
+      bool run = (sum->v.words[0] == 0 && sum->v.words[1] < ((uint64_t) 1 << 63));
+
+      for (; run && j < batch->n_sel; j++)
+	{
+	  int r = batch->sel[j];
+	  NUMERIC_AGG_EXPR_VAL nv;
+	  __int128 x, next;
+
+	  if (EB_NULL_AT (v, r))
+	    {
+	      continue;
+	    }
+	  eb_num_get (v, r, &nv);
+	  if (n_part == 0)
+	    {
+	      scale = nv.scale;
+	      if (sum->scale != scale && !(sum->scale < scale && sum->v.words[1] == 0 && sum->v.words[2] == 0))
+		{
+		  /* the accumulator would widen (its magnitude times a power of ten): the row path's add decides */
+		  break;
+		}
+	    }
+	  else if (nv.scale != scale)
+	    {
+	      break;
+	    }
+	  x = nv.is_negative ? -(__int128) nv.coefficient : (__int128) nv.coefficient;
+	  if (__builtin_add_overflow (part, x, &next) || next == i128_min)
+	    {
+	      break;
+	    }
+	  part = next;
+	  n_part++;
+	}
+      if (n_part > 0)
+	{
+	  NUMERIC_AGG_EXPR_VAL pv;
+
+	  pv.coefficient = (uint128_t) ((part < 0) ? -part : part);
+	  pv.scale = scale;
+	  pv.is_negative = (part < 0);
+	  if (numeric_sum_acc_add_expr_val (sum, &pv) != NO_ERROR)
+	    {
+	      *n_added = n;
+	      return ER_FAILED;
+	    }
+	  n += n_part;
+	  continue;
+	}
+      if (j < batch->n_sel)
+	{
+	  int r = batch->sel[j++];
+
+	  if (EB_NULL_AT (v, r))
+	    {
+	      continue;
+	    }
+	  if (eb_agg_sum_numeric_one (v, r, sum) != NO_ERROR)
+	    {
+	      *n_added = n;
+	      return ER_FAILED;
+	    }
+	  n++;
+	}
+    }
+  *n_added = n;
+  return NO_ERROR;
+}
+
 int
 expr_batch_agg_sum_rest (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch, int node_ord, int pos, SUM_ACC * sum,
 			 INT64 * n_added)
@@ -4874,6 +4976,10 @@ expr_batch_agg_sum_rest (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch,
   INT64 n = 0;
 
   assert (sum->is_active && sum->sum_type == sum_acc_sum_type_for ((DB_TYPE) v->dbtype));
+  if (v->dbtype == DB_TYPE_NUMERIC)
+    {
+      return eb_agg_sum_numeric (v, batch, pos, sum, n_added);
+    }
   /* the typed adds of qdata_sum_acc_add_dbv (), without the DB_VALUE; the same overflow checks per value */
   for (j = pos; j < batch->n_sel; j++)
     {
@@ -4913,18 +5019,6 @@ expr_batch_agg_sum_rest (const EXPR_BATCH_PLAN * plan, const EXPR_BATCH * batch,
 	      goto overflow;
 	    }
 	  break;
-	case DB_TYPE_NUMERIC:
-	  {
-	    NUMERIC_AGG_EXPR_VAL nv;
-
-	    eb_num_get (v, r, &nv);
-	    if (numeric_sum_acc_add_expr_val (sum, &nv) != NO_ERROR)
-	      {
-		*n_added = n;
-		return ER_FAILED;
-	      }
-	    break;
-	  }
 	default:
 	  assert (false);
 	  *n_added = n;
