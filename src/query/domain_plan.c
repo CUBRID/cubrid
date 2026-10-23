@@ -2154,54 +2154,6 @@ domain_walk_assignments (DOMAIN_LOAD_CONTEXT * ctx, UPDATE_ASSIGNMENT * assignme
 }
 
 /*
- * domain_fix_connect_by_probe () - the probe domain of a START WITH ... CONNECT BY hash list scan
- *
- * The scan coerces its probe values to the first probe item's domain. When the join widened that domain to a float
- * NUMERIC, the first fixed-precision NUMERIC of the rest list gives its precision and scale, so integers scale the way
- * the fixed numeric column's hash keys do. Only compiled domains resolve this: the load sets it once, not each
- * execution.
- */
-static void
-domain_fix_connect_by_probe (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
-{
-  ACCESS_SPEC_TYPE *spec = xasl->spec_list;
-  if (spec == NULL || spec->type != TARGET_LIST || spec->s.list_node.list_regu_list_probe == NULL)
-    {
-      return;
-    }
-  REGU_VARIABLE *probe = &spec->s.list_node.list_regu_list_probe->value;
-  if (REGU_VARIABLE_GET_TYPE (probe) != DB_TYPE_NUMERIC || probe->domain == NULL
-      || probe->domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
-    {
-      return;
-    }
-  const TP_DOMAIN *fixed = NULL;
-  for (REGU_VARIABLE_LIST rest = spec->s.list_node.list_regu_list_rest; rest != NULL && fixed == NULL;
-       rest = rest->next)
-    {
-      if (TP_DOMAIN_TYPE (rest->value.domain) == DB_TYPE_NUMERIC
-	  && rest->value.domain->precision != DB_DEFAULT_NUMERIC_PRECISION)
-	{
-	  fixed = rest->value.domain;
-	}
-    }
-  if (fixed == NULL)
-    {
-      return;
-    }
-  TP_DOMAIN *domain = tp_domain_copy (probe->domain, false);
-  if (domain == NULL)
-    {
-      ctx->failed = true;
-      return;
-    }
-  domain->precision = fixed->precision;
-  domain->scale = fixed->scale;
-  /* the load's fix of the stream: every execution of this clone reads it */
-  probe->domain = tp_domain_cache (domain);
-}
-
-/*
  * domain_mark_aggregate_operands () - flag the expressions that only feed a SUM / AVG (REGU_VARIABLE_AGG_OPERAND), once
  *   at load (each execution marked them before its scan, and each PX worker its own copy)
  *
@@ -2368,11 +2320,6 @@ domain_walk_xasl (DOMAIN_LOAD_CONTEXT * ctx, XASL_NODE * xasl)
 	{
 	  domain_push_constant_branch (ctx, DOMAIN_CONSTANT_BRANCH_LIMIT, xasl);
 	}
-    }
-  if (xasl->type == CONNECTBY_PROC)
-    {
-      /* before its specs are walked: the probe item records the domain the scan coerces to */
-      domain_fix_connect_by_probe (ctx, xasl);
     }
   domain_walk_xasl (ctx, xasl->aptr_list);
   domain_walk_xasl (ctx, xasl->bptr_list);

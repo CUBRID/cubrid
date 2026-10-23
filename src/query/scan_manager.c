@@ -3947,6 +3947,7 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   llsidp->hlsid.probe_regu_list = regu_list_probe;
   llsidp->hlsid.need_coerce_type = false;
   llsidp->hlsid.key_plan = NULL;
+  llsidp->hlsid.probe_key = NULL;
 
   llsidp->is_read_only = is_read_only;
 
@@ -3988,6 +3989,11 @@ scan_open_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
       /* alloc temp key */
       llsidp->hlsid.temp_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
       llsidp->hlsid.temp_new_key = qdata_alloc_hscan_key (thread_p, val_cnt, true);
+      llsidp->hlsid.probe_key = qdata_alloc_hscan_key (thread_p, val_cnt, false);
+      if (llsidp->hlsid.temp_key == NULL || llsidp->hlsid.temp_new_key == NULL || llsidp->hlsid.probe_key == NULL)
+	{
+	  return S_ERROR;
+	}
       if (scan_start_scan (thread_p, scan_id) != NO_ERROR)
 	{
 	  return S_ERROR;
@@ -5359,6 +5365,11 @@ scan_close_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	{
 	  qdata_free_hscan_key (thread_p, llsidp->hlsid.temp_new_key, llsidp->hlsid.temp_new_key->val_count);
 	  llsidp->hlsid.temp_new_key = NULL;
+	}
+      if (llsidp->hlsid.probe_key != NULL)
+	{
+	  qdata_free_hscan_key (thread_p, llsidp->hlsid.probe_key, llsidp->hlsid.probe_key->val_count);
+	  llsidp->hlsid.probe_key = NULL;
 	}
       break;
 
@@ -8516,7 +8527,8 @@ scan_build_hash_list_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
     {
       return S_ERROR;
     }
-  /* each build key's copy or conversion, from the domains the positions above now read */
+  /* each key pair's hash domain and each side's copy or conversion, from the domains the positions above now read;
+   * need_coerce_type keeps whether a build key converts */
   if (llsidp->hlsid.need_coerce_type
       && qdata_plan_hscan_keys (thread_p, scan_id->vd, &llsidp->hlsid, llsidp->scan_pred.regu_list) != NO_ERROR)
     {
@@ -8748,6 +8760,16 @@ scan_hash_probe_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, QFILE_TUPLE * 
 	{
 	  return S_ERROR;
 	}
+      /* the probe key in the hash domain */
+      if (qdata_hscan_key_plan_probe_converts (llsidp->hlsid.key_plan))
+	{
+	  if (qdata_probe_hscan_key (key, llsidp->hlsid.key_plan, llsidp->hlsid.temp_new_key, llsidp->hlsid.probe_key)
+	      != NO_ERROR)
+	    {
+	      return S_ERROR;
+	    }
+	  key = llsidp->hlsid.probe_key;
+	}
       /* make hash key */
       hash_key = qdata_hash_scan_key (key, UINT_MAX, llsidp->hlsid.hash_list_scan_type);
       llsidp->hlsid.curr_hash_key = hash_key;
@@ -8950,7 +8972,14 @@ check_hash_list_scan (LLIST_SCAN_ID * llsidp, int *val_cnt, int hash_list_scan_y
 	{
 	  return HASH_METH_NOT_USE;
 	}
-      if (vtype1 != vtype2)
+      /* a probe key without a domain before its rows gives the build keys no domain to hash in */
+      if (!qdata_hscan_key_probe_has_domain (vd, &probe->value))
+	{
+	  return HASH_METH_NOT_USE;
+	}
+      /* the key plan (qdata_plan_hscan_keys) decides whether a pair hashes differently: types that differ, a domain
+       * not fixed yet, NUMERIC precisions and scales */
+      if (vtype1 != vtype2 || vtype1 == DB_TYPE_VARIABLE || vtype1 == DB_TYPE_NUMERIC)
 	{
 	  llsidp->hlsid.need_coerce_type = true;
 	}
