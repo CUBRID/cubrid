@@ -263,7 +263,11 @@ qexec_hash_join (THREAD_ENTRY * thread_p, XASL_NODE * xasl, QUERY_ID query_id, V
 
       qfile_destroy_list (thread_p, xasl->list_id);	/* may be unnecessary */
       assert (!XASL_IS_FLAGED (xasl, XASL_TOP_MOST_XASL) || QFILE_LIST_IS_BACKWARD (single_context->list_id));
-      qfile_copy_list_id (xasl->list_id, single_context->list_id, false, QFILE_MOVE_DEPENDENT);
+      error = qfile_copy_list_id (xasl->list_id, single_context->list_id, false, QFILE_MOVE_DEPENDENT);
+      if (error != NO_ERROR)
+	{
+	  goto error_exit;
+	}
       QFILE_FREE_AND_INIT_LIST_ID (single_context->list_id);
 
       ASSERT_NO_ERROR_OR_INTERRUPTED ();
@@ -1761,7 +1765,12 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	  else
 	    {
 	      qfile_destroy_list (thread_p, part_list_id[part_id]);
-	      qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false, QFILE_PROHIBIT_DEPENDENT);
+	      error =
+		qfile_copy_list_id (part_list_id[part_id], temp_part_list_id[part_id], false, QFILE_PROHIBIT_DEPENDENT);
+	      if (error != NO_ERROR)
+		{
+		  break;
+		}
 	      QFILE_FREE_AND_INIT_LIST_ID (temp_part_list_id[part_id]);
 	    }
 	}
@@ -1835,8 +1844,12 @@ hjoin_split_qlist (THREAD_ENTRY * thread_p, HASHJOIN_MANAGER * manager, HASHJOIN
 	      else
 		{
 		  qfile_destroy_list (thread_p, part_list_id[part_index]);
-		  qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false,
-				      QFILE_PROHIBIT_DEPENDENT);
+		  error = qfile_copy_list_id (part_list_id[part_index], temp_part_list_id[part_index], false,
+					      QFILE_PROHIBIT_DEPENDENT);
+		  if (error != NO_ERROR)
+		    {
+		      break;
+		    }
 		}
 	    }
 	  else

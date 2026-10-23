@@ -4639,10 +4639,9 @@ qdata_number_as_double (DB_VALUE * value, double *d)
 }
 
 /*
- * qdata_number_numeric () - the NUMERIC of a NUMERIC with an integer or another NUMERIC: two NUMERICs by the float
- *   NUMERIC operations; a NUMERIC with an integer by the NUMERIC operations over the integer coerced to NUMERIC
- *   (qdata_coerce_dbval_to_numeric), the addition taking the coerced integer first and the others their operands in
- *   order, as the typed operators did
+ * qdata_number_numeric () - the NUMERIC of a NUMERIC with an integer or another NUMERIC, by the float NUMERIC
+ *   operations: a NUMERIC with an integer over the integer coerced to NUMERIC (qdata_coerce_dbval_to_numeric), the
+ *   addition taking the coerced integer first and the others their operands in order, as the typed operators did
  *   return: NO_ERROR, or the operator's overflow error
  */
 static int
@@ -4687,18 +4686,18 @@ qdata_number_numeric (OPERATOR_TYPE opcode, DB_VALUE * value1, DB_VALUE * value2
       switch (opcode)
 	{
 	case T_ADD:
-	  error = numeric_db_value_add (&coerced, numeric, result_p);
+	  error = float_numeric_db_value_add (&coerced, numeric, result_p);
 	  break;
 	case T_SUB:
-	  error = numeric_first ? numeric_db_value_sub (value1, &coerced, result_p)
-	    : numeric_db_value_sub (&coerced, value2, result_p);
+	  error = numeric_first ? float_numeric_db_value_sub (value1, &coerced, result_p)
+	    : float_numeric_db_value_sub (&coerced, value2, result_p);
 	  break;
 	case T_MUL:
-	  error = numeric_db_value_mul (numeric, &coerced, result_p);
+	  error = float_numeric_db_value_mul (numeric, &coerced, result_p);
 	  break;
 	default:
-	  error = numeric_first ? numeric_db_value_div (value1, &coerced, result_p)
-	    : numeric_db_value_div (&coerced, value2, result_p);
+	  error = numeric_first ? float_numeric_db_value_div (value1, &coerced, result_p)
+	    : float_numeric_db_value_div (&coerced, value2, result_p);
 	  break;
 	}
     }

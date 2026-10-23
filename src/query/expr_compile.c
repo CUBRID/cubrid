@@ -60,6 +60,24 @@
 
 #define EXPR_MAX_STEPS 128	/* a list needing more is left to the interpreted path */
 
+/* A node this deep in one program is compiled as a program of its own behind one step, before any table can run
+ * out: a deep chain then costs one compile per EXPR_NEST_DEPTH levels instead of a rewind and recompile of its whole
+ * subtree at every level where a table runs out (CBRD-27661: "1 + (2 + (3 + ...))" 399 levels deep took 312 s and was
+ * declined; now each level compiles once).  32 keeps a chain inside the 128-entry tables with room to spare: a level
+ * emits at most three steps (two operand coercions and the operator) and one guard (a lazy right-hand side), so 32
+ * levels take at most 96 steps and 32 guards, plus the leaves and literals the chain reads.  The nested program
+ * counts its depth from zero, so the next 32 levels nest again inside it.
+ * Only a node compiled under a guard (bctx->cur_guard != 0) nests here.  A guard is open for an arithmetic
+ * node's right-hand operand -- expr_rhs_begin () runs before the operand compiles, lazy or not -- and for both
+ * operands of a scan-filter leaf (EXPR_GUARD_SCAN_SIDE).  The right-deep chain is the one that overflows the guard
+ * table on the way down and recompiles its subtree at every level.  A chain deep on the left ("((a + 1) + 2) + 3
+ * ...") in an output list opens no guard; its steps fill the step table on the way up, where the overflow fallback
+ * nests the subtree once per 64 levels, so nesting it at 32 would only double the per-row nested-program dispatch
+ * (measured +17% on a 128-level left chain) for nothing.  The same left chain inside a WHERE filter is compiled
+ * under the scan-side guard and does nest at 32; there the overflow fallback was nesting it already, and the fixed
+ * depth needs one nested program fewer. */
+#define EXPR_NEST_DEPTH 32
+
 /* how often the value in a cell can change (EXPR_BUILD_CTX.cell_fixed) */
 #define EXPR_CELL_ROW 0		/* per row */
 #define EXPR_CELL_LITERAL 1	/* never: a literal or computed from literals only */
@@ -202,7 +220,8 @@ struct expr_build_ctx
   bool full;			/* a table (steps, cells, guards) ran out: the node being compiled becomes a nested
 				 * program behind one step (expr_compile_node) */
   int force_nest_depth;		/* > 0: every arithmetic node at this depth is compiled as a nested program outright --
-				 * the retry of a nested program whose root overflowed its own table (expr_node_compile) */
+				 * the retry of a nested program whose root overflowed its own table (expr_node_compile).
+				 * Independent of EXPR_NEST_DEPTH, which nests every program's nodes at a fixed depth. */
 
   int n_slots;			/* slots are materialized after counting */
 
@@ -560,17 +579,9 @@ expr_k_mul_double (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 
 /* ---- NUMERIC ----
  *
- * The interpreted helpers pick DIFFERENT numeric implementations by operand mix:
- * a pure NUMERIC x NUMERIC pair goes through the float_numeric_db_value_* family,
- * while a pair with a coerced SHORT/INTEGER/BIGINT side goes through the plain
- * numeric_db_value_* family -- multiplication included: qdata_multiply_numeric ()
- * coerces the integer side to NUMERIC and calls the plain numeric_db_value_mul (),
- * only the NUMERIC x NUMERIC case of qdata_multiply_numeric_to_dbval () is float.
- * The kernels stay exact mirrors because the two families produce different result
- * scales (visible in division) and the plain family rejects a raw integer operand. */
-
-/* The operand mix decides the family once, at compile time, so each family gets its own
- * kernel instead of a per-row test on step->aux. */
+ * The interpreted helper (qdata_number_numeric ()) runs every NUMERIC pair through the
+ * float_numeric_db_value_* family, a SHORT/INTEGER/BIGINT side coerced to NUMERIC first
+ * (expr_k_coerce_numeric), so one kernel per operator mirrors it. */
 #define EXPR_NUMERIC_BINOP_KERNEL(name, call, err) \
 static int \
 name (EXPR_STEP * step, EXPR_EVAL_CTX * ctx) \
@@ -586,15 +597,9 @@ name (EXPR_STEP * step, EXPR_EVAL_CTX * ctx) \
 }
 
 EXPR_NUMERIC_BINOP_KERNEL (expr_k_add_numeric_float, float_numeric_db_value_add, ER_QPROC_OVERFLOW_ADDITION)
-EXPR_NUMERIC_BINOP_KERNEL (expr_k_add_numeric_plain, numeric_db_value_add, ER_QPROC_OVERFLOW_ADDITION)
 EXPR_NUMERIC_BINOP_KERNEL (expr_k_sub_numeric_float, float_numeric_db_value_sub, ER_QPROC_OVERFLOW_SUBTRACTION)
-EXPR_NUMERIC_BINOP_KERNEL (expr_k_sub_numeric_plain, numeric_db_value_sub, ER_QPROC_OVERFLOW_SUBTRACTION)
-/* a mixed pair (one side coerced from SHORT/INTEGER/BIGINT): the plain call, as in
- * qdata_multiply_numeric () */
-  EXPR_NUMERIC_BINOP_KERNEL (expr_k_mul_numeric_plain, numeric_db_value_mul, ER_QPROC_OVERFLOW_MULTIPLICATION)
-/* the pure NUMERIC x NUMERIC pair: the float call of qdata_multiply_numeric_to_dbval (); the
- * fixed64 entry handles the single-word common case bit-identically and declines everything
- * else back to the reference */
+/* the float call of qdata_number_numeric (); the fixed64 entry handles the single-word
+ * common case bit-identically and declines everything else back to the reference */
      static int expr_k_mul_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
 {
   EXPR_ARITH_PROLOGUE (a, b);
@@ -627,7 +632,6 @@ name (EXPR_STEP * step, EXPR_EVAL_CTX * ctx) \
 }
 
 EXPR_NUMERIC_DIV_KERNEL (expr_k_div_numeric_float, float_numeric_db_value_div)
-EXPR_NUMERIC_DIV_KERNEL (expr_k_div_numeric_plain, numeric_db_value_div)
 /* coerce one side to NUMERIC (the mirror of qdata_add_numeric's tmp coercion).  The result
  * is a NUMERIC, which lives inside the DB_VALUE, so the slot needs no per-row clear. */
      static int expr_k_coerce_numeric (EXPR_STEP * step, EXPR_EVAL_CTX * ctx)
@@ -2322,39 +2326,36 @@ enum expr_arith_op
 { EXPR_OP_ADD = 0, EXPR_OP_SUB, EXPR_OP_MUL, EXPR_OP_DIV, EXPR_OP_COUNT };
 enum expr_arith_type
 { EXPR_AT_INTEGER = 0, EXPR_AT_BIGINT, EXPR_AT_DOUBLE, EXPR_AT_NUMERIC, EXPR_AT_COUNT };
-enum expr_arith_mix
-{ EXPR_MIX_SAME = 0, EXPR_MIX_NUMERIC_INT, EXPR_MIX_COUNT };
-
-/* row = operator, column = result type, depth = operand mix */
-static const EXPR_KERNEL_FN expr_Arith_kernels[EXPR_OP_COUNT][EXPR_AT_COUNT][EXPR_MIX_COUNT] = {
+/* row = operator, column = result type */
+static const EXPR_KERNEL_FN expr_Arith_kernels[EXPR_OP_COUNT][EXPR_AT_COUNT] = {
   /* T_ADD */
   {
-   /* INTEGER */ {expr_k_add_int, NULL},
-   /* BIGINT  */ {expr_k_add_bigint, NULL},
-   /* DOUBLE  */ {expr_k_add_double, NULL},
-   /* NUMERIC */ {expr_k_add_numeric_float, expr_k_add_numeric_plain},
+   /* INTEGER */ expr_k_add_int,
+   /* BIGINT  */ expr_k_add_bigint,
+   /* DOUBLE  */ expr_k_add_double,
+   /* NUMERIC */ expr_k_add_numeric_float,
    },
   /* T_SUB */
   {
-   /* INTEGER */ {expr_k_sub_int, NULL},
-   /* BIGINT  */ {expr_k_sub_bigint, NULL},
-   /* DOUBLE  */ {expr_k_sub_double, NULL},
-   /* NUMERIC */ {expr_k_sub_numeric_float, expr_k_sub_numeric_plain},
+   /* INTEGER */ expr_k_sub_int,
+   /* BIGINT  */ expr_k_sub_bigint,
+   /* DOUBLE  */ expr_k_sub_double,
+   /* NUMERIC */ expr_k_sub_numeric_float,
    },
   /* T_MUL */
   {
-   /* INTEGER */ {expr_k_mul_int, NULL},
-   /* BIGINT  */ {expr_k_mul_bigint, NULL},
-   /* DOUBLE  */ {expr_k_mul_double, NULL},
-   /* NUMERIC */ {expr_k_mul_numeric, expr_k_mul_numeric_plain},
+   /* INTEGER */ expr_k_mul_int,
+   /* BIGINT  */ expr_k_mul_bigint,
+   /* DOUBLE  */ expr_k_mul_double,
+   /* NUMERIC */ expr_k_mul_numeric,
    },
   /* T_DIV */
   {
-   /* INTEGER */ {expr_k_div_int, NULL},
-   /* BIGINT  */ {expr_k_div_bigint, NULL},
+   /* INTEGER */ expr_k_div_int,
+   /* BIGINT  */ expr_k_div_bigint,
    /* DOUBLE: no kernel -- the overflow-check gating of a double division differs, keep interpreted */
-   {NULL, NULL},
-   /* NUMERIC */ {expr_k_div_numeric_float, expr_k_div_numeric_plain},
+   NULL,
+   /* NUMERIC */ expr_k_div_numeric_float,
    },
 };
 
@@ -2396,9 +2397,9 @@ expr_arith_type_index (DB_TYPE type)
     }
 }
 
-/* the arithmetic kernel for (opcode, result type, operand mix) -- a table cell; NULL when unsupported */
+/* the arithmetic kernel for (opcode, result type) -- a table cell; NULL when unsupported */
 static EXPR_KERNEL_FN
-expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type, bool numeric_pure)
+expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type)
 {
   const int op = expr_arith_op_index (opcode);
   const int at = expr_arith_type_index (type);
@@ -2407,8 +2408,7 @@ expr_arith_kernel (OPERATOR_TYPE opcode, DB_TYPE type, bool numeric_pure)
     {
       return NULL;
     }
-  /* a NUMERIC result over an integer side takes the coercing kernel; every other result type has one mix */
-  return expr_Arith_kernels[op][at][(at == EXPR_AT_NUMERIC && !numeric_pure) ? EXPR_MIX_NUMERIC_INT : EXPR_MIX_SAME];
+  return expr_Arith_kernels[op][at];
 }
 
 /******************************************************************************
@@ -4713,9 +4713,12 @@ expr_compile_node (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * compiled_
       bctx->depth_max = bctx->depth;
     }
   expr_build_mark (bctx, &mark);
-  if (bctx->force_nest_depth > 0 && bctx->depth == bctx->force_nest_depth)
+  if ((bctx->force_nest_depth > 0 && bctx->depth == bctx->force_nest_depth)
+      || (bctx->depth == EXPR_NEST_DEPTH && bctx->cur_guard != 0))
     {
-      /* the retry of an overflowing nested root: its operands go behind one step each */
+      /* this subtree goes behind one step as a program of its own: an operand of an overflowing nested root on its
+       * retry (force_nest_depth), or a node at EXPR_NEST_DEPTH compiled under a guard (a right-hand operand or a
+       * scan-filter operand -- see EXPR_NEST_DEPTH) */
       cell = expr_compile_nested (bctx, regu, compiled_something);
     }
   else
@@ -6021,10 +6024,8 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	    return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	  }
 
-	/* which NUMERIC family the kernel belongs to depends on the operand mix decided
-	 * below; probe here only to reject an unsupported (opcode, kernel type) pair before
-	 * compiling the operands */
-	if (expr_arith_kernel (arith->opcode, ktype, true) == NULL)
+	/* reject an unsupported (opcode, kernel type) pair before compiling the operands */
+	if (expr_arith_kernel (arith->opcode, ktype) == NULL)
 	  {
 	    return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 	  }
@@ -6041,12 +6042,12 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 	 * coercion step (mirror of the qdata tmp coercion) -- NUMERIC only; other mixes are
 	 * left to the interpreted path.  Only a SHORT/INTEGER/BIGINT side may mix with
 	 * NUMERIC (float/double operands take the double path in the interpreted helpers).
-	 * Every operator coerces the integer side, multiplication included
-	 * (qdata_multiply_numeric ()); the mix is decided here, before any step is emitted. */
+	 * Every operator coerces the integer side (qdata_number_numeric ()), decided here,
+	 * before any step is emitted. */
 	{
 	  DB_TYPE t1 = expr_node_type (bctx, arith->leftptr);
 	  DB_TYPE t2 = expr_node_type (bctx, arith->rightptr);
-	  bool numeric_pure = false, lazy;
+	  bool lazy;
 	  int r_start, r_cse, r_nodes, guard, saved_guard;
 
 	  if (ktype == DB_TYPE_NUMERIC)
@@ -6056,7 +6057,6 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 		{
 		  return expr_compile_generic (bctx, regu, exec_domain, compiled_something);
 		}
-	      numeric_pure = (t1 == DB_TYPE_NUMERIC && t2 == DB_TYPE_NUMERIC);
 	    }
 	  else if (t1 != ktype || t2 != ktype)
 	    {
@@ -6138,8 +6138,7 @@ expr_compile_node_impl (EXPR_BUILD_CTX * bctx, REGU_VARIABLE * regu, bool * comp
 		}
 	      cell = -1;
 	    }
-	  /* the operand mix is known now: bind the family-specific kernel */
-	  kernel = expr_arith_kernel (arith->opcode, ktype, numeric_pure);
+	  kernel = expr_arith_kernel (arith->opcode, ktype);
 	  step = expr_new_step_with_cell (bctx, kernel, &cell);
 	  if (step == NULL)
 	    {
@@ -6981,15 +6980,9 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     {
     expr_k_add_numeric_float, "add_numeric"},
     {
-    expr_k_add_numeric_plain, "add_numeric*"},
-    {
     expr_k_sub_numeric_float, "sub_numeric"},
     {
-    expr_k_sub_numeric_plain, "sub_numeric*"},
-    {
     expr_k_mul_numeric, "mul_numeric"},
-    {
-    expr_k_mul_numeric_plain, "mul_numeric*"},
     {
     expr_k_jump_null_arith, "jump_null"},
     {
@@ -6998,8 +6991,6 @@ expr_kernel_name (EXPR_KERNEL_FN kernel)
     expr_k_jump_notnull_nvl, "jump_notnull"},
     {
     expr_k_div_numeric_float, "div_numeric"},
-    {
-    expr_k_div_numeric_plain, "div_numeric*"},
     {
     expr_k_coerce_numeric, "coerce_numeric"},
     {

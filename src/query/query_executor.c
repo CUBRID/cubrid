@@ -5041,7 +5041,12 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
       tsc_getticks (&end_tick);
       tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
       TSC_ADD_TIMEVAL (xasl->groupby_stats.groupby_time, tv_diff);
-      xasl->groupby_stats.groupby_hash = context->state;
+      /* the label only moves HS_NONE -> HS_ACCEPT_ALL -> HS_REJECT_ALL: a context that gave up hashing, such as a
+       * worker of an earlier parallel pass, keeps the GROUP BY partial */
+      if (context->state > xasl->groupby_stats.groupby_hash)
+	{
+	  xasl->groupby_stats.groupby_hash = context->state;
+	}
     }
 
   /* all ok */
@@ -8007,7 +8012,12 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 	  /* no tuples hash aggregated and empty unsorted list; no reason to continue */
 	  qfile_destroy_list (thread_p, list_id);
 	  qfile_close_list (thread_p, gbstate.output_file);
-	  qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+	  if (qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	    {
+	      qfile_destroy_list (thread_p, gbstate.output_file);
+	      gbstate.state = ER_FAILED;
+	      GOTO_EXIT_ON_ERROR;
+	    }
 	  qexec_clear_groupby_state (thread_p, &gbstate);
 
 	  return NO_ERROR;
@@ -8053,7 +8063,12 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
 	  /* output generated; finalize */
 	  qfile_destroy_list (thread_p, list_id);
 	  qfile_close_list (thread_p, gbstate.output_file);
-	  qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+	  if (qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	    {
+	      qfile_destroy_list (thread_p, gbstate.output_file);
+	      gbstate.state = ER_FAILED;
+	      GOTO_EXIT_ON_ERROR;
+	    }
 
 	  goto wrapup;
 	}
@@ -8141,7 +8156,6 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       SORT_LISTFILE_PX_ARG part_px;
       part_px.key_info = &gbstate.agg_hash_context->sort_key;
       part_px.input_list = gbstate.agg_hash_context->part_list_id;
-      part_px.hash_eligible = 0;
       part_px.stats = &xasl->groupby_stats;
       part_px.parallelism = xasl->parallelism;
 
@@ -8233,7 +8247,6 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
   SORT_LISTFILE_PX_ARG gby_px;
   gby_px.key_info = &gbstate.key_info;
   gby_px.input_list = list_id;
-  gby_px.hash_eligible = (gbstate.hash_eligible && gbstate.agg_hash_context->state != HS_REJECT_ALL);
   gby_px.stats = &xasl->groupby_stats;
   gby_px.parallelism = xasl->parallelism;
 
@@ -8267,7 +8280,12 @@ qexec_groupby (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_stat
       VPID_SET_NULL (&(gbstate.fixed_vpid));
     }
   qfile_destroy_list (thread_p, list_id);
-  qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+  if (qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+    {
+      qfile_destroy_list (thread_p, gbstate.output_file);
+      gbstate.state = ER_FAILED;
+      GOTO_EXIT_ON_ERROR;
+    }
   /* qexec_clear_groupby_state() will free gbstate.output_file */
 
 wrapup:
@@ -9808,7 +9826,13 @@ qexec_merge_listfiles (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * x
     }
 
   /* make this the resultant list file */
-  qfile_copy_list_id (xasl->list_id, list_id, true, QFILE_PROHIBIT_DEPENDENT);
+  if (qfile_copy_list_id (xasl->list_id, list_id, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+    {
+      qfile_close_list (thread_p, list_id);
+      qfile_destroy_list (thread_p, list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (list_id);
+      GOTO_EXIT_ON_ERROR;
+    }
   QFILE_FREE_AND_INIT_LIST_ID (list_id);
 
   return NO_ERROR;
@@ -10309,7 +10333,10 @@ qexec_open_scan (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * curr_spec, VAL_LIST
       *p_mvcc_select_lock_needed = mvcc_select_lock_needed;
     }
 
-  if (scan_op_type == S_SELECT && curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->pruned)
+  /* pruning can leave no partition (k = some {98, 99}): the scan then stays on the root class, which a select finds
+   * empty, so an outer join still emits its NULL rows; qexec_init_next_partition would return S_END */
+  if (scan_op_type == S_SELECT && curr_spec->pruning_type == DB_PARTITIONED_CLASS && curr_spec->pruned
+      && curr_spec->parts != NULL)
     {
       error_code = qexec_init_next_partition (thread_p, curr_spec, xasl);
       if (error_code != S_SUCCESS)
@@ -10536,35 +10563,53 @@ qexec_next_scan_block (THREAD_ENTRY * thread_p, XASL_NODE * xasl)
 	  && xasl->curr_spec->parts != NULL && xasl->curr_spec->curent == NULL
 	  && xasl->curr_spec->access != ACCESS_METHOD_INDEX_NODE_INFO)
 	{
-	  /* initialize the scan_id for partitioned classes */
-	  if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL
-	      || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
+	  if (xasl->curr_spec->s_id.scan_op_type == S_SELECT)
 	    {
-	      class_oid = &xasl->curr_spec->s_id.s.hsid.cls_oid;
-	      class_hfid = &xasl->curr_spec->s_id.s.hsid.hfid;
-	    }
-	  else if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
-	    {
-	      class_oid = &xasl->curr_spec->s_id.s.hpsid.cls_oid;
-	      class_hfid = &xasl->curr_spec->s_id.s.hpsid.hfid;
-	    }
-	  else if (xasl->curr_spec->access == ACCESS_METHOD_INDEX
-		   || xasl->curr_spec->access == ACCESS_METHOD_INDEX_KEY_INFO)
-	    {
-	      class_oid = &xasl->curr_spec->s_id.s.isid.cls_oid;
-	      class_hfid = &xasl->curr_spec->s_id.s.isid.hfid;
+	      /* qexec_open_scan starts a select on its first partition, and the block iterator may close it there:
+	       * restart on the first partition, since a root block would keep that partition's btid and read it twice */
+	      if (qexec_init_next_partition (thread_p, xasl->curr_spec, xasl) != S_SUCCESS)
+		{
+		  ASSERT_ERROR ();
+		  return S_ERROR;
+		}
 	    }
 	  else
 	    {
-	      assert (false);
-	      return S_ERROR;
+	      /* other scans start on the root class, as qexec_open_scan opened them: its heap can still hold rows
+	       * that ALTER ... PARTITION BY moves into the partitions */
+	      if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL
+		  || xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_RECORD_INFO)
+		{
+		  class_oid = &xasl->curr_spec->s_id.s.hsid.cls_oid;
+		  class_hfid = &xasl->curr_spec->s_id.s.hsid.hfid;
+		}
+	      else if (xasl->curr_spec->access == ACCESS_METHOD_SEQUENTIAL_PAGE_SCAN)
+		{
+		  class_oid = &xasl->curr_spec->s_id.s.hpsid.cls_oid;
+		  class_hfid = &xasl->curr_spec->s_id.s.hpsid.hfid;
+		}
+	      else if (xasl->curr_spec->access == ACCESS_METHOD_INDEX
+		       || xasl->curr_spec->access == ACCESS_METHOD_INDEX_KEY_INFO)
+		{
+		  class_oid = &xasl->curr_spec->s_id.s.isid.cls_oid;
+		  class_hfid = &xasl->curr_spec->s_id.s.isid.hfid;
+		}
+	      else
+		{
+		  assert (false);
+		  return S_ERROR;
+		}
+
+	      COPY_OID (class_oid, &ACCESS_SPEC_CLS_OID (xasl->curr_spec));
+	      HFID_COPY (class_hfid, &ACCESS_SPEC_HFID (xasl->curr_spec));
+
+	      if (scan_start_scan (thread_p, &xasl->curr_spec->s_id) != NO_ERROR)
+		{
+		  return S_ERROR;
+		}
 	    }
-
-	  COPY_OID (class_oid, &ACCESS_SPEC_CLS_OID (xasl->curr_spec));
-	  HFID_COPY (class_hfid, &ACCESS_SPEC_HFID (xasl->curr_spec));
 	}
-
-      if (scan_start_scan (thread_p, &xasl->curr_spec->s_id) != NO_ERROR)
+      else if (scan_start_scan (thread_p, &xasl->curr_spec->s_id) != NO_ERROR)
 	{
 	  return S_ERROR;
 	}
@@ -19103,7 +19148,8 @@ static int
 qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * xasl_state)
 {
   REGU_VARIABLE *key_limit_l;
-  DB_VALUE dbval;
+  DB_BIGINT lower = 0;
+  bool is_null = false;
   int error = NO_ERROR;
 
   assert (xasl && xasl->instnum_val);
@@ -19121,20 +19167,23 @@ qexec_init_instnum_val (XASL_NODE * xasl, THREAD_ENTRY * thread_p, XASL_STATE * 
     {
       key_limit_l = xasl->spec_list->indexptr->key_info.key_limit_l;
 
-      error = fetch_and_coerce_key_limit_lower (thread_p, key_limit_l, &xasl_state->vd, &dbval);
+      error = fetch_key_limits (thread_p, key_limit_l, NULL, &xasl_state->vd, &lower, NULL, &is_null);
       if (error != NO_ERROR)
 	{
 	  goto exit_on_error;
 	}
 
-      if (pr_clone_value (&dbval, xasl->instnum_val) != NO_ERROR)
+      /* a negative or NULL lower bound skips no keys, so start the counter at 0 */
+      if (is_null || lower < 0)
 	{
-	  goto exit_on_error;
+	  lower = 0;
 	}
 
-      if (xasl->save_instnum_val && pr_clone_value (&dbval, xasl->save_instnum_val) != NO_ERROR)
+      db_make_bigint (xasl->instnum_val, lower);
+
+      if (xasl->save_instnum_val)
 	{
-	  goto exit_on_error;
+	  db_make_bigint (xasl->save_instnum_val, lower);
 	}
     }
 
@@ -22678,7 +22727,7 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 	      && qfile_copy_list_id (non_recursive_part->list_id, recursive_part->list_id, true,
 				     QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
 	    {
-	      QFILE_FREE_AND_INIT_LIST_ID (non_recursive_part->list_id);
+	      /* the list id is part of the XASL tree, and the failed copy left it empty */
 	      GOTO_EXIT_ON_ERROR;
 	    }
 	  qfile_clear_list_id (recursive_part->list_id);
@@ -22710,10 +22759,12 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
 
       /* copy all results back to non_recursive_part list id; other CTEs from the same WITH clause have access only to
        * non_recursive_part; see how pt_to_cte_table_spec_list works for interdependent CTEs.
+       * Both list ids stay readable, and a parallel list scan finds the pages of the dependent lists only through
+       * the list id it reads, so each keeps its own copy of them.
        */
-      if (qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true, QFILE_MOVE_DEPENDENT) != NO_ERROR)
+      if (qfile_copy_list_id (non_recursive_part->list_id, xasl->list_id, true, QFILE_COPY_DEPENDENT) != NO_ERROR)
 	{
-	  QFILE_FREE_AND_INIT_LIST_ID (non_recursive_part->list_id);
+	  /* the list id is part of the XASL tree, and the failed copy left it empty */
 	  GOTO_EXIT_ON_ERROR;
 	}
 
@@ -22725,12 +22776,13 @@ qexec_execute_cte (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_
     }
   /* copy list id from non-recursive part to CTE XASL (even if no tuples are in non recursive part) to get domain types
    * into CTE xasl's main list (this also executes if we have a recursive part but no tuples in non recursive part
-   * (no results at all)
+   * (no results at all). Another CTE of the same WITH clause still reads non_recursive_part, so it keeps the
+   * dependent lists too (see above).
    */
   else if (qexec_assert_result_list_backward (xasl, non_recursive_part->list_id),	/* debug check, then copy */
-	   qfile_copy_list_id (xasl->list_id, non_recursive_part->list_id, true, QFILE_MOVE_DEPENDENT) != NO_ERROR)
+	   qfile_copy_list_id (xasl->list_id, non_recursive_part->list_id, true, QFILE_COPY_DEPENDENT) != NO_ERROR)
     {
-      QFILE_FREE_AND_INIT_LIST_ID (xasl->list_id);
+      /* the list id is part of the XASL tree, and the failed copy left it empty */
       GOTO_EXIT_ON_ERROR;
     }
 
@@ -22753,6 +22805,13 @@ exit_on_error:
   if (recursive_part != NULL)
     {
       recursive_part->max_iterations = -1;
+    }
+
+  if (t_list_id)
+    {
+      qfile_close_list (thread_p, t_list_id);
+      qfile_destroy_list (thread_p, t_list_id);
+      QFILE_FREE_AND_INIT_LIST_ID (t_list_id);
     }
 
   xasl->status = XASL_FAILURE;
@@ -25149,7 +25208,12 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
       /* empty unsorted list file, no need to proceed */
       qfile_destroy_list (thread_p, list_id);
       qfile_close_list (thread_p, gbstate.output_file);
-      qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+      if (qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	{
+	  qfile_destroy_list (thread_p, gbstate.output_file);
+	  gbstate.state = ER_FAILED;
+	  GOTO_EXIT_ON_ERROR;
+	}
       qexec_clear_groupby_state (thread_p, &gbstate);	/* will free gbstate.output_file */
 
       return NO_ERROR;
@@ -25289,7 +25353,12 @@ qexec_groupby_index (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xas
       gbstate.input_scan = NULL;
     }
   qfile_destroy_list (thread_p, list_id);
-  qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+  if (qfile_copy_list_id (list_id, gbstate.output_file, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+    {
+      qfile_destroy_list (thread_p, gbstate.output_file);
+      gbstate.state = ER_FAILED;
+      GOTO_EXIT_ON_ERROR;
+    }
 
   if (XASL_IS_FLAGED (xasl, XASL_IS_MERGE_QUERY) && list_id->tuple_cnt != tuple_cnt)
     {
@@ -25587,6 +25656,9 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   ANALYTIC_STATS *new_stat = NULL;
   SORT_LIST *sort_list = analytic_eval->sort_list;	/* the sort list the functions run with */
   ANALYTIC_STATE *initialized;
+  /* The limit optimization computes the analytic values during the scan, like the index order skip does,
+   * so the sort is unnecessary. The final output list still has to be applied to the intermediate file. */
+  bool skip_sort = is_skip_sort || XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT);
 
   on_trace = thread_is_on_trace (thread_p);
   if (on_trace)
@@ -25647,12 +25719,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
       GOTO_EXIT_ON_ERROR;
     }
 
-  if (XASL_IS_FLAGED (xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
-    {
-      analytic_state.state = NO_ERROR;
-      goto wrapup;
-    }
-
   if (analytic_state.is_last_run)
     {
       if (xasl->instnum_val != NULL)
@@ -25668,7 +25734,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
     QFILE_LIST_ID *interm_list_id;
     QFILE_LIST_ID *output_list_id;
 
-    if (is_skip_sort)
+    if (skip_sort)
       {
 	analytic_state.interm_file = list_id;
       }
@@ -25760,7 +25826,7 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
    * Now load up the sort module and set it off...
    */
 
-  if (is_skip_sort)
+  if (skip_sort)
     {
       if (qexec_analytic_update_group_result (thread_p, &analytic_state) != NO_ERROR)
 	{
@@ -25780,7 +25846,6 @@ qexec_execute_analytic (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
   SORT_LISTFILE_PX_ARG anl_px;
   anl_px.key_info = &analytic_state.key_info;
   anl_px.input_list = list_id;
-  anl_px.hash_eligible = 0;	/* GROUP_BY only; never skip ANALYTIC parallelism on this account */
   anl_px.stats = new_stat;	/* may be NULL when not tracing */
   anl_px.parallelism = xasl->parallelism;
 
@@ -25883,7 +25948,11 @@ wrapup:
 	  /* replace current input with output */
 	  qfile_close_list (thread_p, analytic_state.output_file);
 	  qfile_destroy_list (thread_p, list_id);
-	  qfile_copy_list_id (list_id, analytic_state.output_file, true, QFILE_PROHIBIT_DEPENDENT);
+	  if (qfile_copy_list_id (list_id, analytic_state.output_file, true, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+	    {
+	      qfile_destroy_list (thread_p, analytic_state.output_file);
+	      GOTO_EXIT_ON_ERROR;
+	    }
 
 	  qfile_free_list_id (analytic_state.output_file);
 	  analytic_state.output_file = NULL;
@@ -26633,6 +26702,13 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
   /* by default, it's an output record */
   analytic_state->is_output_rec = true;
 
+  if (XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_USES_LIMIT_OPT))
+    {
+      /* the scan evaluated inst_num () for every row it wrote to the intermediate file; evaluating it
+       * again here would apply the predicate a second time and drop rows */
+      return NO_ERROR;
+    }
+
   if (!analytic_state->is_last_run
       || (analytic_state->xasl->instnum_pred == NULL && !(instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)))
     {
@@ -26654,9 +26730,11 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
 	  instnum_stage = ANALYTIC_GROUP_PROC;
 	}
 
-      if (instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
+      if ((instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
+	  && !XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_SKIP_SORT))
 	{
-	  /* we're selecting INST_NUM() so we must evaluate it when writing the output file */
+	  /* we're selecting INST_NUM() so we must evaluate it when writing the output file. Without the sort, the output
+	   * file is written by qexec_analytic_update_group_result () at ANALYTIC_INTERM_PROC */
 	  instnum_stage = ANALYTIC_GROUP_PROC;
 	}
     }
@@ -28135,9 +28213,10 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	  bool is_same_group = true;
 	  for (sort_list_idx = 0; sort_list_idx < a_func_list->sort_list_size; sort_list_idx++)
 	    {
+	      /* total order: NULL keys are equal and form one group, as they do after the sort */
 	      if (tp_value_compare
 		  (&a_eval_list->current_values[sort_list_idx], &a_eval_list->temp_values[sort_list_idx], 1,
-		   0) != DB_EQ)
+		   1) != DB_EQ)
 		{
 		  is_same_group = (sort_list_idx >= a_func_list->sort_prefix_size);
 		  break;
@@ -32289,9 +32368,12 @@ qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, XASL_NODE * xa
       return ER_FAILED;
     }
 
+  if (qfile_copy_list_id (xasl->list_id, list_id, false, QFILE_PROHIBIT_DEPENDENT) != NO_ERROR)
+    {
+      xasl->status = XASL_FAILURE;
+      return ER_FAILED;
+    }
   xasl->status = XASL_SUCCESS;
-
-  qfile_copy_list_id (xasl->list_id, list_id, false, QFILE_PROHIBIT_DEPENDENT);
 
   /* for checking the cached list file */
   xasl->list_id->is_result_cached = true;

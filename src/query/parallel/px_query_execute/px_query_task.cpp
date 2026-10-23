@@ -145,6 +145,16 @@ namespace parallel_query_execute
     err_code = new_xasl_state == nullptr ? ER_OUT_OF_VIRTUAL_MEMORY
 	       : qexec_execute_mainblock (cur_thread_p, xasl, new_xasl_state, NULL);
 
+    if (err_code == NO_ERROR && xasl->list_id && xasl->list_id->type_list.type_cnt > 0)
+      {
+	err_code = qfile_copy_list_id (&list_id, xasl->list_id, true, QFILE_MOVE_DEPENDENT);
+	if (err_code == NO_ERROR)
+	  {
+	    is_list_id_exists = true;
+	    qfile_clear_list_id (xasl->list_id);
+	  }
+      }
+
     /* check error */
     if (err_code != NO_ERROR)
       {
@@ -197,12 +207,6 @@ namespace parallel_query_execute
 	logtb_set_tran_index_interrupt (cur_thread_p, cur_thread_p->tran_index, true);
       }
     /* clear contextual data */
-    if (xasl->list_id && xasl->list_id->type_list.type_cnt > 0)
-      {
-	qfile_copy_list_id (&list_id, xasl->list_id, true, QFILE_MOVE_DEPENDENT);
-	is_list_id_exists = true;
-	qfile_clear_list_id (xasl->list_id);
-      }
 #if !defined(NDEBUG)
     er_log_debug (ARG_FILE_LINE, "thread %8ld clears xasl : %p",
 		  syscall (SYS_gettid), xasl);
@@ -210,8 +214,8 @@ namespace parallel_query_execute
     (void) qexec_clear_xasl_for_parallel_aptr (cur_thread_p, xasl, true);
     if (is_list_id_exists)
       {
-	qfile_copy_list_id (xasl->list_id,&list_id, true, QFILE_MOVE_DEPENDENT);
-	qfile_clear_list_id (&list_id);
+	/* Transfer the saved descriptor back without allocating after error handling. */
+	*xasl->list_id = list_id;
       }
     /* restore original values */
     if (collect_stats)
