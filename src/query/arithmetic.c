@@ -4412,6 +4412,11 @@ db_typeof_dbval (DB_VALUE * result, DB_VALUE * value)
 			value->domain.numeric_info.scale);
 	    }
 	}
+      else if (value->domain.char_info.length == TP_FLOATING_PRECISION_VALUE)
+	{
+	  /* CBRD-27583: a bind at a value-typed position compiles as the floating BIT, as a NUMERIC bind does */
+	  snprintf (buf, 128, "%s", type_name);
+	}
       else
 	{
 	  snprintf (buf, 128, "%s (%d)", type_name, value->domain.char_info.length);

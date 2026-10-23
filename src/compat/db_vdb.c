@@ -2765,7 +2765,9 @@ db_needs_bind_signature_plan (const DB_SESSION * session)
   for (int i = 0; i < session->dimension; i++)
     {
       const PT_NODE *statement = session->statements[i];
-      if (statement == NULL || statement->flag.cannot_prepare || session->stage[i] < StatementPreparedStage)
+      /* the statements after stmt_ndx are not compiled yet (ux_execute_all compiles each before executing it) */
+      if (statement == NULL || statement->flag.cannot_prepare
+	  || (i < session->stmt_ndx && session->stage[i] < StatementPreparedStage))
 	{
 	  return false;
 	}
@@ -2850,7 +2852,8 @@ db_swap_compilation (DB_SESSION * a, DB_SESSION * b)
   std::swap (a->type_list, b->type_list);
   std::swap (a->stage, b->stage);
   std::swap (a->dimension, b->dimension);
-  std::swap (a->stmt_ndx, b->stmt_ndx);
+  /* stmt_ndx stays: it is the driver's progress through the statements (the CAS compiles each one just before it
+   * executes it), not the compilation's; a compilation swapped in has every statement compiled already */
   std::swap (a->include_oid, b->include_oid);
 }
 
@@ -3145,6 +3148,15 @@ db_execute_and_keep_statement_local (DB_SESSION * session, int stmt_ndx, DB_QUER
     {
       pt_report_to_ersys (session->parser, PT_SEMANTIC);
       return er_errid ();
+    }
+  if (session->stage[stmt_ndx] == StatementPreparedStage && statement->xasl_id == NULL
+      && !session->is_subsession_for_prepared && session->kept_stmt_name == NULL && db_is_plan_statement (statement)
+      && db_has_untyped_host_var (session->parser))
+    {
+      /* CBRD-27583: compiled without values and no execution compiled the plan of its bind type signature
+       * (db_push_values): refused here rather than run without a plan */
+      er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_UCI_TOO_FEW_HOST_VARS, 0);
+      return ER_UCI_TOO_FEW_HOST_VARS;
     }
 
   if (db_compiles_at_execution (session, stmt_ndx))
