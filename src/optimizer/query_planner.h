@@ -242,8 +242,21 @@ struct qo_plan
   bool use_iscan_descending;
   bool need_final_sort;
 
-  /* Guessed result cardinality for NL join when LIMIT is present (3+ tables); used for cost and dump */
+  /* Rows this NL join is expected to emit under LIMIT: the LIMIT itself, or fewer when the outer runs out
+   * first. Used as the next join level's driving row count and for the plan dump. */
   double limit_nljoin_guessed_card;
+  double iscan_index_rows;	/* index-condition-only rows per probe (before non-index filters); set by
+				   qo_iscan_cost, consumed by qo_nljoin_cost for the repeated-probe N */
+  double iscan_heap_io;		/* heap-page share of variable_io_cost per probe (0 for covering scans);
+				   set by qo_iscan_cost. qo_nljoin_cost saturates only this share with the
+				   repeated-probe (Mackert-Lohman) correction -- the correction models heap
+				   re-fetches, so the per-probe leaf/ISS charges must survive it */
+  double iscan_descent_cpu;	/* per-probe root-to-leaf descent cpu (key compares + page steps);
+				   set by qo_iscan_cost, consumed only by qo_nljoin_cost on the inner side.
+				   Kept out of variable_cpu_cost: the driving side of a join and a standalone
+				   scan descend once per execution, and charging them per row taxed index
+				   scans with no qo_sscan_cost counterpart (broke exact plan ties on tiny
+				   and statistics-less tables) */
 };
 
 #define qo_plan_add_ref(p)	((p->refcount)++, (p))
@@ -330,7 +343,9 @@ struct qo_info
   double scan_rows;		/* Number of rows required for scanning */
   double total_rows;		/* Number of rows excluding search conditions */
   double group_rows;		/* Number of rows expected after grouping */
-  double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost */
+  double hit_prob;		/* Hit probability for NL join: B's hit_prob = NDV(B.key)/NDV(A.key); used like fanout in cost;
+				 * for semi/anti, the share of outer rows the join emits,
+				 * so the LIMIT estimate can tell how many outer rows to read for LIMIT rows */
 
   /*
    * One plan for each equivalence class, in each case the best we have
@@ -462,5 +477,18 @@ extern PT_NODE *qo_plan_compute_iscan_sort_list (QO_PLAN * root, PT_NODE * group
 extern PRED_CLASS qo_classify (PT_NODE * node);
 
 extern QO_PLAN_PARALLEL_OPT_USE qo_check_hjoin_for_parallel_opt (QO_PLAN * plan);
+
+extern PT_JOIN_TYPE qo_plan_semi_anti_join_type (QO_PLAN * plan);
+extern bool qo_nl_inner_memoize_is_useless (QO_PLAN * outer, QO_PLAN * inner, BITSET * key_terms);
+
+/* selectivity of one between-range operator straight from the column histogram, with no
+ * QO_ENV around it. Shared with the bind-value plan watch (histogram_cl.cpp), which prices the
+ * same range terms outside the optimizer and must not drift from what the optimizer charged. */
+extern bool qo_between_range_histogram_selectivity (PT_NODE * lhs, PT_OP_TYPE op_type, DB_VALUE * arg1_val,
+						    DB_VALUE * arg2_val, double *out_sel);
+
+/* fold the shape of a plan (types, join order and methods, scans and their indexes; no costs)
+ * into a running signature: equal for two compiles that chose the same plan */
+extern UINT64 qo_plan_signature (QO_PLAN * plan, UINT64 sig);
 
 #endif /* _QUERY_PLANNER_H_ */

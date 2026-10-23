@@ -22,6 +22,8 @@
 
 #include "px_scan_trace_handler.hpp"
 #include "perf_monitor.h"
+#include "query_dump.h"
+#include "system_parameter.h"
 #include "tsc_timer.h"
 #include "xasl_iteration.hpp"
 
@@ -57,17 +59,48 @@ namespace parallel_scan
     m_stats.push_back (cs);
   }
 
+  trace_handler::~trace_handler ()
+  {
+    free (m_px_stats);
+  }
+
+  void trace_handler::add_px_stats (const UINT64 *worker_stats)
+  {
+    std::lock_guard<std::mutex> lock (m_stats_mutex);
+
+    if (m_px_stats == nullptr)
+      {
+	m_px_stats = (UINT64 *) calloc (perfmon_get_number_of_statistic_values (), sizeof (UINT64));
+	if (m_px_stats == nullptr)
+	  {
+	    /* statistics only: the query goes on without this worker's counters */
+	    return;
+	  }
+      }
+    perfmon_merge_values (m_px_stats, worker_stats);
+  }
+
   void trace_handler::merge_stats (THREAD_ENTRY *thread_p, SCAN_STATS *scan_stats)
   {
     std::lock_guard<std::mutex> lock (m_stats_mutex);
+
+    if (m_merged)
+      {
+	return;
+      }
+    m_merged = true;
+
+    /* Everything the workers counted (page fixes, SP calls, ...) goes to the leader's own counters while the
+     * leader is still inside qexec_execute_query (), so its xasl stats, func stats and the transaction's
+     * statistics include the workers' share. Zeroed after merging so a re-opened scan (the next partition)
+     * merges only its own. */
+    if (m_px_stats != nullptr)
+      {
+	perfmon_add_values_to_local (thread_p, m_px_stats);
+	memset (m_px_stats, 0, perfmon_get_number_of_statistic_values () * sizeof (UINT64));
+      }
     for (auto &stat : m_stats)
       {
-	perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
-					stat.fetch_time);
-	perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
-					stat.ioreads);
-	perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
-					stat.fetches);
 	scan_stats->read_rows += stat.read_rows;
 	scan_stats->qualified_rows += stat.qualified_rows;
 	scan_stats->num_ioreads += stat.ioreads;
@@ -84,10 +117,59 @@ namespace parallel_scan
       }
   }
 
+  void trace_handler::add_expr_compile_dump (xasl_node *xasl)
+  {
+    char *buf = nullptr;
+    size_t len = 0;
+    FILE *fp;
+
+    /* Only for a session that shows its plans in detail (;plan detail, the worker inherits the
+     * flag with on_trace), never in the default trace.  Two reasons.  The serial section already says whether this plan compiled, so a
+     * worker clone repeating it is noise.  And what a worker has to report depends on how far it
+     * got: the first worker to finalize claims this slot, and one that finished before its
+     * aggregate operands were compiled reports fewer sections than one that ran rows.  That makes
+     * the default trace differ between runs of the same statement, which a test answer cannot
+     * carry. */
+    if (!thread_get_thread_entry_info ()->trace_plan_detail)
+      {
+	return;
+      }
+
+    {
+      std::lock_guard<std::mutex> lock (m_stats_mutex);
+      if (!m_expr_compile_dump.empty ())
+	{
+	  return;
+	}
+    }
+    /* rendered with indent 0; the scan's dump re-indents every line under its own entry */
+    fp = open_memstream (&buf, &len);
+    if (fp == nullptr)
+      {
+	return;
+      }
+    qdump_print_expr_compile_text (fp, xasl, 0, " [px worker]");
+    fclose (fp);
+    if (buf != nullptr)
+      {
+	if (len > 0)
+	  {
+	    std::lock_guard<std::mutex> lock (m_stats_mutex);
+	    if (m_expr_compile_dump.empty ())
+	      {
+		m_expr_compile_dump.assign (buf, len);
+	      }
+	  }
+	free (buf);
+      }
+  }
+
   void trace_handler::clear()
   {
     std::lock_guard<std::mutex> lock (m_stats_mutex);
     m_stats.clear();
+    m_expr_compile_dump.clear();
+    m_merged = false;
     m_topnsort_used.store (false, std::memory_order_relaxed);   // per-reopen reset, matches m_stats.clear()
   }
 
@@ -95,6 +177,10 @@ namespace parallel_scan
   {
     // accumulative m_topnsort_used: no in-place reset; storage freed+realloc'd per top-level exec in qexec_clear_access_spec_list. worker per-reopen reset = trace_handler::clear().
     m_topnsort_used = m_topnsort_used || trace_handler.is_topnsort_used();
+    if (m_expr_compile_dump.empty ())
+      {
+	m_expr_compile_dump = trace_handler.m_expr_compile_dump;
+      }
     if (!m_is_initialized)
       {
 	m_stats.resize (trace_handler.m_stats.size());
@@ -306,9 +392,20 @@ namespace parallel_scan
 	fprintf (fp, ", gather: %s", result_type_str);
 	fprintf (fp, ")");
       }
+
+    /* the compiled expression programs of the worker clones, one line at a time under the
+     * same indent as the parallel line above (the listing was rendered with indent 0) */
+    for (size_t pos = 0; pos < m_expr_compile_dump.size ();)
+      {
+	size_t nl = m_expr_compile_dump.find ('\n', pos);
+	size_t end = (nl == std::string::npos) ? m_expr_compile_dump.size () : nl;
+
+	fprintf (fp, "\n%*c%.*s", indent, ' ', (int) (end - pos), m_expr_compile_dump.c_str () + pos);
+	pos = end + 1;
+      }
   }
 
-  void accumulative_trace_storage::dump_stats_json (json_t *scan, char *class_name)
+  void accumulative_trace_storage::dump_stats_json (trace_json_t *scan, char *class_name)
   {
     int parallel_workers = m_stats.size();
     const char *result_type_str = m_result_type == RESULT_TYPE::MERGEABLE_LIST ? "mergeable list" :
@@ -318,29 +415,29 @@ namespace parallel_scan
 				  m_scan_type == SCAN_TYPE::LIST ? "parallel temp" : "parallel heap";
     if (m_stats.empty())
       {
-	json_t *parallel_obj;
+	trace_json_t *parallel_obj;
 	if (m_scan_type == SCAN_TYPE::INDEX)
 	  {
-	    parallel_obj = json_pack ("{s:I, s:s, s:s, s:s, s:s, s:s}",
-				      "parallel_workers", (json_int_t) 0,
-				      "time", "0..0",
-				      "readkeys", "0..0",
-				      "filteredkeys", "0..0",
-				      "rows", "0..0",
-				      "gather", result_type_str);
-	    json_t *lookup_obj = json_pack ("{s:s, s:s}", "time", "0..0", "rows", "0..0");
-	    json_object_set_new (parallel_obj, "lookup", lookup_obj);
+	    parallel_obj = trace_json_pack ("{s:I, s:s, s:s, s:s, s:s, s:s}",
+					    "parallel_workers", (trace_json_int_t) 0,
+					    "time", "0..0",
+					    "readkeys", "0..0",
+					    "filteredkeys", "0..0",
+					    "rows", "0..0",
+					    "gather", result_type_str);
+	    trace_json_t *lookup_obj = trace_json_pack ("{s:s, s:s}", "time", "0..0", "rows", "0..0");
+	    trace_json_object_set_new (parallel_obj, "lookup", lookup_obj);
 	  }
 	else
 	  {
-	    parallel_obj = json_pack ("{s:I, s:s, s:s, s:s, s:s}",
-				      "parallel_workers", (json_int_t) 0,
-				      "time", "0..0",
-				      "readrows", "0..0",
-				      "rows", "0..0",
-				      "gather", result_type_str);
+	    parallel_obj = trace_json_pack ("{s:I, s:s, s:s, s:s, s:s}",
+					    "parallel_workers", (trace_json_int_t) 0,
+					    "time", "0..0",
+					    "readrows", "0..0",
+					    "rows", "0..0",
+					    "gather", result_type_str);
 	  }
-	json_object_set_new (scan, scan_type_label, parallel_obj);
+	trace_json_object_set_new (scan, scan_type_label, parallel_obj);
 	return;
       }
     UINT64 min_elapsed_scan = std::numeric_limits<UINT64>::max();
@@ -386,23 +483,23 @@ namespace parallel_scan
       }
     char time_buf[64];
     snprintf (time_buf, sizeof (time_buf), "%lu..%lu", min_elapsed_scan, max_elapsed_scan);
-    json_t *parallel_obj;
+    trace_json_t *parallel_obj;
     if (m_scan_type == SCAN_TYPE::INDEX)
       {
 	char readkeys_buf[64], filteredkeys_buf[64], rows_buf[64];
 	snprintf (readkeys_buf, sizeof (readkeys_buf), "%lu..%lu", min_read_keys, max_read_keys);
 	snprintf (filteredkeys_buf, sizeof (filteredkeys_buf), "%lu..%lu", min_qualified_keys, max_qualified_keys);
 	snprintf (rows_buf, sizeof (rows_buf), "%lu..%lu", min_key_qualified_rows, max_key_qualified_rows);
-	parallel_obj = json_pack ("{s:I, s:s, s:s, s:s, s:s, s:s}",
-				  "parallel_workers", parallel_workers,
-				  "time", time_buf,
-				  "readkeys", readkeys_buf,
-				  "filteredkeys", filteredkeys_buf,
-				  "rows", rows_buf,
-				  "gather", result_type_str);
+	parallel_obj = trace_json_pack ("{s:I, s:s, s:s, s:s, s:s, s:s}",
+					"parallel_workers", (trace_json_int_t) parallel_workers,
+					"time", time_buf,
+					"readkeys", readkeys_buf,
+					"filteredkeys", filteredkeys_buf,
+					"rows", rows_buf,
+					"gather", result_type_str);
 	if (any_covered)
 	  {
-	    json_object_set_new (parallel_obj, "covered", json_true ());
+	    trace_json_object_set_new (parallel_obj, "covered", trace_json_true ());
 	  }
 	else
 	  {
@@ -410,28 +507,28 @@ namespace parallel_scan
 	    snprintf (lookup_time_buf, sizeof (lookup_time_buf), "%lu..%lu", min_lookup, max_lookup);
 	    snprintf (lookup_rows_buf, sizeof (lookup_rows_buf), "%lu..%lu",
 		      min_data_qualified_rows, max_data_qualified_rows);
-	    json_t *lookup_obj = json_pack ("{s:s, s:s}", "time", lookup_time_buf, "rows", lookup_rows_buf);
-	    json_object_set_new (parallel_obj, "lookup", lookup_obj);
+	    trace_json_t *lookup_obj = trace_json_pack ("{s:s, s:s}", "time", lookup_time_buf, "rows", lookup_rows_buf);
+	    trace_json_object_set_new (parallel_obj, "lookup", lookup_obj);
 	  }
 	if (any_count_only)
 	  {
-	    json_object_set_new (parallel_obj, "count_only", json_true ());
+	    trace_json_object_set_new (parallel_obj, "count_only", trace_json_true ());
 	  }
 	if (any_mro)
 	  {
-	    json_object_set_new (parallel_obj, "mro", json_true ());
+	    trace_json_object_set_new (parallel_obj, "mro", trace_json_true ());
 	  }
 	if (any_iss)
 	  {
-	    json_object_set_new (parallel_obj, "iss", json_true ());
+	    trace_json_object_set_new (parallel_obj, "iss", trace_json_true ());
 	  }
 	if (any_lis)
 	  {
-	    json_object_set_new (parallel_obj, "loose", json_true ());
+	    trace_json_object_set_new (parallel_obj, "loose", trace_json_true ());
 	  }
 	if (m_topnsort_used)
 	  {
-	    json_object_set_new (parallel_obj, "topnsort", json_true ());
+	    trace_json_object_set_new (parallel_obj, "topnsort", trace_json_true ());
 	  }
       }
     else
@@ -439,18 +536,22 @@ namespace parallel_scan
 	char readrows_buf[64], rows_buf[64];
 	snprintf (readrows_buf, sizeof (readrows_buf), "%lu..%lu", min_read_rows, max_read_rows);
 	snprintf (rows_buf, sizeof (rows_buf), "%lu..%lu", min_qualified_rows, max_qualified_rows);
-	parallel_obj = json_pack ("{s:I, s:s, s:s, s:s, s:s}",
-				  "parallel_workers", parallel_workers,
-				  "time", time_buf,
-				  "readrows", readrows_buf,
-				  "rows", rows_buf,
-				  "gather", result_type_str);
+	parallel_obj = trace_json_pack ("{s:I, s:s, s:s, s:s, s:s}",
+					"parallel_workers", (trace_json_int_t) parallel_workers,
+					"time", time_buf,
+					"readrows", readrows_buf,
+					"rows", rows_buf,
+					"gather", result_type_str);
 	if (m_topnsort_used)
 	  {
-	    json_object_set_new (parallel_obj, "topnsort", json_true ());
+	    trace_json_object_set_new (parallel_obj, "topnsort", trace_json_true ());
 	  }
       }
-    json_object_set_new (scan, scan_type_label, parallel_obj);
+    if (!m_expr_compile_dump.empty ())
+      {
+	trace_json_object_set_new (parallel_obj, "expr_compile", trace_json_string (m_expr_compile_dump.c_str ()));
+      }
+    trace_json_object_set_new (scan, scan_type_label, parallel_obj);
   }
 
   void trace_storage_for_sibling_xasl::set_main_xasl_tree (xasl_node *xasl_tree)

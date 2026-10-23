@@ -32,6 +32,7 @@
 #include "porting.h"        // for pthread_mutex_t, drand48_data
 #include "system.h"         // for UINTPTR, INT64, HL_HEAPID
 
+#include <memory>
 #include <atomic>
 #include <thread>
 
@@ -39,6 +40,11 @@
 
 // forward definitions
 
+// from concurrency_slot.hpp
+namespace cubthread
+{
+  class concurrency_slot;
+};
 // from connection_defs.h
 struct css_conn_entry;
 // from connection_defs.h
@@ -107,6 +113,7 @@ struct event_stat
   struct timeval cs_waits;
   struct timeval lock_waits;
   struct timeval latch_waits;
+  struct timeval slot_waits;
 
   /* volume expand stats */
   struct timeval extend_time;
@@ -164,7 +171,9 @@ enum thread_resume_suspend_status
   THREAD_ALLOC_BCB_RESUMED = 22,
   THREAD_DWB_QUEUE_SUSPENDED = 23,
   THREAD_DWB_QUEUE_RESUMED = 24,
-  THREAD_SLEEP_FUNC_SUSPENDED = 25
+  THREAD_SLEEP_FUNC_SUSPENDED = 25,
+  THREAD_CONCURRENCY_SLOT_SUSPENDED = 26,
+  THREAD_CONCURRENCY_SLOT_RESUMED = 27,
 };
 
 namespace cubthread
@@ -231,6 +240,8 @@ namespace cubthread
       unsigned int rid;		/* request id which this thread is processing */
       status m_status;			/* thread status */
 
+      /* both m_core_mutex and th_entry_lock can be held simultaneously. */
+      /* to avoid deadlocks, you must follow a consistent locking order; th_entry_lock should be acquired first. */
       pthread_mutex_t th_entry_lock;	/* latch for this thread entry */
       pthread_cond_t wakeup_cond;	/* wakeup condition */
 
@@ -252,6 +263,11 @@ namespace cubthread
       bool interrupted;		/* is this request/transaction interrupted ? */
       std::atomic_bool shutdown;		/* is server going down? */
       bool check_interrupt;		/* check_interrupt == false, during fl_alloc* function call. */
+      int wait_msecs_override;	/* lock and page latch waiting time of this thread alone, or LK_WAIT_NOT_OVERRIDDEN
+				 * to wait as its transaction does. a task changes it through
+				 * logtb_set_thread_wait_msecs () and restores it before it ends; the constructor and
+				 * entry_manager (recycle_context, retire_context) reset it. see
+				 * logtb_set_thread_wait_msecs () for why this lives here and not in LOG_TDES. */
       bool wait_for_latch_promote;	/* this thread is waiting for latch promotion */
       entry *next_wait_thrd;
 
@@ -265,6 +281,7 @@ namespace cubthread
 
       struct log_zip *log_zip_undo;
       struct log_zip *log_zip_redo;
+      struct log_zip *log_unzip_undo;	/* reader side: decompressing an undo image back out */
       char *log_data_ptr;
       int log_data_length;
 
@@ -282,6 +299,7 @@ namespace cubthread
       int trace_format;
       bool on_trace;
       bool clear_trace;
+      bool trace_plan_detail;	/* XASL_TRACE_PLAN_DETAIL: the trace shows the compiled expression programs */
 
       /* for lock free structures */
       lf_tran_entry *tran_entries[THREAD_TS_COUNT];
@@ -289,6 +307,7 @@ namespace cubthread
       /* for supplemental log */
       bool no_supplemental_log;
       bool trigger_involved;
+      bool serial_restart;	/* the object being forced restarts a serial; see LC_FLAG_SERIAL_RESTART */
       bool is_cdc_daemon;
 
       /* support multi-process unloaddb
@@ -321,6 +340,10 @@ namespace cubthread
       /* UUIDv7 per-thread state for monotonic generation */
       uint64_t uuidv7_last_ms;        /* last used millisecond timestamp */
       uint8_t uuidv7_seq;            /* sequence counter within same millisecond (GUID_V7_SEQ_BITS : 8 bits) */
+#if defined (SERVER_MODE)
+      /* concurrency slot held by the entry; only set for workers from an elastic worker pool */
+      std::unique_ptr<cubthread::concurrency_slot> m_slot;
+#endif
 
       thread_id_t get_id ();
       pthread_t get_posix_id ();
@@ -375,6 +398,11 @@ namespace cubthread
       void assign_lf_tran_index (lockfree::tran::index idx);
       lockfree::tran::index pull_lf_tran_index ();
       lockfree::tran::index get_lf_tran_index ();
+
+#if defined (SERVER_MODE)
+      void start_waiting ();
+      void stop_waiting ();
+#endif
 
     private:
       void clear_resources (void);

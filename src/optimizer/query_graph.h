@@ -423,11 +423,17 @@ struct qo_node
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER)
 
+#define QO_NODE_IS_SEMI_ANTI_JOIN(node) \
+  (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_SEMI       || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_ANTI)
+
 #define QO_NODE_IS_ANSI_JOIN(node) \
   (QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_LEFT_OUTER  || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_RIGHT_OUTER || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_FULL_OUTER  || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_NATURAL     || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_SEMI         || \
+   QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_ANTI         || \
    QO_NODE_PT_JOIN_TYPE(node) == PT_JOIN_INNER)
 
 #define QO_ADD_OUTER_DEP_SET(tail,head) \
@@ -756,6 +762,8 @@ struct qo_term
 #define QO_TERM_SEL_FROM_HISTOGRAM  1024	/* selectivity computed from histograms only */
 #define QO_TERM_LIKE_DERIVED_RANGE  2048	/* range term derived from a prefix LIKE */
 #define QO_TERM_LIKE_HAS_DERIVED_RANGE 4096	/* the prefix LIKE a range was derived from */
+#define QO_TERM_OR_DERIVED          8192	/* single-spec restriction derived from a multi-spec OR factor */
+#define QO_TERM_OR_DERIVED_EXPENSIVE 16384	/* OR-derived restriction too costly to keep as a plain data filter */
 
 #define QO_TERM_IS_FLAGED(t, f)        (QO_TERM_FLAG(t) & (int) (f))
 #define QO_TERM_SET_FLAG(t, f)         QO_TERM_FLAG(t) |= (int) (f)
@@ -850,6 +858,31 @@ typedef enum
   QO_SL_POSSIBLE		/* All conditions for the SORT-LIMIT plans are met but user did not supply a valid
 				 * limit */
 } QO_SORT_LIMIT_USE;
+
+struct qo_fk_join_info
+{
+  /*
+   * One composite FK constraint whose join selectivity should be floored to
+   * 1 / (pk_node's cardinality) instead of the product of its column
+   * selectivities. There is one entry per FK constraint, not per node pair,
+   * since the same two nodes can be linked by more than one FK constraint.
+   */
+
+  /* the two nodes this constraint joins */
+  QO_NODE *fk_node;
+  QO_NODE *pk_node;
+
+  /* precomputed 1 / QO_NODE_NCARD(pk_node) */
+  double floor_selectivity;
+
+  /* this constraint's own fk_node-side segment and equivalence class, per column */
+  QO_SEGMENT **fk_col_segs;
+  QO_EQCLASS **col_eqclasses;
+
+  /* number of entries in fk_col_segs and col_eqclasses */
+  int n_cols;
+};
+typedef struct qo_fk_join_info QO_FK_JOIN_INFO;
 
 struct qo_env
 {
@@ -974,6 +1007,10 @@ struct qo_env
   /* histogram provenance scratch for the term whose selectivity is being computed */
   bool sel_hist_used;
   bool sel_hist_fallback;
+
+  /* composite FK constraints eligible for the join selectivity floor; see qo_fk_join_info */
+  QO_FK_JOIN_INFO *fk_join_info;
+  int n_fk_join_info;
 };
 
 #define QO_ENV_SEG(env, n)		(&(env)->segs[(n)])

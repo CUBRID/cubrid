@@ -24,6 +24,7 @@
 
 #include <mutex>
 
+#include "log_impl.h"		/* LOG_FIND_CURRENT_TDES, log_tdes::is_under_sysop */
 #include "system.h"		/* UINT32, UINT64 */
 #include "system_parameter.h"	/* sysprm_get_range, PRM_ID_PARALLELISM */
 #include "thread_manager.hpp"	/* cubthread::system_core_count */
@@ -33,6 +34,29 @@
 
 namespace parallel_query
 {
+  /*
+   * is_under_system_operation () - is the calling transaction inside a system operation?
+   *   return: true if a system operation is open on the current thread's transaction
+   *
+   * A system operation (log_sysop_start) holds the transaction's rmutex_topop, which is re-entrant only for the
+   * owning thread. Every parallel worker runs on the leader's transaction index, so a worker that needs a system
+   * operation of its own (e.g. creating a temporary file when the temp file cache is empty: file_create ->
+   * disk_reserve_sectors -> log_sysop_start) blocks on that mutex forever while the leader waits for the worker.
+   * MERGE opens its statement-level system operation before executing its sub-SELECTs (CBRD-27492); the same risk
+   * exists for any other context that would spawn workers while a system operation is open. The check therefore
+   * gates compute_parallel_degree (sort, hash join, heap/list scan, subquery, statistics scans) rather than one
+   * executor site; the parallel index scan, whose degree comes from the optimizer, calls it directly.
+   *
+   * topops.last is read without synchronization: the caller is either the leader itself (exact) or a worker of a
+   * leader that keeps its system operation open until all workers finish (stable while the worker runs).
+   */
+  bool is_under_system_operation () noexcept
+  {
+    LOG_TDES *tdes = LOG_FIND_CURRENT_TDES ();
+
+    return tdes != NULL && tdes->is_under_sysop ();
+  }
+
   UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages, int hint_degree) noexcept
   {
     static std::once_flag once;
@@ -61,15 +85,17 @@ namespace parallel_query
     UINT32 degree;
     const UINT32 start_degree = 2;
 
-    /* CBRD-27071: the no-logging index build must still reach degree 2 on a two-core host, so INDEX_BUILD is
-     * excluded from this gate; its own case below disables itself when the derived degree falls below
-     * start_degree. */
-    if (type != parallel_type::INDEX_BUILD && system_core_count <= start_degree)
+    if (system_core_count <= start_degree)
       {
 	return 0;	/* disable */
       }
 
     assert (hint_degree == -1 /* auto-compute */ || (hint_degree >= 0 && hint_degree <= PRM_MAX_PARALLELISM));
+
+    if (is_under_system_operation ())
+      {
+	return 0;	/* disable: workers sharing this transaction would deadlock on its system operation (CBRD-27492) */
+      }
 
     switch (type)
       {
@@ -111,19 +137,6 @@ namespace parallel_query
 	  }
 	}	/* case parallel_type::SUBQUERY */
 
-      case parallel_type::INDEX_BUILD:
-	/* Only the no-logging index build (loaddb --no-logging-index) uses this type: it runs on a table that
-	 * loaddb owns, so it takes every core it can instead of following a page threshold and the parallelism
-	 * parameter (an ordinary CREATE INDEX keeps using parallel_type::SORT for that reason). Its degree is the
-	 * number of system cores (hyperthreads included), capped by the maximum supported parallelism and lowered
-	 * to the number of work units given in num_pages (data sectors of the scanned heap; each worker needs at
-	 * least one to produce a run). The hint is not used. */
-	assert (hint_degree == -1);
-	auto_degree = (UINT32) system_core_count;
-	auto_degree = MIN (auto_degree, (UINT32) PRM_MAX_PARALLELISM);
-	auto_degree = (UINT32) MIN ((UINT64) auto_degree, num_pages);
-	return (auto_degree < start_degree) ? 0 : auto_degree;
-
       default:
 	/* impossible case */
 	assert_release_error (false);
@@ -145,7 +158,8 @@ namespace parallel_query
       }
     else if ((UINT32) hint_degree >= start_degree)
       {
-	hint_degree = MIN (hint_degree, system_core_count);
+	/* reached only from the "hint_degree >= 0" branch above, so the unsigned cast cannot wrap */
+	hint_degree = (int) MIN ((std::size_t) hint_degree, system_core_count);
 
 	/* hint first, ignore the parallelism parameter */
 	if (num_pages < (UINT64) hint_degree)

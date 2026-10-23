@@ -32,9 +32,12 @@ namespace parallel_query
     HASH_JOIN = 1,
     SORT      = 2,
     SUBQUERY  = 3,
-    INDEX_BUILD = 4,	/* no-logging (loaddb) index build; an ordinary CREATE INDEX uses SORT */
   };
 
   UINT32 compute_parallel_degree (parallel_type type, UINT64 num_pages,
 				  int hint_degree = -1 /* auto-compute */ ) noexcept;
+
+  /* true when the current thread's transaction is inside a system operation; no worker sharing the transaction
+   * may be started then (CBRD-27492). compute_parallel_degree () already applies it. */
+  bool is_under_system_operation () noexcept;
 }				/* namespace parallel_query */

@@ -45,7 +45,7 @@
 #include "misctype_def.h"
 
 // forward definitions
-struct json_t;
+struct trace_json_t;
 
 #define MAX_PRINT_ERROR_CONTEXT_LENGTH 64
 
@@ -497,6 +497,13 @@ struct json_t;
 
 #define PT_SET_VALUE_QUERY(n) \
           ((n)->flag.is_value_query = 1)
+
+/* the cast the semantic check keeps over an untyped NULL to give a set operation or VALUES column the type of the
+ * other rows; the column keeps the name the NULL gave it */
+#define PT_IS_CAST_OF_UNTYPED_NULL(n) \
+          ((n)->node_type == PT_EXPR && (n)->info.expr.op == PT_CAST \
+           && PT_EXPR_INFO_IS_FLAGED ((n), PT_EXPR_INFO_CAST_SHOULD_FOLD) && (n)->flag.do_not_fold \
+           && (n)->info.expr.arg1 != NULL && (n)->info.expr.arg1->type_enum == PT_TYPE_NULL)
 
 #define PT_IS_ORDER_DEPENDENT(n) \
         ( (n) ? \
@@ -1205,7 +1212,9 @@ typedef enum
   PT_JOIN_LEFT_OUTER = 0x08,	/* 0000 1000 */
   PT_JOIN_RIGHT_OUTER = 0x10,	/* 0001 0000 */
   PT_JOIN_FULL_OUTER = 0x20,	/* 0010 0000 -- not used */
-  PT_JOIN_UNION = 0x40		/* 0100 0000 -- not used */
+  PT_JOIN_UNION = 0x40,		/* 0100 0000 -- not used */
+  PT_JOIN_SEMI = 0x80,		/* 1000 0000 -- first-match, single-fetch inner */
+  PT_JOIN_ANTI = 0x100		/* 1 0000 0000 -- zero-match */
 } PT_JOIN_TYPE;
 
 typedef UINT64 PT_HINT_ENUM;
@@ -1246,7 +1255,7 @@ typedef UINT64 PT_HINT_ENUM;
 #define  PT_HINT_NO_PUSH_PRED			(1ULL << 33)	/* do not push predicates */
 #define  PT_HINT_NO_MERGE			(1ULL << 34)	/* do not merge view or in-line view */
 #define  PT_HINT_NO_ELIMINATE_JOIN		(1ULL << 35)	/* do not eliminate join */
-/* (1ULL << 36) was PT_HINT_SAMPLING_SCAN, removed with the query-based statistics sampling path */
+#define  PT_HINT_NO_UNNEST			(1ULL << 36)	/* do not unnest a subquery into a SEMI / ANTI JOIN */
 #define  PT_HINT_LEADING			(1ULL << 37)	/* force specific table to join left-to-right */
 #define  PT_HINT_NO_SUBQUERY_CACHE		(1ULL << 38)	/* don't use the subquery result cache */
 #define  PT_HINT_NO_USE_HASH			(1ULL << 39)	/* disable hash-join */
@@ -1317,6 +1326,7 @@ typedef enum
   PT_RENAME_INDEX,
 #endif
   PT_REBUILD_INDEX,
+  PT_COMPACT_INDEX,
   PT_ADD_INDEX_CLAUSE,
   PT_CHANGE_TABLE_COMMENT,
   PT_CHANGE_COLUMN_COMMENT,
@@ -1627,11 +1637,18 @@ typedef enum
  * Type definitions
  */
 
+typedef struct parser_string_block PARSER_STRING_BLOCK;	/* defined in parse_tree.c */
+
 typedef struct parser_varchar PARSER_VARCHAR;
 
 typedef struct parser_context PARSER_CONTEXT;
 
 typedef struct parser_node PT_NODE;
+
+/* node-cardinality watch state of a statement, defined in histogram_cl.hpp; the parse tree only
+ * carries the pointer (allocated with parser_alloc (), so it lives and dies with the parser). */
+struct bind_watch_state;
+typedef struct bind_watch_state BIND_WATCH_STATE;
 typedef struct pt_alter_info PT_ALTER_INFO;
 typedef struct pt_alter_user_info PT_ALTER_USER_INFO;
 typedef struct pt_alter_trigger_info PT_ALTER_TRIGGER_INFO;
@@ -2044,7 +2061,7 @@ struct pt_index_info
   bool unique;			/* UNIQUE specified? */
   SM_INDEX_STATUS index_status;	/* Index status : NORMAL / ONLINE / INVISIBLE */
   int ib_threads;
-  short deduplicate_level;	/* -1: Not set yet, 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
+  int fill_factor;		/* ALTER INDEX ... COMPACT [WITH FILL_FACTOR = n]: target overflow page fill ratio (%) */
 };
 
 /* CREATE USER INFO */
@@ -2183,8 +2200,8 @@ struct pt_delete_info
   PT_NODE *use_hash_hint;	/* USE_HASH hint's arguments (PT_NAME list) */
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *del_stmt_list;	/* list of DELETE statements after split */
-  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
-				 * (see pt_query_info.bind_fp); 0 = not recorded yet */
+  BIND_WATCH_STATE *bind_watch;	/* bind-value watch state (see pt_query_info.bind_watch) */
+  const char *bind_variant_key;	/* plan variant key (see pt_query_info.bind_variant_key) */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
@@ -2363,6 +2380,13 @@ struct pt_expr_info
 #define PT_EXPR_INFO_LIKE_DERIVED_RANGE 4194304	/* 0x400000, range derived from a prefix LIKE; excluded from row-count selectivity */
 #define PT_EXPR_INFO_LIKE_HAS_DERIVED_RANGE 8388608	/* 0x800000, the prefix LIKE a range was derived from; the pair
 							 * of PT_EXPR_INFO_LIKE_DERIVED_RANGE */
+#define PT_EXPR_INFO_OR_DERIVED 16777216	/* 0x1000000, single-spec restriction derived from a multi-spec OR
+						 * factor; implied by that factor, so excluded from row-count
+						 * selectivity */
+#define PT_EXPR_INFO_OR_DERIVED_EXPENSIVE 33554432	/* 0x2000000, an OR-derived restriction with a conjunct costlier
+							 * than a column-vs-constant compare; kept only when an index
+							 * adopts it */
+#define PT_EXPR_INFO_ANTI_JOIN_ON 67108864	/* 0x4000000, term in an ANTI JOIN ON condition */
   int flag;			/* flags */
 #define PT_EXPR_INFO_IS_FLAGED(e, f)    ((e)->info.expr.flag & (int) (f))
 #define PT_EXPR_INFO_SET_FLAG(e, f)     (e)->info.expr.flag |= (int) (f)
@@ -2657,6 +2681,10 @@ extern PT_RESERVED_NAME pt_Reserved_name_table[];
       break;						      \
     default:						      \
       assert (0);					      \
+      /* leave an empty range so that a caller iterating from (first) to   \
+       * (last) does nothing instead of walking off the name table. */     \
+      (first) = 0;					      \
+      (last) = -1;					      \
       break;						      \
     }
 
@@ -2937,9 +2965,12 @@ struct pt_query_info
     PT_SELECT_INFO select;
     PT_UNION_INFO union_;
   } q;
-  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
-				 * (quantized selectivities of host-var predicates); 0 = not recorded.
-				 * See histogram_bind_fingerprint (). */
+  BIND_WATCH_STATE *bind_watch;	/* bind-value state of this prepared statement: the rows each
+				 * host-variable predicate was expected to scan under the current plan,
+				 * and the query's plan variants as last seen. NULL until the first
+				 * checked execution allocates it (parser lifetime). */
+  const char *bind_variant_key;	/* appended to the hash text to name a plan variant of this query
+				 * (bind_variant.h); NULL = the query's base entry */
 };
 
 /* Info for Set Optimization Level statement */
@@ -3035,8 +3066,8 @@ struct pt_update_info
   PT_NODE *limit;		/* PT_VALUE limit clause parameter */
   PT_NODE *order_by;		/* PT_EXPR (list) */
   PT_NODE *orderby_for;		/* PT_EXPR */
-  UINT64 bind_fp;		/* fingerprint of the bind values the current plan was chosen under
-				 * (see pt_query_info.bind_fp); 0 = not recorded yet */
+  BIND_WATCH_STATE *bind_watch;	/* bind-value watch state (see pt_query_info.bind_watch) */
+  const char *bind_variant_key;	/* plan variant key (see pt_query_info.bind_variant_key) */
   PT_HINT_ENUM hint;		/* hint flag */
   PT_NODE *with;		/* PT_WITH_CLAUSE */
   int num_parallel_threads;	/* number of parallel threads */
@@ -3258,7 +3289,6 @@ struct pt_foreign_key_info
   PT_MISC_TYPE match_type;	/* full or partial */
   PT_MISC_TYPE delete_action;
   PT_MISC_TYPE update_action;
-  short deduplicate_level;	/* 0 : Not Use, others : mod by pow(2,deduplicate_level), refer to DEDUPLICATE_KEY_LEVEL_??? */
 };
 
 /* Info for the CONSTRAINT node */
@@ -3328,6 +3358,7 @@ struct pt_stored_proc_info
   PT_MISC_TYPE dtrm_type;	/* PT_NOT_DETERMINISTIC, PT_DETERMINISTIC */
   PT_MISC_TYPE type;
   unsigned or_replace:1;	/* OR REPLACE clause */
+  unsigned parallel_enable:1;	/* PARALLEL_ENABLE clause */
   PT_TYPE_ENUM ret_type;
   PT_NODE *ret_data_type;
   int recompile;
@@ -3802,6 +3833,9 @@ struct parser_node
     unsigned print_in_value_for_dblink:1;	/* for select ... where in (...) to print (...) not {...} */
     unsigned do_not_use_subquery_cache:1;	/* for subquery cache re-execute */
     unsigned for_default_func:1;	/* for DEFAULT built-in function */
+    unsigned bind_watch_candidate:1;	/* the plan carries BIND_WATCH_CANDIDATE: this statement passed
+					 * target selection for bind-value plan variants, so its
+					 * executions choose among the query's plans by fingerprint */
     unsigned hv_pred_plan_unpeeked:1;	/* the plan this statement is about to execute was chosen with unbound
 					 * host-variable predicate markers (HV_PRED_PLAN_UNPEEKED in the XASL
 					 * header), so the first execution must replan under the real values.
@@ -3854,7 +3888,7 @@ typedef struct pt_plan_trace_info
   union
   {
     char *text_plan;
-    struct json_t *json_plan;
+    struct trace_json_t *json_plan;
   } trace;
 } PT_PLAN_TRACE_INFO;
 
@@ -3884,6 +3918,7 @@ struct parser_context
   int stack_size;		/* total number of slots in node_stack */
   PT_NODE **node_stack;		/* the parser stack */
   PT_NODE *orphans;		/* list of parse tree fragments freed later */
+  PARSER_STRING_BLOCK *string_blocks;	/* this parser's string block list (private to parse_tree.c) */
 
   char *error_buffer;		/* for parse error messages */
 
@@ -3904,6 +3939,8 @@ struct parser_context
 						 * session. */
   int host_var_count;		/* number of input host variables */
   int auto_param_count;		/* number of auto parameterized variables */
+  UINT64 bind_plan_sig;		/* signature of the plans chosen by this compile (bind_variant.h): two
+				 * compiles of one query got the same plan when these are equal */
 
   int dbval_cnt;		/* to be assigned to XASL */
   int line, column;		/* current input line and column */
@@ -4110,7 +4147,7 @@ void pt_init_node (PT_NODE * node, PT_NODE_TYPE node_type);
 extern "C"
 {
 #endif
-  void *parser_allocate_string_buffer (const PARSER_CONTEXT * parser, const int length, const int align);
+  void *parser_allocate_string_buffer (PARSER_CONTEXT * parser, const int length, const int align);
   bool pt_is_json_value_type (PT_TYPE_ENUM type);
   bool pt_is_json_doc_type (PT_TYPE_ENUM type);
 #ifdef __cplusplus

@@ -54,7 +54,6 @@
 typedef int mode_t;
 #endif /* WINDOWS */
 
-#define CAS_LOG_BUFFER_SIZE (8192)
 #define SQL_LOG_BUFFER_SIZE 163840
 #define ACCESS_LOG_IS_DENIED_TYPE(T)  ((T)==ACL_REJECTED)
 
@@ -70,9 +69,6 @@ static void cas_log_backup (T_CUBRID_FILE_ID fid);
 static void cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt, ...);
 
 
-#if defined (ENABLE_UNUSED_FUNCTION)
-static void cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index);
-#endif
 static void cas_log_write_internal (FILE * fp, struct timeval *log_time, unsigned int seq_num, bool do_flush,
 				    const char *fmt, va_list ap);
 static void cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, va_list ap);
@@ -81,16 +77,13 @@ static FILE *access_log_open (char *log_file_name);
 static void cas_log_write_query_string_internal (char *query, int size, bool newline,
 						 HIDE_PWD_INFO_PTR hide_pwd_info_ptr, bool ishidepw);
 
-#ifdef CAS_ERROR_LOG
-static int error_file_offset;
-static char cas_log_error_flag;
-#endif
 static FILE *log_fp = NULL, *slow_log_fp = NULL;
 static char log_filepath[BROKER_PATH_MAX], slow_log_filepath[BROKER_PATH_MAX];
 static INT64 saved_log_fpos = 0;
 static CAS_LOG_FD_STATUS cas_log_fd_status = CAS_LOG_FD_NONE;
 
 static size_t cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream);
+static void cas_fwrite_oneline (FILE * fp, const char *str);
 static INT64 cas_ftell (FILE * stream);
 static int cas_fseek (FILE * stream, INT64 offset, int whence);
 static FILE *cas_fopen (const char *path, const char *mode);
@@ -252,6 +245,15 @@ cas_log_close (bool flag)
 
 }
 
+void
+cas_log_flush_if_needed (void)
+{
+  if (log_fp != NULL && as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL)
+    {
+      cas_fflush (log_fp);
+    }
+}
+
 static void
 cas_log_backup (T_CUBRID_FILE_ID fid)
 {
@@ -300,24 +302,6 @@ cas_log_write_and_set_savedpos (FILE * log_fp, const char *fmt, ...)
 
   return;
 }
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-static void
-cas_log_rename (int run_time, time_t cur_time, char *br_name, int as_index)
-{
-  char new_filepath[BROKER_PATH_MAX];
-  struct tm tmp_tm;
-
-  assert (log_filepath[0] != '\0');
-
-  localtime_r (&cur_time, &tmp_tm);
-  tmp_tm.tm_year += 1900;
-
-  snprintf (new_filepath, BROKER_PATH_MAX, "%s.%02d%02d%02d%02d%02d.%d", log_filepath, tmp_tm.tm_mon + 1,
-	    tmp_tm.tm_mday, tmp_tm.tm_hour, tmp_tm.tm_min, tmp_tm.tm_sec, run_time);
-  cas_rename (log_filepath, new_filepath);
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
 
 void
 cas_log_end (int mode, int run_time_sec, int run_time_msec)
@@ -461,6 +445,30 @@ cas_log_write_nonl (unsigned int seq_num, bool unit_start, const char *fmt, ...)
 	}
       va_start (ap, fmt);
       cas_log_write_internal (log_fp, NULL, seq_num, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
+      va_end (ap);
+    }
+
+}
+
+void
+cas_log_write_nonl_noflush (unsigned int seq_num, bool unit_start, const char *fmt, ...)
+{
+
+  if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
+    {
+      cas_log_open (shm_appl->broker_name);
+    }
+
+  if (log_fp != NULL)
+    {
+      va_list ap;
+
+      if (unit_start)
+	{
+	  saved_log_fpos = cas_ftell (log_fp);
+	}
+      va_start (ap, fmt);
+      cas_log_write_internal (log_fp, NULL, seq_num, false, fmt, ap);
       va_end (ap);
     }
 
@@ -631,7 +639,7 @@ cas_log_write2_internal (FILE * fp, bool do_flush, const char *fmt, va_list ap)
 }
 
 void
-cas_log_write2_nonl (const char *fmt, ...)
+cas_log_write2_nonl_noflush (const char *fmt, ...)
 {
 
   if (log_fp == NULL && as_info->cur_sql_log_mode != SQL_LOG_MODE_NONE)
@@ -644,7 +652,7 @@ cas_log_write2_nonl (const char *fmt, ...)
       va_list ap;
 
       va_start (ap, fmt);
-      cas_log_write2_internal (log_fp, (as_info->cur_sql_log_mode == SQL_LOG_MODE_ALL), fmt, ap);
+      cas_log_write2_internal (log_fp, false, fmt, ap);
       va_end (ap);
     }
 
@@ -774,6 +782,16 @@ cas_log_write_query_string (char *query, int size, HIDE_PWD_INFO_PTR hide_pwd_in
 static void
 cas_fprintf_password (FILE * fp, char *query, HIDE_PWD_INFO_PTR hide_pwd_info_ptr)
 {
+  if (hide_pwd_info_ptr != NULL && hide_pwd_info_ptr->pwd_info_ptr != NULL && hide_pwd_info_ptr->used == 0)
+    {
+      /* 'used' is reset to 0 by INIT_HIDE_PASSWORD_INFO() in parser_create_parser()
+       * and incremented by password_add_offset() in csql_grammar.y for each password found while parsing.
+       * A zero value means the statement was already scanned and has no password,
+       * so write the SQL directly without the printf machinery. */
+      cas_fwrite_oneline (fp, query);
+      return;
+    }
+
   password_fprintf (fp, query, hide_pwd_info_ptr, cas_fprintf);
 }
 
@@ -794,19 +812,7 @@ cas_log_write_query_string_internal (char *query, int size, bool newline, HIDE_P
 	}
       else
 	{
-	  char *s;
-
-	  for (s = query; *s; s++)
-	    {
-	      if (*s == '\n' || *s == '\r')
-		{
-		  cas_fputc (' ', log_fp);
-		}
-	      else
-		{
-		  cas_fputc (*s, log_fp);
-		}
-	    }
+	  cas_fwrite_oneline (log_fp, query);
 	}
 
       if (newline)
@@ -828,90 +834,6 @@ cas_log_write_client_ip (const unsigned char *ip_addr)
     }
 }
 
-#if !defined (NDEBUG)
-void
-cas_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
-{
-#if 0
-
-  if (log_fp != NULL)
-    {
-      char buf[LINE_MAX], *p;
-      int len, n;
-      va_list ap;
-
-      va_start (ap, fmt);
-      p = buf;
-      len = LINE_MAX;
-      n = ut_time_string (p);
-      len -= n;
-      p += n;
-      if (len > 0)
-	{
-	  n = snprintf (p, len, " (debug) file %s line %d ", file_name, line_no);
-	  len -= n;
-	  p += n;
-	  if (len > 0)
-	    {
-	      n = vsnprintf (p, len, fmt, ap);
-	      len -= n;
-	      p += n;
-	    }
-	}
-      cas_fwrite (buf, (p - buf), 1, log_fp);
-      cas_fputc ('\n', log_fp);
-      va_end (ap);
-    }
-
-#endif
-}
-#endif
-
-#ifdef CAS_ERROR_LOG
-
-#if defined (ENABLE_UNUSED_FUNCTION)
-void
-cas_error_log (int err_code, char *err_msg_str, int client_ip_addr)
-{
-
-  FILE *fp;
-  char *err_log_file = shm_appl->error_log_file;
-  char *script_file = getenv (PATH_INFO_ENV_STR);
-  time_t t = time (NULL);
-  struct tm ct1;
-  char err_code_str[12];
-  char *lastcmd = "";
-  char *ip_str;
-
-  localtime_r (&t, &ct1);
-  ct1.tm_year += 1900;
-
-  fp = access_log_open (err_log_file);
-  if (fp == NULL)
-    {
-      return;
-    }
-
-#ifdef CAS_ERROR_LOG
-  error_file_offset = cas_ftell (fp);
-#endif
-
-  if (script_file == NULL)
-    script_file = "";
-  sprintf (err_code_str, "%d", err_code);
-  ip_str = ut_uchar2ipstr ((unsigned char *) (&client_ip_addr));
-
-  cas_fprintf (fp, "[%d] %s %s %d/%d/%d %d:%d:%d %d\n%s:%s\ncmd:%s\n", (int) getpid (), ip_str, script_file,
-	       ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour, ct1.tm_min, ct1.tm_sec,
-	       (int) (strlen (err_code_str) + strlen (err_msg_str) + 1), err_code_str, err_msg_str, lastcmd);
-  cas_fclose (fp);
-
-  cas_log_error_flag = 1;
-
-}
-#endif /* ENABLE_UNUSED_FUNCTION */
-#endif
-
 int
 cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, char *dbname, char *dbuser,
 		ACCESS_LOG_TYPE log_type)
@@ -920,8 +842,8 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
   FILE *fp;
   char *access_log_file = shm_appl->access_log_file;
   char clt_ip_str[16];
-  struct tm ct1, ct2;
-  time_t t1, t2;
+  struct tm start_tm;
+  time_t start_sec;
   struct timeval end_time;
   char log_file_buf[PATH_MAX];
   const char *print_format = "%d %s %04d/%02d/%02d %02d:%02d:%02d %s %s %s %s\n";
@@ -929,14 +851,12 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
 
   gettimeofday (&end_time, NULL);
 
-  t1 = start_time->tv_sec;
-  t2 = end_time.tv_sec;
-  if (localtime_r (&t1, &ct1) == NULL || localtime_r (&t2, &ct2) == NULL)
+  start_sec = start_time->tv_sec;
+  if (localtime_r (&start_sec, &start_tm) == NULL)
     {
       return -1;
     }
-  ct1.tm_year += 1900;
-  ct2.tm_year += 1900;
+  start_tm.tm_year += 1900;
 
   if (ACCESS_LOG_IS_DENIED_TYPE (log_type))
     {
@@ -959,16 +879,16 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
   fseek (fp, 0, SEEK_END);
   if ((ftell (fp) / ONE_K) > shm_appl->access_log_max_size)
     {
-      time_t cur_time = time (NULL);
-      struct tm ct;
+      time_t backup_sec = time (NULL);
+      struct tm backup_tm;
 
-      if (localtime_r (&cur_time, &ct) != NULL)
+      if (localtime_r (&backup_sec, &backup_tm) != NULL)
 	{
-	  ct.tm_year += 1900;
+	  backup_tm.tm_year += 1900;
 
 	  cas_fclose (fp);
 
-	  access_log_backup (access_log_file, &ct);
+	  access_log_backup (access_log_file, &backup_tm);
 
 	  fp = access_log_open (access_log_file);
 	  if (fp == NULL)
@@ -987,8 +907,9 @@ cas_access_log (struct timeval *start_time, int as_index, int client_ip_addr, ch
       sprintf (session_id_buf, "%u", db_get_session_id ());
     }
 
-  cas_fprintf (fp, print_format, as_index + 1, clt_ip_str, ct1.tm_year, ct1.tm_mon + 1, ct1.tm_mday, ct1.tm_hour,
-	       ct1.tm_min, ct1.tm_sec, dbname, dbuser, get_access_log_type_string (log_type), session_id_buf);
+  cas_fprintf (fp, print_format, as_index + 1, clt_ip_str, start_tm.tm_year, start_tm.tm_mon + 1, start_tm.tm_mday,
+	       start_tm.tm_hour, start_tm.tm_min, start_tm.tm_sec, dbname, dbuser,
+	       get_access_log_type_string (log_type), session_id_buf);
 
   cas_fclose (fp);
   return (end_time.tv_sec - start_time->tv_sec);
@@ -1283,6 +1204,36 @@ cas_fwrite (const void *ptr, size_t size, size_t nmemb, FILE * stream)
   result = fwrite (ptr, size, nmemb, stream);
 
   return result;
+}
+
+/*
+ * cas_fwrite_oneline () -
+ *   Write a string, replacing embedded newlines with spaces so the SQL stays on one log line.
+ *   strcspn () finds each newline-free run, which is written in a single cas_fwrite ()
+ *   instead of one call per character.
+ *
+ * note:
+ *   This is a byte-level scan rather than a SQL parse,
+ *   so newlines inside string literals are also replaced.
+ */
+static void
+cas_fwrite_oneline (FILE * fp, const char *str)
+{
+  while (*str)
+    {
+      size_t run = strcspn (str, "\r\n");
+
+      if (run > 0)
+	{
+	  cas_fwrite (str, run, 1, fp);
+	  str += run;
+	}
+      if (*str)
+	{
+	  cas_fputc (' ', fp);
+	  str++;
+	}
+    }
 }
 
 static INT64

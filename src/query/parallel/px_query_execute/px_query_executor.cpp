@@ -26,6 +26,7 @@
 #include "xasl_cache.h"
 #include "xasl_iteration.hpp"
 #include "px_query_task.hpp"
+#include "session.h"
 
 #if !defined(NDEBUG)
 #include <sys/syscall.h>
@@ -44,7 +45,7 @@ namespace parallel_query_execute
      m_job_execution_queue (new queue (estimated_jobs)),
      m_is_task_running_p (new bool (false)),
      m_parallelism (parallelism),
-     m_xasl_state (qexec_deep_copy_xasl_state (root_thread_p, xasl_state)),
+     m_xasl_state (qexec_deep_copy_xasl_state (root_thread_p, xasl_state, false)),
      m_join_context (),
      m_interrupt (),
      m_error_messages(),
@@ -90,24 +91,28 @@ namespace parallel_query_execute
 	    m_worker_manager_p->release_workers ();
 	    m_worker_manager_p = nullptr;
 	  }
+	if (m_root_thread_p->m_uses_px_stats)
+	  {
+	    /* an error ended the query before run_jobs () drained the root's array; drain it here so later
+	     * statements of this thread count to the transaction again */
+	    m_root_thread_p->m_uses_px_stats = false;
+	    perfmon_add_values_to_local (m_root_thread_p, m_root_thread_p->m_px_stats);
+	    perfmon_destroy_parallel_stats (m_root_thread_p);
+	    m_root_thread_p->m_px_orig_thread_entry = nullptr;
+	  }
 	qexec_free_xasl_state (m_root_thread_p, m_xasl_state);
-      }
-    if (m_on_trace)
-      {
-	std::lock_guard<std::mutex> lock (m_trace_context.m_mutex);
-	m_trace_context.m_stats.clear();
       }
   }
   bool query_executor::add_job (THREAD_ENTRY *thread_p, xasl_node *xasl, xasl_state *xasl_state)
   {
     if (!m_has_job)
       {
-	m_job = job (xasl, m_xasl_state, &m_join_context, m_on_trace?&m_trace_context:nullptr);
+	m_job = job (xasl, m_xasl_state, &m_join_context, &m_trace_context);
 	m_join_context.add_running_jobs();
 	m_has_job = true;
 	return true;
       }
-    m_job_execution_queue->push (job (xasl, m_xasl_state, &m_join_context, m_on_trace?&m_trace_context:nullptr),
+    m_job_execution_queue->push (job (xasl, m_xasl_state, &m_join_context, &m_trace_context),
 				 m_interrupt);
     m_join_context.add_running_jobs();
     return true;
@@ -193,6 +198,16 @@ namespace parallel_query_execute
 		    /* this function set interrupt when session got pl_session, so we need to clear interrupt before set error */
 		    is_interrupt = logtb_is_interrupted_tran (thread_p, true, &continue_checking, thread_p->tran_index);
 		  }
+		if (m_interrupt.get_code() == interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_MAIN_THREAD
+		    || m_interrupt.get_code() == interrupt::interrupt_code::ERROR_INTERRUPTED_FROM_WORKER_THREAD)
+		  {
+		    /* The tran-index interrupt raised above for error propagation also interrupted the
+		     * pl session (TT_WORKER hook in logtb_set_tran_index_interrupt). Left set, it poisons
+		     * every later pl access of this session (session_get_pl_session rejects, new stacks are
+		     * blocked) even after the failed query is gone. Clear it for px-internal errors only;
+		     * a user cancel (USER_INTERRUPTED_*) must keep interrupting a surrounding SP chain. */
+		    session_clear_pl_session_interrupt (thread_p);
+		  }
 	      }
 	    std::lock_guard<std::mutex> lock (m_error_messages.m_mutex);
 	    bool found_error = false;
@@ -221,46 +236,46 @@ namespace parallel_query_execute
 	  }
       }
     /* 8. merge stats */
+    UINT64 old_fetches = 0, old_ioreads = 0, old_fetch_time = 0;
     if (m_on_trace)
       {
-	UINT64 old_fetches, old_ioreads, old_fetch_time;
 	old_fetches = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES);
 	old_ioreads = perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS);
 	old_fetch_time = perfmon_get_from_statistic (thread_p, PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC)/1000;
+      }
 
-	pthread_mutex_lock (&thread_p->m_px_stats_mutex);
+    pthread_mutex_lock (&thread_p->m_px_stats_mutex);
+    {
+      /* everything the jobs counted goes to this thread: the root's own array (drained below), or the job array
+       * of the worker that runs this nested executor */
+      std::lock_guard<std::mutex> lock (m_trace_context.m_mutex);
+      if (m_trace_context.m_px_stats != nullptr)
 	{
-
-	  std::lock_guard<std::mutex> lock (m_trace_context.m_mutex);
-	  for (auto stats : m_trace_context.m_stats)
-	    {
-#if !defined(NDEBUG)
-	      er_log_debug (ARG_FILE_LINE, "thread %8ld : stat %d, %d, %d", syscall (SYS_gettid), stats.fetches, stats.ioreads,
-			    stats.fetch_time);
-#endif
-	      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset, stats.fetches);
-	      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset, stats.ioreads);
-	      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
-					      stats.fetch_time);
-	    }
-	  pthread_mutex_unlock (&thread_p->m_px_stats_mutex);
-	  m_stats.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
-	  m_stats.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
-	  m_stats.fetch_time += perfmon_get_from_statistic (thread_p,
-				PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC)/1000 - old_fetch_time;
-	  if (m_is_root_executor)
-	    {
-	      thread_p->m_uses_px_stats = false;
-	      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset,
-					      thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_FETCHES].start_offset]);
-	      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset,
-					      thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_NUM_IOREADS].start_offset]);
-	      perfmon_add_at_offset_to_local (thread_p, pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset,
-					      thread_p->m_px_stats[pstat_Metadata[PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC].start_offset]);
-	      perfmon_destroy_parallel_stats (thread_p);
-	    }
+	  perfmon_add_values_to_local (thread_p, m_trace_context.m_px_stats);
+	  memset (m_trace_context.m_px_stats, 0, perfmon_get_number_of_statistic_values () * sizeof (UINT64));
 	}
+    }
+    pthread_mutex_unlock (&thread_p->m_px_stats_mutex);
 
+    if (m_on_trace)
+      {
+	m_stats.fetches += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_FETCHES) - old_fetches;
+	m_stats.ioreads += perfmon_get_from_statistic (thread_p, PSTAT_PB_NUM_IOREADS) - old_ioreads;
+	m_stats.fetch_time += perfmon_get_from_statistic (thread_p,
+			      PSTAT_PB_PAGE_FIX_ACQUIRE_TIME_10USEC)/1000 - old_fetch_time;
+      }
+
+    if (m_is_root_executor && thread_p->m_uses_px_stats)
+      {
+	/* the root counted into its own array since make_parallel_query_executor_recursively (); all of it goes to
+	 * the transaction's statistics */
+	thread_p->m_uses_px_stats = false;
+	perfmon_add_values_to_local (thread_p, thread_p->m_px_stats);
+	perfmon_destroy_parallel_stats (thread_p);
+      }
+
+    if (m_on_trace)
+      {
 	tsc_getticks (&end_tick);
 	tsc_elapsed_time_usec (&tv_diff, end_tick, start_tick);
 	TSC_ADD_TIMEVAL (m_stats.elapsed_time, tv_diff);
@@ -292,7 +307,7 @@ extern "C" {
     xasl_dump_with_id (xasl);
 #endif
     thread_p->m_px_orig_thread_entry = thread_p;
-    if (on_trace)
+    if (perfmon_parallel_stats_needed (thread_p))
       {
 	perfmon_initialize_parallel_stats (thread_p);
       }
@@ -306,7 +321,11 @@ extern "C" {
 	    {
 	      for (xasl_node *aptr = xptr->aptr_list; aptr != NULL; aptr = aptr->next)
 		{
-		  estimated_jobs_local++;
+		  /* SP/method-containing subqueries run inline, not as px jobs */
+		  if (!XASL_IS_FLAGED (aptr, XASL_NO_PARALLEL_SUBQUERY))
+		    {
+		      estimated_jobs_local++;
+		    }
 		}
 	    }
 	}
@@ -329,7 +348,8 @@ extern "C" {
 	    {
 	      for (xasl_node *aptr = xptr->aptr_list; aptr != NULL; aptr = aptr->next)
 		{
-		  if (!XASL_IS_FLAGED (aptr, XASL_LINK_TO_REGU_VARIABLE))
+		  if (!XASL_IS_FLAGED (aptr, XASL_LINK_TO_REGU_VARIABLE)
+		      && !XASL_IS_FLAGED (aptr, XASL_NO_PARALLEL_SUBQUERY))
 		    {
 		      aptr_cnts++;
 		      if (aptr_cnts > 1)
@@ -358,10 +378,22 @@ extern "C" {
     if (!executor_p)
       {
 	worker_manager_p->release_workers ();
+	/* The px-stats routing armed above (m_px_orig_thread_entry + perfmon_initialize_parallel_stats)
+	 * is normally torn down by the root executor's run_jobs (); on this no-executor fallback nobody
+	 * runs it, and a leaked m_uses_px_stats makes every later perfmon read/write of this thread hit
+	 * the orphaned px_stats array instead of the transaction's counters - the next statement's
+	 * old/new trace snapshots then straddle two different counter sets and go negative. Nothing has
+	 * executed yet, so there is nothing to drain: just disarm. */
+	perfmon_destroy_parallel_stats (thread_p);
+	thread_p->m_px_orig_thread_entry = nullptr;
 	return false;
       }
     if (executor_p->m_xasl_state == nullptr)
       {
+	/* same disarm as above - the executor is torn down later through xasl->px_executor, but its
+	 * run_jobs () never runs on this path either */
+	perfmon_destroy_parallel_stats (thread_p);
+	thread_p->m_px_orig_thread_entry = nullptr;
 	return false;
       }
     return true;

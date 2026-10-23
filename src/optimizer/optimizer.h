@@ -122,10 +122,10 @@ typedef struct
   int leafs;			/* number of leaf pages including overflow pages */
   int pages;			/* number of total pages */
   int height;			/* the height of the B+tree */
-  int keys;			/* number of keys */
+  INT64 keys;			/* number of keys */
   TP_DOMAIN *key_type;		/* The key type for the B+tree */
   int pkeys_size;		/* pkeys array size */
-  int *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] ->
+  INT64 *pkeys;			/* partial keys info for example: index (a, b, ..., x) pkeys[0] -> # of {a} pkeys[1] ->
 				 * # of {a, b} ... pkeys[key_size-1] -> # of {a, b, ..., x} */
   bool valid_limits;
   bool is_indexed;
@@ -189,9 +189,9 @@ extern QO_SEGMENT *lookup_seg (QO_NODE * head, PT_NODE * name, QO_ENV * env);
 
 extern void qo_expr_segs (QO_ENV * env, PT_NODE * pt_expr, BITSET * result);
 
-extern void qo_get_optimization_param (void *, QO_PARAM, ...);
+extern void qo_get_optimization_param (void *, int, ...);
 extern bool qo_need_skip_execution (void);
-extern void qo_set_optimization_param (void *, QO_PARAM, ...);
+extern void qo_set_optimization_param (void *, int, ...);
 extern QO_PLAN *qo_optimize_query (PARSER_CONTEXT *, PT_NODE *);
 extern xasl_node *qo_to_xasl (QO_PLAN *, xasl_node *);
 extern void qo_plan_discard (QO_PLAN *);

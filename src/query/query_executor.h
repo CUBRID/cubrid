@@ -34,6 +34,7 @@
 #endif /* !defined (SERVER_MODE) && !defined (SA_MODE) */
 
 #include "dbtype_def.h"
+#include "domain_state.h"
 #include "query_list.h"
 #include "system.h"
 #include "thread_compat.hpp"
@@ -42,6 +43,7 @@
 
 // forward definitions
 struct func_pred;
+struct function_node;
 struct pred_expr_with_context;
 struct qfile_list_id;
 struct qfile_tuple_record;
@@ -50,6 +52,7 @@ struct tp_domain;
 struct valptr_list_node;
 struct xasl_node;
 struct xasl_state;
+struct access_spec_node;
 using XASL_STATE = xasl_state;
 
 #define QEXEC_NULL_COMMAND_ID   -1	/* Invalid command identifier */
@@ -90,10 +93,16 @@ struct xasl_state
   VAL_DESCR vd;			/* Value Descriptor */
   QUERY_ID query_id;		/* Query associated with XASL */
   int qp_xasl_line;		/* Error line */
+  const char *query_alias;	/* the statement's text (xasl_node.query_alias), which the unresolved-domain check
+				 * (execution) names */
+  RESOLVED_DOMAIN_TABLE resolved_domain;	/* what resolve_domains resolved before the first row */
+  DOMAIN_EXECUTION_STATE domain_execution;	/* what the rows change: the nodes' execution domains, the values
+						 * converted once per scope */
 };
 
 extern qfile_list_id *qexec_execute_query (THREAD_ENTRY * thread_p, xasl_node * xasl, int dbval_cnt,
 					   const DB_VALUE * dbval_ptr, QUERY_ID query_id);
+extern void qexec_set_expr_share_spec (xasl_node * xasl, access_spec_node * spec);
 extern int qexec_execute_mainblock (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate,
 				    UPDDEL_CLASS_INSTANCE_LOCK_INFO * p_class_instance_lock_info);
 extern int qexec_execute_subquery_for_result_cache (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xstate);
@@ -104,16 +113,13 @@ extern int qexec_clear_pred_context (THREAD_ENTRY * thread_p, pred_expr_with_con
 				     bool dealloc_dbvalues);
 extern int qexec_clear_func_pred (THREAD_ENTRY * thread_p, func_pred * pred_filter);
 extern int qexec_clear_partition_expression (THREAD_ENTRY * thread_p, regu_variable_node * expr);
-extern int qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_g_agg (THREAD_ENTRY * thread_p,
-									       xasl_node * xasl, void *vd,
-									       int *resolved);
-extern int qexec_resolve_domains_for_aggregation_for_parallel_heap_scan_buildvalue_proc (THREAD_ENTRY * thread_p,
-											 xasl_node * xasl, void *vd,
-											 int *resolved);
 extern int qexec_clear_xasl_for_parallel_aptr (THREAD_ENTRY * thread_p, xasl_node * xasl, bool is_final);
 extern qfile_list_id *qexec_get_xasl_list_id (xasl_node * xasl);
-extern xasl_state *qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
+extern xasl_state *qexec_deep_copy_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state, bool own_load);
 extern void qexec_free_xasl_state (THREAD_ENTRY * thread_p, xasl_state * xasl_state);
+extern int qexec_check_limit_clause (THREAD_ENTRY * thread_p, xasl_node * xasl, xasl_state * xasl_state,
+				     bool * empty_result);
+extern void qexec_clear_function_tmp_obj (function_node * funcp);
 #if defined(CUBRID_DEBUG)
 extern void get_xasl_dumper_linked_in ();
 #endif
@@ -124,13 +130,16 @@ extern int qexec_clear_list_cache_by_class (THREAD_ENTRY * thread_p, const OID *
 extern bool qdump_check_xasl_tree (xasl_node * xasl);
 #endif /* CUBRID_DEBUG */
 
-extern int qexec_get_tuple_column_value (QFILE_TUPLE tpl, int index, DB_VALUE * valp, tp_domain * domain);
+extern int qexec_get_tuple_column_value (QFILE_TUPLE_RECORD * tplrec, int index, DB_VALUE * valp, tp_domain * domain);
 extern int qexec_insert_tuple_into_list (THREAD_ENTRY * thread_p, qfile_list_id * list_id,
 					 valptr_list_node * outptr_list, val_descr * vd, qfile_tuple_record * tplrec);
 extern void qexec_replace_prior_regu_vars_prior_expr (THREAD_ENTRY * thread_p, regu_variable_node * regu,
 						      xasl_node * xasl, xasl_node * connect_by_ptr);
 extern SCAN_CODE qexec_execute_scan_ptr (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,
 					 void *scan_func_ptr);
+extern SCAN_CODE qexec_reset_sa_inner_scan_block (THREAD_ENTRY * thread_p, xasl_node * inner);
+extern int qexec_execute_dptr_list (THREAD_ENTRY * thread_p, xasl_node * dptr_list, xasl_state * xstate, bool truncate);
+extern void qexec_clear_scan_all_lists (THREAD_ENTRY * thread_p, xasl_node * xasl_list);
 extern int qexec_alloc_agg_hash_context_buildlist_xasl (THREAD_ENTRY * thread_p, xasl_node * xasl,
 							XASL_STATE * xasl_state, bool not_use_membuf);
 extern int qexec_hash_gby_agg_tuple_public (THREAD_ENTRY * thread_p, xasl_node * xasl, XASL_STATE * xasl_state,

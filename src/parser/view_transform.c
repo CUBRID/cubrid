@@ -439,6 +439,8 @@ static bool mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT
 
 static PT_NODE *mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select_list,
 						   PT_NODE * old_select_list);
+static int mq_update_analytic_pos (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * new_select_list,
+				   PT_NODE * old_select_list);
 
 static PT_NODE *mq_inline_cte_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
 static PT_NODE *mq_rewrite_cte_as_derived (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
@@ -468,6 +470,12 @@ mq_is_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
       return true;
     }
 
+  if (spec->info.spec.join_type == PT_JOIN_SEMI || spec->info.spec.join_type == PT_JOIN_ANTI)
+    {
+      /* the inner of a semi/anti join is a frozen boundary; treat as outer-joined so it is not view-merged across it */
+      return true;
+    }
+
   spec = spec->next;
   while (spec)
     {
@@ -488,6 +496,8 @@ mq_is_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
 	case PT_JOIN_LEFT_OUTER:
 	case PT_JOIN_FULL_OUTER:	/* not used */
 	case PT_JOIN_UNION:	/* not used */
+	case PT_JOIN_SEMI:	/* a following semi/anti join does not outer-join an earlier spec */
+	case PT_JOIN_ANTI:
 	  break;
 #endif
 	}
@@ -537,6 +547,8 @@ mq_is_right_outer_join_spec (PARSER_CONTEXT * parser, PT_NODE * spec)
 	case PT_JOIN_LEFT_OUTER:
 	case PT_JOIN_FULL_OUTER:	/* not used */
 	case PT_JOIN_UNION:	/* not used */
+	case PT_JOIN_SEMI:	/* semi/anti are not right-outer joins */
+	case PT_JOIN_ANTI:
 	  break;
 #endif
 	}
@@ -6778,7 +6790,7 @@ mq_translate_update (PARSER_CONTEXT * parser, PT_NODE * update_statement)
 static PT_NODE *
 mq_resolve_insert_statement (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
 {
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   PT_NODE *odku = insert_statement->info.insert.odku_assignments;
   PT_NODE *from = insert_statement->info.insert.spec;
   PT_NODE *attr;
@@ -6902,7 +6914,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
   PT_NODE *subquery = NULL;
   PT_SPEC_INFO *from_spec = NULL;
   bool viable;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   int what_for = DB_AUTH_INSERT;
   int is_class = 0;
 
@@ -7132,7 +7144,7 @@ mq_translate_insert (PARSER_CONTEXT * parser, PT_NODE * insert_statement)
       /* The odku_assignments might refer nodes from the SELECT statements. Even though name resolving was already
        * performed on odku_assigments, we have to redo it here. If the SELECT target was a view, it has been rewritten
        * by mq_translate_local and names which referenced it were not updated. */
-      SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+      SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
       PT_NODE *odku = insert_statement->info.insert.odku_assignments;
 
       from = insert_statement->info.insert.spec;
@@ -7226,7 +7238,7 @@ static PT_NODE *
 mq_translate_merge (PARSER_CONTEXT * parser, PT_NODE * merge_statement)
 {
   PT_NODE *from, *flat;
-  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false };
+  SEMANTIC_CHK_INFO sc_info = { NULL, NULL, 0, 0, 0, false, false, false };
   DB_AUTH auth = DB_AUTH_NONE;
 
   from = merge_statement->info.merge.into;
@@ -7492,7 +7504,6 @@ mq_push_paths (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg, int
       break;
 
     default:
-      statement = statement;
       break;
     }
 
@@ -7794,7 +7805,6 @@ mq_translate_local (PARSER_CONTEXT * parser, PT_NODE * statement, void *void_arg
       break;
 
     default:
-      statement = statement;
       break;
     }
 
@@ -8886,6 +8896,8 @@ mq_mark_location (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *conti
 		case PT_JOIN_INNER:
 		case PT_JOIN_LEFT_OUTER:
 		case PT_JOIN_RIGHT_OUTER:
+		case PT_JOIN_SEMI:	/* ON predicate is a join predicate at the inner's level */
+		case PT_JOIN_ANTI:
 		  parser_walk_tree (parser, on_cond, mq_mark_location, &(spec->info.spec.location), NULL, NULL);
 		  break;
 		  /* case PT_JOIN_FULL_OUTER: not supported */
@@ -14898,6 +14910,16 @@ mq_is_order_dependent_node (PT_NODE * node)
       return false;
     }
 
+  /* An analytic function's arguments are evaluated during the initial scan, before both the
+   * analytic sort and the query's ORDER BY. Lifting the function above a sorted derived table
+   * (mq_rewrite_order_dependent_query) cannot make an assignment inside it follow ORDER BY,
+   * and it leaves the derived table flagged as having analytics with none left in it, which
+   * pt_to_buildlist_proc () then dereferences (CBRD-27503). Treat it as order independent. */
+  if (PT_IS_ANALYTIC_NODE (node))
+    {
+      return false;
+    }
+
   /* check expression node */
   if (PT_IS_EXPR_NODE (node))
     {
@@ -14957,6 +14979,14 @@ mq_mark_order_dependent_nodes (PT_NODE * node)
 
   if (node == NULL)
     {
+      return false;
+    }
+
+  /* same rule as mq_is_order_dependent_node (): an analytic function stays in the derived table
+   * as an order independent subexpression, even when an assignment sits next to it */
+  if (PT_IS_ANALYTIC_NODE (node))
+    {
+      PT_SET_ORDER_DEPENDENT_FLAG (node, false);
       return false;
     }
 
@@ -15794,10 +15824,34 @@ mq_copy_sql_hint (PARSER_CONTEXT * parser, PT_NODE * dest_query, PT_NODE * src_q
 static PT_NODE *
 mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select_list, PT_NODE * old_select_list)
 {
+  if (mq_update_analytic_pos (parser, new_select_list, new_select_list, old_select_list) != NO_ERROR)
+    {
+      return NULL;
+    }
+
+  return new_select_list;
+}
+
+/*
+ * mq_update_analytic_pos() - update PT_VALUE located within the OVER clause of the analytic functions
+ *                            found in node_list.
+ *   return: NO_ERROR on success, non-zero for ERROR
+ *   parser(in):
+ *   node_list(in): nodes in which analytic functions are searched for
+ *   new_select_list(in):
+ *   old_select_list(in):
+ *
+ * NOTE: An analytic function can be nested in an expression or a function (e.g. x - LAG (x) OVER (...)),
+ * so their arguments are also searched, in the same way as pt_to_analytic_final_node().
+ */
+static int
+mq_update_analytic_pos (PARSER_CONTEXT * parser, PT_NODE * node_list, PT_NODE * new_select_list,
+			PT_NODE * old_select_list)
+{
   PT_NODE *partition_by, *order_by;
   PT_NODE *col, *link, *order_list, *order, *value;
 
-  for (col = new_select_list; col; col = col->next)
+  for (col = node_list; col; col = col->next)
     {
       if (PT_IS_ANALYTIC_NODE (col))
 	{
@@ -15843,14 +15897,14 @@ mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select
 		{
 		  PT_ERRORmf (parser, value, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_SORT_SPEC_RANGE_ERR,
 			      old_index);
-		  return NULL;
+		  return ER_FAILED;
 		}
 
 	      referenced_node = parser_copy_tree (parser, old_select_node);
 	      if (referenced_node == NULL)
 		{
 		  PT_ERRORm (parser, old_select_node, MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_OUT_OF_MEMORY);
-		  return NULL;
+		  return ER_FAILED;
 		}
 
 	      for (new_select_node = new_select_list, index = 1; new_select_node;
@@ -15885,7 +15939,24 @@ mq_update_analytic_sort_spec_expr (PARSER_CONTEXT * parser, PT_NODE * new_select
 	      link->next = NULL;
 	    }
 	}
+      else if (PT_IS_EXPR_NODE (col))
+	{
+	  if (mq_update_analytic_pos (parser, col->info.expr.arg1, new_select_list, old_select_list) != NO_ERROR
+	      || mq_update_analytic_pos (parser, col->info.expr.arg2, new_select_list, old_select_list) != NO_ERROR
+	      || mq_update_analytic_pos (parser, col->info.expr.arg3, new_select_list, old_select_list) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
+      else if (PT_IS_FUNCTION (col))
+	{
+	  if (mq_update_analytic_pos (parser, col->info.function.arg_list, new_select_list,
+				      old_select_list) != NO_ERROR)
+	    {
+	      return ER_FAILED;
+	    }
+	}
     }
 
-  return new_select_list;
+  return NO_ERROR;
 }

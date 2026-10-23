@@ -149,8 +149,7 @@ extern "C"
     CSQL_HELP_INFOCMD_TEXT = 233,
     CSQL_HELP_PARTITION_HEAD_TEXT = 235,
     CSQL_E_CLASSNAMEMISSED_TEXT = 236,
-    CSQL_HELP_TRIGGER_COMMENT_TEXT = 237,
-    CSQL_E_SYSTEM_CATALOG_COMPILE_FAIL_TEXT = 238,
+    CSQL_HELP_TRIGGER_COMMENT_TEXT = 237
   };
 
 #define SCRATCH_TEXT_LEN (4096)
@@ -174,8 +173,7 @@ extern "C"
     CSQL_ERR_CANT_EDIT,
     CSQL_ERR_INFO_CMD_HELP,
     CSQL_ERR_CLASS_NAME_MISSED,
-    CSQL_ERR_FORMAT,
-    CSQL_ERR_SYSTEM_CATALOG_COMPILE,
+    CSQL_ERR_FORMAT
   };
 
 /* session command numbers */
@@ -285,7 +283,6 @@ extern "C"
     bool nopager;
     bool continue_on_error;
     bool sysadm;
-    bool sysadm_rebuild_catalog;
     bool write_on_standby;
     bool trigger_action_flag;
     bool plain_output;

@@ -563,6 +563,7 @@ logtb_initialize_system_tdes (THREAD_ENTRY * thread_p)
   tdes->client_id = -1;
   tdes->client.set_system_internal ();
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->tran_abort_reason = TRAN_NORMAL;
   tdes->block_global_oldest_active_until_commit = false;
 
@@ -1591,6 +1592,7 @@ logtb_clear_tdes (THREAD_ENTRY * thread_p, LOG_TDES * tdes)
   LSA_SET_NULL (&tdes->repl_update_lsa);
   tdes->first_save_entry = NULL;
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
   XASL_ID_SET_NULL (&tdes->xasl_id);
@@ -1681,6 +1683,7 @@ logtb_initialize_tdes (LOG_TDES * tdes, int tran_index)
   tdes->suppress_replication = 0;
   tdes->lob_locator_root.init ();
   tdes->query_timeout = 0;
+  tdes->last_query_deadline = 0;
   tdes->query_start_time = 0;
   tdes->tran_start_time = 0;
   XASL_ID_SET_NULL (&tdes->xasl_id);
@@ -2548,6 +2551,9 @@ logtb_find_state (int tran_index)
  *               (in milliseconds)
  *
  * Note:Reset the default waiting time for the current transaction index(client).
+ *      Every thread working for the transaction reads it, and so do other transactions (deadlock victim choice,
+ *      lock dumps). A temporary waiting time that only the calling thread needs, in code that may run while other
+ *      threads of the same transaction run, belongs to logtb_set_thread_wait_msecs () instead.
  */
 int
 xlogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs)
@@ -2555,6 +2561,9 @@ xlogtb_reset_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs)
   LOG_TDES *tdes;		/* Transaction descriptor */
   int old_wait_msecs;		/* The old waiting time to be returned */
   int tran_index;
+
+  /* the requests of a thread with an override read the override first and would not see this value */
+  assert (thread_p == NULL || thread_p->wait_msecs_override == LK_WAIT_NOT_OVERRIDDEN);
 
   tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
   tdes = LOG_FIND_TDES (tran_index);
@@ -2592,6 +2601,72 @@ logtb_find_wait_msecs (int tran_index)
       assert (false);
       return 0;
     }
+}
+
+/*
+ * logtb_set_thread_wait_msecs - override the waiting time of the current thread only
+ *
+ * return: the previous override of the thread; pass it back to restore it
+ *
+ *   thread_p(in): thread entry
+ *   wait_msecs(in): waiting time for the locks and page latches this thread requests until the override is
+ *                   restored, or LK_WAIT_NOT_OVERRIDDEN to wait as the transaction does
+ *
+ * Note: tdes->wait_msecs is read by every thread working for the transaction: parallel query, sort and index
+ *       build workers copy their parent's tran_index, and the daemons of the system transaction share one tdes.
+ *       A temporary value saved and restored there by one thread is seen by the others while it is set, and two
+ *       overlapping save/restore pairs can leave one thread's temporary value on the transaction after both are
+ *       done, where it stays until the client resets it or disconnects. Code that may run while other threads of
+ *       its transaction run sets its temporary waiting time here instead.
+ *       A waiting time other transactions must see stays in tdes->wait_msecs (xlogtb_reset_wait_msecs): a
+ *       statement's LOCK_TIMEOUT hint, which its parallel workers read as well, and the waits of lock requests
+ *       that the deadlock detector and lock dumps look at. The detector reading tdes->wait_msecs alone is
+ *       enough: the overrides wrap page fixes, except the one log_rollback () sets after its callers marked the
+ *       transaction TRAN_UNACTIVE_ABORTED, and the detector never picks an inactive transaction as a victim.
+ *       Workers do not inherit an override: each one is meant for the requests of the thread that set it, and
+ *       none starts a worker before restoring it (log_rollback () undoes on its own thread). A task restores its
+ *       override before it ends; entry_manager::recycle_context () asserts that.
+ */
+int
+logtb_set_thread_wait_msecs (THREAD_ENTRY * thread_p, int wait_msecs)
+{
+  int old_wait_msecs;
+
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  old_wait_msecs = thread_p->wait_msecs_override;
+  thread_p->wait_msecs_override = wait_msecs;
+
+  return old_wait_msecs;
+}
+
+/*
+ * logtb_find_current_wait_msecs - find the waiting time of the current thread
+ *
+ * return: the override of the thread (see logtb_set_thread_wait_msecs), else the waiting time of its transaction
+ *
+ *   thread_p(in): thread entry
+ *
+ * Note: The page buffer applies the same rule through its inline pgbuf_find_current_wait_msecs (); change both
+ *       together.
+ */
+int
+logtb_find_current_wait_msecs (THREAD_ENTRY * thread_p)
+{
+  if (thread_p == NULL)
+    {
+      thread_p = thread_get_thread_entry_info ();
+    }
+
+  if (thread_p->wait_msecs_override != LK_WAIT_NOT_OVERRIDDEN)
+    {
+      return thread_p->wait_msecs_override;
+    }
+
+  return logtb_find_wait_msecs (LOG_FIND_THREAD_TRAN_INDEX (thread_p));
 }
 
 /*
@@ -4462,9 +4537,9 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 {
   int i;
   LOG_TDES *tdes;		/* Transaction descriptor */
-  LOG_LSA *min_lsa = NULL;	/* The smallest lsa value */
+  LOG_LSA smallest_lsa;		/* The smallest lsa value */
 
-  LSA_SET_NULL (lsa);
+  LSA_SET_NULL (&smallest_lsa);
 
   TR_TABLE_CS_ENTER_READ_MODE (thread_p);
 
@@ -4475,19 +4550,32 @@ logtb_find_smallest_lsa (THREAD_ENTRY * thread_p, LOG_LSA * lsa)
 	  tdes = log_Gl.trantable.all_tdes[i];
 
 	  if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->head_lsa)
-	      && (min_lsa == NULL || LSA_LT (&tdes->head_lsa, min_lsa)))
+	      && (LSA_ISNULL (&smallest_lsa) || LSA_LT (&tdes->head_lsa, &smallest_lsa)))
 	    {
-	      min_lsa = &tdes->head_lsa;
+	      LSA_COPY (&smallest_lsa, &tdes->head_lsa);
 	    }
 	}
     }
 
-  if (min_lsa != NULL)
-    {
-      LSA_COPY (lsa, min_lsa);
-    }
-
   TR_TABLE_CS_EXIT (thread_p);
+
+  /* Consider system worker transactions (e.g. online index loaders) as well.
+   * Recovery undo processes them too (see logtb_rv_read_only_map_undo_tdes),
+   * so the smallest LSA that decides log archive retention must not skip
+   * their in-flight log.
+   */
+  // *INDENT-OFF*
+  log_system_tdes::map_all_tdes ([&smallest_lsa] (log_tdes & sys_tdes)
+    {
+      if (!LSA_ISNULL (&sys_tdes.head_lsa)
+	  && (LSA_ISNULL (&smallest_lsa) || LSA_LT (&sys_tdes.head_lsa, &smallest_lsa)))
+	{
+	  LSA_COPY (&smallest_lsa, &sys_tdes.head_lsa);
+	}
+    });
+  // *INDENT-ON*
+
+  LSA_COPY (lsa, &smallest_lsa);
 }
 
 /*
@@ -6523,6 +6611,7 @@ log_tdes::copy_to (LOG_TDES & dest) const
   REPLACE_COPY_2_DEST (dest, suppress_replication);
   REPLACE_COPY_2_DEST (dest, lob_locator_root);
   REPLACE_COPY_2_DEST (dest, query_timeout);
+  REPLACE_COPY_2_DEST (dest, last_query_deadline);
   REPLACE_COPY_2_DEST (dest, query_start_time);
   REPLACE_COPY_2_DEST (dest, tran_start_time);
   REPLACE_COPY_2_DEST (dest, xasl_id);
