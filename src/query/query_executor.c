@@ -13542,6 +13542,14 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 		}
 	      continue;
 	    }
+	  else if (opened == 0 && qexec_batch_filter_eligible (xasl))
+	    {
+	      /* a GROUP BY without a map (opened == 0) never opened the page batch, so its scan is still untried: the
+	       * row loop below takes the rows, but the filter can still run a chunk at a time, as it does for the
+	       * blocks the page batch does not take (the branch below).  A batch the scan declined (opened == 2) is
+	       * left alone: the scan answers a second open with that same state */
+	      (void) scan_batch_open_filter (thread_p, &xasl->curr_spec->s_id, xasl->curr_spec, &xasl_state->vd);
+	    }
 	}
       else if (qexec_batch_filter_eligible (xasl))
 	{
