@@ -132,8 +132,8 @@ build_replicated_heap_recdes (const OID &class_oid, const std::vector<OID> &plac
     }
 
   const int header_size = OR_MVCC_REP_SIZE + OR_CHN_SIZE;
-  const int vot_entries = n_variables + 1;
-  const int vot_bytes = vot_entries * OR_SHORT_SIZE;
+  /* Offsets reserve their low bits for flags, so the table includes alignment padding. */
+  const int vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (n_variables, OR_SHORT_SIZE);
   const int total_size = header_size + vot_bytes + (int) placeholder_oids.size () * OR_OOS_INLINE_SIZE;
   error = recdes_allocate_data_area (&recdes, total_size);
   if (error != NO_ERROR)
@@ -194,7 +194,7 @@ static OID
 read_replicated_heap_oos_oid (RECDES &recdes, int n_variables, int index)
 {
   const int header_size = OR_MVCC_REP_SIZE + OR_CHN_SIZE;
-  const int vot_bytes = (n_variables + 1) * OR_SHORT_SIZE;
+  const int vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (n_variables, OR_SHORT_SIZE);
   OID oid = OID_INITIALIZER;
   OR_GET_OID (recdes.data + header_size + vot_bytes + index * OR_OOS_INLINE_SIZE, &oid);
   return oid;
@@ -204,7 +204,7 @@ static LOG_LSA
 read_replicated_heap_oos_identity_stamp (RECDES &recdes, int n_variables, int index)
 {
   const int header_size = OR_MVCC_REP_SIZE + OR_CHN_SIZE;
-  const int vot_bytes = (n_variables + 1) * OR_SHORT_SIZE;
+  const int vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (n_variables, OR_SHORT_SIZE);
   INT64 packed = 0;
   OR_GET_BIGINT (recdes.data + header_size + vot_bytes + index * OR_OOS_INLINE_SIZE + OR_OID_SIZE + OR_BIGINT_SIZE,
 		 &packed);
@@ -215,7 +215,7 @@ static INT64
 read_replicated_heap_oos_length (RECDES &recdes, int n_variables, int index)
 {
   const int header_size = OR_MVCC_REP_SIZE + OR_CHN_SIZE;
-  const int vot_bytes = (n_variables + 1) * OR_SHORT_SIZE;
+  const int vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (n_variables, OR_SHORT_SIZE);
   INT64 length = 0;
   OR_GET_BIGINT (recdes.data + header_size + vot_bytes + index * OR_OOS_INLINE_SIZE + OR_OID_SIZE, &length);
   return length;
@@ -764,7 +764,7 @@ TEST (OosServerTest, ReplicaFixupRejectsShortFieldBeforeAnotherAttribute)
    * The following ordinary attribute must not be mistaken for the missing identity stamp. */
   const int n_variables = get_class_variable_count (class_oid);
   ASSERT_GE (n_variables, 2);
-  const int vot_bytes = (n_variables + 1) * OR_SHORT_SIZE;
+  const int vot_bytes = OR_VAR_TABLE_SIZE_INTERNAL (n_variables, OR_SHORT_SIZE);
   char *vot = recdes.data + OR_MVCC_REP_SIZE + OR_CHN_SIZE;
   OR_PUT_SHORT (vot + OR_SHORT_SIZE, vot_bytes + 16);
   char *next_attribute = vot + vot_bytes + 16;
