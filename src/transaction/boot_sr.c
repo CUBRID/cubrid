@@ -3070,6 +3070,8 @@ exit:
 bool
 xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_final)
 {
+  int error_code;
+
   if (!BO_IS_SERVER_RESTARTED ())
     {
       return true;
@@ -3098,9 +3100,6 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
   /* remove lob ces temp dir */
   (void) fileio_lob_remove_matching_dir (BOOT_LOB_TEMP_DIR_KEYWORD);
 
-  /* persist the latest heap bestspace hints before the log and buffer managers are finalized. */
-  (void) heap_update_all_bestspaces (thread_p);
-
 #if defined (SA_MODE)
   /* Hand the unissued tail of every reserved serial cache block back to _db_serial, so the next
    * standalone process resumes at the last value issued instead of past the block end. Must run while
@@ -3108,6 +3107,19 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
    * dismounted. A server does this before its log writer stops, in serial_flush_cache_pool_replicated. */
   serial_flush_cache_pool (thread_p);
 #endif /* SA_MODE */
+
+  /* log_final does not checkpoint a clean shutdown (it flushes every page and moves chkpt_lsa to the end of the log),
+   * so write the bestspace maps here, after the last change of a heap page: the active transactions are aborted, the
+   * vacuum workers stopped and the serial cache written back to _db_serial. The vacuum master is still up, as logging
+   * requires; log_final flushes the map pages. A failure leaves the maps as the last checkpoint wrote them, which
+   * costs space only */
+  error_code = heap_bestspace_checkpoint (thread_p);
+  if (error_code != NO_ERROR)
+    {
+      er_log_debug (ARG_FILE_LINE, "xboot_shutdown_server: the bestspace maps were not written at shutdown (error %d)",
+		    error_code);
+      er_clear ();
+    }
 
   // ha delays are registered and logged, and must be stopped before vacuum master
   log_stop_ha_delay_registration ();

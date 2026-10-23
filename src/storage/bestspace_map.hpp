@@ -133,6 +133,8 @@ namespace cubstorage
       std::size_t num_groups () const;	// persist-dirty words: group g covers sectors [g * 64, g * 64 + 64)
       std::uint64_t take_persist_dirty (std::size_t group);
       void put_back_persist_dirty (std::size_t group, std::uint64_t bits);
+      // whether some sector is persist-dirty now (a change right after this sets its bit for the next look)
+      bool any_persist_dirty ();
       void snapshot_sector (std::size_t number, bestspace_map_entry &out);
       // load: append a persisted sector as the next number, not dirty. false: duplicate key or out of memory
       bool load_sector (const bestspace_map_entry &entry);
@@ -321,13 +323,25 @@ namespace cubstorage
 		   std::uint64_t lsa);
       // like record () with owner and lsa 0, unless check (arg) returns false under the stripe lock: the pending table
       // checks that the heap's map is still not loaded, because a loader publishes the map before it takes the group
-      // under the same lock
+      // under the same lock. NO_MEMORY: (group, 0) is marked lost before the lock is released, so a loader that takes
+      // the group after this sees the mark
       record_result record_if (std::uint64_t group, std::uint64_t key, std::size_t offset, std::uint8_t code,
 			       bool (*check) (void *), void *arg);
       // the recorded pages (mask) of one sector at once, owner and lsa 0 (pending table)
       bool record_sector (std::uint64_t group, std::uint64_t key, const std::uint64_t codes[4], std::uint64_t mask);
-      // detach every entry of a group (group != 0); free the list with free_list ()
-      entry *take_group (std::uint64_t group);
+      // put taken pages of one sector back (owner and lsa 0, pending table), except the pages the group has a record of
+      // again: a writer may have recorded a newer code for one after the entry was taken. false: no memory
+      bool restore_sector (std::uint64_t group, std::uint64_t key, const std::uint64_t codes[4], std::uint64_t mask);
+      // the groups (group != 0) that have an entry or a lost mark (owner 0), sorted and distinct, without detaching
+      // anything: each stripe is read under its lock in turn, so a group recorded meanwhile may be missing. groups is
+      // malloc'd (free_and_init), nullptr when count is 0. false: out of memory
+      bool list_groups (std::uint64_t *&groups, std::size_t &count);
+      // the group (!= 0) has an entry or a lost mark (owner 0) now
+      bool has_group (std::uint64_t group);
+      // detach every entry of a group (group != 0); free the list with free_list (). locked (list, arg), if given, runs
+      // before the stripe lock is released (list may be null): what it does is ordered against every record_if () of
+      // the group. It must not call this table's record or take functions (the lock is held)
+      entry *take_group (std::uint64_t group, void (*locked) (entry *list, void *arg) = nullptr, void *arg = nullptr);
       // detach every entry
       entry *take_all ();
       static void free_list (entry *&list);
@@ -367,6 +381,7 @@ namespace cubstorage
       bool record_locked (stripe &s, std::uint64_t group, std::uint64_t key, std::size_t offset, std::uint8_t code,
 			  std::uint64_t owner, std::uint64_t lsa);
       entry *detach_if (stripe &s, std::uint64_t group, bool all);
+      static bool grow_group_list (std::uint64_t *&list, std::size_t &cap, std::size_t need);
   };
 }
 

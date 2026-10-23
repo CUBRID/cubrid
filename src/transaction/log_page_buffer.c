@@ -67,6 +67,7 @@
 #include "lock_manager.h"
 #include "log_system_tran.hpp"
 #include "boot_sr.h"
+#include "heap_file.h"
 #if !defined(SERVER_MODE)
 #include "boot_cl.h"
 #else /* !SERVER_MODE */
@@ -7441,6 +7442,14 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   detailed_er_log ("logpb_checkpoint: call fileio_synchronize_all()\n");
   if (fileio_synchronize_all (thread_p) != NO_ERROR)
+    {
+      goto error_cannot_chkpt;
+    }
+
+  /* the bestspace maps, after the flush: a page flushed above had its free space fed back before its latch was
+   * released, and the records written here are past newchkpt_lsa, inside the range this checkpoint's recovery redoes */
+  detailed_er_log ("logpb_checkpoint: call heap_bestspace_checkpoint()\n");
+  if (heap_bestspace_checkpoint (thread_p) != NO_ERROR)
     {
       goto error_cannot_chkpt;
     }

@@ -73,8 +73,6 @@ namespace cubstorage
   {
     public:
       static constexpr std::size_t BITS_PER_BYTE = std::numeric_limits<unsigned char>::digits;
-      static constexpr std::size_t MAX_CANDIDATES_QUEUE_SIZE = 128;
-      static constexpr std::size_t MAX_SHARD_PAGE_COUNT = 4;
       static constexpr std::size_t ALLOC_BATCH_SIZE = 4;
       static constexpr std::size_t L3_FANOUT = 8;
       static constexpr std::size_t L2_FANOUT = 8;
@@ -246,8 +244,6 @@ namespace cubstorage
 	  shard (bestspace &parent) noexcept;
 	  ~shard () = default;
 
-	  void reset (const bestspace_entry entries[ENTRIES_PER_SHARD]);
-
 	  status find (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
 		       std::size_t bias, PGBUF_WATCHER &page_watcher);
 
@@ -256,8 +252,6 @@ namespace cubstorage
 	  void get_estimates (int &num_pages, std::uint64_t &recs_num, std::uint64_t &recs_sumlen);
 	  void get_stats (std::uint32_t &request, std::uint32_t &advanced_shard, std::uint32_t &fetch_L3, std::uint32_t &fetch_L2,
 			  std::uint32_t &fetch_L1, std::uint32_t &found, std::uint32_t &allocated);
-
-	  void to_entries (bestspace_entry *entries);
 
 	private:
 	  // core
@@ -324,13 +318,11 @@ namespace cubstorage
       };
 
     public:
+      // map_pages: malloc'd array of map_num_pages map pages (or nullptr); this object takes it over with the map
       explicit bestspace (std::size_t shard_count, int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen,
-			  std::uint16_t unfill_space, bestspace_map *map);
+			  std::uint16_t unfill_space, bestspace_map *map, bool map_inline, VPID *map_pages,
+			  std::size_t map_num_pages);
       ~bestspace ();
-
-      void reset (const bestspace_entry *entries, std::size_t num_entries);
-
-      bool updatable ();
 
       int find (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::uint16_t size, bool is_newrec,
 		PGBUF_WATCHER &page_watcher);
@@ -343,6 +335,23 @@ namespace cubstorage
 
       bestspace_map *get_map ();
 
+      // the loader has merged the heap's pending feedback (bestspace_pending) into the map. Until then feedback keeps
+      // going to the pending table, even though the bestspace is published: fed to the map directly, it could be
+      // overwritten by an older code of the same page that the loader merges afterwards (heap_file.c)
+      bool is_absorbed () const;
+      void set_absorbed ();	// under the pending table's stripe lock of the heap's group
+
+      // where the map is on disk (05 5.1): inline in the heap header, or map pages. heap_file.c sets it at load and when
+      // it adds a map page (under the heap header write latch); the checkpoint reads it. m_layout_mutex is taken after
+      // page latches, never before one, and no page is fixed while it is held.
+      std::size_t map_capacity_sectors (std::size_t per_page);	// inline: INLINE_SECTORS, else pages * per_page
+      bool map_page_at (std::size_t page_index, VPID &vpid, bool &is_inline);	// false: no such page (or inline)
+      bool map_is_inline ();
+      std::size_t map_num_pages ();
+      // room for one more map page, so that map_append_page () cannot fail once the page is linked. false: out of memory
+      bool map_reserve_page_slot ();
+      bool map_append_page (VPID vpid);	// leaves the inline layout; false only without a reserved slot and memory
+
       void set_estimates (int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen);
       void get_estimates (int &num_pages, std::uint64_t &recs_num, std::uint64_t &recs_sumlen);
       void get_stats (std::uint32_t &request, std::uint32_t &advanced_shard, std::uint32_t &fetch_L3, std::uint32_t &fetch_L2,
@@ -350,11 +359,17 @@ namespace cubstorage
 
       std::size_t get_num_shards ();
 
-      void to_entries (bestspace_entry *entries);
-
     private:
       std::deque<shard> m_shards;
       bestspace_map *m_map;	// owned: freed with this object
+      std::atomic<bool> m_absorbed;	// see is_absorbed ()
+
+      // the map layout on disk, under m_layout_mutex
+      std::mutex m_layout_mutex;
+      bool m_map_inline;
+      VPID *m_map_pages;		// malloc'd, m_map_pages_alloc slots; owned
+      std::size_t m_map_num_pages;
+      std::size_t m_map_pages_alloc;
 
       // parameter
       const bool m_distributed_insert;
@@ -365,7 +380,7 @@ namespace cubstorage
       std::atomic<std::uint64_t> m_recs_num;
       std::atomic<std::uint64_t> m_recs_sumlen;
 
-      std::atomic<std::uint64_t> m_last_updated;
+      bool map_grow_page_slots ();	// under m_layout_mutex
 
       int find_from_shards (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::size_t shard,
 			    std::uint16_t needed_size, std::uint16_t consume_size, std::size_t bias, bool is_newrec, PGBUF_WATCHER &page_watcher);
@@ -403,6 +418,8 @@ namespace cubstorage
 	bestspace *entry;
 
 	registry_entry *next;
+	int pins;		// pinned by the checkpoint (global list nodes only), under m_mutex
+	bool dropped;		// destroyed while pinned: the last unpin frees it, under m_mutex
       };
 
       struct registry_cache
@@ -416,13 +433,23 @@ namespace cubstorage
       };
 
     public:
+      // a bestspace held by the checkpoint while it writes its map with no registry mutex held (05 2.2 rule 4): a
+      // destroy () meanwhile only marks it dropped, and the last unpin frees it
+      struct pinned
+      {
+	HFID hfid;
+	bestspace *entry;
+	void *node;
+      };
+
       bestspace_registry ();
       ~bestspace_registry ();
 
-      // takes over the map: the bestspace frees it, or this function does when it returns nullptr (out of memory)
-      bestspace *create (HFID *hfid, std::size_t shard_count, const bestspace_entry *entries, std::size_t num_entries,
-			 int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen, std::uint16_t unfill_space,
-			 bestspace_map *map);
+      // takes over the map and the map page array (malloc'd, map_num_pages pages, or nullptr; the layout read from
+      // disk): the bestspace frees them, or this function does when it returns nullptr (out of memory)
+      bestspace *create (HFID *hfid, std::size_t shard_count, int num_pages, std::uint64_t recs_num,
+			 std::uint64_t recs_sumlen, std::uint16_t unfill_space, bestspace_map *map, bool map_inline,
+			 VPID *map_pages, std::size_t map_num_pages);
       void destroy (const VFID *vfid);
       void destroy (const HFID *hfid);
 
@@ -431,12 +458,27 @@ namespace cubstorage
       using callback = int (*) (const HFID *hfid, bestspace *entry, void *args);
       int for_each (callback function, void *args);
 
+      // pin every bestspace: out is malloc'd (nullptr and count 0 when there is none); unpin_all () frees it
+      int pin_all (pinned *&out, std::size_t &count);
+      void unpin_all (pinned *&pins, std::size_t count);
+      // pin the bestspace of one heap; false when it is not in the registry
+      bool pin (const HFID *hfid, pinned &out);
+      void unpin (pinned &pin);
+      // the pinned bestspace was destroyed (its heap dropped or reused) after it was pinned
+      bool is_dropped (const pinned &pin);
+      bool empty ();
+      // how many bestspaces create () has published. A writer that missed a heap in the registry and then reads the
+      // same count knows that no bestspace was published since, for that heap or any other (the pending table's
+      // check, heap_file.c), without walking the list
+      std::uint64_t create_count () const;
+
     private:
       registry_entry *m_head;
       std::size_t m_cache_count;
       std::mutex m_mutex;
 
       alignas (64) std::atomic<uint64_t> m_generation;
+      alignas (64) std::atomic<uint64_t> m_creates;	// bumped under m_mutex once a created entry is in the list
 
       inline static thread_local registry_cache TLS_cache;
 
@@ -445,6 +487,8 @@ namespace cubstorage
 
       void insert_entry (registry_entry *&head, registry_entry *entry);
       void destroy_entry (registry_entry *entry);
+      void destroy_or_drop_entry (registry_entry *entry);	// under m_mutex
+      void unpin_locked (registry_entry *entry);	// under m_mutex
       std::optional<std::pair<registry_entry *, registry_entry *>> find_entry (registry_entry *head, const VFID *vfid);
       std::optional<std::pair<registry_entry *, registry_entry *>> find_entry (registry_entry *head, const HFID *hfid);
 
@@ -456,6 +500,8 @@ namespace cubstorage
   };
 
   extern bestspace_registry bestspaces;
+  // feedback for heaps whose map is not loaded (group = heap file key, heap_file.c); a loader takes its group
+  extern bestspace_sector_table bestspace_pending;
 }
 
 #endif // _BESTSPACE_HPP_

@@ -30,7 +30,9 @@
 
 #include <mutex>
 #include <utility>
+#include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <chrono>
 
 // XXX: SHOULD BE THE LAST INCLUDE HEADER
@@ -45,14 +47,6 @@
 	} \
     } \
   while (0)
-
-static std::uint64_t
-monotonic_seconds () noexcept
-{
-  return static_cast<std::uint64_t> (std::chrono::duration_cast<std::chrono::seconds>
-				     (std::chrono::steady_clock::now ().time_since_epoch ()).count ());
-}
-
 
 static int
 wait_for_shard_allocation (THREAD_ENTRY *thread_p, void *args)
@@ -293,52 +287,6 @@ namespace cubstorage
   {
   }
 
-  void
-  bestspace::shard::reset (const bestspace_entry entries[ENTRIES_PER_SHARD])
-  {
-    std::array<tier, BITS_PER_BYTE> tiers;
-    std::size_t length;
-    std::size_t i, j;
-    tier fs;
-    L3 l3;
-    L2 l2;
-    L1 l1;
-
-    // L1
-    for (i = 0; i < ENTRIES_PER_SHARD; i++)
-      {
-	l1.set_vpid ({ entries[i].pageid, entries[i].volid });
-	l1.set_freespace (entries[i].freespace);
-	m_L1[i].store (l1);
-      }
-    // L2
-    for (i = 0; i < L3_FANOUT; i++)
-      {
-	l2.clear ();
-	for (j = 0; j < L2_FANOUT; j++)
-	  {
-	    fs = size_to_tier (entries[i * L2_FANOUT + j].freespace);
-	    if (fs > tier::FS0)
-	      {
-		l2.set (fs, j);
-	      }
-	  }
-	m_L2[i].store (l2);
-      }
-    // L3
-    l3.clear ();
-    for (i = 0; i < L3_FANOUT; i++)
-      {
-	l2 = m_L2[i].load ();
-	length = l2.collect (tiers);
-	for (j = 0; j < length; j++)
-	  {
-	    l3.set (tiers[j], i);
-	  }
-      }
-    m_L3.store (l3);
-  }
-
   bestspace::status
   bestspace::shard::find (OID *class_oid, HFID *hfid, std::uint16_t needed_size, std::uint16_t consume_size,
 			  std::size_t bias, PGBUF_WATCHER &page_watcher)
@@ -401,19 +349,6 @@ namespace cubstorage
     fetch_L1 += m_stats.fetch_L1.load ();
     found += m_stats.found.load ();
     allocated += m_stats.allocated.load ();
-  }
-
-  void
-  bestspace::shard::to_entries (bestspace_entry *entries)
-  {
-    std::size_t i;
-    L1 l1;
-
-    for (i = 0; i < ENTRIES_PER_SHARD; i++)
-      {
-	l1 = m_L1[i].load ();
-	std::memcpy (&entries[i], &l1, sizeof (bestspace_entry));
-      }
   }
 
   bestspace::status
@@ -570,7 +505,7 @@ namespace cubstorage
 			     std::size_t l2_index, std::size_t l1_index, PGBUF_WATCHER &page_watcher)
   {
     cubthread::entry *thread_p = thread_get_thread_entry_info ();
-    std::size_t freespace;
+    std::size_t available, freespace;
     VPID vpid, old_vpid;
     L1 expected, desired;
     OID page_class_oid;
@@ -615,11 +550,14 @@ namespace cubstorage
     expected = m_L1[l2_index * L2_FANOUT + l1_index].load ();
     // newest
     vpid = expected.get_vpid ();
-    // store the old and get the actual free space
-    freespace = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
-    if (freespace < needed_size)
+    // the record fits by the room this transaction has now. The slot keeps the room without the space transactions
+    // saved for their rollback (05 3.1): that space is free once they end, and the slot hands its value to the map when
+    // the page leaves it, which would keep the saved space subtracted for good
+    available = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
+    freespace = spage_max_space_for_new_record_without_saving (thread_p, page_watcher.pgptr);
+    if (available < needed_size)
       {
-	// there is no enough space and the free space information is wrong
+	// there is not enough space now: record the measured free space
 	if (VPID_EQ (&vpid, &old_vpid))
 	  {
 	    desired = expected;
@@ -864,6 +802,7 @@ namespace cubstorage
     cubthread::entry *thread_p = thread_get_thread_entry_info ();
     OID page_class_oid;
     VPID vpid;
+    int available, freespace;
     int error;
 
     assert (class_oid != nullptr);
@@ -912,12 +851,23 @@ namespace cubstorage
 	return status::NOT_FOUND;
       }
 
-    candidate.freespace = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
-    if (candidate.freespace < needed_size)
+    // the record fits by the room this transaction has now. What the caller keeps of the page (the map's code, a
+    // slot's free space) is measured without the space transactions saved for their rollback (05 3.1): that space is
+    // free once they end, and nothing reports it then, so a value taken with it subtracted stays low until the page's
+    // next feedback (a page that keeps no row may never get one, and a page of code 0 is never claimed)
+    available = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
+    if (available < needed_size)
       {
+	// the caller records this value in the map as the page's measured tier: measure it as every feedback does
+	freespace = spage_get_free_space_without_saving (thread_p, page_watcher.pgptr);
+	candidate.freespace = static_cast<std::uint16_t> (MIN (MAX (freespace, 0), DB_PAGESIZE));
 	pgbuf_ordered_unfix (thread_p, &page_watcher);
 	return status::NOT_FOUND;
       }
+    // the page goes to a slot, or back to the map (allocate_install): the room for a new record without saved space,
+    // as a slot keeps it (L1_find). The caller takes the record off
+    freespace = spage_max_space_for_new_record_without_saving (thread_p, page_watcher.pgptr);
+    candidate.freespace = static_cast<std::uint16_t> (freespace);
     return status::FOUND;
   }
 
@@ -934,7 +884,7 @@ namespace cubstorage
     // the map registers the new pages under the heap header latch: let it allocate what a new sector needs first
     m_parent.m_map->reserve ();
     error = heap_alloc_new_pages (thread_p, hfid, ALLOC_BATCH_SIZE - num_candidates, vpids.data (), &page_watcher,
-				  m_parent.m_map);
+				  &m_parent);
     if (error != NO_ERROR)
       {
 	return error;
@@ -943,7 +893,9 @@ namespace cubstorage
 
     STATS_INC (allocated, ALLOC_BATCH_SIZE - num_candidates);
 
-    freespace = spage_max_space_for_new_record (thread_p, page_watcher.pgptr);
+    // the room the latched page's slot keeps, without saved space (L1_find); allocate () decides the fit on the room
+    // this transaction has
+    freespace = spage_max_space_for_new_record_without_saving (thread_p, page_watcher.pgptr);
     // page_watcher.pgptr fixes the page pointer of the last candidates
     for (i = ALLOC_BATCH_SIZE - 1; i >= static_cast<int> (num_candidates); i--)
       {
@@ -1113,7 +1065,7 @@ namespace cubstorage
 	    candidates[i].freespace = optimistic_freespace (bestspace_map::CODE_MAX_TIER);
 	  }
 
-	if (candidates[ALLOC_BATCH_SIZE - 1].freespace < needed_size)
+	if (spage_max_space_for_new_record (thread_get_thread_entry_info (), page_watcher.pgptr) < needed_size)
 	  {
 	    // heap_alloc_new_pages links the pages into the heap before it latches the first one again, so another
 	    // inserter that reached it through an old hint may have used it meanwhile. keep the batch in the hot cache
@@ -1151,9 +1103,16 @@ namespace cubstorage
   }
 
   bestspace::bestspace (std::size_t shard_count, int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen,
-			std::uint16_t unfill_space, bestspace_map *map)
+			std::uint16_t unfill_space, bestspace_map *map, bool map_inline, VPID *map_pages,
+			std::size_t map_num_pages)
     : m_shards ()
     , m_map (map)
+    , m_absorbed (false)
+    , m_layout_mutex ()
+    , m_map_inline (map_inline)
+    , m_map_pages (map_pages)
+    , m_map_num_pages (map_pages != nullptr ? map_num_pages : 0)
+    , m_map_pages_alloc (map_pages != nullptr ? map_num_pages : 0)
     , m_distributed_insert (prm_get_bool_value (PRM_ID_BESTSPACE_DISTRIBUTED_INSERT))
     , m_unfill_space (unfill_space)
     , m_num_pages (num_pages)
@@ -1163,7 +1122,6 @@ namespace cubstorage
     assert (shard_count > 0);
     assert (map != nullptr);
 
-    m_last_updated.store (monotonic_seconds ());
     for (std::size_t i = 0; i < shard_count; i++)
       {
 	m_shards.emplace_back (*this);
@@ -1173,6 +1131,10 @@ namespace cubstorage
   bestspace::~bestspace ()
   {
     bestspace_map::destroy (m_map);
+    if (m_map_pages != nullptr)
+      {
+	free_and_init (m_map_pages);
+      }
   }
 
   bestspace_map *
@@ -1181,58 +1143,89 @@ namespace cubstorage
     return m_map;
   }
 
-  void
-  bestspace::reset (const bestspace_entry *entries, std::size_t num_entries)
+  // acquire: a writer that sees true also sees every code the loader merged before set_absorbed ()
+  bool
+  bestspace::is_absorbed () const
   {
-    std::array<bestspace_entry, ENTRIES_PER_SHARD> shard_entries;
-    std::size_t entries_to_copy;
-    std::size_t entry_index;
-    std::size_t i, j;
+    return m_absorbed.load (std::memory_order_acquire);
+  }
 
-    assert (num_entries <= m_shards.size () * ENTRIES_PER_SHARD);
+  void
+  bestspace::set_absorbed ()
+  {
+    m_absorbed.store (true, std::memory_order_release);
+  }
 
-    // shards
-    entry_index = 0;
-    for (i = 0; i < m_shards.size (); i++)
-      {
-	entries_to_copy = entry_index < num_entries ? num_entries - entry_index : 0;
-	entries_to_copy = MIN (entries_to_copy, ENTRIES_PER_SHARD);
-	if (entries_to_copy > 0)
-	  {
-	    std::memcpy (shard_entries.data (), entries + entry_index, entries_to_copy * sizeof (bestspace_entry));
-	  }
-	for (j = entries_to_copy; j < ENTRIES_PER_SHARD; j++)
-	  {
-	    shard_entries[j].set_null ();
-	  }
-
-	m_shards[i].reset (shard_entries.data ());
-	entry_index += entries_to_copy;
-      }
-
-    // the restored L1 pages are resident in the map (C2 only: C3 starts with empty shards and removes reset)
-    for (i = 0; i < num_entries; i++)
-      {
-	if (entries[i].pageid != NULL_PAGEID)
-	  {
-	    (void) m_map->set_resident (entries[i].volid, entries[i].pageid, code_of (entries[i].freespace));
-	  }
-      }
+  std::size_t
+  bestspace::map_capacity_sectors (std::size_t per_page)
+  {
+    std::lock_guard<std::mutex> lock (m_layout_mutex);
+    return m_map_inline ? bestspace_map::INLINE_SECTORS : m_map_num_pages * per_page;
   }
 
   bool
-  bestspace::updatable ()
+  bestspace::map_page_at (std::size_t page_index, VPID &vpid, bool &is_inline)
   {
-    constexpr std::uint64_t UPDATE_TIME_THRESHOLD = 30;
-    std::uint64_t last_updated, now;
-
-    last_updated = m_last_updated.load ();
-    now = monotonic_seconds ();
-    if (now >= last_updated && now - last_updated >= UPDATE_TIME_THRESHOLD)
+    std::lock_guard<std::mutex> lock (m_layout_mutex);
+    is_inline = m_map_inline;
+    if (m_map_inline || page_index >= m_map_num_pages)
       {
-	return m_last_updated.compare_exchange_strong (last_updated, now);
+	return false;
       }
-    return false;
+    vpid = m_map_pages[page_index];
+    return true;
+  }
+
+  bool
+  bestspace::map_is_inline ()
+  {
+    std::lock_guard<std::mutex> lock (m_layout_mutex);
+    return m_map_inline;
+  }
+
+  std::size_t
+  bestspace::map_num_pages ()
+  {
+    std::lock_guard<std::mutex> lock (m_layout_mutex);
+    return m_map_num_pages;
+  }
+
+  // caller holds m_layout_mutex
+  bool
+  bestspace::map_grow_page_slots ()
+  {
+    std::size_t alloc = m_map_pages_alloc == 0 ? 4 : m_map_pages_alloc * 2;
+    VPID *pages = (VPID *) realloc (m_map_pages, alloc * sizeof (VPID));
+
+    if (pages == nullptr)
+      {
+	return false;
+      }
+    m_map_pages = pages;
+    m_map_pages_alloc = alloc;
+    return true;
+  }
+
+  // the caller holds the heap header write latch: layout changes are serialized by it, readers by the mutex. A slot
+  // reserved here stays free until the next map_append_page (), which only the latch holder calls
+  bool
+  bestspace::map_reserve_page_slot ()
+  {
+    std::lock_guard<std::mutex> lock (m_layout_mutex);
+    return m_map_num_pages < m_map_pages_alloc || map_grow_page_slots ();
+  }
+
+  bool
+  bestspace::map_append_page (VPID vpid)
+  {
+    std::lock_guard<std::mutex> lock (m_layout_mutex);
+    if (m_map_num_pages == m_map_pages_alloc && !map_grow_page_slots ())
+      {
+	return false;
+      }
+    m_map_pages[m_map_num_pages++] = vpid;
+    m_map_inline = false;
+    return true;
   }
 
   int
@@ -1400,17 +1393,6 @@ namespace cubstorage
     return m_shards.size ();
   }
 
-  void
-  bestspace::to_entries (bestspace_entry *entries)
-  {
-    std::size_t i;
-
-    for (i = 0; i < m_shards.size (); i++)
-      {
-	m_shards[i].to_entries (entries + i * ENTRIES_PER_SHARD);
-      }
-  }
-
   int
   bestspace::find_from_shards (cubthread::entry &thread_ref, OID *class_oid, HFID *hfid, std::size_t shard,
 			       std::uint16_t needed_size, std::uint16_t consume_size, std::size_t bias, bool is_newrec, PGBUF_WATCHER &page_watcher)
@@ -1490,6 +1472,7 @@ namespace cubstorage
     , m_cache_count (0)
     , m_mutex ()
     , m_generation (1)
+    , m_creates (0)
   {
   }
 
@@ -1504,33 +1487,45 @@ namespace cubstorage
 	node = m_head;
 	m_head = m_head->next;
 
-	delete node->entry;
-	delete node;
+	destroy_entry (node);
       }
   }
 
   bestspace *
-  bestspace_registry::create (HFID *hfid, std::size_t shard_count, const bestspace_entry *entries,
-			      std::size_t num_entries, int num_pages, std::uint64_t recs_num, std::uint64_t recs_sumlen,
-			      std::uint16_t unfill_space, bestspace_map *map)
+  bestspace_registry::create (HFID *hfid, std::size_t shard_count, int num_pages, std::uint64_t recs_num,
+			      std::uint64_t recs_sumlen, std::uint16_t unfill_space, bestspace_map *map, bool map_inline,
+			      VPID *map_pages, std::size_t map_num_pages)
   {
-    registry_entry *node;
+    // the engine does not use exceptions, and in SERVER_MODE memory_wrapper.hpp turns 'new' into a macro that does not
+    // take std::nothrow: malloc and construct in place (destroy_entry () undoes both)
+    static_assert (alignof (bestspace) <= alignof (std::max_align_t), "malloc must align a bestspace");
+    registry_entry *node = (registry_entry *) malloc (sizeof (registry_entry));
+    void *area = malloc (sizeof (bestspace));
 
-    node = new registry_entry;
-    if (node == nullptr)
+    if (node == nullptr || area == nullptr)
       {
+	// the bestspace would have owned the map and the pages
 	bestspace_map::destroy (map);
+	if (map_pages != nullptr)
+	  {
+	    free_and_init (map_pages);
+	  }
+	if (area != nullptr)
+	  {
+	    free_and_init (area);
+	  }
+	if (node != nullptr)
+	  {
+	    free_and_init (node);
+	  }
 	return nullptr;
       }
     node->hfid = *hfid;
-    node->entry = new bestspace (shard_count, num_pages, recs_num, recs_sumlen, unfill_space, map);
-    if (node->entry == nullptr)
-      {
-	bestspace_map::destroy (map);
-	delete node;
-	return nullptr;
-      }
-    node->entry->reset (entries, num_entries);
+    node->next = nullptr;
+    node->pins = 0;
+    node->dropped = false;
+    node->entry = placement_new (static_cast<bestspace *> (area), shard_count, num_pages, recs_num, recs_sumlen,
+				 unfill_space, map, map_inline, map_pages, map_num_pages);
 
     std::lock_guard<std::mutex> lock (m_mutex);
     if (m_cache_count == 0)
@@ -1540,7 +1535,17 @@ namespace cubstorage
       }
     assert (!find_entry (m_head, hfid));
     insert_entry (m_head, node);
+    // in the same hold of the mutex as the insert, which a lookup (find_from_global) also takes: a lookup that missed
+    // ran before the insert, so a reader that reads the same count before such a miss and again later knows that no
+    // create () completed in between (heap_bsmap_unloaded_cache in heap_file.c)
+    m_creates.fetch_add (1);
     return node->entry;
+  }
+
+  std::uint64_t
+  bestspace_registry::create_count () const
+  {
+    return m_creates.load ();
   }
 
   void
@@ -1553,7 +1558,7 @@ namespace cubstorage
     while ((node = get_node_from_list (m_head, vfid)))
       {
 	m_generation.fetch_add (1);
-	destroy_entry (node);
+	destroy_or_drop_entry (node);
       }
   }
 
@@ -1567,7 +1572,7 @@ namespace cubstorage
     while ((node = get_node_from_list (m_head, hfid)))
       {
 	m_generation.fetch_add (1);
-	destroy_entry (node);
+	destroy_or_drop_entry (node);
       }
   }
 
@@ -1614,6 +1619,100 @@ namespace cubstorage
       }
 
     return stored_error;
+  }
+
+  int
+  bestspace_registry::pin_all (pinned *&out, std::size_t &count)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+    registry_entry *node;
+    std::size_t n = 0, i = 0;
+
+    out = nullptr;
+    count = 0;
+    for (node = m_head; node != nullptr; node = node->next)
+      {
+	n++;
+      }
+    if (n == 0)
+      {
+	return NO_ERROR;
+      }
+    out = (pinned *) malloc (n * sizeof (pinned));
+    if (out == nullptr)
+      {
+	er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_OUT_OF_VIRTUAL_MEMORY, 1, n * sizeof (pinned));
+	return ER_OUT_OF_VIRTUAL_MEMORY;
+      }
+    for (node = m_head; node != nullptr; node = node->next, i++)
+      {
+	node->pins++;
+	out[i].hfid = node->hfid;
+	out[i].entry = node->entry;
+	out[i].node = node;
+      }
+    count = n;
+    return NO_ERROR;
+  }
+
+  void
+  bestspace_registry::unpin_all (pinned *&pins, std::size_t count)
+  {
+    {
+      std::lock_guard<std::mutex> lock (m_mutex);
+
+      for (std::size_t i = 0; i < count; i++)
+	{
+	  unpin_locked ((registry_entry *) pins[i].node);
+	}
+    }
+    if (pins != nullptr)
+      {
+	free_and_init (pins);
+      }
+  }
+
+  bool
+  bestspace_registry::pin (const HFID *hfid, pinned &out)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+    auto pair = find_entry (m_head, hfid);
+
+    if (!pair)
+      {
+	return false;
+      }
+    pair->second->pins++;
+    out.hfid = pair->second->hfid;
+    out.entry = pair->second->entry;
+    out.node = pair->second;
+    return true;
+  }
+
+  void
+  bestspace_registry::unpin (pinned &pin)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    unpin_locked ((registry_entry *) pin.node);
+    pin.entry = nullptr;
+    pin.node = nullptr;
+  }
+
+  bool
+  bestspace_registry::is_dropped (const pinned &pin)
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    return ((registry_entry *) pin.node)->dropped;
+  }
+
+  bool
+  bestspace_registry::empty ()
+  {
+    std::lock_guard<std::mutex> lock (m_mutex);
+
+    return m_head == nullptr;
   }
 
   bestspace *
@@ -1688,11 +1787,37 @@ namespace cubstorage
     head = entry;
   }
 
+  // an entry of the global list, made by create (). The entries of TLS_cache are separate nodes (new/delete)
   void
   bestspace_registry::destroy_entry (registry_entry *entry)
   {
-    delete entry->entry;
-    delete entry;
+    entry->entry->~bestspace ();
+    free_and_init (entry->entry);
+    free_and_init (entry);
+  }
+
+  // a node already taken out of the global list: a pinned one stays until its last unpin
+  void
+  bestspace_registry::destroy_or_drop_entry (registry_entry *entry)
+  {
+    if (entry->pins > 0)
+      {
+	entry->dropped = true;
+      }
+    else
+      {
+	destroy_entry (entry);
+      }
+  }
+
+  void
+  bestspace_registry::unpin_locked (registry_entry *entry)
+  {
+    assert (entry->pins > 0);
+    if (--entry->pins == 0 && entry->dropped)
+      {
+	destroy_entry (entry);
+      }
   }
 
   std::optional<std::pair<bestspace_registry::registry_entry *, bestspace_registry::registry_entry *>>
@@ -1802,4 +1927,5 @@ namespace cubstorage
   //////////////////////////////////////////////////////////////////////////
 
   bestspace_registry bestspaces;
+  bestspace_sector_table bestspace_pending;
 }

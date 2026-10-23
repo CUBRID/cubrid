@@ -5800,6 +5800,99 @@ file_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * v
 }
 
 /*
+ * file_probe_heap_header () - the header page (sticky first page) of a heap file, for a caller that holds neither a
+ *			       lock nor a page of the file: it may have been destroyed, and its file header page reused
+ *
+ * return              : error code (the file header page could not be read)
+ * thread_p (in)       : thread entry
+ * vfid (in)           : file identifier
+ * latch_condition (in): PGBUF_CONDITIONAL_LATCH for a caller that holds a page of the heap: file_destroy () latches the
+ *			 file header before every page of the file, so waiting here could deadlock; a file header that
+ *			 cannot be latched at once gives FILE_HEAP_HEADER_UNKNOWN
+ * state (out)         : FILE_HEAP_HEADER_FOUND (vpid_out is set), FILE_HEAP_HEADER_GONE or FILE_HEAP_HEADER_UNKNOWN
+ * vpid_out (out)      : the heap header page
+ *
+ * note: unlike file_get_sticky_first_page (), nothing about the page is assumed: a deallocated page, a page of another
+ *	 type or of another file says the file is gone.
+ */
+int
+file_probe_heap_header (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_CONDITION latch_condition,
+			FILE_HEAP_HEADER_STATE * state, VPID * vpid_out)
+{
+  VPID vpid_fhead;
+  PAGE_PTR page_fhead = NULL;
+  FILE_HEADER *fhead = NULL;
+  int error_code = NO_ERROR;
+
+  *state = FILE_HEAP_HEADER_GONE;
+  VPID_SET_NULL (vpid_out);
+
+  FILE_GET_HEADER_VPID (vfid, &vpid_fhead);
+  if (latch_condition == PGBUF_UNCONDITIONAL_LATCH)
+    {
+      /* checks the sector too: the pages of a destroyed file are not all marked deallocated */
+      error_code = pgbuf_fix_if_not_deallocated (thread_p, &vpid_fhead, PGBUF_LATCH_READ, PGBUF_UNCONDITIONAL_LATCH,
+						 &page_fhead);
+      if (error_code != NO_ERROR)
+	{
+	  return error_code;
+	}
+    }
+  else
+    {
+      bool deallocated;
+      DISK_ISVALID isvalid;
+
+      /* the sector first, as pgbuf_fix_if_not_deallocated () does: a fix in a sector that is not reserved asserts under
+       * page validation. The sector table pages are never latched by someone waiting for a heap page */
+      isvalid = disk_is_page_sector_reserved (thread_p, vpid_fhead.volid, vpid_fhead.pageid);
+      if (isvalid == DISK_INVALID)
+	{
+	  return NO_ERROR;
+	}
+      else if (isvalid == DISK_ERROR)
+	{
+	  ASSERT_ERROR_AND_SET (error_code);
+	  return error_code;
+	}
+      /* a conditional latch that fails sets no error: only what this fix sets is looked at, then dropped */
+      er_stack_push ();
+      page_fhead = pgbuf_fix (thread_p, &vpid_fhead, OLD_PAGE_MAYBE_DEALLOCATED, PGBUF_LATCH_READ, latch_condition);
+      deallocated = page_fhead == NULL && er_errid () == ER_PB_BAD_PAGEID;
+      er_stack_pop ();
+      if (page_fhead == NULL && !deallocated)
+	{
+	  /* latched by someone else, or not readable now */
+	  *state = FILE_HEAP_HEADER_UNKNOWN;
+	  return NO_ERROR;
+	}
+    }
+  if (page_fhead == NULL)
+    {
+      /* deallocated */
+      return NO_ERROR;
+    }
+
+  fhead = (FILE_HEADER *) page_fhead;
+  if (pgbuf_get_page_ptype (thread_p, page_fhead) == PAGE_FTAB && VFID_EQ (&fhead->self, vfid)
+      && !FILE_IS_TEMPORARY (fhead) && (fhead->type == FILE_HEAP || fhead->type == FILE_HEAP_REUSE_SLOTS))
+    {
+      if (VPID_ISNULL (&fhead->vpid_sticky_first))
+	{
+	  /* being created */
+	  *state = FILE_HEAP_HEADER_UNKNOWN;
+	}
+      else
+	{
+	  *state = FILE_HEAP_HEADER_FOUND;
+	  *vpid_out = fhead->vpid_sticky_first;
+	}
+    }
+  pgbuf_unfix_and_init (thread_p, page_fhead);
+  return NO_ERROR;
+}
+
+/*
  * file_set_tde_algorithm () - set encryption algorithm in file header for TDE.
  *
  * return        : NO_ERROR, or ER_code

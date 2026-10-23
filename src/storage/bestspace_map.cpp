@@ -25,6 +25,7 @@
 #include "bit.h"
 #include "memory_alloc.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdlib>
 #include <cstring>
@@ -1293,6 +1294,27 @@ namespace cubstorage
       }
   }
 
+  bool
+  bestspace_map::any_persist_dirty ()
+  {
+    std::size_t g, n = num_groups ();
+    group *grp;
+
+    if (m_inline_persist_dirty.load () != 0)
+      {
+	return true;
+      }
+    for (g = 0; g < n; g++)
+      {
+	grp = group_ptr (g);
+	if (grp != nullptr && grp->persist_dirty.load () != 0)
+	  {
+	    return true;
+	  }
+      }
+    return false;
+  }
+
   void
   bestspace_map::snapshot_sector (std::size_t n, bestspace_map_entry &out)
   {
@@ -1609,7 +1631,13 @@ namespace cubstorage
       {
 	return REJECTED;
       }
-    return record_locked (s, group, key, offset, code, 0, 0) ? RECORDED : NO_MEMORY;
+    if (!record_locked (s, group, key, offset, code, 0, 0))
+      {
+	// marked under the stripe lock: a loader takes the group, then reads the mark, under the same lock
+	mark_lost (group, 0);
+	return NO_MEMORY;
+      }
+    return RECORDED;
   }
 
   // caller holds s.mutex
@@ -1690,6 +1718,148 @@ namespace cubstorage
     return true;
   }
 
+  bool
+  bestspace_sector_table::restore_sector (std::uint64_t group, std::uint64_t key, const std::uint64_t codes[4],
+					  std::uint64_t mask)
+  {
+    stripe &s = m_stripes[stripe_of (group, key)];
+    std::lock_guard<std::mutex> lock (s.mutex);
+    std::size_t off;
+    entry *e;
+
+    for (e = s.buckets != nullptr ? s.buckets[bucket_of (s, group, key)] : nullptr; e != nullptr; e = e->next)
+      {
+	if (e->group == group && e->key == key)
+	  {
+	    break;
+	  }
+      }
+    if (e != nullptr)
+      {
+	// a page recorded since the entry was taken has the newer code
+	mask &= ~e->mask;
+      }
+    while (mask != 0)
+      {
+	off = lowest_bit (mask);
+	mask &= mask - 1;
+	if (!record_locked (s, group, key, off, static_cast<std::uint8_t> ((codes[off / 16] >> ((off % 16) * 4)) & 0xF),
+			    0, 0))
+	  {
+	    return false;
+	  }
+      }
+    return true;
+  }
+
+  bool
+  bestspace_sector_table::list_groups (std::uint64_t *&groups, std::size_t &count)
+  {
+    std::uint64_t *out = nullptr;
+    std::size_t n = 0, cap = 0, i, b;
+
+    groups = nullptr;
+    count = 0;
+    for (i = 0; i < STRIPES; i++)
+      {
+	stripe &s = m_stripes[i];
+	std::lock_guard<std::mutex> lock (s.mutex);
+
+	// a stripe adds at most one group per entry
+	if (n + s.count > cap && !grow_group_list (out, cap, n + s.count))
+	  {
+	    return false;
+	  }
+	for (b = 0; b < s.num_buckets; b++)
+	  {
+	    for (entry *e = s.buckets[b]; e != nullptr; e = e->next)
+	      {
+		if (e->group != 0)
+		  {
+		    out[n++] = e->group;
+		  }
+	      }
+	  }
+      }
+    {
+      std::lock_guard<std::mutex> lock (m_lost_mutex);
+
+      if (n + m_num_lost > cap && !grow_group_list (out, cap, n + m_num_lost))
+	{
+	  return false;
+	}
+      for (i = 0; i < m_num_lost; i++)
+	{
+	  if (m_lost[i][0] != 0 && m_lost[i][1] == 0)
+	    {
+	      out[n++] = m_lost[i][0];
+	    }
+	}
+    }
+    std::sort (out, out + n);
+    n = static_cast<std::size_t> (std::unique (out, out + n) - out);
+    if (n == 0 && out != nullptr)
+      {
+	free_and_init (out);
+      }
+    groups = out;
+    count = n;
+    return true;
+  }
+
+  bool
+  bestspace_sector_table::has_group (std::uint64_t group)
+  {
+    assert (group != 0);
+    {
+      stripe &s = m_stripes[stripe_of (group, 0)];
+      std::lock_guard<std::mutex> lock (s.mutex);
+
+      for (std::size_t b = 0; b < s.num_buckets; b++)
+	{
+	  for (entry *e = s.buckets[b]; e != nullptr; e = e->next)
+	    {
+	      if (e->group == group)
+		{
+		  return true;
+		}
+	    }
+	}
+    }
+    return is_lost (group, 0);
+  }
+
+  // out of memory frees the list (and returns false)
+  bool
+  bestspace_sector_table::grow_group_list (std::uint64_t *&list, std::size_t &cap, std::size_t need)
+  {
+    std::size_t new_cap = std::max (need, cap * 2);
+    std::uint64_t *grown = nullptr;
+
+#if !defined (NDEBUG)
+    if (bsmap_failing_allocations.load () > 0 && bsmap_failing_allocations.fetch_sub (1) > 0)
+      {
+	new_cap = 0;
+      }
+#endif
+    if (new_cap > 0)
+      {
+	grown = static_cast<std::uint64_t *> (realloc (list, new_cap * sizeof (std::uint64_t)));
+      }
+    if (grown == nullptr)
+      {
+	if (list != nullptr)
+	  {
+	    free_and_init (list);
+	  }
+	cap = 0;
+	return false;
+      }
+    list = grown;
+    cap = new_cap;
+    return true;
+  }
+
   // caller holds s.mutex
   bestspace_sector_table::entry *
   bestspace_sector_table::detach_if (stripe &s, std::uint64_t group, bool all)
@@ -1720,12 +1890,18 @@ namespace cubstorage
   }
 
   bestspace_sector_table::entry *
-  bestspace_sector_table::take_group (std::uint64_t group)
+  bestspace_sector_table::take_group (std::uint64_t group, void (*locked) (entry *list, void *arg), void *arg)
   {
     assert (group != 0);
     stripe &s = m_stripes[stripe_of (group, 0)];
     std::lock_guard<std::mutex> lock (s.mutex);
-    return detach_if (s, group, false);
+    entry *list = detach_if (s, group, false);
+
+    if (locked != nullptr)
+      {
+	locked (list, arg);
+      }
+    return list;
   }
 
   bestspace_sector_table::entry *

@@ -54,6 +54,14 @@ typedef enum
   FILE_LAST = FILE_UNKNOWN_TYPE
 } FILE_TYPE;
 
+/* What file_probe_heap_header () finds for a file id that may no longer be a heap's */
+typedef enum
+{
+  FILE_HEAP_HEADER_FOUND,	/* a permanent heap file with its header page */
+  FILE_HEAP_HEADER_GONE,	/* no such file any more (destroyed), or not a permanent heap file */
+  FILE_HEAP_HEADER_UNKNOWN	/* cannot tell now: no header page yet, or the file header is latched by someone else */
+} FILE_HEAP_HEADER_STATE;
+
 /* Set a vfid with values of volid and fileid */
 #define VFID_SET(vfid_ptr, volid_value, fileid_value) \
   do { \
@@ -236,6 +244,8 @@ extern int file_alloc_multiple (THREAD_ENTRY * thread_p, const VFID * vfid, FILE
 extern int file_alloc_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, FILE_INIT_PAGE_FUNC f_init,
 					 void *f_init_args, VPID * vpid_out, PAGE_PTR * page_out);
 extern int file_get_sticky_first_page (THREAD_ENTRY * thread_p, const VFID * vfid, VPID * vpid_out);
+extern int file_probe_heap_header (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_CONDITION latch_condition,
+				   FILE_HEAP_HEADER_STATE * state, VPID * vpid_out);
 extern int file_rv_set_tde_algorithm (THREAD_ENTRY * thread_p, LOG_RCV * rcv);
 extern int file_get_tde_algorithm (THREAD_ENTRY * thread_p, const VFID * vfid, PGBUF_LATCH_CONDITION fix_head_cond,
 				   TDE_ALGORITHM * tde_algo);

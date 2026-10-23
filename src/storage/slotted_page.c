@@ -180,6 +180,7 @@ static int spage_get_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_
 static int spage_get_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, SPAGE_HEADER * sphdr, PAGE_PTR pgptr);
 #endif /* ENABLE_UNUSED_FUNCTION */
 static int spage_get_total_saved_spaces (THREAD_ENTRY * thread_p, SPAGE_HEADER * page_header_p, PAGE_PTR page_p);
+static int spage_max_space_for_new_record_internal (SPAGE_HEADER * page_header_p, int total_saved);
 static void spage_dump_saved_spaces_by_other_trans (THREAD_ENTRY * thread_p, FILE * fp, VPID * vpid);
 static int spage_compare_slot_offset (const void *arg1, const void *arg2);
 static bool spage_is_slotted_page_type (PAGE_TYPE ptype);
@@ -948,14 +949,48 @@ int
 spage_max_space_for_new_record (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
 {
   SPAGE_HEADER *page_header_p;
-  int total_free;
 
   assert (page_p != NULL);
 
   page_header_p = (SPAGE_HEADER *) page_p;
   SPAGE_VERIFY_HEADER (page_header_p);
 
-  total_free = (page_header_p->total_free - spage_get_total_saved_spaces (thread_p, page_header_p, page_p));
+  return spage_max_space_for_new_record_internal (page_header_p,
+						  spage_get_total_saved_spaces (thread_p, page_header_p, page_p));
+}
+
+/*
+ * spage_max_space_for_new_record_without_saving () - Find the maximum free space for a new insertion once no
+ *						       transaction holds saved space in the page
+ *   return: Maximum free length for an insertion, counting the space saved for rollbacks as free
+ *   page_p(in): Pointer to slotted page
+ */
+int
+spage_max_space_for_new_record_without_saving (THREAD_ENTRY * thread_p, PAGE_PTR page_p)
+{
+  SPAGE_HEADER *page_header_p;
+
+  assert (page_p != NULL);
+
+  page_header_p = (SPAGE_HEADER *) page_p;
+  SPAGE_VERIFY_HEADER (page_header_p);
+
+  return spage_max_space_for_new_record_internal (page_header_p, 0);
+}
+
+/*
+ * spage_max_space_for_new_record_internal () - The maximum free space for a new insertion when total_saved bytes of
+ *						 the free space are saved
+ *   return: Maximum free length for an insertion
+ *   page_header_p(in): Pointer to header of slotted page
+ *   total_saved(in): the saved space to subtract
+ */
+static int
+spage_max_space_for_new_record_internal (SPAGE_HEADER * page_header_p, int total_saved)
+{
+  int total_free;
+
+  total_free = page_header_p->total_free - total_saved;
 
   if ((page_header_p->anchor_type != ANCHORED_DONT_REUSE_SLOTS)
       && (page_header_p->num_slots > page_header_p->num_records))

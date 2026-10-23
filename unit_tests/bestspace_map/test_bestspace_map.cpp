@@ -584,6 +584,27 @@ TEST_CASE ("persist-dirty bits: feedback marks, take clears, put back restores",
   REQUIRE (map.take_persist_dirty (1) == 0x2);
 }
 
+TEST_CASE ("any_persist_dirty sees a dirty sector in any group", "[bestspace_map]")
+{
+  bestspace_map map;
+
+  REQUIRE_FALSE (map.any_persist_dirty ());
+  for (std::int32_t s = 0; s < 70; s++)
+    {
+      REQUIRE (map.feedback (0, page_of (s, 1), 3));
+    }
+  REQUIRE (map.any_persist_dirty ());
+  (void) map.take_persist_dirty (0);
+  REQUIRE (map.any_persist_dirty ());		// sectors 64..69
+  (void) map.take_persist_dirty (1);
+  REQUIRE_FALSE (map.any_persist_dirty ());
+  map.put_back_persist_dirty (0, 0x1);		// an inline sector
+  REQUIRE (map.any_persist_dirty ());
+  (void) map.take_persist_dirty (0);
+  REQUIRE (map.feedback (0, page_of (66, 3), 5));
+  REQUIRE (map.any_persist_dirty ());
+}
+
 TEST_CASE ("snapshot and load round trip without dirtying the loaded map", "[bestspace_map]")
 {
   bestspace_map a, b;
