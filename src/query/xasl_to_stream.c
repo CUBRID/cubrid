@@ -7531,6 +7531,10 @@ xts_pack_hash_join_keys (char *ptr, const HASHJOIN_PROC_NODE * node)
 	domain_key_value_domain (domain_list_column_joined
 				 (node->inner.xasl, info->ls_inner_column[i], node->outer.xasl,
 				  info->ls_outer_column[i]));
+      TP_DOMAIN *outer_own =
+	(TP_DOMAIN *) domain_key_value_domain (domain_list_column_of (node->outer.xasl, info->ls_outer_column[i]));
+      TP_DOMAIN *inner_own =
+	(TP_DOMAIN *) domain_key_value_domain (domain_list_column_of (node->inner.xasl, info->ls_inner_column[i]));
       const TP_DOMAIN *common;
       int conv_kind[2];
       DOMAIN_COMPARE compare;
@@ -7539,8 +7543,10 @@ xts_pack_hash_join_keys (char *ptr, const HASHJOIN_PROC_NODE * node)
 	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
 	  return NULL;
 	}
-      ptr = or_pack_domain (ptr, outer, 0, 0);
-      ptr = or_pack_domain (ptr, inner, 0, 0);
+      /* the lists open with the columns' own domains, a NULL-typed one included (decided as the other side's above:
+       * its values match no row, hjoin_fetch_key skips a NULL key) */
+      ptr = or_pack_domain (ptr, outer_own, 0, 0);
+      ptr = or_pack_domain (ptr, inner_own, 0, 0);
       ptr = or_pack_int (ptr, conv_kind[0] | (conv_kind[1] << 8) | ((common != NULL ? 1 : 0) << 16));
       if (common != NULL)
 	{
@@ -7579,6 +7585,10 @@ xts_sizeof_hash_join_keys (const HASHJOIN_PROC_NODE * node)
 	domain_key_value_domain (domain_list_column_joined
 				 (node->inner.xasl, info->ls_inner_column[i], node->outer.xasl,
 				  info->ls_outer_column[i]));
+      TP_DOMAIN *outer_own =
+	(TP_DOMAIN *) domain_key_value_domain (domain_list_column_of (node->outer.xasl, info->ls_outer_column[i]));
+      TP_DOMAIN *inner_own =
+	(TP_DOMAIN *) domain_key_value_domain (domain_list_column_of (node->inner.xasl, info->ls_inner_column[i]));
       const TP_DOMAIN *common;
       int conv_kind[2];
       DOMAIN_COMPARE compare;
@@ -7587,7 +7597,7 @@ xts_sizeof_hash_join_keys (const HASHJOIN_PROC_NODE * node)
 	  xts_Xasl_errcode = ER_OUT_OF_VIRTUAL_MEMORY;
 	  return ER_FAILED;
 	}
-      size += or_packed_domain_size (outer, 0) + or_packed_domain_size (inner, 0) + OR_INT_SIZE
+      size += or_packed_domain_size (outer_own, 0) + or_packed_domain_size (inner_own, 0) + OR_INT_SIZE
 	+ (common !=
 	   NULL ? or_packed_domain_size ((TP_DOMAIN *) common, 0) : 0) + xts_sizeof_decided_compare (&compare);
     }
