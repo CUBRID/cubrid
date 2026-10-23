@@ -1144,11 +1144,11 @@ static PGBUF_BCB *pgbuf_get_victim_from_lru_list (THREAD_ENTRY * thread_p, const
 #if defined (SERVER_MODE)
 static int pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_LIST * lru_list,
 						       PGBUF_BCB * bcb_start, PGBUF_BCB * bcb_stop, int max_assign);
-STATIC_INLINE void pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nassign_inout)
-  __attribute__ ((ALWAYS_INLINE));
-static void pgbuf_assign_direct_victims_round_robin (THREAD_ENTRY * thread_p, int lru_idx_base, int lru_count,
+STATIC_INLINE void pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx,
+						     int *remaining_assigns_inout) __attribute__ ((ALWAYS_INLINE));
+static bool pgbuf_assign_direct_victims_round_robin (THREAD_ENTRY * thread_p, int lru_idx_base, int lru_count,
 						     PGBUF_DIRECT_VICTIM_SEARCH search, int *start_inout,
-						     int *nassign_inout);
+						     int *remaining_assigns_inout);
 static bool pgbuf_is_any_lru_victim_flush_target (void);
 #endif /* SERVER_MODE */
 STATIC_INLINE void pgbuf_add_vpid_to_aout_list (THREAD_ENTRY * thread_p, const VPID * vpid, const int lru_idx)
@@ -9599,38 +9599,45 @@ pgbuf_panic_assign_direct_victims_from_lru (THREAD_ENTRY * thread_p, PGBUF_LRU_L
 void
 pgbuf_direct_victims_maintenance (THREAD_ENTRY * thread_p)
 {
-#define DEFAULT_ASSIGNS_PER_ITERATION 5
-#define BUSY_SKIP_ITERATIONS 10
-  int nassigns = DEFAULT_ASSIGNS_PER_ITERATION;
+#define MAX_ASSIGNS_PER_ITERATION 5
+#define NO_VICTIM_SKIP_ITERATIONS 10
+  int remaining_assigns = MAX_ASSIGNS_PER_ITERATION;
+  bool visited_all_lists;
 
   /* note this is designed for single-threaded use only. the static values are used for pick lists with a round-robin
    * system */
   static int prv_over_quota_index = 0;
   static int shr_index = 0;
   static int prv_under_quota_index = 0;
-  static int busy_skip_count = 0;
+  static int no_victim_skip_count = 0;
 
-  /* TODO: when no victim could be assigned (candidates in use or lists busy), skip assigning for a fixed number of
-   *       iterations (about 1 second) so the daemon does not add contention. a heuristic for a case not yet observed;
-   *       revisit with measurements (e.g. adaptive backoff) if it turns out to matter. */
-  if (busy_skip_count > 0)
+  /* TODO: skipping a fixed number of iterations (about 1 second) is a heuristic for a case not yet observed; revisit
+   *       with measurements (e.g. adaptive backoff) if it turns out to matter. */
+  if (no_victim_skip_count > 0)
     {
-      busy_skip_count--;
+      no_victim_skip_count--;
     }
-  else
+  else if (pgbuf_is_any_thread_waiting_for_direct_victim ())
     {
       /* same order as pgbuf_get_victim: privates over quota, shared, then privates under quota as last resort */
-      pgbuf_assign_direct_victims_round_robin (thread_p, PGBUF_LRU_INDEX_FROM_PRIVATE (0), PGBUF_PRIVATE_LRU_COUNT,
-					       PGBUF_DIRECT_VICTIM_SEARCH_OVER_QUOTA, &prv_over_quota_index, &nassigns);
-      pgbuf_assign_direct_victims_round_robin (thread_p, 0, PGBUF_SHARED_LRU_COUNT, PGBUF_DIRECT_VICTIM_SEARCH_ALL,
-					       &shr_index, &nassigns);
-      pgbuf_assign_direct_victims_round_robin (thread_p, PGBUF_LRU_INDEX_FROM_PRIVATE (0), PGBUF_PRIVATE_LRU_COUNT,
-					       PGBUF_DIRECT_VICTIM_SEARCH_UNDER_QUOTA, &prv_under_quota_index,
-					       &nassigns);
+      visited_all_lists = true;
+      visited_all_lists &=
+	pgbuf_assign_direct_victims_round_robin (thread_p, PGBUF_LRU_INDEX_FROM_PRIVATE (0), PGBUF_PRIVATE_LRU_COUNT,
+						 PGBUF_DIRECT_VICTIM_SEARCH_OVER_QUOTA, &prv_over_quota_index,
+						 &remaining_assigns);
+      visited_all_lists &=
+	pgbuf_assign_direct_victims_round_robin (thread_p, 0, PGBUF_SHARED_LRU_COUNT, PGBUF_DIRECT_VICTIM_SEARCH_ALL,
+						 &shr_index, &remaining_assigns);
+      visited_all_lists &=
+	pgbuf_assign_direct_victims_round_robin (thread_p, PGBUF_LRU_INDEX_FROM_PRIVATE (0), PGBUF_PRIVATE_LRU_COUNT,
+						 PGBUF_DIRECT_VICTIM_SEARCH_UNDER_QUOTA, &prv_under_quota_index,
+						 &remaining_assigns);
 
-      if (nassigns == DEFAULT_ASSIGNS_PER_ITERATION && pgbuf_is_any_thread_waiting_for_direct_victim ())
+      if (visited_all_lists && remaining_assigns > 0 && pgbuf_is_any_thread_waiting_for_direct_victim ())
 	{
-	  busy_skip_count = BUSY_SKIP_ITERATIONS;
+	  /* every list was visited and victims are still short (in use, dirty or list busy). skip assigning until flush
+	   * cleans pages; the flush daemon is woken below */
+	  no_victim_skip_count = NO_VICTIM_SKIP_ITERATIONS;
 	}
     }
 
@@ -9641,25 +9648,27 @@ pgbuf_direct_victims_maintenance (THREAD_ENTRY * thread_p)
       pgbuf_wakeup_page_flush_daemon (thread_p);
     }
 
-#undef BUSY_SKIP_ITERATIONS
-#undef DEFAULT_ASSIGNS_PER_ITERATION
+#undef NO_VICTIM_SKIP_ITERATIONS
+#undef MAX_ASSIGNS_PER_ITERATION
 }
 
 /*
  * pgbuf_assign_direct_victims_round_robin () - visit lru lists once in round-robin order, starting from saved position,
  *                                              and assign victims directly while threads are waiting.
  *
- * return                 : void
- * thread_p (in)          : thread entry
- * lru_idx_base (in)      : lru index of the first list in range
- * lru_count (in)         : number of lists in range
- * search (in)            : which lists in range to search
- * start_inout (in/out)   : position to start from. updated to the position after the last visited list
- * nassign_inout (in/out) : update the number of victims to assign
+ * return                           : true if every list in range was visited, false if stopped early because no
+ *                                    thread was waiting or no assignment was left
+ * thread_p (in)                    : thread entry
+ * lru_idx_base (in)                : lru index of the first list in range
+ * lru_count (in)                   : number of lists in range
+ * search (in)                      : which lists in range to search
+ * start_inout (in/out)             : position to start from. updated to the position after the last visited list
+ * remaining_assigns_inout (in/out) : number of victims that can still be assigned
  */
-static void
+static bool
 pgbuf_assign_direct_victims_round_robin (THREAD_ENTRY * thread_p, int lru_idx_base, int lru_count,
-					 PGBUF_DIRECT_VICTIM_SEARCH search, int *start_inout, int *nassign_inout)
+					 PGBUF_DIRECT_VICTIM_SEARCH search, int *start_inout,
+					 int *remaining_assigns_inout)
 {
   PGBUF_LRU_LIST *lru_list;
   int lru_idx;
@@ -9667,11 +9676,13 @@ pgbuf_assign_direct_victims_round_robin (THREAD_ENTRY * thread_p, int lru_idx_ba
 
   if (lru_count <= 0)
     {
-      return;
+      /* nothing to visit */
+      return true;
     }
 
   for (nvisited = 0;
-       nvisited < lru_count && *nassign_inout > 0 && pgbuf_is_any_thread_waiting_for_direct_victim (); nvisited++)
+       nvisited < lru_count && *remaining_assigns_inout > 0 && pgbuf_is_any_thread_waiting_for_direct_victim ();
+       nvisited++)
     {
       lru_idx = lru_idx_base + (*start_inout + nvisited) % lru_count;
       lru_list = PGBUF_GET_LRU_LIST (lru_idx);
@@ -9682,10 +9693,12 @@ pgbuf_assign_direct_victims_round_robin (THREAD_ENTRY * thread_p, int lru_idx_ba
 	  continue;
 	}
 
-      pgbuf_lfcq_assign_direct_victims (thread_p, lru_idx, nassign_inout);
+      pgbuf_lfcq_assign_direct_victims (thread_p, lru_idx, remaining_assigns_inout);
     }
 
   *start_inout = (*start_inout + nvisited) % lru_count;
+
+  return nvisited == lru_count;
 }
 
 /*
@@ -9712,13 +9725,13 @@ pgbuf_is_any_lru_victim_flush_target (void)
 /*
  * pgbuf_lfcq_assign_direct_victims () - get list from queue and assign victims directly.
  *
- * return                 : void
- * thread_p (in)          : thread entry
- * lru_idx (in)           : lru index
- * nassign_inout (in/out) : update the number of victims to assign
+ * return                           : void
+ * thread_p (in)                    : thread entry
+ * lru_idx (in)                     : lru index
+ * remaining_assigns_inout (in/out) : number of victims that can still be assigned
  */
 STATIC_INLINE void
-pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nassign_inout)
+pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *remaining_assigns_inout)
 {
   PGBUF_LRU_LIST *lru_list;
   PGBUF_BCB *victim_hint = NULL;
@@ -9733,7 +9746,8 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nas
 	  return;
 	}
       victim_hint = lru_list->victim_hint;
-      nassigned = pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, victim_hint, NULL, *nassign_inout);
+      nassigned =
+	pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, victim_hint, NULL, *remaining_assigns_inout);
       if (nassigned == 0 && lru_list->count_vict_cand > 0 && pgbuf_is_any_thread_waiting_for_direct_victim ())
 	{
 	  /* maybe hint was bad? that's most likely case. reset the hint to bottom. */
@@ -9746,7 +9760,7 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nas
 		{
 		  nassigned =
 		    pgbuf_panic_assign_direct_victims_from_lru (thread_p, lru_list, lru_list->bottom, victim_hint,
-								*nassign_inout);
+								*remaining_assigns_inout);
 		}
 	    }
 	  else
@@ -9756,7 +9770,7 @@ pgbuf_lfcq_assign_direct_victims (THREAD_ENTRY * thread_p, int lru_idx, int *nas
 	}
       pthread_mutex_unlock (&lru_list->mutex);
 
-      (*nassign_inout) -= nassigned;
+      (*remaining_assigns_inout) -= nassigned;
     }
 }
 #endif /* SERVER_MODE */
