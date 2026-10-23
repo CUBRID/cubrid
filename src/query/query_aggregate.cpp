@@ -2004,9 +2004,9 @@ qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggrega
 		  goto cleanup;
 		}
 	    }
-	  else
+	  else if (!DB_IS_NULL (agg_p->accumulator.value))
 	    {
-
+	      /* a class with no value (empty or all NULL) gives NULL: not a minimum */
 	      cmp = tp_value_compare (agg_p->accumulator.value, &result, true, true);
 	      if (cmp == DB_LT)
 		{
@@ -2030,7 +2030,7 @@ qdata_evaluate_aggregate_hierarchy (cubthread::entry *thread_p, cubxasl::aggrega
 		  goto cleanup;
 		}
 	    }
-	  else
+	  else if (!DB_IS_NULL (agg_p->accumulator.value))
 	    {
 	      cmp = tp_value_compare (agg_p->accumulator.value, &result, true, true);
 	      if (cmp == DB_GT)
