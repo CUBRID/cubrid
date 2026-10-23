@@ -172,7 +172,18 @@ static THREAD_ENTRY *
 enter_server ()
 {
   enter_server_no_thread_entry ();
+#if defined (SERVER_MODE)
+  THREAD_ENTRY *thread_p = thread_get_thread_entry_info ();
+
+  /* CS clients set NET_HEADER_FLAG_INVALIDATE_SNAPSHOT on every request (CBRD-24157) and net_server_request
+   * drops a read-committed snapshot before dispatch; the folded call must too, or a statement (e.g. the
+   * online index loader after its SCH_M wait) reuses a snapshot taken earlier in the transaction */
+  (void) logtb_invalidate_snapshot_data (thread_p);
+  tm_Tran_invalidate_snapshot = 0;
+  return thread_p;
+#else
   return thread_get_thread_entry_info ();
+#endif
 }
 
 //
