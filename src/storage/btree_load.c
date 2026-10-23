@@ -361,7 +361,6 @@ static int btree_get_value_from_leaf_slot (THREAD_ENTRY * thread_p, BTID_INT * b
 static int btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, BTSORT_PUT_FUNC * out_func,
 			     void *out_args);
 static BTSORT_STATUS btree_sort_get_next (THREAD_ENTRY * thread_p, RECDES * temp_recdes, void *arg);
-static int compare_driver (const void *first, const void *second, void *arg);
 static int list_add (BTREE_NODE ** list, VPID * pageid);
 static void list_remove_first (BTREE_NODE ** list);
 static void list_clear (BTREE_NODE * list);
@@ -429,8 +428,6 @@ static int bt_load_key_assign (BTREE_KEY * dst, const BTREE_KEY * src);
 static int bt_load_key_from_value (BTREE_KEY * dst, DB_VALUE * value);
 static int bt_load_key_to_value (const BTREE_KEY * key, DB_VALUE * value, bool copy);
 static int bt_load_decode_key (S_PARAM_ST * pparam);
-STATIC_INLINE int bt_load_cmp_key_bytes (TP_DOMAIN * key_type, const char *mem1, const char *mem2, bool has_null)
-  __attribute__ ((ALWAYS_INLINE));
 
 /*
  * The key helpers of the index build: a key travels through the build as a BTREE_KEY and becomes a
@@ -631,99 +628,6 @@ bt_load_decode_key (S_PARAM_ST * pparam)
   pr_clear_value (&pparam->this_key);
 
   return bt_load_key_to_value (&pparam->key, &pparam->this_key, false);
-}
-
-/*
- * bt_load_cmp_key_bytes () - Compare two key images in the order of the index
- *   return: DB_LT, DB_EQ or DB_GT, or DB_UNK when the type cannot compare them
- *   key_type(in): the domain both images were written with
- *   mem1(in): a complete index_writeval () image
- *   mem2(in): another
- *   has_null(in): whether a column of either image may be NULL; true is always right, false skips the nullmap
- *
- * Note: The one definition of the order an index build produces.  Must stay ALWAYS_INLINE: compare_driver () is
- * reached through a function pointer, and a call frame per comparison costs 4% on an integer key.
- */
-STATIC_INLINE int
-bt_load_cmp_key_bytes (TP_DOMAIN * key_type, const char *mem1, const char *mem2, bool has_null)
-{
-  char *p1 = CONST_CAST (char *, mem1);
-  char *p2 = CONST_CAST (char *, mem2);
-  int c = DB_UNK;
-
-  if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
-    {
-      int i;
-      char *nullmap_ptr1, *nullmap_ptr2;
-      int header_size;
-      TP_DOMAIN *dom;
-
-      /* fast implementation of pr_midxkey_compare (). do not use DB_VALUE container for speed-up */
-
-      nullmap_ptr1 = p1;
-      nullmap_ptr2 = p2;
-
-      header_size = or_multi_header_size (key_type->precision);
-
-      p1 += header_size;
-      p2 += header_size;
-
-      for (i = 0, dom = key_type->setdomain; i < key_type->precision && dom; i++, dom = dom->next)
-	{
-	  /* val1 or val2 is NULL */
-	  if (has_null)
-	    {
-	      if (or_multi_is_null (nullmap_ptr1, i))
-		{		/* element val is null? */
-		  if (or_multi_is_null (nullmap_ptr2, i))
-		    {
-		      continue;
-		    }
-
-		  c = DB_LT;
-		  break;	/* exit for-loop */
-		}
-	      else if (or_multi_is_null (nullmap_ptr2, i))
-		{
-		  c = DB_GT;
-		  break;	/* exit for-loop */
-		}
-	    }
-
-	  /* check for val1 and val2 same domain */
-	  c = dom->type->index_cmpdisk (p1, p2, dom, 0, 1, NULL);
-	  assert (c == DB_LT || c == DB_EQ || c == DB_GT);
-
-	  if (c != DB_EQ)
-	    {
-	      break;		/* exit for-loop */
-	    }
-
-	  p1 += pr_midxkey_element_disk_size (p1, dom);
-	  p2 += pr_midxkey_element_disk_size (p2, dom);
-	}			/* for (i = 0; ... ) */
-      assert (c == DB_LT || c == DB_EQ || c == DB_GT);
-
-      if (dom && dom->is_desc)
-	{
-	  c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
-	}
-    }
-  else
-    {
-      /* the key was written with index_writeval (), so index_cmpdisk () is the matching reader */
-      assert (tp_valid_indextype (TP_DOMAIN_TYPE (key_type)));
-
-      c = key_type->type->index_cmpdisk (p1, p2, key_type, 0, 1, NULL);
-
-      /* for single-column desc index */
-      if (key_type->is_desc)
-	{
-	  c = ((c == DB_GT) ? DB_LT : (c == DB_LT) ? DB_GT : c);
-	}
-    }
-
-  return c;
 }
 
 /*
@@ -5690,8 +5594,7 @@ btree_index_sort (THREAD_ENTRY * thread_p, SORT_ARGS * sort_args, BTSORT_PUT_FUN
 	}
     }
 
-  return btree_sort (thread_p, &btree_sort_get_next, sort_args, out_func, out_args, compare_driver,
-		     sort_args, includes_tde_class);
+  return btree_sort (thread_p, &btree_sort_get_next, sort_args, out_func, out_args, includes_tde_class);
 }
 
 static SCAN_CODE
@@ -6423,86 +6326,6 @@ nofit:
     }
 
   return BTSORT_REC_DOESNT_FIT;
-}
-
-/*
- * compare_driver () -
- *   return:
- *   first(in): first sort record (see bt_load_put_buf_to_record)
- *   second(in): second sort record
- *   arg(in): SORT_ARGS
- */
-static int
-compare_driver (const void *first, const void *second, void *arg)
-{
-  char *mem1 = (char *) first;
-  char *mem2 = (char *) second;
-  int has_null;
-  SORT_ARGS *sort_args;
-  TP_DOMAIN *key_type;
-  char *oidptr1, *oidptr2;
-  int c = DB_UNK;
-
-  sort_args = (SORT_ARGS *) arg;
-  key_type = sort_args->key_type;
-
-  assert (PTR_ALIGN (mem1, INT_ALIGNMENT) == mem1);
-  assert (PTR_ALIGN (mem2, INT_ALIGNMENT) == mem2);
-
-  /* key_off skips the OIDs and the MVCCIDs at once */
-  has_null = BTSORT_REC_HDR (mem1)->has_null || BTSORT_REC_HDR (mem2)->has_null;
-
-  oidptr1 = BTSORT_REC_BODY (mem1);
-  oidptr2 = BTSORT_REC_BODY (mem2);
-
-  mem1 = BTSORT_REC_KEY (mem1);
-  mem2 = BTSORT_REC_KEY (mem2);
-
-  assert (PTR_ALIGN (mem1, INT_ALIGNMENT) == mem1);
-  assert (PTR_ALIGN (mem2, INT_ALIGNMENT) == mem2);
-
-#if !defined(NDEBUG)
-  if (TP_DOMAIN_TYPE (key_type) == DB_TYPE_MIDXKEY)
-    {
-      int i;
-      TP_DOMAIN *dom;
-
-      for (i = 0, dom = key_type->setdomain; dom; dom = dom->next, i++);
-      assert (i == key_type->precision);
-
-      if (sort_args->func_index_info != NULL)
-	{
-	  /* In the following cases, the precision may be smaller than n_attrs.  
-	   * create index idx on tbl(left(s2, v1),v3); 
-	   * So, remove the assert().  */
-	  //assert (sort_args->n_attrs <= key_type->precision);
-	}
-      else
-	{
-	  assert (sort_args->n_attrs == key_type->precision);
-	}
-      assert (key_type->setdomain != NULL);
-    }
-#endif
-
-  c = bt_load_cmp_key_bytes (key_type, mem1, mem2, has_null != 0);
-
-  /* the sort engine reads DB_UNK (-2) as "less than", which would silently break the order */
-  assert_release (c == DB_LT || c == DB_EQ || c == DB_GT);
-
-  /* compare OID for non-unique index */
-  if (c == DB_EQ)
-    {
-      OID first_oid, second_oid;
-
-      OR_GET_OID (oidptr1, &first_oid);
-      OR_GET_OID (oidptr2, &second_oid);
-
-      assert_release (!OID_EQ (&first_oid, &second_oid));
-      return (OID_LT (&first_oid, &second_oid) ? DB_LT : DB_GT);
-    }
-
-  return c;
 }
 
 /*
