@@ -4864,6 +4864,7 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
   TP_DOMAIN *dom;
   DB_VALUE *cell;
   DB_VALUE v;
+  SCAN_CODE sc;
   int fcol, tcol, val_index, error = NO_ERROR;
   bool f_date, t_date;
   UINT64 cap;
@@ -4943,7 +4944,7 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
       goto fail;
     }
   db_make_null (&v);
-  while (qfile_scan_list_next (thread_p, &sid, &tr, PEEK) == S_SUCCESS)
+  while ((sc = qfile_scan_list_next (thread_p, &sid, &tr, PEEK)) == S_SUCCESS)
     {
       bool is_null = false;
       UINT64 h;
@@ -4972,6 +4973,13 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
 	}
     }
   qfile_close_scan (thread_p, &sid);
+  if (sc != S_END)
+    {
+      /* the list ended in an error, not past its last key: a filter of the keys read so far would drop every probe
+       * row whose key was never read, so none is installed */
+      ASSERT_ERROR_AND_SET (error);
+      goto fail;
+    }
 
   hj->rtf = rtf;
   hj->rtf_keys = rtf->n_keys;
