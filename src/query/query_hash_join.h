@@ -521,6 +521,12 @@ extern int hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, 
 /* a row of the target's outermost scan: false when its key is in no build row.  A lookup only: the caller counts
  * the row on its XASL node (rtf_rows, rtf_dropped) */
 extern bool hjoin_rtf_pass (const HJOIN_RUNTIME_FILTER * rtf, const DB_VALUE * key);
+/* The first rows a node checks against the filter are its sample: once rtf_rows reaches this many, the caller asks
+ * hjoin_rtf_sample () whether the filter earns its lookups on this node -- it leaves the node (xasl->rtf NULL,
+ * rtf_off the rows checked) when it dropped fewer than one row in eight of them; true then.  The row path asks at
+ * the row that completes the sample, the batch consumer at the chunk that crosses it. */
+#define HJOIN_RTF_PROBE_SAMPLE (4096)
+extern bool hjoin_rtf_sample (XASL_NODE * xasl);
 /* the same lookup on a key already read as an integer (a DATE as its day count): the page batch's leaf */
 extern bool hjoin_rtf_contains (const HJOIN_RUNTIME_FILTER * rtf, INT64 key);
 extern bool hjoin_rtf_is_date (const HJOIN_RUNTIME_FILTER * rtf);

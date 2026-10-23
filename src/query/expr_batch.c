@@ -5611,7 +5611,21 @@ expr_batch_plan_rebind (EXPR_BATCH_PLAN * plan, const struct hjoin_runtime_filte
   plan->rtf_contains = rtf_contains;
   if (plan->n_kids == 0 || plan->kid_leaf[plan->n_kids - 1] != EB_KID_RTF)
     {
+      /* the term expr_batch_plan_rtf_off () took out comes back for the new filter */
       plan->kid_leaf[plan->n_kids++] = EB_KID_RTF;
     }
   return true;
+}
+
+/* The runtime filter's term is the chain's last (eb_build_rtf_leaf ()): dropping it from the count takes it out
+ * of eb_filter ()'s loop, and the next chunk runs the other terms alone; the plan keeps its key column and the
+ * term's slot, so a later open may bring it back (expr_batch_plan_rebind ()). */
+void
+expr_batch_plan_rtf_off (EXPR_BATCH_PLAN * plan)
+{
+  if (plan != NULL && plan->rtf != NULL && plan->n_kids > 0 && plan->kid_leaf[plan->n_kids - 1] == EB_KID_RTF)
+    {
+      plan->n_kids--;
+      plan->rtf = NULL;
+    }
 }

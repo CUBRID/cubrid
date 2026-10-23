@@ -385,9 +385,11 @@ typedef struct hashjoin_proc_node
   HASHJOIN_DOMAIN_INFO domain_info;
   HASHJOIN_STATS_GROUP stats_group;
   struct hjoin_runtime_filter *rtf;	/* the runtime filter this join built for its other input, or NULL */
+  XASL_NODE *rtf_target;	/* the input it is on, until hjoin_rtf_release () */
   INT64 rtf_keys;		/* trace: the filter's distinct keys, the rows it saw and dropped (-1: not built) */
   INT64 rtf_rows;
   INT64 rtf_dropped;
+  INT64 rtf_off;		/* trace: the rows checked when the filter left the target (hjoin_rtf_sample ()), 0 while on */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 } HASHJOIN_PROC_NODE;
 
@@ -1289,6 +1291,8 @@ struct xasl_node
 				 * runs the node adds to them; a worker's clone merges them into the leader's node once
 				 * (hjoin_rtf_unbind_clone ()) */
   INT64 rtf_dropped;
+  INT64 rtf_off;		/* ... and the rows checked when the filter left this node (hjoin_rtf_sample ()): 0 while
+				 * it is on; merged into the leader's node like the counters */
 #endif				/* defined (SERVER_MODE) || defined (SA_MODE) */
 };
 

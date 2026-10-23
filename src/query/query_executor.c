@@ -13154,10 +13154,20 @@ qexec_batch_scan_exceptions (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STA
 	}
       if (xasl->rtf != NULL)
 	{
+	  bool pass = hjoin_rtf_pass (xasl->rtf, xasl->rtf_val);
+
 	  xasl->rtf_rows++;
-	  if (!hjoin_rtf_pass (xasl->rtf, xasl->rtf_val))
+	  xasl->rtf_dropped += pass ? 0 : 1;
+	  if (xasl->rtf_rows == HJOIN_RTF_PROBE_SAMPLE)
 	    {
-	      xasl->rtf_dropped++;
+	      /* the sample complete: a filter that drops too few rows leaves the node (the plan's term with it) */
+	      if (hjoin_rtf_sample (xasl))
+		{
+		  expr_batch_plan_rtf_off (hsidp->batch_plan);
+		}
+	    }
+	  if (!pass)
+	    {
 	      continue;
 	    }
 	}
@@ -13202,10 +13212,18 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	      rc = expr_chunk_push (thread_p, chain, hsidp->batch_plan, hsidp->batch);
 	      if (rc == NO_ERROR)
 		{
+		  INT64 rtf_rows_before = xasl->rtf_rows;
+
 		  s_id->scan_stats.read_rows += hsidp->batch->n_rows;
 		  s_id->scan_stats.qualified_rows += hsidp->batch->n_sel;
 		  xasl->rtf_rows += hsidp->batch->rtf_rows;	/* the runtime filter leaf's, 0 without one */
 		  xasl->rtf_dropped += hsidp->batch->rtf_dropped;
+		  if (rtf_rows_before < HJOIN_RTF_PROBE_SAMPLE && xasl->rtf_rows >= HJOIN_RTF_PROBE_SAMPLE
+		      && hjoin_rtf_sample (xasl))
+		    {
+		      /* the chunk completed the sample and the filter drops too few rows: its term leaves the plan */
+		      expr_batch_plan_rtf_off (hsidp->batch_plan);
+		    }
 		}
 	      else if (rc == EXPR_BATCH_FALLBACK)
 		{
@@ -13250,10 +13268,16 @@ qexec_batch_scan_chain (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * 
 	  if (xasl->rtf != NULL)
 	    {
 	      /* the runtime filter the batch leaf would have looked up: qexec_intprt_fnc ()'s check on this row */
+	      bool pass = hjoin_rtf_pass (xasl->rtf, xasl->rtf_val);
+
 	      xasl->rtf_rows++;
-	      if (!hjoin_rtf_pass (xasl->rtf, xasl->rtf_val))
+	      xasl->rtf_dropped += pass ? 0 : 1;
+	      if (xasl->rtf_rows == HJOIN_RTF_PROBE_SAMPLE && hjoin_rtf_sample (xasl))
 		{
-		  xasl->rtf_dropped++;
+		  expr_batch_plan_rtf_off (hsidp->batch_plan);
+		}
+	      if (!pass)
+		{
 		  continue;
 		}
 	    }
@@ -13521,10 +13545,17 @@ qexec_intprt_fnc (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE * xasl_s
 	  if (xasl->rtf != NULL)
 	    {
 	      /* a hash join's runtime filter: no build row has this key, so nothing below it can join */
+	      bool pass = hjoin_rtf_pass (xasl->rtf, xasl->rtf_val);
+
 	      xasl->rtf_rows++;
-	      if (!hjoin_rtf_pass (xasl->rtf, xasl->rtf_val))
+	      xasl->rtf_dropped += pass ? 0 : 1;
+	      if (xasl->rtf_rows == HJOIN_RTF_PROBE_SAMPLE)
 		{
-		  xasl->rtf_dropped++;
+		  /* the sample complete: a filter that drops fewer than one row in eight leaves this node */
+		  (void) hjoin_rtf_sample (xasl);
+		}
+	      if (!pass)
+		{
 		  continue;
 		}
 	    }

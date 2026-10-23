@@ -4684,13 +4684,19 @@ hjoin_print_tuple (QFILE_LIST_ID * list_id, QFILE_TUPLE tuple, HASHJOIN_PRINT_ST
 
 #define HJOIN_RTF_MAX_KEYS (1 << 20)
 
+/* The slots: open addressing over a power of two, a key per slot and no mark beside it -- an empty slot holds
+ * HJOIN_RTF_EMPTY, and a build key equal to it is remembered apart (has_empty_key) -- so a probe reads one line
+ * of one array (a used[] beside the keys cost a second line per probe: 9.2% of the serial cycles on a join every
+ * row of which matched). */
+#define HJOIN_RTF_EMPTY ((INT64) 0x8000000000000000ULL)
+
 struct hjoin_runtime_filter
 {
-  INT64 *slots;			/* open addressing, power-of-two size */
-  unsigned char *used;
+  INT64 *slots;			/* open addressing, power-of-two size; HJOIN_RTF_EMPTY where no key is */
   UINT64 mask;
   INT64 n_keys;
   bool is_date;			/* DATE keys (else SHORT/INTEGER/BIGINT, compared as integers) */
+  bool has_empty_key;		/* a build key equal to HJOIN_RTF_EMPTY */
   int val_index;		/* the key's cell in the target's value list (a worker's clone finds it by position) */
 };
 
@@ -4867,7 +4873,7 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
   SCAN_CODE sc;
   int fcol, tcol, val_index, error = NO_ERROR;
   bool f_date, t_date;
-  UINT64 cap;
+  UINT64 cap, s;
   INT64 k;
 
   /* a cached clone may still carry the filter a worker bound on it in an earlier execution (freed since by that
@@ -4876,6 +4882,7 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
   target->rtf_val = NULL;
   target->rtf_rows = 0;
   target->rtf_dropped = 0;
+  target->rtf_off = 0;
   fcol = (first == hj->outer.xasl) ? hj->merge_info.ls_outer_column[0] : hj->merge_info.ls_inner_column[0];
   tcol = (target == hj->outer.xasl) ? hj->merge_info.ls_outer_column[0] : hj->merge_info.ls_inner_column[0];
   if (list == NULL || list->tuple_cnt <= 0 || list->tuple_cnt > HJOIN_RTF_MAX_KEYS || fcol >= list->type_list.type_cnt
@@ -4924,16 +4931,16 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
     }
   memset (rtf, 0, sizeof (*rtf));
   rtf->slots = (INT64 *) db_private_alloc (thread_p, sizeof (INT64) * cap);
-  rtf->used = (unsigned char *) db_private_alloc (thread_p, cap);
-  if (rtf->slots == NULL || rtf->used == NULL)
+  if (rtf->slots == NULL)
     {
-      db_private_free_and_init (thread_p, rtf->slots);
-      db_private_free_and_init (thread_p, rtf->used);
       db_private_free_and_init (thread_p, rtf);
       er_clear ();
       return NO_ERROR;
     }
-  memset (rtf->used, 0, cap);
+  for (s = 0; s < cap; s++)
+    {
+      rtf->slots[s] = HJOIN_RTF_EMPTY;
+    }
   rtf->mask = cap - 1;
   rtf->is_date = f_date;
   rtf->val_index = val_index;
@@ -4961,13 +4968,20 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
 	  continue;
 	}
       pr_clear_value (&v);
-      for (h = hjoin_rtf_hash (k) & rtf->mask; rtf->used[h] && rtf->slots[h] != k; h = (h + 1) & rtf->mask)
+      if (k == HJOIN_RTF_EMPTY)
+	{
+	  /* the empty mark itself as a key: kept beside the slots */
+	  rtf->n_keys += rtf->has_empty_key ? 0 : 1;
+	  rtf->has_empty_key = true;
+	  continue;
+	}
+      for (h = hjoin_rtf_hash (k) & rtf->mask; rtf->slots[h] != HJOIN_RTF_EMPTY && rtf->slots[h] != k;
+	   h = (h + 1) & rtf->mask)
 	{
 	  ;
 	}
-      if (!rtf->used[h])
+      if (rtf->slots[h] == HJOIN_RTF_EMPTY)
 	{
-	  rtf->used[h] = 1;
 	  rtf->slots[h] = k;
 	  rtf->n_keys++;
 	}
@@ -4982,16 +4996,17 @@ hjoin_rtf_build (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl, XASL_NODE *
     }
 
   hj->rtf = rtf;
+  hj->rtf_target = target;
   hj->rtf_keys = rtf->n_keys;
   hj->rtf_rows = 0;
   hj->rtf_dropped = 0;
+  hj->rtf_off = 0;
   target->rtf = rtf;
   target->rtf_val = cell;
   return NO_ERROR;
 
 fail:
   db_private_free_and_init (thread_p, rtf->slots);
-  db_private_free_and_init (thread_p, rtf->used);
   db_private_free_and_init (thread_p, rtf);
   return error;
 }
@@ -5001,12 +5016,32 @@ hjoin_rtf_contains (const HJOIN_RUNTIME_FILTER * rtf, INT64 key)
 {
   UINT64 h;
 
-  for (h = hjoin_rtf_hash (key) & rtf->mask; rtf->used[h]; h = (h + 1) & rtf->mask)
+  if (key == HJOIN_RTF_EMPTY)
+    {
+      return rtf->has_empty_key;
+    }
+  for (h = hjoin_rtf_hash (key) & rtf->mask; rtf->slots[h] != HJOIN_RTF_EMPTY; h = (h + 1) & rtf->mask)
     {
       if (rtf->slots[h] == key)
 	{
 	  return true;
 	}
+    }
+  return false;
+}
+
+/* The node's sample is complete (HJOIN_RTF_PROBE_SAMPLE rows checked): a filter that dropped fewer than one row in
+ * eight of them costs its lookup per row for little, and leaves the node -- this node only: the filter stays for
+ * the other nodes that share it (a worker's clone, the leader's node) and is freed by hjoin_rtf_release () as
+ * before.  The rows checked so far stay counted; rtf_off records when it left, for the trace. */
+bool
+hjoin_rtf_sample (XASL_NODE * xasl)
+{
+  if (xasl->rtf != NULL && xasl->rtf_dropped * 8 < xasl->rtf_rows)
+    {
+      xasl->rtf_off = xasl->rtf_rows;
+      xasl->rtf = NULL;
+      return true;
     }
   return false;
 }
@@ -5045,6 +5080,7 @@ hjoin_rtf_bind_clone (XASL_NODE * clone, const XASL_NODE * orig)
   clone->rtf_val = NULL;
   clone->rtf_rows = 0;
   clone->rtf_dropped = 0;
+  clone->rtf_off = 0;
   if (orig->rtf == NULL || clone->val_list == NULL)
     {
       return;
@@ -5067,15 +5103,19 @@ hjoin_rtf_bind_clone (XASL_NODE * clone, const XASL_NODE * orig)
 void
 hjoin_rtf_unbind_clone (XASL_NODE * clone, XASL_NODE * orig)
 {
-  if (clone->rtf != NULL && orig != NULL)
+  /* rtf_val marks a clone that was bound: its rtf is NULL once hjoin_rtf_sample () took the filter off it, and
+   * what it counted until then is the leader's all the same */
+  if (clone->rtf_val != NULL && orig != NULL)
     {
       __atomic_add_fetch (&orig->rtf_rows, clone->rtf_rows, __ATOMIC_RELAXED);
       __atomic_add_fetch (&orig->rtf_dropped, clone->rtf_dropped, __ATOMIC_RELAXED);
+      __atomic_add_fetch (&orig->rtf_off, clone->rtf_off, __ATOMIC_RELAXED);
     }
   clone->rtf = NULL;
   clone->rtf_val = NULL;
   clone->rtf_rows = 0;
   clone->rtf_dropped = 0;
+  clone->rtf_off = 0;
 }
 
 void
@@ -5088,31 +5128,25 @@ hjoin_rtf_release (THREAD_ENTRY * thread_p, XASL_NODE * hashjoin_xasl)
    * (hjoin_rtf_unbind_clone () in finalize ()): the target node's counters -- its own rows and the workers' merged
    * in -- are read plain, and nothing points at the freed filter */
   HJOIN_RUNTIME_FILTER *rtf = hj->rtf;
-  XASL_NODE *target = NULL;
+  XASL_NODE *target = hj->rtf_target;	/* remembered at the build: the node's own rtf may be NULL by now
+					 * (hjoin_rtf_sample () took the filter off it) */
 
   if (rtf == NULL)
     {
       return;
     }
-  if (hj->outer.xasl != NULL && hj->outer.xasl->rtf == rtf)
-    {
-      target = hj->outer.xasl;
-    }
-  else if (hj->inner.xasl != NULL && hj->inner.xasl->rtf == rtf)
-    {
-      target = hj->inner.xasl;
-    }
   if (target != NULL)
     {
       hj->rtf_rows = target->rtf_rows;
       hj->rtf_dropped = target->rtf_dropped;
+      hj->rtf_off = target->rtf_off;
       target->rtf = NULL;
       target->rtf_val = NULL;
     }
   db_private_free_and_init (thread_p, rtf->slots);
-  db_private_free_and_init (thread_p, rtf->used);
   db_private_free_and_init (thread_p, rtf);
   hj->rtf = NULL;
+  hj->rtf_target = NULL;
 }
 
 #endif /* SERVER_MODE || SA_MODE */

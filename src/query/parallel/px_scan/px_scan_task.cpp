@@ -895,8 +895,16 @@ namespace parallel_scan
 		    if (rc == NO_ERROR)
 		      {
 			/* the runtime filter leaf's rows (0 without one), on this worker's clone */
+			INT64 rtf_rows_before = m_xasl->rtf_rows;
+
 			m_xasl->rtf_rows += hsidp->batch->rtf_rows;
 			m_xasl->rtf_dropped += hsidp->batch->rtf_dropped;
+			if (rtf_rows_before < HJOIN_RTF_PROBE_SAMPLE && m_xasl->rtf_rows >= HJOIN_RTF_PROBE_SAMPLE
+			    && hjoin_rtf_sample (m_xasl))
+			  {
+			    /* the chunk completed the sample and the filter drops too few rows: its term leaves the plan */
+			    expr_batch_plan_rtf_off (hsidp->batch_plan);
+			  }
 			if (on_trace)
 			  {
 			    m_scan_id->scan_stats.read_rows += hsidp->batch->n_rows;
@@ -1018,10 +1026,17 @@ namespace parallel_scan
       {
 	/* a hash join's runtime filter: no build row has this key (qexec_intprt_fnc () drops it the same way);
 	 * counted on the clone, merged into the leader's node by finalize () */
+	bool pass = hjoin_rtf_pass (m_xasl->rtf, m_xasl->rtf_val);
+
 	m_xasl->rtf_rows++;
-	if (!hjoin_rtf_pass (m_xasl->rtf, m_xasl->rtf_val))
+	m_xasl->rtf_dropped += pass ? 0 : 1;
+	if (m_xasl->rtf_rows == HJOIN_RTF_PROBE_SAMPLE && hjoin_rtf_sample (m_xasl) && m_scan_id->type == S_HEAP_SCAN)
 	  {
-	    m_xasl->rtf_dropped++;
+	    /* the sample complete and the filter drops too few rows: off this clone, and off its heap scan's plan */
+	    expr_batch_plan_rtf_off (m_scan_id->s.hsid.batch_plan);
+	  }
+	if (!pass)
+	  {
 	    return S_SUCCESS;
 	  }
       }

@@ -272,5 +272,8 @@ extern void expr_batch_reset (EXPR_BATCH * batch);
 extern void expr_batch_plan_reset_scan (EXPR_BATCH_PLAN * plan);
 extern bool expr_batch_plan_rebind (EXPR_BATCH_PLAN * plan, const struct hjoin_runtime_filter *rtf, bool rtf_is_date,
 				    EXPR_BATCH_RTF_CONTAINS rtf_contains);
+/* the runtime filter's term leaves the chain (the consumer took the filter off its node, hjoin_rtf_sample ());
+ * a plan without one, or NULL, is left as it is */
+extern void expr_batch_plan_rtf_off (EXPR_BATCH_PLAN * plan);
 
 #endif /* _EXPR_BATCH_H_ */
