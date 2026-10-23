@@ -781,6 +781,8 @@ namespace cubload
     bool insert_errors_filtered = false;
     OID dummy_oid;
     bool has_BU_lock = lock_has_lock_on_object (&m_scancache.node.class_oid, oid_Root_class_oid, BU_LOCK);
+    // loaddb has already verified the foreign keys; skip re-checking them at force time.
+    int force_flags = LC_FORCE_FLAG_DONT_CHECK_FK | (has_BU_lock ? LC_FORCE_FLAG_HAS_BU_LOCK : LC_FORCE_FLAG_NONE);
 
     // First check if we have any errors set.
     if (m_session.is_failed ())
@@ -830,8 +832,8 @@ namespace cubload
 						   &force_count,
 						   pruning_type,
 						   pruning_type == DB_NOT_PARTITIONED_CLASS ? nullptr : &pruning,
-						   NULL, UPDATE_INPLACE_NONE, NULL, has_BU_lock,
-						   true, false, false, &m_recdes_collected[i]);
+						   NULL, UPDATE_INPLACE_NONE, NULL, force_flags,
+						   false, &m_recdes_collected[i]);
 	    partition_clear_pruning_context (&pruning);
 	    if (error_code != NO_ERROR)
 	      {

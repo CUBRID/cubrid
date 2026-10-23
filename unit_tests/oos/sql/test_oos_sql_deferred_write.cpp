@@ -325,6 +325,53 @@ TEST_F (OosSqlDeferredWrite, OwnerlessCopyAreaBypassMissingTdesPreservesPairAndF
   EXPECT_EQ (converted.data, nullptr);
 }
 
+TEST_F (OosSqlDeferredWrite, OwnerlessWorkspaceBypassClearsBothPublicationsAndKeepsReceivedBytes)
+{
+  ownerless_copyarea input;
+  ASSERT_NO_FATAL_FAILURE (input.set_up ());
+  heap_pending_record received;
+  RECDES converted = RECDES_INITIALIZER;
+  RECDES *active = &input.record;
+  ASSERT_NO_FATAL_FAILURE (input.seed ());
+
+  const int error = locator_test_finalize_oos_record (input.thread_p, &input.class_oid, &active, false, nullptr,
+		    &received, &converted, true);
+
+  EXPECT_EQ (error, NO_ERROR);
+  EXPECT_TRUE (input.thread_p->oos_oids.empty ());
+  EXPECT_TRUE (input.tdes->oos_insert_lsa_queue.is_empty ());
+  EXPECT_EQ (active, &input.record);
+  input.expect_received_unchanged ();
+  EXPECT_EQ (received.get_recdes ().data, nullptr);
+  EXPECT_FALSE (received.is_prepared ());
+  EXPECT_FALSE (received.is_finalized ());
+  EXPECT_EQ (converted.data, nullptr);
+}
+
+TEST_F (OosSqlDeferredWrite, OwnerlessWorkspaceBypassMissingTdesPreservesPairAndFails)
+{
+  ownerless_copyarea input;
+  ASSERT_NO_FATAL_FAILURE (input.set_up ());
+  heap_pending_record received;
+  RECDES converted = RECDES_INITIALIZER;
+  RECDES *active = &input.record;
+  ASSERT_NO_FATAL_FAILURE (input.seed ());
+  missing_tdes_call call (input.thread_p);
+  const int error = locator_test_finalize_oos_record (input.thread_p, &input.class_oid, &active, false, nullptr,
+		    &received, &converted, true);
+  const int reported_error = call.capture_error_and_restore ();
+
+  EXPECT_EQ (error, ER_LOG_UNKNOWN_TRANINDEX);
+  EXPECT_EQ (reported_error, ER_LOG_UNKNOWN_TRANINDEX);
+  input.expect_publications_unchanged ();
+  EXPECT_EQ (active, &input.record);
+  input.expect_received_unchanged ();
+  EXPECT_EQ (received.get_recdes ().data, nullptr);
+  EXPECT_FALSE (received.is_prepared ());
+  EXPECT_FALSE (received.is_finalized ());
+  EXPECT_EQ (converted.data, nullptr);
+}
+
 TEST_F (OosSqlDeferredWrite, CopyAreaInsertMissingTdesDoesNotEnterSuccessContinuation)
 {
   ownerless_copyarea input;
@@ -337,7 +384,7 @@ TEST_F (OosSqlDeferredWrite, CopyAreaInsertMissingTdesDoesNotEnterSuccessContinu
   missing_tdes_call call (input.thread_p);
   const int error = locator_insert_force (input.thread_p, &input.hfid, &input.class_oid, &inserted_oid, &input.record,
 					  false, SINGLE_ROW_INSERT, nullptr, &force_count, DB_NOT_PARTITIONED_CLASS,
-					  nullptr, nullptr, UPDATE_INPLACE_NONE, nullptr, false, false, false, true, nullptr);
+					  nullptr, nullptr, UPDATE_INPLACE_NONE, nullptr, LC_FORCE_FLAG_NONE, true, nullptr);
   const int reported_error = call.capture_error_and_restore ();
 
   EXPECT_EQ (error, ER_LOG_UNKNOWN_TRANINDEX);

@@ -12300,7 +12300,9 @@ qexec_remove_duplicates_for_replace (THREAD_ENTRY * thread_p, HEAP_SCANCACHE * s
 				     const HEAP_IDX_ELEMENTS_INFO * idx_info, int op_type, int pruning_type,
 				     PRUNING_CONTEXT * pcontext, int *removed_count)
 {
+  /* *INDENT-OFF* */
   heap_pending_record pending;
+  /* *INDENT-ON* */
   RECDES new_recdes;
   int i = 0;
   int error_code = NO_ERROR;
@@ -12518,7 +12520,9 @@ qexec_oid_of_duplicate_key_update (THREAD_ENTRY * thread_p, HEAP_SCANCACHE ** pr
 				   HEAP_CACHE_ATTRINFO * index_attr_info, const HEAP_IDX_ELEMENTS_INFO * idx_info,
 				   int pruning_type, PRUNING_CONTEXT * pcontext, OID * unique_oid_p, int op_type)
 {
+  /* *INDENT-OFF* */
   heap_pending_record pending;
+  /* *INDENT-ON* */
   RECDES recdes;
   int i = 0;
   int error_code = NO_ERROR;
