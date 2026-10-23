@@ -45,6 +45,79 @@
 
 using namespace cubpl;
 
+/*
+ * make_static_sql_text () - apply the text edits of a PL/CSQL static SQL to its original text
+ *   return: true if the edited text can be used as the rewritten query
+ *   parser(in): parser that compiled the static SQL
+ *   sql(in): original text
+ *   text(out): edited text
+ *
+ * Note: the edits are collected right after name resolution (see pt_collect_static_sql_edits ()).
+ *       The edited text is compiled once more as a normal statement to make sure that it can be re-parsed at runtime
+ *       with the same host variables. Otherwise the caller falls back to printing the compiled tree.
+ */
+static bool
+make_static_sql_text (PARSER_CONTEXT *parser, const std::string &sql, std::string &text)
+{
+  int pos = 0;
+  bool ok = false;
+
+  text.clear ();
+
+  if (parser->static_sql_edit_status != 1 || parser->original_buffer == NULL
+      || sql.compare (parser->original_buffer) != 0)
+    {
+      return false;
+    }
+
+  for (int i = 0; i < parser->static_sql_edit_count; i++)
+    {
+      const PT_STATIC_SQL_EDIT &edit = parser->static_sql_edits[i];
+
+      text.append (sql, pos, edit.start - pos);
+      text.append (edit.text);
+      pos = edit.end;
+    }
+  text.append (sql, pos, std::string::npos);
+
+  /* an error of verifying the edited text is not an error of the static SQL: keep the error set before */
+  er_stack_push ();
+
+  DB_SESSION *session = db_open_buffer (text.c_str ());
+  if (session != NULL)
+    {
+      /* the INTO clause must have been removed: a wrong one removed (e.g. INTO in a string literal) would leave it */
+      bool has_into = false;
+      /* the statements are NULL if the edited text can not be parsed */
+      PT_NODE *statement = (db_statement_count (session) == 1) ? db_get_statement (session, 0) : NULL;
+      PT_NODE *query = statement;
+
+      while (query != NULL && PT_IS_QUERY (query))
+	{
+	  if (query->info.query.into_list != NULL)
+	    {
+	      has_into = true;
+	      break;
+	    }
+	  query = (query->node_type == PT_SELECT) ? NULL : query->info.query.q.union_.arg1;
+	}
+
+      /* compile without preparing: the runtime prepares the text, and an XASL cache entry made here would let it skip
+       * the planning (e.g. the query plan of SHOW TRACE would not be the one of this statement) */
+      session->parser->flag.is_verifying_static_sql_text = 1;
+
+      if (statement != NULL && !has_into && db_compile_statement (session) >= 0
+	  && db_number_of_input_markers (session, 1) == parser->host_var_count)
+	{
+	  ok = true;
+	}
+      db_close_session (session);
+    }
+  er_stack_pop ();
+
+  return ok;
+}
+
 static PT_NODE *
 pt_find_table_access (PARSER_CONTEXT *parser, PT_NODE *tree, void *arg, int *continue_walk)
 {
@@ -566,12 +639,23 @@ namespace cubmethod
 	    PARSER_CONTEXT *parser = db_get_parser (db_session);
 	    PT_NODE *stmt = db_get_statement (db_session, 0);
 
-	    parser->custom_print |= PT_CONVERT_RANGE;
-	    /* select-list aliases (e.g. "AS col1") must survive into rewritten_query: this text is
-	     * embedded verbatim in the compiled PL/CSQL class and re-parsed at runtime by Query.open(),
-	     * so a client reading column labels off that cursor needs them to still be there */
-	    parser->custom_print |= PT_PRINT_ALIAS;
-	    semantics.rewritten_query = parser_print_tree (parser, stmt);
+	    /* the rewritten query is embedded verbatim in the compiled PL/CSQL class and re-parsed at runtime.
+	     * keep the original text with the text edits if possible; printing the compiled tree is the fallback */
+	    std::string edited_text;
+	    bool use_text_edits = make_static_sql_text (parser, s, edited_text);
+
+	    if (use_text_edits)
+	      {
+		semantics.rewritten_query = edited_text;
+	      }
+	    else
+	      {
+		parser->custom_print |= PT_CONVERT_RANGE;
+		/* select-list aliases (e.g. "AS col1") must survive into rewritten_query: a client reading
+		 * column labels off the cursor needs them to still be there */
+		parser->custom_print |= PT_PRINT_ALIAS;
+		semantics.rewritten_query = parser_print_tree (parser, stmt);
+	      }
 
 	    has_table_access = false;
 	    (void) parser_walk_tree (parser, stmt, pt_find_table_access, &has_table_access, NULL, NULL);
@@ -680,6 +764,13 @@ namespace cubmethod
 		    marker = db_marker_next (marker);
 		  }
 		while (marker);
+	      }
+
+	    if (error == NO_ERROR && use_text_edits && semantics.hvs.size () > (size_t) parser->host_var_count)
+	      {
+		/* the host variables in the text are "?:N" with the indexes of the PL/CSQL variables. auto-parameterized
+		 * values (the indexes after them) are not in the text, where the values are still literals */
+		semantics.hvs.resize (parser->host_var_count);
 	      }
 	  }
 	else

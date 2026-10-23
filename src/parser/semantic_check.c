@@ -12789,6 +12789,12 @@ pt_check_with_info (PARSER_CONTEXT * parser, PT_NODE * node, SEMANTIC_CHK_INFO *
 
       node = pt_resolve_names (parser, node, sc_info_ptr);
 
+      if (parser->flag.is_parsing_static_sql && !pt_has_error (parser))
+	{
+	  /* the text of a static SQL is taken before type checking and view translation transform the tree */
+	  pt_collect_static_sql_edits (parser, node);
+	}
+
       if (!pt_has_error (parser))
 	{
 	  node = pt_check_where (parser, node);
