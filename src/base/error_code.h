@@ -1782,15 +1782,13 @@
 
 #define ER_QPROC_DOMAIN_UNRESOLVED                  -1383
 
-/* -1384 is unused (CBRD-27583 removed it): never give it to another error */
+#define ER_SES_VARIABLE_TYPE_FIXED                  -1384
 
 #define ER_AU_REJECT_LOGIN                          -1385
 
 #define ER_HA_REPL_SERIAL_IMAGE_SKIPPED             -1386
 
-#define ER_SES_VARIABLE_TYPE_FIXED                  -1387
-
-#define ER_LAST_ERROR                               -1388
+#define ER_LAST_ERROR                               -1387
 
 
 /*

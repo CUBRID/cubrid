@@ -1492,13 +1492,13 @@ Check the path of the key file (_keys) and make sure that it includes proper key
 
 1383 Domain of a query node is unresolved at %1$s (query %2$s, node %3$d, domain %4$s).
 
+1384 Session variable @%1$s has the type %2$s in this statement, not %3$s.
+
 1385 Invalid username or password.
 
 1386 HA repl info: A replicated _db_serial image of serial "%1$s" was not applied on this node (%2$s), which keeps its own row: current_val %3$s, image %4$s, block end %5$s.
 
-1387 Session variable @%1$s has the type %2$s in this statement, not %3$s.
-
-1388 Last Error
+1387 Last Error
 
 
 $set 6 MSGCAT_SET_INTERNAL

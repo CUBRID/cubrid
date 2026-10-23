@@ -1036,32 +1036,6 @@ domain_coercion_of_plan (const DOMAIN_COERCION_PLAN * plan, DOMAIN_OPERAND_COERC
   coercion->result = domain_find_conversion (&plan->result);
 }
 
-static bool
-domain_conversion_equal (const DOMAIN_CONVERSION * a, const DOMAIN_CONVERSION * b)
-{
-  return a->target == b->target && (a->target == NULL || (a->source == b->source && a->mode == b->mode));
-}
-
-bool
-domain_coercion_plan_equal (const DOMAIN_COERCION_PLAN * a, const DOMAIN_COERCION_PLAN * b)
-{
-  return domain_conversion_equal (&a->conv[0], &b->conv[0]) && domain_conversion_equal (&a->conv[1], &b->conv[1])
-    && a->operand_domain[0] == b->operand_domain[0] && a->operand_domain[1] == b->operand_domain[1]
-    && a->arith.kind == b->arith.kind && a->arith.type == b->arith.type
-    && domain_conversion_equal (&a->result, &b->result);
-}
-
-bool
-domain_accumulator_plan_equal (const DOMAIN_ACCUMULATOR_PLAN * a, const DOMAIN_ACCUMULATOR_PLAN * b)
-{
-  return a->value_dom == b->value_dom && a->value2_dom == b->value2_dom
-    && domain_coercion_plan_equal (&a->operand_coercion, &b->operand_coercion)
-    && domain_coercion_plan_equal (&a->distinct_coercion, &b->distinct_coercion)
-    && domain_coercion_plan_equal (&a->divide_coercion, &b->divide_coercion)
-    && domain_conversion_equal (&a->first_conv, &b->first_conv)
-    && domain_conversion_equal (&a->final_conv, &b->final_conv) && a->accumulator_takes == b->accumulator_takes;
-}
-
 /* The cached domain tp_domain_resolve (type, NULL, precision, 0, NULL, collation_id) gives a string (the collation's
  * codeset) or a bit string, found without the transient domain tp_domain_resolve makes and frees; a domain not
  * cached yet, and one of another type, are tp_domain_resolve's. */

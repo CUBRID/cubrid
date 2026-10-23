@@ -4962,17 +4962,19 @@ error_exit:
 /*
  * pt_host_var_value_domain () - CBRD-27583: the domain of the value bound at user position index for the compilation
  *   of a bind type signature (the value's, or the type header of the NULL a SELECT compilation binds); the NULL
- *   domain for a NULL value, the floating point numeric for a NUMERIC at a user position (D-58)
+ *   domain for a NULL value, the floating point numeric for a NUMERIC and the floating BIT for a BIT at a user position
+ *   (D-58)
  */
 TP_DOMAIN *
 pt_host_var_value_domain (PARSER_CONTEXT * parser, int index)
 {
   DB_VALUE *val = &parser->host_variables[index];
   const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (val);
-  if (type == DB_TYPE_NUMERIC && index < parser->host_var_count)
+  if ((type == DB_TYPE_NUMERIC || type == DB_TYPE_BIT) && index < parser->host_var_count)
     {
-      /* the signature carries no precision and scale: the plan serves NUMERIC values of any */
-      return tp_domain_resolve_default (DB_TYPE_NUMERIC);
+      /* the signature carries no precision and scale: the plan serves NUMERIC values of any, and fixed BIT values of
+       * any length (a plan of the first value's BIT(n) cut a longer setBytes to n bits) */
+      return tp_domain_resolve_default (type);
     }
   return type == DB_TYPE_NULL ? &tp_Null_domain : tp_domain_cache (tp_domain_resolve_value (val, NULL));
 }

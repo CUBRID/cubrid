@@ -222,10 +222,6 @@ TP_VALUE_CONVERTER domain_find_conversion (const DOMAIN_CONVERSION * conversion)
 /* A coercion plan's operand coercion, its converters looked up */
 void domain_coercion_of_plan (const DOMAIN_COERCION_PLAN * plan, DOMAIN_OPERAND_COERCION * coercion);
 
-/* Two plans are the same plan: every field */
-bool domain_coercion_plan_equal (const DOMAIN_COERCION_PLAN * a, const DOMAIN_COERCION_PLAN * b);
-bool domain_accumulator_plan_equal (const DOMAIN_ACCUMULATOR_PLAN * a, const DOMAIN_ACCUMULATOR_PLAN * b);
-
 /*
  * domain_arith_rule () - the ARITH rule over two operand types alone: the targets of the operand coercion and what the
  *   typed operator makes of the coerced operands. The resolver reads it over the operands' domains, before any row,
