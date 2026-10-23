@@ -13333,6 +13333,12 @@ enum pt_static_sql_token_kind
   PT_SS_TOKEN_PUNCT
 };
 
+/* the white spaces and the identifier characters of the lexer (csql_lexer.l) */
+#define PT_SS_IS_SPACE(c) ((c) == ' ' || (c) == '\t' || (c) == '\r' || (c) == '\n')
+#define PT_SS_IS_IDENT_CHAR(c) \
+  (((c) >= 'a' && (c) <= 'z') || ((c) >= 'A' && (c) <= 'Z') || ((c) >= '0' && (c) <= '9') || (c) == '_' \
+   || (c) == '#' || ((c) >= 0x80 && (c) <= 0xfe))
+
 /*
  * pt_static_sql_next_token () - scan the next token of the SQL text skipping white spaces and comments
  *   return: kind of the token
@@ -13351,7 +13357,7 @@ pt_static_sql_next_token (const PT_STATIC_SQL_EDIT_LIST * list, int pos, int *st
     {
       unsigned char c = (unsigned char) s[pos];
 
-      if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v')
+      if (PT_SS_IS_SPACE (c))
 	{
 	  pos++;
 	}
@@ -13416,12 +13422,12 @@ pt_static_sql_next_token (const PT_STATIC_SQL_EDIT_LIST * list, int pos, int *st
       return PT_SS_TOKEN_QUOTED;
     }
 
-  if (isalnum (c) || c == '_' || c == '#' || c == '$' || c >= 0x80)
+  if (PT_SS_IS_IDENT_CHAR (c))
     {
       while (pos < len)
 	{
 	  c = (unsigned char) s[pos];
-	  if (!(isalnum (c) || c == '_' || c == '#' || c == '$' || c >= 0x80))
+	  if (!PT_SS_IS_IDENT_CHAR (c))
 	    {
 	      break;
 	    }
@@ -13436,13 +13442,12 @@ pt_static_sql_next_token (const PT_STATIC_SQL_EDIT_LIST * list, int pos, int *st
 }
 
 /*
- * pt_static_sql_token_equals () - check if the token is the identifier ignoring case and delimiters
+ * pt_static_sql_token_equals_n () - check if the token is the identifier of the given length ignoring case and
+ *				      delimiters
  */
 static bool
-pt_static_sql_token_equals (const char *s, int start, int end, const char *ident)
+pt_static_sql_token_equals_n (const char *s, int start, int end, const char *ident, int len)
 {
-  int len = (int) strlen (ident);
-
   if (end - start >= 2 && (s[start] == '[' || s[start] == '"' || s[start] == '`'))
     {
       start++;
@@ -13470,77 +13475,97 @@ pt_static_sql_token_equals (const char *s, int start, int end, const char *ident
 }
 
 /*
- * pt_static_sql_normalize () - remove white spaces and delimiters and lower the case, to compare path expressions
+ * pt_static_sql_token_equals () - check if the token is the identifier ignoring case and delimiters
  */
-static void
-pt_static_sql_normalize (const char *s, int len, char *buf, int buf_size)
+static bool
+pt_static_sql_token_equals (const char *s, int start, int end, const char *ident)
 {
-  int i, j;
-
-  for (i = 0, j = 0; i < len && j < buf_size - 1; i++)
-    {
-      unsigned char c = (unsigned char) s[i];
-
-      if (c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '[' || c == ']' || c == '"' || c == '`')
-	{
-	  continue;
-	}
-      buf[j++] = (char) tolower (c);
-    }
-  buf[j] = '\0';
+  return pt_static_sql_token_equals_n (s, start, end, ident, (int) strlen (ident));
 }
 
 /*
- * pt_static_sql_token_start () - start of the identifier token that ends at the given position
- *   return: start of the token, or -1 if there is no identifier token
- *   s(in): text
- *   end(in): end of the token
+ * pt_static_sql_token_is () - check if the i-th token is the punctuation
  */
-static int
-pt_static_sql_token_start (const char *s, int end)
+static bool
+pt_static_sql_token_is (const PT_STATIC_SQL_EDIT_LIST * list, int i, char punct)
 {
-  int pos = end - 1;
-
-  if (pos < 0)
-    {
-      return -1;
-    }
-
-  if (s[pos] == ']' || s[pos] == '"' || s[pos] == '`')
-    {
-      char open = (s[pos] == ']') ? '[' : s[pos];
-
-      for (pos--; pos >= 0 && s[pos] != open; pos--)
-	;
-      return pos;
-    }
-
-  while (pos >= 0)
-    {
-      unsigned char c = (unsigned char) s[pos];
-
-      if (!(isalnum (c) || c == '_' || c == '#' || c == '$' || c >= 0x80))
-	{
-	  break;
-	}
-      pos--;
-    }
-
-  return (pos + 1 < end) ? pos + 1 : -1;
+  return (i >= 0 && i < list->token_count && list->tokens[i].kind == PT_SS_TOKEN_PUNCT
+	  && list->text[list->tokens[i].start] == punct);
 }
 
 /*
- * pt_static_sql_skip_space_before () - position of the last non-white-space character before the given position
+ * pt_static_sql_token_ending_at () - index of the token that ends at the position, or -1
  */
 static int
-pt_static_sql_skip_space_before (const char *s, int pos)
+pt_static_sql_token_ending_at (const PT_STATIC_SQL_EDIT_LIST * list, int position)
 {
-  pos--;
-  while (pos >= 0 && (s[pos] == ' ' || s[pos] == '\t' || s[pos] == '\r' || s[pos] == '\n'))
+  int low = 0, high = list->token_count;
+
+  while (low < high)
     {
-      pos--;
+      int mid = (low + high) / 2;
+
+      if (list->tokens[mid].end < position)
+	{
+	  low = mid + 1;
+	}
+      else
+	{
+	  high = mid;
+	}
     }
-  return pos;
+
+  return (low < list->token_count && list->tokens[low].end == position) ? low : -1;
+}
+
+/*
+ * pt_static_sql_path_start () - start of the name or the path expression (e.g. rec.field) in the text
+ *   return: start of the first token, or -1 if the tokens ending at the given position are not the label
+ *   list(in): text and the tokens of it
+ *   end(in): end of the last name
+ *   label(in): name or path expression of the PL/CSQL variable
+ *
+ * Note: each name of the label is compared with an identifier token, so white spaces and comments around the dots
+ *	 are skipped as the lexer does.
+ */
+static int
+pt_static_sql_path_start (const PT_STATIC_SQL_EDIT_LIST * list, int end, const char *label)
+{
+  int i = pt_static_sql_token_ending_at (list, end);
+  int part_end = (int) strlen (label);
+
+  while (i >= 0)
+    {
+      const PT_STATIC_SQL_TOKEN *token = &list->tokens[i];
+      int part_start = part_end;
+
+      while (part_start > 0 && label[part_start - 1] != '.')
+	{
+	  part_start--;
+	}
+
+      if ((token->kind != PT_SS_TOKEN_IDENT && token->kind != PT_SS_TOKEN_QUOTED)
+	  || !pt_static_sql_token_equals_n (list->text, token->start, token->end, label + part_start,
+					    part_end - part_start))
+	{
+	  return -1;
+	}
+
+      if (part_start == 0)
+	{
+	  return token->start;
+	}
+
+      /* the previous name follows a dot */
+      if (!pt_static_sql_token_is (list, i - 1, '.'))
+	{
+	  return -1;
+	}
+      i -= 2;
+      part_end = part_start - 1;
+    }
+
+  return -1;
 }
 
 static void
@@ -13605,16 +13630,6 @@ pt_static_sql_tokenize (PARSER_CONTEXT * parser, PT_STATIC_SQL_EDIT_LIST * list)
   return true;
 }
 
-/*
- * pt_static_sql_token_is () - check if the i-th token is the punctuation
- */
-static bool
-pt_static_sql_token_is (const PT_STATIC_SQL_EDIT_LIST * list, int i, char punct)
-{
-  return (i >= 0 && i < list->token_count && list->tokens[i].kind == PT_SS_TOKEN_PUNCT
-	  && list->text[list->tokens[i].start] == punct);
-}
-
 static PT_NODE *
 pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
@@ -13633,47 +13648,13 @@ pt_collect_static_sql_edits_pre (PARSER_CONTEXT * parser, PT_NODE * node, void *
 	  && node->info.host_var.index < parser->host_var_count)
 	{
 	  /* a PL/CSQL variable replaced by pt_parameterize_for_static_sql (): the end of the name or the path
-	   * expression (e.g. rec.field) is kept in parser->static_sql_host_var_end, and the start is found backward
-	   * in the text */
-	  const char *label = node->info.host_var.label;
+	   * expression (e.g. rec.field) is kept in parser->static_sql_host_var_end, and the start is found from the
+	   * tokens ending there */
 	  int end = (parser->static_sql_host_var_end != NULL)
 	    ? parser->static_sql_host_var_end[node->info.host_var.index] : -1;
-	  int start = -1, pos, parts = 1;
-	  char text_norm[256], label_norm[256];
-	  const char *c;
+	  int start = (end > 0) ? pt_static_sql_path_start (list, end, node->info.host_var.label) : -1;
 
-	  for (c = label; *c != '\0'; c++)
-	    {
-	      if (*c == '.')
-		{
-		  parts++;
-		}
-	    }
-
-	  if (end > 0 && end <= list->text_len)
-	    {
-	      start = pt_static_sql_token_start (list->text, end);
-	      while (start >= 0 && --parts > 0)
-		{
-		  pos = pt_static_sql_skip_space_before (list->text, start);
-		  if (pos < 0 || list->text[pos] != '.')
-		    {
-		      start = -1;
-		      break;
-		    }
-		  pos = pt_static_sql_skip_space_before (list->text, pos);
-		  start = (pos < 0) ? -1 : pt_static_sql_token_start (list->text, pos + 1);
-		}
-	    }
 	  if (start < 0)
-	    {
-	      list->failed = true;
-	      break;
-	    }
-	  pt_static_sql_normalize (list->text + start, end - start, text_norm, sizeof (text_norm));
-	  pt_static_sql_normalize (node->info.host_var.label, (int) strlen (node->info.host_var.label), label_norm,
-				   sizeof (label_norm));
-	  if (strcmp (text_norm, label_norm) != 0)
 	    {
 	      list->failed = true;
 	      break;
@@ -13800,31 +13781,6 @@ pt_record_static_sql_star (PARSER_CONTEXT * parser, PT_STATIC_SQL_STAR_KIND kind
     {
       parser->static_sql_edit_status = -1;
     }
-}
-
-/*
- * pt_static_sql_token_ending_at () - index of the token that ends at the position, or -1
- */
-static int
-pt_static_sql_token_ending_at (const PT_STATIC_SQL_EDIT_LIST * list, int position)
-{
-  int low = 0, high = list->token_count;
-
-  while (low < high)
-    {
-      int mid = (low + high) / 2;
-
-      if (list->tokens[mid].end < position)
-	{
-	  low = mid + 1;
-	}
-      else
-	{
-	  high = mid;
-	}
-    }
-
-  return (low < list->token_count && list->tokens[low].end == position) ? low : -1;
 }
 
 /*
