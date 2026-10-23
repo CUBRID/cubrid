@@ -540,6 +540,7 @@ struct hash_scan_key_plan
   int n_keys;
   bool build_converts;		/* a build key is not COPY */
   bool probe_converts;		/* a probe key is not COPY */
+  bool probe_numeric;		/* a key hashes in a NUMERIC domain: each probe value's own precision and scale count */
   HASH_SCAN_KEY_ENTRY key[1];	/* [n_keys] */
 };
 
@@ -603,8 +604,28 @@ qdata_hscan_key_probe_has_domain (const VAL_DESCR * vd, const REGU_VARIABLE * ke
 }
 
 /*
+ * qdata_hscan_numeric_hash_differs () - whether two NUMERIC precisions and scales hash equal numbers differently
+ *   return: true if a value of one must be coerced into the other before hashing
+ *   prec1(in), scale1(in): one domain's or value's precision and scale
+ *   prec2(in), scale2(in): the other's
+ */
+static bool
+qdata_hscan_numeric_hash_differs (int prec1, int scale1, int prec2, int scale2)
+{
+  const bool is_float1 = (prec1 == DB_DEFAULT_NUMERIC_PRECISION);
+  const bool is_float2 = (prec2 == DB_DEFAULT_NUMERIC_PRECISION);
+
+  /* float NUMERIC hashes the normalized value, fixed NUMERIC its scaled integer whatever the precision */
+  if (is_float1 != is_float2)
+    {
+      return true;
+    }
+  return !is_float1 && scale1 != scale2;
+}
+
+/*
  * qdata_hscan_key_same_domain () - whether a value of domain hashes as it is in the hash domain target: the same type
- *   and, for a NUMERIC, the same precision and scale (a fixed NUMERIC hashes its digits unscaled)
+ *   and, for a NUMERIC, a precision and scale that hash alike (qdata_hscan_numeric_hash_differs)
  */
 static bool
 qdata_hscan_key_same_domain (const TP_DOMAIN * domain, const TP_DOMAIN * target)
@@ -614,7 +635,41 @@ qdata_hscan_key_same_domain (const TP_DOMAIN * domain, const TP_DOMAIN * target)
       return false;
     }
   return TP_DOMAIN_TYPE (domain) != DB_TYPE_NUMERIC
-    || (domain->precision == target->precision && domain->scale == target->scale);
+    || !qdata_hscan_numeric_hash_differs (domain->precision, domain->scale, target->precision, target->scale);
+}
+
+/*
+ * qdata_hscan_key_numeric_domain () - the NUMERIC a pair whose common type is NUMERIC hashes in: the hash join's
+ *   common NUMERIC, so every value of either side has its exact image there
+ *   return: the domain, NULL on error (ER_OUT_OF_VIRTUAL_MEMORY)
+ *   build(in), probe(in): the domains of the pair's values (a NUMERIC and a NUMERIC or an integer)
+ */
+static const TP_DOMAIN *
+qdata_hscan_key_numeric_domain (const TP_DOMAIN * build, const TP_DOMAIN * probe)
+{
+  int precision = DB_DEFAULT_NUMERIC_PRECISION;
+  int scale = DB_DEFAULT_NUMERIC_SCALE;
+
+  if (build->precision != DB_DEFAULT_NUMERIC_PRECISION && probe->precision != DB_DEFAULT_NUMERIC_PRECISION
+      && build->precision != TP_FLOATING_PRECISION_VALUE && probe->precision != TP_FLOATING_PRECISION_VALUE)
+    {
+      scale = MAX (build->scale, probe->scale);
+      precision = MAX (build->precision - build->scale, probe->precision - probe->scale) + scale;
+      if (precision > DB_MAX_FIXED_NUMERIC_PRECISION)
+	{
+	  precision = DB_DEFAULT_NUMERIC_PRECISION;
+	  scale = DB_DEFAULT_NUMERIC_SCALE;
+	}
+    }
+  if (TP_DOMAIN_TYPE (build) == DB_TYPE_NUMERIC && build->precision == precision && build->scale == scale)
+    {
+      return build;
+    }
+  if (TP_DOMAIN_TYPE (probe) == DB_TYPE_NUMERIC && probe->precision == precision && probe->scale == scale)
+    {
+      return probe;
+    }
+  return tp_domain_resolve (DB_TYPE_NUMERIC, NULL, precision, scale, NULL, 0);
 }
 
 /*
@@ -624,8 +679,8 @@ qdata_hscan_key_same_domain (const TP_DOMAIN * domain, const TP_DOMAIN * target)
  *
  * A string against a number or a date hashes in the type the comparison coerces both into (DOUBLE, the date's type).
  * Any other pair hashes in the common domain tp_infer_common_domain gives, which never narrows a side, except that a
- * NUMERIC there hashes as DOUBLE: equal values convert to one DOUBLE whatever their scale, where the common NUMERIC's
- * fixed precision may not hold them. Values that only collide there are left to the join predicate.
+ * NUMERIC there is always float: the pair hashes in the hash join's exact common NUMERIC instead, since DOUBLE rounds
+ * apart equal values of more than 15 digits.
  */
 static const TP_DOMAIN *
 qdata_hscan_key_hash_domain (const TP_DOMAIN * build, const TP_DOMAIN * probe)
@@ -648,7 +703,7 @@ qdata_hscan_key_hash_domain (const TP_DOMAIN * build, const TP_DOMAIN * probe)
   const TP_DOMAIN *common = tp_infer_common_domain ((TP_DOMAIN *) build, (TP_DOMAIN *) probe);
   if (common != NULL && TP_DOMAIN_TYPE (common) == DB_TYPE_NUMERIC)
     {
-      return tp_domain_resolve_default (DB_TYPE_DOUBLE);
+      return qdata_hscan_key_numeric_domain (build, probe);
     }
   return common;
 }
@@ -706,6 +761,7 @@ qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_
   plan->n_keys = n_keys;
   plan->build_converts = false;
   plan->probe_converts = false;
+  plan->probe_numeric = false;
   /* the scan owns the plan from here: its close frees it, on error too */
   hlsid->key_plan = plan;
 
@@ -745,6 +801,7 @@ qdata_plan_hscan_keys (THREAD_ENTRY * thread_p, const VAL_DESCR * vd, HASH_LIST_
       qdata_plan_hscan_key_side (probes, key->target, &key->probe);
       plan->build_converts |= key->build.rule != HASH_SCAN_KEY_COPY;
       plan->probe_converts |= key->probe.rule != HASH_SCAN_KEY_COPY;
+      plan->probe_numeric |= TP_DOMAIN_TYPE (key->target) == DB_TYPE_NUMERIC;
     }
   hlsid->need_coerce_type = plan->build_converts;
   return NO_ERROR;
@@ -780,6 +837,31 @@ qdata_check_hscan_key_convert (const DB_VALUE * value, const TP_DOMAIN * target,
 #endif
 
 /*
+ * qdata_hscan_key_numeric_source () - the value to bring into the hash domain target
+ *   return: value, or deferred holding it when a fixed NUMERIC of negative scale goes into a float NUMERIC
+ *   value(in): the value
+ *   target(in): the hash domain
+ *   deferred(out): room for the value with its precision deferred
+ *
+ * A float NUMERIC hashes a negative scale away by at most 40 minus its precision digits, so the precision must be the
+ * value's own digit count (as the hash join's DB_HJOIN_NUMERIC_PRECISION_DEFERRED), not its column's.
+ */
+static const DB_VALUE *
+qdata_hscan_key_numeric_source (const DB_VALUE * value, const TP_DOMAIN * target, DB_VALUE * deferred)
+{
+  if (TP_DOMAIN_TYPE (target) != DB_TYPE_NUMERIC || target->precision != DB_DEFAULT_NUMERIC_PRECISION
+      || DB_VALUE_DOMAIN_TYPE (value) != DB_TYPE_NUMERIC
+      || value->domain.numeric_info.precision == DB_DEFAULT_NUMERIC_PRECISION || value->domain.numeric_info.scale >= 0)
+    {
+      return value;
+    }
+  /* a NUMERIC holds its digits in the value itself: the copy owns nothing */
+  *deferred = *value;
+  deferred->domain.numeric_info.precision = DB_HJOIN_NUMERIC_PRECISION_DEFERRED;
+  return deferred;
+}
+
+/*
  * qdata_convert_hscan_key_value () - one value of a side into the hash domain
  *   return: NO_ERROR, or the error set (tp_domain_status_er_set, as the hash join on the same pair)
  *
@@ -790,18 +872,20 @@ qdata_convert_hscan_key_value (const HASH_SCAN_KEY_ENTRY * entry, const HASH_SCA
 			       const DB_VALUE * value, DB_VALUE * converted)
 {
   TP_DOMAIN_STATUS status;
+  DB_VALUE deferred;
+  const DB_VALUE *source = qdata_hscan_key_numeric_source (value, entry->target, &deferred);
   pr_clear_value (converted);
   if (side->rule == HASH_SCAN_KEY_CONVERT)
     {
       assert (DB_VALUE_DOMAIN_TYPE (value) == side->source);
-      status = tp_value_convert (side->conv, entry->target, value, converted);
+      status = tp_value_convert (side->conv, entry->target, source, converted);
 #if !defined (NDEBUG)
-      qdata_check_hscan_key_convert (value, entry->target, status, converted);
+      qdata_check_hscan_key_convert (source, entry->target, status, converted);
 #endif
     }
   else
     {
-      status = tp_value_coerce (value, converted, entry->target);
+      status = tp_value_coerce (source, converted, entry->target);
     }
   if (status == DOMAIN_COMPATIBLE)
     {
@@ -861,6 +945,9 @@ qdata_copy_hscan_key_without_alloc (cubthread::entry * thread_p, HASH_SCAN_KEY *
  *   plan(in): the scan's key plan
  *   converted(in/out): a key with values of its own, for the converted values
  *   probe_key(out): a key whose values point to key's or converted's
+ *
+ * A NUMERIC probe value need not carry its key's domain (PRIOR of a fixed column under a float NUMERIC key), so in a
+ * NUMERIC hash domain its own precision and scale decide.
  */
 int
 qdata_probe_hscan_key (HASH_SCAN_KEY * key, const HASH_SCAN_KEY_PLAN * plan, HASH_SCAN_KEY * converted,
@@ -873,7 +960,27 @@ qdata_probe_hscan_key (HASH_SCAN_KEY * key, const HASH_SCAN_KEY_PLAN * plan, HAS
       const HASH_SCAN_KEY_ENTRY *entry = &plan->key[i];
       DB_VALUE *value = key->values[i];
       probe_key->values[i] = value;
-      if (DB_IS_NULL (value) || entry->probe.rule == HASH_SCAN_KEY_COPY)
+      if (DB_IS_NULL (value))
+	{
+	  continue;
+	}
+      if (TP_DOMAIN_TYPE (entry->target) == DB_TYPE_NUMERIC && DB_VALUE_DOMAIN_TYPE (value) == DB_TYPE_NUMERIC)
+	{
+	  if (qdata_hscan_numeric_hash_differs (DB_VALUE_PRECISION (value), DB_VALUE_SCALE (value),
+						entry->target->precision, entry->target->scale))
+	    {
+	      DB_VALUE deferred;
+	      const DB_VALUE *source = qdata_hscan_key_numeric_source (value, entry->target, &deferred);
+	      pr_clear_value (converted->values[i]);
+	      /* a value the domain cannot hold equals no build value, all of which were brought into it */
+	      if (tp_value_coerce (source, converted->values[i], entry->target) == DOMAIN_COMPATIBLE)
+		{
+		  probe_key->values[i] = converted->values[i];
+		}
+	    }
+	  continue;
+	}
+      if (entry->probe.rule == HASH_SCAN_KEY_COPY)
 	{
 	  continue;
 	}
@@ -888,12 +995,12 @@ qdata_probe_hscan_key (HASH_SCAN_KEY * key, const HASH_SCAN_KEY_PLAN * plan, HAS
 }
 
 /*
- * qdata_hscan_key_plan_probe_converts () - whether a probe key of the plan is not hashed as it is
+ * qdata_hscan_key_plan_probe_converts () - whether a probe key of the plan may not be hashed as it is
  */
 bool
 qdata_hscan_key_plan_probe_converts (const HASH_SCAN_KEY_PLAN * plan)
 {
-  return plan != NULL && plan->probe_converts;
+  return plan != NULL && (plan->probe_converts || plan->probe_numeric);
 }
 
 /*
