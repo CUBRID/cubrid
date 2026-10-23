@@ -11261,6 +11261,16 @@ do_alter_clause_change_attribute (PARSER_CONTEXT * const parser, PT_NODE * const
   /* set NULL, avoid 'abort_class' in case of error */
   ctemplate = NULL;
 
+  if (is_srv_update_needed && alter->next == NULL
+      && is_att_prop_set (attr_chg_prop.p[P_NOT_NULL], ATT_CHG_PROPERTY_LOST))
+    {
+      error = check_ha_repl_constraints_in_hierarchy (class_obj);
+      if (error != NO_ERROR)
+	{
+	  goto exit;
+	}
+    }
+
   if (attr_chg_prop.constr_info != NULL)
     {
       SM_CONSTRAINT_INFO *saved_constr = NULL;
