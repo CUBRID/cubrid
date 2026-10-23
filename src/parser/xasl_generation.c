@@ -6860,7 +6860,7 @@ pt_set_sort_list_domains (SORT_LIST * keys, const XASL_NODE * producer, const OU
  *   every list of the operation opens with that domain (qfile_unify_types checks it)
  */
 static void
-pt_type_null_list_column (XASL_NODE * xasl, int pos, TP_DOMAIN * unified)
+pt_type_null_list_column (XASL_NODE * xasl, int pos, TP_DOMAIN * unified, bool null_cast)
 {
   if (xasl == NULL)
     {
@@ -6869,23 +6869,23 @@ pt_type_null_list_column (XASL_NODE * xasl, int pos, TP_DOMAIN * unified)
   XASL_NODE *branch[2];
   REGU_VARIABLE *column = domain_list_column_source (xasl, &pos, branch);
   /* a regu converting its value keeps the domain its conversion makes */
-  if (column != NULL && TP_DOMAIN_TYPE (column->domain) == DB_TYPE_NULL && column->original_domain == NULL)
+  if (column != NULL && (TP_DOMAIN_TYPE (column->domain) == DB_TYPE_NULL || null_cast)
+      && column->original_domain == NULL)
     {
       column->domain = unified;
-      /* a cast whose target the compile left open (a union cast over a bind) casts into it, its converter found at
-       * unpack (stx_arith_cast_target) */
+      /* a cast whose target the compile left open (a union cast over a bind), or the semantic check's cast of an
+       * untyped NULL (CBRD-27668), casts into it, its converter found at unpack (stx_arith_cast_target) */
       if ((column->type == TYPE_INARITH || column->type == TYPE_OUTARITH)
 	  && (column->value.arithptr->opcode == T_CAST || column->value.arithptr->opcode == T_CAST_WRAP
 	      || column->value.arithptr->opcode == T_CAST_NOFAIL) && column->value.arithptr->domain != NULL
-	  && TP_DOMAIN_TYPE (column->value.arithptr->domain) == DB_TYPE_NULL)
+	  && (TP_DOMAIN_TYPE (column->value.arithptr->domain) == DB_TYPE_NULL || null_cast))
 	{
 	  column->value.arithptr->domain = unified;
 	}
     }
-  for (int i = 0; i < 2; i++)
-    {
-      pt_type_null_list_column (branch[i], pos, unified);
-    }
+  /* the first branch's leftmost list is the one the item describes (pt_get_select_list) */
+  pt_type_null_list_column (branch[0], pos, unified, null_cast);
+  pt_type_null_list_column (branch[1], pos, unified, false);
   pt_set_sort_list_domains (xasl->orderby_list, xasl, NULL);
 }
 
@@ -6904,10 +6904,14 @@ pt_check_list_branches (PARSER_CONTEXT * parser, PT_NODE * first_query, PT_NODE 
   for (int pos = 0; pos < n_columns && item[0] != NULL && item[1] != NULL;
        pos++, item[0] = item[0]->next, item[1] = item[1]->next)
     {
+      /* the semantic check's cast of an untyped NULL (CBRD-27668) fixed the type it knew then; the column unifies as
+       * the NULL it is and the cast takes the unified domain (a recursive CTE's self reference names type after the
+       * check: spec 26) */
+      const bool null_cast[2] = { PT_IS_CAST_OF_UNTYPED_NULL (item[0]), PT_IS_CAST_OF_UNTYPED_NULL (item[1]) };
       const TP_DOMAIN *unified;
-      const int error =
-	domain_unify_list_column (domain_list_column_of (first, pos), domain_list_column_of (second, pos),
-				  &unified);
+      const int error = domain_unify_list_column (null_cast[0] ? &tp_Null_domain : domain_list_column_of (first, pos),
+						  null_cast[1] ? &tp_Null_domain : domain_list_column_of (second, pos),
+						  &unified);
       if (error != NO_ERROR)
 	{
 	  PT_ERRORmf2 (parser, item[0], MSGCAT_SET_PARSER_SEMANTIC, MSGCAT_SEMANTIC_UNION_INCOMPATIBLE,
@@ -6916,8 +6920,8 @@ pt_check_list_branches (PARSER_CONTEXT * parser, PT_NODE * first_query, PT_NODE 
 	}
       if (unified != NULL && TP_DOMAIN_TYPE (unified) != DB_TYPE_NULL)
 	{
-	  pt_type_null_list_column (first, pos, (TP_DOMAIN *) unified);
-	  pt_type_null_list_column (second, pos, (TP_DOMAIN *) unified);
+	  pt_type_null_list_column (first, pos, (TP_DOMAIN *) unified, null_cast[0]);
+	  pt_type_null_list_column (second, pos, (TP_DOMAIN *) unified, null_cast[1]);
 	}
     }
   return NO_ERROR;
@@ -8075,13 +8079,12 @@ pt_check_nvl_null_domain (PARSER_CONTEXT * parser, const REGU_VARIABLE * regu, c
 	  continue;
 	}
       const TP_DOMAIN *with = pt_nvl_node_domain (parser, node, j, pt_host_var_position_domain (parser, index));
-      /* a system cast of an argument (an ENUM to VARCHAR, CBRD-27482) leaves the node's string precision floating
-       * while the bind's expected domain has the type's default */
-      const bool floating = with != NULL && regu->domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain))
-	&& regu->domain->precision == TP_FLOATING_PRECISION_VALUE
-	&& TP_DOMAIN_TYPE (regu->domain) == TP_DOMAIN_TYPE (with) && regu->domain->collation_id == with->collation_id;
-      assert (with != NULL && regu->domain != NULL
-	      && (floating || tp_domain_match (regu->domain, with, TP_EXACT_MATCH)));
+      /* a string node's precision and collation are the type checker's inference over the whole expression (a system
+       * cast of an ENUM argument, CBRD-27482; pt_check_recursive_expr_collation), which the bind's expected domain does
+       * not carry: a string compares by type and codeset */
+      const bool string = with != NULL && regu->domain != NULL && TP_IS_CHAR_TYPE (TP_DOMAIN_TYPE (regu->domain))
+	&& TP_DOMAIN_TYPE (regu->domain) == TP_DOMAIN_TYPE (with) && regu->domain->codeset == with->codeset;
+      assert (with != NULL && regu->domain != NULL && (string || tp_domain_match (regu->domain, with, TP_EXACT_MATCH)));
     }
 #endif
 }
