@@ -543,7 +543,7 @@ static void la_clear_all_repl_lists (void);
 
 static int la_set_repl_log (LOG_PAGE * log_pgptr, int log_type, int tranid, LOG_LSA * lsa);
 static time_t la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa);
-static void la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq);
+static int la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq);
 static int la_get_current (OR_BUF * buf, SM_CLASS * sm_class, int bound_bit_flag, DB_OTMPL * def, DB_VALUE * key,
 			   int offset_size);
 static void la_make_room_for_mvcc_insid (RECDES * recdes);
@@ -4819,15 +4819,16 @@ la_retrieve_eot_time (LOG_PAGE * pgptr, LOG_LSA * lsa)
 
 /*
  * la_get_wset_label() - read the dependency the master attached to a LOG_DUMMY_WSET_LABEL record
- *   return: void
+ *   return: NO_ERROR, or ER_IO_READ when a log page the record spans cannot be read
  *   pgptr(in): log page holding the label record
  *   lsa(in): LSA of the label record
- *   dependency_seq(out): dependency read from the label; NULL LSA if it cannot be read
+ *   dependency_seq(out): dependency read from the label; NULL LSA if it cannot be read, which the caller must
+ *                        not use: a NULL dependency means the transaction waits for no earlier commit
  *
  * Note:
  *   Reads the data header that follows the record header, as la_retrieve_eot_time() does.
  */
-static void
+static int
 la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq)
 {
   int error = NO_ERROR;
@@ -4845,17 +4846,19 @@ la_get_wset_label (LOG_PAGE * pgptr, LOG_LSA * lsa, LOG_LSA * dependency_seq)
   LA_LOG_READ_ALIGN (error, offset, pageid, pg);
   if (error != NO_ERROR)
     {
-      return;
+      return error;
     }
 
   LA_LOG_READ_ADVANCE_WHEN_DOESNT_FIT (error, SSIZEOF (*wset_label), offset, pageid, pg);
   if (error != NO_ERROR)
     {
-      return;
+      return error;
     }
 
   wset_label = (LOG_REC_WSET_LABEL *) ((char *) pg->area + offset);
   LSA_COPY (dependency_seq, &wset_label->dependency_seq);
+
+  return NO_ERROR;
 }
 
 /*
@@ -8016,8 +8019,14 @@ la_log_record_process (LOG_RECORD_HEADER * lrec, LOG_LSA * final, LOG_PAGE * pg_
       break;
 
     case LOG_DUMMY_WSET_LABEL:
-      /* keep the label in the holder; the next LOG_COMMIT or LOG_SYSOP_END of the same trid takes it */
-      la_get_wset_label (pg_ptr, final, &la_wset_label_dependency_seq);
+      /* keep the label in the holder; the next LOG_COMMIT or LOG_SYSOP_END of the same trid takes it.
+       * A label that cannot be read is read again: the error leaves final_lsa on this record. */
+      error = la_get_wset_label (pg_ptr, final, &la_wset_label_dependency_seq);
+      if (error != NO_ERROR)
+	{
+	  er_set (ER_ERROR_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1, "failed to read LOG_DUMMY_WSET_LABEL");
+	  return error;
+	}
       la_wset_label_trid = lrec->trid;
       LA_DEBUG_LOG (ARG_FILE_LINE, "reader ws_label trid=%d dependency_seq=%lld|%d at=%lld|%d\n", lrec->trid,
 		    (long long) la_wset_label_dependency_seq.pageid, (int) la_wset_label_dependency_seq.offset,
