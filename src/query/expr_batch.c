@@ -235,12 +235,13 @@ struct eb_leaf
   int col;			/* its index in the plan's columns */
   int vec2;			/* another column on the right instead of the constant ("a < b"), or -1 */
   int col2;
-  /* EB_STR: "= / <>" the constant (rel_op), or [NOT] LIKE a pattern of literals and '%' */
+  /* EB_STR: "= / <>" the constant (rel_op), or [NOT] LIKE a pattern */
   unsigned char like;
   unsigned char negate;
   const char *k_str;		/* the constant's bytes for the current page */
   int k_len;
   unsigned char ti;		/* the comparison ignores trailing spaces (eb_str_ti ()) */
+  QSTR_LIKE_MATCH_FN like_fn;	/* a LIKE: the matcher for the column's codeset and collation (qstr_like_match_resolve ()) */
   /* "IN (list)": the list's values (their DB_VALUEs, fixed for the execution), loaded a page at a time */
   int k_n;
   const DB_VALUE **k_list;
@@ -1547,9 +1548,10 @@ eb_raw_kid_str (EXPR_BATCH_PLAN * plan, EXPR_BATCH * batch, const EB_LEAF * leaf
 	}
       if (leaf->like)
 	{
-	  /* the engine's LIKE: a pattern that ends lets trailing spaces of the string match, and the space class of
-	   * the collation holds (qstr_eval_like ()) */
-	  int m = qstr_like_match (str, len, leaf->k_str, leaf->k_len, (INTL_CODESET) col->codeset, col->collation);
+	  /* the engine's LIKE (qstr_like_match (), through the matcher resolved for the column's codeset and
+	   * collation at load): a pattern that ends lets trailing spaces of the string match, and the space class of
+	   * the collation holds */
+	  int m = leaf->like_fn (str, len, leaf->k_str, leaf->k_len, (INTL_CODESET) col->codeset, col->collation);
 
 	  if (m == V_ERROR)
 	    {
@@ -3471,6 +3473,10 @@ eb_load_leaf_constants (EXPR_BATCH_PLAN * plan)
 	  leaf->k_str = db_get_string (k);
 	  leaf->k_len = db_get_string_size (k);
 	  leaf->ti = eb_str_ti (leaf, k);
+	  if (leaf->like)
+	    {
+	      leaf->like_fn = qstr_like_match_resolve ((INTL_CODESET) col->codeset, col->collation);
+	    }
 	  continue;
 	}
       if (k == NULL)

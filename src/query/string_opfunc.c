@@ -5998,6 +5998,94 @@ qstr_like_match (const char *tar, int tar_length, const char *pattern, int patte
   return qstr_eval_like (tar, tar_length, pattern, pattern_length, NULL, codeset, coll_id);
 }
 
+/* qstr_like_match_resolve ()'s instances: the lockstep matcher of the collation's kind without an escape, its
+ * answer read as qstr_eval_like () reads it (a decline goes to the generic loop through qstr_eval_like (), where
+ * the matcher declines again); the resolver returns one only under the conditions qstr_eval_like () dispatches
+ * on, so the two decide alike */
+static int
+qstr_like_match_utf8 (const char *tar, int tar_length, const char *pattern, int pattern_length, INTL_CODESET codeset,
+		      int coll_id)
+{
+  int match = qstr_like_match_lockstep_utf8 (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+					     REINTERPRET_CAST (const unsigned char *, pattern), pattern_length, -1, 0);
+
+  if (match != QSTR_LIKE_LOCKSTEP_FALLBACK)
+    {
+      return (match == QSTR_LIKE_LOCKSTEP_TRUE) ? V_TRUE : V_FALSE;
+    }
+  return qstr_eval_like (tar, tar_length, pattern, pattern_length, NULL, codeset, coll_id);
+}
+
+static int
+qstr_like_match_sb (const char *tar, int tar_length, const char *pattern, int pattern_length, INTL_CODESET codeset,
+		    int coll_id)
+{
+  int match = qstr_like_match_lockstep_sb (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+					   REINTERPRET_CAST (const unsigned char *, pattern), pattern_length, -1, 0);
+
+  if (match != QSTR_LIKE_LOCKSTEP_FALLBACK)
+    {
+      return (match == QSTR_LIKE_LOCKSTEP_TRUE) ? V_TRUE : V_FALSE;
+    }
+  return qstr_eval_like (tar, tar_length, pattern, pattern_length, NULL, codeset, coll_id);
+}
+
+static int
+qstr_like_match_binary (const char *tar, int tar_length, const char *pattern, int pattern_length,
+			INTL_CODESET codeset, int coll_id)
+{
+  int match = qstr_like_match_lockstep_binary (REINTERPRET_CAST (const unsigned char *, tar), tar_length,
+					       REINTERPRET_CAST (const unsigned char *, pattern), pattern_length, -1,
+					       0);
+
+  if (match != QSTR_LIKE_LOCKSTEP_FALLBACK)
+    {
+      return (match == QSTR_LIKE_LOCKSTEP_TRUE) ? V_TRUE : V_FALSE;
+    }
+  return qstr_eval_like (tar, tar_length, pattern, pattern_length, NULL, codeset, coll_id);
+}
+
+/*
+ * qstr_like_match_resolve () - the matcher qstr_like_match () runs for a (codeset, collation), chosen once
+ *   return: the matcher (never NULL)
+ *   codeset(in): the strings' codeset
+ *   coll_id(in): their collation
+ *
+ * The same dispatch qstr_eval_like () makes without an escape: the collation's lockstep kind, cross-checked
+ * against the codeset, picks the instance; any other collation gets qstr_like_match ().
+ */
+QSTR_LIKE_MATCH_FN
+qstr_like_match_resolve (INTL_CODESET codeset, int coll_id)
+{
+  const LANG_COLLATION *lang_coll = lang_get_collation (coll_id);
+
+  switch (lang_coll->byte_lockstep_kind)
+    {
+    case LANG_LOCKSTEP_UTF8:
+      if (codeset == INTL_CODESET_UTF8)
+	{
+	  return qstr_like_match_utf8;
+	}
+      break;
+    case LANG_LOCKSTEP_SB:
+      /* without an escape there is no escape byte to keep on the generic loop */
+      if (codeset == INTL_CODESET_ISO88591)
+	{
+	  return qstr_like_match_sb;
+	}
+      break;
+    case LANG_LOCKSTEP_BINARY:
+      if (codeset == INTL_CODESET_BINARY)
+	{
+	  return qstr_like_match_binary;
+	}
+      break;
+    default:
+      break;
+    }
+  return qstr_like_match;
+}
+
 static int
 qstr_eval_like (const char *tar, int tar_length, const char *expr, int expr_length, const char *escape,
 		INTL_CODESET codeset, int coll_id)
