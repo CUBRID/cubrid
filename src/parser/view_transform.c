@@ -456,7 +456,8 @@ static bool mq_is_rownum_only_predicate (PARSER_CONTEXT * parser, PT_NODE * spec
 					 PT_NODE * subquery, PT_NODE * class_);
 static bool mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node, PT_NODE * subquery,
 				     PT_NODE * class_);
-static PT_NODE *mq_count_query_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk);
+static PT_NODE *mq_count_correlated_query_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg,
+						 int *continue_walk);
 static bool mq_is_attr_read_by_statement (PARSER_CONTEXT * parser, PT_NODE * mainquery, PT_NODE * statement_spec,
 					  PT_NODE * skip_spec, ATTR_REF_INFO * infop);
 static bool mq_check_outer_join_select_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * mainquery,
@@ -5111,21 +5112,27 @@ mq_check_keep_join_pred (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * node
 }
 
 /*
- * mq_count_query_nodes () - count the query nodes (subqueries) in a tree, without descending into them
+ * mq_count_correlated_query_nodes () - count the correlated subqueries in a tree, without descending into them
  *   return: node
  *   parser(in):
  *   node(in): the node to check
- *   arg(in/out): count of query nodes
+ *   arg(in/out): count of correlated query nodes
  *   continue_walk(in/out):
+ *
+ * Note: An uncorrelated subquery is evaluated once before the scan, so it is as harmless in an ON clause as a
+ *       constant. A correlated one is evaluated for every row, after the row has been read.
  */
 static PT_NODE *
-mq_count_query_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
+mq_count_correlated_query_nodes (PARSER_CONTEXT * parser, PT_NODE * node, void *arg, int *continue_walk)
 {
   int *cnt = (int *) arg;
 
   if (PT_IS_QUERY_NODE_TYPE (node->node_type))
     {
-      (*cnt)++;
+      if (pt_is_correlated_subquery (node))
+	{
+	  (*cnt)++;
+	}
       *continue_walk = PT_LIST_WALK;
     }
 
@@ -5194,10 +5201,12 @@ mq_is_attr_read_by_statement (PARSER_CONTEXT * parser, PT_NODE * mainquery, PT_N
  * Note: A select list item of a view on the null-padded side is padded with NULL only when it is a plain column
  *       reference. Any other expression (a constant, NVL (), a COUNT (*) subquery ...) is evaluated for the padding
  *       row instead, so the view is not merged when the statement reads such an item outside the view's own ON clause.
- *       A select list item holding a subquery must not be referenced by the ON clause of an outer join, whether the
- *       view is joined by it directly or through earlier inner joins. The parser rejects a subquery in a join
- *       condition, and the executor relies on it: the data filter cannot evaluate such a term, so the inner scan of a
- *       nested loop outer join would decide its NULL padding without it (CBRD-27657).
+ *       A correlated subquery of the view must not end up in the ON clause of an outer join: a select list item
+ *       holding one must not be referenced by such an ON clause, whether the view is joined by it directly or
+ *       through earlier inner joins, and the WHERE clause of a view on the null-padded side, which the merge moves
+ *       into the view's ON clause, must not hold one. The parser rejects a subquery in a join condition, and the
+ *       executor relies on it: the data filter cannot evaluate such a term, so the inner scan of a nested loop outer
+ *       join would decide its NULL padding without it (CBRD-27657).
  */
 static bool
 mq_check_outer_join_select_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NODE * mainquery,
@@ -5234,6 +5243,18 @@ mq_check_outer_join_select_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NOD
   /* the view is the null-padded side when its own join type is LEFT OUTER */
   is_null_padded = (spec->info.spec.join_type == PT_JOIN_LEFT_OUTER);
 
+  if (is_null_padded && subquery->info.query.q.select.where != NULL)
+    {
+      /* the merge moves the WHERE clause into the view's ON clause */
+      num_query = 0;
+      (void) parser_walk_tree (parser, subquery->info.query.q.select.where, mq_count_correlated_query_nodes,
+			       &num_query, NULL, NULL);
+      if (num_query > 0)
+	{
+	  return false;
+	}
+    }
+
   for (col = query_spec_columns, attr = attributes; col && attr; col = col->next, attr = attr->next)
     {
       if (col->flag.is_hidden_column)
@@ -5258,7 +5279,7 @@ mq_check_outer_join_select_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NOD
 	  save_next = col->next;
 	  col->next = NULL;
 	  num_query = 0;
-	  (void) parser_walk_tree (parser, col, mq_count_query_nodes, &num_query, NULL, NULL);
+	  (void) parser_walk_tree (parser, col, mq_count_correlated_query_nodes, &num_query, NULL, NULL);
 	  col->next = save_next;
 	  if (num_query > 0)
 	    {
@@ -5275,7 +5296,7 @@ mq_check_outer_join_select_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NOD
       return true;
     }
 
-  /* a subquery of the select list must not move into the ON clause of an outer join */
+  /* a correlated subquery of the select list must not move into the ON clause of an outer join */
   for (on_spec = statement_spec; on_spec != NULL; on_spec = on_spec->next)
     {
       if (on_spec->info.spec.on_cond == NULL
@@ -5286,7 +5307,8 @@ mq_check_outer_join_select_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NOD
 	}
 
       ori_num_query = 0;
-      (void) parser_walk_tree (parser, on_spec->info.spec.on_cond, mq_count_query_nodes, &ori_num_query, NULL, NULL);
+      (void) parser_walk_tree (parser, on_spec->info.spec.on_cond, mq_count_correlated_query_nodes, &ori_num_query,
+			       NULL, NULL);
 
       on_cond = parser_copy_tree_list (parser, on_spec->info.spec.on_cond);
 
@@ -5294,7 +5316,7 @@ mq_check_outer_join_select_list (PARSER_CONTEXT * parser, PT_NODE * spec, PT_NOD
       on_cond = mq_lambda (parser, on_cond, attributes, query_spec_columns);
 
       num_query = 0;
-      (void) parser_walk_tree (parser, on_cond, mq_count_query_nodes, &num_query, NULL, NULL);
+      (void) parser_walk_tree (parser, on_cond, mq_count_correlated_query_nodes, &num_query, NULL, NULL);
 
       if (on_cond != NULL)
 	{
