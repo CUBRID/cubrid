@@ -140,6 +140,7 @@ static int obj_send_method_list (MOP obj, SM_CLASS * class_, SM_METHOD * method,
 static int obj_send_method_array (MOP obj, SM_CLASS * class_, SM_METHOD * method, DB_VALUE * returnval,
 				  DB_VALUE ** argarray);
 
+static DB_VALUE *find_unique_key (DB_VALUE * value, const TP_DOMAIN * domain, DB_VALUE * key);
 static MOP find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fetchmode);
 static int flush_temporary_OID (MOP classop, DB_VALUE * key);
 
@@ -3338,6 +3339,36 @@ obj_desc_send_array_quick (MOP obj, SM_DESCRIPTOR * desc, DB_VALUE * returnval, 
  */
 
 /*
+ * find_unique_key () - CBRD-27583: an uncompiled lookup's key in the indexed attribute's domain, the one the B-tree
+ *   compares as its own (btree_compare_own_values); a value of another type or collation is cast here
+ *   return: the key to search with, NULL after a cast error
+ *   value(in): the caller's value, not NULL
+ *   domain(in): the indexed attribute's domain
+ *   key(out): the cast value when one was needed; the caller clears it
+ */
+static DB_VALUE *
+find_unique_key (DB_VALUE * value, const TP_DOMAIN * domain, DB_VALUE * key)
+{
+  const DB_TYPE type = DB_VALUE_DOMAIN_TYPE (value);
+  TP_DOMAIN_STATUS status;
+
+  if (type == TP_DOMAIN_TYPE (domain)
+      && (!TP_IS_STRING_TYPE (type) || db_get_string_collation (value) == domain->collation_id))
+    {
+      return value;
+    }
+
+  status = tp_value_cast (value, key, domain, false);
+  if (status != DOMAIN_COMPATIBLE)
+    {
+      (void) tp_domain_status_er_set (status, ARG_FILE_LINE, value, domain);
+      return NULL;
+    }
+
+  return key;
+}
+
+/*
  * find_unique - Internal function called by the various flavors of functions
  *               that look for unique attribute values.
  *    return: object pointer
@@ -3369,8 +3400,10 @@ find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fet
   OID unique_oid;
   BTID btid;
   DB_TYPE value_type;
+  DB_VALUE key_value, *key;
   int r;
 
+  db_make_null (&key_value);
   /* make sure all dirtied objects have been flushed */
   if (!TM_TRAN_ASYNC_WS () && sm_flush_objects (classop) != NO_ERROR)
     {
@@ -3436,11 +3469,18 @@ find_unique (MOP classop, SM_ATTRIBUTE * att, DB_VALUE * value, AU_FETCHMODE fet
 	}
     }
 
+  key = find_unique_key (value, att->domain, &key_value);
+  if (key == NULL)
+    {
+      return NULL;
+    }
+
   /* now search the index */
-  if (btree_find_unique (&btid, value, ws_oid (classop), &unique_oid) == BTREE_KEY_FOUND)
+  if (btree_find_unique (&btid, key, ws_oid (classop), &unique_oid) == BTREE_KEY_FOUND)
     {
       found = ws_mop (&unique_oid, NULL);
     }
+  pr_clear_value (&key_value);
 
   /*
    * If we got an object, obtain an "S" lock before returning it, this
@@ -4268,10 +4308,12 @@ obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
   MOP obj;
   OID unique_oid;
   DB_TYPE value_type;
+  DB_VALUE key_value, *search_key;
   MOP mop;
   BTREE_SEARCH btree_search;
 
   assert (DB_VALUE_TYPE (key) != DB_TYPE_MIDXKEY);
+  db_make_null (&key_value);
 
   obj = NULL;
 
@@ -4328,7 +4370,14 @@ obj_find_object_by_pkey (MOP classop, DB_VALUE * key, AU_FETCHMODE fetchmode)
 	}
     }
 
-  btree_search = btree_find_unique (&cons->index_btid, key, ws_oid (classop), &unique_oid);
+  search_key = find_unique_key (key, cons->attributes[0]->domain, &key_value);
+  if (search_key == NULL)
+    {
+      return NULL;
+    }
+
+  btree_search = btree_find_unique (&cons->index_btid, search_key, ws_oid (classop), &unique_oid);
+  pr_clear_value (&key_value);
   if (btree_search == BTREE_KEY_FOUND)
     {
       obj = ws_mop (&unique_oid, NULL);
