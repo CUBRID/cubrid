@@ -1835,6 +1835,11 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 	  /* Set page dirty. */
 	  pgbuf_set_dirty (thread_p, helper.home_page, DONT_FREE);
 
+	  /* before the removal below: its ordered fixes can release the latch, and a checkpoint can then flush the page
+	   * and write the map */
+	  assert (!HFID_IS_NULL (&helper.hfid));
+	  heap_bestspace_feedback (thread_p, &helper.hfid, helper.home_page);
+
 	  if (spage_number_of_records (helper.home_page) <= 1 && helper.reusable)
 	    {
 	      /* Try to remove page from heap. */
@@ -1860,8 +1865,6 @@ vacuum_heap_page (THREAD_ENTRY * thread_p, VACUUM_HEAP_OBJECT * heap_objects, in
 
 	  if (helper.home_page != NULL)
 	    {
-	      assert (!HFID_IS_NULL (&helper.hfid));
-	      heap_bestspace_feedback (thread_p, &helper.hfid, helper.home_page);
 	      pgbuf_unfix_and_init (thread_p, helper.home_page);
 	    }
 	  goto end;
@@ -2426,6 +2429,10 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
       pgbuf_set_dirty (thread_p, helper->forward_page, FREE);
       helper->forward_page = NULL;
 
+      /* report the home page now, with the slots logged before the system operation: in SA mode the commit can run a
+       * checkpoint, which flushes this latched page and writes the map */
+      heap_bestspace_feedback (thread_p, &helper->hfid, helper->home_page);
+
       log_sysop_commit (thread_p);
 
       VACUUM_PERF_HEAP_TRACK_LOGGING (thread_p, helper);
@@ -2457,6 +2464,9 @@ vacuum_heap_record (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper)
 	}
 
       VACUUM_PERF_HEAP_TRACK_EXECUTE (thread_p, helper);
+
+      /* as for REC_RELOCATION above */
+      heap_bestspace_feedback (thread_p, &helper->hfid, helper->home_page);
 
       log_sysop_commit (thread_p);
 
@@ -2568,28 +2578,20 @@ vacuum_heap_get_hfid_and_file_type (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER 
  * update_best_space_stat (in)	 : The visit of the page ends here.
  * unlatch_page (in) : Release the page latch.
  *
- * Note: A changed page feeds the bestspace map before each release of its latch. n_vacuumed also counts removals
- *	 logged earlier (by flushes, or for REC_RELOCATION and REC_BIGONE), so such a page still counts as changed.
+ * Note: the slots logged here are reported to the bestspace map when the visit ends or the latch is released. A call
+ *	 that keeps the latch comes right before a REC_RELOCATION or REC_BIGONE removal, which reports the page before
+ *	 its system operation commits. The other changes of the home page are reported when they are logged.
  */
 static void
 vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * helper, bool update_best_space_stat,
 				bool unlatch_page)
 {
-  bool feed_bestspace;
-
   assert (helper != NULL);
   assert (helper->home_page != NULL);
-
-  feed_bestspace = ((update_best_space_stat == true || unlatch_page == true) && helper->n_vacuumed > 0);
 
   if (helper->n_bulk_vacuumed == 0)
     {
       /* No logging is required. */
-      if (feed_bestspace == true)
-	{
-	  assert (!HFID_IS_NULL (&helper->hfid));
-	  heap_bestspace_feedback (thread_p, &helper->hfid, helper->home_page);
-	}
       if (unlatch_page == true)
 	{
 	  pgbuf_unfix_and_init (thread_p, helper->home_page);
@@ -2605,7 +2607,7 @@ vacuum_heap_page_log_and_reset (THREAD_ENTRY * thread_p, VACUUM_HEAP_HELPER * he
 
   /* Update statistics only for home pages; We assume that fwd pages (from relocated records) are home pages for other
    * OIDs and their statistics are updated in that context */
-  if (feed_bestspace == true)
+  if (update_best_space_stat == true || unlatch_page == true)
     {
       assert (!HFID_IS_NULL (&helper->hfid));
       heap_bestspace_feedback (thread_p, &helper->hfid, helper->home_page);

@@ -3760,6 +3760,18 @@ error:
     {
       log_sysop_abort (thread_p);
     }
+  if (*page_ptr != NULL && *page_ptr != crt_watcher.pgptr)
+    {
+      /* jumped to here while fixing pages; NULL if the page could not be fixed again */
+      assert (crt_watcher.page_was_unfixed);
+      *page_ptr = crt_watcher.pgptr;
+    }
+  if (*page_ptr != NULL)
+    {
+      /* the page stays in the heap: report it before the header latch goes, as a checkpoint writes the map under
+       * that latch */
+      heap_bestspace_feedback (thread_p, hfid, *page_ptr);
+    }
   if (next_watcher.pgptr != NULL)
     {
       pgbuf_ordered_unfix (thread_p, &next_watcher);
@@ -3774,16 +3786,7 @@ error:
     }
   if (*page_ptr != NULL)
     {
-      if (*page_ptr != crt_watcher.pgptr)
-	{
-	  /* jumped to here while fixing pages */
-	  assert (crt_watcher.page_was_unfixed);
-	  *page_ptr = crt_watcher.pgptr;
-	}
       assert (crt_watcher.pgptr == *page_ptr);
-
-      /* the page stays in the heap, emptied by vacuum: report it before the latch is released */
-      heap_bestspace_feedback (thread_p, hfid, *page_ptr);
       pgbuf_ordered_unfix_and_init (thread_p, *page_ptr, &crt_watcher);
     }
   else
