@@ -218,9 +218,11 @@ function set_compiler_env() {
       export CC="clang"
       export CXX="clang++"
     fi
-    # Add 'Wno' flags, otherwise Modern Clang treats them to be errors
-    export CFLAGS="${CFLAGS:+$CFLAGS }-Wno-int-conversion -Wno-implicit-function-declaration -w"
-    export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-Wno-c++11-narrowing -Wno-non-pod-varargs -w"
+    # Silence the few Clang-only diagnostics that the C-compiled-as-C++ sources trip on.
+    # NOTE: never add -w here. It disables every warning enabled afterwards,
+    # including -Werror=format-security set by CMakeLists.txt.
+    export CFLAGS="${CFLAGS:+$CFLAGS }-Wno-int-conversion -Wno-implicit-function-declaration"
+    export CXXFLAGS="${CXXFLAGS:+$CXXFLAGS }-Wno-c++11-narrowing -Wno-non-pod-varargs"
   else
     print_fatal "Unknown compiler for -C option: $compiler"
   fi

@@ -63,7 +63,6 @@ namespace parallel_scan
 	  m_input_handler (nullptr),
 	  m_result_handler (nullptr),
 	  m_on_trace (false),
-	  m_px_stats_initialized_by_me (false),
 	  m_result_handler_read_initialized (false),
 	  m_task_started (false),
 	  m_trace_handler (),
@@ -109,7 +108,6 @@ namespace parallel_scan
       input_handler_t *m_input_handler;
       result_handler<result_type> *m_result_handler;
       bool m_on_trace;
-      bool m_px_stats_initialized_by_me;
       bool m_result_handler_read_initialized;
       bool m_task_started;
       trace_handler m_trace_handler;
