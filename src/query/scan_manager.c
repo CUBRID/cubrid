@@ -186,6 +186,7 @@ static int scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
 				     const EXPR_BATCH_GBY_MAP * gby, const valptr_list_node * proj, bool cached_ok);
 static SCAN_CODE scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static void scan_batch_rewind (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
+static void scan_batch_release_page (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp);
 static int scan_batch_copy_kept (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static int scan_batch_row_values (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, EXPR_BATCH_ROW * row);
 static void scan_batch_park (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp);
@@ -5075,11 +5076,9 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	}
       else
 	{
-	  if (hsidp->batch_started && hsidp->scan_cache.page_watcher.pgptr != NULL
-	      && !hsidp->scan_cache.cache_last_fix_page)
+	  if (hsidp->batch_started)
 	    {
-	      /* the batch held its page past what the scan cache releases on its own */
-	      pgbuf_ordered_unfix (thread_p, &hsidp->scan_cache.page_watcher);
+	      scan_batch_release_page (thread_p, hsidp);
 	    }
 	  if (hsidp->scancache_inited)
 	    {
@@ -8714,6 +8713,20 @@ scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 }
 
 /*
+ * scan_batch_release_page () - the page the batch holds (HEAP_SCAN_ID.batch_vpid): with cache_last_fix_page the
+ *				scan cache lets it go (heap_scancache_end ()); without it the batch must, here --
+ *				never both (the scan cache's end asserts a clean watcher)
+ */
+static void
+scan_batch_release_page (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp)
+{
+  if (hsidp->scan_cache.page_watcher.pgptr != NULL && !hsidp->scan_cache.cache_last_fix_page)
+    {
+      pgbuf_ordered_unfix (thread_p, &hsidp->scan_cache.page_watcher);
+    }
+}
+
+/*
  * scan_batch_rewind () - the batch walk starts over from the heap's first page
  *   scan_id(in/out): the heap scan, reset for a new scan block (scan_reset_scan_block ())
  *
@@ -8726,11 +8739,7 @@ scan_batch_rewind (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 {
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
 
-  if (hsidp->scan_cache.page_watcher.pgptr != NULL && !hsidp->scan_cache.cache_last_fix_page)
-    {
-      /* the batch held its page past what the scan cache releases on its own (as scan_end_scan () lets it go) */
-      pgbuf_ordered_unfix (thread_p, &hsidp->scan_cache.page_watcher);
-    }
+  scan_batch_release_page (thread_p, hsidp);
   hsidp->batch_started = false;
   VPID_SET_NULL (&hsidp->batch_vpid);
   hsidp->batch_rowmode = false;

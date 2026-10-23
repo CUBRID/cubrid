@@ -169,7 +169,9 @@ struct heap_scan_id
   struct expr_batch_plan *batch_plan;
   struct expr_batch *batch;
   int batch_state;		/* 0 untried, 1 active, 2 declined (the row path) */
-  VPID batch_vpid;		/* the page the batch holds */
+  VPID batch_vpid;		/* the page the batch holds.  Who lets it go: with cache_last_fix_page the scan cache
+				 * (heap_scancache_end ()); without it the batch (scan_batch_release_page (), from
+				 * scan_end_scan () and the rewind) -- never both */
   bool batch_started;		/* serial walk: the first page was fixed */
   bool batch_rowmode;		/* scan_next_scan () walks the held page row by row (a page the batch handed back) */
   const char *batch_why_not;	/* trace: why the batch declined */
