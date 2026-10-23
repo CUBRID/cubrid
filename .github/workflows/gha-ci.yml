@@ -564,7 +564,8 @@ jobs:
           echo "ccache, the node's cache, cumulative over develop pushes:"
           ccache -s
           awk '/Result: cache hit \(direct\)/ {d++} /Result: cache hit \(preprocessed\)/ {p++} /Result: cache miss/ {m++}
-            END {t = d + p + m; printf "ccache, this build: cache hit (direct) %d, cache hit (preprocessed) %d, cache miss %d, cache hit rate %.2f %%\n", d, p, m, t ? 100 * (d + p) / t : 0}' \
+            END {t = d + p + m; if (t) printf "ccache, this build: cache hit (direct) %d, cache hit (preprocessed) %d, cache miss %d, cache hit rate %.2f %%\n", d, p, m, 100 * (d + p) / t
+              else print "::warning::no cache hit or miss in " ENVIRON["CCACHE_LOGFILE"] ", so ccache changed its log wording or no compile went through it"}' \
             "$CCACHE_LOGFILE" || echo "::warning::ccache wrote no log to $CCACHE_LOGFILE"
 
       - name: 4. Publish, staged then moved in with one rename
