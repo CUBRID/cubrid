@@ -85,6 +85,7 @@
 #include "log_manager.h"
 #include "catalog_class.h"
 #include "system_metadata_version.h"
+#include "writeset.hpp"
 
 #if defined(SERVER_MODE)
 #include "connection_sr.h"
@@ -3103,6 +3104,8 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
       thread_p->claim_system_worker ();
     }
   serial_flush_cache_pool (thread_p);
+  /* the last writeset statistics of an active HA server, written with the same system worker */
+  wset_stat_finalize (thread_p);
   thread_p->retire_system_worker ();
   logtb_set_to_system_tran_index (thread_p);
 

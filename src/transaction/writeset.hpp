@@ -83,4 +83,8 @@ extern void wset_abort_after_lsa (LOG_TDES *tdes, const LOG_LSA *start_lsa);
 extern void wset_find_sysop_fallback_dependency (LOG_TDES *tdes, LOG_LSA *wset_parent_out);
 extern void wset_raise_history_start (const LOG_LSA *lsa, const char *reason);
 
+/* The active server writes its writeset statistics into _db_ha_writeset_stat periodically and at shutdown. */
+extern void wset_stat_daemon_init (void);
+extern void wset_stat_finalize (THREAD_ENTRY *thread_p);
+
 #endif /* _WRITESET_HPP_ */
