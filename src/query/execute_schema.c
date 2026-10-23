@@ -1841,7 +1841,7 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
   bool do_rollback = false;
   int au_save = 0;
   DB_OBJECT *histogram_obj = NULL;
-  DB_OBJECT *vclass;
+  DB_OBJECT *class_obj = NULL;
   bool need_check_repl_constraint = false;
   const char *entity_name = alter->info.alter.entity_name->info.name.original;
 
@@ -1854,6 +1854,13 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       goto error_exit;
     }
   do_rollback = true;
+
+  class_obj = db_find_class (entity_name);
+  if (class_obj == NULL)
+    {
+      ASSERT_ERROR_AND_SET (error_code);
+      goto error_exit;
+    }
 
   for (crt_clause = alter; crt_clause != NULL; crt_clause = crt_clause->next)
     {
@@ -2004,13 +2011,6 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
       switch (alter_code)
 	{
 	case PT_RENAME_ENTITY:
-	  /* 
-	   * entity_name is required for performing the HA replication constraint check 
-	   * after all ALTER clauses have been processed. 
-	   * Since the check must be based on the final table name, 
-	   * entity_name is continuously updated as each RENAME clause is applied.
-	   */
-	  entity_name = crt_clause->info.alter.alter_clause.rename.new_name->info.name.original;
 	  error_code = do_alter_clause_rename_entity (parser, crt_clause);
 	  break;
 	case PT_ADD_INDEX_CLAUSE:
@@ -2065,14 +2065,12 @@ do_alter (PARSER_CONTEXT * parser, PT_NODE * alter)
 
   if (need_check_repl_constraint)
     {
-      vclass = db_find_class (entity_name);
-
-      if (!sm_is_replication_class (vclass))
+      if (!sm_is_replication_class (class_obj))
 	{
 	  return NO_ERROR;
 	}
 
-      error_code = check_ha_repl_constraint (vclass);
+      error_code = check_ha_repl_constraint (class_obj);
       if (error_code != NO_ERROR)
 	{
 	  goto error_exit;
