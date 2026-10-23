@@ -276,6 +276,20 @@ struct eb_leaf
 #define EB_ALL_FALSE (1)
 #define EB_ALL_TRUE (2)
 
+/* 10^0 .. 10^EB_POW10_MAX as 128-bit integers (10^38 is below 2^127), the scale shifts a NUMERIC leaf's constant
+ * takes (eb_num_leaf_constant (), once per chunk: the constant may be a host variable bound anew) */
+#define EB_POW10_MAX (38)
+#define EB_E19 ((__int128) 10000000000000000000ULL)
+static const __int128 eb_pow10[EB_POW10_MAX + 1] = {
+  1, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000,
+  10000000000LL, 100000000000LL, 1000000000000LL, 10000000000000LL, 100000000000000LL,
+  1000000000000000LL, 10000000000000000LL, 100000000000000000LL, 1000000000000000000LL,
+  EB_E19, EB_E19 * 10, EB_E19 * 100, EB_E19 * 1000, EB_E19 * 10000, EB_E19 * 100000, EB_E19 * 1000000,
+  EB_E19 * 10000000, EB_E19 * 100000000, EB_E19 * 1000000000, EB_E19 * 10000000000LL, EB_E19 * 100000000000LL,
+  EB_E19 * 1000000000000LL, EB_E19 * 10000000000000LL, EB_E19 * 100000000000000LL, EB_E19 * 1000000000000000LL,
+  EB_E19 * 10000000000000000LL, EB_E19 * 100000000000000000LL, EB_E19 * 1000000000000000000LL, EB_E19 * EB_E19
+};
+
 typedef struct eb_leaf_src EB_LEAF_SRC;
 struct eb_leaf_src
 {
@@ -3445,8 +3459,8 @@ static int
 eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale)
 {
   NUMERIC_AGG_EXPR_VAL nv;
-  __int128 kv, p10 = 1;
-  int d, i;
+  __int128 kv, p10;
+  int d;
   bool ok;
 
   if (!expr_numeric_cmp_const_ok (k))
@@ -3465,19 +3479,15 @@ eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale)
   leaf->k_op = leaf->rel_op;
   leaf->k_all = 0;
   d = col_scale - nv.scale;
+  if (d > EB_POW10_MAX || d < -EB_POW10_MAX)
+    {
+      /* a scale the table does not shift by (no stored NUMERIC has one) */
+      return EXPR_BATCH_FALLBACK;
+    }
   if (d >= 0)
     {
-      __int128 lim = 1;		/* 10^38: no column value reaches it */
-
-      for (i = 0; i < 38; i++)
-	{
-	  lim *= 10;
-	}
-      for (i = 0; i < d; i++)
-	{
-	  p10 *= 10;
-	}
-      if (kv != 0 && (kv > 0 ? kv : -kv) > (lim - 1) / p10)
+      /* no column value reaches 10^38: |K| * 10^d is beyond every one of them from |K| >= 10^(38 - d) */
+      if (kv != 0 && (kv > 0 ? kv : -kv) >= eb_pow10[EB_POW10_MAX - d])
 	{
 	  /* |K| at the column's scale is beyond every value the column holds */
 	  bool k_positive = kv > 0;
@@ -3500,14 +3510,12 @@ eb_num_leaf_constant (EB_LEAF * leaf, const DB_VALUE * k, int col_scale)
 	    }
 	  return NO_ERROR;
 	}
-      leaf->k.n = kv * p10;
+      leaf->k.n = kv * eb_pow10[d];
       return NO_ERROR;
     }
-  for (i = 0; i < -d; i++)
-    {
-      p10 *= 10;
-    }
+  p10 = eb_pow10[-d];
   {
+    /* the constant has digits below the column's scale: the division decides the operator */
     __int128 q = kv / p10, r = kv % p10;
 
     if (r < 0)
