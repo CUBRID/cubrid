@@ -7685,6 +7685,34 @@ qexec_gby_merge_leaf_collapse (THREAD_ENTRY * thread_p, QEXEC_GBY_MERGE_JOB * jo
 }
 
 /*
+ * qexec_gby_sort_takes_workers () - whether the GROUP BY sort of a list asks for workers
+ *   return: true when the sort would run in parallel, as far as the sizes decide it
+ *   list(in): a list the GROUP BY sorts (the unsorted rows, or the partial accumulators)
+ *   parallelism(in): the hint the sort is given (xasl->parallelism, in SORT_LISTFILE_PX_ARG)
+ *
+ * The same test as sort_check_parallelism () makes for SORT_GROUP_BY: two or more workers for the list's pages,
+ * and at least as many tuples and pages as workers. The sort reserves the workers itself, so one let through here
+ * may still run alone when none are free.
+ */
+static bool
+qexec_gby_sort_takes_workers (const QFILE_LIST_ID * list, int parallelism)
+{
+#if defined (SERVER_MODE)
+  int degree;
+
+  if (list == NULL || list->tuple_cnt == 0)
+    {
+      return false;
+    }
+  degree = (int) parallel_query::compute_parallel_degree (parallel_query::parallel_type::SORT,
+							  (UINT64) list->page_cnt, parallelism);
+  return degree >= 2 && list->tuple_cnt >= degree && list->page_cnt >= degree;
+#else /* SERVER_MODE */
+  return false;
+#endif /* SERVER_MODE */
+}
+
+/*
  * qexec_gby_hash_merge () - finish a hash GROUP BY's leftovers by hashing them (see above)
  *   return: NO_ERROR, or an error
  *   gbstate(in): the GROUP BY, its table empty (dumped into the lists)
@@ -7752,6 +7780,13 @@ qexec_gby_hash_merge (THREAD_ENTRY * thread_p, GROUPBY_STATE * gbstate, XASL_NOD
   px_degree = 1;
 #endif /* SERVER_MODE */
   parallel = (px_degree > 1);
+  if (!parallel && (qexec_gby_sort_takes_workers (list_id, xasl->parallelism)
+		    || qexec_gby_sort_takes_workers (partials, xasl->parallelism)))
+    {
+      /* the merge would run on the leader alone, where the sort of these lists takes workers: the sort keeps them
+       * (a merge that has workers of its own goes on below) */
+      return NO_ERROR;
+    }
   if (groups * (parallel ? QEXEC_GBY_MERGE_MIN_FOLD_PX : QEXEC_GBY_MERGE_MIN_FOLD)
       > (double) (list_id->tuple_cnt + partials->tuple_cnt))
     {
