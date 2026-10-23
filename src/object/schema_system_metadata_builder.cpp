@@ -30,6 +30,82 @@
 
 namespace cubschema
 {
+  static int
+  add_attributes (SM_TEMPLATE *tmpl, const std::vector <attribute> &attributes)
+  {
+    int error_code = NO_ERROR;
+
+    for (const auto &attr: attributes)
+      {
+	const char *name = attr.name.data ();
+	const char *type = attr.type.data ();
+
+	switch (attr.kind)
+	  {
+	  case attribute_kind::COLUMN:
+	    error_code = smt_add_attribute (tmpl, name, type, NULL);
+	    if (error_code == NO_ERROR && attr.dvalue_func)
+	      {
+		assert (tmpl->class_type == SM_CLASS_CT);
+
+		DB_VALUE default_value;
+		db_make_null (&default_value);
+		attr.dvalue_func (&default_value);
+		error_code = smt_set_attribute_default (tmpl, name, 0, (DB_VALUE *) &default_value, NULL);
+	      }
+	    break;
+	  case attribute_kind::QUERY_SPEC:
+	    assert (tmpl->class_type == SM_VCLASS_CT);
+	    error_code = smt_add_query_spec (tmpl, name);
+	    break;
+	  case attribute_kind::CLASS_METHOD:
+	    error_code = smt_add_class_method (tmpl, name, type);
+	    break;
+	  default:
+	    error_code = ER_FAILED;
+	    break;
+	  }
+
+	if (error_code != NO_ERROR)
+	  {
+	    assert (false);
+	    return error_code;
+	  }
+      }
+
+    return NO_ERROR;
+  }
+
+  static int
+  apply_authorization (const MOP class_mop, const authorization &auth)
+  {
+    if (auth.owner == nullptr)
+      {
+	assert (false);
+	return ER_FAILED;
+      }
+
+    int error_code = au_change_class_owner_including_partitions (class_mop, auth.owner);
+    if (error_code != NO_ERROR)
+      {
+	assert (false);
+	return error_code;
+      }
+
+    for (const grant &g : auth.grants)
+      {
+	assert (g.target_user != nullptr);
+	error_code = au_grant (DB_OBJECT_CLASS, g.target_user, class_mop, g.auth, g.with_grant_option);
+	if (error_code != NO_ERROR)
+	  {
+	    assert (false);
+	    return error_code;
+	  }
+      }
+
+    return NO_ERROR;
+  }
+
   MOP
   system_metadata_builder::create_and_mark_system_class (const std::string_view name)
   {
@@ -82,46 +158,11 @@ namespace cubschema
 	return error_code;
       }
 
-    const std::vector <attribute> &attributes = def.attributes;
-    for (const auto &attr: attributes)
+    error_code = add_attributes (tmpl, def.attributes);
+    if (error_code != NO_ERROR)
       {
-	const char *name = attr.name.data ();
-	const char *type = attr.type.data ();
-
-	switch (attr.kind)
-	  {
-	  case attribute_kind::COLUMN:
-	  {
-	    error_code = smt_add_attribute (tmpl, name, type, NULL);
-	    if (error_code != NO_ERROR)
-	      {
-		smt_quit (tmpl);
-		return error_code;
-	      }
-
-	    if (attr.dvalue_func)
-	      {
-		DB_VALUE default_value;
-		db_make_null (&default_value);
-		attr.dvalue_func (&default_value);
-		error_code = smt_set_attribute_default (tmpl, name, 0, (DB_VALUE *) &default_value, NULL);
-	      }
-	  }
-	  break;
-	  case attribute_kind::CLASS_METHOD:
-	    error_code = smt_add_class_method (tmpl, name, type);
-	    break;
-	  default:
-	    error_code = ER_FAILED;
-	    break;
-	  }
-
-	if (error_code != NO_ERROR)
-	  {
-	    assert (false);
-	    smt_quit (tmpl);
-	    return error_code;
-	  }
+	smt_quit (tmpl);
+	return error_code;
       }
 
     error_code = sm_update_class (tmpl, NULL);
@@ -172,28 +213,10 @@ namespace cubschema
 	return er_errid ();
       }
 
-    const authorization &auth = def.auth;
-    if (auth.owner == nullptr)
-      {
-	assert (false);
-	return ER_FAILED;
-      }
-
-    error_code = au_change_class_owner_including_partitions (class_mop, auth.owner);
+    error_code = apply_authorization (class_mop, def.auth);
     if (error_code != NO_ERROR)
       {
-	assert (false);
 	return error_code;
-      }
-
-    for (const grant &g : auth.grants)
-      {
-	error_code = au_grant (DB_OBJECT_CLASS, g.target_user, class_mop, g.auth, g.with_grant_option);
-	if (error_code != NO_ERROR)
-	  {
-	    assert (false);
-	    return error_code;
-	  }
       }
 
     if (def.row_initializer)
@@ -231,39 +254,11 @@ namespace cubschema
     /* the builder also redefines an existing vclass in place, so start empty */
     smt_reset_vclass_definition (tmpl);
 
-    const std::vector <attribute> &attributes = def.attributes;
-    for (const auto &attr: attributes)
+    error_code = add_attributes (tmpl, def.attributes);
+    if (error_code != NO_ERROR)
       {
-	const char *name = attr.name.data ();
-	const char *type = attr.type.data ();
-
-	switch (attr.kind)
-	  {
-	  case attribute_kind::COLUMN:
-	    error_code = smt_add_attribute (tmpl, name, type, NULL);
-	    break;
-	  case attribute_kind::QUERY_SPEC:
-	    error_code = smt_add_query_spec (tmpl, name);
-	    break;
-	  case attribute_kind::CLASS_METHOD:
-	    /*
-	     * Temporary: class method support in system view class for
-	     * compatibility. To be removed when class/instance method support
-	     * is officially dropped.
-	     */
-	    error_code = smt_add_class_method (tmpl, name, type);
-	    break;
-	  default:
-	    error_code = ER_FAILED;
-	    break;
-	  }
-
-	if (error_code != NO_ERROR)
-	  {
-	    assert (false);
-	    smt_quit (tmpl);
-	    return error_code;
-	  }
+	smt_quit (tmpl);
+	return error_code;
       }
 
     error_code = sm_update_class (tmpl, NULL);
@@ -274,30 +269,7 @@ namespace cubschema
 	return error_code;
       }
 
-    const authorization &auth = def.auth;
-    if (auth.owner == nullptr)
-      {
-	assert (false);
-	return ER_FAILED;
-      }
-
-    error_code = au_change_class_owner_including_partitions (class_mop, auth.owner);
-    if (error_code != NO_ERROR)
-      {
-	return error_code;
-      }
-
-    for (const grant &g : auth.grants)
-      {
-	assert (g.target_user != nullptr);
-	error_code = au_grant (DB_OBJECT_CLASS, g.target_user, class_mop, g.auth, g.with_grant_option);
-	if (error_code != NO_ERROR)
-	  {
-	    return error_code;
-	  }
-      }
-
-    return error_code;
+    return apply_authorization (class_mop, def.auth);
   }
 
   int

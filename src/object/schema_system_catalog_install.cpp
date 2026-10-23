@@ -1782,6 +1782,11 @@ namespace cubschema
       {"created_time", "datetime"},
       {"updated_time", "datetime"},
       // class methods (only find_user and login are exposed in view)
+      /*
+       * Temporary: class method support in system view class for
+       * compatibility. To be removed when class/instance method support
+       * is officially dropped.
+       */
       {attribute_kind::CLASS_METHOD, "find_user", "au_find_user_method"},
       {attribute_kind::CLASS_METHOD, "login", "au_login_method"},
       // query specs
