@@ -66,6 +66,8 @@ static char wire_Db[64];
 static char wire_User[64];
 static char wire_Passwd[128];
 static int wire_Client_type = 0;
+/* the server session's current user for the \u prompt (login () changes it) */
+static char wire_Session_user[DB_MAX_USER_LENGTH];
 
 static int wire_Err_code = 0;
 static char wire_Err_msg[WIRE_ERR_MSG_MAX];
@@ -939,7 +941,7 @@ wire_roundtrip (wire_body * b, bool replay)
 	  break;
 	}
       if (tag != CAS_CSQL_CHUNK_OUT && tag != CAS_CSQL_CHUNK_ERR && tag != CAS_CSQL_CHUNK_LOG
-	  && tag != CAS_CSQL_CHUNK_STDOUT)
+	  && tag != CAS_CSQL_CHUNK_STDOUT && tag != CAS_CSQL_CHUNK_USER)
 	{
 	  framing_error = true;
 	  break;
@@ -981,6 +983,15 @@ wire_roundtrip (wire_body * b, bool replay)
 	  memcpy (area, reply + pos, (size_t) clen);
 	  (void) er_set_area_error (area);
 	  free (area);
+	  pos += (size_t) clen;
+	  continue;
+	}
+      if (tag == CAS_CSQL_CHUNK_USER)
+	{
+	  /* au_login rejects names of DB_MAX_USER_LENGTH bytes or more */
+	  size_t n = ((size_t) clen < sizeof (wire_Session_user)) ? (size_t) clen : sizeof (wire_Session_user) - 1;
+	  memcpy (wire_Session_user, reply + pos, n);
+	  wire_Session_user[n] = '\0';
 	  pos += (size_t) clen;
 	  continue;
 	}
@@ -1243,6 +1254,41 @@ csql_wire_tran (char op)
   int status = wire_roundtrip (&b, true);
   free (b.buf);
   return status;
+}
+
+/* The identity behind the \u \d \h prompt escapes.  The thin client never
+ * runs db_restart, so db_get_user_name () and friends have nothing local to
+ * report.  The user is asked per call, as the fat client asked per prompt,
+ * because login () changes it on the server; NULL if the request failed. */
+const char *
+csql_wire_user_name (void)
+{
+  wire_body b = { NULL, 0, 0 };
+  char fc = (char) CAS_FC_CSQL_REQUEST;
+
+  if (wire_body_append (&b, &fc, 1) != NO_ERROR || wire_arg_int (&b, CAS_CSQL_SUB_USER_NAME) != NO_ERROR)
+    {
+      free (b.buf);
+      wire_set_error (ER_FAILED, "out of memory");
+      return NULL;
+    }
+
+  wire_Session_user[0] = '\0';
+  int status = wire_roundtrip (&b, false);
+  free (b.buf);
+  return status < 0 ? NULL : wire_Session_user;
+}
+
+const char *
+csql_wire_db_name (void)
+{
+  return wire_Db;
+}
+
+const char *
+csql_wire_host_name (void)
+{
+  return wire_Local ? "localhost" : wire_Host;
 }
 
 /* ------------------------------------------------------------------ */

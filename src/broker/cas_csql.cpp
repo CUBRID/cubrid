@@ -422,6 +422,26 @@ fn_csql_request (SOCKET sock_fd, int argc, void **argv, T_NET_BUF *net_buf, T_RE
 	    }
 	  cas_log_write (0, true, "csql_request tran %c", op);
 	}
+      else if (sub_code == CAS_CSQL_SUB_USER_NAME)
+	{
+	  /* the fat client asked db_get_user_name () per \u prompt; the thin
+	   * one never logs in locally, so the session answers */
+	  char *user = db_get_user_name ();
+	  if (user != NULL)
+	    {
+	      try
+		{
+		  chunks.emplace_back (CAS_CSQL_CHUNK_USER, user);
+		}
+	      catch (...)
+		{
+		  db_string_free (user);
+		  throw;
+		}
+	      db_string_free (user);
+	    }
+	  status = NO_ERROR;
+	}
       else
 	{
 	  goto arg_error;

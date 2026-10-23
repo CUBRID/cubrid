@@ -173,12 +173,14 @@ extern "C"
 #define CAS_CSQL_SUB_SESSION_CMD                2
 #define CAS_CSQL_SUB_TRAN                       3	/* silent commit/abort: exit paths print nothing */
 #define CAS_CSQL_SUB_INIT_PARAMETERS            4	/* first request only: client compiler configuration */
+#define CAS_CSQL_SUB_USER_NAME                  5	/* session user for the \u prompt (login () may change it) */
 /* CAS_FC_CSQL_REQUEST reply chunk tags: ordered stdout/stderr interleaving */
 #define CAS_CSQL_CHUNK_END                      0
 #define CAS_CSQL_CHUNK_OUT                      1
 #define CAS_CSQL_CHUNK_ERR                      2
 #define CAS_CSQL_CHUNK_LOG                      3	/* packed error record, not console text */
 #define CAS_CSQL_CHUNK_STDOUT                   4	/* client stdout, independent of -o */
+#define CAS_CSQL_CHUNK_USER                     5	/* session user name for the \u prompt, not console text */
 
 /* CAS_FC_CSQL_REQUEST request flag bits (thin csql <-> server) */
 #define CAS_CSQL_FLAG_AUTO_COMMIT        0x00000001

@@ -546,17 +546,30 @@ change_prompt (char *fmt, char *prompt, int prompt_size)
 
 	  if (next == 'u' || next == 'U')
 	    {
+#if defined(CSQL_THIN)
+	      src = csql_wire_user_name ();
+	      strcpy (csql_Prompt_username, src != NULL ? src : "");
+#else
 	      src = user_name = db_get_user_name ();
 	      strcpy (csql_Prompt_username, user_name);
+#endif
 	      csql_Prompt_user_defined = CSQL_PROMPT_USER_DEFINED_INCLUDE_USERNAME;
 	    }
 	  else if (next == 'd' || next == 'D')
 	    {
+#if defined(CSQL_THIN)
+	      src = csql_wire_db_name ();
+#else
 	      src = database_name = db_get_database_name ();
+#endif
 	    }
 	  else if (next == 'h' || next == 'H')
 	    {
+#if defined(CSQL_THIN)
+	      src = csql_wire_host_name ();
+#else
 	      src = host_name = db_get_host_connected ();
+#endif
 	    }
 
 	  if (src)
@@ -858,6 +871,16 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 	{
 	  if (csql_Database_connected && csql_Prompt_user_defined == CSQL_PROMPT_USER_DEFINED_INCLUDE_USERNAME)
 	    {
+#if defined(CSQL_THIN)
+	      const char *username = csql_wire_user_name ();
+
+	      /* a dropped connection exits here, as the next statement would */
+	      csql_check_server_down ();
+	      if (username != NULL && strcmp (csql_Prompt_username, username))
+		{
+		  change_prompt (csql_Prompt_format, csql_Prompt, sizeof (csql_Prompt));
+		}
+#else
 	      char *username = db_get_user_name ();
 
 	      if (strcmp (csql_Prompt_username, username))
@@ -869,6 +892,7 @@ start_csql (CSQL_ARGUMENT * csql_arg)
 		{
 		  db_string_free (username);
 		}
+#endif
 	    }
 
 #if defined(WINDOWS)

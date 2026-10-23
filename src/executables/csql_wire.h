@@ -76,6 +76,12 @@ extern "C"
   extern void csql_wire_set_trace (bool on);
   extern void csql_wire_set_interactive (bool on);
 
+/* session identity for the \u \d \h prompt escapes (the thin client has no
+ * local login); csql_wire_user_name asks the server, NULL on failure */
+  extern const char *csql_wire_user_name (void);
+  extern const char *csql_wire_db_name (void);
+  extern const char *csql_wire_host_name (void);
+
 #ifdef __cplusplus
 }
 #endif
