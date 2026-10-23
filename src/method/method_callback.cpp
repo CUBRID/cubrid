@@ -87,6 +87,9 @@ make_static_sql_text (PARSER_CONTEXT *parser, const std::string &sql, std::strin
     }
   text.append (sql, pos, std::string::npos);
 
+  /* an error of verifying the edited text is not an error of the static SQL: keep the error set before */
+  er_stack_push ();
+
   DB_SESSION *session = db_open_buffer (text.c_str ());
   if (session != NULL)
     {
@@ -117,7 +120,7 @@ make_static_sql_text (PARSER_CONTEXT *parser, const std::string &sql, std::strin
 	}
       db_close_session (session);
     }
-  er_clear ();
+  er_stack_pop ();
 
   return ok;
 }
