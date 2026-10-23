@@ -8553,7 +8553,9 @@ scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID
   hsidp->batch_vpid = *vpid;
   if (expr_batch_plan_gave_up (hsidp->batch_plan))
     {
-      /* the row path kept taking this scan's pages (expr_batch_plan_note_page ()): this one goes to it untried */
+      /* the row path kept taking this scan's pages (expr_batch_plan_note_page ()): this one goes to it untried, and
+       * the trace's last cause says so (the chunk loop sets it only for a chunk it ran) */
+      hsidp->batch_why_not = expr_batch_fallback_why (hsidp->batch_plan);
       return S_DOESNT_FIT;
     }
   repids = expr_batch_plan_repids (hsidp->batch_plan, &n_repids);
