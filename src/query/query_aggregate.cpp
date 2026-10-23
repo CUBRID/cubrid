@@ -3652,7 +3652,14 @@ qdata_free_agg_hentry (const void *key, void *data, void *args)
 void
 qdata_key_sketch_add (unsigned char *regs, const aggregate_hash_key *key)
 {
-  unsigned int h = qdata_hash_agg_hkey (key, 0xffffffffu);
+  qdata_key_sketch_add_hashed (regs, qdata_hash_agg_hkey (key, 0xffffffffu));
+}
+
+/* the same with the key's full-range hash, qdata_hash_agg_hkey (key, 0xffffffffu), computed by the caller (which
+ * looks the key up in the table with it too: qdata_hash_agg_hkey_bucket ()) */
+void
+qdata_key_sketch_add_hashed (unsigned char *regs, unsigned int h)
+{
   unsigned int w;
   unsigned char rank = 1;
 
@@ -3734,6 +3741,22 @@ qdata_hash_agg_hkey (const void *key, unsigned int ht_size)
     }
 
   return hash_val;
+}
+
+/*
+ * qdata_hash_agg_hkey_bucket () - the hash table's bucket of an aggregate key: its full-range hash modulo the size
+ *   returns: bucket
+ *   key(in): key
+ *   ht_size(in): hash table size (in buckets)
+ *
+ * The table (qexec_alloc_agg_hash_context ()) is registered with this one so that the bucket is a function of
+ * the one hash the row loop computes per key (mht_get_hash ()); the table itself calls it when it inserts and
+ * when it rehashes.
+ */
+unsigned int
+qdata_hash_agg_hkey_bucket (const void *key, unsigned int ht_size)
+{
+  return qdata_hash_agg_hkey (key, 0xffffffffu) % ht_size;
 }
 
 /*

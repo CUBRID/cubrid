@@ -4746,6 +4746,7 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
   HENTRY_PTR hentry;
   static UINT64 mem_limit = prm_get_bigint_value (PRM_ID_MAX_AGG_HASH_SIZE);
   int rc = NO_ERROR;
+  unsigned int h;
   TSC_TICKS start_tick, end_tick;
   TSCTIMEVAL tv_diff;
 
@@ -4780,10 +4781,12 @@ qexec_hash_gby_agg_tuple (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XASL_STATE 
     {
       return rc;
     }
-  qdata_key_sketch_add (context->key_sketch, key);
+  /* the key hashed once: the sketch takes the hash, the table its bucket (qdata_hash_agg_hkey_bucket ()) */
+  h = qdata_hash_agg_hkey (key, 0xffffffffu);
+  qdata_key_sketch_add_hashed (context->key_sketch, h);
 
   /* probe hash table */
-  value = (AGGREGATE_HASH_VALUE *) mht_get (context->hash_table, (void *) key);
+  value = (AGGREGATE_HASH_VALUE *) mht_get_hash (context->hash_table, (void *) key, h);
   if (value == NULL && !proc->g_output_first_tuple
       && (context->slab != NULL
 	  || (context->slab =
@@ -31869,7 +31872,8 @@ qexec_alloc_agg_hash_context (THREAD_ENTRY * thread_p, BUILDLIST_PROC_NODE * pro
    * create hash table
    */
   proc->agg_hash_context->hash_table =
-    mht_create ("Hash aggregate evaluation", HASH_AGGREGATE_DEFAULT_TABLE_SIZE, qdata_hash_agg_hkey, qdata_agg_hkey_eq);
+    mht_create ("Hash aggregate evaluation", HASH_AGGREGATE_DEFAULT_TABLE_SIZE, qdata_hash_agg_hkey_bucket,
+		qdata_agg_hkey_eq);
   if (proc->agg_hash_context->hash_table == NULL)
     {
       goto exit_on_error;

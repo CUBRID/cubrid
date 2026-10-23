@@ -179,6 +179,10 @@ int qdata_get_agg_hkey_size (cubquery::aggregate_hash_key *key);
 int qdata_get_agg_hvalue_size (cubquery::aggregate_hash_value *value, bool ret_delta);
 int qdata_free_agg_hentry (const void *key, void *data, void *args);
 unsigned int qdata_hash_agg_hkey (const void *key, unsigned int ht_size);
+/* the hash table's bucket function: the key's full-range hash, qdata_hash_agg_hkey (key, 0xffffffffu), modulo the
+ * table's size -- so a caller that computes that hash once can look the key up with mht_get_hash () and feed the
+ * sketch with it (qdata_key_sketch_add_hashed ()) */
+unsigned int qdata_hash_agg_hkey_bucket (const void *key, unsigned int ht_size);
 DB_VALUE_COMPARE_RESULT qdata_agg_hkey_compare (cubquery::aggregate_hash_key *ckey1,
     cubquery::aggregate_hash_key *ckey2, int *diff_pos);
 int qdata_agg_hkey_eq (const void *key1, const void *key2);
@@ -201,6 +205,7 @@ int qdata_slab_new_group (cubthread::entry *thread_p, struct agg_group_slab *sla
 			  cubquery::aggregate_hash_value **out_value);
 /* a hash GROUP BY's distinct-key sketch: add a key, merge another sketch in, estimate the distinct keys */
 void qdata_key_sketch_add (unsigned char *regs, const cubquery::aggregate_hash_key *key);
+void qdata_key_sketch_add_hashed (unsigned char *regs, unsigned int h);
 void qdata_key_sketch_merge (unsigned char *regs, const unsigned char *other);
 double qdata_key_sketch_estimate (const unsigned char *regs);
 int qdata_save_agg_hentry_to_list (cubthread::entry *thread_p, cubquery::aggregate_hash_key *key,
