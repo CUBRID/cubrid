@@ -1129,6 +1129,10 @@ log_run_deferred_restart_checkpoint (THREAD_ENTRY * thread_p)
     }
   else
     {
+      /* due at once even when only a paused heap made it fail, which logpb_checkpoint () leaves to the interval */
+      LOG_CS_ENTER (thread_p);
+      log_Gl.run_nxchkpt_atpageid = log_Gl.hdr.append_lsa.load ().pageid;
+      LOG_CS_EXIT (thread_p);
       snprintf (text, sizeof (text),
 		"the checkpoint deferred at the end of restart recovery failed again during the boot (%lld ms): "
 		"the next checkpoint is due at once", (long long) msec);

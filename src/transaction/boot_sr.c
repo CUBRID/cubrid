@@ -3078,6 +3078,7 @@ bool
 xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_final)
 {
   int error_code;
+  bool bestspace_busy;
 
   if (!BO_IS_SERVER_RESTARTED ())
     {
@@ -3119,7 +3120,7 @@ xboot_shutdown_server (REFPTR (THREAD_ENTRY, thread_p), ER_FINAL_CODE is_er_fina
 
   /* log_final () runs no checkpoint, so write the bestspace maps here: after the last heap change and while the vacuum
    * master is up, as logging needs. A failure costs only space */
-  error_code = heap_bestspace_checkpoint (thread_p);
+  error_code = heap_bestspace_checkpoint (thread_p, &bestspace_busy);
   if (error_code != NO_ERROR)
     {
       er_log_debug (ARG_FILE_LINE, "xboot_shutdown_server: the bestspace maps were not written at shutdown (error %d)",

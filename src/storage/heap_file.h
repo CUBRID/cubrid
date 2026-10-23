@@ -712,7 +712,7 @@ extern void heap_bestspace_rv_finish (THREAD_ENTRY * thread_p);
 extern void heap_bestspace_drop (const VFID * vfid);
 extern void heap_bestspace_quiesce (const VFID * vfid, bool retire);
 extern void heap_bestspace_end_quiesce (const VFID * vfid);
-extern int heap_bestspace_checkpoint (THREAD_ENTRY * thread_p);
+extern int heap_bestspace_checkpoint (THREAD_ENTRY * thread_p, bool * busy);
 extern int heap_bsmap_free_orphan (THREAD_ENTRY * thread_p, const HFID * hfid, const VPID * vpid, bool * busy);
 extern void heap_bestspace_daemon_init (void);
 extern void heap_bestspace_daemon_destroy (void);

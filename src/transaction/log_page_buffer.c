@@ -7359,6 +7359,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
   void *ptr;
   int flushed_page_cnt = 0, vdes;
   bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
+  bool bestspace_busy = false;
   // *INDENT-OFF*
   log_system_tdes::map_func mapper;
   // *INDENT-ON*
@@ -7448,7 +7449,7 @@ logpb_checkpoint (THREAD_ENTRY * thread_p)
 
   /* after the flush: flushed pages were fed back before their unlatch, and these records land past newchkpt_lsa */
   detailed_er_log ("logpb_checkpoint: call heap_bestspace_checkpoint()\n");
-  if (heap_bestspace_checkpoint (thread_p) != NO_ERROR)
+  if (heap_bestspace_checkpoint (thread_p, &bestspace_busy) != NO_ERROR)
     {
       goto error_cannot_chkpt;
     }
@@ -7843,8 +7844,17 @@ error_cannot_chkpt:
       LOG_CS_ENTER (thread_p);
     }
 
-  /* to immediately execute the next checkpoint. */
-  log_Gl.run_nxchkpt_atpageid = log_Gl.hdr.append_lsa.load ().pageid;
+  if (bestspace_busy)
+    {
+      /* a heap's bestspace upkeep is paused (a TDE apply, a file destroy) or its file header is busy: a retry would
+       * fail the same way meanwhile, so the next checkpoint comes at the usual interval or log size */
+      log_Gl.run_nxchkpt_atpageid = (log_Gl.hdr.append_lsa.load ().pageid + log_Gl.chkpt_every_npages);
+    }
+  else
+    {
+      /* to immediately execute the next checkpoint. */
+      log_Gl.run_nxchkpt_atpageid = log_Gl.hdr.append_lsa.load ().pageid;
+    }
 
   LOG_CS_EXIT (thread_p);
 

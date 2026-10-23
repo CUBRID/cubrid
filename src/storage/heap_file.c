@@ -18810,13 +18810,14 @@ heap_bsmap_take_loaded_locked (HEAP_BSMAP_PENDING * list, void *arg)
 /*
  * heap_bsmap_apply_group () - checkpoint step a for one group of the pending table
  *   return: error code: the checkpoint fails, and the group is back in the table
+ *   busy(out): set when the error is only that the heap's upkeep is paused or its file header is busy
  *
  * Note: the file header is read again under the header latch, without waiting (a destroy latches it, then waits for
  *	 the pages). Once it names this page the file cannot go away, and a heap's group is dropped before its file is
  *	 destroyed, so what is taken from the group is this heap's.
  */
 static int
-heap_bsmap_apply_group (THREAD_ENTRY * thread_p, std::uint64_t group)
+heap_bsmap_apply_group (THREAD_ENTRY * thread_p, std::uint64_t group, bool * busy)
 {
   // *INDENT-OFF*
   cubstorage::bestspace_registry::pinned pin;
@@ -18872,6 +18873,7 @@ heap_bsmap_apply_group (THREAD_ENTRY * thread_p, std::uint64_t group)
 	  er_log_debug (ARG_FILE_LINE, "heap_bsmap_apply_group: file %d|%d is quiesced, its pending group stays",
 			VFID_AS_ARGS (&vfid));
 	  error = ER_FAILED;
+	  *busy = true;
 	}
       goto end;
     }
@@ -18890,6 +18892,7 @@ heap_bsmap_apply_group (THREAD_ENTRY * thread_p, std::uint64_t group)
 	  er_log_debug (ARG_FILE_LINE, "heap_bsmap_apply_group: file %d|%d cannot be checked, its pending group stays",
 			VFID_AS_ARGS (&vfid));
 	  error = ER_FAILED;
+	  *busy = true;
 	}
       goto end;
     }
@@ -18997,9 +19000,10 @@ end:
 /*
  * heap_bsmap_apply_pending () - checkpoint step a: each group of the pending table, taken under its heap's header latch
  *   return: error code (the checkpoint fails)
+ *   busy(out): see heap_bsmap_apply_group ()
  */
 static int
-heap_bsmap_apply_pending (THREAD_ENTRY * thread_p)
+heap_bsmap_apply_pending (THREAD_ENTRY * thread_p, bool * busy)
 {
   // *INDENT-OFF*
   std::uint64_t *groups = NULL;
@@ -19015,7 +19019,7 @@ heap_bsmap_apply_pending (THREAD_ENTRY * thread_p)
     }
   for (i = 0; i < count && error == NO_ERROR; i++)
     {
-      error = heap_bsmap_apply_group (thread_p, groups[i]);
+      error = heap_bsmap_apply_group (thread_p, groups[i], busy);
     }
   if (groups != NULL)
     {
@@ -19180,13 +19184,14 @@ heap_bsmap_write_loaded_inline (THREAD_ENTRY * thread_p, const HFID * hfid, PGBU
  * heap_bsmap_write_loaded () - checkpoint step b for one loaded map: publish what its shard slots know, then write
  *				 its persist-dirty sectors that have a place on disk under the heap's header write latch
  *   return: error code (the checkpoint fails; the bits not written are set again)
+ *   busy(out): set when the error is only that the heap's upkeep is paused or its file header is busy
  *
  * Note: no change is lost: a change sets the persist-dirty bit after the code, and the bits are taken before the
  *	 codes are read under the page latch, so a later change sets its bit again. The header latch keeps the layout
  *	 fixed and orders this against a drop or reuse. A quiesced file fails the checkpoint.
  */
 static int
-heap_bsmap_write_loaded (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry::pinned * pin)
+heap_bsmap_write_loaded (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry::pinned * pin, bool * busy)
 {
   // *INDENT-OFF*
   cubstorage::bestspace_map *map = pin->entry->get_map ();
@@ -19203,7 +19208,7 @@ heap_bsmap_write_loaded (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry
   std::size_t limit, num_groups = 0, g, p, num_pages, first;
   VPID vpid;
   int error = NO_ERROR;
-  bool is_inline, stop = false, busy, quiesced;
+  bool is_inline, stop = false, header_busy, quiesced;
 
   /* the slots' codes first: the slots are not restored after a restart. Before the header latch, as allocation takes
    * it after the shard mark the publish takes (bestspace::publish_slot_codes ()) */
@@ -19221,20 +19226,22 @@ heap_bsmap_write_loaded (THREAD_ENTRY * thread_p, cubstorage::bestspace_registry
 	{
 	  er_log_debug (ARG_FILE_LINE, "heap_bsmap_write_loaded: file %d|%d is quiesced, its map stays dirty",
 			VFID_AS_ARGS (&pin->hfid.vfid));
+	  *busy = true;
 	  return ER_FAILED;
 	}
       return NO_ERROR;
     }
 
   er_stack_push ();
-  error = heap_bsmap_fix_pinned_header (thread_p, pin, &hdr_watcher, &busy);
+  error = heap_bsmap_fix_pinned_header (thread_p, pin, &hdr_watcher, &header_busy);
   if (error != NO_ERROR || hdr_watcher.pgptr == NULL)
     {
-      if (busy)
+      if (header_busy)
 	{
 	  er_log_debug (ARG_FILE_LINE, "heap_bsmap_write_loaded: file %d|%d cannot be checked, its map stays dirty",
 			VFID_AS_ARGS (&pin->hfid.vfid));
 	  error = ER_FAILED;
+	  *busy = true;
 	}
       /* otherwise gone, or a bestspace left behind: nothing to write */
       goto end;
@@ -19359,12 +19366,13 @@ heap_bsmap_pending_any (void)
 /*
  * heap_bestspace_checkpoint () - write the bestspace maps: a. the pending table, b. the loaded maps
  *   return: error code: the checkpoint fails, so the previous one stays valid
+ *   busy(out): set when the error is only that a heap's upkeep is paused or its file header is busy
  *
  * Note: logpb_checkpoint () calls it after the page flush; the shutdown calls it too, as log_final () does not
  *	 checkpoint a clean shutdown. An error leaves what was not written persist-dirty or pending.
  */
 int
-heap_bestspace_checkpoint (THREAD_ENTRY * thread_p)
+heap_bestspace_checkpoint (THREAD_ENTRY * thread_p, bool * busy)
 {
   // *INDENT-OFF*
   cubstorage::bestspace_registry::pinned *pins = NULL;
@@ -19373,6 +19381,7 @@ heap_bestspace_checkpoint (THREAD_ENTRY * thread_p)
   int error, tran_index;
   bool check_interrupt;
 
+  *busy = false;
   if (thread_p == NULL)
     {
       thread_p = thread_get_thread_entry_info ();
@@ -19404,7 +19413,7 @@ heap_bestspace_checkpoint (THREAD_ENTRY * thread_p)
   er_stack_push ();
 
   /* a: first, so that what it merges into loaded maps is written by b in this checkpoint */
-  error = heap_bsmap_apply_pending (thread_p);
+  error = heap_bsmap_apply_pending (thread_p, busy);
 
   /* b: pinned, so that a drop meanwhile cannot free a bestspace being written (the registry mutex is not held) */
   if (error == NO_ERROR)
@@ -19413,7 +19422,7 @@ heap_bestspace_checkpoint (THREAD_ENTRY * thread_p)
     }
   for (i = 0; i < num_pins && error == NO_ERROR; i++)
     {
-      error = heap_bsmap_write_loaded (thread_p, &pins[i]);
+      error = heap_bsmap_write_loaded (thread_p, &pins[i], busy);
     }
   cubstorage::bestspaces.unpin_all (pins, num_pins);
 
