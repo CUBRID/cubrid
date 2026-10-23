@@ -30260,7 +30260,7 @@ pt_count_analytic_covered_sort_list (PARSER_CONTEXT * parser, QO_PLAN * qo_plan,
   switch (qo_plan->plan_type)
     {
     case QO_PLANTYPE_SCAN:
-      if (!qo_is_iscan (qo_plan) || (env = (qo_plan->info)->env) == NULL)
+      if (!(qo_is_iscan (qo_plan) || qo_is_iscan_from_analytic (qo_plan)) || (env = (qo_plan->info)->env) == NULL)
 	{
 	  return 0;
 	}

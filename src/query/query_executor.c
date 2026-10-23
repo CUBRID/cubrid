@@ -23021,9 +23021,11 @@ qexec_analytic_eval_instnum_pred (THREAD_ENTRY * thread_p, ANALYTIC_STATE * anal
 	  instnum_stage = ANALYTIC_GROUP_PROC;
 	}
 
-      if (instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
+      if ((instnum_flag & XASL_INSTNUM_FLAG_EVAL_DEFER)
+	  && !XASL_IS_FLAGED (analytic_state->xasl, XASL_ANALYTIC_SKIP_SORT))
 	{
-	  /* we're selecting INST_NUM() so we must evaluate it when writing the output file */
+	  /* we're selecting INST_NUM() so we must evaluate it when writing the output file. Without the sort, the output
+	   * file is written by qexec_analytic_update_group_result () at ANALYTIC_INTERM_PROC */
 	  instnum_stage = ANALYTIC_GROUP_PROC;
 	}
     }
@@ -24502,9 +24504,10 @@ qexec_analytic_eval_in_processing (THREAD_ENTRY * thread_p, XASL_NODE * xasl, XA
 	  bool is_same_group = true;
 	  for (sort_list_idx = 0; sort_list_idx < a_func_list->sort_list_size; sort_list_idx++)
 	    {
+	      /* total order: NULL keys are equal and form one group, as they do after the sort */
 	      if (tp_value_compare
 		  (&a_eval_list->current_values[sort_list_idx], &a_eval_list->temp_values[sort_list_idx], 1,
-		   0) != DB_EQ)
+		   1) != DB_EQ)
 		{
 		  is_same_group = (sort_list_idx >= a_func_list->sort_prefix_size);
 		  break;
