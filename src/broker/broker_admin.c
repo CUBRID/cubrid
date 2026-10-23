@@ -41,6 +41,9 @@
 #include "broker_error.h"
 #include "system_parameter.h"
 
+#if !defined(WINDOWS)
+#include "background_process.hpp"
+#endif
 #include "broker_util.h"
 #include "util_func.h"
 #if defined(WINDOWS)
@@ -76,6 +79,11 @@ admin_log_write (const char *log_file, const char *msg)
 int
 main (int argc, char **argv)
 {
+#if !defined(WINDOWS)
+  if (background_process_prepare_stdio () != 0)
+    return 1;
+#endif
+
   T_BROKER_INFO br_info[MAX_BROKER_NUM];
   char admin_log_file[BROKER_PATH_MAX];
   char acl_file[BROKER_PATH_MAX];
