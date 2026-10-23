@@ -289,6 +289,8 @@ static_assert (sizeof (HEAP_HDR_STATS) != sizeof (HEAP_CHAIN), "header and chain
 static_assert (HEAP_HDR_STATS_LOGGED_SIZE % 4 == 0, "RVHF_STATS image must stay aligned");
 /* old log records hold RVHF_STATS images of this length, so it is pinned */
 static_assert (HEAP_HDR_STATS_LOGGED_SIZE == 68, "RVHF_STATS logs 68 bytes of the heap header (on-disk log format)");
+/* the heap header record on disk, with the inline map entries */
+static_assert (sizeof (HEAP_HDR_STATS) == 168, "the heap header record is 168 bytes (on-disk format)");
 
 /*
  * Bestspace map pages: heap chain pages flagged BESTSPACE. Slot HEAP_BESTSPACE_ENTRIES_SLOTID holds
