@@ -8350,6 +8350,15 @@ la_check_mem_size (void)
     }
 
   vsize = la_get_mem_size ();
+
+  /* The baseline of the growth check is taken here, at the first check after the startup wait, not in
+   * la_init: the workers start later, and each reserves its own malloc arena, so an idle applier with its
+   * workers is far larger in virtual size than the process la_init measured. */
+  if (la_Info.start_vsize == 0)
+    {
+      la_Info.start_vsize = vsize;
+    }
+
 #if defined(AIX)
   max_vsize = MAX ((unsigned long) (la_Info.max_mem_size * ONE_K), (la_Info.start_vsize * 60));
 #else
@@ -8662,7 +8671,6 @@ la_unlock_dbname (int *lockf_vdes, char *db_name, bool clear_owner)
 static void
 la_init (const char *log_path, const int max_mem_size)
 {
-  static unsigned long start_vsize = 0;
   int i;
 
   memset (&la_Info, 0, sizeof (la_Info));
@@ -8691,22 +8699,11 @@ la_init (const char *log_path, const int max_mem_size)
   la_Info.is_role_changed = false;
   la_Info.is_apply_info_updated = false;
 
-  /* The memory budget below (see la_check_mem_size) is compared against the
-   * process virtual size (VSZ), not resident memory (RSS). Each parallel apply
-   * worker thread carries its own glibc malloc arena that reserves up to ~64MB of
-   * address space, so with several workers the VSZ floor sits hundreds of MB above
-   * a single-threaded run even when actual resident memory is small. As a result,
-   * with the default ha_apply_max_mem_size (500MB) the applier can falsely trip the
-   * over-limit shutdown (ER_HA_LA_EXCEED_MAX_MEM_SIZE) while idle, with no real leak
-   * or backlog.
-   * Operational workaround: set ha_apply_max_mem_size large enough to cover the
-   * measured parallel peak; the absolute ceiling then dominates and the relative
-   * start_vsize-based leak check is effectively disabled.
-   * TODO: switch la_get_mem_size to RSS-based accounting so the arena-driven VSZ
-   * inflation stops causing false positives; revisit this absolute ceiling and its
-   * configuration dependence once that lands. (Alternative: capture start_vsize
-   * after the workers have started, which removes the false positive while keeping
-   * the relative leak check.) */
+  /* The memory check (la_check_mem_size) compares the process virtual size, not resident memory, with
+   * max(ha_apply_max_mem_size, twice its size once the workers have started). Each worker reserves its own
+   * malloc arena of up to 64MB of address space, so with several workers an idle applier is several hundred
+   * MB in virtual size while little of it is resident; ha_apply_max_mem_size below that size makes the
+   * applier stop with ER_HA_LA_EXCEED_MAX_MEM_SIZE without a leak or a backlog. */
   la_Info.max_mem_size = max_mem_size;
 
   /* the parameter is range-checked at load (1..HB_MAX_APPLY_WORKER_COUNT); clamp again so a stray value
@@ -8718,12 +8715,7 @@ la_init (const char *log_path, const int max_mem_size)
       er_set (ER_NOTIFICATION_SEVERITY, ARG_FILE_LINE, ER_HA_GENERIC_ERROR, 1,
 	      "applylogdb runs one apply worker: transactions are applied in commit order");
     }
-  /* check vsize when it started */
-  if (!start_vsize)
-    {
-      start_vsize = la_get_mem_size ();
-    }
-  la_Info.start_vsize = start_vsize;
+  /* start_vsize stays 0 here; la_check_mem_size takes it once the workers have started */
   la_Info.start_time = time (NULL);
 
   la_Info.last_time_archive_deleted = la_Info.start_time;
