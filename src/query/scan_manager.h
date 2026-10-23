@@ -106,6 +106,45 @@ struct dblink_scan_id
   SCAN_PRED scan_pred;		/* scan predicates(filters) */
 };
 
+/* The page batch's objects between two opens of one scan (expr_batch.h).  A correlated subquery opens its scan once
+ * per outer row, and the plan -- built from the clone's compiled filter, its operand program and its attribute
+ * caches, which a non-final clear leaves settled -- would be built as many times.  scan_end_scan () parks the plan,
+ * the chunk and the scan's buffers here, on the scan's access spec, with their per-scan state cleared;
+ * scan_batch_open_internal () takes them back when the next open is built from the same inputs (the identity
+ * below: another class -- the next partition --, another filter form or consumer frees them and builds anew) and
+ * rebinds what is the execution's (the runtime filter); qexec_clear_xasl () frees them at the end of the execution
+ * with the spec's other values (scan_batch_keep_free ()).  Allocated, filled and freed on the thread that executes
+ * the clone, whose private heap holds the plan's arrays: a clone is run by one thread per execution, that thread's
+ * final clear releases it, and a parallel worker clears its own clone in its finalize. */
+struct access_spec_node;
+typedef struct scan_batch_keep SCAN_BATCH_KEEP;
+struct scan_batch_keep
+{
+  struct expr_batch_plan *plan;
+  struct expr_batch *batch;
+  OID *exc;			/* the chunk's exceptions (hsid.batch_exc) ... */
+  int exc_cap;
+  char *copy;			/* ... and the kept rows' copies (hsid.batch_copy) */
+  size_t copy_cap;
+  /* what the plan was built from */
+  OID class_oid;		/* the class scanned: another partition of the spec rebuilds */
+  const void *scan_prog;	/* the filter's compiled form (PRED_EXPR.scan_prog), or NULL */
+  const PRED_EXPR *pred_expr;
+  const void *agg_list;
+  const void *proj;
+  const void *gby_prog;		/* a hash GROUP BY's mapping: its program and counts (the map itself is made per open) */
+  int gby_n_aggs;
+  int gby_n_keys;
+  bool has_gby;
+  bool for_consumer;		/* opened by a consumer (scan_batch_open ()), not by a filter iterator */
+  HEAP_CACHE_ATTRINFO *pred_attr_cache;
+  HEAP_CACHE_ATTRINFO *rest_attr_cache;
+  const val_descr *vd;		/* the execution's: the constants the leaves resolved through it live as long as it */
+  bool has_rtf;			/* the plan has the runtime filter's term, on the key in rtf_val */
+  bool rtf_is_date;
+  const DB_VALUE *rtf_val;
+};
+
 typedef struct heap_scan_id HEAP_SCAN_ID;
 struct heap_scan_id
 {
@@ -150,6 +189,8 @@ struct heap_scan_id
   int batch_exc_cap;
   int batch_n_exc;
   int batch_exc_pos;		/* the filter iterator: the next exception to fetch */
+  struct access_spec_node *batch_spec;	/* the spec the batch was opened on: scan_end_scan () parks the plan in its
+					 * keep (SCAN_BATCH_KEEP); NULL frees it */
 };				/* Regular Heap File Scan Identifier */
 
 namespace parallel_scan
@@ -195,6 +236,7 @@ struct parallel_heap_scan_id
   int batch_exc_cap;
   int batch_n_exc;
   int batch_exc_pos;
+  struct access_spec_node *batch_spec;
   // *INDENT-OFF*
   #if !WINDOWS
   parallel_scan::RESULT_TYPE result_type;
@@ -720,16 +762,20 @@ namespace cubxasl
 struct valptr_list_node;
 /* a heap scan whose rows go on row by row (a join, a subquery, ...): its filter run a chunk at a time inside
  * scan_next_scan (); true when it does */
-extern bool scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const struct access_spec_node *spec,
+extern bool scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, struct access_spec_node *spec,
 				    val_descr * vd);
 /* the same for a parallel worker's scan, whose rows go through the rows node (scan_batch_rows_consume ()) */
-extern bool scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const struct access_spec_node *spec,
+extern bool scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, struct access_spec_node *spec,
 				  val_descr * vd);
 /* the consumer's block: a hash join's runtime filter on it (xasl->rtf) becomes the plan's last filter term; proj is
- * a projecting block's output list (its program settled), whose columns the plan computes as vectors */
-extern int scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const struct access_spec_node *spec,
+ * a projecting block's output list (its program settled), whose columns the plan computes as vectors.  The spec
+ * keeps the plan between the scan's opens (SCAN_BATCH_KEEP) */
+extern int scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, struct access_spec_node *spec,
 			    const struct xasl_node *xasl, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
 			    const struct expr_batch_gby_map *gby, const struct valptr_list_node *proj);
+/* the spec's kept plan and what the scan still holds of the batch, for good: the end of the execution
+ * (qexec_clear_xasl ()), on the thread that executed the clone */
+extern void scan_batch_keep_free (THREAD_ENTRY * thread_p, struct access_spec_node *spec);
 extern SCAN_CODE scan_batch_next_page (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 extern SCAN_CODE scan_batch_collect_chunk (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const VPID * vpid,
 					   PGSLOTID * slot);

@@ -1132,6 +1132,7 @@ struct access_spec_node
   int num_parallel_threads;	/* number of parallel threads for this spec */
 #if defined (SERVER_MODE) || defined (SA_MODE)
   SCAN_ID s_id;			/* scan identifier */
+  SCAN_BATCH_KEEP *batch_keep;	/* the page batch's plan between the scan's opens (scan_manager.h), or NULL */
   PARTITION_SPEC_TYPE *parts;	/* partitions of the current spec */
   PARTITION_SPEC_TYPE *curent;	/* current partition */
   bool grouped_scan;		/* grouped or regular scan? it is never true!!! */

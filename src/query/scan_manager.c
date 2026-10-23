@@ -194,13 +194,17 @@ static int scan_init_index_key_limit (THREAD_ENTRY * thread_p, INDX_SCAN_ID * is
 				      VAL_DESCR * vd);
 static SCAN_CODE scan_next_scan_local (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_heap_scan_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
-static int scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec,
+static int scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_TYPE * spec,
 				     const XASL_NODE * xasl, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
 				     const EXPR_BATCH_GBY_MAP * gby, const valptr_list_node * proj, bool cached_ok);
 static SCAN_CODE scan_batch_iter_next (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static void scan_batch_rewind (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static int scan_batch_copy_kept (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static int scan_batch_row_values (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, EXPR_BATCH_ROW * row);
+static void scan_batch_park (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp);
+static void scan_batch_keep_drop (THREAD_ENTRY * thread_p, SCAN_BATCH_KEEP * keep);
+static bool scan_batch_keep_matches (const SCAN_BATCH_KEEP * keep, const HEAP_SCAN_ID * hsidp,
+				     const EXPR_BATCH_INPUTS * in, bool for_consumer);
 static SCAN_CODE scan_next_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_heap_page_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
 static SCAN_CODE scan_next_class_attr_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id);
@@ -3562,6 +3566,7 @@ scan_open_heap_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id,
   hsidp->batch_exc_cap = 0;
   hsidp->batch_n_exc = 0;
   hsidp->batch_exc_pos = 0;
+  hsidp->batch_spec = NULL;
 
   /* sampling pick owned by qexec_prepare_table_sampling (gated by prepared); no re-pick here */
 
@@ -5505,28 +5510,8 @@ scan_end_scan (THREAD_ENTRY * thread_p, SCAN_ID * scan_id)
 	      (void) heap_scancache_end (thread_p, &hsidp->scan_cache);
 	    }
 	}
-      if (hsidp->batch != NULL)
-	{
-	  expr_batch_final (hsidp->batch);
-	  db_private_free_and_init (thread_p, hsidp->batch);
-	}
-      if (hsidp->batch_copy != NULL)
-	{
-	  db_private_free_and_init (thread_p, hsidp->batch_copy);
-	  hsidp->batch_copy_cap = 0;
-	}
-      if (hsidp->batch_exc != NULL)
-	{
-	  db_private_free_and_init (thread_p, hsidp->batch_exc);
-	  hsidp->batch_exc_cap = 0;
-	}
-      hsidp->batch_n_exc = 0;
-      hsidp->batch_exc_pos = 0;
-      if (hsidp->batch_plan != NULL)
-	{
-	  expr_batch_plan_free (thread_p, hsidp->batch_plan);
-	  hsidp->batch_plan = NULL;
-	}
+      /* the plan, the chunk and the buffers go to the spec's keep for the scan's next open (SCAN_BATCH_KEEP) */
+      scan_batch_park (thread_p, hsidp);
       hsidp->batch_state = 0;
       hsidp->batch_started = false;
       hsidp->batch_rowmode = false;
@@ -8194,12 +8179,13 @@ exit_on_error:
  *   proj(in): a projecting block's output list, its program settled for this execution, or NULL
  *
  * The consumer calls it once the scan is started (its attribute caches are up); the plan it
- * builds lives as long as the scan (scan_end_scan ()).  The compiled filter and the operand
- * program are settled here, before any row, the way the row path settles them on its first
- * row, so the batch reads the forms this execution would use.
+ * builds lives as long as the execution: scan_end_scan () parks it on the spec and the scan's
+ * next open takes it back when it is built from the same inputs (SCAN_BATCH_KEEP).  The
+ * compiled filter and the operand program are settled here, before any row, the way the row
+ * path settles them on its first row, so the batch reads the forms this execution would use.
  */
 int
-scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec, const XASL_NODE * xasl,
+scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_TYPE * spec, const XASL_NODE * xasl,
 		 cubxasl::aggregate_list_node * agg_list, val_descr * vd, const EXPR_BATCH_GBY_MAP * gby,
 		 const valptr_list_node * proj)
 {
@@ -8210,11 +8196,12 @@ scan_batch_open (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_T
  * page itself for each chunk).  xasl is NULL for the filter iterators (scan_batch_open_filter (), _rows ()): their
  * rows go on to the row loop, which checks the runtime filter itself. */
 static int
-scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec,
+scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_TYPE * spec,
 			  const XASL_NODE * xasl, cubxasl::aggregate_list_node * agg_list, val_descr * vd,
 			  const EXPR_BATCH_GBY_MAP * gby, const valptr_list_node * proj, bool cached_ok)
 {
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
+  SCAN_BATCH_KEEP *keep = (spec != NULL) ? spec->batch_keep : NULL;
   EXPR_BATCH_INPUTS in;
   FILTER_INFO data_filter;
 
@@ -8294,6 +8281,42 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCE
       in.rtf_contains = hjoin_rtf_contains;
     }
 
+  if (keep != NULL && keep->plan != NULL)
+    {
+      /* The plan the scan's last open left on the spec (scan_batch_park ()).  Built from the same inputs, it is
+       * taken back with the chunk and the buffers, the runtime filter -- the execution's, not the clone's -- bound
+       * anew and the chunk pointed at this scan's page watcher; its per-scan state was cleared when it was parked,
+       * so the trace counts this scan alone.  Built from other inputs -- the next partition's class
+       * (qexec_init_next_partition () opens the same spec on another class), a filter iterator where a consumer
+       * was, a filter compiled since -- it is freed and this open builds its own. */
+      if (scan_batch_keep_matches (keep, hsidp, &in, xasl != NULL)
+	  && expr_batch_plan_rebind (keep->plan, in.rtf, in.rtf_is_date, in.rtf_contains))
+	{
+	  hsidp->batch_plan = keep->plan;
+	  hsidp->batch = keep->batch;
+	  hsidp->batch_exc = keep->exc;
+	  hsidp->batch_exc_cap = keep->exc_cap;
+	  hsidp->batch_copy = keep->copy;
+	  hsidp->batch_copy_cap = keep->copy_cap;
+	  keep->plan = NULL;
+	  keep->batch = NULL;
+	  keep->exc = NULL;
+	  keep->exc_cap = 0;
+	  keep->copy = NULL;
+	  keep->copy_cap = 0;
+	  hsidp->batch->page_watcher = &hsidp->scan_cache.page_watcher;
+	  hsidp->batch_spec = spec;
+	  hsidp->batch_n_exc = 0;
+	  hsidp->batch_exc_pos = 0;
+	  VPID_SET_NULL (&hsidp->batch_vpid);
+	  hsidp->batch_started = false;
+	  hsidp->batch_rowmode = false;
+	  hsidp->batch_state = 1;
+	  return hsidp->batch_state;
+	}
+      scan_batch_keep_drop (thread_p, keep);
+    }
+
   hsidp->batch_plan = expr_batch_plan_build (thread_p, &in, &hsidp->batch_why_not);
   if (hsidp->batch_plan == NULL)
     {
@@ -8338,7 +8361,159 @@ scan_batch_open_internal (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCE
   hsidp->batch_started = false;
   hsidp->batch_rowmode = false;
   hsidp->batch_state = 1;
+
+  /* the keep that will hold this plan between the scan's opens, with what it was built from; without one (no spec,
+   * or no memory for it: the batch runs all the same) scan_end_scan () frees the plan as it would without a keep */
+  if (spec != NULL && keep == NULL)
+    {
+      keep = (SCAN_BATCH_KEEP *) db_private_alloc (thread_p, sizeof (SCAN_BATCH_KEEP));
+      if (keep == NULL)
+	{
+	  er_clear ();
+	}
+      else
+	{
+	  memset (keep, 0, sizeof (*keep));
+	  spec->batch_keep = keep;
+	}
+    }
+  if (keep != NULL)
+    {
+      COPY_OID (&keep->class_oid, &hsidp->cls_oid);
+      keep->scan_prog = in.scan_pred_compiled;
+      keep->pred_expr = hsidp->scan_pred.pred_expr;
+      keep->agg_list = in.agg_list;
+      keep->proj = in.proj;
+      keep->has_gby = (in.gby != NULL);
+      keep->gby_prog = (in.gby != NULL) ? in.gby->proj_prog : NULL;
+      keep->gby_n_aggs = (in.gby != NULL) ? in.gby->n_aggs : 0;
+      keep->gby_n_keys = (in.gby != NULL) ? in.gby->n_keys : 0;
+      keep->for_consumer = (xasl != NULL);
+      keep->pred_attr_cache = in.pred_attr_cache;
+      keep->rest_attr_cache = in.rest_attr_cache;
+      keep->vd = in.vd;
+      keep->has_rtf = (in.rtf != NULL);
+      keep->rtf_is_date = in.rtf_is_date;
+      keep->rtf_val = in.rtf_val;
+      hsidp->batch_spec = spec;
+    }
   return hsidp->batch_state;
+}
+
+/* The kept plan was built from this open's inputs.  Per clone, the same through the execution's non-final clears:
+ * the class scanned, the filter and its compiled form (a form compiled on a later open is another), the attribute
+ * caches, the consumer -- its aggregate list, its output list, a hash GROUP BY's program and shape (the map is
+ * made per open, so its address says nothing) -- and whether a consumer or a filter iterator opened it.  Per
+ * execution: the value descriptor, through which the leaves resolved their host variables (the keep is freed at
+ * the end of the execution, so it never differs), and the runtime filter's shape -- there is one on the same key
+ * cell, comparing the same way -- the filter itself being rebound (expr_batch_plan_rebind ()). */
+static bool
+scan_batch_keep_matches (const SCAN_BATCH_KEEP * keep, const HEAP_SCAN_ID * hsidp, const EXPR_BATCH_INPUTS * in,
+			 bool for_consumer)
+{
+  return (OID_EQ (&keep->class_oid, &hsidp->cls_oid) && keep->scan_prog == in->scan_pred_compiled
+	  && keep->pred_expr == in->pred_expr && keep->agg_list == in->agg_list && keep->proj == in->proj
+	  && keep->has_gby == (in->gby != NULL)
+	  && (in->gby == NULL
+	      || (keep->gby_prog == in->gby->proj_prog && keep->gby_n_aggs == in->gby->n_aggs
+		  && keep->gby_n_keys == in->gby->n_keys)) && keep->for_consumer == for_consumer
+	  && keep->pred_attr_cache == in->pred_attr_cache && keep->rest_attr_cache == in->rest_attr_cache
+	  && keep->vd == in->vd && keep->has_rtf == (in->rtf != NULL)
+	  && (in->rtf == NULL || (keep->rtf_val == in->rtf_val && keep->rtf_is_date == in->rtf_is_date)));
+}
+
+/* the keep's objects, not the keep: the next open fills it again */
+static void
+scan_batch_keep_drop (THREAD_ENTRY * thread_p, SCAN_BATCH_KEEP * keep)
+{
+  if (keep->batch != NULL)
+    {
+      expr_batch_final (keep->batch);
+      db_private_free_and_init (thread_p, keep->batch);
+    }
+  db_private_free_and_init (thread_p, keep->copy);
+  keep->copy_cap = 0;
+  db_private_free_and_init (thread_p, keep->exc);
+  keep->exc_cap = 0;
+  if (keep->plan != NULL)
+    {
+      expr_batch_plan_free (thread_p, keep->plan);
+      keep->plan = NULL;
+    }
+}
+
+/* scan_end_scan (): the plan, the chunk and the buffers go to the spec's keep with their per-scan state cleared --
+ * the trace's counts were read before the scan ended (the parallel worker's expr_batch_dump (), the serial scan's
+ * own scan_stats) -- or, without a keep to go to, are freed */
+static void
+scan_batch_park (THREAD_ENTRY * thread_p, HEAP_SCAN_ID * hsidp)
+{
+  SCAN_BATCH_KEEP *keep = (hsidp->batch_spec != NULL) ? hsidp->batch_spec->batch_keep : NULL;
+
+  if (keep != NULL && hsidp->batch_plan != NULL)
+    {
+      assert (keep->plan == NULL);
+      expr_batch_plan_reset_scan (hsidp->batch_plan);
+      expr_batch_reset (hsidp->batch);
+      keep->plan = hsidp->batch_plan;
+      keep->batch = hsidp->batch;
+      keep->exc = hsidp->batch_exc;
+      keep->exc_cap = hsidp->batch_exc_cap;
+      keep->copy = hsidp->batch_copy;
+      keep->copy_cap = hsidp->batch_copy_cap;
+    }
+  else
+    {
+      if (hsidp->batch != NULL)
+	{
+	  expr_batch_final (hsidp->batch);
+	  db_private_free_and_init (thread_p, hsidp->batch);
+	}
+      db_private_free_and_init (thread_p, hsidp->batch_copy);
+      db_private_free_and_init (thread_p, hsidp->batch_exc);
+      if (hsidp->batch_plan != NULL)
+	{
+	  expr_batch_plan_free (thread_p, hsidp->batch_plan);
+	}
+    }
+  hsidp->batch_plan = NULL;
+  hsidp->batch = NULL;
+  hsidp->batch_copy = NULL;
+  hsidp->batch_copy_cap = 0;
+  hsidp->batch_exc = NULL;
+  hsidp->batch_exc_cap = 0;
+  hsidp->batch_n_exc = 0;
+  hsidp->batch_exc_pos = 0;
+  hsidp->batch_spec = NULL;
+}
+
+/*
+ * scan_batch_keep_free () - the spec's kept plan, and what its scan still holds of the batch, for good
+ *   spec(in/out): the access spec, at the end of the execution (qexec_clear_access_spec_list ())
+ *
+ * The scan ended before this (scan_end_scan () parked its plan), unless a teardown skipped it: what is still on
+ * the scan goes too, so nothing of the batch outlives the execution.  On the thread that executed the clone (the
+ * leader, a parallel worker for its own clone, the aptr task for its block): the plan's arrays are on its heap.
+ */
+void
+scan_batch_keep_free (THREAD_ENTRY * thread_p, ACCESS_SPEC_TYPE * spec)
+{
+  if (spec->s_id.type == S_HEAP_SCAN || spec->s_id.type == S_HEAP_SCAN_RECORD_INFO)
+    {
+      HEAP_SCAN_ID *hsidp = &spec->s_id.s.hsid;
+
+      if (hsidp->batch_plan != NULL || hsidp->batch != NULL || hsidp->batch_copy != NULL || hsidp->batch_exc != NULL)
+	{
+	  hsidp->batch_spec = NULL;
+	  scan_batch_park (thread_p, hsidp);
+	  hsidp->batch_state = 0;
+	}
+    }
+  if (spec->batch_keep != NULL)
+    {
+      scan_batch_keep_drop (thread_p, spec->batch_keep);
+      db_private_free_and_init (thread_p, spec->batch_keep);
+    }
 }
 
 /*
@@ -8753,7 +8928,7 @@ scan_batch_row_by_oid (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const OID * o
  * page to the row path (scan_batch_page_rowmode ()).
  */
 bool
-scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec, val_descr * vd)
+scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_TYPE * spec, val_descr * vd)
 {
   HEAP_SCAN_ID *hsidp = &scan_id->s.hsid;
 
@@ -8777,7 +8952,7 @@ scan_batch_open_filter (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS
 }
 
 bool
-scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, const ACCESS_SPEC_TYPE * spec, val_descr * vd)
+scan_batch_open_rows (THREAD_ENTRY * thread_p, SCAN_ID * scan_id, ACCESS_SPEC_TYPE * spec, val_descr * vd)
 {
   return (scan_id->type == S_HEAP_SCAN && scan_id->s.hsid.scan_pred.pred_expr != NULL
 	  && scan_batch_open_internal (thread_p, scan_id, spec, NULL, NULL, vd, NULL, NULL, true) == 1);

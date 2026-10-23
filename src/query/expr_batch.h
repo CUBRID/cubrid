@@ -262,4 +262,15 @@ extern void expr_batch_plan_note_rows_by_oid (EXPR_BATCH_PLAN * plan, int n);
 extern const char *expr_batch_fallback_why (const EXPR_BATCH_PLAN * plan);
 extern void expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, int indent);
 
+/* A plan kept between two opens of the same scan (SCAN_BATCH_KEEP, scan_manager.h).  reset: the chunk's per-scan
+ * state (its lines stay); reset_scan: the plan's per-scan state -- the trace's page and row counts, the last
+ * fallback cause -- while what it learned of the class and built from the clone stays; rebind: the runtime filter
+ * of the open that reuses the plan (the filter is the execution's), false when the plan's shape does not take it
+ * (built with a filter term and there is none now, or the other way round, or the key compares otherwise): the
+ * caller builds anew then. */
+extern void expr_batch_reset (EXPR_BATCH * batch);
+extern void expr_batch_plan_reset_scan (EXPR_BATCH_PLAN * plan);
+extern bool expr_batch_plan_rebind (EXPR_BATCH_PLAN * plan, const struct hjoin_runtime_filter *rtf, bool rtf_is_date,
+				    EXPR_BATCH_RTF_CONTAINS rtf_contains);
+
 #endif /* _EXPR_BATCH_H_ */

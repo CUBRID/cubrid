@@ -5545,3 +5545,73 @@ expr_batch_dump (FILE * fp, const EXPR_BATCH_PLAN * plan, const char *why_not, i
 	       (plan->proj_why_not != NULL) ? plan->proj_why_not : "");
     }
 }
+
+/* ---------------------------------------------------------------------------------------- */
+/* a plan kept between two opens of the same scan (SCAN_BATCH_KEEP, scan_manager.h) */
+
+/* the chunk's per-scan state; its lines are the plan's arena's and stay */
+void
+expr_batch_reset (EXPR_BATCH * batch)
+{
+  batch->n_rows = 0;
+  batch->n_sel = 0;
+  batch->rtf_rows = 0;
+  batch->rtf_dropped = 0;
+  batch->page_watcher = NULL;
+}
+
+/* The plan's per-scan state, so that the next scan it serves counts from nothing: the trace's pages, the pages
+ * handed back and the rows fetched by OID, the last chunk's fallback cause, the per-chunk decode marks and the mask
+ * depth.  What the plan learned of the class stays -- the representations it decodes (reprs, repids) and the ones
+ * it rejected -- and so does what it built from the clone: the arena and the lines carved from it, the columns,
+ * the vectors and their sources, the steps, the leaves, the keys, the shared values, the projection columns, the
+ * compiled filter and the operand program.  The runtime filter is the execution's (expr_batch_plan_rebind ()). */
+void
+expr_batch_plan_reset_scan (EXPR_BATCH_PLAN * plan)
+{
+  int i;
+
+  plan->pages = 0;
+  plan->pages_fallback = 0;
+  plan->rows_by_oid = 0;
+  plan->fallback_why = NULL;
+  plan->mask_depth = 0;
+  for (i = 0; i < plan->n_cols; i++)
+    {
+      plan->cols[i].decoded = 0;
+    }
+}
+
+/* The runtime filter of the open that reuses the plan.  hjoin_rtf_build () makes the filter once per run of its
+ * join and hjoin_rtf_release () frees it once the target's scans are closed, so a plan built under one run of the
+ * join may be opened again under the next (the join inside a correlated subquery) with another filter, or none.
+ * rtf_contains marks a plan built with the filter's term (eb_build_rtf_leaf () alone sets it): a plan built with
+ * the term takes a filter whose keys compare as its key column does (both DATE, or both integers) and declines
+ * none; a plan built without one takes none.  The term is the chain's last (eb_build_rtf_leaf ()); the array has
+ * room for it from the build. */
+bool
+expr_batch_plan_rebind (EXPR_BATCH_PLAN * plan, const struct hjoin_runtime_filter *rtf, bool rtf_is_date,
+			EXPR_BATCH_RTF_CONTAINS rtf_contains)
+{
+  bool built_with_rtf = (plan->rtf_contains != NULL);
+
+  if ((rtf != NULL) != built_with_rtf)
+    {
+      return false;
+    }
+  if (rtf == NULL)
+    {
+      return true;
+    }
+  if (rtf_contains == NULL || (plan->vecs[plan->rtf_vec].dbtype == DB_TYPE_DATE) != rtf_is_date)
+    {
+      return false;
+    }
+  plan->rtf = rtf;
+  plan->rtf_contains = rtf_contains;
+  if (plan->n_kids == 0 || plan->kid_leaf[plan->n_kids - 1] != EB_KID_RTF)
+    {
+      plan->kid_leaf[plan->n_kids++] = EB_KID_RTF;
+    }
+  return true;
+}

@@ -1807,6 +1807,17 @@ qexec_clear_access_spec_list (THREAD_ENTRY * thread_p, XASL_NODE * xasl_p, ACCES
   pg_cnt = 0;
   for (p = list; p; p = p->next)
     {
+      /* The page batch's plan the spec kept between its scan's opens (SCAN_BATCH_KEEP), and what a scan torn down
+       * without scan_end_scan () still holds of the batch.  This list is cleared at is_final only -- a non-final
+       * clear, the rewind of a correlated subquery for its next outer row, leaves the plan for that open -- so the
+       * plan goes with the execution: the leaves hold the host variables it resolved through this execution's
+       * value descriptor.  On the thread that executed the clone, whose private heap holds the plan's arrays: the
+       * leader clears its tree, a parallel scan worker clears its own clone in finalize (), the parallel aptr task
+       * its block (qexec_clear_xasl_for_parallel_aptr ()), and a clone retired to the cache is cleared with
+       * is_final by the thread that ran it. */
+      assert (is_final);
+      scan_batch_keep_free (thread_p, p);
+
       /* aggregate optimize related should be free */
       if (!except_trace)
 	{
