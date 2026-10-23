@@ -896,7 +896,6 @@ namespace cubschema
       {SP_ATTR_PKG_OF, CT_PACKAGE_NAME},
       {SP_ATTR_IS_SYSTEM_GENERATED, "integer"},
       {SP_ATTR_DIRECTIVE, "integer"},
-      {SP_ATTR_COMPILE_ID, format_varchar (PLCSQL_COMPILE_ID_LEN)},
       {SP_ATTR_TARGET_CLASS, format_varchar (SP_ATTR_TARGET_CLASS_LEN)},
       {SP_ATTR_TARGET_METHOD, format_varchar (SP_ATTR_TARGET_METHOD_LEN)},
       {SP_ATTR_CODE, CT_STORED_PROC_CODE_NAME},
